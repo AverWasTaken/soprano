@@ -67,6 +67,7 @@ import java.lang.reflect.Method;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
+import java.util.concurrent.ForkJoinPool;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -329,7 +330,7 @@ public final class BlockOptionalMeta {
                 layeredRegistryAccess,
                 pendingTags,
                 closeableResourceManager,
-                Minecraft.getInstance()
+                ForkJoinPool.commonPool()
             ).thenApply(r -> r.layers().compositeAccess());
         }
     }
