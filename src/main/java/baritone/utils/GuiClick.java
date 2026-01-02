@@ -87,6 +87,11 @@ public class GuiClick extends Screen implements Helper {
     }
 
     @Override
+    public void renderBackground(GuiGraphics stack, int mouseX, int mouseY, float partialTicks) {
+        // Prevent default background rendering
+    }
+
+    @Override
     public boolean mouseReleased(double mouseX, double mouseY, int mouseButton) {
         if (currentMouseOver != null) { //Catch this, or else a click into void will result in a crash
             if (mouseButton == 0) {
