@@ -371,6 +371,104 @@ public enum Moves {
         public void apply(CalculationContext context, int x, int y, int z, MutableMoveResult result) {
             MovementNeo.cost(context, x, y, z, Direction.WEST, result);
         }
+    },
+
+    // 4 is ClimbJump.MAX_DIST, which is package private over in movements. the landing is wherever the sim says it is, so both
+    // x z and y are dynamic
+    CLIMB_GRAB_NORTH(0, 0, -4, true, true) {
+        @Override
+        public Movement apply0(CalculationContext context, BetterBlockPos src) {
+            return MovementClimb.grab(context, src, Direction.NORTH);
+        }
+
+        @Override
+        public void apply(CalculationContext context, int x, int y, int z, MutableMoveResult result) {
+            MovementClimb.grab(context, x, y, z, Direction.NORTH, result);
+        }
+    },
+
+    CLIMB_GRAB_SOUTH(0, 0, +4, true, true) {
+        @Override
+        public Movement apply0(CalculationContext context, BetterBlockPos src) {
+            return MovementClimb.grab(context, src, Direction.SOUTH);
+        }
+
+        @Override
+        public void apply(CalculationContext context, int x, int y, int z, MutableMoveResult result) {
+            MovementClimb.grab(context, x, y, z, Direction.SOUTH, result);
+        }
+    },
+
+    CLIMB_GRAB_EAST(+4, 0, 0, true, true) {
+        @Override
+        public Movement apply0(CalculationContext context, BetterBlockPos src) {
+            return MovementClimb.grab(context, src, Direction.EAST);
+        }
+
+        @Override
+        public void apply(CalculationContext context, int x, int y, int z, MutableMoveResult result) {
+            MovementClimb.grab(context, x, y, z, Direction.EAST, result);
+        }
+    },
+
+    CLIMB_GRAB_WEST(-4, 0, 0, true, true) {
+        @Override
+        public Movement apply0(CalculationContext context, BetterBlockPos src) {
+            return MovementClimb.grab(context, src, Direction.WEST);
+        }
+
+        @Override
+        public void apply(CalculationContext context, int x, int y, int z, MutableMoveResult result) {
+            MovementClimb.grab(context, x, y, z, Direction.WEST, result);
+        }
+    },
+
+    CLIMB_LEAP_NORTH(0, 0, -4, true, true) {
+        @Override
+        public Movement apply0(CalculationContext context, BetterBlockPos src) {
+            return MovementClimb.leap(context, src, Direction.NORTH);
+        }
+
+        @Override
+        public void apply(CalculationContext context, int x, int y, int z, MutableMoveResult result) {
+            MovementClimb.leap(context, x, y, z, Direction.NORTH, result);
+        }
+    },
+
+    CLIMB_LEAP_SOUTH(0, 0, +4, true, true) {
+        @Override
+        public Movement apply0(CalculationContext context, BetterBlockPos src) {
+            return MovementClimb.leap(context, src, Direction.SOUTH);
+        }
+
+        @Override
+        public void apply(CalculationContext context, int x, int y, int z, MutableMoveResult result) {
+            MovementClimb.leap(context, x, y, z, Direction.SOUTH, result);
+        }
+    },
+
+    CLIMB_LEAP_EAST(+4, 0, 0, true, true) {
+        @Override
+        public Movement apply0(CalculationContext context, BetterBlockPos src) {
+            return MovementClimb.leap(context, src, Direction.EAST);
+        }
+
+        @Override
+        public void apply(CalculationContext context, int x, int y, int z, MutableMoveResult result) {
+            MovementClimb.leap(context, x, y, z, Direction.EAST, result);
+        }
+    },
+
+    CLIMB_LEAP_WEST(-4, 0, 0, true, true) {
+        @Override
+        public Movement apply0(CalculationContext context, BetterBlockPos src) {
+            return MovementClimb.leap(context, src, Direction.WEST);
+        }
+
+        @Override
+        public void apply(CalculationContext context, int x, int y, int z, MutableMoveResult result) {
+            MovementClimb.leap(context, x, y, z, Direction.WEST, result);
+        }
     };
 
     public final boolean dynamicXZ;
