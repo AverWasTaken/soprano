@@ -1,10 +1,10 @@
-(assuming you already have Baritone [set up](SETUP.md))
+Assumes you already have Soprano [installed](README.md#install).
 
 # Prefix
 
-Baritone's chat control prefix is `#` by default.
+Soprano's chat control prefix is `#` by default.
 
-By default, Baritone commands can also be typed straight into the chat box without a prefix. However, if you make a typo, like typing "gola 10000 10000" instead of "goal", it goes into public chat, which is bad, so using `#` is recommended.
+By default, Soprano commands can also be typed straight into the chat box without a prefix. However, if you make a typo, like typing "gola 10000 10000" instead of "goal", it goes into public chat, which is bad, so using `#` is recommended.
 
 - To disable direct chat control (with no prefix), turn off the `chatControl` setting.
 - To disable chat control with the `#` prefix, turn off the `prefixControl` setting.
@@ -53,51 +53,67 @@ For death, `#wp list death` will list waypoints under the "death" tag (remember 
 - `litematica` to build the schematic that is currently open in Litematica
 - `farm` to automatically harvest, replant, or bone meal crops. Use `farm <range>` or `farm <range> <waypoint>` to limit the max distance from the starting point or a waypoint. Set `farmWaitForGrowth` to `true` to keep farming active while nearby crops are immature
 - `pickup` to pick up dropped items, or `pickup <item1> <item2>` for only certain items
-- `blacklist` to stop Baritone from going to the closest block, so it won't try to get to it again
-- `find` to search through Baritone's cache for the location of a block
+- `blacklist` to stop Soprano from going to the closest block, so it won't try to get to it again
+- `find` to search through Soprano's cache for the location of a block
 
 ## Control
 
 - `cancel` or `stop` to stop everything, `forcecancel` is also an option
-- `pause` and `resume` to pause Baritone and pick up where it left off, `paused` to check
+- `pause` and `resume` to pause Soprano and pick up where it left off, `paused` to check
 - `eta` to get the estimated time until the next segment and the goal. Be aware that the ETA to your goal is really imprecise
-- `proc` to view miscellaneous information about the process currently controlling Baritone
-- `version` to get the version of Baritone you're running
+- `proc` to view miscellaneous information about the process currently controlling Soprano
+- `version` to get the version of Soprano you're running
 
 ## Maintenance
 
 - `repack` to re-cache the chunks around you
-- `reloadall` to reload Baritone's world cache, `saveall` to save it
+- `reloadall` to reload Soprano's world cache, `saveall` to save it
 - `render` to fix glitched chunk rendering without having to reload all of them
 - `gc` to call `System.gc()`, which may free up some memory
 - `damn` daniel
 
 # Settings
 
-To toggle a boolean setting, just say its name in chat (for example, saying `allowBreak` toggles whether Baritone will consider breaking blocks). For a numeric setting, say its name then the new value (like `primaryTimeoutMS 250`). It's case insensitive.
+To toggle a boolean setting, just say its name in chat (for example, saying `allowBreak` toggles whether Soprano will consider breaking blocks). For a numeric setting, say its name then the new value (like `primaryTimeoutMS 250`). It's case insensitive.
 
 - `reset acceptableThrowawayItems` resets one setting to its default value
 - `reset all` resets all settings
 - `modified` lists all settings that have been changed from their defaults
 
-All the settings and their documentation are [here](https://github.com/cabaletta/baritone/blob/master/src/api/java/baritone/api/Settings.java). If you find HTML easier to read than Javadoc, look [here](https://baritone.leijurv.com/baritone/api/Settings.html#field.detail).
+All the settings and their documentation are [here](src/api/java/baritone/api/Settings.java). The settings Soprano added aren't in the HTML javadocs at baritone.leijurv.com, which only covers upstream Soprano.
 
-There are a couple hundred settings, but here are some fun / interesting / important ones that you might want to look at changing in normal usage of Baritone:
+There are a couple hundred settings. Soprano keeps using the `baritone` folder in your Minecraft folder, so your existing `settings.txt` carries over from Baritone.
+
+## Soprano settings
+
+All off by default unless it says otherwise.
+
+- `allowNeos` (jump around the end of a wall 1 or 2 blocks thick, needs `allowParkour`)
+- `allowMomentumJumps` (longer jumps with a run up and bunny hops, including 5 block jumps)
+- `allowClimbJumps` (jump onto ladders and vines across a gap, and off of them again, needs `allowParkour`)
+- `allowLadderClutch` (survive long falls by placing a ladder or vine on a wall beside the landing, needs one on the hotbar)
+- `pickupLadders` (on by default, picks the clutch ladder back up after landing)
+- `experimentalMovement` (speedrunner style movement, see below) and `experimentalMinHealth` (the health it won't drop below)
+- `allowBoats` (use boats when they save time)
+- `allowSwimming` (sprint swim along the waterline, head out and body in, instead of bobbing through water)
+- `headHitters` (sprint jump head bonks in 1x2 tunnels, slightly faster than plain sprinting)
+- `headHittersDiagonal` (on by default, allows diagonal head bonks when `headHitters` is enabled)
+- `sprintJumping` (sprint jump along straight path stretches, up single steps and down small hills)
+- `sprintJumpingDiagonals` (on by default, allows diagonal sprint jumps when `sprintJumping` is enabled)
+- `shortBaritonePrefix` (use `[S]` instead of `[Soprano]` in chat messages)
+
+`experimentalMovement` is the "just go fast" switch. It turns on all the parkour, sprint jumping and head hitters, takes falls that cost some health when that saves time, cuts corners, smooths straight runs, places blocks more freely and leans toward jumps. If you'd rather pick features one by one, leave it off and use the settings above.
+
+## Settings from Baritone
+
+A few that are worth knowing about:
 
 - `allowBreak`
 - `allowSprint`
 - `allowPlace`
 - `allowParkour`
 - `allowParkourPlace`
-- `allowNeos` (jump around the end of a wall like a parkour map neo, needs `allowParkour`)
-- `allowClimbJumps` (jump onto ladders and vines across a gap, and off of them again, needs `allowParkour`)
 - `allowDiagonalAscend`
-- `headHitters` (sprint jump head bonks in 1x2 tunnels, slightly faster than plain sprinting)
-- `headHittersDiagonal` (on by default, allows diagonal head bonks when `headHitters` is enabled)
-- `sprintJumping` (sprint jump along straight path stretches, up single steps and down small hills)
-- `sprintJumpingDiagonals` (on by default, allows diagonal sprint jumps when `sprintJumping` is enabled)
-- `allowLadderClutch` (survive long falls by placing a ladder or vine on a wall beside the landing, needs one on the hotbar)
-- `allowSwimming` (sprint swim along the waterline, head out and body in, instead of bobbing through water)
 - `blockPlacementPenalty`
 - `acceptableThrowawayItems`
 - `blocksToAvoidBreaking`
@@ -109,11 +125,11 @@ There are a couple hundred settings, but here are some fun / interesting / impor
 - `buildInLayers`
 - `buildRepeat` and `buildRepeatCount`
 - `worldExploringChunkOffset`
-- `renderCachedChunks` (and `cachedChunksOpacity`) <-- very fun but you need a beefy computer
+- `renderCachedChunks` (and `cachedChunksOpacity`), fun but you need a beefy computer
 
 # Troubleshooting / common issues
 
-## Why doesn't Baritone respond to any of my chat commands?
+## Why doesn't Soprano respond to any of my chat commands?
 
 This could be one of many things.
 
@@ -126,5 +142,5 @@ So you'll need to use the `#` prefix, or edit `baritone/settings.txt` in your Mi
 
 ## Why can I do `.goto x z` in some client but nowhere else?
 
-That's a custom command the client added, it isn't from Baritone.
+That's a custom command the client added, it isn't from Soprano.
 The equivalent you're looking for is `goto x z`.
