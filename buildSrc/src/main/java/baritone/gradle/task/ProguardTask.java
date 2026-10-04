@@ -31,14 +31,19 @@ import xyz.wagyourtail.unimined.api.minecraft.MinecraftConfig;
 import java.io.File;
 import java.io.IOException;
 import java.net.URI;
+import java.nio.file.FileSystem;
+import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
+import java.util.zip.ZipOutputStream;
 
 /**
  * @author Brady
@@ -122,6 +127,31 @@ public class ProguardTask extends BaritoneGradleTask {
         return toolchain;
     }
 
+    private Path extractJdkClasses() throws IOException {
+        Path home = getJavaLauncherForProguard().getMetadata().getInstallationPath().getAsFile().toPath();
+        Path jar = getTemporaryFile("jdk-classes-" + getProject().findProperty("java_version") + ".jar");
+        if (Files.exists(jar)) {
+            return jar;
+        }
+        // jrt: of another jdk than the one gradle runs on, it only reads the classfiles so the version gap doesn't matter
+        try (FileSystem jrt = FileSystems.newFileSystem(URI.create("jrt:/"), Map.of("java.home", home.toString()));
+             ZipOutputStream out = new ZipOutputStream(Files.newOutputStream(jar))) {
+            for (String module : List.of("java.base", "java.desktop", "jdk.unsupported")) {
+                Path root = jrt.getPath("/modules", module);
+                List<Path> classes;
+                try (Stream<Path> files = Files.walk(root)) {
+                    classes = files.filter(f -> f.toString().endsWith(".class") && !f.getFileName().toString().equals("module-info.class")).collect(Collectors.toList());
+                }
+                for (Path file : classes) {
+                    out.putNextEntry(new ZipEntry(root.relativize(file).toString().replace('\\', '/')));
+                    Files.copy(file, out);
+                    out.closeEntry();
+                }
+            }
+        }
+        return jar;
+    }
+
     private void generateConfigs() throws Exception {
         Files.copy(getRootRelativeFile(PROGUARD_CONFIG_TEMPLATE), getTemporaryFile(PROGUARD_CONFIG_DEST), StandardCopyOption.REPLACE_EXISTING);
 
@@ -130,9 +160,14 @@ public class ProguardTask extends BaritoneGradleTask {
         template.add(0, "-injars '" + this.artifactPath.toString() + "'");
         template.add(1, "-outjars '" + this.getTemporaryFile(PROGUARD_EXPORT_PATH) + "'");
 
-        template.add(2, "-libraryjars  <java.home>/jmods/java.base.jmod(!**.jar;!module-info.class)");
-        template.add(3, "-libraryjars  <java.home>/jmods/java.desktop.jmod(!**.jar;!module-info.class)");
-        template.add(4, "-libraryjars  <java.home>/jmods/jdk.unsupported.jmod(!**.jar;!module-info.class)");
+        if (Files.exists(getJavaLauncherForProguard().getMetadata().getInstallationPath().getAsFile().toPath().resolve("jmods/java.base.jmod"))) {
+            template.add(2, "-libraryjars  <java.home>/jmods/java.base.jmod(!**.jar;!module-info.class)");
+            template.add(3, "-libraryjars  <java.home>/jmods/java.desktop.jmod(!**.jar;!module-info.class)");
+            template.add(4, "-libraryjars  <java.home>/jmods/jdk.unsupported.jmod(!**.jar;!module-info.class)");
+        } else {
+            // temurin 25 doesn't ship jmods anymore (zulu still does), so read the same three modules out of the runtime image
+            template.add(2, "-libraryjars '" + extractJdkClasses() + "'");
+        }
 
         {
             final Stream<File> libraries;
