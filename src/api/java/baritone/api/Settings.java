@@ -163,6 +163,16 @@ public final class Settings {
     public final Setting<Boolean> allowLadderClutch = new Setting<>(false);
 
     /**
+     * After a ladder clutch, break the ladder we put on the wall and pick it back up, so one ladder can save you from
+     * as many long falls as you like.
+     * <p>
+     * Only ladders we placed ourselves are touched, never one that was already there. Vines need shears to drop anything,
+     * so those stay on the wall. If the ladder can't be reached or it takes too long, we just leave it and carry on.
+     * Costs a second or so per clutch, which the pathing knows about.
+     */
+    public final Setting<Boolean> pickupLadders = new Setting<>(true);
+
+    /**
      * Allow Baritone to assume it can walk on still water just like any other block.
      * This functionality is assumed to be provided by a separate library that might have imported Baritone.
      * <p>
