@@ -19,6 +19,13 @@ package baritone.pathing.movement.movements;
 
 import org.junit.Test;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicReferenceArray;
+
 import static org.junit.Assert.*;
 
 public class NeoJumpTest {
@@ -107,5 +114,111 @@ public class NeoJumpTest {
         // not even a hop gets around these
         assertNull(NeoJump.staging(4, 0b101, 6, true));
         assertNull(NeoJump.staging(4, 0b111, 6, true));
+    }
+
+    // one of everything a table holds: a plain run up, a hop, and a shape nobody can make
+    private static AtomicReferenceArray<double[]> sample() {
+        AtomicReferenceArray<double[]> table = NeoJump.newTable();
+        table.set(NeoJump.key(2, 0b1, 1, true), new NeoJump(2, 0b1, 1, true, NeoJump.SPRINT_GROUND).pick());
+        table.set(NeoJump.key(3, 0b11, 5, true), new NeoJump(3, 0b11, 5, true, NeoJump.SPRINT_GROUND).pick());
+        table.set(NeoJump.key(4, 0b1, 1, true), new NeoJump(4, 0b1, 1, true, NeoJump.SPRINT_GROUND).pick());
+        return table;
+    }
+
+    @Test
+    public void everyShapeIsInTheWarmup() {
+        // 1 + 3 + 7 wall patterns, six runways, open beyond or not
+        List<NeoJump.Job> jobs = NeoJump.jobs();
+        assertEquals(11 * 6 * 2, jobs.size());
+        assertEquals(jobs.size(), jobs.stream().map(NeoJump.Job::key).distinct().count());
+        for (NeoJump.Job job : jobs) {
+            assertEquals(job.key(), NeoJump.key(job.dist(), job.walls(), job.runway(), job.openBeyond()));
+            assertTrue(job.key() >= 0);
+        }
+        // dist 2 and 3 with the short runways go first, they're what you actually run into
+        assertTrue(jobs.get(0).dist() == 2 && jobs.get(0).runway() == 1);
+        assertEquals(4, jobs.get(jobs.size() - 1).dist());
+    }
+
+    @Test
+    public void tableRoundTripsThroughAFile() throws IOException {
+        Path dir = Files.createTempDirectory("neo-table");
+        Path file = dir.resolve("sub").resolve("neo-table.txt");
+        AtomicReferenceArray<double[]> table = sample();
+        assertTrue(NeoJump.save(file, table));
+        assertTrue(Files.exists(file));
+        assertFalse(Files.exists(dir.resolve("sub").resolve("neo-table.txt.tmp")));
+
+        AtomicReferenceArray<double[]> loaded = NeoJump.newTable();
+        assertEquals(3, NeoJump.load(file, loaded));
+        int filled = 0;
+        for (NeoJump.Job job : NeoJump.jobs()) {
+            double[] was = table.get(job.key()), now = loaded.get(job.key());
+            assertEquals(was == null, now == null);
+            if (was != null) {
+                filled++;
+                assertEquals(NeoJump.unpack(was), NeoJump.unpack(now));
+            }
+        }
+        assertEquals(3, filled);
+        // the nobody-can-make-it answer has to come back as that, and not as a shape nobody has asked about
+        assertNull(NeoJump.unpack(loaded.get(NeoJump.key(4, 0b1, 1, true))));
+        assertNotNull(loaded.get(NeoJump.key(4, 0b1, 1, true)));
+        assertTrue(NeoJump.unpack(loaded.get(NeoJump.key(3, 0b11, 5, true))).hop());
+        // loading doesn't stomp on what's already there
+        assertEquals(0, NeoJump.load(file, loaded));
+    }
+
+    @Test
+    public void staleOrBrokenFilesAreIgnored() throws IOException {
+        Path dir = Files.createTempDirectory("neo-table");
+        Path file = dir.resolve("neo-table.txt");
+        assertTrue(NeoJump.save(file, sample()));
+        List<String> lines = Files.readAllLines(file);
+
+        // a table from before somebody touched the physics
+        List<String> stale = new ArrayList<>(lines);
+        stale.set(0, NeoJump.header(NeoJump.TABLE_VERSION - 1));
+        Files.write(file, stale);
+        AtomicReferenceArray<double[]> table = NeoJump.newTable();
+        assertEquals(0, NeoJump.load(file, table));
+        assertEquals(0, filled(table));
+
+        // same version, different limits
+        List<String> other = new ArrayList<>(lines);
+        other.set(0, lines.get(0).replace("maxRunway=" + NeoJump.MAX_RUNWAY, "maxRunway=" + (NeoJump.MAX_RUNWAY + 1)));
+        Files.write(file, other);
+        assertEquals(0, NeoJump.load(file, table));
+
+        // a good header and then a line that's off partway through: none of it counts
+        List<String> broken = new ArrayList<>(lines);
+        broken.set(broken.size() - 1, "4 1 1 1 0.5 banana");
+        Files.write(file, broken);
+        assertEquals(0, NeoJump.load(file, table));
+        assertEquals(0, filled(table));
+
+        // a shape that isn't one
+        broken.set(broken.size() - 1, "9 1 1 1 none");
+        Files.write(file, broken);
+        assertEquals(0, NeoJump.load(file, table));
+
+        Files.write(file, new byte[]{(byte) 0xff, (byte) 0xfe, 0, 1});
+        assertEquals(0, NeoJump.load(file, table));
+        Files.write(file, new byte[0]);
+        assertEquals(0, NeoJump.load(file, table));
+        assertEquals(0, NeoJump.load(dir.resolve("nope.txt"), table));
+        // and the original is fine, so it was the edits
+        Files.write(file, lines);
+        assertEquals(3, NeoJump.load(file, table));
+    }
+
+    private static int filled(AtomicReferenceArray<double[]> table) {
+        int n = 0;
+        for (int i = 0; i < table.length(); i++) {
+            if (table.get(i) != null) {
+                n++;
+            }
+        }
+        return n;
     }
 }

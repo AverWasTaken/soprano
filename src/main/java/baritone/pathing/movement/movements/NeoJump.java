@@ -17,7 +17,19 @@
 
 package baritone.pathing.movement.movements;
 
-import java.util.concurrent.ForkJoinPool;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.concurrent.ConcurrentLinkedDeque;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReferenceArray;
 
 /**
  * A neo, flown tick by tick the way LivingEntity does it. Pure math so the planner can ask it things off thread
@@ -56,8 +68,16 @@ final class NeoJump {
     // next tick off the speed the hop landed with. in the air the only knob is which way W points: facing a bit off the
     // line costs forward accel, and the last few are facing backwards, which is a brake that leaves v alone
     private static final double[] HOP_PHASE = {0, 15, -15, 30, -30, 50, -50, 75, -75, 105, -105};
-    private static final double[] NONE = {}, PENDING = {};
-    private static final double[][] TABLE = new double[(MAX_RUNWAY + 1) * (MAX_DIST + 1) * (1 << (MAX_DIST - 1)) * 2][];
+    // bump this whenever the physics, the policies, the staging candidates or any of the margins change. the table gets saved
+    // to disk, and a file from before the change would keep handing out answers the sim wouldn't give anymore.
+    // forgetting is how you spend an evening wondering why the test passes and the game doesn't
+    static final int TABLE_VERSION = 1;
+    // null means nobody has asked. PENDING is queued because A* asked, RUNNING is somebody computing it right now, NONE is
+    // an answer (no run up works), anything else is the answer
+    private static final double[] NONE = {}, PENDING = {}, RUNNING = {};
+    private static final int TABLE_SIZE = (MAX_RUNWAY + 1) * (MAX_DIST + 1) * (1 << (MAX_DIST - 1)) * 2;
+    // atomic so a half built answer can't be seen through a data race, and so claiming a key is one cas
+    private static final AtomicReferenceArray<double[]> TABLE = newTable();
 
     /**
      * Where we're going this tick. heading is in the local frame: u down the line, v out toward the open side
@@ -99,48 +119,288 @@ final class NeoJump {
         if (key < 0) {
             return null;
         }
-        double[] spot = TABLE[key];
-        if (spot == null || spot == PENDING) {
-            // not under the lock: a runway of 6 asks for six of these at once and they'd go one at a time. a doubled up
-            // one just gets the same answer twice
-            spot = pick(new NeoJump(dist, walls, runway, openBeyond, SPRINT_GROUND));
-            synchronized (TABLE) {
-                TABLE[key] = spot;
-            }
-        }
-        return unpack(spot);
+        return unpack(resolve(key, dist, walls, runway, openBeyond));
     }
 
     /**
      * Same, except a shape nobody has worked out yet gets worked out in the background and we say no for now. A* asks
-     * this, a 400 ms stall the first time it sees a 2 thick wall would eat the whole search. the next path gets it
+     * this, a 400 ms stall the first time it sees a 2 thick wall would eat the whole search. the next path gets it.
+     * the first ask of the session also starts on the whole table (see warm), so by the time anyone is standing in front
+     * of a wall it's usually all there
      */
     static Staging stagingIfKnown(int dist, int walls, int runway, boolean openBeyond) {
         int key = key(dist, walls, runway, openBeyond);
         if (key < 0) {
             return null;
         }
-        double[] spot = TABLE[key];
+        if (!WARMED.get()) {
+            warm();
+        }
+        double[] spot = TABLE.get(key);
         if (spot == null) {
-            synchronized (TABLE) {
-                if (TABLE[key] == null) {
-                    TABLE[key] = PENDING;
-                    ForkJoinPool.commonPool().execute(() -> staging(dist, walls, runway, openBeyond));
-                }
+            // the warmup gets to everything eventually, this one gets to cut the line
+            if (TABLE.compareAndSet(key, null, PENDING)) {
+                QUEUE.addFirst(new Job(key, dist, walls, runway, openBeyond));
+                ensureWorkers();
             }
             return null;
         }
-        return spot == PENDING ? null : unpack(spot);
+        return spot == PENDING || spot == RUNNING ? null : unpack(spot);
     }
 
-    private static int key(int dist, int walls, int runway, boolean openBeyond) {
+    // the answer for a key, working it out here if nobody is. not under any lock: a runway of 6 asks for six of these at
+    // once and they'd go one at a time. but if somebody already has the key we wait for them instead of doing it twice
+    private static double[] resolve(int key, int dist, int walls, int runway, boolean openBeyond) {
+        for (; ; ) {
+            double[] spot = TABLE.get(key);
+            if (spot != null && spot != PENDING && spot != RUNNING) {
+                return spot;
+            }
+            if (spot != RUNNING && TABLE.compareAndSet(key, spot, RUNNING)) {
+                double[] result = null;
+                try {
+                    result = pick(new NeoJump(dist, walls, runway, openBeyond, SPRINT_GROUND));
+                    return result;
+                } finally {
+                    // null if it threw, so the next ask gets to try again instead of waiting on a corpse
+                    TABLE.set(key, result);
+                }
+            }
+            try {
+                Thread.sleep(2);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return pick(new NeoJump(dist, walls, runway, openBeyond, SPRINT_GROUND));
+            }
+        }
+    }
+
+    // the warmup: every shape there is, computed once in the background and kept in a file
+
+    record Job(int key, int dist, int walls, int runway, boolean openBeyond) {}
+
+    private static final AtomicBoolean WARMED = new AtomicBoolean(), SAVED = new AtomicBoolean();
+    private static final AtomicInteger ACTIVE = new AtomicInteger();
+    private static final ConcurrentLinkedDeque<Job> QUEUE = new ConcurrentLinkedDeque<>();
+    private static volatile Path tableFile;
+
+    // where the table lives between launches. MovementNeo hands it over from the Baritone side, this class doesn't know
+    // what a game directory is. null (the default, and what the tests see) means no saving and no loading
+    static void setTableFile(Path file) {
+        tableFile = file;
+    }
+
+    static AtomicReferenceArray<double[]> newTable() {
+        return new AtomicReferenceArray<>(TABLE_SIZE);
+    }
+
+    // every key key() accepts, the common ones first: dist 2 and 3 with the short runways are what you run into in the
+    // wild, a dist 4 with six blocks of runway is somebody's flex
+    static List<Job> jobs() {
+        List<Job> list = new ArrayList<>();
+        for (int dist = 2; dist <= MAX_DIST; dist++) {
+            for (int walls = 1; walls < 1 << (dist - 1); walls++) {
+                for (int runway = 1; runway <= MAX_RUNWAY; runway++) {
+                    for (int open = 0; open < 2; open++) {
+                        list.add(new Job(key(dist, walls, runway, open == 1), dist, walls, runway, open == 1));
+                    }
+                }
+            }
+        }
+        list.sort(Comparator.comparingInt((Job j) -> j.dist() > 3 ? 1 : 0).thenComparingInt(Job::runway).thenComparingInt(Job::dist)
+                .thenComparingInt(Job::walls).thenComparing(Job::openBeyond));
+        return list;
+    }
+
+    // first ask of the session: load whatever the file has, queue up the rest, and get some threads on it. half the
+    // cores, the game has to keep drawing frames while this goes
+    private static void warm() {
+        if (!WARMED.compareAndSet(false, true)) {
+            return;
+        }
+        Path file = tableFile;
+        if (file != null) {
+            load(file, TABLE);
+        }
+        int missing = 0;
+        for (Job job : jobs()) {
+            if (TABLE.get(job.key()) == null) {
+                QUEUE.addLast(job);
+                missing++;
+            }
+        }
+        if (missing == 0) {
+            SAVED.set(true); // the file had all of it, nothing to write back
+        }
+        ensureWorkers();
+    }
+
+    private static void ensureWorkers() {
+        int cap = Math.max(1, Runtime.getRuntime().availableProcessors() / 2);
+        while (!QUEUE.isEmpty()) {
+            int active = ACTIVE.get();
+            if (active >= cap) {
+                return;
+            }
+            if (ACTIVE.compareAndSet(active, active + 1)) {
+                Thread thread = new Thread(NeoJump::work, "neo-warmup");
+                thread.setDaemon(true);
+                // below the render thread, we're a guest
+                thread.setPriority(Thread.NORM_PRIORITY - 2);
+                thread.start();
+            }
+        }
+    }
+
+    private static void work() {
+        try {
+            Job job;
+            while ((job = QUEUE.pollFirst()) != null) {
+                try {
+                    resolve(job.key(), job.dist(), job.walls(), job.runway(), job.openBeyond());
+                } catch (Throwable t) {
+                    // resolve already put the key back to unknown. one bad shape shouldn't stop the other 131
+                }
+            }
+        } finally {
+            ACTIVE.decrementAndGet();
+            // a job could have landed between our last poll and the decrement, and ensureWorkers would've seen us still active
+            if (!QUEUE.isEmpty()) {
+                ensureWorkers();
+            } else if (ACTIVE.get() == 0) {
+                saveIfDone();
+            }
+        }
+    }
+
+    private static void saveIfDone() {
+        Path file = tableFile;
+        if (file == null) {
+            return;
+        }
+        for (Job job : jobs()) {
+            double[] spot = TABLE.get(job.key());
+            if (spot == null || spot == PENDING || spot == RUNNING) {
+                return; // not all of it, so we don't write half a table
+            }
+        }
+        if (SAVED.compareAndSet(false, true)) {
+            save(file, TABLE);
+        }
+    }
+
+    // anything about the sim that could change an answer goes in here, so a file from a different build is just ignored
+    static String header(int version) {
+        return "neo-table version=" + version + " maxDist=" + MAX_DIST + " maxRunway=" + MAX_RUNWAY + " planMargin=" + PLAN_MARGIN
+                + " jumpMargin=" + JUMP_MARGIN + " comfortable=" + COMFORTABLE;
+    }
+
+    // one line per shape: dist walls runway openBeyond, then none or the six numbers of a Staging. text because it's
+    // 132 lines and whoever gets confused by it next will want to read it. false if it couldn't be written, which is
+    // fine, we just do it all again next launch
+    static boolean save(Path file, AtomicReferenceArray<double[]> table) {
+        StringBuilder out = new StringBuilder(header(TABLE_VERSION)).append('\n');
+        for (Job job : jobs()) {
+            double[] spot = table.get(job.key());
+            if (spot == null || spot == PENDING || spot == RUNNING) {
+                continue;
+            }
+            out.append(job.dist()).append(' ').append(job.walls()).append(' ').append(job.runway()).append(' ').append(job.openBeyond() ? 1 : 0);
+            if (spot == NONE) {
+                out.append(" none");
+            } else {
+                for (double d : spot) {
+                    out.append(' ').append(d); // Double.toString round trips exactly
+                }
+            }
+            out.append('\n');
+        }
+        try {
+            Path parent = file.toAbsolutePath().getParent();
+            if (parent != null) {
+                Files.createDirectories(parent);
+            }
+            // write next to it and move, so a game that gets closed mid write leaves the old file and not half of a new one
+            Path temp = file.resolveSibling(file.getFileName() + ".tmp");
+            Files.writeString(temp, out, StandardCharsets.UTF_8);
+            try {
+                Files.move(temp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            } catch (AtomicMoveNotSupportedException e) {
+                Files.move(temp, file, StandardCopyOption.REPLACE_EXISTING);
+            }
+            return true;
+        } catch (IOException | RuntimeException e) {
+            return false;
+        }
+    }
+
+    // how many shapes got filled in. 0 if the file is missing, from a different version, or anything in it is off, and then
+    // nothing is touched. slots that already have an answer keep it
+    static int load(Path file, AtomicReferenceArray<double[]> table) {
+        List<String> lines;
+        try {
+            lines = Files.readAllLines(file, StandardCharsets.UTF_8);
+        } catch (IOException | RuntimeException e) {
+            return 0;
+        }
+        if (lines.isEmpty() || !lines.get(0).equals(header(TABLE_VERSION))) {
+            return 0;
+        }
+        // parse everything before installing anything, a corrupt file shouldn't get to be half believed
+        List<Integer> keys = new ArrayList<>();
+        List<double[]> spots = new ArrayList<>();
+        for (int i = 1; i < lines.size(); i++) {
+            String line = lines.get(i).trim();
+            if (line.isEmpty()) {
+                continue;
+            }
+            String[] part = line.split(" ");
+            try {
+                int dist = Integer.parseInt(part[0]), walls = Integer.parseInt(part[1]), runway = Integer.parseInt(part[2]), open = Integer.parseInt(part[3]);
+                int key = open < 0 || open > 1 ? -1 : key(dist, walls, runway, open == 1);
+                if (key < 0) {
+                    return 0;
+                }
+                double[] spot;
+                if (part.length == 5 && part[4].equals("none")) {
+                    spot = NONE;
+                } else if (part.length == 10) {
+                    spot = new double[6];
+                    for (int k = 0; k < 6; k++) {
+                        spot[k] = Double.parseDouble(part[4 + k]);
+                        if (Double.isNaN(spot[k]) || Double.isInfinite(spot[k])) {
+                            return 0;
+                        }
+                    }
+                    if (spot[3] < 0 || spot[3] != Math.rint(spot[3]) || spot[5] != 0 && spot[5] != 1) {
+                        return 0;
+                    }
+                } else {
+                    return 0;
+                }
+                keys.add(key);
+                spots.add(spot);
+            } catch (RuntimeException e) {
+                return 0;
+            }
+        }
+        int loaded = 0;
+        for (int i = 0; i < keys.size(); i++) {
+            if (table.compareAndSet(keys.get(i), null, spots.get(i))) {
+                loaded++;
+            }
+        }
+        return loaded;
+    }
+
+    static int key(int dist, int walls, int runway, boolean openBeyond) {
         if (dist < 2 || dist > MAX_DIST || walls <= 0 || walls >= 1 << (dist - 1) || runway < 1 || runway > MAX_RUNWAY) {
             return -1;
         }
         return ((runway * (MAX_DIST + 1) + dist) * (1 << (MAX_DIST - 1)) + walls) * 2 + (openBeyond ? 1 : 0);
     }
 
-    private static Staging unpack(double[] spot) {
+    static Staging unpack(double[] spot) {
         return spot == NONE ? null : new Staging(spot[0], spot[1], spot[2], (int) spot[3], spot[4], spot[5] != 0);
     }
 

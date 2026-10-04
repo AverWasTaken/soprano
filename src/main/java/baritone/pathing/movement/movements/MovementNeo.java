@@ -39,6 +39,7 @@ import net.minecraft.world.level.block.StairBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 
+import java.nio.file.Path;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -46,7 +47,8 @@ public class MovementNeo extends Movement {
 
     private static final BetterBlockPos[] EMPTY = new BetterBlockPos[]{};
 
-    private record Shape(Direction side, int dist, int walls, int runway, boolean openBeyond) {}
+    // cost rides along so the planner and calculateCost can only ever disagree if the table did
+    private record Shape(Direction side, int dist, int walls, int runway, boolean openBeyond, double cost) {}
 
     private final Direction direction, side;
     private final int dist;
@@ -75,6 +77,12 @@ public class MovementNeo extends Movement {
         this.openBeyond = openBeyond;
     }
 
+    // where the table of run ups is kept between launches, see NeoJump.TABLE_VERSION. NeoJump doesn't know what a game
+    // directory is, so whoever does hands it over
+    public static void setTableFile(Path file) {
+        NeoJump.setTableFile(file);
+    }
+
     public static MovementNeo cost(CalculationContext context, BetterBlockPos src, Direction dir) {
         Shape shape = best(context, src.x, src.y, src.z, dir);
         if (shape == null) {
@@ -92,13 +100,26 @@ public class MovementNeo extends Movement {
         res.x = x + dir.getStepX() * shape.dist();
         res.y = y;
         res.z = z + dir.getStepZ() * shape.dist();
-        res.cost = cost(context, shape.dist());
+        res.cost = shape.cost();
     }
 
-    private static double cost(CalculationContext context, int dist) {
-        // a parkour jump plus walking back onto the run up block first. two diagonals round the end of the wall are ~13
-        // against ~20 for a 2 block neo, so if there's floor to walk on we walk. neos are for when there isn't
-        return (dist + 2) * WALK_ONE_BLOCK_COST + context.jumpPenalty;
+    // ticks, since that's what everything A* adds up is. what we actually do: walk from the takeoff block back to the
+    // staging spot (the far end of the runway, so a 6 block runway is a 6 block walk), run up, fly. the old (dist + 2)
+    // walks looked right for a 2 block neo off a 1 block runway and was off by half for everything else
+    // sneaking is 0.3x, and we only do it for the last bit (see updateState), so that bit costs this much extra per block
+    private static final double SNEAK_EXTRA = WALK_ONE_BLOCK_COST * (1 / 0.3 - 1), SNEAK_STRETCH = 0.6;
+    // coming to a stop on the spot and letting go of sneak so sprint can start
+    private static final double SETTLE_TICKS = 3;
+    // a jump is ~12 ticks up and back down, and the hop is one more of those
+    private static final double FLIGHT_TICKS = 12;
+
+    private static double cost(CalculationContext context, NeoJump.Staging st) {
+        double back = Math.sqrt(st.u() * st.u() + st.v() * st.v());
+        double ticks = back * WALK_ONE_BLOCK_COST + Math.min(back, SNEAK_STRETCH) * SNEAK_EXTRA + SETTLE_TICKS + st.runup() + FLIGHT_TICKS;
+        if (st.hop()) {
+            return ticks + FLIGHT_TICKS + 2 * context.jumpPenalty;
+        }
+        return ticks + context.jumpPenalty;
     }
 
     private static Shape best(CalculationContext context, int x, int y, int z, Direction dir) {
@@ -179,12 +200,18 @@ public class MovementNeo extends Movement {
         boolean openBeyond = open(context, lx + dx, y, lz + dz) && open(context, lx + dx + sx, y, lz + dz + sz);
         // more runway isn't always better as far as the table goes (it only tries a few spots to start from), so if the
         // whole thing doesn't work out, see if less of it does
+        // and a shorter one can be cheaper too, nobody wants to walk six blocks back to hop when two would've done
+        Shape best = null;
         for (int r = runway; r >= 1; r--) {
-            if (NeoJump.stagingIfKnown(dist, walls, r, openBeyond) != null) {
-                return new Shape(side, dist, walls, r, openBeyond);
+            NeoJump.Staging st = NeoJump.stagingIfKnown(dist, walls, r, openBeyond);
+            if (st != null) {
+                double cost = cost(context, st);
+                if (best == null || cost < best.cost()) {
+                    best = new Shape(side, dist, walls, r, openBeyond, cost);
+                }
             }
         }
-        return null;
+        return best;
     }
 
     private static boolean plainFloor(CalculationContext context, int x, int y, int z) {
@@ -223,7 +250,7 @@ public class MovementNeo extends Movement {
         walls = shape.walls();
         runway = shape.runway();
         openBeyond = shape.openBeyond();
-        return cost(context, dist);
+        return shape.cost();
     }
 
     @Override
@@ -395,12 +422,16 @@ public class MovementNeo extends Movement {
                 return state.setStatus(MovementStatus.UNREACHABLE);
             }
         }
-        // walk over to where the run up starts. sneaking: the good spots are 0.04 from falling off the side of the
-        // bridge, and vanilla won't let a sneaking player walk off an edge. it's slower too, which is how we stop on it
-        state.setInput(Input.SNEAK, true);
+        // walk over to where the run up starts. the good spots are 0.04 from falling off the side of the bridge, and
+        // vanilla won't let a sneaking player walk off an edge, so the last stretch is a sneak. it's slower too, which is
+        // how we stop on the spot. out in the middle of a runway there's nothing to fall off of, and sneaking the whole
+        // way back down a 6 block runway was most of what a neo cost
         double eu = st.u() - u, ev = st.v() - v;
         double off = Math.sqrt(eu * eu + ev * ev);
         double speed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
+        if (off < SNEAK_STRETCH) {
+            state.setInput(Input.SNEAK, true);
+        }
         if (off < 0.08 && speed < 0.01) {
             // let go of sneak this tick, sprint can't start while we're still crouched
             running = true;
@@ -421,6 +452,30 @@ public class MovementNeo extends Movement {
         }
         return state;
     }
+
+    // the line the renderer draws for this movement, in block corner coordinates like path positions are (so its +0.5
+    // centers it). out past the end of the wall and back in, instead of straight through it. a hop's run up is behind
+    // src, which isn't on the path, so there's nothing of it to draw
+    public Vec3[] curve() {
+        Vec3[] points = new Vec3[CURVE_POINTS];
+        for (int i = 0; i < CURVE_POINTS; i++) {
+            double t = i / (double) (CURVE_POINTS - 1);
+            double along = dist * t;
+            // all the way out by the time we reach the wall's face half a block in, and back in over the last half block.
+            // a plain sine bump was only 0.6 out over the first wall block of a long neo, so the line clipped its corner
+            double ease = Math.min(1, Math.min(along, dist - along) / 0.5);
+            double out = CURVE_OUT * ease * ease * (3 - 2 * ease);
+            points[i] = new Vec3(src.x + direction.getStepX() * along + side.getStepX() * out,
+                    src.y + CURVE_UP * 4 * t * (1 - t),
+                    src.z + direction.getStepZ() * along + side.getStepZ() * out);
+        }
+        // floating point at t = 1, and the line should meet the next movement exactly
+        points[CURVE_POINTS - 1] = new Vec3(dest.x, dest.y, dest.z);
+        return points;
+    }
+
+    private static final int CURVE_POINTS = 15;
+    private static final double CURVE_OUT = 0.85, CURVE_UP = 1.0;
 
     private boolean hanging(BetterBlockPos feet) {
         int along = (feet.x - dest.x) * direction.getStepX() + (feet.z - dest.z) * direction.getStepZ();

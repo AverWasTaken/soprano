@@ -19,11 +19,14 @@ package baritone.utils;
 
 import baritone.api.BaritoneAPI;
 import baritone.api.event.events.RenderEvent;
+import baritone.api.pathing.calc.IPath;
 import baritone.api.pathing.goals.*;
+import baritone.api.pathing.movement.IMovement;
 import baritone.api.utils.BetterBlockPos;
 import baritone.api.utils.IPlayerContext;
 import baritone.api.utils.interfaces.IGoalRenderPos;
 import baritone.behavior.PathingBehavior;
+import baritone.pathing.movement.movements.MovementNeo;
 import baritone.pathing.path.PathExecutor;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.BufferBuilder;
@@ -36,6 +39,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.dimension.DimensionType;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.phys.shapes.VoxelShape;
 import org.jetbrains.annotations.Nullable;
@@ -110,11 +114,11 @@ public final class PathRenderer implements IRenderer {
         // Render the current path, if there is one
         if (current != null && current.getPath() != null) {
             int renderBegin = Math.max(current.getPosition() - 3, 0);
-            drawPath(event.getModelViewStack(), current.getPath().positions(), renderBegin, settings.colorCurrentPath.value, settings.fadePath.value, 10, 20);
+            drawPath(event.getModelViewStack(), current.getPath(), renderBegin, settings.colorCurrentPath.value, settings.fadePath.value, 10, 20);
         }
 
         if (next != null && next.getPath() != null) {
-            drawPath(event.getModelViewStack(), next.getPath().positions(), 0, settings.colorNextPath.value, settings.fadePath.value, 10, 20);
+            drawPath(event.getModelViewStack(), next.getPath(), 0, settings.colorNextPath.value, settings.fadePath.value, 10, 20);
         }
 
         // If there is a path calculation currently running, render the path calculation process
@@ -135,7 +139,28 @@ public final class PathRenderer implements IRenderer {
     }
 
     public static void drawPath(PoseStack stack, List<BetterBlockPos> positions, int startIndex, Color color, boolean fadeOut, int fadeStart0, int fadeEnd0, double offset) {
+        drawPath(stack, positions, null, startIndex, color, fadeOut, fadeStart0, fadeEnd0, offset);
+    }
+
+    // same, except movements that know how they're shaped (neos swing round their wall) draw that instead of a straight
+    // line. only works on a verified path: the ones still being searched don't have movements yet, and those stay straight
+    public static void drawPath(PoseStack stack, IPath path, int startIndex, Color color, boolean fadeOut, int fadeStart0, int fadeEnd0) {
+        List<IMovement> movements;
+        try {
+            movements = path.movements();
+        } catch (IllegalStateException e) {
+            movements = null; // not verified
+        }
+        drawPath(stack, path.positions(), movements, startIndex, color, fadeOut, fadeStart0, fadeEnd0, 0.5D);
+    }
+
+    private static void drawPath(PoseStack stack, List<BetterBlockPos> positions, @Nullable List<IMovement> movements, int startIndex, Color color, boolean fadeOut, int fadeStart0, int fadeEnd0, double offset) {
         BufferBuilder bufferBuilder = IRenderer.startLines(color, settings.pathRenderLineWidthPixels.value, settings.renderPathIgnoreDepth.value);
+
+        // movement i goes from positions i to i + 1, but only believe that if the path says so
+        if (movements != null && movements.size() != positions.size() - 1) {
+            movements = null;
+        }
 
         int fadeStart = fadeStart0 + startIndex;
         int fadeEnd = fadeEnd0 + startIndex;
@@ -148,7 +173,10 @@ public final class PathRenderer implements IRenderer {
             int dirY = end.y - start.y;
             int dirZ = end.z - start.z;
 
-            while (next + 1 < positions.size() && (!fadeOut || next + 1 < fadeStart) &&
+            // a neo is its own segment, and nothing gets merged into it either way
+            boolean neo = isNeo(movements, i);
+            while (!neo && next + 1 < positions.size() && (!fadeOut || next + 1 < fadeStart) &&
+                    !isNeo(movements, next) &&
                     (dirX == positions.get(next + 1).x - end.x &&
                             dirY == positions.get(next + 1).y - end.y &&
                             dirZ == positions.get(next + 1).z - end.z)) {
@@ -169,10 +197,22 @@ public final class PathRenderer implements IRenderer {
                 IRenderer.glColor(color, alpha);
             }
 
-            emitPathLine(bufferBuilder, stack, start.x, start.y, start.z, end.x, end.y, end.z, offset);
+            if (neo) {
+                // same line as everywhere else, just bent
+                Vec3[] curve = ((MovementNeo) movements.get(i)).curve();
+                for (int k = 0; k < curve.length - 1; k++) {
+                    emitPathLine(bufferBuilder, stack, curve[k].x, curve[k].y, curve[k].z, curve[k + 1].x, curve[k + 1].y, curve[k + 1].z, offset);
+                }
+            } else {
+                emitPathLine(bufferBuilder, stack, start.x, start.y, start.z, end.x, end.y, end.z, offset);
+            }
         }
 
         IRenderer.endLines(bufferBuilder, settings.renderPathIgnoreDepth.value);
+    }
+
+    private static boolean isNeo(@Nullable List<IMovement> movements, int i) {
+        return movements != null && i < movements.size() && movements.get(i) instanceof MovementNeo;
     }
 
     private static void emitPathLine(BufferBuilder bufferBuilder, PoseStack stack, double x1, double y1, double z1, double x2, double y2, double z2, double offset) {
