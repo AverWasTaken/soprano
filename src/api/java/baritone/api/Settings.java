@@ -210,6 +210,17 @@ public final class Settings {
     public final Setting<Boolean> allowNeos = new Setting<>(false);
 
     /**
+     * Jump onto ladders and vines across a gap, and off of them again, instead of walking the long way round
+     * <p>
+     * Only actually takes effect if {@link #allowParkour} is also true. Grabbing is a sprint jump (or a plain jump for the
+     * short ones) from flat floor, one to three blocks of gap, catching the ladder or vine mid air. A ladder has to be
+     * hanging on the far wall, vines can be caught from any side. Leaping goes the other way, climbing out sideways off a
+     * ladder or vine to land one block of gap away on the same level or a bit lower (or on another ladder or vine).
+     * You can't start sprinting while you're hanging on something, so leaps are short.
+     */
+    public final Setting<Boolean> allowClimbJumps = new Setting<>(false);
+
+    /**
      * Allow descending diagonally
      * <p>
      * Safer than allowParkour yet still slightly unsafe, can make contact with unchecked adjacent blocks, so it's unsafe in the nether.
