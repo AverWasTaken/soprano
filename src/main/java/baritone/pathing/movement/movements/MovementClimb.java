@@ -584,7 +584,7 @@ public class MovementClimb extends Movement {
         if (player.isInWater() || player.isInLava()) {
             return "can't climb jump out of water";
         }
-        if (player.hasEffect(MobEffects.JUMP) || player.hasEffect(MobEffects.SLOW_FALLING) || player.hasEffect(MobEffects.LEVITATION)) {
+        if (player.hasEffect(MobEffects.JUMP_BOOST) || player.hasEffect(MobEffects.SLOW_FALLING) || player.hasEffect(MobEffects.LEVITATION)) {
             return "potions and climb jumps don't mix";
         }
         if (Math.abs(player.getAttributeValue(Attributes.JUMP_STRENGTH) - 0.42) > 1e-6 || player.getAttributeValue(Attributes.GRAVITY) != 0.08) {

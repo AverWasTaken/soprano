@@ -490,7 +490,7 @@ public class MovementNeo extends Movement implements CurvedMovement {
         if (player.isInWater() || player.isInLava() || player.onClimbable()) {
             return "can't neo out of water or off a ladder";
         }
-        if (player.hasEffect(MobEffects.JUMP) || player.hasEffect(MobEffects.SLOW_FALLING) || player.hasEffect(MobEffects.LEVITATION)) {
+        if (player.hasEffect(MobEffects.JUMP_BOOST) || player.hasEffect(MobEffects.SLOW_FALLING) || player.hasEffect(MobEffects.LEVITATION)) {
             return "potions and neos don't mix";
         }
         if (Math.abs(player.getAttributeValue(Attributes.JUMP_STRENGTH) - 0.42) > 1e-6 || player.getAttributeValue(Attributes.GRAVITY) != 0.08) {

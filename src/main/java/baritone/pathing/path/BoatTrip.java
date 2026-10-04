@@ -39,8 +39,9 @@ import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.player.Inventory;
-import net.minecraft.world.entity.vehicle.AbstractBoat;
+import net.minecraft.world.entity.vehicle.boat.AbstractBoat;
 import net.minecraft.world.item.BoatItem;
+import net.minecraft.world.item.component.SwingAnimation;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.EntityHitResult;
@@ -346,8 +347,8 @@ public final class BoatTrip implements Helper {
 
     private static int boatSlot(Inventory inv) {
         // hotbar first so we don't shuffle the inventory around for nothing
-        for (int i = 0; i < inv.items.size(); i++) {
-            if (inv.items.get(i).getItem() instanceof BoatItem) {
+        for (int i = 0; i < inv.getNonEquipmentItems().size(); i++) {
+            if (inv.getNonEquipmentItems().get(i).getItem() instanceof BoatItem) {
                 return i;
             }
         }
@@ -356,9 +357,9 @@ public final class BoatTrip implements Helper {
 
     private static int countBoats(Inventory inv) {
         int n = 0;
-        for (int i = 0; i < inv.items.size(); i++) {
-            if (inv.items.get(i).getItem() instanceof BoatItem) {
-                n += inv.items.get(i).getCount();
+        for (int i = 0; i < inv.getNonEquipmentItems().size(); i++) {
+            if (inv.getNonEquipmentItems().get(i).getItem() instanceof BoatItem) {
+                n += inv.getNonEquipmentItems().get(i).getCount();
             }
         }
         return n;
@@ -508,7 +509,7 @@ public final class BoatTrip implements Helper {
             baritone.getInventoryBehavior().attemptToPutOnHotbar(slot, i -> false);
             return Result.CONTINUE;
         }
-        inv.selected = slot;
+        inv.setSelectedSlot(slot);
         Rotation rot = RotationUtils.calcRotationFromVec3d(ctx.playerHead(), placeAt, ctx.playerRotations());
         baritone.getLookBehavior().updateTarget(rot, true);
         // the item raytraces from the client rotation, and CLIENT mode only sets that once the tick after
@@ -567,9 +568,8 @@ public final class BoatTrip implements Helper {
             // no sneaking here or the boat just says no (secondary use), and the packet carries our shift
             // state so the server would refuse the ride too
             EntityHitResult hit = new EntityHitResult(boat, hullHit);
-            if (!ctx.minecraft().gameMode.interactAt(ctx.player(), boat, hit, InteractionHand.MAIN_HAND).consumesAction()) {
-                ctx.minecraft().gameMode.interact(ctx.player(), boat, InteractionHand.MAIN_HAND);
-            }
+            // interactAt and interact are one call now, the hit point rides along in the same packet
+            ctx.minecraft().gameMode.interact(ctx.player(), boat, hit, InteractionHand.MAIN_HAND);
         }
         return Result.CONTINUE;
     }
@@ -832,7 +832,7 @@ public final class BoatTrip implements Helper {
         // and breaks it past 40, so five hits. spaced out a bit so it doesn't look like an autoclicker
         if (ticksInPhase % 4 == 1) {
             ctx.minecraft().gameMode.attack(ctx.player(), vehicle);
-            ctx.player().swing(InteractionHand.MAIN_HAND);
+            ctx.player().swing(InteractionHand.MAIN_HAND, SwingAnimation.DEFAULT, false);
         }
         return Result.CONTINUE;
     }

@@ -229,7 +229,7 @@ public class CalculationContext {
     }
 
     private static boolean hasBoat(LocalPlayer player) {
-        for (ItemStack stack : player.getInventory().items) {
+        for (ItemStack stack : player.getInventory().getNonEquipmentItems()) {
             if (stack.getItem() instanceof BoatItem) {
                 return true;
             }

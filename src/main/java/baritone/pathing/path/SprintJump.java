@@ -75,7 +75,7 @@ final class SprintJump {
         if (!player.onGround() || !player.isSprinting() || player.isInWater() || player.isInLava() || player.onClimbable()
                 || !ctx.playerFeet().equals(start) || Math.abs(player.getY() - start.y) > 1e-3
                 || diagonal && !Baritone.settings().sprintJumpingDiagonals.value
-                || player.hasEffect(MobEffects.JUMP) || player.hasEffect(MobEffects.SLOW_FALLING) || player.hasEffect(MobEffects.LEVITATION)
+                || player.hasEffect(MobEffects.JUMP_BOOST) || player.hasEffect(MobEffects.SLOW_FALLING) || player.hasEffect(MobEffects.LEVITATION)
                 || Math.abs(player.getAttributeValue(Attributes.JUMP_STRENGTH) - JUMP) > EPS || player.getAttributeValue(Attributes.GRAVITY) != GRAVITY
                 || player.getAttributeValue(Attributes.SAFE_FALL_DISTANCE) < SAFE_FALL
                 || !solidFloor(ctx, start.below()) || !clear(ctx, start.x, start.y, start.z, start.y + 3)) {
