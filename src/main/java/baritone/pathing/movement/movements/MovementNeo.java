@@ -1,0 +1,399 @@
+/*
+ * This file is part of Baritone.
+ *
+ * Baritone is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * Baritone is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with Baritone.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+package baritone.pathing.movement.movements;
+
+import baritone.Baritone;
+import baritone.api.IBaritone;
+import baritone.api.pathing.movement.MovementStatus;
+import baritone.api.utils.BetterBlockPos;
+import baritone.api.utils.Rotation;
+import baritone.api.utils.input.Input;
+import baritone.pathing.movement.CalculationContext;
+import baritone.pathing.movement.Movement;
+import baritone.pathing.movement.MovementHelper;
+import baritone.pathing.movement.MovementState;
+import baritone.pathing.movement.MovementState.MovementTarget;
+import baritone.utils.pathing.MutableMoveResult;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.core.Direction;
+import net.minecraft.world.effect.MobEffects;
+import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.StairBlock;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.Vec3;
+
+import java.util.HashSet;
+import java.util.Set;
+
+public class MovementNeo extends Movement {
+
+    private static final BetterBlockPos[] EMPTY = new BetterBlockPos[]{};
+
+    private record Shape(Direction side, int dist, int walls, int runway, boolean openBeyond) {}
+
+    private final Direction direction, side;
+    private final int dist;
+    // recalculateCost runs every tick and refreshes these, so someone placing a block mid run up changes the plan
+    private int walls, runway;
+    private boolean openBeyond;
+    private boolean jumped;
+    // the schedule we're flying, carried tick to tick so a replan can only ever swap it for something better
+    private NeoJump.Plan flight;
+    // running is the blind run up from the staging spot, runTicks how long we've been at it, failedRuns the ones that
+    // ended without a jump
+    private boolean running;
+    private int runTicks, failedRuns;
+    private int stuckTicks;
+
+    private MovementNeo(IBaritone baritone, BetterBlockPos src, Direction dir, Direction side, int dist, int walls, int runway, boolean openBeyond) {
+        super(baritone, src, src.relative(dir, dist), EMPTY);
+        this.direction = dir;
+        this.side = side;
+        this.dist = dist;
+        this.walls = walls;
+        this.runway = runway;
+        this.openBeyond = openBeyond;
+    }
+
+    public static MovementNeo cost(CalculationContext context, BetterBlockPos src, Direction dir) {
+        Shape shape = best(context, src.x, src.y, src.z, dir);
+        if (shape == null) {
+            // dest == src never matches anything in Path.runBackwards, and calculateCost can't find a dist 0 shape. so it's inert
+            return new MovementNeo(context.getBaritone(), src, dir, dir.getClockWise(), 0, 0, 1, false);
+        }
+        return new MovementNeo(context.getBaritone(), src, dir, shape.side(), shape.dist(), shape.walls(), shape.runway(), shape.openBeyond());
+    }
+
+    public static void cost(CalculationContext context, int x, int y, int z, Direction dir, MutableMoveResult res) {
+        Shape shape = best(context, x, y, z, dir);
+        if (shape == null) {
+            return;
+        }
+        res.x = x + dir.getStepX() * shape.dist();
+        res.y = y;
+        res.z = z + dir.getStepZ() * shape.dist();
+        res.cost = cost(context, shape.dist());
+    }
+
+    private static double cost(CalculationContext context, int dist) {
+        // a parkour jump plus walking back onto the run up block first. two diagonals round the end of the wall are ~13
+        // against ~20 for a 2 block neo, so if there's floor to walk on we walk. neos are for when there isn't
+        return (dist + 2) * WALK_ONE_BLOCK_COST + context.jumpPenalty;
+    }
+
+    private static Shape best(CalculationContext context, int x, int y, int z, Direction dir) {
+        if (!possible(context, x, y, z, dir.getStepX(), dir.getStepZ())) {
+            return null;
+        }
+        Shape cw = shape(context, x, y, z, dir, dir.getClockWise());
+        if (cw != null && cw.dist() == 2) {
+            return cw; // can't beat 2
+        }
+        Shape ccw = shape(context, x, y, z, dir, dir.getCounterClockWise());
+        return ccw != null && (cw == null || ccw.dist() < cw.dist()) ? ccw : cw;
+    }
+
+    // everything that doesn't care which side we swing out on
+    private static boolean possible(CalculationContext context, int x, int y, int z, int dx, int dz) {
+        if (!context.allowParkour || !context.allowNeos || !context.canSprint) {
+            return false;
+        }
+        if (!context.allowJumpAtBuildLimit && y >= context.maxY) {
+            return false;
+        }
+        if (MovementHelper.fullyPassable(context, x + dx, y, z + dz) && MovementHelper.canWalkOn(context, x + dx, y - 1, z + dz)) {
+            return false; // we'd just walk
+        }
+        if (!context.get(x, y, z).getFluidState().isEmpty()) {
+            return false;
+        }
+        return plainFloor(context, x, y - 1, z) && clear(context, x, y, z);
+    }
+
+    private static Shape shape(CalculationContext context, int x, int y, int z, Direction dir, Direction side) {
+        int dx = dir.getStepX(), dz = dir.getStepZ(), sx = side.getStepX(), sz = side.getStepZ();
+        if (!clear(context, x + sx, y, z + sz)) {
+            return null;
+        }
+        // how much floor we have to run up on. the first cell that fails ends it, and no cells at all means no neo
+        int runway = 0;
+        while (runway < NeoJump.MAX_RUNWAY) {
+            int bx = x - dx * (runway + 1), bz = z - dz * (runway + 1);
+            if (!plainFloor(context, bx, y - 1, bz) || !clear(context, bx, y, bz) || !clear(context, bx + sx, y, bz + sz)) {
+                break;
+            }
+            runway++;
+        }
+        if (runway == 0) {
+            return null;
+        }
+        int walls = 0;
+        for (int i = 1; i <= NeoJump.MAX_DIST; i++) {
+            int lx = x + dx * i, lz = z + dz * i;
+            if (!clear(context, lx + sx, y, lz + sz)) {
+                return null;
+            }
+            if (!clear(context, lx, y, lz)) {
+                walls |= 1 << (i - 1);
+                continue;
+            }
+            BlockState floor = context.get(lx, y - 1, lz);
+            if (i >= 2 && MovementHelper.canWalkOn(context, lx, y - 1, lz, floor)) {
+                // first floor we see is the landing. flying past one we could've landed on is just asking for it
+                return landing(context, lx, y, lz, dx, dz, side, i, walls, runway, floor);
+            }
+        }
+        return null;
+    }
+
+    private static Shape landing(CalculationContext context, int lx, int y, int lz, int dx, int dz, Direction side, int dist, int walls, int runway, BlockState floor) {
+        int sx = side.getStepX(), sz = side.getStepZ();
+        // bottom slabs drop us half a block below where the sim thinks the floor is, and then playerFeet says we fell
+        if (walls == 0 || floor.getBlock() == Blocks.FARMLAND || MovementHelper.isBottomSlab(floor)) {
+            return null;
+        }
+        // coming in from the side, we slide on forward or out sideways depending on the jump
+        if (!MovementParkour.checkOvershootSafety(context.bsi, lx + dx, y, lz + dz) || !MovementParkour.checkOvershootSafety(context.bsi, lx + sx, y, lz + sz)) {
+            return null;
+        }
+        boolean openBeyond = open(context, lx + dx, y, lz + dz) && open(context, lx + dx + sx, y, lz + dz + sz);
+        // more runway isn't always better as far as the table goes (it only tries a few spots to start from), so if the
+        // whole thing doesn't work out, see if less of it does
+        for (int r = runway; r >= 1; r--) {
+            if (NeoJump.stagingIfKnown(dist, walls, r, openBeyond) != null) {
+                return new Shape(side, dist, walls, r, openBeyond);
+            }
+        }
+        return null;
+    }
+
+    private static boolean plainFloor(CalculationContext context, int x, int y, int z) {
+        BlockState floor = context.get(x, y, z);
+        Block block = floor.getBlock();
+        // the sim is vanilla friction on a full block or nothing. ice, soul sand and honey would make it lie, and farmland,
+        // paths and chests are a hair short. fluids too, a waterlogged anything is not where you take a run up from
+        return MovementHelper.canWalkOn(context, x, y, z, floor) && floor.getFluidState().isEmpty()
+                && !MovementHelper.isClimbable(block) && !(block instanceof StairBlock) && !MovementHelper.isBottomSlab(floor)
+                && block != Blocks.MAGMA_BLOCK && block != Blocks.FARMLAND && block != Blocks.DIRT_PATH
+                && block != Blocks.CHEST && block != Blocks.TRAPPED_CHEST && block != Blocks.ENDER_CHEST
+                && block.getFriction() == 0.6F && block.getSpeedFactor() == 1.0F && block.getJumpFactor() == 1.0F;
+    }
+
+    // the head tops out at y + 3.05, so y + 3 counts
+    private static boolean clear(CalculationContext context, int x, int y, int z) {
+        return MovementHelper.fullyPassable(context, x, y, z) && MovementHelper.fullyPassable(context, x, y + 1, z)
+                && MovementHelper.fullyPassable(context, x, y + 2, z) && MovementHelper.fullyPassable(context, x, y + 3, z);
+    }
+
+    // by the time we're out past the landing we're on the way down, so y + 3 doesn't matter there
+    private static boolean open(CalculationContext context, int x, int y, int z) {
+        return MovementHelper.fullyPassable(context, x, y, z) && MovementHelper.fullyPassable(context, x, y + 1, z)
+                && MovementHelper.fullyPassable(context, x, y + 2, z);
+    }
+
+    @Override
+    public double calculateCost(CalculationContext context) {
+        if (!possible(context, src.x, src.y, src.z, direction.getStepX(), direction.getStepZ())) {
+            return COST_INF;
+        }
+        Shape shape = shape(context, src.x, src.y, src.z, direction, side);
+        if (shape == null || shape.dist() != dist) {
+            return COST_INF;
+        }
+        walls = shape.walls();
+        runway = shape.runway();
+        openBeyond = shape.openBeyond();
+        return cost(context, dist);
+    }
+
+    @Override
+    protected Set<BetterBlockPos> calculateValidPositions() {
+        Set<BetterBlockPos> set = new HashSet<>();
+        // the runway because we walk back onto it, and if that's not valid PathExecutor rewinds us a movement.
+        // dist + 1 because a landing that overlaps the block by a little still has our feet hanging past it
+        for (int k = -runway; k <= dist + 1; k++) {
+            for (int j = 0; j <= 1; j++) {
+                BetterBlockPos pos = src.relative(direction, k).relative(side, j);
+                set.add(pos);
+                set.add(pos.above());
+            }
+        }
+        return set;
+    }
+
+    @Override
+    public boolean safeToCancel(MovementState state) {
+        // shuffling around before the jump is fine to interrupt, the flight very much isn't
+        return state.getStatus() != MovementStatus.RUNNING || !jumped && ctx.player().onGround();
+    }
+
+    @Override
+    public MovementState updateState(MovementState state) {
+        super.updateState(state);
+        if (state.getStatus() != MovementStatus.RUNNING) {
+            return state;
+        }
+        LocalPlayer player = ctx.player();
+        BetterBlockPos feet = ctx.playerFeet();
+        if (feet.y < src.y) {
+            // we have fallen
+            logDebug("sorry");
+            return state.setStatus(MovementStatus.UNREACHABLE);
+        }
+        String why = cantFly(player);
+        if (why != null) {
+            logDebug(why);
+            return state.setStatus(MovementStatus.UNREACHABLE);
+        }
+        if (player.onGround() && feet.equals(dest)) {
+            return state.setStatus(MovementStatus.SUCCESS);
+        }
+        int dx = direction.getStepX(), dz = direction.getStepZ(), sx = side.getStepX(), sz = side.getStepZ();
+        Vec3 pos = player.position().subtract(src.x + 0.5, 0, src.z + 0.5);
+        Vec3 vel = player.getDeltaMovement();
+        double u = pos.x * dx + pos.z * dz, v = pos.x * sx + pos.z * sz;
+        double vu = vel.x * dx + vel.z * dz, vv = vel.x * sx + vel.z * sz;
+        // the sprint modifier is a x1.3 on the attribute that only shows up once we're actually sprinting, and we start
+        // sprinting the same tick we press it
+        double groundAccel = player.getAttributeValue(Attributes.MOVEMENT_SPEED) * (player.isSprinting() ? 1 : 1.3) * 0.98;
+        NeoJump sim = new NeoJump(dist, walls, runway, openBeyond, groundAccel);
+        if (!player.onGround()) {
+            flight = sim.plan(u, v, vu, vv, player.getY() - src.y, vel.y, false, 0, flight);
+            if (flight != null) {
+                steer(state, flight.headingU(), flight.headingV());
+            } else {
+                steer(state, dist - u, -v); // nothing lands it anymore, so at least aim at the block
+            }
+            // never jump up here, letting go of space resets the vanilla jump delay
+            return state.setInput(Input.MOVE_FORWARD, true).setInput(Input.SPRINT, true);
+        }
+        if (jumped) {
+            // came down somewhere that isn't dest
+            if (hanging(feet)) {
+                // feet over the edge but the box is on the landing block. just shuffle on
+                MovementHelper.moveTowards(ctx, state, dest);
+                return state;
+            }
+            int back = -((feet.x - src.x) * dx + (feet.z - src.z) * dz);
+            boolean onLine = feet.y == src.y && feet.x - src.x == -back * dx && feet.z - src.z == -back * dz;
+            if (!onLine || back < 0 || back > runway) {
+                logDebug("neo landed somewhere weird");
+                return state.setStatus(MovementStatus.UNREACHABLE);
+            }
+            jumped = false; // never left, or bonked and fell back. go again
+            running = false;
+            if (++failedRuns >= 3) {
+                logDebug("this neo keeps bonking");
+                return state.setStatus(MovementStatus.UNREACHABLE);
+            }
+        }
+        NeoJump.Staging st = NeoJump.staging(dist, walls, runway, openBeyond);
+        if (st == null) {
+            logDebug("this neo stopped being a neo");
+            return state.setStatus(MovementStatus.UNREACHABLE);
+        }
+        // same as NeoJump.rollout, which is what told A* this works. don't get creative here
+        NeoJump.Plan plan = u > NeoJump.EARLIEST ? sim.plan(u, v, vu, vv, 0, 0, true, 1, null) : null;
+        if (plan != null && plan.margin() >= NeoJump.JUMP_MARGIN) {
+            steer(state, plan.headingU(), plan.headingV());
+            state.setInput(Input.MOVE_FORWARD, true).setInput(Input.SPRINT, true);
+            if (plan.runup() == 0) {
+                state.setInput(Input.JUMP, true);
+                jumped = true;
+                flight = plan;
+            }
+            stuckTicks = 0;
+            return state;
+        }
+        if (running && runTicks <= st.runup() + 3 && u < 0.2) {
+            // the one tick lookahead can't see a jump that's still five ticks of running away, so until it can, we run
+            // the way the table said would work, lining a later tick up with the takeoff spot as we go
+            double[] heading = sim.runTick(u, v, vu, vv, st.runTarget(), st.takeoff());
+            steer(state, heading[0], heading[1]);
+            runTicks++;
+            stuckTicks = 0;
+            return state.setInput(Input.MOVE_FORWARD, true).setInput(Input.SPRINT, true);
+        }
+        if (running) {
+            // ran out of road or ticks without ever getting a jump we liked
+            running = false;
+            if (++failedRuns >= 3) {
+                logDebug("no run up that works from here");
+                return state.setStatus(MovementStatus.UNREACHABLE);
+            }
+        }
+        // walk over to where the run up starts. sneaking: the good spots are 0.04 from falling off the side of the
+        // bridge, and vanilla won't let a sneaking player walk off an edge. it's slower too, which is how we stop on it
+        state.setInput(Input.SNEAK, true);
+        double eu = st.u() - u, ev = st.v() - v;
+        double off = Math.sqrt(eu * eu + ev * ev);
+        double speed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
+        if (off < 0.08 && speed < 0.01) {
+            // let go of sneak this tick, sprint can't start while we're still crouched
+            running = true;
+            runTicks = 0;
+            stuckTicks = 0;
+            return state.setInput(Input.SNEAK, false);
+        }
+        // close and still moving: let go and coast. ground friction eats 45% a tick, holding W the whole way just overshoots
+        if (off > 0.08 && !(off < 0.3 && speed > 0.05)) {
+            steer(state, eu, ev);
+            state.setInput(Input.MOVE_FORWARD, true);
+        }
+        if (speed >= 0.003) {
+            stuckTicks = 0;
+        } else if (++stuckTicks > 20) {
+            logDebug("no run up that works from here");
+            return state.setStatus(MovementStatus.UNREACHABLE);
+        }
+        return state;
+    }
+
+    private boolean hanging(BetterBlockPos feet) {
+        int along = (feet.x - dest.x) * direction.getStepX() + (feet.z - dest.z) * direction.getStepZ();
+        int across = (feet.x - dest.x) * side.getStepX() + (feet.z - dest.z) * side.getStepZ();
+        return feet.y == dest.y && (along == 0 || along == 1) && (across == 0 || across == 1) && !feet.equals(dest);
+    }
+
+    // same bail outs as SprintJump. the sim is vanilla or nothing
+    private static String cantFly(LocalPlayer player) {
+        if (player.isInWater() || player.isInLava() || player.onClimbable()) {
+            return "can't neo out of water or off a ladder";
+        }
+        if (player.hasEffect(MobEffects.JUMP) || player.hasEffect(MobEffects.SLOW_FALLING) || player.hasEffect(MobEffects.LEVITATION)) {
+            return "potions and neos don't mix";
+        }
+        if (Math.abs(player.getAttributeValue(Attributes.JUMP_STRENGTH) - 0.42) > 1e-6 || player.getAttributeValue(Attributes.GRAVITY) != 0.08) {
+            return "somebody changed the physics";
+        }
+        if (!Baritone.settings().allowSprint.value || player.getFoodData().getFoodLevel() <= 6) {
+            return "can't neo without sprinting";
+        }
+        return null;
+    }
+
+    private void steer(MovementState state, double hu, double hv) {
+        double wx = hu * direction.getStepX() + hv * side.getStepX();
+        double wz = hu * direction.getStepZ() + hv * side.getStepZ();
+        // same convention as SprintJump.steer, yaw 0 faces +z
+        float yaw = (float) Math.toDegrees(Math.atan2(wz, wx)) - 90;
+        state.setTarget(new MovementTarget(new Rotation(yaw, ctx.playerRotations().getPitch()), false));
+    }
+}

@@ -200,7 +200,7 @@ public class MovementParkour extends Movement {
         }
     }
 
-    private static boolean checkOvershootSafety(BlockStateInterface bsi, int x, int y, int z) {
+    static boolean checkOvershootSafety(BlockStateInterface bsi, int x, int y, int z) {
         // we're going to walk into these two blocks after the landing of the parkour anyway, so make sure they aren't avoidWalkingInto
         return !MovementHelper.avoidWalkingInto(bsi.get0(x, y, z)) && !MovementHelper.avoidWalkingInto(bsi.get0(x, y + 1, z));
     }

@@ -322,6 +322,55 @@ public enum Moves {
         public void apply(CalculationContext context, int x, int y, int z, MutableMoveResult result) {
             MovementParkour.cost(context, x, y, z, Direction.WEST, result);
         }
+    },
+
+    // 3 is NeoJump.MAX_DIST, which is package private over in movements. neos are always flat, hence dynamicY false
+    NEO_NORTH(0, 0, -3, true, false) {
+        @Override
+        public Movement apply0(CalculationContext context, BetterBlockPos src) {
+            return MovementNeo.cost(context, src, Direction.NORTH);
+        }
+
+        @Override
+        public void apply(CalculationContext context, int x, int y, int z, MutableMoveResult result) {
+            MovementNeo.cost(context, x, y, z, Direction.NORTH, result);
+        }
+    },
+
+    NEO_SOUTH(0, 0, +3, true, false) {
+        @Override
+        public Movement apply0(CalculationContext context, BetterBlockPos src) {
+            return MovementNeo.cost(context, src, Direction.SOUTH);
+        }
+
+        @Override
+        public void apply(CalculationContext context, int x, int y, int z, MutableMoveResult result) {
+            MovementNeo.cost(context, x, y, z, Direction.SOUTH, result);
+        }
+    },
+
+    NEO_EAST(+3, 0, 0, true, false) {
+        @Override
+        public Movement apply0(CalculationContext context, BetterBlockPos src) {
+            return MovementNeo.cost(context, src, Direction.EAST);
+        }
+
+        @Override
+        public void apply(CalculationContext context, int x, int y, int z, MutableMoveResult result) {
+            MovementNeo.cost(context, x, y, z, Direction.EAST, result);
+        }
+    },
+
+    NEO_WEST(-3, 0, 0, true, false) {
+        @Override
+        public Movement apply0(CalculationContext context, BetterBlockPos src) {
+            return MovementNeo.cost(context, src, Direction.WEST);
+        }
+
+        @Override
+        public void apply(CalculationContext context, int x, int y, int z, MutableMoveResult result) {
+            MovementNeo.cost(context, x, y, z, Direction.WEST, result);
+        }
     };
 
     public final boolean dynamicXZ;

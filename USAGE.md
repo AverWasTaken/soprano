@@ -74,6 +74,7 @@ There are about a hundred settings, but here are some fun / interesting / import
 - `allowPlace`
 - `allowParkour`
 - `allowParkourPlace`
+- `allowNeos` (jump around the end of a wall like a parkour map neo, needs `allowParkour`)
 - `headHitters` (sprint jump head bonks in 1x2 tunnels, slightly faster than plain sprinting)
 - `headHittersDiagonal` (on by default, allows diagonal head bonks when `headHitters` is enabled)
 - `sprintJumping` (sprint jump along straight path stretches, up single steps and down small hills)

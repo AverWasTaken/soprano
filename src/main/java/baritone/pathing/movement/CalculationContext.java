@@ -69,6 +69,7 @@ public class CalculationContext {
     public final boolean allowParkourPlace;
     public final boolean allowJumpAtBuildLimit;
     public final boolean allowParkourAscend;
+    public final boolean allowNeos;
     public final boolean assumeWalkOnWater;
     public boolean allowFallIntoLava;
     public final int frostWalker;
@@ -145,6 +146,7 @@ public class CalculationContext {
         this.allowParkourPlace = Baritone.settings().allowParkourPlace.value;
         this.allowJumpAtBuildLimit = Baritone.settings().allowJumpAtBuildLimit.value;
         this.allowParkourAscend = Baritone.settings().allowParkourAscend.value;
+        this.allowNeos = Baritone.settings().allowNeos.value;
         this.assumeWalkOnWater = Baritone.settings().assumeWalkOnWater.value;
         this.allowFallIntoLava = false; // Super secret internal setting for ElytraBehavior
         this.frostWalker = frostWalker;

@@ -202,6 +202,14 @@ public final class Settings {
     public final Setting<Boolean> allowParkourAscend = new Setting<>(true);
 
     /**
+     * Jump around the end of a wall instead of walking the long way round, like a neo on a parkour map
+     * <p>
+     * Only actually takes effect if {@link #allowParkour} is also true. Needs sprinting, and a block behind the jump to run
+     * up on. Handles walls one block thick, landing two or three blocks out.
+     */
+    public final Setting<Boolean> allowNeos = new Setting<>(false);
+
+    /**
      * Allow descending diagonally
      * <p>
      * Safer than allowParkour yet still slightly unsafe, can make contact with unchecked adjacent blocks, so it's unsafe in the nether.
