@@ -22,6 +22,7 @@ import baritone.api.IBaritone;
 import baritone.api.pathing.movement.ActionCosts;
 import baritone.cache.WorldData;
 import baritone.pathing.precompute.PrecomputedData;
+import baritone.utils.ExperimentalMovement;
 import baritone.utils.BlockStateInterface;
 import baritone.utils.ToolSet;
 import baritone.utils.pathing.BetterWorldBorder;
@@ -62,6 +63,14 @@ public class CalculationContext {
     public final boolean hasWaterBucket;
     // a ladder or vine on the hotbar and allowLadderClutch on, see MovementDescend.dynamicFallCost
     public final boolean hasClutchItem;
+    // hp plus absorption right now, for falls that hurt. same snapshot rule as hasWaterBucket
+    public final double health;
+    public final boolean experimental;
+    public final double experimentalMinHealth;
+    public final double fallDamageCost;
+    // 1 unless experimentalMovement wants the jumpy movements to look a bit cheaper, see biasJump
+    public final double jumpBias;
+    public final boolean preferFasterPathing;
     public final float blockReach;
     public final boolean hasThrowaway;
     public final boolean canSprint;
@@ -124,13 +133,14 @@ public class CalculationContext {
                 Baritone.settings().allowWaterBucketFall.value && Inventory.isHotbarSlot(baritone.getPlayerContext().player().getInventory().findSlotMatchingItem(STACK_BUCKET_WATER)) && baritone.getPlayerContext().world().dimension() != Level.NETHER,
                 Baritone.settings().allowSprint.value && baritone.getPlayerContext().player().getFoodData().getFoodLevel() > 6,
                 frostWalkerLevel(baritone.getPlayerContext().player()),
-                waterSpeedMultiplier(baritone.getPlayerContext().player())
+                waterSpeedMultiplier(baritone.getPlayerContext().player()),
+                baritone.getPlayerContext().player().getHealth() + baritone.getPlayerContext().player().getAbsorptionAmount()
         );
     }
 
     // everything that needs a player or a world comes in as a parameter so you can build one of these with no game running
     // all the settings get snapshotted in here so nobody can accidentally read them differently
-    protected CalculationContext(IBaritone baritone, boolean forUseOnAnotherThread, Level world, WorldData worldData, BlockStateInterface bsi, ToolSet toolSet, boolean hasThrowaway, boolean hasWaterBucket, boolean canSprint, int frostWalker, float waterSpeedMultiplier) {
+    protected CalculationContext(IBaritone baritone, boolean forUseOnAnotherThread, Level world, WorldData worldData, BlockStateInterface bsi, ToolSet toolSet, boolean hasThrowaway, boolean hasWaterBucket, boolean canSprint, int frostWalker, float waterSpeedMultiplier, double health) {
         this.precomputedData = PrecomputedData.forCurrentSettings();
         this.safeForThreadedUse = forUseOnAnotherThread;
         this.baritone = baritone;
@@ -142,24 +152,30 @@ public class CalculationContext {
         this.hasWaterBucket = hasWaterBucket;
         // same idea as the bucket, except it isn't banned in the nether. the setting goes first so nobody scans the hotbar for nothing
         this.hasClutchItem = Baritone.settings().allowLadderClutch.value && ((Baritone) baritone).getInventoryBehavior().pickClutchItem(false) != null;
+        this.health = health;
+        this.experimental = ExperimentalMovement.on();
+        this.experimentalMinHealth = Baritone.settings().experimentalMinHealth.value;
+        this.fallDamageCost = Baritone.settings().fallDamageCost.value;
+        this.jumpBias = ExperimentalMovement.jumpBias();
+        this.preferFasterPathing = ExperimentalMovement.preferFasterPathing();
         this.blockReach = Baritone.settings().blockReachDistance.value;
         this.canSprint = canSprint;
         this.minY = bsi.minY;
         this.maxY = bsi.maxY;
-        this.placeBlockCost = Baritone.settings().blockPlacementPenalty.value;
+        this.placeBlockCost = ExperimentalMovement.blockPlacementPenalty();
         this.allowBreak = Baritone.settings().allowBreak.value;
         this.allowBreakAnyway = new ArrayList<>(Baritone.settings().allowBreakAnyway.value);
-        this.allowParkour = Baritone.settings().allowParkour.value;
+        this.allowParkour = ExperimentalMovement.allowParkour();
         this.allowParkourPlace = Baritone.settings().allowParkourPlace.value;
         this.allowJumpAtBuildLimit = Baritone.settings().allowJumpAtBuildLimit.value;
-        this.allowParkourAscend = Baritone.settings().allowParkourAscend.value;
-        this.allowNeos = Baritone.settings().allowNeos.value;
-        this.allowClimbJumps = Baritone.settings().allowClimbJumps.value;
+        this.allowParkourAscend = ExperimentalMovement.allowParkourAscend();
+        this.allowNeos = ExperimentalMovement.allowNeos();
+        this.allowClimbJumps = ExperimentalMovement.allowClimbJumps();
         this.assumeWalkOnWater = Baritone.settings().assumeWalkOnWater.value;
         this.allowFallIntoLava = false; // Super secret internal setting for ElytraBehavior
         this.frostWalker = frostWalker;
-        this.allowDiagonalDescend = Baritone.settings().allowDiagonalDescend.value;
-        this.allowDiagonalAscend = Baritone.settings().allowDiagonalAscend.value;
+        this.allowDiagonalDescend = ExperimentalMovement.allowDiagonalDescend();
+        this.allowDiagonalAscend = ExperimentalMovement.allowDiagonalAscend();
         this.allowDownward = Baritone.settings().allowDownward.value;
         this.minFallHeight = 3; // Minimum fall height used by MovementFall
         this.maxFallHeightNoWater = Baritone.settings().maxFallHeightNoWater.value;
@@ -293,6 +309,11 @@ public class CalculationContext {
             return COST_INF;
         }
         return 1;
+    }
+
+    // parkour, neo and climb all run their cost through this where it's produced, so the planner and calculateCost agree
+    public double biasJump(double cost) {
+        return cost * jumpBias;
     }
 
     public double placeBucketCost() {

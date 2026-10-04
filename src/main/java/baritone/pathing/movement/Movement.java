@@ -111,6 +111,11 @@ public abstract class Movement implements IMovement, MovementHelper {
         return validPositionsCached;
     }
 
+    // a forced aim (breaking, placing, a door) means somebody needs the crosshair exactly where it is, smoothing keeps out
+    public boolean isTargetingBlock() {
+        return currentState.getTarget().hasToForceRotations();
+    }
+
     protected boolean playerInValidPosition() {
         return getValidPositions().contains(ctx.playerFeet()) || getValidPositions().contains(((PathingBehavior) baritone.getPathingBehavior()).pathStart());
     }

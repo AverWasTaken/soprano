@@ -71,6 +71,9 @@ There are about a hundred settings, but here are some fun / interesting / import
 
 - `allowBreak`
 - `allowSprint`
+- `experimentalMovement` (move like a speedrunner: turns on parkour, neos, climb jumps, diagonal ascends and descends, sprint jumping, head hitters, ground shortcuts and faster pathing, makes jumps and placing blocks look cheaper, and allows falls that hurt as long as you stay above `experimentalMinHealth`)
+- `allowGroundShortcuts` (take direct lines across bends in flat walking paths, with full-width clearance and floor checks every tick)
+- `preferFasterPathing` (smoother steering along clear straight runs and fewer awkward corner-edging diagonals)
 - `allowPlace`
 - `allowParkour`
 - `allowParkourPlace`

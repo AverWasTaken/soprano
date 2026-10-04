@@ -28,6 +28,7 @@ import baritone.pathing.movement.Movement;
 import baritone.pathing.movement.MovementHelper;
 import baritone.pathing.movement.MovementState;
 import baritone.utils.BlockStateInterface;
+import baritone.utils.ExperimentalMovement;
 import baritone.utils.pathing.MutableMoveResult;
 import com.google.common.collect.ImmutableSet;
 import net.minecraft.core.BlockPos;
@@ -234,10 +235,31 @@ public class MovementDescend extends Movement {
                 res.z = destZ;
                 res.cost = tentativeCost + context.placeBucketCost();
                 return true;
-            } else {
-                return false;
             }
+            hurtingFall(context, destX, destZ, newY, unprotectedFallHeight - 1, tentativeCost, ontoBlock, res);
+            return false;
         }
+    }
+
+    // the last resort under experimentalMovement: no bucket, no clutch, so just eat it if we can afford the hearts.
+    // the water bucket and the clutch both got their say before we got here, a fall that hurts never beats one that doesn't
+    private static void hurtingFall(CalculationContext context, int destX, int destZ, int newY, int blocks, double tentativeCost, BlockState onto, MutableMoveResult res) {
+        if (!context.experimental || blocks > ExperimentalMovement.MAX_HURT_FALL) {
+            return;
+        }
+        int damage = ExperimentalMovement.fallDamage(blocks);
+        if (!ExperimentalMovement.canAffordFall(context.health, damage, context.experimentalMinHealth)) {
+            return;
+        }
+        // magma and friends. canWalkOn lets some of them through (we can sneak on magma, that is not the same as landing on it)
+        if (MovementHelper.avoidWalkingInto(onto) || onto.is(Blocks.MAGMA_BLOCK) || MovementHelper.isLava(context.get(destX, newY + 1, destZ))) {
+            return;
+        }
+        res.x = destX;
+        res.y = newY + 1;
+        res.z = destZ;
+        res.cost = tentativeCost + damage * context.fallDamageCost;
+        res.damage = damage;
     }
 
     // a ladder or vine in one of the last few cells before the floor, placed against whatever wall is beside the column.
