@@ -20,7 +20,6 @@ package baritone.utils;
 import baritone.api.pathing.movement.IMovement;
 import baritone.api.utils.BetterBlockPos;
 import baritone.pathing.movement.CurvedMovement;
-import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.PoseStack;
 import net.minecraft.client.Minecraft;
@@ -114,6 +113,18 @@ final class PathRibbon implements IRenderer {
     // movements (movement i is positions i to i + 1, or null) is for the ones that aren't straight, see CurvedMovement
     // fadeTail is for when startIndex is the player. when it's a fork off some other line, fading in would leave a gap right where it's meant to be attached
     static void draw(PoseStack stack, List<BetterBlockPos> positions, @Nullable List<IMovement> movements, int startIndex, Color color, boolean fadeOut, float fadeStart0, float fadeEnd0, double offset, double arcOffset, float opacity, float width, boolean animated, boolean walked, boolean fadeTail) {
+        boolean ignoreDepth = settings.renderPathIgnoreDepth.value;
+        BufferBuilder buffer = IRenderer.startQuads();
+        try {
+            drawInto(buffer, stack, positions, movements, startIndex, color, fadeOut, fadeStart0, fadeEnd0, offset, arcOffset, opacity, width, animated, walked, fadeTail);
+        } finally {
+            IRenderer.endQuads(buffer, ignoreDepth);
+        }
+    }
+
+    // every draw is a render pass, and SearchGlow does dozens of these a frame. it opens one buffer
+    // with startQuads and puts all of them in it. the same depth setting applies to all of them, endQuads with renderPathIgnoreDepth
+    static void drawInto(BufferBuilder buffer, PoseStack stack, List<BetterBlockPos> positions, @Nullable List<IMovement> movements, int startIndex, Color color, boolean fadeOut, float fadeStart0, float fadeEnd0, double offset, double arcOffset, float opacity, float width, boolean animated, boolean walked, boolean fadeTail) {
         // floats, so that SearchGlow can slide the fade along smoothly. everybody else passes whole numbers
         float fadeStart = fadeStart0 + startIndex;
         float fadeEnd = fadeEnd0 + startIndex;
@@ -135,15 +146,14 @@ final class PathRibbon implements IRenderer {
         float tailStart = points[ARC];
 
         // how many blocks wide a pixel is, one block in front of the camera. m11 is 1 / tan(fov / 2), and it already knows about sprinting and speed potions
-        float blocksPerPixel = 2 / (Math.abs(RenderSystem.getProjectionMatrix().m11()) * Math.max(Minecraft.getInstance().getWindow().getHeight(), 1));
+        // the frame buffer and not the window, the line shader counts pixels of the former and they're not the same thing on a scaled display
+        float blocksPerPixel = 2 / (Math.abs(PathRenderer.projectionM11()) * Math.max(Minecraft.getInstance().gameRenderer.mainRenderTarget().height, 1));
         float pixels = Math.max(settings.pathRenderLineWidthPixels.value * width, 1) / 2;
         float height = settings.renderPathAsLine.value ? 0 : THINGY_HEIGHT * width;
         unitSide[0] = 1;
         unitSide[1] = 0;
         unitSide[2] = 0;
 
-        boolean ignoreDepth = settings.renderPathIgnoreDepth.value;
-        BufferBuilder buffer = IRenderer.startQuads(ignoreDepth);
         PoseStack.Pose pose = stack.last();
         for (int i = 0; i < count; i++) {
             float alpha = 1;
@@ -156,7 +166,6 @@ final class PathRibbon implements IRenderer {
             }
             section(buffer, pose, i, rgb, blocksPerPixel, pixels, height, Math.max(0, Math.min(1, alpha)) * opacity, time);
         }
-        IRenderer.endQuads(buffer, ignoreDepth);
     }
 
     private static void load(List<BetterBlockPos> positions, @Nullable List<IMovement> movements, int start, int end, double offset, double arc, boolean walked) {

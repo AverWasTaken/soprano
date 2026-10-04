@@ -20,6 +20,7 @@ package baritone.utils;
 import baritone.api.pathing.calc.IPath;
 import baritone.api.pathing.calc.IPathFinder;
 import baritone.api.utils.BetterBlockPos;
+import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.PoseStack;
 
 import java.awt.*;
@@ -63,6 +64,9 @@ final class SearchGlow implements IRenderer {
     private float shown;
     private long lastFrame;
 
+    // the open buffer while render is running, null otherwise
+    private BufferBuilder quads;
+
     private final List<Twig> twigs = new ArrayList<>();
     private BetterBlockPos lastTwig;
     private long lastTwigTime;
@@ -81,26 +85,37 @@ final class SearchGlow implements IRenderer {
             search.flatMap(IPathFinder::pathToMostRecentNodeConsidered).map(IPath::positions).ifPresent(positions -> sprout(positions, now));
         }
 
-        // twigs first, so that the best path is drawn over them and not the other way around
-        drawTwigs(stack, now);
-        Color color = settings.colorBestPathSoFar.value;
-        for (Iterator<Ghost> it = ghosts.iterator(); it.hasNext(); ) {
-            Ghost ghost = it.next();
-            float age = (float) (now - ghost.died) / GHOST_LIFE;
-            if (age >= 1) {
-                it.remove();
-                continue;
+        try {
+            // twigs first, so that the best path is drawn over them and not the other way around
+            drawTwigs(stack, now);
+            Color color = settings.colorBestPathSoFar.value;
+            for (Iterator<Ghost> it = ghosts.iterator(); it.hasNext(); ) {
+                Ghost ghost = it.next();
+                float age = (float) (now - ghost.died) / GHOST_LIFE;
+                if (age >= 1) {
+                    it.remove();
+                    continue;
+                }
+                drawGrowing(stack, ghost.positions, ghost.from, ghost.shown, TIP, color, 1 - age, 1);
             }
-            drawGrowing(stack, ghost.positions, ghost.from, ghost.shown, TIP, color, 1 - age, 1);
-        }
-        if (best != null) {
-            drawGrowing(stack, best, 0, shown, TIP, color, 1, 1);
+            if (best != null) {
+                drawGrowing(stack, best, 0, shown, TIP, color, 1, 1);
+            }
+        } finally {
+            if (quads != null) {
+                IRenderer.endQuads(quads, settings.renderPathIgnoreDepth.value);
+                quads = null;
+            }
         }
     }
 
-    private static void drawGrowing(PoseStack stack, List<BetterBlockPos> positions, int from, float shown, float tip, Color color, float opacity, float width) {
+    // all of it goes into one buffer, which is only opened once there's something to put in it. a render pass per twig is a lot of render passes
+    private void drawGrowing(PoseStack stack, List<BetterBlockPos> positions, int from, float shown, float tip, Color color, float opacity, float width) {
+        if (quads == null) {
+            quads = IRenderer.startQuads();
+        }
         // fadePath, except the fade sits on the tip of what's shown so far
-        PathRibbon.draw(stack, positions, null, from, color, true, shown - tip - from, shown - from, 0.5D, 0, opacity, width, false, true, false);
+        PathRibbon.drawInto(quads, stack, positions, null, from, color, true, shown - tip - from, shown - from, 0.5D, 0, opacity, width, false, true, false);
     }
 
     private void follow(List<BetterBlockPos> newBest, long now) {

@@ -27,6 +27,7 @@ import baritone.api.utils.Pair;
 import baritone.cache.CachedChunk;
 import baritone.cache.WorldProvider;
 import baritone.utils.BlockStateInterface;
+import baritone.utils.PathRenderer;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
@@ -130,6 +131,8 @@ public final class GameEventHandler implements IEventBus, Helper {
 
     @Override
     public final void onRenderPass(RenderEvent event) {
+        // before the listeners, which is who draws with it
+        PathRenderer.setProjection(event.getProjectionMatrix());
         listeners.forEach(l -> l.onRenderPass(event));
     }
 

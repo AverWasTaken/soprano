@@ -22,6 +22,7 @@ import com.mojang.renderpearl.api.pipeline.RenderPipeline;
 public interface IRenderPipelines {
     RenderPipeline.Snippet getLinesSnippet();
     RenderPipeline.Snippet getMatricesFogSnippet();
+    RenderPipeline.Snippet getDebugFilledSnippet();
 
     RenderPipeline baritone$registerPipeline(RenderPipeline pipeline);
 }
