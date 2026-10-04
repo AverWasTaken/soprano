@@ -24,6 +24,7 @@ import baritone.api.utils.BetterBlockPos;
 import baritone.api.utils.Rotation;
 import baritone.api.utils.input.Input;
 import baritone.pathing.movement.CalculationContext;
+import baritone.pathing.movement.CurvedMovement;
 import baritone.pathing.movement.Movement;
 import baritone.pathing.movement.MovementHelper;
 import baritone.pathing.movement.MovementState;
@@ -43,7 +44,7 @@ import java.nio.file.Path;
 import java.util.HashSet;
 import java.util.Set;
 
-public class MovementNeo extends Movement {
+public class MovementNeo extends Movement implements CurvedMovement {
 
     private static final BetterBlockPos[] EMPTY = new BetterBlockPos[]{};
 
@@ -456,6 +457,7 @@ public class MovementNeo extends Movement {
     // the line the renderer draws for this movement, in block corner coordinates like path positions are (so its +0.5
     // centers it). out past the end of the wall and back in, instead of straight through it. a hop's run up is behind
     // src, which isn't on the path, so there's nothing of it to draw
+    @Override
     public Vec3[] curve() {
         Vec3[] points = new Vec3[CURVE_POINTS];
         for (int i = 0; i < CURVE_POINTS; i++) {
