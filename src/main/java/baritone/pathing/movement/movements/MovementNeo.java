@@ -53,7 +53,10 @@ public class MovementNeo extends Movement {
     // recalculateCost runs every tick and refreshes these, so someone placing a block mid run up changes the plan
     private int walls, runway;
     private boolean openBeyond;
-    private boolean jumped;
+    // jumped covers the hop too, so nobody cancels us mid air. hopping is the hop specifically: coming down from it on the
+    // runway is the plan, not a bonk, and hopAir counts ticks it spent off the ground so a hop that never left isn't one
+    private boolean jumped, hopping;
+    private int hopAir;
     // the schedule we're flying, carried tick to tick so a replan can only ever swap it for something better
     private NeoJump.Plan flight;
     // running is the blind run up from the staging spot, runTicks how long we've been at it, failedRuns the ones that
@@ -274,6 +277,18 @@ public class MovementNeo extends Movement {
         // sprinting the same tick we press it
         double groundAccel = player.getAttributeValue(Attributes.MOVEMENT_SPEED) * (player.isSprinting() ? 1 : 1.3) * 0.98;
         NeoJump sim = new NeoJump(dist, walls, runway, openBeyond, groundAccel);
+        if (!player.onGround() && hopping) {
+            // same as NeoJump.rolloutHop. no jump input in here, the neo jump goes in on the first tick we're back on the ground
+            NeoJump.Staging hop = NeoJump.staging(dist, walls, runway, openBeyond);
+            hopAir++;
+            double[] heading = hop != null && hop.hop() ? sim.hopTick(u, v, vu, vv, player.getY() - src.y, vel.y, hop.runTarget(), hop.takeoff()) : null;
+            if (heading != null) {
+                steer(state, heading[0], heading[1]);
+            } else {
+                steer(state, 1, 0); // nothing lands it on the runway anymore, so just don't wiggle
+            }
+            return state.setInput(Input.MOVE_FORWARD, true).setInput(Input.SPRINT, true);
+        }
         if (!player.onGround()) {
             flight = sim.plan(u, v, vu, vv, player.getY() - src.y, vel.y, false, 0, flight);
             if (flight != null) {
@@ -283,6 +298,28 @@ public class MovementNeo extends Movement {
             }
             // never jump up here, letting go of space resets the vanilla jump delay
             return state.setInput(Input.MOVE_FORWARD, true).setInput(Input.SPRINT, true);
+        }
+        if (hopping) {
+            hopping = false;
+            if (hopAir == 0) {
+                // pressed jump and never left the ground, so the hop didn't happen
+                jumped = false;
+                running = false;
+                if (++failedRuns >= 3) {
+                    logDebug("can't even hop");
+                    return state.setStatus(MovementStatus.UNREACHABLE);
+                }
+            } else {
+                // touchdown, and the very next tick is the neo jump. same as NeoJump.neoAfterHop
+                NeoJump.Plan plan = sim.plan(u, v, vu, vv, 0, 0, true, 0, null);
+                if (plan != null && plan.margin() >= NeoJump.JUMP_MARGIN) {
+                    steer(state, plan.headingU(), plan.headingV());
+                    flight = plan;
+                    stuckTicks = 0;
+                    return state.setInput(Input.MOVE_FORWARD, true).setInput(Input.SPRINT, true).setInput(Input.JUMP, true);
+                }
+                // hopped to somewhere we don't like. the bookkeeping below sends us back to try again
+            }
         }
         if (jumped) {
             // came down somewhere that isn't dest
@@ -298,6 +335,7 @@ public class MovementNeo extends Movement {
                 return state.setStatus(MovementStatus.UNREACHABLE);
             }
             jumped = false; // never left, or bonked and fell back. go again
+            hopping = false;
             running = false;
             if (++failedRuns >= 3) {
                 logDebug("this neo keeps bonking");
@@ -310,7 +348,7 @@ public class MovementNeo extends Movement {
             return state.setStatus(MovementStatus.UNREACHABLE);
         }
         // same as NeoJump.rollout, which is what told A* this works. don't get creative here
-        NeoJump.Plan plan = u > NeoJump.EARLIEST ? sim.plan(u, v, vu, vv, 0, 0, true, 1, null) : null;
+        NeoJump.Plan plan = !st.hop() && u > NeoJump.EARLIEST ? sim.plan(u, v, vu, vv, 0, 0, true, 1, null) : null;
         if (plan != null && plan.margin() >= NeoJump.JUMP_MARGIN) {
             steer(state, plan.headingU(), plan.headingV());
             state.setInput(Input.MOVE_FORWARD, true).setInput(Input.SPRINT, true);
@@ -322,7 +360,25 @@ public class MovementNeo extends Movement {
             stuckTicks = 0;
             return state;
         }
-        if (running && runTicks <= st.runup() + 3 && u < 0.2) {
+        if (st.hop() && running && runTicks <= st.runup() + 3) {
+            // the hop's own run up: line the jump up so the hop comes down on the neo takeoff spot
+            double[] heading = sim.hopRunTick(u, v, vu, vv, st.runTarget(), st.takeoff());
+            if (heading != null) {
+                steer(state, heading[0], heading[1]);
+                state.setInput(Input.MOVE_FORWARD, true).setInput(Input.SPRINT, true);
+                if (heading[2] > 0) {
+                    state.setInput(Input.JUMP, true);
+                    jumped = true;
+                    hopping = true;
+                    hopAir = 0;
+                } else {
+                    runTicks++;
+                }
+                stuckTicks = 0;
+                return state;
+            }
+        }
+        if (!st.hop() && running && runTicks <= st.runup() + 3 && u < 0.2) {
             // the one tick lookahead can't see a jump that's still five ticks of running away, so until it can, we run
             // the way the table said would work, lining a later tick up with the takeoff spot as we go
             double[] heading = sim.runTick(u, v, vu, vv, st.runTarget(), st.takeoff());

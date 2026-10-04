@@ -32,7 +32,7 @@ final class NeoJump {
     private static final double HALF = 0.3;
     // nothing past this matters, and nothing past it gets checked either (see clearance)
     private static final double CAP = 0.2;
-    static final int MAX_DIST = 3, MAX_RUNWAY = 3;
+    static final int MAX_DIST = 4, MAX_RUNWAY = 6, MIN_HOP_RUNWAY = 3;
     private static final int MAX_TICKS = 20, MAX_SWITCH = 12;
     // two policies, we fly whichever lands better. both start the same: run up holding some sideways spot, then jump.
     // hold: keep v out past the end of the wall, then at some tick settle back in toward the landing.
@@ -52,6 +52,10 @@ final class NeoJump {
     // decides whether we ever get a shot (a run that goes -0.41 then -0.13 never does). angling off the line for a tick
     // costs a bit of forward speed, which is how runTick lines a later tick up with the spot. degrees off the run heading
     private static final double[] PHASE = {0, 20, -20, 45, -45};
+    // the hop is a sprint jump a few blocks before the takeoff that comes down on the runway, and the neo jumps on the very
+    // next tick off the speed the hop landed with. in the air the only knob is which way W points: facing a bit off the
+    // line costs forward accel, and the last few are facing backwards, which is a brake that leaves v alone
+    private static final double[] HOP_PHASE = {0, 15, -15, 30, -30, 50, -50, 75, -75, 105, -105};
     private static final double[] NONE = {}, PENDING = {};
     private static final double[][] TABLE = new double[(MAX_RUNWAY + 1) * (MAX_DIST + 1) * (1 << (MAX_DIST - 1)) * 2][];
 
@@ -64,7 +68,7 @@ final class NeoJump {
     /**
      * Where to stand, which sideways spot to hold on the run up, and how many ticks of running before the jump
      */
-    record Staging(double u, double v, double runTarget, int runup, double takeoff) {}
+    record Staging(double u, double v, double runTarget, int runup, double takeoff, boolean hop) {}
 
     // local frame: origin at the center of the block we jump from, u along the jump, v toward the side we swing out on.
     // block (k, j) covers u in [k - 0.5, k + 0.5] and v in [j - 0.5, j + 0.5]. on the line (j = 0) we run up on k = -1,
@@ -97,11 +101,11 @@ final class NeoJump {
         }
         double[] spot = TABLE[key];
         if (spot == null || spot == PENDING) {
+            // not under the lock: a runway of 6 asks for six of these at once and they'd go one at a time. a doubled up
+            // one just gets the same answer twice
+            spot = pick(new NeoJump(dist, walls, runway, openBeyond, SPRINT_GROUND));
             synchronized (TABLE) {
-                spot = TABLE[key];
-                if (spot == null || spot == PENDING) {
-                    spot = TABLE[key] = pick(new NeoJump(dist, walls, runway, openBeyond, SPRINT_GROUND));
-                }
+                TABLE[key] = spot;
             }
         }
         return unpack(spot);
@@ -137,27 +141,55 @@ final class NeoJump {
     }
 
     private static Staging unpack(double[] spot) {
-        return spot == NONE ? null : new Staging(spot[0], spot[1], spot[2], (int) spot[3], spot[4]);
+        return spot == NONE ? null : new Staging(spot[0], spot[1], spot[2], (int) spot[3], spot[4], spot[5] != 0);
     }
 
-    private static double[] pick(NeoJump neo) {
-        double[] spot = NONE;
-        double best = Double.NEGATIVE_INFINITY;
+    // the table's answer for each strategy, so the tests can see both
+    double plainMargin = Double.NaN, hopMargin = Double.NaN;
+
+    double[] pick() {
+        NeoJump neo = this;
+        double[] plain = NONE, hop = NONE;
+        plainMargin = hopMargin = Double.NaN;
         for (double run : RUN) {
             double takeoff = neo.takeoff(run);
-            if (Double.isNaN(takeoff)) {
+            if (!Double.isNaN(takeoff)) {
+                for (double[] candidate : STAGING) {
+                    double u = candidate[0] - neo.runway - 0.5;
+                    double margin = neo.rollout(u, candidate[1], run, takeoff);
+                    if (margin > plainMargin || Double.isNaN(plainMargin)) {
+                        plainMargin = margin;
+                        plain = new double[]{u, candidate[1], run, neo.rolloutRunup, takeoff, 0};
+                    }
+                }
+            }
+            // a hop needs room, and most runways don't have it
+            double hopTakeoff = neo.runway >= MIN_HOP_RUNWAY ? neo.hopTakeoff(run) : Double.NaN;
+            if (Double.isNaN(hopTakeoff)) {
                 continue;
             }
             for (double[] candidate : STAGING) {
                 double u = candidate[0] - neo.runway - 0.5;
-                double margin = neo.rollout(u, candidate[1], run, takeoff);
-                if (margin >= PLAN_MARGIN && margin > best) {
-                    best = margin;
-                    spot = new double[]{u, candidate[1], run, neo.rolloutRunup, takeoff};
+                double margin = neo.rolloutHop(u, candidate[1], run, hopTakeoff);
+                if (margin > hopMargin || Double.isNaN(hopMargin)) {
+                    hopMargin = margin;
+                    hop = new double[]{u, candidate[1], run, neo.rolloutRunup, hopTakeoff, 1};
                 }
             }
         }
-        return spot;
+        boolean plainOk = plainMargin >= PLAN_MARGIN, hopOk = hopMargin >= PLAN_MARGIN;
+        // the hop is more moving parts (two jumps, two takeoff windows), so it only gets used when the plain run up
+        // can't make it or only just can. a neo that clears by 0.1 on foot doesn't need to get fancy
+        if (plainOk && (plainMargin >= COMFORTABLE || !hopOk || plainMargin >= hopMargin)) {
+            return plain;
+        }
+        return hopOk ? hop : NONE;
+    }
+
+    static final double COMFORTABLE = 0.06;
+
+    private static double[] pick(NeoJump neo) {
+        return neo.pick();
     }
 
     /**
@@ -278,6 +310,255 @@ final class NeoJump {
             rvv = pvv;
             ry = py;
             rvy = pvy;
+        }
+        return Double.NaN;
+    }
+
+    /**
+     * The best spot along the line to jump the neo from right after a hop lands, NaN if there isn't one (or the hop
+     * itself can't be done)
+     */
+    double hopTakeoff(double run) {
+        // the speed a hop lands with doesn't care where on the runway it was, so fly one down a runway with all the room
+        // in the world and look at what it comes down with
+        NeoJump far = new NeoJump(dist, walls, 20, openBeyond, groundAccel);
+        far.pu = -8;
+        far.pv = run;
+        far.pvu = groundAccel * GROUND_FRICTION / (1 - GROUND_FRICTION);
+        far.pvv = 0;
+        far.py = far.pvy = 0;
+        far.margin = CAP;
+        if (!far.hop(true, run, Double.NaN)) {
+            return Double.NaN;
+        }
+        double v = far.pv, vu = far.pvu, vv = far.pvv;
+        double spot = Double.NaN, best = 0;
+        for (double u = EARLIEST; u <= 0.3; u += 0.02) {
+            Plan plan = plan(u, v, vu, vv, 0, 0, true, 0, null);
+            if (plan != null && plan.margin() > best) {
+                best = plan.margin();
+                spot = u;
+            }
+        }
+        return spot;
+    }
+
+    /**
+     * One run up tick before a hop: {headingU, headingV, 1 if this is the tick to jump, else 0}. we jump when
+     * jumping now lands closer to the neo takeoff than jumping a tick from now would. null if neither lands on the runway
+     */
+    double[] hopRunTick(double u, double v, double vu, double vv, double run, double takeoff) {
+        double side = side(v, vv, run, RUN_GAIN, groundAccel);
+        double c = Math.sqrt(1 - side * side);
+        pu = u;
+        pv = v;
+        pvu = vu;
+        pvv = vv;
+        py = pvy = 0;
+        margin = CAP;
+        double now = hop(true, run, takeoff) ? Math.abs(pu - takeoff) : Double.POSITIVE_INFINITY;
+        pu = u;
+        pv = v;
+        pvu = vu;
+        pvv = vv;
+        py = pvy = 0;
+        margin = CAP;
+        double next = Double.POSITIVE_INFINITY;
+        if (run(c, side)) {
+            py = pvy = 0;
+            next = hop(true, run, takeoff) ? Math.abs(pu - takeoff) : Double.POSITIVE_INFINITY;
+        }
+        if (now == Double.POSITIVE_INFINITY && next == Double.POSITIVE_INFINITY) {
+            return null;
+        }
+        if (now <= next) {
+            // hop() trashed the heading it found for the jump tick, so ask for it again
+            return hopTick(u, v, vu, vv, 0, 0, true, run, takeoff, 1);
+        }
+        return new double[]{c, side, 0};
+    }
+
+    /**
+     * Heading for one tick of the hop, same shape as hopRunTick's answer. null if no heading survives
+     */
+    double[] hopTick(double u, double v, double vu, double vv, double y, double vy, boolean jumpTick, double run, double takeoff, int jump) {
+        pu = u;
+        pv = v;
+        pvu = vu;
+        pvv = vv;
+        py = y;
+        pvy = vy;
+        margin = CAP;
+        return hopHeading(jumpTick, run, takeoff) ? new double[]{headingU, headingV, jump} : null;
+    }
+
+    double[] hopTick(double u, double v, double vu, double vv, double y, double vy, double run, double takeoff) {
+        return hopTick(u, v, vu, vv, y, vy, false, run, takeoff, 0);
+    }
+
+    /**
+     * Picks this tick's heading (into headingU/V) from the state in p*, which it leaves alone. each candidate is tried
+     * for one tick and then flown straight to touchdown, and whichever comes down nearest takeoff wins
+     */
+    private boolean hopHeading(boolean jumpTick, double run, double takeoff) {
+        double u = pu, v = pv, vu = pvu, vv = pvv, y = py, vy = pvy, m = margin;
+        double accel = jumpTick ? BOOST + groundAccel : AIR_ACCEL;
+        double base = Math.asin(side(v, vv, run, RUN_GAIN, accel));
+        double bestError = Double.POSITIVE_INFINITY, bestC = 0, bestS = 0;
+        for (int mirror = 0; mirror < 2; mirror++) {
+            for (double off : HOP_PHASE) {
+                // mirrored is the same sideways push facing backwards: all brake, and v doesn't care
+                if (mirror == 1 && off != 0) {
+                    continue;
+                }
+                double angle = mirror == 0 ? base + Math.toRadians(off) : Math.PI - base;
+                double c = Math.cos(angle), s = Math.sin(angle);
+                pu = u;
+                pv = v;
+                pvu = vu;
+                pvv = vv;
+                py = y;
+                pvy = vy;
+                margin = m;
+                int result = air(c, s, jumpTick, true);
+                if (result == FAILED) {
+                    continue;
+                }
+                boolean landed = result == HOPPED;
+                for (int k = 0; !landed && k < MAX_TICKS; k++) {
+                    double hold = side(pv, pvv, run, RUN_GAIN, AIR_ACCEL);
+                    result = air(Math.sqrt(1 - hold * hold), hold, false, true);
+                    if (result == FAILED) {
+                        break;
+                    }
+                    landed = result == HOPPED;
+                }
+                if (!landed) {
+                    continue;
+                }
+                double error = Double.isNaN(takeoff) ? 0 : Math.abs(pu - takeoff);
+                error += 0.003 * Math.abs(off) / 45 + (mirror == 1 ? 0.003 : 0);
+                if (error < bestError) {
+                    bestError = error;
+                    bestC = c;
+                    bestS = s;
+                }
+            }
+        }
+        pu = u;
+        pv = v;
+        pvu = vu;
+        pvv = vv;
+        py = y;
+        pvy = vy;
+        margin = m;
+        headingU = bestC;
+        headingV = bestS;
+        return bestError < Double.POSITIVE_INFINITY;
+    }
+
+    /**
+     * A whole hop from the state in p* (on the ground if jump, else mid air) to touchdown, steering the way the runtime will
+     *
+     * @return false if it hits something or doesn't come down on the runway
+     */
+    private boolean hop(boolean jump, double run, double takeoff) {
+        for (int tick = 0; tick < MAX_TICKS; tick++) {
+            if (!hopHeading(jump, run, takeoff)) {
+                return false;
+            }
+            int result = air(headingU, headingV, jump, true);
+            if (result == FAILED) {
+                return false;
+            }
+            if (result == HOPPED) {
+                return true;
+            }
+            jump = false;
+        }
+        return false;
+    }
+
+    /**
+     * rollout, for the run up that hops into the takeoff: run, hop, and jump the neo the tick we land
+     */
+    double rolloutHop(double u, double v, double run, double takeoff) {
+        double ru = u, rv = v, rvu = 0, rvv = 0, ry = 0, rvy = 0, worst = CAP;
+        boolean airborne = false;
+        rolloutRunup = 0;
+        for (int tick = 0; tick < 8 * MAX_RUNWAY + 20; tick++) {
+            double[] heading = airborne ? hopTick(ru, rv, rvu, rvv, ry, rvy, run, takeoff) : hopRunTick(ru, rv, rvu, rvv, run, takeoff);
+            if (heading == null) {
+                return Double.NaN;
+            }
+            boolean jump = heading[2] > 0;
+            pu = ru;
+            pv = rv;
+            pvu = rvu;
+            pvv = rvv;
+            py = ry;
+            pvy = rvy;
+            margin = worst;
+            if (!airborne && !jump) {
+                if (!run(heading[0], heading[1])) {
+                    return Double.NaN;
+                }
+                rolloutRunup++;
+            } else {
+                int result = air(heading[0], heading[1], jump, true);
+                if (result == FAILED) {
+                    return Double.NaN;
+                }
+                airborne = true;
+                if (result == HOPPED) {
+                    return neoAfterHop(pu, pv, pvu, pvv, margin);
+                }
+            }
+            worst = margin;
+            ru = pu;
+            rv = pv;
+            rvu = pvu;
+            rvv = pvv;
+            ry = py;
+            rvy = pvy;
+        }
+        return Double.NaN;
+    }
+
+    /**
+     * The neo jump off a hop's touchdown, and the flight, played out like rollout does
+     */
+    private double neoAfterHop(double u, double v, double vu, double vv, double worst) {
+        Plan plan = plan(u, v, vu, vv, 0, 0, true, 0, null);
+        boolean ground = true;
+        double y = 0, vy = 0;
+        for (int tick = 0; tick < MAX_TICKS + 2; tick++) {
+            if (plan == null || ground && plan.margin() < JUMP_MARGIN) {
+                return Double.NaN;
+            }
+            pu = u;
+            pv = v;
+            pvu = vu;
+            pvv = vv;
+            py = y;
+            pvy = vy;
+            margin = worst;
+            int result = air(plan.headingU(), plan.headingV(), ground);
+            if (result == FAILED) {
+                return Double.NaN;
+            }
+            if (result == LANDED) {
+                return margin;
+            }
+            ground = false;
+            worst = margin;
+            u = pu;
+            v = pv;
+            vu = pvu;
+            vv = pvv;
+            y = py;
+            vy = pvy;
+            plan = plan(u, v, vu, vv, y, vy, false, 0, plan);
         }
         return Double.NaN;
     }
@@ -422,7 +703,7 @@ final class NeoJump {
 
     // where the sim is right now, so fly and rollout can share the same tick of physics
     private double pu, pv, pvu, pvv, py, pvy, slide;
-    private static final int FLYING = 0, LANDED = 1, FAILED = 2;
+    private static final int FLYING = 0, LANDED = 1, FAILED = 2, HOPPED = 3;
 
     /**
      * One tick on the ground holding W toward (c, s). false if we hit something or ran off the edge
@@ -449,6 +730,10 @@ final class NeoJump {
      * One tick in the air holding W toward (c, s), or the jump tick itself
      */
     private int air(double c, double s, boolean jumpTick) {
+        return air(c, s, jumpTick, false);
+    }
+
+    private int air(double c, double s, boolean jumpTick, boolean hop) {
         double accel = AIR_ACCEL;
         if (jumpTick) {
             // onGround is still true on the jump tick, so it gets ground acceleration and ground friction
@@ -462,6 +747,20 @@ final class NeoJump {
         // vanilla collides y first, so whether we land is decided where we are now, not where we're about to be
         py += pvy;
         boolean landed = pvy < 0 && py <= 0;
+        if (landed && hop) {
+            // same support rule as run(), the strip is the runway and the takeoff block
+            if (stripOverlap(pu) < 0.03 || overlap(pv, 0) < 0.03 || !sweep(pu, pv, du, dv)) {
+                return FAILED;
+            }
+            pu += du;
+            pv += dv;
+            // onGround was false when the tick started, so air friction, and landing zeroes vy
+            pvu = du * AIR_FRICTION;
+            pvv = dv * AIR_FRICTION;
+            py = 0;
+            pvy = 0;
+            return HOPPED;
+        }
         double supportU = overlap(pu, dist), supportV = overlap(pv, 0);
         if (landed && (supportU <= 0 || supportV <= 0)) {
             return FAILED; // nothing under us, or it's the block we started on
@@ -484,6 +783,10 @@ final class NeoJump {
         pvv = dv * (jumpTick ? GROUND_FRICTION : AIR_FRICTION);
         pvy = (pvy - GRAVITY) * 0.98;
         return FLYING;
+    }
+
+    private double stripOverlap(double c) {
+        return Math.min(c + HALF, 0.5) - Math.max(c - HALF, -runway - 0.5);
     }
 
     /**

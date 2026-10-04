@@ -324,8 +324,8 @@ public enum Moves {
         }
     },
 
-    // 3 is NeoJump.MAX_DIST, which is package private over in movements. neos are always flat, hence dynamicY false
-    NEO_NORTH(0, 0, -3, true, false) {
+    // 4 is NeoJump.MAX_DIST, which is package private over in movements. neos are always flat, hence dynamicY false
+    NEO_NORTH(0, 0, -4, true, false) {
         @Override
         public Movement apply0(CalculationContext context, BetterBlockPos src) {
             return MovementNeo.cost(context, src, Direction.NORTH);
@@ -337,7 +337,7 @@ public enum Moves {
         }
     },
 
-    NEO_SOUTH(0, 0, +3, true, false) {
+    NEO_SOUTH(0, 0, +4, true, false) {
         @Override
         public Movement apply0(CalculationContext context, BetterBlockPos src) {
             return MovementNeo.cost(context, src, Direction.SOUTH);
@@ -349,7 +349,7 @@ public enum Moves {
         }
     },
 
-    NEO_EAST(+3, 0, 0, true, false) {
+    NEO_EAST(+4, 0, 0, true, false) {
         @Override
         public Movement apply0(CalculationContext context, BetterBlockPos src) {
             return MovementNeo.cost(context, src, Direction.EAST);
@@ -361,7 +361,7 @@ public enum Moves {
         }
     },
 
-    NEO_WEST(-3, 0, 0, true, false) {
+    NEO_WEST(-4, 0, 0, true, false) {
         @Override
         public Movement apply0(CalculationContext context, BetterBlockPos src) {
             return MovementNeo.cost(context, src, Direction.WEST);

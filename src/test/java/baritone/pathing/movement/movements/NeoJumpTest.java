@@ -39,6 +39,7 @@ public class NeoJumpTest {
         assertNotNull(NeoJump.staging(3, 0b11, 2, false));
         // not neos at all
         assertNull(NeoJump.staging(3, 0, 1, true));
+        // dist 4 is a real shape now (MAX_DIST), this one just needs more run up than a single block gives
         assertNull(NeoJump.staging(4, 0b1, 1, true));
         assertNull(NeoJump.staging(2, 0b1, 0, true));
     }
@@ -59,5 +60,52 @@ public class NeoJumpTest {
         NeoJump.Staging st = NeoJump.staging(3, 0b11, 2, true);
         NeoJump neo = new NeoJump(3, 0b11, 2, true, NeoJump.SPRINT_GROUND);
         assertTrue(neo.rollout(st.u(), st.v(), st.runTarget(), st.takeoff()) >= NeoJump.PLAN_MARGIN);
+    }
+
+    @Test
+    public void hopBeatsPlainOnTheClassicNeo() {
+        // a runway long enough to hop on: land from a hop, jump the very next tick, and the whole flight is faster. the
+        // 3b neo goes from ~0.038 of room to ~0.049
+        NeoJump neo = new NeoJump(3, 0b11, 5, true, NeoJump.SPRINT_GROUND);
+        double[] spot = neo.pick();
+        assertEquals(1, spot[5], 0);
+        assertTrue(neo.hopMargin > neo.plainMargin);
+        assertTrue(neo.hopMargin >= NeoJump.PLAN_MARGIN);
+        NeoJump.Staging st = NeoJump.staging(3, 0b11, 5, true);
+        assertNotNull(st);
+        assertTrue(st.hop());
+        assertEquals(neo.hopMargin, neo.rolloutHop(st.u(), st.v(), st.runTarget(), st.takeoff()), 0.02);
+        // there's no room for a hop on the short runways, those stay plain
+        assertFalse(NeoJump.staging(3, 0b11, 2, true).hop());
+    }
+
+    @Test
+    public void hopComesDownOnTheRunway() {
+        // the neo takeoff after a hop is on the takeoff block, and the plan from there has to clear what A* asked for
+        NeoJump.Staging st = NeoJump.staging(3, 0b11, 6, false);
+        assertNotNull(st);
+        assertTrue(st.hop());
+        assertTrue(st.takeoff() > -0.5 - 0.3 && st.takeoff() < 0.5);
+        NeoJump neo = new NeoJump(3, 0b11, 6, false, NeoJump.SPRINT_GROUND);
+        assertTrue(neo.rolloutHop(st.u(), st.v(), st.runTarget(), st.takeoff()) >= NeoJump.PLAN_MARGIN);
+    }
+
+    @Test
+    public void distFour() {
+        // one block in the middle is plain sprint jumping around it, no hop needed
+        NeoJump.Staging plain = NeoJump.staging(4, 0b10, 1, true);
+        assertNotNull(plain);
+        assertFalse(plain.hop());
+        // these only exist with hop speed, and need the runway to get up to it
+        assertNull(NeoJump.staging(4, 0b100, 3, true));
+        assertNotNull(NeoJump.staging(4, 0b100, 4, true));
+        assertTrue(NeoJump.staging(4, 0b100, 4, true).hop());
+        assertNotNull(NeoJump.staging(4, 0b110, 4, true));
+        assertNull(NeoJump.staging(4, 0b1, 4, true));
+        assertNotNull(NeoJump.staging(4, 0b1, 5, true));
+        assertNotNull(NeoJump.staging(4, 0b11, 5, true));
+        // not even a hop gets around these
+        assertNull(NeoJump.staging(4, 0b101, 6, true));
+        assertNull(NeoJump.staging(4, 0b111, 6, true));
     }
 }
