@@ -10,8 +10,10 @@ assignees: ''
 Operating system:
 Java version:
 Minecraft version:
-Baritone version:
-Other mods (if used): 
+Soprano version:
+Mod loader (Fabric, Forge or NeoForge):
+Other mods (if used):
+Does it also happen in plain Baritone? (if you know):
 
 ## Exception, error or logs
 Please find your `latest.log` or `debug.log` in this folder and attach it to the issue
@@ -30,6 +32,6 @@ To get the modified settings run `#modified` in game
 
 ## Final checklist
 - [x] I know how to properly use check boxes 
-- [ ] I have included the version of Minecraft I'm running, baritone's version and forge mods (if used).
+- [ ] I have included the version of Minecraft I'm running, Soprano's version and my mod loader and other mods (if used).
 - [ ] I have included logs, exceptions and / or steps to reproduce the issue.
 - [ ] I have not used any OwO's or UwU's in this issue.

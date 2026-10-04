@@ -7,7 +7,7 @@ assignees: ''
 ---
 
 ## Describe your suggestion
-With as much detail as possible, describe what your suggestion would do for Baritone.
+With as much detail as possible, describe what your suggestion would do for Soprano.
 
 ## Settings
 If applicable, what settings/customizability should be offered to tweak the functionality of your suggestion.
