@@ -36,7 +36,7 @@ Everything below is off by default unless it says otherwise. Turn things on in g
 2. Drop it in your `mods` folder, replacing Baritone if you had it.
 3. In game, try `#goto 1000 500`, then `#stop`.
 
-Each branch of this repo is one Minecraft version. Right now that's 1.21.4. `main` will follow the newest Minecraft version once there's a port.
+Each branch of this repo is one Minecraft version. `main` is the newest one (26.3 right now), and the `1.21.4` branch is the 1.21.4 version.
 
 Releases come in three flavors. Most people want the `api` jar.
 
