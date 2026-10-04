@@ -63,9 +63,9 @@ Say what it does, why it's safe, and what you actually ran. Numbers help for per
 For maintainers.
 
 1. Bump `mod_version` in `gradle.properties` and commit it on the version branch.
-2. Tag the commit as `v<soprano version>+<minecraft version>`, for example `v1.0.0+1.21.4`. Tags are repo wide, so the Minecraft version in the tag is what keeps branches apart.
-3. Push the tag: `git push origin v1.0.0+1.21.4`.
+2. Tag the commit as `soprano-v<version>`, for example `soprano-v1.0.0`. Like Baritone, every Minecraft version branch gets its own version line (1.0.x is Minecraft 1.21.4, the next port gets the next one), so a version number always means one Minecraft version. The `soprano-` prefix is there because the repo still has Baritone's history, and a plain `v1.0.0` would clash with Baritone's own tags for anyone who fetches from upstream.
+3. Push the tag: `git push origin soprano-v1.0.0`.
 
-The [release workflow](.github/workflows/release.yml) builds with JDK 21, passes the version from the tag to Gradle and creates a GitHub Release called "Soprano 1.0.0 for Minecraft 1.21.4" with the jars and `checksums.txt` attached. A tag without a `+<minecraft version>` part fails on purpose.
+The [release workflow](.github/workflows/release.yml) builds with JDK 21, passes the version from the tag to Gradle and creates a GitHub Release called "Soprano v1.0.0" laid out like Baritone's: every jar flavor plus `checksums.txt`, and a one line note saying which Minecraft version and loaders it's for. The Minecraft version comes from `minecraft_version` in `gradle.properties`.
 
 If a release goes wrong, delete the release and the tag on GitHub, fix it, and push the tag again.

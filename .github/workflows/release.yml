@@ -1,12 +1,13 @@
-# builds the jars and makes a github release when a tag like v1.0.0+1.21.4 is pushed
-# tag format is v<soprano version>+<minecraft version>, see CONTRIBUTING.md
+# builds the jars and makes a github release when a tag like soprano-v1.0.0 is pushed
+# laid out like baritone's releases: every jar flavor plus checksums.txt, and a one line note saying which minecraft
+# version and loaders. each minecraft version branch gets its own version line (1.0.x is 1.21.4), see CONTRIBUTING.md
 
 name: Release
 
 on:
   push:
     tags:
-      - 'v*'
+      - 'soprano-v*'
 
 permissions:
   contents: write
@@ -23,14 +24,10 @@ jobs:
     - name: Work out the version from the tag
       run: |
         TAG="${GITHUB_REF_NAME}"
-        VERSION="${TAG#v}"
-        case "$VERSION" in
-          *+*) ;;
-          *) echo "tag $TAG has no +<minecraft version> on the end, expected something like v1.0.0+1.21.4"; exit 1 ;;
-        esac
+        VERSION="${TAG#soprano-v}"
+        MC_VERSION="$(grep '^minecraft_version=' gradle.properties | cut -d= -f2)"
         echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
-        echo "SOPRANO_VERSION=${VERSION%%+*}" >> "$GITHUB_ENV"
-        echo "MC_VERSION=${VERSION#*+}" >> "$GITHUB_ENV"
+        echo "MC_VERSION=${MC_VERSION}" >> "$GITHUB_ENV"
 
     - name: Set up JDK 21
       uses: actions/setup-java@v5
@@ -52,26 +49,16 @@ jobs:
 
     - name: Write the release notes
       run: |
-        {
-          echo "Soprano ${SOPRANO_VERSION} for Minecraft ${MC_VERSION}."
-          echo
-          echo "Pick the jar for your loader (fabric, forge or neoforge). If you aren't sure which flavor, take the \`api\` one."
-          echo
-          echo "- \`soprano-api-<loader>-${VERSION}.jar\` is the one most people want. Only the code outside \`baritone.api\` is obfuscated, so mods built on Baritone's API keep working."
-          echo "- \`soprano-standalone-<loader>-${VERSION}.jar\` is fully obfuscated. A little faster, but other mods can't use the API."
-          echo "- \`soprano-unoptimized-<loader>-${VERSION}.jar\` is not obfuscated. Use it for bug reports, the stack traces are readable."
-          echo "- Jars with no loader in the name (\`soprano-api-${VERSION}.jar\` and friends) are launchwrapper tweaker builds for custom launcher setups. Most people can ignore them."
-          echo "- \`checksums.txt\` has the sha1 of every jar."
-          echo
-          echo "Soprano replaces Baritone, don't install both. Features, settings and install help are in the [README](https://github.com/${GITHUB_REPOSITORY}#readme)."
-        } > release-notes.md
+        # same one liner baritone's releases have, only naming the loaders we actually built
+        NOTES="For Minecraft ${MC_VERSION}."
+        ls dist/soprano-api-forge-*.jar >/dev/null 2>&1 && NOTES="${NOTES} Forge is supported."
+        ls dist/soprano-api-fabric-*.jar >/dev/null 2>&1 && NOTES="${NOTES} Fabric is supported."
+        ls dist/soprano-api-neoforge-*.jar >/dev/null 2>&1 && NOTES="${NOTES} NeoForge is supported."
+        echo "$NOTES" > release-notes.md
         cat release-notes.md
 
     - name: Create the release
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        gh release create "$GITHUB_REF_NAME" \
-          --title "Soprano ${SOPRANO_VERSION} for Minecraft ${MC_VERSION}" \
-          --notes-file release-notes.md \
-          dist/*.jar dist/checksums.txt
+        gh release create "$GITHUB_REF_NAME"           --title "Soprano v${VERSION}"           --notes-file release-notes.md           dist/*.jar dist/checksums.txt
