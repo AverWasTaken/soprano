@@ -22,17 +22,20 @@ import java.util.concurrent.ConcurrentHashMap;
 // a long fall, played out tick by tick, with a ladder or vine showing up in one cell of the column. pure math (no mc classes)
 // so A* can ask it things off thread, same idea as NeoJump.
 //
-// vanilla 1.21.4 gives us two ways for a climbable to wipe the fall distance:
+// vanilla 26.3 gives us two ways for a climbable to wipe the fall distance:
 //   A. LivingEntity.handleOnClimbable: if the cell our feet START the tick in is climbable, vy is clamped to -0.15 and
 //      fallDistance is zeroed, all before move. so the ladder has to exist by the time the tick starts, and a 1 tall cell
 //      is skipped completely if no tick start lands inside it (this is why we "don't actually grab" ladders at high speed)
 //   B. Entity.move: if we moved at least a block this tick, clip the movement segment against every fall damage resetting
 //      block (as full cubes) and zero the fallDistance if it hits anything. no slowdown, but it does not care where the tick
 //      starts. the landing tick counts too, and landing is what checks the fall distance, so a vine in the landing cell
-//      means a 200 block fall does nothing. this is the one that makes a clutch work at terminal velocity
+//      means a 200 block fall costs one move (under 3.92, terminal velocity) and that's free. this is the one that makes a
+//      clutch work at terminal velocity
+// both of those run before Entity.checkFallDamage adds the tick's move, and that adds the landing move too (in 1.21.4 it
+// skipped the move that ended on the ground). damage is floor(fall + 1e-6 - 3) now, so anything under 4 is free
 final class LadderClutch {
 
-    // straight out of 1.21.4 LivingEntity.travelInAir: y += vy, then vy = (vy - 0.08) * 0.98f
+    // straight out of 26.3 LivingEntity.travelInAir: y += vy, then vy = (vy - 0.08) * 0.98f (same as 1.21.4)
     static final double GRAVITY = 0.08, DRAG = 0.9800000190734863;
     // what the first airborne tick starts with. on the ground vy gets zeroed by the floor and then the same formula runs
     static final double WALK_OFF_VY = (0 - GRAVITY) * DRAG;
@@ -49,8 +52,9 @@ final class LadderClutch {
     static final double AIM_HEIGHT = 0.8;
     // tick starts closer than this to the top or bottom of a cell don't count as inside it, 0.05 is the float/server slop
     static final double SLOP = 0.05;
-    // fall distance we're ok landing with. damage is ceil(fallDistance - 3)
-    static final double SAFE_FALL = 3 - 0.05;
+    // fall distance we're ok landing with. damage is floor(fallDistance + 1e-6 - 3) and the landing move is in the
+    // distance, so 4 is the first one that hurts (it was ceil, and 3, back when the landing move didn't count)
+    static final double SAFE_FALL = 4 - 0.05;
     // the cells above the landing floor we look at. a vine in any of these does it, higher than this and the fall
     // distance that's left after the reset is too much to land with anyway
     static final int CELLS = 5;
@@ -114,11 +118,11 @@ final class LadderClutch {
             if (there && fall != 0 && moved >= 1 + slop * 0.4 && end <= cell + 1 - slop && y >= cell + slop) {
                 fall = 0;
             }
+            // the landing move is in, Entity.checkFallDamage adds every move now. after the resets above, not before them
+            fall += moved;
             if (landed) {
-                // the landing move itself isn't added, Entity.checkFallDamage only counts moves where we stayed in the air
                 return new Landing(fall, t + (v < 0 ? moved / -v : 0));
             }
-            fall += moved;
             y = end;
             v = (v - GRAVITY) * DRAG;
         }

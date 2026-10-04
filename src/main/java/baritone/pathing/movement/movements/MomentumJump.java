@@ -37,7 +37,7 @@ import java.util.concurrent.atomic.AtomicReferenceArray;
  */
 final class MomentumJump {
 
-    // same numbers as NeoJump, straight out of 1.21.4 LivingEntity. aiStep scales move input by 0.98
+    // same numbers as NeoJump, straight out of LivingEntity (same on 1.21.4 and 26.3). aiStep scales move input by 0.98
     private static final double GROUND_FRICTION = 0.6 * 0.91, AIR_FRICTION = 0.91, JUMP = 0.42, GRAVITY = 0.08, BOOST = 0.2;
     static final double SPRINT_GROUND = NeoJump.SPRINT_GROUND;
     private static final double AIR_ACCEL = 0.026 * 0.98;

@@ -36,7 +36,8 @@ import java.util.concurrent.atomic.AtomicReferenceArray;
  */
 final class NeoJump {
 
-    // straight out of 1.21.4 LivingEntity, same numbers SprintJump uses. aiStep scales move input by 0.98
+    // straight out of LivingEntity (diffed 1.21.4 against 26.3, same numbers), same numbers SprintJump uses. aiStep scales
+    // move input by 0.98 (applyInput on 26.3)
     private static final double GROUND_FRICTION = 0.6 * 0.91, AIR_FRICTION = 0.91, JUMP = 0.42, GRAVITY = 0.08, BOOST = 0.2;
     // sprinting only. walking never made a single one of these, the jump boost is doing all the work
     static final double SPRINT_GROUND = 0.13 * 0.98;

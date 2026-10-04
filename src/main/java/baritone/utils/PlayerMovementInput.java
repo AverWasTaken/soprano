@@ -56,11 +56,9 @@ public class PlayerMovementInput extends ClientInput {
         }
 
         boolean sneaking = handler.isInputForcedDown(Input.SNEAK);
-        if (sneaking) {
-            leftImpulse *= 0.3D;
-            forwardImpulse *= 0.3D;
-        }
-        this.moveVector = new Vec2(leftImpulse, forwardImpulse);
+        // no sneak scaling here, LocalPlayer.modifyInput does the 0.98 and the sneaking speed attribute (scaling it here
+        // too made a sneak 0.09 instead of 0.294). and normalized like KeyboardInput, or a diagonal sneak is 1.4x too fast
+        this.moveVector = new Vec2(leftImpulse, forwardImpulse).normalized();
 
         boolean sprinting = handler.isInputForcedDown(Input.SPRINT);
 

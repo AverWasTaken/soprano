@@ -27,7 +27,7 @@ import java.util.concurrent.ForkJoinPool;
 // the jumps are dead straight and v never leaves 0
 final class ClimbJump {
 
-    // straight out of 1.21.4 LivingEntity, same numbers NeoJump uses
+    // straight out of LivingEntity (same on 1.21.4 and 26.3), same numbers NeoJump uses
     private static final double GROUND_FRICTION = 0.6 * 0.91, AIR_FRICTION = 0.91, JUMP = 0.42, GRAVITY = 0.08, DRAG = 0.98;
     private static final double BOOST = 0.2, INPUT = 0.98, AIR_WALK = 0.02, AIR_SPRINT = 0.026;
     static final double SPRINT_BONUS = 1.3;

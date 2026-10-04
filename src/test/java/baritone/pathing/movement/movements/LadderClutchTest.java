@@ -43,12 +43,19 @@ public class LadderClutchTest {
     }
 
     @Test
-    public void plainFallCountsEverythingButTheLandingMove() {
-        double[] ys = LadderClutch.tickStarts(10);
-        // nothing placed: this is just the fall, and landing is what checks, so the last move isn't in the distance
+    public void plainFallCountsEveryMove() {
+        // nothing placed: this is just the fall, and Entity.checkFallDamage adds the landing move too now, so it's all 10
         LadderClutch.Landing none = LadderClutch.play(10, LadderClutch.WALK_OFF_VY, 0, 0, 2, 999, 0);
-        assertEquals(10 - ys[ys.length - 1], none.fall(), 1e-9);
-        assertTrue(none.fall() > 3);
+        assertEquals(10, none.fall(), 1e-9);
+        assertTrue(none.fall() > LadderClutch.SAFE_FALL);
+    }
+
+    @Test
+    public void almostFourBlocksIsStillFree() {
+        // damage is floor(fall + 1e-6 - 3), so the picker takes a wall that leaves 3 and a bit of fall on the table
+        LadderClutch.Plan p = LadderClutch.plan(30, 0b01000, 4.5);
+        assertNotNull(p);
+        assertTrue(p.fall() > 3 && p.fall() <= LadderClutch.SAFE_FALL);
     }
 
     @Test

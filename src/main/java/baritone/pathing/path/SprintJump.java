@@ -40,7 +40,8 @@ import java.util.Arrays;
  */
 final class SprintJump {
 
-    // straight out of 1.21.4 LivingEntity.travelInAir / jumpFromGround / Player.getFlyingSpeed, aiStep scales move input by 0.98
+    // straight out of LivingEntity.travelInAir / jumpFromGround / Player.getFlyingSpeed (same on 1.21.4 and 26.3), aiStep
+    // scales move input by 0.98 (applyInput on 26.3)
     static final double GROUND_FRICTION = 0.6 * 0.91, AIR_FRICTION = 0.91, AIR_ACCEL = 0.026 * 0.98, JUMP_BOOST = 0.2;
     private static final double JUMP = 0.42, GRAVITY = 0.08, SAFE_FALL = 3, EPS = 1e-6;
     // a braked hop that lands short is a slow way to walk. ground sprint is ~0.28 a tick, going down steps or bonking one is way worse

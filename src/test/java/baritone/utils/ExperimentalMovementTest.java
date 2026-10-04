@@ -28,7 +28,7 @@ import static org.junit.Assert.assertTrue;
 public class ExperimentalMovementTest {
 
     @Test
-    public void fallDamageIsCeilOfDistanceMinusSafe() {
+    public void fallDamageIsWholeBlocksPastSafe() {
         // landing from three blocks is free, every block past that is a half heart
         assertEquals(0, ExperimentalMovement.fallDamage(0));
         assertEquals(0, ExperimentalMovement.fallDamage(3));
