@@ -105,7 +105,7 @@ public class MovementClimb extends Movement {
         if (!shape.grab() && shape.dy() < 0) {
             base += FALL_N_BLOCKS_COST[-shape.dy()];
         }
-        return base;
+        return context.biasJump(base);
     }
 
     // ---- looking for a shape. most nodes aren't anywhere near a ladder, so everything that can say no cheaply does first

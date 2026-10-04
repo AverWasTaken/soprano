@@ -26,6 +26,7 @@ import baritone.pathing.movement.MovementHelper;
 import baritone.pathing.movement.MovementState;
 import baritone.pathing.path.PathExecutor;
 import baritone.utils.BaritoneProcessHelper;
+import baritone.utils.ExperimentalMovement;
 import java.util.*;
 import java.util.stream.Collectors;
 import net.minecraft.core.BlockPos;
@@ -49,8 +50,8 @@ public final class BackfillProcess extends BaritoneProcessHelper {
         if (!Baritone.settings().backfill.value) {
             return false;
         }
-        if (Baritone.settings().allowParkour.value) {
-            logDirect("Backfill cannot be used with allowParkour true");
+        if (ExperimentalMovement.allowParkour()) {
+            logDirect("Backfill cannot be used with allowParkour true (or experimentalMovement)");
             Baritone.settings().backfill.value = false;
             return false;
         }

@@ -450,6 +450,69 @@ public final class Settings {
     public final Setting<Boolean> overshootTraverse = new Setting<>(true);
 
     /**
+     * Prefer paths and steering that preserve walking and sprinting momentum.
+     * <p>
+     * Look ahead along clear, supported straight runs instead of steering at each block center.
+     * Diagonals that require edging around an obstacle receive an extra cost; open diagonals keep
+     * their normal cost. Turns, terrain changes, and block interactions retain precise steering.
+     * Part of {@link #experimentalMovement}.
+     */
+    public final Setting<Boolean> preferFasterPathing = new Setting<>(false);
+
+    /**
+     * Take direct ground routes across bends in flat walking paths, instead of visiting every block center.
+     * <p>
+     * Only uses loaded terrain with clear body space and full solid support across the player's width.
+     * Jumps, climbs, block interactions, and hazardous or slippery terrain retain their normal movements,
+     * and an eligible sprint jump runway wins over a shortcut.
+     * Rechecks the route each tick and replans if it becomes obstructed.
+     * Part of {@link #experimentalMovement}.
+     */
+    public final Setting<Boolean> allowGroundShortcuts = new Setting<>(false);
+
+    /**
+     * Move like a speedrunner instead of a robot: take the line a fast player would, accept some risk, use the flashy movement.
+     * <p>
+     * While this is on, these settings behave as if they were on, whatever their own value (the settings themselves
+     * are left alone, so turning this off gives you your old choices back):
+     * {@link #allowParkour}, {@link #allowParkourAscend}, {@link #allowNeos}, {@link #allowClimbJumps},
+     * {@link #allowDiagonalAscend}, {@link #allowDiagonalDescend}, {@link #sprintJumping}, {@link #headHitters},
+     * {@link #allowGroundShortcuts} and {@link #preferFasterPathing}.
+     * <p>
+     * It also scales the cost of parkour, neo and climb jumps by {@link #experimentalJumpBias}, caps the cost of
+     * placing a block at {@link #experimentalBlockPlacementPenalty} (so a quick pillar or short bridge can beat a
+     * long walk around), and allows falls that hurt, see {@link #experimentalMinHealth} and {@link #fallDamageCost}.
+     */
+    public final Setting<Boolean> experimentalMovement = new Setting<>(false);
+
+    /**
+     * Multiplier on the cost of parkour, neo and climb jumps while {@link #experimentalMovement} is on.
+     * Below 1 makes the jumpy route look a bit cheaper than the equivalent walk, which is the whole fun of it.
+     */
+    public final Setting<Double> experimentalJumpBias = new Setting<>(0.9D);
+
+    /**
+     * While {@link #experimentalMovement} is on, the block placement penalty is the lower of
+     * {@link #blockPlacementPenalty} and this. Placing a block really takes about a tick, so this is still pessimistic,
+     * just not so much that a two block bridge loses to a twenty block walk.
+     */
+    public final Setting<Double> experimentalBlockPlacementPenalty = new Setting<>(5D);
+
+    /**
+     * While {@link #experimentalMovement} is on, Baritone may take a fall that hurts when there is no water bucket or
+     * clutch to make it free, but never one that would leave you with less health (plus absorption) than this.
+     * Measured in half hearts, so 12 is six hearts. Damage is estimated as vanilla fall damage before armor
+     * and feather falling, which is conservative.
+     */
+    public final Setting<Double> experimentalMinHealth = new Setting<>(12D);
+
+    /**
+     * Cost, in ticks, of every half heart a damaging fall takes off you, while {@link #experimentalMovement} is on.
+     * Higher makes Baritone walk around a drop more often, lower makes it jump off things.
+     */
+    public final Setting<Double> fallDamageCost = new Setting<>(20D);
+
+    /**
      * When breaking blocks for a movement, wait until all falling blocks have settled before continuing
      */
     public final Setting<Boolean> pauseMiningForFallingBlocks = new Setting<>(true);

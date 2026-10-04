@@ -32,9 +32,13 @@ import baritone.pathing.movement.MovementHelper;
 import baritone.pathing.movement.MovementState;
 import baritone.pathing.movement.movements.*;
 import baritone.utils.BlockStateInterface;
+import baritone.utils.ExperimentalMovement;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Vec3i;
 import net.minecraft.util.Tuple;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 import java.util.*;
 
@@ -49,6 +53,9 @@ public class PathExecutor implements IPathExecutor, Helper {
 
     private static final double MAX_MAX_DIST_FROM_PATH = 3;
     private static final double MAX_DIST_FROM_PATH = 2;
+    // anybody holding one of these needs the player exactly where the movement put them, so smoothing and shortcuts stay out
+    private static final Input[] PRECISE_STEERING_INPUTS = {Input.CLICK_LEFT, Input.CLICK_RIGHT,
+            Input.SNEAK, Input.JUMP, Input.MOVE_BACK, Input.MOVE_LEFT, Input.MOVE_RIGHT};
 
     /**
      * Default value is equal to 10 seconds. It's find to decrease it, but it must be at least 5.5s (110 ticks).
@@ -76,6 +83,8 @@ public class PathExecutor implements IPathExecutor, Helper {
 
     private boolean sprintNextTick;
     private SprintJump flight;
+    private GroundShortcut groundShortcut;
+    private int ticksOnShortcut;
 
     public PathExecutor(PathingBehavior behavior, IPath path) {
         this.behavior = behavior;
@@ -99,6 +108,9 @@ public class PathExecutor implements IPathExecutor, Helper {
         }
         if (pathPosition >= path.length()) {
             return true; // stop bugging me, I'm done
+        }
+        if (groundShortcut != null) {
+            return tickGroundShortcut();
         }
         Movement movement = (Movement) path.movements().get(pathPosition);
         BetterBlockPos whereAmI = ctx.playerFeet();
@@ -238,6 +250,12 @@ public class PathExecutor implements IPathExecutor, Helper {
             onTick();
             return true;
         } else {
+            if (movementStatus == RUNNING) {
+                if (startGroundShortcut(movement, bsi)) {
+                    return tickGroundShortcut();
+                }
+                smoothSteering(movement, bsi);
+            }
             sprintNextTick = shouldSprintNextTick();
             if (!sprintNextTick) {
                 ctx.player().setSprinting(false); // letting go of control doesn't make you stop sprinting actually
@@ -254,6 +272,147 @@ public class PathExecutor implements IPathExecutor, Helper {
             }
         }
         return canCancel && flight == null; // movement is in progress, but if it reports cancellable, PathingBehavior is good to cut onto the next path
+    }
+
+    private void smoothSteering(Movement movement, BlockStateInterface bsi) {
+        if (!ExperimentalMovement.preferFasterPathing() || !canSteerOnGround(movement)) {
+            return;
+        }
+        Vec3 target = PathSmoothing.lookAhead(path.positions(), pathPosition, ctx.player().position(), i -> {
+            IMovement next = path.movements().get(i);
+            return next instanceof MovementTraverse || next instanceof MovementDiagonal;
+        }, pos -> clearSmoothingColumn(bsi, pos));
+        if (target != null) {
+            behavior.baritone.getLookBehavior().updateTarget(
+                    RotationUtils.calcRotationFromVec3d(ctx.playerHead(), target, ctx.playerRotations())
+                            .withPitch(ctx.playerRotations().getPitch()), false);
+        }
+    }
+
+    // smoothing and shortcuts only ever touch plain walking. parkour, neos and climbs need the exact spot their sim was
+    // run from, and anything holding the crosshair or a precise key needs it too
+    private boolean canSteerOnGround(Movement movement) {
+        if (!(movement instanceof MovementTraverse || movement instanceof MovementDiagonal) || flight != null
+                || !ctx.player().onGround() || ctx.player().isInWater() || ctx.player().onClimbable()
+                || ctx.player().horizontalCollision || movement.isTargetingBlock()
+                || !behavior.baritone.getInputOverrideHandler().isInputForcedDown(Input.MOVE_FORWARD)) {
+            return false;
+        }
+        for (Input input : PRECISE_STEERING_INPUTS) {
+            if (behavior.baritone.getInputOverrideHandler().isInputForcedDown(input)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private boolean startGroundShortcut(Movement movement, BlockStateInterface bsi) {
+        if (!ExperimentalMovement.allowGroundShortcuts() || !canSteerOnGround(movement)
+                || !movement.safeToCancel() || ctx.player().getBbWidth() > 0.6F
+                || ctx.player().getBbHeight() > 1.8F) {
+            return false;
+        }
+        Map<BlockPos, Boolean> clearance = new HashMap<>();
+        groundShortcut = GroundShortcut.find(path.positions(), pathPosition, ctx.player().position(), i -> {
+            Movement next = (Movement) path.movements().get(i);
+            if (!(next instanceof MovementTraverse || next instanceof MovementDiagonal)) {
+                return false;
+            }
+            next.resetBlockCache();
+            return next.toBreak(bsi).isEmpty() && next.toPlace(bsi).isEmpty() && next.toWalkInto(bsi).isEmpty()
+                    && clearSmoothingColumn(bsi, next.getSrc()) && clearSmoothingColumn(bsi, next.getDest());
+        }, pos -> clearance.computeIfAbsent(pos, p -> clearSmoothingColumn(bsi, p)));
+        if (groundShortcut != null && yieldsToSprintJump()) {
+            groundShortcut = null; // asked last on purpose, planning a jump is the expensive question
+        }
+        ticksOnShortcut = 0;
+        return groundShortcut != null;
+    }
+
+    // if a sprint jump would take off from right here, it is the faster way along this run and it gets the tick. same
+    // rule the 1.19.4 version had, it just asks SprintJump now
+    private boolean yieldsToSprintJump() {
+        return ExperimentalMovement.sprintJumping()
+                && !behavior.baritone.getInputOverrideHandler().isInputForcedDown(Input.SNEAK)
+                && SprintJump.plan(ctx, path, pathPosition) != null;
+    }
+
+    private boolean tickGroundShortcut() {
+        Vec3 player = ctx.player().position();
+        Vec3 velocity = ctx.player().getDeltaMovement();
+        BlockStateInterface bsi = behavior.baritone.bsi;
+        Map<BlockPos, Boolean> clearance = new HashMap<>();
+        if (!ExperimentalMovement.allowGroundShortcuts() || !ctx.player().onGround()
+                || ctx.player().isInWater() || ctx.player().onClimbable() || ctx.player().horizontalCollision
+                || !groundShortcut.canContinue(player, velocity,
+                pos -> clearance.computeIfAbsent(pos, p -> clearSmoothingColumn(bsi, p)))) {
+            // we're between the original waypoints. replan from here instead of backtracking toward
+            // a skipped node or handing a diagonal movement a position it cannot execute from.
+            logDebug("Ground shortcut interrupted; recalculating from current position");
+            cancel();
+            return true;
+        }
+        if (groundShortcut.arrived(player, velocity)) {
+            pathPosition = groundShortcut.endIndex;
+            groundShortcut = null;
+            recalcBP = true;
+            onChangeInPathPosition();
+            onTick();
+            return true;
+        }
+        if (++ticksOnShortcut > groundShortcut.start.distanceTo(groundShortcut.target)
+                * ActionCosts.WALK_ONE_BLOCK_COST + Baritone.settings().movementTimeoutTicks.value) {
+            logDebug("Ground shortcut took too long");
+            cancel();
+            return true;
+        }
+        clearKeys();
+        Rotation desired = RotationUtils.calcRotationFromVec3d(ctx.playerHead(), groundShortcut.target,
+                ctx.playerRotations()).withPitch(ctx.playerRotations().getPitch());
+        Rotation actual = behavior.baritone.getLookBehavior().getAimProcessor().peekRotation(desired);
+        double yawError = Math.abs(Rotation.normalizeYaw(actual.getYaw() - desired.getYaw()));
+        boolean forward = yawError < 10 && groundShortcut.shouldMoveForward(player, velocity);
+        if (forward) {
+            double yaw = Math.toRadians(actual.getYaw());
+            Vec3 projected = player.add(velocity.x * 2.5 - Math.sin(yaw) * 0.5, 0,
+                    velocity.z * 2.5 + Math.cos(yaw) * 0.5);
+            forward = GroundShortcut.clearSegment(player, projected,
+                    pos -> clearance.computeIfAbsent(pos, p -> clearSmoothingColumn(bsi, p)));
+        }
+        behavior.baritone.getLookBehavior().updateTarget(desired, false);
+        behavior.baritone.getInputOverrideHandler().setInputForceState(Input.MOVE_FORWARD, forward);
+        sprintNextTick = forward && player.distanceTo(groundShortcut.target) > 1.5
+                && Baritone.settings().allowSprint.value && ctx.player().getFoodData().getFoodLevel() > 6;
+        if (!sprintNextTick) {
+            ctx.player().setSprinting(false);
+        }
+        return true; // all ground under our footprint was verified this tick, so pausing is safe
+    }
+
+    private boolean clearSmoothingColumn(BlockStateInterface bsi, BlockPos pos) {
+        if (Baritone.settings().pathThroughCachedOnly.value || !bsi.worldContainsLoadedChunk(pos.getX(), pos.getZ())) {
+            return false;
+        }
+        BlockPos floor = pos.below();
+        BlockState support = bsi.get0(floor);
+        Block block = support.getBlock();
+        if (!support.getFluidState().isEmpty() || !support.isCollisionShapeFullBlock(bsi.access, floor)
+                || !MovementHelper.canWalkOn(bsi, floor.getX(), floor.getY(), floor.getZ(), support)
+                || block == Blocks.MAGMA_BLOCK || block == Blocks.ICE || block == Blocks.PACKED_ICE
+                || block == Blocks.BLUE_ICE || block == Blocks.FROSTED_ICE
+                || block == Blocks.SLIME_BLOCK || block == Blocks.HONEY_BLOCK) {
+            return false;
+        }
+        for (int y = 0; y < 2; y++) {
+            BlockPos body = pos.above(y);
+            BlockState state = bsi.get0(body);
+            if (MovementHelper.avoidWalkingInto(state) || state.is(Blocks.WITHER_ROSE)
+                    || state.is(Blocks.POWDER_SNOW) || MovementHelper.isClimbable(state.getBlock())
+                    || !state.getCollisionShape(bsi.access, body).isEmpty()) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private Tuple<Double, BlockPos> closestPathPos(IPath path) {
@@ -359,7 +518,7 @@ public class PathExecutor implements IPathExecutor, Helper {
         }
         IMovement current = path.movements().get(pathPosition);
 
-        if (Baritone.settings().sprintJumping.value && !behavior.baritone.getInputOverrideHandler().isInputForcedDown(Input.SNEAK)
+        if (ExperimentalMovement.sprintJumping() && !behavior.baritone.getInputOverrideHandler().isInputForcedDown(Input.SNEAK)
                 && (flight = SprintJump.plan(ctx, path, pathPosition)) != null) {
             steer(true);
             return true;
@@ -384,7 +543,7 @@ public class PathExecutor implements IPathExecutor, Helper {
 
         // if the movement requested sprinting, then we're done
         if (requested) {
-            if (Baritone.settings().headHitters.value) {
+            if (ExperimentalMovement.headHitters()) {
                 headHitJump(current);
             }
             return true;
@@ -506,7 +665,7 @@ public class PathExecutor implements IPathExecutor, Helper {
      */
     private boolean fly() {
         if (!ctx.player().onGround() && !ctx.player().isInWater() && !ctx.player().isInLava() && !ctx.player().onClimbable()
-                && flight.ticks < SprintJump.MAX_TICKS && Baritone.settings().sprintJumping.value) {
+                && flight.ticks < SprintJump.MAX_TICKS && ExperimentalMovement.sprintJumping()) {
             steer(false);
             sprintNextTick = true;
             return true;
@@ -722,6 +881,8 @@ public class PathExecutor implements IPathExecutor, Helper {
     }
 
     private void cancel() {
+        groundShortcut = null;
+        sprintNextTick = false;
         clearKeys();
         behavior.baritone.getInputOverrideHandler().getBlockBreakHelper().stopBreakingBlock();
         pathPosition = path.length() + 3;
@@ -734,6 +895,9 @@ public class PathExecutor implements IPathExecutor, Helper {
     }
 
     public PathExecutor trySplice(PathExecutor next) {
+        if (groundShortcut != null) {
+            return this; // finish the short ground segment before replacing its executor and indices
+        }
         if (next == null) {
             return cutIfTooLong();
         }

@@ -75,6 +75,7 @@ public class MovementFall extends Movement {
         if (result.y != dest.y) {
             return COST_INF; // doesn't apply to us, this position is a descend not a fall
         }
+        hurt |= result.damage > 0;
         return result.cost;
     }
 
@@ -89,8 +90,12 @@ public class MovementFall extends Movement {
     }
 
     private enum FallMode {
-        NONE, BUCKET, CLUTCH
+        NONE, BUCKET, CLUTCH, HURT
     }
+
+    // a deliberate fall that hurts (experimentalMovement). nobody is saving us, we just fall. sticky, because the plan
+    // changing under us at the edge (health went down) is the one thing we check for, see updateState
+    private boolean hurt;
 
     // the clutch ran out of things to try (nothing in reach in time, nothing to hang on), so it's the bucket or nothing
     private boolean clutchGaveUp;
@@ -99,6 +104,7 @@ public class MovementFall extends Movement {
     public void reset() {
         super.reset();
         clutchGaveUp = false;
+        hurt = false;
     }
 
     private FallMode fallMode() {
@@ -107,6 +113,10 @@ public class MovementFall extends Movement {
         if (MovementDescend.dynamicFallCost(context, src.x, src.y, src.z, dest.x, dest.z, 0, context.get(dest.x, src.y - 2, dest.z), result)) {
             return FallMode.BUCKET;
         }
+        if (result.damage > 0) {
+            hurt = true;
+            return FallMode.HURT; // no bucket, no clutch, nothing to place, so nothing to get wrong either
+        }
         if (!result.clutch) {
             return FallMode.NONE;
         }
@@ -114,6 +124,14 @@ public class MovementFall extends Movement {
             return context.hasWaterBucket ? FallMode.BUCKET : FallMode.NONE;
         }
         return FallMode.CLUTCH;
+    }
+
+    // the same question the planner asked, with the health we have right now
+    private boolean stillPossible() {
+        CalculationContext context = new CalculationContext(baritone);
+        MutableMoveResult result = new MutableMoveResult();
+        MovementDescend.cost(context, src.x, src.y, src.z, dest.x, dest.z, result);
+        return result.y == dest.y && result.cost < COST_INF;
     }
 
     @Override
@@ -134,6 +152,11 @@ public class MovementFall extends Movement {
         }
 
         boolean isWater = destState.getFluidState().getType() instanceof WaterFluid;
+        if (hurt && !isWater && playerFeet.equals(src) && ctx.player().onGround() && !stillPossible()) {
+            // we got hurt (or something else dropped our health) since the plan was made, and this fall would now cost us
+            // more than we agreed to. nothing has happened yet, so the executor can just replan
+            return state.setStatus(MovementStatus.UNREACHABLE);
+        }
         FallMode mode = isWater ? FallMode.NONE : fallMode();
         if (mode == FallMode.BUCKET && !playerFeet.equals(dest)) {
             if (!Inventory.isHotbarSlot(ctx.player().getInventory().findSlotMatchingItem(STACK_BUCKET_WATER)) || ctx.world().dimension() == Level.NETHER) {

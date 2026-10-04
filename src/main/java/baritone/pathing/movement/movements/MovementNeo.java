@@ -118,9 +118,9 @@ public class MovementNeo extends Movement implements CurvedMovement {
         double back = Math.sqrt(st.u() * st.u() + st.v() * st.v());
         double ticks = back * WALK_ONE_BLOCK_COST + Math.min(back, SNEAK_STRETCH) * SNEAK_EXTRA + SETTLE_TICKS + st.runup() + FLIGHT_TICKS;
         if (st.hop()) {
-            return ticks + FLIGHT_TICKS + 2 * context.jumpPenalty;
+            return context.biasJump(ticks + FLIGHT_TICKS + 2 * context.jumpPenalty);
         }
-        return ticks + context.jumpPenalty;
+        return context.biasJump(ticks + context.jumpPenalty);
     }
 
     private static Shape best(CalculationContext context, int x, int y, int z, Direction dir) {
