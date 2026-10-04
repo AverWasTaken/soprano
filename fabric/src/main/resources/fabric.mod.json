@@ -6,7 +6,7 @@
   "name": "Soprano",
   "description": "A Baritone fork with extra movement tech. Drop-in replacement, same API.",
   "authors": [
-    "leijurv", "Brady"
+    "leijurv", "Brady", "AverWasTaken"
   ],
   "contact": {
     "homepage": "https://github.com/AverWasTaken/soprano",

@@ -25,7 +25,7 @@ displayURL="https://github.com/AverWasTaken/soprano" #optional
 # A text field displayed in the mod UI
 credits="Hat Gamers" #optional
 # A text field displayed in the mod UI
-authors="leijurv, Brady" #optional
+authors="leijurv, Brady, AverWasTaken" #optional
 # The description text for the mod (multi line!) (#mandatory)
 description='''
 A Baritone fork with extra movement tech. Drop-in replacement, same API.
