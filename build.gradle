@@ -30,7 +30,11 @@ allprojects {
     } catch (Exception e) {
         println "Version detection failed: " + e
     }
-    if (!vers.startsWith("v")) {
+    if (rootProject.hasProperty("release_version")) {
+        // the release workflow passes the tag in, so jar names can't depend on which other tags sit on the commit
+        version = rootProject.release_version
+        println "Release version " + version
+    } else if (!vers.startsWith("v")) {
         println "using version number: " + rootProject.mod_version
         version = rootProject.mod_version
     } else {
@@ -75,17 +79,11 @@ allprojects {
             }
         }
         mavenCentral()
-        maven {
-            name = 'babbaj-repo'
-            url = 'https://babbaj.github.io/maven/'
-        }
     }
 
     dependencies {
         compileOnly "org.spongepowered:mixin:${project.mixin_version}"
         compileOnly "org.ow2.asm:asm:${project.asm_version}"
-
-        implementation "dev.babbaj:nether-pathfinder:${project.nether_pathfinder_version}"
 
         implementation 'com.google.code.findbugs:jsr305:3.0.2'
     }

@@ -28,9 +28,12 @@ import baritone.pathing.movement.Movement;
 import baritone.pathing.movement.MovementHelper;
 import baritone.pathing.movement.MovementState;
 import baritone.utils.BlockStateInterface;
+import baritone.utils.ExperimentalMovement;
 import baritone.utils.pathing.MutableMoveResult;
 import com.google.common.collect.ImmutableSet;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.tags.BlockTags;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.FallingBlock;
@@ -148,7 +151,7 @@ public class MovementDescend extends Movement {
         int effectiveStartHeight = y;
         for (int fallHeight = 3; true; fallHeight++) {
             int newY = y - fallHeight;
-            if (newY < context.world.getMinY()) {
+            if (newY < context.minY) {
                 // when pathing in the end, where you could plausibly fall into the void
                 // this check prevents it from getting the block at y=(below whatever the minimum height is) and crashing
                 return false;
@@ -186,8 +189,9 @@ public class MovementDescend extends Movement {
                 res.cost = tentativeCost;
                 return false;
             }
-            if (unprotectedFallHeight <= 11 && MovementHelper.isClimbable(ontoBlock.getBlock())) {
-                // if fall height is greater than or equal to 11, we don't actually grab on to vines or ladders. the more you know
+            if (MovementHelper.isClimbable(ontoBlock.getBlock()) && LadderClutch.grabs(effectiveStartHeight, newY)) {
+                // we only grab on to a vine or ladder if one of the ticks of the fall starts inside its cell, at speed we skip right
+                // over it. used to be a flat "under 11 blocks" which is about where that starts happening. the more you know
                 // this effectively "resets" our falling speed
                 costSoFar += FALL_N_BLOCKS_COST[unprotectedFallHeight - 1];// we fall until the top of this block (not including this block)
                 costSoFar += LADDER_DOWN_ONE_COST;
@@ -211,16 +215,86 @@ public class MovementDescend extends Movement {
                 res.cost = tentativeCost;
                 return false;
             }
-            if (reachedMinimum && context.hasWaterBucket && unprotectedFallHeight <= context.maxFallHeightBucket + 1) {
+            boolean bucketOk = reachedMinimum && context.hasWaterBucket && unprotectedFallHeight <= context.maxFallHeightBucket + 1;
+            double clutch = reachedMinimum ? clutchCost(context, destX, destZ, effectiveStartHeight, newY + 1) : COST_INF;
+            if (clutch < COST_INF) {
+                clutch += WALK_OFF_BLOCK_COST + frontBreak + costSoFar;
+            }
+            if (clutch < COST_INF && !(bucketOk && tentativeCost + context.placeBucketCost() <= clutch)) {
+                // the bucket wins ties, it doesn't care about timing
+                res.x = destX;
+                res.y = newY + 1;
+                res.z = destZ;
+                res.cost = clutch;
+                res.clutch = true;
+                return false;
+            }
+            if (bucketOk) {
                 res.x = destX;
                 res.y = newY + 1;// this is the block we're falling onto, so dest is +1
                 res.z = destZ;
                 res.cost = tentativeCost + context.placeBucketCost();
                 return true;
-            } else {
-                return false;
+            }
+            hurtingFall(context, destX, destZ, newY, unprotectedFallHeight - 1, tentativeCost, ontoBlock, res);
+            return false;
+        }
+    }
+
+    // the last resort under experimentalMovement: no bucket, no clutch, so just eat it if we can afford the hearts.
+    // the water bucket and the clutch both got their say before we got here, a fall that hurts never beats one that doesn't
+    private static void hurtingFall(CalculationContext context, int destX, int destZ, int newY, int blocks, double tentativeCost, BlockState onto, MutableMoveResult res) {
+        if (!context.experimental || blocks > ExperimentalMovement.MAX_HURT_FALL) {
+            return;
+        }
+        int damage = ExperimentalMovement.fallDamage(blocks);
+        if (!ExperimentalMovement.canAffordFall(context.health, damage, context.experimentalMinHealth)) {
+            return;
+        }
+        // magma and friends. canWalkOn lets some of them through (we can sneak on magma, that is not the same as landing on it)
+        if (MovementHelper.avoidWalkingInto(onto) || onto.is(Blocks.MAGMA_BLOCK) || MovementHelper.isLava(context.get(destX, newY + 1, destZ))) {
+            return;
+        }
+        res.x = destX;
+        res.y = newY + 1;
+        res.z = destZ;
+        res.cost = tentativeCost + damage * context.fallDamageCost;
+        res.damage = damage;
+    }
+
+    // a ladder or vine in one of the last few cells before the floor, placed against whatever wall is beside the column.
+    // all the timing is in LadderClutch, we just say which cells have a wall. COST_INF if it can't be done
+    private static double clutchCost(CalculationContext context, int destX, int destZ, int startY, int landY) {
+        if (!context.hasClutchItem || context.placeBucketCost() >= COST_INF || !context.bsi.worldBorder.canPlaceAt(destX, destZ)) {
+            return COST_INF;
+        }
+        int mask = 0;
+        for (int k = 0; k < LadderClutch.CELLS && landY + k < startY; k++) {
+            if (!context.get(destX, landY + k, destZ).isAir()) {
+                continue;
+            }
+            for (Direction side : Direction.Plane.HORIZONTAL) {
+                int x = destX + side.getStepX();
+                int z = destZ + side.getStepZ();
+                if (clutchWall(context.get(x, landY + k, z)) && MovementHelper.canPlaceAgainst(context, x, landY + k, z)) {
+                    mask |= 1 << k;
+                    break;
+                }
             }
         }
+        LadderClutch.Plan plan = mask == 0 ? null : LadderClutch.plan(startY - landY, mask, context.blockReach);
+        if (plan == null) {
+            return COST_INF;
+        }
+        // a ladder comes back off the wall after we land (MovementFall.pickUpLadder), mining it and waiting on the drop is about a second
+        return plan.ticks() + context.placeBucketCost() + (context.clutchPicksUp ? LADDER_PICKUP_COST : 0);
+    }
+
+    static final double LADDER_PICKUP_COST = 20;
+
+    // canPlaceAgainst lets leaves through, and a ladder can't hang off those (no sturdy face)
+    static boolean clutchWall(BlockState wall) {
+        return !wall.is(BlockTags.LEAVES);
     }
 
     @Override
@@ -239,6 +313,11 @@ public class MovementDescend extends Movement {
                 // System.out.println(player().position().y + " " + playerFeet.getY() + " " + (player().position().y - playerFeet.getY()));
             }*/
         }
+
+        if (!MovementHelper.openDoors(ctx, state, src, dest.above())) {
+            return state;
+        }
+
         if (safeMode()) {
             double destX = (src.getX() + 0.5) * 0.17 + (dest.getX() + 0.5) * 0.83;
             double destZ = (src.getZ() + 0.5) * 0.17 + (dest.getZ() + 0.5) * 0.83;

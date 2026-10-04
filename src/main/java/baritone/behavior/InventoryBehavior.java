@@ -31,6 +31,7 @@ import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.block.Block;
@@ -66,12 +67,14 @@ public final class InventoryBehavior extends Behavior implements Helper {
             return;
         }
         ticksSinceLastInventoryMove++;
-        if (firstValidThrowaway() >= 9) { // aka there are none on the hotbar, but there are some in main inventory
-            requestSwapWithHotBar(firstValidThrowaway(), 8);
-        }
-        int pick = bestToolAgainst(Blocks.STONE);
-        if (pick >= 9) {
-            requestSwapWithHotBar(pick, 0);
+        if (baritone.getPathingBehavior().isPathing()) {
+            if (firstValidThrowaway() >= 9) { // aka there are none on the hotbar, but there are some in main inventory
+                requestSwapWithHotBar(firstValidThrowaway(), 8);
+            }
+            int pick = bestToolAgainst(Blocks.STONE);
+            if (pick >= 9) {
+                requestSwapWithHotBar(pick, 0);
+            }
         }
         if (lastTickRequestedMove != null) {
             logDebug("Remembering to move " + lastTickRequestedMove[0] + " " + lastTickRequestedMove[1] + " from a previous tick");
@@ -166,6 +169,18 @@ public final class InventoryBehavior extends Behavior implements Helper {
             }
         }
         return false;
+    }
+
+    // vine first, it has no collision box so we can't land on top of it or get the placement refused for standing in it
+    // hotbar only, same as the water bucket: there's no time to shuffle the inventory in the middle of a fall
+    public Item pickClutchItem(boolean select) {
+        if (throwaway(select, stack -> stack.is(Items.VINE), false)) {
+            return Items.VINE;
+        }
+        if (throwaway(select, stack -> stack.is(Items.LADDER), false)) {
+            return Items.LADDER;
+        }
+        return null;
     }
 
     public boolean selectThrowawayForLocation(boolean select, int x, int y, int z) {

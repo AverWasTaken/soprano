@@ -83,7 +83,7 @@ public class MovementAscend extends Movement {
                 if (againstX == x && againstZ == z) { // we might be able to backplace now, but it doesn't matter because it will have been broken by the time we'd need to use it
                     continue;
                 }
-                if (MovementHelper.canPlaceAgainst(context.bsi, againstX, againstY, againstZ)) {
+                if (MovementHelper.canPlaceAgainst(context, againstX, againstY, againstZ)) {
                     foundPlaceOption = true;
                     break;
                 }
@@ -171,6 +171,10 @@ public class MovementAscend extends Movement {
 
         if (ctx.playerFeet().equals(dest) || ctx.playerFeet().equals(dest.offset(getDirection().below()))) {
             return state.setStatus(MovementStatus.SUCCESS);
+        }
+
+        if (!MovementHelper.openDoors(ctx, state, src.above(), dest)) {
+            return state;
         }
 
         BlockState jumpingOnto = BlockStateInterface.get(ctx, positionToPlace);

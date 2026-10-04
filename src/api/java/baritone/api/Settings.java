@@ -154,6 +154,25 @@ public final class Settings {
     public final Setting<Boolean> allowWaterBucketFall = new Setting<>(true);
 
     /**
+     * Allow Baritone to survive a long fall by placing a ladder or vine on a wall next to the fall at the last moment, like
+     * a water bucket clutch but with a block you can carry in the nether.
+     * <p>
+     * Needs a ladder or vine on the hotbar and a wall beside the last few blocks of the fall. The water bucket is still
+     * preferred when you have one. Reliability: also questionable, it's all about the timing.
+     */
+    public final Setting<Boolean> allowLadderClutch = new Setting<>(false);
+
+    /**
+     * After a ladder clutch, break the ladder we put on the wall and pick it back up, so one ladder can save you from
+     * as many long falls as you like.
+     * <p>
+     * Only ladders we placed ourselves are touched, never one that was already there. Vines need shears to drop anything,
+     * so those stay on the wall. If the ladder can't be reached or it takes too long, we just leave it and carry on.
+     * Costs a second or so per clutch, which the pathing knows about.
+     */
+    public final Setting<Boolean> pickupLadders = new Setting<>(true);
+
+    /**
      * Allow Baritone to assume it can walk on still water just like any other block.
      * This functionality is assumed to be provided by a separate library that might have imported Baritone.
      * <p>
@@ -200,6 +219,38 @@ public final class Settings {
      * Defaults to true, but only actually takes effect if allowParkour is also true
      */
     public final Setting<Boolean> allowParkourAscend = new Setting<>(true);
+
+    /**
+     * Jump around the end of a wall instead of walking the long way round, like a neo on a parkour map
+     * <p>
+     * Only actually takes effect if {@link #allowParkour} is also true. Needs sprinting, and a block behind the jump to run
+     * up on. Handles walls one or two blocks thick, landing two to four blocks out.
+     */
+    public final Setting<Boolean> allowNeos = new Setting<>(false);
+
+    /**
+     * Jump onto ladders and vines across a gap, and off of them again, instead of walking the long way round
+     * <p>
+     * Only actually takes effect if {@link #allowParkour} is also true. Grabbing is a sprint jump (or a plain jump for the
+     * short ones) from flat floor, one to three blocks of gap, catching the ladder or vine mid air. A ladder has to be
+     * hanging on the far wall, vines can be caught from any side. Leaping goes the other way, climbing out sideways off a
+     * ladder or vine to land one block of gap away on the same level or a bit lower (or on another ladder or vine).
+     * You can't start sprinting while you're hanging on something, so leaps are short.
+     */
+    public final Setting<Boolean> allowClimbJumps = new Setting<>(false);
+
+    /**
+     * Run up on the blocks behind a jump (and bunny hop on them if there's room) to make jumps a standing start can't:
+     * a gap of four blocks on the flat, or one block up across a gap of three (both need a hop, so three or more blocks of
+     * flat floor behind the takeoff), jumps that land one to three blocks lower and reach out to five or six blocks (parkour
+     * never goes down, and these don't need a long run up), and a few pairs of jumps that land on a block in the middle and
+     * jump again on the very tick they touch down.
+     * <p>
+     * Only actually takes effect if {@link #allowParkour} is also true. Needs sprinting and a straight line along one
+     * direction. Drops are limited by {@link #maxFallHeightNoWater}. The first time you play with this on, it takes a few seconds in the background to
+     * work out which jumps are possible, and the result is saved to momentum-table.txt in the baritone folder.
+     */
+    public final Setting<Boolean> allowMomentumJumps = new Setting<>(false);
 
     /**
      * Allow descending diagonally
@@ -286,7 +337,7 @@ public final class Settings {
      * <p>
      * If a schematic asks for a block on this mapping, all blocks on the mapped list will be accepted at that location as well
      * <p>
-     * Syntax same as <a href="https://baritone.leijurv.com/baritone/api/Settings.html#buildSubstitutes">buildSubstitutes</a>
+     * Syntax same as {@link #buildSubstitutes}
      */
     public final Setting<Map<Block, List<Block>>> buildValidSubstitutes = new Setting<>(new HashMap<>());
 
@@ -379,11 +430,99 @@ public final class Settings {
     public final Setting<Boolean> sprintAscends = new Setting<>(true);
 
     /**
+     * Sprint jump in 1x2 corridors and whenever walking under a low ceiling, bonking our head on it.
+     * <p>
+     * The sprint jump speed boost applies before we hit the ceiling, making this faster than just sprinting.
+     */
+    public final Setting<Boolean> headHitters = new Setting<>(false);
+
+    /**
+     * Also sprint jump under low ceilings on flat diagonal movements when {@link #headHitters} is enabled.
+     * Enabled by default. Disable this to limit head hitters to straight movements.
+     */
+    public final Setting<Boolean> headHittersDiagonal = new Setting<>(true);
+
+    /**
+     * Sprint jump along straight stretches of path, up single block steps and down small hills. Every jump is simulated
+     * first and only happens if it lands back on the path without fall damage.
+     */
+    public final Setting<Boolean> sprintJumping = new Setting<>(false);
+
+    /**
+     * Also sprint jump along flat diagonal stretches of path when {@link #sprintJumping} is enabled.
+     */
+    public final Setting<Boolean> sprintJumpingDiagonals = new Setting<>(true);
+
+    /**
      * If we overshoot a traverse and end up one block beyond the destination, mark it as successful anyway.
      * <p>
      * This helps with speed exceeding 20m/s
      */
     public final Setting<Boolean> overshootTraverse = new Setting<>(true);
+
+    /**
+     * Prefer paths and steering that preserve walking and sprinting momentum.
+     * <p>
+     * Look ahead along clear, supported straight runs instead of steering at each block center.
+     * Diagonals that require edging around an obstacle receive an extra cost; open diagonals keep
+     * their normal cost. Turns, terrain changes, and block interactions retain precise steering.
+     * Part of {@link #experimentalMovement}.
+     */
+    public final Setting<Boolean> preferFasterPathing = new Setting<>(false);
+
+    /**
+     * Take direct ground routes across bends in flat walking paths, instead of visiting every block center.
+     * <p>
+     * Only uses loaded terrain with clear body space and full solid support across the player's width.
+     * Jumps, climbs, block interactions, and hazardous or slippery terrain retain their normal movements,
+     * and an eligible sprint jump runway wins over a shortcut.
+     * Rechecks the route each tick and replans if it becomes obstructed.
+     * Part of {@link #experimentalMovement}.
+     */
+    public final Setting<Boolean> allowGroundShortcuts = new Setting<>(false);
+
+    /**
+     * Move like a speedrunner instead of a robot: take the line a fast player would, accept some risk, use the flashy movement.
+     * <p>
+     * While this is on, these settings behave as if they were on, whatever their own value (the settings themselves
+     * are left alone, so turning this off gives you your old choices back):
+     * {@link #allowParkour}, {@link #allowParkourAscend}, {@link #allowNeos}, {@link #allowClimbJumps},
+     * {@link #allowMomentumJumps},
+     * {@link #allowDiagonalAscend}, {@link #allowDiagonalDescend}, {@link #sprintJumping}, {@link #headHitters},
+     * {@link #allowGroundShortcuts} and {@link #preferFasterPathing}.
+     * <p>
+     * It also scales the cost of parkour, neo, climb and momentum jumps by {@link #experimentalJumpBias}, caps the cost of
+     * placing a block at {@link #experimentalBlockPlacementPenalty} (so a quick pillar or short bridge can beat a
+     * long walk around), and allows falls that hurt, see {@link #experimentalMinHealth} and {@link #fallDamageCost}.
+     */
+    public final Setting<Boolean> experimentalMovement = new Setting<>(false);
+
+    /**
+     * Multiplier on the cost of parkour, neo, climb and momentum jumps while {@link #experimentalMovement} is on.
+     * Below 1 makes the jumpy route look a bit cheaper than the equivalent walk, which is the whole fun of it.
+     */
+    public final Setting<Double> experimentalJumpBias = new Setting<>(0.9D);
+
+    /**
+     * While {@link #experimentalMovement} is on, the block placement penalty is the lower of
+     * {@link #blockPlacementPenalty} and this. Placing a block really takes about a tick, so this is still pessimistic,
+     * just not so much that a two block bridge loses to a twenty block walk.
+     */
+    public final Setting<Double> experimentalBlockPlacementPenalty = new Setting<>(5D);
+
+    /**
+     * While {@link #experimentalMovement} is on, Baritone may take a fall that hurts when there is no water bucket or
+     * clutch to make it free, but never one that would leave you with less health (plus absorption) than this.
+     * Measured in half hearts, so 12 is six hearts. Damage is estimated as vanilla fall damage before armor
+     * and feather falling, which is conservative.
+     */
+    public final Setting<Double> experimentalMinHealth = new Setting<>(12D);
+
+    /**
+     * Cost, in ticks, of every half heart a damaging fall takes off you, while {@link #experimentalMovement} is on.
+     * Higher makes Baritone walk around a drop more often, lower makes it jump off things.
+     */
+    public final Setting<Double> fallDamageCost = new Setting<>(20D);
 
     /**
      * When breaking blocks for a movement, wait until all falling blocks have settled before continuing
@@ -550,6 +689,16 @@ public final class Settings {
     public final Setting<Float> pathingMapLoadFactor = new Setting<>(0.75f);
 
     /**
+     * Number of entries in each block-state and mining-cost cache used during a path search.
+     * <p>
+     * Rounded up to a power of two and clamped between 1024 and 65536.
+     * Smaller caches reduce memory usage but may require more block lookups.
+     * The size is captured when a calculation context is created.
+     * Worker threads reuse the arrays between searches, clearing their keys each time.
+     */
+    public final Setting<Integer> pathingCacheSize = new Setting<>(65536);
+
+    /**
      * How far are you allowed to fall onto solid ground (without a water bucket)?
      * 3 won't deal any damage. But if you just want to get down the mountain quickly and you have
      * Feather Falling IV, you might set it a bit higher, like 4 or 5.
@@ -700,6 +849,35 @@ public final class Settings {
     public final Setting<Boolean> renderPathAsLine = new Setting<>(false);
 
     /**
+     * Render the path with soft edges, rounded corners and a tail that fades out behind you.
+     * <p>
+     * It's still the same floating line, {@link #pathRenderLineWidthPixels} wide, with the same bit of height
+     * to it unless {@link #renderPathAsLine} is on. When this is false you get the classic gl lines back.
+     */
+    public final Setting<Boolean> renderPathRibbon = new Setting<>(true);
+
+    /**
+     * Smooth out the rendering of the path calculation, so that the best path grows and fades instead of
+     * flickering around, and the most recent nodes branch off it as a tree.
+     * <p>
+     * Only does anything when {@link #renderPathRibbon} is on.
+     */
+    public final Setting<Boolean> renderSearchSmooth = new Setting<>(false);
+
+    /**
+     * Let a faint shimmer drift down the path, in the direction of travel.
+     * <p>
+     * Only does anything when {@link #renderPathRibbon} is on.
+     */
+    public final Setting<Boolean> renderPathAnimated = new Setting<>(true);
+
+    /**
+     * Fill the goal box and the selection boxes (to break, to place, to walk into) with a faint tint,
+     * instead of only drawing their outlines
+     */
+    public final Setting<Boolean> renderBoxFill = new Setting<>(true);
+
+    /**
      * Render the goal
      */
     public final Setting<Boolean> renderGoal = new Setting<>(true);
@@ -808,6 +986,47 @@ public final class Settings {
     public final Setting<Boolean> sprintInWater = new Setting<>(true);
 
     /**
+     * Actually swim through water instead of bobbing along the bottom of it
+     * <p>
+     * Swimming works the same way it does for a player: hold sprint (ctrl) while in water to enter the swim
+     * state, then steer with yaw and pitch towards the goal. Since sprinting is what keeps the swim state
+     * alive, this requires {@link #allowSprint} and enough hunger to sprint; without it, baritone falls back
+     * to the normal walk-on-the-bottom behavior.
+     * <p>
+     * Water traversal is also costed at swim speed when this is on, unless depth strider makes walking the
+     * bottom the faster option.
+     */
+    public final Setting<Boolean> allowSwimming = new Setting<>(false);
+
+    /**
+     * Take a boat across water if there's one in the inventory
+     * <p>
+     * When the path is about to enter a long enough stretch of open water (see {@link #boatMinWaterLength}),
+     * baritone places the boat from the shore, climbs in, rows along the path, and at the far side breaks the
+     * boat and picks it back up (see {@link #boatPickup}) before carrying on on foot. Water traversal is costed
+     * at rowing speed while a boat is in the inventory, so the planner will prefer going across a lake instead
+     * of around it.
+     * <p>
+     * A boat is wider than a block, so it only counts water with open water or air on every side at water
+     * level; the planner routes a block off the banks for the same reason. Bubble columns (water over magma
+     * blocks or soul sand) sink or launch boats, so water on or next to one is never rowed through. If the
+     * boat can't be placed or gets stuck, baritone gets out and continues the path the normal way.
+     */
+    public final Setting<Boolean> allowBoats = new Setting<>(false);
+
+    /**
+     * Placing, boarding and scuttling a boat costs a few seconds, so don't bother for a puddle. This is the
+     * number of consecutive water blocks the path has to cross before {@link #allowBoats} uses the boat.
+     */
+    public final Setting<Integer> boatMinWaterLength = new Setting<>(8);
+
+    /**
+     * Break the boat and pick it back up when leaving the water, so it can be used again. When off, baritone
+     * just climbs out and leaves the boat behind.
+     */
+    public final Setting<Boolean> boatPickup = new Setting<>(true);
+
+    /**
      * When GetToBlockProcess or MineProcess fails to calculate a path, instead of just giving up, mark the closest instance
      * of that block as "unreachable" and go towards the next closest. GetToBlock expands this search to the whole "vein"; MineProcess does not.
      * This is because MineProcess finds individual impossible blocks (like one block in a vein that has gravel on top then lava, so it can't break)
@@ -845,7 +1064,7 @@ public final class Settings {
     public final Setting<String> prefix = new Setting<>("#");
 
     /**
-     * Use a short Baritone prefix [B] instead of [Baritone] when logging to chat
+     * Use a short prefix [S] instead of [Soprano] when logging to chat
      */
     public final Setting<Boolean> shortBaritonePrefix = new Setting<>(false);
 
@@ -994,6 +1213,12 @@ public final class Settings {
      * Farming will scan for at most this many blocks.
      */
     public final Setting<Integer> farmMaxScanSize = new Setting<>(256);
+
+    /**
+     * Keep the farm process active when crops are present but none are mature
+     * enough to harvest yet. Disabled by default to preserve legacy behavior.
+     */
+    public final Setting<Boolean> farmWaitForGrowth = new Setting<>(false);
 
     /**
      * When the cache scan gives less blocks than the maximum threshold (but still above zero), scan the main world too.
@@ -1316,47 +1541,53 @@ public final class Settings {
     /**
      * The color of the current path
      */
-    public final Setting<Color> colorCurrentPath = new Setting<>(Color.RED);
+    public final Setting<Color> colorCurrentPath = new Setting<>(new Color(0xD9182B));
 
     /**
      * The color of the next path
      */
-    public final Setting<Color> colorNextPath = new Setting<>(Color.MAGENTA);
+    public final Setting<Color> colorNextPath = new Setting<>(new Color(0xC77DFF));
+
+    /**
+     * The color of the parts of a path that will be crossed by boat (see {@link #allowBoats}). Water that
+     * will be swum or waded stays in the normal path color.
+     */
+    public final Setting<Color> colorBoatPath = new Setting<>(Color.GREEN);
 
     /**
      * The color of the blocks to break
      */
-    public final Setting<Color> colorBlocksToBreak = new Setting<>(Color.RED);
+    public final Setting<Color> colorBlocksToBreak = new Setting<>(new Color(0xE0303C));
 
     /**
      * The color of the blocks to place
      */
-    public final Setting<Color> colorBlocksToPlace = new Setting<>(Color.GREEN);
+    public final Setting<Color> colorBlocksToPlace = new Setting<>(new Color(0x5CFF9D));
 
     /**
      * The color of the blocks to walk into
      */
-    public final Setting<Color> colorBlocksToWalkInto = new Setting<>(Color.MAGENTA);
+    public final Setting<Color> colorBlocksToWalkInto = new Setting<>(new Color(0xC77DFF));
 
     /**
      * The color of the best path so far
      */
-    public final Setting<Color> colorBestPathSoFar = new Setting<>(Color.BLUE);
+    public final Setting<Color> colorBestPathSoFar = new Setting<>(new Color(0x4DA3FF));
 
     /**
      * The color of the path to the most recent considered node
      */
-    public final Setting<Color> colorMostRecentConsidered = new Setting<>(Color.CYAN);
+    public final Setting<Color> colorMostRecentConsidered = new Setting<>(new Color(0xA8D4FF));
 
     /**
      * The color of the goal box
      */
-    public final Setting<Color> colorGoalBox = new Setting<>(Color.GREEN);
+    public final Setting<Color> colorGoalBox = new Setting<>(new Color(0x5CFF9D));
 
     /**
      * The color of the goal box when it's inverted
      */
-    public final Setting<Color> colorInvertedGoalBox = new Setting<>(Color.RED);
+    public final Setting<Color> colorInvertedGoalBox = new Setting<>(new Color(0xE0303C));
 
     /**
      * The color of all selections
@@ -1547,10 +1778,6 @@ public final class Settings {
      */
     public final Setting<Boolean> elytraChatSpam = new Setting<>(false);
 
-    /**
-     * May reduce memory usage by using a custom allocator for pathfinding
-     */
-    public final Setting<Boolean> elytraCustomAllocator = new Setting<>(true);
 
     /**
      * Allow the pathfinder to attempt flight in tighter spaces, useful in caves but can be dangerous.
