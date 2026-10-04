@@ -224,7 +224,7 @@ public final class Settings {
      * Jump around the end of a wall instead of walking the long way round, like a neo on a parkour map
      * <p>
      * Only actually takes effect if {@link #allowParkour} is also true. Needs sprinting, and a block behind the jump to run
-     * up on. Handles walls one block thick, landing two or three blocks out.
+     * up on. Handles walls one or two blocks thick, landing two to four blocks out.
      */
     public final Setting<Boolean> allowNeos = new Setting<>(false);
 
@@ -241,12 +241,13 @@ public final class Settings {
 
     /**
      * Run up on the blocks behind a jump (and bunny hop on them if there's room) to make jumps a standing start can't:
-     * a gap of four blocks, one block up across a gap of three, any drop of up to three blocks (even a short one, parkour
-     * never goes down), and two jumps in a row landing on one block in the middle and jumping again the very next tick.
+     * a gap of four blocks on the flat, or one block up across a gap of three (both need a hop, so three or more blocks of
+     * flat floor behind the takeoff), jumps that land one to three blocks lower and reach out to five or six blocks (parkour
+     * never goes down, and these don't need a long run up), and a few pairs of jumps that land on a block in the middle and
+     * jump again on the very tick they touch down.
      * <p>
      * Only actually takes effect if {@link #allowParkour} is also true. Needs sprinting and a straight line along one
-     * direction, and a lot of the jumps want a few blocks of flat floor behind the takeoff to run up on. Drops are limited
-     * by {@link #maxFallHeightNoWater}. The first time you play with this on, it takes a few seconds in the background to
+     * direction. Drops are limited by {@link #maxFallHeightNoWater}. The first time you play with this on, it takes a few seconds in the background to
      * work out which jumps are possible, and the result is saved to momentum-table.txt in the baritone folder.
      */
     public final Setting<Boolean> allowMomentumJumps = new Setting<>(false);
@@ -486,17 +487,18 @@ public final class Settings {
      * While this is on, these settings behave as if they were on, whatever their own value (the settings themselves
      * are left alone, so turning this off gives you your old choices back):
      * {@link #allowParkour}, {@link #allowParkourAscend}, {@link #allowNeos}, {@link #allowClimbJumps},
+     * {@link #allowMomentumJumps},
      * {@link #allowDiagonalAscend}, {@link #allowDiagonalDescend}, {@link #sprintJumping}, {@link #headHitters},
      * {@link #allowGroundShortcuts} and {@link #preferFasterPathing}.
      * <p>
-     * It also scales the cost of parkour, neo and climb jumps by {@link #experimentalJumpBias}, caps the cost of
+     * It also scales the cost of parkour, neo, climb and momentum jumps by {@link #experimentalJumpBias}, caps the cost of
      * placing a block at {@link #experimentalBlockPlacementPenalty} (so a quick pillar or short bridge can beat a
      * long walk around), and allows falls that hurt, see {@link #experimentalMinHealth} and {@link #fallDamageCost}.
      */
     public final Setting<Boolean> experimentalMovement = new Setting<>(false);
 
     /**
-     * Multiplier on the cost of parkour, neo and climb jumps while {@link #experimentalMovement} is on.
+     * Multiplier on the cost of parkour, neo, climb and momentum jumps while {@link #experimentalMovement} is on.
      * Below 1 makes the jumpy route look a bit cheaper than the equivalent walk, which is the whole fun of it.
      */
     public final Setting<Double> experimentalJumpBias = new Setting<>(0.9D);

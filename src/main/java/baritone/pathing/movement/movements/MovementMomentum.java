@@ -24,6 +24,7 @@ import baritone.api.utils.BetterBlockPos;
 import baritone.api.utils.Rotation;
 import baritone.api.utils.input.Input;
 import baritone.pathing.movement.CalculationContext;
+import baritone.pathing.movement.CurvedMovement;
 import baritone.pathing.movement.Movement;
 import baritone.pathing.movement.MovementHelper;
 import baritone.pathing.movement.MovementState;
@@ -48,7 +49,7 @@ import java.util.Set;
  * one or two gaps in a straight line, landing on a pad in the middle and jumping again the very next tick. Straight lines
  * only, so none of the lateral stuff NeoJump has to worry about. See MomentumJump for the physics.
  */
-public class MovementMomentum extends Movement {
+public class MovementMomentum extends Movement implements CurvedMovement {
 
     private static final BetterBlockPos[] EMPTY = new BetterBlockPos[]{};
 
@@ -119,7 +120,8 @@ public class MovementMomentum extends Movement {
         double back = Math.abs(st.u());
         double ticks = back * WALK_ONE_BLOCK_COST + Math.min(back, SNEAK_STRETCH) * SNEAK_EXTRA + SETTLE_TICKS + st.ticks();
         int jumps = 1 + (st.hop() ? 1 : 0) + (pad > 0 ? 1 : 0);
-        return ticks + jumps * context.jumpPenalty;
+        // jumpBias is 1 unless experimentalMovement is on, same as neos. calculateCost reads this too so they can't drift
+        return context.biasJump(ticks + jumps * context.jumpPenalty);
     }
 
     // no floor in the cell, and nothing about it that's a problem either
@@ -491,6 +493,7 @@ public class MovementMomentum extends Movement {
     // the line the renderer draws for this movement, in block corner coordinates like path positions are (so its +0.5
     // centers it). an arc over each gap, one per flight, and a short flat bit where we land on the pad. the run up is
     // behind src, which isn't on the path, so there's nothing of it to draw
+    @Override
     public Vec3[] curve() {
         int flights = pad > 0 ? 2 : 1;
         Vec3[] points = new Vec3[flights * CURVE_POINTS];
