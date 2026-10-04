@@ -28,6 +28,7 @@ import baritone.api.utils.IPlayerContext;
 import baritone.api.utils.interfaces.IGoalRenderPos;
 import baritone.behavior.PathingBehavior;
 import baritone.pathing.movement.CurvedMovement;
+import baritone.pathing.path.BoatTrip;
 import baritone.pathing.path.PathExecutor;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.BufferBuilder;
@@ -125,13 +126,13 @@ public final class PathRenderer implements IRenderer {
         if (current != null && current.getPath() != null) {
             int renderBegin = Math.max(current.getPosition() - 3, 0);
             IPath path = current.getPath();
-            drawPath(event.getModelViewStack(), path, renderBegin, settings.colorCurrentPath.value, 0, true);
+            drawPathWithBoats(event.getModelViewStack(), current, renderBegin, settings.colorCurrentPath.value, 0, true);
             currentLength = PathRibbon.length(path.positions(), movementsOf(path), 0, path.positions().size() - 1, true);
         }
 
         if (next != null && next.getPath() != null) {
             // next starts where current ends, so it picks up the shimmer right where current drops it
-            drawPath(event.getModelViewStack(), next.getPath(), 0, settings.colorNextPath.value, currentLength, true);
+            drawPathWithBoats(event.getModelViewStack(), next, 0, settings.colorNextPath.value, currentLength, true);
         }
 
         // If there is a path calculation currently running, render the path calculation process
@@ -157,6 +158,93 @@ public final class PathRenderer implements IRenderer {
 
     public static void drawPath(PoseStack stack, List<BetterBlockPos> positions, int startIndex, Color color, boolean fadeOut, int fadeStart0, int fadeEnd0) {
         drawPath(stack, positions, startIndex, color, fadeOut, fadeStart0, fadeEnd0, 0.5D);
+    }
+
+    // the path in its own color, except the stretches that'll be rowed, which get colorBoatPath. drawn as a
+    // handful of sublists rather than one overlay so the two colors never fight over the same line.
+    // the fade indices shift with each piece so the fade still lands on the same nodes it would have
+    private static void drawPathWithBoats(PoseStack stack, PathExecutor executor, int startIndex, Color color, double arcOffset, boolean animated) {
+        IPath path = executor.getPath();
+        List<BetterBlockPos> positions = path.positions();
+        List<int[]> boatRuns = executor.boatRuns();
+        if (boatRuns.isEmpty()) {
+            drawPath(stack, path, startIndex, color, arcOffset, animated);
+            return;
+        }
+        // the pieces keep the movements too, so a neo before the water still bends round its wall
+        List<IMovement> movements = movementsOf(path);
+        int at = startIndex;
+        for (int[] run : boatRuns) {
+            int runStart = run[0];
+            int runEnd = run[1];
+            if (runEnd <= at) {
+                continue; // already rowed that one
+            }
+            if (runStart > at) {
+                drawPiece(stack, positions.subList(0, runStart + 1), movements == null ? null : movements.subList(0, runStart), at, color, 10 + startIndex - at, 20 + startIndex - at, arcOffset, animated);
+            }
+            drawLane(stack, executor.boatLane(run), settings.colorBoatPath.value);
+            at = runEnd;
+        }
+        if (at < positions.size() - 1) {
+            drawPiece(stack, positions, movements, at, color, 10 + startIndex - at, 20 + startIndex - at, arcOffset, animated);
+        }
+    }
+
+    private static void drawPiece(PoseStack stack, List<BetterBlockPos> positions, @Nullable List<IMovement> movements, int startIndex, Color color, int fadeStart, int fadeEnd, double arcOffset, boolean animated) {
+        if (settings.renderPathRibbon.value) {
+            PathRibbon.draw(stack, positions, movements, startIndex, color, settings.fadePath.value, fadeStart, fadeEnd, 0.5D, arcOffset, 1.0F, 1.0F, animated, true, true);
+        } else {
+            drawPathLines(stack, positions, movements, startIndex, color, settings.fadePath.value, fadeStart, fadeEnd, 0.5D);
+        }
+    }
+
+    // a boat run is drawn as a lane, two lines either side of a rounded centerline. no fade on these
+    private static void drawLane(PoseStack stack, List<net.minecraft.world.phys.Vec3> lane, Color color) {
+        BufferBuilder bufferBuilder = IRenderer.startLines(color, settings.pathRenderLineWidthPixels.value, settings.renderPathIgnoreDepth.value);
+        for (int side = -1; side <= 1; side += 2) {
+            net.minecraft.world.phys.Vec3 prev = null;
+            for (int i = 0; i < lane.size(); i++) {
+                // normal from the neighbours either side, not per segment, so the edge is one connected line
+                // instead of a pile of little planks that gap on the outside of a turn
+                net.minecraft.world.phys.Vec3 a = lane.get(Math.max(i - 1, 0));
+                net.minecraft.world.phys.Vec3 b = lane.get(Math.min(i + 1, lane.size() - 1));
+                double dx = b.x - a.x;
+                double dz = b.z - a.z;
+                double len = Math.sqrt(dx * dx + dz * dz);
+                if (len == 0) {
+                    continue;
+                }
+                net.minecraft.world.phys.Vec3 c = lane.get(i);
+                double x = c.x - dz / len * BoatTrip.LANE_HALF * side;
+                double z = c.z + dx / len * BoatTrip.LANE_HALF * side;
+                if (laneEdgeFolds(lane, i, x, z)) {
+                    continue;
+                }
+                net.minecraft.world.phys.Vec3 cur = new net.minecraft.world.phys.Vec3(x, c.y, z);
+                if (prev != null) {
+                    // the lane points are already block centers, so only the y needs the half block lift
+                    emitPathLine(bufferBuilder, stack, prev.x - 0.5, prev.y, prev.z - 0.5, cur.x - 0.5, cur.y, cur.z - 0.5, 0.5D);
+                }
+                prev = cur;
+            }
+        }
+        IRenderer.endLines(bufferBuilder, settings.renderPathIgnoreDepth.value);
+    }
+
+    // on the inside of a turn tighter than the lane is wide the offset edge folds back over itself and
+    // draws a little bow tie. any edge point that ended up closer to the centerline than it started is
+    // part of the fold, skip it and the line just cuts the corner
+    private static boolean laneEdgeFolds(List<net.minecraft.world.phys.Vec3> lane, int i, double x, double z) {
+        double min = (BoatTrip.LANE_HALF - 0.1) * (BoatTrip.LANE_HALF - 0.1);
+        // four lane points to a block, so this looks about five blocks either way. plenty for a 1.75 offset
+        for (int j = Math.max(i - 20, 0); j < Math.min(i + 21, lane.size()); j++) {
+            net.minecraft.world.phys.Vec3 o = lane.get(j);
+            if ((o.x - x) * (o.x - x) + (o.z - z) * (o.z - z) < min) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public static void drawPath(PoseStack stack, List<BetterBlockPos> positions, int startIndex, Color color, boolean fadeOut, int fadeStart0, int fadeEnd0, double offset) {

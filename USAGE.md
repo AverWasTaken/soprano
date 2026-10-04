@@ -94,7 +94,7 @@ All off by default unless it says otherwise.
 - `allowLadderClutch` (survive long falls by placing a ladder or vine on a wall beside the landing, needs one on the hotbar)
 - `pickupLadders` (on by default, picks the clutch ladder back up after landing)
 - `experimentalMovement` (speedrunner style movement, see below) and `experimentalMinHealth` (the health it won't drop below)
-- `allowBoats` (use boats when they save time)
+- `allowBoats` (place a boat from the inventory, row it across the water, and take it with you on the other side. `boatMinWaterLength` says how much water is worth it, `colorBoatPath` paints those stretches of the path)
 - `allowSwimming` (sprint swim along the waterline, head out and body in, instead of bobbing through water)
 - `headHitters` (sprint jump head bonks in 1x2 tunnels, slightly faster than plain sprinting)
 - `headHittersDiagonal` (on by default, allows diagonal head bonks when `headHitters` is enabled)
