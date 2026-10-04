@@ -230,6 +230,18 @@ public final class Settings {
     public final Setting<Boolean> allowClimbJumps = new Setting<>(false);
 
     /**
+     * Run up on the blocks behind a jump (and bunny hop on them if there's room) to make jumps a standing start can't:
+     * a gap of four blocks, one block up across a gap of three, any drop of up to three blocks (even a short one, parkour
+     * never goes down), and two jumps in a row landing on one block in the middle and jumping again the very next tick.
+     * <p>
+     * Only actually takes effect if {@link #allowParkour} is also true. Needs sprinting and a straight line along one
+     * direction, and a lot of the jumps want a few blocks of flat floor behind the takeoff to run up on. Drops are limited
+     * by {@link #maxFallHeightNoWater}. The first time you play with this on, it takes a few seconds in the background to
+     * work out which jumps are possible, and the result is saved to momentum-table.txt in the baritone folder.
+     */
+    public final Setting<Boolean> allowMomentumJumps = new Setting<>(false);
+
+    /**
      * Allow descending diagonally
      * <p>
      * Safer than allowParkour yet still slightly unsafe, can make contact with unchecked adjacent blocks, so it's unsafe in the nether.

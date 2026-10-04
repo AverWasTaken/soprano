@@ -373,6 +373,104 @@ public enum Moves {
         }
     },
 
+    // 7 is MomentumJump.MAX_DIST, which is package private over in movements. dy is wherever the landing is, so y is dynamic too.
+    // the PAD ones land on a block in the middle, jump again, and end at the far landing: one dest per move, so they need their own
+    MOMENTUM_NORTH(0, 0, -7, true, true) {
+        @Override
+        public Movement apply0(CalculationContext context, BetterBlockPos src) {
+            return MovementMomentum.cost(context, src, Direction.NORTH, false);
+        }
+
+        @Override
+        public void apply(CalculationContext context, int x, int y, int z, MutableMoveResult result) {
+            MovementMomentum.cost(context, x, y, z, Direction.NORTH, false, result);
+        }
+    },
+
+    MOMENTUM_SOUTH(0, 0, +7, true, true) {
+        @Override
+        public Movement apply0(CalculationContext context, BetterBlockPos src) {
+            return MovementMomentum.cost(context, src, Direction.SOUTH, false);
+        }
+
+        @Override
+        public void apply(CalculationContext context, int x, int y, int z, MutableMoveResult result) {
+            MovementMomentum.cost(context, x, y, z, Direction.SOUTH, false, result);
+        }
+    },
+
+    MOMENTUM_EAST(+7, 0, 0, true, true) {
+        @Override
+        public Movement apply0(CalculationContext context, BetterBlockPos src) {
+            return MovementMomentum.cost(context, src, Direction.EAST, false);
+        }
+
+        @Override
+        public void apply(CalculationContext context, int x, int y, int z, MutableMoveResult result) {
+            MovementMomentum.cost(context, x, y, z, Direction.EAST, false, result);
+        }
+    },
+
+    MOMENTUM_WEST(-7, 0, 0, true, true) {
+        @Override
+        public Movement apply0(CalculationContext context, BetterBlockPos src) {
+            return MovementMomentum.cost(context, src, Direction.WEST, false);
+        }
+
+        @Override
+        public void apply(CalculationContext context, int x, int y, int z, MutableMoveResult result) {
+            MovementMomentum.cost(context, x, y, z, Direction.WEST, false, result);
+        }
+    },
+
+    MOMENTUM_PAD_NORTH(0, 0, -7, true, true) {
+        @Override
+        public Movement apply0(CalculationContext context, BetterBlockPos src) {
+            return MovementMomentum.cost(context, src, Direction.NORTH, true);
+        }
+
+        @Override
+        public void apply(CalculationContext context, int x, int y, int z, MutableMoveResult result) {
+            MovementMomentum.cost(context, x, y, z, Direction.NORTH, true, result);
+        }
+    },
+
+    MOMENTUM_PAD_SOUTH(0, 0, +7, true, true) {
+        @Override
+        public Movement apply0(CalculationContext context, BetterBlockPos src) {
+            return MovementMomentum.cost(context, src, Direction.SOUTH, true);
+        }
+
+        @Override
+        public void apply(CalculationContext context, int x, int y, int z, MutableMoveResult result) {
+            MovementMomentum.cost(context, x, y, z, Direction.SOUTH, true, result);
+        }
+    },
+
+    MOMENTUM_PAD_EAST(+7, 0, 0, true, true) {
+        @Override
+        public Movement apply0(CalculationContext context, BetterBlockPos src) {
+            return MovementMomentum.cost(context, src, Direction.EAST, true);
+        }
+
+        @Override
+        public void apply(CalculationContext context, int x, int y, int z, MutableMoveResult result) {
+            MovementMomentum.cost(context, x, y, z, Direction.EAST, true, result);
+        }
+    },
+
+    MOMENTUM_PAD_WEST(-7, 0, 0, true, true) {
+        @Override
+        public Movement apply0(CalculationContext context, BetterBlockPos src) {
+            return MovementMomentum.cost(context, src, Direction.WEST, true);
+        }
+
+        @Override
+        public void apply(CalculationContext context, int x, int y, int z, MutableMoveResult result) {
+            MovementMomentum.cost(context, x, y, z, Direction.WEST, true, result);
+        }
+    },
+
     // 4 is ClimbJump.MAX_DIST, which is package private over in movements. the landing is wherever the sim says it is, so both
     // x z and y are dynamic
     CLIMB_GRAB_NORTH(0, 0, -4, true, true) {

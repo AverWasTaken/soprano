@@ -29,6 +29,7 @@ import baritone.behavior.*;
 import baritone.cache.WorldProvider;
 import baritone.command.manager.CommandManager;
 import baritone.event.GameEventHandler;
+import baritone.pathing.movement.movements.MovementMomentum;
 import baritone.pathing.movement.movements.MovementNeo;
 import baritone.process.*;
 import baritone.selection.SelectionManager;
@@ -119,6 +120,7 @@ public class Baritone implements IBaritone {
         }
 
         MovementNeo.setTableFile(this.directory.resolve("neo-table.txt"));
+        MovementMomentum.setTableFile(this.directory.resolve("momentum-table.txt"));
 
         // Define this before behaviors try and get it, or else it will be null and the builds will fail!
         this.playerContext = new BaritonePlayerContext(this, mc);
