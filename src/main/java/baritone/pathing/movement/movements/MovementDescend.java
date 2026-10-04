@@ -261,8 +261,14 @@ public class MovementDescend extends Movement {
             }
         }
         LadderClutch.Plan plan = mask == 0 ? null : LadderClutch.plan(startY - landY, mask, context.blockReach);
-        return plan == null ? COST_INF : plan.ticks() + context.placeBucketCost();
+        if (plan == null) {
+            return COST_INF;
+        }
+        // a ladder comes back off the wall after we land (MovementFall.pickUpLadder), mining it and waiting on the drop is about a second
+        return plan.ticks() + context.placeBucketCost() + (context.clutchPicksUp ? LADDER_PICKUP_COST : 0);
     }
+
+    static final double LADDER_PICKUP_COST = 20;
 
     // canPlaceAgainst lets leaves through, and a ladder can't hang off those (no sturdy face)
     static boolean clutchWall(BlockState wall) {

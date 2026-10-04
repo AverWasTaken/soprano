@@ -81,6 +81,7 @@ There are about a hundred settings, but here are some fun / interesting / import
 - `sprintJumping` (sprint jump along straight path stretches, up single steps and down small hills)
 - `sprintJumpingDiagonals` (on by default, allows diagonal sprint jumps when `sprintJumping` is enabled)
 - `allowLadderClutch` (survive long falls by placing a ladder or vine on a wall beside the landing, needs one on the hotbar)
+- `pickupLadders` (on by default, breaks the ladder a clutch put on the wall and picks it back up, vines stay put)
 - `allowSwimming` (sprint swim along the waterline, head out and body in, instead of bobbing through water)
 - `blockPlacementPenalty`
 - `renderCachedChunks` (and `cachedChunksOpacity`) <-- very fun but you need a beefy computer

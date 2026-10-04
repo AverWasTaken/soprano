@@ -44,6 +44,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Vec3i;
 import net.minecraft.util.Mth;
+import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -55,6 +56,7 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.LadderBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.material.WaterFluid;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
@@ -95,10 +97,29 @@ public class MovementFall extends Movement {
     // the clutch ran out of things to try (nothing in reach in time, nothing to hang on), so it's the bucket or nothing
     private boolean clutchGaveUp;
 
+    // the ladder we right-clicked onto the wall, and whether the world agreed that it's there. vines drop nothing without
+    // shears so they're never recorded, and a ladder somebody else put up never is either, it's theirs
+    private BlockPos ladder;
+    private boolean ladderIn;
+    // our own clock, so the pickup can give up. pickupStart is -1 until we land with a ladder to fetch, goneAt is the tick
+    // the block disappeared and the drop starts counting
+    private int ticks, clickedAt, pickupStart = -1, goneAt = -1, pickupMisses;
+    // the click lands a tick after we ask for it, so give the block a few before deciding the click missed
+    private static final int LADDER_CONFIRM_TICKS = 4;
+    // all in, mining plus waiting on the drop. a stuck movement is worse than a lost ladder
+    private static final int PICKUP_TICKS = 60;
+    // drops can't be picked up for 10 ticks, then it's however long the walk takes
+    private static final int DROP_TICKS = 30;
+    private static final int PICKUP_MAX_MISSES = 10;
+
     @Override
     public void reset() {
         super.reset();
         clutchGaveUp = false;
+        ladder = null;
+        ladderIn = false;
+        ticks = clickedAt = pickupMisses = 0;
+        pickupStart = goneAt = -1;
     }
 
     private FallMode fallMode() {
@@ -122,6 +143,8 @@ public class MovementFall extends Movement {
         if (state.getStatus() != MovementStatus.RUNNING) {
             return state;
         }
+        ticks++;
+        confirmLadder();
 
         BlockPos playerFeet = ctx.playerFeet();
         Rotation toDest = RotationUtils.calcRotationFromVec3d(ctx.playerHead(), VecUtils.getBlockPosCenter(dest), ctx.playerRotations());
@@ -175,7 +198,7 @@ public class MovementFall extends Movement {
                     } // don't else return state; we need to stay centered because this water might be flowing under the surface
                 }
             } else {
-                return state.setStatus(MovementStatus.SUCCESS);
+                return pickUpLadder(state) ? state.setStatus(MovementStatus.SUCCESS) : state;
             }
         }
         if (mode == FallMode.CLUTCH && !playerFeet.equals(dest) && clutch(state)) {
@@ -204,6 +227,74 @@ public class MovementFall extends Movement {
             state.setTarget(new MovementTarget(RotationUtils.calcRotationFromVec3d(ctx.playerHead(), destCenterOffset, ctx.playerRotations()), false));
         }
         return state;
+    }
+
+    // the click is a guess until the block shows up. it was air when we clicked, so a ladder there later is ours
+    private void confirmLadder() {
+        if (ladder == null || ladderIn) {
+            return;
+        }
+        if (ctx.world().getBlockState(ladder).is(Blocks.LADDER)) {
+            ladderIn = true;
+        } else if (ticks - clickedAt > LADDER_CONFIRM_TICKS) {
+            ladder = null; // the click missed, nothing to fetch
+        }
+    }
+
+    // after landing: break the ladder we hung on the wall, then stand in the drop until it's in the inventory (same idea as
+    // the bucket pickup, the movement isn't done until the thing we spent is back). returns true once the movement can succeed.
+    // every way this can go wrong ends in true, a lost ladder beats a path that never moves again
+    private boolean pickUpLadder(MovementState state) {
+        if (ladder == null || !Baritone.settings().pickupLadders.value) {
+            return true;
+        }
+        if (!ladderIn) {
+            return false; // landed before the click showed up, confirmLadder settles it within a few ticks
+        }
+        if (pickupStart < 0) {
+            pickupStart = ticks;
+        }
+        if (ticks - pickupStart > PICKUP_TICKS) {
+            return true;
+        }
+        BlockState there = ctx.world().getBlockState(ladder);
+        if (there.is(Blocks.LADDER)) {
+            MovementHelper.switchToBestToolFor(ctx, there);
+            Optional<Rotation> look = RotationUtils.reachable(ctx, ladder, ctx.playerController().getBlockReachDistance());
+            if (look.isEmpty()) {
+                return ++pickupMisses > PICKUP_MAX_MISSES; // behind something, or the look is still catching up
+            }
+            pickupMisses = 0;
+            state.setTarget(new MovementTarget(look.get(), true));
+            if (ctx.isLookingAt(ladder) || ctx.playerRotations().isReallyCloseTo(look.get())) {
+                state.setInput(Input.CLICK_LEFT, true);
+            }
+            return false;
+        }
+        if (goneAt < 0) {
+            goneAt = ticks;
+        }
+        // a drop can't be picked up for 10 ticks, and the pickup box is a block wider than us. nobody to wait for means
+        // creative, a full inventory that ate it already, or the gamerule being off
+        Vec3 me = ctx.player().position();
+        ItemEntity drop = null;
+        double best = Double.MAX_VALUE;
+        for (ItemEntity item : ctx.world().getEntitiesOfClass(ItemEntity.class, new AABB(ladder).inflate(1.5), e -> e.getItem().is(Items.LADDER))) {
+            double d = Math.hypot(item.getX() - me.x, item.getZ() - me.z);
+            if (d < best) {
+                best = d;
+                drop = item;
+            }
+        }
+        if (drop == null || ticks - goneAt > DROP_TICKS) {
+            return true;
+        }
+        if (best > 1) {
+            // rolled out of reach, go and stand on it
+            state.setTarget(new MovementTarget(RotationUtils.calcRotationFromVec3d(ctx.playerHead(), drop.position(), ctx.playerRotations()), false));
+            state.setInput(Input.MOVE_FORWARD, true);
+        }
+        return false;
     }
 
     // ladder clutch, one tick of it. the whole idea: a vine or ladder in one of the last few cells before the floor wipes the
@@ -244,6 +335,11 @@ public class MovementFall extends Movement {
             boolean roomy = item != Items.LADDER || gap(dest.above(aimed), hit.getDirection().getOpposite(), pos) >= LadderClutch.LADDER_CLEARANCE + 0.01;
             if (now != null && now.place() == 0 && roomy) {
                 inv.pickClutchItem(true);
+                if (item == Items.LADDER && !ladderIn) {
+                    BlockPos placed = dest.above(aimed);
+                    ladder = new BlockPos(placed.getX(), placed.getY(), placed.getZ()); // no BetterBlockPos in vanilla's hands
+                    clickedAt = ticks;
+                }
                 state.setTarget(new MovementTarget(ctx.playerRotations(), true));
                 state.setInput(Input.CLICK_RIGHT, true);
                 return true;
@@ -362,8 +458,8 @@ public class MovementFall extends Movement {
     @Override
     public boolean safeToCancel(MovementState state) {
         // if we haven't started walking off the edge yet, or if we're in the process of breaking blocks before doing the fall
-        // then it's safe to cancel this
-        return ctx.playerFeet().equals(src) || state.getStatus() != MovementStatus.RUNNING;
+        // then it's safe to cancel this. fetching the ladder is on the ground, nothing to lose but a ladder
+        return ctx.playerFeet().equals(src) || state.getStatus() != MovementStatus.RUNNING || pickupStart >= 0;
     }
 
     private static BetterBlockPos[] buildPositionsToBreak(BetterBlockPos src, BetterBlockPos dest) {

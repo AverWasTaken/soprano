@@ -31,6 +31,7 @@ import net.minecraft.core.Holder;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.enchantment.*;
@@ -62,6 +63,8 @@ public class CalculationContext {
     public final boolean hasWaterBucket;
     // a ladder or vine on the hotbar and allowLadderClutch on, see MovementDescend.dynamicFallCost
     public final boolean hasClutchItem;
+    // the clutch item is a ladder (vines win if both are there) and pickupLadders is on, so a clutch also costs the pickup
+    public final boolean clutchPicksUp;
     public final float blockReach;
     public final boolean hasThrowaway;
     public final boolean canSprint;
@@ -141,7 +144,9 @@ public class CalculationContext {
         this.hasThrowaway = hasThrowaway;
         this.hasWaterBucket = hasWaterBucket;
         // same idea as the bucket, except it isn't banned in the nether. the setting goes first so nobody scans the hotbar for nothing
-        this.hasClutchItem = Baritone.settings().allowLadderClutch.value && ((Baritone) baritone).getInventoryBehavior().pickClutchItem(false) != null;
+        Item clutchItem = Baritone.settings().allowLadderClutch.value ? ((Baritone) baritone).getInventoryBehavior().pickClutchItem(false) : null;
+        this.hasClutchItem = clutchItem != null;
+        this.clutchPicksUp = clutchItem == Items.LADDER && Baritone.settings().pickupLadders.value;
         this.blockReach = Baritone.settings().blockReachDistance.value;
         this.canSprint = canSprint;
         this.minY = bsi.minY;
