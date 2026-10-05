@@ -18,6 +18,7 @@
 package baritone.pathing.path;
 
 import baritone.Baritone;
+import baritone.altoclef.AltoClefSettings;
 import baritone.api.pathing.calc.IPath;
 import baritone.api.pathing.movement.ActionCosts;
 import baritone.api.pathing.movement.IMovement;
@@ -898,6 +899,9 @@ public class PathExecutor implements IPathExecutor, Helper {
         }
         if (MovementHelper.avoidWalkingInto(ctx.world().getBlockState(current.getSrc().above(3)))) {
             return false;
+        }
+        if (AltoClefSettings.getInstance().shouldAvoidWalkThroughForce(current.getSrc().above(3)) || AltoClefSettings.getInstance().shouldAvoidWalkThroughForce(current.getSrc().above(2))) {
+            return false; // sprinting would carry us into somewhere altoclef wants us to stay out of
         }
         return !MovementHelper.avoidWalkingInto(ctx.world().getBlockState(next.getDest().above(2))); // codacy smh my head
     }

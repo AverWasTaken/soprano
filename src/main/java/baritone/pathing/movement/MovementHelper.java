@@ -18,6 +18,7 @@
 package baritone.pathing.movement;
 
 import baritone.Baritone;
+import baritone.altoclef.AltoClefSettings;
 import baritone.api.BaritoneAPI;
 import baritone.api.IBaritone;
 import baritone.api.pathing.movement.ActionCosts;
@@ -84,8 +85,13 @@ public interface MovementHelper extends ActionCosts, Helper {
         if (!bsi.worldBorder.canPlaceAt(x, z)) {
             return true;
         }
+        // the context version gets this from its snapshot, this one is for the executor and altoclef who ask the live thing
+        if (AltoClefSettings.getInstance().shouldAvoidBreaking(x, y, z)) {
+            return true;
+        }
         Block b = state.getBlock();
         return Baritone.settings().blocksToDisallowBreaking.value.contains(b)
+                || b instanceof EndPortalFrameBlock
                 || b == Blocks.ICE // ice becomes water, and water can mess up the path
                 || b instanceof InfestedBlock // obvious reasons
                 // call context.get directly with x,y,z. no need to make 5 new BlockPos for no reason
@@ -102,6 +108,9 @@ public interface MovementHelper extends ActionCosts, Helper {
         // we assume that it's ALWAYS okay to break the block thats ABOVE liquid
         BlockState state = bsi.get0(x, y, z);
         Block block = state.getBlock();
+        if (directlyAbove && block instanceof EndPortalFrameBlock) {
+            return true; // mining out from under a portal frame is how you lose an end portal
+        }
         if (!directlyAbove // it is fine to mine a block that has a falling block directly above, this (the cost of breaking the stacked fallings) is included in cost calculations
                 // therefore if directlyAbove is true, we will actually ignore if this is falling
                 && block instanceof FallingBlock // obviously, this check is only valid for falling blocks
@@ -188,14 +197,21 @@ public interface MovementHelper extends ActionCosts, Helper {
     }
 
     static boolean canWalkThrough(CalculationContext context, int x, int y, int z, BlockState state) {
+        // position rules never go in PrecomputedData, that table is per blockstate and shared by every search
+        if (context.altoActive && context.altoAvoidsWalkThrough(x, y, z)) {
+            return false;
+        }
         return context.precomputedData.canWalkThrough(context.bsi, x, y, z, state);
     }
 
     static boolean canWalkThrough(CalculationContext context, int x, int y, int z) {
-        return context.precomputedData.canWalkThrough(context.bsi, x, y, z, context.get(x, y, z));
+        return canWalkThrough(context, x, y, z, context.get(x, y, z));
     }
 
     static boolean canWalkThrough(BlockStateInterface bsi, int x, int y, int z, BlockState state) {
+        if (AltoClefSettings.getInstance().shouldAvoidWalkThroughForce(x, y, z)) {
+            return false;
+        }
         Ternary canWalkThrough = canWalkThroughBlockState(state);
         if (canWalkThrough == YES) {
             return true;
@@ -210,6 +226,9 @@ public interface MovementHelper extends ActionCosts, Helper {
         Block block = state.getBlock();
         if (block instanceof AirBlock) {
             return YES;
+        }
+        if (block == Blocks.LAVA && AltoClefSettings.getInstance().canSwimThroughLava()) {
+            return MAYBE; // PrecomputedData is keyed on this toggle, and canWalkThroughPosition has the rest
         }
         if (block instanceof BaseFireBlock || block == Blocks.COBWEB || block == Blocks.END_PORTAL || block == Blocks.COCOA || block instanceof AbstractSkullBlock || block == Blocks.BUBBLE_COLUMN || block instanceof ShulkerBoxBlock || block instanceof SlabBlock || block instanceof TrapDoorBlock || block == Blocks.HONEY_BLOCK || block == Blocks.END_ROD || block == Blocks.SWEET_BERRY_BUSH || block == Blocks.POINTED_DRIPSTONE || block instanceof AmethystClusterBlock || block instanceof AzaleaBlock) {
             return NO;
@@ -257,6 +276,11 @@ public interface MovementHelper extends ActionCosts, Helper {
 
     static boolean canWalkThroughPosition(BlockStateInterface bsi, int x, int y, int z, BlockState state) {
         Block block = state.getBlock();
+
+        if (block == Blocks.LAVA && AltoClefSettings.getInstance().canSwimThroughLava()) {
+            // only the top of the lake, you can't swim through lava you're already under
+            return bsi.get0(x, y + 1, z).getFluidState().isEmpty();
+        }
 
         if (block instanceof CarpetBlock) {
             return canWalkOn(bsi, x, y - 1, z);
@@ -338,10 +362,16 @@ public interface MovementHelper extends ActionCosts, Helper {
     }
 
     static boolean fullyPassable(CalculationContext context, int x, int y, int z, BlockState state) {
+        if (context.altoActive && context.altoAvoidsWalkThrough(x, y, z)) {
+            return false;
+        }
         return context.precomputedData.fullyPassable(context.bsi, x, y, z, state);
     }
 
     static boolean fullyPassable(IPlayerContext ctx, BlockPos pos) {
+        if (AltoClefSettings.getInstance().shouldAvoidWalkThroughForce(pos)) {
+            return false;
+        }
         BlockState state = ctx.world().getBlockState(pos);
         Ternary fullyPassable = fullyPassableBlockState(state);
         if (fullyPassable == YES) {
@@ -419,6 +449,7 @@ public interface MovementHelper extends ActionCosts, Helper {
                 || block == Blocks.CACTUS
                 || block == Blocks.SWEET_BERRY_BUSH
                 || block instanceof BaseFireBlock
+                || block instanceof EndPortalFrameBlock
                 || block == Blocks.END_PORTAL
                 || block == Blocks.COBWEB
                 || block == Blocks.BUBBLE_COLUMN;
@@ -439,6 +470,13 @@ public interface MovementHelper extends ActionCosts, Helper {
      * @return Whether or not the specified block can be walked on
      */
     static boolean canWalkOn(BlockStateInterface bsi, int x, int y, int z, BlockState state) {
+        AltoClefSettings alto = AltoClefSettings.getInstance();
+        if (alto.canWalkOnForce(x, y, z)) {
+            return true;
+        }
+        if (alto.shouldAvoidWalkThroughForce(x, y + 1, z)) {
+            return false; // standing here would put you somewhere you're not allowed
+        }
         Ternary canWalkOn = canWalkOnBlockState(state);
         if (canWalkOn == YES) {
             return true;
@@ -451,6 +489,13 @@ public interface MovementHelper extends ActionCosts, Helper {
 
     static Ternary canWalkOnBlockState(BlockState state) {
         Block block = state.getBlock();
+        // not a full block, so isBlockNormalCube says no. you can very much stand on one though
+        if (block instanceof EndPortalFrameBlock) {
+            return YES;
+        }
+        if (block == Blocks.END_PORTAL && AltoClefSettings.getInstance().isCanWalkOnEndPortal()) {
+            return YES; // PrecomputedData is keyed on this toggle too
+        }
         if (isBlockNormalCube(state) && (block != Blocks.MAGMA_BLOCK || Baritone.settings().allowWalkOnMagmaBlocks.value) && block != Blocks.BUBBLE_COLUMN && block != Blocks.HONEY_BLOCK) {
             return YES;
         }
@@ -517,6 +562,14 @@ public interface MovementHelper extends ActionCosts, Helper {
     }
 
     static boolean canWalkOn(CalculationContext context, int x, int y, int z, BlockState state) {
+        if (context.altoActive) {
+            if (context.altoForcesWalkOn(x, y, z)) {
+                return true;
+            }
+            if (context.altoAvoidsWalkThrough(x, y + 1, z)) {
+                return false;
+            }
+        }
         return context.precomputedData.canWalkOn(context.bsi, x, y, z, state);
     }
 
@@ -618,7 +671,9 @@ public interface MovementHelper extends ActionCosts, Helper {
 
     static boolean canPlaceAgainst(CalculationContext context, int x, int y, int z, BlockState state) {
         // precomputed version of the one below. ascend asks this five times per direction, mostly about air
-        return context.bsi.worldBorder.canPlaceAt(x, z) && context.precomputedData.canPlaceAgainst(context.bsi, state);
+        return context.bsi.worldBorder.canPlaceAt(x, z)
+                && context.precomputedData.canPlaceAgainst(context.bsi, state)
+                && !(context.altoActive && context.isPlaceProtected(x, y, z));
     }
 
     static boolean canPlaceAgainst(BlockStateInterface bsi, BlockPos pos) {
@@ -630,7 +685,7 @@ public interface MovementHelper extends ActionCosts, Helper {
     }
 
     static boolean canPlaceAgainst(BlockStateInterface bsi, int x, int y, int z, BlockState state) {
-        if (!bsi.worldBorder.canPlaceAt(x, z)) {
+        if (!bsi.worldBorder.canPlaceAt(x, z) || AltoClefSettings.getInstance().shouldAvoidPlacingAt(x, y, z)) {
             return false;
         }
         // can we look at the center of a side face of this block and likely be able to place?
@@ -729,6 +784,9 @@ public interface MovementHelper extends ActionCosts, Helper {
      * @param ts  previously calculated ToolSet
      */
     static void switchToBestToolFor(IPlayerContext ctx, BlockState b, ToolSet ts, boolean preferSilkTouch) {
+        if (AltoClefSettings.getInstance().isInteractionPaused()) {
+            return; // paused means hands off the hotbar
+        }
         if (Baritone.settings().autoTool.value && !Baritone.settings().assumeExternalAutoTool.value) {
             ctx.player().getInventory().selected = ts.getBestSlot(b.getBlock(), preferSilkTouch);
         }
@@ -789,7 +847,11 @@ public interface MovementHelper extends ActionCosts, Helper {
      */
     static boolean isWater(BlockState state) {
         Fluid f = state.getFluidState().getType();
-        return f == Fluids.WATER || f == Fluids.FLOWING_WATER;
+        if (f == Fluids.WATER || f == Fluids.FLOWING_WATER) {
+            return true;
+        }
+        // altoclef's swim through lava pretends it's water. air and friends never make it past the first two compares
+        return (f == Fluids.LAVA || f == Fluids.FLOWING_LAVA) && AltoClefSettings.getInstance().canSwimThroughLava();
     }
 
     /**

@@ -18,11 +18,13 @@
 package baritone.pathing.precompute;
 
 import baritone.Baritone;
+import baritone.altoclef.AltoClefSettings;
 import baritone.pathing.movement.MovementHelper;
 import baritone.utils.BlockStateInterface;
 import baritone.utils.accessor.IBlockStateFlags;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.EndPortalFrameBlock;
 import net.minecraft.world.level.block.InfestedBlock;
 import net.minecraft.world.level.block.StainedGlassBlock;
 import net.minecraft.world.level.block.state.BlockState;
@@ -69,6 +71,8 @@ public class PrecomputedData {
     private final boolean allowWalkOnBottomSlab;
     private final List<Block> blocksToAvoid;
     private final List<Block> blocksToDisallowBreaking;
+    // altoclef's block type toggles (end portal walking, lava swimming) change what the table says about a block
+    private final int altoToggles;
 
     private static volatile PrecomputedData shared;
 
@@ -79,6 +83,7 @@ public class PrecomputedData {
         this.allowWalkOnBottomSlab = Baritone.settings().allowWalkOnBottomSlab.value;
         this.blocksToAvoid = new ArrayList<>(Baritone.settings().blocksToAvoid.value);
         this.blocksToDisallowBreaking = new ArrayList<>(Baritone.settings().blocksToDisallowBreaking.value);
+        this.altoToggles = AltoClefSettings.getInstance().blockToggleBits();
     }
 
     // stone is still stone next search. we used to throw the whole table away every tick and
@@ -98,7 +103,8 @@ public class PrecomputedData {
                 && assumeWalkOnLava == Baritone.settings().assumeWalkOnLava.value
                 && allowWalkOnBottomSlab == Baritone.settings().allowWalkOnBottomSlab.value
                 && blocksToAvoid.equals(Baritone.settings().blocksToAvoid.value)
-                && blocksToDisallowBreaking.equals(Baritone.settings().blocksToDisallowBreaking.value);
+                && blocksToDisallowBreaking.equals(Baritone.settings().blocksToDisallowBreaking.value)
+                && altoToggles == AltoClefSettings.getInstance().blockToggleBits();
     }
 
     private int fillData(int id, BlockState state) {
@@ -131,7 +137,8 @@ public class PrecomputedData {
 
         if (blocksToDisallowBreaking.contains(block)
                 || block == Blocks.ICE // ice becomes water, and water can mess up the path
-                || block instanceof InfestedBlock) { // obvious reasons
+                || block instanceof InfestedBlock // obvious reasons
+                || block instanceof EndPortalFrameBlock) { // altoclef really doesn't want these gone, and they don't break in survival anyway
             blockData |= NEVER_BREAK_MASK;
         }
 

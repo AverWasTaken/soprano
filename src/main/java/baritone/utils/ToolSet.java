@@ -18,6 +18,7 @@
 package baritone.utils;
 
 import baritone.Baritone;
+import baritone.altoclef.AltoClefSettings;
 import it.unimi.dsi.fastutil.objects.Object2DoubleOpenHashMap;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.Holder;
@@ -37,6 +38,7 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 
 import java.util.List;
+import java.util.function.BiPredicate;
 import java.util.function.ToDoubleFunction;
 
 /**
@@ -59,6 +61,11 @@ public class ToolSet {
 
     private final LocalPlayer player;
 
+    // altoclef's "use this tool for this block no matter what" rules. null when it has none, which is nearly always.
+    // they care about the actual state and the actual stack so they can't live in a per block cache, see getStrVsBlock
+    private final BiPredicate<BlockState, ItemStack>[] forceUseTool;
+    private final double potionMult;
+
     /**
      * Used for evaluating the material cost of a tool.
      * see {@link #getMaterialCost(ItemStack)}
@@ -76,12 +83,15 @@ public class ToolSet {
     public ToolSet(LocalPlayer player) {
         breakStrengthCache = new Object2DoubleOpenHashMap<>();
         this.player = player;
+        this.forceUseTool = AltoClefSettings.getInstance().snapshot().forceUseTool;
 
         if (Baritone.settings().considerPotionEffects.value) {
             double amplifier = potionAmplifier();
-            backendCalculation = b -> amplifier * this.getBestDestructionTime(b);
+            this.potionMult = amplifier;
+            backendCalculation = b -> amplifier * this.getBestDestructionTime(b.defaultBlockState());
         } else {
-            backendCalculation = this::getBestDestructionTime;
+            this.potionMult = 1;
+            backendCalculation = b -> this.getBestDestructionTime(b.defaultBlockState());
         }
     }
 
@@ -92,6 +102,11 @@ public class ToolSet {
      * @return the speed of how fast we'll mine it. 1/(time in ticks)
      */
     public double getStrVsBlock(BlockState state) {
+        if (forceUseTool != null) {
+            // a forced tool depends on the state and not just the block, so the per block cache would hand out the wrong
+            // answer. the mining memo upstairs makes up for it, this is asked once per position
+            return potionMult * getBestDestructionTime(state);
+        }
         return breakStrengthCache.computeIfAbsent(state.getBlock(), backendCalculation);
     }
 
@@ -135,6 +150,10 @@ public class ToolSet {
     }
 
     public int getBestSlot(Block b, boolean preferSilkTouch, boolean pathingCalculation) {
+        return getBestSlot(b.defaultBlockState(), preferSilkTouch, pathingCalculation);
+    }
+
+    public int getBestSlot(BlockState blockState, boolean preferSilkTouch, boolean pathingCalculation) {
 
         /*
         If we actually want know what efficiency our held item has instead of the best one
@@ -148,7 +167,6 @@ public class ToolSet {
         double highestSpeed = Double.NEGATIVE_INFINITY;
         int lowestCost = Integer.MIN_VALUE;
         boolean bestSilkTouch = false;
-        BlockState blockState = b.defaultBlockState();
         for (int i = 0; i < 9; i++) {
             ItemStack itemStack = player.getInventory().getItem(i);
             if (!Baritone.settings().useSwordToMine.value && itemStack.is(ItemTags.SWORDS)) {
@@ -158,7 +176,8 @@ public class ToolSet {
             if (Baritone.settings().itemSaver.value && (itemStack.getDamageValue() + Baritone.settings().itemSaverThreshold.value) >= itemStack.getMaxDamage() && itemStack.getMaxDamage() > 1) {
                 continue;
             }
-            double speed = calculateSpeedVsBlock(itemStack, blockState);
+            // forced tools beat everything, but only for picking the slot. the time it takes still comes from what the tool really does
+            double speed = forceUseTool != null && shouldForceUseTool(blockState, itemStack) ? Double.POSITIVE_INFINITY : calculateSpeedVsBlock(itemStack, blockState);
             boolean silkTouch = hasSilkTouch(itemStack);
             if (speed > highestSpeed) {
                 highestSpeed = speed;
@@ -185,9 +204,18 @@ public class ToolSet {
      * @param b the blockstate to be mined
      * @return A double containing the destruction ticks with the best tool
      */
-    private double getBestDestructionTime(Block b) {
-        ItemStack stack = player.getInventory().getItem(getBestSlot(b, false, true));
-        return calculateSpeedVsBlock(stack, b.defaultBlockState()) * avoidanceMultiplier(b);
+    private double getBestDestructionTime(BlockState state) {
+        ItemStack stack = player.getInventory().getItem(getBestSlot(state, false, true));
+        return calculateSpeedVsBlock(stack, state) * avoidanceMultiplier(state.getBlock());
+    }
+
+    private boolean shouldForceUseTool(BlockState state, ItemStack stack) {
+        for (BiPredicate<BlockState, ItemStack> predicate : forceUseTool) {
+            if (predicate.test(state, stack)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private double avoidanceMultiplier(Block b) {

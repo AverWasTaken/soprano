@@ -18,6 +18,7 @@
 package baritone.pathing.movement.movements;
 
 import baritone.Baritone;
+import baritone.altoclef.AltoClefSettings;
 import baritone.api.IBaritone;
 import baritone.api.pathing.movement.MovementStatus;
 import baritone.api.utils.BetterBlockPos;
@@ -181,12 +182,17 @@ public class MovementFall extends Movement {
             return state.setStatus(MovementStatus.UNREACHABLE);
         }
         FallMode mode = isWater ? FallMode.NONE : fallMode();
+        AltoClefSettings alto = AltoClefSettings.getInstance();
+        if (mode == FallMode.BUCKET && alto.shouldNotPlaceBucketButStillFall()) {
+            mode = FallMode.NONE; // altoclef does its own water bucket mlg, we just fall and don't insist on having a bucket
+        }
+        boolean paused = alto.isInteractionPaused(); // no hotbar swaps while paused, and the click gets eaten by the input handler
         if (mode == FallMode.BUCKET && !playerFeet.equals(dest)) {
             if (!Inventory.isHotbarSlot(ctx.player().getInventory().findSlotMatchingItem(STACK_BUCKET_WATER)) || ctx.world().dimension() == Level.NETHER) {
                 return state.setStatus(MovementStatus.UNREACHABLE);
             }
 
-            if (ctx.player().position().y - dest.getY() < ctx.playerController().getBlockReachDistance() && !ctx.player().onGround()) {
+            if (!paused && ctx.player().position().y - dest.getY() < ctx.playerController().getBlockReachDistance() && !ctx.player().onGround()) {
                 ctx.player().getInventory().selected = ctx.player().getInventory().findSlotMatchingItem(STACK_BUCKET_WATER);
 
                 targetRotation = new Rotation(toDest.getYaw(), 90.0F);
@@ -208,7 +214,7 @@ public class MovementFall extends Movement {
         }
         if (playerFeet.equals(dest) && (ctx.player().position().y - playerFeet.getY() < 0.094 || isWater)) { // 0.094 because lilypads
             if (isWater) { // only match water, not flowing water (which we cannot pick up with a bucket)
-                if (Inventory.isHotbarSlot(ctx.player().getInventory().findSlotMatchingItem(STACK_BUCKET_EMPTY))) {
+                if (!paused && Inventory.isHotbarSlot(ctx.player().getInventory().findSlotMatchingItem(STACK_BUCKET_EMPTY))) {
                     ctx.player().getInventory().selected = ctx.player().getInventory().findSlotMatchingItem(STACK_BUCKET_EMPTY);
                     if (ctx.player().getDeltaMovement().y >= 0) {
                         return state.setInput(Input.CLICK_RIGHT, true);
@@ -360,7 +366,7 @@ public class MovementFall extends Movement {
             if (MovementHelper.isClimbable(there.getBlock())) {
                 return false; // already one in here (us, a tick ago), physics takes it from here
             }
-            if (there.isAir() && !walls(bsi, dest.above(k), pos, false).isEmpty()) {
+            if (there.isAir() && !AltoClefSettings.getInstance().shouldAvoidPlacingAt(dest.getX(), dest.getY() + k, dest.getZ()) && !walls(bsi, dest.above(k), pos, false).isEmpty()) {
                 mask |= 1 << k;
             }
         }

@@ -18,6 +18,7 @@
 package baritone.process;
 
 import baritone.Baritone;
+import baritone.altoclef.AltoClefSettings;
 import baritone.api.BaritoneAPI;
 import baritone.api.pathing.goals.*;
 import baritone.api.process.IMineProcess;
@@ -39,6 +40,8 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.AirBlock;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.EndPortalBlock;
+import net.minecraft.world.level.block.EndPortalFrameBlock;
 import net.minecraft.world.level.block.FallingBlock;
 import net.minecraft.world.level.block.state.BlockState;
 
@@ -100,6 +103,9 @@ public final class MineProcess extends BaritoneProcessHelper implements IMinePro
                 cancel();
                 return null;
             }
+        }
+        if (AltoClefSettings.getInstance().isInteractionPaused()) {
+            return new PathingCommand(null, PathingCommandType.REQUEST_PAUSE); // not breaking anything, and not walking up to things to break either
         }
 
         updateLoucaSystem();
@@ -494,6 +500,14 @@ public final class MineProcess extends BaritoneProcessHelper implements IMinePro
 
     public static boolean plausibleToBreak(CalculationContext ctx, BlockPos pos) {
         BlockState state = ctx.bsi.get0(pos);
+        if (ctx.altoActive) {
+            // altoclef asks "could this be broken" about things it deals with by hand (portals, lava, bucket stuff), so these
+            // pass. only when it's actually in the room though, #mine lava should stay a silly thing to ask
+            Block block = state.getBlock();
+            if (block instanceof EndPortalFrameBlock || block instanceof EndPortalBlock || block == Blocks.LAVA) {
+                return true;
+            }
+        }
         if (MovementHelper.getMiningDurationTicks(ctx, pos.getX(), pos.getY(), pos.getZ(), state, true) >= COST_INF) {
             return false;
         }
