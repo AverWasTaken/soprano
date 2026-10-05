@@ -1,5 +1,6 @@
 package adris.altoclef.tasks.container;
 
+import adris.altoclef.ui.HudText;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.AltoClef;
 import adris.altoclef.TaskCatalogue;
@@ -97,6 +98,11 @@ public class StoreInStashTask extends Task {
             return task._stashRange.equals(_stashRange) && task._getIfNotPresent == _getIfNotPresent && Arrays.equals(task._toStore, _toStore);
         }
         return false;
+    }
+
+    @Override
+    protected String toHudString() {
+        return "Storing " + HudText.some(_toStore) + " in the stash";
     }
 
     @Override

@@ -12,6 +12,8 @@ import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.slots.CraftingTableSlot;
 import adris.altoclef.util.slots.PlayerSlot;
 import adris.altoclef.util.slots.Slot;
+import adris.altoclef.ui.HudText;
+import net.minecraft.world.item.Item;
 import java.util.Optional;
 import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.item.ItemStack;
@@ -159,5 +161,11 @@ public class CraftGenericManuallyTask extends Task implements ITaskUsesCraftingG
     @Override
     protected String toDebugString() {
         return "Crafting: " + _target;
+    }
+
+    @Override
+    protected String toHudString() {
+        // same words as the craft task above it on purpose, the hud folds the two into one line
+        return "Crafting " + HudText.items(new Item[]{_target.getOutputItem()}, _target.getTargetCount());
     }
 }

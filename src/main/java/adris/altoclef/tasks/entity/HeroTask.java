@@ -64,6 +64,11 @@ public class HeroTask extends Task {
     }
 
     @Override
+    protected String toHudString() {
+        return "Hunting monsters";
+    }
+
+    @Override
     protected String toDebugString() {
         return "Killing all hostile mobs.";
     }

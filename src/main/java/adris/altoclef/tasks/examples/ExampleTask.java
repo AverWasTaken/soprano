@@ -74,6 +74,11 @@ public class ExampleTask extends Task {
     }
 
     @Override
+    protected String toHudString() {
+        return "Example task";
+    }
+
+    @Override
     protected String toDebugString() {
         return "Boofin";
     }

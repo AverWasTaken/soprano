@@ -162,7 +162,7 @@ They're normal Soprano settings that all start with `alto`, so `#set alto<tab>` 
 |---|---|---|
 | `altoRunsWhenIdle` | false | keep the survival chains (eating, mob defense, MLG) running even with no task. Off means AltoClef does nothing until you start a task |
 | `altoButler` | false | let whitelisted players whisper commands to your bot. Only names in `baritone/altoclef/altoclef_butler_whitelist.txt` can (one per line, not case sensitive), an empty whitelist means nobody, and `altoclef_butler_blacklist.txt` next to it wins over it. Whispers can run AltoClef's commands only, never `punk` or `gamma` |
-| `altoShowTaskChains` | true | the task HUD in the top left. `altoHudScale` (1.0, between 0.5 and 2) resizes it, `altoShowTimer` (false) adds a timer |
+| `altoShowTaskChains` | true | the task HUD in the top left. `altoHudScale` (1.0, between 0.5 and 2) resizes it, `altoShowTimer` (false) adds a timer, `altoHudDetailed` (false) swaps the plain words for the developer strings from the log, for bug reports |
 | `altoMobDefense` | true | fight off or avoid mobs. `altoForceFieldStrategy` (`SMART`, or `OFF`, `FASTEST`, `DELAY`) is how the force field picks its targets |
 | `altoAutoEat`, `altoAutoRespawn`, `altoAutoReconnect` | true | what they say |
 | `altoIdleCommand` | empty | a `#` command line to run when idle, only used with `altoRunsWhenIdle` |

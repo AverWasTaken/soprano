@@ -428,6 +428,11 @@ public class MLGBucketTask extends Task {
     }
 
     @Override
+    protected String toHudString() {
+        return "Breaking the fall with water";
+    }
+
+    @Override
     protected String toDebugString() {
         String result = "Epic gaemer moment";
         if (_movingTorwards != null) {

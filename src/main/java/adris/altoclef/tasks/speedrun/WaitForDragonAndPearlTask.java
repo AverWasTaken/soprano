@@ -228,6 +228,11 @@ public class WaitForDragonAndPearlTask extends Task implements IDragonWaiter {
     }
 
     @Override
+    protected String toHudString() {
+        return "Waiting for the dragon to perch";
+    }
+
+    @Override
     protected String toDebugString() {
         return "Waiting for Dragon Perch + Pearling";
     }

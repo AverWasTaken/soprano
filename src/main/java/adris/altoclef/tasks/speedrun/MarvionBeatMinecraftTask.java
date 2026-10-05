@@ -536,6 +536,11 @@ public class MarvionBeatMinecraftTask extends Task {
      * Returns a debug string representing the action of beating the game in the Marvion version.
      */
     @Override
+    protected String toHudString() {
+        return "Beating the game";
+    }
+
+    @Override
     protected String toDebugString() {
         return "Beating the game (Marvion version)";
     }
@@ -1093,7 +1098,7 @@ public class MarvionBeatMinecraftTask extends Task {
         // End stuff.
         if (WorldHelper.getCurrentDimension() == Dimension.END) {
             if (!mod.getWorld().hasChunk(0, 0)) {
-                setDebugState("Waiting for chunks to load");
+                setDebugState("Waiting for chunks to load", "Waiting for chunks to load");
                 return null;
             }
             // If we have bed, do bed strats, otherwise punk normally.
@@ -1115,7 +1120,7 @@ public class MarvionBeatMinecraftTask extends Task {
             for (Item armorCheck : COLLECT_EYE_ARMOR_END) {
                 if (!StorageHelper.isArmorEquipped(mod, armorCheck)) {
                     if (mod.getItemStorage().hasItem(armorCheck)) {
-                        setDebugState("Equipping armor.");
+                        setDebugState("Equipping armor.", "Equipping armor");
                         return new EquipArmorTask(armorCheck);
                     }
                     if (mod.getEntityTracker().itemDropped(armorCheck)) {
@@ -1127,7 +1132,7 @@ public class MarvionBeatMinecraftTask extends Task {
             _dragonBreathTracker.updateBreath(mod);
             for (BlockPos playerIn : WorldHelper.getBlocksTouchingPlayer(mod)) {
                 if (_dragonBreathTracker.isTouchingDragonBreath(playerIn)) {
-                    setDebugState("ESCAPE dragons breath");
+                    setDebugState("ESCAPE dragons breath", "Dodging dragon's breath");
                     _escapingDragonsBreath = true;
                     return _dragonBreathTracker.getRunAwayTask();
                 }
@@ -1136,7 +1141,7 @@ public class MarvionBeatMinecraftTask extends Task {
 
             // If we find an ender portal, just GO to it!!!
             if (mod.getBlockTracker().anyFound(Blocks.END_PORTAL)) {
-                setDebugState("WOOHOO");
+                setDebugState("WOOHOO", "Jumping into the portal");
                 dragonIsDead = true;
                 enteringEndPortal = true;
                 if (!mod.getExtraBaritoneSettings().isCanWalkOnEndPortal()) {
@@ -1149,10 +1154,10 @@ public class MarvionBeatMinecraftTask extends Task {
             }
             if (mod.getItemStorage().hasItem(ItemHelper.BED) ||
                     mod.getBlockTracker().anyFound(ItemHelper.itemsToBlocks(ItemHelper.BED))) {
-                setDebugState("Bed strats");
+                setDebugState("Bed strats", "Fighting the dragon");
                 return _killDragonBedStratsTask;
             }
-            setDebugState("No beds, regular strats.");
+            setDebugState("No beds, regular strats.", "Fighting the dragon");
             return new KillEnderDragonTask();
         } else {
             // We're not in the end so reset our "end cache" timer
@@ -1203,7 +1208,7 @@ public class MarvionBeatMinecraftTask extends Task {
                         || (blastFurnaceEntity.isPresent()
                         && mod.getEntityTracker().itemDropped(blastFurnaceEntity.get().getItem().getItem())
                         && !thisOrChildSatisfies(isBlastFurnaceTask) && !mod.getItemStorage().hasItem(Items.BLAST_FURNACE))) {
-                    setDebugState("Picking up the blast furnace while we are at it.");
+                    setDebugState("Picking up the blast furnace while we are at it.", "Grabbing the blast furnace");
                     Item blastFurnaceItem = blastFurnaceEntity.isPresent() ? blastFurnaceEntity.get().getItem().getItem() : Items.BLAST_FURNACE;
                     Block blastFurnaceBlock = blastFurnacePos.isPresent() ? mod.getWorld().getBlockState(blastFurnacePos.get()).getBlock() : Blocks.BLAST_FURNACE;
                     return new MineAndCollectTask(blastFurnaceItem, 1, new Block[]{blastFurnaceBlock}, MiningRequirement.WOOD);
@@ -1219,7 +1224,7 @@ public class MarvionBeatMinecraftTask extends Task {
                         || (furnaceEntity.isPresent() && mod.getEntityTracker().itemDropped(furnaceEntity.get().getItem().getItem())
                         && !thisOrChildSatisfies(isFurnaceTask) && !mod.getItemStorage().hasItem(Items.FURNACE)
                         && !mod.getItemStorage().hasItem(Items.BLAST_FURNACE))) {
-                    setDebugState("Picking up the furnace while we are at it.");
+                    setDebugState("Picking up the furnace while we are at it.", "Grabbing the furnace");
                     Item furnaceItem = furnaceEntity.isPresent() ? furnaceEntity.get().getItem().getItem() : Items.FURNACE;
                     Block furnaceBlock = furnacePos.isPresent() ? mod.getWorld().getBlockState(furnacePos.get()).getBlock() : Blocks.FURNACE;
                     return new MineAndCollectTask(furnaceItem, 1, new Block[]{furnaceBlock}, MiningRequirement.WOOD);
@@ -1234,7 +1239,7 @@ public class MarvionBeatMinecraftTask extends Task {
                         || (smokerEntity.isPresent()
                         && mod.getEntityTracker().itemDropped(smokerEntity.get().getItem().getItem())
                         && !thisOrChildSatisfies(isSmokerTask) && !mod.getItemStorage().hasItem(Items.SMOKER))) {
-                    setDebugState("Picking up the smoker while we are at it.");
+                    setDebugState("Picking up the smoker while we are at it.", "Grabbing the smoker");
                     Item smokerItem = smokerEntity.isPresent() ? smokerEntity.get().getItem().getItem() : Items.SMOKER;
                     Block smokerBlock = smokerPos.isPresent() ? mod.getWorld().getBlockState(smokerPos.get()).getBlock() : Blocks.SMOKER;
                     return new MineAndCollectTask(smokerItem, 1, new Block[]{smokerBlock}, MiningRequirement.WOOD);
@@ -1249,7 +1254,7 @@ public class MarvionBeatMinecraftTask extends Task {
                         || (craftingTableEntity.isPresent()
                         && mod.getEntityTracker().itemDropped(craftingTableEntity.get().getItem().getItem())
                         && !thisOrChildSatisfies(isCraftingTableTask) && !mod.getItemStorage().hasItem(Items.CRAFTING_TABLE))) {
-                    setDebugState("Picking up the crafting table while we are at it.");
+                    setDebugState("Picking up the crafting table while we are at it.", "Grabbing the crafting table");
                     Item craftingTableItem = craftingTableEntity.isPresent() ? craftingTableEntity.get().getItem().getItem() : Items.CRAFTING_TABLE;
                     Block craftingTableBlock = craftingTablePos.isPresent() ? mod.getWorld().getBlockState(craftingTablePos.get()).getBlock() : Blocks.CRAFTING_TABLE;
                     return new MineAndCollectTask(craftingTableItem, 1, new Block[]{craftingTableBlock}, MiningRequirement.HAND);
@@ -1258,7 +1263,7 @@ public class MarvionBeatMinecraftTask extends Task {
             if (!mod.getItemStorage().hasItem(Items.NETHERRACK) &&
                     WorldHelper.getCurrentDimension() == Dimension.NETHER && !isGettingBlazeRods &&
                     !isGettingEnderPearls) {
-                setDebugState("Getting netherrack.");
+                setDebugState("Getting netherrack.", "Getting Netherrack");
                 if (mod.getEntityTracker().itemDropped(Items.NETHERRACK)) {
                     return new PickupDroppedItemTask(Items.NETHERRACK, 1, true);
                 }
@@ -1282,11 +1287,11 @@ public class MarvionBeatMinecraftTask extends Task {
                         return new DoToClosestBlockTask(DestroyBlockTask::new, ItemHelper.itemsToBlocks(ItemHelper.BED));
                     }
                 }
-                setDebugState("Sleeping through night");
+                setDebugState("Sleeping through night", "Sleeping through the night");
                 return _sleepThroughNightTask;
             }
             if (shouldForce(mod, _getOneBedTask)) {
-                setDebugState("Getting one bed to sleep in at night.");
+                setDebugState("Getting one bed to sleep in at night.", "Getting a bed to sleep in");
                 return _getOneBedTask;
             }
             if (!mod.getItemStorage().hasItem(ItemHelper.BED)) {
@@ -1313,7 +1318,7 @@ public class MarvionBeatMinecraftTask extends Task {
         }
         if (WorldHelper.getCurrentDimension() == Dimension.OVERWORLD) {
             if (needsBeds(mod) && anyBedsFound(mod)) {
-                setDebugState("A bed was found, getting it.");
+                setDebugState("A bed was found, getting it.", "Grabbing a bed");
                 getBedTask = getBedTask(mod);
                 return getBedTask;
             }
@@ -1374,24 +1379,24 @@ public class MarvionBeatMinecraftTask extends Task {
                             return WorldHelper.getSpawnerEntity(mod, blockPos) instanceof Silverfish;
                         }, Blocks.SPAWNER);
                         if (silverfish.isPresent()) {
-                            setDebugState("Breaking silverfish spawner.");
+                            setDebugState("Breaking silverfish spawner.", "Breaking a silverfish spawner");
                             return new DestroyBlockTask(silverfish.get());
                         }
                     }
                     if (endPortalOpened(mod, _endPortalCenterLocation)) {
                         openingEndPortal = false;
                         if (needsBuildingMaterials(mod)) {
-                            setDebugState("Collecting building materials.");
+                            setDebugState("Collecting building materials.", "Getting building materials");
                             return _buildMaterialsTask;
                         }
                         if (_config.placeSpawnNearEndPortal && mod.getItemStorage().hasItem(ItemHelper.BED)) {
                             if (!spawnSetNearPortal(mod, _endPortalCenterLocation)) {
-                                setDebugState("Setting spawn near end portal");
+                                setDebugState("Setting spawn near end portal", "Setting spawn by the portal");
                                 return setSpawnNearPortalTask(mod);
                             }
                         }
                         // We're as ready as we'll ever be, hop into the portal!
-                        setDebugState("Entering End");
+                        setDebugState("Entering End", "Entering the End");
                         enteringEndPortal = true;
                         if (!mod.getExtraBaritoneSettings().isCanWalkOnEndPortal()) {
                             mod.getExtraBaritoneSettings().canWalkOnEndPortal(true);
@@ -1402,7 +1407,7 @@ public class MarvionBeatMinecraftTask extends Task {
                         );
                     } else {
                         // Open the portal! (we have enough eyes, do it)
-                        setDebugState("Opening End Portal");
+                        setDebugState("Opening End Portal", "Opening the end portal");
                         openingEndPortal = true;
                         return new DoToClosestBlockTask(
                                 blockPos -> new InteractWithBlockTask(Items.ENDER_EYE, blockPos),
@@ -1414,25 +1419,25 @@ public class MarvionBeatMinecraftTask extends Task {
                     _ranStrongholdLocator = true;
                     // Get beds before starting our portal location.
                     if (WorldHelper.getCurrentDimension() == Dimension.OVERWORLD && needsBeds(mod)) {
-                        setDebugState("Getting beds before stronghold search.");
+                        setDebugState("Getting beds before stronghold search.", "Getting beds");
                         getBedTask = getBedTask(mod);
                         return getBedTask;
                     }
                     getBedTask = null;
                     if (!mod.getItemStorage().hasItem(Items.WATER_BUCKET)) {
-                        setDebugState("Getting water bucket.");
+                        setDebugState("Getting water bucket.", "Getting a Water Bucket");
                         return TaskCatalogue.getItemTask(Items.WATER_BUCKET, 1);
                     }
                     if (!mod.getItemStorage().hasItem(Items.FLINT_AND_STEEL)) {
-                        setDebugState("Getting flint and steel.");
+                        setDebugState("Getting flint and steel.", "Getting Flint and Steel");
                         return TaskCatalogue.getItemTask(Items.FLINT_AND_STEEL, 1);
                     }
                     if (needsBuildingMaterials(mod)) {
-                        setDebugState("Collecting building materials.");
+                        setDebugState("Collecting building materials.", "Getting building materials");
                         return _buildMaterialsTask;
                     }
                     // Portal Location
-                    setDebugState("Locating End Portal...");
+                    setDebugState("Locating End Portal...", "Finding the end portal");
                     return _locateStrongholdTask;
                 }
             }
@@ -1469,7 +1474,7 @@ public class MarvionBeatMinecraftTask extends Task {
                     }
                 }
                 // Portal Location
-                setDebugState("Locating End Portal...");
+                setDebugState("Locating End Portal...", "Finding the end portal");
                 return _locateStrongholdTask;
             }
         }
@@ -1492,7 +1497,7 @@ public class MarvionBeatMinecraftTask extends Task {
 
         // Check if spawn should be forced
         if (shouldForce(mod, _setBedSpawnTask)) {
-            setDebugState("Setting spawnpoint now.");
+            setDebugState("Setting spawnpoint now.", "Setting spawn");
             return _setBedSpawnTask;
         }
 
@@ -1500,7 +1505,7 @@ public class MarvionBeatMinecraftTask extends Task {
         if (WorldHelper.inRangeXZ(mod.getPlayer(), WorldHelper.toVec3d(_endPortalCenterLocation), END_PORTAL_BED_SPAWN_RANGE)) {
             return _setBedSpawnTask;
         } else {
-            setDebugState("Approaching portal (to set spawnpoint)");
+            setDebugState("Approaching portal (to set spawnpoint)", "Heading to the portal to set spawn");
             return new GetToXZTask(_endPortalCenterLocation.getX(), _endPortalCenterLocation.getZ());
         }
     }
@@ -1799,7 +1804,7 @@ public class MarvionBeatMinecraftTask extends Task {
 
     private Task getEyesOfEnderTask(AltoClef mod, int targetEyes) {
         if (mod.getEntityTracker().itemDropped(Items.ENDER_EYE)) {
-            setDebugState("Picking up Dropped Eyes");
+            setDebugState("Picking up Dropped Eyes", "Picking up Eyes of Ender");
             return new PickupDroppedItemTask(Items.ENDER_EYE, targetEyes);
         }
 
@@ -1815,13 +1820,13 @@ public class MarvionBeatMinecraftTask extends Task {
 
         if (needsBlazePowder && !needsBlazeRods) {
             // We have enough blaze rods.
-            setDebugState("Crafting blaze powder");
+            setDebugState("Crafting blaze powder", "Crafting Blaze Powder");
             return TaskCatalogue.getItemTask(Items.BLAZE_POWDER, targetEyes - eyeCount);
         }
 
         if (!needsBlazePowder && !needsEnderPearls) {
             // Craft ender eyes
-            setDebugState("Crafting Ender Eyes");
+            setDebugState("Crafting Ender Eyes", "Crafting Eyes of Ender");
             return TaskCatalogue.getItemTask(Items.ENDER_EYE, targetEyes);
         }
 
@@ -1830,38 +1835,38 @@ public class MarvionBeatMinecraftTask extends Task {
             case OVERWORLD -> {
                 // If we happen to find beds...
                 if (needsBeds(mod) && anyBedsFound(mod)) {
-                    setDebugState("A bed was found, getting it.");
+                    setDebugState("A bed was found, getting it.", "Grabbing a bed");
                     getBedTask = getBedTask(mod);
                     return getBedTask;
                 }
                 getBedTask = null;
                 if (shouldForce(mod, _logsTask)) {
-                    setDebugState("Getting logs for later.");
+                    setDebugState("Getting logs for later.", "Getting logs");
                     return _logsTask;
                 }
                 _logsTask = null;
                 if (shouldForce(mod, _stoneGearTask)) {
-                    setDebugState("Getting stone gear for later.");
+                    setDebugState("Getting stone gear for later.", "Getting stone gear");
                     return _stoneGearTask;
                 }
                 _stoneGearTask = null;
                 if (shouldForce(mod, _getPorkchopTask)) {
-                    setDebugState("Getting pork chop just for fun.");
+                    setDebugState("Getting pork chop just for fun.", "Getting a Porkchop");
                     return _getPorkchopTask;
                 }
                 _getPorkchopTask = null;
                 if (shouldForce(mod, _starterGearTask)) {
-                    setDebugState("Getting starter gear.");
+                    setDebugState("Getting starter gear.", "Getting starter gear");
                     return _starterGearTask;
                 }
                 _starterGearTask = null;
                 if (shouldForce(mod, _shieldTask) && !StorageHelper.isArmorEquipped(mod, COLLECT_SHIELD)) {
-                    setDebugState("Getting shield for defense purposes only.");
+                    setDebugState("Getting shield for defense purposes only.", "Getting a Shield");
                     return _shieldTask;
                 }
                 _shieldTask = null;
                 if (shouldForce(mod, _foodTask)) {
-                    setDebugState("Getting food for ender eye journey.");
+                    setDebugState("Getting food for ender eye journey.", "Getting food");
                     return _foodTask;
                 }
                 _foodTask = null;
@@ -1876,7 +1881,7 @@ public class MarvionBeatMinecraftTask extends Task {
                             Optional<Item> cooked = ItemHelper.getCookedFood(raw);
                             if (cooked.isPresent()) {
                                 int targetCount = mod.getItemStorage().getItemCount(cooked.get()) + mod.getItemStorage().getItemCount(raw);
-                                setDebugState("Smelting raw food: " + ItemHelper.stripItemName(raw));
+                                setDebugState("Smelting raw food: " + ItemHelper.stripItemName(raw), "Cooking food");
                                 _smeltTask = new SmeltInSmokerTask(new SmeltTarget(new ItemTarget(cooked.get(), targetCount), new ItemTarget(raw, targetCount)));
                                 return _smeltTask;
                             }
@@ -1886,17 +1891,17 @@ public class MarvionBeatMinecraftTask extends Task {
                 _smeltTask = null;
                 // Make sure we have gear, then food.
                 if (shouldForce(mod, _lootTask)) {
-                    setDebugState("Looting chest for goodies");
+                    setDebugState("Looting chest for goodies", "Looting a chest");
                     return _lootTask;
                 }
                 _lootTask = null;
                 if (shouldForce(mod, _ironGearTask) && !StorageHelper.isArmorEquipped(mod, COLLECT_IRON_ARMOR)) {
-                    setDebugState("Getting iron gear before diamond gear for defense purposes only.");
+                    setDebugState("Getting iron gear before diamond gear for defense purposes only.", "Getting iron gear");
                     return _ironGearTask;
                 }
                 _ironGearTask = null;
                 if (shouldForce(mod, _gearTask) && !StorageHelper.isArmorEquipped(mod, COLLECT_EYE_ARMOR)) {
-                    setDebugState("Getting diamond gear for ender eye journey.");
+                    setDebugState("Getting diamond gear for ender eye journey.", "Getting diamond gear");
                     return _gearTask;
                 }
                 _gearTask = null;
@@ -1933,7 +1938,7 @@ public class MarvionBeatMinecraftTask extends Task {
                             _getPorkchopTask = new KillAndLootTask(Pig.class, notBaby, new ItemTarget(Items.PORKCHOP, 1));
                             return _getPorkchopTask;
                         }
-                        setDebugState("Searching a better place to start with.");
+                        setDebugState("Searching a better place to start with.", "Looking for a better spot");
                         searchBiomeTask = new SearchWithinBiomeTask(Biomes.PLAINS);
                         return searchBiomeTask;
                     }
@@ -1951,7 +1956,7 @@ public class MarvionBeatMinecraftTask extends Task {
                     if (_config.getShield && !shieldSatisfied && !mod.getFoodChain().needsToEat()) {
                         ItemTarget shield = new ItemTarget(COLLECT_SHIELD);
                         if (mod.getItemStorage().hasItem(shield) && !StorageHelper.isArmorEquipped(mod, COLLECT_SHIELD)) {
-                            setDebugState("Equipping shield.");
+                            setDebugState("Equipping shield.", "Equipping a Shield");
                             return new EquipArmorTask(COLLECT_SHIELD);
                         }
                         _shieldTask = TaskCatalogue.getItemTask(shield);
@@ -1983,7 +1988,7 @@ public class MarvionBeatMinecraftTask extends Task {
                     if (_config.ironGearBeforeDiamondGear && !ironGearSatisfied && !eyeGearSatisfied) {
                         for (Item ironArmor : COLLECT_IRON_ARMOR) {
                             if (mod.getItemStorage().hasItem(ironArmor) && !StorageHelper.isArmorEquipped(mod, ironArmor)) {
-                                setDebugState("Equipping armor.");
+                                setDebugState("Equipping armor.", "Equipping armor");
                                 return new EquipArmorTask(ironArmor);
                             }
                         }
@@ -2005,7 +2010,7 @@ public class MarvionBeatMinecraftTask extends Task {
                 if (!eyeGearSatisfied) {
                     for (Item diamond : COLLECT_EYE_ARMOR) {
                         if (mod.getItemStorage().hasItem(diamond) && !StorageHelper.isArmorEquipped(mod, diamond)) {
-                            setDebugState("Equipping armor.");
+                            setDebugState("Equipping armor.", "Equipping armor");
                             isEquippingDiamondArmor = true;
                             return new EquipArmorTask(diamond);
                         }
@@ -2056,19 +2061,19 @@ public class MarvionBeatMinecraftTask extends Task {
                     }
                 }
                 if (needsBuildingMaterials(mod)) {
-                    setDebugState("Collecting building materials.");
+                    setDebugState("Collecting building materials.", "Getting building materials");
                     return _buildMaterialsTask;
                 }
                 // Then go to the nether.
-                setDebugState("Going to Nether");
+                setDebugState("Going to Nether", "Heading to the Nether");
                 return _goToNetherTask;
             }
             case NETHER -> {
                 if (needsEnderPearls) {
-                    setDebugState("Getting Ender Pearls");
+                    setDebugState("Getting Ender Pearls", "Getting Ender Pearls");
                     return getEnderPearlTask(mod, enderPearlTarget);
                 }
-                setDebugState("Getting Blaze Rods");
+                setDebugState("Getting Blaze Rods", "Getting Blaze Rods");
                 return getBlazeRodsTask(mod, blazeRodTarget);
             }
             case END -> throw new UnsupportedOperationException("You're in the end. Don't collect eyes here.");

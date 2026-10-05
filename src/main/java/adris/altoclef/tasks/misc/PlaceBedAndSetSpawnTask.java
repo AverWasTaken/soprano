@@ -229,13 +229,13 @@ public class PlaceBedAndSetSpawnTask extends Task {
         }
         // We cannot do this anywhere but the overworld.
         if (WorldHelper.getCurrentDimension() != Dimension.OVERWORLD) {
-            setDebugState("Going to the overworld first.");
+            setDebugState("Going to the overworld first.", "Heading to the Overworld");
             return new DefaultGoToDimensionTask(Dimension.OVERWORLD);
         }
         Screen screen = Minecraft.getInstance().screen;
         if (screen instanceof InBedChatScreen) {
             _progressChecker.reset();
-            setDebugState("Sleeping...");
+            setDebugState("Sleeping...", "Sleeping");
             _wasSleeping = true;
             //Debug.logMessage("Closing sleeping thing");
             _spawnSet = true;
@@ -329,7 +329,7 @@ public class PlaceBedAndSetSpawnTask extends Task {
         }
         // Get a bed if we don't have one.
         if (!mod.getItemStorage().hasItem(ItemHelper.BED)) {
-            setDebugState("Getting a bed first");
+            setDebugState("Getting a bed first", "Getting a bed");
             return TaskCatalogue.getItemTask("bed", 1);
         }
 
@@ -397,7 +397,7 @@ public class PlaceBedAndSetSpawnTask extends Task {
             _progressChecker.reset();
             return null;
         }
-        setDebugState("Placing bed...");
+        setDebugState("Placing bed...", "Placing the bed");
 
         setDebugState("Filling in Portal");
         if (!_progressChecker.check(mod)) {
@@ -461,6 +461,11 @@ public class PlaceBedAndSetSpawnTask extends Task {
         }
         // Check if the other task is an instance of PlaceBedAndSetSpawnTask
         return other instanceof PlaceBedAndSetSpawnTask;
+    }
+
+    @Override
+    protected String toHudString() {
+        return "Sleeping in a bed";
     }
 
     /**

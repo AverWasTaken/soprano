@@ -671,4 +671,9 @@ public class MobDefenseChain extends SingleTaskChain {
     public String getName() {
         return "Mob Defense";
     }
+
+    @Override
+    public String getHudName() {
+        return "Defending";
+    }
 }

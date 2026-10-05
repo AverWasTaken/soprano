@@ -48,4 +48,14 @@ public class EnsureFreeInventorySlotTask extends Task {
     protected String toDebugString() {
         return "Ensuring inventory is free";
     }
+
+    @Override
+    protected String toHudString() {
+        return "Making room in the inventory";
+    }
+
+    @Override
+    protected boolean isHudPlumbing() {
+        return true;
+    }
 }

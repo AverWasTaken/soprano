@@ -16,6 +16,7 @@ import adris.altoclef.util.progresscheck.MovementProgressChecker;
 import adris.altoclef.util.slots.CursorSlot;
 import adris.altoclef.util.slots.PlayerSlot;
 import adris.altoclef.util.time.TimerGame;
+import adris.altoclef.ui.HudText;
 import java.util.*;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
@@ -121,6 +122,11 @@ public class MineAndCollectTask extends ResourceTask {
     @Override
     protected String toDebugStringName() {
         return "Mine And Collect";
+    }
+
+    @Override
+    protected String toHudString() {
+        return "Mining " + HudText.some(_itemTargets);
     }
 
     private void makeSureToolIsEquipped(AltoClef mod) {
@@ -280,6 +286,16 @@ public class MineAndCollectTask extends ResourceTask {
         @Override
         protected String toDebugString() {
             return "Mining or Collecting";
+        }
+
+        @Override
+        protected String toHudString() {
+            return "Looking for " + HudText.some(_targets);
+        }
+
+        @Override
+        protected boolean isHudPlumbing() {
+            return true;
         }
 
         public boolean isMining() {

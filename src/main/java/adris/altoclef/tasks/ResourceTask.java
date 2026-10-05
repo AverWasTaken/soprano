@@ -21,6 +21,7 @@ import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.slots.PlayerSlot;
 import adris.altoclef.util.slots.Slot;
+import adris.altoclef.ui.HudText;
 import org.apache.commons.lang3.ArrayUtils;
 
 import java.util.ArrayList;
@@ -242,6 +243,12 @@ public abstract class ResourceTask extends Task implements ITaskCanForce {
         }
         result.append("]");
         return result.toString();
+    }
+
+    @Override
+    protected String toHudString() {
+        // the verb is a guess at this level, subclasses that mine or craft say so
+        return "Getting " + HudText.items(_itemTargets);
     }
 
     protected boolean isInWrongDimension(AltoClef mod) {

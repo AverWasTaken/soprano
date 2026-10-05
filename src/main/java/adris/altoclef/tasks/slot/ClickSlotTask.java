@@ -65,6 +65,16 @@ public class ClickSlotTask extends Task {
     }
 
     @Override
+    protected String toHudString() {
+        return "Clicking a slot";
+    }
+
+    @Override
+    protected boolean isHudPlumbing() {
+        return true;
+    }
+
+    @Override
     public boolean isFinished(AltoClef mod) {
         return _clicked;
     }

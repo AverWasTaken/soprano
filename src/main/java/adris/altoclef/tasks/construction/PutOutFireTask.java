@@ -50,6 +50,11 @@ public class PutOutFireTask extends Task {
     }
 
     @Override
+    protected String toHudString() {
+        return "Putting out a fire";
+    }
+
+    @Override
     protected String toDebugString() {
         return "Putting out fire at " + _firePosition;
     }

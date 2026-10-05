@@ -13,6 +13,11 @@ public class CraftInAnvilTask extends DoStuffInContainerTask {
     }
 
     @Override
+    protected String toHudString() {
+        return "Using an Anvil";
+    }
+
+    @Override
     protected boolean isSubTaskEqual(DoStuffInContainerTask other) {
         throw new NotImplementedException("Anvil Not Implemented, whoops");
     }

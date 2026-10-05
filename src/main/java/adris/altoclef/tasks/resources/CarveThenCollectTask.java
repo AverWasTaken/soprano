@@ -8,6 +8,7 @@ import adris.altoclef.tasks.ResourceTask;
 import adris.altoclef.tasks.construction.DestroyBlockTask;
 import adris.altoclef.tasks.construction.PlaceBlockNearbyTask;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.ui.HudText;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.StorageHelper;
 import java.util.Arrays;
@@ -100,5 +101,10 @@ public class CarveThenCollectTask extends ResourceTask {
     @Override
     protected String toDebugStringName() {
         return "Getting after carving: " + _target;
+    }
+
+    @Override
+    protected String toHudString() {
+        return "Carving " + HudText.some(_target);
     }
 }

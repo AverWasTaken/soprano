@@ -85,6 +85,11 @@ public class SmithingSquasher extends TypeSquasher<UpgradeInSmithingTableTask> {
         }
 
         @Override
+        protected String toHudString() {
+            return "Getting smithing materials";
+        }
+
+        @Override
         protected String toDebugStringName() {
             return "Collecting Smithing Materials";
         }

@@ -33,6 +33,16 @@ public class ThrowCursorTask extends Task {
     }
 
     @Override
+    protected String toHudString() {
+        return "Dropping the held item";
+    }
+
+    @Override
+    protected boolean isHudPlumbing() {
+        return true;
+    }
+
+    @Override
     public boolean isFinished(AltoClef mod) {
         return _throwTask.isFinished(mod);
     }

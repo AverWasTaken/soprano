@@ -1847,6 +1847,13 @@ public final class Settings {
     public final Setting<Boolean> altoShowTimer = new Setting<>(false);
 
     /**
+     * Show the task list the way the developers see it: class names, item id lists and the raw task states, the same
+     * text that goes into the log. Off, the list is written in plain words. Turn it on when you are putting together
+     * a bug report. Needs {@link #altoShowTaskChains}.
+     */
+    public final Setting<Boolean> altoHudDetailed = new Setting<>(false);
+
+    /**
      * Hide all of AltoClef's warning logs. Not recommended, it makes debugging harder, but if you know what you are
      * doing go nuts.
      */

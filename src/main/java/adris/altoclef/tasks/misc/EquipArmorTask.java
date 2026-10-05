@@ -5,6 +5,7 @@ import adris.altoclef.Debug;
 import adris.altoclef.tasks.slot.MoveItemToSlotFromInventoryTask;
 import adris.altoclef.tasks.squashed.CataloguedResourceTask;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.ui.HudText;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.StorageHelper;
@@ -150,6 +151,12 @@ public class EquipArmorTask extends Task {
             return Arrays.equals(task._toEquip, _toEquip);
         }
         return false;
+    }
+
+    @Override
+    protected String toHudString() {
+        Item[] items = Arrays.stream(_toEquip).flatMap(target -> Arrays.stream(target.getMatches())).distinct().toArray(Item[]::new);
+        return "Putting on " + (items.length == 1 ? HudText.item(items[0]) : HudText.some(items));
     }
 
     @Override

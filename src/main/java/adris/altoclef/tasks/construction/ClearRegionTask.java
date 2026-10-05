@@ -69,6 +69,11 @@ public class ClearRegionTask extends Task implements ITaskRequiresGrounded {
     }
 
     @Override
+    protected String toHudString() {
+        return "Clearing out an area";
+    }
+
+    @Override
     protected String toDebugString() {
         return "Clear region from " + _from.toShortString() + " to " + _to.toShortString();
     }

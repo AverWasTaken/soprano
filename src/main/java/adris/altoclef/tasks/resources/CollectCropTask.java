@@ -8,6 +8,7 @@ import adris.altoclef.tasks.ResourceTask;
 import adris.altoclef.tasks.construction.DestroyBlockTask;
 import adris.altoclef.tasks.movement.PickupDroppedItemTask;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.ui.HudText;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.StlHelper;
 import adris.altoclef.util.helpers.WorldHelper;
@@ -173,6 +174,11 @@ public class CollectCropTask extends ResourceTask {
             return Arrays.equals(task._cropSeed, _cropSeed) && Arrays.equals(task._cropBlock, _cropBlock) && task._cropToCollect.equals(_cropToCollect);
         }
         return false;
+    }
+
+    @Override
+    protected String toHudString() {
+        return "Harvesting " + HudText.some(_cropToCollect);
     }
 
     @Override

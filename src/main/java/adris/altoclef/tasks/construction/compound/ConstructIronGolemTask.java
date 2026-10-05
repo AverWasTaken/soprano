@@ -123,6 +123,11 @@ public class ConstructIronGolemTask extends Task {
     }
 
     @Override
+    protected String toHudString() {
+        return "Building an Iron Golem";
+    }
+
+    @Override
     protected String toDebugString() {
         return "Construct Iron Golem";
     }

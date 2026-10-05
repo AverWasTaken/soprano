@@ -45,6 +45,11 @@ public class GetBuildingMaterialsTask extends Task {
     }
 
     @Override
+    protected String toHudString() {
+        return "Getting " + _count + " building blocks";
+    }
+
+    @Override
     protected String toDebugString() {
         return "Collecting " + _count + " building materials.";
     }

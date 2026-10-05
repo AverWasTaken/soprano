@@ -164,6 +164,11 @@ public class WorldSurvivalChain extends SingleTaskChain {
     }
 
     @Override
+    public String getHudName() {
+        return "Staying safe";
+    }
+
+    @Override
     public boolean isActive() {
         // Always check for survival.
         return true;

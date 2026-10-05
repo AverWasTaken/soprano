@@ -175,6 +175,11 @@ public class KillEnderDragonTask extends Task {
     }
 
     @Override
+    protected String toHudString() {
+        return "Fighting the Ender Dragon";
+    }
+
+    @Override
     protected String toDebugString() {
         return "Killing Ender Dragon";
     }
@@ -350,7 +355,7 @@ public class KillEnderDragonTask extends Task {
                                     new GoalGetToBlock(_randomWanderPos)
                             );
                         }
-                        setDebugState("Waiting for perch");
+                        setDebugState("Waiting for perch", "Waiting for the dragon to perch");
                     }
                 }
             }
@@ -368,6 +373,11 @@ public class KillEnderDragonTask extends Task {
         @Override
         protected boolean isEqual(Task other) {
             return other instanceof PunkEnderDragonTask;
+        }
+
+        @Override
+        protected String toHudString() {
+            return "Fighting the Ender Dragon";
         }
 
         @Override

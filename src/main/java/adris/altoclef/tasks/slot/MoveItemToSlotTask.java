@@ -7,6 +7,7 @@ import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.StlHelper;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.slots.Slot;
+import adris.altoclef.ui.HudText;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
@@ -107,6 +108,16 @@ public class MoveItemToSlotTask extends Task {
     @Override
     protected String toDebugString() {
         return "Moving " + _toMove + " to " + _destination;
+    }
+
+    @Override
+    protected String toHudString() {
+        return "Moving " + HudText.items(_toMove);
+    }
+
+    @Override
+    protected boolean isHudPlumbing() {
+        return true;
     }
 
     private Optional<Slot> getBestSlotToPickUp(AltoClef mod, Item[] validItems) {

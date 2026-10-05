@@ -3,6 +3,7 @@ package adris.altoclef.tasks;
 import adris.altoclef.AltoClef;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.helpers.WorldHelper;
+import adris.altoclef.ui.HudText;
 import java.util.Arrays;
 import java.util.Optional;
 import java.util.function.Function;
@@ -103,5 +104,15 @@ public class DoToClosestBlockTask extends AbstractDoToClosestObjectTask<BlockPos
     @Override
     protected String toDebugString() {
         return "Doing something to closest block...";
+    }
+
+    @Override
+    protected String toHudString() {
+        return "Finding the nearest " + HudText.blocks(_targetBlocks);
+    }
+
+    @Override
+    protected boolean isHudPlumbing() {
+        return true;
     }
 }

@@ -58,6 +58,11 @@ public class CollectEggsTask extends ResourceTask {
     }
 
     @Override
+    protected String toHudString() {
+        return "Waiting for Chicken eggs";
+    }
+
+    @Override
     protected String toDebugStringName() {
         return "Collecting " + _count + " eggs.";
     }

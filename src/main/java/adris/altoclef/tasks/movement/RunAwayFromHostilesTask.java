@@ -40,6 +40,11 @@ public class RunAwayFromHostilesTask extends CustomBaritoneGoalTask {
     }
 
     @Override
+    protected String toHudString() {
+        return "Running from monsters";
+    }
+
+    @Override
     protected String toDebugString() {
         return "NIGERUNDAYOO, SUMOOKEYY!";
     }

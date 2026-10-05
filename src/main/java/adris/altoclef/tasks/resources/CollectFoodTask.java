@@ -340,6 +340,11 @@ public class CollectFoodTask extends Task {
         return "Collect " + _unitsNeeded + " units of food.";
     }
 
+    @Override
+    protected String toHudString() {
+        return "Getting food";
+    }
+
     /**
      * Returns a task that mines a block and picks up its output.
      * Returns null if task cannot reasonably run.

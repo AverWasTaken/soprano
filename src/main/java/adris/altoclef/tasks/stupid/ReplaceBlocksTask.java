@@ -10,6 +10,7 @@ import adris.altoclef.tasks.DoToClosestBlockTask;
 import adris.altoclef.tasks.construction.PlaceBlockTask;
 import adris.altoclef.tasks.movement.TimeoutWanderTask;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.ui.HudText;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.ItemHelper;
 import org.apache.commons.lang3.ArrayUtils;
@@ -144,6 +145,11 @@ public class ReplaceBlocksTask extends Task {
             return task._toReplace.equals(_toReplace) && Arrays.equals(task._toFind, _toFind);
         }
         return false;
+    }
+
+    @Override
+    protected String toHudString() {
+        return "Replacing " + HudText.blocks(_toFind) + " with " + HudText.some(_toReplace.getMatches());
     }
 
     @Override

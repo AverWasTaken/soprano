@@ -91,6 +91,11 @@ public class SCP173Task extends Task {
     }
 
     @Override
+    protected String toHudString() {
+        return "Standing very still";
+    }
+
+    @Override
     protected String toDebugString() {
         return "Acting like SCP 173";
     }

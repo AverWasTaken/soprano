@@ -288,6 +288,11 @@ public class ConstructNetherPortalBucketTask extends Task {
     }
 
     @Override
+    protected String toHudString() {
+        return "Building a Nether portal";
+    }
+
+    @Override
     protected String toDebugString() {
         return "Construct Nether Portal";
     }

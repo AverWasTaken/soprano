@@ -3,6 +3,7 @@ package adris.altoclef.tasks.entity;
 import adris.altoclef.AltoClef;
 import adris.altoclef.tasks.AbstractDoToClosestObjectTask;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.ui.HudText;
 import java.util.Arrays;
 import java.util.Optional;
 import java.util.function.Function;
@@ -92,5 +93,19 @@ public class DoToClosestEntityTask extends AbstractDoToClosestObjectTask<Entity>
     @Override
     protected String toDebugString() {
         return "Doing something to closest entity...";
+    }
+
+    protected Class<?> targetClass() {
+        return _targetEntities == null || _targetEntities.length == 0 ? null : _targetEntities[0];
+    }
+
+    @Override
+    protected String toHudString() {
+        return "Finding the nearest " + (targetClass() == null ? "mob" : HudText.entityClass(targetClass()));
+    }
+
+    @Override
+    protected boolean isHudPlumbing() {
+        return true;
     }
 }

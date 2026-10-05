@@ -2,6 +2,7 @@ package adris.altoclef.tasks.movement;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.ui.HudText;
 import org.apache.commons.lang3.ArrayUtils;
 
 import java.util.Arrays;
@@ -30,6 +31,17 @@ public class SearchChunkForBlockTask extends SearchChunksExploreTask {
         if (other instanceof SearchChunkForBlockTask blockTask) {
             return Arrays.equals(blockTask._toSearchFor.toArray(Block[]::new), _toSearchFor.toArray(Block[]::new));
         }
+        return false;
+    }
+
+    @Override
+    protected String toHudString() {
+        return "Searching for " + HudText.blocks(_toSearchFor.toArray(Block[]::new));
+    }
+
+    @Override
+    protected boolean isHudPlumbing() {
+        // the explore base is plumbing, this one is the actual search
         return false;
     }
 

@@ -74,6 +74,11 @@ public class GoToStrongholdPortalTask extends Task {
     }
 
     @Override
+    protected String toHudString() {
+        return "Finding the stronghold";
+    }
+
+    @Override
     protected String toDebugString() {
         return "Locating Stronghold";
     }

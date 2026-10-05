@@ -5,6 +5,7 @@ import adris.altoclef.tasks.ResourceTask;
 import adris.altoclef.tasks.entity.KillEntitiesTask;
 import adris.altoclef.tasks.entity.KillEntityTask;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.ui.HudText;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.time.TimerGame;
 import java.util.Optional;
@@ -64,6 +65,11 @@ public class KillEndermanTask extends ResourceTask {
             return task._count == _count;
         }
         return false;
+    }
+
+    @Override
+    protected String toHudString() {
+        return "Hunting Endermen for " + HudText.count(_count, "Ender Pearl");
     }
 
     @Override

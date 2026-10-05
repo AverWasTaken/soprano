@@ -237,4 +237,9 @@ public class TimeoutWanderTask extends Task implements ITaskRequiresGrounded {
     protected String toDebugString() {
         return "Wander for " + (_distanceToWander + _wanderDistanceExtension) + " blocks";
     }
+
+    @Override
+    protected String toHudString() {
+        return "Exploring";
+    }
 }

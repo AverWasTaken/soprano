@@ -68,7 +68,7 @@ public class EnterNetherPortalTask extends Task {
             if (_portalTimeout.elapsed() && !_leftPortal) {
                 return _wanderTask;
             }
-            setDebugState("Waiting inside portal");
+            setDebugState("Waiting inside portal", "Standing in the portal");
             mod.getClientBaritone().getExploreProcess().onLostControl();
             mod.getClientBaritone().getCustomGoalProcess().onLostControl();
             mod.getClientBaritone().getMineProcess().onLostControl();
@@ -135,5 +135,10 @@ public class EnterNetherPortalTask extends Task {
     @Override
     protected String toDebugString() {
         return "Entering nether portal";
+    }
+
+    @Override
+    protected String toHudString() {
+        return "Going through a Nether portal";
     }
 }

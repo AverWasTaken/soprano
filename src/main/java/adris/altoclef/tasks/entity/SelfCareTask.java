@@ -184,6 +184,11 @@ public class SelfCareTask extends Task {
     }
 
     @Override
+    protected String toHudString() {
+        return "Looking after myself";
+    }
+
+    @Override
     protected String toDebugString() {
         return "Caring self";
     }

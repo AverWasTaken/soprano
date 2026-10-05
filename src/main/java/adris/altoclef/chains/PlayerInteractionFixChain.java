@@ -203,4 +203,9 @@ public class PlayerInteractionFixChain extends TaskChain {
     public String getName() {
         return "Hand Stack Fix Chain";
     }
+
+    @Override
+    public String getHudName() {
+        return "Tidying up";
+    }
 }

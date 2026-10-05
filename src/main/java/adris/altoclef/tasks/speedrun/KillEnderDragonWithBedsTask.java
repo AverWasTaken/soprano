@@ -63,7 +63,7 @@ public class KillEnderDragonWithBedsTask extends Task {
          */
         Optional<Entity> dragon = mod.getEntityTracker().getClosestEntity(EnderDragon.class);
         if (dragon.isEmpty() && !isDragonPresent) {
-            setDebugState("Waiting for dragon to spawn.");
+            setDebugState("Waiting for dragon to spawn.", "Waiting for the dragon");
             return null;
         }
         if (!isDragonPresent) {
@@ -110,7 +110,7 @@ public class KillEnderDragonWithBedsTask extends Task {
             ((IDragonWaiter) _whenNotPerchingTask).setPerchState(perching);
             // When the dragon is not perching...
             if (_whenNotPerchingTask.isActive() && !_whenNotPerchingTask.isFinished(mod)) {
-                setDebugState("Dragon not perching, performing special behavior...");
+                setDebugState("Dragon not perching, performing special behavior...", "Waiting for the dragon to perch");
                 return _whenNotPerchingTask;
             }
             if (perching) {
@@ -119,7 +119,7 @@ public class KillEnderDragonWithBedsTask extends Task {
                 BlockPos playerPosition = mod.getPlayer().blockPosition();
                 // If we're not positioned (above is OK), go there and make sure we're at the right height.
                 if (_positionTask != null && _positionTask.isActive() && !_positionTask.isFinished(mod)) {
-                    setDebugState("Going to position for bed cycle...");
+                    setDebugState("Going to position for bed cycle...", "Getting into position");
                     return _positionTask;
                 }
                 if ((!WorldHelper.inRangeXZ(WorldHelper.toVec3d(targetStandPosition), mod.getPlayer().position(), 0.50))
@@ -127,14 +127,14 @@ public class KillEnderDragonWithBedsTask extends Task {
                 ) {
                     _positionTask = new GetToBlockTask(targetStandPosition);
                     Debug.logMessage("Going to position for bed cycle...");
-                    setDebugState("Moving to target stand position");
+                    setDebugState("Moving to target stand position", "Getting into position");
                     return _positionTask;
                 }
                 // We're positioned. Perform bed strats!
                 BlockPos bedTargetPosition = _endPortalTop.above();
                 boolean bedPlaced = mod.getBlockTracker().blockIsValid(bedTargetPosition, ItemHelper.itemsToBlocks(ItemHelper.BED));
                 if (!bedPlaced) {
-                    setDebugState("Placing bed");
+                    setDebugState("Placing bed", "Placing a bed");
                     // If no bed, place bed.
                     // Fire messes up our "reach" so we just assume we're good when we're above a height.
                     boolean canPlace = LookHelper.getCameraPos(mod).y > bedTargetPosition.getY();
@@ -156,7 +156,7 @@ public class KillEnderDragonWithBedsTask extends Task {
                         }
                     }
                 } else {
-                    setDebugState("Wait for it...");
+                    setDebugState("Wait for it...", "Waiting for the dragon");
                     // Make sure we're standing on the ground so we don't blow ourselves up lmfao
                     if (!mod.getPlayer().onGround()) {
                         // Wait to fall
@@ -196,6 +196,11 @@ public class KillEnderDragonWithBedsTask extends Task {
     @Override
     protected boolean isEqual(Task other) {
         return other instanceof KillEnderDragonWithBedsTask;
+    }
+
+    @Override
+    protected String toHudString() {
+        return "Fighting the Ender Dragon with beds";
     }
 
     @Override

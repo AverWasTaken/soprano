@@ -39,6 +39,11 @@ public class DodgeProjectilesTask extends CustomBaritoneGoalTask {
     }
 
     @Override
+    protected String toHudString() {
+        return "Dodging arrows";
+    }
+
+    @Override
     protected String toDebugString() {
         return "Dodge arrows at " + _distanceHorizontal + " blocks away";
     }

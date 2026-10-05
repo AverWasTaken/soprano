@@ -105,7 +105,7 @@ public class LocateStrongholdCoordinatesTask extends Task {
                         mod.getEntityTracker().getClosestEntity(EyeOfEnder.class).get().getEyePosition());
             }
 
-            setDebugState("Waiting for eye to travel.");
+            setDebugState("Waiting for eye to travel.", "Watching the eye");
             return null;
         }
 
@@ -151,9 +151,9 @@ public class LocateStrongholdCoordinatesTask extends Task {
 
             // First get to a proper throwing height
             if (_cachedEyeDirection == null) {
-                setDebugState("Throwing first eye.");
+                setDebugState("Throwing first eye.", "Throwing an Eye of Ender");
             } else {
-                setDebugState("Throwing second eye.");
+                setDebugState("Throwing second eye.", "Throwing an Eye of Ender");
                 double sqDist = mod.getPlayer().distanceToSqr(_cachedEyeDirection.getOrigin());
                 // If first eye thrown, go perpendicular from eye direction until a good distance away
                 if (sqDist < SECOND_EYE_THROW_DISTANCE * SECOND_EYE_THROW_DISTANCE && _cachedEyeDirection != null) {
@@ -179,7 +179,7 @@ public class LocateStrongholdCoordinatesTask extends Task {
             return null;
         } else if (_cachedEyeDirection != null && !_cachedEyeDirection.hasDelta() ||
                 _cachedEyeDirection2 != null && !_cachedEyeDirection2.hasDelta()) {
-            setDebugState("Waiting for thrown eye to appear...");
+            setDebugState("Waiting for thrown eye to appear...", "Watching the eye");
             return null;
         }
         return null;
@@ -199,6 +199,11 @@ public class LocateStrongholdCoordinatesTask extends Task {
     @Override
     protected boolean isEqual(Task other) {
         return other instanceof LocateStrongholdCoordinatesTask;
+    }
+
+    @Override
+    protected String toHudString() {
+        return "Following an Eye of Ender";
     }
 
     @Override

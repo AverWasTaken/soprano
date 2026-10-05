@@ -2,6 +2,7 @@ package adris.altoclef.tasks.movement;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.ui.HudText;
 import net.minecraft.core.BlockPos;
 
 /**
@@ -57,6 +58,11 @@ public class GetCloseToBlockTask extends Task {
             return task._toApproach.equals(_toApproach);
         }
         return false;
+    }
+
+    @Override
+    protected String toHudString() {
+        return "Walking to " + HudText.pos(_toApproach);
     }
 
     @Override

@@ -7,6 +7,7 @@ import adris.altoclef.eventbus.Subscription;
 import adris.altoclef.eventbus.events.BlockPlaceEvent;
 import adris.altoclef.tasks.movement.TimeoutWanderTask;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.ui.HudText;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.StorageHelper;
@@ -170,6 +171,14 @@ public class PlaceBlockNearbyTask extends Task {
             return Arrays.equals(task._toPlace, _toPlace);
         }
         return false;
+    }
+
+    @Override
+    protected String toHudString() {
+        if (_toPlace != null && _toPlace.length == 1) {
+            return "Placing " + HudText.one(HudText.block(_toPlace[0]));
+        }
+        return "Placing " + HudText.blocks(_toPlace);
     }
 
     @Override

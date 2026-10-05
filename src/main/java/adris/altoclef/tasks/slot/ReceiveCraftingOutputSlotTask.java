@@ -83,4 +83,14 @@ public class ReceiveCraftingOutputSlotTask extends Task implements ITaskUsesCraf
     protected String toDebugString() {
         return "Receiving output";
     }
+
+    @Override
+    protected String toHudString() {
+        return "Taking the result";
+    }
+
+    @Override
+    protected boolean isHudPlumbing() {
+        return true;
+    }
 }

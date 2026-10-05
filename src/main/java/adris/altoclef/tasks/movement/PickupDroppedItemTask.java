@@ -15,6 +15,7 @@ import adris.altoclef.util.helpers.StlHelper;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
+import adris.altoclef.ui.HudText;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.Item;
@@ -208,6 +209,11 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
         }
         result.append("]");
         return result.toString();
+    }
+
+    @Override
+    protected String toHudString() {
+        return "Picking up " + HudText.some(_itemTargets);
     }
 
     @Override

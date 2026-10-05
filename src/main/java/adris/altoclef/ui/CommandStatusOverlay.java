@@ -39,6 +39,9 @@ public class CommandStatusOverlay {
     private record Line(int depth, String name, int nameColor, String state, int stateColor) {
     }
 
+    private record Entry(String name, String state, boolean leaf) {
+    }
+
     // laid out once per tick, drawn every frame
     private final List<Line> _lines = new ArrayList<>();
     private long _layoutTick = -1;
@@ -102,22 +105,51 @@ public class CommandStatusOverlay {
         // the gui is already in scaled units, this just keeps a huge toString from crossing the screen
         int maxWidth = (int) (Math.max(160, Math.min(320, _layoutWidth * 0.4F)) / _layoutScale);
 
-        _lines.add(new Line(0, chain.getName(), ACCENT, "", DIM));
+        // the developer view is the old hud exactly: class names, item lists, raw states, nothing hidden
+        boolean detailed = Baritone.settings().altoHudDetailed.value;
+        List<Entry> entries = new ArrayList<>();
+        String header = detailed ? chain.getName() : hudName(chain);
+        if (header != null) {
+            entries.add(new Entry(header, "", false));
+        }
         int n = tasks.size();
-        // too many lines: keep the root and the last few, those are the ones that mean anything.
-        // the folded lines still only step 8px each so the stairs don't jump
-        int skip = n > MAX_LINES ? n - MAX_LINES + 2 : 0;
-        int depth = 1;
         for (int i = 0; i < n; i++) {
-            if (i == 1 && skip > 0) {
-                _lines.add(new Line(depth++, "... " + skip + " more", DIM, "", DIM));
-            }
-            if (i >= 1 && i <= skip) {
+            Task task = tasks.get(i);
+            boolean leaf = i == n - 1;
+            if (!detailed && !leaf && task.hudPlumbing()) {
+                // slot shuffling under a craft is not something the player wants a line for, unless it's what's
+                // happening right now
                 continue;
             }
-            boolean leaf = i == n - 1;
-            Task task = tasks.get(i);
-            _lines.add(new Line(depth++, name(task), leaf ? WHITE : GRAY, task.getDebugState(), leaf ? GRAY : DIM));
+            Entry e = new Entry(detailed ? name(task) : task.getHudName(), detailed ? task.getDebugState() : task.getHudState(), leaf);
+            Entry prev = entries.isEmpty() ? null : entries.get(entries.size() - 1);
+            if (!detailed && prev != null && prev.name.equals(e.name)) {
+                // "Crafting 4 Oak Planks" twice (the 2x2 task and the generic one under it) is one line. the leaf
+                // flag and a state move up so the line still reads as the active one
+                entries.set(entries.size() - 1, new Entry(prev.name, prev.state.isEmpty() ? e.state : prev.state, prev.leaf || e.leaf));
+                continue;
+            }
+            entries.add(e);
+        }
+        // too many lines: keep the header and the root, fold the middle, show the last few. those are the ones that
+        // mean anything. the folded lines still only step 8px each so the stairs don't jump
+        int rootLines = header == null ? 1 : 2;
+        int skip = entries.size() > MAX_LINES + 1 ? entries.size() - MAX_LINES : 0;
+        int depth = 0;
+        for (int i = 0; i < entries.size(); i++) {
+            if (i == rootLines && skip > 0) {
+                _lines.add(new Line(depth++, "... " + skip + " more", DIM, "", DIM));
+            }
+            if (i >= rootLines && i < rootLines + skip) {
+                continue;
+            }
+            Entry e = entries.get(i);
+            if (i == 0) {
+                // the chain name, or with no chain name the root task: what you asked for is the title
+                _lines.add(new Line(depth++, e.name, ACCENT, e.state, DIM));
+                continue;
+            }
+            _lines.add(new Line(depth++, e.name, e.leaf ? WHITE : GRAY, e.state, e.leaf ? GRAY : DIM));
         }
 
         _width = 0;
@@ -137,6 +169,14 @@ public class CommandStatusOverlay {
         } catch (Throwable t) {
             // a task's debug string is allowed to be sloppy, the hud is not allowed to die from it
             return task.getClass().getSimpleName();
+        }
+    }
+
+    private static String hudName(TaskChain chain) {
+        try {
+            return chain.getHudName();
+        } catch (Throwable t) {
+            return chain.getName();
         }
     }
 

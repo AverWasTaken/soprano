@@ -33,6 +33,17 @@ public class SearchWithinBiomeTask extends SearchChunksExploreTask {
     }
 
     @Override
+    protected String toHudString() {
+        return "Searching for a " + _toSearch.location().getPath().replace('_', ' ');
+    }
+
+    @Override
+    protected boolean isHudPlumbing() {
+        // the explore base is plumbing, this one is the actual search
+        return false;
+    }
+
+    @Override
     protected String toDebugString() {
         return "Searching for+within biome: " + _toSearch;
     }

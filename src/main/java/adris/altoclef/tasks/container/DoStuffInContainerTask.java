@@ -14,6 +14,7 @@ import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.slots.Slot;
 import adris.altoclef.util.time.TimerGame;
+import adris.altoclef.ui.HudText;
 import java.util.Arrays;
 import java.util.Optional;
 import net.minecraft.core.BlockPos;
@@ -133,10 +134,10 @@ public abstract class DoStuffInContainerTask extends Task {
 
         // Wait for food
         if (mod.getFoodChain().needsToEat()) {
-            setDebugState("Waiting for eating...");
+            setDebugState("Waiting for eating...", "Eating first");
             return null;
         }
-        setDebugState("Walking to container... " + nearest.get().toShortString());
+        setDebugState("Walking to container... " + nearest.get().toShortString(), "Walking to " + HudText.pos(nearest.get()));
 
         if (!StorageHelper.getItemStackInCursorSlot().isEmpty()) {
             Optional<Slot> toMoveTo = mod.getItemStorage().getSlotThatCanFitInPlayerInventory(StorageHelper.getItemStackInCursorSlot(), false);
@@ -186,6 +187,11 @@ public abstract class DoStuffInContainerTask extends Task {
     @Override
     protected String toDebugString() {
         return "Doing stuff in " + _containerTarget + " container";
+    }
+
+    @Override
+    protected String toHudString() {
+        return "Using " + HudText.items(_containerTarget);
     }
 
     protected abstract boolean isSubTaskEqual(DoStuffInContainerTask other);

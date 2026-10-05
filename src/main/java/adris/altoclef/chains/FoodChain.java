@@ -182,6 +182,11 @@ public class FoodChain extends SingleTaskChain {
     }
 
     @Override
+    public String getHudName() {
+        return "Eating";
+    }
+
+    @Override
     protected void onStop(AltoClef mod) {
         super.onStop(mod);
         stopEat(mod);

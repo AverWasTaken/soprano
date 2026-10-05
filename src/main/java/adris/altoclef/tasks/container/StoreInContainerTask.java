@@ -5,6 +5,7 @@ import adris.altoclef.TaskCatalogue;
 import adris.altoclef.tasks.slot.MoveItemToSlotFromInventoryTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.trackers.storage.ContainerCache;
+import adris.altoclef.ui.HudText;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.slots.Slot;
@@ -112,6 +113,11 @@ public class StoreInContainerTask extends AbstractDoToStorageContainerTask {
             return task._targetContainer.equals(_targetContainer) && task._getIfNotPresent == _getIfNotPresent && Arrays.equals(task._toStore, _toStore);
         }
         return false;
+    }
+
+    @Override
+    protected String toHudString() {
+        return "Storing " + HudText.some(_toStore) + " in a chest";
     }
 
     @Override

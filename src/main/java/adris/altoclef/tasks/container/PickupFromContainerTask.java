@@ -4,6 +4,7 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.tasks.slot.EnsureFreeInventorySlotTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.trackers.storage.ContainerCache;
+import adris.altoclef.ui.HudText;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.StorageHelper;
@@ -14,11 +15,15 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Function;
+import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.inventory.FurnaceMenu;
 import net.minecraft.world.inventory.SmokerMenu;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
 
 public class PickupFromContainerTask extends AbstractDoToStorageContainerTask {
 
@@ -76,8 +81,25 @@ public class PickupFromContainerTask extends AbstractDoToStorageContainerTask {
     }
 
     @Override
+    protected String toHudString() {
+        return "Taking " + HudText.some(_targets) + " from " + (isChest() ? "a chest" : "a container");
+    }
+
+    @Override
     protected String toDebugString() {
         return "Picking up from container at (" + _targetContainer.toShortString() + "): " + Arrays.toString(_targets);
+    }
+
+    // unloaded chunks read as air, which we'd rather call a chest than "a container"
+    private boolean isChest() {
+        try {
+            Level level = Minecraft.getInstance().level;
+            if (level == null) return true;
+            Block block = level.getBlockState(_targetContainer).getBlock();
+            return block == Blocks.CHEST || block == Blocks.TRAPPED_CHEST || block == Blocks.AIR;
+        } catch (Throwable t) {
+            return true;
+        }
     }
 
     @Override

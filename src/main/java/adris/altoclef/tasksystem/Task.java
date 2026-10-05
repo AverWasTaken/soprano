@@ -3,6 +3,7 @@ package adris.altoclef.tasksystem;
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.tasks.movement.TimeoutWanderTask;
+import adris.altoclef.ui.HudText;
 
 import java.util.function.Predicate;
 
@@ -10,6 +11,7 @@ public abstract class Task {
 
     private String _oldDebugState = "";
     private String _debugState = "";
+    private String _hudState = "";
 
     private Task _sub = null;
 
@@ -112,10 +114,54 @@ public abstract class Task {
     }
 
     protected void setDebugState(String state) {
+        setDebugState(state, "");
+    }
+
+    // the hud state is tied to the debug state on purpose: a task that sets a plain debug state after a friendly
+    // one would otherwise leave the friendly one on screen while doing something else entirely
+    protected void setDebugState(String state, String hudState) {
         if (state == null) {
             state = "";
         }
         _debugState = state;
+        _hudState = hudState == null ? "" : hudState;
+    }
+
+    // what the task hud shows instead of toDebugString. plain words a player understands: no class names, no
+    // toString dumps, no brackets, no "x Infinity". the default is the humanized class name, which beats the debug
+    // string for the long tail. never called directly by the hud, see getHudName
+    protected String toHudString() {
+        return HudText.humanizeClassName(getClass());
+    }
+
+    // plumbing (slot shuffling, cursor freeing, "do to closest" wrappers) only shows on the hud when it is the leaf,
+    // that is when it's the thing actually happening right now
+    protected boolean isHudPlumbing() {
+        return false;
+    }
+
+    public final String getHudName() {
+        try {
+            String s = toHudString();
+            if (s != null && !s.isBlank()) {
+                return s;
+            }
+        } catch (Throwable t) {
+            // a label that throws is a bug in the label, not a reason to lose the hud
+        }
+        return HudText.humanizeClassName(getClass());
+    }
+
+    public final String getHudState() {
+        return _hudState;
+    }
+
+    public final boolean hudPlumbing() {
+        try {
+            return isHudPlumbing();
+        } catch (Throwable t) {
+            return false;
+        }
     }
 
     // Virtual

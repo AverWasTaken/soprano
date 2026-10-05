@@ -37,6 +37,11 @@ public class RunAwayFromPositionTask extends CustomBaritoneGoalTask {
     }
 
     @Override
+    protected String toHudString() {
+        return "Backing off";
+    }
+
+    @Override
     protected String toDebugString() {
         return "Running away from " + Arrays.toString(_dangerBlocks);
     }

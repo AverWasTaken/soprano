@@ -6,6 +6,7 @@ import adris.altoclef.TaskCatalogue;
 import adris.altoclef.tasks.construction.compound.ConstructNetherPortalObsidianTask;
 import adris.altoclef.tasksystem.Task;
 import baritone.api.utils.Dimension;
+import adris.altoclef.ui.HudText;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.time.TimerGame;
@@ -204,6 +205,11 @@ public class FastTravelTask extends Task {
             return task._target.equals(_target) && task._collectPortalMaterialsIfAbsent == _collectPortalMaterialsIfAbsent && Objects.equals(task._threshold, _threshold);
         }
         return false;
+    }
+
+    @Override
+    protected String toHudString() {
+        return "Travelling to " + HudText.pos(_target) + " through the Nether";
     }
 
     @Override

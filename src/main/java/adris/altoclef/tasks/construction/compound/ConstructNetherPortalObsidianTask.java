@@ -191,6 +191,11 @@ public class ConstructNetherPortalObsidianTask extends Task {
     }
 
     @Override
+    protected String toHudString() {
+        return "Building a Nether portal";
+    }
+
+    @Override
     protected String toDebugString() {
         return "Building nether portal with obsidian";
     }

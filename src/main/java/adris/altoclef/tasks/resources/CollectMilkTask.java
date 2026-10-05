@@ -54,6 +54,11 @@ public class CollectMilkTask extends ResourceTask {
     }
 
     @Override
+    protected String toHudString() {
+        return "Milking a Cow";
+    }
+
+    @Override
     protected String toDebugStringName() {
         return "Collecting " + _count + " milk buckets.";
     }
@@ -86,6 +91,11 @@ public class CollectMilkTask extends ResourceTask {
         @Override
         protected Optional<Entity> getEntityTarget(AltoClef mod) {
             return mod.getEntityTracker().getClosestEntity(mod.getPlayer().position(), Cow.class);
+        }
+
+        @Override
+        protected String toHudString() {
+            return "Milking a Cow";
         }
 
         @Override

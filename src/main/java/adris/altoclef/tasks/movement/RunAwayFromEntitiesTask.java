@@ -44,4 +44,9 @@ public abstract class RunAwayFromEntitiesTask extends CustomBaritoneGoalTask {
             return Optional.ofNullable(_runAwaySupplier);
         }
     }
+
+    @Override
+    protected String toHudString() {
+        return "Running away";
+    }
 }

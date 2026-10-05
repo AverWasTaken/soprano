@@ -62,6 +62,11 @@ public class DragonBreathTracker {
         }
 
         @Override
+        protected String toHudString() {
+            return "Dodging dragon's breath";
+        }
+
+        @Override
         protected String toDebugString() {
             return "ESCAPE Dragons Breath";
         }

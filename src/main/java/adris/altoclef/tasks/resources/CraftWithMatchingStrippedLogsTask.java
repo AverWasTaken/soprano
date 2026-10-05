@@ -5,6 +5,7 @@ import adris.altoclef.Debug;
 import adris.altoclef.TaskCatalogue;
 import adris.altoclef.tasks.ResourceTask;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.ui.HudText;
 import adris.altoclef.util.CraftingRecipe;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.ItemHelper;
@@ -53,6 +54,11 @@ public class CraftWithMatchingStrippedLogsTask extends CraftWithMatchingMaterial
             return task._visualTarget.equals(_visualTarget);
         }
         return false;
+    }
+
+    @Override
+    protected String toHudString() {
+        return "Crafting " + HudText.items(_visualTarget);
     }
 
     @Override

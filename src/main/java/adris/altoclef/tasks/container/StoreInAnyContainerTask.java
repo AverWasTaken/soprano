@@ -8,6 +8,7 @@ import adris.altoclef.tasks.DoToClosestBlockTask;
 import adris.altoclef.tasks.construction.PlaceBlockNearbyTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.trackers.storage.ContainerCache;
+import adris.altoclef.ui.HudText;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.WorldHelper;
@@ -159,6 +160,11 @@ public class StoreInAnyContainerTask extends Task {
             return task._getIfNotPresent == _getIfNotPresent && Arrays.equals(task._toStore, _toStore);
         }
         return false;
+    }
+
+    @Override
+    protected String toHudString() {
+        return "Storing " + HudText.some(_toStore) + " in a chest";
     }
 
     @Override

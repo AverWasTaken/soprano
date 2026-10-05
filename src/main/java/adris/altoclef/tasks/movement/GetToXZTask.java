@@ -4,6 +4,7 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.tasksystem.Task;
 import baritone.api.utils.Dimension;
 import adris.altoclef.util.helpers.WorldHelper;
+import adris.altoclef.ui.HudText;
 import baritone.api.pathing.goals.Goal;
 import baritone.api.pathing.goals.GoalXZ;
 import net.minecraft.core.BlockPos;
@@ -53,5 +54,10 @@ public class GetToXZTask extends CustomBaritoneGoalTask {
     @Override
     protected String toDebugString() {
         return "Getting to (" + _x + "," + _z + ")" + (_dimension != null ? " in dimension " + _dimension : "");
+    }
+
+    @Override
+    protected String toHudString() {
+        return "Walking to " + _x + ", " + _z + (_dimension != null ? " in " + HudText.dimension(_dimension) : "");
     }
 }

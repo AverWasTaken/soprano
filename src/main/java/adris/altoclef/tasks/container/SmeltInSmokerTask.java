@@ -16,6 +16,7 @@ import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.slots.Slot;
 import adris.altoclef.util.slots.SmokerSlot;
+import adris.altoclef.ui.HudText;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -124,6 +125,11 @@ public class SmeltInSmokerTask extends ResourceTask {
     @Override
     protected String toDebugStringName() {
         return _doTask.toDebugString();
+    }
+
+    @Override
+    protected String toHudString() {
+        return _doTask.getHudName();
     }
 
     public SmeltTarget[] getTargets() {
@@ -365,6 +371,12 @@ public class SmeltInSmokerTask extends ResourceTask {
                 _smokerCache.outputSlot = StorageHelper.getItemStackInSlot(SmokerSlot.OUTPUT_SLOT);
             }
         }
+
+        @Override
+        protected String toHudString() {
+            return "Cooking " + HudText.items(_target.getItem());
+        }
+
     }
 
     static class SmokerCache {

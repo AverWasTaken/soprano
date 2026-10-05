@@ -115,6 +115,11 @@ public class LootContainerTask extends Task {
     }
 
     @Override
+    protected String toHudString() {
+        return "Looting a chest";
+    }
+
+    @Override
     protected String toDebugString() {
         return "Looting a container";
     }

@@ -56,6 +56,11 @@ public class SafeRandomShimmyTask extends Task {
     }
 
     @Override
+    protected String toHudString() {
+        return "Shuffling around";
+    }
+
+    @Override
     protected String toDebugString() {
         return "Shimmying";
     }

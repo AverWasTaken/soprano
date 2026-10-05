@@ -12,6 +12,7 @@ import adris.altoclef.tasks.movement.GetCloseToBlockTask;
 import adris.altoclef.tasks.movement.TimeoutWanderTask;
 import adris.altoclef.tasksystem.Task;
 import baritone.api.utils.Dimension;
+import adris.altoclef.ui.HudText;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.WorldHelper;
@@ -200,6 +201,11 @@ public class CollectBucketLiquidTask extends ResourceTask {
             return task._toCollect == _toCollect;
         }
         return false;
+    }
+
+    @Override
+    protected String toHudString() {
+        return "Filling " + HudText.count(_count, "Bucket") + " with " + _liquidName;
     }
 
     @Override

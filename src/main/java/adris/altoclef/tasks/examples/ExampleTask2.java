@@ -77,6 +77,11 @@ public class ExampleTask2 extends Task {
     }
 
     @Override
+    protected String toHudString() {
+        return "Standing on a tree";
+    }
+
+    @Override
     protected String toDebugString() {
         return "Standing on a tree";
     }

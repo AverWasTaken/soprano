@@ -5,6 +5,7 @@ import adris.altoclef.tasks.ResourceTask;
 import adris.altoclef.tasks.entity.KillEntitiesTask;
 import adris.altoclef.tasks.movement.TimeoutWanderTask;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.ui.HudText;
 import adris.altoclef.util.ItemTarget;
 import java.util.function.Predicate;
 import net.minecraft.world.entity.Entity;
@@ -62,6 +63,11 @@ public class KillAndLootTask extends ResourceTask {
             return task._toKill.equals(_toKill);
         }
         return false;
+    }
+
+    @Override
+    protected String toHudString() {
+        return "Hunting " + HudText.plural(HudText.entityClass(_toKill)) + " for " + HudText.some(_itemTargets);
     }
 
     @Override

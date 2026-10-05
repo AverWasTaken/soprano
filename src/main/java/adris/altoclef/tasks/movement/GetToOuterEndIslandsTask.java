@@ -96,6 +96,11 @@ public class GetToOuterEndIslandsTask extends Task {
     }
 
     @Override
+    protected String toHudString() {
+        return "Heading to the outer End islands";
+    }
+
+    @Override
     protected String toDebugString() {
         return "Going to outer end islands";
     }

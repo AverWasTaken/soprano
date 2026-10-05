@@ -47,6 +47,11 @@ public class ShearSheepTask extends AbstractDoToEntityTask {
     }
 
     @Override
+    protected String toHudString() {
+        return "Shearing a Sheep";
+    }
+
+    @Override
     protected String toDebugString() {
         return "Shearing Sheep";
     }

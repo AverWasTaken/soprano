@@ -64,4 +64,14 @@ public class EnsureFreeCursorSlotTask extends Task {
     protected String toDebugString() {
         return "Breaking the cursor slot";
     }
+
+    @Override
+    protected String toHudString() {
+        return "Putting down the held item";
+    }
+
+    @Override
+    protected boolean isHudPlumbing() {
+        return true;
+    }
 }

@@ -16,6 +16,7 @@ import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.slots.FurnaceSlot;
 import adris.altoclef.util.slots.Slot;
+import adris.altoclef.ui.HudText;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -122,6 +123,11 @@ public class SmeltInFurnaceTask extends ResourceTask {
     @Override
     protected String toDebugStringName() {
         return _doTask.toDebugString();
+    }
+
+    @Override
+    protected String toHudString() {
+        return _doTask.getHudName();
     }
 
     public SmeltTarget[] getTargets() {
@@ -360,6 +366,12 @@ public class SmeltInFurnaceTask extends ResourceTask {
                 _furnaceCache.outputSlot = StorageHelper.getItemStackInSlot(FurnaceSlot.OUTPUT_SLOT);
             }
         }
+
+        @Override
+        protected String toHudString() {
+            return "Smelting " + HudText.items(_target.getItem());
+        }
+
     }
 
     static class FurnaceCache {

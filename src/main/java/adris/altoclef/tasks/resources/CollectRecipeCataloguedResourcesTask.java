@@ -8,6 +8,7 @@ import adris.altoclef.util.CraftingRecipe;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.RecipeTarget;
 import adris.altoclef.util.helpers.StorageHelper;
+import adris.altoclef.ui.HudText;
 import org.apache.commons.lang3.ArrayUtils;
 
 import java.util.Arrays;
@@ -120,6 +121,11 @@ public class CollectRecipeCataloguedResourcesTask extends Task {
     @Override
     protected String toDebugString() {
         return "Collect Recipe Resources: " + ArrayUtils.toString(_targets);
+    }
+
+    @Override
+    protected String toHudString() {
+        return "Gathering materials";
     }
 
     @Override

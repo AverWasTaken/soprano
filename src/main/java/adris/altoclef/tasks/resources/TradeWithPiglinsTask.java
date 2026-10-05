@@ -92,6 +92,11 @@ public class TradeWithPiglinsTask extends ResourceTask {
     }
 
     @Override
+    protected String toHudString() {
+        return "Trading with Piglins";
+    }
+
+    @Override
     protected String toDebugStringName() {
         return "Trading with Piglins";
     }
@@ -214,6 +219,11 @@ public class TradeWithPiglinsTask extends ResourceTask {
                 found = Optional.ofNullable(_currentlyBartering);
             }
             return found;
+        }
+
+        @Override
+        protected String toHudString() {
+            return "Trading with Piglins";
         }
 
         @Override

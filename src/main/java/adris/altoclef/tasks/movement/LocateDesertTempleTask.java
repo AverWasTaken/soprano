@@ -41,6 +41,11 @@ public class LocateDesertTempleTask extends Task {
     }
 
     @Override
+    protected String toHudString() {
+        return "Looking for a desert temple";
+    }
+
+    @Override
     protected String toDebugString() {
         return "Searchin' for temples";
     }

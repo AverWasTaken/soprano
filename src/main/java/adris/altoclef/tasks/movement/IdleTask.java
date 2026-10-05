@@ -37,6 +37,11 @@ public class IdleTask extends Task {
     }
 
     @Override
+    protected String toHudString() {
+        return "Idle";
+    }
+
+    @Override
     protected String toDebugString() {
         return "Idle";
     }

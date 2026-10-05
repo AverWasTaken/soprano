@@ -7,6 +7,7 @@ import adris.altoclef.tasks.construction.compound.ConstructNetherPortalObsidianT
 import adris.altoclef.tasksystem.Task;
 import baritone.api.utils.Dimension;
 import adris.altoclef.util.helpers.WorldHelper;
+import adris.altoclef.ui.HudText;
 import java.util.Optional;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.Blocks;
@@ -85,6 +86,11 @@ public class DefaultGoToDimensionTask extends Task {
     @Override
     protected String toDebugString() {
         return "Going to dimension: " + _target + " (default version)";
+    }
+
+    @Override
+    protected String toHudString() {
+        return "Heading to " + HudText.dimension(_target);
     }
 
     @Override

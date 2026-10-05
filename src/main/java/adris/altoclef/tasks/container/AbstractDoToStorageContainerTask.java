@@ -67,6 +67,16 @@ public abstract class AbstractDoToStorageContainerTask extends Task {
 
     }
 
+    @Override
+    protected String toHudString() {
+        return "Finding a container";
+    }
+
+    @Override
+    protected boolean isHudPlumbing() {
+        return true;
+    }
+
     protected abstract Optional<BlockPos> getContainerTarget();
 
     protected abstract Task onContainerOpenSubtask(AltoClef mod, ContainerCache containerCache);

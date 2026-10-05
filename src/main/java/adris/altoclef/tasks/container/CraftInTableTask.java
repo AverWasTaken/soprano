@@ -17,6 +17,9 @@ import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.slots.PlayerSlot;
 import adris.altoclef.util.slots.Slot;
 import adris.altoclef.util.time.TimerGame;
+import adris.altoclef.ui.HudText;
+import java.util.List;
+import java.util.ArrayList;
 import java.util.*;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
@@ -161,6 +164,11 @@ public class CraftInTableTask extends ResourceTask {
     @Override
     protected String toDebugStringName() {
         return (_craftTask != null) ? _craftTask.toDebugString() : null;
+    }
+
+    @Override
+    protected String toHudString() {
+        return _craftTask != null ? _craftTask.getHudName() : "Crafting";
     }
 
     /**
@@ -460,4 +468,13 @@ class DoCraftInTableTask extends DoStuffInContainerTask {
         return result.toArray(new Item[0]);
     }
 
+    @Override
+    protected String toHudString() {
+        // same words as the resource task above it, the hud folds them into one line
+        List<String> parts = new ArrayList<>(_targets.length);
+        for (RecipeTarget target : _targets) {
+            parts.add(HudText.items(new Item[]{target.getOutputItem()}, target.getTargetCount()));
+        }
+        return "Crafting " + HudText.list(parts);
+    }
 }

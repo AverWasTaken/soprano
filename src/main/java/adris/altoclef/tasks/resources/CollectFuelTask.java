@@ -64,6 +64,11 @@ public class CollectFuelTask extends Task {
     }
 
     @Override
+    protected String toHudString() {
+        return "Getting fuel";
+    }
+
+    @Override
     protected String toDebugString() {
         return "Collect Fuel: x" + _targetFuel;
     }

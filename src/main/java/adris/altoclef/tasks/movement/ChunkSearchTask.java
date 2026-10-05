@@ -195,4 +195,14 @@ abstract class ChunkSearchTask extends Task {
     protected abstract boolean isChunkPartOfSearchSpace(AltoClef mod, ChunkPos pos);
 
     protected abstract boolean isChunkSearchEqual(ChunkSearchTask other);
+
+    @Override
+    protected String toHudString() {
+        return "Searching nearby chunks";
+    }
+
+    @Override
+    protected boolean isHudPlumbing() {
+        return true;
+    }
 }

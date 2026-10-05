@@ -75,6 +75,12 @@ public class UserTaskChain extends SingleTaskChain {
         return "User Tasks";
     }
 
+    // what you asked for is the title, "User Tasks" says nothing to the person who typed the command
+    @Override
+    public String getHudName() {
+        return null;
+    }
+
     public void runTask(AltoClef mod, Task task, Runnable onFinish) {
         _runningIdleTask = _nextTaskIdleFlag;
         _nextTaskIdleFlag = false;

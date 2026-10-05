@@ -187,4 +187,9 @@ public class DeathMenuChain extends TaskChain {
     public String getName() {
         return "Death Menu Respawn Handling";
     }
+
+    @Override
+    public String getHudName() {
+        return "Respawning";
+    }
 }

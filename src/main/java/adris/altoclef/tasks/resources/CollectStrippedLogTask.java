@@ -88,6 +88,11 @@ public class CollectStrippedLogTask extends ResourceTask {
     }
 
     @Override
+    protected String toHudString() {
+        return "Stripping logs";
+    }
+
+    @Override
     protected String toDebugStringName() {
         return "Collect Stripped Log";
     }

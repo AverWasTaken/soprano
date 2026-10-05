@@ -7,6 +7,7 @@ import adris.altoclef.tasks.movement.GetToBlockTask;
 import adris.altoclef.tasks.movement.TimeoutWanderTask;
 import adris.altoclef.tasksystem.ITaskRequiresGrounded;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.ui.HudText;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.WorldHelper;
@@ -169,6 +170,17 @@ public class PlaceBlockTask extends Task implements ITaskRequiresGrounded {
         }
         BlockState state = mod.getWorld().getBlockState(_target);
         return ArrayUtils.contains(_toPlace, state.getBlock());
+    }
+
+    @Override
+    protected String toHudString() {
+        String what = "a block";
+        if (_toPlace != null && _toPlace.length == 1) {
+            what = HudText.one(HudText.block(_toPlace[0]));
+        } else if (_toPlace != null && _toPlace.length > 1) {
+            what = HudText.blocks(_toPlace);
+        }
+        return "Placing " + what + " at " + HudText.pos(_target);
     }
 
     @Override

@@ -237,6 +237,11 @@ public class TerminatorTask extends Task {
     }
 
     @Override
+    protected String toHudString() {
+        return "Hunting players";
+    }
+
+    @Override
     protected String toDebugString() {
         return "Terminator Task";
     }
@@ -281,6 +286,11 @@ public class TerminatorTask extends Task {
         @Override
         protected boolean isEqual(Task other) {
             return other instanceof RunAwayFromPlayersTask;
+        }
+
+        @Override
+        protected String toHudString() {
+            return "Running from players";
         }
 
         @Override
@@ -345,6 +355,16 @@ public class TerminatorTask extends Task {
                 return scan._center.equals(_center) && Math.abs(scan._radius - _radius) <= 1;
             }
             return false;
+        }
+
+        @Override
+        protected String toHudString() {
+            return "Scanning for players";
+        }
+
+        @Override
+        protected boolean isHudPlumbing() {
+            return true;
         }
 
         @Override

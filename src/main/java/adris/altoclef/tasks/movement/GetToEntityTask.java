@@ -7,6 +7,8 @@ import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.baritone.GoalFollowEntity;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
+import adris.altoclef.ui.HudText;
+import net.minecraft.world.entity.player.Player;
 import baritone.api.utils.input.Input;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.Entity;
@@ -160,5 +162,12 @@ public class GetToEntityTask extends Task implements ITaskRequiresGrounded {
     @Override
     protected String toDebugString() {
         return "Approach entity " + _entity.getType().getDescriptionId();
+    }
+
+    @Override
+    protected String toHudString() {
+        // "Walking to Jacob" but "Walking to the Zombie" and "Walking to the Oak Log"
+        String name = HudText.entity(_entity);
+        return "Walking to " + (_entity instanceof Player ? name : "the " + name);
     }
 }

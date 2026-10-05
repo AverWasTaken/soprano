@@ -220,6 +220,11 @@ public class CollectMeatTask extends Task {
     }
 
     @Override
+    protected String toHudString() {
+        return "Hunting for food";
+    }
+
+    @Override
     protected String toDebugString() {
         return "Collect " + _unitsNeeded + " units of meat.";
     }

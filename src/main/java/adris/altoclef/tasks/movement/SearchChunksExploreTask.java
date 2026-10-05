@@ -85,6 +85,16 @@ public abstract class SearchChunksExploreTask extends Task {
         }
     }
 
+    @Override
+    protected String toHudString() {
+        return "Searching the area";
+    }
+
+    @Override
+    protected boolean isHudPlumbing() {
+        return true;
+    }
+
     protected Task getWanderTask(AltoClef mod) {
         return new TimeoutWanderTask(true);
     }
@@ -127,6 +137,16 @@ public abstract class SearchChunksExploreTask extends Task {
         protected boolean isChunkSearchEqual(ChunkSearchTask other) {
             // Since we're keeping track of "_searcher", we expect the subchild routine to ALWAYS be consistent!
             return other == this;//return other instanceof SearchSubTask;
+        }
+
+        @Override
+        protected String toHudString() {
+            return "Searching the area";
+        }
+
+        @Override
+        protected boolean isHudPlumbing() {
+            return true;
         }
 
         @Override

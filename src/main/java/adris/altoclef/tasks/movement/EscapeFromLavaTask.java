@@ -72,6 +72,11 @@ public class EscapeFromLavaTask extends CustomBaritoneGoalTask {
     }
 
     @Override
+    protected String toHudString() {
+        return "Getting out of the lava";
+    }
+
+    @Override
     protected String toDebugString() {
         return "Escaping lava";
     }

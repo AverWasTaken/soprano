@@ -188,6 +188,11 @@ public class BeeMovieTask extends Task {
     }
 
     @Override
+    protected String toHudString() {
+        return "Writing the Bee Movie on signs";
+    }
+
+    @Override
     protected String toDebugString() {
         return "Dead Meme \"" + _uniqueId + "\" at " + _start;
     }

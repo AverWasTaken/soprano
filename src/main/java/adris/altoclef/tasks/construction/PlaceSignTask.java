@@ -152,6 +152,11 @@ public class PlaceSignTask extends Task {
     }
 
     @Override
+    protected String toHudString() {
+        return "Placing a sign";
+    }
+
+    @Override
     protected String toDebugString() {
         if (placeAnywhere()) {
             return "Place Sign Anywhere";

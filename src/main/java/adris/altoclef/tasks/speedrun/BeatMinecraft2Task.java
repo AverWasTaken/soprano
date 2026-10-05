@@ -256,7 +256,7 @@ public class BeatMinecraft2Task extends Task {
         if (!_endPortalOpened && WorldHelper.getCurrentDimension() != Dimension.END && _config.rePickupCraftingTable && !mod.getItemStorage().hasItem(Items.CRAFTING_TABLE) && !thisOrChildSatisfies(isCraftingTableTask)
                 && (mod.getBlockTracker().anyFound(blockPos -> WorldHelper.canBreak(mod, blockPos), Blocks.CRAFTING_TABLE)
                 || mod.getEntityTracker().itemDropped(Items.CRAFTING_TABLE))) {
-            setDebugState("Pick up crafting table while we're at it");
+            setDebugState("Pick up crafting table while we're at it", "Grabbing the crafting table");
             return new MineAndCollectTask(Items.CRAFTING_TABLE, 1, new Block[]{Blocks.CRAFTING_TABLE}, MiningRequirement.HAND);
         }
 
@@ -267,7 +267,7 @@ public class BeatMinecraft2Task extends Task {
             _dragonBreathTracker.updateBreath(mod);
             for (BlockPos playerIn : WorldHelper.getBlocksTouchingPlayer(mod)) {
                 if (_dragonBreathTracker.isTouchingDragonBreath(playerIn)) {
-                    setDebugState("ESCAPE dragons breath");
+                    setDebugState("ESCAPE dragons breath", "Dodging dragon's breath");
                     _escapingDragonsBreath = true;
                     return _dragonBreathTracker.getRunAwayTask();
                 }
@@ -276,7 +276,7 @@ public class BeatMinecraft2Task extends Task {
 
             // If we find an ender portal, just GO to it!!!
             if (mod.getBlockTracker().anyFound(Blocks.END_PORTAL)) {
-                setDebugState("WOOHOO");
+                setDebugState("WOOHOO", "Jumping into the portal");
                 _enterindEndPortal = true;
                 return new DoToClosestBlockTask(
                         blockPos -> new GetToBlockTask(blockPos.above()),
@@ -310,10 +310,10 @@ public class BeatMinecraft2Task extends Task {
                 }
             }
             if (mod.getItemStorage().hasItem(ItemHelper.BED) || (_killDragonBedStratsTask.isActive() && !_killDragonBedStratsTask.isFinished(mod))) {
-                setDebugState("Bed strats");
+                setDebugState("Bed strats", "Fighting the dragon");
                 return _killDragonBedStratsTask;
             }
-            setDebugState("No beds, regular strats.");
+            setDebugState("No beds, regular strats.", "Fighting the dragon");
             return new KillEnderDragonTask();
         } else {
             // We're not in the end so reset our "end cache" timer
@@ -335,13 +335,13 @@ public class BeatMinecraft2Task extends Task {
         // Sleep through night.
         if (_config.sleepThroughNight && !_endPortalOpened && WorldHelper.getCurrentDimension() == Dimension.OVERWORLD) {
             if (WorldHelper.canSleep()) {
-                setDebugState("Sleeping through night");
+                setDebugState("Sleeping through night", "Sleeping through the night");
                 return _sleepThroughNightTask;
             }
             if (!mod.getItemStorage().hasItem(ItemHelper.BED)) {
                 if (mod.getBlockTracker().anyFound(blockPos -> WorldHelper.canBreak(mod, blockPos), ItemHelper.itemsToBlocks(ItemHelper.BED))
                         || shouldForce(mod, _getOneBedTask)) {
-                    setDebugState("Grabbing a bed we found to sleep through the night.");
+                    setDebugState("Grabbing a bed we found to sleep through the night.", "Grabbing a bed");
                     return _getOneBedTask;
                 }
             }
@@ -378,19 +378,19 @@ public class BeatMinecraft2Task extends Task {
 
                     // Get remaining beds.
                     if (needsBeds(mod)) {
-                        setDebugState("Collecting beds.");
+                        setDebugState("Collecting beds.", "Getting beds");
                         return getBedTask(mod);
                     }
                     if (_config.placeSpawnNearEndPortal) {
                         if (!spawnSetNearPortal(mod, _endPortalCenterLocation)) {
-                            setDebugState("Setting spawn near end portal");
+                            setDebugState("Setting spawn near end portal", "Setting spawn by the portal");
                             return setSpawnNearPortalTask(mod);
                         }
                     }
                     if (endPortalOpened(mod, _endPortalCenterLocation)) {
                         // Does our (current inventory) + (end dropped items inventory) satisfy (base requirements)?
                         //      If not, obtain (base requirements) - (end dropped items).
-                        setDebugState("Getting equipment for End");
+                        setDebugState("Getting equipment for End", "Gearing up for the End");
                         if (!hasItemOrDroppedInEnd(mod, Items.IRON_SWORD) && !hasItemOrDroppedInEnd(mod, Items.DIAMOND_SWORD)) {
                             return TaskCatalogue.getItemTask(Items.IRON_SWORD, 1);
                         }
@@ -405,7 +405,7 @@ public class BeatMinecraft2Task extends Task {
                         }
 
                         // We're as ready as we'll ever be, hop into the portal!
-                        setDebugState("Entering End");
+                        setDebugState("Entering End", "Entering the End");
                         _enterindEndPortal = true;
                         return new DoToClosestBlockTask(
                                 blockPos -> new GetToBlockTask(blockPos.above()),
@@ -414,7 +414,7 @@ public class BeatMinecraft2Task extends Task {
                     } else {
 
                         // Open the portal! (we have enough eyes, do it)
-                        setDebugState("Opening End Portal");
+                        setDebugState("Opening End Portal", "Opening the end portal");
                         return new DoToClosestBlockTask(
                                 blockPos -> new InteractWithBlockTask(Items.ENDER_EYE, blockPos),
                                 blockPos -> !isEndPortalFrameFilled(mod, blockPos),
@@ -424,18 +424,18 @@ public class BeatMinecraft2Task extends Task {
                 } else {
                     // Get beds before starting our portal location.
                     if (WorldHelper.getCurrentDimension() == Dimension.OVERWORLD && needsBeds(mod)) {
-                        setDebugState("Getting beds before stronghold search.");
+                        setDebugState("Getting beds before stronghold search.", "Getting beds");
                         return getBedTask(mod);
                     }
                     // Portal Location
-                    setDebugState("Locating End Portal...");
+                    setDebugState("Locating End Portal...", "Finding the end portal");
                     _ranStrongholdLocator = true;
                     return _locateStrongholdTask;
                 }
             }
             case NETHER -> {
                 // Portal Location
-                setDebugState("Locating End Portal...");
+                setDebugState("Locating End Portal...", "Finding the end portal");
                 if (needsBuildingMaterials(mod)) {
                     return _buildMaterialsTask;
                 }
@@ -524,6 +524,11 @@ public class BeatMinecraft2Task extends Task {
     }
 
     @Override
+    protected String toHudString() {
+        return "Beating the game";
+    }
+
+    @Override
     protected String toDebugString() {
         return "Beating the Game.";
     }
@@ -587,7 +592,7 @@ public class BeatMinecraft2Task extends Task {
 
     private Task getEyesOfEnderTask(AltoClef mod, int targetEyes) {
         if (mod.getEntityTracker().itemDropped(Items.ENDER_EYE)) {
-            setDebugState("Picking up Dropped Eyes");
+            setDebugState("Picking up Dropped Eyes", "Picking up Eyes of Ender");
             return new PickupDroppedItemTask(Items.ENDER_EYE, targetEyes);
         }
 
@@ -603,13 +608,13 @@ public class BeatMinecraft2Task extends Task {
 
         if (needsBlazePowder && !needsBlazeRods) {
             // We have enough blaze rods.
-            setDebugState("Crafting blaze powder");
+            setDebugState("Crafting blaze powder", "Crafting Blaze Powder");
             return TaskCatalogue.getItemTask(Items.BLAZE_POWDER, targetEyes - eyeCount);
         }
 
         if (!needsBlazePowder && !needsEnderPearls) {
             // Craft ender eyes
-            setDebugState("Crafting Ender Eyes");
+            setDebugState("Crafting Ender Eyes", "Crafting Eyes of Ender");
             return TaskCatalogue.getItemTask(Items.ENDER_EYE, targetEyes);
         }
 
@@ -629,7 +634,7 @@ public class BeatMinecraft2Task extends Task {
                     // Check for ruined portals
                     Optional<BlockPos> chest = locateClosestUnopenedRuinedPortalChest(mod);
                     if (chest.isPresent()) {
-                        setDebugState("Looting ruined portal chest for goodies");
+                        setDebugState("Looting ruined portal chest for goodies", "Looting a ruined portal");
                         _lootTask = new LootContainerTask(chest.get(), lootableItems(mod), _noCurseOfBinding);
                         return _lootTask;
                     }
@@ -638,17 +643,17 @@ public class BeatMinecraft2Task extends Task {
                     // Check for desert temples
                     BlockPos temple = WorldHelper.getADesertTemple(mod);
                     if (temple != null) {
-                        setDebugState("Looting desert temple for goodies");
+                        setDebugState("Looting desert temple for goodies", "Looting a desert temple");
                         _lootTask = new LootDesertTempleTask(temple, lootableItems(mod));
                         return _lootTask;
                     }
                 }
                 if (shouldForce(mod, _gearTask) && !StorageHelper.isArmorEquippedAll(mod, COLLECT_EYE_ARMOR)) {
-                    setDebugState("Getting gear for Ender Eye journey");
+                    setDebugState("Getting gear for Ender Eye journey", "Gearing up");
                     return _gearTask;
                 }
                 if (shouldForce(mod, _foodTask)) {
-                    setDebugState("Getting Food for Ender Eye journey");
+                    setDebugState("Getting Food for Ender Eye journey", "Getting food");
                     return _foodTask;
                 }
                 // Smelt remaining raw food
@@ -658,7 +663,7 @@ public class BeatMinecraft2Task extends Task {
                             Optional<Item> cooked = ItemHelper.getCookedFood(raw);
                             if (cooked.isPresent()) {
                                 int targetCount = mod.getItemStorage().getItemCount(cooked.get()) + mod.getItemStorage().getItemCount(raw);
-                                setDebugState("Smelting raw food: " + ItemHelper.stripItemName(raw));
+                                setDebugState("Smelting raw food: " + ItemHelper.stripItemName(raw), "Cooking food");
                                 return new SmeltInFurnaceTask(new SmeltTarget(new ItemTarget(cooked.get(), targetCount), new ItemTarget(raw, targetCount)));
                             }
                         }
@@ -674,7 +679,7 @@ public class BeatMinecraft2Task extends Task {
 
                 // If we happen to find beds...
                 if (needsBeds(mod) && anyBedsFound(mod)) {
-                    setDebugState("A bed was found, grabbing that first.");
+                    setDebugState("A bed was found, grabbing that first.", "Grabbing a bed");
                     return getBedTask(mod);
                 }
 
@@ -690,15 +695,15 @@ public class BeatMinecraft2Task extends Task {
                     return _gearTask;
                 }
                 // Then go to the nether.
-                setDebugState("Going to Nether");
+                setDebugState("Going to Nether", "Heading to the Nether");
                 return _goToNetherTask;
             }
             case NETHER -> {
                 if (needsBlazeRods) {
-                    setDebugState("Getting Blaze Rods");
+                    setDebugState("Getting Blaze Rods", "Getting Blaze Rods");
                     return getBlazeRodsTask(mod, blazeRodTarget);
                 }
-                setDebugState("Getting Ender Pearls");
+                setDebugState("Getting Ender Pearls", "Getting Ender Pearls");
                 return getEnderPearlTask(mod, enderPearlTarget);
             }
             case END -> throw new UnsupportedOperationException("You're in the end. Don't collect eyes here.");
@@ -714,14 +719,14 @@ public class BeatMinecraft2Task extends Task {
         }
         if (shouldForce(mod, _setBedSpawnTask)) {
             // Set spawnpoint and set our bed spawn when it happens.
-            setDebugState("Setting spawnpoint now.");
+            setDebugState("Setting spawnpoint now.", "Setting spawn");
             return _setBedSpawnTask;
         }
         // Get close to portal. If we're close enough, set our bed spawn somewhere nearby.
         if (WorldHelper.inRangeXZ(mod.getPlayer(), WorldHelper.toVec3d(_endPortalCenterLocation), END_PORTAL_BED_SPAWN_RANGE)) {
             return _setBedSpawnTask;
         } else {
-            setDebugState("Approaching portal (to set spawnpoint)");
+            setDebugState("Approaching portal (to set spawnpoint)", "Heading to the portal to set spawn");
             return new GetToXZTask(_endPortalCenterLocation.getX(), _endPortalCenterLocation.getZ());
         }
     }
@@ -775,7 +780,7 @@ public class BeatMinecraft2Task extends Task {
     private Task getBedTask(AltoClef mod) {
         int targetBeds = getTargetBeds(mod);
         // Collect beds. If we want to set our spawn, collect 1 more.
-        setDebugState("Collecting " + targetBeds + " beds");
+        setDebugState("Collecting " + targetBeds + " beds", "Getting beds");
         if (!mod.getItemStorage().hasItem(Items.SHEARS) && !anyBedsFound(mod)) {
             return TaskCatalogue.getItemTask(Items.SHEARS, 1);
         }

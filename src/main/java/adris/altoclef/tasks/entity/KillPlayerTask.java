@@ -58,6 +58,11 @@ public class KillPlayerTask extends AbstractKillEntityTask {
     }
 
     @Override
+    protected String toHudString() {
+        return "Attacking " + _playerName;
+    }
+
+    @Override
     protected String toDebugString() {
         return "Punking " + _playerName;
     }

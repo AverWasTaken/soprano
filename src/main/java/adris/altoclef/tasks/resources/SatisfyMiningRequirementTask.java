@@ -60,6 +60,18 @@ public class SatisfyMiningRequirementTask extends Task {
     }
 
     @Override
+    protected String toHudString() {
+        return switch (_requirement) {
+            case HAND -> "Getting ready to mine";
+            case WOOD -> "Getting a Wooden Pickaxe";
+            case STONE -> "Getting a Stone Pickaxe";
+            case IRON -> "Getting an Iron Pickaxe";
+            case DIAMOND -> "Getting a Diamond Pickaxe";
+            case NETHERITE -> "Getting a Netherite Pickaxe";
+        };
+    }
+
+    @Override
     public boolean isFinished(AltoClef mod) {
         return StorageHelper.miningRequirementMetInventory(mod, _requirement);
     }

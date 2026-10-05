@@ -31,6 +31,11 @@ public class GetToChunkTask extends CustomBaritoneGoalTask {
     }
 
     @Override
+    protected String toHudString() {
+        return "Walking to chunk " + _pos.x + ", " + _pos.z;
+    }
+
+    @Override
     protected String toDebugString() {
         return "Get to chunk: " + _pos.toString();
     }

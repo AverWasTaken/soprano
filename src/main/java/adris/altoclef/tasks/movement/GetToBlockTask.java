@@ -5,6 +5,7 @@ import adris.altoclef.tasksystem.ITaskRequiresGrounded;
 import adris.altoclef.tasksystem.Task;
 import baritone.api.utils.Dimension;
 import adris.altoclef.util.helpers.WorldHelper;
+import adris.altoclef.ui.HudText;
 import baritone.api.pathing.goals.Goal;
 import baritone.api.pathing.goals.GoalBlock;
 import net.minecraft.core.BlockPos;
@@ -75,6 +76,11 @@ public class GetToBlockTask extends CustomBaritoneGoalTask implements ITaskRequi
     @Override
     protected String toDebugString() {
         return "Getting to block " + _position + (_dimension != null ? " in dimension " + _dimension : "");
+    }
+
+    @Override
+    protected String toHudString() {
+        return "Walking to " + HudText.pos(_position) + (_dimension != null ? " in " + HudText.dimension(_dimension) : "");
     }
 
 

@@ -59,6 +59,11 @@ public class FollowPlayerTask extends Task {
     }
 
     @Override
+    protected String toHudString() {
+        return "Following " + _playerName;
+    }
+
+    @Override
     protected String toDebugString() {
         return "Going to player " + _playerName;
     }

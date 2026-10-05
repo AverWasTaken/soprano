@@ -89,6 +89,11 @@ public class ThrowEnderPearlSimpleProjectileTask extends Task {
     }
 
     @Override
+    protected String toHudString() {
+        return "Throwing an Ender Pearl";
+    }
+
+    @Override
     protected String toDebugString() {
         return "Simple Ender Pearling to " + _target;
     }

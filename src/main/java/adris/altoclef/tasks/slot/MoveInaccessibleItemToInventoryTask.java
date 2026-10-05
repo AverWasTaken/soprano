@@ -7,6 +7,7 @@ import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.slots.CursorSlot;
 import adris.altoclef.util.slots.Slot;
+import adris.altoclef.ui.HudText;
 import java.util.Objects;
 import java.util.Optional;
 import net.minecraft.world.inventory.ClickType;
@@ -105,5 +106,15 @@ public class MoveInaccessibleItemToInventoryTask extends Task {
     @Override
     protected String toDebugString() {
         return "Making item accessible: " + _target;
+    }
+
+    @Override
+    protected String toHudString() {
+        return "Moving " + HudText.some(_target) + " into the inventory";
+    }
+
+    @Override
+    protected boolean isHudPlumbing() {
+        return true;
     }
 }

@@ -328,6 +328,11 @@ public class ConstructNetherPortalSpeedrunTask extends adris.altoclef.tasksystem
     }
 
     @Override
+    protected String toHudString() {
+        return "Building a Nether portal";
+    }
+
+    @Override
     protected String toDebugString() {
         return "Construct Nether Portal (the cool way)";
     }

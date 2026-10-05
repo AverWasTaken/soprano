@@ -85,6 +85,11 @@ public class RavageRuinedPortalsTask extends Task {
     }
 
     @Override
+    protected String toHudString() {
+        return "Looting ruined portals";
+    }
+
+    @Override
     protected String toDebugString() {
         return "Ravaging Ruined Portals";
     }

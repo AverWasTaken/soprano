@@ -11,6 +11,7 @@ import adris.altoclef.tasks.movement.RunAwayFromHostilesTask;
 import adris.altoclef.tasks.movement.SearchChunkForBlockTask;
 import adris.altoclef.tasksystem.Task;
 import baritone.api.utils.Dimension;
+import adris.altoclef.ui.HudText;
 import adris.altoclef.util.helpers.WorldHelper;
 import java.util.Optional;
 import java.util.function.Predicate;
@@ -141,6 +142,11 @@ public class CollectBlazeRodsTask extends ResourceTask {
     @Override
     protected boolean isEqualResource(ResourceTask other) {
         return other instanceof CollectBlazeRodsTask;
+    }
+
+    @Override
+    protected String toHudString() {
+        return "Hunting Blazes for " + HudText.count(_count, "Blaze Rod");
     }
 
     @Override

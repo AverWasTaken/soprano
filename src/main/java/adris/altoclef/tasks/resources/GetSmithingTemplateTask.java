@@ -79,6 +79,11 @@ public class GetSmithingTemplateTask extends ResourceTask {
     }
 
     @Override
+    protected String toHudString() {
+        return "Looking for a smithing template in a bastion";
+    }
+
+    @Override
     protected String toDebugStringName() {
         return "Collect " + _count + " smithing templates";
     }

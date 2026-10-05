@@ -3,6 +3,7 @@ package adris.altoclef.tasks.entity;
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.ui.HudText;
 import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.time.TimerGame;
 import baritone.api.utils.Rotation;
@@ -131,6 +132,11 @@ public class ShootArrowSimpleProjectileTask extends Task {
     @Override
     protected boolean isEqual(Task other) {
         return false;
+    }
+
+    @Override
+    protected String toHudString() {
+        return "Shooting " + HudText.one(HudText.entity(target));
     }
 
     @Override

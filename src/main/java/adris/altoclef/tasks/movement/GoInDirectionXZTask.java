@@ -43,6 +43,25 @@ public class GoInDirectionXZTask extends CustomBaritoneGoalTask {
     }
 
     @Override
+    protected String toHudString() {
+        if (_delta.horizontalDistanceSqr() < 0.0001) {
+            return "Walking in a straight line";
+        }
+        // north is -z, so the angle runs clockwise from there in eight slices
+        int slice = (int) Math.round(Math.toDegrees(Math.atan2(_delta.x, -_delta.z)) / 45.0);
+        return "Walking " + switch (Math.floorMod(slice, 8)) {
+            case 0 -> "north";
+            case 1 -> "northeast";
+            case 2 -> "east";
+            case 3 -> "southeast";
+            case 4 -> "south";
+            case 5 -> "southwest";
+            case 6 -> "west";
+            default -> "northwest";
+        };
+    }
+
+    @Override
     protected String toDebugString() {
         return "Going in direction: <" + _origin.x + "," + _origin.z + "> direction: <" + _delta.x + "," + _delta.z + ">";
     }

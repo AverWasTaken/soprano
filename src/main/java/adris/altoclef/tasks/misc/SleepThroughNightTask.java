@@ -26,6 +26,11 @@ public class SleepThroughNightTask extends Task {
     }
 
     @Override
+    protected String toHudString() {
+        return "Sleeping through the night";
+    }
+
+    @Override
     protected String toDebugString() {
         return "Sleeping through the night";
     }

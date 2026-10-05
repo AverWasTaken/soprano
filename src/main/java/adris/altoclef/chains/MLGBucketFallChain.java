@@ -116,6 +116,11 @@ public class MLGBucketFallChain extends SingleTaskChain implements ITaskOverride
     }
 
     @Override
+    public String getHudName() {
+        return "Breaking a fall";
+    }
+
+    @Override
     public boolean isActive() {
         // We're always checking for mlg.
         return true;

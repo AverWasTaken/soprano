@@ -4,6 +4,7 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.tasksystem.Task;
 import baritone.api.utils.Dimension;
 import adris.altoclef.util.helpers.WorldHelper;
+import adris.altoclef.ui.HudText;
 import baritone.api.pathing.goals.Goal;
 import baritone.api.pathing.goals.GoalYLevel;
 
@@ -45,5 +46,10 @@ public class GetToYTask extends CustomBaritoneGoalTask {
     @Override
     protected String toDebugString() {
         return "Going to y=" + _yLevel + (_dimension != null ? ("in dimension" + _dimension) : "");
+    }
+
+    @Override
+    protected String toHudString() {
+        return "Moving to y " + _yLevel + (_dimension != null ? " in " + HudText.dimension(_dimension) : "");
     }
 }

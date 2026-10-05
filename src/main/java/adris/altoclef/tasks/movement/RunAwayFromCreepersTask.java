@@ -30,6 +30,11 @@ public class RunAwayFromCreepersTask extends CustomBaritoneGoalTask {
     }
 
     @Override
+    protected String toHudString() {
+        return "Backing away from a Creeper";
+    }
+
+    @Override
     protected String toDebugString() {
         return "Run " + _distanceToRun + " blocks away from creepers";
     }

@@ -7,6 +7,7 @@ import adris.altoclef.tasks.movement.FollowPlayerTask;
 import adris.altoclef.tasks.movement.RunAwayFromPositionTask;
 import adris.altoclef.tasks.squashed.CataloguedResourceTask;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.ui.HudText;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.StorageHelper;
@@ -123,6 +124,11 @@ public class GiveItemToPlayerTask extends Task {
             return Arrays.equals(task._targets, _targets);
         }
         return false;
+    }
+
+    @Override
+    protected String toHudString() {
+        return "Giving " + HudText.some(_targets) + " to " + _playerName;
     }
 
     @Override

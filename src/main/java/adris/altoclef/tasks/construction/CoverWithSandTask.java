@@ -104,6 +104,11 @@ public class CoverWithSandTask extends Task {
     }
 
     @Override
+    protected String toHudString() {
+        return "Covering lava with sand";
+    }
+
+    @Override
     protected String toDebugString() {
         return "Covering nether lava with sand";
     }

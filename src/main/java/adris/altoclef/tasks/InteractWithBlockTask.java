@@ -17,6 +17,9 @@ import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
 import adris.altoclef.util.slots.Slot;
 import adris.altoclef.util.time.TimerGame;
+import adris.altoclef.ui.HudText;
+import net.minecraft.world.level.Level;
+import net.minecraft.client.Minecraft;
 import baritone.api.pathing.goals.Goal;
 import baritone.api.pathing.goals.GoalNear;
 import baritone.api.pathing.goals.GoalTwoBlocks;
@@ -340,6 +343,27 @@ public class InteractWithBlockTask extends Task {
     @Override
     protected String toDebugString() {
         return "Interact using " + _toUse + " at " + _target + " dir " + _direction;
+    }
+
+    @Override
+    protected String toHudString() {
+        String where = blockName();
+        if (_toUse == null || _toUse.isEmpty()) {
+            return "Opening " + where;
+        }
+        return "Using " + HudText.items(_toUse) + " on " + where;
+    }
+
+    // the block under the target when its chunk is loaded, "the block at 1, 2, 3" otherwise
+    private String blockName() {
+        try {
+            Level level = Minecraft.getInstance().level;
+            if (level != null && _target != null && level.isLoaded(_target)) {
+                return "the " + HudText.block(level.getBlockState(_target).getBlock());
+            }
+        } catch (Throwable ignored) {
+        }
+        return "the block at " + HudText.pos(_target);
     }
 
     public ClickResponse getClickStatus() {

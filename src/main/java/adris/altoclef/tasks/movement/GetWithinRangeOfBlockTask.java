@@ -2,6 +2,7 @@ package adris.altoclef.tasks.movement;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.ui.HudText;
 import baritone.api.pathing.goals.Goal;
 import baritone.api.pathing.goals.GoalNear;
 import net.minecraft.core.BlockPos;
@@ -27,6 +28,11 @@ public class GetWithinRangeOfBlockTask extends CustomBaritoneGoalTask {
             return task._blockPos.equals(_blockPos) && task._range == _range;
         }
         return false;
+    }
+
+    @Override
+    protected String toHudString() {
+        return "Walking near " + HudText.pos(_blockPos);
     }
 
     @Override

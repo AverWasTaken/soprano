@@ -5,6 +5,7 @@ import adris.altoclef.Debug;
 import adris.altoclef.TaskCatalogue;
 import adris.altoclef.tasks.ResourceTask;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.ui.HudText;
 import adris.altoclef.util.CraftingRecipe;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.MiningRequirement;
@@ -83,6 +84,11 @@ public class CollectBedTask extends CraftWithMatchingWoolTask {
             return task._visualBedTarget.equals(_visualBedTarget);
         }
         return false;
+    }
+
+    @Override
+    protected String toHudString() {
+        return "Crafting " + HudText.items(_visualBedTarget);
     }
 
     @Override

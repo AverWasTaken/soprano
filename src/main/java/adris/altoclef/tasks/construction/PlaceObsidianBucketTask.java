@@ -7,6 +7,7 @@ import adris.altoclef.tasks.movement.GetToBlockTask;
 import adris.altoclef.tasks.movement.TimeoutWanderTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.trackers.BlockTracker;
+import adris.altoclef.ui.HudText;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
@@ -254,6 +255,11 @@ public class PlaceObsidianBucketTask extends Task {
         }
         // Return false
         return false;
+    }
+
+    @Override
+    protected String toHudString() {
+        return "Making obsidian at " + HudText.pos(_pos);
     }
 
     @Override

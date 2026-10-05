@@ -90,6 +90,11 @@ public class RavageDesertTemplesTask extends Task {
     }
 
     @Override
+    protected String toHudString() {
+        return "Looting desert temples";
+    }
+
+    @Override
     protected String toDebugString() {
         return "Ravaging Desert Temples";
     }

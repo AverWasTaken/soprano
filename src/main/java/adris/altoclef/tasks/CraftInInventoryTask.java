@@ -10,6 +10,7 @@ import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.slots.PlayerSlot;
 import adris.altoclef.util.slots.Slot;
+import adris.altoclef.ui.HudText;
 import java.util.List;
 import java.util.Optional;
 import net.minecraft.world.inventory.ClickType;
@@ -126,6 +127,11 @@ public class CraftInInventoryTask extends ResourceTask {
     @Override
     protected String toDebugStringName() {
         return toCraftingDebugStringName() + " " + _target;
+    }
+
+    @Override
+    protected String toHudString() {
+        return "Crafting " + HudText.items(new Item[]{_target.getOutputItem()}, _target.getTargetCount());
     }
 
     // virtual. By default assumes subtasks are CATALOGUED (in TaskCatalogue.java)

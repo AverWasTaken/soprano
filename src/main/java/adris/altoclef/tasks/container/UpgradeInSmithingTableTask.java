@@ -7,6 +7,7 @@ import adris.altoclef.tasks.ResourceTask;
 import adris.altoclef.tasks.slot.EnsureFreeInventorySlotTask;
 import adris.altoclef.tasks.slot.MoveItemToSlotFromInventoryTask;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.ui.HudText;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.StorageHelper;
@@ -135,6 +136,11 @@ public class UpgradeInSmithingTableTask extends ResourceTask {
     }
 
     @Override
+    protected String toHudString() {
+        return "Upgrading " + HudText.items(_tool) + " to " + HudText.items(_output);
+    }
+
+    @Override
     protected String toDebugStringName() {
         return "Upgrading " + _tool.toString() + " + " + _material.toString() + " -> " + _output.toString();
     }
@@ -154,6 +160,11 @@ public class UpgradeInSmithingTableTask extends ResourceTask {
         public UpgradeInSmithingTableInternalTask() {
             super(Blocks.SMITHING_TABLE, new ItemTarget("smithing_table"));
             _invTimer = new TimerGame(0);
+        }
+
+        @Override
+        protected String toHudString() {
+            return UpgradeInSmithingTableTask.this.toHudString();
         }
 
         @Override

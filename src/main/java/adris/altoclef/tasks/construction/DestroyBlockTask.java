@@ -14,6 +14,9 @@ import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
 import adris.altoclef.util.slots.PlayerSlot;
 import adris.altoclef.util.slots.Slot;
+import adris.altoclef.ui.HudText;
+import net.minecraft.world.level.Level;
+import net.minecraft.client.Minecraft;
 import baritone.api.pathing.goals.GoalBlock;
 import baritone.api.pathing.goals.GoalNear;
 import baritone.api.utils.Rotation;
@@ -236,7 +239,7 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
 
         // Check if there is an active unstuck task and the player is stuck in a block
         if (_unstuckTask != null && _unstuckTask.isActive() && !_unstuckTask.isFinished(mod) && stuckInBlock(mod) != null) {
-            setDebugState("Getting unstuck from block.");
+            setDebugState("Getting unstuck from block.", "Stuck, wiggling free");
             stuckCheck.reset();
             // Release control of Baritone's custom goal process and explore process
             mod.getClientBaritone().getCustomGoalProcess().onLostControl();
@@ -265,7 +268,7 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
         // and the player is within a distance of 0.89 blocks from the position
         if (!WorldHelper.isSolid(mod, _pos.above()) && mod.getPlayer().position().y > _pos.getY() && _pos.closerToCenterThan(mod.getPlayer().onGround() ? mod.getPlayer().position() : mod.getPlayer().position().add(0, -1, 0), 0.89)) {
             if (WorldHelper.dangerousToBreakIfRightAbove(mod, _pos)) {
-                setDebugState("It's dangerous to break as we're right above it, moving away and trying again.");
+                setDebugState("It's dangerous to break as we're right above it, moving away and trying again.", "Stepping off it first");
                 return new RunAwayFromPositionTask(3, _pos.getY(), _pos);
             }
         }
@@ -306,7 +309,7 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
             }
             mod.getClientBaritone().getInputOverrideHandler().setInputForceState(Input.CLICK_LEFT, true);
         } else {
-            setDebugState("Getting to block...");
+            setDebugState("Getting to block...", "Walking to " + HudText.pos(_pos));
             if (isMining && mod.getPlayer().isInWater()) {
                 isMining = false;
                 mod.getBlockTracker().requestBlockUnreachable(_pos);
@@ -399,5 +402,17 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
         } else {
             return "Destroy block at unknown position";
         }
+    }
+
+    @Override
+    protected String toHudString() {
+        try {
+            Level level = Minecraft.getInstance().level;
+            if (level != null && _pos != null && level.isLoaded(_pos)) {
+                return "Breaking " + HudText.block(level.getBlockState(_pos).getBlock());
+            }
+        } catch (Throwable ignored) {
+        }
+        return "Breaking the block at " + HudText.pos(_pos);
     }
 }

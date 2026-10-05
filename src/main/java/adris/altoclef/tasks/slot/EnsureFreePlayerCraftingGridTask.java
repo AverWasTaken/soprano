@@ -54,4 +54,14 @@ public class EnsureFreePlayerCraftingGridTask extends Task {
     protected String toDebugString() {
         return "Breaking the crafting grid";
     }
+
+    @Override
+    protected String toHudString() {
+        return "Clearing the crafting grid";
+    }
+
+    @Override
+    protected boolean isHudPlumbing() {
+        return true;
+    }
 }

@@ -3,6 +3,7 @@ package adris.altoclef.tasks.construction;
 import adris.altoclef.AltoClef;
 import adris.altoclef.tasks.InteractWithBlockTask;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.ui.HudText;
 import adris.altoclef.util.ItemTarget;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.item.Items;
@@ -53,6 +54,11 @@ public class ClearLiquidTask extends Task {
             return task._liquidPos.equals(_liquidPos);
         }
         return false;
+    }
+
+    @Override
+    protected String toHudString() {
+        return "Clearing liquid at " + HudText.pos(_liquidPos);
     }
 
     @Override

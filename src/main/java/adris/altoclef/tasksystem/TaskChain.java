@@ -35,6 +35,12 @@ public abstract class TaskChain {
 
     public abstract String getName();
 
+    // the header line of the task hud. plain words: "Defending", not "Mob Defense". null means the chain has no
+    // name of its own and its root task is the headline (the user chain: what you asked for is the title)
+    public String getHudName() {
+        return getName();
+    }
+
     public List<Task> getTasks() {
         return _cachedTaskChain;
     }
