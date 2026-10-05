@@ -58,7 +58,6 @@ public class DragonPhase implements PhaseHandler {
     private static final double ISLAND_LOST_RADIUS = 80;
     // where the bridge ends up: inside the ring of obsidian towers (radius ~42), not on the fountain
     private static final int BRIDGE_X = 28;
-    private static final double DEAD_WITHOUT_PORTAL_SECONDS = 45;
     private static final double GEAR_SEARCH_RADIUS = 64;
     private static final double BLOCKS_BUDGET_SECONDS = 150;
 
@@ -78,12 +77,11 @@ public class DragonPhase implements PhaseHandler {
 
     private boolean _wasInEnd;
     private boolean _onIsland;
-    private boolean _walkingOnPortal;
-    private boolean _tracking;
+    // set by the step that wants to walk over the exit portal, written to the engine ONCE at the end of the tick
+    private boolean _walkWanted;
     private double _pickupSeconds;
     private double _blockSeconds;
     private double _lastTick;
-    private double _deadSince;
     private double _lastHealth;
     private String _hudState;
 
@@ -137,21 +135,16 @@ public class DragonPhase implements PhaseHandler {
         init(ctx);
         _hudState = null;
         _wasInEnd = false;
-        if (!_tracking) {
-            _tracking = true;
-            mod.getBlockTracker().trackBlock(Blocks.END_PORTAL);
-        }
+        _walkWanted = false;
     }
 
+    // END_PORTAL is in the engine's tracked set (GamerTask.TRACKED), a handler level trackBlock leaked its ref count when
+    // the task was stopped while interrupted (onExit never ran)
     @Override
     public void onExit(AltoClef mod, GamerContext ctx) {
-        walkOnPortal(ctx, false);
+        ctx.walkOnEndPortal(false);
         if (_drops != null) {
             _drops.saveTo(ctx.state().endDrops);
-        }
-        if (_tracking) {
-            _tracking = false;
-            mod.getBlockTracker().stopTracking(Blocks.END_PORTAL);
         }
     }
 
@@ -171,20 +164,26 @@ public class DragonPhase implements PhaseHandler {
     @Override
     public Task tick(AltoClef mod, GamerContext ctx) {
         init(ctx);
+        _walkWanted = false;
+        Task step;
         if (ctx.facts().dimension() != Dimension.END) {
-            return outsideEnd(ctx);
+            step = outsideEnd(ctx);
+        } else {
+            if (!_wasInEnd) {
+                arrive(ctx);
+            }
+            step = inEnd(mod, ctx);
         }
-        if (!_wasInEnd) {
-            arrive(ctx);
-        }
-        return inEnd(mod, ctx);
+        // one write per tick, true only while walking into the exit portal. the engine remembers the wanted value across
+        // interrupts and restarts (an interrupt clears the Baritone side, this call puts it back)
+        ctx.walkOnEndPortal(_walkWanted);
+        return step;
     }
 
     // dragon alive and we are not in the End: regressTo sends us back to END_PREP unless the attempts are gone
     private Task outsideEnd(GamerContext ctx) {
         _wasInEnd = false;
         _hudState = null;
-        walkOnPortal(ctx, false);
         if (!ctx.state().dragonDead && !EndRules.attemptsLeft(ctx.state(), ctx.cfg().end)) {
             ctx.fail("the dragon killed us " + ctx.cfg().end.attempts + " times");
         }
@@ -204,7 +203,6 @@ public class DragonPhase implements PhaseHandler {
         _onIsland = false;
         _pickupSeconds = 0;
         _blockSeconds = 0;
-        _deadSince = -1;
         _lastHealth = -1;
         _lastTick = seconds(ctx);
     }
@@ -218,7 +216,7 @@ public class DragonPhase implements PhaseHandler {
 
         Task step = breathStep(mod);
         if (step == null) {
-            step = dead ? exitStep(mod, ctx, now) : fightPrepStep(mod, ctx, dt, now);
+            step = dead ? exitStep(mod) : fightPrepStep(mod, ctx, dt, now);
         }
         if (step != null || dead) {
             return step;
@@ -226,29 +224,24 @@ public class DragonPhase implements PhaseHandler {
         return stratStep(mod, ctx);
     }
 
-    // the latch, plus the fail safe: "dead" with no exit portal for a long time means we got it wrong, start over
+    // dead = the exit portal blocks exist. the latch's soft "dragon gone for 5 s" guess is not trusted here: from the arrival
+    // platform the dragon is out of tracking range for half of every lap, and a saved "dead" turns the next fall into the
+    // void into DONE. the soft guess still lives inside the bed task, where a wrong one is undone when the dragon shows up
     private boolean updateDead(AltoClef mod, GamerContext ctx, double now) {
         RunState state = ctx.state();
-        boolean portal = mod.getBlockTracker().anyFound(Blocks.END_PORTAL);
-        boolean dead = _latch.update(portal, mod.getEntityTracker().entityFound(EnderDragon.class),
+        _latch.update(exitPortalExists(mod), mod.getEntityTracker().entityFound(EnderDragon.class),
                 mod.getChunkTracker().isChunkLoaded(new BlockPos(0, 64, 0)), now);
+        boolean dead = _latch.exitPortalSeen();
         if (dead && !state.dragonDead) {
             state.dragonDead = true;
             ctx.progress("dragon is dead");
             ctx.save();
         }
-        if (!dead || portal) {
-            _deadSince = -1;
-        } else if (_deadSince < 0) {
-            _deadSince = now;
-        } else if (now - _deadSince > DEAD_WITHOUT_PORTAL_SECONDS) {
-            ctx.log("no exit portal after the dragon went away, looking for it again");
-            _latch.reset();
-            state.dragonDead = false;
-            _deadSince = -1;
-            return false;
-        }
         return dead;
+    }
+
+    private static boolean exitPortalExists(AltoClef mod) {
+        return KillEnderDragonWithBedsTask.exitPortalExists(mod);
     }
 
     // progress for the watchdog: every dent in the dragon counts
@@ -279,9 +272,9 @@ public class DragonPhase implements PhaseHandler {
     }
 
     // dragon dead: into the exit portal as soon as it exists
-    private Task exitStep(AltoClef mod, GamerContext ctx, double now) {
-        if (mod.getBlockTracker().anyFound(Blocks.END_PORTAL)) {
-            walkOnPortal(ctx, true);
+    private Task exitStep(AltoClef mod) {
+        if (exitPortalExists(mod)) {
+            _walkWanted = true;
             _hudState = "Walking into the exit portal";
             return _exitPortal;
         }
@@ -292,7 +285,6 @@ public class DragonPhase implements PhaseHandler {
     // everything that comes before the strat: bridge, gear on the floor, armor, building blocks. a perched dragon
     // beats all of it, nobody walks off to fetch a pickaxe in the middle of a perch
     private Task fightPrepStep(AltoClef mod, GamerContext ctx, double dt, double now) {
-        walkOnPortal(ctx, false);
         EndConfig cfg = ctx.cfg().end;
         GamerFacts facts = ctx.facts();
         updateIsland(facts);
@@ -398,8 +390,9 @@ public class DragonPhase implements PhaseHandler {
     private Task stratStep(AltoClef mod, GamerContext ctx) {
         GamerFacts facts = ctx.facts();
         boolean perched = dragonPerched(mod);
+        double pool = mod.getPlayer().getHealth() + mod.getPlayer().getAbsorptionAmount();
         DragonStrat next = DragonStrat.choose(_strat, facts.count(ItemHelper.BED), facts.armorPoints(), perched,
-                EndRules.endDeaths(ctx.state()), ctx.cfg().end);
+                EndRules.endDeaths(ctx.state()), ctx.cfg().end, pool);
         if (next != _strat) {
             ctx.log(next == DragonStrat.BEDS ? "fighting the dragon with beds" : "fighting the dragon with the sword");
             ctx.progress("strat " + next);
@@ -420,13 +413,6 @@ public class DragonPhase implements PhaseHandler {
         }
         DragonPhaseInstance phase = ((EnderDragon) dragon.get()).getPhaseManager().getCurrentPhase();
         return phase.getPhase() == EnderDragonPhase.LANDING || phase.isSitting() || phase.getPhase() == EnderDragonPhase.LANDING_APPROACH;
-    }
-
-    private void walkOnPortal(GamerContext ctx, boolean on) {
-        if (on != _walkingOnPortal) {
-            _walkingOnPortal = on;
-            ctx.walkOnEndPortal(on);
-        }
     }
 
     private static double seconds(GamerContext ctx) {

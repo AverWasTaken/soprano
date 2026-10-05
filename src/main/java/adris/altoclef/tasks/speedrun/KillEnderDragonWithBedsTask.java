@@ -5,6 +5,7 @@ import adris.altoclef.Debug;
 import adris.altoclef.tasks.InteractWithBlockTask;
 import adris.altoclef.tasks.movement.GetToBlockTask;
 import adris.altoclef.tasks.movement.GetToXZTask;
+import adris.altoclef.tasks.speedrun.gamer.end.BedSafety;
 import adris.altoclef.tasks.speedrun.gamer.end.DragonDeadLatch;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.helpers.ItemHelper;
@@ -24,6 +25,8 @@ import net.minecraft.world.phys.Vec3;
 public class KillEnderDragonWithBedsTask extends Task {
     public static final double DEFAULT_CLICK_RANGE = 5.3;
     private static final double DRAGON_GONE_SECONDS = 5;
+    // the exit portal is a 3x3 ring around the fountain at (0,0), a tracked END_PORTAL block this close to it is the real one
+    private static final int EXIT_PORTAL_RADIUS = 8;
 
     private final Task _whenNotPerchingTask;
     private final double _clickRange;
@@ -48,6 +51,12 @@ public class KillEnderDragonWithBedsTask extends Task {
         int height = WorldHelper.getGroundHeight(mod, 0, 0, Blocks.BEDROCK);
         if (height != -1) return new BlockPos(0, height, 0);
         return null;
+    }
+
+    // a tracked END_PORTAL next to (0,0). the tracker could still hold the stronghold portal from the overworld
+    public static boolean exitPortalExists(AltoClef mod) {
+        Optional<BlockPos> portal = mod.getBlockTracker().getNearestTracking(Blocks.END_PORTAL);
+        return portal.isPresent() && Math.abs(portal.get().getX()) <= EXIT_PORTAL_RADIUS && Math.abs(portal.get().getZ()) <= EXIT_PORTAL_RADIUS;
     }
 
     @Override
@@ -86,7 +95,7 @@ public class KillEnderDragonWithBedsTask extends Task {
                 // Perform "Default Wander" mode and avoid dragon breath.
          */
         Optional<Entity> dragon = mod.getEntityTracker().getClosestEntity(EnderDragon.class);
-        _deadLatch.update(mod.getBlockTracker().anyFound(Blocks.END_PORTAL), dragon.isPresent(),
+        _deadLatch.update(exitPortalExists(mod), dragon.isPresent(),
                 mod.getChunkTracker().isChunkLoaded(new BlockPos(0, 64, 0)), mod.getWorld().getGameTime() / 20.0);
         _perching = false;
         if (!_deadLatch.hasSeenDragon() && !_deadLatch.isDead()) {
@@ -199,6 +208,13 @@ public class KillEnderDragonWithBedsTask extends Task {
         Debug.logInternal("Dist: " + dist + " Health: " + dragonEntity.getHealth());
 
         if (dist < _clickRange) {
+            // our own explosion is the likeliest thing to kill us here: with too little health for it, do not click, let
+            // the food chain heal (it was told to stop for the perch) and wait for the next lap
+            if (!BedSafety.canClick(mod.getPlayer().getHealth(), mod.getPlayer().getAbsorptionAmount(), mod.getPlayer().getArmorValue())) {
+                mod.getFoodChain().shouldStop(false);
+                setDebugState("Too hurt for a bed explosion, healing first", "Healing before the next bed");
+                return null;
+            }
             // Interact with the bed.
             return new InteractWithBlockTask(bedTargetPosition);
         }

@@ -115,6 +115,37 @@ public class EndPhasesTest {
         }
     }
 
+    // DragonPhase saves RunState.dragonDead from latch.exitPortalSeen() only. a "dragon gone for 5 s" guess (it leaves tracking
+    // range on the far side of its lap) followed by a fall into the void must not look like a finished run
+    @Test
+    public void aSoftDeadGuessIsNotSavedSoARespawnInTheOverworldIsNotDone() {
+        DragonDeadLatch latch = new DragonDeadLatch(cfg.end.dragonGoneSeconds);
+        latch.update(false, true, true, 0);
+        latch.update(false, false, true, 1);
+        assertTrue(latch.update(false, false, true, 6));
+        FakeFacts f = new FakeFacts();
+        RunState s = new RunState();
+        s.dragonDead = latch.exitPortalSeen();
+        endDeath(s);
+        assertFalse(s.dragonDead);
+        assertFalse(dragon.isDone(f, s, cfg));
+        assertEquals(Optional.of(GamerPhase.END_PREP), dragon.regressTo(f, s, cfg));
+    }
+
+    @Test
+    public void aHardDeadFromTheExitPortalSurvivesARelogAndIsDoneInTheOverworld() {
+        DragonDeadLatch latch = new DragonDeadLatch(cfg.end.dragonGoneSeconds);
+        latch.update(true, false, true, 0);
+        RunState s = new RunState();
+        s.dragonDead = latch.exitPortalSeen();
+        FakeFacts f = new FakeFacts();
+        assertTrue(dragon.isDone(f, s, cfg));
+        // and a fresh latch after the relog starts from the saved flag
+        DragonDeadLatch after = new DragonDeadLatch(5);
+        after.markDead();
+        assertTrue(after.exitPortalSeen());
+    }
+
     @Test
     public void handlersReportTheirPhaseAndWaitWithoutAStallTimer() {
         assertEquals(GamerPhase.END_PREP, prep.phase());

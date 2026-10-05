@@ -43,7 +43,6 @@ public class EndPrepPhase implements PhaseHandler {
     private Task _food;
     private Task _toPortal;
     private BlockPos _toPortalAt;
-    private boolean _tracking;
     private String _hudState;
 
     @Override
@@ -73,19 +72,13 @@ public class EndPrepPhase implements PhaseHandler {
         // the task keeps its "spawn is set" flag from the last visit, a death in the End means it may be gone
         _setSpawn.resetSleep();
         _hudState = null;
-        if (!_tracking) {
-            _tracking = true;
-            mod.getBlockTracker().trackBlock(Blocks.END_PORTAL);
-        }
     }
 
+    // END_PORTAL is in the engine's tracked set (GamerTask.TRACKED), a handler level trackBlock leaked its ref count when
+    // the task was stopped while interrupted (onExit never ran)
     @Override
     public void onExit(AltoClef mod, GamerContext ctx) {
         ctx.walkOnEndPortal(false);
-        if (_tracking) {
-            _tracking = false;
-            mod.getBlockTracker().stopTracking(Blocks.END_PORTAL);
-        }
     }
 
     private void ensureTasks() {
@@ -100,9 +93,9 @@ public class EndPrepPhase implements PhaseHandler {
         ensureTasks();
         if (ctx.facts().dimension() != Dimension.OVERWORLD) {
             _hudState = null;
+            ctx.walkOnEndPortal(false);
             return null;
         }
-        ctx.walkOnEndPortal(false);
         EndConfig cfg = ctx.cfg().end;
         RunState state = ctx.state();
         noteSpawnSet(mod, ctx);
@@ -115,10 +108,9 @@ public class EndPrepPhase implements PhaseHandler {
         if (step == null) {
             step = gearStep(mod, ctx, cfg, gap);
         }
-        if (step != null) {
-            return step;
-        }
-        return walkIn(ctx);
+        // one write per tick (the path thread reads this flag): true only when everything else is done and we walk in
+        ctx.walkOnEndPortal(step == null);
+        return step != null ? step : walkIn();
     }
 
     // beds, then the spawn bed. returns null when both are done (or given up on)
@@ -241,8 +233,7 @@ public class EndPrepPhase implements PhaseHandler {
         return _buildBlocks;
     }
 
-    private Task walkIn(GamerContext ctx) {
-        ctx.walkOnEndPortal(true);
+    private Task walkIn() {
         _hudState = "Walking into the End portal";
         return _enterPortal;
     }
