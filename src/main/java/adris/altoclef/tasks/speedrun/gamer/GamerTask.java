@@ -604,6 +604,13 @@ public class GamerTask extends Task {
         }
 
         @Override
+        public void onPhaseReset() {
+            if (mod != null) {
+                dropChild(mod);
+            }
+        }
+
+        @Override
         public void walkOnEndPortal(boolean on) {
             wantWalkOnPortal = on;
             if (mod != null) {

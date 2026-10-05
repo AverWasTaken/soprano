@@ -26,6 +26,11 @@ public final class PhaseMachine implements GamerContext {
         void save();
 
         void walkOnEndPortal(boolean on);
+
+        // a retry or a phase move is about to enter a handler again: whatever child task the old one left running has to go,
+        // Task.tick keeps an equal child and a fresh one would be told "same as before" with all of its blacklists and timers
+        default void onPhaseReset() {
+        }
     }
 
     // a place we have not left by this much since the last "progress" counts as standing still (squared, in blocks)
@@ -203,6 +208,7 @@ public final class PhaseMachine implements GamerContext {
         host.say(s.phase.hud() + " is not working (" + reason + "), trying again");
         s.phaseAttempts.put(s.phase.name(), attempt + 1);
         safeExit(h);
+        host.onPhaseReset();
         restartClocks();
         safeEnter(h);
         host.save();
@@ -269,6 +275,7 @@ public final class PhaseMachine implements GamerContext {
         s.phaseAttempts.put(target.name(), 1);
         s.deathsThisPhase = 0;
         pendingFail = null;
+        host.onPhaseReset();
         restartClocks();
         safeEnter(current());
         host.save();

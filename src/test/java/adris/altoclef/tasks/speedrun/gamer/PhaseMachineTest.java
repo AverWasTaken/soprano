@@ -21,7 +21,13 @@ public class PhaseMachineTest {
         final FakeFacts facts = new FakeFacts();
         final List<String> said = new ArrayList<>();
         int saves;
+        int resets;
         boolean walkOnPortal;
+
+        @Override
+        public void onPhaseReset() {
+            resets++;
+        }
 
         @Override
         public GamerConfig cfg() {
@@ -455,6 +461,40 @@ public class PhaseMachineTest {
         m.begin(null);
         m.stuck("x");
         assertFalse(other.said.get(other.said.size() - 1).contains("end_prep"));
+    }
+
+    @Test
+    public void aRetryAndEveryPhaseMoveDropTheOldChildBeforeTheNextEnter() {
+        // the host's reset runs between the old handler's exit and the next one's enter
+        List<String> order = new ArrayList<>();
+        TestHost h2 = new TestHost() {
+            @Override
+            public void onPhaseReset() {
+                order.add("reset");
+            }
+        };
+        List<FakeHandler> hs = FakeHandler.full();
+        hs.forEach(fh -> fh.shared = order);
+        PhaseMachine m = new PhaseMachine(new ArrayList<PhaseHandler>(hs), h2);
+        m.begin(null);
+        // retry
+        m.fail("stuck in a loop");
+        m.tick(null);
+        assertEquals(List.of("GATHER:enter1", "GATHER:timeout1", "GATHER:exit", "reset", "GATHER:enter2"), order);
+        // advance
+        order.clear();
+        hs.get(0).alwaysDone();
+        m.tick(null);
+        assertEquals(List.of("GATHER:exit", "reset", "IRON:enter1"), order);
+    }
+
+    @Test
+    public void startingAndStoppingDoNotCountAsAPhaseReset() {
+        start();
+        machine.exitCurrent(null);
+        assertEquals(0, host.resets);
+        machine.finish(false);
+        assertEquals(0, host.resets);
     }
 
     @Test

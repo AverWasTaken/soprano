@@ -18,7 +18,16 @@ public class FakeHandler implements PhaseHandler {
     public double stall = 120;
     public RuntimeException tickThrows;
     public final List<String> events = new ArrayList<>();
+    // when set, every event is also written here as "PHASE:event", to see the order across handlers and the host
+    public List<String> shared;
     public int ticks;
+
+    private void event(String e) {
+        events.add(e);
+        if (shared != null) {
+            shared.add(phase + ":" + e);
+        }
+    }
 
     public FakeHandler(GamerPhase phase) {
         this.phase = phase;
@@ -65,12 +74,12 @@ public class FakeHandler implements PhaseHandler {
 
     @Override
     public void onEnter(AltoClef mod, GamerContext ctx) {
-        events.add("enter" + ctx.attempt());
+        event("enter" + ctx.attempt());
     }
 
     @Override
     public void onExit(AltoClef mod, GamerContext ctx) {
-        events.add("exit");
+        event("exit");
     }
 
     @Override
@@ -80,7 +89,7 @@ public class FakeHandler implements PhaseHandler {
 
     @Override
     public Timeout onTimeout(GamerContext ctx, int attempt, String reason) {
-        events.add("timeout" + attempt);
+        event("timeout" + attempt);
         return onTimeout != null ? onTimeout : PhaseHandler.super.onTimeout(ctx, attempt, reason);
     }
 
