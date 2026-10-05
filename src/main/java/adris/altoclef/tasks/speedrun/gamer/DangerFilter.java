@@ -12,7 +12,9 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 // things the block tracker offers that are traps wearing a crafting table: trial chamber furniture (sits on copper),
 // pillager outpost wool and logs, witch hut tables. the tracked blocks get blacklisted so the leaf tasks never walk
@@ -22,6 +24,8 @@ public final class DangerFilter {
     private static final double PILLAGER_RADIUS = 40;
     private static final double WITCH_RADIUS = 15;
 
+    // a minute of standing around: patrols walk, outposts do not
+    private final PillagerWatch pillagerWatch = new PillagerWatch(1200);
     private int ticks;
     private Block[] copperBlocks;
     private Block[] beds;
@@ -45,7 +49,7 @@ public final class DangerFilter {
             blacklistOnCopper(mod, tracker, bed);
         }
         blacklistWitchOrPillageTables(mod, tracker);
-        blacklistNearPillagers(mod, tracker);
+        blacklistNearOutposts(mod, tracker);
     }
 
     // trial chambers are built on copper, a table or bed or chest on top of it is not ours to take
@@ -75,25 +79,30 @@ public final class DangerFilter {
         }
     }
 
-    private void blacklistNearPillagers(AltoClef mod, BlockTracker tracker) {
-        List<Vec3> pillagers = positions(mod.getEntityTracker().getTrackedEntities(Pillager.class));
-        if (pillagers.isEmpty()) {
+    // only around an outpost (pillagers that stand still), a patrol passing through is not worth losing a forest over
+    private void blacklistNearOutposts(AltoClef mod, BlockTracker tracker) {
+        Map<Integer, double[]> pillagers = new HashMap<>();
+        for (Pillager p : mod.getEntityTracker().getTrackedEntities(Pillager.class)) {
+            pillagers.put(p.getId(), new double[]{p.getX(), p.getZ()});
+        }
+        pillagerWatch.update(ticks, pillagers);
+        if (pillagerWatch.outposts() == 0) {
             return;
         }
         for (Block block : logs) {
-            blacklistNear(tracker, block, pillagers);
+            blacklistNear(tracker, block);
         }
         for (Block block : wools) {
-            blacklistNear(tracker, block, pillagers);
+            blacklistNear(tracker, block);
         }
     }
 
-    private void blacklistNear(BlockTracker tracker, Block block, List<Vec3> pillagers) {
+    private void blacklistNear(BlockTracker tracker, Block block) {
         if (!tracker.isTracking(block)) {
             return;
         }
         for (BlockPos pos : tracker.getKnownLocations(block)) {
-            if (nearAny(pos, pillagers, PILLAGER_RADIUS)) {
+            if (pillagerWatch.nearOutpost(pos.getX(), pos.getZ(), PILLAGER_RADIUS)) {
                 blacklist(tracker, pos);
             }
         }

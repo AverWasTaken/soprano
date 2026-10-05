@@ -35,13 +35,15 @@ public class PortalPlannerTest {
     public void castsFirst() {
         assertEquals(Method.CAST, PortalPlanner.decide(Method.CAST, 0, cfg, false, false));
         assertEquals(Method.CAST, PortalPlanner.decide(Method.CAST, 300, cfg, true, true));
+        assertEquals("the cast keeps most of the 14 minute portal budget", 7.0, cfg.castGiveUpMinutes, 0);
     }
 
     @Test
     public void givesUpTheCastOnTheClock() {
-        assertEquals(Method.CAST, PortalPlanner.decide(Method.CAST, 9 * 60 - 1, cfg, true, false));
-        assertEquals(Method.OBSIDIAN, PortalPlanner.decide(Method.CAST, 9 * 60, cfg, true, false));
-        assertEquals(Method.OBSIDIAN, PortalPlanner.decide(Method.CAST, 9 * 60, cfg, true, true));
+        double limit = cfg.castGiveUpMinutes * 60;
+        assertEquals(Method.CAST, PortalPlanner.decide(Method.CAST, limit - 1, cfg, true, false));
+        assertEquals(Method.OBSIDIAN, PortalPlanner.decide(Method.CAST, limit, cfg, true, false));
+        assertEquals(Method.OBSIDIAN, PortalPlanner.decide(Method.CAST, limit, cfg, true, true));
     }
 
     @Test

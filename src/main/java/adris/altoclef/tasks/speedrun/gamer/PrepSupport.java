@@ -10,14 +10,19 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 
+import java.util.HashSet;
 import java.util.Optional;
+import java.util.Set;
 
 // the side jobs the overworld phases share: danger filtering, taking our crafting table back, ruined portal chests.
 // all of them return a task to run INSTEAD of the kit task this tick, or null
 public final class PrepSupport {
     private final DangerFilter danger = new DangerFilter();
     private final RuinedPortalLoot loot;
+    private final Set<BlockPos> tablesTried = new HashSet<>();
     private Task tablePickup;
+    private BlockPos tableTarget;
+    private long tableStartTick;
     private boolean tracking;
     private String hud;
 
@@ -69,19 +74,28 @@ public final class PrepSupport {
     // a table lying around while we hold none, only when we are about to go mining anyway (taking it back
     // right before a craft would just place it again)
     private Task tableRecovery(AltoClef mod, GamerContext ctx, KitNeed current) {
-        if (tablePickup != null && tablePickup.isActive() && !tablePickup.isFinished(mod)) {
-            return tablePickup;
+        if (tablePickup != null) {
+            double elapsed = (ctx.facts().gameTime() - tableStartTick) / 20.0;
+            if (tablePickup.isFinished(mod) || elapsed > ctx.cfg().overworld.tablePickupSeconds) {
+                // a table we could not get in time is written off, same as a chest
+                tablesTried.add(tableTarget);
+                tablePickup = null;
+            } else {
+                return tablePickup;
+            }
         }
         if (current == null || !current.isGathering() || !tracking || ctx.facts().has(Items.CRAFTING_TABLE)) {
             return null;
         }
-        Optional<BlockPos> table = mod.getBlockTracker().getNearestTracking(Blocks.CRAFTING_TABLE);
+        Optional<BlockPos> table = mod.getBlockTracker().getNearestTracking(pos -> !tablesTried.contains(pos), Blocks.CRAFTING_TABLE);
         if (table.isEmpty() || !WorldHelper.canBreak(mod, table.get())) {
             return null;
         }
         if (!table.get().closerToCenterThan(mod.getPlayer().position(), ctx.cfg().overworld.tableRecoverRadius)) {
             return null;
         }
+        tableTarget = table.get();
+        tableStartTick = ctx.facts().gameTime();
         tablePickup = new MineAndCollectTask(Items.CRAFTING_TABLE, 1, new Block[]{Blocks.CRAFTING_TABLE}, MiningRequirement.HAND);
         return tablePickup;
     }

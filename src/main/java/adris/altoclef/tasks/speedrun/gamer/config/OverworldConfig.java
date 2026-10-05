@@ -38,9 +38,10 @@ public class OverworldConfig {
     public int minFoodUnits = 70;
     public int targetFoodUnits = 100;
 
-    // lava casting gets this long before the portal phase mines obsidian instead
-    public double castGiveUpMinutes = 9;
-    public int obsidianNeeded = 10;
+    // lava casting gets this long (counted from when the cast starts, after the prep) before the portal phase goes the
+    // obsidian way. the whole portal phase has 14 minutes and the prep before the cast eats some of them, 7 leaves the
+    // obsidian way a real chunk of the budget (it may need a diamond pickaxe first, that is slow)
+    public double castGiveUpMinutes = 7;
     // ruined portal chests are only looted when we have already seen one this close, never searched for
     public int ruinedPortalLootRadius = 60;
     // a chest that is not emptied after this long gets written off (blocked, buried, whatever)
@@ -53,4 +54,6 @@ public class OverworldConfig {
     public int portalBuildBlocks = 32;
     // pick up a crafting table lying around (we hold none) only when it is this close
     public int tableRecoverRadius = 10;
+    // ...and gets this long to do it before that table is written off
+    public double tablePickupSeconds = 30;
 }
