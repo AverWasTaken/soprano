@@ -176,12 +176,40 @@ public class KitPlannerTest {
     @Test
     public void woolIsSizedByBedsAndWoolWeHold() {
         f.give(Items.RED_WOOL, 10);
-        assertEquals(24, find(KitPlanner.plan(f, cfg, 8), "wool").count());
+        // only 9 of the 10 make beds, so the task (which counts every wool) must hold 10 + 15 more
+        assertEquals(25, find(KitPlanner.plan(f, cfg, 8), "wool").count());
         FakeFacts beds = new FakeFacts().give(Items.WHITE_BED, 2);
         // two beds are six wool already, so 18 more, held as 18 wool
         assertEquals(18, find(KitPlanner.plan(beds, cfg, 8), "wool").count());
         assertEquals(null, find(KitPlanner.plan(new FakeFacts().give(Items.WHITE_BED, 8), cfg, 8), "wool"));
         assertEquals(null, find(KitPlanner.plan(f, cfg, 0), "wool"));
+    }
+
+    @Test
+    public void woolCountsPerColourInSetsOfThree() {
+        // a bed needs three of ONE colour: 5 red + 4 white is 3 + 3
+        f.give(Items.RED_WOOL, 5).give(Items.WHITE_WOOL, 4);
+        assertEquals(6, KitPlanner.usableWool(f));
+        assertEquals(9 + 24 - 6, find(KitPlanner.plan(f, cfg, 8), "wool").count());
+        // 24 wool in odd leftovers is no beds at all
+        FakeFacts scraps = new FakeFacts();
+        for (Item wool : adris.altoclef.util.helpers.ItemHelper.WOOL) {
+            scraps.give(wool, 2);
+        }
+        assertEquals(0, KitPlanner.usableWool(scraps));
+        assertEquals(32 + 24, find(KitPlanner.plan(scraps, cfg, 8), "wool").count());
+        // a full set in one colour is done
+        assertEquals(null, find(KitPlanner.plan(new FakeFacts().give(Items.WHITE_WOOL, 24), cfg, 8), "wool"));
+        assertEquals(null, find(KitPlanner.plan(new FakeFacts().give(Items.WHITE_WOOL, 12).give(Items.RED_WOOL, 12), cfg, 8), "wool"));
+    }
+
+    @Test
+    public void stoneToolsMetIgnoresFoodAndFurnace() {
+        assertFalse(KitPlanner.stoneToolsMet(f));
+        f.give(Items.STONE_PICKAXE, 1);
+        assertFalse(KitPlanner.stoneToolsMet(f));
+        f.give(Items.IRON_SWORD, 1);
+        assertTrue(KitPlanner.stoneToolsMet(f));
     }
 
     @Test

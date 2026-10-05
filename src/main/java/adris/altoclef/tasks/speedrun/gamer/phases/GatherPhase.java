@@ -10,6 +10,7 @@ import adris.altoclef.tasks.speedrun.gamer.KitRunner;
 import adris.altoclef.tasks.speedrun.gamer.PhaseHandler;
 import adris.altoclef.tasks.speedrun.gamer.PrepSupport;
 import adris.altoclef.tasks.speedrun.gamer.RunState;
+import adris.altoclef.tasks.speedrun.gamer.Timeout;
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
 import adris.altoclef.tasksystem.Task;
 
@@ -64,5 +65,15 @@ public class GatherPhase implements PhaseHandler {
         Task task = runner.run(ctx, needs);
         hudState = runner.hud();
         return task;
+    }
+
+    // slow food (desert start, no animals around) must not end the run on its first phase: with both stone tools in
+    // hand IRON carries on, its plan asks for the food again anyway
+    @Override
+    public Timeout onTimeout(GamerContext ctx, int attempt, String reason) {
+        if (KitPlanner.stoneToolsMet(ctx.facts())) {
+            return Timeout.SKIP;
+        }
+        return attempt < ctx.cfg().maxAttempts ? Timeout.RETRY : Timeout.STUCK;
     }
 }

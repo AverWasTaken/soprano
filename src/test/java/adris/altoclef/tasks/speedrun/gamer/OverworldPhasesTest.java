@@ -107,12 +107,42 @@ public class OverworldPhasesTest {
     }
 
     @Test
+    public void gatherSkipsOnTimeoutOnceBothStoneToolsAreHeld() {
+        GatherPhase gather = new GatherPhase();
+        StubContext ctx = new StubContext();
+        assertEquals(Timeout.RETRY, gather.onTimeout(ctx, 1, "slow"));
+        assertEquals(Timeout.STUCK, gather.onTimeout(ctx, 2, "slow"));
+        ctx.facts.give(Items.STONE_PICKAXE, 1).give(Items.STONE_SWORD, 1);
+        assertEquals(Timeout.SKIP, gather.onTimeout(ctx, 1, "no food"));
+        assertEquals(Timeout.SKIP, gather.onTimeout(ctx, 2, "no food"));
+    }
+
+    @Test
+    public void ironSkipsOnlyWithTheEssentials() {
+        IronPhase iron = new IronPhase();
+        StubContext ctx = new StubContext();
+        assertEquals(Timeout.RETRY, iron.onTimeout(ctx, 1, "slow"));
+        assertEquals(Timeout.STUCK, iron.onTimeout(ctx, 2, "slow"));
+        ctx.facts.give(Items.IRON_PICKAXE, 1).give(Items.FLINT_AND_STEEL, 1).give(Items.BUCKET, 2);
+        assertEquals(Timeout.SKIP, iron.onTimeout(ctx, 2, "slow"));
+    }
+
+    @Test
+    public void portalTimesOutOnceIntoObsidianThenStops() {
+        PortalPhase portal = new PortalPhase();
+        StubContext ctx = new StubContext();
+        assertEquals(Timeout.RETRY, portal.onTimeout(ctx, 1, "stalled"));
+        assertEquals("OBSIDIAN", ctx.state.portalMethod);
+        assertEquals(Timeout.STUCK, portal.onTimeout(ctx, 2, "stalled"));
+    }
+
+    @Test
     public void configDefaultsStaySane() {
         OverworldConfig o = cfg.overworld;
         assertEquals(70, o.minFoodUnits);
         assertEquals(100, o.targetFoodUnits);
-        assertEquals(9.0, o.castGiveUpMinutes, 0);
-        assertEquals(10, o.obsidianNeeded);
+        assertEquals(7.0, o.castGiveUpMinutes, 0);
+        assertEquals(30.0, o.tablePickupSeconds, 0);
         assertEquals(60, o.ruinedPortalLootRadius);
         assertEquals(32, o.portalBuildBlocks);
         assertEquals(10, o.tableRecoverRadius);

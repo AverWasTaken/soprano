@@ -14,6 +14,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 // pure: what is still missing from the overworld kit, in the order we want it. never asks for what is already held
 // (inventory, worn armor, offhand, and better tiers count: a diamond pickaxe is an iron pickaxe, a water bucket is a bucket)
@@ -110,14 +111,30 @@ public final class KitPlanner {
         }
     }
 
-    // 3 wool a bed, and a bed we already carry is 3 wool we do not need to find
+    // 3 wool a bed, and a bed we already carry is 3 wool we do not need to find. a bed wants three of ONE colour, so
+    // 5 red and 4 white is one bed's worth, not nine wool
     private static void addWool(List<KitNeed> out, GamerFacts f, int endBeds) {
         int needed = 3 * endBeds;
         int wool = f.count(ItemHelper.WOOL);
-        int have = wool + 3 * f.count(ItemHelper.BED);
+        int have = usableWool(f) + 3 * f.count(ItemHelper.BED);
         if (needed > 0 && have < needed) {
+            // the wool task counts every colour, so ask for what we hold plus the shortfall or it stops too early
             out.add(new KitNeed("wool", wool + needed - have));
         }
+    }
+
+    // wool that turns into beds: whole sets of three per colour
+    public static int usableWool(GamerFacts f) {
+        int usable = 0;
+        for (Item wool : ItemHelper.WOOL) {
+            usable += f.count(wool) / 3 * 3;
+        }
+        return usable;
+    }
+
+    // what is left of GATHER once the food is not counted: both stone tools. enough to carry on and let IRON do the food
+    public static boolean stoneToolsMet(GamerFacts f) {
+        return have(f, "stone_pickaxe") >= 1 && have(f, "stone_sword") >= 1;
     }
 
     // armor pieces we carry but are not wearing (best tier we hold per slot), for EquipArmorTask
@@ -191,24 +208,30 @@ public final class KitPlanner {
         };
     }
 
+    // plan() runs a few times a tick and these are registry lookups, so the answers are kept (callers never write to them)
+    private static final Map<String, Item[]> EXACT = new ConcurrentHashMap<>();
+    private static final Map<String, Item[]> COUNTED = new ConcurrentHashMap<>();
+
     static Item[] exact(String name) {
-        return switch (name) {
+        return EXACT.computeIfAbsent(name, n -> switch (n) {
             case "wool" -> ItemHelper.WOOL;
             case "bed" -> ItemHelper.BED;
             case "log" -> ItemHelper.LOG;
             case "planks" -> ItemHelper.PLANKS;
-            default -> lookup(name);
-        };
+            default -> lookup(n);
+        });
     }
 
     static Item[] counted(String name) {
-        List<Item> out = new ArrayList<>(Arrays.asList(exact(name)));
-        switch (name) {
-            case "bucket" -> out.addAll(List.of(Items.WATER_BUCKET, Items.LAVA_BUCKET));
-            case "furnace" -> out.add(Items.BLAST_FURNACE);
-            default -> addBetterTiers(out, name);
-        }
-        return out.toArray(new Item[0]);
+        return COUNTED.computeIfAbsent(name, n -> {
+            List<Item> out = new ArrayList<>(Arrays.asList(exact(n)));
+            switch (n) {
+                case "bucket" -> out.addAll(List.of(Items.WATER_BUCKET, Items.LAVA_BUCKET));
+                case "furnace" -> out.add(Items.BLAST_FURNACE);
+                default -> addBetterTiers(out, n);
+            }
+            return out.toArray(new Item[0]);
+        });
     }
 
     // stone_pickaxe is also iron/diamond/netherite, iron_helmet is also diamond/netherite (stone armor does not exist)
