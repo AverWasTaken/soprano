@@ -1,6 +1,7 @@
 package adris.altoclef.tasks;
 
 import adris.altoclef.AltoClef;
+import adris.altoclef.util.helpers.AnnoyingBlocks;
 import adris.altoclef.Debug;
 import adris.altoclef.TaskCatalogue;
 import adris.altoclef.tasks.movement.SafeRandomShimmyTask;
@@ -52,22 +53,6 @@ public class InteractWithBlockTask extends Task {
     private final boolean _shiftClick;
     private final TimerGame _clickTimer = new TimerGame(5);
     private final TimeoutWanderTask _wanderTask = new TimeoutWanderTask(5, true);
-    Block[] annoyingBlocks = new Block[]{
-            Blocks.VINE,
-            Blocks.NETHER_SPROUTS,
-            Blocks.CAVE_VINES,
-            Blocks.CAVE_VINES_PLANT,
-            Blocks.TWISTING_VINES,
-            Blocks.TWISTING_VINES_PLANT,
-            Blocks.WEEPING_VINES_PLANT,
-            Blocks.LADDER,
-            Blocks.BIG_DRIPLEAF,
-            Blocks.BIG_DRIPLEAF_STEM,
-            Blocks.SMALL_DRIPLEAF,
-            Blocks.TALL_GRASS,
-            Blocks.GRASS_BLOCK,
-            Blocks.SWEET_BERRY_BUSH
-    };
     private Task _unstuckTask = null;
     private ClickResponse _cachedClickStatus = ClickResponse.CANT_REACH;
 
@@ -187,16 +172,7 @@ public class InteractWithBlockTask extends Task {
     }
 
     private boolean isAnnoying(AltoClef mod, BlockPos pos) {
-        if (annoyingBlocks != null) {
-            for (Block AnnoyingBlocks : annoyingBlocks) {
-                return mod.getWorld().getBlockState(pos).getBlock() == AnnoyingBlocks ||
-                        mod.getWorld().getBlockState(pos).getBlock() instanceof DoorBlock ||
-                        mod.getWorld().getBlockState(pos).getBlock() instanceof FenceBlock ||
-                        mod.getWorld().getBlockState(pos).getBlock() instanceof FenceGateBlock ||
-                        mod.getWorld().getBlockState(pos).getBlock() instanceof FlowerBlock;
-            }
-        }
-        return false;
+        return AnnoyingBlocks.isAnnoying(mod.getWorld().getBlockState(pos).getBlock());
     }
 
     // This happens all the time in mineshafts and swamps/jungles

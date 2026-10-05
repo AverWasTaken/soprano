@@ -1,9 +1,9 @@
 package adris.altoclef.tasks.movement;
 
 import adris.altoclef.AltoClef;
+import adris.altoclef.util.helpers.AnnoyingBlocks;
 import adris.altoclef.Debug;
 import adris.altoclef.tasks.entity.KillEntitiesTask;
-import adris.altoclef.tasks.speedrun.MarvionBeatMinecraftTask;
 import adris.altoclef.tasksystem.ITaskRequiresGrounded;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.helpers.ItemHelper;
@@ -11,9 +11,7 @@ import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
 import adris.altoclef.util.slots.Slot;
-import adris.altoclef.util.time.TimerGame;
 import baritone.api.utils.input.Input;
-import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.Mob;
@@ -37,23 +35,6 @@ public class TimeoutWanderTask extends Task implements ITaskRequiresGrounded {
     private final float _distanceToWander;
     private final MovementProgressChecker _progressChecker = new MovementProgressChecker();
     private final boolean _increaseRange;
-    private final TimerGame _timer = new TimerGame(60);
-    Block[] annoyingBlocks = new Block[]{
-            Blocks.VINE,
-            Blocks.NETHER_SPROUTS,
-            Blocks.CAVE_VINES,
-            Blocks.CAVE_VINES_PLANT,
-            Blocks.TWISTING_VINES,
-            Blocks.TWISTING_VINES_PLANT,
-            Blocks.WEEPING_VINES_PLANT,
-            Blocks.LADDER,
-            Blocks.BIG_DRIPLEAF,
-            Blocks.BIG_DRIPLEAF_STEM,
-            Blocks.SMALL_DRIPLEAF,
-            Blocks.TALL_GRASS,
-            Blocks.GRASS_BLOCK,
-            Blocks.SWEET_BERRY_BUSH
-    };
     private Vec3 _origin;
     //private DistanceProgressChecker _distanceProgressChecker = new DistanceProgressChecker(10, 0.1f);
     private boolean _forceExplore;
@@ -94,14 +75,7 @@ public class TimeoutWanderTask extends Task implements ITaskRequiresGrounded {
     }
 
     private boolean isAnnoying(AltoClef mod, BlockPos pos) {
-        for (Block AnnoyingBlocks : annoyingBlocks) {
-            return mod.getWorld().getBlockState(pos).getBlock() == AnnoyingBlocks ||
-                    mod.getWorld().getBlockState(pos).getBlock() instanceof DoorBlock ||
-                    mod.getWorld().getBlockState(pos).getBlock() instanceof FenceBlock ||
-                    mod.getWorld().getBlockState(pos).getBlock() instanceof FenceGateBlock ||
-                    mod.getWorld().getBlockState(pos).getBlock() instanceof FlowerBlock;
-        }
-        return false;
+        return AnnoyingBlocks.isAnnoying(mod.getWorld().getBlockState(pos).getBlock());
     }
 
     public void resetWander() {
@@ -134,7 +108,6 @@ public class TimeoutWanderTask extends Task implements ITaskRequiresGrounded {
 
     @Override
     protected void onStart(AltoClef mod) {
-        _timer.reset();
         mod.getClientBaritone().getPathingBehavior().forceCancel();
         _origin = mod.getPlayer().position();
         _progressChecker.reset();
@@ -203,32 +176,6 @@ public class TimeoutWanderTask extends Task implements ITaskRequiresGrounded {
             stuckCheck.reset();
         }
         setDebugState("Exploring.");
-        switch (WorldHelper.getCurrentDimension()) {
-            case END -> {
-                if (_timer.getDuration() >= 30) {
-                    if (MarvionBeatMinecraftTask.getConfig().renderDistanceManipulation) {
-                        Minecraft.getInstance().options.renderDistance().set(12);
-                        Minecraft.getInstance().options.entityDistanceScaling().set(1.0);
-                    }
-                    _timer.reset();
-                }
-            }
-            case OVERWORLD, NETHER -> {
-                if (_timer.getDuration() >= 30) {
-                    if (MarvionBeatMinecraftTask.getConfig().renderDistanceManipulation) {
-                        Minecraft.getInstance().options.renderDistance().set(12);
-                        Minecraft.getInstance().options.entityDistanceScaling().set(1.0);
-                    }
-                }
-                if (_timer.elapsed()) {
-                    if (MarvionBeatMinecraftTask.getConfig().renderDistanceManipulation) {
-                        Minecraft.getInstance().options.renderDistance().set(32);
-                        Minecraft.getInstance().options.entityDistanceScaling().set(5.0);
-                    }
-                    _timer.reset();
-                }
-            }
-        }
         if (!mod.getClientBaritone().getExploreProcess().isActive()) {
             mod.getClientBaritone().getExploreProcess().explore((int) _origin.x(), (int) _origin.z());
         }

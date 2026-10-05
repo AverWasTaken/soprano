@@ -1,6 +1,7 @@
 package adris.altoclef.tasks.construction;
 
 import adris.altoclef.AltoClef;
+import adris.altoclef.util.helpers.AnnoyingBlocks;
 import adris.altoclef.Debug;
 import adris.altoclef.tasks.movement.RunAwayFromPositionTask;
 import adris.altoclef.tasks.movement.SafeRandomShimmyTask;
@@ -40,22 +41,6 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
     private final MovementProgressChecker stuckCheck = new MovementProgressChecker();
     private final MovementProgressChecker _moveChecker = new MovementProgressChecker();
     private final BlockPos _pos;
-    Block[] annoyingBlocks = new Block[]{
-            Blocks.VINE,
-            Blocks.NETHER_SPROUTS,
-            Blocks.CAVE_VINES,
-            Blocks.CAVE_VINES_PLANT,
-            Blocks.TWISTING_VINES,
-            Blocks.TWISTING_VINES_PLANT,
-            Blocks.WEEPING_VINES_PLANT,
-            Blocks.LADDER,
-            Blocks.BIG_DRIPLEAF,
-            Blocks.BIG_DRIPLEAF_STEM,
-            Blocks.SMALL_DRIPLEAF,
-            Blocks.TALL_GRASS,
-            Blocks.GRASS_BLOCK,
-            Blocks.SWEET_BERRY_BUSH
-    };
     private Task _unstuckTask = null;
     private boolean isMining;
 
@@ -94,17 +79,7 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
      * @return true if the block is annoying, false otherwise
      */
     private boolean isAnnoying(AltoClef mod, BlockPos pos) {
-        for (Block annoyingBlock : annoyingBlocks) {
-            boolean isAnnoying = mod.getWorld().getBlockState(pos).getBlock() == annoyingBlock
-                    || mod.getWorld().getBlockState(pos).getBlock() instanceof DoorBlock
-                    || mod.getWorld().getBlockState(pos).getBlock() instanceof FenceBlock
-                    || mod.getWorld().getBlockState(pos).getBlock() instanceof FenceGateBlock
-                    || mod.getWorld().getBlockState(pos).getBlock() instanceof FlowerBlock;
-            if (isAnnoying) {
-                return true;
-            }
-        }
-        return false;
+        return AnnoyingBlocks.isAnnoying(mod.getWorld().getBlockState(pos).getBlock());
     }
 
     /**
