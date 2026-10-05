@@ -179,7 +179,7 @@ public class BeatMinecraft2Task extends Task {
     protected void onStart(AltoClef mod) {
 
         // Add a warning to make sure the user at least knows to change the settings.
-        String settingsWarningTail = "in \".minecraft/altoclef_settings.json\". #gamer may break if you don't add this! (sorry!)";
+        String settingsWarningTail = "in your settings (#set altoThrowawayItems, #set altoThrowAwayUnusedItems). #gamer may break if you don't add this! (sorry!)";
         if (!ArrayUtils.contains(AltoSettings.getThrowawayItems(mod), Items.END_STONE)) {
             Debug.logWarning("\"end_stone\" is not part of your \"throwawayItems\" list " + settingsWarningTail);
         }
