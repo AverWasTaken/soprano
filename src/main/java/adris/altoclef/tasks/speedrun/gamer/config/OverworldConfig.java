@@ -43,4 +43,14 @@ public class OverworldConfig {
     public int obsidianNeeded = 10;
     // ruined portal chests are only looted when we have already seen one this close, never searched for
     public int ruinedPortalLootRadius = 60;
+    // a chest that is not emptied after this long gets written off (blocked, buried, whatever)
+    public double lootChestSeconds = 60;
+
+    // casting with no lava in sight for this long, while we already hold a diamond pickaxe, flips to obsidian early.
+    // without the pickaxe we keep wandering for a lake until castGiveUpMinutes
+    public double noLavaSeconds = 150;
+    // throwaway blocks to carry through the portal (pillaring, bridging, plugging lava)
+    public int portalBuildBlocks = 32;
+    // pick up a crafting table lying around (we hold none) only when it is this close
+    public int tableRecoverRadius = 10;
 }
