@@ -36,6 +36,8 @@ public class RunStateStoreTest {
         s.finished = false;
         s.runTicks = 987654321L;
         s.deathsThisPhase = 2;
+        s.regressCounts.put("LOCATE>NETHER", 2);
+        s.regressCounts.put("DRAGON>END_PREP", 1);
 
         RunState.Death d = new RunState.Death();
         d.dimension = "NETHER";
@@ -116,6 +118,8 @@ public class RunStateStoreTest {
         assertEquals(Integer.valueOf(7), out.endDrops.get("minecraft:white_bed"));
         assertEquals("NETHER", out.deaths.get(0).dimension);
         assertEquals(987654321L, out.runTicks);
+        assertEquals(Integer.valueOf(2), out.regressCounts.get("LOCATE>NETHER"));
+        assertEquals(2, out.deathsThisPhase);
         assertEquals(1_700_000_000_123L, out.startedEpochMs);
         assertTrue(out.stuck);
         assertTrue(out.dragonDead);
@@ -163,13 +167,20 @@ public class RunStateStoreTest {
 
     @Test
     public void nullCollectionsInAHandEditedFileBecomeEmptyOnes() throws IOException {
-        write(file(), "{\"fingerprint\":\"" + FP + "\",\"phase\":\"IRON\",\"visitedCells\":null,\"deaths\":null,\"endDrops\":null,\"strongholdRays\":null,\"phaseAttempts\":null}");
+        write(file(), "{\"fingerprint\":\"" + FP + "\",\"phase\":\"IRON\",\"visitedCells\":null,\"deaths\":null,\"endDrops\":null,\"strongholdRays\":null,\"phaseAttempts\":null,\"regressCounts\":null}");
         RunState s = RunStateStore.load(file(), FP).state();
         assertTrue(s.visitedCells.isEmpty());
         assertTrue(s.deaths.isEmpty());
         assertTrue(s.endDrops.isEmpty());
         assertTrue(s.strongholdRays.isEmpty());
+        assertTrue(s.regressCounts.isEmpty());
         assertEquals(0, s.attemptsOf(GamerPhase.IRON));
+    }
+
+    @Test
+    public void onlyTheSharedFileIsTheFallback() {
+        assertTrue(RunStateStore.isSharedFallback(tmp.getRoot().toPath().resolve("gamer-nocache.json")));
+        assertFalse(RunStateStore.isSharedFallback(file()));
     }
 
     @Test

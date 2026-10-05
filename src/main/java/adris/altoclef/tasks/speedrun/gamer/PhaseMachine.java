@@ -31,11 +31,19 @@ public final class PhaseMachine implements GamerContext {
     // a place we have not left by this much since the last "progress" counts as standing still (squared, in blocks)
     static final double MOVED_SQ = 36;
 
+    // the same regress (LOCATE>NETHER) may happen this many times in one run, then it is a loop and not a recovery
+    static final int MAX_REGRESS_PER_PAIR = 2;
+
     private final Host host;
     private final PhaseRules rules;
     private final Watchdog watchdog = new Watchdog();
     private AltoClef mod;
     private String pendingFail;
+    // the handler that is between onEnter and onExit right now. exit only counts for that one, so a stuck run that gets its
+    // real stop afterwards does not run onExit twice (a handler that pops something in there would pop twice)
+    private PhaseHandler entered;
+    // the level's game time can read 0 for a few ticks after a dimension change, the machine's clock never goes back
+    private double lastNow;
 
     private int lastFingerprint;
     private int anchorX;
@@ -66,7 +74,11 @@ public final class PhaseMachine implements GamerContext {
     }
 
     public double now() {
-        return host.facts().gameTime() / 20.0;
+        double t = host.facts().gameTime() / 20.0;
+        if (t > lastNow) {
+            lastNow = t;
+        }
+        return lastNow;
     }
 
     // ---- life cycle
@@ -225,13 +237,25 @@ public final class PhaseMachine implements GamerContext {
                     moveTo(d.to());
                 }
             }
-            case REGRESS -> {
-                host.say(d.to().hud() + " again (" + d.reason() + ")");
-                moveTo(d.to());
-            }
+            case REGRESS -> regress(d);
             default -> {
             }
         }
+    }
+
+    // every move resets the attempts and the clocks, so a phase pair that keeps sending us back and forth would never trip a
+    // budget. the count per pair is saved with the run, the third time is a loop
+    private void regress(PhaseRules.Decision d) {
+        RunState s = host.state();
+        String pair = s.phase.name() + ">" + d.to().name();
+        int times = s.regressCounts.getOrDefault(pair, 0);
+        if (times >= MAX_REGRESS_PER_PAIR) {
+            stuck("phase ping pong (" + pair.toLowerCase() + " " + (times + 1) + " times)");
+            return;
+        }
+        s.regressCounts.put(pair, times + 1);
+        host.say(d.to().hud() + " again (" + d.reason() + ")");
+        moveTo(d.to());
     }
 
     // leave the current handler and enter another one, the common part of advance / regress / skip
@@ -272,13 +296,21 @@ public final class PhaseMachine implements GamerContext {
         s.stuck = true;
         s.stuckReason = reason;
         host.save();
-        host.say("Gave up at " + s.phase.hud().toLowerCase() + ": " + reason + ". State saved, #gamer resumes.");
+        host.say("Gave up at " + s.phase.hud().toLowerCase() + ": " + reason + ". State saved, #gamer resumes."
+                + restartHint(s.phase));
+    }
+
+    // a run that died its way to STUCK in the End comes back to the End with the same deaths on the books, the gear check is
+    // what it needs again
+    private static String restartHint(GamerPhase phase) {
+        return phase == GamerPhase.DRAGON ? " (#gamer phase end_prep redoes the gear check first)" : "";
     }
 
     private void safeEnter(PhaseHandler h) {
         if (h == null) {
             return;
         }
+        entered = h;
         try {
             h.onEnter(mod, this);
         } catch (RuntimeException e) {
@@ -287,9 +319,10 @@ public final class PhaseMachine implements GamerContext {
     }
 
     private void safeExit(PhaseHandler h) {
-        if (h == null) {
+        if (h == null || entered != h) {
             return;
         }
+        entered = null;
         try {
             h.onExit(mod, this);
         } catch (RuntimeException e) {
@@ -303,6 +336,16 @@ public final class PhaseMachine implements GamerContext {
         Debug.logWarning(h.phase() + " phase hit an error: " + e);
         e.printStackTrace();
         pendingFail = "error in the " + h.phase().name().toLowerCase() + " phase (" + e.getClass().getSimpleName() + ")";
+    }
+
+    // an exception that came out of the child task the handler handed back, which Task.tick runs after our onTick returned.
+    // same road as a handler that throws: a failed attempt, retried or stuck
+    public void failFromChild(RuntimeException e) {
+        PhaseHandler h = current();
+        if (h == null) {
+            throw e;
+        }
+        handlerThrew(h, e);
     }
 
     // ---- the handlers' view

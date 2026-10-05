@@ -29,6 +29,8 @@ public class RunState {
     public long runTicks;
     // reset on every phase change and on a manual resume, three of these in one phase is stuck
     public int deathsThisPhase;
+    // "FROM>TO" -> how often the engine regressed that way, so a regress loop ends in STUCK instead of resetting every clock forever
+    public Map<String, Integer> regressCounts = new HashMap<>();
 
     public List<Death> deaths = new ArrayList<>();
 

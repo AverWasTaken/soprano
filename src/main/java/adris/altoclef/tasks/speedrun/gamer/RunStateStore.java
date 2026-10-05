@@ -27,6 +27,8 @@ public final class RunStateStore {
     // minecraft types so the file stays readable by a human
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
+    private static final String FALLBACK_NAME = "gamer-nocache.json";
+
     // what load found. resumed = there was a usable file for this world, fresh = we start over (and say why in the log)
     public record Loaded(RunState state, boolean resumed) {
     }
@@ -95,6 +97,9 @@ public final class RunStateStore {
         }
         if (s.phaseAttempts == null) {
             s.phaseAttempts = new HashMap<>();
+        }
+        if (s.regressCounts == null) {
+            s.regressCounts = new HashMap<>();
         }
         if (s.endDrops == null) {
             s.endDrops = new HashMap<>();
@@ -193,7 +198,12 @@ public final class RunStateStore {
             Debug.logInternal("gamer: world folder lookup failed (" + e + ")");
         }
         Debug.logInternal("gamer: no world cache folder here (replay?), keeping the run state in the shared config folder");
-        return ConfigHelper.getConfigFolder().resolve("gamer-nocache.json");
+        return ConfigHelper.getConfigFolder().resolve(FALLBACK_NAME);
+    }
+
+    // true for the shared file resolvePath falls back to when there is no world folder
+    public static boolean isSharedFallback(Path file) {
+        return file.getFileName().toString().equals(FALLBACK_NAME);
     }
 
     // "<level name>|<server ip>". a singleplayer world has a name and no ip, a server the other way round, anything we

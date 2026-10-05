@@ -344,6 +344,120 @@ public class PhaseMachineTest {
     }
 
     @Test
+    public void aStuckRunDoesNotExitItsHandlerAgainOnTheRealStop() {
+        host.state.phase = GamerPhase.IRON;
+        start();
+        machine.stuck("out of ideas");
+        assertTrue(host.state.stuck);
+        assertEquals(List.of("enter1", "exit"), h(GamerPhase.IRON).events);
+        // the chain then stops the task for real, which asks the machine to exit the current phase again
+        machine.exitCurrent(null);
+        machine.exitCurrent(null);
+        assertEquals(List.of("enter1", "exit"), h(GamerPhase.IRON).events);
+    }
+
+    @Test
+    public void aFinishedRunDoesNotExitTwiceEither() {
+        host.state.phase = GamerPhase.DRAGON;
+        start();
+        machine.finish(false);
+        machine.exitCurrent(null);
+        assertEquals(List.of("enter1", "exit"), h(GamerPhase.DRAGON).events);
+    }
+
+    @Test
+    public void aRetryStillPairsExitAndEnter() {
+        start();
+        machine.fail("first");
+        machine.tick(null);
+        machine.fail("second");
+        machine.tick(null);
+        assertTrue(host.state.stuck);
+        machine.exitCurrent(null);
+        assertEquals(List.of("enter1", "timeout1", "exit", "enter2", "timeout2", "exit"), h(GamerPhase.GATHER).events);
+    }
+
+    @Test
+    public void theSameRegressThreeTimesIsAPingPongNotARecovery() {
+        host.state.phase = GamerPhase.LOCATE;
+        FakeHandler locate = h(GamerPhase.LOCATE);
+        locate.regress = Optional.of(GamerPhase.NETHER);
+        for (GamerPhase p : new GamerPhase[]{GamerPhase.LOCATE, GamerPhase.NETHER, GamerPhase.EYES, GamerPhase.RETURN}) {
+            h(p).stall = 0;
+        }
+        start();
+        // NETHER, EYES and RETURN are satisfied at once, so every regress flows straight back to LOCATE
+        h(GamerPhase.NETHER).alwaysDone();
+        h(GamerPhase.EYES).alwaysDone();
+        h(GamerPhase.RETURN).alwaysDone();
+        for (int round = 1; round <= PhaseMachine.MAX_REGRESS_PER_PAIR; round++) {
+            host.facts.seconds(61);
+            machine.tick(null);
+            assertEquals("regress " + round, GamerPhase.NETHER, host.state.phase);
+            assertEquals(Integer.valueOf(round), host.state.regressCounts.get("LOCATE>NETHER"));
+            machine.tick(null);
+            assertEquals(GamerPhase.LOCATE, host.state.phase);
+        }
+        host.facts.seconds(61);
+        machine.tick(null);
+        assertTrue(host.state.stuck);
+        assertTrue(host.state.stuckReason, host.state.stuckReason.contains("phase ping pong"));
+        // the phase stays where it was, #gamer resumes there
+        assertEquals(GamerPhase.LOCATE, host.state.phase);
+    }
+
+    @Test
+    public void differentRegressPairsCountSeparately() {
+        host.state.regressCounts.put("LOCATE>NETHER", PhaseMachine.MAX_REGRESS_PER_PAIR);
+        host.state.phase = GamerPhase.OPEN;
+        h(GamerPhase.OPEN).regress = Optional.of(GamerPhase.NETHER);
+        h(GamerPhase.OPEN).stall = 0;
+        start();
+        machine.tick(null);
+        assertEquals(GamerPhase.NETHER, host.state.phase);
+        assertFalse(host.state.stuck);
+    }
+
+    @Test
+    public void anExceptionFromTheChildTaskIsAFailedAttemptToo() {
+        start();
+        machine.failFromChild(new IllegalStateException("child blew up"));
+        machine.tick(null);
+        assertEquals(List.of("enter1", "timeout1", "exit", "enter2"), h(GamerPhase.GATHER).events);
+        machine.failFromChild(new IllegalStateException("again"));
+        machine.tick(null);
+        assertTrue(host.state.stuck);
+        assertTrue(host.state.stuckReason, host.state.stuckReason.contains("error in the gather phase"));
+    }
+
+    @Test
+    public void theClockNeverGoesBackwards() {
+        start();
+        host.facts.seconds(100);
+        double before = machine.now();
+        // a new level can report game time 0 for a few ticks after a dimension change
+        host.facts.gameTime = 0;
+        assertEquals(before, machine.now(), 1e-9);
+        assertEquals(before, machine.secondsInPhase(), 1e-9);
+        host.facts.gameTime = 20 * 150;
+        assertEquals(150, machine.now(), 1e-9);
+    }
+
+    @Test
+    public void aStuckDragonRunTellsYouHowToStartTheGearCheckAgain() {
+        host.state.phase = GamerPhase.DRAGON;
+        start();
+        machine.stuck("died 3 times");
+        assertTrue(host.said.get(host.said.size() - 1), host.said.get(host.said.size() - 1).contains("#gamer phase end_prep"));
+        TestHost other = new TestHost();
+        other.state.phase = GamerPhase.IRON;
+        PhaseMachine m = new PhaseMachine(new ArrayList<PhaseHandler>(FakeHandler.full()), other);
+        m.begin(null);
+        m.stuck("x");
+        assertFalse(other.said.get(other.said.size() - 1).contains("end_prep"));
+    }
+
+    @Test
     public void aFinishedStateOnlyFinishesOnce() {
         host.state.phase = GamerPhase.DRAGON;
         start();
