@@ -9,10 +9,8 @@ import net.minecraft.world.level.block.FlowerBlock;
 
 import java.util.Set;
 
-/**
- * Blocks that make the player "stuck" without being solid: vines, ladders, fences and friends.
- * This used to be copy pasted into six tasks, five of which had the check returning inside their for loop.
- */
+// blocks that make the player "stuck" without being solid: vines, ladders, fences and friends.
+// this used to be copy pasted into six tasks, five of which had the check returning inside their for loop
 public final class AnnoyingBlocks {
     private static final Set<Block> ANNOYING = Set.of(
             Blocks.VINE,

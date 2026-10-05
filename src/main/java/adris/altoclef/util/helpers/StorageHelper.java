@@ -256,7 +256,7 @@ public class StorageHelper {
                     if (ItemHelper.canThrowAwayStack(mod, stack)) {
                         possibleSlots.add(slot);
                     }
-                    if (stack.getItem().components().has(DataComponents.FOOD)) {
+                    if (FoodHelper.isSafeFood(stack.getItem())) {
                         calcTotalFoodScore += Objects.requireNonNull(stack.getItem().components().get(DataComponents.FOOD)).nutrition();
                     }
                 }
@@ -289,8 +289,8 @@ public class StorageHelper {
 
                     // Prioritize food over other things if we lack food.
                     boolean lacksFood = totalFoodScore < 8;
-                    boolean leftIsFood = left.getItem().components().has(DataComponents.FOOD) && left.getItem() != Items.SPIDER_EYE;
-                    boolean rightIsFood = right.getItem().components().has(DataComponents.FOOD) && right.getItem() != Items.SPIDER_EYE;
+                    boolean leftIsFood = FoodHelper.isSafeFood(left.getItem());
+                    boolean rightIsFood = FoodHelper.isSafeFood(right.getItem());
                     if (lacksFood) {
                         if (rightIsFood && !leftIsFood) {
                             return -1;

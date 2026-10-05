@@ -16,9 +16,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.util.Tuple;
 import net.minecraft.world.effect.MobEffects;
-import net.minecraft.world.food.FoodProperties;
 import net.minecraft.world.item.Item;
-import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 
 @SuppressWarnings("OptionalUsedAsFieldOrParameterType")
@@ -35,6 +33,12 @@ public class FoodChain extends SingleTaskChain {
     private boolean _requestFillup = false;
     private boolean _needsFood = false;
     private Optional<Item> _cachedPerfectFood = Optional.empty();
+    private static final int FOOD_RECALC_TICKS = 10;
+    private int _cachedFoodScore = 0;
+    private int _foodCalcAge = FOOD_RECALC_TICKS;
+    private int _lastFoodHunger = -1;
+    private float _lastFoodSaturation = -1;
+    private float _lastFoodHealth = -1;
     private boolean shouldStop = false;
 
     public FoodChain(TaskRunner runner) {
@@ -118,10 +122,16 @@ public class FoodChain extends SingleTaskChain {
             stopEat(mod);
             return Float.NEGATIVE_INFINITY;
         }
-        Tuple<Integer, Optional<Item>> calculation = calculateFood(mod);
-        int _cachedFoodScore = calculation.getA();
-        _cachedPerfectFood = calculation.getB();
-        _hasFood = _cachedFoodScore > 0;
+        if (shouldRecalculateFood(mod)) {
+            Tuple<Integer, Optional<Item>> calculation = calculateFood(mod);
+            _cachedFoodScore = calculation.getA();
+            _cachedPerfectFood = calculation.getB();
+            // a last resort food (rotten flesh while starving) counts as having food but adds no score
+            _hasFood = _cachedPerfectFood.isPresent();
+            _foodCalcAge = 0;
+        } else {
+            _foodCalcAge++;
+        }
         // If we requested a fillup but we're full, stop.
         if (_requestFillup && mod.getPlayer().getFoodData().getFoodLevel() >= 20) {
             _requestFillup = false;
@@ -217,58 +227,32 @@ public class FoodChain extends SingleTaskChain {
     }
 
     private Tuple<Integer, Optional<Item>> calculateFood(AltoClef mod) {
-        Item bestFood = null;
-        double bestFoodScore = Double.NEGATIVE_INFINITY;
-        int foodTotal = 0;
         LocalPlayer player = mod.getPlayer();
         float health = player != null ? player.getHealth() : 20;
-        //float toHeal = player != null? 20 - player.getHealth() : 0;
         float hunger = player != null ? player.getFoodData().getFoodLevel() : 20;
         float saturation = player != null ? player.getFoodData().getSaturationLevel() : 20;
-        // Get best food item + calculate food total
-        for (ItemStack stack : mod.getItemStorage().getItemStacksPlayerInventory(true)) {
-            if (stack.getItem().components().has(DataComponents.FOOD)) {
-                // Ignore protected items
-                if (!ItemHelper.canThrowAwayStack(mod, stack)) continue;
+        FoodSelector.Result result = FoodSelector.select(mod.getItemStorage().getItemStacksPlayerInventory(true),
+                stack -> ItemHelper.canThrowAwayStack(mod, stack), health, hunger, saturation, _config);
+        return new Tuple<>(result.foodTotal(), result.best());
+    }
 
-                // Ignore spider eyes
-                if (stack.getItem() == Items.SPIDER_EYE) {
-                    continue;
-                }
-
-                FoodProperties food = stack.getItem().components().get(DataComponents.FOOD);
-
-                assert food != null;
-                float hungerIfEaten = Math.min(hunger + food.nutrition(), 20);
-                float saturationIfEaten = Math.min(hungerIfEaten, saturation + food.saturation());
-                float gainedSaturation = (saturationIfEaten - saturation);
-                float gainedHunger = (hungerIfEaten - hunger);
-                float hungerNotFilled = 20 - hungerIfEaten;
-
-                float saturationWasted = food.saturation() - gainedSaturation;
-                float hungerWasted = food.nutrition() - gainedHunger;
-
-                boolean prioritizeSaturation = health < _config.prioritizeSaturationWhenBelowHealth;
-                float saturationGoodScore = prioritizeSaturation ? gainedSaturation * _config.foodPickPrioritizeSaturationSaturationMultiplier : gainedSaturation;
-                float saturationLossPenalty = prioritizeSaturation ? 0 : saturationWasted * _config.foodPickSaturationWastePenaltyMultiplier;
-                float hungerLossPenalty = hungerWasted * _config.foodPickHungerWastePenaltyMultiplier;
-                float hungerNotFilledPenalty = hungerNotFilled * _config.foodPickHungerNotFilledPenaltyMultiplier;
-
-                float score = saturationGoodScore - saturationLossPenalty - hungerLossPenalty - hungerNotFilledPenalty;
-
-                if (stack.getItem() == Items.ROTTEN_FLESH) {
-                    score -= _config.foodPickRottenFleshPenalty;
-                }
-                if (score > bestFoodScore) {
-                    bestFoodScore = score;
-                    bestFood = stack.getItem();
-                }
-
-                foodTotal += Objects.requireNonNull(stack.getItem().components().get(DataComponents.FOOD)).nutrition() * stack.getCount();
-            }
+    // walking the whole inventory and scoring every stack 20 times a second is a lot of work for an answer
+    // that only changes when we eat, pick something up or the bars move. so: recompute when the bars move,
+    // while eating (the stack we're chewing on is about to run out) or every FOOD_RECALC_TICKS otherwise
+    private boolean shouldRecalculateFood(AltoClef mod) {
+        LocalPlayer player = mod.getPlayer();
+        if (player == null) return true;
+        int hunger = player.getFoodData().getFoodLevel();
+        float saturation = player.getFoodData().getSaturationLevel();
+        float health = player.getHealth();
+        boolean barsMoved = hunger != _lastFoodHunger || saturation != _lastFoodSaturation || health != _lastFoodHealth;
+        if (barsMoved || _isTryingToEat || _foodCalcAge >= FOOD_RECALC_TICKS) {
+            _lastFoodHunger = hunger;
+            _lastFoodSaturation = saturation;
+            _lastFoodHealth = health;
+            return true;
         }
-
-        return new Tuple<>(foodTotal, Optional.ofNullable(bestFood));
+        return false;
     }
 
     // If we need to eat like, NOW.
