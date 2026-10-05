@@ -1,6 +1,7 @@
 package adris.altoclef.chains;
 
 import baritone.Baritone;
+import baritone.altoclef.AltoClefBridge;
 import adris.altoclef.AltoSettings;
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
@@ -94,7 +95,13 @@ public class UserTaskChain extends SingleTaskChain {
         if (!shouldIdle) {
             // Stop. (with the idle gate on the runner stays up so the survival chains keep going)
             if (!Baritone.settings().altoRunsWhenIdle.value) {
-                mod.getTaskRunner().disable();
+                try {
+                    mod.getTaskRunner().disable();
+                } catch (Throwable t) {
+                    // disable puts everything back before it throws, so the rest of the finish (clearing the task, telling
+                    // whoever waits for it) still has to happen or the next command would find a half dead task
+                    AltoClefBridge.onHookError(t);
+                }
             }
             // Extra reset. Sometimes baritone is laggy and doesn't properly reset our press
             mod.getClientBaritone().getInputOverrideHandler().clearAllKeys();

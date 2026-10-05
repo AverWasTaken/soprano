@@ -18,6 +18,7 @@
 package baritone.utils;
 
 import baritone.Baritone;
+import baritone.altoclef.AltoClefBridge;
 import baritone.altoclef.AltoClefSettings;
 import it.unimi.dsi.fastutil.objects.Object2DoubleOpenHashMap;
 import net.minecraft.client.player.LocalPlayer;
@@ -211,8 +212,13 @@ public class ToolSet {
 
     private boolean shouldForceUseTool(BlockState state, ItemStack stack) {
         for (BiPredicate<BlockState, ItemStack> predicate : forceUseTool) {
-            if (predicate.test(state, stack)) {
-                return true;
+            try {
+                if (predicate.test(state, stack)) {
+                    return true;
+                }
+            } catch (Throwable t) {
+                // altoclef task code, see AltoClefSettings.Snapshot#anyMatch
+                AltoClefBridge.onHookError(t);
             }
         }
         return false;

@@ -30,25 +30,17 @@ import java.util.Arrays;
 import java.util.List;
 
 // what AltoClef.initializeBaritoneSettings used to do once at startup, forever. that turned parkour off for
-// everybody, so now it is applied when a task starts and every value gets put back when the task stops
+// everybody, so now it is applied when a task starts and every value gets put back when the task stops. the values
+// themselves live in SettingsOverrides (the one place that remembers what the user had, and what the save swaps back)
 public final class BaritoneSettingsScope {
 
     private final AltoClef mod;
     private final List<Runnable> undo = new ArrayList<>();
-    // the baritone settings we changed: what they were, what we made them. a setting whose value is no longer ours was
-    // changed by the user (#set) in the meantime and is theirs to keep
-    private final List<Held<?>> overrides = new ArrayList<>();
     private boolean applied;
     private List<Item> savedThrowaway;
     // the altoThrowawayItems list the merged baritone list was built from, to notice a #set of it
     private List<Item> mergedFrom;
     private List<Item> lastMerged;
-
-    private record Held<T>(Settings.Setting<T> setting, T old, T ours) {
-        boolean stillOurs() {
-            return setting.value == ours;
-        }
-    }
 
     public BaritoneSettingsScope(AltoClef mod) {
         this.mod = mod;
@@ -64,6 +56,11 @@ public final class BaritoneSettingsScope {
             boolean walkOnEndPortal = extra.isCanWalkOnEndPortal();
             undo.add(() -> extra.canWalkOnEndPortal(walkOnEndPortal));
             extra.canWalkOnEndPortal(false);
+
+            // frames are not walkable/breakable in stock soprano, only while we are driving
+            boolean frameRules = extra.hasEndPortalFrameRules();
+            undo.add(() -> extra.endPortalFrameRules(frameRules));
+            extra.endPortalFrameRules(true);
 
             set(s.freeLook, false);
             set(s.overshootTraverse, false);
@@ -120,10 +117,8 @@ public final class BaritoneSettingsScope {
                         != Items.GRAVEL).toList();
         List<Item> merged = new ArrayList<>(savedThrowaway);
         merged.addAll(baritoneCanPlace);
-        // our list is still ours when we came here a second time, otherwise a #set of it would be undone by restore
-        overrides.removeIf(o -> o.setting() == s.acceptableThrowawayItems);
-        overrides.add(new Held<>(s.acceptableThrowawayItems, savedThrowaway, merged));
-        s.acceptableThrowawayItems.value = merged;
+        // the registry keeps the user's list from the first put, so a second apply only swaps what we hand baritone
+        set(s.acceptableThrowawayItems, merged);
         lastMerged = merged;
     }
 
@@ -134,54 +129,35 @@ public final class BaritoneSettingsScope {
         }
     }
 
-    // runs a settings.txt save as if none of this was applied: every setting we are still holding goes back to what it
-    // was for the duration. without it the first #set during a task would save allowParkour false (and friends) for good
-    public void saveWithoutOverrides(Runnable save) {
-        List<Held<?>> held = new ArrayList<>();
-        for (Held<?> o : overrides) {
-            if (o.stillOurs()) {
-                held.add(o);
-                put(o, o.old());
-            }
-        }
-        try {
-            save.run();
-        } finally {
-            for (Held<?> o : held) {
-                put(o, o.ours());
-            }
-        }
-    }
-
-    @SuppressWarnings("unchecked")
-    private static <T> void put(Held<T> o, Object value) {
-        o.setting().value = (T) value;
-    }
-
+    // task over, or altoclef is giving up: the user's values come back (all of them, BotBehaviour's too, they live in
+    // the same registry) and every toggle goes back to what it was. runs every undo even if one of them throws
     public void restore() {
         if (!applied) {
+            // nothing of ours should be held, but a half-finished apply may have gotten as far as a few settings
+            SettingsOverrides.restoreAll();
             return;
         }
         applied = false;
-        for (Held<?> o : overrides) {
-            if (o.stillOurs()) {
-                put(o, o.old());
+        try {
+            SettingsOverrides.restoreAll();
+        } finally {
+            savedThrowaway = null;
+            mergedFrom = null;
+            lastMerged = null;
+            for (int i = undo.size() - 1; i >= 0; i--) {
+                try {
+                    undo.get(i).run();
+                } catch (Throwable t) {
+                    t.printStackTrace();
+                }
             }
+            undo.clear();
+            // chains pause baritone's clicking while they eat and so on, a stop in the middle of that must not leave it paused
+            AltoClefSettings.getInstance().setInteractionPaused(false);
         }
-        overrides.clear();
-        savedThrowaway = null;
-        mergedFrom = null;
-        lastMerged = null;
-        for (int i = undo.size() - 1; i >= 0; i--) {
-            undo.get(i).run();
-        }
-        undo.clear();
-        // chains pause baritone's clicking while they eat and so on, a stop in the middle of that must not leave it paused
-        AltoClefSettings.getInstance().setInteractionPaused(false);
     }
 
     private <T> void set(Settings.Setting<T> setting, T value) {
-        overrides.add(new Held<>(setting, setting.value, value));
-        setting.value = value;
+        SettingsOverrides.put(setting, value);
     }
 }

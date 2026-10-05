@@ -62,6 +62,9 @@ public class AltoClefSettings {
     private volatile boolean dontPlaceBucketButStillFall;
     private volatile boolean allowSwimThroughLava;
     private volatile boolean canWalkOnEndPortal;
+    // the end portal frame rules (walkable, never broken, never walked into, nothing mined out from under) are altoclef's,
+    // stock soprano treats a frame like any other odd block. only on while altoclef has the bot, see BaritoneSettingsScope
+    private volatile boolean endPortalFrameRules;
 
     // null means a list changed and whoever asks next builds a new one. EMPTY to start so the idle case never builds anything
     private volatile Snapshot snapshot = Snapshot.EMPTY;
@@ -102,8 +105,13 @@ public class AltoClefSettings {
                 return false;
             }
             for (Predicate<BlockPos> predicate : predicates) {
-                if (predicate.test(pos)) {
-                    return true;
+                try {
+                    if (predicate.test(pos)) {
+                        return true;
+                    }
+                } catch (Throwable t) {
+                    // task code in the middle of a search or an executor tick. a rule that blows up is a rule that says no
+                    AltoClefBridge.onHookError(t);
                 }
             }
             return false;
@@ -324,6 +332,14 @@ public class AltoClefSettings {
         return canWalkOnEndPortal;
     }
 
+    public void endPortalFrameRules(boolean on) {
+        endPortalFrameRules = on;
+    }
+
+    public boolean hasEndPortalFrameRules() {
+        return endPortalFrameRules;
+    }
+
     public void avoidBlockBreak(BlockPos pos) {
         // BlockPos can be a MutableBlockPos, don't hold onto somebody else's
         blocksToAvoidBreaking.add(pos.immutable());
@@ -386,8 +402,12 @@ public class AltoClefSettings {
             return false;
         }
         for (BiPredicate<BlockState, ItemStack> predicate : predicates) {
-            if (predicate.test(state, tool)) {
-                return true;
+            try {
+                if (predicate.test(state, tool)) {
+                    return true;
+                }
+            } catch (Throwable t) {
+                AltoClefBridge.onHookError(t);
             }
         }
         return false;
@@ -430,9 +450,35 @@ public class AltoClefSettings {
         protectedItems.remove(item);
     }
 
-    // the two block type toggles bake into PrecomputedData's table, so it needs to know when to rebuild
+    public static final int TOGGLE_END_PORTAL = 1;
+    public static final int TOGGLE_LAVA = 2;
+    public static final int TOGGLE_FRAMES = 4;
+
+    // the block type toggles bake into PrecomputedData's table, so it needs to know when to rebuild
     public int blockToggleBits() {
-        return (canWalkOnEndPortal ? 1 : 0) | (allowSwimThroughLava ? 2 : 0);
+        return (canWalkOnEndPortal ? TOGGLE_END_PORTAL : 0) | (allowSwimThroughLava ? TOGGLE_LAVA : 0) | (endPortalFrameRules ? TOGGLE_FRAMES : 0);
+    }
+
+    // back to what an idle soprano looks like: no rules, no toggles, nothing paused. altoclef calls this when it gives
+    // up for the session (or dies halfway through starting) so it can never leave any of its knobs turned
+    public void resetAll() {
+        synchronized (lock) {
+            blocksToAvoidBreaking.clear();
+            breakAvoiders.clear();
+            placeAvoiders.clear();
+            forceCanWalkOn.clear();
+            forceAvoidWalkThrough.clear();
+            forceUseTool.clear();
+            protectedItems.clear();
+            globalHeuristics.clear();
+            dirty();
+        }
+        allowFlowingWaterPass = false;
+        pauseInteractions = false;
+        dontPlaceBucketButStillFall = false;
+        allowSwimThroughLava = false;
+        canWalkOnEndPortal = false;
+        endPortalFrameRules = false;
     }
 
     public HashSet<BlockPos> getBlocksToAvoidBreaking() {

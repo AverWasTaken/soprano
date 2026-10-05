@@ -67,6 +67,7 @@ public class SetCommand extends Command {
             }
             // reset to defaults
             SettingsUtil.modifiedSettings(Baritone.settings()).forEach(Settings.Setting::reset);
+            AltoClefBridge.userChangedAll();
             // then load from disk
             SettingsUtil.readAndApply(Baritone.settings(), file);
             logDirect("Settings reloaded from " + file);
@@ -133,6 +134,7 @@ public class SetCommand extends Command {
                 logDirect("Specify a setting name instead of 'all' to only reset one setting");
             } else if (args.peekString().equalsIgnoreCase("all")) {
                 SettingsUtil.modifiedSettings(Baritone.settings()).forEach(Settings.Setting::reset);
+                AltoClefBridge.userChangedAll();
                 logDirect("All settings have been reset to their default values");
                 AltoClefBridge.saveSettings(Baritone.settings());
                 return;
@@ -183,6 +185,8 @@ public class SetCommand extends Command {
                     throw new CommandInvalidTypeException(args.consumed(), "a valid value", t);
                 }
             }
+            // whatever the user just typed is theirs, a task that is running must not hand the old value back at the end
+            AltoClefBridge.userChanged(setting);
             if (!toggling) {
                 logDirect(String.format(
                         "Successfully %s %s to %s",

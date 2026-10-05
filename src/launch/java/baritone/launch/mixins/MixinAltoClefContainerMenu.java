@@ -17,7 +17,6 @@
 
 package baritone.launch.mixins;
 
-import adris.altoclef.eventbus.EventBus;
 import baritone.altoclef.AltoClefBridge;
 import adris.altoclef.eventbus.events.SlotClickChangedEvent;
 import net.minecraft.client.player.LocalPlayer;
@@ -54,12 +53,16 @@ public class MixinAltoClefContainerMenu {
         if (!(player instanceof LocalPlayer) || !AltoClefBridge.isRunning()) {
             return;
         }
-        List<Slot> slots = ((AbstractContainerMenu) (Object) this).slots;
-        List<ItemStack> before = new ArrayList<>(slots.size());
-        for (Slot slot : slots) {
-            before.add(slot.getItem().copy());
+        try {
+            List<Slot> slots = ((AbstractContainerMenu) (Object) this).slots;
+            List<ItemStack> before = new ArrayList<>(slots.size());
+            for (Slot slot : slots) {
+                before.add(slot.getItem().copy());
+            }
+            altoclef$beforeClick = before;
+        } catch (Throwable t) {
+            AltoClefBridge.onHookError(t);
         }
-        altoclef$beforeClick = before;
     }
 
     @Inject(
@@ -72,15 +75,20 @@ public class MixinAltoClefContainerMenu {
         if (before == null) {
             return;
         }
-        List<Slot> slots = ((AbstractContainerMenu) (Object) this).slots;
-        int count = Math.min(before.size(), slots.size());
-        for (int i = 0; i < count; i++) {
-            ItemStack was = before.get(i);
-            ItemStack now = slots.get(i).getItem();
-            if (!ItemStack.matches(was, now)) {
-                // copy it, the live stack keeps mutating after we hand it out
-                EventBus.publish(new SlotClickChangedEvent(adris.altoclef.util.slots.Slot.getFromCurrentScreen(i), was, now.copy()));
+        // this is the end of every inventory click, nothing of altoclef's gets to throw out of it
+        try {
+            List<Slot> slots = ((AbstractContainerMenu) (Object) this).slots;
+            int count = Math.min(before.size(), slots.size());
+            for (int i = 0; i < count; i++) {
+                ItemStack was = before.get(i);
+                ItemStack now = slots.get(i).getItem();
+                if (!ItemStack.matches(was, now)) {
+                    // copy it, the live stack keeps mutating after we hand it out
+                    AltoClefBridge.publish(new SlotClickChangedEvent(adris.altoclef.util.slots.Slot.getFromCurrentScreen(i), was, now.copy()));
+                }
             }
+        } catch (Throwable t) {
+            AltoClefBridge.onHookError(t);
         }
     }
 }

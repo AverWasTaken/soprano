@@ -17,7 +17,7 @@
 
 package baritone.launch.mixins;
 
-import adris.altoclef.eventbus.EventBus;
+import baritone.altoclef.AltoClefBridge;
 import adris.altoclef.eventbus.events.BlockBreakingCancelEvent;
 import adris.altoclef.eventbus.events.BlockBreakingEvent;
 import baritone.utils.accessor.IClientBlockBreak;
@@ -53,7 +53,11 @@ public abstract class MixinAltoClefBlockBreak implements IClientBlockBreak {
     )
     private void altoclef$onBreakUpdate(final BlockPos pos, final Direction direction, final CallbackInfoReturnable<Boolean> cir) {
         altoclef$breakCancelFrames = 2;
-        EventBus.publish(new BlockBreakingEvent(pos, getCurrentBreakingProgress()));
+        try {
+            AltoClefBridge.publish(new BlockBreakingEvent(pos.immutable(), getCurrentBreakingProgress()));
+        } catch (Throwable t) {
+            AltoClefBridge.onHookError(t);
+        }
     }
 
     @Inject(
@@ -62,7 +66,7 @@ public abstract class MixinAltoClefBlockBreak implements IClientBlockBreak {
     )
     private void altoclef$onBreakCancel(final CallbackInfo ci) {
         if (altoclef$breakCancelFrames-- == 0) {
-            EventBus.publish(new BlockBreakingCancelEvent());
+            AltoClefBridge.publish(new BlockBreakingCancelEvent());
         }
     }
 
@@ -73,7 +77,11 @@ public abstract class MixinAltoClefBlockBreak implements IClientBlockBreak {
     private void altoclef$onUseItemOn(final LocalPlayer player, final InteractionHand hand, final BlockHitResult hitResult, final CallbackInfoReturnable<InteractionResult> cir) {
         // soprano has its own BlockInteractEvent in the api, this one is altoclef's
         if (hitResult != null) {
-            EventBus.publish(new adris.altoclef.eventbus.events.BlockInteractEvent(hitResult));
+            try {
+                AltoClefBridge.publish(new adris.altoclef.eventbus.events.BlockInteractEvent(hitResult));
+            } catch (Throwable t) {
+                AltoClefBridge.onHookError(t);
+            }
         }
     }
 }

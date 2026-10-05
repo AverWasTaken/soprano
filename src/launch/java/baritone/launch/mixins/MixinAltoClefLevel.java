@@ -17,7 +17,7 @@
 
 package baritone.launch.mixins;
 
-import adris.altoclef.eventbus.EventBus;
+import baritone.altoclef.AltoClefBridge;
 import adris.altoclef.eventbus.events.BlockPlaceEvent;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.Level;
@@ -39,11 +39,19 @@ public class MixinAltoClefLevel {
     private void altoclef$onBlockStateChange(final BlockPos pos, final BlockState oldState, final BlockState newState, final CallbackInfo ci) {
         Level level = (Level) (Object) this;
         // integrated server levels land here on the server thread, and the event bus does not like that
-        if (!level.isClientSide() || oldState == newState) {
+        // and nobody is listening unless altoclef has the bot. idle, this fed the block tracker for nothing and the
+        // cache grew across worlds
+        if (!level.isClientSide() || oldState == newState || !AltoClefBridge.isRunning()) {
             return;
         }
-        if (!altoclef$hasBlock(level, oldState, pos) && altoclef$hasBlock(level, newState, pos)) {
-            EventBus.publish(new BlockPlaceEvent(pos, newState));
+        try {
+            if (!altoclef$hasBlock(level, oldState, pos) && altoclef$hasBlock(level, newState, pos)) {
+                // immutable: a section update packet hands every block of the batch the same MutableBlockPos
+                AltoClefBridge.publish(new BlockPlaceEvent(pos.immutable(), newState));
+            }
+        } catch (Throwable t) {
+            // this is Level#setBlock, a throw here is the packet handler and a kick
+            AltoClefBridge.onHookError(t);
         }
     }
 

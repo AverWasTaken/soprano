@@ -17,7 +17,7 @@
 
 package baritone.launch.mixins;
 
-import adris.altoclef.eventbus.EventBus;
+import baritone.altoclef.AltoClefBridge;
 import adris.altoclef.eventbus.events.GameOverlayEvent;
 import baritone.altoclef.AltoClefBridge;
 import net.minecraft.client.DeltaTracker;
@@ -46,6 +46,13 @@ public class MixinAltoClefGui {
             at = @At("HEAD")
     )
     private void altoclef$onSetOverlayMessage(final Component message, final boolean animate, final CallbackInfo ci) {
-        EventBus.publish(new GameOverlayEvent(message.getString()));
+        if (!AltoClefBridge.isRunning()) {
+            return;
+        }
+        try {
+            AltoClefBridge.publish(new GameOverlayEvent(message.getString()));
+        } catch (Throwable t) {
+            AltoClefBridge.onHookError(t);
+        }
     }
 }

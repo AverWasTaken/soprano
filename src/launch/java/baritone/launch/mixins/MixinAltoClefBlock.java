@@ -17,7 +17,7 @@
 
 package baritone.launch.mixins;
 
-import adris.altoclef.eventbus.EventBus;
+import baritone.altoclef.AltoClefBridge;
 import adris.altoclef.eventbus.events.BlockBrokenEvent;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.player.Player;
@@ -37,14 +37,20 @@ public class MixinAltoClefBlock {
             at = @At("HEAD")
     )
     private void altoclef$onBlockBroken(final Level level, final BlockPos pos, final BlockState state, final Player player, final CallbackInfoReturnable<BlockState> cir) {
-        // the integrated server runs this too, on its own thread, and the event bus is a plain hashmap
-        if (!level.isClientSide()) {
+        // the integrated server runs this too, on its own thread, and the event bus is a plain hashmap. and nobody
+        // is listening unless altoclef has the bot
+        if (!level.isClientSide() || !AltoClefBridge.isRunning()) {
             return;
         }
-        BlockBrokenEvent evt = new BlockBrokenEvent();
-        evt.blockPos = pos;
-        evt.blockState = state;
-        evt.player = player;
-        EventBus.publish(evt);
+        try {
+            BlockBrokenEvent evt = new BlockBrokenEvent();
+            // the pos can be somebody else's mutable one
+            evt.blockPos = pos.immutable();
+            evt.blockState = state;
+            evt.player = player;
+            AltoClefBridge.publish(evt);
+        } catch (Throwable t) {
+            AltoClefBridge.onHookError(t);
+        }
     }
 }

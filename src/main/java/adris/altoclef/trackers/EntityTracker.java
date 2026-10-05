@@ -1,5 +1,6 @@
 package adris.altoclef.trackers;
 
+import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.eventbus.EventBus;
 import adris.altoclef.eventbus.events.PlayerCollidedWithEntityEvent;
@@ -45,7 +46,7 @@ public class EntityTracker extends Tracker {
 
     private final EntityLocateBlacklist _entityBlacklist = new EntityLocateBlacklist();
 
-    private final HashMap<Player, List<Entity>> _entitiesCollidingWithPlayerAccumulator = new HashMap<>();
+    private final HashMap<Player, Set<Entity>> _entitiesCollidingWithPlayerAccumulator = new HashMap<>();
     private final HashMap<Player, HashSet<Entity>> _entitiesCollidingWithPlayer = new HashMap<>();
 
     public EntityTracker(TrackerManager manager) {
@@ -71,8 +72,12 @@ public class EntityTracker extends Tracker {
     }
 
     private void registerPlayerCollision(Player player, Entity entity) {
+        // only updateState drains this and it only runs while altoclef drives, so nothing gets to pile up while idle
+        if (!AltoClef.isRunning()) {
+            return;
+        }
         if (!_entitiesCollidingWithPlayerAccumulator.containsKey(player)) {
-            _entitiesCollidingWithPlayerAccumulator.put(player, new ArrayList<>());
+            _entitiesCollidingWithPlayerAccumulator.put(player, new HashSet<>());
         }
         _entitiesCollidingWithPlayerAccumulator.get(player).add(entity);
     }
@@ -325,7 +330,7 @@ public class EntityTracker extends Tracker {
 
             // Store/Register All accumulated player collisions for this frame.
             _entitiesCollidingWithPlayer.clear();
-            for (Map.Entry<Player, List<Entity>> collisions : _entitiesCollidingWithPlayerAccumulator.entrySet()) {
+            for (Map.Entry<Player, Set<Entity>> collisions : _entitiesCollidingWithPlayerAccumulator.entrySet()) {
                 _entitiesCollidingWithPlayer.put(collisions.getKey(), new HashSet<>());
                 _entitiesCollidingWithPlayer.get(collisions.getKey()).addAll(collisions.getValue());
             }
@@ -410,5 +415,8 @@ public class EntityTracker extends Tracker {
     protected void reset() {
         // Dirty clears everything else.
         _entityBlacklist.clear();
+        // these are keyed by LocalPlayer and hold entities, so each of them pins a whole ClientLevel. gone with the world
+        _entitiesCollidingWithPlayerAccumulator.clear();
+        _entitiesCollidingWithPlayer.clear();
     }
 }

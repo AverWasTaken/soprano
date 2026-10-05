@@ -2,6 +2,7 @@ package adris.altoclef;
 
 import adris.altoclef.util.slots.Slot;
 import baritone.altoclef.AltoClefSettings;
+import baritone.altoclef.SettingsOverrides;
 import baritone.api.Settings;
 import baritone.api.utils.RayTraceUtils;
 import java.util.*;
@@ -9,6 +10,7 @@ import java.util.function.BiFunction;
 import java.util.function.BiPredicate;
 import java.util.function.Predicate;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.Options;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.Tuple;
 import net.minecraft.world.entity.Entity;
@@ -232,6 +234,16 @@ public class BotBehaviour {
         }
     }
 
+    /**
+     * Soprano: back to one fresh bottom state, whatever the stack looked like. Called after the runner switched off and
+     * the user's settings are back, so the new bottom is read from the real values. A task that threw out of its
+     * onStop (or pushed more than it popped) can't leave the stack lopsided for the next run this way.
+     */
+    public void resetStack() {
+        _states.clear();
+        push();
+    }
+
     public void push() {
         if (_states.isEmpty()) {
             _states.push(new State());
@@ -255,6 +267,8 @@ public class BotBehaviour {
             Debug.logError("State stack is empty after pop. This shouldn't be happening.");
             return null;
         }
+        // popping down to the bottom state is giving the user's settings back, and that is what the registry's
+        // restoreAll does (the runner calls it right after), so the bottom only has to put the extras back
         _states.peek().applyState();
         return popped;
     }
@@ -340,7 +354,6 @@ public class BotBehaviour {
         private void readState(Settings s) {
             followOffsetDistance = s.followOffsetDistance.value;
             mineScanDroppedItems = s.mineScanDroppedItems.value;
-            swimThroughLava = s.assumeWalkOnLava.value;
             allowDiagonalAscend = s.allowDiagonalAscend.value;
             blockPlacePenalty = s.blockPlacementPenalty.value;
             blockBreakAdditionalPenalty = s.blockBreakAdditionalPenalty.value;
@@ -365,6 +378,9 @@ public class BotBehaviour {
                 globalHeuristics = new ArrayList<>(settings.getGlobalHeuristics());
             }
             _allowWalkThroughFlowingWater = settings.isFlowingWaterPassAllowed();
+            // the lava toggle is ours, it is not baritone's assumeWalkOnLava. reading that one here made a user's
+            // `#set assumeWalkOnLava true` turn swimming through lava on for good after the first task
+            swimThroughLava = settings.canSwimThroughLava();
 
             rayFluidHandling = RayTraceUtils.fluidHandling;
         }
@@ -377,11 +393,17 @@ public class BotBehaviour {
          * Make the current state match our copy
          */
         private void applyState(Settings s, AltoClefSettings sa) {
-            s.followOffsetDistance.value = followOffsetDistance;
-            s.mineScanDroppedItems.value = mineScanDroppedItems;
-            s.allowDiagonalAscend.value = allowDiagonalAscend;
-            s.blockPlacementPenalty.value = blockPlacePenalty;
-            s.blockBreakAdditionalPenalty.value = blockBreakAdditionalPenalty;
+            // the bottom state is the user's own settings. it never writes them (they are already there, or the
+            // registry is about to put them back), everything above it goes through the registry so a save can swap
+            // the user's values back in
+            boolean bottom = _states.peekLast() == this;
+            if (!bottom) {
+                SettingsOverrides.put(s.followOffsetDistance, followOffsetDistance);
+                SettingsOverrides.put(s.mineScanDroppedItems, mineScanDroppedItems);
+                SettingsOverrides.put(s.allowDiagonalAscend, allowDiagonalAscend);
+                SettingsOverrides.put(s.blockPlacementPenalty, blockPlacePenalty);
+                SettingsOverrides.put(s.blockBreakAdditionalPenalty, blockBreakAdditionalPenalty);
+            }
 
             // We need an alternrative method to handle this, this method makes navigation much less reliable.
             //s.allowDownward.value = preferredStairs;
@@ -419,8 +441,11 @@ public class BotBehaviour {
             // Extra / hard coded
             RayTraceUtils.fluidHandling = rayFluidHandling;
 
-            // Minecraft
-            Minecraft.getInstance().options.pauseOnLostFocus = pauseOnLostFocus;
+            // Minecraft. options.txt must never see ours, see MixinAltoClefOptions
+            if (!bottom) {
+                Options options = Minecraft.getInstance().options;
+                SettingsOverrides.put("options.pauseOnLostFocus", () -> options.pauseOnLostFocus, v -> options.pauseOnLostFocus = v, pauseOnLostFocus);
+            }
         }
     }
 }

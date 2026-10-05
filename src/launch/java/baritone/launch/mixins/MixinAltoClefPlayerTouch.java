@@ -17,7 +17,7 @@
 
 package baritone.launch.mixins;
 
-import adris.altoclef.eventbus.EventBus;
+import baritone.altoclef.AltoClefBridge;
 import adris.altoclef.eventbus.events.PlayerCollidedWithEntityEvent;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.entity.Entity;
@@ -38,8 +38,14 @@ public class MixinAltoClefPlayerTouch {
     private void altoclef$onTouch(final Entity entity, final CallbackInfo ci) {
         Player self = (Player) (Object) this;
         // server players touch things too, and the bus is client thread only
-        if (self instanceof LocalPlayer) {
-            EventBus.publish(new PlayerCollidedWithEntityEvent(self, entity));
+        // and only while altoclef has the bot: touch runs every tick for every entity in reach, and the tracker
+        // that eats these only drains while altoclef runs, idle it leaked entities and whole client worlds
+        if (self instanceof LocalPlayer && AltoClefBridge.isRunning()) {
+            try {
+                AltoClefBridge.publish(new PlayerCollidedWithEntityEvent(self, entity));
+            } catch (Throwable t) {
+                AltoClefBridge.onHookError(t);
+            }
         }
     }
 }

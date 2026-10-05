@@ -86,6 +86,56 @@ public class AltoClefSettingsTest {
         assertNull(s.snapshot().forceWalkOn);
     }
 
+    // stock soprano must behave exactly like stock while altoclef is idle, so the frame rules are a toggle in the table key
+    @Test
+    public void endPortalFrameRulesAreATableKeyBit() {
+        int idle = s.blockToggleBits();
+        assertFalse(s.hasEndPortalFrameRules());
+        s.endPortalFrameRules(true);
+        assertNotEquals(idle, s.blockToggleBits());
+        assertTrue((s.blockToggleBits() & AltoClefSettings.TOGGLE_FRAMES) != 0);
+        s.endPortalFrameRules(false);
+        assertEquals(idle, s.blockToggleBits());
+    }
+
+    @Test
+    public void resetAllLeavesNothingBehind() {
+        s.getBreakAvoiders().add(pos -> true);
+        s.getPlaceAvoiders().add(pos -> true);
+        s.getForceWalkOnPredicates().add(pos -> true);
+        s.getForceAvoidWalkThroughPredicates().add(pos -> true);
+        s.getForceUseToolPredicates().add((state, stack) -> true);
+        s.avoidBlockBreak(new BlockPos(1, 2, 3));
+        s.setInteractionPaused(true);
+        s.allowSwimThroughLava(true);
+        s.canWalkOnEndPortal(true);
+        s.endPortalFrameRules(true);
+        s.configurePlaceBucketButDontFall(true);
+        s.setFlowingWaterPass(true);
+        assertTrue(s.snapshot().hasPathingRules());
+
+        s.resetAll();
+
+        assertFalse(s.snapshot().hasPathingRules());
+        assertNull(s.snapshot().forceUseTool);
+        assertFalse(s.isInteractionPaused());
+        assertFalse(s.canSwimThroughLava());
+        assertFalse(s.isCanWalkOnEndPortal());
+        assertFalse(s.hasEndPortalFrameRules());
+        assertFalse(s.shouldNotPlaceBucketButStillFall());
+        assertFalse(s.isFlowingWaterPassAllowed());
+        assertEquals(0, s.blockToggleBits());
+    }
+
+    @Test
+    public void aThrowingRuleSaysNoInsteadOfThrowing() {
+        // one throw is well under the bridge's give up limit, and is counted there
+        s.getForceWalkOnPredicates().add(pos -> {
+            throw new IllegalStateException("task code had a bad day");
+        });
+        assertFalse(s.canWalkOnForce(1, 2, 3));
+    }
+
     @Test
     public void tableKeyTracksBlockToggles() {
         int idle = s.blockToggleBits();

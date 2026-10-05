@@ -20,13 +20,15 @@ import baritone.Baritone;
 import baritone.altoclef.AltoClefSettings;
 import baritone.api.BaritoneAPI;
 import baritone.api.Settings;
-import baritone.api.utils.SettingsUtil;
+import baritone.api.utils.RayTraceUtils;
+import baritone.altoclef.SettingsOverrides;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.multiplayer.MultiPlayerGameMode;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
 import org.lwjgl.glfw.GLFW;
@@ -219,14 +221,74 @@ public class AltoClef {
         _botBehaviour.avoidBlockPlacing(AltoSettings::isPositionExplicitlyProtected);
     }
 
+    // the way out. every step has its own try, because this is the thing that has to work when something else just
+    // blew up: whatever else fails, the user's settings come back, interactions get unpaused and the stack is clean
     public void onTaskRunnerDisabled() {
-        _baritoneScope.restore();
+        try {
+            _baritoneScope.restore();
+        } catch (Throwable t) {
+            t.printStackTrace();
+            // restore() does its own cleanup in a finally, this is for the registry itself throwing
+            SettingsOverrides.restoreAll();
+        }
+        try {
+            // nothing of altoclef's may stay in the shared knobs when nobody is driving
+            AltoClefSettings.getInstance().resetAll();
+            RayTraceUtils.fluidHandling = ClipContext.Fluid.NONE;
+        } catch (Throwable t) {
+            t.printStackTrace();
+        }
+        try {
+            // read from the real values again, now that they are back
+            _botBehaviour.resetStack();
+        } catch (Throwable t) {
+            t.printStackTrace();
+        }
     }
 
-    // #set saves settings.txt, and while a task runs half of baritone's settings are altoclef's for the duration. those
-    // must not end up on disk as if the user chose them
-    public void saveBaritoneSettings(Settings settings) {
-        _baritoneScope.saveWithoutOverrides(() -> SettingsUtil.save(settings));
+    // soprano left the world (quit to title, disconnect, kicked). a task that survives that would resume in whatever
+    // world comes next, and its overrides would sit on the title screen, so it is cancelled and everything is put back.
+    // the trackers go too: what they know belongs to a world that is gone
+    public void onWorldLeft() {
+        try {
+            if (_taskRunner.isActive()) {
+                _userTaskChain.cancel(this);
+                _taskRunner.disable();
+            }
+        } finally {
+            if (_trackerManager != null) {
+                _trackerManager.resetAll();
+            }
+        }
+    }
+
+    // altoclef is being given up on for the session (too many exceptions). each step is on its own, and nothing here
+    // may throw, the bridge calls it from the middle of cleaning up an exception
+    public void emergencyShutdown() {
+        try {
+            if (_userTaskChain != null) {
+                _userTaskChain.cancel(this);
+            }
+        } catch (Throwable t) {
+            t.printStackTrace();
+        }
+        try {
+            if (_taskRunner != null) {
+                _taskRunner.disable();
+            }
+        } catch (Throwable t) {
+            t.printStackTrace();
+        }
+        // even if the runner never got as far as being active: everything we may have set goes back
+        onTaskRunnerDisabled();
+        if (_instance == this) {
+            _instance = null;
+        }
+    }
+
+    // a failed startup leaves a half built instance behind: the static handle and whatever subscribed to the bus
+    public static void discardInstance() {
+        _instance = null;
     }
 
     /**

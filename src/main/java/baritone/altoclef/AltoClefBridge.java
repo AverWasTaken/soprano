@@ -30,26 +30,35 @@ import baritone.api.event.events.ChunkEvent;
 import baritone.api.event.events.TickEvent;
 import baritone.api.event.events.type.EventState;
 import baritone.api.event.listener.AbstractGameEventListener;
+import baritone.api.utils.RayTraceUtils;
 import baritone.api.utils.SettingsUtil;
 import baritone.event.GameEventHandler;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.ClipContext;
 
 // the one place soprano and altoclef touch. it owns the AltoClef instance, feeds it soprano's tick and chunk events
 // (these used to be four altoclef mixins) and keeps any exception it throws from taking the game down with it
 public final class AltoClefBridge implements AbstractGameEventListener {
 
-    // after this many exceptions altoclef is switched off for the session instead of spamming the log every tick
+    // after this many exceptions inside a minute altoclef is switched off for the session instead of spamming the log
+    // every tick. a quiet minute wipes the slate, one stray exception an hour is not a reason to give up
     private static final int MAX_ERRORS = 5;
+    private static final long ERROR_WINDOW_NANOS = 60_000_000_000L;
 
     private static AltoClef altoClef;
     private static AltoClefBridge instance;
     private static boolean hudBroken;
+    // set the moment the error limit is hit, from any thread (a predicate on the pathing thread can be the one that
+    // tips it). everything that asks "is altoclef alive" looks at this, the cleanup itself waits for the next tick
+    private static volatile boolean gaveUp;
+    private static int errors;
+    private static long lastErrorNanos;
 
     private boolean initTried;
-    private int errors;
+    private boolean wasInGame;
 
     private AltoClefBridge() {
     }
@@ -58,11 +67,18 @@ public final class AltoClefBridge implements AbstractGameEventListener {
     // of Minecraft.tick, ahead of everything baritone does, and it sets goals and inputs that the behaviors and
     // processes are supposed to see this very tick
     public static void attach(Baritone primary) {
-        instance = new AltoClefBridge();
-        ((GameEventHandler) primary.getGameEventHandler()).registerEventListenerFirst(instance);
-        // the commands go in now, long before altoclef itself exists, so #help and tab completion know about them from
-        // the title screen on. running one is what creates altoclef, see require
-        AltoClefCommands.register(primary);
+        // this runs inside Minecraft's constructor, nothing of altoclef's gets to throw out of it
+        try {
+            instance = new AltoClefBridge();
+            EventBus.setErrorHandler(AltoClefBridge::onHookError);
+            ((GameEventHandler) primary.getGameEventHandler()).registerEventListenerFirst(instance);
+            // the commands go in now, long before altoclef itself exists, so #help and tab completion know about them from
+            // the title screen on. running one is what creates altoclef, see require
+            AltoClefCommands.register(primary);
+        } catch (Throwable t) {
+            System.err.println("altoclef could not hook into soprano, it stays off this session");
+            t.printStackTrace();
+        }
     }
 
     // the instance for a command that is about to run. altoclef is made lazily on the first tick it can be, so a command
@@ -71,7 +87,7 @@ public final class AltoClefBridge implements AbstractGameEventListener {
         if (altoClef == null && instance != null && !instance.initTried) {
             instance.init();
         }
-        if (altoClef == null) {
+        if (altoClef == null || gaveUp) {
             throw new CommandInvalidStateException(instance != null && instance.initTried
                     ? "altoclef is off for this session, it failed to start or crashed too many times (the log says why)"
                     : "altoclef is not up yet, give it a second");
@@ -80,13 +96,19 @@ public final class AltoClefBridge implements AbstractGameEventListener {
     }
 
     // what #set does to save settings.txt. altoclef lends baritone a pile of settings while a task runs and those
-    // must not be written down as the user's, so it gets to hand them back for the duration of the save
+    // must not be written down as the user's, so they are swapped for the user's own values for the duration of the
+    // save. goes through the registry and not through the instance, so it still works after altoclef gave up
     public static void saveSettings(Settings settings) {
-        if (altoClef == null) {
-            SettingsUtil.save(settings);
-            return;
-        }
-        altoClef.saveBaritoneSettings(settings);
+        SettingsOverrides.saveWithoutOverrides(() -> SettingsUtil.save(settings));
+    }
+
+    // #set (or #set reset) just changed this setting by hand. what the user typed wins, and sticks after the task
+    public static void userChanged(Settings.Setting<?> setting) {
+        SettingsOverrides.userChanged(setting);
+    }
+
+    public static void userChangedAll() {
+        SettingsOverrides.userChangedAll();
     }
 
     // what stop does about altoclef. never creates it, a user task can't be running if it was never made
@@ -103,7 +125,48 @@ public final class AltoClefBridge implements AbstractGameEventListener {
 
     // true while an altoclef task (or the idle gate) has the bot. mixins that change vanilla behaviour check this
     public static boolean isRunning() {
-        return altoClef != null && AltoClef.isRunning();
+        return altoClef != null && !gaveUp && AltoClef.isRunning();
+    }
+
+    // true when altoclef exists and has not given up. for the hooks that have to keep listening while it is idle
+    // (chat for the butler, chunks for the chunk tracker)
+    public static boolean isAlive() {
+        return altoClef != null && !gaveUp;
+    }
+
+    // how every hook publishes. altoclef code runs inside the subscribers, and the hooks sit in Level#setBlock, the chat
+    // handler, the packet handlers: nothing thrown in there may get out, that is how you disconnect a player
+    public static void publish(Object event) {
+        if (!isAlive()) {
+            return;
+        }
+        try {
+            EventBus.publish(event);
+        } catch (Throwable t) {
+            onHookError(t);
+        }
+    }
+
+    // something altoclef ran from a hook (a subscriber, a rule, a mixin body) threw. counted, logged, and then nothing,
+    // the game goes on. any thread
+    public static void onHookError(Throwable t) {
+        System.err.println("altoclef threw inside a hook");
+        t.printStackTrace();
+        countError();
+    }
+
+    // true when this one was the last straw
+    private static synchronized boolean countError() {
+        long now = System.nanoTime();
+        if (errors > 0 && now - lastErrorNanos > ERROR_WINDOW_NANOS) {
+            errors = 0;
+        }
+        lastErrorNanos = now;
+        if (++errors >= MAX_ERRORS) {
+            gaveUp = true;
+            return true;
+        }
+        return false;
     }
 
     // called from MixinAltoClefGui at the end of Gui#render, every frame
@@ -120,15 +183,46 @@ public final class AltoClefBridge implements AbstractGameEventListener {
         }
     }
 
+    // MixinAltoClefOptions: vanilla is about to write options.txt, and a pauseOnLostFocus that altoclef turned off
+    // is not what the user chose
+    public static void beforeOptionsSave() {
+        try {
+            SettingsOverrides.beginOptionsSave();
+        } catch (Throwable t) {
+            t.printStackTrace();
+        }
+    }
+
+    public static void afterOptionsSave() {
+        try {
+            SettingsOverrides.endOptionsSave();
+        } catch (Throwable t) {
+            t.printStackTrace();
+        }
+    }
+
     @Override
     public void onTick(TickEvent event) {
         if (!initTried) {
             init();
         }
-        // OUT is the title screen / loading, nothing of altoclef's runs there
-        if (altoClef == null || event.getType() != TickEvent.Type.IN) {
+        if (altoClef == null) {
             return;
         }
+        if (gaveUp) {
+            // somebody (maybe another thread) hit the limit, the cleanup is ours to do and this is the right thread
+            shutDown();
+            return;
+        }
+        // OUT is the title screen / loading, nothing of altoclef's runs there
+        if (event.getType() != TickEvent.Type.IN) {
+            if (wasInGame) {
+                wasInGame = false;
+                onWorldLeft();
+            }
+            return;
+        }
+        wasInGame = true;
         try {
             altoClef.onClientTick();
         } catch (Throwable t) {
@@ -136,16 +230,31 @@ public final class AltoClefBridge implements AbstractGameEventListener {
         }
     }
 
+    // quit to title, disconnect, kicked: no task and no override gets to follow the player into the next world. a
+    // dimension change is not this, the player never goes null there and tasks like cross dimension goto rely on that
+    private void onWorldLeft() {
+        AltoClefCommands.abortSequences();
+        try {
+            altoClef.onWorldLeft();
+        } catch (Throwable t) {
+            onError(t);
+        }
+    }
+
     @Override
     public void onChunkEvent(ChunkEvent event) {
-        if (altoClef == null) {
+        if (!isAlive()) {
             return;
         }
-        // POST populate is "the packet's chunk is in the world", which is when the old loadChunkFromPacket mixin fired
-        if (event.isPostPopulate()) {
-            EventBus.publish(new ChunkLoadEvent(new ChunkPos(event.getX(), event.getZ())));
-        } else if (event.getState() == EventState.POST && event.getType() == ChunkEvent.Type.UNLOAD) {
-            EventBus.publish(new ChunkUnloadEvent(new ChunkPos(event.getX(), event.getZ())));
+        try {
+            // POST populate is "the packet's chunk is in the world", which is when the old loadChunkFromPacket mixin fired
+            if (event.isPostPopulate()) {
+                publish(new ChunkLoadEvent(new ChunkPos(event.getX(), event.getZ())));
+            } else if (event.getState() == EventState.POST && event.getType() == ChunkEvent.Type.UNLOAD) {
+                publish(new ChunkUnloadEvent(new ChunkPos(event.getX(), event.getZ())));
+            }
+        } catch (Throwable t) {
+            onHookError(t);
         }
     }
 
@@ -164,25 +273,64 @@ public final class AltoClefBridge implements AbstractGameEventListener {
             altoClef = ac;
             ac.onInitializeLoad();
         } catch (Throwable t) {
-            altoClef = null;
             System.err.println("altoclef failed to start, it stays off this session");
             t.printStackTrace();
+            // a half built altoclef leaves subscribers on the bus and a static handle behind
+            shutDown();
         }
     }
 
+    // a tick (or the world-left cleanup) threw. whatever altoclef was doing is what blew up, so stop doing it. each step
+    // on its own: the cancel throwing is exactly when the disable has to still happen
     private void onError(Throwable t) {
         System.err.println("altoclef threw in its tick");
         t.printStackTrace();
-        try {
-            // whatever it was doing is what blew up, so stop doing it
-            altoClef.cancelUserTask();
-            altoClef.getTaskRunner().disable();
-        } catch (Throwable ignored) {
-            // already cleaning up after one exception
+        AltoClef ac = altoClef;
+        if (ac != null) {
+            try {
+                ac.cancelUserTask();
+            } catch (Throwable t2) {
+                t2.printStackTrace();
+            }
+            try {
+                ac.getTaskRunner().disable();
+            } catch (Throwable t2) {
+                t2.printStackTrace();
+            }
         }
-        if (++errors >= MAX_ERRORS) {
-            System.err.println("altoclef threw " + MAX_ERRORS + " times, switching it off");
-            altoClef = null;
+        if (countError()) {
+            shutDown();
+        }
+    }
+
+    // altoclef is done for the session. nothing of it may stay applied: the user's settings come back, interactions are
+    // unpaused, every rule and toggle is cleared and nobody listens on the bus. each step on its own, none may throw
+    private static void shutDown() {
+        gaveUp = true;
+        System.err.println("altoclef is switched off for this session");
+        AltoClef ac = altoClef;
+        altoClef = null;
+        try {
+            if (ac != null) {
+                ac.emergencyShutdown();
+            }
+        } catch (Throwable t) {
+            t.printStackTrace();
+        }
+        // in case the instance died before it got that far (or never really existed)
+        try {
+            SettingsOverrides.restoreAll();
+            AltoClefSettings.getInstance().resetAll();
+            RayTraceUtils.fluidHandling = ClipContext.Fluid.NONE;
+        } catch (Throwable t) {
+            t.printStackTrace();
+        }
+        try {
+            EventBus.clear();
+            AltoClef.discardInstance();
+            AltoClefCommands.abortSequences();
+        } catch (Throwable t) {
+            t.printStackTrace();
         }
     }
 }

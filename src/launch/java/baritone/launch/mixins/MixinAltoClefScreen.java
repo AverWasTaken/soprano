@@ -17,11 +17,12 @@
 
 package baritone.launch.mixins;
 
-import adris.altoclef.eventbus.EventBus;
+import baritone.altoclef.AltoClefBridge;
 import adris.altoclef.eventbus.events.ScreenOpenEvent;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -29,12 +30,22 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(Minecraft.class)
 public class MixinAltoClefScreen {
 
+    // setScreen is the middle of everything (death, disconnect, chat), nothing of altoclef's gets to throw out of it
+    @Unique
+    private static void altoclef$publishScreen(final Screen screen, final boolean preOpen) {
+        try {
+            AltoClefBridge.publish(new ScreenOpenEvent(screen, preOpen));
+        } catch (Throwable t) {
+            AltoClefBridge.onHookError(t);
+        }
+    }
+
     @Inject(
             method = "setScreen",
             at = @At("HEAD")
     )
     private void altoclef$onScreenOpenBegin(final Screen screen, final CallbackInfo ci) {
-        EventBus.publish(new ScreenOpenEvent(screen, true));
+        altoclef$publishScreen(screen, true);
     }
 
     // setScreen only has the one return, so TAIL really is the end
@@ -43,6 +54,6 @@ public class MixinAltoClefScreen {
             at = @At("TAIL")
     )
     private void altoclef$onScreenOpenEnd(final Screen screen, final CallbackInfo ci) {
-        EventBus.publish(new ScreenOpenEvent(screen, false));
+        altoclef$publishScreen(screen, false);
     }
 }
