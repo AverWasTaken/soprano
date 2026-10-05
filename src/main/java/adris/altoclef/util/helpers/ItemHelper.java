@@ -471,10 +471,8 @@ public class ItemHelper {
     // a bare player hits for 1 (Player.createAttributes), the sword's own attribute is on top of that
     private static final double PLAYER_BASE_ATTACK_DAMAGE = 1.0;
 
-    /**
-     * Damage of one full-charge hit with this item in the main hand (hearts x2), straight from the attribute modifiers
-     * component. Fists are 1, a wooden sword is 4, netherite is 8. No enchants (sharpness) in here.
-     */
+    // damage of one full charge hit with this item in the main hand, straight from the attribute modifiers
+    // component. fists are 1, a wooden sword is 4, netherite is 8. no enchants (sharpness) in here
     public static float getAttackDamage(Item item) {
         ItemAttributeModifiers modifiers = item.components().get(DataComponents.ATTRIBUTE_MODIFIERS);
         if (modifiers == null) {
@@ -508,9 +506,7 @@ public class ItemHelper {
         return entry.attribute().equals(Attributes.ATTACK_DAMAGE) && entry.slot().test(net.minecraft.world.entity.EquipmentSlot.MAINHAND);
     }
 
-    /**
-     * The sword that hits hardest, or null if there are no swords in the list. First one wins a tie.
-     */
+    // the sword that hits hardest, or null if there are no swords in the list. first one wins a tie
     public static Item getBestSword(Iterable<Item> candidates) {
         Item best = null;
         float bestDamage = Float.NEGATIVE_INFINITY;
