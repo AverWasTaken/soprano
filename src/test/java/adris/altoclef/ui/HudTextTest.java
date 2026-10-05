@@ -128,4 +128,12 @@ public class HudTextTest {
         assertEquals("logs", HudText.blocks(ItemHelper.itemsToBlocks(ItemHelper.LOG)));
         assertTrue(HudText.blocks(null).length() > 0);
     }
+
+    @Test
+    public void oreAndDeepslateTwinReadAsOneOre() {
+        assertEquals("Diamond Ore", HudText.blocks(new net.minecraft.world.level.block.Block[]{Blocks.DIAMOND_ORE, Blocks.DEEPSLATE_DIAMOND_ORE}));
+        assertEquals("Lapis Lazuli Ore", HudText.blocks(new net.minecraft.world.level.block.Block[]{Blocks.LAPIS_ORE, Blocks.DEEPSLATE_LAPIS_ORE}));
+        // a lone deepslate ore is still what it says it is
+        assertEquals("Deepslate Diamond Ore", HudText.blocks(new net.minecraft.world.level.block.Block[]{Blocks.DEEPSLATE_DIAMOND_ORE}));
+    }
 }
