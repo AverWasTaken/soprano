@@ -130,6 +130,52 @@ A few that are worth knowing about:
 - `worldExploringChunkOffset`
 - `renderCachedChunks` (and `cachedChunksOpacity`), fun but you need a beefy computer
 
+# AltoClef
+
+AltoClef is a task bot (survival, crafting, combat, beating the game) that's built in and runs on top of Soprano's pathing. It's inert until you start a task: nothing of it ticks, draws, or changes any Soprano setting until you run one of its commands. When the task ends, or you `stop` or `cancel` it, everything goes back how it was.
+
+## AltoClef commands
+
+- `goto <x y z | x z | y> <overworld|nether|the_end>` to go somewhere in another dimension, walking through portals to get there. `goto the_end` on its own just takes you to that dimension. Coordinates have to be plain numbers here (no `~`), and `end` and `the_nether` work as spellings too. Without a dimension on the end, `goto` is Soprano's own
+- `stop`, `cancel` and `forcecancel` also stop AltoClef's task
+- `get <item> [count] ...` to get items or resources (`get iron_ingot 3 diamond 2`, `get [iron_pickaxe, stone_sword 1]`). `list` shows what it knows how to get
+- `give <player> <item> [count]` to collect something and hand it to a player
+- `equip <set | piece ...>` to equip armor, like `equip diamond`
+- `deposit [item ...]` to store items in a container, `stash x1 y1 z1 x2 y2 z2 [item ...]` to put them in a chest stash
+- `food <amount>` and `meat <amount>` to collect that much food or meat
+- `punk <player>` to kill a player
+- `hero` to kill all the hostile mobs it can find, `idle` to stand still with its survival chains running, `selfcare` (unfinished upstream)
+- `coverwithblocks` and `coverwithsand` to cover nether lava
+- `gamer` to beat the game: gear up, nether, stronghold, dragon. It takes a long while and eats, fights and respawns on its own. `marvion` is the same goal with Marvion's strategy
+- `locate_structure <structure>` to find a structure, like `desert_temple` or `stronghold`
+- `custom <name>` to run a task list from `CustomTasks.json`
+- `status` to see what the running task is doing, `inventory [item]` to list or count, `coords` to get the bot's coordinates, `gamma [value]` to set the brightness
+- `altoreload` to re-read its json configs
+
+Everything has `#help` and tab completion like any other command. Commands can be chained with `;` (`get log 16 ; get iron_ingot 3`, each one waits for the one before it) in butler whispers, `custom` lists and the idle and death commands. Typing a `;` line in normal chat doesn't do it.
+
+## AltoClef settings
+
+They're normal Soprano settings that all start with `alto`, so `#set alto<tab>` lists them, `#modified` shows what you changed, `#reset` resets them, and they save in `baritone/settings.txt`. String settings take spaces after the name, so `#set altoIdleCommand follow Jacob` works. Some of the useful ones:
+
+| Setting | Default | What it does |
+|---|---|---|
+| `altoRunsWhenIdle` | false | keep the survival chains (eating, mob defense, MLG) running even with no task. Off means AltoClef does nothing until you start a task |
+| `altoButler` | false | let whitelisted players whisper commands to your bot. The whitelist and blacklist are in `baritone/altoclef/` |
+| `altoShowTaskChains` | true | the task HUD in the top left. `altoHudScale` (1.0, between 0.5 and 2) resizes it, `altoShowTimer` (false) adds a timer |
+| `altoMobDefense` | true | fight off or avoid mobs. `altoForceFieldStrategy` (`SMART`, or `OFF`, `FASTEST`, `DELAY`) is how the force field picks its targets |
+| `altoAutoEat`, `altoAutoRespawn`, `altoAutoReconnect` | true | what they say |
+| `altoIdleCommand` | empty | a `#` command line to run when idle, only used with `altoRunsWhenIdle` |
+| `altoDeathCommand` | empty | what to send after respawning. `{deathmessage}` is replaced with the death message, and several can be separated with ` & `. A `#` line runs as a command, a `/` line goes to the server, anything else is chat |
+| `altoThrowawayItems`, `altoImportantItems` | | items it can throw away, and items it won't |
+| `altoHomeBasePosition` | | the position AltoClef treats as its home base |
+| `altoAreasToProtect` | | areas it won't break or build in, as `x1/y1/z1->x2/y2/z2` with an optional `@nether` or `@end` on the end, separated by commas: `-10/0/-10->10/255/10,1000/50/2000->1200/255/2100@nether` |
+| `altoResourceMineRange`, `altoEntityReachRange`, `altoContainerItemMoveDelay` | | how far it looks for ores, how far it reaches for entities, and the delay between container clicks |
+
+AltoClef uses Soprano's own `replantCrops` setting instead of having one of its own.
+
+The rest of its config (`beat_minecraft.json`, the food chain, block tracker and MLG configs, `butler.json`, `CustomTasks.json`) is still json under `baritone/altoclef/`, and `altoreload` re-reads it. Settings aren't in there any more, they live in `#set`. If you have an old `baritone/altoclef/altoclef_settings.json`, its values are imported once on first start and the file is renamed to `altoclef_settings.json.migrated`.
+
 # Troubleshooting / common issues
 
 ## Why doesn't Soprano respond to any of my chat commands?
