@@ -25,7 +25,6 @@ import adris.altoclef.tasks.entity.HeroTask;
 import adris.altoclef.tasks.entity.SelfCareTask;
 import adris.altoclef.tasks.movement.FollowPlayerTask;
 import adris.altoclef.tasks.movement.IdleTask;
-import adris.altoclef.tasks.speedrun.BeatMinecraft2Task;
 import adris.altoclef.tasks.speedrun.MarvionBeatMinecraftTask;
 import adris.altoclef.tasksystem.Task;
 import baritone.altoclef.AltoClefBridge;
@@ -95,10 +94,7 @@ public final class AltoClefCommands {
                 new SetGammaCommand(baritone),
                 new ReloadSettingsCommand(baritone),
                 new CustomCommand(baritone),
-                new TaskCommand(baritone, new String[]{"gamer"}, "Beats the game",
-                        BeatMinecraft2Task::new,
-                        "Starts altoclef's full speedrun: gear up, enter the nether, find the stronghold and kill the dragon.",
-                        "It takes a long while and it will eat, fight and respawn on its own. Use stop to call it off."),
+                new GamerCommand(baritone),
                 new TaskCommand(baritone, new String[]{"marvion"}, "Beats the game (Marvion version)",
                         MarvionBeatMinecraftTask::new,
                         "The same goal as gamer, but with Marvion's strategy for it.",

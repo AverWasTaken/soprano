@@ -223,8 +223,38 @@ public class AltoClefCommandsTest {
     }
 
     @Test
+    public void gamerCompletesItsSubcommandsAndPhases() throws Exception {
+        assertEquals(List.of("phase", "reset", "status"), tab("gamer", ""));
+        assertEquals(List.of("status"), tab("gamer", "st"));
+        assertEquals(List.of("locate"), tab("gamer", "phase lo"));
+        assertEquals(11, tab("gamer", "phase ").size());
+        assertTrue(tab("gamer", "phase ").containsAll(List.of("gather", "end_prep", "dragon")));
+        assertFalse(tab("gamer", "phase ").contains("done"));
+        // nothing after a finished command
+        assertTrue(tab("gamer", "status ").isEmpty());
+        assertTrue(tab("gamer", "reset ").isEmpty());
+        assertTrue(tab("gamer", "phase locate ").isEmpty());
+    }
+
+    @Test
+    public void gamerPhaseNamesAreForgiving() throws Exception {
+        assertEquals(adris.altoclef.tasks.speedrun.gamer.GamerPhase.END_PREP, GamerCommand.parsePhase("end_prep"));
+        assertEquals(adris.altoclef.tasks.speedrun.gamer.GamerPhase.END_PREP, GamerCommand.parsePhase("END-PREP"));
+        assertEquals(adris.altoclef.tasks.speedrun.gamer.GamerPhase.END_PREP, GamerCommand.parsePhase("endprep"));
+        assertEquals(adris.altoclef.tasks.speedrun.gamer.GamerPhase.LOCATE, GamerCommand.parsePhase("Locate"));
+        for (String bad : new String[]{"done", "stuck", "breakfast", ""}) {
+            try {
+                GamerCommand.parsePhase(bad);
+                org.junit.Assert.fail(bad + " should not be a phase");
+            } catch (baritone.api.command.exception.CommandInvalidStateException expected) {
+                // fine
+            }
+        }
+    }
+
+    @Test
     public void commandsWithNoArgumentsCompleteNothing() throws Exception {
-        for (String name : new String[]{"gamer", "marvion", "hero", "selfcare", "idle", "coverwithblocks", "coverwithsand", "coords", "status", "altoreload", "list"}) {
+        for (String name : new String[]{"marvion", "hero", "selfcare", "idle", "coverwithblocks", "coverwithsand", "coords", "status", "altoreload", "list"}) {
             assertTrue(name, tab(name, "").isEmpty());
         }
     }
