@@ -113,7 +113,8 @@ public class ConfigHelper {
         T result = getDefault.get();
         File loadFrom = getConfigFile(path);
         if (version != null && isOtherVersion(loadFrom, version)) {
-            Debug.logWarning("Config " + path + " is from another version, replacing it with the defaults.");
+            Debug.logWarning("Config " + path + " is from another version, replacing it with the defaults (the old one is kept as " + path + ".bak).");
+            keepAsBackup(loadFrom.toPath());
             saveConfig(path, result);
             return result;
         }
@@ -174,6 +175,15 @@ public class ConfigHelper {
 
         // Call the onReload callback function to notify that the configuration is loaded.
         onReload.accept(config);
+    }
+
+    // a stray comma in a hand edited file must not cost the user all of their edits: the file we replace is kept next to it
+    private static void keepAsBackup(Path file) {
+        try {
+            Files.move(file, file.resolveSibling(file.getFileName() + ".bak"), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException e) {
+            Debug.logWarning("Could not keep a backup of " + file.getFileName() + ": " + e.getMessage());
+        }
     }
 
     // true when the file exists and its top level "version" is missing or not the one we want. a file that is not even

@@ -28,5 +28,7 @@ public class GamerConfig {
         // items despawn after 5 minutes, leave margin
         public int recoverSeconds = 240;
         public int maxPerPhase = 3;
+        // deaths since the run was (re)started by hand, over every phase together
+        public int maxTotal = 12;
     }
 }

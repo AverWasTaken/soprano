@@ -44,6 +44,51 @@ public final class GamerConfigs {
         if (c.end == null) {
             c.end = new EndConfig();
         }
+        clamp(c);
         return c;
+    }
+
+    // numbers that would turn a phase into an instant failure or switch its watchdog off: back to a sane value. only the
+    // ones where a typo hurts (zero attempts = stuck on the first timeout, zero minutes = no budget at all)
+    private static void clamp(GamerConfig c) {
+        GamerConfig d = new GamerConfig();
+        c.maxAttempts = Math.max(1, c.maxAttempts);
+        c.targetEyes = Math.max(1, c.targetEyes);
+        c.floorEyes = Math.max(1, Math.min(c.floorEyes, c.targetEyes));
+        c.death.maxPerPhase = Math.max(1, c.death.maxPerPhase);
+        c.death.maxTotal = Math.max(1, c.death.maxTotal);
+        c.death.recoverBlocks = Math.max(0, c.death.recoverBlocks);
+        c.death.recoverSeconds = Math.max(0, c.death.recoverSeconds);
+        c.end.attempts = Math.max(1, c.end.attempts);
+        c.end.beds = Math.max(0, c.end.beds);
+        c.stronghold.maxThrows = Math.max(1, c.stronghold.maxThrows);
+        c.stronghold.maxEmptyThrows = Math.max(1, c.stronghold.maxEmptyThrows);
+        c.stronghold.spiralRadiusChunks = Math.max(1, c.stronghold.spiralRadiusChunks);
+        c.stronghold.sigmaDeg = positive(c.stronghold.sigmaDeg, d.stronghold.sigmaDeg);
+        c.stronghold.snapRadius = positive(c.stronghold.snapRadius, d.stronghold.snapRadius);
+        c.stronghold.perChunkSeconds = positive(c.stronghold.perChunkSeconds, d.stronghold.perChunkSeconds);
+        c.nether.maxCells = Math.max(1, c.nether.maxCells);
+        c.nether.sweepSpacingChunks = Math.max(1, c.nether.sweepSpacingChunks);
+        c.nether.waypointSeconds = positive(c.nether.waypointSeconds, d.nether.waypointSeconds);
+        clampBudgets(c.budgets, d.budgets);
+    }
+
+    private static void clampBudgets(Budgets b, Budgets d) {
+        b.gather = positive(b.gather, d.gather);
+        b.iron = positive(b.iron, d.iron);
+        b.portal = positive(b.portal, d.portal);
+        b.nether = positive(b.nether, d.nether);
+        b.eyes = positive(b.eyes, d.eyes);
+        b.returnHome = positive(b.returnHome, d.returnHome);
+        b.locate = positive(b.locate, d.locate);
+        b.room = positive(b.room, d.room);
+        b.open = positive(b.open, d.open);
+        b.endPrep = positive(b.endPrep, d.endPrep);
+        b.dragon = positive(b.dragon, d.dragon);
+    }
+
+    // zero, negative and NaN all mean "typo", infinity would be a budget that never ends
+    private static double positive(double value, double fallback) {
+        return value > 0 && !Double.isInfinite(value) ? value : fallback;
     }
 }

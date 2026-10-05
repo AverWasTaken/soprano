@@ -116,6 +116,71 @@ public class GamerConfigsTest {
     }
 
     @Test
+    public void theFileThatGetsReplacedIsKeptAsABackup() throws IOException {
+        String old = "{\"targetEyes\": 20, \"requiredBeds\": 10}";
+        write(old);
+        GamerConfigs.load();
+        Path bak = file.resolveSibling("beat_minecraft.json.bak");
+        assertTrue(Files.exists(bak));
+        assertEquals(old, Files.readString(bak, StandardCharsets.UTF_8));
+        // a typo'd current file (stray comma) is replaced too, and the edits are not lost
+        String typo = "{\"version\": " + GamerConfig.VERSION + ", \"targetEyes\": 16,}x";
+        write(typo);
+        GamerConfigs.load();
+        assertEquals(typo, Files.readString(bak, StandardCharsets.UTF_8));
+        assertEquals(new GamerConfig().targetEyes, GamerConfigs.get().targetEyes);
+        // a good file makes no backup
+        Files.delete(bak);
+        write("{\"version\": " + GamerConfig.VERSION + ", \"targetEyes\": 16}");
+        GamerConfigs.load();
+        assertFalse(Files.exists(bak));
+    }
+
+    @Test
+    public void numbersThatWouldBreakARunAreClamped() throws IOException {
+        write("{\"version\": " + GamerConfig.VERSION + ", \"maxAttempts\": 0, \"targetEyes\": 0, \"floorEyes\": 99,"
+                + " \"budgets\": {\"gather\": 0, \"nether\": -5, \"dragon\": 0,\"iron\": 30},"
+                + " \"death\": {\"maxPerPhase\": 0, \"maxTotal\": -1, \"recoverBlocks\": -3},"
+                + " \"end\": {\"attempts\": 0, \"beds\": -2},"
+                + " \"stronghold\": {\"maxThrows\": 0, \"maxEmptyThrows\": 0, \"sigmaDeg\": 0, \"spiralRadiusChunks\": 0},"
+                + " \"nether\": {\"maxCells\": 0, \"sweepSpacingChunks\": 0, \"waypointSeconds\": -1}}");
+        GamerConfig c = GamerConfigs.load();
+        GamerConfig d = new GamerConfig();
+        assertEquals(1, c.maxAttempts);
+        assertEquals(1, c.targetEyes);
+        // the floor can not be above the target
+        assertEquals(1, c.floorEyes);
+        assertEquals(d.budgets.gather, c.budgets.gather, 0);
+        assertEquals(d.budgets.nether, c.budgets.nether, 0);
+        assertEquals(d.budgets.dragon, c.budgets.dragon, 0);
+        assertEquals(30, c.budgets.iron, 0);
+        assertEquals(1, c.death.maxPerPhase);
+        assertEquals(1, c.death.maxTotal);
+        assertEquals(0, c.death.recoverBlocks);
+        assertEquals(1, c.end.attempts);
+        assertEquals(0, c.end.beds);
+        assertEquals(1, c.stronghold.maxThrows);
+        assertEquals(1, c.stronghold.maxEmptyThrows);
+        assertEquals(d.stronghold.sigmaDeg, c.stronghold.sigmaDeg, 0);
+        assertEquals(1, c.stronghold.spiralRadiusChunks);
+        assertEquals(1, c.nether.maxCells);
+        assertEquals(1, c.nether.sweepSpacingChunks);
+        assertEquals(d.nether.waypointSeconds, c.nether.waypointSeconds, 0);
+    }
+
+    @Test
+    public void sensibleNumbersAreLeftAlone() throws IOException {
+        write("{\"version\": " + GamerConfig.VERSION + ", \"maxAttempts\": 3, \"targetEyes\": 16, \"floorEyes\": 12,"
+                + " \"budgets\": {\"gather\": 2.5}, \"end\": {\"attempts\": 5}}");
+        GamerConfig c = GamerConfigs.load();
+        assertEquals(3, c.maxAttempts);
+        assertEquals(16, c.targetEyes);
+        assertEquals(12, c.floorEyes);
+        assertEquals(2.5, c.budgets.gather, 0);
+        assertEquals(5, c.end.attempts);
+    }
+
+    @Test
     public void aNullSectionBecomesTheDefaultSection() throws IOException {
         write("{\"version\": " + GamerConfig.VERSION + ", \"nether\": null, \"budgets\": null}");
         GamerConfig c = GamerConfigs.load();
