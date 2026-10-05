@@ -90,7 +90,7 @@ public class NetherSweepPlannerTest {
         assertEquals(Kind.GOTO, next.kind());
         assertEquals(1000, next.x());
         assertTrue(state.visitedCells.contains("0,0"));
-        assertEquals(2, planner.cellsStarted());
+        assertEquals(2, planner.cellsStarted(Goal.FORTRESS));
     }
 
     @Test
@@ -187,34 +187,42 @@ public class NetherSweepPlannerTest {
         assertEquals(Kind.FOUND, planner.step(Goal.WARPED, 0, 0, 1).kind());
     }
 
+    // asks once a second like the task does (a bigger gap reads as "something else had the wheel")
+    private static Action stepAt(NetherSweepPlanner p, Goal goal, int px, int pz, int from, int to) {
+        Action a = null;
+        for (int t = from; t <= to; t++) {
+            a = p.step(goal, px, pz, t);
+        }
+        return a;
+    }
+
+    // keeps asking while we are far from everything (so every waypoint times out) until it stops saying GOTO
+    private static Action stepUntilDone(NetherSweepPlanner p, Goal goal, int from) {
+        Action a;
+        int t = from;
+        do {
+            a = p.step(goal, 500, 500, t++);
+        } while (a.kind() == Kind.GOTO && t < from + 20000);
+        return a;
+    }
+
     @Test
     public void slowWaypointIsSkippedAfterTheTimeout() {
-        Action a = planner.step(Goal.FORTRESS, 500, 500, 0);
-        assertEquals(0, a.x());
-        // 89 s later: still on it
-        assertEquals(0, planner.step(Goal.FORTRESS, 500, 500, 89).x());
+        assertEquals(0, stepAt(planner, Goal.FORTRESS, 500, 500, 0, 89).x());
         // 90 s: skipped, the timer restarts on the next one
-        assertEquals(100, planner.step(Goal.FORTRESS, 500, 500, 90).x());
-        assertEquals(100, planner.step(Goal.FORTRESS, 500, 500, 179).x());
-        assertEquals(200, planner.step(Goal.FORTRESS, 500, 500, 180).x());
+        assertEquals(100, stepAt(planner, Goal.FORTRESS, 500, 500, 90, 90).x());
+        assertEquals(100, stepAt(planner, Goal.FORTRESS, 500, 500, 91, 179).x());
+        assertEquals(200, stepAt(planner, Goal.FORTRESS, 500, 500, 180, 180).x());
     }
 
     @Test
     public void capOfCellsFails() {
         NetherSweepPlanner small = new NetherSweepPlanner(state, cfg, ROW, 3);
-        double now = 0;
-        Action a = null;
         // everything times out, so one cell takes 3 * 90 s
-        for (int i = 0; i < 100; i++) {
-            a = small.step(Goal.FORTRESS, 500, 500, now);
-            if (a.kind() != Kind.GOTO) {
-                break;
-            }
-            now += 91;
-        }
+        Action a = stepUntilDone(small, Goal.FORTRESS, 0);
         assertNotNull(a);
         assertEquals(Kind.FAIL, a.kind());
-        assertEquals(3, small.cellsStarted());
+        assertEquals(3, small.cellsStarted(Goal.FORTRESS));
         assertEquals(3, state.visitedCells.size());
     }
 
@@ -250,7 +258,7 @@ public class NetherSweepPlannerTest {
             }
         }, 12);
         assertEquals(Kind.FAIL, blank.step(Goal.FORTRESS, 0, 0, 0).kind());
-        assertEquals(12, blank.cellsStarted());
+        assertEquals(12, blank.cellsStarted(Goal.FORTRESS));
     }
 
     @Test
@@ -288,5 +296,77 @@ public class NetherSweepPlannerTest {
         NetherSweepPlanner again = new NetherSweepPlanner(back, cfg, ROW, 12);
         assertTrue(again.nearBastion(-700, 10));
         assertEquals(1000, again.step(Goal.FORTRESS, 0, 0, 0).x());
+    }
+
+    @Test
+    public void eachGoalHasItsOwnCellCap() {
+        NetherSweepPlanner two = new NetherSweepPlanner(state, cfg, ROW, 2);
+        Action a = stepUntilDone(two, Goal.FORTRESS, 0);
+        assertEquals(Kind.FAIL, a.kind());
+        // the fortress search used its two cells, the forest search still has its own two
+        assertEquals(Kind.GOTO, two.step(Goal.WARPED, 500, 500, 20001).kind());
+        assertEquals(1, two.cellsStarted(Goal.WARPED));
+        assertEquals(2, two.cellsStarted(Goal.FORTRESS));
+    }
+
+    @Test
+    public void idlingDoesNotEatTheWaypointClock() {
+        assertEquals(0, planner.step(Goal.FORTRESS, 500, 500, 0).x());
+        // rods, a ghast, whatever had the wheel for ten minutes: the waypoint is as fresh as it was
+        assertEquals(0, planner.step(Goal.FORTRESS, 500, 500, 600).x());
+        assertEquals(0, stepAt(planner, Goal.FORTRESS, 500, 500, 601, 689).x());
+        // and then it times out normally, 90 s after it was picked up again
+        assertEquals(100, stepAt(planner, Goal.FORTRESS, 500, 500, 690, 690).x());
+    }
+
+    @Test
+    public void scanningOneKindRecordsOnlyThatKind() {
+        Map<Sight, RunState.Pos> seen = new EnumMap<>(Sight.class);
+        seen.put(Sight.FORTRESS, pos(150, 40));
+        seen.put(Sight.BASTION, pos(2000, 40));
+        assertTrue(planner.scan(seeing(seen), Sight.BASTION));
+        assertTrue(state.fortress.isEmpty());
+        assertEquals(1, state.bastion.size());
+        assertFalse(planner.scan(seeing(seen), Sight.WARPED));
+    }
+
+    // the real grid: every cell is started once, the cap ends the search, nothing is revisited
+    @Test
+    public void realGridSweepTerminatesAtTheCapAndNeverRepeats() {
+        NetherSweepPlanner real = new NetherSweepPlanner(state, cfg);
+        Set<String> started = new java.util.LinkedHashSet<>();
+        int px = 0;
+        int pz = 0;
+        double now = 0;
+        int steps = 0;
+        Action a;
+        while (true) {
+            a = real.step(Goal.FORTRESS, px, pz, now);
+            if (a.kind() != Kind.GOTO) {
+                break;
+            }
+            // the cell the waypoint is in is the cell being swept
+            assertEquals(NetherComplexGrid.cellOf(a.x(), a.z()).key(), real.currentCellKey());
+            started.add(real.currentCellKey());
+            // walk there, it takes a second
+            px = a.x();
+            pz = a.z();
+            now += 1;
+            assertTrue("never ends", ++steps < 1000);
+        }
+        assertEquals(Kind.FAIL, a.kind());
+        assertEquals(12, started.size());
+        assertEquals(12, real.cellsStarted(Goal.FORTRESS));
+        assertEquals(started, state.visitedCells);
+    }
+
+    @Test
+    public void realGridSweepSkipsWhatIsAlreadyVisited() {
+        NetherSweepPlanner real = new NetherSweepPlanner(state, cfg);
+        Cell home = NetherComplexGrid.cellOf(0, 0);
+        state.visitedCells.add(home.key());
+        Action a = real.step(Goal.FORTRESS, 0, 0, 0);
+        assertEquals(Kind.GOTO, a.kind());
+        assertFalse(NetherComplexGrid.cellOf(a.x(), a.z()).equals(home));
     }
 }

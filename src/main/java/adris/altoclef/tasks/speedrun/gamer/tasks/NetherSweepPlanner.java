@@ -63,6 +63,8 @@ public final class NetherSweepPlanner {
     private static final int SAME_STRUCTURE_BLOCKS = 64;
     // fortresses are big and spill over cell borders, a given up one covers about this much
     private static final int EXHAUSTED_BLOCKS = 192;
+    // not asked for this long = something else had the wheel
+    private static final double IDLE_SECONDS = 5;
 
     private final RunState state;
     private final NetherConfig cfg;
@@ -73,7 +75,9 @@ public final class NetherSweepPlanner {
     private List<Point> waypoints = List.of();
     private int index;
     private double waypointSince;
-    private int cellsStarted;
+    // cells started per goal: a fortress that took four cells must not eat the warped forest search's share
+    private final int[] cellsStarted = new int[Goal.values().length];
+    private double lastStepAt = Double.NaN;
 
     // read by the path predicate on the pathing threads, so snapshots and volatiles only
     private volatile int[] avoidXZ = new int[0];
@@ -92,8 +96,8 @@ public final class NetherSweepPlanner {
         this(state, cfg, REAL_GRID, cfg.maxCells);
     }
 
-    public int cellsStarted() {
-        return cellsStarted;
+    public int cellsStarted(Goal goal) {
+        return cellsStarted[goal.ordinal()];
     }
 
     public String currentCellKey() {
@@ -109,12 +113,15 @@ public final class NetherSweepPlanner {
     public boolean scan(SightSource source) {
         boolean changed = false;
         for (Sight sight : Sight.values()) {
-            Optional<RunState.Pos> pos = source.nearestSeen(sight);
-            if (pos.isPresent()) {
-                changed |= report(sight, pos.get());
-            }
+            changed |= scan(source, sight);
         }
         return changed;
+    }
+
+    // one kind only, so a caller that rotates through them gives each its own slice of the seen filter's raycast budget
+    public boolean scan(SightSource source, Sight sight) {
+        Optional<RunState.Pos> pos = source.nearestSeen(sight);
+        return pos.isPresent() && report(sight, pos.get());
     }
 
     public boolean report(Sight sight, RunState.Pos pos) {
@@ -180,13 +187,19 @@ public final class NetherSweepPlanner {
     public Action step(Goal goal, int px, int pz, double now) {
         playerX = px;
         playerZ = pz;
+        // we were busy with something else (rods, a ghast, a barter) so the waypoint's clock did not run for real:
+        // without this the first step back would time the waypoint out on the spot
+        if (!Double.isNaN(lastStepAt) && now - lastStepAt > IDLE_SECONDS) {
+            waypointSince = now;
+        }
+        lastStepAt = now;
         if (goalMet(goal)) {
             return new Action(Kind.FOUND, px, pz, "found");
         }
         // every pass of this loop either returns or finishes a cell, and a finished cell is visited, so it ends
         while (true) {
             if (cell == null) {
-                Action fail = startNextCell(px, pz, now);
+                Action fail = startNextCell(goal, px, pz, now);
                 if (fail != null) {
                     return fail;
                 }
@@ -201,16 +214,17 @@ public final class NetherSweepPlanner {
     }
 
     // null = a cell is current now
-    private Action startNextCell(int px, int pz, double now) {
-        if (cellsStarted >= maxCells) {
-            return new Action(Kind.FAIL, px, pz, "swept " + cellsStarted + " cells and found nothing");
+    private Action startNextCell(Goal goal, int px, int pz, double now) {
+        int started = cellsStarted[goal.ordinal()];
+        if (started >= maxCells) {
+            return new Action(Kind.FAIL, px, pz, "swept " + started + " cells and found nothing");
         }
         Optional<Cell> next = grid.nextCell(px, pz, state.visitedCells);
         if (next.isEmpty()) {
             return new Action(Kind.FAIL, px, pz, "ran out of cells");
         }
         cell = next.get();
-        cellsStarted++;
+        cellsStarted[goal.ordinal()]++;
         waypoints = grid.waypoints(cell, cfg.sweepSpacingChunks, px, pz);
         index = 0;
         waypointSince = now;
