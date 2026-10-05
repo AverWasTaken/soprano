@@ -7,6 +7,8 @@ import baritone.api.utils.Dimension;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Vec3i;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.item.ItemEntity;
@@ -417,15 +419,34 @@ public final class HudText {
         return sb.toString();
     }
 
-    // for the blocks a mining task tracks: "logs" if they are logs, else the first block's name
+    // for the blocks a mining task tracks: "logs" if they are logs, else the first block's name. an ore and its
+    // deepslate twin are one thing to a player, so the pair reads as the plain ore ("Diamond Ore", not "Diamond Ore
+    // or 1 other", which looks an awful lot like it's ignoring the other one)
     public static String blocks(Block[] blocks) {
         if (blocks == null || blocks.length == 0) return "blocks";
+        blocks = withoutDeepslateTwins(blocks);
         if (blocks.length == 1) return block(blocks[0]);
         Item[] items = new Item[blocks.length];
         for (int i = 0; i < blocks.length; i++) {
             items[i] = blocks[i].asItem();
         }
         return items(items, 0);
+    }
+
+    // drops every deepslate_x whose plain x is also in the list
+    static Block[] withoutDeepslateTwins(Block[] blocks) {
+        Set<Block> all = new HashSet<>(Arrays.asList(blocks));
+        List<Block> out = new ArrayList<>(blocks.length);
+        for (Block b : blocks) {
+            if (b == null) continue;
+            String path = BuiltInRegistries.BLOCK.getKey(b).getPath();
+            if (path.startsWith("deepslate_")) {
+                Block plain = BuiltInRegistries.BLOCK.getValue(ResourceLocation.withDefaultNamespace(path.substring("deepslate_".length())));
+                if (plain != b && all.contains(plain)) continue;
+            }
+            out.add(b);
+        }
+        return out.toArray(Block[]::new);
     }
 
     // test hook, groups depend on the catalogue being loaded

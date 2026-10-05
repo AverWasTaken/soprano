@@ -358,20 +358,28 @@ public class BlockTracker extends Tracker {
         }
 
         // The scanning may run asynchronously.
-        BlockOptionalMetaLookup boml = new BlockOptionalMetaLookup(blocksToScan);
-        List<BlockPos> found = MineProcess.searchWorld(ctx, boml, _config.maxCacheSizePerBlockType, Collections.emptyList(), Collections.emptyList(), Collections.emptyList());
+        if (Minecraft.getInstance().level == null) {
+            return;
+        }
+        // one scan has one budget for everything it's looking for, so each type gets its own share. see PerTypeScan
+        Map<Block, List<BlockPos>> found = PerTypeScan.run(
+                blocksToScan,
+                _config.maxCacheSizePerBlockType,
+                (types, max) -> MineProcess.searchWorld(ctx, new BlockOptionalMetaLookup(types), max, Collections.emptyList(), Collections.emptyList(), Collections.emptyList()),
+                pos -> {
+                    ClientLevel level = Minecraft.getInstance().level;
+                    return level == null ? null : level.getBlockState(pos).getBlock();
+                }
+        );
 
         synchronized (_scanMutex) {
             if (Minecraft.getInstance().level != null) {
-                if (!found.isEmpty()) {
-                    for (BlockPos pos : found) {
-                        Block block = Minecraft.getInstance().level.getBlockState(pos).getBlock();
-                        synchronized (_trackingBlocks) {
-                            if (_trackingBlocks.containsKey(block)) {
-                                //Debug.logInternal("Good: " + block + " at " + pos);
-                                currentCache().addBlock(block, pos);
-                            }
-                        }
+                for (Map.Entry<Block, List<BlockPos>> entry : found.entrySet()) {
+                    synchronized (_trackingBlocks) {
+                        if (!_trackingBlocks.containsKey(entry.getKey())) continue;
+                    }
+                    for (BlockPos pos : entry.getValue()) {
+                        currentCache().addBlock(entry.getKey(), pos);
                     }
                 }
 
