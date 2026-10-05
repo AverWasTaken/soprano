@@ -14,6 +14,12 @@ public interface PhaseHandler {
     // plain words for the hud headline of this phase
     String hud();
 
+    // the step inside the phase in plain words ("Collecting Blaze Rods"), shown after the headline. null = just the headline.
+    // the engine feeds it to setDebugState(debug, hud) every tick, so keep it a field read
+    default String hudState() {
+        return null;
+    }
+
     // pure and cheap, the engine asks every tick. true = move on to the next phase
     boolean isDone(GamerFacts facts, RunState state, GamerConfig cfg);
 
