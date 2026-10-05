@@ -3,7 +3,7 @@ package adris.altoclef.tasks.speedrun.gamer.config;
 // owner: nether worker (NETHER, EYES, RETURN)
 public class NetherConfig {
     public enum PearlSource {
-        // endermen first, barter only as a top-up when the gold is already in hand (1.21.4 barter is 2.18% per ingot)
+        // endermen. v1 never barters on its own: 1.21.4 barter is 2.18% per ingot and the gold for it rarely exists
         AUTO,
         ENDERMEN,
         BARTER
@@ -30,8 +30,6 @@ public class NetherConfig {
     public double barterMinutes = 8;
     // endermen wandering in the nether with no warped forest known: give up after this long without a pearl
     public double huntWanderMinutes = 10;
-    // how long the way back to the portal may take before the return phase calls it failed
-    public double returnGiveUpMinutes = 3;
     // the engine budget fires at nether minutes, leave a little earlier than that when deciding "budget over"
     // so the floor rule wins the race against the timeout
     public double budgetGraceSeconds = 20;
