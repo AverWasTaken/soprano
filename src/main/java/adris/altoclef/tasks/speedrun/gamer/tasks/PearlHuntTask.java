@@ -15,6 +15,9 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.monster.EnderMan;
 import net.minecraft.world.item.Items;
 
+import java.util.Collections;
+import java.util.IdentityHashMap;
+import java.util.Set;
 import java.util.function.Supplier;
 
 // pearls from endermen, in the dimension we are told to hunt in. in the nether it walks to the warped forest first when
@@ -28,6 +31,8 @@ public class PearlHuntTask extends Task {
     private static final double ANGRY_RANGE = 256;
     // the walk to the forest is not allowed to take longer than this, after that we hunt wherever we are
     private static final double HOTSPOT_WALK_SECONDS = 150;
+    // an angry one across a lava lake never arrives: after this long on one target it is somebody else's problem
+    private static final double ANGRY_SECONDS = 20;
 
     private final int pearlsTotal;
     private final Dimension dimension;
@@ -41,6 +46,8 @@ public class PearlHuntTask extends Task {
     private boolean hotspotDone;
     private Entity angryTarget;
     private KillEntityTask angryTask;
+    private long angrySinceMs;
+    private final Set<Entity> angryGivenUp = Collections.newSetFromMap(new IdentityHashMap<>());
     private String step = "Looking for endermen";
 
     public PearlHuntTask(int pearlsTotal, Dimension dimension, Supplier<RunState.Pos> hotspot) {
@@ -62,6 +69,7 @@ public class PearlHuntTask extends Task {
         hotspotWalkingTo = null;
         angryTarget = null;
         angryTask = null;
+        angryGivenUp.clear();
     }
 
     @Override
@@ -86,16 +94,24 @@ public class PearlHuntTask extends Task {
         return child;
     }
 
-    // an enderman that is already after us dies first: it is coming anyway and it hits like a truck when ignored
+    // an enderman that is already after us dies first: it is coming anyway and it hits like a truck when ignored.
+    // but only for a while per target, one we cannot reach (lava, a ledge) does not get to stall the whole hunt
     private Task fightAngry(AltoClef mod) {
         for (EnderMan man : mod.getEntityTracker().getTrackedEntities(EnderMan.class)) {
-            if (man.isAlive() && man.isCreepy() && man.position().closerThan(mod.getPlayer().position(), ANGRY_RANGE)) {
-                if (angryTarget != man) {
-                    angryTarget = man;
-                    angryTask = new KillEntityTask(man);
-                }
-                return angryTask;
+            if (!man.isAlive() || !man.isCreepy() || angryGivenUp.contains(man)
+                    || !man.position().closerThan(mod.getPlayer().position(), ANGRY_RANGE)) {
+                continue;
             }
+            if (angryTarget != man) {
+                angryTarget = man;
+                angryTask = new KillEntityTask(man);
+                angrySinceMs = System.currentTimeMillis();
+            }
+            if (System.currentTimeMillis() - angrySinceMs > ANGRY_SECONDS * 1000) {
+                angryGivenUp.add(man);
+                continue;
+            }
+            return angryTask;
         }
         return null;
     }
