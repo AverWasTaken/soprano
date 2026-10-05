@@ -138,7 +138,7 @@ public class PrecomputedData {
         if (blocksToDisallowBreaking.contains(block)
                 || block == Blocks.ICE // ice becomes water, and water can mess up the path
                 || block instanceof InfestedBlock // obvious reasons
-                || block instanceof EndPortalFrameBlock) { // altoclef really doesn't want these gone, and they don't break in survival anyway
+                || (block instanceof EndPortalFrameBlock && (altoToggles & AltoClefSettings.TOGGLE_FRAMES) != 0)) { // altoclef really doesn't want these gone, and they don't break in survival anyway. only while it runs, stock lets creative users mine them
             blockData |= NEVER_BREAK_MASK;
         }
 

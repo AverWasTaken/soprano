@@ -91,7 +91,8 @@ public interface MovementHelper extends ActionCosts, Helper {
         }
         Block b = state.getBlock();
         return Baritone.settings().blocksToDisallowBreaking.value.contains(b)
-                || b instanceof EndPortalFrameBlock
+                // altoclef only, stock leaves frames to the world
+                || (b instanceof EndPortalFrameBlock && AltoClefSettings.getInstance().hasEndPortalFrameRules())
                 || b == Blocks.ICE // ice becomes water, and water can mess up the path
                 || b instanceof InfestedBlock // obvious reasons
                 // call context.get directly with x,y,z. no need to make 5 new BlockPos for no reason
@@ -108,7 +109,7 @@ public interface MovementHelper extends ActionCosts, Helper {
         // we assume that it's ALWAYS okay to break the block thats ABOVE liquid
         BlockState state = bsi.get0(x, y, z);
         Block block = state.getBlock();
-        if (directlyAbove && block instanceof EndPortalFrameBlock) {
+        if (directlyAbove && block instanceof EndPortalFrameBlock && AltoClefSettings.getInstance().hasEndPortalFrameRules()) {
             return true; // mining out from under a portal frame is how you lose an end portal
         }
         if (!directlyAbove // it is fine to mine a block that has a falling block directly above, this (the cost of breaking the stacked fallings) is included in cost calculations
@@ -449,7 +450,7 @@ public interface MovementHelper extends ActionCosts, Helper {
                 || block == Blocks.CACTUS
                 || block == Blocks.SWEET_BERRY_BUSH
                 || block instanceof BaseFireBlock
-                || block instanceof EndPortalFrameBlock
+                || (block instanceof EndPortalFrameBlock && AltoClefSettings.getInstance().hasEndPortalFrameRules())
                 || block == Blocks.END_PORTAL
                 || block == Blocks.COBWEB
                 || block == Blocks.BUBBLE_COLUMN;
@@ -489,8 +490,9 @@ public interface MovementHelper extends ActionCosts, Helper {
 
     static Ternary canWalkOnBlockState(BlockState state) {
         Block block = state.getBlock();
-        // not a full block, so isBlockNormalCube says no. you can very much stand on one though
-        if (block instanceof EndPortalFrameBlock) {
+        // not a full block, so isBlockNormalCube says no. you can very much stand on one though. altoclef only, and
+        // PrecomputedData is keyed on the toggle, stock soprano never routes over a frame
+        if (block instanceof EndPortalFrameBlock && AltoClefSettings.getInstance().hasEndPortalFrameRules()) {
             return YES;
         }
         if (block == Blocks.END_PORTAL && AltoClefSettings.getInstance().isCanWalkOnEndPortal()) {
