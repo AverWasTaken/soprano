@@ -8,6 +8,7 @@ These are on top of the Baritone features below, and all are off by default unle
 - **Ladder clutches** (`allowLadderClutch`). Place a vine or ladder next to the landing spot to survive a long fall, like a water bucket clutch. Needs a ladder or vine on the hotbar. `pickupLadders` (on by default) picks the ladder back up afterwards.
 - **Experimental movement** (`experimentalMovement`). Turns on all the parkour, sprint jumping and head hitters, takes falls that cost some health when it saves time (stays above `experimentalMinHealth`), cuts corners, smooths straight runs, places blocks more freely and leans toward jumps.
 - **Boats** (`allowBoats`) and **better swimming** (`allowSwimming`).
+- **AltoClef** (`#get`, `#gamer` and friends). [AltoClef](https://github.com/gaucho-matrero/altoclef) runs on top of the pathfinder: ask for an item and it mines, crafts, smelts, fights and eats its way there, with its current task tree shown in the top left. It does nothing until you start a task. Its settings all start with `alto`, see the [AltoClef section of USAGE.md](USAGE.md#altoclef).
 - **Rendering.** The path is a smooth antialiased ribbon with rounded corners, and the search visual is softer.
 - **Performance.** The pathfinder considers more movements per second and reuses its cache buffers.
 
