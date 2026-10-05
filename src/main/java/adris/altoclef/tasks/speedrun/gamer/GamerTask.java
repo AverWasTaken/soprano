@@ -17,6 +17,7 @@ import adris.altoclef.tasks.speedrun.gamer.phases.ReturnPhase;
 import adris.altoclef.tasks.speedrun.gamer.phases.RoomPhase;
 import adris.altoclef.tasks.speedrun.gamer.tasks.RecoverItemsTask;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.tasksystem.TaskChain;
 import adris.altoclef.util.helpers.ItemHelper;
 import baritone.Baritone;
 import baritone.altoclef.SettingsOverrides;
@@ -41,12 +42,9 @@ import java.util.List;
 // the part that touches the game: facts, deaths, saving, the hud and the settings for the run. which phase we are in and
 // when it gives up is PhaseMachine, which does not know there is a game. nothing in here is static, two runs never share anything
 public class GamerTask extends Task {
-    // the gear the End needs to still be in the bag when we get there, a full inventory must not throw it away
-    private static final Item[] PROTECTED = ArrayUtils.addAll(ArrayUtils.addAll(ArrayUtils.addAll(new Item[]{
-            Items.ENDER_EYE, Items.ENDER_PEARL, Items.BLAZE_ROD, Items.BLAZE_POWDER, Items.BUCKET, Items.WATER_BUCKET,
-            Items.LAVA_BUCKET, Items.FLINT_AND_STEEL, Items.CRAFTING_TABLE, Items.OBSIDIAN, Items.SHIELD,
-            Items.IRON_PICKAXE, Items.DIAMOND_PICKAXE, Items.IRON_SWORD, Items.DIAMOND_SWORD}, ItemHelper.BED),
-            ItemHelper.IRON_ARMORS), ItemHelper.DIAMOND_ARMORS);
+    // what a full inventory (altoThrowAwayUnusedItems, which the run forces on) must never throw away: the gear and
+    // materials the End needs, wool until it is beds, the stuff the next phases still have to smelt, trade and craft with
+    private static final Item[] PROTECTED = protectedItems();
     private static final Block[] TRACKED = ArrayUtils.addAll(new Block[]{
             Blocks.END_PORTAL_FRAME, Blocks.END_PORTAL, Blocks.CRAFTING_TABLE, Blocks.CHEST, Blocks.SPAWNER,
             Blocks.NETHER_PORTAL}, ItemHelper.itemsToBlocks(ItemHelper.BED));
@@ -54,7 +52,11 @@ public class GamerTask extends Task {
     private static final Item[] BUILD_BLOCKS = {Items.COBBLESTONE, Items.DIRT, Items.NETHERRACK, Items.END_STONE, Items.COBBLED_DEEPSLATE};
 
     private static final double SAVE_EVERY_SECONDS = 20;
+    // an interrupt (mob defense flickering on and off) saves at most this often, wall clock
+    private static final long INTERRUPT_SAVE_MILLIS = 5000;
     private static final double RECOVER_BUDGET_SECONDS = 90;
+    // the saved clock is further ahead than the world's own: the world was reset or this is another one
+    private static final long CLOCK_SLACK_TICKS = 200;
 
     private final PhaseMachine machine;
     private final GamerPhase startAt;
@@ -65,12 +67,15 @@ public class GamerTask extends Task {
     private GamerConfig cfg;
     private RunState state;
     private Path statePath;
-    // false until the first onStart did its loading. onStart runs again after every interrupt (eating, mob defense), and
-    // that is only a "put the overrides back", never a new run
-    private boolean started;
+    // false until the first tick with a player loaded the run state. onStart runs again after every interrupt (eating, mob
+    // defense) and that is only the task coming back, never a new run
+    private boolean begun;
     private boolean pushed;
+    // the engine owns the end portal walk flag: whatever a handler asked for last is put back on every (re)start
+    private boolean wantWalkOnPortal;
 
     private double lastSaveSeconds;
+    private long lastWriteMillis;
     private String lastWritten = "";
 
     // death tracking
@@ -80,6 +85,8 @@ public class GamerTask extends Task {
     private BlockPos deathPos;
     private long deathGameTime;
     private RecoverItemsTask recover;
+    // deaths on the books when this run was (re)started by hand, so the run wide cap only counts the new ones
+    private int deathsAtStart;
 
     // what the user had before we changed it for the run, to hand back on stop
     private Boolean userBlastFurnace;
@@ -106,42 +113,82 @@ public class GamerTask extends Task {
         machine = new PhaseMachine(handlers, host);
     }
 
+    private static Item[] protectedItems() {
+        Item[] own = {
+                Items.ENDER_EYE, Items.ENDER_PEARL, Items.BLAZE_ROD, Items.BLAZE_POWDER, Items.BUCKET, Items.WATER_BUCKET,
+                Items.LAVA_BUCKET, Items.FLINT_AND_STEEL, Items.CRAFTING_TABLE, Items.OBSIDIAN, Items.SHIELD,
+                Items.IRON_PICKAXE, Items.DIAMOND_PICKAXE, Items.IRON_SWORD, Items.DIAMOND_SWORD,
+                Items.IRON_INGOT, Items.RAW_IRON, Items.GOLD_INGOT, Items.DIAMOND, Items.COAL, Items.CHARCOAL, Items.FLINT,
+                Items.SHEARS, Items.CARVED_PUMPKIN, Items.GOLDEN_BOOTS};
+        Item[] all = own;
+        for (Item[] more : new Item[][]{ItemHelper.BED, ItemHelper.WOOL, ItemHelper.IRON_ARMORS, ItemHelper.DIAMOND_ARMORS}) {
+            all = ArrayUtils.addAll(all, more);
+        }
+        return all;
+    }
+
     // ---- task plumbing
 
+    // runs again every time the task comes back from an interrupt, so it only puts things back that are not there
     @Override
     protected void onStart(AltoClef mod) {
         this.mod = mod;
         if (facts == null) {
             facts = new MinecraftFacts(mod);
         }
-        applyBehaviour(mod);
-        if (started) {
+        if (!pushed) {
+            applyBehaviour(mod);
+        }
+        mod.getExtraBaritoneSettings().canWalkOnEndPortal(wantWalkOnPortal);
+        if (begun) {
             // back from an interrupt: same run, same phase, the clocks should not blame the chain that had the wheel
             machine.progress();
-            return;
         }
-        started = true;
-        facts.refresh();
-        cfg = GamerConfigs.get();
-        loadState(mod);
-        lastSaveSeconds = machine.now();
-        machine.begin(mod);
     }
 
+    // a pause (another chain has the wheel for a moment) keeps the item protection, the tracked blocks and the settings, it
+    // is exactly then that a full inventory could lose something. only a real stop lets go of them
     @Override
     protected void onStop(AltoClef mod, Task interruptTask) {
+        if (isInterrupting()) {
+            softSave();
+            return;
+        }
+        endRun(mod);
+    }
+
+    // #stop while we were paused: Task.stop does not call onStop for that, this is its replacement
+    @Override
+    protected void onStopWhilePaused(AltoClef mod) {
+        endRun(mod);
+    }
+
+    private void endRun(AltoClef mod) {
         try {
-            if (state != null) {
+            if (state != null && begun) {
                 host.save();
-                // an interrupt is a pause, the handler keeps its sub steps. only a real stop ends the phase
-                if (!isInterrupting() && started) {
-                    machine.exitCurrent(mod);
-                }
+                machine.exitCurrent(mod);
             }
         } catch (RuntimeException e) {
             Debug.logInternal("gamer: onStop " + e);
         } finally {
+            begun = false;
             releaseBehaviour(mod);
+        }
+    }
+
+    // exceptions from the child the handler handed back are thrown by Task.tick after our onTick returned, outside every
+    // net the machine has. same road as a handler that throws, and the broken child goes away so a retry builds a new one
+    @Override
+    public void tick(AltoClef mod, TaskChain parentChain) {
+        try {
+            super.tick(mod, parentChain);
+        } catch (RuntimeException e) {
+            if (!begun || machine.current() == null) {
+                throw e;
+            }
+            machine.failFromChild(e);
+            dropChild(mod);
         }
     }
 
@@ -167,7 +214,7 @@ public class GamerTask extends Task {
         }
         // credits can show up between two of our ticks (the dragon dies, the screen opens), record it now so a task that
         // is finished but never stopped (altoRunsWhenIdle) still leaves a saved DONE behind
-        if (!machine.ended() && Minecraft.getInstance().screen instanceof WinScreen) {
+        if (begun && !machine.ended() && Minecraft.getInstance().screen instanceof WinScreen) {
             machine.finish(true);
         }
         return machine.ended();
@@ -190,6 +237,7 @@ public class GamerTask extends Task {
             Debug.logInternal("gamer: stopTracking " + e);
         }
         try {
+            wantWalkOnPortal = false;
             mod.getExtraBaritoneSettings().canWalkOnEndPortal(false);
             releaseRunSettings();
         } catch (RuntimeException e) {
@@ -244,10 +292,33 @@ public class GamerTask extends Task {
 
     // ---- state
 
+    // first tick with a player: the facts are real now, so the clocks and the saved run can be compared with the world
+    private void beginRun(AltoClef mod) {
+        cfg = GamerConfigs.get();
+        loadState(mod);
+        deathsAtStart = state.deaths.size();
+        lastSaveSeconds = machine.now();
+        begun = true;
+        machine.begin(mod);
+    }
+
     private void loadState(AltoClef mod) {
         statePath = RunStateStore.resolvePath(mod);
+        if (RunStateStore.isSharedFallback(statePath)) {
+            host.say("No world folder to save into yet, the run state goes to a file shared by all worlds");
+        }
         RunStateStore.Loaded loaded = RunStateStore.load(statePath, RunStateStore.fingerprint());
         state = loaded.state();
+        boolean resumed = loaded.resumed();
+        if (resumed && state.phaseEnteredGameTime > facts.gameTime() + CLOCK_SLACK_TICKS) {
+            // game time only ever goes forward inside one world, so this file was written in another one (or the same one
+            // before it was reset). not ours to resume
+            host.say("The saved run is from a world that has been reset, starting over");
+            String fingerprint = state.fingerprint;
+            state = new RunState();
+            state.fingerprint = fingerprint;
+            resumed = false;
+        }
         if (state.startedEpochMs == 0) {
             state.startedEpochMs = System.currentTimeMillis();
         }
@@ -257,7 +328,7 @@ public class GamerTask extends Task {
         }
         if (startAt != null) {
             jumpTo(startAt);
-        } else if (loaded.resumed()) {
+        } else if (resumed) {
             resumeSaved();
         }
     }
@@ -269,6 +340,7 @@ public class GamerTask extends Task {
         state.finished = false;
         state.phaseAttempts.put(phase.name(), 1);
         state.deathsThisPhase = 0;
+        state.regressCounts.clear();
         host.say("Starting at: " + phase.hud());
     }
 
@@ -284,6 +356,7 @@ public class GamerTask extends Task {
             state.stuck = false;
             state.stuckReason = "";
             state.deathsThisPhase = 0;
+            state.regressCounts.clear();
             state.phaseAttempts.put(state.phase.name(), 1);
         } else {
             host.say("Resuming at: " + state.phase.hud());
@@ -299,9 +372,13 @@ public class GamerTask extends Task {
             return;
         }
         lastSaveSeconds = now;
-        String json = RunStateStore.toJson(state);
-        if (!json.equals(lastWritten) && RunStateStore.write(statePath, json)) {
-            lastWritten = json;
+        host.save();
+    }
+
+    // an interrupt storm (mob defense on and off, on and off) must not be a file write each
+    private void softSave() {
+        if (state != null && begun && System.currentTimeMillis() - lastWriteMillis >= INTERRUPT_SAVE_MILLIS) {
+            host.save();
         }
     }
 
@@ -315,13 +392,22 @@ public class GamerTask extends Task {
             // the engine itself must not take the bridge's error strikes, a bug here ends the run with a saved state
             Debug.logWarning("gamer engine error: " + e);
             e.printStackTrace();
-            machine.stuck("the engine hit an error (" + e + ")");
+            if (begun) {
+                machine.stuck("the engine hit an error (" + e + ")");
+            }
             return null;
         }
     }
 
     private Task engineTick(AltoClef mod) {
-        if (machine.ended() || !facts.refresh()) {
+        if (!facts.refresh()) {
+            // no player yet (an idle command on join): the clocks must not start from zero
+            return null;
+        }
+        if (!begun) {
+            beginRun(mod);
+        }
+        if (machine.ended()) {
             return null;
         }
         cfg = GamerConfigs.get();
@@ -401,6 +487,10 @@ public class GamerTask extends Task {
         recover = null;
         if (state.deathsThisPhase >= cfg.death.maxPerPhase) {
             machine.stuck("died " + state.deathsThisPhase + " times in this phase");
+            return;
+        }
+        if (state.deaths.size() - deathsAtStart >= cfg.death.maxTotal) {
+            machine.stuck("died " + (state.deaths.size() - deathsAtStart) + " times since the run was started");
             return;
         }
         if (shouldRecover()) {
@@ -497,20 +587,28 @@ public class GamerTask extends Task {
             Debug.logMessage(line);
         }
 
+        // identical json is not written twice, the saves come from phase moves, deaths, stops and a timer
         @Override
         public void save() {
             if (statePath == null) {
                 return;
             }
             String json = RunStateStore.toJson(state);
+            if (json.equals(lastWritten)) {
+                return;
+            }
             if (RunStateStore.write(statePath, json)) {
                 lastWritten = json;
+                lastWriteMillis = System.currentTimeMillis();
             }
         }
 
         @Override
         public void walkOnEndPortal(boolean on) {
-            mod.getExtraBaritoneSettings().canWalkOnEndPortal(on);
+            wantWalkOnPortal = on;
+            if (mod != null) {
+                mod.getExtraBaritoneSettings().canWalkOnEndPortal(on);
+            }
         }
     }
 }
