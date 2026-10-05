@@ -4,7 +4,7 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.tasks.InteractWithBlockTask;
 import adris.altoclef.tasks.resources.GetBuildingMaterialsTask;
-import adris.altoclef.tasks.speedrun.BeatMinecraft2Task;
+import adris.altoclef.tasks.speedrun.KillEnderDragonTask;
 import adris.altoclef.tasks.squashed.CataloguedResourceTask;
 import adris.altoclef.tasksystem.Task;
 import baritone.api.utils.Dimension;
@@ -43,7 +43,10 @@ public class GetToOuterEndIslandsTask extends Task {
     protected void onStart(AltoClef mod) {
         mod.getBehaviour().push();
         mod.getBlockTracker().trackBlock(Blocks.END_GATEWAY);
-        _beatTheGame = new BeatMinecraft2Task();
+        // this used to be a whole BeatMinecraft2Task (all the way from the overworld). now it is just the dragon, so be
+        // in the End first (#gamer gets you there). TODO if the outer islands trip is ever more than a playground toy:
+        // run a GamerTask here instead
+        _beatTheGame = new KillEnderDragonTask(false);
     }
 
     @Override
@@ -74,7 +77,11 @@ public class GetToOuterEndIslandsTask extends Task {
             setDebugState("Throwing the pearl inside");
             return new InteractWithBlockTask(Items.ENDER_PEARL, gateway);
         }
-        setDebugState("Beating the Game to get to an end gateway");
+        if (WorldHelper.getCurrentDimension() != Dimension.END) {
+            setDebugState("Waiting to be in the End", "Waiting to be in the End");
+            return null;
+        }
+        setDebugState("Killing the dragon to get an end gateway", "Fighting the dragon for a gateway");
         return _beatTheGame;
     }
 

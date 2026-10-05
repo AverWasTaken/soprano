@@ -5,6 +5,7 @@ import adris.altoclef.Debug;
 import adris.altoclef.tasks.InteractWithBlockTask;
 import adris.altoclef.tasks.movement.GetToBlockTask;
 import adris.altoclef.tasks.movement.GetToXZTask;
+import adris.altoclef.tasks.speedrun.gamer.end.DragonDeadLatch;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.LookHelper;
@@ -21,16 +22,25 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.Vec3;
 
 public class KillEnderDragonWithBedsTask extends Task {
+    public static final double DEFAULT_CLICK_RANGE = 5.3;
+    private static final double DRAGON_GONE_SECONDS = 5;
+
     private final Task _whenNotPerchingTask;
+    private final double _clickRange;
+    // instance state: this used to be two statics shared by every instance (and Playground), reset only in onStart
+    private final DragonDeadLatch _deadLatch = new DragonDeadLatch(DRAGON_GONE_SECONDS);
 
     private BlockPos _endPortalTop;
     private Task _positionTask;
-
-    private static boolean isDragonDead;
-    private static boolean isDragonPresent;
+    private boolean _perching;
 
     public KillEnderDragonWithBedsTask(IDragonWaiter notPerchingOverride) {
+        this(notPerchingOverride, DEFAULT_CLICK_RANGE);
+    }
+
+    public KillEnderDragonWithBedsTask(IDragonWaiter notPerchingOverride, double clickRange) {
         _whenNotPerchingTask = (Task) notPerchingOverride;
+        _clickRange = clickRange;
     }
 
     private static BlockPos locateExitPortalTop(AltoClef mod) {
@@ -42,8 +52,22 @@ public class KillEnderDragonWithBedsTask extends Task {
 
     @Override
     protected void onStart(AltoClef mod) {
-        isDragonDead = false;
-        isDragonPresent = false;
+        _deadLatch.reset();
+        _perching = false;
+        mod.getBlockTracker().trackBlock(Blocks.END_PORTAL);
+    }
+
+    // no beds left in the inventory and none placed and waiting to be clicked. the caller swaps to the sword when this
+    // holds and the dragon is not perched (see isFinished), this task alone would pillar and wait forever
+    public boolean outOfBeds(AltoClef mod) {
+        if (mod.getItemStorage().hasItem(ItemHelper.BED)) {
+            return false;
+        }
+        return _endPortalTop == null || !mod.getBlockTracker().blockIsValid(_endPortalTop.above(), ItemHelper.itemsToBlocks(ItemHelper.BED));
+    }
+
+    public boolean isDragonDead() {
+        return _deadLatch.isDead();
     }
 
     @Override
@@ -62,12 +86,12 @@ public class KillEnderDragonWithBedsTask extends Task {
                 // Perform "Default Wander" mode and avoid dragon breath.
          */
         Optional<Entity> dragon = mod.getEntityTracker().getClosestEntity(EnderDragon.class);
-        if (dragon.isEmpty() && !isDragonPresent) {
+        _deadLatch.update(mod.getBlockTracker().anyFound(Blocks.END_PORTAL), dragon.isPresent(),
+                mod.getChunkTracker().isChunkLoaded(new BlockPos(0, 64, 0)), mod.getWorld().getGameTime() / 20.0);
+        _perching = false;
+        if (!_deadLatch.hasSeenDragon() && !_deadLatch.isDead()) {
             setDebugState("Waiting for dragon to spawn.", "Waiting for the dragon");
             return null;
-        }
-        if (!isDragonPresent) {
-            isDragonPresent = true;
         }
         if (_endPortalTop == null) {
             _endPortalTop = locateExitPortalTop(mod);
@@ -81,7 +105,7 @@ public class KillEnderDragonWithBedsTask extends Task {
             return new GetToXZTask(0, 0);
         }
 
-        if (isDragonDead) {
+        if (_deadLatch.isDead()) {
             setDebugState("Waiting for overworld portal to spawn.");
             if (mod.getPlayer().getXRot() != -90) {
                 mod.getPlayer().setXRot(-90);
@@ -89,16 +113,14 @@ public class KillEnderDragonWithBedsTask extends Task {
             return null;
         }
 
-        if (!mod.getEntityTracker().entityFound(EnderDragon.class)) {
+        if (dragon.isEmpty()) {
             setDebugState("No dragon found.");
-
+            // not in the latch until it has been gone a while: walk to the middle meanwhile, that is where it ends up anyway
             if (!WorldHelper.inRangeXZ(mod.getPlayer(), _endPortalTop, 0.25)) {
                 setDebugState("Going to end portal top at " + _endPortalTop.toString() + ".");
                 return new GetToXZTask(_endPortalTop.getX(), _endPortalTop.getZ());
             }
-            isDragonDead = true;
-        }
-        if (dragon.isPresent()) {
+        } else {
             EnderDragon dragonEntity = (EnderDragon) dragon.get();
             DragonPhaseInstance dragonPhase = dragonEntity.getPhaseManager().getCurrentPhase();
 
@@ -107,6 +129,7 @@ public class KillEnderDragonWithBedsTask extends Task {
                 // Dragon is already perched.
                 perching = false;
             }
+            _perching = perching;
             ((IDragonWaiter) _whenNotPerchingTask).setPerchState(perching);
             // When the dragon is not perching...
             if (_whenNotPerchingTask.isActive() && !_whenNotPerchingTask.isFinished(mod)) {
@@ -116,7 +139,6 @@ public class KillEnderDragonWithBedsTask extends Task {
             if (perching) {
                 mod.getFoodChain().shouldStop(true);
                 BlockPos targetStandPosition = _endPortalTop.offset(-1, -1, 0);
-                BlockPos playerPosition = mod.getPlayer().blockPosition();
                 // If we're not positioned (above is OK), go there and make sure we're at the right height.
                 if (_positionTask != null && _positionTask.isActive() && !_positionTask.isFinished(mod)) {
                     setDebugState("Going to position for bed cycle...", "Getting into position");
@@ -126,56 +148,12 @@ public class KillEnderDragonWithBedsTask extends Task {
 //                            && mod.getPlayer().getVelocity().getX() == 0 && mod.getPlayer().getVelocity().getY() == 0 && mod.getPlayer().getVelocity().getZ() == 0
                 ) {
                     _positionTask = new GetToBlockTask(targetStandPosition);
-                    Debug.logMessage("Going to position for bed cycle...");
+                    Debug.logInternal("Going to position for bed cycle...");
                     setDebugState("Moving to target stand position", "Getting into position");
                     return _positionTask;
                 }
                 // We're positioned. Perform bed strats!
-                BlockPos bedTargetPosition = _endPortalTop.above();
-                boolean bedPlaced = mod.getBlockTracker().blockIsValid(bedTargetPosition, ItemHelper.itemsToBlocks(ItemHelper.BED));
-                if (!bedPlaced) {
-                    setDebugState("Placing bed", "Placing a bed");
-                    // If no bed, place bed.
-                    // Fire messes up our "reach" so we just assume we're good when we're above a height.
-                    boolean canPlace = LookHelper.getCameraPos(mod).y > bedTargetPosition.getY();
-                    //Optional<Rotation> placeReach = LookHelper.getReach(bedTargetPosition.down(), Direction.UP);
-                    if (canPlace) {
-                        // Look at and place!
-                        if (mod.getSlotHandler().forceEquipItem(ItemHelper.BED, true)) {
-                            LookHelper.lookAt(mod, bedTargetPosition.below(), Direction.UP, true);
-                            //mod.getClientBaritone().getLookBehavior().updateTarget(placeReach.get(), true);
-                            //if (mod.getClientBaritone().getPlayerContext().isLookingAt(bedTargetPosition.down())) {
-                            // There could be fire so eh place right away
-                            mod.getInputControls().tryPress(Input.CLICK_RIGHT);
-                            //}
-                        }
-                    } else {
-                        if (mod.getPlayer().onGround()) {
-                            // Jump
-                            mod.getInputControls().tryPress(Input.JUMP);
-                        }
-                    }
-                } else {
-                    setDebugState("Wait for it...", "Waiting for the dragon");
-                    // Make sure we're standing on the ground so we don't blow ourselves up lmfao
-                    if (!mod.getPlayer().onGround()) {
-                        // Wait to fall
-                        return null;
-                    }
-                    // Wait for dragon head to be close enough to the bed's head...
-                    BlockPos bedfoot = WorldHelper.getBedFoot(mod, bedTargetPosition);
-                    assert bedfoot != null;
-                    Vec3 headPos = dragonEntity.head.getBoundingBox().getCenter(); // dragon.head.getPos();
-                    double dist = headPos.distanceTo(WorldHelper.toVec3d(bedfoot));
-                    Debug.logMessage("Dist: " + dist + " Health: " + dragonEntity.getHealth());
-
-                    if (dist < BeatMinecraft2Task.getConfig().dragonHeadCloseEnoughClickBedRange) {
-                        // Interact with the bed.
-                        return new InteractWithBlockTask(bedTargetPosition);
-                    }
-                    // Wait for it...
-                }
-                return null;
+                return bedCycle(mod, dragonEntity);
             }
         }
         mod.getFoodChain().shouldStop(false);
@@ -183,14 +161,62 @@ public class KillEnderDragonWithBedsTask extends Task {
         return _whenNotPerchingTask;
     }
 
-    @Override
-    protected void onStop(AltoClef mod, Task interruptTask) {
-        mod.getFoodChain().shouldStop(false);
+    private Task bedCycle(AltoClef mod, EnderDragon dragonEntity) {
+        BlockPos bedTargetPosition = _endPortalTop.above();
+        boolean bedPlaced = mod.getBlockTracker().blockIsValid(bedTargetPosition, ItemHelper.itemsToBlocks(ItemHelper.BED));
+        if (!bedPlaced) {
+            setDebugState("Placing bed", "Placing a bed");
+            // If no bed, place bed.
+            // Fire messes up our "reach" so we just assume we're good when we're above a height.
+            boolean canPlace = LookHelper.getCameraPos(mod).y > bedTargetPosition.getY();
+            if (canPlace) {
+                // Look at and place!
+                if (mod.getSlotHandler().forceEquipItem(ItemHelper.BED, true)) {
+                    LookHelper.lookAt(mod, bedTargetPosition.below(), Direction.UP, true);
+                    // There could be fire so eh place right away
+                    mod.getInputControls().tryPress(Input.CLICK_RIGHT);
+                }
+            } else if (mod.getPlayer().onGround()) {
+                // Jump
+                mod.getInputControls().tryPress(Input.JUMP);
+            }
+            return null;
+        }
+        setDebugState("Wait for it...", "Waiting for the dragon");
+        // Make sure we're standing on the ground so we don't blow ourselves up lmfao
+        if (!mod.getPlayer().onGround()) {
+            // Wait to fall
+            return null;
+        }
+        // Wait for dragon head to be close enough to the bed's head...
+        BlockPos bedfoot = WorldHelper.getBedFoot(mod, bedTargetPosition);
+        if (bedfoot == null) {
+            return null;
+        }
+        Vec3 headPos = dragonEntity.head.getBoundingBox().getCenter(); // dragon.head.getPos();
+        double dist = headPos.distanceTo(WorldHelper.toVec3d(bedfoot));
+        // this logged every tick for the whole perch
+        Debug.logInternal("Dist: " + dist + " Health: " + dragonEntity.getHealth());
+
+        if (dist < _clickRange) {
+            // Interact with the bed.
+            return new InteractWithBlockTask(bedTargetPosition);
+        }
+        // Wait for it...
+        return null;
     }
 
     @Override
+    protected void onStop(AltoClef mod, Task interruptTask) {
+        mod.getFoodChain().shouldStop(false);
+        mod.getBlockTracker().stopTracking(Blocks.END_PORTAL);
+    }
+
+    // finished = out of beds and the dragon is not perched, the phase swaps to KillEnderDragonTask then. while perched we
+    // stay: the last bed may be on the pillar waiting for its click
+    @Override
     public boolean isFinished(AltoClef mod) {
-        return super.isFinished(mod);
+        return isActive() && !_perching && outOfBeds(mod);
     }
 
     @Override

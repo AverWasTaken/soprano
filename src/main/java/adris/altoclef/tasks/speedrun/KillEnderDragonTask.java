@@ -9,6 +9,9 @@ import adris.altoclef.tasks.misc.EquipArmorTask;
 import adris.altoclef.tasks.movement.GetToBlockTask;
 import adris.altoclef.tasks.movement.PickupDroppedItemTask;
 import adris.altoclef.tasks.resources.MineAndCollectTask;
+import adris.altoclef.tasks.slot.MoveItemToSlotFromInventoryTask;
+import adris.altoclef.util.slots.PlayerSlot;
+import net.minecraft.world.entity.EquipmentSlot;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.MiningRequirement;
@@ -50,7 +53,23 @@ public class KillEnderDragonTask extends Task {
     private final TimerGame _lookDownTimer = new TimerGame(0.5);
     private final Task _collectBuildMaterialsTask = new MineAndCollectTask(new ItemTarget(Items.END_STONE, 100), new Block[]{Blocks.END_STONE}, MiningRequirement.WOOD);
     private final PunkEnderDragonTask _punkTask = new PunkEnderDragonTask();
+    // false for the outer islands trip: the gateways only show up once the dragon is dead, but we are not done after that
+    private final boolean _enterExitPortal;
+    private Task _pumpkinTask;
     private BlockPos _exitPortalTop;
+
+    public KillEnderDragonTask() {
+        this(true);
+    }
+
+    public KillEnderDragonTask(boolean enterExitPortal) {
+        _enterExitPortal = enterExitPortal;
+    }
+
+    // a carved pumpkin on the head: endermen do not care that we look at them
+    public static boolean pumpkinWorn(AltoClef mod) {
+        return mod.getPlayer().getItemBySlot(EquipmentSlot.HEAD).is(Items.CARVED_PUMPKIN);
+    }
 
     private static Task getPickupTaskIfAny(AltoClef mod, Item... itemsToPickup) {
         for (Item check : itemsToPickup) {
@@ -94,8 +113,20 @@ public class KillEnderDragonTask extends Task {
             return pickupDrops;
         }
 
+        if (mod.getItemStorage().hasItem(Items.CARVED_PUMPKIN) && !pumpkinWorn(mod)) {
+            setDebugState("Putting on a pumpkin", "Putting on a pumpkin");
+            if (_pumpkinTask == null) {
+                _pumpkinTask = new MoveItemToSlotFromInventoryTask(new ItemTarget(Items.CARVED_PUMPKIN, 1), PlayerSlot.getEquipSlot(EquipmentSlot.HEAD));
+            }
+            return _pumpkinTask;
+        }
+
         // If not equipped diamond armor and we have any, equip it.
         for (Item armor : ItemHelper.DIAMOND_ARMORS) {
+            // the pumpkin sits where the helmet goes, do not swap them back and forth
+            if (armor == Items.DIAMOND_HELMET && pumpkinWorn(mod)) {
+                continue;
+            }
             try {
                 if (mod.getItemStorage().hasItem(armor) && !StorageHelper.isArmorEquipped(mod, armor)) {
                     setDebugState("Equipping " + armor);
@@ -116,7 +147,7 @@ public class KillEnderDragonTask extends Task {
         }
 
         // If there is a portal, enter it.
-        if (mod.getBlockTracker().anyFound(Blocks.END_PORTAL)) {
+        if (_enterExitPortal && mod.getBlockTracker().anyFound(Blocks.END_PORTAL)) {
             setDebugState("Entering portal to beat the game.");
             return new DoToClosestBlockTask(
                     blockPos -> new GetToBlockTask(blockPos.above(), false),
@@ -208,6 +239,9 @@ public class KillEnderDragonTask extends Task {
         private final TimerGame _randomWanderChangeTimeout = new TimerGame(20);
         private Mode _mode = Mode.WAITING_FOR_PERCH;
 
+        private static final int WANDER_TRIES = 30;
+        private static final int ISLAND_SCAN_TOP = 90;
+        private static final int ISLAND_SCAN_BOTTOM = 30;
         private BlockPos _randomWanderPos;
         private boolean _wasHitting;
         private boolean _wasReleased;
@@ -350,6 +384,11 @@ public class KillEnderDragonTask extends Task {
                             _randomWanderChangeTimeout.reset();
                             mod.getClientBaritone().getCustomGoalProcess().onLostControl();
                         }
+                        if (_randomWanderPos == null) {
+                            // no end stone in a few probes (void under us?), try again next tick
+                            setDebugState("Looking for somewhere to wait", "Waiting for the dragon to perch");
+                            return null;
+                        }
                         if (!mod.getClientBaritone().getCustomGoalProcess().isActive()) {
                             mod.getClientBaritone().getCustomGoalProcess().setGoalAndPath(
                                     new GoalGetToBlock(_randomWanderPos)
@@ -388,27 +427,30 @@ public class KillEnderDragonTask extends Task {
         private BlockPos getRandomWanderPos(AltoClef mod) {
             double RADIUS_RANGE = 45;
             double MIN_RADIUS = 7;
-            BlockPos pos = null;
-            int allowed = 5000;
-
-            while (pos == null) {
-                if (allowed-- < 0) {
-                    Debug.logWarning("Failed to find random solid ground in end, this may lead to problems.");
-                    return null;
-                }
+            // this used to try 5000 times per call, each a scan from the world ceiling, on the main thread. the island
+            // is a disk right under us so a few probes find end stone, and a miss just means we ask again next tick
+            for (int tries = 0; tries < WANDER_TRIES; tries++) {
                 double radius = MIN_RADIUS + (RADIUS_RANGE - MIN_RADIUS) * Math.random();
                 double angle = Math.PI * 2 * Math.random();
                 int x = (int) (radius * Math.cos(angle)),
                         z = (int) (radius * Math.sin(angle));
-                int y = WorldHelper.getGroundHeight(mod, x, z);
+                int y = islandSurface(mod, x, z);
                 if (y == -1) continue;
                 BlockPos check = new BlockPos(x, y, z);
                 if (mod.getWorld().getBlockState(check).getBlock() == Blocks.END_STONE) {
                     // We found a spot!
-                    pos = check.above();
+                    return check.above();
                 }
             }
-            return pos;
+            return null;
+        }
+
+        // the island sits well below the pillar tops, no need to start the scan at the ceiling
+        private int islandSurface(AltoClef mod, int x, int z) {
+            for (int y = ISLAND_SCAN_TOP; y >= ISLAND_SCAN_BOTTOM; --y) {
+                if (WorldHelper.isSolid(mod, new BlockPos(x, y, z))) return y;
+            }
+            return -1;
         }
     }
 }

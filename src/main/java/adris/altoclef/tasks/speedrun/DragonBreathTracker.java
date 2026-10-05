@@ -8,19 +8,23 @@ import adris.altoclef.util.progresscheck.MovementProgressChecker;
 import baritone.api.pathing.goals.Goal;
 import baritone.api.pathing.goals.GoalRunAway;
 import java.util.HashSet;
-import java.util.Optional;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.AreaEffectCloud;
-import net.minecraft.world.entity.Entity;
 
 public class DragonBreathTracker {
+    // clouds further than this cannot matter this tick and the box to block expansion is the only cost here
+    private static final double CLOUD_RANGE = 24;
     private final HashSet<BlockPos> _breathBlocks = new HashSet<>();
 
     public void updateBreath(AltoClef mod) {
         _breathBlocks.clear();
-        Optional<Entity> cloud = mod.getEntityTracker().getClosestEntity(AreaEffectCloud.class);
-        if (cloud.isPresent()) {
-            for (BlockPos bad : WorldHelper.getBlocksTouchingBox(mod, cloud.get().getBoundingBox())) {
+        // every cloud close by, not just the nearest: a perched dragon leaves a whole trail of them and stepping
+        // out of the nearest one into the next is not dodging anything
+        for (AreaEffectCloud cloud : mod.getEntityTracker().getTrackedEntities(AreaEffectCloud.class)) {
+            if (!cloud.closerThan(mod.getPlayer(), CLOUD_RANGE)) {
+                continue;
+            }
+            for (BlockPos bad : WorldHelper.getBlocksTouchingBox(mod, cloud.getBoundingBox())) {
                 _breathBlocks.add(bad);
             }
         }

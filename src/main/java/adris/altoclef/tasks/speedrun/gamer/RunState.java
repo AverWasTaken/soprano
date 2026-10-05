@@ -117,6 +117,10 @@ public class RunState {
     // game time the open phase first noticed it could not fill the rest of the frames. 0 = fine
     public long openNoEyesSince;
 
+    // w6
+    // the extra bed near the portal took too long (or could not be placed): go to the End without a spawn bed
+    public boolean spawnBedGaveUp;
+
     public int attemptsOf(GamerPhase p) {
         return phaseAttempts.getOrDefault(p.name(), 0);
     }

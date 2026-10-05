@@ -39,7 +39,11 @@ public class WaitForDragonAndPearlTask extends Task implements IDragonWaiter {
 
     private static final int CLOSE_ENOUGH_DISTANCE = 15;
 
-    private final int Y_COORDINATE = 75;
+    // this was a "Y_COORDINATE = 75" fed in as the Z of the pillar goal, which is a pillar in the void. we pillar at XZ_RADIUS
+    // from the fountain instead: the obsidian towers sit around 42 out, the dragon dives at the middle
+    private BlockPos _pillarSpot;
+    private BlockPos _pillarGoal;
+    private static final double PILLAR_SPOT_SLACK = 6;
 
     private static final double DRAGON_FIREBALL_TOO_CLOSE_RANGE = 40;
     private final Task _buildingMaterialsTask = new GetBuildingMaterialsTask(HEIGHT + 10);
@@ -73,6 +77,11 @@ public class WaitForDragonAndPearlTask extends Task implements IDragonWaiter {
 
     @Override
     protected Task onTick(AltoClef mod) {
+        // everything below leans on the pearl target, which only exists after setExitPortalTop
+        if (_targetToPearl == null) {
+            setDebugState("Waiting for the exit portal to show up.", "Waiting for the dragon");
+            return null;
+        }
         if (_throwPearlTask != null && _throwPearlTask.isActive() && !_throwPearlTask.isFinished(mod)) {
             setDebugState("Throwing pearl!");
             return _throwPearlTask;
@@ -180,7 +189,10 @@ public class WaitForDragonAndPearlTask extends Task implements IDragonWaiter {
             }
             return null;
         }
-        if (!WorldHelper.inRangeXZ(mod.getPlayer(), _targetToPearl, XZ_RADIUS_TOO_FAR) && mod.getPlayer().position().y() < minHeight && !_hasPillar) {
+        if (_pillarSpot == null) {
+            _pillarSpot = pickPillarSpot(mod);
+        }
+        if (!WorldHelper.inRangeXZ(mod.getPlayer(), _pillarSpot, PILLAR_SPOT_SLACK) && mod.getPlayer().position().y() < minHeight && !_hasPillar) {
             if (mod.getEntityTracker().entityFound(entity ->
                     mod.getPlayer().position().closerThan(entity.position(), 4), AreaEffectCloud.class)) {
                 if (mod.getEntityTracker().getClosestEntity(EnderDragon.class).isPresent() &&
@@ -189,15 +201,33 @@ public class WaitForDragonAndPearlTask extends Task implements IDragonWaiter {
                 }
                 return null;
             }
-            setDebugState("Moving in (too far, might hit pillars)");
-            return new GetToXZTask(0, 0);
+            setDebugState("Moving to the pillar spot", "Getting to the pillar spot");
+            return new GetToXZTask(_pillarSpot.getX(), _pillarSpot.getZ());
         }
         // We're far enough, pillar up!
         if (!_hasPillar) {
             _hasPillar = true;
         }
-        _heightPillarTask = new GetToBlockTask(new BlockPos(0, minHeight, Y_COORDINATE));
+        BlockPos pillarGoal = new BlockPos(_pillarSpot.getX(), minHeight, _pillarSpot.getZ());
+        if (_heightPillarTask == null || !pillarGoal.equals(_pillarGoal)) {
+            _pillarGoal = pillarGoal;
+            _heightPillarTask = new GetToBlockTask(pillarGoal);
+        }
         return _heightPillarTask;
+    }
+
+    // XZ_RADIUS out from the fountain on the side we are already on (east, where the arrival platform is, when we are in the middle)
+    private BlockPos pickPillarSpot(AltoClef mod) {
+        double dx = mod.getPlayer().getX() - _targetToPearl.getX();
+        double dz = mod.getPlayer().getZ() - _targetToPearl.getZ();
+        double len = Math.sqrt(dx * dx + dz * dz);
+        if (len < 1) {
+            dx = 1;
+            dz = 0;
+            len = 1;
+        }
+        return new BlockPos((int) Math.round(_targetToPearl.getX() + dx / len * XZ_RADIUS), 0,
+                (int) Math.round(_targetToPearl.getZ() + dz / len * XZ_RADIUS));
     }
 
     private boolean isFireballDangerous(AltoClef mod, Optional<Entity> fireball) {
@@ -224,7 +254,7 @@ public class WaitForDragonAndPearlTask extends Task implements IDragonWaiter {
     public boolean isFinished(AltoClef mod) {
         return _dragonIsPerching
                 && ((_throwPearlTask == null || (_throwPearlTask.isActive() && _throwPearlTask.isFinished(mod)))
-                || WorldHelper.inRangeXZ(mod.getPlayer(), _targetToPearl, CLOSE_ENOUGH_DISTANCE));
+                || (_targetToPearl != null && WorldHelper.inRangeXZ(mod.getPlayer(), _targetToPearl, CLOSE_ENOUGH_DISTANCE)));
     }
 
     @Override
