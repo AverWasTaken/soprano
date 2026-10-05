@@ -24,10 +24,15 @@ public abstract class Task {
     // true while onStop runs because a chain took over for a bit (the task comes back through onStart), false for a real stop
     private boolean _interrupting = false;
 
+    // an interrupt ran onStop and the task has not been started again yet. a real stop in that state would skip onStop
+    // (it only runs when the task is running), so onStopWhilePaused gets the chance to clean up instead
+    private boolean _paused = false;
+
     public void tick(AltoClef mod, TaskChain parentChain) {
         parentChain.addTaskToChain(this);
         if (_first) {
             Debug.logInternal("Task START: " + this);
+            _paused = false;
             _active = true;
             onStart(mod);
             _first = false;
@@ -71,6 +76,21 @@ public abstract class Task {
         _first = true;
         _active = false;
         _stopped = false;
+        _paused = false;
+    }
+
+    // for a task that wants to take its child away after the child threw: the child is stopped and forgotten, so the
+    // next onTick can hand in a fresh one (a same-class child would be kept by isEqual otherwise)
+    protected final void dropChild(AltoClef mod) {
+        Task sub = _sub;
+        _sub = null;
+        if (sub != null) {
+            try {
+                sub.stop(mod);
+            } catch (RuntimeException e) {
+                Debug.logInternal("Task: dropped child " + sub + " threw while stopping: " + e);
+            }
+        }
     }
 
     public void stop(AltoClef mod) {
@@ -85,6 +105,9 @@ public abstract class Task {
         Debug.logInternal("Task STOP: " + this + ", interrupted by " + interruptTask);
         if (!_first) {
             onStop(mod, interruptTask);
+        } else if (_paused) {
+            _paused = false;
+            onStopWhilePaused(mod);
         }
 
         if (_sub != null && !_sub.stopped()) {
@@ -94,6 +117,10 @@ public abstract class Task {
         _first = true;
         _active = false;
         _stopped = true;
+    }
+
+    // stop() on a task that was interrupted and never came back (#stop in the middle of a fight). nothing else runs for it
+    protected void onStopWhilePaused(AltoClef mod) {
     }
 
     /**
@@ -112,6 +139,7 @@ public abstract class Task {
             } finally {
                 _interrupting = false;
             }
+            _paused = true;
         }
 
         if (_sub != null && !_sub.stopped()) {
