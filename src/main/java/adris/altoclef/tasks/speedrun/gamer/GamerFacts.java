@@ -44,4 +44,9 @@ public interface GamerFacts {
 
     // true once the win screen has been shown (or the run saw the dragon die and came home)
     boolean creditsShown();
+
+    // changes whenever what we carry changes, for the watchdog's "did anything happen" (0 = this snapshot cannot tell)
+    default int inventoryFingerprint() {
+        return 0;
+    }
 }

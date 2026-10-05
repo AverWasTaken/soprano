@@ -22,6 +22,13 @@ public class RunState {
     public long phaseEnteredGameTime;
     public int netherRevisits;
     public String stuckReason = "";
+    // engine (w1). stuck keeps `phase` where it was so #gamer resumes there, finished = the run is over for good
+    public boolean stuck;
+    public boolean finished;
+    // client ticks the gamer actually ran, for #gamer status
+    public long runTicks;
+    // reset on every phase change and on a manual resume, three of these in one phase is stuck
+    public int deathsThisPhase;
 
     public List<Death> deaths = new ArrayList<>();
 

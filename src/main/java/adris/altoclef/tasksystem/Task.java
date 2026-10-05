@@ -21,6 +21,9 @@ public abstract class Task {
 
     private boolean _active = false;
 
+    // true while onStop runs because a chain took over for a bit (the task comes back through onStart), false for a real stop
+    private boolean _interrupting = false;
+
     public void tick(AltoClef mod, TaskChain parentChain) {
         parentChain.addTaskToChain(this);
         if (_first) {
@@ -103,7 +106,12 @@ public abstract class Task {
     public void interrupt(AltoClef mod, Task interruptTask) {
         if (!_active) return;
         if (!_first) {
-            onStop(mod, interruptTask);
+            _interrupting = true;
+            try {
+                onStop(mod, interruptTask);
+            } finally {
+                _interrupting = false;
+            }
         }
 
         if (_sub != null && !_sub.stopped()) {
@@ -111,6 +119,11 @@ public abstract class Task {
         }
 
         _first = true;
+    }
+
+    // for onStop: a pause, not an end. both pass a null interruptTask, so this is the only way to tell
+    protected final boolean isInterrupting() {
+        return _interrupting;
     }
 
     protected void setDebugState(String state) {
