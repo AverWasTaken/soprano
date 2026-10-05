@@ -6,7 +6,6 @@ import adris.altoclef.TaskCatalogue;
 import adris.altoclef.tasks.container.SmeltInSmokerTask;
 import adris.altoclef.tasks.movement.PickupDroppedItemTask;
 import adris.altoclef.tasks.movement.TimeoutWanderTask;
-import adris.altoclef.tasks.speedrun.MarvionBeatMinecraftTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.SmeltTarget;
@@ -17,7 +16,6 @@ import adris.altoclef.util.time.TimerGame;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Predicate;
-import net.minecraft.client.Minecraft;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
@@ -102,10 +100,6 @@ public class CollectMeatTask extends Task {
         // If we were previously smelting, keep on smelting.
         if (_smeltTask != null && _smeltTask.isActive() && !_smeltTask.isFinished(mod)) {
             setDebugState("Cooking...");
-            if (MarvionBeatMinecraftTask.getConfig().renderDistanceManipulation) {
-                Minecraft.getInstance().options.renderDistance().set(2);
-                Minecraft.getInstance().options.entityDistanceScaling().set(0.5);
-            }
             return _smeltTask;
         } else {
             _smeltTask = null;

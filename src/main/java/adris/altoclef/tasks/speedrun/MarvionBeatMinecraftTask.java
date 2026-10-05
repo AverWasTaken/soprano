@@ -954,63 +954,6 @@ public class MarvionBeatMinecraftTask extends Task {
                 }
             }
         }
-        if (_locateStrongholdTask.isActive()) {
-            if (WorldHelper.getCurrentDimension() == Dimension.OVERWORLD) {
-                if (!mod.getClientBaritone().getExploreProcess().isActive()) {
-                    if (_timer1.elapsed()) {
-                        if (_config.renderDistanceManipulation) {
-                            getInstance().options.renderDistance().set(12);
-                        }
-                        _timer1.reset();
-                    }
-                }
-            }
-        }
-        if ((_logsTask != null || _foodTask != null || _getOneBedTask.isActive() || _stoneGearTask != null ||
-                (_sleepThroughNightTask.isActive() && !mod.getItemStorage().hasItem(ItemHelper.BED))) &&
-                getBedTask == null) {
-            if (!mod.getClientBaritone().getExploreProcess().isActive()) {
-                if (_timer3.getDuration() >= 30) {
-                    if (_config.renderDistanceManipulation) {
-                        getInstance().options.renderDistance().set(12);
-                        getInstance().options.entityDistanceScaling().set(1.0);
-                    }
-                }
-                if (_timer3.elapsed()) {
-                    if (_config.renderDistanceManipulation) {
-                        getInstance().options.renderDistance().set(32);
-                        getInstance().options.entityDistanceScaling().set(5.0);
-                    }
-                    _timer3.reset();
-                }
-            }
-        }
-        if (WorldHelper.getCurrentDimension() == Dimension.OVERWORLD && _foodTask == null && !_getOneBedTask.isActive()
-                && !_locateStrongholdTask.isActive() && _logsTask == null && _stoneGearTask == null &&
-                _getPorkchopTask == null && searchBiomeTask == null && _config.renderDistanceManipulation &&
-                !_ranStrongholdLocator && getBedTask == null && !_sleepThroughNightTask.isActive()) {
-            if (!mod.getClientBaritone().getExploreProcess().isActive()) {
-                if (_timer1.elapsed()) {
-                    if (_config.renderDistanceManipulation) {
-                        getInstance().options.renderDistance().set(2);
-                        getInstance().options.entityDistanceScaling().set(0.5);
-                    }
-                    _timer1.reset();
-                }
-            }
-        }
-        if (WorldHelper.getCurrentDimension() == Dimension.NETHER) {
-            if (!mod.getClientBaritone().getExploreProcess().isActive() && !_locateStrongholdTask.isActive() &&
-                    _config.renderDistanceManipulation) {
-                if (_timer1.elapsed()) {
-                    if (_config.renderDistanceManipulation) {
-                        getInstance().options.renderDistance().set(12);
-                        getInstance().options.entityDistanceScaling().set(1.0);
-                    }
-                    _timer1.reset();
-                }
-            }
-        }
         List<Slot> torches = mod.getItemStorage().getSlotsWithItemPlayerInventory(true, Items.TORCH);
         if (!torches.isEmpty()) {
             for (Slot torch : torches) {
@@ -1156,10 +1099,6 @@ public class MarvionBeatMinecraftTask extends Task {
             if (!mod.getWorld().hasChunk(0, 0)) {
                 setDebugState("Waiting for chunks to load");
                 return null;
-            }
-            if (_config.renderDistanceManipulation) {
-                getInstance().options.renderDistance().set(12);
-                getInstance().options.entityDistanceScaling().set(1.0);
             }
             // If we have bed, do bed strats, otherwise punk normally.
             updateCachedEndItems(mod);
@@ -1333,15 +1272,6 @@ public class MarvionBeatMinecraftTask extends Task {
         // Sleep through night.
         if (_config.sleepThroughNight && !_endPortalOpened && WorldHelper.getCurrentDimension() == Dimension.OVERWORLD) {
             if (WorldHelper.canSleep()) {
-                if (_config.renderDistanceManipulation && mod.getItemStorage().hasItem(ItemHelper.BED)) {
-                    if (!mod.getClientBaritone().getExploreProcess().isActive()) {
-                        if (_timer1.elapsed()) {
-                            getInstance().options.renderDistance().set(2);
-                            getInstance().options.entityDistanceScaling().set(0.5);
-                            _timer1.reset();
-                        }
-                    }
-                }
                 if (_timer2.elapsed()) {
                     _timer2.reset();
                 }
@@ -1388,15 +1318,6 @@ public class MarvionBeatMinecraftTask extends Task {
         if (WorldHelper.getCurrentDimension() == Dimension.OVERWORLD) {
             if (needsBeds(mod) && anyBedsFound(mod)) {
                 setDebugState("A bed was found, getting it.");
-                if (_config.renderDistanceManipulation) {
-                    if (!mod.getClientBaritone().getExploreProcess().isActive()) {
-                        if (_timer1.elapsed()) {
-                            getInstance().options.renderDistance().set(2);
-                            getInstance().options.entityDistanceScaling().set(0.5);
-                            _timer1.reset();
-                        }
-                    }
-                }
                 getBedTask = getBedTask(mod);
                 return getBedTask;
             }
@@ -1498,15 +1419,6 @@ public class MarvionBeatMinecraftTask extends Task {
                     // Get beds before starting our portal location.
                     if (WorldHelper.getCurrentDimension() == Dimension.OVERWORLD && needsBeds(mod)) {
                         setDebugState("Getting beds before stronghold search.");
-                        if (!mod.getClientBaritone().getExploreProcess().isActive()) {
-                            if (_timer1.elapsed()) {
-                                if (_config.renderDistanceManipulation) {
-                                    getInstance().options.renderDistance().set(32);
-                                    getInstance().options.entityDistanceScaling().set(5.0);
-                                }
-                                _timer1.reset();
-                            }
-                        }
                         getBedTask = getBedTask(mod);
                         return getBedTask;
                     }
@@ -1923,15 +1835,6 @@ public class MarvionBeatMinecraftTask extends Task {
                 // If we happen to find beds...
                 if (needsBeds(mod) && anyBedsFound(mod)) {
                     setDebugState("A bed was found, getting it.");
-                    if (_config.renderDistanceManipulation) {
-                        if (!mod.getClientBaritone().getExploreProcess().isActive()) {
-                            if (_timer1.elapsed()) {
-                                getInstance().options.renderDistance().set(2);
-                                getInstance().options.entityDistanceScaling().set(0.5);
-                                _timer1.reset();
-                            }
-                        }
-                    }
                     getBedTask = getBedTask(mod);
                     return getBedTask;
                 }
@@ -1948,12 +1851,6 @@ public class MarvionBeatMinecraftTask extends Task {
                 _stoneGearTask = null;
                 if (shouldForce(mod, _getPorkchopTask)) {
                     setDebugState("Getting pork chop just for fun.");
-                    if (_config.renderDistanceManipulation) {
-                        if (!mod.getClientBaritone().getExploreProcess().isActive()) {
-                            getInstance().options.renderDistance().set(32);
-                            getInstance().options.entityDistanceScaling().set(5.0);
-                        }
-                    }
                     return _getPorkchopTask;
                 }
                 _getPorkchopTask = null;
@@ -1973,15 +1870,6 @@ public class MarvionBeatMinecraftTask extends Task {
                 }
                 _foodTask = null;
                 if (shouldForce(mod, _smeltTask)) {
-                    if (_config.renderDistanceManipulation) {
-                        if (!mod.getClientBaritone().getExploreProcess().isActive()) {
-                            if (_timer1.elapsed()) {
-                                getInstance().options.renderDistance().set(2);
-                                getInstance().options.entityDistanceScaling().set(0.5);
-                                _timer1.reset();
-                            }
-                        }
-                    }
                     return _smeltTask;
                 }
                 _smeltTask = null;
@@ -2050,15 +1938,6 @@ public class MarvionBeatMinecraftTask extends Task {
                             return _getPorkchopTask;
                         }
                         setDebugState("Searching a better place to start with.");
-                        if (_config.renderDistanceManipulation) {
-                            if (!mod.getClientBaritone().getExploreProcess().isActive()) {
-                                if (_timer1.elapsed()) {
-                                    getInstance().options.renderDistance().set(32);
-                                    getInstance().options.entityDistanceScaling().set(5.0);
-                                    _timer1.reset();
-                                }
-                            }
-                        }
                         searchBiomeTask = new SearchWithinBiomeTask(Biomes.PLAINS);
                         return searchBiomeTask;
                     }

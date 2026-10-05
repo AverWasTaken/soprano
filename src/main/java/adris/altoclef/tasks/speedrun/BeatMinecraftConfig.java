@@ -18,7 +18,6 @@ public class BeatMinecraftConfig {
     public double dragonHeadCloseEnoughClickBedRange = 5.3;
     public boolean ironGearBeforeDiamondGear = true;
     public boolean getShield = true;
-    public boolean renderDistanceManipulation = true;
     public boolean rePickupSmoker = true;
     public boolean rePickupFurnace = true;
 }

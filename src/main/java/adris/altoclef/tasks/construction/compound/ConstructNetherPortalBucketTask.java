@@ -9,7 +9,6 @@ import adris.altoclef.tasks.construction.DestroyBlockTask;
 import adris.altoclef.tasks.construction.PlaceObsidianBucketTask;
 import adris.altoclef.tasks.movement.PickupDroppedItemTask;
 import adris.altoclef.tasks.movement.TimeoutWanderTask;
-import adris.altoclef.tasks.speedrun.MarvionBeatMinecraftTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.WorldHelper;
@@ -125,11 +124,6 @@ public class ConstructNetherPortalBucketTask extends Task {
 
     @Override
     protected Task onTick(AltoClef mod) {
-        if (MarvionBeatMinecraftTask.getConfig().renderDistanceManipulation
-                && !mod.getClientBaritone().getExploreProcess().isActive()) {
-            Minecraft.getInstance().options.renderDistance().set(2);
-            Minecraft.getInstance().options.entityDistanceScaling().set(0.5);
-        }
         if (_portalOrigin != null) {
             if (mod.getWorld().getBlockState(_portalOrigin.above()).getBlock() == Blocks.NETHER_PORTAL) {
                 setDebugState("Done constructing nether portal.");
