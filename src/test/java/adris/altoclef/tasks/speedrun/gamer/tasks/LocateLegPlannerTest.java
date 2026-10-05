@@ -111,6 +111,46 @@ public class LocateLegPlannerTest {
     }
 
     @Test
+    public void neverThrowWithinTenBlocksOfTheLastThrow() {
+        assertFalse(LocateLegPlanner.tooCloseToLastThrow(0, 0, Double.NaN, Double.NaN));
+        assertTrue(LocateLegPlanner.tooCloseToLastThrow(105, 100, 100, 100));
+        assertTrue(LocateLegPlanner.tooCloseToLastThrow(100, 109.9, 100, 100));
+        assertFalse(LocateLegPlanner.tooCloseToLastThrow(100, 110, 100, 100));
+    }
+
+    @Test
+    public void anUnusableThrowForcesAWalkOfAtLeastTwentyBlocksFromTheOldSpot() {
+        // with a guess: toward it, the full step even when the guess is closer than that (a short hop would loop)
+        double[] toGuess = LocateLegPlanner.forcedWalkTarget(100, 100, true, 100, 112);
+        assertEquals(100, toGuess[0], 1e-9);
+        assertEquals(126, toGuess[1], 1e-9);
+        // without one: along the ring tangent
+        double[] tangent = LocateLegPlanner.forcedWalkTarget(2000, 0, false, 0, 0);
+        assertEquals(26, Math.hypot(tangent[0] - 2000, tangent[1]), 1e-9);
+        // a guess right on top of us is no direction
+        double[] onTop = LocateLegPlanner.forcedWalkTarget(500, 500, true, 500.5, 500);
+        assertEquals(26, Math.hypot(onTop[0] - 500, onTop[1] - 500), 1e-9);
+        // and arriving within the 6 block tolerance still leaves 20 behind us, past the 10 block throw gap
+        assertTrue(LocateLegPlanner.FORCED_WALK_BLOCKS - LocateLegPlanner.ARRIVE_BLOCKS >= 20);
+        assertTrue(LocateLegPlanner.FORCED_WALK_BLOCKS - LocateLegPlanner.ARRIVE_BLOCKS > LocateLegPlanner.MIN_THROW_GAP);
+    }
+
+    @Test
+    public void anEyeOwedToUsSurvivesAnInterrupt() {
+        // held 6 before the throw, 5 now: the eye is still flying -> collect it
+        assertTrue(LocateLegPlanner.collectPending(6, 5, true, false));
+        // it came down and lies nearby
+        assertTrue(LocateLegPlanner.collectPending(6, 5, false, true));
+        // shattered (20%): nothing flying, nothing on the floor -> the debt is void
+        assertFalse(LocateLegPlanner.collectPending(6, 5, false, false));
+        // got it back
+        assertFalse(LocateLegPlanner.collectPending(6, 6, false, true));
+        assertFalse(LocateLegPlanner.collectPending(6, 7, true, true));
+        // no baseline = no throw in progress
+        assertFalse(LocateLegPlanner.collectPending(0, 0, true, true));
+    }
+
+    @Test
     public void relocateAtTheOriginStillGoesSomewhere() {
         double[] t = LocateLegPlanner.relocateTarget(0, 0, 150);
         assertEquals(150, Math.hypot(t[0], t[1]), 1e-9);

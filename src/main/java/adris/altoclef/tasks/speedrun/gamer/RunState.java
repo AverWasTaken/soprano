@@ -125,6 +125,9 @@ public class RunState {
     public Pos relocateFrom;
     // game time the open phase first noticed it could not fill the rest of the frames. 0 = fine
     public long openNoEyesSince;
+    // eyes held right before the last throw, 0 = nothing out there to collect. an eye in the air or on the floor is owed
+    // to us until the count is back to this (or it shattered), also across an interrupt or a relog
+    public int eyeBaseline;
 
     // w4 (nether), additive
     // the spawner camping took too long: the rod hunt moves on to the next fortress

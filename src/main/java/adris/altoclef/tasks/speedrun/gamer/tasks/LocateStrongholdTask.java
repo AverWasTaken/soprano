@@ -59,10 +59,12 @@ public class LocateStrongholdTask extends Task {
     private boolean legIsArrive;
     private boolean legIsRelocate;
     private boolean forceThrow;
+    // after a throw we got nothing from, throw somewhere else (the same spot would give the same nothing)
+    private boolean forceWalk;
+    private boolean started;
     private int stalledLegs;
     private double lastThrowX = Double.NaN;
     private double lastThrowZ = Double.NaN;
-    private int eyesBeforeThrow;
     private int stillTicks;
     private int tickCounter;
     private boolean done;
@@ -85,6 +87,14 @@ public class LocateStrongholdTask extends Task {
 
     @Override
     protected void onStart(AltoClef mod) {
+        mod.getBlockTracker().trackBlock(Blocks.END_PORTAL_FRAME);
+        // an interrupt (mob defense, eating) stops and restarts us: keep the stage, the observer and the leg so an eye
+        // in the air is still being watched when we come back, only the first start sets things up
+        if (started) {
+            stillTicks = 0;
+            return;
+        }
+        started = true;
         cfg = ctx.cfg().stronghold;
         RunState state = ctx.state();
         estimator = new StrongholdEstimator(new StrongholdEstimator.Params(cfg.sigmaDeg,
@@ -98,7 +108,6 @@ public class LocateStrongholdTask extends Task {
             lastThrowZ = known.get(known.size() - 1).oz();
         }
         ledger = new LocateLegPlanner.ThrowLedger(state.eyeThrows, cfg.maxThrows, cfg.maxEmptyThrows);
-        mod.getBlockTracker().trackBlock(Blocks.END_PORTAL_FRAME);
         done = false;
         enter(mod, Stage.DECIDE);
     }
@@ -183,11 +192,23 @@ public class LocateStrongholdTask extends Task {
         RunState state = ctx.state();
         double px = mod.getPlayer().getX();
         double pz = mod.getPlayer().getZ();
+        // an eye still in the air or on the floor from before an interrupt: go and get it before anything else
+        if (collectPending(mod)) {
+            enter(mod, Stage.COLLECT);
+            return null;
+        }
         if (estimator.rays().isEmpty() && state.relocateFrom != null && !legIsRelocate) {
             double[] to = LocateLegPlanner.relocateTarget(state.relocateFrom.x, state.relocateFrom.z, LocateLegPlanner.RELOCATE_BLOCKS);
             legIsRelocate = true;
             startLeg(mod, to[0], to[1], false);
             step = "Stepping away before trying again";
+            return null;
+        }
+        if (forceWalk) {
+            forceWalk = false;
+            double[] to = forcedWalkTarget(px, pz);
+            startLeg(mod, to[0], to[1], false);
+            step = "Moving to a new spot for the next throw";
             return null;
         }
         if (forceThrow) {
@@ -215,6 +236,28 @@ public class LocateStrongholdTask extends Task {
             case DIG -> finishDig(a);
         }
         return null;
+    }
+
+    // toward the current guess if there is one, else along the ring tangent
+    private double[] forcedWalkTarget(double px, double pz) {
+        Optional<StrongholdEstimator.Estimate> e = estimator.estimate();
+        return LocateLegPlanner.forcedWalkTarget(px, pz, e.isPresent(), e.map(StrongholdEstimator.Estimate::x).orElse(0.0),
+                e.map(StrongholdEstimator.Estimate::z).orElse(0.0));
+    }
+
+    // baseline = how many eyes we held before the last throw. below it, with the eye still flying or lying close by,
+    // there is something to collect. no longer true = forget the baseline
+    private boolean collectPending(AltoClef mod) {
+        int baseline = ctx.state().eyeBaseline;
+        if (baseline <= 0) {
+            return false;
+        }
+        boolean pending = LocateLegPlanner.collectPending(baseline, mod.getItemStorage().getItemCount(Items.ENDER_EYE),
+                mod.getEntityTracker().entityFound(EyeOfEnder.class), nearDrop(mod));
+        if (!pending) {
+            ctx.state().eyeBaseline = 0;
+        }
+        return pending;
     }
 
     private double walkedSinceThrow(double px, double pz) {
@@ -308,6 +351,13 @@ public class LocateStrongholdTask extends Task {
             ctx.fail("threw " + ledger.counted() + " eyes and still no stronghold");
             return null;
         }
+        // a throw from (nearly) the same spot is the same bearing again and costs a fifth of an eye. the estimator
+        // keeps that rule for its own THROW advice, the shortcuts in decide() and a stalled leg go through here
+        if (LocateLegPlanner.tooCloseToLastThrow(mod.getPlayer().getX(), mod.getPlayer().getZ(), lastThrowX, lastThrowZ)) {
+            forceWalk = true;
+            enter(mod, Stage.DECIDE);
+            return null;
+        }
         enter(mod, Stage.THROW);
         return null;
     }
@@ -330,7 +380,8 @@ public class LocateStrongholdTask extends Task {
         if (++stillTicks < STILL_TICKS || !LookHelper.tryAvoidingInteractable(mod)) {
             return null;
         }
-        eyesBeforeThrow = mod.getItemStorage().getItemCount(Items.ENDER_EYE);
+        // persisted so a relog or an interrupt between the throw and the pickup still knows an eye is out there
+        ctx.state().eyeBaseline = mod.getItemStorage().getItemCount(Items.ENDER_EYE);
         observer = new EyeThrowObserver(mod.getPlayer().getX(), mod.getPlayer().getZ(), ticks(mod));
         Minecraft.getInstance().gameMode.useItem(mod.getPlayer(), InteractionHand.MAIN_HAND);
         enter(mod, Stage.OBSERVE);
@@ -362,6 +413,8 @@ public class LocateStrongholdTask extends Task {
                 lastThrowX = observer.originX();
                 lastThrowZ = observer.originZ();
                 persist();
+                // no bearing from here, so the next throw must come from a different spot or it burns another eye for the same nothing
+                forceWalk = true;
                 enter(mod, Stage.COLLECT);
             }
             case RAY -> acceptRay(mod, r);
@@ -388,11 +441,11 @@ public class LocateStrongholdTask extends Task {
         setDebugState("Collecting the thrown eye", step);
         boolean flying = mod.getEntityTracker().entityFound(EyeOfEnder.class);
         double waited = seconds(mod) - stageSince;
+        int baseline = Math.max(1, ctx.state().eyeBaseline);
         if (pickupTask != null) {
-            if (_pickupTimer.elapsed() || mod.getItemStorage().getItemCount(Items.ENDER_EYE) >= eyesBeforeThrow) {
+            if (_pickupTimer.elapsed() || mod.getItemStorage().getItemCount(Items.ENDER_EYE) >= baseline) {
                 pickupTask = null;
-                enter(mod, Stage.DECIDE);
-                return null;
+                return endCollect(mod);
             }
             return pickupTask;
         }
@@ -405,17 +458,22 @@ public class LocateStrongholdTask extends Task {
                 return null;
             }
         }
-        if (mod.getItemStorage().getItemCount(Items.ENDER_EYE) < eyesBeforeThrow && nearDrop(mod)) {
-            pickupTask = new PickupDroppedItemTask(Items.ENDER_EYE, eyesBeforeThrow);
+        if (mod.getItemStorage().getItemCount(Items.ENDER_EYE) < baseline && nearDrop(mod)) {
+            pickupTask = new PickupDroppedItemTask(Items.ENDER_EYE, baseline);
             _pickupTimer.reset();
             return pickupTask;
         }
+        return endCollect(mod);
+    }
+
+    // the eye is back, or it shattered, or we gave up on it: nothing left to collect
+    private Task endCollect(AltoClef mod) {
+        ctx.state().eyeBaseline = 0;
         enter(mod, Stage.DECIDE);
         return null;
     }
 
-    private boolean nearDrop(AltoClef mod) {
-        return mod.getEntityTracker().getClosestItemDrop(Items.ENDER_EYE)
+    private boolean nearDrop(AltoClef mod) {        return mod.getEntityTracker().getClosestItemDrop(Items.ENDER_EYE)
                 .map(e -> e.distanceTo(mod.getPlayer()) <= PICKUP_RANGE).orElse(false);
     }
 

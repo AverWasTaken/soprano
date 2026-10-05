@@ -21,13 +21,19 @@ public final class StrongholdRules {
         return Math.min(facts.count(Items.ENDER_PEARL), powder);
     }
 
-    // LOCATE and ROOM: eyes held + eyes already in frames + eyes we can craft + the one in flight must reach 12
+    // below this many eyes (held + in frames + craftable + the one in flight) the stronghold hunt is hopeless. above it
+    // we carry on: every frame is pre-filled 10% of the time (28% that none is, 1.2 on average) so 11 eyes still
+    // opens the portal more often than not, and the nether trip back costs up to 40 minutes. OPEN knows the real
+    // filled count and makes the call there (regressForOpen)
+    static final int HOPELESS_TOTAL = 9;
+
+    // LOCATE and ROOM: only when it is hopeless
     public static Optional<GamerPhase> regressForEyes(GamerFacts facts, RunState state) {
         if (state.endPortalOpened || state.netherRevisits >= 1) {
             return Optional.empty();
         }
         int total = facts.count(Items.ENDER_EYE) + state.framesFilled + craftableEyes(facts) + IN_FLIGHT;
-        return total < FRAMES ? Optional.of(GamerPhase.NETHER) : Optional.empty();
+        return total < HOPELESS_TOTAL ? Optional.of(GamerPhase.NETHER) : Optional.empty();
     }
 
     // OPEN: short of eyes for the frames that are still empty

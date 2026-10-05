@@ -120,21 +120,27 @@ public class StrongholdPhasesTest {
     }
 
     @Test
-    public void locateKeepsGoingWithTwelveOrWithTheOneInFlight() {
+    public void locateOnlyGivesUpWhenItIsHopeless() {
         RunState s = new RunState();
         assertEquals(Optional.empty(), locate.regressTo(new Facts().with(Items.ENDER_EYE, 12), s, cfg));
-        // 12 eyes, one just thrown: 11 in the bag must not send us back to the nether
+        // 12 eyes, one just thrown: 11 in the bag must not send us back to the nether, nor must 10 (the frames are
+        // pre-filled 10% of the time, OPEN counts the real ones and decides)
         assertEquals(Optional.empty(), locate.regressTo(new Facts().with(Items.ENDER_EYE, 11), s, cfg));
-        assertEquals(Optional.of(GamerPhase.NETHER), locate.regressTo(new Facts().with(Items.ENDER_EYE, 10), s, cfg));
+        assertEquals(Optional.empty(), locate.regressTo(new Facts().with(Items.ENDER_EYE, 10), s, cfg));
+        // 8 in the bag + the one in the air = 9, the edge of hopeless
+        assertEquals(Optional.empty(), locate.regressTo(new Facts().with(Items.ENDER_EYE, 8), s, cfg));
+        assertEquals(Optional.of(GamerPhase.NETHER), locate.regressTo(new Facts().with(Items.ENDER_EYE, 7), s, cfg));
     }
 
     @Test
     public void locateCountsFramesAlreadyFilledAndCraftableEyes() {
         RunState s = new RunState();
         s.framesFilled = 2;
-        assertEquals(Optional.empty(), locate.regressTo(new Facts().with(Items.ENDER_EYE, 9), s, cfg));
-        // 6 eyes + 3 pearls with 2 rods (4 powder) = 9 eyes + 1 in flight: 10 + 2 filled = 12
-        Facts f = new Facts().with(Items.ENDER_EYE, 6).with(Items.ENDER_PEARL, 3).with(Items.BLAZE_ROD, 2);
+        // 6 eyes + 2 filled + 1 in flight = 9: fine. 5 is not
+        assertEquals(Optional.empty(), locate.regressTo(new Facts().with(Items.ENDER_EYE, 6), s, cfg));
+        assertEquals(Optional.of(GamerPhase.NETHER), locate.regressTo(new Facts().with(Items.ENDER_EYE, 5), s, cfg));
+        // 3 eyes + 3 pearls with 2 rods (4 powder) craft 3 more: 3 + 3 + 2 filled + 1 = 9
+        Facts f = new Facts().with(Items.ENDER_EYE, 3).with(Items.ENDER_PEARL, 3).with(Items.BLAZE_ROD, 2);
         assertEquals(Optional.empty(), locate.regressTo(f, s, cfg));
     }
 
