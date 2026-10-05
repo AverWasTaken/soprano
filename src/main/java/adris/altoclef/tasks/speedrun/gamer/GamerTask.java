@@ -41,9 +41,12 @@ import java.util.List;
 // the part that touches the game: facts, deaths, saving, the hud and the settings for the run. which phase we are in and
 // when it gives up is PhaseMachine, which does not know there is a game. nothing in here is static, two runs never share anything
 public class GamerTask extends Task {
-    private static final Item[] PROTECTED = ArrayUtils.addAll(new Item[]{
+    // the gear the End needs to still be in the bag when we get there, a full inventory must not throw it away
+    private static final Item[] PROTECTED = ArrayUtils.addAll(ArrayUtils.addAll(ArrayUtils.addAll(new Item[]{
             Items.ENDER_EYE, Items.ENDER_PEARL, Items.BLAZE_ROD, Items.BLAZE_POWDER, Items.BUCKET, Items.WATER_BUCKET,
-            Items.LAVA_BUCKET, Items.FLINT_AND_STEEL, Items.CRAFTING_TABLE, Items.OBSIDIAN, Items.SHIELD}, ItemHelper.BED);
+            Items.LAVA_BUCKET, Items.FLINT_AND_STEEL, Items.CRAFTING_TABLE, Items.OBSIDIAN, Items.SHIELD,
+            Items.IRON_PICKAXE, Items.DIAMOND_PICKAXE, Items.IRON_SWORD, Items.DIAMOND_SWORD}, ItemHelper.BED),
+            ItemHelper.IRON_ARMORS), ItemHelper.DIAMOND_ARMORS);
     private static final Block[] TRACKED = ArrayUtils.addAll(new Block[]{
             Blocks.END_PORTAL_FRAME, Blocks.END_PORTAL, Blocks.CRAFTING_TABLE, Blocks.CHEST, Blocks.SPAWNER,
             Blocks.NETHER_PORTAL}, ItemHelper.itemsToBlocks(ItemHelper.BED));
