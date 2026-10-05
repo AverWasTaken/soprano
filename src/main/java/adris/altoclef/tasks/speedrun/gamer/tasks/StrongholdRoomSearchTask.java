@@ -21,6 +21,7 @@ import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -48,6 +49,10 @@ public class StrongholdRoomSearchTask extends Task {
     private boolean exhausted;
     private boolean bricksSeen;
     private boolean pushedBehaviour;
+    private boolean started;
+    // the y the stronghold is on as far as we can tell: where we were when the spiral began. chunks only count as
+    // searched when we were near this level
+    private double workY = Double.NaN;
     private boolean hintGivenUp;
     private double lastSave;
     private double startedAt;
@@ -80,7 +85,6 @@ public class StrongholdRoomSearchTask extends Task {
 
     @Override
     protected void onStart(AltoClef mod) {
-        cfg = ctx.cfg().stronghold;
         mod.getBlockTracker().trackBlock(Blocks.END_PORTAL_FRAME, Blocks.SPAWNER);
         mod.getBlockTracker().trackBlock(BRICKS);
         // marvion: with a diamond pickaxe tunnelling is cheap enough that the pathfinder should stop flinching at stone
@@ -89,6 +93,13 @@ public class StrongholdRoomSearchTask extends Task {
         if (mod.getItemStorage().hasItem(Items.DIAMOND_PICKAXE, Items.NETHERITE_PICKAXE)) {
             mod.getBehaviour().setBlockBreakAdditionalPenalty(0);
         }
+        // an interrupt (mob defense, eating) stops and restarts us: keep the stage, the chunk we were on and what we
+        // have seen. onStop popped the behaviour and untracked, so those two are redone above, the rest only once
+        if (started) {
+            return;
+        }
+        started = true;
+        cfg = ctx.cfg().stronghold;
         done = false;
         exhausted = false;
         bricksSeen = false;
@@ -167,6 +178,13 @@ public class StrongholdRoomSearchTask extends Task {
         stageSince = seconds(mod);
     }
 
+    private void enterSpiral(AltoClef mod) {
+        if (Double.isNaN(workY)) {
+            workY = mod.getPlayer().getY();
+        }
+        enter(mod, Stage.SPIRAL);
+    }
+
     // frames: centre if three agree, a hint if fewer. bricks: are we inside yet
     private void scan(AltoClef mod) {
         RunState state = ctx.state();
@@ -241,8 +259,16 @@ public class StrongholdRoomSearchTask extends Task {
     }
 
     private boolean anyBrickSeen(AltoClef mod) {
+        return !seenBricks(mod, 1).isEmpty();
+    }
+
+    // seen stone bricks of the stronghold family, nearest first, at most limit of them. tracker order is scan order,
+    // so sort before asking the seen filter or the same few hidden ones eat its budget forever
+    private List<BlockPos> seenBricks(AltoClef mod, int limit) {
         RunState.Pos start = ctx.state().strongholdStart;
-        for (BlockPos pos : mod.getBlockTracker().getKnownLocations(BRICKS)) {
+        List<BlockPos> out = new ArrayList<>();
+        for (BlockPos pos : StrongholdScan.nearest(mod.getBlockTracker().getKnownLocations(BRICKS),
+                mod.getPlayer().blockPosition(), StrongholdScan.MAX_SCAN)) {
             if (pos.getY() > BRICK_MAX_Y) {
                 continue;
             }
@@ -250,10 +276,13 @@ public class StrongholdRoomSearchTask extends Task {
                 continue;
             }
             if (SeenFilter.isSeen(mod, pos)) {
-                return true;
+                out.add(pos);
+                if (out.size() >= limit) {
+                    break;
+                }
             }
         }
-        return false;
+        return out;
     }
 
     private Task toStart(AltoClef mod) {
@@ -270,7 +299,11 @@ public class StrongholdRoomSearchTask extends Task {
         startLeg.update(seconds(mod), dist);
         if (dist <= cfg.startReachBlocks || startLeg.expired(seconds(mod))) {
             // frames seen on the way in are handled by scan(), so heading down is the only thing left to decide
-            enter(mod, mod.getPlayer().getY() > cfg.roomMinY && !bricksSeen ? Stage.DIG : Stage.SPIRAL);
+            if (mod.getPlayer().getY() > cfg.roomMinY && !bricksSeen) {
+                enter(mod, Stage.DIG);
+            } else {
+                enterSpiral(mod);
+            }
             return null;
         }
         step = "Walking to the stronghold";
@@ -289,7 +322,7 @@ public class StrongholdRoomSearchTask extends Task {
         boolean deepEnough = mod.getPlayer().getY() <= cfg.roomMinY + 2;
         if (bricksSeen || deepEnough || seconds(mod) - stageSince > cfg.digDownSeconds) {
             Debug.logMessage("done digging down (bricks " + bricksSeen + ", y " + (int) mod.getPlayer().getY() + ")");
-            enter(mod, Stage.SPIRAL);
+            enterSpiral(mod);
             return null;
         }
         if (digTask == null) {
@@ -302,10 +335,7 @@ public class StrongholdRoomSearchTask extends Task {
         step = "Searching the stronghold";
         RunState state = ctx.state();
         ChunkPos here = mod.getPlayer().chunkPosition();
-        // standing in a chunk is looking at it, near enough
-        if (state.roomChunksVisited.add(new StrongholdRoomPlan.Chunk(here.x, here.z).key())) {
-            maybeSave(mod);
-        }
+        markCovered(mod, here, state);
         if (chunkTarget != null && (here.x == chunkTarget.cx() && here.z == chunkTarget.cz()
                 || seconds(mod) - chunkSince >= cfg.perChunkSeconds)) {
             state.roomChunksVisited.add(chunkTarget.key());
@@ -320,11 +350,34 @@ public class StrongholdRoomSearchTask extends Task {
         return chunkTask;
     }
 
+    // standing in a dry tunnel is not searching the chunk (the room is only found by line of sight): the chunks around
+    // us count once we are within ~24 blocks of their middle and near the level the stronghold is on
+    private void markCovered(AltoClef mod, ChunkPos here, RunState state) {
+        double px = mod.getPlayer().getX();
+        double py = mod.getPlayer().getY();
+        double pz = mod.getPlayer().getZ();
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                int cx = here.x + dx;
+                int cz = here.z + dz;
+                if (RoomCoverage.covers(px, py, pz, cx, cz, workY) && state.roomChunksVisited.add(cx + "," + cz)) {
+                    maybeSave(mod);
+                }
+            }
+        }
+    }
+
     private boolean pickNextChunk(AltoClef mod, ChunkPos here) {
         RunState.Pos start = ctx.state().strongholdStart;
         StrongholdRoomPlan.Chunk startChunk = new StrongholdRoomPlan.Chunk(Math.floorDiv(start.x, 16), Math.floorDiv(start.z, 16));
-        Optional<StrongholdRoomPlan.Chunk> next = StrongholdRoomPlan.next(startChunk, cfg.spiralRadiusChunks,
-                ctx.state().roomChunksVisited, new StrongholdRoomPlan.Chunk(here.x, here.z));
+        // bricks we have already seen say where corridors are: follow those before walking the blind spiral
+        Optional<StrongholdRoomPlan.Chunk> next = guidedChunk(mod, startChunk);
+        if (next.isPresent()) {
+            step = "Following the stronghold corridors";
+        } else {
+            next = StrongholdRoomPlan.next(startChunk, cfg.spiralRadiusChunks,
+                    ctx.state().roomChunksVisited, new StrongholdRoomPlan.Chunk(here.x, here.z));
+        }
         if (next.isEmpty()) {
             Debug.logMessage("stronghold spiral exhausted after " + ctx.state().roomChunksVisited.size() + " chunks");
             ctx.save();
@@ -335,6 +388,16 @@ public class StrongholdRoomSearchTask extends Task {
         chunkTask = new GetToChunkTask(new ChunkPos(chunkTarget.cx(), chunkTarget.cz()));
         chunkSince = seconds(mod);
         return true;
+    }
+
+    private Optional<StrongholdRoomPlan.Chunk> guidedChunk(AltoClef mod, StrongholdRoomPlan.Chunk startChunk) {
+        List<int[]> xz = new ArrayList<>();
+        for (BlockPos p : seenBricks(mod, StrongholdScan.MAX_SCAN)) {
+            xz.add(new int[]{p.getX(), p.getZ()});
+        }
+        return RoomCoverage.nearestUnvisitedBrickChunk(xz, ctx.state().roomChunksVisited, mod.getPlayer().getX(),
+                mod.getPlayer().getZ(), startChunk.cx(), startChunk.cz(), cfg.spiralRadiusChunks)
+                .map(c -> new StrongholdRoomPlan.Chunk(c[0], c[1]));
     }
 
     private void maybeSave(AltoClef mod) {
@@ -350,7 +413,11 @@ public class StrongholdRoomSearchTask extends Task {
         setDebugState("Walking up to a seen frame", step);
         if (seconds(mod) - stageSince > HINT_SECONDS || mod.getPlayer().blockPosition().closerThan(hintPos, APPROACH_RANGE + 1)) {
             hintGivenUp = true;
-            enter(mod, bricksSeen ? Stage.SPIRAL : Stage.TO_START);
+            if (bricksSeen) {
+                enterSpiral(mod);
+            } else {
+                enter(mod, Stage.TO_START);
+            }
             return null;
         }
         return hintTask;
