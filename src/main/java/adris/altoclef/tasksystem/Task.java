@@ -147,6 +147,15 @@ public abstract class Task {
         return "<" + toDebugString() + "> " + _debugState;
     }
 
+    // the hud draws the name and the state in different colors, so it wants them apart
+    public String getDebugName() {
+        return toDebugString();
+    }
+
+    public String getDebugState() {
+        return _debugState;
+    }
+
     @Override
     public boolean equals(Object obj) {
         if (obj instanceof Task task) {

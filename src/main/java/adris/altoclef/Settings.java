@@ -41,6 +41,12 @@ public class Settings implements IFailableConfigFile {
     private boolean showTaskChains = true;
 
     /**
+     * Size of the task chain overlay, on top of the game's gui scale.
+     * 1 is the size the text always was, 0.75 is a nice small one. Clamped to 0.5 - 2.
+     */
+    private float hudScale = 1.0f;
+
+    /**
      * If true, all warning logs will be disabled.
      * <p>
      * NOT RECOMMENDED, as it will make debugging more difficult.
@@ -421,6 +427,11 @@ public class Settings implements IFailableConfigFile {
 
     public boolean shouldShowTaskChain() {
         return showTaskChains;
+    }
+
+    public float getHudScale() {
+        // nan from a hand edited json would make the hud vanish without a word
+        return hudScale > 0 ? Math.min(2f, Math.max(0.5f, hudScale)) : 1f;
     }
 
     public boolean shouldHideAllWarningLogs() {
