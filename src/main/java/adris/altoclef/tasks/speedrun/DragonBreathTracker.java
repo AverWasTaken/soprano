@@ -15,8 +15,15 @@ public class DragonBreathTracker {
     // clouds further than this cannot matter this tick and the box to block expansion is the only cost here
     private static final double CLOUD_RANGE = 24;
     private final HashSet<BlockPos> _breathBlocks = new HashSet<>();
+    private long _lastTick = -1;
 
     public void updateBreath(AltoClef mod) {
+        // the chains and the dragon phase all ask every tick, the answer cannot change inside one game tick
+        long tick = mod.getWorld() == null ? -1 : mod.getWorld().getGameTime();
+        if (tick >= 0 && tick == _lastTick) {
+            return;
+        }
+        _lastTick = tick;
         _breathBlocks.clear();
         // every cloud close by, not just the nearest: a perched dragon leaves a whole trail of them and stepping
         // out of the nearest one into the next is not dodging anything

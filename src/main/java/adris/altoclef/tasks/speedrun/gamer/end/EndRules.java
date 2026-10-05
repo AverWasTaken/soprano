@@ -5,6 +5,8 @@ import adris.altoclef.tasks.speedrun.gamer.config.EndConfig;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.item.Item;
 
+import java.util.Locale;
+
 // small pure questions about the End that both handlers and EndGear ask, all over RunState
 public final class EndRules {
     private EndRules() {
@@ -12,9 +14,11 @@ public final class EndRules {
 
     // RunState.Death.dimension is whatever the engine wrote ("END", "the_end", "minecraft:the_end"), none of the others has "end" in it
     public static boolean isEnd(String dimension) {
-        return dimension != null && dimension.toUpperCase().contains("END");
+        return dimension != null && dimension.toUpperCase(Locale.ROOT).contains("END");
     }
 
+    // counts every End death the run ever had: a #gamer resume after "the dragon killed us N times" goes straight back to
+    // STUCK from the overworld, `#gamer phase end_prep` after clearing deaths (or `#gamer reset`) is the way out
     public static int endDeaths(RunState state) {
         int deaths = 0;
         for (RunState.Death death : state.deaths) {
