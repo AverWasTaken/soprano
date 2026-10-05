@@ -92,7 +92,8 @@ public class PlayerInteractionFixChain extends TaskChain {
         // Refresh inventory
         if (_generalDuctTapeSwapTimeout.elapsed()) {
             if (!mod.getControllerExtras().isBreakingBlock()) {
-                Debug.logMessage("Refreshed inventory...");
+                // this fires every 30s for as long as altoclef runs, chat is no place for it
+                Debug.logInternal("Refreshed inventory...");
                 mod.getSlotHandler().refreshInventory();
                 _generalDuctTapeSwapTimeout.reset();
                 return Float.NEGATIVE_INFINITY;
