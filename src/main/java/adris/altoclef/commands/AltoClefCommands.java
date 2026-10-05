@@ -51,6 +51,9 @@ public final class AltoClefCommands {
     private static final Set<String> OWNED = new HashSet<>();
     // butler lines that altoclef answers itself instead of asking the manager, see runOne
     private static final Set<String> BUTLER_INTERNAL = Set.of("goto", "follow", "stop", "cancel");
+    // ours, but not something a whisper gets to run. punk kills a player and gamma is the owner's own screen. subtracted
+    // from everything else, so a new alias of these has to be added here too
+    private static final Set<String> BUTLER_DENIED = Set.of("punk", "gamma", "setgamma", "set_gamma");
 
     private static final Runnable NOOP = () -> {
     };
@@ -142,8 +145,16 @@ public final class AltoClefCommands {
     // butlers get altoclef's commands and nothing else. #set could rewrite settings and #build could do whatever, from
     // anyone who can whisper at you. goto/follow/stop are soprano's names but the butler gets altoclef's versions of them
     public static boolean isButlerAllowed(String label) {
+        return isButlerAllowed(label, OWNED);
+    }
+
+    // the owned set is passed in so a test can use the real command names without registering them on a game
+    static boolean isButlerAllowed(String label, Set<String> owned) {
         String l = label.toLowerCase(Locale.ROOT);
-        return OWNED.contains(l) || BUTLER_INTERNAL.contains(l);
+        if (BUTLER_DENIED.contains(l)) {
+            return false;
+        }
+        return owned.contains(l) || BUTLER_INTERNAL.contains(l);
     }
 
     // called when somebody hits stop, see AltoClefBridge#cancelUserTask

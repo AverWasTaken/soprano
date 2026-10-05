@@ -161,7 +161,7 @@ They're normal Soprano settings that all start with `alto`, so `#set alto<tab>` 
 | Setting | Default | What it does |
 |---|---|---|
 | `altoRunsWhenIdle` | false | keep the survival chains (eating, mob defense, MLG) running even with no task. Off means AltoClef does nothing until you start a task |
-| `altoButler` | false | let whitelisted players whisper commands to your bot. The whitelist and blacklist are in `baritone/altoclef/` |
+| `altoButler` | false | let whitelisted players whisper commands to your bot. Only names in `baritone/altoclef/altoclef_butler_whitelist.txt` can (one per line, not case sensitive), an empty whitelist means nobody, and `altoclef_butler_blacklist.txt` next to it wins over it. Whispers can run AltoClef's commands only, never `punk` or `gamma` |
 | `altoShowTaskChains` | true | the task HUD in the top left. `altoHudScale` (1.0, between 0.5 and 2) resizes it, `altoShowTimer` (false) adds a timer |
 | `altoMobDefense` | true | fight off or avoid mobs. `altoForceFieldStrategy` (`SMART`, or `OFF`, `FASTEST`, `DELAY`) is how the force field picks its targets |
 | `altoAutoEat`, `altoAutoRespawn`, `altoAutoReconnect` | true | what they say |
@@ -174,7 +174,7 @@ They're normal Soprano settings that all start with `alto`, so `#set alto<tab>` 
 
 AltoClef uses Soprano's own `replantCrops` setting instead of having one of its own.
 
-The rest of its config (`beat_minecraft.json`, the food chain, block tracker and MLG configs, `butler.json`, `CustomTasks.json`) is still json under `baritone/altoclef/`, and `altoreload` re-reads it. Settings aren't in there any more, they live in `#set`. If you have an old `baritone/altoclef/altoclef_settings.json`, its values are imported once on first start and the file is renamed to `altoclef_settings.json.migrated`.
+The rest of its config (`beat_minecraft.json`, the food chain, block tracker and MLG configs, `butler.json`, `CustomTasks.json`) is still json under `baritone/altoclef/`, and `altoreload` re-reads it. Settings aren't in there any more, they live in `#set`. If you have an old `baritone/altoclef/altoclef_settings.json`, its values are imported once on first start (only into settings you have not changed yourself) and the file is renamed to `altoclef_settings.json.migrated`. A file that is not valid json is not imported and gets renamed to `altoclef_settings.json.failed`.
 
 # Troubleshooting / common issues
 

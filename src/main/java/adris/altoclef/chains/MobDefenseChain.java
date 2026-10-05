@@ -423,7 +423,7 @@ public class MobDefenseChain extends SingleTaskChain {
                     } else if (entity instanceof Player player && mod.getBehaviour().shouldForceFieldPlayers()) {
                         if (!player.equals(mod.getPlayer())) {
                             String name = player.getName().getString();
-                            if (!mod.getButler().isUserAuthorized(name)) {
+                            if (!mod.getButler().isUserSpared(name)) {
                                 shouldForce = true;
                             }
                         }

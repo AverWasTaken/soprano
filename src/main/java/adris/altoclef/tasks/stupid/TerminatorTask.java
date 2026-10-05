@@ -249,7 +249,7 @@ public class TerminatorTask extends Task {
     private boolean shouldPunk(AltoClef mod, Player player) {
         if (player == null || player.isDeadOrDying()) return false;
         if (player.isCreative() || player.isSpectator()) return false;
-        return !mod.getButler().isUserAuthorized(player.getName().getString()) && _canTerminate.test(player);
+        return !mod.getButler().isUserSpared(player.getName().getString()) && _canTerminate.test(player);
     }
 
     private void tryDoFunnyMessageTo(AltoClef mod, Player player) {

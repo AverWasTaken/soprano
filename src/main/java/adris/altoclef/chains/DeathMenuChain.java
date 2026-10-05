@@ -131,7 +131,7 @@ public class DeathMenuChain extends TaskChain {
                     // and sent from tickDeathCommands once the new player entity shows up
                     _pendingDeathCommands.clear();
                     for (String i : Baritone.settings().altoDeathCommand.value.split(" & ")) {
-                        String command = i.replace("{deathmessage}", deathMessage);
+                        String command = i.replace("{deathmessage}", DeathCommandText.sanitize(deathMessage));
                         if (!command.isEmpty()) {
                             _pendingDeathCommands.add(command);
                         }

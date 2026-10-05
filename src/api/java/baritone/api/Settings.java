@@ -1821,9 +1821,12 @@ public final class Settings {
     public final Setting<Boolean> altoRunsWhenIdle = new Setting<>(false);
 
     /**
-     * Let other players whisper commands to your player, see baritone/altoclef/configs/butler.json and the whitelist
-     * and blacklist files next to it for who may. Off, because with the default lists anybody who is not blacklisted
-     * could whisper commands at you.
+     * Let other players whisper AltoClef commands to your player. Only players in the whitelist file
+     * baritone/altoclef/altoclef_butler_whitelist.txt (one name per line, case does not matter) may, and an empty or
+     * missing whitelist means nobody can. The blacklist file next to it is applied on top and wins. Whispers can only
+     * run AltoClef's commands, not Baritone's own, and never punk or gamma. Off by default.
+     * <p>
+     * Whisper parsing is set up in baritone/altoclef/configs/butler.json.
      */
     public final Setting<Boolean> altoButler = new Setting<>(false);
 

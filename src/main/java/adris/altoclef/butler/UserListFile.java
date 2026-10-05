@@ -4,6 +4,7 @@ import adris.altoclef.util.helpers.ConfigHelper;
 import adris.altoclef.util.serialization.IListConfigFile;
 
 import java.util.HashSet;
+import java.util.Locale;
 import java.util.function.Consumer;
 
 public class UserListFile implements IListConfigFile {
@@ -14,8 +15,18 @@ public class UserListFile implements IListConfigFile {
         ConfigHelper.loadListConfig(path, UserListFile::new, onLoad);
     }
 
+    // minecraft names are case-insensitive for every practical purpose, and "Jacob" vs "jacob" in a text file is
+    // exactly the typo that makes the whitelist look broken
+    private static String normalize(String name) {
+        return name.trim().toLowerCase(Locale.ROOT);
+    }
+
     public boolean containsUser(String username) {
-        return _users.contains(username);
+        return username != null && _users.contains(normalize(username));
+    }
+
+    public boolean isEmpty() {
+        return _users.isEmpty();
     }
 
     @Override
@@ -25,6 +36,12 @@ public class UserListFile implements IListConfigFile {
 
     @Override
     public void addLine(String line) {
-        _users.add(line);
+        if (line == null) {
+            return;
+        }
+        String name = normalize(line);
+        if (!name.isEmpty()) {
+            _users.add(name);
+        }
     }
 }

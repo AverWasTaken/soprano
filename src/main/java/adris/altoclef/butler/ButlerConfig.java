@@ -11,17 +11,20 @@ public class ButlerConfig {
     }
 
     /**
-     * If true, will use blacklist for rejecting users from using your player as a butler
+     * If true, the blacklist rejects users even when they are on the whitelist.
+     * <p>
+     * There is no useButlerWhitelist anymore: the whitelist is always required (empty means nobody). An old
+     * butler.json that still has it loads fine, the value is ignored.
      */
     public boolean useButlerBlacklist = true;
-    /**
-     * If true, will use whitelist to only accept users from said whitelist.
-     */
-    public boolean useButlerWhitelist = false;
     /**
      * Servers have different messaging plugins that change the way messages are displayed.
      * Rather than attempt to implement all of them and introduce a big security risk,
      * you may define custom whisper formats that the butler will watch out for.
+     * <p>
+     * The default "{from} {to} {message}" is not text-matched at all, the butler already knows who sent what to whom.
+     * Any other format is matched against "sender receiver message" for the message part only, the sender always
+     * stays the real one.
      * <p>
      * Within curly brackets are three special parts:
      * <p>
