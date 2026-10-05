@@ -2,7 +2,7 @@ package adris.altoclef;
 
 import adris.altoclef.butler.Butler;
 import adris.altoclef.chains.*;
-import adris.altoclef.commandsystem.CommandExecutor;
+import adris.altoclef.commands.AltoClefCommands;
 import adris.altoclef.control.InputControls;
 import adris.altoclef.control.PlayerExtraController;
 import adris.altoclef.control.SlotHandler;
@@ -53,7 +53,6 @@ public class AltoClef {
     // Applies the baritone settings altoclef wants while it is running and puts the old ones back afterwards
     private final BaritoneSettingsScope _baritoneScope = new BaritoneSettingsScope(this);
     // Central Managers
-    private static CommandExecutor _commandExecutor;
     private TaskRunner _taskRunner;
     private TrackerManager _trackerManager;
     private BotBehaviour _botBehaviour;
@@ -87,13 +86,6 @@ public class AltoClef {
     }
 
     /**
-     * Executes commands (ex. `@get`/`@gamer`)
-     */
-    public static CommandExecutor getCommandExecutor() {
-        return _commandExecutor;
-    }
-
-    /**
      * The one AltoClef, null until Soprano has created it (see baritone.altoclef.AltoClefBridge).
      */
     public static AltoClef getInstance() {
@@ -113,7 +105,6 @@ public class AltoClef {
         _instance = this;
 
         // Central Managers
-        _commandExecutor = new CommandExecutor(this);
         _taskRunner = new TaskRunner(this);
         _trackerManager = new TrackerManager(this);
         _botBehaviour = new BotBehaviour(this);
@@ -145,8 +136,6 @@ public class AltoClef {
 
         _butler = new Butler(this);
 
-        initializeCommands();
-
         // Load settings
         adris.altoclef.Settings.load(newSettings -> {
             _settings = newSettings;
@@ -157,7 +146,7 @@ public class AltoClef {
             // If we should run an idle command... (only when the idle gate says altoclef may run without a task)
             if (RUNS_WHEN_IDLE && (!getUserTaskChain().isActive() || getUserTaskChain().isRunningIdleTask()) && getModSettings().shouldRunIdleCommandWhenNotActive()) {
                 getUserTaskChain().signalNextTaskToBeIdleTask();
-                getCommandExecutor().executeWithPrefix(getModSettings().getIdleCommand());
+                AltoClefCommands.executeTrusted(getModSettings().getIdleCommand());
             }
         });
 
@@ -238,16 +227,6 @@ public class AltoClef {
 
     public void onTaskRunnerDisabled() {
         _baritoneScope.restore();
-    }
-
-    // List all command sources here.
-    private void initializeCommands() {
-        try {
-            // This creates the commands. If you want any more commands feel free to initialize new command lists.
-            new AltoClefCommands();
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
     }
 
     /**

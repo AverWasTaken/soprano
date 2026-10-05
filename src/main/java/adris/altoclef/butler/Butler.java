@@ -2,6 +2,7 @@ package adris.altoclef.butler;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
+import adris.altoclef.commands.AltoClefCommands;
 import adris.altoclef.eventbus.EventBus;
 import adris.altoclef.eventbus.events.ChatMessageEvent;
 import adris.altoclef.eventbus.events.TaskFinishedEvent;
@@ -130,25 +131,29 @@ public class Butler {
     }
 
     private void executeWhisper(String username, String message) {
+        // with requirePrefixMsg only messages that start with soprano's command prefix count as commands, the rest is
+        // just somebody chatting at us
+        if (ButlerConfig.getInstance().requirePrefixMsg && !message.startsWith(AltoClefCommands.prefix())) {
+            return;
+        }
         String prevUser = _currentUser;
         _commandInstantRan = true;
         _commandFinished = false;
         _currentUser = username;
         sendWhisper("Command Executing: " + message, MessagePriority.TIMELY);
-        String prefix = ButlerConfig.getInstance().requirePrefixMsg ? _mod.getModSettings().getCommandPrefix() : "";
-        AltoClef.getCommandExecutor().execute(prefix + message, () -> {
+        // the last flag is the allow-list: a whisper can run altoclef's commands and nothing else of soprano's
+        AltoClefCommands.execute(message, () -> {
             // On finish
             sendWhisper("Command Finished: " + message, MessagePriority.TIMELY);
             if (!_commandInstantRan) {
                 _currentUser = null;
             }
             _commandFinished = true;
-        }, e -> {
-            sendWhisper("TASK FAILED: " + e.getMessage(), MessagePriority.ASAP);
-            e.printStackTrace();
+        }, error -> {
+            sendWhisper("TASK FAILED: " + error, MessagePriority.ASAP);
             _currentUser = null;
             _commandInstantRan = false;
-        });
+        }, true);
         _commandInstantRan = false;
         // Only set the current user if we're still running.
         if (_commandFinished) {

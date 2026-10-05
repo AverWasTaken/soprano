@@ -18,10 +18,13 @@
 package baritone.altoclef;
 
 import adris.altoclef.AltoClef;
+import adris.altoclef.commands.AltoClefCommands;
 import adris.altoclef.eventbus.EventBus;
 import adris.altoclef.eventbus.events.ChunkLoadEvent;
 import adris.altoclef.eventbus.events.ChunkUnloadEvent;
 import baritone.Baritone;
+import baritone.api.command.exception.CommandException;
+import baritone.api.command.exception.CommandInvalidStateException;
 import baritone.api.event.events.ChunkEvent;
 import baritone.api.event.events.TickEvent;
 import baritone.api.event.events.type.EventState;
@@ -40,6 +43,7 @@ public final class AltoClefBridge implements AbstractGameEventListener {
     private static final int MAX_ERRORS = 5;
 
     private static AltoClef altoClef;
+    private static AltoClefBridge instance;
     private static boolean hudBroken;
 
     private boolean initTried;
@@ -52,7 +56,37 @@ public final class AltoClefBridge implements AbstractGameEventListener {
     // of Minecraft.tick, ahead of everything baritone does, and it sets goals and inputs that the behaviors and
     // processes are supposed to see this very tick
     public static void attach(Baritone primary) {
-        ((GameEventHandler) primary.getGameEventHandler()).registerEventListenerFirst(new AltoClefBridge());
+        instance = new AltoClefBridge();
+        ((GameEventHandler) primary.getGameEventHandler()).registerEventListenerFirst(instance);
+        // the commands go in now, long before altoclef itself exists, so #help and tab completion know about them from
+        // the title screen on. running one is what creates altoclef, see require
+        AltoClefCommands.register(primary);
+    }
+
+    // the instance for a command that is about to run. altoclef is made lazily on the first tick it can be, so a command
+    // typed before that (or after altoclef gave up) has to say so instead of falling over a null
+    public static AltoClef require() throws CommandException {
+        if (altoClef == null && instance != null && !instance.initTried) {
+            instance.init();
+        }
+        if (altoClef == null) {
+            throw new CommandInvalidStateException(instance != null && instance.initTried
+                    ? "altoclef is off for this session, it failed to start or crashed too many times (the log says why)"
+                    : "altoclef is not up yet, give it a second");
+        }
+        return altoClef;
+    }
+
+    // what stop does about altoclef. never creates it, a user task can't be running if it was never made
+    public static void cancelUserTask() {
+        AltoClefCommands.abortSequences();
+        if (altoClef != null) {
+            try {
+                altoClef.cancelUserTask();
+            } catch (Throwable t) {
+                t.printStackTrace();
+            }
+        }
     }
 
     // true while an altoclef task (or the idle gate) has the bot. mixins that change vanilla behaviour check this
@@ -113,9 +147,12 @@ public final class AltoClefBridge implements AbstractGameEventListener {
         initTried = true;
         try {
             AltoClef ac = new AltoClef();
-            ac.onInitializeLoad();
+            // set before onInitializeLoad, not after: the idle command can run a command while it is still starting and
+            // that command asks for the instance
             altoClef = ac;
+            ac.onInitializeLoad();
         } catch (Throwable t) {
+            altoClef = null;
             System.err.println("altoclef failed to start, it stays off this session");
             t.printStackTrace();
         }

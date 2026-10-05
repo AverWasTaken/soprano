@@ -2,57 +2,75 @@ package adris.altoclef.commands;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.TaskCatalogue;
-import adris.altoclef.commandsystem.Arg;
-import adris.altoclef.commandsystem.ArgParser;
-import adris.altoclef.commandsystem.Command;
-import adris.altoclef.commandsystem.CommandException;
 import adris.altoclef.ui.MessagePriority;
 import adris.altoclef.util.helpers.ItemHelper;
-import java.util.HashMap;
+import baritone.api.IBaritone;
+import baritone.api.command.argument.IArgConsumer;
+import baritone.api.command.exception.CommandException;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
+import java.util.stream.Stream;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 
-public class InventoryCommand extends Command {
-    public InventoryCommand() throws CommandException {
-        super("inventory", "Prints the bot's inventory OR returns how many of an item the bot has", new Arg(String.class, "item", null, 1));
+public class InventoryCommand extends AltoClefCommand {
+
+    public InventoryCommand(IBaritone baritone) {
+        super(baritone, "inventory");
     }
 
     @Override
-    protected void call(AltoClef mod, ArgParser parser) throws CommandException {
-        String item = parser.get(String.class);
-        if (item == null) {
-            // Print inventory
-            // Get item counts
-            HashMap<String, Integer> counts = new HashMap<>();
+    protected void run(AltoClef mod, String label, IArgConsumer args) throws CommandException {
+        args.requireMax(1);
+        if (!args.hasAny()) {
+            // item counts by name, sorted so the list does not shuffle around between runs
+            Map<String, Integer> counts = new TreeMap<>();
             for (int i = 0; i < mod.getPlayer().getInventory().getContainerSize(); ++i) {
                 ItemStack stack = mod.getPlayer().getInventory().getItem(i);
                 if (!stack.isEmpty()) {
-                    String name = ItemHelper.stripItemName(stack.getItem());
-                    if (!counts.containsKey(name)) counts.put(name, 0);
-                    counts.put(name, counts.get(name) + stack.getCount());
+                    counts.merge(ItemHelper.stripItemName(stack.getItem()), stack.getCount(), Integer::sum);
                 }
             }
-            // Print
             mod.log("INVENTORY: ", MessagePriority.OPTIONAL);
-            for (String name : counts.keySet()) {
-                mod.log(name + " : " + counts.get(name), MessagePriority.OPTIONAL);
-            }
+            counts.forEach((name, count) -> mod.log(name + " : " + count, MessagePriority.OPTIONAL));
             mod.log("(inventory list sent) ", MessagePriority.OPTIONAL);
         } else {
-            // Print item quantity
+            String item = args.getDatatypeFor(AltoItem.CATALOGUE);
             Item[] matches = TaskCatalogue.getItemMatches(item);
-            if (matches == null || matches.length == 0) {
-                mod.logWarning("Item \"" + item + "\" is not catalogued/recognized.");
-                finish();
-                return;
-            }
             int count = mod.getItemStorage().getItemCount(matches);
-            if (count == 0) {
-                mod.log(item + " COUNT: (none)");
-            } else {
-                mod.log(item + " COUNT: " + count);
-            }
+            mod.log(item + " COUNT: " + (count == 0 ? "(none)" : count));
         }
-        finish();
+        done();
+    }
+
+    @Override
+    public Stream<String> tabComplete(String label, IArgConsumer args) throws CommandException {
+        if (args.hasExactlyOne()) {
+            return args.tabCompleteDatatype(AltoItem.CATALOGUE);
+        }
+        return Stream.empty();
+    }
+
+    @Override
+    public String getShortDesc() {
+        return "Print the inventory or count an item";
+    }
+
+    @Override
+    public List<String> getLongDesc() {
+        return Arrays.asList(
+                "The inventory command lists everything you are carrying, or tells you how many of one item you have.",
+                "",
+                "Counting takes altoclef's catalogue names (see get), so a group like log adds up every kind of log. A butler gets the answer in a whisper.",
+                "",
+                "Usage:",
+                "> inventory - List your inventory.",
+                "> inventory <item> - Count one item or group.",
+                "",
+                "Examples:",
+                "> inventory log"
+        );
     }
 }

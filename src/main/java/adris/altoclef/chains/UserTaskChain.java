@@ -2,6 +2,7 @@ package adris.altoclef.chains;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
+import adris.altoclef.commands.AltoClefCommands;
 import adris.altoclef.eventbus.EventBus;
 import adris.altoclef.eventbus.events.TaskFinishedEvent;
 import adris.altoclef.tasksystem.Task;
@@ -116,7 +117,7 @@ public class UserTaskChain extends SingleTaskChain {
                 EventBus.publish(new TaskFinishedEvent(seconds, oldTask));
             }
             if (shouldIdle) {
-                AltoClef.getCommandExecutor().executeWithPrefix(mod.getModSettings().getIdleCommand());
+                AltoClefCommands.executeTrusted(mod.getModSettings().getIdleCommand());
                 signalNextTaskToBeIdleTask();
                 _runningIdleTask = true;
             }

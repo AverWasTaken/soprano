@@ -1,69 +1,76 @@
 package adris.altoclef.commands;
 
 import adris.altoclef.AltoClef;
-import adris.altoclef.commandsystem.*;
 import adris.altoclef.tasks.misc.EquipArmorTask;
 import adris.altoclef.util.ItemTarget;
-import net.minecraft.world.item.ArmorItem;
+import baritone.api.IBaritone;
+import baritone.api.command.argument.IArgConsumer;
+import baritone.api.command.exception.CommandException;
+import java.util.Arrays;
+import java.util.List;
+import java.util.stream.Stream;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 
-public class EquipCommand extends Command {
-    public EquipCommand() throws CommandException {
-        super("equip", "Equips armor", new Arg(ItemList.class, "[armors]"));
+public class EquipCommand extends AltoClefCommand {
+
+    public EquipCommand(IBaritone baritone) {
+        super(baritone, "equip");
+    }
+
+    // the one word shortcuts for a full set, null for anything else
+    private static ItemTarget[] armorSet(String word) {
+        Item[] pieces = switch (word.toLowerCase()) {
+            case "leather" -> new Item[]{Items.LEATHER_HELMET, Items.LEATHER_CHESTPLATE, Items.LEATHER_LEGGINGS, Items.LEATHER_BOOTS};
+            case "iron" -> new Item[]{Items.IRON_HELMET, Items.IRON_CHESTPLATE, Items.IRON_LEGGINGS, Items.IRON_BOOTS};
+            case "gold" -> new Item[]{Items.GOLDEN_HELMET, Items.GOLDEN_CHESTPLATE, Items.GOLDEN_LEGGINGS, Items.GOLDEN_BOOTS};
+            case "diamond" -> new Item[]{Items.DIAMOND_HELMET, Items.DIAMOND_CHESTPLATE, Items.DIAMOND_LEGGINGS, Items.DIAMOND_BOOTS};
+            case "netherite" -> new Item[]{Items.NETHERITE_HELMET, Items.NETHERITE_CHESTPLATE, Items.NETHERITE_LEGGINGS, Items.NETHERITE_BOOTS};
+            default -> null;
+        };
+        if (pieces == null) {
+            return null;
+        }
+        return Arrays.stream(pieces).map(ItemTarget::new).toArray(ItemTarget[]::new);
     }
 
     @Override
-    protected void call(AltoClef mod, ArgParser parser) throws CommandException {
-        ItemTarget[] items;
-        if (parser.getArgUnits().length == 1) {
-            switch (parser.getArgUnits()[0].toLowerCase()) { //Hot commands for the default full armor sets
-                case "leather" -> items =
-                        new ItemTarget[]{new ItemTarget(Items.LEATHER_HELMET),
-                                new ItemTarget(Items.LEATHER_CHESTPLATE),
-                                new ItemTarget(Items.LEATHER_LEGGINGS),
-                                new ItemTarget(Items.LEATHER_BOOTS)};
-                case "iron" -> items =
-                        new ItemTarget[]{new ItemTarget(Items.IRON_HELMET),
-                                new ItemTarget(Items.IRON_CHESTPLATE),
-                                new ItemTarget(Items.IRON_LEGGINGS),
-                                new ItemTarget(Items.IRON_BOOTS)};
-                case "gold" -> items =
-                        new ItemTarget[]{new ItemTarget(Items.GOLDEN_HELMET),
-                                new ItemTarget(Items.GOLDEN_CHESTPLATE),
-                                new ItemTarget(Items.GOLDEN_LEGGINGS),
-                                new ItemTarget(Items.GOLDEN_BOOTS)};
-                case "diamond" -> items =
-                        new ItemTarget[]{new ItemTarget(Items.DIAMOND_HELMET)
-                                , new ItemTarget(Items.DIAMOND_CHESTPLATE),
-                                new ItemTarget(Items.DIAMOND_LEGGINGS),
-                                new ItemTarget(Items.DIAMOND_BOOTS)};
-                case "netherite" -> items =
-                        new ItemTarget[]{new ItemTarget(Items.NETHERITE_HELMET), new ItemTarget(Items.NETHERITE_CHESTPLATE), new ItemTarget(Items.NETHERITE_LEGGINGS), new ItemTarget(Items.NETHERITE_BOOTS)};
-                default -> {
-                    items = parser.get(ItemList.class).items;          // if only one thing was provided, and it isn't an armor set, try to work it out.
-                }
-            }
+    protected void run(AltoClef mod, String label, IArgConsumer args) throws CommandException {
+        args.requireMin(1);
+        // a lone "iron" is the whole set, anything longer is a list of pieces
+        ItemTarget[] items = args.hasExactlyOne() ? armorSet(args.peekString()) : null;
+        if (items != null) {
+            args.get();
         } else {
-            items = parser.get(ItemList.class).items; // a list of items was provided
+            items = parseItems(args, AltoItem.ARMOR);
         }
-        for (ItemTarget item : items) {
-            for (Item i : item.getMatches()) {
-                if (!(i instanceof ArmorItem)) {
-                    items = null; // flag items as "bad" if any of the items are not ArmorItems
-                    break;
-                }
-            }
-            if (items == null) {
-                break;
-            }
-        }
+        startTask(mod, new EquipArmorTask(items));
+    }
 
+    @Override
+    public Stream<String> tabComplete(String label, IArgConsumer args) throws CommandException {
+        return args.tabCompleteDatatype(AltoItem.ARMOR);
+    }
 
-        if (items != null)
-            mod.runUserTask(new EquipArmorTask(items), this::finish); // do not run the equip task with non armor items.
-        else
-            throw new CommandException("You must provide armor items."); //inform the user that they can only use armor items.
-        //TODO Possibly add in a variable to tell the user what was wrong. However, this is less helpful if a list of items is wrong.
+    @Override
+    public String getShortDesc() {
+        return "Equip armor";
+    }
+
+    @Override
+    public List<String> getLongDesc() {
+        return Arrays.asList(
+                "The equip command has altoclef put on armor, getting any pieces it does not have yet.",
+                "",
+                "A single set name (leather, iron, gold, diamond, netherite) means all four pieces of that set. Otherwise give it the pieces, with an optional count each. Only armor is accepted.",
+                "",
+                "Usage:",
+                "> equip <set> - Equip a whole armor set.",
+                "> equip <piece> [count] <piece> [count] ... - Equip these pieces.",
+                "",
+                "Examples:",
+                "> equip diamond",
+                "> equip iron_helmet iron_boots"
+        );
     }
 }

@@ -1,19 +1,40 @@
 package adris.altoclef.commands;
 
 import adris.altoclef.AltoClef;
-import adris.altoclef.commandsystem.ArgParser;
-import adris.altoclef.commandsystem.Command;
 import adris.altoclef.util.helpers.ConfigHelper;
+import baritone.api.IBaritone;
+import baritone.api.command.argument.IArgConsumer;
+import baritone.api.command.exception.CommandException;
+import java.util.Arrays;
+import java.util.List;
 
-public class ReloadSettingsCommand extends Command {
-    public ReloadSettingsCommand() {
-        super("reload_settings", "Reloads bot settings and butler whitelist/blacklist.");
+public class ReloadSettingsCommand extends AltoClefCommand {
+
+    public ReloadSettingsCommand(IBaritone baritone) {
+        // reload_settings is the old name. the settings are moving into #set, this is for the json files that are left
+        super(baritone, "altoreload", "reload_settings", "reloadsettings");
     }
 
     @Override
-    protected void call(AltoClef mod, ArgParser parser) {
+    protected void run(AltoClef mod, String label, IArgConsumer args) throws CommandException {
+        args.requireMax(0);
         ConfigHelper.reloadAllConfigs();
         mod.log("Reload successful!");
-        finish();
+        done();
+    }
+
+    @Override
+    public String getShortDesc() {
+        return "Reload AltoClef's json configs";
+    }
+
+    @Override
+    public List<String> getLongDesc() {
+        return Arrays.asList(
+                "The altoreload command reloads AltoClef's json config files from disk: its settings, the butler config and its whitelist and blacklist, and the custom tasks.",
+                "",
+                "Usage:",
+                "> altoreload"
+        );
     }
 }

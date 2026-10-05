@@ -2,6 +2,7 @@ package adris.altoclef.chains;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
+import adris.altoclef.commands.AltoClefCommands;
 import baritone.utils.accessor.IDeathScreen;
 import adris.altoclef.tasksystem.TaskChain;
 import adris.altoclef.tasksystem.TaskRunner;
@@ -79,12 +80,10 @@ public class DeathMenuChain extends TaskChain {
                 _deadPlayer = null;
             }
             case SEND -> {
-                String prefix = mod.getModSettings().getCommandPrefix();
+                String prefix = AltoClefCommands.prefix();
                 for (String command : _pendingDeathCommands) {
                     if (command.startsWith(prefix)) {
-                        // TODO(commands): goes through the baritone command manager once the command rewrite lands
-                        AltoClef.getCommandExecutor().execute(command, () -> {
-                        }, Throwable::printStackTrace);
+                        AltoClefCommands.executeTrusted(command);
                     } else if (command.startsWith("/")) {
                         player.connection.sendCommand(command.substring(1));
                     } else {

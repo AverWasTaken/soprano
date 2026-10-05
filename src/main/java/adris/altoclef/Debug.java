@@ -1,9 +1,12 @@
 package adris.altoclef;
 
+import baritone.api.utils.Helper;
+import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
-import net.minecraft.network.chat.Component;
 
-// TODO: Debug library or use Minecraft's built in debugger
+// everything altoclef prints to chat goes through soprano's own logger now, so it gets the same [Soprano] prefix, the
+// logAsToast/useMessageTag settings and the same chat hooks as every other message. the verbosity switches
+// (shouldHideAllWarningLogs and friends) are still altoclef's
 public class Debug {
 
     public static AltoClef jankModInstance;
@@ -16,27 +19,17 @@ public class Debug {
         logInternal(String.format(format, args));
     }
 
-    private static String getLogPrefix() {
-        if (jankModInstance != null) {
-            return jankModInstance.getModSettings().getChatLogPrefix();
-        }
-        return "[Alto Clef] ";
-    }
-
-    public static void logMessage(String message, boolean prefix) {
-        if (Minecraft.getInstance() != null && Minecraft.getInstance().player != null) {
-            if (prefix) {
-                message = "\u00A72\u00A7l\u00A7o" + getLogPrefix() + "\u00A7r" + message;
-            }
-            Minecraft.getInstance().player.displayClientMessage(Component.nullToEmpty(message), false);
-            //MinecraftClient.getInstance().player.sendChatMessage(msg);
-        } else {
-            logInternal(message);
-        }
+    // before there is a world there is nowhere to put chat, so it goes to the console like it always did
+    private static boolean canChat() {
+        return Minecraft.getInstance() != null && Minecraft.getInstance().player != null;
     }
 
     public static void logMessage(String message) {
-        logMessage(message, true);
+        if (canChat()) {
+            Helper.HELPER.logDirect(message);
+        } else {
+            logInternal(message);
+        }
     }
 
     public static void logMessage(String format, Object... args) {
@@ -46,10 +39,8 @@ public class Debug {
     public static void logWarning(String message) {
         logInternal("WARNING: " + message);
         if (jankModInstance != null && !jankModInstance.getModSettings().shouldHideAllWarningLogs()) {
-            if (Minecraft.getInstance() != null && Minecraft.getInstance().player != null) {
-                String msg = "\u00A72\u00A7l\u00A7o" + getLogPrefix() + "\u00A7c" + message + "\u00A7r";
-                Minecraft.getInstance().player.displayClientMessage(Component.nullToEmpty(msg), false);
-                //MinecraftClient.getInstance().player.sendChatMessage(msg);
+            if (canChat()) {
+                Helper.HELPER.logDirect(message, ChatFormatting.RED);
             }
         }
     }
@@ -63,9 +54,8 @@ public class Debug {
         System.err.println(message);
         System.err.println("at:");
         System.err.println(stacktrace);
-        if (Minecraft.getInstance() != null && Minecraft.getInstance().player != null) {
-            String msg = "\u00A72\u00A7l\u00A7c" + getLogPrefix() + "[ERROR] " + message + "\nat:\n" + stacktrace + "\u00A7r";
-            Minecraft.getInstance().player.displayClientMessage(Component.nullToEmpty(msg), false);
+        if (canChat()) {
+            Helper.HELPER.logDirect("[ERROR] " + message + "\nat:\n" + stacktrace, ChatFormatting.RED);
         }
     }
 
