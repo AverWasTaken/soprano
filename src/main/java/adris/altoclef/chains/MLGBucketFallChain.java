@@ -13,6 +13,7 @@ import java.util.Optional;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.effect.MobEffects;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.block.Blocks;
@@ -91,7 +92,7 @@ public class MLGBucketFallChain extends SingleTaskChain implements ITaskOverride
             _lastMLG = null;
         }
         if (mod.getPlayer().hasEffect(MobEffects.LEVITATION) &&
-                !mod.getPlayer().getCooldowns().isOnCooldown(Items.CHORUS_FRUIT) &&
+                !mod.getPlayer().getCooldowns().isOnCooldown(new ItemStack(Items.CHORUS_FRUIT)) &&
                 mod.getPlayer().getActiveEffectsMap().get(MobEffects.LEVITATION).getDuration() <= 70 &&
                 mod.getItemStorage().hasItemInventoryOnly(Items.CHORUS_FRUIT) &&
                 !mod.getItemStorage().hasItemInventoryOnly(Items.WATER_BUCKET)) {

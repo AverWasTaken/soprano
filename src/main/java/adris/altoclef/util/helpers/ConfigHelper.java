@@ -2,20 +2,25 @@ package adris.altoclef.util.helpers;
 
 import adris.altoclef.Debug;
 import adris.altoclef.util.serialization.*;
-import com.fasterxml.jackson.core.util.DefaultIndenter;
-import com.fasterxml.jackson.core.util.DefaultPrettyPrinter;
-import com.fasterxml.jackson.databind.JsonMappingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
-import com.fasterxml.jackson.databind.module.SimpleModule;
-import java.io.*;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.InstanceCreator;
+import com.google.gson.reflect.TypeToken;
+import java.io.File;
+import java.io.IOException;
+import java.io.Reader;
+import java.io.Writer;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Scanner;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.phys.Vec3;
 
@@ -24,22 +29,55 @@ import net.minecraft.world.phys.Vec3;
  */
 public class ConfigHelper {
 
+    // everything lives in <gameDir>/baritone/altoclef, next to baritone's own folder
+    private static final String BARITONE_FOLDER = "baritone";
     private static final String ALTO_FOLDER = "altoclef";
+
+    // One gson for everything. Item/BlockPos/ChunkPos/Vec3 adapters live here, so config classes need no annotations.
+    // The adapters only touch the registry when they actually run, so this is fine to build early.
+    private static final Gson GSON = new GsonBuilder()
+            .setPrettyPrinting()
+            .serializeNulls()
+            .disableHtmlEscaping()
+            .registerTypeHierarchyAdapter(Item.class, new ItemSerializer())
+            .registerTypeHierarchyAdapter(Item.class, new ItemDeserializer())
+            // list version so a typo'd item gets skipped instead of leaving a null in the list
+            .registerTypeAdapter(new TypeToken<List<Item>>() {}.getType(), new ItemDeserializer.ListOf())
+            .registerTypeHierarchyAdapter(BlockPos.class, new BlockPosSerializer())
+            .registerTypeHierarchyAdapter(BlockPos.class, new BlockPosDeserializer())
+            .registerTypeAdapter(ChunkPos.class, new ChunkPosSerializer())
+            .registerTypeAdapter(ChunkPos.class, new ChunkPosDeserializer())
+            .registerTypeAdapter(Vec3.class, new Vec3dSerializer())
+            .registerTypeAdapter(Vec3.class, new Vec3dDeserializer())
+            .create();
+
     // For reloading
     private static final HashMap<String, Runnable> _loadedConfigs = new HashMap<>();
+
+    // Lets a test point us somewhere that is not a minecraft game dir.
+    static Path _folderOverride = null;
+
+    /**
+     * The folder all altoclef config files live in. Worked out on every call because the
+     * game dir does not exist until Minecraft does.
+     */
+    private static Path getConfigFolder() {
+        if (_folderOverride != null) {
+            return _folderOverride;
+        }
+        Minecraft mc = Minecraft.getInstance();
+        Path gameDir = mc != null ? mc.gameDirectory.toPath() : Path.of("");
+        return gameDir.resolve(BARITONE_FOLDER).resolve(ALTO_FOLDER);
+    }
 
     /**
      * Returns a File object representing the configuration file located at the given path.
      *
-     * @param path The relative path of the configuration file.
+     * @param path The path of the configuration file, relative to the altoclef config folder.
      * @return The File object representing the configuration file.
      */
     private static File getConfigFile(String path) {
-        // Get the full path by concatenating the ALTO_FOLDER and the given path
-        String fullPath = ALTO_FOLDER + File.separator + path;
-
-        // Create a new File object using the full path
-        return new File(fullPath);
+        return getConfigFolder().resolve(path).toFile();
     }
 
     /**
@@ -70,26 +108,30 @@ public class ConfigHelper {
             return result;
         }
 
-        ObjectMapper mapper = new ObjectMapper();
-        SimpleModule module = new SimpleModule();
-        module.addDeserializer(Vec3.class, new Vec3dDeserializer());
-        module.addDeserializer(ChunkPos.class, new ChunkPosDeserializer());
-        module.addDeserializer(BlockPos.class, new BlockPosDeserializer());
-        mapper.registerModule(module);
+        // the supplier builds the top level object so missing keys keep their defaults
+        Gson gson = GSON.newBuilder()
+                .registerTypeAdapter(classToLoad, (InstanceCreator<T>) type -> getDefault.get())
+                .create();
 
-        try {
-            result = mapper.readValue(loadFrom, classToLoad);
-        } catch (JsonMappingException ex) {
-            Debug.logError("Failed to parse Config file of type " + classToLoad.getSimpleName() + "at " + path + ". JSON Error Message: " + ex.getMessage() + ".\n JSON Error STACK TRACE:\n\n");
-            ex.printStackTrace();
-            if (result instanceof IFailableConfigFile failable)
-                failable.failedToLoad();
-            return result;
+        try (Reader reader = Files.newBufferedReader(loadFrom.toPath(), StandardCharsets.UTF_8)) {
+            T loaded = gson.fromJson(reader, classToLoad);
+            if (loaded == null) {
+                // gson hands back null for an empty file
+                throw new IllegalStateException("Config file is empty.");
+            }
+            result = loaded;
         } catch (IOException e) {
             Debug.logError("Failed to read Config at " + path + ".");
             e.printStackTrace();
             if (result instanceof IFailableConfigFile failable)
-                failable.failedToLoad();
+                failable.onFailLoad();
+            return result;
+        } catch (RuntimeException ex) {
+            // JsonParseException and friends, plus whatever a bad value manages to throw
+            Debug.logError("Failed to parse Config file of type " + classToLoad.getSimpleName() + " at " + path + ". JSON Error Message: " + ex.getMessage() + ".\n JSON Error STACK TRACE:\n\n");
+            ex.printStackTrace();
+            if (result instanceof IFailableConfigFile failable)
+                failable.onFailLoad();
             return result;
         }
 
@@ -126,30 +168,14 @@ public class ConfigHelper {
      * @param config The configuration object to be saved.
      */
     public static <T> void saveConfig(String path, T config) {
-        // Create an object mapper to serialize the configuration object
-        ObjectMapper mapper = new ObjectMapper();
-
-        // Create a module to register custom serializers for specific classes
-        SimpleModule module = new SimpleModule();
-        module.addSerializer(Vec3.class, new Vec3dSerializer());
-        module.addSerializer(BlockPos.class, new BlockPosSerializer());
-        module.addSerializer(ChunkPos.class, new ChunkPosSerializer());
-        mapper.registerModule(module);
-
-        // Get the file object for the specified path
         File configFile = getConfigFile(path);
 
         // Create parent directories if they don't exist
         createParentDirectories(configFile);
 
-        try {
-            // Enable pretty printing for the serialized JSON
-            enablePrettyPrinting(mapper);
-
-            // Write the serialized configuration object to the file
-            writeConfigToFile(mapper, configFile, config);
+        try (Writer writer = Files.newBufferedWriter(configFile.toPath(), StandardCharsets.UTF_8)) {
+            GSON.toJson(config, writer);
         } catch (IOException e) {
-            // Handle any IO exceptions that occur during the write process
             handleIOException(e);
         }
     }
@@ -161,48 +187,9 @@ public class ConfigHelper {
      */
     private static void createParentDirectories(File file) {
         try {
-            // Get the parent path of the file
-            Path parentPath = file.getParentFile().toPath();
-
-            // Create the parent directories
-            Files.createDirectories(parentPath);
+            Files.createDirectories(file.getAbsoluteFile().getParentFile().toPath());
         } catch (IOException e) {
-            // Print an error message if failed to create parent directories
             System.err.println("Failed to create parent directories: " + e.getMessage());
-        }
-    }
-
-    /**
-     * Enable pretty printing for the given ObjectMapper.
-     *
-     * @param mapper The ObjectMapper to enable pretty printing for.
-     */
-    private static void enablePrettyPrinting(ObjectMapper mapper) {
-        // Check if the ObjectMapper is not null
-        if (mapper != null) {
-            // Enable indentation for the output
-            mapper.enable(SerializationFeature.INDENT_OUTPUT);
-
-            // Create a DefaultPrettyPrinter with a line feed indenter
-            DefaultPrettyPrinter prettyPrinter = new DefaultPrettyPrinter();
-            prettyPrinter.indentArraysWith(DefaultIndenter.SYSTEM_LINEFEED_INSTANCE);
-
-            // Set the pretty printer for the ObjectMapper's writer
-            mapper.writer(prettyPrinter);
-        }
-    }
-
-    /**
-     * Writes the given configuration data to the specified file using the provided ObjectMapper.
-     *
-     * @param objectMapper the ObjectMapper used to serialize the configuration data
-     * @param configFile   the file to write the configuration data to
-     * @param configData   the configuration data to write to the file
-     * @throws IOException if an I/O error occurs while writing to the file
-     */
-    private static <T> void writeConfigToFile(ObjectMapper objectMapper, File configFile, T configData) throws IOException {
-        try (Writer writer = new FileWriter(configFile)) {
-            objectMapper.writeValue(writer, configData);
         }
     }
 
@@ -212,11 +199,7 @@ public class ConfigHelper {
      * @param exception The IOException to handle.
      */
     private static void handleIOException(IOException exception) {
-        // Create an error message with the exception message
-        String errorMessage = "An IOException occurred: " + exception.getMessage();
-
-        // Print the error message to the standard error stream
-        System.err.println(errorMessage);
+        System.err.println("An IOException occurred: " + exception.getMessage());
     }
 
     /**
@@ -236,8 +219,7 @@ public class ConfigHelper {
             return result;
         }
 
-        try (FileInputStream fis = new FileInputStream(configFile);
-             Scanner scanner = new Scanner(fis)) {
+        try (Scanner scanner = new Scanner(configFile, StandardCharsets.UTF_8)) {
             while (scanner.hasNextLine()) {
                 String line = trimComment(scanner.nextLine()).trim();
                 if (line.isEmpty()) {
@@ -305,8 +287,9 @@ public class ConfigHelper {
                 commentBuilder.append("# ").append(line).append("\n");
             }
         }
+        createParentDirectories(configFile);
         try {
-            Files.write(configFile.toPath(), commentBuilder.toString().getBytes());
+            Files.write(configFile.toPath(), commentBuilder.toString().getBytes(StandardCharsets.UTF_8));
         } catch (IOException e) {
             handleException(e);
         }

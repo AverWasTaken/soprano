@@ -1,30 +1,17 @@
 package adris.altoclef.util.serialization;
 
-import adris.altoclef.util.helpers.ItemHelper;
-import com.fasterxml.jackson.core.JsonGenerator;
-import com.fasterxml.jackson.databind.SerializerProvider;
-import com.fasterxml.jackson.databind.ser.std.StdSerializer;
-import java.io.IOException;
-import java.util.List;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonPrimitive;
+import com.google.gson.JsonSerializationContext;
+import com.google.gson.JsonSerializer;
+import java.lang.reflect.Type;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.item.Item;
 
-public class ItemSerializer extends StdSerializer<Object> {
-    public ItemSerializer() {
-        this(null);
-    }
-
-    public ItemSerializer(Class<Object> vc) {
-        super(vc);
-    }
-
+// items are written as their registry id, "minecraft:iron_pickaxe"
+public class ItemSerializer implements JsonSerializer<Item> {
     @Override
-    public void serialize(Object value, JsonGenerator gen, SerializerProvider provider) throws IOException {
-        List<Item> items = (List<Item>) value;
-        gen.writeStartArray();
-        for (Item item : items) {
-            String key = ItemHelper.trimItemName(item.getDescriptionId());
-            gen.writeString(key);
-        }
-        gen.writeEndArray();
+    public JsonElement serialize(Item item, Type typeOfSrc, JsonSerializationContext context) {
+        return new JsonPrimitive(BuiltInRegistries.ITEM.getKey(item).toString());
     }
 }

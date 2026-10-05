@@ -186,4 +186,9 @@ public final class GameEventHandler implements IEventBus, Helper {
     public final void registerEventListener(IGameEventListener listener) {
         this.listeners.add(listener);
     }
+
+    // altoclef ticks before everything else, see AltoClefBridge#attach
+    public final void registerEventListenerFirst(IGameEventListener listener) {
+        this.listeners.add(0, listener);
+    }
 }

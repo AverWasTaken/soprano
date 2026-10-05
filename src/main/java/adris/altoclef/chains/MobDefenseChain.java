@@ -208,7 +208,7 @@ public class MobDefenseChain extends SingleTaskChain {
             if (!mod.getFoodChain().needsToEat() && (mod.getItemStorage().hasItem(Items.SHIELD) ||
                     mod.getItemStorage().hasItemInOffhand(Items.SHIELD)) &&
                     !mod.getEntityTracker().entityFound(ThrownPotion.class) && _runAwayTask == null
-                    && !mod.getPlayer().getCooldowns().isOnCooldown(offhandItem)
+                    && !mod.getPlayer().getCooldowns().isOnCooldown(new ItemStack(offhandItem))
                     && mod.getClientBaritone().getPathingBehavior().isSafeToCancel()) {
                 _doingFunkyStuff = true;
                 LookHelper.lookAt(mod, blowingUp.getEyePosition());
@@ -234,7 +234,7 @@ public class MobDefenseChain extends SingleTaskChain {
         if (!mod.getFoodChain().needsToEat() && mod.getModSettings().isDodgeProjectiles() && isProjectileClose(mod) &&
                 (mod.getItemStorage().hasItem(Items.SHIELD) || mod.getItemStorage().hasItemInOffhand(Items.SHIELD)) &&
                 !mod.getEntityTracker().entityFound(ThrownPotion.class) && _runAwayTask == null
-                && !mod.getPlayer().getCooldowns().isOnCooldown(offhandItem)
+                && !mod.getPlayer().getCooldowns().isOnCooldown(new ItemStack(offhandItem))
                 && mod.getClientBaritone().getPathingBehavior().isSafeToCancel()) {
             ItemStack shieldSlot = StorageHelper.getItemStackInSlot(PlayerSlot.OFFHAND_SLOT);
             if (shieldSlot.getItem() != Items.SHIELD) {
@@ -324,7 +324,7 @@ public class MobDefenseChain extends SingleTaskChain {
                 // full diamond has 8 bonus toughness
                 // full netherite has 12 bonus toughness
                 int armor = mod.getPlayer().getArmorValue();
-                float damage = bestSword == null ? 0 : (1 + bestSword.getTier().getAttackDamageBonus());
+                float damage = bestSword == null ? 0 : (1 + ItemHelper.getAttackDamageBonus(bestSword));
                 boolean hasShield = mod.getItemStorage().hasItem(Items.SHIELD) ||
                         mod.getItemStorage().hasItemInOffhand(Items.SHIELD);
                 int shield = hasShield ? 20 : 0;

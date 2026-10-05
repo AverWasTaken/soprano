@@ -3,7 +3,7 @@ package adris.altoclef.util.helpers;
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.TaskCatalogue;
-import adris.altoclef.mixins.AbstractFurnaceScreenHandlerAccessor;
+import baritone.utils.accessor.IAbstractFurnaceMenu;
 import adris.altoclef.tasks.CraftInInventoryTask;
 import adris.altoclef.util.CraftingRecipe;
 import adris.altoclef.util.ItemTarget;
@@ -37,7 +37,6 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.ShieldItem;
-import net.minecraft.world.item.TieredItem;
 import net.minecraft.world.level.block.state.BlockState;
 import org.apache.commons.lang3.ArrayUtils;
 
@@ -158,7 +157,7 @@ public class StorageHelper {
                 if (!slot.isSlotInPlayerInventory())
                     continue;
                 ItemStack stack = getItemStackInSlot(slot);
-                if (stack.getItem() instanceof TieredItem) {
+                if (ItemHelper.isTool(stack.getItem())) {
                     if (stack.isCorrectToolForDrops(state)) {
                         double speed = ToolSet.calculateSpeedVsBlock(stack, state);
                         if (speed > highestSpeed) {
@@ -216,9 +215,9 @@ public class StorageHelper {
                 if (!ItemHelper.canThrowAwayStack(mod, stack))
                     continue;
                 Item item = stack.getItem();
-                if (item instanceof TieredItem tool) {
-                    Class c = tool.getClass();
-                    int level = tool.getTier().getUses();
+                if (ItemHelper.isTool(item)) {
+                    Class c = item.getClass();
+                    int level = ItemHelper.getToolDurability(item);
                     int prevBest = bestMaterials.getOrDefault(c, 0);
                     if (level > prevBest) {
                         // We had a WORSE tool before.
@@ -269,8 +268,8 @@ public class StorageHelper {
                 return possibleSlots.stream().min((leftSlot, rightSlot) -> {
                     ItemStack left = StorageHelper.getItemStackInSlot(leftSlot),
                             right = StorageHelper.getItemStackInSlot(rightSlot);
-                    boolean leftIsTool = left.getItem() instanceof TieredItem;
-                    boolean rightIsTool = right.getItem() instanceof TieredItem;
+                    boolean leftIsTool = ItemHelper.isTool(left.getItem());
+                    boolean rightIsTool = ItemHelper.isTool(right.getItem());
                     // Prioritize tools over materials.
                     if (rightIsTool && !leftIsTool) {
                         return -1;
@@ -279,10 +278,10 @@ public class StorageHelper {
                     }
                     if (rightIsTool && leftIsTool) {
                         // Prioritize material type, then durability.
-                        TieredItem leftTool = (TieredItem) left.getItem();
-                        TieredItem rightTool = (TieredItem) right.getItem();
-                        if (leftTool.getTier().getUses() != rightTool.getTier().getUses()) {
-                            return (int) (leftTool.getTier().getUses() - rightTool.getTier().getUses());
+                        int leftUses = ItemHelper.getToolDurability(left.getItem());
+                        int rightUses = ItemHelper.getToolDurability(right.getItem());
+                        if (leftUses != rightUses) {
+                            return leftUses - rightUses;
                         }
                         // We want less damage.
                         return left.getDamageValue() - right.getDamageValue();
@@ -348,7 +347,7 @@ public class StorageHelper {
     public static boolean isArmorEquipped(AltoClef mod, Item... any) {
         for (Item item : any) {
             if (item instanceof ArmorItem armor) {
-                ItemStack equippedStack = mod.getPlayer().getInventory().getArmor(armor.getEquipmentSlot().getIndex());
+                ItemStack equippedStack = mod.getPlayer().getInventory().getArmor(ItemHelper.getEquipSlot(armor).getIndex());
                 if (equippedStack.getItem().equals(item))
                     return true;
             }
@@ -556,17 +555,17 @@ public class StorageHelper {
     }
 
     public static double getFurnaceFuel(AbstractFurnaceMenu handler) {
-        ContainerData d = ((AbstractFurnaceScreenHandlerAccessor) handler).getPropertyDelegate();
+        ContainerData d = ((IAbstractFurnaceMenu) handler).getPropertyDelegate();
         return (double) d.get(0) / 200.0;
     }
 
     public static double getSmokerFuel(AbstractFurnaceMenu handler) {
-        ContainerData d = ((AbstractFurnaceScreenHandlerAccessor) handler).getPropertyDelegate();
+        ContainerData d = ((IAbstractFurnaceMenu) handler).getPropertyDelegate();
         return (double) d.get(0) / 200.0;
     }
 
     public static double getBlastFurnaceFuel(AbstractFurnaceMenu handler) {
-        ContainerData d = ((AbstractFurnaceScreenHandlerAccessor) handler).getPropertyDelegate();
+        ContainerData d = ((IAbstractFurnaceMenu) handler).getPropertyDelegate();
         return (double) d.get(0) / 200.0;
     }
 

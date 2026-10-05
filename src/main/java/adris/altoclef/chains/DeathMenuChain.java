@@ -2,7 +2,7 @@ package adris.altoclef.chains;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
-import adris.altoclef.mixins.DeathScreenAccessor;
+import baritone.utils.accessor.IDeathScreen;
 import adris.altoclef.tasksystem.TaskChain;
 import adris.altoclef.tasksystem.TaskRunner;
 import adris.altoclef.util.time.TimerGame;
@@ -84,7 +84,7 @@ public class DeathMenuChain extends TaskChain {
                     _deathCount++;
                     Debug.logMessage("RESPAWNING... (this is death #" + _deathCount + ")");
                     assert Minecraft.getInstance().player != null;
-                    Component screenMessage = ((DeathScreenAccessor) screen).getMessage();
+                    Component screenMessage = ((IDeathScreen) screen).getMessage();
                     String deathMessage = screenMessage != null ? screenMessage.getString() : "Unknown"; //"(not implemented yet)"; //screen.children().toString();
                     Minecraft.getInstance().player.respawn();
                     Minecraft.getInstance().setScreen(null);

@@ -9,6 +9,7 @@ import adris.altoclef.tasks.movement.PickupDroppedItemTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.MiningRequirement;
+import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
@@ -134,7 +135,7 @@ public class MineAndCollectTask extends ResourceTask {
                     if (cursorStack.getItem() instanceof DiggerItem) {
                         if (currentlyEquipped instanceof DiggerItem currentPick) {
                             DiggerItem swapPick = (DiggerItem) cursorStack.getItem();
-                            if (swapPick.getTier().getSpeed() > currentPick.getTier().getSpeed()) {
+                            if (ItemHelper.getMiningSpeed(swapPick) > ItemHelper.getMiningSpeed(currentPick)) {
                                 // We can equip a better pickaxe.
                                 mod.getSlotHandler().forceEquipSlot(CursorSlot.SLOT);
                             }

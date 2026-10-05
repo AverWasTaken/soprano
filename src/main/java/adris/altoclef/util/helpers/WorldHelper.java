@@ -1,7 +1,7 @@
 package adris.altoclef.util.helpers;
 
 import adris.altoclef.AltoClef;
-import adris.altoclef.mixins.ClientConnectionAccessor;
+import baritone.utils.accessor.IClientConnection;
 import adris.altoclef.util.Dimension;
 import baritone.api.BaritoneAPI;
 import baritone.pathing.movement.CalculationContext;
@@ -58,7 +58,7 @@ public interface WorldHelper {
      */
     static int getTicks() {
         Connection con = Objects.requireNonNull(Minecraft.getInstance().getConnection()).getConnection();
-        return ((ClientConnectionAccessor) con).getTicks();
+        return ((IClientConnection) con).getTicks();
     }
 
     static Vec3 toVec3d(BlockPos pos) {

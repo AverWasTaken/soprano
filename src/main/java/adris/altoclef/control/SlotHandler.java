@@ -15,7 +15,6 @@ import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.item.BucketItem;
 import net.minecraft.world.item.EmptyMapItem;
 import net.minecraft.world.item.EnderEyeItem;
-import net.minecraft.world.item.Equipable;
 import net.minecraft.world.item.FireworkRocketItem;
 import net.minecraft.world.item.FishingRodItem;
 import net.minecraft.world.item.FoodOnAStickItem;
@@ -24,7 +23,6 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.PotionItem;
 import net.minecraft.world.item.SpawnEggItem;
-import net.minecraft.world.item.TieredItem;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -135,7 +133,7 @@ public class SlotHandler {
     }
 
     public boolean forceDeequipHitTool() {
-        return forceDeequip(stack -> stack.getItem() instanceof TieredItem);
+        return forceDeequip(stack -> ItemHelper.isTool(stack.getItem()));
     }
 
     public void forceDeequipRightClickableItem() {
@@ -159,7 +157,7 @@ public class SlotHandler {
                             || item instanceof FoodOnAStickItem
                             || item == Items.COMPASS
                             || item instanceof EmptyMapItem
-                            || item instanceof Equipable
+                            || ItemHelper.isEquippable(item)
                             || item == Items.LEAD
                             || item == Items.SHIELD;
                 }

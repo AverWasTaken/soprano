@@ -29,7 +29,7 @@ public class SimpleChunkTracker {
         _mod = mod;
 
         // When chunks load...
-        EventBus.subscribe(ChunkLoadEvent.class, evt -> onLoad(evt.chunk.getPos()));
+        EventBus.subscribe(ChunkLoadEvent.class, evt -> onLoad(evt.chunkPos));
         EventBus.subscribe(ChunkUnloadEvent.class, evt -> onUnload(evt.chunkPos));
     }
 

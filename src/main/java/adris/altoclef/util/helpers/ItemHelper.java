@@ -15,7 +15,15 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.LeavesBlock;
-import net.minecraft.world.level.block.entity.AbstractFurnaceBlockEntity;
+import net.minecraft.client.Minecraft;
+import net.minecraft.world.level.block.entity.FuelValues;
+import net.minecraft.world.entity.ai.attributes.AttributeModifier;
+import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.entity.EquipmentSlotGroup;
+import net.minecraft.world.item.DiggerItem;
+import net.minecraft.world.item.SwordItem;
+import net.minecraft.world.item.component.ItemAttributeModifiers;
+import net.minecraft.world.item.component.Tool;
 import net.minecraft.world.level.material.MapColor;
 
 /**
@@ -263,6 +271,7 @@ public class ItemHelper {
     };
     public static final Item[] RAW_FOODS = _cookableFoodMap.keySet().toArray(Item[]::new);
     private static Map<Item, Integer> _fuelTimeMap = null;
+    private static FuelValues _fuelValues = null;
 
     public static String stripItemName(Item item) {
         String[] possibilities = new String[]{"item.minecraft.", "block.minecraft."};
@@ -385,7 +394,7 @@ public class ItemHelper {
     }
 
     public static boolean isOfBlockType(Block b, TagKey<Block> tag) {
-        return BuiltInRegistries.BLOCK.getResourceKey(b).map(e -> BuiltInRegistries.BLOCK.getHolderOrThrow(e).tags().anyMatch(t -> t == tag)).orElse(false);
+        return BuiltInRegistries.BLOCK.wrapAsHolder(b).is(tag);
     }
 
     private static boolean isStackProtected(AltoClef mod, ItemStack stack) {
@@ -413,10 +422,88 @@ public class ItemHelper {
     }
 
     private static Map<Item, Integer> getFuelTimeMap() {
-        if (_fuelTimeMap == null) {
-            _fuelTimeMap = AbstractFurnaceBlockEntity.getFuel();
+        // 1.21.2: the fuel table lives on the level now (it is data driven), not in a static on the furnace
+        var level = Minecraft.getInstance().level;
+        if (level == null) {
+            return _fuelTimeMap == null ? Map.of() : _fuelTimeMap;
+        }
+        FuelValues values = level.fuelValues();
+        if (_fuelTimeMap == null || values != _fuelValues) {
+            Map<Item, Integer> map = new HashMap<>();
+            for (Item item : values.fuelItems()) {
+                map.put(item, values.burnDuration(new ItemStack(item)));
+            }
+            _fuelTimeMap = map;
+            _fuelValues = values;
         }
         return _fuelTimeMap;
+    }
+
+    /// 1.21.2 turned the tool tiers into plain data components. These stand in for TieredItem / getTier().
+
+    /**
+     * Whatever used to extend TieredItem: swords and the pickaxe/axe/shovel/hoe family.
+     */
+    public static boolean isTool(Item item) {
+        return item instanceof DiggerItem || item instanceof SwordItem;
+    }
+
+    /**
+     * Stand in for tier.getUses(), the durability of the material (same number on every tool of a tier).
+     */
+    public static int getToolDurability(Item item) {
+        return item.components().getOrDefault(DataComponents.MAX_DAMAGE, 0);
+    }
+
+    /**
+     * Stand in for tier.getAttackDamageBonus(): the attack damage attribute minus the 3 a sword starts with.
+     */
+    public static float getAttackDamageBonus(Item item) {
+        ItemAttributeModifiers modifiers = item.components().get(DataComponents.ATTRIBUTE_MODIFIERS);
+        if (modifiers == null) {
+            return 0;
+        }
+        double damage = 0;
+        for (ItemAttributeModifiers.Entry entry : modifiers.modifiers()) {
+            if (entry.attribute().equals(Attributes.ATTACK_DAMAGE)
+                    && entry.modifier().operation() == AttributeModifier.Operation.ADD_VALUE
+                    && entry.slot() == EquipmentSlotGroup.MAINHAND) {
+                damage += entry.modifier().amount();
+            }
+        }
+        return (float) (damage - (item instanceof SwordItem ? 3 : 0));
+    }
+
+    /**
+     * Stand in for tier.getSpeed(): the best mining speed any rule of the tool component gives.
+     */
+    public static float getMiningSpeed(Item item) {
+        Tool tool = item.components().get(DataComponents.TOOL);
+        if (tool == null) {
+            return 1;
+        }
+        float best = tool.defaultMiningSpeed();
+        for (Tool.Rule rule : tool.rules()) {
+            if (rule.speed().isPresent()) {
+                best = Math.max(best, rule.speed().get());
+            }
+        }
+        return best;
+    }
+
+    /**
+     * Stand in for `instanceof Equipable`, anything with the equippable component can be worn.
+     */
+    public static boolean isEquippable(Item item) {
+        return item.components().has(DataComponents.EQUIPPABLE);
+    }
+
+    /**
+     * Stand in for ArmorItem#getEquipmentSlot, the slot an equippable item goes in. Null if it doesn't go anywhere.
+     */
+    public static net.minecraft.world.entity.EquipmentSlot getEquipSlot(Item item) {
+        var equippable = item.components().get(DataComponents.EQUIPPABLE);
+        return equippable == null ? null : equippable.slot();
     }
 
     public static double getFuelAmount(Item... items) {

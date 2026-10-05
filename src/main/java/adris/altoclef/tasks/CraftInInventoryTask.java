@@ -90,9 +90,8 @@ public class CraftInInventoryTask extends ResourceTask {
         // No need to free inventory, output gets picked up.
 
         setDebugState("Crafting in inventory... for " + toGet);
-        return mod.getModSettings().shouldUseCraftingBookToCraft()
-                ? new CraftGenericWithRecipeBooksTask(_target)
-                : new CraftGenericManuallyTask(_target);
+        // the recipe book path is gone, 1.21.2 stopped sending recipes to the client. slot clicks only
+        return new CraftGenericManuallyTask(_target);
     }
 
     @Override

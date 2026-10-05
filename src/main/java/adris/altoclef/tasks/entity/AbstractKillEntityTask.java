@@ -3,6 +3,7 @@ package adris.altoclef.tasks.entity;
 import adris.altoclef.AltoClef;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.helpers.LookHelper;
+import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.slots.PlayerSlot;
 import java.util.List;
@@ -39,10 +40,10 @@ public abstract class AbstractKillEntityTask extends AbstractDoToEntityTask {
             Item bestItem = null;
             for (ItemStack invStack : invStacks) {
                 if (invStack.getItem() instanceof SwordItem item) {
-                    float itemDamage = item.getTier().getAttackDamageBonus();
+                    float itemDamage = ItemHelper.getAttackDamageBonus(item);
                     Item handItem = StorageHelper.getItemStackInSlot(PlayerSlot.getEquipSlot()).getItem();
                     if (handItem instanceof SwordItem handToolItem) {
-                        handDamage = handToolItem.getTier().getAttackDamageBonus();
+                        handDamage = ItemHelper.getAttackDamageBonus(handToolItem);
                     }
                     if (itemDamage > handDamage) {
                         bestItem = item;

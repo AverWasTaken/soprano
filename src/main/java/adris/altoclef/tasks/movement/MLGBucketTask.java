@@ -4,14 +4,10 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.helpers.*;
-import adris.altoclef.util.serialization.ItemDeserializer;
-import adris.altoclef.util.serialization.ItemSerializer;
 import baritone.api.utils.IPlayerContext;
 import baritone.api.utils.Rotation;
 import baritone.api.utils.RotationUtils;
 import baritone.api.utils.input.Input;
-import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
-import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -454,8 +450,6 @@ public class MLGBucketTask extends Task {
         public int epicClutchConeYawDivisionEnd = 20; // How many divisions to move the cone clutch at torwars the end
         public int preferLavaWhenFallDropsHealthBelowThreshold = 3; // If a fall results in our player's health going below this value, consider it deadly.
         public int lavaLevelOrGreaterWillCancelFallDamage = 5; // Lava at this level will cancel our fall damage if we hold space.
-        @JsonSerialize(using = ItemSerializer.class)
-        @JsonDeserialize(using = ItemDeserializer.class)
         public List<Item> clutchItems = List.of(Items.HAY_BLOCK, Items.TWISTING_VINES);
     }
 

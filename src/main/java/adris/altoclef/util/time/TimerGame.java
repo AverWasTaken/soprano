@@ -2,7 +2,7 @@ package adris.altoclef.util.time;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
-import adris.altoclef.mixins.ClientConnectionAccessor;
+import baritone.utils.accessor.IClientConnection;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.Connection;
 
@@ -17,7 +17,7 @@ public class TimerGame extends BaseTimer {
 
     private static double getTime(Connection connection) {
         if (connection == null) return 0;
-        return (double) ((ClientConnectionAccessor) connection).getTicks() / 20.0;
+        return (double) ((IClientConnection) connection).getTicks() / 20.0;
     }
 
     @Override

@@ -163,7 +163,7 @@ public class InteractWithBlockTask extends Task {
 
         boolean sideMatters = interactSide != null;
         if (sideMatters) {
-            Vec3i offs = interactSide.getNormal();
+            Vec3i offs = interactSide.getUnitVec3i();
             if (offs.getY() == -1) {
                 // If we're below, place ourselves two blocks below.
                 offs = offs.below();

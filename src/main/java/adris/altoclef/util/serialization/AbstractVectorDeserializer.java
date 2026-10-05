@@ -1,23 +1,19 @@
 package adris.altoclef.util.serialization;
 
-import com.fasterxml.jackson.core.JsonParseException;
-import com.fasterxml.jackson.core.JsonParser;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.JsonToken;
-import com.fasterxml.jackson.databind.DeserializationContext;
-import com.fasterxml.jackson.databind.deser.std.StdDeserializer;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonDeserializationContext;
+import com.google.gson.JsonDeserializer;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParseException;
+import com.google.gson.JsonPrimitive;
 
-import java.io.IOException;
-import java.util.*;
+import java.lang.reflect.Type;
+import java.util.ArrayList;
+import java.util.List;
 
-public abstract class AbstractVectorDeserializer<T, UnitType> extends StdDeserializer<T> {
-    public AbstractVectorDeserializer() {
-        this(null);
-    }
-
-    public AbstractVectorDeserializer(Class<T> vc) {
-        super(vc);
-    }
+// reads "1,2,3", [1,2,3] or {"x":1,"y":2,"z":3}. only the string form is ever written
+public abstract class AbstractVectorDeserializer<T, UnitType> implements JsonDeserializer<T> {
 
     protected abstract String getTypeName();
 
@@ -27,68 +23,57 @@ public abstract class AbstractVectorDeserializer<T, UnitType> extends StdDeseria
 
     protected abstract T deserializeFromUnits(List<UnitType> units);
 
-    protected abstract boolean isUnitTokenValid(JsonToken unitToken);
-
-
-    UnitType trySet(JsonParser p, Map<String, UnitType> map, String key) throws JsonParseException {
-        if (map.containsKey(key)) {
-            return map.get(key);
-        }
-        throw new JsonParseException(p, getTypeName() + " should have key for " + key + " key, but one was not found.");
-    }
-
-    UnitType tryParse(JsonParser p, String whole, String part) throws JsonParseException {
+    private UnitType tryParse(String whole, String part) {
         try {
             return parseUnit(part.trim());
         } catch (Exception e) {
-            throw new JsonParseException(p, "Failed to parse " + getTypeName() + " string \""
-                    + whole + "\", specificaly part \"" + part + "\".");
+            throw new JsonParseException("Failed to parse " + getTypeName() + " \"" + whole + "\", specifically part \"" + part + "\".");
         }
     }
 
-    @Override
-    public T deserialize(JsonParser p, DeserializationContext ctxt) throws IOException, JsonProcessingException {
-        String[] neededComponents = getComponents();
-        if (p.getCurrentToken() == JsonToken.VALUE_STRING) {
-            String bposString = p.getValueAsString();
-            String[] parts = bposString.split(",");
-            if (parts.length != neededComponents.length) {
-                throw new JsonParseException(p, "Invalid " + getTypeName() + " string: \"" + bposString + "\", must be in form \"" + String.join(",", neededComponents) + "\".");
-            }
-            ArrayList<UnitType> resultingUnits = new ArrayList<UnitType>();
-            for (String part : parts) {
-                resultingUnits.add(tryParse(p, bposString, part));
-            }
-            return deserializeFromUnits(resultingUnits);
-        } else if (p.getCurrentToken() == JsonToken.START_OBJECT) {
-            Map<String, UnitType> parts = new HashMap<>();
-            p.nextToken();
-            while (p.getCurrentToken() != JsonToken.END_OBJECT) {
-                if (p.getCurrentToken() == JsonToken.FIELD_NAME) {
-                    String fName = p.getCurrentName();
-                    p.nextToken();
-                    if (!isUnitTokenValid(p.currentToken())) {
-                        throw new JsonParseException(p, "Invalid token for " + getTypeName() + ". Got: " + p.getCurrentToken());
-                    }
-                    try {
-                        parts.put(p.getCurrentName(), parseUnit(p.getValueAsString()));
-                    } catch (Exception e) {
-                        throw new JsonParseException(p, "Failed to parse unit " + p.getCurrentName());
-                    }
-                    p.nextToken();
-                } else {
-                    throw new JsonParseException(p, "Invalid structure, expected field name (like " + String.join(",", neededComponents) + ")");
-                }
-            }
-            if (parts.size() != neededComponents.length) {
-                throw new JsonParseException(p, "Expected [" + String.join(",", neededComponents) + "] keys to be part of a blockpos object. Got " + Arrays.toString(parts.keySet().toArray(String[]::new)));
-            }
-            ArrayList<UnitType> resultingUnits = new ArrayList<UnitType>();
-            for (String componentName : neededComponents) {
-                resultingUnits.add(trySet(p, parts, componentName));
-            }
-            return deserializeFromUnits(resultingUnits);
+    private UnitType tryParseElement(JsonElement element, String whole) {
+        if (!element.isJsonPrimitive()) {
+            throw new JsonParseException("Invalid token for " + getTypeName() + ". Got: " + element);
         }
-        throw new JsonParseException(p, "Invalid token: " + p.getCurrentToken());
+        return tryParse(whole, element.getAsString());
+    }
+
+    @Override
+    public T deserialize(JsonElement json, Type typeOfT, JsonDeserializationContext context) throws JsonParseException {
+        String[] neededComponents = getComponents();
+        if (json.isJsonPrimitive()) {
+            JsonPrimitive primitive = json.getAsJsonPrimitive();
+            String whole = primitive.getAsString();
+            String[] parts = whole.split(",");
+            if (parts.length != neededComponents.length) {
+                throw new JsonParseException("Invalid " + getTypeName() + " string: \"" + whole + "\", must be in form \"" + String.join(",", neededComponents) + "\".");
+            }
+            List<UnitType> units = new ArrayList<>();
+            for (String part : parts) {
+                units.add(tryParse(whole, part));
+            }
+            return deserializeFromUnits(units);
+        } else if (json.isJsonArray()) {
+            JsonArray array = json.getAsJsonArray();
+            if (array.size() != neededComponents.length) {
+                throw new JsonParseException("Invalid " + getTypeName() + " array: " + array + ", must have " + neededComponents.length + " entries (" + String.join(",", neededComponents) + ").");
+            }
+            List<UnitType> units = new ArrayList<>();
+            for (JsonElement element : array) {
+                units.add(tryParseElement(element, array.toString()));
+            }
+            return deserializeFromUnits(units);
+        } else if (json.isJsonObject()) {
+            JsonObject object = json.getAsJsonObject();
+            List<UnitType> units = new ArrayList<>();
+            for (String componentName : neededComponents) {
+                if (!object.has(componentName)) {
+                    throw new JsonParseException(getTypeName() + " should have key for " + componentName + " key, but one was not found.");
+                }
+                units.add(tryParseElement(object.get(componentName), object.toString()));
+            }
+            return deserializeFromUnits(units);
+        }
+        throw new JsonParseException("Invalid token for " + getTypeName() + ": " + json);
     }
 }

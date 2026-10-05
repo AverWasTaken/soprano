@@ -3,7 +3,7 @@ package adris.altoclef.trackers;
 import adris.altoclef.Debug;
 import adris.altoclef.eventbus.EventBus;
 import adris.altoclef.eventbus.events.PlayerCollidedWithEntityEvent;
-import adris.altoclef.mixins.PersistentProjectileEntityAccessor;
+import baritone.utils.accessor.IPersistentProjectile;
 import adris.altoclef.trackers.blacklisting.EntityLocateBlacklist;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.baritone.CachedProjectile;
@@ -382,7 +382,7 @@ public class EntityTracker extends Tracker {
                         boolean inGround = false;
                         // Get projectile "inGround" variable
                         if (entity instanceof AbstractArrow) {
-                            inGround = ((PersistentProjectileEntityAccessor) entity).isInGround();
+                            inGround = ((IPersistentProjectile) entity).callIsInGround();
                         }
 
                         // Ignore some of the harlmess projectiles

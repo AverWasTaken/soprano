@@ -193,7 +193,7 @@ public class PlaceBlockNearbyTask extends Task {
             //Debug.logMessage("TEMP: A: " + bpos);
             IPlayerContext ctx = mod.getClientBaritone().getPlayerContext();
             if (MovementHelper.canPlaceAgainst(ctx, bpos)) {
-                BlockPos placePos = bhit.getBlockPos().offset(bhit.getDirection().getNormal());
+                BlockPos placePos = bhit.getBlockPos().offset(bhit.getDirection().getUnitVec3i());
                 // Don't place inside the player.
                 if (WorldHelper.isInsidePlayer(mod, placePos)) {
                     return null;

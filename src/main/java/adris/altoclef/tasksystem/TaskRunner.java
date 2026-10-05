@@ -44,10 +44,13 @@ public class TaskRunner {
         _chains.add(chain);
     }
 
+    public boolean isActive() {
+        return _active;
+    }
+
     public void enable() {
         if (!_active) {
-            _mod.getBehaviour().push();
-            _mod.getBehaviour().setPauseOnLostFocus(false);
+            _mod.onTaskRunnerEnable();
         }
         _active = true;
     }
@@ -59,7 +62,12 @@ public class TaskRunner {
         for (TaskChain chain : _chains) {
             chain.stop(_mod);
         }
+        boolean wasActive = _active;
         _active = false;
+        // last, so nothing a chain does while stopping can leak settings back out after we put baritone's own back
+        if (wasActive) {
+            _mod.onTaskRunnerDisabled();
+        }
 
         Debug.logMessage("Stopped");
     }

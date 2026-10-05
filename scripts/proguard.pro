@@ -44,6 +44,13 @@
     public <fields>;    
 }
 
+# altoclef: gson reads and writes its config classes by field name (and drops fields proguard thinks nobody reads),
+# and the task hud / logs print class names, so none of adris.altoclef gets renamed or have its fields trimmed
+-keepnames class adris.altoclef.**
+-keepclassmembers class adris.altoclef.** {
+    <fields>;
+}
+
 # need to keep mixin names
 -keep class baritone.launch.** { *; }
 

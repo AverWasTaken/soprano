@@ -6,11 +6,6 @@ import adris.altoclef.commandsystem.CommandExecutor;
 import adris.altoclef.control.InputControls;
 import adris.altoclef.control.PlayerExtraController;
 import adris.altoclef.control.SlotHandler;
-import adris.altoclef.eventbus.EventBus;
-import adris.altoclef.eventbus.events.ClientRenderEvent;
-import adris.altoclef.eventbus.events.ClientTickEvent;
-import adris.altoclef.eventbus.events.SendChatEvent;
-import adris.altoclef.eventbus.events.TitleScreenEntryEvent;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.tasksystem.TaskRunner;
 import adris.altoclef.trackers.*;
@@ -20,12 +15,12 @@ import adris.altoclef.ui.CommandStatusOverlay;
 import adris.altoclef.ui.MessagePriority;
 import adris.altoclef.ui.MessageSender;
 import adris.altoclef.util.helpers.InputHelper;
+import baritone.altoclef.BaritoneSettingsScope;
 import baritone.Baritone;
 import baritone.altoclef.AltoClefSettings;
 import baritone.api.BaritoneAPI;
 import baritone.api.Settings;
-import com.mojang.blaze3d.vertex.PoseStack;
-import net.fabricmc.api.ModInitializer;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.multiplayer.MultiPlayerGameMode;
@@ -44,11 +39,19 @@ import java.util.function.Consumer;
 /**
  * Central access point for AltoClef
  */
-public class AltoClef implements ModInitializer {
+public class AltoClef {
+
+    // Soprano: whether the survival chains (food, mob defense, ...) keep running with no user task. Off, so AltoClef
+    // does nothing at all until somebody starts a task. A later step turns this into a real Soprano setting, until then
+    // -Daltoclef.runsWhenIdle=true flips it for testing.
+    public static volatile boolean RUNS_WHEN_IDLE = Boolean.getBoolean("altoclef.runsWhenIdle");
 
     // Static access to altoclef
     private static final Queue<Consumer<AltoClef>> _postInitQueue = new ArrayDeque<>();
+    private static AltoClef _instance;
 
+    // Applies the baritone settings altoclef wants while it is running and puts the old ones back afterwards
+    private final BaritoneSettingsScope _baritoneScope = new BaritoneSettingsScope(this);
     // Central Managers
     private static CommandExecutor _commandExecutor;
     private TaskRunner _taskRunner;
@@ -90,19 +93,24 @@ public class AltoClef implements ModInitializer {
         return _commandExecutor;
     }
 
-    @Override
-    public void onInitialize() {
-        // This code runs as soon as Minecraft is in a mod-load-ready state.
-        // However, some things (like resources) may still be uninitialized.
-        // As such, nothing will be loaded here but basic initialization.
-        EventBus.subscribe(TitleScreenEntryEvent.class, evt -> onInitializeLoad());
+    /**
+     * The one AltoClef, null until Soprano has created it (see baritone.altoclef.AltoClefBridge).
+     */
+    public static AltoClef getInstance() {
+        return _instance;
+    }
+
+    /**
+     * Whether AltoClef currently has the bot: a user task is running or the idle gate is on.
+     */
+    public static boolean isRunning() {
+        return _instance != null && _instance._taskRunner != null && _instance._taskRunner.isActive();
     }
 
     public void onInitializeLoad() {
         // This code should be run after Minecraft loads everything else in.
-        // This is the actual start point, controlled by a mixin.
-
-        initializeBaritoneSettings();
+        // Soprano calls it from the first title screen tick (it used to be a TitleScreen mixin).
+        _instance = this;
 
         // Central Managers
         _commandExecutor = new CommandExecutor(this);
@@ -142,37 +150,19 @@ public class AltoClef implements ModInitializer {
         // Load settings
         adris.altoclef.Settings.load(newSettings -> {
             _settings = newSettings;
-            // Baritone's `acceptableThrowawayItems` should match our own.
-            List<Item> baritoneCanPlace = Arrays.stream(_settings.getThrowawayItems(this, true))
-                    .filter(item -> item != Items.SOUL_SAND && item != Items.MAGMA_BLOCK && item != Items.SAND && item
-                            != Items.GRAVEL).toList();
-            getClientBaritoneSettings().acceptableThrowawayItems.value.addAll(baritoneCanPlace);
-            // If we should run an idle command...
-            if ((!getUserTaskChain().isActive() || getUserTaskChain().isRunningIdleTask()) && getModSettings().shouldRunIdleCommandWhenNotActive()) {
+            // A reload while a task runs has to refresh what we handed baritone (throwaway items), nothing is applied while idle
+            if (_taskRunner.isActive()) {
+                _baritoneScope.apply();
+            }
+            // If we should run an idle command... (only when the idle gate says altoclef may run without a task)
+            if (RUNS_WHEN_IDLE && (!getUserTaskChain().isActive() || getUserTaskChain().isRunningIdleTask()) && getModSettings().shouldRunIdleCommandWhenNotActive()) {
                 getUserTaskChain().signalNextTaskToBeIdleTask();
                 getCommandExecutor().executeWithPrefix(getModSettings().getIdleCommand());
-            }
-            // Don't break blocks or place blocks where we are explicitly protected.
-            getExtraBaritoneSettings().avoidBlockBreak(blockPos -> _settings.isPositionExplicitlyProtected(blockPos));
-            getExtraBaritoneSettings().avoidBlockPlace(blockPos -> _settings.isPositionExplicitlyProtected(blockPos));
-        });
-
-        // Receive + cancel chat
-        EventBus.subscribe(SendChatEvent.class, evt -> {
-            String line = evt.message;
-            if (getCommandExecutor().isClientCommand(line)) {
-                evt.cancel();
-                getCommandExecutor().execute(line);
             }
         });
 
         // Debug jank/hookup
         Debug.jankModInstance = this;
-
-        // Tick with the client
-        EventBus.subscribe(ClientTickEvent.class, evt -> onClientTick());
-        // Render
-        EventBus.subscribe(ClientRenderEvent.class, evt -> onClientRenderOverlay(evt.stack));
 
         // Playground
         Playground.IDLE_TEST_INIT_FUNCTION(this);
@@ -181,29 +171,40 @@ public class AltoClef implements ModInitializer {
         runEnqueuedPostInits();
     }
 
-    // Client tick
-    private void onClientTick() {
+    // Client tick. Soprano calls this at the top of its own tick (ahead of baritone's behaviors and processes), the
+    // same spot the old Minecraft.tick HEAD mixin ran from.
+    public void onClientTick() {
         runEnqueuedPostInits();
 
-        _inputControls.onTickPre();
-
-        // Cancel shortcut
-        if (InputHelper.isKeyPressed(GLFW.GLFW_KEY_LEFT_CONTROL) && InputHelper.isKeyPressed(GLFW.GLFW_KEY_K)) {
-            _userTaskChain.cancel(this);
-            if (_taskRunner.getCurrentTaskChain() != null) {
-                _taskRunner.getCurrentTaskChain().stop(this);
-            }
+        // The idle gate: with it on we always run, with it off we only run while a user task is going
+        if (RUNS_WHEN_IDLE && !_taskRunner.isActive()) {
+            _taskRunner.enable();
+        } else if (!RUNS_WHEN_IDLE && _taskRunner.isActive() && !_userTaskChain.isActive()) {
+            _taskRunner.disable();
         }
 
-        // TODO: should this go here?
-        _storageTracker.setDirty();
-        _containerSubTracker.onServerTick();
-        _miscBlockTracker.tick();
+        // Releases whatever we pressed last tick. Has to keep going when idle or the last press of a finished task sticks.
+        _inputControls.onTickPre();
 
-        _trackerManager.tick();
-        _blockTracker.preTickTask();
-        _taskRunner.tick();
-        _blockTracker.postTickTask();
+        if (_taskRunner.isActive()) {
+            // Cancel shortcut
+            if (InputHelper.isKeyPressed(GLFW.GLFW_KEY_LEFT_CONTROL) && InputHelper.isKeyPressed(GLFW.GLFW_KEY_K)) {
+                _userTaskChain.cancel(this);
+                if (_taskRunner.getCurrentTaskChain() != null) {
+                    _taskRunner.getCurrentTaskChain().stop(this);
+                }
+            }
+
+            // TODO: should this go here?
+            _storageTracker.setDirty();
+            _containerSubTracker.onServerTick();
+            _miscBlockTracker.tick();
+
+            _trackerManager.tick();
+            _blockTracker.preTickTask();
+            _taskRunner.tick();
+            _blockTracker.postTickTask();
+        }
 
         _butler.tick();
         _messageSender.tick();
@@ -213,50 +214,30 @@ public class AltoClef implements ModInitializer {
 
     /// GETTERS AND SETTERS
 
-    private void onClientRenderOverlay(PoseStack matrixStack) {
-        _commandStatusOverlay.render(this, matrixStack);
+    // Called from Soprano's Gui#render mixin at the end of every frame
+    public void onClientRenderOverlay(GuiGraphics graphics) {
+        // nothing of ours on screen unless we are the ones driving
+        if (_taskRunner.isActive()) {
+            _commandStatusOverlay.render(this, graphics);
+        }
     }
 
-    private void initializeBaritoneSettings() {
-        getExtraBaritoneSettings().canWalkOnEndPortal(false);
-        getClientBaritoneSettings().freeLook.value = false;
-        getClientBaritoneSettings().overshootTraverse.value = false;
-        getClientBaritoneSettings().allowOvershootDiagonalDescend.value = true;
-        getClientBaritoneSettings().allowInventory.value = true;
-        getClientBaritoneSettings().allowParkour.value = false;
-        getClientBaritoneSettings().allowParkourAscend.value = false;
-        getClientBaritoneSettings().allowParkourPlace.value = false;
-        getClientBaritoneSettings().allowDiagonalDescend.value = false;
-        getClientBaritoneSettings().allowDiagonalAscend.value = false;
-        getClientBaritoneSettings().blocksToAvoid.value = List.of(Blocks.FLOWERING_AZALEA, Blocks.AZALEA,
-                Blocks.POWDER_SNOW, Blocks.BIG_DRIPLEAF, Blocks.BIG_DRIPLEAF_STEM, Blocks.CAVE_VINES,
-                Blocks.CAVE_VINES_PLANT, Blocks.TWISTING_VINES, Blocks.TWISTING_VINES_PLANT, Blocks.SWEET_BERRY_BUSH,
-                Blocks.WARPED_ROOTS, Blocks.VINE, Blocks.GRASS_BLOCK, Blocks.FERN, Blocks.TALL_GRASS, Blocks.LARGE_FERN,
-                Blocks.SMALL_AMETHYST_BUD, Blocks.MEDIUM_AMETHYST_BUD, Blocks.LARGE_AMETHYST_BUD,
-                Blocks.AMETHYST_CLUSTER, Blocks.SCULK, Blocks.SCULK_VEIN, Blocks.SUNFLOWER, Blocks.LILAC,
-                Blocks.ROSE_BUSH, Blocks.PEONY);
-        // Let baritone move items to hotbar to use them
-        // Reduces a bit of far rendering to save FPS
-        getClientBaritoneSettings().fadePath.value = true;
-        // Don't let baritone scan dropped items, we handle that ourselves.
-        getClientBaritoneSettings().mineScanDroppedItems.value = false;
-        // Don't let baritone wait for drops, we handle that ourselves.
-        getClientBaritoneSettings().mineDropLoiterDurationMSThanksLouca.value = 0L;
+    // Soprano: TaskRunner calls these as it switches on and off. Everything altoclef changes about baritone happens
+    // in between and is undone on the way out, so a Soprano user who never runs a task never sees any of it.
+    public void onTaskRunnerEnable() {
+        // the bottom BotBehaviour state is what pop() writes back, so make sure it is today's settings and not startup's
+        _botBehaviour.rebaseline();
+        _baritoneScope.apply();
+        _botBehaviour.push();
+        _botBehaviour.setPauseOnLostFocus(false);
+        // Don't break blocks or place blocks where we are explicitly protected. These ride in the pushed state so
+        // the pop in TaskRunner#disable takes them back out of the global AltoClefSettings.
+        _botBehaviour.avoidBlockBreaking(blockPos -> _settings.isPositionExplicitlyProtected(blockPos));
+        _botBehaviour.avoidBlockPlacing(blockPos -> _settings.isPositionExplicitlyProtected(blockPos));
+    }
 
-        // Water bucket placement will be handled by us exclusively
-        getExtraBaritoneSettings().configurePlaceBucketButDontFall(true);
-
-        // For render smoothing
-        getClientBaritoneSettings().randomLooking.value = 0.0;
-        getClientBaritoneSettings().randomLooking113.value = 0.0;
-
-        // Give baritone more time to calculate paths. Sometimes they can be really far away.
-        // Was: 2000L
-        getClientBaritoneSettings().failureTimeoutMS.reset();
-        // Was: 5000L
-        getClientBaritoneSettings().planAheadFailureTimeoutMS.reset();
-        // Was 100
-        getClientBaritoneSettings().movementTimeoutTicks.reset();
+    public void onTaskRunnerDisabled() {
+        _baritoneScope.restore();
     }
 
     // List all command sources here.

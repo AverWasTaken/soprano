@@ -3,6 +3,7 @@ package adris.altoclef.control;
 import adris.altoclef.AltoClef;
 import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.StlHelper;
+import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.slots.PlayerSlot;
 import adris.altoclef.util.slots.Slot;
@@ -49,10 +50,10 @@ public class KillAura {
             float handDamage = Float.NEGATIVE_INFINITY;
             for (ItemStack invStack : invStacks) {
                 if (invStack.getItem() instanceof SwordItem item) {
-                    float itemDamage = item.getTier().getAttackDamageBonus();
+                    float itemDamage = ItemHelper.getAttackDamageBonus(item);
                     Item handItem = StorageHelper.getItemStackInSlot(PlayerSlot.getEquipSlot()).getItem();
                     if (handItem instanceof SwordItem handToolItem) {
-                        handDamage = handToolItem.getTier().getAttackDamageBonus();
+                        handDamage = ItemHelper.getAttackDamageBonus(handToolItem);
                     }
                     if (itemDamage > handDamage) {
                         mod.getSlotHandler().forceEquipItem(item);
@@ -93,7 +94,7 @@ public class KillAura {
                     entities.get().getClass() != Zoglin.class && entities.get().getClass() != Warden.class &&
                     entities.get().getClass() != WitherBoss.class
                     && (mod.getItemStorage().hasItem(Items.SHIELD) || mod.getItemStorage().hasItemInOffhand(Items.SHIELD))
-                    && !mod.getPlayer().getCooldowns().isOnCooldown(offhandItem)
+                    && !mod.getPlayer().getCooldowns().isOnCooldown(new ItemStack(offhandItem))
                     && mod.getClientBaritone().getPathingBehavior().isSafeToCancel()) {
                 LookHelper.lookAt(mod, entities.get().getEyePosition());
                 ItemStack shieldSlot = StorageHelper.getItemStackInSlot(PlayerSlot.OFFHAND_SLOT);

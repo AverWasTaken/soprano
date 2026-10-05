@@ -94,8 +94,10 @@ public class UserTaskChain extends SingleTaskChain {
     protected void onTaskFinish(AltoClef mod) {
         boolean shouldIdle = mod.getModSettings().shouldRunIdleCommandWhenNotActive();
         if (!shouldIdle) {
-            // Stop.
-            mod.getTaskRunner().disable();
+            // Stop. (with the idle gate on the runner stays up so the survival chains keep going)
+            if (!AltoClef.RUNS_WHEN_IDLE) {
+                mod.getTaskRunner().disable();
+            }
             // Extra reset. Sometimes baritone is laggy and doesn't properly reset our press
             mod.getClientBaritone().getInputOverrideHandler().clearAllKeys();
         }

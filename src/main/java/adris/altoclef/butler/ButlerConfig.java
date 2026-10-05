@@ -11,6 +11,11 @@ public class ButlerConfig {
     }
 
     /**
+     * Master switch. Soprano ships with the butler off: with the defaults below anybody who is not blacklisted could
+     * whisper commands at your player, so you have to opt in.
+     */
+    public boolean enableButler = false;
+    /**
      * If true, will use blacklist for rejecting users from using your player as a butler
      */
     public boolean useButlerBlacklist = true;

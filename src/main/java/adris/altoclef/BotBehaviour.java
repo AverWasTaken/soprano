@@ -221,6 +221,17 @@ public class BotBehaviour {
     }
 
     /// Stack management
+    /**
+     * Soprano: the bottom state is what pop() writes back into baritone and minecraft, so read it again when a run
+     * starts. Otherwise it holds whatever the settings were at startup and a #set in between gets undone.
+     */
+    public void rebaseline() {
+        if (_states.size() == 1) {
+            _states.clear();
+            push();
+        }
+    }
+
     public void push() {
         if (_states.isEmpty()) {
             _states.push(new State());

@@ -2,7 +2,6 @@ package adris.altoclef.tasks.container;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.tasks.CraftGenericManuallyTask;
-import adris.altoclef.tasks.CraftGenericWithRecipeBooksTask;
 import adris.altoclef.tasks.CraftInInventoryTask;
 import adris.altoclef.tasks.ResourceTask;
 import adris.altoclef.tasks.movement.TimeoutWanderTask;
@@ -11,7 +10,6 @@ import adris.altoclef.tasks.slot.MoveInaccessibleItemToInventoryTask;
 import adris.altoclef.tasks.slot.ReceiveCraftingOutputSlotTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.ItemTarget;
-import adris.altoclef.util.JankCraftingRecipeMapping;
 import adris.altoclef.util.RecipeTarget;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.StorageHelper;
@@ -26,7 +24,6 @@ import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.inventory.CraftingMenu;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.crafting.RecipeHolder;
 import net.minecraft.world.level.block.Blocks;
 
 /**
@@ -392,21 +389,8 @@ class DoCraftInTableTask extends DoStuffInContainerTask {
                 continue;
             }
 
-            // Get the recipe to send based on the target recipe and output item
-            Optional<RecipeHolder<?>> recipeToSend = JankCraftingRecipeMapping.getMinecraftMappedRecipe(target.getRecipe(), target.getOutputItem());
-
-            // Get the client player entity
-            LocalPlayer player = Minecraft.getInstance().player;
-
-            // If crafting book is enabled, the recipe to send exists, and the player has the recipe in their recipe book, return a CraftGenericWithRecipeBooksTask
-            if (mod.getModSettings().shouldUseCraftingBookToCraft() && recipeToSend.isPresent()) {
-                assert player != null;
-                if (player.getRecipeBook().contains(recipeToSend.get())) {
-                    return new CraftGenericWithRecipeBooksTask(target);
-                }
-            }
-
-            // Return a CraftGenericManuallyTask by default
+            // the recipe book path (JankCraftingRecipeMapping + CraftGenericWithRecipeBooksTask) is gone, 1.21.2 stopped
+            // sending recipes to the client. slot clicks it is
             return new CraftGenericManuallyTask(target);
         }
 

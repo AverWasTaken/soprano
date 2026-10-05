@@ -18,6 +18,7 @@ import adris.altoclef.tasks.movement.TimeoutWanderTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.Dimension;
 import adris.altoclef.util.ItemTarget;
+import adris.altoclef.util.helpers.EntityHelper;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.WorldHelper;
@@ -32,6 +33,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.core.Vec3i;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.monster.Monster;
+import net.minecraft.world.entity.monster.ZombifiedPiglin;
 import net.minecraft.world.level.block.BedBlock;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.phys.AABB;
@@ -261,7 +263,8 @@ public class PlaceBedAndSetSpawnTask extends Task {
             if (nearestBed.get().closerToCenterThan(mod.getPlayer().position(), 40)) {
                 // Check if there are monsters nearby
                 Vec3 vec3d = Vec3.atBottomCenterOf(nearestBed.get());
-                List<Monster> list = mod.getWorld().getEntitiesOfClass(Monster.class, new AABB(vec3d.x() - 8.0, vec3d.y() - 5.0, vec3d.z() - 8.0, vec3d.x() + 8.0, vec3d.y() + 5.0, vec3d.z() + 8.0), (entity) -> entity.isPreventingPlayerRest(mod.getPlayer()));
+                // 1.21.2 made isPreventingPlayerRest want a ServerLevel we do not have. every monster says true except zombified piglins, who want to be angry at us
+                List<Monster> list = mod.getWorld().getEntitiesOfClass(Monster.class, new AABB(vec3d.x() - 8.0, vec3d.y() - 5.0, vec3d.z() - 8.0, vec3d.x() + 8.0, vec3d.y() + 5.0, vec3d.z() + 8.0), (entity) -> !(entity instanceof ZombifiedPiglin) || EntityHelper.isAngryAtPlayer(mod, entity));
                 if (!list.isEmpty()) {
                     for (Monster entity : list) {
                         setDebugState("Killing monster nearby");
@@ -299,7 +302,7 @@ public class PlaceBedAndSetSpawnTask extends Task {
                     /*
                     BlockPos targetMove = toSleepIn.offset(side).offset(side); // Twice, juust to make sure...
                      */
-                            return new GetToBlockTask(_bedForSpawnPoint.offset(side.getNormal()));
+                            return new GetToBlockTask(_bedForSpawnPoint.offset(side.getUnitVec3i()));
                         } catch (IllegalArgumentException e) {
                             // If bed is not loaded, this will happen. In that case just get to the bed first.
                         }

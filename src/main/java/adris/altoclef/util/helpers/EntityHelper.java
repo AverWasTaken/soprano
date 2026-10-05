@@ -19,7 +19,11 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.raid.Raider;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.core.Holder;
+import net.minecraft.world.item.enchantment.Enchantment;
 import net.minecraft.world.item.enchantment.EnchantmentHelper;
+import net.minecraft.world.item.enchantment.Enchantments;
+import net.minecraft.world.item.enchantment.ItemEnchantments;
 import java.util.Objects;
 
 /**
@@ -68,7 +72,8 @@ public class EntityHelper {
     public static double calculateResultingPlayerDamage(Player player, DamageSource source, double damageAmount) {
         // Copied logic from `PlayerEntity.applyDamage`
 
-        if (player.isInvulnerableTo(source))
+        // 1.21.2 wants a ServerLevel for Player#isInvulnerableTo and the client has none, this is the part of it that matters
+        if (player.isInvulnerable() && !source.is(DamageTypeTags.BYPASSES_INVULNERABILITY))
             return 0;
 
         // Armor Base
@@ -91,7 +96,7 @@ public class EntityHelper {
             if (damageAmount <= 0.0) {
                 damageAmount = 0.0;
             } else {
-                k = EnchantmentHelper.getDamageProtection(Objects.requireNonNull(player.getServer()).getLevel(player.level().dimension()), player, source);
+                k = getEnchantmentProtection(player, source);
                 if (k > 0) {
                     damageAmount = CombatRules.getDamageAfterMagicAbsorb((float) damageAmount, k);
                 }
@@ -101,5 +106,39 @@ public class EntityHelper {
         // Absorption
         damageAmount = Math.max(damageAmount - player.getAbsorptionAmount(), 0.0F);
         return damageAmount;
+    }
+
+    /**
+     * Protection points from enchantments (the "EPF" the old damage formula ate).
+     */
+    private static float getEnchantmentProtection(Player player, DamageSource source) {
+        // 1.21.2 evaluates enchantment effects on a ServerLevel. singleplayer has one, a remote server leaves us nothing
+        var server = player.getServer();
+        if (server != null) {
+            var level = server.getLevel(player.level().dimension());
+            if (level != null) {
+                return EnchantmentHelper.getDamageProtection(level, player, source);
+            }
+        }
+        float total = 0;
+        for (ItemStack stack : player.getArmorSlots()) {
+            ItemEnchantments enchantments = stack.getEnchantments();
+            for (var entry : enchantments.entrySet()) {
+                Holder<Enchantment> enchantment = entry.getKey();
+                int level = entry.getIntValue();
+                if (enchantment.is(Enchantments.PROTECTION)) {
+                    total += level;
+                } else if (enchantment.is(Enchantments.FIRE_PROTECTION) && source.is(DamageTypeTags.IS_FIRE)) {
+                    total += 2 * level;
+                } else if (enchantment.is(Enchantments.BLAST_PROTECTION) && source.is(DamageTypeTags.IS_EXPLOSION)) {
+                    total += 2 * level;
+                } else if (enchantment.is(Enchantments.PROJECTILE_PROTECTION) && source.is(DamageTypeTags.IS_PROJECTILE)) {
+                    total += 2 * level;
+                } else if (enchantment.is(Enchantments.FEATHER_FALLING) && source.is(DamageTypeTags.IS_FALL)) {
+                    total += 3 * level;
+                }
+            }
+        }
+        return Math.min(total, 20f);
     }
 }

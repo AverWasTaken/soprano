@@ -52,7 +52,7 @@ public interface LookHelper {
             reachableRotation = RotationUtils.reachable(context, target);
         } else {
             // Calculate the center offset vector based on the side direction
-            Vec3i sideVector = side.getNormal();
+            Vec3i sideVector = side.getUnitVec3i();
             Vec3 centerOffset = new Vec3(0.5 + sideVector.getX() * 0.5, 0.5 + sideVector.getY() * 0.5,
                     0.5 + sideVector.getZ() * 0.5);
 
@@ -598,9 +598,9 @@ public interface LookHelper {
 
         // Adjust the center coordinates based on the specified side
         if (side != null) {
-            double offsetX = side.getNormal().getX() * 0.5;
-            double offsetY = side.getNormal().getY() * 0.5;
-            double offsetZ = side.getNormal().getZ() * 0.5;
+            double offsetX = side.getUnitVec3i().getX() * 0.5;
+            double offsetY = side.getUnitVec3i().getY() * 0.5;
+            double offsetZ = side.getUnitVec3i().getZ() * 0.5;
             centerX += offsetX;
             centerY += offsetY;
             centerZ += offsetZ;
@@ -628,9 +628,9 @@ public interface LookHelper {
 
         // Adjust the center coordinates based on the specified side
         if (side != null) {
-            double offsetX = side.getNormal().getX() * 0.5;
-            double offsetY = side.getNormal().getY() * 0.5;
-            double offsetZ = side.getNormal().getZ() * 0.5;
+            double offsetX = side.getUnitVec3i().getX() * 0.5;
+            double offsetY = side.getUnitVec3i().getY() * 0.5;
+            double offsetZ = side.getUnitVec3i().getZ() * 0.5;
             centerX += offsetX;
             centerY += offsetY;
             centerZ += offsetZ;

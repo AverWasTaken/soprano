@@ -12,7 +12,6 @@ import java.util.List;
 import java.util.Set;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.ChunkPos;
-import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.phys.Vec3;
 
 /**
@@ -68,11 +67,11 @@ abstract class ChunkSearchTask extends Task {
         }
 
         _onChunkLoad = EventBus.subscribe(ChunkLoadEvent.class, evt -> {
-            LevelChunk chunk = evt.chunk;
+            ChunkPos chunk = evt.chunkPos;
             if (chunk == null) return;
             synchronized (_searchMutex) {
-                if (!_searchedAlready.contains(chunk.getPos())) {
-                    _justLoaded.add(chunk.getPos());
+                if (!_searchedAlready.contains(chunk)) {
+                    _justLoaded.add(chunk);
                 }
             }
         });

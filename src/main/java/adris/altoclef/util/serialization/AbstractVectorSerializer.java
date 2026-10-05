@@ -1,26 +1,19 @@
 package adris.altoclef.util.serialization;
 
-import com.fasterxml.jackson.core.JsonGenerator;
-import com.fasterxml.jackson.databind.SerializerProvider;
-import com.fasterxml.jackson.databind.ser.std.StdSerializer;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonPrimitive;
+import com.google.gson.JsonSerializationContext;
+import com.google.gson.JsonSerializer;
 
-import java.io.IOException;
+import java.lang.reflect.Type;
 import java.util.Collection;
 
-public abstract class AbstractVectorSerializer<T> extends StdSerializer<T> {
-    public AbstractVectorSerializer() {
-        this(null);
-    }
-
-    public AbstractVectorSerializer(Class<T> vc) {
-        super(vc);
-    }
+public abstract class AbstractVectorSerializer<T> implements JsonSerializer<T> {
 
     protected abstract Collection<String> getParts(T value);
 
     @Override
-    public void serialize(T value, JsonGenerator gen, SerializerProvider provider) throws IOException {
-        Collection<String> parts = getParts(value);
-        gen.writeString(String.join(",", parts));
+    public JsonElement serialize(T value, Type typeOfSrc, JsonSerializationContext context) {
+        return new JsonPrimitive(String.join(",", getParts(value)));
     }
 }

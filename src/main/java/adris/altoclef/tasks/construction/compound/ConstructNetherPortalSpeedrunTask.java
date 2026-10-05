@@ -72,19 +72,19 @@ public class ConstructNetherPortalSpeedrunTask extends adris.altoclef.tasksystem
     // !! Also represents the ORDER at which the lava will be placed.
     private static final LavaTarget[] PORTAL_FRAME_LAVA = new LavaTarget[]{
             // Left side
-            new LavaTarget(0, 0, -1, Direction.fromDelta(-1, 0, 0)),
-            new LavaTarget(0, 1, -1, Direction.fromDelta(-1, 0, 0)),
-            new LavaTarget(0, 2, -1, Direction.fromDelta(0, 1, 0)),
+            new LavaTarget(0, 0, -1, Direction.getNearest(-1, 0, 0, null)),
+            new LavaTarget(0, 1, -1, Direction.getNearest(-1, 0, 0, null)),
+            new LavaTarget(0, 2, -1, Direction.getNearest(0, 1, 0, null)),
             // Right side
-            new LavaTarget(0, 0, 2, Direction.fromDelta(-1, 0, 0)),
-            new LavaTarget(0, 1, 2, Direction.fromDelta(0, 1, 0)),
-            new LavaTarget(0, 2, 2, Direction.fromDelta(0, 1, 0)),
+            new LavaTarget(0, 0, 2, Direction.getNearest(-1, 0, 0, null)),
+            new LavaTarget(0, 1, 2, Direction.getNearest(0, 1, 0, null)),
+            new LavaTarget(0, 2, 2, Direction.getNearest(0, 1, 0, null)),
             // Bottom
-            new LavaTarget(0, -1, 0, Direction.fromDelta(0, 1, 0)),
-            new LavaTarget(0, -1, 1, Direction.fromDelta(0, 1, 0)),
+            new LavaTarget(0, -1, 0, Direction.getNearest(0, 1, 0, null)),
+            new LavaTarget(0, -1, 1, Direction.getNearest(0, 1, 0, null)),
             // Top
-            new LavaTarget(0, 3, 0, Direction.fromDelta(0, 0, 1)),
-            new LavaTarget(0, 3, 1, Direction.fromDelta(0, 0, 1))
+            new LavaTarget(0, 3, 0, Direction.getNearest(0, 0, 1, null)),
+            new LavaTarget(0, 3, 1, Direction.getNearest(0, 0, 1, null))
     };
     private static final Vec3i[] PORTAL_INTERIOR = new Vec3i[]{
             new Vec3i(0, 0, 0),

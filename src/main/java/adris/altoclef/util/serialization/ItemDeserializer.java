@@ -2,57 +2,63 @@ package adris.altoclef.util.serialization;
 
 import adris.altoclef.Debug;
 import adris.altoclef.util.helpers.ItemHelper;
-import com.fasterxml.jackson.core.JsonParseException;
-import com.fasterxml.jackson.core.JsonParser;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.JsonToken;
-import com.fasterxml.jackson.databind.DeserializationContext;
-import com.fasterxml.jackson.databind.deser.std.StdDeserializer;
-import java.io.IOException;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonDeserializationContext;
+import com.google.gson.JsonDeserializer;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonParseException;
+import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.List;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.Item;
 
-public class ItemDeserializer extends StdDeserializer<Object> {
-    public ItemDeserializer() {
-        this(null);
-    }
-
-    public ItemDeserializer(Class<Object> vc) {
-        super(vc);
-    }
+// reads an item from a registry id ("minecraft:iron_pickaxe", "iron_pickaxe", old translation keys) or an ancient raw int id.
+// unknown items come back null and get warned about, same as the old list reader that just skipped them
+public class ItemDeserializer implements JsonDeserializer<Item> {
 
     @Override
-    public Object deserialize(JsonParser p, DeserializationContext ctxt) throws IOException, JsonProcessingException {
-        List<Item> result = new ArrayList<>();
-
-        if (p.getCurrentToken() != JsonToken.START_ARRAY) {
-            throw new JsonParseException(p, "Start array expected");
+    public Item deserialize(JsonElement json, Type typeOfT, JsonDeserializationContext context) throws JsonParseException {
+        if (json.isJsonNull()) {
+            return null;
         }
-        while (p.nextToken() != JsonToken.END_ARRAY) {
-            Item item = null;
-            if (p.getCurrentToken() == JsonToken.VALUE_NUMBER_INT) {
-                // Old raw id (ew stinky)
-                int rawId = p.getIntValue();
-                item = Item.byId(rawId);
-            } else {
-                // Translation key (the proper way)
-                String itemKey = p.getText();
-                itemKey = ItemHelper.trimItemName(itemKey);
-                ResourceLocation identifier = ResourceLocation.parse(itemKey);
-                if (BuiltInRegistries.ITEM.containsKey(identifier)) {
-                    item = BuiltInRegistries.ITEM.get(identifier);
-                } else {
-                    Debug.logWarning("Invalid item name:" + itemKey + " at " + p.getCurrentLocation().toString());
+        if (!json.isJsonPrimitive()) {
+            throw new JsonParseException("Item should be a string, got: " + json);
+        }
+        if (json.getAsJsonPrimitive().isNumber()) {
+            // Old raw id (ew stinky)
+            return Item.byId(json.getAsInt());
+        }
+        // Translation key (the proper way)
+        String itemKey = ItemHelper.trimItemName(json.getAsString());
+        ResourceLocation identifier = ResourceLocation.tryParse(itemKey);
+        // ITEM is a defaulted registry, getValue would hand us air for a typo instead of failing
+        if (identifier != null && BuiltInRegistries.ITEM.containsKey(identifier)) {
+            return BuiltInRegistries.ITEM.getValue(identifier);
+        }
+        Debug.logWarning("Invalid item name:" + itemKey);
+        return null;
+    }
+
+    // for List<Item> fields: invalid entries are dropped instead of leaving nulls in the list
+    public static class ListOf implements JsonDeserializer<List<Item>> {
+        private final ItemDeserializer _item = new ItemDeserializer();
+
+        @Override
+        public List<Item> deserialize(JsonElement json, Type typeOfT, JsonDeserializationContext context) throws JsonParseException {
+            if (!json.isJsonArray()) {
+                throw new JsonParseException("Start array expected");
+            }
+            JsonArray array = json.getAsJsonArray();
+            List<Item> result = new ArrayList<>();
+            for (JsonElement element : array) {
+                Item item = _item.deserialize(element, Item.class, context);
+                if (item != null) {
+                    result.add(item);
                 }
             }
-            if (item != null) {
-                result.add(item);
-            }
+            return result;
         }
-
-        return result;
     }
 }
