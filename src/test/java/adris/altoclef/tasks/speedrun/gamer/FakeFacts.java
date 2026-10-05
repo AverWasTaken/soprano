@@ -13,6 +13,7 @@ public class FakeFacts implements GamerFacts {
     public Dimension dimension = Dimension.OVERWORLD;
     public int armorPoints;
     public int foodUnits;
+    public int junkFoodUnits;
     public int buildBlocks;
     public int x;
     public int y = 64;
@@ -56,6 +57,11 @@ public class FakeFacts implements GamerFacts {
     @Override
     public int foodUnits() {
         return foodUnits;
+    }
+
+    @Override
+    public int junkFoodUnits() {
+        return junkFoodUnits;
     }
 
     @Override

@@ -29,6 +29,7 @@ public final class MinecraftFacts implements GamerFacts {
     private Dimension dimension = Dimension.OVERWORLD;
     private int armorPoints;
     private int foodUnits;
+    private int junkFoodUnits;
     private int buildBlocks;
     private int fingerprint;
     private int x;
@@ -90,14 +91,18 @@ public final class MinecraftFacts implements GamerFacts {
     // one pass over the distinct item types: food, building blocks and the "did anything change" number together
     private void summarize() {
         int food = 0;
+        int junk = 0;
         int build = 0;
         int fp = 0;
         for (Object2IntMap.Entry<Item> e : counts.object2IntEntrySet()) {
             Item item = e.getKey();
             int n = e.getIntValue();
             fp += (BuiltInRegistries.ITEM.getId(item) + 1) * 7919 + n * 31 * (BuiltInRegistries.ITEM.getId(item) + 17);
-            if (FoodHelper.kindOf(item) == FoodHelper.Kind.NORMAL) {
+            FoodHelper.Kind kind = FoodHelper.kindOf(item);
+            if (kind == FoodHelper.Kind.NORMAL) {
                 food += item.components().get(DataComponents.FOOD).nutrition() * n;
+            } else if (kind != FoodHelper.Kind.NOT_FOOD) {
+                junk += item.components().get(DataComponents.FOOD).nutrition() * n;
             }
             // same rule as StorageHelper.getBuildingMaterialCount: throwaway blocks, minus the ones that fall over
             if (item instanceof BlockItem && item != Items.GRAVEL && item != Items.SAND && AltoSettings.isThrowaway(item)) {
@@ -105,6 +110,7 @@ public final class MinecraftFacts implements GamerFacts {
             }
         }
         foodUnits = food;
+        junkFoodUnits = junk;
         buildBlocks = build;
         fingerprint = fp;
     }
@@ -137,6 +143,11 @@ public final class MinecraftFacts implements GamerFacts {
     @Override
     public int foodUnits() {
         return foodUnits;
+    }
+
+    @Override
+    public int junkFoodUnits() {
+        return junkFoodUnits;
     }
 
     @Override

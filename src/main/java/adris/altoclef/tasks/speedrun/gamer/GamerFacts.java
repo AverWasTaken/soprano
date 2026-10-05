@@ -31,6 +31,12 @@ public interface GamerFacts {
     // nutrition we could eat right now (cooked and raw edible stuff, no poison)
     int foodUnits();
 
+    // nutrition of the food foodUnits() leaves out (rotten flesh, gapples, spider eyes...). CollectFoodTask counts all of it,
+    // so a task that asks it for N units has to add this or it thinks it is done while foodUnits() still says short
+    default int junkFoodUnits() {
+        return 0;
+    }
+
     // throwaway blocks we can pillar/bridge with
     int buildBlocks();
 
