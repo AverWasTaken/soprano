@@ -169,14 +169,14 @@ public class AltoClefCommandsTest {
 
     @Test
     public void theNamesTheLeadAskedFor() {
-        String[] expected = {"get", "give", "equip", "deposit", "stash", "food", "meat", "gamer", "marvion", "hero", "punk",
+        String[] expected = {"get", "give", "equip", "deposit", "stash", "food", "meat", "gamer", "hero", "punk",
                 "coords", "inventory", "list", "locate_structure", "locatestructure", "status", "idle", "selfcare",
                 "gamma", "setgamma", "set_gamma", "coverwithblocks", "coverwithsand", "altoreload", "reload_settings"};
         for (String name : expected) {
             assertNotNull(name + " is missing", command(name));
         }
         // dropped on purpose: test is dev only, follow/goto/stop/help are soprano's now
-        for (String gone : new String[]{"test", "follow", "goto", "stop", "help"}) {
+        for (String gone : new String[]{"test", "follow", "goto", "stop", "help", "marvion"}) {
             assertNull(gone + " should not be an altoclef command", command(gone));
         }
     }
@@ -254,7 +254,7 @@ public class AltoClefCommandsTest {
 
     @Test
     public void commandsWithNoArgumentsCompleteNothing() throws Exception {
-        for (String name : new String[]{"marvion", "hero", "selfcare", "idle", "coverwithblocks", "coverwithsand", "coords", "status", "altoreload", "list"}) {
+        for (String name : new String[]{"hero", "selfcare", "idle", "coverwithblocks", "coverwithsand", "coords", "status", "altoreload", "list"}) {
             assertTrue(name, tab(name, "").isEmpty());
         }
     }

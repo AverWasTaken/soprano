@@ -146,7 +146,7 @@ AltoClef is a task bot (survival, crafting, combat, beating the game) that's bui
 - `punk <player>` to kill a player
 - `hero` to kill all the hostile mobs it can find, `idle` to stand still with its survival chains running, `selfcare` (unfinished upstream)
 - `coverwithblocks` and `coverwithsand` to cover nether lava
-- `gamer` to beat the game: gear up, nether, stronghold, dragon. It takes a long while and eats, fights and respawns on its own. `marvion` is the same goal with Marvion's strategy
+- `gamer` to beat the game: gear up, nether, stronghold, dragon. It takes a long while and eats, fights and respawns on its own, and it saves its progress per world, so after a relog, a stop or a crash it carries on from the phase it was in. `gamer status` shows the phase and what has been found, `gamer reset` forgets the saved run (not while it is running), and `gamer phase <name>` starts in that phase (`gather`, `iron`, `portal`, `nether`, `eyes`, `return`, `locate`, `room`, `open`, `end_prep` or `dragon`), for testing one part of the run
 - `locate_structure <structure>` to find a structure, like `desert_temple` or `stronghold`
 - `custom <name>` to run a task list from `CustomTasks.json`
 - `status` to see what the running task is doing, `inventory [item]` to list or count, `coords` to get the bot's coordinates, `gamma [value]` to set the brightness

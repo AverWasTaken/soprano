@@ -9,7 +9,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Supplier;
 
-// the commands that are just "no arguments, start this task": gamer, marvion, hero, selfcare, idle and the two lava ones
+// the commands that are just "no arguments, start this task": hero, selfcare, idle and the two lava ones
 public class TaskCommand extends AltoClefCommand {
 
     private final String shortDesc;

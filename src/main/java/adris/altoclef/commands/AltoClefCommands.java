@@ -25,7 +25,6 @@ import adris.altoclef.tasks.entity.HeroTask;
 import adris.altoclef.tasks.entity.SelfCareTask;
 import adris.altoclef.tasks.movement.FollowPlayerTask;
 import adris.altoclef.tasks.movement.IdleTask;
-import adris.altoclef.tasks.speedrun.MarvionBeatMinecraftTask;
 import adris.altoclef.tasksystem.Task;
 import baritone.altoclef.AltoClefBridge;
 import baritone.api.BaritoneAPI;
@@ -95,10 +94,6 @@ public final class AltoClefCommands {
                 new ReloadSettingsCommand(baritone),
                 new CustomCommand(baritone),
                 new GamerCommand(baritone),
-                new TaskCommand(baritone, new String[]{"marvion"}, "Beats the game (Marvion version)",
-                        MarvionBeatMinecraftTask::new,
-                        "The same goal as gamer, but with Marvion's strategy for it.",
-                        "Use stop to call it off."),
                 new TaskCommand(baritone, new String[]{"hero"}, "Kill all hostile mobs",
                         HeroTask::new,
                         "Hunts down every hostile mob it can find and keeps going until stopped."),
