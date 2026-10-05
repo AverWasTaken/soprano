@@ -71,6 +71,30 @@ public class SeenFilterTest {
     }
 
     @Test
+    public void aMissIsNotRetriedForAWhileThenIs() {
+        SeenFilter.MissMemo m = new SeenFilter.MissMemo(100, 20);
+        assertFalse(m.recentlyMissed(7, 1000));
+        m.miss(7, 1000);
+        assertTrue(m.recentlyMissed(7, 1000));
+        assertTrue(m.recentlyMissed(7, 1019));
+        assertFalse(m.recentlyMissed(7, 1020));
+        // other blocks are unaffected
+        assertFalse(m.recentlyMissed(8, 1001));
+    }
+
+    @Test
+    public void missesNeverGrowPastTheirCapAndClearWorks() {
+        SeenFilter.MissMemo m = new SeenFilter.MissMemo(50, 20);
+        for (long k = 0; k < 5_000; k++) {
+            m.miss(k, 10);
+            assertTrue(m.size() <= 50);
+        }
+        m.clear();
+        assertEquals(0, m.size());
+        assertFalse(m.recentlyMissed(4_999, 10));
+    }
+
+    @Test
     public void theDefaultsAreTheDesignNumbers() {
         assertEquals(8, SeenFilter.RAYS_PER_TICK);
         assertEquals(50_000, SeenFilter.MEMO_CAP);

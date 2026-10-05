@@ -2,6 +2,7 @@ package adris.altoclef.util.helpers;
 
 import adris.altoclef.AltoClef;
 import baritone.api.utils.Dimension;
+import it.unimi.dsi.fastutil.longs.Long2LongOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -23,9 +24,13 @@ public final class SeenFilter {
     static final int MEMO_CAP = 50_000;
     // raycasts that may be spent on blocks we do not know yet, per game tick
     static final int RAYS_PER_TICK = 8;
+    // a block we could not see is not looked at again for this long (1 s). we move, so it is worth asking again, just not every tick
+    static final int MISS_RETRY_TICKS = 20;
+    static final int MISS_CAP = 4_000;
 
     private static final Memo MEMO = new Memo(MEMO_CAP);
     private static final Budget BUDGET = new Budget(RAYS_PER_TICK);
+    private static final MissMemo MISSES = new MissMemo(MISS_CAP, MISS_RETRY_TICKS);
     // the level the memo was built in: dimension changes make a new level object and the coordinates mean something else
     private static ClientLevel memoLevel;
 
@@ -38,6 +43,7 @@ public final class SeenFilter {
         }
         if (level != memoLevel) {
             MEMO.clear();
+            MISSES.clear();
             memoLevel = level;
         }
         long key = pos.asLong();
@@ -50,10 +56,17 @@ public final class SeenFilter {
         if (eye.distanceToSqr(target) > range * range) {
             return false;
         }
-        if (!BUDGET.tryUse(Minecraft.getInstance().gui.getGuiTicks())) {
+        long now = Minecraft.getInstance().gui.getGuiTicks();
+        // asked and missed a moment ago: do not spend a raycast on it again. without this the same eight blocks that
+        // are in range but behind rock eat the whole budget every tick and a visible one further down the list starves
+        if (MISSES.recentlyMissed(key, now)) {
+            return false;
+        }
+        if (!BUDGET.tryUse(now)) {
             return false;
         }
         if (!clearView(level, player, eye, target, pos)) {
+            MISSES.miss(key, now);
             return false;
         }
         MEMO.add(key);
@@ -71,6 +84,9 @@ public final class SeenFilter {
         return isSameOrTouching(hit.getBlockPos(), pos);
     }
 
+    // one block of x-ray leaks through here on purpose: a block directly behind a single other block (a frame under the
+    // platform seen through the one stone brick in front of it) counts as seen. requiring an exact hit would fail every
+    // fence, chest and portal frame whose centre sits a hair inside the box the clip stops at
     static boolean isSameOrTouching(BlockPos hit, BlockPos pos) {
         int d = Math.abs(hit.getX() - pos.getX()) + Math.abs(hit.getY() - pos.getY()) + Math.abs(hit.getZ() - pos.getZ());
         return d <= 1;
@@ -79,6 +95,7 @@ public final class SeenFilter {
     // forget everything (world leave)
     public static void reset() {
         MEMO.clear();
+        MISSES.clear();
         BUDGET.clear();
         memoLevel = null;
     }
@@ -113,6 +130,38 @@ public final class SeenFilter {
 
         void clear() {
             set.clear();
+        }
+    }
+
+    // positions that failed the line of sight test and when. bounded the same way as Memo: emptied when full
+    static final class MissMemo {
+        private final Long2LongOpenHashMap lastMiss = new Long2LongOpenHashMap();
+        private final int cap;
+        private final int retryTicks;
+
+        MissMemo(int cap, int retryTicks) {
+            this.cap = cap;
+            this.retryTicks = retryTicks;
+        }
+
+        boolean recentlyMissed(long key, long nowTick) {
+            long at = lastMiss.getOrDefault(key, Long.MIN_VALUE);
+            return at != Long.MIN_VALUE && nowTick - at < retryTicks;
+        }
+
+        void miss(long key, long nowTick) {
+            if (lastMiss.size() >= cap) {
+                lastMiss.clear();
+            }
+            lastMiss.put(key, nowTick);
+        }
+
+        int size() {
+            return lastMiss.size();
+        }
+
+        void clear() {
+            lastMiss.clear();
         }
     }
 
