@@ -17,4 +17,10 @@ public class StrongholdConfig {
     // go through the nether for the long walk. off: FastTravelTask ignores its threshold and needs a second portal
     public boolean netherFastTravel = false;
     public boolean breakSilverfishSpawner = true;
+    // how long digging down at the start chunk may take before we search sideways at whatever depth we got to
+    public double digDownSeconds = 240;
+    // after the ring centre is known: this long to walk over and see the frames before the rest are taken as given
+    public double approachSeconds = 45;
+    // walking to the start chunk when we are further than this from it (blocks)
+    public double startReachBlocks = 8;
 }
