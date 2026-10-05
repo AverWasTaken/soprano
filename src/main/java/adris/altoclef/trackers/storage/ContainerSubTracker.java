@@ -6,7 +6,7 @@ import adris.altoclef.eventbus.events.BlockInteractEvent;
 import adris.altoclef.eventbus.events.ScreenOpenEvent;
 import adris.altoclef.trackers.Tracker;
 import adris.altoclef.trackers.TrackerManager;
-import adris.altoclef.util.Dimension;
+import baritone.api.utils.Dimension;
 import adris.altoclef.util.helpers.WorldHelper;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;

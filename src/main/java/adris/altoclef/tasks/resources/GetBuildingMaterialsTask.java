@@ -1,5 +1,6 @@
 package adris.altoclef.tasks.resources;
 
+import adris.altoclef.AltoSettings;
 import adris.altoclef.AltoClef;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.ItemTarget;
@@ -21,7 +22,7 @@ public class GetBuildingMaterialsTask extends Task {
 
     @Override
     protected Task onTick(AltoClef mod) {
-        Item[] throwaways = mod.getModSettings().getThrowawayItems(mod, true);
+        Item[] throwaways = AltoSettings.getThrowawayItems(mod, true);
         return new MineAndCollectTask(new ItemTarget[]{new ItemTarget(throwaways, _count)}, MiningRequirement.WOOD);
     }
 

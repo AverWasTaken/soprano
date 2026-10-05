@@ -1,11 +1,12 @@
 package adris.altoclef.tasks.construction;
 
+import adris.altoclef.AltoSettings;
 import adris.altoclef.AltoClef;
 import adris.altoclef.tasks.movement.DefaultGoToDimensionTask;
 import adris.altoclef.tasks.movement.TimeoutWanderTask;
 import adris.altoclef.tasks.resources.MineAndCollectTask;
 import adris.altoclef.tasksystem.Task;
-import adris.altoclef.util.Dimension;
+import baritone.api.utils.Dimension;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.MiningRequirement;
 import adris.altoclef.util.helpers.ItemHelper;
@@ -40,7 +41,7 @@ public class CoverWithBlocksTask extends Task {
 
     @Override
     protected Task onTick(AltoClef mod) {
-        Item[] throwAways = mod.getModSettings().getThrowawayItems(mod, true);
+        Item[] throwAways = AltoSettings.getThrowawayItems(mod, true);
         Item[] throwAwaysToUse = Arrays.stream(throwAways).filter(item -> !(Block.byItem(item) instanceof LeavesBlock) &&
                 !(Block.byItem(item) instanceof FallingBlock) && item instanceof BlockItem).toArray(Item[]::new);
         int throwAwayCount = mod.getItemStorage().getItemCount(throwAwaysToUse);
@@ -110,7 +111,7 @@ public class CoverWithBlocksTask extends Task {
                 lavaPos = lava.get();
                 timer.reset();
             }
-            Item[] throwAways = mod.getModSettings().getThrowawayItems(mod, true);
+            Item[] throwAways = AltoSettings.getThrowawayItems(mod, true);
             Item[] throwAwaysToUse = Arrays.stream(throwAways).filter(item -> !(Block.byItem(item) instanceof LeavesBlock) &&
                     !(Block.byItem(item) instanceof FallingBlock) && item instanceof BlockItem).toArray(Item[]::new);
             List<Slot> presentThrowAways = mod.getItemStorage().getSlotsWithItemPlayerInventory(true, throwAwaysToUse);

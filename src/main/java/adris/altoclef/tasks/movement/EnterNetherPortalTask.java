@@ -5,7 +5,7 @@ import adris.altoclef.tasks.DoToClosestBlockTask;
 import adris.altoclef.tasks.construction.compound.ConstructNetherPortalBucketTask;
 import adris.altoclef.tasks.construction.compound.ConstructNetherPortalObsidianTask;
 import adris.altoclef.tasksystem.Task;
-import adris.altoclef.util.Dimension;
+import baritone.api.utils.Dimension;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.time.TimerGame;
 import baritone.api.utils.input.Input;

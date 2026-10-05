@@ -4,7 +4,7 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.TaskCatalogue;
 import adris.altoclef.tasks.movement.DefaultGoToDimensionTask;
 import adris.altoclef.tasksystem.Task;
-import adris.altoclef.util.Dimension;
+import baritone.api.utils.Dimension;
 import adris.altoclef.util.helpers.WorldHelper;
 import net.minecraft.world.item.Items;
 

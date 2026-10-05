@@ -17,6 +17,7 @@
 
 package baritone.altoclef;
 
+import adris.altoclef.AltoSettings;
 import adris.altoclef.AltoClef;
 import baritone.Baritone;
 import baritone.api.Settings;
@@ -34,8 +35,20 @@ public final class BaritoneSettingsScope {
 
     private final AltoClef mod;
     private final List<Runnable> undo = new ArrayList<>();
+    // the baritone settings we changed: what they were, what we made them. a setting whose value is no longer ours was
+    // changed by the user (#set) in the meantime and is theirs to keep
+    private final List<Held<?>> overrides = new ArrayList<>();
     private boolean applied;
     private List<Item> savedThrowaway;
+    // the altoThrowawayItems list the merged baritone list was built from, to notice a #set of it
+    private List<Item> mergedFrom;
+    private List<Item> lastMerged;
+
+    private record Held<T>(Settings.Setting<T> setting, T old, T ours) {
+        boolean stillOurs() {
+            return setting.value == ours;
+        }
+    }
 
     public BaritoneSettingsScope(AltoClef mod) {
         this.mod = mod;
@@ -97,12 +110,52 @@ public final class BaritoneSettingsScope {
 
         // Baritone's `acceptableThrowawayItems` should match our own. A fresh list every time: the setting's own list
         // is also its default, adding to it in place would poison reset
-        List<Item> baritoneCanPlace = Arrays.stream(mod.getModSettings().getThrowawayItems(mod, true))
+        // somebody #set baritone's own list while we were applied: that is the list to merge into and to give back
+        if (lastMerged != null && s.acceptableThrowawayItems.value != lastMerged) {
+            savedThrowaway = s.acceptableThrowawayItems.value;
+        }
+        mergedFrom = s.altoThrowawayItems.value;
+        List<Item> baritoneCanPlace = Arrays.stream(AltoSettings.getThrowawayItems(mod, true))
                 .filter(item -> item != Items.SOUL_SAND && item != Items.MAGMA_BLOCK && item != Items.SAND && item
                         != Items.GRAVEL).toList();
         List<Item> merged = new ArrayList<>(savedThrowaway);
         merged.addAll(baritoneCanPlace);
+        // our list is still ours when we came here a second time, otherwise a #set of it would be undone by restore
+        overrides.removeIf(o -> o.setting() == s.acceptableThrowawayItems);
+        overrides.add(new Held<>(s.acceptableThrowawayItems, savedThrowaway, merged));
         s.acceptableThrowawayItems.value = merged;
+        lastMerged = merged;
+    }
+
+    // a #set of altoThrowawayItems while a task runs has to reach baritone's list as well, one reference compare a tick
+    public void refreshThrowaway() {
+        if (applied && mergedFrom != Baritone.settings().altoThrowawayItems.value) {
+            apply();
+        }
+    }
+
+    // runs a settings.txt save as if none of this was applied: every setting we are still holding goes back to what it
+    // was for the duration. without it the first #set during a task would save allowParkour false (and friends) for good
+    public void saveWithoutOverrides(Runnable save) {
+        List<Held<?>> held = new ArrayList<>();
+        for (Held<?> o : overrides) {
+            if (o.stillOurs()) {
+                held.add(o);
+                put(o, o.old());
+            }
+        }
+        try {
+            save.run();
+        } finally {
+            for (Held<?> o : held) {
+                put(o, o.ours());
+            }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T> void put(Held<T> o, Object value) {
+        o.setting().value = (T) value;
     }
 
     public void restore() {
@@ -110,9 +163,15 @@ public final class BaritoneSettingsScope {
             return;
         }
         applied = false;
-        Settings s = Baritone.settings();
-        s.acceptableThrowawayItems.value = savedThrowaway;
+        for (Held<?> o : overrides) {
+            if (o.stillOurs()) {
+                put(o, o.old());
+            }
+        }
+        overrides.clear();
         savedThrowaway = null;
+        mergedFrom = null;
+        lastMerged = null;
         for (int i = undo.size() - 1; i >= 0; i--) {
             undo.get(i).run();
         }
@@ -122,8 +181,7 @@ public final class BaritoneSettingsScope {
     }
 
     private <T> void set(Settings.Setting<T> setting, T value) {
-        T old = setting.value;
-        undo.add(() -> setting.value = old);
+        overrides.add(new Held<>(setting, setting.value, value));
         setting.value = value;
     }
 }

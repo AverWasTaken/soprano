@@ -23,7 +23,7 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
-import adris.altoclef.util.Dimension;
+import baritone.api.utils.Dimension;
 import java.util.List;
 import org.junit.Test;
 

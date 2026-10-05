@@ -1,7 +1,7 @@
 package adris.altoclef.trackers;
 
 import adris.altoclef.AltoClef;
-import adris.altoclef.util.Dimension;
+import baritone.api.utils.Dimension;
 import adris.altoclef.util.helpers.WorldHelper;
 import java.util.HashMap;
 import java.util.Map;

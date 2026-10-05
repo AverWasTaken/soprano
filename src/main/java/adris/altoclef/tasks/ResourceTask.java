@@ -1,5 +1,6 @@
 package adris.altoclef.tasks;
 
+import baritone.Baritone;
 import adris.altoclef.AltoClef;
 import adris.altoclef.tasks.container.PickupFromContainerTask;
 import adris.altoclef.tasks.movement.DefaultGoToDimensionTask;
@@ -11,7 +12,7 @@ import adris.altoclef.tasksystem.ITaskCanForce;
 import adris.altoclef.tasksystem.ITaskUsesCraftingGrid;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.trackers.storage.ContainerCache;
-import adris.altoclef.util.Dimension;
+import baritone.api.utils.Dimension;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.MiningRequirement;
 import adris.altoclef.util.helpers.ItemHelper;
@@ -138,7 +139,7 @@ public abstract class ResourceTask extends Task implements ITaskCanForce {
                     }
                 }
 
-                double range = mod.getModSettings().getResourcePickupRange();
+                double range = Baritone.settings().altoResourcePickupDropRange.value;
                 Optional<ItemEntity> closest = mod.getEntityTracker().getClosestItemDrop(mod.getPlayer().position(), _itemTargets);
                 if (range < 0 || (closest.isPresent() && closest.get().closerThan(mod.getPlayer(), range)) || (_pickupTask.isActive() && !_pickupTask.isFinished(mod))) {
                     setDebugState("Picking up");
@@ -152,7 +153,7 @@ public abstract class ResourceTask extends Task implements ITaskCanForce {
             List<ContainerCache> containersWithItem = mod.getItemStorage().getContainersWithItem(Arrays.stream(_itemTargets).reduce(new Item[0], (items, target) -> ArrayUtils.addAll(items, target.getMatches()), ArrayUtils::addAll));
             if (!containersWithItem.isEmpty()) {
                 ContainerCache closest = containersWithItem.stream().min(StlHelper.compareValues(container -> container.getBlockPos().distToCenterSqr(mod.getPlayer().position()))).get();
-                if (closest.getBlockPos().closerToCenterThan(mod.getPlayer().position(), mod.getModSettings().getResourceChestLocateRange())) {
+                if (closest.getBlockPos().closerToCenterThan(mod.getPlayer().position(), Baritone.settings().altoResourceChestLocateRange.value)) {
                     _currentContainer = closest;
                 }
             }
@@ -179,11 +180,11 @@ public abstract class ResourceTask extends Task implements ITaskCanForce {
             if (!satisfiedReqs.isEmpty()) {
                 if (mod.getBlockTracker().anyFound(satisfiedReqs.toArray(Block[]::new))) {
                     Optional<BlockPos> closest = mod.getBlockTracker().getNearestTracking(mod.getPlayer().position(), _mineIfPresent);
-                    if (closest.isPresent() && closest.get().closerToCenterThan(mod.getPlayer().position(), mod.getModSettings().getResourceMineRange())) {
+                    if (closest.isPresent() && closest.get().closerToCenterThan(mod.getPlayer().position(), Baritone.settings().altoResourceMineRange.value)) {
                         _mineLastClosest = closest.get();
                     }
                     if (_mineLastClosest != null) {
-                        if (_mineLastClosest.closerToCenterThan(mod.getPlayer().position(), mod.getModSettings().getResourceMineRange() * 1.5 + 20)) {
+                        if (_mineLastClosest.closerToCenterThan(mod.getPlayer().position(), Baritone.settings().altoResourceMineRange.value * 1.5 + 20)) {
                             return new MineAndCollectTask(_itemTargets, _mineIfPresent, MiningRequirement.HAND);
                         }
                     }

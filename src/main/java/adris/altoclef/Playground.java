@@ -29,6 +29,7 @@ import adris.altoclef.tasks.stupid.ReplaceBlocksTask;
 import adris.altoclef.tasks.stupid.SCP173Task;
 import adris.altoclef.tasks.stupid.TerminatorTask;
 import adris.altoclef.util.*;
+import baritone.api.utils.Dimension;
 import adris.altoclef.util.helpers.WorldHelper;
 import java.io.*;
 import java.util.List;

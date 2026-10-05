@@ -1,5 +1,6 @@
 package adris.altoclef.tasks.container;
 
+import baritone.Baritone;
 import adris.altoclef.AltoClef;
 import adris.altoclef.tasks.CraftGenericManuallyTask;
 import adris.altoclef.tasks.CraftInInventoryTask;
@@ -374,7 +375,7 @@ class DoCraftInTableTask extends DoStuffInContainerTask {
     @Override
     protected Task containerSubTask(AltoClef mod) {
         // Calculate the interval based on the container item move delay and a bonus duration
-        float interval = mod.getModSettings().getContainerItemMoveDelay() * 10 + CRAFT_RESET_TIMER_BONUS_SECONDS;
+        float interval = Baritone.settings().altoContainerItemMoveDelay.value * 10 + CRAFT_RESET_TIMER_BONUS_SECONDS;
         _craftResetTimer.setInterval(interval);
 
         // If the craft reset timer has elapsed, return a TimeoutWanderTask

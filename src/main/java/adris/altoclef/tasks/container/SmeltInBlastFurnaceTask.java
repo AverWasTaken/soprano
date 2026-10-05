@@ -1,5 +1,6 @@
 package adris.altoclef.tasks.container;
 
+import adris.altoclef.AltoSettings;
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.TaskCatalogue;
@@ -304,7 +305,7 @@ public class SmeltInBlastFurnaceTask extends ResourceTask {
                     double closestDelta = Double.NEGATIVE_INFINITY;
                     ItemStack bestStack = null;
                     for (ItemStack stack : mod.getItemStorage().getItemStacksPlayerInventory(true)) {
-                        if (mod.getModSettings().isSupportedFuel(stack.getItem())) {
+                        if (AltoSettings.isSupportedFuel(stack.getItem())) {
                             double fuelAmount = ItemHelper.getFuelAmount(stack.getItem()) * stack.getCount();
                             double delta = needs - fuelAmount;
                             if (

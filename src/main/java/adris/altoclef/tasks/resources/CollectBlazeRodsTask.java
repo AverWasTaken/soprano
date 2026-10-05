@@ -10,7 +10,7 @@ import adris.altoclef.tasks.movement.GetToBlockTask;
 import adris.altoclef.tasks.movement.RunAwayFromHostilesTask;
 import adris.altoclef.tasks.movement.SearchChunkForBlockTask;
 import adris.altoclef.tasksystem.Task;
-import adris.altoclef.util.Dimension;
+import baritone.api.utils.Dimension;
 import adris.altoclef.util.helpers.WorldHelper;
 import java.util.Optional;
 import java.util.function.Predicate;

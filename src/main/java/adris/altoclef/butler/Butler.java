@@ -7,6 +7,7 @@ import adris.altoclef.eventbus.EventBus;
 import adris.altoclef.eventbus.events.ChatMessageEvent;
 import adris.altoclef.eventbus.events.TaskFinishedEvent;
 import adris.altoclef.ui.MessagePriority;
+import baritone.Baritone;
 import java.util.Objects;
 import net.minecraft.network.chat.ChatType;
 
@@ -16,7 +17,8 @@ import net.minecraft.network.chat.ChatType;
  * This effectively makes the bot function as a servant, or butler.
  * <p>
  * Authorization is defined in "altoclef_butler_whitelist.txt" and "altoclef_butler_blacklist.txt"
- * and depends on the "useButlerWhitelist" and "useButlerBlacklist" settings in "altoclef_settings.json"
+ * and depends on the "useButlerWhitelist" and "useButlerBlacklist" options in "configs/butler.json".
+ * The whole thing is switched by the altoButler setting (#set altoButler true).
  */
 public class Butler {
 
@@ -47,7 +49,7 @@ public class Butler {
 
         // Receive system events
         EventBus.subscribe(ChatMessageEvent.class, evt -> {
-            if (!ButlerConfig.getInstance().enableButler) {
+            if (!Baritone.settings().altoButler.value) {
                 return;
             }
             boolean debug = ButlerConfig.getInstance().whisperFormatDebug;

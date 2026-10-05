@@ -1,5 +1,6 @@
 package adris.altoclef.tasks.resources;
 
+import baritone.Baritone;
 import adris.altoclef.AltoClef;
 import adris.altoclef.tasks.DoToClosestBlockTask;
 import adris.altoclef.tasks.InteractWithBlockTask;
@@ -83,7 +84,7 @@ public class CollectCropTask extends ResourceTask {
          */
 
         // Collect seeds if we need to.
-        if (hasEmptyCrops(mod) && mod.getModSettings().shouldReplantCrops() && !mod.getItemStorage().hasItem(_cropSeed)) {
+        if (hasEmptyCrops(mod) && Baritone.settings().replantCrops.value && !mod.getItemStorage().hasItem(_cropSeed)) {
             if (_collectSeedTask.isActive() && !_collectSeedTask.isFinished(mod)) {
                 setDebugState("Picking up dropped seeds");
                 return _collectSeedTask;
@@ -113,7 +114,7 @@ public class CollectCropTask extends ResourceTask {
         Predicate<BlockPos> validCrop = blockPos -> {
             if (!_canBreak.test(blockPos)) return false;
             // Breaking immature crops will only yield one output! This is a bad move.
-            if (mod.getModSettings().shouldReplantCrops() && !isMature(mod, blockPos)) return false;
+            if (Baritone.settings().replantCrops.value && !isMature(mod, blockPos)) return false;
             // Wheat must be mature always.
             if (mod.getWorld().getBlockState(blockPos).getBlock() == Blocks.WHEAT)
                 return isMature(mod, blockPos);
@@ -152,7 +153,7 @@ public class CollectCropTask extends ResourceTask {
     }
 
     private boolean shouldReplantNow(AltoClef mod) {
-        return mod.getModSettings().shouldReplantCrops() && hasEmptyCrops(mod) && mod.getItemStorage().hasItem(_cropSeed);
+        return Baritone.settings().replantCrops.value && hasEmptyCrops(mod) && mod.getItemStorage().hasItem(_cropSeed);
     }
 
     private boolean hasEmptyCrops(AltoClef mod) {

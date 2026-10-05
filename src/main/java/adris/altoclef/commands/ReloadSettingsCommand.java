@@ -11,7 +11,7 @@ import java.util.List;
 public class ReloadSettingsCommand extends AltoClefCommand {
 
     public ReloadSettingsCommand(IBaritone baritone) {
-        // reload_settings is the old name. the settings are moving into #set, this is for the json files that are left
+        // reload_settings is the old name. the settings live in #set now, this is for the json files that are left
         super(baritone, "altoreload", "reload_settings", "reloadsettings");
     }
 
@@ -31,7 +31,8 @@ public class ReloadSettingsCommand extends AltoClefCommand {
     @Override
     public List<String> getLongDesc() {
         return Arrays.asList(
-                "The altoreload command reloads AltoClef's json config files from disk: its settings, the butler config and its whitelist and blacklist, and the custom tasks.",
+                "The altoreload command reloads AltoClef's json config files from disk: the beat minecraft, food chain, block tracker and mlg configs, the butler config and its whitelist and blacklist, and the custom tasks.",
+                "AltoClef's plain settings are not in there anymore, they are normal settings: use `set alto<tab>` to see and change them.",
                 "",
                 "Usage:",
                 "> altoreload"

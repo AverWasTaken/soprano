@@ -20,6 +20,7 @@ package baritone.api.utils;
 import baritone.api.BaritoneAPI;
 import baritone.api.Settings;
 import net.minecraft.client.Minecraft;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Holder;
 import net.minecraft.core.Registry;
@@ -54,7 +55,8 @@ import java.util.stream.Stream;
 public class SettingsUtil {
 
     public static final String SETTINGS_DEFAULT_NAME = "settings.txt";
-    private static final Pattern SETTING_PATTERN = Pattern.compile("^(?<setting>[^ ]+) +(?<value>.+)"); // key and value split by the first space
+    // key and value split by the first space. the value may be empty, "altoIdleCommand " is what an emptied string setting saves as
+    private static final Pattern SETTING_PATTERN = Pattern.compile("^(?<setting>[^ ]+) +(?<value>.*)");
 
 
     private static boolean isComment(String line) {
@@ -235,6 +237,13 @@ public class SettingsUtil {
                 str -> new Color(Integer.parseInt(str.split(",")[0]), Integer.parseInt(str.split(",")[1]), Integer.parseInt(str.split(",")[2])),
                 color -> color.getRed() + "," + color.getGreen() + "," + color.getBlue()
         ),
+        // before VEC3I: a BlockPos is a Vec3i, and VEC3I would claim it and then hand back a plain Vec3i
+        BLOCKPOS(
+                BlockPos.class,
+                str -> new BlockPos(Integer.parseInt(str.split(",")[0].trim()), Integer.parseInt(str.split(",")[1].trim()), Integer.parseInt(str.split(",")[2].trim())),
+                pos -> pos.getX() + "," + pos.getY() + "," + pos.getZ()
+        ),
+        BLOCKRANGE(BlockRange.class, BlockRange::parse, BlockRange::format),
         VEC3I(
                 Vec3i.class,
                 str -> new Vec3i(Integer.parseInt(str.split(",")[0]), Integer.parseInt(str.split(",")[1]), Integer.parseInt(str.split(",")[2])),
@@ -250,11 +259,38 @@ public class SettingsUtil {
                 str -> BuiltInRegistries.ITEM.get(ResourceLocation.parse(str.trim())).map(Holder.Reference::value).orElse(null),
                 item -> BuiltInRegistries.ITEM.getKey(item).toString()
         ),
+        // any enum, matched on its constant names without caring about case. after MIRROR and ROTATION, which got here first
+        ENUM() {
+            @Override
+            public Object parse(Type type, String raw) {
+                Object[] constants = ((Class<?>) type).getEnumConstants();
+                for (Object constant : constants) {
+                    if (((Enum<?>) constant).name().equalsIgnoreCase(raw.trim())) {
+                        return constant;
+                    }
+                }
+                throw new IllegalArgumentException("unknown value " + raw.trim() + ", expected one of " + enumNames((Class<?>) type));
+            }
+
+            @Override
+            public String toString(Type type, Object value) {
+                return ((Enum<?>) value).name();
+            }
+
+            @Override
+            public boolean accepts(Type type) {
+                return type instanceof Class && ((Class<?>) type).isEnum();
+            }
+        },
         LIST() {
             @Override
             public Object parse(Type type, String raw) {
                 Type elementType = ((ParameterizedType) type).getActualTypeArguments()[0];
                 Parser parser = Parser.getParser(elementType);
+                // an empty list saves as nothing at all, "".split(",") would be one empty element
+                if (raw.isBlank()) {
+                    return new ArrayList<>();
+                }
                 return Stream.of(raw.split(","))
                         .map(s -> parser.parse(elementType, s))
                         .collect(Collectors.toList());
@@ -341,6 +377,10 @@ public class SettingsUtil {
         @Override
         public boolean accepts(Type type) {
             return type instanceof Class && this.cla$$.isAssignableFrom((Class) type);
+        }
+
+        public static String enumNames(Class<?> type) {
+            return Stream.of(type.getEnumConstants()).map(c -> ((Enum<?>) c).name()).collect(Collectors.joining(", "));
         }
 
         public static Parser getParser(Type type) {

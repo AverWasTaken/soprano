@@ -1,12 +1,13 @@
 package adris.altoclef.tasks.container;
 
+import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.AltoClef;
 import adris.altoclef.TaskCatalogue;
 import adris.altoclef.tasks.DoToClosestBlockTask;
 import adris.altoclef.tasks.movement.GetToXZTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.trackers.storage.ContainerCache;
-import adris.altoclef.util.BlockRange;
+import baritone.api.utils.BlockRange;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.ItemHelper;
 import java.util.Arrays;
@@ -38,7 +39,7 @@ public class StoreInStashTask extends Task {
         if (_storedItems == null) {
             _storedItems = new ContainerStoredTracker(slot -> {
                 Optional<BlockPos> currentContainer = mod.getItemStorage().getLastBlockPosInteraction();
-                return currentContainer.isPresent() && _stashRange.contains(currentContainer.get());
+                return currentContainer.isPresent() && _stashRange.contains(currentContainer.get(), WorldHelper.getCurrentDimension());
             });
         }
         _storedItems.startTracking();
@@ -57,7 +58,7 @@ public class StoreInStashTask extends Task {
         }
 
         Predicate<BlockPos> validContainer = blockPos -> {
-            if (!_stashRange.contains(blockPos))
+            if (!_stashRange.contains(blockPos, WorldHelper.getCurrentDimension()))
                 return false;
             Optional<ContainerCache> container = mod.getItemStorage().getContainerAtPosition(blockPos);
             // We haven't opened this container OR it's opened and NOT full

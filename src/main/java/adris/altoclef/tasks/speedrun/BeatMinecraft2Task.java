@@ -1,5 +1,7 @@
 package adris.altoclef.tasks.speedrun;
 
+import baritone.Baritone;
+import adris.altoclef.AltoSettings;
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.TaskCatalogue;
@@ -16,7 +18,7 @@ import adris.altoclef.tasks.misc.SleepThroughNightTask;
 import adris.altoclef.tasks.movement.*;
 import adris.altoclef.tasks.resources.*;
 import adris.altoclef.tasksystem.Task;
-import adris.altoclef.util.Dimension;
+import baritone.api.utils.Dimension;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.MiningRequirement;
 import adris.altoclef.util.SmeltTarget;
@@ -178,10 +180,10 @@ public class BeatMinecraft2Task extends Task {
 
         // Add a warning to make sure the user at least knows to change the settings.
         String settingsWarningTail = "in \".minecraft/altoclef_settings.json\". #gamer may break if you don't add this! (sorry!)";
-        if (!ArrayUtils.contains(mod.getModSettings().getThrowawayItems(mod), Items.END_STONE)) {
+        if (!ArrayUtils.contains(AltoSettings.getThrowawayItems(mod), Items.END_STONE)) {
             Debug.logWarning("\"end_stone\" is not part of your \"throwawayItems\" list " + settingsWarningTail);
         }
-        if (!mod.getModSettings().shouldThrowawayUnusedItems()) {
+        if (!Baritone.settings().altoThrowAwayUnusedItems.value) {
             Debug.logWarning("\"throwawayUnusedItems\" is not set to true " + settingsWarningTail);
         }
 

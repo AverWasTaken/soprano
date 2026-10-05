@@ -9,6 +9,7 @@ import adris.altoclef.tasks.resources.*;
 import adris.altoclef.tasks.resources.wood.*;
 import adris.altoclef.tasks.squashed.CataloguedResourceTask;
 import adris.altoclef.util.*;
+import baritone.api.utils.Dimension;
 import adris.altoclef.util.helpers.ItemHelper;
 import net.minecraft.world.entity.GlowSquid;
 import net.minecraft.world.entity.animal.Chicken;

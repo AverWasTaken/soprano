@@ -1,5 +1,6 @@
 package adris.altoclef.control;
 
+import baritone.Baritone;
 import adris.altoclef.AltoClef;
 import adris.altoclef.tasks.entity.AbstractKillEntityTask;
 import adris.altoclef.util.helpers.LookHelper;
@@ -92,7 +93,7 @@ public class KillAura {
             stopShielding(mod);
         }
         // Run force field on map
-        switch (mod.getModSettings().getForceFieldStrategy()) {
+        switch (Baritone.settings().altoForceFieldStrategy.value) {
             case FASTEST:
                 performFastestAttack(mod);
                 break;

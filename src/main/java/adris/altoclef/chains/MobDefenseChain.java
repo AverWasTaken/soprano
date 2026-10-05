@@ -154,7 +154,7 @@ public class MobDefenseChain extends SingleTaskChain {
             return Float.NEGATIVE_INFINITY;
         }
 
-        if (!mod.getModSettings().isMobDefense()) {
+        if (!Baritone.settings().altoMobDefense.value) {
             return Float.NEGATIVE_INFINITY;
         }
 
@@ -232,7 +232,7 @@ public class MobDefenseChain extends SingleTaskChain {
             }
         }
         // Block projectiles with shield
-        if (!mod.getFoodChain().needsToEat() && mod.getModSettings().isDodgeProjectiles() && isProjectileClose(mod) &&
+        if (!mod.getFoodChain().needsToEat() && Baritone.settings().altoDodgeProjectiles.value && isProjectileClose(mod) &&
                 (mod.getItemStorage().hasItem(Items.SHIELD) || mod.getItemStorage().hasItemInOffhand(Items.SHIELD)) &&
                 !mod.getEntityTracker().entityFound(ThrownPotion.class) && _runAwayTask == null
                 && !mod.getPlayer().getCooldowns().isOnCooldown(new ItemStack(offhandItem))
@@ -251,7 +251,7 @@ public class MobDefenseChain extends SingleTaskChain {
         // Dodge projectiles
         if (mod.getPlayer().getHealth() <= 10 || _runAwayTask != null || mod.getEntityTracker().entityFound(ThrownPotion.class) ||
                 (!mod.getItemStorage().hasItem(Items.SHIELD) && !mod.getItemStorage().hasItemInOffhand(Items.SHIELD))) {
-            if (!mod.getFoodChain().needsToEat() && mod.getModSettings().isDodgeProjectiles() && isProjectileClose(mod)) {
+            if (!mod.getFoodChain().needsToEat() && Baritone.settings().altoDodgeProjectiles.value && isProjectileClose(mod)) {
                 _doingFunkyStuff = true;
                 //Debug.logMessage("DODGING");
                 _runAwayTask = new DodgeProjectilesTask(ARROW_KEEP_DISTANCE_HORIZONTAL, ARROW_KEEP_DISTANCE_VERTICAL);
@@ -268,7 +268,7 @@ public class MobDefenseChain extends SingleTaskChain {
             }
         }
 
-        if (mod.getModSettings().shouldDealWithAnnoyingHostiles()) {
+        if (Baritone.settings().altoKillOrAvoidAnnoyingHostiles.value) {
             // Deal with hostiles because they are annoying.
             List<Entity> hostiles = mod.getEntityTracker().getHostiles();
             // TODO: I don't think this lock is necessary at all.

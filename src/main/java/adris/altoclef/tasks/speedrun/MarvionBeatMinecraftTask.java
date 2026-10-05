@@ -1,5 +1,7 @@
 package adris.altoclef.tasks.speedrun;
 
+import baritone.Baritone;
+import adris.altoclef.AltoSettings;
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.TaskCatalogue;
@@ -16,7 +18,7 @@ import adris.altoclef.tasks.resources.*;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.trackers.BlockTracker;
 import adris.altoclef.trackers.EntityTracker;
-import adris.altoclef.util.Dimension;
+import baritone.api.utils.Dimension;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.MiningRequirement;
 import adris.altoclef.util.SmeltTarget;
@@ -723,12 +725,12 @@ public class MarvionBeatMinecraftTask extends Task {
         String settingsWarningTail = "in \".minecraft/altoclef_settings.json\". #gamer may break if you don't add this! (sorry!)";
 
         // Check if "end_stone" is not part of the "throwawayItems" list and log a warning.
-        if (!ArrayUtils.contains(mod.getModSettings().getThrowawayItems(mod), Items.END_STONE)) {
+        if (!ArrayUtils.contains(AltoSettings.getThrowawayItems(mod), Items.END_STONE)) {
             Debug.logWarning("\"end_stone\" is not part of your \"throwawayItems\" list " + settingsWarningTail);
         }
 
         // Check if "throwawayUnusedItems" is not set to true and log a warning.
-        if (!mod.getModSettings().shouldThrowawayUnusedItems()) {
+        if (!Baritone.settings().altoThrowAwayUnusedItems.value) {
             Debug.logWarning("\"throwawayUnusedItems\" is not set to true " + settingsWarningTail);
         }
     }
@@ -1029,7 +1031,7 @@ public class MarvionBeatMinecraftTask extends Task {
         }
         List<Slot> furnaceSlots = mod.getItemStorage().getSlotsWithItemPlayerInventory(true, Items.FURNACE);
         if (!furnaceSlots.isEmpty() && mod.getItemStorage().hasItem(Items.SMOKER) &&
-                mod.getItemStorage().hasItem(Items.BLAST_FURNACE) && mod.getModSettings().shouldUseBlastFurnace()) {
+                mod.getItemStorage().hasItem(Items.BLAST_FURNACE) && Baritone.settings().altoUseBlastFurnace.value) {
             for (Slot furnaceSlot : furnaceSlots) {
                 if (Slot.isCursor(furnaceSlot)) {
                     if (!mod.getControllerExtras().isBreakingBlock()) {

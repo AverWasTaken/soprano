@@ -1,5 +1,6 @@
 package adris.altoclef.tasks.container;
 
+import baritone.Baritone;
 import adris.altoclef.AltoClef;
 import adris.altoclef.TaskCatalogue;
 import adris.altoclef.tasks.ResourceTask;
@@ -170,7 +171,7 @@ public class UpgradeInSmithingTableTask extends ResourceTask {
         protected Task containerSubTask(AltoClef mod) {
             setDebugState("Smithing...");
             // We have our tools + materials. Now, do the thing.
-            _invTimer.setInterval(mod.getModSettings().getContainerItemMoveDelay());
+            _invTimer.setInterval(Baritone.settings().altoContainerItemMoveDelay.value);
 
             // Run once every
             if (!_invTimer.elapsed()) {

@@ -2,7 +2,7 @@ package adris.altoclef.commands;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.tasks.container.StoreInStashTask;
-import adris.altoclef.util.BlockRange;
+import baritone.api.utils.BlockRange;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.WorldHelper;
 import baritone.api.IBaritone;

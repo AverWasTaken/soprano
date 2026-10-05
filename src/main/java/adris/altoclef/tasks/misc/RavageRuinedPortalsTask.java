@@ -4,7 +4,7 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.tasks.container.LootContainerTask;
 import adris.altoclef.tasks.movement.TimeoutWanderTask;
 import adris.altoclef.tasksystem.Task;
-import adris.altoclef.util.Dimension;
+import baritone.api.utils.Dimension;
 import adris.altoclef.util.helpers.WorldHelper;
 import java.util.ArrayList;
 import java.util.List;

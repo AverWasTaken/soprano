@@ -1,5 +1,6 @@
 package adris.altoclef.chains;
 
+import baritone.Baritone;
 import adris.altoclef.AltoClef;
 import adris.altoclef.tasks.DoToClosestBlockTask;
 import adris.altoclef.tasks.InteractWithBlockTask;
@@ -61,7 +62,7 @@ public class WorldSurvivalChain extends SingleTaskChain {
         }
 
         // Extinguish with water
-        if (mod.getModSettings().shouldExtinguishSelfWithWater()) {
+        if (Baritone.settings().altoExtinguishSelfWithWater.value) {
             if (!(_mainTask instanceof EscapeFromLavaTask && isCurrentlyRunning(mod)) && mod.getPlayer().isOnFire() && !mod.getPlayer().hasEffect(MobEffects.FIRE_RESISTANCE) && !mod.getWorld().dimensionType().ultraWarm()) {
                 // Extinguish ourselves
                 if (mod.getItemStorage().hasItem(Items.WATER_BUCKET)) {
@@ -114,7 +115,7 @@ public class WorldSurvivalChain extends SingleTaskChain {
     private void handleDrowning(AltoClef mod) {
         // Swim
         boolean avoidedDrowning = false;
-        if (mod.getModSettings().shouldAvoidDrowning()) {
+        if (Baritone.settings().altoAvoidDrowning.value) {
             if (!mod.getClientBaritone().getPathingBehavior().isPathing()) {
                 if (mod.getPlayer().isInWater() && mod.getPlayer().getAirSupply() < mod.getPlayer().getMaxAirSupply()) {
                     // Swim up!

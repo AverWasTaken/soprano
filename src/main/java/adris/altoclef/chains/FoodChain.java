@@ -1,7 +1,7 @@
 package adris.altoclef.chains;
 
+import baritone.Baritone;
 import adris.altoclef.AltoClef;
-import adris.altoclef.Settings;
 import adris.altoclef.tasks.resources.CollectFoodTask;
 import adris.altoclef.tasks.speedrun.DragonBreathTracker;
 import adris.altoclef.tasksystem.TaskRunner;
@@ -98,7 +98,7 @@ public class FoodChain extends SingleTaskChain {
                 return Float.NEGATIVE_INFINITY;
             }
         }
-        if (!mod.getModSettings().isAutoEat()) {
+        if (!Baritone.settings().altoAutoEat.value) {
             stopEat(mod);
             return Float.NEGATIVE_INFINITY;
         }
@@ -150,15 +150,17 @@ public class FoodChain extends SingleTaskChain {
             stopEat(mod);
         }
 
-        Settings settings = mod.getModSettings();
+        // read once so a #set in the middle of this can't make the checks below disagree with each other
+        int minimumFood = Baritone.settings().altoMinimumFoodAllowed.value;
+        int foodToCollect = Baritone.settings().altoFoodUnitsToCollect.value;
 
-        if (_needsFood || _cachedFoodScore < settings.getMinimumFoodAllowed()) {
-            _needsFood = _cachedFoodScore < settings.getFoodUnitsToCollect();
+        if (_needsFood || _cachedFoodScore < minimumFood) {
+            _needsFood = _cachedFoodScore < foodToCollect;
 
             // Only collect if we don't have enough food.
             // If the user inputs invalid settings, the bot would get stuck here.
-            if (_cachedFoodScore < settings.getFoodUnitsToCollect()) {
-                setTask(new CollectFoodTask(settings.getFoodUnitsToCollect()));
+            if (_cachedFoodScore < foodToCollect) {
+                setTask(new CollectFoodTask(foodToCollect));
                 return 55f;
             }
         }

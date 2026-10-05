@@ -1,5 +1,6 @@
 package adris.altoclef.tasks.resources;
 
+import baritone.Baritone;
 import adris.altoclef.AltoClef;
 import adris.altoclef.TaskCatalogue;
 import adris.altoclef.tasks.ResourceTask;
@@ -9,6 +10,7 @@ import adris.altoclef.tasks.container.SmeltInFurnaceTask;
 import adris.altoclef.tasks.movement.DefaultGoToDimensionTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.*;
+import baritone.api.utils.Dimension;
 import adris.altoclef.util.helpers.WorldHelper;
 import java.util.Optional;
 import net.minecraft.core.BlockPos;
@@ -38,7 +40,7 @@ public class CollectGoldIngotTask extends ResourceTask {
     @Override
     protected Task onResourceTick(AltoClef mod) {
         if (WorldHelper.getCurrentDimension() == Dimension.OVERWORLD) {
-            if (mod.getModSettings().shouldUseBlastFurnace()) {
+            if (Baritone.settings().altoUseBlastFurnace.value) {
                 if (mod.getItemStorage().hasItem(Items.BLAST_FURNACE) ||
                         mod.getBlockTracker().anyFound(Blocks.BLAST_FURNACE) ||
                         mod.getEntityTracker().itemDropped(Items.BLAST_FURNACE)) {

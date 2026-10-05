@@ -1,5 +1,6 @@
 package adris.altoclef.tasks.container;
 
+import baritone.Baritone;
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.TaskCatalogue;
@@ -78,7 +79,7 @@ public class StoreInAnyContainerTask extends Task {
 
             if (data.isPresent() && data.get().isFull()) return false;
 
-            if (isChest && mod.getModSettings().shouldAvoidSearchingForDungeonChests()) {
+            if (isChest && Baritone.settings().altoAvoidSearchingDungeonChests.value) {
                 boolean cachedDungeon = _dungeonChests.contains(containerPos) && !_nonDungeonChests.contains(containerPos);
                 if (cachedDungeon) {
                     return false;

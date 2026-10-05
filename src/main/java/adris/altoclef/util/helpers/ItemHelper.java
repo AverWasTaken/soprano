@@ -1,5 +1,7 @@
 package adris.altoclef.util.helpers;
 
+import baritone.Baritone;
+import adris.altoclef.AltoSettings;
 import adris.altoclef.AltoClef;
 import adris.altoclef.util.WoodType;
 import java.util.*;
@@ -400,11 +402,11 @@ public class ItemHelper {
     }
 
     private static boolean isStackProtected(AltoClef mod, ItemStack stack) {
-        if (stack.isEnchanted() && mod.getModSettings().getDontThrowAwayEnchantedItems())
+        if (stack.isEnchanted() && Baritone.settings().altoDontThrowAwayEnchantedItems.value)
             return true;
-        if (stack.getItem().components().has(DataComponents.CUSTOM_NAME) && mod.getModSettings().getDontThrowAwayCustomNameItems())
+        if (stack.getItem().components().has(DataComponents.CUSTOM_NAME) && Baritone.settings().altoDontThrowAwayCustomNameItems.value)
             return true;
-        return mod.getBehaviour().isProtected(stack.getItem()) || mod.getModSettings().isImportant(stack.getItem());
+        return mod.getBehaviour().isProtected(stack.getItem()) || AltoSettings.isImportant(stack.getItem());
     }
 
     public static boolean canThrowAwayStack(AltoClef mod, ItemStack stack) {
@@ -413,7 +415,7 @@ public class ItemHelper {
             return false;
         if (isStackProtected(mod, stack))
             return false;
-        return mod.getModSettings().isThrowaway(stack.getItem()) || mod.getModSettings().shouldThrowawayUnusedItems();
+        return AltoSettings.isThrowaway(stack.getItem()) || Baritone.settings().altoThrowAwayUnusedItems.value;
     }
 
     @SuppressWarnings("BooleanMethodIsAlwaysInverted")

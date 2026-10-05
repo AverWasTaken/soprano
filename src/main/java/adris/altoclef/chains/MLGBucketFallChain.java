@@ -1,5 +1,6 @@
 package adris.altoclef.chains;
 
+import baritone.Baritone;
 import adris.altoclef.AltoClef;
 import adris.altoclef.TaskCatalogue;
 import adris.altoclef.tasks.movement.MLGBucketTask;
@@ -129,7 +130,7 @@ public class MLGBucketFallChain extends SingleTaskChain implements ITaskOverride
     }
 
     public boolean isFallingOhNo(AltoClef mod) {
-        if (!mod.getModSettings().shouldAutoMLGBucket()) {
+        if (!Baritone.settings().altoAutoMLGBucket.value) {
             return false;
         }
         if (mod.getPlayer().isSwimming() || mod.getPlayer().isInWater() || mod.getPlayer().onGround() || mod.getPlayer().onClimbable()) {

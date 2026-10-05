@@ -1,5 +1,7 @@
 package adris.altoclef.chains;
 
+import baritone.Baritone;
+import adris.altoclef.AltoSettings;
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.commands.AltoClefCommands;
@@ -84,19 +86,14 @@ public class UserTaskChain extends SingleTaskChain {
         mod.getTaskRunner().enable();
         _taskStopwatch.begin();
         setTask(task);
-
-        if (mod.getModSettings().failedToLoad()) {
-            Debug.logWarning("Settings file failed to load at some point. Check logs for more info, or delete the" +
-                    " file to re-load working settings.");
-        }
     }
 
     @Override
     protected void onTaskFinish(AltoClef mod) {
-        boolean shouldIdle = mod.getModSettings().shouldRunIdleCommandWhenNotActive();
+        boolean shouldIdle = AltoSettings.shouldRunIdleCommandWhenNotActive();
         if (!shouldIdle) {
             // Stop. (with the idle gate on the runner stays up so the survival chains keep going)
-            if (!AltoClef.RUNS_WHEN_IDLE) {
+            if (!Baritone.settings().altoRunsWhenIdle.value) {
                 mod.getTaskRunner().disable();
             }
             // Extra reset. Sometimes baritone is laggy and doesn't properly reset our press
@@ -117,7 +114,7 @@ public class UserTaskChain extends SingleTaskChain {
                 EventBus.publish(new TaskFinishedEvent(seconds, oldTask));
             }
             if (shouldIdle) {
-                AltoClefCommands.executeTrusted(mod.getModSettings().getIdleCommand());
+                AltoClefCommands.executeTrusted(Baritone.settings().altoIdleCommand.value);
                 signalNextTaskToBeIdleTask();
                 _runningIdleTask = true;
             }

@@ -1,10 +1,11 @@
 package adris.altoclef.tasks.movement;
 
+import baritone.Baritone;
 import adris.altoclef.AltoClef;
 import adris.altoclef.TaskCatalogue;
 import adris.altoclef.tasks.construction.compound.ConstructNetherPortalObsidianTask;
 import adris.altoclef.tasksystem.Task;
-import adris.altoclef.util.Dimension;
+import baritone.api.utils.Dimension;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.time.TimerGame;
@@ -181,7 +182,7 @@ public class FastTravelTask extends Task {
         int threshold;
         //noinspection ReplaceNullCheck
         if (_threshold == null) {
-            threshold = mod.getModSettings().getNetherFastTravelWalkingRange();
+            threshold = Baritone.settings().altoNetherFastTravelWalkingRange.value;
         } else {
             threshold = _threshold;
         }

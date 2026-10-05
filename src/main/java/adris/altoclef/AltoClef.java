@@ -20,6 +20,7 @@ import baritone.Baritone;
 import baritone.altoclef.AltoClefSettings;
 import baritone.api.BaritoneAPI;
 import baritone.api.Settings;
+import baritone.api.utils.SettingsUtil;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -40,11 +41,6 @@ import java.util.function.Consumer;
  * Central access point for AltoClef
  */
 public class AltoClef {
-
-    // Soprano: whether the survival chains (food, mob defense, ...) keep running with no user task. Off, so AltoClef
-    // does nothing at all until somebody starts a task. A later step turns this into a real Soprano setting, until then
-    // -Daltoclef.runsWhenIdle=true flips it for testing.
-    public static volatile boolean RUNS_WHEN_IDLE = Boolean.getBoolean("altoclef.runsWhenIdle");
 
     // Static access to altoclef
     private static final Queue<Consumer<AltoClef>> _postInitQueue = new ArrayDeque<>();
@@ -71,8 +67,6 @@ public class AltoClef {
     private MiscBlockTracker _miscBlockTracker;
     // Renderers
     private CommandStatusOverlay _commandStatusOverlay;
-    // Settings
-    private adris.altoclef.Settings _settings;
     // Misc managers/input
     private MessageSender _messageSender;
     private InputControls _inputControls;
@@ -136,19 +130,8 @@ public class AltoClef {
 
         _butler = new Butler(this);
 
-        // Load settings
-        adris.altoclef.Settings.load(newSettings -> {
-            _settings = newSettings;
-            // A reload while a task runs has to refresh what we handed baritone (throwaway items), nothing is applied while idle
-            if (_taskRunner.isActive()) {
-                _baritoneScope.apply();
-            }
-            // If we should run an idle command... (only when the idle gate says altoclef may run without a task)
-            if (RUNS_WHEN_IDLE && (!getUserTaskChain().isActive() || getUserTaskChain().isRunningIdleTask()) && getModSettings().shouldRunIdleCommandWhenNotActive()) {
-                getUserTaskChain().signalNextTaskToBeIdleTask();
-                AltoClefCommands.executeTrusted(getModSettings().getIdleCommand());
-            }
-        });
+        // The settings are Soprano's (Baritone.settings().alto*), the old altoclef_settings.json comes along once
+        AltoSettingsMigration.migrateIfNeeded();
 
         // Debug jank/hookup
         Debug.jankModInstance = this;
@@ -165,10 +148,18 @@ public class AltoClef {
     public void onClientTick() {
         runEnqueuedPostInits();
 
-        // The idle gate: with it on we always run, with it off we only run while a user task is going
-        if (RUNS_WHEN_IDLE && !_taskRunner.isActive()) {
+        // The idle gate (altoRunsWhenIdle, read every tick so a #set takes effect at once): with it on we always run,
+        // with it off we only run while a user task is going. Turning it off while idle disables the runner here, and
+        // that puts baritone's own settings back
+        boolean runsWhenIdle = Baritone.settings().altoRunsWhenIdle.value;
+        if (runsWhenIdle && !_taskRunner.isActive()) {
             _taskRunner.enable();
-        } else if (!RUNS_WHEN_IDLE && _taskRunner.isActive() && !_userTaskChain.isActive()) {
+            // the idle command used to be started when the settings loaded, now that is whenever the gate comes up
+            if ((!_userTaskChain.isActive() || _userTaskChain.isRunningIdleTask()) && AltoSettings.shouldRunIdleCommandWhenNotActive()) {
+                _userTaskChain.signalNextTaskToBeIdleTask();
+                AltoClefCommands.executeTrusted(Baritone.settings().altoIdleCommand.value);
+            }
+        } else if (!runsWhenIdle && _taskRunner.isActive() && !_userTaskChain.isActive()) {
             _taskRunner.disable();
         }
 
@@ -176,6 +167,9 @@ public class AltoClef {
         _inputControls.onTickPre();
 
         if (_taskRunner.isActive()) {
+            // a #set of the throwaway items has to reach what we handed baritone too
+            _baritoneScope.refreshThrowaway();
+
             // Cancel shortcut
             if (InputHelper.isKeyPressed(GLFW.GLFW_KEY_LEFT_CONTROL) && InputHelper.isKeyPressed(GLFW.GLFW_KEY_K)) {
                 _userTaskChain.cancel(this);
@@ -221,12 +215,18 @@ public class AltoClef {
         _botBehaviour.setPauseOnLostFocus(false);
         // Don't break blocks or place blocks where we are explicitly protected. These ride in the pushed state so
         // the pop in TaskRunner#disable takes them back out of the global AltoClefSettings.
-        _botBehaviour.avoidBlockBreaking(blockPos -> _settings.isPositionExplicitlyProtected(blockPos));
-        _botBehaviour.avoidBlockPlacing(blockPos -> _settings.isPositionExplicitlyProtected(blockPos));
+        _botBehaviour.avoidBlockBreaking(AltoSettings::isPositionExplicitlyProtected);
+        _botBehaviour.avoidBlockPlacing(AltoSettings::isPositionExplicitlyProtected);
     }
 
     public void onTaskRunnerDisabled() {
         _baritoneScope.restore();
+    }
+
+    // #set saves settings.txt, and while a task runs half of baritone's settings are altoclef's for the duration. those
+    // must not end up on disk as if the user chose them
+    public void saveBaritoneSettings(Settings settings) {
+        _baritoneScope.saveWithoutOverrides(() -> SettingsUtil.save(settings));
     }
 
     /**
@@ -308,13 +308,6 @@ public class AltoClef {
      */
     public AltoClefSettings getExtraBaritoneSettings() {
         return AltoClefSettings.getInstance();
-    }
-
-    /**
-     * AltoClef Settings
-     */
-    public adris.altoclef.Settings getModSettings() {
-        return _settings;
     }
 
     /**

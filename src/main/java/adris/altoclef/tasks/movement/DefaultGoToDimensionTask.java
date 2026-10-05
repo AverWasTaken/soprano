@@ -1,10 +1,11 @@
 package adris.altoclef.tasks.movement;
 
+import baritone.Baritone;
 import adris.altoclef.AltoClef;
 import adris.altoclef.tasks.construction.compound.ConstructNetherPortalBucketTask;
 import adris.altoclef.tasks.construction.compound.ConstructNetherPortalObsidianTask;
 import adris.altoclef.tasksystem.Task;
-import adris.altoclef.util.Dimension;
+import baritone.api.utils.Dimension;
 import adris.altoclef.util.helpers.WorldHelper;
 import java.util.Optional;
 import net.minecraft.core.BlockPos;
@@ -117,9 +118,9 @@ public class DefaultGoToDimensionTask extends Task {
             setDebugState("Going to nether portal");
             return new EnterNetherPortalTask(Dimension.NETHER);
         }
-        return switch (mod.getModSettings().getOverworldToNetherBehaviour()) {
+        return switch (Baritone.settings().altoOverworldToNetherBehaviour.value) {
             case BUILD_PORTAL_VANILLA -> _cachedNetherBucketConstructionTask;
-            case GO_TO_HOME_BASE -> new GetToBlockTask(mod.getModSettings().getHomeBasePosition());
+            case GO_TO_HOME_BASE -> new GetToBlockTask(Baritone.settings().altoHomeBasePosition.value);
         };
     }
 
@@ -135,10 +136,5 @@ public class DefaultGoToDimensionTask extends Task {
             return closest.isPresent() && closest.get().closerToCenterThan(mod.getPlayer().position(), 2000);
         }
         return false;
-    }
-
-    public enum OVERWORLD_TO_NETHER_BEHAVIOUR {
-        BUILD_PORTAL_VANILLA,
-        GO_TO_HOME_BASE
     }
 }

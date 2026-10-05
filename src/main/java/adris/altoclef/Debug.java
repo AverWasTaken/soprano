@@ -1,12 +1,13 @@
 package adris.altoclef;
 
+import baritone.Baritone;
 import baritone.api.utils.Helper;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 
 // everything altoclef prints to chat goes through soprano's own logger now, so it gets the same [Soprano] prefix, the
-// logAsToast/useMessageTag settings and the same chat hooks as every other message. the verbosity switches
-// (shouldHideAllWarningLogs and friends) are still altoclef's
+// logAsToast/useMessageTag settings and the same chat hooks as every other message. the verbosity switch
+// (altoHideAllWarningLogs) is a normal soprano setting now
 public class Debug {
 
     public static AltoClef jankModInstance;
@@ -38,7 +39,7 @@ public class Debug {
 
     public static void logWarning(String message) {
         logInternal("WARNING: " + message);
-        if (jankModInstance != null && !jankModInstance.getModSettings().shouldHideAllWarningLogs()) {
+        if (jankModInstance != null && !Baritone.settings().altoHideAllWarningLogs.value) {
             if (canChat()) {
                 Helper.HELPER.logDirect(message, ChatFormatting.RED);
             }

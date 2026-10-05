@@ -23,12 +23,14 @@ import adris.altoclef.eventbus.EventBus;
 import adris.altoclef.eventbus.events.ChunkLoadEvent;
 import adris.altoclef.eventbus.events.ChunkUnloadEvent;
 import baritone.Baritone;
+import baritone.api.Settings;
 import baritone.api.command.exception.CommandException;
 import baritone.api.command.exception.CommandInvalidStateException;
 import baritone.api.event.events.ChunkEvent;
 import baritone.api.event.events.TickEvent;
 import baritone.api.event.events.type.EventState;
 import baritone.api.event.listener.AbstractGameEventListener;
+import baritone.api.utils.SettingsUtil;
 import baritone.event.GameEventHandler;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -75,6 +77,16 @@ public final class AltoClefBridge implements AbstractGameEventListener {
                     : "altoclef is not up yet, give it a second");
         }
         return altoClef;
+    }
+
+    // what #set does to save settings.txt. altoclef lends baritone a pile of settings while a task runs and those
+    // must not be written down as the user's, so it gets to hand them back for the duration of the save
+    public static void saveSettings(Settings settings) {
+        if (altoClef == null) {
+            SettingsUtil.save(settings);
+            return;
+        }
+        altoClef.saveBaritoneSettings(settings);
     }
 
     // what stop does about altoclef. never creates it, a user task can't be running if it was never made

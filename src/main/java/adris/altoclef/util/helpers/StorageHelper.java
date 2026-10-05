@@ -1,5 +1,7 @@
 package adris.altoclef.util.helpers;
 
+import baritone.Baritone;
+import adris.altoclef.AltoSettings;
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.TaskCatalogue;
@@ -183,8 +185,8 @@ public class StorageHelper {
         // Throwaway items, but keep a few for building.
         final List<Slot> throwawayBlockItems = new ArrayList<>();
         int totalBlockThrowaways = 0;
-        if (!mod.getItemStorage().getSlotsWithItemPlayerInventory(false, mod.getModSettings().getThrowawayItems(mod)).isEmpty()) {
-            for (Slot slot : mod.getItemStorage().getSlotsWithItemPlayerInventory(false, mod.getModSettings().getThrowawayItems(mod))) {
+        if (!mod.getItemStorage().getSlotsWithItemPlayerInventory(false, AltoSettings.getThrowawayItems(mod)).isEmpty()) {
+            for (Slot slot : mod.getItemStorage().getSlotsWithItemPlayerInventory(false, AltoSettings.getThrowawayItems(mod))) {
                 // Our cursor slot is NOT a garbage slot
                 if (Slot.isCursor(slot))
                     continue;
@@ -200,7 +202,7 @@ public class StorageHelper {
                 }
             }
         }
-        if (!throwawayBlockItems.isEmpty() && totalBlockThrowaways > mod.getModSettings().getReservedBuildingBlockCount()) {
+        if (!throwawayBlockItems.isEmpty() && totalBlockThrowaways > Baritone.settings().altoReservedBuildingBlockCount.value) {
             for (Slot throwawayBlockItem : throwawayBlockItems) {
                 return Optional.ofNullable(throwawayBlockItem);
             }
@@ -235,7 +237,7 @@ public class StorageHelper {
         }
 
         // Now we're getting desparate
-        if (mod.getModSettings().shouldThrowawayUnusedItems()) {
+        if (Baritone.settings().altoThrowAwayUnusedItems.value) {
 
             // Also uh calculate how much food we have.
             int calcTotalFoodScore = 0;
@@ -361,7 +363,7 @@ public class StorageHelper {
     }
 
     public static int getBuildingMaterialCount(AltoClef mod) {
-        return mod.getItemStorage().getItemCount(Arrays.stream(mod.getModSettings().getThrowawayItems(mod, true)).filter(item -> item instanceof BlockItem && !item.equals(Items.GRAVEL) && !item.equals(Items.SAND)).toArray(Item[]::new));
+        return mod.getItemStorage().getItemCount(Arrays.stream(AltoSettings.getThrowawayItems(mod, true)).filter(item -> item instanceof BlockItem && !item.equals(Items.GRAVEL) && !item.equals(Items.SAND)).toArray(Item[]::new));
     }
 
     private static boolean isScreenOpenInner(Predicate<AbstractContainerMenu> pNotNull) {
@@ -414,7 +416,7 @@ public class StorageHelper {
         double result = 0;
         if (!mod.getItemStorage().getItemStacksPlayerInventory(true).isEmpty()) {
             for (ItemStack stack : mod.getItemStorage().getItemStacksPlayerInventory(true)) {
-                if (mod.getModSettings().isSupportedFuel(stack.getItem())) {
+                if (AltoSettings.isSupportedFuel(stack.getItem())) {
                     result += ItemHelper.getFuelAmount(stack.getItem()) * stack.getCount();
                 }
             }

@@ -1,5 +1,6 @@
 package adris.altoclef.control;
 
+import baritone.Baritone;
 import adris.altoclef.AltoClef;
 import adris.altoclef.eventbus.EventBus;
 import adris.altoclef.eventbus.events.BlockBreakingCancelEvent;
@@ -44,7 +45,7 @@ public class PlayerExtraController {
     }
 
     public boolean inRange(Entity entity) {
-        return _mod.getPlayer().closerThan(entity, _mod.getModSettings().getEntityReachRange());
+        return _mod.getPlayer().closerThan(entity, Baritone.settings().altoEntityReachRange.value);
     }
 
     public void attack(Entity entity) {

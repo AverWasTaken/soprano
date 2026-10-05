@@ -1,5 +1,6 @@
 package adris.altoclef.tasks.movement;
 
+import baritone.Baritone;
 import adris.altoclef.AltoClef;
 import adris.altoclef.util.helpers.AnnoyingBlocks;
 import adris.altoclef.Debug;
@@ -78,7 +79,7 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
     }
 
     public static boolean isIsGettingPickaxeFirst(AltoClef mod) {
-        return isGettingPickaxeFirstFlag && mod.getModSettings().shouldCollectPickaxeFirst();
+        return isGettingPickaxeFirstFlag && Baritone.settings().altoCollectPickaxeFirst.value;
     }
 
     private boolean isAnnoying(AltoClef mod, BlockPos pos) {
@@ -167,7 +168,7 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
             mod.getClientBaritone().getPathingBehavior().forceCancel();
             if (_currentDrop != null && !_currentDrop.getItem().isEmpty()) {
                 // We might want to get a pickaxe first.
-                if (!isGettingPickaxeFirstFlag && mod.getModSettings().shouldCollectPickaxeFirst() && !StorageHelper.miningRequirementMetInventory(mod, MiningRequirement.STONE)) {
+                if (!isGettingPickaxeFirstFlag && Baritone.settings().altoCollectPickaxeFirst.value && !StorageHelper.miningRequirementMetInventory(mod, MiningRequirement.STONE)) {
                     Debug.logMessage("Failed to pick up drop, will try to collect a stone pickaxe first and try again!");
                     _collectingPickaxeForThisResource = true;
                     isGettingPickaxeFirstFlag = true;

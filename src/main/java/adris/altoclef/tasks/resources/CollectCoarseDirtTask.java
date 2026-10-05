@@ -5,6 +5,7 @@ import adris.altoclef.tasks.CraftInInventoryTask;
 import adris.altoclef.tasks.ResourceTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.*;
+import baritone.api.utils.Dimension;
 import java.util.Optional;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.item.Items;

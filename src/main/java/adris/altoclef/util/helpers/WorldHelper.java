@@ -1,8 +1,9 @@
 package adris.altoclef.util.helpers;
 
+import baritone.Baritone;
 import adris.altoclef.AltoClef;
 import baritone.utils.accessor.IClientConnection;
-import adris.altoclef.util.Dimension;
+import baritone.api.utils.Dimension;
 import baritone.api.BaritoneAPI;
 import baritone.pathing.movement.CalculationContext;
 import baritone.pathing.movement.MovementHelper;
@@ -276,7 +277,7 @@ public interface WorldHelper {
     }
 
     static boolean canReach(AltoClef mod, BlockPos pos) {
-        if (mod.getModSettings().shouldAvoidOcean()) {
+        if (Baritone.settings().altoAvoidOceanBlocks.value) {
             // 45 is roughly the ocean floor. We add 2 just cause why not.
             // This > 47 can clearly cause a stuck bug.
             if (mod.getPlayer().getY() > 47 && mod.getChunkTracker().isChunkLoaded(pos) && isOcean(mod.getWorld().getBiome(pos))) { // But if we stuck, add more oceans

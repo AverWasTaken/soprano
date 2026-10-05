@@ -17,16 +17,21 @@
 
 package baritone.api;
 
+import baritone.api.utils.BlockRange;
+import baritone.api.utils.ForceFieldStrategy;
 import baritone.api.utils.Helper;
 import baritone.api.utils.NotificationHelper;
+import baritone.api.utils.OverworldToNetherBehaviour;
 import baritone.api.utils.SettingsUtil;
 import baritone.api.utils.TypeUtils;
 import baritone.api.utils.gui.BaritoneToast;
 import net.minecraft.client.GuiMessageTag;
 import net.minecraft.client.Minecraft;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.Vec3i;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.Mirror;
@@ -1804,6 +1809,281 @@ public final class Settings {
      * Sneak when magma blocks are under feet
      */
     public final Setting<Boolean> allowWalkOnMagmaBlocks = new Setting<>(false);
+
+    // everything below belongs to the built in AltoClef, see adris.altoclef. all of it is prefixed alto so that
+    // #set alto<tab> finds it (same trick as the elytra settings). it only does anything while AltoClef has a task
+
+    /**
+     * Keep AltoClef's survival chains (eating, mob defense, bucket saves...) running even when no task was started,
+     * and run {@link #altoIdleCommand} when it has nothing to do. With this off AltoClef does nothing at all until you
+     * start a task, and goes back to doing nothing when the task ends. Takes effect right away.
+     */
+    public final Setting<Boolean> altoRunsWhenIdle = new Setting<>(false);
+
+    /**
+     * Let other players whisper commands to your player, see baritone/altoclef/configs/butler.json and the whitelist
+     * and blacklist files next to it for who may. Off, because with the default lists anybody who is not blacklisted
+     * could whisper commands at you.
+     */
+    public final Setting<Boolean> altoButler = new Setting<>(false);
+
+    /**
+     * Show the task list of AltoClef in the top left corner while it is running.
+     */
+    public final Setting<Boolean> altoShowTaskChains = new Setting<>(true);
+
+    /**
+     * Size of the task list on top of the game's gui scale. 1 is the normal size, 0.75 is a nice small one. Values
+     * outside 0.5 to 2 are clamped. Needs {@link #altoShowTaskChains}.
+     */
+    public final Setting<Float> altoHudScale = new Setting<>(1.0f);
+
+    /**
+     * Show how long the current task has been running in the task list. Needs {@link #altoShowTaskChains}.
+     */
+    public final Setting<Boolean> altoShowTimer = new Setting<>(false);
+
+    /**
+     * Hide all of AltoClef's warning logs. Not recommended, it makes debugging harder, but if you know what you are
+     * doing go nuts.
+     */
+    public final Setting<Boolean> altoHideAllWarningLogs = new Setting<>(false);
+
+    /**
+     * The delay in seconds between moving items for crafting, furnaces and any other kind of inventory movement.
+     */
+    public final Setting<Float> altoContainerItemMoveDelay = new Setting<>(0.2f);
+
+    /**
+     * If a dropped resource item is further than this from the player, don't pick it up. Less than 0 disables the
+     * limit.
+     */
+    public final Setting<Float> altoResourcePickupDropRange = new Setting<>(-1f);
+
+    /**
+     * Minimum amount of food (in food points) to keep in the inventory. Below this the bot goes and gets more, up to
+     * {@link #altoFoodUnitsToCollect}. 0 means it never goes looking for food on its own.
+     */
+    public final Setting<Integer> altoMinimumFoodAllowed = new Setting<>(0);
+
+    /**
+     * How much food (in food points) to collect when there is less than {@link #altoMinimumFoodAllowed} in the
+     * inventory.
+     */
+    public final Setting<Integer> altoFoodUnitsToCollect = new Setting<>(0);
+
+    /**
+     * Chests are remembered along with what is in them. If the bot is collecting a resource and there is a chest with
+     * it within this many blocks, it takes it from the chest. 0 disables chest pickups. Don't set this too high, the
+     * bot will go for a chest even when the resource is lying right there.
+     */
+    public final Setting<Float> altoResourceChestLocateRange = new Setting<>(500f);
+
+    /**
+     * Some block resources are normally made rather than mined (a crafting table comes from planks), but if one is
+     * found within this many blocks the bot may mine it instead. 0 disables that, -1 always mines a catalogued block
+     * (not recommended: it will walk 10000 blocks to a crafting table it saw once, with a forest next to it).
+     */
+    public final Setting<Float> altoResourceMineRange = new Setting<>(100f);
+
+    /**
+     * When going to the nearest chest to store items the bot would dig up dungeons all day. With this on it searches
+     * around each chest first to make sure it is not in one.
+     */
+    public final Setting<Boolean> altoAvoidSearchingDungeonChests = new Setting<>(true);
+
+    /**
+     * Ignore mining and interacting with blocks below an ocean (in an ocean biome and below y 64). AltoClef does not
+     * know what to do with oceans.
+     */
+    public final Setting<Boolean> altoAvoidOceanBlocks = new Setting<>(true);
+
+    /**
+     * How close we must be to attack or interact with an entity. 6 works in singleplayer, 4 works better on servers
+     * that are picky about it. See {@link #blockReachDistance} for blocks.
+     */
+    public final Setting<Float> altoEntityReachRange = new Setting<>(4f);
+
+    /**
+     * Before grabbing anything, get a pickaxe. Helps with navigation because dropped items are sometimes underground,
+     * but it only makes sense in regular worlds.
+     */
+    public final Setting<Boolean> altoCollectPickaxeFirst = new Setting<>(true);
+
+    /**
+     * Run away from hostile mobs when health is low, from creepers that are about to blow up and from very dangerous
+     * mobs like wither skeletons, and use the force field ({@link #altoForceFieldStrategy}) to push mobs away.
+     */
+    public final Setting<Boolean> altoMobDefense = new Setting<>(true);
+
+    /**
+     * How the force field behaves while {@link #altoMobDefense} is on. It is there to push mobs away, not to kill
+     * them.
+     * <p>
+     * FASTEST attacks every hostile at every possible moment, DELAY attacks the closest one when the attack is charged
+     * up, SMART attacks the closest one at most every 0.2 seconds, OFF does nothing.
+     */
+    public final Setting<ForceFieldStrategy> altoForceFieldStrategy = new Setting<>(ForceFieldStrategy.SMART);
+
+    /**
+     * Dodge incoming projectiles. Needs {@link #altoMobDefense}.
+     */
+    public final Setting<Boolean> altoDodgeProjectiles = new Setting<>(true);
+
+    /**
+     * Skeletons and big groups of mobs are a pain. With this on the bot may kill or run away from mobs that stay too
+     * close for too long. Needs {@link #altoMobDefense}.
+     */
+    public final Setting<Boolean> altoKillOrAvoidAnnoyingHostiles = new Setting<>(true);
+
+    /**
+     * Avoid going underwater when pathing is not giving the bot movement instructions. Turn it off if you want the bot
+     * to be able to sink.
+     */
+    public final Setting<Boolean> altoAvoidDrowning = new Setting<>(true);
+
+    /**
+     * Close the open screen (furnace, crafting table, chest...) when the look direction changes or the bot is mining
+     * something. Stops the bot from getting stuck in a container screen.
+     */
+    public final Setting<Boolean> altoAutoCloseScreenWhenLookingOrMining = new Setting<>(true);
+
+    /**
+     * Put ourselves out with water when we are on fire (and not immune to it).
+     */
+    public final Setting<Boolean> altoExtinguishSelfWithWater = new Setting<>(true);
+
+    /**
+     * Eat when hungry or in danger.
+     */
+    public final Setting<Boolean> altoAutoEat = new Setting<>(true);
+
+    /**
+     * Do a no fall bucket (MLG) when knocked off course and falling.
+     */
+    public final Setting<Boolean> altoAutoMLGBucket = new Setting<>(true);
+
+    /**
+     * Reconnect to the last server automatically when disconnected. Off, and the bot stops running when you get
+     * disconnected.
+     */
+    public final Setting<Boolean> altoAutoReconnect = new Setting<>(true);
+
+    /**
+     * Respawn right away when you die. Off, and the bot stops running when you die.
+     */
+    public final Setting<Boolean> altoAutoRespawn = new Setting<>(true);
+
+    /**
+     * What to do when it needs the nether but there is no portal in sight. BUILD_PORTAL_VANILLA builds one,
+     * GO_TO_HOME_BASE walks to {@link #altoHomeBasePosition} and assumes there is a portal there.
+     */
+    public final Setting<OverworldToNetherBehaviour> altoOverworldToNetherBehaviour = new Setting<>(OverworldToNetherBehaviour.BUILD_PORTAL_VANILLA);
+
+    /**
+     * When fast traveling through the nether, walk to the destination if we somehow end up closer than this many blocks
+     * in the overworld. Normal travel gets well within this (to about 100 blocks), so keep it decently large.
+     */
+    public final Setting<Integer> altoNetherFastTravelWalkingRange = new Setting<>(600);
+
+    /**
+     * A command to run when nothing else is going on, for example {@code idle} to keep surviving, {@code follow
+     * <your name>} or {@code goto <home base coordinates>}. Only used with {@link #altoRunsWhenIdle}. Empty does
+     * nothing.
+     */
+    public final Setting<String> altoIdleCommand = new Setting<>("");
+
+    /**
+     * What to do after dying, once we are back. {@code {deathmessage}} is replaced by the death message. Starting with
+     * {@code #} (or the prefix) it is a command, starting with {@code /} it goes to the server as a command, anything
+     * else is sent as chat. Several can be chained with {@code " & "}, for example
+     * {@code /home & i died with message: {deathmessage} & #get diamond}. Empty does nothing.
+     */
+    public final Setting<String> altoDeathCommand = new Setting<>("");
+
+    /**
+     * If we need to throw something away, throw these first. It is also what the bot may place as building blocks, and
+     * it is added to {@link #acceptableThrowawayItems} while a task runs.
+     */
+    public final Setting<List<Item>> altoThrowawayItems = new Setting<>(List.of(
+            // overworld junk
+            Items.DRIPSTONE_BLOCK, Items.ROOTED_DIRT, Items.GRAVEL, Items.SAND, Items.DIORITE, Items.ANDESITE,
+            Items.GRANITE, Items.TUFF, Items.COBBLESTONE, Items.DIRT, Items.COBBLED_DEEPSLATE,
+            Items.ACACIA_LEAVES, Items.BIRCH_LEAVES, Items.DARK_OAK_LEAVES, Items.OAK_LEAVES, Items.JUNGLE_LEAVES, Items.SPRUCE_LEAVES,
+            // nether junk, mostly tuned for the beat the game task
+            Items.NETHERRACK, Items.MAGMA_BLOCK, Items.SOUL_SOIL, Items.SOUL_SAND, Items.NETHER_BRICKS, Items.NETHER_BRICK,
+            Items.BASALT, Items.BLACKSTONE, Items.END_STONE, Items.SANDSTONE, Items.STONE_BRICKS
+    ));
+
+    /**
+     * How many throwaway blocks to keep around as building blocks.
+     */
+    public final Setting<Integer> altoReservedBuildingBlockCount = new Setting<>(64);
+
+    /**
+     * Never throw away items that have a custom name.
+     */
+    public final Setting<Boolean> altoDontThrowAwayCustomNameItems = new Setting<>(true);
+
+    /**
+     * Never throw away enchanted items.
+     */
+    public final Setting<Boolean> altoDontThrowAwayEnchantedItems = new Setting<>(true);
+
+    /**
+     * If we need to throw something away and have no {@link #altoThrowawayItems}, throw away any item that is not
+     * needed by the current task. Careful: with this on anything not in {@link #altoImportantItems} can go.
+     */
+    public final Setting<Boolean> altoThrowAwayUnusedItems = new Setting<>(true);
+
+    /**
+     * Items that are never thrown away, even when {@link #altoThrowAwayUnusedItems} is on and the task does not use
+     * them.
+     */
+    public final Setting<List<Item>> altoImportantItems = new Setting<>(List.of(
+            Items.TOTEM_OF_UNDYING, Items.ENCHANTED_GOLDEN_APPLE, Items.ENDER_EYE, Items.TRIDENT, Items.DIAMOND,
+            Items.DIAMOND_BLOCK, Items.NETHERITE_SCRAP, Items.NETHERITE_INGOT, Items.NETHERITE_BLOCK,
+            Items.DIAMOND_CHESTPLATE, Items.DIAMOND_LEGGINGS, Items.DIAMOND_HELMET, Items.DIAMOND_BOOTS,
+            Items.NETHERITE_CHESTPLATE, Items.NETHERITE_LEGGINGS, Items.NETHERITE_HELMET, Items.NETHERITE_BOOTS,
+            Items.DIAMOND_PICKAXE, Items.DIAMOND_SHOVEL, Items.DIAMOND_SWORD, Items.DIAMOND_AXE, Items.DIAMOND_HOE,
+            Items.NETHERITE_PICKAXE, Items.NETHERITE_SHOVEL, Items.NETHERITE_SWORD, Items.NETHERITE_AXE, Items.NETHERITE_HOE,
+            // losing a shulker box with its stuff in it would be pretty bad lol (the undyed one is missing, it always was)
+            Items.WHITE_SHULKER_BOX, Items.BLACK_SHULKER_BOX, Items.BLUE_SHULKER_BOX,
+            Items.BROWN_SHULKER_BOX, Items.CYAN_SHULKER_BOX, Items.GRAY_SHULKER_BOX, Items.GREEN_SHULKER_BOX,
+            Items.LIGHT_BLUE_SHULKER_BOX, Items.LIGHT_GRAY_SHULKER_BOX, Items.LIME_SHULKER_BOX,
+            Items.MAGENTA_SHULKER_BOX, Items.ORANGE_SHULKER_BOX, Items.PINK_SHULKER_BOX, Items.PURPLE_SHULKER_BOX,
+            Items.RED_SHULKER_BOX, Items.YELLOW_SHULKER_BOX
+    ));
+
+    /**
+     * Use a blast furnace for smelting when the item can go in one.
+     */
+    public final Setting<Boolean> altoUseBlastFurnace = new Setting<>(true);
+
+    /**
+     * Only use the items in {@link #altoSupportedFuels} as smelting fuel. Careful with turning this off: every burnable
+     * item that is not protected (blaze rods, beds, wooden tools, crafting tables...) can get burned.
+     */
+    public final Setting<Boolean> altoLimitFuelsToSupportedFuels = new Setting<>(true);
+
+    /**
+     * The only things used as smelting fuel while {@link #altoLimitFuelsToSupportedFuels} is on.
+     */
+    public final Setting<List<Item>> altoSupportedFuels = new Setting<>(List.of(Items.COAL, Items.CHARCOAL));
+
+    /**
+     * Where the "home base" is. Some tasks (like {@link #altoOverworldToNetherBehaviour}) use it when told to, don't
+     * bother with it unless you need it.
+     */
+    public final Setting<BlockPos> altoHomeBasePosition = new Setting<>(new BlockPos(0, 64, 0));
+
+    /**
+     * Areas AltoClef will not break or place blocks in, for spawn protection or against griefing. Each one is
+     * {@code x1/y1/z1->x2/y2/z2} (corners in any order, both inclusive) with {@code @nether} or {@code @end} on the end
+     * for other dimensions, and they are separated by commas, for example
+     * {@code -10/0/-10->10/255/10,1000/50/2000->1200/255/2100@nether}.
+     */
+    public final Setting<List<BlockRange>> altoAreasToProtect = new Setting<>(List.of());
 
     /**
      * A map of lowercase setting field names to their respective setting

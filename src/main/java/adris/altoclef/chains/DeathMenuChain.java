@@ -1,5 +1,6 @@
 package adris.altoclef.chains;
 
+import baritone.Baritone;
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.commands.AltoClefCommands;
@@ -43,11 +44,11 @@ public class DeathMenuChain extends TaskChain {
     }
 
     private boolean shouldAutoRespawn(AltoClef mod) {
-        return mod.getModSettings().isAutoRespawn();
+        return Baritone.settings().altoAutoRespawn.value;
     }
 
     private boolean shouldAutoReconnect(AltoClef mod) {
-        return mod.getModSettings().isAutoReconnect();
+        return Baritone.settings().altoAutoReconnect.value;
     }
 
     @Override
@@ -129,7 +130,7 @@ public class DeathMenuChain extends TaskChain {
                     // the death command has to wait for the respawn to actually happen, so it's queued
                     // and sent from tickDeathCommands once the new player entity shows up
                     _pendingDeathCommands.clear();
-                    for (String i : mod.getModSettings().getDeathCommand().split(" & ")) {
+                    for (String i : Baritone.settings().altoDeathCommand.value.split(" & ")) {
                         String command = i.replace("{deathmessage}", deathMessage);
                         if (!command.isEmpty()) {
                             _pendingDeathCommands.add(command);

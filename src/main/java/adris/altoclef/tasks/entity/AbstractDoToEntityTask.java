@@ -1,5 +1,6 @@
 package adris.altoclef.tasks.entity;
 
+import baritone.Baritone;
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.tasks.movement.GetToEntityTask;
@@ -82,7 +83,7 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
         if (checkEntity.isPresent()) {
             Entity entity = checkEntity.get();
 
-            double playerReach = mod.getModSettings().getEntityReachRange();
+            double playerReach = Baritone.settings().altoEntityReachRange.value;
 
             // TODO: This is basically useless.
             EntityHitResult result = LookHelper.raycast(mod.getPlayer(), entity, playerReach);

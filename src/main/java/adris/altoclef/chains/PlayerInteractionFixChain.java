@@ -1,5 +1,6 @@
 package adris.altoclef.chains;
 
+import baritone.Baritone;
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.tasksystem.TaskChain;
@@ -165,7 +166,7 @@ public class PlayerInteractionFixChain extends TaskChain {
     }
 
     private boolean shouldCloseOpenScreen(AltoClef mod) {
-        if (!mod.getModSettings().shouldCloseScreenWhenLookingOrMining())
+        if (!Baritone.settings().altoAutoCloseScreenWhenLookingOrMining.value)
             return false;
         // Only check look if we've had the same screen open for a while
         Screen openScreen = Minecraft.getInstance().screen;

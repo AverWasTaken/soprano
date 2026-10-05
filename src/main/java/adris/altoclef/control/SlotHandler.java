@@ -1,5 +1,6 @@
 package adris.altoclef.control;
 
+import baritone.Baritone;
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.util.ItemTarget;
@@ -49,7 +50,7 @@ public class SlotHandler {
             _overrideTimerOnce = false;
             return true;
         }
-        _slotActionTimer.setInterval(_mod.getModSettings().getContainerItemMoveDelay());
+        _slotActionTimer.setInterval(Baritone.settings().altoContainerItemMoveDelay.value);
         return _slotActionTimer.elapsed();
     }
 

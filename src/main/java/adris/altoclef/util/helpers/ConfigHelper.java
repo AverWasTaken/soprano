@@ -5,11 +5,13 @@ import adris.altoclef.util.serialization.*;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.InstanceCreator;
+import com.google.gson.JsonElement;
 import com.google.gson.reflect.TypeToken;
 import java.io.File;
 import java.io.IOException;
 import java.io.Reader;
 import java.io.Writer;
+import java.lang.reflect.Type;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -61,7 +63,7 @@ public class ConfigHelper {
      * The folder all altoclef config files live in. Worked out on every call because the
      * game dir does not exist until Minecraft does.
      */
-    private static Path getConfigFolder() {
+    public static Path getConfigFolder() {
         if (_folderOverride != null) {
             return _folderOverride;
         }
@@ -154,11 +156,20 @@ public class ConfigHelper {
         // Get the configuration object using the getConfig function.
         T config = getConfig(path, getDefault, classToLoad);
 
-        // Store the configuration object and the reload callback in the loadedConfigs map.
-        _loadedConfigs.put(path, () -> onReload.accept(config));
+        // Store the reload callback in the loadedConfigs map. It reads the file again: handing the object from the
+        // first load back to onReload made #altoreload a no-op for everything but the file's first contents.
+        _loadedConfigs.put(path, () -> onReload.accept(getConfig(path, getDefault, classToLoad)));
 
         // Call the onReload callback function to notify that the configuration is loaded.
         onReload.accept(config);
+    }
+
+    /**
+     * Reads a json value with the same gson everything else here uses (item, block pos... adapters included).
+     * Throws whatever gson throws for a value that does not fit.
+     */
+    public static <T> T fromJson(JsonElement json, Type type) {
+        return GSON.fromJson(json, type);
     }
 
     /**
@@ -247,8 +258,13 @@ public class ConfigHelper {
         // Get the configuration object from the specified path
         T result = getListConfig(path, getDefault);
 
-        // Store a lambda function in the map to handle the reload of the configuration object
-        _loadedConfigs.put(path, () -> onReload.accept(result));
+        // Store a lambda function in the map to handle the reload of the configuration object (re-reading the file, see loadConfig)
+        _loadedConfigs.put(path, () -> {
+            T reloaded = getListConfig(path, getDefault);
+            if (reloaded != null) {
+                onReload.accept(reloaded);
+            }
+        });
 
         // Trigger the reload of the configuration object
         onReload.accept(result);

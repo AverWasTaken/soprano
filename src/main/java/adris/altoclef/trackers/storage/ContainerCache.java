@@ -1,6 +1,6 @@
 package adris.altoclef.trackers.storage;
 
-import adris.altoclef.util.Dimension;
+import baritone.api.utils.Dimension;
 import java.util.HashMap;
 import java.util.function.Consumer;
 import net.minecraft.core.BlockPos;

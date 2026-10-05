@@ -1,5 +1,7 @@
 package adris.altoclef.ui;
 
+import baritone.Baritone;
+import adris.altoclef.AltoSettings;
 import adris.altoclef.AltoClef;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.tasksystem.TaskChain;
@@ -57,10 +59,10 @@ public class CommandStatusOverlay {
         if (mc.level == null || mc.options.hideGui || mc.getDebugOverlay().showDebugScreen()) {
             return;
         }
-        if (!mod.getModSettings().shouldShowTaskChain()) {
+        if (!Baritone.settings().altoShowTaskChains.value) {
             return;
         }
-        float scale = mod.getModSettings().getHudScale();
+        float scale = AltoSettings.hudScale();
         long now = System.currentTimeMillis();
         long tick = mc.level.getGameTime();
         if (tick != _layoutTick || graphics.guiWidth() != _layoutWidth || scale != _layoutScale) {
@@ -92,7 +94,7 @@ public class CommandStatusOverlay {
             return;
         }
         _lastTime = now;
-        if (mod.getModSettings().shouldShowTimer()) {
+        if (Baritone.settings().altoShowTimer.value) {
             _timer = formatElapsed(now - _timeRunning);
             _timerWidth = font.width(_timer);
         }

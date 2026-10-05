@@ -5,7 +5,7 @@ import adris.altoclef.Debug;
 import adris.altoclef.eventbus.EventBus;
 import adris.altoclef.eventbus.events.BlockPlaceEvent;
 import adris.altoclef.trackers.blacklisting.WorldLocateBlacklist;
-import adris.altoclef.util.Dimension;
+import baritone.api.utils.Dimension;
 import adris.altoclef.util.helpers.BaritoneHelper;
 import adris.altoclef.util.helpers.ConfigHelper;
 import adris.altoclef.util.helpers.StlHelper;

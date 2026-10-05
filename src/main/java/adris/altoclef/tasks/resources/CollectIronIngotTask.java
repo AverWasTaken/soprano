@@ -1,5 +1,6 @@
 package adris.altoclef.tasks.resources;
 
+import baritone.Baritone;
 import adris.altoclef.AltoClef;
 import adris.altoclef.TaskCatalogue;
 import adris.altoclef.tasks.ResourceTask;
@@ -35,7 +36,7 @@ public class CollectIronIngotTask extends ResourceTask {
 
     @Override
     protected Task onResourceTick(AltoClef mod) {
-        if (mod.getModSettings().shouldUseBlastFurnace()) {
+        if (Baritone.settings().altoUseBlastFurnace.value) {
             if (mod.getItemStorage().hasItem(Items.BLAST_FURNACE) ||
                     mod.getBlockTracker().anyFound(Blocks.BLAST_FURNACE) ||
                     mod.getEntityTracker().itemDropped(Items.BLAST_FURNACE)) {
