@@ -447,19 +447,17 @@ public class MobDefenseChain extends SingleTaskChain {
         double worstSafety = Float.POSITIVE_INFINITY;
         Creeper target = null;
         try {
-            Optional<Entity> creeper = mod.getEntityTracker().getClosestEntity(Creeper.class);
-            if (creeper.isPresent()) {
-                Creeper creeperEntity = (Creeper) creeper.get();
-                if (!(creeperEntity.getSwelling(1) < 0.001)) {
-                    // We want to pick the closest creeper, but FIRST pick creepers about to blow
-                    // At max fuse, the cost goes to basically zero.
-                    double safety = getCreeperSafety(mod.getPlayer().position(), creeperEntity);
-                    if (safety < worstSafety) {
-                        target = creeperEntity;
-                    }
+            // every creeper, not just the closest one: a lit fuse further away used to be hidden behind a calm one next to us
+            for (Creeper creeperEntity : mod.getEntityTracker().getTrackedEntities(Creeper.class)) {
+                if (creeperEntity.getSwelling(1) < 0.001) continue;
+                // We want to pick the closest creeper, but FIRST pick creepers about to blow
+                // At max fuse, the cost goes to basically zero.
+                double safety = getCreeperSafety(mod.getPlayer().position(), creeperEntity);
+                if (safety < worstSafety) {
+                    // (worstSafety never got updated, so it was always the last one in line that won)
+                    worstSafety = safety;
+                    target = creeperEntity;
                 }
-                ;
-
             }
         } catch (ConcurrentModificationException | ArrayIndexOutOfBoundsException | NullPointerException e) {
             // IDK why but these exceptions happen sometimes. It's extremely bizarre and I have no idea why.
@@ -497,7 +495,8 @@ public class MobDefenseChain extends SingleTaskChain {
                             Vec3 velocity = projectile.velocity;
                             Vec3 delta = mod.getPlayer().position().subtract(projectile.position);
                             double epsilon = 0.25;
-                            if (abs(velocity.dot(delta)) <= epsilon) {
+                            // signed on purpose: abs() ignored the arrows sailing sideways past us and kept dodging the ones already flying away
+                            if (velocity.dot(delta) <= epsilon) {
                                 // Arrow is going away from us, ignore it.
                                 continue;
                             }
