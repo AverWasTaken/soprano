@@ -121,12 +121,10 @@ public class SlotHandler {
 
         List<Slot> itemSlots = _mod.getItemStorage().getSlotsWithItemScreen(toEquip);
         if (itemSlots.size() != 0) {
-            for (Slot ItemSlots : itemSlots) {
-                int hotbar = 1;
-                //_mod.getPlayer().getInventory().swapSlotWithHotbar();
-                clickSlotForce(Objects.requireNonNull(ItemSlots), inCursor ? 0 : hotbar, inCursor ? ClickType.PICKUP : ClickType.SWAP);
-                //registerSlotAction();
-            }
+            // one swap is the whole job. this used to swap EVERY stack of the item into the hotbar slot, so with
+            // two stacks the second swap just undid the first and the item bounced in and out forever
+            int hotbar = 1;
+            clickSlotForce(Objects.requireNonNull(itemSlots.get(0)), inCursor ? 0 : hotbar, inCursor ? ClickType.PICKUP : ClickType.SWAP);
             return true;
         }
         return false;
