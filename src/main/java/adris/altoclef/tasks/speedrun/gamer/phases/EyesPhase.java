@@ -45,6 +45,11 @@ public class EyesPhase implements PhaseHandler {
     // not even the floor in the bag (a death, a lost chest): back to the nether once, the stronghold phases have the same rule
     @Override
     public Optional<GamerPhase> regressTo(GamerFacts facts, RunState state, GamerConfig cfg) {
+        // at home without the kit (a death): plan the kit first, the nether trip comes after it
+        Optional<GamerPhase> gear = NetherRegress.fromOverworld(facts, cfg);
+        if (gear.isPresent()) {
+            return gear;
+        }
         if (state.netherRevisits < 1 && EyeMath.potentialEyes(facts) < cfg.floorEyes) {
             return Optional.of(GamerPhase.NETHER);
         }
