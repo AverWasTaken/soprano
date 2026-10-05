@@ -124,6 +124,12 @@ public class RunState {
     // game time the open phase first noticed it could not fill the rest of the frames. 0 = fine
     public long openNoEyesSince;
 
+    // w4 (nether), additive
+    // the spawner camping took too long: the rod hunt moves on to the next fortress
+    public boolean netherRodsGaveUp;
+    // fortresses we already gave up on (their blaze spawner never paid out)
+    public List<Pos> fortressExhausted = new ArrayList<>();
+
     // w6
     // the extra bed near the portal took too long (or could not be placed): go to the End without a spawn bed
     public boolean spawnBedGaveUp;

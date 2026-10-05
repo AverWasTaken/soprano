@@ -36,9 +36,16 @@ public class CollectBlazeRodsTask extends ResourceTask {
     //private Entity _toKill;
     private BlockPos _foundBlazeSpawner = null;
 
+    // true on ticks where we stand by the spawner waiting for blazes, so the gamer can give up on a dud spawner
+    private boolean _camping;
+
     public CollectBlazeRodsTask(int count) {
         super(Items.BLAZE_ROD, count);
         _count = count;
+    }
+
+    public boolean isCampingSpawner() {
+        return _camping;
     }
 
     private static boolean isHoveringAboveLavaOrTooHigh(AltoClef mod, Entity entity) {
@@ -57,6 +64,7 @@ public class CollectBlazeRodsTask extends ResourceTask {
 
     @Override
     protected Task onResourceTick(AltoClef mod) {
+        _camping = false;
         // We must go to the nether.
         if (WorldHelper.getCurrentDimension() != Dimension.NETHER) {
             setDebugState("Going to nether");
@@ -111,6 +119,7 @@ public class CollectBlazeRodsTask extends ResourceTask {
                 return new PutOutFireTask(nearestFire.get());
             }
             setDebugState("Waiting near blaze spawner for blazes to spawn");
+            _camping = true;
             return null;
         }
         // Search for blaze
