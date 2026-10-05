@@ -6,11 +6,11 @@ import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.slots.PlayerSlot;
+import java.util.ArrayList;
 import java.util.List;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.SwordItem;
 
 /**
  * Attacks an entity, but the target entity must be specified.
@@ -35,26 +35,14 @@ public abstract class AbstractKillEntityTask extends AbstractDoToEntityTask {
 
     public static Item bestWeapon(AltoClef mod) {
         List<ItemStack> invStacks = mod.getItemStorage().getItemStacksPlayerInventory(true);
-        if (!invStacks.isEmpty()) {
-            float handDamage = Float.NEGATIVE_INFINITY;
-            Item bestItem = null;
-            for (ItemStack invStack : invStacks) {
-                if (invStack.getItem() instanceof SwordItem item) {
-                    float itemDamage = ItemHelper.getAttackDamageBonus(item);
-                    Item handItem = StorageHelper.getItemStackInSlot(PlayerSlot.getEquipSlot()).getItem();
-                    if (handItem instanceof SwordItem handToolItem) {
-                        handDamage = ItemHelper.getAttackDamageBonus(handToolItem);
-                    }
-                    if (itemDamage > handDamage) {
-                        bestItem = item;
-                    } else {
-                        bestItem = handItem;
-                    }
-                }
-            }
-            return bestItem;
+        // the old loop compared every sword against the hand and kept whichever one it looked at last
+        List<Item> candidates = new ArrayList<>();
+        // hand first, so it wins ties and we don't swap between two equal swords
+        candidates.add(StorageHelper.getItemStackInSlot(PlayerSlot.getEquipSlot()).getItem());
+        for (ItemStack invStack : invStacks) {
+            candidates.add(invStack.getItem());
         }
-        return null;
+        return ItemHelper.getBestSword(candidates);
     }
 
     public static boolean equipWeapon(AltoClef mod) {

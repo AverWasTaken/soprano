@@ -50,7 +50,6 @@ import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import net.minecraft.world.item.SwordItem;
 import net.minecraft.world.level.block.BaseFireBlock;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.phys.Vec3;
@@ -68,6 +67,8 @@ public class MobDefenseChain extends SingleTaskChain {
     private static final double ARROW_KEEP_DISTANCE_HORIZONTAL = 2;//4;
     private static final double ARROW_KEEP_DISTANCE_VERTICAL = 10;//15;
     private static final double SAFE_KEEP_DISTANCE = 8;
+    private static final Item[] SWORDS = new Item[]{Items.NETHERITE_SWORD, Items.DIAMOND_SWORD, Items.IRON_SWORD, Items.GOLDEN_SWORD,
+            Items.STONE_SWORD, Items.WOODEN_SWORD};
     private static boolean _shielding = false;
     private final DragonBreathTracker _dragonBreathTracker = new DragonBreathTracker();
     private final KillAura _killAura = new KillAura();
@@ -272,14 +273,14 @@ public class MobDefenseChain extends SingleTaskChain {
             List<Entity> hostiles = mod.getEntityTracker().getHostiles();
             // TODO: I don't think this lock is necessary at all.
 
-            SwordItem bestSword = null;
-            Item[] SWORDS = new Item[]{Items.NETHERITE_SWORD, Items.DIAMOND_SWORD, Items.IRON_SWORD, Items.GOLDEN_SWORD,
-                    Items.STONE_SWORD, Items.WOODEN_SWORD};
+            // pick by real attack damage, not by list order (the old loop kept overwriting and ended on the worst sword owned)
+            List<Item> ownedSwords = new ArrayList<>();
             for (Item item : SWORDS) {
                 if (mod.getItemStorage().hasItem(item)) {
-                    bestSword = (SwordItem) item;
+                    ownedSwords.add(item);
                 }
             }
+            Item bestSword = ItemHelper.getBestSword(ownedSwords);
 
             List<Entity> toDealWith = new ArrayList<>();
             // TODO: I don't think this lock is necessary at all.
@@ -324,7 +325,8 @@ public class MobDefenseChain extends SingleTaskChain {
                 // full diamond has 8 bonus toughness
                 // full netherite has 12 bonus toughness
                 int armor = mod.getPlayer().getArmorValue();
-                float damage = bestSword == null ? 0 : (1 + ItemHelper.getAttackDamageBonus(bestSword));
+                // the formula below was tuned on "1 + tier bonus" (wood 1 ... netherite 5), real damage is 3 higher than that
+                float damage = bestSword == null ? 0 : (ItemHelper.getAttackDamage(bestSword) - 3);
                 boolean hasShield = mod.getItemStorage().hasItem(Items.SHIELD) ||
                         mod.getItemStorage().hasItemInOffhand(Items.SHIELD);
                 int shield = hasShield ? 20 : 0;

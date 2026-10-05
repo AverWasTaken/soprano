@@ -19,7 +19,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.world.level.block.entity.FuelValues;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
-import net.minecraft.world.entity.EquipmentSlotGroup;
 import net.minecraft.world.item.DiggerItem;
 import net.minecraft.world.item.SwordItem;
 import net.minecraft.world.item.component.ItemAttributeModifiers;
@@ -455,23 +454,61 @@ public class ItemHelper {
         return item.components().getOrDefault(DataComponents.MAX_DAMAGE, 0);
     }
 
+    // a bare player hits for 1 (Player.createAttributes), the sword's own attribute is on top of that
+    private static final double PLAYER_BASE_ATTACK_DAMAGE = 1.0;
+
     /**
-     * Stand in for tier.getAttackDamageBonus(): the attack damage attribute minus the 3 a sword starts with.
+     * Damage of one full-charge hit with this item in the main hand (hearts x2), straight from the attribute modifiers
+     * component. Fists are 1, a wooden sword is 4, netherite is 8. No enchants (sharpness) in here.
      */
-    public static float getAttackDamageBonus(Item item) {
+    public static float getAttackDamage(Item item) {
         ItemAttributeModifiers modifiers = item.components().get(DataComponents.ATTRIBUTE_MODIFIERS);
         if (modifiers == null) {
-            return 0;
+            return (float) PLAYER_BASE_ATTACK_DAMAGE;
         }
-        double damage = 0;
+        // same order the attribute instance uses: base, then all adds, then multiply-base off that, then multiply-total.
+        // ItemAttributeModifiers#compute doesn't look at which attribute an entry is for (attack speed would leak in), so no using it
+        double base = PLAYER_BASE_ATTACK_DAMAGE;
+        double value = base;
         for (ItemAttributeModifiers.Entry entry : modifiers.modifiers()) {
-            if (entry.attribute().equals(Attributes.ATTACK_DAMAGE)
-                    && entry.modifier().operation() == AttributeModifier.Operation.ADD_VALUE
-                    && entry.slot() == EquipmentSlotGroup.MAINHAND) {
-                damage += entry.modifier().amount();
+            if (isMainHandAttackDamage(entry) && entry.modifier().operation() == AttributeModifier.Operation.ADD_VALUE) {
+                value += entry.modifier().amount();
             }
         }
-        return (float) (damage - (item instanceof SwordItem ? 3 : 0));
+        double afterAdds = value;
+        for (ItemAttributeModifiers.Entry entry : modifiers.modifiers()) {
+            if (isMainHandAttackDamage(entry) && entry.modifier().operation() == AttributeModifier.Operation.ADD_MULTIPLIED_BASE) {
+                value += afterAdds * entry.modifier().amount();
+            }
+        }
+        for (ItemAttributeModifiers.Entry entry : modifiers.modifiers()) {
+            if (isMainHandAttackDamage(entry) && entry.modifier().operation() == AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL) {
+                value *= 1 + entry.modifier().amount();
+            }
+        }
+        return (float) value;
+    }
+
+    private static boolean isMainHandAttackDamage(ItemAttributeModifiers.Entry entry) {
+        // ANY and HAND groups apply to the main hand too, not just MAINHAND
+        return entry.attribute().equals(Attributes.ATTACK_DAMAGE) && entry.slot().test(net.minecraft.world.entity.EquipmentSlot.MAINHAND);
+    }
+
+    /**
+     * The sword that hits hardest, or null if there are no swords in the list. First one wins a tie.
+     */
+    public static Item getBestSword(Iterable<Item> candidates) {
+        Item best = null;
+        float bestDamage = Float.NEGATIVE_INFINITY;
+        for (Item item : candidates) {
+            if (!(item instanceof SwordItem)) continue;
+            float damage = getAttackDamage(item);
+            if (damage > bestDamage) {
+                bestDamage = damage;
+                best = item;
+            }
+        }
+        return best;
     }
 
     /**
