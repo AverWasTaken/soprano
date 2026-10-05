@@ -8,6 +8,7 @@ import adris.altoclef.tasksystem.TaskRunner;
 import adris.altoclef.util.time.TimerGame;
 import adris.altoclef.util.time.TimerReal;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.gui.screens.ConnectScreen;
 import net.minecraft.client.gui.screens.DeathScreen;
 import net.minecraft.client.gui.screens.DisconnectedScreen;
@@ -17,6 +18,9 @@ import net.minecraft.client.gui.screens.multiplayer.JoinMultiplayerScreen;
 import net.minecraft.client.multiplayer.ServerData;
 import net.minecraft.client.multiplayer.resolver.ServerAddress;
 import net.minecraft.network.chat.Component;
+
+import java.util.ArrayList;
+import java.util.List;
 
 public class DeathMenuChain extends TaskChain {
 
@@ -28,6 +32,9 @@ public class DeathMenuChain extends TaskChain {
     private boolean _reconnecting = false;
     private int _deathCount = 0;
     private Class _prevScreen = null;
+    private final List<String> _pendingDeathCommands = new ArrayList<>();
+    private LocalPlayer _deadPlayer = null;
+    private RespawnWait _respawnWait = new RespawnWait();
 
 
     public DeathMenuChain(TaskRunner runner) {
@@ -57,11 +64,45 @@ public class DeathMenuChain extends TaskChain {
 
     }
 
+    // sends the queued death commands once we're actually alive again
+    private void tickDeathCommands(AltoClef mod) {
+        if (_pendingDeathCommands.isEmpty()) return;
+        LocalPlayer player = Minecraft.getInstance().player;
+        // respawning swaps in a new LocalPlayer, the dead one stays dead forever (isAlive() on it is never coming back)
+        boolean respawned = player != null && player != _deadPlayer && player.isAlive();
+        switch (_respawnWait.tick(player != null && AltoClef.inGame(), respawned)) {
+            case WAIT -> {
+            }
+            case DROP -> {
+                Debug.logWarning("Respawn never finished, not running the death command.");
+                _pendingDeathCommands.clear();
+                _deadPlayer = null;
+            }
+            case SEND -> {
+                String prefix = mod.getModSettings().getCommandPrefix();
+                for (String command : _pendingDeathCommands) {
+                    if (command.startsWith(prefix)) {
+                        // TODO(commands): goes through the baritone command manager once the command rewrite lands
+                        AltoClef.getCommandExecutor().execute(command, () -> {
+                        }, Throwable::printStackTrace);
+                    } else if (command.startsWith("/")) {
+                        player.connection.sendCommand(command.substring(1));
+                    } else {
+                        player.connection.sendChat(command);
+                    }
+                }
+                _pendingDeathCommands.clear();
+                _deadPlayer = null;
+            }
+        }
+    }
+
     @Override
     public float getPriority(AltoClef mod) {
         //MinecraftClient.getInstance().getCurrentServerEntry().address;
 //        MinecraftClient.getInstance().
         Screen screen = Minecraft.getInstance().screen;
+        tickDeathCommands(mod);
         // This might fix Weird fail to respawn that happened only once
         if (_prevScreen == DeathScreen.class) {
             if (_deathRetryTimer.elapsed()) {
@@ -86,23 +127,19 @@ public class DeathMenuChain extends TaskChain {
                     assert Minecraft.getInstance().player != null;
                     Component screenMessage = ((IDeathScreen) screen).getMessage();
                     String deathMessage = screenMessage != null ? screenMessage.getString() : "Unknown"; //"(not implemented yet)"; //screen.children().toString();
-                    Minecraft.getInstance().player.respawn();
-                    Minecraft.getInstance().setScreen(null);
+                    // the death command has to wait for the respawn to actually happen, so it's queued
+                    // and sent from tickDeathCommands once the new player entity shows up
+                    _pendingDeathCommands.clear();
                     for (String i : mod.getModSettings().getDeathCommand().split(" & ")) {
                         String command = i.replace("{deathmessage}", deathMessage);
-                        String prefix = mod.getModSettings().getCommandPrefix();
-                        while (Minecraft.getInstance().player.isAlive()) ;
                         if (!command.isEmpty()) {
-                            if (command.startsWith(prefix)) {
-                                AltoClef.getCommandExecutor().execute(command, () -> {
-                                }, Throwable::printStackTrace);
-                            } else if (command.startsWith("/")) {
-                                Minecraft.getInstance().player.connection.sendCommand(command.substring(1));
-                            } else {
-                                Minecraft.getInstance().player.connection.sendChat(command);
-                            }
+                            _pendingDeathCommands.add(command);
                         }
                     }
+                    _deadPlayer = Minecraft.getInstance().player;
+                    _respawnWait = new RespawnWait();
+                    Minecraft.getInstance().player.respawn();
+                    Minecraft.getInstance().setScreen(null);
                 } else {
                     // Cancel if we die and are not auto-respawning.
                     mod.cancelUserTask();
