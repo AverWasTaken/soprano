@@ -107,6 +107,16 @@ public class RunState {
         public boolean dived;
     }
 
+    // w5 (stronghold), additive
+    // how many of the 12 frames are known (seen, or inferred from the seen ones: the ring is rigid)
+    public int framesSeen;
+    // spiral searches that came up empty. 1 = one re-estimate was spent
+    public int roomRetries;
+    // where the last room search started, so the re-estimate steps sideways before its first throw. null = no re-estimate pending
+    public Pos relocateFrom;
+    // game time the open phase first noticed it could not fill the rest of the frames. 0 = fine
+    public long openNoEyesSince;
+
     public int attemptsOf(GamerPhase p) {
         return phaseAttempts.getOrDefault(p.name(), 0);
     }
