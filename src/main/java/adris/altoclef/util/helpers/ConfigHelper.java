@@ -6,6 +6,8 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.InstanceCreator;
 import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.google.gson.reflect.TypeToken;
 import java.io.File;
 import java.io.IOException;
@@ -103,8 +105,18 @@ public class ConfigHelper {
      * @return The retrieved configuration object or the default value.
      */
     private static <T> T getConfig(String path, Supplier<T> getDefault, Class<T> classToLoad) {
+        return getConfig(path, getDefault, classToLoad, null);
+    }
+
+    // version != null: the file has to carry that "version" member or it is replaced by the defaults before gson sees it
+    private static <T> T getConfig(String path, Supplier<T> getDefault, Class<T> classToLoad, Integer version) {
         T result = getDefault.get();
         File loadFrom = getConfigFile(path);
+        if (version != null && isOtherVersion(loadFrom, version)) {
+            Debug.logWarning("Config " + path + " is from another version, replacing it with the defaults.");
+            saveConfig(path, result);
+            return result;
+        }
         if (!loadFrom.exists()) {
             saveConfig(path, result);
             return result;
@@ -161,6 +173,34 @@ public class ConfigHelper {
         _loadedConfigs.put(path, () -> onReload.accept(getConfig(path, getDefault, classToLoad)));
 
         // Call the onReload callback function to notify that the configuration is loaded.
+        onReload.accept(config);
+    }
+
+    // true when the file exists and its top level "version" is missing or not the one we want. a file that is not even
+    // json counts too, the normal load would fall back to the defaults anyway
+    private static boolean isOtherVersion(File file, int version) {
+        if (!file.exists()) {
+            return false;
+        }
+        try (Reader reader = Files.newBufferedReader(file.toPath(), StandardCharsets.UTF_8)) {
+            JsonElement root = JsonParser.parseReader(reader);
+            if (!(root instanceof JsonObject obj) || !obj.has("version")) {
+                return true;
+            }
+            JsonElement v = obj.get("version");
+            return !v.isJsonPrimitive() || !v.getAsJsonPrimitive().isNumber() || v.getAsDouble() != version;
+        } catch (IOException | RuntimeException e) {
+            return true;
+        }
+    }
+
+    /**
+     * Same as {@link #loadConfig} for a file whose shape changed on purpose: it has a numeric top level "version", and a
+     * file that has none or another one is overwritten with the defaults (also on reload) so old values never leak into the new ones.
+     */
+    public static <T> void loadVersionedConfig(String path, int version, Supplier<T> getDefault, Class<T> classToLoad, Consumer<T> onReload) {
+        T config = getConfig(path, getDefault, classToLoad, version);
+        _loadedConfigs.put(path, () -> onReload.accept(getConfig(path, getDefault, classToLoad, version)));
         onReload.accept(config);
     }
 
