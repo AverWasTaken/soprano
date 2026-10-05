@@ -91,7 +91,7 @@ public abstract class ResourceTask extends Task implements ITaskCanForce {
     protected Task onTick(AltoClef mod) {
         mod.getBehaviour().addProtectedItems(ItemTarget.getMatches(_itemTargets));
         // If we have an item in an INACCESSIBLE inventory slot
-        if (!(thisOrChildSatisfies(task -> task instanceof ITaskUsesCraftingGrid)) || _ensureFreeCraftingGridTask.isActive()) {
+        if (!ITaskUsesCraftingGrid.isUsingGrid(this) || _ensureFreeCraftingGridTask.isActive()) {
             for (ItemTarget target : _itemTargets) {
                 if (StorageHelper.isItemInaccessibleToContainer(mod, target)) {
                     setDebugState("Moving from SPECIAL inventory slot");
@@ -193,12 +193,16 @@ public abstract class ResourceTask extends Task implements ITaskCanForce {
         }
         // Make sure that items don't get stuck in the player crafting grid. May be an issue if a future task isn't a resource task.
         if (StorageHelper.isPlayerInventoryOpen()) {
-            if (!(thisOrChildSatisfies(task -> task instanceof ITaskUsesCraftingGrid)) || _ensureFreeCraftingGridTask.isActive()) {
-                for (Slot slot : PlayerSlot.CRAFT_INPUT_SLOTS) {
-                    if (!StorageHelper.getItemStackInSlot(slot).isEmpty()) {
-                        return _ensureFreeCraftingGridTask;
-                    }
+            boolean gridHasItems = false;
+            for (Slot slot : PlayerSlot.CRAFT_INPUT_SLOTS) {
+                if (!StorageHelper.getItemStackInSlot(slot).isEmpty()) {
+                    gridHasItems = true;
+                    break;
                 }
+            }
+            if (EnsureFreePlayerCraftingGridTask.shouldClear(ITaskUsesCraftingGrid.isUsingGrid(this),
+                    _ensureFreeCraftingGridTask.isActive(), gridHasItems, !StorageHelper.getItemStackInCursorSlot().isEmpty())) {
+                return _ensureFreeCraftingGridTask;
             }
         }
         return onResourceTick(mod);

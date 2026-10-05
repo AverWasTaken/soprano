@@ -9,6 +9,15 @@ import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.item.ItemStack;
 
 public class EnsureFreePlayerCraftingGridTask extends Task {
+
+    // pure so it can be tested without a game. the cursor part is for the pickup that empties the grid: the
+    // item is in your hand now, the grid is "clean", and if we let go here it goes right back in. ping pong
+    public static boolean shouldClear(boolean gridInUse, boolean ensureActive, boolean gridHasItems, boolean cursorHasItems) {
+        if (gridInUse && !ensureActive) {
+            return false;
+        }
+        return gridHasItems || (ensureActive && cursorHasItems);
+    }
     @Override
     protected void onStart(AltoClef mod) {
 

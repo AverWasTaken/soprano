@@ -3,6 +3,7 @@ package adris.altoclef.tasks;
 import adris.altoclef.AltoClef;
 import adris.altoclef.tasks.slot.MoveItemToSlotFromInventoryTask;
 import adris.altoclef.tasks.slot.ReceiveCraftingOutputSlotTask;
+import adris.altoclef.tasksystem.ITaskUsesCraftingGrid;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.RecipeTarget;
@@ -21,7 +22,9 @@ import net.minecraft.world.item.Items;
  * <p>
  * Not useful for custom tasks.
  */
-public class CraftGenericManuallyTask extends Task {
+// the grid is full of our stuff for as long as this runs, so ResourceTask must not sweep it. the recipe book
+// version of this used to carry the marker, and then the recipe book left in 1.21.2 and took it with it
+public class CraftGenericManuallyTask extends Task implements ITaskUsesCraftingGrid {
 
     private final RecipeTarget _target;
 

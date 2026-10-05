@@ -456,7 +456,8 @@ public class StorageHelper {
                         // Check crafting slots
                         boolean bigCrafting = (screen instanceof CraftingMenu);
                         boolean bigRecipe = recipe.isBig();
-                        for (int craftSlotIndex = 0; craftSlotIndex < (bigCrafting ? 9 : 4); ++craftSlotIndex) {
+                        // a small recipe has 4 slots even in the table. counting to 9 walked off the grid into the player inventory
+                        for (int craftSlotIndex = 0; craftSlotIndex < (bigCrafting && bigRecipe ? 9 : 4); ++craftSlotIndex) {
                             Slot craftSlot = bigCrafting ? CraftingTableSlot.getInputSlot(craftSlotIndex, bigRecipe) : PlayerSlot.getCraftInputSlot(craftSlotIndex);
                             ItemStack stack = StorageHelper.getItemStackInSlot(craftSlot);
                             if (needs.matches(stack.getItem())) {
@@ -589,16 +590,18 @@ public class StorageHelper {
         return -1;
     }
 
+    // getBurnProgress is a 0-1 float now. it used to be an int out of 24 (the arrow's pixel width), and the /24
+    // outlived it, so cooking progress read as 4% of what it was
     public static double getFurnaceCookPercent(AbstractFurnaceMenu handler) {
-        return (double) handler.getBurnProgress() / 24.0;
+        return (double) handler.getBurnProgress();
     }
 
     public static double getSmokerCookPercent(AbstractFurnaceMenu handler) {
-        return (double) handler.getBurnProgress() / 24.0;
+        return (double) handler.getBurnProgress();
     }
 
     public static double getBlastFurnaceCookPercent(AbstractFurnaceMenu handler) {
-        return (double) handler.getBurnProgress() / 24.0;
+        return (double) handler.getBurnProgress();
     }
 
     public static double getFurnaceCookPercent() {

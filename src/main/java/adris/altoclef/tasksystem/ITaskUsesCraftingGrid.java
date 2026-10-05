@@ -9,4 +9,9 @@ package adris.altoclef.tasksystem;
  */
 public interface ITaskUsesCraftingGrid {
 
+    // ResourceTask asks this every tick before it sweeps the grid. it walks the whole running chain, so a
+    // marker task anywhere underneath (a MoveItemToSlot three levels down counts) keeps the sweep away
+    static boolean isUsingGrid(Task root) {
+        return root != null && root.thisOrChildSatisfies(task -> task instanceof ITaskUsesCraftingGrid);
+    }
 }

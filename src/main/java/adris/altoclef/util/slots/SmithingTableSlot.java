@@ -14,20 +14,22 @@ public class SmithingTableSlot extends Slot {
         super(slot, inventory);
     }
 
+    // 4 slots (template, base, addition, result) before the player inventory, not 3 like a furnace. the 1.19 mapping
+    // survived the template slot arriving in 1.20, so everything was off by one
     @Override
     public int inventorySlotToWindowSlot(int inventorySlot) {
         if (inventorySlot < 9) {
-            return inventorySlot + 30;
+            return inventorySlot + 31;
         }
-        return inventorySlot - 6;
+        return inventorySlot - 5;
     }
 
     @Override
     protected int windowSlotToInventorySlot(int windowSlot) {
-        if (windowSlot >= 30) {
-            return windowSlot - 30;
+        if (windowSlot >= 31) {
+            return windowSlot - 31;
         }
-        return windowSlot + 6;
+        return windowSlot + 5;
     }
 
     @Override

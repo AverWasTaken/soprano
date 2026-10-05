@@ -20,15 +20,14 @@ public class CraftingTableSlot extends Slot {
     }
 
     public static CraftingTableSlot getInputSlot(int index, boolean big) {
-        index += 1;
         if (big) {
-            // Default
-            return new CraftingTableSlot(index);
+            // Default. window slot 0 is the output, the grid is 1-9
+            return new CraftingTableSlot(index + 1);
         } else {
-            // Small recipe in big window
-            int x = index % 2;
-            int y = index / 2;
-            return getInputSlot(x, y);
+            // Small recipe in big window: a 2 wide recipe goes in the top left of the 3 wide grid. this used to
+            // add the +1 for the output slot before splitting into x/y and then again inside getInputSlot, so
+            // the 2x2 landed on slots 2,4,5,7 (a little z shape) and nothing ever matched
+            return getInputSlot(index % 2, index / 2);
         }
     }
 

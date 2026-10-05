@@ -53,6 +53,8 @@ public abstract class Slot {
                 return new CraftingTableSlot(slot, inventory);
             case FURNACE_OR_SMITH_OR_SMOKER_OR_BLAST:
                 return new FurnaceSlot(slot, inventory);
+            case SMITHING:
+                return new SmithingTableSlot(slot, inventory);
             case CHEST_LARGE:
                 return new ChestSlot(slot, true, inventory);
             case CHEST_SMALL:
@@ -73,9 +75,12 @@ public abstract class Slot {
 
     private static ContainerType getCurrentType() {
         Screen screen = Minecraft.getInstance().screen;
-        if (screen instanceof FurnaceScreen || screen instanceof SmithingScreen || screen instanceof SmokerScreen ||
-                screen instanceof BlastFurnaceScreen) {
+        if (screen instanceof FurnaceScreen || screen instanceof SmokerScreen || screen instanceof BlastFurnaceScreen) {
             return ContainerType.FURNACE_OR_SMITH_OR_SMOKER_OR_BLAST;
+        }
+        // not a furnace: one more slot in front of the player inventory
+        if (screen instanceof SmithingScreen) {
+            return ContainerType.SMITHING;
         }
         if (screen instanceof ContainerScreen) {
             ChestMenu handler = ((ContainerScreen) screen).getMenu();
@@ -177,6 +182,7 @@ public abstract class Slot {
         CRAFTING_TABLE,
         CHEST_SMALL,
         CHEST_LARGE,
-        FURNACE_OR_SMITH_OR_SMOKER_OR_BLAST
+        FURNACE_OR_SMITH_OR_SMOKER_OR_BLAST,
+        SMITHING
     }
 }
