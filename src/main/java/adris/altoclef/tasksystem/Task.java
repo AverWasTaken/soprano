@@ -177,18 +177,39 @@ public abstract class Task {
         return thisOrChildSatisfies(task -> task instanceof TimeoutWanderTask);
     }
 
+    // a force held longer than this is assumed to be stuck, so it can't deadlock the whole tree
+    private static final long FORCE_TIMEOUT_MS = 10_000;
+    private long _forcedSinceMs = -1;
+    private boolean _forceTimeoutLogged = false;
+
     /**
      * Sometimes a task just can NOT be bothered to be interrupted right now.
      * For instance, if we're in mid air and MUST complete the parkour movement.
      */
-    private boolean canBeInterrupted(AltoClef mod, Task subTask, Task toInterruptWith) {
+    boolean canBeInterrupted(AltoClef mod, Task subTask, Task toInterruptWith) {
         if (subTask == null) return true;
         // Our task can declare that is FORCES itself to be active NOW.
-        return (subTask.thisOrChildSatisfies(task -> {
-            if (task instanceof ITaskCanForce canForce) {
-                return !canForce.shouldForce(mod, toInterruptWith);
+        // this is an exists-walk: ANY forcing node down the chain holds the swap, not just the first node.
+        // it used to return true at the first node that wasn't forcing, so nested forces were never honoured
+        boolean forced = subTask.thisOrChildSatisfies(task ->
+                task instanceof ITaskCanForce canForce && canForce.shouldForce(mod, toInterruptWith));
+        if (!forced) {
+            _forcedSinceMs = -1;
+            _forceTimeoutLogged = false;
+            return true;
+        }
+        long now = System.currentTimeMillis();
+        if (_forcedSinceMs < 0) {
+            _forcedSinceMs = now;
+        }
+        if (now - _forcedSinceMs > FORCE_TIMEOUT_MS) {
+            // a stuck shouldForce must not freeze the tree forever (log once, not 20 times a second)
+            if (!_forceTimeoutLogged) {
+                _forceTimeoutLogged = true;
+                Debug.logInternal("Task force held for over " + FORCE_TIMEOUT_MS / 1000 + "s, ignoring it: " + subTask);
             }
             return true;
-        }));
+        }
+        return false;
     }
 }
