@@ -25,7 +25,6 @@ import adris.altoclef.util.slots.Slot;
 import adris.altoclef.util.time.TimerGame;
 import net.minecraft.client.gui.screens.WinScreen;
 import net.minecraft.core.BlockPos;
-import net.minecraft.tags.EnchantmentTags;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.animal.Pig;
@@ -115,12 +114,7 @@ public class MarvionBeatMinecraftTask extends Task {
     private static final int TWISTING_VINES_COUNT = 28;
     private static final int TWISTING_VINES_COUNT_MIN = 14;
     // We don't want curse of binding
-    private static final Predicate<ItemStack> _noCurseOfBinding = stack -> {
-        if (stack.getEnchantments().keySet().contains(EnchantmentTags.CURSE)) {
-            return false;
-        }
-        return true;
-    };
+    private static final Predicate<ItemStack> _noCurseOfBinding = stack -> !ItemHelper.hasCurse(stack);
     private static BeatMinecraftConfig _config;
     private static GoToStrongholdPortalTask _locateStrongholdTask;
     private static boolean openingEndPortal = false;

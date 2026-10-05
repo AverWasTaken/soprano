@@ -34,7 +34,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.WinScreen;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Vec3i;
-import net.minecraft.tags.EnchantmentTags;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.monster.EnderMan;
 import net.minecraft.world.entity.monster.Silverfish;
@@ -82,12 +81,7 @@ public class BeatMinecraft2Task extends Task {
     private static final int END_PORTAL_FRAME_COUNT = 12;
     private static final double END_PORTAL_BED_SPAWN_RANGE = 8;
     // We don't want curse of binding
-    private static final Predicate<ItemStack> _noCurseOfBinding = stack -> {
-        if (stack.getEnchantments().keySet().contains(EnchantmentTags.CURSE)) {
-            return false;
-        }
-        return true;
-    };
+    private static final Predicate<ItemStack> _noCurseOfBinding = stack -> !ItemHelper.hasCurse(stack);
     private static BeatMinecraftConfig _config;
 
     static {
@@ -552,7 +546,8 @@ public class BeatMinecraft2Task extends Task {
 
     private int getFilledPortalFrames(AltoClef mod, BlockPos endPortalCenter) {
         // If we have our end portal, this doesn't matter.
-        if (endPortalFound(mod, endPortalCenter)) {
+        // (this used to ask endPortalFound, same as the check below, so any found portal said 12 and the count was dead code)
+        if (endPortalOpened(mod, endPortalCenter)) {
             return END_PORTAL_FRAME_COUNT;
         }
         if (endPortalFound(mod, endPortalCenter)) {

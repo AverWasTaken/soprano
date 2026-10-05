@@ -3,14 +3,17 @@ package adris.altoclef.util.helpers;
 import adris.altoclef.AltoClef;
 import adris.altoclef.util.WoodType;
 import java.util.*;
+import net.minecraft.core.Holder;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.tags.BlockTags;
+import net.minecraft.tags.EnchantmentTags;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.enchantment.Enchantment;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
@@ -452,6 +455,17 @@ public class ItemHelper {
      */
     public static int getToolDurability(Item item) {
         return item.components().getOrDefault(DataComponents.MAX_DAMAGE, 0);
+    }
+
+    // keySet() on the enchantments is a set of enchantment holders, so asking it whether it contains a TAG key
+    // (what the beat tasks did) is always false and curses sailed straight through. the holder knows its own tags
+    public static boolean hasCurse(ItemStack stack) {
+        for (Holder<Enchantment> enchantment : stack.getEnchantments().keySet()) {
+            if (enchantment.is(EnchantmentTags.CURSE)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // a bare player hits for 1 (Player.createAttributes), the sword's own attribute is on top of that
