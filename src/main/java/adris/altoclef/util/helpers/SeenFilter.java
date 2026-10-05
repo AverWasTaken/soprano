@@ -1,20 +1,146 @@
 package adris.altoclef.util.helpers;
 
 import adris.altoclef.AltoClef;
+import baritone.api.utils.Dimension;
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
+import net.minecraft.world.phys.Vec3;
 
-// STUB, owner: W1 engine (gamer-design.md 5.1). "has the player actually seen this block": line of sight from the eyes
-// within a distance, remembered. the gamer uses it for its own structure discovery so it does not x-ray through rock
+// "has the player actually seen this block": line of sight from the eyes within a distance, remembered. the gamer uses
+// it for its own structure discovery so it does not x-ray through rock. a block only counts as seen once, then it stays
+// seen (until the world or the dimension changes)
 public final class SeenFilter {
+    // fortress scale structures are never farther than this to be recognised, and the nether fog eats most of it anyway
+    static final double NETHER_RANGE = 80;
+    static final double OTHER_RANGE = 128;
+    // about a minute of walking past a fortress; the set is cleared when it fills, seen blocks just get seen again
+    static final int MEMO_CAP = 50_000;
+    // raycasts that may be spent on blocks we do not know yet, per game tick
+    static final int RAYS_PER_TICK = 8;
+
+    private static final Memo MEMO = new Memo(MEMO_CAP);
+    private static final Budget BUDGET = new Budget(RAYS_PER_TICK);
+    // the level the memo was built in: dimension changes make a new level object and the coordinates mean something else
+    private static ClientLevel memoLevel;
+
     // true once the block was in line of sight within range at some point. unknown = false, ask again next tick
     public static boolean isSeen(AltoClef mod, BlockPos pos) {
-        return false;
+        ClientLevel level = mod.getWorld();
+        LocalPlayer player = mod.getPlayer();
+        if (level == null || player == null) {
+            return false;
+        }
+        if (level != memoLevel) {
+            MEMO.clear();
+            memoLevel = level;
+        }
+        long key = pos.asLong();
+        if (MEMO.contains(key)) {
+            return true;
+        }
+        Vec3 eye = player.getEyePosition();
+        Vec3 target = Vec3.atCenterOf(pos);
+        double range = WorldHelper.getCurrentDimension() == Dimension.NETHER ? NETHER_RANGE : OTHER_RANGE;
+        if (eye.distanceToSqr(target) > range * range) {
+            return false;
+        }
+        if (!BUDGET.tryUse(Minecraft.getInstance().gui.getGuiTicks())) {
+            return false;
+        }
+        if (!clearView(level, player, eye, target, pos)) {
+            return false;
+        }
+        MEMO.add(key);
+        return true;
+    }
+
+    // the clip stops at the first thing that has a collision box. getting to the block itself, to a block touching it
+    // (thin things like fences and chests leave room around the centre), or all the way to the centre (blocks with no
+    // collision, a portal) is a look at it
+    private static boolean clearView(ClientLevel level, LocalPlayer player, Vec3 eye, Vec3 target, BlockPos pos) {
+        BlockHitResult hit = level.clip(new ClipContext(eye, target, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, player));
+        if (hit.getType() == HitResult.Type.MISS) {
+            return true;
+        }
+        return isSameOrTouching(hit.getBlockPos(), pos);
+    }
+
+    static boolean isSameOrTouching(BlockPos hit, BlockPos pos) {
+        int d = Math.abs(hit.getX() - pos.getX()) + Math.abs(hit.getY() - pos.getY()) + Math.abs(hit.getZ() - pos.getZ());
+        return d <= 1;
     }
 
     // forget everything (world leave)
     public static void reset() {
+        MEMO.clear();
+        BUDGET.clear();
+        memoLevel = null;
     }
 
     private SeenFilter() {
+    }
+
+    // a set of block positions that never holds more than cap of them: when it is full it is emptied, no eviction order to
+    // maintain. losing the memo costs a few raycasts, a smarter structure would cost a tick every tick
+    static final class Memo {
+        private final LongOpenHashSet set = new LongOpenHashSet();
+        private final int cap;
+
+        Memo(int cap) {
+            this.cap = cap;
+        }
+
+        boolean contains(long key) {
+            return set.contains(key);
+        }
+
+        void add(long key) {
+            if (set.size() >= cap) {
+                set.clear();
+            }
+            set.add(key);
+        }
+
+        int size() {
+            return set.size();
+        }
+
+        void clear() {
+            set.clear();
+        }
+    }
+
+    // n uses per tick. the tick number is whatever the caller counts in, a new number refills it
+    static final class Budget {
+        private final int perTick;
+        private long tick = Long.MIN_VALUE;
+        private int used;
+
+        Budget(int perTick) {
+            this.perTick = perTick;
+        }
+
+        boolean tryUse(long nowTick) {
+            if (nowTick != tick) {
+                tick = nowTick;
+                used = 0;
+            }
+            if (used >= perTick) {
+                return false;
+            }
+            used++;
+            return true;
+        }
+
+        void clear() {
+            tick = Long.MIN_VALUE;
+            used = 0;
+        }
     }
 }

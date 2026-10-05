@@ -15,6 +15,7 @@ import adris.altoclef.ui.CommandStatusOverlay;
 import adris.altoclef.ui.MessagePriority;
 import adris.altoclef.ui.MessageSender;
 import adris.altoclef.util.helpers.InputHelper;
+import adris.altoclef.util.helpers.SeenFilter;
 import baritone.altoclef.BaritoneSettingsScope;
 import baritone.Baritone;
 import baritone.altoclef.AltoClefSettings;
@@ -259,6 +260,8 @@ public class AltoClef {
             if (_trackerManager != null) {
                 _trackerManager.resetAll();
             }
+            // what the gamer has seen belongs to a world that is gone too
+            SeenFilter.reset();
         }
     }
 
