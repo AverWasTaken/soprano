@@ -4,6 +4,7 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.tasks.ResourceTask;
 import adris.altoclef.tasks.entity.KillEntitiesTask;
 import adris.altoclef.tasks.entity.KillEntityTask;
+import adris.altoclef.tasks.movement.TimeoutWanderTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.ui.HudText;
 import adris.altoclef.util.ItemTarget;
@@ -38,7 +39,12 @@ public class KillEndermanTask extends ResourceTask {
     protected Task onResourceTick(AltoClef mod) {
         // Dimension
         if (!mod.getEntityTracker().entityFound(EnderMan.class)) {
-            return getToCorrectDimensionTask(mod);
+            // the target dimension is null unless somebody forced one, and a null dimension is an NPE in the switch
+            // of DefaultGoToDimensionTask. nothing forced = hunt right here, like KillAndLootTask does
+            if (isInWrongDimension(mod)) {
+                return getToCorrectDimensionTask(mod);
+            }
+            return new TimeoutWanderTask();
         }
 
         // Kill the angry one
