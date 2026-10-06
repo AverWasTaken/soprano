@@ -158,6 +158,9 @@ public class MineAndCollectTask extends ResourceTask {
 
     private static class MineOrCollectTask extends AbstractDoToClosestObjectTask<Object> {
 
+        // 4 blocks, squared. anything this close gets picked up before we mine another block
+        private static final double DROP_FIRST_RANGE_SQ = 16;
+
         private final Block[] _blocks;
         private final ItemTarget[] _targets;
         private final Set<BlockPos> _blacklist = new HashSet<>();
@@ -196,14 +199,17 @@ public class MineAndCollectTask extends ResourceTask {
             }
 
             double blockSq = closestBlock.isEmpty() ? Double.POSITIVE_INFINITY : closestBlock.get().distToCenterSqr(pos);
-            double dropSq = closestDrop.isEmpty() ? Double.POSITIVE_INFINITY : closestDrop.get().distanceToSqr(pos) + 10; // + 5 to make the bot stop mining a bit less
+            double rawDropSq = closestDrop.isEmpty() ? Double.POSITIVE_INFINITY : closestDrop.get().distanceToSqr(pos);
+            // the + 10 is on a SQUARED distance, so any block within ~3 blocks beat a drop sitting on our feet, and
+            // in a tunnel there is always a block that close. so close drops just win, no maths
+            double dropSq = rawDropSq + 10;
 
             // We can't mine right now.
             if (mod.getExtraBaritoneSettings().isInteractionPaused()) {
                 return closestDrop.map(Object.class::cast);
             }
 
-            if (dropSq <= blockSq) {
+            if (rawDropSq <= DROP_FIRST_RANGE_SQ || dropSq <= blockSq) {
                 return closestDrop.map(Object.class::cast);
             } else {
                 return closestBlock.map(Object.class::cast);
@@ -253,6 +259,8 @@ public class MineAndCollectTask extends ResourceTask {
                 return mod.getBlockTracker().blockIsValid(b, _blocks) && WorldHelper.canBreak(mod, b);
             }
             if (obj instanceof ItemEntity drop) {
+                // picked up or despawned, don't keep chasing a ghost
+                if (!drop.isAlive()) return false;
                 Item item = drop.getItem().getItem();
                 if (_targets != null) {
                     for (ItemTarget target : _targets) {
