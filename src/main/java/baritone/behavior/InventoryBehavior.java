@@ -103,6 +103,30 @@ public final class InventoryBehavior extends Behavior implements Helper {
         }
     }
 
+    // a fall doesn't wait for the move delay or for us to stand still (we're not going to be, that's the whole problem), so
+    // this just does the swap. altoclef's unplanned fall calls it when the ladder is still in the main inventory
+    public boolean fetchClutchItemNow() {
+        if (AltoClefSettings.getInstance().isInteractionPaused() || ctx.player().containerMenu != ctx.player().inventoryMenu || !ctx.player().containerMenu.getCarried().isEmpty()) {
+            return false;
+        }
+        if (pickClutchItem(false) != null) {
+            return true; // already there
+        }
+        NonNullList<ItemStack> inv = ctx.player().getInventory().items;
+        for (int i = 9; i < 36; i++) {
+            if (inv.get(i).is(Items.VINE) || inv.get(i).is(Items.LADDER)) {
+                OptionalInt slot = getTempHotbarSlot(s -> false);
+                if (slot.isEmpty()) {
+                    return false;
+                }
+                ctx.playerController().windowClick(ctx.player().inventoryMenu.containerId, i, slot.getAsInt(), ClickType.SWAP, ctx.player());
+                ticksSinceLastInventoryMove = 0;
+                return true;
+            }
+        }
+        return false;
+    }
+
     public boolean attemptToPutOnHotbar(int inMainInvy, Predicate<Integer> disallowedHotbar) {
         if (AltoClefSettings.getInstance().isInteractionPaused()) {
             return false;

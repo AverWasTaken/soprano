@@ -3,6 +3,7 @@ package adris.altoclef.chains;
 import baritone.Baritone;
 import adris.altoclef.AltoClef;
 import adris.altoclef.TaskCatalogue;
+import adris.altoclef.tasks.movement.LadderClutchFallTask;
 import adris.altoclef.tasks.movement.MLGBucketTask;
 import adris.altoclef.tasksystem.ITaskOverridesGrounded;
 import adris.altoclef.tasksystem.TaskRunner;
@@ -45,7 +46,15 @@ public class MLGBucketFallChain extends SingleTaskChain implements ITaskOverride
     @Override
     public float getPriority(AltoClef mod) {
         if (!AltoClef.inGame()) return Float.NEGATIVE_INFINITY;
-        if (isFallingOhNo(mod) && !baritoneHasTheFall(mod)) {
+        boolean falling = isFallingOhNo(mod) && !baritoneHasTheFall(mod);
+        LadderClutchFallTask ladder = falling ? ladderClutch(mod) : ladderTask();
+        if (ladder != null) {
+            // in the air it's the clutch, and once we're down it stays until the ladder is back in the inventory
+            setTask(ladder);
+            _lastMLG = null;
+            return falling ? 100 : 60;
+        }
+        if (falling) {
             _tryCollectWaterTimer.reset();
             setTask(new MLGBucketTask());
             _lastMLG = (MLGBucketTask) _mainTask;
@@ -132,11 +141,27 @@ public class MLGBucketFallChain extends SingleTaskChain implements ITaskOverride
     }
 
     public boolean doneMLG() {
-        return _lastMLG == null;
+        return _lastMLG == null && ladderTask() == null;
     }
 
     public boolean isChorusFruiting() {
         return _doingChorusFruit;
+    }
+
+    // the ladder clutch we're in the middle of, unfinished, if any
+    private LadderClutchFallTask ladderTask() {
+        return _mainTask instanceof LadderClutchFallTask task && !task.finished() ? task : null;
+    }
+
+    // what to do about an unplanned fall with a ladder or vine: the one already going, or a new one if there's no water
+    // to do it with (water doesn't need a wall, so it wins) and something to hang it on in time. null means the plain mlg
+    private LadderClutchFallTask ladderClutch(AltoClef mod) {
+        LadderClutchFallTask going = ladderTask();
+        if (going != null) {
+            return going;
+        }
+        boolean water = !mod.getWorld().dimensionType().ultraWarm() && mod.getItemStorage().hasItem(Items.WATER_BUCKET);
+        return water ? null : LadderClutchFallTask.probe(mod);
     }
 
     // the fall movement baritone is running right now, if it is one
