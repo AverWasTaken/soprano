@@ -90,7 +90,7 @@ public class OverworldPhasesTest {
                 Items.SHIELD, Items.SHEARS)) {
             f.give(i, 1);
         }
-        f.give(Items.BUCKET, 2);
+        f.give(Items.BUCKET, 2).give(Items.LADDER, 3);
         f.foodUnits = 100;
         assertTrue("the kit is whole", iron.isDone(f, state, cfg));
         // a job nobody collected (more ingots than the kit needed): leaving now would leave them in the furnace

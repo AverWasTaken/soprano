@@ -43,7 +43,7 @@ public class SmeltFillerTest {
     // the starter kit, enough food to leave, and nothing iron yet: where the bot is when the first batch goes in
     private FakeFacts atTheFurnace() {
         FakeFacts f = new FakeFacts();
-        f.give(Items.STONE_PICKAXE, 1).give(Items.STONE_SWORD, 1).give(Items.FURNACE, 1);
+        f.give(Items.STONE_PICKAXE, 1).give(Items.STONE_SWORD, 1).give(Items.FURNACE, 1).give(Items.LADDER, 3);
         f.foodUnits = 70;
         return f;
     }
@@ -103,6 +103,17 @@ public class SmeltFillerTest {
                 names(s.runnable()));
         assertEquals(new KitNeed("flint", 1), s.runnable().get(3));
         assertEquals(new KitNeed("planks", 6 + 2 + 12), s.runnable().get(4));
+    }
+
+    @Test
+    public void ironFreeCraftsStayRunnableWhileTheIronCooks() {
+        FakeFacts f = new FakeFacts().cooking("iron_ingot", 39, 400);
+        f.give(Items.STONE_PICKAXE, 1).give(Items.STONE_SWORD, 1).give(Items.FURNACE, 1);
+        f.foodUnits = 70;
+        Schedule s = SmeltFiller.schedule(f, cfg, BEDS);
+        // ladders are sticks, no ingots, so they are not stuck behind the furnace like the pickaxe is
+        assertEquals(new KitNeed("ladder", 3), s.runnable().get(0));
+        assertNull(find(s.blocked(), "ladder"));
     }
 
     @Test
