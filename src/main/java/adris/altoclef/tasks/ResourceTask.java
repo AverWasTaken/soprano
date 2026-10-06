@@ -22,7 +22,6 @@ import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.slots.PlayerSlot;
 import adris.altoclef.util.slots.Slot;
 import adris.altoclef.ui.HudText;
-import org.apache.commons.lang3.ArrayUtils;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -51,6 +50,11 @@ public abstract class ResourceTask extends Task implements ITaskCanForce {
     private boolean _forceDimension = false;
     private Dimension _targetDimension;
     private BlockPos _mineLastClosest = null;
+    // every item any target matches, built once. onTick used to rebuild this (twice, in two different ways) per tick
+    // (lazy, a subclass is allowed to fill its targets in after super())
+    private Item[] _allMatches;
+    private static final int CONTAINER_LOOKUP_TICKS = 20;
+    private int _containerLookupCooldown = 0;
 
     public ResourceTask(ItemTarget[] itemTargets) {
         _itemTargets = itemTargets;
@@ -81,6 +85,7 @@ public abstract class ResourceTask extends Task implements ITaskCanForce {
     @Override
     protected void onStart(AltoClef mod) {
         mod.getBehaviour().push();
+        _containerLookupCooldown = 0;
         //removeThrowawayItems(_itemTargets);
         if (_mineIfPresent != null) {
             mod.getBlockTracker().trackBlock(_mineIfPresent);
@@ -90,7 +95,10 @@ public abstract class ResourceTask extends Task implements ITaskCanForce {
 
     @Override
     protected Task onTick(AltoClef mod) {
-        mod.getBehaviour().addProtectedItems(ItemTarget.getMatches(_itemTargets));
+        if (_allMatches == null) {
+            _allMatches = ItemTarget.getMatches(_itemTargets);
+        }
+        mod.getBehaviour().addProtectedItems(_allMatches);
         // If we have an item in an INACCESSIBLE inventory slot
         if (!ITaskUsesCraftingGrid.isUsingGrid(this) || _ensureFreeCraftingGridTask.isActive()) {
             for (ItemTarget target : _itemTargets) {
@@ -150,8 +158,10 @@ public abstract class ResourceTask extends Task implements ITaskCanForce {
         }
 
         // Check for chests and grab resources from them.
-        if (_currentContainer == null) {
-            List<ContainerCache> containersWithItem = mod.getItemStorage().getContainersWithItem(Arrays.stream(_itemTargets).reduce(new Item[0], (items, target) -> ArrayUtils.addAll(items, target.getMatches()), ArrayUtils::addAll));
+        // no containers known is the common case, and the lookup walks every cached one, so ask once a second at most
+        if (_currentContainer == null && --_containerLookupCooldown <= 0 && mod.getItemStorage().hasAnyContainers()) {
+            _containerLookupCooldown = CONTAINER_LOOKUP_TICKS;
+            List<ContainerCache> containersWithItem = mod.getItemStorage().getContainersWithItem(_allMatches);
             if (!containersWithItem.isEmpty()) {
                 ContainerCache closest = containersWithItem.stream().min(StlHelper.compareValues(container -> container.getBlockPos().distToCenterSqr(mod.getPlayer().position()))).get();
                 if (closest.getBlockPos().closerToCenterThan(mod.getPlayer().position(), Baritone.settings().altoResourceChestLocateRange.value)) {

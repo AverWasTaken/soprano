@@ -278,6 +278,10 @@ public class ItemStorageTracker extends Tracker {
         return getContainerClosestTo(pos, cache -> true);
     }
 
+    public boolean hasAnyContainers() {
+        return _containers.hasAnyContainers();
+    }
+
     public List<ContainerCache> getContainersWithItem(Item... items) {
         return _containers.getContainersWithItem(items);
     }

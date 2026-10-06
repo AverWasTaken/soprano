@@ -234,6 +234,16 @@ public class ContainerSubTracker extends Tracker {
         return getClosestTo(pos, cache -> typeSet.contains(cache.getContainerType()));
     }
 
+    // is there anything cached at all. stale entries count, they only get swept by a real lookup
+    public boolean hasAnyContainers() {
+        for (HashMap<BlockPos, ContainerCache> map : _containerCaches.values()) {
+            if (!map.isEmpty()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public List<ContainerCache> getContainersWithItem(Item... items) {
         return getCachedContainers(cache -> cache.hasItem(items));
     }
