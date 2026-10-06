@@ -92,6 +92,8 @@ public class RunStateStoreTest {
         s.placedJobBlocks.add(new RunState.Pos(5, 64, 5));
         s.villageBedsTried.add(new RunState.Pos(8, 65, -2));
         s.villageBedTicks = 700;
+        s.furnaceJobs.add(new RunState.FurnaceJob(new RunState.Pos(8, 63, -2), "OVERWORLD", "blast_furnace", "raw_iron", 12,
+                "iron_ingot", 5000, 6200));
         s.dragonDead = true;
         return s;
     }
@@ -131,6 +133,13 @@ public class RunStateStoreTest {
         assertEquals(List.of(new RunState.Pos(5, 64, 5)), out.placedJobBlocks);
         assertEquals(List.of(new RunState.Pos(8, 65, -2)), out.villageBedsTried);
         assertEquals(700L, out.villageBedTicks);
+        assertEquals(1, out.furnaceJobs.size());
+        RunState.FurnaceJob job = out.furnaceJobs.get(0);
+        assertEquals(new RunState.Pos(8, 63, -2), job.pos);
+        assertEquals("blast_furnace", job.kind);
+        assertEquals(12, job.count);
+        assertEquals("iron_ingot", job.output);
+        assertEquals(6200L, job.doneTick);
         assertEquals("NETHER", out.deaths.get(0).dimension);
         assertEquals(987654321L, out.runTicks);
         assertEquals(Integer.valueOf(2), out.regressCounts.get("LOCATE>NETHER"));

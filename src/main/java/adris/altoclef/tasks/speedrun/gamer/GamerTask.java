@@ -312,6 +312,7 @@ public class GamerTask extends Task {
     private void beginRun(AltoClef mod) {
         cfg = GamerConfigs.get();
         loadState(mod);
+        facts.useState(state);
         deathsAtStart = state.deaths.size();
         lastSaveSeconds = machine.now();
         begun = true;

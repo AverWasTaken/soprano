@@ -145,6 +145,11 @@ public final class RunStateStore {
         if (s.villageBedsTried == null) {
             s.villageBedsTried = new ArrayList<>();
         }
+        // a file from before smelting ran in the background: nothing cooking
+        if (s.furnaceJobs == null) {
+            s.furnaceJobs = new ArrayList<>();
+        }
+        s.furnaceJobs.removeIf(job -> job == null || job.pos == null);
         return s;
     }
 

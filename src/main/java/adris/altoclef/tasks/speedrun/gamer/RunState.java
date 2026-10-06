@@ -98,6 +98,36 @@ public class RunState {
         }
     }
 
+    // one furnace cooking something for us. plain strings (registry paths) so gson and the tests need no minecraft
+    public static class FurnaceJob {
+        public Pos pos;
+        // "OVERWORLD", "NETHER"... a furnace is only ever collected from in the dimension it stands in
+        public String dimension = "OVERWORLD";
+        // block registry path: furnace, blast_furnace, smoker
+        public String kind = "furnace";
+        public String input = "";
+        // what was in the input slot when we left, so also what we expect to come back as output
+        public int count;
+        public String output = "";
+        public long startTick;
+        // a hint, never a promise: the furnace contents on return are what counts
+        public long doneTick;
+
+        public FurnaceJob() {
+        }
+
+        public FurnaceJob(Pos pos, String dimension, String kind, String input, int count, String output, long startTick, long doneTick) {
+            this.pos = pos;
+            this.dimension = dimension;
+            this.kind = kind;
+            this.input = input;
+            this.count = count;
+            this.output = output;
+            this.startTick = startTick;
+            this.doneTick = doneTick;
+        }
+    }
+
     public static class Death {
         public String dimension;
         public int x;
@@ -171,6 +201,10 @@ public class RunState {
     // ticks for the budget, so a relog does not hand out a fresh one
     public List<Pos> villageBedsTried = new ArrayList<>();
     public long villageBedTicks;
+
+    // furnaces we loaded and walked away from, see FurnaceJobs. the furnace's own contents are the truth when we get back,
+    // this is the memory that says there is something to go back for (and survives a relog)
+    public List<FurnaceJob> furnaceJobs = new ArrayList<>();
 
     public int attemptsOf(GamerPhase p) {
         return phaseAttempts.getOrDefault(p.name(), 0);

@@ -19,6 +19,9 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 
+import java.util.ArrayList;
+import java.util.List;
+
 // GamerFacts for the real game. refresh() is called once per tick by the engine and walks the inventory once, everything
 // else is a field read, so the handlers' isDone checks stay cheap no matter how many times they are asked
 public final class MinecraftFacts implements GamerFacts {
@@ -27,6 +30,7 @@ public final class MinecraftFacts implements GamerFacts {
     private final Object2IntOpenHashMap<Item> counts = new Object2IntOpenHashMap<>(64);
     private final ItemStack[] worn = new ItemStack[5];
 
+    private RunState state;
     private Dimension dimension = Dimension.OVERWORLD;
     private int armorPoints;
     private int foodUnits;
@@ -123,6 +127,26 @@ public final class MinecraftFacts implements GamerFacts {
         junkFoodUnits = junk;
         buildBlocks = build;
         fingerprint = fp;
+    }
+
+    // the run state the jobs live in, set once it is loaded (the facts exist before the state does)
+    public void useState(RunState state) {
+        this.state = state;
+    }
+
+    // RunState keeps every dimension's jobs, the planner only cares about the ones we can walk to
+    @Override
+    public List<RunState.FurnaceJob> furnaceJobs() {
+        if (state == null || state.furnaceJobs.isEmpty()) {
+            return List.of();
+        }
+        List<RunState.FurnaceJob> here = new ArrayList<>();
+        for (RunState.FurnaceJob job : state.furnaceJobs) {
+            if (job.dimension.equals(dimension.name())) {
+                here.add(job);
+            }
+        }
+        return here;
     }
 
     @Override

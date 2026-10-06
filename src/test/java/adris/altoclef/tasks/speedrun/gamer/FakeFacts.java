@@ -21,6 +21,20 @@ public class FakeFacts implements GamerFacts {
     public long gameTime;
     public boolean credits;
     public int fingerprint;
+    // the jobs of this dimension, set by hand
+    public final java.util.List<RunState.FurnaceJob> jobs = new java.util.ArrayList<>();
+
+    // an iron smelt that finishes `seconds` from now with `count` ingots in it
+    public FakeFacts cooking(String output, int count, double seconds) {
+        jobs.add(new RunState.FurnaceJob(new RunState.Pos(0, 64, 0), dimension.name(), "furnace", "raw_iron", count, output,
+                gameTime, gameTime + Math.round(seconds * 20)));
+        return this;
+    }
+
+    @Override
+    public java.util.List<RunState.FurnaceJob> furnaceJobs() {
+        return jobs;
+    }
 
     // one game second
     public FakeFacts seconds(double s) {

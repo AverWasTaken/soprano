@@ -1,7 +1,10 @@
 package adris.altoclef.tasks.speedrun.gamer;
 
 import baritone.api.utils.Dimension;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.item.Item;
+
+import java.util.List;
 
 // read only snapshot of what the player has right now. the pure parts of the gamer (isDone, regressTo, kit planning)
 // only ever see this, so tests can fake it with a map and never touch a game
@@ -47,6 +50,18 @@ public interface GamerFacts {
     int z();
 
     long gameTime();
+
+    // furnaces cooking something for us in THIS dimension (RunState.furnaceJobs, filtered). a job in the nether is not
+    // something we can walk to from the overworld
+    default List<RunState.FurnaceJob> furnaceJobs() {
+        return List.of();
+    }
+
+    // how many of this item the jobs above will have produced once they are done. counts as held for the planner,
+    // the item is not in the inventory yet
+    default int pendingOutput(Item item) {
+        return FurnaceJobs.pending(furnaceJobs(), BuiltInRegistries.ITEM.getKey(item).getPath());
+    }
 
     // true once the win screen has been shown (or the run saw the dragon die and came home)
     boolean creditsShown();
