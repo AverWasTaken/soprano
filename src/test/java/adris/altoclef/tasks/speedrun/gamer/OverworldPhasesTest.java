@@ -171,7 +171,7 @@ public class OverworldPhasesTest {
         assertEquals(120.0, o.villageBedSeconds, 0);
         assertEquals(20.0, o.villageBedEachSeconds, 0);
         assertEquals(32, o.portalBuildBlocks);
-        assertEquals(10, o.tableRecoverRadius);
+        assertEquals(24, o.tableRecoverRadius);
         assertEquals(3.0, o.tableUseCooldownSeconds, 0);
         assertEquals(120.0, o.tableRecoverCooldownSeconds, 0);
         assertEquals(32, o.golemHuntRadius);

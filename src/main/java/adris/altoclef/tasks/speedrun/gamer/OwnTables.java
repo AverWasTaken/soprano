@@ -41,18 +41,39 @@ public final class OwnTables {
 
     // may a station pickup START right now. the pickup preempts the kit task, and it used to run on a 30 second "not used
     // lately" cooldown, which is how the bot walked off to mine and left the table behind (out of range when it expired).
-    // the need boundary rules below are the real decision now, so this is down to two small guards: a station that is open or was
-    // placed a moment ago gets a few seconds (the debounce, menu closing and the next craft's first tick), and after one
-    // successful pickup of a kind we leave that kind alone for a good while, so a place/pickup loop we did not think of
-    // costs one pickup per cooldown instead of every tick. stamps are game ticks, NEVER = none yet
-    public static boolean mayStartRecovery(long now, long lastUse, long lastRecovered, boolean menuOpen, double useCooldownSeconds, double recoverCooldownSeconds) {
+    // the need boundary rules below are the real decision now. at a boundary the last use is not a reason to wait (the
+    // craft is over, that is what a boundary is), only a placement within PLACE_GUARD_SECONDS is. the use debounce used to
+    // run off the last time the menu was open and the bot sprinted after a pig for the whole of it, 130 blocks of
+    // table left behind. away from a boundary the debounce still applies. after one successful pickup of a kind we leave
+    // that kind alone for a good while, so a place/pickup loop we did not think of costs one pickup per cooldown instead
+    // of every tick. stamps are game ticks, NEVER = none yet
+    public static Start startRecovery(long now, long lastUse, long lastPlace, long lastRecovered, boolean menuOpen, boolean atBoundary,
+                                      double useCooldownSeconds, double placeGuardSeconds, double recoverCooldownSeconds) {
+        // an open menu is NO and not HOLD: standing still in front of it would never close it. the recover cooldown is
+        // two minutes, holding for that is a hang. only the short guards below may hold us
         if (menuOpen) {
-            return false;
+            return Start.NO;
         }
-        if (lastUse != NEVER && now - lastUse < useCooldownSeconds * 20) {
-            return false;
+        if (lastRecovered != NEVER && now - lastRecovered < recoverCooldownSeconds * 20) {
+            return Start.NO;
         }
-        return lastRecovered == NEVER || now - lastRecovered >= recoverCooldownSeconds * 20;
+        if (lastPlace != NEVER && now - lastPlace < placeGuardSeconds * 20) {
+            return Start.HOLD;
+        }
+        if (!atBoundary && lastUse != NEVER && now - lastUse < useCooldownSeconds * 20) {
+            return Start.HOLD;
+        }
+        return Start.GO;
+    }
+
+    // a placement gets this long before a pickup may start (the next craft's first tick, the hook that records it)
+    public static final double PLACE_GUARD_SECONDS = 1.0;
+
+    // what a station pickup may do this tick. GO = start it, HOLD = it is owed but a short guard is still running, so
+    // stand still instead of letting the next need walk us out of range, NO = nothing to do (or a reason that must never
+    // hold us)
+    public enum Start {
+        GO, HOLD, NO
     }
 
     // the run moved on from the need that used the station (or has no needs left, or we do not know which one used it).

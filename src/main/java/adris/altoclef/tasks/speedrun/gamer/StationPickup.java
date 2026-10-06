@@ -1,7 +1,9 @@
 package adris.altoclef.tasks.speedrun.gamer;
 
 import adris.altoclef.AltoClef;
+import adris.altoclef.Debug;
 import adris.altoclef.tasks.construction.DestroyBlockTask;
+import adris.altoclef.tasks.movement.IdleTask;
 import adris.altoclef.tasks.movement.PickupDroppedItemTask;
 import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig;
 import adris.altoclef.tasksystem.Task;
@@ -74,6 +76,10 @@ final class StationPickup {
         private BlockPos target;
         private long startTick;
         private boolean owed;
+        private boolean wasOpen;
+        private final Set<String> deferredLogged = new HashSet<>();
+        // idles and never finishes, the guard that asked for it is what ends it
+        private final Task hold = new IdleTask();
 
         Slot(boolean isTable) {
             this.isTable = isTable;
@@ -85,6 +91,8 @@ final class StationPickup {
             pickup = null;
             broken = false;
             owed = false;
+            wasOpen = false;
+            deferredLogged.clear();
         }
 
         private RunState.StationUse use(GamerContext ctx) {
@@ -136,20 +144,24 @@ final class StationPickup {
                     return pickup;
                 }
             }
-            // open right now is in use, stamp it (and the need that is using it) so the debounce runs from the last time
+            // open right now is in use, stamp it. the need that is using it only on the tick it opened: when the planner
+            // moves on while the menu is still closing, stamping the new need would make it look like the same job
             boolean open = menuOpen(mod);
             if (open) {
                 use.lastUseTick = now;
-                use.useNeed = need;
+                if (!wasOpen) {
+                    use.useNeed = need;
+                }
             }
+            wasOpen = open;
             owed = false;
             if (!tracking || ctx.facts().has(item)) {
                 return null;
             }
             OverworldConfig cfg = ctx.cfg().overworld;
-            // the backstop alone decides if one is owed. the debounce only delays the start, a phase that ends inside it
+            // the backstop alone decides if one is owed. the guards below only delay the start, a phase that ends inside them
             // would otherwise leave the station behind (the craft that just closed its menu is the last thing it does)
-            if (!OwnTables.mayStartRecovery(now, OwnTables.NEVER, use.lastRecoveredTick, false, 0, cfg.tableRecoverCooldownSeconds)) {
+            if (OwnTables.startRecovery(now, OwnTables.NEVER, OwnTables.NEVER, use.lastRecoveredTick, false, true, 0, 0, cfg.tableRecoverCooldownSeconds) == OwnTables.Start.NO) {
                 return null;
             }
             List<RunState.Pos> own = placed(ctx);
@@ -164,19 +176,49 @@ final class StationPickup {
                 return !tried.contains(at) && WorldHelper.canBreak(mod, at) && !busy(mod, at) && !jobOwns(ctx, pos);
             }, player.x, player.y, player.z, ctx.cfg().overworld.tableRecoverRadius);
             if (found == null) {
+                if (!own.isEmpty()) {
+                    // this is the gate that lost a table last time, out of range by the time anything looked
+                    deferred("none of ours in range (or tried, busy, owned by a smelting job)");
+                }
                 return null;
             }
             // from here on a phase that runs out of needs has to wait for us (see StationPickup.owed)
             owed = true;
-            if (!wants(ctx, need, use)
-                    || !OwnTables.mayStartRecovery(now, use.lastUseTick, use.lastRecoveredTick, open, cfg.tableUseCooldownSeconds, cfg.tableRecoverCooldownSeconds)) {
+            if (!wants(ctx, need, use)) {
+                deferred("the next need (" + need + ") still wants it");
+                return null;
+            }
+            OwnTables.Start go = OwnTables.startRecovery(now, use.lastUseTick, use.lastPlaceTick, use.lastRecoveredTick, open,
+                    OwnTables.atNeedBoundary(use.useNeed, need), cfg.tableUseCooldownSeconds, OwnTables.PLACE_GUARD_SECONDS, cfg.tableRecoverCooldownSeconds);
+            if (go == OwnTables.Start.HOLD) {
+                // a null here hands the tick to the next need, which walks off (a pig for three seconds was enough to
+                // lose a table). the guard is a second at most so standing still is cheap, and it cannot hang: the stamps
+                // are game time and nothing refreshes them while we idle
+                deferred("placed a moment ago, holding still");
+                return hold;
+            }
+            if (go == OwnTables.Start.NO) {
+                deferred(open ? "menu is open" : "recovered one lately");
                 return null;
             }
             target = new BlockPos(found.x, found.y, found.z);
             startTick = now;
             broken = false;
             pickup = new DestroyBlockTask(target);
+            deferredLogged.clear();
+            Debug.logInternal("station pickup started at " + found.x + " " + found.y + " " + found.z + " (" + name() + ")");
             return pickup;
+        }
+
+        private String name() {
+            return isTable ? "table" : "furnace";
+        }
+
+        // once per reason per station, a line per tick would bury the one that matters
+        private void deferred(String reason) {
+            if (deferredLogged.add(reason)) {
+                Debug.logInternal("station pickup deferred: " + name() + ", " + reason);
+            }
         }
 
         private boolean wants(GamerContext ctx, String need, RunState.StationUse use) {

@@ -69,8 +69,9 @@ public class OverworldConfig {
     // throwaway blocks to carry through the portal (pillaring, bridging, plugging lava)
     public int portalBuildBlocks = 32;
     // pick up a crafting table or furnace of ours (we hold none) when the run moves on to another need, but only when it
-    // is this close
-    public int tableRecoverRadius = 10;
+    // is this close. only spots we recorded are candidates and tablePickupSeconds bounds the trip, so it can be generous,
+    // the 10 it was lost a table to a few seconds of sprinting after a pig
+    public int tableRecoverRadius = 24;
     // ...and gets this long to do it before that station is written off
     public double tablePickupSeconds = 30;
     // a station that was open or placed this recently is in use, leave it be. just a debounce now (the need boundary does

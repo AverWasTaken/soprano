@@ -347,9 +347,12 @@ public class GamerTask extends Task {
                 // next need (and a few seconds, for the debounce)
                 boolean furnace = evt.blockState.is(Blocks.FURNACE);
                 RunState.StationUse use = furnace ? state.furnaceUse : state.tableUse;
-                use.lastUseTick = facts.gameTime();
+                use.lastPlaceTick = facts.gameTime();
                 use.useNeed = state.currentNeed;
-                OwnTables.record(furnace ? state.placedFurnaces : state.placedTables, pos);
+                if (OwnTables.record(furnace ? state.placedFurnaces : state.placedTables, pos)) {
+                    // we had no way to tell which gate kept a pickup from happening, so the start of the story goes in the log
+                    Debug.logInternal((furnace ? "furnace" : "table") + " recorded at " + pos.x + " " + pos.y + " " + pos.z);
+                }
             }
         });
     }

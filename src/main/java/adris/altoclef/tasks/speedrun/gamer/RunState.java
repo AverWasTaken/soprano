@@ -178,6 +178,8 @@ public class RunState {
     // on purpose: they only gate a debounce and a backstop, a relog starting them over is fine. see OwnTables
     public static final class StationUse {
         public long lastUseTick = OwnTables.NEVER;
+        // split from the use stamp: a boundary ignores the last use, but a block that went down a moment ago still waits
+        public long lastPlaceTick = OwnTables.NEVER;
         public long lastRecoveredTick = OwnTables.NEVER;
         // catalogue name of the need, null = we do not know (relog, or placed outside a prep phase)
         public String useNeed;

@@ -51,29 +51,70 @@ public class OwnTablesTest {
         assertFalse(OwnTables.placedByUs(0.5, 65.6, 0.5, pos(0, 64, -30)));
     }
 
+    // use debounce 3 s, place guard 1 s, recover cooldown 120 s, the config defaults
+    private static OwnTables.Start start(long now, long lastUse, long lastPlace, long lastRecovered, boolean menuOpen, boolean boundary) {
+        return OwnTables.startRecovery(now, lastUse, lastPlace, lastRecovered, menuOpen, boundary, 3, OwnTables.PLACE_GUARD_SECONDS, 120);
+    }
+
     // the loop from the log: place table, pickup breaks it, craft needs it, place again, ~every 6 seconds
     @Test
     public void aTableThatWasJustPlacedOrOpenedIsNotTakenBack() {
         long never = OwnTables.NEVER;
-        assertTrue(OwnTables.mayStartRecovery(1000, never, never, false, 30, 120));
-        // placed 5 seconds ago: the craft is about to happen
-        assertFalse(OwnTables.mayStartRecovery(1000, 900, never, false, 30, 120));
-        // 30 seconds after the last use it is spare again
-        assertFalse(OwnTables.mayStartRecovery(1000, 401, never, false, 30, 120));
-        assertTrue(OwnTables.mayStartRecovery(1000, 400, never, false, 30, 120));
+        assertEquals(OwnTables.Start.GO, start(1000, never, never, never, false, true));
+        // placed half a second ago: the craft is about to happen, even at a boundary
+        assertEquals(OwnTables.Start.HOLD, start(1000, never, 990, never, false, true));
+        assertEquals(OwnTables.Start.GO, start(1000, never, 980, never, false, true));
+        // away from a boundary the old use debounce still holds
+        assertEquals(OwnTables.Start.HOLD, start(1000, 960, never, never, false, false));
+        assertEquals(OwnTables.Start.GO, start(1000, 940, never, never, false, false));
         // open right now, however long ago anything else happened
-        assertFalse(OwnTables.mayStartRecovery(1000, never, never, true, 30, 120));
-        assertFalse(OwnTables.mayStartRecovery(100000, 0, never, true, 30, 120));
+        assertEquals(OwnTables.Start.NO, start(1000, never, never, never, true, true));
+        assertEquals(OwnTables.Start.NO, start(100000, 0, 0, never, true, true));
+    }
+
+    // the log: furnace craft closed its menu at 13:37:15, the food need took over and a 3 s debounce ran out under a pig
+    @Test
+    public void aBoundaryDoesNotWaitOnTheLastUse() {
+        long never = OwnTables.NEVER;
+        // the menu closed this very tick, boundary says go
+        assertEquals(OwnTables.Start.GO, start(1000, 999, never, never, false, true));
+        assertEquals(OwnTables.Start.GO, start(1000, 1000, never, never, false, true));
+        // same stamp mid job (no boundary) is still a debounce
+        assertEquals(OwnTables.Start.HOLD, start(1000, 999, never, never, false, false));
+        // the boundary rule itself: food after a craft is one, the same craft again is not
+        assertTrue(OwnTables.atNeedBoundary("furnace", KitNeed.FOOD));
+        assertFalse(OwnTables.atNeedBoundary("furnace", "furnace"));
+    }
+
+    // a placement within a second still waits, and the wait is the hold task, not a null that lets the next need walk
+    @Test
+    public void aPlacementWithinASecondHoldsStillAndThenGoes() {
+        long never = OwnTables.NEVER;
+        long placed = 500;
+        assertEquals(OwnTables.Start.HOLD, start(placed, never, placed, never, false, true));
+        assertEquals(OwnTables.Start.HOLD, start(placed + 19, never, placed, never, false, true));
+        // 20 ticks = 1 s, after that it cannot hold any more, so the hold always ends
+        assertEquals(OwnTables.Start.GO, start(placed + 20, never, placed, never, false, true));
+    }
+
+    // only the short guards may hold. a menu that never closes or a two minute cooldown would be a hang
+    @Test
+    public void onlyShortGuardsHold() {
+        long never = OwnTables.NEVER;
+        assertEquals(OwnTables.Start.NO, start(5000, never, never, 4990, false, true));
+        assertEquals(OwnTables.Start.NO, start(5000, never, 4990, 4990, false, true));
+        assertEquals(OwnTables.Start.NO, start(5000, never, 4999, never, true, true));
     }
 
     @Test
     public void oneSuccessfulPickupBuysTwoMinutesOfPeace() {
-        // use cooldown long over, but we took one back 60 seconds ago
-        assertFalse(OwnTables.mayStartRecovery(5000, 0, 3800, false, 30, 120));
-        assertFalse(OwnTables.mayStartRecovery(5000, 0, 2601, false, 30, 120));
-        assertTrue(OwnTables.mayStartRecovery(5000, 0, 2600, false, 30, 120));
+        long never = OwnTables.NEVER;
+        // use guards long over, but we took one back 60 seconds ago
+        assertEquals(OwnTables.Start.NO, start(5000, 0, 0, 3800, false, true));
+        assertEquals(OwnTables.Start.NO, start(5000, 0, 0, 2601, false, true));
+        assertEquals(OwnTables.Start.GO, start(5000, 0, 0, 2600, false, true));
         // a use at tick 0 is a real use, not "never"
-        assertFalse(OwnTables.mayStartRecovery(100, 0, OwnTables.NEVER, false, 30, 120));
+        assertEquals(OwnTables.Start.HOLD, start(10, 0, never, never, false, false));
     }
 
     @Test
@@ -142,11 +183,11 @@ public class OwnTablesTest {
     @Test
     public void aFewSecondsOfDebounceAfterUse() {
         long never = OwnTables.NEVER;
-        assertFalse(OwnTables.mayStartRecovery(1000, 960, never, false, 3, 120));
-        assertTrue(OwnTables.mayStartRecovery(1000, 940, never, false, 3, 120));
+        assertEquals(OwnTables.Start.HOLD, start(1000, 960, never, never, false, false));
+        assertEquals(OwnTables.Start.GO, start(1000, 940, never, never, false, false));
         // but the loop backstop is untouched
-        assertFalse(OwnTables.mayStartRecovery(5000, 0, 2601, false, 3, 120));
-        assertTrue(OwnTables.mayStartRecovery(5000, 0, 2600, false, 3, 120));
+        assertEquals(OwnTables.Start.NO, start(5000, 0, never, 2601, false, false));
+        assertEquals(OwnTables.Start.GO, start(5000, 0, never, 2600, false, false));
     }
 
     @Test
