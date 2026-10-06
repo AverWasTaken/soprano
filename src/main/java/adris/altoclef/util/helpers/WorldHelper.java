@@ -190,9 +190,12 @@ public interface WorldHelper {
     }
 
     static int getGroundHeight(AltoClef mod, int x, int z) {
-        for (int y = WORLD_CEILING_Y; y >= WORLD_FLOOR_Y; --y) {
-            BlockPos check = new BlockPos(x, y, z);
-            if (isSolid(mod, check)) return y;
+        // one mutable pos instead of a fresh BlockPos per y. and no scanning void below the end/nether floor
+        BlockPos.MutableBlockPos check = new BlockPos.MutableBlockPos();
+        int top = Math.min(WORLD_CEILING_Y, mod.getWorld().getMaxY());
+        int bottom = Math.max(WORLD_FLOOR_Y, mod.getWorld().getMinY());
+        for (int y = top; y >= bottom; --y) {
+            if (isSolid(mod, check.set(x, y, z))) return y;
         }
         return -1;
     }
@@ -214,11 +217,15 @@ public interface WorldHelper {
     }
 
     static int getGroundHeight(AltoClef mod, int x, int z, Block... groundBlocks) {
-        Set<Block> possibleBlocks = new HashSet<>(Arrays.asList(groundBlocks));
-        for (int y = WORLD_CEILING_Y; y >= WORLD_FLOOR_Y; --y) {
-            BlockPos check = new BlockPos(x, y, z);
-            if (possibleBlocks.contains(mod.getWorld().getBlockState(check).getBlock())) return y;
-
+        // callers pass one or two blocks, so a linear look beats building a HashSet on every call
+        BlockPos.MutableBlockPos check = new BlockPos.MutableBlockPos();
+        int top = Math.min(WORLD_CEILING_Y, mod.getWorld().getMaxY());
+        int bottom = Math.max(WORLD_FLOOR_Y, mod.getWorld().getMinY());
+        for (int y = top; y >= bottom; --y) {
+            Block found = mod.getWorld().getBlockState(check.set(x, y, z)).getBlock();
+            for (Block ground : groundBlocks) {
+                if (ground == found) return y;
+            }
         }
         return -1;
     }
