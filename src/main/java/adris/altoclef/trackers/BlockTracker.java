@@ -8,7 +8,6 @@ import adris.altoclef.trackers.blacklisting.WorldLocateBlacklist;
 import baritone.api.utils.Dimension;
 import adris.altoclef.util.helpers.BaritoneHelper;
 import adris.altoclef.util.helpers.ConfigHelper;
-import adris.altoclef.util.helpers.StlHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.time.TimerGame;
 import baritone.Baritone;
@@ -18,7 +17,6 @@ import baritone.process.MineProcess;
 import java.util.*;
 import java.util.concurrent.Semaphore;
 import java.util.function.Predicate;
-import java.util.stream.Collectors;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
@@ -64,7 +62,8 @@ public class BlockTracker extends Tracker {
     private final Semaphore _endOfFrameMutex = new Semaphore(1);
     //private Block _currentlyTracking = null;
     private final AltoClef _mod;
-    private boolean _scanning = false;
+    // the scan thread flips it and the main thread reads it
+    private volatile boolean _scanning = false;
 
     public BlockTracker(AltoClef mod, TrackerManager manager) {
         super(manager);
@@ -261,16 +260,15 @@ public class BlockTracker extends Tracker {
                 maxZ = (int) Math.floor(pos.z + range);
         double closestDistance = Float.POSITIVE_INFINITY;
         BlockPos nearest = null;
+        ClientLevel level = Minecraft.getInstance().level;
+        assert level != null;
+        // one pos for the whole cube. this used to be a new BlockPos and a mutex per cell, and a radius of 10 is 9261 cells
+        BlockPos.MutableBlockPos check = new BlockPos.MutableBlockPos();
         for (int x = minX; x <= maxX; ++x) {
             for (int y = minY; y <= maxY; ++y) {
                 for (int z = minZ; z <= maxZ; ++z) {
-                    BlockPos check = new BlockPos(x, y, z);
-                    synchronized (_scanMutex) {
-                        if (currentCache().blockUnreachable(check)) continue;
-                    }
-
-                    assert Minecraft.getInstance().level != null;
-                    Block b = Minecraft.getInstance().level.getBlockState(check).getBlock();
+                    check.set(x, y, z);
+                    Block b = level.getBlockState(check).getBlock();
                     boolean valid = false;
                     for (Block type : blocks) {
                         if (type == b) {
@@ -279,11 +277,15 @@ public class BlockTracker extends Tracker {
                         }
                     }
                     if (!valid) continue;
+                    // nearly every cell is air, so the lock only gets taken for the handful that are actually the thing
+                    synchronized (_scanMutex) {
+                        if (currentCache().blockUnreachable(check)) continue;
+                    }
                     if (check.closerToCenterThan(pos, range)) {
                         double sq = check.distToCenterSqr(pos);
                         if (sq < closestDistance) {
                             closestDistance = sq;
-                            nearest = check;
+                            nearest = check.immutable();
                         }
                     }
                 }
@@ -300,23 +302,29 @@ public class BlockTracker extends Tracker {
         // Perform a baritone scan
         _timer.reset();
         _timer.setInterval(_config.scanInterval);
-        CalculationContext ctx = new CalculationContext(_mod.getClientBaritone(), _config.scanAsynchronously);
         if (_config.scanAsynchronously) {
             if (_scanning && _asyncForceResetScanFlag.elapsed()) {
                 Debug.logMessage("SCANNING TOOK TOO LONG! Will assume it ended mid way. Hopefully this won't break anything...");
                 _scanning = false;
             }
             if (!_scanning) {
+                // the thread safe context copies the whole client chunk cache, so only make one if a scan is really going
+                // to use it. it used to be built first and thrown away whenever the last scan was still running
+                CalculationContext ctx = new CalculationContext(_mod.getClientBaritone(), true);
+                // claimed here and not in the task so a second update before the thread wakes up can't start a second scan
+                _scanning = true;
+                _asyncForceResetScanFlag.reset();
                 Baritone.getExecutor().execute(() -> {
-                    _scanning = true;
-                    _asyncForceResetScanFlag.reset();
-                    rescanWorld(ctx, true);
-                    _scanning = false;
+                    try {
+                        rescanWorld(ctx, true);
+                    } finally {
+                        _scanning = false;
+                    }
                 });
             }
         } else {
             // Synchronous scanning.
-            rescanWorld(ctx, false);
+            rescanWorld(new CalculationContext(_mod.getClientBaritone(), false), false);
         }
     }
 
@@ -655,16 +663,30 @@ public class BlockTracker extends Tracker {
                     // Clear blacklisted blocks
                     try {
                         // Untrack the blocks further away
-                        tracking = tracking.stream()
-                                .filter(pos -> !_blacklist.unreachable(pos))
-                                // This is invalid, because some blocks we may want to GO TO not BREAK.
-                                //.filter(pos -> !mod.getExtraBaritoneSettings().shouldAvoidBreaking(pos))
-                                .distinct()
-                                .sorted(StlHelper.compareValues((BlockPos blockpos) -> blockpos.distToCenterSqr(playerPos)))
-                                .collect(Collectors.toList());
-                        tracking = tracking.stream()
-                                .limit(_config.maxCacheSizePerBlockType)
-                                .collect(Collectors.toList());
+                        // the old version was three streams and a comparator that worked out two distances per compare, all
+                        // while holding the mutex the main thread's block queries wait on. now it's distances once, into an array
+                        // (blacklisted ones and dupes still go; This is invalid, because some blocks we may want to GO TO not BREAK,
+                        // so no shouldAvoidBreaking filter here either)
+                        int size = tracking.size();
+                        BlockPos[] kept = new BlockPos[size];
+                        double[] dist = new double[size];
+                        Set<BlockPos> seen = new HashSet<>(size * 2);
+                        int count = 0;
+                        for (BlockPos pos : tracking) {
+                            if (_blacklist.unreachable(pos) || !seen.add(pos)) continue;
+                            kept[count] = pos;
+                            dist[count] = pos.distToCenterSqr(playerPos.x, playerPos.y, playerPos.z);
+                            count++;
+                        }
+                        // boxed indices are cached below 128 so this doesn't even allocate for a normal list. object sorts are
+                        // stable, which is what the old sorted() gave us for equal distances
+                        Integer[] order = new Integer[count];
+                        for (int i = 0; i < count; i++) order[i] = i;
+                        Arrays.sort(order, (l, r) -> Double.compare(dist[l], dist[r]));
+                        int keep = Math.min(count, _config.maxCacheSizePerBlockType);
+                        List<BlockPos> trimmed = new ArrayList<>(keep);
+                        for (int i = 0; i < keep; i++) trimmed.add(kept[order[i]]);
+                        tracking = trimmed;
                         // This won't update otherwise.
                         _cachedBlocks.put(block, tracking);
                     } catch (IllegalArgumentException e) {
