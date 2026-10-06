@@ -323,6 +323,8 @@ public class GamerTask extends Task {
             }
             RunState.Pos pos = new RunState.Pos(evt.blockPos.getX(), evt.blockPos.getY(), evt.blockPos.getZ());
             if (OwnTables.placedByUs(player.getX(), player.getEyeY(), player.getZ(), pos)) {
+                // a table that just went down is about to be used, the pickup keeps its hands off it for a bit
+                state.lastTableUseTick = facts.gameTime();
                 OwnTables.record(state.placedTables, pos);
             }
         });

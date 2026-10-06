@@ -51,6 +51,31 @@ public class OwnTablesTest {
         assertFalse(OwnTables.placedByUs(0.5, 65.6, 0.5, pos(0, 64, -30)));
     }
 
+    // the loop from the log: place table, pickup breaks it, craft needs it, place again, ~every 6 seconds
+    @Test
+    public void aTableThatWasJustPlacedOrOpenedIsNotTakenBack() {
+        long never = OwnTables.NEVER;
+        assertTrue(OwnTables.mayStartRecovery(1000, never, never, false, 30, 120));
+        // placed 5 seconds ago: the craft is about to happen
+        assertFalse(OwnTables.mayStartRecovery(1000, 900, never, false, 30, 120));
+        // 30 seconds after the last use it is spare again
+        assertFalse(OwnTables.mayStartRecovery(1000, 401, never, false, 30, 120));
+        assertTrue(OwnTables.mayStartRecovery(1000, 400, never, false, 30, 120));
+        // open right now, however long ago anything else happened
+        assertFalse(OwnTables.mayStartRecovery(1000, never, never, true, 30, 120));
+        assertFalse(OwnTables.mayStartRecovery(100000, 0, never, true, 30, 120));
+    }
+
+    @Test
+    public void oneSuccessfulPickupBuysTwoMinutesOfPeace() {
+        // use cooldown long over, but we took one back 60 seconds ago
+        assertFalse(OwnTables.mayStartRecovery(5000, 0, 3800, false, 30, 120));
+        assertFalse(OwnTables.mayStartRecovery(5000, 0, 2601, false, 30, 120));
+        assertTrue(OwnTables.mayStartRecovery(5000, 0, 2600, false, 30, 120));
+        // a use at tick 0 is a real use, not "never"
+        assertFalse(OwnTables.mayStartRecovery(100, 0, OwnTables.NEVER, false, 30, 120));
+    }
+
     @Test
     public void recordDedupesAndForgetsTheOldest() {
         List<RunState.Pos> own = new ArrayList<>();

@@ -56,4 +56,8 @@ public class OverworldConfig {
     public int tableRecoverRadius = 10;
     // ...and gets this long to do it before that table is written off
     public double tablePickupSeconds = 30;
+    // a table that was open or placed this recently is in use (a craft is about to happen at it), leave it be
+    public double tableUseCooldownSeconds = 30;
+    // after taking one back, no second pickup for this long. the backstop against a place/pickup loop
+    public double tableRecoverCooldownSeconds = 120;
 }

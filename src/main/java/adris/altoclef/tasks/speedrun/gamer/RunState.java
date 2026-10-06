@@ -141,6 +141,10 @@ public class RunState {
 
     // crafting tables this run placed (overworld), the only ones the table pickup may take back. see OwnTables
     public List<Pos> placedTables = new ArrayList<>();
+    // game ticks of the last time a crafting table was open or got placed, and of the last pickup that worked. transient
+    // on purpose: they only gate a cooldown, a relog starting them over is fine. see OwnTables.mayStartRecovery
+    public transient long lastTableUseTick = OwnTables.NEVER;
+    public transient long lastTableRecoveredTick = OwnTables.NEVER;
 
     public int attemptsOf(GamerPhase p) {
         return phaseAttempts.getOrDefault(p.name(), 0);

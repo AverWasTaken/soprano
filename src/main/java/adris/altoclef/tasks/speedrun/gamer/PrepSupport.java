@@ -3,9 +3,11 @@ package adris.altoclef.tasks.speedrun.gamer;
 import adris.altoclef.AltoClef;
 import adris.altoclef.tasks.construction.DestroyBlockTask;
 import adris.altoclef.tasks.movement.PickupDroppedItemTask;
+import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.helpers.WorldHelper;
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.inventory.CraftingMenu;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.Vec3;
@@ -88,6 +90,9 @@ public final class PrepSupport {
                 tablePickup = new PickupDroppedItemTask(Items.CRAFTING_TABLE, 1);
             }
             boolean pickedUp = tableBroken && ctx.facts().has(Items.CRAFTING_TABLE);
+            if (pickedUp) {
+                ctx.state().lastTableRecoveredTick = ctx.facts().gameTime();
+            }
             if (pickedUp || elapsed > ctx.cfg().overworld.tablePickupSeconds) {
                 // a table we could not get in time is written off, same as a chest
                 tablesTried.add(tableTarget);
@@ -97,7 +102,18 @@ public final class PrepSupport {
                 return tablePickup;
             }
         }
+        // a table open right now is a table in use, stamp it so the cooldown runs from the last time it was
+        boolean menuOpen = mod.getPlayer().containerMenu instanceof CraftingMenu;
+        long now = ctx.facts().gameTime();
+        if (menuOpen) {
+            ctx.state().lastTableUseTick = now;
+        }
         if (current == null || !current.isGathering() || !tracking || ctx.facts().has(Items.CRAFTING_TABLE)) {
+            return null;
+        }
+        OverworldConfig cfg = ctx.cfg().overworld;
+        if (!OwnTables.mayStartRecovery(now, ctx.state().lastTableUseTick, ctx.state().lastTableRecoveredTick, menuOpen,
+                cfg.tableUseCooldownSeconds, cfg.tableRecoverCooldownSeconds)) {
             return null;
         }
         List<RunState.Pos> own = ctx.state().placedTables;

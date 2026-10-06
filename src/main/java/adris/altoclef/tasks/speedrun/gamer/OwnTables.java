@@ -36,6 +36,24 @@ public final class OwnTables {
         return true;
     }
 
+    // "never happened" for the tick stamps below (game time starts at 0, so -1 is safely before everything)
+    public static final long NEVER = -1;
+
+    // may a table pickup START right now. the pickup preempts the kit task, and some "gathering" needs craft at a table
+    // halfway through (smoker, shears, iron pickaxe), so without this we took the table back before the craft could use
+    // it, the craft placed a new one, repeat forever. two guards: a table in use (open, or placed a moment ago) is not
+    // spare, and after one successful pickup we leave it alone for a good while, so even a loop we did not think of
+    // costs one pickup per cooldown instead of every tick. stamps are game ticks, NEVER = none yet
+    public static boolean mayStartRecovery(long now, long lastUse, long lastRecovered, boolean menuOpen, double useCooldownSeconds, double recoverCooldownSeconds) {
+        if (menuOpen) {
+            return false;
+        }
+        if (lastUse != NEVER && now - lastUse < useCooldownSeconds * 20) {
+            return false;
+        }
+        return lastRecovered == NEVER || now - lastRecovered >= recoverCooldownSeconds * 20;
+    }
+
     // the closest of our own tables that passes `usable` and is within `radius` of the player, null if none. nothing
     // that is not in the list can ever come back from here, that is the whole point
     public static RunState.Pos nearest(List<RunState.Pos> tables, Predicate<RunState.Pos> usable, double px, double py, double pz, double radius) {
