@@ -1810,6 +1810,16 @@ public final class Settings {
      */
     public final Setting<Boolean> allowWalkOnMagmaBlocks = new Setting<>(false);
 
+    /**
+     * Count the bot's work as player activity for vanilla's AFK frame limiter. Since 1.21.2 the game drops to 30 fps
+     * after a minute without keyboard or mouse input (and 10 fps after ten minutes) when the inactivity limit option
+     * is on AFK, and the bot never touches the real keyboard or mouse, so the frame rate would tank while you watch it
+     * work. With this on, any tick where baritone is pathing, a process is in control, or AltoClef is running a task
+     * counts as input. Does nothing while the bot is idle, so the AFK limiter still kicks in then, and your options
+     * are never changed. Takes effect right away.
+     */
+    public final Setting<Boolean> keepFpsWhileBotting = new Setting<>(true);
+
     // everything below belongs to the built in AltoClef, see adris.altoclef. all of it is prefixed alto so that
     // #set alto<tab> finds it (same trick as the elytra settings). it only does anything while AltoClef has a task
 
