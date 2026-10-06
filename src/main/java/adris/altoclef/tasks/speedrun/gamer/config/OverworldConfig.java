@@ -79,6 +79,24 @@ public class OverworldConfig {
     // after taking one back, no second pickup of that kind for this long. the backstop against a place/pickup loop
     public double tableRecoverCooldownSeconds = 120;
 
+    // smelting in the background (see SmeltFiller): the iron goes in the furnace and the bot does other things while it cooks.
+    // it stays this close to the furnace (horizontal), less if the server's simulation distance is smaller, because a
+    // furnace in a chunk that does not tick does not cook
+    public int furnaceLeashBlocks = 64;
+    // within this of "done" counts as done: a boundary goes back for it, and at the furnace we wait instead of leaving
+    public double furnaceWaitSeconds = 10;
+    // a job older than this is from a world that ran on without us (a relog days later), not worth a walk
+    public double furnaceStaleSeconds = 1800;
+    // pulled back to the furnace this many times by the leash and we stop wandering and wait there. what the filler wants
+    // is out of range, so more trips would be the same trip
+    public int furnaceMaxPullbacks = 3;
+    // planks to stock for beds while waiting (3 a bed, the shield and sticks come on top of this)
+    public int smeltBedPlanks = 12;
+    // stock-up for when everything else is done and the iron is still cooking. one entry each: "food" = units over
+    // targetFoodUnits, "wool_beds" = extra beds worth of wool, "build_blocks" = over portalBuildBlocks, "log" = logs to hold
+    public List<KitItem> smeltExtras = new ArrayList<>(List.of(
+            new KitItem("food", 30), new KitItem("wool_beds", 3), new KitItem("build_blocks", 32), new KitItem("log", 8)));
+
     // iron golem hunt (the iron need only): 100 hp, 3 to 5 ingots, and it cannot hit a player whose feet are above its
     // head, so we stack a pillar next to it and poke it from there. see GolemRules for the vanilla numbers
     public int golemHuntRadius = 32;

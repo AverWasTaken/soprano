@@ -78,7 +78,8 @@ public final class KitPlanner {
             crafts.add(new KitNeed(k.item, held(f, k.item) + k.count - have));
         }
         List<KitNeed> out = new ArrayList<>();
-        if (ingots > 0 && f.count(Items.IRON_INGOT) < ingots) {
+        // ingots cooking in a furnace we loaded count as held, or the bot would go mining a second batch while the first one cooks
+        if (ingots > 0 && f.count(Items.IRON_INGOT) + f.pendingOutput(Items.IRON_INGOT) < ingots) {
             out.add(new KitNeed("iron_ingot", ingots));
         }
         out.addAll(crafts);
@@ -175,6 +176,11 @@ public final class KitPlanner {
             case CHEST_HELMET -> CHEST_HELMET;
             case NONE -> List.of();
         };
+    }
+
+    // ingots one of this item costs, 0 for everything that is not made of iron
+    public static int ingotCost(String name) {
+        return INGOTS.getOrDefault(name, 0);
     }
 
     // ingots the missing iron items still need in total (what the combined iron need is sized by)

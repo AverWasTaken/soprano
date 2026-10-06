@@ -105,6 +105,9 @@ public final class KitRunner {
             case "wool" -> f.has(Items.SHEARS) ? "Shearing sheep" : "Collecting wool";
             case "stone_pickaxe", "stone_sword" -> KitPlanner.have(f, "stone_pickaxe") > 0 || f.has(Items.WOODEN_PICKAXE) ? "Mining stone" : "Chopping wood";
             case "furnace" -> "Making a furnace";
+            case "flint" -> "Looking for flint";
+            case "planks" -> "Making planks";
+            case "log" -> "Chopping logs";
             case "water_bucket" -> "Filling a bucket with water";
             default -> "Making " + need.catalogueName().replace('_', ' ');
         };
