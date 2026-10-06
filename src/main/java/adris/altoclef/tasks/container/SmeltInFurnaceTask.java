@@ -65,6 +65,11 @@ public class SmeltInFurnaceTask extends ResourceTask {
         _doTask.ignoreMaterials();
     }
 
+    // has anything gone in the furnace (as far as the last open screen showed us)
+    public boolean hasStartedSmelting() {
+        return _doTask.hasStartedSmelting();
+    }
+
     @Override
     protected boolean shouldAvoidPickingUp(AltoClef mod) {
         return false;
@@ -354,6 +359,13 @@ public class SmeltInFurnaceTask extends ResourceTask {
         protected BlockPos overrideContainerPosition(AltoClef mod) {
             // If we have a valid container position, KEEP it.
             return getTargetContainerPosition();
+        }
+
+        // the caches start as EMPTY stacks and only change while the screen is open, so anything in them means we
+        // really did put stuff in (or take stuff out of) a furnace
+        public boolean hasStartedSmelting() {
+            return !_furnaceCache.materialSlot.isEmpty() || !_furnaceCache.fuelSlot.isEmpty()
+                    || !_furnaceCache.outputSlot.isEmpty() || _furnaceCache.burningFuelCount > 0;
         }
 
         private void tryUpdateOpenFurnace(AltoClef mod) {

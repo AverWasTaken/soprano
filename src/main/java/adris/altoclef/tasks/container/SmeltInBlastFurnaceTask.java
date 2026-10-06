@@ -20,6 +20,7 @@ import adris.altoclef.ui.HudText;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Stream;
 import net.minecraft.core.BlockPos;
@@ -44,14 +45,28 @@ public class SmeltInBlastFurnaceTask extends ResourceTask {
     private final DoSmeltInBlastFurnaceTask _doTask;
 
     public SmeltInBlastFurnaceTask(SmeltTarget[] targets) {
+        this(targets, null);
+    }
+
+    // existing != null means use that blast furnace and never craft or place one, see canMakeNew below
+    public SmeltInBlastFurnaceTask(SmeltTarget[] targets, BlockPos existing) {
         super(extractItemTargets(targets));
         _targets = targets;
         // TODO: Do them in order.
-        _doTask = new DoSmeltInBlastFurnaceTask(targets[0]);
+        _doTask = new DoSmeltInBlastFurnaceTask(targets[0], existing);
     }
 
     public SmeltInBlastFurnaceTask(SmeltTarget target) {
         this(new SmeltTarget[]{target});
+    }
+
+    public SmeltInBlastFurnaceTask(SmeltTarget target, BlockPos existing) {
+        this(new SmeltTarget[]{target}, existing);
+    }
+
+    // has anything gone in the blast furnace (as far as the last open screen showed us)
+    public boolean hasStartedSmelting() {
+        return _doTask.hasStartedSmelting();
     }
 
     private static ItemTarget[] extractItemTargets(SmeltTarget[] recipeTargets) {
@@ -142,9 +157,12 @@ public class SmeltInBlastFurnaceTask extends ResourceTask {
         private final BlastFurnaceCache _blastFurnaceCache = new BlastFurnaceCache();
         private final ItemTarget _allMaterials;
         private boolean _ignoreMaterials;
+        // non null: the one blast furnace we were sent to, and we never make our own
+        private final BlockPos _existing;
 
-        public DoSmeltInBlastFurnaceTask(SmeltTarget target) {
+        public DoSmeltInBlastFurnaceTask(SmeltTarget target, BlockPos existing) {
             super(Blocks.BLAST_FURNACE, new ItemTarget(Items.BLAST_FURNACE));
+            _existing = existing;
             _target = target;
             _allMaterials = new ItemTarget(Stream.concat(Arrays.stream(_target.getMaterial().getMatches()), Arrays.stream(_target.getOptionalMaterials())).toArray(Item[]::new), _target.getMaterial().getTargetCount());
         }
@@ -156,7 +174,7 @@ public class SmeltInBlastFurnaceTask extends ResourceTask {
         @Override
         protected boolean isSubTaskEqual(DoStuffInContainerTask other) {
             if (other instanceof DoSmeltInBlastFurnaceTask task) {
-                return task._target.equals(_target) && task._ignoreMaterials == _ignoreMaterials;
+                return task._target.equals(_target) && task._ignoreMaterials == _ignoreMaterials && Objects.equals(task._existing, _existing);
             }
             return false;
         }
@@ -355,8 +373,22 @@ public class SmeltInBlastFurnaceTask extends ResourceTask {
 
         @Override
         protected BlockPos overrideContainerPosition(AltoClef mod) {
-            // If we have a valid container position, KEEP it.
-            return getTargetContainerPosition();
+            // If we have a valid container position, KEEP it. before we have one, go to the one we were sent to
+            // instead of whichever is nearest (they're the same unless two are close, but the router picked THIS one)
+            BlockPos kept = getTargetContainerPosition();
+            return kept != null ? kept : _existing;
+        }
+
+        @Override
+        protected boolean canMakeNew(AltoClef mod) {
+            return _existing == null;
+        }
+
+        // the caches start as EMPTY stacks and only change while the screen is open, so anything in them means we
+        // really did put stuff in (or take stuff out of) a blast furnace
+        public boolean hasStartedSmelting() {
+            return !_blastFurnaceCache.materialSlot.isEmpty() || !_blastFurnaceCache.fuelSlot.isEmpty()
+                    || !_blastFurnaceCache.outputSlot.isEmpty() || _blastFurnaceCache.burningFuelCount > 0;
         }
 
         private void tryUpdateOpenBlastFurnace(AltoClef mod) {

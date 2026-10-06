@@ -2095,9 +2095,26 @@ public final class Settings {
     ));
 
     /**
-     * Use a blast furnace for smelting when the item can go in one.
+     * Craft or place a blast furnace of our own for smelting ores when that is worth it (five or more to smelt, plus the
+     * five iron and the smooth stone it costs). This is only about making one: a blast furnace that is already standing
+     * nearby is {@link #altoUseNearbyBlastFurnace}'s business, and that works with this off. #gamer turns this off for
+     * the run because the five iron is better spent on armor.
      */
     public final Setting<Boolean> altoUseBlastFurnace = new Setting<>(true);
+
+    /**
+     * Smelt raw iron and gold in a blast furnace that is already standing nearby (a village armorer has one) instead of
+     * a plain furnace, since a blast furnace smelts ores twice as fast. It never crafts or places one, that is
+     * {@link #altoUseBlastFurnace}. Nearby means within {@link #altoNearbyBlastFurnaceRange} blocks of us when we start
+     * smelting a batch, and it sticks with whatever it picked until that batch is done.
+     */
+    public final Setting<Boolean> altoUseNearbyBlastFurnace = new Setting<>(true);
+
+    /**
+     * How far away, in blocks, a blast furnace can be and still count as nearby for
+     * {@link #altoUseNearbyBlastFurnace}.
+     */
+    public final Setting<Double> altoNearbyBlastFurnaceRange = new Setting<>(48.0);
 
     /**
      * Only use the items in {@link #altoSupportedFuels} as smelting fuel. Careful with turning this off: every burnable

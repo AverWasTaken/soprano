@@ -102,12 +102,21 @@ public abstract class DoStuffInContainerTask extends Task {
             costToWalk = BaritoneHelper.calculateGenericHeuristic(currentPos, WorldHelper.toVec3d(nearest.get()));
         }
 
+        boolean mayMakeNew = canMakeNew(mod);
+        if (nearest.isEmpty() && !mayMakeNew) {
+            // we were told to use a container that already exists, so with none left we sit still and let whoever
+            // picked us notice and pick something else. crafting one is how this task used to ruin that
+            _cachedContainerPosition = null;
+            setDebugState("No container to use");
+            return null;
+        }
+
         // Make a new container if going to the container is a pretty bad cost.
         // Also keep on making the container if we're stuck in some
-        if (costToWalk > getCostToMakeNew(mod)) {
+        if (mayMakeNew && costToWalk > getCostToMakeNew(mod)) {
             _placeForceTimer.reset();
         }
-        if (nearest.isEmpty() || (!_placeForceTimer.elapsed() && _justPlacedTimer.elapsed())) {
+        if (mayMakeNew && (nearest.isEmpty() || (!_placeForceTimer.elapsed() && _justPlacedTimer.elapsed()))) {
             // It's cheaper to make a new one, or our only option.
 
             // We're no longer going to our previous container.
@@ -162,6 +171,11 @@ public abstract class DoStuffInContainerTask extends Task {
     // Virtual
     protected BlockPos overrideContainerPosition(AltoClef mod) {
         return null;
+    }
+
+    // Virtual. false means only ever use a container that is already there, never get/place one
+    protected boolean canMakeNew(AltoClef mod) {
+        return true;
     }
 
     protected BlockPos getTargetContainerPosition() {

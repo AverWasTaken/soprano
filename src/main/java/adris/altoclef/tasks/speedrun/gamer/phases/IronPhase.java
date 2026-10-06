@@ -17,7 +17,8 @@ import adris.altoclef.tasksystem.Task;
 import java.util.List;
 
 // iron gear, armor, wool for the beds, food top up. KitPlanner sizes ONE iron ingot need for everything missing so we
-// mine and smelt once. the engine turns altoUseBlastFurnace off for the run, so smelting is the plain furnace
+// mine and smelt once. the engine turns altoUseBlastFurnace off for the run so we never craft a blast furnace, but a
+// standing one (village armorer) within altoNearbyBlastFurnaceRange still gets used, the plain furnace is the fallback
 public class IronPhase implements PhaseHandler {
     private final KitRunner runner = new KitRunner();
     private final PrepSupport support = new PrepSupport(true);
