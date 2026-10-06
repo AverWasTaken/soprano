@@ -92,7 +92,7 @@ public class MovementFall extends Movement {
         return set;
     }
 
-    private enum FallMode {
+    enum FallMode {
         NONE, BUCKET, CLUTCH, HURT
     }
 
@@ -183,8 +183,10 @@ public class MovementFall extends Movement {
         }
         FallMode mode = isWater ? FallMode.NONE : fallMode();
         AltoClefSettings alto = AltoClefSettings.getInstance();
-        if (mode == FallMode.BUCKET && alto.shouldNotPlaceBucketButStillFall()) {
-            mode = FallMode.NONE; // altoclef does its own water bucket mlg, we just fall and don't insist on having a bucket
+        if (mode == FallMode.BUCKET && alto.shouldNotPlaceBucketButStillFall() && !bucketOnHotbar()) {
+            // altoclef does its own water bucket mlg for a bucket it keeps off the hotbar, we just fall and don't insist on
+            // having one. a hotbar bucket is ours: the chain stands down for it (see ownsFall) so nobody cancels the path
+            mode = FallMode.NONE;
         }
         boolean paused = alto.isInteractionPaused(); // no hotbar swaps while paused, and the click gets eaten by the input handler
         if (mode == FallMode.BUCKET && !playerFeet.equals(dest)) {
@@ -497,6 +499,30 @@ public class MovementFall extends Movement {
             }
         }
         return null;
+    }
+
+    private boolean bucketOnHotbar() {
+        return Inventory.isHotbarSlot(ctx.player().getInventory().findSlotMatchingItem(STACK_BUCKET_WATER));
+    }
+
+    // altoclef's mlg chain asks this before jumping in on a fall. true if this is the fall we planned, we're in it, and we
+    // are doing something about it (or it's safe), so a second brain stealing the rotation and cancelling the path is the
+    // one thing that can only make it worse. a knockback out of the column or a shove too hard to be ours says no
+    public boolean ownsFall(Vec3 pos, Vec3 mot) {
+        if (!FallCover.inColumn(src.x, src.y, src.z, dest.x, dest.y, dest.z, pos.x, pos.y, pos.z, mot.x, mot.z)) {
+            return false;
+        }
+        boolean water = ctx.world().getBlockState(dest).getFluidState().getType() instanceof WaterFluid;
+        FallMode mode = water ? FallMode.NONE : fallMode();
+        return FallCover.handles(mode, clutchGaveUp, bucketOnHotbar(), AltoClefSettings.getInstance().shouldNotPlaceBucketButStillFall());
+    }
+
+    // the water this chain placed is ours to fetch, unless this movement is about to (the isWater branch of updateState).
+    // two clicks on one bucket is how you place it again
+    public boolean picksUpWaterAt(BlockPos placed) {
+        boolean at = placed.getX() == dest.x && placed.getY() == dest.y && placed.getZ() == dest.z;
+        boolean water = ctx.world().getBlockState(dest).getFluidState().getType() instanceof WaterFluid;
+        return FallCover.pickupIsBaritones(at, water, Inventory.isHotbarSlot(ctx.player().getInventory().findSlotMatchingItem(STACK_BUCKET_EMPTY)));
     }
 
     @Override

@@ -8,8 +8,13 @@ import adris.altoclef.tasksystem.ITaskOverridesGrounded;
 import adris.altoclef.tasksystem.TaskRunner;
 import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.time.TimerGame;
+import baritone.api.pathing.movement.IMovement;
 import baritone.api.utils.Rotation;
 import baritone.api.utils.input.Input;
+import baritone.behavior.PathingBehavior;
+import baritone.pathing.movement.movements.MovementFall;
+import baritone.pathing.path.PathExecutor;
+import java.util.List;
 import java.util.Optional;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -40,7 +45,7 @@ public class MLGBucketFallChain extends SingleTaskChain implements ITaskOverride
     @Override
     public float getPriority(AltoClef mod) {
         if (!AltoClef.inGame()) return Float.NEGATIVE_INFINITY;
-        if (isFallingOhNo(mod)) {
+        if (isFallingOhNo(mod) && !baritoneHasTheFall(mod)) {
             _tryCollectWaterTimer.reset();
             setTask(new MLGBucketTask());
             _lastMLG = (MLGBucketTask) _mainTask;
@@ -57,7 +62,7 @@ public class MLGBucketFallChain extends SingleTaskChain implements ITaskOverride
                         isPlacedWater = false;
                     }
                     //Debug.logInternal("PLACED: " + placed);
-                    if (placed != null && placed.closerToCenterThan(mod.getPlayer().position(), 5.5) && isPlacedWater) {
+                    if (placed != null && placed.closerToCenterThan(mod.getPlayer().position(), 5.5) && isPlacedWater && !baritonePicksUp(mod, placed)) {
                         BlockPos toInteract = placed;
                         // Allow looking at fluids
                         mod.getBehaviour().push();
@@ -132,6 +137,32 @@ public class MLGBucketFallChain extends SingleTaskChain implements ITaskOverride
 
     public boolean isChorusFruiting() {
         return _doingChorusFruit;
+    }
+
+    // the fall movement baritone is running right now, if it is one
+    private MovementFall currentFall(AltoClef mod) {
+        PathingBehavior pathing = mod.getClientBaritone().getPathingBehavior();
+        PathExecutor executor = pathing.getCurrent();
+        if (executor == null || !pathing.isPathing()) {
+            return null; // paused or no path, nobody is driving
+        }
+        List<IMovement> movements = executor.getPath().movements();
+        int at = executor.getPosition();
+        return at >= 0 && at < movements.size() && movements.get(at) instanceof MovementFall fall ? fall : null;
+    }
+
+    // a fall baritone planned (a safe one, a clutch, or a bucket it has on the hotbar) is baritone's. our mlg task cancels
+    // the path and fights it for the rotation, which turns a free fall into a replan. isFallingOhNo stays as is, the
+    // other chains still want to know we're in the air (no eating mid fall)
+    private boolean baritoneHasTheFall(AltoClef mod) {
+        MovementFall fall = currentFall(mod);
+        return fall != null && fall.ownsFall(mod.getPlayer().position(), mod.getPlayer().getDeltaMovement());
+    }
+
+    // the water baritone's fall movement is about to pick up itself. our click on top of its click places it again
+    private boolean baritonePicksUp(AltoClef mod, BlockPos placed) {
+        MovementFall fall = currentFall(mod);
+        return fall != null && fall.picksUpWaterAt(placed);
     }
 
     public boolean isFallingOhNo(AltoClef mod) {
