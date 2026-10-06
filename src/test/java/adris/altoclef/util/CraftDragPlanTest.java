@@ -103,6 +103,44 @@ public class CraftDragPlanTest {
         assertEquals(CraftDragPlan.Kind.PUT_BACK, plan.kind);
     }
 
+    // the crafting table log: 1 acacia + 3 oak for four plank slots looped on "cursor too small" forever. the rule is
+    // one stack of one type has to cover every slot that wants it, otherwise the one slot at a time path does it
+    @Test
+    public void mixedPlanksWithNoSingleBigStackDoNotDrag() {
+        // acacia 1, oak 3, four empty slots
+        assertEquals(-1, CraftDragPlan.chooseDragType(new int[]{1, 3}, new int[]{4, 4}, new boolean[]{false, false}));
+        // four singleton stacks of four different planks
+        assertEquals(-1, CraftDragPlan.chooseDragType(new int[]{1, 1, 1, 1}, new int[]{4, 4, 4, 4}, new boolean[4]));
+    }
+
+    @Test
+    public void aBigStackOfOneTypeBeatsTheStrayAcacia() {
+        // acacia 1, oak 64: drag the oak
+        assertEquals(1, CraftDragPlan.chooseDragType(new int[]{1, 64}, new int[]{4, 4}, new boolean[]{false, false}));
+        // exactly one per slot is the smallest stack that still drags
+        assertEquals(0, CraftDragPlan.chooseDragType(new int[]{4}, new int[]{4}, new boolean[]{false}));
+    }
+
+    @Test
+    public void aSlotHoldingADifferentValidTypeIsNotPartOfTheDrag() {
+        // slot 0 already has acacia. oak only needs the other three, and 3 oak is enough for those
+        assertEquals(1, CraftDragPlan.chooseDragType(new int[]{1, 3}, new int[]{1, 3}, new boolean[]{false, false}));
+        // acacia would only cover one slot, a drag over one slot is just a click
+        assertEquals(-1, CraftDragPlan.chooseDragType(new int[]{64}, new int[]{1}, new boolean[]{false}));
+        // the deficits for the oak plan skip that slot too
+        CraftDragPlan plan = CraftDragPlan.plan(new int[]{0, 1, 1, 1}, 3, ROOM);
+        assertEquals(CraftDragPlan.Kind.DRAG, plan.kind);
+        assertArrayEquals(new int[]{1, 2, 3}, plan.slots);
+    }
+
+    @Test
+    public void theCursorStackWinsWhenItCoversTheSlots() {
+        assertEquals(0, CraftDragPlan.chooseDragType(new int[]{4, 64}, new int[]{4, 4}, new boolean[]{true, false}));
+        // a cursor stack that is too small does not get to hold the grid hostage
+        assertEquals(1, CraftDragPlan.chooseDragType(new int[]{2, 64}, new int[]{4, 4}, new boolean[]{true, false}));
+        assertEquals(-1, CraftDragPlan.chooseDragType(new int[]{2}, new int[]{4}, new boolean[]{true}));
+    }
+
     @Test
     public void unevenPresentCountsLevelTheShortOnesFirst() {
         // slots hold 0, 5, 12 and want 20: deficits 20, 15, 8. everyone gets 8 this round

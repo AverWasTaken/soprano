@@ -7,7 +7,9 @@ import adris.altoclef.util.helpers.CraftDragPlan;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.slots.Slot;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -26,19 +28,58 @@ public class DragSplitToSlotsTask extends Task {
         _perSlot = perSlot;
     }
 
-    // the item we are spreading: whatever is on the cursor if it fits, else what a slot already holds, else anything
-    // we own that matches. null if we don't have any
-    private static Item chooseItem(AltoClef mod, ItemTarget item, List<Slot> slots) {
+    // when the last drag gave up. a bail means the plan and the picker disagreed about something, and the crafting
+    // task asks before it hands us another group so we can't ping pong a stack between the grid and the inventory
+    private static volatile long lastBailMs = 0;
+    private static final long BAIL_COOLDOWN_MS = 5000;
+
+    public static boolean recentlyBailed() {
+        return System.currentTimeMillis() - lastBailMs < BAIL_COOLDOWN_MS;
+    }
+
+    // a drag spreads ONE item type from ONE stack, so "planks" owned as 1 acacia + 3 oak is not draggable over 4
+    // slots no matter which one we grab. only an item with a single stack (or the cursor) that covers every slot
+    // that still wants something counts. anything else is the one slot at a time path's problem
+    private static Item chooseItem(AltoClef mod, ItemTarget item, List<Slot> slots, int perSlot) {
         ItemStack cursor = StorageHelper.getItemStackInCursorSlot();
-        if (!cursor.isEmpty() && item.matches(cursor.getItem())) return cursor.getItem();
+        Set<Item> candidates = new LinkedHashSet<>();
+        if (!cursor.isEmpty() && item.matches(cursor.getItem())) candidates.add(cursor.getItem());
         for (Slot slot : slots) {
             ItemStack stack = StorageHelper.getItemStackInSlot(slot);
-            if (!stack.isEmpty() && item.matches(stack.getItem())) return stack.getItem();
+            if (!stack.isEmpty() && item.matches(stack.getItem())) candidates.add(stack.getItem());
         }
         for (Item match : item.getMatches()) {
-            if (mod.getItemStorage().hasItemInventoryOnly(match)) return match;
+            if (mod.getItemStorage().hasItemInventoryOnly(match)) candidates.add(match);
         }
-        return null;
+        List<Item> list = new ArrayList<>(candidates);
+        int[] source = new int[list.size()];
+        int[] needs = new int[list.size()];
+        boolean[] onCursor = new boolean[list.size()];
+        for (int i = 0; i < source.length; ++i) {
+            Item cand = list.get(i);
+            needs[i] = needing(deficits(slots, cand, perSlot));
+            onCursor[i] = !cursor.isEmpty() && cursor.getItem() == cand;
+            source[i] = onCursor[i] ? cursor.getCount() : biggestStack(mod, cand);
+        }
+        int pick = CraftDragPlan.chooseDragType(source, needs, onCursor);
+        return pick == -1 ? null : list.get(pick);
+    }
+
+    private static int needing(int[] deficits) {
+        int n = 0;
+        for (int d : deficits) {
+            if (d > 0) ++n;
+        }
+        return n;
+    }
+
+    private static int biggestStack(AltoClef mod, Item item) {
+        int best = 0;
+        for (Slot slot : mod.getItemStorage().getSlotsWithItemPlayerInventory(false, item)) {
+            if (Slot.isCursor(slot)) continue;
+            best = Math.max(best, StorageHelper.getItemStackInSlot(slot).getCount());
+        }
+        return best;
     }
 
     // how much more each slot wants. a slot holding some OTHER item (or already full) gets 0, a drag onto it would
@@ -61,13 +102,9 @@ public class DragSplitToSlotsTask extends Task {
      * when this is two or more, a drag over one slot is just a click.
      */
     public static int activeCount(AltoClef mod, ItemTarget item, List<Slot> slots, int perSlot) {
-        Item chosen = chooseItem(mod, item, slots);
+        Item chosen = chooseItem(mod, item, slots, perSlot);
         if (chosen == null) return 0;
-        int n = 0;
-        for (int d : deficits(slots, chosen, perSlot)) {
-            if (d > 0) ++n;
-        }
-        return n;
+        return needing(deficits(slots, chosen, perSlot));
     }
 
     @Override
@@ -78,7 +115,7 @@ public class DragSplitToSlotsTask extends Task {
     @Override
     protected Task onTick(AltoClef mod) {
         if (!mod.getSlotHandler().canDoSlotAction()) return null;
-        Item chosen = chooseItem(mod, _item, _slots);
+        Item chosen = chooseItem(mod, _item, _slots, _perSlot);
         if (chosen == null) return null;
         int[] deficits = deficits(_slots, chosen, _perSlot);
         int n = 0;
@@ -107,6 +144,8 @@ public class DragSplitToSlotsTask extends Task {
         switch (plan.kind) {
             case PUT_BACK -> {
                 setDebugState("Cursor too small to drag, putting it back");
+                // chooseItem should never let us get here. if it does, don't pick the same stack up again
+                lastBailMs = System.currentTimeMillis();
                 if (returnSlot == null) return new EnsureFreeCursorSlotTask();
                 mod.getSlotHandler().clickSlot(returnSlot, 0, ClickType.PICKUP);
             }
@@ -165,7 +204,7 @@ public class DragSplitToSlotsTask extends Task {
 
     @Override
     public boolean isFinished(AltoClef mod) {
-        return activeCount(mod, _item, _slots, _perSlot) < 2;
+        return recentlyBailed() || activeCount(mod, _item, _slots, _perSlot) < 2;
     }
 
     @Override

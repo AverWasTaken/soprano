@@ -96,6 +96,29 @@ public final class CraftDragPlan {
     }
 
     /**
+     * Which item type to drag, if any. A drag spreads one type from one stack, so a type only counts when its single
+     * biggest stack (or the cursor) covers every slot that still wants it: 1 acacia + 3 oak planks over 4 slots is
+     * not draggable, and picking either one just ends in a put back loop. All arrays are per candidate type.
+     *
+     * @param sourceCount  size of the one stack we would drag from (the cursor stack if it is on the cursor)
+     * @param slotsNeeding how many grid slots would take this type
+     * @param onCursor     whether the type is already on the cursor
+     * @return index of the type to drag, or -1 to leave the grid to the one slot at a time path
+     */
+    public static int chooseDragType(int[] sourceCount, int[] slotsNeeding, boolean[] onCursor) {
+        int best = -1;
+        for (int i = 0; i < sourceCount.length; ++i) {
+            if (slotsNeeding[i] < 2 || sourceCount[i] < slotsNeeding[i]) continue;
+            boolean better = best == -1
+                    || (onCursor[i] && !onCursor[best])
+                    || (onCursor[i] == onCursor[best] && (slotsNeeding[i] > slotsNeeding[best]
+                    || (slotsNeeding[i] == slotsNeeding[best] && sourceCount[i] > sourceCount[best])));
+            if (better) best = i;
+        }
+        return best;
+    }
+
+    /**
      * Which stack to pick up. The smallest one that covers the whole round (the least surplus to hand back), and if
      * none does, the biggest one.
      *

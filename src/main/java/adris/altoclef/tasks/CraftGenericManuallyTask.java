@@ -181,10 +181,13 @@ public class CraftGenericManuallyTask extends Task implements ITaskUsesCraftingG
     }
 
     // groups the recipe slots by ingredient (bread is three wheat, a hay block is nine). a group of two or more that
-    // still wants items gets a drag task. 2x2 in the inventory goes through the same thing, the grid slot ids differ
+    // still wants items gets a drag task, but only when one stack of one item can cover every slot that wants
+    // something (activeCount says so). mixed planks go through the single slot path below. 2x2 in the inventory goes through the same thing, the grid slot ids differ
     // and that is all
     private Task dragFillTask(AltoClef mod, boolean bigCrafting, int perSlot) {
         int count = _target.getRecipe().getSlotCount();
+        // the drag gave up not long ago, one slot at a time until it cools off
+        if (DragSplitToSlotsTask.recentlyBailed()) return null;
         boolean[] grouped = new boolean[count];
         for (int i = 0; i < count; ++i) {
             ItemTarget ingredient = _target.getRecipe().getSlot(i);
