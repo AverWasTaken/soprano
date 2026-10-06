@@ -33,7 +33,8 @@ import net.minecraft.world.level.block.state.BlockState;
 public class PlaceBlockTask extends Task implements ITaskRequiresGrounded {
 
     private static final int MIN_MATERIALS = 1;
-    private static final int PREFERRED_MATERIALS = 32;
+    // the obsidian portal and block replacing callers still ask for scaffolding. 32 of everything was a lot of dirt to dig for a few steps up
+    private static final int PREFERRED_MATERIALS = 8;
     private final BlockPos _target;
     private final Block[] _toPlace;
     private final boolean _useThrowaways;

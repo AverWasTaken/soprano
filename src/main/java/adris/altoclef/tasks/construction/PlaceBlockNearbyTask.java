@@ -146,7 +146,8 @@ public class PlaceBlockNearbyTask extends Task {
         if (_tryPlace != null) {
             setDebugState("Trying to place at " + _tryPlace);
             _justPlaced = _tryPlace;
-            return new PlaceBlockTask(_tryPlace, _toPlace, false, true);
+            // a table on a spot we picked needs no scaffolding. autocollect here sent us off to mine 32 dirt first
+            return new PlaceBlockTask(_tryPlace, _toPlace, false, false);
         }
 
         // Look in random places to maybe get a random hit
