@@ -20,8 +20,10 @@ import net.minecraft.client.Minecraft;
 import adris.altoclef.util.baritone.GoalReachBlock;
 import baritone.api.pathing.goals.Goal;
 import baritone.api.pathing.goals.GoalBlock;
+import baritone.api.pathing.goals.GoalComposite;
 import baritone.api.pathing.goals.GoalNear;
 import net.minecraft.core.Direction;
+import net.minecraft.tags.FluidTags;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.phys.BlockHitResult;
@@ -43,6 +45,9 @@ import net.minecraft.world.level.block.FenceBlock;
 import net.minecraft.world.level.block.FenceGateBlock;
 import net.minecraft.world.level.block.FlowerBlock;
 import net.minecraft.world.level.block.state.BlockState;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -66,6 +71,13 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
     private final StepOffGuard _stepOffs = new StepOffGuard(3);
     // the swinging distance goal didn't work out here, stand next to it
     private boolean closeIn;
+    // ticks we've been soaked with the block in reach. see WaterBreakGuard
+    private int _wetTicks;
+    // the dry spots to get to first, looked up every so often instead of every tick. null = none (or not looked yet)
+    private Goal _landGoal;
+    private int _landLookAge;
+    private boolean _landGoalSet;
+    private int _landPathAt;
 
     public DestroyBlockTask(BlockPos pos) {
         _pos = pos;
@@ -114,6 +126,102 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
             }
         }
         return false;
+    }
+
+    // how far around the block we look for somewhere dry, and how many we hand the pathfinder. a composite goal's
+    // heuristic asks every one of them for every node, so a whole beach of them is for people who want slow code
+    private static final int LAND_RADIUS = 4;
+    private static final int LAND_SPOTS_MAX = 24;
+    private static final int LAND_LOOK_TICKS = 20;
+    private static final double EYE_HEIGHT = 1.62;
+
+    // squares to stand on instead of swimming: solid dry ground under, two dry clear squares for us, and the block in
+    // reach and in plain sight from the eyes there. closest to `from` first, so the cap drops the far ones
+    public static List<BlockPos> landSpots(BlockGetter world, BlockPos target, double reach, BlockPos from) {
+        List<BlockPos> spots = new ArrayList<>();
+        BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+        double reachSq = reach * reach;
+        Vec3 center = Vec3.atCenterOf(target);
+        for (int dx = -LAND_RADIUS; dx <= LAND_RADIUS; dx++) {
+            for (int dy = -LAND_RADIUS; dy <= LAND_RADIUS; dy++) {
+                for (int dz = -LAND_RADIUS; dz <= LAND_RADIUS; dz++) {
+                    int x = target.getX() + dx;
+                    int y = target.getY() + dy;
+                    int z = target.getZ() + dz;
+                    // most of the cube is air or water and dies on the floor check
+                    pos.set(x, y - 1, z);
+                    if (!dryFloor(world, pos)) {
+                        continue;
+                    }
+                    if (pos.equals(target) || (x == target.getX() && z == target.getZ() && y > target.getY())) {
+                        continue; // on top of it is the one square we'd rather not be on
+                    }
+                    pos.set(x, y, z);
+                    if (!dryAndClear(world, pos)) {
+                        continue;
+                    }
+                    pos.set(x, y + 1, z);
+                    if (!dryAndClear(world, pos)) {
+                        continue;
+                    }
+                    Vec3 eye = new Vec3(x + 0.5, y + EYE_HEIGHT, z + 0.5);
+                    if (eye.distanceToSqr(center) > reachSq) {
+                        continue;
+                    }
+                    BlockHitResult hit = world.clip(new ClipContext(eye, center, ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, CollisionContext.empty()));
+                    if (hit.getType() == HitResult.Type.BLOCK && !hit.getBlockPos().equals(target)) {
+                        continue; // something is in the way, a wall isn't a place to mine from
+                    }
+                    spots.add(new BlockPos(x, y, z));
+                }
+            }
+        }
+        spots.sort(Comparator.comparingDouble(p -> p.distSqr(from)));
+        return spots.size() > LAND_SPOTS_MAX ? new ArrayList<>(spots.subList(0, LAND_SPOTS_MAX)) : spots;
+    }
+
+    private static boolean dryFloor(BlockGetter world, BlockPos pos) {
+        BlockState state = world.getBlockState(pos);
+        return state.getFluidState().isEmpty() && state.isFaceSturdy(world, pos, Direction.UP);
+    }
+
+    private static boolean dryAndClear(BlockGetter world, BlockPos pos) {
+        BlockState state = world.getBlockState(pos);
+        return state.getFluidState().isEmpty() && state.getCollisionShape(world, pos).isEmpty();
+    }
+
+    // the dry spots as one goal for baritone, or null when there aren't any
+    private static Goal landGoal(BlockGetter world, BlockPos target, double reach, BlockPos from) {
+        List<BlockPos> spots = landSpots(world, target, reach, from);
+        if (spots.isEmpty()) {
+            return null;
+        }
+        Goal[] goals = new Goal[spots.size()];
+        for (int i = 0; i < goals.length; i++) {
+            goals[i] = new GoalBlock(spots.get(i));
+        }
+        return new GoalComposite(goals);
+    }
+
+    // soaked as in vanilla's mining speed is cut: feet in water and then eyes under it or no ground to stand on.
+    // wading with your head up isn't slowed, so that isn't waited out
+    private static boolean slowedByWater(AltoClef mod) {
+        return mod.getPlayer().isInWater() && (!mod.getPlayer().onGround() || mod.getPlayer().isEyeInFluid(FluidTags.WATER));
+    }
+
+    // vanilla's getDestroyProgress already has the water and air penalties in it, so 1 or more is one tick no matter what
+    private static boolean breaksInstantly(AltoClef mod, BlockPos pos) {
+        BlockState state = mod.getWorld().getBlockState(pos);
+        return state.getDestroyProgress(mod.getPlayer(), mod.getWorld(), pos) >= 1f;
+    }
+
+    private Goal landGoalNow(AltoClef mod) {
+        if (_landLookAge-- <= 0) {
+            _landLookAge = LAND_LOOK_TICKS;
+            double reach = mod.getClientBaritone().getPlayerContext().playerController().getBlockReachDistance() - 0.5;
+            _landGoal = landGoal(mod.getWorld(), _pos, reach, mod.getPlayer().blockPosition());
+        }
+        return _landGoal;
     }
 
     // the vine the first thing in line between the eyes and the middle of the block, if there is one and it's in reach.
@@ -380,7 +488,30 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
                 swingAt = vine;
             }
         }
-        if (reach.isPresent() && (mod.getPlayer().isInWater() || mod.getPlayer().onGround())
+        // breaking while soaked is up to 25x slower, so we get somewhere dry first unless that's the worse deal
+        boolean slowed = slowedByWater(mod);
+        if (!slowed) {
+            // out of the water, or only wading in it. the clock starts over and the spots get looked up fresh next time
+            _wetTicks = 0;
+            _landLookAge = 0;
+            _landGoal = null;
+        }
+        boolean waitForLand = false;
+        boolean mayBreak = false;
+        if (reach.isPresent()) {
+            if (slowed) {
+                _wetTicks++;
+                double air = mod.getPlayer().getAirSupply() / (double) Math.max(1, mod.getPlayer().getMaxAirSupply());
+                mayBreak = WaterBreakGuard.mayBreak(mod.getPlayer().onGround(), true, breaksInstantly(mod, swingAt), _wetTicks, air, landGoalNow(mod) != null);
+                waitForLand = !mayBreak;
+            } else {
+                mayBreak = WaterBreakGuard.mayBreak(mod.getPlayer().onGround(), false, false, 0, 1, false);
+            }
+        }
+        if (!waitForLand) {
+            _landGoalSet = false;
+        }
+        if (reach.isPresent() && mayBreak
                 && !mod.getFoodChain().needsToEat() && !WorldHelper.isInNetherPortal(mod)
                 && mod.getClientBaritone().getPathingBehavior().isSafeToCancel()) {
             setDebugState("Block in range, mining...");
@@ -417,16 +548,41 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
             mod.getClientBaritone().getInputOverrideHandler().setInputForceState(Input.CLICK_LEFT, true);
         } else {
             boolean fromSide = mustMineFromSide(mod);
-            if (fromSide) {
+            if (waitForLand) {
+                setDebugState("Getting out of the water before mining", "Getting out of the water first");
+            } else if (fromSide) {
                 setDebugState("Getting to block...", "Mining it from the side");
             } else {
                 setDebugState("Getting to block...", "Walking to " + HudText.pos(_pos));
             }
-            if (isMining && mod.getPlayer().isInWater()) {
+            // we were swinging in the water (that only happens when WaterBreakGuard ran out of patience) and the current
+            // took the block out of reach: it isn't worth chasing across a lake, let someone pick another. when it's
+            // still in reach and we just stopped for dry land that's not a reason to give up on it
+            if (isMining && reach.isEmpty() && mod.getPlayer().isInWater()) {
                 isMining = false;
                 mod.getBlockTracker().requestBlockUnreachable(_pos);
             } else {
                 isMining = false;
+            }
+            if (waitForLand) {
+                // we're doing what we meant to, the progress checkers don't get a say. the clock in WaterBreakGuard is the way out
+                _moveChecker.reset();
+                stuckCheck.reset();
+                // swimming around with the button held down is the exact thing we're not doing
+                mod.getClientBaritone().getInputOverrideHandler().setInputForceState(Input.CLICK_LEFT, false);
+                // the block is in reach, so whatever goal we had is probably satisfied right where we float and wouldn't budge
+                if (!_landGoalSet) {
+                    _landGoalSet = true;
+                    _landPathAt = _wetTicks;
+                    mod.getClientBaritone().getBuilderProcess().onLostControl();
+                    mod.getClientBaritone().getCustomGoalProcess().onLostControl();
+                    mod.getClientBaritone().getCustomGoalProcess().setGoalAndPath(_landGoal);
+                } else if (!mod.getClientBaritone().getCustomGoalProcess().isActive() && _wetTicks - _landPathAt >= LAND_LOOK_TICKS) {
+                    // that path ended and we're still wet (no route, or the current won). try again, but not every tick
+                    _landPathAt = _wetTicks;
+                    mod.getClientBaritone().getCustomGoalProcess().setGoalAndPath(_landGoal);
+                }
+                return null;
             }
             boolean isCloseToMoveBack = _pos.closerToCenterThan(mod.getPlayer().position(), 2);
             if (isCloseToMoveBack) {
