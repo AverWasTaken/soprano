@@ -60,17 +60,18 @@ public class SlotHandler {
     }
 
 
-    public void clickSlot(Slot slot, int mouseButton, ClickType type) {
-        if (!canDoSlotAction()) return;
+    // true when a click really went out. the cooldown eats clicks silently, and a caller that wants to know whether
+    // its click landed (ReceiveCraftingOutputSlotTask) has to be told
+    public boolean clickSlot(Slot slot, int mouseButton, ClickType type) {
+        if (!canDoSlotAction()) return false;
 
         if (slot.getWindowSlot() == -1) {
-            clickSlot(PlayerSlot.UNDEFINED, 0, ClickType.PICKUP);
-            return;
+            return clickSlot(PlayerSlot.UNDEFINED, 0, ClickType.PICKUP);
         }
         // NOT THE CASE! We may have something in the cursor slot to place.
         //if (getItemStackInSlot(slot).isEmpty()) return getItemStackInSlot(slot);
 
-        clickWindowSlot(slot.getWindowSlot(), mouseButton, type);
+        return clickWindowSlot(slot.getWindowSlot(), mouseButton, type);
     }
 
     private void clickSlotForce(Slot slot, int mouseButton, ClickType type) {
@@ -78,10 +79,10 @@ public class SlotHandler {
         clickSlot(slot, mouseButton, type);
     }
 
-    private void clickWindowSlot(int windowSlot, int mouseButton, ClickType type) {
+    private boolean clickWindowSlot(int windowSlot, int mouseButton, ClickType type) {
         LocalPlayer player = Minecraft.getInstance().player;
         if (player == null) {
-            return;
+            return false;
         }
         registerSlotAction();
         int syncId = player.containerMenu.containerId;
@@ -91,7 +92,9 @@ public class SlotHandler {
         } catch (Exception e) {
             Debug.logWarning("Slot Click Error (ignored)");
             e.printStackTrace();
+            return false;
         }
+        return true;
     }
 
     public void forceEquipItemToOffhand(Item toEquip) {
