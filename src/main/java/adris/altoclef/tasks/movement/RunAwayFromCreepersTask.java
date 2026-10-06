@@ -8,7 +8,6 @@ import baritone.api.pathing.goals.Goal;
 import java.util.Optional;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.monster.Creeper;
-import net.minecraft.world.phys.Vec3;
 
 public class RunAwayFromCreepersTask extends CustomBaritoneGoalTask {
 
@@ -58,11 +57,9 @@ public class RunAwayFromCreepersTask extends CustomBaritoneGoalTask {
         }
 
         @Override
-        protected double getCostOfEntity(Entity entity, int x, int y, int z) {
-            if (entity instanceof Creeper) {
-                return MobDefenseChain.getCreeperSafety(new Vec3(x + 0.5, y + 0.5, z + 0.5), (Creeper) entity);
-            }
-            return super.getCostOfEntity(entity, x, y, z);
+        protected double getCostOfEntity(Target creeper, int x, int y, int z) {
+            // the snapshot already holds the fuse, no need to poke the creeper from the pathfinder thread
+            return MobDefenseChain.getCreeperSafety(x + 0.5, y + 0.5, z + 0.5, creeper.x(), creeper.y(), creeper.z(), creeper.swell());
         }
     }
 }

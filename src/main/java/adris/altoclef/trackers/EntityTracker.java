@@ -49,6 +49,13 @@ public class EntityTracker extends Tracker {
     private final EntityLocateBlacklist _entityBlacklist = new EntityLocateBlacklist();
     // entity ids we already said we were skipping, so the log gets one line per drop and not one per tick
     private final Set<Integer> _skippedWetDrops = new HashSet<>();
+    // isPickupSafe can be ~45 block lookups per drop, so each drop's verdict lives a few ticks instead of being redone
+    // every tick. rebuilt each update from the drops that were actually asked about, so dead ones fall out by themselves
+    private HashMap<Integer, PickupVerdict> _pickupVerdicts = new HashMap<>();
+    private static final int PICKUP_RECHECK_TICKS = 10;
+
+    private record PickupVerdict(long pos, long tick, boolean safe) {
+    }
 
     private final HashMap<Player, Set<Entity>> _entitiesCollidingWithPlayerAccumulator = new HashMap<>();
     private final HashMap<Player, HashSet<Entity>> _entitiesCollidingWithPlayer = new HashMap<>();
@@ -348,6 +355,8 @@ public class EntityTracker extends Tracker {
             _entitiesCollidingWithPlayerAccumulator.clear();
 
             boolean allowWetDrops = Baritone.settings().altoPickupItemsInWater.value;
+            long now = Minecraft.getInstance().level.getGameTime();
+            HashMap<Integer, PickupVerdict> verdicts = new HashMap<>();
 
             // Loop through all entities and track 'em
             for (Entity entity : Minecraft.getInstance().level.entitiesForRendering()) {
@@ -378,7 +387,7 @@ public class EntityTracker extends Tracker {
                     if (ientity.onGround() || ientity.isInWater() || WorldHelper.isSolid(_mod, ientity.blockPosition().below(2)) || WorldHelper.isSolid(_mod, ientity.blockPosition().below(3))) {
                         // every drop lookup in altoclef goes through this map, so skipping wet items here covers all
                         // of them at once, and updateState only runs once a tick so it doubles as the cache
-                        if (!allowWetDrops && !ItemPickupRules.isPickupSafe(ientity)) {
+                        if (!allowWetDrops && !isPickupSafeCached(ientity, now, verdicts)) {
                             noteSkippedWetDrop(ientity);
                             continue;
                         }
@@ -389,15 +398,10 @@ public class EntityTracker extends Tracker {
                     }
                 }
                 if (entity instanceof Mob) {
-                    if (EntityHelper.isAngryAtPlayer(_mod, entity)) {
-
-                        // Check if the mob is facing us or is close enough
-                        boolean closeEnough = entity.closerThan(_mod.getPlayer(), 16);
-
-                        //Debug.logInternal("TARGET: " + hostile.is);
-                        if (closeEnough) {
-                            _hostiles.add(entity);
-                        }
+                    // distance first: isAngryAtPlayer does a line of sight raycast for endermen, and most mobs
+                    // in render distance are nowhere near close enough to care
+                    if (entity.closerThan(_mod.getPlayer(), 16) && EntityHelper.isAngryAtPlayer(_mod, entity)) {
+                        _hostiles.add(entity);
                     }
                 } else if (entity instanceof Projectile projEntity) {
                     if (!_mod.getBehaviour().shouldAvoidDodgingProjectile(entity)) {
@@ -427,7 +431,19 @@ public class EntityTracker extends Tracker {
                     _playerLastCoordinates.put(name, player.position());
                 }
             }
+            _pickupVerdicts = verdicts;
         }
+    }
+
+    // redo the check when the drop moves to another block or the verdict is old enough that the water may have changed
+    private boolean isPickupSafeCached(ItemEntity drop, long now, HashMap<Integer, PickupVerdict> verdicts) {
+        long pos = drop.blockPosition().asLong();
+        PickupVerdict verdict = _pickupVerdicts.get(drop.getId());
+        if (verdict == null || verdict.pos() != pos || now - verdict.tick() >= PICKUP_RECHECK_TICKS) {
+            verdict = new PickupVerdict(pos, now, ItemPickupRules.isPickupSafe(drop));
+        }
+        verdicts.put(drop.getId(), verdict);
+        return verdict.safe();
     }
 
     private void noteSkippedWetDrop(ItemEntity drop) {
@@ -441,6 +457,7 @@ public class EntityTracker extends Tracker {
         // Dirty clears everything else.
         _entityBlacklist.clear();
         _skippedWetDrops.clear();
+        _pickupVerdicts.clear();
         // these are keyed by LocalPlayer and hold entities, so each of them pins a whole ClientLevel. gone with the world
         _entitiesCollidingWithPlayerAccumulator.clear();
         _entitiesCollidingWithPlayer.clear();

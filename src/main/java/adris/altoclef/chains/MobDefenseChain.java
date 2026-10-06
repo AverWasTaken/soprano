@@ -84,8 +84,14 @@ public class MobDefenseChain extends SingleTaskChain {
     }
 
     public static double getCreeperSafety(Vec3 pos, Creeper creeper) {
-        double distance = creeper.distanceToSqr(pos);
-        float fuse = creeper.getSwelling(1);
+        Vec3 at = creeper.position();
+        return getCreeperSafety(pos.x, pos.y, pos.z, at.x, at.y, at.z, creeper.getSwelling(1));
+    }
+
+    // the creeper as plain numbers, so the pathfinder thread can score nodes without touching the entity
+    public static double getCreeperSafety(double x, double y, double z, double creeperX, double creeperY, double creeperZ, float fuse) {
+        double dx = creeperX - x, dy = creeperY - y, dz = creeperZ - z;
+        double distance = dx * dx + dy * dy + dz * dz;
 
         // Not fusing.
         if (fuse <= 0.001f) return distance;

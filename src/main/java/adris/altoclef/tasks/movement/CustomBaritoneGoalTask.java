@@ -1,6 +1,7 @@
 package adris.altoclef.tasks.movement;
 
 import adris.altoclef.AltoClef;
+import adris.altoclef.util.baritone.SnapshotGoal;
 import adris.altoclef.util.helpers.AnnoyingBlocks;
 import adris.altoclef.Debug;
 import adris.altoclef.tasksystem.ITaskRequiresGrounded;
@@ -87,6 +88,10 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
 
     @Override
     protected Task onTick(AltoClef mod) {
+        // goals that snapshot entities get their once-a-tick refresh here, on the main thread
+        if (_cachedGoal instanceof SnapshotGoal snapshot) {
+            snapshot.refresh();
+        }
         if (mod.getClientBaritone().getPathingBehavior().isPathing()) {
             _checker.reset();
         }
@@ -123,7 +128,7 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
             stuckCheck.reset();
         }
         if (_cachedGoal == null) {
-            _cachedGoal = newGoal(mod);
+            _cachedGoal = makeGoal(mod);
         }
 
         if (_wander) {
@@ -154,7 +159,7 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
     @Override
     public boolean isFinished(AltoClef mod) {
         if (_cachedGoal == null) {
-            _cachedGoal = newGoal(mod);
+            _cachedGoal = makeGoal(mod);
         }
         return _cachedGoal != null && _cachedGoal.isInGoal(mod.getPlayer().blockPosition());
     }
@@ -162,6 +167,15 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
     @Override
     protected void onStop(AltoClef mod, Task interruptTask) {
         mod.getClientBaritone().getPathingBehavior().forceCancel();
+    }
+
+    // fresh goals have never seen the world, so give them their first look right away
+    private Goal makeGoal(AltoClef mod) {
+        Goal goal = newGoal(mod);
+        if (goal instanceof SnapshotGoal snapshot) {
+            snapshot.refresh();
+        }
+        return goal;
     }
 
     protected abstract Goal newGoal(AltoClef mod);
