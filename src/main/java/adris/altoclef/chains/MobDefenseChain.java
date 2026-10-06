@@ -295,8 +295,11 @@ public class MobDefenseChain extends SingleTaskChain {
                     if (entity instanceof Mob mob) {
                         // a task that is fighting this one itself (golem on its pillar) does not want a second opinion
                         if (mod.getBehaviour().shouldExcludeFromMobDefense(mob)) continue;
-                        // angry is not the same as dangerous: one in the wall of our hole screaming at us is not a fight
-                        boolean isAttackingPlayer = EntityHelper.isAngryAtPlayer(mod, mob) && EntityHelper.canMobHarmPlayer(mod, mob);
+                        // angry is not the same as dangerous: one in the wall of our hole screaming at us is not a fight.
+                        // and dangerous is not the same as close: the engage zone goes first, it is the cheap question
+                        // and it keeps the closing in history fed
+                        boolean isAttackingPlayer = EntityHelper.isAngryAtPlayer(mod, mob) && EntityHelper.shouldEngageMob(mod, mob)
+                                && EntityHelper.canMobHarmPlayer(mod, mob);
                         if (isAttackingPlayer) {
                             toDealWith.add(mob);
                         }
@@ -350,14 +353,17 @@ public class MobDefenseChain extends SingleTaskChain {
                         _runAwayTask = null;
                         Predicate<Entity> valid = entity -> EntityHelper.isAngryAtPlayer(mod, entity)
                                 && (!(entity instanceof Mob mob) || EntityHelper.canMobReachPlayer(mod, mob));
+                        // the leash: past it the target is dropped and we go back to our day, chasing it round the
+                        // map is how this used to eat whole tasks
+                        Predicate<Entity> leash = entity -> !(entity instanceof Mob mob) || EntityHelper.isMobInLeash(mod, mob);
                         // Prioritize ranged enemies first.
                         if (ToDealWith instanceof Skeleton || ToDealWith instanceof Witch ||
                                 ToDealWith instanceof Pillager || ToDealWith instanceof Piglin ||
                                 ToDealWith instanceof Stray) {
-                            setTask(new KillEntitiesTask(valid, ToDealWith.getClass()));
+                            setTask(new KillEntitiesTask(valid, leash, ToDealWith.getClass()));
                             return 65;
                         }
-                        setTask(new KillEntitiesTask(valid, ToDealWith.getClass()));
+                        setTask(new KillEntitiesTask(valid, leash, ToDealWith.getClass()));
                         return 65;
                     }
                     // nothing left that we can walk to, so no takeover. keep whatever we were doing

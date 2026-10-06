@@ -4,6 +4,7 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.util.helpers.MobReachRules.Terrain;
 import adris.altoclef.util.helpers.MobReachRules.Verdict;
+import baritone.Baritone;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Set;
@@ -48,6 +49,8 @@ public class MobReachability {
     private static final int SIGHT_HOLD_TICKS = 5;
     private static final int PRUNE_EVERY = 100;
     private static final int FORGET_AFTER = 200;
+    // not asked about a mob for this long (we were eating, it went out of range) and the fight is over as far as we know
+    private static final int ENGAGE_FORGET_TICKS = 40;
 
     private record Cached(long tick, Verdict verdict) {
     }
@@ -58,6 +61,10 @@ public class MobReachability {
     private final HashMap<Integer, Cached> _verdicts = new HashMap<>();
     private final HashMap<Integer, Sight> _sight = new HashMap<>();
     private final MobReachRules.StallTracker _stall = new MobReachRules.StallTracker();
+    private final MobReachRules.ClosingTracker _closing = new MobReachRules.ClosingTracker();
+    // mobs we are currently fighting or running from, and when we last asked about them. these get the leash instead of
+    // the small engage zone
+    private final HashMap<Integer, Long> _engaged = new HashMap<>();
     // one line per mob per reason in the log, not one per tick
     private final Set<Long> _logged = new HashSet<>();
 
@@ -95,10 +102,53 @@ public class MobReachability {
         return isRanged(mob) && seesPlayer(mod, mob);
     }
 
+    // should this angry mob pull us off our task. asked once per tick per hostile, it keeps the closing in history and
+    // the "we are in a fight with this one" memory, so ask it before the expensive questions. the dangerous
+    // oddballs (flyers, endermen, bosses, a lit creeper) skip the zone entirely, their own logic is better at them
+    public boolean shouldEngage(AltoClef mod, Mob mob) {
+        if (isUngated(mob)) return true;
+        LocalPlayer player = mod.getPlayer();
+        long now = mod.getWorld().getGameTime();
+        double dx = mob.getX() - player.getX(), dy = mob.getY() - player.getY(), dz = mob.getZ() - player.getZ();
+        double range = Baritone.settings().altoHostileEngageRange.value;
+        double height = Baritone.settings().altoHostileEngageHeight.value;
+        boolean closing = _closing.update(mob.getId(), mob.distanceTo(player), now);
+        boolean leashed = MobReachRules.inLeash(dx, dy, dz, range, height);
+
+        Long last = _engaged.get(mob.getId());
+        if (leashed && last != null && now >= last && now - last <= ENGAGE_FORGET_TICKS) {
+            // already in it with this one, so it only has to stay inside the big zone. checking the small one every
+            // tick is how a zombie at exactly 8 blocks makes us dance
+            _engaged.put(mob.getId(), now);
+            return true;
+        }
+        _engaged.remove(mob.getId());
+        // the line of sight raycast is not free, only the ones that could shoot us from out here get one
+        boolean ranged = leashed && isRanged(mob);
+        boolean sees = ranged && seesPlayer(mod, mob);
+        if (MobReachRules.shouldEngage(dx, dy, dz, range, height, closing, ranged, sees)) {
+            _engaged.put(mob.getId(), now);
+            return true;
+        }
+        noteTooFar(mob, MobReachRules.ignoreReason(dx, dy, dz, range, height));
+        prune(now);
+        return false;
+    }
+
+    // the chase leash: once we are after something, how far it can get before we let it go. no memory, just the box
+    public boolean inLeash(AltoClef mod, Mob mob) {
+        if (isUngated(mob)) return true;
+        LocalPlayer player = mod.getPlayer();
+        return MobReachRules.inLeash(mob.getX() - player.getX(), mob.getY() - player.getY(), mob.getZ() - player.getZ(),
+                Baritone.settings().altoHostileEngageRange.value, Baritone.settings().altoHostileEngageHeight.value);
+    }
+
     public void reset() {
         _verdicts.clear();
         _sight.clear();
         _stall.clear();
+        _closing.clear();
+        _engaged.clear();
         _logged.clear();
         _enclosedTick = Long.MIN_VALUE;
     }
@@ -135,9 +185,22 @@ public class MobReachability {
     }
 
     private void noteIgnored(Mob mob, Verdict verdict) {
-        if (_logged.add(((long) mob.getId() << 2) | verdict.ordinal())) {
-            Debug.logInternal("Ignoring " + mob.getType().getDescriptionId() + " #" + mob.getId() + ", it can't reach us (" + verdict.name().toLowerCase() + ")");
+        if (_logged.add(((long) mob.getId() << 3) | verdict.ordinal())) {
+            Debug.logInternal("Ignoring " + shortName(mob) + " #" + mob.getId() + ", it can't reach us (" + verdict.name().toLowerCase() + ")");
         }
+    }
+
+    // verdict ordinals are 0..3, so 4 is free for "out of the engage zone"
+    private void noteTooFar(Mob mob, String reason) {
+        if (_logged.add(((long) mob.getId() << 3) | 4)) {
+            Debug.logInternal("Ignoring " + shortName(mob) + " #" + mob.getId() + ", " + reason);
+        }
+    }
+
+    // entity.minecraft.zombie -> zombie
+    private static String shortName(Mob mob) {
+        String id = mob.getType().getDescriptionId();
+        return id.substring(id.lastIndexOf('.') + 1);
     }
 
     // ids of mobs we have not asked about in a while go away, the world reuses ids and dead mobs never come back
@@ -147,6 +210,8 @@ public class MobReachability {
         _verdicts.values().removeIf(c -> now - c.tick > FORGET_AFTER);
         _sight.values().removeIf(s -> now - s.tick > FORGET_AFTER);
         _stall.prune(now);
+        _closing.prune(now);
+        _engaged.values().removeIf(t -> now - t > FORGET_AFTER);
         // the log set has no timestamps, so it just goes when it gets silly
         if (_logged.size() > 512) _logged.clear();
     }

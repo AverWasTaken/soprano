@@ -1976,6 +1976,22 @@ public final class Settings {
     public final Setting<Boolean> altoKillOrAvoidAnnoyingHostiles = new Setting<>(true);
 
     /**
+     * How close (in blocks, horizontally) an angry mob has to be before the bot drops what it is doing to fight it or
+     * run from it, as long as it is also within {@link #altoHostileEngageHeight} vertically. Mobs outside that box are
+     * left alone until they start walking at the bot, or, if they shoot, until they have a clear line to it. Once the
+     * bot is fighting something it keeps going until the mob is a few blocks past this range, so it does not flip
+     * back and forth at the edge. Needs {@link #altoKillOrAvoidAnnoyingHostiles}.
+     */
+    public final Setting<Double> altoHostileEngageRange = new Setting<>(8D);
+
+    /**
+     * How far above or below the bot (in blocks) an angry mob can be and still count as close enough to fight, see
+     * {@link #altoHostileEngageRange}. A zombie ten blocks down a cave is not worth leaving the task for, it will come
+     * up on its own or it won't.
+     */
+    public final Setting<Double> altoHostileEngageHeight = new Setting<>(3D);
+
+    /**
      * Avoid going underwater when pathing is not giving the bot movement instructions. Turn it off if you want the bot
      * to be able to sink.
      */
