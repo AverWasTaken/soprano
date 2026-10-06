@@ -4,12 +4,14 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.eventbus.EventBus;
 import adris.altoclef.eventbus.events.PlayerCollidedWithEntityEvent;
+import baritone.Baritone;
 import baritone.utils.accessor.IPersistentProjectile;
 import adris.altoclef.trackers.blacklisting.EntityLocateBlacklist;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.baritone.CachedProjectile;
 import adris.altoclef.util.helpers.BaritoneHelper;
 import adris.altoclef.util.helpers.EntityHelper;
+import adris.altoclef.util.helpers.ItemPickupRules;
 import adris.altoclef.util.helpers.ProjectileHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import java.util.*;
@@ -45,6 +47,8 @@ public class EntityTracker extends Tracker {
     private final HashMap<String, Vec3> _playerLastCoordinates = new HashMap<>();
 
     private final EntityLocateBlacklist _entityBlacklist = new EntityLocateBlacklist();
+    // entity ids we already said we were skipping, so the log gets one line per drop and not one per tick
+    private final Set<Integer> _skippedWetDrops = new HashSet<>();
 
     private final HashMap<Player, Set<Entity>> _entitiesCollidingWithPlayerAccumulator = new HashMap<>();
     private final HashMap<Player, HashSet<Entity>> _entitiesCollidingWithPlayer = new HashMap<>();
@@ -311,6 +315,13 @@ public class EntityTracker extends Tracker {
     }
 
     /**
+     * Gives up on this entity for good (until the world changes), no retries.
+     */
+    public void banEntity(Entity entity) {
+        _entityBlacklist.banItem(entity);
+    }
+
+    /**
      * Whether we have decided that this entity is unreachable.
      */
     public boolean isEntityReachable(Entity entity) {
@@ -335,6 +346,8 @@ public class EntityTracker extends Tracker {
                 _entitiesCollidingWithPlayer.get(collisions.getKey()).addAll(collisions.getValue());
             }
             _entitiesCollidingWithPlayerAccumulator.clear();
+
+            boolean allowWetDrops = Baritone.settings().altoPickupItemsInWater.value;
 
             // Loop through all entities and track 'em
             for (Entity entity : Minecraft.getInstance().level.entitiesForRendering()) {
@@ -363,6 +376,12 @@ public class EntityTracker extends Tracker {
 
                     // Only cared about GROUNDED item entities
                     if (ientity.onGround() || ientity.isInWater() || WorldHelper.isSolid(_mod, ientity.blockPosition().below(2)) || WorldHelper.isSolid(_mod, ientity.blockPosition().below(3))) {
+                        // every drop lookup in altoclef goes through this map, so skipping wet items here covers all
+                        // of them at once, and updateState only runs once a tick so it doubles as the cache
+                        if (!allowWetDrops && !ItemPickupRules.isPickupSafe(ientity)) {
+                            noteSkippedWetDrop(ientity);
+                            continue;
+                        }
                         if (!_itemDropLocations.containsKey(droppedItem)) {
                             _itemDropLocations.put(droppedItem, new ArrayList<>());
                         }
@@ -411,10 +430,17 @@ public class EntityTracker extends Tracker {
         }
     }
 
+    private void noteSkippedWetDrop(ItemEntity drop) {
+        if (_skippedWetDrops.add(drop.getId())) {
+            Debug.logInternal("Skipping " + drop.getItem().getItem().getDescriptionId() + " in water at " + drop.blockPosition().toShortString());
+        }
+    }
+
     @Override
     protected void reset() {
         // Dirty clears everything else.
         _entityBlacklist.clear();
+        _skippedWetDrops.clear();
         // these are keyed by LocalPlayer and hold entities, so each of them pins a whole ClientLevel. gone with the world
         _entitiesCollidingWithPlayerAccumulator.clear();
         _entitiesCollidingWithPlayer.clear();

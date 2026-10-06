@@ -1,0 +1,99 @@
+package adris.altoclef.util.helpers;
+
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.tags.FluidTags;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.state.BlockState;
+
+// the one place that decides if a drop is worth walking to. the rule is: items in water are not, unless we can grab
+// them without getting wet. the decision only talks to Terrain so it can be tested without a world.
+public final class ItemPickupRules {
+
+    // vanilla grabs items inside the player box grown by 1 horizontally and 0.5 vertically. player is 0.6 wide and
+    // 1.8 tall, items are 0.25 across. these are those numbers added up, plus a hair so edge cases favour grabbing
+    private static final double REACH_XZ = 1.0 + 0.3 + 0.125;
+    private static final double REACH_BELOW = 0.5 + 0.25;
+    private static final double REACH_ABOVE = 0.5 + 1.8;
+
+    private ItemPickupRules() {
+    }
+
+    public interface Terrain {
+        // any water at all, source, flowing or waterlogged
+        boolean water(int x, int y, int z);
+
+        // something you can stand on top of and it is not a liquid
+        boolean solid(int x, int y, int z);
+
+        // nothing to collide with and no liquid, so a body fits here
+        boolean open(int x, int y, int z);
+    }
+
+    public static boolean isPickupSafe(ItemEntity item) {
+        Level level = item.level();
+        BlockPos at = item.blockPosition();
+        Terrain terrain = new Terrain() {
+            @Override
+            public boolean water(int x, int y, int z) {
+                return level.getFluidState(new BlockPos(x, y, z)).is(FluidTags.WATER);
+            }
+
+            @Override
+            public boolean solid(int x, int y, int z) {
+                BlockPos pos = new BlockPos(x, y, z);
+                BlockState state = level.getBlockState(pos);
+                return state.getFluidState().isEmpty() && state.isFaceSturdy(level, pos, Direction.UP);
+            }
+
+            @Override
+            public boolean open(int x, int y, int z) {
+                BlockPos pos = new BlockPos(x, y, z);
+                BlockState state = level.getBlockState(pos);
+                return state.getFluidState().isEmpty() && state.getCollisionShape(level, pos).isEmpty();
+            }
+        };
+        // isInWater is the entity's own idea, the fluid check covers the tick where the two disagree
+        boolean inWater = item.isInWater() || terrain.water(at.getX(), at.getY(), at.getZ());
+        return isPickupSafe(item.getX(), item.getY(), item.getZ(), inWater, terrain);
+    }
+
+    public static boolean isPickupSafe(double x, double y, double z, boolean inWater, Terrain terrain) {
+        if (!inWater) {
+            return true;
+        }
+        int bx = (int) Math.floor(x);
+        int by = (int) Math.floor(y);
+        int bz = (int) Math.floor(z);
+        return isWadeable(terrain, bx, by, bz) || canGrabFromDryLand(terrain, x, y, z);
+    }
+
+    // a puddle one block deep over a floor. you walk through it, no swimming involved. swamps and rain are full of these
+    private static boolean isWadeable(Terrain t, int bx, int by, int bz) {
+        return t.water(bx, by, bz) && t.solid(bx, by - 1, bz) && t.open(bx, by + 1, bz);
+    }
+
+    // is there a spot we can stand on, dry, with the item inside pickup range of it
+    private static boolean canGrabFromDryLand(Terrain t, double x, double y, double z) {
+        int bx = (int) Math.floor(x);
+        int by = (int) Math.floor(y);
+        int bz = (int) Math.floor(z);
+        for (int sx = bx - 1; sx <= bx + 1; sx++) {
+            if (Math.abs(x - (sx + 0.5)) > REACH_XZ) continue;
+            for (int sz = bz - 1; sz <= bz + 1; sz++) {
+                if (Math.abs(z - (sz + 0.5)) > REACH_XZ) continue;
+                for (int sy = by - 3; sy <= by + 1; sy++) {
+                    // feet at sy, the item has to sit between "reach below the feet" and "reach above the head"
+                    if (y < sy - REACH_BELOW || y > sy + REACH_ABOVE) continue;
+                    if (standable(t, sx, sy, sz)) return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static boolean standable(Terrain t, int x, int y, int z) {
+        return t.solid(x, y - 1, z) && t.open(x, y, z) && t.open(x, y + 1, z);
+    }
+}
