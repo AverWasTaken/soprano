@@ -142,6 +142,9 @@ public final class RunStateStore {
         if (s.placedJobBlocks == null) {
             s.placedJobBlocks = new ArrayList<>();
         }
+        if (s.villageBedsTried == null) {
+            s.villageBedsTried = new ArrayList<>();
+        }
         return s;
     }
 

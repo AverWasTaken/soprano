@@ -167,6 +167,11 @@ public class RunState {
     // ours must not (we craft blast furnaces). same guess as placedTables, see GamerTask.watchPlacements
     public List<Pos> placedJobBlocks = new ArrayList<>();
 
+    // village beds we already went for (either half, both count) and the game ticks spent on them. BedRules reads the
+    // ticks for the budget, so a relog does not hand out a fresh one
+    public List<Pos> villageBedsTried = new ArrayList<>();
+    public long villageBedTicks;
+
     public int attemptsOf(GamerPhase p) {
         return phaseAttempts.getOrDefault(p.name(), 0);
     }

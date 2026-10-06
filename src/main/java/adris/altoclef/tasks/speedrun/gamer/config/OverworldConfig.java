@@ -53,6 +53,13 @@ public class OverworldConfig {
     // per run, not per phase: at most this many chests and this many seconds spent in them, then we mine like normal
     public int villageLootMaxChests = 3;
     public double villageLootSeconds = 240;
+    // village beds, while we are short of beds: how far away a seen bed may be, and how close to a job block, a bell or
+    // another bed it has to sit to count as a village's. a bed is a bed, no wool and no shears needed for it
+    public int villageBedRadius = 48;
+    public int villageBedEvidenceRadius = 16;
+    // per run: this long in total spent on beds, and this long on any one of them before it is written off
+    public double villageBedSeconds = 120;
+    public double villageBedEachSeconds = 20;
 
     // casting with no lava in sight for this long, while we already hold a diamond pickaxe, flips to obsidian early.
     // without the pickaxe we keep wandering for a lake until castGiveUpMinutes

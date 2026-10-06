@@ -90,6 +90,8 @@ public class RunStateStoreTest {
         s.villageChestsTried.add(new RunState.Pos(12, 64, -7));
         s.villageLootTicks = 1500;
         s.placedJobBlocks.add(new RunState.Pos(5, 64, 5));
+        s.villageBedsTried.add(new RunState.Pos(8, 65, -2));
+        s.villageBedTicks = 700;
         s.dragonDead = true;
         return s;
     }
@@ -127,6 +129,8 @@ public class RunStateStoreTest {
         assertEquals(List.of(new RunState.Pos(12, 64, -7)), out.villageChestsTried);
         assertEquals(1500L, out.villageLootTicks);
         assertEquals(List.of(new RunState.Pos(5, 64, 5)), out.placedJobBlocks);
+        assertEquals(List.of(new RunState.Pos(8, 65, -2)), out.villageBedsTried);
+        assertEquals(700L, out.villageBedTicks);
         assertEquals("NETHER", out.deaths.get(0).dimension);
         assertEquals(987654321L, out.runTicks);
         assertEquals(Integer.valueOf(2), out.regressCounts.get("LOCATE>NETHER"));
@@ -203,11 +207,14 @@ public class RunStateStoreTest {
         RunState s = RunStateStore.load(file(), FP).state();
         assertTrue(s.villageChestsTried.isEmpty());
         assertTrue(s.placedJobBlocks.isEmpty());
+        assertTrue(s.villageBedsTried.isEmpty());
         assertEquals(0L, s.villageLootTicks);
-        write(file(), "{\"fingerprint\":\"" + FP + "\",\"phase\":\"IRON\",\"villageChestsTried\":null,\"placedJobBlocks\":null}");
+        assertEquals(0L, s.villageBedTicks);
+        write(file(), "{\"fingerprint\":\"" + FP + "\",\"phase\":\"IRON\",\"villageChestsTried\":null,\"placedJobBlocks\":null,\"villageBedsTried\":null}");
         s = RunStateStore.load(file(), FP).state();
         assertTrue(s.villageChestsTried.isEmpty());
         assertTrue(s.placedJobBlocks.isEmpty());
+        assertTrue(s.villageBedsTried.isEmpty());
     }
 
     @Test

@@ -186,6 +186,27 @@ public class KitPlannerTest {
     }
 
     @Test
+    public void bedShortfallIsTheWoolNeedInWholeBeds() {
+        assertEquals(24, KitPlanner.woolShortfall(f, 8));
+        assertEquals(8, KitPlanner.bedsShort(f, 8));
+        // a held bed is three wool, whatever colour
+        FakeFacts beds = new FakeFacts().give(Items.RED_BED, 2).give(Items.WHITE_BED, 1);
+        assertEquals(15, KitPlanner.woolShortfall(beds, 8));
+        assertEquals(5, KitPlanner.bedsShort(beds, 8));
+        // wool in sets of three counts like beds do, scraps do not
+        FakeFacts wool = new FakeFacts().give(Items.RED_WOOL, 5).give(Items.WHITE_WOOL, 2);
+        assertEquals(21, KitPlanner.woolShortfall(wool, 8));
+        assertEquals(7, KitPlanner.bedsShort(wool, 8));
+        // a spare is a ninth bed, and nothing is owed once we hold enough
+        assertEquals(1, KitPlanner.bedsShort(new FakeFacts().give(Items.WHITE_BED, 8), 9));
+        assertEquals(0, KitPlanner.bedsShort(new FakeFacts().give(Items.WHITE_BED, 9), 9));
+        assertEquals(0, KitPlanner.bedsShort(f, 0));
+        // and the planner asks for exactly the wool this says is missing
+        assertEquals(wool.count(Items.RED_WOOL) + wool.count(Items.WHITE_WOOL) + KitPlanner.woolShortfall(wool, 8),
+                find(KitPlanner.plan(wool, cfg, 8), "wool").count());
+    }
+
+    @Test
     public void woolCountsPerColourInSetsOfThree() {
         // a bed needs three of ONE colour: 5 red + 4 white is 3 + 3
         f.give(Items.RED_WOOL, 5).give(Items.WHITE_WOOL, 4);

@@ -114,13 +114,22 @@ public final class KitPlanner {
     // 3 wool a bed, and a bed we already carry is 3 wool we do not need to find. a bed wants three of ONE colour, so
     // 5 red and 4 white is one bed's worth, not nine wool
     private static void addWool(List<KitNeed> out, GamerFacts f, int endBeds) {
-        int needed = 3 * endBeds;
-        int wool = f.count(ItemHelper.WOOL);
-        int have = usableWool(f) + 3 * f.count(ItemHelper.BED);
-        if (needed > 0 && have < needed) {
+        int missing = woolShortfall(f, endBeds);
+        if (missing > 0) {
             // the wool task counts every colour, so ask for what we hold plus the shortfall or it stops too early
-            out.add(new KitNeed("wool", wool + needed - have));
+            out.add(new KitNeed("wool", f.count(ItemHelper.WOOL) + missing));
         }
+    }
+
+    // wool still missing for this many beds, a held bed counting as its three wool. one formula for the wool need and for
+    // VillageBeds, so a village bed shrinks exactly the need it is standing in for
+    public static int woolShortfall(GamerFacts f, int beds) {
+        return Math.max(0, 3 * beds - (usableWool(f) + 3 * f.count(ItemHelper.BED)));
+    }
+
+    // the same shortfall in whole beds, which is what a village hands out (rounded up, a bed is not two thirds)
+    public static int bedsShort(GamerFacts f, int beds) {
+        return (woolShortfall(f, beds) + 2) / 3;
     }
 
     // wool that turns into beds: whole sets of three per colour

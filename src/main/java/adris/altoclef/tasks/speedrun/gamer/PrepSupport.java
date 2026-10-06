@@ -12,6 +12,7 @@ public final class PrepSupport {
     private final DangerFilter danger = new DangerFilter();
     private final RuinedPortalLoot loot;
     private final VillageLoot village;
+    private final VillageBeds villageBeds = new VillageBeds();
     // our crafting table and furnace, taken back at a need boundary
     private final StationPickup stations = new StationPickup();
     private final GolemHunt golem;
@@ -51,6 +52,7 @@ public final class PrepSupport {
             village.onExit(mod);
             golem.onExit();
         }
+        villageBeds.onExit(mod);
         stations.reset();
     }
 
@@ -84,6 +86,13 @@ public final class PrepSupport {
         if (blacksmith != null) {
             hud = "Looting a village chest";
             return blacksmith;
+        }
+        // not behind the lootRuinedPortals flag: GATHER is where we usually meet the village, and a bed is a bed
+        // and before the golem, a bed is a few seconds of punching and a golem is a minute on a pillar
+        Task bed = villageBeds.tick(mod, ctx);
+        if (bed != null) {
+            hud = "Taking a village bed (" + villageBeds.toGo() + " to go)";
+            return bed;
         }
         Task fight = golem == null ? null : golem.tick(mod, ctx, current);
         if (fight != null) {
