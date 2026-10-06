@@ -150,7 +150,7 @@ public class OverworldPhasesTest {
         assertEquals(240.0, o.villageLootSeconds, 0);
         assertEquals(32, o.portalBuildBlocks);
         assertEquals(10, o.tableRecoverRadius);
-        assertEquals(30.0, o.tableUseCooldownSeconds, 0);
+        assertEquals(3.0, o.tableUseCooldownSeconds, 0);
         assertEquals(120.0, o.tableRecoverCooldownSeconds, 0);
         assertTrue(o.noLavaSeconds < o.castGiveUpMinutes * 60);
         assertEquals(OverworldConfig.ArmorPlan.FULL_IRON, o.armorPlan);

@@ -89,4 +89,75 @@ public class OwnTablesTest {
         assertFalse(own.contains(pos(1, 1, 1)));
         assertTrue(own.contains(pos(100 + OwnTables.CAP + 4, 64, 0)));
     }
+
+    // the bug: craft, walk off to iron, the 30 s cooldown ran out out of range and the table stayed. now the pickup is
+    // about WHICH need is running, not how long ago we touched it
+    @Test
+    public void tableComesBackWhenTheRunMovesToAGatheringNeed() {
+        // food placed it (smoker, bread), food is still running: keep
+        assertFalse(OwnTables.wantsTableBack("food", "food"));
+        // food is done, iron is next: that is the boundary
+        assertTrue(OwnTables.wantsTableBack("food", "iron_ingot"));
+        assertTrue(OwnTables.wantsTableBack("furnace", "food"));
+        assertTrue(OwnTables.wantsTableBack("iron_pickaxe", "wool"));
+        // the plan ran dry: nothing will use it again
+        assertTrue(OwnTables.wantsTableBack("shears", null));
+        // placed outside a prep phase or before a relog, no idea who used it: still fair game at the next gathering need
+        assertTrue(OwnTables.wantsTableBack(null, "iron_ingot"));
+    }
+
+    @Test
+    public void aCraftNeedKeepsTheTable() {
+        // wooden pickaxe placed it, stone pickaxe is a craft at that same table
+        assertFalse(OwnTables.wantsTableBack("wooden_pickaxe", "stone_pickaxe"));
+        assertFalse(OwnTables.wantsTableBack("iron_ingot", "iron_pickaxe"));
+        assertFalse(OwnTables.wantsTableBack(null, "bucket"));
+        // armor going on and the special needs are not crafts
+        assertTrue(OwnTables.wantsTableBack("iron_chestplate", KitNeed.EQUIP_ARMOR));
+        assertTrue(OwnTables.wantsTableBack("iron_chestplate", KitNeed.BUILD_BLOCKS));
+    }
+
+    @Test
+    public void furnaceFollowsTheSameBoundaryButCraftsDoNotKeepIt() {
+        // cooked food, now crafts: the furnace is dead weight, crafts use the table
+        assertTrue(OwnTables.wantsFurnaceBack("food", "iron_pickaxe", false));
+        assertTrue(OwnTables.wantsFurnaceBack("iron_ingot", null, false));
+        // the need that smelted in it is still running
+        assertFalse(OwnTables.wantsFurnaceBack("iron_ingot", "iron_ingot", false));
+        assertFalse(OwnTables.wantsFurnaceBack("food", "food", false));
+    }
+
+    @Test
+    public void aFurnaceAboutToSmeltIsKept() {
+        assertTrue(OwnTables.smeltsSoon("iron_ingot", 3));
+        // iron need but nothing raw yet: we are going mining, carry it
+        assertFalse(OwnTables.smeltsSoon("iron_ingot", 0));
+        assertFalse(OwnTables.smeltsSoon("food", 3));
+        assertFalse(OwnTables.smeltsSoon(null, 3));
+        assertFalse(OwnTables.wantsFurnaceBack("food", "iron_ingot", OwnTables.smeltsSoon("iron_ingot", 5)));
+        assertTrue(OwnTables.wantsFurnaceBack("food", "iron_ingot", OwnTables.smeltsSoon("iron_ingot", 0)));
+    }
+
+    // the debounce is a few seconds now, not the 30 that let the bot wander out of range
+    @Test
+    public void aFewSecondsOfDebounceAfterUse() {
+        long never = OwnTables.NEVER;
+        assertFalse(OwnTables.mayStartRecovery(1000, 960, never, false, 3, 120));
+        assertTrue(OwnTables.mayStartRecovery(1000, 940, never, false, 3, 120));
+        // but the loop backstop is untouched
+        assertFalse(OwnTables.mayStartRecovery(5000, 0, 2601, false, 3, 120));
+        assertTrue(OwnTables.mayStartRecovery(5000, 0, 2600, false, 3, 120));
+    }
+
+    @Test
+    public void craftAndGatheringNamesAddUp() {
+        assertTrue(KitNeed.isCraftName("furnace"));
+        assertTrue(KitNeed.isCraftName("shield"));
+        assertFalse(KitNeed.isCraftName("iron_ingot"));
+        assertFalse(KitNeed.isCraftName("wool"));
+        assertFalse(KitNeed.isCraftName(KitNeed.FOOD));
+        assertFalse(KitNeed.isCraftName(KitNeed.EQUIP_ARMOR));
+        assertFalse(KitNeed.isCraftName(null));
+        assertTrue(new KitNeed("bucket", 2).isCraft());
+    }
 }

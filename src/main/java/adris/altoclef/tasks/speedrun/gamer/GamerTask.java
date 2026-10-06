@@ -75,7 +75,7 @@ public class GamerTask extends Task {
     // defense) and that is only the task coming back, never a new run
     private boolean begun;
     private boolean pushed;
-    // watches for crafting tables we place, so PrepSupport only ever takes back its own (OwnTables)
+    // watches for crafting tables and furnaces we place, so PrepSupport only ever takes back its own (OwnTables)
     private Subscription<BlockPlaceEvent> placeWatch;
     // the engine owns the end portal walk flag: whatever a handler asked for last is put back on every (re)start
     private boolean wantWalkOnPortal;
@@ -316,10 +316,10 @@ public class GamerTask extends Task {
         }
         placeWatch = EventBus.subscribe(BlockPlaceEvent.class, evt -> {
             // the hook publishes every conducting block that appears on the client level, so this is a guess about who put
-            // it there: a crafting table, in the overworld, inside our own placing reach
+            // it there: a crafting table or furnace, in the overworld, inside our own placing reach
             LocalPlayer player = Minecraft.getInstance().player;
             if (state == null || !begun || player == null || facts == null || facts.dimension() != Dimension.OVERWORLD
-                    || !(evt.blockState.is(Blocks.CRAFTING_TABLE) || isJobBlock(evt.blockState))) {
+                    || !(evt.blockState.is(Blocks.CRAFTING_TABLE) || evt.blockState.is(Blocks.FURNACE) || isJobBlock(evt.blockState))) {
                 return;
             }
             RunState.Pos pos = new RunState.Pos(evt.blockPos.getX(), evt.blockPos.getY(), evt.blockPos.getZ());
@@ -329,9 +329,13 @@ public class GamerTask extends Task {
                     OwnTables.record(state.placedJobBlocks, pos);
                 }
             } else if (OwnTables.placedByUs(player.getX(), player.getEyeY(), player.getZ(), pos)) {
-                // a table that just went down is about to be used, the pickup keeps its hands off it for a bit
-                state.lastTableUseTick = facts.gameTime();
-                OwnTables.record(state.placedTables, pos);
+                // a station that just went down is about to be used by the need that placed it, so the pickup waits for the
+                // next need (and a few seconds, for the debounce)
+                boolean furnace = evt.blockState.is(Blocks.FURNACE);
+                RunState.StationUse use = furnace ? state.furnaceUse : state.tableUse;
+                use.lastUseTick = facts.gameTime();
+                use.useNeed = state.currentNeed;
+                OwnTables.record(furnace ? state.placedFurnaces : state.placedTables, pos);
             }
         });
     }

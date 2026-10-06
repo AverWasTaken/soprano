@@ -13,9 +13,22 @@ public record KitNeed(String catalogueName, int count) {
 
     // true for needs that are about walking around and mining instead of standing at a crafting table
     public boolean isGathering() {
-        return switch (catalogueName) {
+        return isGatheringName(catalogueName);
+    }
+
+    // a catalogue item we make at a table (stone pickaxe, bucket, shears...): the table has to stay put until it is done
+    public boolean isCraft() {
+        return isCraftName(catalogueName);
+    }
+
+    public static boolean isGatheringName(String name) {
+        return switch (name == null ? "" : name) {
             case "iron_ingot", "wool", FOOD, BUILD_BLOCKS -> true;
             default -> false;
         };
+    }
+
+    public static boolean isCraftName(String name) {
+        return name != null && !isGatheringName(name) && !EQUIP_ARMOR.equals(name);
     }
 }

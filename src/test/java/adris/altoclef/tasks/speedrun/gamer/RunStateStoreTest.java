@@ -86,6 +86,7 @@ public class RunStateStoreTest {
         s.endDrops.put("minecraft:white_bed", 7);
         s.placedTables.add(new RunState.Pos(245, 63, 40));
         s.placedTables.add(new RunState.Pos(-3, 70, 9));
+        s.placedFurnaces.add(new RunState.Pos(12, 64, -4));
         s.villageChestsTried.add(new RunState.Pos(12, 64, -7));
         s.villageLootTicks = 1500;
         s.placedJobBlocks.add(new RunState.Pos(5, 64, 5));
@@ -122,6 +123,7 @@ public class RunStateStoreTest {
         assertTrue(out.strongholdRays.get(0).dived);
         assertEquals(Integer.valueOf(7), out.endDrops.get("minecraft:white_bed"));
         assertEquals(List.of(new RunState.Pos(245, 63, 40), new RunState.Pos(-3, 70, 9)), out.placedTables);
+        assertEquals(List.of(new RunState.Pos(12, 64, -4)), out.placedFurnaces);
         assertEquals(List.of(new RunState.Pos(12, 64, -7)), out.villageChestsTried);
         assertEquals(1500L, out.villageLootTicks);
         assertEquals(List.of(new RunState.Pos(5, 64, 5)), out.placedJobBlocks);
@@ -190,8 +192,9 @@ public class RunStateStoreTest {
     public void aFileFromBeforeTheTableListHasNoTablesAndANullListIsEmpty() throws IOException {
         write(file(), "{\"fingerprint\":\"" + FP + "\",\"phase\":\"IRON\"}");
         assertTrue(RunStateStore.load(file(), FP).state().placedTables.isEmpty());
-        write(file(), "{\"fingerprint\":\"" + FP + "\",\"phase\":\"IRON\",\"placedTables\":null}");
+        write(file(), "{\"fingerprint\":\"" + FP + "\",\"phase\":\"IRON\",\"placedTables\":null,\"placedFurnaces\":null}");
         assertTrue(RunStateStore.load(file(), FP).state().placedTables.isEmpty());
+        assertTrue(RunStateStore.load(file(), FP).state().placedFurnaces.isEmpty());
     }
 
     @Test

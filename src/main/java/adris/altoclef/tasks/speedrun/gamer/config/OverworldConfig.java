@@ -59,12 +59,14 @@ public class OverworldConfig {
     public double noLavaSeconds = 150;
     // throwaway blocks to carry through the portal (pillaring, bridging, plugging lava)
     public int portalBuildBlocks = 32;
-    // pick up a crafting table lying around (we hold none) only when it is this close
+    // pick up a crafting table or furnace of ours (we hold none) when the run moves on to another need, but only when it
+    // is this close
     public int tableRecoverRadius = 10;
-    // ...and gets this long to do it before that table is written off
+    // ...and gets this long to do it before that station is written off
     public double tablePickupSeconds = 30;
-    // a table that was open or placed this recently is in use (a craft is about to happen at it), leave it be
-    public double tableUseCooldownSeconds = 30;
-    // after taking one back, no second pickup for this long. the backstop against a place/pickup loop
+    // a station that was open or placed this recently is in use, leave it be. just a debounce now (the need boundary does
+    // the real deciding), it used to be 30 and the bot was long out of range by the time it ran out
+    public double tableUseCooldownSeconds = 3;
+    // after taking one back, no second pickup of that kind for this long. the backstop against a place/pickup loop
     public double tableRecoverCooldownSeconds = 120;
 }

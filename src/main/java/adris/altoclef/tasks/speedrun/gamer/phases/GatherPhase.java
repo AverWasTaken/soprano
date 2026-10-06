@@ -39,7 +39,8 @@ public class GatherPhase implements PhaseHandler {
 
     @Override
     public boolean isDone(GamerFacts facts, RunState state, GamerConfig cfg) {
-        return KitPlanner.gather(facts, cfg.overworld).isEmpty();
+        // a table or furnace of ours still standing next to us is picked up first, this is the last chance (see StationPickup)
+        return KitPlanner.gather(facts, cfg.overworld).isEmpty() && !support.stationOwed();
     }
 
     @Override
@@ -52,6 +53,7 @@ public class GatherPhase implements PhaseHandler {
     @Override
     public void onExit(AltoClef mod, GamerContext ctx) {
         support.onExit(mod);
+        ctx.state().currentNeed = null;
     }
 
     @Override

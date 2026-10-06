@@ -141,10 +141,23 @@ public class RunState {
 
     // crafting tables this run placed (overworld), the only ones the table pickup may take back. see OwnTables
     public List<Pos> placedTables = new ArrayList<>();
-    // game ticks of the last time a crafting table was open or got placed, and of the last pickup that worked. transient
-    // on purpose: they only gate a cooldown, a relog starting them over is fine. see OwnTables.mayStartRecovery
-    public transient long lastTableUseTick = OwnTables.NEVER;
-    public transient long lastTableRecoveredTick = OwnTables.NEVER;
+    // same for furnaces (plain ones only, a blast furnace of ours goes in placedJobBlocks below)
+    public List<Pos> placedFurnaces = new ArrayList<>();
+
+    // when a station was last open or placed, which kit need was running then, and when we last took one back. transient
+    // on purpose: they only gate a debounce and a backstop, a relog starting them over is fine. see OwnTables
+    public static final class StationUse {
+        public long lastUseTick = OwnTables.NEVER;
+        public long lastRecoveredTick = OwnTables.NEVER;
+        // catalogue name of the need, null = we do not know (relog, or placed outside a prep phase)
+        public String useNeed;
+    }
+
+    public transient StationUse tableUse = new StationUse();
+    public transient StationUse furnaceUse = new StationUse();
+    // the kit need the prep phase is running right now, so the placement hook in GamerTask can say which need used a
+    // station. null outside GATHER / IRON
+    public transient String currentNeed;
 
     // village blacksmith chests we already opened (or started to), and the game ticks spent in them. the budget in
     // VillageChests reads both, so a relog does not hand out a fresh one

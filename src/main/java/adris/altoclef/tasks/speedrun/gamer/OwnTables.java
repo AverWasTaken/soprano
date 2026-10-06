@@ -3,7 +3,7 @@ package adris.altoclef.tasks.speedrun.gamer;
 import java.util.List;
 import java.util.function.Predicate;
 
-// the crafting tables this run put down itself. the table pickup in PrepSupport used to take the nearest crafting table
+// the crafting tables (and furnaces, same rules) this run put down itself. the table pickup in PrepSupport used to take the nearest crafting table
 // in the world, which in a village is somebody's table and on a bad day is the one the village is built around. pure
 // (positions are the RunState.Pos the state file already uses) so the rules are testable without a game
 public final class OwnTables {
@@ -39,10 +39,11 @@ public final class OwnTables {
     // "never happened" for the tick stamps below (game time starts at 0, so -1 is safely before everything)
     public static final long NEVER = -1;
 
-    // may a table pickup START right now. the pickup preempts the kit task, and some "gathering" needs craft at a table
-    // halfway through (smoker, shears, iron pickaxe), so without this we took the table back before the craft could use
-    // it, the craft placed a new one, repeat forever. two guards: a table in use (open, or placed a moment ago) is not
-    // spare, and after one successful pickup we leave it alone for a good while, so even a loop we did not think of
+    // may a station pickup START right now. the pickup preempts the kit task, and it used to run on a 30 second "not used
+    // lately" cooldown, which is how the bot walked off to mine and left the table behind (out of range when it expired).
+    // the need boundary rules below are the real decision now, so this is down to two small guards: a station that is open or was
+    // placed a moment ago gets a few seconds (the debounce, menu closing and the next craft's first tick), and after one
+    // successful pickup of a kind we leave that kind alone for a good while, so a place/pickup loop we did not think of
     // costs one pickup per cooldown instead of every tick. stamps are game ticks, NEVER = none yet
     public static boolean mayStartRecovery(long now, long lastUse, long lastRecovered, boolean menuOpen, double useCooldownSeconds, double recoverCooldownSeconds) {
         if (menuOpen) {
@@ -52,6 +53,30 @@ public final class OwnTables {
             return false;
         }
         return lastRecovered == NEVER || now - lastRecovered >= recoverCooldownSeconds * 20;
+    }
+
+    // the run moved on from the need that used the station (or has no needs left, or we do not know which one used it).
+    // "after N seconds of not touching it" was the old rule and the bot was always out of range by then, the need boundary
+    // is the one moment we are still standing next to it and know the next job does not want it. need names are the kit
+    // catalogue's, null = nothing left to do
+    public static boolean atNeedBoundary(String usedByNeed, String currentNeed) {
+        return currentNeed == null || usedByNeed == null || !usedByNeed.equals(currentNeed);
+    }
+
+    // crafting table: take it at a boundary unless the next need is a craft, which would just place it again
+    public static boolean wantsTableBack(String usedByNeed, String currentNeed) {
+        return atNeedBoundary(usedByNeed, currentNeed) && !KitNeed.isCraftName(currentNeed);
+    }
+
+    // furnace: same boundary, but a craft does not use it (crafts use the table), so the only thing that keeps it is a
+    // smelt coming up right now. busy ones (lit, or a background job owns it) never get here, the caller filters those
+    public static boolean wantsFurnaceBack(String usedByNeed, String currentNeed, boolean smeltsSoon) {
+        return atNeedBoundary(usedByNeed, currentNeed) && !smeltsSoon;
+    }
+
+    // iron_ingot with raw iron in the bag is the one need that is about to put something in a furnace
+    public static boolean smeltsSoon(String currentNeed, int rawIron) {
+        return "iron_ingot".equals(currentNeed) && rawIron > 0;
     }
 
     // the closest of our own tables that passes `usable` and is within `radius` of the player, null if none. nothing

@@ -132,6 +132,9 @@ public final class RunStateStore {
         if (s.placedTables == null) {
             s.placedTables = new ArrayList<>();
         }
+        if (s.placedFurnaces == null) {
+            s.placedFurnaces = new ArrayList<>();
+        }
         // files from before the village loot: nothing visited yet, nothing of ours to tell apart
         if (s.villageChestsTried == null) {
             s.villageChestsTried = new ArrayList<>();
