@@ -69,4 +69,29 @@ public class OverworldConfig {
     public double tableUseCooldownSeconds = 3;
     // after taking one back, no second pickup of that kind for this long. the backstop against a place/pickup loop
     public double tableRecoverCooldownSeconds = 120;
+
+    // iron golem hunt (the iron need only): 100 hp, 3 to 5 ingots, and it cannot hit a player whose feet are above its
+    // head, so we stack a pillar next to it and poke it from there. see GolemRules for the vanilla numbers
+    public int golemHuntRadius = 32;
+    // pillar blocks we must carry (the golem hunt eats 3 to 5), and the health we want before picking this fight
+    public int golemMinBlocks = 5;
+    public double golemMinHealth = 14;
+    // feet this far above the golem's head. golem is 2.7 tall and we stand on whole blocks so 0.3 means "3 blocks up"
+    public double golemSafeMargin = 0.3;
+    // never stack more than this (a golem down a hole is not worth a tower)
+    public int golemMaxPillar = 5;
+    // reach is checked from the eye with the vanilla 3.0, anything the golem walks off to for longer than this is a lost cause
+    public double golemOutOfReachSeconds = 5;
+    // the fight itself, the walk up to it, and the pillar, each with its own clock
+    public double golemFightSeconds = 45;
+    public double golemApproachSeconds = 40;
+    public double golemPillarSeconds = 20;
+    // below this we stop swinging and just sit on the pillar until it is safe to leave
+    public double golemAbortHealth = 8;
+    // once we have hit it, we stay up this long after the last hit (anger lasts 20 to 39 s) before walking down
+    public double golemCalmSeconds = 45;
+    // other monsters this close and the hunt does not start (or ends)
+    public int golemHostileRadius = 16;
+    // fights per run, a golem that got away twice is not going to be easier the third time
+    public int golemMaxAttempts = 2;
 }

@@ -152,6 +152,14 @@ public class OverworldPhasesTest {
         assertEquals(10, o.tableRecoverRadius);
         assertEquals(3.0, o.tableUseCooldownSeconds, 0);
         assertEquals(120.0, o.tableRecoverCooldownSeconds, 0);
+        assertEquals(32, o.golemHuntRadius);
+        assertEquals(5, o.golemMinBlocks);
+        assertEquals(14.0, o.golemMinHealth, 0);
+        assertEquals(0.3, o.golemSafeMargin, 0);
+        assertEquals(2, o.golemMaxAttempts);
+        // the margin is what puts our feet on a 3.0 level against a 2.7 golem
+        assertTrue(o.golemSafeMargin > 0 && o.golemSafeMargin < 1);
+        assertTrue(o.golemAbortHealth < o.golemMinHealth);
         assertTrue(o.noLavaSeconds < o.castGiveUpMinutes * 60);
         assertEquals(OverworldConfig.ArmorPlan.FULL_IRON, o.armorPlan);
         assertEquals(6, o.ironKit.size());

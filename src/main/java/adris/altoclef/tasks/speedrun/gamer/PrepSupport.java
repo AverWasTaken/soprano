@@ -5,7 +5,8 @@ import adris.altoclef.tasksystem.Task;
 import net.minecraft.world.level.block.Blocks;
 
 
-// the side jobs the overworld phases share: danger filtering, taking our crafting table and furnace back, ruined portal chests.
+// the side jobs the overworld phases share: danger filtering, taking our crafting table and furnace back, ruined portal chests,
+// village chests, the odd iron golem.
 // all of them return a task to run INSTEAD of the kit task this tick, or null
 public final class PrepSupport {
     private final DangerFilter danger = new DangerFilter();
@@ -13,12 +14,14 @@ public final class PrepSupport {
     private final VillageLoot village;
     // our crafting table and furnace, taken back at a need boundary
     private final StationPickup stations = new StationPickup();
+    private final GolemHunt golem;
     private boolean tracking;
     private String hud;
 
     public PrepSupport(boolean lootRuinedPortals) {
         loot = lootRuinedPortals ? new RuinedPortalLoot() : null;
         village = lootRuinedPortals ? new VillageLoot() : null;
+        golem = lootRuinedPortals ? new GolemHunt() : null;
     }
 
     public String hud() {
@@ -46,6 +49,7 @@ public final class PrepSupport {
         if (loot != null) {
             loot.onExit(mod);
             village.onExit(mod);
+            golem.onExit();
         }
         stations.reset();
     }
@@ -58,6 +62,14 @@ public final class PrepSupport {
     public Task tick(AltoClef mod, GamerContext ctx, KitNeed current) {
         danger.tick(mod);
         hud = null;
+        // a golem fight in progress outranks everything, a chest is not worth stepping off the pillar for
+        if (golem != null && golem.active()) {
+            Task fight = golem.tick(mod, ctx, current);
+            if (fight != null) {
+                hud = golem.hud();
+                return fight;
+            }
+        }
         Task station = stations.tick(mod, ctx, current, tracking);
         if (station != null) {
             hud = stations.hud();
@@ -71,7 +83,12 @@ public final class PrepSupport {
         Task blacksmith = village == null ? null : village.tick(mod, ctx, current);
         if (blacksmith != null) {
             hud = "Looting a village chest";
+            return blacksmith;
         }
-        return blacksmith;
+        Task fight = golem == null ? null : golem.tick(mod, ctx, current);
+        if (fight != null) {
+            hud = golem.hud();
+        }
+        return fight;
     }
 }

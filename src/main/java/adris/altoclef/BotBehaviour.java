@@ -96,6 +96,19 @@ public class BotBehaviour {
         // current.applyState();
     }
 
+    // stronger than the forcefield one: mob defense will not run away from it or send a kill task after it either.
+    // for tasks that fight one specific mob on their own terms (the golem on its pillar, nothing else walks off it)
+    public boolean shouldExcludeFromMobDefense(Entity entity) {
+        for (Predicate<Entity> pred : current().excludeFromMobDefense) {
+            if (pred.test(entity)) return true;
+        }
+        return false;
+    }
+
+    public void addMobDefenseExclusion(Predicate<Entity> pred) {
+        current().excludeFromMobDefense.add(pred);
+    }
+
     public List<Tuple<Slot, Predicate<ItemStack>>> getConversionSlots() {
         return current().conversionSlots;
     }
@@ -343,6 +356,7 @@ public class BotBehaviour {
         public boolean forceFieldPlayers;
         public List<Predicate<Entity>> avoidDodgingProjectile = new ArrayList<>();
         public List<Predicate<Entity>> excludeFromForceField = new ArrayList<>();
+        public List<Predicate<Entity>> excludeFromMobDefense = new ArrayList<>();
         public List<Tuple<Slot, Predicate<ItemStack>>> conversionSlots = new ArrayList<>();
 
         // Extra Baritone Settings
@@ -381,6 +395,7 @@ public class BotBehaviour {
                 exclusivelyMineLogs = toCopy.exclusivelyMineLogs;
                 avoidDodgingProjectile.addAll(toCopy.avoidDodgingProjectile);
                 excludeFromForceField.addAll(toCopy.excludeFromForceField);
+                excludeFromMobDefense.addAll(toCopy.excludeFromMobDefense);
                 conversionSlots.addAll(toCopy.conversionSlots);
                 forceFieldPlayers = toCopy.forceFieldPlayers;
                 escapeLava = toCopy.escapeLava;

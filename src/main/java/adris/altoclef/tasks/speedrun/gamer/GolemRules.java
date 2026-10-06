@@ -1,0 +1,101 @@
+package adris.altoclef.tasks.speedrun.gamer;
+
+// the numbers and decisions of the golem hunt with no minecraft in them, so a test can poke them. all of the vanilla
+// facts below were read out of the 1.21.4 mojmap jar, not remembered:
+//  - iron golem is 1.4 wide and 2.7 tall (EntityType.IRON_GOLEM sized(1.4, 2.7)), 100 hp, knockback resistance 1
+//  - Mob.getAttackBoundingBox is its own box inflated by DEFAULT_ATTACK_REACH (sqrt(2.04) - 0.6 = 0.828) in x and z
+//    and by ZERO in y, and isWithinMeleeAttackRange is an AABB.intersects (strict) against our hitbox. so the whole
+//    question is "is our hitbox bottom below the golem's head", nothing about horizontal distance saves us
+//  - MeleeAttackGoal.canUse is true with a partial path or in range, so a golem under a pillar keeps coming and
+//    stands against it, it just can never get its box up to our feet
+//  - Player.canInteractWithEntity is the distance from our EYE to the nearest point of the golem's box against the
+//    entity interaction range, 3.0 in survival. the server is looser (it asks with a 3.0 buffer) but we play fair
+public final class GolemRules {
+    public static final double GOLEM_HEIGHT = 2.7;
+    public static final double EYE_HEIGHT = 1.62;
+    public static final double INTERACT_RANGE = 3.0;
+
+    private GolemRules() {
+    }
+
+    // our hitbox bottom (feet) has to be at or above the golem's head to be out of its attack box. the margin is
+    // what makes it a real 3.0 on flat ground instead of a 2.7 that a slab or a path block eats
+    public static double safeFeetY(double golemFeetY, double margin) {
+        return golemFeetY + GOLEM_HEIGHT + margin;
+    }
+
+    // how many blocks to put under us so we end up on safeFeetY. 0 = already high enough. -1 = more than we want to
+    // stack. feet are an integer (standing on a block) so the answer is a ceil, with a hair of slack for float noise
+    public static int blocksToRaise(double ourFeetY, double golemFeetY, double margin, int maxBlocks) {
+        double need = safeFeetY(golemFeetY, margin) - ourFeetY;
+        int blocks = (int) Math.ceil(need - 1.0e-6);
+        if (blocks <= 0) {
+            return 0;
+        }
+        return blocks > maxBlocks ? -1 : blocks;
+    }
+
+    // can it hit us right now: our hitbox bottom is under its head. no hair of slack, vanilla's check is strict but we
+    // would rather be wrong in the cautious direction
+    public static boolean golemCanHitUs(double ourFeetY, double golemFeetY) {
+        return ourFeetY < golemFeetY + GOLEM_HEIGHT + 1.0e-3;
+    }
+
+    // can WE hit it: distance from our eye to the nearest point of its box
+    public static boolean inReach(double eyeX, double eyeY, double eyeZ,
+                                  double minX, double minY, double minZ, double maxX, double maxY, double maxZ,
+                                  double range) {
+        double dx = Math.max(Math.max(minX - eyeX, 0), eyeX - maxX);
+        double dy = Math.max(Math.max(minY - eyeY, 0), eyeY - maxY);
+        double dz = Math.max(Math.max(minZ - eyeZ, 0), eyeZ - maxZ);
+        return dx * dx + dy * dy + dz * dz < range * range;
+    }
+
+    // the golem's box for a golem standing at (x, feetY, z)
+    public static boolean inReachOfGolem(double eyeX, double eyeY, double eyeZ, double gx, double gFeetY, double gz, double range) {
+        double half = 0.7;
+        return inReach(eyeX, eyeY, eyeZ, gx - half, gFeetY, gz - half, gx + half, gFeetY + GOLEM_HEIGHT, gz + half, range);
+    }
+
+    // everything the trigger looks at. plain numbers so the test does not need a world
+    public record Inputs(boolean ironNeeded, boolean overworld, boolean golemFound, boolean golemAngry, boolean alreadyTried,
+                         int attemptsUsed, int maxAttempts, boolean hasWeapon, int buildBlocks, int minBlocks,
+                         float health, float minHealth, boolean hostilesNearby, boolean onGround, boolean inFluid) {
+    }
+
+    public enum Verdict {
+        GO, NO_IRON_NEEDED, WRONG_DIMENSION, NO_GOLEM, GOLEM_ANGRY, TRIED, OUT_OF_ATTEMPTS, NO_WEAPON, NO_BLOCKS, TOO_HURT,
+        HOSTILES, NOT_STANDING;
+
+        public boolean go() {
+            return this == GO;
+        }
+    }
+
+    public static Verdict shouldHunt(Inputs in) {
+        if (!in.ironNeeded) return Verdict.NO_IRON_NEEDED;
+        if (!in.overworld) return Verdict.WRONG_DIMENSION;
+        if (in.attemptsUsed >= in.maxAttempts) return Verdict.OUT_OF_ATTEMPTS;
+        if (!in.golemFound) return Verdict.NO_GOLEM;
+        // one that is already angry at us while we stand on the ground is mob defense's business, not a plan
+        if (in.golemAngry) return Verdict.GOLEM_ANGRY;
+        if (in.alreadyTried) return Verdict.TRIED;
+        if (!in.hasWeapon) return Verdict.NO_WEAPON;
+        if (in.buildBlocks < in.minBlocks) return Verdict.NO_BLOCKS;
+        if (in.health < in.minHealth) return Verdict.TOO_HURT;
+        if (in.hostilesNearby) return Verdict.HOSTILES;
+        if (!in.onGround || in.inFluid) return Verdict.NOT_STANDING;
+        return Verdict.GO;
+    }
+
+    // we are up on the pillar and it is angry or was hit by us lately: coming down means walking into 7 to 21 damage.
+    // it is only safe to leave when it is gone, or when it has had long enough to calm down (anger lasts 20 to 39 s
+    // after the last hit) or is far away. all times in ticks
+    public static boolean safeToComeDown(boolean golemAlive, boolean golemAngryNow, double golemDistance, long ticksSinceLastHit,
+                                         long calmTicks, double farAway) {
+        if (!golemAlive) return true;
+        if (golemAngryNow) return false;
+        if (golemDistance > farAway) return true;
+        return ticksSinceLastHit > calmTicks;
+    }
+}

@@ -293,6 +293,8 @@ public class MobDefenseChain extends SingleTaskChain {
             if (!hostiles.isEmpty()) {
                 for (Entity entity : hostiles) {
                     if (entity instanceof Mob mob) {
+                        // a task that is fighting this one itself (golem on its pillar) does not want a second opinion
+                        if (mod.getBehaviour().shouldExcludeFromMobDefense(mob)) continue;
                         // angry is not the same as dangerous: one in the wall of our hole screaming at us is not a fight
                         boolean isAttackingPlayer = EntityHelper.isAngryAtPlayer(mod, mob) && EntityHelper.canMobHarmPlayer(mod, mob);
                         if (isAttackingPlayer) {
