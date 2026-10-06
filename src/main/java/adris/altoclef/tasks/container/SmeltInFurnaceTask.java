@@ -146,6 +146,8 @@ public class SmeltInFurnaceTask extends ResourceTask {
         private final FurnaceCache _furnaceCache = new FurnaceCache();
         private final ItemTarget _allMaterials;
         private boolean _ignoreMaterials;
+        // async smelting: everything is in the furnace and we walked away, this task is done and must not walk back to it
+        private boolean _loaded;
 
         public DoSmeltInFurnaceTask(SmeltTarget target) {
             super(Blocks.FURNACE, new ItemTarget(Items.FURNACE));
@@ -171,7 +173,15 @@ public class SmeltInFurnaceTask extends ResourceTask {
         }
 
         @Override
+        public boolean isFinished(AltoClef mod) {
+            return _loaded;
+        }
+
+        @Override
         protected Task onTick(AltoClef mod) {
+            if (_loaded) {
+                return null;
+            }
             mod.getBehaviour().addProtectedItems(ItemHelper.PLANKS);
             mod.getBehaviour().addProtectedItems(Items.COAL);
             mod.getBehaviour().addProtectedItems(_allMaterials.getMatches());
@@ -337,6 +347,15 @@ public class SmeltInFurnaceTask extends ResourceTask {
                 }
             }
 
+            // fully loaded and fueled: the cook does not need us. the screen closes and whoever asked comes back later
+            BlockPos at = getTargetContainerPosition();
+            if (at != null && !material.isEmpty() && AsyncSmelting.wants(_target.getItem())
+                    && AsyncSmelting.fuelCovers(fuel, StorageHelper.getFurnaceFuel(), material.getCount())) {
+                setDebugState("Loaded, leaving it to cook");
+                AsyncSmelting.loaded(mod, at, Blocks.FURNACE, material, _target.getItem());
+                _loaded = true;
+                return null;
+            }
             setDebugState("Waiting...");
             return null;
         }

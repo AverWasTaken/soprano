@@ -2133,6 +2133,13 @@ public final class Settings {
     public final Setting<Double> altoNearbyBlastFurnaceRange = new Setting<>(48.0);
 
     /**
+     * When smelting iron ingots, put everything in the furnace, close it and finish instead of standing there for the
+     * whole cook. The smelt is then recorded as a furnace job that something else has to come back for, so this is off
+     * for a plain {@code @get iron_ingot} (nobody would collect) and #gamer turns it on only while its iron phase can.
+     */
+    public final Setting<Boolean> altoAsyncSmelting = new Setting<>(false);
+
+    /**
      * Only use the items in {@link #altoSupportedFuels} as smelting fuel. Careful with turning this off: every burnable
      * item that is not protected (blaze rods, beds, wooden tools, crafting tables...) can get burned.
      */
