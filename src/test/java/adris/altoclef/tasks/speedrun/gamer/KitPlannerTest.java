@@ -48,7 +48,7 @@ public class KitPlannerTest {
                 Items.IRON_LEGGINGS, Items.IRON_BOOTS}) {
             full.give(i, 1);
         }
-        full.give(Items.BUCKET, 2).give(Items.WHITE_WOOL, 24);
+        full.give(Items.BUCKET, 2).give(Items.LADDER, 3).give(Items.WHITE_WOOL, 24);
         full.worn.addAll(List.of(Items.IRON_CHESTPLATE, Items.IRON_HELMET, Items.IRON_LEGGINGS, Items.IRON_BOOTS));
         full.foodUnits = 100;
         return full;
@@ -65,8 +65,19 @@ public class KitPlannerTest {
     public void freshStartFullPlanOrder() {
         List<KitNeed> plan = KitPlanner.plan(f, cfg, 8);
         assertEquals(List.of("stone_pickaxe", "stone_sword", "food", "iron_ingot", "iron_pickaxe", "iron_sword", "bucket",
-                "flint_and_steel", "shield", "shears", "iron_chestplate", "iron_helmet", "iron_leggings", "iron_boots",
+                "flint_and_steel", "shield", "shears", "ladder", "iron_chestplate", "iron_helmet", "iron_leggings", "iron_boots",
                 "wool", "food"), names(plan));
+    }
+
+    @Test
+    public void ladderIsInTheKitButCostsNoIron() {
+        // sticks only: three ladders must not grow the ingot need (that stays pickaxe..armor, see the next test)
+        assertEquals(new KitNeed("ladder", 3), find(KitPlanner.plan(f, cfg, 8), "ladder"));
+        assertEquals(39, KitPlanner.ingotsNeeded(f, cfg));
+        // holding some of them: the need is the total, and full hands ask for nothing
+        f.give(Items.LADDER, 1);
+        assertEquals(new KitNeed("ladder", 3), find(KitPlanner.plan(f, cfg, 8), "ladder"));
+        assertEquals(null, find(KitPlanner.plan(complete(), cfg, 8), "ladder"));
     }
 
     @Test

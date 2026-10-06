@@ -71,7 +71,7 @@ public class OverworldPhasesTest {
             f.give(i, 1);
         }
         f.worn.addAll(List.of(Items.IRON_CHESTPLATE, Items.IRON_HELMET, Items.IRON_LEGGINGS, Items.IRON_BOOTS));
-        f.give(Items.BUCKET, 2);
+        f.give(Items.BUCKET, 2).give(Items.LADDER, 3);
         f.foodUnits = 100;
         assertFalse("no wool", iron.isDone(f, state, cfg));
         f.give(Items.GREEN_WOOL, 24);
@@ -89,7 +89,7 @@ public class OverworldPhasesTest {
                 Items.SHIELD, Items.SHEARS)) {
             f.give(i, 1);
         }
-        f.give(Items.BUCKET, 2);
+        f.give(Items.BUCKET, 2).give(Items.LADDER, 3);
         f.foodUnits = 100;
         cfg.overworld.armorPlan = OverworldConfig.ArmorPlan.NONE;
         assertTrue(iron.isDone(f, state, cfg));
@@ -166,7 +166,7 @@ public class OverworldPhasesTest {
         assertTrue(o.golemAbortHealth < o.golemMinHealth);
         assertTrue(o.noLavaSeconds < o.castGiveUpMinutes * 60);
         assertEquals(OverworldConfig.ArmorPlan.FULL_IRON, o.armorPlan);
-        assertEquals(6, o.ironKit.size());
+        assertEquals(7, o.ironKit.size());
         assertEquals(3, o.starterKit.size());
     }
 

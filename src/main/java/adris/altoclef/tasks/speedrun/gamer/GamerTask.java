@@ -97,6 +97,7 @@ public class GamerTask extends Task {
     // what the user had before we changed it for the run, to hand back on stop
     private Boolean userBlastFurnace;
     private Boolean userThrowUnused;
+    private Boolean userLadderClutch;
     private List<Item> userThrowaway;
 
     // hud text is only rebuilt when something in it changed
@@ -125,7 +126,7 @@ public class GamerTask extends Task {
                 Items.LAVA_BUCKET, Items.FLINT_AND_STEEL, Items.CRAFTING_TABLE, Items.OBSIDIAN, Items.SHIELD,
                 Items.IRON_PICKAXE, Items.DIAMOND_PICKAXE, Items.IRON_SWORD, Items.DIAMOND_SWORD,
                 Items.IRON_INGOT, Items.RAW_IRON, Items.GOLD_INGOT, Items.DIAMOND, Items.COAL, Items.CHARCOAL, Items.FLINT,
-                Items.SHEARS, Items.CARVED_PUMPKIN, Items.GOLDEN_BOOTS};
+                Items.SHEARS, Items.CARVED_PUMPKIN, Items.GOLDEN_BOOTS, Items.LADDER};
         Item[] all = own;
         for (Item[] more : new Item[][]{ItemHelper.BED, ItemHelper.WOOL, ItemHelper.IRON_ARMORS, ItemHelper.DIAMOND_ARMORS}) {
             all = ArrayUtils.addAll(all, more);
@@ -269,8 +270,13 @@ public class GamerTask extends Task {
         if (!SettingsOverrides.isHeld(s.altoThrowawayItems)) {
             userThrowaway = s.altoThrowawayItems.value;
         }
+        if (!SettingsOverrides.isHeld(s.allowLadderClutch)) {
+            userLadderClutch = s.allowLadderClutch.value;
+        }
         SettingsOverrides.put(s.altoUseBlastFurnace, false);
         SettingsOverrides.put(s.altoThrowAwayUnusedItems, true);
+        // the iron kit has ladders in it for a reason, a long fall in the nether is what they are for
+        SettingsOverrides.put(s.allowLadderClutch, true);
         SettingsOverrides.put(s.altoThrowawayItems, withBuildBlocks(userThrowaway != null ? userThrowaway : s.altoThrowawayItems.value));
     }
 
@@ -291,6 +297,9 @@ public class GamerTask extends Task {
         }
         if (userThrowUnused != null) {
             SettingsOverrides.put(s.altoThrowAwayUnusedItems, userThrowUnused);
+        }
+        if (userLadderClutch != null) {
+            SettingsOverrides.put(s.allowLadderClutch, userLadderClutch);
         }
         if (userThrowaway != null) {
             SettingsOverrides.put(s.altoThrowawayItems, userThrowaway);

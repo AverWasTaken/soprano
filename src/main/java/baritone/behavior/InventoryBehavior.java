@@ -56,7 +56,11 @@ public final class InventoryBehavior extends Behavior implements Helper {
 
     @Override
     public void onTick(TickEvent event) {
-        if (!Baritone.settings().allowInventory.value || AltoClefSettings.getInstance().isInteractionPaused()) {
+        boolean shuffle = Baritone.settings().allowInventory.value;
+        // the clutch item only works from the hotbar (nobody shuffles the inventory mid fall), so that one move is allowed
+        // even when the user keeps allowInventory off
+        boolean clutch = Baritone.settings().allowLadderClutch.value;
+        if (!(shuffle || clutch) || AltoClefSettings.getInstance().isInteractionPaused()) {
             return; // paused means the hotbar is somebody else's problem right now
         }
         if (event.getType() == TickEvent.Type.OUT) {
@@ -67,7 +71,10 @@ public final class InventoryBehavior extends Behavior implements Helper {
             return;
         }
         ticksSinceLastInventoryMove++;
-        if (baritone.getPathingBehavior().isPathing()) {
+        if (clutch && baritone.getPathingBehavior().isPathing()) {
+            keepClutchItemOnHotbar();
+        }
+        if (shuffle && baritone.getPathingBehavior().isPathing()) {
             if (firstValidThrowaway() >= 9) { // aka there are none on the hotbar, but there are some in main inventory
                 requestSwapWithHotBar(firstValidThrowaway(), 8);
             }
@@ -79,6 +86,20 @@ public final class InventoryBehavior extends Behavior implements Helper {
         if (lastTickRequestedMove != null) {
             logDebug("Remembering to move " + lastTickRequestedMove[0] + " " + lastTickRequestedMove[1] + " from a previous tick");
             requestSwapWithHotBar(lastTickRequestedMove[0], lastTickRequestedMove[1]);
+        }
+    }
+
+    // ladders crafted or picked up land wherever there was room, and the clutch only looks at the hotbar
+    private void keepClutchItemOnHotbar() {
+        if (pickClutchItem(false) != null) {
+            return;
+        }
+        NonNullList<ItemStack> inv = ctx.player().getInventory().items;
+        for (int i = 9; i < 36; i++) {
+            if (inv.get(i).is(Items.VINE) || inv.get(i).is(Items.LADDER)) {
+                attemptToPutOnHotbar(i, slot -> false);
+                return;
+            }
         }
     }
 

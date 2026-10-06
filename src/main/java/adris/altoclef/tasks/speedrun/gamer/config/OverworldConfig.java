@@ -31,7 +31,9 @@ public class OverworldConfig {
     // armor comes from armorPlan, wool from end.beds
     public List<KitItem> ironKit = new ArrayList<>(List.of(
             new KitItem("iron_pickaxe", 1), new KitItem("iron_sword", 1), new KitItem("bucket", 2),
-            new KitItem("flint_and_steel", 1), new KitItem("shield", 1), new KitItem("shears", 1)));
+            new KitItem("flint_and_steel", 1), new KitItem("shield", 1), new KitItem("shears", 1),
+            // sticks only, no iron. for ladder clutching on the long falls in the nether (one ladder gets picked back up)
+            new KitItem("ladder", 3)));
     public ArmorPlan armorPlan = ArmorPlan.FULL_IRON;
 
     // nutrition points, a cooked steak is 8. enough for an hour or so, the food chain eats on its own
