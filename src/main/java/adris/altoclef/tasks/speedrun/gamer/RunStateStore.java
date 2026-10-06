@@ -128,6 +128,10 @@ public final class RunStateStore {
         if (s.strongholdRays == null) {
             s.strongholdRays = new ArrayList<>();
         }
+        // a file from before the table list existed: nothing placed, so nothing to pick back up
+        if (s.placedTables == null) {
+            s.placedTables = new ArrayList<>();
+        }
         return s;
     }
 

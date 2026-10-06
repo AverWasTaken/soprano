@@ -2,6 +2,9 @@ package adris.altoclef.tasks.speedrun.gamer;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
+import adris.altoclef.eventbus.EventBus;
+import adris.altoclef.eventbus.Subscription;
+import adris.altoclef.eventbus.events.BlockPlaceEvent;
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfigs;
 import adris.altoclef.tasks.speedrun.gamer.phases.DragonPhase;
@@ -71,6 +74,8 @@ public class GamerTask extends Task {
     // defense) and that is only the task coming back, never a new run
     private boolean begun;
     private boolean pushed;
+    // watches for crafting tables we place, so PrepSupport only ever takes back its own (OwnTables)
+    private Subscription<BlockPlaceEvent> placeWatch;
     // the engine owns the end portal walk flag: whatever a handler asked for last is put back on every (re)start
     private boolean wantWalkOnPortal;
 
@@ -173,6 +178,7 @@ public class GamerTask extends Task {
             Debug.logInternal("gamer: onStop " + e);
         } finally {
             begun = false;
+            stopWatchingPlacements();
             releaseBehaviour(mod);
         }
     }
@@ -299,7 +305,34 @@ public class GamerTask extends Task {
         deathsAtStart = state.deaths.size();
         lastSaveSeconds = machine.now();
         begun = true;
+        watchPlacements();
         machine.begin(mod);
+    }
+
+    private void watchPlacements() {
+        if (placeWatch != null) {
+            return;
+        }
+        placeWatch = EventBus.subscribe(BlockPlaceEvent.class, evt -> {
+            // the hook publishes every conducting block that appears on the client level, so this is a guess about who put
+            // it there: a crafting table, in the overworld, inside our own placing reach
+            LocalPlayer player = Minecraft.getInstance().player;
+            if (state == null || !begun || player == null || facts == null || facts.dimension() != Dimension.OVERWORLD
+                    || !evt.blockState.is(Blocks.CRAFTING_TABLE)) {
+                return;
+            }
+            RunState.Pos pos = new RunState.Pos(evt.blockPos.getX(), evt.blockPos.getY(), evt.blockPos.getZ());
+            if (OwnTables.placedByUs(player.getX(), player.getEyeY(), player.getZ(), pos)) {
+                OwnTables.record(state.placedTables, pos);
+            }
+        });
+    }
+
+    private void stopWatchingPlacements() {
+        if (placeWatch != null) {
+            EventBus.unsubscribe(placeWatch);
+            placeWatch = null;
+        }
     }
 
     private void loadState(AltoClef mod) {

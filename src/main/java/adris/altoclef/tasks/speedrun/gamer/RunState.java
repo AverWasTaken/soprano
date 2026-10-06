@@ -139,6 +139,9 @@ public class RunState {
     // the extra bed near the portal took too long (or could not be placed): go to the End without a spawn bed
     public boolean spawnBedGaveUp;
 
+    // crafting tables this run placed (overworld), the only ones the table pickup may take back. see OwnTables
+    public List<Pos> placedTables = new ArrayList<>();
+
     public int attemptsOf(GamerPhase p) {
         return phaseAttempts.getOrDefault(p.name(), 0);
     }

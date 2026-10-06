@@ -84,6 +84,8 @@ public class RunStateStoreTest {
         s.spawnBedSet = true;
         s.endDrops.put("minecraft:diamond_sword", 1);
         s.endDrops.put("minecraft:white_bed", 7);
+        s.placedTables.add(new RunState.Pos(245, 63, 40));
+        s.placedTables.add(new RunState.Pos(-3, 70, 9));
         s.dragonDead = true;
         return s;
     }
@@ -116,6 +118,7 @@ public class RunStateStoreTest {
         assertEquals(100.5, out.strongholdRays.get(0).ox, 0);
         assertTrue(out.strongholdRays.get(0).dived);
         assertEquals(Integer.valueOf(7), out.endDrops.get("minecraft:white_bed"));
+        assertEquals(List.of(new RunState.Pos(245, 63, 40), new RunState.Pos(-3, 70, 9)), out.placedTables);
         assertEquals("NETHER", out.deaths.get(0).dimension);
         assertEquals(987654321L, out.runTicks);
         assertEquals(Integer.valueOf(2), out.regressCounts.get("LOCATE>NETHER"));
@@ -175,6 +178,14 @@ public class RunStateStoreTest {
         assertTrue(s.strongholdRays.isEmpty());
         assertTrue(s.regressCounts.isEmpty());
         assertEquals(0, s.attemptsOf(GamerPhase.IRON));
+    }
+
+    @Test
+    public void aFileFromBeforeTheTableListHasNoTablesAndANullListIsEmpty() throws IOException {
+        write(file(), "{\"fingerprint\":\"" + FP + "\",\"phase\":\"IRON\"}");
+        assertTrue(RunStateStore.load(file(), FP).state().placedTables.isEmpty());
+        write(file(), "{\"fingerprint\":\"" + FP + "\",\"phase\":\"IRON\",\"placedTables\":null}");
+        assertTrue(RunStateStore.load(file(), FP).state().placedTables.isEmpty());
     }
 
     @Test
