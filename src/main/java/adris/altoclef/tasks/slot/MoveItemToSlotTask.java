@@ -18,6 +18,9 @@ import net.minecraft.world.item.ItemStack;
 
 public class MoveItemToSlotTask extends Task {
 
+    // one packet per item, see the burst below
+    private static final int MAX_PLACE_BURST = 16;
+
     private final ItemTarget _toMove;
     private final Slot _destination;
     private final Function<AltoClef, List<Slot>> _getMovableSlots;
@@ -79,7 +82,16 @@ public class MoveItemToSlotTask extends Task {
                 mod.getSlotHandler().clickSlot(_destination, 0, ClickType.PICKUP);
             } else {
                 // Place one at a time.
-                mod.getSlotHandler().clickSlot(_destination, 1, ClickType.PICKUP);
+                int needed = _toMove.getTargetCount() - currentlyPlaced;
+                boolean destTakesOurItem = atTarget.isEmpty() || atTarget.getItem() == currentHeld.getItem();
+                // one right click is one item and one 0.2s cooldown, 20 of them was long enough for the craft
+                // watchdog to call it stuck. they all go out in one slot action now. only onto an empty or same
+                // item slot though, a right click onto a different stack swaps and the next one would swap back
+                if (needed > 2 && destTakesOurItem) {
+                    mod.getSlotHandler().clickSlotBurst(_destination, 1, ClickType.PICKUP, Math.min(needed, MAX_PLACE_BURST));
+                } else {
+                    mod.getSlotHandler().clickSlot(_destination, 1, ClickType.PICKUP);
+                }
             }
             return null;
         }

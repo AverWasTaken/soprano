@@ -1,6 +1,7 @@
 package adris.altoclef.tasks;
 
 import adris.altoclef.AltoClef;
+import adris.altoclef.tasks.slot.DragSplitToSlotsTask;
 import adris.altoclef.tasks.slot.MoveItemToSlotFromInventoryTask;
 import adris.altoclef.tasks.slot.ReceiveCraftingOutputSlotTask;
 import adris.altoclef.tasksystem.ITaskUsesCraftingGrid;
@@ -15,6 +16,9 @@ import adris.altoclef.util.slots.PlayerSlot;
 import adris.altoclef.util.slots.Slot;
 import adris.altoclef.ui.HudText;
 import net.minecraft.world.item.Item;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Optional;
 import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.item.ItemStack;
@@ -95,6 +99,13 @@ public class CraftGenericManuallyTask extends Task implements ITaskUsesCraftingG
             return null;
         }
 
+        // slots that want the same ingredient get filled with one vanilla drag instead of an item at a time
+        Task drag = dragFillTask(mod, bigCrafting, requiredPerSlot);
+        if (drag != null) {
+            setDebugState("Dragging items across the grid...");
+            return drag;
+        }
+
         // For each slot in table
         for (int craftSlot = 0; craftSlot < _target.getRecipe().getSlotCount(); ++craftSlot) {
             ItemTarget toFill = _target.getRecipe().getSlot(craftSlot);
@@ -161,6 +172,39 @@ public class CraftGenericManuallyTask extends Task implements ITaskUsesCraftingG
             // Wait
             return null;
         }
+    }
+
+    private Slot gridSlot(int craftSlot, boolean bigCrafting) {
+        return bigCrafting
+                ? CraftingTableSlot.getInputSlot(craftSlot, _target.getRecipe().isBig())
+                : PlayerSlot.getCraftInputSlot(craftSlot);
+    }
+
+    // groups the recipe slots by ingredient (bread is three wheat, a hay block is nine). a group of two or more that
+    // still wants items gets a drag task. 2x2 in the inventory goes through the same thing, the grid slot ids differ
+    // and that is all
+    private Task dragFillTask(AltoClef mod, boolean bigCrafting, int perSlot) {
+        int count = _target.getRecipe().getSlotCount();
+        boolean[] grouped = new boolean[count];
+        for (int i = 0; i < count; ++i) {
+            ItemTarget ingredient = _target.getRecipe().getSlot(i);
+            if (grouped[i] || ingredient == null || ingredient.isEmpty()) continue;
+            List<Slot> group = new ArrayList<>();
+            for (int j = i; j < count; ++j) {
+                ItemTarget other = _target.getRecipe().getSlot(j);
+                if (other == null || other.isEmpty() || !Arrays.equals(ingredient.getMatches(), other.getMatches())) continue;
+                grouped[j] = true;
+                group.add(gridSlot(j, bigCrafting));
+            }
+            if (group.size() < 2) continue;
+            // nothing to pick up means the old path gets to say "no more to fit" and grab the output
+            boolean haveSome = mod.getItemStorage().hasItemInventoryOnly(ingredient.getMatches())
+                    || ingredient.matches(StorageHelper.getItemStackInCursorSlot().getItem());
+            if (haveSome && DragSplitToSlotsTask.activeCount(mod, ingredient, group, perSlot) >= 2) {
+                return new DragSplitToSlotsTask(ingredient, group, perSlot);
+            }
+        }
+        return null;
     }
 
     // the smallest stack any ingredient of this recipe can form, one grid slot never holds more than that

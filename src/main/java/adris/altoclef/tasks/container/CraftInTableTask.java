@@ -14,6 +14,7 @@ import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.RecipeTarget;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.StorageHelper;
+import adris.altoclef.util.slots.CraftingTableSlot;
 import adris.altoclef.util.slots.PlayerSlot;
 import adris.altoclef.util.slots.Slot;
 import adris.altoclef.util.time.TimerGame;
@@ -208,6 +209,7 @@ class DoCraftInTableTask extends DoStuffInContainerTask {
     private final CollectRecipeCataloguedResourcesTask _collectTask;
     private final TimerGame _craftResetTimer = new TimerGame(CRAFT_RESET_TIMER_BONUS_SECONDS);
     private int _craftCount;
+    private int _lastCraftProgress = -1;
 
     public DoCraftInTableTask(RecipeTarget[] targets, boolean collect, boolean ignoreUncataloguedSlots) {
         super(Blocks.CRAFTING_TABLE, new ItemTarget("crafting_table"));
@@ -400,6 +402,22 @@ class DoCraftInTableTask extends DoStuffInContainerTask {
         // Calculate the interval based on the container item move delay and a bonus duration
         float interval = Baritone.settings().altoContainerItemMoveDelay.value * 10 + CRAFT_RESET_TIMER_BONUS_SECONDS;
         _craftResetTimer.setInterval(interval);
+
+        // this timer used to run flat from the moment the table opened. filling 3 slots with 20 wheat each, one
+        // right click per item at 0.2s, takes 12s, which is exactly the 12s here, so it wandered off mid craft every
+        // time. moving items around the grid is progress, so the clock restarts whenever the grid, the cursor or
+        // the output count changes. a craft that really is stuck still runs it out
+        int progress = StorageHelper.getItemStackInCursorSlot().getCount();
+        for (Slot gridSlot : CraftingTableSlot.INPUT_SLOTS) {
+            progress += StorageHelper.getItemStackInSlot(gridSlot).getCount();
+        }
+        for (RecipeTarget target : _targets) {
+            progress += mod.getItemStorage().getItemCount(target.getOutputItem());
+        }
+        if (progress != _lastCraftProgress) {
+            _lastCraftProgress = progress;
+            _craftResetTimer.reset();
+        }
 
         // If the craft reset timer has elapsed, return a TimeoutWanderTask
         if (_craftResetTimer.elapsed()) {

@@ -12,6 +12,7 @@ import adris.altoclef.util.slots.Slot;
 import adris.altoclef.util.time.TimerGame;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.item.BucketItem;
 import net.minecraft.world.item.EmptyMapItem;
@@ -85,14 +86,64 @@ public class SlotHandler {
             return false;
         }
         registerSlotAction();
-        int syncId = player.containerMenu.containerId;
+        return sendClick(player, player.containerMenu.containerId, windowSlot, mouseButton, type);
+    }
 
+    // the packet part of a click with no cooldown bookkeeping, so a burst can send a few under one slot action.
+    // handleInventoryMouseClick runs the click on our own menu first (the client predicts it) and then sends it, so
+    // back to back clicks see each other and the server replays the same thing
+    private boolean sendClick(LocalPlayer player, int syncId, int windowSlot, int mouseButton, ClickType type) {
         try {
             _mod.getController().handleInventoryMouseClick(syncId, windowSlot, mouseButton, type, player);
         } catch (Exception e) {
             Debug.logWarning("Slot Click Error (ignored)");
             e.printStackTrace();
             return false;
+        }
+        return true;
+    }
+
+    // the same click a few times in one slot action (one cooldown). right clicking a held stack into a slot puts one
+    // down per click, this is how "place 12" costs one action instead of twelve
+    public boolean clickSlotBurst(Slot slot, int mouseButton, ClickType type, int times) {
+        if (!canDoSlotAction()) return false;
+        LocalPlayer player = Minecraft.getInstance().player;
+        if (player == null || slot.getWindowSlot() == -1) return false;
+        registerSlotAction();
+        int syncId = player.containerMenu.containerId;
+        for (int i = 0; i < times; ++i) {
+            if (!sendClick(player, syncId, slot.getWindowSlot(), mouseButton, type)) return false;
+        }
+        return true;
+    }
+
+    // vanilla drag clicking over some slots, as ONE slot action. a left drag (evenSplit) splits the cursor evenly,
+    // floor(count / slots) each, and keeps the remainder. a right drag puts exactly one in each slot, and rounds is
+    // how many of those to do back to back. returnFirst right clicks the cursor into returnTo before that, which is
+    // how a stack gets trimmed so the even split lands on an exact number.
+    // one drag is slots + 2 packets: start on slot -999, one per slot, end on slot -999
+    public boolean dragSplit(List<Slot> slots, boolean evenSplit, int rounds, Slot returnTo, int returnFirst) {
+        if (slots.size() < 2 || !canDoSlotAction()) return false;
+        LocalPlayer player = Minecraft.getInstance().player;
+        if (player == null) return false;
+        registerSlotAction();
+        int syncId = player.containerMenu.containerId;
+        int type = evenSplit ? AbstractContainerMenu.QUICKCRAFT_TYPE_CHARITABLE : AbstractContainerMenu.QUICKCRAFT_TYPE_GREEDY;
+        int outside = AbstractContainerMenu.SLOT_CLICKED_OUTSIDE;
+        if (returnTo != null) {
+            for (int i = 0; i < returnFirst; ++i) {
+                if (!sendClick(player, syncId, returnTo.getWindowSlot(), 1, ClickType.PICKUP)) return false;
+            }
+        }
+        int start = AbstractContainerMenu.getQuickcraftMask(AbstractContainerMenu.QUICKCRAFT_HEADER_START, type);
+        int add = AbstractContainerMenu.getQuickcraftMask(AbstractContainerMenu.QUICKCRAFT_HEADER_CONTINUE, type);
+        int end = AbstractContainerMenu.getQuickcraftMask(AbstractContainerMenu.QUICKCRAFT_HEADER_END, type);
+        for (int round = 0; round < rounds; ++round) {
+            if (!sendClick(player, syncId, outside, start, ClickType.QUICK_CRAFT)) return false;
+            for (Slot slot : slots) {
+                if (!sendClick(player, syncId, slot.getWindowSlot(), add, ClickType.QUICK_CRAFT)) return false;
+            }
+            if (!sendClick(player, syncId, outside, end, ClickType.QUICK_CRAFT)) return false;
         }
         return true;
     }
