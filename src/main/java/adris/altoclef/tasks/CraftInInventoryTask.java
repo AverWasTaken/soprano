@@ -44,6 +44,14 @@ public class CraftInInventoryTask extends ResourceTask {
     }
 
     @Override
+    public boolean isFinished(AltoClef mod) {
+        if (super.isFinished(mod)) return true;
+        // collect=false callers (CollectFoodTask crafting hay and wheat, target 99999999) mean "craft all of it": the
+        // inputs running out is the end, not a reason to keep sending the grid after items we do not have
+        return !_collect && CraftGenericManuallyTask.isOutOfMaterials(mod, _target);
+    }
+
+    @Override
     protected void onResourceStart(AltoClef mod) {
         _fullCheckFailed = false;
         ItemStack cursorStack = StorageHelper.getItemStackInCursorSlot();

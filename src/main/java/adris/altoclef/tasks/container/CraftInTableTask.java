@@ -36,18 +36,21 @@ import net.minecraft.world.level.block.Blocks;
 public class CraftInTableTask extends ResourceTask {
 
     private final RecipeTarget[] _targets;
+    private final boolean _collect;
 
     private final DoCraftInTableTask _craftTask;
 
     public CraftInTableTask(RecipeTarget[] targets) {
         super(extractItemTargets(targets));
         _targets = targets;
+        _collect = true;
         _craftTask = new DoCraftInTableTask(_targets);
     }
 
     public CraftInTableTask(RecipeTarget target, boolean collect, boolean ignoreUncataloguedSlots) {
         super(new ItemTarget(target.getOutputItem(), target.getTargetCount()));
         _targets = new RecipeTarget[]{target};
+        _collect = collect;
         _craftTask = new DoCraftInTableTask(_targets, collect, ignoreUncataloguedSlots);
     }
 
@@ -77,6 +80,18 @@ public class CraftInTableTask extends ResourceTask {
     @Override
     protected boolean shouldAvoidPickingUp(AltoClef mod) {
         return false;
+    }
+
+    @Override
+    public boolean isFinished(AltoClef mod) {
+        if (super.isFinished(mod)) return true;
+        if (_collect) return false;
+        // collect=false means "craft all of it" (bread, target 99999999). out of inputs is the end of that, see
+        // CraftInInventoryTask.isFinished. every target has to be dry or we would drop a recipe that still has work
+        for (RecipeTarget target : _targets) {
+            if (!CraftGenericManuallyTask.isOutOfMaterials(mod, target)) return false;
+        }
+        return true;
     }
 
     /**

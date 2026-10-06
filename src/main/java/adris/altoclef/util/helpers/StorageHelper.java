@@ -497,6 +497,54 @@ public class StorageHelper {
         return true;
     }
 
+    // the grid we are standing at, as the slots recipe items could be sitting in. nothing when no crafting screen is up
+    public static List<Slot> openCraftGridInputs(boolean bigRecipe) {
+        AbstractContainerMenu screen = Minecraft.getInstance().player != null ? Minecraft.getInstance().player.containerMenu : null;
+        List<Slot> grid = new ArrayList<>();
+        if (screen instanceof CraftingMenu) {
+            for (int i = 0; i < (bigRecipe ? 9 : 4); ++i) {
+                grid.add(CraftingTableSlot.getInputSlot(i, bigRecipe));
+            }
+        } else if (screen instanceof InventoryMenu) {
+            for (int i = 0; i < 4; ++i) {
+                grid.add(PlayerSlot.getCraftInputSlot(i));
+            }
+        }
+        return grid;
+    }
+
+    /**
+     * How many full runs of this recipe our inventory, cursor and the open grid can feed right now. Grid contents
+     * count on purpose: the answer must not shrink just because the crafting task already moved the ingredients in.
+     */
+    public static int craftsPossible(AltoClef mod, CraftingRecipe recipe, int cap) {
+        List<List<Item>> slots = new ArrayList<>();
+        for (int i = 0; i < recipe.getSlotCount(); ++i) {
+            ItemTarget needs = recipe.getSlot(i);
+            if (needs == null || needs.isEmpty()) continue;
+            slots.add(Arrays.asList(needs.getMatches()));
+        }
+        Map<Item, Integer> inGrid = new HashMap<>();
+        for (Slot gridSlot : openCraftGridInputs(recipe.isBig())) {
+            ItemStack stack = getItemStackInSlot(gridSlot);
+            if (!stack.isEmpty()) inGrid.merge(stack.getItem(), stack.getCount(), Integer::sum);
+        }
+        return CraftMath.maxCrafts(slots, item -> mod.getItemStorage().getItemCountInventoryOnly(item) + inGrid.getOrDefault(item, 0), cap);
+    }
+
+    // true when the open screen's craft output slot holds something we have not picked up yet. false when there is no
+    // crafting screen, the output slot of a screen that isn't up is garbage
+    public static boolean craftOutputWaiting() {
+        AbstractContainerMenu screen = Minecraft.getInstance().player != null ? Minecraft.getInstance().player.containerMenu : null;
+        if (screen instanceof CraftingMenu) {
+            return !getItemStackInSlot(CraftingTableSlot.OUTPUT_SLOT).isEmpty();
+        }
+        if (screen instanceof InventoryMenu) {
+            return !getItemStackInSlot(PlayerSlot.CRAFT_OUTPUT_SLOT).isEmpty();
+        }
+        return false;
+    }
+
     public static boolean hasCataloguedItem(AltoClef mod, String cataloguedName) {
         return mod.getItemStorage().hasItem(TaskCatalogue.getItemMatches(cataloguedName));
     }
