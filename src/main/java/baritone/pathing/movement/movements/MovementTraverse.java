@@ -109,6 +109,9 @@ public class MovementTraverse extends Movement {
                 return COST_INF;
             }
             double hardness2 = MovementHelper.getMiningDurationTicks(context, destX, y + 1, destZ, pb0, true); // only include falling on the upper block to break
+            // we break from src, and swinging a pickaxe underwater is a bad time
+            hardness1 = MovementHelper.waterBreakCost(context, x, y, z, hardness1);
+            hardness2 = MovementHelper.waterBreakCost(context, x, y, z, hardness2);
             if (hardness1 == 0 && hardness2 == 0) {
                 if (!water && !sneaking && context.canSprint) {
                     // If there's nothing in the way, and this isn't water, and we aren't sneak placing
@@ -142,6 +145,8 @@ public class MovementTraverse extends Movement {
                     return COST_INF;
                 }
                 double hardness2 = MovementHelper.getMiningDurationTicks(context, destX, y + 1, destZ, pb0, true); // only include falling on the upper block to break
+                hardness1 = MovementHelper.waterBreakCost(context, x, y, z, hardness1);
+                hardness2 = MovementHelper.waterBreakCost(context, x, y, z, hardness2);
                 double WC = throughWater ? context.waterWalkSpeed : WALK_ONE_BLOCK_COST;
                 for (int i = 0; i < 5; i++) {
                     int againstX = destX + HORIZONTALS_BUT_ALSO_DOWN_____SO_EVERY_DIRECTION_EXCEPT_UP[i].getStepX();

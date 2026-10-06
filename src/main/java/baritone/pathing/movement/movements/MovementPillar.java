@@ -105,6 +105,8 @@ public class MovementPillar extends Movement {
         if (hardness >= COST_INF) {
             return COST_INF;
         }
+        // the block over our head still takes forever to break when we're swimming while we do it
+        hardness = MovementHelper.waterBreakCost(context, x, y, z, hardness);
         if (hardness != 0) {
             if (MovementHelper.isClimbable(toBreakBlock)) {
                 hardness = 0; // we won't actually need to break the ladder / vine because we're going to use it

@@ -84,15 +84,15 @@ public class MovementDescend extends Movement {
     public static void cost(CalculationContext context, int x, int y, int z, int destX, int destZ, MutableMoveResult res) {
         double totalCost = 0;
         BlockState destDown = context.get(destX, y - 1, destZ);
-        totalCost += MovementHelper.getMiningDurationTicks(context, destX, y - 1, destZ, destDown, false);
+        totalCost += MovementHelper.waterBreakCost(context, x, y, z, MovementHelper.getMiningDurationTicks(context, destX, y - 1, destZ, destDown, false));
         if (totalCost >= COST_INF) {
             return;
         }
-        totalCost += MovementHelper.getMiningDurationTicks(context, destX, y, destZ, false);
+        totalCost += MovementHelper.waterBreakCost(context, x, y, z, MovementHelper.getMiningDurationTicks(context, destX, y, destZ, false));
         if (totalCost >= COST_INF) {
             return;
         }
-        totalCost += MovementHelper.getMiningDurationTicks(context, destX, y + 1, destZ, true); // only the top block in the 3 we need to mine needs to consider the falling blocks above
+        totalCost += MovementHelper.waterBreakCost(context, x, y, z, MovementHelper.getMiningDurationTicks(context, destX, y + 1, destZ, true)); // only the top block in the 3 we need to mine needs to consider the falling blocks above
         if (totalCost >= COST_INF) {
             return;
         }

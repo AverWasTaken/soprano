@@ -710,6 +710,31 @@ public interface MovementHelper extends ActionCosts, Helper {
             || block == Blocks.TWISTING_VINES_PLANT;
     }
 
+    // vanilla digs 5x slower with your eyes in water and another 5x slower off the ground. getMiningDurationTicks is
+    // cached per block and has no idea where we stand, so this is applied per movement on top of it, at the square
+    // the player is in while breaking. only ever inflates, so it can't strand the planner
+    static double waterBreakMultiplier(CalculationContext context, int srcX, int srcY, int srcZ) {
+        double setting = context.waterBreakCostMultiplier;
+        // one lookup and out, which is every move that isn't swimming
+        if (setting <= 1 || !isWater(context.get(srcX, srcY, srcZ))) {
+            return 1;
+        }
+        // wading with your head dry is not slowed down, floating is
+        // canWalkOn says yes to water with more water on top (baritone calls that wading), but vanilla isn't on the ground there
+        BlockState below = context.get(srcX, srcY - 1, srcZ);
+        boolean floating = isWater(below) || !canWalkOn(context, srcX, srcY - 1, srcZ, below);
+        double mult = isWater(context.get(srcX, srcY + 1, srcZ)) ? setting : 1;
+        return floating ? mult * 5 : mult;
+    }
+
+    // hardness is the break part of a movement's cost. zero (nothing to break) and COST_INF are left alone
+    static double waterBreakCost(CalculationContext context, int srcX, int srcY, int srcZ, double hardness) {
+        if (hardness <= 0 || hardness >= COST_INF) {
+            return hardness;
+        }
+        return hardness * waterBreakMultiplier(context, srcX, srcY, srcZ);
+    }
+
     static double getMiningDurationTicks(CalculationContext context, int x, int y, int z, boolean includeFalling) {
         return getMiningDurationTicks(context, x, y, z, context.get(x, y, z), includeFalling);
     }

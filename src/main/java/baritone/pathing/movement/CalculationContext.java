@@ -104,6 +104,8 @@ public class CalculationContext {
     // rowing, when there's a boat to row. equal to waterWalkSpeed when there isn't so the min is a no-op
     public final double boatWaterSpeed;
     public final double breakBlockAdditionalCost;
+    // snapshotted like the rest, so one search can't price some breaks with the old value and some with the new
+    public final double waterBreakCostMultiplier;
     public double backtrackCostFavoringCoefficient;
     public double jumpPenalty;
     public final double walkOnWaterOnePenalty;
@@ -233,6 +235,7 @@ public class CalculationContext {
         double boatSpeed = Math.max(ActionCosts.BOAT_ONE_BLOCK_COST, Baritone.settings().costHeuristic.value);
         this.boatWaterSpeed = Baritone.settings().allowBoats.value && hasBoat ? Math.min(waterSpeed, boatSpeed) : waterSpeed;
         this.breakBlockAdditionalCost = Baritone.settings().blockBreakAdditionalPenalty.value;
+        this.waterBreakCostMultiplier = Baritone.settings().waterBreakCostMultiplier.value;
         this.backtrackCostFavoringCoefficient = Baritone.settings().backtrackCostFavoringCoefficient.value;
         this.jumpPenalty = Baritone.settings().jumpPenalty.value;
         this.walkOnWaterOnePenalty = Baritone.settings().walkOnWaterOnePenalty.value;

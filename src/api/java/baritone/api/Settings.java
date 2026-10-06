@@ -136,6 +136,17 @@ public final class Settings {
     public final Setting<Double> blockBreakAdditionalPenalty = new Setting<>(2D);
 
     /**
+     * How much slower breaking blocks is while standing in water, as far as the path cost is concerned.
+     * Vanilla mines 5x slower with your eyes in water (no aqua affinity) and another 5x slower when you are
+     * not on the ground, so treading water is up to 25x. Movements that break something while the player
+     * stands in water pay this much (times 5 again if there is nothing solid under the feet) for the break
+     * part of their cost, so the pathfinder would rather get out of the water first and mine on land.
+     * <p>
+     * It only ever makes things more expensive, it never makes a move impossible. Set it to 1 to turn it off.
+     */
+    public final Setting<Double> waterBreakCostMultiplier = new Setting<>(5D);
+
+    /**
      * Additional penalty for hitting the space bar (ascend, pillar, or parkour) because it uses hunger
      */
     public final Setting<Double> jumpPenalty = new Setting<>(2D);

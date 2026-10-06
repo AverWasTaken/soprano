@@ -144,15 +144,16 @@ public class MovementAscend extends Movement {
         double totalCost = walk + additionalPlacementCost;
         // start with srcUp2 since we already have its state
         // includeFalling isn't needed because of the falling check above -- if srcUp3 is falling we will have already exited with COST_INF if we'd actually have to break it
-        totalCost += MovementHelper.getMiningDurationTicks(context, x, y + 2, z, srcUp2, false);
+        // all three are broken from src, so all three pay for the water we're standing in
+        totalCost += MovementHelper.waterBreakCost(context, x, y, z, MovementHelper.getMiningDurationTicks(context, x, y + 2, z, srcUp2, false));
         if (totalCost >= COST_INF) {
             return COST_INF;
         }
-        totalCost += MovementHelper.getMiningDurationTicks(context, destX, y + 1, destZ, false);
+        totalCost += MovementHelper.waterBreakCost(context, x, y, z, MovementHelper.getMiningDurationTicks(context, destX, y + 1, destZ, false));
         if (totalCost >= COST_INF) {
             return COST_INF;
         }
-        totalCost += MovementHelper.getMiningDurationTicks(context, destX, y + 2, destZ, true);
+        totalCost += MovementHelper.waterBreakCost(context, x, y, z, MovementHelper.getMiningDurationTicks(context, destX, y + 2, destZ, true));
         return totalCost;
     }
 
