@@ -15,16 +15,30 @@ public class KillAndLootTask extends ResourceTask {
     private final Class<?> _toKill;
 
     private final Task _killTask;
+    // -1 = any of the class. otherwise this one animal, and part of isEqual so a new target is a new task (the runner
+    // keeps the old object when they compare equal, and the old one would still be chasing the wrong pig)
+    private final int _onlyId;
 
     public KillAndLootTask(Class<?> toKill, Predicate<Entity> shouldKill, ItemTarget... itemTargets) {
         super(itemTargets.clone());
         _toKill = toKill;
+        _onlyId = -1;
         _killTask = new KillEntitiesTask(shouldKill, _toKill);
+    }
+
+    // this animal and no other
+    public KillAndLootTask(Entity target, ItemTarget... itemTargets) {
+        super(itemTargets.clone());
+        _toKill = target.getClass();
+        _onlyId = target.getId();
+        int id = _onlyId;
+        _killTask = new KillEntitiesTask(entity -> entity.getId() == id, _toKill);
     }
 
     public KillAndLootTask(Class<?> toKill, ItemTarget... itemTargets) {
         super(itemTargets.clone());
         _toKill = toKill;
+        _onlyId = -1;
         _killTask = new KillEntitiesTask(_toKill);
     }
 
@@ -60,7 +74,7 @@ public class KillAndLootTask extends ResourceTask {
     @Override
     protected boolean isEqualResource(ResourceTask other) {
         if (other instanceof KillAndLootTask task) {
-            return task._toKill.equals(_toKill);
+            return task._toKill.equals(_toKill) && task._onlyId == _onlyId;
         }
         return false;
     }

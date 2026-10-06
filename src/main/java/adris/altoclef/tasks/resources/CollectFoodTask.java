@@ -45,8 +45,11 @@ import net.minecraft.world.level.block.CarrotBlock;
 import net.minecraft.world.level.block.CropBlock;
 import net.minecraft.world.level.block.PotatoBlock;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.Vec3;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Predicate;
@@ -54,13 +57,14 @@ import java.util.function.Predicate;
 public class CollectFoodTask extends Task {
 
     // Represents order of preferred mobs to least preferred
+    // (the order is only for the smelting and pickup loops now, FoodHunt decides who gets chased)
     private static final CookableFoodTarget[] COOKABLE_FOODS = new CookableFoodTarget[]{
-            new CookableFoodTarget("porkchop", Pig.class),
-            new CookableFoodTarget("beef", Cow.class),
-            new CookableFoodTarget("chicken", Chicken.class),
-            new CookableFoodTarget("mutton", Sheep.class),
-            new CookableFoodTargetFish("cod", Cod.class),
-            new CookableFoodTargetFish("salmon", Salmon.class)
+            new CookableFoodTarget("porkchop", Pig.class, FoodHunt.Kind.PIG),
+            new CookableFoodTarget("beef", Cow.class, FoodHunt.Kind.COW),
+            new CookableFoodTarget("chicken", Chicken.class, FoodHunt.Kind.CHICKEN),
+            new CookableFoodTarget("mutton", Sheep.class, FoodHunt.Kind.SHEEP),
+            new CookableFoodTargetFish("cod", Cod.class, FoodHunt.Kind.COD),
+            new CookableFoodTargetFish("salmon", Salmon.class, FoodHunt.Kind.SALMON)
     };
 
     private static final Item[] ITEMS_TO_PICK_UP = new Item[]{
@@ -85,6 +89,12 @@ public class CollectFoodTask extends Task {
     private final TimerGame _checkNewOptionsTimer = new TimerGame(10);
     private SmeltInSmokerTask _smeltTask = null;
     private Task _currentResourceTask = null;
+
+    // the animal we are after, kept so the next pick can stay on it (see FoodHunt.STICKY_FACTOR). _huntTask is the task
+    // made for it, to tell "the hunt lost its animal" apart from every other cached task
+    private Entity _hunted = null;
+    private CookableFoodTarget _huntedFood = null;
+    private Task _huntTask = null;
 
     // the hay sweep: null timer = not started, over = never again for this task. the sweep task is remembered so the
     // cached resource task can be dropped the moment the pile is gone instead of up to 10 s later
@@ -164,6 +174,9 @@ public class CollectFoodTask extends Task {
         _hoeTask = null;
         _hoeTimer = null;
         _hoeDone = false;
+        _hunted = null;
+        _huntedFood = null;
+        _huntTask = null;
 
         mod.getBlockTracker().trackBlock(Blocks.HAY_BLOCK);
         mod.getBlockTracker().trackBlock(Blocks.SWEET_BERRY_BUSH);
@@ -224,6 +237,11 @@ public class CollectFoodTask extends Task {
 
         // the sweep ends when the pile does, not on the next 10 s check
         if (_sweepTask != null && _currentResourceTask == _sweepTask && !sweepWanted(mod)) {
+            _currentResourceTask = null;
+        }
+
+        // a hunt whose animal died or got blacklisted has nothing to chase, no point idling until the 10 s check
+        if (_huntTask != null && _currentResourceTask == _huntTask && !huntStillOn(mod)) {
             _currentResourceTask = null;
         }
 
@@ -334,26 +352,10 @@ public class CollectFoodTask extends Task {
                 }
             }
             // Cooked foods
-            for (CookableFoodTarget cookable : COOKABLE_FOODS) {
-                Predicate<Entity> notBaby = entity -> entity instanceof LivingEntity livingEntity && !livingEntity.isBaby();
-                Optional<Entity> nearest = mod.getEntityTracker().getClosestEntity(notBaby, cookable.mobToKill);
-                if (nearest.isPresent()) {
-                    setDebugState("Killing " + nearest.get().getType().getDescriptionId());
-                    _currentResourceTask = killTaskOrNull(nearest.get(), notBaby, cookable.getRaw());
-                    return _currentResourceTask;
-                }
-//                if (nearest.isEmpty()) continue; // ?? This crashed once?
-//                int hungerPerformance = cookable.getCookedUnits();
-//                double sqDistance = nearest.get().squaredDistanceTo(mod.getPlayer());
-//                double score = (double) 100 * hungerPerformance / (sqDistance);
-//                if (cookable.isFish()) {
-//                    score *= FISH_PENALTY;
-//                }
-//                if (score > bestScore) {
-//                    bestScore = score;
-//                    bestEntity = nearest.get();
-//                    bestRawFood = cookable.getRaw();
-//                }
+            Task hunt = huntTaskOrNull(mod);
+            if (hunt != null) {
+                _currentResourceTask = hunt;
+                return _currentResourceTask;
             }
 
             // Sweet berries (separate from crops because they should have a lower priority than everything else cause they suck)
@@ -544,8 +546,56 @@ public class CollectFoodTask extends Task {
         return _hoeTask;
     }
 
-    private Task killTaskOrNull(Entity entity, Predicate<Entity> entityPredicate, Item itemToGrab) {
-        return new KillAndLootTask(entity.getClass(), entityPredicate, new ItemTarget(itemToGrab, 1));
+    private record Prey(Entity entity, CookableFoodTarget food) {
+    }
+
+    // not a baby (no meat), not carrying a passenger (chicken jockey, the blacklist in onTick only knows the closest one)
+    private static boolean edible(Entity entity) {
+        return entity instanceof LivingEntity living && !living.isBaby() && !entity.isVehicle();
+    }
+
+    // the nearest animal of EVERY kind goes into the pot, plus the one we are already after (it might not be the nearest
+    // of its kind any more), and FoodHunt picks. null when nothing edible is loaded
+    private Task huntTaskOrNull(AltoClef mod) {
+        Vec3 me = mod.getPlayer().position();
+        Map<Integer, Prey> prey = new HashMap<>();
+        List<FoodHunt.Candidate> candidates = new ArrayList<>();
+        for (CookableFoodTarget cookable : COOKABLE_FOODS) {
+            Optional<Entity> nearest = mod.getEntityTracker().getClosestEntity(CollectFoodTask::edible, cookable.mobToKill);
+            nearest.ifPresent(e -> addPrey(me, e, cookable, prey, candidates));
+        }
+        // dead or blacklisted is not a candidate, so it can not be sticky either
+        if (_hunted != null && huntedOk(mod) && !prey.containsKey(_hunted.getId())) {
+            addPrey(me, _hunted, _huntedFood, prey, candidates);
+        }
+        FoodHunt.Candidate pick = FoodHunt.choose(candidates, _hunted == null ? -1 : _hunted.getId(), FoodHunt.isWoolWanted());
+        if (pick == null) {
+            _hunted = null;
+            return null;
+        }
+        Prey chosen = prey.get(pick.id());
+        _hunted = chosen.entity();
+        _huntedFood = chosen.food();
+        setDebugState("Killing " + chosen.entity().getType().getDescriptionId());
+        // one more than we hold: with the old flat 1 a bag that already had a mutton called the sheep hunt finished before it began
+        int held = mod.getItemStorage().getItemCount(chosen.food().getRaw());
+        _huntTask = new KillAndLootTask(chosen.entity(), new ItemTarget(chosen.food().getRaw(), held + 1));
+        return _huntTask;
+    }
+
+    private boolean huntedOk(AltoClef mod) {
+        return _hunted.isAlive() && edible(_hunted) && mod.getEntityTracker().isEntityReachable(_hunted);
+    }
+
+    private boolean huntStillOn(AltoClef mod) {
+        return _hunted != null && huntedOk(mod);
+    }
+
+    private static void addPrey(Vec3 me, Entity e, CookableFoodTarget food, Map<Integer, Prey> prey, List<FoodHunt.Candidate> candidates) {
+        Vec3 at = e.position();
+        double distance = FoodHunt.distance(at.x - me.x, at.y - me.y, at.z - me.z);
+        prey.put(e.getId(), new Prey(e, food));
+        candidates.add(new FoodHunt.Candidate(e.getId(), food.kind, distance));
     }
 
     /**
@@ -575,15 +625,17 @@ public class CollectFoodTask extends Task {
         public String rawFood;
         public String cookedFood;
         public Class mobToKill;
+        public FoodHunt.Kind kind;
 
-        public CookableFoodTarget(String rawFood, String cookedFood, Class mobToKill) {
+        public CookableFoodTarget(String rawFood, String cookedFood, Class mobToKill, FoodHunt.Kind kind) {
             this.rawFood = rawFood;
             this.cookedFood = cookedFood;
             this.mobToKill = mobToKill;
+            this.kind = kind;
         }
 
-        public CookableFoodTarget(String rawFood, Class mobToKill) {
-            this(rawFood, "cooked_" + rawFood, mobToKill);
+        public CookableFoodTarget(String rawFood, Class mobToKill, FoodHunt.Kind kind) {
+            this(rawFood, "cooked_" + rawFood, mobToKill, kind);
         }
 
         private Item getRaw() {
@@ -607,8 +659,8 @@ public class CollectFoodTask extends Task {
     @SuppressWarnings("rawtypes")
     private static class CookableFoodTargetFish extends CookableFoodTarget {
 
-        public CookableFoodTargetFish(String rawFood, Class mobToKill) {
-            super(rawFood, mobToKill);
+        public CookableFoodTargetFish(String rawFood, Class mobToKill, FoodHunt.Kind kind) {
+            super(rawFood, mobToKill, kind);
         }
 
         @Override

@@ -16,6 +16,7 @@ import adris.altoclef.tasks.speedrun.gamer.SmeltFiller;
 import adris.altoclef.tasks.speedrun.gamer.SmeltFiller.Schedule;
 import adris.altoclef.tasks.speedrun.gamer.SmeltFiller.Trip;
 import adris.altoclef.tasks.speedrun.gamer.Timeout;
+import adris.altoclef.tasks.resources.FoodHunt;
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
 import adris.altoclef.tasksystem.Task;
 import baritone.Baritone;
@@ -78,6 +79,7 @@ public class IronPhase implements PhaseHandler {
     @Override
     public void onExit(AltoClef mod, GamerContext ctx) {
         support.onExit(mod);
+        FoodHunt.setWoolWanted(false);
         ctx.state().currentNeed = null;
         // other phases smelt too and nobody there would come back for the furnace, so the setting is ours for this phase only
         if (userAsync != null) {
@@ -87,6 +89,8 @@ public class IronPhase implements PhaseHandler {
 
     @Override
     public Task tick(AltoClef mod, GamerContext ctx) {
+        // the food task is another tree entirely, this is how it learns that a sheep is worth more shorn than eaten
+        FoodHunt.setWoolWanted(KitPlanner.woolShortfall(ctx.facts(), ctx.cfg().end.beds) > 0);
         if (!ctx.facts().furnaceJobs().isEmpty()) {
             return cookingTick(mod, ctx);
         }
