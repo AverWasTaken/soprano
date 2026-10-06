@@ -17,9 +17,17 @@ import adris.altoclef.util.slots.Slot;
 import adris.altoclef.ui.HudText;
 import net.minecraft.world.level.Level;
 import net.minecraft.client.Minecraft;
+import adris.altoclef.util.baritone.GoalReachBlock;
 import baritone.api.pathing.goals.Goal;
 import baritone.api.pathing.goals.GoalBlock;
 import baritone.api.pathing.goals.GoalNear;
+import net.minecraft.core.Direction;
+import net.minecraft.world.level.BlockGetter;
+import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.shapes.CollisionContext;
 import baritone.api.utils.Rotation;
 import baritone.api.utils.input.Input;
 import net.minecraft.core.BlockPos;
@@ -56,6 +64,8 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
     private boolean _pushedBehaviour;
     // step off -> baritone walks right back on -> step off... more than this and we give the block up
     private final StepOffGuard _stepOffs = new StepOffGuard(3);
+    // the swinging distance goal didn't work out here, stand next to it
+    private boolean closeIn;
 
     public DestroyBlockTask(BlockPos pos) {
         _pos = pos;
@@ -85,6 +95,36 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
             // whatever plain goal is running would happily stand on top of it
             mod.getClientBaritone().getCustomGoalProcess().onLostControl();
         }
+    }
+
+    // where to stand. next to it, unless it's wrapped in vines: then the cells touching it are vines, and getting into
+    // those off the ground means climbing (or hopping, the planner finds them cheap) for a log we could swing at from
+    // the bottom. closeIn is for when swinging distance didn't turn out to see the block
+    public static Goal pickGoal(BlockGetter world, BlockPos pos, boolean closeIn) {
+        if (world.getBlockState(pos.above()).getBlock() == Blocks.SNOW) {
+            return new GoalBlock(pos);
+        }
+        return !closeIn && vineNextTo(world, pos) ? new GoalReachBlock(pos) : new GoalNear(pos, 1);
+    }
+
+    private static boolean vineNextTo(BlockGetter world, BlockPos pos) {
+        for (Direction side : Direction.values()) {
+            if (world.getBlockState(pos.relative(side)).is(Blocks.VINE)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // the vine the first thing in line between the eyes and the middle of the block, if there is one and it's in reach.
+    // anything else in the way (leaves, a wall) isn't ours to clear from here
+    static BlockPos vineInTheWay(BlockGetter world, Vec3 eye, BlockPos target, double reach) {
+        BlockHitResult hit = world.clip(new ClipContext(eye, Vec3.atCenterOf(target), ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, CollisionContext.empty()));
+        if (hit.getType() != HitResult.Type.BLOCK || hit.getBlockPos().equals(target)) {
+            return null;
+        }
+        BlockPos pos = hit.getBlockPos();
+        return world.getBlockState(pos).is(Blocks.VINE) && eye.distanceTo(hit.getLocation()) <= reach ? pos : null;
     }
 
     /**
@@ -329,6 +369,17 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
         }
 
         Optional<Rotation> reach = LookHelper.getReach(_pos);
+        BlockPos swingAt = _pos;
+        if (reach.isEmpty()) {
+            // vines count as a hit for the ray even though you walk through them, so a log behind a curtain of them is
+            // "out of reach" until the curtain is gone. they break instantly, so take the one in the way down first
+            BlockPos vine = vineInTheWay(mod.getWorld(), mod.getPlayer().getEyePosition(), _pos, mod.getClientBaritone().getPlayerContext().playerController().getBlockReachDistance());
+            Optional<Rotation> vineReach = vine == null ? Optional.empty() : LookHelper.getReach(vine);
+            if (vineReach.isPresent()) {
+                reach = vineReach;
+                swingAt = vine;
+            }
+        }
         if (reach.isPresent() && (mod.getPlayer().isInWater() || mod.getPlayer().onGround())
                 && !mod.getFoodChain().needsToEat() && !WorldHelper.isInNetherPortal(mod)
                 && mod.getClientBaritone().getPathingBehavior().isSafeToCancel()) {
@@ -344,7 +395,7 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
             if (!LookHelper.isLookingAt(mod, reach.get())) {
                 LookHelper.lookAt(mod, reach.get());
             }
-            BlockState state = mod.getWorld().getBlockState(_pos);
+            BlockState state = mod.getWorld().getBlockState(swingAt);
             Optional<Slot> bestToolSlot = StorageHelper.getBestToolSlot(mod, state);
             Slot currentEquipped = PlayerSlot.getEquipSlot();
             // if baritone is running, only accept tools OUTSIDE OF HOTBAR!
@@ -395,10 +446,13 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
                 Goal goal;
                 if (fromSide) {
                     goal = new GoalMineFromSide(_pos);
-                } else if (mod.getWorld().getBlockState(_above).getBlock() == Blocks.SNOW) {
-                    goal = new GoalBlock(_pos);
                 } else {
-                    goal = new GoalNear(_pos, 1);
+                    goal = pickGoal(mod.getWorld(), _pos, closeIn);
+                    if (goal instanceof GoalReachBlock && goal.isInGoal(mod.getClientBaritone().getPlayerContext().playerFeet()) && reach.isEmpty()) {
+                        // already there and it still can't be hit (leaves, other logs, a wall), so touch it like before
+                        closeIn = true;
+                        goal = pickGoal(mod.getWorld(), _pos, true);
+                    }
                 }
                 mod.getClientBaritone().getCustomGoalProcess().setGoalAndPath(goal);
             }
