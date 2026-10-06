@@ -13,6 +13,7 @@ import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.inventory.CraftingMenu;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -74,6 +75,15 @@ public final class MinecraftFacts implements GamerFacts {
         add(player.containerMenu.getCarried());
         for (int slot = 1; slot <= 4 && slot < player.inventoryMenu.slots.size(); slot++) {
             add(player.inventoryMenu.getSlot(slot).getItem());
+        }
+        // same for the 3x3 of an open crafting table. this was missing and it made a smoker craft thrash: the furnace is
+        // a single item, so the moment it moved into the grid we owned 0 furnaces, the kit said "make a furnace" and
+        // swept the grid, and the food task put it right back. ~55 times. stacked ingredients never hit it
+        if (player.containerMenu instanceof CraftingMenu table) {
+            // slot 0 is the output, which we do NOT own until it is taken (see InventorySubTracker)
+            for (int slot = 1; slot <= 9 && slot < table.slots.size(); slot++) {
+                add(table.getSlot(slot).getItem());
+            }
         }
         for (int i = 0; i < 4; i++) {
             worn[i] = inv.getArmor(i);
