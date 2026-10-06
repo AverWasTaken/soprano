@@ -7,6 +7,7 @@ import adris.altoclef.tasksystem.ITaskUsesCraftingGrid;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.RecipeTarget;
+import adris.altoclef.util.helpers.CraftMath;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.slots.CraftingTableSlot;
@@ -77,7 +78,22 @@ public class CraftGenericManuallyTask extends Task implements ITaskUsesCraftingG
         // We need 9 sticks
         // plank recipe results in 4 sticks
         // this means 3 planks per slot
-        int requiredPerSlot = (int) Math.ceil((double) _target.getTargetCount() / _target.getRecipe().outputCount());
+        int wantedCrafts = CraftMath.craftsFor(_target.getTargetCount(), _target.getRecipe().outputCount());
+        // "craft as many as possible" is a target of 99999999, so the per slot number has to be clamped to what we
+        // really own or the slot is never satisfied and we keep reaching for items that are gone (that was a
+        // MoveItemToSlotTask error in chat every single tick). grid contents count so this doesn't shrink as we fill it
+        int craftsPossible = StorageHelper.craftsPossible(mod, _target.getRecipe(), wantedCrafts);
+        // and a grid slot holds one stack, 100 hay blocks are two rounds
+        int requiredPerSlot = Math.min(craftsPossible, stackLimit(_target));
+        if (craftsPossible <= 0) {
+            // nothing left to put in. whatever is still sitting in the output is ours, then we are done
+            if (!StorageHelper.getItemStackInSlot(outputSlot).isEmpty()) {
+                setDebugState("Out of materials: grabbing from output.");
+                return new ReceiveCraftingOutputSlotTask(outputSlot, _target.getTargetCount());
+            }
+            setDebugState("Out of materials.");
+            return null;
+        }
 
         // For each slot in table
         for (int craftSlot = 0; craftSlot < _target.getRecipe().getSlotCount(); ++craftSlot) {
@@ -103,7 +119,9 @@ public class CraftGenericManuallyTask extends Task implements ITaskUsesCraftingG
                 if (!isSatisfied) {
                     // We have items that satisfy, but we CAN NOT fill in the current slot!
                     // In that case, just grab from the output.
-                    if (!mod.getItemStorage().hasItemInventoryOnly(present.getItem())) {
+                    // this used to ask about present.getItem(). an empty slot is AIR, and an inventory with any free
+                    // slot "has" AIR, so every empty slot sent us off to move an item we did not own
+                    if (!mod.getItemStorage().hasItemInventoryOnly(toFill.getMatches())) {
                         if (!StorageHelper.getItemStackInSlot(outputSlot).isEmpty()) {
                             setDebugState("NO MORE to fit: grabbing from output.");
                             return new ReceiveCraftingOutputSlotTask(outputSlot, _target.getTargetCount());
@@ -143,6 +161,32 @@ public class CraftGenericManuallyTask extends Task implements ITaskUsesCraftingG
             // Wait
             return null;
         }
+    }
+
+    // the smallest stack any ingredient of this recipe can form, one grid slot never holds more than that
+    private static int stackLimit(RecipeTarget target) {
+        int limit = 64;
+        for (int i = 0; i < target.getRecipe().getSlotCount(); ++i) {
+            ItemTarget slot = target.getRecipe().getSlot(i);
+            if (slot == null || slot.isEmpty()) continue;
+            for (Item item : slot.getMatches()) {
+                limit = Math.min(limit, Math.max(1, new ItemStack(item).getMaxStackSize()));
+            }
+        }
+        return limit;
+    }
+
+    /**
+     * True when the recipe can not run again: nothing left to feed it and nothing waiting in the output. Crafting
+     * "as many as possible" (a target of 99999999) is only ever done through this, the parent drops us when it flips.
+     */
+    public static boolean isOutOfMaterials(AltoClef mod, RecipeTarget target) {
+        return StorageHelper.craftsPossible(mod, target.getRecipe(), 1) <= 0 && !StorageHelper.craftOutputWaiting();
+    }
+
+    @Override
+    public boolean isFinished(AltoClef mod) {
+        return isOutOfMaterials(mod, _target);
     }
 
     @Override

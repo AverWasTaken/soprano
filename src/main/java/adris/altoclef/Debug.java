@@ -1,5 +1,6 @@
 package adris.altoclef;
 
+import adris.altoclef.util.ChatThrottle;
 import baritone.Baritone;
 import baritone.api.utils.Helper;
 import net.minecraft.ChatFormatting;
@@ -11,6 +12,11 @@ import net.minecraft.client.Minecraft;
 public class Debug {
 
     public static AltoClef jankModInstance;
+
+    // errors and warnings come from tasks that tick 20 times a second, so "the same complaint every tick" is the normal
+    // way for them to fail. chat gets each distinct line once per window (with a count of the ones it ate) and a hard
+    // cap on the whole stream, the log file keeps the stack trace for whatever got through
+    private static final ChatThrottle CHAT_THROTTLE = new ChatThrottle(10_000, 6);
 
     public static void logInternal(String message) {
         System.out.println("ALTO CLEF: " + message);
@@ -40,8 +46,9 @@ public class Debug {
     public static void logWarning(String message) {
         logInternal("WARNING: " + message);
         if (jankModInstance != null && !Baritone.settings().altoHideAllWarningLogs.value) {
-            if (canChat()) {
-                Helper.HELPER.logDirect(message, ChatFormatting.RED);
+            String line = CHAT_THROTTLE.filter("WARNING: " + ChatThrottle.firstLine(message), System.currentTimeMillis());
+            if (line != null && canChat()) {
+                Helper.HELPER.logDirect(line.substring("WARNING: ".length()), ChatFormatting.RED);
             }
         }
     }
@@ -51,12 +58,16 @@ public class Debug {
     }
 
     public static void logError(String message) {
+        String line = CHAT_THROTTLE.filter("[ERROR] " + ChatThrottle.firstLine(message), System.currentTimeMillis());
+        // swallowed repeats don't print a stack either, 520 copies of the same trace is how the log got unreadable
+        if (line == null) return;
         String stacktrace = getStack(2);
+        // the trace goes to the log file only (stderr lands there), chat gets the one line
         System.err.println(message);
         System.err.println("at:");
         System.err.println(stacktrace);
         if (canChat()) {
-            Helper.HELPER.logDirect("[ERROR] " + message + "\nat:\n" + stacktrace, ChatFormatting.RED);
+            Helper.HELPER.logDirect(line, ChatFormatting.RED);
         }
     }
 
