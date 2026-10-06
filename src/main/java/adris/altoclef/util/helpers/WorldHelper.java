@@ -5,7 +5,6 @@ import adris.altoclef.AltoClef;
 import baritone.utils.accessor.IClientConnection;
 import baritone.api.utils.Dimension;
 import baritone.api.BaritoneAPI;
-import baritone.pathing.movement.CalculationContext;
 import baritone.pathing.movement.MovementHelper;
 import baritone.process.MineProcess;
 import baritone.utils.BlockStateInterface;
@@ -231,16 +230,16 @@ public interface WorldHelper {
     }
 
     static boolean canBreak(AltoClef mod, BlockPos pos) {
-        // JANK: Temporarily check if we can break WITHOUT paused interactions.
-        // Not doing this creates bugs where we loop back and forth through the nether portal and stuff.
-        boolean prevInteractionPaused = mod.getExtraBaritoneSettings().isInteractionPaused();
-        mod.getExtraBaritoneSettings().setInteractionPaused(false);
-        boolean result = mod.getWorld().getBlockState(pos).getDestroySpeed(mod.getWorld(), pos) >= 0
-                && !mod.getExtraBaritoneSettings().shouldAvoidBreaking(pos)
-                && MineProcess.plausibleToBreak(new CalculationContext(mod.getClientBaritone()), pos)
-                && canReach(mod, pos) && !mod.getBlockTracker().unreachable(pos);
-        mod.getExtraBaritoneSettings().setInteractionPaused(prevInteractionPaused);
-        return result;
+        // cheap rejects go first. the context is cached per tick now but plausibleToBreak and the ocean check in canReach
+        // still cost something, and most callers are asking about 25 blocks that mostly fail one of these
+        if (mod.getWorld().getBlockState(pos).getDestroySpeed(mod.getWorld(), pos) < 0
+                || mod.getExtraBaritoneSettings().shouldAvoidBreaking(pos)
+                || mod.getBlockTracker().unreachable(pos)) {
+            return false;
+        }
+        // the old "JANK: check without paused interactions" toggle lives in the cache now, that's where it's read.
+        // (not doing it creates bugs where we loop back and forth through the nether portal and stuff)
+        return MineProcess.plausibleToBreak(BreakContextCache.get(mod), pos) && canReach(mod, pos);
     }
 
     static boolean isInNetherPortal(AltoClef mod) {
