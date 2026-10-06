@@ -12,6 +12,7 @@ import adris.altoclef.util.baritone.CachedProjectile;
 import adris.altoclef.util.helpers.BaritoneHelper;
 import adris.altoclef.util.helpers.EntityHelper;
 import adris.altoclef.util.helpers.ItemPickupRules;
+import adris.altoclef.util.helpers.MobReachability;
 import adris.altoclef.util.helpers.ProjectileHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import java.util.*;
@@ -47,6 +48,7 @@ public class EntityTracker extends Tracker {
     private final HashMap<String, Vec3> _playerLastCoordinates = new HashMap<>();
 
     private final EntityLocateBlacklist _entityBlacklist = new EntityLocateBlacklist();
+    private final MobReachability _mobReach = new MobReachability();
     // entity ids we already said we were skipping, so the log gets one line per drop and not one per tick
     private final Set<Integer> _skippedWetDrops = new HashSet<>();
     // isPickupSafe can be ~45 block lookups per drop, so each drop's verdict lives a few ticks instead of being redone
@@ -335,6 +337,12 @@ public class EntityTracker extends Tracker {
         return !_entityBlacklist.unreachable(entity);
     }
 
+    // not baked into getHostiles on purpose: "it is angry" is still true for the run away and eating checks even when it
+    // cannot get to us. only the decisions about fighting ask this
+    public MobReachability getMobReachability() {
+        return _mobReach;
+    }
+
     @Override
     protected synchronized void updateState() {
         synchronized (BaritoneHelper.MINECRAFT_LOCK) {
@@ -456,6 +464,7 @@ public class EntityTracker extends Tracker {
     protected void reset() {
         // Dirty clears everything else.
         _entityBlacklist.clear();
+        _mobReach.reset();
         _skippedWetDrops.clear();
         _pickupVerdicts.clear();
         // these are keyed by LocalPlayer and hold entities, so each of them pins a whole ClientLevel. gone with the world

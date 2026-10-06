@@ -293,7 +293,8 @@ public class MobDefenseChain extends SingleTaskChain {
             if (!hostiles.isEmpty()) {
                 for (Entity entity : hostiles) {
                     if (entity instanceof Mob mob) {
-                        boolean isAttackingPlayer = EntityHelper.isAngryAtPlayer(mod, mob);
+                        // angry is not the same as dangerous: one in the wall of our hole screaming at us is not a fight
+                        boolean isAttackingPlayer = EntityHelper.isAngryAtPlayer(mod, mob) && EntityHelper.canMobHarmPlayer(mod, mob);
                         if (isAttackingPlayer) {
                             toDealWith.add(mob);
                         }
@@ -340,9 +341,13 @@ public class MobDefenseChain extends SingleTaskChain {
                 canDealWith += 1;
                 if (canDealWith > numberOfProblematicEntities) {
                     // We can deal with it.
-                    _runAwayTask = null;
                     for (Entity ToDealWith : toDealWith) {
-                        Predicate<Entity> valid = entity -> EntityHelper.isAngryAtPlayer(mod, entity);
+                        // the ones that can only shoot at us are the dodge logic's problem. walking out of our safe spot
+                        // to chase something that cannot walk to us is how this used to end up in the open
+                        if (!EntityHelper.canMobReachPlayer(mod, (Mob) ToDealWith)) continue;
+                        _runAwayTask = null;
+                        Predicate<Entity> valid = entity -> EntityHelper.isAngryAtPlayer(mod, entity)
+                                && (!(entity instanceof Mob mob) || EntityHelper.canMobReachPlayer(mod, mob));
                         // Prioritize ranged enemies first.
                         if (ToDealWith instanceof Skeleton || ToDealWith instanceof Witch ||
                                 ToDealWith instanceof Pillager || ToDealWith instanceof Piglin ||
@@ -353,11 +358,13 @@ public class MobDefenseChain extends SingleTaskChain {
                         setTask(new KillEntitiesTask(valid, ToDealWith.getClass()));
                         return 65;
                     }
+                    // nothing left that we can walk to, so no takeover. keep whatever we were doing
+                } else {
+                    // We can't deal with it
+                    _runAwayTask = new RunAwayFromHostilesTask(DANGER_KEEP_DISTANCE, true);
+                    setTask(_runAwayTask);
+                    return 80;
                 }
-                // We can't deal with it
-                _runAwayTask = new RunAwayFromHostilesTask(DANGER_KEEP_DISTANCE, true);
-                setTask(_runAwayTask);
-                return 80;
             }
         }
         // By default if we aren't "immediately" in danger but were running away, keep running away until we're good.
@@ -542,6 +549,12 @@ public class MobDefenseChain extends SingleTaskChain {
     }
 
     private Optional<Entity> getUniversallyDangerousMob(AltoClef mod) {
+        // the melee only ones (no wither skeleton arrows, no hoglin spit) are not a danger if they cannot walk to us.
+        // fleeing is cheap but fleeing from something stuck behind a wall is how you leave the safe hole. distance first
+        // so the far ones do not get a reachability verdict they did not ask for
+        Predicate<Entity> meleeThreat = entity -> entity.distanceToSqr(mod.getPlayer()) < (SAFE_KEEP_DISTANCE - 2) * (SAFE_KEEP_DISTANCE - 2)
+                && EntityHelper.isAngryAtPlayer(mod, entity)
+                && (!(entity instanceof Mob mob) || EntityHelper.canMobReachPlayer(mod, mob));
         // Wither skeletons are dangerous because of the wither effect. Oof kinda obvious.
         // If we merely force field them, we will run into them and get the wither effect which will kill us.
         Optional<Entity> warden = mod.getEntityTracker().getClosestEntity(Warden.class);
@@ -558,7 +571,7 @@ public class MobDefenseChain extends SingleTaskChain {
                 return wither;
             }
         }
-        Optional<Entity> witherSkeleton = mod.getEntityTracker().getClosestEntity(WitherSkeleton.class);
+        Optional<Entity> witherSkeleton = mod.getEntityTracker().getClosestEntity(meleeThreat, WitherSkeleton.class);
         if (witherSkeleton.isPresent()) {
             double range = SAFE_KEEP_DISTANCE - 2;
             if (witherSkeleton.get().distanceToSqr(mod.getPlayer()) < range * range && EntityHelper.isAngryAtPlayer(mod, witherSkeleton.get())) {
@@ -567,28 +580,28 @@ public class MobDefenseChain extends SingleTaskChain {
         }
         // Hoglins are dangerous because we can't push them with the force field.
         // If we merely force field them and stand still our health will slowly be chipped away until we die
-        Optional<Entity> hoglin = mod.getEntityTracker().getClosestEntity(Hoglin.class);
+        Optional<Entity> hoglin = mod.getEntityTracker().getClosestEntity(meleeThreat, Hoglin.class);
         if (hoglin.isPresent()) {
             double range = SAFE_KEEP_DISTANCE - 2;
             if (hoglin.get().distanceToSqr(mod.getPlayer()) < range * range && EntityHelper.isAngryAtPlayer(mod, hoglin.get())) {
                 return hoglin;
             }
         }
-        Optional<Entity> zoglin = mod.getEntityTracker().getClosestEntity(Zoglin.class);
+        Optional<Entity> zoglin = mod.getEntityTracker().getClosestEntity(meleeThreat, Zoglin.class);
         if (zoglin.isPresent()) {
             double range = SAFE_KEEP_DISTANCE - 2;
             if (zoglin.get().distanceToSqr(mod.getPlayer()) < range * range && EntityHelper.isAngryAtPlayer(mod, zoglin.get())) {
                 return zoglin;
             }
         }
-        Optional<Entity> piglinBrute = mod.getEntityTracker().getClosestEntity(PiglinBrute.class);
+        Optional<Entity> piglinBrute = mod.getEntityTracker().getClosestEntity(meleeThreat, PiglinBrute.class);
         if (piglinBrute.isPresent()) {
             double range = SAFE_KEEP_DISTANCE - 2;
             if (piglinBrute.get().distanceToSqr(mod.getPlayer()) < range * range && EntityHelper.isAngryAtPlayer(mod, piglinBrute.get())) {
                 return piglinBrute;
             }
         }
-        Optional<Entity> vindicator = mod.getEntityTracker().getClosestEntity(Vindicator.class);
+        Optional<Entity> vindicator = mod.getEntityTracker().getClosestEntity(meleeThreat, Vindicator.class);
         if (vindicator.isPresent()) {
             double range = SAFE_KEEP_DISTANCE - 2;
             if (vindicator.get().distanceToSqr(mod.getPlayer()) < range * range && EntityHelper.isAngryAtPlayer(mod, vindicator.get())) {
@@ -617,7 +630,8 @@ public class MobDefenseChain extends SingleTaskChain {
                 if (!hostiles.isEmpty()) {
                     synchronized (BaritoneHelper.MINECRAFT_LOCK) {
                         for (Entity entity : hostiles) {
-                            if (entity.closerThan(player, SAFE_KEEP_DISTANCE) && !mod.getBehaviour().shouldExcludeFromForcefield(entity) && EntityHelper.isAngryAtPlayer(mod, entity)) {
+                            if (entity.closerThan(player, SAFE_KEEP_DISTANCE) && !mod.getBehaviour().shouldExcludeFromForcefield(entity) && EntityHelper.isAngryAtPlayer(mod, entity)
+                                    && (!(entity instanceof Mob mob) || EntityHelper.canMobHarmPlayer(mod, mob))) {
                                 return true;
                             }
                         }

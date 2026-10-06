@@ -51,6 +51,16 @@ public class EntityHelper {
         return !isTradingPiglin(entity);
     }
 
+    // can it walk up and hit us (so chasing it is not a waste of a trip). see MobReachability for how that gets decided
+    public static boolean canMobReachPlayer(AltoClef mod, Mob mob) {
+        return mod.getEntityTracker().getMobReachability().canWalkToPlayer(mod, mob);
+    }
+
+    // can it hurt us at all, reachable or with a clear line for arrows. false means ignore it
+    public static boolean canMobHarmPlayer(AltoClef mod, Mob mob) {
+        return mod.getEntityTracker().getMobReachability().canHarmPlayer(mod, mob);
+    }
+
     public static boolean isTradingPiglin(Entity entity) {
         if (entity instanceof Piglin pig) {
             if (pig.getHandSlots() != null) {
