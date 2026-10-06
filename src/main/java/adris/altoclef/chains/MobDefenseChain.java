@@ -79,6 +79,12 @@ public class MobDefenseChain extends SingleTaskChain {
 
     private float _cachedLastPriority;
 
+    private long _stanceTick = Long.MIN_VALUE;
+    private CombatRules.Stance _stance = CombatRules.Stance.CALM;
+    private int _lastHurtTime;
+    // far enough in the past that it is not a recent hit, close enough to the present that subtracting is not an overflow
+    private long _lastCombatHurtTick = Long.MIN_VALUE / 2;
+
     public MobDefenseChain(TaskRunner runner) {
         super(runner);
     }
@@ -272,6 +278,14 @@ public class MobDefenseChain extends SingleTaskChain {
                 setTask(_runAwayTask);
                 return 70;
             }
+        }
+
+        // losing a fight is not the time to trade blows or to chew. leave, the food chain eats once we are out of it.
+        // (the food chain only lets go of its bite when it sees this stance, see FoodChain.needsToEat)
+        if (_targetEntity == null && getCombatStance(mod) == CombatRules.Stance.FLEE) {
+            _runAwayTask = new RunAwayFromHostilesTask(DANGER_KEEP_DISTANCE, true);
+            setTask(_runAwayTask);
+            return 80;
         }
 
         if (Baritone.settings().altoKillOrAvoidAnnoyingHostiles.value) {
@@ -658,6 +672,40 @@ public class MobDefenseChain extends SingleTaskChain {
         if (armor <= 15 && health < 3) return true;
         if (armor < 10 && health < 10) return true;
         return armor < 5 && health < 18;
+    }
+
+    // fight / flee / eat, worked out once per tick no matter how many things ask (the food chain asks a lot, needsToEat
+    // is everywhere). the answer lives here because the hostile list and the reach rules do
+    public CombatRules.Stance getCombatStance(AltoClef mod) {
+        if (!AltoClef.inGame()) return CombatRules.Stance.CALM;
+        long now = mod.getWorld().getGameTime();
+        if (now == _stanceTick) return _stance;
+        _stanceTick = now;
+
+        LocalPlayer player = mod.getPlayer();
+        double nearest = Double.POSITIVE_INFINITY;
+        try {
+            for (Entity entity : mod.getEntityTracker().getHostiles()) {
+                if (!(entity instanceof Mob mob)) continue;
+                if (!EntityHelper.shouldEngageMob(mod, mob) || !EntityHelper.canMobHarmPlayer(mod, mob)) continue;
+                nearest = Math.min(nearest, mob.distanceTo(player));
+            }
+        } catch (ConcurrentModificationException ignored) {
+            // the tracker rebuilds its lists on another thread sometimes, one tick of stale combat state is fine
+        }
+
+        // a fresh hit shows up as hurtTime jumping back up. whatever hit us, if something hostile is around it is a fight
+        boolean freshHit = player.hurtTime > _lastHurtTime;
+        _lastHurtTime = player.hurtTime;
+        if (freshHit && !Double.isInfinite(nearest)) _lastCombatHurtTick = now;
+
+        Creeper fusing = getClosestFusingCreeper(mod);
+        boolean creeperClose = fusing != null && fusing.distanceTo(player) <= CombatRules.CREEPER_RANGE;
+        boolean inCombat = CombatRules.inCombat(nearest, now - _lastCombatHurtTick, creeperClose);
+        // gapples are never picked as food (FoodSelector keeps them for exactly this), so check the bag ourselves
+        boolean hasGapple = mod.getItemStorage().hasItem(Items.GOLDEN_APPLE) || mod.getItemStorage().hasItem(Items.ENCHANTED_GOLDEN_APPLE);
+        _stance = CombatRules.stance(inCombat, player.getHealth(), nearest, hasGapple);
+        return _stance;
     }
 
     public void setTargetEntity(Entity entity) {

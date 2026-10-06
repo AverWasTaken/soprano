@@ -41,8 +41,11 @@ public class FoodChain extends SingleTaskChain {
     private float _lastFoodHealth = -1;
     private boolean shouldStop = false;
 
+    private final AltoClef _mod;
+
     public FoodChain(TaskRunner runner) {
         super(runner);
+        _mod = runner.getMod();
     }
 
     @Override
@@ -140,7 +143,15 @@ public class FoodChain extends SingleTaskChain {
         if (!_hasFood) {
             _requestFillup = false;
         }
-        if (_hasFood && (needsToEat() || _requestFillup) && _cachedPerfectFood.isPresent() &&
+        // mid fight we do not start a meal, and one already going gets spat out. you cannot swing a sword while chewing
+        // and the thing hitting us does not wait for the bar. once the fight is over _requestFillup picks it back up
+        CombatRules.Stance stance = stance(mod);
+        if (stance == CombatRules.Stance.EAT_GAPPLE) {
+            // not in the food list on purpose, this is the one fight where the gapple is the point
+            Item gapple = mod.getItemStorage().hasItem(Items.GOLDEN_APPLE) ? Items.GOLDEN_APPLE : Items.ENCHANTED_GOLDEN_APPLE;
+            LookHelper.tryAvoidingInteractable(mod);
+            startEat(mod, gapple);
+        } else if (stance.mayEat() && _hasFood && (needsToEat() || _requestFillup) && _cachedPerfectFood.isPresent() &&
                 !mod.getMLGBucketChain().isChorusFruiting() && !mod.getPlayer().isBlocking()) {
             Item toUse = _cachedPerfectFood.get();
             // Make sure we're not facing a container
@@ -192,8 +203,24 @@ public class FoodChain extends SingleTaskChain {
         stopEat(mod);
     }
 
+    // this is also "are we busy chewing", half the codebase asks it to know whether it may swing or click. so it says no
+    // when a fight stops us eating, and yes when the fight is the reason we are eating (the gapple)
     public boolean needsToEat() {
-        if (!hasFood() || shouldStop) {
+        if (shouldStop) return false;
+        CombatRules.Stance stance = stance(_mod);
+        if (stance == CombatRules.Stance.EAT_GAPPLE) return true;
+        if (!stance.mayEat()) return false;
+        return rawNeedsToEat();
+    }
+
+    // the chains are built one after another, so early on there may be no mob defense to ask yet
+    private static CombatRules.Stance stance(AltoClef mod) {
+        if (mod == null || mod.getMobDefenseChain() == null) return CombatRules.Stance.CALM;
+        return mod.getMobDefenseChain().getCombatStance(mod);
+    }
+
+    private boolean rawNeedsToEat() {
+        if (!hasFood()) {
             return false;
         }
         LocalPlayer player = Minecraft.getInstance().player;
