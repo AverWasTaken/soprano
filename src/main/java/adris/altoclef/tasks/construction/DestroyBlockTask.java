@@ -17,6 +17,7 @@ import adris.altoclef.util.slots.Slot;
 import adris.altoclef.ui.HudText;
 import net.minecraft.world.level.Level;
 import net.minecraft.client.Minecraft;
+import baritone.api.pathing.goals.Goal;
 import baritone.api.pathing.goals.GoalBlock;
 import baritone.api.pathing.goals.GoalNear;
 import baritone.api.utils.Rotation;
@@ -44,11 +45,46 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
     private final MovementProgressChecker stuckCheck = new MovementProgressChecker();
     private final MovementProgressChecker _moveChecker = new MovementProgressChecker();
     private final BlockPos _pos;
+    private final BlockPos _above;
     private Task _unstuckTask = null;
     private boolean isMining;
+    // once this block has been judged dangerous from above it stays "mine from the side" for the
+    // whole task, so a re-plan can't quietly go back to the goal that stands on top of it.
+    // volatile because the place-avoid predicate is read from baritone's thread
+    private volatile boolean _fromSide;
+    private boolean _dangerChecked;
+    private boolean _pushedBehaviour;
+    // step off -> baritone walks right back on -> step off... more than this and we give the block up
+    private final StepOffGuard _stepOffs = new StepOffGuard(3);
 
     public DestroyBlockTask(BlockPos pos) {
         _pos = pos;
+        _above = pos.above();
+    }
+
+    // decides (once, and only when the chunks around it are really loaded) if this block has to be
+    // mined from the side. sticky: true stays true
+    private boolean mustMineFromSide(AltoClef mod) {
+        if (_fromSide) {
+            return true;
+        }
+        if (_dangerChecked || !_pos.closerToCenterThan(mod.getPlayer().position(), 16)) {
+            return false;
+        }
+        _dangerChecked = true;
+        if (WorldHelper.dangerousToBreakIfRightAbove(mod, _pos)) {
+            markFromSide(mod);
+        }
+        return _fromSide;
+    }
+
+    private void markFromSide(AltoClef mod) {
+        if (!_fromSide) {
+            _fromSide = true;
+            Debug.logInternal("Destroy block at " + _pos.toShortString() + " is dangerous from above, mining it from the side");
+            // whatever plain goal is running would happily stand on top of it
+            mod.getClientBaritone().getCustomGoalProcess().onLostControl();
+        }
     }
 
     /**
@@ -162,6 +198,15 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
         // Reset move checker and stuck check.
         _moveChecker.reset();
         stuckCheck.reset();
+        _stepOffs.reset();
+
+        // never scaffold onto the square above the block we're here to break. only bites once
+        // _fromSide is set, so ordinary blocks path exactly like before
+        if (!_pushedBehaviour && mod.getBehaviour() != null) {
+            mod.getBehaviour().push();
+            _pushedBehaviour = true;
+            mod.getBehaviour().avoidBlockPlacing(pos -> _fromSide && _above.equals(pos));
+        }
 
         // Get the item stack in the cursor slot.
         ItemStack cursorStack = StorageHelper.getItemStackInCursorSlot();
@@ -266,11 +311,21 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
 
         // Check if the block above the position is not solid, the player is above the position,
         // and the player is within a distance of 0.89 blocks from the position
+        boolean steppingOff = false;
         if (!WorldHelper.isSolid(mod, _pos.above()) && mod.getPlayer().position().y > _pos.getY() && _pos.closerToCenterThan(mod.getPlayer().onGround() ? mod.getPlayer().position() : mod.getPlayer().position().add(0, -1, 0), 0.89)) {
-            if (WorldHelper.dangerousToBreakIfRightAbove(mod, _pos)) {
-                setDebugState("It's dangerous to break as we're right above it, moving away and trying again.", "Stepping off it first");
-                return new RunAwayFromPositionTask(3, _pos.getY(), _pos);
+            if (_fromSide || WorldHelper.dangerousToBreakIfRightAbove(mod, _pos)) {
+                markFromSide(mod);
+                steppingOff = true;
             }
+        }
+        if (_stepOffs.tick(steppingOff)) {
+            // we keep ending up on top of it. a different ore is a better idea than a tenth lap
+            Debug.logInternal("Destroy block at " + _pos.toShortString() + ": stepped off it too many times, giving it up");
+            mod.getBlockTracker().requestBlockUnreachable(_pos, 0);
+        }
+        if (steppingOff) {
+            setDebugState("It's dangerous to break as we're right above it, moving away and trying again.", "Stepping off it first");
+            return new RunAwayFromPositionTask(3, _pos.getY(), _pos);
         }
 
         Optional<Rotation> reach = LookHelper.getReach(_pos);
@@ -279,6 +334,7 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
                 && mod.getClientBaritone().getPathingBehavior().isSafeToCancel()) {
             setDebugState("Block in range, mining...");
             stuckCheck.reset();
+            _stepOffs.reset();
             isMining = true;
             mod.getInputControls().release(Input.SNEAK);
             mod.getInputControls().release(Input.MOVE_BACK);
@@ -309,7 +365,12 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
             }
             mod.getClientBaritone().getInputOverrideHandler().setInputForceState(Input.CLICK_LEFT, true);
         } else {
-            setDebugState("Getting to block...", "Walking to " + HudText.pos(_pos));
+            boolean fromSide = mustMineFromSide(mod);
+            if (fromSide) {
+                setDebugState("Getting to block...", "Mining it from the side");
+            } else {
+                setDebugState("Getting to block...", "Walking to " + HudText.pos(_pos));
+            }
             if (isMining && mod.getPlayer().isInWater()) {
                 isMining = false;
                 mod.getBlockTracker().requestBlockUnreachable(_pos);
@@ -329,8 +390,17 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
             }
             if (!mod.getClientBaritone().getCustomGoalProcess().isActive()) {
                 mod.getClientBaritone().getBuilderProcess().onLostControl();
-                mod.getClientBaritone().getCustomGoalProcess().setGoalAndPath(mod.getWorld().getBlockState(_pos.above()).getBlock() ==
-                        Blocks.SNOW ? new GoalBlock(_pos) : new GoalNear(_pos, 1));
+                // GoalNear and GoalBlock both count standing on top of the block as arrived, which is the
+                // one place we refuse to break it from (and the step-off task shoves us off of)
+                Goal goal;
+                if (fromSide) {
+                    goal = new GoalMineFromSide(_pos);
+                } else if (mod.getWorld().getBlockState(_above).getBlock() == Blocks.SNOW) {
+                    goal = new GoalBlock(_pos);
+                } else {
+                    goal = new GoalNear(_pos, 1);
+                }
+                mod.getClientBaritone().getCustomGoalProcess().setGoalAndPath(goal);
             }
         }
         return null;
@@ -347,6 +417,13 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
     protected void onStop(AltoClef mod, Task interruptTask) {
         // Cancel Baritone pathing
         mod.getClientBaritone().getPathingBehavior().forceCancel();
+
+        if (_pushedBehaviour) {
+            _pushedBehaviour = false;
+            if (mod.getBehaviour() != null) {
+                mod.getBehaviour().pop();
+            }
+        }
 
         // If not in game, return
         if (!AltoClef.inGame()) {
