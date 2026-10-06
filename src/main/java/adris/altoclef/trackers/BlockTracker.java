@@ -558,76 +558,63 @@ public class BlockTracker extends Tracker {
 
         // Gets nearest block. For now does linear search. In the future might optimize this a bit
         public Optional<BlockPos> getNearest(AltoClef mod, Vec3 position, Predicate<BlockPos> isValid, Block... blocks) {
+            return getNearest(position, isValid, pos -> mod.getBlockTracker().blockIsValid(pos, blocks), BaritoneHelper::calculateGenericHeuristic, blocks);
+        }
+
+        interface Scorer {
+            double score(double fromX, double fromY, double fromZ, double toX, double toY, double toZ);
+        }
+
+        // blockIsValid and the scorer are parameters so a test can drive this without a client (the heuristic wants
+        // baritone's settings and those want a whole game). the real validity check takes a mutex, allocs a ChunkPos
+        // and reads the world, so it only gets asked about entries that are actually in the running
+        Optional<BlockPos> getNearest(Vec3 position, Predicate<BlockPos> isValid, Predicate<BlockPos> blockIsValid, Scorer scorer, Block... blocks) {
             if (!anyFound(blocks)) {
                 //Debug.logInternal("(failed cataloguecheck for " + block.getTranslationKey() + ")");
                 return Optional.empty();
             }
 
-            BlockPos closest = null;
-            double minScore = Double.POSITIVE_INFINITY;
-
             List<BlockPos> blockList = getKnownLocations(blocks);
+            int n = blockList.size();
 
-            int toPurge = blockList.size() - _config.maxCacheSizePerBlockType;
-
-            boolean closestPurged = false;
-            if (!blockList.isEmpty()) {
-                for (BlockPos pos : blockList) {
-                    // If our current block isn't valid, fix it up. This cleans while we're iterating.
-                    if (!mod.getBlockTracker().blockIsValid(pos, blocks)) {
-                        removeBlock(pos, blocks);
-                        continue;
-                    }
-                    if (!isValid.test(pos)) continue;
-
-                    double score = BaritoneHelper.calculateGenericHeuristic(position, WorldHelper.toVec3d(pos));
-
-                    boolean currentlyClosest = false;
-                    boolean purged = false;
-
-                    if (score < minScore) {
-                        minScore = score;
-                        closest = pos;
-                        currentlyClosest = true;
-                    }
-
-                    if (toPurge > 0) {
-                        double sqDist = position.distanceToSqr(WorldHelper.toVec3d(pos));
-                        if (sqDist > _config.cutoffDistance * _config.cutoffDistance) {
-                            // cut this one off.
-                            for (Block block : blocks) {
-                                if (_cachedBlocks.containsKey(block)) {
-                                    removeBlock(pos, block);
-                                }
-                            }
-                            toPurge--;
-                            purged = true;
-                        }
-                    }
-
-                    if (currentlyClosest) {
-                        closestPurged = purged;
-                    }
-                }
+            // scores first, with raw doubles. this used to alloc a Vec3 per position per tick and then ask the world
+            // and the predicate about every single one even though only the nearest valid one matters
+            double[] scores = new double[n];
+            for (int i = 0; i < n; i++) {
+                BlockPos pos = blockList.get(i);
+                scores[i] = scorer.score(position.x, position.y, position.z, pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5);
             }
 
-            while (toPurge > 0) {
-                if (blockList.size() == 0) {
-                    //noinspection UnusedAssignment
-                    toPurge = 0;
+            // then hand out candidates nearest first and stop at the first one that survives. n is like 25 so picking the
+            // min over and over beats sorting, and strict < keeps the earliest in list order on ties like the old loop did.
+            // infinite scores never won the old loop either, so they never win here
+            for (int round = 0; round < n; round++) {
+                int best = -1;
+                double bestScore = Double.POSITIVE_INFINITY;
+                for (int i = 0; i < n; i++) {
+                    if (scores[i] < bestScore) {
+                        bestScore = scores[i];
+                        best = i;
+                    }
+                }
+                if (best == -1) {
                     break;
                 }
-                blockList.remove(blockList.size() - 1);
-                toPurge--;
+                scores[best] = Double.NaN; // NaN < anything is false, so it's out of the running
+                BlockPos pos = blockList.get(best);
+                // If our current block isn't valid, fix it up. This cleans while we're iterating.
+                // anything we never get to stays put, which is fine: every rescan walks the whole cache and does the same cleanup
+                if (!blockIsValid.test(pos)) {
+                    removeBlock(pos, blocks);
+                    continue;
+                }
+                if (isValid.test(pos)) {
+                    // the old "purge far away blocks while we're here" bit is gone. smartPurge already keeps the nearest
+                    // maxCacheSizePerBlockType per scan, and this one could delete the answer it was about to return
+                    return Optional.of(pos);
+                }
             }
-
-            // Special case: Our closest was purged. Add us back.
-            if (closestPurged) {
-                Debug.logInternal("Rare edge case: Closest block was purged cause it was real far away, it will now be added back.");
-                blockList.add(closest);
-            }
-
-            return Optional.ofNullable(closest);
+            return Optional.empty();
         }
 
         /**
