@@ -32,6 +32,13 @@ public final class RayTraceUtils {
     private RayTraceUtils() {}
 
     /**
+     * Which fluids the raytraces in this class see through or stop at. Defaults to {@link ClipContext.Fluid#NONE}, which
+     * is what baritone has always done. Something that wants to click on a liquid (to scoop it up with a bucket, say)
+     * can set this to {@link ClipContext.Fluid#SOURCE_ONLY} and put it back when it's finished.
+     */
+    public static ClipContext.Fluid fluidHandling = ClipContext.Fluid.NONE;
+
+    /**
      * Performs a block raytrace with the specified rotations. This should only be used when
      * any entity collisions can be ignored, because this method will not recognize if an
      * entity is in the way or not. The local player's block reach distance will be used.
@@ -59,7 +66,7 @@ public final class RayTraceUtils {
                 direction.y * blockReachDistance,
                 direction.z * blockReachDistance
         );
-        return entity.level().clip(new ClipContext(start, end, ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, entity));
+        return entity.level().clip(new ClipContext(start, end, ClipContext.Block.OUTLINE, fluidHandling, entity));
     }
 
     public static Vec3 inferSneakingEyePosition(Entity entity) {

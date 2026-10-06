@@ -17,6 +17,7 @@
 
 package baritone;
 
+import baritone.altoclef.AltoClefBridge;
 import baritone.api.IBaritone;
 import baritone.api.IBaritoneProvider;
 import baritone.api.cache.IWorldScanner;
@@ -48,6 +49,8 @@ public final class BaritoneProvider implements IBaritoneProvider {
         // Setup chat control, just for the primary instance
         final Baritone primary = (Baritone) this.createBaritone(Minecraft.getInstance());
         primary.registerBehavior(ExampleBaritoneControl::new);
+        // altoclef rides on the primary only, it creates itself on the first title screen tick
+        AltoClefBridge.attach(primary);
     }
 
     @Override

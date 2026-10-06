@@ -18,6 +18,7 @@
 package baritone.behavior;
 
 import baritone.Baritone;
+import baritone.altoclef.AltoClefSettings;
 import baritone.api.event.events.TickEvent;
 import baritone.api.utils.Helper;
 import baritone.utils.ToolSet;
@@ -55,8 +56,8 @@ public final class InventoryBehavior extends Behavior implements Helper {
 
     @Override
     public void onTick(TickEvent event) {
-        if (!Baritone.settings().allowInventory.value) {
-            return;
+        if (!Baritone.settings().allowInventory.value || AltoClefSettings.getInstance().isInteractionPaused()) {
+            return; // paused means the hotbar is somebody else's problem right now
         }
         if (event.getType() == TickEvent.Type.OUT) {
             return;
@@ -82,6 +83,9 @@ public final class InventoryBehavior extends Behavior implements Helper {
     }
 
     public boolean attemptToPutOnHotbar(int inMainInvy, Predicate<Integer> disallowedHotbar) {
+        if (AltoClefSettings.getInstance().isInteractionPaused()) {
+            return false;
+        }
         OptionalInt destination = getTempHotbarSlot(disallowedHotbar);
         if (destination.isPresent()) {
             if (!requestSwapWithHotBar(inMainInvy, destination.getAsInt())) {
@@ -113,6 +117,9 @@ public final class InventoryBehavior extends Behavior implements Helper {
     }
 
     private boolean requestSwapWithHotBar(int inInventory, int inHotbar) {
+        if (AltoClefSettings.getInstance().isInteractionPaused()) {
+            return false; // and don't remember it either, it'd go off the second the pause ended
+        }
         lastTickRequestedMove = new int[]{inInventory, inHotbar};
         if (ticksSinceLastInventoryMove < Baritone.settings().ticksBetweenInventoryMoves.value) {
             logDebug("Inventory move requested but delaying " + ticksSinceLastInventoryMove + " " + Baritone.settings().ticksBetweenInventoryMoves.value);
@@ -130,8 +137,10 @@ public final class InventoryBehavior extends Behavior implements Helper {
 
     private int firstValidThrowaway() { // TODO offhand idk
         NonNullList<ItemStack> invy = ctx.player().getInventory().items;
+        AltoClefSettings alto = AltoClefSettings.getInstance();
         for (int i = 0; i < invy.size(); i++) {
-            if (Baritone.settings().acceptableThrowawayItems.value.contains(invy.get(i).getItem())) {
+            Item item = invy.get(i).getItem();
+            if (Baritone.settings().acceptableThrowawayItems.value.contains(item) && !alto.isItemProtected(item)) {
                 return i;
             }
         }
@@ -162,7 +171,11 @@ public final class InventoryBehavior extends Behavior implements Helper {
     }
 
     public boolean hasGenericThrowaway() {
+        AltoClefSettings alto = AltoClefSettings.getInstance();
         for (Item item : Baritone.settings().acceptableThrowawayItems.value) {
+            if (alto.isItemProtected(item)) {
+                continue; // altoclef is saving that one for something
+            }
             if (throwaway(false, stack -> item.equals(stack.getItem()))) {
                 return true;
             }
@@ -183,6 +196,10 @@ public final class InventoryBehavior extends Behavior implements Helper {
     }
 
     public boolean selectThrowawayForLocation(boolean select, int x, int y, int z) {
+        AltoClefSettings alto = AltoClefSettings.getInstance();
+        if (alto.isInteractionPaused() || alto.shouldAvoidPlacingAt(x, y, z)) {
+            return false;
+        }
         BlockState maybe = baritone.getBuilderProcess().placeAt(x, y, z, baritone.bsi.get0(x, y, z));
         if (maybe != null && throwaway(select, stack -> stack.getItem() instanceof BlockItem && maybe.equals(((BlockItem) stack.getItem()).getBlock().getStateForPlacement(new BlockPlaceContext(new UseOnContext(ctx.world(), ctx.player(), InteractionHand.MAIN_HAND, stack, new BlockHitResult(new Vec3(ctx.player().position().x, ctx.player().position().y, ctx.player().position().z), Direction.UP, ctx.playerFeet(), false)) {}))))) {
             return true; // gotem
@@ -191,6 +208,9 @@ public final class InventoryBehavior extends Behavior implements Helper {
             return true;
         }
         for (Item item : Baritone.settings().acceptableThrowawayItems.value) {
+            if (alto.isItemProtected(item)) {
+                continue;
+            }
             if (throwaway(select, stack -> item.equals(stack.getItem()))) {
                 return true;
             }
@@ -203,6 +223,9 @@ public final class InventoryBehavior extends Behavior implements Helper {
     }
 
     public boolean throwaway(boolean select, Predicate<? super ItemStack> desired, boolean allowInventory) {
+        if (AltoClefSettings.getInstance().isInteractionPaused()) {
+            return false; // no selecting, no swapping, and nothing counts as being in the hotbar
+        }
         LocalPlayer p = ctx.player();
         NonNullList<ItemStack> inv = p.getInventory().items;
         for (int i = 0; i < 9; i++) {

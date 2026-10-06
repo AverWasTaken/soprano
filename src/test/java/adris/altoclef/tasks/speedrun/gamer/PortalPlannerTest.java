@@ -1,0 +1,132 @@
+package adris.altoclef.tasks.speedrun.gamer;
+
+import adris.altoclef.tasks.speedrun.gamer.PortalPlanner.Method;
+import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig;
+import baritone.api.utils.Dimension;
+import net.minecraft.SharedConstants;
+import net.minecraft.server.Bootstrap;
+import net.minecraft.world.item.Items;
+import org.junit.Before;
+import org.junit.BeforeClass;
+import org.junit.Test;
+
+import java.util.List;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
+
+public class PortalPlannerTest {
+    private OverworldConfig cfg;
+
+    @BeforeClass
+    public static void boot() {
+        SharedConstants.tryDetectVersion();
+        Bootstrap.bootStrap();
+    }
+
+    @Before
+    public void setUp() {
+        cfg = new OverworldConfig();
+    }
+
+    @Test
+    public void castsFirst() {
+        assertEquals(Method.CAST, PortalPlanner.decide(Method.CAST, 0, cfg, false, false));
+        assertEquals(Method.CAST, PortalPlanner.decide(Method.CAST, 300, cfg, true, true));
+        assertEquals("the cast keeps most of the 14 minute portal budget", 7.0, cfg.castGiveUpMinutes, 0);
+    }
+
+    @Test
+    public void givesUpTheCastOnTheClock() {
+        double limit = cfg.castGiveUpMinutes * 60;
+        assertEquals(Method.CAST, PortalPlanner.decide(Method.CAST, limit - 1, cfg, true, false));
+        assertEquals(Method.OBSIDIAN, PortalPlanner.decide(Method.CAST, limit, cfg, true, false));
+        assertEquals(Method.OBSIDIAN, PortalPlanner.decide(Method.CAST, limit, cfg, true, true));
+    }
+
+    @Test
+    public void noLavaFlipsEarlyOnlyWithThePickaxe() {
+        assertEquals(Method.CAST, PortalPlanner.decide(Method.CAST, 149, cfg, false, true));
+        assertEquals(Method.OBSIDIAN, PortalPlanner.decide(Method.CAST, 150, cfg, false, true));
+        // no pickaxe: keep wandering for a lake until the clock says stop
+        assertEquals(Method.CAST, PortalPlanner.decide(Method.CAST, 400, cfg, false, false));
+        // lava seen: the cast has a chance
+        assertEquals(Method.CAST, PortalPlanner.decide(Method.CAST, 400, cfg, true, true));
+    }
+
+    @Test
+    public void obsidianIsSticky() {
+        assertEquals(Method.OBSIDIAN, PortalPlanner.decide(Method.OBSIDIAN, 0, cfg, true, false));
+    }
+
+    @Test
+    public void parsesMethodNamesLeniently() {
+        assertEquals(Method.CAST, PortalPlanner.parse(null));
+        assertEquals(Method.CAST, PortalPlanner.parse("nonsense"));
+        assertEquals(Method.OBSIDIAN, PortalPlanner.parse("OBSIDIAN"));
+        assertEquals(Method.OBSIDIAN, PortalPlanner.parse("obsidian"));
+        assertEquals(Method.CAST, PortalPlanner.parse(new RunState().portalMethod));
+    }
+
+    @Test
+    public void gateOnABareInventoryAsksForEverythingInOrder() {
+        FakeFacts f = new FakeFacts();
+        List<String> names = PortalPlanner.gate(f, cfg).stream().map(KitNeed::catalogueName).toList();
+        assertEquals(List.of("food", "bucket", "water_bucket", "flint_and_steel", "build_blocks"), names);
+    }
+
+    @Test
+    public void gateIsEmptyWhenReady() {
+        FakeFacts f = new FakeFacts().give(Items.BUCKET, 1).give(Items.WATER_BUCKET, 1).give(Items.FLINT_AND_STEEL, 1);
+        f.foodUnits = 70;
+        f.buildBlocks = 32;
+        assertTrue(PortalPlanner.gate(f, cfg).isEmpty());
+    }
+
+    @Test
+    public void fireChargeIsALightToo() {
+        FakeFacts f = new FakeFacts().give(Items.BUCKET, 1).give(Items.WATER_BUCKET, 1).give(Items.FIRE_CHARGE, 1);
+        f.foodUnits = 70;
+        f.buildBlocks = 32;
+        assertTrue(PortalPlanner.gate(f, cfg).isEmpty());
+    }
+
+    @Test
+    public void gateAsksForOneMoreEmptyBucketWhenOnlyTheWaterOneIsHeld() {
+        FakeFacts f = new FakeFacts().give(Items.WATER_BUCKET, 1).give(Items.FLINT_AND_STEEL, 1);
+        f.foodUnits = 70;
+        f.buildBlocks = 32;
+        assertEquals(List.of(new KitNeed("bucket", 1)), PortalPlanner.gate(f, cfg));
+    }
+
+    @Test
+    public void gateWantsArmorOn() {
+        FakeFacts f = new FakeFacts().give(Items.BUCKET, 1).give(Items.WATER_BUCKET, 1).give(Items.FLINT_AND_STEEL, 1)
+                .give(Items.IRON_BOOTS, 1);
+        f.foodUnits = 70;
+        f.buildBlocks = 32;
+        assertEquals(List.of(new KitNeed(KitNeed.EQUIP_ARMOR, 1)), PortalPlanner.gate(f, cfg));
+        f.worn.add(Items.IRON_BOOTS);
+        assertTrue(PortalPlanner.gate(f, cfg).isEmpty());
+    }
+
+    @Test
+    public void recordsTheNetherEndOnArrivalOnce() {
+        RunState state = new RunState();
+        FakeFacts f = new FakeFacts();
+        f.x = 10;
+        f.y = 70;
+        f.z = -4;
+        PortalPlanner.recordArrival(state, f);
+        assertNull(state.netherPortal);
+        f.dimension = Dimension.NETHER;
+        PortalPlanner.recordArrival(state, f);
+        assertNotNull(state.netherPortal);
+        assertEquals(new RunState.Pos(10, 70, -4), state.netherPortal);
+        f.x = 99;
+        PortalPlanner.recordArrival(state, f);
+        assertEquals(new RunState.Pos(10, 70, -4), state.netherPortal);
+    }
+}

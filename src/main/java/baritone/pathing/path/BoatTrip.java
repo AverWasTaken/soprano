@@ -18,6 +18,7 @@
 package baritone.pathing.path;
 
 import baritone.Baritone;
+import baritone.altoclef.AltoClefSettings;
 import baritone.api.pathing.calc.IPath;
 import baritone.api.pathing.movement.IMovement;
 import baritone.api.utils.BetterBlockPos;
@@ -507,6 +508,9 @@ public final class BoatTrip implements Helper {
         if (!Inventory.isHotbarSlot(slot)) {
             baritone.getInventoryBehavior().attemptToPutOnHotbar(slot, i -> false);
             return Result.CONTINUE;
+        }
+        if (AltoClefSettings.getInstance().isInteractionPaused()) {
+            return Result.CONTINUE; // no hotbar swaps while altoclef has the hands
         }
         inv.selected = slot;
         Rotation rot = RotationUtils.calcRotationFromVec3d(ctx.playerHead(), placeAt, ctx.playerRotations());

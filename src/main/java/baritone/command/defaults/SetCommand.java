@@ -18,6 +18,7 @@
 package baritone.command.defaults;
 
 import baritone.Baritone;
+import baritone.altoclef.AltoClefBridge;
 import baritone.api.IBaritone;
 import baritone.api.Settings;
 import baritone.api.command.Command;
@@ -55,7 +56,7 @@ public class SetCommand extends Command {
     public void execute(String label, IArgConsumer args) throws CommandException {
         String arg = args.hasAny() ? args.getString().toLowerCase(Locale.US) : "list";
         if (Arrays.asList("s", "save").contains(arg)) {
-            SettingsUtil.save(Baritone.settings());
+            AltoClefBridge.saveSettings(Baritone.settings());
             logDirect("Settings saved");
             return;
         }
@@ -66,6 +67,7 @@ public class SetCommand extends Command {
             }
             // reset to defaults
             SettingsUtil.modifiedSettings(Baritone.settings()).forEach(Settings.Setting::reset);
+            AltoClefBridge.userChangedAll();
             // then load from disk
             SettingsUtil.readAndApply(Baritone.settings(), file);
             logDirect("Settings reloaded from " + file);
@@ -116,7 +118,12 @@ public class SetCommand extends Command {
             );
             return;
         }
-        args.requireMax(1);
+        // a string setting takes the rest of the line (altoIdleCommand is "follow Jacob", not "follow"), everything else is one word
+        Settings.Setting<?> maybeString = Baritone.settings().byLowerName.get(arg);
+        boolean wholeLine = maybeString != null && maybeString.getValueClass() == String.class;
+        if (!wholeLine) {
+            args.requireMax(1);
+        }
         boolean resetting = arg.equalsIgnoreCase("reset");
         boolean toggling = arg.equalsIgnoreCase("toggle");
         boolean doingSomething = resetting || toggling;
@@ -127,8 +134,9 @@ public class SetCommand extends Command {
                 logDirect("Specify a setting name instead of 'all' to only reset one setting");
             } else if (args.peekString().equalsIgnoreCase("all")) {
                 SettingsUtil.modifiedSettings(Baritone.settings()).forEach(Settings.Setting::reset);
+                AltoClefBridge.userChangedAll();
                 logDirect("All settings have been reset to their default values");
-                SettingsUtil.save(Baritone.settings());
+                AltoClefBridge.saveSettings(Baritone.settings());
                 return;
             }
         }
@@ -169,7 +177,7 @@ public class SetCommand extends Command {
                         Boolean.toString((Boolean) setting.value)
                 ));
             } else {
-                String newValue = args.getString();
+                String newValue = wholeLine ? args.rawRest() : args.getString();
                 try {
                     SettingsUtil.parseAndApply(Baritone.settings(), arg, newValue);
                 } catch (Throwable t) {
@@ -177,6 +185,8 @@ public class SetCommand extends Command {
                     throw new CommandInvalidTypeException(args.consumed(), "a valid value", t);
                 }
             }
+            // whatever the user just typed is theirs, a task that is running must not hand the old value back at the end
+            AltoClefBridge.userChanged(setting);
             if (!toggling) {
                 logDirect(String.format(
                         "Successfully %s %s to %s",
@@ -204,7 +214,7 @@ public class SetCommand extends Command {
                 logDirect("Warning: Prefixed commands will no longer work. If you want to revert this change, use chat control (if enabled) or click the old value listed above.", ChatFormatting.RED);
             }
         }
-        SettingsUtil.save(Baritone.settings());
+        AltoClefBridge.saveSettings(Baritone.settings());
     }
 
     @Override
@@ -237,6 +247,11 @@ public class SetCommand extends Command {
                             helper.append("false", "true");
                         }
                         return helper.filterPrefix(args.getString()).stream();
+                    } else if (setting.getValueClass().isEnum()) {
+                        String typed = args.peekString().toLowerCase(Locale.US);
+                        return Stream.of(setting.getValueClass().getEnumConstants())
+                                .map(c -> ((Enum<?>) c).name())
+                                .filter(name -> name.toLowerCase(Locale.US).startsWith(typed));
                     } else {
                         return Stream.of(settingValueToString(setting));
                     }

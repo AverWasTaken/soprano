@@ -1,0 +1,549 @@
+package adris.altoclef.tasks.construction;
+
+import adris.altoclef.AltoClef;
+import adris.altoclef.util.helpers.AnnoyingBlocks;
+import adris.altoclef.Debug;
+import adris.altoclef.tasks.movement.RunAwayFromPositionTask;
+import adris.altoclef.tasks.movement.SafeRandomShimmyTask;
+import adris.altoclef.tasksystem.ITaskRequiresGrounded;
+import adris.altoclef.tasksystem.Task;
+import adris.altoclef.util.helpers.ItemHelper;
+import adris.altoclef.util.helpers.LookHelper;
+import adris.altoclef.util.helpers.StorageHelper;
+import adris.altoclef.util.helpers.WorldHelper;
+import adris.altoclef.util.progresscheck.MovementProgressChecker;
+import adris.altoclef.util.slots.PlayerSlot;
+import adris.altoclef.util.slots.Slot;
+import adris.altoclef.ui.HudText;
+import net.minecraft.world.level.Level;
+import net.minecraft.client.Minecraft;
+import adris.altoclef.util.baritone.GoalReachBlock;
+import baritone.api.pathing.goals.Goal;
+import baritone.api.pathing.goals.GoalBlock;
+import baritone.api.pathing.goals.GoalNear;
+import net.minecraft.core.Direction;
+import net.minecraft.world.level.BlockGetter;
+import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.shapes.CollisionContext;
+import baritone.api.utils.Rotation;
+import baritone.api.utils.input.Input;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.monster.Pillager;
+import net.minecraft.world.inventory.ClickType;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.DoorBlock;
+import net.minecraft.world.level.block.FenceBlock;
+import net.minecraft.world.level.block.FenceGateBlock;
+import net.minecraft.world.level.block.FlowerBlock;
+import net.minecraft.world.level.block.state.BlockState;
+import java.util.Objects;
+import java.util.Optional;
+
+/**
+ * Destroy a block at a position.
+ */
+public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
+    private final MovementProgressChecker stuckCheck = new MovementProgressChecker();
+    private final MovementProgressChecker _moveChecker = new MovementProgressChecker();
+    private final BlockPos _pos;
+    private final BlockPos _above;
+    private Task _unstuckTask = null;
+    private boolean isMining;
+    // once this block has been judged dangerous from above it stays "mine from the side" for the
+    // whole task, so a re-plan can't quietly go back to the goal that stands on top of it.
+    // volatile because the place-avoid predicate is read from baritone's thread
+    private volatile boolean _fromSide;
+    private boolean _dangerChecked;
+    private boolean _pushedBehaviour;
+    // step off -> baritone walks right back on -> step off... more than this and we give the block up
+    private final StepOffGuard _stepOffs = new StepOffGuard(3);
+    // the swinging distance goal didn't work out here, stand next to it
+    private boolean closeIn;
+
+    public DestroyBlockTask(BlockPos pos) {
+        _pos = pos;
+        _above = pos.above();
+    }
+
+    // decides (once, and only when the chunks around it are really loaded) if this block has to be
+    // mined from the side. sticky: true stays true
+    private boolean mustMineFromSide(AltoClef mod) {
+        if (_fromSide) {
+            return true;
+        }
+        if (_dangerChecked || !_pos.closerToCenterThan(mod.getPlayer().position(), 16)) {
+            return false;
+        }
+        _dangerChecked = true;
+        if (WorldHelper.dangerousToBreakIfRightAbove(mod, _pos)) {
+            markFromSide(mod);
+        }
+        return _fromSide;
+    }
+
+    private void markFromSide(AltoClef mod) {
+        if (!_fromSide) {
+            _fromSide = true;
+            Debug.logInternal("Destroy block at " + _pos.toShortString() + " is dangerous from above, mining it from the side");
+            // whatever plain goal is running would happily stand on top of it
+            mod.getClientBaritone().getCustomGoalProcess().onLostControl();
+        }
+    }
+
+    // where to stand. next to it, unless it's wrapped in vines: then the cells touching it are vines, and getting into
+    // those off the ground means climbing (or hopping, the planner finds them cheap) for a log we could swing at from
+    // the bottom. closeIn is for when swinging distance didn't turn out to see the block
+    public static Goal pickGoal(BlockGetter world, BlockPos pos, boolean closeIn) {
+        if (world.getBlockState(pos.above()).getBlock() == Blocks.SNOW) {
+            return new GoalBlock(pos);
+        }
+        return !closeIn && vineNextTo(world, pos) ? new GoalReachBlock(pos) : new GoalNear(pos, 1);
+    }
+
+    private static boolean vineNextTo(BlockGetter world, BlockPos pos) {
+        for (Direction side : Direction.values()) {
+            if (world.getBlockState(pos.relative(side)).is(Blocks.VINE)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // the vine the first thing in line between the eyes and the middle of the block, if there is one and it's in reach.
+    // anything else in the way (leaves, a wall) isn't ours to clear from here
+    static BlockPos vineInTheWay(BlockGetter world, Vec3 eye, BlockPos target, double reach) {
+        BlockHitResult hit = world.clip(new ClipContext(eye, Vec3.atCenterOf(target), ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, CollisionContext.empty()));
+        if (hit.getType() != HitResult.Type.BLOCK || hit.getBlockPos().equals(target)) {
+            return null;
+        }
+        BlockPos pos = hit.getBlockPos();
+        return world.getBlockState(pos).is(Blocks.VINE) && eye.distanceTo(hit.getLocation()) <= reach ? pos : null;
+    }
+
+    /**
+     * Generates the surrounding BlockPos based on the given position.
+     *
+     * @param pos The center BlockPos
+     * @return An array of surrounding BlockPos
+     */
+    private static BlockPos[] generateSides(BlockPos pos) {
+        int x = pos.getX();
+        int y = pos.getY();
+        int z = pos.getZ();
+
+        return new BlockPos[]{
+                new BlockPos(x + 1, y, z),
+                new BlockPos(x - 1, y, z),
+                new BlockPos(x, y, z + 1),
+                new BlockPos(x, y, z - 1),
+                new BlockPos(x + 1, y, z - 1),
+                new BlockPos(x + 1, y, z + 1),
+                new BlockPos(x - 1, y, z - 1),
+                new BlockPos(x - 1, y, z + 1)
+        };
+    }
+
+    /**
+     * Checks if the block at the specified position is annoying.
+     *
+     * @param mod the AltoClef instance
+     * @param pos the position to check
+     * @return true if the block is annoying, false otherwise
+     */
+    private boolean isAnnoying(AltoClef mod, BlockPos pos) {
+        return AnnoyingBlocks.isAnnoying(mod.getWorld().getBlockState(pos).getBlock());
+    }
+
+    /**
+     * Finds the position where the player is stuck in a block.
+     *
+     * @param mod the mod instance
+     * @return the position where the player is stuck, or null if not stuck
+     */
+    private BlockPos stuckInBlock(AltoClef mod) {
+        // Check if player is stuck in their current position
+        if (isAnnoying(mod, mod.getPlayer().blockPosition())) {
+            return mod.getPlayer().blockPosition();
+        }
+
+        // Check if player is stuck when moving up
+        if (isAnnoying(mod, mod.getPlayer().blockPosition().above())) {
+            return mod.getPlayer().blockPosition().above();
+        }
+
+        // Check for stuck positions in the sides of the player's current position
+        for (BlockPos check : generateSides(mod.getPlayer().blockPosition())) {
+            if (isAnnoying(mod, check)) {
+                return check;
+            }
+        }
+
+        // Check for stuck positions in the sides of the player's position when moving up
+        for (BlockPos check : generateSides(mod.getPlayer().blockPosition().above())) {
+            if (isAnnoying(mod, check)) {
+                return check;
+            }
+        }
+
+        return null; // Player is not stuck
+    }
+
+    /**
+     * Gets a task to unstick a fence.
+     *
+     * @return the task to unstick the fence, or null if an exception is caught
+     */
+    private Task getFenceUnstuckTask() {
+        try {
+            // Create a safe random shimmy task
+            Task task = createSafeRandomShimmyTask();
+
+            // Return the task
+            return task;
+        } catch (Exception e) {
+            e.printStackTrace();
+            // Handle the exception or rethrow it as needed
+            return null;
+        }
+    }
+
+    /**
+     * Creates and returns a new instance of SafeRandomShimmyTask.
+     *
+     * @return a new SafeRandomShimmyTask instance
+     */
+    private Task createSafeRandomShimmyTask() {
+        return new SafeRandomShimmyTask();
+    }
+
+    /**
+     * This method is called when the AltoClef mod starts.
+     * It cancels any ongoing pathing behavior, resets move checker and stuck check,
+     * and handles the item stack in the cursor slot.
+     * If the cursor stack is not empty, it calls handleNonEmptyCursorStack,
+     * otherwise, it closes the screen.
+     */
+    @Override
+    protected void onStart(AltoClef mod) {
+        // Cancel any ongoing pathing behavior.
+        mod.getClientBaritone().getPathingBehavior().forceCancel();
+
+        // Reset move checker and stuck check.
+        _moveChecker.reset();
+        stuckCheck.reset();
+        _stepOffs.reset();
+
+        // never scaffold onto the square above the block we're here to break. only bites once
+        // _fromSide is set, so ordinary blocks path exactly like before
+        if (!_pushedBehaviour && mod.getBehaviour() != null) {
+            mod.getBehaviour().push();
+            _pushedBehaviour = true;
+            mod.getBehaviour().avoidBlockPlacing(pos -> _fromSide && _above.equals(pos));
+        }
+
+        // Get the item stack in the cursor slot.
+        ItemStack cursorStack = StorageHelper.getItemStackInCursorSlot();
+
+        // If the cursor stack is not empty, handle it.
+        if (!cursorStack.isEmpty()) {
+            handleNonEmptyCursorStack(mod, cursorStack);
+        } else {
+            // If the cursor stack is empty, close the screen.
+            StorageHelper.closeScreen();
+        }
+    }
+
+    /**
+     * Handles the non-empty cursor stack by performing various actions.
+     * @param mod the AltoClef mod
+     * @param cursorStack the cursor stack
+     */
+    private void handleNonEmptyCursorStack(AltoClef mod, ItemStack cursorStack) {
+        // Get the slot that can fit the cursor stack in the player inventory and click it to pick up the item.
+        mod.getItemStorage().getSlotThatCanFitInPlayerInventory(cursorStack, false)
+                .ifPresent(slot -> mod.getSlotHandler().clickSlot(slot, 0, ClickType.PICKUP));
+
+        // If the cursor stack can be thrown away, click an undefined slot to pick up the item.
+        if (ItemHelper.canThrowAwayStack(mod, cursorStack)) {
+            mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ClickType.PICKUP);
+        }
+
+        // Get the garbage slot and click it to pick up the item.
+        StorageHelper.getGarbageSlot(mod)
+                .ifPresent(slot -> mod.getSlotHandler().clickSlot(slot, 0, ClickType.PICKUP));
+
+        // Click an undefined slot to pick up the item.
+        mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ClickType.PICKUP);
+    }
+
+    @Override
+    protected Task onTick(AltoClef mod) {
+        // Check if there is white wool at the specified position
+        if (mod.getWorld().getBlockState(_pos).getBlock() == Blocks.WHITE_WOOL) {
+            // Iterate over all entities in the world
+            Iterable<Entity> entities = mod.getWorld().entitiesForRendering();
+            for (Entity entity : entities) {
+                // Check if the entity is a PillagerEntity and is within a distance of 144 blocks from the position
+                if (entity instanceof Pillager && _pos.closerToCenterThan(entity.position(), 144)) {
+                    // Request the block at the position to be marked as unreachable
+                    mod.getBlockTracker().requestBlockUnreachable(_pos, 0);
+                }
+            }
+        }
+
+        // Reset the move checker if Baritone is currently pathing
+        if (mod.getClientBaritone().getPathingBehavior().isPathing()) {
+            _moveChecker.reset();
+        }
+
+        // Check if the player is in a Nether portal
+        if (WorldHelper.isInNetherPortal(mod)) {
+            if (!mod.getClientBaritone().getPathingBehavior().isPathing()) {
+                setDebugState("Getting out from nether portal");
+                // Hold the sneak and move forward inputs to exit the Nether portal
+                mod.getInputControls().hold(Input.SNEAK);
+                mod.getInputControls().hold(Input.MOVE_FORWARD);
+                return null;
+            } else {
+                mod.getInputControls().release(Input.SNEAK);
+                mod.getInputControls().release(Input.MOVE_BACK);
+                mod.getInputControls().release(Input.MOVE_FORWARD);
+            }
+        } else if (mod.getClientBaritone().getPathingBehavior().isPathing()) {
+            mod.getInputControls().release(Input.SNEAK);
+            mod.getInputControls().release(Input.MOVE_BACK);
+            mod.getInputControls().release(Input.MOVE_FORWARD);
+        }
+
+        // Check if there is an active unstuck task and the player is stuck in a block
+        if (_unstuckTask != null && _unstuckTask.isActive() && !_unstuckTask.isFinished(mod) && stuckInBlock(mod) != null) {
+            setDebugState("Getting unstuck from block.", "Stuck, wiggling free");
+            stuckCheck.reset();
+            // Release control of Baritone's custom goal process and explore process
+            mod.getClientBaritone().getCustomGoalProcess().onLostControl();
+            mod.getClientBaritone().getExploreProcess().onLostControl();
+            return _unstuckTask;
+        }
+
+        // Check if the move checker or the stuck check failed
+        if (!_moveChecker.check(mod) || !stuckCheck.check(mod)) {
+            BlockPos blockStuck = stuckInBlock(mod);
+            if (blockStuck != null) {
+                _unstuckTask = getFenceUnstuckTask();
+                return _unstuckTask;
+            }
+            stuckCheck.reset();
+        }
+
+        // Check if the move checker failed
+        if (!_moveChecker.check(mod)) {
+            _moveChecker.reset();
+            // Request the block at the position to be marked as unreachable
+            mod.getBlockTracker().requestBlockUnreachable(_pos);
+        }
+
+        // Check if the block above the position is not solid, the player is above the position,
+        // and the player is within a distance of 0.89 blocks from the position
+        boolean steppingOff = false;
+        if (!WorldHelper.isSolid(mod, _pos.above()) && mod.getPlayer().position().y > _pos.getY() && _pos.closerToCenterThan(mod.getPlayer().onGround() ? mod.getPlayer().position() : mod.getPlayer().position().add(0, -1, 0), 0.89)) {
+            if (_fromSide || WorldHelper.dangerousToBreakIfRightAbove(mod, _pos)) {
+                markFromSide(mod);
+                steppingOff = true;
+            }
+        }
+        if (_stepOffs.tick(steppingOff)) {
+            // we keep ending up on top of it. a different ore is a better idea than a tenth lap
+            Debug.logInternal("Destroy block at " + _pos.toShortString() + ": stepped off it too many times, giving it up");
+            mod.getBlockTracker().requestBlockUnreachable(_pos, 0);
+        }
+        if (steppingOff) {
+            setDebugState("It's dangerous to break as we're right above it, moving away and trying again.", "Stepping off it first");
+            return new RunAwayFromPositionTask(3, _pos.getY(), _pos);
+        }
+
+        Optional<Rotation> reach = LookHelper.getReach(_pos);
+        BlockPos swingAt = _pos;
+        if (reach.isEmpty()) {
+            // vines count as a hit for the ray even though you walk through them, so a log behind a curtain of them is
+            // "out of reach" until the curtain is gone. they break instantly, so take the one in the way down first
+            BlockPos vine = vineInTheWay(mod.getWorld(), mod.getPlayer().getEyePosition(), _pos, mod.getClientBaritone().getPlayerContext().playerController().getBlockReachDistance());
+            Optional<Rotation> vineReach = vine == null ? Optional.empty() : LookHelper.getReach(vine);
+            if (vineReach.isPresent()) {
+                reach = vineReach;
+                swingAt = vine;
+            }
+        }
+        if (reach.isPresent() && (mod.getPlayer().isInWater() || mod.getPlayer().onGround())
+                && !mod.getFoodChain().needsToEat() && !WorldHelper.isInNetherPortal(mod)
+                && mod.getClientBaritone().getPathingBehavior().isSafeToCancel()) {
+            setDebugState("Block in range, mining...");
+            stuckCheck.reset();
+            _stepOffs.reset();
+            isMining = true;
+            mod.getInputControls().release(Input.SNEAK);
+            mod.getInputControls().release(Input.MOVE_BACK);
+            mod.getInputControls().release(Input.MOVE_FORWARD);
+            mod.getClientBaritone().getCustomGoalProcess().onLostControl();
+            mod.getClientBaritone().getBuilderProcess().onLostControl();
+            if (!LookHelper.isLookingAt(mod, reach.get())) {
+                LookHelper.lookAt(mod, reach.get());
+            }
+            BlockState state = mod.getWorld().getBlockState(swingAt);
+            Optional<Slot> bestToolSlot = StorageHelper.getBestToolSlot(mod, state);
+            Slot currentEquipped = PlayerSlot.getEquipSlot();
+            // if baritone is running, only accept tools OUTSIDE OF HOTBAR!
+            // Baritone will take care of tools inside the hotbar.
+            if (bestToolSlot.isPresent() && bestToolSlot.get() != currentEquipped) {
+                // ONLY equip if the item class is STRICTLY different (otherwise we swap around a lot)
+                if (StorageHelper.getItemStackInSlot(currentEquipped).getItem() != StorageHelper.getItemStackInSlot(bestToolSlot.get()).getItem()) {
+                    boolean isAllowedToManage = !mod.getClientBaritone().getPathingBehavior().isPathing()
+                            && !mod.getFoodChain().isTryingToEat();
+                    if (isAllowedToManage) {
+                        Debug.logMessage("Found better tool in inventory, equipping.");
+                        ItemStack bestToolItemStack = StorageHelper.getItemStackInSlot(bestToolSlot.get());
+                        Item bestToolItem = bestToolItemStack.getItem();
+                        mod.getSlotHandler().forceEquipItem(bestToolItem);
+                    }
+                    return null;
+                }
+            }
+            mod.getClientBaritone().getInputOverrideHandler().setInputForceState(Input.CLICK_LEFT, true);
+        } else {
+            boolean fromSide = mustMineFromSide(mod);
+            if (fromSide) {
+                setDebugState("Getting to block...", "Mining it from the side");
+            } else {
+                setDebugState("Getting to block...", "Walking to " + HudText.pos(_pos));
+            }
+            if (isMining && mod.getPlayer().isInWater()) {
+                isMining = false;
+                mod.getBlockTracker().requestBlockUnreachable(_pos);
+            } else {
+                isMining = false;
+            }
+            boolean isCloseToMoveBack = _pos.closerToCenterThan(mod.getPlayer().position(), 2);
+            if (isCloseToMoveBack) {
+                if (!mod.getClientBaritone().getPathingBehavior().isPathing() && !mod.getPlayer().isInWater() &&
+                        !mod.getFoodChain().needsToEat()) {
+                    mod.getInputControls().hold(Input.MOVE_BACK);
+                    mod.getInputControls().hold(Input.SNEAK);
+                } else {
+                    mod.getInputControls().release(Input.MOVE_BACK);
+                    mod.getInputControls().release(Input.SNEAK);
+                }
+            }
+            if (!mod.getClientBaritone().getCustomGoalProcess().isActive()) {
+                mod.getClientBaritone().getBuilderProcess().onLostControl();
+                // GoalNear and GoalBlock both count standing on top of the block as arrived, which is the
+                // one place we refuse to break it from (and the step-off task shoves us off of)
+                Goal goal;
+                if (fromSide) {
+                    goal = new GoalMineFromSide(_pos);
+                } else {
+                    goal = pickGoal(mod.getWorld(), _pos, closeIn);
+                    if (goal instanceof GoalReachBlock && goal.isInGoal(mod.getClientBaritone().getPlayerContext().playerFeet()) && reach.isEmpty()) {
+                        // already there and it still can't be hit (leaves, other logs, a wall), so touch it like before
+                        closeIn = true;
+                        goal = pickGoal(mod.getWorld(), _pos, true);
+                    }
+                }
+                mod.getClientBaritone().getCustomGoalProcess().setGoalAndPath(goal);
+            }
+        }
+        return null;
+    }
+
+    /**
+     * This method is called when the task is interrupted.
+     * It cancels Baritone pathing and releases input controls if in game.
+     *
+     * @param mod The AltoClef mod instance
+     * @param interruptTask The interrupting task
+     */
+    @Override
+    protected void onStop(AltoClef mod, Task interruptTask) {
+        // Cancel Baritone pathing
+        mod.getClientBaritone().getPathingBehavior().forceCancel();
+
+        if (_pushedBehaviour) {
+            _pushedBehaviour = false;
+            if (mod.getBehaviour() != null) {
+                mod.getBehaviour().pop();
+            }
+        }
+
+        // If not in game, return
+        if (!AltoClef.inGame()) {
+            return;
+        }
+
+        // Release input controls
+        mod.getClientBaritone().getInputOverrideHandler().setInputForceState(Input.CLICK_LEFT, false);
+        mod.getInputControls().release(Input.SNEAK);
+        mod.getInputControls().release(Input.MOVE_BACK);
+        mod.getInputControls().release(Input.MOVE_FORWARD);
+    }
+
+    /**
+     * Check if the specified position is finished.
+     *
+     * @param mod The AltoClef instance
+     * @return True if the block at the specified position is air, false otherwise.
+     */
+    @Override
+    public boolean isFinished(AltoClef mod) {
+        // Check if the world or position is null
+        if (mod.getWorld() == null || _pos == null) {
+            return false;
+        }
+        // Get the block state at the specified position and check if it's air
+        BlockState blockState = mod.getWorld().getBlockState(_pos);
+        return blockState.isAir();
+    }
+
+    /**
+     * Overrides the isEqual method to compare with another Task object.
+     *
+     * @param other The other Task object to compare with.
+     * @return true if the other object is a DestroyBlockTask and has the same position, false otherwise.
+     */
+    @Override
+    protected boolean isEqual(Task other) {
+        if (other instanceof DestroyBlockTask destroyBlockTask) {
+            return Objects.equals(destroyBlockTask._pos, _pos);
+        }
+        return false;
+    }
+
+    /**
+     * Returns a debug string describing the block destruction action.
+     * If the position is known, it includes the position in the string, otherwise it indicates an unknown position.
+     */
+    @Override
+    protected String toDebugString() {
+        if (_pos != null) {
+            return "Destroy block at " + _pos.toShortString();
+        } else {
+            return "Destroy block at unknown position";
+        }
+    }
+
+    @Override
+    protected String toHudString() {
+        try {
+            Level level = Minecraft.getInstance().level;
+            if (level != null && _pos != null && level.isLoaded(_pos)) {
+                return "Breaking " + HudText.block(level.getBlockState(_pos).getBlock());
+            }
+        } catch (Throwable ignored) {
+        }
+        return "Breaking the block at " + HudText.pos(_pos);
+    }
+}

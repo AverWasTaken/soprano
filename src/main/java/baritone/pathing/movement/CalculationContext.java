@@ -18,6 +18,7 @@
 package baritone.pathing.movement;
 
 import baritone.Baritone;
+import baritone.altoclef.AltoClefSettings;
 import baritone.api.IBaritone;
 import baritone.api.pathing.movement.ActionCosts;
 import baritone.cache.WorldData;
@@ -27,6 +28,7 @@ import baritone.utils.BlockStateInterface;
 import baritone.utils.ToolSet;
 import baritone.utils.pathing.BetterWorldBorder;
 import baritone.utils.pathing.SearchCache;
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
@@ -45,6 +47,7 @@ import net.minecraft.world.level.block.state.BlockState;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Predicate;
 
 import static baritone.api.pathing.movement.ActionCosts.COST_INF;
 
@@ -112,6 +115,18 @@ public class CalculationContext {
 
     public final PrecomputedData precomputedData;
 
+    // altoclef's position rules, frozen here so a search sees one answer all the way through and never takes a lock.
+    // the arrays are null when altoclef isn't holding any of that kind and altoActive is false when none of them are, so
+    // idle costs a field check per question. (it used to be a mutex, a new BlockPos and a stream. per call. in A*)
+    public final boolean altoActive;
+    private final LongOpenHashSet altoBreakPositions;
+    private final Predicate<BlockPos>[] altoBreakAvoiders;
+    private final Predicate<BlockPos>[] altoPlaceAvoiders;
+    private final Predicate<BlockPos>[] altoWalkOn;
+    private final Predicate<BlockPos>[] altoAvoidWalkThrough;
+    // one pos for the searching thread to reuse. predicates must not keep it, it's about to become somewhere else
+    private final BlockPos.MutableBlockPos altoPos;
+
     // memo for getMiningDurationTicks by position
     // the block under you gets its break cost worked out by four descends, a downward, and then all your neighbours' descends
     // and every one of those reads five more blocks for avoidBreaking. the answer doesn't change mid search so just remember it
@@ -150,7 +165,18 @@ public class CalculationContext {
 
     // everything that needs a player or a world comes in as a parameter so you can build one of these with no game running
     // all the settings get snapshotted in here so nobody can accidentally read them differently
+    @SuppressWarnings("unchecked")
     protected CalculationContext(IBaritone baritone, boolean forUseOnAnotherThread, Level world, WorldData worldData, BlockStateInterface bsi, ToolSet toolSet, boolean hasThrowaway, boolean hasWaterBucket, boolean canSprint, int frostWalker, float waterSpeedMultiplier, double health, boolean hasBoat) {
+        AltoClefSettings alto = AltoClefSettings.getInstance();
+        AltoClefSettings.Snapshot altoRules = alto.snapshot();
+        boolean paused = alto.isInteractionPaused();
+        this.altoBreakPositions = altoRules.breakPositions;
+        this.altoBreakAvoiders = altoRules.breakAvoiders;
+        this.altoPlaceAvoiders = altoRules.placeAvoiders;
+        this.altoWalkOn = altoRules.forceWalkOn;
+        this.altoAvoidWalkThrough = altoRules.avoidWalkThrough;
+        this.altoActive = altoRules.hasPathingRules();
+        this.altoPos = altoActive ? new BlockPos.MutableBlockPos() : null;
         this.precomputedData = PrecomputedData.forCurrentSettings();
         this.miningCacheBits = SearchCache.bitsForSize(Baritone.settings().pathingCacheSize.value);
         this.safeForThreadedUse = forUseOnAnotherThread;
@@ -159,7 +185,7 @@ public class CalculationContext {
         this.worldData = worldData;
         this.bsi = bsi;
         this.toolSet = toolSet;
-        this.hasThrowaway = hasThrowaway;
+        this.hasThrowaway = hasThrowaway && !paused; // paused means no placing, whatever's in the hotbar
         this.hasWaterBucket = hasWaterBucket;
         // same idea as the bucket, except it isn't banned in the nether. the setting goes first so nobody scans the hotbar for nothing
         Item clutchItem = Baritone.settings().allowLadderClutch.value ? ((Baritone) baritone).getInventoryBehavior().pickClutchItem(false) : null;
@@ -176,8 +202,9 @@ public class CalculationContext {
         this.minY = bsi.minY;
         this.maxY = bsi.maxY;
         this.placeBlockCost = ExperimentalMovement.blockPlacementPenalty();
-        this.allowBreak = Baritone.settings().allowBreak.value;
-        this.allowBreakAnyway = new ArrayList<>(Baritone.settings().allowBreakAnyway.value);
+        this.allowBreak = !paused && Baritone.settings().allowBreak.value;
+        // allowBreakAnyway would sneak past a pause otherwise
+        this.allowBreakAnyway = paused ? new ArrayList<>() : new ArrayList<>(Baritone.settings().allowBreakAnyway.value);
         this.allowParkour = ExperimentalMovement.allowParkour();
         this.allowParkourPlace = Baritone.settings().allowParkourPlace.value;
         this.allowJumpAtBuildLimit = Baritone.settings().allowJumpAtBuildLimit.value;
@@ -322,7 +349,7 @@ public class CalculationContext {
         if (!hasThrowaway) { // only true if allowPlace is true, see constructor
             return COST_INF;
         }
-        if (isPossiblyProtected(x, y, z)) {
+        if (isPlaceProtected(x, y, z)) {
             return COST_INF;
         }
         if (!worldBorder.canPlaceAt(x, z)) {
@@ -341,7 +368,7 @@ public class CalculationContext {
         if (!allowBreak && !allowBreakAnyway.contains(current.getBlock())) {
             return COST_INF;
         }
-        if (isPossiblyProtected(x, y, z)) {
+        if (isBreakProtected(x, y, z)) {
             return COST_INF;
         }
         return 1;
@@ -356,8 +383,32 @@ public class CalculationContext {
         return placeBlockCost; // shrug
     }
 
-    public boolean isPossiblyProtected(int x, int y, int z) {
-        // TODO more protection logic here; see #220
-        return false;
+    // the two halves of what used to be one isPossiblyProtected stub. altoclef is the only thing that fills them in so far
+    // (see #220 for anyone who wants to add their own)
+    public boolean isBreakProtected(int x, int y, int z) {
+        if (altoBreakPositions != null && altoBreakPositions.contains(BlockPos.asLong(x, y, z))) {
+            return true;
+        }
+        return altoBreakAvoiders != null && altoAnyMatch(altoBreakAvoiders, x, y, z);
+    }
+
+    public boolean isPlaceProtected(int x, int y, int z) {
+        return altoPlaceAvoiders != null && altoAnyMatch(altoPlaceAvoiders, x, y, z);
+    }
+
+    // callers check altoActive first so the idle case doesn't even get here
+    public boolean altoForcesWalkOn(int x, int y, int z) {
+        return altoWalkOn != null && altoAnyMatch(altoWalkOn, x, y, z);
+    }
+
+    public boolean altoAvoidsWalkThrough(int x, int y, int z) {
+        return altoAvoidWalkThrough != null && altoAnyMatch(altoAvoidWalkThrough, x, y, z);
+    }
+
+    private boolean altoAnyMatch(Predicate<BlockPos>[] predicates, int x, int y, int z) {
+        // the executor checks costs with the same context while a search is running, so the shared pos only goes to the
+        // thread that claimed the search caches. anybody else pays for a fresh one
+        BlockPos pos = Thread.currentThread() == miningOwner ? altoPos.set(x, y, z) : new BlockPos(x, y, z);
+        return AltoClefSettings.Snapshot.anyMatch(predicates, pos);
     }
 }

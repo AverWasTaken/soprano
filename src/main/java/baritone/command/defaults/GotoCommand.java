@@ -17,19 +17,27 @@
 
 package baritone.command.defaults;
 
+import adris.altoclef.AltoClef;
+import adris.altoclef.commands.CrossDimensionGoto;
+import adris.altoclef.tasksystem.Task;
+import baritone.altoclef.AltoClefBridge;
 import baritone.api.IBaritone;
 import baritone.api.command.Command;
 import baritone.api.command.argument.IArgConsumer;
+import baritone.api.command.argument.ICommandArgument;
 import baritone.api.command.datatypes.ForBlockOptionalMeta;
 import baritone.api.command.datatypes.RelativeCoordinate;
 import baritone.api.command.datatypes.RelativeGoal;
 import baritone.api.command.exception.CommandException;
+import baritone.api.command.exception.CommandInvalidStateException;
 import baritone.api.pathing.goals.Goal;
 import baritone.api.utils.BetterBlockPos;
 import baritone.api.utils.BlockOptionalMeta;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class GotoCommand extends Command {
@@ -40,6 +48,23 @@ public class GotoCommand extends Command {
 
     @Override
     public void execute(String label, IArgConsumer args) throws CommandException {
+        // a dimension on the end means altoclef's goto: it walks through portals to get there, baritone alone can't
+        List<String> words = args.getArgs().stream().map(ICommandArgument::getValue).collect(Collectors.toList());
+        if (CrossDimensionGoto.endsInDimension(words)) {
+            Task task;
+            try {
+                task = CrossDimensionGoto.parse(words);
+            } catch (CrossDimensionGoto.ParseException e) {
+                throw new CommandInvalidStateException(e.getMessage());
+            }
+            AltoClef altoClef = AltoClefBridge.require();
+            while (args.hasAny()) {
+                args.get();
+            }
+            logDirect(String.format("Going to: %s", String.join(" ", words)));
+            altoClef.runUserTask(task);
+            return;
+        }
         // If we have a numeric first argument, then parse arguments as coordinates.
         // Note: There is no reason to want to go where you're already at so there
         // is no need to handle the case of empty arguments.
@@ -59,9 +84,20 @@ public class GotoCommand extends Command {
     @Override
     public Stream<String> tabComplete(String label, IArgConsumer args) throws CommandException {
         // since it's either a goal or a block, I don't think we can tab complete properly?
-        // so just tab complete for the block variant
-        args.requireMax(1);
-        return args.tabCompleteDatatype(ForBlockOptionalMeta.INSTANCE);
+        // so just tab complete for the block variant, plus the dimension that can follow up to three numbers
+        int count = args.getArgs().size();
+        String prefix = args.peekString(count - 1).toLowerCase(Locale.ROOT);
+        Stream<String> dimensions = CrossDimensionGoto.DIMENSION_NAMES.stream().filter(d -> d.startsWith(prefix));
+        if (count == 1) {
+            return Stream.concat(args.tabCompleteDatatype(ForBlockOptionalMeta.INSTANCE), dimensions);
+        }
+        // only numbers before the word being typed, anything else isn't a coordinate and has no dimension after it
+        for (int i = 0; i < count - 1; i++) {
+            if (!args.peekString(i).matches("[+-]?\\d+")) {
+                return Stream.empty();
+            }
+        }
+        return count <= 4 ? dimensions : Stream.empty();
     }
 
     @Override
@@ -76,11 +112,15 @@ public class GotoCommand extends Command {
                 "",
                 "Wherever a coordinate is expected, you can use ~ just like in regular Minecraft commands. Or, you can just use regular numbers.",
                 "",
+                "End it with a dimension (overworld, nether or the_end) and AltoClef takes over: it finds a portal and goes there, even from another dimension. Coordinates have to be plain numbers then. A dimension on its own just takes you to that dimension.",
+                "",
                 "Usage:",
                 "> goto <block> - Go to a block, wherever it is in the world",
                 "> goto <y> - Go to a Y level",
                 "> goto <x> <z> - Go to an X,Z position",
-                "> goto <x> <y> <z> - Go to an X,Y,Z position"
+                "> goto <x> <y> <z> - Go to an X,Y,Z position",
+                "> goto <dimension> - Go to another dimension",
+                "> goto <x> <y> <z> <dimension> - Go to an X,Y,Z position in that dimension (<y> and <x> <z> work too)"
         );
     }
 }
