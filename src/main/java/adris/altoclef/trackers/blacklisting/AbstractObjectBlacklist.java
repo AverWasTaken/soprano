@@ -40,6 +40,18 @@ public abstract class AbstractObjectBlacklist<T> {
         Debug.logMessage("Blacklist: " + item.toString() + ": Try " + entry.numberOfFailures + " / " + entry.numberOfFailuresAllowed);
     }
 
+    // no retries, no chat line: whoever calls this already decided and logs it themselves
+    public void banItem(T item) {
+        BlacklistEntry entry = _entries.computeIfAbsent(item, key -> {
+            BlacklistEntry fresh = new BlacklistEntry();
+            fresh.bestDistanceSq = Double.POSITIVE_INFINITY;
+            fresh.bestTool = MiningRequirement.HAND;
+            return fresh;
+        });
+        entry.numberOfFailuresAllowed = 0;
+        entry.numberOfFailures = 1;
+    }
+
     protected abstract Vec3 getPos(T item);
 
     public boolean unreachable(T item) {

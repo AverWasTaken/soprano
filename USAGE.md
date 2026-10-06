@@ -170,6 +170,7 @@ They're normal Soprano settings that all start with `alto`, so `#set alto<tab>` 
 | `altoThrowawayItems`, `altoImportantItems` | | items it can throw away, and items it won't |
 | `altoHomeBasePosition` | | the position AltoClef treats as its home base |
 | `altoAreasToProtect` | | areas it won't break or build in, as `x1/y1/z1->x2/y2/z2` with an optional `@nether` or `@end` on the end, separated by commas: `-10/0/-10->10/255/10,1000/50/2000->1200/255/2100@nether` |
+| `altoPickupItemsInWater` | false | go after dropped items that are lying in water. Off, it skips them unless it can grab them from dry land, so it doesn't drown itself chasing a drop in a lake |
 | `altoResourceMineRange`, `altoEntityReachRange`, `altoContainerItemMoveDelay` | | how far it looks for ores, how far it reaches for entities, and the delay between container clicks |
 
 AltoClef uses Soprano's own `replantCrops` setting instead of having one of its own.

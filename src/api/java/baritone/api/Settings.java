@@ -1871,6 +1871,14 @@ public final class Settings {
     public final Setting<Float> altoResourcePickupDropRange = new Setting<>(-1f);
 
     /**
+     * Go after dropped items that are lying in water. Off by default: the bot ignores items that are in water unless
+     * it can grab them from dry land (or from a puddle one block deep), because swimming down after a drop is a good
+     * way to spend a whole run bobbing in a lake. Turn this on for the old behaviour. The watchdog that gives up on a
+     * drop when the bot is in water and not getting any closer stays on either way.
+     */
+    public final Setting<Boolean> altoPickupItemsInWater = new Setting<>(false);
+
+    /**
      * Minimum amount of food (in food points) to keep in the inventory. Below this the bot goes and gets more, up to
      * {@link #altoFoodUnitsToCollect}. 0 means it never goes looking for food on its own.
      */

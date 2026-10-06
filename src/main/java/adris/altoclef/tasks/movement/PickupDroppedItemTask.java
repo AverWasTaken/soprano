@@ -11,10 +11,12 @@ import adris.altoclef.tasksystem.ITaskRequiresGrounded;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.MiningRequirement;
+import adris.altoclef.util.helpers.ItemPickupRules;
 import adris.altoclef.util.helpers.StlHelper;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
+import adris.altoclef.util.progresscheck.WaterPickupWatchdog;
 import adris.altoclef.ui.HudText;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.item.ItemEntity;
@@ -38,6 +40,7 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
     private final TimeoutWanderTask _wanderTask = new TimeoutWanderTask(5, true);
     private final MovementProgressChecker stuckCheck = new MovementProgressChecker();
     private final MovementProgressChecker _progressChecker = new MovementProgressChecker();
+    private final WaterPickupWatchdog _waterWatchdog = new WaterPickupWatchdog();
     private final ItemTarget[] _itemTargets;
 
     // This happens all the time in mineshafts and swamps/jungles
@@ -119,6 +122,7 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
         _wanderTask.reset();
         _progressChecker.reset();
         stuckCheck.reset();
+        _waterWatchdog.reset();
     }
 
     @Override
@@ -152,6 +156,21 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
             stuckCheck.reset();
         }
         _mod = mod;
+
+        // wet and not getting closer to the thing we are chasing: let it go, whatever the reason. this stays on even
+        // with altoPickupItemsInWater, that setting only says whether we try at all
+        if (_currentDrop != null && isValid(mod, _currentDrop)
+                && _waterWatchdog.update(_currentDrop, mod.getPlayer().isInWater(), mod.getPlayer().distanceTo(_currentDrop), WorldHelper.getTicks())) {
+            Debug.logInternal("Giving up on " + _currentDrop.getItem().getItem().getDescriptionId() + ", in water and not getting closer");
+            _blacklist.add(_currentDrop);
+            mod.getEntityTracker().banEntity(_currentDrop);
+            mod.getClientBaritone().getPathingBehavior().forceCancel();
+            _currentDrop = null;
+            _waterWatchdog.reset();
+            _progressChecker.reset();
+            setDebugState("Skipping items in water");
+            return null;
+        }
 
         // If we're getting a pickaxe for THIS resource...
         if (isIsGettingPickaxeFirst(mod) && _collectingPickaxeForThisResource && !StorageHelper.miningRequirementMetInventory(mod, MiningRequirement.STONE)) {
@@ -266,7 +285,10 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
 
     @Override
     protected boolean isValid(AltoClef mod, ItemEntity obj) {
-        return obj.isAlive() && !_blacklist.contains(obj);
+        if (!obj.isAlive() || _blacklist.contains(obj) || !mod.getEntityTracker().isEntityReachable(obj)) return false;
+        // it can end up in the water after we picked it as the target (broke the block over a lake), the tracker has
+        // already forgotten it by then so we have to drop it ourselves
+        return Baritone.settings().altoPickupItemsInWater.value || ItemPickupRules.isPickupSafe(obj);
     }
 
 }
