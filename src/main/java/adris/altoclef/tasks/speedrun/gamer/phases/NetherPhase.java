@@ -12,6 +12,7 @@ import adris.altoclef.tasks.speedrun.gamer.GamerContext;
 import adris.altoclef.tasks.speedrun.gamer.GamerFacts;
 import adris.altoclef.tasks.speedrun.gamer.GamerPhase;
 import adris.altoclef.tasks.speedrun.gamer.PhaseHandler;
+import adris.altoclef.tasks.speedrun.gamer.PiglinGold;
 import adris.altoclef.tasks.speedrun.gamer.RunState;
 import adris.altoclef.tasks.speedrun.gamer.Timeout;
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
@@ -398,7 +399,7 @@ public class NetherPhase implements PhaseHandler {
         // iron boots in the bag where nothing puts them back
         boolean goodToGo = n.pearlSource == NetherConfig.PearlSource.BARTER
                 && barterSpent < n.barterMinutes * 60
-                && f.count(Items.GOLD_INGOT) >= goldWanted + (f.count(Items.GOLDEN_BOOTS) > 0 ? 0 : 4)
+                && f.count(Items.GOLD_INGOT) >= goldWanted + (PiglinGold.worn(f) || f.count(Items.GOLDEN_BOOTS) > 0 ? 0 : 4)
                 && mod.getEntityTracker().entityFound(Piglin.class);
         if (!goodToGo) {
             barterTickAt = -1;
@@ -408,8 +409,8 @@ public class NetherPhase implements PhaseHandler {
             barterSpent += Math.min(now - barterTickAt, 1.0);
         }
         barterTickAt = now;
-        // piglins ignore us only while the boots are on
-        if (!f.armorEquipped(Items.GOLDEN_BOOTS)) {
+        // piglins ignore us while ANY gold piece is on, the helmet from the kit counts as much as boots do
+        if (!PiglinGold.worn(f)) {
             if (boots == null) {
                 boots = new EquipArmorTask(Items.GOLDEN_BOOTS);
             }

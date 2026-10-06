@@ -296,4 +296,117 @@ public class KitPlannerTest {
         assertEquals(7, KitPlanner.progressOf(f, new KitNeed(KitNeed.BUILD_BLOCKS, 32)));
         assertEquals(4, KitPlanner.progressOf(f, new KitNeed("iron_ingot", 39)));
     }
+
+    @Test
+    public void fiveIngotsOfGoldMakeTheHelmetGoldAndSaveFiveIron() {
+        f.give(Items.GOLD_INGOT, 5);
+        List<KitNeed> plan = KitPlanner.plan(f, cfg, 8);
+        assertTrue(names(plan).contains("golden_helmet"));
+        assertFalse(names(plan).contains("iron_helmet"));
+        // same spot in the order, so nothing else moves
+        assertEquals(names(plan).indexOf("iron_chestplate") + 1, names(plan).indexOf("golden_helmet"));
+        assertEquals(34, find(plan, "iron_ingot").count());
+        assertEquals(34, KitPlanner.ingotsNeeded(f, cfg));
+        assertTrue(names(plan).contains("iron_boots"));
+    }
+
+    @Test
+    public void fourIngotsOfGoldMakeTheBootsGold() {
+        f.give(Items.GOLD_INGOT, 4);
+        List<KitNeed> plan = KitPlanner.plan(f, cfg, 8);
+        assertTrue(names(plan).contains("golden_boots"));
+        assertFalse(names(plan).contains("iron_boots"));
+        assertTrue(names(plan).contains("iron_helmet"));
+        assertEquals(35, find(plan, "iron_ingot").count());
+    }
+
+    @Test
+    public void noGoldMeansTheSamePlanAsEver() {
+        List<KitNeed> plan = KitPlanner.plan(f, cfg, 8);
+        assertEquals(39, find(plan, "iron_ingot").count());
+        assertFalse(names(plan).contains("golden_helmet"));
+        assertFalse(names(plan).contains("golden_boots"));
+        f.give(Items.GOLD_INGOT, 3);
+        assertEquals(39, KitPlanner.ingotsNeeded(f, cfg));
+    }
+
+    @Test
+    public void goldInOtherShapesCountsToo() {
+        // a block is nine, nine nuggets are one, raw gold gets smelted. none of it is mined for
+        assertEquals(34, KitPlanner.ingotsNeeded(new FakeFacts().give(Items.GOLD_BLOCK, 1), cfg));
+        assertEquals(34, KitPlanner.ingotsNeeded(new FakeFacts().give(Items.GOLD_NUGGET, 45), cfg));
+        assertEquals(34, KitPlanner.ingotsNeeded(new FakeFacts().give(Items.RAW_GOLD, 5), cfg));
+        assertEquals(35, KitPlanner.ingotsNeeded(new FakeFacts().give(Items.GOLD_NUGGET, 36), cfg));
+        assertEquals(34, KitPlanner.ingotsNeeded(new FakeFacts().give(Items.GOLD_INGOT, 2).give(Items.GOLD_NUGGET, 27), cfg));
+        assertEquals(39, KitPlanner.ingotsNeeded(new FakeFacts().give(Items.GOLD_NUGGET, 35), cfg));
+    }
+
+    @Test
+    public void aHeldGoldenHelmetIsJustEquipped() {
+        f.give(Items.GOLDEN_HELMET, 1);
+        List<KitNeed> plan = KitPlanner.plan(f, cfg, 8);
+        assertFalse(names(plan).contains("golden_helmet"));
+        assertFalse(names(plan).contains("iron_helmet"));
+        assertEquals(34, find(plan, "iron_ingot").count());
+        assertEquals(new KitNeed(KitNeed.EQUIP_ARMOR, 1), find(plan, KitNeed.EQUIP_ARMOR));
+        assertEquals(List.of(Items.GOLDEN_HELMET), KitPlanner.toEquip(f, cfg));
+        f.worn.add(Items.GOLDEN_HELMET);
+        assertEquals(null, find(KitPlanner.plan(f, cfg, 8), KitNeed.EQUIP_ARMOR));
+    }
+
+    @Test
+    public void goldHeldAsBootsSwapsTheBootsSlot() {
+        f.give(Items.GOLDEN_BOOTS, 1).give(Items.GOLD_INGOT, 9);
+        List<KitNeed> plan = KitPlanner.plan(f, cfg, 8);
+        // the boots are already ours, so the nine ingots do not turn into a helmet as well
+        assertFalse(names(plan).contains("golden_helmet"));
+        assertFalse(names(plan).contains("iron_boots"));
+        assertTrue(names(plan).contains("iron_helmet"));
+        assertEquals(List.of(Items.GOLDEN_BOOTS), KitPlanner.toEquip(f, cfg));
+    }
+
+    @Test
+    public void goldAfterTheIronHelmetWasMadeStillGoesGold() {
+        f.give(Items.IRON_HELMET, 1).give(Items.GOLD_INGOT, 5);
+        f.worn.add(Items.IRON_HELMET);
+        List<KitNeed> plan = KitPlanner.plan(f, cfg, 8);
+        assertTrue(names(plan).contains("golden_helmet"));
+        assertEquals(34, find(plan, "iron_ingot").count());
+        // crafted: the gold one is held, the iron one stays on until the equip step swaps them
+        f.items.put(Items.GOLD_INGOT, 0);
+        f.give(Items.GOLDEN_HELMET, 1);
+        plan = KitPlanner.plan(f, cfg, 8);
+        assertFalse(names(plan).contains("golden_helmet"));
+        assertEquals(new KitNeed(KitNeed.EQUIP_ARMOR, 1), find(plan, KitNeed.EQUIP_ARMOR));
+        assertEquals(List.of(Items.GOLDEN_HELMET), KitPlanner.toEquip(f, cfg));
+        // and it sticks: wearing it and having no gold left must not bring the iron helmet back
+        f.worn.clear();
+        f.worn.add(Items.GOLDEN_HELMET);
+        plan = KitPlanner.plan(f, cfg, 8);
+        assertFalse(names(plan).contains("golden_helmet"));
+        assertFalse(names(plan).contains(KitNeed.EQUIP_ARMOR));
+        assertEquals(34, find(plan, "iron_ingot").count());
+    }
+
+    @Test
+    public void aGoldPieceOutsideThePlanIsStillWorn() {
+        cfg.armorPlan = ArmorPlan.CHEST_HELMET;
+        f.give(Items.GOLDEN_BOOTS, 1);
+        assertEquals(List.of(Items.GOLDEN_BOOTS), KitPlanner.toEquip(f, cfg));
+        cfg.armorPlan = ArmorPlan.NONE;
+        assertEquals(List.of(Items.GOLDEN_BOOTS), KitPlanner.toEquip(f, cfg));
+        f.worn.add(Items.GOLDEN_BOOTS);
+        assertTrue(KitPlanner.toEquip(f, cfg).isEmpty());
+        // nothing gold to swap in the none plan, so the gold stays a gate matter
+        assertEquals(15, find(KitPlanner.plan(new FakeFacts().give(Items.GOLD_INGOT, 9), cfg, 8), "iron_ingot").count());
+    }
+
+    @Test
+    public void onlyOneGoldPieceIsWornWhenSeveralAreHeld() {
+        f.give(Items.GOLDEN_HELMET, 1).give(Items.GOLDEN_BOOTS, 1);
+        assertEquals(List.of(Items.GOLDEN_HELMET), KitPlanner.toEquip(f, cfg));
+        f.worn.add(Items.GOLDEN_BOOTS);
+        // boots on already: the helmet in the bag is not a second wardrobe change
+        assertTrue(KitPlanner.toEquip(f, cfg).isEmpty());
+    }
 }

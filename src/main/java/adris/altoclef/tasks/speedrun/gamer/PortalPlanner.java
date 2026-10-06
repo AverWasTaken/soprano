@@ -64,6 +64,8 @@ public final class PortalPlanner {
         if (f.count(Items.FLINT_AND_STEEL, Items.FIRE_CHARGE) < 1) {
             out.add(new KitNeed("flint_and_steel", 1));
         }
+        // piglins hate us unless one thing on us is gold. last chance to make the helmet before the nether, from gold we hold
+        out.addAll(PiglinGold.gate(f));
         int unworn = KitPlanner.toEquip(f, cfg).size();
         if (unworn > 0) {
             out.add(new KitNeed(KitNeed.EQUIP_ARMOR, unworn));

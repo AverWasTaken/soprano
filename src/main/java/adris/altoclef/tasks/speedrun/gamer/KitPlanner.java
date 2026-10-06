@@ -69,7 +69,7 @@ public final class KitPlanner {
     private static List<KitNeed> iron(GamerFacts f, OverworldConfig cfg, int endBeds) {
         List<KitNeed> crafts = new ArrayList<>();
         int ingots = 0;
-        for (KitItem k : ironItems(cfg)) {
+        for (KitItem k : ironItems(f, cfg)) {
             int have = have(f, k.item);
             if (have >= k.count) {
                 continue;
@@ -91,9 +91,10 @@ public final class KitPlanner {
         return out;
     }
 
-    private static List<KitItem> ironItems(OverworldConfig cfg) {
+    private static List<KitItem> ironItems(GamerFacts f, OverworldConfig cfg) {
         List<KitItem> all = new ArrayList<>(cfg.ironKit);
-        for (String armor : armorNames(cfg)) {
+        // one piece may be gold instead (PiglinGold), which is exactly the iron it no longer costs
+        for (String armor : PiglinGold.swap(f, armorNames(cfg))) {
             all.add(new KitItem(armor, 1));
         }
         return all;
@@ -150,7 +151,7 @@ public final class KitPlanner {
     // armor pieces we carry but are not wearing (best tier we hold per slot), for EquipArmorTask
     public static List<Item> toEquip(GamerFacts f, OverworldConfig cfg) {
         List<Item> out = new ArrayList<>();
-        for (String name : armorNames(cfg)) {
+        for (String name : PiglinGold.swap(f, armorNames(cfg))) {
             Item[] options = counted(name);
             boolean worn = Arrays.stream(options).anyMatch(f::armorEquipped);
             if (worn) {
@@ -166,6 +167,7 @@ public final class KitPlanner {
                 out.add(best);
             }
         }
+        PiglinGold.addToEquip(f, out);
         return out;
     }
 
@@ -186,7 +188,7 @@ public final class KitPlanner {
     // ingots the missing iron items still need in total (what the combined iron need is sized by)
     public static int ingotsNeeded(GamerFacts f, OverworldConfig cfg) {
         int ingots = 0;
-        for (KitItem k : ironItems(cfg)) {
+        for (KitItem k : ironItems(f, cfg)) {
             int have = have(f, k.item);
             if (have < k.count) {
                 ingots += (k.count - have) * INGOTS.getOrDefault(k.item, 0);

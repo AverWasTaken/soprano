@@ -112,6 +112,38 @@ public class PortalPlannerTest {
         assertTrue(PortalPlanner.gate(f, cfg).isEmpty());
     }
 
+    private FakeFacts readyToGo() {
+        FakeFacts f = new FakeFacts().give(Items.BUCKET, 1).give(Items.WATER_BUCKET, 1).give(Items.FLINT_AND_STEEL, 1);
+        f.foodUnits = 70;
+        f.buildBlocks = 32;
+        return f;
+    }
+
+    @Test
+    public void gateMakesAGoldHelmetFromGoldInTheBagThenWearsIt() {
+        FakeFacts f = readyToGo().give(Items.GOLD_INGOT, 5);
+        assertEquals(List.of(new KitNeed("golden_helmet", 1)), PortalPlanner.gate(f, cfg));
+        f.give(Items.GOLD_INGOT, -5).give(Items.GOLDEN_HELMET, 1);
+        assertEquals(List.of(new KitNeed(KitNeed.EQUIP_ARMOR, 1)), PortalPlanner.gate(f, cfg));
+        f.worn.add(Items.GOLDEN_HELMET);
+        assertTrue(PortalPlanner.gate(f, cfg).isEmpty());
+    }
+
+    @Test
+    public void gateSettlesForGoldBootsAndThenForNothing() {
+        assertEquals(List.of(new KitNeed("golden_boots", 1)), PortalPlanner.gate(readyToGo().give(Items.GOLD_INGOT, 4), cfg));
+        // no mining detour: three ingots are not a piece of armor and the gate lets us go
+        assertTrue(PortalPlanner.gate(readyToGo().give(Items.GOLD_INGOT, 3), cfg).isEmpty());
+        assertTrue(PortalPlanner.gate(readyToGo(), cfg).isEmpty());
+    }
+
+    @Test
+    public void gateLeavesGoldAloneWhenAPieceIsAlreadyOn() {
+        FakeFacts f = readyToGo().give(Items.GOLD_INGOT, 9).give(Items.GOLDEN_BOOTS, 1);
+        f.worn.add(Items.GOLDEN_BOOTS);
+        assertTrue(PortalPlanner.gate(f, cfg).isEmpty());
+    }
+
     @Test
     public void recordsTheNetherEndOnArrivalOnce() {
         RunState state = new RunState();

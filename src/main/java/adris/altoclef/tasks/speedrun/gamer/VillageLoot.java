@@ -25,7 +25,9 @@ public final class VillageLoot {
     private static final List<Item> LOOT = List.of(
             Items.IRON_INGOT, Items.IRON_PICKAXE, Items.IRON_SWORD, Items.IRON_AXE, Items.IRON_SHOVEL,
             Items.IRON_HELMET, Items.IRON_CHESTPLATE, Items.IRON_LEGGINGS, Items.IRON_BOOTS,
-            Items.OBSIDIAN, Items.DIAMOND, Items.GOLD_INGOT, Items.BREAD, Items.APPLE, Items.COAL);
+            Items.OBSIDIAN, Items.DIAMOND, Items.GOLD_INGOT, Items.GOLD_NUGGET, Items.GOLD_BLOCK, Items.RAW_GOLD,
+            Items.GOLDEN_HELMET, Items.GOLDEN_CHESTPLATE, Items.GOLDEN_LEGGINGS, Items.GOLDEN_BOOTS,
+            Items.BREAD, Items.APPLE, Items.COAL);
     private static final int CHECK_EVERY_TICKS = 20;
 
     private boolean tracking;

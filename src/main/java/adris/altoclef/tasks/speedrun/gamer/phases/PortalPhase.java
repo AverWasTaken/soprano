@@ -12,6 +12,7 @@ import adris.altoclef.tasks.speedrun.gamer.GamerPhase;
 import adris.altoclef.tasks.speedrun.gamer.KitNeed;
 import adris.altoclef.tasks.speedrun.gamer.KitRunner;
 import adris.altoclef.tasks.speedrun.gamer.PhaseHandler;
+import adris.altoclef.tasks.speedrun.gamer.PiglinGold;
 import adris.altoclef.tasks.speedrun.gamer.PortalPlanner;
 import adris.altoclef.tasks.speedrun.gamer.PortalPlanner.Method;
 import adris.altoclef.tasks.speedrun.gamer.RunState;
@@ -33,6 +34,7 @@ public class PortalPhase implements PhaseHandler {
     private final KitRunner runner = new KitRunner();
     private final FurnaceWatch furnaces = new FurnaceWatch();
     private boolean gateDone;
+    private boolean noGoldSaid;
     private boolean tracking;
     private long castStartTick = -1;
     private DefaultGoToDimensionTask cast;
@@ -115,6 +117,11 @@ public class PortalPhase implements PhaseHandler {
             }
             // from here the cast juggles its own buckets, checking the gate again would fight it
             gateDone = true;
+            // the gate already tried to make or wear gold, so nothing on us now means nothing to make it from. no mining detour
+            if (!PiglinGold.worn(f) && !noGoldSaid) {
+                noGoldSaid = true;
+                ctx.log("no gold for piglins, good luck");
+            }
             ctx.progress("ready for the portal");
         }
         if (castStartTick < 0) {

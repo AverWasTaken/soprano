@@ -3,6 +3,7 @@ package adris.altoclef.tasks.resources;
 import baritone.Baritone;
 import adris.altoclef.AltoClef;
 import adris.altoclef.TaskCatalogue;
+import adris.altoclef.tasks.CraftInInventoryTask;
 import adris.altoclef.tasks.ResourceTask;
 import adris.altoclef.tasks.container.CraftInTableTask;
 import adris.altoclef.tasks.container.SmeltInBlastFurnaceTask;
@@ -41,6 +42,11 @@ public class CollectGoldIngotTask extends ResourceTask {
 
     @Override
     protected Task onResourceTick(AltoClef mod) {
+        // gold we carry as blocks or nuggets is ingots with extra steps, cheaper than any furnace or pickaxe
+        Task unpacked = unpack(mod);
+        if (unpacked != null) {
+            return unpacked;
+        }
         if (WorldHelper.getCurrentDimension() == Dimension.OVERWORLD) {
             SmeltTarget all = new SmeltTarget(new ItemTarget(Items.GOLD_INGOT, _count), new ItemTarget(Items.RAW_GOLD, _count));
             // same deal as iron: a blast furnace that is already standing close beats a plain furnace
@@ -82,6 +88,27 @@ public class CollectGoldIngotTask extends ResourceTask {
         } else {
             return new DefaultGoToDimensionTask(Dimension.OVERWORLD);
         }
+    }
+
+    // blocks first (a 2x2 craft, no table), then whole sets of nine nuggets. each one only crafts what we are short of
+    private Task unpack(AltoClef mod) {
+        int ingots = mod.getItemStorage().getItemCount(Items.GOLD_INGOT);
+        if (ingots >= _count) {
+            return null;
+        }
+        int blocks = mod.getItemStorage().getItemCount(Items.GOLD_BLOCK);
+        if (blocks > 0) {
+            CraftingRecipe recipe = CraftingRecipe.newShapedRecipe("gold_ingots_from_block",
+                    new ItemTarget[]{new ItemTarget(Items.GOLD_BLOCK, 1), null, null, null}, 9);
+            return new CraftInInventoryTask(new RecipeTarget(Items.GOLD_INGOT, Math.min(_count, ingots + 9 * blocks), recipe));
+        }
+        int sets = mod.getItemStorage().getItemCount(Items.GOLD_NUGGET) / 9;
+        if (sets > 0) {
+            ItemTarget n = new ItemTarget(Items.GOLD_NUGGET);
+            CraftingRecipe recipe = CraftingRecipe.newShapedRecipe("gold_ingot", new ItemTarget[]{n, n, n, n, n, n, n, n, n}, 1);
+            return new CraftInTableTask(new RecipeTarget(Items.GOLD_INGOT, Math.min(_count, ingots + sets), recipe));
+        }
+        return null;
     }
 
     @Override

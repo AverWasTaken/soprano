@@ -22,7 +22,8 @@ import java.util.Set;
 public final class RuinedPortalLoot {
     private static final List<Item> LOOT = List.of(
             Items.OBSIDIAN, Items.FLINT_AND_STEEL, Items.FIRE_CHARGE, Items.FLINT, Items.IRON_INGOT,
-            Items.GOLD_INGOT, Items.GOLDEN_BOOTS, Items.GOLDEN_HELMET, Items.GOLDEN_CHESTPLATE, Items.GOLDEN_LEGGINGS);
+            Items.GOLD_INGOT, Items.GOLD_NUGGET, Items.GOLD_BLOCK, Items.RAW_GOLD,
+            Items.GOLDEN_BOOTS, Items.GOLDEN_HELMET, Items.GOLDEN_CHESTPLATE, Items.GOLDEN_LEGGINGS);
     private static final int CHECK_EVERY_TICKS = 20;
 
     private final Set<BlockPos> done = new HashSet<>();
