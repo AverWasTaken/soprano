@@ -62,7 +62,7 @@ public final class BaritoneSettingsScope {
             undo.add(() -> extra.endPortalFrameRules(frameRules));
             extra.endPortalFrameRules(true);
 
-            set(s.freeLook, false);
+            // freeLook stays whatever the user picked. altoclef aims its own clicks, it never needed this
             set(s.overshootTraverse, false);
             set(s.allowOvershootDiagonalDescend, true);
             set(s.allowInventory, true);
@@ -74,7 +74,7 @@ public final class BaritoneSettingsScope {
             set(s.blocksToAvoid, List.of(Blocks.FLOWERING_AZALEA, Blocks.AZALEA,
                     Blocks.POWDER_SNOW, Blocks.BIG_DRIPLEAF, Blocks.BIG_DRIPLEAF_STEM, Blocks.CAVE_VINES,
                     Blocks.CAVE_VINES_PLANT, Blocks.TWISTING_VINES, Blocks.TWISTING_VINES_PLANT, Blocks.SWEET_BERRY_BUSH,
-                    Blocks.WARPED_ROOTS, Blocks.VINE, Blocks.GRASS_BLOCK, Blocks.FERN, Blocks.TALL_GRASS, Blocks.LARGE_FERN,
+                    Blocks.WARPED_ROOTS, Blocks.VINE, Blocks.FERN, Blocks.TALL_GRASS, Blocks.LARGE_FERN,
                     Blocks.SMALL_AMETHYST_BUD, Blocks.MEDIUM_AMETHYST_BUD, Blocks.LARGE_AMETHYST_BUD,
                     Blocks.AMETHYST_CLUSTER, Blocks.SCULK, Blocks.SCULK_VEIN, Blocks.SUNFLOWER, Blocks.LILAC,
                     Blocks.ROSE_BUSH, Blocks.PEONY));
