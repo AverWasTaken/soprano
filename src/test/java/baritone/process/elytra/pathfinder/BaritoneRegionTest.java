@@ -106,7 +106,10 @@ public class BaritoneRegionTest {
         try {
             final NetherPathfinder ctx = new NetherPathfinder(1, regions.toString(), NetherPathfinder.Dimension.NETHER, 128);
             assertNull(ctx.getChunk(3, 5));
-            assertTrue(ctx.tryLoadRegion(20, 20) > 0);
+            // tryLoadRegion returns the milliseconds the read took, and a one chunk file is read in
+            // under one on a warm jvm (half of 300 loads said 0 here), so the chunk showing up is
+            // the only way to know it read. asserting > 0 failed on fast ci boxes. nice flake
+            ctx.tryLoadRegion(20, 20);
             assertNotNull(ctx.getChunk(3, 5));
             assertTrue(ctx.hasChunkFromCaller(3, 5));
             assertTrue(ctx.getChunk(3, 5).isSolid(1, 2, 3));
