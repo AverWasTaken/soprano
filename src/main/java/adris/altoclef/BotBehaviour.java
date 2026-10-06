@@ -106,7 +106,10 @@ public class BotBehaviour {
     }
 
     public void avoidBlockBreaking(BlockPos pos) {
-        current().blocksToAvoidBreaking.add(pos);
+        // tasks call this every tick with the same furnace. a set that already has it is not news
+        if (!current().blocksToAvoidBreaking.add(pos.immutable())) {
+            return;
+        }
         current().applyState();
     }
 
@@ -137,12 +140,20 @@ public class BotBehaviour {
     }
 
     public void setRayTracingFluidHandling(ClipContext.Fluid fluidHandling) {
+        // ClearLiquidTask says this every tick. the static gets reset behind our back sometimes, so check it too
+        if (current().rayFluidHandling == fluidHandling && RayTraceUtils.fluidHandling == fluidHandling) {
+            return;
+        }
         current().rayFluidHandling = fluidHandling;
         //Debug.logMessage("OOF: " + fluidHandling);
         current().applyState();
     }
 
     public void setAllowWalkThroughFlowingWater(boolean value) {
+        // the portal speedrun says this every tick. only the settings object can disagree with us (a reset), so ask it too
+        if (current()._allowWalkThroughFlowingWater == value && _mod.getExtraBaritoneSettings().isFlowingWaterPassAllowed() == value) {
+            return;
+        }
         current()._allowWalkThroughFlowingWater = value;
         current().applyState();
     }
@@ -153,13 +164,25 @@ public class BotBehaviour {
     }
 
     public void addProtectedItems(Item... items) {
-        Collections.addAll(current().protectedItems, items);
-        current().applyState();
+        // ResourceTask and friends do this every tick. it used to be a list with no dedupe, so it grew forever and
+        // every tick rebuilt the pathing snapshot from it. now it only goes through when something is actually new
+        boolean changed = false;
+        for (Item item : items) {
+            changed |= current().protectedItems.add(item);
+        }
+        if (changed) {
+            current().applyState();
+        }
     }
 
     public void removeProtectedItems(Item... items) {
-        current().protectedItems.removeAll(Arrays.asList(items));
-        current().applyState();
+        boolean changed = false;
+        for (Item item : items) {
+            changed |= current().protectedItems.remove(item);
+        }
+        if (changed) {
+            current().applyState();
+        }
     }
 
     public boolean isProtected(Item item) {
@@ -273,6 +296,28 @@ public class BotBehaviour {
         return popped;
     }
 
+    // every clear() or addAll() on a watched collection throws the pathing snapshot away, so one that already says the
+    // right thing gets left alone. lists compare in order, sets don't care about order
+    static <T> void sync(Collection<T> target, Collection<T> want) {
+        if (target.size() == want.size()) {
+            boolean same = true;
+            if (target instanceof Set) {
+                same = target.containsAll(want);
+            } else {
+                Iterator<T> a = target.iterator();
+                Iterator<T> b = want.iterator();
+                while (same && a.hasNext()) {
+                    same = Objects.equals(a.next(), b.next());
+                }
+            }
+            if (same) {
+                return;
+            }
+        }
+        target.clear();
+        target.addAll(want);
+    }
+
     private State current() {
         if (_states.isEmpty()) {
             Debug.logError("STATE EMPTY, UNEMPTIED!");
@@ -284,7 +329,8 @@ public class BotBehaviour {
     class State {
         /// Baritone Params
         public double followOffsetDistance;
-        public List<Item> protectedItems = new ArrayList<>();
+        // insertion order, no repeats. isProtected is a contains and the pathing side asks a lot
+        public Set<Item> protectedItems = new LinkedHashSet<>();
         public boolean mineScanDroppedItems;
         public boolean swimThroughLava;
         public boolean allowDiagonalAscend;
@@ -366,7 +412,7 @@ public class BotBehaviour {
                     blocksToAvoidBreaking = new HashSet<>(settings.getBlocksToAvoidBreaking());
                     toAvoidBreaking = new ArrayList<>(settings.getBreakAvoiders());
                     toAvoidPlacing = new ArrayList<>(settings.getPlaceAvoiders());
-                    protectedItems = new ArrayList<>(settings.getProtectedItems());
+                    protectedItems = new LinkedHashSet<>(settings.getProtectedItems());
                     synchronized (settings.getPropertiesMutex()) {
                         allowWalking = new ArrayList<>(settings.getForceWalkOnPredicates());
                         avoidWalkingThrough = new ArrayList<>(settings.getForceAvoidWalkThroughPredicates());
@@ -411,27 +457,19 @@ public class BotBehaviour {
             // Kinda jank but it works.
             synchronized (sa.getBreakMutex()) {
                 synchronized (sa.getPlaceMutex()) {
-                    sa.getBreakAvoiders().clear();
-                    sa.getBreakAvoiders().addAll(toAvoidBreaking);
-                    sa.getBlocksToAvoidBreaking().clear();
-                    sa.getBlocksToAvoidBreaking().addAll(blocksToAvoidBreaking);
-                    sa.getPlaceAvoiders().clear();
-                    sa.getPlaceAvoiders().addAll(toAvoidPlacing);
-                    sa.getProtectedItems().clear();
-                    sa.getProtectedItems().addAll(protectedItems);
+                    sync(sa.getBreakAvoiders(), toAvoidBreaking);
+                    sync(sa.getBlocksToAvoidBreaking(), blocksToAvoidBreaking);
+                    sync(sa.getPlaceAvoiders(), toAvoidPlacing);
+                    sync(sa.getProtectedItems(), protectedItems);
                     synchronized (sa.getPropertiesMutex()) {
-                        sa.getForceWalkOnPredicates().clear();
-                        sa.getForceWalkOnPredicates().addAll(allowWalking);
-                        sa.getForceAvoidWalkThroughPredicates().clear();
-                        sa.getForceAvoidWalkThroughPredicates().addAll(avoidWalkingThrough);
-                        sa.getForceUseToolPredicates().clear();
-                        sa.getForceUseToolPredicates().addAll(forceUseTools);
+                        sync(sa.getForceWalkOnPredicates(), allowWalking);
+                        sync(sa.getForceAvoidWalkThroughPredicates(), avoidWalkingThrough);
+                        sync(sa.getForceUseToolPredicates(), forceUseTools);
                     }
                 }
             }
             synchronized (sa.getGlobalHeuristicMutex()) {
-                sa.getGlobalHeuristics().clear();
-                sa.getGlobalHeuristics().addAll(globalHeuristics);
+                sync(sa.getGlobalHeuristics(), globalHeuristics);
             }
 
 

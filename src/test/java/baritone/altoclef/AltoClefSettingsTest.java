@@ -86,6 +86,34 @@ public class AltoClefSettingsTest {
         assertNull(s.snapshot().forceWalkOn);
     }
 
+    // altoclef calls applyState (clear + addAll on everything) from tasks every tick, the pathing thread rebuilds its
+    // snapshot every time one of these says it changed. so saying nothing changed has to stay quiet
+    @Test
+    public void changeThatChangesNothingKeepsTheSnapshot() {
+        s.getBreakAvoiders().add(pos -> pos.getY() == 99);
+        s.getBlocksToAvoidBreaking().add(new BlockPos(1, 2, 3));
+        AltoClefSettings.Snapshot before = s.snapshot();
+
+        s.getPlaceAvoiders().clear();
+        s.getPlaceAvoiders().addAll(new ArrayList<>());
+        s.getBlocksToAvoidBreaking().add(new BlockPos(1, 2, 3));
+        s.getBlocksToAvoidBreaking().addAll(List.of(new BlockPos(1, 2, 3)));
+        s.getBlocksToAvoidBreaking().remove(new BlockPos(7, 7, 7));
+        s.getBlocksToAvoidBreaking().removeAll(List.of(new BlockPos(7, 7, 7)));
+        s.getForceWalkOnPredicates().clear();
+        s.getProtectedItems().clear();
+        assertSame(before, s.snapshot());
+
+        // and a real change still shows up
+        s.getBlocksToAvoidBreaking().add(new BlockPos(4, 5, 6));
+        assertNotSame(before, s.snapshot());
+        assertTrue(s.shouldAvoidBreaking(4, 5, 6));
+        AltoClefSettings.Snapshot mid = s.snapshot();
+        s.getBlocksToAvoidBreaking().remove(new BlockPos(4, 5, 6));
+        assertNotSame(mid, s.snapshot());
+        assertFalse(s.shouldAvoidBreaking(4, 5, 6));
+    }
+
     // stock soprano must behave exactly like stock while altoclef is idle, so the frame rules are a toggle in the table key
     @Test
     public void endPortalFrameRulesAreATableKeyBit() {

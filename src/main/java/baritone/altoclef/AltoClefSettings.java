@@ -225,8 +225,10 @@ public class AltoClefSettings {
         public boolean addAll(Collection<? extends E> c) {
             synchronized (lock) {
                 boolean changed = items.addAll(c);
-                modCount++;
-                dirty();
+                if (changed) {
+                    modCount++;
+                    dirty();
+                }
                 return changed;
             }
         }
@@ -234,6 +236,10 @@ public class AltoClefSettings {
         @Override
         public void clear() {
             synchronized (lock) {
+                // clearing nothing is not a change. BotBehaviour does it on every applyState
+                if (items.isEmpty()) {
+                    return;
+                }
                 items.clear();
                 modCount++;
                 dirty();
@@ -246,54 +252,75 @@ public class AltoClefSettings {
         @Override
         public boolean add(E e) {
             synchronized (lock) {
-                dirty();
-                return super.add(e);
+                boolean changed = super.add(e);
+                if (changed) {
+                    dirty();
+                }
+                return changed;
             }
         }
 
         @Override
         public boolean remove(Object o) {
             synchronized (lock) {
-                dirty();
-                return super.remove(o);
+                boolean changed = super.remove(o);
+                if (changed) {
+                    dirty();
+                }
+                return changed;
             }
         }
 
         @Override
         public boolean addAll(Collection<? extends E> c) {
             synchronized (lock) {
-                dirty();
-                return super.addAll(c);
+                boolean changed = super.addAll(c);
+                if (changed) {
+                    dirty();
+                }
+                return changed;
             }
         }
 
         @Override
         public boolean removeAll(Collection<?> c) {
             synchronized (lock) {
-                dirty();
-                return super.removeAll(c);
+                boolean changed = super.removeAll(c);
+                if (changed) {
+                    dirty();
+                }
+                return changed;
             }
         }
 
         @Override
         public boolean retainAll(Collection<?> c) {
             synchronized (lock) {
-                dirty();
-                return super.retainAll(c);
+                boolean changed = super.retainAll(c);
+                if (changed) {
+                    dirty();
+                }
+                return changed;
             }
         }
 
         @Override
         public boolean removeIf(Predicate<? super E> filter) {
             synchronized (lock) {
-                dirty();
-                return super.removeIf(filter);
+                boolean changed = super.removeIf(filter);
+                if (changed) {
+                    dirty();
+                }
+                return changed;
             }
         }
 
         @Override
         public void clear() {
             synchronized (lock) {
+                if (isEmpty()) {
+                    return;
+                }
                 dirty();
                 super.clear();
             }
