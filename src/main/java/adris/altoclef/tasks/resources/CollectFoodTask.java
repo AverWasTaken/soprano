@@ -15,6 +15,7 @@ import adris.altoclef.util.CraftingRecipe;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.RecipeTarget;
 import adris.altoclef.util.SmeltTarget;
+import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.slots.SmokerSlot;
@@ -44,6 +45,8 @@ import net.minecraft.world.level.block.CarrotBlock;
 import net.minecraft.world.level.block.CropBlock;
 import net.minecraft.world.level.block.PotatoBlock;
 import net.minecraft.world.level.block.state.BlockState;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Predicate;
@@ -73,10 +76,26 @@ public class CollectFoodTask extends Task {
             new CropTarget(Items.CARROT, Blocks.CARROTS)
     };
 
+    // every hoe, so whichever one we end up holding is protected and counts as "have one"
+    private static final Item[] HOES = new Item[]{
+            Items.WOODEN_HOE, Items.STONE_HOE, Items.IRON_HOE, Items.GOLDEN_HOE, Items.DIAMOND_HOE, Items.NETHERITE_HOE
+    };
+
     private final double _unitsNeeded;
     private final TimerGame _checkNewOptionsTimer = new TimerGame(10);
     private SmeltInSmokerTask _smeltTask = null;
     private Task _currentResourceTask = null;
+
+    // the hay sweep: null timer = not started, over = never again for this task. the sweep task is remembered so the
+    // cached resource task can be dropped the moment the pile is gone instead of up to 10 s later
+    private TimerGame _sweepTimer = null;
+    private boolean _sweepOver = false;
+    private Task _sweepTask = null;
+    private int _hayLeft = 0;
+    private final TimerGame _hoeCheckTimer = new TimerGame(HaySweep.HOE_CHECK_SECONDS);
+    private Task _hoeTask = null;
+    private TimerGame _hoeTimer = null;
+    private boolean _hoeDone = false;
 
     public CollectFoodTask(double unitsNeeded) {
         _unitsNeeded = unitsNeeded;
@@ -135,6 +154,16 @@ public class CollectFoodTask extends Task {
         }
          */
         mod.getBehaviour().addProtectedItems(Items.HAY_BLOCK, Items.SWEET_BERRIES);
+        // altoThrowAwayUnusedItems would happily toss a hoe the second the bag gets full. this frame pops on stop so
+        // it is fair game again once the food is done
+        mod.getBehaviour().addProtectedItems(HOES);
+        // a restart is a new pile, new budget
+        _sweepTimer = null;
+        _sweepOver = false;
+        _sweepTask = null;
+        _hoeTask = null;
+        _hoeTimer = null;
+        _hoeDone = false;
 
         mod.getBlockTracker().trackBlock(Blocks.HAY_BLOCK);
         mod.getBlockTracker().trackBlock(Blocks.SWEET_BERRY_BUSH);
@@ -161,8 +190,7 @@ public class CollectFoodTask extends Task {
         if (mod.getBlockTracker().isTracking(Blocks.HAY_BLOCK)) {
             Optional<BlockPos> hay = mod.getBlockTracker().getNearestTracking(Blocks.HAY_BLOCK);
             if (hay.isPresent()) {
-                BlockPos haysUpPos = hay.get().above();
-                if (mod.getWorld().getBlockState(haysUpPos).getBlock() == Blocks.CARVED_PUMPKIN) {
+                if (isOutpostHay(mod, hay.get())) {
                     Debug.logMessage("Blacklisting pillage hay bales.");
                     mod.getBlockTracker().requestBlockUnreachable(hay.get(), 0);
                 }
@@ -175,19 +203,45 @@ public class CollectFoodTask extends Task {
             return _smeltTask;
         }
 
+        // the hoe is made once, nothing else gets a say until it is done (or fed up)
+        if (_hoeTask != null) {
+            if (_hoeTask.isActive() && !_hoeTask.isFinished(mod) && !_hoeTask.thisOrChildAreTimedOut() && !_hoeTimer.elapsed()) {
+                setDebugState("Making a hoe for the hay");
+                return _hoeTask;
+            }
+            _hoeTask = null;
+            // crafting time is not pile time
+            if (_sweepTimer != null) {
+                _sweepTimer.reset();
+            }
+        }
+
         if (_checkNewOptionsTimer.elapsed()) {
             // Try a new resource task
             _checkNewOptionsTimer.reset();
             _currentResourceTask = null;
         }
 
+        // the sweep ends when the pile does, not on the next 10 s check
+        if (_sweepTask != null && _currentResourceTask == _sweepTask && !sweepWanted(mod)) {
+            _currentResourceTask = null;
+        }
+
         if (_currentResourceTask != null && _currentResourceTask.isActive() && !_currentResourceTask.isFinished(mod) && !_currentResourceTask.thisOrChildAreTimedOut()) {
+            if (_currentResourceTask == _sweepTask) {
+                setDebugState("Sweeping the hay pile (" + _hayLeft + " left)");
+            }
             return _currentResourceTask;
         }
 
         // Calculate potential
         double potentialFood = calculateFoodPotential(mod);
         if (potentialFood >= _unitsNeeded) {
+            // we could stop here, but the rest of the pile is one step away and the next bale costs a few ticks
+            Task sweep = sweepHayOrNull(mod);
+            if (sweep != null) {
+                return sweep;
+            }
             // Convert our raw foods
             // PLAN:
             // - If we have hay/wheat, make it into bread
@@ -243,6 +297,10 @@ public class CollectFoodTask extends Task {
             // Hay blocks
             Task hayTaskBlock = this.pickupBlockTaskOrNull(mod, Blocks.HAY_BLOCK, Items.HAY_BLOCK, 300);
             if (hayTaskBlock != null) {
+                Task hoe = hoeTaskOrNull(mod, hayInReach(mod).size());
+                if (hoe != null) {
+                    return hoe;
+                }
                 setDebugState("Collecting Hay");
                 _currentResourceTask = hayTaskBlock;
                 return _currentResourceTask;
@@ -350,6 +408,11 @@ public class CollectFoodTask extends Task {
      * Returns null if task cannot reasonably run.
      */
     private Task pickupBlockTaskOrNull(AltoClef mod, Block blockToCheck, Item itemToGrab, Predicate<BlockPos> accept, double maxRange) {
+        return pickupBlockTaskOrNull(mod, blockToCheck, itemToGrab, accept, maxRange, Double.POSITIVE_INFINITY);
+    }
+
+    // dropRange is for the sweep, which must not wander off after a bale somebody dropped a chunk away
+    private Task pickupBlockTaskOrNull(AltoClef mod, Block blockToCheck, Item itemToGrab, Predicate<BlockPos> accept, double maxRange, double dropRange) {
         Predicate<BlockPos> acceptPlus = (blockPos) -> {
             if (!WorldHelper.canBreak(mod, blockPos)) return false;
             return accept.test(blockPos);
@@ -362,7 +425,8 @@ public class CollectFoodTask extends Task {
 
         Optional<ItemEntity> nearestDrop = Optional.empty();
         if (mod.getEntityTracker().itemDropped(itemToGrab)) {
-            nearestDrop = mod.getEntityTracker().getClosestItemDrop(mod.getPlayer().position(), itemToGrab);
+            nearestDrop = mod.getEntityTracker().getClosestItemDrop(mod.getPlayer().position(), itemToGrab)
+                    .filter(drop -> drop.closerThan(mod.getPlayer(), dropRange));
         }
         boolean spotted = nearestBlock.isPresent() || nearestDrop.isPresent();
         // Collect hay until we have enough.
@@ -378,6 +442,106 @@ public class CollectFoodTask extends Task {
 
     private Task pickupBlockTaskOrNull(AltoClef mod, Block blockToCheck, Item itemToGrab, double maxRange) {
         return pickupBlockTaskOrNull(mod, blockToCheck, itemToGrab, toAccept -> true, maxRange);
+    }
+
+    // the pillager outpost bales have a carved pumpkin on top and a pillager nearby. no thanks
+    private static boolean isOutpostHay(AltoClef mod, BlockPos hay) {
+        return mod.getWorld().getBlockState(hay.above()).getBlock() == Blocks.CARVED_PUMPKIN;
+    }
+
+    private static boolean haySweepable(AltoClef mod, BlockPos pos) {
+        return pos.closerToCenterThan(mod.getPlayer().position(), HaySweep.RADIUS) && !isOutpostHay(mod, pos);
+    }
+
+    // the bales the sweep would still take: near us, not blacklisted (blockIsValid says no to those), not an outpost's
+    private List<BlockPos> hayInReach(AltoClef mod) {
+        List<BlockPos> reach = new ArrayList<>();
+        if (!mod.getBlockTracker().isTracking(Blocks.HAY_BLOCK)) {
+            return reach;
+        }
+        for (BlockPos pos : mod.getBlockTracker().getKnownLocations(Blocks.HAY_BLOCK)) {
+            if (haySweepable(mod, pos) && mod.getBlockTracker().blockIsValid(pos, Blocks.HAY_BLOCK) && WorldHelper.canBreak(mod, pos)) {
+                reach.add(pos);
+            }
+        }
+        return reach;
+    }
+
+    private boolean hayDropNearby(AltoClef mod) {
+        return mod.getEntityTracker().itemDropped(Items.HAY_BLOCK)
+                && mod.getEntityTracker().getClosestItemDrop(mod.getPlayer().position(), Items.HAY_BLOCK)
+                .filter(drop -> drop.closerThan(mod.getPlayer(), HaySweep.RADIUS)).isPresent();
+    }
+
+    // bales in reach plus one for a dropped one, so the sweep does not quit with a bale lying at our feet
+    private int hayLeft(AltoClef mod) {
+        return hayInReach(mod).size() + (hayDropNearby(mod) ? 1 : 0);
+    }
+
+    private boolean sweepWanted(AltoClef mod) {
+        _hayLeft = hayLeft(mod);
+        boolean keep = HaySweep.keepSweeping(true, _hayLeft, mod.getItemStorage().getItemCountInventoryOnly(Items.HAY_BLOCK), _sweepTimer.getDuration());
+        if (!keep) {
+            _sweepOver = true;
+        }
+        return keep;
+    }
+
+    // potential says we have enough, but the pile is right here. null when there is nothing (left) to sweep
+    private Task sweepHayOrNull(AltoClef mod) {
+        if (_sweepOver) {
+            return null;
+        }
+        int held = mod.getItemStorage().getItemCountInventoryOnly(Items.HAY_BLOCK);
+        _hayLeft = hayLeft(mod);
+        double elapsed = _sweepTimer == null ? 0 : _sweepTimer.getDuration();
+        if (!HaySweep.keepSweeping(true, _hayLeft, held, elapsed)) {
+            // not having started yet is not the end, the pile might just not be loaded in
+            _sweepOver = _sweepTimer != null;
+            return null;
+        }
+        if (_sweepTimer == null) {
+            _sweepTimer = new TimerGame(HaySweep.BUDGET_SECONDS);
+            _sweepTimer.reset();
+        }
+        Task hoe = hoeTaskOrNull(mod, _hayLeft);
+        if (hoe != null) {
+            return hoe;
+        }
+        Task sweep = pickupBlockTaskOrNull(mod, Blocks.HAY_BLOCK, Items.HAY_BLOCK, pos -> haySweepable(mod, pos), HaySweep.RADIUS, HaySweep.RADIUS);
+        if (sweep == null) {
+            _sweepOver = true;
+            return null;
+        }
+        setDebugState("Sweeping the hay pile (" + _hayLeft + " left)");
+        _sweepTask = sweep;
+        _currentResourceTask = sweep;
+        return sweep;
+    }
+
+    // a hoe is ~2x the swing speed on hay, worth a craft for a pile but only from what we already carry and a table we
+    // already have: nobody goes tree hunting for a hoe. once per task, win or lose
+    private Task hoeTaskOrNull(AltoClef mod, int pile) {
+        if (_hoeDone || pile < HaySweep.HOE_PILE_MIN || !_hoeCheckTimer.elapsed()) {
+            return null;
+        }
+        _hoeCheckTimer.reset();
+        boolean hasHoe = mod.getItemStorage().hasItemInventoryOnly(HOES);
+        boolean tableHandy = mod.getItemStorage().hasItemInventoryOnly(Items.CRAFTING_TABLE)
+                || mod.getBlockTracker().getNearestWithinRange(mod.getPlayer().position(), HaySweep.HOE_TABLE_RANGE, Blocks.CRAFTING_TABLE).isPresent();
+        int cobble = mod.getItemStorage().getItemCountInventoryOnly(Items.COBBLESTONE);
+        int planks = mod.getItemStorage().getItemCountInventoryOnly(ItemHelper.PLANKS);
+        int sticks = mod.getItemStorage().getItemCountInventoryOnly(Items.STICK);
+        HaySweep.Hoe hoe = HaySweep.pickHoe(pile, hasHoe, tableHandy, cobble, planks, sticks);
+        if (hoe == HaySweep.Hoe.NONE) {
+            return null;
+        }
+        _hoeDone = true;
+        _hoeTimer = new TimerGame(HaySweep.HOE_BUDGET_SECONDS);
+        _hoeTimer.reset();
+        _hoeTask = TaskCatalogue.getItemTask(hoe == HaySweep.Hoe.STONE ? "stone_hoe" : "wooden_hoe", 1);
+        setDebugState("Making a hoe for the hay");
+        return _hoeTask;
     }
 
     private Task killTaskOrNull(Entity entity, Predicate<Entity> entityPredicate, Item itemToGrab) {
