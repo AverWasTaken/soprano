@@ -2,6 +2,8 @@ package adris.altoclef.tasks.speedrun.gamer.phases;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.tasks.construction.compound.ConstructNetherPortalObsidianTask;
+import adris.altoclef.tasks.container.CollectFromFurnaceTask.Mode;
+import adris.altoclef.tasks.speedrun.gamer.FurnaceWatch;
 import adris.altoclef.tasks.movement.DefaultGoToDimensionTask;
 import adris.altoclef.tasks.movement.EnterNetherPortalTask;
 import adris.altoclef.tasks.speedrun.gamer.GamerContext;
@@ -29,6 +31,7 @@ import java.util.Optional;
 // never finishes on its own when there is no lake, it wanders, so a clock decides when to give up on it
 public class PortalPhase implements PhaseHandler {
     private final KitRunner runner = new KitRunner();
+    private final FurnaceWatch furnaces = new FurnaceWatch();
     private boolean gateDone;
     private boolean tracking;
     private long castStartTick = -1;
@@ -60,6 +63,7 @@ public class PortalPhase implements PhaseHandler {
     @Override
     public void onEnter(AltoClef mod, GamerContext ctx) {
         runner.reset();
+        furnaces.reset();
         gateDone = false;
         castStartTick = -1;
         cast = new DefaultGoToDimensionTask(Dimension.NETHER);
@@ -92,6 +96,16 @@ public class PortalPhase implements PhaseHandler {
     public Task tick(AltoClef mod, GamerContext ctx) {
         noteOverworldPortal(mod, ctx);
         GamerFacts f = ctx.facts();
+        // iron still cooking in the overworld is iron we are about to leave behind (an IRON phase that skipped itself on a
+        // timeout can get us here). one last visit: take what is done, wait if it is nearly, pull the rest back out
+        if (f.dimension() == Dimension.OVERWORLD && !f.furnaceJobs().isEmpty()) {
+            furnaces.housekeeping(mod, ctx);
+            Task leaving = furnaces.collect(mod, ctx, Mode.TAKE_ALL);
+            if (leaving != null) {
+                hudState = furnaces.hud();
+                return leaving;
+            }
+        }
         if (!gateDone) {
             List<KitNeed> gate = PortalPlanner.gate(f, ctx.cfg().overworld);
             if (!gate.isEmpty()) {

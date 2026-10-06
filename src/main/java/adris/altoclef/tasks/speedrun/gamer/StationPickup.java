@@ -186,10 +186,10 @@ final class StationPickup {
             return OwnTables.wantsFurnaceBack(use.useNeed, need, OwnTables.smeltsSoon(need, ctx.facts().count(Items.RAW_IRON)));
         }
 
-        // the async smelting jobs record the furnaces they are cooking in. nothing records them yet on this branch, the one
-        // line to change when FurnaceJobs lands is here
+        // the async smelting jobs record the furnaces they are cooking in (FurnaceJobs), breaking one would drop the iron
+        // on the floor and forget about it
         private boolean jobOwns(GamerContext ctx, RunState.Pos pos) {
-            return false;
+            return FurnaceJobs.isBusy(ctx.state(), pos);
         }
     }
 }

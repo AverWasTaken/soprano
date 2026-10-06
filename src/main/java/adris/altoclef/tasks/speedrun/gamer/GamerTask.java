@@ -5,6 +5,7 @@ import adris.altoclef.Debug;
 import adris.altoclef.eventbus.EventBus;
 import adris.altoclef.eventbus.Subscription;
 import adris.altoclef.eventbus.events.BlockPlaceEvent;
+import adris.altoclef.tasks.container.AsyncSmelting;
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfigs;
 import adris.altoclef.tasks.speedrun.gamer.phases.DragonPhase;
@@ -311,6 +312,8 @@ public class GamerTask extends Task {
     // first tick with a player: the facts are real now, so the clocks and the saved run can be compared with the world
     private void beginRun(AltoClef mod) {
         cfg = GamerConfigs.get();
+        // a job from a run before this one is not ours to collect
+        AsyncSmelting.clear();
         loadState(mod);
         facts.useState(state);
         deathsAtStart = state.deaths.size();
@@ -472,6 +475,7 @@ public class GamerTask extends Task {
         cfg = GamerConfigs.get();
         double now = machine.now();
         state.runTicks++;
+        takeLoadedFurnaces();
         if (facts.creditsShown()) {
             machine.finish(true);
             return null;
@@ -493,6 +497,18 @@ public class GamerTask extends Task {
         }
         autosave(now);
         return child;
+    }
+
+    // the smelt tasks cannot see our state, a furnace they loaded and walked away from is waiting in a queue for us
+    private void takeLoadedFurnaces() {
+        List<RunState.FurnaceJob> loaded = AsyncSmelting.drain();
+        for (RunState.FurnaceJob job : loaded) {
+            FurnaceJobs.record(state.furnaceJobs, job);
+            host.say("Smelting in the background (" + job.count + " ingots, ~" + job.count * FurnaceJobs.ticksPerItem(job.kind) / 20 + "s)");
+        }
+        if (!loaded.isEmpty()) {
+            host.save();
+        }
     }
 
     private void updateHud(PhaseHandler h) {

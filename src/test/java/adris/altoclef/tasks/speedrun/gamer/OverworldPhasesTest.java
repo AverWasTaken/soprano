@@ -81,6 +81,24 @@ public class OverworldPhasesTest {
     }
 
     @Test
+    public void ironIsNotDoneWhileIronIsStillCooking() {
+        IronPhase iron = new IronPhase();
+        cfg.end.beds = 2;
+        cfg.overworld.armorPlan = OverworldConfig.ArmorPlan.NONE;
+        FakeFacts f = new FakeFacts().give(Items.WHITE_WOOL, 6);
+        for (var i : List.of(Items.STONE_PICKAXE, Items.STONE_SWORD, Items.IRON_PICKAXE, Items.IRON_SWORD, Items.FLINT_AND_STEEL,
+                Items.SHIELD, Items.SHEARS)) {
+            f.give(i, 1);
+        }
+        f.give(Items.BUCKET, 2);
+        f.foodUnits = 100;
+        assertTrue("the kit is whole", iron.isDone(f, state, cfg));
+        // a job nobody collected (more ingots than the kit needed): leaving now would leave them in the furnace
+        f.cooking("iron_ingot", 5, 30);
+        assertFalse(iron.isDone(f, state, cfg));
+    }
+
+    @Test
     public void ironWantsWoolForTheConfiguredBedCount() {
         IronPhase iron = new IronPhase();
         cfg.end.beds = 2;

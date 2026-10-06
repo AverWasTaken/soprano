@@ -41,7 +41,7 @@ public class CollectFromFurnaceTask extends Task {
     private int inputLeft;
     private long waitingSince = -1;
 
-    // waitTicks: "nearly done" for NORMAL and TAKE_ALL. capTicks: the most WAIT_ALL stays after it started waiting, a furnace
+    // waitTicks: "nearly done" for NORMAL and TAKE_ALL. capTicks: the most we stand there once we started waiting, a furnace
     // that never finishes (no fuel, a chunk that stopped ticking) must not hold the bot for ever
     public CollectFromFurnaceTask(BlockPos pos, Block block, String kind, Mode mode, long waitTicks, long capTicks) {
         this.pos = pos;
@@ -108,10 +108,18 @@ public class CollectFromFurnaceTask extends Task {
             // not lit and no fuel to light it with is a furnace that will never finish. not lit WITH fuel is one tick from lit
             boolean stalled = !lit && fuel.isEmpty();
             boolean nearly = lit && remainingTicks(input) <= waitTicks;
-            if (!stalled && (mode == Mode.WAIT_ALL || nearly)) {
+            // it did not finish when it should have. what is in there stays in there (the job keeps its own count), or comes
+            // back out when we are leaving
+            boolean capped = waitingSince >= 0 && mod.getWorld().getGameTime() - waitingSince > capTicks;
+            if (!stalled && !capped && (mode == Mode.WAIT_ALL || nearly)) {
                 return waitHere(mod);
             }
-            if (stalled || mode == Mode.TAKE_ALL) {
+            if (capped && mode != Mode.TAKE_ALL) {
+                inputLeft = input.getCount();
+                done = true;
+                return null;
+            }
+            if (stalled || capped || mode == Mode.TAKE_ALL) {
                 // the raw stuff goes back in the bag, the planner sees it there and smelts it again
                 return takeOut(mod, FurnaceSlot.INPUT_SLOT_MATERIALS, input, "Taking the unfinished input back");
             }
@@ -129,15 +137,8 @@ public class CollectFromFurnaceTask extends Task {
     }
 
     private Task waitHere(AltoClef mod) {
-        long now = mod.getWorld().getGameTime();
         if (waitingSince < 0) {
-            waitingSince = now;
-        }
-        if (mode == Mode.WAIT_ALL && now - waitingSince > capTicks) {
-            // it did not finish when it should have. what is in there stays in there, the job keeps its own count
-            inputLeft = StorageHelper.getItemStackInSlot(FurnaceSlot.INPUT_SLOT_MATERIALS).getCount();
-            done = true;
-            return null;
+            waitingSince = mod.getWorld().getGameTime();
         }
         setDebugState("Waiting for the furnace");
         return null;
