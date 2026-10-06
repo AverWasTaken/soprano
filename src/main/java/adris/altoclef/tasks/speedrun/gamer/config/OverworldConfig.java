@@ -46,6 +46,13 @@ public class OverworldConfig {
     public int ruinedPortalLootRadius = 60;
     // a chest that is not emptied after this long gets written off (blocked, buried, whatever)
     public double lootChestSeconds = 60;
+    // village blacksmith chests (the iron need only): how far away a seen chest may be, and how close to a grindstone,
+    // smithing table or blast furnace it has to sit to count as a blacksmith's
+    public int villageLootRadius = 48;
+    public int villageChestJobRadius = 6;
+    // per run, not per phase: at most this many chests and this many seconds spent in them, then we mine like normal
+    public int villageLootMaxChests = 3;
+    public double villageLootSeconds = 240;
 
     // casting with no lava in sight for this long, while we already hold a diamond pickaxe, flips to obsidian early.
     // without the pickaxe we keep wandering for a lake until castGiveUpMinutes

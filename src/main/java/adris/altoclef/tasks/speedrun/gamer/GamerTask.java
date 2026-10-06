@@ -35,6 +35,7 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
 import org.apache.commons.lang3.ArrayUtils;
 
 import java.nio.file.Path;
@@ -318,16 +319,25 @@ public class GamerTask extends Task {
             // it there: a crafting table, in the overworld, inside our own placing reach
             LocalPlayer player = Minecraft.getInstance().player;
             if (state == null || !begun || player == null || facts == null || facts.dimension() != Dimension.OVERWORLD
-                    || !evt.blockState.is(Blocks.CRAFTING_TABLE)) {
+                    || !(evt.blockState.is(Blocks.CRAFTING_TABLE) || isJobBlock(evt.blockState))) {
                 return;
             }
             RunState.Pos pos = new RunState.Pos(evt.blockPos.getX(), evt.blockPos.getY(), evt.blockPos.getZ());
-            if (OwnTables.placedByUs(player.getX(), player.getEyeY(), player.getZ(), pos)) {
+            if (isJobBlock(evt.blockState)) {
+                // same guess as the table below. VillageLoot must not take a blast furnace we crafted for a village
+                if (OwnTables.placedByUs(player.getX(), player.getEyeY(), player.getZ(), pos)) {
+                    OwnTables.record(state.placedJobBlocks, pos);
+                }
+            } else if (OwnTables.placedByUs(player.getX(), player.getEyeY(), player.getZ(), pos)) {
                 // a table that just went down is about to be used, the pickup keeps its hands off it for a bit
                 state.lastTableUseTick = facts.gameTime();
                 OwnTables.record(state.placedTables, pos);
             }
         });
+    }
+
+    private static boolean isJobBlock(BlockState block) {
+        return block.is(Blocks.BLAST_FURNACE) || block.is(Blocks.GRINDSTONE) || block.is(Blocks.SMITHING_TABLE);
     }
 
     private void stopWatchingPlacements() {

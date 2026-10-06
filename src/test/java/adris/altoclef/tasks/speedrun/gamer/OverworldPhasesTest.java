@@ -144,6 +144,10 @@ public class OverworldPhasesTest {
         assertEquals(7.0, o.castGiveUpMinutes, 0);
         assertEquals(30.0, o.tablePickupSeconds, 0);
         assertEquals(60, o.ruinedPortalLootRadius);
+        assertEquals(48, o.villageLootRadius);
+        assertEquals(6, o.villageChestJobRadius);
+        assertEquals(3, o.villageLootMaxChests);
+        assertEquals(240.0, o.villageLootSeconds, 0);
         assertEquals(32, o.portalBuildBlocks);
         assertEquals(10, o.tableRecoverRadius);
         assertEquals(30.0, o.tableUseCooldownSeconds, 0);

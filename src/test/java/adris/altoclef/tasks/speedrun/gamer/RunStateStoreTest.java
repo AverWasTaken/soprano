@@ -86,6 +86,9 @@ public class RunStateStoreTest {
         s.endDrops.put("minecraft:white_bed", 7);
         s.placedTables.add(new RunState.Pos(245, 63, 40));
         s.placedTables.add(new RunState.Pos(-3, 70, 9));
+        s.villageChestsTried.add(new RunState.Pos(12, 64, -7));
+        s.villageLootTicks = 1500;
+        s.placedJobBlocks.add(new RunState.Pos(5, 64, 5));
         s.dragonDead = true;
         return s;
     }
@@ -119,6 +122,9 @@ public class RunStateStoreTest {
         assertTrue(out.strongholdRays.get(0).dived);
         assertEquals(Integer.valueOf(7), out.endDrops.get("minecraft:white_bed"));
         assertEquals(List.of(new RunState.Pos(245, 63, 40), new RunState.Pos(-3, 70, 9)), out.placedTables);
+        assertEquals(List.of(new RunState.Pos(12, 64, -7)), out.villageChestsTried);
+        assertEquals(1500L, out.villageLootTicks);
+        assertEquals(List.of(new RunState.Pos(5, 64, 5)), out.placedJobBlocks);
         assertEquals("NETHER", out.deaths.get(0).dimension);
         assertEquals(987654321L, out.runTicks);
         assertEquals(Integer.valueOf(2), out.regressCounts.get("LOCATE>NETHER"));
@@ -186,6 +192,19 @@ public class RunStateStoreTest {
         assertTrue(RunStateStore.load(file(), FP).state().placedTables.isEmpty());
         write(file(), "{\"fingerprint\":\"" + FP + "\",\"phase\":\"IRON\",\"placedTables\":null}");
         assertTrue(RunStateStore.load(file(), FP).state().placedTables.isEmpty());
+    }
+
+    @Test
+    public void aFileFromBeforeTheVillageLootHasNothingVisitedAndNullListsAreEmpty() throws IOException {
+        write(file(), "{\"fingerprint\":\"" + FP + "\",\"phase\":\"IRON\"}");
+        RunState s = RunStateStore.load(file(), FP).state();
+        assertTrue(s.villageChestsTried.isEmpty());
+        assertTrue(s.placedJobBlocks.isEmpty());
+        assertEquals(0L, s.villageLootTicks);
+        write(file(), "{\"fingerprint\":\"" + FP + "\",\"phase\":\"IRON\",\"villageChestsTried\":null,\"placedJobBlocks\":null}");
+        s = RunStateStore.load(file(), FP).state();
+        assertTrue(s.villageChestsTried.isEmpty());
+        assertTrue(s.placedJobBlocks.isEmpty());
     }
 
     @Test

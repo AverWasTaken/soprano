@@ -146,6 +146,14 @@ public class RunState {
     public transient long lastTableUseTick = OwnTables.NEVER;
     public transient long lastTableRecoveredTick = OwnTables.NEVER;
 
+    // village blacksmith chests we already opened (or started to), and the game ticks spent in them. the budget in
+    // VillageChests reads both, so a relog does not hand out a fresh one
+    public List<Pos> villageChestsTried = new ArrayList<>();
+    public long villageLootTicks;
+    // grindstones, smithing tables and blast furnaces this run placed. a village's own job blocks vouch for its chests,
+    // ours must not (we craft blast furnaces). same guess as placedTables, see GamerTask.watchPlacements
+    public List<Pos> placedJobBlocks = new ArrayList<>();
+
     public int attemptsOf(GamerPhase p) {
         return phaseAttempts.getOrDefault(p.name(), 0);
     }
