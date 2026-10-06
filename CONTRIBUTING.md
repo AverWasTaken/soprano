@@ -4,7 +4,7 @@ Bug reports, ideas and pull requests are all welcome.
 
 ## Branches
 
-Each branch is one Minecraft version (`1.21.4` right now). Open your pull request against the version branch you're targeting. `main` will track the newest Minecraft version once there's a port, so don't target it for a fix to an older version.
+Each branch is one Minecraft version, named after it (`1.21.4`, `26.3`). The newest version lives on `26.3`, which is the default branch. Open your pull request against the branch for the version you're targeting. Don't target `26.3` for a fix to an older version.
 
 ## Building and testing
 

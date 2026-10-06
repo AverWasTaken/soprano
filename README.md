@@ -3,7 +3,7 @@
 A fork of [Baritone](https://github.com/cabaletta/baritone), the Minecraft pathfinding bot, with extra movement tech and [AltoClef](https://github.com/gaucho-matrero/altoclef) built in.
 
 [![Release](https://img.shields.io/github/v/release/AverWasTaken/soprano)](https://github.com/AverWasTaken/soprano/releases)
-[![Build](https://github.com/AverWasTaken/soprano/actions/workflows/gradle_build.yml/badge.svg)](https://github.com/AverWasTaken/soprano/actions/workflows/gradle_build.yml)
+[![Build](https://github.com/AverWasTaken/soprano/actions/workflows/gradle_build.yml/badge.svg?branch=1.21.4)](https://github.com/AverWasTaken/soprano/actions/workflows/gradle_build.yml)
 [![License](https://img.shields.io/badge/license-LGPL--3.0-green.svg)](LICENSE)
 
 [Install](#install) · [What's different](#whats-different) · [Usage](USAGE.md) · [Features](FEATURES.md) · [Building](SETUP.md) · [Contributing](CONTRIBUTING.md)
@@ -24,7 +24,7 @@ The new stuff is new, so expect rough edges. [FEATURES.md](FEATURES.md) goes thr
 2. Drop it in your `mods` folder, replacing Baritone if you had it.
 3. In game, try `#goto 1000 500`, then `#stop`.
 
-Each branch of this repo is one Minecraft version. Right now that's 1.21.4. `main` will follow the newest Minecraft version once there's a port.
+Each branch of this repo is one Minecraft version, named after it (`1.21.4`, `26.3`). The newest Minecraft version lives on `26.3`, which is the default branch. This branch is 1.21.4.
 
 Releases come in three flavors. Most people want the `api` jar.
 
