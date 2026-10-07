@@ -69,6 +69,13 @@ public interface GamerFacts {
         return FurnaceJobs.pending(furnaceJobs(), BuiltInRegistries.ITEM.getKey(item).getPath());
     }
 
+    // a crafting table of ours is standing close enough to walk back to (and is still a table). it is on its way back to the
+    // bag, so for planning it is a held table: the moment it leaves the bag the kit used to ask for table planks, the head need
+    // flipped to log, and the pickup rules read that as the run moving on from the table it had just put down
+    default boolean tablePlacedNearby() {
+        return false;
+    }
+
     // true once the win screen has been shown (or the run saw the dragon die and came home)
     boolean creditsShown();
 

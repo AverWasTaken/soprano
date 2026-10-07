@@ -51,16 +51,18 @@ final class StationPickup {
         return table.owed || furnace.owed;
     }
 
-    Task tick(AltoClef mod, GamerContext ctx, KitNeed current, boolean tracking) {
+    // `plan` is the phase's whole need list, the head is `current`. a craft anywhere in it keeps a table nobody used yet
+    Task tick(AltoClef mod, GamerContext ctx, KitNeed current, List<KitNeed> plan, boolean tracking) {
         String need = current == null ? null : current.catalogueName();
+        boolean craftPlanned = plan.stream().anyMatch(KitNeed::isCraft);
         ctx.state().currentNeed = need;
         hud = null;
-        Task t = table.tick(mod, ctx, need, tracking);
+        Task t = table.tick(mod, ctx, need, craftPlanned, tracking);
         if (t != null) {
             hud = "Picking up the crafting table";
             return t;
         }
-        t = furnace.tick(mod, ctx, need, tracking);
+        t = furnace.tick(mod, ctx, need, craftPlanned, tracking);
         if (t != null) {
             hud = "Picking up the furnace";
         }
@@ -120,7 +122,7 @@ final class StationPickup {
             return state.hasProperty(AbstractFurnaceBlock.LIT) && state.getValue(AbstractFurnaceBlock.LIT);
         }
 
-        Task tick(AltoClef mod, GamerContext ctx, String need, boolean tracking) {
+        Task tick(AltoClef mod, GamerContext ctx, String need, boolean craftPlanned, boolean tracking) {
             long now = ctx.facts().gameTime();
             RunState.StationUse use = use(ctx);
             if (pickup != null) {
@@ -178,7 +180,7 @@ final class StationPickup {
             // second, nothing in the task tree is crafting at a table and the next need is not a craft that would place it again
             boolean craftsDone = isTable && OwnTables.finishedCrafting(now, use.lastUseTick, use.lastPlaceTick, open,
                     craftRunning(mod), KitNeed.isCraftName(need));
-            boolean wantsNow = wants(ctx, need, use, craftsDone);
+            boolean wantsNow = wants(ctx, need, use, craftsDone, craftPlanned);
             if (wantsNow) {
                 // this is the moment it would be taken. too far to walk cheaply means we write it off: a table is a log,
                 // the old sphere walked us back down a cave for one
@@ -245,9 +247,10 @@ final class StationPickup {
             return root != null && root.thisOrChildSatisfies(t -> t instanceof CraftInTableTask);
         }
 
-        private boolean wants(GamerContext ctx, String need, RunState.StationUse use, boolean craftsDone) {
+        private boolean wants(GamerContext ctx, String need, RunState.StationUse use, boolean craftsDone, boolean craftPlanned) {
             if (isTable) {
-                return OwnTables.wantsTableNow(use.useNeed, need, craftsDone);
+                return OwnTables.wantsTableNow(use.useNeed, need, craftsDone,
+                        OwnTables.usedSincePlaced(use.lastUseTick, use.lastPlaceTick), craftPlanned);
             }
             return OwnTables.wantsFurnaceBack(use.useNeed, need, OwnTables.smeltsSoon(need, ctx.facts().count(Items.RAW_IRON)));
         }

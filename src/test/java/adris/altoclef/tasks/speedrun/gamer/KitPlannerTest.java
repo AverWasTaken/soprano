@@ -491,6 +491,28 @@ public class KitPlannerTest {
         assertTrue(KitPlanner.woodNeed(made, cfg, 0) < fresh);
     }
 
+    // the log: the table went down for the axe, left the bag, and the head need flipped from the axe to log
+    @Test
+    public void aTablePlacedNextToUsCountsAsHeld() {
+        // 4 planks and some sticks in the bag: enough for the axe, not for an axe AND a table
+        FakeFacts placed = new FakeFacts().give(Items.OAK_PLANKS, 3).give(Items.STICK, 2);
+        assertEquals("log", KitPlanner.gather(placed, cfg, 8).get(0).catalogueName());
+        placed.tablePlaced = true;
+        assertEquals("wooden_axe", KitPlanner.gather(placed, cfg, 8).get(0).catalogueName());
+        // and the same with the table in the bag, it is the same table
+        FakeFacts bag = new FakeFacts().give(Items.OAK_PLANKS, 3).give(Items.STICK, 2).give(Items.CRAFTING_TABLE, 1);
+        assertEquals(names(KitPlanner.gather(bag, cfg, 8)), names(KitPlanner.gather(placed, cfg, 8)));
+    }
+
+    @Test
+    public void aPlacedTableTakesTheTablePlanksOutOfTheBudgetToo() {
+        int fresh = KitPlanner.woodNeed(f, cfg, 0);
+        FakeFacts placed = new FakeFacts();
+        placed.tablePlaced = true;
+        assertEquals(fresh - 2, KitPlanner.woodNeed(placed, cfg, 0));
+        assertEquals(KitPlanner.woodNeed(new FakeFacts().give(Items.CRAFTING_TABLE, 1), cfg, 0), KitPlanner.woodNeed(placed, cfg, 0));
+    }
+
     @Test
     public void ironPhaseDoesNotAskForWoodOnceTheOreIsInTheBag() {
         // the whole point: no cave to surface trip for one more log

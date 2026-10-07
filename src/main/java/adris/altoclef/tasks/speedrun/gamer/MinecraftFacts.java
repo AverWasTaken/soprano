@@ -2,6 +2,7 @@ package adris.altoclef.tasks.speedrun.gamer;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.AltoSettings;
+import adris.altoclef.tasks.speedrun.gamer.config.GamerConfigs;
 import adris.altoclef.util.helpers.FoodHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import baritone.api.utils.Dimension;
@@ -9,6 +10,7 @@ import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.WinScreen;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.entity.player.Inventory;
@@ -18,6 +20,7 @@ import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.level.block.Blocks;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -44,6 +47,7 @@ public final class MinecraftFacts implements GamerFacts {
     private long gameTime;
     // sticky: once the credits showed up the run is over, the screen going away again must not undo that
     private boolean credits;
+    private boolean tableNearby;
 
     public MinecraftFacts(AltoClef mod) {
         this.mod = mod;
@@ -66,7 +70,32 @@ public final class MinecraftFacts implements GamerFacts {
             credits = true;
         }
         countItems(player);
+        tableNearby = findTableNearby(player);
         return true;
+    }
+
+    // one of the tables this run placed, still standing, and not further than the pickup would walk (the same WalkCost
+    // budget StationPickup forgets them at). overworld only, that is where placedTables are recorded
+    private boolean findTableNearby(Player player) {
+        if (state == null || dimension != Dimension.OVERWORLD || state.placedTables.isEmpty()) {
+            return false;
+        }
+        double budget = GamerConfigs.get().overworld.tableRecoverRadius;
+        for (RunState.Pos pos : state.placedTables) {
+            if (OwnTables.walkCost(pos, player.getX(), player.getY(), player.getZ()) > budget) {
+                continue;
+            }
+            BlockPos at = new BlockPos(pos.x, pos.y, pos.z);
+            if (mod.getChunkTracker().isChunkLoaded(at) && mod.getWorld().getBlockState(at).is(Blocks.CRAFTING_TABLE)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    @Override
+    public boolean tablePlacedNearby() {
+        return tableNearby;
     }
 
     private void countItems(Player player) {

@@ -152,8 +152,11 @@ public final class OwnTables {
     }
 
     // either reason to take the table back: the crafting is over (new rule), or the run moved on to a need that does not
-    // craft (old one, the fallback for a table that was placed and never opened)
-    public static boolean wantsTableNow(String usedByNeed, String currentNeed, boolean finishedCrafting) {
-        return finishedCrafting || wantsTableBack(usedByNeed, currentNeed);
+    // craft (old one, the fallback for a table that was placed and never opened). that fallback has one exception: a table
+    // nobody has used yet with a craft still somewhere in the plan is waiting for that craft (a log trip first, the planner
+    // is allowed to want wood before the menu opens), taking it would just place it again 5 seconds later
+    public static boolean wantsTableNow(String usedByNeed, String currentNeed, boolean finishedCrafting, boolean usedSincePlaced,
+                                        boolean craftPlanned) {
+        return finishedCrafting || (wantsTableBack(usedByNeed, currentNeed) && (usedSincePlaced || !craftPlanned));
     }
 }

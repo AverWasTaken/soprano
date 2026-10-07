@@ -108,7 +108,7 @@ public class IronPhase implements PhaseHandler {
         committed = null;
         List<KitNeed> needs = KitPlanner.plan(ctx.facts(), ctx.cfg().overworld, ctx.cfg().end.beds);
         KitNeed first = needs.isEmpty() ? null : needs.get(0);
-        Task side = support.tick(mod, ctx, first);
+        Task side = support.tick(mod, ctx, needs);
         if (side != null) {
             hudState = support.hud();
             return side;
@@ -136,7 +136,7 @@ public class IronPhase implements PhaseHandler {
         Schedule schedule = SmeltFiller.schedule(f, ctx.cfg().overworld, ctx.cfg().end.beds, furnaces.nearby(mod, ctx),
                 SmeltFiller.capped(furnaces.pullbacks(), ctx.cfg().overworld));
         KitNeed head = schedule.runnable().isEmpty() ? null : schedule.runnable().get(0);
-        Task side = support.tick(mod, ctx, head);
+        Task side = support.tick(mod, ctx, schedule.runnable());
         if (side != null) {
             hudState = support.hud();
             return side;

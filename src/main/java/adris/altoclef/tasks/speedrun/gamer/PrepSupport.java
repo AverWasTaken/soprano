@@ -4,6 +4,8 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.tasksystem.Task;
 import net.minecraft.world.level.block.Blocks;
 
+import java.util.List;
+
 
 // the side jobs the overworld phases share: danger filtering, taking our crafting table and furnace back, ruined portal chests,
 // village chests, the odd iron golem.
@@ -61,7 +63,9 @@ public final class PrepSupport {
         return stations.owed();
     }
 
-    public Task tick(AltoClef mod, GamerContext ctx, KitNeed current) {
+    // `needs` is what the phase still has to do, in order (empty = nothing)
+    public Task tick(AltoClef mod, GamerContext ctx, List<KitNeed> needs) {
+        KitNeed current = needs.isEmpty() ? null : needs.get(0);
         danger.tick(mod);
         hud = null;
         // a golem fight in progress outranks everything, a chest is not worth stepping off the pillar for
@@ -72,7 +76,7 @@ public final class PrepSupport {
                 return fight;
             }
         }
-        Task station = stations.tick(mod, ctx, current, tracking);
+        Task station = stations.tick(mod, ctx, current, needs, tracking);
         if (station != null) {
             hud = stations.hud();
             return station;

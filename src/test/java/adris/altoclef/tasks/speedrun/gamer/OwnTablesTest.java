@@ -240,12 +240,26 @@ public class OwnTablesTest {
     @Test
     public void bothReasonsTakeTheTableBack() {
         // food is still the running need (no boundary) but the bread is done
-        assertFalse(OwnTables.wantsTableNow("food", "food", false));
-        assertTrue(OwnTables.wantsTableNow("food", "food", true));
+        assertFalse(OwnTables.wantsTableNow("food", "food", false, true, false));
+        assertTrue(OwnTables.wantsTableNow("food", "food", true, true, false));
         // the old boundary rule is still the fallback for a table that was never opened
-        assertTrue(OwnTables.wantsTableNow("food", "iron_ingot", false));
+        assertTrue(OwnTables.wantsTableNow("food", "iron_ingot", false, false, false));
         // a craft need next keeps it either way, finished or not is the caller's call (nextNeedCrafts above)
-        assertFalse(OwnTables.wantsTableNow("wooden_pickaxe", "stone_pickaxe", false));
+        assertFalse(OwnTables.wantsTableNow("wooden_pickaxe", "stone_pickaxe", false, true, true));
+    }
+
+    // the log: table placed for the wooden axe, the planner wanted logs before the menu ever opened (the table had left the
+    // bag), the boundary fallback read that as "moved on" and the table came back up and went down again
+    @Test
+    public void anUnusedTableStaysWhileACraftIsStillPlanned() {
+        // used-by is the axe, the head need flipped to log, the axe craft is still in the plan: stays
+        assertFalse(OwnTables.wantsTableNow("wooden_axe", "log", false, false, true));
+        // nothing crafts any more and it never got opened: the old fallback applies, take it
+        assertTrue(OwnTables.wantsTableNow("wooden_axe", "log", false, false, false));
+        // it was used, a craft later in the plan does not keep it (the next craft places it again, same as before)
+        assertTrue(OwnTables.wantsTableNow("wooden_axe", "log", false, true, true));
+        // finished crafting still wins, whatever the plan says
+        assertTrue(OwnTables.wantsTableNow("wooden_axe", "log", true, true, true));
     }
 
     // the floor is a few seconds now (config 5), two crafts landing close together no longer leave a table behind

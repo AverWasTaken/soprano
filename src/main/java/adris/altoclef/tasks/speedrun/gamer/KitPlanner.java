@@ -155,11 +155,17 @@ public final class KitPlanner {
     // planks for a table (or two): with no tool made yet the first one is still ahead of us, and the second is the
     // spare for the iron crafts if the first is too far to walk back to
     private static int tablePlanks(GamerFacts f) {
-        if (f.has(Items.CRAFTING_TABLE)) {
+        if (tableHeld(f)) {
             return 0;
         }
         boolean madeTools = f.count(ItemHelper.WOODEN_TOOLS) + f.count(ItemHelper.STONE_TOOLS) + f.count(ItemHelper.IRON_TOOLS) > 0;
         return TABLE_PLANKS * (madeTools ? 1 : 2);
+    }
+
+    // a table standing next to us is coming back to the bag, so it is as good as in it. without this the plan asked for
+    // table planks the second the table went down and walked off to chop with the axe still uncrafted
+    private static boolean tableHeld(GamerFacts f) {
+        return f.has(Items.CRAFTING_TABLE) || f.tablePlacedNearby();
     }
 
     // the first trip to the trees: just the table and the axe, so the axe is in hand for the real batch
@@ -173,7 +179,7 @@ public final class KitPlanner {
         if (wood[0] + wood[1] == 0) {
             return 0;
         }
-        if (!f.has(Items.CRAFTING_TABLE)) {
+        if (!tableHeld(f)) {
             wood[0] += TABLE_PLANKS;
         }
         return logsShort(f, wood[0], wood[1], false);

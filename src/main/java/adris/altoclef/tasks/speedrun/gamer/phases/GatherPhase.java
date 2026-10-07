@@ -59,7 +59,7 @@ public class GatherPhase implements PhaseHandler {
     @Override
     public Task tick(AltoClef mod, GamerContext ctx) {
         List<KitNeed> needs = KitPlanner.gather(ctx.facts(), ctx.cfg().overworld, ctx.cfg().end.beds);
-        Task side = support.tick(mod, ctx, needs.isEmpty() ? null : needs.get(0));
+        Task side = support.tick(mod, ctx, needs);
         if (side != null) {
             hudState = support.hud();
             return side;

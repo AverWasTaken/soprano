@@ -22,6 +22,8 @@ public class FakeFacts implements GamerFacts {
     public int z;
     public long gameTime;
     public boolean credits;
+    // one of our tables standing next to us (it is out of the bag, the planner still counts it)
+    public boolean tablePlaced;
     public int fingerprint;
     // the jobs of this dimension, set by hand
     public final java.util.List<RunState.FurnaceJob> jobs = new java.util.ArrayList<>();
@@ -108,6 +110,11 @@ public class FakeFacts implements GamerFacts {
     @Override
     public long gameTime() {
         return gameTime;
+    }
+
+    @Override
+    public boolean tablePlacedNearby() {
+        return tablePlaced;
     }
 
     @Override
