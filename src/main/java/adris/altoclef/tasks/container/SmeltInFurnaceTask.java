@@ -362,16 +362,43 @@ public class SmeltInFurnaceTask extends ResourceTask {
 
         @Override
         protected double getCostToMakeNew(AltoClef mod) {
-            if (_furnaceCache.burnPercentage > 0 || _furnaceCache.burningFuelCount > 0 ||
-                    _furnaceCache.fuelSlot != null || _furnaceCache.materialSlot != null ||
-                    _furnaceCache.outputSlot != null) {
-                return 9999999.0;
+            // this used to compare the cache slots to null. they start as EMPTY stacks, never null, so it was "never make a
+            // new one" for every smelt and the cobble math below it was dead code. a furnace we put stuff in stays ours
+            if (hasStartedSmelting() || _furnaceCache.burnPercentage > 0) {
+                return NEVER_MAKE_NEW;
             }
-            if (mod.getItemStorage().getItemCount(Items.COBBLESTONE) > 8) {
-                double cost = 100.0 - 90.0 * (double) mod.getItemStorage().getItemCount(new Item[]{Items.COBBLESTONE}) / 8.0;
-                return Math.max(cost, 10.0);
+            BlockPos known = rememberedFurnace(mod);
+            if (known == null) {
+                return NEVER_MAKE_NEW;
             }
-            return StorageHelper.miningRequirementMetInventory(mod, MiningRequirement.WOOD) ? 50.0 : 100.0;
+            var me = mod.getPlayer().position();
+            boolean cheap = FurnaceReuse.canMakeCheaply(mod.getItemStorage().hasItem(Items.FURNACE),
+                    mod.getItemStorage().getItemCount(Items.COBBLESTONE, Items.COBBLED_DEEPSLATE, Items.BLACKSTONE), tableAround(mod));
+            // 0 = any walk at all costs more, so DoStuffInContainerTask places one here instead
+            return FurnaceReuse.makeNew(true, cheap, known.getX() + 0.5 - me.x, known.getY() - me.y, known.getZ() + 0.5 - me.z)
+                    ? 0.0 : NEVER_MAKE_NEW;
+        }
+
+        private static final double NEVER_MAKE_NEW = 9999999.0;
+
+        // the furnace DoStuffInContainerTask would walk to: the one it already picked, or the closest the tracker knows
+        private BlockPos rememberedFurnace(AltoClef mod) {
+            BlockPos picked = getTargetContainerPosition();
+            if (picked != null && mod.getBlockTracker().blockIsValid(picked, Blocks.FURNACE)) {
+                return picked;
+            }
+            return mod.getBlockTracker().getNearestTracking(mod.getPlayer().position(),
+                    p -> adris.altoclef.util.helpers.WorldHelper.canReach(mod, p), Blocks.FURNACE).orElse(null);
+        }
+
+        // a table to craft the furnace on: in the bag, standing close, or the wood to make one on the spot
+        private static boolean tableAround(AltoClef mod) {
+            if (mod.getItemStorage().hasItem(Items.CRAFTING_TABLE)
+                    || mod.getItemStorage().hasItem(ItemHelper.LOG) || mod.getItemStorage().getItemCount(ItemHelper.PLANKS) >= 4) {
+                return true;
+            }
+            Optional<BlockPos> table = mod.getBlockTracker().getNearestTracking(Blocks.CRAFTING_TABLE);
+            return table.isPresent() && table.get().closerToCenterThan(mod.getPlayer().position(), 40);
         }
 
         @Override
