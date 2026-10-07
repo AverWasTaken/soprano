@@ -87,6 +87,7 @@ public class RunStateStoreTest {
         s.placedTables.add(new RunState.Pos(245, 63, 40));
         s.placedTables.add(new RunState.Pos(-3, 70, 9));
         s.placedFurnaces.add(new RunState.Pos(12, 64, -4));
+        s.placedSmokers.add(new RunState.Pos(13, 64, -4));
         s.villageChestsTried.add(new RunState.Pos(12, 64, -7));
         s.villageLootTicks = 1500;
         s.placedJobBlocks.add(new RunState.Pos(5, 64, 5));
@@ -208,6 +209,38 @@ public class RunStateStoreTest {
         write(file(), "{\"fingerprint\":\"" + FP + "\",\"phase\":\"IRON\",\"placedTables\":null,\"placedFurnaces\":null}");
         assertTrue(RunStateStore.load(file(), FP).state().placedTables.isEmpty());
         assertTrue(RunStateStore.load(file(), FP).state().placedFurnaces.isEmpty());
+    }
+
+    @Test
+    public void aFileFromBeforeSmokersLoadsWithNoSmokersAndOldJobsAreNotFood() throws IOException {
+        write(file(), "{\"fingerprint\":\"" + FP + "\",\"phase\":\"IRON\",\"placedFurnaces\":[{\"x\":1,\"y\":64,\"z\":2}],"
+                + "\"furnaceJobs\":[{\"pos\":{\"x\":1,\"y\":64,\"z\":2},\"dimension\":\"OVERWORLD\",\"kind\":\"furnace\","
+                + "\"input\":\"raw_iron\",\"count\":9,\"output\":\"iron_ingot\",\"startTick\":10,\"doneTick\":1810}]}");
+        RunState s = RunStateStore.load(file(), FP).state();
+        assertTrue(s.placedSmokers.isEmpty());
+        assertEquals(1, s.placedFurnaces.size());
+        assertEquals(1, s.furnaceJobs.size());
+        assertEquals(0, s.furnaceJobs.get(0).unitsEach);
+        assertEquals(0, FurnaceJobs.pendingUnits(s.furnaceJobs));
+        write(file(), "{\"fingerprint\":\"" + FP + "\",\"phase\":\"IRON\",\"placedSmokers\":null}");
+        assertTrue(RunStateStore.load(file(), FP).state().placedSmokers.isEmpty());
+    }
+
+    @Test
+    public void smokersAndFoodJobsSurviveASaveAndLoad() throws IOException {
+        RunState s = new RunState();
+        s.fingerprint = FP;
+        s.phase = GamerPhase.GATHER;
+        s.placedSmokers.add(new RunState.Pos(3, 70, -8));
+        RunState.FurnaceJob job = new RunState.FurnaceJob(new RunState.Pos(3, 70, -8), "OVERWORLD", "smoker", "mutton", 7,
+                "cooked_mutton", 100, 800);
+        job.unitsEach = 6;
+        s.furnaceJobs.add(job);
+        RunStateStore.save(file(), s);
+        RunState out = RunStateStore.load(file(), FP).state();
+        assertEquals(List.of(new RunState.Pos(3, 70, -8)), out.placedSmokers);
+        assertEquals(6, out.furnaceJobs.get(0).unitsEach);
+        assertEquals(42, FurnaceJobs.pendingUnits(out.furnaceJobs));
     }
 
     @Test

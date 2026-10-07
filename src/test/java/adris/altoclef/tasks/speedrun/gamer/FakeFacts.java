@@ -35,6 +35,15 @@ public class FakeFacts implements GamerFacts {
         return this;
     }
 
+    // meat in a smoker, `count` items worth `unitsEach` nutrition apiece once done
+    public FakeFacts cookingFood(String output, int count, int unitsEach, double seconds) {
+        RunState.FurnaceJob job = new RunState.FurnaceJob(new RunState.Pos(5, 64, 0), dimension.name(), "smoker", "mutton", count,
+                output, gameTime, gameTime + Math.round(seconds * 20));
+        job.unitsEach = unitsEach;
+        jobs.add(job);
+        return this;
+    }
+
     @Override
     public java.util.List<RunState.FurnaceJob> furnaceJobs() {
         return jobs;

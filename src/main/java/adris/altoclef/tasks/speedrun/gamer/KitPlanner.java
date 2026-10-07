@@ -324,7 +324,7 @@ public final class KitPlanner {
     }
 
     private static void addFood(List<KitNeed> out, GamerFacts f, int units) {
-        if (f.foodUnits() < units) {
+        if (f.foodUnits() + f.pendingFoodUnits() < units) {
             out.add(new KitNeed(KitNeed.FOOD, units));
         }
     }
@@ -437,7 +437,7 @@ public final class KitPlanner {
     // for the "did that need get closer" check
     public static int progressOf(GamerFacts f, KitNeed need) {
         return switch (need.catalogueName()) {
-            case KitNeed.FOOD -> f.foodUnits();
+            case KitNeed.FOOD -> f.foodUnits() + f.pendingFoodUnits();
             case KitNeed.BUILD_BLOCKS -> f.buildBlocks();
             case KitNeed.EQUIP_ARMOR -> -need.count();
             default -> have(f, need.catalogueName());

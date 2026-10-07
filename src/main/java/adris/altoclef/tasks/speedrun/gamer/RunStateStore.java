@@ -135,6 +135,10 @@ public final class RunStateStore {
         if (s.placedFurnaces == null) {
             s.placedFurnaces = new ArrayList<>();
         }
+        // same for smokers: absent key is a fresh list from the field initializer, an explicit null is a hand edit
+        if (s.placedSmokers == null) {
+            s.placedSmokers = new ArrayList<>();
+        }
         // files from before the village loot: nothing visited yet, nothing of ours to tell apart
         if (s.villageChestsTried == null) {
             s.villageChestsTried = new ArrayList<>();

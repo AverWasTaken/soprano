@@ -76,6 +76,12 @@ public interface GamerFacts {
         return false;
     }
 
+    // nutrition cooking in a smoker or furnace for us right now. foodUnits() stays what is in the bag, the planner counts the
+    // two together so a loaded smoker is not "no food", and the phases hold their end until the jobs are collected
+    default int pendingFoodUnits() {
+        return FurnaceJobs.pendingUnits(furnaceJobs());
+    }
+
     // true once the win screen has been shown (or the run saw the dragon die and came home)
     boolean creditsShown();
 

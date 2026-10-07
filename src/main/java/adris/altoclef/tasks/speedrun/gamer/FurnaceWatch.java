@@ -20,6 +20,7 @@ import net.minecraft.world.entity.animal.Chicken;
 import net.minecraft.world.entity.animal.Cow;
 import net.minecraft.world.entity.animal.Pig;
 import net.minecraft.world.entity.animal.Sheep;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.phys.Vec3;
@@ -43,6 +44,9 @@ public final class FurnaceWatch {
     private boolean pickUpWhenEmpty;
     private Task pickup;
     private BlockPos pickupAt;
+    // what is coming down: the block kind it was (furnace or smoker) and the item it turns into
+    private String pickupKind = "furnace";
+    private Item pickupItem = Items.FURNACE;
     private boolean pickupBroken;
     private long pickupStart;
     private SmeltFiller.Nearby nearby = SmeltFiller.Nearby.ANYWHERE;
@@ -113,29 +117,42 @@ public final class FurnaceWatch {
         }
         if (!pickupBroken && pickup.isFinished(mod)) {
             pickupBroken = true;
-            ctx.state().placedFurnaces.remove(new RunState.Pos(pickupAt.getX(), pickupAt.getY(), pickupAt.getZ()));
-            pickup = new PickupDroppedItemTask(Items.FURNACE, 1);
+            // only one of the two lists has this spot, removing from both is the cheap way to not care which
+            RunState.Pos gone = new RunState.Pos(pickupAt.getX(), pickupAt.getY(), pickupAt.getZ());
+            ctx.state().placedFurnaces.remove(gone);
+            ctx.state().placedSmokers.remove(gone);
+            pickup = new PickupDroppedItemTask(pickupItem, 1);
         }
         double elapsed = (ctx.facts().gameTime() - pickupStart) / 20.0;
-        if ((pickupBroken && ctx.facts().has(Items.FURNACE)) || elapsed > ctx.cfg().overworld.tablePickupSeconds) {
-            Debug.logInternal("furnace pickup after the last collect: " + (pickupBroken ? "done" : "timed out") + " at " + pickupAt.toShortString());
+        if ((pickupBroken && ctx.facts().has(pickupItem)) || elapsed > ctx.cfg().overworld.tablePickupSeconds) {
+            Debug.logInternal(pickupKind + " pickup after the last collect: " + (pickupBroken ? "done" : "timed out") + " at " + pickupAt.toShortString());
             pickup = null;
             pickupAt = null;
             pickupBroken = false;
             hud = null;
             return null;
         }
-        hud = "Picking up the furnace";
+        hud = "Picking up the " + pickupKind;
         return pickup;
     }
 
-    // ours, a plain furnace (never a village's blast furnace), nothing in it, and we hold no spare. then it comes with us
-    private boolean takeBack(AltoClef mod, GamerContext ctx, RunState.FurnaceJob job) {
-        if (!pickUpWhenEmpty || !"furnace".equals(job.kind) || ctx.facts().has(Items.FURNACE)
-                || !ctx.state().placedFurnaces.contains(job.pos)) {
+    // ours, a plain furnace or a smoker (never a village's blast furnace), nothing left in it, and we hold no spare. then it
+    // comes with us. the rule itself is FurnaceJobs.mayTakeBack, this only adds "can we actually reach it"
+    private boolean takeBack(AltoClef mod, GamerContext ctx, RunState.FurnaceJob job, int inputLeft) {
+        Item item = itemOf(job.kind);
+        if (!pickUpWhenEmpty || item == null
+                || !FurnaceJobs.mayTakeBack(ctx.state(), job.kind, job.pos, inputLeft, ctx.facts().has(item))) {
             return false;
         }
         return WorldHelper.canBreak(mod, at(job));
+    }
+
+    private static Item itemOf(String kind) {
+        return switch (kind) {
+            case "furnace" -> Items.FURNACE;
+            case "smoker" -> Items.SMOKER;
+            default -> null;
+        };
     }
 
     // plain words for what we are doing about the furnace, null when nothing
@@ -194,12 +211,14 @@ public final class FurnaceWatch {
         task = null;
         target = null;
         hud = null;
-        if (left <= 0 && takeBack(mod, ctx, visited)) {
+        if (takeBack(mod, ctx, visited, left)) {
             pickupAt = at(visited);
+            pickupKind = visited.kind;
+            pickupItem = itemOf(visited.kind);
             pickupStart = ctx.facts().gameTime();
             pickupBroken = false;
             pickup = new DestroyBlockTask(pickupAt);
-            Debug.logInternal("furnace is empty, taking it back at " + pickupAt.toShortString());
+            Debug.logInternal(pickupKind + " is empty, taking it back at " + pickupAt.toShortString());
             return finishing(mod, ctx);
         }
         return null;

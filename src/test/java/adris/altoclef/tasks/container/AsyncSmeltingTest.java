@@ -1,0 +1,56 @@
+package adris.altoclef.tasks.container;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
+
+import adris.altoclef.tasks.speedrun.gamer.RunState;
+import java.util.ArrayList;
+import java.util.List;
+import org.junit.After;
+import org.junit.Test;
+
+public class AsyncSmeltingTest {
+    @After
+    public void forget() {
+        AsyncSmelting.clear();
+    }
+
+    @Test
+    public void ironNeedsTheSmeltingSwitchOnly() {
+        assertTrue(AsyncSmelting.wantsName("iron_ingot", true, false));
+        assertTrue(AsyncSmelting.wantsName("iron_ingot", true, true));
+        assertFalse(AsyncSmelting.wantsName("iron_ingot", false, true));
+    }
+
+    @Test
+    public void foodNeedsBothSwitches() {
+        assertTrue(AsyncSmelting.wantsName("cooked_mutton", true, true));
+        assertFalse("user said stand there for the meat", AsyncSmelting.wantsName("cooked_mutton", true, false));
+        // a plain altoclef run never turns smelting on, so it keeps standing at the smoker like it always did
+        assertFalse(AsyncSmelting.wantsName("cooked_mutton", false, true));
+    }
+
+    @Test
+    public void everythingElseStaysBlocking() {
+        assertFalse(AsyncSmelting.wantsName("gold_ingot", true, true));
+        assertFalse(AsyncSmelting.wantsName("glass", true, true));
+        assertFalse(AsyncSmelting.wantsName("dried_kelp", true, true));
+    }
+
+    @Test
+    public void theFoodTaskSeesNothingUntilTheGamerHandsOverItsJobs() {
+        assertEquals(0, AsyncSmelting.pendingFoodUnits());
+        List<RunState.FurnaceJob> jobs = new ArrayList<>();
+        AsyncSmelting.watchJobs(() -> jobs);
+        assertEquals(0, AsyncSmelting.pendingFoodUnits());
+        RunState.FurnaceJob meat = new RunState.FurnaceJob(new RunState.Pos(1, 64, 1), "OVERWORLD", "smoker", "mutton", 7,
+                "cooked_mutton", 0, 700);
+        meat.unitsEach = 6;
+        jobs.add(meat);
+        assertEquals(42, AsyncSmelting.pendingFoodUnits());
+        // the run ending lets go of the list
+        AsyncSmelting.clear();
+        assertEquals(0, AsyncSmelting.pendingFoodUnits());
+    }
+}

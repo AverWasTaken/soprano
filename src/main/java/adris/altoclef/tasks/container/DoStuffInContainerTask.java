@@ -102,6 +102,12 @@ public abstract class DoStuffInContainerTask extends Task {
             costToWalk = BaritoneHelper.calculateGenericHeuristic(currentPos, WorldHelper.toVec3d(nearest.get()));
         }
 
+        if (nearest.isEmpty() && _cachedContainerPosition != null && isContainerBlock(mod, _cachedContainerPosition)) {
+            // the tracker lost the one we were walking to (a rescan after a fuel trip did it, and the next thing the bot did was
+            // mine the smoker it had just put down to "get the container item"). the world still has it, the world wins
+            nearest = Optional.of(_cachedContainerPosition);
+        }
+
         boolean mayMakeNew = canMakeNew(mod);
         if (nearest.isEmpty() && !mayMakeNew) {
             // we were told to use a container that already exists, so with none left we sit still and let whoever
@@ -162,6 +168,20 @@ public abstract class DoStuffInContainerTask extends Task {
         }
         return _openTableTask;
         //return new GetToBlockTask(nearest, true);
+    }
+
+    private boolean isContainerBlock(AltoClef mod, BlockPos pos) {
+        // blacklisted spots stay blacklisted, that is the whole point of the tracker's answer being empty
+        if (mod.getBlockTracker().unreachable(pos)) {
+            return false;
+        }
+        Block there = mod.getWorld().getBlockState(pos).getBlock();
+        for (Block block : _containerBlocks) {
+            if (block == there) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public ItemTarget getContainerTarget() {

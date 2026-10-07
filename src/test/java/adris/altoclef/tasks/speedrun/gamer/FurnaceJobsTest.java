@@ -83,6 +83,71 @@ public class FurnaceJobsTest {
         assertEquals(2, jobs.get(0).pos.x);
     }
 
+    private static RunState.FurnaceJob meat(int x, int count, long start) {
+        RunState.FurnaceJob j = new RunState.FurnaceJob(new RunState.Pos(x, 64, 0), "OVERWORLD", "smoker", "mutton", count,
+                "cooked_mutton", start, FurnaceJobs.doneTick("smoker", start, count));
+        j.unitsEach = 6;
+        return j;
+    }
+
+    @Test
+    public void sevenMuttonInASmokerIsThirtyFiveSeconds() {
+        RunState.FurnaceJob j = meat(1, 7, 1000);
+        assertEquals(1000 + 7 * 100L, j.doneTick);
+        assertEquals(35, (j.doneTick - j.startTick) / 20);
+    }
+
+    @Test
+    public void cookingFoodIsPendingNutritionAndIronIsNot() {
+        List<RunState.FurnaceJob> jobs = List.of(meat(1, 7, 0), job(2, 10, 0, "furnace"));
+        assertEquals(42, FurnaceJobs.pendingUnits(jobs));
+        assertEquals(0, FurnaceJobs.pendingUnits(List.of()));
+        assertEquals(0, FurnaceJobs.pendingUnits(List.of(job(2, 10, 0, "furnace"))));
+    }
+
+    @Test
+    public void aVisitShrinksThePendingFoodWithTheInputLeft() {
+        List<RunState.FurnaceJob> jobs = new ArrayList<>();
+        RunState.FurnaceJob j = meat(1, 7, 0);
+        jobs.add(j);
+        FurnaceJobs.afterVisit(jobs, j, 3, 400);
+        assertEquals(18, FurnaceJobs.pendingUnits(jobs));
+        assertEquals(400 + 300L, j.doneTick);
+        FurnaceJobs.afterVisit(jobs, j, 0, 800);
+        assertEquals(0, FurnaceJobs.pendingUnits(jobs));
+    }
+
+    @Test
+    public void onlyOurOwnEmptySmokersAndFurnacesComeBack() {
+        RunState s = new RunState();
+        RunState.Pos spot = new RunState.Pos(4, 64, 4);
+        s.placedSmokers.add(spot);
+        assertTrue(FurnaceJobs.mayTakeBack(s, "smoker", spot, 0, false));
+        // a smoker is not in the furnace list and the other way round
+        assertFalse(FurnaceJobs.mayTakeBack(s, "furnace", spot, 0, false));
+        s.placedFurnaces.add(new RunState.Pos(9, 64, 9));
+        assertTrue(FurnaceJobs.mayTakeBack(s, "furnace", new RunState.Pos(9, 64, 9), 0, false));
+        // a village's smoker (never recorded) and a blast furnace of any kind stay where they are
+        assertFalse(FurnaceJobs.mayTakeBack(s, "smoker", new RunState.Pos(5, 64, 5), 0, false));
+        assertFalse(FurnaceJobs.mayTakeBack(s, "blast_furnace", spot, 0, false));
+        // a spare in the bag means this one is not worth a trip
+        assertTrue(!FurnaceJobs.mayTakeBack(s, "smoker", spot, 0, true));
+    }
+
+    @Test
+    public void neverBreakASmokerThatStillHasFood() {
+        RunState s = new RunState();
+        RunState.Pos spot = new RunState.Pos(4, 64, 0);
+        s.placedSmokers.add(spot);
+        // the collect trip left input cooking in there
+        assertFalse(FurnaceJobs.mayTakeBack(s, "smoker", spot, 3, false));
+        // or another job still points at the spot
+        s.furnaceJobs.add(meat(4, 3, 0));
+        assertFalse(FurnaceJobs.mayTakeBack(s, "smoker", spot, 0, false));
+        s.furnaceJobs.clear();
+        assertTrue(FurnaceJobs.mayTakeBack(s, "smoker", spot, 0, false));
+    }
+
     @Test
     public void aVisitRewritesTheJobOrEndsIt() {
         List<RunState.FurnaceJob> jobs = new ArrayList<>();

@@ -68,6 +68,54 @@ public class SmeltFillerTest {
     }
 
     @Test
+    public void foodInTheSmokerCountsAsPendingNotAsHeld() {
+        FakeFacts f = atTheFurnace();
+        f.foodUnits = 10;
+        f.cookingFood("cooked_mutton", 10, 6, 50);
+        assertEquals(10, f.foodUnits());
+        assertEquals(60, f.pendingFoodUnits());
+        // 10 + 60 covers the 70 unit need but not an 80 one, and the bag number never lied about it
+        assertNull(find(KitPlanner.gather(f, cfg, BEDS), KitNeed.FOOD));
+        cfg.minFoodUnits = 80;
+        assertEquals(new KitNeed(KitNeed.FOOD, 80), find(KitPlanner.gather(f, cfg, BEDS), KitNeed.FOOD));
+        assertEquals(10 + 60, KitPlanner.progressOf(f, new KitNeed(KitNeed.FOOD, 80)));
+    }
+
+    @Test
+    public void ironJobsAreNotFood() {
+        FakeFacts f = atTheFurnace().cooking("iron_ingot", 39, 400);
+        assertEquals(0, f.pendingFoodUnits());
+    }
+
+    @Test
+    public void aSecondBatchOfMeatWaitsForTheSmokerToBeEmptied() {
+        FakeFacts f = atTheFurnace();
+        f.foodUnits = 0;
+        f.cookingFood("cooked_porkchop", 3, 8, 15).give(Items.MUTTON, 7);
+        KitNeed food = new KitNeed(KitNeed.FOOD, 70);
+        assertTrue(SmeltFiller.foodBlocked(f, food));
+        // no raw meat left to load, so the food task has nothing to wait for and may hunt
+        FakeFacts hunter = atTheFurnace().cookingFood("cooked_porkchop", 3, 8, 15);
+        assertFalse(SmeltFiller.foodBlocked(hunter, food));
+        // and no job, no block
+        assertFalse(SmeltFiller.foodBlocked(atTheFurnace().give(Items.MUTTON, 7), food));
+        // only the food need ever waits
+        assertFalse(SmeltFiller.foodBlocked(f, new KitNeed("log", 4)));
+    }
+
+    @Test
+    public void gatherKeepsWorkingOnWoodWhileTheFoodCooks() {
+        FakeFacts f = new FakeFacts();
+        f.cookingFood("cooked_mutton", 7, 6, 35).give(Items.MUTTON, 3);
+        List<KitNeed> runnable = SmeltFiller.gatherRunnable(f, cfg, BEDS, SmeltFiller.Nearby.ANYWHERE, false);
+        assertEquals(KitPlanner.gather(f, cfg, BEDS).stream().filter(n -> !KitNeed.FOOD.equals(n.catalogueName())).toList(),
+                runnable);
+        assertFalse(runnable.isEmpty());
+        // the food need is not in the runnable list while the first batch cooks, even when it is still short
+        assertNull(find(runnable, KitNeed.FOOD));
+    }
+
+    @Test
     public void heldAndCookingIngotsAddUp() {
         FakeFacts f = atTheFurnace().give(Items.IRON_INGOT, 10).cooking("iron_ingot", 29, 400);
         assertNull(find(KitPlanner.plan(f, cfg, BEDS), "iron_ingot"));

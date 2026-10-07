@@ -182,6 +182,8 @@ public class GamerTask extends Task {
             Debug.logInternal("gamer: onStop " + e);
         } finally {
             begun = false;
+            // the food task must stop seeing our jobs once we are gone
+            AsyncSmelting.clear();
             stopWatchingPlacements();
             releaseBehaviour(mod);
         }
@@ -318,6 +320,8 @@ public class GamerTask extends Task {
         AsyncSmelting.clear();
         loadState(mod);
         facts.useState(state);
+        // so CollectFoodTask can count the meat that is cooking without knowing what a RunState is
+        AsyncSmelting.watchJobs(facts::furnaceJobs);
         deathsAtStart = state.deaths.size();
         lastSaveSeconds = machine.now();
         begun = true;
@@ -334,11 +338,18 @@ public class GamerTask extends Task {
             // it there: a crafting table or furnace, in the overworld, inside our own placing reach
             LocalPlayer player = Minecraft.getInstance().player;
             if (state == null || !begun || player == null || facts == null || facts.dimension() != Dimension.OVERWORLD
-                    || !(evt.blockState.is(Blocks.CRAFTING_TABLE) || evt.blockState.is(Blocks.FURNACE) || isJobBlock(evt.blockState))) {
+                    || !(evt.blockState.is(Blocks.CRAFTING_TABLE) || evt.blockState.is(Blocks.FURNACE) || evt.blockState.is(Blocks.SMOKER)
+                    || isJobBlock(evt.blockState))) {
                 return;
             }
             RunState.Pos pos = new RunState.Pos(evt.blockPos.getX(), evt.blockPos.getY(), evt.blockPos.getZ());
-            if (isJobBlock(evt.blockState)) {
+            if (evt.blockState.is(Blocks.SMOKER)) {
+                // not a StationPickup slot: the smoker comes down through FurnaceWatch once its cook job is collected, so
+                // all it needs here is to be on the list of ours (a village's smoker never is)
+                if (OwnTables.placedByUs(player.getX(), player.getEyeY(), player.getZ(), pos) && OwnTables.record(state.placedSmokers, pos)) {
+                    Debug.logInternal("smoker recorded at " + pos.x + " " + pos.y + " " + pos.z);
+                }
+            } else if (isJobBlock(evt.blockState)) {
                 // same guess as the table below. VillageLoot must not take a blast furnace we crafted for a village
                 if (OwnTables.placedByUs(player.getX(), player.getEyeY(), player.getZ(), pos)) {
                     OwnTables.record(state.placedJobBlocks, pos);
@@ -511,7 +522,8 @@ public class GamerTask extends Task {
         List<RunState.FurnaceJob> loaded = AsyncSmelting.drain();
         for (RunState.FurnaceJob job : loaded) {
             FurnaceJobs.record(state.furnaceJobs, job);
-            host.say("Smelting in the background (" + job.count + " ingots, ~" + job.count * FurnaceJobs.ticksPerItem(job.kind) / 20 + "s)");
+            host.say((job.unitsEach > 0 ? "Cooking in the background (" : "Smelting in the background (") + job.count + " "
+                    + job.output.replace('_', ' ') + ", ~" + job.count * FurnaceJobs.ticksPerItem(job.kind) / 20 + "s)");
         }
         if (!loaded.isEmpty()) {
             host.save();

@@ -2156,6 +2156,13 @@ public final class Settings {
     public final Setting<Boolean> altoAsyncSmelting = new Setting<>(false);
 
     /**
+     * Same as {@link #altoAsyncSmelting} but for cooking food in a smoker or furnace. Only does anything while
+     * {@link #altoAsyncSmelting} is on as well (#gamer turns that on for the phases that can come back for the food), so
+     * this is the switch for "iron cooks in the background but I want the bot to stand there for the meat".
+     */
+    public final Setting<Boolean> altoAsyncCooking = new Setting<>(true);
+
+    /**
      * Only use the items in {@link #altoSupportedFuels} as smelting fuel. Careful with turning this off: every burnable
      * item that is not protected (blaze rods, beds, wooden tools, crafting tables...) can get burned.
      */

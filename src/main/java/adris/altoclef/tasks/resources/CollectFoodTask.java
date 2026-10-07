@@ -6,6 +6,7 @@ import adris.altoclef.TaskCatalogue;
 import adris.altoclef.tasks.CraftInInventoryTask;
 import adris.altoclef.tasks.DoToClosestBlockTask;
 import adris.altoclef.tasks.construction.DestroyBlockTask;
+import adris.altoclef.tasks.container.AsyncSmelting;
 import adris.altoclef.tasks.container.CraftInTableTask;
 import adris.altoclef.tasks.container.SmeltInSmokerTask;
 import adris.altoclef.tasks.movement.PickupDroppedItemTask;
@@ -144,6 +145,9 @@ public class CollectFoodTask extends Task {
             potentialFood += getFoodPotential(StorageHelper.getItemStackInSlot(SmokerSlot.INPUT_SLOT_MATERIALS));
             potentialFood += getFoodPotential(StorageHelper.getItemStackInSlot(SmokerSlot.OUTPUT_SLOT));
         }
+        // meat cooking in a smoker we walked away from (async cooking, only the gamer ever has any). it is food on the way,
+        // not food we have: foodUnits() stays honest and this only stops the hunt from doubling up
+        potentialFood += AsyncSmelting.pendingFoodUnits();
         return potentialFood;
     }
 
@@ -287,7 +291,9 @@ public class CollectFoodTask extends Task {
 
             for (CookableFoodTarget cookable : COOKABLE_FOODS) {
                 int rawCount = mod.getItemStorage().getItemCount(cookable.getRaw());
-                if (rawCount > 0) {
+                // one smoker, one input slot: the next batch waits for the one already cooking to be collected, loading it
+                // on top would swap the first batch back out (the gamer collects, then asks for this food again)
+                if (rawCount > 0 && AsyncSmelting.pendingFoodUnits() == 0) {
                     //Debug.logMessage("STARTING COOK OF " + cookable.getRaw().getTranslationKey());
                     int toSmelt = rawCount + mod.getItemStorage().getItemCount(cookable.getCooked());
                     _smeltTask = new SmeltInSmokerTask(new SmeltTarget(new ItemTarget(cookable.cookedFood, toSmelt), new ItemTarget(cookable.rawFood, rawCount)));

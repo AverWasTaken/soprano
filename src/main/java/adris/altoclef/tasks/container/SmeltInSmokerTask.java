@@ -143,6 +143,8 @@ public class SmeltInSmokerTask extends ResourceTask {
         private final SmokerCache _smokerCache = new SmokerCache();
         private final ItemTarget _allMaterials;
         private boolean _ignoreMaterials;
+        // async cooking: everything is in the smoker and we walked away, this task is done and must not walk back to it
+        private boolean _loaded;
 
         public DoSmeltInSmokerTask(SmeltTarget target, boolean ignoreMaterials) {
             super(Blocks.SMOKER, new ItemTarget(Items.SMOKER));
@@ -169,7 +171,15 @@ public class SmeltInSmokerTask extends ResourceTask {
         }
 
         @Override
+        public boolean isFinished(AltoClef mod) {
+            return _loaded;
+        }
+
+        @Override
         protected Task onTick(AltoClef mod) {
+            if (_loaded) {
+                return null;
+            }
             mod.getBehaviour().addProtectedItems(ItemHelper.PLANKS);
             mod.getBehaviour().addProtectedItems(Items.COAL);
             mod.getBehaviour().addProtectedItems(_allMaterials.getMatches());
@@ -319,6 +329,16 @@ public class SmeltInSmokerTask extends ResourceTask {
                 }
             }
 
+            // fully loaded and fueled: 35 seconds of mutton does not need us staring at the gui. the screen closes and the
+            // gamer comes back for it (the same trick as the furnace, AsyncSmelting has the story)
+            BlockPos at = getTargetContainerPosition();
+            if (at != null && !material.isEmpty() && AsyncSmelting.wants(_target.getItem())
+                    && AsyncSmelting.fuelCovers(fuel, StorageHelper.getSmokerFuel(), material.getCount())) {
+                setDebugState("Loaded, leaving it to cook");
+                AsyncSmelting.loaded(mod, at, Blocks.SMOKER, material, _target.getItem());
+                _loaded = true;
+                return null;
+            }
             setDebugState("Waiting...");
             return null;
         }

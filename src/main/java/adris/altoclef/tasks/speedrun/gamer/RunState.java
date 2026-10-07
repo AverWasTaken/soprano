@@ -112,6 +112,9 @@ public class RunState {
         public long startTick;
         // a hint, never a promise: the furnace contents on return are what counts
         public long doneTick;
+        // nutrition of ONE finished item, 0 for anything that is not food. the food planner counts count * unitsEach as food
+        // on the way. an old save has no key and reads 0, which is just "not food"
+        public int unitsEach;
 
         public FurnaceJob() {
         }
@@ -173,6 +176,8 @@ public class RunState {
     public List<Pos> placedTables = new ArrayList<>();
     // same for furnaces (plain ones only, a blast furnace of ours goes in placedJobBlocks below)
     public List<Pos> placedFurnaces = new ArrayList<>();
+    // smokers we crafted for the food. a list of their own so an old save without the key just loads empty
+    public List<Pos> placedSmokers = new ArrayList<>();
 
     // when a station was last open or placed, which kit need was running then, and when we last took one back. transient
     // on purpose: they only gate a debounce and a backstop, a relog starting them over is fine. see OwnTables

@@ -56,7 +56,7 @@ public final class SmeltFiller {
         }
         prep(f, cfg, endBeds, blocked, runnable);
         extras(f, cfg, endBeds, runnable);
-        runnable.removeIf(need -> !withinLeash(need, nearby, capped));
+        runnable.removeIf(need -> !withinLeash(need, nearby, capped) || foodBlocked(f, need));
         return new Schedule(runnable, blocked);
     }
 
@@ -65,6 +65,10 @@ public final class SmeltFiller {
     private static void split(GamerFacts f, List<KitNeed> needs, List<KitNeed> runnable, List<KitNeed> blocked) {
         int ingots = f.count(Items.IRON_INGOT);
         for (KitNeed need : needs) {
+            if (foodBlocked(f, need)) {
+                blocked.add(need);
+                continue;
+            }
             int price = KitPlanner.ingotCost(need.catalogueName()) * (need.count() - KitPlanner.held(f, need.catalogueName()));
             if (price <= 0) {
                 runnable.add(need);
@@ -75,6 +79,25 @@ public final class SmeltFiller {
                 blocked.add(need);
             }
         }
+    }
+
+    // the food need while a smoker is still cooking the last batch and the bag has more raw meat for it: there is one input
+    // slot, so the next batch has to wait for the first to be collected. same shape as a craft waiting for ingots, and the
+    // food task would otherwise stand around "cooking" at a smoker that is busy
+    static boolean foodBlocked(GamerFacts f, KitNeed need) {
+        return KitNeed.FOOD.equals(need.catalogueName()) && f.pendingFoodUnits() > 0 && f.count(ItemHelper.RAW_FOODS) > 0;
+    }
+
+    // what GATHER can work on while its food cooks: the gather list on the same leash as the iron filler. there are no ingots
+    // to wait for here, the one thing that can be stuck is food behind its own smoker
+    public static List<KitNeed> gatherRunnable(GamerFacts f, OverworldConfig cfg, int endBeds, Nearby nearby, boolean capped) {
+        List<KitNeed> out = new ArrayList<>();
+        for (KitNeed need : KitPlanner.gather(f, cfg, endBeds)) {
+            if (!foodBlocked(f, need) && withinLeash(need, nearby, capped)) {
+                out.add(need);
+            }
+        }
+        return out;
     }
 
     private static void prep(GamerFacts f, OverworldConfig cfg, int endBeds, List<KitNeed> blocked, List<KitNeed> out) {
@@ -117,7 +140,7 @@ public final class SmeltFiller {
             switch (extra.item) {
                 case "food" -> {
                     int units = cfg.targetFoodUnits + extra.count;
-                    if (f.foodUnits() < units) {
+                    if (f.foodUnits() + f.pendingFoodUnits() < units) {
                         out.add(new KitNeed(KitNeed.FOOD, units));
                     }
                 }
