@@ -178,9 +178,10 @@ public final class InventoryBehavior extends Behavior implements Helper {
 
     private int firstValidThrowaway() { // TODO offhand idk
         NonNullList<ItemStack> invy = ctx.player().getInventory().items;
-        // protected ones count too: this is hotbar upkeep for the path we're walking, same scope as the movements' placing
+        // same list the movements place from, so the hotbar never gets a stack that has nothing above its reserve
+        List<Item> usable = movementThrowaways(true);
         for (int i = 0; i < invy.size(); i++) {
-            if (Baritone.settings().acceptableThrowawayItems.value.contains(invy.get(i).getItem())) {
+            if (usable.contains(invy.get(i).getItem())) {
                 return i;
             }
         }
@@ -211,7 +212,9 @@ public final class InventoryBehavior extends Behavior implements Helper {
     }
 
     // movement scope: the planner and the movements both ask this, so they can't disagree about what's in the bag.
-    // altoclef saving cobble for a recipe doesn't make a parkour any less in need of a block under its feet
+    // altoclef saving cobble for a recipe doesn't make a parkour any less in need of a block under its feet, but only the
+    // cobble above what it's saving counts. (the planner asks once when the context is built and the movements ask again
+    // every placement, so a path planned on a surplus that's since been spent fails in the movement and replans)
     public boolean hasGenericThrowaway() {
         for (Item item : movementThrowaways(true)) {
             if (throwaway(false, stack -> item.equals(stack.getItem()))) {
@@ -222,7 +225,21 @@ public final class InventoryBehavior extends Behavior implements Helper {
     }
 
     private List<Item> movementThrowaways(boolean allowProtected) {
-        return ThrowawayPicks.order(Baritone.settings().acceptableThrowawayItems.value, AltoClefSettings.getInstance()::isItemProtected, allowProtected);
+        AltoClefSettings alto = AltoClefSettings.getInstance();
+        return ThrowawayPicks.order(Baritone.settings().acceptableThrowawayItems.value, alto::isItemProtected, item -> ThrowawayPicks.spare(heldCount(item), alto.reservedCount(item)), allowProtected);
+    }
+
+    // everywhere it could be, a stack in the offhand is just as placeable. read fresh every ask: a placement takes one off
+    // the stack, and the next ask has to see that or we'd spend the reserve one block at a time
+    private int heldCount(Item item) {
+        int total = 0;
+        for (ItemStack stack : ctx.player().getInventory().items) {
+            if (stack.is(item)) {
+                total += stack.getCount();
+            }
+        }
+        ItemStack offhand = ctx.player().getInventory().offhand.get(0);
+        return offhand.is(item) ? total + offhand.getCount() : total;
     }
 
     // why the lookups came back empty, for the log. same inputs as the real thing, just asked a different way

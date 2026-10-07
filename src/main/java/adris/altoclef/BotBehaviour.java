@@ -179,9 +179,28 @@ public class BotBehaviour {
     public void addProtectedItems(Item... items) {
         // ResourceTask and friends do this every tick. it used to be a list with no dedupe, so it grew forever and
         // every tick rebuilt the pathing snapshot from it. now it only goes through when something is actually new
+        // no number given, so the movements get none of it (see reserveProtectedItems for the polite kind)
         boolean changed = false;
         for (Item item : items) {
             changed |= current().protectedItems.add(item);
+            changed |= current().wholeProtected.add(item);
+        }
+        if (changed) {
+            current().applyState();
+        }
+    }
+
+    // protected, but only the first `count` of each. for a task that is collecting N of something for a target: the movements
+    // may still build with whatever is held above N, they just can't eat into the N itself (a recipe that needs 6 cobble was
+    // getting its own cobble pillared into the ground, then mining more, then pillaring it again). levels add up, and an
+    // item any level protected without a number (addProtectedItems) stays whole. it only ever adds or overwrites keys: a
+    // caller whose map shrinks has to zero the keys it drops, or removeProtectedItems them, or the old count sticks till pop
+    public void reserveProtectedItems(Map<Item, Integer> counts) {
+        boolean changed = false;
+        for (Map.Entry<Item, Integer> entry : counts.entrySet()) {
+            changed |= current().protectedItems.add(entry.getKey());
+            Integer old = current().reserve.put(entry.getKey(), entry.getValue());
+            changed |= !entry.getValue().equals(old);
         }
         if (changed) {
             current().applyState();
@@ -192,6 +211,9 @@ public class BotBehaviour {
         boolean changed = false;
         for (Item item : items) {
             changed |= current().protectedItems.remove(item);
+            // the numbers go with it, or the next protect of the same item would inherit last task's count
+            changed |= current().wholeProtected.remove(item);
+            changed |= current().reserve.remove(item) != null;
         }
         if (changed) {
             current().applyState();
@@ -309,6 +331,32 @@ public class BotBehaviour {
         return popped;
     }
 
+    // what the pathing side gets to see: every level's saving added up, minus any item some level protected without a
+    // number (that one is spoken for in full, and absent from the map means exactly that). pure so it can be tested
+    // without a game. sums stop at MAX_VALUE, which is "all of it" anyway
+    static <T> Map<T, Integer> sumReserves(Collection<Map<T, Integer>> levels, Collection<Set<T>> wholeLevels) {
+        Map<T, Integer> out = new HashMap<>();
+        for (Map<T, Integer> level : levels) {
+            for (Map.Entry<T, Integer> entry : level.entrySet()) {
+                out.merge(entry.getKey(), entry.getValue(), (a, b) -> (int) Math.min((long) a + b, Integer.MAX_VALUE));
+            }
+        }
+        for (Set<T> whole : wholeLevels) {
+            out.keySet().removeAll(whole);
+        }
+        return out;
+    }
+
+    private Map<Item, Integer> effectiveReserve() {
+        List<Map<Item, Integer>> levels = new ArrayList<>();
+        List<Set<Item>> wholeLevels = new ArrayList<>();
+        for (State state : _states) {
+            levels.add(state.reserve);
+            wholeLevels.add(state.wholeProtected);
+        }
+        return sumReserves(levels, wholeLevels);
+    }
+
     // every clear() or addAll() on a watched collection throws the pathing snapshot away, so one that already says the
     // right thing gets left alone. lists compare in order, sets don't care about order
     static <T> void sync(Collection<T> target, Collection<T> want) {
@@ -344,6 +392,11 @@ public class BotBehaviour {
         public double followOffsetDistance;
         // insertion order, no repeats. isProtected is a contains and the pathing side asks a lot
         public Set<Item> protectedItems = new LinkedHashSet<>();
+        // this level's own say about protectedItems, which a pushed state inherits whole from the one under it. these two
+        // are not inherited (the levels get added up instead, see effectiveReserve): the items this level protected with
+        // a count, and the ones it protected without
+        public Map<Item, Integer> reserve = new HashMap<>();
+        public Set<Item> wholeProtected = new HashSet<>();
         public boolean mineScanDroppedItems;
         public boolean swimThroughLava;
         public boolean allowDiagonalAscend;
@@ -476,6 +529,7 @@ public class BotBehaviour {
                     sync(sa.getBlocksToAvoidBreaking(), blocksToAvoidBreaking);
                     sync(sa.getPlaceAvoiders(), toAvoidPlacing);
                     sync(sa.getProtectedItems(), protectedItems);
+                    sa.setProtectedReserve(effectiveReserve());
                     synchronized (sa.getPropertiesMutex()) {
                         sync(sa.getForceWalkOnPredicates(), allowWalking);
                         sync(sa.getForceAvoidWalkThroughPredicates(), avoidWalkingThrough);

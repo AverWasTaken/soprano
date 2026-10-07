@@ -321,7 +321,7 @@ class DoCraftInTableTask extends DoStuffInContainerTask {
     @Override
     protected Task onTick(AltoClef mod) {
         // Add protected items to the behaviour
-        mod.getBehaviour().addProtectedItems(getMaterialsArray());
+        mod.getBehaviour().reserveProtectedItems(materialNeeds(mod));
 
         // Avoid breaking crafting tables
         if (mod.getBlockTracker().isTracking(Blocks.CRAFTING_TABLE)) {
@@ -492,29 +492,27 @@ class DoCraftInTableTask extends DoStuffInContainerTask {
         return 100;
     }
 
-    /**
-     * Returns an array of materials.
-     *
-     * @return the array of materials
-     */
-    private Item[] getMaterialsArray() {
-        List<Item> result = new ArrayList<>();
-
-        // Iterate over each target
+    // every item the recipes use, and how many of it the crafts still to do will eat. an item with nothing left to craft
+    // stays in the map at 0: still not something to throw out, but nothing in the bag is spoken for anymore. the movements
+    // read the counts, so the walk to the table can build with the cobble above the recipe's but never with the recipe's
+    private Map<Item, Integer> materialNeeds(AltoClef mod) {
+        Map<Item, Integer> result = new HashMap<>();
         for (RecipeTarget target : _targets) {
-            // Iterate over each slot in the recipe
+            int weNeed = target.getTargetCount() - mod.getItemStorage().getItemCount(target.getOutputItem());
+            int outputs = Math.max(1, target.getRecipe().outputCount());
+            int crafts = weNeed > 0 ? (weNeed + outputs - 1) / outputs : 0;
             for (int i = 0; i < target.getRecipe().getSlotCount(); ++i) {
-                ItemTarget materialTarget = target.getRecipe().getSlot(i);
-                // Check if the material target is not null and has matches
-                if (materialTarget != null && materialTarget.getMatches() != null) {
-                    // Add all the matches to the result list
-                    Collections.addAll(result, materialTarget.getMatches());
+                ItemTarget material = target.getRecipe().getSlot(i);
+                if (material == null || material.getMatches() == null) {
+                    continue;
+                }
+                // a slot that takes any of several items reserves the count for each of them. over-saving is the safe way
+                for (Item match : material.getMatches()) {
+                    result.merge(match, crafts, (a, b) -> (int) Math.min((long) a + b, 1L << 30));
                 }
             }
         }
-
-        // Convert the result list to an array and return it
-        return result.toArray(new Item[0]);
+        return result;
     }
 
     @Override

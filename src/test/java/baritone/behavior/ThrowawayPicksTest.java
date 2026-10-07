@@ -19,11 +19,15 @@ package baritone.behavior;
 
 import org.junit.Test;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.OptionalInt;
 import java.util.Set;
+import java.util.function.ToIntFunction;
 
 import static org.junit.Assert.*;
 
@@ -31,31 +35,80 @@ public class ThrowawayPicksTest {
 
     private static final List<String> BAG = Arrays.asList("cobble", "dirt", "netherrack");
 
+    // plenty above any reserve, for the tests that are about ordering and not about counting
+    private static final ToIntFunction<String> LOTS = x -> 64;
+
     @Test
     public void respectingProtectionDropsProtectedOnes() {
         // what backfill and everything else that isn't mid movement gets: altoclef's stash is off limits
-        List<String> out = ThrowawayPicks.order(BAG, "cobble"::equals, false);
+        List<String> out = ThrowawayPicks.order(BAG, "cobble"::equals, LOTS, false);
         assertEquals(Arrays.asList("dirt", "netherrack"), out);
     }
 
     @Test
     public void movementScopeKeepsProtectedButLast() {
         // cobble is protected: the path can use it, but only after the stuff nobody was saving
-        List<String> out = ThrowawayPicks.order(BAG, "cobble"::equals, true);
+        List<String> out = ThrowawayPicks.order(BAG, "cobble"::equals, LOTS, true);
         assertEquals(Arrays.asList("dirt", "netherrack", "cobble"), out);
     }
 
     @Test
     public void everythingProtectedStillPlacesInMovementScope() {
-        // the actual bug: all protected meant "no throwaway", so the planner and the executor both gave up
-        assertTrue(ThrowawayPicks.order(BAG, x -> true, false).isEmpty());
-        assertEquals(BAG, ThrowawayPicks.order(BAG, x -> true, true));
+        // the pre-reserve bug: all protected meant "no throwaway", so the planner and the executor both gave up
+        assertTrue(ThrowawayPicks.order(BAG, x -> true, LOTS, false).isEmpty());
+        assertEquals(BAG, ThrowawayPicks.order(BAG, x -> true, LOTS, true));
     }
 
     @Test
     public void nothingProtectedIsUntouched() {
-        assertEquals(BAG, ThrowawayPicks.order(BAG, x -> false, true));
-        assertEquals(BAG, ThrowawayPicks.order(BAG, x -> false, false));
+        assertEquals(BAG, ThrowawayPicks.order(BAG, x -> false, LOTS, true));
+        assertEquals(BAG, ThrowawayPicks.order(BAG, x -> false, LOTS, false));
+    }
+
+    @Test
+    public void sparePartIsWhatIsHeldAboveTheReserve() {
+        assertEquals(0, ThrowawayPicks.spare(6, 6)); // exactly the recipe's cobble: dig out of the hole, don't pillar
+        assertEquals(3, ThrowawayPicks.spare(9, 6));
+        assertEquals(0, ThrowawayPicks.spare(3, 6)); // short of it: never negative
+        assertEquals(5, ThrowawayPicks.spare(5, 0));
+    }
+
+    @Test
+    public void protectedWithNoNumberIsNeverSpare() {
+        // addProtectedItems without a count is FULLY_RESERVED (MAX_VALUE), and held - MAX_VALUE must not wrap around
+        assertEquals(0, ThrowawayPicks.spare(0, Integer.MAX_VALUE));
+        assertEquals(0, ThrowawayPicks.spare(2304, Integer.MAX_VALUE));
+        assertEquals(Arrays.asList("dirt", "netherrack"), ThrowawayPicks.order(BAG, "cobble"::equals, x -> ThrowawayPicks.spare(64, Integer.MAX_VALUE), true));
+    }
+
+    @Test
+    public void protectedStackJoinsOnlyWithSomethingAboveItsReserve() {
+        // cobble: 6 saved for the recipe. dirt is unprotected and always eligible, it's just not what's being asked about
+        Map<String, Integer> held = new HashMap<>();
+        Map<String, Integer> saved = new HashMap<>();
+        saved.put("cobble", 6);
+        ToIntFunction<String> spare = item -> ThrowawayPicks.spare(held.getOrDefault(item, 0), saved.getOrDefault(item, 0));
+
+        held.put("cobble", 6);
+        assertEquals(Arrays.asList("dirt", "netherrack"), ThrowawayPicks.order(BAG, "cobble"::equals, spare, true));
+
+        held.put("cobble", 9);
+        assertEquals(Arrays.asList("dirt", "netherrack", "cobble"), ThrowawayPicks.order(BAG, "cobble"::equals, spare, true));
+
+        // and backfill still gets none of it, however much there is
+        assertEquals(Arrays.asList("dirt", "netherrack"), ThrowawayPicks.order(BAG, "cobble"::equals, spare, false));
+    }
+
+    @Test
+    public void unprotectedIsFirstAndNeverAsksHowMuchIsHeld() {
+        // an unprotected one is eligible whatever the count says, the hotbar lookup is what finds out there's none
+        List<String> asked = new ArrayList<>();
+        List<String> out = ThrowawayPicks.order(BAG, "cobble"::equals, item -> {
+            asked.add(item);
+            return 0;
+        }, true);
+        assertEquals(Arrays.asList("dirt", "netherrack"), out);
+        assertEquals(List.of("cobble"), asked);
     }
 
     private static boolean[] empties(int... emptySlots) {

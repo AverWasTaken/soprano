@@ -24,6 +24,7 @@ import java.util.OptionalInt;
 import java.util.function.IntPredicate;
 import java.util.function.IntUnaryOperator;
 import java.util.function.Predicate;
+import java.util.function.ToIntFunction;
 
 // the pure decisions behind InventoryBehavior's throwaway handling, split out so they can be tested without a world
 // (and without minecraft's registries, which is why nothing in here knows what an Item is)
@@ -36,7 +37,7 @@ final class ThrowawayPicks {
         PAUSED("interactions are paused"),
         AVOIDED("something told us not to place there"),
         NONE_IN_INVENTORY("no throwaway blocks in the inventory at all"),
-        ALL_PROTECTED("every throwaway we have is protected by altoclef"),
+        ALL_PROTECTED("every throwaway we have is protected by altoclef, nothing held above what it's saving"),
         NOT_ON_HOTBAR("throwaway is in the main inventory but not on the hotbar (allowInventory is off)"),
         NO_MATCH("have throwaways but none of them can be placed there");
 
@@ -47,17 +48,29 @@ final class ThrowawayPicks {
         }
     }
 
+    // what a movement may burn of a protected stack: whatever is held above the reserve. a recipe waiting on 6 cobble
+    // doesn't care about the 7th, but it very much cares about the 6th (building a staircase out of the recipe is how the
+    // bot spent a whole minute mining the same cobble over and over). long math because "all of it" is MAX_VALUE
+    static int spare(int held, int reserve) {
+        return (int) Math.max(0L, (long) held - reserve);
+    }
+
     // unprotected first, so a path burns dirt it was going to throw out anyway before it touches the cobble a recipe is
-    // waiting on. protected ones only show up at all when the caller is a movement that needs the block right now:
-    // a failed path costs more than a cobble that can be mined again
-    static <T> List<T> order(Collection<T> acceptable, Predicate<? super T> isProtected, boolean allowProtected) {
+    // waiting on. protected ones only show up at all when the caller is a movement that needs the block right now, and
+    // then only if there's something above their reserve (spare says how much): a failed path costs more than a cobble
+    // that can be mined again, but a recipe short of its last cobble costs more than a path that can dig instead
+    static <T> List<T> order(Collection<T> acceptable, Predicate<? super T> isProtected, ToIntFunction<? super T> spare, boolean allowProtected) {
         List<T> out = new ArrayList<>();
         List<T> held = new ArrayList<>();
         for (T item : acceptable) {
             (isProtected.test(item) ? held : out).add(item);
         }
         if (allowProtected) {
-            out.addAll(held);
+            for (T item : held) {
+                if (spare.applyAsInt(item) > 0) {
+                    out.add(item);
+                }
+            }
         }
         return out;
     }

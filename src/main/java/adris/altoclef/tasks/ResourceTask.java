@@ -25,7 +25,9 @@ import adris.altoclef.ui.HudText;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.item.ItemEntity;
@@ -53,6 +55,8 @@ public abstract class ResourceTask extends Task implements ITaskCanForce {
     // every item any target matches, built once. onTick used to rebuild this (twice, in two different ways) per tick
     // (lazy, a subclass is allowed to fill its targets in after super())
     private Item[] _allMatches;
+    // and how many of each we're collecting, so the pathing side knows how much of it is ours to keep. same laziness
+    private Map<Item, Integer> _reserve;
     private static final int CONTAINER_LOOKUP_TICKS = 20;
     private int _containerLookupCooldown = 0;
 
@@ -67,6 +71,18 @@ public abstract class ResourceTask extends Task implements ITaskCanForce {
 
     public ResourceTask(Item item, int targetCount) {
         this(new ItemTarget(item, targetCount));
+    }
+
+    // a target that matches several items (any planks) saves its count for each of them, over-saving is the safe way. the
+    // infinite ones are 99999999 and the sum stops there, which is as good as all of it
+    private static Map<Item, Integer> reserveFor(ItemTarget[] targets) {
+        Map<Item, Integer> out = new HashMap<>();
+        for (ItemTarget target : targets) {
+            for (Item match : target.getMatches()) {
+                out.merge(match, target.getTargetCount(), (a, b) -> (int) Math.min((long) a + b, 1L << 30));
+            }
+        }
+        return out;
     }
 
     @Override
@@ -97,8 +113,10 @@ public abstract class ResourceTask extends Task implements ITaskCanForce {
     protected Task onTick(AltoClef mod) {
         if (_allMatches == null) {
             _allMatches = ItemTarget.getMatches(_itemTargets);
+            _reserve = reserveFor(_itemTargets);
         }
-        mod.getBehaviour().addProtectedItems(_allMatches);
+        // protected, but only up to the count we're after: the walk out of the hole may build with cobble above it
+        mod.getBehaviour().reserveProtectedItems(_reserve);
         // If we have an item in an INACCESSIBLE inventory slot
         if (!ITaskUsesCraftingGrid.isUsingGrid(this) || _ensureFreeCraftingGridTask.isActive()) {
             for (ItemTarget target : _itemTargets) {

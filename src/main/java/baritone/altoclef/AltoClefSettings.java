@@ -26,9 +26,11 @@ import net.minecraft.world.level.block.state.BlockState;
 import java.util.AbstractList;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.function.BiFunction;
 import java.util.function.BiPredicate;
 import java.util.function.Predicate;
@@ -52,6 +54,9 @@ public class AltoClefSettings {
     private final WatchedList<Predicate<BlockPos>> forceAvoidWalkThrough = new WatchedList<>();
     private final WatchedList<BiPredicate<BlockState, ItemStack>> forceUseTool = new WatchedList<>();
     private final WatchedSet<Item> protectedItems = new WatchedSet<>();
+    // how many of a protected item altoclef is holding for itself. a protected item with no entry here is spoken for in
+    // full (that's most of them). only written through setProtectedReserve, under the lock
+    private final Map<Item, Integer> protectedReserve = new HashMap<>();
 
     // nothing reads these, the fork's heuristic hook was commented out and flowing water was never wired up. they're here
     // because BotBehaviour copies them in and out and it would be rude to make it stop
@@ -76,7 +81,7 @@ public class AltoClefSettings {
     // everything the pathing thread needs to know about, frozen. arrays are null when there's nothing in them, so
     // the "altoclef isn't doing anything" case is one null check per question. nobody may write to these
     public static final class Snapshot {
-        static final Snapshot EMPTY = new Snapshot(null, null, null, null, null, null, null);
+        static final Snapshot EMPTY = new Snapshot(null, null, null, null, null, null, null, null);
 
         // block positions are packed longs so asking about one doesn't need a BlockPos
         public final LongOpenHashSet breakPositions;
@@ -86,10 +91,12 @@ public class AltoClefSettings {
         public final Predicate<BlockPos>[] avoidWalkThrough;
         public final BiPredicate<BlockState, ItemStack>[] forceUseTool;
         public final HashSet<Item> protectedItems;
+        public final HashMap<Item, Integer> protectedReserve;
 
         Snapshot(LongOpenHashSet breakPositions, Predicate<BlockPos>[] breakAvoiders, Predicate<BlockPos>[] placeAvoiders,
                  Predicate<BlockPos>[] forceWalkOn, Predicate<BlockPos>[] avoidWalkThrough,
-                 BiPredicate<BlockState, ItemStack>[] forceUseTool, HashSet<Item> protectedItems) {
+                 BiPredicate<BlockState, ItemStack>[] forceUseTool, HashSet<Item> protectedItems,
+                 HashMap<Item, Integer> protectedReserve) {
             this.breakPositions = breakPositions;
             this.breakAvoiders = breakAvoiders;
             this.placeAvoiders = placeAvoiders;
@@ -97,6 +104,7 @@ public class AltoClefSettings {
             this.avoidWalkThrough = avoidWalkThrough;
             this.forceUseTool = forceUseTool;
             this.protectedItems = protectedItems;
+            this.protectedReserve = protectedReserve;
         }
 
         // does any predicate say yes. the pos is only good for the duration of the call, predicates must not keep it
@@ -161,7 +169,8 @@ public class AltoClefSettings {
                 forceCanWalkOn.isEmpty() ? null : forceCanWalkOn.toArray(new Predicate[0]),
                 forceAvoidWalkThrough.isEmpty() ? null : forceAvoidWalkThrough.toArray(new Predicate[0]),
                 forceUseTool.isEmpty() ? null : forceUseTool.toArray(new BiPredicate[0]),
-                protectedItems.isEmpty() ? null : new HashSet<>(protectedItems)
+                protectedItems.isEmpty() ? null : new HashSet<>(protectedItems),
+                protectedReserve.isEmpty() ? null : new HashMap<>(protectedReserve)
         );
     }
 
@@ -469,6 +478,33 @@ public class AltoClefSettings {
         return items != null && items.contains(item);
     }
 
+    // nobody put a number on this one, so all of it is spoken for
+    public static final int FULLY_RESERVED = Integer.MAX_VALUE;
+
+    // how many of this item the movements have to leave alone: none for something unprotected, all of it for a protected
+    // item nobody put a number on, otherwise whatever altoclef said it is saving. what's held above that is free to build with
+    public int reservedCount(Item item) {
+        Snapshot s = snapshot();
+        if (s.protectedItems == null || !s.protectedItems.contains(item)) {
+            return 0;
+        }
+        Integer saving = s.protectedReserve == null ? null : s.protectedReserve.get(item);
+        return saving == null ? FULLY_RESERVED : saving;
+    }
+
+    // BotBehaviour adds up its whole state stack and hands the sum here. it gets called on every applyState, so a map that
+    // says what the last one said changes nothing (a rebuilt snapshot is not free)
+    public void setProtectedReserve(Map<Item, Integer> reserve) {
+        synchronized (lock) {
+            if (protectedReserve.equals(reserve)) {
+                return;
+            }
+            protectedReserve.clear();
+            protectedReserve.putAll(reserve);
+            dirty();
+        }
+    }
+
     public void protectItem(Item item) {
         protectedItems.add(item);
     }
@@ -497,6 +533,7 @@ public class AltoClefSettings {
             forceAvoidWalkThrough.clear();
             forceUseTool.clear();
             protectedItems.clear();
+            protectedReserve.clear();
             globalHeuristics.clear();
             dirty();
         }

@@ -18,11 +18,14 @@
 package baritone.altoclef;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.item.Item;
 import org.junit.After;
 import org.junit.Test;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Predicate;
 
 import static org.junit.Assert.*;
@@ -38,7 +41,62 @@ public class AltoClefSettingsTest {
         s.getBlocksToAvoidBreaking().clear();
         s.getForceWalkOnPredicates().clear();
         s.getForceAvoidWalkThroughPredicates().clear();
+        s.getProtectedItems().clear();
+        s.setProtectedReserve(Map.of());
         s.setInteractionPaused(false);
+    }
+
+    // there is no registry in a unit test, so no real Item to protect. null is a fine key for a HashSet and a HashMap,
+    // and none of the code under test looks inside it
+    private static final Item ITEM = null;
+
+    @Test
+    public void protectedWithNoNumberIsFullyReserved() {
+        assertEquals(0, s.reservedCount(ITEM)); // not protected, all of it is free
+        s.getProtectedItems().add(ITEM);
+        assertEquals(AltoClefSettings.FULLY_RESERVED, s.reservedCount(ITEM));
+    }
+
+    @Test
+    public void protectedWithANumberReservesThatMany() {
+        s.getProtectedItems().add(ITEM);
+        s.setProtectedReserve(reserve(6));
+        assertEquals(6, s.reservedCount(ITEM));
+        s.setProtectedReserve(Map.of());
+        assertEquals(AltoClefSettings.FULLY_RESERVED, s.reservedCount(ITEM)); // number withdrawn, back to all of it
+    }
+
+    @Test
+    public void aNumberForSomethingNotProtectedMeansNothing() {
+        s.setProtectedReserve(reserve(6));
+        assertEquals(0, s.reservedCount(ITEM));
+    }
+
+    @Test
+    public void sameReserveTwiceKeepsTheSnapshot() {
+        s.getProtectedItems().add(ITEM);
+        s.setProtectedReserve(reserve(6));
+        AltoClefSettings.Snapshot before = s.snapshot();
+        s.setProtectedReserve(reserve(6)); // what every applyState does
+        assertSame(before, s.snapshot());
+        s.setProtectedReserve(reserve(7));
+        assertNotSame(before, s.snapshot());
+        assertEquals(7, s.reservedCount(ITEM));
+    }
+
+    @Test
+    public void resetAllClearsTheReserve() {
+        s.getProtectedItems().add(ITEM);
+        s.setProtectedReserve(reserve(6));
+        s.resetAll();
+        assertNull(s.snapshot().protectedReserve);
+        assertEquals(0, s.reservedCount(ITEM));
+    }
+
+    private static Map<Item, Integer> reserve(int n) {
+        Map<Item, Integer> m = new HashMap<>();
+        m.put(ITEM, n);
+        return m;
     }
 
     @Test

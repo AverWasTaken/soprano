@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.Predicate;
 import net.minecraft.core.BlockPos;
@@ -53,6 +54,39 @@ public class BotBehaviourTest {
         BotBehaviour.sync(s.getBlocksToAvoidBreaking(), new HashSet<>(List.of(new BlockPos(9, 9, 9))));
         assertTrue(s.shouldAvoidBreaking(new BlockPos(9, 9, 9)));
         assertFalse(s.shouldAvoidBreaking(new BlockPos(1, 1, 1)));
+    }
+
+    // the walk to the table, mid recipe: one level saves 6 cobble (the craft), the collect task under it saves 6 too
+    @Test
+    public void reserveLevelsAddUp() {
+        Map<String, Integer> craft = Map.of("cobble", 6);
+        Map<String, Integer> collect = Map.of("cobble", 6, "dirt", 2);
+        Map<String, Integer> out = BotBehaviour.sumReserves(List.of(craft, collect), List.of(Set.of(), Set.of()));
+        assertEquals(12, (int) out.get("cobble"));
+        assertEquals(2, (int) out.get("dirt"));
+    }
+
+    @Test
+    public void aLevelThatProtectedWithoutANumberKeepsTheItemWhole() {
+        // absent from the map is how the pathing side reads "all of it", whatever the other levels said
+        Map<String, Integer> collect = Map.of("cobble", 6);
+        Map<String, Integer> out = BotBehaviour.sumReserves(List.of(collect, Map.of()), List.of(Set.of(), Set.of("cobble")));
+        assertFalse(out.containsKey("cobble"));
+    }
+
+    @Test
+    public void aLevelThatPopsTakesItsNumberWithIt() {
+        Map<String, Integer> craft = Map.of("cobble", 6);
+        Map<String, Integer> collect = Map.of("cobble", 6);
+        assertEquals(12, (int) BotBehaviour.sumReserves(List.of(craft, collect), List.of(Set.of(), Set.of())).get("cobble"));
+        assertEquals(6, (int) BotBehaviour.sumReserves(List.of(craft), List.of(Set.of())).get("cobble"));
+        assertTrue(BotBehaviour.sumReserves(List.of(), List.of()).isEmpty());
+    }
+
+    @Test
+    public void reserveSumsStopAtAllOfIt() {
+        Map<String, Integer> huge = Map.of("cobble", Integer.MAX_VALUE - 1);
+        assertEquals(Integer.MAX_VALUE, (int) BotBehaviour.sumReserves(List.of(huge, huge), List.of(Set.of(), Set.of())).get("cobble"));
     }
 
     @Test
