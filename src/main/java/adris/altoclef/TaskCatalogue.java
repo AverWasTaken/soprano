@@ -102,6 +102,7 @@ public class TaskCatalogue {
             mine("dark_oak_sapling", Blocks.DARK_OAK_LEAVES, Items.DARK_OAK_SAPLING);
             mine("mangrove_propagule", Blocks.MANGROVE_PROPAGULE, Items.MANGROVE_PROPAGULE);
             mine("cherry_sapling", Blocks.CHERRY_LEAVES, Items.CHERRY_SAPLING);
+mine("pale_oak_sapling", Blocks.PALE_OAK_LEAVES, Items.PALE_OAK_SAPLING);
             simple("sapling", ItemHelper.SAPLINGS, CollectSaplingsTask::new);
             simple("sandstone", Items.SANDSTONE, CollectSandstoneTask::new).dontMineIfPresent();
             simple("red_sandstone", Items.RED_SANDSTONE, CollectRedSandstoneTask::new).dontMineIfPresent();

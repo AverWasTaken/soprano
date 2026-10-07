@@ -69,6 +69,11 @@ public class DoToClosestBlockTask extends AbstractDoToClosestObjectTask<BlockPos
     }
 
     @Override
+    protected boolean stillLooking(AltoClef mod) {
+        return mod.getBlockTracker().scanPending(_targetBlocks);
+    }
+
+    @Override
     protected Task getGoalTask(BlockPos obj) {
         return _getTargetTask.apply(obj);
     }

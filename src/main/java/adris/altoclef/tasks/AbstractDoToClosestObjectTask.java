@@ -15,9 +15,13 @@ import net.minecraft.world.phys.Vec3;
  */
 public abstract class AbstractDoToClosestObjectTask<T> extends Task {
 
+    private static final int SCAN_WAIT_TICKS = 60;
+
     private final HashMap<T, CachedHeuristic> _heuristicMap = new HashMap<>();
     private T _currentlyPursuing = null;
     private boolean _wasWandering;
+    // game tick we started holding off the wander for a scan, or -1 if we aren't
+    private int _scanWaitStart = -1;
     private Task _goalTask = null;
 
     protected abstract Vec3 getPos(AltoClef mod, T obj);
@@ -35,7 +39,14 @@ public abstract class AbstractDoToClosestObjectTask<T> extends Task {
         return new TimeoutWanderTask(true);
     }
 
+    // virtual. true while the thing we search through hasn't had its first look yet (a block tracker scan that's still
+    // on its way), so "nothing found" means "haven't looked" and wandering off would be walking away from the answer
+    protected boolean stillLooking(AltoClef mod) {
+        return false;
+    }
+
     public void resetSearch() {
+        _scanWaitStart = -1;
         _currentlyPursuing = null;
         _heuristicMap.clear();
         _goalTask = null;
@@ -116,6 +127,7 @@ public abstract class AbstractDoToClosestObjectTask<T> extends Task {
         }
 
         if (_currentlyPursuing != null) {
+            _scanWaitStart = -1;
             _goalTask = getGoalTask(_currentlyPursuing);
             return _goalTask;
         } else {
@@ -124,6 +136,10 @@ public abstract class AbstractDoToClosestObjectTask<T> extends Task {
 
         //noinspection ConstantConditions
         if (checkNewClosest.isEmpty() && _currentlyPursuing == null) {
+            if (waitingOnFirstLook(mod)) {
+                setDebugState("Waiting for the first scan before wandering");
+                return null;
+            }
             setDebugState("Waiting for calculations I think (wandering)");
             _wasWandering = true;
             return getWanderTask(mod);
@@ -131,6 +147,20 @@ public abstract class AbstractDoToClosestObjectTask<T> extends Task {
 
         setDebugState("Waiting for calculations I think (NOT wandering)");
         return null;
+    }
+
+    // a scan is well under a second. the cap is for the day one gets stuck, so we go back to wandering instead of
+    // standing there forever
+    private boolean waitingOnFirstLook(AltoClef mod) {
+        if (!stillLooking(mod)) {
+            _scanWaitStart = -1;
+            return false;
+        }
+        int now = WorldHelper.getTicks();
+        if (_scanWaitStart < 0) {
+            _scanWaitStart = now;
+        }
+        return now - _scanWaitStart < SCAN_WAIT_TICKS;
     }
 
     private static class CachedHeuristic {

@@ -38,6 +38,8 @@ public class BlockTracker extends Tracker {
     // but if set to true, block scanning will happen
     // asynchronously to spread out the expensive cost of scanning.
     private static final boolean ASYNC_SCANNING = true;
+    // seconds. the first scan after a task tracks something new is the one it will wander off without, so it can't wait 7
+    private static final double FIRST_LOOK_GAP = 0.5;
     private static BlockTrackerConfig _config = new BlockTrackerConfig();
 
     static {
@@ -50,7 +52,9 @@ public class BlockTracker extends Tracker {
 
     private final TimerGame _timer = new TimerGame(_config.scanInterval);
 
-    private final TimerGame _forceElapseTimer = new TimerGame(_config.scanIntervalWhenNewBlocksFound);
+    // a block type nobody has scanned for yet doesn't wait for the lazy timer above, but this keeps a task that
+    // tracks and untracks a new type every few ticks from turning that into a scan every few ticks
+    private final TimerGame _firstLookGap = new TimerGame(FIRST_LOOK_GAP);
 
     // A scan can last no more than 15 seconds
     private final TimerGame _asyncForceResetScanFlag = new TimerGame(15);
@@ -70,7 +74,7 @@ public class BlockTracker extends Tracker {
         _mod = mod;
         // First time, track immediately
         _timer.forceElapse();
-        _forceElapseTimer.forceElapse();
+        _firstLookGap.forceElapse();
 
         // Listen for block placement
         EventBus.subscribe(BlockPlaceEvent.class, evt -> addBlock(evt.blockState.getBlock(), evt.blockPos));
@@ -123,14 +127,11 @@ public class BlockTracker extends Tracker {
             for (Block block : blocks) {
                 if (!_trackingBlocks.containsKey(block)) {
                     // We're tracking a new block, so we're not updated.
+                    // no rescan is forced from here anymore: updateState sees the block isn't covered by any scan and
+                    // goes right away. (this used to wait on a 2 second timer, which is how a bot with logs 5 blocks
+                    // away decided to go exploring)
                     setDirty();
                     _trackingBlocks.put(block, 0);
-                    // Force a rescan if these are new blocks and we aren't doing this like every frame.
-                    if (_forceElapseTimer.elapsed()) {
-                        _timer.forceElapse();
-                        _forceElapseTimer.reset();
-                        _forceElapseTimer.setInterval(_config.scanIntervalWhenNewBlocksFound);
-                    }
                 }
                 _trackingBlocks.put(block, _trackingBlocks.get(block) + 1);
             }
@@ -143,6 +144,7 @@ public class BlockTracker extends Tracker {
      * Only call this once for every {@link #trackBlock(Block...) trackBlock}.
      */
     public void stopTracking(Block... blocks) {
+        List<Block> dropped = null;
         synchronized (_trackingBlocks) {
             for (Block block : blocks) {
                 if (_trackingBlocks.containsKey(block)) {
@@ -153,10 +155,50 @@ public class BlockTracker extends Tracker {
                         _trackingBlocks.put(block, current - 1);
                         if (_trackingBlocks.get(block) <= 0) {
                             _trackingBlocks.remove(block);
+                            if (dropped == null) dropped = new ArrayList<>();
+                            dropped.add(block);
                         }
                     }
                 }
             }
+        }
+        if (dropped != null) {
+            // once nobody tracks it the cache for it rots, so the next trackBlock is a first look all over again.
+            // after the _trackingBlocks lock is gone: the scan merge takes these two in the other order
+            synchronized (_scanMutex) {
+                for (PosCache cache : _caches.values()) {
+                    for (Block block : dropped) {
+                        cache.coverage.forget(block);
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Whether a finished scan has looked for every one of these blocks since they were tracked. An empty answer from
+     * the tracker only means "there are none" once this is true; before that it means "haven't looked yet".
+     */
+    public boolean hasBeenScanned(Block... blocks) {
+        synchronized (_scanMutex) {
+            return currentCache().coverage.coversAll(blocks);
+        }
+    }
+
+    /**
+     * True if any of these blocks is tracked but no scan has covered it yet, so one is on its way.
+     */
+    public boolean scanPending(Block... blocks) {
+        synchronized (_scanMutex) {
+            ScanCoverage<Block> coverage = currentCache().coverage;
+            synchronized (_trackingBlocks) {
+                for (Block block : blocks) {
+                    if (_trackingBlocks.containsKey(block) && !coverage.covers(block)) {
+                        return true;
+                    }
+                }
+            }
+            return false;
         }
     }
 
@@ -295,13 +337,27 @@ public class BlockTracker extends Tracker {
     }
 
     private boolean shouldUpdate() {
-        return _timer.elapsed();
+        if (_timer.elapsed()) return true;
+        // something tracked that no scan has covered. a scan already running was snapshotted before it was tracked,
+        // so wait it out (when it ends this is still true and the next one goes)
+        return !_scanning && _firstLookGap.elapsed() && needsFirstLook();
+    }
+
+    // a couple of hash lookups under the mutex every query matters less than a bot wandering off from a tree
+    private boolean needsFirstLook() {
+        synchronized (_scanMutex) {
+            ScanCoverage<Block> coverage = currentCache().coverage;
+            synchronized (_trackingBlocks) {
+                return coverage.anyUncovered(_trackingBlocks.keySet());
+            }
+        }
     }
 
     private void update() {
         // Perform a baritone scan
         _timer.reset();
         _timer.setInterval(_config.scanInterval);
+        Dimension scanDimension = WorldHelper.getCurrentDimension();
         if (_config.scanAsynchronously) {
             if (_scanning && _asyncForceResetScanFlag.elapsed()) {
                 Debug.logMessage("SCANNING TOOK TOO LONG! Will assume it ended mid way. Hopefully this won't break anything...");
@@ -314,9 +370,10 @@ public class BlockTracker extends Tracker {
                 // claimed here and not in the task so a second update before the thread wakes up can't start a second scan
                 _scanning = true;
                 _asyncForceResetScanFlag.reset();
+                _firstLookGap.reset();
                 Baritone.getExecutor().execute(() -> {
                     try {
-                        rescanWorld(ctx, true);
+                        rescanWorld(ctx, true, scanDimension);
                     } finally {
                         _scanning = false;
                     }
@@ -324,11 +381,12 @@ public class BlockTracker extends Tracker {
             }
         } else {
             // Synchronous scanning.
-            rescanWorld(new CalculationContext(_mod.getClientBaritone(), false), false);
+            _firstLookGap.reset();
+            rescanWorld(new CalculationContext(_mod.getClientBaritone(), false), false, scanDimension);
         }
     }
 
-    private void rescanWorld(CalculationContext ctx, boolean async) {
+    private void rescanWorld(CalculationContext ctx, boolean async, Dimension scanDimension) {
         Block[] blocksToScan;
         if (async) {
             // Wait for end of frame
@@ -393,6 +451,18 @@ public class BlockTracker extends Tracker {
 
                 // Purge if we have too many blocks tracked at once.
                 currentCache().smartPurge(_mod, _mod.getPlayer().position());
+
+                // what we looked for counts as looked at, found or not. skipped if we changed dimension on the way,
+                // because then it's the other dimension's cache that would get told it was scanned
+                if (WorldHelper.getCurrentDimension() == scanDimension) {
+                    List<Block> stillTracked = new ArrayList<>(blocksToScan.length);
+                    synchronized (_trackingBlocks) {
+                        for (Block block : blocksToScan) {
+                            if (_trackingBlocks.containsKey(block)) stillTracked.add(block);
+                        }
+                    }
+                    currentCache().coverage.scanned(stillTracked);
+                }
             }
         }
     }
@@ -477,6 +547,8 @@ public class BlockTracker extends Tracker {
 
         private final WorldLocateBlacklist _blacklist = new WorldLocateBlacklist();
 
+        final ScanCoverage<Block> coverage = new ScanCoverage<>();
+
         public boolean anyFound(Block... blocks) {
             for (Block block : blocks) {
                 if (_cachedBlocks.containsKey(block)) return true;
@@ -544,6 +616,7 @@ public class BlockTracker extends Tracker {
             _cachedBlocks.clear();
             _cachedByPosition.clear();
             _blacklist.clear();
+            coverage.clear();
         }
 
         public int getBlockTrackCount() {
@@ -701,7 +774,6 @@ public class BlockTracker extends Tracker {
 
     static class BlockTrackerConfig {
         public double scanInterval = 7;
-        public double scanIntervalWhenNewBlocksFound = 2;
         public boolean scanAsynchronously = true;
         public int maxTotalCacheSize = 2500;
         public int maxCacheSizePerBlockType = 25;

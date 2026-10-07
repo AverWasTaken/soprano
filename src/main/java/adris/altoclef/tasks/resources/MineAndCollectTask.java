@@ -222,6 +222,12 @@ public class MineAndCollectTask extends ResourceTask {
         }
 
         @Override
+        protected boolean stillLooking(AltoClef mod) {
+            // a drop we can see is an answer too, but getClosestTo already counts those before we get asked
+            return mod.getBlockTracker().scanPending(_blocks);
+        }
+
+        @Override
         protected Task onTick(AltoClef mod) {
             if (mod.getClientBaritone().getPathingBehavior().isPathing()) {
                 _progressChecker.reset();
