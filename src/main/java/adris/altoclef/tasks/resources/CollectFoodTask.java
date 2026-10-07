@@ -232,7 +232,10 @@ public class CollectFoodTask extends Task {
         if (_checkNewOptionsTimer.elapsed()) {
             // Try a new resource task
             _checkNewOptionsTimer.reset();
-            _currentResourceTask = null;
+            // the timer used to wipe a half dead pig off the list the moment a hay bale came into view
+            if (!(_huntTask != null && _currentResourceTask == _huntTask && huntCommitted(mod))) {
+                _currentResourceTask = null;
+            }
         }
 
         // the sweep ends when the pile does, not on the next 10 s check
@@ -311,6 +314,12 @@ public class CollectFoodTask extends Task {
                     _currentResourceTask = t;
                     return _currentResourceTask;
                 }
+            }
+            // the animal we are already fighting beats any pile of hay, and one that wanders by is a few swings
+            Task prey = huntCommitted(mod) ? huntTaskOrNull(mod) : nearbyPreyOrNull(mod, FoodHunt.ALONG_THE_WAY_RADIUS);
+            if (prey != null) {
+                _currentResourceTask = prey;
+                return _currentResourceTask;
             }
             // Hay blocks
             Task hayTaskBlock = this.pickupBlockTaskOrNull(mod, Blocks.HAY_BLOCK, Items.HAY_BLOCK, 300);
@@ -557,6 +566,20 @@ public class CollectFoodTask extends Task {
     // the nearest animal of EVERY kind goes into the pot, plus the one we are already after (it might not be the nearest
     // of its kind any more), and FoodHunt picks. null when nothing edible is loaded
     private Task huntTaskOrNull(AltoClef mod) {
+        Task hunt = killTaskOrNull(mod, Double.POSITIVE_INFINITY);
+        if (hunt == null) {
+            _hunted = null;
+        }
+        return hunt;
+    }
+
+    // same pot as huntTaskOrNull but only what is within radius, and it leaves the current hunt alone when nothing
+    // qualifies. a hit sets the hunt fields, so the commit rule protects this kill too
+    private Task nearbyPreyOrNull(AltoClef mod, double radius) {
+        return killTaskOrNull(mod, radius);
+    }
+
+    private Task killTaskOrNull(AltoClef mod, double radius) {
         Vec3 me = mod.getPlayer().position();
         Map<Integer, Prey> prey = new HashMap<>();
         List<FoodHunt.Candidate> candidates = new ArrayList<>();
@@ -568,9 +591,9 @@ public class CollectFoodTask extends Task {
         if (_hunted != null && huntedOk(mod) && !prey.containsKey(_hunted.getId())) {
             addPrey(me, _hunted, _huntedFood, prey, candidates);
         }
-        FoodHunt.Candidate pick = FoodHunt.choose(candidates, _hunted == null ? -1 : _hunted.getId(), FoodHunt.isWoolWanted());
+        List<FoodHunt.Candidate> pot = radius == Double.POSITIVE_INFINITY ? candidates : FoodHunt.within(candidates, radius);
+        FoodHunt.Candidate pick = FoodHunt.choose(pot, _hunted == null ? -1 : _hunted.getId(), FoodHunt.isWoolWanted());
         if (pick == null) {
-            _hunted = null;
             return null;
         }
         Prey chosen = prey.get(pick.id());
@@ -581,6 +604,17 @@ public class CollectFoodTask extends Task {
         int held = mod.getItemStorage().getItemCount(chosen.food().getRaw());
         _huntTask = new KillAndLootTask(chosen.entity(), new ItemTarget(chosen.food().getRaw(), held + 1));
         return _huntTask;
+    }
+
+    // mid fight and close: finish it. the hay will still be there in thirty seconds
+    private boolean huntCommitted(AltoClef mod) {
+        if (_hunted == null) {
+            return false;
+        }
+        Vec3 me = mod.getPlayer().position();
+        Vec3 at = _hunted.position();
+        double distance = FoodHunt.distance(at.x - me.x, at.y - me.y, at.z - me.z);
+        return FoodHunt.keepHunting(huntedOk(mod), distance);
     }
 
     private boolean huntedOk(AltoClef mod) {

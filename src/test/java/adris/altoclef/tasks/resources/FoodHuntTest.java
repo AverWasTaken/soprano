@@ -7,6 +7,7 @@ import org.junit.Test;
 import java.util.List;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
@@ -113,5 +114,34 @@ public class FoodHuntTest {
     @Test
     public void onlyTheSheepCandidateLeftStillWinsWhenWoolIsWanted() {
         assertEquals(1, pick(-1, true, c(1, Kind.SHEEP, 20)));
+    }
+
+    @Test
+    public void aHuntInProgressIsKeptWhileAliveAndClose() {
+        assertTrue(FoodHunt.keepHunting(true, 3));
+        assertTrue(FoodHunt.keepHunting(true, FoodHunt.COMMIT_RADIUS));
+    }
+
+    @Test
+    public void aHuntIsDroppedWhenTheAnimalIsDeadOrTooFar() {
+        assertFalse(FoodHunt.keepHunting(false, 3));
+        assertFalse(FoodHunt.keepHunting(true, FoodHunt.COMMIT_RADIUS + 0.1));
+    }
+
+    @Test
+    public void onlyNearbyAnimalsAreWorthAKillOnTheWay() {
+        List<Candidate> all = List.of(c(1, Kind.PIG, 5), c(2, Kind.COW, 7), c(3, Kind.CHICKEN, 6));
+        List<Candidate> near = FoodHunt.within(all, FoodHunt.ALONG_THE_WAY_RADIUS);
+        assertEquals(2, near.size());
+        assertEquals(1, near.get(0).id());
+        assertEquals(3, near.get(1).id());
+        assertTrue(FoodHunt.within(List.of(c(1, Kind.PIG, 30)), FoodHunt.ALONG_THE_WAY_RADIUS).isEmpty());
+    }
+
+    @Test
+    public void killOnTheWayPicksTheBestOfTheNearOnes() {
+        // the cow at 9 is the better meal overall, but it is out of passing range
+        List<Candidate> near = FoodHunt.within(List.of(c(1, Kind.COW, 9), c(2, Kind.CHICKEN, 4), c(3, Kind.PIG, 5)), FoodHunt.ALONG_THE_WAY_RADIUS);
+        assertEquals(3, FoodHunt.choose(near, -1, false).id());
     }
 }

@@ -1,5 +1,6 @@
 package adris.altoclef.tasks.resources;
 
+import java.util.ArrayList;
 import java.util.List;
 
 // which animal to chase for dinner. plain numbers in and out so a test can poke it without a game (CollectFoodTask has
@@ -42,6 +43,12 @@ public final class FoodHunt {
     // free, so while the kit still wants wool a sheep has to win by about this much to be eaten
     static final double WOOL_SHEEP_FACTOR = 1.3;
 
+    // a hunt this close (by distance() below) is not dropped for a pile of hay: the pig is right there, the hay is not going
+    // anywhere. past it the animal is a lost cause and the usual pick can have it
+    static final double COMMIT_RADIUS = 16;
+    // an animal this close is worth a detour of a few swings even when we are headed for something else
+    static final double ALONG_THE_WAY_RADIUS = 6;
+
     // set by the gamer's iron phase. a static because the food task is a different task tree altogether
     private static volatile boolean woolWanted = false;
 
@@ -70,6 +77,22 @@ public final class FoodHunt {
             score /= WOOL_SHEEP_FACTOR;
         }
         return score;
+    }
+
+    // finish what we started: alive, edible and reachable (ok) and close enough that walking away would be silly
+    static boolean keepHunting(boolean ok, double distance) {
+        return ok && distance <= COMMIT_RADIUS;
+    }
+
+    // only the ones close enough to bother with, for the kill-it-while-passing check
+    static List<Candidate> within(List<Candidate> candidates, double radius) {
+        List<Candidate> near = new ArrayList<>();
+        for (Candidate c : candidates) {
+            if (c.distance() <= radius) {
+                near.add(c);
+            }
+        }
+        return near;
     }
 
     // the best candidate, except that the one we are already chasing (currentId, -1 for none) stays unless the best is
