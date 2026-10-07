@@ -4,36 +4,29 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.tasks.ResourceTask;
 import adris.altoclef.tasks.construction.PutOutFireTask;
-import adris.altoclef.tasks.entity.KillEntitiesTask;
 import adris.altoclef.tasks.movement.DefaultGoToDimensionTask;
 import adris.altoclef.tasks.movement.GetToBlockTask;
-import adris.altoclef.tasks.movement.RunAwayFromHostilesTask;
 import adris.altoclef.tasks.movement.SearchChunkForBlockTask;
 import adris.altoclef.tasksystem.Task;
 import baritone.api.utils.Dimension;
 import adris.altoclef.ui.HudText;
+import adris.altoclef.util.helpers.BlazeFightRules;
 import adris.altoclef.util.helpers.WorldHelper;
 import java.util.Optional;
-import java.util.function.Predicate;
 import net.minecraft.core.BlockPos;
-import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.monster.Blaze;
 import net.minecraft.world.item.Items;
-import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.phys.BlockHitResult;
-import net.minecraft.world.phys.Vec3;
 
 public class CollectBlazeRodsTask extends ResourceTask {
 
-    private static final double SPAWNER_BLAZE_RADIUS = 32;
-    private static final double TOO_LITTLE_HEALTH_BLAZE = 10;
-    private static final int TOO_MANY_BLAZES = 5;
+    // a hiding spot further than this from the spawner is not a spot near the spawner
+    private static final double COVER_HOLD_RADIUS = 10;
     private final int _count;
     private final Task _searcher = new SearchChunkForBlockTask(Blocks.NETHER_BRICKS);
+    // the fight logic lives in there. this task used to just camp, silently, while blazes it had decided not to see shot at it
+    private final BlazeFight _fight = new BlazeFight();
 
-    // Why was this here???
-    //private Entity _toKill;
     private BlockPos _foundBlazeSpawner = null;
 
     // true on ticks where we stand by the spawner waiting for blazes, so the gamer can give up on a dud spawner
@@ -48,18 +41,16 @@ public class CollectBlazeRodsTask extends ResourceTask {
         return _camping;
     }
 
-    private static boolean isHoveringAboveLavaOrTooHigh(AltoClef mod, Entity entity) {
-        int MAX_HEIGHT = 11;
-        for (BlockPos check = entity.blockPosition(); entity.blockPosition().getY() - check.getY() < MAX_HEIGHT; check = check.below()) {
-            if (mod.getWorld().getBlockState(check).getBlock() == Blocks.LAVA) return true;
-            if (WorldHelper.isSolid(mod, check)) return false;
-        }
-        return true;
-    }
-
     @Override
     protected void onResourceStart(AltoClef mod) {
         mod.getBlockTracker().trackBlock(Blocks.SPAWNER);
+        // the fight is ours: mob defense chasing a hovering blaze with a sword is how this used to go wrong. its projectile
+        // shield and dodge do not look at this list, and the combat stance (no eating mid volley) still counts them
+        mod.getBehaviour().addMobDefenseExclusion(entity -> entity instanceof Blaze);
+        // the aura swinging and shielding at a blaze 6 blocks off pauses the path we need to get out of its sight, only
+        // the ones next to us are for it
+        mod.getBehaviour().addForceFieldExclusion(entity -> entity instanceof Blaze && mod.getPlayer().distanceTo(entity) > 3.5);
+        _fight.forgetCampSpot();
     }
 
     @Override
@@ -70,45 +61,36 @@ public class CollectBlazeRodsTask extends ResourceTask {
             setDebugState("Going to nether");
             return new DefaultGoToDimensionTask(Dimension.NETHER);
         }
-        // If there is a blaze, kill it.
-        Predicate<Entity> safeToPursue = entity -> !isHoveringAboveLavaOrTooHigh(mod, entity);
-        Optional<Entity> toKill;
-        toKill = mod.getEntityTracker().getClosestEntity(safeToPursue, Blaze.class);
-        if (toKill.isPresent()) {
-            if (mod.getPlayer().getHealth() <= TOO_LITTLE_HEALTH_BLAZE &&
-                    mod.getEntityTracker().getTrackedEntities(Blaze.class).size() >= TOO_MANY_BLAZES) {
-                setDebugState("Running away as there are too many blazes nearby.");
-                return new RunAwayFromHostilesTask(15 * 2, true);
-            }
-            if (_foundBlazeSpawner != null) {
-                Entity kill = toKill.get();
-                Vec3 nearest = kill.position();
-                double sqDistanceToPlayer = nearest.distanceToSqr(mod.getPlayer().position());//_foundBlazeSpawner.getX(), _foundBlazeSpawner.getY(), _foundBlazeSpawner.getZ());
-                // Ignore if the blaze is too far away.
-                if (sqDistanceToPlayer > SPAWNER_BLAZE_RADIUS * SPAWNER_BLAZE_RADIUS) {
-                    // If the blaze can see us it needs to go lol
-                    BlockHitResult hit = mod.getWorld().clip(new ClipContext(mod.getPlayer().getEyePosition(1.0F), kill.getEyePosition(1.0F), ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, mod.getPlayer()));
-                    if (hit != null && hit.getBlockPos().distToCenterSqr(mod.getPlayer().position()) < sqDistanceToPlayer) {
-                        toKill = Optional.empty();
-                    }
-                }
-            }
+        // blazes first: kill what we can reach, hide from what we cannot, leave when it goes badly. null is "nobody to fight"
+        Task fight = _fight.tick(mod, _foundBlazeSpawner);
+        if (fight != null) {
+            setDebugState("Blaze fight: " + _fight.mode().name().toLowerCase());
+            return fight;
         }
-        if (toKill.isPresent()) {
-            setDebugState("Killing blaze");
-            return new KillEntitiesTask(safeToPursue, toKill.get().getClass());
+        if (_fight.mode() == BlazeFightRules.Mode.RETREAT) {
+            // out of their sight and healing, the spawner can wait. standing here is the plan so it counts as camping
+            setDebugState("Recovering away from the blazes");
+            _camping = true;
+            return null;
         }
-
 
         // If the blaze spawner somehow isn't valid
         if (_foundBlazeSpawner != null && mod.getChunkTracker().isChunkLoaded(_foundBlazeSpawner) && !isValidBlazeSpawner(mod, _foundBlazeSpawner)) {
             Debug.logMessage("Blaze spawner at " + _foundBlazeSpawner + " too far away or invalid. Re-searching.");
             _foundBlazeSpawner = null;
+            _fight.forgetCampSpot();
         }
 
         // If we have a blaze spawner, go near it.
         if (_foundBlazeSpawner != null) {
-            if (!_foundBlazeSpawner.closerToCenterThan(mod.getPlayer().position(), 4)) {
+            // wherever we last hid from them near here beats standing in the open next to the spawner
+            BlockPos hide = _fight.campSpot();
+            if (hide != null && hide.closerToCenterThan(_foundBlazeSpawner.getCenter(), COVER_HOLD_RADIUS)) {
+                if (!hide.closerToCenterThan(mod.getPlayer().position(), 1.5)) {
+                    setDebugState("Going back to cover");
+                    return new GetToBlockTask(hide, false);
+                }
+            } else if (!_foundBlazeSpawner.closerToCenterThan(mod.getPlayer().position(), 4)) {
                 setDebugState("Going to blaze spawner");
                 return new GetToBlockTask(_foundBlazeSpawner.above(), false);
             }

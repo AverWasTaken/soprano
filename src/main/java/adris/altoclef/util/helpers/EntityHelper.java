@@ -44,11 +44,21 @@ public class EntityHelper {
         if (entity instanceof Warden warden && mod.getPlayer().closerThan(warden, 16)) return true;
         if (entity instanceof EnderMan enderman && enderman.hasLineOfSight(mod.getPlayer()) && enderman.isAggressive())
             return true;
-        if (entity instanceof Blaze blaze && mod.getPlayer().closerThan(blaze, 3)) return true;
+        if (entity instanceof Blaze blaze && isBlazeThreat(mod, blaze)) return true;
         if (entity instanceof Slime || entity instanceof Raider || entity instanceof Warden
                 || entity instanceof EnderMan || entity instanceof Blaze) return false;
         if (entity instanceof Mob mob && !mob.isAggressive()) return false;
         return !isTradingPiglin(entity);
+    }
+
+    // a blaze sitting 10 blocks off throwing fireballs used to count as harmless (only 3 blocks and closer was hostile),
+    // so the bot stood there and ate through the volley. the blaze syncs a "charged" flag while it winds up, that is the
+    // honest signal. cheap checks first, the line of sight raycast only for one that is actually winding up
+    private static boolean isBlazeThreat(AltoClef mod, Blaze blaze) {
+        double distance = mod.getPlayer().distanceTo(blaze);
+        if (distance <= BlazeFightRules.MELEE_RANGE) return true;
+        if (distance > BlazeFightRules.SIGHT_RANGE || !blaze.isOnFire()) return false;
+        return BlazeFightRules.isThreat(distance, true, LookHelper.seesPlayer(blaze, mod.getPlayer(), BlazeFightRules.SIGHT_RANGE));
     }
 
     // can it walk up and hit us (so chasing it is not a waste of a trip). see MobReachability for how that gets decided
