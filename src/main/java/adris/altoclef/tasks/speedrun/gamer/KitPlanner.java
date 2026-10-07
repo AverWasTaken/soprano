@@ -126,9 +126,10 @@ public final class KitPlanner {
         return name.endsWith("_axe");
     }
 
-    // ore in the bag, raw or cooking: the cave trip has begun and wood is no reason to leave it
+    // ore in the bag, raw or cooking: the cave trip has begun and wood is no reason to leave it.
+    // an early load in flight counts too, mid-move the bag is empty and we'd go chop a tree with the furnace open
     private static boolean ironStarted(GamerFacts f) {
-        return f.count(Items.RAW_IRON, Items.IRON_INGOT) + f.pendingOutput(Items.IRON_INGOT) > 0;
+        return f.count(Items.RAW_IRON, Items.IRON_INGOT) + f.pendingOutput(Items.IRON_INGOT) > 0 || f.earlyLoadInFlight();
     }
 
     private static void addLogs(List<KitNeed> out, GamerFacts f, int logs) {
