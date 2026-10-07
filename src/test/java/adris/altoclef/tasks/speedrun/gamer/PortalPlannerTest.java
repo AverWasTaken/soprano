@@ -32,6 +32,14 @@ public class PortalPlannerTest {
     }
 
     @Test
+    public void poolGoesFirstUntilItGivesUp() {
+        assertTrue(PortalPlanner.usePool(true, false, Method.CAST));
+        assertTrue("a failed pool never comes back", !PortalPlanner.usePool(true, true, Method.CAST));
+        assertTrue("switched off means the cast like before", !PortalPlanner.usePool(false, false, Method.CAST));
+        assertTrue("obsidian is the end of the lava ways", !PortalPlanner.usePool(true, false, Method.OBSIDIAN));
+    }
+
+    @Test
     public void castsFirst() {
         assertEquals(Method.CAST, PortalPlanner.decide(Method.CAST, 0, cfg, false, false));
         assertEquals(Method.CAST, PortalPlanner.decide(Method.CAST, 300, cfg, true, true));

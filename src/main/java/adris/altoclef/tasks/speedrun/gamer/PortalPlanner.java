@@ -30,6 +30,12 @@ public final class PortalPlanner {
         return Method.CAST;
     }
 
+    // the lava pool mold goes first when it is switched on and has not already given up. OBSIDIAN is the sticky "no lava
+    // way works" answer, so it never tries the pool again, and a failed pool hands over to the cast for the rest of the phase
+    public static boolean usePool(boolean enabled, boolean poolFailed, Method current) {
+        return enabled && !poolFailed && current != Method.OBSIDIAN;
+    }
+
     // castSeconds = how long the cast has been running (not the prep before it). OBSIDIAN is sticky, going back and
     // forth would just burn the budget twice. DefaultGoToDimensionTask never finishes when there is no lava lake, it
     // wanders, so the clock is the only thing that ends a cast

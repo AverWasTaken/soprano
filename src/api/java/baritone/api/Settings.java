@@ -2181,6 +2181,14 @@ public final class Settings {
     public final Setting<List<BlockRange>> altoAreasToProtect = new Setting<>(List.of());
 
     /**
+     * Build the #gamer nether portal on a lava pool with a throwaway mold instead of casting obsidian one block at a
+     * time. Needs a lava row at least four wide with a shore along it and room to scoop from. When it cannot find one,
+     * or anything goes wrong with it, the gamer falls back to the old per block cast, so this only ever makes the portal
+     * faster. Turn it off to always cast.
+     */
+    public final Setting<Boolean> altoLavaPoolPortal = new Setting<>(true);
+
+    /**
      * A map of lowercase setting field names to their respective setting
      */
     public final Map<String, Setting<?>> byLowerName;

@@ -18,7 +18,9 @@ import adris.altoclef.tasks.speedrun.gamer.PortalPlanner.Method;
 import adris.altoclef.tasks.speedrun.gamer.RunState;
 import adris.altoclef.tasks.speedrun.gamer.Timeout;
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
+import adris.altoclef.tasks.speedrun.gamer.portal.LavaPoolPortalTask;
 import adris.altoclef.tasksystem.Task;
+import baritone.Baritone;
 import baritone.api.utils.Dimension;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.item.Items;
@@ -28,8 +30,9 @@ import java.util.List;
 import java.util.Optional;
 
 // gets us into the nether. first everything we want to hold when we leave (flint and steel, the buckets, water, armor
-// on, blocks, food), then one of two ways to make the portal: CAST (lava lake, no diamonds) or OBSIDIAN. the cast
-// never finishes on its own when there is no lake, it wanders, so a clock decides when to give up on it
+// on, blocks, food), then the portal: the lava pool mold first (altoLavaPoolPortal), and when that gives up the old
+// CAST (lava lake, no diamonds), and after that OBSIDIAN. the cast never finishes on its own when there is no lake, it
+// wanders, so a clock decides when to give up on it
 public class PortalPhase implements PhaseHandler {
     private final KitRunner runner = new KitRunner();
     private final FurnaceWatch furnaces = new FurnaceWatch();
@@ -38,6 +41,8 @@ public class PortalPhase implements PhaseHandler {
     private boolean tracking;
     private long castStartTick = -1;
     private DefaultGoToDimensionTask cast;
+    private LavaPoolPortalTask pool;
+    private boolean poolFailed;
     private ConstructNetherPortalObsidianTask obsidian;
     private EnterNetherPortalTask enter;
     private String hudState;
@@ -69,6 +74,8 @@ public class PortalPhase implements PhaseHandler {
         gateDone = false;
         castStartTick = -1;
         cast = new DefaultGoToDimensionTask(Dimension.NETHER);
+        pool = new LavaPoolPortalTask(ctx::log);
+        poolFailed = false;
         obsidian = new ConstructNetherPortalObsidianTask();
         enter = new EnterNetherPortalTask(Dimension.NETHER);
         hudState = null;
@@ -123,6 +130,21 @@ public class PortalPhase implements PhaseHandler {
                 ctx.log("no gold for piglins, good luck");
             }
             ctx.progress("ready for the portal");
+        }
+        // the mold goes first. when it gives up the cast clock starts from now, not from when the phase did
+        if (f.dimension() == Dimension.OVERWORLD
+                && PortalPlanner.usePool(Baritone.settings().altoLavaPoolPortal.value, poolFailed, PortalPlanner.parse(ctx.state().portalMethod))) {
+            if (portalExists(mod)) {
+                hudState = "Going through the portal";
+                return enter;
+            }
+            if (!pool.failed()) {
+                hudState = "Building the portal on a lava pool";
+                return pool;
+            }
+            poolFailed = true;
+            castStartTick = -1;
+            ctx.progress("lava pool gave up: " + pool.failReason());
         }
         if (castStartTick < 0) {
             castStartTick = f.gameTime();
