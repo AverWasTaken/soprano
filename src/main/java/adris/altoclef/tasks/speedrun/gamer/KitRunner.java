@@ -128,6 +128,7 @@ public final class KitRunner {
             case "flint" -> "Looking for flint";
             case "planks" -> "Making planks";
             case "log" -> "Chopping logs";
+            case "cobblestone" -> "Mining stone";
             case "water_bucket" -> "Filling a bucket with water";
             default -> "Making " + need.catalogueName().replace('_', ' ');
         };

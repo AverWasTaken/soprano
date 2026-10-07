@@ -23,8 +23,9 @@ public record KitNeed(String catalogueName, int count) {
 
     public static boolean isGatheringName(String name) {
         return switch (name == null ? "" : name) {
-            // flint, logs, planks and coal are the filler while iron cooks (SmeltFiller), none of them is made at a table
-            case "iron_ingot", "wool", FOOD, BUILD_BLOCKS, "flint", "log", "planks", "coal" -> true;
+            // flint, logs, planks and coal are the filler while iron cooks (SmeltFiller), none of them is made at a table.
+            // cobblestone is the one trip's worth of stone the gather mines before the stone crafts, it is mined not crafted
+            case "iron_ingot", "wool", FOOD, BUILD_BLOCKS, "flint", "log", "planks", "coal", "cobblestone" -> true;
             default -> false;
         };
     }

@@ -91,6 +91,9 @@ public final class KitPlanner {
                 addItem(out, f, a.item, a.count);
             }
             addLogs(out, f, woodNeed(f, cfg, endBeds, true));
+            // every cobble the stone kit eats in one trip, before the first stone craft, so the bot doesn't go back down
+            // for the furnace's cobble after crafting the sword
+            addCobble(out, f, stoneNeed(f, cfg));
         } else if (!ironStarted(f)) {
             addLogs(out, f, woodNeed(f, cfg, endBeds, false));
         }
@@ -114,6 +117,41 @@ public final class KitPlanner {
         if (logs > 0) {
             out.add(new KitNeed("log", held(f, "log") + logs));
         }
+    }
+
+    private static void addCobble(List<KitNeed> out, GamerFacts f, int cobble) {
+        if (cobble > 0) {
+            out.add(new KitNeed(COBBLE, held(f, COBBLE) + cobble));
+        }
+    }
+
+    // the catalogue name of the stone gather. a gathering name (KitNeed), so it never holds the table
+    public static final String COBBLE = "cobblestone";
+    // cobble a stray placement can eat before the crafts, so one misplaced block is not a second trip
+    private static final int STONE_SLACK = 2;
+    // cobble per item: the tool shapes (pickaxe and axe 3, sword and hoe 2, shovel 1) and the furnace's ring of 8
+    private static final Map<String, Integer> COBBLE_COST = Map.of(
+            "stone_pickaxe", 3, "stone_axe", 3, "stone_sword", 2, "stone_hoe", 2, "stone_shovel", 1, "furnace", 8);
+
+    // cobble still to mine for every stone item the kit is missing, slack included, held cobble taken off. 0 when we hold
+    // enough. only plain cobblestone counts as held: the catalogue recipes (and so CraftInTableTask) put Items.COBBLESTONE
+    // in the slots and nothing else, so cobbled deepslate in the bag would be a second trip wearing a disguise.
+    // the slack is part of what we hold ourselves to (same as woodNeed), the crafts eat held and wanted in step so the
+    // answer stays 0 through them. the gather only: once ore is in the bag a worn pick is a just in time craft
+    public static int stoneNeed(GamerFacts f, OverworldConfig cfg) {
+        List<KitItem> all = new ArrayList<>(cfg.starterKit);
+        all.addAll(cfg.ironKit);
+        int wanted = 0;
+        for (KitItem k : all) {
+            Integer cost = COBBLE_COST.get(k.item);
+            if (cost != null) {
+                wanted += cost * missing(f, k.item, k.count);
+            }
+        }
+        if (wanted <= 0) {
+            return 0;
+        }
+        return Math.max(0, wanted + STONE_SLACK - held(f, COBBLE));
     }
 
     // logs still to fetch for everything wooden the overworld will craft, one log of slack included, 0 when we hold
