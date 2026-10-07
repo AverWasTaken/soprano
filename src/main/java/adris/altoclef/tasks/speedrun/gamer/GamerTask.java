@@ -241,6 +241,7 @@ public class GamerTask extends Task {
     }
 
     private void releaseBehaviour(AltoClef mod) {
+        adris.altoclef.util.helpers.FuelPolicy.clear();
         try {
             mod.getBlockTracker().stopTracking(TRACKED);
         } catch (RuntimeException e) {
@@ -480,6 +481,8 @@ public class GamerTask extends Task {
         double now = machine.now();
         state.runTicks++;
         takeLoadedFurnaces();
+        // the furnaces read this: wood the kit still wants is not fuel
+        WoodReserve.update(facts, cfg.overworld, cfg.end.beds);
         if (facts.creditsShown()) {
             machine.finish(true);
             return null;

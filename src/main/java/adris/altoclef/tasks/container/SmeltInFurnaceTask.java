@@ -321,28 +321,12 @@ public class SmeltInFurnaceTask extends ResourceTask {
                 double currentlyCached = StorageHelper.getFurnaceFuel() + StorageHelper.getFurnaceCookPercent();
                 double needs = material.getCount() - currentlyCached;
                 if (needs > 0) {
-                    // Get best fuel to fill
-                    double closestDelta = Double.NEGATIVE_INFINITY;
-                    ItemStack bestStack = null;
-                    for (ItemStack stack : mod.getItemStorage().getItemStacksPlayerInventory(true)) {
-                        if (AltoSettings.isSupportedFuel(stack.getItem())) {
-                            double fuelAmount = ItemHelper.getFuelAmount(stack.getItem()) * stack.getCount();
-                            double delta = needs - fuelAmount;
-                            if (
-                                    (bestStack == null) ||
-                                            // If our best is above, prioritize lower values
-                                            (closestDelta > 0 && delta < closestDelta) ||
-                                            // If our best is below, prioritize higher below values
-                                            (closestDelta < 0 && delta < 0 && delta > closestDelta)
-                            ) {
-                                bestStack = stack;
-                                closestDelta = delta;
-                            }
-                        }
-                    }
-                    if (bestStack != null) {
+                    // best fuel to fill, FuelPolicy keeps the wood the run still has plans for
+                    var pick = adris.altoclef.util.helpers.FuelPolicy.choose(mod.getItemStorage().getItemStacksPlayerInventory(true), needs,
+                            AltoSettings::isSupportedFuel, ItemHelper::getFuelAmount);
+                    if (pick != null) {
                         setDebugState("Filling fuel");
-                        return new MoveItemToSlotFromInventoryTask(new ItemTarget(bestStack.getItem(), bestStack.getCount()), FurnaceSlot.INPUT_SLOT_FUEL);
+                        return new MoveItemToSlotFromInventoryTask(new ItemTarget(pick.stack().getItem(), pick.count()), FurnaceSlot.INPUT_SLOT_FUEL);
                     }
                 }
             }

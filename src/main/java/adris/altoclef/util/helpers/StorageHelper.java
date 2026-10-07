@@ -413,15 +413,9 @@ public class StorageHelper {
     }
 
     public static double calculateInventoryFuelCount(AltoClef mod) {
-        double result = 0;
-        if (!mod.getItemStorage().getItemStacksPlayerInventory(true).isEmpty()) {
-            for (ItemStack stack : mod.getItemStorage().getItemStacksPlayerInventory(true)) {
-                if (AltoSettings.isSupportedFuel(stack.getItem())) {
-                    result += ItemHelper.getFuelAmount(stack.getItem()) * stack.getCount();
-                }
-            }
-        }
-        return result;
+        // FuelPolicy leaves out wood somebody has plans for, so "do we have the fuel" and "what goes in the slot" agree
+        return FuelPolicy.usableFuel(mod.getItemStorage().getItemStacksPlayerInventory(true), AltoSettings::isSupportedFuel,
+                ItemHelper::getFuelAmount);
     }
 
     /**
