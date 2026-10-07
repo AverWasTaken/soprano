@@ -9,6 +9,7 @@ import adris.altoclef.tasksystem.ITaskRequiresGrounded;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.LookHelper;
+import adris.altoclef.util.helpers.MineStick;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
@@ -531,7 +532,10 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
             Slot currentEquipped = PlayerSlot.getEquipSlot();
             // if baritone is running, only accept tools OUTSIDE OF HOTBAR!
             // Baritone will take care of tools inside the hotbar.
-            if (bestToolSlot.isPresent() && bestToolSlot.get() != currentEquipped) {
+            // (and not with a crack on the block: a different item in hand starts the break over)
+            boolean crackedAlready = MineStick.toolSwapWouldReset(mod.getControllerExtras().isBreakingBlock(),
+                    mod.getControllerExtras().getBreakingBlockPos(), mod.getControllerExtras().getBreakingBlockProgress(), swingAt);
+            if (bestToolSlot.isPresent() && bestToolSlot.get() != currentEquipped && !crackedAlready) {
                 // ONLY equip if the item class is STRICTLY different (otherwise we swap around a lot)
                 if (StorageHelper.getItemStackInSlot(currentEquipped).getItem() != StorageHelper.getItemStackInSlot(bestToolSlot.get()).getItem()) {
                     boolean isAllowedToManage = !mod.getClientBaritone().getPathingBehavior().isPathing()

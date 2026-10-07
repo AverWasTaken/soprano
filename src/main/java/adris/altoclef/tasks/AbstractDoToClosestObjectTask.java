@@ -3,6 +3,7 @@ package adris.altoclef.tasks;
 import adris.altoclef.AltoClef;
 import adris.altoclef.tasks.movement.TimeoutWanderTask;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.util.helpers.MineStick;
 import adris.altoclef.util.helpers.WorldHelper;
 import java.util.HashMap;
 import java.util.Optional;
@@ -33,6 +34,12 @@ public abstract class AbstractDoToClosestObjectTask<T> extends Task {
     protected abstract Task getGoalTask(T obj);
 
     protected abstract boolean isValid(AltoClef mod, T obj);
+
+    // virtual. true to take the candidate over the current pursuit even though it is not much closer (the thing we are
+    // halfway through breaking, say)
+    protected boolean mustSwitchTo(AltoClef mod, T current, T candidate) {
+        return false;
+    }
 
     // Virtual
     protected Task getWanderTask(AltoClef mod) {
@@ -114,10 +121,15 @@ public abstract class AbstractDoToClosestObjectTask<T> extends Task {
                             // but it's CRITICAL to making this work for some reason
                             maybeReAttempt.updateDistance(maybeClosestDistance);
                         }
-                    } else {
+                    } else if (mustSwitchTo(mod, _currentlyPursuing, newClosest)
+                            || MineStick.clearlyCloser(getPos(mod, newClosest).distanceToSqr(mod.getPlayer().position()), closestDistanceSqr)) {
                         setDebugState("Trying out NEW pursuit");
-                        // Our new object does not have a heuristic, TRY IT OUT!
+                        // Our new object does not have a heuristic, TRY IT OUT! but only when it is clearly better: the
+                        // two nearest things trading places as we step (a block and the drop next to it) switched the
+                        // task every few ticks, and every switch lets go of the mouse button and resets the crack
                         _currentlyPursuing = newClosest;
+                    } else {
+                        setDebugState("Staying with the current pursuit");
                     }
                 } else {
                     setDebugState("Waiting for move task to kick in...");

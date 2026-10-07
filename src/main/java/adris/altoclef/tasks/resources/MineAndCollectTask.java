@@ -11,6 +11,7 @@ import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.MiningRequirement;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.StorageHelper;
+import adris.altoclef.util.helpers.MineStick;
 import adris.altoclef.util.helpers.StoneDigRank;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
@@ -170,6 +171,7 @@ public class MineAndCollectTask extends ResourceTask {
         private final Set<BlockPos> _blacklist = new HashSet<>();
         private final MovementProgressChecker _progressChecker = new MovementProgressChecker();
         private final Task _pickupTask;
+        private final MineStick _stick = new MineStick();
         private BlockPos _miningPos;
 
         public MineOrCollectTask(Block[] blocks, ItemTarget[] targets) {
@@ -244,11 +246,38 @@ public class MineAndCollectTask extends ResourceTask {
                 return closestDrop.map(Object.class::cast);
             }
 
+            // halfway through a block is not the time to go and get a drop. the drop gets its turn when the block is gone
+            BlockPos breaking = mod.getControllerExtras().getBreakingBlockPos();
+            int now = WorldHelper.getTicks();
+            if (breaking != null && mod.getControllerExtras().isBreakingBlock() && stillOurs(mod, breaking)) {
+                _stick.breaking(now, breaking);
+            }
+            BlockPos held = _stick.holdOn(now, check -> stillOurs(mod, check));
+            if (held != null) {
+                return Optional.of(held);
+            }
+
             if (rawDropSq <= DROP_FIRST_RANGE_SQ || dropSq <= blockSq) {
                 return closestDrop.map(Object.class::cast);
             } else {
                 return closestBlock.map(Object.class::cast);
             }
+        }
+
+        // one of the blocks we are after, still standing, not given up on, and close enough to keep swinging at
+        private boolean stillOurs(AltoClef mod, BlockPos pos) {
+            if (_blacklist.contains(pos) || mod.getBlockTracker().unreachable(pos)) return false;
+            if (!mod.getBlockTracker().blockIsValid(pos, _blocks)) return false;
+            return mod.getPlayer().getEyePosition().distanceToSqr(Vec3.atCenterOf(pos)) <= HOLD_REACH_SQ;
+        }
+
+        // the mid-break block is only worth holding on to while we can still hit it
+        private static final double HOLD_REACH_SQ = 5.5 * 5.5;
+
+        // the block we are breaking beats a never-tried one no matter how close the new one is
+        @Override
+        protected boolean mustSwitchTo(AltoClef mod, Object current, Object candidate) {
+            return candidate instanceof BlockPos b && _stick.isHolding(b);
         }
 
         @Override
@@ -297,7 +326,10 @@ public class MineAndCollectTask extends ResourceTask {
         @Override
         protected boolean isValid(AltoClef mod, Object obj) {
             if (obj instanceof BlockPos b) {
-                return mod.getBlockTracker().blockIsValid(b, _blocks) && WorldHelper.canBreak(mod, b);
+                // a block we gave up on is not valid anymore, or the "new target must be twice as close" rule would
+                // keep us on it (it used to be swapped out for any other nearest block, which is how it got away with this)
+                return !_blacklist.contains(b) && !mod.getBlockTracker().unreachable(b)
+                        && mod.getBlockTracker().blockIsValid(b, _blocks) && WorldHelper.canBreak(mod, b);
             }
             if (obj instanceof ItemEntity drop) {
                 // picked up or despawned, don't keep chasing a ghost
@@ -317,6 +349,7 @@ public class MineAndCollectTask extends ResourceTask {
         protected void onStart(AltoClef mod) {
             _progressChecker.reset();
             _miningPos = null;
+            _stick.clear();
         }
 
         @Override
