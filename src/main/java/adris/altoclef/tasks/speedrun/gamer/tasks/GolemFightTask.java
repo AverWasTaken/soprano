@@ -4,6 +4,7 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.tasks.entity.AbstractKillEntityTask;
 import adris.altoclef.tasks.movement.GetToEntityTask;
 import adris.altoclef.tasks.movement.PickupDroppedItemTask;
+import adris.altoclef.tasks.resources.GetBuildingMaterialsTask;
 import adris.altoclef.tasks.speedrun.gamer.GamerContext;
 import adris.altoclef.tasks.speedrun.gamer.GolemRules;
 import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig;
@@ -47,7 +48,7 @@ public final class GolemFightTask extends Task {
     private static final double FAR_AWAY = 24;
 
     private enum State {
-        APPROACH, PILLAR, FIGHT, LOOT, DONE
+        APPROACH, GATHER, PILLAR, FIGHT, LOOT, DONE
     }
 
     private final int golemId;
@@ -65,6 +66,8 @@ public final class GolemFightTask extends Task {
     private int outOfReachTicks;
     private int repillars;
     private int lootTarget;
+    private int gatherTarget;
+    private GolemRules.Abort abort = GolemRules.Abort.NONE;
     private boolean golemSeenDead;
     private boolean killed;
     private boolean hostilesNear;
@@ -89,6 +92,11 @@ public final class GolemFightTask extends Task {
 
     public String hud() {
         return hud;
+    }
+
+    // why it ended early, NONE for a fight that ran its course. GolemHunt decides from this if the golem is burned
+    public GolemRules.Abort abort() {
+        return abort;
     }
 
     // monsters close enough to ruin it (a creeper at the foot of the pillar does not care how tall we are)
@@ -146,6 +154,12 @@ public final class GolemFightTask extends Task {
         adris.altoclef.Debug.logInternal("golem: " + why);
     }
 
+    // DONE with a reason on it, so the hunt can tell "the day was wrong" from "the golem won"
+    private void quit(GolemRules.Abort why, long now, String msg) {
+        abort = why;
+        enter(State.DONE, now, msg);
+    }
+
     private void progress(long now, String what) {
         lastProgressTick = now;
         ctx.progress(what);
@@ -170,7 +184,7 @@ public final class GolemFightTask extends Task {
         }
         if (gone && state != State.LOOT && state != State.DONE) {
             if (hits == 0) {
-                enter(State.DONE, now, "golem gone before we hit it");
+                quit(GolemRules.Abort.GONE, now, "golem gone before we hit it");
                 return null;
             }
             killed = golemSeenDead;
@@ -181,6 +195,7 @@ public final class GolemFightTask extends Task {
         }
         return switch (state) {
             case APPROACH -> approach(mod, player, g, now);
+            case GATHER -> gather(mod, g, now);
             case PILLAR -> pillar(mod, player, g, now);
             case FIGHT -> fight(mod, player, g, now);
             case LOOT -> loot(mod, now);
@@ -192,11 +207,12 @@ public final class GolemFightTask extends Task {
         hud = "Walking up to an iron golem";
         if (g.isAggressive() || hostilesNear) {
             // it noticed us (or something else did) while we are still on the ground. not our plan any more
-            enter(State.DONE, now, g.isAggressive() ? "golem is angry on the ground, backing out" : "monsters showed up");
+            quit(g.isAggressive() ? GolemRules.Abort.ANGRY_ON_GROUND : GolemRules.Abort.MONSTERS, now,
+                    g.isAggressive() ? "golem is angry on the ground, backing out" : "monsters showed up");
             return null;
         }
         if ((now - stateSince) / 20.0 > cfg.golemApproachSeconds) {
-            enter(State.DONE, now, "could not get to the golem in time");
+            quit(GolemRules.Abort.UNREACHABLE, now, "could not get to the golem in time");
             return null;
         }
         double dx = g.getX() - player.getX();
@@ -207,6 +223,30 @@ public final class GolemFightTask extends Task {
         }
         if (subtask == null) {
             subtask = new GetToEntityTask(g, APPROACH_TO);
+        }
+        return subtask;
+    }
+
+    // cobble or dirt up to need + spares, then back to walking up to it. the golem is calm the whole time (the approach
+    // checks that again on the way back), so this is just a mining trip with a clock on it
+    private Task gather(AltoClef mod, IronGolem g, long now) {
+        hud = "Gathering blocks for an iron golem pillar";
+        if (g.isAggressive() || hostilesNear) {
+            quit(g.isAggressive() ? GolemRules.Abort.ANGRY_ON_GROUND : GolemRules.Abort.MONSTERS, now,
+                    g.isAggressive() ? "golem noticed us while we gathered" : "monsters showed up while we gathered");
+            return null;
+        }
+        if (ctx.facts().buildBlocks() >= gatherTarget) {
+            enter(State.APPROACH, now, "got the blocks (" + ctx.facts().buildBlocks() + "), back to the golem");
+            return null;
+        }
+        // mining a stack of cobble is slower than stacking it, so this gets double the pillar clock
+        if ((now - stateSince) / 20.0 > cfg.golemPillarSeconds * 2) {
+            quit(GolemRules.Abort.NO_BLOCKS, now, "could not find blocks in time (" + ctx.facts().buildBlocks() + " of " + gatherTarget + ")");
+            return null;
+        }
+        if (subtask == null) {
+            subtask = new GetBuildingMaterialsTask(gatherTarget);
         }
         return subtask;
     }
@@ -222,14 +262,32 @@ public final class GolemFightTask extends Task {
             progress(now, "on the pillar next to an iron golem");
             return null;
         }
-        if ((now - stateSince) / 20.0 > cfg.golemPillarSeconds || (hostilesNear && hits == 0)) {
-            enter(State.DONE, now, "pillar went nowhere");
+        if (hostilesNear && hits == 0) {
+            quit(GolemRules.Abort.MONSTERS, now, "monsters showed up while stacking");
+            return null;
+        }
+        if ((now - stateSince) / 20.0 > cfg.golemPillarSeconds) {
+            quit(GolemRules.Abort.PILLAR_STUCK, now, "pillar went nowhere");
             return null;
         }
         if (subtask == null) {
             int need = GolemRules.blocksToRaise(player.getY(), g.getY(), cfg.golemSafeMargin, cfg.golemMaxPillar);
-            if (need < 0 || ctx.facts().buildBlocks() < need) {
-                enter(State.DONE, now, "not worth " + need + " blocks of pillar");
+            int have = ctx.facts().buildBlocks();
+            adris.altoclef.Debug.logInternal("golem: pillar wants " + need + " blocks, buildBlocks " + have
+                    + " (us y=" + player.getY() + " golem y=" + g.getY() + ")");
+            if (need < 0) {
+                quit(GolemRules.Abort.TOO_TALL, now, "not worth a pillar this tall (golem y=" + g.getY() + ", us y=" + player.getY() + ")");
+                return null;
+            }
+            if (have < need) {
+                // not on the pillar yet and nothing has hit us: go and get the blocks instead of writing the golem off. on a
+                // pillar with an angry golem below, walking off to mine is the one thing worse than leaving
+                if (fightSince < 0 && hits == 0) {
+                    gatherTarget = need + GolemRules.SPARE_BLOCKS;
+                    enter(State.GATHER, now, "short of blocks (" + have + " of " + need + "), gathering up to " + gatherTarget);
+                } else {
+                    quit(GolemRules.Abort.NO_BLOCKS, now, "not enough blocks to restack (" + have + " of " + need + ")");
+                }
                 return null;
             }
             BlockPos here = player.blockPosition();
@@ -246,7 +304,7 @@ public final class GolemFightTask extends Task {
                 repillars++;
                 enter(State.PILLAR, now, "golem got higher than our feet, stacking more");
             } else {
-                enter(State.DONE, now, "cannot stay above it");
+                quit(GolemRules.Abort.GAVE_UP, now, "cannot stay above it");
             }
             return null;
         }

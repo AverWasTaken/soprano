@@ -35,6 +35,58 @@ public final class GolemRules {
         return blocks > maxBlocks ? -1 : blocks;
     }
 
+    // blocks to carry on top of the pillar's need. a block that lands wrong, a slab, a step we did not see: two spare is
+    // what the 4-block-need-5-block-bag run was missing
+    public static final int SPARE_BLOCKS = 2;
+    // a golem this far above our feet is up a cliff or out of a tunnel, and walking to it is not a plan (the pillar budget
+    // is 5, nobody is climbing 10 blocks to start a fight)
+    public static final double MAX_RISE = 6;
+    // we stand where the golem's ground is, give or take: a step, a path block, a slab. count on being one block under
+    public static final double GROUND_SLACK = 1.0;
+    // an aborted fight that gave its golem a cooldown instead of burning it, at most this many times per run
+    public static final int MAX_REFUNDS = 3;
+    public static final double RETRY_COOLDOWN_SECONDS = 60;
+
+    // pillar blocks the fight will want, decided BEFORE we walk over there (the fight itself used to find out at the foot of
+    // the golem, bail, and burn the golem with it). -1 = not worth starting: too tall, or too far above us
+    public static int launchNeed(double ourFeetY, double golemFeetY, double margin, int maxBlocks) {
+        if (golemFeetY - ourFeetY > MAX_RISE) {
+            return -1;
+        }
+        return blocksToRaise(golemFeetY - GROUND_SLACK, golemFeetY, margin, maxBlocks);
+    }
+
+    // what the bag has to hold to launch: the configured floor, or the need plus spares if that is more
+    public static int blocksWanted(int need, int minBlocks) {
+        return Math.max(minBlocks, need + SPARE_BLOCKS);
+    }
+
+    // why a fight ended early. the first few are about the day we picked, not the golem, so the golem is not burned
+    public enum Abort {
+        NONE(false), NO_BLOCKS(true), PILLAR_STUCK(true), MONSTERS(true), ANGRY_ON_GROUND(true),
+        TOO_TALL(false), UNREACHABLE(false), GONE(false), GAVE_UP(false);
+
+        private final boolean retryable;
+
+        Abort(boolean retryable) {
+            this.retryable = retryable;
+        }
+
+        public boolean retryable() {
+            return retryable;
+        }
+    }
+
+    // give the golem back to the pool (with a cooldown) instead of marking it tried. capped, or a pillar that never works
+    // would be tried for ever
+    public static boolean refund(Abort why, int refundsUsed) {
+        return why.retryable() && refundsUsed < MAX_REFUNDS;
+    }
+
+    public static boolean coolingDown(long now, Long until) {
+        return until != null && now < until;
+    }
+
     // can it hit us right now: our hitbox bottom is under its head. no hair of slack, vanilla's check is strict but we
     // would rather be wrong in the cautious direction
     public static boolean golemCanHitUs(double ourFeetY, double golemFeetY) {
@@ -60,12 +112,13 @@ public final class GolemRules {
     // everything the trigger looks at. plain numbers so the test does not need a world
     public record Inputs(boolean ironNeeded, boolean overworld, boolean golemFound, boolean golemAngry, boolean alreadyTried,
                          int attemptsUsed, int maxAttempts, boolean hasWeapon, int buildBlocks, int minBlocks,
-                         float health, float minHealth, boolean hostilesNearby, boolean onGround, boolean inFluid) {
+                         float health, float minHealth, boolean hostilesNearby, boolean onGround, boolean inFluid,
+                         int pillarNeed) {
     }
 
     public enum Verdict {
         GO, NO_IRON_NEEDED, WRONG_DIMENSION, NO_GOLEM, GOLEM_ANGRY, TRIED, OUT_OF_ATTEMPTS, NO_WEAPON, NO_BLOCKS, TOO_HURT,
-        HOSTILES, NOT_STANDING;
+        HOSTILES, NOT_STANDING, BAD_GROUND;
 
         public boolean go() {
             return this == GO;
@@ -81,7 +134,9 @@ public final class GolemRules {
         if (in.golemAngry) return Verdict.GOLEM_ANGRY;
         if (in.alreadyTried) return Verdict.TRIED;
         if (!in.hasWeapon) return Verdict.NO_WEAPON;
-        if (in.buildBlocks < in.minBlocks) return Verdict.NO_BLOCKS;
+        // pillarNeed < 0 = too tall or up a cliff, no amount of blocks fixes that
+        if (in.pillarNeed < 0) return Verdict.BAD_GROUND;
+        if (in.buildBlocks < blocksWanted(in.pillarNeed, in.minBlocks)) return Verdict.NO_BLOCKS;
         if (in.health < in.minHealth) return Verdict.TOO_HURT;
         if (in.hostilesNearby) return Verdict.HOSTILES;
         if (!in.onGround || in.inFluid) return Verdict.NOT_STANDING;

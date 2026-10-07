@@ -11,7 +11,9 @@ import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.entity.animal.IronGolem;
 import net.minecraft.world.item.Item;
 
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 
 // 3 to 5 iron ingots stand around in every village, they just hit hard. while iron is the thing we are short on and a
@@ -21,7 +23,11 @@ public final class GolemHunt {
     private static final int CHECK_EVERY_TICKS = 10;
 
     private final Set<Integer> tried = new HashSet<>();
+    // golems we backed out on for a reason that was about the day (no blocks, monsters), id -> game tick they are fair game
+    // again. a resource abort used to burn the golem for the whole run, which is how a 4 block tunnel cost us a village's iron
+    private final Map<Integer, Long> cooldown = new HashMap<>();
     private int attempts;
+    private int refunds;
     private int ticks;
     private GolemFightTask task;
 
@@ -46,6 +52,7 @@ public final class GolemHunt {
                 return task;
             }
             ctx.log(task.killed() ? "iron golem down" : "done with the golem");
+            settle(task, ctx.facts().gameTime());
             task = null;
         }
         if (++ticks % CHECK_EVERY_TICKS != 0 || ctx.facts().dimension() != Dimension.OVERWORLD) {
@@ -53,9 +60,13 @@ public final class GolemHunt {
         }
         OverworldConfig cfg = ctx.cfg().overworld;
         LocalPlayer player = mod.getPlayer();
+        long now = ctx.facts().gameTime();
         IronGolem golem = mod.getEntityTracker().getClosestEntity(e -> e instanceof IronGolem g && g.isAlive()
-                && !tried.contains(e.getId()) && e.closerThan(player, cfg.golemHuntRadius), IronGolem.class)
+                && !tried.contains(e.getId()) && !GolemRules.coolingDown(now, cooldown.get(e.getId()))
+                && e.closerThan(player, cfg.golemHuntRadius), IronGolem.class)
                 .map(e -> (IronGolem) e).orElse(null);
+        // decided here and not at the foot of the golem: that is where the fight used to find out it was 1 block short
+        int need = golem == null ? 0 : GolemRules.launchNeed(player.getY(), golem.getY(), cfg.golemSafeMargin, cfg.golemMaxPillar);
         // iron need only: a hunt for the 4th pickaxe nobody asked for is not what a golem is for
         boolean ironNeeded = current != null && "iron_ingot".equals(current.catalogueName()) && current.count() > 0;
         Inputs in = new Inputs(ironNeeded, true, golem != null, golem != null && golem.isAggressive(),
@@ -63,16 +74,33 @@ public final class GolemHunt {
                 ctx.facts().buildBlocks(), cfg.golemMinBlocks, player.getHealth(), (float) cfg.golemMinHealth,
                 // the monsters check is the expensive one, so it only runs when everything else already said yes
                 golem != null && ironNeeded && GolemFightTask.monstersNear(mod, cfg.golemHostileRadius, golem.getId()),
-                player.onGround(), player.isInWater() || player.isInLava());
+                player.onGround(), player.isInWater() || player.isInLava(), need);
         Verdict verdict = GolemRules.shouldHunt(in);
         if (!verdict.go()) {
             return null;
         }
         tried.add(golem.getId());
         attempts++;
+        adris.altoclef.Debug.logInternal("golem: launching, buildBlocks " + ctx.facts().buildBlocks() + " need " + need
+                + " (wanted " + GolemRules.blocksWanted(need, cfg.golemMinBlocks) + "), us y=" + player.getY() + " golem y=" + golem.getY());
         task = new GolemFightTask(golem.getId(), ctx);
         ctx.progress("hunting an iron golem");
         return task;
+    }
+
+    // a fight that backed out because of the day (blocks, monsters, a pillar that went nowhere) hands the golem back after a
+    // cooldown and gives the attempt back, a fight that was about the golem (it got away, we hit it) stays spent
+    private void settle(GolemFightTask finished, long now) {
+        GolemRules.Abort why = finished.abort();
+        if (!GolemRules.refund(why, refunds)) {
+            return;
+        }
+        refunds++;
+        attempts--;
+        tried.remove(finished.golemId());
+        cooldown.put(finished.golemId(), now + Math.round(GolemRules.RETRY_COOLDOWN_SECONDS * 20));
+        adris.altoclef.Debug.logInternal("golem: backed out (" + why + "), it can be tried again in "
+                + Math.round(GolemRules.RETRY_COOLDOWN_SECONDS) + " s (" + refunds + " of " + GolemRules.MAX_REFUNDS + " refunds used)");
     }
 
     private static boolean hasWeapon(GamerFacts facts) {
