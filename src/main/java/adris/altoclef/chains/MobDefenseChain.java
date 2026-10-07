@@ -9,6 +9,7 @@ import adris.altoclef.tasks.movement.DodgeProjectilesTask;
 import adris.altoclef.tasks.movement.RunAwayFromCreepersTask;
 import adris.altoclef.tasks.movement.RunAwayFromHostilesTask;
 import adris.altoclef.tasks.speedrun.DragonBreathTracker;
+import adris.altoclef.tasksystem.Task;
 import adris.altoclef.tasksystem.TaskRunner;
 import adris.altoclef.util.baritone.CachedProjectile;
 import adris.altoclef.util.helpers.*;
@@ -17,18 +18,21 @@ import adris.altoclef.util.slots.Slot;
 import baritone.Baritone;
 import baritone.api.utils.Rotation;
 import baritone.api.utils.input.Input;
+import baritone.pathing.path.PathExecutor;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.boss.wither.WitherBoss;
 import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.entity.monster.Ghast;
 import net.minecraft.world.entity.monster.Pillager;
 import net.minecraft.world.entity.monster.Skeleton;
 import net.minecraft.world.entity.monster.Slime;
+import net.minecraft.world.entity.monster.Spider;
 import net.minecraft.world.entity.monster.Stray;
 import net.minecraft.world.entity.monster.Vindicator;
 import net.minecraft.world.entity.monster.Witch;
@@ -54,9 +58,13 @@ import net.minecraft.world.level.block.BaseFireBlock;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.phys.Vec3;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.ConcurrentModificationException;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Predicate;
 
 import static java.lang.Math.abs;
@@ -79,11 +87,30 @@ public class MobDefenseChain extends SingleTaskChain {
 
     private float _cachedLastPriority;
 
-    private long _stanceTick = Long.MIN_VALUE;
+    // everything below the line is worked out once per game tick by snapshot(), no matter how many things ask
+    private long _snapshotTick = Long.MIN_VALUE;
     private CombatRules.Stance _stance = CombatRules.Stance.CALM;
     private int _lastHurtTime;
     // far enough in the past that it is not a recent hit, close enough to the present that subtracting is not an overflow
     private long _lastCombatHurtTick = Long.MIN_VALUE / 2;
+    // any damage at all, from anything. a stroll past a zombie stops being one when something bites
+    private long _lastHurtTick = Long.MIN_VALUE / 2;
+
+    private final CombatPolicy _policy = new CombatPolicy();
+    private final CombatPolicy.TravelTracker _travel = new CombatPolicy.TravelTracker();
+    private Task _travelUserTask;
+    private CombatPolicy.Decision _decision = NO_POLICY;
+    // the ones we are actually dealing with this tick (not the ones walking past), nearest first
+    private List<Mob> _dealWith = List.of();
+    private String _lastVerdictLog = "";
+
+    // what it looks like when nobody is in charge: shield whenever it fits, nothing ignored, the old way
+    private static final CombatPolicy.Decision NO_POLICY = new CombatPolicy.Decision(CombatPolicy.Verdict.STAND, Set.of(), 0, 0, false);
+    // how far a retreat goes before it checks in. far enough to string a crowd out, near enough that we do not leave town
+    private static final double KITE_DISTANCE = 12;
+    // faster than this (movement speed attribute) and a sprinting player is not outrunning it: vindicators, spiders, hoglins, babies
+    private static final double FAST_SPEED = 0.3;
+    private static final int PATH_LOOKAHEAD = 10;
 
     public MobDefenseChain(TaskRunner runner) {
         super(runner);
@@ -290,9 +317,6 @@ public class MobDefenseChain extends SingleTaskChain {
 
         if (Baritone.settings().altoKillOrAvoidAnnoyingHostiles.value) {
             // Deal with hostiles because they are annoying.
-            List<Entity> hostiles = mod.getEntityTracker().getHostiles();
-            // TODO: I don't think this lock is necessary at all.
-
             // pick by real attack damage, not by list order (the old loop kept overwriting and ended on the worst sword owned)
             List<Item> ownedSwords = new ArrayList<>();
             for (Item item : SWORDS) {
@@ -302,23 +326,20 @@ public class MobDefenseChain extends SingleTaskChain {
             }
             Item bestSword = ItemHelper.getBestSword(ownedSwords);
 
-            List<Entity> toDealWith = new ArrayList<>();
-            // TODO: I don't think this lock is necessary at all.
-            if (!hostiles.isEmpty()) {
-                for (Entity entity : hostiles) {
-                    if (entity instanceof Mob mob) {
-                        // a task that is fighting this one itself (golem on its pillar) does not want a second opinion
-                        if (mod.getBehaviour().shouldExcludeFromMobDefense(mob)) continue;
-                        // angry is not the same as dangerous: one in the wall of our hole screaming at us is not a fight.
-                        // and dangerous is not the same as close: the engage zone goes first, it is the cheap question
-                        // and it keeps the closing in history fed
-                        boolean isAttackingPlayer = EntityHelper.isAngryAtPlayer(mod, mob) && EntityHelper.shouldEngageMob(mod, mob)
-                                && EntityHelper.canMobHarmPlayer(mod, mob);
-                        if (isAttackingPlayer) {
-                            toDealWith.add(mob);
-                        }
-                    }
-                }
+            // who is a problem was settled in snapshot(): angry, in the engage zone, able to hurt us, not excluded by a
+            // task that is fighting it itself, and not just somebody we are walking past
+            List<Entity> toDealWith = new ArrayList<>(_dealWith);
+            if (_decision.hold()) {
+                // we just ran from a crowd, the ones still coming get to come to us. walking back into the pile to say
+                // hello is how this ends up as a dance
+                toDealWith.removeIf(entity -> entity.distanceTo(mod.getPlayer()) > CombatPolicy.HOLD_CHASE);
+            }
+
+            // a crowd is backed away from, not fought on the spot. no kill task, no shield, the force field holds still too
+            if (_decision.kiting()) {
+                _runAwayTask = new RunAwayFromHostilesTask(KITE_DISTANCE, true, this::getKiteThreats);
+                setTask(_runAwayTask);
+                return 80;
             }
             int numberOfProblematicEntities = toDealWith.size();
             if (!toDealWith.isEmpty()) {
@@ -355,10 +376,12 @@ public class MobDefenseChain extends SingleTaskChain {
                 float damage = bestSword == null ? 0 : (ItemHelper.getAttackDamage(bestSword) - 3);
                 boolean hasShield = mod.getItemStorage().hasItem(Items.SHIELD) ||
                         mod.getItemStorage().hasItemInOffhand(Items.SHIELD);
-                int shield = hasShield ? 20 : 0;
-                int canDealWith = (int) Math.ceil((armor * 3.6 / 20.0) + (damage * 0.8) + (shield));
-                canDealWith += 1;
-                if (canDealWith > numberOfProblematicEntities) {
+                // (the shield used to be +20 here, which made a shielded bot stand in the middle of any crowd)
+                int canDealWith = CombatPolicy.standCapacity(armor, damage, hasShield);
+                // a crowd we could not run from (or were told to stand against) is fought whatever the gear says, running
+                // blind with a pile of them on our heels is worse than the shield
+                boolean crowd = _decision.swarm() >= Baritone.settings().altoSwarmThreshold.value;
+                if (canDealWith > numberOfProblematicEntities || crowd) {
                     // We can deal with it.
                     for (Entity ToDealWith : toDealWith) {
                         // the ones that can only shoot at us are the dodge logic's problem. walking out of our safe spot
@@ -437,7 +460,10 @@ public class MobDefenseChain extends SingleTaskChain {
 
     private void doForceField(AltoClef mod) {
 
+        snapshot(mod);
         _killAura.tickStart();
+        // the shield is for standing in a pile, not for the first zombie that wanders up
+        _killAura.setPolicy(_decision.kiting(), _decision.shield());
 
         // Hit all hostiles close to us.
         List<Entity> entities = mod.getEntityTracker().getCloseEntities();
@@ -446,6 +472,8 @@ public class MobDefenseChain extends SingleTaskChain {
                 for (Entity entity : entities) {
                     boolean shouldForce = false;
                     if (mod.getBehaviour().shouldExcludeFromForcefield(entity)) continue;
+                    // walking past it, it is not in reach (that is the rule) so the aura has no business with it either
+                    if (_decision.ignored().contains(entity.getId())) continue;
                     if (entity instanceof Mob) {
                         if (EntityHelper.isGenerallyHostileToPlayer(mod, entity)) {
                             if (LookHelper.seesPlayer(entity, mod.getPlayer(), 10)) {
@@ -678,34 +706,182 @@ public class MobDefenseChain extends SingleTaskChain {
     // is everywhere). the answer lives here because the hostile list and the reach rules do
     public CombatRules.Stance getCombatStance(AltoClef mod) {
         if (!AltoClef.inGame()) return CombatRules.Stance.CALM;
+        snapshot(mod);
+        return _stance;
+    }
+
+    // the whole picture, built once per game tick from the one pass over the hostile list: who is a problem, who is just
+    // being walked past, what the policy says to do about it, and the combat stance that falls out. the engage zone
+    // goes first, it is the cheap question and it keeps the closing in history fed
+    private void snapshot(AltoClef mod) {
         long now = mod.getWorld().getGameTime();
-        if (now == _stanceTick) return _stance;
-        _stanceTick = now;
+        if (now == _snapshotTick) return;
+        _snapshotTick = now;
 
         LocalPlayer player = mod.getPlayer();
-        double nearest = Double.POSITIVE_INFINITY;
+        // a fresh hit shows up as hurtTime jumping back up
+        boolean freshHit = player.hurtTime > _lastHurtTime;
+        _lastHurtTime = player.hurtTime;
+        if (freshHit) _lastHurtTick = now;
+
+        boolean policyOn = Baritone.settings().altoKillOrAvoidAnnoyingHostiles.value;
+        boolean travelling = policyOn && updateTravel(mod, now);
+        MobReachability reach = mod.getEntityTracker().getMobReachability();
+
+        List<Mob> engaged = new ArrayList<>();
+        List<Mob> dealable = new ArrayList<>();
+        List<CombatPolicy.Mob> policyMobs = new ArrayList<>();
+        double nearestAny = Double.POSITIVE_INFINITY;
         try {
             for (Entity entity : mod.getEntityTracker().getHostiles()) {
                 if (!(entity instanceof Mob mob)) continue;
-                if (!EntityHelper.shouldEngageMob(mod, mob) || !EntityHelper.canMobHarmPlayer(mod, mob)) continue;
-                nearest = Math.min(nearest, mob.distanceTo(player));
+                if (!reach.shouldEngage(mod, mob, travelling) || !EntityHelper.canMobHarmPlayer(mod, mob)) continue;
+                engaged.add(mob);
+                nearestAny = Math.min(nearestAny, mob.distanceTo(player));
+                // a task that is fighting this one itself (golem on its pillar) does not want a second opinion. and angry
+                // is not the same as dangerous: one in the wall of our hole screaming at us is not a fight
+                if (!policyOn || mod.getBehaviour().shouldExcludeFromMobDefense(mob) || !EntityHelper.isAngryAtPlayer(mod, mob)) continue;
+                dealable.add(mob);
+                policyMobs.add(policyMob(mod, reach, player, mob));
             }
         } catch (ConcurrentModificationException ignored) {
             // the tracker rebuilds its lists on another thread sometimes, one tick of stale combat state is fine
         }
 
-        // a fresh hit shows up as hurtTime jumping back up. whatever hit us, if something hostile is around it is a fight
-        boolean freshHit = player.hurtTime > _lastHurtTime;
-        _lastHurtTime = player.hurtTime;
-        if (freshHit && !Double.isInfinite(nearest)) _lastCombatHurtTick = now;
+        CombatPolicy.Decision decision = NO_POLICY;
+        if (policyOn) {
+            if (policyMobs.isEmpty()) {
+                decision = _policy.idle();
+            } else {
+                if (travelling) _travel.setUpcoming(upcomingPath(mod));
+                decision = _policy.decide(now, new CombatPolicy.Scene(policyMobs, now - _lastHurtTick, travelling,
+                        relativePath(player), player.getX(), player.getZ(),
+                        Math.max(1, Baritone.settings().altoSwarmThreshold.value),
+                        Math.max(0, Baritone.settings().altoPassByGraceTicks.value)));
+            }
+        }
+        _decision = decision;
+        logVerdict(decision, dealable);
+
+        List<Mob> dealWith = new ArrayList<>(dealable.size());
+        for (Mob mob : dealable) {
+            if (!decision.ignored().contains(mob.getId())) dealWith.add(mob);
+        }
+        // the closest one first, it is the one that is about to hit us
+        dealWith.sort(Comparator.comparingDouble(mob -> mob.distanceToSqr(player)));
+        _dealWith = dealWith;
+
+        // the ones we are walking past do not make this a fight, as far as eating goes they are not even around
+        double nearest = Double.POSITIVE_INFINITY;
+        for (Mob mob : engaged) {
+            if (!decision.ignored().contains(mob.getId())) nearest = Math.min(nearest, mob.distanceTo(player));
+        }
+        // whatever hit us, if something hostile is around it is a fight
+        if (freshHit && !Double.isInfinite(nearestAny)) _lastCombatHurtTick = now;
 
         Creeper fusing = getClosestFusingCreeper(mod);
         boolean creeperClose = fusing != null && fusing.distanceTo(player) <= CombatRules.CREEPER_RANGE;
-        boolean inCombat = CombatRules.inCombat(nearest, now - _lastCombatHurtTick, creeperClose);
+        // backing away from a crowd is a fight too, the crowd being a few blocks behind us does not make it lunch time
+        boolean inCombat = CombatRules.inCombat(nearest, now - _lastCombatHurtTick, creeperClose) || decision.kiting();
         // gapples are never picked as food (FoodSelector keeps them for exactly this), so check the bag ourselves
         boolean hasGapple = mod.getItemStorage().hasItem(Items.GOLDEN_APPLE) || mod.getItemStorage().hasItem(Items.ENCHANTED_GOLDEN_APPLE);
         _stance = CombatRules.stance(inCombat, player.getHealth(), nearest, hasGapple);
-        return _stance;
+    }
+
+    // everything the policy wants to know about one mob, as plain numbers
+    private static CombatPolicy.Mob policyMob(AltoClef mod, MobReachability reach, LocalPlayer player, Mob mob) {
+        double dx = mob.getX() - player.getX(), dy = mob.getY() - player.getY(), dz = mob.getZ() - player.getZ();
+        boolean ranged = MobReachability.isRanged(mob);
+        // the line of sight raycast is not free, only the ones that could shoot us from where they are get one
+        boolean sees = ranged && dx * dx + dy * dy + dz * dz <= CombatPolicy.RANGED_NO_IGNORE * CombatPolicy.RANGED_NO_IGNORE
+                && reach.seesPlayer(mod, mob);
+        return new CombatPolicy.Mob(mob.getId(), dx, dy, dz, ranged, mob instanceof Creeper, isFast(mob), sees);
+    }
+
+    // not the kind you stroll past: outruns a sprinting player, or is one of the oddballs (flyers, endermen, bosses, a lit
+    // creeper, anything riding something) that the engage zone does not even apply to
+    private static boolean isFast(Mob mob) {
+        if (mob.isBaby() || mob instanceof Spider || mob instanceof Hoglin || mob instanceof Zoglin || mob instanceof PiglinBrute) return true;
+        return mob.getAttributeValue(Attributes.MOVEMENT_SPEED) >= FAST_SPEED || MobReachability.isUngated(mob);
+    }
+
+    // is the user task the one walking us somewhere. latches what it was about to walk, because the moment mob defense
+    // takes over the goal is gone and "was that zombie on my way" has no answer
+    private boolean updateTravel(AltoClef mod, long now) {
+        Task user = mod.getUserTaskChain().getCurrentTask();
+        if (user != _travelUserTask) {
+            _travel.clear();
+            _travelUserTask = user;
+        }
+        boolean userDriving = mod.getTaskRunner().getCurrentTaskChain() == mod.getUserTaskChain()
+                && mod.getClientBaritone().getPathingBehavior().getCurrent() != null;
+        LocalPlayer player = mod.getPlayer();
+        _travel.update(now, player.getX(), player.getZ(), userDriving);
+        return _travel.travelling(now, player.getX(), player.getZ());
+    }
+
+    // the next ten or so spots of the path we are on, as absolute coordinates
+    private static List<CombatPolicy.Point> upcomingPath(AltoClef mod) {
+        PathExecutor current = mod.getClientBaritone().getPathingBehavior().getCurrent();
+        if (current == null) return List.of();
+        var positions = current.getPath().positions();
+        int from = Math.max(0, current.getPosition());
+        int to = Math.min(positions.size(), from + PATH_LOOKAHEAD);
+        List<CombatPolicy.Point> out = new ArrayList<>(Math.max(0, to - from));
+        for (int i = from; i < to; i++) {
+            out.add(new CombatPolicy.Point(positions.get(i).x + 0.5, positions.get(i).y, positions.get(i).z + 0.5));
+        }
+        return out;
+    }
+
+    private List<CombatPolicy.Point> relativePath(LocalPlayer player) {
+        List<CombatPolicy.Point> latched = _travel.upcoming();
+        if (latched.isEmpty()) return latched;
+        List<CombatPolicy.Point> out = new ArrayList<>(latched.size());
+        for (CombatPolicy.Point p : latched) {
+            out.add(new CombatPolicy.Point(p.x() - player.getX(), p.y() - player.getY(), p.z() - player.getZ()));
+        }
+        return out;
+    }
+
+    // the crowd the kite runs from: whoever is a problem right now, nearest first
+    private List<Entity> getKiteThreats() {
+        return new ArrayList<>(_dealWith);
+    }
+
+    // one line per change of mind, not one per tick
+    private void logVerdict(CombatPolicy.Decision decision, List<Mob> dealable) {
+        String key = decision.verdict().name();
+        if (decision.verdict() == CombatPolicy.Verdict.IGNORE) {
+            if (decision.ignored().isEmpty()) {
+                _lastVerdictLog = key;
+                return;
+            }
+            key += "+passing";
+        }
+        if (key.equals(_lastVerdictLog)) return;
+        _lastVerdictLog = key;
+        switch (decision.verdict()) {
+            case KITE -> Debug.logInternal("kiting " + describe(dealable, decision, false));
+            case STAND -> Debug.logInternal("standing against " + describe(dealable, decision, false)
+                    + (decision.swarm() >= Baritone.settings().altoSwarmThreshold.value ? " (nowhere to run)" : ""));
+            case FIGHT_ONE -> Debug.logInternal("fighting " + describe(dealable, decision, false) + " one at a time");
+            case IGNORE -> Debug.logInternal("passing " + describe(dealable, decision, true) + ", not my problem");
+        }
+    }
+
+    // "3 zombies, 1 skeleton"
+    private static String describe(List<Mob> mobs, CombatPolicy.Decision decision, boolean ignored) {
+        Map<String, Integer> counts = new LinkedHashMap<>();
+        for (Mob mob : mobs) {
+            if (decision.ignored().contains(mob.getId()) == ignored) counts.merge(MobReachability.shortName(mob), 1, Integer::sum);
+        }
+        StringBuilder out = new StringBuilder();
+        for (Map.Entry<String, Integer> e : counts.entrySet()) {
+            if (out.length() > 0) out.append(", ");
+            out.append(e.getValue()).append(' ').append(e.getKey()).append(e.getValue() == 1 ? "" : "s");
+        }
+        return out.length() == 0 ? "nothing" : out.toString();
     }
 
     public void setTargetEntity(Entity entity) {

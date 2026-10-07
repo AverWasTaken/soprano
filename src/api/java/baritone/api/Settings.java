@@ -1992,6 +1992,22 @@ public final class Settings {
     public final Setting<Double> altoHostileEngageHeight = new Setting<>(3D);
 
     /**
+     * How many melee mobs within six blocks make a crowd. A crowd is backed away from, not fought on the spot: the bot
+     * runs, lets the group string out, and fights the front one at a time (or just keeps going). Below this it fights
+     * where it stands. If the retreat gets nowhere (a dead end) the bot falls back to standing with its shield up.
+     * Needs {@link #altoKillOrAvoidAnnoyingHostiles}.
+     */
+    public final Setting<Integer> altoSwarmThreshold = new Setting<>(3);
+
+    /**
+     * While the bot is walking somewhere, mobs that are not in its way are left alone: no stopping the task, no fight,
+     * no shield. Taking a hit, or a mob getting into reach or onto the path, ends that. This is how many ticks without
+     * any damage it takes before the bot trusts a quiet walk. Creepers close by, mobs that shoot with a clear line, and
+     * mobs faster than a sprinting player are never left alone. Needs {@link #altoKillOrAvoidAnnoyingHostiles}.
+     */
+    public final Setting<Integer> altoPassByGraceTicks = new Setting<>(100);
+
+    /**
      * Avoid going underwater when pathing is not giving the bot movement instructions. Turn it off if you want the bot
      * to be able to sink.
      */

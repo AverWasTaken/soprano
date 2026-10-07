@@ -164,6 +164,7 @@ They're normal Soprano settings that all start with `alto`, so `#set alto<tab>` 
 | `altoButler` | false | let whitelisted players whisper commands to your bot. Only names in `baritone/altoclef/altoclef_butler_whitelist.txt` can (one per line, not case sensitive), an empty whitelist means nobody, and `altoclef_butler_blacklist.txt` next to it wins over it. Whispers can run AltoClef's commands only, never `punk` or `gamma` |
 | `altoShowTaskChains` | true | the task HUD in the top left. `altoHudScale` (1.0, between 0.5 and 2) resizes it, `altoShowTimer` (false) adds a timer, `altoHudDetailed` (false) swaps the plain words for the developer strings from the log, for bug reports |
 | `altoMobDefense` | true | fight off or avoid mobs. `altoForceFieldStrategy` (`SMART`, or `OFF`, `FASTEST`, `DELAY`) is how the force field picks its targets |
+| `altoSwarmThreshold`, `altoPassByGraceTicks` | 3, 100 | how many melee mobs within 6 blocks make a crowd it backs away from (and fights one at a time) instead of tanking with the shield, and how many quiet ticks (no damage) before it trusts a walk past mobs that are not in its way |
 | `altoAutoEat`, `altoAutoRespawn`, `altoAutoReconnect` | true | what they say |
 | `altoIdleCommand` | empty | a `#` command line to run when idle, only used with `altoRunsWhenIdle` |
 | `altoDeathCommand` | empty | what to send after respawning. `{deathmessage}` is replaced with the death message, and several can be separated with ` & `. A `#` line runs as a command, a `/` line goes to the server, anything else is chat |

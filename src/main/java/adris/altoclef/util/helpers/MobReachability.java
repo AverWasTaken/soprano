@@ -106,6 +106,12 @@ public class MobReachability {
     // the "we are in a fight with this one" memory, so ask it before the expensive questions. the dangerous
     // oddballs (flyers, endermen, bosses, a lit creeper) skip the zone entirely, their own logic is better at them
     public boolean shouldEngage(AltoClef mod, Mob mob) {
+        return shouldEngage(mod, mob, false);
+    }
+
+    // travelling means we are on our way somewhere: a zombie walking at us from ten blocks is not a reason to stop, if it
+    // gets to the small zone (or to us) it is a fight like any other. the history still gets fed, it is the same tracker
+    public boolean shouldEngage(AltoClef mod, Mob mob, boolean travelling) {
         if (isUngated(mob)) return true;
         LocalPlayer player = mod.getPlayer();
         long now = mod.getWorld().getGameTime();
@@ -126,7 +132,7 @@ public class MobReachability {
         // the line of sight raycast is not free, only the ones that could shoot us from out here get one
         boolean ranged = leashed && isRanged(mob);
         boolean sees = ranged && seesPlayer(mod, mob);
-        if (MobReachRules.shouldEngage(dx, dy, dz, range, height, closing, ranged, sees)) {
+        if (MobReachRules.shouldEngage(dx, dy, dz, range, height, closing && !travelling, ranged, sees)) {
             _engaged.put(mob.getId(), now);
             return true;
         }
@@ -174,7 +180,7 @@ public class MobReachability {
         return _enclosed;
     }
 
-    private boolean seesPlayer(AltoClef mod, Mob mob) {
+    public boolean seesPlayer(AltoClef mod, Mob mob) {
         long now = mod.getWorld().getGameTime();
         Sight sight = _sight.get(mob.getId());
         if (sight == null || now < sight.tick || now - sight.tick >= SIGHT_HOLD_TICKS) {
@@ -198,7 +204,7 @@ public class MobReachability {
     }
 
     // entity.minecraft.zombie -> zombie
-    private static String shortName(Mob mob) {
+    public static String shortName(Mob mob) {
         String id = mob.getType().getDescriptionId();
         return id.substring(id.lastIndexOf('.') + 1);
     }
@@ -217,7 +223,7 @@ public class MobReachability {
     }
 
     // things that fly, teleport, burrow or are already on our face. the gate would only ever be wrong about them
-    private static boolean isUngated(Mob mob) {
+    public static boolean isUngated(Mob mob) {
         if (mob instanceof FlyingMob || mob instanceof Blaze || mob instanceof Vex || mob instanceof EnderMan
                 || mob instanceof EnderDragon || mob instanceof WitherBoss || mob instanceof Warden
                 || mob instanceof Shulker || mob instanceof Guardian || mob instanceof Bee) {
@@ -229,7 +235,7 @@ public class MobReachability {
         return mob.isPassenger();
     }
 
-    private static boolean isRanged(Mob mob) {
+    public static boolean isRanged(Mob mob) {
         // drowned only shoot if they found a trident, piglins only if they hold a crossbow. otherwise they are melee
         if (mob instanceof Piglin) return mob.isHolding(Items.CROSSBOW);
         if (mob instanceof Drowned) return mob.isHolding(Items.TRIDENT);

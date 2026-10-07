@@ -43,6 +43,9 @@ public class KillAura {
     boolean _shielding = false;
     private double _forceFieldRange = Double.POSITIVE_INFINITY;
     private Entity _forceHit = null;
+    // the combat policy's say, set every tick before tickEnd. defaults are the old behavior: shield whenever it fits
+    private boolean _kiting = false;
+    private boolean _shieldAllowed = true;
 
     public static void equipWeapon(AltoClef mod) {
         // same pick as the kill tasks use. this loop used to equip a sword per inventory sword, every call
@@ -64,7 +67,22 @@ public class KillAura {
         _forceFieldRange = range;
     }
 
+    // kiting is all feet and no hands: a swing turns our head and the path goes where the head points. the shield is
+    // for standing our ground, which is the only time it earns its sneak speed and its paused pathing
+    public void setPolicy(boolean kiting, boolean shieldAllowed) {
+        _kiting = kiting;
+        _shieldAllowed = shieldAllowed;
+    }
+
     public void tickEnd(AltoClef mod) {
+        if (_kiting) {
+            stopShielding(mod);
+            // ghast balls are still worth the turn
+            if (_forceHit != null) {
+                attack(mod, _forceHit, true);
+            }
+            return;
+        }
         Optional<Entity> entities = _targets.stream().min(StlHelper.compareValues(entity -> entity.distanceToSqr(mod.getPlayer())));
         if (entities.isPresent() && mod.getPlayer().getHealth() >= 10 &&
                 !mod.getEntityTracker().entityFound(ThrownPotion.class) && !mod.getFoodChain().needsToEat() &&
@@ -74,7 +92,10 @@ public class KillAura {
                 !mod.getMLGBucketChain().isChorusFruiting()) {
             PlayerSlot offhandSlot = PlayerSlot.OFFHAND_SLOT;
             Item offhandItem = StorageHelper.getItemStackInSlot(offhandSlot).getItem();
-            if (entities.get().getClass() != Creeper.class && entities.get().getClass() != Hoglin.class &&
+            // (one zombie does not need the shield, and the shield stops us walking)
+            if (!_shieldAllowed) {
+                stopShielding(mod);
+            } else if (entities.get().getClass() != Creeper.class && entities.get().getClass() != Hoglin.class &&
                     entities.get().getClass() != Zoglin.class && entities.get().getClass() != Warden.class &&
                     entities.get().getClass() != WitherBoss.class
                     && (mod.getItemStorage().hasItem(Items.SHIELD) || mod.getItemStorage().hasItemInOffhand(Items.SHIELD))
