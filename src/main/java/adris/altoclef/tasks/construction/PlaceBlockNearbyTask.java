@@ -49,6 +49,13 @@ public class PlaceBlockNearbyTask extends Task {
     private final Predicate<BlockPos> _canPlaceHere;
     private BlockPos _justPlaced; // Where we JUST placed a block.
     private BlockPos _tryPlace;   // Where we should TRY placing a block.
+    // spots that let us down. the progress checker below sleeps while baritone paths, so on its own a bad spot was retried forever
+    private final SpotFailures _failures = new SpotFailures();
+    // so a spot that keeps us walking still runs out of time
+    private final TimerGame _spotTimer = new TimerGame(SPOT_SECONDS);
+    private static final double SPOT_SECONDS = 15;
+    // the task working on _tryPlace, kept so we can ask it if it ran dry
+    private PlaceBlockTask _placing;
     // Oof, necesarry for the onBlockPlaced action.
     private AltoClef _mod;
     private Subscription<BlockPlaceEvent> _onBlockPlaced;
@@ -65,6 +72,9 @@ public class PlaceBlockNearbyTask extends Task {
     @Override
     protected void onStart(AltoClef mod) {
         _progressChecker.reset();
+        _failures.clear();
+        _placing = null;
+        _spotTimer.reset();
         _mod = mod;
         mod.getClientBaritone().getInputOverrideHandler().setInputForceState(Input.CLICK_RIGHT, false);
 
@@ -132,22 +142,35 @@ public class PlaceBlockNearbyTask extends Task {
         if (!_progressChecker.check(mod)) {
             Debug.logMessage("Failed placing, wandering and trying again.");
             LookHelper.randomOrientation(mod);
-            if (_tryPlace != null) {
-                mod.getBlockTracker().requestBlockUnreachable(_tryPlace);
-                _tryPlace = null;
-            }
+            failSpot(mod);
             return _wander;
+        }
+
+        // the checker above resets every tick baritone is pathing, so a spot that sends us walking in circles never trips
+        // it. this clock doesn't care
+        if (_tryPlace != null && _spotTimer.elapsed()) {
+            Debug.logMessage("Placing at " + _tryPlace + " is taking forever, striking it.");
+            failSpot(mod);
+        }
+        // the builder had nothing to place with here. dirt over the table spot was the old answer to this
+        if (_placing != null && _placing.isStarved()) {
+            failSpot(mod);
         }
 
         // Try to place at a particular spot.
         if (_tryPlace == null || !WorldHelper.canReach(mod, _tryPlace)) {
             _tryPlace = locateClosePlacePos(mod);
+            _placing = null;
+            _spotTimer.reset();
         }
         if (_tryPlace != null) {
             setDebugState("Trying to place at " + _tryPlace);
             _justPlaced = _tryPlace;
             // a table on a spot we picked needs no scaffolding. autocollect here sent us off to mine 32 dirt first
-            return new PlaceBlockTask(_tryPlace, _toPlace, false, false);
+            if (_placing == null) {
+                _placing = new PlaceBlockTask(_tryPlace, _toPlace, false, false);
+            }
+            return _placing;
         }
 
         // Look in random places to maybe get a random hit
@@ -257,10 +280,37 @@ public class PlaceBlockNearbyTask extends Task {
         mod.getClientBaritone().getBuilderProcess().onLostControl();
     }
 
+    // one strike against the spot we were working on. two and it never comes up again, however much we were pathing
+    private void failSpot(AltoClef mod) {
+        _progressChecker.reset();
+        _placing = null;
+        BlockPos spot = _tryPlace;
+        _tryPlace = null;
+        // no table in the bag is not the spot's fault, and blacklisting all of them for it leaves nowhere to go once we do have one
+        if (spot == null || !mod.getItemStorage().hasItem(ItemHelper.blocksToItems(_toPlace))) {
+            return;
+        }
+        if (_failures.fail(spot.getX(), spot.getY(), spot.getZ())) {
+            Debug.logMessage("Giving up on placing at " + spot);
+        }
+        mod.getBlockTracker().requestBlockUnreachable(spot);
+    }
+
+    // a throwaway above what a recipe is saving, the same answer the movements get
+    private static boolean canScaffold(AltoClef mod) {
+        return mod.getClientBaritoneSettings().allowPlace.value && mod.getClientBaritone().getInventoryBehavior().hasGenericThrowaway();
+    }
+
     private BlockPos locateClosePlacePos(AltoClef mod) {
         int range = 7;
+        // best is the new rank (a floor under it, or something to build one with, and close to our feet).
+        // bestLoose is the old rank, for when the new one finds nothing at all
         BlockPos best = null;
+        BlockPos bestLoose = null;
         double smallestScore = Double.POSITIVE_INFINITY;
+        double smallestLoose = Double.POSITIVE_INFINITY;
+        boolean scaffold = canScaffold(mod);
+        int feetY = mod.getPlayer().blockPosition().getY();
         BlockPos start = mod.getPlayer().blockPosition().offset(-range, -range, -range);
         BlockPos end = mod.getPlayer().blockPosition().offset(range, range, range);
         for (BlockPos blockPos : WorldHelper.scanRegion(mod, start, end)) {
@@ -278,17 +328,25 @@ public class PlaceBlockNearbyTask extends Task {
             if (!WorldHelper.canReach(mod, blockPos) || !WorldHelper.canPlace(mod, blockPos)) {
                 continue;
             }
+            // a spot that already let us down twice
+            if (_failures.isBad(blockPos.getX(), blockPos.getY(), blockPos.getZ())) {
+                continue;
+            }
             boolean hasBelow = WorldHelper.isSolid(mod, blockPos.below());
             double distSq = blockPos.distToCenterSqr(mod.getPlayer().position());
 
-            double score = distSq + (solid ? 4 : 0) + (hasBelow ? 0 : 10) + (inside ? 3 : 0);
-
+            double loose = PlaceSpotRank.oldScore(distSq, solid, hasBelow, inside);
+            if (loose < smallestLoose) {
+                bestLoose = blockPos;
+                smallestLoose = loose;
+            }
+            double score = PlaceSpotRank.score(distSq, solid, hasBelow, inside, blockPos.getY() - feetY, scaffold);
             if (score < smallestScore) {
                 best = blockPos;
                 smallestScore = score;
             }
         }
 
-        return best;
+        return best != null ? best : bestLoose;
     }
 }

@@ -9,6 +9,7 @@ import baritone.api.utils.Dimension;
 import adris.altoclef.util.helpers.BaritoneHelper;
 import adris.altoclef.util.helpers.ConfigHelper;
 import adris.altoclef.util.helpers.FluidSources;
+import adris.altoclef.util.helpers.PlacedByUs;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.time.TimerGame;
 import baritone.Baritone;
@@ -83,7 +84,22 @@ public class BlockTracker extends Tracker {
         _firstLookGap.forceElapse();
 
         // Listen for block placement
-        EventBus.subscribe(BlockPlaceEvent.class, evt -> addBlock(evt.blockState.getBlock(), evt.blockPos));
+        EventBus.subscribe(BlockPlaceEvent.class, evt -> {
+            addBlock(evt.blockState.getBlock(), evt.blockPos);
+            rememberOurPlacement(evt.blockPos);
+        });
+    }
+
+    // the hook publishes every conducting block that shows up on the client level, so "within placing reach" is our only
+    // evidence it was us. the gather skips these (see PlacedByUs) so it stops eating the scaffold it just built
+    private static void rememberOurPlacement(BlockPos pos) {
+        Minecraft client = Minecraft.getInstance();
+        if (client.player == null || client.level == null) {
+            return;
+        }
+        if (PlacedByUs.withinReach(client.player.getX(), client.player.getEyeY(), client.player.getZ(), pos.getX(), pos.getY(), pos.getZ())) {
+            PlacedByUs.GLOBAL.record(pos.getX(), pos.getY(), pos.getZ(), client.level.getGameTime());
+        }
     }
 
     @Override

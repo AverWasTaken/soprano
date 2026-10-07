@@ -12,6 +12,7 @@ import adris.altoclef.util.MiningRequirement;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.MineStick;
+import adris.altoclef.util.helpers.PlacedByUs;
 import adris.altoclef.util.helpers.StoneDigRank;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
@@ -225,10 +226,17 @@ public class MineAndCollectTask extends ResourceTask {
                 if (mod.getBlockTracker().unreachable(check)) return false;
                 return WorldHelper.canBreak(mod, check);
             };
-            // stone gets its own idea of near: sideways and at our level, not the floor (see StoneDigRank)
-            Optional<BlockPos> closestBlock = _stoneOnly
-                    ? mod.getBlockTracker().getNearestTracking(pos, usable, (fx, fy, fz, tx, ty, tz) -> stoneScore(mod, fx, fy, fz, tx, ty, tz), _blocks)
-                    : mod.getBlockTracker().getNearestTracking(pos, usable, _blocks);
+            // what we put down ourselves is scaffolding, not a resource. it is the best looking stone there is (exposed, at
+            // our feet) and eating it is how the table placement looped. only when nothing else is close do we take it
+            long gameTime = mod.getWorld().getGameTime();
+            Predicate<BlockPos> notOurs = check -> usable.test(check) && !PlacedByUs.GLOBAL.recent(check.getX(), check.getY(), check.getZ(), gameTime);
+            Optional<BlockPos> closestBlock = nearestBlock(mod, pos, notOurs);
+            if (closestBlock.isEmpty() || closestBlock.get().distToCenterSqr(pos) > OWN_BLOCK_RANGE_SQ) {
+                Optional<BlockPos> anything = nearestBlock(mod, pos, usable);
+                if (anything.isPresent() && (closestBlock.isEmpty() || anything.get().distToCenterSqr(pos) < closestBlock.get().distToCenterSqr(pos))) {
+                    closestBlock = anything;
+                }
+            }
 
             Optional<ItemEntity> closestDrop = Optional.empty();
             if (mod.getEntityTracker().itemDropped(_targets)) {
@@ -262,6 +270,16 @@ public class MineAndCollectTask extends ResourceTask {
             } else {
                 return closestBlock.map(Object.class::cast);
             }
+        }
+
+        // 16 blocks, squared. past this a block we placed ourselves is a fair meal
+        private static final double OWN_BLOCK_RANGE_SQ = 256;
+
+        private Optional<BlockPos> nearestBlock(AltoClef mod, Vec3 pos, Predicate<BlockPos> usable) {
+            // stone gets its own idea of near: sideways and at our level, not the floor (see StoneDigRank)
+            return _stoneOnly
+                    ? mod.getBlockTracker().getNearestTracking(pos, usable, (fx, fy, fz, tx, ty, tz) -> stoneScore(mod, fx, fy, fz, tx, ty, tz), _blocks)
+                    : mod.getBlockTracker().getNearestTracking(pos, usable, _blocks);
         }
 
         // one of the blocks we are after, still standing, not given up on, and close enough to keep swinging at
