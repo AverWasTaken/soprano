@@ -49,6 +49,17 @@ public final class SmeltSurface {
         return surfaceY - feetY;
     }
 
+    // close enough to the open sky that a trip for something on the surface is not a trip out of a mine (same line as wantsUp)
+    public static boolean shallow(int depth) {
+        return depth <= GO_UP_DEPTH;
+    }
+
+    // how far below the open sky we are standing right now
+    public static int depthBelowSky(AltoClef mod) {
+        BlockPos feet = mod.getPlayer().blockPosition();
+        return depth(mod.getWorld().getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, feet.getX(), feet.getZ()), feet.getY());
+    }
+
     public static boolean wantsUp(boolean alreadyClimbing, int depth) {
         return alreadyClimbing ? depth > ARRIVED_DEPTH : depth > GO_UP_DEPTH;
     }

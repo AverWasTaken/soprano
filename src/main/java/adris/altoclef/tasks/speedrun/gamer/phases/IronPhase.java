@@ -1,8 +1,10 @@
 package adris.altoclef.tasks.speedrun.gamer.phases;
 
 import adris.altoclef.AltoClef;
+import adris.altoclef.Debug;
 import adris.altoclef.tasks.container.CollectFromFurnaceTask.Mode;
 import adris.altoclef.tasks.speedrun.gamer.EarlyIronPick;
+import adris.altoclef.tasks.speedrun.gamer.FoodGate;
 import adris.altoclef.tasks.speedrun.gamer.FurnaceWatch;
 import adris.altoclef.tasks.speedrun.gamer.GamerContext;
 import adris.altoclef.tasks.speedrun.gamer.GamerFacts;
@@ -20,6 +22,7 @@ import adris.altoclef.tasks.speedrun.gamer.SmeltSurface;
 import adris.altoclef.tasks.speedrun.gamer.Timeout;
 import adris.altoclef.tasks.resources.FoodHunt;
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
+import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig;
 import adris.altoclef.tasksystem.Task;
 import baritone.Baritone;
 import baritone.altoclef.SettingsOverrides;
@@ -42,6 +45,9 @@ public class IronPhase implements PhaseHandler {
     // what the user had for altoAsyncSmelting, null when we did not touch it
     private Boolean userAsync;
     private String hudState;
+    // FoodGate: a food top-up that started on the surface runs to the full amount, and the band the count was last in (-1 = unset)
+    private boolean foodTopUp;
+    private int foodBand = -1;
 
     @Override
     public GamerPhase phase() {
@@ -73,6 +79,8 @@ public class IronPhase implements PhaseHandler {
         surface.reset();
         committed = null;
         hudState = null;
+        foodTopUp = false;
+        foodBand = -1;
         var async = Baritone.settings().altoAsyncSmelting;
         if (!SettingsOverrides.isHeld(async)) {
             userAsync = async.value;
@@ -107,7 +115,7 @@ public class IronPhase implements PhaseHandler {
         // nothing in a furnace (or it just got collected): the plain kit loop
         furnaces.reset();
         committed = null;
-        List<KitNeed> needs = KitPlanner.plan(ctx.facts(), ctx.cfg().overworld, ctx.cfg().end.beds);
+        List<KitNeed> needs = gateFood(mod, ctx, KitPlanner.plan(ctx.facts(), ctx.cfg().overworld, ctx.cfg().end.beds));
         KitNeed first = needs.isEmpty() ? null : needs.get(0);
         Task side = support.tick(mod, ctx, needs);
         if (side != null) {
@@ -137,8 +145,9 @@ public class IronPhase implements PhaseHandler {
         }
         Schedule schedule = SmeltFiller.schedule(f, ctx.cfg().overworld, ctx.cfg().end.beds, furnaces.nearby(mod, ctx),
                 SmeltFiller.capped(furnaces.pullbacks(), ctx.cfg().overworld));
-        KitNeed head = schedule.runnable().isEmpty() ? null : schedule.runnable().get(0);
-        Task side = support.tick(mod, ctx, schedule.runnable());
+        List<KitNeed> runnable = gateFood(mod, ctx, schedule.runnable());
+        KitNeed head = runnable.isEmpty() ? null : runnable.get(0);
+        Task side = support.tick(mod, ctx, runnable);
         if (side != null) {
             hudState = support.hud();
             return side;
@@ -173,9 +182,42 @@ public class IronPhase implements PhaseHandler {
             return up;
         }
         committed = head;
-        Task task = runner.run(ctx, schedule.runnable());
+        Task task = runner.run(ctx, runnable);
         hudState = runner.hud() + " while iron cooks";
         return task;
+    }
+
+    // the kit's own food need only leads when FoodGate says so, otherwise it waits behind the ore (it comes back the moment
+    // we surface or the next job is not ore, and the food chain eats on its own in the meantime). the stock-up fillers
+    // SmeltFiller adds are surface or leash work and not touched
+    private List<KitNeed> gateFood(AltoClef mod, GamerContext ctx, List<KitNeed> needs) {
+        OverworldConfig cfg = ctx.cfg().overworld;
+        // same sum the planner uses: the bag (raw meat at its cooked value) plus what a smoker is cooking for us. the two never
+        // overlap, loading a smoker takes the meat out of the bag
+        int held = ctx.facts().foodUnits() + ctx.facts().pendingFoodUnits();
+        int band = FoodGate.band(held, cfg);
+        if (band != foodBand) {
+            // the user wants to see this one (an apple and six mutton was why the bot kept leaving the mine)
+            if (foodBand >= 0) {
+                Debug.logInternal("food: " + held + " units held, " + (band == 0 ? "under the floor of " + cfg.minHeldFoodUnits
+                        : band == 1 ? "over " + cfg.minHeldFoodUnits + " but short of " + cfg.minFoodUnits : "at the " + cfg.minFoodUnits + " we want"));
+            }
+            foodBand = band;
+        }
+        int at = FoodGate.index(needs, cfg);
+        if (at < 0) {
+            foodTopUp = false;
+            return needs;
+        }
+        // the heightmap only matters between the two lines
+        boolean surfaced = band == 1 && SmeltSurface.shallow(SmeltSurface.depthBelowSky(mod));
+        boolean lead = FoodGate.leads(held, cfg, surfaced, FoodGate.headIsOre(needs, at), foodTopUp);
+        boolean wasTopUp = foodTopUp;
+        foodTopUp = FoodGate.nextTopUp(foodTopUp, held, cfg, lead);
+        if (foodTopUp && !wasTopUp) {
+            Debug.logInternal("food: topping up from " + held + " to " + cfg.minFoodUnits + " now that it is cheap");
+        }
+        return lead ? needs : FoodGate.without(needs, at);
     }
 
     // iron is the one phase where "mostly done" is fine: with the pickaxe, a light and two buckets the portal can be

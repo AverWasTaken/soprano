@@ -152,7 +152,8 @@ public final class MinecraftFacts implements GamerFacts {
             fp += (BuiltInRegistries.ITEM.getId(item) + 1) * 7919 + n * 31 * (BuiltInRegistries.ITEM.getId(item) + 17);
             FoodHelper.Kind kind = FoodHelper.kindOf(item);
             if (kind == FoodHelper.Kind.NORMAL) {
-                food += item.components().get(DataComponents.FOOD).nutrition() * n;
+                // raw meat at its cooked value (FoodHelper.plannedNutrition), inventory only: food in a furnace is not here
+                food += FoodHelper.plannedNutrition(item) * n;
             } else if (kind != FoodHelper.Kind.NOT_FOOD) {
                 junk += item.components().get(DataComponents.FOOD).nutrition() * n;
             }
