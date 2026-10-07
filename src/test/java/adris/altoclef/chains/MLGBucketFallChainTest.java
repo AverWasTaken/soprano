@@ -24,19 +24,29 @@ import static org.junit.Assert.*;
 public class MLGBucketFallChainTest {
 
     @Test
-    public void noClutchItemMeansNothingToTakeOverFor() {
+    public void noClutchItemAndNothingDeadlyMeansNothingToTakeOverFor() {
         // this is the one that used to cancel a planned fall for nothing
-        assertFalse(MLGBucketFallChain.claimsFall(true, false));
+        assertFalse(MLGBucketFallChain.claimsFall(true, false, false));
     }
 
     @Test
     public void aFallWithSomethingToPlaceIsStillTheChains() {
-        assertTrue(MLGBucketFallChain.claimsFall(true, true));
+        assertTrue(MLGBucketFallChain.claimsFall(true, true, false));
+        assertTrue(MLGBucketFallChain.claimsFall(true, true, true));
+    }
+
+    @Test
+    public void aDeadlyFallIsTheChainsEvenWithAnEmptyHand() {
+        // nothing to place, but the steering toward lava or water can still save us
+        assertTrue(MLGBucketFallChain.claimsFall(true, false, true));
     }
 
     @Test
     public void notFallingIsNotFalling() {
-        assertFalse(MLGBucketFallChain.claimsFall(false, true));
-        assertFalse(MLGBucketFallChain.claimsFall(false, false));
+        for (boolean item : new boolean[]{false, true}) {
+            for (boolean deadly : new boolean[]{false, true}) {
+                assertFalse(MLGBucketFallChain.claimsFall(false, item, deadly));
+            }
+        }
     }
 }

@@ -277,7 +277,7 @@ public class MLGBucketTask extends Task {
             mod.getInputControls().release(Input.JUMP);
     }
 
-    private Optional<BlockPos> getBlockWeWillLandOn(AltoClef mod) {
+    private static Optional<BlockPos> getBlockWeWillLandOn(AltoClef mod) {
         Vec3 velCheck = mod.getPlayer().getDeltaMovement();
         AABB b = mod.getPlayer().getBoundingBox().move(velCheck);
         Vec3 c = b.getCenter();
@@ -380,7 +380,7 @@ public class MLGBucketTask extends Task {
         return Optional.ofNullable(cctx.bestBlock);
     }
 
-    private ClipContext castDown(Vec3 origin) {
+    private static ClipContext castDown(Vec3 origin) {
         Entity player = Minecraft.getInstance().player;
         assert player != null;
         return new ClipContext(origin, origin.add(0, -1 * _config.castDownDistance, 0), ClipContext.Block.COLLIDER, ClipContext.Fluid.ANY, player);
@@ -408,6 +408,12 @@ public class MLGBucketTask extends Task {
         moveForwardBack(mod, 0);
         mod.getInputControls().release(Input.SPRINT);
         mod.getInputControls().release(Input.JUMP);
+    }
+
+    // would the block under us kill us, by the same check the landing picker uses when it has nothing to place. the chain
+    // asks so an off-plan deadly fall still gets the steering toward lava or water, even with an empty hand
+    public static boolean fallIsDeadly(AltoClef mod) {
+        return getBlockWeWillLandOn(mod).map(MLGBucketTask::isFallDeadly).orElse(false);
     }
 
     // static so the chain can ask before it commits to taking over the fall
