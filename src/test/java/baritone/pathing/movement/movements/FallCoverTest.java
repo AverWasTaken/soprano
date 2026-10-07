@@ -69,8 +69,8 @@ public class FallCoverTest {
     public void safeFallsAndClutchesAreBaritones() {
         for (boolean hotbar : new boolean[]{false, true}) {
             for (boolean alto : new boolean[]{false, true}) {
-                assertTrue(FallCover.handles(FallMode.NONE, false, hotbar, alto));
-                assertTrue(FallCover.handles(FallMode.CLUTCH, false, hotbar, alto));
+                assertTrue(FallCover.handles(FallMode.NONE, false, hotbar, alto, false));
+                assertTrue(FallCover.handles(FallMode.CLUTCH, false, hotbar, alto, false));
             }
         }
     }
@@ -78,18 +78,52 @@ public class FallCoverTest {
     @Test
     public void bucketIsBaritonesWhenItCanClickIt() {
         // alto doing buckets (the usual setup) still defers to a hotbar bucket
-        assertTrue(FallCover.handles(FallMode.BUCKET, false, true, true));
+        assertTrue(FallCover.handles(FallMode.BUCKET, false, true, true, false));
         // the bucket that lives in the inventory is alto's slot handler's problem
-        assertFalse(FallCover.handles(FallMode.BUCKET, false, false, true));
+        assertFalse(FallCover.handles(FallMode.BUCKET, false, false, true, false));
         // and with alto not doing buckets there's nobody else to do it
-        assertTrue(FallCover.handles(FallMode.BUCKET, false, false, false));
+        assertTrue(FallCover.handles(FallMode.BUCKET, false, false, false, false));
     }
 
     @Test
-    public void nobodyHasAFallThatHurtsOrGaveUp() {
-        assertFalse(FallCover.handles(FallMode.HURT, false, true, true));
+    public void nobodyHasAClutchThatGaveUp() {
         // clutch ran out of options with nothing to land with: whatever alto has (hay, a bucket) can try
-        assertFalse(FallCover.handles(FallMode.NONE, true, false, true));
+        assertFalse(FallCover.handles(FallMode.NONE, true, false, true, false));
+    }
+
+    @Test
+    public void aPlannedHurtingFallIsBaritonesWhileItsAffordable() {
+        // whatever the bucket and alto are up to, nobody has anything to clutch with, the fall is the plan
+        for (boolean hotbar : new boolean[]{false, true}) {
+            for (boolean alto : new boolean[]{false, true}) {
+                assertTrue(FallCover.handles(FallMode.HURT, false, hotbar, alto, true));
+            }
+        }
+    }
+
+    @Test
+    public void aHurtingFallWeCantAffordAnymoreIsAltos() {
+        // took a hit since the plan, now it's an emergency and alto gets to clutch
+        for (boolean hotbar : new boolean[]{false, true}) {
+            for (boolean alto : new boolean[]{false, true}) {
+                assertFalse(FallCover.handles(FallMode.HURT, false, hotbar, alto, false));
+            }
+        }
+    }
+
+    @Test
+    public void affordabilityDoesntLeakIntoTheOtherModes() {
+        // the flag only means something for HURT
+        assertTrue(FallCover.handles(FallMode.NONE, false, false, true, true));
+        assertFalse(FallCover.handles(FallMode.NONE, true, false, true, true));
+        assertFalse(FallCover.handles(FallMode.BUCKET, false, false, true, true));
+    }
+
+    @Test
+    public void aHurtingFallOutOfTheColumnIsNeverBaritones() {
+        // ownsFall asks inColumn first, so knockback during an affordable planned fall still goes to alto
+        assertFalse(in(13.5, 55, 10.5, 0.1, 0));
+        assertFalse(in(11.5, 55, 10.5, 0.4, 0.3));
     }
 
     @Test

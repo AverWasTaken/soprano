@@ -54,7 +54,7 @@ public class MLGBucketFallChain extends SingleTaskChain implements ITaskOverride
             _lastMLG = null;
             return falling ? 100 : 60;
         }
-        if (falling) {
+        if (claimsFall(falling, falling && MLGBucketTask.hasClutchItem(mod))) {
             _tryCollectWaterTimer.reset();
             setTask(new MLGBucketTask());
             _lastMLG = (MLGBucketTask) _mainTask;
@@ -122,6 +122,13 @@ public class MLGBucketFallChain extends SingleTaskChain implements ITaskOverride
         }
         _lastMLG = null;
         return Float.NEGATIVE_INFINITY;
+    }
+
+    // an mlg with nothing to place is a task that stares at the ground saying "no clutch item" while it cancels the path
+    // at priority 100, so all it buys us is a replan. no bucket and no ladder (that case is handled before this) means
+    // there's nothing to take over for. pure so it's testable without a game, same idea as FallCover
+    static boolean claimsFall(boolean falling, boolean hasClutchItem) {
+        return falling && hasClutchItem;
     }
 
     @Override

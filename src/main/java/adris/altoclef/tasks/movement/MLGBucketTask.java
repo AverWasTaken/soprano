@@ -410,7 +410,8 @@ public class MLGBucketTask extends Task {
         mod.getInputControls().release(Input.JUMP);
     }
 
-    private boolean hasClutchItem(AltoClef mod) {
+    // static so the chain can ask before it commits to taking over the fall
+    public static boolean hasClutchItem(AltoClef mod) {
         if (!mod.getWorld().dimensionType().ultraWarm() && mod.getItemStorage().hasItem(Items.WATER_BUCKET)) {
             return true;
         }

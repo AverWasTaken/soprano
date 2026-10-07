@@ -33,6 +33,7 @@ import baritone.pathing.movement.MovementHelper;
 import baritone.pathing.movement.MovementState;
 import baritone.pathing.movement.MovementState.MovementTarget;
 import baritone.utils.BlockStateInterface;
+import baritone.utils.ExperimentalMovement;
 import baritone.utils.pathing.MutableMoveResult;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -100,6 +101,11 @@ public class MovementFall extends Movement {
     // changing under us at the edge (health went down) is the one thing we check for, see updateState
     private boolean hurt;
 
+    // what the fall costs in hearts, priced once when the movement starts and never again. fallMode() builds a fresh
+    // context every tick, so the damage it sees moves with our health: one hit mid air and the fall gets priced out into
+    // NONE, which would hand it to nobody. -1 is not priced yet
+    private double plannedDamage = -1;
+
     // built by unplanned(), see updateUnplanned
     private boolean unplanned;
 
@@ -126,6 +132,7 @@ public class MovementFall extends Movement {
         super.reset();
         clutchGaveUp = false;
         hurt = false;
+        plannedDamage = -1;
         ladder = null;
         ladderIn = false;
         ticks = clickedAt = pickupMisses = 0;
@@ -151,6 +158,17 @@ public class MovementFall extends Movement {
         return FallMode.CLUTCH;
     }
 
+    // price the fall once, see plannedDamage. a bucket fall is free, so zero hearts however far it is
+    private void snapshotDamage() {
+        if (plannedDamage >= 0) {
+            return;
+        }
+        CalculationContext context = new CalculationContext(baritone);
+        MutableMoveResult result = new MutableMoveResult();
+        boolean bucket = MovementDescend.dynamicFallCost(context, src.x, src.y, src.z, dest.x, dest.z, 0, context.get(dest.x, src.y - 2, dest.z), result);
+        plannedDamage = bucket ? 0 : result.damage;
+    }
+
     // the same question the planner asked, with the health we have right now
     private boolean stillPossible() {
         CalculationContext context = new CalculationContext(baritone);
@@ -169,6 +187,7 @@ public class MovementFall extends Movement {
             return state;
         }
         ticks++;
+        snapshotDamage();
         confirmLadder();
 
         BlockPos playerFeet = ctx.playerFeet();
@@ -529,8 +548,15 @@ public class MovementFall extends Movement {
             return false;
         }
         boolean water = ctx.world().getBlockState(dest).getFluidState().getType() instanceof WaterFluid;
-        FallMode mode = water ? FallMode.NONE : fallMode();
-        return FallCover.handles(mode, clutchGaveUp, bucketOnHotbar(), AltoClefSettings.getInstance().shouldNotPlaceBucketButStillFall());
+        snapshotDamage();
+        // a fall we planned to eat stays HURT for as long as it's in the air, whatever our health does to a fresh context.
+        // it's still ours while the hearts leave us at or above the floor we agreed to (the planner's gate, absorption
+        // counted the same way). once a hit since then breaks that, it's an emergency again and alto can clutch it
+        boolean planned = !water && plannedDamage > 0;
+        FallMode mode = water ? FallMode.NONE : planned ? FallMode.HURT : fallMode();
+        double health = ctx.player().getHealth() + ctx.player().getAbsorptionAmount();
+        boolean affordable = planned && ExperimentalMovement.canAffordFall(health, plannedDamage, Baritone.settings().experimentalMinHealth.value);
+        return FallCover.handles(mode, clutchGaveUp, bucketOnHotbar(), AltoClefSettings.getInstance().shouldNotPlaceBucketButStillFall(), affordable);
     }
 
     // the water this chain placed is ours to fetch, unless this movement is about to (the isWater branch of updateState).

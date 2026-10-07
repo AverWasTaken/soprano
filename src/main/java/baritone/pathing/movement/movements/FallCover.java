@@ -47,9 +47,12 @@ final class FallCover {
 
     // does baritone do something about this fall itself, so altoclef's mlg should keep its hands off.
     // a safe fall and a clutch are baritone's. the bucket is too when it has the bucket on the hotbar to click (it needs
-    // that anyway), otherwise alto's slot handler gets it. a hurting fall, or a clutch that gave up, has nobody saving
-    // us, so anything alto has (hay, a bucket from the inventory) is welcome
-    static boolean handles(MovementFall.FallMode mode, boolean gaveUp, boolean bucketOnHotbar, boolean altoDoesBuckets) {
+    // that anyway), otherwise alto's slot handler gets it. a clutch that gave up has nobody saving us, so anything alto
+    // has (hay, a bucket from the inventory) is welcome.
+    // a fall we planned to eat (experimentalMovement) is ours while we can still afford the hearts: there is nothing to
+    // clutch with, so alto would only cancel the path and shout "epic gaemer moment" at the plan. if a hit since then
+    // makes it too expensive it's an emergency again and alto can have it
+    static boolean handles(MovementFall.FallMode mode, boolean gaveUp, boolean bucketOnHotbar, boolean altoDoesBuckets, boolean hurtAffordable) {
         switch (mode) {
             case NONE:
                 return !gaveUp;
@@ -57,6 +60,8 @@ final class FallCover {
                 return true;
             case BUCKET:
                 return bucketOnHotbar || !altoDoesBuckets;
+            case HURT:
+                return hurtAffordable;
             default:
                 return false;
         }
