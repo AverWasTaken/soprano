@@ -10,6 +10,9 @@ import net.minecraft.world.item.Items;
 public final class EarlyIronPick {
     // an iron pickaxe is three ingots, and 3 items is 30 s in a furnace, nothing to wait on
     public static final int INGOTS = 3;
+    // how long a started load stays "in flight" without finishing (a minute and a half of game time). the load itself is a
+    // few seconds, this is only the backstop for a furnace that got broken or a bot that died halfway
+    public static final long LOAD_WINDOW = 1800;
 
     private EarlyIronPick() {
     }
@@ -38,8 +41,30 @@ public final class EarlyIronPick {
         if (ingots >= INGOTS || f.pendingOutput(Items.IRON_INGOT) > 0) {
             return false;
         }
+        // the first raw iron going into the furnace used to end the trigger (the bag count dropped under 3), the head went to
+        // the 39 need, and that one even fetched the ore back out of the furnace. once started it is due until it is cooking
+        if (f.earlyLoadInFlight()) {
+            return true;
+        }
         int raw = f.count(Items.RAW_IRON);
         return raw >= INGOTS - ingots && raw + ingots < totalIngots;
+    }
+
+    // is a load that started at `since` still worth waiting for. -1 = none
+    public static boolean inFlight(long since, long now) {
+        return since >= 0 && now >= since && now - since < LOAD_WINDOW;
+    }
+
+    // IronPhase calls this every tick it plans. the tick the early batch becomes the head is the start of the load, and it
+    // lasts until the job is recorded (GamerTask.takeLoadedFurnaces), the ingots are in the bag, or the window runs out
+    public static void track(RunState state, KitNeed head, GamerFacts f, OverworldConfig cfg) {
+        if (isEarlyBatch(head, f, cfg)) {
+            if (!f.earlyLoadInFlight()) {
+                state.earlyLoadTick = f.gameTime();
+            }
+        } else if (state.earlyLoadTick >= 0 && !due(f, cfg, KitPlanner.ingotsNeeded(f, cfg))) {
+            state.earlyLoadTick = -1;
+        }
     }
 
     // "hold 3 ingots", the catalogue smelts exactly that many and leaves the rest of the raw iron alone

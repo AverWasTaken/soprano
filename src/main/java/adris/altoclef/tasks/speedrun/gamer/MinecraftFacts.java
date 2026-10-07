@@ -259,6 +259,11 @@ public final class MinecraftFacts implements GamerFacts {
     }
 
     @Override
+    public boolean earlyLoadInFlight() {
+        return state != null && EarlyIronPick.inFlight(state.earlyLoadTick, gameTime);
+    }
+
+    @Override
     public boolean creditsShown() {
         return credits;
     }

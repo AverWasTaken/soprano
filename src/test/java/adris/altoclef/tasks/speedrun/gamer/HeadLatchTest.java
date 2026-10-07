@@ -135,4 +135,24 @@ public class HeadLatchTest {
         m.spent.put(Items.STONE_PICKAXE, 1);
         assertFalse(names(KitPlanner.plan(m, cfg, 8)).contains("log"));
     }
+
+    // the 16:08 flip: three raw iron going into a furnace one at a time, the planner's early need dropped out of the list
+    // mid move and the latch let go of it (it is not owed any more), so the head was the 39 need
+    @Test
+    public void theEarlyBatchStaysTheHeadWhileItsOreIsMidMove() {
+        KitNeed early = new KitNeed("iron_ingot", 3);
+        FakeFacts moving = new FakeFacts().give(Items.STONE_PICKAXE, 1).give(Items.STONE_SWORD, 1).give(Items.FURNACE, 1)
+                .give(Items.LADDER, 3).give(Items.RAW_IRON, 1);
+        moving.foodUnits = 70;
+        moving.earlyLoad = true;
+        List<KitNeed> plan = KitPlanner.plan(moving, cfg, 8);
+        assertEquals(early, plan.get(0));
+        assertEquals(early, HeadLatch.pick(early, 0, 20, plan, moving));
+        // without the flight the plan has no early need and the latch can only hand over, which is what used to happen
+        FakeFacts plain = new FakeFacts().give(Items.STONE_PICKAXE, 1).give(Items.STONE_SWORD, 1).give(Items.FURNACE, 1)
+                .give(Items.LADDER, 3).give(Items.RAW_IRON, 1);
+        plain.foodUnits = 70;
+        List<KitNeed> old = KitPlanner.plan(plain, cfg, 8);
+        assertEquals(new KitNeed("iron_ingot", 39), HeadLatch.pick(early, 0, 20, old, plain));
+    }
 }

@@ -24,6 +24,13 @@ import org.apache.commons.lang3.NotImplementedException;
 public enum ContainerType {
     CHEST, ENDER_CHEST, SHULKER, FURNACE, BREWING, MISC, EMPTY;
 
+    // can a resource task go and take things out of this kind of container. a furnace's slots are somebody's smelt in
+    // progress (the raw iron we just loaded), not loot: the 39 iron need once pulled its own three ore back out of the
+    // furnace it was cooking in. whoever is smelting collects the output through the smelt task or FurnaceWatch
+    public boolean lootable() {
+        return this != FURNACE;
+    }
+
     public static ContainerType getFromBlock(Block block) {
         if (block instanceof ChestBlock) {
             return CHEST;

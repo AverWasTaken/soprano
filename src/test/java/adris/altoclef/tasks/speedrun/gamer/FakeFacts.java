@@ -26,6 +26,8 @@ public class FakeFacts implements GamerFacts {
     public boolean tablePlaced;
     public int fingerprint;
     public boolean earlyIronPick = true;
+    // the first raw iron is in a furnace and the job is not recorded yet
+    public boolean earlyLoad;
     // the jobs of this dimension, set by hand
     public final java.util.List<RunState.FurnaceJob> jobs = new java.util.ArrayList<>();
 
@@ -130,6 +132,11 @@ public class FakeFacts implements GamerFacts {
     @Override
     public boolean earlyIronPick() {
         return earlyIronPick;
+    }
+
+    @Override
+    public boolean earlyLoadInFlight() {
+        return earlyLoad;
     }
 
     @Override

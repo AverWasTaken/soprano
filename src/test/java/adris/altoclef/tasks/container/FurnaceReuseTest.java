@@ -49,4 +49,36 @@ public class FurnaceReuseTest {
     public void noRememberedFurnaceMeansANewOne() {
         assertTrue(FurnaceReuse.makeNew(false, false, 0, 0, 0));
     }
+
+    @Test
+    public void aFurnaceOfOursNineBlocksBelowIsStillWorthTheWalk() {
+        // the 16:08 numbers: 3 across, 9 up, 7 over. 7.6 flat + 36 for the height is over the 20 budget, so a second furnace
+        // went down on top of the crafting table
+        assertTrue(FurnaceReuse.makeNew(true, true, 3, 9, 7));
+        assertFalse(FurnaceReuse.makeNew(true, true, 3, 9, 7, true, false));
+    }
+
+    @Test
+    public void ourOwnFurnaceStillLosesToAFreshOneFromAnOldArea() {
+        assertTrue(FurnaceReuse.makeNew(true, true, 300, 0, 0, true, false));
+        // right at the stretched budget it is still reachable, one block past it is not
+        assertFalse(FurnaceReuse.makeNew(true, true, FurnaceReuse.OURS_BUDGET, 0, 0, true, false));
+        assertTrue(FurnaceReuse.makeNew(true, true, FurnaceReuse.OURS_BUDGET + 1, 0, 0, true, false));
+        // and a furnace that is not ours gets no stretch
+        assertTrue(FurnaceReuse.makeNew(true, true, 40, 0, 0, false, false));
+        assertFalse(FurnaceReuse.makeNew(true, true, 40, 0, 0, true, false));
+    }
+
+    @Test
+    public void aFurnaceWithOurOreInItIsNeverLeftForANewOne() {
+        assertFalse(FurnaceReuse.makeNew(true, true, 300, 40, 0, true, true));
+        assertFalse(FurnaceReuse.makeNew(true, true, 300, 0, 0, false, true));
+        // nothing remembered is still a new one, whatever the flags say
+        assertTrue(FurnaceReuse.makeNew(false, false, 0, 0, 0, true, true));
+    }
+
+    @Test
+    public void withoutTheStoneForOneOursStaysToo() {
+        assertFalse(FurnaceReuse.makeNew(true, false, 300, 0, 0, true, false));
+    }
 }

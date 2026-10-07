@@ -129,6 +129,8 @@ public class IronPhase implements PhaseHandler {
             hudState = surface.hud();
             return up;
         }
+        // the first three raw iron are about to go in: from here the early need stays owed until the furnace is lit
+        EarlyIronPick.track(ctx.state(), first, ctx.facts(), ctx.cfg().overworld);
         Task task = runner.run(ctx, needs);
         hudState = runner.hud();
         return task;

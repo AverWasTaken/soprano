@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 // the load-only half of smelting. when altoAsyncSmelting is on, the smelt tasks stop at "everything is in and lit", close
@@ -36,6 +37,10 @@ public final class AsyncSmelting {
     // the jobs the gamer is tracking, so the food task (which cannot see RunState) can count the meat that is cooking.
     // non gamer runs never set it and see no jobs, which is the old behaviour
     private static volatile Supplier<List<RunState.FurnaceJob>> jobs = List::of;
+
+    // is this furnace one the gamer put down this run. same seam as the jobs: the smelt task decides between "walk to the
+    // furnace I remember" and "place another" and has to know whose it is. non gamer runs see none, which is the old behaviour
+    private static volatile Predicate<BlockPos> ours = pos -> false;
 
     private AsyncSmelting() {
     }
@@ -61,6 +66,14 @@ public final class AsyncSmelting {
     // GamerTask hands over where its jobs live (and takes it back with clear())
     public static void watchJobs(Supplier<List<RunState.FurnaceJob>> source) {
         jobs = source;
+    }
+
+    public static void watchFurnaces(Predicate<BlockPos> source) {
+        ours = source;
+    }
+
+    public static boolean isOurFurnace(BlockPos pos) {
+        return ours.test(pos);
     }
 
     // nutrition cooking in the background right now. the food task adds it to what it could make from the bag, so a loaded
@@ -103,6 +116,7 @@ public final class AsyncSmelting {
     public static void clear() {
         LOADED.clear();
         jobs = List::of;
+        ours = pos -> false;
     }
 
     private static String name(Item item) {

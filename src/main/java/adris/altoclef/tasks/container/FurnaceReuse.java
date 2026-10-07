@@ -9,6 +9,10 @@ import adris.altoclef.util.helpers.WalkCost;
 public final class FurnaceReuse {
     // furnace is 8 cobble
     public static final int FURNACE_COBBLE = 8;
+    // one we put down ourselves earns three times the walk before a fresh one wins. the bot once stood nine blocks above its
+    // own furnace (which had the raw iron in it), saw 40 "blocks" of walk against a budget of 20, and put a second one on top
+    // of the crafting table. the far end is still there for the one we left in the last area
+    public static final double OURS_BUDGET = WalkCost.STATION_BUDGET * 3;
 
     private FurnaceReuse() {
     }
@@ -26,9 +30,20 @@ public final class FurnaceReuse {
     // true = put a new one down. false = go to the remembered one. no remembered furnace is always a new one, that was
     // already how it worked
     public static boolean makeNew(boolean haveRemembered, boolean canMakeCheaply, double dx, double dy, double dz) {
+        return makeNew(haveRemembered, canMakeCheaply, dx, dy, dz, false, false);
+    }
+
+    // the same, knowing whose furnace it is. `holdsOurStuff` (we put ore in it, the screen showed it) is a furnace we are in the
+    // middle of using and never loses to a new one, however far. `ours` only stretches the walk, see OURS_BUDGET
+    public static boolean makeNew(boolean haveRemembered, boolean canMakeCheaply, double dx, double dy, double dz, boolean ours,
+                                  boolean holdsOurStuff) {
         if (!haveRemembered) {
             return true;
         }
-        return canMakeCheaply && !cheapToReach(dx, dy, dz);
+        if (holdsOurStuff) {
+            return false;
+        }
+        double budget = ours ? OURS_BUDGET : WalkCost.STATION_BUDGET;
+        return canMakeCheaply && !WalkCost.within(dx, dy, dz, budget);
     }
 }

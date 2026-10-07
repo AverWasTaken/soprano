@@ -184,4 +184,88 @@ public class EarlyIronPickTest {
         // 31 s on, the job is due
         assertTrue(FurnaceJobs.anyDue(f.furnaceJobs(), f.seconds(31).gameTime(), 0));
     }
+
+    // the 16:08 run: the first raw iron went into the furnace, the bag stopped showing three, the early need vanished and the
+    // 39 need took the head (and then pulled the ore out of the furnace again)
+    @Test
+    public void aLoadInFlightKeepsTheEarlyNeedWithTheOreOutOfTheBag() {
+        FakeFacts f = mining();
+        f.earlyLoad = true;
+        assertTrue(due(f));
+        List<KitNeed> plan = KitPlanner.plan(f, cfg, BEDS);
+        assertEquals(new KitNeed("iron_ingot", 3), plan.get(0));
+        assertEquals(new KitNeed("iron_ingot", 39), plan.get(1));
+        // even with a single ore still in the bag (the move goes one at a time)
+        f.give(Items.RAW_IRON, 1);
+        assertEquals(new KitNeed("iron_ingot", 3), KitPlanner.plan(f, cfg, BEDS).get(0));
+        // and the same bag without the flag is the old plan
+        FakeFacts without = mining().give(Items.RAW_IRON, 1);
+        assertEquals(new KitNeed("iron_ingot", 39), KitPlanner.plan(without, cfg, BEDS).get(0));
+    }
+
+    @Test
+    public void aLoadInFlightEndsWhenItIsCookingOrDone() {
+        FakeFacts cooking = mining().cooking("iron_ingot", 3, 30);
+        cooking.earlyLoad = true;
+        assertFalse(due(cooking));
+        FakeFacts ingots = mining().give(Items.IRON_INGOT, 3);
+        ingots.earlyLoad = true;
+        assertFalse(due(ingots));
+        FakeFacts pick = mining().give(Items.IRON_PICKAXE, 1);
+        pick.earlyLoad = true;
+        assertFalse(due(pick));
+        FakeFacts off = mining();
+        off.earlyLoad = true;
+        off.earlyIronPick = false;
+        assertFalse(due(off));
+    }
+
+    @Test
+    public void aLoadInFlightStillCountsAsTheEarlyBatchForSmeltSurface() {
+        FakeFacts f = mining();
+        f.earlyLoad = true;
+        assertTrue(EarlyIronPick.isEarlyBatch(new KitNeed("iron_ingot", 3), f, cfg));
+        assertFalse(EarlyIronPick.isEarlyBatch(new KitNeed("iron_ingot", 39), f, cfg));
+    }
+
+    @Test
+    public void theFlightWindowHasAnEnd() {
+        assertFalse(EarlyIronPick.inFlight(-1, 100));
+        assertTrue(EarlyIronPick.inFlight(100, 100));
+        assertTrue(EarlyIronPick.inFlight(100, 100 + EarlyIronPick.LOAD_WINDOW - 1));
+        assertFalse(EarlyIronPick.inFlight(100, 100 + EarlyIronPick.LOAD_WINDOW));
+        // a clock that went backwards (a relog, another world) is not a flight
+        assertFalse(EarlyIronPick.inFlight(5000, 10));
+    }
+
+    @Test
+    public void trackStartsTheFlightWhenTheEarlyBatchLeadsAndDoesNotRestartIt() {
+        RunState state = new RunState();
+        FakeFacts f = mining().give(Items.RAW_IRON, 3);
+        f.gameTime = 400;
+        KitNeed early = new KitNeed("iron_ingot", 3);
+        EarlyIronPick.track(state, early, f, cfg);
+        assertEquals(400, state.earlyLoadTick);
+        // the facts see the flight now (MinecraftFacts reads the state), later ticks leave the stamp alone
+        f.earlyLoad = true;
+        f.gameTime = 460;
+        EarlyIronPick.track(state, early, f, cfg);
+        assertEquals(400, state.earlyLoadTick);
+        // a head that is something else for a moment (food) does not end it either
+        EarlyIronPick.track(state, new KitNeed(KitNeed.FOOD, 70), f, cfg);
+        assertEquals(400, state.earlyLoadTick);
+    }
+
+    @Test
+    public void trackLetsGoOnceTheEarlyNeedIsNoLongerDue() {
+        RunState state = new RunState();
+        state.earlyLoadTick = 400;
+        FakeFacts f = mining().give(Items.IRON_INGOT, 3);
+        f.earlyLoad = true;
+        EarlyIronPick.track(state, new KitNeed("iron_pickaxe", 1), f, cfg);
+        assertEquals(-1, state.earlyLoadTick);
+        // and a run that never started one stays at none
+        EarlyIronPick.track(state, null, mining(), cfg);
+        assertEquals(-1, state.earlyLoadTick);
+    }
 }

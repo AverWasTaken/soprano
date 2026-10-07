@@ -66,6 +66,11 @@ public class ContainerCache {
         return false;
     }
 
+    // anything at all in the last look we had (a furnace's input, fuel or output counts)
+    public boolean holdsAnything() {
+        return !_itemCounts.isEmpty();
+    }
+
     public int getEmptySlotCount() {
         return _emptySlots;
     }

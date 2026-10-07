@@ -195,6 +195,9 @@ public class RunState {
     // the kit need the prep phase is running right now, so the placement hook in GamerTask can say which need used a
     // station. null outside GATHER / IRON
     public transient String currentNeed;
+    // game tick the early iron batch (EarlyIronPick) started loading, -1 = no load in flight. transient: a relog starting
+    // it over is fine, the planner just goes back to looking at the bag
+    public transient long earlyLoadTick = -1;
 
     // village blacksmith chests we already opened (or started to), and the game ticks spent in them. the budget in
     // VillageChests reads both, so a relog does not hand out a fresh one

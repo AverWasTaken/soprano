@@ -2,7 +2,6 @@ package adris.altoclef.tasks.container;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.TaskCatalogue;
-import adris.altoclef.tasks.DoToClosestBlockTask;
 import adris.altoclef.tasks.InteractWithBlockTask;
 import adris.altoclef.tasks.construction.PlaceBlockNearbyTask;
 import adris.altoclef.tasks.slot.EnsureFreeInventorySlotTask;
@@ -10,6 +9,7 @@ import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.BaritoneHelper;
 import adris.altoclef.util.helpers.ItemHelper;
+import adris.altoclef.util.helpers.MineStick;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.slots.Slot;
@@ -37,7 +37,10 @@ public abstract class DoStuffInContainerTask extends Task {
     // If we just placed something, stop placing and try going to the nearest container.
     private final TimerGame _justPlacedTimer = new TimerGame(3);
     private BlockPos _cachedContainerPosition = null;
-    private Task _openTableTask;
+    // the walk and the click used to be decided in two places (our nearest here, a closest-block search over there) and with
+    // two furnaces standing they disagreed. this is the one block we both walk to and click, rebuilt only when it changes
+    private Task _openTask;
+    private BlockPos _openTaskPos;
 
     public DoStuffInContainerTask(Block[] containerBlocks, ItemTarget containerTarget) {
         _containerBlocks = containerBlocks;
@@ -53,10 +56,6 @@ public abstract class DoStuffInContainerTask extends Task {
     @Override
     protected void onStart(AltoClef mod) {
         mod.getBehaviour().push();
-        if (_openTableTask == null) {
-            _openTableTask = new DoToClosestBlockTask(InteractWithBlockTask::new, _containerBlocks);
-        }
-
         mod.getBlockTracker().trackBlock(_containerBlocks);
 
         // Protect container since we might place it.
@@ -107,6 +106,8 @@ public abstract class DoStuffInContainerTask extends Task {
             // mine the smoker it had just put down to "get the container item"). the world still has it, the world wins
             nearest = Optional.of(_cachedContainerPosition);
         }
+
+        nearest = stickToPreviousTarget(mod, nearest);
 
         boolean mayMakeNew = canMakeNew(mod);
         if (nearest.isEmpty() && !mayMakeNew) {
@@ -166,8 +167,24 @@ public abstract class DoStuffInContainerTask extends Task {
             mod.getSlotHandler().clickSlot(toMoveTo.get(), 0, ClickType.PICKUP);
             return null;
         }
-        return _openTableTask;
-        //return new GetToBlockTask(nearest, true);
+        if (_openTask == null || !nearest.get().equals(_openTaskPos)) {
+            _openTaskPos = nearest.get();
+            _openTask = new InteractWithBlockTask(_openTaskPos);
+        }
+        return _openTask;
+    }
+
+    // two containers about as far away trade places as we walk, and every trade is a new walk. keep the one we were heading
+    // for unless the other is clearly closer (same 2x rule as the closest-block search), so what we walk to is what we click
+    private Optional<BlockPos> stickToPreviousTarget(AltoClef mod, Optional<BlockPos> candidate) {
+        BlockPos previous = _cachedContainerPosition;
+        if (candidate.isEmpty() || previous == null || candidate.get().equals(previous) || !isContainerBlock(mod, previous)) {
+            return candidate;
+        }
+        Vec3 me = mod.getPlayer().position();
+        double now = WorldHelper.toVec3d(previous).distanceToSqr(me);
+        double then = WorldHelper.toVec3d(candidate.get()).distanceToSqr(me);
+        return MineStick.clearlyCloser(then, now) ? candidate : Optional.of(previous);
     }
 
     private boolean isContainerBlock(AltoClef mod, BlockPos pos) {

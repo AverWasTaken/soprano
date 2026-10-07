@@ -179,7 +179,8 @@ public abstract class ResourceTask extends Task implements ITaskCanForce {
         // no containers known is the common case, and the lookup walks every cached one, so ask once a second at most
         if (_currentContainer == null && --_containerLookupCooldown <= 0 && mod.getItemStorage().hasAnyContainers()) {
             _containerLookupCooldown = CONTAINER_LOOKUP_TICKS;
-            List<ContainerCache> containersWithItem = mod.getItemStorage().getContainersWithItem(_allMatches);
+            List<ContainerCache> containersWithItem = mod.getItemStorage().getContainersWithItem(_allMatches).stream()
+                    .filter(cache -> cache.getContainerType().lootable()).toList();
             if (!containersWithItem.isEmpty()) {
                 ContainerCache closest = containersWithItem.stream().min(StlHelper.compareValues(container -> container.getBlockPos().distToCenterSqr(mod.getPlayer().position()))).get();
                 if (closest.getBlockPos().closerToCenterThan(mod.getPlayer().position(), Baritone.settings().altoResourceChestLocateRange.value)) {

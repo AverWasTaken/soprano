@@ -87,6 +87,12 @@ public interface GamerFacts {
         return true;
     }
 
+    // the first three raw iron started into a furnace and the job is not recorded yet (EarlyIronPick.inFlight). the bag no
+    // longer shows the ore by then, this is what keeps the early need alive until it is lit
+    default boolean earlyLoadInFlight() {
+        return false;
+    }
+
     // true once the win screen has been shown (or the run saw the dragon die and came home)
     boolean creditsShown();
 

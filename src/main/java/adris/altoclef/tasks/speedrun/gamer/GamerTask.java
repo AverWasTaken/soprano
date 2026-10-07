@@ -322,6 +322,8 @@ public class GamerTask extends Task {
         facts.useState(state);
         // so CollectFoodTask can count the meat that is cooking without knowing what a RunState is
         AsyncSmelting.watchJobs(facts::furnaceJobs);
+        // and so the smelt task knows a furnace in the tracker is the one we put down (and not a reason to place another)
+        AsyncSmelting.watchFurnaces(p -> state.placedFurnaces.contains(new RunState.Pos(p.getX(), p.getY(), p.getZ())));
         deathsAtStart = state.deaths.size();
         lastSaveSeconds = machine.now();
         begun = true;
@@ -526,6 +528,8 @@ public class GamerTask extends Task {
                     + job.output.replace('_', ' ') + ", ~" + job.count * FurnaceJobs.ticksPerItem(job.kind) / 20 + "s)");
         }
         if (!loaded.isEmpty()) {
+            // lit and cooking: the job is the memory now, the early load is no longer in flight
+            state.earlyLoadTick = -1;
             host.save();
         }
     }
