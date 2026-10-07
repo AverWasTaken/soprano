@@ -22,9 +22,17 @@ public class PlayerExtraController {
         EventBus.subscribe(BlockBreakingCancelEvent.class, evt -> onBlockStopBreaking());
     }
 
+    // continueDestroyBlock runs every tick we are mining, so a position nobody refreshed for this long is a block that
+    // already broke. the cancel event only fires after three stopDestroyBlock calls and a finished break may never get them,
+    // so the flag stayed up: a table placed where we had just mined a log failed its first interact check (it saw a
+    // "break" making no progress) and got blacklisted and wandered off from
+    private static final long BREAK_STALE_MS = 500;
+    private volatile long _blockBreakStamp;
+
     private void onBlockBreak(BlockPos pos, double progress) {
         _blockBreakPos = pos;
         _blockBreakProgress = progress;
+        _blockBreakStamp = System.currentTimeMillis();
     }
 
     private void onBlockStopBreaking() {
@@ -37,7 +45,7 @@ public class PlayerExtraController {
     }
 
     public boolean isBreakingBlock() {
-        return _blockBreakPos != null;
+        return _blockBreakPos != null && System.currentTimeMillis() - _blockBreakStamp <= BREAK_STALE_MS;
     }
 
     public double getBreakingBlockProgress() {

@@ -196,6 +196,7 @@ public class PlaceBlockTask extends Task implements ITaskRequiresGrounded {
     private class PlaceStructureSchematic extends AbstractSchematic {
 
         private final AltoClef _mod;
+        private volatile boolean _loggedNoThrowaway;
 
         public PlaceStructureSchematic(AltoClef mod) {
             super(1, 1, 1);
@@ -205,6 +206,12 @@ public class PlaceBlockTask extends Task implements ITaskRequiresGrounded {
         @Override
         public BlockState desiredState(int x, int y, int z, BlockState blockState, List<BlockState> available) {
             if (x == 0 && y == 0 && z == 0) {
+                // already there is the answer. the builder asks again for the whole second between the block landing and
+                // this task stopping, and with our only table gone from the bag the loop below found nothing and asked for
+                // dirt over the table we just placed
+                if (ArrayUtils.contains(_toPlace, blockState.getBlock())) {
+                    return blockState;
+                }
                 // Place!!
                 if (!available.isEmpty()) {
                     for (BlockState possible : available) {
@@ -217,7 +224,11 @@ public class PlaceBlockTask extends Task implements ITaskRequiresGrounded {
                         }
                     }
                 }
-                Debug.logInternal("Failed to find throwaway block");
+                // the pathing thread asks this per node, 490 lines of it in one run. once per task is plenty
+                if (!_loggedNoThrowaway) {
+                    _loggedNoThrowaway = true;
+                    Debug.logInternal("Failed to find throwaway block");
+                }
                 // No throwaways available!!
                 return new BlockOptionalMeta(Blocks.DIRT).getAnyBlockState();
             }
