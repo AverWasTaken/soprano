@@ -82,6 +82,11 @@ public interface GamerFacts {
         return FurnaceJobs.pendingUnits(furnaceJobs());
     }
 
+    // altoEarlyIronPick: make the iron pickaxe from the first three raw iron (EarlyIronPick). a setting, so the real facts read it
+    default boolean earlyIronPick() {
+        return true;
+    }
+
     // true once the win screen has been shown (or the run saw the dragon die and came home)
     boolean creditsShown();
 

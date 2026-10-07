@@ -253,6 +253,11 @@ public final class MinecraftFacts implements GamerFacts {
     }
 
     @Override
+    public boolean earlyIronPick() {
+        return baritone.Baritone.settings().altoEarlyIronPick.value;
+    }
+
+    @Override
     public boolean creditsShown() {
         return credits;
     }

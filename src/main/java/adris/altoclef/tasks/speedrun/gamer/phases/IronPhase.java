@@ -2,6 +2,7 @@ package adris.altoclef.tasks.speedrun.gamer.phases;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.tasks.container.CollectFromFurnaceTask.Mode;
+import adris.altoclef.tasks.speedrun.gamer.EarlyIronPick;
 import adris.altoclef.tasks.speedrun.gamer.FurnaceWatch;
 import adris.altoclef.tasks.speedrun.gamer.GamerContext;
 import adris.altoclef.tasks.speedrun.gamer.GamerFacts;
@@ -113,8 +114,9 @@ public class IronPhase implements PhaseHandler {
             hudState = support.hud();
             return side;
         }
-        // all the ore is mined and we are still down the mine: up first, then the smelt places its furnace in the open
-        Task up = surface.tick(mod, ctx, first);
+        // all the ore is mined and we are still down the mine: up first, then the smelt places its furnace in the open.
+        // the early pick batch is three items, it goes in right here where the ore is
+        Task up = EarlyIronPick.isEarlyBatch(first, ctx.facts(), ctx.cfg().overworld) ? null : surface.tick(mod, ctx, first);
         if (up != null) {
             hudState = surface.hud();
             return up;
@@ -146,7 +148,8 @@ public class IronPhase implements PhaseHandler {
             trip = furnaces.pullBack(mod, ctx);
         }
         if (trip == null) {
-            boolean boundary = head == null || !head.equals(committed);
+            // no pick yet and the early batch is done: that is a boundary of its own, the mining need would not end for 36 more ingots
+            boolean boundary = head == null || !head.equals(committed) || EarlyIronPick.collectNow(f, ctx.cfg().overworld);
             Trip what = SmeltFiller.trip(head != null, boundary, f.gameTime(), f.furnaceJobs(), ctx.cfg().overworld);
             if (what != Trip.FILLER) {
                 committed = null;

@@ -2163,6 +2163,14 @@ public final class Settings {
     public final Setting<Boolean> altoAsyncCooking = new Setting<>(true);
 
     /**
+     * #gamer's iron phase makes its iron pickaxe as soon as it holds three raw iron instead of mining the whole kit's
+     * worth with a stone one: those three are smelted where the bot stands, it keeps mining nearby while they cook, then
+     * comes back and crafts the pickaxe. needs {@link #altoAsyncSmelting} for the "mine while it cooks" part, without it
+     * the three are smelted standing at the furnace and the pickaxe is crafted right after.
+     */
+    public final Setting<Boolean> altoEarlyIronPick = new Setting<>(true);
+
+    /**
      * Only use the items in {@link #altoSupportedFuels} as smelting fuel. Careful with turning this off: every burnable
      * item that is not protected (blaze rods, beds, wooden tools, crafting tables...) can get burned.
      */

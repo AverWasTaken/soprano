@@ -85,7 +85,7 @@ public class AltoSettingsTest {
         Settings a = fresh();
         Settings b = fresh();
         List<Settings.Setting<?>> alto = altoSettings(a);
-        assertEquals(53, alto.size());
+        assertEquals(54, alto.size());
         for (Settings.Setting<?> setting : alto) {
             String text = SettingsUtil.settingDefaultToString(setting);
             SettingsUtil.parseAndApply(b, setting.getName().toLowerCase(), text);

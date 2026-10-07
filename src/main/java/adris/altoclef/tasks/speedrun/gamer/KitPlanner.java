@@ -270,6 +270,16 @@ public final class KitPlanner {
             crafts.add(new KitNeed(k.item, held(f, k.item) + missing));
         }
         List<KitNeed> out = new ArrayList<>();
+        // the three ingots for the pick are in the bag: make it before mining a single ore more (EarlyIronPick)
+        if (EarlyIronPick.craftFirst(f, cfg)) {
+            crafts.stream().filter(n -> n.catalogueName().equals("iron_pickaxe")).findFirst().ifPresent(pick -> {
+                out.add(pick);
+                crafts.remove(pick);
+            });
+        } else if (EarlyIronPick.due(f, cfg, ingots)) {
+            // three raw iron and no pick: smelt just those, the big batch is what comes after (and is in the list as well)
+            out.add(EarlyIronPick.need());
+        }
         // ingots cooking in a furnace we loaded count as held, or the bot would go mining a second batch while the first one cooks
         if (ingots > 0 && f.count(Items.IRON_INGOT) + f.pendingOutput(Items.IRON_INGOT) < ingots) {
             out.add(new KitNeed("iron_ingot", ingots));

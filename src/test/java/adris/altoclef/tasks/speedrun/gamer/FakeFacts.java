@@ -25,6 +25,7 @@ public class FakeFacts implements GamerFacts {
     // one of our tables standing next to us (it is out of the bag, the planner still counts it)
     public boolean tablePlaced;
     public int fingerprint;
+    public boolean earlyIronPick = true;
     // the jobs of this dimension, set by hand
     public final java.util.List<RunState.FurnaceJob> jobs = new java.util.ArrayList<>();
 
@@ -124,6 +125,11 @@ public class FakeFacts implements GamerFacts {
     @Override
     public boolean tablePlacedNearby() {
         return tablePlaced;
+    }
+
+    @Override
+    public boolean earlyIronPick() {
+        return earlyIronPick;
     }
 
     @Override
