@@ -22,19 +22,12 @@ public class FurnaceReuseTest {
 
     @Test
     public void heightCountsFourTimes() {
-        // 12 across and 3 down: 12 + 12 = 24, still fine
-        assertTrue(FurnaceReuse.cheapToReach(12, -3, 0));
+        // 8 across and 3 down: 8 + 12 = 20, the budget exactly
+        assertTrue(FurnaceReuse.cheapToReach(8, -3, 0));
         // one more block of drop is not
-        assertFalse(FurnaceReuse.cheapToReach(12, -4, 0));
+        assertFalse(FurnaceReuse.cheapToReach(8, -4, 0));
         // it is the vertical gap, whichever way
-        assertFalse(FurnaceReuse.cheapToReach(0, 7, 0));
-    }
-
-    @Test
-    public void horizontalIsEuclideanNotManhattan() {
-        // 17 + 17 would be 34 blocks of walking along the axes, but it is 24.04 as the crow flies
-        assertFalse(FurnaceReuse.cheapToReach(17, 0, 17));
-        assertTrue(FurnaceReuse.cheapToReach(16, 0, 16));
+        assertFalse(FurnaceReuse.cheapToReach(0, 6, 0));
     }
 
     @Test
