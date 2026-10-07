@@ -2,9 +2,17 @@ package adris.altoclef.tasks.speedrun.gamer.config;
 
 // configs/beat_minecraft.json. "version" is checked before gson sees the file: any other value (including the old
 // BeatMinecraftConfig shape, which has none) means defaults, saved over it, one log line. nested objects are one class
-// per phase group so the workers do not step on each other
+// per phase group so the workers do not step on each other.
+// an older file from OLDEST_KEPT up is not thrown away: its numbers stay and the kit lists (every List<KitItem> in here)
+// go back to the defaults, see GamerConfigs.migrate
 public class GamerConfig {
-    public static final int VERSION = 2;
+    // bump VERSION when you change a default kit list (or add one). a saved file replaces the default list outright, so
+    // without the bump every existing run keeps the old kit forever (that is how the bot went to the nether with no
+    // ladders). GamerConfigsTest has a hash of the defaults that fails until you do
+    public static final int VERSION = 3;
+    // files from here up to VERSION get the migration instead of the defaults. raise it if a bump ever changes the shape
+    // in a way the migration can not paper over
+    public static final int OLDEST_KEPT = 2;
 
     public int version = VERSION;
     // a failing phase gets this many tries before it is skipped or the run goes STUCK

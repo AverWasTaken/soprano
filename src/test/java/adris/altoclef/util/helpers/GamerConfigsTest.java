@@ -7,6 +7,9 @@ import static org.junit.Assert.assertTrue;
 
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfigs;
+import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig;
+import java.util.List;
+import java.util.stream.Collectors;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import java.io.IOException;
@@ -186,6 +189,91 @@ public class GamerConfigsTest {
         GamerConfig c = GamerConfigs.load();
         assertNotNull(c.nether);
         assertEquals(new GamerConfig().budgets.gather, c.budgets.gather, 0);
+    }
+
+    // what a v2 file looked like on disk when the bot went into the nether with no ladders: kit lists saved before the
+    // ladder and the axe existed, plus a couple of numbers somebody tuned
+    private static final String V2_FILE = "{\"version\": 2, \"targetEyes\": 16, \"floorEyes\": 13,"
+            + " \"nether\": {\"sweepSpacingChunks\": 5}, \"budgets\": {\"gather\": 3.5},"
+            + " \"overworld\": {\"minFoodUnits\": 55, \"armorPlan\": \"CHEST_HELMET\","
+            + " \"starterKit\": [{\"item\": \"stone_pickaxe\", \"count\": 1}, {\"item\": \"furnace\", \"count\": 1}],"
+            + " \"ironKit\": [{\"item\": \"iron_pickaxe\", \"count\": 1}, {\"item\": \"bucket\", \"count\": 2}],"
+            + " \"smeltExtras\": [{\"item\": \"food\", \"count\": 5}]}}";
+
+    private static List<String> names(List<OverworldConfig.KitItem> kit) {
+        return kit.stream().map(k -> k.item + " x" + k.count).collect(Collectors.toList());
+    }
+
+    @Test
+    public void aV2FileKeepsItsNumbersButGetsTheDefaultKitLists() throws IOException {
+        write(V2_FILE);
+        GamerConfig c = GamerConfigs.load();
+        GamerConfig d = new GamerConfig();
+        // the kit lists are the code's, so the ladder and the wooden axe are back
+        assertEquals(names(d.overworld.starterKit), names(c.overworld.starterKit));
+        assertEquals(names(d.overworld.ironKit), names(c.overworld.ironKit));
+        assertEquals(names(d.overworld.smeltExtras), names(c.overworld.smeltExtras));
+        assertTrue(names(c.overworld.starterKit).contains("wooden_axe x1"));
+        assertTrue(names(c.overworld.ironKit).contains("ladder x3"));
+        // and what somebody tuned stays tuned
+        assertEquals(16, c.targetEyes);
+        assertEquals(13, c.floorEyes);
+        assertEquals(5, c.nether.sweepSpacingChunks);
+        assertEquals(3.5, c.budgets.gather, 0);
+        assertEquals(55, c.overworld.minFoodUnits);
+        assertEquals(OverworldConfig.ArmorPlan.CHEST_HELMET, c.overworld.armorPlan);
+        assertEquals(GamerConfig.VERSION, c.version);
+    }
+
+    @Test
+    public void aV2FileIsSavedAsTheCurrentVersionWithABackup() throws IOException {
+        write(V2_FILE);
+        GamerConfigs.load();
+        JsonObject disk = onDisk();
+        assertEquals(GamerConfig.VERSION, disk.get("version").getAsInt());
+        assertEquals(16, disk.get("targetEyes").getAsInt());
+        assertTrue(disk.getAsJsonObject("overworld").toString().contains("ladder"));
+        assertEquals(V2_FILE, Files.readString(file.resolveSibling("beat_minecraft.json.bak"), StandardCharsets.UTF_8));
+        // the second load has nothing left to migrate
+        GamerConfig again = GamerConfigs.load();
+        assertEquals(16, again.targetEyes);
+        assertTrue(names(again.overworld.ironKit).contains("ladder x3"));
+    }
+
+    @Test
+    public void aCurrentFileKeepsItsKitLists() throws IOException {
+        write("{\"version\": " + GamerConfig.VERSION + ", \"overworld\": {\"ironKit\": [{\"item\": \"bucket\", \"count\": 2}]}}");
+        assertEquals(List.of("bucket x2"), names(GamerConfigs.load().overworld.ironKit));
+    }
+
+    // GamerConfig.VERSION has to move whenever a default kit list does (a saved list replaces the default, so old files keep
+    // the old kit until the migration resets them). this pins the pair: change a default and it fails, and the fix is to
+    // bump VERSION and then put the new VERSION and hash here
+    private static final int PINNED_VERSION = 3;
+    private static final String PINNED_KIT_HASH = "ac609dc3";
+
+    @Test
+    public void changingADefaultKitListMeansBumpingTheVersion() {
+        StringBuilder dump = new StringBuilder();
+        GamerConfigs.kitLists(new GamerConfig()).forEach((path, kit) -> dump.append(path).append(": ").append(names(kit)).append('\n'));
+        String hash = Integer.toHexString(dump.toString().hashCode());
+        String hint = "\nthe default kit lists are now:\n" + dump + "hash " + hash + ". bump GamerConfig.VERSION, then set"
+                + " PINNED_VERSION and PINNED_KIT_HASH in this test (and keep the migration in GamerConfigs.migrate working)";
+        assertEquals("kit lists changed without a version bump." + hint, PINNED_KIT_HASH, hash);
+        assertEquals("version moved, repin it." + hint, PINNED_VERSION, GamerConfig.VERSION);
+    }
+
+    @Test
+    public void everyKitListInTheTreeIsFound() {
+        // containsAll, somebody else adding a list should not break this
+        assertTrue(GamerConfigs.kitLists(new GamerConfig()).keySet()
+                .containsAll(List.of("overworld.ironKit", "overworld.smeltExtras", "overworld.starterKit")));
+    }
+
+    @Test
+    public void aVersionBelowTheOldestKeptIsStillReplaced() throws IOException {
+        write("{\"version\": " + (GamerConfig.OLDEST_KEPT - 1) + ", \"targetEyes\": 99}");
+        assertEquals(new GamerConfig().targetEyes, GamerConfigs.load().targetEyes);
     }
 
     @Test

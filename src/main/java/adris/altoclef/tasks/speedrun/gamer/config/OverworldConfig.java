@@ -28,10 +28,11 @@ public class OverworldConfig {
 
     // the axe is for logs (KitPlanner puts it right after the first few) and the two stone picks are one to wear out and
     // one spare. any iron pick in the bag covers both. the planner sizes the wood for all of this plus the iron kit
+    // (bump GamerConfig.VERSION when you change a default kit list, saved files would keep the old one otherwise)
     public List<KitItem> starterKit = new ArrayList<>(List.of(
             new KitItem("wooden_axe", 1), new KitItem("stone_pickaxe", 2), new KitItem("stone_sword", 1),
             new KitItem("furnace", 1)));
-    // armor comes from armorPlan, wool from end.beds
+    // armor comes from armorPlan, wool from end.beds. same deal: bump GamerConfig.VERSION when this changes
     public List<KitItem> ironKit = new ArrayList<>(List.of(
             new KitItem("iron_pickaxe", 1), new KitItem("iron_sword", 1), new KitItem("bucket", 2),
             new KitItem("flint_and_steel", 1), new KitItem("shield", 1), new KitItem("shears", 1),
@@ -101,7 +102,8 @@ public class OverworldConfig {
     // planks to stock for beds while waiting (3 a bed, the shield and sticks come on top of this)
     public int smeltBedPlanks = 12;
     // stock-up for when everything else is done and the iron is still cooking. one entry each: "food" = units over
-    // targetFoodUnits, "wool_beds" = extra beds worth of wool, "build_blocks" = over portalBuildBlocks, "log" = logs to hold
+    // targetFoodUnits, "wool_beds" = extra beds worth of wool, "build_blocks" = over portalBuildBlocks, "log" = logs to hold.
+    // a kit list too: bump GamerConfig.VERSION when the default changes
     public List<KitItem> smeltExtras = new ArrayList<>(List.of(
             new KitItem("food", 30), new KitItem("wool_beds", 3), new KitItem("build_blocks", 32), new KitItem("log", 8)));
 

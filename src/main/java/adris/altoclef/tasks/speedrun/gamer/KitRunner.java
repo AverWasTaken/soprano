@@ -1,5 +1,6 @@
 package adris.altoclef.tasks.speedrun.gamer;
 
+import adris.altoclef.Debug;
 import adris.altoclef.TaskCatalogue;
 import adris.altoclef.tasks.misc.EquipArmorTask;
 import adris.altoclef.tasks.resources.CollectFoodTask;
@@ -26,6 +27,8 @@ public final class KitRunner {
     private Task task;
     private int lastProgress;
     private String hud;
+    // one line per phase entry (reset() is the entry) with everything the planner wants, first non empty plan only
+    private boolean planLogged;
 
     public KitRunner() {
         this(KitRunner::build);
@@ -42,12 +45,25 @@ public final class KitRunner {
         task = null;
         lastProgress = 0;
         hud = null;
+        planLogged = false;
     }
 
     // CollectFoodTask counts anything edible (rotten flesh, spider eyes...) but our facts only count what we would eat,
     // so with a bag of junk it thinks it is done and wanders. ask it for the junk on top
     public static int foodTarget(KitNeed need, GamerFacts f) {
         return KitNeed.FOOD.equals(need.catalogueName()) ? need.count() + f.junkFoodUnits() : need.count();
+    }
+
+    // "log x13, wooden_axe x1, ..." so a kit item that never shows up in the plan is obvious in the log
+    static String describe(List<KitNeed> needs) {
+        StringBuilder sb = new StringBuilder();
+        for (KitNeed n : needs) {
+            if (sb.length() > 0) {
+                sb.append(", ");
+            }
+            sb.append(n.catalogueName()).append(" x").append(n.count());
+        }
+        return sb.toString();
     }
 
     // plain words for what the current need is, null when there is nothing to do
@@ -59,6 +75,10 @@ public final class KitRunner {
         if (needs.isEmpty()) {
             hud = null;
             return null;
+        }
+        if (!planLogged) {
+            planLogged = true;
+            Debug.logMessage("Kit plan: " + describe(needs));
         }
         GamerFacts f = ctx.facts();
         KitNeed need = needs.get(0);

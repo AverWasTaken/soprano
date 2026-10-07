@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Scanner;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import java.util.function.UnaryOperator;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.item.Item;
@@ -105,18 +106,28 @@ public class ConfigHelper {
      * @return The retrieved configuration object or the default value.
      */
     private static <T> T getConfig(String path, Supplier<T> getDefault, Class<T> classToLoad) {
-        return getConfig(path, getDefault, classToLoad, null);
+        return getConfig(path, getDefault, classToLoad, (Versioning<T>) null);
     }
 
-    // version != null: the file has to carry that "version" member or it is replaced by the defaults before gson sees it
-    private static <T> T getConfig(String path, Supplier<T> getDefault, Class<T> classToLoad, Integer version) {
+    // versioning != null: the file has to carry a "version" member. one from before oldestKept (or with none) is replaced by
+    // the defaults before gson sees it, one in [oldestKept, version) is read as usual and handed to migrate before it is
+    // saved again, so a version bump that only has to fix a few things does not eat the user's numbers
+    private static <T> T getConfig(String path, Supplier<T> getDefault, Class<T> classToLoad, Versioning<T> versioning) {
         T result = getDefault.get();
         File loadFrom = getConfigFile(path);
-        if (version != null && isOtherVersion(loadFrom, version)) {
-            Debug.logWarning("Config " + path + " is from another version, replacing it with the defaults (the old one is kept as " + path + ".bak).");
-            keepAsBackup(loadFrom.toPath());
-            saveConfig(path, result);
-            return result;
+        boolean migrate = false;
+        if (versioning != null) {
+            int found = fileVersion(loadFrom);
+            if (found == NO_VERSION || (found != MISSING_FILE && !versioning.accepts(found))) {
+                Debug.logWarning("Config " + path + " is from another version, replacing it with the defaults (the old one is kept as " + path + ".bak).");
+                keepAsBackup(loadFrom.toPath());
+                saveConfig(path, result);
+                return result;
+            }
+            migrate = found != MISSING_FILE && found != versioning.version();
+            if (migrate) {
+                copyAsBackup(loadFrom.toPath());
+            }
         }
         if (!loadFrom.exists()) {
             saveConfig(path, result);
@@ -134,7 +145,7 @@ public class ConfigHelper {
                 // gson hands back null for an empty file
                 throw new IllegalStateException("Config file is empty.");
             }
-            result = loaded;
+            result = migrate ? versioning.migrate().apply(loaded) : loaded;
         } catch (IOException e) {
             Debug.logError("Failed to read Config at " + path + ".");
             e.printStackTrace();
@@ -186,21 +197,45 @@ public class ConfigHelper {
         }
     }
 
-    // true when the file exists and its top level "version" is missing or not the one we want. a file that is not even
-    // json counts too, the normal load would fall back to the defaults anyway
-    private static boolean isOtherVersion(File file, int version) {
+    // same as keepAsBackup but the original stays, for a file we still read (after fixing it up)
+    private static void copyAsBackup(Path file) {
+        try {
+            Files.copy(file, file.resolveSibling(file.getFileName() + ".bak"), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException e) {
+            Debug.logWarning("Could not keep a backup of " + file.getFileName() + ": " + e.getMessage());
+        }
+    }
+
+    private static final int MISSING_FILE = Integer.MIN_VALUE;
+    private static final int NO_VERSION = Integer.MIN_VALUE + 1;
+
+    // the file's top level "version" as a whole number. MISSING_FILE when there is no file, NO_VERSION when there is no
+    // usable one (not json, not an object, no member, not a whole number). a file that is not even json counts as the
+    // latter, the normal load would fall back to the defaults anyway
+    private static int fileVersion(File file) {
         if (!file.exists()) {
-            return false;
+            return MISSING_FILE;
         }
         try (Reader reader = Files.newBufferedReader(file.toPath(), StandardCharsets.UTF_8)) {
             JsonElement root = JsonParser.parseReader(reader);
             if (!(root instanceof JsonObject obj) || !obj.has("version")) {
-                return true;
+                return NO_VERSION;
             }
             JsonElement v = obj.get("version");
-            return !v.isJsonPrimitive() || !v.getAsJsonPrimitive().isNumber() || v.getAsDouble() != version;
+            if (!v.isJsonPrimitive() || !v.getAsJsonPrimitive().isNumber()) {
+                return NO_VERSION;
+            }
+            double d = v.getAsDouble();
+            return d == Math.rint(d) && Math.abs(d) < 1_000_000 ? (int) d : NO_VERSION;
         } catch (IOException | RuntimeException e) {
-            return true;
+            return NO_VERSION;
+        }
+    }
+
+    // oldestKept == version means no migration at all, only an exact match is read
+    private record Versioning<T>(int version, int oldestKept, UnaryOperator<T> migrate) {
+        boolean accepts(int found) {
+            return found == version || (found >= oldestKept && found < version);
         }
     }
 
@@ -209,8 +244,17 @@ public class ConfigHelper {
      * file that has none or another one is overwritten with the defaults (also on reload) so old values never leak into the new ones.
      */
     public static <T> void loadVersionedConfig(String path, int version, Supplier<T> getDefault, Class<T> classToLoad, Consumer<T> onReload) {
-        T config = getConfig(path, getDefault, classToLoad, version);
-        _loadedConfigs.put(path, () -> onReload.accept(getConfig(path, getDefault, classToLoad, version)));
+        loadVersionedConfig(path, version, version, t -> t, getDefault, classToLoad, onReload);
+    }
+
+    /**
+     * Same again, but a file whose version is in [oldestKept, version) is not thrown away: it is read as usual and passed
+     * through migrate (which stamps the new version on it) before it is saved over the old one, which is kept as .bak.
+     */
+    public static <T> void loadVersionedConfig(String path, int version, int oldestKept, UnaryOperator<T> migrate, Supplier<T> getDefault, Class<T> classToLoad, Consumer<T> onReload) {
+        Versioning<T> versioning = new Versioning<>(version, oldestKept, migrate);
+        T config = getConfig(path, getDefault, classToLoad, versioning);
+        _loadedConfigs.put(path, () -> onReload.accept(getConfig(path, getDefault, classToLoad, versioning)));
         onReload.accept(config);
     }
 
