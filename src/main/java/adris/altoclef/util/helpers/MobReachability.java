@@ -119,7 +119,8 @@ public class MobReachability {
         double range = Baritone.settings().altoHostileEngageRange.value;
         double height = Baritone.settings().altoHostileEngageHeight.value;
         boolean closing = _closing.update(mob.getId(), mob.distanceTo(player), now);
-        boolean leashed = MobReachRules.inLeash(dx, dy, dz, range, height);
+        boolean shooter = isRanged(mob);
+        boolean leashed = MobReachRules.inLeash(dx, dy, dz, range, height, shooter);
 
         Long last = _engaged.get(mob.getId());
         if (leashed && last != null && now >= last && now - last <= ENGAGE_FORGET_TICKS) {
@@ -130,7 +131,7 @@ public class MobReachability {
         }
         _engaged.remove(mob.getId());
         // the line of sight raycast is not free, only the ones that could shoot us from out here get one
-        boolean ranged = leashed && isRanged(mob);
+        boolean ranged = leashed && shooter;
         boolean sees = ranged && seesPlayer(mod, mob);
         if (MobReachRules.shouldEngage(dx, dy, dz, range, height, closing && !travelling, ranged, sees)) {
             _engaged.put(mob.getId(), now);
@@ -146,7 +147,7 @@ public class MobReachability {
         if (isUngated(mob)) return true;
         LocalPlayer player = mod.getPlayer();
         return MobReachRules.inLeash(mob.getX() - player.getX(), mob.getY() - player.getY(), mob.getZ() - player.getZ(),
-                Baritone.settings().altoHostileEngageRange.value, Baritone.settings().altoHostileEngageHeight.value);
+                Baritone.settings().altoHostileEngageRange.value, Baritone.settings().altoHostileEngageHeight.value, isRanged(mob));
     }
 
     public void reset() {

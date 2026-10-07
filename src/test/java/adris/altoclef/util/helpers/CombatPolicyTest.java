@@ -1,5 +1,6 @@
 package adris.altoclef.util.helpers;
 
+import static adris.altoclef.util.helpers.CombatPolicy.Verdict.CHARGE;
 import static adris.altoclef.util.helpers.CombatPolicy.Verdict.FIGHT_ONE;
 import static adris.altoclef.util.helpers.CombatPolicy.Verdict.IGNORE;
 import static adris.altoclef.util.helpers.CombatPolicy.Verdict.KITE;
@@ -281,7 +282,8 @@ public class CombatPolicyTest {
 
     @Test
     public void skeletonsWithAClearShotAreNeverWalkedPast() {
-        assertEquals(FIGHT_ONE, new CombatPolicy().decide(0, walking(List.of(skeleton(1, 12, 0, true)), AHEAD, QUIET)).verdict());
+        // (and now that is a charge, not a fight)
+        assertEquals(CHARGE, new CombatPolicy().decide(0, walking(List.of(skeleton(1, 12, 0, true)), AHEAD, QUIET)).verdict());
         // around a corner, it is not shooting at anything
         assertEquals(IGNORE, new CombatPolicy().decide(0, walking(List.of(skeleton(1, 12, 0, false)), AHEAD, QUIET)).verdict());
         // and a long way off, the line of sight number is whatever it is, out of range
@@ -312,6 +314,155 @@ public class CombatPolicyTest {
         List<Mob> wall = new ArrayList<>();
         for (int i = 0; i < 6; i++) wall.add(zombie(i, -1 + i * 0.4, 5));
         assertEquals(KITE, new CombatPolicy().decide(0, walking(wall, AHEAD, QUIET)).verdict());
+    }
+
+    // ---- the charge
+
+    private static Scene withHealth(List<Mob> mobs, float hp) {
+        return new Scene(mobs, QUIET, false, List.of(), 0, 0, THRESHOLD, GRACE, hp);
+    }
+
+    private static final List<Mob> ONE_SKELETON = List.of(skeleton(1, 10, 0, true));
+
+    @Test
+    public void aLoneSkeletonIsAChargeNotAFight() {
+        Decision d = new CombatPolicy().decide(0, fighting(ONE_SKELETON));
+        assertEquals(CHARGE, d.verdict());
+        assertTrue(d.charging());
+        // the shield is a stand-your-ground thing, a charge only raises it for an arrow and the chain does that itself
+        assertFalse(d.shield());
+        assertFalse(d.kiting());
+        assertFalse(d.hold());
+    }
+
+    @Test
+    public void twoShootersAreStillAChargeThreeAreAFiringLine() {
+        List<Mob> two = List.of(skeleton(1, 8, 0, true), skeleton(2, 0, 9, true));
+        assertEquals(CHARGE, new CombatPolicy().decide(0, fighting(two)).verdict());
+        List<Mob> three = List.of(skeleton(1, 8, 0, true), skeleton(2, 0, 9, true), skeleton(3, -9, 0, true));
+        assertEquals(FIGHT_ONE, new CombatPolicy().decide(0, fighting(three)).verdict());
+    }
+
+    @Test
+    public void aShooterStartsTheChargeFromTwelve() {
+        assertEquals(CHARGE, new CombatPolicy().decide(0, fighting(List.of(skeleton(1, 12, 0, true)))).verdict());
+        assertEquals(FIGHT_ONE, new CombatPolicy().decide(0, fighting(List.of(skeleton(1, 13, 0, true)))).verdict());
+    }
+
+    @Test
+    public void aCrowdOutranksTheShooter() {
+        List<Mob> mobs = new ArrayList<>(ring(4, 5));
+        mobs.add(skeleton(50, 0, 9, true));
+        assertEquals(KITE, new CombatPolicy().decide(0, fighting(mobs)).verdict());
+    }
+
+    @Test
+    public void twoOnUsIsAStandOneOnUsIsStillACharge() {
+        List<Mob> pile = List.of(zombie(1, 2, 0), zombie(2, 0, 2), skeleton(3, 9, 0, true));
+        assertEquals(STAND, new CombatPolicy().decide(0, fighting(pile)).verdict());
+        List<Mob> one = List.of(zombie(1, 2, 0), skeleton(3, 9, 0, true));
+        assertEquals(CHARGE, new CombatPolicy().decide(0, fighting(one)).verdict());
+    }
+
+    @Test
+    public void theChargeSticksThroughALostLineOfSight() {
+        CombatPolicy policy = new CombatPolicy();
+        assertEquals(CHARGE, policy.decide(0, fighting(ONE_SKELETON)).verdict());
+        // it stepped behind a pillar and backed off a bit. still the thing to kill
+        assertEquals(CHARGE, policy.decide(3, fighting(List.of(skeleton(1, 14, 0, false)))).verdict());
+    }
+
+    @Test
+    public void theChargeIsCommittedForTwentyTicks() {
+        CombatPolicy policy = new CombatPolicy();
+        policy.decide(0, fighting(ONE_SKELETON));
+        List<Mob> pile = List.of(skeleton(1, 10, 0, true), zombie(2, 2, 0), zombie(3, 0, 2));
+        // two zombies arrive: not yet, we are committed
+        assertEquals(CHARGE, policy.decide(CombatPolicy.CHARGE_COMMIT - 1, fighting(pile)).verdict());
+        // now it is a melee and the shield is the answer
+        assertEquals(STAND, policy.decide(CombatPolicy.CHARGE_COMMIT, fighting(pile)).verdict());
+    }
+
+    @Test
+    public void lowHealthEndsTheChargeAndItDoesNotComeBackUntilWeRecover() {
+        CombatPolicy policy = new CombatPolicy();
+        assertEquals(CHARGE, policy.decide(0, fighting(ONE_SKELETON)).verdict());
+        assertEquals(FIGHT_ONE, policy.decide(1, withHealth(ONE_SKELETON, 8)).verdict());
+        // hp 9 would be a legal start on its own, but we just ran out of health doing this
+        assertEquals(FIGHT_ONE, policy.decide(2, withHealth(ONE_SKELETON, 10)).verdict());
+        assertEquals(FIGHT_ONE, policy.decide(3, withHealth(ONE_SKELETON, CombatPolicy.CHARGE_RESUME - 1)).verdict());
+        assertEquals(CHARGE, policy.decide(4, withHealth(ONE_SKELETON, CombatPolicy.CHARGE_RESUME)).verdict());
+    }
+
+    @Test
+    public void nineHealthIsEnoughToStartEightIsNot() {
+        assertEquals(FIGHT_ONE, new CombatPolicy().decide(0, withHealth(ONE_SKELETON, 8)).verdict());
+        assertEquals(CHARGE, new CombatPolicy().decide(0, withHealth(ONE_SKELETON, 9)).verdict());
+    }
+
+    @Test
+    public void aThirdShooterSeeingUsEndsTheChargeEvenInsideTheCommit() {
+        CombatPolicy policy = new CombatPolicy();
+        policy.decide(0, fighting(ONE_SKELETON));
+        List<Mob> three = List.of(skeleton(1, 8, 0, true), skeleton(2, 0, 9, true), skeleton(3, -9, 0, true));
+        assertEquals(FIGHT_ONE, policy.decide(1, fighting(three)).verdict());
+    }
+
+    @Test
+    public void theChargeEndsWithTheShooter() {
+        CombatPolicy policy = new CombatPolicy();
+        policy.decide(0, fighting(ONE_SKELETON));
+        assertEquals(FIGHT_ONE, policy.decide(1, fighting(List.of(zombie(5, 6, 0)))).verdict());
+        // and the next skeleton is a fresh charge
+        assertEquals(CHARGE, policy.decide(2, fighting(ONE_SKELETON)).verdict());
+    }
+
+    @Test
+    public void nothingLeftResetsTheCharge() {
+        CombatPolicy policy = new CombatPolicy();
+        policy.decide(0, fighting(ONE_SKELETON));
+        assertEquals(IGNORE, policy.decide(1, fighting(List.of())).verdict());
+        // nothing carried over: two zombies on us at the start of a charge is a stand, not a charge
+        List<Mob> pile = List.of(skeleton(1, 10, 0, true), zombie(2, 2, 0), zombie(3, 0, 2));
+        assertEquals(STAND, policy.decide(2, fighting(pile)).verdict());
+    }
+
+    @Test
+    public void shootersThatOutrunUsAreNotChargedAtPillagersAndFriends() {
+        Mob pillager = new Mob(1, 8, 0, 0, true, false, true, true);
+        assertEquals(FIGHT_ONE, new CombatPolicy().decide(0, fighting(List.of(pillager))).verdict());
+    }
+
+    @Test
+    public void aShooterByTheRouteIsMetNotPassed() {
+        // inside six blocks it is a charge even though it has not seen us yet
+        assertEquals(CHARGE, new CombatPolicy().decide(0, walking(List.of(skeleton(1, 5.5, 0, false)), AHEAD, QUIET)).verdict());
+        // a zombie this far off the route is a stroll, a skeleton a few blocks wider than that is not
+        assertEquals(IGNORE, new CombatPolicy().decide(0, walking(List.of(zombie(1, 3.5, 7)), AHEAD, QUIET)).verdict());
+        assertEquals(CHARGE, new CombatPolicy().decide(0, walking(List.of(skeleton(1, 3.5, 7, false)), AHEAD, QUIET)).verdict());
+        // and one well clear of it that cannot see us stays somebody else's
+        assertEquals(IGNORE, new CombatPolicy().decide(0, walking(List.of(skeleton(1, 9, 0, false)), AHEAD, QUIET)).verdict());
+    }
+
+    @Test
+    public void aSkeletonDoesNotMakeAnUnarmouredBotRunButAPileDoes() {
+        // the isInDanger rule: vulnerable (no armor at hp 17) and one shooter close is a charge, not a flee
+        assertTrue(CombatPolicy.vulnerable(0, 17));
+        assertFalse(CombatPolicy.dangerousCompany(0, 1));
+        assertFalse(CombatPolicy.dangerousCompany(0, 2));
+        assertTrue(CombatPolicy.dangerousCompany(0, 3));
+        // anything that walks at us still counts
+        assertTrue(CombatPolicy.dangerousCompany(1, 0));
+    }
+
+    @Test
+    public void vulnerableIsTheOldRule() {
+        assertTrue(CombatPolicy.vulnerable(0, 17.5f));
+        assertFalse(CombatPolicy.vulnerable(0, 18));
+        assertTrue(CombatPolicy.vulnerable(9, 9));
+        assertFalse(CombatPolicy.vulnerable(10, 9));
+        assertTrue(CombatPolicy.vulnerable(15, 2));
+        assertFalse(CombatPolicy.vulnerable(16, 2));
     }
 
     // ---- gear

@@ -266,6 +266,40 @@ public class MobReachRulesTest {
     }
 
     @Test
+    public void rangedLeashIsEighteenByTheSix() {
+        // a skeleton at 12.3 used to fall out of the leash and get picked straight back up
+        assertTrue(MobReachRules.inLeash(12.5, 0, 0, 8, 3, true));
+        assertTrue(MobReachRules.inLeash(18, 0, 0, 8, 3, true));
+        assertFalse(MobReachRules.inLeash(18.5, 0, 0, 8, 3, true));
+        assertTrue(MobReachRules.inLeash(0, 6, 0, 8, 3, true));
+        assertFalse(MobReachRules.inLeash(0, 6.5, 0, 8, 3, true));
+        assertFalse(MobReachRules.inLeash(0, -6.5, 0, 8, 3, true));
+    }
+
+    @Test
+    public void shootersDropAtEngageRangePlusSix() {
+        // engaged at 12 or less, let go past 18: six blocks of slack, nobody dances
+        assertTrue(engage(12, 0, 0, false, true, true));
+        assertFalse(engage(13, 0, 0, false, true, true));
+        assertTrue(MobReachRules.inLeash(13, 0, 0, 8, 3, true));
+        assertFalse(MobReachRules.inLeash(13, 0, 0, 8, 3, false));
+    }
+
+    @Test
+    public void nonShootersKeepTheTwelveLeash() {
+        assertTrue(MobReachRules.inLeash(12, 0, 0, 8, 3, false));
+        assertFalse(MobReachRules.inLeash(12.5, 0, 0, 8, 3, false));
+        assertFalse(MobReachRules.inLeash(0, 6, 0, 8, 3, false));
+    }
+
+    @Test
+    public void rangedLeashFollowsALargerEngageRange() {
+        assertTrue(MobReachRules.leashRange(20, true) > 20);
+        assertTrue(MobReachRules.leashHeight(8, true) > 8);
+        assertEquals(MobReachRules.RANGED_LEASH_RANGE, MobReachRules.leashRange(2, true), 0);
+    }
+
+    @Test
     public void leashIsAlwaysBiggerThanEngage() {
         // someone turned the engage range way up, the leash has to follow or nothing could ever engage
         assertTrue(MobReachRules.leashRange(20) > 20);
@@ -279,7 +313,8 @@ public class MobReachRulesTest {
         for (double dy = -12; dy <= 12; dy += 1) {
             for (double dx = 0; dx <= 20; dx += 1) {
                 if (engage(dx, dy, 0, true, true, true)) {
-                    assertTrue(MobReachRules.inLeash(dx, dy, 0, 8, 3));
+                    // (ranged, so the shooters' box)
+                    assertTrue(MobReachRules.inLeash(dx, dy, 0, 8, 3, true));
                 }
             }
         }

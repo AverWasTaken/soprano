@@ -66,6 +66,10 @@ public final class MobReachRules {
     // things walking at us count from here, things shooting at us count from here (skeletons go off at ~15, we are nicer)
     public static final double CLOSING_RANGE = 12;
     public static final double RANGED_RANGE = 12;
+    // shooters get a longer leash than everything else. it used to be RANGED_RANGE-ish too, so a skeleton at 12.3 got
+    // dropped and picked up again every other tick. six blocks of slack is the whole fix
+    public static final double RANGED_LEASH_RANGE = RANGED_RANGE + 6;
+    public static final double RANGED_LEASH_HEIGHT = 6;
     // dropped by this much in this many ticks is "coming at us"
     public static final double CLOSING_PROGRESS = 1.5;
     public static final long CLOSING_TICKS = 30;
@@ -79,6 +83,14 @@ public final class MobReachRules {
         return Math.max(LEASH_HEIGHT, engageHeight + 2);
     }
 
+    public static double leashRange(double engageRange, boolean ranged) {
+        return ranged ? Math.max(RANGED_LEASH_RANGE, engageRange + 6) : leashRange(engageRange);
+    }
+
+    public static double leashHeight(double engageHeight, boolean ranged) {
+        return ranged ? Math.max(RANGED_LEASH_HEIGHT, engageHeight + 2) : leashHeight(engageHeight);
+    }
+
     // close and on our level
     public static boolean isNear(double dx, double dy, double dz, double range, double height) {
         return Math.abs(dy) <= height && dx * dx + dz * dz <= range * range;
@@ -86,14 +98,19 @@ public final class MobReachRules {
 
     // still close enough to keep a fight going. the same box as isNear, just bigger
     public static boolean inLeash(double dx, double dy, double dz, double range, double height) {
-        return isNear(dx, dy, dz, leashRange(range), leashHeight(height));
+        return inLeash(dx, dy, dz, range, height, false);
+    }
+
+    // shooters hold on to the bigger box, see RANGED_LEASH_RANGE
+    public static boolean inLeash(double dx, double dy, double dz, double range, double height, boolean ranged) {
+        return isNear(dx, dy, dz, leashRange(range, ranged), leashHeight(height, ranged));
     }
 
     // should this angry mob pull us off whatever we were doing. always inside the leash, so a mob we would let go of
     // can never be one we just picked up (that is how you get a bot that dances at the boundary)
     public static boolean shouldEngage(double dx, double dy, double dz, double range, double height,
                                        boolean closing, boolean ranged, boolean seesUs) {
-        if (!inLeash(dx, dy, dz, range, height)) return false;
+        if (!inLeash(dx, dy, dz, range, height, ranged)) return false;
         if (isNear(dx, dy, dz, range, height)) return true;
         double distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
         if (closing && distance <= CLOSING_RANGE) return true;
