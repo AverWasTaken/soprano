@@ -52,7 +52,7 @@ public final class KitPlanner {
 
     // wood -> axe -> the rest of the wood -> table -> stone tools -> furnace, then enough food to survive the next phase
     public static List<KitNeed> gather(GamerFacts f, OverworldConfig cfg, int endBeds) {
-        List<KitNeed> out = new ArrayList<>(starter(f, cfg, endBeds, true));
+        List<KitNeed> out = new ArrayList<>(starter(f, cfg, endBeds, true, new ArrayList<>()));
         addFood(out, f, cfg.minFoodUnits);
         return out;
     }
@@ -61,9 +61,12 @@ public final class KitPlanner {
     // need (so the bot mines and smelts once instead of once per item), the crafts, armor on, wool, food top up.
     // food can show up twice (min early, target at the end), the first unsatisfied one is the one that matters
     public static List<KitNeed> plan(GamerFacts f, OverworldConfig cfg, int endBeds) {
-        List<KitNeed> out = new ArrayList<>(starter(f, cfg, endBeds, false));
+        // a worn pick we still carry gets replaced after the iron, not in the middle of it (see starter)
+        List<KitNeed> late = new ArrayList<>();
+        List<KitNeed> out = new ArrayList<>(starter(f, cfg, endBeds, false, late));
         addFood(out, f, cfg.minFoodUnits);
         out.addAll(iron(f, cfg, endBeds));
+        out.addAll(late);
         addFood(out, f, cfg.targetFoodUnits);
         return out;
     }
@@ -71,8 +74,10 @@ public final class KitPlanner {
     // gathering: all the wood comes first, so nothing climbs out of a cave for one more log later. a small batch (table
     // and axe), the axe, the rest of the budget with the axe in hand, then the stone tools.
     // not gathering (IRON on): stations are not asked for again, a lost axe stays lost and the spare pick is not worth a
-    // trip. wood is only asked for before the first ore, while the surface is still right here
-    private static List<KitNeed> starter(GamerFacts f, OverworldConfig cfg, int endBeds, boolean gathering) {
+    // trip. wood is only asked for before the first ore, while the surface is still right here.
+    // `late` is where the IRON phase parks a pick replacement: a stone pick that is merely worn (85%, see wornOut) is still
+    // a pick, and swapping it mid-mine once cost a 34 s log trip. only a bag with no pick at all keeps it up front
+    private static List<KitNeed> starter(GamerFacts f, OverworldConfig cfg, int endBeds, boolean gathering, List<KitNeed> late) {
         List<KitNeed> out = new ArrayList<>();
         List<KitItem> axes = new ArrayList<>();
         List<KitItem> rest = new ArrayList<>();
@@ -99,9 +104,22 @@ public final class KitPlanner {
         }
         for (KitItem k : rest) {
             // the spare pick is for the gather. once underground one fresh pick is the plan and the next is a craft
-            addItem(out, f, k.item, !gathering && k.item.endsWith("_pickaxe") ? Math.min(k.count, 1) : k.count);
+            boolean pick = !gathering && k.item.endsWith("_pickaxe");
+            addItem(pick && holdsAnyPick(f) ? late : out, f, k.item, pick ? Math.min(k.count, 1) : k.count);
         }
         return out;
+    }
+
+    // any pickaxe at all in the bag, worn out ones included: it still breaks blocks, it just is not one we count on
+    public static boolean holdsAnyPick(GamerFacts f) {
+        for (String tier : TIERS) {
+            for (Item pick : exact(tier + "_pickaxe")) {
+                if (f.count(pick) + f.spent(pick) > 0) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private static boolean isAxe(String name) {

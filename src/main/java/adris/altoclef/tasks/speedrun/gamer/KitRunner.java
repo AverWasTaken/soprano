@@ -22,6 +22,8 @@ public final class KitRunner {
 
     private final Builder builder;
     private KitNeed key;
+    // game tick the current key started at, for the dwell
+    private long keySince;
     private List<Item> equipKey = List.of();
     private int foodKey;
     private Task task;
@@ -40,6 +42,7 @@ public final class KitRunner {
 
     public void reset() {
         key = null;
+        keySince = 0;
         equipKey = List.of();
         foodKey = 0;
         task = null;
@@ -81,11 +84,15 @@ public final class KitRunner {
             Debug.logMessage("Kit plan: " + describe(needs));
         }
         GamerFacts f = ctx.facts();
-        KitNeed need = needs.get(0);
+        // the need we are running keeps the head for a few seconds, see HeadLatch
+        KitNeed need = HeadLatch.pick(key, keySince, f.gameTime(), needs, f);
         List<Item> equip = KitNeed.EQUIP_ARMOR.equals(need.catalogueName()) ? KitPlanner.toEquip(f, ctx.cfg().overworld) : List.of();
         int food = foodTarget(need, f);
         watchProgress(ctx, need);
         if (!need.equals(key) || !equip.equals(equipKey) || food != foodKey) {
+            if (!need.equals(key)) {
+                keySince = f.gameTime();
+            }
             key = need;
             equipKey = equip;
             foodKey = food;

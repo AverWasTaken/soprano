@@ -93,6 +93,32 @@ public class KitRunnerTest {
     }
 
     @Test
+    public void aFreshTaskSurvivesTheHeadSwappingUnderItForAFewSeconds() {
+        KitNeed iron = new KitNeed("iron_ingot", 39);
+        KitNeed food = new KitNeed(KitNeed.FOOD, 70);
+        ctx.facts.give(Items.STONE_PICKAXE, 1);
+        Task first = runner.run(ctx, List.of(iron));
+        // the planner puts food first from here on: held for the dwell, then it takes over
+        assertSame(first, runner.run(ctx, List.of(food, iron)));
+        ctx.facts.seconds(2);
+        assertSame(first, runner.run(ctx, List.of(food, iron)));
+        assertEquals(1, built);
+        ctx.facts.seconds(4);
+        assertNotSame(first, runner.run(ctx, List.of(food, iron)));
+        assertEquals(2, built);
+        // and that one is the fresh one now, the order flipping back does not rip it out again
+        Task second = runner.run(ctx, List.of(iron, food));
+        assertSame(second, runner.run(ctx, List.of(iron, food)));
+        assertEquals("Getting food", runner.hud());
+    }
+
+    @Test
+    public void aMissingPickaxeIsNotMadeToWait() {
+        Task first = runner.run(ctx, List.of(new KitNeed("iron_ingot", 39)));
+        assertNotSame(first, runner.run(ctx, List.of(new KitNeed("stone_pickaxe", 1), new KitNeed("iron_ingot", 39))));
+    }
+
+    @Test
     public void onlyTheFirstNeedRuns() {
         runner.run(ctx, List.of(new KitNeed("iron_ingot", 39), new KitNeed("iron_pickaxe", 1)));
         assertEquals(1, built);
