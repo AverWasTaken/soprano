@@ -10,6 +10,8 @@ import java.util.Map;
 public class FakeFacts implements GamerFacts {
     public final Map<Item, Integer> items = new HashMap<>();
     public final java.util.Set<Item> worn = new java.util.HashSet<>();
+    // picks in the bag that are too worn to count (see KitPlanner.wornOut), held but not in items
+    public final Map<Item, Integer> spent = new HashMap<>();
     public Dimension dimension = Dimension.OVERWORLD;
     public int armorPoints;
     public int foodUnits;
@@ -56,6 +58,11 @@ public class FakeFacts implements GamerFacts {
     @Override
     public int count(Item item) {
         return items.getOrDefault(item, 0);
+    }
+
+    @Override
+    public int spent(Item item) {
+        return spent.getOrDefault(item, 0);
     }
 
     @Override

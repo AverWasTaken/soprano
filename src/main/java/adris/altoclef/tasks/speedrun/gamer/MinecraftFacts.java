@@ -28,6 +28,7 @@ public final class MinecraftFacts implements GamerFacts {
     private final AltoClef mod;
     // fastutil so a tick of counting does not box a pile of integers
     private final Object2IntOpenHashMap<Item> counts = new Object2IntOpenHashMap<>(64);
+    private final Object2IntOpenHashMap<Item> spent = new Object2IntOpenHashMap<>(4);
     private final ItemStack[] worn = new ItemStack[5];
 
     private RunState state;
@@ -70,6 +71,7 @@ public final class MinecraftFacts implements GamerFacts {
 
     private void countItems(Player player) {
         counts.clear();
+        spent.clear();
         Inventory inv = player.getInventory();
         // main + hotbar (0..35), armor (36..39) and the offhand (40) are all in the container
         for (int i = 0; i < inv.getContainerSize(); i++) {
@@ -97,9 +99,16 @@ public final class MinecraftFacts implements GamerFacts {
     }
 
     private void add(ItemStack stack) {
-        if (!stack.isEmpty()) {
-            counts.addTo(stack.getItem(), stack.getCount());
+        if (stack.isEmpty()) {
+            return;
         }
+        // a pick on its last legs is not a pick we own, the planner makes the next one while there is still a table (the
+        // catalogue still sees it in the bag, hence the separate count)
+        if (KitPlanner.wornOut(stack.getItem(), stack.getDamageValue(), stack.getMaxDamage())) {
+            spent.addTo(stack.getItem(), stack.getCount());
+            return;
+        }
+        counts.addTo(stack.getItem(), stack.getCount());
     }
 
     // one pass over the distinct item types: food, building blocks and the "did anything change" number together
@@ -157,6 +166,11 @@ public final class MinecraftFacts implements GamerFacts {
     @Override
     public int count(Item item) {
         return counts.getInt(item);
+    }
+
+    @Override
+    public int spent(Item item) {
+        return spent.getInt(item);
     }
 
     @Override

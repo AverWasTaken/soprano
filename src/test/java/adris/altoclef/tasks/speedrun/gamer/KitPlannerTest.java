@@ -48,6 +48,8 @@ public class KitPlannerTest {
                 Items.IRON_LEGGINGS, Items.IRON_BOOTS}) {
             full.give(i, 1);
         }
+        // the axe, and enough logs that the gather has nothing left to chop (beds are 24 planks of it)
+        full.give(Items.WOODEN_AXE, 1).give(Items.OAK_LOG, 20);
         full.give(Items.BUCKET, 2).give(Items.LADDER, 3).give(Items.WHITE_WOOL, 24);
         full.worn.addAll(List.of(Items.IRON_CHESTPLATE, Items.IRON_HELMET, Items.IRON_LEGGINGS, Items.IRON_BOOTS));
         full.foodUnits = 100;
@@ -56,15 +58,18 @@ public class KitPlannerTest {
 
     @Test
     public void freshStartGather() {
-        List<KitNeed> gather = KitPlanner.gather(f, cfg);
-        assertEquals(List.of(new KitNeed("stone_pickaxe", 1), new KitNeed("stone_sword", 1), new KitNeed("furnace", 1),
+        List<KitNeed> gather = KitPlanner.gather(f, cfg, 8);
+        // 3 logs is the table and the axe (9 planks), 15 is the whole run, and the axe is made in between
+        assertEquals(List.of(new KitNeed("log", 3), new KitNeed("wooden_axe", 1), new KitNeed("log", 15),
+                new KitNeed("stone_pickaxe", 2), new KitNeed("stone_sword", 1), new KitNeed("furnace", 1),
                 new KitNeed(KitNeed.FOOD, 70)), gather);
     }
 
     @Test
     public void freshStartFullPlanOrder() {
         List<KitNeed> plan = KitPlanner.plan(f, cfg, 8);
-        assertEquals(List.of("stone_pickaxe", "stone_sword", "food", "iron_ingot", "iron_pickaxe", "iron_sword", "bucket",
+        // no axe and no bed planks past the gather, but a plan that starts bare still does its wood before any ore
+        assertEquals(List.of("log", "stone_pickaxe", "stone_sword", "food", "iron_ingot", "iron_pickaxe", "iron_sword", "bucket",
                 "flint_and_steel", "shield", "shears", "ladder", "iron_chestplate", "iron_helmet", "iron_leggings", "iron_boots",
                 "wool", "food"), names(plan));
     }
@@ -92,7 +97,7 @@ public class KitPlannerTest {
     public void startedGatherPlanDoesNotAskForStationsAgain() {
         // the furnace gets placed for smelting and then we hold none: that must not send us off to craft another
         assertFalse(names(KitPlanner.plan(f, cfg, 8)).contains("furnace"));
-        assertTrue(names(KitPlanner.gather(f, cfg)).contains("furnace"));
+        assertTrue(names(KitPlanner.gather(f, cfg, 8)).contains("furnace"));
     }
 
     @Test
@@ -261,7 +266,7 @@ public class KitPlannerTest {
         FakeFacts full = complete();
         assertTrue(KitPlanner.plan(full, cfg, 8).isEmpty());
         assertTrue(KitPlanner.plan(full, cfg, 8).isEmpty());
-        assertTrue(KitPlanner.gather(full, cfg).isEmpty());
+        assertTrue(KitPlanner.gather(full, cfg, 8).isEmpty());
         assertTrue(KitPlanner.essentialsMet(full, cfg));
     }
 
@@ -408,5 +413,170 @@ public class KitPlannerTest {
         f.worn.add(Items.GOLDEN_BOOTS);
         // boots on already: the helmet in the bag is not a second wardrobe change
         assertTrue(KitPlanner.toEquip(f, cfg).isEmpty());
+    }
+
+    // ---- wood budget ----
+
+    @Test
+    public void woodBudgetForAFreshRunIsFifteenLogs() {
+        // planks: table x2 8 + axe 3 + wooden pick 3 + shield 6 + 24 for eight beds = 44. sticks: axe 2, two stone picks 4,
+        // wooden pick 2, sword 1, iron pick 2, iron sword 1, ladders 7 = 19, which is 5 crafts of 2 planks. 54 + a log
+        // of slack is 58, and 58 planks are 15 logs
+        assertEquals(15, KitPlanner.woodNeed(f, cfg, 8));
+    }
+
+    @Test
+    public void firstBatchIsTheTableAndTheAxeThenTheWholeBudgetAfterTheAxe() {
+        List<KitNeed> gather = KitPlanner.gather(f, cfg, 8);
+        assertEquals(List.of("log", "wooden_axe", "log", "stone_pickaxe", "stone_sword", "furnace", "food"), names(gather));
+        // logs in hand but no axe yet: the small batch is done, the axe is next, and the big target does not move
+        f.give(Items.OAK_LOG, 3);
+        gather = KitPlanner.gather(f, cfg, 8);
+        assertEquals(List.of("wooden_axe", "log", "stone_pickaxe", "stone_sword", "furnace", "food"), names(gather));
+        assertEquals(new KitNeed("log", 15), gather.get(1));
+        // axe made (the table and some planks went with it), still short: the wood comes before the stone tools
+        FakeFacts after = new FakeFacts().give(Items.WOODEN_AXE, 1).give(Items.OAK_LOG, 1).give(Items.OAK_PLANKS, 5);
+        after.give(Items.CRAFTING_TABLE, 1);
+        assertEquals("log", KitPlanner.gather(after, cfg, 8).get(0).catalogueName());
+    }
+
+    @Test
+    public void anyAxeIsTheAxe() {
+        for (Item axe : new Item[]{Items.WOODEN_AXE, Items.STONE_AXE, Items.IRON_AXE, Items.DIAMOND_AXE}) {
+            FakeFacts held = new FakeFacts().give(axe, 1);
+            List<String> names = names(KitPlanner.gather(held, cfg, 8));
+            assertFalse(axe.toString(), names.contains("wooden_axe"));
+            // no axe to wait for means the budget is the first thing asked
+            assertEquals("log", names.get(0));
+        }
+    }
+
+    @Test
+    public void budgetEndsExactlyWhereTheWoodDoes() {
+        FakeFacts enough = new FakeFacts().give(Items.OAK_LOG, 15);
+        assertEquals(0, KitPlanner.woodNeed(enough, cfg, 8));
+        assertFalse(names(KitPlanner.gather(enough, cfg, 8)).contains("log"));
+        assertEquals(1, KitPlanner.woodNeed(new FakeFacts().give(Items.OAK_LOG, 14), cfg, 8));
+        // planks and logs are the same currency, four to one
+        assertEquals(0, KitPlanner.woodNeed(new FakeFacts().give(Items.SPRUCE_PLANKS, 60), cfg, 8));
+        assertEquals(1, KitPlanner.woodNeed(new FakeFacts().give(Items.SPRUCE_PLANKS, 55), cfg, 8));
+        assertEquals(0, KitPlanner.woodNeed(new FakeFacts().give(Items.OAK_LOG, 10).give(Items.OAK_PLANKS, 20), cfg, 8));
+    }
+
+    @Test
+    public void heldSticksTakeOffThePlanksThatWouldMakeThem() {
+        // 19 sticks wanted is 10 planks, so 20 sticks in the bag leave 48 planks of budget
+        assertEquals(0, KitPlanner.woodNeed(new FakeFacts().give(Items.STICK, 20).give(Items.OAK_PLANKS, 48), cfg, 8));
+        assertEquals(1, KitPlanner.woodNeed(new FakeFacts().give(Items.STICK, 20).give(Items.OAK_PLANKS, 47), cfg, 8));
+        // 16 of them is four crafts instead of five, a stick short of a craft still costs the craft
+        assertEquals(0, KitPlanner.woodNeed(new FakeFacts().give(Items.STICK, 16).give(Items.OAK_PLANKS, 50), cfg, 8));
+        assertEquals(1, KitPlanner.woodNeed(new FakeFacts().give(Items.STICK, 15).give(Items.OAK_PLANKS, 49), cfg, 8));
+    }
+
+    @Test
+    public void bedPlanksAreOnlyForBedsWeStillHaveToMake() {
+        assertEquals(9, KitPlanner.woodNeed(f, cfg, 0));
+        assertEquals(15, KitPlanner.woodNeed(f, cfg, 8));
+        // a bed in the bag is its three planks already spent
+        assertEquals(9, KitPlanner.woodNeed(new FakeFacts().give(Items.WHITE_BED, 8), cfg, 8));
+    }
+
+    @Test
+    public void aTableInTheBagAndToolsAlreadyMadeShrinkTheTableShare() {
+        int fresh = KitPlanner.woodNeed(f, cfg, 0);
+        // a held table is 8 planks we do not need
+        assertEquals(fresh - 2, KitPlanner.woodNeed(new FakeFacts().give(Items.CRAFTING_TABLE, 1), cfg, 0));
+        // axe and wooden pick made means the table went down already: one spare is left to budget
+        FakeFacts made = new FakeFacts().give(Items.WOODEN_AXE, 1).give(Items.WOODEN_PICKAXE, 1);
+        assertTrue(KitPlanner.woodNeed(made, cfg, 0) < fresh);
+    }
+
+    @Test
+    public void ironPhaseDoesNotAskForWoodOnceTheOreIsInTheBag() {
+        // the whole point: no cave to surface trip for one more log
+        assertEquals("log", names(KitPlanner.plan(f, cfg, 8)).get(0));
+        FakeFacts raw = new FakeFacts().give(Items.RAW_IRON, 1);
+        assertFalse(names(KitPlanner.plan(raw, cfg, 8)).contains("log"));
+        FakeFacts ingots = new FakeFacts().give(Items.IRON_INGOT, 3);
+        assertFalse(names(KitPlanner.plan(ingots, cfg, 8)).contains("log"));
+        // iron cooking in a furnace we loaded is iron too
+        FakeFacts cooking = new FakeFacts().cooking("iron_ingot", 8, 60);
+        assertFalse(names(KitPlanner.plan(cooking, cfg, 8)).contains("log"));
+    }
+
+    @Test
+    public void ironPhaseNeverAsksForAnAxeOrTheBedPlanks() {
+        assertFalse(names(KitPlanner.plan(f, cfg, 8)).contains("wooden_axe"));
+        // a complete kit with no wood at all is still complete: wool in hand is the iron phase's last word on the beds
+        FakeFacts full = complete();
+        full.items.remove(Items.OAK_LOG);
+        full.items.remove(Items.WOODEN_AXE);
+        assertTrue(KitPlanner.plan(full, cfg, 8).isEmpty());
+    }
+
+    // ---- durable picks ----
+
+    @Test
+    public void gatherWantsASparePickAndPlanWantsOne() {
+        f.give(Items.STONE_PICKAXE, 1).give(Items.OAK_LOG, 15);
+        assertEquals(new KitNeed("stone_pickaxe", 2), find(KitPlanner.gather(f, cfg, 8), "stone_pickaxe"));
+        assertEquals(null, find(KitPlanner.plan(f, cfg, 8), "stone_pickaxe"));
+    }
+
+    @Test
+    public void anIronPickCoversTheWholeStonePickQuantity() {
+        f.give(Items.IRON_PICKAXE, 1);
+        assertEquals(null, find(KitPlanner.gather(f, cfg, 8), "stone_pickaxe"));
+        assertEquals(null, find(KitPlanner.plan(f, cfg, 8), "stone_pickaxe"));
+        FakeFacts diamond = new FakeFacts().give(Items.DIAMOND_PICKAXE, 1);
+        assertEquals(null, find(KitPlanner.gather(diamond, cfg, 8), "stone_pickaxe"));
+        // and the wooden pick it would have been made with is no wood we budget for
+        assertTrue(KitPlanner.woodNeed(diamond, cfg, 8) < KitPlanner.woodNeed(new FakeFacts(), cfg, 8));
+        // a stone pick is not an iron pick, though, the cover only goes upward
+        assertTrue(names(KitPlanner.plan(new FakeFacts().give(Items.STONE_PICKAXE, 2), cfg, 8)).contains("iron_pickaxe"));
+    }
+
+    @Test
+    public void aWornPickIsMadeAgainAboveTheOneInTheBag() {
+        // the planner never sees the worn one in count(), but the catalogue does, so the target starts above it
+        f.spent.put(Items.STONE_PICKAXE, 1);
+        f.give(Items.OAK_LOG, 15);
+        assertEquals(new KitNeed("stone_pickaxe", 3), find(KitPlanner.gather(f, cfg, 8), "stone_pickaxe"));
+        assertEquals(new KitNeed("stone_pickaxe", 2), find(KitPlanner.plan(f, cfg, 8), "stone_pickaxe"));
+        // one fresh next to it and the plan is happy, the gather still wants its spare
+        f.give(Items.STONE_PICKAXE, 1);
+        assertEquals(null, find(KitPlanner.plan(f, cfg, 8), "stone_pickaxe"));
+        assertEquals(new KitNeed("stone_pickaxe", 3), find(KitPlanner.gather(f, cfg, 8), "stone_pickaxe"));
+    }
+
+    @Test
+    public void aWornIronPickIsReplacedWithTheIngotsForIt() {
+        FakeFacts worn = complete();
+        worn.items.put(Items.IRON_PICKAXE, 0);
+        worn.spent.put(Items.IRON_PICKAXE, 1);
+        List<KitNeed> plan = KitPlanner.plan(worn, cfg, 8);
+        assertEquals(List.of("iron_ingot", "iron_pickaxe"), names(plan));
+        assertEquals(new KitNeed("iron_pickaxe", 2), find(plan, "iron_pickaxe"));
+        assertEquals(3, find(plan, "iron_ingot").count());
+    }
+
+    @Test
+    public void wearThresholdIsEightyFivePercentAndOnlyForPicks() {
+        // stone: 131 uses, 111.35 is the line
+        assertFalse(KitPlanner.wornOut(Items.STONE_PICKAXE, 111, 131));
+        assertTrue(KitPlanner.wornOut(Items.STONE_PICKAXE, 112, 131));
+        // iron: 250 uses, 212.5
+        assertFalse(KitPlanner.wornOut(Items.IRON_PICKAXE, 212, 250));
+        assertTrue(KitPlanner.wornOut(Items.IRON_PICKAXE, 213, 250));
+        // wooden: 59 uses, 50.15
+        assertFalse(KitPlanner.wornOut(Items.WOODEN_PICKAXE, 50, 59));
+        assertTrue(KitPlanner.wornOut(Items.WOODEN_PICKAXE, 51, 59));
+        assertFalse(KitPlanner.wornOut(Items.STONE_PICKAXE, 0, 131));
+        // swords and axes wear out of the fight in their own time, and diamond is not ours to second guess
+        assertFalse(KitPlanner.wornOut(Items.STONE_SWORD, 130, 131));
+        assertFalse(KitPlanner.wornOut(Items.IRON_AXE, 249, 250));
+        assertFalse(KitPlanner.wornOut(Items.DIAMOND_PICKAXE, 1500, 1561));
+        // something that cannot break is not worn
+        assertFalse(KitPlanner.wornOut(Items.STONE_PICKAXE, 5, 0));
     }
 }

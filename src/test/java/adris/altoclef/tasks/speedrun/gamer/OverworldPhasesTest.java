@@ -47,6 +47,10 @@ public class OverworldPhasesTest {
         assertFalse(gather.isDone(f, state, cfg));
         f.give(Items.STONE_PICKAXE, 1).give(Items.STONE_SWORD, 1);
         f.foodUnits = 70;
+        assertFalse("one pick, no axe, no wood", gather.isDone(f, state, cfg));
+        f.give(Items.STONE_PICKAXE, 1).give(Items.WOODEN_AXE, 1);
+        assertFalse("still no wood for the rest of the run", gather.isDone(f, state, cfg));
+        f.give(Items.OAK_LOG, 64);
         assertFalse("no furnace yet", gather.isDone(f, state, cfg));
         f.give(Items.FURNACE, 1);
         assertTrue(gather.isDone(f, state, cfg));
@@ -56,7 +60,8 @@ public class OverworldPhasesTest {
 
     @Test
     public void gatherAcceptsBetterToolsAndABlastFurnace() {
-        FakeFacts f = new FakeFacts().give(Items.IRON_PICKAXE, 1).give(Items.DIAMOND_SWORD, 1).give(Items.BLAST_FURNACE, 1);
+        FakeFacts f = new FakeFacts().give(Items.IRON_PICKAXE, 1).give(Items.DIAMOND_SWORD, 1).give(Items.BLAST_FURNACE, 1)
+                .give(Items.IRON_AXE, 1).give(Items.OAK_LOG, 64);
         f.foodUnits = 100;
         assertTrue(new GatherPhase().isDone(f, state, cfg));
     }
@@ -185,7 +190,8 @@ public class OverworldPhasesTest {
         assertTrue(o.noLavaSeconds < o.castGiveUpMinutes * 60);
         assertEquals(OverworldConfig.ArmorPlan.FULL_IRON, o.armorPlan);
         assertEquals(7, o.ironKit.size());
-        assertEquals(3, o.starterKit.size());
+        // axe, two stone picks (one spare), sword, furnace
+        assertEquals(4, o.starterKit.size());
     }
 
     @Test

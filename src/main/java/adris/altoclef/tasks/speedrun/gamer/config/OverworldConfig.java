@@ -26,8 +26,11 @@ public class OverworldConfig {
         NONE
     }
 
+    // the axe is for logs (KitPlanner puts it right after the first few) and the two stone picks are one to wear out and
+    // one spare. any iron pick in the bag covers both. the planner sizes the wood for all of this plus the iron kit
     public List<KitItem> starterKit = new ArrayList<>(List.of(
-            new KitItem("stone_pickaxe", 1), new KitItem("stone_sword", 1), new KitItem("furnace", 1)));
+            new KitItem("wooden_axe", 1), new KitItem("stone_pickaxe", 2), new KitItem("stone_sword", 1),
+            new KitItem("furnace", 1)));
     // armor comes from armorPlan, wool from end.beds
     public List<KitItem> ironKit = new ArrayList<>(List.of(
             new KitItem("iron_pickaxe", 1), new KitItem("iron_sword", 1), new KitItem("bucket", 2),

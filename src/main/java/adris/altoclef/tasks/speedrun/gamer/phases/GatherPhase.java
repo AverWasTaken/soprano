@@ -40,7 +40,7 @@ public class GatherPhase implements PhaseHandler {
     @Override
     public boolean isDone(GamerFacts facts, RunState state, GamerConfig cfg) {
         // a table or furnace of ours still standing next to us is picked up first, this is the last chance (see StationPickup)
-        return KitPlanner.gather(facts, cfg.overworld).isEmpty() && !support.stationOwed();
+        return KitPlanner.gather(facts, cfg.overworld, cfg.end.beds).isEmpty() && !support.stationOwed();
     }
 
     @Override
@@ -58,7 +58,7 @@ public class GatherPhase implements PhaseHandler {
 
     @Override
     public Task tick(AltoClef mod, GamerContext ctx) {
-        List<KitNeed> needs = KitPlanner.gather(ctx.facts(), ctx.cfg().overworld);
+        List<KitNeed> needs = KitPlanner.gather(ctx.facts(), ctx.cfg().overworld, ctx.cfg().end.beds);
         Task side = support.tick(mod, ctx, needs.isEmpty() ? null : needs.get(0));
         if (side != null) {
             hudState = support.hud();

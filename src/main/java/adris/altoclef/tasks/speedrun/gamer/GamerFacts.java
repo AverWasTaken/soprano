@@ -26,6 +26,12 @@ public interface GamerFacts {
         return count(item) > 0;
     }
 
+    // how many of this we carry but left out of count() because they are about to break (see KitPlanner.wornOut). the
+    // planner needs them to size its targets, since the catalogue counts everything in the bag
+    default int spent(Item item) {
+        return 0;
+    }
+
     boolean armorEquipped(Item item);
 
     // sum of armor points of what is worn

@@ -141,7 +141,7 @@ public class KitRunnerTest {
         // 20 rotten flesh is 80 nutrition for CollectFoodTask, and 0 for what we would actually eat
         ctx.facts.give(Items.ROTTEN_FLESH, 20);
         ctx.facts.junkFoodUnits = 80;
-        List<KitNeed> plan = KitPlanner.gather(ctx.facts, ctx.cfg.overworld);
+        List<KitNeed> plan = KitPlanner.gather(ctx.facts, ctx.cfg.overworld, 8);
         KitNeed food = plan.stream().filter(n -> n.catalogueName().equals(KitNeed.FOOD)).findFirst().orElseThrow();
         assertEquals(70, food.count());
         assertEquals(150, KitRunner.foodTarget(food, ctx.facts));

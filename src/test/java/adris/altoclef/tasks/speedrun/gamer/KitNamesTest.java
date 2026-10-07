@@ -26,7 +26,7 @@ public class KitNamesTest {
         FakeFacts bare = new FakeFacts();
         for (ArmorPlan plan : ArmorPlan.values()) {
             cfg.armorPlan = plan;
-            for (KitNeed n : KitPlanner.gather(bare, cfg)) {
+            for (KitNeed n : KitPlanner.gather(bare, cfg, 8)) {
                 names.add(n.catalogueName());
             }
             for (KitNeed n : KitPlanner.plan(bare, cfg, 8)) {
