@@ -10,9 +10,14 @@ import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.slots.Slot;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.TreeMap;
 import java.util.function.Predicate;
+import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -23,6 +28,8 @@ public class LootContainerTask extends Task {
     public final List<Item> targets = new ArrayList<>();
     private final Predicate<ItemStack> _check;
     private boolean _weDoneHere = false;
+    private final EmptyWatch _emptyWatch = new EmptyWatch();
+    private final Map<String, Integer> _taken = new TreeMap<>();
 
     public LootContainerTask(BlockPos chestPos, List<Item> items) {
         chest = chestPos;
@@ -49,6 +56,8 @@ public class LootContainerTask extends Task {
     @Override
     protected Task onTick(AltoClef mod) {
         if (!ContainerType.screenHandlerMatches(ContainerType.CHEST)) {
+            // a closed screen (mob defense does that) means the next one starts unsynced again
+            _emptyWatch.reset();
             setDebugState("Interact with container");
             return new InteractWithBlockTask(chest);
         }
@@ -65,11 +74,18 @@ public class LootContainerTask extends Task {
             }
         }
         Optional<Slot> optimal = getAMatchingSlot(mod);
-        if (optimal.isEmpty()) {
+        // empty on the first ticks after a reopen is just the contents packet not being here yet. wait it out
+        if (_emptyWatch.tick(menuHasContainerSlots(), optimal.isPresent())) {
             _weDoneHere = true;
             return null;
         }
+        if (optimal.isEmpty()) {
+            setDebugState("Waiting for the container to sync");
+            return null;
+        }
         setDebugState("Looting items: " + targets);
+        ItemStack stack = StorageHelper.getItemStackInSlot(optimal.get());
+        _taken.merge(BuiltInRegistries.ITEM.getKey(stack.getItem()).getPath(), stack.getCount(), Integer::sum);
         mod.getSlotHandler().clickSlot(optimal.get(), 0, ClickType.PICKUP);
         return null;
     }
@@ -108,10 +124,25 @@ public class LootContainerTask extends Task {
         return Optional.empty();
     }
 
+    // a chest menu with real chest slots on top of the 36 player ones, ie. the contents have somewhere to land
+    private static boolean menuHasContainerSlots() {
+        if (!ContainerType.screenHandlerMatches(ContainerType.CHEST) || Minecraft.getInstance().player == null) {
+            return false;
+        }
+        AbstractContainerMenu menu = Minecraft.getInstance().player.containerMenu;
+        return menu != null && menu.slots.size() > 36;
+    }
+
+    // only the settled path finishes us. "a container screen is open and nothing matches" used to count, which is
+    // also true for the first ticks of every reopen, and that marked a full chest as done
     @Override
     public boolean isFinished(AltoClef mod) {
-        return _weDoneHere || (ContainerType.screenHandlerMatchesAny() &&
-                getAMatchingSlot(mod).isEmpty());
+        return _weDoneHere;
+    }
+
+    // item name to count that we clicked out, for the log
+    public Map<String, Integer> taken() {
+        return _taken;
     }
 
     @Override

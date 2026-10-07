@@ -63,9 +63,12 @@ public final class VillageLoot {
         long now = ctx.facts().gameTime();
         if (target != null) {
             double elapsed = (now - startedTick) / 20.0;
-            if (!task.isFinished(mod) && elapsed <= cfg.lootChestSeconds) {
+            boolean settled = task.isFinished(mod);
+            if (!settled && elapsed <= cfg.lootChestSeconds) {
                 return task;
             }
+            ctx.log(LootVisit.line("village", target.getX(), target.getY(), target.getZ(),
+                    LootVisit.why(settled, !settled, !task.taken().isEmpty()), task.taken()));
             state.villageLootTicks += now - startedTick;
             target = null;
             task = null;

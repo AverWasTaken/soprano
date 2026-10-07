@@ -32,7 +32,7 @@ public final class RuinedPortalLoot {
     private int ticks;
     private BlockPos target;
     private LootContainerTask task;
-    private long startedTick;
+    private long activeTicks;
 
     public void onEnter(AltoClef mod) {
         if (!tracking) {
@@ -53,14 +53,21 @@ public final class RuinedPortalLoot {
     // the loot task while there is a chest to visit, otherwise null
     public Task tick(AltoClef mod, GamerContext ctx) {
         if (target != null) {
-            double elapsed = (ctx.facts().gameTime() - startedTick) / 20.0;
-            if (task.isFinished(mod) || elapsed > ctx.cfg().overworld.lootChestSeconds) {
-                done.add(target);
-                target = null;
-                task = null;
-            } else {
+            // our own tick count, not the game clock: every second mob defense spends swinging is a second this
+            // chest was not being looted, and the wall clock would happily charge us for it
+            double elapsed = ++activeTicks / 20.0;
+            boolean settled = task.isFinished(mod);
+            boolean timedOut = elapsed > ctx.cfg().overworld.lootChestSeconds;
+            if (!settled && !timedOut) {
                 return task;
             }
+            // finished means the chest was open, synced and had nothing left we want (LootContainerTask makes sure of
+            // it), so done is earned. the timer is the other way out
+            ctx.log(LootVisit.line("ruined portal", target.getX(), target.getY(), target.getZ(),
+                    LootVisit.why(settled, timedOut, !task.taken().isEmpty()), task.taken()));
+            done.add(target);
+            target = null;
+            task = null;
         }
         if (ctx.facts().dimension() != Dimension.OVERWORLD || ++ticks % CHECK_EVERY_TICKS != 0) {
             return null;
@@ -71,7 +78,7 @@ public final class RuinedPortalLoot {
         }
         target = next.get();
         task = new LootContainerTask(target, LOOT);
-        startedTick = ctx.facts().gameTime();
+        activeTicks = 0;
         ctx.progress("looting a ruined portal chest");
         return task;
     }

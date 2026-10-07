@@ -321,8 +321,9 @@ public class CollectFoodTask extends Task {
                 _currentResourceTask = prey;
                 return _currentResourceTask;
             }
-            // Hay blocks
-            Task hayTaskBlock = this.pickupBlockTaskOrNull(mod, Blocks.HAY_BLOCK, Items.HAY_BLOCK, 300);
+            // Hay blocks. past ~96 the walk costs more than a hunt, and we have a hunt branch now (it was 300, which
+            // sent the bot 84 blocks away for hay mid chest)
+            Task hayTaskBlock = this.pickupBlockTaskOrNull(mod, Blocks.HAY_BLOCK, Items.HAY_BLOCK, 96);
             if (hayTaskBlock != null) {
                 Task hoe = hoeTaskOrNull(mod, hayInReach(mod).size());
                 if (hoe != null) {
