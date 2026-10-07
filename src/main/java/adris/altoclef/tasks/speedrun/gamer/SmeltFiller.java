@@ -39,6 +39,11 @@ public final class SmeltFiller {
     //   b. prep for the blocked crafts: flint, planks and sticks
     //   c. stock-up, one entry of cfg.smeltExtras at a time
     public static Schedule schedule(GamerFacts f, OverworldConfig cfg, int endBeds) {
+        return schedule(f, cfg, endBeds, Nearby.ANYWHERE, false);
+    }
+
+    // the same with the leash in mind, see Nearby. capped = the leash already dragged us back too often
+    public static Schedule schedule(GamerFacts f, OverworldConfig cfg, int endBeds, Nearby nearby, boolean capped) {
         List<KitNeed> needs = KitPlanner.plan(f, cfg, endBeds);
         if (f.furnaceJobs().isEmpty()) {
             return new Schedule(needs, List.of());
@@ -51,6 +56,7 @@ public final class SmeltFiller {
         }
         prep(f, cfg, endBeds, blocked, runnable);
         extras(f, cfg, endBeds, runnable);
+        runnable.removeIf(need -> !withinLeash(need, nearby, capped));
         return new Schedule(runnable, blocked);
     }
 
@@ -139,16 +145,49 @@ public final class SmeltFiller {
         }
     }
 
+    // ---- what is worth doing inside the leash
+
+    // what the entity tracker can see within fillerRadius of the furnace. the scheduler cannot walk anywhere so it is told
+    public record Nearby(boolean sheep, boolean food) {
+        // for the callers (and tests) that do not care
+        public static final Nearby ANYWHERE = new Nearby(true, true);
+    }
+
+    // the filler stays this far inside the leash, chasing a sheep over the line is a pull back on the next tick
+    public static final int LEASH_MARGIN = 8;
+
+    public static double fillerRadius(int leash) {
+        return Math.max(MIN_LEASH / 2.0, leash - LEASH_MARGIN);
+    }
+
+    // wool and food are the two fillers that go somewhere (to a sheep, to an animal) and the bot used to walk 65 blocks to one
+    // and get pulled straight back. they only run when the tracker has one in range. logs, blocks, flint and the like
+    // cannot be located without a scan, so they stay (the pull back is the net for those) until the leash has already
+    // dragged us back too often: then only what is known to be close, or needs no walking at all (crafts), is left
+    static boolean withinLeash(KitNeed need, Nearby nearby, boolean capped) {
+        return switch (need.catalogueName()) {
+            case "wool" -> nearby.sheep();
+            case KitNeed.FOOD -> nearby.food();
+            case "iron_ingot", KitNeed.BUILD_BLOCKS, "flint", "log", "planks", "coal" -> !capped;
+            default -> true;
+        };
+    }
+
     // ---- when to go back
 
-    // fillerLeft = the runnable list is not empty. atBoundary = the need we were on is done (we are between two needs), the
-    // only time we turn around for a furnace that finished. pullbacks = how often the leash already dragged us back
-    public static Trip trip(boolean fillerLeft, boolean atBoundary, int pullbacks, long now, List<RunState.FurnaceJob> jobs, OverworldConfig cfg) {
+    // fillerLeft = the runnable list is not empty (already cut down to what the leash allows). atBoundary = the need we were
+    // on is done (we are between two needs), the only time we turn around for a furnace that finished
+    public static Trip trip(boolean fillerLeft, boolean atBoundary, long now, List<RunState.FurnaceJob> jobs, OverworldConfig cfg) {
         boolean due = FurnaceJobs.anyDue(jobs, now, Math.round(cfg.furnaceWaitSeconds * 20));
-        if (!fillerLeft || pullbacks >= cfg.furnaceMaxPullbacks) {
+        if (!fillerLeft) {
             return due ? Trip.COLLECT : Trip.WAIT;
         }
         return atBoundary && due ? Trip.COLLECT : Trip.FILLER;
+    }
+
+    // the leash has dragged us back often enough that the filler stops going out: it was a loop, not a one off
+    public static boolean capped(int pullbacks, OverworldConfig cfg) {
+        return pullbacks >= cfg.furnaceMaxPullbacks;
     }
 
     // ---- the leash

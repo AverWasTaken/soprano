@@ -171,8 +171,8 @@ public class SmeltFillerTest {
     public void nothingToDoMeansWaitingAtTheFurnaceUntilItIsDone() {
         List<RunState.FurnaceJob> jobs = atTheFurnace().cooking("iron_ingot", 10, 100).furnaceJobs();
         long start = jobs.get(0).startTick;
-        assertEquals(Trip.WAIT, SmeltFiller.trip(false, true, 0, start, jobs, cfg));
-        assertEquals(Trip.COLLECT, SmeltFiller.trip(false, true, 0, start + 100 * 20, jobs, cfg));
+        assertEquals(Trip.WAIT, SmeltFiller.trip(false, true, start, jobs, cfg));
+        assertEquals(Trip.COLLECT, SmeltFiller.trip(false, true, start + 100 * 20, jobs, cfg));
     }
 
     @Test
@@ -180,26 +180,80 @@ public class SmeltFillerTest {
         List<RunState.FurnaceJob> jobs = atTheFurnace().cooking("iron_ingot", 10, 100).furnaceJobs();
         long late = jobs.get(0).doneTick + 50;
         // mid need: keep going, even though it is long done
-        assertEquals(Trip.FILLER, SmeltFiller.trip(true, false, 0, late, jobs, cfg));
-        assertEquals(Trip.COLLECT, SmeltFiller.trip(true, true, 0, late, jobs, cfg));
+        assertEquals(Trip.FILLER, SmeltFiller.trip(true, false, late, jobs, cfg));
+        assertEquals(Trip.COLLECT, SmeltFiller.trip(true, true, late, jobs, cfg));
         // at a boundary but not done yet: filler
-        assertEquals(Trip.FILLER, SmeltFiller.trip(true, true, 0, jobs.get(0).startTick, jobs, cfg));
+        assertEquals(Trip.FILLER, SmeltFiller.trip(true, true, jobs.get(0).startTick, jobs, cfg));
     }
 
     @Test
     public void nearlyDoneCountsAsDone() {
         List<RunState.FurnaceJob> jobs = atTheFurnace().cooking("iron_ingot", 10, 100).furnaceJobs();
         long soon = jobs.get(0).doneTick - Math.round(cfg.furnaceWaitSeconds * 20) + 1;
-        assertEquals(Trip.COLLECT, SmeltFiller.trip(true, true, 0, soon, jobs, cfg));
-        assertEquals(Trip.FILLER, SmeltFiller.trip(true, true, 0, soon - 40, jobs, cfg));
+        assertEquals(Trip.COLLECT, SmeltFiller.trip(true, true, soon, jobs, cfg));
+        assertEquals(Trip.FILLER, SmeltFiller.trip(true, true, soon - 40, jobs, cfg));
+    }
+
+    private static final SmeltFiller.Nearby NOTHING = new SmeltFiller.Nearby(false, false);
+
+    @Test
+    public void woolWaitsForASheepInsideTheLeash() {
+        FakeFacts f = atTheFurnace().cooking("iron_ingot", 39, 400);
+        Schedule far = SmeltFiller.schedule(f, cfg, BEDS, NOTHING, false);
+        assertNull(find(far.runnable(), "wool"));
+        assertNull(find(far.runnable(), "food"));
+        // the wool stock-up too, not only the kit's own wool need
+        assertEquals(0, far.runnable().stream().filter(n -> n.catalogueName().equals("wool")).count());
+        Schedule sheep = SmeltFiller.schedule(f, cfg, BEDS, new SmeltFiller.Nearby(true, false), false);
+        assertEquals(2, sheep.runnable().stream().filter(n -> n.catalogueName().equals("wool")).count());
+        assertNull(find(sheep.runnable(), "food"));
+        Schedule animals = SmeltFiller.schedule(f, cfg, BEDS, new SmeltFiller.Nearby(false, true), false);
+        assertNull(find(animals.runnable(), "wool"));
+        assertEquals(2, animals.runnable().stream().filter(n -> n.catalogueName().equals("food")).count());
     }
 
     @Test
-    public void tiredOfTheLeashMeansWaitingThere() {
+    public void thingsWeCannotLocateStayUntilTheLeashHasDraggedUsBackTooOften() {
+        FakeFacts f = atTheFurnace().cooking("iron_ingot", 39, 400);
+        Schedule free = SmeltFiller.schedule(f, cfg, BEDS, NOTHING, false);
+        assertEquals(List.of("build_blocks", "flint", "planks", "build_blocks", "log"), names(free.runnable()));
+        Schedule capped = SmeltFiller.schedule(f, cfg, BEDS, NOTHING, true);
+        assertTrue(capped.runnable().isEmpty());
+        // what is known to be in range survives the cap
+        Schedule sheepCapped = SmeltFiller.schedule(f, cfg, BEDS, new SmeltFiller.Nearby(true, true), true);
+        assertEquals(List.of("wool", "food", "food", "wool"), names(sheepCapped.runnable()));
+    }
+
+    @Test
+    public void ironFreeCraftsSurviveTheCap() {
+        FakeFacts f = new FakeFacts().cooking("iron_ingot", 39, 400);
+        f.give(Items.STONE_PICKAXE, 1).give(Items.STONE_SWORD, 1).give(Items.FURNACE, 1);
+        f.foodUnits = 70;
+        Schedule s = SmeltFiller.schedule(f, cfg, BEDS, NOTHING, true);
+        assertEquals(new KitNeed("ladder", 3), s.runnable().get(0));
+    }
+
+    @Test
+    public void anEmptyFillerIsWhatMakesUsWaitNotTheCap() {
         List<RunState.FurnaceJob> jobs = atTheFurnace().cooking("iron_ingot", 10, 100).furnaceJobs();
         long start = jobs.get(0).startTick;
-        assertEquals(Trip.FILLER, SmeltFiller.trip(true, false, cfg.furnaceMaxPullbacks - 1, start, jobs, cfg));
-        assertEquals(Trip.WAIT, SmeltFiller.trip(true, false, cfg.furnaceMaxPullbacks, start, jobs, cfg));
+        // in-leash work left: do it, even at the pullback cap
+        assertEquals(Trip.FILLER, SmeltFiller.trip(true, false, start, jobs, cfg));
+        assertEquals(Trip.WAIT, SmeltFiller.trip(false, false, start, jobs, cfg));
+    }
+
+    @Test
+    public void theCapIsAboutTheLeashDraggingUsBack() {
+        assertFalse(SmeltFiller.capped(cfg.furnaceMaxPullbacks - 1, cfg));
+        assertTrue(SmeltFiller.capped(cfg.furnaceMaxPullbacks, cfg));
+    }
+
+    @Test
+    public void theFillerStaysAMarginInsideTheLeash() {
+        assertEquals(56, SmeltFiller.fillerRadius(64), 1e-9);
+        // a tiny leash still leaves somewhere to go
+        assertEquals(8, SmeltFiller.fillerRadius(16), 1e-9);
+        assertEquals(8, SmeltFiller.fillerRadius(0), 1e-9);
     }
 
     @Test

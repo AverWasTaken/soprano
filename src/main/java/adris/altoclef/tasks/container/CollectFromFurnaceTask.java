@@ -40,6 +40,10 @@ public class CollectFromFurnaceTask extends Task {
     private boolean done;
     private int inputLeft;
     private long waitingSince = -1;
+    // WAIT_ALL stands with the screen closed until this game tick, -1 = not idling
+    private long idleUntil = -1;
+    private static final long REOPEN_TICKS = 200;
+    private static final long MIN_IDLE_TICKS = 20;
 
     // waitTicks: "nearly done" for NORMAL and TAKE_ALL. capTicks: the most we stand there once we started waiting, a furnace
     // that never finishes (no fuel, a chunk that stopped ticking) must not hold the bot for ever
@@ -75,6 +79,13 @@ public class CollectFromFurnaceTask extends Task {
         }
         if (mod.getPlayer().containerMenu instanceof AbstractFurnaceMenu) {
             return atFurnace(mod);
+        }
+        if (idleUntil >= 0) {
+            if (mod.getWorld().getGameTime() < idleUntil) {
+                setDebugState("Waiting by the furnace, screen closed");
+                return null;
+            }
+            idleUntil = -1;
         }
         if (mod.getFoodChain().needsToEat()) {
             setDebugState("Eating first");
@@ -112,7 +123,7 @@ public class CollectFromFurnaceTask extends Task {
             // back out when we are leaving
             boolean capped = waitingSince >= 0 && mod.getWorld().getGameTime() - waitingSince > capTicks;
             if (!stalled && !capped && (mode == Mode.WAIT_ALL || nearly)) {
-                return waitHere(mod);
+                return waitHere(mod, mode == Mode.WAIT_ALL);
             }
             if (capped && mode != Mode.TAKE_ALL) {
                 inputLeft = input.getCount();
@@ -136,12 +147,30 @@ public class CollectFromFurnaceTask extends Task {
         return null;
     }
 
-    private Task waitHere(AltoClef mod) {
+    // closed = let go of the screen and stand next to the furnace until the next output is due (or the reopen timer, whichever
+    // is first). the gui open for 6 minutes was a bot that could not eat, could not see a creeper and looked afk to the
+    // server. the short "nearly done" wait of the other modes keeps the screen, it is a few seconds
+    private Task waitHere(AltoClef mod, boolean closed) {
+        long now = mod.getWorld().getGameTime();
         if (waitingSince < 0) {
-            waitingSince = mod.getWorld().getGameTime();
+            waitingSince = now;
         }
-        setDebugState("Waiting for the furnace");
+        if (!closed) {
+            setDebugState("Waiting for the furnace");
+            return null;
+        }
+        double arrow = Math.min(1.0, Math.max(0, StorageHelper.getFurnaceCookPercent()) / 24.0);
+        long nextOutput = Math.round(FurnaceJobs.ticksPerItem(kind) * (1.0 - arrow));
+        idleUntil = now + idleTicks(nextOutput);
+        StorageHelper.closeScreen();
+        setDebugState("Waiting by the furnace, screen closed");
         return null;
+    }
+
+    // how long to stand with the screen closed: until the next item is out, but never longer than the reopen timer (the
+    // furnace may have stalled) and never so short that we flicker the screen open every other tick
+    public static long idleTicks(long ticksUntilNextOutput) {
+        return Math.max(MIN_IDLE_TICKS, Math.min(REOPEN_TICKS, ticksUntilNextOutput + 10));
     }
 
     // shift click, the furnace menu sends it to the inventory in one go. a full bag would make that a silent no-op for ever

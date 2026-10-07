@@ -15,6 +15,7 @@ import adris.altoclef.tasks.speedrun.gamer.RunState;
 import adris.altoclef.tasks.speedrun.gamer.SmeltFiller;
 import adris.altoclef.tasks.speedrun.gamer.SmeltFiller.Schedule;
 import adris.altoclef.tasks.speedrun.gamer.SmeltFiller.Trip;
+import adris.altoclef.tasks.speedrun.gamer.SmeltSurface;
 import adris.altoclef.tasks.speedrun.gamer.Timeout;
 import adris.altoclef.tasks.resources.FoodHunt;
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
@@ -33,6 +34,7 @@ public class IronPhase implements PhaseHandler {
     private final KitRunner runner = new KitRunner();
     private final PrepSupport support = new PrepSupport(true);
     private final FurnaceWatch furnaces = new FurnaceWatch();
+    private final SmeltSurface surface = new SmeltSurface();
     // the need we are in the middle of while a furnace cooks. a different first need means the last one is done, which is
     // the only time a finished furnace gets fetched
     private KitNeed committed;
@@ -59,14 +61,15 @@ public class IronPhase implements PhaseHandler {
     public boolean isDone(GamerFacts facts, RunState state, GamerConfig cfg) {
         // a table or furnace of ours still standing next to us is picked up first, this is the last chance (see StationPickup)
         // iron still cooking is iron we do not have, however empty the plan looks
-        return KitPlanner.plan(facts, cfg.overworld, cfg.end.beds).isEmpty() && facts.furnaceJobs().isEmpty() && !support.stationOwed();
+        return KitPlanner.plan(facts, cfg.overworld, cfg.end.beds).isEmpty() && facts.furnaceJobs().isEmpty() && !support.stationOwed() && !furnaces.pickingUp();
     }
 
     @Override
     public void onEnter(AltoClef mod, GamerContext ctx) {
         runner.reset();
         support.onEnter(mod);
-        furnaces.reset();
+        furnaces.newPhase(true);
+        surface.reset();
         committed = null;
         hudState = null;
         var async = Baritone.settings().altoAsyncSmelting;
@@ -91,6 +94,12 @@ public class IronPhase implements PhaseHandler {
     public Task tick(AltoClef mod, GamerContext ctx) {
         // the food task is another tree entirely, this is how it learns that a sheep is worth more shorn than eaten
         FoodHunt.setWoolWanted(KitPlanner.woolShortfall(ctx.facts(), ctx.cfg().end.beds) > 0);
+        // the furnace we just emptied is coming down, a few seconds and it goes with us to the next work site
+        Task takingBack = furnaces.finishing(mod, ctx);
+        if (takingBack != null) {
+            hudState = furnaces.hud();
+            return takingBack;
+        }
         if (!ctx.facts().furnaceJobs().isEmpty()) {
             return cookingTick(mod, ctx);
         }
@@ -98,10 +107,17 @@ public class IronPhase implements PhaseHandler {
         furnaces.reset();
         committed = null;
         List<KitNeed> needs = KitPlanner.plan(ctx.facts(), ctx.cfg().overworld, ctx.cfg().end.beds);
-        Task side = support.tick(mod, ctx, needs.isEmpty() ? null : needs.get(0));
+        KitNeed first = needs.isEmpty() ? null : needs.get(0);
+        Task side = support.tick(mod, ctx, first);
         if (side != null) {
             hudState = support.hud();
             return side;
+        }
+        // all the ore is mined and we are still down the mine: up first, then the smelt places its furnace in the open
+        Task up = surface.tick(mod, ctx, first);
+        if (up != null) {
+            hudState = surface.hud();
+            return up;
         }
         Task task = runner.run(ctx, needs);
         hudState = runner.hud();
@@ -117,7 +133,8 @@ public class IronPhase implements PhaseHandler {
         if (f.furnaceJobs().isEmpty()) {
             return null;
         }
-        Schedule schedule = SmeltFiller.schedule(f, ctx.cfg().overworld, ctx.cfg().end.beds);
+        Schedule schedule = SmeltFiller.schedule(f, ctx.cfg().overworld, ctx.cfg().end.beds, furnaces.nearby(mod, ctx),
+                SmeltFiller.capped(furnaces.pullbacks(), ctx.cfg().overworld));
         KitNeed head = schedule.runnable().isEmpty() ? null : schedule.runnable().get(0);
         Task side = support.tick(mod, ctx, head);
         if (side != null) {
@@ -130,12 +147,12 @@ public class IronPhase implements PhaseHandler {
         }
         if (trip == null) {
             boolean boundary = head == null || !head.equals(committed);
-            Trip what = SmeltFiller.trip(head != null, boundary, furnaces.pullbacks(), f.gameTime(), f.furnaceJobs(), ctx.cfg().overworld);
+            Trip what = SmeltFiller.trip(head != null, boundary, f.gameTime(), f.furnaceJobs(), ctx.cfg().overworld);
             if (what != Trip.FILLER) {
                 committed = null;
                 trip = furnaces.collect(mod, ctx, what == Trip.WAIT ? Mode.WAIT_ALL : Mode.NORMAL);
                 if (what == Trip.WAIT) {
-                    // standing at the furnace with the screen open is the plan, not a stall
+                    // standing next to the furnace (screen closed between looks) is the plan, not a stall
                     ctx.progress("waiting for the furnace");
                 }
             }
@@ -146,6 +163,11 @@ public class IronPhase implements PhaseHandler {
         }
         if (head == null) {
             return null;
+        }
+        Task up = surface.tick(mod, ctx, head);
+        if (up != null) {
+            hudState = surface.hud();
+            return up;
         }
         committed = head;
         Task task = runner.run(ctx, schedule.runnable());
