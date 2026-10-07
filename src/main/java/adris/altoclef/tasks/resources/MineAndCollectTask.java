@@ -11,6 +11,7 @@ import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.MiningRequirement;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.StorageHelper;
+import adris.altoclef.util.helpers.StoneDigRank;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
 import adris.altoclef.util.slots.CursorSlot;
@@ -19,7 +20,9 @@ import adris.altoclef.util.time.TimerGame;
 import adris.altoclef.ui.HudText;
 import java.util.*;
 import net.minecraft.client.Minecraft;
+import java.util.function.Predicate;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.DiggerItem;
 import net.minecraft.world.item.Item;
@@ -162,6 +165,7 @@ public class MineAndCollectTask extends ResourceTask {
         private static final double DROP_FIRST_RANGE_SQ = 16;
 
         private final Block[] _blocks;
+        private final boolean _stoneOnly;
         private final ItemTarget[] _targets;
         private final Set<BlockPos> _blacklist = new HashSet<>();
         private final MovementProgressChecker _progressChecker = new MovementProgressChecker();
@@ -170,6 +174,7 @@ public class MineAndCollectTask extends ResourceTask {
 
         public MineOrCollectTask(Block[] blocks, ItemTarget[] targets) {
             _blocks = blocks;
+            _stoneOnly = StoneDigRank.stoneOnly(blocks);
             _targets = targets;
             _pickupTask = new PickupDroppedItemTask(_targets, true);
         }
@@ -185,13 +190,43 @@ public class MineAndCollectTask extends ResourceTask {
             throw new UnsupportedOperationException("Shouldn't try to get the position of object " + obj + " of type " + (obj != null ? obj.getClass().toString() : "(null object)"));
         }
 
+        // exposure is six world reads, so only the stone near enough to matter pays for it. past this the walk is the
+        // whole story and a buried block 40 away is as far as an exposed one
+        private static final double EXPOSURE_RANGE = 24;
+
+        private double stoneScore(AltoClef mod, double fx, double fy, double fz, double tx, double ty, double tz) {
+            int bx = (int) Math.floor(tx);
+            int by = (int) Math.floor(ty);
+            int bz = (int) Math.floor(tz);
+            boolean exposed = true;
+            if (Math.abs(tx - fx) <= EXPOSURE_RANGE && Math.abs(tz - fz) <= EXPOSURE_RANGE && Math.abs(ty - fy) <= EXPOSURE_RANGE) {
+                exposed = hasAirFace(mod, bx, by, bz);
+            }
+            return StoneDigRank.score(fx, fy, fz, bx, by, bz, exposed);
+        }
+
+        private static boolean hasAirFace(AltoClef mod, int x, int y, int z) {
+            BlockPos.MutableBlockPos at = new BlockPos.MutableBlockPos();
+            for (Direction d : Direction.values()) {
+                at.set(x + d.getStepX(), y + d.getStepY(), z + d.getStepZ());
+                if (mod.getWorld().getBlockState(at).isAir()) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         @Override
         protected Optional<Object> getClosestTo(AltoClef mod, Vec3 pos) {
-            Optional<BlockPos> closestBlock = mod.getBlockTracker().getNearestTracking(pos, check -> {
+            Predicate<BlockPos> usable = check -> {
                 if (_blacklist.contains(check)) return false;
                 if (mod.getBlockTracker().unreachable(check)) return false;
                 return WorldHelper.canBreak(mod, check);
-            }, _blocks);
+            };
+            // stone gets its own idea of near: sideways and at our level, not the floor (see StoneDigRank)
+            Optional<BlockPos> closestBlock = _stoneOnly
+                    ? mod.getBlockTracker().getNearestTracking(pos, usable, (fx, fy, fz, tx, ty, tz) -> stoneScore(mod, fx, fy, fz, tx, ty, tz), _blocks)
+                    : mod.getBlockTracker().getNearestTracking(pos, usable, _blocks);
 
             Optional<ItemEntity> closestDrop = Optional.empty();
             if (mod.getEntityTracker().itemDropped(_targets)) {

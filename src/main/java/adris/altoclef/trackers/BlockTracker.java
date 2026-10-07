@@ -278,6 +278,29 @@ public class BlockTracker extends Tracker {
         }
     }
 
+    // how a caller ranks the tracked blocks when plain distance is the wrong question (MineAndCollectTask on stone: the
+    // default heuristic is baritone's, which thinks down is cheap, which is how we dug shafts). lowest score wins,
+    // infinite never does. positions are the block's center
+    public interface Scorer {
+        double score(double fromX, double fromY, double fromZ, double toX, double toY, double toZ);
+    }
+
+    // getNearestTracking with the caller's idea of near
+    public Optional<BlockPos> getNearestTracking(Vec3 pos, Predicate<BlockPos> isValidTest, Scorer scorer, Block... blocks) {
+        synchronized (_trackingBlocks) {
+            for (Block block : blocks) {
+                if (!_trackingBlocks.containsKey(block)) {
+                    Debug.logWarning("BlockTracker: Not tracking block " + block + " right now.");
+                    return Optional.empty();
+                }
+            }
+        }
+        updateState();
+        synchronized (_scanMutex) {
+            return currentCache().getNearest(pos, isValidTest, p -> blockIsValid(p, blocks), scorer::score, blocks);
+        }
+    }
+
     /**
      * Returns the locations of all tracked blocks of a given type
      */
