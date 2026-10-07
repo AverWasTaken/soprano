@@ -8,19 +8,23 @@ import adris.altoclef.trackers.blacklisting.WorldLocateBlacklist;
 import baritone.api.utils.Dimension;
 import adris.altoclef.util.helpers.BaritoneHelper;
 import adris.altoclef.util.helpers.ConfigHelper;
+import adris.altoclef.util.helpers.FluidSources;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.time.TimerGame;
 import baritone.Baritone;
 import baritone.api.utils.BlockOptionalMetaLookup;
+import baritone.cache.FasterWorldScanner;
 import baritone.pathing.movement.CalculationContext;
 import baritone.process.MineProcess;
 import java.util.*;
 import java.util.concurrent.Semaphore;
+import java.util.function.Function;
 import java.util.function.Predicate;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 
@@ -40,6 +44,8 @@ public class BlockTracker extends Tracker {
     private static final boolean ASYNC_SCANNING = true;
     // seconds. the first scan after a task tracks something new is the one it will wander off without, so it can't wait 7
     private static final double FIRST_LOOK_GAP = 0.5;
+    // same reach as MineProcess.searchWorld's scan
+    private static final int FLUID_SCAN_CHUNK_RADIUS = 32;
     private static BlockTrackerConfig _config = new BlockTrackerConfig();
 
     static {
@@ -386,6 +392,10 @@ public class BlockTracker extends Tracker {
         }
     }
 
+    private static boolean isScannedAsFluid(Block block) {
+        return block == Blocks.WATER || block == Blocks.LAVA;
+    }
+
     private void rescanWorld(CalculationContext ctx, boolean async, Dimension scanDimension) {
         Block[] blocksToScan;
         if (async) {
@@ -428,15 +438,41 @@ public class BlockTracker extends Tracker {
             return;
         }
         // one scan has one budget for everything it's looking for, so each type gets its own share. see PerTypeScan
+        Function<BlockPos, Block> blockAt = pos -> {
+            ClientLevel level = Minecraft.getInstance().level;
+            return level == null ? null : level.getBlockState(pos).getBlock();
+        };
+        List<Block> fluids = new ArrayList<>();
+        List<Block> solids = new ArrayList<>();
+        for (Block block : blocksToScan) {
+            (isScannedAsFluid(block) ? fluids : solids).add(block);
+        }
         Map<Block, List<BlockPos>> found = PerTypeScan.run(
-                blocksToScan,
+                solids.toArray(new Block[0]),
                 _config.maxCacheSizePerBlockType,
-                (types, max) -> MineProcess.searchWorld(ctx, new BlockOptionalMetaLookup(types), max, Collections.emptyList(), Collections.emptyList(), Collections.emptyList()),
-                pos -> {
-                    ClientLevel level = Minecraft.getInstance().level;
-                    return level == null ? null : level.getBlockState(pos).getBlock();
-                }
+                (types, max) -> {
+                    int[] raw = {0};
+                    List<BlockPos> hits = MineProcess.searchWorld(ctx, new BlockOptionalMetaLookup(types), max, Collections.emptyList(), Collections.emptyList(), Collections.emptyList(), n -> raw[0] = n);
+                    return new PerTypeScan.Scanned(hits, raw[0]);
+                },
+                blockAt
         );
+        if (!fluids.isEmpty()) {
+            // water and lava are mostly flowing or buried, and the plain scan spends its whole budget on those before it
+            // ever reaches a surface you could bucket (a lake 10 blocks away came back as "no water"). the filter runs
+            // at the hit, so the junk never counts
+            found.putAll(PerTypeScan.run(
+                    fluids.toArray(new Block[0]),
+                    _config.maxCacheSizePerBlockType,
+                    (types, max) -> PerTypeScan.Scanned.of(FasterWorldScanner.INSTANCE.scanNearest(
+                            ctx.getBaritone().getPlayerContext(),
+                            new BlockOptionalMetaLookup(types),
+                            max,
+                            FLUID_SCAN_CHUNK_RADIUS,
+                            (chunk, x, y, z) -> FluidSources.exposedSource(chunk.getFluidState(x, y, z), chunk.getFluidState(x, y + 1, z)))),
+                    blockAt
+            ));
+        }
 
         synchronized (_scanMutex) {
             if (Minecraft.getInstance().level != null) {

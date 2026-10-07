@@ -46,6 +46,7 @@ import net.minecraft.world.level.block.FallingBlock;
 import net.minecraft.world.level.block.state.BlockState;
 
 import java.util.*;
+import java.util.function.IntConsumer;
 import java.util.stream.Collectors;
 
 import static baritone.api.pathing.movement.ActionCosts.COST_INF;
@@ -365,6 +366,12 @@ public final class MineProcess extends BaritoneProcessHelper implements IMinePro
     }
 
     public static List<BlockPos> searchWorld(CalculationContext ctx, BlockOptionalMetaLookup filter, int max, List<BlockPos> alreadyKnown, List<BlockPos> blacklist, List<BlockPos> dropped) {
+        return searchWorld(ctx, filter, max, alreadyKnown, blacklist, dropped, null);
+    }
+
+    // rawHits hears how many hits there were before prune threw any out. a result shorter than max only means the world
+    // ran out if the raw count is short too, prune eats things (flowing water, encased ores) and that looks the same
+    public static List<BlockPos> searchWorld(CalculationContext ctx, BlockOptionalMetaLookup filter, int max, List<BlockPos> alreadyKnown, List<BlockPos> blacklist, List<BlockPos> dropped, IntConsumer rawHits) {
         List<BlockPos> locs = new ArrayList<>();
         List<Block> untracked = new ArrayList<>();
         for (BlockOptionalMeta bom : filter.blocks()) {
@@ -385,16 +392,22 @@ public final class MineProcess extends BaritoneProcessHelper implements IMinePro
             }
         }
 
+        int raw = locs.size();
         locs = prune(ctx, locs, filter, max, blacklist, dropped);
 
         if (!untracked.isEmpty() || (Baritone.settings().extendCacheOnThreshold.value && locs.size() < max)) {
-            locs.addAll(BaritoneAPI.getProvider().getWorldScanner().scanChunkRadius(
+            List<BlockPos> scanned = BaritoneAPI.getProvider().getWorldScanner().scanChunkRadius(
                     ctx.getBaritone().getPlayerContext(),
                     filter,
                     max,
                     10,
                     32
-            )); // maxSearchRadius is NOT sq
+            ); // maxSearchRadius is NOT sq
+            raw += scanned.size();
+            locs.addAll(scanned);
+        }
+        if (rawHits != null) {
+            rawHits.accept(raw);
         }
 
         locs.addAll(alreadyKnown);

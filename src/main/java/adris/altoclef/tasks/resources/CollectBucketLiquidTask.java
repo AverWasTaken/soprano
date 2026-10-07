@@ -14,12 +14,14 @@ import adris.altoclef.tasksystem.Task;
 import baritone.api.utils.Dimension;
 import adris.altoclef.ui.HudText;
 import adris.altoclef.util.ItemTarget;
+import adris.altoclef.util.helpers.FluidSources;
 import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
 import adris.altoclef.util.time.TimerGame;
 import baritone.api.utils.input.Input;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Optional;
 import java.util.function.Predicate;
 import net.minecraft.client.Minecraft;
@@ -44,6 +46,17 @@ public class CollectBucketLiquidTask extends ResourceTask {
     private final MovementProgressChecker _progressChecker = new MovementProgressChecker();
 
     private boolean wasWandering = false;
+
+    private static final int SCAN_WAIT_TICKS = 60;
+    // a stream is followed once in a while, not every tick of a wander. the cube it starts from is 49^3 cells
+    private static final int CLIMB_GAP_TICKS = 60;
+    private static final double CLIMB_SEARCH_RANGE = 24;
+    private static final int CLIMB_MAX_MOVES = 16;
+    private int _scanWaitStart = -1;
+    private int _lastClimbTick = -1000;
+    private boolean _loggedWander = false;
+    // sources the stream climb has already handed over
+    private final HashSet<BlockPos> _climbed = new HashSet<>();
 
     public CollectBucketLiquidTask(String liquidName, Item filledBucket, int targetCount, Block toCollect) {
         super(filledBucket, targetCount);
@@ -140,6 +153,7 @@ public class CollectBucketLiquidTask extends ResourceTask {
         if (mod.getBlockTracker().isTracking(_toCollect)) {
             Optional<BlockPos> nearestSource = mod.getBlockTracker().getNearestTracking(isSourceLiquid, _toCollect);
             if (nearestSource.isPresent()) {
+                _loggedWander = false;
                 Block nearestSourceBlock = mod.getWorld().getBlockState(nearestSource.get()).getBlock();
                 // We want to MINIMIZE this distance to liquid.
                 setDebugState("Trying to collect...");
@@ -180,10 +194,50 @@ public class CollectBucketLiquidTask extends ResourceTask {
             return new DefaultGoToDimensionTask(Dimension.OVERWORLD);
         }
 
+        // a scan for this liquid that hasn't landed yet says nothing about whether there is any. same cap and idea as
+        // AbstractDoToClosestObjectTask's wait
+        int now = WorldHelper.getTicks();
+        if (mod.getBlockTracker().scanPending(_toCollect)) {
+            if (_scanWaitStart < 0) _scanWaitStart = now;
+            if (now - _scanWaitStart < SCAN_WAIT_TICKS) {
+                setDebugState("Waiting for the first scan before wandering");
+                return null;
+            }
+        } else {
+            _scanWaitStart = -1;
+        }
+
+        // the scan only reports sources. a waterfall in view with its source out of the scan's sight is still a
+        // way to the source, so follow it up and hand what it finds to the tracker
+        if (tryClimbToSource(mod, now)) {
+            setDebugState("Followed a stream up to its source");
+            return null;
+        }
+
         // Oof, no liquid found.
+        if (!_loggedWander) {
+            _loggedWander = true;
+            List<BlockPos> tracked = mod.getBlockTracker().getKnownLocations(_toCollect);
+            long passing = tracked.stream().filter(isSourceLiquid).count();
+            Debug.logMessage("No " + _liquidName + " to collect: tracker knows " + tracked.size() + " positions, " + passing + " passed, wandering");
+        }
         setDebugState("Searching for liquid by wandering around aimlessly");
 
         return new TimeoutWanderTask();
+    }
+
+    // true if it found a source and told the tracker, so the next tick's query can pick it up
+    private boolean tryClimbToSource(AltoClef mod, int now) {
+        if (now - _lastClimbTick < CLIMB_GAP_TICKS) return false;
+        _lastClimbTick = now;
+        Optional<BlockPos> stream = mod.getBlockTracker().getNearestWithinRange(mod.getPlayer().position(), CLIMB_SEARCH_RANGE, _toCollect);
+        if (stream.isEmpty()) return false;
+        Optional<BlockPos> source = FluidSources.climbToSource(
+                pos -> mod.getWorld().getBlockState(pos).getFluidState(), stream.get(), CLIMB_MAX_MOVES);
+        // already tried it and the predicate didn't like it, climbing again would just find it again
+        if (source.isEmpty() || !_climbed.add(source.get())) return false;
+        mod.getBlockTracker().addBlock(_toCollect, source.get());
+        return true;
     }
 
     @Override
