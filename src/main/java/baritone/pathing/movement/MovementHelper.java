@@ -969,7 +969,22 @@ public interface MovementHelper extends ActionCosts, Helper {
         return true;
     }
 
+    // every movement wants this one: the block is for the path in front of us, so protected throwaways are fair game
     static PlaceResult attemptToPlaceABlock(MovementState state, IBaritone baritone, BlockPos placeAt, boolean preferDown, boolean wouldSneak) {
+        return attemptToPlaceABlock(state, baritone, placeAt, preferDown, wouldSneak, true);
+    }
+
+    // once per movement, at normal log level: the next run's logs say why we had nothing to place instead of a silent no-op
+    static void logNoThrowaway(MovementState state, IBaritone baritone, BlockPos placeAt) {
+        if (state.throwawayFailureLogged) {
+            return;
+        }
+        state.throwawayFailureLogged = true;
+        String why = ((Baritone) baritone).getInventoryBehavior().whyNoThrowaway(true, placeAt.getX(), placeAt.getY(), placeAt.getZ());
+        Helper.HELPER.logDirect("can't place a block at " + placeAt.getX() + " " + placeAt.getY() + " " + placeAt.getZ() + " mid movement: " + why);
+    }
+
+    static PlaceResult attemptToPlaceABlock(MovementState state, IBaritone baritone, BlockPos placeAt, boolean preferDown, boolean wouldSneak, boolean allowProtected) {
         IPlayerContext ctx = baritone.getPlayerContext();
         Optional<Rotation> direct = RotationUtils.reachable(ctx, placeAt, wouldSneak); // we assume that if there is a block there, it must be replacable
         boolean found = false;
@@ -980,8 +995,11 @@ public interface MovementHelper extends ActionCosts, Helper {
         for (int i = 0; i < 5; i++) {
             BlockPos against1 = placeAt.relative(HORIZONTALS_BUT_ALSO_DOWN_____SO_EVERY_DIRECTION_EXCEPT_UP[i]);
             if (MovementHelper.canPlaceAgainst(ctx, against1)) {
-                if (!((Baritone) baritone).getInventoryBehavior().selectThrowawayForLocation(false, placeAt.getX(), placeAt.getY(), placeAt.getZ())) { // get ready to place a throwaway block
+                if (!((Baritone) baritone).getInventoryBehavior().selectThrowawayForLocation(false, placeAt.getX(), placeAt.getY(), placeAt.getZ(), allowProtected)) { // get ready to place a throwaway block
                     Helper.HELPER.logDebug("bb pls get me some blocks. dirt, netherrack, cobble");
+                    if (allowProtected) { // backfill shrugging at an empty bag isn't news
+                        logNoThrowaway(state, baritone, placeAt);
+                    }
                     state.setStatus(MovementStatus.UNREACHABLE);
                     return PlaceResult.NO_OPTION;
                 }
@@ -1011,7 +1029,7 @@ public interface MovementHelper extends ActionCosts, Helper {
                 if (wouldSneak) {
                     state.setInput(Input.SNEAK, true);
                 }
-                ((Baritone) baritone).getInventoryBehavior().selectThrowawayForLocation(true, placeAt.getX(), placeAt.getY(), placeAt.getZ());
+                ((Baritone) baritone).getInventoryBehavior().selectThrowawayForLocation(true, placeAt.getX(), placeAt.getY(), placeAt.getZ(), allowProtected);
                 return PlaceResult.READY_TO_PLACE;
             }
         }
@@ -1019,7 +1037,7 @@ public interface MovementHelper extends ActionCosts, Helper {
             if (wouldSneak) {
                 state.setInput(Input.SNEAK, true);
             }
-            ((Baritone) baritone).getInventoryBehavior().selectThrowawayForLocation(true, placeAt.getX(), placeAt.getY(), placeAt.getZ());
+            ((Baritone) baritone).getInventoryBehavior().selectThrowawayForLocation(true, placeAt.getX(), placeAt.getY(), placeAt.getZ(), allowProtected);
             return PlaceResult.ATTEMPTING;
         }
         return PlaceResult.NO_OPTION;

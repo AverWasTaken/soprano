@@ -40,7 +40,7 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
-import java.util.ArrayList;
+import java.util.List;
 import java.util.OptionalInt;
 import java.util.Random;
 import java.util.function.Predicate;
@@ -141,24 +141,20 @@ public final class InventoryBehavior extends Behavior implements Helper {
     }
 
     public OptionalInt getTempHotbarSlot(Predicate<Integer> disallowedHotbar) {
-        // we're using 0 and 8 for pickaxe and throwaway
-        ArrayList<Integer> candidates = new ArrayList<>();
-        for (int i = 1; i < 8; i++) {
-            if (ctx.player().getInventory().items.get(i).isEmpty() && !disallowedHotbar.test(i)) {
-                candidates.add(i);
+        // we're using 0 and 8 for pickaxe and throwaway. the rest goes through ThrowawayPicks so a temp swap can't stomp
+        // the slot in hand or the one the next placement is about to pull from (that one was a fun afternoon)
+        NonNullList<ItemStack> inv = ctx.player().getInventory().items;
+        boolean[] empty = new boolean[9];
+        int throwawaySlot = -1;
+        for (int i = 0; i < 9; i++) {
+            empty[i] = inv.get(i).isEmpty();
+            if (throwawaySlot < 0 && Baritone.settings().acceptableThrowawayItems.value.contains(inv.get(i).getItem())) {
+                throwawaySlot = i;
             }
         }
-        if (candidates.isEmpty()) {
-            for (int i = 1; i < 8; i++) {
-                if (!disallowedHotbar.test(i)) {
-                    candidates.add(i);
-                }
-            }
-        }
-        if (candidates.isEmpty()) {
-            return OptionalInt.empty();
-        }
-        return OptionalInt.of(candidates.get(new Random().nextInt(candidates.size())));
+        int pending = lastTickRequestedMove == null ? -1 : lastTickRequestedMove[1];
+        Random rng = new Random();
+        return ThrowawayPicks.tempHotbarSlot(empty, disallowedHotbar::test, ctx.player().getInventory().selected, throwawaySlot, pending, rng::nextInt);
     }
 
     private boolean requestSwapWithHotBar(int inInventory, int inHotbar) {
@@ -182,10 +178,9 @@ public final class InventoryBehavior extends Behavior implements Helper {
 
     private int firstValidThrowaway() { // TODO offhand idk
         NonNullList<ItemStack> invy = ctx.player().getInventory().items;
-        AltoClefSettings alto = AltoClefSettings.getInstance();
+        // protected ones count too: this is hotbar upkeep for the path we're walking, same scope as the movements' placing
         for (int i = 0; i < invy.size(); i++) {
-            Item item = invy.get(i).getItem();
-            if (Baritone.settings().acceptableThrowawayItems.value.contains(item) && !alto.isItemProtected(item)) {
+            if (Baritone.settings().acceptableThrowawayItems.value.contains(invy.get(i).getItem())) {
                 return i;
             }
         }
@@ -215,17 +210,40 @@ public final class InventoryBehavior extends Behavior implements Helper {
         return bestInd;
     }
 
+    // movement scope: the planner and the movements both ask this, so they can't disagree about what's in the bag.
+    // altoclef saving cobble for a recipe doesn't make a parkour any less in need of a block under its feet
     public boolean hasGenericThrowaway() {
-        AltoClefSettings alto = AltoClefSettings.getInstance();
-        for (Item item : Baritone.settings().acceptableThrowawayItems.value) {
-            if (alto.isItemProtected(item)) {
-                continue; // altoclef is saving that one for something
-            }
+        for (Item item : movementThrowaways(true)) {
             if (throwaway(false, stack -> item.equals(stack.getItem()))) {
                 return true;
             }
         }
         return false;
+    }
+
+    private List<Item> movementThrowaways(boolean allowProtected) {
+        return ThrowawayPicks.order(Baritone.settings().acceptableThrowawayItems.value, AltoClefSettings.getInstance()::isItemProtected, allowProtected);
+    }
+
+    // why the lookups came back empty, for the log. same inputs as the real thing, just asked a different way
+    public String whyNoThrowaway(boolean allowProtected, int x, int y, int z) {
+        AltoClefSettings alto = AltoClefSettings.getInstance();
+        List<Item> acceptable = Baritone.settings().acceptableThrowawayItems.value;
+        List<Item> usable = movementThrowaways(allowProtected);
+        boolean haveAny = false;
+        boolean haveUsable = false;
+        boolean usableOnHotbar = false;
+        NonNullList<ItemStack> inv = ctx.player().getInventory().items;
+        for (int i = 0; i <= inv.size(); i++) {
+            boolean offhand = i == inv.size();
+            Item item = (offhand ? ctx.player().getInventory().offhand.get(0) : inv.get(i)).getItem();
+            haveAny |= acceptable.contains(item);
+            if (usable.contains(item)) {
+                haveUsable = true;
+                usableOnHotbar |= i < 9 || offhand;
+            }
+        }
+        return ThrowawayPicks.classify(alto.isInteractionPaused(), alto.shouldAvoidPlacingAt(x, y, z), haveAny, haveUsable, usableOnHotbar).why;
     }
 
     // vine first, it has no collision box so we can't land on top of it or get the placement refused for standing in it
@@ -240,7 +258,9 @@ public final class InventoryBehavior extends Behavior implements Helper {
         return null;
     }
 
-    public boolean selectThrowawayForLocation(boolean select, int x, int y, int z) {
+    // allowProtected is the movement scope: a path that needs a block under it right now beats a recipe's stash.
+    // anything that isn't mid-movement (backfill) passes false and leaves altoclef's items alone
+    public boolean selectThrowawayForLocation(boolean select, int x, int y, int z, boolean allowProtected) {
         AltoClefSettings alto = AltoClefSettings.getInstance();
         if (alto.isInteractionPaused() || alto.shouldAvoidPlacingAt(x, y, z)) {
             return false;
@@ -252,10 +272,7 @@ public final class InventoryBehavior extends Behavior implements Helper {
         if (maybe != null && throwaway(select, stack -> stack.getItem() instanceof BlockItem && ((BlockItem) stack.getItem()).getBlock().equals(maybe.getBlock()))) {
             return true;
         }
-        for (Item item : Baritone.settings().acceptableThrowawayItems.value) {
-            if (alto.isItemProtected(item)) {
-                continue;
-            }
+        for (Item item : movementThrowaways(allowProtected)) {
             if (throwaway(select, stack -> item.equals(stack.getItem()))) {
                 return true;
             }
