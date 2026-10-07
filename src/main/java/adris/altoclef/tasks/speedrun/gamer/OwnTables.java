@@ -1,5 +1,7 @@
 package adris.altoclef.tasks.speedrun.gamer;
 
+import adris.altoclef.util.helpers.WalkCost;
+
 import java.util.List;
 import java.util.function.Predicate;
 
@@ -45,12 +47,13 @@ public final class OwnTables {
     // craft is over, that is what a boundary is), only a placement within PLACE_GUARD_SECONDS is. the use debounce used to
     // run off the last time the menu was open and the bot sprinted after a pig for the whole of it, 130 blocks of
     // table left behind. away from a boundary the debounce still applies. after one successful pickup of a kind we leave
-    // that kind alone for a good while, so a place/pickup loop we did not think of costs one pickup per cooldown instead
-    // of every tick. stamps are game ticks, NEVER = none yet
+    // that kind alone for a few seconds, a floor and nothing more: the real loop breaker for tables is usedSincePlaced (no
+    // craft since it went down, no pickup), the 120 s this used to be left tables behind all over the map. the floor is
+    // for the loop we did not think of. stamps are game ticks, NEVER = none yet
     public static Start startRecovery(long now, long lastUse, long lastPlace, long lastRecovered, boolean menuOpen, boolean atBoundary,
                                       double useCooldownSeconds, double placeGuardSeconds, double recoverCooldownSeconds) {
-        // an open menu is NO and not HOLD: standing still in front of it would never close it. the recover cooldown is
-        // two minutes, holding for that is a hang. only the short guards below may hold us
+        // an open menu is NO and not HOLD: standing still in front of it would never close it. the recover floor is a few
+        // seconds of "not now", not something to stand still for. only the short guards below may hold us
         if (menuOpen) {
             return Start.NO;
         }
@@ -100,21 +103,57 @@ public final class OwnTables {
         return "iron_ingot".equals(currentNeed) && rawIron > 0;
     }
 
-    // the closest of our own tables that passes `usable` and is within `radius` of the player, null if none. nothing
-    // that is not in the list can ever come back from here, that is the whole point
-    public static RunState.Pos nearest(List<RunState.Pos> tables, Predicate<RunState.Pos> usable, double px, double py, double pz, double radius) {
+    // the cheapest of our own tables to walk to that passes `usable` and costs at most `budget` (WalkCost, not a sphere: a
+    // table 10 blocks straight down is a cave trip and the sphere called it close). null if none. nothing that is not in
+    // the list can ever come back from here, that is the whole point
+    public static RunState.Pos nearest(List<RunState.Pos> tables, Predicate<RunState.Pos> usable, double px, double py, double pz, double budget) {
         RunState.Pos best = null;
-        double bestDist = radius * radius;
+        double bestCost = budget;
         for (RunState.Pos table : tables) {
-            double dx = table.x + 0.5 - px;
-            double dy = table.y + 0.5 - py;
-            double dz = table.z + 0.5 - pz;
-            double dist = dx * dx + dy * dy + dz * dz;
-            if (dist < bestDist && usable.test(table)) {
+            double cost = walkCost(table, px, py, pz);
+            if (cost <= bestCost && usable.test(table)) {
                 best = table;
-                bestDist = dist;
+                bestCost = cost;
             }
         }
         return best;
+    }
+
+    // x/z to the middle of the block, y from our feet to the bottom of it (a table next to us is on our own level)
+    public static double walkCost(RunState.Pos table, double px, double py, double pz) {
+        return WalkCost.estimate(table.x + 0.5 - px, table.y - py, table.z + 0.5 - pz);
+    }
+
+    // a station we are too far from (in walking terms) is not worth the trip back, a log is cheaper. forget it so it does
+    // not come back as a candidate the next time we wander past, and does not hold a phase open as "owed". `keep` is for
+    // the ones somebody else owns (a smelting job). returns how many went
+    public static int forgetFar(List<RunState.Pos> tables, Predicate<RunState.Pos> keep, double px, double py, double pz, double budget) {
+        int before = tables.size();
+        tables.removeIf(table -> walkCost(table, px, py, pz) > budget && !keep.test(table));
+        return before - tables.size();
+    }
+
+    // a craft happened at the table since it was placed. this is what stops a place/pickup loop without a long cooldown: no
+    // craft in between, no pickup (by the rule below). lastUse is stamped every tick the menu is open, lastPlace when it went down
+    public static boolean usedSincePlaced(long lastUse, long lastPlace) {
+        return lastUse != NEVER && (lastPlace == NEVER || lastUse > lastPlace);
+    }
+
+    // how long the menu has to stay shut before we call the crafting finished. CraftInTableTask closes and reopens it between
+    // the steps of one chain (wooden pickaxe, then the stone one) and we must not pick the table up in the gap
+    public static final double SETTLE_SECONDS = 1.0;
+
+    // the table has done its job: it was used since it went down, the menu is shut and has been for a second, nothing in the
+    // task tree is crafting at a table, and the next need is not a craft either (that one would place it again). it does not
+    // wait for a need boundary, bread in the middle of a food need is done as soon as the bread is
+    public static boolean finishedCrafting(long now, long lastUse, long lastPlace, boolean menuOpen, boolean craftRunning, boolean nextNeedCrafts) {
+        return !menuOpen && !craftRunning && !nextNeedCrafts && usedSincePlaced(lastUse, lastPlace)
+                && now - lastUse >= SETTLE_SECONDS * 20;
+    }
+
+    // either reason to take the table back: the crafting is over (new rule), or the run moved on to a need that does not
+    // craft (old one, the fallback for a table that was placed and never opened)
+    public static boolean wantsTableNow(String usedByNeed, String currentNeed, boolean finishedCrafting) {
+        return finishedCrafting || wantsTableBack(usedByNeed, currentNeed);
     }
 }

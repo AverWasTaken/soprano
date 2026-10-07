@@ -68,17 +68,21 @@ public class OverworldConfig {
     public double noLavaSeconds = 150;
     // throwaway blocks to carry through the portal (pillaring, bridging, plugging lava)
     public int portalBuildBlocks = 32;
-    // pick up a crafting table or furnace of ours (we hold none) when the run moves on to another need, but only when it
-    // is this close. only spots we recorded are candidates and tablePickupSeconds bounds the trip, so it can be generous,
-    // the 10 it was lost a table to a few seconds of sprinting after a pig
-    public int tableRecoverRadius = 24;
+    // pick up a crafting table or furnace of ours (we hold none) when the crafting is done or the run moves on to another
+    // need, but only when the walk is cheap: horizontal blocks + 4 per block of height (WalkCost), so about 20 flat blocks
+    // or 5 up or down. a table is worth about a log, a longer trip is a loss, and one we are too far from is forgotten.
+    // it used to be a 24 block sphere, which is how the bot walked back down a cave for a table. (still called radius
+    // because the saved configs say so)
+    public int tableRecoverRadius = 20;
     // ...and gets this long to do it before that station is written off
     public double tablePickupSeconds = 30;
     // a station that was open or placed this recently is in use, leave it be. just a debounce now (the need boundary does
     // the real deciding), it used to be 30 and the bot was long out of range by the time it ran out
     public double tableUseCooldownSeconds = 3;
-    // after taking one back, no second pickup of that kind for this long. the backstop against a place/pickup loop
-    public double tableRecoverCooldownSeconds = 120;
+    // after taking one back, no second pickup of that kind for this long. just a floor now: a table is only taken once it
+    // was used since it went down (OwnTables.usedSincePlaced), that is what breaks a place/pickup loop. it was 120 and left
+    // a table behind every time two crafts landed inside it
+    public double tableRecoverCooldownSeconds = 5;
 
     // smelting in the background (see SmeltFiller): the iron goes in the furnace and the bot does other things while it cooks.
     // it stays this close to the furnace (horizontal), less if the server's simulation distance is smaller, because a

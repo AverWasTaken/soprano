@@ -3,6 +3,7 @@ package adris.altoclef.tasks.speedrun.gamer;
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.tasks.construction.DestroyBlockTask;
+import adris.altoclef.tasks.container.CraftInTableTask;
 import adris.altoclef.tasks.movement.IdleTask;
 import adris.altoclef.tasks.movement.PickupDroppedItemTask;
 import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig;
@@ -25,7 +26,8 @@ import java.util.List;
 import java.util.Set;
 
 // takes the crafting table and the furnace WE placed back when the run moves on to a different need while we are still
-// standing next to them (rules in OwnTables). one pickup at a time, the table first. only positions GamerTask saw us place
+// standing next to them, and the table also as soon as the crafting at it is over (rules in OwnTables). only when the walk
+// back is cheap, a station further than that is forgotten. one pickup at a time, the table first. only positions GamerTask saw us place
 // are ever candidates, so a village's table or furnace is never touched
 final class StationPickup {
     private final Slot table = new Slot(true);
@@ -171,10 +173,24 @@ final class StationPickup {
                 return mod.getChunkTracker().isChunkLoaded(at) && !mod.getWorld().getBlockState(at).is(block);
             });
             Vec3 player = mod.getPlayer().position();
+            double budget = cfg.tableRecoverRadius;
+            // the crafting is over (table only, furnaces keep the need boundary): used since it went down, menu shut for a
+            // second, nothing in the task tree is crafting at a table and the next need is not a craft that would place it again
+            boolean craftsDone = isTable && OwnTables.finishedCrafting(now, use.lastUseTick, use.lastPlaceTick, open,
+                    craftRunning(mod), KitNeed.isCraftName(need));
+            boolean wantsNow = wants(ctx, need, use, craftsDone);
+            if (wantsNow) {
+                // this is the moment it would be taken. too far to walk cheaply means we write it off: a table is a log,
+                // the old sphere walked us back down a cave for one
+                int gone = OwnTables.forgetFar(own, pos -> jobOwns(ctx, pos), player.x, player.y, player.z, budget);
+                if (gone > 0) {
+                    Debug.logInternal("station pickup: forgot " + gone + " " + name() + "(s), the walk back costs more than " + budget);
+                }
+            }
             RunState.Pos found = OwnTables.nearest(own, pos -> {
                 BlockPos at = new BlockPos(pos.x, pos.y, pos.z);
                 return !tried.contains(at) && WorldHelper.canBreak(mod, at) && !busy(mod, at) && !jobOwns(ctx, pos);
-            }, player.x, player.y, player.z, ctx.cfg().overworld.tableRecoverRadius);
+            }, player.x, player.y, player.z, budget);
             if (found == null) {
                 if (!own.isEmpty()) {
                     // this is the gate that lost a table last time, out of range by the time anything looked
@@ -184,12 +200,12 @@ final class StationPickup {
             }
             // from here on a phase that runs out of needs has to wait for us (see StationPickup.owed)
             owed = true;
-            if (!wants(ctx, need, use)) {
+            if (!wantsNow) {
                 deferred("the next need (" + need + ") still wants it");
                 return null;
             }
             OwnTables.Start go = OwnTables.startRecovery(now, use.lastUseTick, use.lastPlaceTick, use.lastRecoveredTick, open,
-                    OwnTables.atNeedBoundary(use.useNeed, need), cfg.tableUseCooldownSeconds, OwnTables.PLACE_GUARD_SECONDS, cfg.tableRecoverCooldownSeconds);
+                    true, cfg.tableUseCooldownSeconds, OwnTables.PLACE_GUARD_SECONDS, cfg.tableRecoverCooldownSeconds);
             if (go == OwnTables.Start.HOLD) {
                 // a null here hands the tick to the next need, which walks off (a pig for three seconds was enough to
                 // lose a table). the guard is a second at most so standing still is cheap, and it cannot hang: the stamps
@@ -221,9 +237,17 @@ final class StationPickup {
             }
         }
 
-        private boolean wants(GamerContext ctx, String need, RunState.StationUse use) {
+        // the table asks the task tree too: a CraftInTableTask anywhere under the user task means a craft is running or
+        // about to (collecting its ingredients counts, the table must stay). the bot is mid-pickup-check here, so the tree
+        // is still last tick's kit task, which is exactly what we want to look at
+        private boolean craftRunning(AltoClef mod) {
+            Task root = mod.getUserTaskChain().getCurrentTask();
+            return root != null && root.thisOrChildSatisfies(t -> t instanceof CraftInTableTask);
+        }
+
+        private boolean wants(GamerContext ctx, String need, RunState.StationUse use, boolean craftsDone) {
             if (isTable) {
-                return OwnTables.wantsTableBack(use.useNeed, need);
+                return OwnTables.wantsTableNow(use.useNeed, need, craftsDone);
             }
             return OwnTables.wantsFurnaceBack(use.useNeed, need, OwnTables.smeltsSoon(need, ctx.facts().count(Items.RAW_IRON)));
         }

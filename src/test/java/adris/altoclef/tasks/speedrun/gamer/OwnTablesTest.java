@@ -168,6 +168,94 @@ public class OwnTablesTest {
         assertFalse(OwnTables.wantsFurnaceBack("food", "food", false));
     }
 
+    // the walk budget (horizontal + 4 per block of height, 20), not a sphere
+    @Test
+    public void aTableAboveOrBelowIsFurtherThanItLooks() {
+        // 10 blocks away sideways is fine, 10 straight down is the cave trip
+        List<RunState.Pos> own = new ArrayList<>(List.of(pos(10, 64, 0)));
+        assertEquals(pos(10, 64, 0), OwnTables.nearest(own, p -> true, 0.5, 64, 0.5, 20));
+        List<RunState.Pos> below = new ArrayList<>(List.of(pos(0, 54, 0)));
+        assertNull(OwnTables.nearest(below, p -> true, 0.5, 64, 0.5, 20));
+        // 4 down is 16 of walking, still worth it
+        List<RunState.Pos> close = new ArrayList<>(List.of(pos(0, 60, 0)));
+        assertEquals(pos(0, 60, 0), OwnTables.nearest(close, p -> true, 0.5, 64, 0.5, 20));
+    }
+
+    @Test
+    public void nearestPicksTheCheapestWalkNotTheShortestLine() {
+        // 6 straight up is 24 of walking, 15 sideways is 15
+        List<RunState.Pos> own = new ArrayList<>(List.of(pos(0, 70, 0), pos(15, 64, 0)));
+        assertEquals(pos(15, 64, 0), OwnTables.nearest(own, p -> true, 0.5, 64, 0.5, 30));
+    }
+
+    @Test
+    public void tablesOutOfBudgetAreForgottenButJobsKeepTheirs() {
+        List<RunState.Pos> own = new ArrayList<>(List.of(pos(2, 64, 0), pos(0, 30, 0), pos(60, 64, 0)));
+        // the one at 60 belongs to a smelting job
+        int gone = OwnTables.forgetFar(own, p -> p.x == 60, 0.5, 64, 0.5, 20);
+        assertEquals(1, gone);
+        assertEquals(List.of(pos(2, 64, 0), pos(60, 64, 0)), own);
+        assertEquals(0, OwnTables.forgetFar(own, p -> false, 0.5, 64, 0.5, 100));
+    }
+
+    // the progress gate: no craft since it went down, no new-rule pickup
+    @Test
+    public void usedSincePlacedNeedsAMenuAfterThePlacement() {
+        long never = OwnTables.NEVER;
+        assertFalse(OwnTables.usedSincePlaced(never, never));
+        assertFalse(OwnTables.usedSincePlaced(never, 500));
+        // an old use from a table we already took back, then a fresh placement
+        assertFalse(OwnTables.usedSincePlaced(300, 500));
+        assertTrue(OwnTables.usedSincePlaced(510, 500));
+        // placed before the stamps started (relog), opened since
+        assertTrue(OwnTables.usedSincePlaced(10, never));
+        // a use at tick 0 is a real use
+        assertTrue(OwnTables.usedSincePlaced(0, never));
+    }
+
+    private static boolean finished(long now, long lastUse, long lastPlace, boolean open, boolean running, boolean nextCrafts) {
+        return OwnTables.finishedCrafting(now, lastUse, lastPlace, open, running, nextCrafts);
+    }
+
+    @Test
+    public void craftingIsFinishedOnceTheMenuStaysShutAndNothingCrafts() {
+        // placed at 100, opened until 140, now 200 (3 s later): done
+        assertTrue(finished(200, 140, 100, false, false, false));
+        // a second after the menu closed is the minimum, 19 ticks is not enough (the gap between two crafts of one chain)
+        assertFalse(finished(159, 140, 100, false, false, false));
+        assertTrue(finished(160, 140, 100, false, false, false));
+        // the menu is open, or a CraftInTableTask is anywhere in the tree, or the next need crafts: not done
+        assertFalse(finished(200, 140, 100, true, false, false));
+        assertFalse(finished(200, 140, 100, false, true, false));
+        assertFalse(finished(200, 140, 100, false, false, true));
+    }
+
+    // the loop from the log: placed, picked up, the craft placed it again. with no craft in between this rule never fires
+    @Test
+    public void aTableNobodyUsedIsNotFinishedWith() {
+        assertFalse(finished(5000, OwnTables.NEVER, 100, false, false, false));
+        assertFalse(finished(5000, 50, 100, false, false, false));
+    }
+
+    @Test
+    public void bothReasonsTakeTheTableBack() {
+        // food is still the running need (no boundary) but the bread is done
+        assertFalse(OwnTables.wantsTableNow("food", "food", false));
+        assertTrue(OwnTables.wantsTableNow("food", "food", true));
+        // the old boundary rule is still the fallback for a table that was never opened
+        assertTrue(OwnTables.wantsTableNow("food", "iron_ingot", false));
+        // a craft need next keeps it either way, finished or not is the caller's call (nextNeedCrafts above)
+        assertFalse(OwnTables.wantsTableNow("wooden_pickaxe", "stone_pickaxe", false));
+    }
+
+    // the floor is a few seconds now (config 5), two crafts landing close together no longer leave a table behind
+    @Test
+    public void theRecoverFloorIsOnlyAFewSeconds() {
+        long never = OwnTables.NEVER;
+        assertEquals(OwnTables.Start.NO, OwnTables.startRecovery(5000, never, never, 4950, false, true, 3, 1, 5));
+        assertEquals(OwnTables.Start.GO, OwnTables.startRecovery(5000, never, never, 4900, false, true, 3, 1, 5));
+    }
+
     @Test
     public void aFurnaceAboutToSmeltIsKept() {
         assertTrue(OwnTables.smeltsSoon("iron_ingot", 3));

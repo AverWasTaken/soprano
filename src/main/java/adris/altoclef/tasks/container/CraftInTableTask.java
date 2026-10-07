@@ -14,6 +14,7 @@ import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.RecipeTarget;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.StorageHelper;
+import adris.altoclef.util.helpers.WalkCost;
 import adris.altoclef.util.slots.CraftingTableSlot;
 import adris.altoclef.util.slots.PlayerSlot;
 import adris.altoclef.util.slots.Slot;
@@ -29,7 +30,9 @@ import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.inventory.CraftingMenu;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.phys.Vec3;
 
 /**
  * Crafts an item in a crafting table, obtaining and placing the table down if none was found.
@@ -461,6 +464,19 @@ class DoCraftInTableTask extends DoStuffInContainerTask {
     protected double getCostToMakeNew(AltoClef mod) {
         // Get the nearest crafting table.
         Optional<BlockPos> closestCraftingTable = mod.getBlockTracker().getNearestTracking(Blocks.CRAFTING_TABLE);
+
+        // we carry a table, so a new one is free (one placement). an old one is only worth walking to when it is a short
+        // walk, 40 blocks of straight line used to send us back down a cave for a table we were holding the replacement for
+        if (mod.getItemStorage().hasItem(Items.CRAFTING_TABLE)) {
+            if (closestCraftingTable.isPresent()) {
+                Vec3 me = mod.getPlayer().position();
+                BlockPos at = closestCraftingTable.get();
+                if (WalkCost.within(at.getX() + 0.5 - me.x, at.getY() - me.y, at.getZ() + 0.5 - me.z, WalkCost.STATION_BUDGET)) {
+                    return Double.POSITIVE_INFINITY;
+                }
+            }
+            return 0;
+        }
 
         // If a crafting table is within 40 blocks of the player, return positive infinity.
         if (closestCraftingTable.isPresent() && closestCraftingTable.get().closerToCenterThan(mod.getPlayer().position(), 40)) {
