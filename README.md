@@ -24,7 +24,7 @@ The new stuff is new, so expect rough edges. [FEATURES.md](FEATURES.md) goes thr
 2. Drop it in your `mods` folder, replacing Baritone if you had it.
 3. In game, try `#goto 1000 500`, then `#stop`.
 
-Each branch of this repo is one Minecraft version. Right now that's 1.21.4. `main` will follow the newest Minecraft version once there's a port.
+Each branch of this repo is one Minecraft version. `26.3` is the newest one (and the default branch) and `1.21.4` is the 1.21.4 branch.
 
 Releases come in three flavors. Most people want the `api` jar.
 

@@ -82,7 +82,7 @@ To toggle a boolean setting, just say its name in chat (for example, saying `all
 
 All the settings and their documentation are [here](src/api/java/baritone/api/Settings.java). The settings Soprano added aren't in the HTML javadocs at baritone.leijurv.com, which only covers upstream Soprano.
 
-There are a couple hundred settings. Soprano keeps using the `baritone` folder in your Minecraft folder, so your existing `settings.txt` carries over from Baritone.
+There are about 330 settings. Soprano keeps using the `baritone` folder in your Minecraft folder, so your existing `settings.txt` carries over from Baritone.
 
 ## Soprano settings
 
@@ -103,6 +103,7 @@ All off by default unless it says otherwise.
 - `headHittersDiagonal` (on by default, allows diagonal head bonks when `headHitters` is enabled)
 - `sprintJumping` (sprint jump along straight path stretches, up single steps and down small hills)
 - `sprintJumpingDiagonals` (on by default, allows diagonal sprint jumps when `sprintJumping` is enabled)
+- `keepFpsWhileBotting` (on by default, counts the bot working as keyboard and mouse input for the game's AFK frame limiter, so the frame rate does not drop to 30 while you watch it. Does nothing while the bot is idle)
 - `shortBaritonePrefix` (use `[S]` instead of `[Soprano]` in chat messages)
 
 `experimentalMovement` is the "just go fast" switch. It turns on all the parkour (neos, climb jumps and momentum jumps too), diagonal ascends and descends, sprint jumping, head hitters, ground shortcuts and faster pathing, takes falls that cost some health when that saves time, cuts corners, smooths straight runs, places blocks more freely and leans toward jumps. If you'd rather pick features one by one, leave it off and use the settings above.
@@ -161,23 +162,28 @@ They're normal Soprano settings that all start with `alto`, so `#set alto<tab>` 
 | Setting | Default | What it does |
 |---|---|---|
 | `altoRunsWhenIdle` | false | keep the survival chains (eating, mob defense, MLG) running even with no task. Off means AltoClef does nothing until you start a task |
-| `altoButler` | false | let whitelisted players whisper commands to your bot. Only names in `baritone/altoclef/altoclef_butler_whitelist.txt` can (one per line, not case sensitive), an empty whitelist means nobody, and `altoclef_butler_blacklist.txt` next to it wins over it. Whispers can run AltoClef's commands only, never `punk` or `gamma` |
+| `altoButler` | false | let whitelisted players whisper commands to your bot. Only names in `baritone/altoclef/altoclef_butler_whitelist.txt` can (one per line, not case sensitive), an empty whitelist means nobody, and `altoclef_butler_blacklist.txt` next to it wins over it. Whispers can run AltoClef's commands plus `goto`, `follow`, `stop` and `cancel`, never `punk`, `gamma` or `setgamma` |
 | `altoShowTaskChains` | true | the task HUD in the top left. `altoHudScale` (1.0, between 0.5 and 2) resizes it, `altoShowTimer` (false) adds a timer, `altoHudDetailed` (false) swaps the plain words for the developer strings from the log, for bug reports |
 | `altoMobDefense` | true | fight off or avoid mobs. `altoForceFieldStrategy` (`SMART`, or `OFF`, `FASTEST`, `DELAY`) is how the force field picks its targets |
 | `altoSwarmThreshold`, `altoPassByGraceTicks` | 3, 100 | how many melee mobs within 6 blocks make a crowd it backs away from (and fights one at a time) instead of tanking with the shield, and how many quiet ticks (no damage) before it trusts a walk past mobs that are not in its way |
+| `altoKillOrAvoidAnnoyingHostiles`, `altoHostileEngageRange`, `altoHostileEngageHeight` | true, 8, 3 | whether it deals with angry mobs at all, and the box around you (blocks out, blocks up and down) a mob has to be inside before it drops what it is doing to fight or run. Mobs outside the box are left alone until they come at you or shoot with a clear line |
 | `altoAutoEat`, `altoAutoRespawn`, `altoAutoReconnect` | true | what they say |
 | `altoIdleCommand` | empty | a `#` command line to run when idle, only used with `altoRunsWhenIdle` |
 | `altoDeathCommand` | empty | what to send after respawning. `{deathmessage}` is replaced with the death message, and several can be separated with ` & `. A `#` line runs as a command, a `/` line goes to the server, anything else is chat |
 | `altoThrowawayItems`, `altoImportantItems` | | items it can throw away, and items it won't |
 | `altoHomeBasePosition` | | the position AltoClef treats as its home base |
 | `altoAreasToProtect` | | areas it won't break or build in, as `x1/y1/z1->x2/y2/z2` with an optional `@nether` or `@end` on the end, separated by commas: `-10/0/-10->10/255/10,1000/50/2000->1200/255/2100@nether` |
-| `altoLavaPoolPortal` | true | `#gamer` builds its nether portal on a lava row at least four wide with a throwaway mold (about 8 blocks, a water bucket and an empty one) instead of casting every obsidian block separately. No pool or any trouble and it goes back to the cast, so off just means always cast |
-| `altoPickupItemsInWater` | false | go after dropped items that are lying in water. Off, it skips them unless it can grab them from dry land, so it doesn't drown itself chasing a drop in a lake |
-| `altoResourceMineRange`, `altoEntityReachRange`, `altoContainerItemMoveDelay` | | how far it looks for ores, how far it reaches for entities, and the delay between container clicks |
+| `altoLavaPoolPortal` | true | `#gamer` builds its nether portal on a lava row at least four wide with a throwaway 2x4 slab (8 blocks) and lava and water buckets cycled with an empty one, lit with flint and steel or a fire charge, instead of casting every obsidian block separately. No pool or any trouble and it goes back to the cast, so off just means always cast |
+| `altoPickupItemsInWater` | false | go after dropped items that are lying in water. Off, it skips them unless it can grab them from dry land or from a puddle one block deep, so it doesn't drown itself chasing a drop in a lake |
+| `altoAsyncSmelting`, `altoUseBlastFurnace`, `altoUseNearbyBlastFurnace`, `altoNearbyBlastFurnaceRange` | false, true, true, 48 | smelting. Async loads the furnace and walks away instead of waiting out the cook, which only makes sense when something comes back for it. `#gamer` turns it on by itself for its iron phase, leave it off for a plain `#get`. `altoUseBlastFurnace` is whether it crafts a blast furnace of its own (`#gamer` turns it off for the run so the iron goes into armor). The nearby ones are about using a blast furnace that is already standing within that many blocks, like a village armorer has |
+| `altoMinimumFoodAllowed`, `altoFoodUnitsToCollect` | 0, 0 | keep at least this much food on you and collect this much when it runs short. 0 means it never goes looking for food on its own |
+| `altoResourceMineRange`, `altoEntityReachRange`, `altoContainerItemMoveDelay` | | how far away a normally crafted block (a crafting table) may be mined instead of made, how far it reaches for entities, and the delay between container clicks |
 
 AltoClef uses Soprano's own `replantCrops` setting instead of having one of its own.
 
-The rest of its config (`beat_minecraft.json`, the food chain, block tracker and MLG configs, `butler.json`, `CustomTasks.json`) is still json under `baritone/altoclef/`, and `altoreload` re-reads it. Settings aren't in there any more, they live in `#set`. If you have an old `baritone/altoclef/altoclef_settings.json`, its values are imported once on first start (only into settings you have not changed yourself) and the file is renamed to `altoclef_settings.json.migrated`. A file that is not valid json is not imported and gets renamed to `altoclef_settings.json.failed`.
+The rest of its config (`beat_minecraft.json`, the food chain, block tracker and MLG configs, `butler.json`, `CustomTasks.json`) is still json under `baritone/altoclef/configs/`, and `altoreload` re-reads it. Settings aren't in there any more, they live in `#set`. If you have an old `baritone/altoclef/altoclef_settings.json`, its values are imported once on first start (only into settings you have not changed yourself) and the file is renamed to `altoclef_settings.json.migrated`. A file that is not valid json is not imported and gets renamed to `altoclef_settings.json.failed`.
+
+`#gamer` keeps its run in `<world>/altoclef/gamer.json`, which is why a relog or a crash carries on where it was, and `#gamer reset` deletes it. `configs/beat_minecraft.json` is versioned: a file from an older version keeps your numbers but gets the new default kit lists (the old one is kept as `beat_minecraft.json.bak`), and anything older than that is replaced by the defaults.
 
 # Troubleshooting / common issues
 

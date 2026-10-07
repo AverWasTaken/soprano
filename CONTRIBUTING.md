@@ -4,11 +4,11 @@ Bug reports, ideas and pull requests are all welcome.
 
 ## Branches
 
-Each branch is one Minecraft version (`1.21.4` right now). Open your pull request against the version branch you're targeting. `main` will track the newest Minecraft version once there's a port, so don't target it for a fix to an older version.
+Each branch is one Minecraft version. `26.3` is the newest one (the default branch) and `1.21.4` is the 1.21.4 branch. Open your pull request against the version branch you are targeting, and do not target `26.3` for a fix to an older version.
 
 ## Building and testing
 
-You need JDK 21, same as [the CI workflow](.github/workflows/gradle_build.yml).
+You need the JDK in `java_version` in `gradle.properties` (21 on `1.21.4`, 25 on `26.3`), same as [the CI workflow](.github/workflows/gradle_build.yml).
 
 ```
 ./gradlew build            # everything, jars end up in dist/

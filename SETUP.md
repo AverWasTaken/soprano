@@ -2,7 +2,7 @@
 
 Soprano installs as a Fabric, Forge or NeoForge mod. Download the jar for your Minecraft version and loader from the [releases page](https://github.com/AverWasTaken/soprano/releases) and put it in your `mods` folder. If you had Baritone installed, take it out first. Soprano replaces it, and the two will fight over the same classes.
 
-Each branch of the repo is one Minecraft version, and each Minecraft version has its own release line (Soprano 1.0.x is Minecraft 1.21.4), tagged like `soprano-v1.0.0`. Right now that's 1.21.4. If your version isn't in the releases, there isn't a port yet.
+Each branch of the repo is one Minecraft version, and each Minecraft version has its own release line (Soprano 1.1.x is Minecraft 26.3, 1.0.x is Minecraft 1.21.4), tagged like `soprano-v1.1.0`. `26.3` is the newest Minecraft version, and the `1.21.4` branch is 1.21.4. If your version isn't in the releases, there isn't a port yet.
 
 Once it's installed, see [the usage page](USAGE.md).
 
