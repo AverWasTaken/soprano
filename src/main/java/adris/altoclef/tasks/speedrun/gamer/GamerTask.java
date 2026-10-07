@@ -1,6 +1,7 @@
 package adris.altoclef.tasks.speedrun.gamer;
 
 import adris.altoclef.AltoClef;
+import adris.altoclef.BotBehaviour;
 import adris.altoclef.Debug;
 import adris.altoclef.eventbus.EventBus;
 import adris.altoclef.eventbus.Subscription;
@@ -42,6 +43,7 @@ import org.apache.commons.lang3.ArrayUtils;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 // beats the game: a phase state machine over PhaseHandlers with its memory in RunState (see gamer-design.md). this class is
 // the part that touches the game: facts, deaths, saving, the hud and the settings for the run. which phase we are in and
@@ -76,6 +78,7 @@ public class GamerTask extends Task {
     // defense) and that is only the task coming back, never a new run
     private boolean begun;
     private boolean pushed;
+    private BotBehaviour.State level;
     // watches for crafting tables and furnaces we place, so PrepSupport only ever takes back its own (OwnTables)
     private Subscription<BlockPlaceEvent> placeWatch;
     // the engine owns the end portal walk flag: whatever a handler asked for last is put back on every (re)start
@@ -235,11 +238,25 @@ public class GamerTask extends Task {
     // ---- behaviour and settings for the run
 
     private void applyBehaviour(AltoClef mod) {
-        mod.getBehaviour().push();
+        // kept so the cobble floor lands in our level and not in whichever child is on top this tick
+        level = mod.getBehaviour().push();
         pushed = true;
         mod.getBehaviour().addProtectedItems(PROTECTED);
         mod.getBlockTracker().trackBlock(TRACKED);
         applyRunSettings();
+    }
+
+    // the cobble the stone kit still eats stays spoken for in our own level, whatever task level is on top. a craft only
+    // reserves its own recipe, so the sword and the furnace got built into the staircase and mined again. the task reserves
+    // are slices of this need, BotBehaviour takes the bigger of the two and does not add them. only GATHER and IRON have
+    // a stone kit, and only plain cobble: the build blocks the later phases place on purpose are not ours to hold back
+    private void updateStoneFloor(AltoClef mod) {
+        if (level == null || state == null) {
+            return;
+        }
+        boolean kitPhase = state.phase == GamerPhase.GATHER || state.phase == GamerPhase.IRON;
+        int cobble = kitPhase ? KitPlanner.stoneFloor(facts, cfg.overworld) : 0;
+        mod.getBehaviour().setReserveFloor(level, cobble > 0 ? Map.of(Items.COBBLESTONE, cobble) : Map.of());
     }
 
     private void releaseBehaviour(AltoClef mod) {
@@ -255,6 +272,11 @@ public class GamerTask extends Task {
             releaseRunSettings();
         } catch (RuntimeException e) {
             Debug.logInternal("gamer: releasing settings " + e);
+        }
+        if (level != null) {
+            // empty floor first: if the pop below lands on a different level the cobble must not stay spoken for
+            mod.getBehaviour().setReserveFloor(level, Map.of());
+            level = null;
         }
         if (pushed) {
             pushed = false;
@@ -496,6 +518,7 @@ public class GamerTask extends Task {
         takeLoadedFurnaces();
         // the furnaces read this: wood the kit still wants is not fuel
         WoodReserve.update(facts, cfg.overworld, cfg.end.beds);
+        updateStoneFloor(mod);
         if (facts.creditsShown()) {
             machine.finish(true);
             return null;

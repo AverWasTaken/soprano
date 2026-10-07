@@ -168,6 +168,20 @@ public class ThrowawayPicksTest {
     }
 
     @Test
+    public void aStackPickedByTheBuilderFollowsTheSameReserveRule() {
+        // nobody is saving an unprotected item
+        assertTrue(ThrowawayPicks.mayBurn(false, false, 0));
+        assertTrue(ThrowawayPicks.mayBurn(false, true, 0));
+        // a protected one is for movements only, and only above the reserve
+        assertFalse(ThrowawayPicks.mayBurn(true, false, 64));
+        assertFalse(ThrowawayPicks.mayBurn(true, true, 0));
+        assertTrue(ThrowawayPicks.mayBurn(true, true, 1));
+        // and it agrees with order() about the same stack
+        assertEquals(ThrowawayPicks.mayBurn(true, true, 0), ThrowawayPicks.order(BAG, "cobble"::equals, x -> 0, true).contains("cobble"));
+        assertEquals(ThrowawayPicks.mayBurn(true, true, 3), ThrowawayPicks.order(BAG, "cobble"::equals, x -> 3, true).contains("cobble"));
+    }
+
+    @Test
     public void failureReasonsComeOutInOrder() {
         assertEquals(ThrowawayPicks.Failure.PAUSED, ThrowawayPicks.classify(true, true, true, true, true));
         assertEquals(ThrowawayPicks.Failure.AVOIDED, ThrowawayPicks.classify(false, true, false, false, false));

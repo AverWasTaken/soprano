@@ -24,6 +24,8 @@ public class FakeFacts implements GamerFacts {
     public boolean credits;
     // one of our tables standing next to us (it is out of the bag, the planner still counts it)
     public boolean tablePlaced;
+    // and a furnace of ours on the ground, not in the bag
+    public boolean furnacePlaced;
     public int fingerprint;
     public boolean earlyIronPick = true;
     // the first raw iron is in a furnace and the job is not recorded yet
@@ -127,6 +129,11 @@ public class FakeFacts implements GamerFacts {
     @Override
     public boolean tablePlacedNearby() {
         return tablePlaced;
+    }
+
+    @Override
+    public boolean furnacePlacedNearby() {
+        return furnacePlaced;
     }
 
     @Override

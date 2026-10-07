@@ -593,6 +593,49 @@ public class KitPlannerTest {
         assertEquals(15, KitPlanner.stoneNeed(f, cfg));
     }
 
+    // ---- stone floor (what the movements must not spend) ----
+
+    @Test
+    public void stoneFloorIsTheWholeKitWithoutSlackOrWhatWeHold() {
+        // two picks 6, sword 2, furnace 8: the slack is for mining, not for keeping
+        assertEquals(16, KitPlanner.stoneFloor(f, cfg));
+        // holding cobble does not shrink it, the held cobble IS what it keeps
+        assertEquals(16, KitPlanner.stoneFloor(new FakeFacts().give(Items.COBBLESTONE, 18), cfg));
+        assertEquals(16, KitPlanner.stoneFloor(new FakeFacts().give(Items.COBBLESTONE, 3), cfg));
+        // and deepslate is no cobble but it is not a reason to change the number either
+        assertEquals(16, KitPlanner.stoneFloor(new FakeFacts().give(Items.COBBLED_DEEPSLATE, 30), cfg));
+    }
+
+    @Test
+    public void stoneFloorFallsAsTheStoneItemsGetMade() {
+        // the whole log: picks crafted, then the sword, then the furnace
+        FakeFacts made = new FakeFacts().give(Items.COBBLESTONE, 12).give(Items.STONE_PICKAXE, 2);
+        assertEquals(10, KitPlanner.stoneFloor(made, cfg));
+        made.give(Items.STONE_SWORD, 1);
+        assertEquals(8, KitPlanner.stoneFloor(made, cfg));
+        made.give(Items.FURNACE, 1);
+        assertEquals(0, KitPlanner.stoneFloor(made, cfg));
+        // one pick down, and an iron pick covers both of them
+        assertEquals(13, KitPlanner.stoneFloor(new FakeFacts().give(Items.STONE_PICKAXE, 1), cfg));
+        assertEquals(10, KitPlanner.stoneFloor(new FakeFacts().give(Items.IRON_PICKAXE, 1), cfg));
+    }
+
+    @Test
+    public void aFurnaceOnTheGroundIsHeldForTheStoneFloor() {
+        // standing next to us and coming back to the bag: 8 less to keep
+        f.furnacePlaced = true;
+        assertEquals(8, KitPlanner.stoneFloor(f, cfg));
+        // the same fact says nothing about what is left to mine, the planner still sees a furnace to make
+        assertEquals(18, KitPlanner.stoneNeed(f, cfg));
+        // a furnace in the bag AND one on the ground is still one furnace
+        f.give(Items.FURNACE, 1);
+        assertEquals(8, KitPlanner.stoneFloor(f, cfg));
+        // the table never cost any cobble, so it changes nothing
+        FakeFacts table = new FakeFacts();
+        table.tablePlaced = true;
+        assertEquals(16, KitPlanner.stoneFloor(table, cfg));
+    }
+
     @Test
     public void stoneIsMinedAfterTheWoodAndBeforeTheCrafts() {
         f.give(Items.OAK_LOG, 15).give(Items.WOODEN_AXE, 1);

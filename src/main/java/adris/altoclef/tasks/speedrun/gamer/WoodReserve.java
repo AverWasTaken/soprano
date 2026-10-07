@@ -153,6 +153,11 @@ public final class WoodReserve {
         }
 
         @Override
+        public boolean furnacePlacedNearby() {
+            return base.furnacePlacedNearby();
+        }
+
+        @Override
         public boolean creditsShown() {
             return base.creditsShown();
         }

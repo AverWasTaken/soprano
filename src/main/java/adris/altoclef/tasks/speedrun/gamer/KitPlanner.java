@@ -157,19 +157,39 @@ public final class KitPlanner {
     // the slack is part of what we hold ourselves to (same as woodNeed), the crafts eat held and wanted in step so the
     // answer stays 0 through them. the gather only: once ore is in the bag a worn pick is a just in time craft
     public static int stoneNeed(GamerFacts f, OverworldConfig cfg) {
+        int wanted = stoneWanted(f, cfg, false);
+        if (wanted <= 0) {
+            return 0;
+        }
+        return Math.max(0, wanted + STONE_SLACK - held(f, COBBLE));
+    }
+
+    // the cobble the stone items still missing from the kit will eat, held cobble NOT taken off and no slack. this is what
+    // the bag has to keep hold of for the crafts, as opposed to stoneNeed, which is what is left to go and mine. the
+    // movements get it as a floor (BotBehaviour.setReserveFloor): a task only reserves the recipe it is on right now (6 for
+    // two picks), the sword and the furnace were up for grabs as scaffolding and the gather came right back for them.
+    // a furnace of ours standing close by is a furnace we own (8 cobble the kit is not about to spend), same as a placed
+    // table is held for the planks. plain cobblestone only, the build blocks the iron phase places on purpose are not in here
+    public static int stoneFloor(GamerFacts f, OverworldConfig cfg) {
+        return stoneWanted(f, cfg, f.furnacePlacedNearby());
+    }
+
+    private static int stoneWanted(GamerFacts f, OverworldConfig cfg, boolean furnaceStanding) {
         List<KitItem> all = new ArrayList<>(cfg.starterKit);
         all.addAll(cfg.ironKit);
         int wanted = 0;
         for (KitItem k : all) {
             Integer cost = COBBLE_COST.get(k.item);
-            if (cost != null) {
-                wanted += cost * missing(f, k.item, k.count);
+            if (cost == null) {
+                continue;
             }
+            int missing = missing(f, k.item, k.count);
+            if (furnaceStanding && k.item.equals("furnace")) {
+                missing = Math.max(0, missing - 1);
+            }
+            wanted += cost * missing;
         }
-        if (wanted <= 0) {
-            return 0;
-        }
-        return Math.max(0, wanted + STONE_SLACK - held(f, COBBLE));
+        return wanted;
     }
 
     // logs still to fetch for everything wooden the overworld will craft, one log of slack included, 0 when we hold

@@ -229,6 +229,15 @@ public final class InventoryBehavior extends Behavior implements Helper {
         return ThrowawayPicks.order(Baritone.settings().acceptableThrowawayItems.value, alto::isItemProtected, item -> ThrowawayPicks.spare(heldCount(item), alto.reservedCount(item)), allowProtected);
     }
 
+    // the same spare-above-the-reserve rule movementThrowaways applies, for the lookups that match a stack by what the builder
+    // wants there. those skipped it and would grab a cobble the recipe was saving as long as it was the right block
+    private boolean mayBurn(Item item, boolean allowProtected) {
+        AltoClefSettings alto = AltoClefSettings.getInstance();
+        boolean isProtected = alto.isItemProtected(item);
+        int spare = isProtected ? ThrowawayPicks.spare(heldCount(item), alto.reservedCount(item)) : 0;
+        return ThrowawayPicks.mayBurn(isProtected, allowProtected, spare);
+    }
+
     // everywhere it could be, a stack in the offhand is just as placeable. read fresh every ask: a placement takes one off
     // the stack, and the next ask has to see that or we'd spend the reserve one block at a time
     private int heldCount(Item item) {
@@ -283,10 +292,10 @@ public final class InventoryBehavior extends Behavior implements Helper {
             return false;
         }
         BlockState maybe = baritone.getBuilderProcess().placeAt(x, y, z, baritone.bsi.get0(x, y, z));
-        if (maybe != null && throwaway(select, stack -> stack.getItem() instanceof BlockItem && maybe.equals(((BlockItem) stack.getItem()).getBlock().getStateForPlacement(new BlockPlaceContext(new UseOnContext(ctx.world(), ctx.player(), InteractionHand.MAIN_HAND, stack, new BlockHitResult(new Vec3(ctx.player().position().x, ctx.player().position().y, ctx.player().position().z), Direction.UP, ctx.playerFeet(), false)) {}))))) {
+        if (maybe != null && throwaway(select, stack -> stack.getItem() instanceof BlockItem && mayBurn(stack.getItem(), allowProtected) && maybe.equals(((BlockItem) stack.getItem()).getBlock().getStateForPlacement(new BlockPlaceContext(new UseOnContext(ctx.world(), ctx.player(), InteractionHand.MAIN_HAND, stack, new BlockHitResult(new Vec3(ctx.player().position().x, ctx.player().position().y, ctx.player().position().z), Direction.UP, ctx.playerFeet(), false)) {}))))) {
             return true; // gotem
         }
-        if (maybe != null && throwaway(select, stack -> stack.getItem() instanceof BlockItem && ((BlockItem) stack.getItem()).getBlock().equals(maybe.getBlock()))) {
+        if (maybe != null && throwaway(select, stack -> stack.getItem() instanceof BlockItem && mayBurn(stack.getItem(), allowProtected) && ((BlockItem) stack.getItem()).getBlock().equals(maybe.getBlock()))) {
             return true;
         }
         for (Item item : movementThrowaways(allowProtected)) {

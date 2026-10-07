@@ -55,6 +55,12 @@ final class ThrowawayPicks {
         return (int) Math.max(0L, (long) held - reserve);
     }
 
+    // the same call for one stack picked by some other rule than the acceptable list (the builder asking for the exact block):
+    // nobody is saving an unprotected item, and a protected one is only fair game for a movement with something above its reserve
+    static boolean mayBurn(boolean isProtected, boolean allowProtected, int spare) {
+        return !isProtected || (allowProtected && spare > 0);
+    }
+
     // unprotected first, so a path burns dirt it was going to throw out anyway before it touches the cobble a recipe is
     // waiting on. protected ones only show up at all when the caller is a movement that needs the block right now, and
     // then only if there's something above their reserve (spare says how much): a failed path costs more than a cobble

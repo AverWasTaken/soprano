@@ -2,6 +2,7 @@ package adris.altoclef.tasks;
 
 import baritone.Baritone;
 import adris.altoclef.AltoClef;
+import adris.altoclef.BotBehaviour;
 import adris.altoclef.tasks.container.PickupFromContainerTask;
 import adris.altoclef.tasks.movement.DefaultGoToDimensionTask;
 import adris.altoclef.tasks.movement.PickupDroppedItemTask;
@@ -57,6 +58,9 @@ public abstract class ResourceTask extends Task implements ITaskCanForce {
     private Item[] _allMatches;
     // and how many of each we're collecting, so the pathing side knows how much of it is ours to keep. same laziness
     private Map<Item, Integer> _reserve;
+    // our own behaviour level. the reserve goes in here and not in whatever is on top, a child task pushes its own on every
+    // tick of ours and the numbers used to land in it (and count twice)
+    private BotBehaviour.State _level;
     private static final int CONTAINER_LOOKUP_TICKS = 20;
     private int _containerLookupCooldown = 0;
 
@@ -100,7 +104,7 @@ public abstract class ResourceTask extends Task implements ITaskCanForce {
 
     @Override
     protected void onStart(AltoClef mod) {
-        mod.getBehaviour().push();
+        _level = mod.getBehaviour().push();
         _containerLookupCooldown = 0;
         //removeThrowawayItems(_itemTargets);
         if (_mineIfPresent != null) {
@@ -116,7 +120,7 @@ public abstract class ResourceTask extends Task implements ITaskCanForce {
             _reserve = reserveFor(_itemTargets);
         }
         // protected, but only up to the count we're after: the walk out of the hole may build with cobble above it
-        mod.getBehaviour().reserveProtectedItems(_reserve);
+        mod.getBehaviour().reserveProtectedItems(_level, _reserve);
         // If we have an item in an INACCESSIBLE inventory slot
         if (!ITaskUsesCraftingGrid.isUsingGrid(this) || _ensureFreeCraftingGridTask.isActive()) {
             for (ItemTarget target : _itemTargets) {
@@ -241,6 +245,7 @@ public abstract class ResourceTask extends Task implements ITaskCanForce {
     @Override
     protected void onStop(AltoClef mod, Task interruptTask) {
         mod.getBehaviour().pop();
+        _level = null;
         if (_mineIfPresent != null) {
             mod.getBlockTracker().stopTracking(_mineIfPresent);
         }

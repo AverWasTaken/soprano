@@ -984,6 +984,16 @@ public interface MovementHelper extends ActionCosts, Helper {
         Helper.HELPER.logDirect("can't place a block at " + placeAt.getX() + " " + placeAt.getY() + " " + placeAt.getZ() + " mid movement: " + why);
     }
 
+    // nothing in the bag we're allowed to put there: the movement can't finish, and must not say it's about to place
+    private static PlaceResult noThrowaway(MovementState state, IBaritone baritone, BlockPos placeAt, boolean allowProtected) {
+        Helper.HELPER.logDebug("bb pls get me some blocks. dirt, netherrack, cobble");
+        if (allowProtected) { // backfill shrugging at an empty bag isn't news
+            logNoThrowaway(state, baritone, placeAt);
+        }
+        state.setStatus(MovementStatus.UNREACHABLE);
+        return PlaceResult.NO_OPTION;
+    }
+
     static PlaceResult attemptToPlaceABlock(MovementState state, IBaritone baritone, BlockPos placeAt, boolean preferDown, boolean wouldSneak, boolean allowProtected) {
         IPlayerContext ctx = baritone.getPlayerContext();
         Optional<Rotation> direct = RotationUtils.reachable(ctx, placeAt, wouldSneak); // we assume that if there is a block there, it must be replacable
@@ -996,12 +1006,7 @@ public interface MovementHelper extends ActionCosts, Helper {
             BlockPos against1 = placeAt.relative(HORIZONTALS_BUT_ALSO_DOWN_____SO_EVERY_DIRECTION_EXCEPT_UP[i]);
             if (MovementHelper.canPlaceAgainst(ctx, against1)) {
                 if (!((Baritone) baritone).getInventoryBehavior().selectThrowawayForLocation(false, placeAt.getX(), placeAt.getY(), placeAt.getZ(), allowProtected)) { // get ready to place a throwaway block
-                    Helper.HELPER.logDebug("bb pls get me some blocks. dirt, netherrack, cobble");
-                    if (allowProtected) { // backfill shrugging at an empty bag isn't news
-                        logNoThrowaway(state, baritone, placeAt);
-                    }
-                    state.setStatus(MovementStatus.UNREACHABLE);
-                    return PlaceResult.NO_OPTION;
+                    return noThrowaway(state, baritone, placeAt, allowProtected);
                 }
                 double faceX = (placeAt.getX() + against1.getX() + 1.0D) * 0.5D;
                 double faceY = (placeAt.getY() + against1.getY() + 0.5D) * 0.5D;
@@ -1026,18 +1031,24 @@ public interface MovementHelper extends ActionCosts, Helper {
             Direction side = ((BlockHitResult) ctx.objectMouseOver()).getDirection();
             // only way for selectedBlock.equals(placeAt) to be true is if it's replaceable
             if (selectedBlock.equals(placeAt) || (MovementHelper.canPlaceAgainst(ctx, selectedBlock) && selectedBlock.relative(side).equals(placeAt))) {
+                // the answer used to be dropped on the floor, so a bag with nothing to spare still said ready and the click went
+                // out with whatever was in hand (the cobble the recipe was saving, or a pickaxe)
+                if (!((Baritone) baritone).getInventoryBehavior().selectThrowawayForLocation(true, placeAt.getX(), placeAt.getY(), placeAt.getZ(), allowProtected)) {
+                    return noThrowaway(state, baritone, placeAt, allowProtected);
+                }
                 if (wouldSneak) {
                     state.setInput(Input.SNEAK, true);
                 }
-                ((Baritone) baritone).getInventoryBehavior().selectThrowawayForLocation(true, placeAt.getX(), placeAt.getY(), placeAt.getZ(), allowProtected);
                 return PlaceResult.READY_TO_PLACE;
             }
         }
         if (found) {
+            if (!((Baritone) baritone).getInventoryBehavior().selectThrowawayForLocation(true, placeAt.getX(), placeAt.getY(), placeAt.getZ(), allowProtected)) {
+                return noThrowaway(state, baritone, placeAt, allowProtected);
+            }
             if (wouldSneak) {
                 state.setInput(Input.SNEAK, true);
             }
-            ((Baritone) baritone).getInventoryBehavior().selectThrowawayForLocation(true, placeAt.getX(), placeAt.getY(), placeAt.getZ(), allowProtected);
             return PlaceResult.ATTEMPTING;
         }
         return PlaceResult.NO_OPTION;

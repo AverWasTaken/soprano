@@ -195,16 +195,110 @@ public class BotBehaviour {
     // getting its own cobble pillared into the ground, then mining more, then pillaring it again). levels add up, and an
     // item any level protected without a number (addProtectedItems) stays whole. it only ever adds or overwrites keys: a
     // caller whose map shrinks has to zero the keys it drops, or removeProtectedItems them, or the old count sticks till pop
+    //
+    // this form writes into whatever level is on top right now, which is only the caller's own if nobody pushed on top of it.
+    // a task that has children should keep the State its push() handed back and use the form below
     public void reserveProtectedItems(Map<Item, Integer> counts) {
+        reserveProtectedItems(null, counts);
+    }
+
+    // same, into the level the caller pushed. a parent writes every tick, and once a child pushed its own level the plain
+    // form was putting the parent's numbers in the child's level while the parent's own copy sat there stale. the sum then
+    // read double for as long as the child lived (19, 36, 19, 36, and every flip was an applyState). null means the top
+    // level, and a level that has been popped already is ignored: its numbers went with it
+    public void reserveProtectedItems(State level, Map<Item, Integer> counts) {
+        State target = level == null ? current() : level;
+        List<State> from = levelsFrom(_states, target);
+        if (from.isEmpty()) {
+            return;
+        }
         boolean changed = false;
         for (Map.Entry<Item, Integer> entry : counts.entrySet()) {
-            changed |= current().protectedItems.add(entry.getKey());
-            Integer old = current().reserve.put(entry.getKey(), entry.getValue());
+            // a child pushed after this level copied its protected set, so the ones above have to hear about it too
+            for (State s : from) {
+                changed |= s.protectedItems.add(entry.getKey());
+            }
+            Integer old = target.reserve.put(entry.getKey(), entry.getValue());
             changed |= !entry.getValue().equals(old);
         }
         if (changed) {
             current().applyState();
         }
+    }
+
+    // a floor for a level: at least this many of each item stay spoken for for as long as the level lives, however the task
+    // levels above come and go. the task reserves are slices of one outstanding need (6 of the 18 cobble the stone kit wants),
+    // so they do not add to a floor, the biggest of the two wins (see sumReserves). unlike a reserve the whole map is
+    // replaced: an item that is gone from it (or at 0) stops being protected, unless somebody else reserved it too
+    public void setReserveFloor(State level, Map<Item, Integer> floor) {
+        if (level == null) {
+            return;
+        }
+        List<State> from = levelsFrom(_states, level);
+        if (from.isEmpty()) {
+            return;
+        }
+        boolean changed = false;
+        for (Map.Entry<Item, Integer> entry : floor.entrySet()) {
+            if (entry.getValue() > 0) {
+                changed |= claimFloor(from, entry.getKey());
+            }
+        }
+        Map<Item, Integer> next = new HashMap<>();
+        for (Map.Entry<Item, Integer> entry : floor.entrySet()) {
+            next.put(entry.getKey(), Math.max(0, entry.getValue()));
+        }
+        for (Item gone : level.floor.keySet()) {
+            // stays in the map at 0 so a child level that copied the protection reads "nothing spoken for" and not "all of it"
+            if (next.getOrDefault(gone, 0) <= 0) {
+                next.put(gone, 0);
+                changed |= releaseFloor(from, gone);
+            }
+        }
+        if (!next.equals(level.floor)) {
+            level.floor.clear();
+            level.floor.putAll(next);
+            changed = true;
+        }
+        if (changed) {
+            current().applyState();
+        }
+    }
+
+    private static boolean claimFloor(List<State> from, Item item) {
+        boolean changed = false;
+        for (State s : from) {
+            if (s.protectedItems.add(item)) {
+                s.floorAdded.add(item);
+                changed = true;
+            }
+        }
+        return changed;
+    }
+
+    // only takes the protection back where the floor was what put it, and nobody else has since asked for the same item
+    private static boolean releaseFloor(List<State> from, Item item) {
+        boolean changed = false;
+        for (State s : from) {
+            if (s.floorAdded.remove(item) && !s.reserve.containsKey(item) && !s.wholeProtected.contains(item)) {
+                changed |= s.protectedItems.remove(item);
+            }
+        }
+        return changed;
+    }
+
+    // the levels from the top of the stack down to and including `level`, which are the ones that have it underneath them
+    // (and so inherited a copy of what it protects). empty when it is not in the stack, i.e. it was popped. pure so it can
+    // be tested without a game
+    static <S> List<S> levelsFrom(Deque<S> stack, S level) {
+        List<S> out = new ArrayList<>(4);
+        for (S s : stack) {
+            out.add(s);
+            if (s == level) {
+                return out;
+            }
+        }
+        return List.of();
     }
 
     public void removeProtectedItems(Item... items) {
@@ -302,13 +396,16 @@ public class BotBehaviour {
         push();
     }
 
-    public void push() {
+    // hands back the new level, for a task that wants to keep writing into its own (see reserveProtectedItems). the callers
+    // that do not care just ignore it
+    public State push() {
         if (_states.isEmpty()) {
             _states.push(new State());
         } else {
             // Make copy and push that
             _states.push(new State(current()));
         }
+        return _states.peek();
     }
 
     public void push(State customState) {
@@ -331,14 +428,20 @@ public class BotBehaviour {
         return popped;
     }
 
-    // what the pathing side gets to see: every level's saving added up, minus any item some level protected without a
-    // number (that one is spoken for in full, and absent from the map means exactly that). pure so it can be tested
-    // without a game. sums stop at MAX_VALUE, which is "all of it" anyway
-    static <T> Map<T, Integer> sumReserves(Collection<Map<T, Integer>> levels, Collection<Set<T>> wholeLevels) {
+    // what the pathing side gets to see: every level's saving added up, then no lower than the biggest floor, minus any item
+    // some level protected without a number (that one is spoken for in full, and absent from the map means exactly that).
+    // the floor is max'd in and not added because the task reserves under it are pieces of the same need. pure so it can be
+    // tested without a game. sums stop at MAX_VALUE, which is "all of it" anyway
+    static <T> Map<T, Integer> sumReserves(Collection<Map<T, Integer>> levels, Collection<Map<T, Integer>> floors, Collection<Set<T>> wholeLevels) {
         Map<T, Integer> out = new HashMap<>();
         for (Map<T, Integer> level : levels) {
             for (Map.Entry<T, Integer> entry : level.entrySet()) {
                 out.merge(entry.getKey(), entry.getValue(), (a, b) -> (int) Math.min((long) a + b, Integer.MAX_VALUE));
+            }
+        }
+        for (Map<T, Integer> floor : floors) {
+            for (Map.Entry<T, Integer> entry : floor.entrySet()) {
+                out.merge(entry.getKey(), entry.getValue(), Math::max);
             }
         }
         for (Set<T> whole : wholeLevels) {
@@ -347,14 +450,20 @@ public class BotBehaviour {
         return out;
     }
 
+    static <T> Map<T, Integer> sumReserves(Collection<Map<T, Integer>> levels, Collection<Set<T>> wholeLevels) {
+        return sumReserves(levels, List.of(), wholeLevels);
+    }
+
     private Map<Item, Integer> effectiveReserve() {
         List<Map<Item, Integer>> levels = new ArrayList<>();
+        List<Map<Item, Integer>> floors = new ArrayList<>();
         List<Set<Item>> wholeLevels = new ArrayList<>();
         for (State state : _states) {
             levels.add(state.reserve);
+            floors.add(state.floor);
             wholeLevels.add(state.wholeProtected);
         }
-        return sumReserves(levels, wholeLevels);
+        return sumReserves(levels, floors, wholeLevels);
     }
 
     // every clear() or addAll() on a watched collection throws the pathing snapshot away, so one that already says the
@@ -387,7 +496,7 @@ public class BotBehaviour {
         return _states.peek();
     }
 
-    class State {
+    public class State {
         /// Baritone Params
         public double followOffsetDistance;
         // insertion order, no repeats. isProtected is a contains and the pathing side asks a lot
@@ -397,6 +506,10 @@ public class BotBehaviour {
         // a count, and the ones it protected without
         public Map<Item, Integer> reserve = new HashMap<>();
         public Set<Item> wholeProtected = new HashSet<>();
+        // the least this level keeps spoken for whatever the levels above it reserve (max'd, not added), and the items the
+        // floor itself put in protectedItems, so letting go of it can tell them from the ones somebody else asked for
+        public Map<Item, Integer> floor = new HashMap<>();
+        public Set<Item> floorAdded = new HashSet<>();
         public boolean mineScanDroppedItems;
         public boolean swimThroughLava;
         public boolean allowDiagonalAscend;

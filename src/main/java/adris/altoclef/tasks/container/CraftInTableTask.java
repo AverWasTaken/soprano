@@ -2,6 +2,7 @@ package adris.altoclef.tasks.container;
 
 import baritone.Baritone;
 import adris.altoclef.AltoClef;
+import adris.altoclef.BotBehaviour;
 import adris.altoclef.tasks.CraftGenericManuallyTask;
 import adris.altoclef.tasks.CraftInInventoryTask;
 import adris.altoclef.tasks.ResourceTask;
@@ -213,6 +214,8 @@ class DoCraftInTableTask extends DoStuffInContainerTask {
     private final TimerGame _craftResetTimer = new TimerGame(CRAFT_RESET_TIMER_BONUS_SECONDS);
     private int _craftCount;
     private int _lastCraftProgress = -1;
+    // our own behaviour level, the recipe's reserve goes in it and not in a child's (see ResourceTask)
+    private BotBehaviour.State _level;
 
     public DoCraftInTableTask(RecipeTarget[] targets, boolean collect, boolean ignoreUncataloguedSlots) {
         super(Blocks.CRAFTING_TABLE, new ItemTarget("crafting_table"));
@@ -237,7 +240,7 @@ class DoCraftInTableTask extends DoStuffInContainerTask {
         super.onStart(mod);
 
         // Save the current behaviour and craft count
-        mod.getBehaviour().push();
+        _level = mod.getBehaviour().push();
         _craftCount = 0;
 
         // Check if there is an item in the cursor slot
@@ -310,6 +313,7 @@ class DoCraftInTableTask extends DoStuffInContainerTask {
 
         // Pop the behaviour from the stack
         mod.getBehaviour().pop();
+        _level = null;
     }
 
     /**
@@ -321,7 +325,7 @@ class DoCraftInTableTask extends DoStuffInContainerTask {
     @Override
     protected Task onTick(AltoClef mod) {
         // Add protected items to the behaviour
-        mod.getBehaviour().reserveProtectedItems(materialNeeds(mod));
+        mod.getBehaviour().reserveProtectedItems(_level, materialNeeds(mod));
 
         // Avoid breaking crafting tables
         if (mod.getBlockTracker().isTracking(Blocks.CRAFTING_TABLE)) {

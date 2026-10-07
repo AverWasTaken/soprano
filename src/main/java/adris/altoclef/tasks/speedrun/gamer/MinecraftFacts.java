@@ -20,6 +20,7 @@ import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 
 import java.util.ArrayList;
@@ -48,6 +49,7 @@ public final class MinecraftFacts implements GamerFacts {
     // sticky: once the credits showed up the run is over, the screen going away again must not undo that
     private boolean credits;
     private boolean tableNearby;
+    private boolean furnaceNearby;
 
     public MinecraftFacts(AltoClef mod) {
         this.mod = mod;
@@ -70,23 +72,24 @@ public final class MinecraftFacts implements GamerFacts {
             credits = true;
         }
         countItems(player);
-        tableNearby = findTableNearby(player);
+        tableNearby = state != null && standingNearby(player, state.placedTables, Blocks.CRAFTING_TABLE);
+        furnaceNearby = state != null && standingNearby(player, state.placedFurnaces, Blocks.FURNACE);
         return true;
     }
 
-    // one of the tables this run placed, still standing, and not further than the pickup would walk (the same WalkCost
-    // budget StationPickup forgets them at). overworld only, that is where placedTables are recorded
-    private boolean findTableNearby(Player player) {
-        if (state == null || dimension != Dimension.OVERWORLD || state.placedTables.isEmpty()) {
+    // one of the stations this run placed (tables, furnaces), still standing, and not further than the pickup would walk (the
+    // same WalkCost budget StationPickup forgets them at). overworld only, that is where they are recorded
+    private boolean standingNearby(Player player, List<RunState.Pos> placed, Block kind) {
+        if (dimension != Dimension.OVERWORLD || placed.isEmpty()) {
             return false;
         }
         double budget = GamerConfigs.get().overworld.tableRecoverRadius;
-        for (RunState.Pos pos : state.placedTables) {
+        for (RunState.Pos pos : placed) {
             if (OwnTables.walkCost(pos, player.getX(), player.getY(), player.getZ()) > budget) {
                 continue;
             }
             BlockPos at = new BlockPos(pos.x, pos.y, pos.z);
-            if (mod.getChunkTracker().isChunkLoaded(at) && mod.getWorld().getBlockState(at).is(Blocks.CRAFTING_TABLE)) {
+            if (mod.getChunkTracker().isChunkLoaded(at) && mod.getWorld().getBlockState(at).is(kind)) {
                 return true;
             }
         }
@@ -96,6 +99,11 @@ public final class MinecraftFacts implements GamerFacts {
     @Override
     public boolean tablePlacedNearby() {
         return tableNearby;
+    }
+
+    @Override
+    public boolean furnacePlacedNearby() {
+        return furnaceNearby;
     }
 
     private void countItems(Player player) {

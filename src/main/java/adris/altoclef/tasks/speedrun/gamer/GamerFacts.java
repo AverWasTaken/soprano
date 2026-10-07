@@ -76,6 +76,12 @@ public interface GamerFacts {
         return false;
     }
 
+    // same for a furnace of ours (RunState.placedFurnaces), standing close enough to walk back to. only the cobble floor reads
+    // it: the 8 cobble it cost are not owed to a furnace that is already on the ground
+    default boolean furnacePlacedNearby() {
+        return false;
+    }
+
     // nutrition cooking in a smoker or furnace for us right now. foodUnits() stays what is in the bag, the planner counts the
     // two together so a loaded smoker is not "no food", and the phases hold their end until the jobs are collected
     default int pendingFoodUnits() {
