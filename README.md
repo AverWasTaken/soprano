@@ -84,3 +84,7 @@ If you want to change code, read [CONTRIBUTING.md](CONTRIBUTING.md). Some of the
 Soprano is Baritone, made by [cabaletta](https://github.com/cabaletta), [leijurv](https://github.com/leijurv), Brady and all of [Baritone's contributors](https://github.com/cabaletta/baritone/graphs/contributors). Without their years of work there's nothing to fork. The pathfinder, the API, the commands and most of the movement code are theirs.
 
 Soprano is licensed under the LGPL-3.0, same as Baritone. See [LICENSE](LICENSE).
+
+## Stars over time
+
+[![Stars over time](https://api.star-history.com/svg?repos=AverWasTaken/soprano&type=Date)](https://star-history.com/#AverWasTaken/soprano&Date)
