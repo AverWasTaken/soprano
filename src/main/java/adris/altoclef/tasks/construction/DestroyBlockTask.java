@@ -604,11 +604,19 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
                 // GoalNear and GoalBlock both count standing on top of the block as arrived, which is the
                 // one place we refuse to break it from (and the step-off task shoves us off of)
                 Goal goal;
+                BlockPos feet = mod.getClientBaritone().getPlayerContext().playerFeet();
                 if (fromSide) {
                     goal = new GoalMineFromSide(_pos);
+                    if (goal.isInGoal(feet) && reach.isEmpty()) {
+                        // "from the side" only looks at offsets, so a spot by the trunk with leaves in the way counts as
+                        // arrived. the goal finished instantly every tick and we stood at the edge sneaking backwards for
+                        // 49 seconds. same way out as the branch below: walk up and touch it
+                        closeIn = true;
+                        goal = pickGoal(mod.getWorld(), _pos, true);
+                    }
                 } else {
                     goal = pickGoal(mod.getWorld(), _pos, closeIn);
-                    if (goal instanceof GoalReachBlock && goal.isInGoal(mod.getClientBaritone().getPlayerContext().playerFeet()) && reach.isEmpty()) {
+                    if (goal instanceof GoalReachBlock && goal.isInGoal(feet) && reach.isEmpty()) {
                         // already there and it still can't be hit (leaves, other logs, a wall), so touch it like before
                         closeIn = true;
                         goal = pickGoal(mod.getWorld(), _pos, true);
