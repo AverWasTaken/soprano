@@ -117,34 +117,37 @@ public class GolemRulesTest {
     @Test
     public void launchNeedCountsOnStandingOneBlockUnderTheGolem() {
         // flat ground: three blocks, plus the block of slack we always assume
-        assertEquals(4, GolemRules.launchNeed(64, 64, MARGIN, 5));
+        assertEquals(4, GolemRules.launchNeed(64, 64, MARGIN, 5, false));
         // we are far above it (a hill over the village), we walk down to its ground, same answer
-        assertEquals(4, GolemRules.launchNeed(80, 64, MARGIN, 5));
+        assertEquals(4, GolemRules.launchNeed(80, 64, MARGIN, 5, false));
         // it is on a step above us: where we end up standing follows the golem, so still the same
-        assertEquals(4, GolemRules.launchNeed(64, 65, MARGIN, 5));
+        assertEquals(4, GolemRules.launchNeed(64, 65, MARGIN, 5, false));
+        assertEquals(4, GolemRules.launchNeed(64, 65, MARGIN, 5, true));
     }
 
     @Test
     public void aGolemUpACliffOrOutOfOurTunnelIsNotStarted() {
         // the run that started this: bot in an iron tunnel, golem on the surface
-        assertEquals(-1, GolemRules.launchNeed(38, 70, MARGIN, 5));
-        assertEquals(-1, GolemRules.launchNeed(58, 65, MARGIN, 5));
-        // two up is five blocks of pillar from our real feet, the whole budget. three up is not a pillar
-        assertEquals(5, GolemRules.launchNeed(62, 64, MARGIN, 5));
-        assertEquals(-1, GolemRules.launchNeed(61, 64, MARGIN, 5));
+        assertEquals(-1, GolemRules.launchNeed(38, 70, MARGIN, 5, false));
+        assertEquals(-1, GolemRules.launchNeed(58, 65, MARGIN, 5, false));
+        // 6 up is still a walk from far away: the foot of a hill does not hide the golem on top of it
+        assertTrue(GolemRules.launchNeed(58, 64, MARGIN, 5, false) >= 0);
+        // but standing next to it, two under is five blocks of pillar from our real feet, the whole budget, and three is not
+        assertEquals(5, GolemRules.launchNeed(62, 64, MARGIN, 5, true));
+        assertEquals(-1, GolemRules.launchNeed(61, 64, MARGIN, 5, true));
         // and a pillar over the cap says no however close we are
-        assertEquals(-1, GolemRules.launchNeed(64, 64, MARGIN, 3));
+        assertEquals(-1, GolemRules.launchNeed(64, 64, MARGIN, 3, false));
     }
 
     @Test
     public void launchAndFightAgreeWhenWeStandBelowTheGolem() {
-        // standing 2 under its ground: the fight stacks from our real feet, so the launch estimate has to as well
+        // standing 2 under its ground next to it: the fight stacks from our real feet, so the launch estimate has to as well
         // (it used to assume one under and promise 4 where the fight wanted 5)
         for (int below = 0; below <= 3; below++) {
             double golemY = 70;
             double us = golemY - below;
             int fight = GolemRules.blocksToRaise(us, golemY, MARGIN, 5);
-            int launch = GolemRules.launchNeed(us, golemY, MARGIN, 5);
+            int launch = GolemRules.launchNeed(us, golemY, MARGIN, 5, true);
             if (below >= 1) {
                 assertEquals("below " + below, fight, launch);
             } else {

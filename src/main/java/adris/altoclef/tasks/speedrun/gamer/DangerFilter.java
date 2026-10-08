@@ -3,6 +3,8 @@ package adris.altoclef.tasks.speedrun.gamer;
 import adris.altoclef.AltoClef;
 import adris.altoclef.trackers.BlockTracker;
 import adris.altoclef.util.helpers.ItemHelper;
+import adris.altoclef.util.helpers.WorldHelper;
+import baritone.api.utils.Dimension;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.monster.Pillager;
@@ -125,6 +127,11 @@ public final class DangerFilter {
     // an outpost nobody has seen a live pillager at for a few minutes is gone (cleared, or we left and it despawned them),
     // its logs and wool go back on the menu unless another outpost still covers them
     private void liftExpiredBans(BlockTracker tracker) {
+        // the tracker unbans in the dimension we are standing in, so an outpost that runs out while we are in the nether
+        // waits in the queue until we are back
+        if (WorldHelper.getCurrentDimension() != Dimension.OVERWORLD) {
+            return;
+        }
         for (double[] gone : pillagerWatch.drainExpired()) {
             outpostBans.removeIf(pos -> {
                 boolean ofThatOne = Math.hypot(pos.getX() - gone[0], pos.getZ() - gone[1]) <= PILLAGER_RADIUS;

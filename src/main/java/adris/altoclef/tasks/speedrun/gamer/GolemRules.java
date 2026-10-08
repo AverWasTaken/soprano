@@ -52,13 +52,17 @@ public final class GolemRules {
 
     // pillar blocks the fight will want, decided BEFORE we walk over there (the fight itself used to find out at the foot of
     // the golem, bail, and burn the golem with it). -1 = not worth starting: too tall, or too far above us
-    public static int launchNeed(double ourFeetY, double golemFeetY, double margin, int maxBlocks) {
+    public static int launchNeed(double ourFeetY, double golemFeetY, double margin, int maxBlocks, boolean nearGolem) {
         if (golemFeetY - ourFeetY > MAX_RISE) {
             return -1;
         }
-        // our real feet when we are under the golem's ground (the fight starts from there, and assuming a block of slack
-        // under it here used to promise a pillar the fight then called too tall), the slack when we are above it because we
-        // walk down to its level before stacking
+        if (!nearGolem) {
+            // far away our feet say nothing about where we will stand at its foot (the walk there follows its ground), so
+            // count on being a block under it. using our real Y from the bottom of a hill hid every golem on top of it
+            return blocksToRaise(golemFeetY - GROUND_SLACK, golemFeetY, margin, maxBlocks);
+        }
+        // next to it the fight stacks from our real feet, and the block of slack used to promise a pillar the fight then
+        // called too tall. under its ground that is the real number, above it we still assume the slack
         return blocksToRaise(Math.min(ourFeetY, golemFeetY - GROUND_SLACK), golemFeetY, margin, maxBlocks);
     }
 

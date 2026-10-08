@@ -54,6 +54,7 @@ public final class GolemFightTask extends Task {
     private static final double REPOSITION_AFTER_SECONDS = 2.5;
     // past the soft fight cap we wait out an angry golem for this long, then leave anyway (a flag that never clears)
     private static final double HOLD_EXTRA_SECONDS = 120;
+    private static final double HOLD_EXTRA_UNTOUCHED_SECONDS = 30;
     private static final int PROGRESS_EVERY_TICKS = 100;
     private static final int HOSTILE_CHECK_TICKS = 10;
     private static final double FAR_AWAY = 24;
@@ -237,19 +238,15 @@ public final class GolemFightTask extends Task {
             missingSince = now;
         }
         hud = "Waiting for the iron golem to show up again";
-        if (hits > 0 && mod.getEntityTracker().itemDropped(Items.IRON_INGOT)) {
-            // it died somewhere we could not see
-            killed = true;
-            startLoot(mod, now, "golem out of sight but its iron is on the ground after " + hits + " hits");
-            return;
-        }
         if (now - missingSince < MISSING_TICKS) {
             return;
         }
         if (hits == 0) {
             quit(GolemRules.Abort.LOST, now, "golem vanished before we hit it");
         } else if (now - lastHitTick > (long) (cfg.golemCalmSeconds * 20)) {
-            // gone for good and it has had longer than its anger lasts. LOOT will find nothing and wrap up on its own
+            // gone for good and it has had longer than its anger lasts, so nothing is waiting for us down there. any iron on
+            // the ground is a guess (it could be anybody's), LOOT will find out
+            killed = mod.getEntityTracker().itemDropped(Items.IRON_INGOT);
             startLoot(mod, now, "golem out of sight after " + hits + " hits");
         }
     }
@@ -390,7 +387,10 @@ public final class GolemFightTask extends Task {
         boolean safe = GolemRules.safeToComeDown(true, g.isAggressive(), dist, now - lastHitTick,
                 (long) (cfg.golemCalmSeconds * 20), FAR_AWAY);
         double softCap = cfg.golemFightSeconds + cfg.golemCalmSeconds + 15;
-        if (GolemRules.leavePillar(givingUp, fightSeconds, softCap, softCap + HOLD_EXTRA_SECONDS, safe)) {
+        // a golem we never touched has no grudge against us, if it is "angry" it is busy with something else and we should not
+        // wait on that for minutes
+        double holdExtra = hits == 0 ? HOLD_EXTRA_UNTOUCHED_SECONDS : HOLD_EXTRA_SECONDS;
+        if (GolemRules.leavePillar(givingUp, fightSeconds, softCap, softCap + holdExtra, safe)) {
             if (hits == 0) {
                 // never landed one: the golem is not spent, the day was just wrong. hunt may try it again after a cooldown
                 quit(hostilesNear ? GolemRules.Abort.MONSTERS : GolemRules.Abort.OUT_OF_REACH, now, "leaving the pillar after 0 hits");

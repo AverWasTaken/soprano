@@ -21,6 +21,7 @@ import java.util.Set;
 // which is fine, the attempts cap is per instance and a relog is a fresh run of the phase anyway
 public final class GolemHunt {
     private static final int CHECK_EVERY_TICKS = 10;
+    private static final double NEAR_BLOCKS = 6;
 
     private final Set<Integer> tried = new HashSet<>();
     // golems we backed out on for a reason that was about the day (no blocks, monsters), id -> game tick they are fair game
@@ -66,10 +67,10 @@ public final class GolemHunt {
         IronGolem golem = mod.getEntityTracker().getClosestEntity(e -> e instanceof IronGolem g && g.isAlive()
                 && e.closerThan(player, cfg.golemHuntRadius)
                 && GolemRules.eligible(g.isAggressive(), tried.contains(e.getId()), GolemRules.coolingDown(now, cooldown.get(e.getId())),
-                GolemRules.launchNeed(player.getY(), g.getY(), cfg.golemSafeMargin, cfg.golemMaxPillar)), IronGolem.class)
+                launchNeed(player, g, cfg)), IronGolem.class)
                 .map(e -> (IronGolem) e).orElse(null);
         // decided here and not at the foot of the golem: that is where the fight used to find out it was 1 block short
-        int need = golem == null ? 0 : GolemRules.launchNeed(player.getY(), golem.getY(), cfg.golemSafeMargin, cfg.golemMaxPillar);
+        int need = golem == null ? 0 : launchNeed(player, golem, cfg);
         // iron need only: a hunt for the 4th pickaxe nobody asked for is not what a golem is for
         boolean ironNeeded = current != null && "iron_ingot".equals(current.catalogueName()) && current.count() > 0;
         Inputs in = new Inputs(ironNeeded, true, golem != null, golem != null && golem.isAggressive(),
@@ -89,6 +90,12 @@ public final class GolemHunt {
         task = new GolemFightTask(golem.getId(), ctx);
         ctx.progress("hunting an iron golem");
         return task;
+    }
+
+    // within a couple of pillar-starts of it our own Y is what the fight will stack from, further out it is just where we are
+    private static int launchNeed(LocalPlayer player, IronGolem golem, OverworldConfig cfg) {
+        boolean near = Math.hypot(golem.getX() - player.getX(), golem.getZ() - player.getZ()) <= NEAR_BLOCKS;
+        return GolemRules.launchNeed(player.getY(), golem.getY(), cfg.golemSafeMargin, cfg.golemMaxPillar, near);
     }
 
     // a fight that backed out because of the day (blocks, monsters, a pillar that went nowhere) hands the golem back after a
