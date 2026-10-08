@@ -164,11 +164,16 @@ public class KillAura {
 
             Optional<Entity> toHit = _targets.stream().min(StlHelper.compareValues(entity -> entity.distanceToSqr(mod.getPlayer())));
 
-            if (mod.getPlayer() == null || mod.getPlayer().getAttackStrengthScale(0) < 1) {
+            if (mod.getPlayer() == null) {
+                return;
+            }
+            // a not yet full swing is a quiet tick, unless a crit hop is about to start or is in the air (never while
+            // baritone is walking, so travelling past a mob still doesn't turn our head every tick)
+            if (mod.getPlayer().getAttackStrengthScale(0) < 1 && !mod.getControllerExtras().wantsCritTick()) {
                 return;
             }
 
-            toHit.ifPresent(entity -> attack(mod, entity, true));
+            toHit.ifPresent(entity -> attack(mod, entity, true, true));
         }
     }
 
@@ -187,6 +192,12 @@ public class KillAura {
     }
 
     private void attack(AltoClef mod, Entity entity, boolean equipSword) {
+        attack(mod, entity, equipSword, false);
+    }
+
+    // crit is only for the paced swings of the delayed aura. the crowd mode swings every 0.2 s whether the cooldown is back
+    // or not, and a machine that gets asked every fourth tick can't steer a jump
+    private void attack(AltoClef mod, Entity entity, boolean equipSword, boolean crit) {
         if (entity == null) return;
         if (!(entity instanceof LargeFireball)) {
             LookHelper.lookAt(mod, entity.getEyePosition());
@@ -205,7 +216,9 @@ public class KillAura {
                 canAttack = mod.getSlotHandler().forceDeequipHitTool();
             }
             if (canAttack) {
-                if (mod.getPlayer().onGround() || mod.getPlayer().getDeltaMovement().y() < 0 || mod.getPlayer().isInWater()) {
+                if (crit && !(entity instanceof LargeFireball)) {
+                    mod.getControllerExtras().melee(entity);
+                } else if (mod.getPlayer().onGround() || mod.getPlayer().getDeltaMovement().y() < 0 || mod.getPlayer().isInWater()) {
                     mod.getControllerExtras().attack(entity);
                 }
             }

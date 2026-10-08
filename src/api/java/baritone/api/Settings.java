@@ -2204,6 +2204,15 @@ public final class Settings {
     public final Setting<Boolean> altoLavaPoolPortal = new Setting<>(true);
 
     /**
+     * Jump for critical hits in melee. When a mob is in reach and the weapon is a few ticks from full strength the bot
+     * hops in place, drops sprint, and swings once it is coming down, which is a crit for 1.5x damage. It never hops
+     * with a shield up (kiting and standing your ground), while eating, in water or lava, on a ladder, with a ceiling
+     * right over its head, next to a ledge or lava, while baritone is walking a path, or when a plain hit already kills.
+     * Off means every swing is a plain one the moment the cooldown is full.
+     */
+    public final Setting<Boolean> altoJumpCrits = new Setting<>(true);
+
+    /**
      * A map of lowercase setting field names to their respective setting
      */
     public final Map<String, Setting<?>> byLowerName;

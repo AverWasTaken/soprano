@@ -3,8 +3,8 @@ package adris.altoclef.tasks.entity;
 import adris.altoclef.AltoClef;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.helpers.LookHelper;
-import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.StorageHelper;
+import adris.altoclef.util.helpers.WeaponPick;
 import adris.altoclef.util.slots.PlayerSlot;
 import java.util.ArrayList;
 import java.util.List;
@@ -36,13 +36,16 @@ public abstract class AbstractKillEntityTask extends AbstractDoToEntityTask {
     public static Item bestWeapon(AltoClef mod) {
         List<ItemStack> invStacks = mod.getItemStorage().getItemStacksPlayerInventory(true);
         // the old loop compared every sword against the hand and kept whichever one it looked at last
-        List<Item> candidates = new ArrayList<>();
-        // hand first, so it wins ties and we don't swap between two equal swords
-        candidates.add(StorageHelper.getItemStackInSlot(PlayerSlot.getEquipSlot()).getItem());
+        List<WeaponPick.Candidate> candidates = new ArrayList<>();
+        // hand first, so it wins ties and we don't swap between two equal weapons
+        candidates.add(WeaponPick.Candidate.of(StorageHelper.getItemStackInSlot(PlayerSlot.getEquipSlot())));
         for (ItemStack invStack : invStacks) {
-            candidates.add(invStack.getItem());
+            candidates.add(WeaponPick.Candidate.of(invStack));
         }
-        return ItemHelper.getBestSword(candidates);
+        // swords and axes by damage per swing, worn ones last (see WeaponPick). equipping goes by item, so a fresh and a
+        // worn copy of the same axe are the slot handler's coin flip. the mining tool picker never sees any of this, it
+        // only runs while we mine and an axe in hand is the right tool for a log anyway
+        return WeaponPick.best(candidates);
     }
 
     public static boolean equipWeapon(AltoClef mod) {
@@ -59,12 +62,10 @@ public abstract class AbstractKillEntityTask extends AbstractDoToEntityTask {
     protected Task onEntityInteract(AltoClef mod, Entity entity) {
         // Equip weapon
         if (!equipWeapon(mod)) {
-            float hitProg = mod.getPlayer().getAttackStrengthScale(0);
-            if (hitProg >= 1) {
-                if (mod.getPlayer().onGround() || mod.getPlayer().getDeltaMovement().y() < 0 || mod.getPlayer().isInWater()) {
-                    LookHelper.lookAt(mod, entity.getEyePosition());
-                    mod.getControllerExtras().attack(entity);
-                }
+            // a crit hop starts a few ticks before the cooldown is full, so those ticks count while jumping is on
+            if (mod.getPlayer().getAttackStrengthScale(0) >= 1 || mod.getControllerExtras().wantsCritTick()) {
+                LookHelper.lookAt(mod, entity.getEyePosition());
+                mod.getControllerExtras().melee(entity);
             }
         }
         return null;

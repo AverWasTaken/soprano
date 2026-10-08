@@ -22,6 +22,7 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.LeavesBlock;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.level.block.entity.FuelValues;
+import net.minecraft.world.entity.ai.attributes.Attribute;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.item.DiggerItem;
@@ -479,40 +480,51 @@ public class ItemHelper {
 
     // a bare player hits for 1 (Player.createAttributes), the sword's own attribute is on top of that
     private static final double PLAYER_BASE_ATTACK_DAMAGE = 1.0;
+    // and swings 4 times a second with nothing in hand. a sword's -2.4 is what makes it 1.6, an axe's -3.2 makes it 0.8
+    private static final double PLAYER_BASE_ATTACK_SPEED = 4.0;
 
     // damage of one full charge hit with this item in the main hand, straight from the attribute modifiers
     // component. fists are 1, a wooden sword is 4, netherite is 8. no enchants (sharpness) in here
     public static float getAttackDamage(Item item) {
+        return (float) mainHandAttribute(item, Attributes.ATTACK_DAMAGE, PLAYER_BASE_ATTACK_DAMAGE);
+    }
+
+    // full swings per second with this in the main hand. fists 4, sword 1.6, wooden axe 0.8. the tie break when two
+    // weapons hit for the same (see WeaponPick)
+    public static float getAttackSpeed(Item item) {
+        return (float) mainHandAttribute(item, Attributes.ATTACK_SPEED, PLAYER_BASE_ATTACK_SPEED);
+    }
+
+    private static double mainHandAttribute(Item item, Holder<Attribute> attribute, double base) {
         ItemAttributeModifiers modifiers = item.components().get(DataComponents.ATTRIBUTE_MODIFIERS);
         if (modifiers == null) {
-            return (float) PLAYER_BASE_ATTACK_DAMAGE;
+            return base;
         }
         // same order the attribute instance uses: base, then all adds, then multiply-base off that, then multiply-total.
         // ItemAttributeModifiers#compute doesn't look at which attribute an entry is for (attack speed would leak in), so no using it
-        double base = PLAYER_BASE_ATTACK_DAMAGE;
         double value = base;
         for (ItemAttributeModifiers.Entry entry : modifiers.modifiers()) {
-            if (isMainHandAttackDamage(entry) && entry.modifier().operation() == AttributeModifier.Operation.ADD_VALUE) {
+            if (isMainHand(entry, attribute) && entry.modifier().operation() == AttributeModifier.Operation.ADD_VALUE) {
                 value += entry.modifier().amount();
             }
         }
         double afterAdds = value;
         for (ItemAttributeModifiers.Entry entry : modifiers.modifiers()) {
-            if (isMainHandAttackDamage(entry) && entry.modifier().operation() == AttributeModifier.Operation.ADD_MULTIPLIED_BASE) {
+            if (isMainHand(entry, attribute) && entry.modifier().operation() == AttributeModifier.Operation.ADD_MULTIPLIED_BASE) {
                 value += afterAdds * entry.modifier().amount();
             }
         }
         for (ItemAttributeModifiers.Entry entry : modifiers.modifiers()) {
-            if (isMainHandAttackDamage(entry) && entry.modifier().operation() == AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL) {
+            if (isMainHand(entry, attribute) && entry.modifier().operation() == AttributeModifier.Operation.ADD_MULTIPLIED_TOTAL) {
                 value *= 1 + entry.modifier().amount();
             }
         }
-        return (float) value;
+        return value;
     }
 
-    private static boolean isMainHandAttackDamage(ItemAttributeModifiers.Entry entry) {
+    private static boolean isMainHand(ItemAttributeModifiers.Entry entry, Holder<Attribute> attribute) {
         // ANY and HAND groups apply to the main hand too, not just MAINHAND
-        return entry.attribute().equals(Attributes.ATTACK_DAMAGE) && entry.slot().test(net.minecraft.world.entity.EquipmentSlot.MAINHAND);
+        return entry.attribute().equals(attribute) && entry.slot().test(net.minecraft.world.entity.EquipmentSlot.MAINHAND);
     }
 
     // the sword that hits hardest, or null if there are no swords in the list. first one wins a tie

@@ -145,7 +145,7 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
                     !mod.getMLGBucketChain().isFallingOhNo(mod) && mod.getMLGBucketChain().doneMLG() &&
                     !mod.getMLGBucketChain().isChorusFruiting() &&
                     mod.getClientBaritone().getPathingBehavior().isSafeToCancel() &&
-                    mod.getPlayer().onGround()) {
+                    (mod.getPlayer().onGround() || mod.getControllerExtras().critInFlight())) {
                 _progress.reset();
                 _blocker = null;
                 return onEntityInteract(mod, entity);
