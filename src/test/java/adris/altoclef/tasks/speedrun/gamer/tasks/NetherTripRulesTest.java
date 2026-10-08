@@ -45,29 +45,29 @@ public class NetherTripRulesTest {
 
     @Test
     public void aPlainDeathWithAHomePortalIsWorthTheTrip() {
-        assertNull(NetherTripRules.refuse(Cause.OTHER, true, true, false, false));
+        assertNull(NetherTripRules.refuse(Cause.OTHER, true, true, false, false, false));
     }
 
     @Test
     public void lavaAndTheVoidAreNotWorthIt() {
-        assertNotNull(NetherTripRules.refuse(Cause.LAVA, true, true, false, false));
-        assertNotNull(NetherTripRules.refuse(Cause.VOID, true, true, false, false));
+        assertNotNull(NetherTripRules.refuse(Cause.LAVA, true, true, false, false, false));
+        assertNotNull(NetherTripRules.refuse(Cause.VOID, true, true, false, false, false));
     }
 
     @Test
     public void noPortalHomeMeansNoWayBack() {
-        assertEquals("no portal to go back through", NetherTripRules.refuse(Cause.OTHER, false, true, false, false));
+        assertEquals("no portal to go back through", NetherTripRules.refuse(Cause.OTHER, false, true, false, false, false));
     }
 
     @Test
     public void theConfigCanSwitchTheTripOff() {
-        assertNotNull(NetherTripRules.refuse(Cause.OTHER, true, false, false, false));
+        assertNotNull(NetherTripRules.refuse(Cause.OTHER, true, false, false, false, false));
     }
 
     @Test
     public void aSecondDeathOnTheWayAndAPileWeAlreadyWentForAreRefused() {
-        assertNotNull(NetherTripRules.refuse(Cause.OTHER, true, true, true, false));
-        assertNotNull(NetherTripRules.refuse(Cause.OTHER, true, true, false, true));
+        assertNotNull(NetherTripRules.refuse(Cause.OTHER, true, true, true, false, false));
+        assertNotNull(NetherTripRules.refuse(Cause.OTHER, true, true, false, true, false));
     }
 
     @Test
@@ -81,14 +81,11 @@ public class NetherTripRulesTest {
     }
 
     @Test
-    public void theCauseComesFromWhatWeStoodInAndANameFromAnOldSaveIsJustOther() {
+    public void theCauseComesFromWhatWeStoodIn() {
         assertEquals(Cause.LAVA, NetherTripRules.cause(true, false));
         assertEquals(Cause.LAVA, NetherTripRules.cause(true, true));
         assertEquals(Cause.VOID, NetherTripRules.cause(false, true));
         assertEquals(Cause.OTHER, NetherTripRules.cause(false, false));
-        assertEquals(Cause.LAVA, Cause.parse("lava"));
-        assertEquals(Cause.OTHER, Cause.parse(null));
-        assertEquals(Cause.OTHER, Cause.parse("sharks"));
     }
 
     // ---- blocks
@@ -142,12 +139,24 @@ public class NetherTripRulesTest {
 
     @Test
     public void aPileThatGaveSomethingBackIsTheEndOfTheTrip() {
-        Step step = NetherTripRules.next(pile(Stage.RECOVER, Dimension.NETHER, 3, true, 14, true));
+        Step step = NetherTripRules.next(pile(Stage.RECOVER, Dimension.NETHER, 3, true, 14, false));
         assertTrue(step.recovered());
         assertNull(step.stage());
         assertNull(step.giveUp());
     }
 
+    @Test
+    public void aPileWithoutTheKitInItIsTreatedLikeAnEmptyOne() {
+        Step step = NetherTripRules.next(pile(Stage.RECOVER, Dimension.NETHER, 3, true, 14, true));
+        assertEquals("the pile did not have the kit", step.giveUp());
+        assertEquals(Stage.HOME, step.stage());
+        assertFalse(step.recovered());
+    }
+
+    @Test
+    public void aKitThatSurvivedTheDeathNeedsNoTrip() {
+        assertEquals("the kit is still on us", NetherTripRules.refuse(Cause.OTHER, true, true, false, false, true));
+    }
     @Test
     public void anEmptyPileGivesUpAndWalksHomeWhenTheKitIsStillShort() {
         Step step = NetherTripRules.next(pile(Stage.RECOVER, Dimension.NETHER, 3, true, 0, true));
@@ -223,6 +232,6 @@ public class NetherTripRulesTest {
         assertEquals(Stage.WALK, stage);
         stage = NetherTripRules.next(pile(stage, Dimension.NETHER, 12, false, 0, true)).stage();
         assertEquals(Stage.RECOVER, stage);
-        assertTrue(NetherTripRules.next(pile(stage, Dimension.NETHER, 2, true, 9, true)).recovered());
+        assertTrue(NetherTripRules.next(pile(stage, Dimension.NETHER, 2, true, 9, false)).recovered());
     }
 }

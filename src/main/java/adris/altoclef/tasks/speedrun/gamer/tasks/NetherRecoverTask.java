@@ -18,6 +18,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 // we died in the nether and woke up at home with an empty bag. the pile is still down there, so: dirt by hand (nothing else
 // comes without a pickaxe), the home portal, across the nether, pick it up. the stage lives in RunState.netherTrip so a relog
@@ -29,7 +30,7 @@ public class NetherRecoverTask extends Task {
 
     private final RunState state;
     private final GamerFacts facts;
-    private final GamerConfig cfg;
+    private final Supplier<GamerConfig> cfg;
     private final Consumer<String> say;
     private final Runnable save;
     private final HomePortalWalk walk = new HomePortalWalk();
@@ -37,10 +38,14 @@ public class NetherRecoverTask extends Task {
     private Task toPile;
     private RecoverItemsTask pile;
     private Task home;
-    private int itemsBefore;
-    private int stacksBefore;
+    // what the bag held at its lowest since the pile task started, and the most it ever climbed from there. the bag shrinks
+    // while the pile task runs (dirt placed to reach it, food eaten), so the net change says nothing about what came back
+    private int lowItems;
+    private int peakItems;
+    private int lowStacks;
+    private int peakStacks;
 
-    public NetherRecoverTask(RunState state, GamerFacts facts, GamerConfig cfg, Consumer<String> say, Runnable save) {
+    public NetherRecoverTask(RunState state, GamerFacts facts, Supplier<GamerConfig> cfg, Consumer<String> say, Runnable save) {
         this.state = state;
         this.facts = facts;
         this.cfg = cfg;
@@ -58,7 +63,7 @@ public class NetherRecoverTask extends Task {
             return tickTrip(mod);
         } catch (RuntimeException e) {
             // the phase machine is not ticking while we have the wheel, so nobody else would ever clear a trip that throws
-            say.accept("gave up: the trip hit an error (" + e.getClass().getSimpleName() + "), rebuilding");
+            say.accept(giveUpLine("the trip hit an error (" + e.getClass().getSimpleName() + ")"));
             end(mod, null);
             return null;
         }
@@ -82,12 +87,12 @@ public class NetherRecoverTask extends Task {
             return child;
         }
         if (step.recovered()) {
-            say.accept("recovered " + gained(mod));
+            say.accept("recovered " + gained());
             end(mod, null);
             return null;
         }
         if (step.giveUp() != null) {
-            say.accept("gave up: " + step.giveUp() + ", rebuilding");
+            say.accept(giveUpLine(step.giveUp()));
         } else if (step.stage() != null) {
             say.accept(entered(step.stage()));
         }
@@ -102,15 +107,15 @@ public class NetherRecoverTask extends Task {
     }
 
     private NetherTripRules.Inputs inputs(AltoClef mod, RunState.NetherTrip trip, Stage stage, long now) {
-        GamerConfig.Death d = cfg.death;
+        GamerConfig.Death d = cfg.get().death;
         BlockPos at = new BlockPos(trip.pile.x, trip.pile.y, trip.pile.z);
         double dist = Math.sqrt(mod.getPlayer().blockPosition().distSqr(at));
         boolean homeGone = walk.gone() || state.overworldPortal == null;
         boolean finished = pile != null && pile.isFinished(mod);
-        int gained = pile == null ? 0 : itemTotal(mod) - itemsBefore;
+        int gained = pile == null ? 0 : trackGain(mod);
         NetherTripRules.Limits limits = NetherTripRules.Limits.of(d.netherTripSeconds, d.netherBlocks, d.netherBlocksSeconds);
         return new NetherTripRules.Inputs(stage, facts.dimension(), now - trip.startTick, now - trip.stageTick,
-                facts.buildBlocks(), homeGone, dist, finished, gained, NetherRegress.kitShort(facts, cfg), limits);
+                facts.buildBlocks(), homeGone, dist, finished, gained, NetherRegress.kitShort(facts, cfg.get()), limits);
     }
 
     private Task childFor(AltoClef mod, Stage stage) {
@@ -121,7 +126,7 @@ public class NetherRecoverTask extends Task {
                 if (blocks == null) {
                     // dirt is the one throwaway block that comes out of the ground without a tool. the count is the gap, the
                     // blocks we already hold (a stray cobble) are part of the total
-                    int gap = Math.max(1, cfg.death.netherBlocks - facts.buildBlocks());
+                    int gap = Math.max(1, cfg.get().death.netherBlocks - facts.buildBlocks());
                     blocks = TaskCatalogue.getItemTask(Items.DIRT, gap + facts.count(Items.DIRT));
                 }
                 setDebugState("Getting blocks for the walk.", "Getting building blocks");
@@ -142,8 +147,10 @@ public class NetherRecoverTask extends Task {
             case RECOVER -> {
                 if (pile == null) {
                     pile = new RecoverItemsTask(at, PILE_SECONDS);
-                    itemsBefore = itemTotal(mod);
-                    stacksBefore = stackTotal(mod);
+                    lowItems = itemTotal(mod);
+                    lowStacks = stackTotal(mod);
+                    peakItems = 0;
+                    peakStacks = 0;
                 }
                 setDebugState("Picking up our stuff.", "Getting our stuff back");
                 return pile;
@@ -160,7 +167,7 @@ public class NetherRecoverTask extends Task {
 
     private String entered(Stage next) {
         return switch (next) {
-            case PORTAL -> facts.buildBlocks() >= cfg.death.netherBlocks ? "got " + facts.buildBlocks() + " blocks"
+            case PORTAL -> facts.buildBlocks() >= cfg.get().death.netherBlocks ? "got " + facts.buildBlocks() + " blocks"
                     : "going with " + facts.buildBlocks() + " blocks";
             case WALK -> "through the portal";
             case RECOVER -> "at the pile";
@@ -168,9 +175,24 @@ public class NetherRecoverTask extends Task {
         };
     }
 
-    private String gained(AltoClef mod) {
-        int stacks = stackTotal(mod) - stacksBefore;
-        int items = itemTotal(mod) - itemsBefore;
+    private int trackGain(AltoClef mod) {
+        int items = itemTotal(mod);
+        int stacks = stackTotal(mod);
+        lowItems = Math.min(lowItems, items);
+        lowStacks = Math.min(lowStacks, stacks);
+        peakItems = Math.max(peakItems, items - lowItems);
+        peakStacks = Math.max(peakStacks, stacks - lowStacks);
+        return peakItems;
+    }
+
+    // "rebuilding" only when there is something to rebuild: a pile that gave the kit back and then ran out of time is not
+    private String giveUpLine(String why) {
+        return "gave up: " + why + (NetherRegress.kitShort(facts, cfg.get()) ? ", rebuilding" : ", carrying on");
+    }
+
+    private String gained() {
+        int stacks = peakStacks;
+        int items = peakItems;
         // a pile that only topped up stacks we already held has no new stack to count
         return stacks > 0 ? stacks + (stacks == 1 ? " stack" : " stacks") : items + (items == 1 ? " item" : " items");
     }
@@ -178,7 +200,7 @@ public class NetherRecoverTask extends Task {
     // trip over, any way: the next tick belongs to the phase machine
     private void end(AltoClef mod, String why) {
         if (why != null) {
-            say.accept("gave up: " + why + ", rebuilding");
+            say.accept(giveUpLine(why));
         }
         state.netherTrip = null;
         walk.stopTracking(mod);

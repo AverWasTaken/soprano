@@ -26,18 +26,6 @@ public final class NetherTripRules {
         LAVA,
         VOID,
         OTHER;
-
-        // an old save has no cause, and a hand edit could say anything
-        public static Cause parse(String name) {
-            if (name != null) {
-                for (Cause c : values()) {
-                    if (c.name().equalsIgnoreCase(name)) {
-                        return c;
-                    }
-                }
-            }
-            return OTHER;
-        }
     }
 
     public static Cause cause(boolean inLava, boolean outOfTheWorld) {
@@ -80,12 +68,17 @@ public final class NetherTripRules {
     }
 
     // null = go for it, otherwise the reason it is not worth it (said in the log, so it reads as a sentence)
-    public static String refuse(Cause cause, boolean homeKnown, boolean enabled, boolean tripPending, boolean pileTried) {
+    public static String refuse(Cause cause, boolean homeKnown, boolean enabled, boolean tripPending, boolean pileTried,
+                                boolean kitIntact) {
         if (!enabled) {
             return "the trip is switched off";
         }
         if (tripPending) {
             return "already on a trip, this is a second death";
+        }
+        // keepInventory, or whatever else left the kit on us: nothing down there we need
+        if (kitIntact) {
+            return "the kit is still on us";
         }
         if (cause == Cause.LAVA) {
             return "it was lava";
@@ -191,7 +184,12 @@ public final class NetherTripRules {
         if (!in.recoverFinished()) {
             return stay(Stage.RECOVER);
         }
-        return in.itemsGained() > 0 ? new Step(null, null, true) : giveUp(in, "nothing left at the pile");
+        if (in.itemsGained() <= 0) {
+            return giveUp(in, "nothing left at the pile");
+        }
+        // something came back but not the kit: the phase machine only rebuilds from the overworld, so this is the same as an
+        // empty pile (giveUp walks home from the nether)
+        return in.kitShort() ? giveUp(in, "the pile did not have the kit") : new Step(null, null, true);
     }
 
     private static Step stay(Stage st) {

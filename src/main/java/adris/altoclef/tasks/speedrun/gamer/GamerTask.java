@@ -16,6 +16,7 @@ import adris.altoclef.tasks.speedrun.gamer.phases.GatherPhase;
 import adris.altoclef.tasks.speedrun.gamer.phases.IronPhase;
 import adris.altoclef.tasks.speedrun.gamer.phases.LocatePhase;
 import adris.altoclef.tasks.speedrun.gamer.phases.NetherPhase;
+import adris.altoclef.tasks.speedrun.gamer.phases.NetherRegress;
 import adris.altoclef.tasks.speedrun.gamer.phases.OpenPhase;
 import adris.altoclef.tasks.speedrun.gamer.phases.PortalPhase;
 import adris.altoclef.tasks.speedrun.gamer.phases.ReturnPhase;
@@ -48,6 +49,7 @@ import org.apache.commons.lang3.ArrayUtils;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 // beats the game: a phase state machine over PhaseHandlers with its memory in RunState (see gamer-design.md). this class is
@@ -218,6 +220,16 @@ public class GamerTask extends Task {
         } catch (RuntimeException e) {
             if (!begun || machine.current() == null) {
                 throw e;
+            }
+            if (state.netherTrip != null) {
+                // the trip's own child threw, not the phase. the phase machine is not ticking while the trip has the wheel,
+                // so a trip left standing would throw again every tick until its six minutes ran out
+                host.say("gave up: the trip hit an error (" + e.getClass().getSimpleName() + "), rebuilding");
+                state.netherTrip = null;
+                netherTrip = null;
+                host.save();
+                dropChild(mod);
+                return;
             }
             machine.failFromChild(e);
             dropChild(mod);
@@ -568,7 +580,7 @@ public class GamerTask extends Task {
             // same deal as the recovery below: the trip is not the phase's time and not its fault. the task clears the
             // state when it is over, and the machine has the next tick
             if (netherTrip == null) {
-                netherTrip = new NetherRecoverTask(state, facts, cfg, host::say, host::save);
+                netherTrip = new NetherRecoverTask(state, facts, () -> cfg, host::say, host::save);
             }
             machine.observe();
             machine.holdClocks();
@@ -667,7 +679,7 @@ public class GamerTask extends Task {
         death.z = deathPos.getZ();
         death.gameTime = deathGameTime;
         death.phase = state.phase.name();
-        death.cause = deathCause.name().toLowerCase();
+        death.cause = deathCause.name().toLowerCase(Locale.ROOT);
         state.deaths.add(death);
         state.deathsThisPhase++;
         // dying on the way to a pile is the end of that trip: the second pile is not worth a third life
@@ -704,7 +716,8 @@ public class GamerTask extends Task {
         String where = deathPos.getX() + " " + deathPos.getY() + " " + deathPos.getZ();
         String why = NetherTripRules.refuse(deathCause, state.overworldPortal != null,
                 cfg.death.netherRecover && cfg.death.netherTripSeconds > 0, false,
-                NetherTripRules.tried(state.lastTripPile, deathPos.getX(), deathPos.getZ()));
+                NetherTripRules.tried(state.lastTripPile, deathPos.getX(), deathPos.getZ()),
+                !NetherRegress.kitShort(facts, cfg));
         if (why != null) {
             host.say("nether death at " + where + ", not going back: " + why + ", rebuilding");
             return;
