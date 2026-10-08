@@ -233,14 +233,17 @@ public final class SmeltFiller {
         return Math.max(now, smoker.doneTick) + STAND_BY_SLACK_TICKS;
     }
 
-    // a batch with more than this left (a stack of 64 is five minutes) is not "fast" any more: mine, and come back when it is down
-    // to this. so standing by is never longer than this plus the slack
+    // a batch with more than this left when we first see it (a stack of 64 is five minutes) is not "fast": it is worked like a
+    // furnace job. decided once, at first sight, so a bot halfway up a ladder is not pulled back when the clock reaches the mark
     private static final long STAND_BY_MAX_TICKS = 60 * 20;
+
+    public static boolean quickEnough(RunState.FurnaceJob smoker, long now) {
+        return smoker.doneTick - now <= STAND_BY_MAX_TICKS;
+    }
 
     // stand by at the smoker instead of working the filler? `until` = standByUntil of the job we started on (-1 = not started)
     public static boolean standBy(List<RunState.FurnaceJob> jobs, long now, long until) {
-        RunState.FurnaceJob smoker = smokerJob(jobs);
-        return smoker != null && smoker.doneTick - now <= STAND_BY_MAX_TICKS && (until < 0 || now <= until);
+        return smokerJob(jobs) != null && (until < 0 || now <= until);
     }
 
     // ---- when to go back

@@ -210,13 +210,10 @@ public class SmeltInSmokerTask extends ResourceTask implements AsyncSmelting.Han
             // the fuel already in the smoker comes off in both modes. the cook mode (ignoreMaterials) used to skip it, so the coal
             // that had just moved into the slot (not lit yet, bag empty) still read as the whole batch short: "Getting Fuel" the
             // tick after "Filling fuel", twice in the live log, and a full batch of coal asked for with the slot already covering it
-            double fuelNeeded = (_ignoreMaterials
-                    ? Math.min(materialTarget.matches(_smokerCache.materialSlot.getItem()) ? _smokerCache.materialSlot.getCount() : 0, materialTarget.getTargetCount())
-                    : materialTarget.getTargetCount()
-                    /* - mod.getItemStorage().getItemCountInventoryOnly(materialTarget.getMatches()) */
-                    - mod.getItemStorage().getItemCountInventoryOnly(outputTarget.getMatches())
-                    - (outputTarget.matches(_smokerCache.outputSlot.getItem()) ? _smokerCache.outputSlot.getCount() : 0))
-                    - totalFuelInSmoker;
+            double fuelNeeded = FuelShortage.needed(_ignoreMaterials,
+                    materialTarget.matches(_smokerCache.materialSlot.getItem()) ? _smokerCache.materialSlot.getCount() : 0,
+                    materialTarget.getTargetCount(), mod.getItemStorage().getItemCountInventoryOnly(outputTarget.getMatches()),
+                    outputTarget.matches(_smokerCache.outputSlot.getItem()) ? _smokerCache.outputSlot.getCount() : 0, totalFuelInSmoker);
 
             // We don't have enough materials...
             if (mod.getItemStorage().getItemCountInventoryOnly(materialTarget.getMatches()) < materialsNeeded) {

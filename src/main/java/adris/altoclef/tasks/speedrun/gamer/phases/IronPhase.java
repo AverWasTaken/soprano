@@ -70,6 +70,7 @@ public class IronPhase implements PhaseHandler {
     private RunState.FurnaceJob standJob;
     private long standUntil = -1;
     private boolean standGaveUp;
+    private boolean standEligible;
 
     @Override
     public GamerPhase phase() {
@@ -211,7 +212,7 @@ public class IronPhase implements PhaseHandler {
         }
         if (trip != null) {
             // furnaces.hud() says "furnace" for a smoker too
-            hudState = standBy && trip instanceof CollectFromFurnaceTask ? "Waiting for the smoker" : furnaces.hud();
+            hudState = standBy && isSmokerTrip(trip, f) ? "Waiting for the smoker" : furnaces.hud();
             return trip;
         }
         if (head == null) {
@@ -234,6 +235,13 @@ public class IronPhase implements PhaseHandler {
         return task;
     }
 
+    // the collect trip going to the smoker, not to an iron furnace
+    private static boolean isSmokerTrip(Task trip, GamerFacts f) {
+        RunState.FurnaceJob smoker = SmeltFiller.smokerJob(f.furnaceJobs());
+        return smoker != null && trip instanceof CollectFromFurnaceTask collect
+                && collect.pos().equals(new BlockPos(smoker.pos.x, smoker.pos.y, smoker.pos.z));
+    }
+
     // stand at the smoker while it cooks (SmeltFiller.standBy), for as long as its budget lasts. the budget is per job object, and a
     // job keeps its object across visits, so a smoker that keeps coming up short does not get a fresh clock each time
     private boolean standingBy(GamerContext ctx, GamerFacts f) {
@@ -248,8 +256,12 @@ public class IronPhase implements PhaseHandler {
             standJob = smoker;
             standGaveUp = false;
             standUntil = SmeltFiller.standByUntil(smoker, now);
+            standEligible = SmeltFiller.quickEnough(smoker, now);
             Debug.logInternal("smoker at " + smoker.pos + " has " + smoker.count + " " + smoker.input + " cooking, ~" + Math.max(0, smoker.doneTick - now) / 20
-                    + " s to go: standing by it instead of mining");
+                    + (standEligible ? " s to go: standing by it instead of mining" : " s to go: too long to stand by, working like a furnace"));
+        }
+        if (!standEligible) {
+            return false;
         }
         boolean on = SmeltFiller.standBy(f.furnaceJobs(), now, standUntil);
         if (!on && !standGaveUp) {

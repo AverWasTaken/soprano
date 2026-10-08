@@ -211,13 +211,10 @@ public class SmeltInFurnaceTask extends ResourceTask implements AsyncSmelting.Ha
             // Fuel needed = (mat_target - out_in_inventory - out_in_furnace - totalFuelInFurnace)
             // the fuel already in the furnace comes off in both modes (the cook mode skipped it, see the smoker: coal in the slot, not
             // lit yet, read as the whole batch short)
-            double fuelNeeded = (_ignoreMaterials
-                    ? Math.min(materialTarget.matches(_furnaceCache.materialSlot.getItem()) ? _furnaceCache.materialSlot.getCount() : 0, materialTarget.getTargetCount())
-                    : materialTarget.getTargetCount()
-                    /* - mod.getItemStorage().getItemCountInventoryOnly(materialTarget.getMatches()) */
-                    - mod.getItemStorage().getItemCountInventoryOnly(outputTarget.getMatches())
-                    - (outputTarget.matches(_furnaceCache.outputSlot.getItem()) ? _furnaceCache.outputSlot.getCount() : 0))
-                    - totalFuelInFurnace;
+            double fuelNeeded = FuelShortage.needed(_ignoreMaterials,
+                    materialTarget.matches(_furnaceCache.materialSlot.getItem()) ? _furnaceCache.materialSlot.getCount() : 0,
+                    materialTarget.getTargetCount(), mod.getItemStorage().getItemCountInventoryOnly(outputTarget.getMatches()),
+                    outputTarget.matches(_furnaceCache.outputSlot.getItem()) ? _furnaceCache.outputSlot.getCount() : 0, totalFuelInFurnace);
 
             // We don't have enough materials...
             if (mod.getItemStorage().getItemCountInventoryOnly(materialTarget.getMatches()) < materialsNeeded) {

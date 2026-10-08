@@ -214,13 +214,10 @@ public class SmeltInBlastFurnaceTask extends ResourceTask {
             double totalFuelInBlastFurnace = ItemHelper.getFuelAmount(_blastFurnaceCache.fuelSlot) + _blastFurnaceCache.burningFuelCount + _blastFurnaceCache.burnPercentage;
             // Fuel needed = (mat_target - out_in_inventory - out_in_furnace - totalFuelInFurnace)
             // the fuel already in the blast furnace comes off in both modes, same fix as the smoker
-            double fuelNeeded = (_ignoreMaterials
-                    ? Math.min(materialTarget.matches(_blastFurnaceCache.materialSlot.getItem()) ? _blastFurnaceCache.materialSlot.getCount() : 0, materialTarget.getTargetCount())
-                    : materialTarget.getTargetCount()
-                    /* - mod.getItemStorage().getItemCountInventoryOnly(materialTarget.getMatches()) */
-                    - mod.getItemStorage().getItemCountInventoryOnly(outputTarget.getMatches())
-                    - (outputTarget.matches(_blastFurnaceCache.outputSlot.getItem()) ? _blastFurnaceCache.outputSlot.getCount() : 0))
-                    - totalFuelInBlastFurnace;
+            double fuelNeeded = FuelShortage.needed(_ignoreMaterials,
+                    materialTarget.matches(_blastFurnaceCache.materialSlot.getItem()) ? _blastFurnaceCache.materialSlot.getCount() : 0,
+                    materialTarget.getTargetCount(), mod.getItemStorage().getItemCountInventoryOnly(outputTarget.getMatches()),
+                    outputTarget.matches(_blastFurnaceCache.outputSlot.getItem()) ? _blastFurnaceCache.outputSlot.getCount() : 0, totalFuelInBlastFurnace);
 
             // We don't have enough materials...
             if (mod.getItemStorage().getItemCountInventoryOnly(materialTarget.getMatches()) < materialsNeeded) {

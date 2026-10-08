@@ -51,6 +51,14 @@ final class FuelShortage {
         return fetch;
     }
 
+    // smelts of fuel still to find for a smelt task. `slotMaterials` is what the input slot holds (the cook mode, ignoreMaterials,
+    // fuels exactly that), otherwise the target less the output we already have. the fuel already in the station comes off in
+    // both modes: the cook mode skipped it once, and coal in the slot (not lit yet, bag empty) read as the whole batch short
+    static double needed(boolean ignoreMaterials, int slotMaterials, int target, int outInBag, int outInSlot, double fuelInStation) {
+        double base = ignoreMaterials ? Math.min(slotMaterials, target) : target - outInBag - outInSlot;
+        return base - fuelInStation;
+    }
+
     // smelts of fuel a station with `input` items in it is still short of: its own slot, what is lit and the progress on the
     // item in hand all count, same sum the smelt tasks use for fuelNeeded
     static double missing(int input, double lit, double progress, double slotFuel) {

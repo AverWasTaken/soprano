@@ -57,6 +57,18 @@ public class FuelShortageTest {
     }
 
     @Test
+    public void coalInTheSlotCountsInCookModeToo() {
+        // 8 mutton in the slot, one coal just moved in and not lit yet (the bag is empty): nothing left to fetch
+        assertEquals(0, FuelShortage.needed(true, 8, 8, 0, 0, 8), 1e-9);
+        // before the coal went in it was the whole batch
+        assertEquals(8, FuelShortage.needed(true, 8, 8, 0, 0, 0), 1e-9);
+        // the slot is what is fueled, not the target
+        assertEquals(3, FuelShortage.needed(true, 3, 8, 0, 0, 0), 1e-9);
+        // the iron mode: target less the output we already hold, less the fuel in the furnace
+        assertEquals(10, FuelShortage.needed(false, 0, 40, 20, 5, 5), 1e-9);
+    }
+
+    @Test
     public void aFuelTripRunsUntilTheBagHoldsTheShortfall() {
         FuelShortage s = new FuelShortage();
         assertEquals(0, s.fetchTarget(0), 1e-9);
