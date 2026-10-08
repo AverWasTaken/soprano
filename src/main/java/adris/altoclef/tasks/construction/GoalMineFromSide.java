@@ -17,11 +17,19 @@ public class GoalMineFromSide implements Goal, IGoalRenderPos {
     private final int x;
     private final int y;
     private final int z;
+    // digging up from the shaft two below is out when there is a column of sand or gravel (or a stalactite) hanging on the
+    // target: the whole thing comes down the shaft and onto us
+    private final boolean allowBelow;
 
     public GoalMineFromSide(BlockPos target) {
+        this(target, true);
+    }
+
+    public GoalMineFromSide(BlockPos target, boolean allowBelow) {
         this.x = target.getX();
         this.y = target.getY();
         this.z = target.getZ();
+        this.allowBelow = allowBelow;
     }
 
     @Override
@@ -31,7 +39,7 @@ public class GoalMineFromSide implements Goal, IGoalRenderPos {
         int dz = z - this.z;
         if (dx == 0 && dz == 0) {
             // below only. y-1 would put the ore where our head is, so really it's y-2 or lower
-            return dy == -2;
+            return allowBelow && dy == -2;
         }
         // up to one sideways step plus a diagonal, one up or down. this is GoalNear range sqrt(2)
         return dy >= -1 && dy <= 1 && dx * dx + dz * dz <= 2;
@@ -57,16 +65,16 @@ public class GoalMineFromSide implements Goal, IGoalRenderPos {
             return false;
         }
         GoalMineFromSide that = (GoalMineFromSide) o;
-        return x == that.x && y == that.y && z == that.z;
+        return x == that.x && y == that.y && z == that.z && allowBelow == that.allowBelow;
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(x, y, z);
+        return Objects.hash(x, y, z, allowBelow);
     }
 
     @Override
     public String toString() {
-        return "GoalMineFromSide{x=" + x + ", y=" + y + ", z=" + z + "}";
+        return "GoalMineFromSide{x=" + x + ", y=" + y + ", z=" + z + (allowBelow ? "" : ", sides only") + "}";
     }
 }

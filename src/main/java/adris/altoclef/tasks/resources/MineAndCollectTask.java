@@ -202,10 +202,13 @@ public class MineAndCollectTask extends ResourceTask {
             int by = (int) Math.floor(ty);
             int bz = (int) Math.floor(tz);
             boolean exposed = true;
+            int falling = 0;
             if (Math.abs(tx - fx) <= EXPOSURE_RANGE && Math.abs(tz - fz) <= EXPOSURE_RANGE && Math.abs(ty - fy) <= EXPOSURE_RANGE) {
                 exposed = hasAirFace(mod, bx, by, bz);
+                // gravel on top of the stone doesn't show up in hasAirFace, it's a block. it comes down on whoever digs it
+                falling = WorldHelper.fallingAbove(mod.getWorld(), new BlockPos(bx, by, bz));
             }
-            return StoneDigRank.score(fx, fy, fz, bx, by, bz, exposed);
+            return StoneDigRank.score(fx, fy, fz, bx, by, bz, exposed, falling);
         }
 
         private static boolean hasAirFace(AltoClef mod, int x, int y, int z) {

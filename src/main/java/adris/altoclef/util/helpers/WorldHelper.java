@@ -8,6 +8,7 @@ import baritone.api.BaritoneAPI;
 import baritone.pathing.movement.MovementHelper;
 import baritone.process.MineProcess;
 import baritone.utils.BlockStateInterface;
+import baritone.utils.FallingColumn;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
@@ -17,6 +18,7 @@ import net.minecraft.core.Vec3i;
 import net.minecraft.network.Connection;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.PortalProcessor;
+import net.minecraft.world.entity.item.FallingBlockEntity;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.Biomes;
@@ -30,7 +32,6 @@ import net.minecraft.world.level.block.ChestBlock;
 import net.minecraft.world.level.block.CraftingTableBlock;
 import net.minecraft.world.level.block.EnchantingTableBlock;
 import net.minecraft.world.level.block.EnderChestBlock;
-import net.minecraft.world.level.block.FallingBlock;
 import net.minecraft.world.level.block.LiquidBlock;
 import net.minecraft.world.level.block.LoomBlock;
 import net.minecraft.world.level.block.RedStoneOreBlock;
@@ -401,7 +402,64 @@ public interface WorldHelper {
     static boolean isFallingBlock(BlockPos pos) {
         Level w = Minecraft.getInstance().level;
         assert w != null;
-        return w.getBlockState(pos).getBlock() instanceof FallingBlock;
+        return FallingColumn.isFalling(w.getBlockState(pos));
+    }
+
+    // a falling block entity this high up the column is still on its way into the cell. a stack lets go all at once, so
+    // the top of a tall one is way up there while the bottom one has already landed
+    double FALL_LOOKAHEAD = 6;
+
+    static FallingColumn.Cells fallingCells(Level level) {
+        BlockPos.MutableBlockPos at = new BlockPos.MutableBlockPos();
+        return FallingColumn.over((x, y, z) -> level.getBlockState(at.set(x, y, z)));
+    }
+
+    // sand, gravel and friends stacked right on the block, how many. breaking it brings every one of them down
+    static int fallingAbove(Level level, BlockPos pos) {
+        return FallingColumn.heightAbove(fallingCells(level), pos.getX(), pos.getY(), pos.getZ());
+    }
+
+    // breaking this lets something loose: a stack on top of it, or stalactites hanging off the bottom
+    static boolean letsFallingLoose(Level level, BlockPos pos) {
+        return fallingAbove(level, pos) > 0 || FallingColumn.hangingBelow(fallingCells(level), pos.getX(), pos.getY(), pos.getZ()) > 0;
+    }
+
+    // whatever breaking this lets loose ends up in the cells we are standing in. our own box, so a block that is partly
+    // under us counts and one a step to the side doesn't
+    static boolean breakingDropsOnUs(AltoClef mod, BlockPos target) {
+        AABB b = mod.getPlayer().getBoundingBox();
+        FallingColumn.Cells w = fallingCells(mod.getWorld());
+        return FallingColumn.landsOnBox(w, target.getX(), target.getY(), target.getZ(), b.minX, b.minY, b.minZ, b.maxX, b.maxY, b.maxZ)
+                || FallingColumn.hangersFallOnBox(w, target.getX(), target.getY(), target.getZ(), b.minX, b.minY, b.minZ, b.maxX, b.maxY, b.maxZ);
+    }
+
+    // a falling block entity somewhere over the target cell (its own cell up to FALL_LOOKAHEAD above it)
+    static boolean fallingInFlightOver(Level level, BlockPos target) {
+        return !level.getEntitiesOfClass(FallingBlockEntity.class, new AABB(target.getX(), target.getY(), target.getZ(), target.getX() + 1, target.getY() + 1 + FALL_LOOKAHEAD, target.getZ() + 1)).isEmpty();
+    }
+
+    // the cell is open and a falling block sits right on it with nothing under that one: it lets go two ticks from now,
+    // and until it does there is no entity to see. that is the gap a swing or a step lands in
+    static boolean fallingAboutToDrop(Level level, BlockPos target) {
+        FallingColumn.Cells w = fallingCells(level);
+        return !w.stops(target.getX(), target.getY(), target.getZ()) && w.falls(target.getX(), target.getY() + 1, target.getZ());
+    }
+
+    // sand or gravel that landed in the cell we stand in or the one our eyes are in. null when we are not buried. the eye
+    // cell goes first, that's the one that suffocates
+    static BlockPos buriedInFallenBlock(AltoClef mod) {
+        Player me = mod.getPlayer();
+        Level level = mod.getWorld();
+        if (me == null || level == null) {
+            return null;
+        }
+        for (BlockPos pos : new BlockPos[]{BlockPos.containing(me.getEyePosition()), me.blockPosition()}) {
+            BlockState s = level.getBlockState(pos);
+            if (FallingColumn.isGravity(s.getBlock()) && !s.getCollisionShape(level, pos).isEmpty()) {
+                return pos;
+            }
+        }
+        return null;
     }
 
     static Entity getSpawnerEntity(AltoClef mod, BlockPos pos) {

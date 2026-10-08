@@ -39,9 +39,19 @@ public final class StoneDigRank {
         return true;
     }
 
-    // lower is better. from is our feet (the exact position), the block is a cell. feet level and the cell above it are
-    // free, up is 4 a block from there, down is 4 + BELOW_EXTRA a block
+    // per block of sand or gravel stacked on the stone, up to FALLING_CAP of them. mining it brings the stack down the hole
+    // (mined from the side that is only a mess and a wait for it to land, from below it is the end of us), and any other
+    // stone in the neighbourhood doesn't do that
+    public static final double FALLING_EXTRA = 6.0;
+    public static final int FALLING_CAP = 3;
+
     public static double score(double fromX, double fromY, double fromZ, int bx, int by, int bz, boolean exposed) {
+        return score(fromX, fromY, fromZ, bx, by, bz, exposed, 0);
+    }
+
+    // lower is better. from is our feet (the exact position), the block is a cell. feet level and the cell above it are
+    // free, up is 4 a block from there, down is 4 + BELOW_EXTRA a block. fallingAbove is how many falling blocks sit on it
+    public static double score(double fromX, double fromY, double fromZ, int bx, int by, int bz, boolean exposed, int fallingAbove) {
         double dx = bx + 0.5 - fromX;
         double dz = bz + 0.5 - fromZ;
         // the 0.01 is for standing on a block top at exactly y.0 with float noise under it
@@ -59,6 +69,7 @@ public final class StoneDigRank {
         if (!exposed) {
             cost += BURIED;
         }
+        cost += FALLING_EXTRA * Math.min(Math.max(fallingAbove, 0), FALLING_CAP);
         return cost;
     }
 }

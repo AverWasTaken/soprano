@@ -4,6 +4,7 @@ import baritone.Baritone;
 import adris.altoclef.AltoClef;
 import adris.altoclef.tasks.DoToClosestBlockTask;
 import adris.altoclef.tasks.InteractWithBlockTask;
+import adris.altoclef.tasks.construction.DestroyBlockTask;
 import adris.altoclef.tasks.construction.PutOutFireTask;
 import adris.altoclef.tasks.movement.EnterNetherPortalTask;
 import adris.altoclef.tasks.movement.EscapeFromLavaTask;
@@ -58,6 +59,14 @@ public class WorldSurvivalChain extends SingleTaskChain {
         // Fire escape
         if (isInFire(mod)) {
             setTask(new DoToClosestBlockTask(PutOutFireTask::new, Blocks.FIRE, Blocks.SOUL_FIRE));
+            return 100;
+        }
+
+        // Sand or gravel landed on us. it is 1 damage every half second for as long as our eyes are in it, so it goes
+        // before anything polite. the task knows to dig rather than step aside when the block is the one we stand in
+        BlockPos buried = WorldHelper.buriedInFallenBlock(mod);
+        if (buried != null && WorldHelper.canBreak(mod, buried)) {
+            setTask(new DestroyBlockTask(buried));
             return 100;
         }
 

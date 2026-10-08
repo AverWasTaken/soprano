@@ -53,6 +53,19 @@ public class GoalMineFromSideTest {
     }
 
     @Test
+    public void sidesOnlyDropsTheShaftBelowForAColumnOfSand() {
+        GoalMineFromSide goal = new GoalMineFromSide(ORE, false);
+        // the stack hanging on the ore comes straight down the shaft, so under it is no place to dig from
+        assertFalse(in(goal, 0, -2, 0));
+        assertFalse(in(goal, 0, 1, 0));
+        // the sides are still the sides
+        assertTrue(in(goal, 1, 0, 0));
+        assertTrue(in(goal, -1, -1, 1));
+        // and it is a different goal from the one that allows the shaft, or the process thinks nothing changed
+        assertFalse(goal.equals(new GoalMineFromSide(ORE)));
+    }
+
+    @Test
     public void farAwayDoesNotCount() {
         GoalMineFromSide goal = new GoalMineFromSide(ORE);
         assertFalse(in(goal, 2, 0, 0));

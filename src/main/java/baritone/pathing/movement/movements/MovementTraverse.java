@@ -191,6 +191,10 @@ public class MovementTraverse extends Movement {
             if (state.getStatus() != MovementStatus.PREPPING) {
                 return state;
             }
+            // and nothing is about to land in them. the column drops into the cell we are strolling toward
+            if (waitingOnFall) {
+                return state;
+            }
             // and if it's fine to walk into the blocks in front
             if (MovementHelper.avoidWalkingInto(pb0)) {
                 return state;

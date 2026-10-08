@@ -78,6 +78,25 @@ public class StoneDigRankTest {
     }
 
     @Test
+    public void stoneUnderAStackOfGravelLosesToPlainStoneNextToIt() {
+        double plain = StoneDigRank.score(X, Y, Z, 4, 64, 0, true, 0);
+        // two gravel on it: dearer than a few blocks of extra walking, so the bare stone one over wins
+        double stacked = StoneDigRank.score(X, Y, Z, 3, 64, 0, true, 2);
+        assertEquals(StoneDigRank.score(X, Y, Z, 3, 64, 0, true) + 2 * StoneDigRank.FALLING_EXTRA, stacked, 1e-9);
+        assertTrue(plain < stacked);
+        // it is still a candidate when it is all there is, just a pricey one
+        assertTrue(stacked < at(40, 64, 0, true));
+    }
+
+    @Test
+    public void aTallStackIsCappedSoItIsNeverTheEndOfTheWorld() {
+        assertEquals(StoneDigRank.score(X, Y, Z, 3, 64, 0, true, StoneDigRank.FALLING_CAP),
+                StoneDigRank.score(X, Y, Z, 3, 64, 0, true, 16), 1e-9);
+        // and the old way of asking is the same as asking about nothing on top
+        assertEquals(at(3, 64, 0, true), StoneDigRank.score(X, Y, Z, 3, 64, 0, true, 0), 1e-9);
+    }
+
+    @Test
     public void onlyStoneishTargetsGetTheRanking() {
         assertTrue(StoneDigRank.stoneOnly(Blocks.STONE, Blocks.COBBLESTONE));
         assertTrue(StoneDigRank.stoneOnly(Blocks.DEEPSLATE));

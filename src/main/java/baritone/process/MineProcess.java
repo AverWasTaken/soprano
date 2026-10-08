@@ -31,6 +31,7 @@ import baritone.pathing.movement.CalculationContext;
 import baritone.pathing.movement.MovementHelper;
 import baritone.utils.BaritoneProcessHelper;
 import baritone.utils.BlockStateInterface;
+import baritone.utils.FallingColumn;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
@@ -61,6 +62,9 @@ public final class MineProcess extends BaritoneProcessHelper implements IMinePro
     private BlockOptionalMetaLookup filter;
     private List<BlockPos> knownOreLocations;
     private List<BlockPos> blacklist; // inaccessible
+    // ore in our own column with a stack of sand or gravel on it: swinging up at it from below puts the stack on our head.
+    // the shaft shortcut leaves these alone and the planner gets them as a goal to path into, which costs the stack properly
+    private Set<BlockPos> fallsOnShaft = new HashSet<>();
     private Map<BlockPos, Long> anticipatedDrops;
     private BlockPos branchPoint;
     private GoalRunAway branchPointRunaway;
@@ -127,6 +131,7 @@ public final class MineProcess extends BaritoneProcessHelper implements IMinePro
                 .filter(pos -> pos.getX() == ctx.playerFeet().getX() && pos.getZ() == ctx.playerFeet().getZ())
                 .filter(pos -> pos.getY() >= ctx.playerFeet().getY())
                 .filter(pos -> !(BlockStateInterface.get(ctx, pos).getBlock() instanceof AirBlock)) // after breaking a block, it takes mineGoalUpdateInterval ticks for it to actually update this list =(
+                .filter(this::safeToMineFromBelow)
                 .min(Comparator.comparingDouble(ctx.playerFeet().above()::distSqr));
         baritone.getInputOverrideHandler().clearAllKeys();
         if (shaft.isPresent() && ctx.player().onGround()) {
@@ -154,6 +159,18 @@ public final class MineProcess extends BaritoneProcessHelper implements IMinePro
         return command;
     }
 
+
+    // the shaft shortcut breaks whatever ore is in our column, and avoidBreaking is fine with sand on top of it (the planner
+    // charges for that). from directly under it the stack has nowhere to go but through us, so no
+    private boolean safeToMineFromBelow(BlockPos pos) {
+        BlockPos feet = ctx.playerFeet();
+        FallingColumn.Cells w = FallingColumn.over((x, y, z) -> BlockStateInterface.get(ctx, new BlockPos(x, y, z)));
+        if (!FallingColumn.landsOn(w, pos.getX(), pos.getY(), pos.getZ(), feet.getY(), feet.getY() + 1)) {
+            return true;
+        }
+        fallsOnShaft.add(pos);
+        return false;
+    }
 
     private void updateLoucaSystem() {
         Map<BlockPos, Long> copy = new HashMap<>(anticipatedDrops);
@@ -268,6 +285,10 @@ public final class MineProcess extends BaritoneProcessHelper implements IMinePro
 
     private Goal coalesce(BlockPos loc, List<BlockPos> locs, CalculationContext context) {
         boolean assumeVerticalShaftMine = !(baritone.bsi.get0(loc.above()).getBlock() instanceof FallingBlock);
+        if (fallsOnShaft.contains(loc)) {
+            // we are under it and its stack would land on us. get into the ore from the side instead, the path charges for the stack
+            return new GoalBlock(loc);
+        }
         if (!Baritone.settings().forceInternalMining.value) {
             if (assumeVerticalShaftMine) {
                 // we can get directly below the block
@@ -546,6 +567,7 @@ public final class MineProcess extends BaritoneProcessHelper implements IMinePro
         this.desiredQuantity = quantity;
         this.knownOreLocations = new ArrayList<>();
         this.blacklist = new ArrayList<>();
+        this.fallsOnShaft = new HashSet<>();
         this.branchPoint = null;
         this.branchPointRunaway = null;
         this.anticipatedDrops = new HashMap<>();

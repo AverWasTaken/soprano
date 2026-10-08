@@ -30,7 +30,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.block.FallingBlock;
+import baritone.utils.FallingColumn;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
@@ -472,7 +472,7 @@ public class PlaceStationTask extends Task {
         @Override
         public boolean floods(int x, int y, int z) {
             BlockState s = level.getBlockState(new BlockPos(x, y, z));
-            return !s.getFluidState().isEmpty() || s.getBlock() instanceof FallingBlock;
+            return !s.getFluidState().isEmpty() || FallingColumn.isGravity(s.getBlock());
         }
 
         @Override

@@ -80,9 +80,29 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
     private boolean _landGoalSet;
     private int _landPathAt;
 
+    // a column hangs on the block, so the shaft under it is as bad a place to stand as the top
+    private boolean _sidesOnly;
+    // ticks spent waiting for a column to come down into the block, so a stack that never lands (held up by something we
+    // can't see, somebody's sand cannon) doesn't park us here for good
+    private int _fallWaited;
+    private int _dropPending;
+    private static final int FALL_WAIT_MAX = 60;
+    private static final int DROP_PENDING_MAX = 10;
+
     public DestroyBlockTask(BlockPos pos) {
         _pos = pos;
         _above = pos.above();
+    }
+
+    // true while something is falling into the block's cell, or is about to. the second half is the two ticks between the
+    // block under a stack going and the stack turning into entities: the cell is open, nothing is falling yet, and a
+    // task that checked "is it air" in there would call itself done with the sand still in the sky
+    private boolean fallingStillComing(AltoClef mod) {
+        boolean inFlight = WorldHelper.fallingInFlightOver(mod.getWorld(), _pos);
+        boolean pending = !inFlight && WorldHelper.fallingAboutToDrop(mod.getWorld(), _pos);
+        _fallWaited = inFlight ? _fallWaited + 1 : 0;
+        _dropPending = pending ? _dropPending + 1 : 0;
+        return inFlight && _fallWaited <= FALL_WAIT_MAX || pending && _dropPending <= DROP_PENDING_MAX;
     }
 
     // decides (once, and only when the chunks around it are really loaded) if this block has to be
@@ -477,6 +497,19 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
             return new RunAwayFromPositionTask(3, _pos.getY(), _pos);
         }
 
+        // sand, gravel and the like on top of it (or a stalactite under it) come down the hole when it goes. we never
+        // swing from where that lands on us, and we never swing at a block while the stack is still falling into it
+        boolean looseColumn = WorldHelper.letsFallingLoose(mod.getWorld(), _pos);
+        // already buried in it is the one case where the answer is to dig, there is no better place to be
+        boolean buried = _pos.equals(WorldHelper.buriedInFallenBlock(mod));
+        boolean dropsOnUs = looseColumn && !buried && WorldHelper.breakingDropsOnUs(mod, _pos);
+        if (fallingStillComing(mod)) {
+            setDebugState("Waiting for the falling blocks to land.", "Letting the sand settle");
+            stuckCheck.reset();
+            _moveChecker.reset();
+            mod.getClientBaritone().getInputOverrideHandler().setInputForceState(Input.CLICK_LEFT, false);
+            return null;
+        }
         Optional<Rotation> reach = LookHelper.getReach(_pos);
         BlockPos swingAt = _pos;
         if (reach.isEmpty()) {
@@ -512,8 +545,13 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
         if (!waitForLand) {
             _landGoalSet = false;
         }
-        if (reach.isPresent() && mayBreak
-                && !mod.getFoodChain().needsToEat() && !WorldHelper.isInNetherPortal(mod)
+        if (looseColumn && !_sidesOnly) {
+            // whatever plain goal is running would happily stand under it
+            _sidesOnly = true;
+            mod.getClientBaritone().getCustomGoalProcess().onLostControl();
+        }
+        if (reach.isPresent() && mayBreak && !dropsOnUs
+                && (buried || !mod.getFoodChain().needsToEat()) && !WorldHelper.isInNetherPortal(mod)
                 && mod.getClientBaritone().getPathingBehavior().isSafeToCancel()) {
             setDebugState("Block in range, mining...");
             stuckCheck.reset();
@@ -552,7 +590,9 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
             mod.getClientBaritone().getInputOverrideHandler().setInputForceState(Input.CLICK_LEFT, true);
         } else {
             boolean fromSide = mustMineFromSide(mod);
-            if (waitForLand) {
+            if (dropsOnUs) {
+                setDebugState("Breaking it from here would bring the column down on us, stepping aside.", "Mining it from the side");
+            } else if (waitForLand) {
                 setDebugState("Getting out of the water before mining", "Getting out of the water first");
             } else if (fromSide) {
                 setDebugState("Getting to block...", "Mining it from the side");
@@ -605,8 +645,9 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
                 // one place we refuse to break it from (and the step-off task shoves us off of)
                 Goal goal;
                 BlockPos feet = mod.getClientBaritone().getPlayerContext().playerFeet();
-                if (fromSide) {
-                    goal = new GoalMineFromSide(_pos);
+                if (fromSide || looseColumn) {
+                    // with a stack hanging on it the shaft two below is out as well, it comes down that shaft
+                    goal = new GoalMineFromSide(_pos, !looseColumn);
                     if (goal.isInGoal(feet) && reach.isEmpty()) {
                         // "from the side" only looks at offsets, so a spot by the trunk with leaves in the way counts as
                         // arrived. the goal finished instantly every tick and we stood at the edge sneaking backwards for
@@ -673,7 +714,14 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
         }
         // Get the block state at the specified position and check if it's air
         BlockState blockState = mod.getWorld().getBlockState(_pos);
-        return blockState.isAir();
+        if (!blockState.isAir()) {
+            return false;
+        }
+        // air with a stack about to land in it is not a cleared block, it's a block that is about to have sand in it.
+        // onTick owns the counters, so a column that never lands runs out of patience there
+        boolean inFlight = WorldHelper.fallingInFlightOver(mod.getWorld(), _pos);
+        boolean pending = !inFlight && WorldHelper.fallingAboutToDrop(mod.getWorld(), _pos);
+        return !(inFlight && _fallWaited <= FALL_WAIT_MAX || pending && _dropPending <= DROP_PENDING_MAX);
     }
 
     /**

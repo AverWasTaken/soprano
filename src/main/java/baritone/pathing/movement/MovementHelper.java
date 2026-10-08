@@ -29,6 +29,7 @@ import baritone.api.utils.input.Input;
 import baritone.pathing.movement.MovementState.MovementTarget;
 import baritone.pathing.precompute.Ternary;
 import baritone.utils.BlockStateInterface;
+import baritone.utils.FallingColumn;
 import baritone.utils.ToolSet;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -780,8 +781,11 @@ public interface MovementHelper extends ActionCosts, Helper {
             result *= mult;
             if (includeFalling) {
                 BlockState above = context.get(x, y + 1, z);
-                if (above.getBlock() instanceof FallingBlock) {
-                    result += getMiningDurationTicks(context, x, y + 1, z, above, true);
+                if (FallingColumn.isFalling(above)) {
+                    // the whole stack comes down the hole we just made, so it gets mined too, one block at a time. and
+                    // nobody swings at a block that is still on its way down, so every block waits its turn to land
+                    double stack = getMiningDurationTicks(context, x, y + 1, z, above, true);
+                    result += stack > 0 && stack < COST_INF ? stack + FallingColumn.LAND_WAIT_TICKS : stack;
                 }
             }
             return result;
