@@ -8,6 +8,7 @@ import adris.altoclef.util.CraftingRecipe;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.MiningRequirement;
 import adris.altoclef.util.RecipeTarget;
+import adris.altoclef.util.helpers.ItemHelper;
 import java.util.Optional;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.item.Items;
@@ -26,6 +27,16 @@ public class CollectSticksTask extends ResourceTask {
     @Override
     protected boolean shouldAvoidPickingUp(AltoClef mod) {
         return false;
+    }
+
+    // one batch of sticks is 2 planks, and a log is 4 of those. held wood is a stick we can have this second
+    public static boolean woodMakesSticks(int planks, int logs) {
+        return planks + 4 * logs >= 2;
+    }
+
+    @Override
+    protected boolean craftableFromHeld(AltoClef mod) {
+        return woodMakesSticks(mod.getItemStorage().getItemCount(ItemHelper.PLANKS), mod.getItemStorage().getItemCount(ItemHelper.LOG));
     }
 
     @Override

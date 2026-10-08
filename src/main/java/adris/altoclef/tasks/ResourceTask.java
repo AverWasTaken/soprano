@@ -19,6 +19,7 @@ import adris.altoclef.util.MiningRequirement;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.StlHelper;
 import adris.altoclef.util.helpers.StorageHelper;
+import adris.altoclef.util.helpers.WalkCost;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.slots.PlayerSlot;
 import adris.altoclef.util.slots.Slot;
@@ -35,6 +36,7 @@ import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.phys.Vec3;
 
 /**
  * The parent for all "collect an item" tasks.
@@ -171,8 +173,14 @@ public abstract class ResourceTask extends Task implements ITaskCanForce {
                 }
 
                 double range = Baritone.settings().altoResourcePickupDropRange.value;
-                Optional<ItemEntity> closest = mod.getEntityTracker().getClosestItemDrop(mod.getPlayer().position(), _itemTargets);
-                if (range < 0 || (closest.isPresent() && closest.get().closerThan(mod.getPlayer(), range)) || (_pickupTask.isActive() && !_pickupTask.isFinished(mod))) {
+                // the tracker remembers drops from anywhere, only the ones worth the walk count (a far drop of something
+                // we can craft right now is not worth leaving the hole for). asking for the closest of the OK ones also
+                // means the pickup task stops chasing once the near drops are gone
+                Vec3 me = mod.getPlayer().position();
+                boolean craftable = craftableFromHeld(mod);
+                Optional<ItemEntity> closest = mod.getEntityTracker().getClosestItemDrop(me,
+                        drop -> WalkCost.dropWorthWalking(drop.getX() - me.x, drop.getY() - me.y, drop.getZ() - me.z, craftable), _itemTargets);
+                if (closest.isPresent() && (range < 0 || closest.get().closerThan(mod.getPlayer(), range) || (_pickupTask.isActive() && !_pickupTask.isFinished(mod)))) {
                     setDebugState("Picking up");
                     return _pickupTask;
                 }
@@ -305,6 +313,12 @@ public abstract class ResourceTask extends Task implements ITaskCanForce {
         _forceDimension = true;
         _targetDimension = dimension;
         return this;
+    }
+
+    // we could make the thing we are after right now from what is in the bag, so a drop of it is only worth a short walk
+    // (WalkCost.dropWorthWalking). crafting tasks say yes when the materials are held
+    protected boolean craftableFromHeld(AltoClef mod) {
+        return false;
     }
 
     protected abstract boolean shouldAvoidPickingUp(AltoClef mod);

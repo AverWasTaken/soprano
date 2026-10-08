@@ -88,6 +88,11 @@ public class CraftInTableTask extends ResourceTask {
     }
 
     @Override
+    protected boolean craftableFromHeld(AltoClef mod) {
+        return StorageHelper.hasRecipeMaterialsOrTarget(mod, _targets);
+    }
+
+    @Override
     public boolean isFinished(AltoClef mod) {
         if (super.isFinished(mod)) return true;
         if (_collect) return false;

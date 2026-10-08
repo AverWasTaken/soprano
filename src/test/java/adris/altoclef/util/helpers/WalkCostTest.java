@@ -32,6 +32,26 @@ public class WalkCostTest {
     }
 
     @Test
+    public void aDropWeCouldCraftIsOnlyWorthAShortWalk() {
+        // sticks on the surface, planks in the bag: 5 up is 20, not worth it. 8 flat is
+        assertFalse(WalkCost.dropWorthWalking(0, 5, 0, true));
+        assertFalse(WalkCost.dropWorthWalking(0, 2.1, 0, true));
+        assertTrue(WalkCost.dropWorthWalking(8, 0, 0, true));
+        assertFalse(WalkCost.dropWorthWalking(8.1, 0, 0, true));
+        // our own mining drops are right at our feet
+        assertTrue(WalkCost.dropWorthWalking(3, 1, 0, true));
+    }
+
+    @Test
+    public void aDropWeCannotCraftStillHasACap() {
+        assertTrue(WalkCost.dropWorthWalking(30, 0, 0, false));
+        assertTrue(WalkCost.dropWorthWalking(0, 8, 0, false));
+        assertFalse(WalkCost.dropWorthWalking(0, 9, 0, false));
+        assertFalse(WalkCost.dropWorthWalking(40, 0, 0, false));
+        assertTrue(WalkCost.dropBudget(true) < WalkCost.dropBudget(false));
+    }
+
+    @Test
     public void theCaveTripIsNotWorthIt() {
         // table at y 30, log at the surface y 64, a few blocks over: the old sphere said 34 and a bit, the walk says 136+
         assertFalse(WalkCost.within(3, 34, 0, WalkCost.STATION_BUDGET));
