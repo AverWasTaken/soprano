@@ -128,7 +128,9 @@ public final class KitRunner {
             case KitNeed.FOOD -> "Getting food";
             case KitNeed.BUILD_BLOCKS -> "Collecting building blocks";
             case KitNeed.EQUIP_ARMOR -> "Putting on armor";
-            case "iron_ingot" -> f.has(Items.RAW_IRON) ? "Smelting iron" : "Looking for iron";
+            // with a batch already in a furnace the iron need is us digging for the next one, not smelting
+            case "iron_ingot" -> f.pendingOutput(Items.IRON_INGOT) > 0 ? "Mining more iron"
+                    : f.has(Items.RAW_IRON) ? "Smelting iron" : "Looking for iron";
             case "wool" -> f.has(Items.SHEARS) ? "Shearing sheep" : "Collecting wool";
             case "stone_pickaxe", "stone_sword" -> KitPlanner.have(f, "stone_pickaxe") > 0 || f.has(Items.WOODEN_PICKAXE) ? "Mining stone" : "Chopping wood";
             case "furnace" -> "Making a furnace";

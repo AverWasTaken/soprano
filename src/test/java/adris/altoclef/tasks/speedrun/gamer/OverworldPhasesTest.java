@@ -210,6 +210,10 @@ public class OverworldPhasesTest {
         assertEquals("Looking for iron", KitRunner.words(new KitNeed("iron_ingot", 39), f));
         f.give(Items.RAW_IRON, 3);
         assertEquals("Smelting iron", KitRunner.words(new KitNeed("iron_ingot", 39), f));
+        // a batch in the furnace means the iron need is the dig for the next one
+        FakeFacts cooking = new FakeFacts().cooking("iron_ingot", 3, 30);
+        cooking.give(Items.RAW_IRON, 3);
+        assertEquals("Mining more iron", KitRunner.words(new KitNeed("iron_ingot", 39), cooking));
         assertEquals("Chopping wood", KitRunner.words(new KitNeed("stone_pickaxe", 1), f));
         f.give(Items.WOODEN_PICKAXE, 1);
         assertEquals("Mining stone", KitRunner.words(new KitNeed("stone_pickaxe", 1), f));

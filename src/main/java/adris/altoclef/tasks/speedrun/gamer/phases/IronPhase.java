@@ -185,7 +185,7 @@ public class IronPhase implements PhaseHandler {
         }
         committed = head;
         Task task = runner.run(ctx, runnable);
-        hudState = runner.hud() + " while iron cooks";
+        hudState = runner.hud() + " while a batch cooks";
         return task;
     }
 
