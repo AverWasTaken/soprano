@@ -82,9 +82,18 @@ public final class FurnaceWatch {
     public Task finishing(AltoClef mod, GamerContext ctx) {
         if (cook != null) {
             // loaded is done (the job lands in the state next tick), and a cook that drags on is not worth holding the furnace for
-            if (cook.isFinished(mod) || (ctx.facts().gameTime() - cookStart) / 20.0 > ctx.cfg().overworld.tablePickupSeconds) {
+            boolean finished = cook.isFinished(mod);
+            if (finished || (ctx.facts().gameTime() - cookStart) / 20.0 > ctx.cfg().overworld.tablePickupSeconds) {
+                // timed out part way (a long coal trip) with the meat already in the furnace: it is not a job yet, and breaking the
+                // furnace now would spill it. leave a job, the furnace stays and the visit it brings takes the furnace back
+                boolean stranded = !finished && cook instanceof CookRawFoodTask raw && raw.recordLeftBehind(mod);
                 cook = null;
                 hud = null;
+                if (stranded) {
+                    Debug.logInternal(pickupKind + " still has our meat in it, leaving it for the job instead of breaking it at " + pickupAt.toShortString());
+                    pickupAt = null;
+                    return null;
+                }
                 // loaded: the job is the memory now and its last collect takes the furnace back. not loaded (gave up, timed
                 // out, the meat was gone): it was coming down anyway, so it still does, or it stood there for the rest of the run
                 RunState.Pos spot = new RunState.Pos(pickupAt.getX(), pickupAt.getY(), pickupAt.getZ());

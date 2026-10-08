@@ -113,14 +113,22 @@ public class CookRawFoodTask extends Task {
             gaveUp = true;
             // a long coal trip with the meat already in the station: it is not in the bag and not a job, so without this it sits
             // there unlit for the rest of the run and the cook need never comes back for it (raw reads 0)
-            if (smelt instanceof AsyncSmelting.Handoff handoff) {
-                handoff.recordLeftBehind(mod);
-            }
+            recordLeftBehind(mod);
             smelt = null;
             return null;
         }
         setDebugState("Cooking " + smelting.getDescriptionId());
         return smelt;
+    }
+
+    // the cook is being dropped with the current smelt part way through: if it already put meat in a station, leave a job for it
+    // (once, the smelt forgets it recorded). FurnaceWatch asks this when it gives up on a cook, before it breaks the furnace
+    public boolean recordLeftBehind(AltoClef mod) {
+        if (smelt instanceof AsyncSmelting.Handoff handoff && handoff.recordLeftBehind(mod)) {
+            smelt = null;
+            return true;
+        }
+        return false;
     }
 
     // true once the smelt loaded the station and let go of it (see AsyncSmelting.Handoff)
@@ -166,6 +174,8 @@ public class CookRawFoodTask extends Task {
     protected void onStop(AltoClef mod, Task interruptTask) {
         // the smelt task closes its own screen. a chain taking over for a bit is not the end of the cook, the station stays picked
         if (!isInterrupting()) {
+            // the planner moved on mid fuel trip (the coal it picked up made some other need the head) with the meat in the station
+            recordLeftBehind(mod);
             CookTrip.release();
         }
     }

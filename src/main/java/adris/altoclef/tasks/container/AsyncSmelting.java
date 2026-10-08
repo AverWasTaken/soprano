@@ -58,7 +58,9 @@ public final class AsyncSmelting {
 
         // the task is being dropped without having handed off (the cook gave up on a long fuel trip) and may have left its input in
         // the station. say so, or nobody ever goes back for it (leftBehind)
-        default void recordLeftBehind(AltoClef mod) {
+        // true when a job was left for it
+        default boolean recordLeftBehind(AltoClef mod) {
+            return false;
         }
     }
 
