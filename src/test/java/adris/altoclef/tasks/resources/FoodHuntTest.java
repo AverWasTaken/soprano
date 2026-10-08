@@ -83,12 +83,11 @@ public class FoodHuntTest {
     }
 
     @Test
-    public void fishCarryAPenalty() {
-        // salmon is worth the same as a chicken, but wet: at equal distance the chicken wins
-        assertEquals(2, pick(-1, false, c(1, Kind.SALMON, 5), c(2, Kind.CHICKEN, 5)));
-        assertTrue(FoodHunt.score(Kind.COD, 10, false) < FoodHunt.score(Kind.CHICKEN, 10, false));
-        // a fish at your feet still beats a pig across the map
-        assertEquals(1, pick(-1, false, c(1, Kind.SALMON, 3), c(2, Kind.PIG, 100)));
+    public void noFishInTheMenu() {
+        // cod and salmon are never hunted, so there is no kind to score
+        for (Kind k : Kind.values()) {
+            assertFalse(k.name(), k.name().equals("COD") || k.name().equals("SALMON"));
+        }
     }
 
     @Test

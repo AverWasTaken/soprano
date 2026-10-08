@@ -11,21 +11,18 @@ public final class FoodHunt {
     }
 
     // cooked nutrition (1.21.4) times the average raw drop count, from the loot tables (from memory, not from the jar):
-    // pig and cow 1-3, chicken 1, sheep 1-2 mutton, cod and salmon 1. we cook everything, so cooked is what counts
+    // pig and cow 1-3, chicken 1, sheep 1-2 mutton. we cook everything, so cooked is what counts. no fish: they sit in
+    // water, and the one time we chased a cod it cost a 5 s path search that went nowhere
     public enum Kind {
-        PIG(8, 2.0, false),
-        COW(8, 2.0, false),
-        CHICKEN(6, 1.0, false),
-        SHEEP(6, 1.5, false),
-        COD(5, 1.0, true),
-        SALMON(6, 1.0, true);
+        PIG(8, 2.0),
+        COW(8, 2.0),
+        CHICKEN(6, 1.0),
+        SHEEP(6, 1.5);
 
         final double units;
-        final boolean fish;
 
-        Kind(int cookedNutrition, double averageDrops, boolean fish) {
+        Kind(int cookedNutrition, double averageDrops) {
             this.units = cookedNutrition * averageDrops;
-            this.fish = fish;
         }
     }
 
@@ -34,8 +31,6 @@ public final class FoodHunt {
     static final double OVERHEAD_BLOCKS = 8;
     // a block up or down is a lot more than a block along: it is pillaring or a long way round, not a straight walk
     static final double VERTICAL_WEIGHT = 2;
-    // fish are in water: a boat-less swim, no knockback control, and they dart off. half a score is about right
-    static final double FISH_PENALTY = 0.5;
     // the new best has to be this much better before we drop the animal we are already running at, or every pig that
     // wanders a block closer would turn us around
     static final double STICKY_FACTOR = 1.5;
@@ -70,9 +65,6 @@ public final class FoodHunt {
 
     static double score(Kind kind, double distance, boolean wool) {
         double score = kind.units / (distance + OVERHEAD_BLOCKS);
-        if (kind.fish) {
-            score *= FISH_PENALTY;
-        }
         if (wool && kind == Kind.SHEEP) {
             score /= WOOL_SHEEP_FACTOR;
         }

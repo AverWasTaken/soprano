@@ -58,14 +58,15 @@ import java.util.function.Predicate;
 public class CollectFoodTask extends Task {
 
     // Represents order of preferred mobs to least preferred
-    // (the order is only for the smelting and pickup loops now, FoodHunt decides who gets chased)
+    // (the order is only for the smelting and pickup loops now, FoodHunt decides who gets chased). fish are here so a
+    // dropped one still gets picked up and cooked, but they have no hunt kind: nobody chases a cod
     private static final CookableFoodTarget[] COOKABLE_FOODS = new CookableFoodTarget[]{
             new CookableFoodTarget("porkchop", Pig.class, FoodHunt.Kind.PIG),
             new CookableFoodTarget("beef", Cow.class, FoodHunt.Kind.COW),
             new CookableFoodTarget("chicken", Chicken.class, FoodHunt.Kind.CHICKEN),
             new CookableFoodTarget("mutton", Sheep.class, FoodHunt.Kind.SHEEP),
-            new CookableFoodTargetFish("cod", Cod.class, FoodHunt.Kind.COD),
-            new CookableFoodTargetFish("salmon", Salmon.class, FoodHunt.Kind.SALMON)
+            new CookableFoodTargetFish("cod", Cod.class),
+            new CookableFoodTargetFish("salmon", Salmon.class)
     };
 
     private static final Item[] ITEMS_TO_PICK_UP = new Item[]{
@@ -591,6 +592,9 @@ public class CollectFoodTask extends Task {
         Map<Integer, Prey> prey = new HashMap<>();
         List<FoodHunt.Candidate> candidates = new ArrayList<>();
         for (CookableFoodTarget cookable : COOKABLE_FOODS) {
+            if (cookable.kind == null) {
+                continue;
+            }
             Optional<Entity> nearest = mod.getEntityTracker().getClosestEntity(CollectFoodTask::edible, cookable.mobToKill);
             nearest.ifPresent(e -> addPrey(me, e, cookable, prey, candidates));
         }
@@ -700,8 +704,8 @@ public class CollectFoodTask extends Task {
     @SuppressWarnings("rawtypes")
     private static class CookableFoodTargetFish extends CookableFoodTarget {
 
-        public CookableFoodTargetFish(String rawFood, Class mobToKill, FoodHunt.Kind kind) {
-            super(rawFood, mobToKill, kind);
+        public CookableFoodTargetFish(String rawFood, Class mobToKill) {
+            super(rawFood, mobToKill, null);
         }
 
         @Override
