@@ -11,6 +11,8 @@ import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.MineStick;
 import adris.altoclef.util.helpers.StorageHelper;
+import adris.altoclef.util.helpers.ToolSwap;
+import baritone.utils.ToolSet;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
 import adris.altoclef.util.slots.PlayerSlot;
@@ -71,6 +73,7 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
     private boolean _pushedBehaviour;
     // step off -> baritone walks right back on -> step off... more than this and we give the block up
     private final StepOffGuard _stepOffs = new StepOffGuard(3);
+    private final ToolSwap _toolSwap = new ToolSwap();
     // the swinging distance goal didn't work out here, stand next to it
     private boolean closeIn;
     // ticks we've been soaked with the block in reach. see WaterBreakGuard
@@ -591,18 +594,32 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
             // (and not with a crack on the block: a different item in hand starts the break over)
             boolean crackedAlready = MineStick.toolSwapWouldReset(mod.getControllerExtras().isBreakingBlock(),
                     mod.getControllerExtras().getBreakingBlockPos(), mod.getControllerExtras().getBreakingBlockProgress(), swingAt);
-            if (bestToolSlot.isPresent() && bestToolSlot.get() != currentEquipped && !crackedAlready) {
-                // ONLY equip if the item class is STRICTLY different (otherwise we swap around a lot)
-                if (StorageHelper.getItemStackInSlot(currentEquipped).getItem() != StorageHelper.getItemStackInSlot(bestToolSlot.get()).getItem()) {
+            // a block that goes in one swing doesn't care what is in the hand
+            if (bestToolSlot.isPresent() && !crackedAlready && !breaksInstantly(mod, swingAt)) {
+                ItemStack held = StorageHelper.getItemStackInSlot(currentEquipped);
+                ItemStack best = StorageHelper.getItemStackInSlot(bestToolSlot.get());
+                // by item and by speed, not by slot: the slot object is new every tick, and two tools that are equally
+                // fast would trade places forever (see ToolSwap)
+                if (ToolSwap.worthSwapping(false, held.getItem(), held.isCorrectToolForDrops(state), ToolSet.calculateSpeedVsBlock(held, state),
+                        best.getItem(), ToolSet.calculateSpeedVsBlock(best, state))) {
                     boolean isAllowedToManage = !mod.getClientBaritone().getPathingBehavior().isPathing()
                             && !mod.getFoodChain().isTryingToEat();
-                    if (isAllowedToManage) {
-                        Debug.logMessage("Found better tool in inventory, equipping.");
-                        ItemStack bestToolItemStack = StorageHelper.getItemStackInSlot(bestToolSlot.get());
-                        Item bestToolItem = bestToolItemStack.getItem();
-                        mod.getSlotHandler().forceEquipItem(bestToolItem);
+                    if (!isAllowedToManage) {
+                        return null;
                     }
-                    return null;
+                    Item bestToolItem = best.getItem();
+                    // three misses and we swing with what we hold, a hand we can't change is no reason to never swing
+                    if (_toolSwap.mayTry(bestToolItem)) {
+                        Debug.logMessage("Found better tool in inventory, equipping " + bestToolItem.getDescriptionId() + ".");
+                        if (mod.getSlotHandler().forceEquipItem(bestToolItem)) {
+                            _toolSwap.landed();
+                        } else {
+                            _toolSwap.missed(bestToolItem);
+                        }
+                        return null;
+                    }
+                } else {
+                    _toolSwap.landed();
                 }
             }
             mod.getClientBaritone().getInputOverrideHandler().setInputForceState(Input.CLICK_LEFT, true);

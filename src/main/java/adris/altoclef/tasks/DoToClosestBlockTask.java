@@ -2,6 +2,8 @@ package adris.altoclef.tasks;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.util.ItemTarget;
+import adris.altoclef.util.helpers.DropWatch;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.ui.HudText;
 import java.util.Arrays;
@@ -10,6 +12,7 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.phys.Vec3;
 
@@ -26,6 +29,12 @@ public class DoToClosestBlockTask extends AbstractDoToClosestObjectTask<BlockPos
     private final Function<BlockPos, Task> _getTargetTask;
 
     private final Predicate<BlockPos> _isValid;
+
+    // set by expectDrops: what the blocks drop that we want, null = don't wait for drops
+    private ItemTarget[] _dropsWanted;
+    // we break from arm length, and a drop that fell further than this from the block is somebody else's problem
+    private static final double BREAK_REACH_SQ = 6.5 * 6.5;
+    private static final double DROP_RADIUS = 5;
 
     public DoToClosestBlockTask(Supplier<Vec3> getOriginSupplier, Function<BlockPos, Task> getTargetTask, Function<Vec3, Optional<BlockPos>> getClosestBlock, Predicate<BlockPos> isValid, Block... blocks) {
         _getOriginPos = getOriginSupplier;
@@ -45,6 +54,36 @@ public class DoToClosestBlockTask extends AbstractDoToClosestObjectTask<BlockPos
 
     public DoToClosestBlockTask(Function<BlockPos, Task> getTargetTask, Block... blocks) {
         this(getTargetTask, null, blockPos -> true, blocks);
+    }
+
+    // after one of the blocks goes (we broke it, it is air and in reach) stand still until what it dropped shows up, so the
+    // next block isn't picked with the item still on its way. the drop is then up to whoever is above us, see isFinished
+    public DoToClosestBlockTask expectDrops(Item... items) {
+        _dropsWanted = new ItemTarget[]{new ItemTarget(items)};
+        return this;
+    }
+
+    @Override
+    protected void onPursuitGone(AltoClef mod, BlockPos gone) {
+        if (_dropsWanted == null || !mod.getWorld().getBlockState(gone).isAir()) {
+            return;
+        }
+        Vec3 spot = Vec3.atCenterOf(gone);
+        if (mod.getPlayer().getEyePosition().distanceToSqr(spot) <= BREAK_REACH_SQ) {
+            expectDrop(false, spot);
+        }
+    }
+
+    @Override
+    protected boolean dropSeen(AltoClef mod, Vec3 spot) {
+        return DropWatch.seen(mod, spot, DROP_RADIUS, _dropsWanted);
+    }
+
+    // the drop we waited for is there. finished is how this tells the plan above to go and get it (the pickup is not ours
+    // to do, and picking the next block instead is the thing that left it lying there)
+    @Override
+    public boolean isFinished(AltoClef mod) {
+        return _dropsWanted != null && dropReady();
     }
 
     @Override
@@ -90,6 +129,7 @@ public class DoToClosestBlockTask extends AbstractDoToClosestObjectTask<BlockPos
 
     @Override
     protected void onStart(AltoClef mod) {
+        forgetDropExpect();
         mod.getBlockTracker().trackBlock(_targetBlocks);
     }
 

@@ -179,7 +179,7 @@ public class SlotHandler {
             // window". that threw the stack on the floor instead of equipping it. drop it onto the hotbar slot
             // like the offhand version does
             clickSlotForce(PlayerSlot.getEquipSlot(), 0, ClickType.PICKUP);
-            return true;
+            return holds(toEquip);
         }
 
         List<Slot> itemSlots = _mod.getItemStorage().getSlotsWithItemScreen(toEquip);
@@ -188,9 +188,15 @@ public class SlotHandler {
             // two stacks the second swap just undid the first and the item bounced in and out forever
             int hotbar = 1;
             clickSlotForce(Objects.requireNonNull(itemSlots.get(0)), hotbar, ClickType.SWAP);
-            return true;
+            return holds(toEquip);
         }
         return false;
+    }
+
+    // the click is predicted on our own menu before it goes out, so the hand already shows what it will hold. "true" used
+    // to mean "we clicked", and DestroyBlockTask trusted it for 26 s of swapping at a carrot
+    private static boolean holds(Item item) {
+        return StorageHelper.getItemStackInSlot(PlayerSlot.getEquipSlot()).getItem() == item;
     }
 
     public boolean forceDeequipHitTool() {

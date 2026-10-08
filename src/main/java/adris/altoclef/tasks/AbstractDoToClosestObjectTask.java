@@ -3,6 +3,7 @@ package adris.altoclef.tasks;
 import adris.altoclef.AltoClef;
 import adris.altoclef.tasks.movement.TimeoutWanderTask;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.util.helpers.DropExpect;
 import adris.altoclef.util.helpers.MineStick;
 import adris.altoclef.util.helpers.WorldHelper;
 import java.util.HashMap;
@@ -24,6 +25,9 @@ public abstract class AbstractDoToClosestObjectTask<T> extends Task {
     // game tick we started holding off the wander for a scan, or -1 if we aren't
     private int _scanWaitStart = -1;
     private Task _goalTask = null;
+    // the break we just made, see DropExpect. subclasses arm it from onPursuitGone and say what they see in dropSeen
+    private final DropExpect _expect = new DropExpect();
+    private Vec3 _expectSpot;
 
     protected abstract Vec3 getPos(AltoClef mod, T obj);
 
@@ -39,6 +43,34 @@ public abstract class AbstractDoToClosestObjectTask<T> extends Task {
     // halfway through breaking, say)
     protected boolean mustSwitchTo(AltoClef mod, T current, T candidate) {
         return false;
+    }
+
+    // virtual. the thing we were after stopped being valid (broken, picked up, dead) and we are about to pick another
+    protected void onPursuitGone(AltoClef mod, T gone) {
+    }
+
+    // virtual. whether the drop we are waiting on is in sight yet, around the spot passed to expectDrop
+    protected boolean dropSeen(AltoClef mod, Vec3 spot) {
+        return false;
+    }
+
+    // stand still for the drop that is about to exist at spot, before the next thing gets picked
+    protected final void expectDrop(boolean kill, Vec3 spot) {
+        _expectSpot = spot;
+        if (kill) {
+            _expect.expectKill(WorldHelper.getTicks());
+        } else {
+            _expect.expectBreak(WorldHelper.getTicks());
+        }
+    }
+
+    // true once the wait ended because a drop showed up that needs fetching (not because it timed out)
+    protected final boolean dropReady() {
+        return _expect.takeNow();
+    }
+
+    protected final void forgetDropExpect() {
+        _expect.clear();
     }
 
     // Virtual
@@ -57,6 +89,7 @@ public abstract class AbstractDoToClosestObjectTask<T> extends Task {
         _currentlyPursuing = null;
         _heuristicMap.clear();
         _goalTask = null;
+        _expect.clear();
     }
 
     public boolean wasWandering() {
@@ -81,7 +114,17 @@ public abstract class AbstractDoToClosestObjectTask<T> extends Task {
         if (_currentlyPursuing != null && !isValid(mod, _currentlyPursuing)) {
             // This is probably a good idea, no?
             _heuristicMap.remove(_currentlyPursuing);
+            T gone = _currentlyPursuing;
             _currentlyPursuing = null;
+            onPursuitGone(mod, gone);
+        }
+
+        // the drop of what we just broke or killed is a few ticks from existing. picking the next one now is how the
+        // drop got left behind, so we stand here until it shows (or the wait is up) and the pickup gets its turn
+        if (_expect.isLive() && _expect.hold(WorldHelper.getTicks(), dropSeen(mod, _expectSpot))) {
+            setDebugState("Waiting for the drop to show up");
+            _goalTask = null;
+            return null;
         }
 
         // Get closest object

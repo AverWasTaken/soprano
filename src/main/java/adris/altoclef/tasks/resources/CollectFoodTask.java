@@ -16,6 +16,7 @@ import adris.altoclef.util.CraftingRecipe;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.RecipeTarget;
 import adris.altoclef.util.SmeltTarget;
+import adris.altoclef.util.helpers.CropRules;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WorldHelper;
@@ -39,12 +40,8 @@ import net.minecraft.world.inventory.SmokerMenu;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import net.minecraft.world.level.block.BeetrootBlock;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.block.CarrotBlock;
-import net.minecraft.world.level.block.CropBlock;
-import net.minecraft.world.level.block.PotatoBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 import java.util.ArrayList;
@@ -78,8 +75,9 @@ public class CollectFoodTask extends Task {
     };
 
     private static final CropTarget[] CROPS = new CropTarget[]{
-            new CropTarget(Items.WHEAT, Blocks.WHEAT),
-            new CropTarget(Items.CARROT, Blocks.CARROTS)
+            // unit is the food one item is worth, for how many to ask for. wheat is bread, 5 for 3 wheat
+            new CropTarget(Items.WHEAT, Blocks.WHEAT, Items.WHEAT_SEEDS, 1.6),
+            new CropTarget(Items.CARROT, Blocks.CARROTS, Items.CARROT, 3)
     };
 
     // every hoe, so whichever one we end up holding is protected and counts as "have one"
@@ -238,7 +236,7 @@ public class CollectFoodTask extends Task {
             // Try a new resource task
             _checkNewOptionsTimer.reset();
             // the timer used to wipe a half dead pig off the list the moment a hay bale came into view
-            if (!(_huntTask != null && _currentResourceTask == _huntTask && huntCommitted(mod))) {
+            if (!(_huntTask != null && _currentResourceTask == _huntTask && (huntCommitted(mod) || lootComing(mod)))) {
                 _currentResourceTask = null;
             }
         }
@@ -249,7 +247,7 @@ public class CollectFoodTask extends Task {
         }
 
         // a hunt whose animal died or got blacklisted has nothing to chase, no point idling until the 10 s check
-        if (_huntTask != null && _currentResourceTask == _huntTask && !huntStillOn(mod)) {
+        if (_huntTask != null && _currentResourceTask == _huntTask && !huntStillOn(mod) && !lootComing(mod)) {
             _currentResourceTask = null;
         }
 
@@ -340,31 +338,15 @@ public class CollectFoodTask extends Task {
                 _currentResourceTask = hayTaskBlock;
                 return _currentResourceTask;
             }
-            // Crops
+            // Crops. only the grown ones count as food, for every kind: this used to ask wheat and let young carrots
+            // through, so a farm of seedlings was "food" the bot stood in breaking one carrot back at a time
             for (CropTarget target : CROPS) {
-                // If crops are nearby. Do not replant cause we don't care.
-                Task t = pickupBlockTaskOrNull(mod, target.cropBlock, target.cropItem, (blockPos -> {
-                    BlockState s = mod.getWorld().getBlockState(blockPos);
-                    Block b = s.getBlock();
-                    if (b instanceof CropBlock) {
-                        boolean isWheat = !(b instanceof PotatoBlock || b instanceof CarrotBlock || b instanceof BeetrootBlock);
-                        if (isWheat) {
-                            // Chunk needs to be loaded for wheat maturity to be checked.
-                            if (!mod.getChunkTracker().isChunkLoaded(blockPos)) {
-                                return false;
-                            }
-                            // Prune if we're not mature/fully grown wheat.
-                            CropBlock crop = (CropBlock) b;
-                            return crop.isMaxAge(s);
-                        }
-                    }
-                    // Unbreakable.
-                    return WorldHelper.canBreak(mod, blockPos);
-                    // We're not wheat so do NOT reject.
-                }), 96);
+                Task t = pickupBlockTaskOrNull(mod, target.cropBlock, target.cropItem, blockPos -> ripeAndBreakable(mod, blockPos), 96);
                 if (t != null) {
                     setDebugState("Harvesting " + target.cropItem.getDescriptionId());
-                    _currentResourceTask = t;
+                    // a drop already lying there is just a pickup. the field itself goes through CollectCropTask, which
+                    // knows to wait for the drop and to replant what it breaks
+                    _currentResourceTask = t instanceof PickupDroppedItemTask ? t : cropTask(mod, target, potentialFood);
                     return _currentResourceTask;
                 }
             }
@@ -453,10 +435,32 @@ public class CollectFoodTask extends Task {
             if (nearestDrop.isPresent()) {
                 return new PickupDroppedItemTask(itemToGrab, Integer.MAX_VALUE);
             } else {
-                return new DoToClosestBlockTask(DestroyBlockTask::new, acceptPlus, blockToCheck);
+                DoToClosestBlockTask dig = new DoToClosestBlockTask(DestroyBlockTask::new, acceptPlus, blockToCheck);
+                // a bale always drops itself, so the next one waits for it. (berries don't always, and crops go through
+                // CollectCropTask)
+                return itemToGrab == Items.HAY_BLOCK ? dig.expectDrops(itemToGrab) : dig;
             }
         }
         return null;
+    }
+
+    // grown and in a chunk we can read (the age of an unloaded one is a guess) and ours to break
+    private static boolean ripeAndBreakable(AltoClef mod, BlockPos pos) {
+        return mod.getChunkTracker().isChunkLoaded(pos) && CropRules.ripe(mod.getWorld().getBlockState(pos)) && WorldHelper.canBreak(mod, pos);
+    }
+
+    // the food still wanted, in items of this crop. one more than we hold at the very least, a farm run for nothing is not a run
+    private Task cropTask(AltoClef mod, CropTarget target, double potentialFood) {
+        int held = mod.getItemStorage().getItemCount(target.cropItem);
+        int more = (int) Math.max(1, Math.ceil((_unitsNeeded - potentialFood) / target.unitFood));
+        return new CollectCropTask(new ItemTarget(target.cropItem, held + more), new Block[]{target.cropBlock}, new Item[]{target.seed},
+                pos -> WorldHelper.canBreak(mod, pos));
+    }
+
+    // the hunted animal is dead but the loot of the kill is still on its way or lying there: the hunt is not over (see
+    // KillAndLootTask.awaitingDrop)
+    private boolean lootComing(AltoClef mod) {
+        return _huntTask instanceof KillAndLootTask kill && kill.awaitingDrop(mod);
     }
 
     private Task pickupBlockTaskOrNull(AltoClef mod, Block blockToCheck, Item itemToGrab, double maxRange) {
@@ -717,10 +721,14 @@ public class CollectFoodTask extends Task {
     private static class CropTarget {
         public Item cropItem;
         public Block cropBlock;
+        public Item seed;
+        public double unitFood;
 
-        public CropTarget(Item cropItem, Block cropBlock) {
+        public CropTarget(Item cropItem, Block cropBlock, Item seed, double unitFood) {
             this.cropItem = cropItem;
             this.cropBlock = cropBlock;
+            this.seed = seed;
+            this.unitFood = unitFood;
         }
     }
 }

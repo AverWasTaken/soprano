@@ -14,6 +14,7 @@ import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.ItemPickupRules;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.DropPatience;
+import adris.altoclef.util.helpers.DropWatch;
 import adris.altoclef.util.helpers.MineAnchor;
 import adris.altoclef.util.helpers.MineStick;
 import adris.altoclef.util.helpers.PlacedByUs;
@@ -329,6 +330,36 @@ public class MineAndCollectTask extends ResourceTask {
             return closestBlock;
         }
 
+        // a block of ours going away is a break, and its drop is a tick or two from existing. picking the next block
+        // right now is how a log fell and the bot walked off to the next one (-119,69,71 then -119,70,71, no pickup between),
+        // so we stand still until the drop shows. the pick that follows has the patience lock for the walk to it
+        @Override
+        protected void onPursuitGone(AltoClef mod, Object gone) {
+            if (!(gone instanceof BlockPos pos) || !pos.equals(_miningPos)) {
+                return;
+            }
+            if (_blacklist.contains(pos) || mod.getBlockTracker().unreachable(pos) || mod.getBlockTracker().blockIsValid(pos, _blocks)) {
+                return;
+            }
+            Vec3 spot = Vec3.atCenterOf(pos);
+            if (mod.getPlayer().getEyePosition().distanceToSqr(spot) > HOLD_REACH_SQ) {
+                return;
+            }
+            // the break is booked (anchor and all) now, the wait must not look like a block we are failing to mine
+            noteBreak(mod);
+            _miningPos = null;
+            _progressChecker.reset();
+            expectDrop(false, spot);
+        }
+
+        @Override
+        protected boolean dropSeen(AltoClef mod, Vec3 spot) {
+            return DropWatch.seen(mod, spot, DROP_SEEN_RADIUS, _targets);
+        }
+
+        // a drop that fell further from the block than this was somebody else's
+        private static final double DROP_SEEN_RADIUS = 5;
+
         // the block we were on is gone and we did not give up on it: that was a break, so that is where we are working.
         // stone has its own idea of where to dig next (see StoneDigRank), a neighbourhood would walk it down a shaft
         private void noteBreak(AltoClef mod) {
@@ -437,6 +468,7 @@ public class MineAndCollectTask extends ResourceTask {
         }
 
         private void forgetFocus() {
+            forgetDropExpect();
             _anchor = null;
             _anchorAnnounced = false;
             _lockedDrop = null;
