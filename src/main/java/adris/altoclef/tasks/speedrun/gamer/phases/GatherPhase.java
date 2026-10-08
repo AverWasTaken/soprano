@@ -124,7 +124,7 @@ public class GatherPhase implements PhaseHandler {
         Task trip = furnaces.active(mod, ctx);
         if (trip == null) {
             boolean boundary = head == null || !head.equals(committed);
-            Decision what = SmeltFiller.decide(head != null, boundary, SmeltFiller.gatherBlocking(f, plan), plan.isEmpty(),
+            Decision what = SmeltFiller.decide(head != null, boundary, SmeltFiller.gatherBlocking(f, plan),
                     f.gameTime(), f.furnaceJobs(), ctx.cfg().overworld);
             if (what.trip() != Trip.FILLER) {
                 committed = null;

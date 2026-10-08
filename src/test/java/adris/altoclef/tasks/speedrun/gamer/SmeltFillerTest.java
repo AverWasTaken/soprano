@@ -217,18 +217,16 @@ public class SmeltFillerTest {
         }
     }
 
-    // atBoundary / blocking / phaseEnding spelled out so the tests below read as sentences
-    private Decision decide(boolean fillerLeft, boolean atBoundary, boolean blocking, boolean phaseEnding, long now,
-                            List<RunState.FurnaceJob> jobs) {
-        return SmeltFiller.decide(fillerLeft, atBoundary, blocking, phaseEnding, now, jobs, cfg);
+    private Decision decide(boolean fillerLeft, boolean atBoundary, boolean interrupt, long now, List<RunState.FurnaceJob> jobs) {
+        return SmeltFiller.decide(fillerLeft, atBoundary, interrupt, now, jobs, cfg);
     }
 
     @Test
     public void nothingToDoMeansWaitingAtTheFurnaceUntilItIsDone() {
         List<RunState.FurnaceJob> jobs = atTheFurnace().cooking("iron_ingot", 10, 100).furnaceJobs();
         long start = jobs.get(0).startTick;
-        assertEquals(new Decision(Trip.WAIT, Why.NONE), decide(false, true, false, false, start, jobs));
-        assertEquals(new Decision(Trip.COLLECT, Why.PHASE_END), decide(false, true, false, false, start + 100 * 20, jobs));
+        assertEquals(new Decision(Trip.WAIT, Why.NONE), decide(false, true, false, start, jobs));
+        assertEquals(new Decision(Trip.COLLECT, Why.IDLE), decide(false, true, false, start + 100 * 20, jobs));
     }
 
     @Test
@@ -236,56 +234,68 @@ public class SmeltFillerTest {
         List<RunState.FurnaceJob> jobs = atTheFurnace().cooking("iron_ingot", 10, 100).furnaceJobs();
         long late = jobs.get(0).doneTick + 50;
         // mid need: keep going, even though it is long done
-        assertEquals(Trip.FILLER, decide(true, false, false, false, late, jobs).trip());
-        assertEquals(new Decision(Trip.COLLECT, Why.BOUNDARY), decide(true, true, false, false, late, jobs));
+        assertEquals(Trip.FILLER, decide(true, false, false, late, jobs).trip());
+        assertEquals(new Decision(Trip.COLLECT, Why.BOUNDARY), decide(true, true, false, late, jobs));
         // at a boundary but not done yet: filler
-        assertEquals(Trip.FILLER, decide(true, true, false, false, jobs.get(0).startTick, jobs).trip());
+        assertEquals(Trip.FILLER, decide(true, true, false, jobs.get(0).startTick, jobs).trip());
     }
 
     @Test
     public void nearlyDoneCountsAsDone() {
         List<RunState.FurnaceJob> jobs = atTheFurnace().cooking("iron_ingot", 10, 100).furnaceJobs();
         long soon = jobs.get(0).doneTick - Math.round(cfg.furnaceWaitSeconds * 20) + 1;
-        assertEquals(Trip.COLLECT, decide(true, true, false, false, soon, jobs).trip());
-        assertEquals(Trip.FILLER, decide(true, true, false, false, soon - 40, jobs).trip());
+        assertEquals(Trip.COLLECT, decide(true, true, false, soon, jobs).trip());
+        assertEquals(Trip.FILLER, decide(true, true, false, soon - 40, jobs).trip());
     }
 
     @Test
-    public void aNeedWaitingOnTheOutputPullsUsBackMidNeed() {
-        List<RunState.FurnaceJob> jobs = atTheFurnace().cooking("iron_ingot", 10, 100).furnaceJobs();
-        long late = jobs.get(0).doneTick + 50;
-        // not at a boundary, but the pickaxe cannot start without those ingots
-        assertEquals(new Decision(Trip.COLLECT, Why.BLOCKING), decide(true, false, true, false, late, jobs));
-        // and blocked on something that is not done cooking yet changes nothing
-        assertEquals(Trip.FILLER, decide(true, false, true, false, jobs.get(0).startTick, jobs).trip());
+    public void anIronCraftWaitingOnTheOutputDoesNotPullUsOffTheCurrentNeed() {
+        // the ladder run: the pickaxe is blocked behind the cooking ingots for the whole cook, and that is no reason to leave
+        FakeFacts f = atTheFurnace().cooking("iron_ingot", 39, 100);
+        assertFalse(SmeltFiller.schedule(f, cfg, BEDS).blocked().isEmpty());
+        long late = f.furnaceJobs().get(0).doneTick + 50;
+        // the decision only ever hears about the interrupts below, a blocked craft is not one of them
+        assertEquals(Trip.FILLER, decide(true, false, false, late, f.furnaceJobs()).trip());
+        assertEquals(new Decision(Trip.COLLECT, Why.BOUNDARY), decide(true, true, false, late, f.furnaceJobs()));
     }
 
     @Test
-    public void aPhaseWithNothingLeftButTheFurnaceGoesBackWhenItIsDue() {
+    public void theEarlyPickAndAStuckSmokerAreWorthAnInterrupt() {
         List<RunState.FurnaceJob> jobs = atTheFurnace().cooking("iron_ingot", 10, 100).furnaceJobs();
         long late = jobs.get(0).doneTick + 50;
-        // stock-up is still runnable, but the plan is empty: the stock-up is not worth a delayed phase
-        assertEquals(new Decision(Trip.COLLECT, Why.PHASE_END), decide(true, false, false, true, late, jobs));
-        assertEquals(Trip.FILLER, decide(true, false, false, true, jobs.get(0).startTick, jobs).trip());
+        assertEquals(new Decision(Trip.COLLECT, Why.INTERRUPT), decide(true, false, true, late, jobs));
+        // an interrupt for a job that is not done cooking yet changes nothing
+        assertEquals(Trip.FILLER, decide(true, false, true, jobs.get(0).startTick, jobs).trip());
     }
 
     @Test
     public void anEmptyFillerIsWhatMakesUsWait() {
         List<RunState.FurnaceJob> jobs = atTheFurnace().cooking("iron_ingot", 10, 100).furnaceJobs();
         long start = jobs.get(0).startTick;
-        assertEquals(Trip.FILLER, decide(true, false, false, false, start, jobs).trip());
-        assertEquals(Trip.WAIT, decide(false, false, false, false, start, jobs).trip());
+        assertEquals(Trip.FILLER, decide(true, false, false, start, jobs).trip());
+        assertEquals(Trip.WAIT, decide(false, false, false, start, jobs).trip());
     }
 
     @Test
-    public void theFirstPlannedNeedBeingBlockedIsWhatBlocksThePlan() {
-        // 39 cooking, no ingots in the bag: the pickaxe leads the plan and cannot be paid for
-        Schedule s = SmeltFiller.schedule(atTheFurnace().cooking("iron_ingot", 39, 400), cfg, BEDS);
-        assertTrue(s.blocking());
-        // three ingots in the bag pay for the pickaxe, the head runs and nothing is stuck
-        assertFalse(SmeltFiller.schedule(atTheFurnace().give(Items.IRON_INGOT, 3).cooking("iron_ingot", 36, 400), cfg, BEDS).blocking());
-        // no job, no blocked list
-        assertFalse(SmeltFiller.schedule(atTheFurnace(), cfg, BEDS).blocking());
+    public void aVisitedFurnaceIsNotRevisitedBeforeItsNewTimer() {
+        List<RunState.FurnaceJob> jobs = atTheFurnace().cooking("iron_ingot", 3, 30).furnaceJobs();
+        RunState.FurnaceJob j = jobs.get(0);
+        long now = 5000;
+        long slack = Math.round(cfg.furnaceWaitSeconds * 20);
+        // we got there, 3 items and 11 s of input left: the old slack would call this due after a second and turn us around
+        FurnaceJobs.afterVisit(jobs, j, 3, slack + 20, now);
+        assertEquals(Trip.FILLER, decide(true, true, false, now, jobs).trip());
+        assertEquals(Trip.FILLER, decide(true, true, false, now + 20, jobs).trip());
+        assertEquals(Trip.FILLER, decide(true, true, true, now + slack + 19, jobs).trip());
+        assertEquals(Trip.COLLECT, decide(true, true, false, now + slack + 20, jobs).trip());
+    }
+
+    @Test
+    public void foodBehindItsOwnSmokerIsTheInterruptNotAnIronCraft() {
+        // GATHER's interrupt: the food is the head of the plan and the smoker is on the last batch
+        FakeFacts f = atTheFurnace().cookingFood("cooked_mutton", 3, 6, 15).give(Items.MUTTON, 7);
+        f.foodUnits = 0;
+        assertTrue(SmeltFiller.gatherBlocking(f, List.of(new KitNeed(KitNeed.FOOD, 70))));
     }
 
     @Test

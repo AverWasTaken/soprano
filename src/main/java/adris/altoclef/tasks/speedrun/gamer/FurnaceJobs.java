@@ -94,7 +94,9 @@ public final class FurnaceJobs {
 
     public static boolean anyDue(List<RunState.FurnaceJob> jobs, long now, long slackTicks) {
         for (RunState.FurnaceJob job : jobs) {
-            if (now + slackTicks >= job.doneTick) {
+            // the slack is for the first trip (walking there and a short wait). a job we already visited has an honest timer, and
+            // going back inside the slack of it is how the bot ping-ponged: leave with 11 s left, "due" a second later
+            if (now + (job.visited ? 0 : slackTicks) >= job.doneTick) {
                 return true;
             }
         }
@@ -155,5 +157,6 @@ public final class FurnaceJobs {
         job.count = inputLeft;
         job.startTick = now;
         job.doneTick = now + Math.max(1, remaining);
+        job.visited = true;
     }
 }

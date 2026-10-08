@@ -13,13 +13,8 @@ import java.util.List;
 // there is no leash: a furnace in an unloaded chunk just pauses, so the bot goes where the work is and walks back for the
 // output when it is due (and whatever is in the furnace when we get there is the truth, see CollectFromFurnaceTask)
 public final class SmeltFiller {
-    // runnable = what we can work on right now, most useful first. blocked = needs that want ingots we do not hold yet.
-    // plan = the kit's own list before any of that, its first entry is "the next need"
-    public record Schedule(List<KitNeed> runnable, List<KitNeed> blocked, List<KitNeed> plan) {
-        // the next need cannot start until the furnace gives something up, the filler is only a way to pass the time
-        public boolean blocking() {
-            return !plan.isEmpty() && blocked.contains(plan.get(0));
-        }
+    // runnable = what we can work on right now, most useful first. blocked = needs that want ingots we do not hold yet
+    public record Schedule(List<KitNeed> runnable, List<KitNeed> blocked) {
     }
 
     public enum Trip {
@@ -36,10 +31,10 @@ public final class SmeltFiller {
         NONE("not going"),
         // the job is due and we are between two needs
         BOUNDARY("due, and the need we were on is done"),
-        // the job is due and the next need is waiting on its output
-        BLOCKING("due, and the next need is blocked on it"),
-        // the phase has nothing left but this furnace (or nothing else to do while it cooks)
-        PHASE_END("due, and the phase has nothing left but this");
+        // the job is due and something is worth cutting the current need short for (the early pick, a smoker holding up the food)
+        INTERRUPT("due, and the output is holding up the plan"),
+        // the job is due and there is nothing else useful to do
+        IDLE("due, and there is nothing else to do");
 
         public final String text;
 
@@ -62,7 +57,7 @@ public final class SmeltFiller {
     public static Schedule schedule(GamerFacts f, OverworldConfig cfg, int endBeds) {
         List<KitNeed> needs = KitPlanner.plan(f, cfg, endBeds);
         if (f.furnaceJobs().isEmpty()) {
-            return new Schedule(needs, List.of(), needs);
+            return new Schedule(needs, List.of());
         }
         List<KitNeed> runnable = new ArrayList<>();
         List<KitNeed> blocked = new ArrayList<>();
@@ -73,7 +68,7 @@ public final class SmeltFiller {
         prep(f, cfg, endBeds, blocked, runnable);
         extras(f, cfg, endBeds, runnable);
         runnable.removeIf(need -> foodBlocked(f, need));
-        return new Schedule(runnable, blocked, needs);
+        return new Schedule(runnable, blocked);
     }
 
     // a craft is runnable while the ingots we hold cover it, handed out in plan order (the pickaxe gets its three before
@@ -116,7 +111,9 @@ public final class SmeltFiller {
         return out;
     }
 
-    // GATHER's version of Schedule.blocking: the next need is the food and the smoker is still on the last batch
+    // the one blocked-need case worth cutting a need short for: the next need is the food and the smoker is still on the last
+    // batch. (an iron craft heading the plan does not count, that is every tick of a long cook and the bot got pulled off a
+    // ladder need for it)
     public static boolean gatherBlocking(GamerFacts f, List<KitNeed> plan) {
         return !plan.isEmpty() && foodBlocked(f, plan.get(0));
     }
@@ -192,23 +189,21 @@ public final class SmeltFiller {
     // ---- when to go back
 
     // fillerLeft = the runnable list is not empty. atBoundary = the need we were on is done (we are between two needs).
-    // blocking = the next need cannot start without this output (a pickaxe waiting on ingots). phaseEnding = the plan is
-    // empty and the furnace is all that is left. a due job is fetched when one of those holds and never mid-need just because
-    // it is due: a walk back from a far sheep is only worth it for something that is actually waiting
-    public static Decision decide(boolean fillerLeft, boolean atBoundary, boolean blocking, boolean phaseEnding, long now,
+    // interrupt = the one thing that may cut a need short: the early pick wants its ingots (EarlyIronPick.collectNow), or the
+    // food is stuck behind its own smoker (gatherBlocking). a due job otherwise waits for the need to end, however loudly an
+    // iron craft is waiting on it: the bot got pulled off a ladder need for exactly that. an empty filler list is the other
+    // way out, there is nothing left to cut short
+    public static Decision decide(boolean fillerLeft, boolean atBoundary, boolean interrupt, long now,
                                   List<RunState.FurnaceJob> jobs, OverworldConfig cfg) {
         boolean due = FurnaceJobs.anyDue(jobs, now, Math.round(cfg.furnaceWaitSeconds * 20));
         if (!fillerLeft) {
-            return due ? new Decision(Trip.COLLECT, Why.PHASE_END) : new Decision(Trip.WAIT, Why.NONE);
+            return due ? new Decision(Trip.COLLECT, Why.IDLE) : new Decision(Trip.WAIT, Why.NONE);
         }
         if (!due) {
             return new Decision(Trip.FILLER, Why.NONE);
         }
-        if (phaseEnding) {
-            return new Decision(Trip.COLLECT, Why.PHASE_END);
-        }
-        if (blocking) {
-            return new Decision(Trip.COLLECT, Why.BLOCKING);
+        if (interrupt) {
+            return new Decision(Trip.COLLECT, Why.INTERRUPT);
         }
         return atBoundary ? new Decision(Trip.COLLECT, Why.BOUNDARY) : new Decision(Trip.FILLER, Why.NONE);
     }

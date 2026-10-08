@@ -157,12 +157,11 @@ public class IronPhase implements PhaseHandler {
         }
         Task trip = furnaces.active(mod, ctx);
         if (trip == null) {
-            // no pick yet and the early batch is done: the pick is waiting on those ingots, and the mining need would not end
-            // for 36 more of them
+            // no pick yet and the early batch is done: the pick is worth the detour, the mining need would not end for 36 more
+            // ingots. nothing else cuts a need short, an iron craft waiting on the output is not a reason to leave a ladder
             boolean boundary = head == null || !head.equals(committed);
-            boolean blocking = schedule.blocking() || EarlyIronPick.collectNow(f, ctx.cfg().overworld);
-            boolean phaseEnding = schedule.plan().isEmpty();
-            Decision what = SmeltFiller.decide(head != null, boundary, blocking, phaseEnding, f.gameTime(), f.furnaceJobs(), ctx.cfg().overworld);
+            boolean interrupt = EarlyIronPick.collectNow(f, ctx.cfg().overworld);
+            Decision what = SmeltFiller.decide(head != null, boundary, interrupt, f.gameTime(), f.furnaceJobs(), ctx.cfg().overworld);
             if (what.trip() != Trip.FILLER) {
                 committed = null;
                 trip = furnaces.collect(mod, ctx, what.trip() == Trip.WAIT ? Mode.WAIT_ALL : Mode.NORMAL,

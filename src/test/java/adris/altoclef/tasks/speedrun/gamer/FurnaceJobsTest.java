@@ -183,9 +183,15 @@ public class FurnaceJobsTest {
         assertEquals(4, j.count);
         assertEquals(now, j.startTick);
         assertEquals(now + 750, j.doneTick);
-        // not due while it cooks, due once the estimate runs out
+        assertTrue(j.visited);
+        // not due while it cooks, and no slack either: the timer is the furnace's own now, so not even inside the last 200
         assertFalse(FurnaceJobs.anyDue(jobs, now + 100, 200));
-        assertTrue(FurnaceJobs.anyDue(jobs, now + 750, 0));
+        assertFalse(FurnaceJobs.anyDue(jobs, now + 749, 200));
+        assertTrue(FurnaceJobs.anyDue(jobs, now + 750, 200));
+        // a job nobody visited still gets the slack, that is for the walk there
+        RunState.FurnaceJob guess = job(2, 10, 0, "furnace");
+        assertFalse(guess.visited);
+        assertTrue(FurnaceJobs.anyDue(List.of(guess), guess.doneTick - 200, 200));
         // an honest estimate never says "now": a zero or negative remainder still gives the job a tick
         FurnaceJobs.afterVisit(jobs, j, 1, 0, now);
         assertEquals(now + 1, j.doneTick);

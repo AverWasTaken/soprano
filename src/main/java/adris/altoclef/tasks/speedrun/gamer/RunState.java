@@ -115,6 +115,9 @@ public class RunState {
         // nutrition of ONE finished item, 0 for anything that is not food. the food planner counts count * unitsEach as food
         // on the way. an old save has no key and reads 0, which is just "not food"
         public int unitsEach;
+        // doneTick came from the furnace's own slots on a visit, not from our guess when we loaded it (FurnaceJobs.anyDue). an
+        // old save has no key and reads false, which is just "a guess"
+        public boolean visited;
 
         public FurnaceJob() {
         }
