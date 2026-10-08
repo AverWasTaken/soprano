@@ -3,6 +3,7 @@ package adris.altoclef.control;
 import baritone.Baritone;
 import adris.altoclef.AltoClef;
 import adris.altoclef.tasks.entity.AbstractKillEntityTask;
+import adris.altoclef.util.helpers.EntityHelper;
 import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.StlHelper;
 import adris.altoclef.util.helpers.StorageHelper;
@@ -12,6 +13,7 @@ import adris.altoclef.util.time.TimerGame;
 import baritone.api.utils.input.Input;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.boss.wither.WitherBoss;
 import net.minecraft.world.entity.monster.Blaze;
 import net.minecraft.world.entity.monster.Creeper;
@@ -199,6 +201,8 @@ public class KillAura {
     // or not, and a machine that gets asked every fourth tick can't steer a jump
     private void attack(AltoClef mod, Entity entity, boolean equipSword, boolean crit) {
         if (entity == null) return;
+        // second guard: a wolf nobody poked is not our enemy, whatever put it in the target list
+        if (entity instanceof Mob mob && EntityHelper.isCalmNeutral(mod, mob)) return;
         if (!(entity instanceof LargeFireball)) {
             LookHelper.lookAt(mod, entity.getEyePosition());
         }

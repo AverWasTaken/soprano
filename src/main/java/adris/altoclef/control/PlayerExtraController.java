@@ -66,6 +66,8 @@ public class PlayerExtraController {
 
     public void attack(Entity entity) {
         if (inRange(entity)) {
+            // every deliberate swing comes through here: the one we hit is angry at us now, neutral or not
+            _mod.getEntityTracker().noteProvoked(entity);
             _mod.getController().attack(_mod.getPlayer(), entity);
             _mod.getPlayer().swing(InteractionHand.MAIN_HAND);
         }

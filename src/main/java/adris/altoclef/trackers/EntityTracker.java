@@ -13,11 +13,13 @@ import adris.altoclef.util.helpers.BaritoneHelper;
 import adris.altoclef.util.helpers.EntityHelper;
 import adris.altoclef.util.helpers.ItemPickupRules;
 import adris.altoclef.util.helpers.MobReachability;
+import adris.altoclef.util.helpers.Provocations;
 import adris.altoclef.util.helpers.ProjectileHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import java.util.*;
 import java.util.function.Predicate;
 import net.minecraft.client.Minecraft;
+import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.item.ItemEntity;
@@ -49,6 +51,8 @@ public class EntityTracker extends Tracker {
 
     private final EntityLocateBlacklist _entityBlacklist = new EntityLocateBlacklist();
     private final MobReachability _mobReach = new MobReachability();
+    // who we hit and who hit us lately, the only honest "it is angry at us" the client can get (see NeutralMobs)
+    private final Provocations _provocations = new Provocations();
     // entity ids we already said we were skipping, so the log gets one line per drop and not one per tick
     private final Set<Integer> _skippedWetDrops = new HashSet<>();
     // isPickupSafe can be ~45 block lookups per drop, so each drop's verdict lives a few ticks instead of being redone
@@ -343,6 +347,26 @@ public class EntityTracker extends Tracker {
         return _mobReach;
     }
 
+    public Provocations getProvocations() {
+        return _provocations;
+    }
+
+    // we just hit this one (or it just hit us). anything neutral stops being calm for a while
+    public void noteProvoked(Entity entity) {
+        if (entity instanceof Mob && Minecraft.getInstance().level != null) {
+            _provocations.mark(entity.getId(), Minecraft.getInstance().level.getGameTime());
+        }
+    }
+
+    private void noteAttackers() {
+        if (_mod.getPlayer() == null) return;
+        DamageSource source = _mod.getPlayer().getLastDamageSource();
+        if (source == null) return;
+        // the attacker for melee and a shot's shooter, and the thing that actually touched us
+        noteProvoked(source.getEntity());
+        noteProvoked(source.getDirectEntity());
+    }
+
     @Override
     protected synchronized void updateState() {
         synchronized (BaritoneHelper.MINECRAFT_LOCK) {
@@ -353,6 +377,10 @@ public class EntityTracker extends Tracker {
             _hostiles.clear();
             _playerMap.clear();
             if (Minecraft.getInstance().level == null) return;
+
+            // whatever hurt us last (the client keeps the source for two seconds) is after us, neutral or not. goes before
+            // the hostile pass below so a piglin that just hit us is a hostile on the same tick
+            noteAttackers();
 
             // Store/Register All accumulated player collisions for this frame.
             _entitiesCollidingWithPlayer.clear();

@@ -351,6 +351,8 @@ public final class GolemFightTask extends Task {
         if (player.getAttackStrengthScale(0) < 1) {
             return false;
         }
+        // not through PlayerExtraController, so the grudge book hears about it here
+        mod.getEntityTracker().noteProvoked(g);
         mod.getController().attack(player, g);
         player.swing(InteractionHand.MAIN_HAND);
         lastHitTick = now;
