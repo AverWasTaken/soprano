@@ -16,6 +16,7 @@ import java.util.List;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
@@ -178,6 +179,29 @@ public class SmeltFillerTest {
         assertEquals(new KitNeed(KitNeed.BUILD_BLOCKS, 32), r.get(2));
         assertEquals(new KitNeed(KitNeed.BUILD_BLOCKS, 64), r.get(7));
         assertEquals(new KitNeed("log", 8), r.get(8));
+    }
+
+    @Test
+    public void heldPlanksCountTowardsTheLogStockUp() {
+        // 3 logs and 20 planks is 32 planks of wood, the 8 log target is met without a trip
+        FakeFacts f = atTheFurnace().cooking("iron_ingot", 39, 400).give(Items.OAK_LOG, 3).give(Items.OAK_PLANKS, 20);
+        assertNull(find(SmeltFiller.schedule(f, cfg, BEDS).runnable(), "log"));
+        // 3 logs and 8 planks is 20 of the 32: the old answer asked for 5 more logs, 2 logs' worth of planks make it 3 more
+        FakeFacts shy = atTheFurnace().cooking("iron_ingot", 39, 400).give(Items.OAK_LOG, 3).give(Items.OAK_PLANKS, 8);
+        assertEquals(new KitNeed("log", 6), find(SmeltFiller.schedule(shy, cfg, BEDS).runnable(), "log"));
+        assertEquals(0, SmeltFiller.logStockTarget(new FakeFacts().give(Items.OAK_PLANKS, 32), 8, true));
+        assertEquals(8, SmeltFiller.logStockTarget(new FakeFacts().give(Items.OAK_PLANKS, 3), 8, true));
+        assertEquals(8, SmeltFiller.logStockTarget(new FakeFacts(), 8, true));
+    }
+
+    @Test
+    public void noLogStockUpDownTheMine() {
+        FakeFacts f = atTheFurnace().cooking("iron_ingot", 39, 400);
+        assertNotNull(find(SmeltFiller.schedule(f, cfg, BEDS, true).runnable(), "log"));
+        assertNull(find(SmeltFiller.schedule(f, cfg, BEDS, false).runnable(), "log"));
+        // the rest of the filler is not touched by depth
+        assertEquals(names(SmeltFiller.schedule(f, cfg, BEDS, true).runnable()).stream().filter(n -> !n.equals("log")).toList(),
+                names(SmeltFiller.schedule(f, cfg, BEDS, false).runnable()));
     }
 
     @Test

@@ -55,6 +55,11 @@ public final class SmeltFiller {
     //   b. prep for the blocked crafts: flint, planks and sticks
     //   c. stock-up, one entry of cfg.smeltExtras at a time
     public static Schedule schedule(GamerFacts f, OverworldConfig cfg, int endBeds) {
+        return schedule(f, cfg, endBeds, true);
+    }
+
+    // nearSurface = SmeltSurface.shallow: the log stock-up only happens where a tree is a short walk (see logStockTarget)
+    public static Schedule schedule(GamerFacts f, OverworldConfig cfg, int endBeds, boolean nearSurface) {
         List<KitNeed> needs = KitPlanner.plan(f, cfg, endBeds);
         if (f.furnaceJobs().isEmpty()) {
             return new Schedule(needs, List.of());
@@ -66,7 +71,7 @@ public final class SmeltFiller {
             runnable.add(new KitNeed(KitNeed.BUILD_BLOCKS, cfg.portalBuildBlocks));
         }
         prep(f, cfg, endBeds, blocked, runnable);
-        extras(f, cfg, endBeds, runnable);
+        extras(f, cfg, endBeds, nearSurface, runnable);
         runnable.removeIf(need -> foodBlocked(f, need));
         return new Schedule(runnable, blocked);
     }
@@ -147,7 +152,22 @@ public final class SmeltFiller {
         return blocked.stream().anyMatch(n -> n.catalogueName().equals(name));
     }
 
-    private static void extras(GamerFacts f, OverworldConfig cfg, int endBeds, List<KitNeed> out) {
+    // the log stock-up counts planks as wood too (4 to a log), it is only there so we have wood to craft with. 0 = no trip.
+    // a stock-up is not worth climbing out of the mine for, so down there it never happens (the iron phase asks for wood
+    // itself while the surface is still close)
+    static int logStockTarget(GamerFacts f, int wantedLogs, boolean nearSurface) {
+        if (!nearSurface) {
+            return 0;
+        }
+        int missing = 4 * wantedLogs - f.count(ItemHelper.PLANKS) - 4 * f.count(ItemHelper.LOG);
+        if (missing <= 0) {
+            return 0;
+        }
+        // held logs already count, the need is a total like every other log need
+        return wantedLogs - f.count(ItemHelper.PLANKS) / 4;
+    }
+
+    private static void extras(GamerFacts f, OverworldConfig cfg, int endBeds, boolean nearSurface, List<KitNeed> out) {
         if (cfg.smeltExtras == null) {
             return;
         }
@@ -175,8 +195,9 @@ public final class SmeltFiller {
                     }
                 }
                 case "log" -> {
-                    if (f.count(ItemHelper.LOG) < extra.count) {
-                        out.add(new KitNeed("log", extra.count));
+                    int logs = logStockTarget(f, extra.count, nearSurface);
+                    if (logs > 0) {
+                        out.add(new KitNeed("log", logs));
                     }
                 }
                 default -> {

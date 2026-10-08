@@ -147,7 +147,7 @@ public class IronPhase implements PhaseHandler {
         if (f.furnaceJobs().isEmpty()) {
             return null;
         }
-        Schedule schedule = SmeltFiller.schedule(f, ctx.cfg().overworld, ctx.cfg().end.beds);
+        Schedule schedule = SmeltFiller.schedule(f, ctx.cfg().overworld, ctx.cfg().end.beds, SmeltSurface.shallow(SmeltSurface.depthBelowSky(mod)));
         List<KitNeed> runnable = gateFood(mod, ctx, schedule.runnable());
         KitNeed head = runnable.isEmpty() ? null : runnable.get(0);
         Task side = support.tick(mod, ctx, runnable);

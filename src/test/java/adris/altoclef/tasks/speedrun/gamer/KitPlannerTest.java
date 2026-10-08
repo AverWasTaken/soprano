@@ -14,6 +14,7 @@ import java.util.List;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 public class KitPlannerTest {
@@ -73,6 +74,16 @@ public class KitPlannerTest {
         assertEquals(List.of("log", "stone_pickaxe", "stone_axe", "food", "iron_ingot", "iron_pickaxe", "iron_axe", "bucket",
                 "flint_and_steel", "shield", "shears", "ladder", "iron_chestplate", "iron_helmet", "iron_leggings", "iron_boots",
                 "wool", "food"), names(plan));
+    }
+
+    @Test
+    public void ironPhaseWithExactlyEnoughPlanksAsksForNoLog() {
+        // 27 planks is the whole bare run (picks, shield, a table, the sticks). the old spare log wanted 4 more of them
+        f.give(Items.OAK_PLANKS, 27);
+        assertNull(find(KitPlanner.plan(f, cfg, 8), "log"));
+        // one short is a log, and only one
+        FakeFacts shy = new FakeFacts().give(Items.OAK_PLANKS, 26);
+        assertEquals(new KitNeed("log", 1), find(KitPlanner.plan(shy, cfg, 8), "log"));
     }
 
     @Test

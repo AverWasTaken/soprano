@@ -230,7 +230,8 @@ public final class KitPlanner {
         if (gathering) {
             wood[0] += 3 * Math.max(0, endBeds - f.count(ItemHelper.BED));
         }
-        return logsShort(f, wood[0], wood[1], true);
+        // the margin is the gather's up-front chop. in the iron phase exactly enough planks is enough, a spare log is a trip
+        return logsShort(f, wood[0], wood[1], gathering);
     }
 
     // planks for a table (or two): with no tool made yet the first one is still ahead of us, and the second is the
