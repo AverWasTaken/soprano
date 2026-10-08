@@ -171,7 +171,8 @@ public class CollectFromFurnaceTask extends Task {
             setDebugState("Waiting for the furnace");
             return null;
         }
-        double arrow = Math.min(1.0, Math.max(0, StorageHelper.getFurnaceCookPercent()) / 24.0);
+        // the arrow is already 0..1 (StorageHelper.getFurnaceCookPercent), dividing it by 24 read every item as just started
+        double arrow = Math.min(1.0, Math.max(0, StorageHelper.getFurnaceCookPercent()));
         long nextOutput = Math.round(FurnaceJobs.ticksPerItem(kind) * (1.0 - arrow));
         idleUntil = now + idleTicks(nextOutput);
         StorageHelper.closeScreen();
@@ -195,9 +196,10 @@ public class CollectFromFurnaceTask extends Task {
         return null;
     }
 
-    // cook progress is the arrow, 0..24 pixels, of the item that is cooking right now
+    // cook progress of the item that is cooking right now, 0..1. it used to be 24 pixels and the /24 outlived that,
+    // which made every wake up and re-stamp up to a whole item late (the ~5 s off on a smoker)
     private long remainingTicks(ItemStack input) {
-        double arrow = Math.max(0, StorageHelper.getFurnaceCookPercent()) / 24.0;
+        double arrow = Math.min(1.0, Math.max(0, StorageHelper.getFurnaceCookPercent()));
         return FurnaceJobs.remainingTicks(kind, input.getCount(), arrow);
     }
 
