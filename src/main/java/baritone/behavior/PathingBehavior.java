@@ -62,7 +62,7 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
     private boolean pausedThisTick;
     private boolean cancelRequested;
     private boolean calcFailedLastTick;
-    // calcFailedLastTick is one tick wide and which thread sees it first is luck. this just goes up
+    // calcFailedLastTick is one tick wide and which thread sees it first is luck. this just goes up (written under pathPlanLock)
     private volatile int calcFailures;
 
     private volatile AbstractNodeCostSearch inProgress;

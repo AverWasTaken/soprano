@@ -119,10 +119,8 @@ public abstract class AbstractNodeCostSearch implements IPathFinder, Helper {
         cancelRequested = true;
     }
 
-    /**
-     * Planning ahead gets the long timeouts because the player is busy walking the current segment anyway. Once the
-     * segment is over and the player is standing there waiting on us, that stops being true.
-     */
+    // planning ahead gets the long timeouts because the player is busy walking the current segment anyway. once the
+    // segment is over and the player is standing there waiting on us, that stops being true
     public void somebodyIsWaiting() {
         waitedOn = true;
     }

@@ -28,6 +28,7 @@ public class GetToEntityTask extends Task implements ITaskRequiresGrounded {
     private final Entity _entity;
     private final double _closeEnoughDistance;
     private Task _unstuckTask = null;
+    private int _misses = 0;
 
     public GetToEntityTask(Entity entity, double closeEnoughDistance) {
         _entity = entity;
@@ -86,6 +87,7 @@ public class GetToEntityTask extends Task implements ITaskRequiresGrounded {
         stuckCheck.reset();
         _wanderTask.resetWander();
         _calcWatch.disarm();
+        _misses = 0;
     }
 
     @Override
@@ -135,10 +137,13 @@ public class GetToEntityTask extends Task implements ITaskRequiresGrounded {
         }
 
         // a search that comes back empty ends the goal process, and the line below used to just start the same search
-        // again. every one of those is seconds of standing still, so after a second miss the hunter picks another mob
-        if (_calcWatch.failed(mod.getClientBaritone().getPathingBehavior().calcFailures())) {
-            Debug.logMessage("No path to " + _entity.getType().getDescriptionId() + ", not chasing it.");
-            mod.getEntityTracker().requestEntityUnreachable(_entity, 1);
+        // again. every one of those is seconds of standing still, so the second miss bans the mob and the hunter picks
+        // another. players are never banned, a follower has to stay on someone who walks back across the river
+        if (_calcWatch.failed(mod.getClientBaritone().getPathingBehavior().calcFailures()) && !(_entity instanceof Player)) {
+            if (++_misses >= 2) {
+                Debug.logMessage("No path to " + _entity.getType().getDescriptionId() + ", not chasing it.");
+                mod.getEntityTracker().banEntity(_entity);
+            }
         }
         if (!mod.getEntityTracker().isEntityReachable(_entity)) {
             setDebugState("No way to get to the target");
