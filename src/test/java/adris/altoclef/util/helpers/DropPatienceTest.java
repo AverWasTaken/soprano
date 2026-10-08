@@ -61,6 +61,25 @@ public class DropPatienceTest {
     }
 
     @Test
+    public void creepingCloserForeverStillRunsOutAtTheHardCap() {
+        DropPatience p = new DropPatience();
+        p.lock(7);
+        // 0.6 blocks closer every 90 ticks: always just inside the patience, never getting there
+        double dist = 1000;
+        int tick = 0;
+        while (!p.expired() && tick < DropPatience.HARD_CAP * 2) {
+            p.tick();
+            if (tick % 90 == 0) {
+                dist -= 0.6;
+            }
+            p.progress(dist);
+            tick++;
+        }
+        assertTrue(p.expired());
+        assertTrue("gave up at " + tick, tick <= DropPatience.HARD_CAP + 1);
+    }
+
+    @Test
     public void standingStillOrBackingOffGetsNoCredit() {
         DropPatience p = new DropPatience();
         p.lock(7);

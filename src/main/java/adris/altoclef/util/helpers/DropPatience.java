@@ -9,10 +9,13 @@ import java.util.Set;
 // sits in leaves or a hole and never comes: after 5 seconds it is somebody else's problem. pure, the caller says when a tick went by
 public final class DropPatience {
     public static final int TICKS = 100;
+    // 30 s. walking closer resets the clock, so this is what stops a drop we keep almost reaching
+    public static final int HARD_CAP = 600;
 
     private final Set<Integer> gaveUp = new HashSet<>();
     private int lockedId = -1;
     private int waited;
+    private int total;
     private double bestDist = Double.POSITIVE_INFINITY;
 
     // we are going for this drop (entity id). asking again for the same one does not restart the clock
@@ -20,6 +23,7 @@ public final class DropPatience {
         if (lockedId != id) {
             lockedId = id;
             waited = 0;
+            total = 0;
             bestDist = Double.POSITIVE_INFINITY;
         }
     }
@@ -27,6 +31,7 @@ public final class DropPatience {
     // one tick spent on the locked drop. a counter and not a start time so a pause (eating, a fight) doesn't eat the patience
     public void tick() {
         waited++;
+        total++;
     }
 
     // how far the locked drop is from us right now. getting half a block closer than ever before is a walk that works, so
@@ -47,7 +52,7 @@ public final class DropPatience {
     }
 
     public boolean expired() {
-        return isLocked() && waited > TICKS;
+        return isLocked() && (waited > TICKS || total > HARD_CAP);
     }
 
     // gone, picked up, or no longer ours to chase. not a failure

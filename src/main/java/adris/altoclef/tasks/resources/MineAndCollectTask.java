@@ -245,7 +245,7 @@ public class MineAndCollectTask extends ResourceTask {
         private Optional<Object> pick(AltoClef mod, Vec3 pos) {
             int now = WorldHelper.getTicks();
             boolean paused = mod.getExtraBaritoneSettings().isInteractionPaused();
-            ItemEntity locked = lockedDrop(mod, paused);
+            ItemEntity locked = lockedDrop(mod);
 
             // We can't mine right now.
             if (paused) {
@@ -264,7 +264,7 @@ public class MineAndCollectTask extends ResourceTask {
             }
 
             // and once we are on a drop nothing takes us off it. no maths, no second opinions, until it is in the bag
-            if (locked != null) {
+            if (locked != null && spendOn(mod, locked)) {
                 return Optional.of(locked);
             }
 
@@ -343,7 +343,7 @@ public class MineAndCollectTask extends ResourceTask {
         }
 
         // the drop we are on, or null when there is none or it stopped being worth it
-        private ItemEntity lockedDrop(AltoClef mod, boolean paused) {
+        private ItemEntity lockedDrop(AltoClef mod) {
             ItemEntity drop = _lockedDrop;
             if (drop == null) {
                 return null;
@@ -353,21 +353,24 @@ public class MineAndCollectTask extends ResourceTask {
                 _patience.unlock();
                 return null;
             }
-            if (!paused) {
-                _patience.tick();
-                _patience.progress(mod.getPlayer().distanceTo(drop));
-            }
-            if (_patience.expired()) {
-                // stuck in leaves, a hole, a pathing hole. the pickup task would take it right back as nearest, so it is
-                // banned there too
-                Debug.logInternal("Giving up on a drop that never came");
-                _patience.giveUp();
-                mod.getEntityTracker().banEntity(drop);
-                mod.getClientBaritone().getPathingBehavior().forceCancel();
-                _lockedDrop = null;
-                return null;
-            }
             return drop;
+        }
+
+        // a tick spent walking to the locked drop (not one spent cracking a log on the way, or paused). false when the
+        // patience ran out: stuck in leaves, a hole, a pathing hole. the pickup task would take it right back as nearest,
+        // so it is banned there too
+        private boolean spendOn(AltoClef mod, ItemEntity drop) {
+            _patience.tick();
+            _patience.progress(mod.getPlayer().distanceTo(drop));
+            if (!_patience.expired()) {
+                return true;
+            }
+            Debug.logInternal("Giving up on a drop that never came");
+            _patience.giveUp();
+            mod.getEntityTracker().banEntity(drop);
+            mod.getClientBaritone().getPathingBehavior().forceCancel();
+            _lockedDrop = null;
+            return false;
         }
 
         // the nearest drop we want. skipInReach leaves out the ones vanilla is about to put in the bag for us, as long as
