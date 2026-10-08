@@ -206,6 +206,18 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
     }
 
 
+    // the drop we were walking to is gone because it went into our bag. that is the happy ending, but the search below reads
+    // "nothing left to pick up" as lost, wanders for a tick and the parent takes the wander for a failure (the log showed a
+    // Wander task start and die after every single kill, the pickups all worked). a parent that asks gets a plain yes instead
+    @Override
+    public boolean isFinished(AltoClef mod) {
+        if (_currentDrop == null || _blacklist.contains(_currentDrop)) {
+            return false;
+        }
+        boolean gone = !_currentDrop.isAlive() || _currentDrop.getItem().isEmpty();
+        return ItemPickupRules.collected(gone, mod.getPlayer().distanceTo(_currentDrop)) && getClosestTo(mod, getOriginPos(mod)).isEmpty();
+    }
+
     @Override
     protected boolean isEqual(Task other) {
         // Same target items

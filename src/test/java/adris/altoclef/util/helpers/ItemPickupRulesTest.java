@@ -146,4 +146,21 @@ public class ItemPickupRulesTest {
         g.set(5, 0, 3, Cell.STONE);
         assertTrue(ItemPickupRules.isPickupSafe(6.4, 0.6, 3.5, true, g));
     }
+
+    @Test
+    public void aDropThatVanishedUnderOurFeetWasPickedUp() {
+        assertTrue(ItemPickupRules.collected(true, 0.5));
+        assertTrue(ItemPickupRules.collected(true, 3.9));
+    }
+
+    @Test
+    public void aDropThatVanishedFarAwayWasNotUs() {
+        // despawned, or a villager got it: still the search's problem
+        assertFalse(ItemPickupRules.collected(true, 12));
+    }
+
+    @Test
+    public void aDropThatIsStillThereIsNotCollected() {
+        assertFalse(ItemPickupRules.collected(false, 0.5));
+    }
 }

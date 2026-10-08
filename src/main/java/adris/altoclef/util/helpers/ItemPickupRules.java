@@ -17,7 +17,16 @@ public final class ItemPickupRules {
     private static final double REACH_BELOW = 0.5 + 0.25;
     private static final double REACH_ABOVE = 0.5 + 1.8;
 
+    // the pickup radius is about a block, this is slack for the tick between the packet and us moving on
+    private static final double COLLECT_RANGE = 4;
+
     private ItemPickupRules() {
+    }
+
+    // the drop we were chasing is gone and we are standing right there = it went into the bag. gone while we are far away is
+    // a despawn or somebody else's loot, that one is still the search's problem
+    public static boolean collected(boolean gone, double distance) {
+        return gone && distance <= COLLECT_RANGE;
     }
 
     public interface Terrain {
