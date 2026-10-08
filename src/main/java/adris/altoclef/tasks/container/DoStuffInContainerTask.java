@@ -12,6 +12,7 @@ import adris.altoclef.util.helpers.BaritoneHelper;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.MineStick;
 import adris.altoclef.util.helpers.StorageHelper;
+import adris.altoclef.util.helpers.WalkCost;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.slots.Slot;
 import adris.altoclef.util.time.TimerGame;
@@ -31,6 +32,8 @@ public abstract class DoStuffInContainerTask extends Task {
 
     private final ItemTarget _containerTarget;
     private final Block[] _containerBlocks;
+    // a container this close is the one we are using, whatever the price of a new one says
+    private static final double PLACED_CLOSE = 6.0;
 
     // tables and furnaces go down the way a player does it (PlaceStationTask, with the old placer inside as its last
     // resort), anything else (anvil, smithing table, chest) keeps the old one
@@ -132,10 +135,16 @@ public abstract class DoStuffInContainerTask extends Task {
 
         // Make a new container if going to the container is a pretty bad cost.
         // Also keep on making the container if we're stuck in some
-        if (mayMakeNew && costToWalk > getCostToMakeNew(mod)) {
+        boolean cheaperNew = mayMakeNew && costToWalk > getCostToMakeNew(mod);
+        if (cheaperNew) {
             _placeForceTimer.reset();
         }
-        if (mayMakeNew && makeNewNow(nearest.isPresent(), placedStands(mod), !_placeForceTimer.elapsed(), _justPlacedTimer.elapsed())) {
+        boolean placedStands = placedStands(mod);
+        // the tracker lags a rescan behind the block we just put down, so "no table known, a new one is cheap" is wrong
+        // while we are standing at the one we placed (a second way to get the 23:14 second table)
+        boolean atPlaced = placedStands && WalkCost.within(placedPos().getX() + 0.5 - currentPos.x, placedPos().getY() - currentPos.y,
+                placedPos().getZ() + 0.5 - currentPos.z, PLACED_CLOSE);
+        if (mayMakeNew && makeNewNow(nearest.isPresent(), placedStands, cheaperNew && !atPlaced, !_placeForceTimer.elapsed(), _justPlacedTimer.elapsed())) {
             // It's cheaper to make a new one, or our only option.
 
             // We're no longer going to our previous container.
@@ -191,9 +200,11 @@ public abstract class DoStuffInContainerTask extends Task {
     }
 
     // the force timer is for being stuck with nowhere to put one. with ours standing in the world it was the "keep
-    // placing" that crafted a second table 3 seconds after the first went down (the click missed once, the timer didn't care)
-    static boolean makeNewNow(boolean haveNearest, boolean placedStands, boolean forceActive, boolean justPlacedElapsed) {
-        return !haveNearest || (!placedStands && forceActive && justPlacedElapsed);
+    // placing" that crafted a second table 3 seconds after the first went down (the click missed once, the timer didn't care).
+    // a leftover timer gives way to the standing block, a walk that is too far THIS tick (cheaperNew) does not: the placer
+    // outlives the placement, and a table 30 blocks back is still standing and still not worth the walk
+    static boolean makeNewNow(boolean haveNearest, boolean placedStands, boolean cheaperNew, boolean forceActive, boolean justPlacedElapsed) {
+        return !haveNearest || (forceActive && justPlacedElapsed && (cheaperNew || !placedStands));
     }
 
     // the block our placer put down is in the world right now, whatever the tracker has caught up on

@@ -53,6 +53,8 @@ public final class MinecraftFacts implements GamerFacts {
     // sticky: once the credits showed up the run is over, the screen going away again must not undo that
     private boolean credits;
     private boolean tableNearby;
+    // a table is recorded and was out of budget last tick, see OwnTables.returnBudget
+    private boolean tableFar;
     private boolean furnaceNearby;
     private boolean smokerNearby;
 
@@ -77,7 +79,11 @@ public final class MinecraftFacts implements GamerFacts {
             credits = true;
         }
         countItems(player);
-        tableNearby = state != null && standingNearby(player, state.placedTables, Blocks.CRAFTING_TABLE, WalkCost.STATION_BUDGET);
+        // once the table has gone out of the budget it only comes back when we are well inside it (OwnTables.returnBudget), or
+        // the plan flips between a log trip and the cobble at the line (the walk down to the cobble and back up to a tree)
+        tableNearby = state != null && standingNearby(player, state.placedTables, Blocks.CRAFTING_TABLE,
+                OwnTables.returnBudget(tableFar, WalkCost.STATION_BUDGET));
+        tableFar = state != null && !tableNearby && !state.placedTables.isEmpty();
         // furnaces keep no distance test: their reuse rule lives in FurnaceReuse and a far one is forgotten at a boundary
         furnaceNearby = state != null && standingNearby(player, state.placedFurnaces, Blocks.FURNACE, Double.POSITIVE_INFINITY);
         smokerNearby = state != null && smokerWorthWalking(player);
@@ -105,8 +111,9 @@ public final class MinecraftFacts implements GamerFacts {
     // one of the stations this run placed (tables, furnaces) that we still own, and close enough to walk back to. the budget
     // is the table's: WalkCost.STATION_BUDGET, the line CraftInTableTask and StationPickup use, so the plan only counts
     // a table as held when crafting will really walk to it (a recorded one 60 blocks off meant no planks in the plan and then
-    // a second table crafted mid-cave). the old pickup budget was 10, which flipped the plan on a 14 block walk down to the
-    // cobble, hence the real station budget and not the config one. an unloaded chunk keeps its station if it is in budget
+    // a second table crafted mid-cave). this used to have no distance test at all because a budget of 10 flipped the plan
+    // on a walk down to the cobble; the latch in refresh() is what keeps the line from flapping now. an unloaded chunk keeps
+    // its station if it is in budget
     private boolean standingNearby(Player player, List<RunState.Pos> placed, Block kind, double budget) {
         if (dimension != Dimension.OVERWORLD || placed.isEmpty()) {
             return false;

@@ -321,6 +321,16 @@ public class OwnTablesTest {
         assertTrue(OwnTables.wantsTableNow("wooden_axe", "cobblestone", true, true, true, true));
     }
 
+    @Test
+    public void aTableThatLeftTheBudgetNeedsAGapToComeBack() {
+        assertEquals(20, OwnTables.returnBudget(false, 20), 0);
+        assertEquals(15, OwnTables.returnBudget(true, 20), 0);
+        List<RunState.Pos> own = List.of(pos(18, 64, 0));
+        // 18 blocks away is held on the way in, not held again once it has been lost
+        assertTrue(OwnTables.anyHeld(own, p -> true, 0.5, 64, 0.5, OwnTables.returnBudget(false, 20)));
+        assertFalse(OwnTables.anyHeld(own, p -> true, 0.5, 64, 0.5, OwnTables.returnBudget(true, 20)));
+    }
+
     // the planner only counts a recorded table as held when crafting would walk to it (STATION_BUDGET, 20)
     @Test
     public void aFarTableIsNotHeld() {

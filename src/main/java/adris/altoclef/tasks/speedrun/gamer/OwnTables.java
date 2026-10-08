@@ -125,6 +125,15 @@ public final class OwnTables {
         return WalkCost.estimate(table.x + 0.5 - px, table.y - py, table.z + 0.5 - pz);
     }
 
+    // a table that fell out of the budget comes back as "held" only inside this share of it. without the gap the plan flips
+    // every time we cross the line (log trip up, cobble trip down). a freshly placed table is within a few blocks, so it
+    // clears this easily
+    public static final double RETURN_SHARE = 0.75;
+
+    public static double returnBudget(boolean wasFar, double budget) {
+        return wasFar ? budget * RETURN_SHARE : budget;
+    }
+
     // is any of our stations within the walk budget AND still there (`standing`: the block is in the world, or its chunk is
     // not loaded to say otherwise). the planner's "table held" reads this, so it agrees with CraftInTableTask about when a
     // table is close enough to walk back to and when crafting makes a new one (and so wants the planks)
