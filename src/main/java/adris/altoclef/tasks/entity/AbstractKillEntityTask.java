@@ -91,7 +91,7 @@ public abstract class AbstractKillEntityTask extends AbstractDoToEntityTask {
         // Equip weapon
         if (!equipWeapon(mod)) {
             // a crit hop starts a few ticks before the cooldown is full, so those ticks count while jumping is on
-            if (mod.getPlayer().getAttackStrengthScale(0) >= 1 || mod.getControllerExtras().wantsCritTick()) {
+            if (mod.getControllerExtras().attackReady() || mod.getControllerExtras().wantsCritTick()) {
                 LookHelper.lookAt(mod, entity.getEyePosition());
                 mod.getControllerExtras().melee(entity);
             }

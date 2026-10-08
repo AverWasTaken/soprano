@@ -4,8 +4,9 @@ package adris.altoclef.control;
 // the facts every tick and this just says what to do about them, which is also why it has tests
 //
 // vanilla wants all of these at the moment of the hit: full cooldown, falling (fallDistance > 0 and off the ground), not on
-// a ladder or vine, not in water, not blind, not riding, not sprinting. the sprint part is the adapter's job (it drops
-// sprint on the jump tick, the stop packet is long gone before we land)
+// a ladder or vine, not in water, not blind, not riding, not sprinting. the adapter drops sprint on the jump tick and every
+// tick after, and the machine never swings on a tick that still starts sprinting (the stop packet goes out after the interact
+// packet of that tick, so the server would still see a sprint hit)
 public class CritTiming {
 
     public enum Step {
@@ -35,12 +36,11 @@ public class CritTiming {
     private static final long STALE_TICKS = 3;
 
     // a crit is a bonus, not a reason to stand there. none of these is a good time to go hopping around:
-    // hit this recently (a hop is 7+ ticks of not blocking, not backing off, and a zombie gets a free swing every time)
-    public static final long HURT_QUIET_TICKS = 20;
-    // two things on us at once
-    public static final int CROWD_NO_CRIT = 2;
-    // and half our hearts or fewer (same line the food chain calls "should be eating")
-    public static final float LOW_HEALTH_NO_CRIT = 10;
+    // three things on us at once. it used to also be "got hit in the last second", which vs a zombie (hits once a second, so
+    // always) meant it never hopped at all. players crit while taking hits, that is most of pvp
+    public static final int CROWD_NO_CRIT = 3;
+    // and three hearts or fewer, where the hop's few ticks of not blocking start to cost real money
+    public static final float LOW_HEALTH_NO_CRIT = 6;
     // however it goes, the swing is never held more than this many ticks past a full cooldown. the fall is not a promise
     public static final int MAX_READY_WAIT = 4;
 
@@ -63,10 +63,10 @@ public class CritTiming {
         return tooClose && !hopWantsToStayClose;
     }
 
-    // the three reasons above as one question. PlayerExtraController asks it for wantsCritTick too, so the kill tasks and
+    // the two reasons above as one question. PlayerExtraController asks it for wantsCritTick too, so the kill tasks and
     // this machine can't disagree about whether a hop is on
-    public static boolean underPressure(long ticksSinceHurt, int meleeNear, float health) {
-        return ticksSinceHurt <= HURT_QUIET_TICKS || meleeNear >= CROWD_NO_CRIT || health <= LOW_HEALTH_NO_CRIT;
+    public static boolean underPressure(int meleeNear, float health) {
+        return meleeNear >= CROWD_NO_CRIT || health <= LOW_HEALTH_NO_CRIT;
     }
 
     // everything that can change the answer. the defaults are the easy case, every guard open, so a test sets only the
@@ -100,14 +100,15 @@ public class CritTiming {
         public boolean unsafeFloor = false;
         // baritone is walking a path. our jump press would be ignored at best and a parkour or pillar at worst
         public boolean pathing = false;
-        // how long ago anything hurt us, how many melee mobs are within 3, how much health we have. the defaults are a quiet
-        // fight at full health
-        public long ticksSinceHurt = Long.MAX_VALUE / 2;
+        // the client says we are sprinting, which is also what the server was last told (the stop packet goes out with the
+        // player tick, after the interact packet of the tick we swing in). vanilla drops the crit for a sprinting hit
+        public boolean sprinting = false;
+        // how many melee mobs are within 3, how much health we have. the defaults are a quiet fight at full health
         public int meleeNear = 0;
         public float health = 20;
 
         boolean pressured() {
-            return underPressure(ticksSinceHurt, meleeNear, health);
+            return underPressure(meleeNear, health);
         }
 
         boolean retreating() {
@@ -153,9 +154,13 @@ public class CritTiming {
             plainNext = false;
             return Step.PLAIN;
         }
-        // already coming down (a knockback, a ledge) with everything lined up: that is a free crit, take it
+        // already coming down (a knockback, a ledge) with everything lined up: that is a free crit, take it. still sprinting
+        // means the server would call it a sprint hit, so drop it this tick and swing on the next one (still falling)
         if (!s.onGround) {
-            return s.falling && s.inReach && vanillaAllows(s) && s.ticksToFull <= 0 ? Step.SWING : Step.PLAIN;
+            if (!(s.falling && s.inReach && vanillaAllows(s) && s.ticksToFull <= 0)) {
+                return Step.PLAIN;
+            }
+            return s.sprinting ? Step.WAIT : Step.SWING;
         }
         if (canJump(s)) {
             phase = Phase.AIRBORNE;
@@ -170,8 +175,7 @@ public class CritTiming {
 
     private Step airborne(Sample s) {
         airTicks++;
-        // (a hit in the air is in here too: ticksSinceHurt was above the line when the hop started, so being under it now
-        // means something landed one while we were up. come down swinging, not waiting)
+        // (a crowd or a bad health number showing up while we are up is in here too. come down swinging, not waiting)
         if (!s.inReach || !vanillaAllows(s) || s.shielding || s.usingItem || s.pathing || s.pressured()) {
             return giveUp();
         }
@@ -187,12 +191,13 @@ public class CritTiming {
             return giveUp();
         }
         readyTicks = s.ticksToFull <= 0 ? readyTicks + 1 : 0;
-        if (s.falling && s.ticksToFull <= 0) {
-            reset();
-            return Step.SWING;
-        }
-        if (readyTicks > MAX_READY_WAIT) {
-            // still going up with a full cooldown. it is a plain hit from here, but it is a hit
+        // falling with a full cooldown is the crit. still going up with one past the cap is a plain hit from here, but it
+        // is a hit
+        if ((s.falling && s.ticksToFull <= 0) || readyTicks > MAX_READY_WAIT) {
+            if (s.sprinting) {
+                // the stop packet has not made it yet. the WAIT clears sprint and the swing is a tick late, the fall can afford it
+                return Step.WAIT;
+            }
             reset();
             return Step.SWING;
         }
@@ -227,23 +232,53 @@ public class CritTiming {
     }
 
     // every reason to hop except where the mob is: guards, and the cooldown being inside the lead
-    private static boolean wantsHop(Sample s) {
-        if (!s.inReach || !vanillaAllows(s)) {
-            return false;
+    public static boolean wantsHop(Sample s) {
+        return hopVeto(s) == null;
+    }
+
+    // the first thing standing between us and a hop, null when there is none. same list wantsHop always had, as words so
+    // the play log can say which one fired
+    public static String hopVeto(Sample s) {
+        if (!s.inReach) {
+            return "out of reach";
         }
-        if (s.usingItem || s.shielding || s.lowHeadroom || s.unsafeFloor || s.pathing) {
-            return false;
+        if (!vanillaAllows(s)) {
+            return "vanilla refuses (fluid, ladder, blind, riding)";
+        }
+        if (s.usingItem) {
+            return "using item";
+        }
+        if (s.shielding) {
+            return "shielding";
+        }
+        if (s.lowHeadroom) {
+            return "low headroom";
+        }
+        if (s.unsafeFloor) {
+            return "unsafe floor";
+        }
+        if (s.pathing) {
+            return "pathing";
         }
         // a plain hit kills it, a jump would only make the kill later
         if (s.normalHitKills) {
-            return false;
+            return "plain hit kills";
         }
-        // getting hit, crowded or hurting: swing like a person who would like to keep their hearts
-        if (s.pressured()) {
-            return false;
+        // crowded or hurting: swing like a person who would like to keep their hearts
+        if (s.meleeNear >= CROWD_NO_CRIT) {
+            return "crowd (" + s.meleeNear + ")";
+        }
+        if (s.health <= LOW_HEALTH_NO_CRIT) {
+            return "low health";
         }
         // a full cooldown means the swing is owed right now. a hop is 7 ticks up before the first falling one, past the cap
         // on how long a crit may hold a swing, so the "free" hop at a full cooldown was just a delay with extra steps
-        return s.ticksToFull > 0 && s.ticksToFull <= LEAD_TICKS;
+        if (s.ticksToFull <= 0) {
+            return "cooldown full, swing now";
+        }
+        if (s.ticksToFull > LEAD_TICKS) {
+            return "cooldown not in the lead yet";
+        }
+        return null;
     }
 }

@@ -2,6 +2,7 @@ package adris.altoclef.control;
 
 import baritone.Baritone;
 import adris.altoclef.AltoClef;
+import adris.altoclef.Debug;
 import adris.altoclef.eventbus.EventBus;
 import adris.altoclef.eventbus.events.BlockBreakingCancelEvent;
 import adris.altoclef.eventbus.events.BlockBreakingEvent;
@@ -88,10 +89,19 @@ public class PlayerExtraController {
         return _crit.inFlight(gameTime());
     }
 
+    // the server asks for the strength with 0.5 of a tick of partial, so that is the number that decides full damage and the
+    // crit. asking with 0 here was a half tick behind the thing we are trying to line up with
+    private static final float SERVER_PARTIAL = 0.5f;
+
+    // a swing now would be at full strength, as the server will see it
+    public boolean attackReady() {
+        return _mod.getPlayer().getAttackStrengthScale(SERVER_PARTIAL) >= 1;
+    }
+
     // ticks until the swing is at full strength, 0 or less when it is. the scale already knows the weapon's delay
     private double ticksToFull() {
         LocalPlayer player = _mod.getPlayer();
-        return (1 - player.getAttackStrengthScale(0)) * player.getCurrentItemAttackStrengthDelay();
+        return (1 - player.getAttackStrengthScale(SERVER_PARTIAL)) * player.getCurrentItemAttackStrengthDelay();
     }
 
     // a melee caller normally sits out the ticks where the cooldown is not full. a crit has to start jumping before that
@@ -102,7 +112,7 @@ public class PlayerExtraController {
             return false;
         }
         // mid hop we still want the call (it is how the hop gets cancelled), a new one under pressure we don't: that is
-        // the stretch where the kill task used to sit out the cooldown while zombies hit it. same question CritTiming asks
+        // the stretch where the kill task used to sit out the cooldown while a crowd hit it. same question CritTiming asks
         if (critInFlight()) {
             return true;
         }
@@ -110,8 +120,7 @@ public class PlayerExtraController {
     }
 
     private boolean underPressure() {
-        return CritTiming.underPressure(_mod.getMobDefenseChain().ticksSinceHurt(_mod),
-                _mod.getMobDefenseChain().meleeNear(_mod), _mod.getPlayer().getHealth());
+        return CritTiming.underPressure(_mod.getMobDefenseChain().meleeNear(_mod), _mod.getPlayer().getHealth());
     }
 
     // every melee swing at a mob goes through here so the crit timing lives in one place. returns whether a swing or a
@@ -124,7 +133,10 @@ public class PlayerExtraController {
             return plainSwing(player, entity);
         }
         double gap = reachGap(player, target);
-        switch (_crit.step(gameTime(), sample(player, target, gap))) {
+        CritTiming.Sample sample = sample(player, target, gap);
+        CritTiming.Step step = _crit.step(gameTime(), sample);
+        logStep(step, sample);
+        switch (step) {
             case JUMP:
                 // vanilla throws the crit away for a sprinting hit, and the jump itself would boost us forward. the stop
                 // packet goes out with this tick's movement, long before we are falling
@@ -137,7 +149,7 @@ public class PlayerExtraController {
                 walkUp(gap);
                 return false;
             case SWING:
-                if (player.getAttackStrengthScale(0) < 1) {
+                if (!attackReady()) {
                     return false;
                 }
                 player.setSprinting(false);
@@ -151,6 +163,29 @@ public class PlayerExtraController {
                 return false;
             default:
                 return plainSwing(player, entity);
+        }
+    }
+
+    // what the machine said, once per change and not per tick, so the play log shows which veto is still keeping the bot
+    // from crit hopping. WAIT is the boring middle of every hop and stays out of it
+    private String _lastCritLog = "";
+
+    private void logStep(CritTiming.Step step, CritTiming.Sample s) {
+        if (step == CritTiming.Step.WAIT) {
+            return;
+        }
+        String line = step.name();
+        if (step == CritTiming.Step.PLAIN || step == CritTiming.Step.APPROACH) {
+            String veto = CritTiming.hopVeto(s);
+            line += veto == null ? " (nothing vetoes: mob too far or leaving, or a plain hit is owed after a give up)" :" (" + veto + ")";
+        }
+        if (s.sprinting && step != CritTiming.Step.PLAIN) {
+            line += " [sprinting]";
+        }
+        if (!line.equals(_lastCritLog)) {
+            _lastCritLog = line;
+            Debug.logInternal("crit: " + line + ", to full " + String.format("%.1f", s.ticksToFull) + ", near " + s.meleeNear
+                    + ", hp " + s.health + (s.pathing ? ", pathing" : ""));
         }
     }
 
@@ -192,13 +227,27 @@ public class PlayerExtraController {
         return reach > 0 ? reach : 3.0;
     }
 
-    // a hop is on, or about to be, and the back-off in the kill tasks should keep its hands to itself
-    public boolean hopWantsToStayClose() {
-        return critInFlight() || wantsCritTick();
+    // a hop is on, or about to be, and the back-off in the kill tasks should keep its hands to itself. this asks the real
+    // hop question for this mob with the pathing veto left out: the path in the way is usually the back-off itself, and
+    // asking wantsCritTick (which says no to any path) is how the back-off used to veto the hop that would have cancelled it
+    public boolean hopWantsToStayClose(Entity entity) {
+        if (!Baritone.settings().altoJumpCrits.value) {
+            return false;
+        }
+        if (critInFlight()) {
+            return true;
+        }
+        if (!(entity instanceof LivingEntity target)) {
+            return false;
+        }
+        LocalPlayer player = _mod.getPlayer();
+        CritTiming.Sample s = sample(player, target, reachGap(player, target));
+        s.pathing = false;
+        return CritTiming.wantsHop(s);
     }
 
     private boolean plainSwing(LocalPlayer player, Entity entity) {
-        if (player.getAttackStrengthScale(0) >= 1 && (player.onGround() || player.getDeltaMovement().y() < 0 || player.isInWater())) {
+        if (attackReady() && (player.onGround() || player.getDeltaMovement().y() < 0 || player.isInWater())) {
             attack(entity);
             return true;
         }
@@ -225,7 +274,7 @@ public class PlayerExtraController {
         // the key being down counts too: the shield goes up one player tick after the press
         s.shielding = player.isBlocking() || _mod.getInputControls().isHeldDown(Input.CLICK_RIGHT);
         s.pathing = _mod.getClientBaritone().getPathingBehavior().isPathing();
-        s.ticksSinceHurt = _mod.getMobDefenseChain().ticksSinceHurt(_mod);
+        s.sprinting = player.isSprinting();
         s.meleeNear = _mod.getMobDefenseChain().meleeNear(_mod);
         s.health = player.getHealth();
         Level level = _mod.getWorld();

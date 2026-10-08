@@ -171,7 +171,7 @@ public class KillAura {
             }
             // a not yet full swing is a quiet tick, unless a crit hop is about to start or is in the air (never while
             // baritone is walking, so travelling past a mob still doesn't turn our head every tick)
-            if (mod.getPlayer().getAttackStrengthScale(0) < 1 && !mod.getControllerExtras().wantsCritTick()) {
+            if (!mod.getControllerExtras().attackReady() && !mod.getControllerExtras().wantsCritTick()) {
                 return;
             }
 

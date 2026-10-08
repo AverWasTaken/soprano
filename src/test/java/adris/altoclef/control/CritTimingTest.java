@@ -128,7 +128,7 @@ public class CritTimingTest {
         assertEquals(Step.PLAIN, new CritTiming().step(0, full));
         // and every guard that cancels a hop cancels walking up for one too
         Sample pressured = at(3.2);
-        pressured.meleeNear = 2;
+        pressured.meleeNear = CritTiming.CROWD_NO_CRIT;
         assertEquals(Step.PLAIN, new CritTiming().step(0, pressured));
         Sample wet = at(3.2);
         wet.inFluid = true;
@@ -175,50 +175,114 @@ public class CritTimingTest {
     // ---- not under fire
 
     @Test
-    public void noHopWithinTwentyTicksOfBeingHit() {
-        Sample s = ready();
-        s.ticksSinceHurt = CritTiming.HURT_QUIET_TICKS;
-        assertEquals(Step.PLAIN, new CritTiming().step(0, s));
-        s.ticksSinceHurt = CritTiming.HURT_QUIET_TICKS + 1;
-        assertEquals(Step.JUMP, new CritTiming().step(0, s));
-    }
-
-    @Test
-    public void noHopWithTwoOnUs() {
+    public void oneOrTwoOnUsStillHop() {
+        // a zombie on us is the normal case, not a reason to stop crit hopping. being hit recently isn't a veto at all any
+        // more (there is no hurt timer in the sample), only the crowd and the hearts are
         Sample s = ready();
         s.meleeNear = 1;
         assertEquals(Step.JUMP, new CritTiming().step(0, s));
         s.meleeNear = 2;
+        assertEquals(Step.JUMP, new CritTiming().step(0, s));
+        s.meleeNear = 3;
         assertEquals(Step.PLAIN, new CritTiming().step(0, s));
     }
 
     @Test
-    public void noHopAtTenHealthOrLess() {
+    public void noHopAtSixHealthOrLess() {
         Sample s = ready();
-        s.health = 10;
+        s.health = 6;
         assertEquals(Step.PLAIN, new CritTiming().step(0, s));
-        s.health = 10.5f;
+        s.health = 6.5f;
+        assertEquals(Step.JUMP, new CritTiming().step(0, s));
+        s.health = 10;
         assertEquals(Step.JUMP, new CritTiming().step(0, s));
     }
 
     @Test
     public void pressureAsOneQuestionForWantsCritTick() {
-        assertFalse(CritTiming.underPressure(1000, 1, 20));
-        assertTrue(CritTiming.underPressure(20, 0, 20));
-        assertTrue(CritTiming.underPressure(1000, 2, 20));
-        assertTrue(CritTiming.underPressure(1000, 0, 10));
+        assertFalse(CritTiming.underPressure(1, 20));
+        assertFalse(CritTiming.underPressure(2, 10));
+        assertTrue(CritTiming.underPressure(3, 20));
+        assertTrue(CritTiming.underPressure(0, 6));
     }
 
     @Test
-    public void gettingHitMidAirGivesUpTheCrit() {
+    public void aBackOffPathUsedToVetoTheHopAndTheOneTheTaskAsksAboutDoesNot() {
+        // the kill task's back-off is a baritone path. the sample that decides the hop says pathing, the one the task asks
+        // "should I leave the back-off alone" with has it off, and the hop is on in that one
+        Sample walking = ready();
+        walking.pathing = true;
+        assertEquals("pathing", CritTiming.hopVeto(walking));
+        assertFalse(CritTiming.wantsHop(walking));
+        Sample standing = ready();
+        assertNull(CritTiming.hopVeto(standing));
+        assertTrue(CritTiming.wantsHop(standing));
+        // the back-off sits out while the hop is on, and only then
+        assertFalse(CritTiming.shouldBackOff(true, CritTiming.wantsHop(standing)));
+        Sample recharging = ready();
+        recharging.ticksToFull = CritTiming.LEAD_TICKS + 3;
+        assertTrue(CritTiming.shouldBackOff(true, CritTiming.wantsHop(recharging)));
+    }
+
+    @Test
+    public void hopVetoNamesTheThingThatFired() {
+        Sample s = ready();
+        s.meleeNear = 4;
+        assertTrue(CritTiming.hopVeto(s).startsWith("crowd"));
+        Sample low = ready();
+        low.health = 4;
+        assertEquals("low health", CritTiming.hopVeto(low));
+        Sample full = ready();
+        full.ticksToFull = 0;
+        assertNotNull(CritTiming.hopVeto(full));
+    }
+
+    @Test
+    public void sprintingDelaysTheSwingUntilTheStopHasGoneOut() {
         CritTiming t = new CritTiming();
         assertEquals(Step.JUMP, t.step(0, ready()));
-        Sample hit = rising(3);
-        hit.ticksSinceHurt = 0;
-        assertEquals(Step.PLAIN, t.step(1, hit));
-        assertFalse(t.inFlight(1));
-        // and the next swing is a plain one instead of another try, same as every other give up
-        assertEquals(Step.PLAIN, t.step(2, landed()));
+        for (int tick = 1; tick <= 6; tick++) {
+            t.step(tick, rising(Math.max(0, 4 - tick)));
+        }
+        // first falling tick, cooldown full, but the client still says sprinting: that would be a sprint hit on the server
+        Sample sprinting = falling(0);
+        sprinting.sprinting = true;
+        assertEquals(Step.WAIT, t.step(7, sprinting));
+        assertTrue(t.inFlight(7));
+        // the WAIT cleared it, so the next falling tick is the crit
+        assertEquals(Step.SWING, t.step(8, falling(0)));
+        assertFalse(t.inFlight(8));
+    }
+
+    @Test
+    public void sprintingAlsoDelaysTheCappedSwing() {
+        CritTiming t = new CritTiming();
+        t.step(0, ready());
+        for (int tick = 1; tick <= CritTiming.MAX_READY_WAIT; tick++) {
+            t.step(tick, rising(0));
+        }
+        Sample sprinting = rising(0);
+        sprinting.sprinting = true;
+        assertEquals(Step.WAIT, t.step(CritTiming.MAX_READY_WAIT + 1, sprinting));
+        assertEquals(Step.SWING, t.step(CritTiming.MAX_READY_WAIT + 2, rising(0)));
+    }
+
+    @Test
+    public void aKnockbackCritWhileSprintingWaitsOneTick() {
+        // no jump tick came first here, so nothing cleared sprint yet
+        Sample s = falling(0);
+        s.sprinting = true;
+        CritTiming t = new CritTiming();
+        assertEquals(Step.WAIT, t.step(0, s));
+        assertEquals(Step.SWING, t.step(1, falling(0)));
+    }
+
+    @Test
+    public void sprintingOnTheGroundDoesNotStopTheJump() {
+        // the JUMP tick is where the adapter drops sprint, so being mid sprint when the hop starts is the normal case
+        Sample s = ready();
+        s.sprinting = true;
+        assertEquals(Step.JUMP, new CritTiming().step(0, s));
     }
 
     @Test
@@ -226,7 +290,7 @@ public class CritTimingTest {
         CritTiming crowd = new CritTiming();
         crowd.step(0, ready());
         Sample two = rising(3);
-        two.meleeNear = 2;
+        two.meleeNear = CritTiming.CROWD_NO_CRIT;
         assertEquals(Step.PLAIN, crowd.step(1, two));
         CritTiming hurting = new CritTiming();
         hurting.step(0, ready());

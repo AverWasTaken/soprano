@@ -58,6 +58,7 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
     private int _blockerTicks;
     private Entity _blockerTarget;
     private int _blockerDigs;
+    private GoalRunAway _backOffGoal;
 
     public AbstractDoToEntityTask(double maintainDistance, double combatGuardLowerRange, double combatGuardLowerFieldRadius) {
         _maintainDistance = maintainDistance;
@@ -80,6 +81,7 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
         _blocker = null;
         _blockerTarget = null;
         _blockerDigs = 0;
+        _backOffGoal = null;
         ItemStack cursorStack = StorageHelper.getItemStackInCursorSlot();
         if (!cursorStack.isEmpty()) {
             Optional<Slot> moveTo = mod.getItemStorage().getSlotThatCanFitInPlayerInventory(cursorStack, false);
@@ -135,10 +137,15 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
 
             // Step away if we're too close, unless a crit hop is on (or about to be): backing off mid hop is exactly what
             // leaves the mob out of reach when we come down
-            if (CritTiming.shouldBackOff(tooClose, mod.getControllerExtras().hopWantsToStayClose())) {
+            // (the run-away keeps walking a bit past the line too, and that stretch would veto the hop just the same)
+            boolean hopOn = (tooClose || _backOffGoal != null) && mod.getControllerExtras().hopWantsToStayClose(entity);
+            if (hopOn) {
+                dropBackOff(mod);
+            } else if (CritTiming.shouldBackOff(tooClose, false)) {
                 //setDebugState("Maintaining distance");
                 if (!mod.getClientBaritone().getCustomGoalProcess().isActive()) {
-                    mod.getClientBaritone().getCustomGoalProcess().setGoalAndPath(new GoalRunAway(maintainDistance, entity.blockPosition()));
+                    _backOffGoal = new GoalRunAway(maintainDistance, entity.blockPosition());
+                    mod.getClientBaritone().getCustomGoalProcess().setGoalAndPath(_backOffGoal);
                 }
             }
 
@@ -160,6 +167,21 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
             return null;
         }
         return new TimeoutWanderTask();
+    }
+
+    // the run-away we started, so the hop can stop exactly that and nobody else's path. a hop only works while baritone is
+    // not walking (the jump press is ignored under its movement input), and the back-off is the walking that was always
+    // there. cancel the path too, not just the goal, or isPathing() still says yes for the tick we wanted to jump in
+    private void dropBackOff(AltoClef mod) {
+        if (_backOffGoal == null) {
+            return;
+        }
+        var goalProcess = mod.getClientBaritone().getCustomGoalProcess();
+        if (goalProcess.getGoal() == _backOffGoal) {
+            goalProcess.onLostControl();
+            mod.getClientBaritone().getPathingBehavior().cancelSegmentIfSafe();
+        }
+        _backOffGoal = null;
     }
 
     private Task approach(AltoClef mod, Entity entity, double maintainDistance) {
