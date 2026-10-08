@@ -2,10 +2,11 @@ package adris.altoclef.tasks.resources;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
+import adris.altoclef.tasks.container.AsyncSmelting;
 import adris.altoclef.tasks.container.SmeltInFurnaceTask;
 import adris.altoclef.tasks.container.SmeltInSmokerTask;
-import adris.altoclef.tasks.speedrun.gamer.CookBackoff;
 import adris.altoclef.tasks.speedrun.gamer.CookGate;
+import adris.altoclef.tasks.speedrun.gamer.CookTrip;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.SmeltTarget;
@@ -26,6 +27,10 @@ public class CookRawFoodTask extends Task {
     private int lastCooked;
     private long lastChange;
     private boolean gaveUp;
+    // the smelt loads and walks away (AsyncSmelting) instead of standing there until it is cooked. then "finished" means the one
+    // input slot is full and the next kind waits for this batch to come out. the job lands in the gamer's list a tick later, so
+    // this is decided up front and not by looking at the pending food
+    private boolean async;
 
     public CookRawFoodTask(boolean smoker) {
         this.smoker = smoker;
@@ -57,11 +62,20 @@ public class CookRawFoodTask extends Task {
 
     @Override
     protected Task onTick(AltoClef mod) {
-        if (gaveUp || (smelt != null && smelt.isFinished(mod))) {
-            // loaded (or collected, with async off). whatever raw is left waits for this batch to come out
+        long now = mod.getWorld().getGameTime();
+        if (gaveUp || (smelt != null && async && smelt.isFinished(mod))) {
+            CookTrip.release();
             return null;
         }
-        long now = mod.getWorld().getGameTime();
+        CookTrip.commit(smoker, now);
+        if (smelt != null && smelt.isFinished(mod)) {
+            // cooked in place (async cooking off): that kind is done and the slot is empty again, on to the next pile. stopping
+            // here used to leave the need up with a finished task under it, and the bot stood there until the watchdog
+            smelt = null;
+            lastRaw = -1;
+            lastCooked = -1;
+            lastChange = now;
+        }
         if (smelt == null) {
             smelting = pickRaw(mod);
             if (smelting == null) {
@@ -79,7 +93,7 @@ public class CookRawFoodTask extends Task {
         }
         if (now - lastChange > GIVE_UP_TICKS) {
             Debug.logMessage("Cooking the " + smelting.getDescriptionId() + " is going nowhere, leaving it raw for a while.");
-            CookBackoff.suspend(now);
+            CookTrip.suspend(now);
             gaveUp = true;
             smelt = null;
             return null;
@@ -94,6 +108,7 @@ public class CookRawFoodTask extends Task {
         // total of the cooked kind we want to end up holding, same sum CollectFoodTask uses
         int toSmelt = rawCount + mod.getItemStorage().getItemCount(cooked);
         SmeltTarget target = new SmeltTarget(new ItemTarget(cooked, toSmelt), new ItemTarget(raw, rawCount));
+        async = AsyncSmelting.wants(target.getItem());
         if (smoker) {
             SmeltInSmokerTask task = new SmeltInSmokerTask(target);
             task.ignoreMaterials();
@@ -106,13 +121,28 @@ public class CookRawFoodTask extends Task {
 
     @Override
     protected void onStop(AltoClef mod, Task interruptTask) {
-        // the smelt task closes its own screen
+        // the smelt task closes its own screen. a chain taking over for a bit is not the end of the cook, the station stays picked
+        if (!isInterrupting()) {
+            CookTrip.release();
+        }
+    }
+
+    @Override
+    protected void onStopWhilePaused(AltoClef mod) {
+        CookTrip.release();
     }
 
     @Override
     public boolean isFinished(AltoClef mod) {
-        // only reads state, FurnaceWatch asks this between ticks. nothing raw and nothing started is nothing to do
-        return smelt != null ? smelt.isFinished(mod) : isActive() && pickRaw(mod) == null;
+        // only reads state, FurnaceWatch asks this between ticks
+        if (gaveUp) {
+            return true;
+        }
+        if (smelt != null && async && smelt.isFinished(mod)) {
+            return true;
+        }
+        // nothing raw left and nothing half cooked in front of us
+        return isActive() && pickRaw(mod) == null && (smelt == null || smelt.isFinished(mod));
     }
 
     @Override

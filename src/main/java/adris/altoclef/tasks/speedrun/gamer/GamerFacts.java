@@ -87,10 +87,16 @@ public interface GamerFacts {
         return false;
     }
 
-    // the cook task gave up a while ago (no fuel to be found, no spot for a smoker...), see CookBackoff. the planner stops asking
+    // the cook task gave up a while ago (no fuel to be found, no spot for a smoker...), see CookTrip. the planner stops asking
     // for the cook until it is over, or a stuck smoker would hold the phase for ever
     default boolean cookSuspended() {
         return false;
+    }
+
+    // the station a running cook picked ("smoker", "furnace"), null when none is running. CookGate keeps it while the craft and
+    // the placing eat the very things that picked it
+    default String cookStation() {
+        return null;
     }
 
     // nutrition cooking in a smoker or furnace for us right now. foodUnits() stays what is in the bag, the planner counts the

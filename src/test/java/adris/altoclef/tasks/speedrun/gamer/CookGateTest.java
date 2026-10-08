@@ -93,6 +93,62 @@ public class CookGateTest {
     }
 
     @Test
+    public void aHandfulDoesNotPutTheBagFurnaceDown() {
+        // place, cook, walk back, pick up, all for two rabbit
+        f.give(Items.RABBIT, 2).give(Items.COAL, 2).give(Items.FURNACE, 1);
+        assertNull(need());
+        f.give(Items.SMOKER, 1);
+        assertNull(need());
+        // a smoker standing is free though
+        f.smokerPlaced = true;
+        assertEquals(KitNeed.COOK_SMOKER, need().catalogueName());
+    }
+
+    @Test
+    public void aRunningCookKeepsItsStation() {
+        // the smoker craft ate the logs and the cobble that picked "smoker": still a smoker, not a furnace or nothing
+        f.give(Items.MUTTON, 6).give(Items.COAL, 2);
+        f.cookStation = "smoker";
+        assertEquals(KitNeed.COOK_SMOKER, need().catalogueName());
+        f.cookStation = "furnace";
+        assertEquals(KitNeed.COOK_FURNACE, need().catalogueName());
+        // but never onto iron, that one input slot is still the iron's
+        f.cooking("iron_ingot", 12, 60);
+        assertNull(need());
+    }
+
+    @Test
+    public void theSmokersLogsAreNotFuel() {
+        // the whole kit done, so the reserve keeps no wood and every log may burn (1.5 smelts each)
+        FakeFacts wood = new FakeFacts();
+        for (net.minecraft.world.item.Item i : new net.minecraft.world.item.Item[]{Items.WOODEN_AXE, Items.STONE_PICKAXE, Items.STONE_AXE,
+                Items.IRON_PICKAXE, Items.IRON_AXE, Items.FLINT_AND_STEEL, Items.SHIELD, Items.SHEARS, Items.FURNACE}) {
+            wood.give(i, 1);
+        }
+        wood.give(Items.BUCKET, 2).give(Items.LADDER, 3).give(Items.OAK_LOG, 8);
+        assertEquals(12, CookGate.fuelSmelts(wood, cfg, 0));
+        // nine mutton: twelve smelts of logs looks like enough, but five logs (four and the table's) are about to be a smoker,
+        // and the three left burn for four
+        wood.give(Items.MUTTON, 9).give(Items.COBBLESTONE, 60);
+        wood.cooking("iron_ingot", 12, 60);
+        assertEquals(CookGate.Station.SMOKER, CookGate.station(wood, cfg, true));
+        assertNull(CookGate.need(wood, cfg, 0));
+        // with a coal it is fine
+        wood.give(Items.COAL, 1);
+        assertEquals(KitNeed.COOK_SMOKER, CookGate.need(wood, cfg, 0).catalogueName());
+    }
+
+    @Test
+    public void aSmokerWithoutATableCostsALogMore() {
+        // four logs is the smoker, the table to craft it on is the fifth
+        f.give(Items.MUTTON, 6).give(Items.COAL, 2).give(Items.OAK_LOG, 4).give(Items.COBBLESTONE, 60);
+        f.cooking("iron_ingot", 12, 60);
+        assertNull(need());
+        f.tablePlaced = true;
+        assertEquals(KitNeed.COOK_SMOKER, need().catalogueName());
+    }
+
+    @Test
     public void enoughMeatBuildsAStationButNotOutOfTheStoneFloor() {
         // the stone pick still wants its cobble: the furnace and the tools come first
         f.give(Items.MUTTON, 6).give(Items.COAL, 2).give(Items.OAK_LOG, 8).give(Items.COBBLESTONE, 10);

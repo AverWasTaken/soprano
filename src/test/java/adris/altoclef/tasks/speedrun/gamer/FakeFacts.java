@@ -30,6 +30,8 @@ public class FakeFacts implements GamerFacts {
     public boolean smokerPlaced;
     // the cook task gave up a while ago
     public boolean cookSuspended;
+    // the station a running cook committed to
+    public String cookStation;
     public int fingerprint;
     public boolean earlyIronPick = true;
     // the first raw iron is in a furnace and the job is not recorded yet
@@ -143,6 +145,11 @@ public class FakeFacts implements GamerFacts {
     @Override
     public boolean cookSuspended() {
         return cookSuspended;
+    }
+
+    @Override
+    public String cookStation() {
+        return cookStation;
     }
 
     @Override

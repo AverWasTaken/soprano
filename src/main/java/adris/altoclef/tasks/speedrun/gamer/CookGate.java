@@ -51,12 +51,22 @@ public final class CookGate {
     // where the meat goes, cheapest first: a smoker we have (twice as fast), then a furnace that is free (standing or in the bag),
     // then, if allowed to spend wood and stone, a new smoker or furnace. NONE = nothing sensible right now, so no cook need.
     // a furnace busy with iron queues the meat behind it: the smoker is the way round that, and only if one can be had
+    // `mayCraft` = enough meat to be worth a trip. without it only a station standing on the ground counts: a furnace in the bag
+    // is a place, cook, walk back, pick up for two rabbit, and the phase waits on all of it
     public static Station station(GamerFacts f, OverworldConfig cfg, boolean mayCraft) {
-        if (f.has(Items.SMOKER) || f.smokerPlacedNearby()) {
+        boolean ironInFurnace = furnaceHasIron(f);
+        // a cook already under way keeps its station, it is busy eating the logs and cobble that picked it
+        String running = f.cookStation();
+        if ("smoker".equals(running)) {
             return Station.SMOKER;
         }
-        boolean ironInFurnace = furnaceHasIron(f);
-        if (!ironInFurnace && (f.has(Items.FURNACE) || f.furnacePlacedNearby())) {
+        if ("furnace".equals(running) && !ironInFurnace) {
+            return Station.FURNACE;
+        }
+        if (f.smokerPlacedNearby() || (mayCraft && f.has(Items.SMOKER))) {
+            return Station.SMOKER;
+        }
+        if (!ironInFurnace && (f.furnacePlacedNearby() || (mayCraft && f.has(Items.FURNACE)))) {
             return Station.FURNACE;
         }
         if (!mayCraft) {
@@ -65,18 +75,34 @@ public final class CookGate {
         // the stone floor is the cobble the kit still owes its tools, a smoker is not allowed to eat the stone pick
         int free = f.count(Items.COBBLESTONE) - KitPlanner.stoneFloor(f, cfg);
         boolean furnaceInBag = f.has(Items.FURNACE);
-        if (f.count(ItemHelper.LOG) >= SMOKER_LOGS && (furnaceInBag || free >= SMOKER_COBBLE)) {
+        if (f.count(ItemHelper.LOG) >= smokerLogs(f) && (furnaceInBag || free >= SMOKER_COBBLE)) {
             return Station.SMOKER;
         }
         return !ironInFurnace && free >= SMOKER_COBBLE ? Station.FURNACE : Station.NONE;
     }
 
+    // logs a new smoker costs: its four, and one more for a table when there is none to craft it on (the table's planks used to
+    // take the fourth log, and the catalogue went chopping a tree from the bottom of the mine)
+    private static int smokerLogs(GamerFacts f) {
+        return SMOKER_LOGS + (f.has(Items.CRAFTING_TABLE) || f.tablePlacedNearby() ? 0 : 1);
+    }
+
+    // a smoker we still have to make: the logs it eats are not fuel
+    private static boolean smokerToMake(GamerFacts f, Station station) {
+        return station == Station.SMOKER && !f.has(Items.SMOKER) && !f.smokerPlacedNearby() && f.cookStation() == null;
+    }
+
     // smelts of fuel the cook could burn: coal and charcoal always, wood only above what the run keeps for crafting (the same
     // reserve FuelPolicy honours, or the gate would say yes to a stack of logs the furnace is not allowed to touch)
     public static int fuelSmelts(GamerFacts f, OverworldConfig cfg, int endBeds) {
+        return fuelSmelts(f, cfg, endBeds, 0);
+    }
+
+    // `logsSpoken` = logs about to go into something else (a smoker), taken off the spare wood first
+    static int fuelSmelts(GamerFacts f, OverworldConfig cfg, int endBeds, int logsSpoken) {
         int smelts = f.count(Items.COAL, Items.CHARCOAL) * COAL_SMELTS;
         WoodReserve.Keep keep = WoodReserve.keep(f, cfg, endBeds);
-        int logs = Math.max(0, f.count(ItemHelper.LOG) - keep.logs());
+        int logs = Math.max(0, f.count(ItemHelper.LOG) - keep.logs() - logsSpoken);
         int planks = Math.max(0, f.count(ItemHelper.PLANKS) - keep.planks());
         // a log burns 1.5 items, a plank 0.75
         return smelts + logs * 3 / 2 + planks * 3 / 4;
@@ -90,7 +116,12 @@ public final class CookGate {
             return null;
         }
         Station station = station(f, cfg, raw >= MIN_RAW);
-        if (station == Station.NONE || fuelSmelts(f, cfg, endBeds) < raw) {
+        if (station == Station.NONE) {
+            return null;
+        }
+        // a smoker still to make eats wood the fuel count would otherwise have burned. the smoker got built and then sat there cold
+        int spoken = smokerToMake(f, station) ? smokerLogs(f) : 0;
+        if (fuelSmelts(f, cfg, endBeds, spoken) < raw) {
             return null;
         }
         return new KitNeed(station == Station.SMOKER ? KitNeed.COOK_SMOKER : KitNeed.COOK_FURNACE, MIN_RAW);

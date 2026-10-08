@@ -70,10 +70,20 @@ public final class FurnaceWatch {
             if (cook.isFinished(mod) || (ctx.facts().gameTime() - cookStart) / 20.0 > ctx.cfg().overworld.tablePickupSeconds) {
                 cook = null;
                 hud = null;
-                return null;
+                // loaded: the job is the memory now and its last collect takes the furnace back. not loaded (gave up, timed
+                // out, the meat was gone): it was coming down anyway, so it still does, or it stood there for the rest of the run
+                RunState.Pos spot = new RunState.Pos(pickupAt.getX(), pickupAt.getY(), pickupAt.getZ());
+                boolean stillOurs = FurnaceJobs.mayTakeBack(ctx.state(), pickupKind, spot, 0, ctx.facts().has(pickupItem));
+                if (!stillOurs || !WorldHelper.canBreak(mod, pickupAt)) {
+                    pickupAt = null;
+                    return null;
+                }
+                Debug.logInternal(pickupKind + " did not get the meat, taking it back at " + pickupAt.toShortString());
+                startPickup(ctx);
+            } else {
+                hud = "Cooking the meat while the furnace is free";
+                return cook;
             }
-            hud = "Cooking the meat while the furnace is free";
-            return cook;
         }
         if (pickup == null) {
             return null;
@@ -182,6 +192,10 @@ public final class FurnaceWatch {
         target = null;
         hud = null;
         if (takeBack(mod, ctx, visited, left)) {
+            // the cook needs to know where it is too: one that comes to nothing still takes the furnace back after
+            pickupAt = at(visited);
+            pickupKind = visited.kind;
+            pickupItem = itemOf(visited.kind);
             // an empty furnace is the best place for the raw meat we are carrying, and we are standing at it
             if (CookGate.reusable(ctx.facts(), ctx.cfg().overworld, ctx.cfg().end.beds)) {
                 cook = new CookRawFoodTask("smoker".equals(visited.kind));
@@ -190,16 +204,18 @@ public final class FurnaceWatch {
                         + visited.kind + " back");
                 return finishing(mod, ctx);
             }
-            pickupAt = at(visited);
-            pickupKind = visited.kind;
-            pickupItem = itemOf(visited.kind);
-            pickupStart = ctx.facts().gameTime();
-            pickupBroken = false;
-            pickup = new DestroyBlockTask(pickupAt);
+            startPickup(ctx);
             Debug.logInternal(pickupKind + " is empty, taking it back at " + pickupAt.toShortString());
             return finishing(mod, ctx);
         }
         return null;
+    }
+
+    // pickupAt/Kind/Item are set, the block comes down now
+    private void startPickup(GamerContext ctx) {
+        pickupStart = ctx.facts().gameTime();
+        pickupBroken = false;
+        pickup = new DestroyBlockTask(pickupAt);
     }
 
     // a new trip to the job that is ready first, null when there is no job here. NORMAL takes what is done, WAIT_ALL stays

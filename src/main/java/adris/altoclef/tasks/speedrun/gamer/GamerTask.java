@@ -187,7 +187,7 @@ public class GamerTask extends Task {
             begun = false;
             // the food task must stop seeing our jobs once we are gone
             AsyncSmelting.clear();
-            CookBackoff.clear();
+            CookTrip.clear();
             stopWatchingPlacements();
             releaseBehaviour(mod);
         }
@@ -341,7 +341,7 @@ public class GamerTask extends Task {
         cfg = GamerConfigs.get();
         // a job from a run before this one is not ours to collect
         AsyncSmelting.clear();
-        CookBackoff.clear();
+        CookTrip.clear();
         loadState(mod);
         facts.useState(state);
         // so CollectFoodTask can count the meat that is cooking without knowing what a RunState is

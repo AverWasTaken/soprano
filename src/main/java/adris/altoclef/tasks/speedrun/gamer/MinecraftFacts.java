@@ -112,7 +112,12 @@ public final class MinecraftFacts implements GamerFacts {
 
     @Override
     public boolean cookSuspended() {
-        return CookBackoff.active(gameTime);
+        return CookTrip.suspended(gameTime);
+    }
+
+    @Override
+    public String cookStation() {
+        return CookTrip.committed(gameTime);
     }
 
     private void countItems(Player player) {
