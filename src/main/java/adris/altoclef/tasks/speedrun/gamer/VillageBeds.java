@@ -66,16 +66,20 @@ public final class VillageBeds {
         long now = ctx.facts().gameTime();
         toGo = KitPlanner.bedsShort(ctx.facts(), EndGear.bedTarget(ctx.cfg().end, EndGear.wantSpawnBed(state, ctx.cfg().end)));
         boolean overworld = ctx.facts().dimension() == Dimension.OVERWORLD;
+        boolean justTook = false;
         if (target != null) {
             Task running = running(mod, ctx, cfg, now);
             if (running != null && overworld) {
                 return running;
             }
             finish(ctx, state, now);
+            justTook = true;
         }
         boolean want = overworld && toGo > 0 && BedRules.withinBudget(state.villageBedTicks, cfg.villageBedSeconds);
         track(mod, want);
-        if (!want || ++ticks % CHECK_EVERY_TICKS != 0) {
+        // straight on to the next bed after one is in the bag. waiting for the 20 tick check handed the food a second between
+        // every two beds, it walked off for the hay and the next bed dragged it back, bed after bed (13:53)
+        if (!want || (++ticks % CHECK_EVERY_TICKS != 0 && !justTook)) {
             return null;
         }
         BlockPos next = findBed(mod, state, cfg);

@@ -8,6 +8,7 @@ import adris.altoclef.util.helpers.MineStick;
 import adris.altoclef.util.helpers.WorldHelper;
 import java.util.HashMap;
 import java.util.Optional;
+import net.minecraft.core.BlockPos;
 import net.minecraft.world.phys.Vec3;
 
 /**
@@ -101,6 +102,12 @@ public abstract class AbstractDoToClosestObjectTask<T> extends Task {
         return ticksRemainingOp.orElse(Double.POSITIVE_INFINITY);
     }
 
+    // the controller is breaking the very block we are pursuing right now
+    private boolean breakingPursuit(AltoClef mod) {
+        return _currentlyPursuing instanceof BlockPos at && mod.getControllerExtras().isBreakingBlock()
+                && at.equals(mod.getControllerExtras().getBreakingBlockPos());
+    }
+
     private boolean isMovingToClosestPos(AltoClef mod) {
         return _goalTask != null;// && _goalTask.isActive() && !_goalTask.isFinished(mod);
     }
@@ -130,8 +137,9 @@ public abstract class AbstractDoToClosestObjectTask<T> extends Task {
         // Get closest object
         Optional<T> checkNewClosest = getClosestTo(mod, getOriginPos(mod));
 
-        // Receive closest object and position
-        if (checkNewClosest.isPresent() && !checkNewClosest.get().equals(_currentlyPursuing)) {
+        // Receive closest object and position. mid-break on the block we picked nothing takes over (MineStick's idea, for every
+        // closest-block task): two hay bales side by side traded "closest" as we stepped and every trade threw the crack away
+        if (checkNewClosest.isPresent() && !checkNewClosest.get().equals(_currentlyPursuing) && !breakingPursuit(mod)) {
             T newClosest = checkNewClosest.get();
             // Different closest object
             if (_currentlyPursuing == null) {
