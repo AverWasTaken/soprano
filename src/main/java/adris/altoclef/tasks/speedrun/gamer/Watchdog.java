@@ -39,6 +39,24 @@ public final class Watchdog {
         lastProgress = nowSeconds;
     }
 
+    // the clocks stood still for this long (a death recovery had the wheel): neither the budget nor the stall timer may
+    // bill the attempt for it
+    public void pause(double seconds) {
+        attemptStart += seconds;
+        lastProgress += seconds;
+    }
+
+    // only the stall timer forgives this much (another chain had the wheel). capped at now, forgiving can never be
+    // better than a real progress call
+    public void excuse(double nowSeconds, double seconds) {
+        lastProgress = Math.min(nowSeconds, lastProgress + Math.max(0, seconds));
+    }
+
+    // the attempt began before this process did (a relog resumed it), the budget keeps counting from the real start
+    public void backdate(double startSeconds) {
+        attemptStart = Math.min(attemptStart, startSeconds);
+    }
+
     public double secondsInAttempt(double nowSeconds) {
         return Math.max(0, nowSeconds - attemptStart);
     }

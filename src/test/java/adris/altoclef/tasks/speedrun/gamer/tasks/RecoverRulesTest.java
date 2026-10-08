@@ -59,6 +59,65 @@ public class RecoverRulesTest {
     }
 
     @Test
+    public void aDropThatNeverComesIsWrittenOffAfterItsChaseSeconds() {
+        RecoverRules.Chase chase = new RecoverRules.Chase();
+        // a drop on a ledge: still visible, never ours. one second per tick call keeps the sums exact
+        for (int s = 0; s <= RecoverRules.CHASE_SECONDS; s++) {
+            assertFalse("at " + s, chase.update(7, s));
+        }
+        assertTrue(chase.update(7, RecoverRules.CHASE_SECONDS + 1));
+    }
+
+    @Test
+    public void chasingTwoDropsInTurnsAddsUpPerDrop() {
+        RecoverRules.Chase chase = new RecoverRules.Chase();
+        double t = 0;
+        boolean seven = false;
+        boolean eight = false;
+        // the closest one flips every second, each only ever gets its own half of the time
+        for (int i = 0; i < 38; i++) {
+            t += 1;
+            if (i % 2 == 0) {
+                seven |= chase.update(7, t);
+            } else {
+                eight |= chase.update(8, t);
+            }
+        }
+        assertFalse(seven);
+        assertFalse(eight);
+        for (int i = 0; i < 6; i++) {
+            t += 1;
+            seven |= chase.update(7, t);
+            t += 1;
+            eight |= chase.update(8, t);
+        }
+        assertTrue(seven);
+        assertTrue(eight);
+    }
+
+    @Test
+    public void aGapIsNotChasingTime() {
+        RecoverRules.Chase chase = new RecoverRules.Chase();
+        assertFalse(chase.update(1, 0));
+        // an hour of standoff in between counts for one tick at most
+        assertFalse(chase.update(1, 3600));
+        chase.idle();
+        assertFalse(chase.update(1, 7200));
+        assertFalse(chase.update(1, 7200.05));
+    }
+
+    @Test
+    public void resetForgetsWhatWasSpent() {
+        RecoverRules.Chase chase = new RecoverRules.Chase();
+        double t = 0;
+        while (!chase.update(3, t += 0.5)) {
+            assertTrue(t < 100);
+        }
+        chase.reset();
+        assertFalse(chase.update(3, t + 1));
+    }
+
+    @Test
     public void resetForgetsTheCrowd() {
         Gate gate = new Gate();
         gate.update(0, 3);

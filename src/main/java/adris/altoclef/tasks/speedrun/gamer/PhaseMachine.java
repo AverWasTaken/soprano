@@ -39,6 +39,9 @@ public final class PhaseMachine implements GamerContext {
     // the same regress (LOCATE>NETHER) may happen this many times in one run, then it is a loop and not a recovery
     static final int MAX_REGRESS_PER_PAIR = 2;
 
+    // a resumed attempt may be this far past its budget (a late autosave) before the saved start is not believed
+    static final double RESUME_SLACK_SECONDS = 60;
+
     private final Host host;
     private final PhaseRules rules;
     private final Watchdog watchdog = new Watchdog();
@@ -49,6 +52,8 @@ public final class PhaseMachine implements GamerContext {
     private PhaseHandler entered;
     // the level's game time can read 0 for a few ticks after a dimension change, the machine's clock never goes back
     private double lastNow;
+    // when the death recovery last held the clocks, -1 when it is not running
+    private double heldAt = -1;
 
     private int lastFingerprint;
     private int anchorX;
@@ -88,19 +93,56 @@ public final class PhaseMachine implements GamerContext {
 
     // ---- life cycle
 
-    // the run starts (or resumes) in whatever phase the state says
+    // the run starts in whatever phase the state says, with fresh clocks
     public void begin(AltoClef mod) {
+        begin(mod, false);
+    }
+
+    // resumed = the saved run carries on where it was (a relog, a #gamer after a restart). the attempt keeps its real
+    // start then, or a relog 35 minutes into the nether would get a brand new 40
+    public void begin(AltoClef mod, boolean resumed) {
         this.mod = mod;
-        restartClocks();
+        heldAt = -1;
+        if (resumed && attemptClockSurvives()) {
+            resumeClocks();
+        } else {
+            restartClocks();
+        }
         if (!ended()) {
             safeEnter(current());
         }
     }
 
+    // the saved start has to be a real one: unset, or older than the budget plus a minute, means the world ran on without
+    // us (a server) and the elapsed time says nothing about how this attempt went. game time only counts while the world
+    // is loaded, so a single player relog costs nothing
+    private boolean attemptClockSurvives() {
+        RunState s = host.state();
+        if (s.phaseEnteredGameTime <= 0) {
+            return false;
+        }
+        double minutes = host.cfg().budgets.minutes(s.phase);
+        double elapsed = (host.facts().gameTime() - s.phaseEnteredGameTime) / 20.0;
+        return minutes <= 0 || elapsed <= minutes * 60 + RESUME_SLACK_SECONDS;
+    }
+
+    // the budget clock goes back to the saved start, the stall timer and the position anchors start now
+    private void resumeClocks() {
+        GamerFacts f = host.facts();
+        long entered = Math.min(host.state().phaseEnteredGameTime, f.gameTime());
+        host.state().phaseEnteredGameTime = entered;
+        resetWatch();
+        watchdog.backdate(entered / 20.0);
+    }
+
     // the clocks of the current attempt start over
     public void restartClocks() {
+        host.state().phaseEnteredGameTime = host.facts().gameTime();
+        resetWatch();
+    }
+
+    private void resetWatch() {
         GamerFacts f = host.facts();
-        host.state().phaseEnteredGameTime = f.gameTime();
         watchdog.reset(now());
         lastFingerprint = f.inventoryFingerprint();
         anchorX = f.x();
@@ -119,6 +161,35 @@ public final class PhaseMachine implements GamerContext {
 
     public void progress() {
         watchdog.progress(now());
+    }
+
+    // a death recovery has the wheel and never reaches tick(): the attempt did not get any older meanwhile. called every tick
+    // the recovery runs, the time since the previous call is handed back to both clocks (the saved phase start too, the
+    // nether budget reads that one)
+    public void holdClocks() {
+        double now = now();
+        giveBackHeldTime(now);
+        heldAt = now;
+    }
+
+    // the recovery lost the wheel for a while: what it held so far is given back, the rest is the caller's to excuse
+    public void releaseHold() {
+        giveBackHeldTime(now());
+    }
+
+    private void giveBackHeldTime(double now) {
+        if (heldAt >= 0 && now > heldAt) {
+            long ticks = Math.round((now - heldAt) * 20);
+            host.state().phaseEnteredGameTime += ticks;
+            watchdog.pause(ticks / 20.0);
+        }
+        heldAt = -1;
+    }
+
+    // the stall timer forgives the time another chain had the wheel (mob defense, eating): coming back from an interrupt is
+    // not progress, or two chains trading the wheel every few seconds would keep a stuck phase alive forever
+    public void excuseStall(double seconds) {
+        watchdog.excuse(now(), seconds);
     }
 
     // inventory changed, dimension changed, or we got about six blocks away from where we last made progress. not "changed
@@ -151,6 +222,7 @@ public final class PhaseMachine implements GamerContext {
     // run ended)
     public Task tick(AltoClef mod) {
         this.mod = mod;
+        giveBackHeldTime(now());
         if (ended()) {
             return null;
         }

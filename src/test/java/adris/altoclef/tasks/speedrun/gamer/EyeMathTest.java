@@ -61,47 +61,93 @@ public class EyeMathTest {
 
     @Test
     public void leavesWithTheFullTarget() {
-        assertTrue(EyeMath.canLeaveNether(bag(7, 0, 14, 0), cfg, false));
-        assertFalse(EyeMath.canLeaveNether(bag(6, 0, 14, 0), cfg, false));
-        assertFalse(EyeMath.canLeaveNether(bag(7, 0, 13, 0), cfg, false));
+        assertTrue(EyeMath.canLeaveNether(bag(7, 0, 14, 0), cfg, 0, false));
+        assertFalse(EyeMath.canLeaveNether(bag(6, 0, 14, 0), cfg, 0, false));
+        assertFalse(EyeMath.canLeaveNether(bag(7, 0, 13, 0), cfg, 0, false));
     }
 
     @Test
     public void powderAndEyesStandInForRods() {
         // 4 eyes, 6 powder: 10 of 14 covered, 2 more rods; 10 pearls finish it
-        assertTrue(EyeMath.canLeaveNether(bag(2, 6, 10, 4), cfg, false));
-        assertFalse(EyeMath.canLeaveNether(bag(1, 6, 10, 4), cfg, false));
-        assertTrue(EyeMath.canLeaveNether(bag(0, 0, 0, 14), cfg, false));
+        assertTrue(EyeMath.canLeaveNether(bag(2, 6, 10, 4), cfg, 0, false));
+        assertFalse(EyeMath.canLeaveNether(bag(1, 6, 10, 4), cfg, 0, false));
+        assertTrue(EyeMath.canLeaveNether(bag(0, 0, 0, 14), cfg, 0, false));
     }
 
     @Test
     public void budgetOverAcceptsTheFloor() {
         FakeFacts floor = bag(6, 0, 12, 0);
-        assertFalse(EyeMath.canLeaveNether(floor, cfg, false));
-        assertTrue(EyeMath.canLeaveNether(floor, cfg, true));
+        assertFalse(EyeMath.canLeaveNether(floor, cfg, 0, false));
+        assertTrue(EyeMath.canLeaveNether(floor, cfg, 0, true));
         // below the floor the budget does not help
-        assertFalse(EyeMath.canLeaveNether(bag(6, 0, 11, 0), cfg, true));
-        assertFalse(EyeMath.canLeaveNether(bag(5, 0, 12, 0), cfg, true));
+        assertFalse(EyeMath.canLeaveNether(bag(6, 0, 11, 0), cfg, 0, true));
+        assertFalse(EyeMath.canLeaveNether(bag(5, 0, 12, 0), cfg, 0, true));
         assertEquals(12, cfg.floorEyes);
     }
 
     @Test
     public void floorCountsPearlsPlusEyes() {
         // 3 eyes made already, 9 pearls, 5 rods = 10 powder: eyes 3 + 9 pearls = 12, powder 3 + 10 = 13
-        assertTrue(EyeMath.canLeaveNether(bag(5, 0, 9, 3), cfg, true));
+        assertTrue(EyeMath.canLeaveNether(bag(5, 0, 9, 3), cfg, 0, true));
     }
 
     @Test
     public void eyesPhaseExit() {
-        assertTrue(EyeMath.eyesDone(bag(0, 0, 0, 14), cfg));
-        assertFalse(EyeMath.eyesDone(bag(7, 0, 14, 0), cfg));
+        assertTrue(EyeMath.eyesDone(bag(0, 0, 0, 14), cfg, 0));
+        assertFalse(EyeMath.eyesDone(bag(7, 0, 14, 0), cfg, 0));
         // at the floor with something left to craft: keep crafting up to the target
-        assertFalse(EyeMath.eyesDone(bag(1, 0, 2, 12), cfg));
+        assertFalse(EyeMath.eyesDone(bag(1, 0, 2, 12), cfg, 0));
         // at the floor with nothing left to craft from: done
-        assertTrue(EyeMath.eyesDone(bag(0, 0, 3, 12), cfg));
-        assertTrue(EyeMath.eyesDone(bag(2, 0, 0, 13), cfg));
+        assertTrue(EyeMath.eyesDone(bag(0, 0, 3, 12), cfg, 0));
+        assertTrue(EyeMath.eyesDone(bag(2, 0, 0, 13), cfg, 0));
         // under the floor, even with nothing to craft, it is not done
-        assertFalse(EyeMath.eyesDone(bag(0, 0, 0, 11), cfg));
+        assertFalse(EyeMath.eyesDone(bag(0, 0, 0, 11), cfg, 0));
+    }
+
+    @Test
+    public void goalsShrinkWithTheFramesAlreadyFilled() {
+        assertEquals(14, EyeMath.targetGoal(cfg, 0));
+        assertEquals(12, EyeMath.floorGoal(cfg, 0));
+        // 5 of 12 in: 7 empty, the spare (target - floor = 2) rides on top
+        assertEquals(9, EyeMath.targetGoal(cfg, 5));
+        assertEquals(7, EyeMath.floorGoal(cfg, 5));
+        // never negative, never above the configured numbers
+        assertEquals(2, EyeMath.targetGoal(cfg, 12));
+        assertEquals(0, EyeMath.floorGoal(cfg, 12));
+        assertEquals(0, EyeMath.floorGoal(cfg, 99));
+    }
+
+    @Test
+    public void nineEyesLeaveTheNetherAfterAFiveFrameOpen() {
+        // the audit scenario: OPEN ran out at 5/12, 7 more are enough (9 with the spare)
+        assertTrue(EyeMath.canLeaveNether(bag(5, 0, 9, 0), cfg, 5, false));
+        assertFalse(EyeMath.canLeaveNether(bag(5, 0, 9, 0), cfg, 0, false));
+        // 7 is the floor for that state: only once the budget is nearly over
+        FakeFacts seven = bag(4, 0, 7, 0);
+        assertFalse(EyeMath.canLeaveNether(seven, cfg, 5, false));
+        assertTrue(EyeMath.canLeaveNether(seven, cfg, 5, true));
+        assertFalse(EyeMath.canLeaveNether(bag(3, 0, 7, 0), cfg, 5, true));
+    }
+
+    @Test
+    public void eyesPhaseUsesTheSameGoals() {
+        assertTrue(EyeMath.eyesDone(bag(0, 0, 0, 9), cfg, 5));
+        assertFalse(EyeMath.eyesDone(bag(0, 0, 0, 9), cfg, 0));
+        assertTrue(EyeMath.eyesDone(bag(0, 0, 0, 7), cfg, 5));
+        assertFalse(EyeMath.eyesDone(bag(0, 0, 0, 6), cfg, 5));
+        // floor with something left to craft keeps crafting
+        assertFalse(EyeMath.eyesDone(bag(1, 0, 2, 7), cfg, 5));
+    }
+
+    @Test
+    public void goalsAgreeWithTheOpenStarvedRule() {
+        // OPEN calls it starved below (12 - filled) eyes, and the nether floor leaves with exactly that many
+        for (int filled = 0; filled < 12; filled++) {
+            int need = 12 - filled;
+            assertEquals(need, EyeMath.floorGoal(cfg, filled));
+            assertTrue(EyeMath.canLeaveNether(bag(0, 0, 0, need), cfg, filled, true));
+            assertFalse(EyeMath.canLeaveNether(bag(0, 0, 0, need - 1), cfg, filled, true));
+        }
     }
 
     @Test

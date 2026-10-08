@@ -9,7 +9,8 @@ public class GamerConfig {
     // bump VERSION when you change a default kit list (or add one). a saved file replaces the default list outright, so
     // without the bump every existing run keeps the old kit forever (that is how the bot went to the nether with no
     // ladders). GamerConfigsTest has a hash of the defaults that fails until you do
-    public static final int VERSION = 4;
+    // (5 moved the old station pickup defaults, see GamerConfigs.retuneStationPickup)
+    public static final int VERSION = 5;
     // files from here up to VERSION get the migration instead of the defaults. raise it if a bump ever changes the shape
     // in a way the migration can not paper over
     public static final int OLDEST_KEPT = 2;

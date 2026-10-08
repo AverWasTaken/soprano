@@ -20,7 +20,9 @@ import net.minecraft.world.level.Level;
 
 import java.util.ArrayList;
 import java.util.ConcurrentModificationException;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 // after a death: walk back to where we died and pick up whatever is lying around there. bounded on purpose, the pile might
 // be in lava or the void and a bot that stares at it for ten minutes helps nobody
@@ -37,6 +39,8 @@ public class RecoverItemsTask extends Task {
     private final TimerGame _empty = new TimerGame(EMPTY_SECONDS);
     private final Task _walk;
     private final RecoverRules.Gate _gate = new RecoverRules.Gate();
+    private final RecoverRules.Chase _chase = new RecoverRules.Chase();
+    private final Set<Integer> _writtenOff = new HashSet<>();
     private Task _standOff;
     private Item _pickingUp;
     private Task _pickup;
@@ -53,6 +57,8 @@ public class RecoverItemsTask extends Task {
         _budget.reset();
         _empty.reset();
         _gate.reset();
+        // the chase counts and write offs are NOT reset here: onStart runs again after every interrupt, and mob defense
+        // flickering at the pile would hand every stuck drop a fresh 20 s each time
         _standOff = null;
     }
 
@@ -87,15 +93,28 @@ public class RecoverItemsTask extends Task {
         }
         if (mod.getPlayer().blockPosition().distSqr(_deathPos) > ARRIVE_RANGE * ARRIVE_RANGE) {
             _empty.reset();
+            _chase.idle();
             setDebugState("Walking back to where we died.", "Going back for our stuff");
             return _walk;
         }
         ItemEntity drop = closestDrop(mod);
         if (drop == null) {
+            _chase.idle();
             setDebugState("Nothing left here.", "Looking for our stuff");
             if (_empty.elapsed()) {
                 _finished = true;
             }
+            return null;
+        }
+        if (_chase.update(drop.getId(), mod.getWorld().getGameTime() / 20.0)) {
+            // visible, "reachable" and still not ours after all that: the pickup task's own retries reset every time we get a
+            // block closer, so this is the only count that ever ends
+            Debug.logMessage("Can't get at " + drop.getItem().getItem().getDescriptionId() + " after "
+                    + (int) RecoverRules.CHASE_SECONDS + " s, leaving it.");
+            _writtenOff.add(drop.getId());
+            mod.getEntityTracker().banEntity(drop);
+            _pickup = null;
+            _pickingUp = null;
             return null;
         }
         _empty.reset();
@@ -161,7 +180,7 @@ public class RecoverItemsTask extends Task {
             double d = e.position().distanceToSqr(_deathPos.getX() + 0.5, _deathPos.getY() + 0.5, _deathPos.getZ() + 0.5);
             // a drop that slid into lava is a drop we are not going swimming for
             boolean lost = RecoverRules.hopeless(level.getFluidState(e.blockPosition()).is(FluidTags.LAVA), e.blockPosition().getY(), level.getMinY());
-            if (d <= DROP_RADIUS * DROP_RADIUS && d < bestDist && !lost
+            if (d <= DROP_RADIUS * DROP_RADIUS && d < bestDist && !lost && !_writtenOff.contains(e.getId())
                     && mod.getEntityTracker().isEntityReachable(e)) {
                 bestDist = d;
                 best = e;

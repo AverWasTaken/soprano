@@ -39,7 +39,7 @@ public class EyesPhase implements PhaseHandler {
 
     @Override
     public boolean isDone(GamerFacts facts, RunState state, GamerConfig cfg) {
-        return EyeMath.eyesDone(facts, cfg);
+        return EyeMath.eyesDone(facts, cfg, state.framesFilled);
     }
 
     // not even the floor in the bag (a death, a lost chest): back to the nether once, the stronghold phases have the same rule
@@ -50,7 +50,7 @@ public class EyesPhase implements PhaseHandler {
         if (gear.isPresent()) {
             return gear;
         }
-        if (state.netherRevisits < 1 && EyeMath.potentialEyes(facts) < cfg.floorEyes) {
+        if (state.netherRevisits < 1 && EyeMath.potentialEyes(facts) < EyeMath.floorGoal(cfg, state.framesFilled)) {
             return Optional.of(GamerPhase.NETHER);
         }
         return Optional.empty();
@@ -67,7 +67,7 @@ public class EyesPhase implements PhaseHandler {
     public Task tick(AltoClef mod, GamerContext ctx) {
         GamerFacts f = ctx.facts();
         int eyes = EyeMath.eyes(f);
-        int want = Math.min(ctx.cfg().targetEyes, eyes + EyeMath.craftableNow(f));
+        int want = Math.min(EyeMath.targetGoal(ctx.cfg(), ctx.state().framesFilled), eyes + EyeMath.craftableNow(f));
         int powderNeeded = want - eyes;
         if (powderNeeded <= 0) {
             hudState = null;

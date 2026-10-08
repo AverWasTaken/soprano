@@ -18,6 +18,9 @@ import java.util.TreeMap;
 public final class GamerConfigs {
     public static final String PATH = "configs/beat_minecraft.json";
 
+    private static final int OLD_TABLE_RADIUS = 10;
+    private static final double OLD_TABLE_COOLDOWN = 120;
+
     private static volatile GamerConfig current;
 
     private GamerConfigs() {
@@ -41,9 +44,28 @@ public final class GamerConfigs {
     static GamerConfig migrate(GamerConfig c) {
         int from = c.version;
         resetKitLists(c, new GamerConfig());
+        if (from < 5) {
+            retuneStationPickup(c);
+        }
         c.version = GamerConfig.VERSION;
         Debug.logMessage("gamer config v" + from + " -> v" + GamerConfig.VERSION + ": kit lists reset to defaults");
         return c;
+    }
+
+    // v5: the station pickup numbers changed meaning (radius 10 -> 20 walk cost, cooldown 120 -> 5 s) and the code works
+    // around the old ones at every use. an old file still says what the defaults said back then, so only a value that is
+    // exactly the old default moves, a number somebody picked on purpose stays
+    private static void retuneStationPickup(GamerConfig c) {
+        if (c.overworld == null) {
+            return;
+        }
+        GamerConfig d = new GamerConfig();
+        if (c.overworld.tableRecoverRadius == OLD_TABLE_RADIUS) {
+            c.overworld.tableRecoverRadius = d.overworld.tableRecoverRadius;
+        }
+        if (c.overworld.tableRecoverCooldownSeconds == OLD_TABLE_COOLDOWN) {
+            c.overworld.tableRecoverCooldownSeconds = d.overworld.tableRecoverCooldownSeconds;
+        }
     }
 
     private static void resetKitLists(Object loaded, Object defaults) {
@@ -138,7 +160,13 @@ public final class GamerConfigs {
         GamerConfig d = new GamerConfig();
         c.maxAttempts = Math.max(1, c.maxAttempts);
         c.targetEyes = Math.max(1, c.targetEyes);
-        c.floorEyes = Math.max(1, Math.min(c.floorEyes, c.targetEyes));
+        int floor = Math.max(1, Math.min(c.floorEyes, c.targetEyes));
+        if (floor != c.floorEyes) {
+            // a floor above the target was never reachable, say so instead of quietly changing the number
+            Debug.logMessage("gamer config: floorEyes " + c.floorEyes + " is out of range for targetEyes " + c.targetEyes
+                    + ", using " + floor);
+        }
+        c.floorEyes = floor;
         c.death.maxPerPhase = Math.max(1, c.death.maxPerPhase);
         c.death.maxTotal = Math.max(1, c.death.maxTotal);
         c.death.recoverBlocks = Math.max(0, c.death.recoverBlocks);

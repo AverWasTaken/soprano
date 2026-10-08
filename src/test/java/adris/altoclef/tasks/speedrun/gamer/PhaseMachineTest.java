@@ -152,7 +152,7 @@ public class PhaseMachineTest {
         start();
         tickAfter(22 * 60 + 1);
         assertEquals(GamerPhase.PORTAL, host.state.phase);
-        assertEquals(1, host.state.attemptsOf(GamerPhase.PORTAL));
+        assertEquals(1, machine.attempt());
         assertEquals(List.of("enter1", "timeout1", "exit"), h(GamerPhase.IRON).events);
         assertEquals(List.of("enter1"), h(GamerPhase.PORTAL).events);
         assertFalse(machine.ended());
@@ -340,6 +340,149 @@ public class PhaseMachineTest {
         assertEquals(before + 1, host.saves);
         assertEquals(host.cfg, machine.cfg());
         assertEquals(host.state, machine.state());
+    }
+
+    @Test
+    public void aDeathRecoveryDoesNotEatTheBudget() {
+        start();
+        h(GamerPhase.GATHER).stall = 0;
+        long enteredBefore = host.state.phaseEnteredGameTime;
+        host.facts.seconds(7 * 60);
+        // five minutes of walking back for our stuff, the machine's tick never runs
+        for (int i = 0; i < 300; i++) {
+            host.facts.seconds(1);
+            machine.holdClocks();
+        }
+        host.facts.seconds(1);
+        machine.tick(null);
+        // gather has 8 minutes, 7 of them are ours. without the hold this is a retry
+        assertEquals(1, machine.attempt());
+        assertEquals(enteredBefore + 300 * 20, host.state.phaseEnteredGameTime);
+        assertEquals(7 * 60 + 1, machine.secondsInPhase(), 1e-6);
+        // and the budget still bites once the real time is up
+        tickAfter(60 + 1);
+        assertEquals(2, host.state.attemptsOf(GamerPhase.GATHER));
+    }
+
+    @Test
+    public void aRecoveryThatLostTheWheelStopsGivingTimeBack() {
+        start();
+        long enteredBefore = host.state.phaseEnteredGameTime;
+        for (int i = 0; i < 10; i++) {
+            host.facts.seconds(1);
+            machine.holdClocks();
+        }
+        machine.releaseHold();
+        // mob defense had the wheel for 30 s, the recovery was not running
+        host.facts.seconds(30);
+        machine.tick(null);
+        assertEquals(enteredBefore + 9 * 20, host.state.phaseEnteredGameTime);
+        // and a fresh start never inherits an old hold
+        machine.holdClocks();
+        machine.begin(null, false);
+        host.facts.seconds(5);
+        machine.tick(null);
+        assertEquals(host.facts.gameTime - 5 * 20, host.state.phaseEnteredGameTime);
+    }
+
+    @Test
+    public void aDeathRecoveryDoesNotTripTheStallTimerEither() {
+        start();
+        host.facts.seconds(60);
+        for (int i = 0; i < 300; i++) {
+            host.facts.seconds(1);
+            machine.holdClocks();
+        }
+        host.facts.seconds(1);
+        machine.tick(null);
+        assertEquals(1, machine.attempt());
+        // the 60 s before the death still count: 61 more is the 121 that is a stall
+        tickAfter(61);
+        assertEquals(2, host.state.attemptsOf(GamerPhase.GATHER));
+    }
+
+    @Test
+    public void excusedInterruptTimeIsNotProgress() {
+        host.state.phase = GamerPhase.IRON;
+        start();
+        // mob defense takes the wheel for 4 of every 5 seconds, over and over, and nothing gets done in between
+        for (int i = 0; i < 100; i++) {
+            host.facts.seconds(5);
+            machine.excuseStall(4);
+            machine.tick(null);
+        }
+        // that is 100 s of our own idling, under the 120 s stall. the old reset on every return never got anywhere near it
+        assertEquals(1, machine.attempt());
+        for (int i = 0; i < 30; i++) {
+            host.facts.seconds(5);
+            machine.excuseStall(4);
+            machine.tick(null);
+        }
+        assertEquals(2, host.state.attemptsOf(GamerPhase.IRON));
+    }
+
+    @Test
+    public void aRelogKeepsTheClockOfTheAttemptItResumes() {
+        host.facts.gameTime = 20 * 10000;
+        host.state.phase = GamerPhase.NETHER;
+        host.state.phaseEnteredGameTime = host.facts.gameTime - 35 * 60 * 20;
+        h(GamerPhase.NETHER).stall = 0;
+        machine.begin(null, true);
+        assertEquals(35 * 60, machine.secondsInPhase(), 1e-6);
+        assertEquals(10000 * 20 - 35 * 60 * 20, host.state.phaseEnteredGameTime);
+        // nether has 40 minutes: five more is over, a fresh clock would have had 40 more
+        tickAfter(5 * 60 + 1);
+        assertEquals(List.of("enter1", "timeout1", "exit", "enter2"), h(GamerPhase.NETHER).events);
+    }
+
+    @Test
+    public void aRelogStillRestartsTheStallTimer() {
+        host.facts.gameTime = 20 * 10000;
+        host.state.phase = GamerPhase.IRON;
+        host.state.phaseEnteredGameTime = host.facts.gameTime - 10 * 60 * 20;
+        machine.begin(null, true);
+        // iron has 22 minutes and the stall is 120 s from the moment we are back, not from the last save
+        assertEquals(0, machine.watchdog().secondsSinceProgress(machine.now()), 1e-9);
+        tickAfter(100);
+        assertEquals(1, machine.attempt());
+    }
+
+    @Test
+    public void aStartThatIsNotAResumeGetsFreshClocks() {
+        host.facts.gameTime = 20 * 10000;
+        host.state.phase = GamerPhase.NETHER;
+        host.state.phaseEnteredGameTime = host.facts.gameTime - 35 * 60 * 20;
+        machine.begin(null, false);
+        assertEquals(0, machine.secondsInPhase(), 1e-6);
+        assertEquals(host.facts.gameTime, host.state.phaseEnteredGameTime);
+    }
+
+    @Test
+    public void aResumeFromAnImpossiblyOldStartGetsFreshClocks() {
+        // the server ran on for days while we were gone, 40 minutes of nether budget say nothing about the attempt
+        host.facts.gameTime = 20 * 1_000_000;
+        host.state.phase = GamerPhase.NETHER;
+        host.state.phaseEnteredGameTime = 20 * 5000;
+        machine.begin(null, true);
+        assertEquals(0, machine.secondsInPhase(), 1e-6);
+        // a start that was never set is the same story
+        TestHost other = new TestHost();
+        other.facts.gameTime = 20 * 3000;
+        other.state.phase = GamerPhase.IRON;
+        PhaseMachine m = new PhaseMachine(new ArrayList<PhaseHandler>(FakeHandler.full()), other);
+        m.begin(null, true);
+        assertEquals(0, m.secondsInPhase(), 1e-6);
+        assertEquals(other.facts.gameTime, other.state.phaseEnteredGameTime);
+    }
+
+    @Test
+    public void aSavedStartSlightlyAheadOfTheWorldClockIsClamped() {
+        host.facts.gameTime = 20 * 1000;
+        host.state.phase = GamerPhase.IRON;
+        host.state.phaseEnteredGameTime = host.facts.gameTime + 100;
+        machine.begin(null, true);
+        assertEquals(0, machine.secondsInPhase(), 1e-6);
+        assertEquals(host.facts.gameTime, host.state.phaseEnteredGameTime);
     }
 
     @Test

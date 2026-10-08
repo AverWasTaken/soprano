@@ -77,6 +77,10 @@ public class GamerTask extends Task {
     // false until the first tick with a player loaded the run state. onStart runs again after every interrupt (eating, mob
     // defense) and that is only the task coming back, never a new run
     private boolean begun;
+    // machine.now() when another chain took the wheel, -1 while we have it
+    private double interruptedAt = -1;
+    // set by loadState when the saved run carries on as it was, so the attempt clocks keep their real start
+    private boolean resumedAsIs;
     private boolean pushed;
     private BotBehaviour.State level;
     // watches for crafting tables and furnaces we place, so PrepSupport only ever takes back its own (OwnTables)
@@ -152,10 +156,8 @@ public class GamerTask extends Task {
             applyBehaviour(mod);
         }
         mod.getExtraBaritoneSettings().canWalkOnEndPortal(wantWalkOnPortal);
-        if (begun) {
-            // back from an interrupt: same run, same phase, the clocks should not blame the chain that had the wheel
-            machine.progress();
-        }
+        // back from an interrupt: same run, same phase, the stall timer should not blame the chain that had the wheel. the
+        // facts are stale in here (only engineTick refreshes them), so the forgiving happens on the first real tick
     }
 
     // a pause (another chain has the wheel for a moment) keeps the item protection, the tracked blocks and the settings, it
@@ -163,6 +165,11 @@ public class GamerTask extends Task {
     @Override
     protected void onStop(AltoClef mod, Task interruptTask) {
         if (isInterrupting()) {
+            if (begun && interruptedAt < 0) {
+                interruptedAt = machine.now();
+                // a recovery that got interrupted stops giving time back, the excuse below covers the stall
+                machine.releaseHold();
+            }
             softSave();
             return;
         }
@@ -185,6 +192,7 @@ public class GamerTask extends Task {
             Debug.logInternal("gamer: onStop " + e);
         } finally {
             begun = false;
+            interruptedAt = -1;
             // the food task must stop seeing our jobs once we are gone
             AsyncSmelting.clear();
             CookTrip.clear();
@@ -356,7 +364,7 @@ public class GamerTask extends Task {
         lastSaveSeconds = machine.now();
         begun = true;
         watchPlacements();
-        machine.begin(mod);
+        machine.begin(mod, resumedAsIs);
     }
 
     private void watchPlacements() {
@@ -422,6 +430,7 @@ public class GamerTask extends Task {
         RunStateStore.Loaded loaded = RunStateStore.load(statePath, RunStateStore.fingerprint());
         state = loaded.state();
         boolean resumed = loaded.resumed();
+        resumedAsIs = false;
         if (resumed && state.phaseEnteredGameTime > facts.gameTime() + CLOCK_SLACK_TICKS) {
             // game time only ever goes forward inside one world, so this file was written in another one (or the same one
             // before it was reset). not ours to resume
@@ -472,6 +481,7 @@ public class GamerTask extends Task {
             state.phaseAttempts.put(state.phase.name(), 1);
         } else {
             host.say("Resuming at: " + state.phase.hud());
+            resumedAsIs = true;
         }
         if (state.attemptsOf(state.phase) < 1) {
             state.phaseAttempts.put(state.phase.name(), 1);
@@ -524,6 +534,12 @@ public class GamerTask extends Task {
         }
         cfg = GamerConfigs.get();
         double now = machine.now();
+        if (interruptedAt >= 0) {
+            // first fresh tick after another chain had the wheel. forgiven, not reset: a reset made two chains trading the
+            // wheel every few seconds look like progress forever
+            machine.excuseStall(now - interruptedAt);
+            interruptedAt = -1;
+        }
         state.runTicks++;
         takeLoadedFurnaces();
         // the furnaces read this: wood the kit still wants is not fuel
@@ -538,8 +554,9 @@ public class GamerTask extends Task {
             return null;
         }
         if (recoverStillWanted(now)) {
+            // the recovery is not the phase's time and not its fault: both clocks wait for it (a stall is forgiven the same way)
             machine.observe();
-            machine.progress();
+            machine.holdClocks();
             setDebugState("Recovering items after a death.", "Getting our stuff back");
             autosave(now);
             return recover;

@@ -255,6 +255,34 @@ public class GamerConfigsTest {
     }
 
     @Test
+    public void anOldFileGetsTheNewStationPickupDefaults() throws IOException {
+        // what the shipped defaults said before v5: radius 10, cooldown 120
+        write("{\"version\": 4, \"overworld\": {\"tableRecoverRadius\": 10, \"tableRecoverCooldownSeconds\": 120.0}}");
+        GamerConfig c = GamerConfigs.load();
+        GamerConfig d = new GamerConfig();
+        assertEquals(d.overworld.tableRecoverRadius, c.overworld.tableRecoverRadius);
+        assertEquals(d.overworld.tableRecoverCooldownSeconds, c.overworld.tableRecoverCooldownSeconds, 0);
+        assertEquals(20, c.overworld.tableRecoverRadius);
+        assertEquals(5, c.overworld.tableRecoverCooldownSeconds, 0);
+        assertEquals(20, onDisk().getAsJsonObject("overworld").get("tableRecoverRadius").getAsInt());
+    }
+
+    @Test
+    public void aStationPickupNumberSomebodyPickedSurvivesTheMigration() throws IOException {
+        write("{\"version\": 4, \"overworld\": {\"tableRecoverRadius\": 14, \"tableRecoverCooldownSeconds\": 30.0}}");
+        GamerConfig c = GamerConfigs.load();
+        assertEquals(14, c.overworld.tableRecoverRadius);
+        assertEquals(30, c.overworld.tableRecoverCooldownSeconds, 0);
+    }
+
+    @Test
+    public void aCurrentFileKeepsItsOldLookingStationNumbers() throws IOException {
+        // only a migration rewrites them, a v5 file that says 10 means 10
+        write("{\"version\": " + GamerConfig.VERSION + ", \"overworld\": {\"tableRecoverRadius\": 10}}");
+        assertEquals(10, GamerConfigs.load().overworld.tableRecoverRadius);
+    }
+
+    @Test
     public void aCurrentFileKeepsItsKitLists() throws IOException {
         write("{\"version\": " + GamerConfig.VERSION + ", \"overworld\": {\"ironKit\": [{\"item\": \"bucket\", \"count\": 2}]}}");
         assertEquals(List.of("bucket x2"), names(GamerConfigs.load().overworld.ironKit));
@@ -263,7 +291,7 @@ public class GamerConfigsTest {
     // GamerConfig.VERSION has to move whenever a default kit list does (a saved list replaces the default, so old files keep
     // the old kit until the migration resets them). this pins the pair: change a default and it fails, and the fix is to
     // bump VERSION and then put the new VERSION and hash here
-    private static final int PINNED_VERSION = 4;
+    private static final int PINNED_VERSION = 5;
     private static final String PINNED_KIT_HASH = "f30524e1";
 
     @Test

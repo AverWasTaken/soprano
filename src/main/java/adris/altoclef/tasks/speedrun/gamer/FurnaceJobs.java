@@ -103,6 +103,18 @@ public final class FurnaceJobs {
         return false;
     }
 
+    // standing by a furnace is only "progress" while a job in it can still finish: until the last job is due plus the slack
+    // (the walk back, a collect that takes a moment). past that the wait is just a bot standing still and the stall timer
+    // should be allowed to say so
+    public static boolean waitIsHonest(List<RunState.FurnaceJob> jobs, long now, long slackTicks) {
+        for (RunState.FurnaceJob job : jobs) {
+            if (now <= job.doneTick + slackTicks) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     // the job that is ready first, null if there are none
     public static RunState.FurnaceJob soonest(List<RunState.FurnaceJob> jobs) {
         RunState.FurnaceJob best = null;

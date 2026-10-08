@@ -10,7 +10,9 @@ import adris.altoclef.tasksystem.Task;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 // runs the FIRST unsatisfied need of a list as one catalogue task and keeps that task object until the need changes
 // (a new object per tick restarts its sub state, and the catalogue tasks have a lot of it). tells the watchdog when
@@ -28,7 +30,8 @@ public final class KitRunner {
     private List<Item> equipKey = List.of();
     private int foodKey;
     private Task task;
-    private int lastProgress;
+    // progressOf per need as of the last time that need was the head
+    private final Map<String, Integer> lastProgress = new HashMap<>();
     private String hud;
     // one line per phase entry (reset() is the entry) with everything the planner wants, first non empty plan only
     private boolean planLogged;
@@ -47,7 +50,7 @@ public final class KitRunner {
         equipKey = List.of();
         foodKey = 0;
         task = null;
-        lastProgress = 0;
+        lastProgress.clear();
         hud = null;
         planLogged = false;
     }
@@ -106,12 +109,15 @@ public final class KitRunner {
         return task;
     }
 
+    // a need only counts as progress when its own number went up since we last looked at THAT need. the head changing says
+    // nothing (two needs trading the head every few seconds never get anywhere), and a finished need is already covered
+    // by the engine seeing the inventory change
     private void watchProgress(GamerContext ctx, KitNeed need) {
         int now = KitPlanner.progressOf(ctx.facts(), need);
-        if (key != null && (!need.equals(key) || now > lastProgress)) {
+        Integer before = lastProgress.put(need.catalogueName(), now);
+        if (before != null && now > before) {
             ctx.progress(need.catalogueName());
         }
-        lastProgress = now;
     }
 
     private static Task build(KitNeed need, List<Item> equip, int foodTarget) {

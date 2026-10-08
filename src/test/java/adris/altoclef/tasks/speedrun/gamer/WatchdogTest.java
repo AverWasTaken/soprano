@@ -83,6 +83,41 @@ public class WatchdogTest {
     }
 
     @Test
+    public void pauseGivesBothClocksTheTimeBack() {
+        Watchdog w = new Watchdog();
+        w.reset(0);
+        w.pause(100);
+        // 100 s of a death recovery do not count against the budget (1 min) or the stall (120 s)
+        assertEquals(60, w.secondsInAttempt(160), 1e-9);
+        assertTrue(w.check(160, 1, 120).ok());
+        assertEquals(Watchdog.Result.BUDGET, w.check(161, 1, 120).result());
+    }
+
+    @Test
+    public void excuseForgivesTheStallOnlyAndNeverPastNow() {
+        Watchdog w = new Watchdog();
+        w.reset(0);
+        w.excuse(100, 90);
+        assertEquals(10, w.secondsSinceProgress(100), 1e-9);
+        // the budget did not move
+        assertEquals(100, w.secondsInAttempt(100), 1e-9);
+        w.excuse(100, 5000);
+        assertEquals(0, w.secondsSinceProgress(100), 1e-9);
+    }
+
+    @Test
+    public void backdateMovesTheStartBackAndNeverForward() {
+        Watchdog w = new Watchdog();
+        w.reset(500);
+        w.backdate(200);
+        assertEquals(400, w.secondsInAttempt(600), 1e-9);
+        // the stall timer started at the reset, not at the old start
+        assertEquals(100, w.secondsSinceProgress(600), 1e-9);
+        w.backdate(550);
+        assertEquals(400, w.secondsInAttempt(600), 1e-9);
+    }
+
+    @Test
     public void readsTheBudgetFromTheConfigAndTheStallFromTheHandler() {
         GamerConfig cfg = new GamerConfig();
         cfg.budgets.eyes = 3;

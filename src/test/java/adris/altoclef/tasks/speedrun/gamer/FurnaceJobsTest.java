@@ -208,4 +208,18 @@ public class FurnaceJobsTest {
         FurnaceJobs.afterVisit(jobs, j, 0, 2000);
         assertTrue(jobs.isEmpty());
     }
+
+    @Test
+    public void waitingByAFurnaceOnlyCountsUntilItsDuePlusSlack() {
+        List<RunState.FurnaceJob> jobs = new ArrayList<>();
+        // 5 mutton in a smoker from tick 1000: due at 1500
+        jobs.add(job(1, 5, 1000, "smoker"));
+        assertTrue(FurnaceJobs.waitIsHonest(jobs, 1200, 600));
+        assertTrue(FurnaceJobs.waitIsHonest(jobs, 1500 + 600, 600));
+        assertFalse(FurnaceJobs.waitIsHonest(jobs, 1500 + 601, 600));
+        // another job that is still cooking keeps the wait honest
+        jobs.add(job(2, 20, 1000, "furnace"));
+        assertTrue(FurnaceJobs.waitIsHonest(jobs, 3000, 600));
+        assertFalse(FurnaceJobs.waitIsHonest(new ArrayList<>(), 0, 600));
+    }
 }

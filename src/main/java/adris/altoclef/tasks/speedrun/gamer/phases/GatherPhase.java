@@ -2,6 +2,7 @@ package adris.altoclef.tasks.speedrun.gamer.phases;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.tasks.container.CollectFromFurnaceTask.Mode;
+import adris.altoclef.tasks.speedrun.gamer.FurnaceJobs;
 import adris.altoclef.tasks.speedrun.gamer.FurnaceWatch;
 import adris.altoclef.tasks.speedrun.gamer.GamerContext;
 import adris.altoclef.tasks.speedrun.gamer.GamerFacts;
@@ -25,6 +26,9 @@ import java.util.List;
 
 // wood, table, stone tools, furnace, first food. the kit comes from KitPlanner so this never re-collects what we hold
 public class GatherPhase implements PhaseHandler {
+    // 30 s past the due tick the wait still counts: the collect itself takes a moment
+    private static final long WAIT_SLACK_TICKS = 600;
+
     private final KitRunner runner = new KitRunner();
     private final PrepSupport support = new PrepSupport(false);
     // the smoker the food cooks in (the same watch IRON uses for its furnace, it does not care what is cooking)
@@ -130,8 +134,9 @@ public class GatherPhase implements PhaseHandler {
                 committed = null;
                 trip = furnaces.collect(mod, ctx, what.trip() == Trip.WAIT ? Mode.WAIT_ALL : Mode.NORMAL,
                         what.trip() == Trip.WAIT ? "nothing else to do, waiting it out" : what.why().text);
-                if (what.trip() == Trip.WAIT) {
-                    // standing by the smoker (screen closed between looks) is the plan, not a stall
+                if (what.trip() == Trip.WAIT && FurnaceJobs.waitIsHonest(f.furnaceJobs(), f.gameTime(), WAIT_SLACK_TICKS)) {
+                    // standing by the smoker (screen closed between looks) is the plan, not a stall. but only until the food
+                    // is due: a smoker that never finishes used to keep this alive on every tick of the wait
                     ctx.progress("waiting for the smoker");
                 }
             }

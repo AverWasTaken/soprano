@@ -163,6 +163,24 @@ public class KitRunnerTest {
     }
 
     @Test
+    public void twoNeedsTradingTheHeadAreNotProgress() {
+        List<KitNeed> a = List.of(new KitNeed("iron_ingot", 39));
+        List<KitNeed> b = List.of(new KitNeed("cobblestone", 20));
+        for (int i = 0; i < 10; i++) {
+            runner.run(ctx, a);
+            runner.run(ctx, b);
+        }
+        assertTrue(ctx.progress.isEmpty());
+        // a real gain on one of them still counts
+        ctx.facts.give(Items.COBBLESTONE, 3);
+        runner.run(ctx, b);
+        assertEquals(List.of("cobblestone"), ctx.progress);
+        // and going back to the other one is not a gain either
+        runner.run(ctx, a);
+        assertEquals(1, ctx.progress.size());
+    }
+
+    @Test
     public void aBagOfRottenFleshDoesNotSatisfyTheFoodNeed() {
         // 20 rotten flesh is 80 nutrition for CollectFoodTask, and 0 for what we would actually eat
         ctx.facts.give(Items.ROTTEN_FLESH, 20);

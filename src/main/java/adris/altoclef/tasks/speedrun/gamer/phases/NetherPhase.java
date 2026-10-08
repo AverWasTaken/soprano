@@ -135,7 +135,7 @@ public class NetherPhase implements PhaseHandler {
     // pure: what we hold decides, plus "the budget is nearly over" which only needs the game clock
     @Override
     public boolean isDone(GamerFacts facts, RunState state, GamerConfig cfg) {
-        return EyeMath.canLeaveNether(facts, cfg, budgetOver(facts, state, cfg) || state.netherRodsGaveUp);
+        return EyeMath.canLeaveNether(facts, cfg, state.framesFilled, budgetOver(facts, state, cfg) || state.netherRodsGaveUp);
     }
 
     static boolean budgetOver(GamerFacts facts, RunState state, GamerConfig cfg) {
@@ -156,7 +156,7 @@ public class NetherPhase implements PhaseHandler {
     // the budget or the stall timer fired: leave with the floor if we have it, else try again, else give up
     @Override
     public Timeout onTimeout(GamerContext ctx, int attempt, String reason) {
-        if (EyeMath.canLeaveNether(ctx.facts(), ctx.cfg(), true)) {
+        if (EyeMath.canLeaveNether(ctx.facts(), ctx.cfg(), ctx.state().framesFilled, true)) {
             return Timeout.SKIP;
         }
         return attempt < ctx.cfg().maxAttempts ? Timeout.RETRY : Timeout.STUCK;
@@ -360,12 +360,13 @@ public class NetherPhase implements PhaseHandler {
         RunState s = ctx.state();
         GamerConfig cfg = ctx.cfg();
         int eyes = EyeMath.eyes(f);
-        int rodsNeed = EyeMath.rodsNeeded(cfg.targetEyes, eyes, f.count(Items.BLAZE_POWDER));
+        int goal = EyeMath.targetGoal(cfg, s.framesFilled);
+        int rodsNeed = EyeMath.rodsNeeded(goal, eyes, f.count(Items.BLAZE_POWDER));
         int rods = f.count(Items.BLAZE_ROD);
         if (rods < rodsNeed && !s.netherRodsGaveUp) {
             return rodsStep(mod, ctx, now, rods, rodsNeed);
         }
-        int pearlsNeed = EyeMath.pearlsNeeded(cfg.targetEyes, eyes);
+        int pearlsNeed = EyeMath.pearlsNeeded(goal, eyes);
         int pearls = f.count(Items.ENDER_PEARL);
         if (pearls < pearlsNeed) {
             return pearlStep(mod, ctx, now, pearls, pearlsNeed);
