@@ -95,7 +95,7 @@ public class MovementFall extends Movement {
         NONE, BUCKET, CLUTCH, HURT
     }
 
-    // a deliberate fall that hurts (experimentalMovement). nobody is saving us, we just fall. sticky, because the plan
+    // a deliberate fall that hurts (fastMode). nobody is saving us, we just fall. sticky, because the plan
     // changing under us at the edge (health went down) is the one thing we check for, see updateState
     private boolean hurt;
 

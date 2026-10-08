@@ -93,8 +93,8 @@ All off by default unless it says otherwise.
 - `allowClimbJumps` (jump onto ladders and vines across a gap, and off of them again, needs `allowParkour`)
 - `allowLadderClutch` (survive long falls by placing a ladder or vine on a wall beside the landing, needs one on the hotbar)
 - `pickupLadders` (on by default, picks the clutch ladder back up after landing)
-- `experimentalMovement` (speedrunner style movement, see below) and `experimentalMinHealth` (the health it won't drop below)
-- `fallDamageCost` (what a half heart of fall damage costs the planner, in ticks, while `experimentalMovement` is on), `experimentalJumpBias` (how much cheaper jumps look than walking, 0.9 by default) and `experimentalBlockPlacementPenalty` (the most a block placement is allowed to cost)
+- `fastMode` (speedrunner style movement, see below) and `fastModeMinHealth` (the health it won't drop below)
+- `fallDamageCost` (what a half heart of fall damage costs the planner, in ticks, while `fastMode` is on), `experimentalJumpBias` (how much cheaper jumps look than walking, 0.9 by default) and `experimentalBlockPlacementPenalty` (the most a block placement is allowed to cost)
 - `allowGroundShortcuts` (take direct lines across bends in flat walking paths, with full-width clearance and floor checks every tick)
 - `preferFasterPathing` (smoother steering along clear straight runs and fewer awkward corner-edging diagonals)
 - `allowBoats` (place a boat from the inventory, row it across the water, and take it with you on the other side. `boatMinWaterLength` says how much water is worth it, `colorBoatPath` paints those stretches of the path)
@@ -105,7 +105,7 @@ All off by default unless it says otherwise.
 - `sprintJumpingDiagonals` (on by default, allows diagonal sprint jumps when `sprintJumping` is enabled)
 - `shortBaritonePrefix` (use `[S]` instead of `[Soprano]` in chat messages)
 
-`experimentalMovement` is the "just go fast" switch. It turns on all the parkour (neos, climb jumps and momentum jumps too), diagonal ascends and descends, sprint jumping, head hitters, ground shortcuts and faster pathing, takes falls that cost some health when that saves time, cuts corners, smooths straight runs, places blocks more freely and leans toward jumps. If you'd rather pick features one by one, leave it off and use the settings above.
+`fastMode` is the "just go fast" switch. It turns on all the parkour (neos, climb jumps and momentum jumps too), diagonal ascends and descends, sprint jumping, head hitters, ground shortcuts and faster pathing, takes falls that cost some health when that saves time, cuts corners, smooths straight runs, places blocks more freely and leans toward jumps. If you'd rather pick features one by one, leave it off and use the settings above.
 
 ## Settings from Baritone
 

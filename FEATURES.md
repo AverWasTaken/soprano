@@ -6,7 +6,7 @@ These are on top of the Baritone features below, and all are off by default unle
 - **Momentum jumps** (`allowMomentumJumps`). Jumps a standing start can't make, using a run up and bunny hops: a 4 block gap on the flat, or one up across a gap of 3 (both want 3 or more blocks of run up), drops of 1 to 3 blocks that reach 5 or 6 blocks out, and a few pairs of jumps through a one block pad. Needs `allowParkour`.
 - **Ladder and vine jumps** (`allowClimbJumps`). Catch a ladder or vine mid air across a gap of 1 to 3 blocks, and leap off one onto a ledge or another ladder.
 - **Ladder clutches** (`allowLadderClutch`). Place a vine or ladder next to the landing spot to survive a long fall, like a water bucket clutch. Needs a ladder or vine on the hotbar. `pickupLadders` (on by default) picks the ladder back up afterwards.
-- **Experimental movement** (`experimentalMovement`). Turns on all the parkour, sprint jumping and head hitters, takes falls that cost some health when it saves time (stays above `experimentalMinHealth`), cuts corners, smooths straight runs, places blocks more freely and leans toward jumps.
+- **Fast mode** (`fastMode`). Turns on all the parkour, sprint jumping and head hitters, takes falls that cost some health when it saves time (stays above `fastModeMinHealth`), cuts corners, smooths straight runs, places blocks more freely and leans toward jumps.
 - **Boats** (`allowBoats`) and **better swimming** (`allowSwimming`).
 - **Rendering.** The path is a smooth antialiased ribbon with rounded corners, and the search visual is softer.
 - **Performance.** The pathfinder considers more movements per second and reuses its cache buffers.

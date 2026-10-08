@@ -466,7 +466,7 @@ public final class Settings {
      * Look ahead along clear, supported straight runs instead of steering at each block center.
      * Diagonals that require edging around an obstacle receive an extra cost; open diagonals keep
      * their normal cost. Turns, terrain changes, and block interactions retain precise steering.
-     * Part of {@link #experimentalMovement}.
+     * Part of {@link #fastMode}.
      */
     public final Setting<Boolean> preferFasterPathing = new Setting<>(false);
 
@@ -477,12 +477,12 @@ public final class Settings {
      * Jumps, climbs, block interactions, and hazardous or slippery terrain retain their normal movements,
      * and an eligible sprint jump runway wins over a shortcut.
      * Rechecks the route each tick and replans if it becomes obstructed.
-     * Part of {@link #experimentalMovement}.
+     * Part of {@link #fastMode}.
      */
     public final Setting<Boolean> allowGroundShortcuts = new Setting<>(false);
 
     /**
-     * Move like a speedrunner instead of a robot: take the line a fast player would, accept some risk, use the flashy movement.
+     * Fast mode. Move like a speedrunner instead of a robot: take the line a fast player would, accept some risk, use the flashy movement.
      * <p>
      * While this is on, these settings behave as if they were on, whatever their own value (the settings themselves
      * are left alone, so turning this off gives you your old choices back):
@@ -493,33 +493,33 @@ public final class Settings {
      * <p>
      * It also scales the cost of parkour, neo, climb and momentum jumps by {@link #experimentalJumpBias}, caps the cost of
      * placing a block at {@link #experimentalBlockPlacementPenalty} (so a quick pillar or short bridge can beat a
-     * long walk around), and allows falls that hurt, see {@link #experimentalMinHealth} and {@link #fallDamageCost}.
+     * long walk around), and allows falls that hurt, see {@link #fastModeMinHealth} and {@link #fallDamageCost}.
      */
-    public final Setting<Boolean> experimentalMovement = new Setting<>(false);
+    public final Setting<Boolean> fastMode = new Setting<>(false);
 
     /**
-     * Multiplier on the cost of parkour, neo, climb and momentum jumps while {@link #experimentalMovement} is on.
+     * Multiplier on the cost of parkour, neo, climb and momentum jumps while {@link #fastMode} is on.
      * Below 1 makes the jumpy route look a bit cheaper than the equivalent walk, which is the whole fun of it.
      */
     public final Setting<Double> experimentalJumpBias = new Setting<>(0.9D);
 
     /**
-     * While {@link #experimentalMovement} is on, the block placement penalty is the lower of
+     * While {@link #fastMode} is on, the block placement penalty is the lower of
      * {@link #blockPlacementPenalty} and this. Placing a block really takes about a tick, so this is still pessimistic,
      * just not so much that a two block bridge loses to a twenty block walk.
      */
     public final Setting<Double> experimentalBlockPlacementPenalty = new Setting<>(5D);
 
     /**
-     * While {@link #experimentalMovement} is on, Baritone may take a fall that hurts when there is no water bucket or
+     * While {@link #fastMode} is on, Baritone may take a fall that hurts when there is no water bucket or
      * clutch to make it free, but never one that would leave you with less health (plus absorption) than this.
      * Measured in half hearts, so 12 is six hearts. Damage is estimated as vanilla fall damage before armor
      * and feather falling, which is conservative.
      */
-    public final Setting<Double> experimentalMinHealth = new Setting<>(12D);
+    public final Setting<Double> fastModeMinHealth = new Setting<>(12D);
 
     /**
-     * Cost, in ticks, of every half heart a damaging fall takes off you, while {@link #experimentalMovement} is on.
+     * Cost, in ticks, of every half heart a damaging fall takes off you, while {@link #fastMode} is on.
      * Higher makes Baritone walk around a drop more often, lower makes it jump off things.
      */
     public final Setting<Double> fallDamageCost = new Setting<>(20D);
@@ -1818,6 +1818,29 @@ public final class Settings {
      * A list of all settings
      */
     public final List<Setting<?>> allSettings;
+
+    // old lowercase name -> the lowercase name it became. only findByLowerName reads this, so the old names stay out of
+    // byLowerName and allSettings, which means tab complete, #set list and the settings file never show them
+    private static final Map<String, String> RENAMED = Map.of(
+            "experimentalmovement", "fastmode",
+            "experimentalminhealth", "fastmodeminhealth"
+    );
+
+    /**
+     * Looks a setting up by its lowercase name. Unlike {@link #byLowerName} this also accepts the old name of a setting
+     * that was renamed, so settings files and commands from before the rename keep working.
+     *
+     * @param lowerName the lowercase name of a setting, current or old
+     * @return the setting, or {@code null} if there is no setting by that name
+     */
+    public Setting<?> findByLowerName(String lowerName) {
+        Setting<?> setting = byLowerName.get(lowerName);
+        if (setting == null) {
+            String renamed = RENAMED.get(lowerName);
+            setting = renamed == null ? null : byLowerName.get(renamed);
+        }
+        return setting;
+    }
 
     public final Map<Setting<?>, Type> settingTypes;
 

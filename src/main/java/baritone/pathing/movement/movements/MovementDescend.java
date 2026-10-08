@@ -241,14 +241,14 @@ public class MovementDescend extends Movement {
         }
     }
 
-    // the last resort under experimentalMovement: no bucket, no clutch, so just eat it if we can afford the hearts.
+    // the last resort under fastMode: no bucket, no clutch, so just eat it if we can afford the hearts.
     // the water bucket and the clutch both got their say before we got here, a fall that hurts never beats one that doesn't
     private static void hurtingFall(CalculationContext context, int destX, int destZ, int newY, int blocks, double tentativeCost, BlockState onto, MutableMoveResult res) {
-        if (!context.experimental || blocks > ExperimentalMovement.MAX_HURT_FALL) {
+        if (!context.fastMode || blocks > ExperimentalMovement.MAX_HURT_FALL) {
             return;
         }
         int damage = ExperimentalMovement.fallDamage(blocks);
-        if (!ExperimentalMovement.canAffordFall(context.health, damage, context.experimentalMinHealth)) {
+        if (!ExperimentalMovement.canAffordFall(context.health, damage, context.fastModeMinHealth)) {
             return;
         }
         // magma and friends. canWalkOn lets some of them through (we can sneak on magma, that is not the same as landing on it)

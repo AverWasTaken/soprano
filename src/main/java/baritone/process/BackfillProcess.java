@@ -51,7 +51,7 @@ public final class BackfillProcess extends BaritoneProcessHelper {
             return false;
         }
         if (ExperimentalMovement.allowParkour()) {
-            logDirect("Backfill cannot be used with allowParkour true (or experimentalMovement)");
+            logDirect("Backfill cannot be used with allowParkour true (or fastMode)");
             Baritone.settings().backfill.value = false;
             return false;
         }
