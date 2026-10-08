@@ -31,6 +31,7 @@ public class PlayerInteractionFixChain extends TaskChain {
     private final TimerGame _shiftDepressTimeout = new TimerGame(10);
     private final TimerGame _betterToolTimer = new TimerGame(0);
     private final TimerGame _mouseMovingButScreenOpenTimeout = new TimerGame(1);
+    private final KeptStackWatch _keptStackWatch = new KeptStackWatch();
     private ItemStack _lastHandStack = null;
 
     private Screen _lastScreen;
@@ -112,10 +113,12 @@ public class PlayerInteractionFixChain extends TaskChain {
             if (_lastHandStack == null || !ItemStack.matches(currentStack, _lastHandStack)) {
                 // We're holding a new item in our stack!
                 _stackHeldTimeout.reset();
+                _keptStackWatch.reset();
                 _lastHandStack = currentStack.copy();
             }
         } else {
             _stackHeldTimeout.reset();
+            _keptStackWatch.reset();
             _lastHandStack = null;
         }
 
@@ -136,8 +139,18 @@ public class PlayerInteractionFixChain extends TaskChain {
                 mod.getSlotHandler().clickSlot(garbage.get(), 0, ClickType.PICKUP);
                 return Float.NEGATIVE_INFINITY;
             }
-            // a kept stack with a full bag and nothing to swap it with stays in hand. throwing it was the old last
-            // resort and it threw iron and food away. whoever is working with it can deal, or the bag frees up
+            // a kept stack with a full bag and nothing to swap it with stays in hand for a while. throwing it was the old
+            // last resort and it threw iron and food away. whoever is working with it can deal, or the bag frees up.
+            // but a screen that never closes freezes the bot, so after 10s vanilla gets to drop it
+            if (_keptStackWatch.tick()) {
+                ItemStack kept = StorageHelper.getItemStackInCursorSlot();
+                Debug.logMessage("Bag is full and nothing to swap, dropping the held " + kept.getCount() + "x " + kept.getItem().getDescriptionId());
+                if (Minecraft.getInstance().screen != null) {
+                    StorageHelper.closeScreen();
+                } else {
+                    mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ClickType.PICKUP);
+                }
+            }
             return Float.NEGATIVE_INFINITY;
         }
 
