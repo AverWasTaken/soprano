@@ -1009,6 +1009,22 @@ public class CombatPolicyTest {
     }
 
     @Test
+    public void oneAlreadyOnUsIsNotOutrunByWalkingOn() {
+        List<Mob> behind = List.of(zombie(1, -1, -4), zombie(2, 0, -2), zombie(3, 1, -4));
+        Decision d = new CombatPolicy().decide(0, new Scene(engaged(behind), QUIET, true, ahead(), 0, 0, THRESHOLD, GRACE));
+        assertEquals(KITE, d.verdict());
+        assertFalse(d.outrunning());
+    }
+
+    @Test
+    public void lowHpWithNobodyOnUsStillJustKeepsGoing() {
+        // the low hp rule is about contact. four blocks behind us and a clear road is the best spot hp 4 gets to be in
+        List<Mob> behind = List.of(zombie(1, -1, -4), zombie(2, 0, -5), zombie(3, 1, -4));
+        Decision d = new CombatPolicy().decide(0, new Scene(engaged(behind), QUIET, true, ahead(), 0, 0, THRESHOLD, GRACE, 4f));
+        assertTrue(d.outrunning());
+    }
+
+    @Test
     public void aCrowdOnTheRouteIsRunFromWithAReason() {
         List<Mob> inFront = List.of(zombie(1, -1, 5), zombie(2, 0, 6), zombie(3, 1, 5));
         Scene s = new Scene(engaged(inFront), QUIET, true, ahead(), 0, 0, THRESHOLD, GRACE);

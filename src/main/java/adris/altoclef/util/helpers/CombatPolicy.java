@@ -323,7 +323,9 @@ public final class CombatPolicy {
             // a crowd outranks a skeleton, even a committed charge. feet first
             charging = false;
             fightUntil.clear();
-            if (!scene.path().isEmpty() && scene.travelling()) {
+            // (not with one already on us, or at low hp: that one walks along with us swinging, and the route might be a
+            // ladder or a block to break, none of which is a sprint)
+            if (!scene.path().isEmpty() && scene.travelling() && !lowRun && meleeNear == 0) {
                 if (canOutrun(scene.path(), active)) {
                     // the way we were going is clear of them, so going is the run. sprint on, nobody takes the wheel
                     Set<Integer> everyone = new HashSet<>(ignored);
@@ -593,7 +595,8 @@ public final class CombatPolicy {
             update(now, x, z, pathing, false);
         }
 
-        // handedOff: another chain (mob defense) has the wheel, so "not pathing" says nothing about the user task
+        // handedOff: another chain has the wheel (mob defense, or the food chain chewing), so "not pathing" says nothing
+        // about the user task
         public void update(long now, double x, double z, boolean pathing, boolean handedOff) {
             this.handedOff = handedOff;
             if (!samples.isEmpty() && (now < samples.peekLast().tick || now - samples.peekLast().tick > TRAVEL_WINDOW)) {

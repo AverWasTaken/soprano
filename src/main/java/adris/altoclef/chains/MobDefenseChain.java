@@ -504,6 +504,11 @@ public class MobDefenseChain extends SingleTaskChain {
                 }
             }
         }
+        // a run from the crowd that has since become "the route is clear, keep going" is a run to a random spot we no
+        // longer need. the latch above still gets its 40 ticks, this is for after
+        if (_routeOutrun && _runAwayTask instanceof RunAwayFromHostilesTask) {
+            return handBack();
+        }
         // By default if we aren't "immediately" in danger but were running away, keep running away until we're good.
         // only if that run is really the one installed and still going: a finished one does not tick, so holding the wheel
         // for it is holding it for nobody
@@ -962,14 +967,16 @@ public class MobDefenseChain extends SingleTaskChain {
             } else {
                 // (only while the user task is the one pathing, or baritone's path is the run's and not the route)
                 if (travelling && _userDriving) _travel.setUpcoming(upcomingPath(mod));
-                decision =_policy.decide(now, new CombatPolicy.Scene(policyMobs, now - _lastHurtTick, travelling,
+                decision = _policy.decide(now, new CombatPolicy.Scene(policyMobs, now - _lastHurtTick, travelling,
                         relativePath(player), player.getX(), player.getZ(),
                         Math.max(1, Baritone.settings().altoSwarmThreshold.value),
                         grace, player.getHealth(), shield));
             }
         }
         _decision = decision;
-        _routeOutrun = policyOn && (decision.outrunning() || (travelling && routeClearOfThem(player, policyMobs, decision)));
+        // (one already on us is not outrun by walking on, it walks on with us and keeps swinging)
+        _routeOutrun = policyOn && meleeNear == 0
+                && (decision.outrunning() || (travelling && routeClearOfThem(player, policyMobs, decision)));
         _lowHpLatched = policyOn && _policy.lowHpLatched(now);
         logVerdict(mod, decision, dealable);
 
