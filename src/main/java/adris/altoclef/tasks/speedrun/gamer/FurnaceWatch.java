@@ -90,6 +90,9 @@ public final class FurnaceWatch {
                 cook = null;
                 hud = null;
                 if (stranded) {
+                    // same backoff as the cook's own give up, or the visit that takes the meat back out finds an empty furnace we
+                    // are standing at and starts the same cook (and the same coal trip) all over again
+                    CookTrip.suspend(ctx.facts().gameTime());
                     Debug.logInternal(pickupKind + " still has our meat in it, leaving it for the job instead of breaking it at " + pickupAt.toShortString());
                     pickupAt = null;
                     return null;
