@@ -72,6 +72,8 @@ public abstract class AbstractNodeCostSearch implements IPathFinder, Helper {
 
     protected boolean cancelRequested;
 
+    private volatile boolean waitedOn;
+
     /**
      * This is really complicated and hard to explain. I wrote a comment in the old version of MineBot but it was so
      * long it was easier as a Google Doc (because I could insert charts).
@@ -115,6 +117,24 @@ public abstract class AbstractNodeCostSearch implements IPathFinder, Helper {
 
     public void cancel() {
         cancelRequested = true;
+    }
+
+    /**
+     * Planning ahead gets the long timeouts because the player is busy walking the current segment anyway. Once the
+     * segment is over and the player is standing there waiting on us, that stops being true.
+     */
+    public void somebodyIsWaiting() {
+        waitedOn = true;
+    }
+
+    protected boolean isWaitedOn() {
+        return waitedOn;
+    }
+
+    // a search that is being waited on gets what a normal search gets, counted from when it started. a plan ahead that
+    // already ran 5s toward an unreachable goal used to make the player stand there for the rest of its 5s. no more
+    static long capIfWaitedOn(long deadline, long startTime, long normalTimeout) {
+        return Math.min(deadline, startTime + normalTimeout);
     }
 
     @Override

@@ -87,6 +87,10 @@ public final class AStarPathFinder extends AbstractNodeCostSearch {
         while (!openSet.isEmpty() && numEmptyChunk < pathingMaxChunkBorderFetch && !cancelRequested) {
             if ((numNodes & (timeCheckInterval - 1)) == 0) { // only call this once every 64 nodes (about half a millisecond)
                 long now = System.currentTimeMillis(); // since nanoTime is slow on windows (takes many microseconds)
+                if (!slowPath && isWaitedOn()) {
+                    primaryTimeoutTime = capIfWaitedOn(primaryTimeoutTime, startTime, Baritone.settings().primaryTimeoutMS.value);
+                    failureTimeoutTime = capIfWaitedOn(failureTimeoutTime, startTime, Baritone.settings().failureTimeoutMS.value);
+                }
                 if (now - failureTimeoutTime >= 0 || (!failing && now - primaryTimeoutTime >= 0)) {
                     break;
                 }

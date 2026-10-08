@@ -1,6 +1,7 @@
 package adris.altoclef.tasks.movement;
 
 import adris.altoclef.AltoClef;
+import adris.altoclef.Debug;
 import adris.altoclef.util.helpers.AnnoyingBlocks;
 import adris.altoclef.tasksystem.ITaskRequiresGrounded;
 import adris.altoclef.tasksystem.Task;
@@ -23,6 +24,7 @@ public class GetToEntityTask extends Task implements ITaskRequiresGrounded {
     private final MovementProgressChecker stuckCheck = new MovementProgressChecker();
     private final MovementProgressChecker _progress = new MovementProgressChecker();
     private final TimeoutWanderTask _wanderTask = new TimeoutWanderTask(5);
+    private final CalcFailureWatch _calcWatch = new CalcFailureWatch();
     private final Entity _entity;
     private final double _closeEnoughDistance;
     private Task _unstuckTask = null;
@@ -83,6 +85,7 @@ public class GetToEntityTask extends Task implements ITaskRequiresGrounded {
         _progress.reset();
         stuckCheck.reset();
         _wanderTask.resetWander();
+        _calcWatch.disarm();
     }
 
     @Override
@@ -114,6 +117,7 @@ public class GetToEntityTask extends Task implements ITaskRequiresGrounded {
             // Stop other tasks, we are JUST shimmying
             mod.getClientBaritone().getCustomGoalProcess().onLostControl();
             mod.getClientBaritone().getExploreProcess().onLostControl();
+            _calcWatch.disarm();
             return _unstuckTask;
         }
         if (!_progress.check(mod) || !stuckCheck.check(mod)) {
@@ -130,7 +134,19 @@ public class GetToEntityTask extends Task implements ITaskRequiresGrounded {
             return _wanderTask;
         }
 
+        // a search that comes back empty ends the goal process, and the line below used to just start the same search
+        // again. every one of those is seconds of standing still, so after a second miss the hunter picks another mob
+        if (_calcWatch.failed(mod.getClientBaritone().getPathingBehavior().calcFailures())) {
+            Debug.logMessage("No path to " + _entity.getType().getDescriptionId() + ", not chasing it.");
+            mod.getEntityTracker().requestEntityUnreachable(_entity, 1);
+        }
+        if (!mod.getEntityTracker().isEntityReachable(_entity)) {
+            setDebugState("No way to get to the target");
+            return null;
+        }
+
         if (!mod.getClientBaritone().getCustomGoalProcess().isActive()) {
+            _calcWatch.arm(mod.getClientBaritone().getPathingBehavior().calcFailures());
             mod.getClientBaritone().getCustomGoalProcess().setGoalAndPath(new GoalFollowEntity(_entity, _closeEnoughDistance));
         }
 
@@ -148,6 +164,7 @@ public class GetToEntityTask extends Task implements ITaskRequiresGrounded {
 
     @Override
     protected void onStop(AltoClef mod, Task interruptTask) {
+        _calcWatch.disarm();
         mod.getClientBaritone().getPathingBehavior().forceCancel();
     }
 

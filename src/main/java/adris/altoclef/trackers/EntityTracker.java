@@ -324,7 +324,14 @@ public class EntityTracker extends Tracker {
      * Tells the entity tracker that we were unable to reach this entity.
      */
     public void requestEntityUnreachable(Entity entity) {
-        _entityBlacklist.blackListItem(_mod, entity, 3);
+        requestEntityUnreachable(entity, 3);
+    }
+
+    /**
+     * Same, but with a say in how many misses are forgiven. 1 means the second one is the end of it.
+     */
+    public void requestEntityUnreachable(Entity entity, int failuresAllowed) {
+        _entityBlacklist.blackListItem(_mod, entity, failuresAllowed);
     }
 
     /**

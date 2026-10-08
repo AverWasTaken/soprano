@@ -62,6 +62,8 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
     private boolean pausedThisTick;
     private boolean cancelRequested;
     private boolean calcFailedLastTick;
+    // calcFailedLastTick is one tick wide and which thread sees it first is luck. this just goes up
+    private volatile int calcFailures;
 
     private volatile AbstractNodeCostSearch inProgress;
     private final Object pathCalcLock = new Object();
@@ -184,6 +186,8 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
                 // at this point, current just ended, but we aren't in the goal and have no plan for the future
                 synchronized (pathCalcLock) {
                     if (inProgress != null) {
+                        // we are standing here now, so the plan ahead stops getting its long timeouts
+                        inProgress.somebodyIsWaiting();
                         queuePathEvent(PathEvent.PATH_FINISHED_NEXT_STILL_CALCULATING);
                         return;
                     }
@@ -339,6 +343,11 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
 
     public boolean calcFailedLastTick() { // NOT exposed on public api
         return calcFailedLastTick;
+    }
+
+    // how many searches that started from a standstill came back with nothing. NOT exposed on public api
+    public int calcFailures() {
+        return calcFailures;
     }
 
     public void softCancelIfSafe() {
@@ -518,6 +527,7 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
                     } else {
                         if (calcResult.getType() != PathCalculationResult.Type.CANCELLATION && calcResult.getType() != PathCalculationResult.Type.EXCEPTION) {
                             // don't dispatch CALC_FAILED on cancellation
+                            calcFailures++;
                             queuePathEvent(PathEvent.CALC_FAILED);
                         }
                     }
