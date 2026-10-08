@@ -4,6 +4,7 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.TaskCatalogue;
 import adris.altoclef.tasks.InteractWithBlockTask;
 import adris.altoclef.tasks.construction.PlaceBlockNearbyTask;
+import adris.altoclef.tasks.construction.PlaceStationTask;
 import adris.altoclef.tasks.slot.EnsureFreeInventorySlotTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.ItemTarget;
@@ -31,7 +32,9 @@ public abstract class DoStuffInContainerTask extends Task {
     private final ItemTarget _containerTarget;
     private final Block[] _containerBlocks;
 
-    private final PlaceBlockNearbyTask _placeTask;
+    // tables and furnaces go down the way a player does it (PlaceStationTask, with the old placer inside as its last
+    // resort), anything else (anvil, smithing table, chest) keeps the old one
+    private final Task _placeTask;
     // If we decided on placing, force place for at least 10 seconds
     private final TimerGame _placeForceTimer = new TimerGame(10);
     // If we just placed something, stop placing and try going to the nearest container.
@@ -46,7 +49,13 @@ public abstract class DoStuffInContainerTask extends Task {
         _containerBlocks = containerBlocks;
         _containerTarget = containerTarget;
 
-        _placeTask = new PlaceBlockNearbyTask(_containerBlocks);
+        _placeTask = PlaceStationTask.isStation(_containerBlocks)
+                ? new PlaceStationTask(_containerBlocks)
+                : new PlaceBlockNearbyTask(_containerBlocks);
+    }
+
+    private BlockPos placedPos() {
+        return _placeTask instanceof PlaceStationTask station ? station.getPlaced() : ((PlaceBlockNearbyTask) _placeTask).getPlaced();
     }
 
     public DoStuffInContainerTask(Block containerBlock, ItemTarget containerTarget) {
@@ -92,7 +101,7 @@ public abstract class DoStuffInContainerTask extends Task {
         }
         if (nearest.isEmpty()) {
             // If all else fails, try using our placed task
-            nearest = Optional.ofNullable(_placeTask.getPlaced());
+            nearest = Optional.ofNullable(placedPos());
             if (nearest.isPresent() && !mod.getBlockTracker().blockIsValid(nearest.get(), _containerBlocks)) {
                 nearest = Optional.empty();
             }

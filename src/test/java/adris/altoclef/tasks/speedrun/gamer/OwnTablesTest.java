@@ -230,6 +230,32 @@ public class OwnTablesTest {
         assertFalse(finished(200, 140, 100, false, false, true));
     }
 
+    // 16:50 log: hoe crafted under the food need, table picked up 2 s later, the bread 15 s after that placed another one
+    @Test
+    public void aCraftStillAheadHoldsTheTableForAWhile() {
+        // placed at 100, last open at 140. the plain rule says done from tick 160
+        assertTrue(OwnTables.finishedCrafting(200, 140, 100, false, false, false, false));
+        // with a craft ahead it is not, not at 2 s and not at 15 s
+        assertFalse(OwnTables.finishedCrafting(180, 140, 100, false, false, false, true));
+        assertFalse(OwnTables.finishedCrafting(140 + 300, 140, 100, false, false, false, true));
+        // but not forever either, the table is a log and the walk back gets longer
+        long holdTicks = (long) (OwnTables.AHEAD_HOLD_SECONDS * 20);
+        assertFalse(OwnTables.finishedCrafting(140 + holdTicks - 1, 140, 100, false, false, false, true));
+        assertTrue(OwnTables.finishedCrafting(140 + holdTicks, 140, 100, false, false, false, true));
+        // every old guard still applies on top (menu open, craft running, a table nobody used)
+        assertFalse(OwnTables.finishedCrafting(5000, 140, 100, true, false, false, false));
+        assertFalse(OwnTables.finishedCrafting(5000, 140, 100, false, true, false, false));
+        assertFalse(OwnTables.finishedCrafting(5000, OwnTables.NEVER, 100, false, false, false, false));
+    }
+
+    @Test
+    public void theFoodNeedCraftsInsideItself() {
+        assertTrue(OwnTables.needCraftsInside("food"));
+        assertFalse(OwnTables.needCraftsInside("iron_ingot"));
+        assertFalse(OwnTables.needCraftsInside("stone_pickaxe"));
+        assertFalse(OwnTables.needCraftsInside(null));
+    }
+
     // the loop from the log: placed, picked up, the craft placed it again. with no craft in between this rule never fires
     @Test
     public void aTableNobodyUsedIsNotFinishedWith() {

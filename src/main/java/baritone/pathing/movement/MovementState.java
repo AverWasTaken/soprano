@@ -30,8 +30,6 @@ public class MovementState {
     private MovementStatus status;
     private MovementTarget target = new MovementTarget();
     private final Map<Input, Boolean> inputState = new HashMap<>();
-    // the state lives as long as its movement does, so this is how "once per movement" gets remembered
-    public boolean throwawayFailureLogged;
 
     public MovementState setStatus(MovementStatus status) {
         this.status = status;

@@ -178,8 +178,10 @@ final class StationPickup {
             double budget = cfg.tableRecoverRadius;
             // the crafting is over (table only, furnaces keep the need boundary): used since it went down, menu shut for a
             // second, nothing in the task tree is crafting at a table and the next need is not a craft that would place it again
+            // another craft still coming (in the plan, or inside the food need) holds it for a while, see OwnTables.finishedCrafting
+            boolean craftAhead = craftPlanned || OwnTables.needCraftsInside(need);
             boolean craftsDone = isTable && OwnTables.finishedCrafting(now, use.lastUseTick, use.lastPlaceTick, open,
-                    craftRunning(mod), KitNeed.isCraftName(need));
+                    craftRunning(mod), KitNeed.isCraftName(need), craftAhead);
             boolean wantsNow = wants(ctx, need, use, craftsDone, craftPlanned);
             if (wantsNow) {
                 // this is the moment it would be taken. too far to walk cheaply means we write it off: a table is a log,

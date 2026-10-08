@@ -151,6 +151,26 @@ public final class OwnTables {
                 && now - lastUse >= SETTLE_SECONDS * 20;
     }
 
+    // how long a craft that is still ahead keeps a table that just finished one. not forever: a food need can wander off
+    // hunting for minutes, and by then the table is a log we are too far away to be owed
+    public static final double AHEAD_HOLD_SECONDS = 45;
+
+    // the food need crafts inside itself (hoe, wheat, bread are not KitNeeds, the planner never sees them), so a plan with
+    // no craft in it can still have one coming. 16:50 run: hoe done, table taken back at once, bread 15 s later placed a new one
+    public static boolean needCraftsInside(String currentNeed) {
+        return KitNeed.FOOD.equals(currentNeed);
+    }
+
+    // finishedCrafting, except a craft that is still ahead (anywhere in the plan, or inside the running need) holds the
+    // table for AHEAD_HOLD_SECONDS after the last use. the old answer picked it up between the hoe and the bread
+    public static boolean finishedCrafting(long now, long lastUse, long lastPlace, boolean menuOpen, boolean craftRunning,
+                                           boolean nextNeedCrafts, boolean craftAhead) {
+        if (!finishedCrafting(now, lastUse, lastPlace, menuOpen, craftRunning, nextNeedCrafts)) {
+            return false;
+        }
+        return !craftAhead || now - lastUse >= AHEAD_HOLD_SECONDS * 20;
+    }
+
     // either reason to take the table back: the crafting is over (new rule), or the run moved on to a need that does not
     // craft (old one, the fallback for a table that was placed and never opened). that fallback has one exception: a table
     // nobody has used yet with a craft still somewhere in the plan is waiting for that craft (a log trip first, the planner

@@ -974,12 +974,12 @@ public interface MovementHelper extends ActionCosts, Helper {
         return attemptToPlaceABlock(state, baritone, placeAt, preferDown, wouldSneak, true);
     }
 
-    // once per movement, at normal log level: the next run's logs say why we had nothing to place instead of a silent no-op
+    // once per 5 seconds (NoThrowawayLogGate), at normal log level: the next run's logs say why we had nothing to place
+    // instead of a silent no-op. the guard used to live on the movement, and every replan makes fresh movements
     static void logNoThrowaway(MovementState state, IBaritone baritone, BlockPos placeAt) {
-        if (state.throwawayFailureLogged) {
+        if (!NoThrowawayLogGate.due(System.currentTimeMillis())) {
             return;
         }
-        state.throwawayFailureLogged = true;
         String why = ((Baritone) baritone).getInventoryBehavior().whyNoThrowaway(true, placeAt.getX(), placeAt.getY(), placeAt.getZ());
         Helper.HELPER.logDirect("can't place a block at " + placeAt.getX() + " " + placeAt.getY() + " " + placeAt.getZ() + " mid movement: " + why);
     }
