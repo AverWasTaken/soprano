@@ -43,6 +43,7 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -71,7 +72,7 @@ public class SettingsUtil {
      * @return true if the setting is retired
      */
     public static boolean isRetired(String settingName) {
-        return RETIRED.contains(settingName.toLowerCase());
+        return RETIRED.contains(settingName.toLowerCase(Locale.ROOT));
     }
 
 
@@ -104,7 +105,7 @@ public class SettingsUtil {
             return;
         }
 
-        String settingName = matcher.group("setting").toLowerCase();
+        String settingName = matcher.group("setting").toLowerCase(Locale.ROOT);
         String settingValue = matcher.group("value");
         // TODO remove soonish
         if ("allowjumpat256".equals(settingName)) {
