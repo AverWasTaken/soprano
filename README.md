@@ -6,17 +6,11 @@ A fork of [Baritone](https://github.com/cabaletta/baritone), the Minecraft pathf
 [![Build](https://github.com/AverWasTaken/soprano/actions/workflows/gradle_build.yml/badge.svg)](https://github.com/AverWasTaken/soprano/actions/workflows/gradle_build.yml)
 [![License](https://img.shields.io/badge/license-LGPL--3.0-green.svg)](LICENSE)
 
-[Install](#install) · [What's different](#whats-different) · [Usage](USAGE.md) · [Features](FEATURES.md) · [Building](SETUP.md) · [Contributing](CONTRIBUTING.md)
+[Install](#install) · [What's new](CHANGES.md) · [Usage](USAGE.md) · [Features](FEATURES.md) · [Building](SETUP.md) · [Contributing](CONTRIBUTING.md)
 
 Soprano keeps everything Baritone does: `#goto`, `#mine`, `#build`, `#farm`, `#elytra`, the lot. The `baritone.api` packages are unchanged, so mods built on Baritone's API keep working. Soprano is a drop-in replacement. Don't install both.
 
-## What's different
-
-- **More ways to move.** Neo jumps, momentum jumps, ladder and vine jumps, ladder clutches, boats and better swimming, plus `experimentalMovement`, which makes the bot move more like a speedrunner than a robot. All of it is off by default.
-- **AltoClef built in.** Ask for an item and it works out how to get it: mining, crafting, smelting, fighting and eating along the way. `#get iron_pickaxe`, `#food 20`, or `#gamer` to try and beat the game. It does nothing until you give it a task.
-- **Faster and smoother.** The pathfinder gets through more movements per second, and the path is drawn as a smooth ribbon.
-
-The new stuff is new, so expect rough edges. [FEATURES.md](FEATURES.md) goes through every addition and the setting behind it, and [USAGE.md](USAGE.md) has the commands. Bug reports and feedback are welcome.
+[CHANGES.md](CHANGES.md) has everything Soprano adds on top of Baritone.
 
 ## Install
 
