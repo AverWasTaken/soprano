@@ -25,8 +25,9 @@ public final class WoodReserve {
     // called every engine tick, a handful of woodNeed evaluations
     public static void update(GamerFacts f, OverworldConfig cfg, int endBeds) {
         if (f.dimension() != Dimension.OVERWORLD) {
-            // nothing wooden is crafted down there that is worth keeping a log from the furnace for
-            FuelPolicy.clear();
+            // the run lets wood burn (GamerTask.withWoodFuel) for the overworld cook. nothing down there budgets it, so a clear
+            // reserve would let one smelt eat every log in the bag: keep all of it, coal still burns
+            FuelPolicy.set(f.count(ItemHelper.LOG), f.count(ItemHelper.PLANKS), true);
             return;
         }
         Keep keep = keep(f, cfg, endBeds);

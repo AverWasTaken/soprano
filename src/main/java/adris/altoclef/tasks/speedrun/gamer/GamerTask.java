@@ -118,6 +118,7 @@ public class GamerTask extends Task {
     private Boolean userLadderClutch;
     private List<Item> userThrowaway;
     private List<Item> userFuels;
+    private Boolean userReplant;
 
     // hud text is only rebuilt when something in it changed
     private PhaseHandler hudHandler;
@@ -334,6 +335,11 @@ public class GamerTask extends Task {
         if (!SettingsOverrides.isHeld(s.altoSupportedFuels)) {
             userFuels = s.altoSupportedFuels.value;
         }
+        if (!SettingsOverrides.isHeld(s.replantCrops)) {
+            userReplant = s.replantCrops.value;
+        }
+        // a replant is a carrot and a click for a field we never come back to
+        SettingsOverrides.put(s.replantCrops, false);
         // the kit chops spare logs for the cook (cookFuelLogs) and WoodReserve decides which ones may burn, but the default list is
         // coal and charcoal only: the cook gate counted the logs and the smoker refused them with the meat already in it
         SettingsOverrides.put(s.altoSupportedFuels, withWoodFuel(userFuels != null ? userFuels : s.altoSupportedFuels.value));
@@ -372,6 +378,9 @@ public class GamerTask extends Task {
         Settings s = Baritone.settings();
         if (userFuels != null) {
             SettingsOverrides.put(s.altoSupportedFuels, userFuels);
+        }
+        if (userReplant != null) {
+            SettingsOverrides.put(s.replantCrops, userReplant);
         }
         if (userBlastFurnace != null) {
             SettingsOverrides.put(s.altoUseBlastFurnace, userBlastFurnace);
