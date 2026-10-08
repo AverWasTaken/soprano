@@ -103,6 +103,8 @@ All off by default unless it says otherwise.
 - `headHittersDiagonal` (on by default, allows diagonal head bonks when `headHitters` is enabled)
 - `sprintJumping` (sprint jump along straight path stretches, up single steps and down small hills)
 - `sprintJumpingDiagonals` (on by default, allows diagonal sprint jumps when `sprintJumping` is enabled)
+- `sprintThroughDescends` (on by default, keeps sprinting off a ledge or step when the path carries on roughly the same way and the cells you coast over after landing are safe: no lava, fire, magma, powder snow, cactus, berry bushes, water or void, and no drop deeper than the planned one)
+- `sprintThroughCorners` (on by default, keeps sprinting through turns of 60 degrees or less and starts turning a fraction of a block early so the corner gets cut instead of clipped. Both of these stay off in the nether, near lava, at 6 health or less and next to anything placing or breaking blocks)
 - `keepFpsWhileBotting` (on by default, counts the bot working as keyboard and mouse input for the game's AFK frame limiter, so the frame rate does not drop to 30 while you watch it. Does nothing while the bot is idle)
 - `shortBaritonePrefix` (use `[S]` instead of `[Soprano]` in chat messages)
 

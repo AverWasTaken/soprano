@@ -37,6 +37,7 @@ import baritone.utils.ExperimentalMovement;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Vec3i;
 import net.minecraft.util.Tuple;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
@@ -83,6 +84,9 @@ public class PathExecutor implements IPathExecutor, Helper {
     private final IPlayerContext ctx;
 
     private boolean sprintNextTick;
+    // see carefulSprint
+    private int carefulAt = -1;
+    private boolean carefulLava;
     private SprintJump flight;
     private GroundShortcut groundShortcut;
     private int ticksOnShortcut;
@@ -301,6 +305,7 @@ public class PathExecutor implements IPathExecutor, Helper {
                     return tickGroundShortcut();
                 }
                 smoothSteering(movement, bsi);
+                cornerSteering(movement, bsi);
             }
             sprintNextTick = shouldSprintNextTick();
             if (!sprintNextTick) {
@@ -634,7 +639,7 @@ public class PathExecutor implements IPathExecutor, Helper {
                     logDebug("Skipping descend to straight ascend");
                     return true;
                 }
-                if (canSprintFromDescendInto(ctx, current, next)) {
+                if (canSprintFromDescendInto(ctx, current, next) || sprintsPastLanding(current, next, 1)) {
 
                     if (next instanceof MovementDescend && pathPosition < path.length() - 3) {
                         IMovement next_next = path.movements().get(pathPosition + 2);
@@ -702,8 +707,139 @@ public class PathExecutor implements IPathExecutor, Helper {
                 behavior.baritone.getInputOverrideHandler().setInputForceState(Input.MOVE_FORWARD, true);
                 return true;
             }
+            // overrideFall only knows straight traverses, this is every other way the path can carry on from the landing
+            return sprintsThroughFall((MovementFall) current);
         }
         return false;
+    }
+
+    // a small drop, no bucket and no clutch in sight, and the path goes on roughly the way we were going
+    private boolean sprintsThroughFall(MovementFall fall) {
+        int drop = -fall.getDirection().getY();
+        if (!Baritone.settings().sprintThroughDescends.value || drop < 2 || drop > ExperimentalMovement.SAFE_FALL
+                || drop > Baritone.settings().maxFallHeightNoWater.value || pathPosition >= path.length() - 3) {
+            return false; // anything that is not a plain safe fall lands somewhere it wants a say in (it centers on the landing)
+        }
+        return sprintsPastLanding(fall, path.movements().get(pathPosition + 1), drop);
+    }
+
+    // the descend rules above only know "straight on". this one asks what the cells we would coast over actually are
+    private boolean sprintsPastLanding(IMovement current, IMovement next, int plannedDrop) {
+        if (!Baritone.settings().sprintThroughDescends.value || pathPosition >= path.length() - 3) {
+            return false; // the last movement is the goal, and nobody wants to be sprinting past that
+        }
+        if (current instanceof MovementDescend && ((MovementDescend) current).skipToAscend()) {
+            return false; // the weird overshoot glitch has its own handling
+        }
+        boolean walksOn = next instanceof MovementTraverse || next instanceof MovementDescend
+                || next instanceof MovementDiagonal && Baritone.settings().allowOvershootDiagonalDescend.value;
+        BlockPos dir = current.getDirection();
+        BlockPos nextDir = next.getDirection();
+        if (!walksOn || nextDir.getY() > 0 || Math.abs(dir.getX()) + Math.abs(dir.getZ()) != 1 || carefulSprint()) {
+            return false;
+        }
+        BlockPos land = current.getDest();
+        double turn = SprintPolicy.turnDegrees(dir.getX(), dir.getZ(), nextDir.getX(), nextDir.getZ());
+        return SprintPolicy.descendKeepsSprint(false, turn,
+                SprintPolicy.overshootSafe(new WorldTerrain(behavior.baritone.bsi), land.getX(), land.getY(), land.getZ(), dir.getX(), dir.getZ(), plannedDrop));
+    }
+
+    // one answer to "should we do this the old careful way" for every rule that sprints where it used to stop: the nether,
+    // lava near where we are going, low health, or something close by placing / breaking (bridging, pillaring, parkour places)
+    private boolean carefulSprint() {
+        if (carefulAt != pathPosition) {
+            carefulAt = pathPosition; // 4 lava scans are a lot to do every tick, the path only changes under us once per movement
+            List<BlockPos> centers = new ArrayList<>();
+            centers.add(ctx.playerFeet());
+            for (int i = pathPosition; i <= pathPosition + 2 && i < path.movements().size(); i++) {
+                centers.add(path.movements().get(i).getDest());
+            }
+            carefulLava = SprintPolicy.lavaNear(new WorldTerrain(behavior.baritone.bsi), centers);
+        }
+        return SprintPolicy.careful(ctx.world().dimension() == Level.NETHER, carefulLava, ctx.player().getHealth(), placingNearby());
+    }
+
+    private boolean placingNearby() {
+        BlockStateInterface bsi = behavior.baritone.bsi;
+        for (int i = pathPosition; i <= pathPosition + 2 && i < path.movements().size(); i++) {
+            Movement movement = (Movement) path.movements().get(i);
+            if (movement instanceof MovementPillar || !movement.toPlace(bsi).isEmpty() || !movement.toBreak(bsi).isEmpty()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // turn a little before the corner instead of at it. a movement is done the moment we step into its dest block, and at
+    // sprint speed the old heading carries a third of a block past that, so the hitbox leans on the wall on the inside of
+    // the bend, vanilla calls that a collision, and a collision ends the sprint
+    private void cornerSteering(Movement movement, BlockStateInterface bsi) {
+        if (!Baritone.settings().sprintThroughCorners.value || pathPosition >= path.movements().size() - 1
+                || !behavior.baritone.getInputOverrideHandler().isInputForcedDown(Input.SPRINT) || !canSteerOnGround(movement)) {
+            return; // not sprinting into it means there is no momentum to steer, and the movement knows best
+        }
+        IMovement next = path.movements().get(pathPosition + 1);
+        if (!flatWalk(movement, bsi) || !flatWalk(next, bsi)) {
+            return;
+        }
+        BlockPos dir = movement.getDirection();
+        BlockPos nextDir = next.getDirection();
+        double turn = SprintPolicy.turnDegrees(dir.getX(), dir.getZ(), nextDir.getX(), nextDir.getZ());
+        if (!SprintPolicy.preTurnable(turn)) {
+            return;
+        }
+        Vec3 position = ctx.player().position();
+        double[] aim = SprintPolicy.cornerAim(position.x, position.z, movement.getSrc(), movement.getDest(), next.getDest());
+        if (aim == null || carefulSprint()) {
+            return;
+        }
+        boolean tight = !SprintPolicy.cornerBoxClear(movement.getSrc(), movement.getDest(), next.getDest(), pos -> clearSmoothingColumn(bsi, pos));
+        boolean hazards = SprintPolicy.hazardAround(new WorldTerrain(bsi), movement.getDest());
+        if (!SprintPolicy.cornerKeepsSprint(false, turn, hazards, tight)) {
+            return;
+        }
+        behavior.baritone.getLookBehavior().updateTarget(
+                RotationUtils.calcRotationFromVec3d(ctx.playerHead(), new Vec3(aim[0], movement.getDest().y, aim[1]), ctx.playerRotations())
+                        .withPitch(ctx.playerRotations().getPitch()), false);
+    }
+
+    // flat walking with nothing to break or place on the way
+    private boolean flatWalk(IMovement movement, BlockStateInterface bsi) {
+        return (movement instanceof MovementTraverse || movement instanceof MovementDiagonal)
+                && movement.getSrc().y == movement.getDest().y
+                && ((Movement) movement).toPlace(bsi).isEmpty() && ((Movement) movement).toBreak(bsi).isEmpty();
+    }
+
+    // what the sprint rules want to know about blocks, answered from the live world
+    private static final class WorldTerrain implements SprintPolicy.Terrain {
+
+        private final BlockStateInterface bsi;
+
+        private WorldTerrain(BlockStateInterface bsi) {
+            this.bsi = bsi;
+        }
+
+        @Override
+        public boolean hazard(int x, int y, int z) {
+            BlockState state = bsi.get0(x, y, z);
+            return MovementHelper.avoidWalkingInto(state) || MovementHelper.isLava(state) || state.is(Blocks.MAGMA_BLOCK)
+                    || state.is(Blocks.POWDER_SNOW) || state.is(Blocks.WITHER_ROSE);
+        }
+
+        @Override
+        public boolean lava(int x, int y, int z) {
+            return MovementHelper.isLava(bsi.get0(x, y, z));
+        }
+
+        @Override
+        public boolean passable(int x, int y, int z) {
+            return MovementHelper.canWalkThrough(bsi, x, y, z);
+        }
+
+        @Override
+        public boolean standable(int x, int y, int z) {
+            return MovementHelper.canWalkOn(bsi, x, y, z);
+        }
     }
 
     /**
