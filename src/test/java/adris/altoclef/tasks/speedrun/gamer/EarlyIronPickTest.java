@@ -176,6 +176,22 @@ public class EarlyIronPickTest {
     }
 
     @Test
+    public void thePickWaitingOnItsIngotsPullsTheBotOutOfTheMineTheMomentTheyAreDone() {
+        FakeFacts f = mining().cooking("iron_ingot", 3, 30);
+        SmeltFiller.Schedule s = SmeltFiller.schedule(f, cfg, BEDS);
+        // the mining need leads, so the schedule alone does not call the pick blocked: collectNow is what says so
+        assertFalse(s.blocking());
+        boolean blocking = s.blocking() || EarlyIronPick.collectNow(f, cfg);
+        assertTrue(blocking);
+        // mid mining, nothing else says go: not yet done, keep digging
+        assertEquals(SmeltFiller.Trip.FILLER, SmeltFiller.decide(true, false, blocking, false, f.gameTime(), f.furnaceJobs(), cfg).trip());
+        // done: go, whatever the mining need is up to
+        SmeltFiller.Decision go = SmeltFiller.decide(true, false, blocking, false, f.seconds(31).gameTime(), f.furnaceJobs(), cfg);
+        assertEquals(SmeltFiller.Trip.COLLECT, go.trip());
+        assertEquals(SmeltFiller.Why.BLOCKING, go.why());
+    }
+
+    @Test
     public void theCookingScheduleKeepsMiningAndBlocksThePickUntilTheIngotsAreBack() {
         FakeFacts f = mining().cooking("iron_ingot", 3, 30);
         SmeltFiller.Schedule s = SmeltFiller.schedule(f, cfg, BEDS);

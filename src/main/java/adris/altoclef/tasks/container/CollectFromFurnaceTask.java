@@ -39,11 +39,14 @@ public class CollectFromFurnaceTask extends Task {
     private InteractWithBlockTask open;
     private boolean done;
     private int inputLeft;
+    // ticks until that input is out, read off the cook arrow when we let go. the job gets re-stamped with it
+    private long leftTicks;
     private long waitingSince = -1;
     // WAIT_ALL stands with the screen closed until this game tick, -1 = not idling
     private long idleUntil = -1;
     private static final long REOPEN_TICKS = 200;
     private static final long MIN_IDLE_TICKS = 20;
+    private static final long CAPPED_REVISIT_TICKS = 600;
 
     // waitTicks: "nearly done" for NORMAL and TAKE_ALL. capTicks: the most we stand there once we started waiting, a furnace
     // that never finishes (no fuel, a chunk that stopped ticking) must not hold the bot for ever
@@ -63,6 +66,11 @@ public class CollectFromFurnaceTask extends Task {
     // input still in the furnace when we let go of it, 0 = nothing left to come back for. only meaningful once finished
     public int inputLeft() {
         return inputLeft;
+    }
+
+    // how long the input we left behind still needs. only meaningful once finished with inputLeft above 0
+    public long leftTicks() {
+        return leftTicks;
     }
 
     @Override
@@ -127,6 +135,8 @@ public class CollectFromFurnaceTask extends Task {
             }
             if (capped && mode != Mode.TAKE_ALL) {
                 inputLeft = input.getCount();
+                // it should have been done by now and was not, so the arrow is no use: come back in half a minute, not now
+                leftTicks = Math.max(remainingTicks(input), CAPPED_REVISIT_TICKS);
                 done = true;
                 return null;
             }
@@ -134,7 +144,9 @@ public class CollectFromFurnaceTask extends Task {
                 // the raw stuff goes back in the bag, the planner sees it there and smelts it again
                 return takeOut(mod, FurnaceSlot.INPUT_SLOT_MATERIALS, input, "Taking the unfinished input back");
             }
+            // not close to done (it may have sat in an unloaded chunk and barely cooked): leave it, the job gets the real time
             inputLeft = input.getCount();
+            leftTicks = remainingTicks(input);
             done = true;
             return null;
         }
@@ -186,8 +198,7 @@ public class CollectFromFurnaceTask extends Task {
     // cook progress is the arrow, 0..24 pixels, of the item that is cooking right now
     private long remainingTicks(ItemStack input) {
         double arrow = Math.max(0, StorageHelper.getFurnaceCookPercent()) / 24.0;
-        int per = FurnaceJobs.ticksPerItem(kind);
-        return Math.round(per * (input.getCount() - Math.min(arrow, 1.0)));
+        return FurnaceJobs.remainingTicks(kind, input.getCount(), arrow);
     }
 
     @Override

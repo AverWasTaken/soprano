@@ -149,6 +149,49 @@ public class FurnaceJobsTest {
     }
 
     @Test
+    public void remainingTimeCountsTheItemsAndHowFarTheCurrentOneIs() {
+        // 4 items in a furnace, the one cooking is halfway: 3.5 items left at 10 s
+        assertEquals(700, FurnaceJobs.remainingTicks("furnace", 4, 0.5));
+        // a smoker is twice as quick
+        assertEquals(700, FurnaceJobs.remainingTicks("smoker", 7, 0.0));
+        assertEquals(350, FurnaceJobs.remainingTicks("blast_furnace", 4, 0.5));
+        // a fresh item has not started, an arrow past full or a negative one does not make time up
+        assertEquals(800, FurnaceJobs.remainingTicks("furnace", 4, 0.0));
+        assertEquals(600, FurnaceJobs.remainingTicks("furnace", 4, 1.7));
+        assertEquals(800, FurnaceJobs.remainingTicks("furnace", 4, -3));
+    }
+
+    @Test
+    public void leavingMoreThanTenSecondsOfWorkMeansComingBackLater() {
+        // the rule CollectFromFurnaceTask applies on arrival: 2 items in a furnace is 20 s, not nearly done
+        double wait = new adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig().furnaceWaitSeconds * 20;
+        assertTrue(FurnaceJobs.remainingTicks("furnace", 2, 0.0) > wait);
+        // one item halfway is, and a smoker is a lot quicker: 3 items is 15 s, 1 is 5
+        assertTrue(FurnaceJobs.remainingTicks("furnace", 1, 0.5) <= wait);
+        assertTrue(FurnaceJobs.remainingTicks("smoker", 3, 0.0) > wait);
+        assertTrue(FurnaceJobs.remainingTicks("smoker", 1, 0.0) <= wait);
+    }
+
+    @Test
+    public void aVisitRestampsTheTimerFromWhatIsReallyLeft() {
+        List<RunState.FurnaceJob> jobs = new ArrayList<>();
+        // we thought it was done at 800 (the chunk was unloaded for most of that), the furnace says 4 items and one just started
+        RunState.FurnaceJob j = job(1, 10, 0, "furnace");
+        jobs.add(j);
+        long now = 5000;
+        FurnaceJobs.afterVisit(jobs, j, 4, FurnaceJobs.remainingTicks("furnace", 4, 0.25), now);
+        assertEquals(4, j.count);
+        assertEquals(now, j.startTick);
+        assertEquals(now + 750, j.doneTick);
+        // not due while it cooks, due once the estimate runs out
+        assertFalse(FurnaceJobs.anyDue(jobs, now + 100, 200));
+        assertTrue(FurnaceJobs.anyDue(jobs, now + 750, 0));
+        // an honest estimate never says "now": a zero or negative remainder still gives the job a tick
+        FurnaceJobs.afterVisit(jobs, j, 1, 0, now);
+        assertEquals(now + 1, j.doneTick);
+    }
+
+    @Test
     public void aVisitRewritesTheJobOrEndsIt() {
         List<RunState.FurnaceJob> jobs = new ArrayList<>();
         RunState.FurnaceJob j = job(1, 10, 0, "furnace");

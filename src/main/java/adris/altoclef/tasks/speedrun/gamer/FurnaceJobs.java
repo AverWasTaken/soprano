@@ -134,14 +134,26 @@ public final class FurnaceJobs {
         return gone;
     }
 
-    // what a job looks like after we visited: what is still cooking (input slot count) or nothing left to come back for
+    // ticks left on `inputCount` items when the one cooking right now is `arrow` of the way done (0..1). the furnace's own slots
+    // are the truth, this is the same sum CollectFromFurnaceTask uses to decide between waiting and leaving
+    public static long remainingTicks(String kind, int inputCount, double arrow) {
+        return Math.round(ticksPerItem(kind) * (inputCount - Math.min(1.0, Math.max(0.0, arrow))));
+    }
+
+    // what a job looks like after we visited: what is still cooking (input slot count) or nothing left to come back for.
+    // the furnace sat in an unloaded chunk for who knows how long, so the old doneTick was a guess and this one is not
     public static void afterVisit(List<RunState.FurnaceJob> jobs, RunState.FurnaceJob job, int inputLeft, long now) {
+        afterVisit(jobs, job, inputLeft, (long) ticksPerItem(job.kind) * inputLeft, now);
+    }
+
+    // same with the time left read off the cook arrow instead of assuming the current item has not started
+    public static void afterVisit(List<RunState.FurnaceJob> jobs, RunState.FurnaceJob job, int inputLeft, long remaining, long now) {
         if (inputLeft <= 0) {
             jobs.remove(job);
             return;
         }
         job.count = inputLeft;
         job.startTick = now;
-        job.doneTick = doneTick(job.kind, now, inputLeft);
+        job.doneTick = now + Math.max(1, remaining);
     }
 }

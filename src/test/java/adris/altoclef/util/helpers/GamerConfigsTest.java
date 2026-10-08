@@ -119,6 +119,20 @@ public class GamerConfigsTest {
     }
 
     @Test
+    public void theRetiredFurnaceLeashKeysAreIgnoredAndTheRestStays() throws IOException {
+        // the leash is gone, a file saved before that still has its two numbers in the overworld section
+        write("{\"version\": " + GamerConfig.VERSION + ", \"overworld\": {\"furnaceLeashBlocks\": 64, \"furnaceMaxPullbacks\": 3,"
+                + " \"furnaceWaitSeconds\": 7.5, \"minFoodUnits\": 55}}");
+        GamerConfig c = GamerConfigs.load();
+        assertEquals(7.5, c.overworld.furnaceWaitSeconds, 0);
+        assertEquals(55, c.overworld.minFoodUnits);
+        // and the rewrite every load does drops them
+        JsonObject overworld = onDisk().getAsJsonObject("overworld");
+        assertFalse(overworld.has("furnaceLeashBlocks"));
+        assertFalse(overworld.has("furnaceMaxPullbacks"));
+    }
+
+    @Test
     public void theFileThatGetsReplacedIsKeptAsABackup() throws IOException {
         String old = "{\"targetEyes\": 20, \"requiredBeds\": 10}";
         write(old);

@@ -13,6 +13,7 @@ import adris.altoclef.tasks.speedrun.gamer.PhaseHandler;
 import adris.altoclef.tasks.speedrun.gamer.PrepSupport;
 import adris.altoclef.tasks.speedrun.gamer.RunState;
 import adris.altoclef.tasks.speedrun.gamer.SmeltFiller;
+import adris.altoclef.tasks.speedrun.gamer.SmeltFiller.Decision;
 import adris.altoclef.tasks.speedrun.gamer.SmeltFiller.Trip;
 import adris.altoclef.tasks.speedrun.gamer.Timeout;
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
@@ -108,13 +109,12 @@ public class GatherPhase implements PhaseHandler {
         return task;
     }
 
-    // food is cooking in a smoker somewhere. same order as IRON's cookingTick: side jobs, the trip that already started, the
-    // leash, then the gather list (wood, stone, crafts: all surface work) or the smoker itself when SmeltFiller says it is
-    // time. with nothing left to do the bot stands by the smoker with the screen closed, which beats staring at the gui
+    // food is cooking in a smoker somewhere. same order as IRON's cookingTick: side jobs, the trip that already started, then
+    // the gather list (wood, stone, crafts: all surface work) or the smoker itself when SmeltFiller says it is time. with nothing left to do the bot stands by the smoker with the screen closed, which beats staring at the gui
     private Task cookingTick(AltoClef mod, GamerContext ctx) {
         GamerFacts f = ctx.facts();
-        List<KitNeed> runnable = SmeltFiller.gatherRunnable(f, ctx.cfg().overworld, ctx.cfg().end.beds, furnaces.nearby(mod, ctx),
-                SmeltFiller.capped(furnaces.pullbacks(), ctx.cfg().overworld));
+        List<KitNeed> plan = KitPlanner.gather(f, ctx.cfg().overworld, ctx.cfg().end.beds);
+        List<KitNeed> runnable = SmeltFiller.gatherRunnable(f, ctx.cfg().overworld, ctx.cfg().end.beds);
         KitNeed head = runnable.isEmpty() ? null : runnable.get(0);
         Task side = support.tick(mod, ctx, runnable);
         if (side != null) {
@@ -123,15 +123,14 @@ public class GatherPhase implements PhaseHandler {
         }
         Task trip = furnaces.active(mod, ctx);
         if (trip == null) {
-            trip = furnaces.pullBack(mod, ctx);
-        }
-        if (trip == null) {
             boolean boundary = head == null || !head.equals(committed);
-            Trip what = SmeltFiller.trip(head != null, boundary, f.gameTime(), f.furnaceJobs(), ctx.cfg().overworld);
-            if (what != Trip.FILLER) {
+            Decision what = SmeltFiller.decide(head != null, boundary, SmeltFiller.gatherBlocking(f, plan), plan.isEmpty(),
+                    f.gameTime(), f.furnaceJobs(), ctx.cfg().overworld);
+            if (what.trip() != Trip.FILLER) {
                 committed = null;
-                trip = furnaces.collect(mod, ctx, what == Trip.WAIT ? Mode.WAIT_ALL : Mode.NORMAL);
-                if (what == Trip.WAIT) {
+                trip = furnaces.collect(mod, ctx, what.trip() == Trip.WAIT ? Mode.WAIT_ALL : Mode.NORMAL,
+                        what.trip() == Trip.WAIT ? "nothing else to do, waiting it out" : what.why().text);
+                if (what.trip() == Trip.WAIT) {
                     // standing by the smoker (screen closed between looks) is the plan, not a stall
                     ctx.progress("waiting for the smoker");
                 }

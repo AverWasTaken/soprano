@@ -109,7 +109,7 @@ public class PortalPhase implements PhaseHandler {
         // timeout can get us here). one last visit: take what is done, wait if it is nearly, pull the rest back out
         if (f.dimension() == Dimension.OVERWORLD && !f.furnaceJobs().isEmpty()) {
             furnaces.housekeeping(mod, ctx);
-            Task leaving = furnaces.collect(mod, ctx, Mode.TAKE_ALL);
+            Task leaving = furnaces.collect(mod, ctx, Mode.TAKE_ALL, "leaving the overworld with iron still cooking");
             if (leaving != null) {
                 hudState = furnaces.hud();
                 return leaving;

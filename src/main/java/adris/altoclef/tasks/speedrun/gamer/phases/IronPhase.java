@@ -16,6 +16,7 @@ import adris.altoclef.tasks.speedrun.gamer.PhaseHandler;
 import adris.altoclef.tasks.speedrun.gamer.PrepSupport;
 import adris.altoclef.tasks.speedrun.gamer.RunState;
 import adris.altoclef.tasks.speedrun.gamer.SmeltFiller;
+import adris.altoclef.tasks.speedrun.gamer.SmeltFiller.Decision;
 import adris.altoclef.tasks.speedrun.gamer.SmeltFiller.Schedule;
 import adris.altoclef.tasks.speedrun.gamer.SmeltFiller.Trip;
 import adris.altoclef.tasks.speedrun.gamer.SmeltSurface;
@@ -33,7 +34,8 @@ import java.util.List;
 // mine and smelt once. the engine turns altoUseBlastFurnace off for the run so we never craft a blast furnace, but a
 // standing one (village armorer) within altoNearbyBlastFurnaceRange still gets used, the plain furnace is the fallback.
 // the smelting itself is fire and forget (altoAsyncSmelting, on for this phase only): the iron goes in, the bot does other
-// things on a leash around the furnace, and comes back between two needs (or when it has run out of things to do)
+// things wherever the work is, and comes back between two needs, when the next need is waiting on the iron, or when it has
+// run out of things to do
 public class IronPhase implements PhaseHandler {
     private final KitRunner runner = new KitRunner();
     private final PrepSupport support = new PrepSupport(true);
@@ -137,16 +139,15 @@ public class IronPhase implements PhaseHandler {
     }
 
     // iron is cooking somewhere. the side jobs still go first (a golem fight in progress outranks everything), then a trip
-    // to the furnace that already started, then the leash, then the plan: the runnable list, or the furnace itself when
-    // SmeltFiller says it is time
+    // to the furnace that already started, then the plan: the runnable list, or the furnace itself when SmeltFiller says it
+    // is time
     private Task cookingTick(AltoClef mod, GamerContext ctx) {
         furnaces.housekeeping(mod, ctx);
         GamerFacts f = ctx.facts();
         if (f.furnaceJobs().isEmpty()) {
             return null;
         }
-        Schedule schedule = SmeltFiller.schedule(f, ctx.cfg().overworld, ctx.cfg().end.beds, furnaces.nearby(mod, ctx),
-                SmeltFiller.capped(furnaces.pullbacks(), ctx.cfg().overworld));
+        Schedule schedule = SmeltFiller.schedule(f, ctx.cfg().overworld, ctx.cfg().end.beds);
         List<KitNeed> runnable = gateFood(mod, ctx, schedule.runnable());
         KitNeed head = runnable.isEmpty() ? null : runnable.get(0);
         Task side = support.tick(mod, ctx, runnable);
@@ -156,16 +157,17 @@ public class IronPhase implements PhaseHandler {
         }
         Task trip = furnaces.active(mod, ctx);
         if (trip == null) {
-            trip = furnaces.pullBack(mod, ctx);
-        }
-        if (trip == null) {
-            // no pick yet and the early batch is done: that is a boundary of its own, the mining need would not end for 36 more ingots
-            boolean boundary = head == null || !head.equals(committed) || EarlyIronPick.collectNow(f, ctx.cfg().overworld);
-            Trip what = SmeltFiller.trip(head != null, boundary, f.gameTime(), f.furnaceJobs(), ctx.cfg().overworld);
-            if (what != Trip.FILLER) {
+            // no pick yet and the early batch is done: the pick is waiting on those ingots, and the mining need would not end
+            // for 36 more of them
+            boolean boundary = head == null || !head.equals(committed);
+            boolean blocking = schedule.blocking() || EarlyIronPick.collectNow(f, ctx.cfg().overworld);
+            boolean phaseEnding = schedule.plan().isEmpty();
+            Decision what = SmeltFiller.decide(head != null, boundary, blocking, phaseEnding, f.gameTime(), f.furnaceJobs(), ctx.cfg().overworld);
+            if (what.trip() != Trip.FILLER) {
                 committed = null;
-                trip = furnaces.collect(mod, ctx, what == Trip.WAIT ? Mode.WAIT_ALL : Mode.NORMAL);
-                if (what == Trip.WAIT) {
+                trip = furnaces.collect(mod, ctx, what.trip() == Trip.WAIT ? Mode.WAIT_ALL : Mode.NORMAL,
+                        what.trip() == Trip.WAIT ? "nothing else to do, waiting it out" : what.why().text);
+                if (what.trip() == Trip.WAIT) {
                     // standing next to the furnace (screen closed between looks) is the plan, not a stall
                     ctx.progress("waiting for the furnace");
                 }
@@ -191,7 +193,7 @@ public class IronPhase implements PhaseHandler {
 
     // the kit's own food need only leads when FoodGate says so, otherwise it waits behind the ore (it comes back the moment
     // we surface or the next job is not ore, and the food chain eats on its own in the meantime). the stock-up fillers
-    // SmeltFiller adds are surface or leash work and not touched
+    // SmeltFiller adds are surface work and not touched
     private List<KitNeed> gateFood(AltoClef mod, GamerContext ctx, List<KitNeed> needs) {
         OverworldConfig cfg = ctx.cfg().overworld;
         // same sum the planner uses: the bag (raw meat at its cooked value) plus what a smoker is cooking for us. the two never
