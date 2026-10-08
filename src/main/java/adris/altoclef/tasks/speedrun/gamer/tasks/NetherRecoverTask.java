@@ -54,6 +54,17 @@ public class NetherRecoverTask extends Task {
 
     @Override
     protected Task onTick(AltoClef mod) {
+        try {
+            return tickTrip(mod);
+        } catch (RuntimeException e) {
+            // the phase machine is not ticking while we have the wheel, so nobody else would ever clear a trip that throws
+            say.accept("gave up: the trip hit an error (" + e.getClass().getSimpleName() + "), rebuilding");
+            end(mod, null);
+            return null;
+        }
+    }
+
+    private Task tickTrip(AltoClef mod) {
         RunState.NetherTrip trip = state.netherTrip;
         if (trip == null) {
             return null;

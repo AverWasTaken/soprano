@@ -18,7 +18,8 @@ public class HomePortalWalk {
     private static final double PORTAL_NEAR_BLOCKS = 8;
     private static final long HOME_SCAN_MS = 5000;
 
-    private Task goNether = new DefaultGoToDimensionTask(Dimension.NETHER);
+    // made when it is first needed: building one touches the game, and the phases are built in tests that have none
+    private Task goNether;
     private GetToBlockTask walkToPortal;
     private RunState.Pos walkingTo;
     // the portal we remembered is not there any more: stop walking back to it and let the default task build
@@ -29,7 +30,7 @@ public class HomePortalWalk {
 
     // a fresh start (a phase entered again): the old walk and the old verdict are not ours any more
     public void reset() {
-        goNether = new DefaultGoToDimensionTask(Dimension.NETHER);
+        goNether = null;
         walkToPortal = null;
         walkingTo = null;
         gone = false;
@@ -86,6 +87,9 @@ public class HomePortalWalk {
             }
         }
         hud = "Heading to the Nether";
+        if (goNether == null) {
+            goNether = new DefaultGoToDimensionTask(Dimension.NETHER);
+        }
         return goNether;
     }
 
