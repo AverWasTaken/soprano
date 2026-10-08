@@ -75,3 +75,7 @@ Soprano is Baritone, made by [cabaletta](https://github.com/cabaletta), [leijurv
 The built-in AltoClef is [AltoClef](https://github.com/gaucho-matrero/altoclef) by gaucho-matrero and Adris Jautakas, using MarvionKirito's 1.21 fork. It's MIT licensed, see [LICENSE-AltoClef](LICENSE-AltoClef).
 
 Soprano is licensed under the LGPL-3.0, same as Baritone. See [LICENSE](LICENSE).
+
+## Stars over time
+
+[![Stars over time](https://api.star-history.com/svg?repos=AverWasTaken/soprano&type=Date)](https://star-history.com/#AverWasTaken/soprano&Date)
