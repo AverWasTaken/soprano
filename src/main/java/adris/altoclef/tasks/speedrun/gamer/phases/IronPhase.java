@@ -13,6 +13,7 @@ import adris.altoclef.tasks.speedrun.gamer.GamerPhase;
 import adris.altoclef.tasks.speedrun.gamer.KitNeed;
 import adris.altoclef.tasks.speedrun.gamer.KitPlanner;
 import adris.altoclef.tasks.speedrun.gamer.KitRunner;
+import adris.altoclef.tasks.speedrun.gamer.PackUp;
 import adris.altoclef.tasks.speedrun.gamer.PhaseHandler;
 import adris.altoclef.tasks.speedrun.gamer.PrepSupport;
 import adris.altoclef.tasks.speedrun.gamer.RunState;
@@ -28,8 +29,14 @@ import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig;
 import adris.altoclef.tasksystem.Task;
 import baritone.Baritone;
 import baritone.altoclef.SettingsOverrides;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.level.levelgen.Heightmap;
+import net.minecraft.world.phys.Vec3;
 
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 // iron gear, armor, wool for the beds, food top up. KitPlanner sizes ONE iron ingot need for everything missing so we
 // mine and smelt once. the engine turns altoUseBlastFurnace off for the run so we never craft a blast furnace, but a
@@ -42,6 +49,8 @@ public class IronPhase implements PhaseHandler {
     private final PrepSupport support = new PrepSupport(true);
     private final FurnaceWatch furnaces = new FurnaceWatch();
     private final SmeltSurface surface = new SmeltSurface();
+    // furnaces we already made a pack-up trip to (PackUp), so a trip that left input cooking is not repeated
+    private final Set<RunState.Pos> packed = new HashSet<>();
     // the need we are in the middle of while a furnace cooks. a different first need means the last one is done, which is
     // the only time a finished furnace gets fetched
     private KitNeed committed;
@@ -82,6 +91,7 @@ public class IronPhase implements PhaseHandler {
         support.onEnter(mod);
         furnaces.newPhase(true);
         surface.reset();
+        packed.clear();
         committed = null;
         hudState = null;
         foodTopUp = false;
@@ -130,7 +140,7 @@ public class IronPhase implements PhaseHandler {
         }
         // all the ore is mined and we are still down the mine: up first, then the smelt places its furnace in the open.
         // the early pick batch is three items, it goes in right here where the ore is
-        Task up = EarlyIronPick.isEarlyBatch(first, ctx.facts(), ctx.cfg().overworld) ? null : surface.tick(mod, ctx, first);
+        Task up = EarlyIronPick.isEarlyBatch(first, ctx.facts(), ctx.cfg().overworld) ? null : surface.tick(mod, ctx, first, second(needs));
         if (up != null) {
             hudState = surface.hud();
             return up;
@@ -159,6 +169,9 @@ public class IronPhase implements PhaseHandler {
             hudState = support.hud();
             return side;
         }
+        // a furnace emptied down a mine is not a place to start the next batch of meat unless the work is down there too
+        furnaces.mayCookHere(SmeltSurface.shallow(SmeltSurface.depthBelowSky(mod))
+                || SmeltSurface.nextWorkDown(head, f.count(Items.RAW_IRON), f.count(Items.IRON_INGOT), f.pendingOutput(Items.IRON_INGOT)));
         Task trip = furnaces.active(mod, ctx);
         if (trip == null) {
             // no pick yet and the early batch is done: the pick is worth the detour, the mining need would not end for 36 more
@@ -183,7 +196,13 @@ public class IronPhase implements PhaseHandler {
         if (head == null) {
             return null;
         }
-        Task up = surface.tick(mod, ctx, head);
+        // about to leave the mine: whatever is still cooking at the bottom of it comes with us first
+        Task pack = packUp(mod, ctx, head, second(runnable));
+        if (pack != null) {
+            hudState = furnaces.hud();
+            return pack;
+        }
+        Task up = surface.tick(mod, ctx, head, second(runnable));
         if (up != null) {
             hudState = surface.hud();
             return up;
@@ -192,6 +211,36 @@ public class IronPhase implements PhaseHandler {
         Task task = runner.run(ctx, runnable);
         hudState = runner.hud() + " while a batch cooks";
         return task;
+    }
+
+    private static KitNeed second(List<KitNeed> needs) {
+        return needs.size() > 1 ? needs.get(1) : null;
+    }
+
+    // the climb to the surface is about to start and one of our furnaces down here still has a job: go to it first. nearly done
+    // and we wait for it, otherwise its contents come back out and the station comes with us (FurnaceWatch takes it down after
+    // the last collect). the planner re-smelts or re-cooks what came back on the surface. once per furnace, a trip that left
+    // input behind (the cap) must not send us round again
+    private Task packUp(AltoClef mod, GamerContext ctx, KitNeed head, KitNeed next) {
+        GamerFacts f = ctx.facts();
+        if (f.furnaceJobs().isEmpty() || !surface.aboutToClimb(mod, ctx, head, next)) {
+            return null;
+        }
+        Vec3 me = mod.getPlayer().position();
+        RunState.FurnaceJob job = PackUp.pick(f.furnaceJobs(), packed, j -> jobDepth(mod, j), j -> PackUp.walk(j, me.x, me.y, me.z));
+        if (job == null) {
+            return null;
+        }
+        packed.add(job.pos);
+        long left = job.doneTick - f.gameTime();
+        return furnaces.collectJob(mod, ctx, job, PackUp.mode(left, jobDepth(mod, job)), "leaving the mine with it still cooking down here");
+    }
+
+    // blocks between the job's furnace and the open sky over it (over us, when its chunk is not loaded)
+    private static int jobDepth(AltoClef mod, RunState.FurnaceJob job) {
+        BlockPos at = new BlockPos(job.pos.x, job.pos.y, job.pos.z);
+        BlockPos column = mod.getChunkTracker().isChunkLoaded(at) ? at : mod.getPlayer().blockPosition();
+        return SmeltSurface.depth(mod.getWorld().getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, column.getX(), column.getZ()), job.pos.y);
     }
 
     // food first, then the cook. the cook is already the last need of the plan (nothing leaves IRON with raw meat a furnace can

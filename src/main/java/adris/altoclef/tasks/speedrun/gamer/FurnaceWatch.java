@@ -30,6 +30,7 @@ public final class FurnaceWatch {
     // the IRON phase takes its furnace back once the last of the iron is out, so the next smelt can go down at the next work
     // site. PORTAL leaves it alone, it is on its way out
     private boolean pickUpWhenEmpty;
+    private boolean cookHere = true;
     private Task pickup;
     private BlockPos pickupAt;
     // what is coming down: the block kind it was (furnace or smoker) and the item it turns into
@@ -56,6 +57,20 @@ public final class FurnaceWatch {
     public void newPhase(boolean pickUpWhenEmpty) {
         reset();
         this.pickUpWhenEmpty = pickUpWhenEmpty;
+        cookHere = pickUpWhenEmpty;
+    }
+
+    // a phase that only wants the station off the ground on its way out: it would not come back for a furnace that gets
+    // loaded with meat here, so it never loads one
+    public void newExitPhase() {
+        newPhase(true);
+        cookHere = false;
+    }
+
+    // the cook that reuses the furnace we just emptied leaves it cooking right where it stands. when that is the bottom of
+    // a mine and the next work is not down there, it is a trip back (the smoker at y 32 that cost 40 s): the caller says no
+    public void mayCookHere(boolean yes) {
+        cookHere = yes;
     }
 
     // the furnace is coming down right now (the phase must not end under it)
@@ -197,7 +212,7 @@ public final class FurnaceWatch {
             pickupKind = visited.kind;
             pickupItem = itemOf(visited.kind);
             // an empty furnace is the best place for the raw meat we are carrying, and we are standing at it
-            if (CookGate.reusable(ctx.facts(), ctx.cfg().overworld, ctx.cfg().end.beds, "smoker".equals(visited.kind))) {
+            if (cookHere && CookGate.reusable(ctx.facts(), ctx.cfg().overworld, ctx.cfg().end.beds, "smoker".equals(visited.kind))) {
                 cook = new CookRawFoodTask("smoker".equals(visited.kind));
                 cookStart = ctx.facts().gameTime();
                 Debug.logInternal(visited.kind + " is empty and we hold " + CookGate.raw(ctx.facts()) + " raw meat, cooking it before taking the "
@@ -225,7 +240,15 @@ public final class FurnaceWatch {
         if (running != null) {
             return running;
         }
-        RunState.FurnaceJob job = FurnaceJobs.soonest(ctx.facts().furnaceJobs());
+        return collectJob(mod, ctx, FurnaceJobs.soonest(ctx.facts().furnaceJobs()), mode, why);
+    }
+
+    // the same trip to one chosen job (leaving a mine picks the deep one, not the soonest)
+    public Task collectJob(AltoClef mod, GamerContext ctx, RunState.FurnaceJob job, Mode mode, String why) {
+        Task running = active(mod, ctx);
+        if (running != null) {
+            return running;
+        }
         if (job == null) {
             return null;
         }

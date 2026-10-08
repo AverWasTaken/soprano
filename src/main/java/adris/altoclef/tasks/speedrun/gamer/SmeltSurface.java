@@ -21,17 +21,19 @@ public final class SmeltSurface {
     private static final double GIVE_UP_SECONDS = 90;
 
     private boolean climbing;
-    // we already surfaced for this batch. coal or fuel underground must not send us up again and again
-    private boolean settled;
-    private boolean gaveUp;
+    // we already surfaced for this batch (one flag per thing waiting: the ore, the meat). coal or fuel underground must not
+    // send us up again and again
+    private final boolean[] settled = new boolean[2];
+    private final boolean[] gaveUp = new boolean[2];
     private long climbSince;
     private int bestDepth;
     private Task climb;
+    private Why climbWhy = Why.IRON;
 
     public void reset() {
         climbing = false;
-        settled = false;
-        gaveUp = false;
+        settled[0] = settled[1] = false;
+        gaveUp[0] = gaveUp[1] = false;
         climb = null;
     }
 
@@ -64,31 +66,89 @@ public final class SmeltSurface {
         return alreadyClimbing ? depth > ARRIVED_DEPTH : depth > GO_UP_DEPTH;
     }
 
-    // the task to run in front of the smelt, null = carry on with the plan
-    public Task tick(AltoClef mod, GamerContext ctx, KitNeed head) {
+    // what is waiting for the surface
+    public enum Why {
+        NONE, IRON, COOK
+    }
+
+    private static final int IRON = 0;
+    private static final int COOK = 1;
+
+    // the cook is at the front of the plan and there is raw meat for it to turn into dinner
+    public static boolean cookDone(KitNeed head, int rawMeat) {
+        return head != null && KitNeed.isCookName(head.catalogueName()) && rawMeat > 0;
+    }
+
+    // the work after the head is still ore: the bot goes on mining right here, so a furnace left cooking by the vein is
+    // where it will be. an iron need whose ore is all in the bag is a smelt, and a smelt goes to the surface
+    public static boolean nextWorkDown(KitNeed next, int rawIron, int ingots, int pending) {
+        return next != null && oreLeft(next, rawIron, ingots, pending);
+    }
+
+    private static boolean oreLeft(KitNeed need, int rawIron, int ingots, int pending) {
+        return "iron_ingot".equals(need.catalogueName()) && !oreDone(need.catalogueName(), need.count(), rawIron, ingots, pending);
+    }
+
+    // a furnace or smoker that gets loaded and left is a trip back for the output. underground that is a walk down a cave
+    // (22:08 smoker at y 32, 40 s of walking back to it after a hunt on the surface), so the thing to be loaded rides up first
+    // unless the work after it is down here too. the iron smelt has always done this; the cook is the same rule
+    public static Why why(KitNeed head, KitNeed next, int rawIron, int ingots, int pending, int rawMeat) {
+        if (head != null && oreDone(head.catalogueName(), head.count(), rawIron, ingots, pending)) {
+            return Why.IRON;
+        }
+        if (cookDone(head, rawMeat) && !nextWorkDown(next, rawIron, ingots, pending)) {
+            return Why.COOK;
+        }
+        return Why.NONE;
+    }
+
+    // what the surface is wanted for right now, after the settings and the latches. NONE = carry on with the plan
+    private Why wanted(GamerContext ctx, KitNeed head, KitNeed next) {
         GamerFacts f = ctx.facts();
         int raw = f.count(Items.RAW_IRON);
+        int meat = CookGate.raw(f);
+        // the batch went in the furnace (or was never there), the next one starts fresh
         if (raw == 0) {
-            // the batch went in the furnace (or was never there), the next one starts fresh
-            settled = false;
-            gaveUp = false;
+            settled[IRON] = false;
+            gaveUp[IRON] = false;
         }
-        boolean on = Baritone.settings().altoAsyncSmelting.value;
-        boolean done = head != null && oreDone(head.catalogueName(), head.count(), raw, f.count(Items.IRON_INGOT),
-                f.pendingOutput(Items.IRON_INGOT));
-        if (!on || !done || settled || gaveUp) {
+        if (meat == 0) {
+            settled[COOK] = false;
+            gaveUp[COOK] = false;
+        }
+        Why why = why(head, next, raw, f.count(Items.IRON_INGOT), f.pendingOutput(Items.IRON_INGOT), meat);
+        if (why == Why.NONE || !Baritone.settings().altoAsyncSmelting.value
+                || (why == Why.COOK && !Baritone.settings().altoAsyncCooking.value)) {
+            return Why.NONE;
+        }
+        int kind = why == Why.IRON ? IRON : COOK;
+        return settled[kind] || gaveUp[kind] ? Why.NONE : why;
+    }
+
+    // the surface is wanted and we are not on our way yet, and we are deep enough for it to be a climb: the moment to pack up
+    // whatever we left cooking in the mine first (PackUp)
+    public boolean aboutToClimb(AltoClef mod, GamerContext ctx, KitNeed head, KitNeed next) {
+        return !climbing && wanted(ctx, head, next) != Why.NONE && wantsUp(false, depthBelowSky(mod));
+    }
+
+    // the task to run in front of the smelt (or the cook), null = carry on with the plan
+    public Task tick(AltoClef mod, GamerContext ctx, KitNeed head, KitNeed next) {
+        GamerFacts f = ctx.facts();
+        Why why = wanted(ctx, head, next);
+        if (why == Why.NONE) {
             climbing = false;
             climb = null;
             return null;
         }
+        int kind = why == Why.IRON ? IRON : COOK;
         BlockPos feet = mod.getPlayer().blockPosition();
         int surface = mod.getWorld().getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, feet.getX(), feet.getZ());
         int depth = depth(surface, feet.getY());
         long now = f.gameTime();
         if (!wantsUp(climbing, depth)) {
             if (climbing) {
-                settled = true;
-                ctx.log("up at the surface, smelting here");
+                settled[kind] = true;
+                ctx.log(why == Why.IRON ? "up at the surface, smelting here" : "up at the surface, cooking here");
             }
             climbing = false;
             climb = null;
@@ -99,23 +159,26 @@ public final class SmeltSurface {
             climbSince = now;
             bestDepth = depth;
             climb = new GetToYTask(surface);
-            adris.altoclef.Debug.logInternal("smelting: " + raw + " raw iron in the bag and " + depth + " blocks under the surface, going up first");
+            adris.altoclef.Debug.logInternal(why == Why.IRON
+                    ? "smelting: " + f.count(Items.RAW_IRON) + " raw iron in the bag and " + depth + " blocks under the surface, going up first"
+                    : "cooking: " + CookGate.raw(f) + " raw meat in the bag and " + depth + " blocks under the surface, going up first");
         }
+        climbWhy = why;
         if (depth < bestDepth) {
             bestDepth = depth;
-            ctx.progress("heading up to smelt");
+            ctx.progress(why == Why.IRON ? "heading up to smelt" : "heading up to cook");
         }
         if ((now - climbSince) / 20.0 > GIVE_UP_SECONDS) {
-            gaveUp = true;
+            gaveUp[kind] = true;
             climbing = false;
             climb = null;
-            ctx.log("could not get up to the surface, smelting down here");
+            ctx.log(why == Why.IRON ? "could not get up to the surface, smelting down here" : "could not get up to the surface, cooking down here");
             return null;
         }
         return climb;
     }
 
     public String hud() {
-        return "Heading to the surface to smelt";
+        return climbWhy == Why.COOK ? "Heading to the surface to cook" : "Heading to the surface to smelt";
     }
 }

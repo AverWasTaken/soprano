@@ -70,7 +70,8 @@ public class PortalPhase implements PhaseHandler {
     @Override
     public void onEnter(AltoClef mod, GamerContext ctx) {
         runner.reset();
-        furnaces.reset();
+        // the furnace we empty on the way out comes down with us, but never gets a batch of meat on the way
+        furnaces.newExitPhase();
         gateDone = false;
         castStartTick = -1;
         cast = new DefaultGoToDimensionTask(Dimension.NETHER);
@@ -107,6 +108,13 @@ public class PortalPhase implements PhaseHandler {
         GamerFacts f = ctx.facts();
         // iron still cooking in the overworld is iron we are about to leave behind (an IRON phase that skipped itself on a
         // timeout can get us here). one last visit: take what is done, wait if it is nearly, pull the rest back out
+        if (f.dimension() == Dimension.OVERWORLD) {
+            Task takingBack = furnaces.finishing(mod, ctx);
+            if (takingBack != null) {
+                hudState = furnaces.hud();
+                return takingBack;
+            }
+        }
         if (f.dimension() == Dimension.OVERWORLD && !f.furnaceJobs().isEmpty()) {
             furnaces.housekeeping(mod, ctx);
             Task leaving = furnaces.collect(mod, ctx, Mode.TAKE_ALL, "leaving the overworld with iron still cooking");
