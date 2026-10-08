@@ -558,7 +558,8 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
             _sidesOnly = true;
             mod.getClientBaritone().getCustomGoalProcess().onLostControl();
         }
-        if (reach.isPresent() && mayBreak && !dropsOnUs
+        // buried skips the ground and water patience too: in the air, on a ladder or wet, the head still has to come out
+        if (reach.isPresent() && (mayBreak || buried) && !dropsOnUs
                 && (buried || !mod.getFoodChain().needsToEat()) && !WorldHelper.isInNetherPortal(mod)
                 && mod.getClientBaritone().getPathingBehavior().isSafeToCancel()) {
             setDebugState("Block in range, mining...");

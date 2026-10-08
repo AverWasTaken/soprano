@@ -63,9 +63,9 @@ public final class FallingColumn {
         return block instanceof FallingBlock || block instanceof BrushableBlock;
     }
 
-    // plus scaffolding, but only the piece that has already lost its stack (distance 7 is "nothing holds me", vanilla's
-    // own number). healthy scaffolding hangs over air all day long and treating that as sand made every scaffold tower
-    // look like a column about to drop
+    // plus scaffolding, but only a piece already sitting at distance 7, which vanilla turns into a falling block on its
+    // next tick. that is rare (cut a tower and the rest mostly pops into items, which hurts nobody), but healthy scaffolding
+    // hangs over air all day long and treating that as sand made every scaffold tower look like a column about to drop
     public static boolean isFalling(BlockState state) {
         Block block = state.getBlock();
         if (block instanceof ScaffoldingBlock) {
