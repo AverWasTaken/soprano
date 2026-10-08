@@ -22,7 +22,11 @@ import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.item.ItemStack;
 
 public class PlayerInteractionFixChain extends TaskChain {
-    private final TimerGame _stackHeldTimeout = new TimerGame(1);
+    // a slot task holds the cursor on purpose (crafting, container shuffles, drag splits) and a laggy server or a busy
+    // cooldown easily makes that 1s+. at 1s this yanked the stack out from under whatever was working with it. raising
+    // the number is the simple fix, skipping while a slot task is active would need a list of every task that holds it
+    private static final double STACK_HELD_SECONDS = 3;
+    private final TimerGame _stackHeldTimeout = new TimerGame(STACK_HELD_SECONDS);
     private final TimerGame _generalDuctTapeSwapTimeout = new TimerGame(30);
     private final TimerGame _shiftDepressTimeout = new TimerGame(10);
     private final TimerGame _betterToolTimer = new TimerGame(0);

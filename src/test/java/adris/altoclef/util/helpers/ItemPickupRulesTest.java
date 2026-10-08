@@ -1,5 +1,6 @@
 package adris.altoclef.util.helpers;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
@@ -162,5 +163,21 @@ public class ItemPickupRulesTest {
     @Test
     public void aDropThatIsStillThereIsNotCollected() {
         assertFalse(ItemPickupRules.collected(false, 0.5));
+    }
+
+    @Test
+    public void aDropThatFitsEvenPartlyIsJustPickedUp() {
+        assertEquals(ItemPickupRules.Room.FITS, ItemPickupRules.room(true, true));
+        assertEquals(ItemPickupRules.Room.FITS, ItemPickupRules.room(true, false));
+    }
+
+    @Test
+    public void aDropWithNoRoomMakesRoomWhenSomethingCanGo() {
+        assertEquals(ItemPickupRules.Room.MAKE_ROOM, ItemPickupRules.room(false, true));
+    }
+
+    @Test
+    public void aDropWithNoRoomAndNothingToThrowIsGivenUp() {
+        assertEquals(ItemPickupRules.Room.GIVE_UP, ItemPickupRules.room(false, false));
     }
 }

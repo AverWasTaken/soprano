@@ -174,12 +174,20 @@ public class SlotHandler {
         // If our item is in our cursor, simply move it to the hotbar.
         boolean inCursor = StorageHelper.getItemStackInSlot(CursorSlot.SLOT).getItem() == toEquip;
 
+        if (inCursor) {
+            // the cursor is listed first in the slot list and its window index is -1, which clicks as "outside the
+            // window". that threw the stack on the floor instead of equipping it. drop it onto the hotbar slot
+            // like the offhand version does
+            clickSlotForce(PlayerSlot.getEquipSlot(), 0, ClickType.PICKUP);
+            return true;
+        }
+
         List<Slot> itemSlots = _mod.getItemStorage().getSlotsWithItemScreen(toEquip);
         if (itemSlots.size() != 0) {
             // one swap is the whole job. this used to swap EVERY stack of the item into the hotbar slot, so with
             // two stacks the second swap just undid the first and the item bounced in and out forever
             int hotbar = 1;
-            clickSlotForce(Objects.requireNonNull(itemSlots.get(0)), inCursor ? 0 : hotbar, inCursor ? ClickType.PICKUP : ClickType.SWAP);
+            clickSlotForce(Objects.requireNonNull(itemSlots.get(0)), hotbar, ClickType.SWAP);
             return true;
         }
         return false;

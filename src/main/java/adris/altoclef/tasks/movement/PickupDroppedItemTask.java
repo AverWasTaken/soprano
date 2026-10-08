@@ -7,10 +7,12 @@ import adris.altoclef.Debug;
 import adris.altoclef.tasks.AbstractDoToClosestObjectTask;
 import adris.altoclef.tasks.resources.SatisfyMiningRequirementTask;
 import adris.altoclef.tasks.slot.EnsureFreeInventorySlotTask;
+import adris.altoclef.tasks.slot.FreeSlotPlan;
 import adris.altoclef.tasksystem.ITaskRequiresGrounded;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.MiningRequirement;
+import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.ItemPickupRules;
 import adris.altoclef.util.helpers.StlHelper;
 import adris.altoclef.util.helpers.StorageHelper;
@@ -21,6 +23,7 @@ import adris.altoclef.ui.HudText;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.DoorBlock;
@@ -287,12 +290,29 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
         boolean touching = _mod.getEntityTracker().isCollidingWithPlayer(itemEntity);
         if (touching) {
             if (_freeInventoryIfFull) {
-                if (_mod.getItemStorage().getSlotsThatCanFitInPlayerInventory(itemEntity.getItem(), false).isEmpty()) {
+                boolean fits = !_mod.getItemStorage().getSlotsThatCanFitInPlayerInventory(itemEntity.getItem(), true).isEmpty();
+                ItemPickupRules.Room room = ItemPickupRules.room(fits, canMakeRoom(_mod));
+                if (room == ItemPickupRules.Room.MAKE_ROOM) {
                     return new EnsureFreeInventorySlotTask();
+                }
+                if (room == ItemPickupRules.Room.GIVE_UP) {
+                    Debug.logMessage("Giving up on " + itemEntity.getItem().getItem().getDescriptionId() + ", the bag is full of things we keep.");
+                    _blacklist.add(itemEntity);
+                    _mod.getEntityTracker().banEntity(itemEntity);
+                    _currentDrop = null;
+                    _progressChecker.reset();
+                    return null;
                 }
             }
         }
         return new GetToEntityTask(itemEntity);
+    }
+
+    // same question EnsureFreeInventorySlotTask asks, no container because we are standing in the open
+    private static boolean canMakeRoom(AltoClef mod) {
+        ItemStack cursor = StorageHelper.getItemStackInCursorSlot();
+        return FreeSlotPlan.plan(cursor.isEmpty(), ItemHelper.canThrowAwayStack(mod, cursor),
+                StorageHelper.getGarbageSlot(mod).isPresent(), false) != FreeSlotPlan.Action.STUCK;
     }
 
     @Override

@@ -2,6 +2,7 @@ package adris.altoclef.tasks.slot;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
+import adris.altoclef.tasks.container.EmptyWatch;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.StlHelper;
@@ -24,6 +25,8 @@ public class MoveItemToSlotTask extends Task {
     private final ItemTarget _toMove;
     private final Slot _destination;
     private final Function<AltoClef, List<Slot>> _getMovableSlots;
+    private final EmptyWatch _nothingToMove = new EmptyWatch();
+    private boolean _gaveUp = false;
 
     public MoveItemToSlotTask(ItemTarget toMove, Slot destination, Function<AltoClef, List<Slot>> getMovableSlots) {
         _toMove = toMove;
@@ -33,7 +36,8 @@ public class MoveItemToSlotTask extends Task {
 
     @Override
     protected void onStart(AltoClef mod) {
-
+        _nothingToMove.reset();
+        _gaveUp = false;
     }
 
     @Override
@@ -69,9 +73,15 @@ public class MoveItemToSlotTask extends Task {
                     }
                 }
                 if (toPlace.isEmpty()) {
-                    Debug.logError("Called MoveItemToSlotTask when item/not enough item is available! valid items: " + StlHelper.toString(validItems, Item::getDescriptionId));
+                    // the stack list can lag a tick behind a click, so one miss is not the end. a few in a row is, and
+                    // then we say so ONCE (this used to be a chat line every tick) and call ourselves finished
+                    if (_nothingToMove.tick(true, false) && !_gaveUp) {
+                        _gaveUp = true;
+                        Debug.logError("Called MoveItemToSlotTask when item/not enough item is available! valid items: " + StlHelper.toString(validItems, Item::getDescriptionId));
+                    }
                     return null;
                 }
+                _nothingToMove.reset();
                 mod.getSlotHandler().clickSlot(toPlace.get(), 0, ClickType.PICKUP);
                 return null;
             }
@@ -105,6 +115,7 @@ public class MoveItemToSlotTask extends Task {
 
     @Override
     public boolean isFinished(AltoClef mod) {
+        if (_gaveUp) return true;
         ItemStack atDestination = StorageHelper.getItemStackInSlot(_destination);
         return (_toMove.matches(atDestination.getItem()) && atDestination.getCount() >= _toMove.getTargetCount());
     }

@@ -40,6 +40,7 @@ public class FoodChain extends SingleTaskChain {
     private float _lastFoodSaturation = -1;
     private float _lastFoodHealth = -1;
     private boolean shouldStop = false;
+    private boolean _eatBlocked = false;
 
     private final AltoClef _mod;
 
@@ -86,28 +87,12 @@ public class FoodChain extends SingleTaskChain {
 
     @Override
     public float getPriority(AltoClef mod) {
-        if (WorldHelper.isInNetherPortal(mod)) {
-            stopEat(mod);
-            return Float.NEGATIVE_INFINITY;
-        }
-        if (mod.getMobDefenseChain().isPuttingOutFire()) {
-            stopEat(mod);
-            return Float.NEGATIVE_INFINITY;
-        }
         _dragonBreathTracker.updateBreath(mod);
-        for (BlockPos playerIn : WorldHelper.getBlocksTouchingPlayer(mod)) {
-            if (_dragonBreathTracker.isTouchingDragonBreath(playerIn)) {
-                stopEat(mod);
-                return Float.NEGATIVE_INFINITY;
-            }
-        }
-        if (!Baritone.settings().altoAutoEat.value) {
-            stopEat(mod);
-            return Float.NEGATIVE_INFINITY;
-        }
-
-        // do NOT eat while in lava if we are escaping it (spaghetti code dependencies go brrrr)
-        if (mod.getPlayer().isInLava()) {
+        // one list of reasons we will not eat right now. the eat branch below and needsToEat() both go by it, so
+        // everything that pauses for a meal (progress checkers, container waits) stops waiting when we refuse to eat.
+        // before, "needs to eat" stayed true through a fall or a shield block and no watchdog could fire
+        _eatBlocked = eatingBlocked(mod);
+        if (_eatBlocked) {
             stopEat(mod);
             return Float.NEGATIVE_INFINITY;
         }
@@ -119,12 +104,6 @@ public class FoodChain extends SingleTaskChain {
             - We're very low on health and are even slightly hungry
         - We're kind of hungry and have food that fits perfectly
          */
-        // We're in danger, don't eat now!!
-        if (!mod.getMLGBucketChain().doneMLG() || mod.getMLGBucketChain().isFallingOhNo(mod) ||
-                mod.getPlayer().isBlocking() || shouldStop) {
-            stopEat(mod);
-            return Float.NEGATIVE_INFINITY;
-        }
         if (shouldRecalculateFood(mod)) {
             Tuple<Integer, Optional<Item>> calculation = calculateFood(mod);
             _cachedFoodScore = calculation.getA();
@@ -203,10 +182,24 @@ public class FoodChain extends SingleTaskChain {
         stopEat(mod);
     }
 
+    // everything that makes the eat branch back off. cheap enough to read from getPriority, needsToEat() uses the cached answer
+    private boolean eatingBlocked(AltoClef mod) {
+        if (WorldHelper.isInNetherPortal(mod) || mod.getMobDefenseChain().isPuttingOutFire()) return true;
+        for (BlockPos playerIn : WorldHelper.getBlocksTouchingPlayer(mod)) {
+            if (_dragonBreathTracker.isTouchingDragonBreath(playerIn)) return true;
+        }
+        if (!Baritone.settings().altoAutoEat.value) return true;
+        // do NOT eat while in lava if we are escaping it (spaghetti code dependencies go brrrr)
+        if (mod.getPlayer().isInLava()) return true;
+        // We're in danger, don't eat now!!
+        return !mod.getMLGBucketChain().doneMLG() || mod.getMLGBucketChain().isFallingOhNo(mod)
+                || mod.getPlayer().isBlocking() || shouldStop;
+    }
+
     // this is also "are we busy chewing", half the codebase asks it to know whether it may swing or click. so it says no
     // when a fight stops us eating, and yes when the fight is the reason we are eating (the gapple)
     public boolean needsToEat() {
-        if (shouldStop) return false;
+        if (shouldStop || _eatBlocked) return false;
         CombatRules.Stance stance = stance(_mod);
         if (stance == CombatRules.Stance.EAT_GAPPLE) return true;
         if (!stance.mayEat()) return false;

@@ -29,6 +29,16 @@ public final class ItemPickupRules {
         return gone && distance <= COLLECT_RANGE;
     }
 
+    public enum Room { FITS, MAKE_ROOM, GIVE_UP }
+
+    // a drop that fits even partly is picked up as is (vanilla takes what fits and leaves the rest lying there). only a
+    // drop with no room at all needs a slot freed, and with nothing to throw that never happens, so we ban the drop
+    // instead of standing on it with EnsureFree doing nothing for ever
+    public static Room room(boolean fitsEvenPartly, boolean canMakeRoom) {
+        if (fitsEvenPartly) return Room.FITS;
+        return canMakeRoom ? Room.MAKE_ROOM : Room.GIVE_UP;
+    }
+
     public interface Terrain {
         // any water at all, source, flowing or waterlogged
         boolean water(int x, int y, int z);
