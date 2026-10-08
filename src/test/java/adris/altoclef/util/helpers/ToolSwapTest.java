@@ -70,6 +70,18 @@ public class ToolSwapTest {
     }
 
     @Test
+    public void swapsThatKeepLandingStillRunOut() {
+        // something else re-selecting the slot behind our back: every click "lands", the miss count never moves
+        ToolSwap swap = new ToolSwap();
+        for (int i = 0; i < ToolSwap.MAX_SWAPS; i++) {
+            assertTrue("swap " + i, swap.mayTry(SWORD));
+            swap.landed();
+        }
+        assertFalse(swap.mayTry(SWORD));
+        assertFalse(swap.mayTry(AXE));
+    }
+
+    @Test
     public void aSwapThatLandsWipesTheMisses() {
         ToolSwap swap = new ToolSwap();
         swap.mayTry(SWORD);

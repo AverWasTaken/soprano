@@ -28,7 +28,7 @@ public class KillAndLootTask extends ResourceTask {
     private static final double WATCH_RANGE = 8;
     private static final double DROP_RADIUS = 10;
     // a drop lying around its death spot counts as "still collecting" for this long, then it is the plan's problem
-    private static final int COLLECT_TICKS = 300;
+    private static final int COLLECT_TICKS = 100;
     private final DropExpect _expect = new DropExpect();
     private Entity _watched;
     private Vec3 _diedAt;
@@ -110,7 +110,7 @@ public class KillAndLootTask extends ResourceTask {
     @Override
     protected Task onResourceTick(AltoClef mod) {
         noteDeath(mod);
-        if (_expect.isLive() && _expect.hold(WorldHelper.getTicks(), DropWatch.seen(mod, _diedAt, DROP_RADIUS, _itemTargets))) {
+        if (_expect.isLive() && _expect.hold(WorldHelper.getTicks(), DropWatch.anyNear(mod, _diedAt, DROP_RADIUS))) {
             setDebugState("Waiting for the loot to show up");
             return null;
         }

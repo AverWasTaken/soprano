@@ -74,6 +74,10 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
     // step off -> baritone walks right back on -> step off... more than this and we give the block up
     private final StepOffGuard _stepOffs = new StepOffGuard(3);
     private final ToolSwap _toolSwap = new ToolSwap();
+    // ticks the swap was held off for pathing / eating. a stuck isPathing() is the same never-swings stall
+    private int _swapBlockedTicks;
+    private static final int SWAP_BLOCKED_CAP = 20;
+    private boolean _swapGiveUpLogged;
     // the swinging distance goal didn't work out here, stand next to it
     private boolean closeIn;
     // ticks we've been soaked with the block in reach. see WaterBreakGuard
@@ -604,12 +608,12 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
                         best.getItem(), ToolSet.calculateSpeedVsBlock(best, state))) {
                     boolean isAllowedToManage = !mod.getClientBaritone().getPathingBehavior().isPathing()
                             && !mod.getFoodChain().isTryingToEat();
-                    if (!isAllowedToManage) {
+                    if (!isAllowedToManage && _swapBlockedTicks++ < SWAP_BLOCKED_CAP) {
                         return null;
                     }
                     Item bestToolItem = best.getItem();
                     // three misses and we swing with what we hold, a hand we can't change is no reason to never swing
-                    if (_toolSwap.mayTry(bestToolItem)) {
+                    if (isAllowedToManage && _toolSwap.mayTry(bestToolItem)) {
                         Debug.logMessage("Found better tool in inventory, equipping " + bestToolItem.getDescriptionId() + ".");
                         if (mod.getSlotHandler().forceEquipItem(bestToolItem)) {
                             _toolSwap.landed();
@@ -617,6 +621,12 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
                             _toolSwap.missed(bestToolItem);
                         }
                         return null;
+                    }
+                    // the log the next stall needs: what we mined with, what we wanted, where it was
+                    if (!_swapGiveUpLogged) {
+                        _swapGiveUpLogged = true;
+                        Debug.logInternal("tool swap given up on " + state.getBlock().getDescriptionId() + ": holding " + held.getItem().getDescriptionId()
+                            + ", wanted " + bestToolItem.getDescriptionId() + " from slot " + bestToolSlot.get().getWindowSlot());
                     }
                 } else {
                     _toolSwap.landed();

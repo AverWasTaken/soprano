@@ -438,7 +438,7 @@ public class CollectFoodTask extends Task {
                 DoToClosestBlockTask dig = new DoToClosestBlockTask(DestroyBlockTask::new, acceptPlus, blockToCheck);
                 // a bale always drops itself, so the next one waits for it. (berries don't always, and crops go through
                 // CollectCropTask)
-                return itemToGrab == Items.HAY_BLOCK ? dig.expectDrops(itemToGrab) : dig;
+                return itemToGrab == Items.HAY_BLOCK ? dig.expectDrops() : dig;
             }
         }
         return null;

@@ -131,7 +131,7 @@ public class CollectCropTask extends ResourceTask {
                 },
                 validCrop,
                 _cropBlock
-        ).expectDrops(dropsWanted());
+        ).expectDrops();
     }
 
     @Override
@@ -148,17 +148,18 @@ public class CollectCropTask extends ResourceTask {
         return super.isFinished(mod);
     }
 
-    // what a crop drops that we are here for: the crop, and the seeds (replanting needs them). waiting on either is waiting
-    // for the same break
-    private Item[] dropsWanted() {
-        Item[] crops = _cropToCollect.getMatches();
-        Item[] all = Arrays.copyOf(crops, crops.length + _cropSeed.length);
-        System.arraycopy(_cropSeed, 0, all, crops.length, _cropSeed.length);
-        return all;
-    }
+    // only the holes we are standing in: replanting is a favour to the field, not worth a walk back across the farm
+    private static final double REPLANT_RANGE_SQ = 10 * 10;
 
     private boolean shouldReplantNow(AltoClef mod) {
-        return Baritone.settings().replantCrops.value && hasEmptyCrops(mod) && mod.getItemStorage().hasItem(_cropSeed);
+        return Baritone.settings().replantCrops.value && hasEmptyCropsNear(mod) && mod.getItemStorage().hasItem(_cropSeed);
+    }
+
+    private boolean hasEmptyCropsNear(AltoClef mod) {
+        for (BlockPos pos : _emptyCropland) {
+            if (isEmptyCrop(mod, pos) && pos.distToCenterSqr(mod.getPlayer().position()) <= REPLANT_RANGE_SQ) return true;
+        }
+        return false;
     }
 
     private boolean hasEmptyCrops(AltoClef mod) {
@@ -168,8 +169,9 @@ public class CollectCropTask extends ResourceTask {
         return false;
     }
 
+    // air over farmland. a trampled spot (dirt now) can't take a seed, and trying every few seconds forever was the stall
     private boolean isEmptyCrop(AltoClef mod, BlockPos pos) {
-        return WorldHelper.isAir(mod, pos);
+        return WorldHelper.isAir(mod, pos) && mod.getWorld().getBlockState(pos.below()).is(Blocks.FARMLAND);
     }
 
     @Override

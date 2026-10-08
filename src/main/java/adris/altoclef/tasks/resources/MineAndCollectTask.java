@@ -338,6 +338,10 @@ public class MineAndCollectTask extends ResourceTask {
             if (!(gone instanceof BlockPos pos) || !pos.equals(_miningPos)) {
                 return;
             }
+            // a tunnel's cobble lands in vacuum range on its own while the next block cracks, stopping for it is pure cost
+            if (_stoneOnly) {
+                return;
+            }
             if (_blacklist.contains(pos) || mod.getBlockTracker().unreachable(pos) || mod.getBlockTracker().blockIsValid(pos, _blocks)) {
                 return;
             }
@@ -354,7 +358,7 @@ public class MineAndCollectTask extends ResourceTask {
 
         @Override
         protected boolean dropSeen(AltoClef mod, Vec3 spot) {
-            return DropWatch.seen(mod, spot, DROP_SEEN_RADIUS, _targets);
+            return DropWatch.anyNear(mod, spot, DROP_SEEN_RADIUS);
         }
 
         // a drop that fell further from the block than this was somebody else's
