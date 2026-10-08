@@ -26,15 +26,16 @@ public class OverworldConfig {
         NONE
     }
 
-    // the axe is for logs (KitPlanner puts it right after the first few) and the two stone picks are one to wear out and
-    // one spare. any iron pick in the bag covers both. the planner sizes the wood for all of this plus the iron kit
+    // the wooden axe is for logs (KitPlanner puts it right after the first few) and the two stone picks are one to wear out
+    // and one spare. any iron pick in the bag covers both. the stone axe is the weapon (WeaponPick hits harder with an axe
+    // than a sword of the same tier, so no sword is made at all). the planner sizes the wood for all of this plus the iron kit
     // (bump GamerConfig.VERSION when you change a default kit list, saved files would keep the old one otherwise)
     public List<KitItem> starterKit = new ArrayList<>(List.of(
-            new KitItem("wooden_axe", 1), new KitItem("stone_pickaxe", 2), new KitItem("stone_sword", 1),
+            new KitItem("wooden_axe", 1), new KitItem("stone_pickaxe", 2), new KitItem("stone_axe", 1),
             new KitItem("furnace", 1)));
     // armor comes from armorPlan, wool from end.beds. same deal: bump GamerConfig.VERSION when this changes
     public List<KitItem> ironKit = new ArrayList<>(List.of(
-            new KitItem("iron_pickaxe", 1), new KitItem("iron_sword", 1), new KitItem("bucket", 2),
+            new KitItem("iron_pickaxe", 1), new KitItem("iron_axe", 1), new KitItem("bucket", 2),
             new KitItem("flint_and_steel", 1), new KitItem("shield", 1), new KitItem("shears", 1),
             // sticks only, no iron. for ladder clutching on the long falls in the nether (one ladder gets picked back up)
             new KitItem("ladder", 3)));

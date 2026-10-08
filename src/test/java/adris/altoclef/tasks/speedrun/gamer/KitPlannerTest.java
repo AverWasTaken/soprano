@@ -43,7 +43,7 @@ public class KitPlannerTest {
     // everything the default kit asks for, so a test can take one thing away
     private FakeFacts complete() {
         FakeFacts full = new FakeFacts();
-        for (Item i : new Item[]{Items.STONE_PICKAXE, Items.STONE_SWORD, Items.FURNACE, Items.IRON_PICKAXE, Items.IRON_SWORD,
+        for (Item i : new Item[]{Items.STONE_PICKAXE, Items.STONE_AXE, Items.FURNACE, Items.IRON_PICKAXE, Items.IRON_AXE,
                 Items.FLINT_AND_STEEL, Items.SHIELD, Items.SHEARS, Items.IRON_CHESTPLATE, Items.IRON_HELMET,
                 Items.IRON_LEGGINGS, Items.IRON_BOOTS}) {
             full.give(i, 1);
@@ -60,9 +60,9 @@ public class KitPlannerTest {
     public void freshStartGather() {
         List<KitNeed> gather = KitPlanner.gather(f, cfg, 8);
         // 3 logs is the table and the axe (9 planks), 15 is the whole run, and the axe is made in between
-        // 18 cobble is 2 picks 6 + sword 2 + furnace 8 + 2 slack, all of it mined before the first stone craft
+        // 19 cobble is 2 picks 6 + axe 3 + furnace 8 + 2 slack, all of it mined before the first stone craft
         assertEquals(List.of(new KitNeed("log", 3), new KitNeed("wooden_axe", 1), new KitNeed("log", 15),
-                new KitNeed("cobblestone", 18), new KitNeed("stone_pickaxe", 2), new KitNeed("stone_sword", 1), new KitNeed("furnace", 1),
+                new KitNeed("cobblestone", 19), new KitNeed("stone_pickaxe", 2), new KitNeed("stone_axe", 1), new KitNeed("furnace", 1),
                 new KitNeed(KitNeed.FOOD, 70)), gather);
     }
 
@@ -70,7 +70,7 @@ public class KitPlannerTest {
     public void freshStartFullPlanOrder() {
         List<KitNeed> plan = KitPlanner.plan(f, cfg, 8);
         // no axe and no bed planks past the gather, but a plan that starts bare still does its wood before any ore
-        assertEquals(List.of("log", "stone_pickaxe", "stone_sword", "food", "iron_ingot", "iron_pickaxe", "iron_sword", "bucket",
+        assertEquals(List.of("log", "stone_pickaxe", "stone_axe", "food", "iron_ingot", "iron_pickaxe", "iron_axe", "bucket",
                 "flint_and_steel", "shield", "shears", "ladder", "iron_chestplate", "iron_helmet", "iron_leggings", "iron_boots",
                 "wool", "food"), names(plan));
     }
@@ -79,7 +79,7 @@ public class KitPlannerTest {
     public void ladderIsInTheKitButCostsNoIron() {
         // sticks only: three ladders must not grow the ingot need (that stays pickaxe..armor, see the next test)
         assertEquals(new KitNeed("ladder", 3), find(KitPlanner.plan(f, cfg, 8), "ladder"));
-        assertEquals(39, KitPlanner.ingotsNeeded(f, cfg));
+        assertEquals(40, KitPlanner.ingotsNeeded(f, cfg));
         // holding some of them: the need is the total, and full hands ask for nothing
         f.give(Items.LADDER, 1);
         assertEquals(new KitNeed("ladder", 3), find(KitPlanner.plan(f, cfg, 8), "ladder"));
@@ -88,9 +88,9 @@ public class KitPlannerTest {
 
     @Test
     public void oneCombinedIronNeedSizedByEverythingMissing() {
-        // pickaxe 3 + sword 2 + 2 buckets 6 + flint and steel 1 + shield 1 + shears 2 + armor 24
-        assertEquals(39, find(KitPlanner.plan(f, cfg, 8), "iron_ingot").count());
-        assertEquals(39, KitPlanner.ingotsNeeded(f, cfg));
+        // pickaxe 3 + axe 3 + 2 buckets 6 + flint and steel 1 + shield 1 + shears 2 + armor 24
+        assertEquals(40, find(KitPlanner.plan(f, cfg, 8), "iron_ingot").count());
+        assertEquals(40, KitPlanner.ingotsNeeded(f, cfg));
         assertEquals(1, KitPlanner.plan(f, cfg, 8).stream().filter(n -> n.catalogueName().equals("iron_ingot")).count());
     }
 
@@ -103,23 +103,23 @@ public class KitPlannerTest {
 
     @Test
     public void partialKitOnlyAsksForTheRest() {
-        f.give(Items.STONE_PICKAXE, 1).give(Items.STONE_SWORD, 1).give(Items.IRON_PICKAXE, 1).give(Items.BUCKET, 2);
+        f.give(Items.STONE_PICKAXE, 1).give(Items.STONE_AXE, 1).give(Items.IRON_PICKAXE, 1).give(Items.BUCKET, 2);
         f.foodUnits = 100;
         List<KitNeed> plan = KitPlanner.plan(f, cfg, 8);
         assertFalse(names(plan).contains("iron_pickaxe"));
         assertFalse(names(plan).contains("bucket"));
-        // sword 2 + flint and steel 1 + shield 1 + shears 2 + armor 24
-        assertEquals(30, find(plan, "iron_ingot").count());
+        // axe 3 + flint and steel 1 + shield 1 + shears 2 + armor 24
+        assertEquals(31, find(plan, "iron_ingot").count());
     }
 
     @Test
     public void heldIngotsCoverTheCombinedNeed() {
-        f.give(Items.IRON_INGOT, 39);
+        f.give(Items.IRON_INGOT, 40);
         List<KitNeed> plan = KitPlanner.plan(f, cfg, 8);
         assertEquals(null, find(plan, "iron_ingot"));
         assertTrue(names(plan).contains("iron_pickaxe"));
         f.give(Items.IRON_INGOT, -1);
-        assertEquals(39, find(KitPlanner.plan(f, cfg, 8), "iron_ingot").count());
+        assertEquals(40, find(KitPlanner.plan(f, cfg, 8), "iron_ingot").count());
     }
 
     @Test
@@ -133,12 +133,12 @@ public class KitPlannerTest {
 
     @Test
     public void betterToolsSatisfyWorseOnes() {
-        f.give(Items.DIAMOND_PICKAXE, 1).give(Items.NETHERITE_SWORD, 1);
+        f.give(Items.DIAMOND_PICKAXE, 1).give(Items.NETHERITE_AXE, 1);
         List<KitNeed> plan = KitPlanner.plan(f, cfg, 8);
         assertFalse(names(plan).contains("stone_pickaxe"));
         assertFalse(names(plan).contains("iron_pickaxe"));
-        assertFalse(names(plan).contains("stone_sword"));
-        assertFalse(names(plan).contains("iron_sword"));
+        assertFalse(names(plan).contains("stone_axe"));
+        assertFalse(names(plan).contains("iron_axe"));
     }
 
     @Test
@@ -147,12 +147,12 @@ public class KitPlannerTest {
         List<KitNeed> two = KitPlanner.plan(f, cfg, 8);
         assertTrue(names(two).containsAll(List.of("iron_chestplate", "iron_helmet")));
         assertFalse(names(two).contains("iron_leggings"));
-        assertEquals(39 - 11, find(two, "iron_ingot").count());
+        assertEquals(40 - 11, find(two, "iron_ingot").count());
 
         cfg.armorPlan = ArmorPlan.NONE;
         List<KitNeed> none = KitPlanner.plan(f, cfg, 8);
         assertFalse(names(none).contains("iron_chestplate"));
-        assertEquals(15, find(none, "iron_ingot").count());
+        assertEquals(16, find(none, "iron_ingot").count());
     }
 
     @Test
@@ -162,7 +162,7 @@ public class KitPlannerTest {
         List<KitNeed> plan = KitPlanner.plan(f, cfg, 8);
         assertFalse(names(plan).contains("iron_chestplate"));
         assertFalse(names(plan).contains(KitNeed.EQUIP_ARMOR));
-        assertEquals(39 - 8, find(plan, "iron_ingot").count());
+        assertEquals(40 - 8, find(plan, "iron_ingot").count());
     }
 
     @Test
@@ -248,6 +248,9 @@ public class KitPlannerTest {
         assertFalse(KitPlanner.stoneToolsMet(f));
         f.give(Items.IRON_SWORD, 1);
         assertTrue(KitPlanner.stoneToolsMet(f));
+        // the weapon the kit makes is an axe
+        assertTrue(KitPlanner.stoneToolsMet(new FakeFacts().give(Items.STONE_PICKAXE, 1).give(Items.STONE_AXE, 1)));
+        assertFalse(KitPlanner.stoneToolsMet(new FakeFacts().give(Items.STONE_PICKAXE, 1).give(Items.WOODEN_AXE, 1)));
     }
 
     @Test
@@ -300,7 +303,7 @@ public class KitPlannerTest {
         f.give(Items.IRON_INGOT, 4);
         assertEquals(33, KitPlanner.progressOf(f, new KitNeed(KitNeed.FOOD, 70)));
         assertEquals(7, KitPlanner.progressOf(f, new KitNeed(KitNeed.BUILD_BLOCKS, 32)));
-        assertEquals(4, KitPlanner.progressOf(f, new KitNeed("iron_ingot", 39)));
+        assertEquals(4, KitPlanner.progressOf(f, new KitNeed("iron_ingot", 40)));
     }
 
     @Test
@@ -311,8 +314,8 @@ public class KitPlannerTest {
         assertFalse(names(plan).contains("iron_helmet"));
         // same spot in the order, so nothing else moves
         assertEquals(names(plan).indexOf("iron_chestplate") + 1, names(plan).indexOf("golden_helmet"));
-        assertEquals(34, find(plan, "iron_ingot").count());
-        assertEquals(34, KitPlanner.ingotsNeeded(f, cfg));
+        assertEquals(35, find(plan, "iron_ingot").count());
+        assertEquals(35, KitPlanner.ingotsNeeded(f, cfg));
         assertTrue(names(plan).contains("iron_boots"));
     }
 
@@ -323,28 +326,28 @@ public class KitPlannerTest {
         assertTrue(names(plan).contains("golden_boots"));
         assertFalse(names(plan).contains("iron_boots"));
         assertTrue(names(plan).contains("iron_helmet"));
-        assertEquals(35, find(plan, "iron_ingot").count());
+        assertEquals(36, find(plan, "iron_ingot").count());
     }
 
     @Test
     public void noGoldMeansTheSamePlanAsEver() {
         List<KitNeed> plan = KitPlanner.plan(f, cfg, 8);
-        assertEquals(39, find(plan, "iron_ingot").count());
+        assertEquals(40, find(plan, "iron_ingot").count());
         assertFalse(names(plan).contains("golden_helmet"));
         assertFalse(names(plan).contains("golden_boots"));
         f.give(Items.GOLD_INGOT, 3);
-        assertEquals(39, KitPlanner.ingotsNeeded(f, cfg));
+        assertEquals(40, KitPlanner.ingotsNeeded(f, cfg));
     }
 
     @Test
     public void goldInOtherShapesCountsToo() {
         // a block is nine, nine nuggets are one, raw gold gets smelted. none of it is mined for
-        assertEquals(34, KitPlanner.ingotsNeeded(new FakeFacts().give(Items.GOLD_BLOCK, 1), cfg));
-        assertEquals(34, KitPlanner.ingotsNeeded(new FakeFacts().give(Items.GOLD_NUGGET, 45), cfg));
-        assertEquals(34, KitPlanner.ingotsNeeded(new FakeFacts().give(Items.RAW_GOLD, 5), cfg));
-        assertEquals(35, KitPlanner.ingotsNeeded(new FakeFacts().give(Items.GOLD_NUGGET, 36), cfg));
-        assertEquals(34, KitPlanner.ingotsNeeded(new FakeFacts().give(Items.GOLD_INGOT, 2).give(Items.GOLD_NUGGET, 27), cfg));
-        assertEquals(39, KitPlanner.ingotsNeeded(new FakeFacts().give(Items.GOLD_NUGGET, 35), cfg));
+        assertEquals(35, KitPlanner.ingotsNeeded(new FakeFacts().give(Items.GOLD_BLOCK, 1), cfg));
+        assertEquals(35, KitPlanner.ingotsNeeded(new FakeFacts().give(Items.GOLD_NUGGET, 45), cfg));
+        assertEquals(35, KitPlanner.ingotsNeeded(new FakeFacts().give(Items.RAW_GOLD, 5), cfg));
+        assertEquals(36, KitPlanner.ingotsNeeded(new FakeFacts().give(Items.GOLD_NUGGET, 36), cfg));
+        assertEquals(35, KitPlanner.ingotsNeeded(new FakeFacts().give(Items.GOLD_INGOT, 2).give(Items.GOLD_NUGGET, 27), cfg));
+        assertEquals(40, KitPlanner.ingotsNeeded(new FakeFacts().give(Items.GOLD_NUGGET, 35), cfg));
     }
 
     @Test
@@ -353,7 +356,7 @@ public class KitPlannerTest {
         List<KitNeed> plan = KitPlanner.plan(f, cfg, 8);
         assertFalse(names(plan).contains("golden_helmet"));
         assertFalse(names(plan).contains("iron_helmet"));
-        assertEquals(34, find(plan, "iron_ingot").count());
+        assertEquals(35, find(plan, "iron_ingot").count());
         assertEquals(new KitNeed(KitNeed.EQUIP_ARMOR, 1), find(plan, KitNeed.EQUIP_ARMOR));
         assertEquals(List.of(Items.GOLDEN_HELMET), KitPlanner.toEquip(f, cfg));
         f.worn.add(Items.GOLDEN_HELMET);
@@ -377,7 +380,7 @@ public class KitPlannerTest {
         f.worn.add(Items.IRON_HELMET);
         List<KitNeed> plan = KitPlanner.plan(f, cfg, 8);
         assertTrue(names(plan).contains("golden_helmet"));
-        assertEquals(34, find(plan, "iron_ingot").count());
+        assertEquals(35, find(plan, "iron_ingot").count());
         // crafted: the gold one is held, the iron one stays on until the equip step swaps them
         f.items.put(Items.GOLD_INGOT, 0);
         f.give(Items.GOLDEN_HELMET, 1);
@@ -391,7 +394,7 @@ public class KitPlannerTest {
         plan = KitPlanner.plan(f, cfg, 8);
         assertFalse(names(plan).contains("golden_helmet"));
         assertFalse(names(plan).contains(KitNeed.EQUIP_ARMOR));
-        assertEquals(34, find(plan, "iron_ingot").count());
+        assertEquals(35, find(plan, "iron_ingot").count());
     }
 
     @Test
@@ -404,7 +407,7 @@ public class KitPlannerTest {
         f.worn.add(Items.GOLDEN_BOOTS);
         assertTrue(KitPlanner.toEquip(f, cfg).isEmpty());
         // nothing gold to swap in the none plan, so the gold stays a gate matter
-        assertEquals(15, find(KitPlanner.plan(new FakeFacts().give(Items.GOLD_INGOT, 9), cfg, 8), "iron_ingot").count());
+        assertEquals(16, find(KitPlanner.plan(new FakeFacts().give(Items.GOLD_INGOT, 9), cfg, 8), "iron_ingot").count());
     }
 
     @Test
@@ -421,19 +424,19 @@ public class KitPlannerTest {
     @Test
     public void woodBudgetForAFreshRunIsFifteenLogs() {
         // planks: table x2 8 + axe 3 + wooden pick 3 + shield 6 + 24 for eight beds = 44. sticks: axe 2, two stone picks 4,
-        // wooden pick 2, sword 1, iron pick 2, iron sword 1, ladders 7 = 19, which is 5 crafts of 2 planks. 54 + a log
-        // of slack is 58, and 58 planks are 15 logs
+        // wooden pick 2, stone axe 2, iron pick 2, iron axe 2, ladders 7 = 21, which is 6 crafts of 2 planks. 56 + a log
+        // of slack is 60, and 60 planks are 15 logs
         assertEquals(15, KitPlanner.woodNeed(f, cfg, 8));
     }
 
     @Test
     public void firstBatchIsTheTableAndTheAxeThenTheWholeBudgetAfterTheAxe() {
         List<KitNeed> gather = KitPlanner.gather(f, cfg, 8);
-        assertEquals(List.of("log", "wooden_axe", "log", "cobblestone", "stone_pickaxe", "stone_sword", "furnace", "food"), names(gather));
+        assertEquals(List.of("log", "wooden_axe", "log", "cobblestone", "stone_pickaxe", "stone_axe", "furnace", "food"), names(gather));
         // logs in hand but no axe yet: the small batch is done, the axe is next, and the big target does not move
         f.give(Items.OAK_LOG, 3);
         gather = KitPlanner.gather(f, cfg, 8);
-        assertEquals(List.of("wooden_axe", "log", "cobblestone", "stone_pickaxe", "stone_sword", "furnace", "food"), names(gather));
+        assertEquals(List.of("wooden_axe", "log", "cobblestone", "stone_pickaxe", "stone_axe", "furnace", "food"), names(gather));
         assertEquals(new KitNeed("log", 15), gather.get(1));
         // axe made (the table and some planks went with it), still short: the wood comes before the stone tools
         FakeFacts after = new FakeFacts().give(Items.WOODEN_AXE, 1).give(Items.OAK_LOG, 1).give(Items.OAK_PLANKS, 5);
@@ -453,6 +456,31 @@ public class KitPlannerTest {
     }
 
     @Test
+    public void theKitMakesAxesAndNeverSwords() {
+        // an axe hits harder than a sword of its tier (WeaponPick), so the sword is no craft of ours
+        List<String> all = names(KitPlanner.plan(f, cfg, 8));
+        assertTrue(all.contains("stone_axe"));
+        assertTrue(all.contains("iron_axe"));
+        assertFalse(all.contains("stone_sword"));
+        assertFalse(all.contains("iron_sword"));
+        assertTrue(names(KitPlanner.gather(f, cfg, 8)).contains("stone_axe"));
+        // and the weapon axes are not the log axe: the stone one waits for the stone pick, the first batch is the wooden one
+        assertEquals(List.of("log", "wooden_axe"), names(KitPlanner.gather(f, cfg, 8)).subList(0, 2));
+    }
+
+    @Test
+    public void aBetterAxeCoversTheWorseOnesAndASwordCoversNone() {
+        assertEquals(1, KitPlanner.have(new FakeFacts().give(Items.STONE_AXE, 1), "wooden_axe"));
+        assertEquals(1, KitPlanner.have(new FakeFacts().give(Items.IRON_AXE, 1), "stone_axe"));
+        assertEquals(0, KitPlanner.have(new FakeFacts().give(Items.STONE_AXE, 1), "iron_axe"));
+        // nothing swings like an axe in the kit's eyes, a sword in the bag still leaves the axe to make
+        assertEquals(0, KitPlanner.have(new FakeFacts().give(Items.IRON_SWORD, 1), "stone_axe"));
+        assertEquals(new KitNeed("stone_axe", 1), find(KitPlanner.gather(new FakeFacts().give(Items.OAK_LOG, 15)
+                .give(Items.WOODEN_AXE, 1).give(Items.COBBLESTONE, 40).give(Items.STONE_PICKAXE, 2).give(Items.FURNACE, 1)
+                .give(Items.IRON_SWORD, 1), cfg, 8), "stone_axe"));
+    }
+
+    @Test
     public void budgetEndsExactlyWhereTheWoodDoes() {
         FakeFacts enough = new FakeFacts().give(Items.OAK_LOG, 15);
         assertEquals(0, KitPlanner.woodNeed(enough, cfg, 8));
@@ -460,18 +488,18 @@ public class KitPlannerTest {
         assertEquals(1, KitPlanner.woodNeed(new FakeFacts().give(Items.OAK_LOG, 14), cfg, 8));
         // planks and logs are the same currency, four to one
         assertEquals(0, KitPlanner.woodNeed(new FakeFacts().give(Items.SPRUCE_PLANKS, 60), cfg, 8));
-        assertEquals(1, KitPlanner.woodNeed(new FakeFacts().give(Items.SPRUCE_PLANKS, 55), cfg, 8));
+        assertEquals(1, KitPlanner.woodNeed(new FakeFacts().give(Items.SPRUCE_PLANKS, 59), cfg, 8));
         assertEquals(0, KitPlanner.woodNeed(new FakeFacts().give(Items.OAK_LOG, 10).give(Items.OAK_PLANKS, 20), cfg, 8));
     }
 
     @Test
     public void heldSticksTakeOffThePlanksThatWouldMakeThem() {
-        // 19 sticks wanted is 10 planks, so 20 sticks in the bag leave 48 planks of budget
-        assertEquals(0, KitPlanner.woodNeed(new FakeFacts().give(Items.STICK, 20).give(Items.OAK_PLANKS, 48), cfg, 8));
-        assertEquals(1, KitPlanner.woodNeed(new FakeFacts().give(Items.STICK, 20).give(Items.OAK_PLANKS, 47), cfg, 8));
-        // 16 of them is four crafts instead of five, a stick short of a craft still costs the craft
-        assertEquals(0, KitPlanner.woodNeed(new FakeFacts().give(Items.STICK, 16).give(Items.OAK_PLANKS, 50), cfg, 8));
-        assertEquals(1, KitPlanner.woodNeed(new FakeFacts().give(Items.STICK, 15).give(Items.OAK_PLANKS, 49), cfg, 8));
+        // 21 sticks wanted is 12 planks, so 20 sticks in the bag leave 50 planks of budget
+        assertEquals(0, KitPlanner.woodNeed(new FakeFacts().give(Items.STICK, 20).give(Items.OAK_PLANKS, 50), cfg, 8));
+        assertEquals(1, KitPlanner.woodNeed(new FakeFacts().give(Items.STICK, 20).give(Items.OAK_PLANKS, 49), cfg, 8));
+        // 17 of them is one craft short, 16 is five sticks short and a stick over a craft still costs the craft
+        assertEquals(0, KitPlanner.woodNeed(new FakeFacts().give(Items.STICK, 17).give(Items.OAK_PLANKS, 50), cfg, 8));
+        assertEquals(1, KitPlanner.woodNeed(new FakeFacts().give(Items.STICK, 16).give(Items.OAK_PLANKS, 51), cfg, 8));
     }
 
     @Test
@@ -540,113 +568,113 @@ public class KitPlannerTest {
     // ---- stone budget ----
 
     @Test
-    public void stoneBudgetForAFreshRunIsEighteen() {
-        // two picks 6, sword 2, furnace 8, and 2 of slack
-        assertEquals(18, KitPlanner.stoneNeed(f, cfg));
+    public void stoneBudgetForAFreshRunIsNineteen() {
+        // two picks 6, axe 3, furnace 8, and 2 of slack
+        assertEquals(19, KitPlanner.stoneNeed(f, cfg));
     }
 
     @Test
     public void heldCobbleTakesOffTheStoneBudgetAndStaysAtZeroThroughTheCrafts() {
-        assertEquals(8, KitPlanner.stoneNeed(new FakeFacts().give(Items.COBBLESTONE, 10), cfg));
-        assertEquals(0, KitPlanner.stoneNeed(new FakeFacts().give(Items.COBBLESTONE, 18), cfg));
+        assertEquals(9, KitPlanner.stoneNeed(new FakeFacts().give(Items.COBBLESTONE, 10), cfg));
+        assertEquals(0, KitPlanner.stoneNeed(new FakeFacts().give(Items.COBBLESTONE, 19), cfg));
         assertEquals(0, KitPlanner.stoneNeed(new FakeFacts().give(Items.COBBLESTONE, 40), cfg));
         // the picks are crafted: 6 cobble gone and 6 wanted gone, so a need that was met stays met (no second trip)
-        FakeFacts crafted = new FakeFacts().give(Items.COBBLESTONE, 12).give(Items.STONE_PICKAXE, 2);
+        FakeFacts crafted = new FakeFacts().give(Items.COBBLESTONE, 13).give(Items.STONE_PICKAXE, 2);
         assertEquals(0, KitPlanner.stoneNeed(crafted, cfg));
-        // and the sword too
-        crafted.give(Items.COBBLESTONE, -2).give(Items.STONE_SWORD, 1);
+        // and the axe too
+        crafted.give(Items.COBBLESTONE, -3).give(Items.STONE_AXE, 1);
         assertEquals(0, KitPlanner.stoneNeed(crafted, cfg));
         // everything made: nothing left to want, not even the slack
-        assertEquals(0, KitPlanner.stoneNeed(new FakeFacts().give(Items.STONE_PICKAXE, 2).give(Items.STONE_SWORD, 1)
+        assertEquals(0, KitPlanner.stoneNeed(new FakeFacts().give(Items.STONE_PICKAXE, 2).give(Items.STONE_AXE, 1)
                 .give(Items.FURNACE, 1), cfg));
     }
 
     @Test
     public void cobbledDeepslateIsNotCobbleToTheRecipes() {
         // the catalogue recipes only take Items.COBBLESTONE, so deepslate in the bag would not reach the crafts
-        assertEquals(18, KitPlanner.stoneNeed(new FakeFacts().give(Items.COBBLED_DEEPSLATE, 30), cfg));
+        assertEquals(19, KitPlanner.stoneNeed(new FakeFacts().give(Items.COBBLED_DEEPSLATE, 30), cfg));
     }
 
     @Test
     public void stoneBudgetShrinksWithWhatIsAlreadyMade() {
         // a furnace in the bag is 8 less
-        assertEquals(10, KitPlanner.stoneNeed(new FakeFacts().give(Items.FURNACE, 1), cfg));
+        assertEquals(11, KitPlanner.stoneNeed(new FakeFacts().give(Items.FURNACE, 1), cfg));
         // a blast furnace counts as a furnace
-        assertEquals(10, KitPlanner.stoneNeed(new FakeFacts().give(Items.BLAST_FURNACE, 1), cfg));
+        assertEquals(11, KitPlanner.stoneNeed(new FakeFacts().give(Items.BLAST_FURNACE, 1), cfg));
         // one pick down: one more to make
-        assertEquals(15, KitPlanner.stoneNeed(new FakeFacts().give(Items.STONE_PICKAXE, 1), cfg));
+        assertEquals(16, KitPlanner.stoneNeed(new FakeFacts().give(Items.STONE_PICKAXE, 1), cfg));
     }
 
     @Test
     public void anIronPickCoversTheStoneBudgetOfTheStonePicks() {
-        // sword and furnace only: 10 and 2 of slack
-        assertEquals(12, KitPlanner.stoneNeed(new FakeFacts().give(Items.IRON_PICKAXE, 1), cfg));
-        assertEquals(12, KitPlanner.stoneNeed(new FakeFacts().give(Items.DIAMOND_PICKAXE, 1), cfg));
+        // axe and furnace only: 11 and 2 of slack
+        assertEquals(13, KitPlanner.stoneNeed(new FakeFacts().give(Items.IRON_PICKAXE, 1), cfg));
+        assertEquals(13, KitPlanner.stoneNeed(new FakeFacts().give(Items.DIAMOND_PICKAXE, 1), cfg));
     }
 
     @Test
     public void aWornStonePickIsAFreshOneInTheBudget() {
         f.spent.put(Items.STONE_PICKAXE, 1);
         // the worn one does not count, so both picks are still to make
-        assertEquals(18, KitPlanner.stoneNeed(f, cfg));
+        assertEquals(19, KitPlanner.stoneNeed(f, cfg));
         f.give(Items.STONE_PICKAXE, 1);
-        assertEquals(15, KitPlanner.stoneNeed(f, cfg));
+        assertEquals(16, KitPlanner.stoneNeed(f, cfg));
     }
 
     // ---- stone floor (what the movements must not spend) ----
 
     @Test
     public void stoneFloorIsTheWholeKitWithoutSlackOrWhatWeHold() {
-        // two picks 6, sword 2, furnace 8: the slack is for mining, not for keeping
-        assertEquals(16, KitPlanner.stoneFloor(f, cfg));
+        // two picks 6, axe 3, furnace 8: the slack is for mining, not for keeping
+        assertEquals(17, KitPlanner.stoneFloor(f, cfg));
         // holding cobble does not shrink it, the held cobble IS what it keeps
-        assertEquals(16, KitPlanner.stoneFloor(new FakeFacts().give(Items.COBBLESTONE, 18), cfg));
-        assertEquals(16, KitPlanner.stoneFloor(new FakeFacts().give(Items.COBBLESTONE, 3), cfg));
+        assertEquals(17, KitPlanner.stoneFloor(new FakeFacts().give(Items.COBBLESTONE, 18), cfg));
+        assertEquals(17, KitPlanner.stoneFloor(new FakeFacts().give(Items.COBBLESTONE, 3), cfg));
         // and deepslate is no cobble but it is not a reason to change the number either
-        assertEquals(16, KitPlanner.stoneFloor(new FakeFacts().give(Items.COBBLED_DEEPSLATE, 30), cfg));
+        assertEquals(17, KitPlanner.stoneFloor(new FakeFacts().give(Items.COBBLED_DEEPSLATE, 30), cfg));
     }
 
     @Test
     public void stoneFloorFallsAsTheStoneItemsGetMade() {
-        // the whole log: picks crafted, then the sword, then the furnace
+        // the whole log: picks crafted, then the axe, then the furnace
         FakeFacts made = new FakeFacts().give(Items.COBBLESTONE, 12).give(Items.STONE_PICKAXE, 2);
-        assertEquals(10, KitPlanner.stoneFloor(made, cfg));
-        made.give(Items.STONE_SWORD, 1);
+        assertEquals(11, KitPlanner.stoneFloor(made, cfg));
+        made.give(Items.STONE_AXE, 1);
         assertEquals(8, KitPlanner.stoneFloor(made, cfg));
         made.give(Items.FURNACE, 1);
         assertEquals(0, KitPlanner.stoneFloor(made, cfg));
         // one pick down, and an iron pick covers both of them
-        assertEquals(13, KitPlanner.stoneFloor(new FakeFacts().give(Items.STONE_PICKAXE, 1), cfg));
-        assertEquals(10, KitPlanner.stoneFloor(new FakeFacts().give(Items.IRON_PICKAXE, 1), cfg));
+        assertEquals(14, KitPlanner.stoneFloor(new FakeFacts().give(Items.STONE_PICKAXE, 1), cfg));
+        assertEquals(11, KitPlanner.stoneFloor(new FakeFacts().give(Items.IRON_PICKAXE, 1), cfg));
     }
 
     @Test
     public void aFurnaceOnTheGroundIsHeldForTheStoneFloor() {
         // standing next to us and coming back to the bag: 8 less to keep
         f.furnacePlaced = true;
-        assertEquals(8, KitPlanner.stoneFloor(f, cfg));
+        assertEquals(9, KitPlanner.stoneFloor(f, cfg));
         // the same fact says nothing about what is left to mine, the planner still sees a furnace to make
-        assertEquals(18, KitPlanner.stoneNeed(f, cfg));
+        assertEquals(19, KitPlanner.stoneNeed(f, cfg));
         // a furnace in the bag AND one on the ground is still one furnace
         f.give(Items.FURNACE, 1);
-        assertEquals(8, KitPlanner.stoneFloor(f, cfg));
+        assertEquals(9, KitPlanner.stoneFloor(f, cfg));
         // the table never cost any cobble, so it changes nothing
         FakeFacts table = new FakeFacts();
         table.tablePlaced = true;
-        assertEquals(16, KitPlanner.stoneFloor(table, cfg));
+        assertEquals(17, KitPlanner.stoneFloor(table, cfg));
     }
 
     @Test
     public void stoneIsMinedAfterTheWoodAndBeforeTheCrafts() {
         f.give(Items.OAK_LOG, 15).give(Items.WOODEN_AXE, 1);
         List<KitNeed> gather = KitPlanner.gather(f, cfg, 8);
-        assertEquals(List.of("cobblestone", "stone_pickaxe", "stone_sword", "furnace", "food"), names(gather));
+        assertEquals(List.of("cobblestone", "stone_pickaxe", "stone_axe", "furnace", "food"), names(gather));
         // the total is held plus the shortfall, same shape as the log need
         FakeFacts some = new FakeFacts().give(Items.OAK_LOG, 15).give(Items.WOODEN_AXE, 1).give(Items.COBBLESTONE, 5);
-        assertEquals(new KitNeed("cobblestone", 18), find(KitPlanner.gather(some, cfg, 8), "cobblestone"));
+        assertEquals(new KitNeed("cobblestone", 19), find(KitPlanner.gather(some, cfg, 8), "cobblestone"));
         // enough of it: no gather entry, the crafts go straight in
-        some.give(Items.COBBLESTONE, 13);
-        assertEquals(List.of("stone_pickaxe", "stone_sword", "furnace", "food"), names(KitPlanner.gather(some, cfg, 8)));
+        some.give(Items.COBBLESTONE, 14);
+        assertEquals(List.of("stone_pickaxe", "stone_axe", "furnace", "food"), names(KitPlanner.gather(some, cfg, 8)));
         // the wood is still first when it is short
         assertEquals("log", KitPlanner.gather(new FakeFacts().give(Items.COBBLESTONE, 2), cfg, 8).get(0).catalogueName());
     }

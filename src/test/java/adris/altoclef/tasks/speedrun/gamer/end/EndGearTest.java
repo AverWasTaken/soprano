@@ -54,7 +54,7 @@ public class EndGearTest {
         f.food = 0;
         EndGear.Gap gap = EndGear.missing(f, new RunState(), cfg, cfg.beds);
         assertEquals(8, gap.beds());
-        assertTrue(gap.sword());
+        assertTrue(gap.weapon());
         assertTrue(gap.waterBucket());
         assertTrue(gap.pickaxe());
         assertEquals(cfg.buildBlocks, gap.buildBlocks());

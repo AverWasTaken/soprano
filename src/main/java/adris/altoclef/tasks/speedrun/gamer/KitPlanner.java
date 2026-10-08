@@ -97,7 +97,7 @@ public final class KitPlanner {
             }
             addLogs(out, f, woodNeed(f, cfg, endBeds, true));
             // every cobble the stone kit eats in one trip, before the first stone craft, so the bot doesn't go back down
-            // for the furnace's cobble after crafting the sword
+            // for the furnace's cobble after crafting the axe
             addCobble(out, f, stoneNeed(f, cfg));
         } else if (!ironStarted(f)) {
             addLogs(out, f, woodNeed(f, cfg, endBeds, false));
@@ -122,8 +122,11 @@ public final class KitPlanner {
         return false;
     }
 
+    // the axe for the logs, not the weapon: stone_axe and iron_axe are in the kit now too (instead of the swords) and they
+    // are crafts like any other. calling them the log axe would have fetched them before the stone pick and skipped their
+    // sticks once the iron phase starts
     private static boolean isAxe(String name) {
-        return name.endsWith("_axe");
+        return name.equals("wooden_axe");
     }
 
     // ore in the bag, raw or cooking: the cave trip has begun and wood is no reason to leave it.
@@ -148,7 +151,8 @@ public final class KitPlanner {
     public static final String COBBLE = "cobblestone";
     // cobble a stray placement can eat before the crafts, so one misplaced block is not a second trip
     private static final int STONE_SLACK = 2;
-    // cobble per item: the tool shapes (pickaxe and axe 3, sword and hoe 2, shovel 1) and the furnace's ring of 8
+    // cobble per item: the tool shapes (pickaxe and axe 3, sword and hoe 2, shovel 1) and the furnace's ring of 8.
+    // the kit makes the axe and not the sword (3 cobble, not 2), so a fresh run mines 19
     private static final Map<String, Integer> COBBLE_COST = Map.of(
             "stone_pickaxe", 3, "stone_axe", 3, "stone_sword", 2, "stone_hoe", 2, "stone_shovel", 1, "furnace", 8);
 
@@ -168,7 +172,7 @@ public final class KitPlanner {
     // the cobble the stone items still missing from the kit will eat, held cobble NOT taken off and no slack. this is what
     // the bag has to keep hold of for the crafts, as opposed to stoneNeed, which is what is left to go and mine. the
     // movements get it as a floor (BotBehaviour.setReserveFloor): a task only reserves the recipe it is on right now (6 for
-    // two picks), the sword and the furnace were up for grabs as scaffolding and the gather came right back for them.
+    // two picks), the axe and the furnace were up for grabs as scaffolding and the gather came right back for them.
     // a furnace of ours standing close by is a furnace we own (8 cobble the kit is not about to spend), same as a placed
     // table is held for the planks. plain cobblestone only, the build blocks the iron phase places on purpose are not in here
     public static int stoneFloor(GamerFacts f, OverworldConfig cfg) {
@@ -408,9 +412,11 @@ public final class KitPlanner {
         return usable;
     }
 
-    // what is left of GATHER once the food is not counted: both stone tools. enough to carry on and let IRON do the food
+    // what is left of GATHER once the food is not counted: both stone tools. enough to carry on and let IRON do the food.
+    // the weapon is whatever swings: the kit makes an axe, but a sword out of a chest is a stone sword too (a better tier
+    // of either counts, have() sees to that)
     public static boolean stoneToolsMet(GamerFacts f) {
-        return have(f, "stone_pickaxe") >= 1 && have(f, "stone_sword") >= 1;
+        return have(f, "stone_pickaxe") >= 1 && (have(f, "stone_axe") >= 1 || have(f, "stone_sword") >= 1);
     }
 
     // armor pieces we carry but are not wearing (best tier we hold per slot), for EquipArmorTask

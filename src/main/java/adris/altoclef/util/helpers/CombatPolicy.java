@@ -349,7 +349,8 @@ public final class CombatPolicy {
 
     // how many mobs we can tank. the shield used to add 20 here, which is how a shielded bot stood in the middle of
     // eight zombies. one extra now, and nothing stands against more than STAND_MAX whatever it is wearing.
-    // damage is the sword's attack damage minus 3 (the tuning is from before the real numbers were used)
+    // damage is the held weapon's attack damage minus 3 (the tuning is from before the real numbers were used). an axe
+    // reads high next to a sword of its tier, which is fine, STAND_MAX is where it stops mattering
     public static int standCapacity(int armor, float damage, boolean hasShield) {
         int base = (int) Math.ceil((armor * 3.6 / 20.0) + (damage * 0.8)) + 1;
         if (hasShield) base++;

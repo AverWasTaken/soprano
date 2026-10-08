@@ -21,7 +21,9 @@ public final class EndGear {
             {Items.NETHERITE_LEGGINGS, Items.DIAMOND_LEGGINGS, Items.IRON_LEGGINGS},
             {Items.NETHERITE_BOOTS, Items.DIAMOND_BOOTS, Items.IRON_BOOTS}
     };
-    private static final Item[] SWORDS = {Items.NETHERITE_SWORD, Items.DIAMOND_SWORD, Items.IRON_SWORD};
+    // iron is the floor here too. axes count, the kit makes an axe and not a sword (it hits harder, see WeaponPick)
+    private static final Item[] WEAPONS = {Items.NETHERITE_SWORD, Items.DIAMOND_SWORD, Items.IRON_SWORD,
+            Items.NETHERITE_AXE, Items.DIAMOND_AXE, Items.IRON_AXE};
     private static final Item[] PICKAXES = {Items.NETHERITE_PICKAXE, Items.DIAMOND_PICKAXE, Items.IRON_PICKAXE};
 
     private EndGear() {
@@ -29,21 +31,22 @@ public final class EndGear {
 
     // beds = how many short of bedsRequired, buildBlocks = how many to collect (target, not the gap) or 0 when fine,
     // armorToWear = pieces we hold of a slot where nothing iron or better is worn
-    public record Gap(int beds, boolean sword, boolean waterBucket, boolean pickaxe, int buildBlocks, boolean food,
+    public record Gap(int beds, boolean weapon, boolean waterBucket, boolean pickaxe, int buildBlocks, boolean food,
                       List<Item> armorToWear) {
         public boolean none() {
-            return beds == 0 && !sword && !waterBucket && !pickaxe && buildBlocks == 0 && !food && armorToWear.isEmpty();
+            return beds == 0 && !weapon && !waterBucket && !pickaxe && buildBlocks == 0 && !food && armorToWear.isEmpty();
         }
     }
 
     // bedsRequired is a parameter because a second attempt goes with what it has (the sword strat needs no wool at all)
+    // (weapon is a sword or an axe, whichever the bot made)
     public static Gap missing(GamerFacts facts, RunState state, EndConfig cfg, int bedsRequired) {
         int bedGap = bedShortfall(facts, state, cfg, bedsRequired, false);
-        boolean sword = !ownedOrDropped(facts, state, cfg, SWORDS);
+        boolean weapon = !ownedOrDropped(facts, state, cfg, WEAPONS);
         boolean bucket = !ownedOrDropped(facts, state, cfg, Items.WATER_BUCKET);
         boolean pickaxe = !ownedOrDropped(facts, state, cfg, PICKAXES);
         int blocks = facts.buildBlocks() < cfg.minBuildBlocks ? cfg.buildBlocks : 0;
-        return new Gap(Math.max(0, bedGap), sword, bucket, pickaxe, blocks, facts.foodUnits() < cfg.minFoodUnits,
+        return new Gap(Math.max(0, bedGap), weapon, bucket, pickaxe, blocks, facts.foodUnits() < cfg.minFoodUnits,
                 armorToWear(facts));
     }
 
@@ -92,7 +95,7 @@ public final class EndGear {
                 return bed;
             }
         }
-        Item tool = missingTool(facts, SWORDS, dropped);
+        Item tool = missingTool(facts, WEAPONS, dropped);
         if (tool == null) {
             tool = missingTool(facts, PICKAXES, dropped);
         }

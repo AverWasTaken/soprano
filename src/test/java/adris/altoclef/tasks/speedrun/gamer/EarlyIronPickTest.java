@@ -38,7 +38,7 @@ public class EarlyIronPickTest {
     // underground with the starter kit and the food, nothing iron yet
     private static FakeFacts mining() {
         FakeFacts f = new FakeFacts();
-        f.give(Items.STONE_PICKAXE, 1).give(Items.STONE_SWORD, 1).give(Items.FURNACE, 1).give(Items.LADDER, 3);
+        f.give(Items.STONE_PICKAXE, 1).give(Items.STONE_AXE, 1).give(Items.FURNACE, 1).give(Items.LADDER, 3);
         f.foodUnits = 70;
         return f;
     }
@@ -54,14 +54,14 @@ public class EarlyIronPickTest {
         List<KitNeed> plan = KitPlanner.plan(f, cfg, BEDS);
         // just the three first, the whole kit's worth right behind it
         assertEquals(new KitNeed("iron_ingot", 3), plan.get(0));
-        assertEquals(new KitNeed("iron_ingot", 39), plan.get(1));
+        assertEquals(new KitNeed("iron_ingot", 40), plan.get(1));
     }
 
     @Test
     public void twoRawIronIsNotEnoughYet() {
         FakeFacts f = mining().give(Items.RAW_IRON, 2);
         assertFalse(due(f));
-        assertEquals(new KitNeed("iron_ingot", 39), KitPlanner.plan(f, cfg, BEDS).get(0));
+        assertEquals(new KitNeed("iron_ingot", 40), KitPlanner.plan(f, cfg, BEDS).get(0));
     }
 
     @Test
@@ -88,15 +88,15 @@ public class EarlyIronPickTest {
     @Test
     public void theEarlyJobsPendingIngotsCountAsHeld() {
         // three cooking: the pickaxe is paid for, the rest of the kit (36) still needs mining, and it is asked for as the
-        // 39 it always was, held and pending ingots come off it (KitPlanner.iron), so the planner does not double plan
+        // 40 it always was, held and pending ingots come off it (KitPlanner.iron), so the planner does not double plan
         FakeFacts f = mining().cooking("iron_ingot", 3, 30);
         assertEquals(3, f.pendingOutput(Items.IRON_INGOT));
         List<KitNeed> plan = KitPlanner.plan(f, cfg, BEDS);
-        assertEquals(new KitNeed("iron_ingot", 39), plan.get(0));
+        assertEquals(new KitNeed("iron_ingot", 40), plan.get(0));
         assertEquals(1, plan.stream().filter(n -> n.catalogueName().equals("iron_ingot")).count());
-        // and with the whole 39 cooking there is nothing left to mine
+        // and with the whole 40 cooking there is nothing left to mine
         assertNull(plan.stream().filter(n -> n.catalogueName().equals("iron_ingot") && n.count() == 3).findFirst().orElse(null));
-        assertFalse(names(KitPlanner.plan(mining().cooking("iron_ingot", 39, 400), cfg, BEDS)).contains("iron_ingot"));
+        assertFalse(names(KitPlanner.plan(mining().cooking("iron_ingot", 40, 400), cfg, BEDS)).contains("iron_ingot"));
     }
 
     @Test
@@ -115,9 +115,9 @@ public class EarlyIronPickTest {
 
     @Test
     public void allTheOreAlreadyMinedIsOneBigSmeltNotTwo() {
-        FakeFacts f = mining().give(Items.RAW_IRON, 39);
+        FakeFacts f = mining().give(Items.RAW_IRON, 40);
         assertFalse(due(f));
-        assertEquals(new KitNeed("iron_ingot", 39), KitPlanner.plan(f, cfg, BEDS).get(0));
+        assertEquals(new KitNeed("iron_ingot", 40), KitPlanner.plan(f, cfg, BEDS).get(0));
     }
 
     @Test
@@ -125,7 +125,7 @@ public class EarlyIronPickTest {
         FakeFacts f = mining().give(Items.RAW_IRON, 3);
         f.earlyIronPick = false;
         assertFalse(due(f));
-        assertEquals(new KitNeed("iron_ingot", 39), KitPlanner.plan(f, cfg, BEDS).get(0));
+        assertEquals(new KitNeed("iron_ingot", 40), KitPlanner.plan(f, cfg, BEDS).get(0));
         f.give(Items.IRON_INGOT, 3);
         assertFalse(EarlyIronPick.craftFirst(f, cfg));
         assertEquals("iron_ingot", KitPlanner.plan(f, cfg, BEDS).get(0).catalogueName());
@@ -142,7 +142,7 @@ public class EarlyIronPickTest {
         FakeFacts f = mining().give(Items.RAW_IRON, 3);
         assertTrue(EarlyIronPick.isEarlyBatch(new KitNeed("iron_ingot", 3), f, cfg));
         // the big batch keeps the go up first rule
-        assertFalse(EarlyIronPick.isEarlyBatch(new KitNeed("iron_ingot", 39), f, cfg));
+        assertFalse(EarlyIronPick.isEarlyBatch(new KitNeed("iron_ingot", 40), f, cfg));
         assertFalse(EarlyIronPick.isEarlyBatch(new KitNeed("iron_pickaxe", 1), f, cfg));
         assertFalse(EarlyIronPick.isEarlyBatch(null, f, cfg));
         // only the pickaxe left to pay for: the ore is all in, that is the big batch
@@ -152,7 +152,7 @@ public class EarlyIronPickTest {
     // everything except the iron pickaxe
     private FakeFacts complete() {
         FakeFacts full = mining();
-        for (Item i : new Item[]{Items.IRON_SWORD, Items.FLINT_AND_STEEL, Items.SHIELD, Items.SHEARS,
+        for (Item i : new Item[]{Items.IRON_AXE, Items.FLINT_AND_STEEL, Items.SHIELD, Items.SHEARS,
                 Items.IRON_CHESTPLATE, Items.IRON_HELMET, Items.IRON_LEGGINGS, Items.IRON_BOOTS}) {
             full.give(i, 1);
         }
@@ -204,7 +204,7 @@ public class EarlyIronPickTest {
     }
 
     // the 16:08 run: the first raw iron went into the furnace, the bag stopped showing three, the early need vanished and the
-    // 39 need took the head (and then pulled the ore out of the furnace again)
+    // 40 need took the head (and then pulled the ore out of the furnace again)
     @Test
     public void aLoadInFlightKeepsTheEarlyNeedWithTheOreOutOfTheBag() {
         FakeFacts f = mining();
@@ -212,13 +212,13 @@ public class EarlyIronPickTest {
         assertTrue(due(f));
         List<KitNeed> plan = KitPlanner.plan(f, cfg, BEDS);
         assertEquals(new KitNeed("iron_ingot", 3), plan.get(0));
-        assertEquals(new KitNeed("iron_ingot", 39), plan.get(1));
+        assertEquals(new KitNeed("iron_ingot", 40), plan.get(1));
         // even with a single ore still in the bag (the move goes one at a time)
         f.give(Items.RAW_IRON, 1);
         assertEquals(new KitNeed("iron_ingot", 3), KitPlanner.plan(f, cfg, BEDS).get(0));
         // and the same bag without the flag is the old plan
         FakeFacts without = mining().give(Items.RAW_IRON, 1);
-        assertEquals(new KitNeed("iron_ingot", 39), KitPlanner.plan(without, cfg, BEDS).get(0));
+        assertEquals(new KitNeed("iron_ingot", 40), KitPlanner.plan(without, cfg, BEDS).get(0));
     }
 
     @Test
@@ -243,7 +243,7 @@ public class EarlyIronPickTest {
         FakeFacts f = mining();
         f.earlyLoad = true;
         assertTrue(EarlyIronPick.isEarlyBatch(new KitNeed("iron_ingot", 3), f, cfg));
-        assertFalse(EarlyIronPick.isEarlyBatch(new KitNeed("iron_ingot", 39), f, cfg));
+        assertFalse(EarlyIronPick.isEarlyBatch(new KitNeed("iron_ingot", 40), f, cfg));
     }
 
     @Test

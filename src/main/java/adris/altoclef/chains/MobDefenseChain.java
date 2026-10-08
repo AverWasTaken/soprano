@@ -3,6 +3,7 @@ package adris.altoclef.chains;
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.control.KillAura;
+import adris.altoclef.tasks.entity.AbstractKillEntityTask;
 import adris.altoclef.tasks.entity.KillEntitiesTask;
 import adris.altoclef.tasks.movement.CustomBaritoneGoalTask;
 import adris.altoclef.tasks.movement.DodgeProjectilesTask;
@@ -59,6 +60,7 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.BaseFireBlock;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.phys.Vec3;
+
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.ConcurrentModificationException;
@@ -77,8 +79,6 @@ public class MobDefenseChain extends SingleTaskChain {
     private static final double ARROW_KEEP_DISTANCE_HORIZONTAL = 2;//4;
     private static final double ARROW_KEEP_DISTANCE_VERTICAL = 10;//15;
     private static final double SAFE_KEEP_DISTANCE = 8;
-    private static final Item[] SWORDS = new Item[]{Items.NETHERITE_SWORD, Items.DIAMOND_SWORD, Items.IRON_SWORD, Items.GOLDEN_SWORD,
-            Items.STONE_SWORD, Items.WOODEN_SWORD};
     private static boolean _shielding = false;
     private final DragonBreathTracker _dragonBreathTracker = new DragonBreathTracker();
     private final KillAura _killAura = new KillAura();
@@ -372,14 +372,9 @@ public class MobDefenseChain extends SingleTaskChain {
 
         if (Baritone.settings().altoKillOrAvoidAnnoyingHostiles.value) {
             // Deal with hostiles because they are annoying.
-            // pick by real attack damage, not by list order (the old loop kept overwriting and ended on the worst sword owned)
-            List<Item> ownedSwords = new ArrayList<>();
-            for (Item item : SWORDS) {
-                if (mod.getItemStorage().hasItem(item)) {
-                    ownedSwords.add(item);
-                }
-            }
-            Item bestSword = ItemHelper.getBestSword(ownedSwords);
+            // the weapon we would swing, the same pick the kill tasks make (swords and axes, worn ones last). the kit makes
+            // axes now, and a sword only list called a bot with an iron axe unarmed
+            Item bestWeapon = AbstractKillEntityTask.bestWeapon(mod);
 
             // who is a problem was settled in snapshot(): angry, in the engage zone, able to hurt us, not excluded by a
             // task that is fighting it itself, and not just somebody we are walking past
@@ -447,7 +442,7 @@ public class MobDefenseChain extends SingleTaskChain {
                 // full netherite has 12 bonus toughness
                 int armor = mod.getPlayer().getArmorValue();
                 // the formula below was tuned on "1 + tier bonus" (wood 1 ... netherite 5), real damage is 3 higher than that
-                float damage = bestSword == null ? 0 : (ItemHelper.getAttackDamage(bestSword) - 3);
+                float damage = bestWeapon == null ? 0 : (ItemHelper.getAttackDamage(bestWeapon) - 3);
                 // (the shield used to be +20 here, which made a shielded bot stand in the middle of any crowd)
                 int canDealWith = CombatPolicy.standCapacity(armor, damage, hasShield);
                 // a crowd we could not run from (or were told to stand against) is fought whatever the gear says, running

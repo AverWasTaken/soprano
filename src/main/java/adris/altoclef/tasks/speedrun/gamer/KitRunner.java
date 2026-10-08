@@ -132,7 +132,7 @@ public final class KitRunner {
             case "iron_ingot" -> f.pendingOutput(Items.IRON_INGOT) > 0 ? "Mining more iron"
                     : f.has(Items.RAW_IRON) ? "Smelting iron" : "Looking for iron";
             case "wool" -> f.has(Items.SHEARS) ? "Shearing sheep" : "Collecting wool";
-            case "stone_pickaxe", "stone_sword" -> KitPlanner.have(f, "stone_pickaxe") > 0 || f.has(Items.WOODEN_PICKAXE) ? "Mining stone" : "Chopping wood";
+            case "stone_pickaxe", "stone_axe", "stone_sword" -> KitPlanner.have(f, "stone_pickaxe") > 0 || f.has(Items.WOODEN_PICKAXE) ? "Mining stone" : "Chopping wood";
             case "furnace" -> "Making a furnace";
             case "flint" -> "Looking for flint";
             case "planks" -> "Making planks";

@@ -128,7 +128,7 @@ public class GamerTask extends Task {
         Item[] own = {
                 Items.ENDER_EYE, Items.ENDER_PEARL, Items.BLAZE_ROD, Items.BLAZE_POWDER, Items.BUCKET, Items.WATER_BUCKET,
                 Items.LAVA_BUCKET, Items.FLINT_AND_STEEL, Items.CRAFTING_TABLE, Items.OBSIDIAN, Items.SHIELD,
-                Items.IRON_PICKAXE, Items.DIAMOND_PICKAXE, Items.IRON_SWORD, Items.DIAMOND_SWORD,
+                Items.IRON_PICKAXE, Items.DIAMOND_PICKAXE, Items.IRON_SWORD, Items.DIAMOND_SWORD, Items.IRON_AXE, Items.DIAMOND_AXE,
                 Items.IRON_INGOT, Items.RAW_IRON, Items.GOLD_INGOT, Items.DIAMOND, Items.COAL, Items.CHARCOAL, Items.FLINT,
                 Items.SHEARS, Items.CARVED_PUMPKIN, Items.GOLDEN_BOOTS, Items.GOLDEN_HELMET, Items.GOLD_BLOCK, Items.GOLD_NUGGET,
                 Items.RAW_GOLD, Items.LADDER};

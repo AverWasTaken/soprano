@@ -187,11 +187,11 @@ public class EndPrepPhase implements PhaseHandler {
         return mod.getBlockTracker().getNearestTracking(Blocks.END_PORTAL).orElse(null);
     }
 
-    // sword, bucket, pickaxe, blocks, armor, food. null = all there
+    // weapon, bucket, pickaxe, blocks, armor, food. null = all there
     private Task gearStep(AltoClef mod, GamerContext ctx, EndConfig cfg, EndGear.Gap gap) {
-        if (gap.sword()) {
-            _hudState = "Getting a sword";
-            return catalogueItem(Items.IRON_SWORD);
+        if (gap.weapon()) {
+            _hudState = "Getting an axe";
+            return catalogueItem(Items.IRON_AXE);
         }
         if (gap.waterBucket()) {
             _hudState = "Getting a water bucket";
