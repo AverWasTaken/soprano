@@ -6,7 +6,7 @@ A fork of [Baritone](https://github.com/cabaletta/baritone), the Minecraft pathf
 [![Build](https://github.com/AverWasTaken/soprano/actions/workflows/gradle_build.yml/badge.svg)](https://github.com/AverWasTaken/soprano/actions/workflows/gradle_build.yml)
 [![License](https://img.shields.io/badge/license-LGPL--3.0-green.svg)](LICENSE)
 
-[Install](#install) · [What's new](#what-soprano-adds) · [Usage](USAGE.md) · [Features](FEATURES.md) · [Building](SETUP.md) · [Contributing](CONTRIBUTING.md)
+[Install](#install) · [What's new](CHANGES.md) · [Usage](USAGE.md) · [Features](FEATURES.md) · [Building](SETUP.md) · [Contributing](CONTRIBUTING.md)
 
 Soprano keeps everything Baritone does: `#goto`, `#mine`, `#build`, `#farm`, `#elytra`, the lot. On top of that it adds jumps and movement Baritone doesn't have, like neo jumps, ladder and vine jumps, and long fall clutches.
 
@@ -14,21 +14,7 @@ The `baritone.api` packages are unchanged, so mods built on Baritone's API keep 
 
 The new features are new, so expect rough edges. Bug reports and feedback are welcome.
 
-## What Soprano adds
-
-Everything below is off by default unless it says otherwise. Turn things on in game with `#set <setting> true`, for example `#set allowNeos true`.
-
-- **Neo jumps** (`allowNeos`). Jump around the end of a wall that's 1 or 2 blocks thick and land 2 to 4 blocks out. It runs up first, and bunny hops on the run up if the jump needs the speed. The path is drawn bending around the wall.
-- **Momentum jumps** (`allowMomentumJumps`). Jumps a standing start can't make, using a run up and bunny hops: a 4 block gap on the flat, or one up across a gap of 3 (both want 3 or more blocks of run up behind you), drops of 1 to 3 blocks that reach 5 or 6 blocks out, and a few pairs of jumps through a one block pad. Needs `allowParkour`, which `experimentalMovement` turns on for you.
-- **Ladder and vine jumps** (`allowClimbJumps`). Catch a ladder or vine mid air across a gap of 1 to 3 blocks, or leap off one onto a ledge or another ladder.
-- **Ladder clutches** (`allowLadderClutch`). Survive a long fall by placing a vine or ladder next to where you land, like a water bucket clutch. You need one on your hotbar. `pickupLadders` (on by default) picks the ladder back up afterwards.
-- **Experimental movement** (`experimentalMovement`). Moves more like a speedrunner and less like a robot. It turns on all the parkour, sprint jumping and head hitters, takes falls that cost some health when that saves time (it stays above `experimentalMinHealth`), cuts corners, smooths out straight runs, places blocks more freely, and leans toward jumps.
-- **Boats** (`allowBoats`) and better swimming (`allowSwimming`).
-- **Path rendering.** The path is a smooth antialiased ribbon with rounded corners, and the search visual is softer.
-- **Pathfinder performance.** More movements per second, and the cache buffers get reused instead of reallocated.
-- **Chat prefix.** Messages say `[Soprano]`.
-
-[USAGE.md](USAGE.md) lists the settings that go with these. [FEATURES.md](FEATURES.md) has the full list of what the pathfinder can do.
+[CHANGES.md](CHANGES.md) has everything Soprano adds on top of Baritone.
 
 ## Install
 
