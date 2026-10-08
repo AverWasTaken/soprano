@@ -101,4 +101,26 @@ public class CraftMathTest {
         List<List<String>> one = Collections.singletonList(Collections.singletonList("x"));
         assertEquals(Integer.MAX_VALUE, crafts(one, inv("x", Integer.MAX_VALUE), Integer.MAX_VALUE));
     }
+
+    @Test
+    public void oneLogForTwoPlanksQuickMoves() {
+        // 1 log in the grid makes 4 planks and we wanted 2: one craft either way, no reason to park 4 planks on the cursor
+        assertEquals(true, CraftMath.quickMoveCraftsNoExtra(2, 4, 1));
+    }
+
+    @Test
+    public void severalCraftsInTheGridWantingFewerGoesThroughTheCursor() {
+        // 3 logs in the grid and we want 2 planks: a quick move would craft all 12 and eat logs somebody else wanted
+        assertEquals(false, CraftMath.quickMoveCraftsNoExtra(2, 12, 3));
+    }
+
+    @Test
+    public void wantingAllOfItQuickMoves() {
+        assertEquals(true, CraftMath.quickMoveCraftsNoExtra(12, 12, 3));
+    }
+
+    @Test
+    public void wantingNothingMoreNeverQuickMoves() {
+        assertEquals(false, CraftMath.quickMoveCraftsNoExtra(0, 4, 1));
+    }
 }

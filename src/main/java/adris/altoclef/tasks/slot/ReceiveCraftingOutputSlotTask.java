@@ -3,6 +3,7 @@ package adris.altoclef.tasks.slot;
 import adris.altoclef.AltoClef;
 import adris.altoclef.tasksystem.ITaskUsesCraftingGrid;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.util.helpers.CraftMath;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.slots.CraftingTableSlot;
 import adris.altoclef.util.slots.PlayerSlot;
@@ -118,9 +119,10 @@ public class ReceiveCraftingOutputSlotTask extends Task implements ITaskUsesCraf
             setDebugState("Waiting for the click to land");
             return null;
         }
-        int craftCount = inOutput.getCount() * getCraftMultipleCount(mod);
+        int multiples = getCraftMultipleCount(mod);
+        int craftCount = inOutput.getCount() * multiples;
         int weWantToAddToInventory = _toTake - mod.getItemStorage().getItemCountInventoryOnly(inOutput.getItem());
-        boolean takeAll = weWantToAddToInventory >= craftCount;
+        boolean takeAll = CraftMath.quickMoveCraftsNoExtra(weWantToAddToInventory, craftCount, multiples);
         // no room for the whole multiple means the quick move would stop halfway, so go through the cursor instead
         if (takeAll && inventoryRoomFor(mod, inOutput) >= craftCount) {
             setDebugState("Quick moving output");
