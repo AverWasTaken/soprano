@@ -8,6 +8,7 @@ import java.util.Set;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Options;
+import net.minecraft.world.phys.EntityHitResult;
 
 /**
  * Sometimes we want to trigger a "press" for one frame, or do other input forcing.
@@ -53,6 +54,11 @@ public class InputControls {
     }
 
     public void hold(Input input) {
+        // the only way a block click turns into a swing at a mob. tryPress is left alone, the dragon task wants its hits
+        if (input == Input.CLICK_LEFT && !ClickGuard.allowLeftHold(Minecraft.getInstance().hitResult instanceof EntityHitResult)) {
+            inputToKeyBinding(input).setDown(false);
+            return;
+        }
         if (!inputToKeyBinding(input).isDown()) {
             KeyMapping.click(inputToKeyBinding(input).getDefaultKey());
         }
