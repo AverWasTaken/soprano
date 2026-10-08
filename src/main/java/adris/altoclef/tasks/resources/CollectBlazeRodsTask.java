@@ -41,6 +41,12 @@ public class CollectBlazeRodsTask extends ResourceTask {
         return _camping;
     }
 
+    // the spawner this task is working on right now, null while it is still looking. the gamer blacklists this one when
+    // it gives up, not whatever the tracker would call nearest
+    public BlockPos currentSpawner() {
+        return _foundBlazeSpawner;
+    }
+
     @Override
     protected void onResourceStart(AltoClef mod) {
         mod.getBlockTracker().trackBlock(Blocks.SPAWNER);
@@ -106,8 +112,10 @@ public class CollectBlazeRodsTask extends ResourceTask {
         }
         // Search for blaze
         if (mod.getBlockTracker().isTracking(Blocks.SPAWNER)) {
-            Optional<BlockPos> spawner = mod.getBlockTracker().getNearestTracking(Blocks.SPAWNER);
-            if (spawner.isPresent() && isValidBlazeSpawner(mod, spawner.get())) {
+            // nearest one we can actually look at: asking for the single nearest and then throwing it out for being in an
+            // unloaded chunk meant a perfectly good loaded spawner one tile further never got a look
+            Optional<BlockPos> spawner = mod.getBlockTracker().getNearestTracking(p -> isValidBlazeSpawner(mod, p), Blocks.SPAWNER);
+            if (spawner.isPresent()) {
                 _foundBlazeSpawner = spawner.get();
             }
         }

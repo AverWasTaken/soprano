@@ -18,6 +18,8 @@ import net.minecraft.core.Vec3i;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
 
+import java.util.List;
+
 /**
  * Places obsidian at a position using buckets and a cast.
  */
@@ -37,12 +39,19 @@ public class PlaceObsidianBucketTask extends Task {
     };
     private final MovementProgressChecker _progressChecker = new MovementProgressChecker();
     private final BlockPos _pos;
+    // cells cast before this one, whose water may still be sitting on top of them
+    private final List<BlockPos> _earlierCells;
 
     private BlockPos _currentCastTarget;
     private BlockPos _currentDestroyTarget;
 
     public PlaceObsidianBucketTask(BlockPos pos) {
+        this(pos, List.of());
+    }
+
+    public PlaceObsidianBucketTask(BlockPos pos, List<BlockPos> earlierCells) {
         _pos = pos;
+        _earlierCells = earlierCells;
     }
 
     @Override
@@ -87,7 +96,16 @@ public class PlaceObsidianBucketTask extends Task {
         }
 
         // Make sure we have a water bucket
-        if (!mod.getItemStorage().hasItem(Items.WATER_BUCKET)) {
+        // the cast in flight (lava down, water on top, bucket empty) is supposed to have no water bucket, the obsidian
+        // is a tick away. asking for one here sent us wandering for a lake with the water sitting right above us
+        boolean castInFlight = isWater(mod, _pos.above()) && mod.getWorld().getBlockState(_pos).getBlock() == Blocks.LAVA;
+        if (!mod.getItemStorage().hasItem(Items.WATER_BUCKET) && !castInFlight) {
+            // the water we left on the cells before this one is a bucket we already own
+            BlockPos leftover = leftoverWater(mod);
+            if (leftover != null) {
+                _progressChecker.reset();
+                return new ClearLiquidTask(leftover);
+            }
             _progressChecker.reset();
             return TaskCatalogue.getItemTask(Items.WATER_BUCKET, 1);
         }
@@ -189,6 +207,26 @@ public class PlaceObsidianBucketTask extends Task {
                 return null;
             }
             return new InteractWithBlockTask(new ItemTarget(Items.WATER_BUCKET, 1), Direction.WEST, _pos.offset(1, 1, 0), true);
+        }
+        return null;
+    }
+
+    private static boolean isWater(AltoClef mod, BlockPos pos) {
+        return mod.getWorld().getBlockState(pos).getBlock() == Blocks.WATER;
+    }
+
+    // the world, not the tracker: the tracker is a few ticks behind a cast and this runs right after one
+    private BlockPos leftoverWater(AltoClef mod) {
+        if (mod.getWorld().getBlockState(_pos).getBlock() == Blocks.OBSIDIAN && WorldHelper.isSourceBlock(mod, _pos.above(), true)) {
+            return _pos.above();
+        }
+        for (BlockPos cell : _earlierCells) {
+            if (cell.equals(_pos) || mod.getWorld().getBlockState(cell).getBlock() != Blocks.OBSIDIAN) {
+                continue;
+            }
+            if (WorldHelper.isSourceBlock(mod, cell.above(), true)) {
+                return cell.above();
+            }
         }
         return null;
     }

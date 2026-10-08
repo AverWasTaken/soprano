@@ -278,6 +278,39 @@ public class NetherSweepPlannerTest {
     }
 
     @Test
+    public void givingUpOnASpawnerOnlyForgetsThatFortress() {
+        planner.report(Sight.FORTRESS, pos(150, 40));
+        planner.report(Sight.FORTRESS, pos(2000, 40));
+        assertEquals(2, state.fortress.size());
+        state.spawner = new RunState.Pos(160, 50, 40);
+        planner.giveUpFortress(state.spawner);
+        // the far one is still known and is the next stop
+        assertEquals(List.of(pos(2000, 40)), state.fortress);
+        assertEquals(List.of(pos(150, 40)), state.fortressExhausted);
+        assertNull(state.spawner);
+        // the dud one still does not come back
+        assertFalse(planner.report(Sight.FORTRESS, pos(150, 40)));
+    }
+
+    @Test
+    public void aSpawnerFarFromEverySightingStillCostsTheClosestFortress() {
+        planner.report(Sight.FORTRESS, pos(150, 40));
+        planner.report(Sight.FORTRESS, pos(2000, 40));
+        planner.giveUpFortress(new RunState.Pos(600, 50, 40));
+        assertEquals(List.of(pos(2000, 40)), state.fortress);
+        assertEquals(List.of(pos(150, 40)), state.fortressExhausted);
+    }
+
+    @Test
+    public void givingUpWithNoSpawnerPositionForgetsEveryFortress() {
+        planner.report(Sight.FORTRESS, pos(150, 40));
+        planner.report(Sight.FORTRESS, pos(2000, 40));
+        planner.giveUpFortress(null);
+        assertTrue(state.fortress.isEmpty());
+        assertEquals(2, state.fortressExhausted.size());
+    }
+
+    @Test
     public void whatItRecordedSurvivesAJsonRoundTrip() {
         planner.report(Sight.FORTRESS, pos(150, 40));
         planner.report(Sight.BASTION, pos(-700, 10));

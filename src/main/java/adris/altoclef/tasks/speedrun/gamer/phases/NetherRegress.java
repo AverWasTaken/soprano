@@ -25,6 +25,23 @@ final class NetherRegress {
         return Optional.empty();
     }
 
+    // the portal phase starts in the overworld on purpose, so it cannot ask for the whole kit back (an iron phase that
+    // skipped itself on a timeout leaves armor short and the fire charge is used up by the very portal it lit). the
+    // pickaxe is the one thing a naked respawn can be told apart by, and an iron phase never ends without it
+    static Optional<GamerPhase> pickaxeLost(GamerFacts f) {
+        if (f.dimension() != Dimension.OVERWORLD) {
+            return Optional.empty();
+        }
+        // held() counts a worn out pick too: wearing one down during the prep is not a death
+        if (KitPlanner.have(f, "stone_pickaxe") + KitPlanner.held(f, "stone_pickaxe") < 1) {
+            return Optional.of(GamerPhase.GATHER);
+        }
+        if (KitPlanner.have(f, "iron_pickaxe") + KitPlanner.held(f, "iron_pickaxe") < 1) {
+            return Optional.of(GamerPhase.IRON);
+        }
+        return Optional.empty();
+    }
+
     // only the full iron plan has a number to hold it to, a lighter plan chose its own armor
     private static boolean armorShort(GamerFacts f, GamerConfig cfg) {
         return cfg.overworld.armorPlan == OverworldConfig.ArmorPlan.FULL_IRON && f.armorPoints() < cfg.end.bedMinArmor;

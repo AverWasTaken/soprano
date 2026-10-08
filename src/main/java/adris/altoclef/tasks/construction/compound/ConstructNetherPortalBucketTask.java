@@ -14,6 +14,7 @@ import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
 import adris.altoclef.util.time.TimerGame;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import net.minecraft.client.Minecraft;
@@ -253,10 +254,13 @@ public class ConstructNetherPortalBucketTask extends Task {
             }
 
             // We need to place obsidian here.
+            // the cells before this one may still have their cast water on top, that is our water bucket. asked before the
+            // origin can go null just below
+            List<BlockPos> cells = frameCells();
             if (mod.getBlockTracker().unreachable(framePos)) {
                 _portalOrigin = null;
             }
-            return new PlaceObsidianBucketTask(framePos);
+            return new PlaceObsidianBucketTask(framePos, cells);
         }
 
         // Now, clear the inside.
@@ -295,6 +299,14 @@ public class ConstructNetherPortalBucketTask extends Task {
     @Override
     protected String toDebugString() {
         return "Construct Nether Portal";
+    }
+
+    private List<BlockPos> frameCells() {
+        List<BlockPos> out = new ArrayList<>();
+        for (Vec3i framePosRelative : PORTAL_FRAME) {
+            out.add(_portalOrigin.offset(framePosRelative));
+        }
+        return out;
     }
 
     private BlockPos findLavaLake(AltoClef mod, BlockPos playerPos) {

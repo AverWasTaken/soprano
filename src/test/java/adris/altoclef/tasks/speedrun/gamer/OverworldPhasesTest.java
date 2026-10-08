@@ -154,8 +154,19 @@ public class OverworldPhasesTest {
     public void portalTimesOutOnceIntoObsidianThenStops() {
         PortalPhase portal = new PortalPhase();
         StubContext ctx = new StubContext();
+        ctx.facts.give(Items.DIAMOND_PICKAXE, 1);
         assertEquals(Timeout.RETRY, portal.onTimeout(ctx, 1, "stalled"));
         assertEquals("OBSIDIAN", ctx.state.portalMethod);
+        assertEquals(Timeout.STUCK, portal.onTimeout(ctx, 2, "stalled"));
+    }
+
+    // obsidian is mined with a diamond pickaxe, without one the retry casts again instead of picking a way that cannot work
+    @Test
+    public void portalTimeoutWithoutADiamondPickaxeRetriesTheCast() {
+        PortalPhase portal = new PortalPhase();
+        StubContext ctx = new StubContext();
+        assertEquals(Timeout.RETRY, portal.onTimeout(ctx, 1, "stalled"));
+        assertEquals("CAST", ctx.state.portalMethod);
         assertEquals(Timeout.STUCK, portal.onTimeout(ctx, 2, "stalled"));
     }
 

@@ -4,6 +4,7 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.tasks.misc.EquipArmorTask;
 import adris.altoclef.tasks.movement.DefaultGoToDimensionTask;
 import adris.altoclef.tasks.movement.GetToBlockTask;
+import adris.altoclef.tasks.movement.GetToXZTask;
 import adris.altoclef.tasks.movement.RunAwayFromPositionTask;
 import adris.altoclef.tasks.resources.CollectBlazeRodsTask;
 import adris.altoclef.tasks.resources.TradeWithPiglinsTask;
@@ -20,6 +21,7 @@ import adris.altoclef.tasks.speedrun.gamer.config.NetherConfig;
 import adris.altoclef.tasks.speedrun.gamer.tasks.CampPinger;
 import adris.altoclef.tasks.speedrun.gamer.tasks.FindNetherStructureTask;
 import adris.altoclef.tasks.speedrun.gamer.tasks.GhastWatch;
+import adris.altoclef.tasks.speedrun.gamer.tasks.HoldLatch;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NetherSweepPlanner;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NetherSweepPlanner.Goal;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NetherSweepPlanner.Sight;
@@ -41,6 +43,7 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.List;
 import java.util.Optional;
@@ -63,6 +66,11 @@ public class NetherPhase implements PhaseHandler {
     private static final double CAMP_PING_SECONDS = 30;
     // close enough to the remembered overworld portal that the tracker can see it and the default task takes over
     private static final double PORTAL_NEAR_BLOCKS = 8;
+    // an enderman that ducked out of view still counts for this long, so the pearl step does not flip every other tick
+    private static final double ENDERMAN_HOLD_SECONDS = 6;
+    // a known fortress further than this from us is worth a walk before the rods task starts wandering for bricks
+    private static final double FORTRESS_NEAR_BLOCKS = 48;
+    private static final double FORTRESS_WALK_SECONDS = 150;
     private static final double FLEE_SECONDS = 10;
     private static final int FLEE_BLOCKS = 48;
 
@@ -70,6 +78,11 @@ public class NetherPhase implements PhaseHandler {
     private RodsWatch rodsWatch;
     private CampPinger campPinger;
     private GhastWatch ghastWatch;
+    private HoldLatch endermanLatch;
+    private GetToXZTask walkToFortress;
+    private RunState.Pos fortressWalkTo;
+    private double fortressWalkSince;
+    private RunState.Pos fortressWalkGivenUp;
     private FindNetherStructureTask findFortress;
     private FindNetherStructureTask findWarped;
     private CollectBlazeRodsTask rodsTask;
@@ -79,6 +92,9 @@ public class NetherPhase implements PhaseHandler {
     private Task goNether;
     private GetToBlockTask walkToPortal;
     private RunState.Pos walkingTo;
+    // the portal we remembered is not there any more: stop walking back to it and let the default task build
+    private boolean homePortalGone;
+    private boolean portalTracking;
     private Task boots;
     private TradeWithPiglinsTask trade;
     private int tradeTarget;
@@ -153,11 +169,16 @@ public class NetherPhase implements PhaseHandler {
         rodsWatch = new RodsWatch(n.spawnerCampMinutes * 60, n.rodsBudgetMinutes * 60);
         campPinger = new CampPinger(CAMP_PING_SECONDS);
         ghastWatch = new GhastWatch(2, n.ghastWindowSeconds);
+        endermanLatch = new HoldLatch(ENDERMAN_HOLD_SECONDS);
+        walkToFortress = null;
+        fortressWalkTo = null;
+        fortressWalkGivenUp = null;
         findFortress = new FindNetherStructureTask(planner, Goal.FORTRESS, ctx::secondsInPhase);
         findWarped = new FindNetherStructureTask(planner, Goal.WARPED, ctx::secondsInPhase);
         goNether = new DefaultGoToDimensionTask(Dimension.NETHER);
         walkToPortal = null;
         walkingTo = null;
+        homePortalGone = false;
         rodsTask = null;
         hunt = null;
         trade = null;
@@ -180,6 +201,7 @@ public class NetherPhase implements PhaseHandler {
 
     @Override
     public void onExit(AltoClef mod, GamerContext ctx) {
+        stopPortalTracking(mod);
         if (tracking) {
             mod.getBlockTracker().stopTracking(TRACKED);
             tracking = false;
@@ -194,6 +216,7 @@ public class NetherPhase implements PhaseHandler {
         if (ctx.facts().dimension() != Dimension.NETHER) {
             return toTheNether(mod, ctx.state());
         }
+        stopPortalTracking(mod);
         ensureTracking(mod);
         ReturnPhase.recordPortal(mod, ctx.state());
         double now = ctx.secondsInPhase();
@@ -211,24 +234,52 @@ public class NetherPhase implements PhaseHandler {
     // only knows portals the block tracker has loaded and otherwise builds a brand new one, a thousand blocks from here
     private Task toTheNether(AltoClef mod, RunState state) {
         RunState.Pos home = state.overworldPortal;
-        if (home != null && !portalInView(mod)) {
-            BlockPos at = new BlockPos(home.x, home.y, home.z);
-            if (!at.closerToCenterThan(mod.getPlayer().position(), PORTAL_NEAR_BLOCKS)) {
-                if (!home.equals(walkingTo)) {
-                    walkingTo = home;
-                    walkToPortal = new GetToBlockTask(at);
+        if (home != null && !homePortalGone) {
+            // nothing else tracks portals while we walk, and "no portal near" means nothing if nobody is looking
+            if (!portalTracking) {
+                mod.getBlockTracker().trackBlock(Blocks.NETHER_PORTAL);
+                portalTracking = true;
+            }
+            if (!portalNear(mod)) {
+                BlockPos at = new BlockPos(home.x, home.y, home.z);
+                if (!at.closerToCenterThan(mod.getPlayer().position(), PORTAL_NEAR_BLOCKS)) {
+                    if (!home.equals(walkingTo)) {
+                        walkingTo = home;
+                        walkToPortal = new GetToBlockTask(at);
+                    }
+                    hudState = "Walking back to the portal";
+                    return walkToPortal;
                 }
-                hudState = "Walking back to the portal";
-                return walkToPortal;
+                // standing where it should be and a scan has looked: it is gone (a ghast, a relog), so the walk back must
+                // not drag us home again every time the default task wanders off to build a new one
+                if (mod.getBlockTracker().hasBeenScanned(Blocks.NETHER_PORTAL)) {
+                    homePortalGone = true;
+                } else {
+                    hudState = "Looking for the portal";
+                    return walkToPortal;
+                }
             }
         }
         hudState = "Heading to the Nether";
         return goNether;
     }
 
-    private static boolean portalInView(AltoClef mod) {
-        return mod.getMiscBlockTracker().getLastUsedNetherPortal(Dimension.OVERWORLD).isPresent()
-                || mod.getBlockTracker().anyFound(Blocks.NETHER_PORTAL);
+    // a portal really within reach, not just "we used one once": the tracker remembers the last used portal for good, which
+    // made the walk back skip itself on every trip after the first and the default task build a new portal on the spot
+    private static boolean portalNear(AltoClef mod) {
+        if (!mod.getBlockTracker().isTracking(Blocks.NETHER_PORTAL)) {
+            return false;
+        }
+        Vec3 me = mod.getPlayer().position();
+        return mod.getBlockTracker().getNearestTracking(me, Blocks.NETHER_PORTAL)
+                .filter(p -> p.closerToCenterThan(me, PORTAL_NEAR_BLOCKS)).isPresent();
+    }
+
+    private void stopPortalTracking(AltoClef mod) {
+        if (portalTracking) {
+            mod.getBlockTracker().stopTracking(Blocks.NETHER_PORTAL);
+            portalTracking = false;
+        }
     }
 
     private void ensureTracking(AltoClef mod) {
@@ -310,9 +361,14 @@ public class NetherPhase implements PhaseHandler {
             rodsTaskTarget = rodsNeed;
         }
         boolean camping = rodsTask.isCampingSpawner();
-        if (camping && s.spawner == null) {
-            mod.getBlockTracker().getNearestTracking(Blocks.SPAWNER)
-                    .ifPresent(p -> s.spawner = new RunState.Pos(p.getX(), p.getY(), p.getZ()));
+        BlockPos camped = rodsTask.currentSpawner();
+        if (camping && camped != null) {
+            // the one the task picked, not whatever the tracker calls nearest: they are not always the same spawner
+            RunState.Pos mine = new RunState.Pos(camped.getX(), camped.getY(), camped.getZ());
+            if (!mine.equals(s.spawner)) {
+                s.spawner = mine;
+                ctx.save();
+            }
         }
         RodsWatch.Verdict verdict = rodsWatch.update(now, rods, camping);
         if (verdict == RodsWatch.Verdict.GIVE_UP_RODS) {
@@ -327,9 +383,40 @@ public class NetherPhase implements PhaseHandler {
         if (campPinger.ping(now, camping)) {
             ctx.progress("waiting at the blaze spawner");
         }
+        Task toFortress = walkToKnownFortress(mod, s, now);
+        if (toFortress != null) {
+            hudState = "Walking to the fortress";
+            return toFortress;
+        }
         // standing still at a spawner looks exactly like a frozen bot, so say what we're doing
         hudState = (camping ? "Waiting for blazes to spawn" : "Collecting blaze rods") + " (" + rods + "/" + rodsNeed + ")";
         return rodsTask;
+    }
+
+    // a fortress we saw (an earlier visit, a relog, the next one after a dud spawner) and are nowhere near: the rods task
+    // only wanders to whatever bricks are closest, so go to the one we know first. bounded, a fortress behind a lava sea
+    // gets the wander instead of this walk for ever
+    private Task walkToKnownFortress(AltoClef mod, RunState s, double now) {
+        if (rodsTask.currentSpawner() != null || s.fortress.isEmpty()) {
+            return null;
+        }
+        RunState.Pos spot = s.fortress.get(0);
+        if (spot.equals(fortressWalkGivenUp)) {
+            return null;
+        }
+        if (!spot.equals(fortressWalkTo)) {
+            fortressWalkTo = spot;
+            fortressWalkSince = now;
+            walkToFortress = new GetToXZTask(spot.x, spot.z);
+        }
+        double dx = mod.getPlayer().getX() - spot.x;
+        double dz = mod.getPlayer().getZ() - spot.z;
+        boolean there = dx * dx + dz * dz <= FORTRESS_NEAR_BLOCKS * FORTRESS_NEAR_BLOCKS;
+        if (there || now - fortressWalkSince > FORTRESS_WALK_SECONDS) {
+            fortressWalkGivenUp = spot;
+            return null;
+        }
+        return walkToFortress;
     }
 
     // the rods task remembers its spawner and would walk straight back to it, so the dud gets blacklisted in the block
@@ -337,12 +424,19 @@ public class NetherPhase implements PhaseHandler {
     private Task giveUpSpawner(AltoClef mod, GamerContext ctx, double now) {
         RunState s = ctx.state();
         ctx.log("no rods from this spawner, looking for another fortress");
-        BlockPos dud = s.spawner != null ? new BlockPos(s.spawner.x, s.spawner.y, s.spawner.z)
-                : mod.getBlockTracker().getNearestTracking(Blocks.SPAWNER).orElse(null);
+        // the spawner the task was really camping first, the saved one can be a stale pick from before it re-searched
+        BlockPos dud = rodsTask != null ? rodsTask.currentSpawner() : null;
+        if (dud == null) {
+            dud = s.spawner != null ? new BlockPos(s.spawner.x, s.spawner.y, s.spawner.z)
+                    : mod.getBlockTracker().getNearestTracking(Blocks.SPAWNER).orElse(null);
+        }
         if (dud != null) {
             mod.getBlockTracker().requestBlockUnreachable(dud, 0);
         }
-        planner.giveUpFortress();
+        // only the fortress this spawner is in, a second one we saw is the next place to try
+        planner.giveUpFortress(dud == null ? null : new RunState.Pos(dud.getX(), dud.getY(), dud.getZ()));
+        fortressWalkGivenUp = null;
+        fortressWalkTo = null;
         rodsTask = null;
         rodsWatch.spawnerGivenUp(now);
         ctx.save();
@@ -357,7 +451,7 @@ public class NetherPhase implements PhaseHandler {
             return barter;
         }
         RunState s = ctx.state();
-        boolean endermanHere = mod.getEntityTracker().entityFound(EnderMan.class);
+        boolean endermanHere = endermanLatch.update(mod.getEntityTracker().entityFound(EnderMan.class), now);
         if (s.warpedForest == null && !endermanHere && !warpedSearchOver) {
             if (findWarped.failure() != null) {
                 // swept what we are allowed to sweep, hunt whatever wanders by

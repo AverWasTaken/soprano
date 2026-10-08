@@ -50,8 +50,27 @@ public class PortalPlannerTest {
     public void givesUpTheCastOnTheClock() {
         double limit = cfg.castGiveUpMinutes * 60;
         assertEquals(Method.CAST, PortalPlanner.decide(Method.CAST, limit - 1, cfg, true, false));
-        assertEquals(Method.OBSIDIAN, PortalPlanner.decide(Method.CAST, limit, cfg, true, false));
         assertEquals(Method.OBSIDIAN, PortalPlanner.decide(Method.CAST, limit, cfg, true, true));
+    }
+
+    @Test
+    public void theClockAloneNeverPicksObsidianWithoutADiamondPickaxe() {
+        double limit = cfg.castGiveUpMinutes * 60;
+        assertEquals(Method.CAST, PortalPlanner.decide(Method.CAST, limit, cfg, true, false));
+        assertEquals(Method.CAST, PortalPlanner.decide(Method.CAST, limit * 10, cfg, false, false));
+    }
+
+    @Test
+    public void aTimeoutDuringThePoolHandsOverToTheCastFirst() {
+        assertEquals(Method.CAST, PortalPlanner.afterTimeout(Method.CAST, true, true));
+        assertEquals(Method.CAST, PortalPlanner.afterTimeout(Method.CAST, true, false));
+    }
+
+    @Test
+    public void aTimeoutOutsideThePoolGoesObsidianOnlyWithThePickaxe() {
+        assertEquals(Method.OBSIDIAN, PortalPlanner.afterTimeout(Method.CAST, false, true));
+        assertEquals(Method.CAST, PortalPlanner.afterTimeout(Method.CAST, false, false));
+        assertEquals(Method.OBSIDIAN, PortalPlanner.afterTimeout(Method.OBSIDIAN, true, false));
     }
 
     @Test

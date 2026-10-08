@@ -177,8 +177,9 @@ public class LavaPoolPortalTask extends Task {
                 mod.getItemStorage().getItemCount(Items.BUCKET));
         Step step = PortalMold.next(layout, terrain, inv, skin, skinAge);
         noteStage(terrain, step);
-        watchdog(step);
-        if (failReason != null) {
+        watchdog(mod, step);
+        // giving up may have started the loose lava cleanup instead of failing, that runs from the next tick
+        if (failReason != null || cleanupSince >= 0) {
             return null;
         }
         setDebugState(step.toString());
@@ -240,7 +241,7 @@ public class LavaPoolPortalTask extends Task {
             }
             case STUCK -> {
                 if (step.cast() != null) {
-                    startFallback(step.cast(), step.why());
+                    startFallback(mod, step.cast(), step.why());
                     return null;
                 }
                 return giveUp(mod, step.why());
@@ -337,7 +338,7 @@ public class LavaPoolPortalTask extends Task {
 
     // ---- when a step goes nowhere ----
 
-    private void watchdog(Step step) {
+    private void watchdog(AltoClef mod, Step step) {
         String key = step.kind() + String.valueOf(step.cell());
         if (!key.equals(stepKey)) {
             stepKey = key;
@@ -352,21 +353,20 @@ public class LavaPoolPortalTask extends Task {
         strikes++;
         Debug.logMessage("portal: " + step + " is not going anywhere (" + strikes + ")");
         if (step.cast() != null && step.kind() != Kind.GUIDE_PLACE) {
-            startFallback(step.cast(), "stuck on " + step.kind());
+            startFallback(mod, step.cast(), "stuck on " + step.kind());
         } else if (strikes >= STRIKES) {
-            failReason = "stuck on " + step;
-            log.accept("portal: lava pool method failed (" + failReason + "), going back to the cast");
+            // through giveUp like every other way out, it scoops the loose lava before the phase walks off
+            giveUp(mod, "stuck on " + step);
         } else {
             unstick = new TimeoutWanderTask(3);
         }
     }
 
     // the old per cell cast for this one frame cell, then back to the mold for the rest
-    private void startFallback(Cast c, String why) {
+    private void startFallback(AltoClef mod, Cast c, String why) {
         strikes++;
         if (strikes > STRIKES) {
-            failReason = "too many bad casts (" + why + ")";
-            log.accept("portal: lava pool method failed (" + failReason + "), going back to the cast");
+            giveUp(mod, "too many bad casts (" + why + ")");
             return;
         }
         fallbackCast = c;
@@ -387,7 +387,12 @@ public class LavaPoolPortalTask extends Task {
             return giveUp(mod, fallbackCast.name + " would not cast even the slow way");
         }
         setDebugState("slow cast " + fallbackCast.name);
-        return new PlaceObsidianBucketTask(toPos(t));
+        // the mold's other cells may still hold their cast water, the slow cast scoops that before it asks for a bucket
+        List<BlockPos> others = new ArrayList<>();
+        for (Cast c : PortalMold.CASTS) {
+            others.add(toPos(layout.cell(c.t)));
+        }
+        return new PlaceObsidianBucketTask(toPos(t), others);
     }
 
     // lava we put out and never cemented is a hazard for the next thing that walks by, scoop it back before leaving

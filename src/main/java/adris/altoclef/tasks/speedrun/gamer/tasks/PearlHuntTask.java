@@ -33,6 +33,7 @@ public class PearlHuntTask extends Task {
     private static final double HOTSPOT_WALK_SECONDS = 150;
     // an angry one across a lava lake never arrives: after this long on one target it is somebody else's problem
     private static final double ANGRY_SECONDS = 20;
+    private static final double ENDERMAN_HOLD_SECONDS = 6;
 
     private final int pearlsTotal;
     private final Dimension dimension;
@@ -49,6 +50,8 @@ public class PearlHuntTask extends Task {
     private long angrySinceMs;
     private final Set<Entity> angryGivenUp = Collections.newSetFromMap(new IdentityHashMap<>());
     private String step = "Looking for endermen";
+    // same latch the phase uses, an enderman behind a pillar must not switch the hotspot walk off and on
+    private final HoldLatch endermanLatch = new HoldLatch(ENDERMAN_HOLD_SECONDS);
 
     public PearlHuntTask(int pearlsTotal, Dimension dimension, Supplier<RunState.Pos> hotspot) {
         this.pearlsTotal = pearlsTotal;
@@ -66,6 +69,7 @@ public class PearlHuntTask extends Task {
     @Override
     protected void onStart(AltoClef mod) {
         hotspotDone = false;
+        endermanLatch.reset();
         hotspotWalkingTo = null;
         angryTarget = null;
         angryTask = null;
@@ -119,7 +123,8 @@ public class PearlHuntTask extends Task {
     // null = not walking (no hotspot, there already, no endermen needed from there, or the walk took too long)
     private Task walkToHotspot(AltoClef mod) {
         RunState.Pos spot = hotspot.get();
-        if (spot == null || hotspotDone || mod.getEntityTracker().entityFound(EnderMan.class)) {
+        boolean endermanHere = endermanLatch.update(mod.getEntityTracker().entityFound(EnderMan.class), System.currentTimeMillis() / 1000.0);
+        if (spot == null || hotspotDone || endermanHere) {
             return null;
         }
         if (!spot.equals(hotspotWalkingTo)) {

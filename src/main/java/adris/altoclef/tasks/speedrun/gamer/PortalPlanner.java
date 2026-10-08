@@ -43,14 +43,29 @@ public final class PortalPlanner {
         if (current == Method.OBSIDIAN) {
             return Method.OBSIDIAN;
         }
+        // the obsidian way mines it and that wants a diamond pickaxe. without one it is no way out at all, so the cast keeps
+        // wandering for a lake and the phase budget is what ends it
+        if (!hasDiamondPickaxe) {
+            return Method.CAST;
+        }
         if (castSeconds >= cfg.castGiveUpMinutes * 60) {
             return Method.OBSIDIAN;
         }
         // no lava anywhere and the pickaxe is already in hand: obsidian is the cheap way now
-        if (!sawLava && hasDiamondPickaxe && castSeconds >= cfg.noLavaSeconds) {
+        if (!sawLava && castSeconds >= cfg.noLavaSeconds) {
             return Method.OBSIDIAN;
         }
         return Method.CAST;
+    }
+
+    // the portal phase timed out and gets another try: which method that try uses. a timeout while the lava pool was still
+    // being built says nothing about the cast (it never ran), so the pool hands over to it first. obsidian needs the diamond
+    // pickaxe like decide says, and it is sticky once chosen
+    public static Method afterTimeout(Method current, boolean poolWasRunning, boolean hasDiamondPickaxe) {
+        if (current == Method.OBSIDIAN) {
+            return Method.OBSIDIAN;
+        }
+        return poolWasRunning || !hasDiamondPickaxe ? Method.CAST : Method.OBSIDIAN;
     }
 
     // what to hold before leaving the overworld (Marvion ordering: get it all here, not in the nether). the cast needs

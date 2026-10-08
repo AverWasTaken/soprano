@@ -6,6 +6,7 @@ import adris.altoclef.world.NetherComplexGrid;
 import adris.altoclef.world.NetherComplexGrid.Cell;
 import adris.altoclef.world.NetherComplexGrid.Point;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -174,13 +175,45 @@ public final class NetherSweepPlanner {
         return true;
     }
 
-    // the spawner ran dry (or we could not reach it): forget this fortress so the search looks for another cell.
-    // its cell stays visited and in fortressCells, we do not come back here
-    public void giveUpFortress() {
-        state.fortressExhausted.addAll(state.fortress);
-        state.fortress.clear();
+    // the spawner ran dry (or we could not reach it): forget the fortress it sits in so the search looks for another cell.
+    // its cell stays visited and in fortressCells, we do not come back here. a second fortress we already saw stays known,
+    // that one is the next stop. near = the spawner, null = we do not know where it was and every fortress goes
+    public void giveUpFortress(RunState.Pos near) {
+        if (near == null) {
+            state.fortressExhausted.addAll(state.fortress);
+            state.fortress.clear();
+        } else {
+            dropFortressesAround(near);
+        }
         state.spawner = null;
         cell = null;
+    }
+
+    public void giveUpFortress() {
+        giveUpFortress(null);
+    }
+
+    // everything inside the exhausted radius is the same fortress. a spawner further out than that from every sighting
+    // (they are spots on the edge we looked at from) still costs us the closest one, or the dud would be picked again
+    private void dropFortressesAround(RunState.Pos near) {
+        long radius2 = (long) EXHAUSTED_BLOCKS * EXHAUSTED_BLOCKS;
+        List<RunState.Pos> gone = new ArrayList<>();
+        RunState.Pos closest = null;
+        long best = Long.MAX_VALUE;
+        for (RunState.Pos k : state.fortress) {
+            long d = dist2(k.x, k.z, near.x, near.z);
+            if (d < radius2) {
+                gone.add(k);
+            } else if (d < best) {
+                best = d;
+                closest = k;
+            }
+        }
+        if (gone.isEmpty() && closest != null) {
+            gone.add(closest);
+        }
+        state.fortress.removeAll(gone);
+        state.fortressExhausted.addAll(gone);
     }
 
     // one decision. now is any monotonic clock in seconds
