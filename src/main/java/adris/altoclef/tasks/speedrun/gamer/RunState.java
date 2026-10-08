@@ -195,6 +195,7 @@ public class RunState {
 
     public transient StationUse tableUse = new StationUse();
     public transient StationUse furnaceUse = new StationUse();
+    public transient StationUse smokerUse = new StationUse();
     // the kit need the prep phase is running right now, so the placement hook in GamerTask can say which need used a
     // station. null outside GATHER / IRON
     public transient String currentNeed;

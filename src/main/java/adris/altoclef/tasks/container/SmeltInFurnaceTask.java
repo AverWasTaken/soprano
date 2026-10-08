@@ -198,7 +198,8 @@ public class SmeltInFurnaceTask extends ResourceTask {
                     - mod.getItemStorage().getItemCountInventoryOnly(outputTarget.getMatches())
                     - materialsKnownInFurnace(mod)
                     - (outputTarget.matches(_furnaceCache.outputSlot.getItem()) ? _furnaceCache.outputSlot.getCount() : 0);
-            double totalFuelInFurnace = ItemHelper.getFuelAmount(_furnaceCache.fuelSlot) + _furnaceCache.burningFuelCount + _furnaceCache.burnPercentage;
+            double totalFuelInFurnace = ItemHelper.getFuelAmount(_furnaceCache.fuelSlot) + _furnaceCache.burningFuelCount + _furnaceCache.burnPercentage
+                    + fuelKnownInFurnace(mod);
             // Fuel needed = (mat_target - out_in_inventory - out_in_furnace - totalFuelInFurnace)
             double fuelNeeded = _ignoreMaterials
                     ? Math.min(materialTarget.matches(_furnaceCache.materialSlot.getItem()) ? _furnaceCache.materialSlot.getCount() : 0, materialTarget.getTargetCount())
@@ -237,11 +238,16 @@ public class SmeltInFurnaceTask extends ResourceTask {
             if (shown > 0 || isContainerOpen(mod)) {
                 return shown;
             }
-            BlockPos at = rememberedFurnace(mod);
-            if (at == null || !AsyncSmelting.isOurFurnace(at)) {
+            return (int) StationMemory.known(false, shown, StationMemory.materialsRemembered(mod, rememberedFurnace(mod), _allMaterials));
+        }
+
+        // same for the fuel: the coal we had already put in the fuel slot when the load got cut off is not coal to go and mine
+        private double fuelKnownInFurnace(AltoClef mod) {
+            boolean seen = !_furnaceCache.fuelSlot.isEmpty() || _furnaceCache.burningFuelCount > 0;
+            if (seen || isContainerOpen(mod)) {
                 return 0;
             }
-            return mod.getItemStorage().getContainerAtPosition(at).map(c -> c.getItemCount(_allMaterials.getMatches())).orElse(0);
+            return StationMemory.fuelRemembered(mod, rememberedFurnace(mod), _allMaterials);
         }
 
         // Override this if our materials must be acquired in a special way.
@@ -252,6 +258,8 @@ public class SmeltInFurnaceTask extends ResourceTask {
 
         @Override
         protected Task containerSubTask(AltoClef mod) {
+            // the station pickup reads this, it must not break a table under a half done load
+            AsyncSmelting.working(mod.getWorld().getGameTime());
             // We have appropriate materials/fuel.
             /*
              * - If output slot has something, receive it.
@@ -373,7 +381,7 @@ public class SmeltInFurnaceTask extends ResourceTask {
             }
             var me = mod.getPlayer().position();
             boolean cheap = FurnaceReuse.canMakeCheaply(mod.getItemStorage().hasItem(Items.FURNACE),
-                    mod.getItemStorage().getItemCount(Items.COBBLESTONE, Items.COBBLED_DEEPSLATE, Items.BLACKSTONE), tableAround(mod));
+                    StationMemory.cobbleish(mod), StationMemory.tableAround(mod));
             boolean ours = AsyncSmelting.isOurFurnace(known);
             // ore of ours sitting in it (the screen was closed on it half loaded) is not a furnace to walk away from
             boolean holdsOurStuff = ours && mod.getItemStorage().getContainerAtPosition(known).map(ContainerCache::holdsAnything).orElse(false);
@@ -392,16 +400,6 @@ public class SmeltInFurnaceTask extends ResourceTask {
             }
             return mod.getBlockTracker().getNearestTracking(mod.getPlayer().position(),
                     p -> adris.altoclef.util.helpers.WorldHelper.canReach(mod, p), Blocks.FURNACE).orElse(null);
-        }
-
-        // a table to craft the furnace on: in the bag, standing close, or the wood to make one on the spot
-        private static boolean tableAround(AltoClef mod) {
-            if (mod.getItemStorage().hasItem(Items.CRAFTING_TABLE)
-                    || mod.getItemStorage().hasItem(ItemHelper.LOG) || mod.getItemStorage().getItemCount(ItemHelper.PLANKS) >= 4) {
-                return true;
-            }
-            Optional<BlockPos> table = mod.getBlockTracker().getNearestTracking(Blocks.CRAFTING_TABLE);
-            return table.isPresent() && table.get().closerToCenterThan(mod.getPlayer().position(), 40);
         }
 
         @Override

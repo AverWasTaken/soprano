@@ -250,6 +250,8 @@ public class SmeltInBlastFurnaceTask extends ResourceTask {
 
         @Override
         protected Task containerSubTask(AltoClef mod) {
+            // the station pickup reads this, it must not break a table under a half done load
+            AsyncSmelting.working(mod.getWorld().getGameTime());
             // We have appropriate materials/fuel.
             /*
              * - If output slot has something, receive it.

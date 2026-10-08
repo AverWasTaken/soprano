@@ -2,6 +2,7 @@ package adris.altoclef.tasks.speedrun.gamer;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.AltoSettings;
+import adris.altoclef.tasks.container.FurnaceReuse;
 import adris.altoclef.util.helpers.FoodHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import baritone.api.utils.Dimension;
@@ -77,8 +78,26 @@ public final class MinecraftFacts implements GamerFacts {
         countItems(player);
         tableNearby = state != null && standingNearby(player, state.placedTables, Blocks.CRAFTING_TABLE);
         furnaceNearby = state != null && standingNearby(player, state.placedFurnaces, Blocks.FURNACE);
-        smokerNearby = state != null && standingNearby(player, state.placedSmokers, Blocks.SMOKER);
+        smokerNearby = state != null && smokerWorthWalking(player);
         return true;
+    }
+
+    // a smoker of ours the cook should walk back to. unlike the table this one does have a distance test: the cook need is a
+    // choice between this smoker and a new station, and a smoker 80 blocks below us (the 22:09 run: 40 s of walking down a
+    // cave) is not a reason to pick it. the line is FurnaceReuse's, with a margin once counted so it cannot flap
+    private boolean smokerWorthWalking(Player player) {
+        if (dimension != Dimension.OVERWORLD || state.placedSmokers.isEmpty()) {
+            return false;
+        }
+        double best = Double.MAX_VALUE;
+        for (RunState.Pos pos : state.placedSmokers) {
+            BlockPos at = new BlockPos(pos.x, pos.y, pos.z);
+            if (mod.getChunkTracker().isChunkLoaded(at) && !mod.getWorld().getBlockState(at).is(Blocks.SMOKER)) {
+                continue;
+            }
+            best = Math.min(best, OwnTables.walkCost(pos, player.getX(), player.getY(), player.getZ()));
+        }
+        return best != Double.MAX_VALUE && FurnaceReuse.smokerWorthWalking(smokerNearby, best);
     }
 
     // one of the stations this run placed (tables, furnaces) that we still own. no distance test on purpose: it used to be

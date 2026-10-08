@@ -42,7 +42,21 @@ public final class AsyncSmelting {
     // furnace I remember" and "place another" and has to know whose it is. non gamer runs see none, which is the old behaviour
     private static volatile Predicate<BlockPos> ours = pos -> false;
 
+    // the game tick a smelt task last had its furnace screen in hand (moving ore, fuel, taking output). the station pickup
+    // preempts whatever the kit task is doing, and the screen closing under a half done load is how 37 raw iron got left in a
+    // furnace that then got forgotten. -1 = never
+    private static volatile long lastWork = -1;
+
     private AsyncSmelting() {
+    }
+
+    // the smelt tasks call this every tick the screen is open and they are working it
+    public static void working(long now) {
+        lastWork = now;
+    }
+
+    public static long lastWork() {
+        return lastWork;
     }
 
     // setting on and the thing coming out is one we have a plan for
@@ -115,6 +129,7 @@ public final class AsyncSmelting {
     // a new run must not inherit a job from the one before it
     public static void clear() {
         LOADED.clear();
+        lastWork = -1;
         jobs = List::of;
         ours = pos -> false;
     }

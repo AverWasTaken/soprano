@@ -134,6 +134,27 @@ public final class OwnTables {
         return before - tables.size();
     }
 
+    // a smelt task had its screen in hand this recently (AsyncSmelting.working) counts as a load in flight. the screen is shut
+    // for a tick or two between the steps of one load, one second covers that
+    public static final long LOAD_GRACE_TICKS = 20;
+
+    // a pickup preempts the kit task, and a furnace load is a handful of clicks: ore, then fuel, then the job is recorded. a
+    // table pickup that started between the ore and the fuel (22:12:04) closed the screen on a furnace holding 37 raw iron
+    // and no job. so while some container screen is open, or a smelt task touched one a moment ago, no pickup STARTS. it only
+    // delays it: the load ends in a recorded job within seconds, and a phase waits for what is owed (StationPickup.owed)
+    public static boolean loadInFlight(boolean containerScreenOpen, long lastSmeltWork, long now) {
+        if (containerScreenOpen) {
+            return true;
+        }
+        return lastSmeltWork >= 0 && now >= lastSmeltWork && now - lastSmeltWork <= LOAD_GRACE_TICKS;
+    }
+
+    // the walk budget for taking a station back. the saved config keeps the number it was written with, and an old file says
+    // 10, which is 2 blocks up and a few across: nobody meant "forget it" by that. never under the walk a fresh station costs
+    public static double pickupBudget(double configured) {
+        return Math.max(configured, WalkCost.STATION_BUDGET);
+    }
+
     // a craft happened at the table since it was placed. this is what stops a place/pickup loop without a long cooldown: no
     // craft in between, no pickup (by the rule below). lastUse is stamped every tick the menu is open, lastPlace when it went down
     public static boolean usedSincePlaced(long lastUse, long lastPlace) {

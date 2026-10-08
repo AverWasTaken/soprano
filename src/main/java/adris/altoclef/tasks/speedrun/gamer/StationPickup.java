@@ -3,16 +3,19 @@ package adris.altoclef.tasks.speedrun.gamer;
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.tasks.construction.DestroyBlockTask;
+import adris.altoclef.tasks.container.AsyncSmelting;
 import adris.altoclef.tasks.container.CraftInTableTask;
 import adris.altoclef.tasks.movement.IdleTask;
 import adris.altoclef.tasks.movement.PickupDroppedItemTask;
 import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.trackers.storage.ContainerCache;
 import adris.altoclef.util.helpers.WorldHelper;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.CraftingMenu;
 import net.minecraft.world.inventory.FurnaceMenu;
+import net.minecraft.world.inventory.SmokerMenu;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.AbstractFurnaceBlock;
@@ -25,13 +28,20 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-// takes the crafting table and the furnace WE placed back when the run moves on to a different need while we are still
-// standing next to them, and the table also as soon as the crafting at it is over (rules in OwnTables). only when the walk
-// back is cheap, a station further than that is forgotten. one pickup at a time, the table first. only positions GamerTask saw us place
-// are ever candidates, so a village's table or furnace is never touched
+// takes the crafting table, the furnace and the smoker WE placed back when the run moves on to a different need while we are
+// still standing next to them, and the table also as soon as the crafting at it is over (rules in OwnTables). only when the walk
+// back is cheap, a station further than that is forgotten. one pickup at a time, the table first. only positions GamerTask saw
+// us place are ever candidates, so a village's table or furnace is never touched. a furnace or smoker with something of ours in
+// it (a job, or what the container tracker last saw in it) is never taken and never forgotten, and nothing starts while a
+// furnace screen is open: breaking one drops the ore on the floor, forgetting one loses it
 final class StationPickup {
-    private final Slot table = new Slot(true);
-    private final Slot furnace = new Slot(false);
+    private enum Kind {
+        TABLE, FURNACE, SMOKER
+    }
+
+    private final Slot table = new Slot(Kind.TABLE);
+    private final Slot furnace = new Slot(Kind.FURNACE);
+    private final Slot smoker = new Slot(Kind.SMOKER);
     private String hud;
 
     String hud() {
@@ -41,6 +51,7 @@ final class StationPickup {
     void reset() {
         table.reset();
         furnace.reset();
+        smoker.reset();
         hud = null;
     }
 
@@ -48,7 +59,7 @@ final class StationPickup {
     // phases hold their own end for this: the decision that a phase is done runs BEFORE its tick, so without it the
     // last craft's table (nothing is "the next need" any more) would be left behind exactly like the bug said
     boolean owed() {
-        return table.owed || furnace.owed;
+        return table.owed || furnace.owed || smoker.owed;
     }
 
     // `plan` is the phase's whole need list, the head is `current`. a craft anywhere in it keeps a table nobody used yet
@@ -65,11 +76,17 @@ final class StationPickup {
         t = furnace.tick(mod, ctx, need, craftPlanned, tracking);
         if (t != null) {
             hud = "Picking up the furnace";
+            return t;
+        }
+        t = smoker.tick(mod, ctx, need, craftPlanned, tracking);
+        if (t != null) {
+            hud = "Picking up the smoker";
         }
         return t;
     }
 
     private static final class Slot {
+        private final Kind kind;
         private final boolean isTable;
         private final Block block;
         private final Item item;
@@ -85,10 +102,19 @@ final class StationPickup {
         // idles and never finishes, the guard that asked for it is what ends it
         private final Task hold = new IdleTask();
 
-        Slot(boolean isTable) {
-            this.isTable = isTable;
-            block = isTable ? Blocks.CRAFTING_TABLE : Blocks.FURNACE;
-            item = isTable ? Items.CRAFTING_TABLE : Items.FURNACE;
+        Slot(Kind kind) {
+            this.kind = kind;
+            isTable = kind == Kind.TABLE;
+            block = switch (kind) {
+                case TABLE -> Blocks.CRAFTING_TABLE;
+                case FURNACE -> Blocks.FURNACE;
+                case SMOKER -> Blocks.SMOKER;
+            };
+            item = switch (kind) {
+                case TABLE -> Items.CRAFTING_TABLE;
+                case FURNACE -> Items.FURNACE;
+                case SMOKER -> Items.SMOKER;
+            };
         }
 
         void reset() {
@@ -100,16 +126,35 @@ final class StationPickup {
         }
 
         private RunState.StationUse use(GamerContext ctx) {
-            return isTable ? ctx.state().tableUse : ctx.state().furnaceUse;
+            return switch (kind) {
+                case TABLE -> ctx.state().tableUse;
+                case FURNACE -> ctx.state().furnaceUse;
+                case SMOKER -> ctx.state().smokerUse;
+            };
         }
 
         private List<RunState.Pos> placed(GamerContext ctx) {
-            return isTable ? ctx.state().placedTables : ctx.state().placedFurnaces;
+            return switch (kind) {
+                case TABLE -> ctx.state().placedTables;
+                case FURNACE -> ctx.state().placedFurnaces;
+                case SMOKER -> ctx.state().placedSmokers;
+            };
         }
 
         private boolean menuOpen(AltoClef mod) {
             AbstractContainerMenu menu = mod.getPlayer().containerMenu;
-            return isTable ? menu instanceof CraftingMenu : menu instanceof FurnaceMenu;
+            return switch (kind) {
+                case TABLE -> menu instanceof CraftingMenu;
+                case FURNACE -> menu instanceof FurnaceMenu;
+                case SMOKER -> menu instanceof SmokerMenu;
+            };
+        }
+
+        // some container screen is open (any kind, a furnace load has the player's own inventory menu swapped for it), or a smelt
+        // task had one in hand a moment ago. see OwnTables.loadInFlight
+        private boolean loadInFlight(AltoClef mod, long now) {
+            boolean screenOpen = mod.getPlayer().containerMenu != mod.getPlayer().inventoryMenu;
+            return OwnTables.loadInFlight(screenOpen, AsyncSmelting.lastWork(), now);
         }
 
         // a furnace that is smelting right now (the LIT flag shows on the client) must not be taken, the items inside
@@ -175,7 +220,7 @@ final class StationPickup {
                 return mod.getChunkTracker().isChunkLoaded(at) && !mod.getWorld().getBlockState(at).is(block);
             });
             Vec3 player = mod.getPlayer().position();
-            double budget = cfg.tableRecoverRadius;
+            double budget = OwnTables.pickupBudget(cfg.tableRecoverRadius);
             // the crafting is over (table only, furnaces keep the need boundary): used since it went down, menu shut for a
             // second, nothing in the task tree is crafting at a table and the next need is not a craft that would place it again
             // another craft still coming (in the plan, or inside the food need) holds it for a while, see OwnTables.finishedCrafting
@@ -186,19 +231,21 @@ final class StationPickup {
             if (wantsNow) {
                 // this is the moment it would be taken. too far to walk cheaply means we write it off: a table is a log,
                 // the old sphere walked us back down a cave for one
-                int gone = OwnTables.forgetFar(own, pos -> jobOwns(ctx, pos), player.x, player.y, player.z, budget);
+                // (one with our ore in it is never forgotten, however far: the smelt task walks back to it, and forgetting it made
+                // that task think it was not ours, so it mined the 37 raw iron it had just loaded all over again)
+                int gone = OwnTables.forgetFar(own, pos -> holdsStuff(mod, ctx, pos), player.x, player.y, player.z, budget);
                 if (gone > 0) {
                     Debug.logInternal("station pickup: forgot " + gone + " " + name() + "(s), the walk back costs more than " + budget);
                 }
             }
             RunState.Pos found = OwnTables.nearest(own, pos -> {
                 BlockPos at = new BlockPos(pos.x, pos.y, pos.z);
-                return !tried.contains(at) && WorldHelper.canBreak(mod, at) && !busy(mod, at) && !jobOwns(ctx, pos);
+                return !tried.contains(at) && WorldHelper.canBreak(mod, at) && !busy(mod, at) && !holdsStuff(mod, ctx, pos);
             }, player.x, player.y, player.z, budget);
             if (found == null) {
                 if (!own.isEmpty()) {
                     // this is the gate that lost a table last time, out of range by the time anything looked
-                    deferred("none of ours in range (or tried, busy, owned by a smelting job)");
+                    deferred("none of ours in range (or tried, busy, holding our items)");
                 }
                 return null;
             }
@@ -206,6 +253,11 @@ final class StationPickup {
             owed = true;
             if (!wantsNow) {
                 deferred("the next need (" + need + ") still wants it");
+                return null;
+            }
+            if (loadInFlight(mod, now)) {
+                // not a hold: the load is what has to carry on, it ends in a recorded job and then this is a plain pickup
+                deferred("a furnace load is in flight");
                 return null;
             }
             OwnTables.Start go = OwnTables.startRecovery(now, use.lastUseTick, use.lastPlaceTick, use.lastRecoveredTick, open,
@@ -231,7 +283,11 @@ final class StationPickup {
         }
 
         private String name() {
-            return isTable ? "table" : "furnace";
+            return switch (kind) {
+                case TABLE -> "table";
+                case FURNACE -> "furnace";
+                case SMOKER -> "smoker";
+            };
         }
 
         // once per reason per station, a line per tick would bury the one that matters
@@ -258,9 +314,14 @@ final class StationPickup {
         }
 
         // the async smelting jobs record the furnaces they are cooking in (FurnaceJobs), breaking one would drop the iron
-        // on the floor and forget about it
-        private boolean jobOwns(GamerContext ctx, RunState.Pos pos) {
-            return FurnaceJobs.isBusy(ctx.state(), pos);
+        // on the floor and forget about it. a load that got cut off never recorded a job, so the container tracker's last look
+        // vouches too (anything in the input, fuel or output slot is ours: we are the only ones who put things in these)
+        private boolean holdsStuff(AltoClef mod, GamerContext ctx, RunState.Pos pos) {
+            if (isTable) {
+                return false;
+            }
+            return FurnaceJobs.isBusy(ctx.state(), pos) || mod.getItemStorage()
+                    .getContainerAtPosition(new BlockPos(pos.x, pos.y, pos.z)).map(ContainerCache::holdsAnything).orElse(false);
         }
     }
 }

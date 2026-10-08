@@ -39,6 +39,16 @@ public class AsyncSmeltingTest {
     }
 
     @Test
+    public void theSmeltTasksStampTheTickTheyHadTheScreenInHand() {
+        assertEquals(-1, AsyncSmelting.lastWork());
+        AsyncSmelting.working(1234);
+        assertEquals(1234, AsyncSmelting.lastWork());
+        // a new run does not inherit it
+        AsyncSmelting.clear();
+        assertEquals(-1, AsyncSmelting.lastWork());
+    }
+
+    @Test
     public void theFoodTaskSeesNothingUntilTheGamerHandsOverItsJobs() {
         assertEquals(0, AsyncSmelting.pendingFoodUnits());
         List<RunState.FurnaceJob> jobs = new ArrayList<>();

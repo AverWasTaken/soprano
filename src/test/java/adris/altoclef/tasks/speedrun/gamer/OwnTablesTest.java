@@ -188,6 +188,43 @@ public class OwnTablesTest {
         assertEquals(pos(15, 64, 0), OwnTables.nearest(own, p -> true, 0.5, 64, 0.5, 30));
     }
 
+    // 22:12:04: the table pickup started between the raw iron and the coal, closed the screen on a furnace holding 37 raw iron
+    @Test
+    public void noPickupStartsWhileAFurnaceScreenIsOpenOrWasJustWorked() {
+        long now = 5000;
+        assertTrue(OwnTables.loadInFlight(true, -1, now));
+        // screen shut for the tick between two clicks of the same load
+        assertTrue(OwnTables.loadInFlight(false, now - 1, now));
+        assertTrue(OwnTables.loadInFlight(false, now - OwnTables.LOAD_GRACE_TICKS, now));
+        // a second later it is over, and it can never hold for ever
+        assertFalse(OwnTables.loadInFlight(false, now - OwnTables.LOAD_GRACE_TICKS - 1, now));
+        assertFalse(OwnTables.loadInFlight(false, -1, now));
+        // a stamp from a world that ran further than this one is not a load
+        assertFalse(OwnTables.loadInFlight(false, now + 500, now));
+    }
+
+    // 22:12:06: "forgot 1 furnace(s)" with 37 raw iron in it, 2 blocks up and the budget in the user's saved file was 10
+    @Test
+    public void aFurnaceWithOurStuffInItIsNotForgottenHoweverFar() {
+        RunState.Pos loaded = pos(15, 34, -328);
+        RunState.Pos empty = pos(80, 64, 0);
+        List<RunState.Pos> own = new ArrayList<>(List.of(loaded, empty));
+        // we stand 2 blocks under it and a few across, the old budget of 10 called that far
+        assertTrue(OwnTables.walkCost(loaded, 15.5, 30, -325) > 10);
+        int gone = OwnTables.forgetFar(own, p -> p.equals(loaded), 15.5, 30, -325, 10);
+        assertEquals(1, gone);
+        assertEquals(List.of(loaded), own);
+        // and nothing picks the loaded one up either: the caller's usable filter says no
+        assertNull(OwnTables.nearest(own, p -> !p.equals(loaded), 15.5, 30, -325, 100));
+    }
+
+    @Test
+    public void aSavedSmallBudgetIsRaisedToTheWalkAFreshStationCosts() {
+        assertEquals(20, OwnTables.pickupBudget(10), 0);
+        assertEquals(20, OwnTables.pickupBudget(20), 0);
+        assertEquals(30, OwnTables.pickupBudget(30), 0);
+    }
+
     @Test
     public void tablesOutOfBudgetAreForgottenButJobsKeepTheirs() {
         List<RunState.Pos> own = new ArrayList<>(List.of(pos(2, 64, 0), pos(0, 30, 0), pos(60, 64, 0)));

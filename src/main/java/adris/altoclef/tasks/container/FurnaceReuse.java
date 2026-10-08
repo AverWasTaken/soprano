@@ -27,6 +27,21 @@ public final class FurnaceReuse {
         return carryingFurnace || (cobbleish >= FURNACE_COBBLE && tableAround);
     }
 
+    // a smoker is a furnace and four logs on a table. one in the bag is free, otherwise we need the furnace (in the bag or its
+    // cobble), the logs and somewhere to craft it
+    public static boolean canMakeSmokerCheaply(boolean carryingSmoker, boolean carryingFurnace, int cobbleish, int logs, boolean tableAround) {
+        return carryingSmoker || (canMakeCheaply(carryingFurnace, cobbleish, tableAround) && logs >= SMOKER_LOGS);
+    }
+
+    public static final int SMOKER_LOGS = 4;
+
+    // how far a smoker of ours may be and still steer the cook towards it. the same stretched walk as a furnace of ours, with a
+    // quarter more once we are already counting it so the need name does not flip every step at the line (a flip restarts the
+    // cook task)
+    public static boolean smokerWorthWalking(boolean alreadyCounted, double walkCost) {
+        return walkCost <= (alreadyCounted ? OURS_BUDGET * 1.25 : OURS_BUDGET);
+    }
+
     // true = put a new one down. false = go to the remembered one. no remembered furnace is always a new one, that was
     // already how it worked
     public static boolean makeNew(boolean haveRemembered, boolean canMakeCheaply, double dx, double dy, double dz) {

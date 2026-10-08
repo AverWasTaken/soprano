@@ -9,6 +9,7 @@ import adris.altoclef.tasks.resources.CollectFuelTask;
 import adris.altoclef.tasks.slot.MoveInaccessibleItemToInventoryTask;
 import adris.altoclef.tasks.slot.MoveItemToSlotFromInventoryTask;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.trackers.storage.ContainerCache;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.MiningRequirement;
 import adris.altoclef.util.SmeltTarget;
@@ -193,9 +194,10 @@ public class SmeltInSmokerTask extends ResourceTask {
             int materialsNeeded = materialTarget.getTargetCount()
                     /*- mod.getItemStorage().getItemCountInventoryOnly(materialTarget.getMatches())*/ // See comment above
                     - mod.getItemStorage().getItemCountInventoryOnly(outputTarget.getMatches())
-                    - (materialTarget.matches(_smokerCache.materialSlot.getItem()) ? _smokerCache.materialSlot.getCount() : 0)
+                    - materialsKnownInSmoker(mod)
                     - (outputTarget.matches(_smokerCache.outputSlot.getItem()) ? _smokerCache.outputSlot.getCount() : 0);
-            double totalFuelInSmoker = ItemHelper.getFuelAmount(_smokerCache.fuelSlot) + _smokerCache.burningFuelCount + _smokerCache.burnPercentage;
+            double totalFuelInSmoker = ItemHelper.getFuelAmount(_smokerCache.fuelSlot) + _smokerCache.burningFuelCount + _smokerCache.burnPercentage
+                    + fuelKnownInSmoker(mod);
             // Fuel needed = (mat_target - out_in_inventory - out_in_furnace - totalFuelInFurnace)
             double fuelNeeded = _ignoreMaterials
                     ? Math.min(materialTarget.matches(_smokerCache.materialSlot.getItem()) ? _smokerCache.materialSlot.getCount() : 0, materialTarget.getTargetCount())
@@ -226,6 +228,34 @@ public class SmeltInSmokerTask extends ResourceTask {
             return super.onTick(mod);
         }
 
+        // what the screen showed, or when this task never had it open (an interrupt restarts us with empty caches) what the
+        // container tracker saw last time. same story as the furnace, see StationMemory
+        private int materialsKnownInSmoker(AltoClef mod) {
+            int shown = _allMaterials.matches(_smokerCache.materialSlot.getItem()) ? _smokerCache.materialSlot.getCount() : 0;
+            if (shown > 0 || isContainerOpen(mod)) {
+                return shown;
+            }
+            return (int) StationMemory.known(false, shown, StationMemory.materialsRemembered(mod, rememberedSmoker(mod), _allMaterials));
+        }
+
+        private double fuelKnownInSmoker(AltoClef mod) {
+            boolean seen = !_smokerCache.fuelSlot.isEmpty() || _smokerCache.burningFuelCount > 0;
+            if (seen || isContainerOpen(mod)) {
+                return 0;
+            }
+            return StationMemory.fuelRemembered(mod, rememberedSmoker(mod), _allMaterials);
+        }
+
+        // the smoker DoStuffInContainerTask would walk to: the one it already picked, or the closest the tracker knows
+        private BlockPos rememberedSmoker(AltoClef mod) {
+            BlockPos picked = getTargetContainerPosition();
+            if (picked != null && mod.getBlockTracker().blockIsValid(picked, Blocks.SMOKER)) {
+                return picked;
+            }
+            return mod.getBlockTracker().getNearestTracking(mod.getPlayer().position(),
+                    p -> adris.altoclef.util.helpers.WorldHelper.canReach(mod, p), Blocks.SMOKER).orElse(null);
+        }
+
         // Override this if our materials must be acquired in a special way.
         // virtual
         protected Task getMaterialTask(ItemTarget target) {
@@ -234,6 +264,8 @@ public class SmeltInSmokerTask extends ResourceTask {
 
         @Override
         protected Task containerSubTask(AltoClef mod) {
+            // the station pickup reads this, it must not break a table under a half done load
+            AsyncSmelting.working(mod.getWorld().getGameTime());
             // We have appropriate materials/fuel.
             /*
              * - If output slot has something, receive it.
@@ -345,18 +377,34 @@ public class SmeltInSmokerTask extends ResourceTask {
 
         @Override
         protected double getCostToMakeNew(AltoClef mod) {
-            if (_smokerCache.burnPercentage > 0 || _smokerCache.burningFuelCount > 0 ||
-                    _smokerCache.fuelSlot != null || _smokerCache.materialSlot != null ||
-                    _smokerCache.outputSlot != null) {
-                return 9999999.0;
+            // this compared the cache slots to null, they start as EMPTY stacks and never are, so every smoker we knew about was
+            // "never make a new one" and the bot walked to it from anywhere. same fix as the furnace (FurnaceReuse): a smoker we
+            // put stuff in stays ours, otherwise the walk is priced against a fresh one
+            if (hasStartedSmelting() || _smokerCache.burnPercentage > 0) {
+                return NEVER_MAKE_NEW;
             }
-            if (mod.getItemStorage().getItemCount(Items.COBBLESTONE) > 8 &&
-                    mod.getItemStorage().getItemCount(ItemHelper.LOG) > 4) {
-                double cost = 100.0 - 90.0 * (((double) mod.getItemStorage().getItemCount(new Item[]{Items.COBBLESTONE})
-                        / 8.0) + ((double) mod.getItemStorage().getItemCount(ItemHelper.LOG) / 4.0));
-                return Math.max(cost, 10.0);
+            BlockPos known = rememberedSmoker(mod);
+            if (known == null) {
+                return NEVER_MAKE_NEW;
             }
-            return StorageHelper.miningRequirementMetInventory(mod, MiningRequirement.WOOD) ? 50.0 : 100.0;
+            var me = mod.getPlayer().position();
+            boolean cheap = FurnaceReuse.canMakeSmokerCheaply(mod.getItemStorage().hasItem(Items.SMOKER), mod.getItemStorage().hasItem(Items.FURNACE),
+                    StationMemory.cobbleish(mod), mod.getItemStorage().getItemCount(ItemHelper.LOG), StationMemory.tableAround(mod));
+            boolean ours = AsyncSmelting.isOurFurnace(known);
+            // ore of ours sitting in it (the screen was closed on it half loaded) is not a smoker to walk away from
+            boolean holdsOurStuff = ours && mod.getItemStorage().getContainerAtPosition(known).map(ContainerCache::holdsAnything).orElse(false);
+            // 0 = any walk at all costs more, so DoStuffInContainerTask places one here instead
+            return FurnaceReuse.makeNew(true, cheap, known.getX() + 0.5 - me.x, known.getY() - me.y, known.getZ() + 0.5 - me.z, ours, holdsOurStuff)
+                    ? 0.0 : NEVER_MAKE_NEW;
+        }
+
+        private static final double NEVER_MAKE_NEW = 9999999.0;
+
+        // the caches start as EMPTY stacks and only change while the screen is open, so anything in them means we really did
+        // put stuff in (or take stuff out of) a smoker
+        public boolean hasStartedSmelting() {
+            return !_smokerCache.materialSlot.isEmpty() || !_smokerCache.fuelSlot.isEmpty()
+                    || !_smokerCache.outputSlot.isEmpty() || _smokerCache.burningFuelCount > 0;
         }
 
         @Override

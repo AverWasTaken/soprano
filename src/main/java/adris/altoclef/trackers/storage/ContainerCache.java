@@ -71,6 +71,15 @@ public class ContainerCache {
         return !_itemCounts.isEmpty();
     }
 
+    // adds up f(item, count) over what the last look saw
+    public double sumOver(java.util.function.ToDoubleBiFunction<Item, Integer> f) {
+        double total = 0;
+        for (var entry : _itemCounts.entrySet()) {
+            total += f.applyAsDouble(entry.getKey(), entry.getValue());
+        }
+        return total;
+    }
+
     public int getEmptySlotCount() {
         return _emptySlots;
     }

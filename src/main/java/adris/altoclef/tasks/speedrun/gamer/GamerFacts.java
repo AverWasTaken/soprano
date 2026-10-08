@@ -82,7 +82,8 @@ public interface GamerFacts {
         return false;
     }
 
-    // and a smoker of ours (RunState.placedSmokers). the cook need reads it: a smoker standing is the cheapest place to put meat
+    // and a smoker of ours (RunState.placedSmokers) that is worth the walk back (FurnaceReuse.smokerWorthWalking, unlike the
+    // table and furnace this one has a distance test). the cook need reads it: a smoker standing is the cheapest place to put meat
     default boolean smokerPlacedNearby() {
         return false;
     }

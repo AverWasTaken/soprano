@@ -347,7 +347,11 @@ public class GamerTask extends Task {
         // so CollectFoodTask can count the meat that is cooking without knowing what a RunState is
         AsyncSmelting.watchJobs(facts::furnaceJobs);
         // and so the smelt task knows a furnace in the tracker is the one we put down (and not a reason to place another)
-        AsyncSmelting.watchFurnaces(p -> state.placedFurnaces.contains(new RunState.Pos(p.getX(), p.getY(), p.getZ())));
+        // (smokers too, the smoker task asks the same question)
+        AsyncSmelting.watchFurnaces(p -> {
+            RunState.Pos at = new RunState.Pos(p.getX(), p.getY(), p.getZ());
+            return state.placedFurnaces.contains(at) || state.placedSmokers.contains(at);
+        });
         deathsAtStart = state.deaths.size();
         lastSaveSeconds = machine.now();
         begun = true;
@@ -370,10 +374,14 @@ public class GamerTask extends Task {
             }
             RunState.Pos pos = new RunState.Pos(evt.blockPos.getX(), evt.blockPos.getY(), evt.blockPos.getZ());
             if (evt.blockState.is(Blocks.SMOKER)) {
-                // not a StationPickup slot: the smoker comes down through FurnaceWatch once its cook job is collected, so
-                // all it needs here is to be on the list of ours (a village's smoker never is)
-                if (OwnTables.placedByUs(player.getX(), player.getEyeY(), player.getZ(), pos) && OwnTables.record(state.placedSmokers, pos)) {
-                    Debug.logInternal("smoker recorded at " + pos.x + " " + pos.y + " " + pos.z);
+                // on the list of ours (a village's smoker never is). it comes down through FurnaceWatch once its cook job is
+                // collected, and through StationPickup when no job ever got to own it
+                if (OwnTables.placedByUs(player.getX(), player.getEyeY(), player.getZ(), pos)) {
+                    state.smokerUse.lastPlaceTick = facts.gameTime();
+                    state.smokerUse.useNeed = state.currentNeed;
+                    if (OwnTables.record(state.placedSmokers, pos)) {
+                        Debug.logInternal("smoker recorded at " + pos.x + " " + pos.y + " " + pos.z);
+                    }
                 }
             } else if (isJobBlock(evt.blockState)) {
                 // same guess as the table below. VillageLoot must not take a blast furnace we crafted for a village
