@@ -17,6 +17,8 @@ public final class NetherTripRules {
     public static final int HOME_SECONDS = 120;
     // a second death this close to the last pile is the same hazard, not a new pile
     public static final int SAME_SPOT_BLOCKS = 8;
+    // putting the armor from the pile on: it is in the bag after the pickup and armor points only count what is worn
+    public static final int WEAR_SECONDS = 15;
 
     private NetherTripRules() {
     }
@@ -44,6 +46,8 @@ public final class NetherTripRules {
         WALK,
         // at the pile, picking up
         RECOVER,
+        // the pile gave armor back and it is still in the bag
+        WEAR,
         // gave up while still in the nether without a kit: walk back to the overworld so the rebuild can start
         HOME;
 
@@ -116,7 +120,7 @@ public final class NetherTripRules {
 
     // everything one decision looks at. tripTicks / stageTicks are game time since the trip / this stage began
     public record Inputs(Stage stage, Dimension dim, long tripTicks, long stageTicks, int buildBlocks, boolean homeGone,
-                         double pileDistance, boolean recoverFinished, int itemsGained, boolean kitShort, Limits limits) {
+                         double pileDistance, boolean recoverFinished, int itemsGained, boolean kitShort, int toWear, Limits limits) {
     }
 
     // stage = where the trip goes from here, null when it is over. giveUp = why, set exactly when this step is a give up
@@ -139,6 +143,7 @@ public final class NetherTripRules {
             case PORTAL -> portal(in);
             case WALK -> walk(in);
             case RECOVER -> recover(in);
+            case WEAR -> wear(in);
             default -> over();
         };
     }
@@ -187,8 +192,23 @@ public final class NetherTripRules {
         if (in.itemsGained() <= 0) {
             return giveUp(in, "nothing left at the pile");
         }
-        // something came back but not the kit: the phase machine only rebuilds from the overworld, so this is the same as an
-        // empty pile (giveUp walks home from the nether)
+        // armor in the bag counts for nothing until it is on, so wear it before judging the kit
+        return in.toWear() > 0 ? new Step(Stage.WEAR, null, false) : verdict(in);
+    }
+
+    private static Step wear(Inputs in) {
+        if (in.dim() != Dimension.NETHER) {
+            return giveUp(in, "left the nether");
+        }
+        if (in.toWear() > 0 && in.stageTicks() <= WEAR_SECONDS * 20L) {
+            return stay(Stage.WEAR);
+        }
+        return verdict(in);
+    }
+
+    // something came back but maybe not the kit: the phase machine only rebuilds from the overworld, so a pile without the
+    // kit is the same as an empty one (giveUp walks home from the nether)
+    private static Step verdict(Inputs in) {
         return in.kitShort() ? giveUp(in, "the pile did not have the kit") : new Step(null, null, true);
     }
 

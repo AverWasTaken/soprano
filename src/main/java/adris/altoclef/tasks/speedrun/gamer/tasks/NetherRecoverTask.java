@@ -2,9 +2,11 @@ package adris.altoclef.tasks.speedrun.gamer.tasks;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.TaskCatalogue;
+import adris.altoclef.tasks.misc.EquipArmorTask;
 import adris.altoclef.tasks.movement.DefaultGoToDimensionTask;
 import adris.altoclef.tasks.movement.GetWithinRangeOfBlockTask;
 import adris.altoclef.tasks.speedrun.gamer.GamerFacts;
+import adris.altoclef.tasks.speedrun.gamer.KitPlanner;
 import adris.altoclef.tasks.speedrun.gamer.RunState;
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
 import adris.altoclef.tasks.speedrun.gamer.phases.NetherRegress;
@@ -14,9 +16,11 @@ import adris.altoclef.ui.HudText;
 import baritone.api.utils.Dimension;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 
+import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -37,6 +41,7 @@ public class NetherRecoverTask extends Task {
     private Task blocks;
     private Task toPile;
     private RecoverItemsTask pile;
+    private Task wear;
     private Task home;
     // what the bag held at its lowest since the pile task started, and the most it ever climbed from there. the bag shrinks
     // while the pile task runs (dirt placed to reach it, food eaten), so the net change says nothing about what came back
@@ -114,8 +119,9 @@ public class NetherRecoverTask extends Task {
         boolean finished = pile != null && pile.isFinished(mod);
         int gained = pile == null ? 0 : trackGain(mod);
         NetherTripRules.Limits limits = NetherTripRules.Limits.of(d.netherTripSeconds, d.netherBlocks, d.netherBlocksSeconds);
+        int toWear = stage == Stage.RECOVER || stage == Stage.WEAR ? KitPlanner.toEquip(facts, cfg.get().overworld).size() : 0;
         return new NetherTripRules.Inputs(stage, facts.dimension(), now - trip.startTick, now - trip.stageTick,
-                facts.buildBlocks(), homeGone, dist, finished, gained, NetherRegress.kitShort(facts, cfg.get()), limits);
+                facts.buildBlocks(), homeGone, dist, finished, gained, NetherRegress.kitShort(facts, cfg.get()), toWear, limits);
     }
 
     private Task childFor(AltoClef mod, Stage stage) {
@@ -155,6 +161,14 @@ public class NetherRecoverTask extends Task {
                 setDebugState("Picking up our stuff.", "Getting our stuff back");
                 return pile;
             }
+            case WEAR -> {
+                if (wear == null) {
+                    List<Item> pieces = KitPlanner.toEquip(facts, cfg.get().overworld);
+                    wear = new EquipArmorTask(pieces.toArray(new Item[0]));
+                }
+                setDebugState("Putting our armor back on.", "Putting on armor");
+                return wear;
+            }
             default -> {
                 if (home == null) {
                     home = new DefaultGoToDimensionTask(Dimension.OVERWORLD);
@@ -171,6 +185,7 @@ public class NetherRecoverTask extends Task {
                     : "going with " + facts.buildBlocks() + " blocks";
             case WALK -> "through the portal";
             case RECOVER -> "at the pile";
+            case WEAR -> "putting the armor on";
             default -> "heading home";
         };
     }

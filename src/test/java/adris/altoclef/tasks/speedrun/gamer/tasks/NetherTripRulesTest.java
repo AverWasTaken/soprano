@@ -21,15 +21,15 @@ public class NetherTripRulesTest {
 
     // the usual stage: overworld, nothing held, nothing done yet. tests change what they care about
     private static Inputs in(Stage stage, Dimension dim, long tripTicks, long stageTicks, int blocks) {
-        return new Inputs(stage, dim, tripTicks, stageTicks, blocks, false, 500, false, 0, true, LIMITS);
+        return new Inputs(stage, dim, tripTicks, stageTicks, blocks, false, 500, false, 0, true, 0, LIMITS);
     }
 
     private static Inputs home(Stage stage, boolean gone) {
-        return new Inputs(stage, Dimension.OVERWORLD, 100, 100, 24, gone, 500, false, 0, true, LIMITS);
+        return new Inputs(stage, Dimension.OVERWORLD, 100, 100, 24, gone, 500, false, 0, true, 0, LIMITS);
     }
 
     private static Inputs pile(Stage stage, Dimension dim, double distance, boolean finished, int gained, boolean kitShort) {
-        return new Inputs(stage, dim, 2000, 100, 24, false, distance, finished, gained, kitShort, LIMITS);
+        return new Inputs(stage, dim, 2000, 100, 24, false, distance, finished, gained, kitShort, 0, LIMITS);
     }
 
     // ---- eligibility
@@ -157,6 +157,35 @@ public class NetherTripRulesTest {
     public void aKitThatSurvivedTheDeathNeedsNoTrip() {
         assertEquals("the kit is still on us", NetherTripRules.refuse(Cause.OTHER, true, true, false, false, true));
     }
+    // armor in the bag counts for nothing until it is on (armor points are what is worn), so a pile with the armor in it
+    // is only judged after the wear stage
+    private static Inputs bagged(Stage stage, long stageTicks, boolean finished, boolean kitShort, int toWear) {
+        return new Inputs(stage, Dimension.NETHER, 2000, stageTicks, 24, false, 3, finished, 14, kitShort, toWear, LIMITS);
+    }
+
+    @Test
+    public void armorFromThePileIsWornBeforeTheKitIsJudged() {
+        Step step = NetherTripRules.next(bagged(Stage.RECOVER, 100, true, true, 4));
+        assertEquals(Stage.WEAR, step.stage());
+        assertNull(step.giveUp());
+        assertFalse(step.recovered());
+    }
+
+    @Test
+    public void wearingKeepsGoingUntilItIsOnThenTheKitDecides() {
+        assertEquals(Stage.WEAR, NetherTripRules.next(bagged(Stage.WEAR, 100, true, true, 2)).stage());
+        assertTrue(NetherTripRules.next(bagged(Stage.WEAR, 100, true, false, 0)).recovered());
+        Step short_ = NetherTripRules.next(bagged(Stage.WEAR, 100, true, true, 0));
+        assertEquals("the pile did not have the kit", short_.giveUp());
+        assertEquals(Stage.HOME, short_.stage());
+    }
+
+    @Test
+    public void wearingThatDragsOnIsJudgedWithWhatIsOn() {
+        long late = NetherTripRules.WEAR_SECONDS * 20L + 1;
+        Step step = NetherTripRules.next(bagged(Stage.WEAR, late, true, true, 2));
+        assertEquals("the pile did not have the kit", step.giveUp());
+    }
     @Test
     public void anEmptyPileGivesUpAndWalksHomeWhenTheKitIsStillShort() {
         Step step = NetherTripRules.next(pile(Stage.RECOVER, Dimension.NETHER, 3, true, 0, true));
@@ -183,9 +212,9 @@ public class NetherTripRulesTest {
     @Test
     public void sixMinutesIsTheWholeTripAndAnythingPastItIsOutOfTime() {
         assertEquals(Stage.WALK, NetherTripRules.next(pile(Stage.WALK, Dimension.NETHER, 300, false, 0, true)).stage());
-        Step late = NetherTripRules.next(new Inputs(Stage.WALK, Dimension.NETHER, 7201, 100, 24, false, 300, false, 0, true, LIMITS));
+        Step late = NetherTripRules.next(new Inputs(Stage.WALK, Dimension.NETHER, 7201, 100, 24, false, 300, false, 0, true, 0, LIMITS));
         assertEquals("out of time", late.giveUp());
-        Step exact = NetherTripRules.next(new Inputs(Stage.WALK, Dimension.NETHER, 7200, 100, 24, false, 300, false, 0, true, LIMITS));
+        Step exact = NetherTripRules.next(new Inputs(Stage.WALK, Dimension.NETHER, 7200, 100, 24, false, 300, false, 0, true, 0, LIMITS));
         assertNull(exact.giveUp());
     }
 
@@ -198,7 +227,7 @@ public class NetherTripRulesTest {
 
     @Test
     public void outOfTimeStandingInTheNetherWithoutAKitWalksHome() {
-        Step step = NetherTripRules.next(new Inputs(Stage.WALK, Dimension.NETHER, 9000, 100, 24, false, 300, false, 0, true, LIMITS));
+        Step step = NetherTripRules.next(new Inputs(Stage.WALK, Dimension.NETHER, 9000, 100, 24, false, 300, false, 0, true, 0, LIMITS));
         assertEquals("out of time", step.giveUp());
         assertEquals(Stage.HOME, step.stage());
     }
@@ -213,11 +242,11 @@ public class NetherTripRulesTest {
     @Test
     public void walkingHomeEndsInTheOverworldOrAfterTwoMinutes() {
         assertEquals(Stage.HOME, NetherTripRules.next(new Inputs(Stage.HOME, Dimension.NETHER, 99999, 2400, 0, false, 300,
-                false, 0, true, LIMITS)).stage());
-        Step back = NetherTripRules.next(new Inputs(Stage.HOME, Dimension.OVERWORLD, 99999, 100, 0, false, 300, false, 0, true, LIMITS));
+                false, 0, true, 0, LIMITS)).stage());
+        Step back = NetherTripRules.next(new Inputs(Stage.HOME, Dimension.OVERWORLD, 99999, 100, 0, false, 300, false, 0, true, 0, LIMITS));
         assertNull(back.stage());
         assertNull(back.giveUp());
-        Step tired = NetherTripRules.next(new Inputs(Stage.HOME, Dimension.NETHER, 99999, 2401, 0, false, 300, false, 0, true, LIMITS));
+        Step tired = NetherTripRules.next(new Inputs(Stage.HOME, Dimension.NETHER, 99999, 2401, 0, false, 300, false, 0, true, 0, LIMITS));
         assertNull(tired.stage());
     }
 

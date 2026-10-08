@@ -224,7 +224,8 @@ public class GamerTask extends Task {
             if (state.netherTrip != null) {
                 // the trip's own child threw, not the phase. the phase machine is not ticking while the trip has the wheel,
                 // so a trip left standing would throw again every tick until its six minutes ran out
-                host.say("gave up: the trip hit an error (" + e.getClass().getSimpleName() + "), rebuilding");
+                host.say("gave up: the trip hit an error (" + e.getClass().getSimpleName() + ")"
+                        + (NetherRegress.kitShort(facts, cfg) ? ", rebuilding" : ", carrying on"));
                 state.netherTrip = null;
                 netherTrip = null;
                 host.save();
