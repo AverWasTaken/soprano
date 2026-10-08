@@ -227,7 +227,7 @@ public class SettingsUtil {
     }
 
     public static void parseAndApply(Settings settings, String settingName, String settingValue) throws IllegalStateException, NumberFormatException {
-        Settings.Setting setting = settings.byLowerName.get(settingName);
+        Settings.Setting setting = settings.findByLowerName(settingName);
         if (setting == null) {
             throw new IllegalStateException("No setting by that name");
         }

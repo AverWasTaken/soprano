@@ -110,7 +110,7 @@ public class ExampleBaritoneControl extends Behavior implements Helper {
         String rest = msg.substring(pair.getA().length());
         ArgConsumer argc = new ArgConsumer(this.manager, pair.getB());
         if (!argc.hasAny()) {
-            Settings.Setting setting = settings.byLowerName.get(command.toLowerCase(Locale.US));
+            Settings.Setting setting = settings.findByLowerName(command.toLowerCase(Locale.US));
             if (setting != null) {
                 logRanCommand(command, rest);
                 if (setting.getValueClass() == Boolean.class) {
@@ -121,17 +121,13 @@ public class ExampleBaritoneControl extends Behavior implements Helper {
                 return true;
             }
         } else if (argc.hasExactlyOne()) {
-            for (Settings.Setting setting : settings.allSettings) {
-                if (setting.isJavaOnly()) {
-                    continue;
-                }
-                if (setting.getName().equalsIgnoreCase(pair.getA())) {
-                    logRanCommand(command, rest);
-                    try {
-                        this.manager.execute(String.format("set %s %s", setting.getName(), argc.getString()));
-                    } catch (CommandNotEnoughArgumentsException ignored) {} // The operation is safe
-                    return true;
-                }
+            Settings.Setting setting = settings.findByLowerName(pair.getA().toLowerCase(Locale.US));
+            if (setting != null && !setting.isJavaOnly()) {
+                logRanCommand(command, rest);
+                try {
+                    this.manager.execute(String.format("set %s %s", setting.getName(), argc.getString()));
+                } catch (CommandNotEnoughArgumentsException ignored) {} // The operation is safe
+                return true;
             }
         }
 

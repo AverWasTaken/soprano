@@ -19,7 +19,7 @@ package baritone.utils;
 
 import baritone.Baritone;
 
-// experimentalMovement is a preset, not a setting rewrite: the real settings never change, so switching it off hands the
+// fastMode is a preset, not a setting rewrite: the real settings never change, so switching it off hands the
 // user their own choices back. everything that has an opinion about one of these reads it through here and nowhere else
 // (the planner snapshots them into CalculationContext, the executor asks directly), so there's exactly one list to keep honest
 public final class ExperimentalMovement {
@@ -31,7 +31,7 @@ public final class ExperimentalMovement {
     private ExperimentalMovement() {}
 
     public static boolean on() {
-        return Baritone.settings().experimentalMovement.value;
+        return Baritone.settings().fastMode.value;
     }
 
     public static boolean allowParkour() {

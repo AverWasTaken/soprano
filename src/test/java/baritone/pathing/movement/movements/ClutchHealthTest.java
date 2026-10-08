@@ -25,7 +25,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
-// a ladder clutch at hp 6 that misses is a dead bot. the planner stops offering it below experimentalMinHealth, the
+// a ladder clutch at hp 6 that misses is a dead bot. the planner stops offering it below fastModeMinHealth, the
 // bucket keeps its place
 public class ClutchHealthTest {
 

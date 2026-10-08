@@ -110,7 +110,7 @@ public class VineLogPathTest {
         parkour = settings.allowParkour.value;
         climb = settings.allowClimbJumps.value;
         neos = settings.allowNeos.value;
-        experimental = settings.experimentalMovement.value;
+        experimental = settings.fastMode.value;
         sprintJumping = settings.sprintJumping.value;
         headHitters = settings.headHitters.value;
         potions = settings.considerPotionEffects.value;
@@ -119,7 +119,7 @@ public class VineLogPathTest {
         settings.allowParkour.value = true;
         settings.allowClimbJumps.value = true;
         settings.allowNeos.value = true;
-        settings.experimentalMovement.value = true;
+        settings.fastMode.value = true;
         settings.sprintJumping.value = true;
         settings.headHitters.value = true;
         settings.considerPotionEffects.value = false;
@@ -134,7 +134,7 @@ public class VineLogPathTest {
         settings.allowParkour.value = parkour;
         settings.allowClimbJumps.value = climb;
         settings.allowNeos.value = neos;
-        settings.experimentalMovement.value = experimental;
+        settings.fastMode.value = experimental;
         settings.sprintJumping.value = sprintJumping;
         settings.headHitters.value = headHitters;
         settings.considerPotionEffects.value = potions;

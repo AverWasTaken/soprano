@@ -97,7 +97,7 @@ public class MovementFall extends Movement {
         NONE, BUCKET, CLUTCH, HURT
     }
 
-    // a deliberate fall that hurts (experimentalMovement). nobody is saving us, we just fall. sticky, because the plan
+    // a deliberate fall that hurts (fastMode). nobody is saving us, we just fall. sticky, because the plan
     // changing under us at the edge (health went down) is the one thing we check for, see updateState
     private boolean hurt;
 
@@ -112,7 +112,7 @@ public class MovementFall extends Movement {
     // the clutch ran out of things to try (nothing in reach in time, nothing to hang on), so it's the bucket or nothing
     private boolean clutchGaveUp;
 
-    // hp was under experimentalMinHealth the last tick we stood on the ledge, so this fall gets no clutch start to finish
+    // hp was under fastModeMinHealth the last tick we stood on the ledge, so this fall gets no clutch start to finish
     // (canAffordClutch). asked only on the ledge: once we're off it a hit must not take away the save we're in
     private boolean lowAtLedge;
 
@@ -199,7 +199,7 @@ public class MovementFall extends Movement {
         // it should still get the gate for the hp we started it with
         if (atLedge || ticks == 1) {
             double health = ctx.player().getHealth() + ctx.player().getAbsorptionAmount();
-            lowAtLedge = !ExperimentalMovement.canAffordClutch(health, Baritone.settings().experimentalMinHealth.value);
+            lowAtLedge = !ExperimentalMovement.canAffordClutch(health, Baritone.settings().fastModeMinHealth.value);
         }
         snapshotDamage();
         confirmLadder();
@@ -569,7 +569,7 @@ public class MovementFall extends Movement {
         boolean planned = !water && plannedDamage > 0;
         FallMode mode = water ? FallMode.NONE : planned ? FallMode.HURT : fallMode();
         double health = ctx.player().getHealth() + ctx.player().getAbsorptionAmount();
-        boolean affordable = planned && ExperimentalMovement.canAffordFall(health, plannedDamage, Baritone.settings().experimentalMinHealth.value);
+        boolean affordable = planned && ExperimentalMovement.canAffordFall(health, plannedDamage, Baritone.settings().fastModeMinHealth.value);
         return FallCover.handles(mode, clutchGaveUp, bucketOnHotbar(), AltoClefSettings.getInstance().shouldNotPlaceBucketButStillFall(), affordable);
     }
 

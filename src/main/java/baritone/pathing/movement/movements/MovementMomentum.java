@@ -120,7 +120,7 @@ public class MovementMomentum extends Movement implements CurvedMovement {
         double back = Math.abs(st.u());
         double ticks = back * WALK_ONE_BLOCK_COST + Math.min(back, SNEAK_STRETCH) * SNEAK_EXTRA + SETTLE_TICKS + st.ticks();
         int jumps = 1 + (st.hop() ? 1 : 0) + (pad > 0 ? 1 : 0);
-        // jumpBias is 1 unless experimentalMovement is on, same as neos. calculateCost reads this too so they can't drift
+        // jumpBias is 1 unless fastMode is on, same as neos. calculateCost reads this too so they can't drift
         return context.biasJump(ticks + jumps * context.jumpPenalty);
     }
 

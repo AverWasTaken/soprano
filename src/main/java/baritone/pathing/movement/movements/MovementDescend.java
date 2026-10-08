@@ -225,7 +225,7 @@ public class MovementDescend extends Movement {
             boolean bucketOk = reachedMinimum && context.hasWaterBucket && unprotectedFallHeight <= context.maxFallHeightBucket + 1;
             double clutch = reachedMinimum ? clutchCost(context, destX, destZ, effectiveStartHeight, newY + 1) : COST_INF;
             if (clutchHealthGate) {
-                clutch = clutchAtHealth(clutch, context.health, context.experimentalMinHealth);
+                clutch = clutchAtHealth(clutch, context.health, context.fastModeMinHealth);
             }
             if (clutch < COST_INF) {
                 clutch += WALK_OFF_BLOCK_COST + frontBreak + costSoFar;
@@ -251,14 +251,14 @@ public class MovementDescend extends Movement {
         }
     }
 
-    // the last resort under experimentalMovement: no bucket, no clutch, so just eat it if we can afford the hearts.
+    // the last resort under fastMode: no bucket, no clutch, so just eat it if we can afford the hearts.
     // the water bucket and the clutch both got their say before we got here, a fall that hurts never beats one that doesn't
     private static void hurtingFall(CalculationContext context, int destX, int destZ, int newY, int blocks, double tentativeCost, BlockState onto, MutableMoveResult res) {
-        if (!context.experimental || blocks > ExperimentalMovement.MAX_HURT_FALL) {
+        if (!context.fastMode || blocks > ExperimentalMovement.MAX_HURT_FALL) {
             return;
         }
         int damage = ExperimentalMovement.fallDamage(blocks);
-        if (!ExperimentalMovement.canAffordFall(context.health, damage, context.experimentalMinHealth)) {
+        if (!ExperimentalMovement.canAffordFall(context.health, damage, context.fastModeMinHealth)) {
             return;
         }
         // magma and friends. canWalkOn lets some of them through (we can sneak on magma, that is not the same as landing on it)
@@ -272,7 +272,7 @@ public class MovementDescend extends Movement {
         res.damage = damage;
     }
 
-    // a clutch that misses at low hp is lethal, so below experimentalMinHealth it's not on the menu (see canAffordClutch).
+    // a clutch that misses at low hp is lethal, so below fastModeMinHealth it's not on the menu (see canAffordClutch).
     // only the clutch: the bucket and the plain falls don't care
     static double clutchAtHealth(double clutch, double health, double minHealth) {
         return ExperimentalMovement.canAffordClutch(health, minHealth) ? clutch : COST_INF;
