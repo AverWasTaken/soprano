@@ -52,11 +52,111 @@ public class CritTimingTest {
     }
 
     @Test
-    public void aFullCooldownOnTheGroundStillHopsFirst() {
-        // ticksToFull 0 on the ground is the "i would swing right now" case, and a crit is worth the wait
+    public void aFullCooldownOnTheGroundSwingsNowInsteadOfHopping() {
+        // a hop is 7 ticks up before anything falls, which is past the 4 tick cap on holding a swing. the next one is timed
         Sample s = ready();
         s.ticksToFull = 0;
+        assertEquals(Step.PLAIN, new CritTiming().step(0, s));
+        s.ticksToFull = 0.5;
         assertEquals(Step.JUMP, new CritTiming().step(0, s));
+    }
+
+    // ---- not under fire
+
+    @Test
+    public void noHopWithinTwentyTicksOfBeingHit() {
+        Sample s = ready();
+        s.ticksSinceHurt = CritTiming.HURT_QUIET_TICKS;
+        assertEquals(Step.PLAIN, new CritTiming().step(0, s));
+        s.ticksSinceHurt = CritTiming.HURT_QUIET_TICKS + 1;
+        assertEquals(Step.JUMP, new CritTiming().step(0, s));
+    }
+
+    @Test
+    public void noHopWithTwoOnUs() {
+        Sample s = ready();
+        s.meleeNear = 1;
+        assertEquals(Step.JUMP, new CritTiming().step(0, s));
+        s.meleeNear = 2;
+        assertEquals(Step.PLAIN, new CritTiming().step(0, s));
+    }
+
+    @Test
+    public void noHopAtTenHealthOrLess() {
+        Sample s = ready();
+        s.health = 10;
+        assertEquals(Step.PLAIN, new CritTiming().step(0, s));
+        s.health = 10.5f;
+        assertEquals(Step.JUMP, new CritTiming().step(0, s));
+    }
+
+    @Test
+    public void pressureAsOneQuestionForWantsCritTick() {
+        assertFalse(CritTiming.underPressure(1000, 1, 20));
+        assertTrue(CritTiming.underPressure(20, 0, 20));
+        assertTrue(CritTiming.underPressure(1000, 2, 20));
+        assertTrue(CritTiming.underPressure(1000, 0, 10));
+    }
+
+    @Test
+    public void gettingHitMidAirGivesUpTheCrit() {
+        CritTiming t = new CritTiming();
+        assertEquals(Step.JUMP, t.step(0, ready()));
+        Sample hit = rising(3);
+        hit.ticksSinceHurt = 0;
+        assertEquals(Step.PLAIN, t.step(1, hit));
+        assertFalse(t.inFlight(1));
+        // and the next swing is a plain one instead of another try, same as every other give up
+        assertEquals(Step.PLAIN, t.step(2, landed()));
+    }
+
+    @Test
+    public void aSecondMobArrivingMidAirOrTheHealthDroppingGivesUpToo() {
+        CritTiming crowd = new CritTiming();
+        crowd.step(0, ready());
+        Sample two = rising(3);
+        two.meleeNear = 2;
+        assertEquals(Step.PLAIN, crowd.step(1, two));
+        CritTiming hurting = new CritTiming();
+        hurting.step(0, ready());
+        Sample low = falling(0);
+        low.health = 6;
+        assertEquals(Step.PLAIN, hurting.step(1, low));
+    }
+
+    @Test
+    public void aFreeCritIsStillTakenUnderPressure() {
+        // already coming down with everything lined up costs nothing, no reason to throw it away
+        Sample s = falling(0);
+        s.meleeNear = 3;
+        assertEquals(Step.SWING, new CritTiming().step(0, s));
+    }
+
+    // ---- the cap
+
+    @Test
+    public void aCrimpedHopNeverHoldsTheSwingMoreThanFourTicksPastFull() {
+        CritTiming t = new CritTiming();
+        assertEquals(Step.JUMP, t.step(0, ready()));
+        // still rising, cooldown full from tick 1 on (a wall bonked the jump short, whatever): the cap steps in
+        for (int tick = 1; tick <= CritTiming.MAX_READY_WAIT; tick++) {
+            assertEquals("tick " + tick, Step.WAIT, t.step(tick, rising(0)));
+        }
+        assertEquals(Step.SWING, t.step(CritTiming.MAX_READY_WAIT + 1, rising(0)));
+        assertFalse(t.inFlight(CritTiming.MAX_READY_WAIT + 1));
+    }
+
+    @Test
+    public void theCapCountsConsecutiveReadyTicksOnly() {
+        CritTiming t = new CritTiming();
+        t.step(0, ready());
+        // ready, not ready, ready: the count restarts, no early swing
+        assertEquals(Step.WAIT, t.step(1, rising(0)));
+        assertEquals(Step.WAIT, t.step(2, rising(0)));
+        assertEquals(Step.WAIT, t.step(3, rising(2)));
+        for (int tick = 4; tick <= 7; tick++) {
+            assertEquals("tick " + tick, Step.WAIT, t.step(tick, rising(0)));
+        }
     }
 
     @Test

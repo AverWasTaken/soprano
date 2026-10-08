@@ -32,6 +32,22 @@ public class CritTiming {
     // nobody asked us for this long, whatever we were doing is stale (task switched, mob died, stopped being a target)
     private static final long STALE_TICKS = 3;
 
+    // a crit is a bonus, not a reason to stand there. none of these is a good time to go hopping around:
+    // hit this recently (a hop is 7+ ticks of not blocking, not backing off, and a zombie gets a free swing every time)
+    public static final long HURT_QUIET_TICKS = 20;
+    // two things on us at once
+    public static final int CROWD_NO_CRIT = 2;
+    // and half our hearts or fewer (same line the food chain calls "should be eating")
+    public static final float LOW_HEALTH_NO_CRIT = 10;
+    // however it goes, the swing is never held more than this many ticks past a full cooldown. the fall is not a promise
+    public static final int MAX_READY_WAIT = 4;
+
+    // the three reasons above as one question. PlayerExtraController asks it for wantsCritTick too, so the kill tasks and
+    // this machine can't disagree about whether a hop is on
+    public static boolean underPressure(long ticksSinceHurt, int meleeNear, float health) {
+        return ticksSinceHurt <= HURT_QUIET_TICKS || meleeNear >= CROWD_NO_CRIT || health <= LOW_HEALTH_NO_CRIT;
+    }
+
     // everything that can change the answer. the defaults are the easy case, every guard open, so a test sets only the
     // thing it is about
     public static class Sample {
@@ -58,12 +74,23 @@ public class CritTiming {
         public boolean unsafeFloor = false;
         // baritone is walking a path. our jump press would be ignored at best and a parkour or pillar at worst
         public boolean pathing = false;
+        // how long ago anything hurt us, how many melee mobs are within 3, how much health we have. the defaults are a quiet
+        // fight at full health
+        public long ticksSinceHurt = Long.MAX_VALUE / 2;
+        public int meleeNear = 0;
+        public float health = 20;
+
+        boolean pressured() {
+            return underPressure(ticksSinceHurt, meleeNear, health);
+        }
     }
 
     private enum Phase {IDLE, AIRBORNE}
 
     private Phase phase = Phase.IDLE;
     private int airTicks = 0;
+    // airborne ticks the cooldown has been full for, the MAX_READY_WAIT cap counts these
+    private int readyTicks = 0;
     // we jumped and came down without a swing. the next hit is a normal one instead of another try
     private boolean plainNext = false;
     private long lastNow = Long.MIN_VALUE;
@@ -103,6 +130,7 @@ public class CritTiming {
         if (canJump(s)) {
             phase = Phase.AIRBORNE;
             airTicks = 0;
+            readyTicks = 0;
             return Step.JUMP;
         }
         return Step.PLAIN;
@@ -110,7 +138,9 @@ public class CritTiming {
 
     private Step airborne(Sample s) {
         airTicks++;
-        if (!s.inReach || !vanillaAllows(s) || s.shielding || s.usingItem || s.pathing) {
+        // (a hit in the air is in here too: ticksSinceHurt was above the line when the hop started, so being under it now
+        // means something landed one while we were up. come down swinging, not waiting)
+        if (!s.inReach || !vanillaAllows(s) || s.shielding || s.usingItem || s.pathing || s.pressured()) {
             return giveUp();
         }
         if (s.onGround) {
@@ -124,7 +154,13 @@ public class CritTiming {
         if (airTicks > MAX_AIR_TICKS) {
             return giveUp();
         }
+        readyTicks = s.ticksToFull <= 0 ? readyTicks + 1 : 0;
         if (s.falling && s.ticksToFull <= 0) {
+            reset();
+            return Step.SWING;
+        }
+        if (readyTicks > MAX_READY_WAIT) {
+            // still going up with a full cooldown. it is a plain hit from here, but it is a hit
             reset();
             return Step.SWING;
         }
@@ -142,6 +178,7 @@ public class CritTiming {
     public void reset() {
         phase = Phase.IDLE;
         airTicks = 0;
+        readyTicks = 0;
     }
 
     // mid jump and somebody is still asking. the kill task lets go of its grounded check for this
@@ -164,6 +201,12 @@ public class CritTiming {
         if (s.normalHitKills) {
             return false;
         }
-        return s.ticksToFull <= LEAD_TICKS;
+        // getting hit, crowded or hurting: swing like a person who would like to keep their hearts
+        if (s.pressured()) {
+            return false;
+        }
+        // a full cooldown means the swing is owed right now. a hop is 7 ticks up before the first falling one, past the cap
+        // on how long a crit may hold a swing, so the "free" hop at a full cooldown was just a delay with extra steps
+        return s.ticksToFull > 0 && s.ticksToFull <= LEAD_TICKS;
     }
 }

@@ -99,7 +99,17 @@ public class PlayerExtraController {
         if (!Baritone.settings().altoJumpCrits.value || _mod.getClientBaritone().getPathingBehavior().isPathing()) {
             return false;
         }
-        return critInFlight() || ticksToFull() <= CritTiming.LEAD_TICKS;
+        // mid hop we still want the call (it is how the hop gets cancelled), a new one under pressure we don't: that is
+        // the stretch where the kill task used to sit out the cooldown while zombies hit it. same question CritTiming asks
+        if (critInFlight()) {
+            return true;
+        }
+        return !underPressure() && ticksToFull() <= CritTiming.LEAD_TICKS;
+    }
+
+    private boolean underPressure() {
+        return CritTiming.underPressure(_mod.getMobDefenseChain().ticksSinceHurt(_mod),
+                _mod.getMobDefenseChain().meleeNear(_mod), _mod.getPlayer().getHealth());
     }
 
     // every melee swing at a mob goes through here so the crit timing lives in one place. returns whether a swing or a
@@ -157,6 +167,9 @@ public class PlayerExtraController {
         // the key being down counts too: the shield goes up one player tick after the press
         s.shielding = player.isBlocking() || _mod.getInputControls().isHeldDown(Input.CLICK_RIGHT);
         s.pathing = _mod.getClientBaritone().getPathingBehavior().isPathing();
+        s.ticksSinceHurt = _mod.getMobDefenseChain().ticksSinceHurt(_mod);
+        s.meleeNear = _mod.getMobDefenseChain().meleeNear(_mod);
+        s.health = player.getHealth();
         Level level = _mod.getWorld();
         BlockPos feet = player.blockPosition();
         // the jump is 1.25 up and we are 1.8 tall, so the cell two above our feet is the one a ceiling bonks us with
