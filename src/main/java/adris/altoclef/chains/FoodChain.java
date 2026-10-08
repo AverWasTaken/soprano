@@ -90,11 +90,11 @@ public class FoodChain extends SingleTaskChain {
         _dragonBreathTracker.updateBreath(mod);
         // one list of reasons we will not eat right now. the eat branch below and needsToEat() both go by it, so
         // everything that pauses for a meal (progress checkers, container waits) stops waiting when we refuse to eat.
-        // before, "needs to eat" stayed true through a fall or a shield block and no watchdog could fire
+        // before, "needs to eat" stayed true through a fall or a lava dip and no watchdog could fire
         _eatBlocked = eatingBlocked(mod);
         // blocking is NOT in the shared list: mob defense drops the shield when needsToEat() is true, so counting it
         // there would make a shielding bot unable to ever get hungry enough to put the shield down
-        if (_eatBlocked || mod.getPlayer().isBlocking()) {
+        if (_eatBlocked) {
             stopEat(mod);
             return Float.NEGATIVE_INFINITY;
         }
@@ -127,7 +127,7 @@ public class FoodChain extends SingleTaskChain {
         // mid fight we do not start a meal, and one already going gets spat out. you cannot swing a sword while chewing
         // and the thing hitting us does not wait for the bar. once the fight is over _requestFillup picks it back up
         CombatRules.Stance stance = stance(mod);
-        if (stance == CombatRules.Stance.EAT_GAPPLE) {
+        if (stance == CombatRules.Stance.EAT_GAPPLE && !mod.getPlayer().isBlocking()) {
             // not in the food list on purpose, this is the one fight where the gapple is the point
             Item gapple = mod.getItemStorage().hasItem(Items.GOLDEN_APPLE) ? Items.GOLDEN_APPLE : Items.ENCHANTED_GOLDEN_APPLE;
             LookHelper.tryAvoidingInteractable(mod);
