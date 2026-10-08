@@ -39,6 +39,8 @@ public class RunState {
     public Pos netherPortal;
     // CAST or OBSIDIAN, decided by the portal phase
     public String portalMethod = "CAST";
+    // the lava pool stalled the portal phase once: the retries cast, and the pool's try does not use up an attempt
+    public boolean portalPoolTimedOut;
 
     // nether: 27 chunk structure cells as "cx,cz"
     public Set<String> visitedCells = new LinkedHashSet<>();

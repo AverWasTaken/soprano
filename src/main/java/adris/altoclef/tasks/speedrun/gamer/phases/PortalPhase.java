@@ -45,8 +45,6 @@ public class PortalPhase implements PhaseHandler {
     private boolean poolFailed;
     // the pool was handed to the task at least once this try, so a timeout can tell "stuck building it" from "stuck in prep"
     private boolean poolStarted;
-    // the last try ended while the pool was being built, the next one goes straight to the cast
-    private boolean poolTimedOut;
     private ConstructNetherPortalObsidianTask obsidian;
     private EnterNetherPortalTask enter;
     private String hudState;
@@ -82,9 +80,10 @@ public class PortalPhase implements PhaseHandler {
         pool = new LavaPoolPortalTask(ctx::log);
         poolStarted = false;
         if (ctx.attempt() <= 1) {
-            poolTimedOut = false;
+            ctx.state().portalPoolTimedOut = false;
         }
-        poolFailed = poolTimedOut;
+        // a pool that already stalled the phase once is not tried again, not even after a relog
+        poolFailed = ctx.state().portalPoolTimedOut;
         obsidian = new ConstructNetherPortalObsidianTask();
         enter = new EnterNetherPortalTask(Dimension.NETHER);
         hudState = null;
@@ -210,31 +209,33 @@ public class PortalPhase implements PhaseHandler {
         }
     }
 
-    // first timeout: the pool stalling means the cast never got its turn, so the retry casts. otherwise the cast was the
-    // problem (or the whole prep was slow) and the retry goes the obsidian way, if there is a diamond pickaxe to mine it with.
-    // the second one is the end of the line, default retry would loop the same plans for ever
+    // the pool stalling means the cast never got its turn, so the retry casts, and that stall does not use up an attempt
+    // (see PortalPlanner.onTimeout). otherwise the cast was the problem (or the whole prep was slow) and the retry goes the
+    // obsidian way, if there is a diamond pickaxe to mine it with. the last one is the end of the line, default retry would
+    // loop the same plans for ever
     @Override
     public Timeout onTimeout(GamerContext ctx, int attempt, String reason) {
         Method current = PortalPlanner.parse(ctx.state().portalMethod);
-        if (current == Method.CAST && attempt < ctx.cfg().maxAttempts) {
-            boolean poolWasRunning = poolStarted && !poolFailed;
-            boolean diamondPick = ctx.facts().count(Items.DIAMOND_PICKAXE, Items.NETHERITE_PICKAXE) > 0;
-            Method next = PortalPlanner.afterTimeout(current, poolWasRunning, diamondPick);
+        boolean poolWasRunning = poolStarted && !poolFailed;
+        boolean diamondPick = ctx.facts().count(Items.DIAMOND_PICKAXE, Items.NETHERITE_PICKAXE) > 0;
+        PortalPlanner.TimeoutPlan plan = PortalPlanner.onTimeout(current, attempt, ctx.cfg().maxAttempts, poolWasRunning,
+                ctx.state().portalPoolTimedOut, diamondPick);
+        if (!plan.retry()) {
+            return Timeout.STUCK;
+        }
+        if (current == Method.CAST) {
             if (poolWasRunning) {
-                poolTimedOut = true;
                 ctx.log("portal timed out on the lava pool (" + reason + "), trying the cast");
-            } else if (next == Method.OBSIDIAN) {
+            } else if (plan.method() == Method.OBSIDIAN) {
                 ctx.log("portal timed out (" + reason + "), trying obsidian");
             } else {
                 ctx.log("portal timed out (" + reason + "), no diamond pickaxe for obsidian, casting again");
             }
-            if (next != current) {
-                ctx.state().portalMethod = next.name();
-                ctx.save();
-            }
-            return Timeout.RETRY;
         }
-        return attempt < ctx.cfg().maxAttempts ? Timeout.RETRY : Timeout.STUCK;
+        ctx.state().portalPoolTimedOut = plan.poolTimedOut();
+        ctx.state().portalMethod = plan.method().name();
+        ctx.save();
+        return Timeout.RETRY;
     }
 
     // a death at home takes the pickaxe with it, and the cast buckets would be rebuilt with nothing to mine the iron with

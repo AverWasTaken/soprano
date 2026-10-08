@@ -66,6 +66,29 @@ public class PortalPlannerTest {
         assertEquals(Method.CAST, PortalPlanner.afterTimeout(Method.CAST, true, false));
     }
 
+    // maxAttempts 2: the pool stall is paid for, the cast still gets both of its tries
+    @Test
+    public void aPoolStallDoesNotUseUpTheCastsAttempt() {
+        PortalPlanner.TimeoutPlan stall = PortalPlanner.onTimeout(Method.CAST, 1, 2, true, false, true);
+        assertTrue(stall.retry());
+        assertEquals(Method.CAST, stall.method());
+        assertTrue(stall.poolTimedOut());
+        // engine attempt 2 is the cast's first try: its timeout is still a retry, and may now go obsidian
+        PortalPlanner.TimeoutPlan cast1 = PortalPlanner.onTimeout(Method.CAST, 2, 2, false, stall.poolTimedOut(), true);
+        assertTrue(cast1.retry());
+        assertEquals(Method.OBSIDIAN, cast1.method());
+        // attempt 3 is the second cast try, after that the existing end of the line
+        assertTrue(!PortalPlanner.onTimeout(Method.OBSIDIAN, 3, 2, false, true, true).retry());
+        // no diamond pickaxe: the retry casts again
+        assertEquals(Method.CAST, PortalPlanner.onTimeout(Method.CAST, 2, 2, false, true, false).method());
+    }
+
+    @Test
+    public void withoutAPoolStallTheAttemptsAreTheOldTwo() {
+        assertTrue(PortalPlanner.onTimeout(Method.CAST, 1, 2, false, false, true).retry());
+        assertTrue(!PortalPlanner.onTimeout(Method.OBSIDIAN, 2, 2, false, false, true).retry());
+    }
+
     @Test
     public void aTimeoutOutsideThePoolGoesObsidianOnlyWithThePickaxe() {
         assertEquals(Method.OBSIDIAN, PortalPlanner.afterTimeout(Method.CAST, false, true));

@@ -68,6 +68,20 @@ public final class PortalPlanner {
         return poolWasRunning || !hasDiamondPickaxe ? Method.CAST : Method.OBSIDIAN;
     }
 
+    // what a portal phase timeout turns into: another try (with which method) or the end. the engine counts every retry,
+    // so a pool that stalled gets one extra attempt to pay for itself: the pool is the optional fast path and its stall must
+    // not eat the attempt the cast needs. poolTimedOut = it stalled on an earlier try (saved in RunState)
+    public record TimeoutPlan(boolean retry, Method method, boolean poolTimedOut) {
+    }
+
+    public static TimeoutPlan onTimeout(Method current, int attempt, int maxAttempts, boolean poolWasRunning,
+                                        boolean poolTimedOut, boolean hasDiamondPickaxe) {
+        boolean timedOut = poolTimedOut || poolWasRunning;
+        boolean retry = attempt < maxAttempts + (timedOut ? 1 : 0);
+        Method next = retry && current == Method.CAST ? afterTimeout(current, poolWasRunning, hasDiamondPickaxe) : current;
+        return new TimeoutPlan(retry, next, timedOut);
+    }
+
     // what to hold before leaving the overworld (Marvion ordering: get it all here, not in the nether). the cast needs
     // two buckets (one becomes water, one lava) and a light, the end needs the water bucket back later
     public static List<KitNeed> gate(GamerFacts f, OverworldConfig cfg) {
