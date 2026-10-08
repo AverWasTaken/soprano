@@ -123,7 +123,7 @@ public class PortalPlannerTest {
     @Test
     public void gateOnABareInventoryAsksForEverythingInOrder() {
         FakeFacts f = new FakeFacts();
-        List<String> names = PortalPlanner.gate(f, cfg).stream().map(KitNeed::catalogueName).toList();
+        List<String> names = PortalPlanner.gate(f, cfg, 10).stream().map(KitNeed::catalogueName).toList();
         assertEquals(List.of("food", "bucket", "water_bucket", "flint_and_steel", "build_blocks"), names);
     }
 
@@ -132,7 +132,7 @@ public class PortalPlannerTest {
         FakeFacts f = new FakeFacts().give(Items.BUCKET, 1).give(Items.WATER_BUCKET, 1).give(Items.FLINT_AND_STEEL, 1);
         f.foodUnits = 70;
         f.buildBlocks = 32;
-        assertTrue(PortalPlanner.gate(f, cfg).isEmpty());
+        assertTrue(PortalPlanner.gate(f, cfg, 10).isEmpty());
     }
 
     @Test
@@ -140,7 +140,7 @@ public class PortalPlannerTest {
         FakeFacts f = new FakeFacts().give(Items.BUCKET, 1).give(Items.WATER_BUCKET, 1).give(Items.FIRE_CHARGE, 1);
         f.foodUnits = 70;
         f.buildBlocks = 32;
-        assertTrue(PortalPlanner.gate(f, cfg).isEmpty());
+        assertTrue(PortalPlanner.gate(f, cfg, 10).isEmpty());
     }
 
     @Test
@@ -148,7 +148,7 @@ public class PortalPlannerTest {
         FakeFacts f = new FakeFacts().give(Items.WATER_BUCKET, 1).give(Items.FLINT_AND_STEEL, 1);
         f.foodUnits = 70;
         f.buildBlocks = 32;
-        assertEquals(List.of(new KitNeed("bucket", 1)), PortalPlanner.gate(f, cfg));
+        assertEquals(List.of(new KitNeed("bucket", 1)), PortalPlanner.gate(f, cfg, 10));
     }
 
     @Test
@@ -157,9 +157,9 @@ public class PortalPlannerTest {
                 .give(Items.IRON_BOOTS, 1);
         f.foodUnits = 70;
         f.buildBlocks = 32;
-        assertEquals(List.of(new KitNeed(KitNeed.EQUIP_ARMOR, 1)), PortalPlanner.gate(f, cfg));
+        assertEquals(List.of(new KitNeed(KitNeed.EQUIP_ARMOR, 1)), PortalPlanner.gate(f, cfg, 10));
         f.worn.add(Items.IRON_BOOTS);
-        assertTrue(PortalPlanner.gate(f, cfg).isEmpty());
+        assertTrue(PortalPlanner.gate(f, cfg, 10).isEmpty());
     }
 
     private FakeFacts readyToGo() {
@@ -172,26 +172,26 @@ public class PortalPlannerTest {
     @Test
     public void gateMakesAGoldHelmetFromGoldInTheBagThenWearsIt() {
         FakeFacts f = readyToGo().give(Items.GOLD_INGOT, 5);
-        assertEquals(List.of(new KitNeed("golden_helmet", 1)), PortalPlanner.gate(f, cfg));
+        assertEquals(List.of(new KitNeed("golden_helmet", 1)), PortalPlanner.gate(f, cfg, 10));
         f.give(Items.GOLD_INGOT, -5).give(Items.GOLDEN_HELMET, 1);
-        assertEquals(List.of(new KitNeed(KitNeed.EQUIP_ARMOR, 1)), PortalPlanner.gate(f, cfg));
+        assertEquals(List.of(new KitNeed(KitNeed.EQUIP_ARMOR, 1)), PortalPlanner.gate(f, cfg, 10));
         f.worn.add(Items.GOLDEN_HELMET);
-        assertTrue(PortalPlanner.gate(f, cfg).isEmpty());
+        assertTrue(PortalPlanner.gate(f, cfg, 10).isEmpty());
     }
 
     @Test
     public void gateSettlesForGoldBootsAndThenForNothing() {
-        assertEquals(List.of(new KitNeed("golden_boots", 1)), PortalPlanner.gate(readyToGo().give(Items.GOLD_INGOT, 4), cfg));
+        assertEquals(List.of(new KitNeed("golden_boots", 1)), PortalPlanner.gate(readyToGo().give(Items.GOLD_INGOT, 4), cfg, 10));
         // no mining detour: three ingots are not a piece of armor and the gate lets us go
-        assertTrue(PortalPlanner.gate(readyToGo().give(Items.GOLD_INGOT, 3), cfg).isEmpty());
-        assertTrue(PortalPlanner.gate(readyToGo(), cfg).isEmpty());
+        assertTrue(PortalPlanner.gate(readyToGo().give(Items.GOLD_INGOT, 3), cfg, 10).isEmpty());
+        assertTrue(PortalPlanner.gate(readyToGo(), cfg, 10).isEmpty());
     }
 
     @Test
     public void gateLeavesGoldAloneWhenAPieceIsAlreadyOn() {
         FakeFacts f = readyToGo().give(Items.GOLD_INGOT, 9).give(Items.GOLDEN_BOOTS, 1);
         f.worn.add(Items.GOLDEN_BOOTS);
-        assertTrue(PortalPlanner.gate(f, cfg).isEmpty());
+        assertTrue(PortalPlanner.gate(f, cfg, 10).isEmpty());
     }
 
     @Test

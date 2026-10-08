@@ -53,7 +53,7 @@ public final class KitPlanner {
     // wood -> axe -> the rest of the wood -> table -> stone tools -> furnace, then enough food to survive the next phase
     public static List<KitNeed> gather(GamerFacts f, OverworldConfig cfg, int endBeds) {
         List<KitNeed> out = new ArrayList<>(starter(f, cfg, endBeds, true, new ArrayList<>()));
-        addFood(out, f, cfg.minFoodUnits);
+        addFood(out, foodHeld(f, cfg, endBeds), cfg.minFoodUnits);
         // no cook here: GATHER used to wait out the smoker with nothing else to do, and the meat cooks just as well while the
         // iron phase starts (it leads the plan on the surface, see CookGate.leads, and the output is collected on the way)
         return out;
@@ -66,10 +66,11 @@ public final class KitPlanner {
         // a worn pick we still carry gets replaced after the iron, not in the middle of it (see starter)
         List<KitNeed> late = new ArrayList<>();
         List<KitNeed> out = new ArrayList<>(starter(f, cfg, endBeds, false, late));
-        addFood(out, f, cfg.minFoodUnits);
+        int food = foodHeld(f, cfg, endBeds);
+        addFood(out, food, cfg.minFoodUnits);
         out.addAll(iron(f, cfg, endBeds));
         out.addAll(late);
-        addFood(out, f, cfg.targetFoodUnits);
+        addFood(out, food, cfg.targetFoodUnits);
         addCook(out, f, cfg, endBeds);
         return out;
     }
@@ -406,10 +407,20 @@ public final class KitPlanner {
         }
     }
 
-    private static void addFood(List<KitNeed> out, GamerFacts f, int units) {
-        if (f.foodUnits() + f.pendingFoodUnits() < units) {
+    private static void addFood(List<KitNeed> out, int held, int units) {
+        if (held < units) {
             out.add(new KitNeed(KitNeed.FOOD, units));
         }
+    }
+
+    // the food every food rule counts: the bag, what a smoker is cooking for us, and the raw meat at its cooked value only while
+    // a cook can really happen (CookGate.cookFeasible). with no station or fuel to cook it the meat gets eaten raw (FoodSelector
+    // takes it at 3 a porkchop, not 8), and counting it at 80 for ten of them meant the kit never hunted. one number for the
+    // planner, the food gate and the portal gate, so they cannot disagree
+    public static int foodHeld(GamerFacts f, OverworldConfig cfg, int endBeds) {
+        int held = f.foodUnits() + f.pendingFoodUnits();
+        int gap = CookGate.rawGap(f);
+        return gap > 0 && !CookGate.cookFeasible(f, cfg, endBeds) ? held - gap : held;
     }
 
     // 3 wool a bed, and a bed we already carry is 3 wool we do not need to find. a bed wants three of ONE colour, so

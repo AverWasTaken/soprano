@@ -131,7 +131,7 @@ public class PortalPhase implements PhaseHandler {
             }
         }
         if (!gateDone) {
-            List<KitNeed> gate = PortalPlanner.gate(f, ctx.cfg().overworld);
+            List<KitNeed> gate = PortalPlanner.gate(f, ctx.cfg().overworld, ctx.cfg().end.beds);
             if (!gate.isEmpty()) {
                 Task prep = runner.run(ctx, gate);
                 hudState = runner.hud();

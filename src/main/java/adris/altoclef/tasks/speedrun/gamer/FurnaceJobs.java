@@ -154,6 +154,11 @@ public final class FurnaceJobs {
         return Math.round(ticksPerItem(kind) * (inputCount - Math.min(1.0, Math.max(0.0, arrow))));
     }
 
+    // this job has been waited on to the end of its estimate more than once with nothing coming out of it
+    public static boolean stuck(RunState.FurnaceJob job) {
+        return job.stalls >= STALL_LIMIT;
+    }
+
     // what a job looks like after we visited: what is still cooking (input slot count) or nothing left to come back for.
     // the furnace sat in an unloaded chunk for who knows how long, so the old doneTick was a guess and this one is not
     public static void afterVisit(List<RunState.FurnaceJob> jobs, RunState.FurnaceJob job, int inputLeft, long now) {
@@ -162,9 +167,28 @@ public final class FurnaceJobs {
 
     // same with the time left read off the cook arrow instead of assuming the current item has not started
     public static void afterVisit(List<RunState.FurnaceJob> jobs, RunState.FurnaceJob job, int inputLeft, long remaining, long now) {
+        afterVisit(jobs, job, inputLeft, remaining, now, false);
+    }
+
+    // two capped visits in a row that saw nothing come out and the job is diagnosed (stuck): a furnace that is lit and just slow
+    // gets one more wait, one that did not move twice is not cooking
+    public static final int STALL_LIMIT = 2;
+
+    // how long past the estimate a wait at a furnace still counts as the bot doing something (the walk back, a collect that takes a moment)
+    public static final long WAIT_SLACK_TICKS = 600;
+
+    // `capped` = the trip stood at the furnace until its cap ran out. the re-stamp below gives the job a fresh honest looking
+    // timer, so without this count a furnace that never finishes looks fine at every visit and holds the phase for ever
+    public static void afterVisit(List<RunState.FurnaceJob> jobs, RunState.FurnaceJob job, int inputLeft, long remaining, long now,
+                                  boolean capped) {
         if (inputLeft <= 0) {
             jobs.remove(job);
             return;
+        }
+        if (inputLeft < job.count) {
+            job.stalls = 0;
+        } else if (capped) {
+            job.stalls++;
         }
         job.count = inputLeft;
         job.startTick = now;

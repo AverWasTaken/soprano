@@ -111,6 +111,11 @@ public class CookRawFoodTask extends Task {
             Debug.logMessage("Cooking the " + smelting.getDescriptionId() + " is going nowhere, leaving it raw for a while.");
             CookTrip.suspend(now);
             gaveUp = true;
+            // a long coal trip with the meat already in the station: it is not in the bag and not a job, so without this it sits
+            // there unlit for the rest of the run and the cook need never comes back for it (raw reads 0)
+            if (smelt instanceof AsyncSmelting.Handoff handoff) {
+                handoff.recordLeftBehind(mod);
+            }
             smelt = null;
             return null;
         }

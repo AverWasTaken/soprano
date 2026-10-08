@@ -13,8 +13,17 @@ import java.util.List;
 // there is no leash: a furnace in an unloaded chunk just pauses, so the bot goes where the work is and walks back for the
 // output when it is due (and whatever is in the furnace when we get there is the truth, see CollectFromFurnaceTask)
 public final class SmeltFiller {
-    // runnable = what we can work on right now, most useful first. blocked = needs that want ingots we do not hold yet
-    public record Schedule(List<KitNeed> runnable, List<KitNeed> blocked) {
+    // runnable = what we can work on right now, most useful first. blocked = needs that want ingots we do not hold yet.
+    // stockUps = the entries of runnable that are only there to use the wait (cfg.smeltExtras), a due job cuts those short
+    public record Schedule(List<KitNeed> runnable, List<KitNeed> blocked, List<KitNeed> stockUps) {
+        public Schedule(List<KitNeed> runnable, List<KitNeed> blocked) {
+            this(runnable, blocked, List.of());
+        }
+
+        // is this need one of the stock-ups. record equality, so a plan need that happens to match one counts too, which is fine
+        public boolean isStockUp(KitNeed need) {
+            return need != null && stockUps.contains(need);
+        }
     }
 
     public enum Trip {
@@ -33,6 +42,8 @@ public final class SmeltFiller {
         BOUNDARY("due, and the need we were on is done"),
         // the job is due and something is worth cutting the current need short for (the early pick, a smoker holding up the food)
         INTERRUPT("due, and the output is holding up the plan"),
+        // the job is due and all we were doing was stocking up for later
+        STOCK_UP("due, and the need we were on is only a stock-up"),
         // the job is due and there is nothing else useful to do
         IDLE("due, and there is nothing else to do");
 
@@ -71,9 +82,11 @@ public final class SmeltFiller {
             runnable.add(new KitNeed(KitNeed.BUILD_BLOCKS, cfg.portalBuildBlocks));
         }
         prep(f, cfg, endBeds, blocked, runnable);
-        extras(f, cfg, endBeds, nearSurface, runnable);
+        List<KitNeed> stockUps = new ArrayList<>();
+        extras(f, cfg, endBeds, nearSurface, stockUps);
+        runnable.addAll(stockUps);
         runnable.removeIf(need -> foodBlocked(f, need));
-        return new Schedule(runnable, blocked);
+        return new Schedule(runnable, blocked, stockUps);
     }
 
     // a craft is runnable while the ingots we hold cover it, handed out in plan order (the pickaxe gets its three before
@@ -167,6 +180,9 @@ public final class SmeltFiller {
         return wantedLogs - f.count(ItemHelper.PLANKS) / 4;
     }
 
+    // every stock-up is surface work (sheep, animals, a tree, loose stone), so none of them is worth climbing out of the mine for:
+    // down there the list is empty and the wait is spent standing at the furnace instead. IronPhase asks for what it needs
+    // itself while the surface is still close
     private static void extras(GamerFacts f, OverworldConfig cfg, int endBeds, boolean nearSurface, List<KitNeed> out) {
         if (cfg.smeltExtras == null) {
             return;
@@ -178,19 +194,19 @@ public final class SmeltFiller {
             switch (extra.item) {
                 case "food" -> {
                     int units = cfg.targetFoodUnits + extra.count;
-                    if (f.foodUnits() + f.pendingFoodUnits() < units) {
+                    if (nearSurface && KitPlanner.foodHeld(f, cfg, endBeds) < units) {
                         out.add(new KitNeed(KitNeed.FOOD, units));
                     }
                 }
                 case "wool_beds" -> {
                     int missing = KitPlanner.woolShortfall(f, endBeds + extra.count);
-                    if (missing > 0) {
+                    if (nearSurface && missing > 0) {
                         out.add(new KitNeed("wool", f.count(ItemHelper.WOOL) + missing));
                     }
                 }
                 case "build_blocks" -> {
                     int blocks = cfg.portalBuildBlocks + extra.count;
-                    if (f.buildBlocks() < blocks) {
+                    if (nearSurface && f.buildBlocks() < blocks) {
                         out.add(new KitNeed(KitNeed.BUILD_BLOCKS, blocks));
                     }
                 }
@@ -255,6 +271,13 @@ public final class SmeltFiller {
     // way out, there is nothing left to cut short
     public static Decision decide(boolean fillerLeft, boolean atBoundary, boolean interrupt, long now,
                                   List<RunState.FurnaceJob> jobs, OverworldConfig cfg) {
+        return decide(fillerLeft, atBoundary, interrupt, false, now, jobs, cfg);
+    }
+
+    // `stockUp` = the need we are on is one of Schedule.stockUps. nothing waits on a stock-up, so a due job cuts it short
+    // (the log trip that kept a finished furnace waiting until the next boundary)
+    public static Decision decide(boolean fillerLeft, boolean atBoundary, boolean interrupt, boolean stockUp, long now,
+                                  List<RunState.FurnaceJob> jobs, OverworldConfig cfg) {
         boolean due = FurnaceJobs.anyDue(jobs, now, Math.round(cfg.furnaceWaitSeconds * 20));
         if (!fillerLeft) {
             return due ? new Decision(Trip.COLLECT, Why.IDLE) : new Decision(Trip.WAIT, Why.NONE);
@@ -264,6 +287,9 @@ public final class SmeltFiller {
         }
         if (interrupt) {
             return new Decision(Trip.COLLECT, Why.INTERRUPT);
+        }
+        if (stockUp) {
+            return new Decision(Trip.COLLECT, Why.STOCK_UP);
         }
         return atBoundary ? new Decision(Trip.COLLECT, Why.BOUNDARY) : new Decision(Trip.FILLER, Why.NONE);
     }

@@ -124,6 +124,11 @@ public class SmeltInFurnaceTask extends ResourceTask implements AsyncSmelting.Ha
     }
 
     @Override
+    public void recordLeftBehind(AltoClef mod) {
+        _doTask.recordStranded(mod);
+    }
+
+    @Override
     protected boolean isEqualResource(ResourceTask other) {
         if (other instanceof SmeltInFurnaceTask task) {
             return task._doTask.isEqual(_doTask);
@@ -243,6 +248,19 @@ public class SmeltInFurnaceTask extends ResourceTask implements AsyncSmelting.Ha
 
             // We have fuel and materials. Get to our container and smelt!
             return super.onTick(mod);
+        }
+
+        // dropped with the input in the furnace and no job (the fuel trip outlasted the cook's patience): leave the job for the
+        // gamer so somebody goes back and takes it out. the cache is the last look at the slots, the visit reads the real ones
+        void recordStranded(AltoClef mod) {
+            BlockPos at = getTargetContainerPosition();
+            ItemStack material = _furnaceCache.materialSlot;
+            if (_loaded || at == null || material.isEmpty() || !AsyncSmelting.wants(_target.getItem())) {
+                return;
+            }
+            Debug.logInternal("furnace at " + at.toShortString() + " still holds " + material.getCount() + " of our input and the cook is leaving, "
+                    + "recording it so it gets picked up");
+            AsyncSmelting.leftBehind(mod, at, Blocks.FURNACE, material, _target.getItem());
         }
 
         // what the screen showed, or when this task never had it open (an interrupt restarts us and the cache is empty) what the

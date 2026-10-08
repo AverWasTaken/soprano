@@ -120,6 +120,9 @@ public class RunState {
         // doneTick came from the furnace's own slots on a visit, not from our guess when we loaded it (FurnaceJobs.anyDue). an
         // old save has no key and reads false, which is just "a guess"
         public boolean visited;
+        // visits that stood at the furnace for the whole estimate and still saw no item come out (FurnaceJobs.afterVisit). an old
+        // save has no key and reads 0
+        public int stalls;
 
         public FurnaceJob() {
         }

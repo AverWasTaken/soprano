@@ -84,9 +84,10 @@ public final class PortalPlanner {
 
     // what to hold before leaving the overworld (Marvion ordering: get it all here, not in the nether). the cast needs
     // two buckets (one becomes water, one lava) and a light, the end needs the water bucket back later
-    public static List<KitNeed> gate(GamerFacts f, OverworldConfig cfg) {
+    public static List<KitNeed> gate(GamerFacts f, OverworldConfig cfg, int endBeds) {
         List<KitNeed> out = new ArrayList<>();
-        if (f.foodUnits() < cfg.minFoodUnits) {
+        // the same count the kit plan uses, so meat still cooking for us (or meat that cannot be cooked) reads the same here
+        if (KitPlanner.foodHeld(f, cfg, endBeds) < cfg.minFoodUnits) {
             out.add(new KitNeed(KitNeed.FOOD, cfg.minFoodUnits));
         }
         int buckets = KitPlanner.have(f, "bucket");

@@ -55,6 +55,11 @@ public final class AsyncSmelting {
     // target and the raw meat is still in the bag. whoever waits on the task has to tell them apart
     public interface Handoff {
         boolean handedOff();
+
+        // the task is being dropped without having handed off (the cook gave up on a long fuel trip) and may have left its input in
+        // the station. say so, or nobody ever goes back for it (leftBehind)
+        default void recordLeftBehind(AltoClef mod) {
+        }
     }
 
     // the smelt tasks call this every tick the screen is open and they are working it
@@ -117,10 +122,33 @@ public final class AsyncSmelting {
         RunState.FurnaceJob job = new RunState.FurnaceJob(new RunState.Pos(pos.getX(), pos.getY(), pos.getZ()),
                 WorldHelper.getCurrentDimension().name(), kindName, name(input.getItem()), input.getCount(),
                 name(output.getMatches()[0]), now, FurnaceJobs.doneTick(kindName, now, input.getCount()));
-        FoodProperties food = output.getMatches()[0].components().get(DataComponents.FOOD);
-        job.unitsEach = food == null || !FOOD_OUTPUTS.contains(job.output) ? 0 : food.nutrition();
+        job.unitsEach = unitsEach(output);
         LOADED.add(job);
         StorageHelper.closeScreen();
+    }
+
+    private static int unitsEach(ItemTarget output) {
+        FoodProperties food = output.getMatches()[0].components().get(DataComponents.FOOD);
+        return food == null || !FOOD_OUTPUTS.contains(name(output.getMatches()[0])) ? 0 : food.nutrition();
+    }
+
+    // the cook gave up with the meat already in the station and never lit it (the coal trip ran past its patience), so there is no
+    // load to hand off and nobody knows the station holds anything. the job it leaves is due right now: the next visit finds the
+    // station unlit, takes the meat back out and the planner cooks it again when the backoff is over. a lit one just gets waited on
+    public static void leftBehind(AltoClef mod, BlockPos pos, Block kind, ItemStack input, ItemTarget output) {
+        long now = mod.getWorld().getGameTime();
+        RunState.FurnaceJob job = strandedJob(new RunState.Pos(pos.getX(), pos.getY(), pos.getZ()), WorldHelper.getCurrentDimension().name(),
+                BuiltInRegistries.BLOCK.getKey(kind).getPath(), name(input.getItem()), input.getCount(), name(output.getMatches()[0]),
+                unitsEach(output), now);
+        LOADED.add(job);
+    }
+
+    // a job that is due the moment it is made, count read off the station's input slot
+    public static RunState.FurnaceJob strandedJob(RunState.Pos pos, String dimension, String kind, String input, int count, String output,
+                                                  int unitsEach, long now) {
+        RunState.FurnaceJob job = new RunState.FurnaceJob(pos, dimension, kind, input, count, output, now, now);
+        job.unitsEach = unitsEach;
+        return job;
     }
 
     // what was loaded since the last call. the gamer's tick is the only reader

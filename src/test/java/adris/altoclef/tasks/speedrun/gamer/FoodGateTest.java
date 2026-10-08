@@ -107,11 +107,110 @@ public class FoodGateTest {
 
     @Test
     public void meatInTheOpenStationCountsUntilTheJobIsRecorded() {
+        RunState.Pos screen = new RunState.Pos(5, 64, 0);
         // 42 held, 4 pork in the screen (32 planned): the dip that sent the bot after a cow is not a dip
-        assertEquals(32, FoodGate.inStation(32, 0));
+        assertEquals(32, FoodGate.inStation(32, List.of(), screen, "OVERWORLD"));
         // the job is in the state: the pending sum has it, counting it again would hide a real shortage
-        assertEquals(0, FoodGate.inStation(32, 32));
-        assertEquals(0, FoodGate.inStation(0, 0));
+        assertEquals(0, FoodGate.inStation(32, List.of(foodJob(5, 4)), screen, "OVERWORLD"));
+        assertEquals(0, FoodGate.inStation(0, List.of(), screen, "OVERWORLD"));
+    }
+
+    private static RunState.FurnaceJob foodJob(int x, int count) {
+        RunState.FurnaceJob job = new RunState.FurnaceJob(new RunState.Pos(x, 64, 0), "OVERWORLD", "smoker", "porkchop", count,
+                "cooked_porkchop", 0, 1000);
+        job.unitsEach = 8;
+        return job;
+    }
+
+    @Test
+    public void aDifferentStationsJobDoesNotHideTheMeatBeingLoaded() {
+        RunState.Pos screen = new RunState.Pos(9, 64, 0);
+        // smoker A (x 5) is recorded and furnace B (x 9) is on screen with meat going in: B's meat still counts
+        assertEquals(32, FoodGate.inStation(32, List.of(foodJob(5, 4)), screen, "OVERWORLD"));
+        // once B has its own job, it is the pending sum's and not counted twice
+        assertEquals(0, FoodGate.inStation(32, List.of(foodJob(5, 4), foodJob(9, 4)), screen, "OVERWORLD"));
+        // same spot in another dimension is another station
+        assertEquals(32, FoodGate.inStation(32, List.of(foodJob(9, 4)), screen, "NETHER"));
+        // an iron job on the very block is not food and hides nothing
+        RunState.FurnaceJob iron = new RunState.FurnaceJob(new RunState.Pos(9, 64, 0), "OVERWORLD", "furnace", "raw_iron", 3,
+                "iron_ingot", 0, 1000);
+        assertEquals(32, FoodGate.inStation(32, List.of(iron), screen, "OVERWORLD"));
+        // not knowing which block the screen is falls back to the old rule: any food job hides it
+        assertEquals(0, FoodGate.inStation(32, List.of(foodJob(5, 4)), null, "OVERWORLD"));
+        assertEquals(32, FoodGate.inStation(32, List.of(), null, "OVERWORLD"));
+    }
+
+    // ---- raw meat is only worth its cooked value while a cook can happen
+
+    private static FakeFacts tenRawPork() {
+        FakeFacts f = new FakeFacts();
+        // what MinecraftFacts books: ten porkchop at the cooked 8 each
+        f.give(Items.PORKCHOP, 10);
+        f.foodUnits = 80;
+        return f;
+    }
+
+    @Test
+    public void rawGapIsTheCookedValueMinusTheRawOne() {
+        assertEquals(10 * (8 - 3), CookGate.rawGap(tenRawPork()));
+        assertEquals(0, CookGate.rawGap(new FakeFacts().give(Items.COOKED_PORKCHOP, 10)));
+        assertEquals(3, FoodHelper.ownNutrition(Items.PORKCHOP));
+        assertEquals(0, FoodHelper.ownNutrition(Items.STICK));
+    }
+
+    @Test
+    public void rawMeatWithNoWayToCookItCountsAtItsRawValue() {
+        // no furnace, no smoker, no fuel, no cobble: ten porkchop get eaten raw, 30 units, and the kit hunts
+        FakeFacts f = tenRawPork();
+        assertFalse(CookGate.cookFeasible(f, cfg, 10));
+        assertEquals(30, KitPlanner.foodHeld(f, cfg, 10));
+        assertEquals(new KitNeed(KitNeed.FOOD, cfg.minFoodUnits), KitPlanner.gather(f, cfg, 10).stream()
+                .filter(n -> n.catalogueName().equals(KitNeed.FOOD)).findFirst().orElse(null));
+    }
+
+    @Test
+    public void rawMeatWithAStationAndFuelCountsAtItsCookedValue() {
+        FakeFacts f = tenRawPork();
+        f.smokerPlaced = true;
+        f.give(Items.COAL, 4);
+        assertTrue(CookGate.cookFeasible(f, cfg, 10));
+        assertEquals(80, KitPlanner.foodHeld(f, cfg, 10));
+        // a station with no fuel to burn is no way to cook it
+        FakeFacts dry = tenRawPork();
+        dry.smokerPlaced = true;
+        assertEquals(30, KitPlanner.foodHeld(dry, cfg, 10));
+        // and a cook that backed off is not one either
+        f.cookSuspended = true;
+        assertEquals(30, KitPlanner.foodHeld(f, cfg, 10));
+    }
+
+    @Test
+    public void aCookInProgressKeepsTheCookedValue() {
+        // loading right now (the meat is half in the slot) or a smoker already on a batch: the cook is happening
+        FakeFacts loading = tenRawPork();
+        loading.cookStation = "smoker";
+        assertEquals(80, KitPlanner.foodHeld(loading, cfg, 10));
+        FakeFacts cooking = tenRawPork();
+        cooking.cookingFood("cooked_porkchop", 4, 8, 20);
+        assertEquals(80 + 32, KitPlanner.foodHeld(cooking, cfg, 10));
+    }
+
+    @Test
+    public void foodWithNoRawMeatIsTheSumItAlwaysWas() {
+        FakeFacts f = new FakeFacts();
+        f.foodUnits = 50;
+        assertEquals(50, KitPlanner.foodHeld(f, cfg, 10));
+        f.cookingFood("cooked_mutton", 3, 6, 20);
+        assertEquals(68, KitPlanner.foodHeld(f, cfg, 10));
+    }
+
+    @Test
+    public void theFoodFloorStartsLowAndRunsToTheFullAmount() {
+        assertFalse(FoodFloor.next(false, 40, cfg));
+        assertTrue(FoodFloor.next(false, cfg.minHeldFoodUnits - 1, cfg));
+        // once started it carries on past the floor, up to the minimum
+        assertTrue(FoodFloor.next(true, 40, cfg));
+        assertFalse(FoodFloor.next(true, cfg.minFoodUnits, cfg));
     }
 
     @Test

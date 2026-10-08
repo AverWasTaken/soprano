@@ -195,13 +195,20 @@ public final class FurnaceWatch {
         int left = task.inputLeft();
         long now = ctx.facts().gameTime();
         long guess = visited.doneTick - now;
-        FurnaceJobs.afterVisit(ctx.state().furnaceJobs, target, left, task.leftTicks(), now);
+        int before = visited.count;
+        FurnaceJobs.afterVisit(ctx.state().furnaceJobs, target, left, task.leftTicks(), now, task.cappedOut());
         if (left > 0) {
             // the estimate assumed the chunk ticked the whole time we were away, now it is what the furnace itself says
             Debug.logInternal("furnace at " + visited.pos + " still has " + left + " cooking, ready in "
-                    + Math.round(task.leftTicks() / 20.0) + " s (we had guessed " + Math.round(guess / 20.0) + " s), timer re-stamped");
+                    + Math.round(task.leftTicks() / 20.0) + " s (we had guessed " + Math.round(guess / 20.0) + " s), timer re-stamped"
+                    + (visited.stalls > 0 ? " (" + visited.stalls + " visits with nothing coming out)" : ""));
         }
-        ctx.progress("collected from the furnace");
+        // only a trip that got something out (or emptied it) is progress. a capped wait that saw the same count it started
+        // with used to count too, and with the fresh timer above every wait after it looked honest, so a furnace that never
+        // finished held the phase for ever
+        if (left < before) {
+            ctx.progress("collected from the furnace");
+        }
         ctx.save();
         task = null;
         target = null;
@@ -258,6 +265,14 @@ public final class FurnaceWatch {
             return null;
         }
         long now = ctx.facts().gameTime();
+        // two waits to the end of the estimate and nothing came out: it is not cooking (fuel that ran dry under a lit
+        // reading, an input it will not smelt). take the input back out and let the planner redo it, and the station comes
+        // down with it once it is empty. an unlit furnace with no fuel is already handled inside the trip, this is the rest
+        if (FurnaceJobs.stuck(job) && mode != Mode.TAKE_ALL) {
+            Debug.logInternal(job.kind + " at " + job.pos + " did not cook anything in " + job.stalls + " waits, taking the "
+                    + job.input + " back out");
+            mode = Mode.TAKE_ALL;
+        }
         // the cap is how long past the estimate WAIT_ALL waits, a furnace that never finishes must not hold us for ever
         long cap = Math.max(0, job.doneTick - now) + 600;
         Block block = BuiltInRegistries.BLOCK.getValue(ResourceLocation.withDefaultNamespace(job.kind));

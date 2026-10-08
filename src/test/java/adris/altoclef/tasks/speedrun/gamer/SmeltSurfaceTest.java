@@ -18,6 +18,16 @@ public class SmeltSurfaceTest {
     }
 
     @Test
+    public void theEarlyBatchIsSmeltedWhereTheOreIsNeverClimbedFor() {
+        KitNeed early = new KitNeed("iron_ingot", 3);
+        // three raw iron in the bag reads as "all the ore is in" for a count 3 head, which is the whole point of the early pick
+        assertEquals(SmeltSurface.Why.IRON, SmeltSurface.why(early, null, 3, 0, 0, 0, false));
+        assertEquals(SmeltSurface.Why.NONE, SmeltSurface.why(early, null, 3, 0, 0, 0, false, true));
+        // the big batch is still carried up
+        assertEquals(SmeltSurface.Why.IRON, SmeltSurface.why(new KitNeed("iron_ingot", 39), null, 39, 0, 0, 0, false, false));
+    }
+
+    @Test
     public void nothingToSmeltOrAnotherNeedIsNotOurBusiness() {
         assertFalse(SmeltSurface.oreDone("iron_ingot", 0, 0, 5, 0));
         assertFalse(SmeltSurface.oreDone("wool", 3, 20, 0, 0));

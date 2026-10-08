@@ -50,9 +50,23 @@ public final class FoodGate {
 
     // food in the slots of a furnace or smoker screen we have open. a load is the bag emptying into the station a stack at a
     // time, and for those ticks the count dipped under the floor and sent the bot for cows with the smoker half full. once the
-    // job is recorded the pending sum has it, so it is not counted twice
-    public static int inStation(int stationUnits, int pendingUnits) {
-        return pendingUnits > 0 ? 0 : stationUnits;
+    // job is recorded the pending sum has it, so it is not counted twice. only THIS station's job counts for that: smoker A
+    // being recorded says nothing about the meat going into furnace B, and the old any-job rule dropped B's meat from the sum
+    // (the bag read as short and the top-up went hunting with a full furnace). `screenAt` null = we do not know which block the
+    // screen is, then any food job still hides it (the old answer, the safe one for double counting)
+    public static int inStation(int stationUnits, List<RunState.FurnaceJob> jobs, RunState.Pos screenAt, String dimension) {
+        if (stationUnits <= 0) {
+            return 0;
+        }
+        for (RunState.FurnaceJob job : jobs) {
+            if (job.count * job.unitsEach <= 0) {
+                continue;
+            }
+            if (screenAt == null || (job.pos.equals(screenAt) && job.dimension.equals(dimension))) {
+                return 0;
+            }
+        }
+        return stationUnits;
     }
 
     // a top-up that started on the soft rule keeps going until the full amount, it must not flip every tick as the bot walks

@@ -95,6 +95,17 @@ public final class SmeltSurface {
     // `cookRunning` = the cook task already picked its station (CookTrip) and is walking to it. that one is a smoker or furnace
     // that is already standing, wherever it is, and climbing out just to come back down to it is a round trip for nothing
     public static Why why(KitNeed head, KitNeed next, int rawIron, int ingots, int pending, int rawMeat, boolean cookRunning) {
+        return why(head, next, rawIron, ingots, pending, rawMeat, cookRunning, false);
+    }
+
+    // `earlyBatch` = the head is the first three ingots for the pick (EarlyIronPick.isEarlyBatch). they are smelted right where the
+    // ore is, so a count 3 iron head reads as "all the ore is in" and without this it climbed out of the mine for three ore, once
+    // from the plain loop and once while some other job (a smoker) was cooking
+    public static Why why(KitNeed head, KitNeed next, int rawIron, int ingots, int pending, int rawMeat, boolean cookRunning,
+                          boolean earlyBatch) {
+        if (earlyBatch) {
+            return Why.NONE;
+        }
         if (head != null && oreDone(head.catalogueName(), head.count(), rawIron, ingots, pending)) {
             return Why.IRON;
         }
@@ -118,7 +129,8 @@ public final class SmeltSurface {
             settled[COOK] = false;
             gaveUp[COOK] = false;
         }
-        Why why = why(head, next, raw, f.count(Items.IRON_INGOT), f.pendingOutput(Items.IRON_INGOT), meat, f.cookStation() != null);
+        Why why = why(head, next, raw, f.count(Items.IRON_INGOT), f.pendingOutput(Items.IRON_INGOT), meat, f.cookStation() != null,
+                EarlyIronPick.isEarlyBatch(head, f, ctx.cfg().overworld));
         if (why == Why.NONE || !Baritone.settings().altoAsyncSmelting.value
                 || (why == Why.COOK && !Baritone.settings().altoAsyncCooking.value)) {
             return Why.NONE;

@@ -199,9 +199,9 @@ public class SmeltFillerTest {
         FakeFacts f = atTheFurnace().cooking("iron_ingot", 39, 400);
         assertNotNull(find(SmeltFiller.schedule(f, cfg, BEDS, true).runnable(), "log"));
         assertNull(find(SmeltFiller.schedule(f, cfg, BEDS, false).runnable(), "log"));
-        // the rest of the filler is not touched by depth
-        assertEquals(names(SmeltFiller.schedule(f, cfg, BEDS, true).runnable()).stream().filter(n -> !n.equals("log")).toList(),
-                names(SmeltFiller.schedule(f, cfg, BEDS, false).runnable()));
+        // the rest of the filler (the plan, the prep) is not touched by depth, only the stock-ups are
+        Schedule up = SmeltFiller.schedule(f, cfg, BEDS, true);
+        assertEquals(up.runnable().stream().filter(n -> !up.isStockUp(n)).toList(), SmeltFiller.schedule(f, cfg, BEDS, false).runnable());
     }
 
     @Test
@@ -239,6 +239,35 @@ public class SmeltFillerTest {
                 assertTrue(need.catalogueName(), adris.altoclef.TaskCatalogue.taskExists(need.catalogueName()));
             }
         }
+    }
+
+    // ---- stock-ups are surface work
+
+    @Test
+    public void downTheMineNoStockUpIsRunnable() {
+        FakeFacts f = atTheFurnace().cooking("iron_ingot", 40, 400);
+        f.foodUnits = 20;
+        Schedule deep = SmeltFiller.schedule(f, cfg, BEDS, false);
+        assertTrue(deep.stockUps().isEmpty());
+        assertNull(find(deep.runnable(), "log"));
+        Schedule up = SmeltFiller.schedule(f, cfg, BEDS, true);
+        assertEquals(List.of("food", "wool", "build_blocks", "log"), names(up.stockUps()));
+        for (KitNeed extra : up.stockUps()) {
+            assertTrue(up.runnable().contains(extra));
+        }
+        // the stock-up food is the +30 over the target, the plan's own 70 unit need is not one of them
+        assertEquals(cfg.targetFoodUnits + 30, find(up.stockUps(), KitNeed.FOOD).count());
+    }
+
+    @Test
+    public void aDueJobCutsAStockUpShortButNotARealNeed() {
+        List<RunState.FurnaceJob> jobs = atTheFurnace().cooking("iron_ingot", 10, 100).furnaceJobs();
+        long late = jobs.get(0).doneTick + 50;
+        assertEquals(new Decision(Trip.COLLECT, Why.STOCK_UP), SmeltFiller.decide(true, false, false, true, late, jobs, cfg));
+        // an ordinary need mid way is still left to finish
+        assertEquals(Trip.FILLER, SmeltFiller.decide(true, false, false, false, late, jobs, cfg).trip());
+        // and a job that is not due waits for nobody
+        assertEquals(Trip.FILLER, SmeltFiller.decide(true, false, false, true, jobs.get(0).startTick, jobs, cfg).trip());
     }
 
     private Decision decide(boolean fillerLeft, boolean atBoundary, boolean interrupt, long now, List<RunState.FurnaceJob> jobs) {

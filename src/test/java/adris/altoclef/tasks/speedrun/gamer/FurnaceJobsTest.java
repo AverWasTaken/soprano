@@ -210,6 +210,43 @@ public class FurnaceJobsTest {
     }
 
     @Test
+    public void aFurnaceThatNeverFinishesIsDiagnosedAfterTwoCappedWaits() {
+        List<RunState.FurnaceJob> jobs = new ArrayList<>();
+        RunState.FurnaceJob j = job(1, 5, 0, "furnace");
+        jobs.add(j);
+        // first wait to the end of the estimate, same count in the slot: the timer is re-stamped and looks honest again
+        FurnaceJobs.afterVisit(jobs, j, 5, 600, 2000, true);
+        assertEquals(1, j.stalls);
+        assertTrue(j.visited);
+        assertEquals(2600, j.doneTick);
+        assertFalse(FurnaceJobs.stuck(j));
+        // the second one is the tell, however fresh the timer looks
+        FurnaceJobs.afterVisit(jobs, j, 5, 600, 3300, true);
+        assertTrue(FurnaceJobs.stuck(j));
+        assertEquals(1, jobs.size());
+    }
+
+    @Test
+    public void anItemComingOutResetsTheDiagnosis() {
+        List<RunState.FurnaceJob> jobs = new ArrayList<>();
+        RunState.FurnaceJob j = job(1, 5, 0, "furnace");
+        jobs.add(j);
+        FurnaceJobs.afterVisit(jobs, j, 5, 600, 2000, true);
+        // a slow furnace that did give one up: that is cooking, just late
+        FurnaceJobs.afterVisit(jobs, j, 4, 600, 3000, true);
+        assertEquals(0, j.stalls);
+        FurnaceJobs.afterVisit(jobs, j, 4, 600, 4000, true);
+        assertEquals(1, j.stalls);
+        assertFalse(FurnaceJobs.stuck(j));
+        // a visit that chose to leave it cooking (not capped) says nothing either way
+        FurnaceJobs.afterVisit(jobs, j, 4, 600, 4100, false);
+        assertEquals(1, j.stalls);
+        // and an empty furnace ends the job whatever the count was
+        FurnaceJobs.afterVisit(jobs, j, 0, 0, 5000, true);
+        assertTrue(jobs.isEmpty());
+    }
+
+    @Test
     public void waitingByAFurnaceOnlyCountsUntilItsDuePlusSlack() {
         List<RunState.FurnaceJob> jobs = new ArrayList<>();
         // 5 mutton in a smoker from tick 1000: due at 1500

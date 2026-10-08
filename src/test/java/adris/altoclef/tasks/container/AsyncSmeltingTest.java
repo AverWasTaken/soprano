@@ -4,6 +4,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
+import adris.altoclef.tasks.speedrun.gamer.FurnaceJobs;
 import adris.altoclef.tasks.speedrun.gamer.RunState;
 import java.util.ArrayList;
 import java.util.List;
@@ -46,6 +47,15 @@ public class AsyncSmeltingTest {
         // a new run does not inherit it
         AsyncSmelting.clear();
         assertEquals(-1, AsyncSmelting.lastWork());
+    }
+
+    @Test
+    public void meatLeftInAStationWhenTheCookGivesUpIsADueJobAndCountsAsFood() {
+        RunState.FurnaceJob job = AsyncSmelting.strandedJob(new RunState.Pos(1, 64, 1), "OVERWORLD", "smoker", "porkchop", 6,
+                "cooked_porkchop", 8, 5000);
+        // due the moment it is made, so the next visit goes and gets it (an unlit smoker gives its input straight back)
+        assertTrue(FurnaceJobs.anyDue(List.of(job), 5000, 0));
+        assertEquals(48, FurnaceJobs.pendingUnits(List.of(job)));
     }
 
     @Test

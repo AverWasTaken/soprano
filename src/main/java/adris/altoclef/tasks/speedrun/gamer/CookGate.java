@@ -1,6 +1,7 @@
 package adris.altoclef.tasks.speedrun.gamer;
 
 import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig;
+import adris.altoclef.util.helpers.FoodHelper;
 import adris.altoclef.util.helpers.ItemHelper;
 import baritone.api.utils.Dimension;
 import net.minecraft.world.item.Item;
@@ -127,6 +128,27 @@ public final class CookGate {
         int planks = Math.max(0, f.count(ItemHelper.PLANKS) - keep.planks());
         // a log burns 1.5 items, a plank 0.75
         return smelts + logs * 3 / 2 + planks * 3 / 4;
+    }
+
+    // what the raw meat in the bag is worth at its cooked value beyond what it gives raw. foodUnits() books the first, the eater
+    // (FoodSelector) only ever gets the second out of a porkchop it has to eat raw, so this is the part that only exists once a
+    // furnace has been at it
+    public static int rawGap(GamerFacts f) {
+        int gap = 0;
+        for (Item meat : RAW_MEAT) {
+            int n = f.count(meat);
+            if (n > 0) {
+                gap += n * (FoodHelper.plannedNutrition(meat) - FoodHelper.ownNutrition(meat));
+            }
+        }
+        return gap;
+    }
+
+    // can the raw meat in the bag actually become dinner. a cook is loading or a smoker is on it already, or the cook need would
+    // be asked for right now (a station, fuel for the biggest pile, the overworld, not backed off). when this is false the meat gets
+    // eaten raw, so the plan must not count it at the cooked value (ten raw porkchop is 80 planned units and 30 real ones)
+    public static boolean cookFeasible(GamerFacts f, OverworldConfig cfg, int endBeds) {
+        return f.cookStation() != null || f.pendingFoodUnits() > 0 || need(f, cfg, endBeds) != null;
     }
 
     // the cook need, or null when there is nothing to do about the raw meat right now

@@ -32,7 +32,7 @@ public class KitNamesTest {
             for (KitNeed n : KitPlanner.plan(bare, cfg, 8)) {
                 names.add(n.catalogueName());
             }
-            for (KitNeed n : PortalPlanner.gate(bare, cfg)) {
+            for (KitNeed n : PortalPlanner.gate(bare, cfg, 10)) {
                 names.add(n.catalogueName());
             }
         }

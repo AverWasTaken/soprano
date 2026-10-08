@@ -41,6 +41,7 @@ public class CollectFromFurnaceTask extends Task {
     private int inputLeft;
     // ticks until that input is out, read off the cook arrow when we let go. the job gets re-stamped with it
     private long leftTicks;
+    private boolean cappedOut;
     private long waitingSince = -1;
     // WAIT_ALL stands with the screen closed until this game tick, -1 = not idling
     private long idleUntil = -1;
@@ -71,6 +72,12 @@ public class CollectFromFurnaceTask extends Task {
     // how long the input we left behind still needs. only meaningful once finished with inputLeft above 0
     public long leftTicks() {
         return leftTicks;
+    }
+
+    // we stood there until the cap ran out and let go with input still in the slot (not a visit that chose to leave it). the
+    // caller counts these, a furnace that does this twice is not cooking
+    public boolean cappedOut() {
+        return cappedOut;
     }
 
     @Override
@@ -137,6 +144,7 @@ public class CollectFromFurnaceTask extends Task {
                 inputLeft = input.getCount();
                 // it should have been done by now and was not, so the arrow is no use: come back in half a minute, not now
                 leftTicks = Math.max(remainingTicks(input), CAPPED_REVISIT_TICKS);
+                cappedOut = true;
                 done = true;
                 return null;
             }

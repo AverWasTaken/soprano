@@ -8,6 +8,7 @@ import adris.altoclef.tasks.container.CollectFromFurnaceTask.Mode;
 import adris.altoclef.tasks.speedrun.gamer.CookGate;
 import adris.altoclef.tasks.speedrun.gamer.EarlyIronPick;
 import adris.altoclef.tasks.speedrun.gamer.FoodGate;
+import adris.altoclef.tasks.speedrun.gamer.FurnaceJobs;
 import adris.altoclef.tasks.speedrun.gamer.FurnaceWatch;
 import adris.altoclef.tasks.speedrun.gamer.GamerContext;
 import adris.altoclef.tasks.speedrun.gamer.GamerFacts;
@@ -150,9 +151,9 @@ public class IronPhase implements PhaseHandler {
             hudState = support.hud();
             return side;
         }
-        // all the ore is mined and we are still down the mine: up first, then the smelt places its furnace in the open.
-        // the early pick batch is three items, it goes in right here where the ore is
-        Task up = EarlyIronPick.isEarlyBatch(first, ctx.facts(), ctx.cfg().overworld) ? null : surface.tick(mod, ctx, first, second(needs));
+        // all the ore is mined and we are still down the mine: up first, then the smelt places its furnace in the open
+        // (the early pick batch is three items and goes in right where the ore is, SmeltSurface leaves it alone)
+        Task up = surface.tick(mod, ctx, first, second(needs));
         if (up != null) {
             hudState = surface.hud();
             return up;
@@ -192,20 +193,24 @@ public class IronPhase implements PhaseHandler {
             // or picks the smoker up as it always does, and the filler gets the bot back once no smoker is left
             committed = null;
             trip = furnaces.collectJob(mod, ctx, SmeltFiller.smokerJob(f.furnaceJobs()), Mode.WAIT_ALL, "a smoker is quick, waiting for it instead of mining");
-            ctx.progress("waiting for the smoker");
+            if (waitIsHonest(f)) {
+                ctx.progress("waiting for the smoker");
+            }
         }
         if (trip == null) {
             // no pick yet and the early batch is done: the pick is worth the detour, the mining need would not end for 36 more
             // ingots. nothing else cuts a need short, an iron craft waiting on the output is not a reason to leave a ladder
             boolean boundary = head == null || !head.equals(committed);
             boolean interrupt = EarlyIronPick.collectNow(f, ctx.cfg().overworld);
-            Decision what = SmeltFiller.decide(head != null, boundary, interrupt, f.gameTime(), f.furnaceJobs(), ctx.cfg().overworld);
+            Decision what = SmeltFiller.decide(head != null, boundary, interrupt, schedule.isStockUp(head), f.gameTime(), f.furnaceJobs(),
+                    ctx.cfg().overworld);
             if (what.trip() != Trip.FILLER) {
                 committed = null;
                 trip = furnaces.collect(mod, ctx, what.trip() == Trip.WAIT ? Mode.WAIT_ALL : Mode.NORMAL,
                         what.trip() == Trip.WAIT ? "nothing else to do, waiting it out" : what.why().text);
-                if (what.trip() == Trip.WAIT) {
-                    // standing next to the furnace (screen closed between looks) is the plan, not a stall
+                if (what.trip() == Trip.WAIT && waitIsHonest(f)) {
+                    // standing next to the furnace (screen closed between looks) is the plan, not a stall. but only until the job
+                    // is due: a furnace that never finishes used to keep the watchdog off on every tick of the wait
                     ctx.progress("waiting for the furnace");
                 }
             }
@@ -233,6 +238,11 @@ public class IronPhase implements PhaseHandler {
         Task task = runner.run(ctx, runnable);
         hudState = runner.hud() + " while a batch cooks";
         return task;
+    }
+
+    // standing by a furnace counts as progress until the last job is due plus the slack, same rule GATHER uses
+    private static boolean waitIsHonest(GamerFacts f) {
+        return FurnaceJobs.waitIsHonest(f.furnaceJobs(), f.gameTime(), FurnaceJobs.WAIT_SLACK_TICKS);
     }
 
     // the collect trip going to the smoker, not to an iron furnace
@@ -342,9 +352,10 @@ public class IronPhase implements PhaseHandler {
     // SmeltFiller adds are surface work and not touched
     private List<KitNeed> gateFoodNeed(AltoClef mod, GamerContext ctx, List<KitNeed> needs) {
         OverworldConfig cfg = ctx.cfg().overworld;
-        // same sum the planner uses: the bag (raw meat at its cooked value, plus what sits in an open furnace or smoker screen)
-        // and what a smoker is cooking for us. the three never overlap, loading a smoker takes the meat out of the bag
-        int held = ctx.facts().foodUnits() + ctx.facts().pendingFoodUnits();
+        // same sum the planner uses: the bag (raw meat at its cooked value while a cook is possible, plus what sits in an open
+        // furnace or smoker screen) and what a smoker is cooking for us. the three never overlap, loading a smoker takes the meat
+        // out of the bag
+        int held = KitPlanner.foodHeld(ctx.facts(), cfg, ctx.cfg().end.beds);
         int band = FoodGate.band(held, cfg);
         if (band != foodBand) {
             // the user wants to see this one (an apple and six mutton was why the bot kept leaving the mine)
@@ -379,6 +390,8 @@ public class IronPhase implements PhaseHandler {
         if (attempt < ctx.cfg().maxAttempts) {
             return Timeout.RETRY;
         }
+        // skipping with iron still in a furnace is fine: PORTAL takes a last look before it leaves the overworld (TAKE_ALL on
+        // every job that is left, see PortalPhase.tick), so nothing gets stranded
         return KitPlanner.essentialsMet(ctx.facts(), ctx.cfg().overworld) ? Timeout.SKIP : Timeout.STUCK;
     }
 }

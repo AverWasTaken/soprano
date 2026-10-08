@@ -63,6 +63,12 @@ public final class FoodHelper {
         return food == null ? 0 : food.nutrition();
     }
 
+    // what one of these gives when it is eaten as it is, so raw meat at its raw value. 0 for anything with no food component
+    public static int ownNutrition(Item item) {
+        var food = item.components().get(DataComponents.FOOD);
+        return food == null ? 0 : food.nutrition();
+    }
+
     public static Kind kindOf(Item item) {
         if (!item.components().has(DataComponents.FOOD)) {
             return Kind.NOT_FOOD;

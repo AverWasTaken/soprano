@@ -44,6 +44,8 @@ public final class MinecraftFacts implements GamerFacts {
     private int junkFoodUnits;
     // food in the input and output slots of the furnace-like screen that is open right now, at planned value
     private int stationFood;
+    // the block that screen is, null when nothing says
+    private RunState.Pos stationAt;
     private int buildBlocks;
     private int fingerprint;
     private int x;
@@ -175,8 +177,11 @@ public final class MinecraftFacts implements GamerFacts {
         // slots are not added to counts: ore in a furnace is the early load's business (earlyLoadInFlight), and a raw iron that
         // is not "in the bag" is how that latch works. only the food sum reads them
         stationFood = 0;
+        stationAt = null;
         if (player.containerMenu instanceof AbstractFurnaceMenu furnace) {
             stationFood = foodIn(furnace.getSlot(0).getItem()) + foodIn(furnace.getSlot(2).getItem());
+            // which block the screen is, so only that station's own job hides its food (FoodGate.inStation)
+            stationAt = mod.getItemStorage().getLastBlockPosInteraction().map(p -> new RunState.Pos(p.getX(), p.getY(), p.getZ())).orElse(null);
         }
         for (int i = 0; i < 4; i++) {
             worn[i] = inv.getArmor(i);
@@ -227,7 +232,7 @@ public final class MinecraftFacts implements GamerFacts {
                 build += n;
             }
         }
-        foodUnits = food + FoodGate.inStation(stationFood, pendingFoodUnits());
+        foodUnits = food + FoodGate.inStation(stationFood, furnaceJobs(), stationAt, dimension.name());
         junkFoodUnits = junk;
         buildBlocks = build;
         fingerprint = fp;
