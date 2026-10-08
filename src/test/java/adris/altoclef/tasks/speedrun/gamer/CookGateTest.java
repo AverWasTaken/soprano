@@ -1,9 +1,11 @@
 package adris.altoclef.tasks.speedrun.gamer;
 
 import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig;
+import adris.altoclef.util.helpers.FuelPolicy;
 import baritone.api.utils.Dimension;
 import net.minecraft.SharedConstants;
 import net.minecraft.server.Bootstrap;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import org.junit.Before;
 import org.junit.BeforeClass;
@@ -376,6 +378,127 @@ public class CookGateTest {
         assertNull(need());
         f.give(Items.COAL, 1);
         assertEquals(KitNeed.COOK_SMOKER, need().catalogueName());
+    }
+
+    // 13:11:01: 5 beef went into the smoker, the bag read 0 raw, and `raw < MIN_RAW` handed the head to the iron mid load
+    @Test
+    public void aCommittedCookLeadsEvenWithTheMeatInTheStation() {
+        List<KitNeed> underMine = List.of(ORE, CRAFT, COOK);
+        // the bag is empty of raw meat: the old rule said no, whatever the latch and the heightmap thought
+        assertFalse(CookGate.leads(underMine, 2, 0, false, true, false, false));
+        assertFalse(CookGate.leads(underMine, 2, 0, true, true, false, false));
+        // the pin (a running cook with its station) is what keeps it, wherever the bot stands
+        assertTrue(CookGate.leads(underMine, 2, 0, false, false, false, true));
+        assertTrue(CookGate.leads(underMine, 2, 0, false, true, false, true));
+        // and the plan keeps the need itself, no raw meat and no fuel left in the bag, as long as the pin is up
+        f.cookStation = "smoker";
+        assertEquals(KitNeed.COOK_SMOKER, need().catalogueName());
+    }
+
+    // 13:11:00: the gate counted 19 logs as fuel, the smoker's FuelPolicy would not burn them (altoSupportedFuels is coal and
+    // charcoal), and the meat was already in the slot when the smelt task found out
+    @Test
+    public void fuelTheSmeltTaskWillNotBurnIsNoFuelForTheGate() {
+        f = kitDone().give(Items.BEEF, 5).give(Items.OAK_LOG, 23).give(Items.COBBLESTONE, 60);
+        f.smokerPlaced = true;
+        assertEquals(0, KitPlanner.woodNeed(f, cfg, 0));
+        assertTrue(CookGate.fuelSmelts(f, cfg, 0) >= 5);
+        assertEquals(KitNeed.COOK_SMOKER, CookGate.need(f, cfg, 0).catalogueName());
+        // the same bag when logs are not on the list: no fuel, no cook (and no walking to a smoker to find out)
+        f.coalOnly();
+        assertEquals(0, CookGate.fuelSmelts(f, cfg, 0));
+        assertNull(CookGate.need(f, cfg, 0));
+        // a coal fixes it, wood or not
+        f.give(Items.COAL, 1);
+        assertEquals(8, CookGate.fuelSmelts(f, cfg, 0));
+        assertEquals(KitNeed.COOK_SMOKER, CookGate.need(f, cfg, 0).catalogueName());
+    }
+
+    // the gate and the smelt task each count the bag with their own code, so any drift between them is a cook that starts and
+    // then goes for coal. FuelPolicy.usableFuel is what calculateInventoryFuelCount sums; same reserve, same per item numbers
+    @Test
+    public void theGateAndFuelPolicyAgreeOnWhatCanBurn() {
+        List<ItemStack> stacks = List.of(new ItemStack(Items.OAK_LOG, 14), new ItemStack(Items.SPRUCE_LOG, 5),
+                new ItemStack(Items.OAK_PLANKS, 6), new ItemStack(Items.COAL, 2), new ItemStack(Items.CHARCOAL, 1));
+        // with no beds owed the kit keeps nothing and every log is spare; with eight owed the bed planks are kept, whatever that
+        // comes to. same answer from both sides either way
+        for (int beds : new int[]{0, 8}) {
+            FakeFacts bag = kitDone().give(Items.OAK_LOG, 14).give(Items.SPRUCE_LOG, 5).give(Items.OAK_PLANKS, 6).give(Items.COAL, 2)
+                    .give(Items.CHARCOAL, 1);
+            try {
+                WoodReserve.Keep keep = WoodReserve.keep(bag, cfg, beds);
+                FuelPolicy.set(keep.logs(), keep.planks(), true);
+                double policy = FuelPolicy.usableFuel(stacks, i -> true, CookGateTest::smelts);
+                assertEquals("beds " + beds, (int) policy, CookGate.fuelSmelts(bag, cfg, beds));
+                // wood that is not on the list is neither
+                bag.coalOnly();
+                double coalOnly = FuelPolicy.usableFuel(stacks, i -> i == Items.COAL || i == Items.CHARCOAL, CookGateTest::smelts);
+                assertEquals(24, (int) coalOnly);
+                assertEquals("beds " + beds, (int) coalOnly, CookGate.fuelSmelts(bag, cfg, beds));
+            } finally {
+                FuelPolicy.clear();
+            }
+        }
+        // and with nothing kept every plank counts for what a log does (it was 0.75 in the gate and 1.5 in the furnace)
+        FakeFacts planks = kitDone().give(Items.OAK_PLANKS, 8);
+        assertEquals(12, CookGate.fuelSmelts(planks, cfg, 0));
+    }
+
+    // every kit item and no wood owed, so the reserve keeps no wood (endBeds 0)
+    private static FakeFacts kitDone() {
+        FakeFacts done = new FakeFacts();
+        for (net.minecraft.world.item.Item i : new net.minecraft.world.item.Item[]{Items.WOODEN_AXE, Items.STONE_PICKAXE, Items.STONE_AXE,
+                Items.IRON_PICKAXE, Items.IRON_AXE, Items.FLINT_AND_STEEL, Items.SHIELD, Items.SHEARS, Items.FURNACE, Items.CRAFTING_TABLE}) {
+            done.give(i, 1);
+        }
+        return done.give(Items.BUCKET, 2).give(Items.LADDER, 3);
+    }
+
+    private static double smelts(net.minecraft.world.item.Item item) {
+        return item == Items.COAL || item == Items.CHARCOAL ? 8 : 1.5;
+    }
+
+    // 13:11:01: the beef left in the smoker without a flame
+    @Test
+    public void meatLeftColdInAStationBlocksTheNextCookUntilItIsCollected() {
+        f.give(Items.PORKCHOP, 6).give(Items.COAL, 2);
+        f.smokerPlaced = true;
+        assertEquals(KitNeed.COOK_SMOKER, need().catalogueName());
+        f.cookingFood("cooked_beef", 5, 8, 0);
+        f.furnaceJobs().get(0).stranded = true;
+        // not pending food (it is not cooking) and not a reason to start another batch on top of it
+        assertEquals(0, f.pendingFoodUnits());
+        assertTrue(CookGate.stranded(f));
+        assertNull(need());
+        assertFalse(CookGate.reusable(f, cfg, 8, true));
+        // the pickup done, the cook is free again
+        f.furnaceJobs().clear();
+        assertEquals(KitNeed.COOK_SMOKER, need().catalogueName());
+    }
+
+    @Test
+    public void takingColdMeatBackPutsTheCookOnTheBackoff() {
+        RunState.FurnaceJob meat = new RunState.FurnaceJob(new RunState.Pos(1, 64, 1), "OVERWORLD", "smoker", "beef", 5, "cooked_beef", 0, 0);
+        meat.unitsEach = 8;
+        // came out because it was cold or never finished: sit out the backoff
+        assertTrue(FurnaceJobs.backsOffCook(meat, true));
+        // came out because we were leaving the mine: the surface cook is wanted right away
+        assertFalse(FurnaceJobs.backsOffCook(meat, false));
+        // iron is not the cook's business
+        RunState.FurnaceJob iron = new RunState.FurnaceJob(new RunState.Pos(1, 64, 1), "OVERWORLD", "furnace", "raw_iron", 5, "iron_ingot", 0, 0);
+        assertFalse(FurnaceJobs.backsOffCook(iron, true));
+        // and the backoff really does stop the next cook
+        try {
+            CookTrip.suspend(1000);
+            assertTrue(CookTrip.suspended(1001));
+            f.gameTime = 1001;
+            f.cookSuspended = CookTrip.suspended(f.gameTime);
+            f.give(Items.PORKCHOP, 6).give(Items.COAL, 2);
+            f.smokerPlaced = true;
+            assertNull(need());
+        } finally {
+            CookTrip.clear();
+        }
     }
 
     @Test

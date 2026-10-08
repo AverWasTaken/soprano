@@ -54,7 +54,7 @@ public final class FurnaceJobs {
     public static int pending(List<RunState.FurnaceJob> jobs, String outputName) {
         int total = 0;
         for (RunState.FurnaceJob job : jobs) {
-            if (job.output.equals(outputName)) {
+            if (job.output.equals(outputName) && !job.stranded) {
                 total += job.count;
             }
         }
@@ -66,7 +66,10 @@ public final class FurnaceJobs {
     public static int pendingUnits(List<RunState.FurnaceJob> jobs) {
         int total = 0;
         for (RunState.FurnaceJob job : jobs) {
-            total += job.count * job.unitsEach;
+            // meat sitting cold in a station is not dinner on the way (it read as 77 units held and the top-up waited, 13:11:01)
+            if (!job.stranded) {
+                total += job.count * job.unitsEach;
+            }
         }
         return total;
     }
@@ -159,6 +162,12 @@ public final class FurnaceJobs {
         return job.stalls >= STALL_LIMIT;
     }
 
+    // food that came back out of a station because it was not cooking: the cook that put it there starts again at once (raw in
+    // the bag, a station, fuel on paper) unless it sits out the backoff. a visit that took it back because we are leaving is not this
+    public static boolean backsOffCook(RunState.FurnaceJob job, boolean tookBackStalled) {
+        return tookBackStalled && (job.unitsEach > 0 || job.stranded);
+    }
+
     // what a job looks like after we visited: what is still cooking (input slot count) or nothing left to come back for.
     // the furnace sat in an unloaded chunk for who knows how long, so the old doneTick was a guess and this one is not
     public static void afterVisit(List<RunState.FurnaceJob> jobs, RunState.FurnaceJob job, int inputLeft, long now) {
@@ -194,5 +203,7 @@ public final class FurnaceJobs {
         job.startTick = now;
         job.doneTick = now + Math.max(1, remaining);
         job.visited = true;
+        // the visit found it lit or fueled (a stalled one is taken back out, never gets here), so it is cooking now
+        job.stranded = false;
     }
 }

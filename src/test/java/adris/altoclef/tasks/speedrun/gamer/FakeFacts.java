@@ -152,6 +152,22 @@ public class FakeFacts implements GamerFacts {
         return cookStation;
     }
 
+    // items a furnace may not burn (altoSupportedFuels without the wood)
+    public final java.util.Set<Item> unburnable = new java.util.HashSet<>();
+
+    @Override
+    public boolean burnable(Item item) {
+        return !unburnable.contains(item);
+    }
+
+    // the real default: coal and charcoal only, no wood
+    public FakeFacts coalOnly() {
+        for (Item[] group : new Item[][]{adris.altoclef.util.helpers.ItemHelper.LOG, adris.altoclef.util.helpers.ItemHelper.PLANKS}) {
+            unburnable.addAll(java.util.Arrays.asList(group));
+        }
+        return this;
+    }
+
     @Override
     public boolean furnacePlacedNearby() {
         return furnacePlaced;

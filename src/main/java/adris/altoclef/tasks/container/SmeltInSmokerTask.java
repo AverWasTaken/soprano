@@ -215,8 +215,11 @@ public class SmeltInSmokerTask extends ResourceTask implements AsyncSmelting.Han
             // the fuel already in the smoker comes off in both modes. the cook mode (ignoreMaterials) used to skip it, so the coal
             // that had just moved into the slot (not lit yet, bag empty) still read as the whole batch short: "Getting Fuel" the
             // tick after "Filling fuel", twice in the live log, and a full batch of coal asked for with the slot already covering it
+            // the cook mode fuels what is in the slot, and before the first load the slot is empty: the meat still in the bag counts
+            // too, or the fuel was only missed after the walk and the load (and the coal trip ran with the meat already in)
+            int meatToLoad = _ignoreMaterials ? mod.getItemStorage().getItemCountInventoryOnly(materialTarget.getMatches()) : 0;
             double fuelNeeded = FuelShortage.needed(_ignoreMaterials,
-                    materialTarget.matches(_smokerCache.materialSlot.getItem()) ? _smokerCache.materialSlot.getCount() : 0,
+                    (materialTarget.matches(_smokerCache.materialSlot.getItem()) ? _smokerCache.materialSlot.getCount() : 0) + meatToLoad,
                     materialTarget.getTargetCount(), mod.getItemStorage().getItemCountInventoryOnly(outputTarget.getMatches()),
                     outputTarget.matches(_smokerCache.outputSlot.getItem()) ? _smokerCache.outputSlot.getCount() : 0, totalFuelInSmoker);
 
@@ -258,9 +261,12 @@ public class SmeltInSmokerTask extends ResourceTask implements AsyncSmelting.Han
             if (_loaded || at == null || material.isEmpty() || !AsyncSmelting.wants(_target.getItem())) {
                 return false;
             }
+            // lit with enough in it for all of it is a cook, anything less is meat sitting cold (the 5 beef that were never lit and
+            // still got a "~25 s" timer, and a stand-by that walked up and took them back out)
+            boolean lit = AsyncSmelting.fuelCovers(_smokerCache.fuelSlot, _smokerCache.burningFuelCount, material.getCount());
             Debug.logInternal("smoker at " + at.toShortString() + " still holds " + material.getCount() + " of our meat and the cook is leaving, "
-                    + "recording it so it gets picked up");
-            AsyncSmelting.leftBehind(mod, at, Blocks.SMOKER, material, _target.getItem());
+                    + "recording it so it gets picked up (" + (lit ? "lit" : "not lit") + ")");
+            AsyncSmelting.leftBehind(mod, at, Blocks.SMOKER, material, _target.getItem(), lit);
             return true;
         }
 

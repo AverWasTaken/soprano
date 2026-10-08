@@ -123,6 +123,10 @@ public class RunState {
         // visits that stood at the furnace for the whole estimate and still saw no item come out (FurnaceJobs.afterVisit). an old
         // save has no key and reads 0
         public int stalls;
+        // food the cook left in the station without lighting it (AsyncSmelting.leftBehind): a pickup, not a cook. it is not pending
+        // food and not a smoker to stand by, and the visit lights it if the bag has the fuel now, else takes it back. an old
+        // save has no key and reads false
+        public boolean stranded;
 
         public FurnaceJob() {
         }

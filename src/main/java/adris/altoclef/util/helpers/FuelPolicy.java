@@ -115,6 +115,27 @@ public final class FuelPolicy {
                 closestDelta = delta;
             }
         }
-        return best == -1 ? null : new Pick(stacks.get(best), usable[best]);
+        if (best == -1) {
+            return null;
+        }
+        Item item = stacks.get(best).getItem();
+        int count = usable[best];
+        // wood only goes in as far as the job needs it: a stack of coal in the slot comes back out at the collect and costs nothing,
+        // but fourteen logs sitting in a smoker are fourteen logs the wood budget cannot see until then
+        double per = fuelPerItem.applyAsDouble(item);
+        if (!isCoal(item) && per > 0) {
+            count = Math.min(count, Math.max(1, (int) Math.ceil(needs / per)));
+        }
+        return new Pick(stacks.get(best), count);
+    }
+
+    // choose, but null unless the pick alone covers the job. the collect visit uses it: a stalled station gets its fuel only when
+    // that is the whole job, otherwise the input comes back out as it always did
+    public static Pick chooseCovering(List<ItemStack> stacks, double needs, Predicate<Item> supported, ToDoubleFunction<Item> fuelPerItem) {
+        Pick pick = choose(stacks, needs, supported, fuelPerItem);
+        if (pick == null || fuelPerItem.applyAsDouble(pick.stack().getItem()) * pick.count() < needs) {
+            return null;
+        }
+        return pick;
     }
 }

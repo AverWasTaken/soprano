@@ -4,8 +4,12 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.AltoSettings;
 import adris.altoclef.tasks.InteractWithBlockTask;
 import adris.altoclef.tasks.slot.EnsureFreeInventorySlotTask;
+import adris.altoclef.tasks.slot.MoveItemToSlotFromInventoryTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.tasks.speedrun.gamer.FurnaceJobs;
+import adris.altoclef.util.ItemTarget;
+import adris.altoclef.util.helpers.FuelPolicy;
+import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.slots.FurnaceSlot;
 import adris.altoclef.util.slots.Slot;
@@ -42,6 +46,11 @@ public class CollectFromFurnaceTask extends Task {
     // ticks until that input is out, read off the cook arrow when we let go. the job gets re-stamped with it
     private long leftTicks;
     private boolean cappedOut;
+    // the input came back out because the station was not cooking it (cold with no fuel, or it never finished): not a visit that
+    // just chose to leave, FurnaceWatch backs the cook off after one of these or the same cook starts again at once
+    private boolean tookBackStalled;
+    // the fuel we are putting into a cold station instead of taking its input back out
+    private Task feeding;
     private long waitingSince = -1;
     // WAIT_ALL stands with the screen closed until this game tick, -1 = not idling
     private long idleUntil = -1;
@@ -78,6 +87,11 @@ public class CollectFromFurnaceTask extends Task {
     // caller counts these, a furnace that does this twice is not cooking
     public boolean cappedOut() {
         return cappedOut;
+    }
+
+    // we took the input back out because the station was cold or never finished, see the field
+    public boolean tookBackStalled() {
+        return tookBackStalled;
     }
 
     @Override
@@ -122,6 +136,12 @@ public class CollectFromFurnaceTask extends Task {
         return open;
     }
 
+    // fuel goes into a cold station once per visit, and never when we are here to take everything back out (leaving the mine, a
+    // job that is stuck): that one lit it, burned a coal, took the meat out anyway and never told the cook to back off
+    static boolean mayFeed(boolean stalled, Mode mode, boolean fedBefore) {
+        return stalled && mode != Mode.TAKE_ALL && !fedBefore;
+    }
+
     private Task atFurnace(AltoClef mod) {
         ItemStack output = StorageHelper.getItemStackInSlot(FurnaceSlot.OUTPUT_SLOT);
         ItemStack input = StorageHelper.getItemStackInSlot(FurnaceSlot.INPUT_SLOT_MATERIALS);
@@ -148,7 +168,25 @@ public class CollectFromFurnaceTask extends Task {
                 done = true;
                 return null;
             }
+            // the click is done the moment the slot has anything or it is lit: the server burns the first item as it lands, so the
+            // slot reads one short of the target and the move would push one more in
+            if (feeding != null && fuel.isEmpty() && !lit && !feeding.isFinished(mod)) {
+                return feeding;
+            }
+            if (mayFeed(stalled, mode, feeding != null)) {
+                // meat left cold, and the bag has the fuel for all of it by now (the coal trip that outlasted the cook): light it
+                // instead of carrying the meat out and walking it back in. once per visit, a click that did not take is not retried
+                FuelPolicy.Pick pick = FuelPolicy.chooseCovering(mod.getItemStorage().getItemStacksPlayerInventory(true), input.getCount(),
+                        AltoSettings::isSupportedFuel, ItemHelper::getFuelAmount);
+                if (pick != null) {
+                    setDebugState("Putting the fuel in");
+                    feeding = new MoveItemToSlotFromInventoryTask(new ItemTarget(pick.stack().getItem(), pick.count()), FurnaceSlot.INPUT_SLOT_FUEL);
+                    return feeding;
+                }
+            }
             if (stalled || capped || mode == Mode.TAKE_ALL) {
+                // the stalled ones are the failure: the caller backs the cook off (tookBackStalled), TAKE_ALL is just us leaving
+                tookBackStalled |= stalled || capped;
                 // the raw stuff goes back in the bag, the planner sees it there and smelts it again
                 return takeOut(mod, FurnaceSlot.INPUT_SLOT_MATERIALS, input, "Taking the unfinished input back");
             }

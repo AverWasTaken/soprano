@@ -16,15 +16,23 @@ public final class HeadLatch {
     // the need to run this tick. `running` started at `since` (game ticks), needs.get(0) is what the planner wants now.
     // the running one is kept only while all of these hold, any one of them failing hands over to the planner:
     //   - it is still owed, exactly as it was asked (gone or resized means it is done, or a different job)
-    //   - the dwell is not up
+    //   - the dwell is not up (a cook with its station has no dwell, see below)
     //   - the planner's head is not a pickaxe while we hold none at all: nothing to mine with is not something to wait out
     // side jobs and chains (golem, mob defense, food chain) sit above the runner and never come through here
     public static KitNeed pick(KitNeed running, long since, long now, List<KitNeed> needs, GamerFacts f) {
         KitNeed head = needs.get(0);
-        if (running == null || running.equals(head) || now < since || now - since >= DWELL_TICKS) {
+        if (running == null || running.equals(head)) {
             return head;
         }
         if (!needs.contains(running) || toolGone(head, f)) {
+            return head;
+        }
+        // a cook that has its station is not on the dwell clock: 5 s is the time it takes to walk up and put the meat in, and
+        // the iron took the head the moment that ran out. it is the cook's own give up that ends it
+        if (KitNeed.isCookName(running.catalogueName()) && f.cookStation() != null) {
+            return running;
+        }
+        if (now < since || now - since >= DWELL_TICKS) {
             return head;
         }
         return running;

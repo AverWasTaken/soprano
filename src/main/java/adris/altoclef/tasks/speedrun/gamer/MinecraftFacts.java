@@ -4,6 +4,7 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.AltoSettings;
 import adris.altoclef.tasks.container.FurnaceReuse;
 import adris.altoclef.util.helpers.FoodHelper;
+import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.WalkCost;
 import adris.altoclef.util.helpers.WorldHelper;
 import baritone.api.utils.Dimension;
@@ -149,6 +150,12 @@ public final class MinecraftFacts implements GamerFacts {
     @Override
     public String cookStation() {
         return CookTrip.committed(gameTime);
+    }
+
+    @Override
+    public boolean burnable(Item item) {
+        // a crimson stem is in ItemHelper.LOG and burns nothing, FuelPolicy counts it as 0 and so must we
+        return AltoSettings.isSupportedFuel(item) && ItemHelper.isFuel(item);
     }
 
     private void countItems(Player player) {

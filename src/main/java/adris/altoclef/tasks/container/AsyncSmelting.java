@@ -134,22 +134,26 @@ public final class AsyncSmelting {
         return food == null || !FOOD_OUTPUTS.contains(name(output.getMatches()[0])) ? 0 : food.nutrition();
     }
 
-    // the cook gave up with the meat already in the station and never lit it (the coal trip ran past its patience), so there is no
-    // load to hand off and nobody knows the station holds anything. the job it leaves is due right now: the next visit finds the
-    // station unlit, takes the meat back out and the planner cooks it again when the backoff is over. a lit one just gets waited on
-    public static void leftBehind(AltoClef mod, BlockPos pos, Block kind, ItemStack input, ItemTarget output) {
+    // the cook was dropped with the meat already in the station and never handed off (the coal trip ran past its patience, or the
+    // plan moved on mid load), so there is no load to hand off and nobody knows the station holds anything. `lit` = the last look
+    // at the slots had it lit or fueled for the whole input (fuelCovers). then it is a cook like any other, with the usual timer.
+    // otherwise it is a pickup (RunState.FurnaceJob.stranded): the meat is not cooking, so there is no due time to stand by for,
+    // and the visit lights it if the bag has fuel by then or takes the meat back out
+    public static void leftBehind(AltoClef mod, BlockPos pos, Block kind, ItemStack input, ItemTarget output, boolean lit) {
         long now = mod.getWorld().getGameTime();
         RunState.FurnaceJob job = strandedJob(new RunState.Pos(pos.getX(), pos.getY(), pos.getZ()), WorldHelper.getCurrentDimension().name(),
                 BuiltInRegistries.BLOCK.getKey(kind).getPath(), name(input.getItem()), input.getCount(), name(output.getMatches()[0]),
-                unitsEach(output), now);
+                unitsEach(output), now, lit);
         LOADED.add(job);
     }
 
-    // a job that is due the moment it is made, count read off the station's input slot
+    // a lit one gets the timer a load would have (the first visit re-stamps it off the arrow), a cold one is due right now
     public static RunState.FurnaceJob strandedJob(RunState.Pos pos, String dimension, String kind, String input, int count, String output,
-                                                  int unitsEach, long now) {
-        RunState.FurnaceJob job = new RunState.FurnaceJob(pos, dimension, kind, input, count, output, now, now);
+                                                  int unitsEach, long now, boolean lit) {
+        RunState.FurnaceJob job = new RunState.FurnaceJob(pos, dimension, kind, input, count, output, now,
+                lit ? FurnaceJobs.doneTick(kind, now, count) : now);
         job.unitsEach = unitsEach;
+        job.stranded = !lit;
         return job;
     }
 

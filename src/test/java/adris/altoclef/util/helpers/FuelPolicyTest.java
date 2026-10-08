@@ -79,6 +79,33 @@ public class FuelPolicyTest {
     }
 
     @Test
+    public void woodIsHandedOverAsFarAsTheJobNeedsAndNoFurther() {
+        // five beef want five smelts: four logs, not the fourteen the bag could spare (they would be gone from the wood budget)
+        List<ItemStack> bag = List.of(new ItemStack(Items.OAK_LOG, 14));
+        assertEquals(4, FuelPolicy.choose(bag, 5, FuelPolicyTest::supported, FuelPolicyTest::fuel).count());
+        // coal goes in whole, it comes back out at the collect and nobody counts it
+        List<ItemStack> coal = List.of(new ItemStack(Items.COAL, 5));
+        assertEquals(5, FuelPolicy.choose(coal, 5, FuelPolicyTest::supported, FuelPolicyTest::fuel).count());
+    }
+
+    @Test
+    public void aStalledStationOnlyGetsFuelThatCoversTheWholeJob() {
+        // 5 meat, 3 spare logs is 4.5 smelts: not enough to light it for all of it, so the meat comes back out instead
+        List<ItemStack> short3 = List.of(new ItemStack(Items.OAK_LOG, 3));
+        assertNull(FuelPolicy.chooseCovering(short3, 5, FuelPolicyTest::supported, FuelPolicyTest::fuel));
+        // four logs cover it
+        List<ItemStack> four = List.of(new ItemStack(Items.OAK_LOG, 4));
+        assertEquals(4, FuelPolicy.chooseCovering(four, 5, FuelPolicyTest::supported, FuelPolicyTest::fuel).count());
+        // one coal covers anything up to eight
+        List<ItemStack> coal = List.of(new ItemStack(Items.COAL, 1));
+        assertNotNull(FuelPolicy.chooseCovering(coal, 8, FuelPolicyTest::supported, FuelPolicyTest::fuel));
+        assertNull(FuelPolicy.chooseCovering(coal, 9, FuelPolicyTest::supported, FuelPolicyTest::fuel));
+        // and wood the kit keeps is no fuel
+        FuelPolicy.set(14, 0, false);
+        assertNull(FuelPolicy.chooseCovering(List.of(new ItemStack(Items.OAK_LOG, 14)), 5, FuelPolicyTest::supported, FuelPolicyTest::fuel));
+    }
+
+    @Test
     public void onlyTheSurplusOfALogStackIsHandedOver() {
         FuelPolicy.set(6, 0, false);
         List<ItemStack> bag = List.of(new ItemStack(Items.OAK_LOG, 10));

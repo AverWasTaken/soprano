@@ -117,6 +117,7 @@ public class GamerTask extends Task {
     private Boolean userThrowUnused;
     private Boolean userLadderClutch;
     private List<Item> userThrowaway;
+    private List<Item> userFuels;
 
     // hud text is only rebuilt when something in it changed
     private PhaseHandler hudHandler;
@@ -330,6 +331,12 @@ public class GamerTask extends Task {
         if (!SettingsOverrides.isHeld(s.allowLadderClutch)) {
             userLadderClutch = s.allowLadderClutch.value;
         }
+        if (!SettingsOverrides.isHeld(s.altoSupportedFuels)) {
+            userFuels = s.altoSupportedFuels.value;
+        }
+        // the kit chops spare logs for the cook (cookFuelLogs) and WoodReserve decides which ones may burn, but the default list is
+        // coal and charcoal only: the cook gate counted the logs and the smoker refused them with the meat already in it
+        SettingsOverrides.put(s.altoSupportedFuels, withWoodFuel(userFuels != null ? userFuels : s.altoSupportedFuels.value));
         SettingsOverrides.put(s.altoUseBlastFurnace, false);
         SettingsOverrides.put(s.altoThrowAwayUnusedItems, true);
         // the iron kit has ladders in it for a reason, a long fall in the nether is what they are for
@@ -347,8 +354,25 @@ public class GamerTask extends Task {
         return out;
     }
 
+    // logs and planks on top of the user's fuels. FuelPolicy keeps the wood the kit still wants out of the furnace, so this only
+    // lets the spare burn. the crimson stems in the log list burn nothing and stay out
+    static List<Item> withWoodFuel(List<Item> list) {
+        List<Item> out = new ArrayList<>(list);
+        for (Item[] group : new Item[][]{ItemHelper.LOG, ItemHelper.PLANKS}) {
+            for (Item item : group) {
+                if (ItemHelper.isFuel(item) && !out.contains(item)) {
+                    out.add(item);
+                }
+            }
+        }
+        return out;
+    }
+
     private void releaseRunSettings() {
         Settings s = Baritone.settings();
+        if (userFuels != null) {
+            SettingsOverrides.put(s.altoSupportedFuels, userFuels);
+        }
         if (userBlastFurnace != null) {
             SettingsOverrides.put(s.altoUseBlastFurnace, userBlastFurnace);
         }
@@ -611,6 +635,10 @@ public class GamerTask extends Task {
         List<RunState.FurnaceJob> loaded = AsyncSmelting.drain();
         for (RunState.FurnaceJob job : loaded) {
             FurnaceJobs.record(state.furnaceJobs, job);
+            if (job.stranded) {
+                host.say("Left " + job.count + " " + job.input.replace('_', ' ') + " in the " + job.kind + ", not lit, going back for it");
+                continue;
+            }
             host.say((job.unitsEach > 0 ? "Cooking in the background (" : "Smelting in the background (") + job.count + " "
                     + job.output.replace('_', ' ') + ", ~" + job.count * FurnaceJobs.ticksPerItem(job.kind) / 20 + "s)");
         }

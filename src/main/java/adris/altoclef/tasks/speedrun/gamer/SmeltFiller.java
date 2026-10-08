@@ -232,11 +232,12 @@ public final class SmeltFiller {
     // not hold the run. the collect trip has its own cap on the same number (FurnaceWatch.collectJob)
     private static final long STAND_BY_SLACK_TICKS = 30 * 20;
 
-    // the smoker job that is ready first, null when no smoker is running
+    // the smoker job that is ready first, null when no smoker is running. meat left cold in a smoker is not running: standing by
+    // it was the "~0 s to go" wait that walked up and took the raw beef back out (13:11:01)
     public static RunState.FurnaceJob smokerJob(List<RunState.FurnaceJob> jobs) {
         RunState.FurnaceJob best = null;
         for (RunState.FurnaceJob job : jobs) {
-            if (SMOKER.equals(job.kind) && (best == null || job.doneTick < best.doneTick)) {
+            if (SMOKER.equals(job.kind) && !job.stranded && (best == null || job.doneTick < best.doneTick)) {
                 best = job;
             }
         }

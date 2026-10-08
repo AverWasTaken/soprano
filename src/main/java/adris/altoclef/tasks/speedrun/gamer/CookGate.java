@@ -55,6 +55,17 @@ public final class CookGate {
         return KitPlanner.ingotsNeeded(f, cfg) > f.count(Items.IRON_INGOT) + f.pendingOutput(Items.IRON_INGOT);
     }
 
+    // food we left in a station without lighting it (AsyncSmelting.leftBehind). not cooking, so not a stand-by and not pending
+    // food, but the input slot is taken until somebody goes back for it
+    public static boolean stranded(GamerFacts f) {
+        for (RunState.FurnaceJob job : f.furnaceJobs()) {
+            if (job.stranded) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     // is a furnace of ours busy with iron right now. food jobs never get this far (the cook waits for them), so any job on a
     // furnace is ore, and the furnace has ONE input slot: loading meat on top would swap the ore back out
     static boolean furnaceHasIron(GamerFacts f) {
@@ -114,20 +125,32 @@ public final class CookGate {
         return station == Station.SMOKER && !f.has(Items.SMOKER) && !f.smokerPlacedNearby() && f.cookStation() == null;
     }
 
-    // smelts of fuel the cook could burn: coal and charcoal always, wood only above what the run keeps for crafting (the same
-    // reserve FuelPolicy honours, or the gate would say yes to a stack of logs the furnace is not allowed to touch)
+    // smelts of fuel the cook could burn: what the smelt task is allowed to burn (f.burnable, altoSupportedFuels), and wood only
+    // above what the run keeps for crafting (the same reserve FuelPolicy honours). this is FuelPolicy.usableFuel over the facts:
+    // the gate said yes to a stack of logs the smoker then refused, and the meat was already in it by the time anyone noticed
     public static int fuelSmelts(GamerFacts f, OverworldConfig cfg, int endBeds) {
         return fuelSmelts(f, cfg, endBeds, 0);
     }
 
     // `logsSpoken` = logs about to go into something else (a smoker), taken off the spare wood first
     static int fuelSmelts(GamerFacts f, OverworldConfig cfg, int endBeds, int logsSpoken) {
-        int smelts = f.count(Items.COAL, Items.CHARCOAL) * COAL_SMELTS;
+        int smelts = burnable(f, Items.COAL, Items.CHARCOAL) * COAL_SMELTS;
         WoodReserve.Keep keep = WoodReserve.keep(f, cfg, endBeds);
-        int logs = Math.max(0, f.count(ItemHelper.LOG) - keep.logs() - logsSpoken);
-        int planks = Math.max(0, f.count(ItemHelper.PLANKS) - keep.planks());
-        // a log burns 1.5 items, a plank 0.75
-        return smelts + logs * 3 / 2 + planks * 3 / 4;
+        int logs = Math.max(0, burnable(f, ItemHelper.LOG) - keep.logs() - logsSpoken);
+        int planks = Math.max(0, burnable(f, ItemHelper.PLANKS) - keep.planks());
+        // a log and a plank are both 300 ticks of fire, 1.5 items (ItemHelper.getFuelAmount). planks used to be 0.75 in here
+        return smelts + (logs + planks) * 3 / 2;
+    }
+
+    // how many of these we hold that a furnace may burn
+    private static int burnable(GamerFacts f, Item... items) {
+        int total = 0;
+        for (Item item : items) {
+            if (f.burnable(item)) {
+                total += f.count(item);
+            }
+        }
+        return total;
     }
 
     // what the raw meat in the bag is worth at its cooked value beyond what it gives raw. foodUnits() books the first, the eater
@@ -161,6 +184,10 @@ public final class CookGate {
         if ((raw == 0 && !loading) || f.dimension() != Dimension.OVERWORLD || f.cookSuspended() || f.pendingFoodUnits() > 0) {
             return null;
         }
+        // meat sitting cold in a station of ours is the one input slot taken: the pickup trip empties it first (or lights it)
+        if (!loading && stranded(f)) {
+            return null;
+        }
         Station station = station(f, cfg, raw >= MIN_RAW);
         if (station == Station.NONE) {
             return null;
@@ -184,7 +211,7 @@ public final class CookGate {
         if (!smoker && ironOwed(f, cfg)) {
             return false;
         }
-        return raw(f) >= MIN_RAW && !f.cookSuspended() && f.pendingFoodUnits() == 0 && fuelSmelts(f, cfg, endBeds) >= pile(f);
+        return raw(f) >= MIN_RAW && !f.cookSuspended() && f.pendingFoodUnits() == 0 && !stranded(f) && fuelSmelts(f, cfg, endBeds) >= pile(f);
     }
 
     public static int index(List<KitNeed> needs) {
@@ -209,6 +236,17 @@ public final class CookGate {
     // still being crafted, the head latch only handed over later) and the bot walked off with the ore on the cursor. the cook
     // simply waits a few ticks for the load to be recorded
     public static boolean leads(List<KitNeed> needs, int at, int raw, boolean surfaced, boolean latched, boolean loadBusy) {
+        return leads(needs, at, raw, surfaced, latched, loadBusy, false);
+    }
+
+    // `committed` = the cook task is running and has its station (f.cookStation()). it leads whatever the bag says: the moment the
+    // meat goes into the smoker the bag reads 0 raw, and "fewer than MIN_RAW" used to hand the head to the iron in the middle of
+    // the load (13:11:01 and again at 13:11:14, both exactly when the first click landed). the cook has its own bounded give up
+    public static boolean leads(List<KitNeed> needs, int at, int raw, boolean surfaced, boolean latched, boolean loadBusy,
+                                boolean committed) {
+        if (committed) {
+            return true;
+        }
         if (raw < MIN_RAW || loadBusy) {
             return false;
         }

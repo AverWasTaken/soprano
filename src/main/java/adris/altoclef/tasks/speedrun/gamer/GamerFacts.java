@@ -100,6 +100,12 @@ public interface GamerFacts {
         return null;
     }
 
+    // may a furnace burn this item at all (altoSupportedFuels). the cook gate counts fuel with this, so it never says yes to a
+    // stack of logs the smelt task is not allowed to touch (the smoker that got meat and then refused the logs, 13:11)
+    default boolean burnable(Item item) {
+        return true;
+    }
+
     // nutrition cooking in a smoker or furnace for us right now. foodUnits() stays what is in the bag, the planner counts the
     // two together so a loaded smoker is not "no food", and the phases hold their end until the jobs are collected
     default int pendingFoodUnits() {

@@ -391,6 +391,24 @@ public class SmeltFillerTest {
         assertFalse("no jobs at all", SmeltFiller.standBy(List.of(), 0, -1));
     }
 
+    // 13:11:01: the beef the cook left in the smoker was never lit, got a "~25 s" job and the iron phase stood by it for "0 s", then
+    // took the raw beef back out. only a smoker that is really cooking is stood by
+    @Test
+    public void meatLeftColdInASmokerIsNotStoodBy() {
+        FakeFacts cold = atTheFurnace().cookingFood("cooked_beef", 5, 8, 0);
+        cold.furnaceJobs().get(0).stranded = true;
+        assertNull(SmeltFiller.smokerJob(cold.furnaceJobs()));
+        assertFalse(SmeltFiller.standBy(cold.furnaceJobs(), cold.gameTime(), -1));
+        // lit, it is a smoker like any other
+        cold.furnaceJobs().get(0).stranded = false;
+        assertNotNull(SmeltFiller.smokerJob(cold.furnaceJobs()));
+        assertTrue(SmeltFiller.standBy(cold.furnaceJobs(), cold.gameTime(), -1));
+        // and a cold one beside a real one does not hide it
+        FakeFacts both = atTheFurnace().cookingFood("cooked_beef", 5, 8, 0).cookingFood("cooked_mutton", 3, 6, 15);
+        both.furnaceJobs().get(0).stranded = true;
+        assertEquals("cooked_mutton", SmeltFiller.smokerJob(both.furnaceJobs()).output);
+    }
+
     @Test
     public void aSmokerBesideALongFurnaceBatchIsStillStoodBy() {
         FakeFacts both = atTheFurnace().cooking("iron_ingot", 40, 400).cookingFood("cooked_beef", 3, 8, 15);

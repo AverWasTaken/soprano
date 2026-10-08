@@ -155,4 +155,21 @@ public class HeadLatchTest {
         List<KitNeed> old = KitPlanner.plan(plain, cfg, 8);
         assertEquals(new KitNeed("iron_ingot", 40), HeadLatch.pick(early, 0, 20, old, plain));
     }
+
+    // 13:11:01 and 13:11:14: the cook started, the meat went into the smoker, and five seconds after the start the dwell ran out
+    // with the iron at the head. a cook that has its station is not on the clock
+    @Test
+    public void aCookWithItsStationKeepsTheHeadPastTheDwell() {
+        KitNeed cook = new KitNeed(KitNeed.COOK_SMOKER, CookGate.MIN_RAW);
+        List<KitNeed> plan = List.of(IRON, cook);
+        FakeFacts running = new FakeFacts().give(Items.STONE_PICKAXE, 1);
+        running.cookStation = "smoker";
+        assertEquals(cook, HeadLatch.pick(cook, 0, 6000, plan, running));
+        // not running (or never committed) is the plain dwell
+        running.cookStation = null;
+        assertEquals(IRON, HeadLatch.pick(cook, 0, 6000, plan, running));
+        // and a cook the plan dropped is let go whatever the pin says
+        running.cookStation = "smoker";
+        assertEquals(IRON, HeadLatch.pick(cook, 0, 6000, List.of(IRON), running));
+    }
 }

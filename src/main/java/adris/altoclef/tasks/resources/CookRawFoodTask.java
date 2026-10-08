@@ -11,6 +11,7 @@ import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.SmeltTarget;
 import adris.altoclef.util.helpers.FoodHelper;
+import adris.altoclef.util.helpers.StorageHelper;
 import net.minecraft.world.item.Item;
 
 // cooks the raw meat in the bag, one kind at a time (the input slot only holds one). this is the gamer's own cook: CollectFoodTask
@@ -27,6 +28,7 @@ public class CookRawFoodTask extends Task {
     private Item smelting;
     private int lastRaw;
     private int lastCooked;
+    private int lastFuel;
     private long lastChange;
     private boolean gaveUp;
     // game tick we started handing back no child, -1 while there is one
@@ -43,6 +45,7 @@ public class CookRawFoodTask extends Task {
         smelting = null;
         lastRaw = -1;
         lastCooked = -1;
+        lastFuel = -1;
         gaveUp = false;
         idleSince = -1;
         idleLogged = false;
@@ -85,6 +88,7 @@ public class CookRawFoodTask extends Task {
             smelt = null;
             lastRaw = -1;
             lastCooked = -1;
+            lastFuel = -1;
             lastChange = now;
         }
         if (smelt == null) {
@@ -102,9 +106,13 @@ public class CookRawFoodTask extends Task {
         // a sync cook empties the bag as it goes and fills it with the cooked kind, either is the bag moving
         int raw = mod.getItemStorage().getItemCount(smelting);
         int cooked = mod.getItemStorage().getItemCount(FoodHelper.cookedForm(smelting));
-        if (raw != lastRaw || cooked != lastCooked) {
+        // the fuel trip comes first now (before the walk and the load) and it moves neither of those: coal coming into the bag is
+        // the cook getting somewhere, or a long coal trip ran into the give up with the iron locked out the whole time
+        int fuel = (int) (StorageHelper.calculateInventoryFuelCount(mod) * 10);
+        if (raw != lastRaw || cooked != lastCooked || fuel != lastFuel) {
             lastRaw = raw;
             lastCooked = cooked;
+            lastFuel = fuel;
             lastChange = now;
         }
         if (now - lastChange > GIVE_UP_TICKS) {
@@ -182,6 +190,8 @@ public class CookRawFoodTask extends Task {
 
     @Override
     protected void onStopWhilePaused(AltoClef mod) {
+        // paused under a chain long enough for the pin to go stale and then dropped: same meat-in-the-station case as onStop
+        recordLeftBehind(mod);
         CookTrip.release();
     }
 

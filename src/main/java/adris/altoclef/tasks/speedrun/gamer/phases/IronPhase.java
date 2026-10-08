@@ -201,7 +201,8 @@ public class IronPhase implements PhaseHandler {
             // no pick yet and the early batch is done: the pick is worth the detour, the mining need would not end for 36 more
             // ingots. nothing else cuts a need short, an iron craft waiting on the output is not a reason to leave a ladder
             boolean boundary = head == null || !head.equals(committed);
-            boolean interrupt = EarlyIronPick.collectNow(f, ctx.cfg().overworld);
+            // not in the middle of a cook's load either, that is a few seconds and the pick can wait for them
+            boolean interrupt = EarlyIronPick.collectNow(f, ctx.cfg().overworld) && f.cookStation() == null;
             Decision what = SmeltFiller.decide(head != null, boundary, interrupt, schedule.isStockUp(head), f.gameTime(), f.furnaceJobs(),
                     ctx.cfg().overworld);
             if (what.trip() != Trip.FILLER) {
@@ -325,7 +326,8 @@ public class IronPhase implements PhaseHandler {
         }
         boolean surfaced = SmeltSurface.shallow(SmeltSurface.depthBelowSky(mod));
         boolean loadBusy = otherLoadInFlight(mod, ctx);
-        boolean lead = CookGate.leads(gated, at, CookGate.raw(ctx.facts()), surfaced, cookLatch, loadBusy);
+        // a cook that is running is committed: the meat moving into the station is not a reason to hand the head to the iron
+        boolean lead = CookGate.leads(gated, at, CookGate.raw(ctx.facts()), surfaced, cookLatch, loadBusy, ctx.facts().cookStation() != null);
         if (lead && !cookLatch) {
             Debug.logInternal("cook: " + CookGate.raw(ctx.facts()) + " raw meat in the bag, cooking it now instead of eating it raw");
         }

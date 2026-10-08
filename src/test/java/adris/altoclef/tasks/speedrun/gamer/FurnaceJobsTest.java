@@ -118,6 +118,19 @@ public class FurnaceJobsTest {
     }
 
     @Test
+    public void aVisitThatFindsColdMeatCookingMakesItARealJob() {
+        List<RunState.FurnaceJob> jobs = new ArrayList<>();
+        RunState.FurnaceJob j = meat(1, 5, 0);
+        j.stranded = true;
+        jobs.add(j);
+        assertEquals(0, FurnaceJobs.pendingUnits(jobs));
+        // the fuel went in, the visit left it cooking: now it is food on the way
+        FurnaceJobs.afterVisit(jobs, j, 5, 500, 100);
+        assertFalse(j.stranded);
+        assertEquals(30, FurnaceJobs.pendingUnits(jobs));
+    }
+
+    @Test
     public void onlyOurOwnEmptySmokersAndFurnacesComeBack() {
         RunState s = new RunState();
         RunState.Pos spot = new RunState.Pos(4, 64, 4);

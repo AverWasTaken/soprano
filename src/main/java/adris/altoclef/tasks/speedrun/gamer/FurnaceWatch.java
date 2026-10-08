@@ -221,6 +221,12 @@ public final class FurnaceWatch {
         if (left < before) {
             ctx.progress("collected from the furnace");
         }
+        // meat that came back out because the station was cold: the cook that put it there would walk straight back and do the same
+        // thing (raw in the bag, a station, enough fuel on paper), so it sits out the usual backoff
+        if (FurnaceJobs.backsOffCook(visited, task.tookBackStalled())) {
+            CookTrip.suspend(now);
+            Debug.logInternal("took the " + visited.input + " back out of the cold " + visited.kind + ", the cook sits out a while");
+        }
         ctx.save();
         task = null;
         target = null;

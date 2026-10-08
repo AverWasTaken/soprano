@@ -216,8 +216,11 @@ public class SmeltInFurnaceTask extends ResourceTask implements AsyncSmelting.Ha
             // Fuel needed = (mat_target - out_in_inventory - out_in_furnace - totalFuelInFurnace)
             // the fuel already in the furnace comes off in both modes (the cook mode skipped it, see the smoker: coal in the slot, not
             // lit yet, read as the whole batch short)
+            // the cook mode fuels what is in the slot, and before the first load the slot is empty: the meat still in the bag counts
+            // too, or the fuel was only missed after the walk and the load (see the smoker)
+            int meatToLoad = _ignoreMaterials ? mod.getItemStorage().getItemCountInventoryOnly(materialTarget.getMatches()) : 0;
             double fuelNeeded = FuelShortage.needed(_ignoreMaterials,
-                    materialTarget.matches(_furnaceCache.materialSlot.getItem()) ? _furnaceCache.materialSlot.getCount() : 0,
+                    (materialTarget.matches(_furnaceCache.materialSlot.getItem()) ? _furnaceCache.materialSlot.getCount() : 0) + meatToLoad,
                     materialTarget.getTargetCount(), mod.getItemStorage().getItemCountInventoryOnly(outputTarget.getMatches()),
                     outputTarget.matches(_furnaceCache.outputSlot.getItem()) ? _furnaceCache.outputSlot.getCount() : 0, totalFuelInFurnace);
 
@@ -258,9 +261,11 @@ public class SmeltInFurnaceTask extends ResourceTask implements AsyncSmelting.Ha
             if (_loaded || at == null || material.isEmpty() || !AsyncSmelting.wants(_target.getItem())) {
                 return false;
             }
+            // same split as the smoker: only a lit one with enough in it is a cook
+            boolean lit = AsyncSmelting.fuelCovers(_furnaceCache.fuelSlot, _furnaceCache.burningFuelCount, material.getCount());
             Debug.logInternal("furnace at " + at.toShortString() + " still holds " + material.getCount() + " of our input and the cook is leaving, "
-                    + "recording it so it gets picked up");
-            AsyncSmelting.leftBehind(mod, at, Blocks.FURNACE, material, _target.getItem());
+                    + "recording it so it gets picked up (" + (lit ? "lit" : "not lit") + ")");
+            AsyncSmelting.leftBehind(mod, at, Blocks.FURNACE, material, _target.getItem(), lit);
             return true;
         }
 
