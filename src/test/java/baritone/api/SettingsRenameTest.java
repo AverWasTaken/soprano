@@ -23,6 +23,8 @@ import net.minecraft.server.Bootstrap;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
+import java.util.Locale;
+
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
@@ -76,6 +78,20 @@ public class SettingsRenameTest {
         SettingsUtil.parseAndApply(settings, "experimentalminhealth", "8.0");
         assertTrue(settings.fastMode.value);
         assertEquals(8.0, settings.fastModeMinHealth.value, 0);
+    }
+
+    @Test
+    public void lookupsSurviveATurkishDefaultLocale() {
+        // the map keys used to come from the default locale, so the I in buildIgnoreBlocks turned into a dotless i
+        Locale old = Locale.getDefault();
+        Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+        try {
+            Settings settings = new Settings();
+            assertSame(settings.buildIgnoreBlocks, settings.findByLowerName("buildignoreblocks"));
+            assertSame(settings.fastMode, settings.findByLowerName("experimentalmovement"));
+        } finally {
+            Locale.setDefault(old);
+        }
     }
 
     @Test

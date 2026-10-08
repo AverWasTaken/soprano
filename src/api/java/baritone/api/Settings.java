@@ -1930,7 +1930,8 @@ public final class Settings {
                     String name = field.getName();
                     setting.name = name;
                     setting.javaOnly = field.isAnnotationPresent(JavaOnly.class);
-                    name = name.toLowerCase();
+                    // not the default locale, turkish makes a dotless i out of the I in buildIgnoreBlocks and nothing finds it
+                    name = name.toLowerCase(Locale.ROOT);
                     if (tmpByName.containsKey(name)) {
                         throw new IllegalStateException("Duplicate setting name");
                     }

@@ -40,6 +40,7 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Consumer;
@@ -80,7 +81,7 @@ public class SettingsUtil {
                     return;
                 }
 
-                String settingName = matcher.group("setting").toLowerCase();
+                String settingName = matcher.group("setting").toLowerCase(Locale.ROOT);
                 String settingValue = matcher.group("value");
                 // TODO remove soonish
                 if ("allowjumpat256".equals(settingName)) {
