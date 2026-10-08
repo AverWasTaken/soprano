@@ -98,8 +98,7 @@ public class MobDefenseChain extends SingleTaskChain {
     private long _lastCombatHurtTick = Long.MIN_VALUE / 2;
     // any damage at all, from anything. a stroll past a zombie stops being one when something bites
     private long _lastHurtTick = Long.MIN_VALUE / 2;
-    // the crit timing and the weapon pick want the plain version: any hit at all, and how many melee mobs are on us / around us
-    private long _lastAnyHurtTick = Long.MIN_VALUE / 2;
+    // the crit timing and the weapon pick want how many melee mobs are on us / around us
     private int _meleeNear;
     private int _meleeAround;
 
@@ -917,7 +916,6 @@ public class MobDefenseChain extends SingleTaskChain {
         // a fresh hit shows up as hurtTime jumping back up
         boolean freshHit = player.hurtTime > _lastHurtTime;
         _lastHurtTime = player.hurtTime;
-        if (freshHit) _lastAnyHurtTick = now;
         // an arrow in the back is not somebody walking up to us. it used to reset the walking-past grace for every zombie on
         // the hillside, so one skeleton made us stop and fight all of them. below the low line it counts as before, at that
         // health the whole thing is a different conversation. no damage source on the client (it is only filled in by the
@@ -1021,13 +1019,6 @@ public class MobDefenseChain extends SingleTaskChain {
         // the grudge book has this one if it hit us (or we hit it) lately. that is who the pass-by grace is about
         boolean hitUs = mod.getEntityTracker().getProvocations().recent(mob.getId(), now, grace);
         return new CombatPolicy.Mob(mob.getId(), dx, dy, dz, ranged, mob instanceof Creeper, isFast(mob), sees, hitUs);
-    }
-
-    // how long since anything hurt us, for the crit timing. the plain version of _lastHurtTick (arrows count)
-    public long ticksSinceHurt(AltoClef mod) {
-        if (!AltoClef.inGame()) return Long.MAX_VALUE / 2;
-        snapshot(mod);
-        return mod.getWorld().getGameTime() - _lastAnyHurtTick;
     }
 
     // melee mobs we are dealing with within contact range, and within the swarm range

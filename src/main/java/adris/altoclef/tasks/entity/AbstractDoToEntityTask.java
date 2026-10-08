@@ -138,7 +138,7 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
             // Step away if we're too close, unless a crit hop is on (or about to be): backing off mid hop is exactly what
             // leaves the mob out of reach when we come down
             // (the run-away keeps walking a bit past the line too, and that stretch would veto the hop just the same)
-            boolean hopOn = (tooClose || _backOffGoal != null) && mod.getControllerExtras().hopWantsToStayClose(entity);
+            boolean hopOn = wantsCritHops() && (tooClose || _backOffGoal != null) && mod.getControllerExtras().hopWantsToStayClose(entity);
             if (hopOn) {
                 dropBackOff(mod);
             } else if (CritTiming.shouldBackOff(tooClose, false)) {
@@ -167,6 +167,12 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
             return null;
         }
         return new TimeoutWanderTask();
+    }
+
+    // only the kill tasks swing, so only they have a hop for the back-off to get out of the way of. shearing a sheep right
+    // after equipping shears also has a recharging cooldown, and that is no reason to skip its back-off
+    protected boolean wantsCritHops() {
+        return false;
     }
 
     // the run-away we started, so the hop can stop exactly that and nobody else's path. a hop only works while baritone is

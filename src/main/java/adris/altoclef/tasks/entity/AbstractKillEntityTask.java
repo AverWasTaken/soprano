@@ -87,6 +87,11 @@ public abstract class AbstractKillEntityTask extends AbstractDoToEntityTask {
     }
 
     @Override
+    protected boolean wantsCritHops() {
+        return true;
+    }
+
+    @Override
     protected Task onEntityInteract(AltoClef mod, Entity entity) {
         // Equip weapon
         if (!equipWeapon(mod)) {

@@ -348,7 +348,7 @@ public final class GolemFightTask extends Task {
         }
         LookHelper.lookAt(mod, g.getEyePosition());
         // full cooldown only, a half charged swing is half the damage for the same 0.5 s of waiting
-        if (player.getAttackStrengthScale(0) < 1) {
+        if (!mod.getControllerExtras().attackReady()) {
             return false;
         }
         // not through PlayerExtraController, so the grudge book hears about it here
