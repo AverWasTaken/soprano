@@ -57,6 +57,19 @@ public class FuelShortageTest {
     }
 
     @Test
+    public void aFuelTripRunsUntilTheBagHoldsTheShortfall() {
+        FuelShortage s = new FuelShortage();
+        assertEquals(0, s.fetchTarget(0), 1e-9);
+        // 8 meat, 3 items of fire left: fetch 5, and a lit reading from the next look at the screen does not cancel it
+        s.fetchUntil(FuelShortage.missing(8, 3, 0, 0));
+        assertEquals(5, s.fetchTarget(0), 1e-9);
+        assertEquals(5, s.fetchTarget(4.5), 1e-9);
+        // one coal is in the bag: the trip is over, and stays over
+        assertEquals(0, s.fetchTarget(8), 1e-9);
+        assertEquals(0, s.fetchTarget(0), 1e-9);
+    }
+
+    @Test
     public void aSmokerWithABitOfFireLeftAndNoFuelInTheBagIsDry() {
         // 8 mutton in, 3 items of fire left, nothing in the fuel slot and nothing to burn in the bag: this is the "Waiting..." that
         // never ended, it has to go and get 5 more

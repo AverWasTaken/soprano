@@ -1,9 +1,9 @@
 package adris.altoclef.tasks.container;
 
 // "we are out of fuel" for the smelt tasks, but only once it has been true for a moment. the tick after a fuel click the bag, the
-// cursor and the cached furnace slots disagree for a bit (seen twice in the live log: coal on its way into the slot read as no
-// fuel anywhere, and the bot left the open smoker for a coal trip with the fuel half in). the real thing stays true, the
-// blip does not. pure so the debounce can be tested without a game
+// cursor and the cached furnace slots can disagree for a bit (the live log had the bot leave the open smoker for a coal trip with
+// the coal half in; the main cause was the cook mode not counting the slot's fuel, fixed in fuelNeeded, this stays as the net for
+// whatever else is in flight). the real thing stays true, the blip does not. pure so it can be tested without a game
 final class FuelShortage {
     // half a second, longer than the two clicks of a move at the default 0.2 s delay
     static final long HOLD_TICKS = 10;
@@ -32,6 +32,23 @@ final class FuelShortage {
     void reset() {
         since = -1;
         last = -1;
+    }
+
+    // smelts the bag has to hold before the bot goes back to the open station, 0 = not on a fuel trip. set by the check inside the
+    // screen: once it has shut the screen the outer check must not go through its own half second first, the station is right
+    // there, so it would reopen, read a lit number and close again until the fire ran out
+    private double fetch;
+
+    void fetchUntil(double smelts) {
+        fetch = smelts;
+    }
+
+    // the trip target while the bag is still short of it, 0 once it holds it
+    double fetchTarget(double bagFuel) {
+        if (fetch > 0 && bagFuel >= fetch) {
+            fetch = 0;
+        }
+        return fetch;
     }
 
     // smelts of fuel a station with `input` items in it is still short of: its own slot, what is lit and the progress on the

@@ -374,7 +374,7 @@ public class SmeltFillerTest {
     }
 
     @Test
-    public void theStandByEndsAThirtySecondsPastDue() {
+    public void theStandByEndsThirtySecondsPastDue() {
         FakeFacts meat = atTheFurnace().cookingFood("cooked_mutton", 8, 6, 40);
         RunState.FurnaceJob smoker = SmeltFiller.smokerJob(meat.furnaceJobs());
         long until = SmeltFiller.standByUntil(smoker, meat.gameTime());
@@ -382,6 +382,18 @@ public class SmeltFillerTest {
         assertTrue(SmeltFiller.standBy(meat.furnaceJobs(), smoker.doneTick, until));
         assertTrue(SmeltFiller.standBy(meat.furnaceJobs(), until, until));
         assertFalse("a smoker that never finishes does not hold the run", SmeltFiller.standBy(meat.furnaceJobs(), until + 1, until));
+    }
+
+    @Test
+    public void aBigBatchIsMinedThroughUntilItIsDownToAMinute() {
+        // a stack of 64 is five minutes, that is not a smoker to stand at
+        FakeFacts big = atTheFurnace().cookingFood("cooked_beef", 64, 8, 320);
+        long start = big.gameTime();
+        assertFalse(SmeltFiller.standBy(big.furnaceJobs(), start, -1));
+        RunState.FurnaceJob smoker = SmeltFiller.smokerJob(big.furnaceJobs());
+        assertFalse(SmeltFiller.standBy(big.furnaceJobs(), smoker.doneTick - 61 * 20, -1));
+        assertTrue(SmeltFiller.standBy(big.furnaceJobs(), smoker.doneTick - 60 * 20, -1));
+        assertTrue(SmeltFiller.standBy(big.furnaceJobs(), smoker.doneTick - 5 * 20, -1));
     }
 
     @Test

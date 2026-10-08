@@ -19,8 +19,8 @@ import net.minecraft.world.item.Item;
 public class CookRawFoodTask extends Task {
     // no change in the bag for this long and the cook is not going anywhere (no fuel to be found, no room for a smoker)
     private static final long GIVE_UP_TICKS = 150 * 20;
-    // no child for this long while the planner still wants the cook and it is not a finish: start over
-    private static final long IDLE_RESTART_TICKS = 5 * 20;
+    // still being ticked this long after the cook finished with no child: say so in the log once
+    private static final long IDLE_LOG_TICKS = 5 * 20;
 
     private final boolean smoker;
     private Task smelt;
@@ -31,6 +31,7 @@ public class CookRawFoodTask extends Task {
     private boolean gaveUp;
     // game tick we started handing back no child, -1 while there is one
     private long idleSince = -1;
+    private boolean idleLogged;
 
     public CookRawFoodTask(boolean smoker) {
         this.smoker = smoker;
@@ -44,6 +45,7 @@ public class CookRawFoodTask extends Task {
         lastCooked = -1;
         gaveUp = false;
         idleSince = -1;
+        idleLogged = false;
         lastChange = mod.getWorld().getGameTime();
     }
 
@@ -96,6 +98,7 @@ public class CookRawFoodTask extends Task {
             smelt = make(mod, smelting);
         }
         idleSince = -1;
+        idleLogged = false;
         // a sync cook empties the bag as it goes and fills it with the cooked kind, either is the bag moving
         int raw = mod.getItemStorage().getItemCount(smelting);
         int cooked = mod.getItemStorage().getItemCount(FoodHelper.cookedForm(smelting));
@@ -124,17 +127,16 @@ public class CookRawFoodTask extends Task {
         return smelt instanceof AsyncSmelting.Handoff handoff && handoff.handedOff();
     }
 
-    // every road that hands back no child ends here, so it says why on the hud. one that is not a finish (the planner still wants
-    // us and nothing is running) starts over after a few seconds instead of sitting there, which is what a silent null did
+    // every road that hands back no child ends here, so the hud says why instead of sitting silent (the 35 s freeze left nothing
+    // in the log at all). all three are finishes: the planner drops the need once the job lands or the station is let go of. if
+    // it is still asking for us seconds later something upstream is holding a finished task, and the log says which kind
     private Task idle(long now, String why) {
         setDebugState(why);
         if (idleSince < 0) {
             idleSince = now;
-        }
-        if (now - idleSince > IDLE_RESTART_TICKS && !gaveUp && !handedOff()) {
-            Debug.logInternal("cook: " + why + " for " + (now - idleSince) / 20 + " s and still wanted, starting over");
-            smelt = null;
-            idleSince = -1;
+        } else if (!idleLogged && now - idleSince >= IDLE_LOG_TICKS) {
+            idleLogged = true;
+            Debug.logInternal("cook: still asked for " + IDLE_LOG_TICKS / 20 + " s after finishing (" + why + ")");
         }
         return null;
     }

@@ -4,7 +4,6 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
-import adris.altoclef.tasks.container.AsyncSmelting;
 import org.junit.Test;
 
 // the fuel trip asks for smelts and counts smelts: the go-back test in the smelt task and the finish test here are one number
@@ -34,15 +33,5 @@ public class CollectFuelTaskTest {
         assertTrue(CollectFuelTask.enough(8, 8));
         assertFalse(CollectFuelTask.enough(7.5, 8));
         assertTrue(CollectFuelTask.enough(24, 8.3));
-    }
-
-    @Test
-    public void aSmeltThatLoadedAndLeftIsAHandoffAndTheBagMeetingItsTargetIsNot() {
-        AsyncSmelting.Handoff loaded = () -> true;
-        AsyncSmelting.Handoff notYet = () -> false;
-        assertTrue(CookRawFoodTask.isHandoff(loaded));
-        assertFalse("three cooked beef in the bag is not a load", CookRawFoodTask.isHandoff(notYet));
-        assertFalse(CookRawFoodTask.isHandoff(new Object()));
-        assertFalse(CookRawFoodTask.isHandoff(null));
     }
 }

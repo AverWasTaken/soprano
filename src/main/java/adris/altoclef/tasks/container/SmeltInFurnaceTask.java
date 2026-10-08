@@ -209,12 +209,14 @@ public class SmeltInFurnaceTask extends ResourceTask implements AsyncSmelting.Ha
             double totalFuelInFurnace = ItemHelper.getFuelAmount(_furnaceCache.fuelSlot) + _furnaceCache.burningFuelCount + _furnaceCache.burnPercentage
                     + fuelKnownInFurnace(mod);
             // Fuel needed = (mat_target - out_in_inventory - out_in_furnace - totalFuelInFurnace)
-            double fuelNeeded = _ignoreMaterials
+            // the fuel already in the furnace comes off in both modes (the cook mode skipped it, see the smoker: coal in the slot, not
+            // lit yet, read as the whole batch short)
+            double fuelNeeded = (_ignoreMaterials
                     ? Math.min(materialTarget.matches(_furnaceCache.materialSlot.getItem()) ? _furnaceCache.materialSlot.getCount() : 0, materialTarget.getTargetCount())
                     : materialTarget.getTargetCount()
                     /* - mod.getItemStorage().getItemCountInventoryOnly(materialTarget.getMatches()) */
                     - mod.getItemStorage().getItemCountInventoryOnly(outputTarget.getMatches())
-                    - (outputTarget.matches(_furnaceCache.outputSlot.getItem()) ? _furnaceCache.outputSlot.getCount() : 0)
+                    - (outputTarget.matches(_furnaceCache.outputSlot.getItem()) ? _furnaceCache.outputSlot.getCount() : 0))
                     - totalFuelInFurnace;
 
             // We don't have enough materials...
@@ -224,7 +226,13 @@ public class SmeltInFurnaceTask extends ResourceTask implements AsyncSmelting.Ha
             }
 
             // We don't have enough fuel...
-            boolean lacking = _furnaceCache.burningFuelCount <= 0 && StorageHelper.calculateInventoryFuelCount(mod) < fuelNeeded;
+            double bagFuel = StorageHelper.calculateInventoryFuelCount(mod);
+            double trip = _dryInside.fetchTarget(bagFuel);
+            if (trip > 0) {
+                setDebugState("Getting Fuel");
+                return new CollectFuelTask(trip);
+            }
+            boolean lacking = _furnaceCache.burningFuelCount <= 0 && bagFuel < fuelNeeded;
             if (_fuelShort.confirmed(lacking, mod.getWorld().getGameTime())) {
                 setDebugState("Getting Fuel");
                 // the exact shortfall, no + 1: the go-back test above and CollectFuelTask's finish test are the same number now
@@ -366,15 +374,14 @@ public class SmeltInFurnaceTask extends ResourceTask implements AsyncSmelting.Ha
             }
 
             // nothing in the bag may burn and the furnace is short: "Waiting..." would never end, see the smoker. shut the screen and
-            // go get it, with the lit reading zeroed so the check out in onTick sees the shortfall too
+            // go get it (the trip target is remembered, FuelShortage.fetchUntil)
             double lit = StorageHelper.getFurnaceFuel();
             double progress = StorageHelper.getFurnaceCookPercent();
             double slotFuel = fuel.isEmpty() ? 0 : ItemHelper.getFuelAmount(fuel);
             if (_dryInside.confirmed(FuelShortage.dry(material.getCount(), lit, progress, slotFuel,
                     StorageHelper.calculateInventoryFuelCount(mod)), mod.getWorld().getGameTime())) {
                 setDebugState("Out of fuel, going to get some");
-                _furnaceCache.burningFuelCount = 0;
-                _furnaceCache.burnPercentage = 0;
+                _dryInside.fetchUntil(FuelShortage.missing(material.getCount(), lit, progress, slotFuel));
                 _dryInside.reset();
                 StorageHelper.closeScreen();
                 return null;

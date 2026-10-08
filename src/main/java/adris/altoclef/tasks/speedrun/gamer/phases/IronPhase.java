@@ -3,6 +3,7 @@ package adris.altoclef.tasks.speedrun.gamer.phases;
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.tasks.container.AsyncSmelting;
+import adris.altoclef.tasks.container.CollectFromFurnaceTask;
 import adris.altoclef.tasks.container.CollectFromFurnaceTask.Mode;
 import adris.altoclef.tasks.speedrun.gamer.CookGate;
 import adris.altoclef.tasks.speedrun.gamer.EarlyIronPick;
@@ -209,7 +210,8 @@ public class IronPhase implements PhaseHandler {
             }
         }
         if (trip != null) {
-            hudState = furnaces.hud();
+            // furnaces.hud() says "furnace" for a smoker too
+            hudState = standBy && trip instanceof CollectFromFurnaceTask ? "Waiting for the smoker" : furnaces.hud();
             return trip;
         }
         if (head == null) {
@@ -300,11 +302,16 @@ public class IronPhase implements PhaseHandler {
             return gated;
         }
         boolean surfaced = SmeltSurface.shallow(SmeltSurface.depthBelowSky(mod));
-        boolean lead = CookGate.leads(gated, at, CookGate.raw(ctx.facts()), surfaced, cookLatch, otherLoadInFlight(mod, ctx));
+        boolean loadBusy = otherLoadInFlight(mod, ctx);
+        boolean lead = CookGate.leads(gated, at, CookGate.raw(ctx.facts()), surfaced, cookLatch, loadBusy);
         if (lead && !cookLatch) {
             Debug.logInternal("cook: " + CookGate.raw(ctx.facts()) + " raw meat in the bag, cooking it now instead of eating it raw");
         }
-        cookLatch = lead;
+        // an iron load in flight only holds the cook back for its few ticks, the latch waits with it (clearing it sent the cook
+        // back to "wait until we surface" for the rest of a cave trip)
+        if (!loadBusy) {
+            cookLatch = lead;
+        }
         return lead ? CookGate.lead(gated, at) : gated;
     }
 

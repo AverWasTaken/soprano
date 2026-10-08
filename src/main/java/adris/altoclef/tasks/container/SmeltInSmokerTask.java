@@ -207,12 +207,15 @@ public class SmeltInSmokerTask extends ResourceTask implements AsyncSmelting.Han
             double totalFuelInSmoker = ItemHelper.getFuelAmount(_smokerCache.fuelSlot) + _smokerCache.burningFuelCount + _smokerCache.burnPercentage
                     + fuelKnownInSmoker(mod);
             // Fuel needed = (mat_target - out_in_inventory - out_in_furnace - totalFuelInFurnace)
-            double fuelNeeded = _ignoreMaterials
+            // the fuel already in the smoker comes off in both modes. the cook mode (ignoreMaterials) used to skip it, so the coal
+            // that had just moved into the slot (not lit yet, bag empty) still read as the whole batch short: "Getting Fuel" the
+            // tick after "Filling fuel", twice in the live log, and a full batch of coal asked for with the slot already covering it
+            double fuelNeeded = (_ignoreMaterials
                     ? Math.min(materialTarget.matches(_smokerCache.materialSlot.getItem()) ? _smokerCache.materialSlot.getCount() : 0, materialTarget.getTargetCount())
                     : materialTarget.getTargetCount()
                     /* - mod.getItemStorage().getItemCountInventoryOnly(materialTarget.getMatches()) */
                     - mod.getItemStorage().getItemCountInventoryOnly(outputTarget.getMatches())
-                    - (outputTarget.matches(_smokerCache.outputSlot.getItem()) ? _smokerCache.outputSlot.getCount() : 0)
+                    - (outputTarget.matches(_smokerCache.outputSlot.getItem()) ? _smokerCache.outputSlot.getCount() : 0))
                     - totalFuelInSmoker;
 
             // We don't have enough materials...
@@ -222,7 +225,13 @@ public class SmeltInSmokerTask extends ResourceTask implements AsyncSmelting.Han
             }
 
             // We don't have enough fuel...
-            boolean lacking = _smokerCache.burningFuelCount <= 0 && StorageHelper.calculateInventoryFuelCount(mod) < fuelNeeded;
+            double bagFuel = StorageHelper.calculateInventoryFuelCount(mod);
+            double trip = _dryInside.fetchTarget(bagFuel);
+            if (trip > 0) {
+                setDebugState("Getting Fuel");
+                return new CollectFuelTask(trip);
+            }
+            boolean lacking = _smokerCache.burningFuelCount <= 0 && bagFuel < fuelNeeded;
             if (_fuelShort.confirmed(lacking, mod.getWorld().getGameTime())) {
                 setDebugState("Getting Fuel");
                 // the exact shortfall, no + 1: the go-back test above and CollectFuelTask's finish test are the same number now, so
@@ -378,15 +387,14 @@ public class SmeltInSmokerTask extends ResourceTask implements AsyncSmelting.Han
 
             // nothing in the bag may burn and the smoker is short: standing here saying "Waiting..." never ends (the burning check
             // out in onTick only fires with nothing lit, and a smoker with a bit of fire left is lit). shut the screen and go get
-            // it. the lit reading is zeroed so that check sees the shortfall too, or it would trust a number that is about to run out
+            // it, and the trip is not talked out of by a lit reading from the last look (FuelShortage.fetchUntil)
             double lit = StorageHelper.getSmokerFuel();
             double progress = StorageHelper.getSmokerCookPercent();
             double slotFuel = fuel.isEmpty() ? 0 : ItemHelper.getFuelAmount(fuel);
             if (_dryInside.confirmed(FuelShortage.dry(material.getCount(), lit, progress, slotFuel,
                     StorageHelper.calculateInventoryFuelCount(mod)), mod.getWorld().getGameTime())) {
                 setDebugState("Out of fuel, going to get some");
-                _smokerCache.burningFuelCount = 0;
-                _smokerCache.burnPercentage = 0;
+                _dryInside.fetchUntil(FuelShortage.missing(material.getCount(), lit, progress, slotFuel));
                 _dryInside.reset();
                 StorageHelper.closeScreen();
                 return null;
