@@ -13,6 +13,7 @@ import adris.altoclef.trackers.storage.ContainerCache;
 import adris.altoclef.util.helpers.WorldHelper;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.AbstractFurnaceMenu;
 import net.minecraft.world.inventory.CraftingMenu;
 import net.minecraft.world.inventory.FurnaceMenu;
 import net.minecraft.world.inventory.SmokerMenu;
@@ -150,10 +151,10 @@ final class StationPickup {
             };
         }
 
-        // some container screen is open (any kind, a furnace load has the player's own inventory menu swapped for it), or a smelt
+        // a furnace-like screen is open (a chest or a stray screen nobody closes must not hold a phase open for ever), or a smelt
         // task had one in hand a moment ago. see OwnTables.loadInFlight
         private boolean loadInFlight(AltoClef mod, long now) {
-            boolean screenOpen = mod.getPlayer().containerMenu != mod.getPlayer().inventoryMenu;
+            boolean screenOpen = mod.getPlayer().containerMenu instanceof AbstractFurnaceMenu;
             return OwnTables.loadInFlight(screenOpen, AsyncSmelting.lastWork(), now);
         }
 
@@ -210,7 +211,8 @@ final class StationPickup {
             OverworldConfig cfg = ctx.cfg().overworld;
             // the backstop alone decides if one is owed. the guards below only delay the start, a phase that ends inside them
             // would otherwise leave the station behind (the craft that just closed its menu is the last thing it does)
-            if (OwnTables.startRecovery(now, OwnTables.NEVER, OwnTables.NEVER, use.lastRecoveredTick, false, true, 0, 0, cfg.tableRecoverCooldownSeconds) == OwnTables.Start.NO) {
+            double cooldown = OwnTables.recoverCooldown(cfg.tableRecoverCooldownSeconds);
+            if (OwnTables.startRecovery(now, OwnTables.NEVER, OwnTables.NEVER, use.lastRecoveredTick, false, true, 0, 0, cooldown) == OwnTables.Start.NO) {
                 return null;
             }
             List<RunState.Pos> own = placed(ctx);
@@ -261,7 +263,7 @@ final class StationPickup {
                 return null;
             }
             OwnTables.Start go = OwnTables.startRecovery(now, use.lastUseTick, use.lastPlaceTick, use.lastRecoveredTick, open,
-                    true, cfg.tableUseCooldownSeconds, OwnTables.PLACE_GUARD_SECONDS, cfg.tableRecoverCooldownSeconds);
+                    true, cfg.tableUseCooldownSeconds, OwnTables.PLACE_GUARD_SECONDS, cooldown);
             if (go == OwnTables.Start.HOLD) {
                 // a null here hands the tick to the next need, which walks off (a pig for three seconds was enough to
                 // lose a table). the guard is a second at most so standing still is cheap, and it cannot hang: the stamps

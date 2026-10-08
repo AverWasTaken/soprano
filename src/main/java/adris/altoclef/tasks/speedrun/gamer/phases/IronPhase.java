@@ -232,8 +232,8 @@ public class IronPhase implements PhaseHandler {
             return null;
         }
         packed.add(job.pos);
-        long left = job.doneTick - f.gameTime();
-        return furnaces.collectJob(mod, ctx, job, PackUp.mode(left, jobDepth(mod, job)), "leaving the mine with it still cooking down here");
+        return furnaces.collectJob(mod, ctx, job, Mode.TAKE_ALL, "leaving the mine with it still cooking down here",
+                PackUp.waitTicks(jobDepth(mod, job)));
     }
 
     // blocks between the job's furnace and the open sky over it (over us, when its chunk is not loaded)

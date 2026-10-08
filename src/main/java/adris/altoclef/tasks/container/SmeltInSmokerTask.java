@@ -252,6 +252,10 @@ public class SmeltInSmokerTask extends ResourceTask {
             if (picked != null && mod.getBlockTracker().blockIsValid(picked, Blocks.SMOKER)) {
                 return picked;
             }
+            BlockPos loaded = StationMemory.ourLoaded(mod, Blocks.SMOKER);
+            if (loaded != null) {
+                return loaded;
+            }
             return mod.getBlockTracker().getNearestTracking(mod.getPlayer().position(),
                     p -> adris.altoclef.util.helpers.WorldHelper.canReach(mod, p), Blocks.SMOKER).orElse(null);
         }
@@ -409,8 +413,8 @@ public class SmeltInSmokerTask extends ResourceTask {
 
         @Override
         protected BlockPos overrideContainerPosition(AltoClef mod) {
-            // If we have a valid container position, KEEP it.
-            return getTargetContainerPosition();
+            // If we have a valid container position, KEEP it. otherwise a smoker of ours with our stuff in it beats the nearest
+            return getTargetContainerPosition() != null ? getTargetContainerPosition() : StationMemory.ourLoaded(mod, Blocks.SMOKER);
         }
 
         private void tryUpdateOpenSmoker(AltoClef mod) {

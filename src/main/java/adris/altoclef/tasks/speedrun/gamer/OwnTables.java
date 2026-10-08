@@ -155,6 +155,12 @@ public final class OwnTables {
         return Math.max(configured, WalkCost.STATION_BUDGET);
     }
 
+    // same story for the "no second pickup for this long" floor: the saved file says 120, which returns null before a station
+    // is even owed and lets a phase end with the table still standing at the bottom of the cave. a few seconds is all it is for
+    public static double recoverCooldown(double configured) {
+        return Math.min(configured, 5.0);
+    }
+
     // a craft happened at the table since it was placed. this is what stops a place/pickup loop without a long cooldown: no
     // craft in between, no pickup (by the rule below). lastUse is stamped every tick the menu is open, lastPlace when it went down
     public static boolean usedSincePlaced(long lastUse, long lastPlace) {

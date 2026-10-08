@@ -226,6 +226,13 @@ public class OwnTablesTest {
     }
 
     @Test
+    public void aSavedTwoMinuteCooldownIsCutToTheFewSecondsItIsFor() {
+        assertEquals(5, OwnTables.recoverCooldown(120), 0);
+        assertEquals(5, OwnTables.recoverCooldown(5), 0);
+        assertEquals(2, OwnTables.recoverCooldown(2), 0);
+    }
+
+    @Test
     public void tablesOutOfBudgetAreForgottenButJobsKeepTheirs() {
         List<RunState.Pos> own = new ArrayList<>(List.of(pos(2, 64, 0), pos(0, 30, 0), pos(60, 64, 0)));
         // the one at 60 belongs to a smelting job

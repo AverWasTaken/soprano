@@ -92,11 +92,13 @@ public final class SmeltSurface {
     // a furnace or smoker that gets loaded and left is a trip back for the output. underground that is a walk down a cave
     // (22:08 smoker at y 32, 40 s of walking back to it after a hunt on the surface), so the thing to be loaded rides up first
     // unless the work after it is down here too. the iron smelt has always done this; the cook is the same rule
-    public static Why why(KitNeed head, KitNeed next, int rawIron, int ingots, int pending, int rawMeat) {
+    // `cookRunning` = the cook task already picked its station (CookTrip) and is walking to it. that one is a smoker or furnace
+    // that is already standing, wherever it is, and climbing out just to come back down to it is a round trip for nothing
+    public static Why why(KitNeed head, KitNeed next, int rawIron, int ingots, int pending, int rawMeat, boolean cookRunning) {
         if (head != null && oreDone(head.catalogueName(), head.count(), rawIron, ingots, pending)) {
             return Why.IRON;
         }
-        if (cookDone(head, rawMeat) && !nextWorkDown(next, rawIron, ingots, pending)) {
+        if (cookDone(head, rawMeat) && !cookRunning && !nextWorkDown(next, rawIron, ingots, pending)) {
             return Why.COOK;
         }
         return Why.NONE;
@@ -116,7 +118,7 @@ public final class SmeltSurface {
             settled[COOK] = false;
             gaveUp[COOK] = false;
         }
-        Why why = why(head, next, raw, f.count(Items.IRON_INGOT), f.pendingOutput(Items.IRON_INGOT), meat);
+        Why why = why(head, next, raw, f.count(Items.IRON_INGOT), f.pendingOutput(Items.IRON_INGOT), meat, f.cookStation() != null);
         if (why == Why.NONE || !Baritone.settings().altoAsyncSmelting.value
                 || (why == Why.COOK && !Baritone.settings().altoAsyncCooking.value)) {
             return Why.NONE;

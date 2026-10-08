@@ -17,6 +17,11 @@ public final class FurnaceReuse {
     private FurnaceReuse() {
     }
 
+    // a furnace of ours is close enough to count (the stretched OURS_BUDGET walk)
+    public static boolean ownedWithinReach(double dx, double dy, double dz) {
+        return WalkCost.within(dx, dy, dz, OURS_BUDGET);
+    }
+
     public static boolean cheapToReach(double dx, double dy, double dz) {
         return WalkCost.within(dx, dy, dz, WalkCost.STATION_BUDGET);
     }

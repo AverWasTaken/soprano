@@ -2,6 +2,7 @@ package adris.altoclef.tasks.container;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.AltoSettings;
+import adris.altoclef.tasks.container.AsyncSmelting;
 import adris.altoclef.trackers.storage.ContainerCache;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.ItemHelper;
@@ -46,6 +47,18 @@ final class StationMemory {
             return 0;
         }
         return mod.getItemStorage().getContainerAtPosition(at).map(c -> fuelOf(c, materials)).orElse(0.0);
+    }
+
+    // the tracked block of this kind that is ours and still has something of ours in it by the last look, null if none. a load
+    // that got cut off is finished at THAT furnace: the nearest one may be a village's or an empty one of ours, and walking to
+    // it read the loaded one's 37 ore as 0
+    static BlockPos ourLoaded(AltoClef mod, net.minecraft.world.level.block.Block block) {
+        var me = mod.getPlayer().position();
+        // within the stretched walk only: a stale look at a furnace across the map must not pin every smelt to it
+        return mod.getBlockTracker().getNearestTracking(me,
+                p -> AsyncSmelting.isOurFurnace(p) && adris.altoclef.util.helpers.WorldHelper.canReach(mod, p)
+                        && FurnaceReuse.ownedWithinReach(p.getX() + 0.5 - me.x, p.getY() - me.y, p.getZ() + 0.5 - me.z)
+                        && mod.getItemStorage().getContainerAtPosition(p).map(ContainerCache::holdsAnything).orElse(false), block).orElse(null);
     }
 
     // a table to craft the station on: in the bag, standing close, or the wood to make one on the spot

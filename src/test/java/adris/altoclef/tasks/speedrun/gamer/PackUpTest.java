@@ -6,7 +6,6 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
-import adris.altoclef.tasks.container.CollectFromFurnaceTask.Mode;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -27,20 +26,15 @@ public class PackUpTest {
         assertTrue(PackUp.stranded(SmeltSurface.depth(70, 32)));
     }
 
+    // the trip is a TAKE_ALL with this as its "nearly done" window, so a job that is about to finish is waited for and the rest
+    // is taken back out
     @Test
-    public void aJobAboutToFinishIsWaitedForAndAFarOneIsTakenBack() {
-        int depth = 30;
-        // done a few seconds from now: stand there and take it
-        assertEquals(Mode.WAIT_ALL, PackUp.mode(100, depth));
-        assertEquals(Mode.WAIT_ALL, PackUp.mode(-50, depth));
-        // two minutes to go: the contents and the station come with us
-        assertEquals(Mode.TAKE_ALL, PackUp.mode(2400, depth));
-        // the wait is never under 10 s and never over 30 s, whatever the depth
+    public void theWaitIsAsLongAsTheWalkAwayAndNeverUnderTenSeconds() {
         assertEquals(200, PackUp.waitTicks(1));
         assertEquals(600, PackUp.waitTicks(500));
         assertTrue(PackUp.waitTicks(20) > PackUp.waitTicks(10));
-        assertEquals(Mode.WAIT_ALL, PackUp.mode(200, 2));
-        assertEquals(Mode.TAKE_ALL, PackUp.mode(201, 2));
+        // 30 down: 600 ticks, a job that finishes inside it is waited for
+        assertEquals(600, PackUp.waitTicks(30));
     }
 
     @Test
@@ -72,8 +66,10 @@ public class PackUpTest {
     public void aFurnaceOnTheOtherSideOfTheWorldIsNotWorthTheTripNow() {
         RunState.FurnaceJob far = job(400, 30, 0, 900);
         assertNull(PackUp.pick(List.of(far), new HashSet<>(), j -> 40, j -> PackUp.walk(j, 0.5, 30, 0.5)));
-        // 12 blocks down is 48 of walking, inside the stretched budget
+        // 12 blocks down is 48 of walking, 10 down and 20 across is 60: both worth the one trip now
         RunState.FurnaceJob near = job(0, 18, 0, 900);
         assertSame(near, PackUp.pick(List.of(near), new HashSet<>(), j -> 52, j -> PackUp.walk(j, 0.5, 30, 0.5)));
+        RunState.FurnaceJob across = job(20, 20, 0, 900);
+        assertSame(across, PackUp.pick(List.of(across), new HashSet<>(), j -> 50, j -> PackUp.walk(j, 0.5, 30, 0.5)));
     }
 }

@@ -398,14 +398,18 @@ public class SmeltInFurnaceTask extends ResourceTask {
             if (picked != null && mod.getBlockTracker().blockIsValid(picked, Blocks.FURNACE)) {
                 return picked;
             }
+            BlockPos loaded = StationMemory.ourLoaded(mod, Blocks.FURNACE);
+            if (loaded != null) {
+                return loaded;
+            }
             return mod.getBlockTracker().getNearestTracking(mod.getPlayer().position(),
                     p -> adris.altoclef.util.helpers.WorldHelper.canReach(mod, p), Blocks.FURNACE).orElse(null);
         }
 
         @Override
         protected BlockPos overrideContainerPosition(AltoClef mod) {
-            // If we have a valid container position, KEEP it.
-            return getTargetContainerPosition();
+            // If we have a valid container position, KEEP it. otherwise a furnace of ours with our stuff in it beats the nearest
+            return getTargetContainerPosition() != null ? getTargetContainerPosition() : StationMemory.ourLoaded(mod, Blocks.FURNACE);
         }
 
         // the caches start as EMPTY stacks and only change while the screen is open, so anything in them means we

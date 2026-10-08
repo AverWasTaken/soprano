@@ -1,6 +1,5 @@
 package adris.altoclef.tasks.speedrun.gamer;
 
-import adris.altoclef.tasks.container.CollectFromFurnaceTask.Mode;
 import adris.altoclef.tasks.container.FurnaceReuse;
 import adris.altoclef.util.helpers.WalkCost;
 
@@ -26,21 +25,16 @@ public final class PackUp {
         return jobDepth > SmeltSurface.GO_UP_DEPTH;
     }
 
-    // how long waiting for a job is no worse than leaving: the climb out takes this long anyway, and never less than 10 s
+    // how long waiting for a job is no worse than leaving: the climb out takes this long anyway, and never less than 10 s. the
+    // trip is a TAKE_ALL with this as its "nearly done" window: it waits when the job is that close and otherwise (or when the
+    // wait runs out) takes the unfinished input back out with it, so nothing is left behind either way
     public static long waitTicks(int depth) {
         return Math.max(MIN_WAIT_TICKS, Math.min(MAX_WAIT_TICKS, depth * TICKS_PER_DEPTH));
     }
 
-    // WAIT_ALL when it is about to be done (stand there and take it), TAKE_ALL when it is not (the unfinished input comes back
-    // out with the station, the planner smelts it again on top)
-    public static Mode mode(long remainingTicks, int depth) {
-        return remainingTicks <= waitTicks(depth) ? Mode.WAIT_ALL : Mode.TAKE_ALL;
-    }
-
-    // the stranded job to go and get, the one that is ready first. `tried` are the spots we already made a trip for: a trip
-    // that comes back with input still cooking (capped) must not send us round again for ever. `depthOf` is how deep its
-    // furnace is, `walkOf` what the walk to it costs from here (WalkCost units), one that is a long way off waits for the
-    // plain due-collect like it always did
+    // the stranded job to go and get, the one that is ready first. `tried` are the spots we already made a trip for, so one
+    // that cannot be emptied must not send us round again for ever. `depthOf` is how deep its furnace is, `walkOf` what the
+    // walk to it costs from here (WalkCost units), one that is a long way off waits for the plain due-collect like it always did
     public static RunState.FurnaceJob pick(List<RunState.FurnaceJob> jobs, Set<RunState.Pos> tried, ToIntFunction<RunState.FurnaceJob> depthOf,
                                            java.util.function.ToDoubleFunction<RunState.FurnaceJob> walkOf) {
         RunState.FurnaceJob best = null;
@@ -55,9 +49,11 @@ public final class PackUp {
         return best;
     }
 
-    // the same stretched walk a furnace of ours gets everywhere else (FurnaceReuse.OURS_BUDGET)
+    // three times the stretched walk a furnace of ours gets everywhere else. this one is not about reusing it, it is the only
+    // chance to take the contents without a second trip down, so a furnace 10 down and 20 across (60) is still worth it, and
+    // only one in another area waits for the plain due-collect
     public static double worthWalking() {
-        return FurnaceReuse.OURS_BUDGET;
+        return FurnaceReuse.OURS_BUDGET * 3;
     }
 
     // walk cost from us to the job's furnace

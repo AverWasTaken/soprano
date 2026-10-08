@@ -28,7 +28,7 @@ public final class FurnaceWatch {
     private RunState.FurnaceJob target;
     private String hud;
     // the IRON phase takes its furnace back once the last of the iron is out, so the next smelt can go down at the next work
-    // site. PORTAL leaves it alone, it is on its way out
+    // site. PORTAL takes the one it just emptied too (newExitPhase), but never loads meat into it
     private boolean pickUpWhenEmpty;
     private boolean cookHere = true;
     private Task pickup;
@@ -245,6 +245,11 @@ public final class FurnaceWatch {
 
     // the same trip to one chosen job (leaving a mine picks the deep one, not the soonest)
     public Task collectJob(AltoClef mod, GamerContext ctx, RunState.FurnaceJob job, Mode mode, String why) {
+        return collectJob(mod, ctx, job, mode, why, Math.round(ctx.cfg().overworld.furnaceWaitSeconds * 20));
+    }
+
+    // `nearly` = how close to done still counts as worth waiting for
+    public Task collectJob(AltoClef mod, GamerContext ctx, RunState.FurnaceJob job, Mode mode, String why, long nearly) {
         Task running = active(mod, ctx);
         if (running != null) {
             return running;
@@ -253,7 +258,6 @@ public final class FurnaceWatch {
             return null;
         }
         long now = ctx.facts().gameTime();
-        long nearly = Math.round(ctx.cfg().overworld.furnaceWaitSeconds * 20);
         // the cap is how long past the estimate WAIT_ALL waits, a furnace that never finishes must not hold us for ever
         long cap = Math.max(0, job.doneTick - now) + 600;
         Block block = BuiltInRegistries.BLOCK.getValue(ResourceLocation.withDefaultNamespace(job.kind));

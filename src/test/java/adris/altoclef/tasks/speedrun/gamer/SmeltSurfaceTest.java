@@ -56,26 +56,26 @@ public class SmeltSurfaceTest {
     @Test
     public void aCookWithNothingToMineAfterItRidesUpFirst() {
         // the cook is the last thing in the plan
-        assertEquals(SmeltSurface.Why.COOK, SmeltSurface.why(cook(), null, 0, 0, 0, 7));
+        assertEquals(SmeltSurface.Why.COOK, SmeltSurface.why(cook(), null, 0, 0, 0, 7, false));
         // and so is one followed by a craft or a filler, none of that is down here
-        assertEquals(SmeltSurface.Why.COOK, SmeltSurface.why(cook(), new KitNeed("iron_pickaxe", 1), 0, 0, 0, 7));
-        assertEquals(SmeltSurface.Why.COOK, SmeltSurface.why(cook(), new KitNeed(KitNeed.FOOD, 70), 0, 0, 0, 7));
+        assertEquals(SmeltSurface.Why.COOK, SmeltSurface.why(cook(), new KitNeed("iron_pickaxe", 1), 0, 0, 0, 7, false));
+        assertEquals(SmeltSurface.Why.COOK, SmeltSurface.why(cook(), new KitNeed(KitNeed.FOOD, 70), 0, 0, 0, 7, false));
     }
 
     @Test
     public void aCookInFrontOfMoreMiningStaysDownWhereTheWorkIs() {
         // 14 of 39 ore in the bag: the vein is next, the furnace would be right there when we come back for it
-        assertEquals(SmeltSurface.Why.NONE, SmeltSurface.why(cook(), iron(39), 14, 0, 0, 7));
+        assertEquals(SmeltSurface.Why.NONE, SmeltSurface.why(cook(), iron(39), 14, 0, 0, 7, false));
         assertTrue(SmeltSurface.nextWorkDown(iron(39), 14, 0, 0));
         // all the ore already in the bag: the next work is a smelt, and that goes up
-        assertEquals(SmeltSurface.Why.COOK, SmeltSurface.why(cook(), iron(39), 39, 0, 0, 7));
+        assertEquals(SmeltSurface.Why.COOK, SmeltSurface.why(cook(), iron(39), 39, 0, 0, 7, false));
         assertFalse(SmeltSurface.nextWorkDown(iron(39), 39, 0, 0));
         assertFalse(SmeltSurface.nextWorkDown(null, 0, 0, 0));
     }
 
     @Test
     public void noMeatNoCookClimb() {
-        assertEquals(SmeltSurface.Why.NONE, SmeltSurface.why(cook(), null, 0, 0, 0, 0));
+        assertEquals(SmeltSurface.Why.NONE, SmeltSurface.why(cook(), null, 0, 0, 0, 0, false));
         assertFalse(SmeltSurface.cookDone(iron(39), 7));
         assertFalse(SmeltSurface.cookDone(null, 7));
         assertTrue(SmeltSurface.cookDone(new KitNeed(KitNeed.COOK_FURNACE, 3), 3));
@@ -83,9 +83,17 @@ public class SmeltSurfaceTest {
 
     @Test
     public void theIronSmeltStillWinsOverACookBehindIt() {
-        assertEquals(SmeltSurface.Why.IRON, SmeltSurface.why(iron(39), cook(), 39, 0, 0, 7));
-        assertEquals(SmeltSurface.Why.NONE, SmeltSurface.why(iron(39), cook(), 12, 0, 0, 7));
-        assertEquals(SmeltSurface.Why.NONE, SmeltSurface.why(null, null, 0, 0, 0, 0));
+        assertEquals(SmeltSurface.Why.IRON, SmeltSurface.why(iron(39), cook(), 39, 0, 0, 7, false));
+        assertEquals(SmeltSurface.Why.NONE, SmeltSurface.why(iron(39), cook(), 12, 0, 0, 7, false));
+        assertEquals(SmeltSurface.Why.NONE, SmeltSurface.why(null, null, 0, 0, 0, 0, false));
+    }
+
+    // the cook task picked a smoker that is already standing and walks down to it: climbing out first is a round trip
+    @Test
+    public void aCookThatAlreadyPickedItsStationDoesNotClimb() {
+        assertEquals(SmeltSurface.Why.NONE, SmeltSurface.why(cook(), null, 0, 0, 0, 7, true));
+        // the iron smelt does not care
+        assertEquals(SmeltSurface.Why.IRON, SmeltSurface.why(iron(39), null, 39, 0, 0, 0, true));
     }
 
     @Test
