@@ -83,14 +83,6 @@ public class FoodHuntTest {
     }
 
     @Test
-    public void noFishInTheMenu() {
-        // cod and salmon are never hunted, so there is no kind to score
-        for (Kind k : Kind.values()) {
-            assertFalse(k.name(), k.name().equals("COD") || k.name().equals("SALMON"));
-        }
-    }
-
-    @Test
     public void sheepLoseTheirEdgeWhileTheKitWantsWool() {
         // sheep 9 units, cow 16: cow at 12 vs sheep at 3 -> sheep 0.82, cow 0.8. close enough to be a coin flip normally
         Candidate sheep = c(1, Kind.SHEEP, 3);

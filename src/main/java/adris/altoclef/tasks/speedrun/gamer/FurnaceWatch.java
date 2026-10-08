@@ -197,7 +197,7 @@ public final class FurnaceWatch {
             pickupKind = visited.kind;
             pickupItem = itemOf(visited.kind);
             // an empty furnace is the best place for the raw meat we are carrying, and we are standing at it
-            if (CookGate.reusable(ctx.facts(), ctx.cfg().overworld, ctx.cfg().end.beds)) {
+            if (CookGate.reusable(ctx.facts(), ctx.cfg().overworld, ctx.cfg().end.beds, "smoker".equals(visited.kind))) {
                 cook = new CookRawFoodTask("smoker".equals(visited.kind));
                 cookStart = ctx.facts().gameTime();
                 Debug.logInternal(visited.kind + " is empty and we hold " + CookGate.raw(ctx.facts()) + " raw meat, cooking it before taking the "

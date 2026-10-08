@@ -287,12 +287,12 @@ public class CookGateTest {
     @Test
     public void reusingTheFurnaceWeJustEmptiedNeedsEnoughMeatAndFuel() {
         f.give(Items.MUTTON, 4).give(Items.COAL, 1);
-        assertTrue(CookGate.reusable(f, cfg, 8));
+        assertTrue(CookGate.reusable(f, cfg, 8, false));
         // a pair of rabbit is not worth holding the furnace for
-        assertFalse(CookGate.reusable(new FakeFacts().give(Items.RABBIT, 2).give(Items.COAL, 1), cfg, 8));
-        assertFalse(CookGate.reusable(new FakeFacts().give(Items.MUTTON, 4), cfg, 8));
+        assertFalse(CookGate.reusable(new FakeFacts().give(Items.RABBIT, 2).give(Items.COAL, 1), cfg, 8, false));
+        assertFalse(CookGate.reusable(new FakeFacts().give(Items.MUTTON, 4), cfg, 8, false));
         f.cookSuspended = true;
-        assertFalse(CookGate.reusable(f, cfg, 8));
+        assertFalse(CookGate.reusable(f, cfg, 8, false));
     }
 
     // ---- the GATHER -> IRON boundary: 22:05:29, a bag of raw pork, chicken and mutton, a furnace and no fuel, and the cook
@@ -313,9 +313,13 @@ public class CookGateTest {
         assertEquals(KitNeed.COOK_FURNACE, CookGate.need(b, cfg, 8).catalogueName());
         assertEquals(4, CookGate.pile(b));
         assertEquals(10, CookGate.raw(b));
-        // and with fuel for three smelts the pile does not fit
+        // and with fuel for three smelts (2 logs, no beds owed so they are spare) the pile of 4 does not fit
         FakeFacts less = boundary().give(Items.OAK_LOG, 2);
-        assertNull(CookGate.need(less, cfg, 8));
+        assertEquals(3, CookGate.fuelSmelts(less, cfg, 0));
+        assertNull(CookGate.need(less, cfg, 0));
+        // three logs (4 smelts) fit
+        FakeFacts fits = boundary().give(Items.OAK_LOG, 3);
+        assertEquals(KitNeed.COOK_FURNACE, CookGate.need(fits, cfg, 0).catalogueName());
     }
 
     @Test
@@ -389,5 +393,14 @@ public class CookGateTest {
         // and meat already in the bag means the fuel decision has been made
         FakeFacts meat = new FakeFacts().give(Items.PORKCHOP, 3);
         assertEquals(0, KitPlanner.cookFuelLogs(meat, full, 8, 5));
+    }
+
+    @Test
+    public void anEmptiedKitFurnaceIsNotReloadedWithMeatWhileIronIsOwed() {
+        OverworldConfig full = new OverworldConfig();
+        FakeFacts b = boundary().give(Items.COAL, 2);
+        assertFalse(CookGate.reusable(b, full, 8, false));
+        // a smoker has no ore to mix it up with
+        assertTrue(CookGate.reusable(b, full, 8, true));
     }
 }

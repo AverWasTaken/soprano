@@ -79,6 +79,9 @@ public class CookRawFoodTask extends Task {
         if (smelt == null) {
             smelting = pickRaw(mod);
             if (smelting == null) {
+                // nothing left to cook and nothing loading: let go of the station, or a sync cook (async cooking off) kept the
+                // cook need alive through the stamp until the watchdog
+                CookTrip.release();
                 return null;
             }
             smelt = make(mod, smelting);

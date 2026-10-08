@@ -44,13 +44,13 @@ public class OverworldConfig {
     // nutrition points, a cooked steak is 8. enough for an hour or so, the food chain eats on its own
     public int minFoodUnits = 70;
     public int targetFoodUnits = 100;
-    // the IRON phase leaves the mine for food only below this (or on the surface, or between two jobs, up to minFoodUnits).
+    // the IRON phase leaves the mine for food only below this (or on the surface, up to minFoodUnits).
     // a bot with an apple and six mutton used to climb out for a hunt in the middle of a vein
     public int minHeldFoodUnits = 24;
     // logs the gather chops on top of its wood budget while the food is still to be hunted, so the raw meat has fuel the moment
-    // it is in the bag (a smoker's four, its table, and a pile's worth of burning). 0 = none and the cook waits for coal. the
+    // it is in the bag (a smoker's four, its table, and a pile of a dozen chicken's worth of burning). 0 = none and the cook waits for coal. the
     // surplus is "spare" wood to WoodReserve, which is the only reason the furnace may burn it
-    public int cookFuelLogs = 10;
+    public int cookFuelLogs = 14;
 
     // lava casting gets this long (counted from when the cast starts, after the prep) before the portal phase goes the
     // obsidian way. the whole portal phase has 14 minutes and the prep before the cast eats some of them, 7 leaves the

@@ -154,7 +154,12 @@ public final class CookGate {
 
     // a furnace or smoker we just emptied, with meat in the bag: load it before it goes back in the bag (FurnaceWatch). no
     // station question, we are standing at one
-    public static boolean reusable(GamerFacts f, OverworldConfig cfg, int endBeds) {
+    public static boolean reusable(GamerFacts f, OverworldConfig cfg, int endBeds, boolean smoker) {
+        // the plain furnace we are standing at is the iron's while ore is owed, same rule as station(): the big batch walks back
+        // to the furnace it remembers and would swap the meat out
+        if (!smoker && ironOwed(f, cfg)) {
+            return false;
+        }
         return raw(f) >= MIN_RAW && !f.cookSuspended() && f.pendingFoodUnits() == 0 && fuelSmelts(f, cfg, endBeds) >= pile(f);
     }
 

@@ -216,7 +216,7 @@ public class IronPhase implements PhaseHandler {
     }
 
     // the kit's own food need only leads when FoodGate says so, otherwise it waits behind the ore (it comes back the moment
-    // we surface or the next job is not ore, and the food chain eats on its own in the meantime). the stock-up fillers
+    // we surface, and the food chain eats on its own in the meantime). the stock-up fillers
     // SmeltFiller adds are surface work and not touched
     private List<KitNeed> gateFoodNeed(AltoClef mod, GamerContext ctx, List<KitNeed> needs) {
         OverworldConfig cfg = ctx.cfg().overworld;
