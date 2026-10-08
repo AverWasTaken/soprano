@@ -54,6 +54,8 @@ public class StrongholdRoomSearchTask extends Task {
     // searched when we were near this level
     private double workY = Double.NaN;
     private boolean hintGivenUp;
+    private int chunksReached;
+    private boolean rearmChunkTimer;
     private double lastSave;
     private double startedAt;
 
@@ -76,6 +78,17 @@ public class StrongholdRoomSearchTask extends Task {
 
     public String step() {
         return step;
+    }
+
+    // chunks newly covered since the last newWindow (RoomPhase asks this when the budget runs out)
+    public int chunksReached() {
+        return chunksReached;
+    }
+
+    public void newWindow() {
+        chunksReached = 0;
+        // the chunk timer kept running while the phase retried, the chunk in progress gets its 90 s again
+        rearmChunkTimer = true;
     }
 
     // the whole spiral came up empty
@@ -174,6 +187,11 @@ public class StrongholdRoomSearchTask extends Task {
     }
 
     private void enter(AltoClef mod, Stage next) {
+        if (next == Stage.TO_START) {
+            // coming back from a hint walk: the old leg is long expired and would skip the walk, then we dig at the hint spot
+            goStartTask = null;
+            startLeg = null;
+        }
         stage = next;
         stageSince = seconds(mod);
     }
@@ -194,7 +212,7 @@ public class StrongholdRoomSearchTask extends Task {
             if (centre.isPresent()) {
                 int[] c = centre.get();
                 state.endPortalCenter = new RunState.Pos(c[0], c[1], c[2]);
-                state.framesFilled = FrameGeometry.filledCount(c, p -> StrongholdScan.frameHasEye(mod, p));
+                refreshFilled(mod, c);
                 ctx.progress("portal ring found");
                 ctx.log("found the end portal room at " + c[0] + ", " + c[2]);
                 ctx.save();
@@ -241,10 +259,20 @@ public class StrongholdRoomSearchTask extends Task {
         if (seen > state.framesSeen) {
             state.framesSeen = seen;
         }
-        state.framesFilled = FrameGeometry.filledCount(c, p -> StrongholdScan.frameHasEye(mod, p));
+        refreshFilled(mod, c);
         if (state.framesSeen >= FrameGeometry.FRAME_COUNT) {
             finish();
         }
+    }
+
+    // same guard as OpenPhase.refresh: an unloaded frame reads as empty, so the count only moves when all 12 are loaded
+    private void refreshFilled(AltoClef mod, int[] c) {
+        for (int[] p : FrameGeometry.positions(c)) {
+            if (!StrongholdScan.isFrame(mod, p)) {
+                return;
+            }
+        }
+        ctx.state().framesFilled = FrameGeometry.filledCount(c, p -> StrongholdScan.frameHasEye(mod, p));
     }
 
     private int[] centreOf() {
@@ -336,9 +364,16 @@ public class StrongholdRoomSearchTask extends Task {
         RunState state = ctx.state();
         ChunkPos here = mod.getPlayer().chunkPosition();
         markCovered(mod, here, state);
-        if (chunkTarget != null && (here.x == chunkTarget.cx() && here.z == chunkTarget.cz()
-                || seconds(mod) - chunkSince >= cfg.perChunkSeconds)) {
-            state.roomChunksVisited.add(chunkTarget.key());
+        if (rearmChunkTimer) {
+            rearmChunkTimer = false;
+            chunkSince = seconds(mod);
+        }
+        boolean arrived = chunkTarget != null && here.x == chunkTarget.cx() && here.z == chunkTarget.cz();
+        if (chunkTarget != null && (arrived || seconds(mod) - chunkSince >= cfg.perChunkSeconds)) {
+            // giving up on a chunk after the timer is not reaching it: only arrivals count as the spiral moving
+            if (state.roomChunksVisited.add(chunkTarget.key()) && arrived) {
+                chunksReached++;
+            }
             ctx.progress("chunk searched");
             chunkTarget = null;
             chunkTask = null;
@@ -361,6 +396,7 @@ public class StrongholdRoomSearchTask extends Task {
                 int cx = here.x + dx;
                 int cz = here.z + dz;
                 if (RoomCoverage.covers(px, py, pz, cx, cz, workY) && state.roomChunksVisited.add(cx + "," + cz)) {
+                    chunksReached++;
                     maybeSave(mod);
                 }
             }

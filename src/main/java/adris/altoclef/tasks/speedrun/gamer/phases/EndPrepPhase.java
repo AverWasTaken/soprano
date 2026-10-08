@@ -17,6 +17,7 @@ import adris.altoclef.tasks.speedrun.gamer.RunState;
 import adris.altoclef.tasks.speedrun.gamer.config.EndConfig;
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
 import adris.altoclef.tasks.speedrun.gamer.end.EndGear;
+import adris.altoclef.tasks.speedrun.gamer.end.EndRules;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.WorldHelper;
@@ -41,6 +42,7 @@ public class EndPrepPhase implements PhaseHandler {
     private Task _enterPortal;
     private Task _buildBlocks;
     private Task _food;
+    private int _foodTarget;
     private Task _toPortal;
     private BlockPos _toPortalAt;
     private String _hudState;
@@ -102,7 +104,7 @@ public class EndPrepPhase implements PhaseHandler {
         giveUpSpawnWhenSlow(ctx, cfg);
 
         // a second try goes with what it has, the sword strat needs no wool and the budget is not endless
-        int required = ctx.attempt() >= 2 ? 0 : cfg.beds;
+        int required = relaxed(ctx) ? 0 : cfg.beds;
         EndGear.Gap gap = EndGear.missing(ctx.facts(), state, cfg, required);
         Task step = bedStep(mod, ctx, cfg, gap);
         if (step == null) {
@@ -113,11 +115,15 @@ public class EndPrepPhase implements PhaseHandler {
         return step != null ? step : walkIn();
     }
 
+    private static boolean relaxed(GamerContext ctx) {
+        return EndGear.relaxed(ctx.attempt(), EndRules.endDeaths(ctx.state()));
+    }
+
     // beds, then the spawn bed. returns null when both are done (or given up on)
     private Task bedStep(AltoClef mod, GamerContext ctx, EndConfig cfg, EndGear.Gap gap) {
         RunState state = ctx.state();
-        boolean wantSpawn = EndGear.wantSpawnBed(state, cfg) && ctx.attempt() < 2;
-        int required = ctx.attempt() >= 2 ? 0 : cfg.beds;
+        boolean wantSpawn = EndGear.wantSpawnBed(state, cfg) && !relaxed(ctx);
+        int required = relaxed(ctx) ? 0 : cfg.beds;
         int lacking = EndGear.bedShortfall(ctx.facts(), state, cfg, required, wantSpawn);
         if (lacking > 0) {
             // the catalogue counts what we hold, so ask for the total
@@ -212,8 +218,12 @@ public class EndPrepPhase implements PhaseHandler {
         }
         if (gap.food()) {
             _hudState = "Getting food";
-            if (_food == null) {
-                _food = new CollectFoodTask(cfg.minFoodUnits + 8);
+            // the gate counts food we would eat, CollectFoodTask counts rotten flesh too, so a bag of junk makes it finish
+            // instantly while the gate stays short and we idle. same fix as KitRunner.foodTarget, rebuilt only when the number moves
+            int target = cfg.minFoodUnits + 8 + ctx.facts().junkFoodUnits();
+            if (_food == null || target != _foodTarget) {
+                _foodTarget = target;
+                _food = new CollectFoodTask(target);
             }
             return _food;
         }

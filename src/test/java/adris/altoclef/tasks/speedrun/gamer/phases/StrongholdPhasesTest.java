@@ -3,6 +3,8 @@ package adris.altoclef.tasks.speedrun.gamer.phases;
 import adris.altoclef.tasks.speedrun.gamer.GamerFacts;
 import adris.altoclef.tasks.speedrun.gamer.GamerPhase;
 import adris.altoclef.tasks.speedrun.gamer.RunState;
+import adris.altoclef.tasks.speedrun.gamer.StubContext;
+import adris.altoclef.tasks.speedrun.gamer.Timeout;
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
 import baritone.api.utils.Dimension;
 import net.minecraft.SharedConstants;
@@ -196,6 +198,32 @@ public class StrongholdPhasesTest {
         assertEquals(Optional.of(GamerPhase.NETHER), room.regressTo(new Facts().with(Items.ENDER_EYE, 3), s, cfg));
     }
 
+    @Test
+    public void roomWithNoTaskYetFallsBackToTheDefaultTimeout() {
+        StubContext ctx = new StubContext();
+        room.onEnter(null, ctx);
+        ctx.attempt = 1;
+        assertEquals(Timeout.RETRY, room.onTimeout(ctx, 1, "took longer than 18 minutes"));
+        assertEquals(Timeout.STUCK, room.onTimeout(ctx, 2, "took longer than 18 minutes"));
+    }
+
+    @Test
+    public void roomKeepsGoingOnlyForTheWatchdogAndOnlyWithRealProgress() {
+        // chunks reached in the window and the watchdog ran out: a long legit spiral
+        assertTrue(StrongholdRules.roomStillMoving(1, false, "took longer than 18 minutes"));
+        // a stall says the last 180 s did nothing, chunks from before it do not make it a moving window
+        assertFalse(StrongholdRules.roomStillMoving(3, false, "no progress for 180 seconds"));
+        // a window that reached nothing (the 90 s chunk timer alone does not count) is stuck
+        assertFalse(StrongholdRules.roomStillMoving(0, false, "took longer than 18 minutes"));
+        // the handler's own endings are not timeouts to wait out
+        assertFalse(StrongholdRules.roomStillMoving(5, true, "searched every chunk around the stronghold and found no portal room"));
+        assertFalse(StrongholdRules.roomStillMoving(5, false, "searched every chunk around the stronghold and found no portal room"));
+        assertFalse(StrongholdRules.roomStillMoving(5, false, "not in the overworld while searching the stronghold"));
+        assertFalse(StrongholdRules.roomStillMoving(5, false, "error in the room phase (NullPointerException)"));
+        // a spent spiral at the budget is exhausted, not moving
+        assertFalse(StrongholdRules.roomStillMoving(5, true, "took longer than 18 minutes"));
+        assertFalse(StrongholdRules.roomStillMoving(5, false, null));
+    }
     // ---- OPEN
 
     @Test

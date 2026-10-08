@@ -43,6 +43,15 @@ public class EndGearTest {
     }
 
     @Test
+    public void anEndDeathRelaxesTheBedsEvenOnAFreshAttemptCount() {
+        // PhaseMachine.regress puts the attempt back to 1 on the way from DRAGON to END_PREP
+        assertFalse(EndGear.relaxed(1, 0));
+        assertTrue(EndGear.relaxed(2, 0));
+        assertTrue(EndGear.relaxed(1, 1));
+        assertTrue(EndGear.relaxed(1, EndRules.endDeaths(diedInEndAt(100))));
+    }
+
+    @Test
     public void fullKitMissesNothing() {
         assertTrue(EndGear.missing(ready(), new RunState(), cfg, cfg.beds).none());
     }

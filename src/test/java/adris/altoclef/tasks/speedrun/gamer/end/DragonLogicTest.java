@@ -135,6 +135,77 @@ public class DragonLogicTest {
     }
 
     @Test
+    public void aStalledHealDropsBedsEvenMidPerch() {
+        // the gap between critical (6) and the click line (14): the pool is 9, perched, so the plain rule would wait forever
+        assertEquals(DragonStrat.BEDS, DragonStrat.choose(DragonStrat.BEDS, 8, 15, true, 0, cfg, 9, false));
+        assertEquals(DragonStrat.SWORD, DragonStrat.choose(DragonStrat.BEDS, 8, 15, true, 0, cfg, 9, true));
+        assertEquals(DragonStrat.SWORD, DragonStrat.choose(DragonStrat.BEDS, 8, 15, false, 0, cfg, 9, true));
+        // the old signature is the not stalled answer, and a stall verdict does nothing to the sword
+        assertEquals(DragonStrat.BEDS, DragonStrat.choose(DragonStrat.BEDS, 8, 15, true, 0, cfg, 9));
+        assertEquals(DragonStrat.SWORD, DragonStrat.choose(DragonStrat.SWORD, 8, 15, true, 0, cfg, 20, true));
+        // back to beds still needs the health and the stack, the stale flag is ignored while on the sword
+        assertEquals(DragonStrat.BEDS, DragonStrat.choose(DragonStrat.SWORD, 8, 15, false, 0, cfg, 20, true));
+    }
+
+    // one sample a second from `from` to `to`, the way the bed task would while the head sits in click range
+    private static boolean feed(HealStall stall, double pool, int from, int to) {
+        boolean last = false;
+        for (int t = from; t <= to; t++) {
+            last = stall.update(true, pool, t);
+        }
+        return last;
+    }
+
+    @Test
+    public void healStallNeedsTwentySecondsOfHurtWithNoHealing() {
+        HealStall stall = new HealStall(20);
+        assertFalse(feed(stall, 9, 100, 119));
+        assertTrue(stall.update(true, 9, 120));
+        // the verdict latches, healing a bit later does not take it back before the strat has swapped
+        assertTrue(stall.update(false, 20, 121));
+        assertTrue(stall.stalled());
+        stall.reset();
+        assertFalse(stall.stalled());
+    }
+
+    @Test
+    public void healStallRestartsOnHealingOrOnBeingAbleToClick() {
+        HealStall stall = new HealStall(20);
+        feed(stall, 9, 0, 14);
+        // regen ticked: that is progress, the clock starts over
+        assertFalse(feed(stall, 10, 15, 34));
+        assertTrue(stall.update(true, 10, 35));
+        stall.reset();
+        feed(stall, 9, 0, 10);
+        // a click went off in between: the streak is over
+        stall.update(false, 14, 11);
+        assertFalse(feed(stall, 9, 12, 31));
+        assertTrue(stall.update(true, 9, 32));
+        // wobble under the epsilon is not healing
+        stall.reset();
+        feed(stall, 9, 0, 10);
+        assertTrue(feed(stall, 9.4, 11, 20));
+    }
+
+    @Test
+    public void healStallDoesNotCarryAStreakAcrossLaps() {
+        HealStall stall = new HealStall(20);
+        feed(stall, 12, 0, 5);
+        // the head left click range for a minute (and we healed up and got hit back down meanwhile): a new streak
+        assertFalse(stall.update(true, 12, 65));
+        assertFalse(feed(stall, 12, 66, 84));
+        assertTrue(stall.update(true, 12, 85));
+    }
+
+    @Test
+    public void healStallCountsHealingBackUpFromADipAsProgress() {
+        HealStall stall = new HealStall(20);
+        feed(stall, 12, 0, 10);
+        // breath took us to 8, then regen back to 12: that is a pool going up from its low point
+        feed(stall, 8, 11, 12);
+        assertFalse(feed(stall, 12, 13, 31));
+    }
+    @Test
     public void anUnloadedCenterChunkResetsTheTimer() {
         DragonDeadLatch latch = new DragonDeadLatch(5);
         latch.update(false, true, true, 0);

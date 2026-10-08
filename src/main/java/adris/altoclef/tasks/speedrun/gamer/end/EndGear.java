@@ -38,6 +38,12 @@ public final class EndGear {
         }
     }
 
+    // a second try goes with what it has: a stall retry bumps the attempt, but dying in the End regresses DRAGON to END_PREP
+    // and PhaseMachine resets the attempt to 1 on every move, so the deaths are what says "we already tried this"
+    public static boolean relaxed(int attempt, int endDeaths) {
+        return attempt >= 2 || endDeaths >= 1;
+    }
+
     // bedsRequired is a parameter because a second attempt goes with what it has (the sword strat needs no wool at all)
     // (weapon is a sword or an axe, whichever the bot made)
     public static Gap missing(GamerFacts facts, RunState state, EndConfig cfg, int bedsRequired) {
