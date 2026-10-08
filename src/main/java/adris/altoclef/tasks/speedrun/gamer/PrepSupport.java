@@ -67,7 +67,7 @@ public final class PrepSupport {
     // walk off (village chests and beds, ruined portals, a fresh golem, the table pickup) can all wait the 40 s. only a golem
     // fight already going outranks it, same as it outranks everything
     public Task tickStandBy(AltoClef mod, GamerContext ctx, List<KitNeed> needs) {
-        danger.tick(mod);
+        danger.tick(mod, ctx.state());
         hud = null;
         if (golem != null && golem.active()) {
             Task fight = golem.tick(mod, ctx, needs.isEmpty() ? null : needs.get(0));
