@@ -2,7 +2,6 @@ package adris.altoclef.tasks.speedrun.gamer;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.AltoSettings;
-import adris.altoclef.tasks.speedrun.gamer.config.GamerConfigs;
 import adris.altoclef.util.helpers.FoodHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import baritone.api.utils.Dimension;
@@ -77,19 +76,17 @@ public final class MinecraftFacts implements GamerFacts {
         return true;
     }
 
-    // one of the stations this run placed (tables, furnaces), still standing, and not further than the pickup would walk (the
-    // same WalkCost budget StationPickup forgets them at). overworld only, that is where they are recorded
+    // one of the stations this run placed (tables, furnaces) that we still own. no distance test on purpose: it used to be
+    // the pickup's walk budget, so walking 14 blocks down to the cobble made the table "ours" and walking back up to a tree
+    // made it "gone", and the plan flipped between a log trip and the cobble every five seconds. StationPickup.forgetFar
+    // takes a far one off the list at a need boundary, the list is the truth. an unloaded chunk keeps its table
     private boolean standingNearby(Player player, List<RunState.Pos> placed, Block kind) {
         if (dimension != Dimension.OVERWORLD || placed.isEmpty()) {
             return false;
         }
-        double budget = GamerConfigs.get().overworld.tableRecoverRadius;
         for (RunState.Pos pos : placed) {
-            if (OwnTables.walkCost(pos, player.getX(), player.getY(), player.getZ()) > budget) {
-                continue;
-            }
             BlockPos at = new BlockPos(pos.x, pos.y, pos.z);
-            if (mod.getChunkTracker().isChunkLoaded(at) && mod.getWorld().getBlockState(at).is(kind)) {
+            if (!mod.getChunkTracker().isChunkLoaded(at) || mod.getWorld().getBlockState(at).is(kind)) {
                 return true;
             }
         }
