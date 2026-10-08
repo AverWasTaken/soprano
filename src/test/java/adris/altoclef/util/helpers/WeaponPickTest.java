@@ -94,6 +94,50 @@ public class WeaponPickTest {
         assertSame(Items.GOLDEN_SWORD, WeaponPick.best(List.of(fresh(Items.GOLDEN_SWORD), fresh(Items.WOODEN_SWORD))));
     }
 
+    // ---- crowds
+
+    private static Item crowdPick(Candidate... candidates) {
+        return WeaponPick.best(List.of(candidates), true, false);
+    }
+
+    @Test
+    public void inACrowdDamagePerSecondDecides() {
+        // wooden axe 7 x 0.8 = 5.6, stone sword 5 x 1.6 = 8
+        assertSame(Items.STONE_SWORD, crowdPick(fresh(Items.WOODEN_AXE), fresh(Items.STONE_SWORD)));
+        assertSame(Items.STONE_SWORD, crowdPick(fresh(Items.STONE_SWORD), fresh(Items.WOODEN_AXE)));
+        // and the same two alone are the axe, per swing
+        assertSame(Items.WOODEN_AXE, WeaponPick.best(List.of(fresh(Items.WOODEN_AXE), fresh(Items.STONE_SWORD))));
+        // iron axe 9 x 0.9 = 8.1 against iron sword 6 x 1.6 = 9.6
+        assertSame(Items.IRON_SWORD, crowdPick(fresh(Items.IRON_AXE), fresh(Items.IRON_SWORD)));
+        assertSame(Items.IRON_AXE, WeaponPick.best(List.of(fresh(Items.IRON_SWORD), fresh(Items.IRON_AXE))));
+    }
+
+    @Test
+    public void inACrowdTheOnlyWeaponIsStillTheOnlyWeapon() {
+        // the kit makes axes now, a bot with no sword on it just swings the axe
+        assertSame(Items.IRON_AXE, crowdPick(fresh(Items.IRON_AXE)));
+        assertNull(WeaponPick.best(List.of(fresh(Items.STICK)), true, false));
+    }
+
+    @Test
+    public void aWornSwordStillLosesInACrowd() {
+        assertSame(Items.WOODEN_AXE, crowdPick(worn(Items.DIAMOND_SWORD), fresh(Items.WOODEN_AXE)));
+    }
+
+    @Test
+    public void aTieOnDpsFallsBackToTheHarderHitAndThenTheHand() {
+        // the same weapon twice: first listed stays
+        assertSame(Items.WOODEN_SWORD, crowdPick(fresh(Items.WOODEN_SWORD), fresh(Items.GOLDEN_SWORD)));
+    }
+
+    @Test
+    public void aRaisedShieldWantsTheAxeEvenInACrowd() {
+        assertSame(Items.IRON_AXE, WeaponPick.best(List.of(fresh(Items.IRON_SWORD), fresh(Items.IRON_AXE)), true, true));
+        assertSame(Items.WOODEN_AXE, WeaponPick.best(List.of(fresh(Items.DIAMOND_SWORD), fresh(Items.WOODEN_AXE)), false, true));
+        // no axe, no problem
+        assertSame(Items.IRON_SWORD, WeaponPick.best(List.of(fresh(Items.IRON_SWORD)), false, true));
+    }
+
     @Test
     public void swingSpeedComesFromTheAttributeComponent() {
         // 4 base, a sword takes 2.4 off and an axe takes 3.2 (wooden) off

@@ -5,11 +5,15 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.SwordItem;
 
-// which melee weapon to hold. the kill tasks wait for a full cooldown before every swing anyway, so what matters is damage
-// per swing and not damage per second, and an axe hits harder per swing than a sword of the same tier (wood 7 vs 4,
+// which melee weapon to hold. one on one the kill tasks wait for a full cooldown before every swing, so what matters is
+// damage per swing and not damage per second, and an axe hits harder per swing than a sword of the same tier (wood 7 vs 4,
 // iron 9 vs 6). the price is that it swings slower, which only decides it when two weapons hit for the same
 //
-// an axe also knocks a raised shield down for a few seconds, which is a bonus we get to keep with no code at all
+// in a crowd that flips: we are not standing around for the full cooldown, we are swinging as it comes up and every
+// second the axe takes to come back is a second of zombie. damage per second then (wooden axe 5.6 against a stone
+// sword's 8, iron axe 8.1 against an iron sword's 9.6)
+//
+// a target with a raised shield is the one case the axe wins anyway: it knocks the shield down for a few seconds
 public final class WeaponPick {
 
     // same idea as KitPlanner.wornOut: past this much of its durability a tool is as good as gone and we would rather swing
@@ -38,21 +42,40 @@ public final class WeaponPick {
     // the harder hit wins, then the faster swing, and the first one listed wins what is left (hand first, so two
     // equal weapons never get swapped back and forth)
     public static Item best(Iterable<Candidate> candidates) {
+        return best(candidates, false, false);
+    }
+
+    // crowd: two or more melee mobs around us, damage per second decides. shieldedTarget: something is holding a shield up
+    // at us, any axe beats any sword (and it wins over the crowd rule, a shield up in a crowd still eats a sword's hits)
+    public static Item best(Iterable<Candidate> candidates, boolean crowd, boolean shieldedTarget) {
         Candidate best = null;
         for (Candidate c : candidates) {
             if (c == null || !isWeapon(c.item())) continue;
-            if (best == null || beats(c, best)) {
+            if (best == null || beats(c, best, crowd, shieldedTarget)) {
                 best = c;
             }
         }
         return best == null ? null : best.item();
     }
 
-    private static boolean beats(Candidate a, Candidate b) {
+    private static boolean beats(Candidate a, Candidate b, boolean crowd, boolean shieldedTarget) {
         boolean aWorn = wornOut(a.damage(), a.maxDamage());
         boolean bWorn = wornOut(b.damage(), b.maxDamage());
         if (aWorn != bWorn) {
             return bWorn;
+        }
+        if (shieldedTarget) {
+            boolean aAxe = a.item() instanceof AxeItem;
+            if (aAxe != (b.item() instanceof AxeItem)) {
+                return aAxe;
+            }
+        } else if (crowd) {
+            float aDps = ItemHelper.getAttackDamage(a.item()) * ItemHelper.getAttackSpeed(a.item());
+            float bDps = ItemHelper.getAttackDamage(b.item()) * ItemHelper.getAttackSpeed(b.item());
+            // (float noise would flip two equal weapons back and forth, so only a real gap counts)
+            if (Math.abs(aDps - bDps) > 1e-3) {
+                return aDps > bDps;
+            }
         }
         float aDamage = ItemHelper.getAttackDamage(a.item());
         float bDamage = ItemHelper.getAttackDamage(b.item());
