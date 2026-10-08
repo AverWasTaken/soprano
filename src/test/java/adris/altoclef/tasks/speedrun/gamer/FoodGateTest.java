@@ -74,25 +74,49 @@ public class FoodGateTest {
     @Test
     public void miningWithEnoughInTheBagKeepsMining() {
         // 40 units and a vein in front of us: no trip
-        assertFalse(FoodGate.leads(40, cfg, false, true, false));
-        assertFalse(FoodGate.leads(24, cfg, false, true, false));
+        assertFalse(FoodGate.leads(40, cfg, false, false, false));
+        assertFalse(FoodGate.leads(24, cfg, false, false, false));
     }
 
     @Test
     public void underTheFloorFoodAlwaysGoesFirst() {
-        assertTrue(FoodGate.leads(23, cfg, false, true, false));
-        assertTrue(FoodGate.leads(0, cfg, false, true, false));
+        assertTrue(FoodGate.leads(23, cfg, false, false, false));
+        assertTrue(FoodGate.leads(0, cfg, false, false, false));
     }
 
     @Test
-    public void theSurfaceOrANonOreJobMakesTheTopUpCheap() {
+    public void onlyTheSurfaceMakesTheSoftTopUpCheap() {
+        assertTrue(FoodGate.leads(40, cfg, true, false, false));
+        // a cook or a craft next in a mine used to count as "between jobs" (22:08, a smoker at y=32 and then a cow hunt through
+        // the rock). down there the hunt is a climb whatever the next job is
+        assertFalse(FoodGate.leads(40, cfg, false, false, false));
+    }
+
+    @Test
+    public void aCookThatIsLoadingIsNotCutShortBySoftTopUp() {
+        assertFalse(FoodGate.leads(40, cfg, true, false, true));
+        // not even one that already started, it picks up again when the cook lets go
+        assertFalse(FoodGate.leads(40, cfg, true, true, true));
         assertTrue(FoodGate.leads(40, cfg, true, true, false));
-        assertTrue(FoodGate.leads(40, cfg, false, false, false));
+        // but a bag that is really empty is still an emergency
+        assertTrue(FoodGate.leads(10, cfg, false, false, true));
+        // and the top-up that was latched does not start from nothing because the cook blinked
+        assertFalse(FoodGate.nextTopUp(false, 40, cfg, FoodGate.leads(40, cfg, true, false, true)));
+        assertTrue(FoodGate.nextTopUp(true, 40, cfg, FoodGate.leads(40, cfg, true, true, true)));
+    }
+
+    @Test
+    public void meatInTheOpenStationCountsUntilTheJobIsRecorded() {
+        // 42 held, 4 pork in the screen (32 planned): the dip that sent the bot after a cow is not a dip
+        assertEquals(32, FoodGate.inStation(32, 0));
+        // the job is in the state: the pending sum has it, counting it again would hide a real shortage
+        assertEquals(0, FoodGate.inStation(32, 32));
+        assertEquals(0, FoodGate.inStation(0, 0));
     }
 
     @Test
     public void atTheFullAmountItNeverLeads() {
-        assertFalse(FoodGate.leads(70, cfg, true, false, true));
+        assertFalse(FoodGate.leads(70, cfg, true, true, false));
         assertFalse(FoodGate.leads(100, cfg, true, false, false));
     }
 
@@ -101,37 +125,37 @@ public class FoodGateTest {
         int held = 40;
         boolean topUp = false;
         // down the mine: nothing
-        boolean lead = FoodGate.leads(held, cfg, false, true, topUp);
+        boolean lead = FoodGate.leads(held, cfg, false, topUp, false);
         topUp = FoodGate.nextTopUp(topUp, held, cfg, lead);
         assertFalse(lead);
         assertFalse(topUp);
         // up on the surface it starts
-        lead = FoodGate.leads(held, cfg, true, true, topUp);
+        lead = FoodGate.leads(held, cfg, true, topUp, false);
         topUp = FoodGate.nextTopUp(topUp, held, cfg, lead);
         assertTrue(lead);
         assertTrue(topUp);
         // the hunt takes it under ground or into a ravine, and the count climbs: still leading, every tick
         for (held = 41; held < 70; held += 7) {
-            lead = FoodGate.leads(held, cfg, false, true, topUp);
+            lead = FoodGate.leads(held, cfg, false, topUp, false);
             topUp = FoodGate.nextTopUp(topUp, held, cfg, lead);
             assertTrue("at " + held, lead);
             assertTrue(topUp);
         }
         // 70 and it is over, and the next dip starts from scratch
-        lead = FoodGate.leads(70, cfg, false, true, topUp);
+        lead = FoodGate.leads(70, cfg, false, topUp, false);
         topUp = FoodGate.nextTopUp(topUp, 70, cfg, lead);
         assertFalse(lead);
         assertFalse(topUp);
-        assertFalse(FoodGate.leads(60, cfg, false, true, topUp));
+        assertFalse(FoodGate.leads(60, cfg, false, topUp, false));
     }
 
     @Test
     public void aForcedTripUnderTheFloorDoesNotLatchTheSoftOne() {
-        boolean lead = FoodGate.leads(10, cfg, false, true, false);
+        boolean lead = FoodGate.leads(10, cfg, false, false, false);
         assertTrue(lead);
         assertFalse(FoodGate.nextTopUp(false, 10, cfg, lead));
         // and once it is back over the floor in the mine, the mine wins again
-        assertFalse(FoodGate.leads(25, cfg, false, true, false));
+        assertFalse(FoodGate.leads(25, cfg, false, false, false));
     }
 
     @Test

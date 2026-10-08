@@ -14,6 +14,7 @@ import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.inventory.AbstractFurnaceMenu;
 import net.minecraft.world.inventory.CraftingMenu;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
@@ -39,6 +40,8 @@ public final class MinecraftFacts implements GamerFacts {
     private int armorPoints;
     private int foodUnits;
     private int junkFoodUnits;
+    // food in the input and output slots of the furnace-like screen that is open right now, at planned value
+    private int stationFood;
     private int buildBlocks;
     private int fingerprint;
     private int x;
@@ -142,11 +145,25 @@ public final class MinecraftFacts implements GamerFacts {
                 add(table.getSlot(slot).getItem());
             }
         }
+        // meat on its way into a smoker (or cooked on its way out) is not in the bag for a few ticks and not a job yet. the
+        // slots are not added to counts: ore in a furnace is the early load's business (earlyLoadInFlight), and a raw iron that
+        // is not "in the bag" is how that latch works. only the food sum reads them
+        stationFood = 0;
+        if (player.containerMenu instanceof AbstractFurnaceMenu furnace) {
+            stationFood = foodIn(furnace.getSlot(0).getItem()) + foodIn(furnace.getSlot(2).getItem());
+        }
         for (int i = 0; i < 4; i++) {
             worn[i] = inv.getArmor(i);
         }
         worn[4] = inv.getItem(Inventory.SLOT_OFFHAND);
         summarize();
+    }
+
+    private static int foodIn(ItemStack stack) {
+        if (stack.isEmpty() || FoodHelper.kindOf(stack.getItem()) != FoodHelper.Kind.NORMAL) {
+            return 0;
+        }
+        return FoodHelper.plannedNutrition(stack.getItem()) * stack.getCount();
     }
 
     private void add(ItemStack stack) {
@@ -184,7 +201,7 @@ public final class MinecraftFacts implements GamerFacts {
                 build += n;
             }
         }
-        foodUnits = food;
+        foodUnits = food + FoodGate.inStation(stationFood, pendingFoodUnits());
         junkFoodUnits = junk;
         buildBlocks = build;
         fingerprint = fp;

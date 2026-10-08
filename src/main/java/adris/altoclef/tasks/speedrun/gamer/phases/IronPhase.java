@@ -220,8 +220,8 @@ public class IronPhase implements PhaseHandler {
     // SmeltFiller adds are surface work and not touched
     private List<KitNeed> gateFoodNeed(AltoClef mod, GamerContext ctx, List<KitNeed> needs) {
         OverworldConfig cfg = ctx.cfg().overworld;
-        // same sum the planner uses: the bag (raw meat at its cooked value) plus what a smoker is cooking for us. the two never
-        // overlap, loading a smoker takes the meat out of the bag
+        // same sum the planner uses: the bag (raw meat at its cooked value, plus what sits in an open furnace or smoker screen)
+        // and what a smoker is cooking for us. the three never overlap, loading a smoker takes the meat out of the bag
         int held = ctx.facts().foodUnits() + ctx.facts().pendingFoodUnits();
         int band = FoodGate.band(held, cfg);
         if (band != foodBand) {
@@ -239,7 +239,7 @@ public class IronPhase implements PhaseHandler {
         }
         // the heightmap only matters between the two lines
         boolean surfaced = band == 1 && SmeltSurface.shallow(SmeltSurface.depthBelowSky(mod));
-        boolean lead = FoodGate.leads(held, cfg, surfaced, FoodGate.headIsOre(needs, at), foodTopUp);
+        boolean lead = FoodGate.leads(held, cfg, surfaced, foodTopUp, ctx.facts().cookStation() != null);
         boolean wasTopUp = foodTopUp;
         foodTopUp = FoodGate.nextTopUp(foodTopUp, held, cfg, lead);
         if (foodTopUp && !wasTopUp) {
