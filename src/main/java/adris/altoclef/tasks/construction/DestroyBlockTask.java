@@ -122,6 +122,15 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
         return _fromSide;
     }
 
+    // air cells straight under the block, so GoalMineFromSide knows how far down the column we can stand and still swing up
+    private static int openBelow(AltoClef mod, BlockPos pos) {
+        int open = 0;
+        while (open < GoalMineFromSide.MAX_UNDER && mod.getWorld().getBlockState(pos.below(open + 1)).isAir()) {
+            open++;
+        }
+        return open;
+    }
+
     private void markFromSide(AltoClef mod) {
         if (!_fromSide) {
             _fromSide = true;
@@ -656,7 +665,7 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
                 BlockPos feet = mod.getClientBaritone().getPlayerContext().playerFeet();
                 if (fromSide || looseColumn) {
                     // with a stack hanging on it the shaft two below is out as well, it comes down that shaft
-                    goal = new GoalMineFromSide(_pos, !looseColumn);
+                    goal = new GoalMineFromSide(_pos, !looseColumn, openBelow(mod, _pos));
                     if (goal.isInGoal(feet) && reach.isEmpty()) {
                         // "from the side" only looks at offsets, so a spot by the trunk with leaves in the way counts as
                         // arrived. the goal finished instantly every tick and we stood at the edge sneaking backwards for

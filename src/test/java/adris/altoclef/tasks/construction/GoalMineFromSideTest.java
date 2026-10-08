@@ -75,6 +75,31 @@ public class GoalMineFromSideTest {
     }
 
     @Test
+    public void underACutTrunkTheGroundCounts() {
+        // the three logs under it are gone, so the drop off the top makes it "dangerous from above", and the ground right
+        // under the trunk (3 down) is where a person would stand and swing up. only y-2 counting made the bot pillar instead
+        GoalMineFromSide goal = new GoalMineFromSide(ORE, true, 3);
+        assertTrue(in(goal, 0, -2, 0));
+        assertTrue(in(goal, 0, -3, 0));
+        assertFalse(in(goal, 0, -4, 0));
+        assertFalse(in(goal, 0, 1, 0));
+    }
+
+    @Test
+    public void theOpenColumnStopsAtSwingRange() {
+        GoalMineFromSide goal = new GoalMineFromSide(ORE, true, 40);
+        assertTrue(in(goal, 0, -GoalMineFromSide.MAX_UNDER, 0));
+        assertFalse(in(goal, 0, -GoalMineFromSide.MAX_UNDER - 1, 0));
+    }
+
+    @Test
+    public void aColumnOfSandStillKeepsUsOutOfTheShaft() {
+        GoalMineFromSide goal = new GoalMineFromSide(ORE, false, 5);
+        assertFalse(in(goal, 0, -3, 0));
+        assertFalse(in(goal, 0, -2, 0));
+    }
+
+    @Test
     public void equalsGoesByTarget() {
         assertEquals(new GoalMineFromSide(ORE), new GoalMineFromSide(ORE.immutable()));
         assertFalse(new GoalMineFromSide(ORE).equals(new GoalMineFromSide(ORE.above())));
