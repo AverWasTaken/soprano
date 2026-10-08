@@ -602,6 +602,13 @@ public class BlockTracker extends Tracker {
         }
     }
 
+    // lifts a ban somebody put on a block on purpose (DangerFilter, when an outpost expires)
+    public void clearBlockUnreachable(BlockPos pos) {
+        synchronized (_scanMutex) {
+            currentCache().unblacklistBlock(pos);
+        }
+    }
+
     public void requestBlockUnreachable(BlockPos pos) {
         requestBlockUnreachable(pos, _config.defaultUnreachableAttemptsAllowed);
     }
@@ -706,6 +713,10 @@ public class BlockTracker extends Tracker {
 
         public void blacklistBlockUnreachable(AltoClef mod, BlockPos pos, int allowedFailures) {
             _blacklist.blackListItem(mod, pos, allowedFailures);
+        }
+
+        public void unblacklistBlock(BlockPos pos) {
+            _blacklist.unbanItem(pos);
         }
 
         public boolean blockUnreachable(BlockPos pos) {

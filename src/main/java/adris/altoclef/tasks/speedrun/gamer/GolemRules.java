@@ -1,5 +1,8 @@
 package adris.altoclef.tasks.speedrun.gamer;
 
+import java.util.ArrayList;
+import java.util.List;
+
 // the numbers and decisions of the golem hunt with no minecraft in them, so a test can poke them. all of the vanilla
 // facts below were read out of the 1.21.4 mojmap jar, not remembered:
 //  - iron golem is 1.4 wide and 2.7 tall (EntityType.IRON_GOLEM sized(1.4, 2.7)), 100 hp, knockback resistance 1
@@ -53,7 +56,16 @@ public final class GolemRules {
         if (golemFeetY - ourFeetY > MAX_RISE) {
             return -1;
         }
-        return blocksToRaise(golemFeetY - GROUND_SLACK, golemFeetY, margin, maxBlocks);
+        // our real feet when we are under the golem's ground (the fight starts from there, and assuming a block of slack
+        // under it here used to promise a pillar the fight then called too tall), the slack when we are above it because we
+        // walk down to its level before stacking
+        return blocksToRaise(Math.min(ourFeetY, golemFeetY - GROUND_SLACK), golemFeetY, margin, maxBlocks);
+    }
+
+    // which golems the hunt may even look at. the nearest golem used to win before any of this was asked, so one angry or
+    // up a cliff blocked every calm one behind it
+    public static boolean eligible(boolean angry, boolean tried, boolean coolingDown, int launchNeed) {
+        return !angry && !tried && !coolingDown && launchNeed >= 0;
     }
 
     // what the bag has to hold to launch: the configured floor, or the need plus spares if that is more
@@ -64,6 +76,10 @@ public final class GolemRules {
     // why a fight ended early. the first few are about the day we picked, not the golem, so the golem is not burned
     public enum Abort {
         NONE(false), NO_BLOCKS(true), PILLAR_STUCK(true), MONSTERS(true), ANGRY_ON_GROUND(true),
+        // on the pillar and never landed a hit: the golem wandered off or the ray was blocked. the day, not the golem
+        OUT_OF_REACH(true),
+        // the golem stopped existing for us (unloaded, teleported) before we ever touched it
+        LOST(true),
         TOO_TALL(false), UNREACHABLE(false), GONE(false), GAVE_UP(false);
 
         private final boolean retryable;
@@ -101,6 +117,40 @@ public final class GolemRules {
         double dy = Math.max(Math.max(minY - eyeY, 0), eyeY - maxY);
         double dz = Math.max(Math.max(minZ - eyeZ, 0), eyeZ - maxZ);
         return dx * dx + dy * dy + dz * dz < range * range;
+    }
+
+    // points of the golem's box worth aiming a line of sight at, nearest first. vanilla melee needs the hitbox in reach and
+    // nothing solid in the way of the part of it we hit, not a clear ray to the middle of its head, which is what a pillar
+    // corner kills while the golem is standing right there. every point is inside the range itself
+    public static List<double[]> aimPoints(double eyeX, double eyeY, double eyeZ,
+                                           double minX, double minY, double minZ, double maxX, double maxY, double maxZ,
+                                           double range) {
+        double cx = clamp(eyeX, minX, maxX);
+        double cy = clamp(eyeY, minY, maxY);
+        double cz = clamp(eyeZ, minZ, maxZ);
+        double mx = (minX + maxX) / 2;
+        double mz = (minZ + maxZ) / 2;
+        double[][] raw = {
+                {cx, cy, cz},
+                // a hair inside the box: a ray that ends exactly on a face can graze the block that face is touching
+                {cx + (mx - cx) * 0.2, cy, cz + (mz - cz) * 0.2},
+                {mx, maxY - 0.1, mz},
+                {mx, (minY + maxY) / 2, mz},
+        };
+        List<double[]> out = new ArrayList<>();
+        for (double[] pt : raw) {
+            double dx = pt[0] - eyeX;
+            double dy = pt[1] - eyeY;
+            double dz = pt[2] - eyeZ;
+            if (dx * dx + dy * dy + dz * dz < range * range) {
+                out.add(pt);
+            }
+        }
+        return out;
+    }
+
+    private static double clamp(double v, double lo, double hi) {
+        return Math.max(lo, Math.min(hi, v));
     }
 
     // the golem's box for a golem standing at (x, feetY, z)
@@ -152,5 +202,13 @@ public final class GolemRules {
         if (golemAngryNow) return false;
         if (golemDistance > farAway) return true;
         return ticksSinceLastHit > calmTicks;
+    }
+
+    // leave the pillar? only when we want out (or the soft cap hit) AND it is safe. the one exception is the hold cap, so an
+    // "angry" flag that never clears (a zombie it is busy with) cannot park us up there for the rest of the run
+    public static boolean leavePillar(boolean wantsOut, double fightSeconds, double softCapSeconds, double holdCapSeconds,
+                                      boolean safe) {
+        if (fightSeconds > holdCapSeconds) return true;
+        return (wantsOut || fightSeconds > softCapSeconds) && safe;
     }
 }

@@ -129,10 +129,74 @@ public class GolemRulesTest {
         // the run that started this: bot in an iron tunnel, golem on the surface
         assertEquals(-1, GolemRules.launchNeed(38, 70, MARGIN, 5));
         assertEquals(-1, GolemRules.launchNeed(58, 65, MARGIN, 5));
-        // 6 up is still a walk
-        assertTrue(GolemRules.launchNeed(58, 64, MARGIN, 5) >= 0);
+        // two up is five blocks of pillar from our real feet, the whole budget. three up is not a pillar
+        assertEquals(5, GolemRules.launchNeed(62, 64, MARGIN, 5));
+        assertEquals(-1, GolemRules.launchNeed(61, 64, MARGIN, 5));
         // and a pillar over the cap says no however close we are
         assertEquals(-1, GolemRules.launchNeed(64, 64, MARGIN, 3));
+    }
+
+    @Test
+    public void launchAndFightAgreeWhenWeStandBelowTheGolem() {
+        // standing 2 under its ground: the fight stacks from our real feet, so the launch estimate has to as well
+        // (it used to assume one under and promise 4 where the fight wanted 5)
+        for (int below = 0; below <= 3; below++) {
+            double golemY = 70;
+            double us = golemY - below;
+            int fight = GolemRules.blocksToRaise(us, golemY, MARGIN, 5);
+            int launch = GolemRules.launchNeed(us, golemY, MARGIN, 5);
+            if (below >= 1) {
+                assertEquals("below " + below, fight, launch);
+            } else {
+                // level or above: we assume the worst step on the way, one more than the fight would need
+                assertEquals(fight + 1, launch);
+            }
+        }
+    }
+
+    @Test
+    public void aCalmFightableGolemBeatsANearerAngryOrUnlaunchableOne() {
+        assertTrue(GolemRules.eligible(false, false, false, 3));
+        assertFalse(GolemRules.eligible(true, false, false, 3));
+        assertFalse(GolemRules.eligible(false, true, false, 3));
+        assertFalse(GolemRules.eligible(false, false, true, 3));
+        assertFalse(GolemRules.eligible(false, false, false, -1));
+        // need 0 is a golem standing in a hole under us, which is fine
+        assertTrue(GolemRules.eligible(false, false, false, 0));
+    }
+
+    @Test
+    public void aimPointsAreNearestFirstAndInRange() {
+        // eye at 73.62 over a golem standing at feet 69 one and a bit blocks to the side
+        double ex = 0.5, ey = 73.62, ez = 0.5;
+        var pts = GolemRules.aimPoints(ex, ey, ez, 0.9, 69, -0.2, 2.3, 71.7, 1.2, RANGE);
+        assertFalse(pts.isEmpty());
+        double[] first = pts.get(0);
+        // the nearest point of the box: x clamped to the near face, y to its top, z is already inside it
+        assertEquals(0.9, first[0], 1e-9);
+        assertEquals(71.7, first[1], 1e-9);
+        assertEquals(0.5, first[2], 1e-9);
+        for (double[] pt : pts) {
+            double d = Math.sqrt(Math.pow(pt[0] - ex, 2) + Math.pow(pt[1] - ey, 2) + Math.pow(pt[2] - ez, 2));
+            assertTrue(d < RANGE);
+        }
+        // and a golem out of reach has nothing to aim at
+        assertTrue(GolemRules.aimPoints(ex, ey, ez, 10, 69, 10, 11.4, 71.7, 11.4, RANGE).isEmpty());
+    }
+
+    @Test
+    public void anAngryGolemKeepsUsOnThePillarUntilTheHoldCap() {
+        // soft cap passed, still angry: stay
+        assertFalse(GolemRules.leavePillar(true, 120, 105, 225, false));
+        assertFalse(GolemRules.leavePillar(false, 120, 105, 225, false));
+        // soft cap passed and it is safe: go, even though nothing else wanted out
+        assertTrue(GolemRules.leavePillar(false, 120, 105, 225, true));
+        // wants out and safe
+        assertTrue(GolemRules.leavePillar(true, 10, 105, 225, true));
+        // happy to stay
+        assertFalse(GolemRules.leavePillar(false, 10, 105, 225, true));
+        // the angry flag that never clears does not park us for ever
+        assertTrue(GolemRules.leavePillar(true, 226, 105, 225, false));
     }
 
     @Test
@@ -157,7 +221,8 @@ public class GolemRulesTest {
     @Test
     public void onlyAbortsAboutTheDayGiveTheGolemBack() {
         for (GolemRules.Abort why : new GolemRules.Abort[]{GolemRules.Abort.NO_BLOCKS, GolemRules.Abort.PILLAR_STUCK,
-                GolemRules.Abort.MONSTERS, GolemRules.Abort.ANGRY_ON_GROUND}) {
+                GolemRules.Abort.MONSTERS, GolemRules.Abort.ANGRY_ON_GROUND,
+                GolemRules.Abort.OUT_OF_REACH, GolemRules.Abort.LOST}) {
             assertTrue(why.toString(), GolemRules.refund(why, 0));
         }
         for (GolemRules.Abort why : new GolemRules.Abort[]{GolemRules.Abort.NONE, GolemRules.Abort.TOO_TALL,

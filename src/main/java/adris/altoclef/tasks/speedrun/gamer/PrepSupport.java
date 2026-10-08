@@ -66,7 +66,7 @@ public final class PrepSupport {
     // `needs` is what the phase still has to do, in order (empty = nothing)
     public Task tick(AltoClef mod, GamerContext ctx, List<KitNeed> needs) {
         KitNeed current = needs.isEmpty() ? null : needs.get(0);
-        danger.tick(mod);
+        danger.tick(mod, ctx.state());
         hud = null;
         // a golem fight in progress outranks everything, a chest is not worth stepping off the pillar for
         if (golem != null && golem.active()) {

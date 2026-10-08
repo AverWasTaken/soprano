@@ -61,9 +61,12 @@ public final class GolemHunt {
         OverworldConfig cfg = ctx.cfg().overworld;
         LocalPlayer player = mod.getPlayer();
         long now = ctx.facts().gameTime();
+        // the nearest golem we could actually fight, not the nearest golem: an angry one or one up a cliff used to win this
+        // and then fail the verdict every 10 ticks while a calm one stood right behind it
         IronGolem golem = mod.getEntityTracker().getClosestEntity(e -> e instanceof IronGolem g && g.isAlive()
-                && !tried.contains(e.getId()) && !GolemRules.coolingDown(now, cooldown.get(e.getId()))
-                && e.closerThan(player, cfg.golemHuntRadius), IronGolem.class)
+                && e.closerThan(player, cfg.golemHuntRadius)
+                && GolemRules.eligible(g.isAggressive(), tried.contains(e.getId()), GolemRules.coolingDown(now, cooldown.get(e.getId())),
+                GolemRules.launchNeed(player.getY(), g.getY(), cfg.golemSafeMargin, cfg.golemMaxPillar)), IronGolem.class)
                 .map(e -> (IronGolem) e).orElse(null);
         // decided here and not at the foot of the golem: that is where the fight used to find out it was 1 block short
         int need = golem == null ? 0 : GolemRules.launchNeed(player.getY(), golem.getY(), cfg.golemSafeMargin, cfg.golemMaxPillar);

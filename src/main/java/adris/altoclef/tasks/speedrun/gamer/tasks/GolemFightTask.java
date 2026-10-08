@@ -21,6 +21,7 @@ import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.List;
 
@@ -43,6 +44,16 @@ public final class GolemFightTask extends Task {
     // a dead golem's drops take a moment to show up
     private static final int DROPS_WAIT_TICKS = 40;
     private static final int LOOT_TICKS = 20 * 20;
+    // a golem drops 3 to 5 ingots, picking up five is all of them
+    private static final int MAX_DROP = 5;
+    // an entity that vanished from the client is unloaded, teleported or dead without us seeing it. give it this long to
+    // come back (or for the drops to show) before we decide anything
+    private static final int MISSING_TICKS = 20 * 10;
+    // the calm golem walked off while we stood on the pillar: walk back down and stack next to it again, this many times
+    private static final int MAX_REPOSITIONS = 2;
+    private static final double REPOSITION_AFTER_SECONDS = 2.5;
+    // past the soft fight cap we wait out an angry golem for this long, then leave anyway (a flag that never clears)
+    private static final double HOLD_EXTRA_SECONDS = 120;
     private static final int PROGRESS_EVERY_TICKS = 100;
     private static final int HOSTILE_CHECK_TICKS = 10;
     private static final double FAR_AWAY = 24;
@@ -65,7 +76,9 @@ public final class GolemFightTask extends Task {
     private int hits;
     private int outOfReachTicks;
     private int repillars;
-    private int lootTarget;
+    private int repositions;
+    private int lootBase;
+    private long missingSince = -1;
     private int gatherTarget;
     private GolemRules.Abort abort = GolemRules.Abort.NONE;
     private boolean golemSeenDead;
@@ -175,23 +188,30 @@ public final class GolemFightTask extends Task {
         LocalPlayer player = mod.getPlayer();
         long now = mod.getWorld().getGameTime();
         IronGolem g = golem(mod);
-        boolean gone = g == null || !g.isAlive();
-        if (g != null && !g.isAlive()) {
+        if (g != null && !g.isDeadOrDying() && !g.isAlive()) {
+            // removed without dying: unloaded. that is "not here", not "dead"
+            g = null;
+        }
+        if (g != null && g.isDeadOrDying()) {
             golemSeenDead = true;
+        }
+        if (g != null) {
+            missingSince = -1;
         }
         if (now % HOSTILE_CHECK_TICKS == 0) {
             hostilesNear = monstersNear(mod, cfg.golemHostileRadius, golemId);
         }
-        if (gone && state != State.LOOT && state != State.DONE) {
+        // only a death we watched ends the fight
+        if (golemSeenDead && state != State.LOOT && state != State.DONE) {
             if (hits == 0) {
                 quit(GolemRules.Abort.GONE, now, "golem gone before we hit it");
                 return null;
             }
-            killed = golemSeenDead;
-            lootSince = now;
-            lootTarget = ctx.facts().count(Items.IRON_INGOT) + 5;
-            hud = "Picking up the golem's iron";
-            enter(State.LOOT, now, killed ? "golem dead after " + hits + " hits" : "golem out of sight after " + hits + " hits");
+            killed = true;
+            startLoot(mod, now, "golem dead after " + hits + " hits");
+        } else if (g == null && state != State.LOOT && state != State.DONE) {
+            missing(mod, now);
+            return null;
         }
         return switch (state) {
             case APPROACH -> approach(mod, player, g, now);
@@ -201,6 +221,37 @@ public final class GolemFightTask extends Task {
             case LOOT -> loot(mod, now);
             case DONE -> null;
         };
+    }
+
+    private void startLoot(AltoClef mod, long now, String why) {
+        lootSince = now;
+        lootBase = ctx.facts().count(Items.IRON_INGOT);
+        hud = "Picking up the golem's iron";
+        enter(State.LOOT, now, why);
+    }
+
+    // the golem is not in the client's entity list and we never saw it die. the mob that ate it is not worth guessing at, so
+    // wait for it to come back or for its drops, then give up in a way that never walks us down into a live golem
+    private void missing(AltoClef mod, long now) {
+        if (missingSince < 0) {
+            missingSince = now;
+        }
+        hud = "Waiting for the iron golem to show up again";
+        if (hits > 0 && mod.getEntityTracker().itemDropped(Items.IRON_INGOT)) {
+            // it died somewhere we could not see
+            killed = true;
+            startLoot(mod, now, "golem out of sight but its iron is on the ground after " + hits + " hits");
+            return;
+        }
+        if (now - missingSince < MISSING_TICKS) {
+            return;
+        }
+        if (hits == 0) {
+            quit(GolemRules.Abort.LOST, now, "golem vanished before we hit it");
+        } else if (now - lastHitTick > (long) (cfg.golemCalmSeconds * 20)) {
+            // gone for good and it has had longer than its anger lasts. LOOT will find nothing and wrap up on its own
+            startLoot(mod, now, "golem out of sight after " + hits + " hits");
+        }
     }
 
     private Task approach(AltoClef mod, LocalPlayer player, IronGolem g, long now) {
@@ -309,7 +360,8 @@ public final class GolemFightTask extends Task {
             return null;
         }
         long sinceStart = now - fightSince;
-        boolean wantFight = sinceStart / 20.0 <= cfg.golemFightSeconds && player.getHealth() >= cfg.golemAbortHealth && !hostilesNear;
+        double fightSeconds = sinceStart / 20.0;
+        boolean wantFight = fightSeconds <= cfg.golemFightSeconds && player.getHealth() >= cfg.golemAbortHealth && !hostilesNear;
         boolean reachable = reachable(mod, player, g);
         if (wantFight && reachable) {
             outOfReachTicks = 0;
@@ -323,22 +375,45 @@ public final class GolemFightTask extends Task {
             // waiting for it to come back or to calm down is the plan, not a stall
             progress(now, "waiting on the pillar for the golem");
         }
+        if (wantFight && !reachable && hits == 0 && !g.isAggressive() && repositions < MAX_REPOSITIONS
+                && outOfReachTicks / 20.0 > REPOSITION_AFTER_SECONDS) {
+            // a calm golem wanders and we have not touched it yet, so nothing up here is in danger. go back down and stack
+            // next to it where it is now. the old answer was to wait 5 s and write the golem off for the run
+            repositions++;
+            fightSince = -1;
+            enter(State.APPROACH, now, "golem out of reach and calm, walking back to it (" + repositions + " of " + MAX_REPOSITIONS + ")");
+            return null;
+        }
         boolean givingUp = !wantFight || outOfReachTicks / 20.0 > cfg.golemOutOfReachSeconds;
-        boolean hardCap = sinceStart / 20.0 > cfg.golemFightSeconds + cfg.golemCalmSeconds + 15;
         double dist = Math.sqrt(g.distanceToSqr(player));
-        if (hardCap || (givingUp && GolemRules.safeToComeDown(true, g.isAggressive(), dist, now - lastHitTick,
-                (long) (cfg.golemCalmSeconds * 20), FAR_AWAY))) {
-            enter(State.DONE, now, "leaving the pillar after " + hits + " hits");
+        // the safe check used to be skipped past the hard cap, which is exactly when an angry golem was still waiting below
+        boolean safe = GolemRules.safeToComeDown(true, g.isAggressive(), dist, now - lastHitTick,
+                (long) (cfg.golemCalmSeconds * 20), FAR_AWAY);
+        double softCap = cfg.golemFightSeconds + cfg.golemCalmSeconds + 15;
+        if (GolemRules.leavePillar(givingUp, fightSeconds, softCap, softCap + HOLD_EXTRA_SECONDS, safe)) {
+            if (hits == 0) {
+                // never landed one: the golem is not spent, the day was just wrong. hunt may try it again after a cooldown
+                quit(hostilesNear ? GolemRules.Abort.MONSTERS : GolemRules.Abort.OUT_OF_REACH, now, "leaving the pillar after 0 hits");
+            } else {
+                enter(State.DONE, now, "leaving the pillar after " + hits + " hits");
+            }
         }
         return null;
     }
 
+    // vanilla melee wants the hitbox inside the interaction range and nothing solid between the eye and the bit we hit.
+    // a ray to the middle of its head used to fail on a pillar corner with the golem standing right there, so any point
+    // of the box in range with a clear ray counts
     private boolean reachable(AltoClef mod, LocalPlayer player, IronGolem g) {
         AABB box = g.getBoundingBox();
-        double reach = GolemRules.INTERACT_RANGE;
         var eye = player.getEyePosition();
-        return GolemRules.inReach(eye.x, eye.y, eye.z, box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ, reach)
-                && LookHelper.cleanLineOfSight(player, g.getEyePosition(), 8);
+        for (double[] pt : GolemRules.aimPoints(eye.x, eye.y, eye.z, box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ,
+                GolemRules.INTERACT_RANGE)) {
+            if (LookHelper.cleanLineOfSight(player, eye, new Vec3(pt[0], pt[1], pt[2]), 8)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // true when this tick was spent on the weapon swap or the swing
@@ -385,7 +460,10 @@ public final class GolemFightTask extends Task {
         hud = "Picking up the golem's iron";
         boolean dropped = mod.getEntityTracker().itemDropped(Items.IRON_INGOT);
         long waited = now - lootSince;
-        boolean enough = ctx.facts().count(Items.IRON_INGOT) >= lootTarget;
+        int got = ctx.facts().count(Items.IRON_INGOT) - lootBase;
+        // done when the drops are in the bag and none are left on the ground, or it is all five. a flat "+5" target never
+        // happened, a golem drops 3 to 5
+        boolean enough = got >= MAX_DROP || (got > 0 && !dropped);
         if (enough || waited > LOOT_TICKS || (!dropped && waited > DROPS_WAIT_TICKS)) {
             enter(State.DONE, now, "iron collected, now " + ctx.facts().count(Items.IRON_INGOT) + " ingots");
             return null;
@@ -394,7 +472,7 @@ public final class GolemFightTask extends Task {
             return null;
         }
         if (subtask == null) {
-            subtask = new PickupDroppedItemTask(Items.IRON_INGOT, lootTarget);
+            subtask = new PickupDroppedItemTask(Items.IRON_INGOT, lootBase + MAX_DROP);
         }
         progress(now, "picking up golem iron");
         return subtask;

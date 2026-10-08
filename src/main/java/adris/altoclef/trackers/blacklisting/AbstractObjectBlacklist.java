@@ -52,6 +52,11 @@ public abstract class AbstractObjectBlacklist<T> {
         entry.numberOfFailures = 1;
     }
 
+    // for the few callers that ban on purpose and know when the reason is over
+    public void unbanItem(T item) {
+        _entries.remove(item);
+    }
+
     protected abstract Vec3 getPos(T item);
 
     public boolean unreachable(T item) {
