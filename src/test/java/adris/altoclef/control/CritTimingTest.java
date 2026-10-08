@@ -61,6 +61,117 @@ public class CritTimingTest {
         assertEquals(Step.JUMP, new CritTiming().step(0, s));
     }
 
+    // ---- where the mob is
+
+    private static Sample at(double gap) {
+        Sample s = ready();
+        s.reachGap = gap;
+        s.reach = 3.0;
+        return s;
+    }
+
+    @Test
+    public void noHopWhenTheMobIsAtTheEdgeOfReach() {
+        // 3.5 is not even in vanilla reach (3.0), 2.9 is in reach but would be gone by the time we come down
+        CritTiming far = new CritTiming();
+        assertEquals(Step.APPROACH, far.step(0, at(3.5)));
+        assertFalse(far.inFlight(0));
+        CritTiming edge = new CritTiming();
+        assertEquals(Step.APPROACH, edge.step(0, at(2.9)));
+        assertFalse(edge.inFlight(0));
+    }
+
+    @Test
+    public void hopsOnceTheMobIsInsideReachMinusTheMargin() {
+        assertEquals(Step.JUMP, new CritTiming().step(0, at(2.4)));
+        assertEquals(Step.JUMP, new CritTiming().step(0, at(2.5)));
+        assertEquals(Step.APPROACH, new CritTiming().step(0, at(2.6)));
+    }
+
+    @Test
+    public void theMarginFollowsTheReachWeActuallyHave() {
+        Sample longArms = at(3.4);
+        longArms.reach = 4.0;
+        assertEquals(Step.JUMP, new CritTiming().step(0, longArms));
+        Sample shortArms = at(2.4);
+        shortArms.reach = 2.5;
+        assertEquals(Step.APPROACH, new CritTiming().step(0, shortArms));
+    }
+
+    @Test
+    public void noHopAtAMobThatIsWalkingAway() {
+        Sample s = at(2.0);
+        s.retreatSpeed = 0.2;
+        assertEquals(Step.PLAIN, new CritTiming().step(0, s));
+        s.retreatSpeed = CritTiming.MAX_RETREAT;
+        assertEquals(Step.JUMP, new CritTiming().step(0, s));
+        // coming at us is the good kind of moving
+        s.retreatSpeed = -0.2;
+        assertEquals(Step.JUMP, new CritTiming().step(0, s));
+    }
+
+    @Test
+    public void aFarMobThatIsAlsoLeavingIsNotChased() {
+        Sample s = at(3.2);
+        s.retreatSpeed = 0.25;
+        assertEquals(Step.PLAIN, new CritTiming().step(0, s));
+    }
+
+    @Test
+    public void approachNeverAppearsWithoutAHopBeingDue() {
+        // cooldown still far off: nothing to time yet. cooldown full: the plain swing owns the tick
+        Sample early = at(3.2);
+        early.ticksToFull = CritTiming.LEAD_TICKS + 1;
+        assertEquals(Step.PLAIN, new CritTiming().step(0, early));
+        Sample full = at(3.2);
+        full.ticksToFull = 0;
+        assertEquals(Step.PLAIN, new CritTiming().step(0, full));
+        // and every guard that cancels a hop cancels walking up for one too
+        Sample pressured = at(3.2);
+        pressured.meleeNear = 2;
+        assertEquals(Step.PLAIN, new CritTiming().step(0, pressured));
+        Sample wet = at(3.2);
+        wet.inFluid = true;
+        assertEquals(Step.PLAIN, new CritTiming().step(0, wet));
+    }
+
+    @Test
+    public void backOffSitsOutWhileAHopIsOn() {
+        assertTrue(CritTiming.shouldBackOff(true, false));
+        assertFalse(CritTiming.shouldBackOff(true, true));
+        assertFalse(CritTiming.shouldBackOff(false, false));
+        assertFalse(CritTiming.shouldBackOff(false, true));
+    }
+
+    @Test
+    public void firstFallingTickInReachSwingsEvenThoughTheMobDriftedABit() {
+        CritTiming t = new CritTiming();
+        assertEquals(Step.JUMP, t.step(0, at(2.2)));
+        for (int tick = 1; tick <= 6; tick++) {
+            assertEquals("tick " + tick, Step.WAIT, t.step(tick, rising(Math.max(0, 4 - tick))));
+        }
+        // the moment it counts, not a tick later and not on the next hop
+        Sample down = falling(0);
+        down.reachGap = 2.9;
+        assertEquals(Step.SWING, t.step(7, down));
+    }
+
+    @Test
+    public void mobLeavingReachMidHopStillGetsAPlainHitOnLanding() {
+        CritTiming t = new CritTiming();
+        assertEquals(Step.JUMP, t.step(0, at(2.2)));
+        assertEquals(Step.WAIT, t.step(1, rising(3)));
+        // gone while we were up: the hop is dropped right here
+        Sample gone = falling(0);
+        gone.inReach = false;
+        assertEquals(Step.PLAIN, t.step(2, gone));
+        assertFalse(t.inFlight(2));
+        // back in reach on the tick we touch down: a plain swing, not a wait for another hop
+        assertEquals(Step.PLAIN, t.step(3, landed()));
+        // and then it is back to hopping
+        assertEquals(Step.JUMP, t.step(4, ready()));
+    }
+
     // ---- not under fire
 
     @Test

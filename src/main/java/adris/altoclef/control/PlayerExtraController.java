@@ -16,6 +16,8 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 
 public class PlayerExtraController {
 
@@ -121,13 +123,19 @@ public class PlayerExtraController {
             _crit.reset();
             return plainSwing(player, entity);
         }
-        switch (_crit.step(gameTime(), sample(player, target))) {
+        double gap = reachGap(player, target);
+        switch (_crit.step(gameTime(), sample(player, target, gap))) {
             case JUMP:
                 // vanilla throws the crit away for a sprinting hit, and the jump itself would boost us forward. the stop
                 // packet goes out with this tick's movement, long before we are falling
                 player.setSprinting(false);
                 _mod.getInputControls().tryPress(Input.JUMP);
+                walkUp(gap);
                 return true;
+            case APPROACH:
+                player.setSprinting(false);
+                walkUp(gap);
+                return false;
             case SWING:
                 if (player.getAttackStrengthScale(0) < 1) {
                     return false;
@@ -136,10 +144,57 @@ public class PlayerExtraController {
                 attack(entity);
                 return true;
             case WAIT:
+                // mid hop. jumping straight up while the mob stands 2 blocks off is how the fall ends with nothing to hit,
+                // so keep closing (no sprint, that is the crit killer)
+                player.setSprinting(false);
+                walkUp(gap);
                 return false;
             default:
                 return plainSwing(player, entity);
         }
+    }
+
+    // tapping forward is enough, the kill task already turned us to face the mob this tick. tryPress lets go by itself, so
+    // nothing is left held down if the task changes its mind. no point shoving into a mob we are already touching
+    private void walkUp(double gap) {
+        if (gap > WALK_UP_GAP) {
+            _mod.getInputControls().tryPress(Input.MOVE_FORWARD);
+        }
+    }
+
+    private static final double WALK_UP_GAP = 1.2;
+
+    // eye to the nearest point of the target's box, which is the distance vanilla compares to the interaction range
+    private static double reachGap(LocalPlayer player, Entity target) {
+        Vec3 eye = player.getEyePosition();
+        AABB box = target.getBoundingBox();
+        double dx = Math.max(Math.max(box.minX - eye.x, 0), eye.x - box.maxX);
+        double dy = Math.max(Math.max(box.minY - eye.y, 0), eye.y - box.maxY);
+        double dz = Math.max(Math.max(box.minZ - eye.z, 0), eye.z - box.maxZ);
+        return Math.sqrt(dx * dx + dy * dy + dz * dz);
+    }
+
+    // how fast the target is going away from us along the flat line between us, blocks per tick (negative when it is
+    // coming at us). from the position change, a remote entity's deltaMovement on the client is mostly a lie
+    private static double retreatSpeed(LocalPlayer player, Entity target) {
+        double dx = target.getX() - player.getX();
+        double dz = target.getZ() - player.getZ();
+        double len = Math.sqrt(dx * dx + dz * dz);
+        if (len < 1e-4) {
+            return 0;
+        }
+        return ((target.getX() - target.xo) * dx + (target.getZ() - target.zo) * dz) / len;
+    }
+
+    // the interaction range attribute (3 for a plain player, creative and tools can change it)
+    private static double reachOf(LocalPlayer player) {
+        double reach = player.entityInteractionRange();
+        return reach > 0 ? reach : 3.0;
+    }
+
+    // a hop is on, or about to be, and the back-off in the kill tasks should keep its hands to itself
+    public boolean hopWantsToStayClose() {
+        return critInFlight() || wantsCritTick();
     }
 
     private boolean plainSwing(LocalPlayer player, Entity entity) {
@@ -150,9 +205,12 @@ public class PlayerExtraController {
         return false;
     }
 
-    private CritTiming.Sample sample(LocalPlayer player, LivingEntity target) {
+    private CritTiming.Sample sample(LocalPlayer player, LivingEntity target, double gap) {
         CritTiming.Sample s = new CritTiming.Sample();
         s.inReach = inRange(target);
+        s.reachGap = gap;
+        s.reach = reachOf(player);
+        s.retreatSpeed = retreatSpeed(player, target);
         s.onGround = player.onGround();
         s.falling = player.getDeltaMovement().y() < 0 && player.fallDistance > 0;
         s.ticksToFull = ticksToFull();

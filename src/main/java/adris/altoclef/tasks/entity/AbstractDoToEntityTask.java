@@ -3,6 +3,7 @@ package adris.altoclef.tasks.entity;
 import baritone.Baritone;
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
+import adris.altoclef.control.CritTiming;
 import adris.altoclef.tasks.construction.DestroyBlockTask;
 import adris.altoclef.tasks.movement.DodgeProjectilesTask;
 import adris.altoclef.tasks.movement.GetToEntityTask;
@@ -132,8 +133,9 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
 
             boolean tooClose = sqDist < maintainDistance * maintainDistance;
 
-            // Step away if we're too close
-            if (tooClose) {
+            // Step away if we're too close, unless a crit hop is on (or about to be): backing off mid hop is exactly what
+            // leaves the mob out of reach when we come down
+            if (CritTiming.shouldBackOff(tooClose, mod.getControllerExtras().hopWantsToStayClose())) {
                 //setDebugState("Maintaining distance");
                 if (!mod.getClientBaritone().getCustomGoalProcess().isActive()) {
                     mod.getClientBaritone().getCustomGoalProcess().setGoalAndPath(new GoalRunAway(maintainDistance, entity.blockPosition()));
