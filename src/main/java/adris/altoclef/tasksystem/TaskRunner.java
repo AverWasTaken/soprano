@@ -12,6 +12,7 @@ public class TaskRunner {
     private boolean _active;
 
     private TaskChain _cachedCurrentTaskChain = null;
+    private final HeldWheelWatch _heldWatch = new HeldWheelWatch();
 
     public TaskRunner(AltoClef mod) {
         _mod = mod;
@@ -37,6 +38,11 @@ public class TaskRunner {
         _cachedCurrentTaskChain = maxChain;
         if (maxChain != null) {
             maxChain.tick(_mod);
+        }
+        // the chain's task list is filled while it ticks, so empty after the tick means it won the wheel and ran nothing
+        boolean ranSomething = maxChain != null && !maxChain.getTasks().isEmpty();
+        if (_heldWatch.shouldLog(maxChain, ranSomething, System.currentTimeMillis())) {
+            Debug.logWarning(maxChain + " holds the wheel at " + maxPriority + " with nothing running (" + maxChain.getHeldTaskDebug() + ")");
         }
     }
 

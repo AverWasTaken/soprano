@@ -86,8 +86,9 @@ public class MobDefenseChain extends SingleTaskChain {
     private boolean _doingFunkyStuff = false;
     private boolean _wasPuttingOutFire = false;
     private CustomBaritoneGoalTask _runAwayTask;
-
-    private float _cachedLastPriority;
+    // what the run in _runAwayTask asked for when it started. the "keep running" fallback used to hand back whatever the
+    // last tick returned, which for a finished run was 80 forever
+    private float _runPriority;
 
     // everything below the line is worked out once per game tick by snapshot(), no matter how many things ask
     private long _snapshotTick = Long.MIN_VALUE;
@@ -190,8 +191,7 @@ public class MobDefenseChain extends SingleTaskChain {
 
     @Override
     public float getPriority(AltoClef mod) {
-        _cachedLastPriority = getPriorityInner(mod);
-        return _cachedLastPriority;
+        return getPriorityInner(mod);
     }
 
     private void stopShielding(AltoClef mod) {
@@ -277,7 +277,7 @@ public class MobDefenseChain extends SingleTaskChain {
         // Run away if a weird mob is close by.
         Optional<Entity> universallyDangerous = getUniversallyDangerousMob(mod);
         if (universallyDangerous.isPresent() && mod.getPlayer().getHealth() <= 10) {
-            runFrom(now, new RunAwayFromHostilesTask(DANGER_KEEP_DISTANCE, true));
+            runFrom(now, new RunAwayFromHostilesTask(DANGER_KEEP_DISTANCE, true), 70);
             return 70;
         }
 
@@ -303,9 +303,9 @@ public class MobDefenseChain extends SingleTaskChain {
             } else {
                 _doingFunkyStuff = true;
                 //Debug.logMessage("RUNNING AWAY!");
-                _runAwayTask = new RunAwayFromCreepersTask(CREEPER_KEEP_DISTANCE);
-                setTask(_runAwayTask);
-                return 50 + blowingUp.getSwelling(1) * 50;
+                float creeperPriority = 50 + blowingUp.getSwelling(1) * 50;
+                startRun(new RunAwayFromCreepersTask(CREEPER_KEEP_DISTANCE), creeperPriority);
+                return creeperPriority;
             }
         } else {
             if (!isProjectileClose(mod)) {
@@ -345,8 +345,7 @@ public class MobDefenseChain extends SingleTaskChain {
             if (!mod.getFoodChain().needsToEat() && Baritone.settings().altoDodgeProjectiles.value && isProjectileClose(mod)) {
                 _doingFunkyStuff = true;
                 //Debug.logMessage("DODGING");
-                _runAwayTask = new DodgeProjectilesTask(ARROW_KEEP_DISTANCE_HORIZONTAL, ARROW_KEEP_DISTANCE_VERTICAL);
-                setTask(_runAwayTask);
+                startRun(new DodgeProjectilesTask(ARROW_KEEP_DISTANCE_HORIZONTAL, ARROW_KEEP_DISTANCE_VERTICAL), 65);
                 return 65;
             }
         }
@@ -355,14 +354,13 @@ public class MobDefenseChain extends SingleTaskChain {
             _dangerRun = null;
         }
         if (isRunLatched(now)) {
-            _runAwayTask = _dangerRun;
-            setTask(_dangerRun);
+            runFrom(now, _dangerRun, 70);
             return 70;
         }
         // Dodge all mobs cause we boutta die son
         if (isInDanger(mod) && !escapeDragonBreath(mod) && !mod.getFoodChain().isShouldStop()) {
             if (!fightOn(now)) {
-                runFrom(now, dangerRunTask());
+                runFrom(now, dangerRunTask(), 70);
                 return 70;
             }
         }
@@ -370,7 +368,7 @@ public class MobDefenseChain extends SingleTaskChain {
         // losing a fight is not the time to trade blows or to chew. leave, the food chain eats once we are out of it.
         // (the food chain only lets go of its bite when it sees this stance, see FoodChain.needsToEat)
         if (!fightOn(now) && getCombatStance(mod) == CombatRules.Stance.FLEE) {
-            runFrom(now, dangerRunTask());
+            runFrom(now, dangerRunTask(), 80);
             return 80;
         }
 
@@ -393,9 +391,8 @@ public class MobDefenseChain extends SingleTaskChain {
 
             // a crowd is backed away from, not fought on the spot. no kill task, no shield, the force field holds still too
             if (_decision.kiting()) {
-                _runAwayTask = new RunAwayFromHostilesTask(KITE_DISTANCE, true, this::getKiteThreats);
+                startRun(new RunAwayFromHostilesTask(KITE_DISTANCE, true, this::getKiteThreats), 80);
                 _dangerRun = null;
-                setTask(_runAwayTask);
                 return 80;
             }
             // one or two shooters are walked up to and killed. this goes before the gear maths below, which is for piles
@@ -452,7 +449,11 @@ public class MobDefenseChain extends SingleTaskChain {
                 // a crowd we could not run from (or were told to stand against) is fought whatever the gear says, running
                 // blind with a pile of them on our heels is worse than the shield
                 boolean crowd = _decision.swarm() >= Baritone.settings().altoSwarmThreshold.value || _decision.cornered();
-                if (canDealWith > numberOfProblematicEntities || crowd) {
+                // the policy already called "one at a time" on a lone zombie, and the gear maths below used to overrule it
+                // (a naked bot has a capacity of 1, one mob is not less than one) and run. the verdict said fight, the
+                // branch said run, and the run is what got us stuck. gear is for the piles the policy did not rule on
+                boolean policyFights = CombatPolicy.fightsLoneMelee(_decision.verdict(), toDealWith.size(), soloSlowMelee(toDealWith));
+                if (canDealWith > numberOfProblematicEntities || crowd || policyFights) {
                     // We can deal with it.
                     for (Entity ToDealWith : toDealWith) {
                         // the ones that can only shoot at us are the dodge logic's problem. walking out of our safe spot
@@ -478,32 +479,48 @@ public class MobDefenseChain extends SingleTaskChain {
                     // nothing left that we can walk to, so no takeover. keep whatever we were doing
                 } else {
                     // We can't deal with it
-                    runFrom(now, dangerRunTask());
+                    runFrom(now, dangerRunTask(), 80);
                     return 80;
                 }
             }
         }
         // By default if we aren't "immediately" in danger but were running away, keep running away until we're good.
-        if (_runAwayTask != null && !_runAwayTask.isFinished(mod)) {
-            setTask(_runAwayTask);
-            return _cachedLastPriority;
+        // only if that run is really the one installed and still going: a finished one does not tick, so holding the wheel
+        // for it is holding it for nobody
+        if (_runAwayTask != null && _runAwayTask == getCurrentTask() && !_runAwayTask.isFinished(mod)) {
+            return _runPriority;
         }
         _runAwayTask = null;
         _dangerRun = null;
         return 0;
     }
 
+    // a lone zombie-ish thing: walks (so it is melee), does not outrun us, and there is exactly one of it
+    private static boolean soloSlowMelee(List<Entity> dealWith) {
+        return dealWith.size() == 1 && dealWith.get(0) instanceof Mob mob && !MobReachability.isRanged(mob)
+                && !(mob instanceof Creeper) && !isFast(mob);
+    }
+
+    // setTask keeps the task it already has when the new one is "equal", so the bookkeeping has to follow whatever got
+    // installed and not the object we just built and threw away (the finished-run bug was exactly that: a field pointing
+    // at a task that was never going to tick)
+    private void startRun(CustomBaritoneGoalTask run, float priority) {
+        setTask(run);
+        _runAwayTask = getCurrentTask() instanceof CustomBaritoneGoalTask current ? current : null;
+        _runPriority = priority;
+    }
+
     // start (or keep) a run away from danger. the same run asked for again is the same run, so the hold on it is only
     // started once. a different one is a new thing and gets its own
-    private void runFrom(long now, RunAwayFromHostilesTask run) {
+    private void runFrom(long now, RunAwayFromHostilesTask run, float priority) {
         if (_dangerRun != null && _dangerRun.equals(run)) {
             run = _dangerRun;
         } else {
             _dangerRun = run;
             _runLatchUntil = now + RUN_LATCH_TICKS;
         }
-        _runAwayTask = run;
-        setTask(run);
+        startRun(run, priority);
+        _dangerRun = _runAwayTask instanceof RunAwayFromHostilesTask installed ? installed : null;
     }
 
     private boolean isRunLatched(long now) {
@@ -1119,7 +1136,13 @@ public class MobDefenseChain extends SingleTaskChain {
 
     @Override
     protected void onTaskFinish(AltoClef mod) {
-        // Task is done, so I guess we move on?
+        // this used to be "i guess we move on?" which is the whole bug: the finished task stayed installed, never ticked,
+        // and the priority it was started with kept the wheel for over a minute. let go of it properly
+        Task done = _mainTask;
+        _mainTask = null;
+        if (done != null) done.stop(mod);
+        if (_runAwayTask == done) _runAwayTask = null;
+        if (_dangerRun == done) _dangerRun = null;
     }
 
     @Override

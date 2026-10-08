@@ -355,6 +355,12 @@ public final class CombatPolicy {
         return true;
     }
 
+    // the policy said "one at a time" and there really is one slow melee thing to deal with: that is a fight, and the gear
+    // maths (standCapacity) does not get to turn it into a run. it is for piles the policy did not already rule on
+    public static boolean fightsLoneMelee(Verdict verdict, int dealWithCount, boolean loneSlowMelee) {
+        return verdict == Verdict.FIGHT_ONE && dealWithCount == 1 && loneSlowMelee;
+    }
+
     // the vulnerable branch of the chain's isInDanger, as numbers. armor 0 at hp 17 used to flee from a lone skeleton,
     // which is exactly the wrong way to meet one
     public static boolean vulnerable(int armor, float health) {

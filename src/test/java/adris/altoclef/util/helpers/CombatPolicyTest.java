@@ -89,6 +89,24 @@ public class CombatPolicyTest {
     }
 
     @Test
+    public void aLoneZombieIsAFightTheGearMathsDoesNotGetToRunFrom() {
+        // the live bug: "fighting 1 zombie (one at a time)" and then the chain ran anyway, because standCapacity of a naked
+        // bot is 1 and one mob is not less than one
+        Decision d = new CombatPolicy().decide(0, fighting(List.of(zombie(1, 2, 0))));
+        assertEquals(FIGHT_ONE, d.verdict());
+        assertEquals(1, CombatPolicy.standCapacity(0, 0, false));
+        assertTrue(CombatPolicy.fightsLoneMelee(d.verdict(), 1, true));
+    }
+
+    @Test
+    public void thePolicyOnlyOverrulesTheGearForOneSlowMeleeMob() {
+        assertFalse("a crowd is not a lone mob", CombatPolicy.fightsLoneMelee(FIGHT_ONE, 2, true));
+        assertFalse("a spider or a skeleton is not a lone zombie", CombatPolicy.fightsLoneMelee(FIGHT_ONE, 1, false));
+        assertFalse("kiting stays kiting", CombatPolicy.fightsLoneMelee(KITE, 1, true));
+        assertFalse(CombatPolicy.fightsLoneMelee(STAND, 1, true));
+    }
+
+    @Test
     public void twoZombiesAreNotACrowd() {
         assertEquals(FIGHT_ONE, new CombatPolicy().decide(0, fighting(ring(2, 5))).verdict());
     }

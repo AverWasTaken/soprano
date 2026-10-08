@@ -48,13 +48,23 @@ public abstract class SingleTaskChain extends TaskChain {
     }
 
     public void setTask(Task task) {
-        if (_mainTask == null || !_mainTask.equals(task)) {
+        if (shouldInstall(_mainTask, task, _mod)) {
             if (_mainTask != null) {
                 _mainTask.stop(_mod, task);
             }
             _mainTask = task;
             if (task != null) task.reset();
         }
+    }
+
+    // an equal task used to win even when it was dead. a finished run never ticks again, so the fresh one that was asked
+    // for got thrown away in its favour and the chain sat there for a minute holding the wheel over a corpse. pure so the
+    // rule can be tested without a game
+    static boolean shouldInstall(Task current, Task wanted, AltoClef mod) {
+        if (current == null) return true;
+        // the same object again is not news, whatever state it is in (a finished one just gets cleaned up by the tick)
+        if (current == wanted) return false;
+        return current.isFinished(mod) || current.stopped() || !current.equals(wanted);
     }
 
 
@@ -83,5 +93,11 @@ public abstract class SingleTaskChain extends TaskChain {
 
     public Task getCurrentTask() {
         return _mainTask;
+    }
+
+    // for the "holds the wheel with nothing running" log
+    @Override
+    public String getHeldTaskDebug() {
+        return _mainTask == null ? "no task" : _mainTask.toString();
     }
 }
