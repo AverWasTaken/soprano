@@ -32,6 +32,7 @@ import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import baritone.api.utils.Rotation;
+import baritone.api.utils.RotationUtils;
 import baritone.api.utils.input.Input;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.Entity;
@@ -503,7 +504,8 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
         // already buried in it is the one case where the answer is to dig, there is no better place to be
         boolean buried = _pos.equals(WorldHelper.buriedInFallenBlock(mod));
         boolean dropsOnUs = looseColumn && !buried && WorldHelper.breakingDropsOnUs(mod, _pos);
-        if (fallingStillComing(mod)) {
+        // buried, waiting is just suffocating with extra steps. dig now, the rest lands in the hole we make
+        if (!buried && fallingStillComing(mod)) {
             setDebugState("Waiting for the falling blocks to land.", "Letting the sand settle");
             stuckCheck.reset();
             _moveChecker.reset();
@@ -511,6 +513,12 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
             return null;
         }
         Optional<Rotation> reach = LookHelper.getReach(_pos);
+        if (reach.isEmpty() && buried) {
+            // the ray from an eye inside the block can come back empty, and the "get to block" branch would then walk us off
+            // toward a side goal with our head still in the sand. we're in it, it's in reach, just look at it
+            reach = Optional.of(RotationUtils.calcRotationFromVec3d(mod.getPlayer().getEyePosition(), Vec3.atCenterOf(_pos),
+                    mod.getClientBaritone().getPlayerContext().playerRotations()));
+        }
         BlockPos swingAt = _pos;
         if (reach.isEmpty()) {
             // vines count as a hit for the ray even though you walk through them, so a log behind a curtain of them is

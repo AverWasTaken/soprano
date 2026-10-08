@@ -57,22 +57,24 @@ public final class FallingColumn {
     private FallingColumn() {
     }
 
-    // the block classes, so the two worlds agree on what counts. FallingBlock is sand, gravel, powder, anvils and the dragon egg,
-    // BrushableBlock is the suspicious ones (it ticks into a falling entity on its own), scaffolding drops when the stack
-    // it hangs from is cut
-    public static boolean isFalling(Block block) {
-        return block instanceof FallingBlock || block instanceof BrushableBlock || block instanceof ScaffoldingBlock;
-    }
-
-    public static boolean isFalling(BlockState state) {
-        return isFalling(state.getBlock());
-    }
-
-    // the blocks that are sand-like all the time. scaffolding only comes down when it is cut loose, and the bot climbs it
-    // and stands in it, so "is there gravel in my head" has to leave it out
+    // the block classes, so the two worlds agree on what counts. FallingBlock is sand, gravel, powder, anvils and the dragon
+    // egg, BrushableBlock is the suspicious ones (it ticks into a falling entity on its own). these fall every time
     public static boolean isGravity(Block block) {
         return block instanceof FallingBlock || block instanceof BrushableBlock;
     }
+
+    // plus scaffolding, but only the piece that has already lost its stack (distance 7 is "nothing holds me", vanilla's
+    // own number). healthy scaffolding hangs over air all day long and treating that as sand made every scaffold tower
+    // look like a column about to drop
+    public static boolean isFalling(BlockState state) {
+        Block block = state.getBlock();
+        if (block instanceof ScaffoldingBlock) {
+            return state.getValue(ScaffoldingBlock.DISTANCE) >= LOOSE_SCAFFOLDING;
+        }
+        return isGravity(block);
+    }
+
+    private static final int LOOSE_SCAFFOLDING = 7;
 
     // a stalactite is the only dripstone that comes down, and only when what it hangs from goes
     public static boolean isStalactite(BlockState state) {

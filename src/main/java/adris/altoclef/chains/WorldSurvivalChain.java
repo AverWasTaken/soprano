@@ -64,8 +64,11 @@ public class WorldSurvivalChain extends SingleTaskChain {
 
         // Sand or gravel landed on us. it is 1 damage every half second for as long as our eyes are in it, so it goes
         // before anything polite. the task knows to dig rather than step aside when the block is the one we stand in
+        // not canBreak: that one says no for anything ever marked unreachable, and being unreachable is not a thing for
+        // the block our head is in. only the hard nos (bedrock-hard, the never-break list) stop this
         BlockPos buried = WorldHelper.buriedInFallenBlock(mod);
-        if (buried != null && WorldHelper.canBreak(mod, buried)) {
+        if (buried != null && mod.getWorld().getBlockState(buried).getDestroySpeed(mod.getWorld(), buried) >= 0
+                && !mod.getExtraBaritoneSettings().shouldAvoidBreaking(buried)) {
             setTask(new DestroyBlockTask(buried));
             return 100;
         }

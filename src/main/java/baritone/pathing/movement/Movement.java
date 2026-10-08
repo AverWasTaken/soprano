@@ -417,8 +417,15 @@ public abstract class Movement implements IMovement, MovementHelper {
         }
         for (BetterBlockPos blockPos : positionsToBreak) {
             if (!MovementHelper.canWalkThrough(ctx, blockPos) && fallsOnUs(blockPos)) {
-                // the plan was made before whatever is stacked up there got there, and the planner won't have it. the
-                // alternative is to dig it out from under a column and spend the next ten seconds suffocating
+                BetterBlockPos feet = ctx.playerFeet();
+                if (feet.x != blockPos.x || feet.z != blockPos.z) {
+                    // only an edge of us hangs into that column (walkWhileBreaking momentum, mostly). failing the movement
+                    // here would just get the same movement planned again, so back off into src and break it from there
+                    MovementHelper.moveTowards(ctx, state, src);
+                    return false;
+                }
+                // we really are under it. the plan was made before whatever is stacked up there got there (the planner
+                // refuses this for ascend and pillar), and the alternative is to dig it out from under the column
                 state.setStatus(MovementStatus.UNREACHABLE);
                 return true;
             }
