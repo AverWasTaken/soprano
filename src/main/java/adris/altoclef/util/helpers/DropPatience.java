@@ -13,18 +13,29 @@ public final class DropPatience {
     private final Set<Integer> gaveUp = new HashSet<>();
     private int lockedId = -1;
     private int waited;
+    private double bestDist = Double.POSITIVE_INFINITY;
 
     // we are going for this drop (entity id). asking again for the same one does not restart the clock
     public void lock(int id) {
         if (lockedId != id) {
             lockedId = id;
             waited = 0;
+            bestDist = Double.POSITIVE_INFINITY;
         }
     }
 
     // one tick spent on the locked drop. a counter and not a start time so a pause (eating, a fight) doesn't eat the patience
     public void tick() {
         waited++;
+    }
+
+    // how far the locked drop is from us right now. getting half a block closer than ever before is a walk that works, so
+    // the clock starts over: a drop 30 blocks off takes longer than 5 seconds and that is fine, standing still is not
+    public void progress(double dist) {
+        if (dist < bestDist - 0.5) {
+            bestDist = dist;
+            waited = 0;
+        }
     }
 
     public boolean isLocked() {

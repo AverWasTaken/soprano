@@ -35,8 +35,8 @@ public class MineAnchorTest {
     }
 
     @Test
-    public void theLogAboveBeatsTheOneFiveBlocksAwayEvenWhenTheOtherIsCloserToUs() {
-        // we stand next to the trunk. the other tree is 5 over, and so is nothing inside the anchor's neighbourhood
+    public void anotherTreeFiveBlocksAwayIsNotInTheRunning() {
+        // we stand next to the trunk. the other trees are 5 over, outside the anchor's neighbourhood
         List<BlockPos> known = List.of(ANCHOR.above(), ANCHOR.east(5), ANCHOR.west(5).above());
         Optional<BlockPos> pick = MineAnchor.nearest(ANCHOR, known, true, -47.5, 68.0, 89.5, p -> true);
         assertEquals(ANCHOR.above(), pick.orElseThrow());

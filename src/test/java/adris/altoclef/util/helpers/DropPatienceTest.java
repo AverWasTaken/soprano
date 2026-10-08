@@ -45,6 +45,37 @@ public class DropPatienceTest {
     }
 
     @Test
+    public void aWalkThatIsGettingSomewhereKeepsTheClockFromRunningOut() {
+        DropPatience p = new DropPatience();
+        p.lock(7);
+        double dist = 30;
+        // 300 ticks is three times the budget, but every 20 of them we are 2 blocks closer
+        for (int i = 0; i < 300; i++) {
+            p.tick();
+            if (i % 20 == 0) {
+                dist -= 2;
+            }
+            p.progress(dist);
+            assertFalse("tick " + i, p.expired());
+        }
+    }
+
+    @Test
+    public void standingStillOrBackingOffGetsNoCredit() {
+        DropPatience p = new DropPatience();
+        p.lock(7);
+        p.progress(10);
+        for (int i = 0; i < DropPatience.TICKS; i++) {
+            p.tick();
+            // a tenth of a block of jitter is not a walk, and further than before is not a walk either
+            p.progress(i % 2 == 0 ? 9.9 : 12);
+        }
+        p.tick();
+        p.progress(9.8);
+        assertTrue(p.expired());
+    }
+
+    @Test
     public void aDifferentDropGetsItsOwnClock() {
         DropPatience p = new DropPatience();
         p.lock(7);

@@ -9,7 +9,9 @@ import adris.altoclef.tasks.movement.PickupDroppedItemTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.MiningRequirement;
+import baritone.Baritone;
 import adris.altoclef.util.helpers.ItemHelper;
+import adris.altoclef.util.helpers.ItemPickupRules;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.DropPatience;
 import adris.altoclef.util.helpers.MineAnchor;
@@ -247,7 +249,8 @@ public class MineAndCollectTask extends ResourceTask {
 
             // We can't mine right now.
             if (paused) {
-                return (locked != null ? Optional.of(locked) : nearestDrop(mod, pos, true)).map(Object.class::cast);
+                Optional<ItemEntity> drop = locked != null ? Optional.of(locked) : nearestDrop(mod, pos, true);
+                return (drop.isPresent() ? drop : nearestDrop(mod, pos, false)).map(Object.class::cast);
             }
 
             // halfway through a block is not the time to go and get a drop. the drop gets its turn when the block is gone
@@ -352,6 +355,7 @@ public class MineAndCollectTask extends ResourceTask {
             }
             if (!paused) {
                 _patience.tick();
+                _patience.progress(mod.getPlayer().distanceTo(drop));
             }
             if (_patience.expired()) {
                 // stuck in leaves, a hole, a pathing hole. the pickup task would take it right back as nearest, so it is
@@ -490,6 +494,8 @@ public class MineAndCollectTask extends ResourceTask {
             if (obj instanceof ItemEntity drop) {
                 // picked up or despawned, don't keep chasing a ghost. one we gave up on or the pickup task banned stays dead
                 if (!drop.isAlive() || _patience.gaveUp(drop.getId()) || !mod.getEntityTracker().isEntityReachable(drop)) return false;
+                // in the water the pickup task can't see it anymore and would wander until the patience ran out
+                if (!Baritone.settings().altoPickupItemsInWater.value && !ItemPickupRules.isPickupSafe(drop)) return false;
                 Item item = drop.getItem().getItem();
                 if (_targets != null) {
                     for (ItemTarget target : _targets) {
