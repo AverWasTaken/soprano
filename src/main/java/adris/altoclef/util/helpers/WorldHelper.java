@@ -40,8 +40,10 @@ import net.minecraft.world.level.block.entity.SpawnerBlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BedPart;
 import net.minecraft.world.level.block.state.properties.ChestType;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.shapes.CollisionContext;
 import java.util.*;
 
 /**
@@ -280,6 +282,19 @@ public interface WorldHelper {
     static boolean canPlace(AltoClef mod, BlockPos pos) {
         return !mod.getExtraBaritoneSettings().shouldAvoidPlacingAt(pos)
                 && canReach(mod, pos);
+    }
+
+    // same question BlockItem asks before it places: does a mob (or we) stand where the block goes. the server says no and
+    // the click does nothing otherwise. same call PlaceStationTask uses for its cells
+    static boolean entityFreeFor(Level level, BlockPos pos, BlockState state, Player player) {
+        return level.isUnobstructed(state, pos, CollisionContext.of(player));
+    }
+
+    // canPlace for a solid block. not folded into canPlace on purpose: that one also answers for water and lava (the
+    // extinguish bucket goes in our own cell) and for "is this whole area fine" scans that include the cell we stand in,
+    // and none of those care who is in the way
+    static boolean canPlaceBlock(AltoClef mod, BlockPos pos, BlockState state) {
+        return canPlace(mod, pos) && entityFreeFor(mod.getWorld(), pos, state, mod.getPlayer());
     }
 
     static boolean canReach(AltoClef mod, BlockPos pos) {

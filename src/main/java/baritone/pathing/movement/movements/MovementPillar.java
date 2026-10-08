@@ -220,7 +220,18 @@ public class MovementPillar extends Movement {
                     state.setInput(Input.CLICK_LEFT, true);
                     blockIsThere = false;
                 } else if (ctx.player().isCrouching() && (ctx.isLookingAt(src.below()) || ctx.isLookingAt(src)) && ctx.player().position().y > dest.getY() + 0.1) {
-                    state.setInput(Input.CLICK_RIGHT, true);
+                    // a mob standing in the cell eats the click, so no click until it moves. it gets PlaceWait's patience
+                    // and then the planner gets to find a way around
+                    switch (state.placeBlocked(MovementHelper.entityInTheWay(ctx, src))) {
+                        case CLEAR:
+                            state.setInput(Input.CLICK_RIGHT, true);
+                            break;
+                        case WAIT:
+                            break;
+                        default:
+                            logDebug("something stood in the way of the pillar block at " + src.x + " " + src.y + " " + src.z + ", giving up");
+                            return state.setStatus(MovementStatus.UNREACHABLE);
+                    }
                 }
             }
         }

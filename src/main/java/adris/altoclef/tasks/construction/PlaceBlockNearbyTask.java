@@ -18,6 +18,7 @@ import adris.altoclef.util.time.TimerGame;
 import baritone.api.utils.IPlayerContext;
 import baritone.api.utils.input.Input;
 import baritone.pathing.movement.MovementHelper;
+import baritone.pathing.movement.PlaceWait;
 import org.apache.commons.lang3.ArrayUtils;
 
 import java.util.Arrays;
@@ -30,6 +31,8 @@ import net.minecraft.world.InteractionResult;
 import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 
@@ -56,6 +59,8 @@ public class PlaceBlockNearbyTask extends Task {
     private static final double SPOT_SECONDS = 15;
     // the task working on _tryPlace, kept so we can ask it if it ran dry
     private PlaceBlockTask _placing;
+    // ticks in a row something has stood in _tryPlace
+    private int _blockedTicks;
     // Oof, necesarry for the onBlockPlaced action.
     private AltoClef _mod;
     private Subscription<BlockPlaceEvent> _onBlockPlaced;
@@ -74,6 +79,7 @@ public class PlaceBlockNearbyTask extends Task {
         _progressChecker.reset();
         _failures.clear();
         _placing = null;
+        _blockedTicks = 0;
         _spotTimer.reset();
         _mod = mod;
         mod.getClientBaritone().getInputOverrideHandler().setInputForceState(Input.CLICK_RIGHT, false);
@@ -156,6 +162,19 @@ public class PlaceBlockNearbyTask extends Task {
         if (_placing != null && _placing.isStarved()) {
             failSpot(mod);
         }
+        // a mob standing in the cell eats the click without a word. give it a moment to leave, then it's a bad spot like any
+        // other (PlaceWait, 10 ticks)
+        if (_tryPlace != null) {
+            boolean blocked = !WorldHelper.entityFreeFor(mod.getWorld(), _tryPlace, placingState(), mod.getPlayer());
+            _blockedTicks = PlaceWait.next(blocked, _blockedTicks);
+            if (PlaceWait.judge(_blockedTicks, PlaceWait.TASK_PATIENCE) == PlaceWait.Verdict.GIVE_UP) {
+                Debug.logMessage("Something is standing at " + _tryPlace + ", striking it.");
+                _blockedTicks = 0;
+                failSpot(mod);
+            }
+        } else {
+            _blockedTicks = 0;
+        }
 
         // Try to place at a particular spot.
         if (_tryPlace == null || !WorldHelper.canReach(mod, _tryPlace)) {
@@ -232,7 +251,7 @@ public class PlaceBlockNearbyTask extends Task {
                     return null;
                 }
                 //Debug.logMessage("TEMP: B (actual): " + placePos);
-                if (WorldHelper.canPlace(mod, placePos)) {
+                if (WorldHelper.canPlaceBlock(mod, placePos, placingState())) {
                     return placePos;
                 }
             }
@@ -296,6 +315,11 @@ public class PlaceBlockNearbyTask extends Task {
         mod.getBlockTracker().requestBlockUnreachable(spot);
     }
 
+    // what the entity check measures the cell against. every block this task places is a full cube anyway
+    private BlockState placingState() {
+        return (_toPlace.length > 0 ? _toPlace[0] : Blocks.STONE).defaultBlockState();
+    }
+
     // a throwaway above what a recipe is saving, the same answer the movements get
     private static boolean canScaffold(AltoClef mod) {
         return mod.getClientBaritoneSettings().allowPlace.value && mod.getClientBaritone().getInventoryBehavior().hasGenericThrowaway();
@@ -310,6 +334,7 @@ public class PlaceBlockNearbyTask extends Task {
         double smallestScore = Double.POSITIVE_INFINITY;
         double smallestLoose = Double.POSITIVE_INFINITY;
         boolean scaffold = canScaffold(mod);
+        BlockState placing = placingState();
         BlockPos feet = mod.getPlayer().blockPosition();
         int feetY = feet.getY();
         BlockPos start = mod.getPlayer().blockPosition().offset(-range, -range, -range);
@@ -336,6 +361,10 @@ public class PlaceBlockNearbyTask extends Task {
             boolean hasBelow = WorldHelper.isSolid(mod, blockPos.below());
             // never our own cells, never a cell that has to be built up to. the builder pillars us up the shaft for those
             if (PlaceSpotRank.wouldPillar(blockPos.getX(), blockPos.getY(), blockPos.getZ(), feet.getX(), feetY, feet.getZ(), hasBelow)) {
+                continue;
+            }
+            // somebody standing in the cell. last, it is the one check here that asks the world about entities
+            if (!WorldHelper.entityFreeFor(mod.getWorld(), blockPos, placing, mod.getPlayer())) {
                 continue;
             }
             double distSq = blockPos.distToCenterSqr(mod.getPlayer().position());

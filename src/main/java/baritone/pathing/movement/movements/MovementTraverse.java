@@ -322,6 +322,11 @@ public class MovementTraverse extends Movement {
                     }
                     return state;
                 }
+                case BLOCKED: {
+                    // something is standing in the cell: no click, no walking forward into the gap. it moves or we give up
+                    // on this movement (that's PlaceWait, 20 ticks)
+                    return state;
+                }
                 default:
                     break;
             }

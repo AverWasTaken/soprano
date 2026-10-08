@@ -55,6 +55,7 @@ import net.minecraft.world.level.pathfinder.PathComputationType;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.shapes.Shapes;
 
 import java.util.*;
 import java.util.stream.Stream;
@@ -994,7 +995,35 @@ public interface MovementHelper extends ActionCosts, Helper {
         return PlaceResult.NO_OPTION;
     }
 
+    // would the server say no because somebody is standing in the cell. our own body is left out (the movements already
+    // back off for that, see ascend), it's the zombie that wandered into the bridge we're after
+    static boolean entityInTheWay(IPlayerContext ctx, BlockPos pos) {
+        return !ctx.world().isUnobstructed(ctx.player(), Shapes.block().move(pos.getX(), pos.getY(), pos.getZ()));
+    }
+
+    // the real one. a mob in the cell means the click goes out and nothing happens, forever, so a ready or attempting
+    // answer turns into BLOCKED (hold still, no click) for a while and then into UNREACHABLE so the planner goes around
     static PlaceResult attemptToPlaceABlock(MovementState state, IBaritone baritone, BlockPos placeAt, boolean preferDown, boolean wouldSneak, boolean allowProtected) {
+        PlaceResult result = findPlace(state, baritone, placeAt, preferDown, wouldSneak, allowProtected);
+        if (result != PlaceResult.READY_TO_PLACE && result != PlaceResult.ATTEMPTING) {
+            return result;
+        }
+        switch (state.placeBlocked(entityInTheWay(baritone.getPlayerContext(), placeAt))) {
+            case CLEAR:
+                return result;
+            case WAIT:
+                if (wouldSneak) {
+                    state.setInput(Input.SNEAK, true);
+                }
+                return PlaceResult.BLOCKED;
+            default:
+                Helper.HELPER.logDebug("something stood in the way of the block at " + placeAt.getX() + " " + placeAt.getY() + " " + placeAt.getZ() + " for " + PlaceWait.MOVEMENT_PATIENCE + " ticks, giving up on this one");
+                state.setStatus(MovementStatus.UNREACHABLE);
+                return PlaceResult.NO_OPTION;
+        }
+    }
+
+    private static PlaceResult findPlace(MovementState state, IBaritone baritone, BlockPos placeAt, boolean preferDown, boolean wouldSneak, boolean allowProtected) {
         IPlayerContext ctx = baritone.getPlayerContext();
         Optional<Rotation> direct = RotationUtils.reachable(ctx, placeAt, wouldSneak); // we assume that if there is a block there, it must be replacable
         boolean found = false;
@@ -1055,7 +1084,8 @@ public interface MovementHelper extends ActionCosts, Helper {
     }
 
     enum PlaceResult {
-        READY_TO_PLACE, ATTEMPTING, NO_OPTION;
+        // BLOCKED: a mob is in the cell, hold still and do not click
+        READY_TO_PLACE, ATTEMPTING, NO_OPTION, BLOCKED;
     }
 
     static boolean isTransparent(Block b) {

@@ -30,6 +30,15 @@ public class MovementState {
     private MovementStatus status;
     private MovementTarget target = new MovementTarget();
     private final Map<Input, Boolean> inputState = new HashMap<>();
+    // consecutive ticks something stood in the cell we want to place into (see PlaceWait). lives here because the state
+    // outlives the tick and dies with the movement
+    private int placeBlockedTicks;
+
+    // feed it this tick's answer to "is something in the cell", get back wait or give up
+    public PlaceWait.Verdict placeBlocked(boolean blocked) {
+        placeBlockedTicks = PlaceWait.next(blocked, placeBlockedTicks);
+        return PlaceWait.judge(placeBlockedTicks, PlaceWait.MOVEMENT_PATIENCE);
+    }
 
     public MovementState setStatus(MovementStatus status) {
         this.status = status;
