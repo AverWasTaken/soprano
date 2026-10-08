@@ -82,11 +82,15 @@ public class MoveItemToSlotTask extends Task {
                     return null;
                 }
                 _nothingToMove.reset();
+                _gaveUp = false;
                 mod.getSlotHandler().clickSlot(toPlace.get(), 0, ClickType.PICKUP);
                 return null;
             }
 
-            int currentlyPlaced = Arrays.asList(validItems).contains(atTarget.getItem()) ? atTarget.getCount() : 0;
+            // holding the right stack means there is something to move after all
+            _nothingToMove.reset();
+            _gaveUp = false;
+            int currentlyPlaced =Arrays.asList(validItems).contains(atTarget.getItem()) ? atTarget.getCount() : 0;
             if (currentHeld.getCount() + currentlyPlaced <= _toMove.getTargetCount()) {
                 // Just place all of 'em
                 mod.getSlotHandler().clickSlot(_destination, 0, ClickType.PICKUP);

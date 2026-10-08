@@ -92,7 +92,9 @@ public class FoodChain extends SingleTaskChain {
         // everything that pauses for a meal (progress checkers, container waits) stops waiting when we refuse to eat.
         // before, "needs to eat" stayed true through a fall or a shield block and no watchdog could fire
         _eatBlocked = eatingBlocked(mod);
-        if (_eatBlocked) {
+        // blocking is NOT in the shared list: mob defense drops the shield when needsToEat() is true, so counting it
+        // there would make a shielding bot unable to ever get hungry enough to put the shield down
+        if (_eatBlocked || mod.getPlayer().isBlocking()) {
             stopEat(mod);
             return Float.NEGATIVE_INFINITY;
         }
@@ -192,8 +194,7 @@ public class FoodChain extends SingleTaskChain {
         // do NOT eat while in lava if we are escaping it (spaghetti code dependencies go brrrr)
         if (mod.getPlayer().isInLava()) return true;
         // We're in danger, don't eat now!!
-        return !mod.getMLGBucketChain().doneMLG() || mod.getMLGBucketChain().isFallingOhNo(mod)
-                || mod.getPlayer().isBlocking() || shouldStop;
+        return !mod.getMLGBucketChain().doneMLG() || mod.getMLGBucketChain().isFallingOhNo(mod) || shouldStop;
     }
 
     // this is also "are we busy chewing", half the codebase asks it to know whether it may swing or click. so it says no

@@ -136,7 +136,8 @@ public class PlayerInteractionFixChain extends TaskChain {
                 mod.getSlotHandler().clickSlot(garbage.get(), 0, ClickType.PICKUP);
                 return Float.NEGATIVE_INFINITY;
             }
-            mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ClickType.PICKUP);
+            // a kept stack with a full bag and nothing to swap it with stays in hand. throwing it was the old last
+            // resort and it threw iron and food away. whoever is working with it can deal, or the bag frees up
             return Float.NEGATIVE_INFINITY;
         }
 

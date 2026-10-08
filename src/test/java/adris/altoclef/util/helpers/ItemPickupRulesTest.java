@@ -166,6 +166,22 @@ public class ItemPickupRulesTest {
     }
 
     @Test
+    public void aPartlyFullStackOfTheSameThingHasRoom() {
+        // full bag, cobble at 60, a drop of 10 more: 4 fit and vanilla takes them
+        assertTrue(ItemPickupRules.hasRoom(new int[]{64, 60, 64}, new boolean[]{false, true, false}, 64));
+    }
+
+    @Test
+    public void aFullBagOfOtherThingsHasNoRoom() {
+        assertFalse(ItemPickupRules.hasRoom(new int[]{64, 64, 12}, new boolean[]{true, false, false}, 64));
+    }
+
+    @Test
+    public void anEmptySlotIsRoom() {
+        assertTrue(ItemPickupRules.hasRoom(new int[]{64, 0}, new boolean[]{false, false}, 64));
+    }
+
+    @Test
     public void aDropThatFitsEvenPartlyIsJustPickedUp() {
         assertEquals(ItemPickupRules.Room.FITS, ItemPickupRules.room(true, true));
         assertEquals(ItemPickupRules.Room.FITS, ItemPickupRules.room(true, false));

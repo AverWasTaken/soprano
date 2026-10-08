@@ -21,6 +21,7 @@ import adris.altoclef.util.progresscheck.MovementProgressChecker;
 import adris.altoclef.util.progresscheck.WaterPickupWatchdog;
 import adris.altoclef.ui.HudText;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.NonNullList;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -290,7 +291,7 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
         boolean touching = _mod.getEntityTracker().isCollidingWithPlayer(itemEntity);
         if (touching) {
             if (_freeInventoryIfFull) {
-                boolean fits = !_mod.getItemStorage().getSlotsThatCanFitInPlayerInventory(itemEntity.getItem(), true).isEmpty();
+                boolean fits = hasRoomFor(_mod, itemEntity.getItem());
                 ItemPickupRules.Room room = ItemPickupRules.room(fits, canMakeRoom(_mod));
                 if (room == ItemPickupRules.Room.MAKE_ROOM) {
                     return new EnsureFreeInventorySlotTask();
@@ -306,6 +307,18 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
             }
         }
         return new GetToEntityTask(itemEntity);
+    }
+
+    private static boolean hasRoomFor(AltoClef mod, ItemStack drop) {
+        NonNullList<ItemStack> slots = mod.getPlayer().getInventory().items;
+        int[] counts = new int[slots.size()];
+        boolean[] sameKind = new boolean[slots.size()];
+        for (int i = 0; i < counts.length; i++) {
+            ItemStack there = slots.get(i);
+            counts[i] = there.isEmpty() ? 0 : there.getCount();
+            sameKind[i] = ItemStack.isSameItemSameComponents(there, drop);
+        }
+        return ItemPickupRules.hasRoom(counts, sameKind, drop.getMaxStackSize());
     }
 
     // same question EnsureFreeInventorySlotTask asks, no container because we are standing in the open

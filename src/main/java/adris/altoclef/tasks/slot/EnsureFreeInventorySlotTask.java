@@ -2,6 +2,7 @@ package adris.altoclef.tasks.slot;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.trackers.storage.ContainerType;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.StorageHelper;
@@ -23,7 +24,10 @@ public class EnsureFreeInventorySlotTask extends Task {
     protected Task onTick(AltoClef mod) {
         ItemStack cursorStack = StorageHelper.getItemStackInCursorSlot();
         Optional<Slot> garbage = StorageHelper.getGarbageSlot(mod);
-        Optional<Slot> containerSlot = cursorStack.isEmpty() ? Optional.empty()
+        // only plain storage takes things back. a furnace input or a crafting grid would eat the stack (or hand it back
+        // on close into a bag with no room), which is the loss this is here to stop
+        boolean storageOpen = ContainerType.screenHandlerMatches(ContainerType.CHEST) || ContainerType.screenHandlerMatches(ContainerType.SHULKER);
+        Optional<Slot> containerSlot = cursorStack.isEmpty() || !storageOpen ? Optional.empty()
                 : mod.getItemStorage().getSlotThatCanFitInOpenContainer(cursorStack, false);
         FreeSlotPlan.Action action = FreeSlotPlan.plan(cursorStack.isEmpty(), ItemHelper.canThrowAwayStack(mod, cursorStack),
                 garbage.isPresent(), containerSlot.isPresent());

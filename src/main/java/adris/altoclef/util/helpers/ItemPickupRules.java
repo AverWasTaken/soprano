@@ -29,6 +29,16 @@ public final class ItemPickupRules {
         return gone && distance <= COLLECT_RANGE;
     }
 
+    // an empty slot, or a stack of the same thing with space left, takes at least some of a drop. counts[i] == 0 is an
+    // empty slot. the tracker's own "can fit" wants the WHOLE stack to land under the max whatever flag you pass it,
+    // so a 10 cobble drop next to a 60 cobble stack in a full bag never counted
+    public static boolean hasRoom(int[] counts, boolean[] sameKind, int maxStack) {
+        for (int i = 0; i < counts.length; i++) {
+            if (counts[i] == 0 || (sameKind[i] && counts[i] < maxStack)) return true;
+        }
+        return false;
+    }
+
     public enum Room { FITS, MAKE_ROOM, GIVE_UP }
 
     // a drop that fits even partly is picked up as is (vanilla takes what fits and leaves the rest lying there). only a
