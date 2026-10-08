@@ -58,10 +58,10 @@ public final class CombatPolicy {
     public static final float CHARGE_MIN_HEALTH = CombatRules.FLEE_HEALTH;
     public static final float CHARGE_RESUME = 12;
 
-    // at or below this hp (half hearts) with something that can reach us this close, the fight is not up for debate: no
-    // walking past anything, and the wheel stays with the defense chain for LOW_HP_LATCH ticks after the last time it
-    // was true. at hp 3 the verdict used to flip kite / fight / "passing 5 zombified piglins" every few ticks and the user
-    // task took the wheel back in between and walked us into the pile
+    // at or below this hp (half hearts) with something that can reach us this close, anything in contact is a run (never a
+    // trade), and the wheel stays with the defense chain for LOW_HP_LATCH ticks after the last time it was true. at hp 3
+    // the verdict used to flip kite / fight / "passing 5 zombified piglins" every few ticks and the user task took the
+    // wheel back in between and walked us into the pile
     public static final float LOW_HP = 6;
     public static final double LOW_HP_RANGE = 8;
     public static final long LOW_HP_LATCH = 40;
@@ -71,6 +71,8 @@ public final class CombatPolicy {
     public static final long TRAVEL_WINDOW = 20;
     // the path was seen under the user task this recently. past it we were probably busy fighting
     public static final long TRAVEL_FRESH = 10;
+
+    private static final String CORNERED = "nowhere to run";
 
     private enum State {
         FIGHT, KITE
@@ -93,8 +95,18 @@ public final class CombatPolicy {
     public record Point(double x, double y, double z) {
     }
 
-    // offsets from the player. fast means it outruns a sprinting player (baby zombies, spiders, hoglins, brutes)
-    public record Mob(int id, double dx, double dy, double dz, boolean ranged, boolean creeper, boolean fast, boolean seesUs) {
+    // offsets from the player. fast means it outruns a sprinting player (baby zombies, spiders, hoglins, brutes).
+    // hitUs: it hit us lately, or we hit it. the only kind of mob a "we got hurt" grudge applies to
+    public record Mob(int id, double dx, double dy, double dz, boolean ranged, boolean creeper, boolean fast, boolean seesUs,
+                      boolean hitUs) {
+        public Mob(int id, double dx, double dy, double dz, boolean ranged, boolean creeper, boolean fast, boolean seesUs) {
+            this(id, dx, dy, dz, ranged, creeper, fast, seesUs, false);
+        }
+
+        public Mob withHitUs() {
+            return new Mob(id, dx, dy, dz, ranged, creeper, fast, seesUs, true);
+        }
+
         public double distance() {
             return Math.sqrt(dx * dx + dy * dy + dz * dz);
         }
@@ -106,17 +118,31 @@ public final class CombatPolicy {
 
     // path: the next stretch of the route, as offsets from the player. empty when we are not on one.
     // x and z are where the player is, only used to see whether a retreat is getting anywhere
+    // shield: we have one to stand behind (two on us and no shield is a run, not a trade).
+    // ticksSinceHurt and graceTicks are the chain's business now: it turns them into Mob.hitUs, so a bite from one zombie
+    // does not make every other zombie on the hillside our problem
     public record Scene(List<Mob> mobs, long ticksSinceHurt, boolean travelling, List<Point> path, double x, double z,
-                        int swarmThreshold, long graceTicks, float health) {
+                        int swarmThreshold, long graceTicks, float health, boolean shield) {
+        // no shield
+        public Scene(List<Mob> mobs, long ticksSinceHurt, boolean travelling, List<Point> path, double x, double z,
+                     int swarmThreshold, long graceTicks, float health) {
+            this(mobs, ticksSinceHurt, travelling, path, x, z, swarmThreshold, graceTicks, health, false);
+        }
+
         // full health, for everything that is not about to ask whether a charge is affordable
         public Scene(List<Mob> mobs, long ticksSinceHurt, boolean travelling, List<Point> path, double x, double z,
                      int swarmThreshold, long graceTicks) {
-            this(mobs, ticksSinceHurt, travelling, path, x, z, swarmThreshold, graceTicks, 20f);
+            this(mobs, ticksSinceHurt, travelling, path, x, z, swarmThreshold, graceTicks, 20f, false);
         }
     }
 
-    // hold: do not walk up to anything farther than HOLD_CHASE, let it come
-    public record Decision(Verdict verdict, Set<Integer> ignored, int swarm, int near, boolean hold) {
+    // hold: do not walk up to anything farther than HOLD_CHASE, let it come. why: a few words for the log, so "kiting 2
+    // zombies" can say whether it was the crowd, the missing shield or the hp
+    public record Decision(Verdict verdict, Set<Integer> ignored, int swarm, int near, boolean hold, String why) {
+        public Decision(Verdict verdict, Set<Integer> ignored, int swarm, int near, boolean hold) {
+            this(verdict, ignored, swarm, near, hold, "");
+        }
+
         // the shield is for STAND and nothing else
         public boolean shield() {
             return verdict == Verdict.STAND;
@@ -128,6 +154,11 @@ public final class CombatPolicy {
 
         public boolean charging() {
             return verdict == Verdict.CHARGE;
+        }
+
+        // the run went nowhere. what is left is feet that cannot go, so the gear maths does not get a vote any more
+        public boolean cornered() {
+            return verdict == Verdict.STAND && CORNERED.equals(why);
         }
     }
 
@@ -167,7 +198,9 @@ public final class CombatPolicy {
         Set<Integer> ignored = new HashSet<>();
         List<Mob> active = new ArrayList<>(scene.mobs().size());
         for (Mob mob : scene.mobs()) {
-            if (!latched && canIgnore(mob, scene)) {
+            // (the latch used to switch this off, "nobody is walked past at low hp". walking past is the safe move at low
+            // hp, it is standing next to them that kills us. what the latch does now is turn contact into a run, below)
+            if (canIgnore(mob, scene)) {
                 ignored.add(mob.id());
             } else {
                 active.add(mob);
@@ -176,11 +209,13 @@ public final class CombatPolicy {
         if (active.isEmpty()) {
             // nothing left to fight. the next crowd is a new crowd
             reset();
-            return new Decision(Verdict.IGNORE, ignored, 0, 0, false);
+            return new Decision(Verdict.IGNORE, ignored, 0, 0, false, ignored.isEmpty() ? "" : passWhy(scene));
         }
 
         int swarm = 0;
         int near = 0;
+        // the slow ones on us. you can outwalk these, so two of them on us is a reason to leave, not to trade
+        int slowNear = 0;
         // the charge's numbers: everything shooting at us, the ones worth walking at, and how close the nearest of those is
         int seen = 0;
         int shooters = 0;
@@ -192,6 +227,7 @@ public final class CombatPolicy {
             // creepers are the creeper logic's problem, they do not count towards being stacked on
             if (!mob.creeper() && distance <= CONTACT_RANGE) near++;
             if (mob.melee() && distance <= CONTACT_RANGE) meleeNear++;
+            if (mob.melee() && !mob.fast() && distance <= CONTACT_RANGE) slowNear++;
             if (mob.ranged() && mob.seesUs()) seen++;
             if (isShooter(mob)) {
                 // any shooter that made it this far is one we are meant to deal with (in the engage zone, or not ignorable
@@ -201,8 +237,15 @@ public final class CombatPolicy {
             }
         }
         boolean crowd = swarm >= scene.swarmThreshold();
-        if (!crowd) needContact = false;
+        // at low hp nobody waits for a second zombie to show up before leaving
+        if (!crowd || latched) needContact = false;
         boolean blocked = now < blockedUntil;
+        // two on us and nothing to stand behind: trading hits standing still is what killed us twice to plain zombies. a
+        // charge in its first moments gets to finish its commit, same as it does against a zombie wandering by
+        boolean committed = charging && now - chargeSince < CHARGE_COMMIT;
+        boolean pressed = !scene.shield() && slowNear >= 2 && !committed;
+        // and at low hp anything in reach is a reason to go, one hit from anything is a lot of what is left
+        boolean lowRun = latched && meleeNear >= 1;
 
         if (state == State.KITE) {
             if (now - stateSince >= KITE_MAX) {
@@ -224,13 +267,17 @@ public final class CombatPolicy {
                 }
             }
             // done when the crowd has thinned out, or the front runner got to us while the rest are still on their way.
-            // nobody in reach and a crowd still on our heels means the run is working, not that it is over
-            if (state == State.KITE && now - stateSince >= MIN_DWELL && (near == 1 || !crowd)) {
-                needContact = crowd;
-                holdUntil = now + HOLD_TICKS;
+            // nobody in reach and a crowd still on our heels means the run is working, not that it is over. a pair with no
+            // shield is done once they string out to one on us (same idea), and nothing is done while we are hurt and
+            // something can still reach us
+            boolean thinned = crowd ? near == 1 : !pressed;
+            if (state == State.KITE && now - stateSince >= MIN_DWELL && !lowRun && thinned) {
+                needContact = crowd && !latched;
+                // let them come to us, unless we are low and the last thing we want is a reason to stand and wait for them
+                if (!latched) holdUntil = now + HOLD_TICKS;
                 switchTo(State.FIGHT, now);
             }
-        } else if (crowd && !blocked && (!needContact || near >= 2) && now - stateSince >= MIN_DWELL) {
+        } else if ((lowRun || pressed || (crowd && (!needContact || near >= 2))) && !blocked && now - stateSince >= MIN_DWELL) {
             switchTo(State.KITE, now);
             kiteWindowStart = now;
             kiteWindowX = scene.x();
@@ -240,15 +287,31 @@ public final class CombatPolicy {
         if (state == State.KITE) {
             // a crowd outranks a skeleton, even a committed charge. feet first
             charging = false;
-            return new Decision(Verdict.KITE, ignored, swarm, near, false);
+            return new Decision(Verdict.KITE, ignored, swarm, near, false, kiteWhy(lowRun, crowd, pressed));
         }
         if (chargeOn(now, scene.health(), crowd, seen, shooters, shooterRange, meleeNear)) {
-            return new Decision(Verdict.CHARGE, ignored, swarm, near, false);
+            return new Decision(Verdict.CHARGE, ignored, swarm, near, false, "shooters first");
         }
         boolean hold = now < holdUntil;
-        // a crowd we could not get away from is a crowd we stand in front of
-        if (near >= 2 || (crowd && blocked)) return new Decision(Verdict.STAND, ignored, swarm, near, false);
-        return new Decision(Verdict.FIGHT_ONE, ignored, swarm, near, hold);
+        // a run we could not make is a fight we stand in front of. a shield is the other reason to stand, with one of those
+        // two on us the trade is at least a fair one
+        boolean cornered = blocked && (crowd || pressed || lowRun);
+        if (cornered || near >= 2) {
+            return new Decision(Verdict.STAND, ignored, swarm, near, false,
+                    cornered ? CORNERED : scene.shield() ? "shield up" : "they outrun us");
+        }
+        return new Decision(Verdict.FIGHT_ONE, ignored, swarm, near, hold, hold ? "let them come" : "one at a time");
+    }
+
+    // why a run, in the words the log wants
+    private static String kiteWhy(boolean lowRun, boolean crowd, boolean pressed) {
+        if (lowRun) return "low hp";
+        if (pressed) return "two on us, no shield";
+        return crowd ? "a crowd" : "backing off";
+    }
+
+    private static String passWhy(Scene scene) {
+        return scene.travelling() ? "on our way" : "busy and they are not close";
     }
 
     // nobody around at all: the cheap version of decide, for the ticks that are nearly all of them
@@ -323,11 +386,10 @@ public final class CombatPolicy {
 
     // whether this mob is somebody else's business while we walk past. every one of these has to hold
     public static boolean canIgnore(Mob mob, Scene scene) {
-        if (!scene.travelling()) return false;
-        // nobody strolls past anything at this hp
-        if (scene.health() <= LOW_HP) return false;
-        // a hit, from anything, means it is no longer a stroll
-        if (scene.ticksSinceHurt() <= scene.graceTicks()) return false;
+        // the one that bit us (or that we hit) is a fight. the rest of the hillside is not, a hit used to end the stroll for
+        // every zombie in sight and a bot at hp 5 would stop and swing at all of them. low hp does not stop a pass either:
+        // walking past is the safe move there
+        if (mob.hitUs()) return false;
         // outruns us, so walking away from it is not an option
         if (mob.fast()) return false;
         double distance = mob.distance();
@@ -338,6 +400,10 @@ public final class CombatPolicy {
         // going to be a charge in a few steps either way. wider berth than a zombie gets
         boolean shooter = isShooter(mob);
         if (shooter && distance <= SHOOTER_NEAR) return false;
+        // standing at a furnace or a tree there is no route to keep clear of, just us. same radius as the stroll, and the
+        // task keeps going until it really is on top of us (it used to drop the pickaxe for a zombie nine blocks away). a
+        // pile of them though is never somebody else's business, the run has to start before they are on us
+        if (!scene.travelling()) return !pileForming(scene);
         double clearance = shooter ? SHOOTER_PATH_CLEARANCE : PATH_CLEARANCE;
         // heading for it is not passing it
         for (Point p : scene.path()) {
@@ -345,6 +411,15 @@ public final class CombatPolicy {
             if (Math.abs(p.y() - mob.dy()) <= 3 && dx * dx + dz * dz <= clearance * clearance) return false;
         }
         return true;
+    }
+
+    // enough slow melee mobs inside the swarm range to be a crowd, counting the ones nobody has ruled on yet
+    private static boolean pileForming(Scene scene) {
+        int slow = 0;
+        for (Mob mob : scene.mobs()) {
+            if (mob.melee() && !mob.fast() && mob.distance() <= SWARM_RANGE) slow++;
+        }
+        return slow >= scene.swarmThreshold();
     }
 
     // how many mobs we can tank. the shield used to add 20 here, which is how a shielded bot stood in the middle of

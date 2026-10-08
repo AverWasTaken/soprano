@@ -25,10 +25,15 @@ public final class Provocations {
     }
 
     public synchronized boolean recent(int id, long now) {
+        return recent(id, now, NeutralMobs.MEMORY_TICKS);
+    }
+
+    // same book, shorter memory: the pass-by grace only cares about the last few seconds
+    public synchronized boolean recent(int id, long now, long window) {
         Long at = stamps.get(id);
         if (at == null) return false;
         long age = now - at;
-        return age >= 0 && age <= NeutralMobs.MEMORY_TICKS;
+        return age >= 0 && age <= window;
     }
 
     public synchronized void clear() {

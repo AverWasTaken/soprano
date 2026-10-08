@@ -40,7 +40,24 @@ public class CombatPolicyTest {
         return new Mob(id, dx, 0, dz, true, false, false, sees);
     }
 
+    // a fight that is already on: every one of these has hit us or been hit, so none of them is a bystander
+    private static List<Mob> engaged(List<Mob> mobs) {
+        List<Mob> out = new ArrayList<>(mobs.size());
+        for (Mob mob : mobs) out.add(mob.withHitUs());
+        return out;
+    }
+
     private static Scene fighting(List<Mob> mobs) {
+        return new Scene(engaged(mobs), QUIET, false, List.of(), 0, 0, THRESHOLD, GRACE);
+    }
+
+    // the same fight with a shield to stand behind
+    private static Scene fightingShielded(List<Mob> mobs) {
+        return new Scene(engaged(mobs), QUIET, false, List.of(), 0, 0, THRESHOLD, GRACE, 20f, true);
+    }
+
+    // a task that is busy with something other than walking (mining, smelting): nobody has touched anybody
+    private static Scene working(List<Mob> mobs) {
         return new Scene(mobs, QUIET, false, List.of(), 0, 0, THRESHOLD, GRACE);
     }
 
@@ -83,7 +100,7 @@ public class CombatPolicyTest {
 
     @Test
     public void theThresholdIsTheSettings() {
-        Scene s = new Scene(ring(4, 5), QUIET, false, List.of(), 0, 0, 5, GRACE);
+        Scene s = new Scene(engaged(ring(4, 5)), QUIET, false, List.of(), 0, 0, 5, GRACE);
         assertEquals(FIGHT_ONE, new CombatPolicy().decide(0, s).verdict());
     }
 
@@ -114,10 +131,58 @@ public class CombatPolicyTest {
     }
 
     @Test
-    public void twoOnUsAndNoCrowdIsAShield() {
+    public void twoOnUsWithNothingToStandBehindIsARun() {
         Decision d = new CombatPolicy().decide(0, fighting(List.of(zombie(1, 2, 0), zombie(2, 0, 2))));
+        assertEquals(KITE, d.verdict());
+        assertTrue(d.kiting());
+        assertFalse(d.shield());
+        assertEquals("two on us, no shield", d.why());
+    }
+
+    @Test
+    public void twoOnUsWithAShieldIsAStand() {
+        Decision d = new CombatPolicy().decide(0, fightingShielded(List.of(zombie(1, 2, 0), zombie(2, 0, 2))));
         assertEquals(STAND, d.verdict());
         assertTrue(d.shield());
+        assertEquals("shield up", d.why());
+    }
+
+    @Test
+    public void aShieldDoesNotSaveACrowdFromTheRun() {
+        assertEquals(KITE, new CombatPolicy().decide(0, fightingShielded(ring(6, 5))).verdict());
+    }
+
+    @Test
+    public void twoOnUsButOneOfThemIsFastIsNotARun() {
+        // a baby zombie outruns us, so running from the pair gets us hit in the back. the slow one alone is not a pile
+        Decision d = new CombatPolicy().decide(0, fighting(List.of(zombie(1, 2, 0), spider(2, 0, 2))));
+        assertEquals(STAND, d.verdict());
+        assertEquals(2, d.near());
+    }
+
+    @Test
+    public void twoOnUsButNowhereToRunIsAStandAnyway() {
+        CombatPolicy policy = new CombatPolicy();
+        Scene pair = fighting(List.of(zombie(1, 2, 0), zombie(2, 0, 2)));
+        assertEquals(KITE, policy.decide(0, at(pair, 100, 100)).verdict());
+        // a window later we are still where we were: a dead end. the retreat has nowhere to go
+        Decision d = policy.decide(CombatPolicy.KITE_WINDOW, at(pair, 100.5, 100));
+        assertEquals(STAND, d.verdict());
+        assertTrue(d.cornered());
+        assertTrue(d.shield());
+        // and it does not start again for a while
+        assertEquals(STAND, policy.decide(CombatPolicy.KITE_WINDOW + 50, at(pair, 100.5, 100)).verdict());
+        assertEquals(KITE, policy.decide(CombatPolicy.KITE_WINDOW + CombatPolicy.KITE_GIVE_UP + 1, at(pair, 100.5, 100)).verdict());
+    }
+
+    @Test
+    public void thePairStringsOutAndTheFrontOneGetsFought() {
+        CombatPolicy policy = new CombatPolicy();
+        assertEquals(KITE, policy.decide(0, fighting(List.of(zombie(1, 2, 0), zombie(2, 0, 2)))).verdict());
+        // one fell back a few blocks: one on us, which is a fight we can take
+        Decision d = policy.decide(CombatPolicy.MIN_DWELL, fighting(List.of(zombie(1, 2, 0), zombie(2, 0, 4))));
+        assertEquals(FIGHT_ONE, d.verdict());
+        assertTrue(d.hold());
     }
 
     @Test
@@ -236,16 +301,50 @@ public class CombatPolicyTest {
     }
 
     @Test
-    public void notTravellingMeansNothingIsIgnored() {
-        Scene s = new Scene(List.of(zombie(1, 6, 0)), QUIET, false, AHEAD, 0, 0, THRESHOLD, GRACE);
-        assertEquals(FIGHT_ONE, new CombatPolicy().decide(0, s).verdict());
+    public void aBusyTaskPassesAZombieThatIsNotCloseYet() {
+        // mining, smelting, looting: no route to keep clear of, so it is just the strike range
+        Decision d = new CombatPolicy().decide(0, working(List.of(zombie(1, 6, 0))));
+        assertEquals(IGNORE, d.verdict());
+        assertTrue(d.ignored().contains(1));
+        assertEquals("busy and they are not close", d.why());
+        assertEquals(IGNORE, new CombatPolicy().decide(0, working(List.of(zombie(1, 2.6, 0)))).verdict());
+        // and it stops being somebody else's the moment it is on us
+        assertEquals(FIGHT_ONE, new CombatPolicy().decide(0, working(List.of(zombie(1, 2.5, 0)))).verdict());
+        assertEquals(FIGHT_ONE, new CombatPolicy().decide(0, working(List.of(zombie(1, 1, 0)))).verdict());
     }
 
     @Test
-    public void aHitEndsTheStroll() {
-        assertEquals(FIGHT_ONE, new CombatPolicy().decide(0, walking(List.of(zombie(1, 6, 0)), AHEAD, 50)).verdict());
-        assertEquals(FIGHT_ONE, new CombatPolicy().decide(0, walking(List.of(zombie(1, 6, 0)), AHEAD, GRACE)).verdict());
-        assertEquals(IGNORE, new CombatPolicy().decide(0, walking(List.of(zombie(1, 6, 0)), AHEAD, GRACE + 1)).verdict());
+    public void aStaleRouteDoesNotMakeABusyTaskFightEverything() {
+        // the latched path from before we stopped to mine says "zombie on the route", the task is not walking it
+        Scene s = new Scene(List.of(zombie(1, 0.5, 6)), QUIET, false, AHEAD, 0, 0, THRESHOLD, GRACE);
+        assertEquals(IGNORE, new CombatPolicy().decide(0, s).verdict());
+    }
+
+    @Test
+    public void aBusyTaskStillRunsFromAPileBeforeItIsOnTop() {
+        // three zombies at five blocks: waiting until they are inside the strike range is a bad time to start running
+        assertEquals(KITE, new CombatPolicy().decide(0, working(ring(3, 5))).verdict());
+        assertEquals(IGNORE, new CombatPolicy().decide(0, working(ring(2, 5))).verdict());
+    }
+
+    @Test
+    public void aBusyTaskStillFightsFastMobsAndWatchesCreepersAndShooters() {
+        assertEquals(FIGHT_ONE, new CombatPolicy().decide(0, working(List.of(spider(1, 6, 0)))).verdict());
+        assertEquals(FIGHT_ONE, new CombatPolicy().decide(0, working(List.of(creeper(1, 6, 0)))).verdict());
+        assertEquals(CHARGE, new CombatPolicy().decide(0, working(List.of(skeleton(1, 12, 0, true)))).verdict());
+    }
+
+    @Test
+    public void onlyTheMobThatHitUsLosesItsStroll() {
+        // two zombies off to the side, one of them bit us. the other one is still just a zombie on a hillside
+        Mob biter = zombie(1, 6, 0).withHitUs();
+        Mob bystander = zombie(2, -6, 0);
+        Decision d = new CombatPolicy().decide(0, walking(List.of(biter, bystander), AHEAD, 5));
+        assertEquals(FIGHT_ONE, d.verdict());
+        assertFalse(d.ignored().contains(1));
+        assertTrue(d.ignored().contains(2));
+        // being hurt by something we can't put a name to (lava, a fall) is nobody's grudge
+        assertEquals(IGNORE, new CombatPolicy().decide(0, walking(List.of(zombie(1, 6, 0)), AHEAD, 5)).verdict());
     }
 
     @Test
@@ -324,17 +423,59 @@ public class CombatPolicyTest {
     }
 
     @Test
-    public void nobodyIsWalkedPastAtLowHealth() {
+    public void walkingPastIsStillTheSafeMoveAtLowHealth() {
+        // the hillside is not the thing that kills us at hp 3, standing next to it is
         List<Mob> hill = List.of(zombie(1, 6, 0));
-        assertEquals(IGNORE, new CombatPolicy().decide(0, strollingAt(hill, 20)).verdict());
-        assertTrue(new CombatPolicy().decide(0, strollingAt(hill, 20)).ignored().contains(1));
-        // hp 3 and "passing 5 zombified piglins, not my problem" is how this bot died
-        Decision d = new CombatPolicy().decide(0, strollingAt(hill, 3));
+        for (float hp : new float[]{20, CombatPolicy.LOW_HP + 1, CombatPolicy.LOW_HP, 3}) {
+            Decision d = new CombatPolicy().decide(0, strollingAt(hill, hp));
+            assertEquals("hp " + hp, IGNORE, d.verdict());
+            assertTrue("hp " + hp, d.ignored().contains(1));
+        }
+        // a busy task passes it too
+        Scene busy = new Scene(hill, QUIET, false, List.of(), 0, 0, THRESHOLD, GRACE, 3);
+        assertEquals(IGNORE, new CombatPolicy().decide(0, busy).verdict());
+    }
+
+    @Test
+    public void lowHealthWithAZombieOnUsIsARunNotATrade() {
+        Decision d = new CombatPolicy().decide(0, withHealth(List.of(zombie(1, 2, 0)), 4));
+        assertEquals(KITE, d.verdict());
+        assertEquals("low hp", d.why());
+        assertFalse(d.shield());
+        // the line itself counts
+        assertEquals(KITE, new CombatPolicy().decide(0, withHealth(List.of(zombie(1, 2, 0)), CombatPolicy.LOW_HP)).verdict());
+        // one point of health up is the old single fight
+        assertEquals(FIGHT_ONE, new CombatPolicy().decide(0, withHealth(List.of(zombie(1, 2, 0)), CombatPolicy.LOW_HP + 1)).verdict());
+    }
+
+    @Test
+    public void lowHealthRunsEvenWithAShield() {
+        Scene s = new Scene(engaged(List.of(zombie(1, 2, 0))), QUIET, false, List.of(), 0, 0, THRESHOLD, GRACE, 3, true);
+        assertEquals(KITE, new CombatPolicy().decide(0, s).verdict());
+    }
+
+    @Test
+    public void lowHealthWithNothingInContactIsNotARunByItself() {
+        // the flee stance and the latch handle the rest, the verdict only turns contact into feet
+        assertEquals(FIGHT_ONE, new CombatPolicy().decide(0, withHealth(List.of(zombie(1, 5, 0)), 4)).verdict());
+    }
+
+    @Test
+    public void theLowHealthRunKeepsGoingAfterHealthTicksUpAndLeavesNoHold() {
+        CombatPolicy policy = new CombatPolicy();
+        assertEquals(KITE, policy.decide(0, withHealth(List.of(zombie(1, 2, 0)), 4)).verdict());
+        // hp 9 on a heal tick, still latched, still in contact: still going
+        assertEquals(KITE, policy.decide(CombatPolicy.MIN_DWELL, withHealth(List.of(zombie(1, 2, 0)), 9)).verdict());
+        // out of contact (latched still): the run is over, and nobody is told to wait around for the stragglers
+        long later = CombatPolicy.LOW_HP_LATCH - 10;
+        Decision d = policy.decide(later, withHealth(List.of(zombie(1, 6, 0)), 9));
+        assertTrue(policy.lowHpLatched(later));
         assertEquals(FIGHT_ONE, d.verdict());
-        assertFalse(d.ignored().contains(1));
-        // the line itself counts (<=)
-        assertFalse(new CombatPolicy().decide(0, strollingAt(hill, CombatPolicy.LOW_HP)).ignored().contains(1));
-        assertTrue(new CombatPolicy().decide(0, strollingAt(hill, CombatPolicy.LOW_HP + 1)).ignored().contains(1));
+        assertFalse(d.hold());
+        // the same run at full health does get the hold
+        CombatPolicy healthy = new CombatPolicy();
+        healthy.decide(0, fighting(ring(6, 5)));
+        assertTrue(healthy.decide(CombatPolicy.MIN_DWELL, fighting(List.of(zombie(1, 5, 0)))).hold());
     }
 
     @Test
@@ -345,17 +486,6 @@ public class CombatPolicyTest {
         assertTrue(policy.lowHpLatched(100));
         assertTrue(policy.lowHpLatched(100 + CombatPolicy.LOW_HP_LATCH - 1));
         assertFalse(policy.lowHpLatched(100 + CombatPolicy.LOW_HP_LATCH));
-    }
-
-    @Test
-    public void theLatchKeepsWalkingPastOffAfterHealthRecovers() {
-        CombatPolicy policy = new CombatPolicy();
-        List<Mob> hill = List.of(zombie(1, 6, 0));
-        policy.decide(0, strollingAt(hill, 5));
-        // a heal tick later we are at 8 hp, which on its own would be a stroll again. the latch says no
-        assertFalse(policy.decide(10, strollingAt(hill, 8)).ignored().contains(1));
-        // and once it runs out, it is
-        assertTrue(policy.decide(CombatPolicy.LOW_HP_LATCH + 1, strollingAt(hill, 8)).ignored().contains(1));
     }
 
     @Test
@@ -389,7 +519,7 @@ public class CombatPolicyTest {
     // ---- the charge
 
     private static Scene withHealth(List<Mob> mobs, float hp) {
-        return new Scene(mobs, QUIET, false, List.of(), 0, 0, THRESHOLD, GRACE, hp);
+        return new Scene(engaged(mobs), QUIET, false, List.of(), 0, 0, THRESHOLD, GRACE, hp);
     }
 
     private static final List<Mob> ONE_SKELETON = List.of(skeleton(1, 10, 0, true));
@@ -427,9 +557,10 @@ public class CombatPolicyTest {
     }
 
     @Test
-    public void twoOnUsIsAStandOneOnUsIsStillACharge() {
+    public void twoOnUsIsARunOneOnUsIsStillACharge() {
         List<Mob> pile = List.of(zombie(1, 2, 0), zombie(2, 0, 2), skeleton(3, 9, 0, true));
-        assertEquals(STAND, new CombatPolicy().decide(0, fighting(pile)).verdict());
+        assertEquals(KITE, new CombatPolicy().decide(0, fighting(pile)).verdict());
+        assertEquals(STAND, new CombatPolicy().decide(0, fightingShielded(pile)).verdict());
         List<Mob> one = List.of(zombie(1, 2, 0), skeleton(3, 9, 0, true));
         assertEquals(CHARGE, new CombatPolicy().decide(0, fighting(one)).verdict());
     }
@@ -449,8 +580,9 @@ public class CombatPolicyTest {
         List<Mob> pile = List.of(skeleton(1, 10, 0, true), zombie(2, 2, 0), zombie(3, 0, 2));
         // two zombies arrive: not yet, we are committed
         assertEquals(CHARGE, policy.decide(CombatPolicy.CHARGE_COMMIT - 1, fighting(pile)).verdict());
-        // now it is a melee and the shield is the answer
-        assertEquals(STAND, policy.decide(CombatPolicy.CHARGE_COMMIT, fighting(pile)).verdict());
+        // now it is a melee: feet without a shield, the shield with one
+        assertEquals(STAND, new CombatPolicy().decide(0, fightingShielded(pile)).verdict());
+        assertEquals(KITE, policy.decide(CombatPolicy.CHARGE_COMMIT, fighting(pile)).verdict());
     }
 
     @Test
@@ -492,9 +624,9 @@ public class CombatPolicyTest {
         CombatPolicy policy = new CombatPolicy();
         policy.decide(0, fighting(ONE_SKELETON));
         assertEquals(IGNORE, policy.decide(1, fighting(List.of())).verdict());
-        // nothing carried over: two zombies on us at the start of a charge is a stand, not a charge
+        // nothing carried over: two zombies on us at the start of a charge is a melee, not a charge
         List<Mob> pile = List.of(skeleton(1, 10, 0, true), zombie(2, 2, 0), zombie(3, 0, 2));
-        assertEquals(STAND, policy.decide(2, fighting(pile)).verdict());
+        assertEquals(KITE, policy.decide(2, fighting(pile)).verdict());
     }
 
     @Test

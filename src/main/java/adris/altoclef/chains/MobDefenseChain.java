@@ -97,6 +97,10 @@ public class MobDefenseChain extends SingleTaskChain {
     private long _lastCombatHurtTick = Long.MIN_VALUE / 2;
     // any damage at all, from anything. a stroll past a zombie stops being one when something bites
     private long _lastHurtTick = Long.MIN_VALUE / 2;
+    // the crit timing and the weapon pick want the plain version: any hit at all, and how many melee mobs are on us / around us
+    private long _lastAnyHurtTick = Long.MIN_VALUE / 2;
+    private int _meleeNear;
+    private int _meleeAround;
 
     private final CombatPolicy _policy = new CombatPolicy();
     private final CombatPolicy.TravelTracker _travel = new CombatPolicy.TravelTracker();
@@ -447,7 +451,7 @@ public class MobDefenseChain extends SingleTaskChain {
                 int canDealWith = CombatPolicy.standCapacity(armor, damage, hasShield);
                 // a crowd we could not run from (or were told to stand against) is fought whatever the gear says, running
                 // blind with a pile of them on our heels is worse than the shield
-                boolean crowd = _decision.swarm() >= Baritone.settings().altoSwarmThreshold.value;
+                boolean crowd = _decision.swarm() >= Baritone.settings().altoSwarmThreshold.value || _decision.cornered();
                 if (canDealWith > numberOfProblematicEntities || crowd) {
                     // We can deal with it.
                     for (Entity ToDealWith : toDealWith) {
@@ -845,6 +849,7 @@ public class MobDefenseChain extends SingleTaskChain {
         // a fresh hit shows up as hurtTime jumping back up
         boolean freshHit = player.hurtTime > _lastHurtTime;
         _lastHurtTime = player.hurtTime;
+        if (freshHit) _lastAnyHurtTick = now;
         // an arrow in the back is not somebody walking up to us. it used to reset the walking-past grace for every zombie on
         // the hillside, so one skeleton made us stop and fight all of them. below the low line it counts as before, at that
         // health the whole thing is a different conversation. no damage source on the client (it is only filled in by the
@@ -859,6 +864,10 @@ public class MobDefenseChain extends SingleTaskChain {
         List<Mob> dealable = new ArrayList<>();
         List<CombatPolicy.Mob> policyMobs = new ArrayList<>();
         double nearestAny = Double.POSITIVE_INFINITY;
+        long grace = Math.max(0, Baritone.settings().altoPassByGraceTicks.value);
+        boolean shield = mod.getItemStorage().hasItem(Items.SHIELD) || mod.getItemStorage().hasItemInOffhand(Items.SHIELD);
+        int meleeNear = 0;
+        int meleeAround = 0;
         try {
             for (Entity entity : mod.getEntityTracker().getHostiles()) {
                 if (!(entity instanceof Mob mob)) continue;
@@ -869,11 +878,19 @@ public class MobDefenseChain extends SingleTaskChain {
                 // is not the same as dangerous: one in the wall of our hole screaming at us is not a fight
                 if (!policyOn || mod.getBehaviour().shouldExcludeFromMobDefense(mob) || !EntityHelper.isAngryAtPlayer(mod, mob)) continue;
                 dealable.add(mob);
-                policyMobs.add(policyMob(mod, reach, player, mob));
+                CombatPolicy.Mob policyMob = policyMob(mod, reach, player, mob, now, grace);
+                policyMobs.add(policyMob);
+                if (policyMob.melee()) {
+                    double distance = policyMob.distance();
+                    if (distance <= CombatPolicy.CONTACT_RANGE) meleeNear++;
+                    if (distance <= CombatPolicy.SWARM_RANGE) meleeAround++;
+                }
             }
         } catch (ConcurrentModificationException ignored) {
             // the tracker rebuilds its lists on another thread sometimes, one tick of stale combat state is fine
         }
+        _meleeNear = meleeNear;
+        _meleeAround = meleeAround;
 
         CombatPolicy.Decision decision = NO_POLICY;
         if (policyOn) {
@@ -884,7 +901,7 @@ public class MobDefenseChain extends SingleTaskChain {
                 decision = _policy.decide(now, new CombatPolicy.Scene(policyMobs, now - _lastHurtTick, travelling,
                         relativePath(player), player.getX(), player.getZ(),
                         Math.max(1, Baritone.settings().altoSwarmThreshold.value),
-                        Math.max(0, Baritone.settings().altoPassByGraceTicks.value), player.getHealth()));
+                        grace, player.getHealth(), shield));
             }
         }
         _decision = decision;
@@ -923,13 +940,35 @@ public class MobDefenseChain extends SingleTaskChain {
     }
 
     // everything the policy wants to know about one mob, as plain numbers
-    private static CombatPolicy.Mob policyMob(AltoClef mod, MobReachability reach, LocalPlayer player, Mob mob) {
+    private static CombatPolicy.Mob policyMob(AltoClef mod, MobReachability reach, LocalPlayer player, Mob mob, long now, long grace) {
         double dx = mob.getX() - player.getX(), dy = mob.getY() - player.getY(), dz = mob.getZ() - player.getZ();
         boolean ranged = MobReachability.isRanged(mob);
         // the line of sight raycast is not free, only the ones that could shoot us from where they are get one
         boolean sees = ranged && dx * dx + dy * dy + dz * dz <= CombatPolicy.RANGED_NO_IGNORE * CombatPolicy.RANGED_NO_IGNORE
                 && reach.seesPlayer(mod, mob);
-        return new CombatPolicy.Mob(mob.getId(), dx, dy, dz, ranged, mob instanceof Creeper, isFast(mob), sees);
+        // the grudge book has this one if it hit us (or we hit it) lately. that is who the pass-by grace is about
+        boolean hitUs = mod.getEntityTracker().getProvocations().recent(mob.getId(), now, grace);
+        return new CombatPolicy.Mob(mob.getId(), dx, dy, dz, ranged, mob instanceof Creeper, isFast(mob), sees, hitUs);
+    }
+
+    // how long since anything hurt us, for the crit timing. the plain version of _lastHurtTick (arrows count)
+    public long ticksSinceHurt(AltoClef mod) {
+        if (!AltoClef.inGame()) return Long.MAX_VALUE / 2;
+        snapshot(mod);
+        return mod.getWorld().getGameTime() - _lastAnyHurtTick;
+    }
+
+    // melee mobs we are dealing with within contact range, and within the swarm range
+    public int meleeNear(AltoClef mod) {
+        if (!AltoClef.inGame()) return 0;
+        snapshot(mod);
+        return _meleeNear;
+    }
+
+    public int meleeAround(AltoClef mod) {
+        if (!AltoClef.inGame()) return 0;
+        snapshot(mod);
+        return _meleeAround;
     }
 
     // not the kind you stroll past: outruns a sprinting player, or is one of the oddballs (flyers, endermen, bosses, a lit
@@ -998,19 +1037,21 @@ public class MobDefenseChain extends SingleTaskChain {
             }
             key += "+passing";
         }
+        // the reason is part of the change of mind: "kiting, no shield" turning into "kiting, low hp" is worth a line
+        key += "/" + decision.why();
         if (key.equals(_lastVerdictLog)) return;
         _lastVerdictLog = key;
         // the numbers the call was made on, so a log reader can tell "ran at hp 17 with nothing on" from "ran at hp 6"
         String gear = " (hp " + Math.round(mod.getPlayer().getHealth()) + ", armor " + mod.getPlayer().getArmorValue()
                 + ", " + (mod.getItemStorage().hasItem(Items.SHIELD) || mod.getItemStorage().hasItemInOffhand(Items.SHIELD)
                 ? "shield" : "no shield") + ")";
+        String why = decision.why().isEmpty() ? "" : " (" + decision.why() + ")";
         switch (decision.verdict()) {
-            case KITE -> Debug.logInternal("kiting " + describe(dealable, decision, false) + gear);
-            case STAND -> Debug.logInternal("standing against " + describe(dealable, decision, false)
-                    + (decision.swarm() >= Baritone.settings().altoSwarmThreshold.value ? " (nowhere to run)" : "") + gear);
-            case FIGHT_ONE -> Debug.logInternal("fighting " + describe(dealable, decision, false) + " one at a time" + gear);
-            case CHARGE -> Debug.logInternal("charging " + describeShooters(dealable, decision) + gear);
-            case IGNORE -> Debug.logInternal("passing " + describe(dealable, decision, true) + ", not my problem" + gear);
+            case KITE -> Debug.logInternal("kiting " + describe(dealable, decision, false) + why + gear);
+            case STAND -> Debug.logInternal("standing against " + describe(dealable, decision, false) + why + gear);
+            case FIGHT_ONE -> Debug.logInternal("fighting " + describe(dealable, decision, false) + why + gear);
+            case CHARGE -> Debug.logInternal("charging " + describeShooters(dealable, decision) + why + gear);
+            case IGNORE -> Debug.logInternal("passing " + describe(dealable, decision, true) + ", " + decision.why() + gear);
         }
     }
 
