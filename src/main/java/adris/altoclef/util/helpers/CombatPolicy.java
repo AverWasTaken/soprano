@@ -58,6 +58,14 @@ public final class CombatPolicy {
     public static final float CHARGE_MIN_HEALTH = CombatRules.FLEE_HEALTH;
     public static final float CHARGE_RESUME = 12;
 
+    // at or below this hp (half hearts) with something that can reach us this close, the fight is not up for debate: no
+    // walking past anything, and the wheel stays with the defense chain for LOW_HP_LATCH ticks after the last time it
+    // was true. at hp 3 the verdict used to flip kite / fight / "passing 5 zombified piglins" every few ticks and the user
+    // task took the wheel back in between and walked us into the pile
+    public static final float LOW_HP = 6;
+    public static final double LOW_HP_RANGE = 8;
+    public static final long LOW_HP_LATCH = 40;
+
     // how fast we need to be moving for "travelling" to mean it, over the last TRAVEL_WINDOW ticks
     public static final double TRAVEL_MOVED = 2;
     public static final long TRAVEL_WINDOW = 20;
@@ -138,11 +146,28 @@ public final class CombatPolicy {
     // left a charge on health: not allowed back until CHARGE_RESUME
     private boolean chargeSpent;
 
+    // left alone by reset(): the fight going quiet for a tick is exactly when the latch earns its keep
+    private long lowHpUntil = Long.MIN_VALUE / 2;
+
+    // is the low hp latch on. the chain asks this for the stance and for whether a held kill target still gets a say
+    public boolean lowHpLatched(long now) {
+        return now < lowHpUntil;
+    }
+
     public Decision decide(long now, Scene scene) {
+        if (scene.health() <= LOW_HP) {
+            for (Mob mob : scene.mobs()) {
+                if (mob.distance() <= LOW_HP_RANGE) {
+                    lowHpUntil = now + LOW_HP_LATCH;
+                    break;
+                }
+            }
+        }
+        boolean latched = lowHpLatched(now);
         Set<Integer> ignored = new HashSet<>();
         List<Mob> active = new ArrayList<>(scene.mobs().size());
         for (Mob mob : scene.mobs()) {
-            if (canIgnore(mob, scene)) {
+            if (!latched && canIgnore(mob, scene)) {
                 ignored.add(mob.id());
             } else {
                 active.add(mob);
@@ -299,6 +324,8 @@ public final class CombatPolicy {
     // whether this mob is somebody else's business while we walk past. every one of these has to hold
     public static boolean canIgnore(Mob mob, Scene scene) {
         if (!scene.travelling()) return false;
+        // nobody strolls past anything at this hp
+        if (scene.health() <= LOW_HP) return false;
         // a hit, from anything, means it is no longer a stroll
         if (scene.ticksSinceHurt() <= scene.graceTicks()) return false;
         // outruns us, so walking away from it is not an option

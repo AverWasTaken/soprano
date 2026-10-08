@@ -316,6 +316,76 @@ public class CombatPolicyTest {
         assertEquals(KITE, new CombatPolicy().decide(0, walking(wall, AHEAD, QUIET)).verdict());
     }
 
+    // ---- the low hp latch
+
+    // walking along AHEAD at the given health. the zombie on the hillside is off the route, so at full health it's ignored
+    private static Scene strollingAt(List<Mob> mobs, float hp) {
+        return new Scene(mobs, QUIET, true, AHEAD, 0, 0, THRESHOLD, GRACE, hp);
+    }
+
+    @Test
+    public void nobodyIsWalkedPastAtLowHealth() {
+        List<Mob> hill = List.of(zombie(1, 6, 0));
+        assertEquals(IGNORE, new CombatPolicy().decide(0, strollingAt(hill, 20)).verdict());
+        assertTrue(new CombatPolicy().decide(0, strollingAt(hill, 20)).ignored().contains(1));
+        // hp 3 and "passing 5 zombified piglins, not my problem" is how this bot died
+        Decision d = new CombatPolicy().decide(0, strollingAt(hill, 3));
+        assertEquals(FIGHT_ONE, d.verdict());
+        assertFalse(d.ignored().contains(1));
+        // the line itself counts (<=)
+        assertFalse(new CombatPolicy().decide(0, strollingAt(hill, CombatPolicy.LOW_HP)).ignored().contains(1));
+        assertTrue(new CombatPolicy().decide(0, strollingAt(hill, CombatPolicy.LOW_HP + 1)).ignored().contains(1));
+    }
+
+    @Test
+    public void lowHealthWithSomethingNearLatchesForTwoSeconds() {
+        CombatPolicy policy = new CombatPolicy();
+        assertFalse(policy.lowHpLatched(0));
+        policy.decide(100, withHealth(List.of(zombie(1, 5, 0)), 4));
+        assertTrue(policy.lowHpLatched(100));
+        assertTrue(policy.lowHpLatched(100 + CombatPolicy.LOW_HP_LATCH - 1));
+        assertFalse(policy.lowHpLatched(100 + CombatPolicy.LOW_HP_LATCH));
+    }
+
+    @Test
+    public void theLatchKeepsWalkingPastOffAfterHealthRecovers() {
+        CombatPolicy policy = new CombatPolicy();
+        List<Mob> hill = List.of(zombie(1, 6, 0));
+        policy.decide(0, strollingAt(hill, 5));
+        // a heal tick later we are at 8 hp, which on its own would be a stroll again. the latch says no
+        assertFalse(policy.decide(10, strollingAt(hill, 8)).ignored().contains(1));
+        // and once it runs out, it is
+        assertTrue(policy.decide(CombatPolicy.LOW_HP_LATCH + 1, strollingAt(hill, 8)).ignored().contains(1));
+    }
+
+    @Test
+    public void theLatchSurvivesAQuietTickBetweenFights() {
+        CombatPolicy policy = new CombatPolicy();
+        policy.decide(0, withHealth(List.of(zombie(1, 5, 0)), 3));
+        // nothing dealable for a tick (the mob stepped out of the zone): the policy goes idle, the latch must not
+        policy.idle();
+        assertTrue(policy.lowHpLatched(5));
+    }
+
+    @Test
+    public void noLatchWithoutSomethingCloseOrWithHealthToSpare() {
+        CombatPolicy far = new CombatPolicy();
+        far.decide(0, withHealth(List.of(zombie(1, 12, 0)), 3));
+        assertFalse(far.lowHpLatched(0));
+        CombatPolicy healthy = new CombatPolicy();
+        healthy.decide(0, withHealth(List.of(zombie(1, 3, 0)), CombatPolicy.LOW_HP + 1));
+        assertFalse(healthy.lowHpLatched(0));
+    }
+
+    @Test
+    public void everyTickInTheLatchRefreshesIt() {
+        CombatPolicy policy = new CombatPolicy();
+        for (long t = 0; t < 200; t += 10) {
+            policy.decide(t, withHealth(List.of(zombie(1, 4, 0)), 3));
+            assertTrue("at " + t, policy.lowHpLatched(t + CombatPolicy.LOW_HP_LATCH - 1));
+        }
+    }
+
     // ---- the charge
 
     private static Scene withHealth(List<Mob> mobs, float hp) {

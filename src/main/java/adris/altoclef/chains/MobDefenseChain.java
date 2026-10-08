@@ -102,6 +102,7 @@ public class MobDefenseChain extends SingleTaskChain {
     private final CombatPolicy.TravelTracker _travel = new CombatPolicy.TravelTracker();
     private Task _travelUserTask;
     private CombatPolicy.Decision _decision = NO_POLICY;
+    private boolean _lowHpLatched;
     // the ones we are actually dealing with this tick (not the ones walking past), nearest first
     private List<Mob> _dealWith = List.of();
     private String _lastVerdictLog = "";
@@ -521,6 +522,8 @@ public class MobDefenseChain extends SingleTaskChain {
     // is somebody being fought right now. a dodge that cut a kill short parks the target for a moment instead of
     // dropping it, so this stays true through the dodge
     private boolean fightOn(long now) {
+        // at the low hp latch nothing is worth finishing, a held kill target used to be the reason the flee never fired
+        if (_lowHpLatched) return false;
         return _targetEntity != null || now <= _parkedUntil;
     }
 
@@ -890,6 +893,7 @@ public class MobDefenseChain extends SingleTaskChain {
             }
         }
         _decision = decision;
+        _lowHpLatched = policyOn && _policy.lowHpLatched(now);
         logVerdict(mod, decision, dealable);
 
         List<Mob> dealWith = new ArrayList<>(dealable.size());
@@ -911,10 +915,16 @@ public class MobDefenseChain extends SingleTaskChain {
         Creeper fusing = getClosestFusingCreeper(mod);
         boolean creeperClose = fusing != null && fusing.distanceTo(player) <= CombatRules.CREEPER_RANGE;
         // backing away from a crowd is a fight too, the crowd being a few blocks behind us does not make it lunch time
-        boolean inCombat = CombatRules.inCombat(nearest, now - _lastCombatHurtTick, creeperClose) || decision.kiting();
+        // and so is the low hp latch (see CombatPolicy.LOW_HP): the user task getting the wheel back for a tick because
+        // the crowd looked "ignored" or "far" is how we walked into the pile at hp 3
+        boolean inCombat = CombatRules.inCombat(nearest, now - _lastCombatHurtTick, creeperClose) || decision.kiting()
+                || (_lowHpLatched && !Double.isInfinite(nearestAny));
         // gapples are never picked as food (FoodSelector keeps them for exactly this), so check the bag ourselves
         boolean hasGapple = mod.getItemStorage().hasItem(Items.GOLDEN_APPLE) || mod.getItemStorage().hasItem(Items.ENCHANTED_GOLDEN_APPLE);
         _stance = CombatRules.stance(inCombat, player.getHealth(), nearest, hasGapple);
+        // the quick bite at hp 4 is for "nothing next to us", and mob defense standing down for it hands the wheel to the
+        // user task for as long as we chew. with the latch on something is still within 8, so feet first, bite later
+        if (_lowHpLatched && _stance == CombatRules.Stance.EAT) _stance = CombatRules.Stance.FLEE;
     }
 
     // everything the policy wants to know about one mob, as plain numbers
