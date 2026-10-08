@@ -327,7 +327,8 @@ public class NetherPhase implements PhaseHandler {
         if (campPinger.ping(now, camping)) {
             ctx.progress("waiting at the blaze spawner");
         }
-        hudState = "Collecting Blaze Rods";
+        // standing still at a spawner looks exactly like a frozen bot, so say what we're doing
+        hudState = (camping ? "Waiting for blazes to spawn" : "Collecting blaze rods") + " (" + rods + "/" + rodsNeed + ")";
         return rodsTask;
     }
 
