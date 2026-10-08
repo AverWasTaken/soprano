@@ -3,6 +3,7 @@ package adris.altoclef.tasks.construction;
 import org.junit.Test;
 
 import static adris.altoclef.tasks.construction.StationAttempt.Phase.AIM;
+import static adris.altoclef.tasks.construction.StationAttempt.Phase.CARVE;
 import static adris.altoclef.tasks.construction.StationAttempt.Phase.DONE;
 import static adris.altoclef.tasks.construction.StationAttempt.Phase.FALLBACK;
 import static adris.altoclef.tasks.construction.StationAttempt.Phase.PICK;
@@ -116,10 +117,103 @@ public class StationAttemptTest {
         assertEquals(0, a.tries());
     }
 
+    // nothing clickable and nothing to carve: the walk is next
+    private static void nothingHere(StationAttempt a) {
+        a.noSpot();
+        assertEquals(CARVE, a.phase());
+        a.noCarve();
+    }
+
+    // the log: a shaft, nothing clickable, and it went straight to the old placer. carving comes before any of the rest
+    @Test
+    public void noSpotCarvesBeforeAnythingElse() {
+        StationAttempt a = new StationAttempt();
+        a.noSpot();
+        assertEquals(CARVE, a.phase());
+        assertEquals(0, a.relocations());
+    }
+
+    // even with the walks used up, "no spot" digs before it gives up
+    @Test
+    public void noSpotOnTheLastPatchStillCarvesFirst() {
+        StationAttempt a = new StationAttempt();
+        nothingHere(a);
+        a.arrived();
+        nothingHere(a);
+        a.arrived();
+        a.noSpot();
+        assertEquals(CARVE, a.phase());
+        a.noCarve();
+        assertEquals(FALLBACK, a.phase());
+    }
+
+    @Test
+    public void aDugHoleGetsALookBeforeAnythingElse() {
+        StationAttempt a = new StationAttempt();
+        a.noSpot();
+        a.carveDone();
+        assertEquals(PICK, a.phase());
+        assertEquals(1, a.carves());
+    }
+
+    @Test
+    public void nothingToCarveWalksNext() {
+        StationAttempt a = new StationAttempt();
+        a.noSpot();
+        a.noCarve();
+        assertEquals(RELOCATE, a.phase());
+        assertEquals(1, a.relocations());
+    }
+
+    @Test
+    public void holesThatDontHelpRunOutAndWeWalk() {
+        StationAttempt a = new StationAttempt();
+        for (int i = 0; i < StationAttempt.MAX_CARVES; i++) {
+            a.noSpot();
+            assertEquals(CARVE, a.phase());
+            a.carveDone();
+        }
+        a.noSpot();
+        assertEquals(RELOCATE, a.phase());
+    }
+
+    @Test
+    public void aNewPatchHasItsOwnHolesToTry() {
+        StationAttempt a = new StationAttempt();
+        for (int i = 0; i < StationAttempt.MAX_CARVES; i++) {
+            a.noSpot();
+            a.carveDone();
+        }
+        a.noSpot();
+        a.arrived();
+        assertEquals(0, a.carves());
+        a.noSpot();
+        assertEquals(CARVE, a.phase());
+    }
+
+    @Test
+    public void carveDoneOutsideTheCarvePhaseDoesNothing() {
+        StationAttempt a = new StationAttempt();
+        a.picked();
+        a.carveDone();
+        assertEquals(AIM, a.phase());
+        assertEquals(0, a.carves());
+    }
+
+    @Test
+    public void theFallbackSaysWhy() {
+        StationAttempt a = new StationAttempt();
+        assertEquals("", a.fallbackWhy());
+        nothingHere(a);
+        a.noStandpoint();
+        assertEquals(FALLBACK, a.phase());
+        assertFalse(a.fallbackWhy().isEmpty());
+    }
+
     @Test
     public void arrivingStartsAFreshPatch() {
         StationAttempt a = new StationAttempt();
-        a.noSpot();
+        nothingHere(a);
         assertEquals(RELOCATE, a.phase());
         a.arrived();
         assertEquals(PICK, a.phase());
@@ -133,15 +227,16 @@ public class StationAttemptTest {
     @Test
     public void twoRelocationsThenTheOldPlacerGetsIt() {
         StationAttempt a = new StationAttempt();
-        a.noSpot();
+        nothingHere(a);
         assertEquals(RELOCATE, a.phase());
         a.arrived();
-        a.noSpot();
+        nothingHere(a);
         assertEquals(RELOCATE, a.phase());
         assertEquals(2, a.relocations());
         a.arrived();
-        a.noSpot();
+        nothingHere(a);
         assertEquals(FALLBACK, a.phase());
+        assertFalse(a.fallbackWhy().isEmpty());
         // the cap holds: losing tries on the last patch goes to the fallback too
         assertEquals(2, a.relocations());
     }
@@ -149,9 +244,9 @@ public class StationAttemptTest {
     @Test
     public void threeLostTriesOnTheLastPatchAlsoFallBack() {
         StationAttempt a = new StationAttempt();
-        a.noSpot();
+        nothingHere(a);
         a.arrived();
-        a.noSpot();
+        nothingHere(a);
         a.arrived();
         loseATry(a);
         loseATry(a);
@@ -163,7 +258,7 @@ public class StationAttemptTest {
     @Test
     public void nowhereToStandMeansFallBackNow() {
         StationAttempt a = new StationAttempt();
-        a.noSpot();
+        nothingHere(a);
         assertEquals(RELOCATE, a.phase());
         a.noStandpoint();
         assertEquals(FALLBACK, a.phase());

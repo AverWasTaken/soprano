@@ -3,6 +3,7 @@ package adris.altoclef.tasks.construction;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 public class PlaceSpotRankTest {
@@ -49,6 +50,44 @@ public class PlaceSpotRankTest {
         assertEquals(9, PlaceSpotRank.oldScore(5, true, true, false), 0);
         assertEquals(15, PlaceSpotRank.oldScore(5, false, false, false), 0);
         assertEquals(8, PlaceSpotRank.oldScore(5, false, true, true), 0);
+    }
+
+    // feet at 6,50,-200 (the shaft from the log)
+    private static boolean pillars(int x, int y, int z, boolean hasBelow) {
+        return PlaceSpotRank.wouldPillar(x, y, z, 6, 50, -200, hasBelow);
+    }
+
+    @Test
+    public void ourOwnFeetAndHeadCellsAreNeverPicked() {
+        assertTrue(pillars(6, 50, -200, true));
+        assertTrue(pillars(6, 51, -200, true));
+        assertTrue(pillars(6, 50, -200, false));
+    }
+
+    @Test
+    public void aCellAboveOurFeetWithNothingUnderItNeedsPillaring() {
+        // 6,52 is what the builder was climbing to after 6,51 was struck
+        assertTrue(pillars(6, 52, -200, false));
+        assertTrue(pillars(7, 51, -200, false));
+    }
+
+    @Test
+    public void aSupportedCellAboveOurFeetIsAFloorAlready() {
+        // the top of a ledge next to us at head height
+        assertFalse(pillars(7, 51, -200, true));
+    }
+
+    @Test
+    public void cellsAtOrBelowFeetLevelNeedNoPillar() {
+        assertFalse(pillars(7, 50, -200, false));
+        assertFalse(pillars(7, 49, -200, false));
+        assertFalse(pillars(6, 49, -200, true));
+    }
+
+    @Test
+    public void theColumnAboveTheHeadCellIsOnlyOutWhenItHasNoFloor() {
+        assertTrue(pillars(6, 52, -200, false));
+        assertFalse(pillars(6, 52, -200, true));
     }
 
     @Test

@@ -8,6 +8,7 @@ import adris.altoclef.ui.HudText;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.StorageHelper;
+import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.slots.Slot;
 import adris.altoclef.util.time.TimerGame;
 import baritone.api.utils.RayTraceUtils;
@@ -18,6 +19,7 @@ import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.Entity;
@@ -28,6 +30,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.FallingBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
@@ -35,6 +38,7 @@ import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.CollisionContext;
 
 import java.util.Arrays;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
@@ -47,15 +51,28 @@ public class PlaceStationTask extends Task {
     private static final Set<Block> STATIONS = Set.of(Blocks.CRAFTING_TABLE, Blocks.FURNACE, Blocks.SMOKER, Blocks.BLAST_FURNACE);
     // a walk to a better patch of floor gets this long, then we look again from wherever we are
     private static final double WALK_SECONDS = 12;
+    // stone by hand is a couple of seconds, deepslate and the like more. this is for a pick that never lands
+    private static final double CARVE_SECONDS = 10;
+    // softer than this and we'll mine it for room. stone is 1.5, deepslate 3, obsidian 50 (not today)
+    private static final float CARVE_MAX_HARDNESS = 3.5f;
 
     private final Block[] _toPlace;
     // the old way, for when the player way has been out of ideas twice
     private final PlaceBlockNearbyTask _fallback;
     private final StationSpots.Bans _bans = new StationSpots.Bans();
     private final TimerGame _walkTimer = new TimerGame(WALK_SECONDS);
+    // a wall that fights back for this long isn't getting carved today
+    private final TimerGame _carveTimer = new TimerGame(CARVE_SECONDS);
+    // carve targets that didn't open up. separate from _bans, those are for spots that missed
+    private final StationSpots.Bans _carveBans = new StationSpots.Bans();
     private StationAttempt _attempt = new StationAttempt();
     private StationSpots.Spot _spot;
     private Task _walk;
+    // the block we are mining out for room, and the last one we did, which gets to skip the way-out rule
+    private Task _carveTask;
+    private BlockPos _carving;
+    private StationSpots.Cell _carved;
+    private boolean _fallbackLogged;
 
     public PlaceStationTask(Block... toPlace) {
         _toPlace = toPlace;
@@ -79,8 +96,13 @@ public class PlaceStationTask extends Task {
     protected void onStart(AltoClef mod) {
         _attempt = new StationAttempt();
         _bans.clear();
+        _carveBans.clear();
         _spot = null;
         _walk = null;
+        _carveTask = null;
+        _carving = null;
+        _carved = null;
+        _fallbackLogged = false;
         // whatever walked us here may still be pathing, and a builder that wakes up is the thing this task replaces
         mod.getClientBaritone().getPathingBehavior().forceCancel();
         mod.getClientBaritone().getBuilderProcess().onLostControl();
@@ -91,11 +113,16 @@ public class PlaceStationTask extends Task {
         _attempt.tick();
         return switch (_attempt.phase()) {
             case PICK -> pick(mod);
+            case CARVE -> carve(mod);
             case AIM -> aim(mod);
             case VERIFY -> verify(mod);
             case RELOCATE -> relocate(mod);
             case FALLBACK -> {
                 mod.getInputControls().release(Input.SNEAK);
+                if (!_fallbackLogged) {
+                    _fallbackLogged = true;
+                    Debug.logInternal("station: falling back to the old placer (" + _attempt.fallbackWhy() + ")");
+                }
                 setDebugState("Out of ideas, letting the old placer try.");
                 yield _fallback;
             }
@@ -108,7 +135,7 @@ public class PlaceStationTask extends Task {
             return null;
         }
         setDebugState("Looking for a spot.");
-        Optional<StationSpots.Spot> spot = StationSpots.best(new World(mod), stance(mod), _bans);
+        Optional<StationSpots.Spot> spot = StationSpots.best(new World(mod), stance(mod), _bans, _carved);
         if (spot.isEmpty()) {
             Debug.logInternal("station spots: nothing clickable around " + mod.getPlayer().blockPosition().toShortString());
             _attempt.noSpot();
@@ -118,6 +145,44 @@ public class PlaceStationTask extends Task {
         Debug.logInternal("station spot: " + describe(_spot));
         _attempt.picked();
         return null;
+    }
+
+    // nothing to click, so make something: knock a block out of the wall beside us and the hole is a normal candidate.
+    // underground in a 1x1 shaft that is the only thing a player can do, walking off to find a floor isn't on the menu
+    private Task carve(AltoClef mod) {
+        mod.getInputControls().release(Input.SNEAK);
+        if (_carving == null) {
+            List<StationSpots.Cell> options = StationSpots.carveCandidates(new World(mod), stance(mod), _carveBans);
+            if (options.isEmpty()) {
+                Debug.logInternal("station: nothing safe to carve around " + mod.getPlayer().blockPosition().toShortString());
+                _attempt.noCarve();
+                return null;
+            }
+            StationSpots.Cell cell = options.get(0);
+            _carving = new BlockPos(cell.x(), cell.y(), cell.z());
+            _carveTask = new DestroyBlockTask(_carving);
+            _carveTimer.reset();
+            Debug.logInternal("station: carving " + _carving.toShortString() + " for room");
+        }
+        if (_carveTask.isFinished(mod)) {
+            _carved = new StationSpots.Cell(_carving.getX(), _carving.getY(), _carving.getZ());
+            finishCarve();
+            return null;
+        }
+        if (_carveTimer.elapsed()) {
+            Debug.logInternal("station: carving " + _carving.toShortString() + " is taking forever, trying another wall");
+            _carveBans.ban(_carving.getX(), _carving.getY(), _carving.getZ());
+            finishCarve();
+            return null;
+        }
+        setDebugState("Mining out some room for the station.");
+        return _carveTask;
+    }
+
+    private void finishCarve() {
+        _carving = null;
+        _carveTask = null;
+        _attempt.carveDone();
     }
 
     private Task aim(AltoClef mod) {
@@ -182,12 +247,12 @@ public class PlaceStationTask extends Task {
         if (_walk == null) {
             Optional<StationSpots.Stand> stand = StationSpots.standpoint(new World(mod), stance(mod), _bans, sneakEyeHeight(mod));
             if (stand.isEmpty()) {
-                Debug.logInternal("station spots: nowhere better to stand, falling back");
                 _attempt.noStandpoint();
                 return null;
             }
             BlockPos at = new BlockPos(stand.get().x(), stand.get().y(), stand.get().z());
-            Debug.logInternal("station spots: relocating to " + at.toShortString() + " (move " + _attempt.relocations() + ")");
+            Debug.logInternal("station: walking to a better patch at " + at.toShortString() + " (move " + _attempt.relocations() + ")");
+            _carved = null;
             _walk = new GetToBlockTask(at);
             _walkTimer.reset();
         }
@@ -298,6 +363,11 @@ public class PlaceStationTask extends Task {
         return clicked.equals(spotCell(spot)) && state.canBeReplaced();
     }
 
+    // every ore is *_ore, and ancient debris is far too hard to get here anyway
+    private static boolean isOre(Block block) {
+        return BuiltInRegistries.BLOCK.getKey(block).getPath().endsWith("_ore");
+    }
+
     private static double sneakEyeHeight(AltoClef mod) {
         return mod.getPlayer().getEyeHeight(Pose.CROUCHING);
     }
@@ -380,6 +450,29 @@ public class PlaceStationTask extends Task {
             BlockState s = level.getBlockState(floor);
             return s.getFluidState().isEmpty() && !s.is(Blocks.MAGMA_BLOCK) && s.isFaceSturdy(level, floor, Direction.UP)
                     && s.isCollisionShapeFullBlock(level, floor) && passable(x, y, z) && passable(x, y + 1, z);
+        }
+
+        @Override
+        public boolean carvable(int x, int y, int z) {
+            BlockPos p = new BlockPos(x, y, z);
+            if (!mod.getChunkTracker().isChunkLoaded(p)) {
+                return false;
+            }
+            BlockState s = level.getBlockState(p);
+            // the cheap nos first. air and plants are the spot search's business, not a wall. a block entity is a chest,
+            // a furnace, a spawner, a sign: somebody's. ore is what we are down here for. bedrock reads as -1
+            float hardness = s.getDestroySpeed(level, p);
+            if (s.isAir() || !s.getFluidState().isEmpty() || s.canBeReplaced() || s.hasBlockEntity()
+                    || hardness < 0 || hardness > CARVE_MAX_HARDNESS || isOre(s.getBlock())) {
+                return false;
+            }
+            return s.isCollisionShapeFullBlock(level, p) && WorldHelper.canBreak(mod, p);
+        }
+
+        @Override
+        public boolean floods(int x, int y, int z) {
+            BlockState s = level.getBlockState(new BlockPos(x, y, z));
+            return !s.getFluidState().isEmpty() || s.getBlock() instanceof FallingBlock;
         }
 
         @Override

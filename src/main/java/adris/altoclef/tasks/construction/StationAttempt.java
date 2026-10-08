@@ -14,10 +14,15 @@ final class StationAttempt {
     // tries on one patch of floor before we go somewhere else
     static final int TRIES_BEFORE_RELOCATE = 3;
     static final int MAX_RELOCATIONS = 2;
+    // holes we dig for room before we try walking somewhere else. a hole that didn't help, it's the wall's fault, not ours
+    static final int MAX_CARVES = 3;
 
     enum Phase {
         // choose a spot
         PICK,
+        // nothing clickable around: mine a block out of the wall beside us and put the station in the hole, like a player
+        // in a tunnel would
+        CARVE,
         // equip, turn, wait for the crosshair to land on the face, click
         AIM,
         // clicked, waiting for the block to show up and stay
@@ -32,8 +37,11 @@ final class StationAttempt {
     private Phase phase = Phase.PICK;
     private int tries;
     private int relocations;
+    private int carves;
     private int phaseTicks;
     private int landedTicks;
+    // why the player way ran dry, for the log line when the old placer takes over
+    private String fallbackWhy = "";
 
     Phase phase() {
         return phase;
@@ -51,6 +59,14 @@ final class StationAttempt {
         return phaseTicks;
     }
 
+    int carves() {
+        return carves;
+    }
+
+    String fallbackWhy() {
+        return fallbackWhy;
+    }
+
     // once per task tick
     void tick() {
         phaseTicks++;
@@ -66,9 +82,28 @@ final class StationAttempt {
         enter(Phase.AIM);
     }
 
-    // nothing in reach is clickable
+    // nothing in reach is clickable. dig out some room first, then walk, then the old placer. this used to go straight to
+    // the walk, and a shaft has nowhere to walk to, so it went straight to the old placer, which pillared
     void noSpot() {
-        giveUpOnThisPatch();
+        if (carves < MAX_CARVES) {
+            enter(Phase.CARVE);
+        } else {
+            giveUpOnThisPatch("nothing clickable and " + carves + " holes dug didn't help");
+        }
+    }
+
+    // nothing around us that is worth (or safe) to mine out
+    void noCarve() {
+        giveUpOnThisPatch("nothing clickable and nothing safe to mine out for room");
+    }
+
+    // the hole is dug (or the digging timed out, same thing: look at what we've got now). counts either way so a wall that
+    // won't give can't keep us here
+    void carveDone() {
+        if (phase == Phase.CARVE) {
+            carves++;
+            enter(Phase.PICK);
+        }
     }
 
     boolean aimTimedOut() {
@@ -97,24 +132,26 @@ final class StationAttempt {
     void failed() {
         tries++;
         if (tries >= TRIES_BEFORE_RELOCATE) {
-            giveUpOnThisPatch();
+            giveUpOnThisPatch(TRIES_BEFORE_RELOCATE + " clicks lost on this patch");
         } else {
             enter(Phase.PICK);
         }
     }
 
-    private void giveUpOnThisPatch() {
+    private void giveUpOnThisPatch(String why) {
         if (relocations < MAX_RELOCATIONS) {
             relocations++;
             tries = 0;
             enter(Phase.RELOCATE);
         } else {
+            fallbackWhy = why + ", and already moved " + relocations + " times";
             enter(Phase.FALLBACK);
         }
     }
 
     // nowhere better to stand within reach of here. asking again would find the same nothing
     void noStandpoint() {
+        fallbackWhy = "nowhere better to stand within " + StationSpots.MAX_MOVE + " blocks";
         enter(Phase.FALLBACK);
     }
 
@@ -122,6 +159,8 @@ final class StationAttempt {
     void arrived() {
         if (phase == Phase.RELOCATE) {
             tries = 0;
+            // new walls, new holes to try
+            carves = 0;
             enter(Phase.PICK);
         }
     }

@@ -45,6 +45,13 @@ final class StationSpots {
 
         // a ray from the eye to the middle of that face of the support hits the face, and nothing else gets in the way
         boolean visible(double eyeX, double eyeY, double eyeZ, int sx, int sy, int sz, int fx, int fy, int fz, int cx, int cy, int cz);
+
+        // a block we could mine out to make room: solid, breakable with what we hold, and not bedrock, a container, an ore
+        // or anything wet. mining it must not be a favour to somebody (a chest) or to the bot (the iron we came for)
+        boolean carvable(int x, int y, int z);
+
+        // opening the neighbour lets this in: a liquid that flows, or sand and gravel that fall
+        boolean floods(int x, int y, int z);
     }
 
     // where we are standing and where the eye is (sneaking eye if we will sneak, the caller knows)
@@ -74,6 +81,10 @@ final class StationSpots {
     }
 
     record Stand(int x, int y, int z) {
+    }
+
+    // a block cell: a carve candidate, or the one we already carved
+    record Cell(int x, int y, int z) {
     }
 
     // spots that let us down. banning a cell takes its column, BAN_Y either way
@@ -108,11 +119,17 @@ final class StationSpots {
     // the best cell to put the block in from where we stand, clicking the floor next to us. if no floor works, the side
     // of a wall. empty when neither does
     static Optional<Spot> best(Cells w, Stance me, Bans bans) {
-        Spot top = scan(w, me, bans, false);
-        return top != null ? Optional.of(top) : Optional.ofNullable(scan(w, me, bans, true));
+        return best(w, me, bans, null);
     }
 
-    private static Spot scan(Cells w, Stance me, Bans bans, boolean sides) {
+    // `carved` is a cell we mined out ourselves to have somewhere to put the block. it doesn't have to leave a way out: in
+    // a 1x1 shaft the other exits are straight up and down, and the hole we dug is the only horizontal neighbour there is
+    static Optional<Spot> best(Cells w, Stance me, Bans bans, Cell carved) {
+        Spot top = scan(w, me, bans, carved, false);
+        return top != null ? Optional.of(top) : Optional.ofNullable(scan(w, me, bans, carved, true));
+    }
+
+    private static Spot scan(Cells w, Stance me, Bans bans, Cell carved, boolean sides) {
         Spot best = null;
         double bestScore = Double.POSITIVE_INFINITY;
         for (int dx = -RADIUS; dx <= RADIUS; dx++) {
@@ -127,7 +144,11 @@ final class StationSpots {
                     if (score >= bestScore || me.isOwnCell(x, y, z) || bans.isBanned(x, y, z)) {
                         continue;
                     }
-                    if (!w.placeable(x, y, z) || !leavesAWayOut(w, me, x, y, z)) {
+                    if (!w.placeable(x, y, z)) {
+                        continue;
+                    }
+                    boolean dugByUs = carved != null && carved.x() == x && carved.y() == y && carved.z() == z;
+                    if (!dugByUs && !leavesAWayOut(w, me, x, y, z)) {
                         continue;
                     }
                     Spot spot = sides ? sideSupport(w, me, x, y, z) : topSupport(w, me, x, y, z);
@@ -186,6 +207,44 @@ final class StationSpots {
             }
         }
         return false;
+    }
+
+    // blocks to mine out when nothing around us takes a station, best first: beside our feet (what a player does in a tunnel:
+    // knock out the wall and put the furnace in the hole), then beside our head, then two out along a line that is already
+    // open. each needs a full block under it for the floor and nothing next to it that would pour in once it is open
+    static List<Cell> carveCandidates(Cells w, Stance me, Bans banned) {
+        List<Cell> out = new ArrayList<>();
+        for (int[] h : HORIZONTALS) {
+            addCarve(w, me, banned, out, me.feetX() + h[0], me.feetY(), me.feetZ() + h[1]);
+        }
+        for (int[] h : HORIZONTALS) {
+            addCarve(w, me, banned, out, me.feetX() + h[0], me.feetY() + 1, me.feetZ() + h[1]);
+        }
+        for (int[] h : HORIZONTALS) {
+            // the look down at the floor two out goes through the cell between, so that one has to be open. it never dips
+            // under feet level on the way, so the floor of the cell between doesn't matter
+            if (w.passable(me.feetX() + h[0], me.feetY(), me.feetZ() + h[1])) {
+                addCarve(w, me, banned, out, me.feetX() + 2 * h[0], me.feetY(), me.feetZ() + 2 * h[1]);
+            }
+        }
+        return out;
+    }
+
+    private static void addCarve(Cells w, Stance me, Bans banned, List<Cell> out, int x, int y, int z) {
+        if (banned.isBanned(x, y, z) || !w.carvable(x, y, z)) {
+            return;
+        }
+        // a floor to stand the block on, in reach. the look from our eye down to that floor stays inside our own cell and the
+        // one we open, so unlike best() there is no raycast to ask (the cell is still solid right now, a raycast would lie)
+        Spot onFloor = new Spot(x, y, z, x, y - 1, z);
+        if (!w.faceSturdy(x, y - 1, z, 0, 1, 0) || faceDistSq(me, onFloor) > REACH * REACH) {
+            return;
+        }
+        // above and the four sides. the floor is covered by being a sturdy, dry face
+        if (w.floods(x, y + 1, z) || w.floods(x + 1, y, z) || w.floods(x - 1, y, z) || w.floods(x, y, z + 1) || w.floods(x, y, z - 1)) {
+            return;
+        }
+        out.add(new Cell(x, y, z));
     }
 
     // somewhere 2-6 blocks away to stand where best() finds a spot, nearest first. empty if the whole neighbourhood is bad.

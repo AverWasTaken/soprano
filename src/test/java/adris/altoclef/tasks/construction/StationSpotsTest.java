@@ -4,6 +4,7 @@ import org.junit.Test;
 
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -29,6 +30,10 @@ public class StationSpotsTest {
         // when set, only these cells accept a block (a way to say "everything else has a mob in it")
         Set<String> onlyPlaceable;
         final Set<String> hidden = new HashSet<>();
+        // stone we may not mine (bedrock, a chest, the ore we want)
+        final Set<String> unminable = new HashSet<>();
+        // cells with water, lava, gravel in them: opening a neighbour lets them in
+        final Set<String> wet = new HashSet<>();
 
         FakeWorld(int floorY) {
             this.floorY = floorY;
@@ -77,6 +82,16 @@ public class StationSpotsTest {
         @Override
         public boolean standable(int x, int y, int z) {
             return at(x, y - 1, z) == Kind.FULL && passable(x, y, z) && passable(x, y + 1, z);
+        }
+
+        @Override
+        public boolean carvable(int x, int y, int z) {
+            return at(x, y, z) == Kind.FULL && !unminable.contains(key(x, y, z));
+        }
+
+        @Override
+        public boolean floods(int x, int y, int z) {
+            return wet.contains(key(x, y, z));
         }
 
         @Override
@@ -347,6 +362,139 @@ public class StationSpotsTest {
         FakeWorld w = new FakeWorld(0);
         assertFalse(w.standable(5, 65, 0));
         assertTrue(new FakeWorld(64).standable(5, 65, 0));
+    }
+
+    // ---- carving ----
+
+    // the log: a 1x1 shaft in solid rock. our two cells, and open air straight up and down. nothing around takes a block
+    private static FakeWorld shaft() {
+        FakeWorld w = new FakeWorld(200);
+        for (int y = 60; y <= 80; y++) {
+            w.put(0, y, 0, Kind.AIR);
+        }
+        return w;
+    }
+
+    private static StationSpots.Stance inShaft() {
+        return new StationSpots.Stance(0, 65, 0, 0.5, 65 + SNEAK_EYE, 0.5);
+    }
+
+    private static List<StationSpots.Cell> carves(FakeWorld w) {
+        return StationSpots.carveCandidates(w, inShaft(), new StationSpots.Bans());
+    }
+
+    @Test
+    public void aShaftHasNothingClickableButPlentyToCarve() {
+        FakeWorld w = shaft();
+        assertTrue(best(w, inShaft()).isEmpty());
+        assertFalse(carves(w).isEmpty());
+    }
+
+    @Test
+    public void carveOrderIsFeetThenHeadAndTwoOutNeedsAnOpenCellBetween() {
+        List<StationSpots.Cell> list = carves(shaft());
+        // four at feet level, four at head level, nothing two out: the cell between is stone
+        assertEquals(8, list.size());
+        for (int i = 0; i < 4; i++) {
+            assertEquals(65, list.get(i).y());
+            assertEquals(1, Math.abs(list.get(i).x()) + Math.abs(list.get(i).z()));
+        }
+        for (int i = 4; i < 8; i++) {
+            assertEquals(66, list.get(i).y());
+        }
+        // a tunnel east: now the cell two out that way is a candidate, after the near ones
+        FakeWorld tunnel = shaft();
+        tunnel.put(1, 65, 0, Kind.AIR).put(1, 66, 0, Kind.AIR);
+        List<StationSpots.Cell> withTunnel = carves(tunnel);
+        assertEquals(new StationSpots.Cell(2, 65, 0), withTunnel.get(withTunnel.size() - 1));
+        assertFalse(withTunnel.contains(new StationSpots.Cell(1, 65, 0)));
+    }
+
+    @Test
+    public void carvingTheHoleMakesItTheSpot() {
+        FakeWorld w = shaft();
+        StationSpots.Cell hole = carves(w).get(0);
+        w.put(hole.x(), hole.y(), hole.z(), Kind.AIR);
+        // dug by us: it needn't leave a way out, the shaft is the way out
+        StationSpots.Spot s = StationSpots.best(w, inShaft(), new StationSpots.Bans(), hole).orElseThrow();
+        assertEquals(new StationSpots.Spot(hole.x(), hole.y(), hole.z(), hole.x(), hole.y() - 1, hole.z()), s);
+        assertTrue(s.isTopFace());
+        // an ordinary hole doesn't get the pass: a table there would close the last horizontal door
+        assertTrue(StationSpots.best(w, inShaft(), new StationSpots.Bans()).isEmpty());
+    }
+
+    @Test
+    public void theCarveExemptionIsOnlyForTheCellWeDug() {
+        FakeWorld w = shaft();
+        w.put(1, 65, 0, Kind.AIR);
+        // (1,65,0) is open but it isn't the one we dug (that was somewhere else), so it still has to leave a way out
+        assertTrue(StationSpots.best(w, inShaft(), new StationSpots.Bans(), new StationSpots.Cell(0, 65, 1)).isEmpty());
+        assertTrue(StationSpots.best(w, inShaft(), new StationSpots.Bans(), new StationSpots.Cell(1, 65, 0)).isPresent());
+    }
+
+    @Test
+    public void bedrockContainersAndOreAreNeverCarved() {
+        FakeWorld w = shaft();
+        // all four feet-level neighbours are off limits, so the head level is what is left
+        w.unminable.add(FakeWorld.key(1, 65, 0));
+        w.unminable.add(FakeWorld.key(-1, 65, 0));
+        w.unminable.add(FakeWorld.key(0, 65, 1));
+        w.unminable.add(FakeWorld.key(0, 65, -1));
+        List<StationSpots.Cell> list = carves(w);
+        assertEquals(4, list.size());
+        for (StationSpots.Cell c : list) {
+            assertEquals(66, c.y());
+        }
+        // and with the head level off limits too there is nothing
+        w.unminable.add(FakeWorld.key(1, 66, 0));
+        w.unminable.add(FakeWorld.key(-1, 66, 0));
+        w.unminable.add(FakeWorld.key(0, 66, 1));
+        w.unminable.add(FakeWorld.key(0, 66, -1));
+        assertTrue(carves(w).isEmpty());
+    }
+
+    @Test
+    public void aCarveNeedsASturdyFloorUnderIt() {
+        FakeWorld w = shaft();
+        // a hole under the east neighbour: opening it gives a pit, not a floor
+        w.put(1, 64, 0, Kind.AIR);
+        assertFalse(carves(w).contains(new StationSpots.Cell(1, 65, 0)));
+        // a fence top is not a floor either
+        w.put(-1, 64, 0, Kind.FENCE);
+        assertFalse(carves(w).contains(new StationSpots.Cell(-1, 65, 0)));
+        assertTrue(carves(w).contains(new StationSpots.Cell(0, 65, 1)));
+    }
+
+    @Test
+    public void aCarveNextToWaterOrFallingBlocksIsOut() {
+        FakeWorld w = shaft();
+        // water behind the east wall: opening (1,65,0) lets it pour in
+        w.wet.add(FakeWorld.key(2, 65, 0));
+        assertFalse(carves(w).contains(new StationSpots.Cell(1, 65, 0)));
+        // gravel above the north one falls into the hole
+        w.wet.add(FakeWorld.key(0, 66, -1));
+        assertFalse(carves(w).contains(new StationSpots.Cell(0, 65, -1)));
+        // lava over the west one
+        w.wet.add(FakeWorld.key(-1, 66, 0));
+        assertFalse(carves(w).contains(new StationSpots.Cell(-1, 65, 0)));
+        // south is fine
+        assertTrue(carves(w).contains(new StationSpots.Cell(0, 65, 1)));
+    }
+
+    @Test
+    public void bannedCarvesAreSkipped() {
+        FakeWorld w = shaft();
+        StationSpots.Bans bans = new StationSpots.Bans();
+        StationSpots.Cell first = StationSpots.carveCandidates(w, inShaft(), bans).get(0);
+        bans.ban(first.x(), first.y(), first.z());
+        assertFalse(StationSpots.carveCandidates(w, inShaft(), bans).contains(first));
+    }
+
+    @Test
+    public void openAirAroundMeNeedsNoCarving() {
+        // nothing solid to mine on the floor level of an open room: the neighbours are air, not candidates
+        FakeWorld w = new FakeWorld(64);
+        assertTrue(StationSpots.carveCandidates(w, flat(), new StationSpots.Bans()).isEmpty());
     }
 
     @Test

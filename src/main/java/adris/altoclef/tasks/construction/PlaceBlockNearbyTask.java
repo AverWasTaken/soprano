@@ -290,9 +290,9 @@ public class PlaceBlockNearbyTask extends Task {
         if (spot == null || !mod.getItemStorage().hasItem(ItemHelper.blocksToItems(_toPlace))) {
             return;
         }
-        if (_failures.fail(spot.getX(), spot.getY(), spot.getZ())) {
-            Debug.logMessage("Giving up on placing at " + spot);
-        }
+        // one strike takes the column with it (see SpotFailures), so the next pick can't be the cell above
+        _failures.fail(spot.getX(), spot.getY(), spot.getZ());
+        Debug.logMessage("Giving up on placing at " + spot + " and the column around it");
         mod.getBlockTracker().requestBlockUnreachable(spot);
     }
 
@@ -310,7 +310,8 @@ public class PlaceBlockNearbyTask extends Task {
         double smallestScore = Double.POSITIVE_INFINITY;
         double smallestLoose = Double.POSITIVE_INFINITY;
         boolean scaffold = canScaffold(mod);
-        int feetY = mod.getPlayer().blockPosition().getY();
+        BlockPos feet = mod.getPlayer().blockPosition();
+        int feetY = feet.getY();
         BlockPos start = mod.getPlayer().blockPosition().offset(-range, -range, -range);
         BlockPos end = mod.getPlayer().blockPosition().offset(range, range, range);
         for (BlockPos blockPos : WorldHelper.scanRegion(mod, start, end)) {
@@ -333,6 +334,10 @@ public class PlaceBlockNearbyTask extends Task {
                 continue;
             }
             boolean hasBelow = WorldHelper.isSolid(mod, blockPos.below());
+            // never our own cells, never a cell that has to be built up to. the builder pillars us up the shaft for those
+            if (PlaceSpotRank.wouldPillar(blockPos.getX(), blockPos.getY(), blockPos.getZ(), feet.getX(), feetY, feet.getZ(), hasBelow)) {
+                continue;
+            }
             double distSq = blockPos.distToCenterSqr(mod.getPlayer().position());
 
             double loose = PlaceSpotRank.oldScore(distSq, solid, hasBelow, inside);
