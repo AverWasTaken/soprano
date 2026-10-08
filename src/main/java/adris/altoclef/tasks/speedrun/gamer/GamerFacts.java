@@ -82,6 +82,17 @@ public interface GamerFacts {
         return false;
     }
 
+    // and a smoker of ours (RunState.placedSmokers). the cook need reads it: a smoker standing is the cheapest place to put meat
+    default boolean smokerPlacedNearby() {
+        return false;
+    }
+
+    // the cook task gave up a while ago (no fuel to be found, no spot for a smoker...), see CookBackoff. the planner stops asking
+    // for the cook until it is over, or a stuck smoker would hold the phase for ever
+    default boolean cookSuspended() {
+        return false;
+    }
+
     // nutrition cooking in a smoker or furnace for us right now. foodUnits() stays what is in the bag, the planner counts the
     // two together so a loaded smoker is not "no food", and the phases hold their end until the jobs are collected
     default int pendingFoodUnits() {

@@ -54,6 +54,7 @@ public final class KitPlanner {
     public static List<KitNeed> gather(GamerFacts f, OverworldConfig cfg, int endBeds) {
         List<KitNeed> out = new ArrayList<>(starter(f, cfg, endBeds, true, new ArrayList<>()));
         addFood(out, f, cfg.minFoodUnits);
+        addCook(out, f, cfg, endBeds);
         return out;
     }
 
@@ -68,6 +69,7 @@ public final class KitPlanner {
         out.addAll(iron(f, cfg, endBeds));
         out.addAll(late);
         addFood(out, f, cfg.targetFoodUnits);
+        addCook(out, f, cfg, endBeds);
         return out;
     }
 
@@ -84,6 +86,9 @@ public final class KitPlanner {
         for (KitItem k : cfg.starterKit) {
             if (isAxe(k.item)) {
                 axes.add(k);
+            } else if (k.item.equals("furnace") && f.furnacePlacedNearby()) {
+                // standing on the ground (cooking the meat in it, say) and coming back to the bag: not a second one to craft
+                continue;
             } else if (gathering || !PLACEABLE.contains(k.item)) {
                 rest.add(k);
             }
@@ -377,6 +382,14 @@ public final class KitPlanner {
         return ours && maxDamage > 0 && damage >= WORN_FRACTION * maxDamage;
     }
 
+    // the raw meat in the bag gets cooked as the last thing, see CookGate for when it jumps the queue
+    private static void addCook(List<KitNeed> out, GamerFacts f, OverworldConfig cfg, int endBeds) {
+        KitNeed cook = CookGate.need(f, cfg, endBeds);
+        if (cook != null) {
+            out.add(cook);
+        }
+    }
+
     private static void addFood(List<KitNeed> out, GamerFacts f, int units) {
         if (f.foodUnits() + f.pendingFoodUnits() < units) {
             out.add(new KitNeed(KitNeed.FOOD, units));
@@ -496,6 +509,8 @@ public final class KitPlanner {
             case KitNeed.FOOD -> f.foodUnits() + f.pendingFoodUnits();
             case KitNeed.BUILD_BLOCKS -> f.buildBlocks();
             case KitNeed.EQUIP_ARMOR -> -need.count();
+            // less raw meat in the bag is closer (meat going into a smoker leaves it)
+            case KitNeed.COOK_SMOKER, KitNeed.COOK_FURNACE -> -CookGate.raw(f);
             default -> have(f, need.catalogueName());
         };
     }

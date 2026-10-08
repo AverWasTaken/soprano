@@ -6,6 +6,7 @@ import adris.altoclef.tasks.construction.DestroyBlockTask;
 import adris.altoclef.tasks.container.CollectFromFurnaceTask;
 import adris.altoclef.tasks.container.CollectFromFurnaceTask.Mode;
 import adris.altoclef.tasks.movement.PickupDroppedItemTask;
+import adris.altoclef.tasks.resources.CookRawFoodTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.helpers.WorldHelper;
 import net.minecraft.core.BlockPos;
@@ -36,9 +37,13 @@ public final class FurnaceWatch {
     private Item pickupItem = Items.FURNACE;
     private boolean pickupBroken;
     private long pickupStart;
+    // the furnace we just emptied is standing right here and we carry raw meat: it cooks that before it comes down
+    private Task cook;
+    private long cookStart;
 
     // jobs come and go, every batch empties the list
     public void reset() {
+        cook = null;
         task = null;
         target = null;
         hud = null;
@@ -55,11 +60,21 @@ public final class FurnaceWatch {
 
     // the furnace is coming down right now (the phase must not end under it)
     public boolean pickingUp() {
-        return pickup != null;
+        return pickup != null || cook != null;
     }
 
     // the furnace comes down after the last collect, run until the block is broken and the item is back in the bag
     public Task finishing(AltoClef mod, GamerContext ctx) {
+        if (cook != null) {
+            // loaded is done (the job lands in the state next tick), and a cook that drags on is not worth holding the furnace for
+            if (cook.isFinished(mod) || (ctx.facts().gameTime() - cookStart) / 20.0 > ctx.cfg().overworld.tablePickupSeconds) {
+                cook = null;
+                hud = null;
+                return null;
+            }
+            hud = "Cooking the meat while the furnace is free";
+            return cook;
+        }
         if (pickup == null) {
             return null;
         }
@@ -167,6 +182,14 @@ public final class FurnaceWatch {
         target = null;
         hud = null;
         if (takeBack(mod, ctx, visited, left)) {
+            // an empty furnace is the best place for the raw meat we are carrying, and we are standing at it
+            if (CookGate.reusable(ctx.facts(), ctx.cfg().overworld, ctx.cfg().end.beds)) {
+                cook = new CookRawFoodTask("smoker".equals(visited.kind));
+                cookStart = ctx.facts().gameTime();
+                Debug.logInternal(visited.kind + " is empty and we hold " + CookGate.raw(ctx.facts()) + " raw meat, cooking it before taking the "
+                        + visited.kind + " back");
+                return finishing(mod, ctx);
+            }
             pickupAt = at(visited);
             pickupKind = visited.kind;
             pickupItem = itemOf(visited.kind);

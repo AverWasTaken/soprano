@@ -49,6 +49,7 @@ public final class MinecraftFacts implements GamerFacts {
     private boolean credits;
     private boolean tableNearby;
     private boolean furnaceNearby;
+    private boolean smokerNearby;
 
     public MinecraftFacts(AltoClef mod) {
         this.mod = mod;
@@ -73,6 +74,7 @@ public final class MinecraftFacts implements GamerFacts {
         countItems(player);
         tableNearby = state != null && standingNearby(player, state.placedTables, Blocks.CRAFTING_TABLE);
         furnaceNearby = state != null && standingNearby(player, state.placedFurnaces, Blocks.FURNACE);
+        smokerNearby = state != null && standingNearby(player, state.placedSmokers, Blocks.SMOKER);
         return true;
     }
 
@@ -101,6 +103,16 @@ public final class MinecraftFacts implements GamerFacts {
     @Override
     public boolean furnacePlacedNearby() {
         return furnaceNearby;
+    }
+
+    @Override
+    public boolean smokerPlacedNearby() {
+        return smokerNearby;
+    }
+
+    @Override
+    public boolean cookSuspended() {
+        return CookBackoff.active(gameTime);
     }
 
     private void countItems(Player player) {

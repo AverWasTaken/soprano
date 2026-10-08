@@ -4,6 +4,7 @@ import adris.altoclef.Debug;
 import adris.altoclef.TaskCatalogue;
 import adris.altoclef.tasks.misc.EquipArmorTask;
 import adris.altoclef.tasks.resources.CollectFoodTask;
+import adris.altoclef.tasks.resources.CookRawFoodTask;
 import adris.altoclef.tasks.resources.GetBuildingMaterialsTask;
 import adris.altoclef.tasksystem.Task;
 import net.minecraft.world.item.Item;
@@ -116,6 +117,8 @@ public final class KitRunner {
     private static Task build(KitNeed need, List<Item> equip, int foodTarget) {
         return switch (need.catalogueName()) {
             case KitNeed.FOOD -> new CollectFoodTask(foodTarget);
+            case KitNeed.COOK_SMOKER -> new CookRawFoodTask(true);
+            case KitNeed.COOK_FURNACE -> new CookRawFoodTask(false);
             case KitNeed.BUILD_BLOCKS -> new GetBuildingMaterialsTask(need.count());
             case KitNeed.EQUIP_ARMOR -> equip.isEmpty() ? null : new EquipArmorTask(equip.toArray(new Item[0]));
             default -> TaskCatalogue.taskExists(need.catalogueName()) ? TaskCatalogue.getItemTask(need.catalogueName(), need.count()) : null;
@@ -128,6 +131,7 @@ public final class KitRunner {
             case KitNeed.FOOD -> "Getting food";
             case KitNeed.BUILD_BLOCKS -> "Collecting building blocks";
             case KitNeed.EQUIP_ARMOR -> "Putting on armor";
+            case KitNeed.COOK_SMOKER, KitNeed.COOK_FURNACE -> "Cooking the raw meat";
             // with a batch already in a furnace the iron need is us digging for the next one, not smelting
             case "iron_ingot" -> f.pendingOutput(Items.IRON_INGOT) > 0 ? "Mining more iron"
                     : f.has(Items.RAW_IRON) ? "Smelting iron" : "Looking for iron";

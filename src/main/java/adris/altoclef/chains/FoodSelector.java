@@ -28,6 +28,9 @@ final class FoodSelector {
                          FoodChain.FoodChainConfig config) {
         Item bestFood = null;
         double bestFoodScore = Double.NEGATIVE_INFINITY;
+        Item bestRaw = null;
+        double bestRawScore = Double.NEGATIVE_INFINITY;
+        Item rawChicken = null;
         int foodTotal = 0;
         boolean hasRottenFlesh = false;
         boolean hasChorusFruit = false;
@@ -69,7 +72,15 @@ final class FoodSelector {
 
             float score = saturationGoodScore - saturationLossPenalty - hungerLossPenalty - hungerNotFilledPenalty;
 
-            if (score > bestFoodScore) {
+            if (item == Items.CHICKEN) {
+                // 30% hunger effect, the last thing we eat before rotten flesh
+                rawChicken = item;
+            } else if (FoodHelper.isRawMeat(item)) {
+                if (score > bestRawScore) {
+                    bestRawScore = score;
+                    bestRaw = item;
+                }
+            } else if (score > bestFoodScore) {
                 bestFoodScore = score;
                 bestFood = item;
             }
@@ -77,6 +88,11 @@ final class FoodSelector {
             foodTotal += food.nutrition() * stack.getCount();
         }
 
+        // anything cooked (or just not raw) beats raw meat, however good the raw one scores on a nearly full stomach: it
+        // scores well there because it gives so little, and then the bag fills up with uncooked dinner
+        if (bestFood == null) {
+            bestFood = bestRaw != null ? bestRaw : rawChicken;
+        }
         if (bestFood == null) {
             // last resorts, in order: rotten flesh if we're starving, chorus fruit if there is truly nothing else
             if (hasRottenFlesh) {

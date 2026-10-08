@@ -100,7 +100,8 @@ public final class OwnTables {
 
     // iron_ingot with raw iron in the bag is the one need that is about to put something in a furnace
     public static boolean smeltsSoon(String currentNeed, int rawIron) {
-        return "iron_ingot".equals(currentNeed) && rawIron > 0;
+        // and the cook is the other, the raw meat is about to go in the furnace we are standing next to
+        return ("iron_ingot".equals(currentNeed) && rawIron > 0) || KitNeed.isCookName(currentNeed);
     }
 
     // the cheapest of our own tables to walk to that passes `usable` and costs at most `budget` (WalkCost, not a sphere: a

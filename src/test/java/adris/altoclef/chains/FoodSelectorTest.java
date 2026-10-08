@@ -136,4 +136,23 @@ public class FoodSelectorTest {
         assertFalse(FoodHelper.isSafeFood(Items.SPIDER_EYE));
         assertTrue(FoodHelper.isSafeFood(Items.GOLDEN_APPLE));
     }
+
+    @Test
+    public void cookedBeatsRawEvenOnANearlyFullStomach() {
+        // raw mutton gives 2 and wastes less at 18 hunger, which is how it used to win. cooked first, always
+        for (float hunger : new float[]{4, 12, 18}) {
+            assertEquals(Optional.of(Items.COOKED_MUTTON), pick(inv(Items.MUTTON, 9, Items.COOKED_MUTTON, 1), hunger).best());
+            assertEquals(Optional.of(Items.APPLE), pick(inv(Items.BEEF, 9, Items.APPLE, 1), hunger).best());
+        }
+    }
+
+    @Test
+    public void rawChickenIsTheLastThingBeforeRottenFlesh() {
+        assertEquals(Optional.of(Items.MUTTON), pick(inv(Items.CHICKEN, 9, Items.MUTTON, 1), 10).best());
+        assertEquals(Optional.of(Items.CHICKEN), pick(inv(Items.CHICKEN, 9, Items.ROTTEN_FLESH, 4), 4).best());
+        // and the raw stuff still counts as food we hold, it is only the order that changed
+        FoodSelector.Result result = pick(inv(Items.CHICKEN, 2), 10);
+        assertEquals(Optional.of(Items.CHICKEN), result.best());
+        assertEquals(2 * Items.CHICKEN.components().get(net.minecraft.core.component.DataComponents.FOOD).nutrition(), result.foodTotal());
+    }
 }

@@ -4,6 +4,7 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.tasks.container.CollectFromFurnaceTask.Mode;
 import adris.altoclef.tasks.speedrun.gamer.EarlyIronPick;
+import adris.altoclef.tasks.speedrun.gamer.CookGate;
 import adris.altoclef.tasks.speedrun.gamer.FoodGate;
 import adris.altoclef.tasks.speedrun.gamer.FurnaceWatch;
 import adris.altoclef.tasks.speedrun.gamer.GamerContext;
@@ -50,6 +51,8 @@ public class IronPhase implements PhaseHandler {
     // FoodGate: a food top-up that started on the surface runs to the full amount, and the band the count was last in (-1 = unset)
     private boolean foodTopUp;
     private int foodBand = -1;
+    // CookGate: a cook that started early (surface, or between jobs) keeps the front until the meat is cooked
+    private boolean cookLatch;
 
     @Override
     public GamerPhase phase() {
@@ -82,6 +85,7 @@ public class IronPhase implements PhaseHandler {
         committed = null;
         hudState = null;
         foodTopUp = false;
+        cookLatch = false;
         foodBand = -1;
         var async = Baritone.settings().altoAsyncSmelting;
         if (!SettingsOverrides.isHeld(async)) {
@@ -190,10 +194,31 @@ public class IronPhase implements PhaseHandler {
         return task;
     }
 
+    // food first, then the cook. the cook is already the last need of the plan (nothing leaves IRON with raw meat a furnace can
+    // cook); this lets it go early, on the surface or between two jobs, once there is enough of it to be worth the stop
+    private List<KitNeed> gateFood(AltoClef mod, GamerContext ctx, List<KitNeed> needs) {
+        List<KitNeed> gated = gateFoodNeed(mod, ctx, needs);
+        int at = CookGate.index(gated);
+        if (at < 0) {
+            cookLatch = false;
+            return gated;
+        }
+        if (at == 0) {
+            return gated;
+        }
+        boolean surfaced = SmeltSurface.shallow(SmeltSurface.depthBelowSky(mod));
+        boolean lead = CookGate.leads(gated, at, CookGate.raw(ctx.facts()), surfaced, cookLatch);
+        if (lead && !cookLatch) {
+            Debug.logInternal("cook: " + CookGate.raw(ctx.facts()) + " raw meat in the bag, cooking it now instead of eating it raw");
+        }
+        cookLatch = lead;
+        return lead ? CookGate.lead(gated, at) : gated;
+    }
+
     // the kit's own food need only leads when FoodGate says so, otherwise it waits behind the ore (it comes back the moment
     // we surface or the next job is not ore, and the food chain eats on its own in the meantime). the stock-up fillers
     // SmeltFiller adds are surface work and not touched
-    private List<KitNeed> gateFood(AltoClef mod, GamerContext ctx, List<KitNeed> needs) {
+    private List<KitNeed> gateFoodNeed(AltoClef mod, GamerContext ctx, List<KitNeed> needs) {
         OverworldConfig cfg = ctx.cfg().overworld;
         // same sum the planner uses: the bag (raw meat at its cooked value) plus what a smoker is cooking for us. the two never
         // overlap, loading a smoker takes the meat out of the bag
