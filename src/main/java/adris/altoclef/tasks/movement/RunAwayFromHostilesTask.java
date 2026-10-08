@@ -37,6 +37,15 @@ public class RunAwayFromHostilesTask extends CustomBaritoneGoalTask {
         _crowd = crowd;
     }
 
+    // would this run be over before it started: everyone it would run from is already far enough (or nobody is there).
+    // asked before installing one, because a run that is born finished holds the wheel for nothing. a probe goal on
+    // purpose, newGoal cancels the path we are on and a question should not do that
+    public boolean alreadySafe(AltoClef mod) {
+        GoalRunAwayFromHostiles probe = new GoalRunAwayFromHostiles(mod, _distanceToRun);
+        probe.refresh();
+        return probe.isInGoal(mod.getPlayer().blockPosition());
+    }
+
     @Override
     protected Goal newGoal(AltoClef mod) {
         // We want to run away NOW

@@ -108,6 +108,10 @@ public class MobDefenseChain extends SingleTaskChain {
     private Task _travelUserTask;
     private CombatPolicy.Decision _decision = NO_POLICY;
     private boolean _lowHpLatched;
+    // the user task is the one pathing right now (so baritone's path is its route and not a run's)
+    private boolean _userDriving;
+    // we are on a route and nobody who is after us can get to it: a run from them is just carrying on
+    private boolean _routeOutrun;
     // the ones we are actually dealing with this tick (not the ones walking past), nearest first
     private List<Mob> _dealWith = List.of();
     private String _lastVerdictLog = "";
@@ -222,6 +226,22 @@ public class MobDefenseChain extends SingleTaskChain {
     }
 
     public float getPriorityInner(AltoClef mod) {
+        float priority = computePriority(mod);
+        if (priority <= 0) return priority;
+        Task held = getCurrentTask();
+        if (CombatRules.wheelPriority(priority, held != null, held != null && held.isFinished(mod)) > 0) return priority;
+        // every branch that asks for the wheel just installed something to hold it with. if that something is gone or was
+        // born finished (a run from a crowd we are already outside of), the wheel is not ours, and neither is the latch
+        // that was about to keep it for 40 ticks. (shielding and the force field act without a task, and never needed the
+        // wheel to do it)
+        if (held != null) onTaskFinish(mod);
+        _runAwayTask = null;
+        _dangerRun = null;
+        _runLatchUntil = Long.MIN_VALUE / 2;
+        return 0;
+    }
+
+    private float computePriority(AltoClef mod) {
         if (!AltoClef.inGame()) {
             return Float.NEGATIVE_INFINITY;
         }
@@ -277,8 +297,7 @@ public class MobDefenseChain extends SingleTaskChain {
         // Run away if a weird mob is close by.
         Optional<Entity> universallyDangerous = getUniversallyDangerousMob(mod);
         if (universallyDangerous.isPresent() && mod.getPlayer().getHealth() <= 10) {
-            runFrom(now, new RunAwayFromHostilesTask(DANGER_KEEP_DISTANCE, true), 70);
-            return 70;
+            if (runFrom(mod, now, new RunAwayFromHostilesTask(DANGER_KEEP_DISTANCE, true), 70)) return 70;
         }
 
         _doingFunkyStuff = false;
@@ -353,23 +372,24 @@ public class MobDefenseChain extends SingleTaskChain {
         if (_dangerRun != null && _dangerRun.isFinished(mod)) {
             _dangerRun = null;
         }
-        if (isRunLatched(now)) {
-            runFrom(now, _dangerRun, 70);
+        if (isRunLatched(now) && runFrom(mod, now, _dangerRun, 70)) {
             return 70;
         }
         // Dodge all mobs cause we boutta die son
         if (isInDanger(mod) && !escapeDragonBreath(mod) && !mod.getFoodChain().isShouldStop()) {
             if (!fightOn(now)) {
-                runFrom(now, dangerRunTask(), 70);
-                return 70;
+                // the route we were walking is clear of them, so the way out is the way we were going. the user task has
+                // the sprint, running to a random spot 30 blocks off is how the furnace trip became a lap of the map
+                if (_routeOutrun) return handBack();
+                if (runFrom(mod, now, dangerRunTask(), 70)) return 70;
             }
         }
 
         // losing a fight is not the time to trade blows or to chew. leave, the food chain eats once we are out of it.
         // (the food chain only lets go of its bite when it sees this stance, see FoodChain.needsToEat)
         if (!fightOn(now) && getCombatStance(mod) == CombatRules.Stance.FLEE) {
-            runFrom(now, dangerRunTask(), 80);
-            return 80;
+            if (_routeOutrun) return handBack();
+            if (runFrom(mod, now, dangerRunTask(), 80)) return 80;
         }
 
         if (Baritone.settings().altoKillOrAvoidAnnoyingHostiles.value) {
@@ -479,8 +499,8 @@ public class MobDefenseChain extends SingleTaskChain {
                     // nothing left that we can walk to, so no takeover. keep whatever we were doing
                 } else {
                     // We can't deal with it
-                    runFrom(now, dangerRunTask(), 80);
-                    return 80;
+                    if (_routeOutrun) return handBack();
+                    if (runFrom(mod, now, dangerRunTask(), 80)) return 80;
                 }
             }
         }
@@ -512,15 +532,27 @@ public class MobDefenseChain extends SingleTaskChain {
 
     // start (or keep) a run away from danger. the same run asked for again is the same run, so the hold on it is only
     // started once. a different one is a new thing and gets its own
-    private void runFrom(long now, RunAwayFromHostilesTask run, float priority) {
+    // false when there is nothing to run from (everybody is already as far as the run would take us), then nothing is
+    // installed and no latch starts
+    private boolean runFrom(AltoClef mod, long now, RunAwayFromHostilesTask run, float priority) {
         if (_dangerRun != null && _dangerRun.equals(run)) {
             run = _dangerRun;
         } else {
+            if (run.alreadySafe(mod)) return false;
             _dangerRun = run;
             _runLatchUntil = now + RUN_LATCH_TICKS;
         }
         startRun(run, priority);
         _dangerRun = _runAwayTask instanceof RunAwayFromHostilesTask installed ? installed : null;
+        return true;
+    }
+
+    // the run is the user task carrying on: let go of whatever we were running with and give the wheel back
+    private float handBack() {
+        _runAwayTask = null;
+        _dangerRun = null;
+        _runLatchUntil = Long.MIN_VALUE / 2;
+        return 0;
     }
 
     private boolean isRunLatched(long now) {
@@ -803,47 +835,61 @@ public class MobDefenseChain extends SingleTaskChain {
         Optional<Entity> witch = mod.getEntityTracker().getClosestEntity(Witch.class);
         boolean hasFood = mod.getFoodChain().hasFood();
         float health = mod.getPlayer().getHealth();
+        boolean status = mod.getPlayer().hasEffect(MobEffects.WITHER) ||
+                (mod.getPlayer().hasEffect(MobEffects.POISON) && witch.isEmpty());
+        boolean policyOn = Baritone.settings().altoKillOrAvoidAnnoyingHostiles.value;
+        // who is a real problem: with the policy on that is the list it settled on (the ones it is walking past are not
+        // on it), with it off the raw list like it always was
+        // healthy and well dressed is never in danger from a count, so nobody pays for one
+        boolean worthCounting = health <= LOW_HEALTH || CombatPolicy.vulnerable(mod.getPlayer().getArmorValue(), health);
+        int[] counts = worthCounting ? countThreats(mod, policyOn) : new int[2];
+        int melee = counts[0];
+        int shooters = counts[1];
+        // only the stand verdict needs the gear maths, so only it pays for the inventory scan
+        boolean standing = policyOn && _decision.verdict() == CombatPolicy.Verdict.STAND && melee > 0;
+        int capacity = standing ? standCapacity(mod, hasShield(mod)) : 0;
         // (one or two skeletons at hp 9 or 10 are a charge, the policy says so. the policy already checked we are above
         // the flee line, so hp 8 and under still gets here)
-        if (health <= LOW_HEALTH && hasFood && witch.isEmpty() && !_decision.charging()) {
-            return true;
-        }
-        if (mod.getPlayer().hasEffect(MobEffects.WITHER) ||
-                (mod.getPlayer().hasEffect(MobEffects.POISON) && witch.isEmpty())) {
-            return true;
-        }
-        if (isVulnurable(mod)) {
-            // If hostile mobs are nearby...
-            try {
-                LocalPlayer player = mod.getPlayer();
-                List<Entity> hostiles = mod.getEntityTracker().getHostiles();
-                if (!hostiles.isEmpty()) {
-                    // things that walk at us, and things that shoot at us: one skeleton is not a reason to run
-                    int melee = 0;
-                    int shooters = 0;
-                    synchronized (BaritoneHelper.MINECRAFT_LOCK) {
-                        for (Entity entity : hostiles) {
-                            if (entity.closerThan(player, SAFE_KEEP_DISTANCE) && !mod.getBehaviour().shouldExcludeFromForcefield(entity) && EntityHelper.isAngryAtPlayer(mod, entity)
-                                    && (!(entity instanceof Mob mob) || EntityHelper.canMobHarmPlayer(mod, mob))) {
-                                if (entity instanceof Mob shooter && MobReachability.isRanged(shooter) && !isFast(shooter)) {
-                                    shooters++;
-                                } else {
-                                    melee++;
-                                }
-                            }
-                        }
-                    }
-                    return CombatPolicy.dangerousCompany(melee, shooters);
-                }
-            } catch (Exception e) {
-                Debug.logWarning("Weird multithread exception. Will fix later.");
-            }
-        }
-        return false;
+        return CombatPolicy.inDanger(new CombatPolicy.Danger(health, mod.getPlayer().getArmorValue(), hasFood, witch.isPresent(),
+                _decision.charging(), status, policyOn, _decision, melee, shooters, capacity));
     }
 
-    private boolean isVulnurable(AltoClef mod) {
-        return CombatPolicy.vulnerable(mod.getPlayer().getArmorValue(), mod.getPlayer().getHealth());
+    // {melee, shooters} close enough to matter
+    private int[] countThreats(AltoClef mod, boolean policyOn) {
+        int melee = 0;
+        int shooters = 0;
+        try {
+            LocalPlayer player = mod.getPlayer();
+            List<? extends Entity> hostiles = policyOn ? _dealWith : mod.getEntityTracker().getHostiles();
+            synchronized (BaritoneHelper.MINECRAFT_LOCK) {
+                for (Entity entity : hostiles) {
+                    if (entity.closerThan(player, SAFE_KEEP_DISTANCE) && !mod.getBehaviour().shouldExcludeFromForcefield(entity) && EntityHelper.isAngryAtPlayer(mod, entity)
+                            && (!(entity instanceof Mob mob) || EntityHelper.canMobHarmPlayer(mod, mob))) {
+                        // things that walk at us, and things that shoot at us: one skeleton is not a reason to run
+                        if (entity instanceof Mob shooter && MobReachability.isRanged(shooter) && !isFast(shooter)) {
+                            shooters++;
+                        } else {
+                            melee++;
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            Debug.logWarning("Weird multithread exception. Will fix later.");
+        }
+        return new int[]{melee, shooters};
+    }
+
+    private static boolean hasShield(AltoClef mod) {
+        return mod.getItemStorage().hasItem(Items.SHIELD) || mod.getItemStorage().hasItemInOffhand(Items.SHIELD);
+    }
+
+    // how many mobs the gear can take, see CombatPolicy.standCapacity. the weapon's damage is the tuning's "3 higher than
+    // it used to be"
+    private static int standCapacity(AltoClef mod, boolean shield) {
+        Item weapon = AbstractKillEntityTask.bestWeapon(mod);
+        float damage = weapon == null ? 0 : (ItemHelper.getAttackDamage(weapon) - 3);
+        return CombatPolicy.standCapacity(mod.getPlayer().getArmorValue(), damage, shield);
     }
 
     // fight / flee / eat, worked out once per tick no matter how many things ask (the food chain asks a lot, needsToEat
@@ -914,14 +960,16 @@ public class MobDefenseChain extends SingleTaskChain {
             if (policyMobs.isEmpty()) {
                 decision = _policy.idle();
             } else {
-                if (travelling) _travel.setUpcoming(upcomingPath(mod));
-                decision = _policy.decide(now, new CombatPolicy.Scene(policyMobs, now - _lastHurtTick, travelling,
+                // (only while the user task is the one pathing, or baritone's path is the run's and not the route)
+                if (travelling && _userDriving) _travel.setUpcoming(upcomingPath(mod));
+                decision =_policy.decide(now, new CombatPolicy.Scene(policyMobs, now - _lastHurtTick, travelling,
                         relativePath(player), player.getX(), player.getZ(),
                         Math.max(1, Baritone.settings().altoSwarmThreshold.value),
                         grace, player.getHealth(), shield));
             }
         }
         _decision = decision;
+        _routeOutrun = policyOn && (decision.outrunning() || (travelling && routeClearOfThem(player, policyMobs, decision)));
         _lowHpLatched = policyOn && _policy.lowHpLatched(now);
         logVerdict(mod, decision, dealable);
 
@@ -946,7 +994,7 @@ public class MobDefenseChain extends SingleTaskChain {
         // backing away from a crowd is a fight too, the crowd being a few blocks behind us does not make it lunch time
         // and so is the low hp latch (see CombatPolicy.LOW_HP): the user task getting the wheel back for a tick because
         // the crowd looked "ignored" or "far" is how we walked into the pile at hp 3
-        boolean inCombat = CombatRules.inCombat(nearest, now - _lastCombatHurtTick, creeperClose) || decision.kiting()
+        boolean inCombat = CombatRules.inCombat(nearest, now - _lastCombatHurtTick, creeperClose) || decision.kiting() || decision.outrunning()
                 || (_lowHpLatched && !Double.isInfinite(nearestAny));
         // gapples are never picked as food (FoodSelector keeps them for exactly this), so check the bag ourselves
         boolean hasGapple = mod.getItemStorage().hasItem(Items.GOLDEN_APPLE) || mod.getItemStorage().hasItem(Items.ENCHANTED_GOLDEN_APPLE);
@@ -1003,10 +1051,12 @@ public class MobDefenseChain extends SingleTaskChain {
             _travel.clear();
             _travelUserTask = user;
         }
-        boolean userDriving = mod.getTaskRunner().getCurrentTaskChain() == mod.getUserTaskChain()
-                && mod.getClientBaritone().getPathingBehavior().getCurrent() != null;
+        boolean userHasWheel = mod.getTaskRunner().getCurrentTaskChain() == mod.getUserTaskChain();
+        boolean userDriving = userHasWheel && mod.getClientBaritone().getPathingBehavior().getCurrent() != null;
+        _userDriving = userDriving;
         LocalPlayer player = mod.getPlayer();
-        _travel.update(now, player.getX(), player.getZ(), userDriving);
+        // not having the wheel is a hand-off, and the latch rides it out (see TravelTracker.travelling)
+        _travel.update(now, player.getX(), player.getZ(), userDriving, !userHasWheel);
         return _travel.travelling(now, player.getX(), player.getZ());
     }
 
@@ -1022,6 +1072,16 @@ public class MobDefenseChain extends SingleTaskChain {
             out.add(new CombatPolicy.Point(positions.get(i).x + 0.5, positions.get(i).y, positions.get(i).z + 0.5));
         }
         return out;
+    }
+
+    // the mobs the policy is dealing with, none of whom can get to the route we were on. the danger and flee runs ask this
+    // before running anywhere: if it is yes, the run is the user task carrying on
+    private boolean routeClearOfThem(LocalPlayer player, List<CombatPolicy.Mob> mobs, CombatPolicy.Decision decision) {
+        List<CombatPolicy.Mob> after = new ArrayList<>(mobs.size());
+        for (CombatPolicy.Mob mob : mobs) {
+            if (!decision.ignored().contains(mob.id())) after.add(mob);
+        }
+        return CombatPolicy.canOutrun(relativePath(player), after);
     }
 
     private List<CombatPolicy.Point> relativePath(LocalPlayer player) {
@@ -1064,12 +1124,24 @@ public class MobDefenseChain extends SingleTaskChain {
                 ? "shield" : "no shield") + ")";
         String why = decision.why().isEmpty() ? "" : " (" + decision.why() + ")";
         switch (decision.verdict()) {
-            case KITE -> Debug.logInternal("kiting " + describe(dealable, decision, false) + why + gear);
+            // "running from" when it is feet with no say in where, the route case below is the same crowd and a clear way on
+            case KITE -> Debug.logInternal("running from " + describe(dealable, decision, false) + why + gear);
             case STAND -> Debug.logInternal("standing against " + describe(dealable, decision, false) + why + gear);
             case FIGHT_ONE -> Debug.logInternal("fighting " + describe(dealable, decision, false) + why + gear);
             case CHARGE -> Debug.logInternal("charging " + describeShooters(dealable, decision) + why + gear);
-            case IGNORE -> Debug.logInternal("passing " + describe(dealable, decision, true) + ", " + decision.why() + gear);
+            case IGNORE -> Debug.logInternal(decision.outrunning()
+                    ? "outrunning " + describe(dealable, decision, true) + " toward " + routeEnd(mod) + gear
+                    : "passing " + describe(dealable, decision, true) + ", " + decision.why() + gear);
         }
+    }
+
+    // where the route we are carrying on along ends, for the log: the user task's name and the last spot it was about to
+    // walk to
+    private String routeEnd(AltoClef mod) {
+        List<CombatPolicy.Point> route = _travel.upcoming();
+        Task user = mod.getUserTaskChain().getCurrentTask();
+        String where = route.isEmpty() ? "" : " (" + Math.round(route.get(route.size() - 1).x()) + ", " + Math.round(route.get(route.size() - 1).z()) + ")";
+        return (user == null ? "where we were going" : user.getHudName()) + where;
     }
 
     // "1 skeleton": just the shooters, they are who the charge is about

@@ -747,4 +747,280 @@ public class CombatPolicyTest {
         assertFalse(t.travelling(30, 7.5, 0));
         assertTrue(t.upcoming().isEmpty());
     }
+
+    // ---- the hand-off
+
+    // the chain asks once a tick, so the hold gets its chance to remember a real yes
+    private static CombatPolicy.TravelTracker walkedThirty() {
+        CombatPolicy.TravelTracker t = new CombatPolicy.TravelTracker();
+        for (long now = 0; now <= 30; now++) {
+            t.update(now, now * 0.25, 0, true, false);
+            t.travelling(now, now * 0.25, 0);
+        }
+        return t;
+    }
+
+    @Test
+    public void mobDefenseTakingTheWheelDoesNotMakeUsStopTravelling() {
+        CombatPolicy.TravelTracker t = walkedThirty();
+        boolean everyTick = true;
+        for (long now = 31; now < 31 + CombatPolicy.TRAVEL_HOLD; now++) {
+            t.update(now, now * 0.25, 0, false, true);
+            everyTick &= t.travelling(now, now * 0.25, 0);
+        }
+        assertTrue("the answer from before the hand-off held the whole time", everyTick);
+    }
+
+    @Test
+    public void theHoldRunsOutEventually() {
+        CombatPolicy.TravelTracker t = walkedThirty();
+        long now = 31;
+        for (; now < 31 + 3 * CombatPolicy.TRAVEL_HOLD; now++) {
+            t.update(now, now * 0.25, 0, false, true);
+            t.travelling(now, now * 0.25, 0);
+        }
+        assertFalse("a fight that long is not a journey", t.travelling(now, now * 0.25, 0));
+    }
+
+    @Test
+    public void theUserTaskStandingStillIsNotAHandOff() {
+        // it still has the wheel, there is just no path: that fades on the old schedule, the hold is for a real hand-off
+        CombatPolicy.TravelTracker t = walkedThirty();
+        for (long now = 31; now <= 45; now++) {
+            t.update(now, now * 0.25, 0, false, false);
+            t.travelling(now, now * 0.25, 0);
+        }
+        assertFalse(t.travelling(45, 45 * 0.25, 0));
+    }
+
+    // ---- hysteresis
+
+    // the zombie that got knocked back to 3.5 blocks while we were on our way somewhere else
+    private static Scene knockedBack(double dx) {
+        return walking(List.of(zombie(1, dx, 0)), List.of(new Point(-5, 0, 0)), QUIET);
+    }
+
+    @Test
+    public void aFightOnceChosenIsKeptForAWhile() {
+        // the live flap: fighting 1 zombie / passing 1 zombie, on our way, several times a second
+        assertEquals("a fresh policy walks past it", IGNORE, new CombatPolicy().decide(0, knockedBack(3.5)).verdict());
+        CombatPolicy policy = new CombatPolicy();
+        assertEquals(FIGHT_ONE, policy.decide(0, working(List.of(zombie(1, 2, 0)))).verdict());
+        assertEquals(FIGHT_ONE, policy.decide(1, knockedBack(3.5)).verdict());
+        assertEquals(FIGHT_ONE, policy.decide(CombatPolicy.FIGHT_LATCH - 1, knockedBack(3.5)).verdict());
+        assertEquals("and then it is a stroll again", IGNORE, policy.decide(CombatPolicy.FIGHT_LATCH, knockedBack(3.5)).verdict());
+    }
+
+    @Test
+    public void beingOnTheZombieKeepsTheFightGoing() {
+        CombatPolicy policy = new CombatPolicy();
+        for (long now = 0; now < 3 * CombatPolicy.FIGHT_LATCH; now += 10) {
+            assertEquals("at " + now, FIGHT_ONE, policy.decide(now, working(List.of(zombie(1, 2, 0)))).verdict());
+        }
+        assertEquals(FIGHT_ONE, policy.decide(3 * CombatPolicy.FIGHT_LATCH + 5, knockedBack(3.5)).verdict());
+    }
+
+    @Test
+    public void aFightEndsWhenTheZombieLeaves() {
+        CombatPolicy policy = new CombatPolicy();
+        policy.decide(0, working(List.of(zombie(1, 2, 0))));
+        assertEquals(IGNORE, policy.decide(1, knockedBack(CombatPolicy.FIGHT_LEAVE + 1)).verdict());
+    }
+
+    @Test
+    public void aFightEndsWhenTheZombieDies() {
+        CombatPolicy policy = new CombatPolicy();
+        policy.decide(0, working(List.of(zombie(1, 2, 0))));
+        // gone from the scene, and then a different (or respawned) mob that happens to carry the id is a stranger
+        assertEquals(IGNORE, policy.decide(1, working(List.of())).verdict());
+        assertEquals(IGNORE, policy.decide(2, knockedBack(3.5)).verdict());
+    }
+
+    @Test
+    public void lowHpStillOverridesTheFightLatch() {
+        CombatPolicy policy = new CombatPolicy();
+        policy.decide(0, working(List.of(zombie(1, 2, 0))));
+        assertEquals(KITE, policy.decide(1, withHealth(List.of(zombie(1, 2, 0)), 4)).verdict());
+    }
+
+    @Test
+    public void aPassByIsKeptUntilItIsOnTop() {
+        List<Mob> far = List.of(zombie(1, 5, 0));
+        CombatPolicy policy = new CombatPolicy();
+        assertEquals(IGNORE, policy.decide(0, knockedBack(5)).verdict());
+        // the route swung round toward it. a fresh policy would fight, ours has already made its mind up
+        Scene towardIt = walking(far, List.of(new Point(5, 0, 0)), QUIET);
+        assertEquals("fresh", FIGHT_ONE, new CombatPolicy().decide(0, towardIt).verdict());
+        assertEquals(IGNORE, policy.decide(1, towardIt).verdict());
+        // and the user task losing the wheel (not travelling any more) changes nothing
+        assertEquals(IGNORE, policy.decide(2, working(far)).verdict());
+        // within reach it is a fight, whatever we decided
+        assertEquals(FIGHT_ONE, policy.decide(3, working(List.of(zombie(1, 2, 0)))).verdict());
+    }
+
+    @Test
+    public void aPassByEndsWhenItBitesUs() {
+        CombatPolicy policy = new CombatPolicy();
+        policy.decide(0, knockedBack(5));
+        assertEquals(FIGHT_ONE, policy.decide(1, walking(List.of(zombie(1, 5, 0).withHitUs()), List.of(new Point(-5, 0, 0)), 0)).verdict());
+    }
+
+    @Test
+    public void aPileFormingEndsThePassByToo() {
+        CombatPolicy policy = new CombatPolicy();
+        List<Point> away = List.of(new Point(0, 0, -9));
+        assertEquals(IGNORE, policy.decide(0, walking(ring(3, 5.5), away, QUIET)).verdict());
+        assertFalse("a pile is never somebody else's business once we stop travelling",
+                policy.decide(1, working(ring(3, 5.5))).verdict() == IGNORE);
+    }
+
+    // ---- danger
+
+    private static CombatPolicy.Danger danger(float hp, int armor, boolean food, Decision decision, int melee, int shooters,
+                                              int capacity) {
+        return new CombatPolicy.Danger(hp, armor, food, false, false, false, true, decision, melee, shooters, capacity);
+    }
+
+    private static Decision stand(String why) {
+        return new Decision(STAND, java.util.Set.of(), 1, 2, false, why);
+    }
+
+    @Test
+    public void oneZombieAtHp17IsNotDangerWithOrWithoutAShield() {
+        // the live bug: "passing 1 zombie ... (hp 17, armor 0, shield)" and then NIGERUNDAYOO
+        List<Mob> lone = List.of(zombie(1, 5, 0));
+        for (boolean shield : new boolean[]{true, false}) {
+            Scene passing = new Scene(lone, QUIET, true, List.of(new Point(-5, 0, 0)), 0, 0, THRESHOLD, GRACE, 17f, shield);
+            Decision pass = new CombatPolicy().decide(0, passing);
+            assertEquals(IGNORE, pass.verdict());
+            assertFalse("passing, shield " + shield, CombatPolicy.inDanger(danger(17, 0, true, pass, 0, 0, 1)));
+
+            Scene fight = new Scene(engaged(List.of(zombie(1, 2, 0))), QUIET, false, List.of(), 0, 0, THRESHOLD, GRACE, 17f, shield);
+            Decision one = new CombatPolicy().decide(0, fight);
+            assertEquals(FIGHT_ONE, one.verdict());
+            assertTrue(CombatPolicy.vulnerable(0, 17));
+            assertFalse("fighting, shield " + shield, CombatPolicy.inDanger(danger(17, 0, true, one, 1, 0, 1)));
+        }
+    }
+
+    @Test
+    public void aCrowdWithNoShieldIsTheKitesBusinessNotTheDangerRuns() {
+        Scene crowd = new Scene(engaged(ring(3, 4)), QUIET, false, List.of(), 0, 0, THRESHOLD, GRACE, 17f, false);
+        Decision d = new CombatPolicy().decide(0, crowd);
+        assertEquals(KITE, d.verdict());
+        assertFalse(CombatPolicy.inDanger(danger(17, 0, true, d, 3, 0, 1)));
+    }
+
+    @Test
+    public void hpNineWithFoodAndSomethingOnUsIsDanger() {
+        Decision one = new CombatPolicy().decide(0, withHealth(List.of(zombie(1, 5, 0)), 9));
+        assertTrue(CombatPolicy.inDanger(danger(9, 0, true, one, 1, 0, 1)));
+        // no food and a lone zombie is a fight, flee has its own stance for it
+        assertFalse(CombatPolicy.inDanger(danger(9, 0, false, new Decision(FIGHT_ONE, java.util.Set.of(), 1, 1, false), 1, 0, 1)));
+    }
+
+    @Test
+    public void hpNineWithFoodAndNobodyAroundIsNotDanger() {
+        // it used to be, and the run it started was finished before it began
+        assertFalse(CombatPolicy.inDanger(danger(9, 0, true, new Decision(IGNORE, java.util.Set.of(), 0, 0, false), 0, 0, 1)));
+    }
+
+    @Test
+    public void witherAndPoisonAreDangerWhateverTheVerdict() {
+        Decision calm = new Decision(IGNORE, java.util.Set.of(), 0, 0, false);
+        assertTrue(CombatPolicy.inDanger(new CombatPolicy.Danger(20, 20, false, false, false, true, true, calm, 0, 0, 4)));
+    }
+
+    @Test
+    public void aStandAgainstMoreThanTheGearTakesIsDangerUnlessWeAreCornered() {
+        assertEquals(2, CombatPolicy.standCapacity(0, 0, true));
+        assertTrue(CombatPolicy.inDanger(danger(17, 0, true, stand("shield up"), 3, 0, 2)));
+        assertFalse(CombatPolicy.inDanger(danger(17, 0, true, stand("shield up"), 2, 0, 2)));
+        assertFalse("the run already went nowhere", CombatPolicy.inDanger(danger(17, 0, true, stand("nowhere to run"), 3, 0, 2)));
+    }
+
+    @Test
+    public void aFiringLineIsDangerButOneOrTwoShootersAreACharge() {
+        Decision d = new Decision(FIGHT_ONE, java.util.Set.of(), 0, 0, false);
+        assertTrue(CombatPolicy.inDanger(danger(17, 0, true, d, 0, 3, 1)));
+        assertFalse(CombatPolicy.inDanger(danger(17, 0, true, d, 0, 2, 1)));
+    }
+
+    @Test
+    public void wellDressedAndHealthyIsNeverDangerFromACount() {
+        assertFalse(CombatPolicy.inDanger(danger(20, 20, true, stand("shield up"), 6, 0, 4)));
+    }
+
+    @Test
+    public void withThePolicyOffItIsTheOldRule() {
+        Decision none = new Decision(STAND, java.util.Set.of(), 0, 0, false);
+        assertTrue(CombatPolicy.inDanger(new CombatPolicy.Danger(17, 0, true, false, false, false, false, none, 1, 0, 1)));
+    }
+
+    @Test
+    public void outrunningThemIsNotARunToo() {
+        Decision outrun = new Decision(IGNORE, java.util.Set.of(1), 0, 0, false, "outrunning");
+        assertTrue(outrun.outrunning());
+        assertFalse(CombatPolicy.inDanger(danger(9, 0, true, outrun, 3, 0, 1)));
+    }
+
+    // ---- running the way we were going
+
+    // a straight route ahead (+z), one block a step, ten steps
+    private static List<Point> ahead() {
+        List<Point> out = new ArrayList<>();
+        for (int i = 1; i <= 10; i++) out.add(new Point(0, 0, i));
+        return out;
+    }
+
+    @Test
+    public void aMobBehindUsIsNotInTheWay() {
+        assertTrue(CombatPolicy.canOutrun(ahead(), List.of(zombie(1, 0, -4), zombie(2, 1, -5), zombie(3, -1, -5))));
+    }
+
+    @Test
+    public void aMobOnTheRouteIsInTheWay() {
+        assertFalse(CombatPolicy.canOutrun(ahead(), List.of(zombie(1, 0, 6))));
+    }
+
+    @Test
+    public void aMobThatCutsTheCornerIsInTheWay() {
+        // six off to the side and eight along: it meets us there at a walk
+        assertFalse(CombatPolicy.canOutrun(ahead(), List.of(zombie(1, 6, 8))));
+        // twelve off to the side it does not
+        assertTrue(CombatPolicy.canOutrun(ahead(), List.of(zombie(1, 12, 5))));
+    }
+
+    @Test
+    public void thingsThatOutrunOrShootUsAreNeverOutrun() {
+        assertFalse(CombatPolicy.canOutrun(ahead(), List.of(spider(1, 0, -8))));
+        assertFalse(CombatPolicy.canOutrun(ahead(), List.of(skeleton(1, 0, -8, true))));
+        assertFalse("no route is no route", CombatPolicy.canOutrun(List.of(), List.of(zombie(1, 0, -8))));
+    }
+
+    @Test
+    public void aCrowdBehindUsOnTheWayToSomewhereIsLeftToTheUserTask() {
+        List<Mob> behind = List.of(zombie(1, -1, -4), zombie(2, 0, -5), zombie(3, 1, -4));
+        Scene s = new Scene(engaged(behind), QUIET, true, ahead(), 0, 0, THRESHOLD, GRACE);
+        Decision d = new CombatPolicy().decide(0, s);
+        assertEquals(IGNORE, d.verdict());
+        assertTrue(d.outrunning());
+        assertEquals("every one of them is handed back", 3, d.ignored().size());
+    }
+
+    @Test
+    public void aCrowdOnTheRouteIsRunFromWithAReason() {
+        List<Mob> inFront = List.of(zombie(1, -1, 5), zombie(2, 0, 6), zombie(3, 1, 5));
+        Scene s = new Scene(engaged(inFront), QUIET, true, ahead(), 0, 0, THRESHOLD, GRACE);
+        Decision d = new CombatPolicy().decide(0, s);
+        assertEquals(KITE, d.verdict());
+        assertEquals("they're in the way", d.why());
+    }
+
+    @Test
+    public void aCrowdWithNowhereInParticularToGoIsStillAKite() {
+        Decision d = new CombatPolicy().decide(0, new Scene(engaged(ring(3, 4)), QUIET, false, List.of(), 0, 0, THRESHOLD, GRACE));
+        assertEquals(KITE, d.verdict());
+        assertFalse(d.outrunning());
+    }
 }

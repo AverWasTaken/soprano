@@ -23,6 +23,14 @@ public final class CombatRules {
     private CombatRules() {
     }
 
+    // the chain asked for the wheel at this priority. a priority is a promise that something is running, so with no task
+    // (or one that was born finished, a run we are already outside of) it is a zero. the live bug was eleven seconds of
+    // "Mob Defense holds the wheel at 70.0 with nothing running"
+    public static float wheelPriority(float priority, boolean hasTask, boolean taskFinished) {
+        if (priority <= 0) return priority;
+        return hasTask && !taskFinished ? priority : 0;
+    }
+
     public enum Stance {
         // not fighting, eat whenever the food chain wants
         CALM,

@@ -2,8 +2,10 @@ package adris.altoclef.util.helpers;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 // the pure half of "do we fight this, run from this, or just keep walking". no world, just numbers, so it can be tested
@@ -72,7 +74,25 @@ public final class CombatPolicy {
     // the path was seen under the user task this recently. past it we were probably busy fighting
     public static final long TRAVEL_FRESH = 10;
 
+    // a fight we picked is a fight for at least this long. the zombie knocked back to 2.6 blocks used to read as "walking
+    // past it" for a tick, mob defense let go, the user task took the wheel, the zombie was close again, and round we went
+    // several times a second. it ends early when the thing dies (gone from the scene) or is this far away
+    public static final long FIGHT_LATCH = 30;
+    public static final double FIGHT_LEAVE = 6;
+
+    // the user task keeps its travelling answer this long after mob defense takes the wheel. without it the answer flipped
+    // the moment the hand-off happened and the verdict flipped with it
+    public static final long TRAVEL_HOLD = 40;
+
+    // a route is only somebody else's problem if no mob can get within this much of it by the time we are there
+    public static final double RUN_CLEARANCE = 3;
+    // blocks per tick: a sprinting player, and a zombie (anything faster is not outrun, see canOutrun)
+    private static final double RUN_SPEED = 0.28;
+    private static final double MOB_SPEED = 0.22;
+
     private static final String CORNERED = "nowhere to run";
+    private static final String OUTRUN = "outrunning";
+    private static final String IN_THE_WAY = "they're in the way";
 
     private enum State {
         FIGHT, KITE
@@ -160,6 +180,12 @@ public final class CombatPolicy {
         public boolean cornered() {
             return verdict == Verdict.STAND && CORNERED.equals(why);
         }
+
+        // the crowd is behind us and our route is clear: the run is just the user task carrying on, so nobody takes the
+        // wheel. every mob is in `ignored`, same as a pass-by
+        public boolean outrunning() {
+            return verdict == Verdict.IGNORE && OUTRUN.equals(why);
+        }
     }
 
     private State state = State.FIGHT;
@@ -180,6 +206,12 @@ public final class CombatPolicy {
     // left alone by reset(): the fight going quiet for a tick is exactly when the latch earns its keep
     private long lowHpUntil = Long.MIN_VALUE / 2;
 
+    // the hysteresis: a mob we chose to fight stays a fight until its tick (or it dies, or leaves), and a mob we chose to
+    // walk past stays walked past until it is on top of us or bites. both are per mob id, and both forget a mob that is
+    // gone from the scene
+    private final Map<Integer, Long> fightUntil = new HashMap<>();
+    private final Set<Integer> passing = new HashSet<>();
+
     // is the low hp latch on. the chain asks this for the stance and for whether a held kill target still gets a say
     public boolean lowHpLatched(long now) {
         return now < lowHpUntil;
@@ -195,15 +227,18 @@ public final class CombatPolicy {
             }
         }
         boolean latched = lowHpLatched(now);
+        forgetGone(scene);
         Set<Integer> ignored = new HashSet<>();
         List<Mob> active = new ArrayList<>(scene.mobs().size());
         for (Mob mob : scene.mobs()) {
             // (the latch used to switch this off, "nobody is walked past at low hp". walking past is the safe move at low
             // hp, it is standing next to them that kills us. what the latch does now is turn contact into a run, below)
-            if (canIgnore(mob, scene)) {
+            if (ignorable(mob, scene, now)) {
                 ignored.add(mob.id());
+                passing.add(mob.id());
             } else {
                 active.add(mob);
+                passing.remove(mob.id());
             }
         }
         if (active.isEmpty()) {
@@ -287,6 +322,16 @@ public final class CombatPolicy {
         if (state == State.KITE) {
             // a crowd outranks a skeleton, even a committed charge. feet first
             charging = false;
+            fightUntil.clear();
+            if (!scene.path().isEmpty() && scene.travelling()) {
+                if (canOutrun(scene.path(), active)) {
+                    // the way we were going is clear of them, so going is the run. sprint on, nobody takes the wheel
+                    Set<Integer> everyone = new HashSet<>(ignored);
+                    for (Mob mob : active) everyone.add(mob.id());
+                    return new Decision(Verdict.IGNORE, everyone, swarm, near, false, OUTRUN);
+                }
+                return new Decision(Verdict.KITE, ignored, swarm, near, false, IN_THE_WAY);
+            }
             return new Decision(Verdict.KITE, ignored, swarm, near, false, kiteWhy(lowRun, crowd, pressed));
         }
         if (chargeOn(now, scene.health(), crowd, seen, shooters, shooterRange, meleeNear)) {
@@ -296,11 +341,38 @@ public final class CombatPolicy {
         // a run we could not make is a fight we stand in front of. a shield is the other reason to stand, with one of those
         // two on us the trade is at least a fair one
         boolean cornered = blocked && (crowd || pressed || lowRun);
+        latchFights(now, active);
         if (cornered || near >= 2) {
             return new Decision(Verdict.STAND, ignored, swarm, near, false,
                     cornered ? CORNERED : scene.shield() ? "shield up" : "they outrun us");
         }
         return new Decision(Verdict.FIGHT_ONE, ignored, swarm, near, hold, hold ? "let them come" : "one at a time");
+    }
+
+    // ignorable now, with what we decided last time folded in
+    private boolean ignorable(Mob mob, Scene scene, long now) {
+        Long until = fightUntil.get(mob.id());
+        // we picked this one, it does not get to turn back into a bystander for a knockback
+        if (until != null && now < until && mob.distance() <= FIGHT_LEAVE) return false;
+        return canIgnore(mob, scene, passing.contains(mob.id()));
+    }
+
+    // the ones that are on us are a fight for FIGHT_LATCH ticks, and still being on us keeps that going
+    private void latchFights(long now, List<Mob> active) {
+        for (Mob mob : active) {
+            if (mob.distance() <= STRIKE_RANGE || mob.hitUs()) {
+                fightUntil.merge(mob.id(), now + FIGHT_LATCH, Math::max);
+            }
+        }
+    }
+
+    // dead and gone is the end of both latches
+    private void forgetGone(Scene scene) {
+        if (fightUntil.isEmpty() && passing.isEmpty()) return;
+        Set<Integer> here = new HashSet<>();
+        for (Mob mob : scene.mobs()) here.add(mob.id());
+        fightUntil.keySet().retainAll(here);
+        passing.retainAll(here);
     }
 
     // why a run, in the words the log wants
@@ -317,6 +389,7 @@ public final class CombatPolicy {
     // nobody around at all: the cheap version of decide, for the ticks that are nearly all of them
     public Decision idle() {
         reset();
+        passing.clear();
         return IDLE;
     }
 
@@ -375,12 +448,41 @@ public final class CombatPolicy {
         return melee >= 1 || shooters > CHARGE_MAX_SEEN;
     }
 
+    // everything the chain knows when it asks "is this a reason to run". melee and shooters are the ones the policy is
+    // actually dealing with (not the ones it is walking past) within the chain's danger range
+    public record Danger(float health, int armor, boolean hasFood, boolean witchAround, boolean charging,
+                         boolean statusEffect, boolean policyOn, Decision decision, int melee, int shooters, int capacity) {
+    }
+
+    // the hp the food rule runs at (same line the dodge gate and the food chain use for "should be eating")
+    public static final float LOW_HP_FOOD = 10;
+
+    // the chain's isInDanger, as numbers. the vulnerable branch used to be "armor under 5 and hp under 18 and a melee mob
+    // within 8", which is every early game bot below full health and one zombie. that ran from a lone zombie at hp 17 with
+    // a shield, twice, while the policy was passing it. the policy owns every verdict it gave: a pass, a fight and a kite
+    // are its business, what is left for this is a stand against more than the gear can take, and a firing line
+    public static boolean inDanger(Danger d) {
+        if (d.statusEffect()) return true;
+        // running along the route already is the answer
+        if (d.decision().outrunning()) return false;
+        // nothing real on us is nothing to run from (hp 9 with food and a creeper two chunks away is not a reason)
+        if (d.melee() + d.shooters() == 0) return false;
+        if (d.health() <= LOW_HP_FOOD && d.hasFood() && !d.witchAround() && !d.charging()) return true;
+        if (!vulnerable(d.armor(), d.health())) return false;
+        if (d.shooters() > CHARGE_MAX_SEEN) return true;
+        if (!d.policyOn()) return dangerousCompany(d.melee(), d.shooters());
+        Decision decision = d.decision();
+        return decision.verdict() == Verdict.STAND && !decision.cornered() && d.melee() > d.capacity();
+    }
+
     private void reset() {
         state = State.FIGHT;
         needContact = false;
         charging = false;
         // the dwell is for flapping inside one fight, not between two
         stateSince = Long.MIN_VALUE / 2;
+        // (the walked past latch survives this, an all-ignored scene is exactly where it earns its keep)
+        fightUntil.clear();
     }
 
     private static final Decision IDLE = new Decision(Verdict.IGNORE, Set.of(), 0, 0, false);
@@ -392,6 +494,12 @@ public final class CombatPolicy {
 
     // whether this mob is somebody else's business while we walk past. every one of these has to hold
     public static boolean canIgnore(Mob mob, Scene scene) {
+        return canIgnore(mob, scene, false);
+    }
+
+    // stillPassing: we already walked past this one last tick. then the travelling answer and the route do not get to
+    // change our mind (they flip when mob defense takes the wheel), only the things that make it a real threat do
+    public static boolean canIgnore(Mob mob, Scene scene, boolean stillPassing) {
         // the one that bit us (or that we hit) is a fight. the rest of the hillside is not, a hit used to end the stroll for
         // every zombie in sight and a bot at hp 5 would stop and swing at all of them. low hp does not stop a pass either:
         // walking past is the safe move there
@@ -406,6 +514,7 @@ public final class CombatPolicy {
         // going to be a charge in a few steps either way. wider berth than a zombie gets
         boolean shooter = isShooter(mob);
         if (shooter && distance <= SHOOTER_NEAR) return false;
+        if (stillPassing && !pileForming(scene)) return true;
         // standing at a furnace or a tree there is no route to keep clear of, just us. same radius as the stroll, and the
         // task keeps going until it really is on top of us (it used to drop the pickaxe for a zombie nine blocks away). a
         // pile of them though is never somebody else's business, the run has to start before they are on us
@@ -415,6 +524,32 @@ public final class CombatPolicy {
         for (Point p : scene.path()) {
             double dx = p.x() - mob.dx(), dz = p.z() - mob.dz();
             if (Math.abs(p.y() - mob.dy()) <= 3 && dx * dx + dz * dz <= clearance * clearance) return false;
+        }
+        return true;
+    }
+
+    // can we just keep going. needs a route, nothing that outruns us or shoots us, and no mob able to get within
+    // RUN_CLEARANCE of any stretch of the route by the time we are on it. the mob is assumed to walk straight at wherever
+    // we will be, at zombie speed, so one off to the side that would cut the corner counts and one behind us does not
+    public static boolean canOutrun(List<Point> path, List<Mob> threats) {
+        if (path.isEmpty() || threats.isEmpty()) return false;
+        for (Mob mob : threats) {
+            if (mob.fast() || mob.ranged()) return false;
+        }
+        double along = 0;
+        double px = 0, pz = 0;
+        for (Point p : path) {
+            along += Math.hypot(p.x() - px, p.z() - pz);
+            px = p.x();
+            pz = p.z();
+            double reach = along * MOB_SPEED / RUN_SPEED;
+            for (Mob mob : threats) {
+                if (Math.abs(p.y() - mob.dy()) > 3) continue;
+                double there = Math.hypot(mob.dx() - p.x(), mob.dz() - p.z());
+                // a mob that is farther from this spot than from us is behind it, falling back as we go
+                if (there >= Math.hypot(mob.dx(), mob.dz())) continue;
+                if (there - reach <= RUN_CLEARANCE) return false;
+            }
         }
         return true;
     }
@@ -449,9 +584,18 @@ public final class CombatPolicy {
         private final ArrayDeque<Sample> samples = new ArrayDeque<>();
         private long lastPathing = Long.MIN_VALUE / 2;
         private List<Point> upcoming = List.of();
+        // the last tick the answer was a real yes, and whether somebody else has the wheel right now
+        private long travellingAt = Long.MIN_VALUE / 2;
+        private boolean handedOff;
 
         // pathing is "the user task is current and baritone has a path"
         public void update(long now, double x, double z, boolean pathing) {
+            update(now, x, z, pathing, false);
+        }
+
+        // handedOff: another chain (mob defense) has the wheel, so "not pathing" says nothing about the user task
+        public void update(long now, double x, double z, boolean pathing, boolean handedOff) {
+            this.handedOff = handedOff;
             if (!samples.isEmpty() && (now < samples.peekLast().tick || now - samples.peekLast().tick > TRAVEL_WINDOW)) {
                 // time went backwards or we were not watching, the history is nonsense
                 samples.clear();
@@ -471,6 +615,16 @@ public final class CombatPolicy {
         }
 
         public boolean travelling(long now, double x, double z) {
+            if (walkingNow(now, x, z)) {
+                travellingAt = now;
+                return true;
+            }
+            // mob defense has the wheel: the answer from just before it did still stands. reading the current chain here is
+            // what made the verdict flip the moment the hand-off happened
+            return handedOff && now - travellingAt < TRAVEL_HOLD;
+        }
+
+        private boolean walkingNow(long now, double x, double z) {
             if (now - lastPathing > TRAVEL_FRESH) return false;
             // a full window of history, or it could be the first step of anything
             if (samples.isEmpty() || now - samples.peekFirst().tick < TRAVEL_WINDOW - SAMPLE_EVERY * 2) return false;
@@ -488,6 +642,7 @@ public final class CombatPolicy {
         public void clear() {
             samples.clear();
             lastPathing = Long.MIN_VALUE / 2;
+            travellingAt = Long.MIN_VALUE / 2;
             upcoming = List.of();
         }
     }

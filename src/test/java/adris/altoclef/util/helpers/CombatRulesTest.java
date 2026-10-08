@@ -117,6 +117,16 @@ public class CombatRulesTest {
     }
 
     @Test
+    public void aPriorityNeedsATaskThatIsStillRunning() {
+        // "Mob Defense holds the wheel at 70.0 with nothing running"
+        assertEquals(70f, CombatRules.wheelPriority(70, true, false), 0);
+        assertEquals(0f, CombatRules.wheelPriority(70, false, false), 0);
+        assertEquals("a run we were already outside of", 0f, CombatRules.wheelPriority(80, true, true), 0);
+        assertEquals("not asking for it is not asking for it", Float.NEGATIVE_INFINITY, CombatRules.wheelPriority(Float.NEGATIVE_INFINITY, false, true), 0);
+        assertEquals(0f, CombatRules.wheelPriority(0, false, false), 0);
+    }
+
+    @Test
     public void fusingCreeperAtLowHpIsStillAFlee() {
         assertEquals(FLEE, CombatRules.stance(CombatRules.inCombat(NOBODY, LONG_AGO, true), 6, 4, false));
     }
