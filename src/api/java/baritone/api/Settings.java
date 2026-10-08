@@ -862,7 +862,7 @@ public final class Settings {
      * <p>
      * Only does anything when {@link #renderPathRibbon} is on.
      */
-    public final Setting<Boolean> renderSearchSmooth = new Setting<>(false);
+    public final Setting<Boolean> renderSearchSmooth = new Setting<>(true);
 
     /**
      * Let a faint shimmer drift down the path, in the direction of travel.
