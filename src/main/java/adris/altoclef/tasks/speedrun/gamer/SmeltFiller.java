@@ -207,6 +207,37 @@ public final class SmeltFiller {
         }
     }
 
+    // ---- standing by for a smoker
+
+    // a smoker does 5 s an item, a batch of 8 meat is 40 s. mining for iron and walking back costs more than that, so while one
+    // is running the bot waits at it instead of working the filler (the furnace is 10 s an item and still gets the filler)
+    public static final String SMOKER = "smoker";
+    // past the estimate by this much and the stand by is given up, a smoker with no fuel or in a chunk that stopped ticking must
+    // not hold the run. the collect trip has its own cap on the same number (FurnaceWatch.collectJob)
+    private static final long STAND_BY_SLACK_TICKS = 30 * 20;
+
+    // the smoker job that is ready first, null when no smoker is running
+    public static RunState.FurnaceJob smokerJob(List<RunState.FurnaceJob> jobs) {
+        RunState.FurnaceJob best = null;
+        for (RunState.FurnaceJob job : jobs) {
+            if (SMOKER.equals(job.kind) && (best == null || job.doneTick < best.doneTick)) {
+                best = job;
+            }
+        }
+        return best;
+    }
+
+    // game tick the stand by for this job ends at whatever happens, taken when it starts. the job object is the same one across
+    // visits (afterVisit re-stamps it in place), so a smoker that keeps coming up short cannot restart the clock
+    public static long standByUntil(RunState.FurnaceJob smoker, long now) {
+        return Math.max(now, smoker.doneTick) + STAND_BY_SLACK_TICKS;
+    }
+
+    // stand by at the smoker instead of working the filler? `until` = standByUntil of the job we started on (-1 = not started)
+    public static boolean standBy(List<RunState.FurnaceJob> jobs, long now, long until) {
+        return smokerJob(jobs) != null && (until < 0 || now <= until);
+    }
+
     // ---- when to go back
 
     // fillerLeft = the runnable list is not empty. atBoundary = the need we were on is done (we are between two needs).

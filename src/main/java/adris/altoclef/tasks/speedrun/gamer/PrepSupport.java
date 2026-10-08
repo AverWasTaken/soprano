@@ -63,6 +63,22 @@ public final class PrepSupport {
         return stations.owed();
     }
 
+    // the bot is standing by a smoker on purpose (SmeltFiller.standBy): a few seconds of waiting is the plan, so the side jobs that
+    // walk off (village chests and beds, ruined portals, a fresh golem, the table pickup) can all wait the 40 s. only a golem
+    // fight already going outranks it, same as it outranks everything
+    public Task tickStandBy(AltoClef mod, GamerContext ctx, List<KitNeed> needs) {
+        danger.tick(mod);
+        hud = null;
+        if (golem != null && golem.active()) {
+            Task fight = golem.tick(mod, ctx, needs.isEmpty() ? null : needs.get(0));
+            if (fight != null) {
+                hud = golem.hud();
+                return fight;
+            }
+        }
+        return null;
+    }
+
     // `needs` is what the phase still has to do, in order (empty = nothing)
     public Task tick(AltoClef mod, GamerContext ctx, List<KitNeed> needs) {
         KitNeed current = needs.isEmpty() ? null : needs.get(0);

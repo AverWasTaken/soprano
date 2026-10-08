@@ -19,6 +19,8 @@ import net.minecraft.world.item.Item;
 public class CookRawFoodTask extends Task {
     // no change in the bag for this long and the cook is not going anywhere (no fuel to be found, no room for a smoker)
     private static final long GIVE_UP_TICKS = 150 * 20;
+    // no child for this long while the planner still wants the cook and it is not a finish: start over
+    private static final long IDLE_RESTART_TICKS = 5 * 20;
 
     private final boolean smoker;
     private Task smelt;
@@ -27,10 +29,8 @@ public class CookRawFoodTask extends Task {
     private int lastCooked;
     private long lastChange;
     private boolean gaveUp;
-    // the smelt loads and walks away (AsyncSmelting) instead of standing there until it is cooked. then "finished" means the one
-    // input slot is full and the next kind waits for this batch to come out. the job lands in the gamer's list a tick later, so
-    // this is decided up front and not by looking at the pending food
-    private boolean async;
+    // game tick we started handing back no child, -1 while there is one
+    private long idleSince = -1;
 
     public CookRawFoodTask(boolean smoker) {
         this.smoker = smoker;
@@ -43,6 +43,7 @@ public class CookRawFoodTask extends Task {
         lastRaw = -1;
         lastCooked = -1;
         gaveUp = false;
+        idleSince = -1;
         lastChange = mod.getWorld().getGameTime();
     }
 
@@ -63,14 +64,22 @@ public class CookRawFoodTask extends Task {
     @Override
     protected Task onTick(AltoClef mod) {
         long now = mod.getWorld().getGameTime();
-        if (gaveUp || (smelt != null && async && smelt.isFinished(mod))) {
+        if (gaveUp) {
             CookTrip.release();
-            return null;
+            return idle(now, "Gave up on the cook");
+        }
+        if (handedOff()) {
+            // loaded and walked away: the job lands in the gamer's list next tick and the cook need goes with it
+            CookTrip.release();
+            return idle(now, "Loaded, the smoker has it");
         }
         CookTrip.commit(smoker, now);
         if (smelt != null && smelt.isFinished(mod)) {
-            // cooked in place (async cooking off): that kind is done and the slot is empty again, on to the next pile. stopping
-            // here used to leave the need up with a finished task under it, and the bot stood there until the watchdog
+            // finished but not loaded: cooked in place (async cooking off), or the bag met the smelt's target by itself. that second
+            // one is the cooked batch we collect from our own smoker before loading the next: three cooked beef in the bag satisfied
+            // "have three cooked beef" with the three raw ones still sitting next to them. this used to count as a load, hand back
+            // no child and idle for 35 s with the meat in the bag (live log 23:19:39). on to the next pile with a target that
+            // counts what is there now
             smelt = null;
             lastRaw = -1;
             lastCooked = -1;
@@ -82,10 +91,11 @@ public class CookRawFoodTask extends Task {
                 // nothing left to cook and nothing loading: let go of the station, or a sync cook (async cooking off) kept the
                 // cook need alive through the stamp until the watchdog
                 CookTrip.release();
-                return null;
+                return idle(now, "Nothing raw left to cook");
             }
             smelt = make(mod, smelting);
         }
+        idleSince = -1;
         // a sync cook empties the bag as it goes and fills it with the cooked kind, either is the bag moving
         int raw = mod.getItemStorage().getItemCount(smelting);
         int cooked = mod.getItemStorage().getItemCount(FoodHelper.cookedForm(smelting));
@@ -105,13 +115,36 @@ public class CookRawFoodTask extends Task {
         return smelt;
     }
 
+    // true once the smelt loaded the station and let go of it (see AsyncSmelting.Handoff)
+    private boolean handedOff() {
+        return isHandoff(smelt);
+    }
+
+    static boolean isHandoff(Object smelt) {
+        return smelt instanceof AsyncSmelting.Handoff handoff && handoff.handedOff();
+    }
+
+    // every road that hands back no child ends here, so it says why on the hud. one that is not a finish (the planner still wants
+    // us and nothing is running) starts over after a few seconds instead of sitting there, which is what a silent null did
+    private Task idle(long now, String why) {
+        setDebugState(why);
+        if (idleSince < 0) {
+            idleSince = now;
+        }
+        if (now - idleSince > IDLE_RESTART_TICKS && !gaveUp && !handedOff()) {
+            Debug.logInternal("cook: " + why + " for " + (now - idleSince) / 20 + " s and still wanted, starting over");
+            smelt = null;
+            idleSince = -1;
+        }
+        return null;
+    }
+
     private Task make(AltoClef mod, Item raw) {
         int rawCount = mod.getItemStorage().getItemCount(raw);
         Item cooked = FoodHelper.cookedForm(raw);
         // total of the cooked kind we want to end up holding, same sum CollectFoodTask uses
         int toSmelt = rawCount + mod.getItemStorage().getItemCount(cooked);
         SmeltTarget target = new SmeltTarget(new ItemTarget(cooked, toSmelt), new ItemTarget(raw, rawCount));
-        async = AsyncSmelting.wants(target.getItem());
         if (smoker) {
             SmeltInSmokerTask task = new SmeltInSmokerTask(target);
             task.ignoreMaterials();
@@ -141,7 +174,8 @@ public class CookRawFoodTask extends Task {
         if (gaveUp) {
             return true;
         }
-        if (smelt != null && async && smelt.isFinished(mod)) {
+        // loaded and left: "finished" means the one input slot is full and the next kind waits for this batch to come out
+        if (handedOff()) {
             return true;
         }
         // nothing raw left and nothing half cooked in front of us

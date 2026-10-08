@@ -38,7 +38,7 @@ import net.minecraft.world.level.block.Blocks;
 /**
  * Smelt in a smoker, placing a smoker and collecting fuel as needed.
  */
-public class SmeltInSmokerTask extends ResourceTask {
+public class SmeltInSmokerTask extends ResourceTask implements AsyncSmelting.Handoff {
 
     private final SmeltTarget[] _targets;
 
@@ -116,6 +116,11 @@ public class SmeltInSmokerTask extends ResourceTask {
     }
 
     @Override
+    public boolean handedOff() {
+        return _doTask._loaded;
+    }
+
+    @Override
     protected boolean isEqualResource(ResourceTask other) {
         if (other instanceof SmeltInSmokerTask task) {
             return task._doTask.isEqual(_doTask);
@@ -146,6 +151,9 @@ public class SmeltInSmokerTask extends ResourceTask {
         private boolean _ignoreMaterials;
         // async cooking: everything is in the smoker and we walked away, this task is done and must not walk back to it
         private boolean _loaded;
+        // the outer check (bag short of what the smoker still needs) and the one inside the open screen, see FuelShortage
+        private final FuelShortage _fuelShort = new FuelShortage();
+        private final FuelShortage _dryInside = new FuelShortage();
 
         public DoSmeltInSmokerTask(SmeltTarget target, boolean ignoreMaterials) {
             super(Blocks.SMOKER, new ItemTarget(Items.SMOKER));
@@ -214,9 +222,12 @@ public class SmeltInSmokerTask extends ResourceTask {
             }
 
             // We don't have enough fuel...
-            if (_smokerCache.burningFuelCount <= 0 && StorageHelper.calculateInventoryFuelCount(mod) < fuelNeeded) {
+            boolean lacking = _smokerCache.burningFuelCount <= 0 && StorageHelper.calculateInventoryFuelCount(mod) < fuelNeeded;
+            if (_fuelShort.confirmed(lacking, mod.getWorld().getGameTime())) {
                 setDebugState("Getting Fuel");
-                return new CollectFuelTask(fuelNeeded + 1);
+                // the exact shortfall, no + 1: the go-back test above and CollectFuelTask's finish test are the same number now, so
+                // there is nothing to round up for. 8 items is one coal, not two
+                return new CollectFuelTask(fuelNeeded);
             }
 
             // Make sure our materials are accessible in our inventory
@@ -363,6 +374,22 @@ public class SmeltInSmokerTask extends ResourceTask {
                         return new MoveItemToSlotFromInventoryTask(new ItemTarget(pick.stack().getItem(), pick.count()), SmokerSlot.INPUT_SLOT_FUEL);
                     }
                 }
+            }
+
+            // nothing in the bag may burn and the smoker is short: standing here saying "Waiting..." never ends (the burning check
+            // out in onTick only fires with nothing lit, and a smoker with a bit of fire left is lit). shut the screen and go get
+            // it. the lit reading is zeroed so that check sees the shortfall too, or it would trust a number that is about to run out
+            double lit = StorageHelper.getSmokerFuel();
+            double progress = StorageHelper.getSmokerCookPercent();
+            double slotFuel = fuel.isEmpty() ? 0 : ItemHelper.getFuelAmount(fuel);
+            if (_dryInside.confirmed(FuelShortage.dry(material.getCount(), lit, progress, slotFuel,
+                    StorageHelper.calculateInventoryFuelCount(mod)), mod.getWorld().getGameTime())) {
+                setDebugState("Out of fuel, going to get some");
+                _smokerCache.burningFuelCount = 0;
+                _smokerCache.burnPercentage = 0;
+                _dryInside.reset();
+                StorageHelper.closeScreen();
+                return null;
             }
 
             // fully loaded and fueled: 35 seconds of mutton does not need us staring at the gui. the screen closes and the

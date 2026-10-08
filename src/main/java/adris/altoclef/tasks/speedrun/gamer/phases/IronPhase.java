@@ -2,6 +2,7 @@ package adris.altoclef.tasks.speedrun.gamer.phases;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
+import adris.altoclef.tasks.container.AsyncSmelting;
 import adris.altoclef.tasks.container.CollectFromFurnaceTask.Mode;
 import adris.altoclef.tasks.speedrun.gamer.CookGate;
 import adris.altoclef.tasks.speedrun.gamer.EarlyIronPick;
@@ -13,6 +14,7 @@ import adris.altoclef.tasks.speedrun.gamer.GamerPhase;
 import adris.altoclef.tasks.speedrun.gamer.KitNeed;
 import adris.altoclef.tasks.speedrun.gamer.KitPlanner;
 import adris.altoclef.tasks.speedrun.gamer.KitRunner;
+import adris.altoclef.tasks.speedrun.gamer.OwnTables;
 import adris.altoclef.tasks.speedrun.gamer.PackUp;
 import adris.altoclef.tasks.speedrun.gamer.PhaseHandler;
 import adris.altoclef.tasks.speedrun.gamer.PrepSupport;
@@ -30,6 +32,7 @@ import adris.altoclef.tasksystem.Task;
 import baritone.Baritone;
 import baritone.altoclef.SettingsOverrides;
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.inventory.AbstractFurnaceMenu;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.phys.Vec3;
@@ -62,6 +65,10 @@ public class IronPhase implements PhaseHandler {
     private int foodBand = -1;
     // CookGate: a cook that started early (surface, or between jobs) keeps the front until the meat is cooked
     private boolean cookLatch;
+    // the smoker we are standing by for, and the game tick that stand by ends at at the latest (standingBy)
+    private RunState.FurnaceJob standJob;
+    private long standUntil = -1;
+    private boolean standGaveUp;
 
     @Override
     public GamerPhase phase() {
@@ -97,6 +104,9 @@ public class IronPhase implements PhaseHandler {
         foodTopUp = false;
         cookLatch = false;
         foodBand = -1;
+        standJob = null;
+        standUntil = -1;
+        standGaveUp = false;
         var async = Baritone.settings().altoAsyncSmelting;
         if (!SettingsOverrides.isHeld(async)) {
             userAsync = async.value;
@@ -164,7 +174,9 @@ public class IronPhase implements PhaseHandler {
         Schedule schedule = SmeltFiller.schedule(f, ctx.cfg().overworld, ctx.cfg().end.beds, SmeltSurface.shallow(SmeltSurface.depthBelowSky(mod)));
         List<KitNeed> runnable = gateFood(mod, ctx, schedule.runnable());
         KitNeed head = runnable.isEmpty() ? null : runnable.get(0);
-        Task side = support.tick(mod, ctx, runnable);
+        // a smoker cooks 5 s an item: standing at it for the 40 s a batch takes beats walking off to mine and back
+        boolean standBy = standingBy(ctx, f);
+        Task side = standBy ? support.tickStandBy(mod, ctx, runnable) : support.tick(mod, ctx, runnable);
         if (side != null) {
             hudState = support.hud();
             return side;
@@ -173,6 +185,13 @@ public class IronPhase implements PhaseHandler {
         furnaces.mayCookHere(SmeltSurface.shallow(SmeltSurface.depthBelowSky(mod))
                 || SmeltSurface.nextWorkDown(head, f.count(Items.RAW_IRON), f.count(Items.IRON_INGOT), f.pendingOutput(Items.IRON_INGOT)));
         Task trip = furnaces.active(mod, ctx);
+        if (trip == null && standBy) {
+            // the collect trip waits until everything is out (the screen stays closed between looks), then FurnaceWatch reloads
+            // or picks the smoker up as it always does, and the filler gets the bot back once no smoker is left
+            committed = null;
+            trip = furnaces.collectJob(mod, ctx, SmeltFiller.smokerJob(f.furnaceJobs()), Mode.WAIT_ALL, "a smoker is quick, waiting for it instead of mining");
+            ctx.progress("waiting for the smoker");
+        }
         if (trip == null) {
             // no pick yet and the early batch is done: the pick is worth the detour, the mining need would not end for 36 more
             // ingots. nothing else cuts a need short, an iron craft waiting on the output is not a reason to leave a ladder
@@ -211,6 +230,31 @@ public class IronPhase implements PhaseHandler {
         Task task = runner.run(ctx, runnable);
         hudState = runner.hud() + " while a batch cooks";
         return task;
+    }
+
+    // stand at the smoker while it cooks (SmeltFiller.standBy), for as long as its budget lasts. the budget is per job object, and a
+    // job keeps its object across visits, so a smoker that keeps coming up short does not get a fresh clock each time
+    private boolean standingBy(GamerContext ctx, GamerFacts f) {
+        RunState.FurnaceJob smoker = SmeltFiller.smokerJob(f.furnaceJobs());
+        if (smoker == null) {
+            standJob = null;
+            standUntil = -1;
+            return false;
+        }
+        long now = f.gameTime();
+        if (smoker != standJob) {
+            standJob = smoker;
+            standGaveUp = false;
+            standUntil = SmeltFiller.standByUntil(smoker, now);
+            Debug.logInternal("smoker at " + smoker.pos + " has " + smoker.count + " " + smoker.input + " cooking, ~" + Math.max(0, smoker.doneTick - now) / 20
+                    + " s to go: standing by it instead of mining");
+        }
+        boolean on = SmeltFiller.standBy(f.furnaceJobs(), now, standUntil);
+        if (!on && !standGaveUp) {
+            standGaveUp = true;
+            Debug.logInternal("smoker at " + smoker.pos + " is " + (now - smoker.doneTick) / 20 + " s past due, not standing by it any more");
+        }
+        return on;
     }
 
     private static KitNeed second(List<KitNeed> needs) {
@@ -256,12 +300,22 @@ public class IronPhase implements PhaseHandler {
             return gated;
         }
         boolean surfaced = SmeltSurface.shallow(SmeltSurface.depthBelowSky(mod));
-        boolean lead = CookGate.leads(gated, at, CookGate.raw(ctx.facts()), surfaced, cookLatch);
+        boolean lead = CookGate.leads(gated, at, CookGate.raw(ctx.facts()), surfaced, cookLatch, otherLoadInFlight(mod, ctx));
         if (lead && !cookLatch) {
             Debug.logInternal("cook: " + CookGate.raw(ctx.facts()) + " raw meat in the bag, cooking it now instead of eating it raw");
         }
         cookLatch = lead;
         return lead ? CookGate.lead(gated, at) : gated;
+    }
+
+    // a furnace load is going on that is not the cook's: a screen of one is open or a smelt task had it a moment ago (the same
+    // test the station pickup waits on). once the cook is the one running it owns that screen, so the answer is no
+    private static boolean otherLoadInFlight(AltoClef mod, GamerContext ctx) {
+        return ctx.facts().cookStation() == null && loadInFlight(mod, ctx);
+    }
+
+    private static boolean loadInFlight(AltoClef mod, GamerContext ctx) {
+        return OwnTables.loadInFlight(mod.getPlayer().containerMenu instanceof AbstractFurnaceMenu, AsyncSmelting.lastWork(), ctx.facts().gameTime());
     }
 
     // the kit's own food need only leads when FoodGate says so, otherwise it waits behind the ore (it comes back the moment
@@ -288,7 +342,9 @@ public class IronPhase implements PhaseHandler {
         }
         // the heightmap only matters between the two lines
         boolean surfaced = band == 1 && SmeltSurface.shallow(SmeltSurface.depthBelowSky(mod));
-        boolean lead = FoodGate.leads(held, cfg, surfaced, foodTopUp, ctx.facts().cookStation() != null);
+        // a cook picked its station, or a smelt screen is in hand right now: the meat in that screen is not in the bag, not a job
+        // yet and not in the held sum, which is how a half loaded smoker read as 56 units and sent the bot for cows (23:18:36)
+        boolean lead = FoodGate.leads(held, cfg, surfaced, foodTopUp, ctx.facts().cookStation() != null || loadInFlight(mod, ctx));
         boolean wasTopUp = foodTopUp;
         foodTopUp = FoodGate.nextTopUp(foodTopUp, held, cfg, lead);
         if (foodTopUp && !wasTopUp) {

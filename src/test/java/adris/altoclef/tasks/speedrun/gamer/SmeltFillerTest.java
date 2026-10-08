@@ -348,4 +348,47 @@ public class SmeltFillerTest {
         assertEquals(12, SmeltFiller.planksWanted(List.of(), new FakeFacts(), cfg, BEDS));
         assertEquals(3, SmeltFiller.planksWanted(List.of(), new FakeFacts().give(Items.WHITE_BED, 7), cfg, BEDS));
     }
+
+    // ---- standing by for a smoker (a smoker is 5 s an item, the furnace 10)
+
+    @Test
+    public void aRunningSmokerIsStoodByAndAFurnaceIsNot() {
+        FakeFacts iron = atTheFurnace().cooking("iron_ingot", 40, 400);
+        assertNull(SmeltFiller.smokerJob(iron.furnaceJobs()));
+        assertFalse("the furnace keeps its filler", SmeltFiller.standBy(iron.furnaceJobs(), iron.gameTime(), -1));
+        FakeFacts meat = atTheFurnace().cookingFood("cooked_mutton", 8, 6, 40);
+        assertNotNull(SmeltFiller.smokerJob(meat.furnaceJobs()));
+        assertTrue(SmeltFiller.standBy(meat.furnaceJobs(), meat.gameTime(), -1));
+        assertFalse("no jobs at all", SmeltFiller.standBy(List.of(), 0, -1));
+    }
+
+    @Test
+    public void aSmokerBesideALongFurnaceBatchIsStillStoodBy() {
+        FakeFacts both = atTheFurnace().cooking("iron_ingot", 40, 400).cookingFood("cooked_beef", 3, 8, 15);
+        assertTrue(SmeltFiller.standBy(both.furnaceJobs(), both.gameTime(), -1));
+        // the smoker is the one waited for, not the soonest of the lot
+        assertEquals("smoker", SmeltFiller.smokerJob(both.furnaceJobs()).kind);
+        // and once the smoker is out the furnace alone gets its filler back
+        both.furnaceJobs().removeIf(j -> "smoker".equals(j.kind));
+        assertFalse(SmeltFiller.standBy(both.furnaceJobs(), both.gameTime(), -1));
+    }
+
+    @Test
+    public void theStandByEndsAThirtySecondsPastDue() {
+        FakeFacts meat = atTheFurnace().cookingFood("cooked_mutton", 8, 6, 40);
+        RunState.FurnaceJob smoker = SmeltFiller.smokerJob(meat.furnaceJobs());
+        long until = SmeltFiller.standByUntil(smoker, meat.gameTime());
+        assertEquals(smoker.doneTick + 30 * 20, until);
+        assertTrue(SmeltFiller.standBy(meat.furnaceJobs(), smoker.doneTick, until));
+        assertTrue(SmeltFiller.standBy(meat.furnaceJobs(), until, until));
+        assertFalse("a smoker that never finishes does not hold the run", SmeltFiller.standBy(meat.furnaceJobs(), until + 1, until));
+    }
+
+    @Test
+    public void aJobAlreadyPastDueGetsItsThirtySecondsFromNowNotFromThen() {
+        FakeFacts meat = atTheFurnace().cookingFood("cooked_mutton", 8, 6, 40);
+        RunState.FurnaceJob smoker = SmeltFiller.smokerJob(meat.furnaceJobs());
+        long late = smoker.doneTick + 500;
+        assertEquals(late + 30 * 20, SmeltFiller.standByUntil(smoker, late));
+    }
 }

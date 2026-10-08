@@ -230,7 +230,7 @@ public class SmeltInBlastFurnaceTask extends ResourceTask {
             // We don't have enough fuel...
             if (_blastFurnaceCache.burningFuelCount <= 0 && StorageHelper.calculateInventoryFuelCount(mod) < fuelNeeded) {
                 setDebugState("Getting Fuel");
-                return new CollectFuelTask(fuelNeeded + 1);
+                return new CollectFuelTask(fuelNeeded);
             }
 
             // Make sure our materials are accessible in our inventory

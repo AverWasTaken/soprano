@@ -145,8 +145,10 @@ public final class CookGate {
         }
         // a smoker still to make eats wood the fuel count would otherwise have burned. the smoker got built and then sat there cold
         int spoken = smokerToMake(f, station) ? smokerLogs(f) : 0;
-        // the first load is the biggest pile, the others cook after it has been collected
-        if (fuelSmelts(f, cfg, endBeds, spoken) < pile(f)) {
+        // the first load is the biggest pile, the others cook after it has been collected. a cook that is already loading skips
+        // this: the coal it put in the smoker left the bag, so the count dips under the pile the moment the fuel goes in and
+        // the cook walked out of its own plan with the meat in the slot (23:18:36). the smelt task fetches what it is short of
+        if (!loading && fuelSmelts(f, cfg, endBeds, spoken) < pile(f)) {
             return null;
         }
         return new KitNeed(station == Station.SMOKER ? KitNeed.COOK_SMOKER : KitNeed.COOK_FURNACE, MIN_RAW);
@@ -176,7 +178,16 @@ public final class CookGate {
     // the early start: enough meat to be worth it, and we are on the surface or the next job is not ore. `latched` is a start
     // that already happened, it carries on or the bot would flip every time it walks over the heightmap line
     public static boolean leads(List<KitNeed> needs, int at, int raw, boolean surfaced, boolean latched) {
-        if (raw < MIN_RAW) {
+        return leads(needs, at, raw, surfaced, latched, false);
+    }
+
+    // `loadBusy` = a furnace load that is not the cook's is in flight right now (OwnTables.loadInFlight, the caller leaves it
+    // false once the cook is the one running): the cook does not start in the middle of it, latched or not. it took over with
+    // three raw iron on the way into the new furnace (23:18:31, the latch was set four seconds earlier while the furnace was
+    // still being crafted, the head latch only handed over later) and the bot walked off with the ore on the cursor. the cook
+    // simply waits a few ticks for the load to be recorded
+    public static boolean leads(List<KitNeed> needs, int at, int raw, boolean surfaced, boolean latched, boolean loadBusy) {
+        if (raw < MIN_RAW || loadBusy) {
             return false;
         }
         return latched || surfaced || !FoodGate.headIsOre(needs, at);

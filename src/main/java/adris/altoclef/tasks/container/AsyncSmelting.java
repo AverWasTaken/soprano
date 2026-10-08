@@ -50,6 +50,13 @@ public final class AsyncSmelting {
     private AsyncSmelting() {
     }
 
+    // a smelt task is "finished" two ways: it loaded the furnace and walked off (the job is the memory now), or the bag already
+    // holds the item it was asked for. the second one is not a load: a cooked batch collected from the same smoker meets the
+    // target and the raw meat is still in the bag. whoever waits on the task has to tell them apart
+    public interface Handoff {
+        boolean handedOff();
+    }
+
     // the smelt tasks call this every tick the screen is open and they are working it
     public static void working(long now) {
         lastWork = now;

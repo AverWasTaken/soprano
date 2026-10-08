@@ -599,19 +599,29 @@ public class StorageHelper {
         return handler.getFuel();
     }
 
+    private static final int FURNACE_COOK_TICKS = 200;
+    private static final int FAST_COOK_TICKS = 100;
+
+    // lit time left comes in ticks, and the unit everywhere else is items. an item takes 200 ticks in a furnace but 100 in a
+    // smoker or blast furnace. a coal is 8 items in all three (the fast ones burn it twice as fast, 800 ticks), so only the lit
+    // part of the reading was off: /200 gave half the items a lit smoker could still cook, and it looked nearly dry
+    public static double litItems(int litTicks, int ticksPerItem) {
+        return (double) litTicks / ticksPerItem;
+    }
+
     public static double getFurnaceFuel(AbstractFurnaceMenu handler) {
         ContainerData d = ((IAbstractFurnaceMenu) handler).getPropertyDelegate();
-        return (double) d.get(0) / 200.0;
+        return litItems(d.get(0), FURNACE_COOK_TICKS);
     }
 
     public static double getSmokerFuel(AbstractFurnaceMenu handler) {
         ContainerData d = ((IAbstractFurnaceMenu) handler).getPropertyDelegate();
-        return (double) d.get(0) / 200.0;
+        return litItems(d.get(0), FAST_COOK_TICKS);
     }
 
     public static double getBlastFurnaceFuel(AbstractFurnaceMenu handler) {
         ContainerData d = ((IAbstractFurnaceMenu) handler).getPropertyDelegate();
-        return (double) d.get(0) / 200.0;
+        return litItems(d.get(0), FAST_COOK_TICKS);
     }
 
     public static double getFurnaceFuel() {

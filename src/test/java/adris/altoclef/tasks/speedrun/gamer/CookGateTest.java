@@ -364,6 +364,32 @@ public class CookGateTest {
     }
 
     @Test
+    public void aCookMidLoadKeepsItsNeedWhenItsCoalLeavesTheBag() {
+        // 23:18:36: beef x3 and the coal went into the smoker, one raw piece is still in the bag and the bag has no fuel left. the
+        // fuel gate read that as "cannot afford it", dropped the need, and iron took the wheel with the smoker half loaded
+        f.give(Items.BEEF, 1);
+        f.cookStation = "smoker";
+        assertEquals(KitNeed.COOK_SMOKER, need().catalogueName());
+        // a cook that has not started still wants the fuel before it picks a station
+        f.cookStation = null;
+        f.smokerPlaced = true;
+        assertNull(need());
+        f.give(Items.COAL, 1);
+        assertEquals(KitNeed.COOK_SMOKER, need().catalogueName());
+    }
+
+    @Test
+    public void anIronLoadInFlightHoldsTheCookOffEvenWhenItIsLatched() {
+        List<KitNeed> underMine = List.of(CRAFT, ORE, COOK);
+        // 23:18:27 the cook latched while the furnace was still being crafted; 23:18:31 the iron was on its way into the slot
+        assertTrue(CookGate.leads(underMine, 2, 6, true, true, false));
+        assertFalse(CookGate.leads(underMine, 2, 6, true, true, true));
+        assertFalse(CookGate.leads(underMine, 2, 6, false, false, true));
+        // and the old five argument form is the same as no load
+        assertEquals(CookGate.leads(underMine, 2, 6, true, false), CookGate.leads(underMine, 2, 6, true, false, false));
+    }
+
+    @Test
     public void gatherChopsFuelForTheCookOnTopOfItsBudget() {
         OverworldConfig full = new OverworldConfig();
         FakeFacts none = new FakeFacts();
