@@ -33,7 +33,7 @@ final class NetherRegress {
             return Optional.empty();
         }
         // held() counts a worn out pick too: wearing one down during the prep is not a death
-        if (KitPlanner.have(f, "stone_pickaxe") + KitPlanner.held(f, "stone_pickaxe") < 1) {
+        if (KitPlanner.have(f, "stone_pickaxe") + KitPlanner.held(f, "stone_pickaxe") + KitPlanner.held(f, "iron_pickaxe") < 1) {
             return Optional.of(GamerPhase.GATHER);
         }
         if (KitPlanner.have(f, "iron_pickaxe") + KitPlanner.held(f, "iron_pickaxe") < 1) {

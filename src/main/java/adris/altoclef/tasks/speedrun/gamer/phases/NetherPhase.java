@@ -71,6 +71,7 @@ public class NetherPhase implements PhaseHandler {
     // a known fortress further than this from us is worth a walk before the rods task starts wandering for bricks
     private static final double FORTRESS_NEAR_BLOCKS = 48;
     private static final double FORTRESS_WALK_SECONDS = 150;
+    private static final long HOME_SCAN_MS = 5000;
     private static final double FLEE_SECONDS = 10;
     private static final int FLEE_BLOCKS = 48;
 
@@ -94,6 +95,7 @@ public class NetherPhase implements PhaseHandler {
     private RunState.Pos walkingTo;
     // the portal we remembered is not there any more: stop walking back to it and let the default task build
     private boolean homePortalGone;
+    private long homeArrivedMs;
     private boolean portalTracking;
     private Task boots;
     private TradeWithPiglinsTask trade;
@@ -179,6 +181,7 @@ public class NetherPhase implements PhaseHandler {
         walkToPortal = null;
         walkingTo = null;
         homePortalGone = false;
+        homeArrivedMs = 0;
         rodsTask = null;
         hunt = null;
         trade = null;
@@ -214,11 +217,12 @@ public class NetherPhase implements PhaseHandler {
             onEnter(mod, ctx);
         }
         if (ctx.facts().dimension() != Dimension.NETHER) {
-            return toTheNether(mod, ctx.state());
+            return toTheNether(mod, ctx);
         }
         stopPortalTracking(mod);
         ensureTracking(mod);
         ReturnPhase.recordPortal(mod, ctx.state());
+        rememberOverworldPortal(mod, ctx);
         double now = ctx.secondsInPhase();
         Task cover = ghastCover(mod, now);
         if (cover != null) {
@@ -232,7 +236,21 @@ public class NetherPhase implements PhaseHandler {
 
     // back in the overworld (a regress from the stronghold, a death): walk to the portal we built first. the default task
     // only knows portals the block tracker has loaded and otherwise builds a brand new one, a thousand blocks from here
-    private Task toTheNether(AltoClef mod, RunState state) {
+    // the portal we just came through is the way home, also when the one we remembered was gone and the default task built a
+    // new one (PortalPhase only fills this in the first time)
+    private static void rememberOverworldPortal(AltoClef mod, GamerContext ctx) {
+        if (ctx.state().overworldPortal != null) {
+            return;
+        }
+        mod.getMiscBlockTracker().getLastUsedNetherPortal(Dimension.OVERWORLD)
+                .ifPresent(p -> {
+                    ctx.state().overworldPortal = new RunState.Pos(p.getX(), p.getY(), p.getZ());
+                    ctx.save();
+                });
+    }
+
+    private Task toTheNether(AltoClef mod, GamerContext ctx) {
+        RunState state = ctx.state();
         RunState.Pos home = state.overworldPortal;
         if (home != null && !homePortalGone) {
             // nothing else tracks portals while we walk, and "no portal near" means nothing if nobody is looking
@@ -251,9 +269,19 @@ public class NetherPhase implements PhaseHandler {
                     return walkToPortal;
                 }
                 // standing where it should be and a scan has looked: it is gone (a ghast, a relog), so the walk back must
-                // not drag us home again every time the default task wanders off to build a new one
-                if (mod.getBlockTracker().hasBeenScanned(Blocks.NETHER_PORTAL)) {
+                // not drag us home again every time the default task wanders off to build a new one. the scan flag only
+                // says some scan finished since we started looking, maybe far from here, so give the chunks around us a
+                // few seconds to be scanned first
+                if (homeArrivedMs == 0) {
+                    homeArrivedMs = System.currentTimeMillis();
+                }
+                if (mod.getBlockTracker().hasBeenScanned(Blocks.NETHER_PORTAL)
+                        && System.currentTimeMillis() - homeArrivedMs > HOME_SCAN_MS) {
                     homePortalGone = true;
+                    // forget it too, or every later trip and relog walks to the same empty spot again
+                    state.overworldPortal = null;
+                    walkingTo = null;
+                    ctx.save();
                 } else {
                     hudState = "Looking for the portal";
                     return walkToPortal;
