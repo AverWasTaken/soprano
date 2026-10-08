@@ -54,7 +54,8 @@ public final class KitPlanner {
     public static List<KitNeed> gather(GamerFacts f, OverworldConfig cfg, int endBeds) {
         List<KitNeed> out = new ArrayList<>(starter(f, cfg, endBeds, true, new ArrayList<>()));
         addFood(out, f, cfg.minFoodUnits);
-        addCook(out, f, cfg, endBeds);
+        // no cook here: GATHER used to wait out the smoker with nothing else to do, and the meat cooks just as well while the
+        // iron phase starts (it leads the plan on the surface, see CookGate.leads, and the output is collected on the way)
         return out;
     }
 
@@ -100,7 +101,8 @@ public final class KitPlanner {
             for (KitItem a : axes) {
                 addItem(out, f, a.item, a.count);
             }
-            addLogs(out, f, woodNeed(f, cfg, endBeds, true));
+            int logs = woodNeed(f, cfg, endBeds, true);
+            addLogs(out, f, logs + cookFuelLogs(f, cfg, endBeds, logs));
             // every cobble the stone kit eats in one trip, before the first stone craft, so the bot doesn't go back down
             // for the furnace's cobble after crafting the axe
             addCobble(out, f, stoneNeed(f, cfg));
@@ -138,6 +140,19 @@ public final class KitPlanner {
     // an early load in flight counts too, mid-move the bag is empty and we'd go chop a tree with the furnace open
     private static boolean ironStarted(GamerFacts f) {
         return f.count(Items.RAW_IRON, Items.IRON_INGOT) + f.pendingOutput(Items.IRON_INGOT) > 0 || f.earlyLoadInFlight();
+    }
+
+    // logs on top of the wood budget so the meat has something to burn when it comes in. no meat in the bag and food still
+    // short (it is the last thing in the gather, the logs are chopped well before the first animal), and the spare logs we
+    // already hold count, so the request settles at cfg.cookFuelLogs of surplus instead of chasing itself. past the food the
+    // answer is 0 whatever the bag says, or burning them would send the gather back to the trees
+    static int cookFuelLogs(GamerFacts f, OverworldConfig cfg, int endBeds, int budgetLogsShort) {
+        if (cfg.cookFuelLogs <= 0 || CookGate.raw(f) > 0 || f.foodUnits() + f.pendingFoodUnits() >= cfg.minFoodUnits) {
+            return 0;
+        }
+        // short of the budget every log is spoken for, so there is no spare to look for
+        int spare = budgetLogsShort > 0 ? 0 : Math.max(0, f.count(ItemHelper.LOG) - WoodReserve.keep(f, cfg, endBeds).logs());
+        return Math.max(0, cfg.cookFuelLogs - spare);
     }
 
     private static void addLogs(List<KitNeed> out, GamerFacts f, int logs) {

@@ -37,6 +37,23 @@ public final class CookGate {
         return f.count(RAW_MEAT);
     }
 
+    // the biggest pile of one kind. the cook loads one kind at a time (one input slot), so this is what the first load burns,
+    // and fuel for the whole bag is not needed up front
+    public static int pile(GamerFacts f) {
+        int best = 0;
+        for (Item meat : RAW_MEAT) {
+            best = Math.max(best, f.count(meat));
+        }
+        return best;
+    }
+
+    // ingots the kit still wants smelted, beyond the ones in the bag or already cooking. same sum KitPlanner.iron uses for
+    // the iron need. while there is any, the plain furnace is the iron's: the early pick and the big batch both walk back to
+    // the furnace they remember, and one with the meat in it is a furnace they would mix it up in
+    public static boolean ironOwed(GamerFacts f, OverworldConfig cfg) {
+        return KitPlanner.ingotsNeeded(f, cfg) > f.count(Items.IRON_INGOT) + f.pendingOutput(Items.IRON_INGOT);
+    }
+
     // is a furnace of ours busy with iron right now. food jobs never get this far (the cook waits for them), so any job on a
     // furnace is ore, and the furnace has ONE input slot: loading meat on top would swap the ore back out
     static boolean furnaceHasIron(GamerFacts f) {
@@ -55,6 +72,10 @@ public final class CookGate {
     // is a place, cook, walk back, pick up for two rabbit, and the phase waits on all of it
     public static Station station(GamerFacts f, OverworldConfig cfg, boolean mayCraft) {
         boolean ironInFurnace = furnaceHasIron(f);
+        // the furnace is for meat only once the iron is done with it (or never needs it): while iron is owed the meat gets a
+        // smoker of its own, which cooks twice as fast anyway, and a bag with no way to make one just keeps the meat until
+        // the end of the plan
+        boolean furnaceFree = !ironInFurnace && !ironOwed(f, cfg);
         // a cook already under way keeps its station, it is busy eating the logs and cobble that picked it
         String running = f.cookStation();
         if ("smoker".equals(running)) {
@@ -66,7 +87,7 @@ public final class CookGate {
         if (f.smokerPlacedNearby() || (mayCraft && f.has(Items.SMOKER))) {
             return Station.SMOKER;
         }
-        if (!ironInFurnace && (f.furnacePlacedNearby() || (mayCraft && f.has(Items.FURNACE)))) {
+        if (furnaceFree && (f.furnacePlacedNearby() || (mayCraft && f.has(Items.FURNACE)))) {
             return Station.FURNACE;
         }
         if (!mayCraft) {
@@ -78,7 +99,7 @@ public final class CookGate {
         if (f.count(ItemHelper.LOG) >= smokerLogs(f) && (furnaceInBag || free >= SMOKER_COBBLE)) {
             return Station.SMOKER;
         }
-        return !ironInFurnace && free >= SMOKER_COBBLE ? Station.FURNACE : Station.NONE;
+        return furnaceFree && free >= SMOKER_COBBLE ? Station.FURNACE : Station.NONE;
     }
 
     // logs a new smoker costs: its four, and one more for a table when there is none to craft it on (the table's planks used to
@@ -111,8 +132,11 @@ public final class CookGate {
     // the cook need, or null when there is nothing to do about the raw meat right now
     public static KitNeed need(GamerFacts f, OverworldConfig cfg, int endBeds) {
         int raw = raw(f);
+        // a cook that is mid load has the meat in the station's slot, not the bag: with the last kind in there raw reads 0, and
+        // dropping the need then swaps the task out from under a half loaded smoker
+        boolean loading = f.cookStation() != null;
         // a smoker cooking for us already is the one input slot taken, the next kind of meat waits for it to be collected
-        if (raw == 0 || f.dimension() != Dimension.OVERWORLD || f.cookSuspended() || f.pendingFoodUnits() > 0) {
+        if ((raw == 0 && !loading) || f.dimension() != Dimension.OVERWORLD || f.cookSuspended() || f.pendingFoodUnits() > 0) {
             return null;
         }
         Station station = station(f, cfg, raw >= MIN_RAW);
@@ -121,7 +145,8 @@ public final class CookGate {
         }
         // a smoker still to make eats wood the fuel count would otherwise have burned. the smoker got built and then sat there cold
         int spoken = smokerToMake(f, station) ? smokerLogs(f) : 0;
-        if (fuelSmelts(f, cfg, endBeds, spoken) < raw) {
+        // the first load is the biggest pile, the others cook after it has been collected
+        if (fuelSmelts(f, cfg, endBeds, spoken) < pile(f)) {
             return null;
         }
         return new KitNeed(station == Station.SMOKER ? KitNeed.COOK_SMOKER : KitNeed.COOK_FURNACE, MIN_RAW);
@@ -130,7 +155,7 @@ public final class CookGate {
     // a furnace or smoker we just emptied, with meat in the bag: load it before it goes back in the bag (FurnaceWatch). no
     // station question, we are standing at one
     public static boolean reusable(GamerFacts f, OverworldConfig cfg, int endBeds) {
-        return raw(f) >= MIN_RAW && !f.cookSuspended() && f.pendingFoodUnits() == 0 && fuelSmelts(f, cfg, endBeds) >= raw(f);
+        return raw(f) >= MIN_RAW && !f.cookSuspended() && f.pendingFoodUnits() == 0 && fuelSmelts(f, cfg, endBeds) >= pile(f);
     }
 
     public static int index(List<KitNeed> needs) {

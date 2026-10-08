@@ -33,6 +33,9 @@ public class CookGateTest {
     @Before
     public void setUp() {
         cfg = new OverworldConfig();
+        // no iron owed unless a test says so: while it is, the furnace is the iron's and meat only goes in a smoker
+        cfg.ironKit.clear();
+        cfg.armorPlan = OverworldConfig.ArmorPlan.NONE;
         f = new FakeFacts();
     }
 
@@ -213,15 +216,15 @@ public class CookGateTest {
     }
 
     @Test
-    public void theCookIsTheLastNeedOfEveryPlan() {
-        // this is the "never leaves the overworld raw" half: the phases end when the plan is empty, and it is not
+    public void theCookIsTheLastNeedOfThePlan() {
+        // this is the "never leaves the overworld raw" half: IRON ends when the plan is empty, and it is not
         f.give(Items.MUTTON, 6).give(Items.COAL, 2).give(Items.OAK_LOG, 30);
         f.furnacePlaced = true;
         List<KitNeed> plan = KitPlanner.plan(f, cfg, 8);
         assertEquals(KitNeed.COOK_FURNACE, plan.get(plan.size() - 1).catalogueName());
         assertEquals(1, names(plan).stream().filter(n -> n.startsWith("cook")).count());
-        List<KitNeed> gather = KitPlanner.gather(f, cfg, 8);
-        assertEquals(KitNeed.COOK_FURNACE, gather.get(gather.size() - 1).catalogueName());
+        // GATHER does not wait out the cook, IRON starts it on the surface and collects it on the way
+        assertTrue(names(KitPlanner.gather(f, cfg, 8)).stream().noneMatch(n -> n.startsWith("cook")));
         // and cooked it is gone from both
         FakeFacts cooked = new FakeFacts().give(Items.COOKED_MUTTON, 6).give(Items.COAL, 2).give(Items.OAK_LOG, 30);
         cooked.furnacePlaced = true;
@@ -290,5 +293,101 @@ public class CookGateTest {
         assertFalse(CookGate.reusable(new FakeFacts().give(Items.MUTTON, 4), cfg, 8));
         f.cookSuspended = true;
         assertFalse(CookGate.reusable(f, cfg, 8));
+    }
+
+    // ---- the GATHER -> IRON boundary: 22:05:29, a bag of raw pork, chicken and mutton, a furnace and no fuel, and the cook
+    // never came up. the fuel gate wanted a coal per piece of meat in the whole bag and the gather chops exactly its budget
+
+    private FakeFacts boundary() {
+        FakeFacts b = new FakeFacts();
+        b.give(Items.PORKCHOP, 4).give(Items.CHICKEN, 3).give(Items.MUTTON, 3).give(Items.FURNACE, 1).give(Items.CRAFTING_TABLE, 1);
+        b.give(Items.WOODEN_AXE, 1).give(Items.STONE_PICKAXE, 2).give(Items.STONE_AXE, 1);
+        b.foodUnits = 90;
+        return b;
+    }
+
+    @Test
+    public void theFirstLoadIsTheBiggestPileNotTheWholeBag() {
+        // ten raw in three kinds and one coal (8 smelts): the first load is the 4 pork, the rest waits for it to be collected
+        FakeFacts b = boundary().give(Items.COAL, 1);
+        assertEquals(KitNeed.COOK_FURNACE, CookGate.need(b, cfg, 8).catalogueName());
+        assertEquals(4, CookGate.pile(b));
+        assertEquals(10, CookGate.raw(b));
+        // and with fuel for three smelts the pile does not fit
+        FakeFacts less = boundary().give(Items.OAK_LOG, 2);
+        assertNull(CookGate.need(less, cfg, 8));
+    }
+
+    @Test
+    public void whileIronIsOwedTheMeatGoesInASmokerNotTheKitFurnace() {
+        OverworldConfig full = new OverworldConfig();
+        FakeFacts b = boundary().give(Items.COAL, 2);
+        assertTrue(CookGate.ironOwed(b, full));
+        // the furnace in the bag is the iron's, and nothing to build a smoker from: no cook yet
+        assertNull(CookGate.need(b, full, 8));
+        // with the logs for a smoker (and the furnace it is made from, already in the bag) the meat gets its own
+        b.give(Items.OAK_LOG, 8);
+        assertEquals(KitNeed.COOK_SMOKER, CookGate.need(b, full, 8).catalogueName());
+        // a smoker standing is free, same as always
+        FakeFacts standing = boundary().give(Items.COAL, 2);
+        standing.smokerPlaced = true;
+        assertEquals(KitNeed.COOK_SMOKER, CookGate.need(standing, full, 8).catalogueName());
+        // and a furnace standing next to us is not a place for meat while the ore is still to come
+        FakeFacts placed = boundary().give(Items.COAL, 2);
+        placed.furnacePlaced = true;
+        assertNull(CookGate.need(placed, full, 8));
+    }
+
+    @Test
+    public void onceTheIronIsSmeltedTheFurnaceIsFreeForTheMeat() {
+        OverworldConfig full = new OverworldConfig();
+        FakeFacts b = boundary().give(Items.COAL, 2);
+        // all the ingots the kit wants, in the bag
+        b.give(Items.IRON_INGOT, KitPlanner.ingotsNeeded(b, full));
+        assertFalse(CookGate.ironOwed(b, full));
+        assertEquals(KitNeed.COOK_FURNACE, CookGate.need(b, full, 8).catalogueName());
+    }
+
+    @Test
+    public void aCookMidLoadKeepsItsNeedWhenTheLastPileLeavesTheBag() {
+        // everything is in the smoker's slot, the bag has no raw meat and the job is not recorded yet
+        f.give(Items.COAL, 2).give(Items.COOKED_MUTTON, 2);
+        f.cookStation = "smoker";
+        assertEquals(KitNeed.COOK_SMOKER, need().catalogueName());
+        // no cook running and nothing raw is still no need
+        f.cookStation = null;
+        assertNull(need());
+    }
+
+    @Test
+    public void gatherChopsFuelForTheCookOnTopOfItsBudget() {
+        OverworldConfig full = new OverworldConfig();
+        FakeFacts none = new FakeFacts();
+        int base = KitPlanner.woodNeed(none, full, 8);
+        assertTrue(base > 0);
+        // a fresh gather: its budget and the fuel, in the one log need
+        assertEquals(full.cookFuelLogs, KitPlanner.cookFuelLogs(none, full, 8, base));
+        KitNeed logs = KitPlanner.gather(none, full, 8).stream().filter(n -> n.catalogueName().equals("log")).reduce((a, b) -> b).orElseThrow();
+        assertEquals(base + full.cookFuelLogs, logs.count());
+        // the setting off is the old gather
+        OverworldConfig off = new OverworldConfig();
+        off.cookFuelLogs = 0;
+        assertEquals(0, KitPlanner.cookFuelLogs(none, off, 8, base));
+    }
+
+    @Test
+    public void theFuelLogsStopOnceTheyAreChoppedAndOnceTheFoodIsIn() {
+        OverworldConfig full = new OverworldConfig();
+        // the budget met and plenty spare on top: nothing more to chop
+        FakeFacts rich = new FakeFacts().give(Items.OAK_LOG, 60);
+        assertEquals(0, KitPlanner.woodNeed(rich, full, 8));
+        assertEquals(0, KitPlanner.cookFuelLogs(rich, full, 8, 0));
+        // food gathered: no logs asked for the cook, whatever the bag has (cooking them must not send the gather back out)
+        FakeFacts fed = new FakeFacts();
+        fed.foodUnits = 70;
+        assertEquals(0, KitPlanner.cookFuelLogs(fed, full, 8, 5));
+        // and meat already in the bag means the fuel decision has been made
+        FakeFacts meat = new FakeFacts().give(Items.PORKCHOP, 3);
+        assertEquals(0, KitPlanner.cookFuelLogs(meat, full, 8, 5));
     }
 }

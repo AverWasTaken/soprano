@@ -30,6 +30,8 @@ public class KitPlannerTest {
     @Before
     public void setUp() {
         cfg = new OverworldConfig();
+        // these are the wood budget's tests; the fuel logs on top of it for the cook are in CookGateTest
+        cfg.cookFuelLogs = 0;
         f = new FakeFacts();
     }
 
