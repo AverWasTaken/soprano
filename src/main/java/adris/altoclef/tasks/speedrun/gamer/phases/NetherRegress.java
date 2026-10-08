@@ -11,7 +11,7 @@ import java.util.Optional;
 
 // "we are in the overworld in a nether phase and the kit is gone": a death in the Nether respawns us at home with an
 // empty bag, and walking back into the Nether like that is how the next death happens. pure, shared by NETHER and EYES
-final class NetherRegress {
+public final class NetherRegress {
     static Optional<GamerPhase> fromOverworld(GamerFacts f, GamerConfig cfg) {
         if (f.dimension() != Dimension.OVERWORLD) {
             return Optional.empty();
@@ -23,6 +23,12 @@ final class NetherRegress {
             return Optional.of(GamerPhase.IRON);
         }
         return Optional.empty();
+    }
+
+    // the same test without the dimension: the nether death trip asks it from inside the nether, where the rebuild cannot
+    // start until we are home again
+    public static boolean kitShort(GamerFacts f, GamerConfig cfg) {
+        return KitPlanner.have(f, "stone_pickaxe") < 1 || !KitPlanner.essentialsMet(f, cfg.overworld) || armorShort(f, cfg);
     }
 
     // the portal phase starts in the overworld on purpose, so it cannot ask for the whole kit back (an iron phase that

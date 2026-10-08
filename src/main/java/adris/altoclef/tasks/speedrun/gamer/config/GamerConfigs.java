@@ -171,6 +171,9 @@ public final class GamerConfigs {
         c.death.maxTotal = Math.max(1, c.death.maxTotal);
         c.death.recoverBlocks = Math.max(0, c.death.recoverBlocks);
         c.death.recoverSeconds = Math.max(0, c.death.recoverSeconds);
+        c.death.netherTripSeconds = Math.max(0, c.death.netherTripSeconds);
+        c.death.netherBlocks = Math.max(0, c.death.netherBlocks);
+        c.death.netherBlocksSeconds = Math.max(0, c.death.netherBlocksSeconds);
         c.end.attempts = Math.max(1, c.end.attempts);
         c.end.beds = Math.max(0, c.end.beds);
         c.stronghold.maxThrows = Math.max(1, c.stronghold.maxThrows);

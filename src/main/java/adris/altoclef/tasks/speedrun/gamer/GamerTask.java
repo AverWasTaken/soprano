@@ -20,6 +20,8 @@ import adris.altoclef.tasks.speedrun.gamer.phases.OpenPhase;
 import adris.altoclef.tasks.speedrun.gamer.phases.PortalPhase;
 import adris.altoclef.tasks.speedrun.gamer.phases.ReturnPhase;
 import adris.altoclef.tasks.speedrun.gamer.phases.RoomPhase;
+import adris.altoclef.tasks.speedrun.gamer.tasks.NetherRecoverTask;
+import adris.altoclef.tasks.speedrun.gamer.tasks.NetherTripRules;
 import adris.altoclef.tasks.speedrun.gamer.tasks.RecoverItemsTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.tasksystem.TaskChain;
@@ -33,6 +35,9 @@ import net.minecraft.client.gui.screens.DeathScreen;
 import net.minecraft.client.gui.screens.WinScreen;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
+import net.minecraft.tags.FluidTags;
+import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.damagesource.DamageTypes;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
@@ -98,7 +103,10 @@ public class GamerTask extends Task {
     private Dimension deathDimension;
     private BlockPos deathPos;
     private long deathGameTime;
+    private NetherTripRules.Cause deathCause = NetherTripRules.Cause.OTHER;
     private RecoverItemsTask recover;
+    // the walk back into the nether for a pile we left there, alive for as long as state.netherTrip is set
+    private NetherRecoverTask netherTrip;
     // deaths on the books when this run was (re)started by hand, so the run wide cap only counts the new ones
     private int deathsAtStart;
 
@@ -459,6 +467,9 @@ public class GamerTask extends Task {
         state.stuck = false;
         state.stuckReason = "";
         state.finished = false;
+        // a dev jump is the user taking the wheel, a half done trip from before it is not theirs
+        state.netherTrip = null;
+        netherTrip = null;
         state.phaseAttempts.put(phase.name(), 1);
         state.deathsThisPhase = 0;
         state.regressCounts.clear();
@@ -553,6 +564,19 @@ public class GamerTask extends Task {
         if (machine.ended()) {
             return null;
         }
+        if (state.netherTrip != null) {
+            // same deal as the recovery below: the trip is not the phase's time and not its fault. the task clears the
+            // state when it is over, and the machine has the next tick
+            if (netherTrip == null) {
+                netherTrip = new NetherRecoverTask(state, facts, cfg, host::say, host::save);
+            }
+            machine.observe();
+            machine.holdClocks();
+            setDebugState("Going back to the nether for our stuff.", "Getting our stuff back");
+            autosave(now);
+            return netherTrip;
+        }
+        netherTrip = null;
         if (recoverStillWanted(now)) {
             // the recovery is not the phase's time and not its fault: both clocks wait for it (a stall is forgiven the same way)
             machine.observe();
@@ -620,7 +644,19 @@ public class GamerTask extends Task {
             deathDimension = facts.dimension();
             deathPos = player.blockPosition();
             deathGameTime = facts.gameTime();
+            deathCause = causeOf(mod, player);
         }
+    }
+
+    // lava eats the pile and the void takes it, so those are the two we write down. the fluid at our feet and the damage
+    // source both count: the killing blow can be fire from a lava bath we already climbed out of
+    private NetherTripRules.Cause causeOf(AltoClef mod, LocalPlayer player) {
+        var level = mod.getWorld();
+        DamageSource source = player.getLastDamageSource();
+        boolean lava = player.isInLava() || (source != null && source.is(DamageTypes.LAVA))
+                || (level.isLoaded(deathPos) && level.getFluidState(deathPos).is(FluidTags.LAVA));
+        boolean out = deathPos.getY() < level.getMinY() || (source != null && source.is(DamageTypes.FELL_OUT_OF_WORLD));
+        return NetherTripRules.cause(lava, out);
     }
 
     private void onRespawn() {
@@ -631,8 +667,16 @@ public class GamerTask extends Task {
         death.z = deathPos.getZ();
         death.gameTime = deathGameTime;
         death.phase = state.phase.name();
+        death.cause = deathCause.name().toLowerCase();
         state.deaths.add(death);
         state.deathsThisPhase++;
+        // dying on the way to a pile is the end of that trip: the second pile is not worth a third life
+        boolean wasOnTrip = state.netherTrip != null;
+        if (wasOnTrip) {
+            host.say("gave up: died on the way, rebuilding");
+            state.netherTrip = null;
+            netherTrip = null;
+        }
         host.save();
         recover = null;
         if (state.deathsThisPhase >= cfg.death.maxPerPhase) {
@@ -646,7 +690,30 @@ public class GamerTask extends Task {
         if (shouldRecover()) {
             host.say("Died, going back for our stuff");
             recover = new RecoverItemsTask(deathPos, RECOVER_BUDGET_SECONDS);
+        } else if (!wasOnTrip) {
+            maybeGoBackToTheNether();
         }
+    }
+
+    // a nether death respawns us at home, so the dimension test above says no and the whole kit used to be rebuilt. the pile
+    // down there does not age while nobody is around to load it though, so it is worth a trip when the rules say so
+    private void maybeGoBackToTheNether() {
+        if (!NetherTripRules.applies(deathDimension, facts.dimension())) {
+            return;
+        }
+        String where = deathPos.getX() + " " + deathPos.getY() + " " + deathPos.getZ();
+        String why = NetherTripRules.refuse(deathCause, state.overworldPortal != null,
+                cfg.death.netherRecover && cfg.death.netherTripSeconds > 0, false,
+                NetherTripRules.tried(state.lastTripPile, deathPos.getX(), deathPos.getZ()));
+        if (why != null) {
+            host.say("nether death at " + where + ", not going back: " + why + ", rebuilding");
+            return;
+        }
+        RunState.Pos pile = new RunState.Pos(deathPos.getX(), deathPos.getY(), deathPos.getZ());
+        state.netherTrip = new RunState.NetherTrip(pile, NetherTripRules.Stage.BLOCKS.name(), facts.gameTime());
+        state.lastTripPile = pile;
+        host.save();
+        host.say("nether death at " + where + ", going back for it");
     }
 
     private boolean shouldRecover() {

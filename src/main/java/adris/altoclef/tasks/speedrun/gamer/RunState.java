@@ -146,6 +146,27 @@ public class RunState {
         public int z;
         public long gameTime;
         public String phase;
+        // "lava", "void" or "other" (NetherTripRules.Cause). an old save has no key and reads null, which is just "unknown"
+        public String cause;
+    }
+
+    // a walk back into the nether for the pile a nether death left behind (NetherRecoverTask). stage is a NetherTripRules.Stage
+    // name, the ticks are game time so a relog mid trip carries on with what is left of the budget
+    public static class NetherTrip {
+        public Pos pile;
+        public String stage = "BLOCKS";
+        public long startTick;
+        public long stageTick;
+
+        public NetherTrip() {
+        }
+
+        public NetherTrip(Pos pile, String stage, long tick) {
+            this.pile = pile;
+            this.stage = stage;
+            this.startTick = tick;
+            this.stageTick = tick;
+        }
     }
 
     // eye throw bearing: origin and unit direction in XZ, dived = the eye sank into the ground (we are within ~12 blocks of the target)
@@ -224,6 +245,12 @@ public class RunState {
     // furnaces we loaded and walked away from, see FurnaceJobs. the furnace's own contents are the truth when we get back,
     // this is the memory that says there is something to go back for (and survives a relog)
     public List<FurnaceJob> furnaceJobs = new ArrayList<>();
+
+    // non null = a trip back to a nether death pile is pending (survives a relog). null = none
+    public NetherTrip netherTrip;
+    // the pile the last trip went for, whatever came of it: one trip per pile, so a death on the way or a failed trip falls
+    // back to the rebuild and the same pile never gets a second one
+    public Pos lastTripPile;
 
     public int attemptsOf(GamerPhase p) {
         return phaseAttempts.getOrDefault(p.name(), 0);

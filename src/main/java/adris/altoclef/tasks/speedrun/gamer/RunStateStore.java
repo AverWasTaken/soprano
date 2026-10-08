@@ -154,6 +154,10 @@ public final class RunStateStore {
             s.furnaceJobs = new ArrayList<>();
         }
         s.furnaceJobs.removeIf(job -> job == null || job.pos == null);
+        // a trip with no pile to go to (a hand edit) is not a trip
+        if (s.netherTrip != null && s.netherTrip.pile == null) {
+            s.netherTrip = null;
+        }
         return s;
     }
 

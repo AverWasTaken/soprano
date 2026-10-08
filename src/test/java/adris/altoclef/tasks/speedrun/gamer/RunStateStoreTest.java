@@ -46,6 +46,7 @@ public class RunStateStoreTest {
         d.z = 56;
         d.gameTime = 777;
         d.phase = "NETHER";
+        d.cause = "other";
         s.deaths.add(d);
         s.deaths.add(d);
 
@@ -95,6 +96,9 @@ public class RunStateStoreTest {
         s.villageBedTicks = 700;
         s.furnaceJobs.add(new RunState.FurnaceJob(new RunState.Pos(8, 63, -2), "OVERWORLD", "blast_furnace", "raw_iron", 12,
                 "iron_ingot", 5000, 6200));
+        s.netherTrip = new RunState.NetherTrip(new RunState.Pos(-12, 34, 56), "WALK", 4000);
+        s.netherTrip.stageTick = 4800;
+        s.lastTripPile = new RunState.Pos(-12, 34, 56);
         s.dragonDead = true;
         return s;
     }
@@ -142,12 +146,29 @@ public class RunStateStoreTest {
         assertEquals("iron_ingot", job.output);
         assertEquals(6200L, job.doneTick);
         assertEquals("NETHER", out.deaths.get(0).dimension);
+        assertEquals("other", out.deaths.get(0).cause);
+        assertEquals(new RunState.Pos(-12, 34, 56), out.netherTrip.pile);
+        assertEquals("WALK", out.netherTrip.stage);
+        assertEquals(4000L, out.netherTrip.startTick);
+        assertEquals(4800L, out.netherTrip.stageTick);
+        assertEquals(new RunState.Pos(-12, 34, 56), out.lastTripPile);
         assertEquals(987654321L, out.runTicks);
         assertEquals(Integer.valueOf(2), out.regressCounts.get("LOCATE>NETHER"));
         assertEquals(2, out.deathsThisPhase);
         assertEquals(1_700_000_000_123L, out.startedEpochMs);
         assertTrue(out.stuck);
         assertTrue(out.dragonDead);
+    }
+
+    @Test
+    public void aSaveFromBeforeTheNetherTripHasNoTripAndATripWithoutAPileIsDropped() {
+        RunState old = RunStateStore.parse("{\"phase\":\"NETHER\"}");
+        assertNotNull(old);
+        assertNull(old.netherTrip);
+        assertNull(old.lastTripPile);
+        RunState edited = RunStateStore.parse("{\"phase\":\"NETHER\",\"netherTrip\":{\"stage\":\"PORTAL\"}}");
+        assertNotNull(edited);
+        assertNull(edited.netherTrip);
     }
 
     @Test
