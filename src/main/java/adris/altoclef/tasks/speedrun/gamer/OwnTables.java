@@ -125,6 +125,18 @@ public final class OwnTables {
         return WalkCost.estimate(table.x + 0.5 - px, table.y - py, table.z + 0.5 - pz);
     }
 
+    // is any of our stations within the walk budget AND still there (`standing`: the block is in the world, or its chunk is
+    // not loaded to say otherwise). the planner's "table held" reads this, so it agrees with CraftInTableTask about when a
+    // table is close enough to walk back to and when crafting makes a new one (and so wants the planks)
+    public static boolean anyHeld(List<RunState.Pos> placed, Predicate<RunState.Pos> standing, double px, double py, double pz, double budget) {
+        for (RunState.Pos pos : placed) {
+            if (walkCost(pos, px, py, pz) <= budget && standing.test(pos)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     // a station we are too far from (in walking terms) is not worth the trip back, a log is cheaper. forget it so it does
     // not come back as a candidate the next time we wander past, and does not hold a phase open as "owed". `keep` is for
     // the ones somebody else owns (a smelting job). returns how many went
@@ -183,10 +195,23 @@ public final class OwnTables {
     // hunting for minutes, and by then the table is a log we are too far away to be owed
     public static final double AHEAD_HOLD_SECONDS = 45;
 
-    // the food need crafts inside itself (hoe, wheat, bread are not KitNeeds, the planner never sees them), so a plan with
-    // no craft in it can still have one coming. 16:50 run: hoe done, table taken back at once, bread 15 s later placed a new one
-    public static boolean needCraftsInside(String currentNeed) {
-        return KitNeed.FOOD.equals(currentNeed);
+    // some needs craft inside themselves (the planner never sees those crafts, they are not KitNeeds), so a plan with no
+    // craft in it can still have one coming. food: hoe, wheat, bread (16:50 run: hoe done, table taken back at once, bread
+    // 15 s later placed a new one). anything that mines with a tool we do not hold yet: the mining task crafts the pick
+    // itself ("Satisfy Mining Req") at the table, and cobble with no pick lost its table to the pickup (23:14 run, twice).
+    // `holdsPick` / `holdsStonePick` are "any pickaxe of at least that tier in the bag", worn out ones not counted
+    public static boolean needCraftsInside(String currentNeed, boolean holdsPick, boolean holdsStonePick) {
+        if (currentNeed == null) {
+            return false;
+        }
+        return switch (currentNeed) {
+            case KitNeed.FOOD -> true;
+            // wooden pick tier: stone and coal
+            case KitPlanner.COBBLE, "coal" -> !holdsPick;
+            // the ore needs a stone pick, and that is made at a table
+            case "iron_ingot" -> !holdsStonePick;
+            default -> false;
+        };
     }
 
     // finishedCrafting, except a craft that is still ahead (anywhere in the plan, or inside the running need) holds the
@@ -205,6 +230,13 @@ public final class OwnTables {
     // is allowed to want wood before the menu opens), taking it would just place it again 5 seconds later
     public static boolean wantsTableNow(String usedByNeed, String currentNeed, boolean finishedCrafting, boolean usedSincePlaced,
                                         boolean craftPlanned) {
-        return finishedCrafting || (wantsTableBack(usedByNeed, currentNeed) && (usedSincePlaced || !craftPlanned));
+        return wantsTableNow(usedByNeed, currentNeed, finishedCrafting, usedSincePlaced, craftPlanned, false);
+    }
+
+    // a need that crafts inside itself (needCraftsInside) is a craft need for the boundary rule too: the pickup used to
+    // see "cobblestone" as a need that does not craft and took the table the wooden pick was about to be made at
+    public static boolean wantsTableNow(String usedByNeed, String currentNeed, boolean finishedCrafting, boolean usedSincePlaced,
+                                        boolean craftPlanned, boolean craftsInside) {
+        return finishedCrafting || (wantsTableBack(usedByNeed, currentNeed) && !craftsInside && (usedSincePlaced || !craftPlanned));
     }
 }

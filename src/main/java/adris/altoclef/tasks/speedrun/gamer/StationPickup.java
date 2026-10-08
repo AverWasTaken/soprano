@@ -226,10 +226,11 @@ final class StationPickup {
             // the crafting is over (table only, furnaces keep the need boundary): used since it went down, menu shut for a
             // second, nothing in the task tree is crafting at a table and the next need is not a craft that would place it again
             // another craft still coming (in the plan, or inside the food need) holds it for a while, see OwnTables.finishedCrafting
-            boolean craftAhead = craftPlanned || OwnTables.needCraftsInside(need);
+            boolean craftsInside = isTable && craftsInside(ctx, need);
+            boolean craftAhead = craftPlanned || craftsInside;
             boolean craftsDone = isTable && OwnTables.finishedCrafting(now, use.lastUseTick, use.lastPlaceTick, open,
                     craftRunning(mod), KitNeed.isCraftName(need), craftAhead);
-            boolean wantsNow = wants(ctx, need, use, craftsDone, craftPlanned);
+            boolean wantsNow = wants(ctx, need, use, craftsDone, craftPlanned, craftsInside);
             if (wantsNow) {
                 // this is the moment it would be taken. too far to walk cheaply means we write it off: a table is a log,
                 // the old sphere walked us back down a cave for one
@@ -307,10 +308,17 @@ final class StationPickup {
             return root != null && root.thisOrChildSatisfies(t -> t instanceof CraftInTableTask);
         }
 
-        private boolean wants(GamerContext ctx, String need, RunState.StationUse use, boolean craftsDone, boolean craftPlanned) {
+        // the pick the need would mine with, read off the bag (see OwnTables.needCraftsInside)
+        private boolean craftsInside(GamerContext ctx, String need) {
+            return OwnTables.needCraftsInside(need, KitPlanner.have(ctx.facts(), "wooden_pickaxe") > 0,
+                    KitPlanner.have(ctx.facts(), "stone_pickaxe") > 0);
+        }
+
+        private boolean wants(GamerContext ctx, String need, RunState.StationUse use, boolean craftsDone, boolean craftPlanned,
+                              boolean craftsInside) {
             if (isTable) {
                 return OwnTables.wantsTableNow(use.useNeed, need, craftsDone,
-                        OwnTables.usedSincePlaced(use.lastUseTick, use.lastPlaceTick), craftPlanned);
+                        OwnTables.usedSincePlaced(use.lastUseTick, use.lastPlaceTick), craftPlanned, craftsInside);
             }
             return OwnTables.wantsFurnaceBack(use.useNeed, need, OwnTables.smeltsSoon(need, ctx.facts().count(Items.RAW_IRON)));
         }

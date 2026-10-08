@@ -666,8 +666,8 @@ public class KitPlannerTest {
         // standing next to us and coming back to the bag: 8 less to keep
         f.furnacePlaced = true;
         assertEquals(9, KitPlanner.stoneFloor(f, cfg));
-        // the same fact says nothing about what is left to mine, the planner still sees a furnace to make
-        assertEquals(19, KitPlanner.stoneNeed(f, cfg));
+        // and what is left to mine agrees: the planner skips the furnace need for it, so no 8 cobble for it either
+        assertEquals(11, KitPlanner.stoneNeed(f, cfg));
         // a furnace in the bag AND one on the ground is still one furnace
         f.give(Items.FURNACE, 1);
         assertEquals(9, KitPlanner.stoneFloor(f, cfg));

@@ -4,6 +4,7 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.AltoSettings;
 import adris.altoclef.tasks.container.FurnaceReuse;
 import adris.altoclef.util.helpers.FoodHelper;
+import adris.altoclef.util.helpers.WalkCost;
 import adris.altoclef.util.helpers.WorldHelper;
 import baritone.api.utils.Dimension;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
@@ -76,8 +77,9 @@ public final class MinecraftFacts implements GamerFacts {
             credits = true;
         }
         countItems(player);
-        tableNearby = state != null && standingNearby(player, state.placedTables, Blocks.CRAFTING_TABLE);
-        furnaceNearby = state != null && standingNearby(player, state.placedFurnaces, Blocks.FURNACE);
+        tableNearby = state != null && standingNearby(player, state.placedTables, Blocks.CRAFTING_TABLE, WalkCost.STATION_BUDGET);
+        // furnaces keep no distance test: their reuse rule lives in FurnaceReuse and a far one is forgotten at a boundary
+        furnaceNearby = state != null && standingNearby(player, state.placedFurnaces, Blocks.FURNACE, Double.POSITIVE_INFINITY);
         smokerNearby = state != null && smokerWorthWalking(player);
         return true;
     }
@@ -100,21 +102,19 @@ public final class MinecraftFacts implements GamerFacts {
         return best != Double.MAX_VALUE && FurnaceReuse.smokerWorthWalking(smokerNearby, best);
     }
 
-    // one of the stations this run placed (tables, furnaces) that we still own. no distance test on purpose: it used to be
-    // the pickup's walk budget, so walking 14 blocks down to the cobble made the table "ours" and walking back up to a tree
-    // made it "gone", and the plan flipped between a log trip and the cobble every five seconds. StationPickup.forgetFar
-    // takes a far one off the list at a need boundary, the list is the truth. an unloaded chunk keeps its table
-    private boolean standingNearby(Player player, List<RunState.Pos> placed, Block kind) {
+    // one of the stations this run placed (tables, furnaces) that we still own, and close enough to walk back to. the budget
+    // is the table's: WalkCost.STATION_BUDGET, the line CraftInTableTask and StationPickup use, so the plan only counts
+    // a table as held when crafting will really walk to it (a recorded one 60 blocks off meant no planks in the plan and then
+    // a second table crafted mid-cave). the old pickup budget was 10, which flipped the plan on a 14 block walk down to the
+    // cobble, hence the real station budget and not the config one. an unloaded chunk keeps its station if it is in budget
+    private boolean standingNearby(Player player, List<RunState.Pos> placed, Block kind, double budget) {
         if (dimension != Dimension.OVERWORLD || placed.isEmpty()) {
             return false;
         }
-        for (RunState.Pos pos : placed) {
+        return OwnTables.anyHeld(placed, pos -> {
             BlockPos at = new BlockPos(pos.x, pos.y, pos.z);
-            if (!mod.getChunkTracker().isChunkLoaded(at) || mod.getWorld().getBlockState(at).is(kind)) {
-                return true;
-            }
-        }
-        return false;
+            return !mod.getChunkTracker().isChunkLoaded(at) || mod.getWorld().getBlockState(at).is(kind);
+        }, player.getX(), player.getY(), player.getZ(), budget);
     }
 
     @Override

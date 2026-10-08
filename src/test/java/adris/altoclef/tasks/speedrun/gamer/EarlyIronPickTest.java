@@ -286,4 +286,19 @@ public class EarlyIronPickTest {
         EarlyIronPick.track(state, null, mining(), cfg);
         assertEquals(-1, state.earlyLoadTick);
     }
+
+    private static RunState.FurnaceJob job(String output) {
+        RunState.FurnaceJob job = new RunState.FurnaceJob();
+        job.output = output;
+        return job;
+    }
+
+    @Test
+    public void onlyTheIronJobEndsTheEarlyLoad() {
+        // the meat landing in a smoker mid load is not the iron cooking
+        assertFalse(EarlyIronPick.endsLoad(List.of(job("cooked_beef"))));
+        assertFalse(EarlyIronPick.endsLoad(List.of()));
+        assertTrue(EarlyIronPick.endsLoad(List.of(job("iron_ingot"))));
+        assertTrue(EarlyIronPick.endsLoad(List.of(job("cooked_porkchop"), job("iron_ingot"))));
+    }
 }

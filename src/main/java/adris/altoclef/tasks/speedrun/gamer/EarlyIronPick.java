@@ -4,6 +4,8 @@ import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig;
 import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig.KitItem;
 import net.minecraft.world.item.Items;
 
+import java.util.List;
+
 // the standard speedrun move: three raw iron go in the furnace the moment we have them, and the iron pickaxe comes out of
 // that instead of the stone one grinding through 39 ore. iron mines at speed 6 vs 4 and lasts 250 uses vs 131, and the
 // kit wants one anyway. pure (facts in, answers out) so the trigger is testable, the planner and IronPhase ask these
@@ -65,6 +67,17 @@ public final class EarlyIronPick {
         } else if (state.earlyLoadTick >= 0 && !due(f, cfg, KitPlanner.ingotsNeeded(f, cfg))) {
             state.earlyLoadTick = -1;
         }
+    }
+
+    // a drained job ends the early load only if it is the iron cooking. a meat job landing mid load used to clear the latch,
+    // due() dropped and the head flipped away from the furnace we were standing at (the #40 flip)
+    public static boolean endsLoad(List<RunState.FurnaceJob> drained) {
+        for (RunState.FurnaceJob job : drained) {
+            if ("iron_ingot".equals(job.output)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // "hold 3 ingots", the catalogue smelts exactly that many and leaves the rest of the raw iron alone

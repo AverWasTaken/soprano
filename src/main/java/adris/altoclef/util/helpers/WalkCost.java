@@ -32,6 +32,19 @@ public final class WalkCost {
         return Math.sqrt(dx * dx + dz * dz) + VERTICAL_WEIGHT * Math.abs(dy);
     }
 
+    // what CraftInTableTask charges for "make a new table" against walking to the nearest one. infinity means walk to the
+    // old one. same budget with the table in hand or not: OwnTables.forgetFar lets go of a table past it, so a 40 block line
+    // out here sent crafting off to a table pickup had already written off (and the planner never budgeted a new one)
+    public static double newTableCost(boolean carryTable, boolean tableInBudget, boolean haveWood) {
+        if (tableInBudget) {
+            return Double.POSITIVE_INFINITY;
+        }
+        if (carryTable) {
+            return 0;
+        }
+        return haveWood ? 10 : 100;
+    }
+
     public static boolean within(double dx, double dy, double dz, double budget) {
         return estimate(dx, dy, dz) <= budget;
     }

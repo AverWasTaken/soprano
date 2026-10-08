@@ -578,8 +578,10 @@ public class GamerTask extends Task {
                     + job.output.replace('_', ' ') + ", ~" + job.count * FurnaceJobs.ticksPerItem(job.kind) / 20 + "s)");
         }
         if (!loaded.isEmpty()) {
-            // lit and cooking: the job is the memory now, the early load is no longer in flight
-            state.earlyLoadTick = -1;
+            // lit and cooking: the job is the memory now, the early load is no longer in flight. only if it was the iron
+            if (EarlyIronPick.endsLoad(loaded)) {
+                state.earlyLoadTick = -1;
+            }
             host.save();
         }
     }

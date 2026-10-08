@@ -474,31 +474,17 @@ class DoCraftInTableTask extends DoStuffInContainerTask {
         // Get the nearest crafting table.
         Optional<BlockPos> closestCraftingTable = mod.getBlockTracker().getNearestTracking(Blocks.CRAFTING_TABLE);
 
-        // we carry a table, so a new one is free (one placement). an old one is only worth walking to when it is a short
-        // walk, 40 blocks of straight line used to send us back down a cave for a table we were holding the replacement for
-        if (mod.getItemStorage().hasItem(Items.CRAFTING_TABLE)) {
-            if (closestCraftingTable.isPresent()) {
-                Vec3 me = mod.getPlayer().position();
-                BlockPos at = closestCraftingTable.get();
-                if (WalkCost.within(at.getX() + 0.5 - me.x, at.getY() - me.y, at.getZ() + 0.5 - me.z, WalkCost.STATION_BUDGET)) {
-                    return Double.POSITIVE_INFINITY;
-                }
-            }
-            return 0;
+        // an old table is only worth walking to when it is a short walk, with a table in hand or not. 40 blocks of straight
+        // line used to send us back down a cave for a table we were holding the replacement for, and the no-carry branch
+        // still did that for one OwnTables had forgotten
+        boolean inBudget = false;
+        if (closestCraftingTable.isPresent()) {
+            Vec3 me = mod.getPlayer().position();
+            BlockPos at = closestCraftingTable.get();
+            inBudget = WalkCost.within(at.getX() + 0.5 - me.x, at.getY() - me.y, at.getZ() + 0.5 - me.z, WalkCost.STATION_BUDGET);
         }
-
-        // If a crafting table is within 40 blocks of the player, return positive infinity.
-        if (closestCraftingTable.isPresent() && closestCraftingTable.get().closerToCenterThan(mod.getPlayer().position(), 40)) {
-            return Double.POSITIVE_INFINITY;
-        }
-
-        // If the mod has logs or enough planks, return a cost of 10.
-        if (mod.getItemStorage().hasItem(ItemHelper.LOG) || mod.getItemStorage().getItemCount(ItemHelper.PLANKS) >= 4) {
-            return 10;
-        }
-
-        // Otherwise, return a cost of 100.
-        return 100;
+        boolean haveWood = mod.getItemStorage().hasItem(ItemHelper.LOG) || mod.getItemStorage().getItemCount(ItemHelper.PLANKS) >= 4;
+        return WalkCost.newTableCost(mod.getItemStorage().hasItem(Items.CRAFTING_TABLE), inBudget, haveWood);
     }
 
     // every item the recipes use, and how many of it the crafts still to do will eat. an item with nothing left to craft

@@ -294,10 +294,45 @@ public class OwnTablesTest {
 
     @Test
     public void theFoodNeedCraftsInsideItself() {
-        assertTrue(OwnTables.needCraftsInside("food"));
-        assertFalse(OwnTables.needCraftsInside("iron_ingot"));
-        assertFalse(OwnTables.needCraftsInside("stone_pickaxe"));
-        assertFalse(OwnTables.needCraftsInside(null));
+        assertTrue(OwnTables.needCraftsInside("food", true, true));
+        assertFalse(OwnTables.needCraftsInside("stone_pickaxe", false, false));
+        assertFalse(OwnTables.needCraftsInside(null, false, false));
+    }
+
+    // the 23:14 log: cobble with no pick makes its wooden pick at the table, and the pickup saw a need that does not craft
+    @Test
+    public void miningWithoutThePickCraftsInside() {
+        assertTrue(OwnTables.needCraftsInside("cobblestone", false, false));
+        assertFalse(OwnTables.needCraftsInside("cobblestone", true, false));
+        assertTrue(OwnTables.needCraftsInside("coal", false, false));
+        assertFalse(OwnTables.needCraftsInside("coal", true, false));
+        // the ore needs the stone tier, a wooden pick does not do
+        assertTrue(OwnTables.needCraftsInside("iron_ingot", true, false));
+        assertFalse(OwnTables.needCraftsInside("iron_ingot", true, true));
+        assertFalse(OwnTables.needCraftsInside("wool", false, false));
+    }
+
+    @Test
+    public void aNeedThatCraftsInsideKeepsTheTableAtTheBoundaryToo() {
+        // placed under another need, never opened, cobble with no pick is current: the old boundary rule took it
+        assertTrue(OwnTables.wantsTableNow("wooden_axe", "cobblestone", false, true, true));
+        assertFalse(OwnTables.wantsTableNow("wooden_axe", "cobblestone", false, true, true, true));
+        // finished crafting still wins
+        assertTrue(OwnTables.wantsTableNow("wooden_axe", "cobblestone", true, true, true, true));
+    }
+
+    // the planner only counts a recorded table as held when crafting would walk to it (STATION_BUDGET, 20)
+    @Test
+    public void aFarTableIsNotHeld() {
+        List<RunState.Pos> own = List.of(pos(60, 64, 0));
+        assertFalse(OwnTables.anyHeld(own, p -> true, 0.5, 64, 0.5, 20));
+        assertTrue(OwnTables.anyHeld(own, p -> true, 50.5, 64, 0.5, 20));
+        // five blocks down is already 20, a cave trip
+        assertFalse(OwnTables.anyHeld(List.of(pos(0, 64, 0)), p -> true, 0.5, 58, 0.5, 20));
+        // in budget but gone from the world
+        assertFalse(OwnTables.anyHeld(own, p -> false, 50.5, 64, 0.5, 20));
+        // a station with no budget (furnaces) is held at any distance while it stands
+        assertTrue(OwnTables.anyHeld(own, p -> true, 0.5, 64, 0.5, Double.POSITIVE_INFINITY));
     }
 
     // the loop from the log: placed, picked up, the craft placed it again. with no craft in between this rule never fires

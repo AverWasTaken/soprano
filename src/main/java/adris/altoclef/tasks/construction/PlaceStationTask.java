@@ -281,6 +281,11 @@ public class PlaceStationTask extends Task {
         return phase == StationAttempt.Phase.DONE || (phase == StationAttempt.Phase.FALLBACK && _fallback.isFinished(mod));
     }
 
+    // clicked, waiting for the block to show up
+    public boolean isVerifying() {
+        return _attempt.phase() == StationAttempt.Phase.VERIFY;
+    }
+
     // where the block went (or is going), for DoStuffInContainerTask to walk to. nothing until the click is out
     public BlockPos getPlaced() {
         return switch (_attempt.phase()) {

@@ -182,7 +182,8 @@ public final class KitPlanner {
     // the slack is part of what we hold ourselves to (same as woodNeed), the crafts eat held and wanted in step so the
     // answer stays 0 through them. the gather only: once ore is in the bag a worn pick is a just in time craft
     public static int stoneNeed(GamerFacts f, OverworldConfig cfg) {
-        int wanted = stoneWanted(f, cfg, false);
+        // a furnace of ours standing close by is skipped as a need above, so it is no 8 cobble here either (stoneFloor knew)
+        int wanted = stoneWanted(f, cfg, f.furnacePlacedNearby());
         if (wanted <= 0) {
             return 0;
         }

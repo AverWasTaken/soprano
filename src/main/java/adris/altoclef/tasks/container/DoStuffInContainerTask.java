@@ -75,7 +75,10 @@ public abstract class DoStuffInContainerTask extends Task {
     protected Task onTick(AltoClef mod) {
 
         // If we're placing, keep on placing.
-        if (mod.getItemStorage().hasItem(ItemHelper.blocksToItems(_containerBlocks)) && _placeTask.isActive() && !_placeTask.isFinished(mod)) {
+        // the click takes the table out of the bag a few ticks before the world shows it (VERIFY), and a walk that cut in
+        // there stopped the placer mid-verify. so no item left is fine as long as the placer is still waiting on the block
+        if (keepPlacing(mod.getItemStorage().hasItem(ItemHelper.blocksToItems(_containerBlocks)), _placeTask.isActive(),
+                _placeTask.isFinished(mod), _placeTask instanceof PlaceStationTask station && station.isVerifying())) {
             setDebugState("Placing container");
             return _placeTask;
         }
@@ -132,7 +135,7 @@ public abstract class DoStuffInContainerTask extends Task {
         if (mayMakeNew && costToWalk > getCostToMakeNew(mod)) {
             _placeForceTimer.reset();
         }
-        if (mayMakeNew && (nearest.isEmpty() || (!_placeForceTimer.elapsed() && _justPlacedTimer.elapsed()))) {
+        if (mayMakeNew && makeNewNow(nearest.isPresent(), placedStands(mod), !_placeForceTimer.elapsed(), _justPlacedTimer.elapsed())) {
             // It's cheaper to make a new one, or our only option.
 
             // We're no longer going to our previous container.
@@ -181,6 +184,22 @@ public abstract class DoStuffInContainerTask extends Task {
             _openTask = new InteractWithBlockTask(_openTaskPos);
         }
         return _openTask;
+    }
+
+    static boolean keepPlacing(boolean haveItem, boolean placerActive, boolean placerFinished, boolean placerVerifying) {
+        return (haveItem || placerVerifying) && placerActive && !placerFinished;
+    }
+
+    // the force timer is for being stuck with nowhere to put one. with ours standing in the world it was the "keep
+    // placing" that crafted a second table 3 seconds after the first went down (the click missed once, the timer didn't care)
+    static boolean makeNewNow(boolean haveNearest, boolean placedStands, boolean forceActive, boolean justPlacedElapsed) {
+        return !haveNearest || (!placedStands && forceActive && justPlacedElapsed);
+    }
+
+    // the block our placer put down is in the world right now, whatever the tracker has caught up on
+    private boolean placedStands(AltoClef mod) {
+        BlockPos placed = placedPos();
+        return placed != null && isContainerBlock(mod, placed);
     }
 
     // two containers about as far away trade places as we walk, and every trade is a new walk. keep the one we were heading

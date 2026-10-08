@@ -51,6 +51,19 @@ public class WalkCostTest {
         assertTrue(WalkCost.dropBudget(true) < WalkCost.dropBudget(false));
     }
 
+    // 40 blocks of straight line used to be "close" with no table in hand, OwnTables.forgetFar says 20
+    @Test
+    public void makingATableUsesTheSameBudgetCarriedOrNot() {
+        double inf = Double.POSITIVE_INFINITY;
+        assertEquals(inf, WalkCost.newTableCost(true, true, true), 0);
+        assertEquals(inf, WalkCost.newTableCost(false, true, false), 0);
+        // out of budget with a table in hand: placing it is free
+        assertEquals(0, WalkCost.newTableCost(true, false, false), 0);
+        // out of budget with nothing in hand: craft one, cheaper with wood on us
+        assertEquals(10, WalkCost.newTableCost(false, false, true), 0);
+        assertEquals(100, WalkCost.newTableCost(false, false, false), 0);
+    }
+
     @Test
     public void theCaveTripIsNotWorthIt() {
         // table at y 30, log at the surface y 64, a few blocks over: the old sphere said 34 and a bit, the walk says 136+
