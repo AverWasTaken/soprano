@@ -15,6 +15,10 @@ public final class BlazeFightRules {
     // blazes further than this are not worth the walk, the ones that matter come to us
     public static final double MAX_CHASE_DISTANCE = 32;
 
+    // KILL and COVER stay put at least this long before flipping to each other. one tick of "reachable" or "not reachable" (a
+    // blaze bobbing over a fence line, a cached raycast landing) was swapping the whole task every couple of seconds
+    public static final int MIN_DWELL_TICKS = 20;
+
     // at or below this with a blaze looking at us, leave
     public static final float RETREAT_HEALTH = 12;
     // at or below this leave whether or not anything is looking, we are one volley from the respawn screen
@@ -44,9 +48,10 @@ public final class BlazeFightRules {
     }
 
     // can we walk under it and swing. over lava never (we would have to follow it in), and a blaze with no floor under it
-    // is a blaze in the middle of the void
-    public static boolean isReachable(double heightAboveFloor, boolean overLava, double distance) {
-        if (overLava || distance > MAX_CHASE_DISTANCE) return false;
+    // is a blaze in the middle of the void. meleeLineClear is a collision-shape raycast from our eye to the blaze: a blaze
+    // behind a nether brick fence is low and dry and still a blaze we cannot hit, the fence eats the swing
+    public static boolean isReachable(double heightAboveFloor, boolean overLava, double distance, boolean meleeLineClear) {
+        if (!meleeLineClear || overLava || distance > MAX_CHASE_DISTANCE) return false;
         return heightAboveFloor <= MAX_REACHABLE_HEIGHT;
     }
 
@@ -60,5 +65,14 @@ public final class BlazeFightRules {
         if (reachable > 0) return Mode.KILL;
         if (threats > 0) return Mode.COVER;
         return Mode.CAMP;
+    }
+
+    // decide, but KILL and COVER hold for MIN_DWELL_TICKS before swapping with each other. retreating (in or out) and camping
+    // are never held back: low hp should not wait on a timer, and nothing to fight is nothing to dwell on
+    public static Mode decide(float health, boolean retreating, int threats, int reachable, Mode current, long ticksInMode) {
+        Mode next = decide(health, retreating, threats, reachable);
+        boolean flip = (current == Mode.KILL && next == Mode.COVER) || (current == Mode.COVER && next == Mode.KILL);
+        if (flip && ticksInMode < MIN_DWELL_TICKS) return current;
+        return next;
     }
 }

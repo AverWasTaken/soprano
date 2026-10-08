@@ -70,11 +70,45 @@ public class BlazeFightRulesTest {
 
     @Test
     public void reachabilityIsAboutHeightLavaAndDistance() {
-        assertTrue(BlazeFightRules.isReachable(1, false, 5));
-        assertTrue(BlazeFightRules.isReachable(3.5, false, 5));
-        assertFalse(BlazeFightRules.isReachable(3.6, false, 5));
-        assertFalse(BlazeFightRules.isReachable(Double.POSITIVE_INFINITY, false, 5));
-        assertFalse(BlazeFightRules.isReachable(1, true, 5));
-        assertFalse(BlazeFightRules.isReachable(1, false, 33));
+        assertTrue(BlazeFightRules.isReachable(1, false, 5, true));
+        assertTrue(BlazeFightRules.isReachable(3.5, false, 5, true));
+        assertFalse(BlazeFightRules.isReachable(3.6, false, 5, true));
+        assertFalse(BlazeFightRules.isReachable(Double.POSITIVE_INFINITY, false, 5, true));
+        assertFalse(BlazeFightRules.isReachable(1, true, 5, true));
+        assertFalse(BlazeFightRules.isReachable(1, false, 33, true));
+    }
+
+    // the nether brick fence: low, dry, close, and the swing hits the fence
+    @Test
+    public void aBlazeBehindAFenceIsNotReachableAndSoNotKill() {
+        boolean reachable = BlazeFightRules.isReachable(1, false, 3, false);
+        assertFalse(reachable);
+        int reachableCount = reachable ? 1 : 0;
+        assertEquals(COVER, BlazeFightRules.decide(20, false, 1, reachableCount));
+        assertEquals(CAMP, BlazeFightRules.decide(20, false, 0, reachableCount));
+    }
+
+    @Test
+    public void killAndCoverHoldForTheDwellBeforeFlipping() {
+        int dwell = BlazeFightRules.MIN_DWELL_TICKS;
+        assertEquals(KILL, BlazeFightRules.decide(20, false, 1, 0, KILL, 0));
+        assertEquals(KILL, BlazeFightRules.decide(20, false, 1, 0, KILL, dwell - 1));
+        assertEquals(COVER, BlazeFightRules.decide(20, false, 1, 0, KILL, dwell));
+        assertEquals(COVER, BlazeFightRules.decide(20, false, 1, 0, COVER, 0));
+        assertEquals(COVER, BlazeFightRules.decide(20, false, 1, 1, COVER, dwell - 1));
+        assertEquals(KILL, BlazeFightRules.decide(20, false, 1, 1, COVER, dwell));
+    }
+
+    @Test
+    public void theDwellNeverHoldsBackRetreatOrCamp() {
+        assertEquals(RETREAT, BlazeFightRules.decide(12, false, 1, 1, KILL, 0));
+        assertEquals(RETREAT, BlazeFightRules.decide(8, false, 0, 0, COVER, 0));
+        assertEquals(CAMP, BlazeFightRules.decide(20, false, 0, 0, KILL, 0));
+        assertEquals(CAMP, BlazeFightRules.decide(20, false, 0, 0, COVER, 0));
+        assertEquals(KILL, BlazeFightRules.decide(20, false, 0, 1, CAMP, 0));
+        assertEquals(COVER, BlazeFightRules.decide(20, false, 2, 0, CAMP, 0));
+        // coming back from a retreat is the heal logic's call too, no timer on top
+        assertEquals(KILL, BlazeFightRules.decide(14, true, 0, 1, RETREAT, 0));
+        assertEquals(COVER, BlazeFightRules.decide(20, true, 2, 0, RETREAT, 0));
     }
 }

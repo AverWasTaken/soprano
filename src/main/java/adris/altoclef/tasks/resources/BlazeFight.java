@@ -44,7 +44,13 @@ final class BlazeFight {
     private static final long BAD_SPOT_TICKS = 600;
     private static final double RUN_DISTANCE = 30;
 
+    // a raycast per blaze per tick is silly, a blaze moves maybe half a block in this long
+    private static final int LINE_EVERY = 5;
+
     private Mode mode = Mode.CAMP;
+    // when the current mode started, game time. the dwell in BlazeFightRules.decide counts from here
+    private long modeSince;
+    private final Map<Integer, LineCheck> lines = new HashMap<>();
     private Mode loggedMode = Mode.CAMP;
     private boolean retreating;
     private final List<Blaze> threats = new ArrayList<>();
@@ -61,6 +67,9 @@ final class BlazeFight {
         return mode;
     }
 
+    private record LineCheck(long tick, boolean clear) {
+    }
+
     BlockPos campSpot() {
         return campSpot;
     }
@@ -72,10 +81,13 @@ final class BlazeFight {
     Task tick(AltoClef mod, BlockPos spawner) {
         LocalPlayer player = mod.getPlayer();
         long now = mod.getWorld().getGameTime();
-        scan(mod, player);
+        scan(mod, player, now);
         float health = player.getHealth();
-        Mode next = BlazeFightRules.decide(health, retreating, threats.size(), reachable);
+        // game time can go backwards on a world change, then the old mode is as good as ancient
+        long dwelled = now >= modeSince ? now - modeSince : Long.MAX_VALUE;
+        Mode next = BlazeFightRules.decide(health, retreating, threats.size(), reachable, mode, dwelled);
         retreating = next == Mode.RETREAT;
+        if (next != mode) modeSince = now;
         mode = next;
         logChange(health);
         return switch (mode) {
@@ -103,9 +115,11 @@ final class BlazeFight {
 
     // ---- what is out there
 
-    private void scan(AltoClef mod, LocalPlayer player) {
+    private void scan(AltoClef mod, LocalPlayer player, long now) {
         threats.clear();
         reachable = 0;
+        // forget blazes that died or left, the ids get reused
+        lines.values().removeIf(check -> now - check.tick() > LINE_EVERY * 4L);
         List<Blaze> blazes;
         try {
             blazes = new ArrayList<>(mod.getEntityTracker().getTrackedEntities(Blaze.class));
@@ -117,7 +131,7 @@ final class BlazeFight {
             if (!blaze.isAlive()) continue;
             double distance = player.distanceTo(blaze);
             if (distance > BlazeFightRules.MAX_CHASE_DISTANCE) continue;
-            if (isReachable(mod, blaze, distance)) reachable++;
+            if (isReachable(mod, blaze, distance, now)) reachable++;
             // raycasts only for the ones that could actually hit us from where they are
             if (distance <= BlazeFightRules.SIGHT_RANGE && LookHelper.seesPlayer(blaze, player, BlazeFightRules.SIGHT_RANGE)) {
                 threats.add(blaze);
@@ -126,12 +140,12 @@ final class BlazeFight {
         threats.sort(Comparator.comparingDouble(player::distanceToSqr));
     }
 
-    private static boolean isReachable(AltoClef mod, Blaze blaze) {
-        return isReachable(mod, blaze, mod.getPlayer().distanceTo(blaze));
+    private boolean isReachable(AltoClef mod, Blaze blaze) {
+        return isReachable(mod, blaze, mod.getPlayer().distanceTo(blaze), mod.getWorld().getGameTime());
     }
 
     // walk straight down from the blaze to whatever it is hovering over. lava is a no, a floor is how high it is
-    private static boolean isReachable(AltoClef mod, Blaze blaze, double distance) {
+    private boolean isReachable(AltoClef mod, Blaze blaze, double distance, long now) {
         Level level = mod.getWorld();
         BlockPos at = blaze.blockPosition();
         double height = Double.POSITIVE_INFINITY;
@@ -149,7 +163,19 @@ final class BlazeFight {
                 break;
             }
         }
-        return BlazeFightRules.isReachable(height, lava, distance);
+        // cheap rejects first, the ray is the only part that costs anything
+        if (!BlazeFightRules.isReachable(height, lava, distance, true)) return false;
+        return meleeLineClear(mod, blaze, now);
+    }
+
+    // collision shapes, not visual ones: a nether brick fence is see through and swing proof. cached a few ticks per blaze
+    private boolean meleeLineClear(AltoClef mod, Blaze blaze, long now) {
+        LineCheck cached = lines.get(blaze.getId());
+        if (cached != null && now >= cached.tick() && now - cached.tick() < LINE_EVERY) return cached.clear();
+        LocalPlayer player = mod.getPlayer();
+        boolean clear = !clipped(mod.getWorld(), player, player.getEyePosition(), blaze.getBoundingBox().getCenter());
+        lines.put(blaze.getId(), new LineCheck(now, clear));
+        return clear;
     }
 
     // the nearest one that is winding up a volley, that is the one the shield goes toward
