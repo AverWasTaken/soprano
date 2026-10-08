@@ -435,6 +435,26 @@ public final class Settings {
     public final Setting<Boolean> sprintAscends = new Setting<>(true);
 
     /**
+     * Keep sprinting down a ledge, step or small fall (3 blocks at most) when the path carries on in roughly the same direction (within 45 degrees)
+     * and the blocks you would coast over after landing are safe: no lava, fire, magma, powder snow, cactus,
+     * berry bushes, water or void, and no drop deeper than the one the path already planned.
+     * <p>
+     * Does nothing in the nether, within 3 blocks of lava, at 6 health or less, or while a nearby movement is
+     * placing or breaking blocks. Those keep the old stop-sprinting-on-every-descend behavior.
+     */
+    public final Setting<Boolean> sprintThroughDescends = new Setting<>(true);
+
+    /**
+     * Keep sprinting through corners that need 60 degrees of turning or less, and start rotating a fraction of a block
+     * early so the corner is cut instead of clipped. Sharp turns (90 degrees and up) next to hazards, and corners in
+     * 1 wide corridors where cutting would clip a wall, keep their normal steering.
+     * <p>
+     * Does nothing in the nether, within 3 blocks of lava, at 6 health or less, or while a nearby movement is
+     * placing or breaking blocks.
+     */
+    public final Setting<Boolean> sprintThroughCorners = new Setting<>(true);
+
+    /**
      * Sprint jump in 1x2 corridors and whenever walking under a low ceiling, bonking our head on it.
      * <p>
      * The sprint jump speed boost applies before we hit the ceiling, making this faster than just sprinting.
