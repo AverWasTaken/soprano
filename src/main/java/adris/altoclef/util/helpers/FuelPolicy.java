@@ -5,6 +5,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.function.Predicate;
 import java.util.function.ToDoubleFunction;
@@ -44,13 +45,21 @@ public final class FuelPolicy {
         return false;
     }
 
-    // how much of each stack may burn, in the order of the list. the log reserve is one pool over every species, a stack
-    // gives up what is left of it
+    // how much of each stack may burn. the log reserve is one pool over every species, a stack gives up what is left of it.
+    // the pool is handed out by item and size, never by where a stack sits: by list order, lifting the acacia onto the cursor
+    // to put it in the furnace moved it in the list, the reserve landed on it instead of the oak, the oak became the pick, the
+    // acacia went back, and the bot swapped logs on the cursor four times a second with the furnace window open
     public static int[] usable(List<ItemStack> stacks) {
         int[] out = new int[stacks.size()];
         int logs = keepLogs;
         int planks = keepPlanks;
+        List<Integer> order = new ArrayList<>();
         for (int i = 0; i < out.length; i++) {
+            order.add(i);
+        }
+        order.sort(Comparator.<Integer, String>comparing(i -> stacks.get(i).getItem().getDescriptionId())
+                .thenComparing(i -> -stacks.get(i).getCount()));
+        for (int i : order) {
             ItemStack stack = stacks.get(i);
             int count = stack.getCount();
             if (in(stack.getItem(), ItemHelper.LOG)) {
@@ -106,6 +115,9 @@ public final class FuelPolicy {
                 candidates.add(i);
             }
         }
+        // a tie (two log species both covering the job) goes to the same item every tick, not to whichever stack the list shows
+        // first, same reason as the order in usable
+        candidates.sort(Comparator.comparing(i -> stacks.get(i).getItem().getDescriptionId()));
         int best = -1;
         double closestDelta = Double.NEGATIVE_INFINITY;
         for (int i : candidates) {

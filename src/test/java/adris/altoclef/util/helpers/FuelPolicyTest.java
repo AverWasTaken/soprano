@@ -39,6 +39,32 @@ public class FuelPolicyTest {
     }
 
     @Test
+    public void liftingAStackOntoTheCursorDoesNotChangeThePick() {
+        // the 13:54 furnace: acacia and oak in the bag, part of the wood kept for beds. moving the acacia to the cursor moved it in
+        // the list, and the pick flipped between the two species every tick with the window open
+        FuelPolicy.set(4, 0, true);
+        ItemStack acacia = new ItemStack(Items.ACACIA_LOG, 5);
+        ItemStack oak = new ItemStack(Items.OAK_LOG, 5);
+        FuelPolicy.Pick before = FuelPolicy.choose(List.of(acacia, oak), 3, FuelPolicyTest::supported, FuelPolicyTest::fuel);
+        FuelPolicy.Pick after = FuelPolicy.choose(List.of(oak.copy(), acacia.copy()), 3, FuelPolicyTest::supported, FuelPolicyTest::fuel);
+        assertNotNull(before);
+        assertNotNull(after);
+        assertEquals(before.stack().getItem(), after.stack().getItem());
+        assertEquals(before.count(), after.count());
+    }
+
+    @Test
+    public void theReserveLandsOnTheSameSpeciesWhateverTheOrder() {
+        FuelPolicy.set(4, 0, true);
+        ItemStack acacia = new ItemStack(Items.ACACIA_LOG, 5);
+        ItemStack oak = new ItemStack(Items.OAK_LOG, 5);
+        int[] ab = FuelPolicy.usable(List.of(acacia, oak));
+        int[] ba = FuelPolicy.usable(List.of(oak, acacia));
+        assertEquals(ab[0], ba[1]);
+        assertEquals(ab[1], ba[0]);
+    }
+
+    @Test
     public void withNoReserveEverythingBurns() {
         List<ItemStack> bag = List.of(new ItemStack(Items.OAK_LOG, 10), new ItemStack(Items.OAK_PLANKS, 5));
         assertEquals(22.5, FuelPolicy.usableFuel(bag, FuelPolicyTest::supported, FuelPolicyTest::fuel), 1e-9);
@@ -49,7 +75,8 @@ public class FuelPolicyTest {
     public void theReserveComesOffTheTopAcrossSpecies() {
         FuelPolicy.set(12, 0, false);
         List<ItemStack> bag = List.of(new ItemStack(Items.OAK_LOG, 10), new ItemStack(Items.BIRCH_LOG, 5));
-        assertEquals(List.of(0, 3), java.util.Arrays.stream(FuelPolicy.usable(bag)).boxed().toList());
+        // 15 logs, 12 kept: 3 burn. which species gives them up is by item now, not by list order
+        assertEquals(3, java.util.Arrays.stream(FuelPolicy.usable(bag)).sum());
     }
 
     @Test
