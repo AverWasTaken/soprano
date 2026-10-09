@@ -5,9 +5,11 @@ import baritone.api.utils.Dimension;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 
@@ -51,7 +53,8 @@ public final class Bans {
         }
     }
 
-    private record Ban(Key key, String reason, long until, EnumSet<Until> events, int tool) {
+    // strike = this ban is the one the strike count earned (see strike), the count goes with it and nothing else
+    private record Ban(Key key, String reason, long until, EnumSet<Until> events, int tool, boolean strike) {
     }
 
     // the "n failures then out" bookkeeping, see strike
@@ -64,6 +67,9 @@ public final class Bans {
     private final Consumer<String> log;
     private final Map<Key, List<Ban>> bans = new HashMap<>();
     private final Map<Key, Strikes> strikes = new HashMap<>();
+    // chunks that unloaded since, per dimension (packed x/z). a load only counts as a REload for these: the client also sends
+    // a load for a chunk that is still there whenever a tracked block in it changes, a furnace going lit is enough
+    private final Map<Dimension, Set<Long>> unloaded = new HashMap<>();
     private long now;
     // the pick tier we hold, fed by toolTier. a ban remembers it so a better one can end it
     private int tool;
@@ -100,9 +106,29 @@ public final class Bans {
         tool = tier;
     }
 
+    // only remembered for a chunk that holds a CHUNK_RELOAD ban, walking across the map unloads thousands
+    public synchronized void chunkUnloaded(Dimension dim, int chunkX, int chunkZ) {
+        for (List<Ban> list : bans.values()) {
+            for (Ban b : list) {
+                if (inChunk(b, dim, chunkX, chunkZ)) {
+                    unloaded.computeIfAbsent(dim, d -> new HashSet<>()).add(chunkKey(chunkX, chunkZ));
+                    return;
+                }
+            }
+        }
+    }
+
     public synchronized void chunkLoaded(Dimension dim, int chunkX, int chunkZ) {
-        expireIf(b -> b.events.contains(Until.CHUNK_RELOAD) && b.key.kind == Kind.BLOCK && b.key.dim == dim
-                && (b.key.x >> 4) == chunkX && (b.key.z >> 4) == chunkZ, "chunk reloaded");
+        Set<Long> gone = unloaded.get(dim);
+        if (gone == null || !gone.remove(chunkKey(chunkX, chunkZ))) {
+            return;
+        }
+        expireIf(b -> inChunk(b, dim, chunkX, chunkZ), "chunk reloaded");
+    }
+
+    private static boolean inChunk(Ban b, Dimension dim, int chunkX, int chunkZ) {
+        return b.events.contains(Until.CHUNK_RELOAD) && b.key.kind == Kind.BLOCK && b.key.dim == dim
+                && (b.key.x >> 4) == chunkX && (b.key.z >> 4) == chunkZ;
     }
 
     public synchronized void hitBy(int entityId) {
@@ -120,6 +146,7 @@ public final class Bans {
         }
         bans.clear();
         strikes.clear();
+        unloaded.clear();
         nextExpiry = Long.MAX_VALUE;
     }
 
@@ -128,6 +155,10 @@ public final class Bans {
     // ban it now. the same key for the same reason again just keeps the ban that is there (DangerFilter asks every 2 s),
     // a different reason is a second ban that has to run out on its own
     public synchronized boolean ban(Key key, String reason, long ticks, Until... until) {
+        return add(key, reason, ticks, false, until);
+    }
+
+    private boolean add(Key key, String reason, long ticks, boolean strike, Until... until) {
         List<Ban> list = bans.computeIfAbsent(key, k -> new ArrayList<>(1));
         for (Ban b : list) {
             if (b.reason.equals(reason) && b.until > now) {
@@ -136,7 +167,7 @@ public final class Bans {
         }
         long end = ticks == RUN ? RUN : now + ticks;
         EnumSet<Until> events = until.length == 0 ? EnumSet.noneOf(Until.class) : EnumSet.of(until[0], until);
-        Ban b = new Ban(key, reason, end, events, tool);
+        Ban b = new Ban(key, reason, end, events, tool, strike);
         list.add(b);
         nextExpiry = Math.min(nextExpiry, end);
         log.accept("ban: + " + key + ", " + reason + ", " + describe(ticks, events));
@@ -147,6 +178,10 @@ public final class Bans {
     // is banned, but a failure from closer than ever (by a block, squared) or with a better pick starts the count over,
     // because that try was a different try. true when this strike was the one that banned it
     public synchronized boolean strike(Key key, String reason, int allowed, double distSq, long ticks, Until... until) {
+        // already out on strikes: one more is no news, and no second ban with a bigger number in its reason
+        if (struckOut(key)) {
+            return false;
+        }
         Strikes s = strikes.computeIfAbsent(key, k -> new Strikes());
         if (tool > s.bestTool || distSq < s.bestDistSq - 1) {
             s.bestTool = Math.max(s.bestTool, tool);
@@ -157,7 +192,19 @@ public final class Bans {
         if (s.failures <= allowed) {
             return false;
         }
-        return ban(key, reason + " (" + s.failures + (s.failures == 1 ? " try)" : " tries)"), ticks, until);
+        return add(key, reason + " (" + s.failures + (s.failures == 1 ? " try)" : " tries)"), ticks, true, until);
+    }
+
+    private boolean struckOut(Key key) {
+        List<Ban> list = bans.get(key);
+        if (list != null) {
+            for (Ban b : list) {
+                if (b.strike && b.until > now) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     // lifts the bans with this reason that match, and only those. a block banned for something else stays banned.
@@ -212,15 +259,22 @@ public final class Bans {
                     inner.remove();
                     n++;
                     log.accept("ban: - " + b.key + ", " + b.reason + " (" + why + ")");
+                    // the count starts over when the ban it earned is over. a short ban some task put on the same key
+                    // running out says nothing about the count, or "three stalls and it's the long one" never got to three
+                    if (b.strike) {
+                        strikes.remove(b.key);
+                    }
                 }
             }
             if (e.getValue().isEmpty()) {
                 it.remove();
-                // the count starts over once nothing holds it, the next failure is a new story
-                strikes.remove(e.getKey());
             }
         }
         return n;
+    }
+
+    private static long chunkKey(int x, int z) {
+        return ((long) x << 32) | (z & 0xFFFFFFFFL);
     }
 
     private static String describe(long ticks, EnumSet<Until> events) {

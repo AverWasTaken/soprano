@@ -71,6 +71,7 @@ public class AltoClef {
     private SimpleChunkTracker _chunkTracker;
     // every "leave that alone" anybody decided, the trackers ask it before they offer a thing (see Bans)
     private final Bans _bans = new Bans(Debug::logInternal);
+    private int _banToolTicks;
     private MiscBlockTracker _miscBlockTracker;
     // Renderers
     private CommandStatusOverlay _commandStatusOverlay;
@@ -211,9 +212,9 @@ public class AltoClef {
         if (level == null || getPlayer() == null) {
             return;
         }
-        long now = level.getGameTime();
-        _bans.tick(now);
-        if (now % 20 == 0) {
+        _bans.tick(level.getGameTime());
+        // our own count and not game time % 20, a server time correction can jump right over the 20
+        if (++_banToolTicks % 20 == 0) {
             _bans.toolTier(StorageHelper.getCurrentMiningRequirement(this).ordinal());
         }
     }

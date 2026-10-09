@@ -5,6 +5,7 @@ import adris.altoclef.Debug;
 import adris.altoclef.eventbus.EventBus;
 import adris.altoclef.eventbus.events.BlockPlaceEvent;
 import adris.altoclef.eventbus.events.ChunkLoadEvent;
+import adris.altoclef.eventbus.events.ChunkUnloadEvent;
 import baritone.api.utils.Dimension;
 import adris.altoclef.util.helpers.BaritoneHelper;
 import adris.altoclef.util.helpers.ConfigHelper;
@@ -88,7 +89,13 @@ public class BlockTracker extends Tracker {
             addBlock(evt.blockState.getBlock(), evt.blockPos);
             rememberOurPlacement(evt.blockPos);
         });
-        // "until the chunk reloads" bans (the n-failures rule) end here
+        // "until the chunk reloads" bans (the n-failures rule) end here. both halves, a load on its own is also what a furnace
+        // going lit looks like (Bans.chunkLoaded)
+        EventBus.subscribe(ChunkUnloadEvent.class, evt -> {
+            if (Minecraft.getInstance().level != null) {
+                _mod.getBans().chunkUnloaded(WorldHelper.getCurrentDimension(), evt.chunkPos.x, evt.chunkPos.z);
+            }
+        });
         EventBus.subscribe(ChunkLoadEvent.class, evt -> {
             if (Minecraft.getInstance().level != null) {
                 _mod.getBans().chunkLoaded(WorldHelper.getCurrentDimension(), evt.chunkPos.x, evt.chunkPos.z);

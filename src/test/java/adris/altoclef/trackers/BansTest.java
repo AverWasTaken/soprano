@@ -118,8 +118,10 @@ public class BansTest {
         bans.ban(block(17, 60, -1), "a", Bans.RUN, Until.CHUNK_RELOAD);
         bans.ban(block(40, 60, -1), "b", Bans.RUN, Until.CHUNK_RELOAD);
         bans.ban(block(18, 60, -2), "c", Bans.RUN);
+        bans.chunkUnloaded(Dimension.NETHER, 1, -1);
         bans.chunkLoaded(Dimension.NETHER, 1, -1);
         assertTrue(bans.blockBanned(Dimension.OVERWORLD, 17, 60, -1));
+        bans.chunkUnloaded(Dimension.OVERWORLD, 1, -1);
         bans.chunkLoaded(Dimension.OVERWORLD, 1, -1);
         assertFalse(bans.blockBanned(Dimension.OVERWORLD, 17, 60, -1));
         assertTrue(bans.blockBanned(Dimension.OVERWORLD, 40, 60, -1));
@@ -195,5 +197,50 @@ public class BansTest {
         bans.tick(50);
         assertFalse(bans.blockBanned(Dimension.OVERWORLD, 0, 0, 0));
         assertFalse("one strike after the ban is a fresh first", bans.strike(k, "r", 1, 100, 50));
+    }
+
+    @Test
+    public void aLoadWithoutAnUnloadIsNotAReload() {
+        // a tracked block changing (a furnace going lit) sends a load for a chunk that never went anywhere
+        bans.ban(block(17, 60, -1), "a", Bans.RUN, Until.CHUNK_RELOAD);
+        bans.chunkLoaded(Dimension.OVERWORLD, 1, -1);
+        assertTrue(bans.blockBanned(Dimension.OVERWORLD, 17, 60, -1));
+        bans.chunkUnloaded(Dimension.OVERWORLD, 1, -1);
+        bans.chunkLoaded(Dimension.OVERWORLD, 1, -1);
+        assertFalse(bans.blockBanned(Dimension.OVERWORLD, 17, 60, -1));
+    }
+
+    @Test
+    public void anUnloadOfAChunkWithNoReloadBanIsNotKept() {
+        bans.chunkUnloaded(Dimension.OVERWORLD, 1, -1);
+        // the ban comes after, so the next load is not a reload for it
+        bans.ban(block(17, 60, -1), "a", Bans.RUN, Until.CHUNK_RELOAD);
+        bans.chunkLoaded(Dimension.OVERWORLD, 1, -1);
+        assertTrue(bans.blockBanned(Dimension.OVERWORLD, 17, 60, -1));
+    }
+
+    @Test
+    public void aShortBanRunningOutDoesNotResetTheStrikes() {
+        // the mining task's pair: a short ban of its own plus a strike, every stall
+        Key k = block(0, 0, 0);
+        bans.tick(0);
+        for (int stall = 1; stall <= 3; stall++) {
+            bans.ban(k, "mining got nowhere", 20);
+            boolean out = bans.strike(k, "mining got nowhere", 2, 100, 1000);
+            assertEquals("stall " + stall, stall == 3, out);
+            bans.tick(stall * 30L);
+        }
+        assertTrue("the long one, from the strikes", bans.blockBanned(Dimension.OVERWORLD, 0, 0, 0));
+    }
+
+    @Test
+    public void strikesOnAKeyThatIsAlreadyOutAreQuiet() {
+        Key k = block(0, 0, 0);
+        assertTrue(bans.strike(k, "r", 0, 100, 1000));
+        int lines0 = lines.size();
+        assertFalse(bans.strike(k, "r", 0, 100, 1000));
+        assertFalse(bans.strike(k, "r", 0, 100, 1000));
+        assertEquals(1, bans.count());
+        assertEquals(lines0, lines.size());
     }
 }
