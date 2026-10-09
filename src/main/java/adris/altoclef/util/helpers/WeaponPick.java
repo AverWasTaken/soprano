@@ -16,10 +16,6 @@ import net.minecraft.world.item.SwordItem;
 // a target with a raised shield is the one case the axe wins anyway: it knocks the shield down for a few seconds
 public final class WeaponPick {
 
-    // same idea as KitPlanner.wornOut: past this much of its durability a tool is as good as gone and we would rather swing
-    // something healthy. a different number would be fine, it is just the same one so the bot has one idea of worn
-    private static final double WORN_FRACTION = 0.85;
-
     private WeaponPick() {
     }
 
@@ -32,10 +28,6 @@ public final class WeaponPick {
 
     public static boolean isWeapon(Item item) {
         return item instanceof SwordItem || item instanceof AxeItem;
-    }
-
-    public static boolean wornOut(int damage, int maxDamage) {
-        return maxDamage > 0 && damage >= WORN_FRACTION * maxDamage;
     }
 
     // the weapon to hold, or null if there is no sword or axe in the list. a healthy weapon always beats a worn one, then
@@ -59,7 +51,7 @@ public final class WeaponPick {
         Candidate best = null;
         for (Candidate c : candidates) {
             if (c == null || isWeapon(c.item()) || !ItemHelper.hitsHarderThanFists(c.item())) continue;
-            if (wornOut(c.damage(), c.maxDamage())) continue;
+            if (ToolWear.wornOut(c.damage(), c.maxDamage())) continue;
             if (best == null || beats(c, best, false, false)) {
                 best = c;
             }
@@ -81,8 +73,8 @@ public final class WeaponPick {
     }
 
     private static boolean beats(Candidate a, Candidate b, boolean crowd, boolean shieldedTarget) {
-        boolean aWorn = wornOut(a.damage(), a.maxDamage());
-        boolean bWorn = wornOut(b.damage(), b.maxDamage());
+        boolean aWorn = ToolWear.wornOut(a.damage(), a.maxDamage());
+        boolean bWorn = ToolWear.wornOut(b.damage(), b.maxDamage());
         if (aWorn != bWorn) {
             return bWorn;
         }

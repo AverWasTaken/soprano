@@ -4,6 +4,7 @@ import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig;
 import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig.ArmorPlan;
 import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig.KitItem;
 import adris.altoclef.util.helpers.ItemHelper;
+import adris.altoclef.util.helpers.ToolWear;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.Item;
@@ -38,9 +39,6 @@ public final class KitPlanner {
     private KitPlanner() {
     }
 
-    // a pick past this much of its durability does not count as owned (see wornOut). stone gets 131 uses, so this is
-    // about a hundred blocks of mining, and then we would rather make a fresh one at a table than find out in a cave
-    private static final double WORN_FRACTION = 0.85;
     private static final int PLANKS_PER_LOG = 4;
     // 4 sticks come out of 2 planks, so sticks are bought in fours
     private static final int STICKS_PER_CRAFT = 4;
@@ -407,11 +405,12 @@ public final class KitPlanner {
         return f.count(counted(name)) > f.count(exact(name));
     }
 
-    // a wooden, stone or iron pickaxe this far gone is as good as gone: we would rather craft the next one while we still
-    // have a table and the materials than have it break in a cave. MinecraftFacts keeps those out of count()
+    // a wooden, stone or iron pickaxe this far gone (ToolWear's line) is as good as gone: we would rather craft the next one while
+    // we still have a table and the materials than have it break in a cave. a pick past it does not count as owned, MinecraftFacts
+    // keeps those out of count()
     public static boolean wornOut(Item item, int damage, int maxDamage) {
         boolean ours = item == Items.WOODEN_PICKAXE || item == Items.STONE_PICKAXE || item == Items.IRON_PICKAXE;
-        return ours && maxDamage > 0 && damage >= WORN_FRACTION * maxDamage;
+        return ours && ToolWear.wornOut(damage, maxDamage);
     }
 
     // the raw meat in the bag gets cooked as the last thing, see CookGate for when it jumps the queue

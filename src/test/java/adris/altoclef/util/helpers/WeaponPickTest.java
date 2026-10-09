@@ -71,11 +71,16 @@ public class WeaponPickTest {
     }
 
     @Test
-    public void wearUsesTheSameEightyFivePercentAsTheKitPlanner() {
-        assertFalse(WeaponPick.wornOut(111, 131));
-        assertTrue(WeaponPick.wornOut(112, 131));
-        assertFalse(WeaponPick.wornOut(0, 0));
-        assertFalse(WeaponPick.wornOut(5, 0));
+    public void wearUsesToolWearsLineLikeTheKitPlanner() {
+        // the line itself is pinned in ToolWearTest, this is the ranking following it: 111 of 131 is healthy, 112 is worn
+        assertSame(Items.STONE_SWORD, WeaponPick.best(List.of(new WeaponPick.Candidate(Items.STONE_SWORD, 111, 131),
+                new WeaponPick.Candidate(Items.STONE_AXE, 112, 131))));
+        assertSame(Items.STONE_SWORD, WeaponPick.best(List.of(new WeaponPick.Candidate(Items.STONE_AXE, 112, 131),
+                new WeaponPick.Candidate(Items.STONE_SWORD, 111, 131))));
+        // an item that does not wear (max 0) is never worn, however the damage reads
+        assertSame(Items.STONE_AXE, WeaponPick.best(List.of(new WeaponPick.Candidate(Items.STONE_AXE, 5, 0))));
+        assertSame(Items.STONE_AXE, WeaponPick.best(List.of(new WeaponPick.Candidate(Items.STONE_SWORD, 112, 131),
+                new WeaponPick.Candidate(Items.STONE_AXE, 5, 0))));
     }
 
     @Test
