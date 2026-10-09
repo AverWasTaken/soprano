@@ -2065,14 +2065,29 @@ public class WorkbenchRulesTest {
         boolean nothing = WorkbenchRules.nothingAhead(Kind.FURNACE, false, 0, false, false);
         assertTrue(nothing);
         assertFalse(WorkbenchRules.keepForComingBack(furnace, nothing));
-        // also before the plan caught up (the look that still had iron_ingot in it): the bag says the iron is done
-        Bench stale = bench(Kind.FURNACE);
-        WorkbenchRules.updateComingBack(stale, "to smelt", 100);
-        assertFalse(WorkbenchRules.keepForComingBack(stale, nothing));
-        // a smoker with no raw meat and enough food
+        // a smoker with no raw meat and enough food, the plan already let go of it
         Bench smoker = bench(Kind.SMOKER);
         WorkbenchRules.updateComingBack(smoker, "to cook", 100);
+        WorkbenchRules.updateComingBack(smoker, null, 101);
         assertFalse(WorkbenchRules.keepForComingBack(smoker, WorkbenchRules.nothingAhead(Kind.SMOKER, true, 0, true, false)));
+    }
+
+    @Test
+    public void aPlanThatStillSaysYesKeepsItWhateverTheBagSays() {
+        // a stock-up hunt the bag counts can't see (above the target), or a look that has not caught up yet: the old hold rules
+        Bench smoker = bench(Kind.SMOKER);
+        WorkbenchRules.updateComingBack(smoker, "to cook", 100);
+        assertTrue(WorkbenchRules.keepForComingBack(smoker, WorkbenchRules.nothingAhead(Kind.SMOKER, false, 0, true, false)));
+    }
+
+    @Test
+    public void aHuntUpToTheTargetKeepsTheSmoker() {
+        // at the minimum, under the target, no raw meat: the plan hunts to the target next, the smoker is where that goes
+        Bench smoker = bench(Kind.SMOKER);
+        WorkbenchRules.updateComingBack(smoker, "to cook", 100);
+        WorkbenchRules.updateComingBack(smoker, null, 101);
+        boolean shortOfTarget = true;
+        assertTrue(WorkbenchRules.keepForComingBack(smoker, WorkbenchRules.nothingAhead(Kind.SMOKER, false, 0, true, shortOfTarget)));
     }
 
     @Test

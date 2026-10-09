@@ -610,19 +610,23 @@ public final class WorkbenchRules {
     }
 
     // nothing in the bag or the plan's facts has a use for this furnace or smoker: no iron owed (a furnace), no raw meat that would go
-    // in it and not short of food (a hunt fills the smoker next). these are bag counts, they do not flicker the way the plan's
-    // head does
+    // in it and not short of food (a hunt fills the smoker next; the caller asks against the food target, the highest line the
+    // plan hunts to outside a stock-up). these are bag counts, they do not flicker the way the plan's head does
     public static boolean nothingAhead(Kind kind, boolean ironOwed, int rawMeat, boolean smokerOfOurs, boolean foodShort) {
         boolean meatHere = (rawMeat > 0 || foodShort) && (kind == Kind.SMOKER || !smokerOfOurs);
         return kind == Kind.SMOKER ? !meatHere : !ironOwed && !meatHere;
     }
 
-    // the visit that emptied a station keeps it standing for the comingBack reason only while something is really ahead for it.
-    // the 3 s hold in updateComingBack is for a plan that flickers, and the plan says no for a tick then; the bag does not. a
-    // visit that took the last of it with nothing ahead is the real end, and we are standing right at it, so it comes down now
-    // instead of after the hold (by when we may have walked out of NEAR)
+    // the visit that emptied a station keeps it standing for the comingBack reason while the plan still says so, or while it is only
+    // being held (the plan said no, the 3 s in updateComingBack are running) and the bag still has something ahead for it: that is
+    // the flicker the hold is for, the plan says no for a tick then and the bag does not. held with nothing ahead is the real end,
+    // the visit took the last of it, and we are standing right at it, so it comes down now instead of after the hold (by when we
+    // may have walked out of NEAR). a plan that still says yes (a stock-up hunt the bag can't see) always keeps it
     public static boolean keepForComingBack(Bench b, boolean nothingAhead) {
-        return b.comingBack != null && !nothingAhead;
+        if (b.comingBack == null) {
+            return false;
+        }
+        return b.comingBackLostSince == NEVER || !nothingAhead;
     }
 
     // the anchor is not flickering, it is done: coming down, in the bag, out of the registry. so is a standing one whose comingBack
