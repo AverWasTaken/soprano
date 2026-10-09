@@ -127,6 +127,11 @@ public interface WorldHelper {
     static Dimension getCurrentDimension() {
         ClientLevel world = Minecraft.getInstance().level;
         if (world == null) return Dimension.OVERWORLD;
+        return dimensionOf(world);
+    }
+
+    // for a level that is not the current one: a dead player keeps the level it died in after the respawn swapped ours
+    static Dimension dimensionOf(Level world) {
         if (world.dimensionType().ultraWarm()) return Dimension.NETHER;
         if (world.dimensionType().natural()) return Dimension.OVERWORLD;
         return Dimension.END;

@@ -26,6 +26,7 @@ import adris.altoclef.tasks.speedrun.gamer.tasks.NetherTripRules;
 import adris.altoclef.tasks.speedrun.gamer.tasks.RecoverItemsTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.tasksystem.TaskChain;
+import adris.altoclef.util.helpers.DeathStash;
 import adris.altoclef.util.helpers.ItemHelper;
 import baritone.Baritone;
 import baritone.altoclef.SettingsOverrides;
@@ -36,9 +37,6 @@ import net.minecraft.client.gui.screens.DeathScreen;
 import net.minecraft.client.gui.screens.WinScreen;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
-import net.minecraft.tags.FluidTags;
-import net.minecraft.world.damagesource.DamageSource;
-import net.minecraft.world.damagesource.DamageTypes;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
@@ -404,6 +402,8 @@ public class GamerTask extends Task {
         // a job from a run before this one is not ours to collect
         AsyncSmelting.clear();
         CookTrip.clear();
+        // and neither is a death from before the run started (the stash outlives the task that read it last)
+        DeathStash.clear();
         loadState(mod);
         facts.useState(state);
         // so CollectFoodTask can count the meat that is cooking without knowing what a RunState is
@@ -675,41 +675,63 @@ public class GamerTask extends Task {
 
     // ---- deaths
 
-    // respawning swaps the LocalPlayer (and so does changing dimension), so a new instance only means a death when the old
-    // one was seen dead. the death screen counts as dead too, the player can be gone before we ever see the zero health
+    // respawning swaps the LocalPlayer (and so does changing dimension), so a new instance only means a death when something
+    // saw one. our own tick is the weakest witness: mob defense holds the wheel through a fight, the death and the death
+    // screen, and we never get a tick. the death packet writes the stash whoever holds the wheel, and the old instance is
+    // the last resort (a respawn only reads it, so it keeps its zero health)
     private void trackDeaths(AltoClef mod) {
         LocalPlayer player = mod.getPlayer();
         if (player == null) {
             return;
         }
         if (player != lastPlayer) {
-            if (lastPlayer != null && deadSeen) {
-                onRespawn();
+            if (lastPlayer != null) {
+                swapped(lastPlayer);
             }
             lastPlayer = player;
             deadSeen = false;
         }
         if (!deadSeen && (player.isDeadOrDying() || Minecraft.getInstance().screen instanceof DeathScreen)) {
             deadSeen = true;
-            deathDimension = facts.dimension();
-            deathPos = player.blockPosition();
-            deathGameTime = facts.gameTime();
-            deathCause = causeOf(mod, player);
+            adopt(DeathStash.snapshot(player));
         }
     }
 
-    // lava eats the pile and the void takes it, so those are the two we write down. the fluid at our feet and the damage
-    // source both count: the killing blow can be fire from a lava bath we already climbed out of
-    private NetherTripRules.Cause causeOf(AltoClef mod, LocalPlayer player) {
-        var level = mod.getWorld();
-        DamageSource source = player.getLastDamageSource();
-        boolean lava = player.isInLava() || (source != null && source.is(DamageTypes.LAVA))
-                || (level.isLoaded(deathPos) && level.getFluidState(deathPos).is(FluidTags.LAVA));
-        boolean out = deathPos.getY() < level.getMinY() || (source != null && source.is(DamageTypes.FELL_OUT_OF_WORLD));
-        return NetherTripRules.cause(lava, out);
+    private void swapped(LocalPlayer old) {
+        // taken whatever happens next, a stash left lying around would be the next portal's death
+        DeathStash.Death stashed = DeathStash.take();
+        DeathRules.Source source = DeathRules.source(deadSeen, stashed != null, old.isDeadOrDying());
+        switch (source) {
+            case STASH -> adopt(stashed);
+            case OLD_INSTANCE -> adopt(DeathStash.snapshot(old));
+            case TICK -> {
+            }
+            default -> {
+                // a dimension change swaps the instance too, with the old one alive and nothing in the stash
+                Debug.logInternal("new player instance with no death seen (a portal or a reconnect), the old one had " + Math.round(old.getHealth())
+                        + " hp, now in " + facts.dimension() + ", no death counted");
+                return;
+            }
+        }
+        onRespawn(source);
     }
 
-    private void onRespawn() {
+    // where it happened comes from the record and never from where we are now, a nether death respawns in the overworld
+    private void adopt(DeathStash.Death death) {
+        deathDimension = death.dimension();
+        deathPos = new BlockPos(death.x(), death.y(), death.z());
+        deathGameTime = death.gameTime();
+        // lava eats the pile and the void takes it, so those are the two we write down
+        deathCause = NetherTripRules.cause(death.inLava(), death.outOfWorld());
+    }
+
+    private void onRespawn(DeathRules.Source seenBy) {
+        // the same two numbers shouldRecover() decides on, and who told us about it
+        double awayX = facts.x() - deathPos.getX();
+        double awayZ = facts.z() - deathPos.getZ();
+        Debug.logInternal("respawned after dying in " + deathDimension + " at " + deathPos.toShortString() + ", now in " + facts.dimension()
+                + " " + Math.round(Math.sqrt(awayX * awayX + awayZ * awayZ)) + " blocks away (recovery goes up to " + cfg.death.recoverBlocks
+                + ", seen by " + seenBy.name().toLowerCase(Locale.ROOT).replace('_', ' ') + ")");
         RunState.Death death = new RunState.Death();
         death.dimension = deathDimension.name();
         death.x = deathPos.getX();
