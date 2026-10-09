@@ -104,7 +104,7 @@ public class PursuitProgressTest {
         r.tick(LOG, 24);
         r.standStill(LOG, 24, PursuitProgress.STALL_TICKS - 1);
         assertFalse(r.p.stalled());
-        // a gap of a few ticks (a drop wait) is not a resume
+        // a gap of a few ticks is not a resume
         r.now += PursuitProgress.RESUME_GAP - 1;
         r.tick(LOG, 24);
         assertTrue(r.p.stalled());

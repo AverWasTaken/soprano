@@ -514,7 +514,7 @@ public final class FurnacePlan {
         String secs = l.remaining() == Long.MAX_VALUE ? "?" : String.valueOf(Math.round(l.remaining() / 20.0));
         return switch (act) {
             case WAIT -> "waiting here, ~" + secs + " s of cooking left";
-            case LEAVE_CAPPED -> "stood to the end of the estimate and " + l.input() + " is still in it, back in a while";
+            case LEAVE_CAPPED -> "stood as long as it was worth and " + l.input() + " is still in it, back in a while";
             case LEAVE_COOKING -> l.input() + " still cooking, ~" + secs + " s, leaving it";
             case FEED, KEEP_FEEDING -> "the fire is out with " + l.input() + " left, putting fuel in";
             case TAKE_BACK_STALLED -> "cold or never finished, taking the " + l.input() + " back out";
