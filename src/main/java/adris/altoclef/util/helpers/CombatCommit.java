@@ -124,10 +124,13 @@ public final class CombatCommit {
             return kind == Kind.UNTOUCHABLE || (kind == Kind.HEAVY && health <= HEAVY_FLEE_HP);
         }
 
-        // something we only ever run from, close enough to matter: within 8, or the warden booming us from out to 15
+        // something we only ever run from, close enough to matter. the warden: within 8, or booming us from out to 15. a
+        // heavy hitter only once it has got to us (hit us from within 8, or in contact): one just standing around in a
+        // bastion is walked past like anything else, otherwise the nether is one long jog
         public boolean danger(float health) {
             if (!mustRun(health)) return false;
-            return distance <= LOW_HP_RANGE || (kind == Kind.UNTOUCHABLE && hitUs() && distance <= BOOM_RANGE);
+            if (kind == Kind.UNTOUCHABLE) return distance <= LOW_HP_RANGE || (hitUs() && distance <= BOOM_RANGE);
+            return distance <= CONTACT || (hitUs() && distance <= LOW_HP_RANGE);
         }
     }
 
@@ -143,7 +146,8 @@ public final class CombatCommit {
     // the rule for "does anything here really need dealing with". almost always no: a crowd around us, a skeleton
     // shooting from range, a lit creeper and a zombie ten blocks off are all scenery and the task walks on.
     // freshOnly is the cooldown, and it only gates the fight: danger is never old news.
-    // 1. something we never fight at this hp is close (a heavy hitter within 8 at 10 hp, the warden): a run
+    // 1. something we never fight at this hp has got to us (a heavy hitter at 10 hp that hit us or is in contact, the
+    //    warden within 8 or booming us): a run
     // 2. we are hurt and something angry is within 8: a run. a run only ends with nothing within 12 for two seconds, so
     //    a mob inside 8 right after one ended came back for us
     // 3. it hit us and it is in contact: a fight. hitting back is the only way that one stops
@@ -302,7 +306,8 @@ public final class CombatCommit {
     // as trigger(), plus the fight target itself (it can be outside the foe list and still be the thing to leave)
     private static Why runReason(Tick t) {
         Foe target = t.target();
-        if (target != null && target.mustRun(t.health())) return Why.HEAVY;
+        // (the same "has it got to us" rule as for anything else, the fight target just gets asked too)
+        if (target != null && target.danger(t.health())) return Why.HEAVY;
         Trigger trigger = trigger(t.health(), t.foes(), false);
         if (trigger != null && trigger.why() != Why.HIT) return trigger.why();
         if (target != null && t.health() <= FLEE_HP && target.distance() <= LOW_HP_RANGE) return Why.LOW_HP;
@@ -310,7 +315,7 @@ public final class CombatCommit {
     }
 
     private static boolean anyDanger(Tick t) {
-        if (t.target() != null && t.target().mustRun(t.health())) return true;
+        if (t.target() != null && t.target().danger(t.health())) return true;
         for (Foe foe : t.foes()) {
             if (foe.danger(t.health())) return true;
         }

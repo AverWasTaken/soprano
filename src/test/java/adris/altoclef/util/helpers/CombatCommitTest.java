@@ -374,7 +374,7 @@ public class CombatCommitTest {
 
         // a heavy hitter in the pile is the worst of it, it names the run before the hp does
         CombatCommit nasty = new CombatCommit();
-        assertEquals(Event.RUN_START, nasty.step(tick(NOW, 8f, null, mob[0], mob[1], heavy(4, 5))));
+        assertEquals(Event.RUN_START, nasty.step(tick(NOW, 8f, null, mob[0], mob[1], heavy(4, 5, 10))));
         assertEquals(Why.HEAVY, nasty.why());
     }
 
@@ -419,12 +419,14 @@ public class CombatCommitTest {
     }
 
     @Test
-    public void aHeavyHitterWalkingUpBailsAFightAtTenHp() {
+    public void aHeavyHitterOnTopOfUsBailsAFightAtTenHp() {
         CombatCommit c = fightOn(zombie(7, 2, 0));
         Foe z = zombie(7, 2, 5);
-        // at 11 the zombie fight carries on with a hoglin at five blocks
-        assertEquals(Event.NONE, c.step(tick(NOW + 4, 11, z, z, heavy(8, 5))));
-        assertEquals(Event.FIGHT_TO_RUN, c.step(tick(NOW + 5, 10, z, z, heavy(8, 5))));
+        // a hoglin hanging about at five blocks that has not touched us is scenery, even at 10
+        assertEquals(Event.NONE, c.step(tick(NOW + 3, 10, z, z, heavy(8, 5))));
+        // at 11 the zombie fight carries on with a hoglin in contact
+        assertEquals(Event.NONE, c.step(tick(NOW + 4, 11, z, z, heavy(8, 2.5))));
+        assertEquals(Event.FIGHT_TO_RUN, c.step(tick(NOW + 5, 10, z, z, heavy(8, 2.5))));
         assertEquals(Mode.RUN, c.mode());
         assertEquals(Why.HEAVY, c.why());
     }
@@ -1003,7 +1005,7 @@ public class CombatCommitTest {
             assertEquals("hp " + hp, Event.FIGHT_START, fight.step(tick(NOW, hp, null, heavy(1, 2, 3))));
             assertEquals(Why.HIT, fight.why());
         }
-        // at 10 or less it does not even have to have hit us, close is enough
+        // at 10 or less it does not even have to have hit us yet, in contact is enough
         for (float hp : new float[]{10, 9.5f}) {
             CombatCommit run = new CombatCommit();
             assertEquals("hp " + hp, Event.RUN_START, run.step(tick(NOW, hp, null, heavy(1, 2))));
@@ -1022,20 +1024,34 @@ public class CombatCommitTest {
     }
 
     @Test
-    public void aHeavyHitterWithinEightAtTenHpIsARunHitOrNot() {
+    public void aHeavyHitterAtTenHpIsARunOnlyOnceItHasGotToUs() {
+        // hit us from within 8, or in contact
         assertEquals(Event.RUN_START, new CombatCommit().step(tick(NOW, 10, null, heavy(1, 6, 3))));
-        assertEquals(Event.RUN_START, new CombatCommit().step(tick(NOW, 10, null, heavy(1, 8))));
-        assertEquals(Event.NONE, new CombatCommit().step(tick(NOW, 10, null, heavy(1, 8.1))));
-        // above the line a heavy hitter that has not got to us yet is scenery like anything else
+        assertEquals(Event.RUN_START, new CombatCommit().step(tick(NOW, 10, null, heavy(1, 8, 3))));
+        assertEquals(Event.RUN_START, new CombatCommit().step(tick(NOW, 10, null, heavy(1, 3))));
+        // just standing about in a bastion is walked past, otherwise the nether is one long jog
+        assertEquals(Event.NONE, new CombatCommit().step(tick(NOW, 10, null, heavy(1, 3.1))));
+        assertEquals(Event.NONE, new CombatCommit().step(tick(NOW, 10, null, heavy(1, 6))));
+        assertEquals(Event.NONE, new CombatCommit().step(tick(NOW, 10, null, heavy(1, 8.1, 3))));
+        // above the line a heavy hitter that has not got to us in contact is scenery like anything else
         assertEquals(Event.NONE, new CombatCommit().step(tick(NOW, 11, null, heavy(1, 6, 3))));
         assertEquals(Event.NONE, new CombatCommit().step(tick(NOW, 10.5f, null, heavy(1, 5))));
     }
 
     @Test
+    public void aBastionFullOfHeavyHittersIsWalkedThroughAtTenHp() {
+        CombatCommit c = new CombatCommit();
+        holds(c, NOW, NOW + 300, now -> tick(now, 10, null, heavy(1, 4), heavy(2, 5.5), heavy(3, 7), zombie(4, 6)));
+        assertEquals(Mode.NONE, c.mode());
+    }
+
+    @Test
     public void aTriggerFromAZombieWithAHeavyHitterCloseIsARun() {
         CombatCommit c = new CombatCommit();
-        assertEquals(Event.RUN_START, c.step(tick(NOW, 10, null, zombie(1, 2, 3), heavy(2, 5))));
+        assertEquals(Event.RUN_START, c.step(tick(NOW, 10, null, zombie(1, 2, 3), heavy(2, 5, 20))));
         assertEquals(Why.HEAVY, c.why());
+        // one that never touched us does not turn the zombie fight into a run
+        assertEquals(Event.FIGHT_START, new CombatCommit().step(tick(NOW, 10, null, zombie(1, 2, 3), heavy(2, 5))));
     }
 
     @Test
@@ -1084,9 +1100,9 @@ public class CombatCommitTest {
 
     @Test
     public void aHeavyTargetOutsideTheFoeListStillBailsTheFight() {
-        // the target is looked up on its own: a hoglin we started on at full hp that drops us to 10 while it is 9 blocks out
+        // the target is looked up on its own: a hoglin we started on at full hp that drops us to 10 while it is 7 blocks out
         CombatCommit c = fightOn(heavy(7, 2, 0));
-        Foe h = heavy(7, 9, 5);
+        Foe h = heavy(7, 7, 5);
         assertEquals(Event.FIGHT_TO_RUN, c.step(new Tick(NOW + 5, 10, 0, 0, List.of(), h)));
         assertEquals(Why.HEAVY, c.why());
     }

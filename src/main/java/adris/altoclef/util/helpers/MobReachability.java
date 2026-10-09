@@ -173,7 +173,7 @@ public class MobReachability {
                 || mob instanceof Shulker || mob instanceof Guardian || mob instanceof Bee) {
             return true;
         }
-        // a lit fuse is the creeper logic's business, not ours
+        // a lit fuse is about to be a hole in the ground, not a mob that is stuck. we walk past it either way
         if (mob instanceof Creeper creeper && creeper.getSwelling(1) > 0.001) return true;
         // jockeys and anything else riding something go wherever the ride goes
         return mob.isPassenger();

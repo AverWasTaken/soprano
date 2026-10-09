@@ -2008,7 +2008,8 @@ public final class Settings {
      * Mobs are ignored by default, in every dimension: the bot keeps walking its path past a crowd of zombies, a lit
      * creeper, or a skeleton shooting at it from across the field (walking spoils the aim). It only does something about
      * a mob that hit it while in contact (a fight), or real danger: 8 hp or less with an angry mob within 8 blocks, 10 hp
-     * or less with a heavy hitter like a wither skeleton, hoglin or vindicator within 8, or the warden (a run). A fight
+     * or less with a heavy hitter like a wither skeleton, hoglin or vindicator that hit it or is in contact (one just
+     * standing around is walked past), or the warden or the wither within 8 (or a sonic boom from up to 15) (a run). A fight
      * holds until its target is dead or has been more than 6 blocks away and quiet for three seconds, and turns into a
      * run on the danger rules. A run holds until the bot is 24 blocks from where it started with nothing hostile within
      * 12, or 25 seconds, whichever comes first. A run that gets nowhere (three seconds with a mob on top of the bot, six
