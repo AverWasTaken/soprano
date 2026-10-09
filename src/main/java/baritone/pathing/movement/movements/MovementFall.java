@@ -193,10 +193,17 @@ public class MovementFall extends Movement {
             return state;
         }
         ticks++;
+        BlockPos playerFeet = ctx.playerFeet();
+        boolean atLedge = playerFeet.equals(src) && ctx.player().onGround();
+        // the first tick counts as the ledge too: a fall that starts with us already in the air never stands on src, and
+        // it should still get the gate for the hp we started it with
+        if (atLedge || ticks == 1) {
+            double health = ctx.player().getHealth() + ctx.player().getAbsorptionAmount();
+            lowAtLedge = !ExperimentalMovement.canAffordClutch(health, Baritone.settings().experimentalMinHealth.value);
+        }
         snapshotDamage();
         confirmLadder();
 
-        BlockPos playerFeet = ctx.playerFeet();
         Rotation toDest = RotationUtils.calcRotationFromVec3d(ctx.playerHead(), VecUtils.getBlockPosCenter(dest), ctx.playerRotations());
         Rotation targetRotation = null;
         BlockState destState = ctx.world().getBlockState(dest);
@@ -207,11 +214,6 @@ public class MovementFall extends Movement {
         }
 
         boolean isWater = destState.getFluidState().getType() instanceof WaterFluid;
-        boolean atLedge = playerFeet.equals(src) && ctx.player().onGround();
-        if (atLedge) {
-            double health = ctx.player().getHealth() + ctx.player().getAbsorptionAmount();
-            lowAtLedge = !ExperimentalMovement.canAffordClutch(health, Baritone.settings().experimentalMinHealth.value);
-        }
         if ((hurt || lowAtLedge) && !isWater && atLedge && !stillPossible()) {
             // we got hurt (or something else dropped our health) since the plan was made, and this fall would now cost us
             // more than we agreed to, or it was a clutch and a clutch is off at this hp. nothing has happened yet, so the
