@@ -139,6 +139,12 @@ public class MovementDescend extends Movement {
     }
 
     public static boolean dynamicFallCost(CalculationContext context, int x, int y, int z, int destX, int destZ, double frontBreak, BlockState below, MutableMoveResult res) {
+        return dynamicFallCost(context, x, y, z, destX, destZ, frontBreak, below, res, true);
+    }
+
+    // clutchHealthGate false is for a fall that's already been agreed to (MovementFall mid air): hp dropping on the way down
+    // must not take away the save we're in the middle of
+    public static boolean dynamicFallCost(CalculationContext context, int x, int y, int z, int destX, int destZ, double frontBreak, BlockState below, MutableMoveResult res, boolean clutchHealthGate) {
         if (frontBreak != 0 && context.get(destX, y + 2, destZ).getBlock() instanceof FallingBlock) {
             // if frontBreak is 0 we can actually get through this without updating the falling block and making it actually fall
             // but if frontBreak is nonzero, we're breaking blocks in front, so don't let anything fall through this column,
@@ -218,10 +224,13 @@ public class MovementDescend extends Movement {
             }
             boolean bucketOk = reachedMinimum && context.hasWaterBucket && unprotectedFallHeight <= context.maxFallHeightBucket + 1;
             double clutch = reachedMinimum ? clutchCost(context, destX, destZ, effectiveStartHeight, newY + 1) : COST_INF;
+            if (clutchHealthGate) {
+                clutch = clutchAtHealth(clutch, context.health, context.experimentalMinHealth);
+            }
             if (clutch < COST_INF) {
                 clutch += WALK_OFF_BLOCK_COST + frontBreak + costSoFar;
             }
-            if (clutch < COST_INF && !(bucketOk && tentativeCost + context.placeBucketCost() <= clutch)) {
+            if (clutchBeatsBucket(clutch, bucketOk, tentativeCost + context.placeBucketCost())) {
                 // the bucket wins ties, it doesn't care about timing
                 res.x = destX;
                 res.y = newY + 1;
@@ -261,6 +270,17 @@ public class MovementDescend extends Movement {
         res.z = destZ;
         res.cost = tentativeCost + damage * context.fallDamageCost;
         res.damage = damage;
+    }
+
+    // a clutch that misses at low hp is lethal, so below experimentalMinHealth it's not on the menu (see canAffordClutch).
+    // only the clutch: the bucket and the plain falls don't care
+    static double clutchAtHealth(double clutch, double health, double minHealth) {
+        return ExperimentalMovement.canAffordClutch(health, minHealth) ? clutch : COST_INF;
+    }
+
+    // the bucket wins ties, and any time the clutch is priced out
+    static boolean clutchBeatsBucket(double clutch, boolean bucketOk, double bucketCost) {
+        return clutch < COST_INF && !(bucketOk && bucketCost <= clutch);
     }
 
     // a ladder or vine in one of the last few cells before the floor, placed against whatever wall is beside the column.

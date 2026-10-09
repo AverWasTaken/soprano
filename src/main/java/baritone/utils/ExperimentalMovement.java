@@ -98,4 +98,10 @@ public final class ExperimentalMovement {
     public static boolean canAffordFall(double health, double damage, double minHealth) {
         return health - damage >= minHealth;
     }
+
+    // a ladder clutch is a fall that only doesn't hurt if the timing works out. below the same floor a miss is the whole fall
+    // at once, usually a funeral, so it's not offered at all there. the water bucket is not a gamble and has no gate
+    public static boolean canAffordClutch(double health, double minHealth) {
+        return canAffordFall(health, 0, minHealth);
+    }
 }

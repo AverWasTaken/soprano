@@ -142,7 +142,8 @@ public class MovementFall extends Movement {
     private FallMode fallMode() {
         CalculationContext context = new CalculationContext(baritone);
         MutableMoveResult result = new MutableMoveResult();
-        if (MovementDescend.dynamicFallCost(context, src.x, src.y, src.z, dest.x, dest.z, 0, context.get(dest.x, src.y - 2, dest.z), result)) {
+        // no clutch health gate here: the planner already asked, and this runs every tick of the fall
+        if (MovementDescend.dynamicFallCost(context, src.x, src.y, src.z, dest.x, dest.z, 0, context.get(dest.x, src.y - 2, dest.z), result, false)) {
             return FallMode.BUCKET;
         }
         if (result.damage > 0) {
@@ -165,7 +166,7 @@ public class MovementFall extends Movement {
         }
         CalculationContext context = new CalculationContext(baritone);
         MutableMoveResult result = new MutableMoveResult();
-        boolean bucket = MovementDescend.dynamicFallCost(context, src.x, src.y, src.z, dest.x, dest.z, 0, context.get(dest.x, src.y - 2, dest.z), result);
+        boolean bucket = MovementDescend.dynamicFallCost(context, src.x, src.y, src.z, dest.x, dest.z, 0, context.get(dest.x, src.y - 2, dest.z), result, false);
         plannedDamage = bucket ? 0 : result.damage;
     }
 
