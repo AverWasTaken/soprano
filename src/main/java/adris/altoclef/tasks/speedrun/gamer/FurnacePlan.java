@@ -191,6 +191,18 @@ public final class FurnacePlan {
         return Math.max(0, job.doneTick - now) + PATIENCE_TICKS;
     }
 
+    // a quick smoker's visit stands no longer than its stand-by budget. the budget running out only changes the plan's call,
+    // the trip already under way keeps its own cap, so without this a slow smoker still had the bot standing there the full
+    // estimate plus the patience
+    public static long waitCap(RunState.FurnaceJob job, long now, boolean quick) {
+        long cap = waitCap(job, now);
+        Track t = job.track;
+        if (!quick || !t.standSeen) {
+            return cap;
+        }
+        return Math.min(cap, Math.max(0, t.standUntil - now));
+    }
+
     // how close to done a leaving trip still waits. the climb costs about this much anyway, never under the usual nearly and never
     // over the patience
     public static long leaveWindow(int depth) {

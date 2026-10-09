@@ -552,6 +552,22 @@ public class FurnacePlanTest {
         assertEquals(FurnacePlan.PATIENCE_TICKS, FurnacePlan.waitCap(job, 5000));
     }
 
+    @Test
+    public void aQuickVisitNeverStandsPastTheStandByBudget() {
+        RunState.FurnaceJob job = smoker(300);
+        assertEquals(Why.QUICK, one(plan(job, MID_NEED, 0)).why());
+        // the estimate plus the patience would be 45 s, the budget is 30 s from first sight
+        assertEquals(300 + FurnacePlan.PATIENCE_TICKS, FurnacePlan.waitCap(job, 0));
+        assertEquals(FurnacePlan.STAND_BY_CAP_TICKS, FurnacePlan.waitCap(job, 0, true));
+        // a trip that starts later gets what is left of it, and none once it is gone
+        assertEquals(FurnacePlan.STAND_BY_CAP_TICKS - 100, FurnacePlan.waitCap(job, 100, true));
+        assertEquals(0, FurnacePlan.waitCap(job, FurnacePlan.STAND_BY_CAP_TICKS + 50, true));
+        // anything that is not a quick stand-by keeps the old cap
+        assertEquals(FurnacePlan.waitCap(job, 100), FurnacePlan.waitCap(job, 100, false));
+        RunState.FurnaceJob unseen = furnace(1000);
+        assertEquals(FurnacePlan.waitCap(unseen, 0), FurnacePlan.waitCap(unseen, 0, true));
+    }
+
     // ---- stale
 
     @Test

@@ -314,7 +314,7 @@ public final class FurnaceWatch {
         quick = v.call() == FurnacePlan.Call.STAND_BY && v.why() == FurnacePlan.Why.QUICK;
         // the call is already in the log when the plan made it, a leaving one is announced here
         say(FurnacePlan.say(job, v.call(), v.why().text, now));
-        task = new CollectFromFurnaceTask(at(job), block, job.kind, v.mode(), v.nearly(), FurnacePlan.waitCap(job, now));
+        task = new CollectFromFurnaceTask(at(job), block, job.kind, v.mode(), v.nearly(), FurnacePlan.waitCap(job, now, quick));
         boolean smoker = "smoker".equals(job.kind);
         hud = v.call() == FurnacePlan.Call.STAND_BY ? (smoker ? "Waiting for the smoker" : "Waiting for the furnace")
                 : "Collecting from the " + (smoker ? "smoker" : "furnace");

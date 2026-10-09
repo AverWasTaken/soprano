@@ -417,7 +417,7 @@ public class IronPhase implements PhaseHandler {
         // not in the middle of a cook's load either, that is a few seconds and the pick can wait for them
         boolean boundary = head == null || !head.equals(committed);
         boolean interrupt = EarlyIronPick.collectNow(f, ctx.cfg().overworld) && f.cookStation() == null;
-        // a smoker cooks 5 s an item: standing at it for the 40 s a batch takes beats walking off to mine and back (mayStandBy)
+        // a smoker cooks 5 s an item: standing at a batch with 20 s left (30 s at most, see FurnacePlan) beats walking off to mine and back (mayStandBy)
         FurnacePlan.Moment moment = new FurnacePlan.Moment(head != null, boundary, interrupt, schedule.isStockUp(head), true);
         FurnacePlan.Plan plan = furnaces.plan(ctx, moment);
         Task side = plan.standingBy() ? support.tickStandBy(mod, ctx, runnable) : support.tick(mod, ctx, runnable);
