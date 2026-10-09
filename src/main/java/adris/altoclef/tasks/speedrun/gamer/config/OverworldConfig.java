@@ -75,6 +75,14 @@ public class OverworldConfig {
     public double villageBedSeconds = 120;
     public double villageBedEachSeconds = 20;
 
+    // coal on the way (see CoalRules): while GATHER and IRON mine, coal ore this close is worth a short detour, because a smelt
+    // that runs short of fuel sends us out for coal anyway. the reach is WalkCost, blocks across plus 4 per block of height, so
+    // about 12 flat or 3 up or down. it stops at coalSideCap in the bag, and a detour gets coalSideSeconds before the vein is
+    // written off for the rest of the run
+    public double coalSideBudget = 12;
+    public int coalSideCap = 24;
+    public double coalSideSeconds = 30;
+
     // casting with no lava in sight for this long, while we already hold a diamond pickaxe, flips to obsidian early.
     // without the pickaxe we keep wandering for a lake until castGiveUpMinutes
     public double noLavaSeconds = 150;

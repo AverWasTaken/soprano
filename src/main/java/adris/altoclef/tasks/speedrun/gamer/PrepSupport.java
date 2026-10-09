@@ -8,7 +8,7 @@ import java.util.List;
 
 
 // the side jobs the overworld phases share: danger filtering, taking our crafting table and furnace back, ruined portal chests,
-// village chests, the odd iron golem.
+// village chests, the odd iron golem, and a bit of coal when it is right there.
 // all of them return a task to run INSTEAD of the kit task this tick, or null
 public final class PrepSupport {
     private final DangerFilter danger = new DangerFilter();
@@ -18,6 +18,8 @@ public final class PrepSupport {
     // our crafting table and furnace, taken back at a need boundary
     private final StationPickup stations = new StationPickup();
     private final GolemHunt golem;
+    // last in line, see tick
+    private final CoalDetour coal = new CoalDetour();
     private boolean tracking;
     private String hud;
 
@@ -41,6 +43,7 @@ public final class PrepSupport {
             village.onEnter(mod);
         }
         stations.reset();
+        coal.reset();
         hud = null;
     }
 
@@ -56,6 +59,7 @@ public final class PrepSupport {
         }
         villageBeds.onExit(mod);
         stations.reset();
+        coal.reset();
     }
 
     // the phase may not call itself done while a station of ours is still owed back, see StationPickup.owed
@@ -69,6 +73,8 @@ public final class PrepSupport {
     public Task tickStandBy(AltoClef mod, GamerContext ctx, List<KitNeed> needs) {
         danger.tick(mod, ctx.state());
         hud = null;
+        // standing by the smoker is the plan, a coal detour that was going is over
+        coal.preempted(ctx.facts().gameTime());
         if (golem != null && golem.active()) {
             Task fight = golem.tick(mod, ctx, needs.isEmpty() ? null : needs.get(0));
             if (fight != null) {
@@ -82,6 +88,24 @@ public final class PrepSupport {
     // `needs` is what the phase still has to do, in order (empty = nothing)
     public Task tick(AltoClef mod, GamerContext ctx, List<KitNeed> needs) {
         KitNeed current = needs.isEmpty() ? null : needs.get(0);
+        Task ranked = rankedJobs(mod, ctx, needs, current);
+        if (ranked != null) {
+            // anything above the coal wins the tick, and a detour that was going is over (not paused): when the job is done
+            // and the ore is still there it is a fresh detour, after its cooldown
+            coal.preempted(ctx.facts().gameTime());
+            return ranked;
+        }
+        // coal is last on purpose: every job above is worth more per second (a golem is 3 to 5 iron, a chest or a bed is loot we
+        // cannot just mine) and coal is the only one for something we might need rather than something we do. last also means
+        // it can never hold one of them up, and one of them taking the tick is the clean signal that ends a detour
+        Task ore = coal.tick(mod, ctx, current);
+        if (ore != null) {
+            hud = coal.hud();
+        }
+        return ore;
+    }
+
+    private Task rankedJobs(AltoClef mod, GamerContext ctx, List<KitNeed> needs, KitNeed current) {
         danger.tick(mod, ctx.state());
         hud = null;
         // a golem fight in progress outranks everything, a chest is not worth stepping off the pillar for
