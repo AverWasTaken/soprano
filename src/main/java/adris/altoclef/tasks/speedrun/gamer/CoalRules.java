@@ -133,7 +133,8 @@ public final class CoalRules {
 
     // coal enough for the rest of the plan: every iron ingot still owed that is not in the bag or in one of our furnaces, plus
     // the raw meat in the bag, is a smelt. the wood we would burn anyway (above the reserve) covers some, the rest is coal, a
-    // coal is 8. plus the margin, never past the ceiling. a flat 24 kept a bot with 14 coal and 3 ingots to go mining for more
+    // coal is 8. plus the margin, never past the ceiling. a flat cap has no idea how much smelting is left, so it went mining
+    // for coal nothing was ever going to burn
     public static int coalNeed(int ingotsOwed, int ingotsHeld, int ingotsPending, int rawMeat, int woodSmelts) {
         int smelts = Math.max(0, ingotsOwed - ingotsHeld - ingotsPending) + Math.max(0, rawMeat);
         int left = Math.max(0, smelts - Math.max(0, woodSmelts));

@@ -22,6 +22,9 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 
+import java.util.HashMap;
+import java.util.Map;
+
 // the world half of CoalRules: finds coal ore near the player, runs a MineAndCollectTask of its own at it, and hands the task
 // back to PrepSupport until the rules say stop. it is the last side job there is, everything ranked above it wins the tick.
 // the mining task asks the tracker for the nearest coal wherever it is, so the rules end the job when the ore near the spot it
@@ -223,7 +226,20 @@ public final class CoalDetour {
         return null;
     }
 
-    private static boolean visible(AltoClef mod, BlockPos pos) {
+    // the mining task asks this for every candidate, twice a pick, every tick. same block same tick is the same answer
+    private final Map<Long, Boolean> sight = new HashMap<>();
+    private long sightTick = Long.MIN_VALUE;
+
+    private boolean visible(AltoClef mod, BlockPos pos) {
+        long now = mod.getWorld().getGameTime();
+        if (now != sightTick) {
+            sight.clear();
+            sightTick = now;
+        }
+        return sight.computeIfAbsent(pos.asLong(), k -> look(mod, pos));
+    }
+
+    private static boolean look(AltoClef mod, BlockPos pos) {
         ClientLevel level = mod.getWorld();
         Vec3 eye = mod.getPlayer().getEyePosition();
         BlockPos.MutableBlockPos at = new BlockPos.MutableBlockPos();
