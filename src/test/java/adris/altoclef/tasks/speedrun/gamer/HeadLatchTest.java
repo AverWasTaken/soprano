@@ -140,7 +140,8 @@ public class HeadLatchTest {
     // mid move and the latch let go of it (it is not owed any more), so the head was the 39 need
     @Test
     public void theEarlyBatchStaysTheHeadWhileItsOreIsMidMove() {
-        KitNeed early = new KitNeed("iron_ingot", 3);
+        // the default kit still owes shears, so the early batch is the pick's 3 plus the shears' 2
+        KitNeed early = new KitNeed("iron_ingot", EarlyIronPick.INGOTS + EarlyIronPick.SHEARS_INGOTS);
         FakeFacts moving = new FakeFacts().give(Items.STONE_PICKAXE, 1).give(Items.STONE_AXE, 1).give(Items.FURNACE, 1)
                 .give(Items.LADDER, 3).give(Items.RAW_IRON, 1);
         moving.foodUnits = 70;

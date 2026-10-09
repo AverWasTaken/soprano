@@ -349,15 +349,18 @@ public final class KitPlanner {
             crafts.add(new KitNeed(k.item, held(f, k.item) + missing));
         }
         List<KitNeed> out = new ArrayList<>();
-        // the three ingots for the pick are in the bag: make it before mining a single ore more (EarlyIronPick)
+        // the ingots for the pick (and the shears) are in the bag: make them before mining a single ore more (EarlyIronPick)
         if (EarlyIronPick.craftFirst(f, cfg)) {
-            crafts.stream().filter(n -> n.catalogueName().equals("iron_pickaxe")).findFirst().ifPresent(pick -> {
-                out.add(pick);
-                crafts.remove(pick);
-            });
+            moveToFront(crafts, out, "iron_pickaxe");
+            if (EarlyIronPick.shearsWithThePick(f, cfg)) {
+                moveToFront(crafts, out, "shears");
+            }
+        } else if (EarlyIronPick.shearsFirst(f, cfg)) {
+            moveToFront(crafts, out, "shears");
         } else if (EarlyIronPick.due(f, cfg, ingots)) {
-            // three raw iron and no pick: smelt just those, the big batch is what comes after (and is in the list as well)
-            out.add(EarlyIronPick.need());
+            // three raw iron (five with shears owed) and no pick: smelt just those, the big batch is what comes after (and is in
+            // the list as well)
+            out.add(EarlyIronPick.need(f, cfg));
         }
         // ingots cooking in a furnace we loaded count as held, or the bot would go mining a second batch while the first one cooks
         if (ingots > 0 && f.count(Items.IRON_INGOT) + f.pendingOutput(Items.IRON_INGOT) < ingots) {
@@ -370,6 +373,14 @@ public final class KitPlanner {
         }
         addWool(out, f, endBeds);
         return out;
+    }
+
+    // the craft keeps its count, it only moves up. the shared iron_ingot need was sized with it, so nothing is counted twice
+    private static void moveToFront(List<KitNeed> crafts, List<KitNeed> out, String item) {
+        crafts.stream().filter(n -> n.catalogueName().equals(item)).findFirst().ifPresent(n -> {
+            out.add(n);
+            crafts.remove(n);
+        });
     }
 
     private static List<KitItem> ironItems(GamerFacts f, OverworldConfig cfg) {
