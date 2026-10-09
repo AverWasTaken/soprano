@@ -449,4 +449,178 @@ public class FoodGateTest {
         assertTrue(SmeltSurface.shallow(SmeltSurface.GO_UP_DEPTH));
         assertFalse(SmeltSurface.shallow(SmeltSurface.GO_UP_DEPTH + 1));
     }
+
+
+    // ---- the screen the food task opened is not food it already holds
+
+    private static final RunState.Pos SMOKER = new RunState.Pos(5, 64, 0);
+
+    // one visit to a smoker replayed the way MinecraftFacts does it: the leftover is carried from tick to tick and the numbers go
+    // through the real planner. iron is cooking in a furnace the whole time, so the stock-up fillers are in the schedule
+    private final class Visit {
+        final FakeFacts f = new FakeFacts();
+        int leftover = -1;
+
+        Visit() {
+            f.cooking("iron_ingot", 3, 60);
+        }
+
+        void tick(int bag, int station, boolean synced, boolean foodTask) {
+            leftover = FoodGate.leftover(leftover, station, synced, foodTask);
+            f.foodUnits = bag + FoodGate.inStation(station, f.jobs, SMOKER, "OVERWORLD", leftover);
+        }
+
+        int held() {
+            return KitPlanner.foodHeld(f, cfg, 8);
+        }
+
+        // the stock-up filler IronPhase's cooking tick would run (100 and the 30 of smeltExtras)
+        boolean fillerOn() {
+            return SmeltFiller.schedule(f, cfg, 8, true).isStockUp(new KitNeed(KitNeed.FOOD, cfg.targetFoodUnits + 30));
+        }
+
+        // the minimum need, the one that would replace the filler mid load
+        boolean minimumOn() {
+            return FoodGate.index(KitPlanner.plan(f, cfg, 8), cfg) >= 0;
+        }
+    }
+
+    @Test
+    public void whatWasInTheScreenWhenTheFoodTaskGotThereStaysOut() {
+        // the first look is the baseline, after that it only goes down
+        assertEquals(24, FoodGate.leftover(-1, 24, true, true));
+        assertEquals(24, FoodGate.leftover(24, 40, true, true));
+        assertEquals(0, FoodGate.leftover(24, 0, true, true));
+        assertEquals(0, FoodGate.leftover(0, 40, true, true));
+        // no screen, slots not here yet, or somebody else's screen: nothing to leave out
+        assertEquals(-1, FoodGate.leftover(24, 24, false, true));
+        assertEquals(-1, FoodGate.leftover(-1, 0, false, true));
+        assertEquals(-1, FoodGate.leftover(24, 24, true, false));
+        assertEquals(0, FoodGate.inStation(24, List.of(), SMOKER, "OVERWORLD", 24));
+        assertEquals(16, FoodGate.inStation(40, List.of(), SMOKER, "OVERWORLD", 24));
+        // -1 is no baseline, not a negative one
+        assertEquals(24, FoodGate.inStation(24, List.of(), SMOKER, "OVERWORLD", -1));
+        assertEquals(24, FoodGate.inStation(24, List.of(), SMOKER, "OVERWORLD"));
+        // a recorded job on this block still hides all of it, and not knowing which block it is hides it for any food job
+        assertEquals(0, FoodGate.inStation(40, List.of(foodJob(5, 4)), SMOKER, "OVERWORLD", 24));
+        assertEquals(0, FoodGate.inStation(40, List.of(foodJob(5, 4)), null, "OVERWORLD", 0));
+    }
+
+    @Test
+    public void somebodyElsesLoadStillCounts() {
+        // a cook loading 72 units into the smoker: 72 held the whole way, neither food need wakes up
+        Visit cook = new Visit();
+        for (int moved = 0; moved <= 72; moved += 8) {
+            cook.tick(72 - moved, moved, true, false);
+            assertEquals("moved " + moved, 72, cook.held());
+            assertFalse("moved " + moved, cook.minimumOn());
+        }
+        // and once its job is recorded the pending sum has it, not the screen
+        cook.f.cookingFood("cooked_beef", 9, 8, 40);
+        cook.tick(0, 72, true, false);
+        assertEquals(72, cook.held());
+    }
+
+    @Test
+    public void openingTheSmokerDoesNotEndTheNeedThatWalkedThere() {
+        // 110 held, the filler asks for 130, and 24 units of cooked meat sit in a smoker no job knows about
+        Visit v = new Visit();
+        v.tick(110, 0, false, true);
+        assertTrue(v.fillerOn());
+        // the slots arrive a tick after the screen: an empty look is not the baseline
+        v.tick(110, 0, false, true);
+        assertTrue(v.fillerOn());
+        v.tick(110, 24, true, true);
+        assertEquals(110, v.held());
+        assertTrue("the click must not end the need that opened the screen", v.fillerOn());
+        v.tick(110, 24, true, true);
+        assertTrue(v.fillerOn());
+        // the output comes out and into the bag: honestly 134 now, ended, and the screen closing does not bring it back
+        v.tick(134, 0, true, true);
+        assertFalse(v.fillerOn());
+        v.tick(134, 0, false, true);
+        assertFalse(v.fillerOn());
+        // what the same click did before: 134 on the click, the filler gone, and back on once the screen closed
+        Visit old = new Visit();
+        old.tick(110, 0, false, false);
+        assertTrue(old.fillerOn());
+        old.tick(110, 24, true, false);
+        assertFalse(old.fillerOn());
+        old.tick(110, 0, false, false);
+        assertTrue(old.fillerOn());
+    }
+
+    @Test
+    public void theFoodTaskLoadingItsOwnMeatDoesNotDip() {
+        // 100 in the bag, 40 of it raw going into an empty smoker a stack at a time: the same 100 the whole way, so the minimum need
+        // never shows up in front of the filler and the task is not swapped out with meat in the slots and no job
+        Visit v = new Visit();
+        v.tick(100, 0, true, true);
+        for (int moved = 0; moved <= 40; moved += 8) {
+            v.tick(100 - moved, moved, true, true);
+            assertEquals("moved " + moved, 100, v.held());
+            assertFalse("moved " + moved, v.minimumOn());
+            assertTrue("moved " + moved, v.fillerOn());
+        }
+    }
+
+    @Test
+    public void aLoadByTheFoodTaskEndsCleanlyOnceTheJobIsRecorded() {
+        // 100 in the bag, 40 of raw meat already in the smoker's input from an earlier visit nobody wrote down, 40 more going in
+        Visit v = new Visit();
+        v.tick(100, 40, true, true);
+        assertEquals(100, v.held());
+        v.tick(60, 80, true, true);
+        assertEquals(100, v.held());
+        assertTrue(v.fillerOn());
+        // Loaded: the job covers the whole input, the leftover included (that meat is cooking for us now)
+        v.f.cookingFood("cooked_beef", 10, 8, 50);
+        assertEquals(80, v.f.pendingFoodUnits());
+        for (boolean open : new boolean[]{true, true, false, false}) {
+            v.tick(60, open ? 80 : 0, open, true);
+            assertEquals(140, v.held());
+            assertFalse(v.fillerOn());
+        }
+    }
+
+    @Test
+    public void loadingBeforeTakingTheOutputOnlyEverUndercounts() {
+        // 24 cooked in the output, 16 more raw goes in first and then the output comes out. the baseline follows the station down, so
+        // the 16 loaded is briefly not counted: the number never falls, it catches up when the job is recorded
+        Visit v = new Visit();
+        v.tick(100, 24, true, true);
+        assertEquals(100, v.held());
+        v.tick(84, 40, true, true);
+        assertEquals(100, v.held());
+        v.tick(108, 16, true, true);
+        assertEquals(108, v.held());
+        v.f.cookingFood("cooked_beef", 2, 8, 10);
+        v.tick(108, 0, false, true);
+        assertEquals(124, v.held());
+    }
+
+    @Test
+    public void everyFoodGateReadsTheSameNumberOnTheClick() {
+        // all of them go through foodUnits(), so the click moves none of them. spelled out for the ones that decide something
+        Visit v = new Visit();
+        v.tick(60, 0, false, true);
+        int before = v.held();
+        v.tick(60, 24, true, true);
+        assertEquals(before, v.held());
+        assertEquals(60, KitPlanner.progressOf(v.f, FOOD));
+        // the min need is in the plan, the floor and the soft top-up read the same held, and the portal's need is the same sum
+        assertTrue(v.minimumOn());
+        assertTrue(FoodGate.leads(before, 0, cfg, true, true, FoodGate.cookBusy(false, true, true)));
+        assertTrue(PortalPlanner.gate(v.f, cfg, 8).stream().anyMatch(n -> KitNeed.FOOD.equals(n.catalogueName())));
+    }
+
+    @Test
+    public void theFoodLineSaysWhatTheNumbersWere() {
+        assertEquals("food: need off, held 134 of 70 (station 24, pending 0, raw left out 0), running wool",
+                FoodGate.line(false, 134, 70, 24, 0, 0, 0, "wool"));
+        assertEquals("food: need on, held 110 of 130 (station 0, pending 0, raw left out 6), running food, "
+                        + "24 was already in the open screen, not counted",
+                FoodGate.line(true, 110, 130, 0, 0, 6, 24, "food"));
+        assertTrue(FoodGate.line(true, 0, 70, 0, 0, 0, 0, null).endsWith("running nothing"));
+    }
 }

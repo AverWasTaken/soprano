@@ -35,6 +35,8 @@ public final class KitRunner {
     private String hud;
     // one line per phase entry (reset() is the entry) with everything the planner wants, first non empty plan only
     private boolean planLogged;
+    // the food need was in the last list, so watchFood only speaks when that changes
+    private boolean foodOn;
     // the list we were last handed and the need picked out of it, for the card (GamerHud). the key above is the same
     // need but it is also the task cache's key, keep the two jobs apart
     private List<KitNeed> needs = List.of();
@@ -57,6 +59,7 @@ public final class KitRunner {
         lastProgress.clear();
         hud = null;
         planLogged = false;
+        foodOn = false;
         needs = List.of();
         current = null;
     }
@@ -97,6 +100,7 @@ public final class KitRunner {
     public Task run(GamerContext ctx, List<KitNeed> needs) {
         this.needs = needs;
         if (needs.isEmpty()) {
+            watchFood(ctx, needs, null);
             hud = null;
             current = null;
             return null;
@@ -108,6 +112,7 @@ public final class KitRunner {
         GamerFacts f = ctx.facts();
         // the need we are running keeps the head for a few seconds, see HeadLatch
         KitNeed need = HeadLatch.pick(key, keySince, f.gameTime(), needs, f);
+        watchFood(ctx, needs, need);
         List<Item> equip = KitNeed.EQUIP_ARMOR.equals(need.catalogueName()) ? KitPlanner.toEquip(f, ctx.cfg().overworld) : List.of();
         int food = foodTarget(need, f);
         watchProgress(ctx, need);
@@ -126,6 +131,29 @@ public final class KitRunner {
         hud = words(need, f);
         current = need;
         return task;
+    }
+
+    // the food need showing up in the list or dropping out of it, one line per change with the numbers it was made of. a need that
+    // flips with the same bag every few seconds is only visible as a pair of these (the smoker screen satisfying the need that
+    // opened it was, see FoodGate.leftover). a second food need replacing the first (minimum, then target) is not a change
+    private void watchFood(GamerContext ctx, List<KitNeed> list, KitNeed running) {
+        KitNeed food = null;
+        for (KitNeed n : list) {
+            if (KitNeed.FOOD.equals(n.catalogueName())) {
+                food = n;
+                break;
+            }
+        }
+        boolean on = food != null;
+        if (on == foodOn) {
+            return;
+        }
+        foodOn = on;
+        GamerFacts f = ctx.facts();
+        var cfg = ctx.cfg().overworld;
+        Debug.logInternal(FoodGate.line(on, KitPlanner.foodHeld(f, cfg, ctx.cfg().end.beds), on ? food.count() : cfg.minFoodUnits,
+                f.stationFoodUnits(), f.pendingFoodUnits(), KitPlanner.rawGapLeftOut(f, cfg, ctx.cfg().end.beds), f.stationFoodSkipped(),
+                running == null ? null : running.catalogueName()));
     }
 
     // a need only counts as progress when its own number went up since we last looked at THAT need. the head changing says

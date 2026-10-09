@@ -52,6 +52,16 @@ public interface GamerFacts {
         return 0;
     }
 
+    // log numbers only (KitRunner's food line): the meat in the open furnace or smoker screen that foodUnits() counts, and the
+    // meat in it that was left out because it was already there when the food task opened the screen (FoodGate.leftover)
+    default int stationFoodUnits() {
+        return 0;
+    }
+
+    default int stationFoodSkipped() {
+        return 0;
+    }
+
     // throwaway blocks we can pillar/bridge with
     int buildBlocks();
 

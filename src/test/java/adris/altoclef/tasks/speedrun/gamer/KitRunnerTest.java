@@ -10,6 +10,8 @@ import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -201,6 +203,32 @@ public class KitRunnerTest {
         Task second = runner.run(ctx, List.of(food));
         assertNotSame(first, second);
         assertEquals(List.of(70, 78), foodTargets);
+    }
+
+    @Test
+    public void theFoodNeedComingAndGoingIsLoggedOncePerChange() {
+        PrintStream real = System.out;
+        ByteArrayOutputStream captured = new ByteArrayOutputStream();
+        System.setOut(new PrintStream(captured, true));
+        try {
+            ctx.facts.foodUnits = 60;
+            KitNeed iron = new KitNeed("iron_ingot", 39);
+            runner.run(ctx, List.of(new KitNeed(KitNeed.FOOD, 70), iron));
+            runner.run(ctx, List.of(new KitNeed(KitNeed.FOOD, 70), iron));
+            // the minimum becoming the target is the same need still being owed
+            runner.run(ctx, List.of(new KitNeed(KitNeed.FOOD, 100), iron));
+            runner.run(ctx, List.of(iron));
+            runner.run(ctx, List.of(iron));
+            runner.run(ctx, List.of());
+            runner.run(ctx, List.of(new KitNeed(KitNeed.FOOD, 70)));
+        } finally {
+            System.setOut(real);
+        }
+        List<String> lines = captured.toString().lines().filter(l -> l.contains("food: need")).toList();
+        assertEquals(lines.toString(), 3, lines.size());
+        assertTrue(lines.get(0), lines.get(0).endsWith("food: need on, held 60 of 70 (station 0, pending 0, raw left out 0), running food"));
+        assertTrue(lines.get(1), lines.get(1).endsWith("food: need off, held 60 of 70 (station 0, pending 0, raw left out 0), running iron_ingot"));
+        assertTrue(lines.get(2), lines.get(2).endsWith("food: need on, held 60 of 70 (station 0, pending 0, raw left out 0), running food"));
     }
 
     @Test

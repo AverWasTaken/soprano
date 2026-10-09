@@ -82,6 +82,12 @@ public final class FoodGate {
     // (the bag read as short and the top-up went hunting with a full furnace). `screenAt` null = we do not know which block the
     // screen is, then any food job still hides it (the old answer, the safe one for double counting)
     public static int inStation(int stationUnits, List<RunState.FurnaceJob> jobs, RunState.Pos screenAt, String dimension) {
+        return inStation(stationUnits, jobs, screenAt, dimension, 0);
+    }
+
+    // `leftover` is what the station already held when the food task opened it (see leftover below), 0 for anybody else's screen.
+    // that part is not food we have, it is the reason the task walked up, and counting it ended the need that opened the screen
+    public static int inStation(int stationUnits, List<RunState.FurnaceJob> jobs, RunState.Pos screenAt, String dimension, int leftover) {
         if (stationUnits <= 0) {
             return 0;
         }
@@ -93,7 +99,19 @@ public final class FoodGate {
                 return 0;
             }
         }
-        return stationUnits;
+        return Math.max(0, stationUnits - Math.max(0, leftover));
+    }
+
+    // the food in the slots of a screen the food task opened that is not the task's own work. the first look (`before` -1) is what
+    // was there, after that it only goes down: the task takes the output out and the bag gets it, and what it puts in on top is
+    // the bag emptying into the station, the dip inStation exists to hide. `synced` = the slots have arrived, an empty look at a
+    // screen a tick after it opened would put the baseline at 0 and the cooked output under it would count after all. -1 = nothing
+    // to subtract (no screen, not the food task's, slots not here yet)
+    public static int leftover(int before, int stationUnits, boolean synced, boolean foodTaskRunning) {
+        if (!synced || !foodTaskRunning) {
+            return -1;
+        }
+        return before < 0 ? stationUnits : Math.min(before, stationUnits);
     }
 
     // a top-up that started on the soft rule keeps going until the full amount, it must not flip every tick as the bot walks
@@ -116,5 +134,14 @@ public final class FoodGate {
     // which side of the two lines the count is on (0 under the floor, 1 between, 2 at the minimum or over), for the log line
     public static int band(int held, OverworldConfig cfg) {
         return held < cfg.minHeldFoodUnits ? 0 : held < cfg.minFoodUnits ? 1 : 2;
+    }
+
+    // the line KitRunner logs when the food need shows up in or drops out of the plan. `units` is what the need asks for (the
+    // minimum when there is none), `skipped` what the open screen held before the food task got there and so is left out of `station`.
+    // the numbers are the ones foodHeld is made of, so a flip is readable straight off two lines
+    public static String line(boolean on, int held, int units, int station, int pending, int rawLeftOut, int skipped, String running) {
+        return "food: need " + (on ? "on" : "off") + ", held " + held + " of " + units + " (station " + station + ", pending " + pending
+                + ", raw left out " + rawLeftOut + "), running " + (running == null ? "nothing" : running)
+                + (skipped > 0 ? ", " + skipped + " was already in the open screen, not counted" : "");
     }
 }

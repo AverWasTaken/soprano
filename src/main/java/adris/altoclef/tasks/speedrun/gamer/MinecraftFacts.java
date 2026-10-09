@@ -4,6 +4,7 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.AltoSettings;
 import adris.altoclef.Debug;
 import adris.altoclef.tasks.container.FurnaceReuse;
+import adris.altoclef.tasks.resources.CollectFoodTask;
 import adris.altoclef.util.helpers.FoodHelper;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.WalkCost;
@@ -54,6 +55,18 @@ public final class MinecraftFacts implements GamerFacts {
     private int junkFoodUnits;
     // food in the input and output slots of the furnace-like screen that is open right now, at planned value
     private int stationFood;
+    // how much of it foodUnits counted, and how much was already there when the food task opened the screen and so stays out
+    // (FoodGate.leftover, -1 = nothing to leave out), for the log line
+    private int stationCounted;
+    private int stationSkipped;
+    private int stationLeftover = -1;
+    // the open furnace screen has had its slots sent (the first ContainerSetContent bumps the state id off 0)
+    private boolean stationSynced;
+    // which screen that is and which one the leftover was taken from, so smoker B never inherits smoker A's. and the food task's
+    // tick count as of the last look: it moved since, so it ran
+    private int stationMenuId = -1;
+    private int leftoverMenuId = -1;
+    private long foodTaskSeen;
     // the block that screen is, null when nothing says
     private RunState.Pos stationAt;
     private int buildBlocks;
@@ -199,8 +212,12 @@ public final class MinecraftFacts implements GamerFacts {
         // is not "in the bag" is how that latch works. only the food sum reads them
         stationFood = 0;
         stationAt = null;
+        stationSynced = false;
+        stationMenuId = -1;
         if (player.containerMenu instanceof AbstractFurnaceMenu furnace) {
             stationFood = foodIn(furnace.getSlot(0).getItem()) + foodIn(furnace.getSlot(2).getItem());
+            stationSynced = furnace.getStateId() > 0;
+            stationMenuId = furnace.containerId;
             // which block the screen is, so only that station's own job hides its food (FoodGate.inStation)
             stationAt = mod.getItemStorage().getLastBlockPosInteraction().map(p -> new RunState.Pos(p.getX(), p.getY(), p.getZ())).orElse(null);
         }
@@ -342,7 +359,18 @@ public final class MinecraftFacts implements GamerFacts {
                 build += n;
             }
         }
-        foodUnits = food + FoodGate.inStation(stationFood, furnaceJobs(), stationAt, dimension.name());
+        // what sat in a screen the food task opened is why it walked there, not food we hold (FoodGate.leftover)
+        long foodTicks = CollectFoodTask.ticks();
+        boolean foodTask = foodTicks != foodTaskSeen;
+        foodTaskSeen = foodTicks;
+        if (stationMenuId != leftoverMenuId) {
+            stationLeftover = -1;
+            leftoverMenuId = stationMenuId;
+        }
+        stationLeftover = FoodGate.leftover(stationLeftover, stationFood, stationSynced, foodTask);
+        stationCounted = FoodGate.inStation(stationFood, furnaceJobs(), stationAt, dimension.name(), stationLeftover);
+        stationSkipped = FoodGate.inStation(stationFood, furnaceJobs(), stationAt, dimension.name()) - stationCounted;
+        foodUnits = food + stationCounted;
         junkFoodUnits = junk;
         buildBlocks = build;
         fingerprint = fp;
@@ -406,6 +434,16 @@ public final class MinecraftFacts implements GamerFacts {
     @Override
     public int junkFoodUnits() {
         return junkFoodUnits;
+    }
+
+    @Override
+    public int stationFoodUnits() {
+        return stationCounted;
+    }
+
+    @Override
+    public int stationFoodSkipped() {
+        return stationSkipped;
     }
 
     @Override

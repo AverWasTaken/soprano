@@ -85,6 +85,16 @@ public class CollectFoodTask extends Task {
             Items.WOODEN_HOE, Items.STONE_HOE, Items.IRON_HOE, Items.GOLDEN_HOE, Items.DIAMOND_HOE, Items.NETHERITE_HOE
     };
 
+    // how many ticks any of these has run, ever. the gamer's food count compares it between two looks (FoodGate.leftover): a smoker
+    // screen open while the food task is the one running is ours, and what was already in it must not satisfy the need that walked
+    // up to it. a counter and not the world clock (the server's time packets yank that around), and not started minus stopped
+    // either: a finished main task that the idle chain drops is never stopped, that count would stay up for good
+    private static volatile long ticks;
+
+    public static long ticks() {
+        return ticks;
+    }
+
     private final double _unitsNeeded;
     private final TimerGame _checkNewOptionsTimer = new TimerGame(10);
     private SmeltInSmokerTask _smeltTask = null;
@@ -187,6 +197,7 @@ public class CollectFoodTask extends Task {
 
     @Override
     protected Task onTick(AltoClef mod) {
+        ticks++;
         if (mod.getEntityTracker().entityFound(Chicken.class)) {
             Optional<Entity> chickens = mod.getEntityTracker().getClosestEntity(Chicken.class);
             if (chickens.isPresent()) {
