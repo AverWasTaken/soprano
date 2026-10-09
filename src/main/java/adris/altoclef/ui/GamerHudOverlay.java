@@ -252,7 +252,7 @@ public class GamerHudOverlay {
         height = y + PAD_BOTTOM;
     }
 
-    // the red strip, only while the combat brain holds a fight or a run. "RUN 31 blocks to go" counts down the 50
+    // the red strip, only while the combat brain holds a fight or a run. "RUN 11 blocks to go" counts down the 24
     private int combat(AltoClef mod, LocalPlayer player, Font font) {
         CombatCommit.Mode mode = mod.getMobDefenseChain().combatMode();
         ops.add(new Rect(0, 0, WIDTH, STRIP, STRIP_BG));

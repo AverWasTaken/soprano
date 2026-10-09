@@ -9,12 +9,13 @@ import java.util.List;
 import java.util.function.Supplier;
 import net.minecraft.world.entity.Entity;
 
-// the run CombatCommit asked for. it never finishes on its own: the commitment knows when 50 blocks and two quiet seconds
+// the run CombatCommit asked for. it never finishes on its own: the commitment knows when 24 blocks and two quiet seconds
 // have happened, a task that decides for itself is how a run ends early and the wheel goes back for a tick. stands still once it
 // is at its goal (that is when eating is allowed) and walks again when something comes back within reach
 public class CommittedRunTask extends CustomBaritoneGoalTask {
 
-    // a bit more than the commitment's "clear" line, so a mob sitting right on the 16 does not make the goal flicker
+    // a bit more than the commitment's "clear" line (14 against its 12), so a mob sitting right on the 12 does not make the
+    // goal flicker
     private static final double CROWD_CLEAR = CombatCommit.RUN_CLEAR + 2;
 
     // how long the pathfinder is left alone after a goal was handed to it and it did not stick. a goal nothing can reach (a lava

@@ -63,7 +63,7 @@ public abstract class AbstractKillEntityTask extends AbstractDoToEntityTask {
     }
 
     // armed, as far as deciding to fight goes: a sword or an axe, or failing that anything that hits harder than a fist
-    // (a pickaxe, a shovel). a bot with only a pickaxe fights the lone zombie that hits it, it does not run 50 blocks
+    // (a pickaxe, a shovel). a bot with only a pickaxe fights the lone zombie that hits it, it does not run 24 blocks
     public static boolean canFight(AltoClef mod) {
         return WeaponPick.bestOrTool(candidates(mod), false, false) != null;
     }

@@ -39,19 +39,19 @@ public class CombatCommitStanceTest {
     // the run stays through a bite and the food chain does it in the background. but only once the run is clear: chewing
     // is a third of the walking speed, a bite with somebody at 9 blocks is dropped a second later and picked up again
     @Test
-    public void aRunMayEatOnceNothingAngryIsWithinSixteen() {
-        assertTrue(CombatCommit.stance(Mode.RUN, 20, 16.5, false, false).mayEat());
+    public void aRunMayEatOnceNothingAngryIsWithinTwelve() {
+        assertTrue(CombatCommit.stance(Mode.RUN, 20, 12.5, false, false).mayEat());
         assertTrue(CombatCommit.stance(Mode.RUN, 5, 30, false, false).mayEat());
         assertTrue(CombatCommit.stance(Mode.RUN, 3, NOBODY, false, false).mayEat());
     }
 
     @Test
-    public void aFollowerBetweenEightAndSixteenStillMeansNoMeal() {
-        assertFalse(CombatCommit.stance(Mode.RUN, 20, 12, false, false).mayEat());
+    public void aFollowerBetweenEightAndTwelveStillMeansNoMeal() {
+        assertFalse(CombatCommit.stance(Mode.RUN, 20, 11, false, false).mayEat());
         assertFalse(CombatCommit.stance(Mode.RUN, 7, 9, false, false).mayEat());
         assertFalse(CombatCommit.stance(Mode.RUN, 7, CombatCommit.RUN_CLEAR, false, false).mayEat());
         // low enough that the old quick bite would have fired: still a flee while somebody is following
-        assertEquals(Stance.FLEE, CombatCommit.stance(Mode.RUN, 3, 12, false, false));
+        assertEquals(Stance.FLEE, CombatCommit.stance(Mode.RUN, 3, 11, false, false));
     }
 
     // the quick bite at hp 4 means "nothing next to us". committed, something is within 8, so it is a flee

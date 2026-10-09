@@ -7,7 +7,7 @@ import net.minecraft.world.entity.Entity;
 
 // the goal of a run the combat commitment owns: far from where it started AND clear of whoever is following. the plain
 // crowd goal is done the moment everyone is a dozen blocks back, which is how a run turns into a jog. this one asks for
-// the 50 as well, and CombatCommit still decides when the run is really over (it also wants two quiet seconds)
+// the 24 as well, and CombatCommit still decides when the run is really over (it also wants two quiet seconds)
 public class GoalCommittedRun extends GoalRunAwayFromCrowd {
 
     private final double _originX;

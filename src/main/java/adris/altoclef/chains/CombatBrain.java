@@ -45,9 +45,9 @@ final class CombatBrain {
     // kill (65) and flee (80) branches used, so nothing that was ordered against them moved
     static final float FIGHT_PRIORITY = 65;
     static final float RUN_PRIORITY = 80;
-    // the machine only ever asks "within 16", and the tracker's hostile list does not reach past that anyway (it keeps mobs
-    // closer than 16). the run goal's own 18 block buffer works off the same list, which is fine: nothing past 16 is angry
-    private static final double FOE_RANGE = CombatCommit.RUN_CLEAR;
+    // the tracker's hostile list does not reach past 16 anyway (it keeps mobs closer than 16), and a shooter that hit us
+    // engages out to 15, so this stays 16 even though a run now calls 12 clear. not RUN_CLEAR, that one moves
+    private static final double FOE_RANGE = 16;
 
     private final CombatCommit _commit = new CombatCommit();
     // this tick's angry hostiles, nearest first, and the entities they came from

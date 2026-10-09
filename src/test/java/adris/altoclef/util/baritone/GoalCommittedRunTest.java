@@ -12,7 +12,7 @@ import org.junit.Test;
 public class GoalCommittedRunTest {
 
     private static GoalCommittedRun quietRun() {
-        GoalCommittedRun goal = new GoalCommittedRun(100, 200, 50, 18, List::of);
+        GoalCommittedRun goal = new GoalCommittedRun(100, 200, 24, 14, List::of);
         goal.refresh();
         return goal;
     }
@@ -23,26 +23,26 @@ public class GoalCommittedRunTest {
     }
 
     @Test
-    public void notDoneAtFortyNineBlocks() {
-        assertFalse(quietRun().isInGoal(100, 64, 200 + 49));
+    public void notDoneAtTwentyThreeBlocks() {
+        assertFalse(quietRun().isInGoal(100, 64, 200 + 23));
     }
 
     @Test
-    public void doneAtFiftyBlocksInAnyDirection() {
+    public void doneAtTwentyFourBlocksInAnyDirection() {
         GoalCommittedRun goal = quietRun();
-        assertTrue(goal.isInGoal(100, 64, 200 - 51));
-        assertTrue(goal.isInGoal(100 + 36, 64, 200 + 36));
+        assertTrue(goal.isInGoal(100, 64, 200 - 25));
+        assertTrue(goal.isInGoal(100 + 18, 64, 200 + 18));
     }
 
     // block centers, so an origin on a block center puts the line exactly on a whole number
     @Test
-    public void exactlyFiftyIsDoneAndFortyNineIsNot() {
-        GoalCommittedRun goal = new GoalCommittedRun(100.5, 200.5, 50, 18, List::of);
+    public void exactlyTwentyFourIsDoneAndTwentyThreeIsNot() {
+        GoalCommittedRun goal = new GoalCommittedRun(100.5, 200.5, 24, 14, List::of);
         goal.refresh();
-        assertTrue(goal.isInGoal(100, 64, 250));
-        assertFalse(goal.isInGoal(100, 64, 249));
-        assertTrue(goal.isInGoal(150, 64, 200));
-        assertFalse(goal.isInGoal(149, 64, 200));
+        assertTrue(goal.isInGoal(100, 64, 224));
+        assertFalse(goal.isInGoal(100, 64, 223));
+        assertTrue(goal.isInGoal(124, 64, 200));
+        assertFalse(goal.isInGoal(123, 64, 200));
     }
 
     // up a hill is not further away, the run is flat
@@ -55,19 +55,19 @@ public class GoalCommittedRunTest {
     public void everyBlockAwayFromTheOriginHelps() {
         GoalCommittedRun goal = quietRun();
         double last = Double.MAX_VALUE;
-        for (int z = 200; z <= 250; z += 10) {
+        for (int z = 200; z <= 224; z += 6) {
             double h = goal.heuristic(100, 64, z);
             assertTrue("z " + z, h < last);
             last = h;
         }
-        assertEquals(0, goal.heuristic(100, 64, 251), 0.01);
+        assertEquals(0, goal.heuristic(100, 64, 225), 0.01);
     }
 
     @Test
     public void theSearchIsPulledToZeroExactlyWhereTheGoalSaysYes() {
         GoalCommittedRun goal = quietRun();
-        assertEquals(0, goal.heuristic(100, 64, 260), 0);
-        assertTrue(goal.isInGoal(100, 64, 260));
-        assertTrue(goal.heuristic(100, 64, 220) > 0);
+        assertEquals(0, goal.heuristic(100, 64, 234), 0);
+        assertTrue(goal.isInGoal(100, 64, 234));
+        assertTrue(goal.heuristic(100, 64, 210) > 0);
     }
 }

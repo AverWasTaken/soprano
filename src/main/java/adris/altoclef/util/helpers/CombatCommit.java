@@ -42,10 +42,12 @@ public final class CombatCommit {
     // the target ran away this much from the best we had: that is the new baseline, not progress
     public static final double RUNAWAY_SLACK = 3;
 
-    public static final double RUN_DISTANCE = 50;
-    public static final double RUN_CLEAR = 16;
+    // a run is over 24 blocks out (flat) with nothing angry within 12 for two seconds, or at 25 s. it used to be 50/16/45,
+    // which was a lot of jogging for one zombie
+    public static final double RUN_DISTANCE = 24;
+    public static final double RUN_CLEAR = 12;
     public static final long RUN_CLEAR_TICKS = 40;
-    public static final long RUN_CAP = 900;
+    public static final long RUN_CAP = 500;
 
     // cornered: a run that went nowhere for CORNER_TICKS with something on top of us (CORNER_RANGE), or for twice that with
     // something angry anywhere within CORNER_WATCH (a shooter we can't get away from). the window only runs while something
@@ -152,7 +154,7 @@ public final class CombatCommit {
     // 1. it hit us and is still close enough to be coming back (6 melee, 15 shooter)
     // 2. an angry melee mob is in contact
     // 3. we are hurt and something angry is within 8 (that one is a run, the foe is just who to name). a run only ends
-    //    with nothing within 16 for two seconds, so a mob inside 8 right after one ended came back for us
+    //    with nothing within 12 for two seconds, so a mob inside 8 right after one ended came back for us
     // nothing else engages, a skeleton that never hit us and a zombie ten blocks off are scenery
     public static Trigger trigger(float health, List<Foe> foes, boolean freshOnly) {
         Foe hit = null;
@@ -383,7 +385,7 @@ public final class CombatCommit {
         // nowhere to bail to, so a cornered fight never asks
         Why bail = cornered ? Why.NONE : bailReason(t);
         if (bail != Why.NONE) {
-            // the last thing we were hitting died and nobody is near: that is a won fight, not a reason to run 50 blocks
+            // the last thing we were hitting died and nobody is near: that is a won fight, not a reason to run 24 blocks
             if (target == null && !anyWithin(t.foes(), LOW_HP_RANGE)) return end(t, Event.FIGHT_DEAD);
             return startRun(t, bail, Event.FIGHT_TO_RUN);
         }

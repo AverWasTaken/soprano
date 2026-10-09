@@ -157,10 +157,10 @@ public class CombatCommitTest {
     public void theNumbersTheUserAskedForDidNotDrift() {
         assertEquals(6, CombatCommit.MELEE_ENGAGE, 0);
         assertEquals(15, CombatCommit.SHOOTER_ENGAGE, 0);
-        assertEquals(50, CombatCommit.RUN_DISTANCE, 0);
-        assertEquals(16, CombatCommit.RUN_CLEAR, 0);
+        assertEquals(24, CombatCommit.RUN_DISTANCE, 0);
+        assertEquals(12, CombatCommit.RUN_CLEAR, 0);
         assertEquals(2 * 20, CombatCommit.RUN_CLEAR_TICKS);
-        assertEquals(45 * 20, CombatCommit.RUN_CAP);
+        assertEquals(25 * 20, CombatCommit.RUN_CAP);
         assertEquals(8f, CombatCommit.FLEE_HP, 0f);
         assertEquals(3, CombatCommit.CONTACT, 0);
         assertEquals(5 * 20, CombatCommit.COOLDOWN);
@@ -718,71 +718,79 @@ public class CombatCommitTest {
     // ---- RUN
 
     @Test
-    public void aRunHoldsShortOfFiftyBlocksNoMatterHowQuiet() {
+    public void aRunHoldsShortOfTwentyFourBlocksNoMatterHowQuiet() {
         CombatCommit c = runFrom(NOW, 0, 0);
         // (creeping about on the spot, a run standing dead still for five seconds is the stuck rule's)
-        holds(c, NOW + 1, NOW + CombatCommit.RUN_CAP - 1, now -> runTick(now, 47 + shuffle(now), 0));
+        holds(c, NOW + 1, NOW + CombatCommit.RUN_CAP - 1, now -> runTick(now, 21 + shuffle(now), 0));
         assertEquals(Mode.RUN, c.mode());
     }
 
     @Test
-    public void fiftyBlocksIsMeasuredAlongTheGroundFromWhereTheRunStarted() {
+    public void twentyFourBlocksIsMeasuredAlongTheGroundFromWhereTheRunStarted() {
         CombatCommit c = runFrom(NOW, 100, 100);
-        // 40 blocks on one axis is 40 blocks, and 30 plus 40 on two is 50 even though neither axis got there
-        holds(c, NOW + 1, NOW + 100, now -> runTick(now, 140, 100));
+        // 20 blocks on one axis is 20 blocks, and 18 on both is 25 and change even though neither axis got there
+        holds(c, NOW + 1, NOW + 100, now -> runTick(now, 120, 100));
         assertEquals(Mode.RUN, c.mode());
-        assertEquals(Event.RUN_CLEAR, c.step(runTick(NOW + 101, 130, 140)));
+        assertEquals(Event.RUN_CLEAR, c.step(runTick(NOW + 101, 118, 118)));
     }
 
     @Test
-    public void aRunEndsAtFiftyBlocksOnceNothingWasNearForTwoSeconds() {
+    public void exactlyTwentyFourBlocksIsFarEnoughAndTwentyThreeIsNot() {
+        CombatCommit c = runFrom(NOW, 0, 0);
+        holds(c, NOW + 1, NOW + 100, now -> runTick(now, 23, 0));
+        assertEquals(Mode.RUN, c.mode());
+        assertEquals(Event.RUN_CLEAR, c.step(runTick(NOW + 101, 24, 0)));
+    }
+
+    @Test
+    public void aRunEndsAtTwentyFourBlocksOnceNothingWasNearForTwoSeconds() {
         CombatCommit c = runFrom(NOW, 0, 0);
         long first = NOW + 1;
         // 39 ticks of quiet is not enough
-        holds(c, first, first + 39, now -> runTick(now, 50, 0));
+        holds(c, first, first + 39, now -> runTick(now, 24, 0));
         assertEquals(Mode.RUN, c.mode());
-        assertEquals(Event.RUN_CLEAR, c.step(runTick(first + 40, 50, 0)));
+        assertEquals(Event.RUN_CLEAR, c.step(runTick(first + 40, 24, 0)));
         assertEquals(Mode.NONE, c.mode());
         assertTrue(c.coolingDown(first + 40));
     }
 
     @Test
-    public void aFoeWithinSixteenKeepsTheRunGoingAtFiftyBlocks() {
+    public void aFoeWithinTwelveKeepsTheRunGoingAtTwentyFourBlocks() {
         CombatCommit c = runFrom(NOW, 0, 0);
-        holds(c, NOW + 1, NOW + 300, now -> runTick(now, 50 + shuffle(now), 0, zombie(1, 15)));
+        holds(c, NOW + 1, NOW + 300, now -> runTick(now, 24 + shuffle(now), 0, zombie(1, 11)));
         assertEquals(Mode.RUN, c.mode());
     }
 
     @Test
-    public void aFoeExactlyAtSixteenStillCounts() {
+    public void aFoeExactlyAtTwelveStillCounts() {
         CombatCommit c = runFrom(NOW, 0, 0);
-        holds(c, NOW + 1, NOW + 300, now -> runTick(now, 50 + shuffle(now), 0, zombie(1, CombatCommit.RUN_CLEAR)));
+        holds(c, NOW + 1, NOW + 300, now -> runTick(now, 24 + shuffle(now), 0, zombie(1, CombatCommit.RUN_CLEAR)));
         assertEquals(Mode.RUN, c.mode());
     }
 
     @Test
-    public void aFoeJustPastSixteenIsClear() {
+    public void aFoeJustPastTwelveIsClear() {
         CombatCommit c = runFrom(NOW, 0, 0);
-        holds(c, NOW + 1, NOW + 40, now -> runTick(now, 50, 0, zombie(1, 16.1)));
-        assertEquals(Event.RUN_CLEAR, c.step(runTick(NOW + 41, 50, 0, zombie(1, 16.1))));
+        holds(c, NOW + 1, NOW + 40, now -> runTick(now, 24, 0, zombie(1, 12.1)));
+        assertEquals(Event.RUN_CLEAR, c.step(runTick(NOW + 41, 24, 0, zombie(1, 12.1))));
     }
 
     @Test
     public void theClearClockRestartsWhenAFoeComesBack() {
         CombatCommit c = runFrom(NOW, 0, 0);
-        holds(c, NOW + 1, NOW + 30, now -> runTick(now, 50, 0));
-        // back inside sixteen for one tick
-        holds(c, NOW + 31, NOW + 31, now -> runTick(now, 50, 0, zombie(1, 15)));
+        holds(c, NOW + 1, NOW + 30, now -> runTick(now, 24, 0));
+        // back inside twelve for one tick
+        holds(c, NOW + 31, NOW + 31, now -> runTick(now, 24, 0, zombie(1, 11)));
         // the first clock would have run out at NOW + 41, the second one starts at NOW + 32
-        holds(c, NOW + 32, NOW + 32 + CombatCommit.RUN_CLEAR_TICKS - 1, now -> runTick(now, 50, 0));
-        assertEquals(Event.RUN_CLEAR, c.step(runTick(NOW + 32 + CombatCommit.RUN_CLEAR_TICKS, 50, 0)));
+        holds(c, NOW + 32, NOW + 32 + CombatCommit.RUN_CLEAR_TICKS - 1, now -> runTick(now, 24, 0));
+        assertEquals(Event.RUN_CLEAR, c.step(runTick(NOW + 32 + CombatCommit.RUN_CLEAR_TICKS, 24, 0)));
     }
 
     @Test
-    public void theClearClockRunsBeforeFiftyBlocksSoReachingFiftyEndsItRightAway() {
+    public void theClearClockRunsBeforeTwentyFourBlocksSoReachingItEndsItRightAway() {
         CombatCommit c = runFrom(NOW, 0, 0);
         holds(c, NOW + 1, NOW + 100, now -> runTick(now, 10, 0));
-        assertEquals(Event.RUN_CLEAR, c.step(runTick(NOW + 101, 50, 0)));
+        assertEquals(Event.RUN_CLEAR, c.step(runTick(NOW + 101, 24, 0)));
     }
 
     @Test
@@ -980,7 +988,7 @@ public class CombatCommitTest {
         assertEquals(Mode.NONE, c.mode());
     }
 
-    // a run only ends with nothing within 16 for two seconds, so a mob inside 8 right after one means it came back
+    // a run only ends with nothing within 12 for two seconds, so a mob inside 8 right after one means it came back
     @Test
     public void lowHpStillStartsARunDuringTheCooldown() {
         CombatCommit c = wonFight();
@@ -1037,8 +1045,8 @@ public class CombatCommitTest {
     public void theCooldownFollowsARunToo() {
         CombatCommit c = runFrom(NOW, 0, 0);
         long end = NOW + 1 + CombatCommit.RUN_CLEAR_TICKS;
-        holds(c, NOW + 1, end - 1, now -> runTick(now, 50, 0));
-        assertEquals(Event.RUN_CLEAR, c.step(runTick(end, 50, 0)));
+        holds(c, NOW + 1, end - 1, now -> runTick(now, 24, 0));
+        assertEquals(Event.RUN_CLEAR, c.step(runTick(end, 24, 0)));
         holds(c, end + 1, end + CombatCommit.COOLDOWN - 1, now -> tick(now, 20, null, zombie(2, 2, TEN_SECONDS)));
         assertEquals(Event.FIGHT_START, c.step(tick(end + CombatCommit.COOLDOWN, 20, null, zombie(2, 2))));
         assertEquals(Why.CONTACT, c.why());
@@ -1243,7 +1251,7 @@ public class CombatCommitTest {
     public void aRunThatKeepsMovingIsNeverStuck() {
         CombatCommit c = runFrom(NOW, 0, 0);
         // two blocks every second and a half: never five seconds on the same spot
-        holds(c, NOW + 1, NOW + 400, now -> runTick(now, ((now - NOW) / 30) * 2, 0, zombie(2, 12)));
+        holds(c, NOW + 1, NOW + 400, now -> runTick(now, ((now - NOW) / 30) * 2, 0, zombie(2, 10)));
         assertEquals(Mode.RUN, c.mode());
     }
 

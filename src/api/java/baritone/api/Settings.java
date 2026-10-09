@@ -2015,8 +2015,8 @@ public final class Settings {
      * or a zombie ten blocks away. It only does something about a mob that hit it, an angry melee mob in contact, or at
      * 8 hp or less with an angry mob within 8 blocks. Then it commits. A fight holds until its target is dead (it only
      * turns into a run at 8 hp, a crowd of {@link #altoSwarmThreshold} within six blocks, or 10 hp against a heavy
-     * hitter like a wither skeleton, hoglin or vindicator), and a run holds until the bot is 50 blocks from where it
-     * started with nothing hostile within 16, or 45 seconds, whichever comes first. A run that gets nowhere (three seconds
+     * hitter like a wither skeleton, hoglin or vindicator), and a run holds until the bot is 24 blocks from where it
+     * started with nothing hostile within 12, or 25 seconds, whichever comes first. A run that gets nowhere (three seconds
      * with a mob on top of the bot, six with one within eight blocks) becomes a fight, and one that gets nowhere with
      * nothing near is over after five. A few things are left to the tasks that own them: ghasts, the dragon, blazes while
      * the rod task is working them, a golem being fought from its pillar. Off, the bot never commits to anything, which

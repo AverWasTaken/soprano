@@ -77,7 +77,7 @@ public class CombatLogTest {
         assertEquals("combat: [overworld] fight over, can't get to zombie, ignoring it until it hits us again",
                 line(Dimension.OVERWORLD, Event.FIGHT_STALLED, Why.NONE));
         assertEquals("combat: [nether] run over, 52 blocks, clear", line(Dimension.NETHER, Event.RUN_CLEAR, Why.NONE));
-        assertEquals("combat: [nether] run over, 45 s cap, 52 blocks", line(Dimension.NETHER, Event.RUN_CAP, Why.NONE));
+        assertEquals("combat: [nether] run over, 25 s cap, 52 blocks", line(Dimension.NETHER, Event.RUN_CAP, Why.NONE));
         assertEquals("combat: [end] run over, stuck 52 blocks from where it started", line(Dimension.END, Event.RUN_STUCK, Why.NONE));
     }
 }
