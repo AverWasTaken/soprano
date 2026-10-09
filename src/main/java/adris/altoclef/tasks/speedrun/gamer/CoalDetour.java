@@ -32,8 +32,9 @@ import java.util.Map;
 // began at is gone (a count target would send it off to a vein 80 blocks away, and "hold N" is a bad question anyway: the
 // cluster grows as we dig into it). when the task gives up on a block it sets off for a far vein, and the leash from that spot
 // cuts the walk short and the ban keeps us off that cluster. the bans go in the shared book (Bans) scoped to the detour: our
-// mining task skips them through onlyWhere, and the fuel task that really needs coal still gets offered them. the tracker is the mining task's own business, it tracks on start
-// and lets go on stop, so nothing here needs releasing when the phase leaves, only forgetting
+// mining task skips them through onlyWhere, and the fuel task that really needs coal still gets offered them. the tracker is
+// the mining task's own business, it tracks on start and lets go on stop, so nothing here needs releasing when the phase
+// leaves, only forgetting
 public final class CoalDetour {
     // the same two blocks TaskCatalogue mines for "coal". an array of our own: the iron task's list must not learn about coal,
     // two mine tasks with the same blocks are the same task to the task system and coal would count towards the iron
