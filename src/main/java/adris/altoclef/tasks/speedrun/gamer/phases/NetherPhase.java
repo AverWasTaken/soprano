@@ -6,12 +6,14 @@ import adris.altoclef.tasks.movement.GetToXZTask;
 import adris.altoclef.tasks.movement.RunAwayFromPositionTask;
 import adris.altoclef.tasks.resources.CollectBlazeRodsTask;
 import adris.altoclef.tasks.resources.TradeWithPiglinsTask;
+import adris.altoclef.tasks.speedrun.gamer.DetourSpec;
 import adris.altoclef.tasks.speedrun.gamer.EyeMath;
 import adris.altoclef.tasks.speedrun.gamer.GamerContext;
 import adris.altoclef.tasks.speedrun.gamer.GamerFacts;
 import adris.altoclef.tasks.speedrun.gamer.GamerPhase;
 import adris.altoclef.tasks.speedrun.gamer.PhaseHandler;
 import adris.altoclef.tasks.speedrun.gamer.PiglinGold;
+import adris.altoclef.tasks.speedrun.gamer.ResourceDetour;
 import adris.altoclef.tasks.speedrun.gamer.RunState;
 import adris.altoclef.tasks.speedrun.gamer.Timeout;
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
@@ -86,6 +88,8 @@ public class NetherPhase implements PhaseHandler {
     private PearlHuntTask hunt;
     private int huntTarget;
     private final HomePortalWalk homeWalk = new HomePortalWalk();
+    // flint from soul sand valley gravel, only while it is still owed (no flint and steel, fire charge or flint on us)
+    private final ResourceDetour gravel = ResourceDetour.gravel();
     private Task boots;
     private TradeWithPiglinsTask trade;
     private int tradeTarget;
@@ -184,12 +188,14 @@ public class NetherPhase implements PhaseHandler {
         lastFortressCells = 0;
         lastWarpedCells = 0;
         hudState = null;
+        gravel.reset();
         ensureTracking(mod);
     }
 
     @Override
     public void onExit(AltoClef mod, GamerContext ctx) {
         homeWalk.stopTracking(mod);
+        gravel.reset();
         if (tracking) {
             mod.getBlockTracker().stopTracking(TRACKED);
             tracking = false;
@@ -211,12 +217,32 @@ public class NetherPhase implements PhaseHandler {
         double now = ctx.secondsInPhase();
         Task cover = ghastCover(mod, now);
         if (cover != null) {
+            gravel.preempted(ctx.facts().gameTime());
             return cover;
         }
         if (tickCounter++ % SCAN_EVERY_TICKS == 0) {
             scanSights(mod, ctx);
         }
+        Task flint = gravelSide(mod, ctx);
+        if (flint != null) {
+            return flint;
+        }
         return nextStep(mod, ctx, now);
+    }
+
+    // the gravel detour, between the ghast cover and the next step. a spawner we are on or a trade that is going wins outright
+    private Task gravelSide(AltoClef mod, GamerContext ctx) {
+        boolean atSpawner = rodsTask != null && rodsTask.currentSpawner() != null;
+        boolean trading = barterTickAt >= 0;
+        if (!DetourSpec.netherMayDetour(ctx.facts().dimension() == Dimension.NETHER, atSpawner, trading)) {
+            gravel.preempted(ctx.facts().gameTime());
+            return null;
+        }
+        Task flint = gravel.tick(mod, ctx, null);
+        if (flint != null) {
+            hudState = gravel.hud();
+        }
+        return flint;
     }
 
     // back in the overworld (a regress from the stronghold, a death): walk to the portal we built first. the default task

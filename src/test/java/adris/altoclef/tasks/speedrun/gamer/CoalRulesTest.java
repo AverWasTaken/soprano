@@ -4,9 +4,9 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
-import adris.altoclef.tasks.speedrun.gamer.CoalRules.Inputs;
-import adris.altoclef.tasks.speedrun.gamer.CoalRules.Offset;
-import adris.altoclef.tasks.speedrun.gamer.CoalRules.Step;
+import adris.altoclef.tasks.speedrun.gamer.DetourRules.Inputs;
+import adris.altoclef.tasks.speedrun.gamer.DetourRules.Offset;
+import adris.altoclef.tasks.speedrun.gamer.DetourRules.Step;
 import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig;
 import adris.altoclef.util.helpers.WalkCost;
 import java.util.List;
@@ -14,7 +14,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.UnaryOperator;
 import org.junit.Test;
 
-// when a bit of coal is worth a detour, and when the detour is over. the world half (CoalDetour) is only compile checked
+// when a bit of coal is worth a detour, and when the detour is over. the world half (ResourceDetour) is only compile checked
 public class CoalRulesTest {
     private static final OverworldConfig CFG = new OverworldConfig();
 
@@ -35,8 +35,8 @@ public class CoalRulesTest {
         boolean strayed;
         final AtomicInteger asked = new AtomicInteger();
 
-        CoalRules.Ore ore() {
-            return new CoalRules.Ore(() -> {
+        DetourRules.Ore ore() {
+            return new DetourRules.Ore(() -> {
                 asked.incrementAndGet();
                 return start;
             }, () -> keep, () -> drop, () -> strayed);
@@ -44,7 +44,7 @@ public class CoalRulesTest {
     }
 
     private static final class Run {
-        final CoalRules rules = new CoalRules();
+        final DetourRules rules = new DetourRules();
         final World world = new World();
         final OverworldConfig cfg;
         long now = 1000;
@@ -58,11 +58,11 @@ public class CoalRulesTest {
         }
 
         Step tick(Inputs in) {
-            return rules.tick(now, in, cfg, world.ore());
+            return rules.tick(now, in, DetourSpec.COAL.limits(cfg), world.ore());
         }
 
         // this many ticks of the same inputs, the way the phase asks every tick. returns the last answer. a jump with no ticks
-        // in it is a gap, and a gap ends a detour (see CoalRules.GAP_TICKS)
+        // in it is a gap, and a gap ends a detour (see DetourRules.GAP_TICKS)
         Step run(long ticks, Inputs in) {
             Step last = null;
             for (long i = 0; i < ticks; i++) {
@@ -121,22 +121,22 @@ public class CoalRulesTest {
     public void theCapComesFromTheConfig() {
         OverworldConfig cfg = new OverworldConfig();
         cfg.coalSideCap = 5;
-        CoalRules rules = new CoalRules();
+        DetourRules rules = new DetourRules();
         World world = new World();
-        assertEquals(Step.IDLE, rules.tick(1, calm(5), cfg, world.ore()));
-        assertEquals(Step.START, rules.tick(2, calm(4), cfg, world.ore()));
+        assertEquals(Step.IDLE, rules.tick(1, calm(5), DetourSpec.COAL.limits(cfg), world.ore()));
+        assertEquals(Step.START, rules.tick(2, calm(4), DetourSpec.COAL.limits(cfg), world.ore()));
     }
 
     // ---- the never rules
 
     private static final List<UnaryOperator<Inputs>> NEVER = List.of(
-            in -> new Inputs(false, in.pickaxe(), in.coal(), in.need(), in.cookStation(), in.furnaceDue(), in.loadInFlight(), in.foodLeads(), in.coalHead()),
-            in -> new Inputs(in.overworld(), false, in.coal(), in.need(), in.cookStation(), in.furnaceDue(), in.loadInFlight(), in.foodLeads(), in.coalHead()),
-            in -> new Inputs(in.overworld(), in.pickaxe(), in.coal(), in.need(), true, in.furnaceDue(), in.loadInFlight(), in.foodLeads(), in.coalHead()),
-            in -> new Inputs(in.overworld(), in.pickaxe(), in.coal(), in.need(), in.cookStation(), true, in.loadInFlight(), in.foodLeads(), in.coalHead()),
-            in -> new Inputs(in.overworld(), in.pickaxe(), in.coal(), in.need(), in.cookStation(), in.furnaceDue(), true, in.foodLeads(), in.coalHead()),
-            in -> new Inputs(in.overworld(), in.pickaxe(), in.coal(), in.need(), in.cookStation(), in.furnaceDue(), in.loadInFlight(), true, in.coalHead()),
-            in -> new Inputs(in.overworld(), in.pickaxe(), in.coal(), in.need(), in.cookStation(), in.furnaceDue(), in.loadInFlight(), in.foodLeads(), true));
+            in -> new Inputs(false, in.tool(), in.held(), in.need(), in.cookStation(), in.furnaceDue(), in.loadInFlight(), in.foodLeads(), in.resourceHead()),
+            in -> new Inputs(in.dimension(), false, in.held(), in.need(), in.cookStation(), in.furnaceDue(), in.loadInFlight(), in.foodLeads(), in.resourceHead()),
+            in -> new Inputs(in.dimension(), in.tool(), in.held(), in.need(), true, in.furnaceDue(), in.loadInFlight(), in.foodLeads(), in.resourceHead()),
+            in -> new Inputs(in.dimension(), in.tool(), in.held(), in.need(), in.cookStation(), true, in.loadInFlight(), in.foodLeads(), in.resourceHead()),
+            in -> new Inputs(in.dimension(), in.tool(), in.held(), in.need(), in.cookStation(), in.furnaceDue(), true, in.foodLeads(), in.resourceHead()),
+            in -> new Inputs(in.dimension(), in.tool(), in.held(), in.need(), in.cookStation(), in.furnaceDue(), in.loadInFlight(), true, in.resourceHead()),
+            in -> new Inputs(in.dimension(), in.tool(), in.held(), in.need(), in.cookStation(), in.furnaceDue(), in.loadInFlight(), in.foodLeads(), true));
     private static final List<String> NEVER_NAMES = List.of("nether", "no pick", "cook has its station", "furnace due", "load in flight",
             "food leads", "coal is the head");
 
@@ -145,13 +145,13 @@ public class CoalRulesTest {
         for (int i = 0; i < NEVER.size(); i++) {
             Run run = new Run();
             Inputs bad = NEVER.get(i).apply(calm());
-            assertTrue(NEVER_NAMES.get(i), CoalRules.blocked(bad));
+            assertTrue(NEVER_NAMES.get(i), DetourRules.blocked(bad));
             assertEquals(NEVER_NAMES.get(i), Step.IDLE, run.tick(bad));
             assertFalse(NEVER_NAMES.get(i), run.rules.running());
             // the ore question is a world scan, a bot that may not go does not pay for it
             assertEquals(NEVER_NAMES.get(i) + " asked the world", 0, run.world.asked.get());
         }
-        assertFalse(CoalRules.blocked(calm()));
+        assertFalse(DetourRules.blocked(calm()));
     }
 
     @Test
@@ -170,15 +170,15 @@ public class CoalRulesTest {
         assertEquals(Step.BLOCKED, run.next(NEVER.get(2).apply(calm())));
         // the cook is done with its station and the ore is still right there, it is still too soon
         assertEquals(Step.IDLE, run.next(calm()));
-        run.advance(CoalRules.COOLDOWN_TICKS);
+        run.advance(DetourRules.COOLDOWN_TICKS);
         assertEquals(Step.START, run.next(calm()));
     }
 
     @Test
     public void everyNeverRuleIsInTheTable() {
-        // a field added to Inputs without a rule here would be an unchecked way to go mining. coal and need are the two that
-        // are not never rules, CoalNeedTest has those
-        assertEquals(Inputs.class.getRecordComponents().length - 2, NEVER.size());
+        // a field added to Inputs without a rule here would be an unchecked way to go mining. held, need and mined are the three
+        // that are not never rules, CoalNeedTest and GravelDetourTest have those
+        assertEquals(Inputs.class.getRecordComponents().length - 3, NEVER.size());
     }
 
     // ---- hysteresis
@@ -218,10 +218,10 @@ public class CoalRulesTest {
 
     @Test
     public void theKeepReachIsLooserThanTheStartReach() {
-        assertTrue(CoalRules.keepBudget(CFG.coalSideBudget) > CFG.coalSideBudget);
+        assertTrue(DetourRules.keepBudget(CFG.coalSideBudget) > CFG.coalSideBudget);
         // a cell we may stay for but would not have started on
-        List<Offset> start = CoalRules.offsets(CFG.coalSideBudget);
-        List<Offset> keep = CoalRules.offsets(CoalRules.keepBudget(CFG.coalSideBudget));
+        List<Offset> start = DetourRules.offsets(CFG.coalSideBudget);
+        List<Offset> keep = DetourRules.offsets(DetourRules.keepBudget(CFG.coalSideBudget));
         assertTrue(keep.size() > start.size());
         assertTrue(keep.containsAll(start));
         assertFalse(start.contains(new Offset(15, 0, 0)));
@@ -239,9 +239,9 @@ public class CoalRulesTest {
         assertEquals(Step.SETTLE, run.next(calm(2)));
         assertEquals(Step.SETTLE, run.next(calm(2)));
         assertTrue(run.rules.running());
-        run.advance(CoalRules.DROP_GRACE_TICKS - 3);
+        run.advance(DetourRules.DROP_GRACE_TICKS - 3);
         assertEquals(Step.SETTLE, run.next(calm(2)));
-        run.advance(CoalRules.DROP_GRACE_TICKS);
+        run.advance(DetourRules.DROP_GRACE_TICKS);
         assertEquals(Step.DONE, run.next(calm(2)));
         assertFalse(run.rules.running());
     }
@@ -259,7 +259,7 @@ public class CoalRulesTest {
         // in the bag now, and the grace starts over from here
         run.world.drop = false;
         assertEquals(Step.SETTLE, run.next(calm(3)));
-        run.advance(CoalRules.DROP_GRACE_TICKS);
+        run.advance(DetourRules.DROP_GRACE_TICKS);
         assertEquals(Step.DONE, run.next(calm(3)));
     }
 
@@ -268,13 +268,13 @@ public class CoalRulesTest {
         Run run = new Run().started();
         run.world.keep = false;
         assertEquals(Step.SETTLE, run.next(calm()));
-        run.advance(CoalRules.DROP_GRACE_TICKS - 5);
+        run.advance(DetourRules.DROP_GRACE_TICKS - 5);
         // the next piece of the vein loaded in, or the scan caught up
         run.world.keep = true;
         assertEquals(Step.KEEP, run.next(calm()));
         run.world.keep = false;
         assertEquals(Step.SETTLE, run.next(calm()));
-        run.advance(CoalRules.DROP_GRACE_TICKS - 5);
+        run.advance(DetourRules.DROP_GRACE_TICKS - 5);
         assertEquals("the grace runs from the last ore, not the first gap", Step.SETTLE, run.next(calm()));
     }
 
@@ -291,7 +291,7 @@ public class CoalRulesTest {
     @Test
     public void aDetourThatOutlastsItsBudgetIsTimedOut() {
         Run run = new Run().started();
-        long budget = CoalRules.maxTicks(CFG);
+        long budget = DetourSpec.COAL.limits(CFG).maxTicks();
         assertEquals(30 * 20, budget);
         assertEquals("on the last tick of the budget it is still allowed", Step.KEEP, run.run(budget, calm()));
         assertEquals(Step.TIMEOUT, run.next(calm()));
@@ -310,21 +310,21 @@ public class CoalRulesTest {
     @Test
     public void aDetourWhoseOreIsGoneIsNeverTimedOutEvenWithTheClockUp() {
         Run run = new Run().started();
-        assertEquals(Step.KEEP, run.run(CoalRules.maxTicks(CFG), calm(4)));
+        assertEquals(Step.KEEP, run.run(DetourSpec.COAL.limits(CFG).maxTicks(), calm(4)));
         // the last ore broke right at the end of the budget: that is a finished detour, not one to ban
         run.world.keep = false;
         assertEquals(Step.SETTLE, run.next(calm(4)));
-        assertEquals(Step.DONE, run.run(CoalRules.DROP_GRACE_TICKS, calm(4)));
+        assertEquals(Step.DONE, run.run(DetourRules.DROP_GRACE_TICKS, calm(4)));
     }
 
     @Test
     public void aTimedOutDetourCoolsDownBeforeTheNextOne() {
         Run run = new Run().started();
-        run.run(CoalRules.maxTicks(CFG), calm());
+        run.run(DetourSpec.COAL.limits(CFG).maxTicks(), calm());
         assertEquals(Step.TIMEOUT, run.next(calm()));
         // the caller bans the cluster; whatever is left standing, the rules still wait their turn
         assertEquals(Step.IDLE, run.next(calm()));
-        assertEquals(Step.IDLE, run.run(CoalRules.COOLDOWN_TICKS - 2, calm()));
+        assertEquals(Step.IDLE, run.run(DetourRules.COOLDOWN_TICKS - 2, calm()));
         assertEquals(Step.START, run.next(calm()));
     }
 
@@ -341,7 +341,7 @@ public class CoalRulesTest {
         // and it cools down like any other end
         run.world.strayed = false;
         assertEquals(Step.IDLE, run.next(calm()));
-        assertEquals(Step.START, run.run(CoalRules.COOLDOWN_TICKS - 1, calm()));
+        assertEquals(Step.START, run.run(DetourRules.COOLDOWN_TICKS - 1, calm()));
     }
 
     @Test
@@ -351,7 +351,7 @@ public class CoalRulesTest {
         run.world.strayed = true;
         // the pick up walk took us a bit far, but there is nothing left to ban
         assertEquals(Step.SETTLE, run.next(calm(3)));
-        assertEquals(Step.DONE, run.run(CoalRules.DROP_GRACE_TICKS, calm(3)));
+        assertEquals(Step.DONE, run.run(DetourRules.DROP_GRACE_TICKS, calm(3)));
     }
 
     @Test
@@ -360,7 +360,7 @@ public class CoalRulesTest {
         run.world.strayed = true;
         assertEquals(Step.BLOCKED, run.next(NEVER.get(3).apply(calm())));
         Run late = new Run().started();
-        late.run(CoalRules.maxTicks(CFG), calm());
+        late.run(DetourSpec.COAL.limits(CFG).maxTicks(), calm());
         late.world.strayed = true;
         assertEquals(Step.STRAYED, late.next(calm()));
     }
@@ -379,26 +379,26 @@ public class CoalRulesTest {
     public void theLeashIsAsTheCrowFliesSoStandingUnderAKeepEdgeOreIsFine() {
         double budget = CFG.coalSideBudget;
         // an ore 2 across and 4 down is 18 by WalkCost, the very edge of the keep reach, and we stand 6 down to mine it from below
-        assertTrue(WalkCost.within(2, -4, 0, CoalRules.keepBudget(budget)));
-        assertFalse(CoalRules.strayed(2, -6, 0, budget));
+        assertTrue(WalkCost.within(2, -4, 0, DetourRules.keepBudget(budget)));
+        assertFalse(DetourRules.strayed(2, -6, 0, budget));
         // the same ore at the flat edge, and a pickup walk a few blocks past it
-        assertFalse(CoalRules.strayed(18 + 3, 0, 0, budget));
-        assertFalse(CoalRules.strayed(0, 6, 18, budget));
+        assertFalse(DetourRules.strayed(18 + 3, 0, 0, budget));
+        assertFalse(DetourRules.strayed(0, 6, 18, budget));
         // 24 exactly is still inside, and anything past it is a walk to another vein
-        assertFalse(CoalRules.strayed(24, 0, 0, budget));
-        assertTrue(CoalRules.strayed(25, 0, 0, budget));
-        assertFalse(CoalRules.strayed(20, 13, 0, budget));
-        assertTrue(CoalRules.strayed(20, 14, 0, budget));
-        assertTrue(CoalRules.strayed(-18, 0, 18, budget));
-        assertFalse(CoalRules.strayed(0, 0, 0, budget));
+        assertFalse(DetourRules.strayed(24, 0, 0, budget));
+        assertTrue(DetourRules.strayed(25, 0, 0, budget));
+        assertFalse(DetourRules.strayed(20, 13, 0, budget));
+        assertTrue(DetourRules.strayed(20, 14, 0, budget));
+        assertTrue(DetourRules.strayed(-18, 0, 18, budget));
+        assertFalse(DetourRules.strayed(0, 0, 0, budget));
     }
 
     @Test
     public void theLeashIsWiderThanTheKeepReachWhichIsWiderThanTheStartReach() {
         double start = CFG.coalSideBudget;
-        assertTrue(CoalRules.leash(start) > CoalRules.keepBudget(start));
-        assertTrue(CoalRules.keepBudget(start) > start);
-        assertEquals(24.0, CoalRules.leash(start), 0);
+        assertTrue(DetourRules.leash(start) > DetourRules.keepBudget(start));
+        assertTrue(DetourRules.keepBudget(start) > start);
+        assertEquals(24.0, DetourRules.leash(start), 0);
     }
 
     // ---- cooldown, being preempted, a gap
@@ -408,10 +408,10 @@ public class CoalRulesTest {
         Run run = new Run().started();
         run.world.keep = false;
         run.next(calm(5));
-        run.advance(CoalRules.DROP_GRACE_TICKS);
+        run.advance(DetourRules.DROP_GRACE_TICKS);
         assertEquals(Step.DONE, run.next(calm(5)));
         run.world.keep = true;
-        for (int i = 0; i < CoalRules.COOLDOWN_TICKS - 1; i++) {
+        for (int i = 0; i < DetourRules.COOLDOWN_TICKS - 1; i++) {
             assertEquals(Step.IDLE, run.next(calm(5)));
         }
         assertEquals(Step.START, run.next(calm(5)));
@@ -424,7 +424,7 @@ public class CoalRulesTest {
         assertFalse(run.rules.running());
         run.now += 2;
         assertEquals(Step.IDLE, run.tick(calm()));
-        run.advance(CoalRules.COOLDOWN_TICKS);
+        run.advance(DetourRules.COOLDOWN_TICKS);
         assertEquals(Step.START, run.tick(calm()));
     }
 
@@ -438,13 +438,13 @@ public class CoalRulesTest {
     @Test
     public void aDetourNobodyAskedAboutForAWhileWasNotOursToKeep() {
         Run run = new Run().started();
-        run.advance(CoalRules.GAP_TICKS + 1);
+        run.advance(DetourRules.GAP_TICKS + 1);
         // a chain (a mob fight, a long meal) had the wheel for a couple of seconds: its time is not billed to us, the detour is just over
         assertEquals(Step.BLOCKED, run.tick(calm()));
         assertFalse(run.rules.running());
         // and a gap within the limit is nothing
         Run steady = new Run().started();
-        steady.advance(CoalRules.GAP_TICKS);
+        steady.advance(DetourRules.GAP_TICKS);
         assertEquals(Step.KEEP, steady.tick(calm()));
     }
 
@@ -462,12 +462,12 @@ public class CoalRulesTest {
 
     @Test
     public void theFirstDetourSaysIt() {
-        assertTrue(new CoalRules().announce(5000, 10, 64, 10));
+        assertTrue(new DetourRules().announce(5000, 10, 64, 10));
     }
 
     @Test
     public void aRestartOnTheSameClusterStaysQuiet() {
-        CoalRules rules = new CoalRules();
+        DetourRules rules = new DetourRules();
         assertTrue(rules.announce(5000, 10, 64, 10));
         // a bed took the tick, we are back a few seconds later a block or two over
         assertFalse(rules.announce(5000 + 200, 10, 64, 10));
@@ -476,13 +476,13 @@ public class CoalRulesTest {
 
     @Test
     public void aStartMoreThanEightBlocksFromTheLastOneSaysItAgain() {
-        CoalRules rules = new CoalRules();
+        DetourRules rules = new DetourRules();
         assertTrue(rules.announce(5000, 0, 64, 0));
         // 8 exactly is still the same cluster, 9 is another
         assertFalse(rules.announce(5100, 8, 64, 0));
         assertTrue(rules.announce(5200, 9, 64, 0));
         // height counts as distance too, a vein two floors down is not the one we were on
-        CoalRules tall = new CoalRules();
+        DetourRules tall = new DetourRules();
         assertTrue(tall.announce(5000, 0, 64, 0));
         assertFalse(tall.announce(5100, 0, 56, 0));
         assertTrue(tall.announce(5200, 0, 55, 0));
@@ -490,22 +490,22 @@ public class CoalRulesTest {
 
     @Test
     public void aStartMoreThanAMinuteAfterTheLastOneSaysItAgainEvenOnTheSpot() {
-        CoalRules rules = new CoalRules();
+        DetourRules rules = new DetourRules();
         assertTrue(rules.announce(5000, 0, 64, 0));
-        assertFalse(rules.announce(5000 + CoalRules.ANNOUNCE_TICKS, 0, 64, 0));
-        assertTrue(rules.announce(5000 + CoalRules.ANNOUNCE_TICKS + 1, 0, 64, 0));
-        assertEquals(60 * 20, CoalRules.ANNOUNCE_TICKS);
+        assertFalse(rules.announce(5000 + DetourRules.ANNOUNCE_TICKS, 0, 64, 0));
+        assertTrue(rules.announce(5000 + DetourRules.ANNOUNCE_TICKS + 1, 0, 64, 0));
+        assertEquals(60 * 20, DetourRules.ANNOUNCE_TICKS);
     }
 
     @Test
     public void aQuietStartDoesNotMoveEitherReference() {
-        CoalRules rules = new CoalRules();
+        DetourRules rules = new DetourRules();
         assertTrue(rules.announce(5000, 0, 64, 0));
         // creeping along a long vein in 5 block hops: the second hop is 10 from where we SAID it, so it says it again
         assertFalse(rules.announce(5100, 5, 64, 0));
         assertTrue(rules.announce(5200, 10, 64, 0));
         // and the clock runs from the last time it was said, not from the quiet starts in between
-        CoalRules clock = new CoalRules();
+        DetourRules clock = new DetourRules();
         assertTrue(clock.announce(0, 0, 64, 0));
         assertFalse(clock.announce(1000, 0, 64, 0));
         assertTrue(clock.announce(1300, 0, 64, 0));
@@ -513,7 +513,7 @@ public class CoalRulesTest {
 
     @Test
     public void aClockThatWentBackwardsSaysItAndAResetForgets() {
-        CoalRules rules = new CoalRules();
+        DetourRules rules = new DetourRules();
         assertTrue(rules.announce(9000, 0, 64, 0));
         // a relog or a rewound world: do not trust a reference from the future
         assertTrue(rules.announce(100, 0, 64, 0));
@@ -524,7 +524,7 @@ public class CoalRulesTest {
 
     @Test
     public void startingADetourDoesNotAnnounceByItself() {
-        // the rules only answer the question, CoalDetour asks it at START: a started detour leaves the memory alone
+        // the rules only answer the question, ResourceDetour asks it at START: a started detour leaves the memory alone
         Run run = new Run();
         assertEquals(Step.START, run.tick(calm()));
         assertTrue(run.rules.announce(run.now, 0, 64, 0));
@@ -534,7 +534,7 @@ public class CoalRulesTest {
 
     @Test
     public void theReachIsTheWalkCostBudgetAndNothingBeyond() {
-        List<Offset> table = CoalRules.offsets(12);
+        List<Offset> table = DetourRules.offsets(12);
         assertTrue(table.contains(new Offset(12, 0, 0)));
         assertTrue(table.contains(new Offset(0, 0, -12)));
         assertFalse(table.contains(new Offset(13, 0, 0)));
@@ -554,7 +554,7 @@ public class CoalRulesTest {
 
     @Test
     public void theNearestWalkComesFirstSoTheScanCanStopAtTheFirstHit() {
-        List<Offset> table = CoalRules.offsets(12);
+        List<Offset> table = DetourRules.offsets(12);
         double last = -1;
         for (Offset o : table) {
             double cost = WalkCost.estimate(o.dx(), o.dy(), o.dz());
@@ -565,17 +565,17 @@ public class CoalRulesTest {
         // a block beside us beats a block at our feet's depth
         assertTrue(table.indexOf(new Offset(2, 0, 0)) < table.indexOf(new Offset(0, 1, 0)));
         // and the order is the same every time you ask
-        assertEquals(table, CoalRules.offsets(12));
+        assertEquals(table, DetourRules.offsets(12));
     }
 
     @Test
     public void absurdBudgetsStayBounded() {
-        assertEquals(List.of(new Offset(0, 0, 0)), CoalRules.offsets(0));
-        assertEquals(List.of(new Offset(0, 0, 0)), CoalRules.offsets(-5));
-        List<Offset> huge = CoalRules.offsets(5000);
+        assertEquals(List.of(new Offset(0, 0, 0)), DetourRules.offsets(0));
+        assertEquals(List.of(new Offset(0, 0, 0)), DetourRules.offsets(-5));
+        List<Offset> huge = DetourRules.offsets(5000);
         assertTrue(huge.size() < 200_000);
-        assertTrue(huge.contains(new Offset((int) CoalRules.MAX_BUDGET, 0, 0)));
-        assertFalse(huge.contains(new Offset((int) CoalRules.MAX_BUDGET + 1, 0, 0)));
+        assertTrue(huge.contains(new Offset((int) DetourRules.MAX_BUDGET, 0, 0)));
+        assertFalse(huge.contains(new Offset((int) DetourRules.MAX_BUDGET + 1, 0, 0)));
     }
 
     // ---- the config
@@ -586,6 +586,6 @@ public class CoalRulesTest {
         assertEquals(12.0, o.coalSideBudget, 0);
         assertEquals(24, o.coalSideCap);
         assertEquals(30.0, o.coalSideSeconds, 0);
-        assertEquals(5 * 20, CoalRules.COOLDOWN_TICKS);
+        assertEquals(5 * 20, DetourRules.COOLDOWN_TICKS);
     }
 }

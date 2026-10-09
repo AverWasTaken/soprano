@@ -1,9 +1,10 @@
 package adris.altoclef.tasks.speedrun.gamer;
 
-// "can we see that coal right now": a face of the ore touches air, and a straight line from our eyes to that face crosses
-// nothing that blocks the view. SeenFilter's answer was "was in sight once, within 128", which is how the detour went for
-// coal it glimpsed through a crack and then tunnelled to. pure, the world half hands in the two block questions
-public final class CoalSight {
+// "can we see that block right now": a face of it touches air, and a straight line from our eyes to that face crosses
+// nothing that blocks the view. SeenFilter's answer was "was in sight once, within 128", which is how the coal detour went for
+// coal it glimpsed through a crack and then tunnelled to. every detour uses it (coal ore, gravel). pure, the world half hands
+// in the two block questions
+public final class DetourSight {
     // a bit past reach. further than this and it is a walk, not a detour, whatever the line of sight says
     public static final double RANGE = 8;
     // how far apart the samples along the ray are. a block is 1, so a corner can slip between two of them at most by a
@@ -21,7 +22,7 @@ public final class CoalSight {
         boolean blocksView(int x, int y, int z);
     }
 
-    private CoalSight() {
+    private DetourSight() {
     }
 
     public static boolean visible(Cells w, double eyeX, double eyeY, double eyeZ, int x, int y, int z) {

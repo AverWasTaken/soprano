@@ -68,7 +68,7 @@ public class IronActivityTest {
     @Test
     public void theOrderIsTheDocumentedOne() {
         assertEquals(List.of(Kind.FINISHING, Kind.GOLEM_FIGHT, Kind.STAND_BY, Kind.STATION, Kind.RUINED_PORTAL, Kind.VILLAGE_CHEST,
-                Kind.BED, Kind.GOLEM_START, Kind.COAL, Kind.FURNACE, Kind.PACK_UP, Kind.SURFACE, Kind.KIT), List.of(Kind.values()));
+                Kind.BED, Kind.GOLEM_START, Kind.COAL, Kind.GRAVEL, Kind.FURNACE, Kind.PACK_UP, Kind.SURFACE, Kind.KIT), List.of(Kind.values()));
     }
 
     @Test
@@ -100,7 +100,7 @@ public class IronActivityTest {
     @Test
     public void standingByPausesEverythingThatWalksOff() {
         assertTrue(IronActivity.eligible(Kind.STAND_BY, STANDING));
-        for (Kind k : List.of(Kind.STATION, Kind.RUINED_PORTAL, Kind.VILLAGE_CHEST, Kind.BED, Kind.GOLEM_START, Kind.COAL, Kind.FURNACE)) {
+        for (Kind k : List.of(Kind.STATION, Kind.RUINED_PORTAL, Kind.VILLAGE_CHEST, Kind.BED, Kind.GOLEM_START, Kind.COAL, Kind.GRAVEL, Kind.FURNACE)) {
             assertFalse(k.name(), IronActivity.eligible(k, STANDING));
             assertTrue(k.name(), IronActivity.eligible(k, COOKING));
         }
@@ -393,7 +393,7 @@ public class IronActivityTest {
         sim.tick(COOKING, Kind.COAL);
         assertEquals(Kind.STAND_BY, sim.tick(STANDING, Kind.COAL, Kind.STAND_BY, Kind.KIT));
         assertEquals("activity: coal detour -> smoker stand-by (a quick smoker comes before the coal detour)", sim.lines.get(1));
-        for (Kind side : List.of(Kind.STATION, Kind.RUINED_PORTAL, Kind.VILLAGE_CHEST, Kind.BED, Kind.GOLEM_START, Kind.COAL)) {
+        for (Kind side : List.of(Kind.STATION, Kind.RUINED_PORTAL, Kind.VILLAGE_CHEST, Kind.BED, Kind.GOLEM_START, Kind.COAL, Kind.GRAVEL)) {
             assertTrue(side.name(), IronActivity.preempts(Kind.STAND_BY, side, false));
         }
     }

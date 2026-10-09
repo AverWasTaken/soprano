@@ -8,7 +8,7 @@ import java.util.List;
 
 
 // the side jobs the overworld phases share: danger filtering, taking our crafting table and furnace back, ruined portal chests,
-// village chests, the odd iron golem, and a bit of coal when it is right there.
+// village chests, the odd iron golem, and a bit of coal or a bit of gravel (for flint) when it is right there.
 // all of them return a task to run INSTEAD of the kit task this tick, or null
 public final class PrepSupport {
     private final DangerFilter danger = new DangerFilter();
@@ -19,7 +19,9 @@ public final class PrepSupport {
     private final Workbenches benches;
     private final GolemHunt golem;
     // last in line, see tick
-    private final CoalDetour coal = new CoalDetour();
+    private final ResourceDetour coal = ResourceDetour.coal();
+    // and after the coal: the plan burns coal now, flint is for the portal later
+    private final ResourceDetour gravel = ResourceDetour.gravel();
     private boolean tracking;
     private String hud;
 
@@ -40,7 +42,7 @@ public final class PrepSupport {
     }
 
     // for the card: the coal side job, which is the only one with a clock worth a row
-    public CoalDetour coal() {
+    public ResourceDetour coal() {
         return coal;
     }
 
@@ -55,6 +57,7 @@ public final class PrepSupport {
         }
         benches.reset();
         coal.reset();
+        gravel.reset();
         hud = null;
     }
 
@@ -71,6 +74,7 @@ public final class PrepSupport {
         villageBeds.onExit(mod);
         benches.reset();
         coal.reset();
+        gravel.reset();
     }
 
     // the bot is standing by a smoker on purpose (FurnacePlan STAND_BY): a few seconds of waiting is the plan, so the side jobs that
@@ -80,8 +84,9 @@ public final class PrepSupport {
     public Task tickStandBy(AltoClef mod, GamerContext ctx, List<KitNeed> needs) {
         danger.tick(mod, ctx.state());
         hud = null;
-        // standing by the smoker is the plan, a coal detour that was going is over
+        // standing by the smoker is the plan, a coal or gravel detour that was going is over
         coal.preempted(ctx.facts().gameTime());
+        gravel.preempted(ctx.facts().gameTime());
         if (golem != null && golem.active()) {
             Task fight = golem.tick(mod, ctx, needs.isEmpty() ? null : needs.get(0));
             if (fight != null) {
@@ -105,16 +110,26 @@ public final class PrepSupport {
             // anything above the coal wins the tick, and a detour that was going is over (not paused): when the job is done
             // and the ore is still there it is a fresh detour, after its cooldown
             coal.preempted(ctx.facts().gameTime());
+            gravel.preempted(ctx.facts().gameTime());
             return ranked;
         }
         // coal is last on purpose: every job above is worth more per second (a golem is 3 to 5 iron, a chest or a bed is loot we
         // cannot just mine) and coal is the only one for something we might need rather than something we do. last also means
-        // it can never hold one of them up, and one of them taking the tick is the clean signal that ends a detour
-        Task ore = coal.tick(mod, ctx, current);
-        if (ore != null) {
-            hud = coal.hud();
+        // it can never hold one of them up, and one of them taking the tick is the clean signal that ends a detour.
+        // gravel goes after coal (coal burns this phase, flint waits for the portal), but a gravel detour that is going keeps the
+        // wheel: coal showing up halfway would end it into its 2 min cooldown for a 5 s job
+        if (gravel.active()) {
+            Task flint = gravelDetour(mod, ctx, current);
+            if (flint != null) {
+                return flint;
+            }
         }
-        return ore;
+        Task ore = coalDetour(mod, ctx, current);
+        if (ore != null) {
+            gravel.preempted(ctx.facts().gameTime());
+            return ore;
+        }
+        return gravelDetour(mod, ctx, current);
     }
 
     private Task rankedJobs(AltoClef mod, GamerContext ctx, List<KitNeed> needs, KitNeed current) {
@@ -232,5 +247,21 @@ public final class PrepSupport {
     // how the last detour ended, in words
     public String coalEnded() {
         return coal.ended();
+    }
+
+    public Task gravelDetour(AltoClef mod, GamerContext ctx, KitNeed current) {
+        Task flint = gravel.tick(mod, ctx, current);
+        if (flint != null) {
+            hud = gravel.hud();
+        }
+        return flint;
+    }
+
+    public void endGravel(long now) {
+        gravel.preempted(now);
+    }
+
+    public String gravelEnded() {
+        return gravel.ended();
     }
 }

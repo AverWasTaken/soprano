@@ -2,6 +2,7 @@ package adris.altoclef.tasks.speedrun.gamer.phases;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.tasks.construction.compound.ConstructNetherPortalObsidianTask;
+import adris.altoclef.tasks.speedrun.gamer.DetourSpec;
 import adris.altoclef.tasks.speedrun.gamer.FurnacePlan;
 import adris.altoclef.tasks.speedrun.gamer.FurnaceWatch;
 import adris.altoclef.tasks.movement.DefaultGoToDimensionTask;
@@ -15,6 +16,7 @@ import adris.altoclef.tasks.speedrun.gamer.PhaseHandler;
 import adris.altoclef.tasks.speedrun.gamer.PiglinGold;
 import adris.altoclef.tasks.speedrun.gamer.PortalPlanner;
 import adris.altoclef.tasks.speedrun.gamer.PortalPlanner.Method;
+import adris.altoclef.tasks.speedrun.gamer.ResourceDetour;
 import adris.altoclef.tasks.speedrun.gamer.RunState;
 import adris.altoclef.tasks.speedrun.gamer.Timeout;
 import adris.altoclef.tasks.speedrun.gamer.Workbenches;
@@ -39,6 +41,8 @@ public class PortalPhase implements PhaseHandler {
     // the table the gate crafts on, and whatever else we put down on the way, comes with us before the portal is touched
     private final Workbenches benches = new Workbenches();
     private final FurnaceWatch furnaces = new FurnaceWatch(benches);
+    // flint from gravel we walk past while the gate packs (DetourSpec.portalMayDetour). no PrepSupport here, so its own
+    private final ResourceDetour gravel = ResourceDetour.gravel();
     private boolean gateDone;
     private boolean noGoldSaid;
     private boolean tracking;
@@ -103,6 +107,7 @@ public class PortalPhase implements PhaseHandler {
         obsidian = new ConstructNetherPortalObsidianTask();
         enter = new EnterNetherPortalTask(Dimension.NETHER);
         hudState = null;
+        gravel.reset();
         if (!tracking) {
             // portals so we can tell when ours exists, lava so "no lava seen" means something during the cast
             mod.getBlockTracker().trackBlock(Blocks.NETHER_PORTAL, Blocks.LAVA);
@@ -116,6 +121,7 @@ public class PortalPhase implements PhaseHandler {
             mod.getBlockTracker().stopTracking(Blocks.NETHER_PORTAL, Blocks.LAVA);
             tracking = false;
         }
+        gravel.reset();
         // we get here standing in the nether side of the pair
         PortalPlanner.recordArrival(ctx.state(), ctx.facts());
         if (ctx.state().overworldPortal == null) {
@@ -163,6 +169,10 @@ public class PortalPhase implements PhaseHandler {
             }
         }
         if (!gateDone) {
+            Task flint = gravelSide(mod, ctx, gate);
+            if (flint != null) {
+                return flint;
+            }
             if (!gate.isEmpty()) {
                 Task prep = runner.run(ctx, gate);
                 hudState = runner.hud();
@@ -207,6 +217,21 @@ public class PortalPhase implements PhaseHandler {
         }
         hudState = "Getting obsidian for the portal";
         return obsidian;
+    }
+
+    // the gravel detour, asked after the station pickup and before the gate's own task. anything earlier in tick that took the wheel
+    // (a furnace on the way out, a table coming down) never reaches here, and the gap rule ends a detour that stops being asked
+    private Task gravelSide(AltoClef mod, GamerContext ctx, List<KitNeed> gate) {
+        GamerFacts f = ctx.facts();
+        if (!DetourSpec.portalMayDetour(f.dimension() == Dimension.OVERWORLD, gateDone)) {
+            gravel.preempted(f.gameTime());
+            return null;
+        }
+        Task flint = gravel.tick(mod, ctx, gate.isEmpty() ? null : gate.get(0));
+        if (flint != null) {
+            hudState = gravel.hud();
+        }
+        return flint;
     }
 
     private Method chooseMethod(AltoClef mod, GamerContext ctx) {

@@ -1,6 +1,5 @@
 package adris.altoclef.tasks.speedrun.gamer;
 
-import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig;
 import adris.altoclef.util.helpers.WalkCost;
 
 import java.util.ArrayList;
@@ -9,12 +8,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BooleanSupplier;
+import java.util.function.LongPredicate;
 
-// coal on the way: while the overworld phases mine, coal ore that is close by is worth a short detour, since a smelt that runs
-// short of fuel sends us out for coal anyway and out here it is already in sight. this is the deciding half (CoalDetour is the
-// half that touches the world). one instance holds one detour at a time. it starts on a strict test, stays on a looser one, and
-// every way out is a named Step, so it cannot flap between ticks
-public final class CoalRules {
+// a resource on the way: while the phases mine, a block worth having that is close by gets a short detour, since we would come
+// out for it later anyway and out here it is already in sight. coal was the first (a smelt that runs short of fuel sends us out
+// for coal anyway), gravel for flint is the second. this is the deciding half (ResourceDetour is the half that touches the world,
+// DetourSpec says what is different per resource). one instance holds one detour at a time. it starts on a strict test, stays
+// on a looser one, and every way out is a named Step, so it cannot flap between ticks
+public final class DetourRules {
     // staying costs more reach than starting did. the walk to the vein and the walk round it to pick up its drops move us a few
     // blocks, and a test that is the same on both sides of the line would drop the job the moment we step back
     public static final double KEEP_FACTOR = 1.5;
@@ -22,26 +23,22 @@ public final class CoalRules {
     // 6 down, and a leash that charged for height cut that detour short) times the start budget away from the spot it began at.
     // a vein at the edge of the keep reach has us standing a couple of blocks past it
     public static final double LEASH_FACTOR = 2.0;
-    // a few seconds of peace after any detour, so it does not trade places with the head task every other second
+    // a few seconds of peace after any coal detour, so it does not trade places with the head task every other second.
+    // the default for new DetourRules(), each spec brings its own (DetourSpec.cooldownTicks)
     public static final long COOLDOWN_TICKS = 5 * 20;
-    // the ore is gone and its drop is a tick or two from existing. waiting this long is how the last piece of coal gets into
-    // the bag instead of onto the floor behind us
+    // the ore is gone and its drop is a tick or two from existing. waiting this long is how the last piece gets into the bag
+    // instead of onto the floor behind us
     public static final long DROP_GRACE_TICKS = 20;
     // a detour that was not asked about for this long was not ours to run (a trip, a pickup had the wheel), and its clock
     // would bill us for that time
     public static final long GAP_TICKS = 40;
-    // a coal drop this close is still ours to pick up, same reach the mining task picks drops first at
+    // a drop this close is still ours to pick up, same reach the mining task picks drops first at
     public static final double DROP_RADIUS = 6;
     // the chat line is for a NEW cluster. a detour that restarts on the same one (a bed or a chest took the tick for a few seconds)
     // stays quiet unless the new start is further than this many blocks from the spot we last said it at, or it has been this
     // long since we did
     public static final double ANNOUNCE_BLOCKS = 8;
     public static final long ANNOUNCE_TICKS = 60 * 20;
-    // the coal the plan still burns: a coal is 8 smelts, and a couple more than the sum so a stray smelt does not send us out
-    public static final int SMELTS_PER_COAL = 8;
-    public static final int NEED_MARGIN = 2;
-    // whatever the sum says, a detour never takes us past this. a full run's iron and meat is about 10
-    public static final int NEED_CEILING = 16;
     // the offset tables are cubes of this size at the most, a typo'd 500 in the config is not 40 million entries
     static final double MAX_BUDGET = 48;
 
@@ -54,8 +51,10 @@ public final class CoalRules {
         KEEP,
         // the ore is gone and the drop is not up yet: give it a moment before calling it done
         SETTLE,
-        // over: no ore we can see is left in the cluster, or we hold what the plan needs
+        // over: nothing we can see is left in the cluster, or we hold what the plan needs
         DONE,
+        // over: mined the spec's block cap for one detour and the thing we came for never dropped (gravel's 10, flint is a 10% roll)
+        CAPPED,
         // over: out of time, so whatever is still standing gets banned
         TIMEOUT,
         // over: led too far from where it began with ore still standing (the mining task gave up on a block and went for a vein
@@ -65,15 +64,28 @@ public final class CoalRules {
         BLOCKED
     }
 
-    // what the phase knows this tick. the world half builds it, the rules never read the game. need = coalNeed, what we stop at
-    public record Inputs(boolean overworld, boolean pickaxe, int coal, int need, boolean cookStation, boolean furnaceDue,
-                         boolean loadInFlight, boolean foodLeads, boolean coalHead) {
+    // what the phase knows this tick. the world half builds it, the rules never read the game. dimension = this resource may be
+    // dug here at all (coal: the overworld, gravel: see DetourSpec.gravelPhase), tool = the spec's tool gate, held = what we hold
+    // of the item we came for, need = what we stop at, resourceHead = the kit task is already on this exact thing, mined = blocks
+    // broken since the detour began (Tally)
+    public record Inputs(boolean dimension, boolean tool, int held, int need, boolean cookStation, boolean furnaceDue,
+                         boolean loadInFlight, boolean foodLeads, boolean resourceHead, int mined) {
+        // most callers have not mined anything yet, coal never counts
+        public Inputs(boolean dimension, boolean tool, int held, int need, boolean cookStation, boolean furnaceDue,
+                      boolean loadInFlight, boolean foodLeads, boolean resourceHead) {
+            this(dimension, tool, held, need, cookStation, furnaceDue, loadInFlight, foodLeads, resourceHead, 0);
+        }
+    }
+
+    // the numbers one spec runs on, read from the config (DetourSpec.limits). heldCap = the config's own "stop at" on top of the
+    // need, maxTicks = the clock, mineCap = blocks per detour (0 = no cap, coal stops on what it holds)
+    public record Limits(int heldCap, long maxTicks, int mineCap) {
     }
 
     // the questions about the world, asked lazily because the first three are block reads: a veined cave wall costs thousands.
-    // start = a coal ore worth starting on (in reach, in sight right now (CoalSight), breakable, not banned), keep = any ore we
-    // can still see in the looser reach around where the detour began, drop = a coal item on the floor close by that fits in the bag, strayed = we are further
-    // from where it began than the leash
+    // start = a block worth starting on (in reach, in sight right now (DetourSight), breakable, not banned), keep = any we
+    // can still see in the looser reach around where the detour began, drop = an item we came for on the floor close by that fits
+    // in the bag, strayed = we are further from where it began than the leash
     public record Ore(BooleanSupplier start, BooleanSupplier keep, BooleanSupplier drop, BooleanSupplier strayed) {
     }
 
@@ -83,6 +95,7 @@ public final class CoalRules {
 
     private static final Map<Double, List<Offset>> TABLES = new ConcurrentHashMap<>();
 
+    private final long cooldownTicks;
     private boolean running;
     private long startTick;
     private long lastTick;
@@ -95,6 +108,15 @@ public final class CoalRules {
     private int announcedX;
     private int announcedY;
     private int announcedZ;
+
+    // coal's cooldown
+    public DetourRules() {
+        this(COOLDOWN_TICKS);
+    }
+
+    public DetourRules(long cooldownTicks) {
+        this.cooldownTicks = cooldownTicks;
+    }
 
     public boolean running() {
         return running;
@@ -109,8 +131,8 @@ public final class CoalRules {
         return budget * KEEP_FACTOR;
     }
 
-    // how far from where it began the player may get, in blocks. the mining task goes for the nearest coal it knows of at any range,
-    // so a block it cannot reach sends it off to the next vein, and this is what cuts that walk short
+    // how far from where it began the player may get, in blocks. the mining task goes for the nearest block it knows of at any
+    // range, so a block it cannot reach sends it off to the next vein, and this is what cuts that walk short
     public static double leash(double budget) {
         return budget * LEASH_FACTOR;
     }
@@ -122,48 +144,39 @@ public final class CoalRules {
     }
 
     // the things that are never worth a detour, for starting and for staying alike:
-    //  - not the overworld, or no stone pick or better in the bag (coal is wood tier, but the wooden pick stage doesn't detour)
+    //  - the wrong place for this resource, or the spec's tool gate says no (coal: stone pick or better, gravel: nothing)
     //  - a cook has picked its station, a furnace load is in flight (a screen open, a smelt task just had one), or a job is
     //    due (the collect trip goes first). a quick smoker stand-by never gets here, it cuts in on a detour
     //    (IronActivity.preempts, PrepSupport.tickStandBy on the old path)
-    //  - the food or the cook leads the plan, or coal is the head need and the kit task is already on it
+    //  - the food or the cook leads the plan, or this resource is the head need and the kit task is already on it
     public static boolean blocked(Inputs in) {
-        return !in.overworld() || !in.pickaxe() || in.cookStation() || in.furnaceDue() || in.loadInFlight() || in.foodLeads()
-                || in.coalHead();
+        return !in.dimension() || !in.tool() || in.cookStation() || in.furnaceDue() || in.loadInFlight() || in.foodLeads()
+                || in.resourceHead();
     }
 
-    // coal enough for the rest of the plan: every iron ingot still owed that is not in the bag or in one of our furnaces, plus
-    // the raw meat in the bag, is a smelt. the wood we would burn anyway (above the reserve) covers some, the rest is coal, a
-    // coal is 8. plus the margin, never past the ceiling. a flat cap has no idea how much smelting is left, so it went mining
-    // for coal nothing was ever going to burn
-    public static int coalNeed(int ingotsOwed, int ingotsHeld, int ingotsPending, int rawMeat, int woodSmelts) {
-        int smelts = Math.max(0, ingotsOwed - ingotsHeld - ingotsPending) + Math.max(0, rawMeat);
-        int left = Math.max(0, smelts - Math.max(0, woodSmelts));
-        return Math.min(NEED_CEILING, (left + SMELTS_PER_COAL - 1) / SMELTS_PER_COAL + NEED_MARGIN);
+    // what we hold covers the plan (and the config's own cap, if somebody set that lower). a need of 0 is always enough
+    public static boolean enough(Inputs in, Limits lim) {
+        return in.held() >= Math.min(in.need(), lim.heldCap());
     }
 
-    // the coal held covers the plan (and the config's own cap, if somebody set that lower)
-    public static boolean enough(Inputs in, OverworldConfig cfg) {
-        return in.coal() >= Math.min(in.need(), cfg.coalSideCap);
-    }
-
-    public static long maxTicks(OverworldConfig cfg) {
-        return Math.round(cfg.coalSideSeconds * 20);
+    // dug the spec's share for one detour. gravel stops at 10 blocks with or without flint, or every patch is a strip mine
+    public static boolean capped(Inputs in, Limits lim) {
+        return lim.mineCap() > 0 && in.mined() >= lim.mineCap();
     }
 
     // one call per tick the side job is asked about
-    public Step tick(long now, Inputs in, OverworldConfig cfg, Ore ore) {
+    public Step tick(long now, Inputs in, Limits lim, Ore ore) {
         if (running && now - lastTick > GAP_TICKS) {
             lastTick = now;
             return end(now, Step.BLOCKED);
         }
         lastTick = now;
-        return running ? going(now, in, cfg, ore) : idle(now, in, cfg, ore);
+        return running ? going(now, in, lim, ore) : idle(now, in, lim, ore);
     }
 
-    private Step idle(long now, Inputs in, OverworldConfig cfg, Ore ore) {
+    private Step idle(long now, Inputs in, Limits lim, Ore ore) {
         // the cheap questions first, the ore question is a world scan
-        if (now < cooldownUntil || blocked(in) || enough(in, cfg) || !ore.start().getAsBoolean()) {
+        if (now < cooldownUntil || blocked(in) || enough(in, lim) || !ore.start().getAsBoolean()) {
             return Step.IDLE;
         }
         running = true;
@@ -172,12 +185,16 @@ public final class CoalRules {
         return Step.START;
     }
 
-    private Step going(long now, Inputs in, OverworldConfig cfg, Ore ore) {
+    private Step going(long now, Inputs in, Limits lim, Ore ore) {
         if (blocked(in)) {
             return end(now, Step.BLOCKED);
         }
-        if (enough(in, cfg)) {
+        if (enough(in, lim)) {
             return end(now, Step.DONE);
+        }
+        // after enough on purpose: the 10th gravel that drops the flint is a success, not a cap
+        if (capped(in, lim)) {
+            return end(now, Step.CAPPED);
         }
         boolean standing = ore.keep().getAsBoolean();
         if (!standing && !ore.drop().getAsBoolean()) {
@@ -192,13 +209,13 @@ public final class CoalRules {
         if (standing && ore.strayed().getAsBoolean()) {
             return end(now, Step.STRAYED);
         }
-        return now - startTick > maxTicks(cfg) ? end(now, Step.TIMEOUT) : Step.KEEP;
+        return now - startTick > lim.maxTicks() ? end(now, Step.TIMEOUT) : Step.KEEP;
     }
 
     private Step end(long now, Step why) {
         running = false;
         goneSince = -1;
-        cooldownUntil = now + COOLDOWN_TICKS;
+        cooldownUntil = now + cooldownTicks;
         return why;
     }
 
@@ -239,10 +256,10 @@ public final class CoalRules {
         return true;
     }
 
-    // every cell within the budget of the player, nearest walk first, so the caller can stop at the first block that is coal.
+    // every cell within the budget of the player, nearest walk first, so the caller can stop at the first block that counts.
     // ties go to the one nearer our own height, then to a fixed order so two ticks never disagree about which came first
     public static List<Offset> offsets(double budget) {
-        return TABLES.computeIfAbsent(Math.min(Math.max(budget, 0), MAX_BUDGET), CoalRules::build);
+        return TABLES.computeIfAbsent(Math.min(Math.max(budget, 0), MAX_BUDGET), DetourRules::build);
     }
 
     private static List<Offset> build(double budget) {
@@ -262,5 +279,38 @@ public final class CoalRules {
                 .thenComparingInt(o -> Math.abs(o.dy())).thenComparingInt(Offset::dy).thenComparingInt(Offset::dx)
                 .thenComparingInt(Offset::dz));
         return List.copyOf(cells);
+    }
+
+    // counts the blocks of ours we broke, for the per detour cap. there is no "you broke a block" event that fires (BlockBrokenEvent
+    // has no poster), so we watch the block being broken and count it once it stops being ours. the falling column refills that
+    // cell, but only a few ticks later: a 1 block drop is two ticks of waiting plus the fall, and we look every tick
+    public static final class Tally {
+        private boolean watching;
+        private long watched;
+        private int count;
+
+        // breaking = a break is going on at pos right now, ours = is that cell still one of the blocks we are after
+        public void tick(boolean breaking, long pos, LongPredicate ours) {
+            if (watching && !ours.test(watched)) {
+                count++;
+                watching = false;
+            }
+            if (breaking && ours.test(pos)) {
+                watching = true;
+                watched = pos;
+            } else if (!breaking) {
+                // gave up halfway (the stale flag fell), a later fall of that block would not be our break
+                watching = false;
+            }
+        }
+
+        public int count() {
+            return count;
+        }
+
+        public void reset() {
+            watching = false;
+            count = 0;
+        }
     }
 }

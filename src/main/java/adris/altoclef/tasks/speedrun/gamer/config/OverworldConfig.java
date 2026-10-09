@@ -75,13 +75,19 @@ public class OverworldConfig {
     public double villageBedSeconds = 120;
     public double villageBedEachSeconds = 20;
 
-    // coal on the way (see CoalRules): while GATHER and IRON mine, coal ore this close is worth a short detour, because a smelt
-    // that runs short of fuel sends us out for coal anyway. the reach is WalkCost, blocks across plus 4 per block of height, so
-    // about 12 flat or 3 up or down. it stops at what the plan still burns (CoalRules.coalNeed, never past 16) or coalSideCap in
-    // the bag, whichever is lower, and a detour gets coalSideSeconds before the vein is banned for a while (BanPolicy.COAL)
+    // coal on the way (see DetourRules, DetourSpec.COAL): while GATHER and IRON mine, coal ore this close is worth a short detour,
+    // because a smelt that runs short of fuel sends us out for coal anyway. the reach is WalkCost, blocks across plus 4 per block
+    // of height, so about 12 flat or 3 up or down. it stops at what the plan still burns (DetourSpec.coalNeed, never past 16) or
+    // coalSideCap in the bag, whichever is lower, and a detour gets coalSideSeconds before the vein is banned for a while
+    // (BanPolicy.COAL)
     public double coalSideBudget = 12;
     public int coalSideCap = 24;
     public double coalSideSeconds = 30;
+    // gravel on the way (DetourSpec.GRAVEL): same reach and clock, for flint until the flint and steel is made. gravelSideBlocks
+    // is the most a detour digs (flint is a 10% roll, 10 blocks is ~65% to see one), then it ends with or without flint
+    public double gravelSideBudget = 12;
+    public int gravelSideBlocks = 10;
+    public double gravelSideSeconds = 30;
 
     // casting with no lava in sight for this long, while we already hold a diamond pickaxe, flips to obsidian early.
     // without the pickaxe we keep wandering for a lake until castGiveUpMinutes

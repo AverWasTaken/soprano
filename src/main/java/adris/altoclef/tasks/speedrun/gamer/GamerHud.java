@@ -191,7 +191,7 @@ final class GamerHud {
     }
 
     private static CoalRow coalRow(AltoClef mod, PrepSupport support, GamerConfig cfg) {
-        CoalDetour coal = support == null ? null : support.coal();
+        ResourceDetour coal =support == null ? null : support.coal();
         if (coal == null || !coal.active()) {
             return null;
         }

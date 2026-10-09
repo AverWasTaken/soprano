@@ -236,6 +236,9 @@ public class IronPhase implements PhaseHandler {
             if (before == Kind.COAL && got != Kind.COAL) {
                 support.endCoal(now);
             }
+            if (before == Kind.GRAVEL && got != Kind.GRAVEL) {
+                support.endGravel(now);
+            }
             if (!jobs && got != Kind.FINISHING) {
                 // nothing cooking and nothing being finished: the furnace side starts the next batch clean
                 furnaces.reset();
@@ -247,6 +250,9 @@ public class IronPhase implements PhaseHandler {
         }
         if (before == Kind.COAL) {
             support.endCoal(now);
+        }
+        if (before == Kind.GRAVEL) {
+            support.endGravel(now);
         }
         if (!jobs) {
             furnaces.reset();
@@ -268,6 +274,7 @@ public class IronPhase implements PhaseHandler {
             case BED -> support.bed(mod, ctx);
             case GOLEM_START -> support.golemStart(mod, ctx, head);
             case COAL -> support.coalDetour(mod, ctx, head);
+            case GRAVEL -> support.gravelDetour(mod, ctx, head);
             case PACK_UP -> packUpTrip(mod, ctx, head, second(needs), jobs);
             case SURFACE -> jobs && head == null ? null : surface.tick(mod, ctx, head, second(needs));
             case KIT -> kit(ctx, needs, head, jobs);
@@ -338,6 +345,7 @@ public class IronPhase implements PhaseHandler {
     private String endWords(Kind k) {
         return switch (k) {
             case COAL -> support.coalEnded();
+            case GRAVEL -> support.gravelEnded();
             case STAND_BY, FURNACE, PACK_UP -> "visit over";
             case STATION -> "pickup over";
             case GOLEM_FIGHT, GOLEM_START -> "fight over";

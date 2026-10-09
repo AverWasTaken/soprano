@@ -6,7 +6,7 @@ import java.util.List;
 import java.util.Map;
 
 // the one place IRON decides "what are we doing right now". same deal as CombatCommit for fights: one way in, one way out,
-// nothing in between lets go. the jobs keep their own insides (CoalDetour, VillageLoot, GolemHunt, FurnaceWatch...), this only
+// nothing in between lets go. the jobs keep their own insides (ResourceDetour, VillageLoot, GolemHunt, FurnaceWatch...), this only
 // says WHICH of them gets asked. pure, IronPhase is the thin driver that asks the jobs in the order this hands it.
 //
 // the rule: the kit is the floor, anything eligible above it takes the wheel. anything else, once it has the wheel, holds it
@@ -36,8 +36,11 @@ public final class IronActivity {
         BED("village bed"),
         GOLEM_START("golem hunt"),
         // last of the side jobs: coal is the only one for something we might need rather than something we do. it ends itself
-        // on a furnace that is due (CoalRules), so it never sits on a collect
+        // on a furnace that is due (DetourRules), so it never sits on a collect
         COAL("coal detour"),
+        // gravel for flint, right behind coal: coal is burnt this phase, the flint waits for the portal. same rules otherwise
+        // (it ends itself on a due furnace too), and its 2 min cooldown keeps it from taking every patch we walk past
+        GRAVEL("gravel detour"),
         // a collect, a take-back, the early pick interrupt, the idle wait. after the side jobs like it always was (a trip only
         // starts when the wheel is free)
         FURNACE("furnace trip"),
@@ -90,7 +93,7 @@ public final class IronActivity {
         if (held == Kind.GOLEM_START && golemFighting) {
             return false;
         }
-        return k == Kind.STAND_BY && held.ordinal() >= Kind.STATION.ordinal() && held.ordinal() <= Kind.COAL.ordinal();
+        return k == Kind.STAND_BY && held.ordinal() >= Kind.STATION.ordinal() && held.ordinal() <= Kind.GRAVEL.ordinal();
     }
 
     // holds the wheel once it has it. the kit is the floor and yields to anything eligible
@@ -106,7 +109,7 @@ public final class IronActivity {
             case GOLEM_FIGHT -> s.loots() && s.golemFighting();
             case STAND_BY -> s.jobs() && s.standingBy();
             // standing by a smoker is the plan, nothing that walks off starts meanwhile
-            case STATION, BED, COAL -> !s.standingBy();
+            case STATION, BED, COAL, GRAVEL -> !s.standingBy();
             case RUINED_PORTAL, VILLAGE_CHEST -> s.loots() && !s.standingBy();
             case GOLEM_START -> s.loots() && !s.standingBy() && !s.golemFighting();
             case FURNACE -> s.jobs() && !s.standingBy();

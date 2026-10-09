@@ -1,7 +1,7 @@
 package adris.altoclef.tasks.speedrun.gamer;
 
-import adris.altoclef.tasks.speedrun.gamer.CoalRules.Inputs;
-import adris.altoclef.tasks.speedrun.gamer.CoalRules.Step;
+import adris.altoclef.tasks.speedrun.gamer.DetourRules.Inputs;
+import adris.altoclef.tasks.speedrun.gamer.DetourRules.Step;
 import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig;
 import org.junit.Test;
 
@@ -20,8 +20,8 @@ public class CoalNeedTest {
         return new Inputs(true, true, coal, need, false, false, false, false, false);
     }
 
-    private static CoalRules.Ore ore(boolean start, boolean keep) {
-        return new CoalRules.Ore(() -> start, () -> keep, () -> false, () -> false);
+    private static DetourRules.Ore ore(boolean start, boolean keep) {
+        return new DetourRules.Ore(() -> start, () -> keep, () -> false, () -> false);
     }
 
     // ---- the need
@@ -29,60 +29,60 @@ public class CoalNeedTest {
     @Test
     public void ironOwedAndMeatAreSmeltsAndACoalIsEight() {
         // 24 owed, 3 in the bag, 5 cooking = 16 ingots to smelt, plus 8 meat = 24 smelts = 3 coal, plus the margin
-        assertEquals(3 + CoalRules.NEED_MARGIN, CoalRules.coalNeed(24, 3, 5, 8, 0));
+        assertEquals(3 + DetourSpec.NEED_MARGIN, DetourSpec.coalNeed(24, 3, 5, 8, 0));
     }
 
     @Test
     public void aPartCoalRoundsUp() {
-        assertEquals(2 + CoalRules.NEED_MARGIN, CoalRules.coalNeed(9, 0, 0, 0, 0));
-        assertEquals(1 + CoalRules.NEED_MARGIN, CoalRules.coalNeed(8, 0, 0, 0, 0));
+        assertEquals(2 + DetourSpec.NEED_MARGIN, DetourSpec.coalNeed(9, 0, 0, 0, 0));
+        assertEquals(1 + DetourSpec.NEED_MARGIN, DetourSpec.coalNeed(8, 0, 0, 0, 0));
     }
 
     @Test
     public void ingotsPendingInAFurnaceAreNotOwed() {
-        assertEquals(CoalRules.NEED_MARGIN, CoalRules.coalNeed(10, 2, 8, 0, 0));
+        assertEquals(DetourSpec.NEED_MARGIN, DetourSpec.coalNeed(10, 2, 8, 0, 0));
         // more held and cooking than owed is no smelts, not negative ones eating the meat
-        assertEquals(1 + CoalRules.NEED_MARGIN, CoalRules.coalNeed(3, 5, 5, 8, 0));
+        assertEquals(1 + DetourSpec.NEED_MARGIN, DetourSpec.coalNeed(3, 5, 5, 8, 0));
     }
 
     @Test
     public void woodWeWouldBurnAnywayCountsAsFuel() {
-        assertEquals(2 + CoalRules.NEED_MARGIN, CoalRules.coalNeed(24, 0, 0, 0, 12));
-        assertEquals(CoalRules.NEED_MARGIN, CoalRules.coalNeed(24, 0, 0, 0, 30));
+        assertEquals(2 + DetourSpec.NEED_MARGIN, DetourSpec.coalNeed(24, 0, 0, 0, 12));
+        assertEquals(DetourSpec.NEED_MARGIN, DetourSpec.coalNeed(24, 0, 0, 0, 30));
     }
 
     @Test
     public void nothingLeftToSmeltStillWantsTheMargin() {
-        assertEquals(CoalRules.NEED_MARGIN, CoalRules.coalNeed(0, 0, 0, 0, 0));
+        assertEquals(DetourSpec.NEED_MARGIN, DetourSpec.coalNeed(0, 0, 0, 0, 0));
     }
 
     @Test
     public void theCeilingHoldsWhateverThePlanSays() {
-        assertEquals(CoalRules.NEED_CEILING, CoalRules.coalNeed(300, 0, 0, 64, 0));
-        assertEquals(16, CoalRules.NEED_CEILING);
+        assertEquals(DetourSpec.NEED_CEILING, DetourSpec.coalNeed(300, 0, 0, 64, 0));
+        assertEquals(16, DetourSpec.NEED_CEILING);
     }
 
     // ---- the rules stop at the need
 
     @Test
     public void holdingTheNeedMeansNoDetour() {
-        assertEquals(Step.IDLE, new CoalRules().tick(1000, holding(5, 5), CFG, ore(true, true)));
-        assertEquals(Step.START, new CoalRules().tick(1000, holding(4, 5), CFG, ore(true, true)));
+        assertEquals(Step.IDLE, new DetourRules().tick(1000, holding(5, 5), DetourSpec.COAL.limits(CFG), ore(true, true)));
+        assertEquals(Step.START, new DetourRules().tick(1000, holding(4, 5), DetourSpec.COAL.limits(CFG), ore(true, true)));
     }
 
     @Test
     public void theCeilingIsTheStopForAHugePlan() {
-        int need = CoalRules.coalNeed(300, 0, 0, 0, 0);
-        assertEquals(Step.IDLE, new CoalRules().tick(1000, holding(16, need), CFG, ore(true, true)));
-        assertEquals(Step.START, new CoalRules().tick(1000, holding(15, need), CFG, ore(true, true)));
+        int need = DetourSpec.coalNeed(300, 0, 0, 0, 0);
+        assertEquals(Step.IDLE, new DetourRules().tick(1000, holding(16, need), DetourSpec.COAL.limits(CFG), ore(true, true)));
+        assertEquals(Step.START, new DetourRules().tick(1000, holding(15, need), DetourSpec.COAL.limits(CFG), ore(true, true)));
     }
 
     @Test
     public void reachingTheNeedMidDetourEndsIt() {
-        CoalRules rules = new CoalRules();
-        assertEquals(Step.START, rules.tick(1000, holding(2, 5), CFG, ore(true, true)));
-        assertEquals(Step.KEEP, rules.tick(1001, holding(4, 5), CFG, ore(true, true)));
-        assertEquals(Step.DONE, rules.tick(1002, holding(5, 5), CFG, ore(true, true)));
+        DetourRules rules = new DetourRules();
+        assertEquals(Step.START, rules.tick(1000, holding(2, 5), DetourSpec.COAL.limits(CFG), ore(true, true)));
+        assertEquals(Step.KEEP, rules.tick(1001, holding(4, 5), DetourSpec.COAL.limits(CFG), ore(true, true)));
+        assertEquals(Step.DONE, rules.tick(1002, holding(5, 5), DetourSpec.COAL.limits(CFG), ore(true, true)));
         assertFalse(rules.running());
     }
 
@@ -90,14 +90,14 @@ public class CoalNeedTest {
     public void aLowerConfigCapStillCaps() {
         OverworldConfig cfg = new OverworldConfig();
         cfg.coalSideCap = 3;
-        assertTrue(CoalRules.enough(holding(3, 5), cfg));
-        assertFalse(CoalRules.enough(holding(3, 5), CFG));
+        assertTrue(DetourRules.enough(holding(3, 5), DetourSpec.COAL.limits(cfg)));
+        assertFalse(DetourRules.enough(holding(3, 5), DetourSpec.COAL.limits(CFG)));
     }
 
     // ---- what we can see
 
     // stone where we say, air everywhere else
-    private static final class Rock implements CoalSight.Cells {
+    private static final class Rock implements DetourSight.Cells {
         final Set<Long> solid = new HashSet<>();
 
         static long key(int x, int y, int z) {
@@ -145,60 +145,60 @@ public class CoalNeedTest {
     public void oreInAnOpenWallFacingUsIsVisible() {
         // a cave wall at x = 4, the ore in it at eye height
         Rock w = new Rock().box(4, -2, -3, 6, 4, 3);
-        assertTrue(CoalSight.visible(w, EX, EY, EZ, 4, 1, 0));
+        assertTrue(DetourSight.visible(w, EX, EY, EZ, 4, 1, 0));
     }
 
     @Test
     public void oreInsideTheRockHasNoAirFace() {
         Rock w = new Rock().box(4, -2, -3, 6, 4, 3);
-        assertFalse(CoalSight.visible(w, EX, EY, EZ, 5, 1, 0));
+        assertFalse(DetourSight.visible(w, EX, EY, EZ, 5, 1, 0));
     }
 
     @Test
     public void anAirFaceBehindAWallIsNotInSight() {
         // the ore's open face looks into a pocket on our side, but a wall stands between us and the pocket
         Rock w = new Rock().box(4, -2, -3, 6, 4, 3).box(2, -2, -3, 2, 4, 3).box(3, -2, -3, 3, 4, 3).dig(3, 1, 0);
-        assertFalse(CoalSight.visible(w, EX, EY, EZ, 4, 1, 0));
+        assertFalse(DetourSight.visible(w, EX, EY, EZ, 4, 1, 0));
     }
 
     @Test
     public void anAirFacePointingAwayFromUsIsNotInSight() {
         // a cave on the far side of the vein: the only open face is the back one
         Rock w = new Rock().box(2, -2, -3, 6, 4, 3).dig(5, 1, 0);
-        assertFalse(CoalSight.visible(w, EX, EY, EZ, 4, 1, 0));
+        assertFalse(DetourSight.visible(w, EX, EY, EZ, 4, 1, 0));
     }
 
     @Test
     public void tooFarIsNotADetourEvenInPlainSight() {
         Rock w = new Rock().box(10, -2, -3, 12, 4, 3);
-        assertFalse(CoalSight.visible(w, EX, EY, EZ, 10, 1, 0));
+        assertFalse(DetourSight.visible(w, EX, EY, EZ, 10, 1, 0));
     }
 
     @Test
     public void startsOnVisibleCoalButNotOnHidden() {
         Rock w = new Rock().box(4, -2, -3, 6, 4, 3);
-        boolean visible = CoalSight.visible(w, EX, EY, EZ, 4, 1, 0);
-        boolean hidden = CoalSight.visible(w, EX, EY, EZ, 5, 1, 0);
-        assertEquals(Step.START, new CoalRules().tick(1000, holding(0, 5), CFG, ore(visible, visible)));
-        assertEquals(Step.IDLE, new CoalRules().tick(1000, holding(0, 5), CFG, ore(hidden, hidden)));
+        boolean visible = DetourSight.visible(w, EX, EY, EZ, 4, 1, 0);
+        boolean hidden = DetourSight.visible(w, EX, EY, EZ, 5, 1, 0);
+        assertEquals(Step.START, new DetourRules().tick(1000, holding(0, 5), DetourSpec.COAL.limits(CFG), ore(visible, visible)));
+        assertEquals(Step.IDLE, new DetourRules().tick(1000, holding(0, 5), DetourSpec.COAL.limits(CFG), ore(hidden, hidden)));
     }
 
     @Test
     public void theDetourEndsWhenOnlyHiddenCoalIsLeft() {
         // mined the visible ore at x = 4 (it is air now), the one left at x = 6 sits behind x = 5 stone with no face of its own
         Rock w = new Rock().box(4, -2, -3, 7, 4, 3).dig(4, 1, 0);
-        assertFalse(CoalSight.visible(w, EX, EY, EZ, 6, 1, 0));
-        CoalRules rules = new CoalRules();
-        assertEquals(Step.START, rules.tick(1000, holding(0, 5), CFG, ore(true, true)));
-        CoalRules.Ore left = new CoalRules.Ore(() -> false, () -> CoalSight.visible(w, EX, EY, EZ, 6, 1, 0), () -> false, () -> false);
-        assertEquals(Step.SETTLE, rules.tick(1001, holding(1, 5), CFG, left));
-        assertEquals(Step.DONE, rules.tick(1001 + CoalRules.DROP_GRACE_TICKS, holding(1, 5), CFG, left));
+        assertFalse(DetourSight.visible(w, EX, EY, EZ, 6, 1, 0));
+        DetourRules rules = new DetourRules();
+        assertEquals(Step.START, rules.tick(1000, holding(0, 5), DetourSpec.COAL.limits(CFG), ore(true, true)));
+        DetourRules.Ore left = new DetourRules.Ore(() -> false, () -> DetourSight.visible(w, EX, EY, EZ, 6, 1, 0), () -> false, () -> false);
+        assertEquals(Step.SETTLE, rules.tick(1001, holding(1, 5), DetourSpec.COAL.limits(CFG), left));
+        assertEquals(Step.DONE, rules.tick(1001 + DetourRules.DROP_GRACE_TICKS, holding(1, 5), DetourSpec.COAL.limits(CFG), left));
     }
 
     @Test
     public void theOreBehindTheMinedOneIsFairOnceItIsExposed() {
         // the vein carries on straight behind: mining x = 4 opens a face on x = 5 that looks right at us
         Rock w = new Rock().box(4, -2, -3, 7, 4, 3).dig(4, 1, 0);
-        assertTrue(CoalSight.visible(w, EX, EY, EZ, 5, 1, 0));
+        assertTrue(DetourSight.visible(w, EX, EY, EZ, 5, 1, 0));
     }
 }

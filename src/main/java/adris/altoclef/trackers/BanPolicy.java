@@ -30,6 +30,11 @@ public final class BanPolicy {
     public static final String COAL_REASON = "coal detour gave up on it";
     // the coal bans are the detour's business only (Bans.banFor): the fuel task, or coal as the head need, still mines them
     public static final String COAL_SCOPE = "the coal detour";
+    // same deal for the gravel detour, same 5 minutes. its own scope, a gravel patch we gave up on says nothing about coal.
+    // and the flint task (kit head "flint") still digs them
+    public static final long GRAVEL = 6000;
+    public static final String GRAVEL_REASON = "gravel detour gave up on it";
+    public static final String GRAVEL_SCOPE = "the gravel detour";
     public static final String OUTPOST_REASON = "near a pillager outpost";
 
     private BanPolicy() {
@@ -102,6 +107,15 @@ public final class BanPolicy {
     // what the detour asks: the everybody bans plus its own
     public static boolean coalBanned(Bans bans, int x, int y, int z) {
         return bans.banned(Key.block(Dimension.OVERWORLD, x, y, z), COAL_SCOPE);
+    }
+
+    // gravel comes in the nether too (soul sand valleys), so this one takes the dimension
+    public static boolean gravel(Bans bans, Dimension dim, int x, int y, int z) {
+        return bans.banFor(GRAVEL_SCOPE, Key.block(dim, x, y, z), GRAVEL_REASON, GRAVEL);
+    }
+
+    public static boolean gravelBanned(Bans bans, Dimension dim, int x, int y, int z) {
+        return bans.banned(Key.block(dim, x, y, z), GRAVEL_SCOPE);
     }
 
     // DangerFilter: trial chamber furniture, witch hut and outpost tables. they do not stop being traps, so the run
