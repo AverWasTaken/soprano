@@ -199,8 +199,8 @@ public abstract class DoStuffInContainerTask extends Task {
         if (usable(mod, ours)) {
             seen.add(candidate(ours, me, StationChoice.Role.OURS));
         }
-        // and the nearest of ours out to the forget line, for the walk back (StationChoice takes it within WALK_BACK for a furnace or
-        // smoker, and anywhere out to the forget line when the bag cannot make one). an unloaded chunk reads as air, so out there the
+        // and the nearest of ours out to the forget line, for the walk back (StationChoice takes it within WALK_BACK for a table, furnace
+        // or smoker, and anywhere out to the forget line when the bag cannot make one). an unloaded chunk reads as air, so out there the
         // registry's word is taken
         BlockPos oursFar = _stationKind == null ? null : StationHook.standingWithin(_stationKind, me.x, me.y, me.z, WalkCost.STATION_FORGET);
         if (oursFar != null && !oursFar.equals(ours) && walkBackUsable(mod, oursFar, _containerBlocks)) {
@@ -276,7 +276,7 @@ public abstract class DoStuffInContainerTask extends Task {
         Vec3 me = mod.getPlayer().position();
         String word = _stationKind.word();
         double away = pick.key() == null ? 0 : WalkCost.stationDistance(pick.key().getX(), pick.key().getY(), pick.key().getZ(), me.x, me.y, me.z);
-        // past NEAR is the walk back: within WALK_BACK of a furnace or smoker even with the stuff to make one, past that only when
+        // past NEAR is the walk back: within WALK_BACK of one of ours even with the stuff to make one, past that only when
         // the bag cannot make one
         boolean far = away > WalkCost.STATION_NEAR;
         String back = far ? ", walking back to it, the bag cannot make a " + word : "";

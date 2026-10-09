@@ -290,13 +290,22 @@ public class StationChoiceTest {
         assertPick(Use.MAKE, null, furnace(List.of(ours("ours", past)), null, false, true));
     }
 
-    // a table is 4 planks and a click, so it gets no walk past NEAR when the bag can make one
+    // a table gets the same walk back as a furnace: a second one leaves the first out there for a pickup trip, and the planner
+    // counting ours 22 blocks off is what keeps the log need from coming and going
     @Test
-    public void aTableIsNotWalkedBackToWhenThePlanksAreHere() {
-        assertEquals(NEAR, StationChoice.walkBackReach(StationHook.Kind.TABLE), 0);
+    public void aTableIsWalkedBackToEvenWithThePlanksHere() {
+        assertEquals(StationChoice.WALK_BACK, StationChoice.walkBackReach(StationHook.Kind.TABLE), 0);
         assertEquals(NEAR, StationChoice.walkBackReach(null), 0);
         assertEquals(StationChoice.WALK_BACK, StationChoice.walkBackReach(StationHook.Kind.SMOKER), 0);
-        assertPick(Use.MAKE, null, StationChoice.decide(List.of(ours("t", 30)), null, false, true, true, NEAR,
+        assertPick(Use.OURS, "t", StationChoice.decide(List.of(ours("t", 30)), null, false, true, true, NEAR,
+                StationChoice.walkBackReach(StationHook.Kind.TABLE)));
+        // past it the planks win
+        assertPick(Use.MAKE, null, StationChoice.decide(List.of(ours("t", StationChoice.WALK_BACK + 1)), null, false, true, true, NEAR,
+                StationChoice.walkBackReach(StationHook.Kind.TABLE)));
+        // a village table next to us still beats the walk, and the one in the bag goes down first
+        assertPick(Use.WORLD, "v", StationChoice.decide(List.of(ours("t", 30), new Candidate<>("v", 5, Role.WORLD)), null, false, true,
+                true, NEAR, StationChoice.walkBackReach(StationHook.Kind.TABLE)));
+        assertPick(Use.BAG, null, StationChoice.decide(List.of(ours("t", 30)), null, true, true, true, NEAR,
                 StationChoice.walkBackReach(StationHook.Kind.TABLE)));
         assertEquals(WalkCost.STATION_FORGET, StationChoice.oursReach(StationHook.Kind.TABLE, false), 0);
         assertEquals(StationChoice.WALK_BACK, StationChoice.oursReach(StationHook.Kind.FURNACE, true), 0);

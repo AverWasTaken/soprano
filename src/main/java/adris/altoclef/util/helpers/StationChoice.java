@@ -17,8 +17,8 @@ public final class StationChoice {
     // the one we are walking to keeps its place this far past the line, or a station sitting right on it trades places every time
     // a step moves us across
     public static final double HOLD = 2.0;
-    // a furnace or smoker of ours this close (straight line) is walked back to even when the bag could make another. making one is
-    // 8 cobble and a table and a craft, and then the old one sits out there until something walks back for it anyway, which is the
+    // a table, furnace or smoker of ours this close (straight line) is walked back to even when the bag could make another. making a
+    // furnace is 8 cobble and a table and a craft, and either way the old one sits out there until something walks back for it anyway, which is the
     // same walk plus a pickup. past this the new one wins if the bag has what it takes
     public static final double WALK_BACK = 48.0;
 
@@ -109,10 +109,11 @@ public final class StationChoice {
         return new Pick<>(inBag ? Use.BAG : Use.MAKE, null);
     }
 
-    // how far ours is worth walking to when the bag could make another: WALK_BACK for a furnace or smoker, NEAR (no extra walk) for a
-    // table, which is 4 planks and a click, and for the things the registry does not keep
+    // how far ours is worth walking to when the bag could make another: WALK_BACK for all three, NEAR (no extra walk) for the things
+    // the registry does not keep. a table is only 4 planks, but a second one means the first sits out there until something walks
+    // back to pick it up, and the planner budgeting those planks with ours 22 blocks off made the log need come and go with every step
     public static double walkBackReach(StationHook.Kind kind) {
-        return kind == StationHook.Kind.FURNACE || kind == StationHook.Kind.SMOKER ? WALK_BACK : WalkCost.STATION_NEAR;
+        return kind == null ? WalkCost.STATION_NEAR : WALK_BACK;
     }
 
     // the whole walk-back line in one number, for decide and for the planner (which has to count the same far station as held):

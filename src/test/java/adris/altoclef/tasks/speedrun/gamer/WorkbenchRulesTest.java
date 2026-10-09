@@ -2001,6 +2001,13 @@ public class WorkbenchRulesTest {
 
     // the bag questions are StationChoice.canMakeFrom's: 7 cobble cannot make a furnace and 8 can, a smoker is 4 logs and a furnace
     // (or the 8 cobble for one). the planner's half of the walk back is WorkbenchesRegistryTest.thePlannersWalkBackIsStationChoicesWalkBack
+    // the far table forget and the craft's walk back are one line: inside it the task walks to ours, past it ours is let go
+    @Test
+    public void theFarTableLineIsTheWalkBackLine() {
+        assertEquals(StationChoice.WALK_BACK, WorkbenchRules.FAR_TABLE_DISTANCE, 0);
+        assertEquals(WorkbenchRules.FAR_TABLE_DISTANCE, StationChoice.oursReach(Kind.TABLE, true), 0);
+    }
+
     @Test
     public void eightCobbleIsWhereMakingOneStarts() {
         assertFalse(StationChoice.canMakeFrom(Kind.FURNACE, 7, 0, 0, 0));

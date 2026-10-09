@@ -1,5 +1,6 @@
 package adris.altoclef.tasks.speedrun.gamer;
 
+import adris.altoclef.util.helpers.StationChoice;
 import adris.altoclef.util.helpers.StationHook.Kind;
 import adris.altoclef.util.helpers.WalkCost;
 
@@ -48,7 +49,8 @@ public final class WorkbenchRules {
     public static final double LATCH_BAND = 1.0;
     // a table this far away (a straight line) is not worth the walk back when we can craft another one: it is forgotten with a
     // log line instead. a furnace or smoker keeps the long trip up to FORGET_DISTANCE, it cost stone and a table to make
-    public static final double FAR_TABLE_DISTANCE = 48.0;
+    // (the same line the craft walks back to it, StationChoice.WALK_BACK: past it the task makes a new one, so the old is let go)
+    public static final double FAR_TABLE_DISTANCE = StationChoice.WALK_BACK;
     // a block that shows up further away than we can place from did not come from us (another player, a chunk update)
     public static final double PLACE_REACH = 8.0;
     // "never happened" for the tick stamps (game time starts at 0, so -1 is safely before everything)

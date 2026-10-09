@@ -56,6 +56,16 @@ public class KitPlannerTest {
         assertTrue(names(KitPlanner.gather(bag, cfg, 8)).contains("log"));
         bag.tablePlaced = true;
         assertFalse(names(KitPlanner.gather(bag, cfg, 8)).contains("log"));
+        // there and back, a quarter block a step, the latch carried along like MinecraftFacts carries it
+        boolean far = false;
+        for (int step = 0; step <= 200; step++) {
+            double d = 5 + (step <= 100 ? step : 200 - step) * 0.25;
+            boolean near = d <= WorkbenchRules.returnRadius(far);
+            far = !near;
+            // what MinecraftFacts says: the latch, or ours within the walk back (the bag can make a table, it has logs)
+            bag.tablePlaced = near || d <= adris.altoclef.util.helpers.StationChoice.oursReach(adris.altoclef.util.helpers.StationHook.Kind.TABLE, true);
+            assertFalse("d " + d, names(KitPlanner.gather(bag, cfg, 8)).contains("log"));
+        }
     }
 
     // everything the default kit asks for, so a test can take one thing away
