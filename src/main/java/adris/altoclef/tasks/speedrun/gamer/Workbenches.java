@@ -17,6 +17,11 @@ import adris.altoclef.util.helpers.StationHook.Kind;
 import adris.altoclef.util.helpers.WalkCost;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.animal.Chicken;
+import net.minecraft.world.entity.animal.Cow;
+import net.minecraft.world.entity.animal.Pig;
+import net.minecraft.world.entity.animal.Sheep;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.AbstractFurnaceMenu;
@@ -342,13 +347,18 @@ public final class Workbenches {
         Bench active = null;
         Bench start = null;
         WorkbenchRules.Look startLook = null;
+        Predicate<Bench> hasJob = x -> FurnaceJobs.isBusy(state, x.pos, x.dimension);
         for (Bench b : new ArrayList<>(state.benches)) {
             boolean flying = b.state == Bench.State.PICKING_UP;
             if (!flying && !startNew) {
                 continue;
             }
             Bench.State before = b.state;
+            anchor(b, WorkbenchRules.anchorOf(b, state.benches, hasJob));
             WorkbenchRules.Look look = look(mod, ctx, b, me, dimension, WorkbenchRules.neededSoon(b.kind, names, wooden, stone), limit);
+            if (startNew && WorkbenchRules.doneUsing(b, look)) {
+                doneWith(mod, b, look, names, wooden, stone);
+            }
             if (adopt && WorkbenchRules.adoptable(b, look)) {
                 adoptLoad(mod, ctx, b, now);
             }
@@ -423,6 +433,86 @@ public final class Workbenches {
             StorageHelper.closeScreen();
             strayScreenSince = -1;
         }
+    }
+
+    // one line each way: it waits beside a cooking furnace now, or that furnace is done and this one gets decided again
+    private static void anchor(Bench b, Bench anchor) {
+        Bench was = b.anchor;
+        switch (WorkbenchRules.updateAnchor(b, anchor)) {
+            case ANCHORED -> log("keeping " + b.kind.word() + " at " + at(b) + ", the " + anchor.kind.word() + " at " + at(anchor)
+                    + " is cooking and we'll be back for it");
+            case RELEASED -> log(b.kind.word() + " at " + at(b) + ": the " + was.kind.word() + " at " + at(was)
+                    + " is not cooking any more, deciding this one again");
+            default -> {
+            }
+        }
+    }
+
+    private static String at(Bench b) {
+        return b.pos.x + " " + b.pos.y + " " + b.pos.z;
+    }
+
+    // we just finished with it (screen shut a second ago, nothing at it): is the next job close to it or a walk away. by now the next
+    // need's own task has had that second to start, and its trackBlock is what makes the logs or the stone show up here, so this asks
+    // the trackers what they already have and scans nothing itself
+    private void doneWith(AltoClef mod, Bench b, WorkbenchRules.Look look, List<String> names, boolean wooden, boolean stone) {
+        String next = names.isEmpty() ? null : names.get(0);
+        boolean usesThis = WorkbenchRules.needsStation(b.kind, next, wooden, stone);
+        double site = usesThis || !look.neededSoon() ? WorkbenchRules.UNKNOWN_SITE : siteDistance(mod, b, WorkbenchRules.siteOf(next));
+        WorkbenchRules.Done done = WorkbenchRules.doneWith(look.neededSoon(), usesThis, site, b.redecide);
+        WorkbenchRules.settleDone(b, done);
+        String head = "done with " + b.kind.word() + " at " + at(b) + ", ";
+        log(head + switch (done) {
+            case PICK_UP_UNWANTED -> "nothing in the next " + (WorkbenchRules.LOOKAHEAD + 1) + " needs wants it -> picking it up";
+            case KEEP_UNKNOWN -> "next job (" + next + ") unknown, keeping it for now";
+            case KEEP -> usesThis ? "next job (" + next + ") is at this " + b.kind.word() + " -> keeping it"
+                    : "next job (" + next + ") is " + Math.round(site) + " blocks away -> keeping it";
+            case PICK_UP_FAR -> "next job (" + next + ") is " + Math.round(site) + " blocks away -> picking it up";
+            case PICK_UP_RELEASED -> "next job (" + next + ") unknown and what we kept it for is done -> picking it up";
+        });
+    }
+
+    // straight line from the middle of the station to the nearest place the trackers know for that work, UNKNOWN_SITE when they know none
+    private static double siteDistance(AltoClef mod, Bench b, WorkbenchRules.Site site) {
+        Vec3 at = new Vec3(b.pos.x + 0.5, b.pos.y + 0.5, b.pos.z + 0.5);
+        return switch (site) {
+            case NONE -> WorkbenchRules.UNKNOWN_SITE;
+            case SHEEP -> mobDistance(mod, at, Sheep.class);
+            case ANIMALS -> mobDistance(mod, at, Cow.class, Pig.class, Sheep.class, Chicken.class);
+            default -> blockDistance(mod, at, blocksOf(site));
+        };
+    }
+
+    private static Block[] blocksOf(WorkbenchRules.Site site) {
+        return switch (site) {
+            case LOGS -> ItemHelper.itemsToBlocks(ItemHelper.LOG);
+            case STONE -> new Block[]{Blocks.STONE, Blocks.COBBLESTONE};
+            case COAL -> new Block[]{Blocks.COAL_ORE, Blocks.DEEPSLATE_COAL_ORE};
+            case IRON -> new Block[]{Blocks.IRON_ORE, Blocks.DEEPSLATE_IRON_ORE};
+            case GRAVEL -> new Block[]{Blocks.GRAVEL};
+            case DIAMOND -> new Block[]{Blocks.DIAMOND_ORE, Blocks.DEEPSLATE_DIAMOND_ORE};
+            default -> new Block[0];
+        };
+    }
+
+    // only the blocks somebody is already tracking: asking for an untracked one is a warning in the log and an empty answer anyway
+    private static double blockDistance(AltoClef mod, Vec3 at, Block[] blocks) {
+        List<Block> tracked = new ArrayList<>();
+        for (Block block : blocks) {
+            if (mod.getBlockTracker().isTracking(block)) {
+                tracked.add(block);
+            }
+        }
+        if (tracked.isEmpty()) {
+            return WorkbenchRules.UNKNOWN_SITE;
+        }
+        return mod.getBlockTracker().getNearestTracking(at, tracked.toArray(new Block[0]))
+                .map(p -> WalkCost.stationDistance(p.getX(), p.getY(), p.getZ(), at.x, at.y, at.z)).orElse(WorkbenchRules.UNKNOWN_SITE);
+    }
+
+    private static double mobDistance(AltoClef mod, Vec3 at, Class<?>... types) {
+        return mod.getEntityTracker().getClosestEntity(at, e -> e instanceof LivingEntity l && !l.isBaby(), (Class[]) types)
+                .map(e -> WalkCost.distance3d(e.getX() - at.x, e.getY() - at.y, e.getZ() - at.z)).orElse(WorkbenchRules.UNKNOWN_SITE);
     }
 
     // the table before the furnace before the smoker, and within a kind whichever is closer
@@ -599,6 +689,8 @@ public final class Workbenches {
             }
             if (closest != null) {
                 closest.lastUsedTick = now;
+                // a new use, the next "done with it" decides again
+                closest.leaveNow = false;
                 // a smelt task has the screen open again, so whatever job it records is a new story and a load that gets cut off
                 // is adopted like any other
                 closest.clearGivenUp();

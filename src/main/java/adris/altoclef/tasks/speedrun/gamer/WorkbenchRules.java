@@ -201,7 +201,7 @@ public final class WorkbenchRules {
         }
         // a station with a job in it is not forgotten by distance: the job is what brings us back, and the visit takes the station.
         // holdsStuff counts too, the state is last tick's (and a relog rebuilds every bench as STANDING)
-        if (in.distance() > FORGET_DISTANCE && b.state != Bench.State.BUSY && !in.holdsStuff()) {
+        if (in.distance() > FORGET_DISTANCE && b.state != Bench.State.BUSY && !in.holdsStuff() && b.anchor == null) {
             return Call.FORGET_TOO_FAR;
         }
         if (pickingUp) {
@@ -223,6 +223,11 @@ public final class WorkbenchRules {
             return Call.BUSY;
         }
         b.state = Bench.State.STANDING;
+        // the furnace next to it is cooking and FurnacePlan brings us back to it, so this one waits for that visit: no far table, no
+        // outside clock, no "done with it". the visit that takes the furnace down decides this one again (anchorOf / updateAnchor)
+        if (b.anchor != null) {
+            return Call.KEEP;
+        }
         // the tries ran out on time and it still stands. trying again right here is the same walk that just failed three times, so it
         // waits for us to have been out of NEAR and back (the next trip past it). the phase does not wait on it (phaseMayEnd)
         if (b.pickupFailed) {
@@ -241,7 +246,9 @@ public final class WorkbenchRules {
         if (b.kind == Kind.TABLE && in.distance() > FAR_TABLE_DISTANCE && in.canRecraft() && outsideLongEnough(b, now)) {
             return Call.FORGET_FAR_TABLE;
         }
-        if (in.neededSoon() && !outsideLongEnough(b, now)) {
+        // done with it and the next job is a walk away from it: the plan still wants one of these but not this one, so it comes down
+        // while we stand next to it instead of after the walk (doneWith)
+        if (in.neededSoon() && !outsideLongEnough(b, now) && !b.leaveNow) {
             return Call.KEEP;
         }
         return gates(b, in);
@@ -314,6 +321,9 @@ public final class WorkbenchRules {
         if (!in.neededSoon()) {
             return "nothing in the next " + (LOOKAHEAD + 1) + " needs wants the " + b.kind.word();
         }
+        if (b.leaveNow && !outsideLongEnough(b, in.now())) {
+            return "we are done with it and the next job is more than " + Math.round(NEAR) + " blocks from it";
+        }
         return "we have been outside " + Math.round(NEAR) + " blocks of it for " + OUTSIDE_TICKS / 20 + " s";
     }
 
@@ -366,6 +376,171 @@ public final class WorkbenchRules {
     // the item is back once there is one more than when we began
     public static boolean pickupDone(boolean broken, int bagNow, int bagBefore) {
         return broken && bagNow > bagBefore;
+    }
+
+    // ---- done with it: keep or take it, decided standing next to it
+    // the outside clock alone meant: place it, use it, walk 21 blocks to the next job, then turn round and walk back for it. now the
+    // moment we are done with a station (its screen shut for SETTLE_TICKS and nothing working at it) we look at where the next job
+    // is. the outside clock stays as the fallback for when we do not know
+
+    // the distance for "no idea where the next job is"
+    public static final double UNKNOWN_SITE = Double.NaN;
+
+    public enum Done {
+        // the next job is within NEAR of it, or uses it
+        KEEP,
+        // we do not know where the next job is: keep it, the outside clock decides later
+        KEEP_UNKNOWN,
+        // the next job is past NEAR from it, it comes down now
+        PICK_UP_FAR,
+        // nothing in the next LOOKAHEAD + 1 needs wants this kind, it comes down now
+        PICK_UP_UNWANTED,
+        // the furnace we kept it for is done and we do not know where the next job is: we are standing next to both, it comes along
+        PICK_UP_RELEASED
+    }
+
+    // where a need's work happens, as far as the trackers can tell. the world half turns these into blocks or mobs
+    public enum Site {
+        LOGS, STONE, COAL, IRON, GRAVEL, DIAMOND, SHEEP, ANIMALS,
+        // a craft somewhere else, armor, a cook, a name we do not map: unknown
+        NONE
+    }
+
+    public static Site siteOf(String need) {
+        return switch (need == null ? "" : need) {
+            // planks come from logs, the bag's own logs are a craft right here, which only makes the answer "keep" a bit early
+            case "log", "planks" -> Site.LOGS;
+            case KitPlanner.COBBLE, KitNeed.BUILD_BLOCKS -> Site.STONE;
+            case "coal" -> Site.COAL;
+            case "iron_ingot", "raw_iron" -> Site.IRON;
+            case "flint" -> Site.GRAVEL;
+            case "diamond" -> Site.DIAMOND;
+            case "wool" -> Site.SHEEP;
+            case KitNeed.FOOD -> Site.ANIMALS;
+            default -> Site.NONE;
+        };
+    }
+
+    // the first look after a use of it settled: same dimension, standing, empty, idle, its screen shut long enough, and this use was
+    // not decided yet (one decision per time we used it)
+    public static boolean doneUsing(Bench b, Look in) {
+        if (!in.sameDimension() || in.blockGone() || in.holdsStuff() || in.jobHere() || !in.idle()) {
+            return false;
+        }
+        if (b.state == Bench.State.PICKING_UP || b.state == Bench.State.BUSY || b.anchor != null) {
+            return false;
+        }
+        // the anchor let go: decided again on this look, used or not
+        if (b.redecide) {
+            return true;
+        }
+        if (b.lastUsedTick == NEVER || b.doneFor == b.lastUsedTick) {
+            return false;
+        }
+        return in.now() - b.lastUsedTick >= SETTLE_TICKS;
+    }
+
+    // `neededSoon` is Look.neededSoon (the current need or one of the LOOKAHEAD after it wants this kind), `nextUsesThis` the next need
+    // itself is done at this kind of station (a craft at the table we just used), `nextSite` the straight line from the station to the
+    // nearest place the next need's work happens, UNKNOWN_SITE when the trackers have nothing
+    public static Done doneWith(boolean neededSoon, boolean nextUsesThis, double nextSite) {
+        return doneWith(neededSoon, nextUsesThis, nextSite, false);
+    }
+
+    // `released`: the anchor just let go (redecide). we are standing at both, so it stays only when the next job is near and wants it,
+    // an unknown next job is not a reason to come back a second time
+    public static Done doneWith(boolean neededSoon, boolean nextUsesThis, double nextSite, boolean released) {
+        if (!neededSoon) {
+            return Done.PICK_UP_UNWANTED;
+        }
+        if (nextUsesThis) {
+            return Done.KEEP;
+        }
+        if (Double.isNaN(nextSite)) {
+            return released ? Done.PICK_UP_RELEASED : Done.KEEP_UNKNOWN;
+        }
+        return nextSite <= NEAR ? Done.KEEP : Done.PICK_UP_FAR;
+    }
+
+    // remember the answer for this use. the far one and the released one change what decide says, the others are what it says anyway
+    public static void settleDone(Bench b, Done done) {
+        b.doneFor = b.lastUsedTick;
+        b.leaveNow = done == Done.PICK_UP_FAR || done == Done.PICK_UP_RELEASED;
+        b.redecide = false;
+    }
+
+    // ---- anchored: a table next to a furnace that is cooking
+    // smelting and off doing other things means we come back to the furnace anyway, so the table beside it is not worth breaking and
+    // carrying. one station per kind per anchor (the nearest to it), and the anchor has to be ours, cooking a real job (not a given
+    // up one) and in the same dimension
+
+    // a furnace or smoker FurnacePlan will send us back to
+    public static boolean anchors(Bench a, Predicate<Bench> hasJob) {
+        return a.kind != Kind.TABLE && a.state == Bench.State.BUSY && !a.givenUp && hasJob.test(a);
+    }
+
+    // the busy station this one waits beside, null for none. only a standing one is anchored, and only the nearest of its kind to
+    // that anchor: a second table next to the same furnace follows the normal rules
+    public static Bench anchorOf(Bench b, Collection<Bench> benches, Predicate<Bench> hasJob) {
+        if (b.state != Bench.State.STANDING) {
+            return null;
+        }
+        Bench best = null;
+        for (Bench a : benches) {
+            if (a == b || !a.dimension.equals(b.dimension) || !anchors(a, hasJob) || apart(a, b) > NEAR) {
+                continue;
+            }
+            if (nearestOfKindTo(a, b.kind, benches) != b) {
+                continue;
+            }
+            if (best == null || apart(a, b) < apart(best, b)) {
+                best = a;
+            }
+        }
+        return best;
+    }
+
+    private static Bench nearestOfKindTo(Bench anchor, Kind kind, Collection<Bench> benches) {
+        Bench best = null;
+        for (Bench c : benches) {
+            if (c == anchor || c.kind != kind || c.state != Bench.State.STANDING || !c.dimension.equals(anchor.dimension) || apart(anchor, c) > NEAR) {
+                continue;
+            }
+            if (best == null || apart(anchor, c) < apart(anchor, best)) {
+                best = c;
+            }
+        }
+        return best;
+    }
+
+    private static double apart(Bench a, Bench b) {
+        return WalkCost.distance3d(a.pos.x - b.pos.x, a.pos.y - b.pos.y, a.pos.z - b.pos.z);
+    }
+
+    public enum Anchor {
+        // nothing changed
+        SAME,
+        // it waits beside a cooking furnace now
+        ANCHORED,
+        // the furnace it waited for is done (collected and coming down, gone, forgotten, given up): decide it again on this look
+        RELEASED
+    }
+
+    // moves the anchor along and says what happened, for the one log line each way
+    public static Anchor updateAnchor(Bench b, Bench anchor) {
+        Bench before = b.anchor;
+        b.anchor = anchor;
+        if (before == anchor) {
+            return Anchor.SAME;
+        }
+        if (anchor == null) {
+            b.redecide = true;
+            return Anchor.RELEASED;
+        }
+        // a "done, the next job is far" from before it was anchored is not this visit's answer any more
+        b.leaveNow = false;
+        b.redecide = false;
+        return Anchor.ANCHORED;
     }
 
     // ---- rule 3: the visit that empties a station

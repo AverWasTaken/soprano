@@ -56,6 +56,15 @@ public final class Bench {
     public boolean givenUp;
     // the "phase ends with it still holding our items" line went out for this give up
     public boolean givenUpLogged;
+    // the lastUsedTick the done-with-it decision was made for (WorkbenchRules.doneWith), NEVER = none yet
+    public long doneFor = WorkbenchRules.NEVER;
+    // that decision said the next job is far from it: it comes down even though the plan still wants one. a new use clears it
+    public boolean leaveNow;
+    // the furnace or smoker of ours cooking within NEAR of it, so we are coming back here anyway (WorkbenchRules.anchorOf). worked out
+    // every look, null for none
+    public Bench anchor;
+    // the anchor let go: the next look decides this one again as if we had just finished with it
+    public boolean redecide;
 
     public Bench(StationHook.Kind kind, RunState.Pos pos, String dimension, long placedTick) {
         this.kind = kind;

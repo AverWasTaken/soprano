@@ -2,6 +2,8 @@ package adris.altoclef.tasks.speedrun.gamer;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
 import adris.altoclef.tasks.speedrun.gamer.WorkbenchRules.Call;
@@ -1558,5 +1560,248 @@ public class WorkbenchRulesTest {
         Seen f = new Seen();
         f.distance = WorkbenchRules.FORGET_DISTANCE + 1;
         assertEquals(Call.FORGET_TOO_FAR, decide(far, f));
+    }
+
+    // ---- done with it: keep or take it, decided standing next to it
+
+    private static final WorkbenchRules.Done KEEP = WorkbenchRules.Done.KEEP;
+
+    // a table we used at 980 and shut a second ago, next to us
+    private static Bench justUsed() {
+        Bench b = table();
+        b.lastUsedTick = 1000 - WorkbenchRules.SETTLE_TICKS;
+        return b;
+    }
+
+    @Test
+    public void theNextJobCloseToTheTableKeepsIt() {
+        assertEquals(KEEP, WorkbenchRules.doneWith(true, false, 12));
+        // the line is inclusive, same as every other NEAR
+        assertEquals(KEEP, WorkbenchRules.doneWith(true, false, WorkbenchRules.NEAR));
+        Bench b = justUsed();
+        WorkbenchRules.settleDone(b, WorkbenchRules.doneWith(true, false, 12));
+        assertEquals(Call.KEEP, decide(b, new Seen()));
+    }
+
+    @Test
+    public void theNextJobFarFromTheTableTakesItRightAway() {
+        assertEquals(WorkbenchRules.Done.PICK_UP_FAR, WorkbenchRules.doneWith(true, false, 21.01));
+        Bench b = justUsed();
+        Seen s = new Seen();
+        assertTrue(WorkbenchRules.doneUsing(b, s.look()));
+        WorkbenchRules.settleDone(b, WorkbenchRules.doneWith(true, false, 40));
+        // the plan still wants a table and we are standing at it: before, that was KEEP until we had walked 21 blocks off for 5 s
+        assertEquals(Call.PICK_UP, decide(b, s));
+        assertTrue(WorkbenchRules.reason(b, s.look()).contains("next job"));
+    }
+
+    @Test
+    public void noFutureNeedTakesIt() {
+        assertEquals(WorkbenchRules.Done.PICK_UP_UNWANTED, WorkbenchRules.doneWith(false, false, WorkbenchRules.UNKNOWN_SITE));
+        assertEquals(WorkbenchRules.Done.PICK_UP_UNWANTED, WorkbenchRules.doneWith(false, false, 3));
+        Bench b = justUsed();
+        Seen s = new Seen();
+        s.neededSoon = false;
+        WorkbenchRules.settleDone(b, WorkbenchRules.Done.PICK_UP_UNWANTED);
+        assertEquals(Call.PICK_UP, decide(b, s));
+    }
+
+    @Test
+    public void anUnknownNextJobKeepsItAndTheOutsideClockStaysTheFallback() {
+        assertEquals(WorkbenchRules.Done.KEEP_UNKNOWN, WorkbenchRules.doneWith(true, false, WorkbenchRules.UNKNOWN_SITE));
+        Bench b = justUsed();
+        WorkbenchRules.settleDone(b, WorkbenchRules.Done.KEEP_UNKNOWN);
+        Seen s = new Seen();
+        assertEquals(Call.KEEP, decide(b, s));
+        // then we walk off: 30 blocks out for the usual 5 s and it comes down like before
+        s.distance = 30;
+        assertEquals(Call.KEEP, decide(b, s));
+        s.now += WorkbenchRules.OUTSIDE_TICKS;
+        assertEquals(Call.PICK_UP, decide(b, s));
+    }
+
+    @Test
+    public void aCraftAtTheSameStationKeepsItWhereverTheTrackersPointed() {
+        assertEquals(KEEP, WorkbenchRules.doneWith(true, true, WorkbenchRules.UNKNOWN_SITE));
+        assertEquals(KEEP, WorkbenchRules.doneWith(true, true, 90));
+        // a craft next is a table need, the cobble with no pick crafts its pick at the table first
+        assertTrue(WorkbenchRules.needsStation(Kind.TABLE, "stone_pickaxe", true, false));
+        assertTrue(WorkbenchRules.needsStation(Kind.TABLE, KitPlanner.COBBLE, false, false));
+    }
+
+    // one decision per use: settled after the screen shut, not while it is open or busy, and a new use asks again
+    @Test
+    public void doneUsingIsOncePerUseAndOnlyOnceItSettled() {
+        Bench b = table();
+        Seen s = new Seen();
+        // never used: nothing to be done with
+        assertFalse(WorkbenchRules.doneUsing(b, s.look()));
+        b.lastUsedTick = s.now - WorkbenchRules.SETTLE_TICKS + 1;
+        assertFalse(WorkbenchRules.doneUsing(b, s.look()));
+        b.lastUsedTick = s.now - WorkbenchRules.SETTLE_TICKS;
+        s.idle = false;
+        assertFalse(WorkbenchRules.doneUsing(b, s.look()));
+        s.idle = true;
+        assertTrue(WorkbenchRules.doneUsing(b, s.look()));
+        WorkbenchRules.settleDone(b, KEEP);
+        assertFalse(WorkbenchRules.doneUsing(b, s.look()));
+        // used again later: a new decision
+        b.lastUsedTick = s.now;
+        s.now += WorkbenchRules.SETTLE_TICKS;
+        assertTrue(WorkbenchRules.doneUsing(b, s.look()));
+        // a furnace with our stuff in it is FurnacePlan's, and a pickup under way is already decided
+        Bench furnace = bench(Kind.FURNACE);
+        furnace.lastUsedTick = 0;
+        Seen loaded = new Seen();
+        loaded.holdsStuff = true;
+        assertFalse(WorkbenchRules.doneUsing(furnace, loaded.look()));
+        Bench coming = pickingUp(900);
+        coming.lastUsedTick = 0;
+        assertFalse(WorkbenchRules.doneUsing(coming, s.look()));
+        // another dimension: the coordinates mean nothing here
+        Seen away = new Seen();
+        away.sameDimension = false;
+        assertFalse(WorkbenchRules.doneUsing(justUsed(), away.look()));
+    }
+
+    // a far answer only lasts for the use it was made for
+    @Test
+    public void aFarAnswerIsForgottenWhenTheNextUseDecidesAgain() {
+        Bench b = justUsed();
+        WorkbenchRules.settleDone(b, WorkbenchRules.Done.PICK_UP_FAR);
+        assertTrue(b.leaveNow);
+        b.lastUsedTick = 2000;
+        WorkbenchRules.settleDone(b, KEEP);
+        assertFalse(b.leaveNow);
+        assertEquals(2000, b.doneFor);
+    }
+
+    @Test
+    public void theNeedsMapToWhereTheirWorkIs() {
+        assertEquals(WorkbenchRules.Site.LOGS, WorkbenchRules.siteOf("log"));
+        assertEquals(WorkbenchRules.Site.LOGS, WorkbenchRules.siteOf("planks"));
+        assertEquals(WorkbenchRules.Site.STONE, WorkbenchRules.siteOf(KitPlanner.COBBLE));
+        assertEquals(WorkbenchRules.Site.COAL, WorkbenchRules.siteOf("coal"));
+        assertEquals(WorkbenchRules.Site.IRON, WorkbenchRules.siteOf("iron_ingot"));
+        assertEquals(WorkbenchRules.Site.GRAVEL, WorkbenchRules.siteOf("flint"));
+        assertEquals(WorkbenchRules.Site.SHEEP, WorkbenchRules.siteOf("wool"));
+        assertEquals(WorkbenchRules.Site.ANIMALS, WorkbenchRules.siteOf(KitNeed.FOOD));
+        // a craft, armor, a cook or nothing: unknown, which keeps it
+        assertEquals(WorkbenchRules.Site.NONE, WorkbenchRules.siteOf("shield"));
+        assertEquals(WorkbenchRules.Site.NONE, WorkbenchRules.siteOf(KitNeed.EQUIP_ARMOR));
+        assertEquals(WorkbenchRules.Site.NONE, WorkbenchRules.siteOf(KitNeed.COOK_SMOKER));
+        assertEquals(WorkbenchRules.Site.NONE, WorkbenchRules.siteOf(null));
+    }
+
+    // ---- anchored: a table next to a furnace that is cooking
+
+    // a furnace of ours at x 15 with a job cooking, and the table (at x 10) 5 blocks from it
+    private static Bench cooking() {
+        Bench f = new Bench(Kind.FURNACE, pos(15, 64, 0), OVERWORLD, 0);
+        f.state = Bench.State.BUSY;
+        return f;
+    }
+
+    private static Bench anchorFor(Bench b, List<Bench> all) {
+        return WorkbenchRules.anchorOf(b, all, x -> x.kind != Kind.TABLE);
+    }
+
+    @Test
+    public void aTableNextToACookingFurnaceStaysOnBothPaths() {
+        Bench furnace = cooking();
+        Bench b = justUsed();
+        List<Bench> all = List.of(furnace, b);
+        assertEquals(WorkbenchRules.Anchor.ANCHORED, WorkbenchRules.updateAnchor(b, anchorFor(b, all)));
+        assertSame(furnace, b.anchor);
+        Seen s = new Seen();
+        // the proactive path: no "done with it" while anchored
+        assertFalse(WorkbenchRules.doneUsing(b, s.look()));
+        // and even a far answer from before does not take it
+        b.leaveNow = true;
+        WorkbenchRules.updateAnchor(b, null);
+        WorkbenchRules.updateAnchor(b, anchorFor(b, all));
+        assertFalse(b.leaveNow);
+        // the reactive path: off mining 40 blocks away for a minute, nothing in the plan wanting a table, and it stays
+        s.distance = 40;
+        s.neededSoon = false;
+        assertEquals(Call.KEEP, decide(b, s));
+        s.now += 1200;
+        assertEquals(Call.KEEP, decide(b, s));
+        // past the far table line with the planks for another one, still ours to come back to
+        s.distance = 60;
+        s.canRecraft = true;
+        assertEquals(Call.KEEP, decide(b, s));
+        // not forgotten by distance either, the furnace is not
+        s.distance = 200;
+        assertEquals(Call.KEEP, decide(b, s));
+        assertEquals(WorkbenchRules.Anchor.SAME, WorkbenchRules.updateAnchor(b, anchorFor(b, all)));
+    }
+
+    @Test
+    public void theCollectVisitDecidesTheTableAgainAndTakesIt() {
+        Bench furnace = cooking();
+        Bench b = justUsed();
+        List<Bench> all = List.of(furnace, b);
+        WorkbenchRules.updateAnchor(b, anchorFor(b, all));
+        WorkbenchRules.settleDone(b, KEEP);
+        // the visit empties the furnace and starts taking it down: it is not cooking any more
+        WorkbenchRules.beginPickup(furnace, 1000, 0, "the visit emptied it");
+        assertEquals(WorkbenchRules.Anchor.RELEASED, WorkbenchRules.updateAnchor(b, anchorFor(b, all)));
+        assertTrue(b.redecide);
+        Seen s = new Seen();
+        s.now = 5000;
+        assertTrue(WorkbenchRules.doneUsing(b, s.look()));
+        // we do not know where the next job is: we are standing at both, it comes along
+        WorkbenchRules.Done done = WorkbenchRules.doneWith(true, false, WorkbenchRules.UNKNOWN_SITE, b.redecide);
+        assertEquals(WorkbenchRules.Done.PICK_UP_RELEASED, done);
+        WorkbenchRules.settleDone(b, done);
+        assertFalse(b.redecide);
+        assertEquals(Call.PICK_UP, decide(b, s));
+        // and the next job near it and wanting a table keeps it
+        assertEquals(KEEP, WorkbenchRules.doneWith(true, true, WorkbenchRules.UNKNOWN_SITE, true));
+        assertEquals(KEEP, WorkbenchRules.doneWith(true, false, 10, true));
+        assertEquals(WorkbenchRules.Done.PICK_UP_UNWANTED, WorkbenchRules.doneWith(false, false, 10, true));
+    }
+
+    @Test
+    public void aStaleJobAnchorsNothing() {
+        Bench furnace = cooking();
+        furnace.givenUp = true;
+        Bench b = justUsed();
+        assertNull(anchorFor(b, List.of(furnace, b)));
+        // nor does a furnace holding our things with no job pointing at it
+        Bench noJob = cooking();
+        assertNull(WorkbenchRules.anchorOf(b, List.of(noJob, b), x -> false));
+        // nor an idle one
+        Bench idle = cooking();
+        idle.state = Bench.State.STANDING;
+        assertNull(anchorFor(b, List.of(idle, b)));
+    }
+
+    @Test
+    public void onlyTheNearestTableIsAnchored() {
+        Bench furnace = cooking();
+        Bench near = table();
+        Bench other = new Bench(Kind.TABLE, pos(25, 64, 0), OVERWORLD, 0);
+        List<Bench> all = List.of(furnace, near, other);
+        assertSame(furnace, anchorFor(near, all));
+        assertNull(anchorFor(other, all));
+        // past NEAR from the furnace is not beside it
+        Bench far = new Bench(Kind.TABLE, pos(40, 64, 0), OVERWORLD, 0);
+        assertNull(anchorFor(far, List.of(furnace, far)));
+        // the line is the usual inclusive one: 21 from the furnace still counts
+        Bench edge = new Bench(Kind.TABLE, pos(36, 64, 0), OVERWORLD, 0);
+        assertSame(furnace, anchorFor(edge, List.of(furnace, edge)));
+    }
+
+    @Test
+    public void anAnchorInAnotherDimensionDoesNotCount() {
+        Bench furnace = new Bench(Kind.FURNACE, pos(15, 64, 0), "NETHER", 0);
+        furnace.state = Bench.State.BUSY;
+        Bench b = table();
+        assertNull(anchorFor(b, List.of(furnace, b)));
+        // and a table coming down already is not anchored
+        Bench coming = pickingUp(900);
+        assertNull(anchorFor(coming, List.of(cooking(), coming)));
     }
 }
