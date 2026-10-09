@@ -202,8 +202,10 @@ public abstract class DoStuffInContainerTask extends Task {
         // and the nearest of ours out to the forget line, for when making one is not on (StationChoice only walks that far when the bag
         // cannot make one). an unloaded chunk reads as air, so out there the registry's word is taken
         BlockPos oursFar = _stationKind == null ? null : StationHook.standingWithin(_stationKind, me.x, me.y, me.z, WalkCost.STATION_FORGET);
-        if (oursFar != null && !oursFar.equals(ours) && !StationHook.pickingUp(oursFar)
-                && (!mod.getChunkTracker().isChunkLoaded(oursFar) || isContainerBlock(mod, oursFar))) {
+        // not one with our things cooking in it (that one is busy, a second load does not go in) and not one alto already gave up
+        // on reaching
+        if (oursFar != null && !oursFar.equals(ours) && !StationHook.pickingUp(oursFar) && !StationMemory.holdsOurStuff(mod, oursFar)
+                && (!mod.getChunkTracker().isChunkLoaded(oursFar) || (isContainerBlock(mod, oursFar) && WorldHelper.canReach(mod, oursFar)))) {
             seen.add(candidate(oursFar, me, StationChoice.Role.OURS));
         }
         // the tracker loses the one we were walking to now and then (a rescan after a fuel trip did it, and the next thing the

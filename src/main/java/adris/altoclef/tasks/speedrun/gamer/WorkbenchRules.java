@@ -156,7 +156,7 @@ public final class WorkbenchRules {
         WAIT,
         // start taking it back now
         PICK_UP,
-        // it cannot be broken from here, that is a failed try
+        // the block cannot be broken at all (Workbenches.breakable), that is a failed try and three of them forget it
         UNREACHABLE,
         // a pickup is running, keep driving it
         CONTINUE,
@@ -223,6 +223,10 @@ public final class WorkbenchRules {
             return Call.BUSY;
         }
         b.state = Bench.State.STANDING;
+        // a parked one remembers we walked off even while it is anchored, so the anchor letting go later does not need a second trip
+        if (b.pickupFailed && in.distance() > NEAR) {
+            b.leftSinceFail = true;
+        }
         // the furnace next to it is cooking (FurnacePlan brings us back) or the plan is about to cook or smelt there, so this one waits
         // for that visit: no far table, no outside clock, no "done with it". the furnace or smoker we are coming back to is kept for
         // the same reason, however far the hunt takes us. when the reason ends this one is decided again (anchorOf / updateAnchor)

@@ -1918,4 +1918,20 @@ public class WorkbenchRulesTest {
         s.now += WorkbenchRules.OUTSIDE_TICKS * 2;
         assertEquals(Call.KEEP, decide(b, s));
     }
+
+    // walking off while a parked table is anchored still counts as having been away: when the anchor lets go it gets its go at once
+    @Test
+    public void aParkedTableRemembersTheWalkWhileAnchored() {
+        Bench b = table();
+        WorkbenchRules.parkFailed(b);
+        b.anchor = cooking();
+        Seen s = new Seen();
+        s.distance = 40;
+        assertEquals(Call.KEEP, decide(b, s));
+        assertTrue(b.leftSinceFail);
+        b.anchor = null;
+        s.distance = 5;
+        s.neededSoon = false;
+        assertEquals(Call.PICK_UP, decide(b, s));
+    }
 }

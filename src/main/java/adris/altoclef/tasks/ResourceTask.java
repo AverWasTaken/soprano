@@ -221,7 +221,10 @@ public abstract class ResourceTask extends Task implements ITaskCanForce {
             satisfiedReqs.removeIf(block -> !StorageHelper.miningRequirementMet(mod, MiningRequirement.getMinimumRequirementForBlock(block)));
             if (!satisfiedReqs.isEmpty()) {
                 if (mod.getBlockTracker().anyFound(satisfiedReqs.toArray(Block[]::new))) {
-                    Optional<BlockPos> closest = mod.getBlockTracker().getNearestTracking(mod.getPlayer().position(), _mineIfPresent);
+                    // only one we may break: a furnace with our iron cooking in it is on the "do not mine" list, MineAndCollectTask
+                    // refuses it, and picking it here anyway flipped between that refusal and the craft every tick
+                    Optional<BlockPos> closest = mod.getBlockTracker().getNearestTracking(mod.getPlayer().position(),
+                            p -> WorldHelper.canBreak(mod, p), _mineIfPresent);
                     if (closest.isPresent() && closest.get().closerToCenterThan(mod.getPlayer().position(), Baritone.settings().altoResourceMineRange.value)) {
                         _mineLastClosest = closest.get();
                     }

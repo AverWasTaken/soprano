@@ -348,16 +348,10 @@ public final class Workbenches {
         Bench start = null;
         WorkbenchRules.Look startLook = null;
         Predicate<Bench> hasJob = x -> FurnaceJobs.isBusy(state, x.pos, x.dimension);
-        // every station's "are we coming back to it" first: a table's anchor reads its furnace's answer
-        boolean smokerOfOurs = f.count(Items.SMOKER) > 0 || any(state, Kind.SMOKER, dimension);
-        for (Bench b : state.benches) {
-            String back = startNew && b.dimension.equals(dimension) ? WorkbenchRules.comingBack(b.kind, names, smokerOfOurs) : null;
-            switch (WorkbenchRules.updateComingBack(b, back)) {
-                case ANCHORED -> log(b + ": keeping it, the plan brings us back " + back);
-                case RELEASED -> log(b + ": nothing brings us back to it now, deciding it again");
-                default -> {
-                }
-            }
+        // every station's "are we coming back to it" first: a table's anchor reads its furnace's answer. only the looks that have the
+        // plan (tick, sweep): resume() runs first every tick with no plan and would let go of everything and take it back again
+        if (startNew) {
+            comingBack(state, f, names, dimension, me);
         }
         // a furnace or smoker load in the tree or in flight: the furnace it goes in is not busy yet (the job is recorded when the
         // load is done), so "done with the table" waits for it, or the table could come down before the furnace anchors it
@@ -447,6 +441,34 @@ public final class Workbenches {
             StorageHelper.closeScreen();
             strayScreenSince = -1;
         }
+    }
+
+    // the one smoker or furnace of each kind the plan comes back to is the nearest of ours in this dimension (the one CookGate and
+    // the smelt would use), and the meat goes in the furnace only when no smoker of ours stands near or sits in the bag, the same
+    // test CookGate makes
+    private static void comingBack(RunState state, GamerFacts f, List<String> names, String dimension, Vec3 me) {
+        boolean smokerOfOurs = f.smokerPlacedNearby() || f.count(Items.SMOKER) > 0;
+        for (Bench b : state.benches) {
+            String back = b.dimension.equals(dimension) && b == nearestOf(state, b.kind, dimension, me)
+                    ? WorkbenchRules.comingBack(b.kind, names, smokerOfOurs) : null;
+            switch (WorkbenchRules.updateComingBack(b, back)) {
+                case ANCHORED -> log(b + ": keeping it, the plan brings us back " + back);
+                case RELEASED -> log(b + ": nothing brings us back to it now, deciding it again");
+                default -> {
+                }
+            }
+        }
+    }
+
+    private static Bench nearestOf(RunState state, Kind kind, String dimension, Vec3 me) {
+        Bench best = null;
+        for (Bench b : state.benches) {
+            if (b.kind == kind && b.dimension.equals(dimension) && b.state != Bench.State.PICKING_UP && (best == null
+                    || WalkCost.stationDistance(b.pos.x, b.pos.y, b.pos.z, me.x, me.y, me.z) < WalkCost.stationDistance(best.pos.x, best.pos.y, best.pos.z, me.x, me.y, me.z))) {
+                best = b;
+            }
+        }
+        return best;
     }
 
     // one line each way: it waits beside a cooking furnace now, or that furnace is done and this one gets decided again
@@ -560,6 +582,11 @@ public final class Workbenches {
         }
         if (!breakable(mod, bp(b.pos))) {
             log(b + ": emptied but cannot be broken at all, the next look decides");
+            return false;
+        }
+        // emptied in the middle of a hunt or with more iron to come: we are coming back to it, so it stays for the next batch
+        if (b.comingBack != null) {
+            log(b + ": emptied, but the plan brings us back " + b.comingBack + ", leaving it standing");
             return false;
         }
         b.state = Bench.State.STANDING;
