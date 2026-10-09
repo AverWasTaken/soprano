@@ -89,6 +89,8 @@ public final class FuelPolicy {
         return total;
     }
 
+    // count = what the fuel slot should hold once the move is done. choose only ever sees an empty slot, where that is also how
+    // many to move, and the move task counts the destination slot anyway
     public record Pick(ItemStack stack, int count) {
     }
 
@@ -98,20 +100,30 @@ public final class FuelPolicy {
     public static Pick choose(List<ItemStack> stacks, double needs, Predicate<Item> supported, ToDoubleFunction<Item> fuelPerItem) {
         int[] usable = usable(stacks);
         boolean coalOnly = false;
+        double coal = 0;
+        double charcoal = 0;
         if (preferCoal) {
-            double coal = 0;
             for (int i = 0; i < usable.length; i++) {
                 Item item = stacks.get(i).getItem();
-                if (isCoal(item) && supported.test(item)) {
-                    coal += fuelPerItem.applyAsDouble(item) * usable[i];
+                if (supported.test(item)) {
+                    double fuel = fuelPerItem.applyAsDouble(item) * usable[i];
+                    if (item == Items.COAL) {
+                        coal += fuel;
+                    } else if (item == Items.CHARCOAL) {
+                        charcoal += fuel;
+                    }
                 }
             }
-            coalOnly = coal >= needs;
+            // per item, not coal and charcoal pooled: the slot takes one item, and 24 smelts of each is not a coal that covers 37.
+            // pooled, the pick landed on one of them, the top-up could not finish it, and a wood stack that covered was never asked
+            coalOnly = coal >= needs || charcoal >= needs;
         }
         List<Integer> candidates = new ArrayList<>();
         for (int i = 0; i < usable.length; i++) {
             Item item = stacks.get(i).getItem();
-            if (usable[i] > 0 && supported.test(item) && (!coalOnly || isCoal(item))) {
+            // coal first means a coal item that covers the job by itself, not any coal at all
+            boolean coalThatCovers = (item == Items.COAL && coal >= needs) || (item == Items.CHARCOAL && charcoal >= needs);
+            if (usable[i] > 0 && supported.test(item) && (!coalOnly || coalThatCovers)) {
                 candidates.add(i);
             }
         }
@@ -139,6 +151,41 @@ public final class FuelPolicy {
             count = Math.min(count, Math.max(1, (int) Math.ceil(needs / per)));
         }
         return new Pick(stacks.get(best), count);
+    }
+
+    // choose for a fuel slot that may already hold something. what is in it stays: a different fuel moved onto it swaps the two,
+    // the other one looks like the better pick on the next tick and they trade places for ever. so with a stack in the slot the
+    // only pick is more of the same item, topped up to a full stack at most. `needs` is what the slot still lacks (the caller
+    // already counted the slot's own fuel), the reserve and coal first still run over the whole bag, the slot's item is only a
+    // filter on who may be picked. null = nothing to add
+    public static Pick chooseFor(List<ItemStack> stacks, ItemStack slot, double needs, Predicate<Item> supported,
+                                 ToDoubleFunction<Item> fuelPerItem) {
+        if (needs <= 0) {
+            return null;
+        }
+        if (slot.isEmpty()) {
+            return choose(stacks, needs, supported, fuelPerItem);
+        }
+        Item held = slot.getItem();
+        int room = slot.getMaxStackSize() - slot.getCount();
+        Pick pick = room > 0 ? choose(stacks, needs, supported.and(item -> item == held), fuelPerItem) : null;
+        return pick == null ? null : new Pick(pick.stack(), slot.getCount() + Math.min(pick.count(), room));
+    }
+
+    // the one time a stack in the slot may be swapped out: a different fuel in the bag covers the WHOLE job on its own (`needs` is
+    // what the slot still lacks, so the whole job is that plus the slot's fuel; the lit part and the arrow are already off it).
+    // once it is in the job is covered and nothing wants the old stack back, which is the thing chooseFor's rule protects against.
+    // the smelt tasks use this as a yes/no and do the swap in two steps (empty the slot, then the ordinary fill puts a covering pick
+    // in, AsyncSmelting.emptyFuelSlot), so what goes in is sized by the fill and the reserve, not by one click. the caller waits for
+    // the shortage to hold before it acts on this, the reading of the fire lags a tick behind a fill. null = no such pick
+    public static Pick chooseSwap(List<ItemStack> stacks, ItemStack slot, double needs, Predicate<Item> supported,
+                                  ToDoubleFunction<Item> fuelPerItem) {
+        if (needs <= 0 || slot.isEmpty()) {
+            return null;
+        }
+        Item held = slot.getItem();
+        double whole = needs + fuelPerItem.applyAsDouble(held) * slot.getCount();
+        return chooseCovering(stacks, whole, supported.and(item -> item != held), fuelPerItem);
     }
 
     // choose, but null unless the pick alone covers the job. the collect visit uses it: a stalled station gets its fuel only when

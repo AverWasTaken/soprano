@@ -154,10 +154,11 @@ public class CollectFromFurnaceTask extends Task {
             // not lit and no fuel to light it with is a furnace that will never finish. not lit WITH fuel is one tick from lit
             boolean stalled = !lit && fuel.isEmpty();
             boolean nearly = lit && remainingTicks(input) <= waitTicks;
+            long untilDry = untilDry(input, fuel);
             // it did not finish when it should have. what is in there stays in there (the job keeps its own count), or comes
             // back out when we are leaving
             boolean capped = waitingSince >= 0 && mod.getWorld().getGameTime() - waitingSince > capTicks;
-            if (!stalled && !capped && (mode == Mode.WAIT_ALL || nearly)) {
+            if (!stalled && !capped && (mode == Mode.WAIT_ALL || nearly || dryingSoon(lit, mode, untilDry, waitTicks))) {
                 return waitHere(mod, mode == Mode.WAIT_ALL);
             }
             if (capped && mode != Mode.TAKE_ALL) {
@@ -190,9 +191,11 @@ public class CollectFromFurnaceTask extends Task {
                 // the raw stuff goes back in the bag, the planner sees it there and smelts it again
                 return takeOut(mod, FurnaceSlot.INPUT_SLOT_MATERIALS, input, "Taking the unfinished input back");
             }
-            // not close to done (it may have sat in an unloaded chunk and barely cooked): leave it, the job gets the real time
+            // not close to done (it may have sat in an unloaded chunk and barely cooked): leave it, the job gets the real time. the
+            // real time is when the fuel is out if that comes first (a load left short, AsyncSmelting.cookable), the input is not
+            // going to be done by then and the next visit is the one that refuels it
             inputLeft = input.getCount();
-            leftTicks = remainingTicks(input);
+            leftTicks = Math.min(remainingTicks(input), untilDry);
             done = true;
             return null;
         }
@@ -240,6 +243,31 @@ public class CollectFromFurnaceTask extends Task {
         setDebugState(why);
         mod.getSlotHandler().clickSlot(slot, 0, ClickType.QUICK_MOVE);
         return null;
+    }
+
+    // ticks until the fuel in and under the station is used up, Long.MAX_VALUE when it covers the rest of the input (the arrow's
+    // share needs none). a load left short on purpose runs dry long before its input is done, and a visit that re-stamps the job as
+    // if the fuel kept going has the next one show up to a cold station minutes late
+    static long fuelTicks(String kind, int input, double arrow, double litItems, double slotItems) {
+        double fuel = Math.max(litItems, 0) + Math.max(slotItems, 0);
+        if (fuel + Math.min(1.0, Math.max(0, arrow)) >= input) {
+            return Long.MAX_VALUE;
+        }
+        return Math.round(FurnaceJobs.ticksPerItem(kind) * fuel);
+    }
+
+    // lit but about to run out, in a mode that stays: stand by until it goes cold, then the visit refuels it or takes the input back.
+    // leaving now would re-stamp a timer that is up in seconds and walk back over and over while the bot is still in reach
+    static boolean dryingSoon(boolean lit, Mode mode, long untilDry, long waitTicks) {
+        return lit && mode != Mode.TAKE_ALL && untilDry <= waitTicks;
+    }
+
+    private long untilDry(ItemStack input, ItemStack fuel) {
+        // the smoker and the blast furnace read their fire at their own scale (StorageHelper.litItems)
+        boolean fast = FurnaceJobs.ticksPerItem(kind) == FurnaceJobs.FAST_TICKS;
+        double lit = fast ? StorageHelper.getSmokerFuel() : StorageHelper.getFurnaceFuel();
+        double slot = fuel.isEmpty() ? 0 : ItemHelper.getFuelAmount(fuel);
+        return fuelTicks(kind, input.getCount(), StorageHelper.getFurnaceCookPercent(), lit, slot);
     }
 
     // cook progress of the item that is cooking right now, 0..1. it used to be 24 pixels and the /24 outlived that,

@@ -649,7 +649,7 @@ public class GamerTask extends Task {
                 continue;
             }
             host.say((job.unitsEach > 0 ? "Cooking in the background (" : "Smelting in the background (") + job.count + " "
-                    + job.output.replace('_', ' ') + ", ~" + job.count * FurnaceJobs.ticksPerItem(job.kind) / 20 + "s)");
+                    + job.output.replace('_', ' ') + ", ~" + (job.doneTick - job.startTick) / 20 + "s)");
         }
         if (!loaded.isEmpty()) {
             // lit and cooking: the job is the memory now, the early load is no longer in flight. only if it was the iron

@@ -1,5 +1,13 @@
 package adris.altoclef.tasks.container;
 
+import adris.altoclef.util.helpers.FuelPolicy;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+
+import java.util.List;
+import java.util.function.Predicate;
+import java.util.function.ToDoubleFunction;
+
 // "we are out of fuel" for the smelt tasks, but only once it has been true for a moment. the tick after a fuel click the bag, the
 // cursor and the cached furnace slots can disagree for a bit (the live log had the bot leave the open smoker for a coal trip with
 // the coal half in; the main cause was the cook mode not counting the slot's fuel, fixed in fuelNeeded, this stays as the net for
@@ -63,6 +71,33 @@ final class FuelShortage {
     // item in hand all count, same sum the smelt tasks use for fuelNeeded
     static double missing(int input, double lit, double progress, double slotFuel) {
         return input - (lit + progress + slotFuel);
+    }
+
+    // the move that puts more fuel into the slot of a station with `input` items in it, null when the slot already covers the job or
+    // nothing in the bag may go in. one rule for the furnace, the smoker and the blast furnace. the slot counts toward the job
+    // here (it used to be only what was lit, so four coal waiting in the slot read as no fuel at all and the planks behind them
+    // got picked to make up for it). the units are smelts, lit comes in the station's own scale (StorageHelper.litItems)
+    static FuelPolicy.Pick fill(List<ItemStack> bag, ItemStack slot, int input, double lit, double progress,
+                                Predicate<Item> supported, ToDoubleFunction<Item> fuelPerItem) {
+        double slotFuel = slot.isEmpty() ? 0 : fuelPerItem.applyAsDouble(slot.getItem()) * slot.getCount();
+        return FuelPolicy.chooseFor(bag, slot, missing(input, Math.max(lit, 0), Math.max(progress, 0), slotFuel), supported, fuelPerItem);
+    }
+
+    // fill's other half: the pick that replaces what is in the slot, only when it covers the whole job by itself (FuelPolicy.chooseSwap).
+    // asked after stuckShort has held, not before
+    static FuelPolicy.Pick swap(List<ItemStack> bag, ItemStack slot, int input, double lit, double progress,
+                                Predicate<Item> supported, ToDoubleFunction<Item> fuelPerItem) {
+        double slotFuel = slot.isEmpty() ? 0 : fuelPerItem.applyAsDouble(slot.getItem()) * slot.getCount();
+        return FuelPolicy.chooseSwap(bag, slot, missing(input, Math.max(lit, 0), Math.max(progress, 0), slotFuel), supported, fuelPerItem);
+    }
+
+    // asked once fill came back empty: the slot has fuel in it, the job needs more, and nothing more may go in (what the bag has is
+    // another fuel, and moving it in would swap the slot's) but that other fuel is enough to finish the job at the next visit. the
+    // station is as full as it gets, so the bot leaves it instead of standing there until the slot empties. with too little in the
+    // bag it is `dry` instead and gets fetched
+    static boolean stuckShort(int input, double lit, double progress, double slotFuel, double bagFuel) {
+        double missing = missing(input, lit, progress, slotFuel);
+        return slotFuel > 0 && missing > 0 && bagFuel >= missing;
     }
 
     // out of fuel with the screen open: it is short and nothing in the bag (usable, see FuelPolicy) makes up the difference.

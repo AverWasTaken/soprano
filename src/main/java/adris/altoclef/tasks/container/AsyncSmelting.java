@@ -7,17 +7,20 @@ import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WorldHelper;
+import adris.altoclef.util.slots.Slot;
 import baritone.Baritone;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.food.FoodProperties;
+import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Block;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -113,17 +116,71 @@ public final class AsyncSmelting {
     // is there enough fuel in (the lit item plus the fuel slot) to cook everything in the input slot without us. the numbers
     // are smelts, same units as the rest of the smelt task, so a coal is 8
     public static boolean fuelCovers(ItemStack fuelSlot, double litFuel, int inputCount) {
-        double slot = fuelSlot.isEmpty() ? 0 : ItemHelper.getFuelAmount(fuelSlot);
-        return Math.max(litFuel, 0) + slot >= inputCount;
+        return fuelCovers(fuelSlot, litFuel, 0, inputCount);
+    }
+
+    // the same with the cook arrow counted: the item in hand is `progress` of the way done, and that part needs no fuel. it is the
+    // sum the fill uses (FuelShortage.missing), so "nothing left to put in" and "covered, leave" cannot disagree by a fraction
+    public static boolean fuelCovers(ItemStack fuelSlot, double litFuel, double progress, int inputCount) {
+        return fuelCovers(fuelSlot.isEmpty() ? 0 : ItemHelper.getFuelAmount(fuelSlot), litFuel, progress, inputCount);
+    }
+
+    // same with the slot already in smelts (the smelt tasks have the number by then, and the tests have no fuel table to ask)
+    public static boolean fuelCovers(double slotFuel, double litFuel, double progress, int inputCount) {
+        return Math.max(litFuel, 0) + Math.max(progress, 0) + Math.max(slotFuel, 0) >= inputCount;
+    }
+
+    // how many of the `inputCount` items the fuel in and under the station gets through before it runs dry, all of them when it is
+    // covered. rounded up: the job is due when that many are done, and a visit a bit late finds a cold station it can refuel,
+    // while one a bit early finds it lit, re-stamps a timer that assumes the fuel keeps going and comes back after it is out
+    public static int cookable(double slotFuel, double litFuel, double progress, int inputCount) {
+        double smelts = Math.max(litFuel, 0) + Math.max(progress, 0) + Math.max(slotFuel, 0);
+        return (int) Math.max(1, Math.min(inputCount, Math.ceil(smelts - 1e-9)));
+    }
+
+    // whatever is on the cursor goes back in the bag before the smelt task lets go of the screen or calls the load done: a fuel
+    // swapped out of the slot lands there, and so does the odd leftover of a split stack. true = a click went out this tick, so
+    // the caller waits for the next one. a full bag has nowhere to put it, closing the screen hands it back
+    public static boolean clearCursor(AltoClef mod) {
+        ItemStack cursor = StorageHelper.getItemStackInCursorSlot();
+        if (cursor.isEmpty()) {
+            return false;
+        }
+        Optional<Slot> fit = mod.getItemStorage().getSlotThatCanFitInPlayerInventory(cursor, false);
+        if (fit.isEmpty()) {
+            return false;
+        }
+        mod.getSlotHandler().clickSlot(fit.get(), 0, ClickType.PICKUP);
+        return true;
+    }
+
+    // the first half of a fuel swap: the slot's stack comes out onto the cursor (a stray cursor stack goes away first, clicking the
+    // slot with it would trade the two). the pick goes in as an ordinary fill into an EMPTY slot after that, never as a one click
+    // swap: onto a different item a right click puts the whole held stack in, which would be a whole stack of wood where the job
+    // wanted 25 planks and the reserve wanted some of them kept. one click per tick. true = a click went out and the caller waits for
+    // the next tick. false = the cursor holds something with nowhere to go (a full bag), and then the slot is left alone: clicking it
+    // would trade the two, so the caller carries on without the swap
+    public static boolean emptyFuelSlot(AltoClef mod, Slot fuelSlot) {
+        if (!StorageHelper.getItemStackInCursorSlot().isEmpty()) {
+            return clearCursor(mod);
+        }
+        mod.getSlotHandler().clickSlot(fuelSlot, 0, ClickType.PICKUP);
+        return true;
     }
 
     // everything is in: remember the furnace and let go of the screen
     public static void loaded(AltoClef mod, BlockPos pos, Block kind, ItemStack input, ItemTarget output) {
+        loaded(mod, pos, kind, input, output, input.getCount());
+    }
+
+    // `cookable` = how much of the input the fuel will cook. a station left with less fuel than it needs (the slot is full of one
+    // fuel and the bag has another) is due when the fuel is, not after the whole input: the visit then finds it cold and refuels it
+    public static void loaded(AltoClef mod, BlockPos pos, Block kind, ItemStack input, ItemTarget output, int cookable) {
         long now = mod.getWorld().getGameTime();
         String kindName = BuiltInRegistries.BLOCK.getKey(kind).getPath();
         RunState.FurnaceJob job = new RunState.FurnaceJob(new RunState.Pos(pos.getX(), pos.getY(), pos.getZ()),
                 WorldHelper.getCurrentDimension().name(), kindName, name(input.getItem()), input.getCount(),
-                name(output.getMatches()[0]), now, FurnaceJobs.doneTick(kindName, now, input.getCount()));
+                name(output.getMatches()[0]), now, FurnaceJobs.doneTick(kindName, now, Math.min(input.getCount(), cookable)));
         job.unitsEach = unitsEach(output);
         LOADED.add(job);
         StorageHelper.closeScreen();

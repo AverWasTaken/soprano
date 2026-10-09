@@ -161,6 +161,8 @@ public class SmeltInBlastFurnaceTask extends ResourceTask {
         private final BlockPos _existing;
         // async smelting: everything is in the blast furnace and we walked away, this task is done and must not walk back
         private boolean _loaded;
+        // the slot is full of one fuel, the bag has only another, see stuckShort
+        private final FuelShortage _cannotAdd = new FuelShortage();
 
         public DoSmeltInBlastFurnaceTask(SmeltTarget target, BlockPos existing) {
             super(Blocks.BLAST_FURNACE, new ItemTarget(Items.BLAST_FURNACE));
@@ -330,27 +332,40 @@ public class SmeltInBlastFurnaceTask extends ResourceTask {
                     - (outputTarget.matches(_furnaceCache.outputSlot.getItem()) ? _furnaceCache.outputSlot.getCount() : 0)
                     - totalFuelInFurnace;
              */
-            // Fill in fuel if needed
-            if (fuel.isEmpty() || ItemHelper.isFuel(fuel.getItem())) {
-                double currentlyCached = StorageHelper.getBlastFurnaceFuel() + StorageHelper.getBlastFurnaceCookPercent();
-                double needs = material.getCount() - currentlyCached;
-                if (needs > 0) {
-                    // best fuel to fill, FuelPolicy keeps the wood the run still has plans for
-                    var pick = adris.altoclef.util.helpers.FuelPolicy.choose(mod.getItemStorage().getItemStacksPlayerInventory(true), needs,
-                            AltoSettings::isSupportedFuel, ItemHelper::getFuelAmount);
-                    if (pick != null) {
-                        setDebugState("Filling fuel");
-                        return new MoveItemToSlotFromInventoryTask(new ItemTarget(pick.stack().getItem(), pick.count()), BlastFurnaceSlot.INPUT_SLOT_FUEL);
-                    }
-                }
+            // Fill in fuel if needed. the slot counts toward the job and what is in it stays (FuelPolicy.chooseFor), FuelPolicy also
+            // keeps the wood the run still has plans for. lit is /100 like the smoker's (StorageHelper.litItems)
+            double lit = StorageHelper.getBlastFurnaceFuel();
+            double progress = StorageHelper.getBlastFurnaceCookPercent();
+            var bag = mod.getItemStorage().getItemStacksPlayerInventory(true);
+            var pick = FuelShortage.fill(bag, fuel, material.getCount(), lit, progress, AltoSettings::isSupportedFuel, ItemHelper::getFuelAmount);
+            if (pick != null) {
+                setDebugState("Filling fuel");
+                return new MoveItemToSlotFromInventoryTask(new ItemTarget(pick.stack().getItem(), pick.count()), BlastFurnaceSlot.INPUT_SLOT_FUEL);
             }
 
-            // fully loaded and fueled: the cook does not need us. the screen closes and whoever asked comes back later
+            // a slot full of one fuel with only another in the bag: swap it out when that covers the whole job alone, otherwise leave
+            // short and the job is due when the fuel is (the story is in the furnace task, AsyncSmelting.cookable)
             BlockPos at = getTargetContainerPosition();
-            if (at != null && !material.isEmpty() && AsyncSmelting.wants(_target.getItem())
-                    && AsyncSmelting.fuelCovers(fuel, StorageHelper.getBlastFurnaceFuel(), material.getCount())) {
-                setDebugState("Loaded, leaving it to cook");
-                AsyncSmelting.loaded(mod, at, Blocks.BLAST_FURNACE, material, _target.getItem());
+            double slotFuel = fuel.isEmpty() ? 0 : ItemHelper.getFuelAmount(fuel);
+            boolean covered = AsyncSmelting.fuelCovers(slotFuel, lit, progress, material.getCount());
+            boolean stuck = _cannotAdd.confirmed(FuelShortage.stuckShort(material.getCount(), lit, progress, slotFuel,
+                    StorageHelper.calculateInventoryFuelCount(mod)), mod.getWorld().getGameTime());
+            var swap = stuck ? FuelShortage.swap(bag, fuel, material.getCount(), lit, progress, AltoSettings::isSupportedFuel, ItemHelper::getFuelAmount) : null;
+            if (swap != null && AsyncSmelting.emptyFuelSlot(mod, BlastFurnaceSlot.INPUT_SLOT_FUEL)) {
+                // the slot comes empty first, the fill above puts the covering fuel in next tick (AsyncSmelting.emptyFuelSlot)
+                setDebugState("Taking the slot's fuel out for one that covers the job");
+                return null;
+            }
+            // what came out of the slot goes back in the bag first
+            if (AsyncSmelting.clearCursor(mod)) {
+                return null;
+            }
+
+            // loaded: the cook does not need us. the screen closes and whoever asked comes back later
+            if (at != null && !material.isEmpty() && AsyncSmelting.wants(_target.getItem()) && (covered || stuck)) {
+                setDebugState(covered ? "Loaded, leaving it to cook" : "Slot is as full as it gets, leaving it to cook");
+                AsyncSmelting.loaded(mod, at, Blocks.BLAST_FURNACE, material, _target.getItem(),
+                        AsyncSmelting.cookable(slotFuel, lit, progress, material.getCount()));
                 _loaded = true;
                 return null;
             }
