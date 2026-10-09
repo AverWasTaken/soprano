@@ -49,7 +49,8 @@ public final class CombatPolicy {
     public static final int STAND_MAX = 4;
 
     // one or two skeletons are not a crowd and running from them is how a naked bot dies: they shoot you in the back for
-    // free. the answer is to walk up and hit them. the closest shooter has to be this near to start it
+    // free. the answer is to walk up and hit them, with something to hit them with: a bare hand is a skeleton's twenty hp
+    // of free arrows, see Scene.armed. the closest shooter has to be this near to start it
     public static final double CHARGE_RANGE = 12;
     // three or more with eyes on us is a firing line, that one really is cover or feet
     public static final int CHARGE_MAX_SEEN = 2;
@@ -63,8 +64,10 @@ public final class CombatPolicy {
     // at or below this hp (half hearts) with something that can reach us this close, anything in contact is a run (never a
     // trade), and the wheel stays with the defense chain for LOW_HP_LATCH ticks after the last time it was true. at hp 3
     // the verdict used to flip kite / fight / "passing 5 zombified piglins" every few ticks and the user task took the
-    // wheel back in between and walked us into the pile
-    public static final float LOW_HP = 6;
+    // wheel back in between and walked us into the pile.
+    // it is the flee line on purpose and not a number of its own: the stance said leave at 8 while the latch (then 6) let
+    // a held kill target say no, and the two hp in between were a bot walking at a skeleton while losing
+    public static final float LOW_HP = CombatRules.FLEE_HEALTH;
     public static final double LOW_HP_RANGE = 8;
     public static final long LOW_HP_LATCH = 40;
 
@@ -140,13 +143,26 @@ public final class CombatPolicy {
     // x and z are where the player is, only used to see whether a retreat is getting anywhere
     // shield: we have one to stand behind (two on us and no shield is a run, not a trade).
     // ticksSinceHurt and graceTicks are the chain's business now: it turns them into Mob.hitUs, so a bite from one zombie
-    // does not make every other zombie on the hillside our problem
+    // does not make every other zombie on the hillside our problem.
+    // armed: a sword or an axe somewhere in the bag. a charge is walking up to hit something, so it needs a thing to hit
+    // with (the same pick standCapacity's damage comes from)
     public record Scene(List<Mob> mobs, long ticksSinceHurt, boolean travelling, List<Point> path, double x, double z,
-                        int swarmThreshold, long graceTicks, float health, boolean shield) {
+                        int swarmThreshold, long graceTicks, float health, boolean shield, boolean armed) {
+        // armed, which is what every scene that is not about the weapon wants
+        public Scene(List<Mob> mobs, long ticksSinceHurt, boolean travelling, List<Point> path, double x, double z,
+                     int swarmThreshold, long graceTicks, float health, boolean shield) {
+            this(mobs, ticksSinceHurt, travelling, path, x, z, swarmThreshold, graceTicks, health, shield, true);
+        }
+
         // no shield
         public Scene(List<Mob> mobs, long ticksSinceHurt, boolean travelling, List<Point> path, double x, double z,
                      int swarmThreshold, long graceTicks, float health) {
             this(mobs, ticksSinceHurt, travelling, path, x, z, swarmThreshold, graceTicks, health, false);
+        }
+
+        // the same scene with nothing to swing
+        public Scene unarmed() {
+            return new Scene(mobs, ticksSinceHurt, travelling, path, x, z, swarmThreshold, graceTicks, health, shield, false);
         }
 
         // full health, for everything that is not about to ask whether a charge is affordable
@@ -215,6 +231,20 @@ public final class CombatPolicy {
     // is the low hp latch on. the chain asks this for the stance and for whether a held kill target still gets a say
     public boolean lowHpLatched(long now) {
         return now < lowHpUntil;
+    }
+
+    // the defense chain does not give the wheel back while this is true: we are low (the latch, or the stance says leave)
+    // and a problem is still this close. the user task carrying on is how it stops being a run at hp 3. nearestProblem is
+    // the distance to the closest mob the chain is dealing with (not the ones it is walking past), infinity for none
+    public static boolean holdsTheWheel(boolean lowHpLatched, CombatRules.Stance stance, double nearestProblem) {
+        if (!lowHpLatched && stance != CombatRules.Stance.FLEE) return false;
+        return nearestProblem <= LOW_HP_RANGE;
+    }
+
+    // low and shot at: a dodge sidesteps the one arrow and the skeleton lines up the next, distance is what stops them. only
+    // when the flee is the thing about to fire (the latch is why a held kill target cannot veto it)
+    public static boolean fleeBeatsDodge(boolean lowHpLatched, CombatRules.Stance stance) {
+        return lowHpLatched && stance == CombatRules.Stance.FLEE;
     }
 
     public Decision decide(long now, Scene scene) {
@@ -336,7 +366,7 @@ public final class CombatPolicy {
             }
             return new Decision(Verdict.KITE, ignored, swarm, near, false, kiteWhy(lowRun, crowd, pressed));
         }
-        if (chargeOn(now, scene.health(), crowd, seen, shooters, shooterRange, meleeNear)) {
+        if (chargeOn(now, scene.health(), scene.armed(), crowd, seen, shooters, shooterRange, meleeNear)) {
             return new Decision(Verdict.CHARGE, ignored, swarm, near, false, "shooters first");
         }
         boolean hold = now < holdUntil;
@@ -403,8 +433,16 @@ public final class CombatPolicy {
 
     // whether the charge is on this tick. it is its own latch: starting wants a shooter inside CHARGE_RANGE, staying only
     // wants a shooter left, because a skeleton that steps behind a pillar is still the thing to kill
-    private boolean chargeOn(long now, float health, boolean crowd, int seen, int shooters, double shooterRange, int meleeNear) {
+    private boolean chargeOn(long now, float health, boolean armed, boolean crowd, int seen, int shooters, double shooterRange,
+                             int meleeNear) {
         if (health >= CHARGE_RESUME) chargeSpent = false;
+        if (!armed) {
+            // nothing to hit it with (a death takes the sword along with everything else). out of weapon, not out of skeleton,
+            // so it is not "spent": the first sword makes it a charge again. no charge is not a new plan, it is what the
+            // policy says about a skeleton when it is not a charge
+            charging = false;
+            return false;
+        }
         if (health <= CHARGE_MIN_HEALTH) {
             // out of health, not out of skeleton
             if (charging) chargeSpent = true;
@@ -459,6 +497,13 @@ public final class CombatPolicy {
     // the hp the food rule runs at (same line the dodge gate and the food chain use for "should be eating")
     public static final float LOW_HP_FOOD = 10;
 
+    // between the flee line and the food line the run is "get out of it so the food chain can eat", which means nothing with
+    // an empty bag, so nothing in the bag stays and fights there. at or under the flee line it is not about eating any more,
+    // it is about not dying, and an empty bag is the likeliest bag to have right after a death
+    public static boolean runsLow(float health, boolean hasFood) {
+        return hasFood || health <= CombatRules.FLEE_HEALTH;
+    }
+
     // the chain's isInDanger, as numbers. the vulnerable branch used to be "armor under 5 and hp under 18 and a melee mob
     // within 8", which is every early game bot below full health and one zombie. that ran from a lone zombie at hp 17 with
     // a shield, twice, while the policy was passing it. the policy owns every verdict it gave: a pass, a fight and a kite
@@ -469,7 +514,7 @@ public final class CombatPolicy {
         if (d.decision().outrunning()) return false;
         // nothing real on us is nothing to run from (hp 9 with food and a creeper two chunks away is not a reason)
         if (d.melee() + d.shooters() == 0) return false;
-        if (d.health() <= LOW_HP_FOOD && d.hasFood() && !d.witchAround() && !d.charging()) return true;
+        if (d.health() <= LOW_HP_FOOD && runsLow(d.health(), d.hasFood()) && !d.witchAround() && !d.charging()) return true;
         if (!vulnerable(d.armor(), d.health())) return false;
         if (d.shooters() > CHARGE_MAX_SEEN) return true;
         if (!d.policyOn()) return dangerousCompany(d.melee(), d.shooters());
@@ -570,6 +615,13 @@ public final class CombatPolicy {
     // damage is the held weapon's attack damage minus 3 (the tuning is from before the real numbers were used). an axe
     // reads high next to a sword of its tier, which is fine, STAND_MAX is where it stops mattering
     public static int standCapacity(int armor, float damage, boolean hasShield) {
+        return standCapacity(armor, damage, hasShield, true);
+    }
+
+    // armed: a sword or an axe in the bag. armor and a shield make the punches survivable, they do not make a punch a fight,
+    // so with nothing to swing there is nothing the gear can take on (it used to be 1, or 2 behind a shield, and 2 beat one skeleton)
+    public static int standCapacity(int armor, float damage, boolean hasShield, boolean armed) {
+        if (!armed) return 0;
         int base = (int) Math.ceil((armor * 3.6 / 20.0) + (damage * 0.8)) + 1;
         if (hasShield) base++;
         return Math.min(base, STAND_MAX);

@@ -419,4 +419,122 @@ public class MobReachRulesTest {
         t.prune(500);
         assertEquals(1, t.size());
     }
+
+    // ---- in contact range is never stuck
+
+    @Test
+    public void aMobInContactRangeIsNeverStalledNoMatterHowLong() {
+        MobReachRules.StallTracker t = new MobReachRules.StallTracker();
+        // the zombie behind us while we back off: the gap never closes, and it does not have to
+        assertFalse(watch(t, 1, 2.5, 0, 400));
+        assertFalse(watch(t, 2, MobReachRules.STALL_EXEMPT_RANGE, 0, 400));
+    }
+
+    @Test
+    public void justOutsideContactRangeStillStalls() {
+        MobReachRules.StallTracker t = new MobReachRules.StallTracker();
+        assertTrue(watch(t, 1, MobReachRules.STALL_EXEMPT_RANGE + 0.5, 0, 100));
+    }
+
+    @Test
+    public void theContactRangeIsTheOneTheFightCountsContactBy() {
+        assertEquals(CombatPolicy.CONTACT_RANGE, MobReachRules.STALL_EXEMPT_RANGE, 0);
+    }
+
+    @Test
+    public void leavingContactRangeStartsTheClockFromScratch() {
+        MobReachRules.StallTracker t = new MobReachRules.StallTracker();
+        // on top of us for a long while, then we get a few blocks of room
+        watch(t, 1, 2.0, 0, 200);
+        // one sample out there is not 40 ticks of being stuck
+        assertFalse(t.update(1, 4.5, 210));
+        assertFalse(watch(t, 1, 4.5, 220, 240));
+        assertTrue(watch(t, 1, 4.5, 250, 250));
+    }
+
+    @Test
+    public void aStalledMobWalkingUpToUsIsNotStalledAnyMore() {
+        MobReachRules.StallTracker t = new MobReachRules.StallTracker();
+        assertTrue(watch(t, 1, 8.0, 0, 60));
+        assertFalse(t.update(1, 2.8, 70));
+        assertFalse(t.update(1, 2.8, 80));
+    }
+
+    @Test
+    public void aStalledVerdictDoesNotOutliveTheMobArriving() {
+        MobReachRules.Verdict stalled = MobReachRules.Verdict.STALLED;
+        assertTrue(MobReachRules.verdictHolds(stalled, MobReachRules.STALL_EXEMPT_RANGE + 0.5));
+        assertFalse(MobReachRules.verdictHolds(stalled, MobReachRules.STALL_EXEMPT_RANGE));
+        assertFalse(MobReachRules.verdictHolds(stalled, 1));
+    }
+
+    @Test
+    public void everyOtherVerdictHoldsAtAnyRange() {
+        // a wall is a wall at two blocks, and an enclosure is ours whatever is outside it
+        for (MobReachRules.Verdict v : new MobReachRules.Verdict[]{MobReachRules.Verdict.REACHABLE, MobReachRules.Verdict.ENCLOSED,
+                MobReachRules.Verdict.VERTICAL_GAP}) {
+            assertTrue(v.name(), MobReachRules.verdictHolds(v, 1));
+            assertTrue(v.name(), MobReachRules.verdictHolds(v, 20));
+        }
+    }
+
+    // ---- running from it: a mob that keeps pace is the one we are running from
+
+    private static boolean watchRunning(MobReachRules.StallTracker t, int id, double distance, long from, long to, boolean fleeing) {
+        boolean stalled = false;
+        for (long tick = from; tick <= to; tick += 10) {
+            stalled = t.update(id, distance, tick, fleeing);
+        }
+        return stalled;
+    }
+
+    @Test
+    public void whileRunningAMobThatKeepsPaceIsNeverStalled() {
+        MobReachRules.StallTracker t = new MobReachRules.StallTracker();
+        // five blocks back and not a block closer in ten seconds, because we are the ones moving
+        assertFalse(watchRunning(t, 1, 5.0, 0, 400, true));
+        assertFalse(watchRunning(t, 2, MobReachRules.FLEEING_STALL_RANGE, 0, 400, true));
+    }
+
+    @Test
+    public void theSameMobNotWhileRunningStillStallsInFortyTicks() {
+        MobReachRules.StallTracker t = new MobReachRules.StallTracker();
+        assertTrue(watchRunning(t, 1, 5.0, 0, 60, false));
+    }
+
+    @Test
+    public void pastTheRunningRangeTheOldRuleStandsEvenWhileRunning() {
+        MobReachRules.StallTracker t = new MobReachRules.StallTracker();
+        assertTrue(watchRunning(t, 1, MobReachRules.FLEEING_STALL_RANGE + 0.5, 0, 60, true));
+    }
+
+    @Test
+    public void theRunEndingStartsTheClockFromScratch() {
+        MobReachRules.StallTracker t = new MobReachRules.StallTracker();
+        watchRunning(t, 1, 5.0, 0, 200, true);
+        // run over, mob still there. it was not stuck while we ran, so its forty ticks count from where the run ended
+        assertFalse(t.update(1, 5.0, 210, false));
+        assertFalse(watchRunning(t, 1, 5.0, 220, 230, false));
+        assertTrue(watchRunning(t, 1, 5.0, 240, 240, false));
+    }
+
+    @Test
+    public void theRunningRangeIsTheLowHpRange() {
+        assertEquals(CombatPolicy.LOW_HP_RANGE, MobReachRules.FLEEING_STALL_RANGE, 0);
+        assertEquals(MobReachRules.STALL_EXEMPT_RANGE, MobReachRules.stallExemptRange(false), 0);
+        assertEquals(MobReachRules.FLEEING_STALL_RANGE, MobReachRules.stallExemptRange(true), 0);
+        // running never narrows it
+        assertTrue(MobReachRules.stallExemptRange(true) >= MobReachRules.stallExemptRange(false));
+    }
+
+    @Test
+    public void aCachedStalledVerdictStopsHoldingOnAMobOnOurHeelsWhileRunning() {
+        MobReachRules.Verdict stalled = MobReachRules.Verdict.STALLED;
+        assertFalse(MobReachRules.verdictHolds(stalled, 6, true));
+        assertTrue(MobReachRules.verdictHolds(stalled, 6, false));
+        assertTrue(MobReachRules.verdictHolds(stalled, MobReachRules.FLEEING_STALL_RANGE + 0.5, true));
+        // the other verdicts do not care whether we are running
+        assertTrue(MobReachRules.verdictHolds(MobReachRules.Verdict.ENCLOSED, 2, true));
+        assertTrue(MobReachRules.verdictHolds(MobReachRules.Verdict.VERTICAL_GAP, 2, true));
+    }
 }

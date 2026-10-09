@@ -107,6 +107,10 @@ public class MobDefenseChain extends SingleTaskChain {
     private Task _travelUserTask;
     private CombatPolicy.Decision _decision = NO_POLICY;
     private boolean _lowHpLatched;
+    // low (latched, or the stance says leave) with a problem still within LOW_HP_RANGE: nothing here hands the wheel back
+    private boolean _holdWheel;
+    // when the last let go got a line, so a user task that keeps the wheel for a while is one line and not one per tick
+    private long _letGoLogTick = Long.MIN_VALUE / 2;
     // the user task is the one pathing right now (so baritone's path is its route and not a run's)
     private boolean _userDriving;
     // we are on a route and nobody who is after us can get to it: a run from them is just carrying on
@@ -130,6 +134,7 @@ public class MobDefenseChain extends SingleTaskChain {
     private static final double RANGED_RUN_DISTANCE = 12;
     // how long a dodge keeps the fight it interrupted "on" for the flee checks
     private static final long PARK_TICKS = 40;
+    private static final long LET_GO_LOG_TICKS = 40;
     // the half hearts the dodge gate looks at. same number the food chain and isInDanger use for "should be eating"
     private static final float LOW_HEALTH = 10;
 
@@ -229,6 +234,7 @@ public class MobDefenseChain extends SingleTaskChain {
         if (priority <= 0) return priority;
         Task held = getCurrentTask();
         if (CombatRules.wheelPriority(priority, held != null, held != null && held.isFinished(mod)) > 0) return priority;
+        noteLetGo(mod, "the run was over before it started, nothing left to run from");
         // every branch that asks for the wheel just installed something to hold it with. if that something is gone or was
         // born finished (a run from a crowd we are already outside of), the wheel is not ours, and neither is the latch
         // that was about to keep it for 40 ticks. (shielding and the force field act without a task, and never needed the
@@ -360,6 +366,13 @@ public class MobDefenseChain extends SingleTaskChain {
         // and a dodge dropped the kill target. a charge never dodges, it shields or eats the arrow, the dodge goes
         // sideways and the skeleton gets another volley)
         if (!shielded && !charging && (mod.getPlayer().getHealth() <= LOW_HEALTH || mod.getEntityTracker().entityFound(ThrownPotion.class) || !hasShield)) {
+            // low and shot at: the dodge sidesteps one arrow and the skeleton lines up the next one, leaving is the answer. this
+            // is the same run the flee gates below would start, it just gets asked before a dodge can cut it off (a dodge and a
+            // flee taking turns every second is neither). nowhere to run still dodges
+            if (!mod.getFoodChain().needsToEat() && !_routeOutrun && CombatPolicy.fleeBeatsDodge(_lowHpLatched, getCombatStance(mod))
+                    && runFrom(mod, now, dangerRunTask(), 80)) {
+                return 80;
+            }
             if (!mod.getFoodChain().needsToEat() && Baritone.settings().altoDodgeProjectiles.value && isProjectileClose(mod)) {
                 _doingFunkyStuff = true;
                 //Debug.logMessage("DODGING");
@@ -379,7 +392,7 @@ public class MobDefenseChain extends SingleTaskChain {
             if (!fightOn(now)) {
                 // the route we were walking is clear of them, so the way out is the way we were going. the user task has
                 // the sprint, running to a random spot 30 blocks off is how the furnace trip became a lap of the map
-                if (_routeOutrun) return handBack();
+                if (_routeOutrun) return handBack(mod, "the route is clear of them");
                 if (runFrom(mod, now, dangerRunTask(), 70)) return 70;
             }
         }
@@ -387,7 +400,7 @@ public class MobDefenseChain extends SingleTaskChain {
         // losing a fight is not the time to trade blows or to chew. leave, the food chain eats once we are out of it.
         // (the food chain only lets go of its bite when it sees this stance, see FoodChain.needsToEat)
         if (!fightOn(now) && getCombatStance(mod) == CombatRules.Stance.FLEE) {
-            if (_routeOutrun) return handBack();
+            if (_routeOutrun) return handBack(mod, "the route is clear of them");
             if (runFrom(mod, now, dangerRunTask(), 80)) return 80;
         }
 
@@ -464,7 +477,7 @@ public class MobDefenseChain extends SingleTaskChain {
                 // the formula below was tuned on "1 + tier bonus" (wood 1 ... netherite 5), real damage is 3 higher than that
                 float damage = bestWeapon == null ? 0 : (ItemHelper.getAttackDamage(bestWeapon) - 3);
                 // (the shield used to be +20 here, which made a shielded bot stand in the middle of any crowd)
-                int canDealWith = CombatPolicy.standCapacity(armor, damage, hasShield);
+                int canDealWith = CombatPolicy.standCapacity(armor, damage, hasShield, bestWeapon != null);
                 // a crowd we could not run from (or were told to stand against) is fought whatever the gear says, running
                 // blind with a pile of them on our heels is worse than the shield
                 boolean crowd = _decision.swarm() >= Baritone.settings().altoSwarmThreshold.value || _decision.cornered();
@@ -498,7 +511,7 @@ public class MobDefenseChain extends SingleTaskChain {
                     // nothing left that we can walk to, so no takeover. keep whatever we were doing
                 } else {
                     // We can't deal with it
-                    if (_routeOutrun) return handBack();
+                    if (_routeOutrun) return handBack(mod, "the route is clear of them");
                     if (runFrom(mod, now, dangerRunTask(), 80)) return 80;
                 }
             }
@@ -506,7 +519,7 @@ public class MobDefenseChain extends SingleTaskChain {
         // a run from the crowd that has since become "the route is clear, keep going" is a run to a random spot we no
         // longer need. the latch above still gets its 40 ticks, this is for after
         if (_routeOutrun && _runAwayTask instanceof RunAwayFromHostilesTask) {
-            return handBack();
+            return handBack(mod, "the run turned into the route carrying on");
         }
         // By default if we aren't "immediately" in danger but were running away, keep running away until we're good.
         // only if that run is really the one installed and still going: a finished one does not tick, so holding the wheel
@@ -516,6 +529,7 @@ public class MobDefenseChain extends SingleTaskChain {
         }
         _runAwayTask = null;
         _dangerRun = null;
+        noteLetGo(mod, "nothing to run from or fight");
         return 0;
     }
 
@@ -552,11 +566,26 @@ public class MobDefenseChain extends SingleTaskChain {
     }
 
     // the run is the user task carrying on: let go of whatever we were running with and give the wheel back
-    private float handBack() {
+    private float handBack(AltoClef mod, String why) {
+        noteLetGo(mod, why);
         _runAwayTask = null;
         _dangerRun = null;
         _runLatchUntil = Long.MIN_VALUE / 2;
         return 0;
+    }
+
+    // the wheel is going back to the user task while we are low and something is still around, which is the one time it
+    // should not be. asked every tick the user task has the wheel, so it only speaks every LET_GO_LOG_TICKS
+    private void noteLetGo(AltoClef mod, String why) {
+        float hp = mod.getPlayer().getHealth();
+        if (hp > CombatRules.FLEE_HEALTH || (!_lowHpLatched && _dealWith.isEmpty())) return;
+        long now = mod.getWorld().getGameTime();
+        if (now - _letGoLogTick < LET_GO_LOG_TICKS) return;
+        _letGoLogTick = now;
+        String nearest = _dealWith.isEmpty() ? "" : ", nearest " + MobReachability.shortName(_dealWith.get(0)) + " "
+                + Math.round(_dealWith.get(0).distanceTo(mod.getPlayer())) + " blocks";
+        Debug.logInternal("handing the wheel back at hp " + Math.round(hp) + ", " + why + " (" + _dealWith.size() + " to deal with"
+                + nearest + (_lowHpLatched ? ", latched" : "") + (_holdWheel ? ", should be holding" : "") + ")");
     }
 
     private boolean isRunLatched(long now) {
@@ -893,7 +922,7 @@ public class MobDefenseChain extends SingleTaskChain {
     private static int standCapacity(AltoClef mod, boolean shield) {
         Item weapon = AbstractKillEntityTask.bestWeapon(mod);
         float damage = weapon == null ? 0 : (ItemHelper.getAttackDamage(weapon) - 3);
-        return CombatPolicy.standCapacity(mod.getPlayer().getArmorValue(), damage, shield);
+        return CombatPolicy.standCapacity(mod.getPlayer().getArmorValue(), damage, shield, weapon != null);
     }
 
     // fight / flee / eat, worked out once per tick no matter how many things ask (the food chain asks a lot, needsToEat
@@ -925,6 +954,11 @@ public class MobDefenseChain extends SingleTaskChain {
         boolean policyOn = Baritone.settings().altoKillOrAvoidAnnoyingHostiles.value;
         boolean travelling = policyOn && updateTravel(mod, now);
         MobReachability reach = mod.getEntityTracker().getMobReachability();
+        // running (the latch from last tick, or a danger run that is the live task): a mob that keeps pace with us is the one we
+        // are running from, not one that is stuck. asked before the loop, the loop is where the verdicts are made. the field
+        // alone is not enough, it only gets cleared when the chain gets its turn, and mob defense can be off or standing down
+        boolean liveRun = _dangerRun != null && _dangerRun == getCurrentTask() && !_dangerRun.isFinished(mod);
+        reach.setFleeing(Baritone.settings().altoMobDefense.value && (liveRun || (policyOn && _policy.lowHpLatched(now))));
 
         List<Mob> engaged = new ArrayList<>();
         List<Mob> dealable = new ArrayList<>();
@@ -968,12 +1002,12 @@ public class MobDefenseChain extends SingleTaskChain {
                 decision = _policy.decide(now, new CombatPolicy.Scene(policyMobs, now - _lastHurtTick, travelling,
                         relativePath(player), player.getX(), player.getZ(),
                         Math.max(1, Baritone.settings().altoSwarmThreshold.value),
-                        grace, player.getHealth(), shield));
+                        grace, player.getHealth(), shield, AbstractKillEntityTask.bestWeapon(mod) != null));
             }
         }
         _decision = decision;
         // (one already on us is not outrun by walking on, it walks on with us and keeps swinging)
-        _routeOutrun = policyOn && meleeNear == 0
+        boolean routeClear = policyOn && meleeNear == 0
                 && (decision.outrunning() || (travelling && routeClearOfThem(player, policyMobs, decision)));
         _lowHpLatched = policyOn && _policy.lowHpLatched(now);
         logVerdict(mod, decision, dealable);
@@ -1007,6 +1041,13 @@ public class MobDefenseChain extends SingleTaskChain {
         // the quick bite at hp 4 is for "nothing next to us", and mob defense standing down for it hands the wheel to the
         // user task for as long as we chew. with the latch on something is still within 8, so feet first, bite later
         if (_lowHpLatched && _stance == CombatRules.Stance.EAT) _stance = CombatRules.Stance.FLEE;
+
+        // low with a problem still close: the wheel stays here, the user task carrying on is not a way out at this hp. every
+        // hand back that is about the route goes through _routeOutrun, so this is the one place it is switched off (worked
+        // out last because it wants the stance)
+        double nearestProblem = dealWith.isEmpty() ? Double.POSITIVE_INFINITY : dealWith.get(0).distanceTo(player);
+        _holdWheel = CombatPolicy.holdsTheWheel(_lowHpLatched, _stance, nearestProblem);
+        _routeOutrun = routeClear && !_holdWheel;
     }
 
     // everything the policy wants to know about one mob, as plain numbers

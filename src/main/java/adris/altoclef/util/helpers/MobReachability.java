@@ -61,6 +61,8 @@ public class MobReachability {
     private final HashMap<Integer, Cached> _verdicts = new HashMap<>();
     private final HashMap<Integer, Sight> _sight = new HashMap<>();
     private final MobReachRules.StallTracker _stall = new MobReachRules.StallTracker();
+    // the defense chain says so every tick: we are running, so a mob that keeps pace is not stuck (MobReachRules.FLEEING_STALL_RANGE)
+    private volatile boolean _fleeing;
     private final MobReachRules.ClosingTracker _closing = new MobReachRules.ClosingTracker();
     // mobs we are currently fighting or running from, and when we last asked about them. these get the leash instead of
     // the small engage zone
@@ -86,7 +88,9 @@ public class MobReachability {
         }
         long now = mod.getWorld().getGameTime();
         Cached cached = _verdicts.get(mob.getId());
-        if (cached != null && now >= cached.tick && now - cached.tick < HOLD_TICKS) {
+        // (a stalled verdict from when it was further out does not outlive it walking up to us)
+        if (cached != null && now >= cached.tick && now - cached.tick < HOLD_TICKS
+                && MobReachRules.verdictHolds(cached.verdict, mob.distanceTo(player), _fleeing)) {
             return cached.verdict.reachable();
         }
         Verdict verdict = evaluate(mod, mob, now);
@@ -150,7 +154,12 @@ public class MobReachability {
                 Baritone.settings().altoHostileEngageRange.value, Baritone.settings().altoHostileEngageHeight.value, isRanged(mob));
     }
 
+    public void setFleeing(boolean fleeing) {
+        _fleeing = fleeing;
+    }
+
     public void reset() {
+        _fleeing = false;
         _verdicts.clear();
         _sight.clear();
         _stall.clear();
@@ -167,7 +176,7 @@ public class MobReachability {
         if (!(mob instanceof Spider) && MobReachRules.isVerticallyOut(mob.getX() - player.getX(), mob.getY() - player.getY(), mob.getZ() - player.getZ())) {
             return Verdict.VERTICAL_GAP;
         }
-        if (_stall.update(mob.getId(), mob.distanceTo(player), now)) return Verdict.STALLED;
+        if (_stall.update(mob.getId(), mob.distanceTo(player), now, _fleeing)) return Verdict.STALLED;
         return Verdict.REACHABLE;
     }
 

@@ -1039,4 +1039,174 @@ public class CombatPolicyTest {
         assertEquals(KITE, d.verdict());
         assertFalse(d.outrunning());
     }
+
+    // ---- the latch sits on the flee line
+
+    @Test
+    public void theLatchIsTheFleeLineAndNotANumberOfItsOwn() {
+        assertEquals(CombatRules.FLEE_HEALTH, CombatPolicy.LOW_HP, 0);
+    }
+
+    @Test
+    public void theLatchEngagesAtTheFleeLineNotTwoHpBelowIt() {
+        // hp 8 with a zombie within 8: the stance says leave, so a held kill target must not be able to say no
+        for (float hp : new float[]{CombatRules.FLEE_HEALTH, 7, 6, 3}) {
+            CombatPolicy policy = new CombatPolicy();
+            policy.decide(0, withHealth(List.of(zombie(1, 5, 0)), hp));
+            assertTrue("hp " + hp, policy.lowHpLatched(0));
+        }
+        CombatPolicy above = new CombatPolicy();
+        above.decide(0, withHealth(List.of(zombie(1, 5, 0)), CombatRules.FLEE_HEALTH + 0.5f));
+        assertFalse(above.lowHpLatched(0));
+    }
+
+    @Test
+    public void aSkeletonWithinEightLatchesTheFleeLineToo() {
+        CombatPolicy policy = new CombatPolicy();
+        policy.decide(0, withHealth(List.of(skeleton(1, 7, 0, true)), CombatRules.FLEE_HEALTH));
+        assertTrue(policy.lowHpLatched(0));
+    }
+
+    @Test
+    public void aZombieOnUsAtTheFleeLineIsARunNotATrade() {
+        Decision d = new CombatPolicy().decide(0, withHealth(List.of(zombie(1, 2, 0)), CombatRules.FLEE_HEALTH));
+        assertEquals(KITE, d.verdict());
+        assertEquals("low hp", d.why());
+    }
+
+    // ---- the wheel stays put while we are low and something is close
+
+    @Test
+    public void lowWithAProblemWithinEightHoldsTheWheel() {
+        assertTrue(CombatPolicy.holdsTheWheel(true, CombatRules.Stance.FLEE, 5));
+        // either half is enough: the latch alone, or the stance alone
+        assertTrue(CombatPolicy.holdsTheWheel(true, CombatRules.Stance.FIGHT, 5));
+        assertTrue(CombatPolicy.holdsTheWheel(false, CombatRules.Stance.FLEE, 5));
+        // the edge counts
+        assertTrue(CombatPolicy.holdsTheWheel(true, CombatRules.Stance.FLEE, CombatPolicy.LOW_HP_RANGE));
+    }
+
+    @Test
+    public void nothingCloseOrNothingWrongLetsTheWheelGo() {
+        // low, but the nearest problem is further than the range (or there is none)
+        assertFalse(CombatPolicy.holdsTheWheel(true, CombatRules.Stance.FLEE, CombatPolicy.LOW_HP_RANGE + 0.5));
+        assertFalse(CombatPolicy.holdsTheWheel(true, CombatRules.Stance.FLEE, Double.POSITIVE_INFINITY));
+        // close, but healthy: not our business
+        assertFalse(CombatPolicy.holdsTheWheel(false, CombatRules.Stance.FIGHT, 2));
+        assertFalse(CombatPolicy.holdsTheWheel(false, CombatRules.Stance.CALM, 2));
+    }
+
+    // ---- flee over dodge
+
+    @Test
+    public void whenTheLatchIsOnTheFleeBeatsTheDodge() {
+        assertTrue(CombatPolicy.fleeBeatsDodge(true, CombatRules.Stance.FLEE));
+    }
+
+    @Test
+    public void withoutTheLatchOrTheFleeStanceTheDodgeStaysAsItWas() {
+        assertFalse(CombatPolicy.fleeBeatsDodge(false, CombatRules.Stance.FLEE));
+        assertFalse(CombatPolicy.fleeBeatsDodge(true, CombatRules.Stance.FIGHT));
+        // a gapple in hand is the eat, not a run: the dodge is still how we stay alive until the bite
+        assertFalse(CombatPolicy.fleeBeatsDodge(true, CombatRules.Stance.EAT_GAPPLE));
+        assertFalse(CombatPolicy.fleeBeatsDodge(false, CombatRules.Stance.CALM));
+    }
+
+    // ---- an empty bag is not a reason to stay
+
+    @Test
+    public void atTheFleeLineAnEmptyBagStillRuns() {
+        Decision one = new Decision(FIGHT_ONE, java.util.Set.of(), 1, 1, false);
+        assertTrue(CombatPolicy.inDanger(danger(CombatRules.FLEE_HEALTH, 0, false, one, 1, 0, 1)));
+        assertTrue(CombatPolicy.inDanger(danger(3, 0, false, one, 0, 1, 1)));
+        assertTrue(CombatPolicy.inDanger(danger(1, 0, false, one, 1, 0, 1)));
+    }
+
+    @Test
+    public void betweenTheFleeLineAndTheFoodLineRunningIsStillToEat() {
+        Decision one = new Decision(FIGHT_ONE, java.util.Set.of(), 1, 1, false);
+        // food in the bag: get out of it so the food chain can eat
+        assertTrue(CombatPolicy.inDanger(danger(9, 0, true, one, 1, 0, 1)));
+        assertTrue(CombatPolicy.inDanger(danger(10, 0, true, one, 1, 0, 1)));
+        // nothing to eat: running buys nothing here, and the fight is a fair one
+        assertFalse(CombatPolicy.inDanger(danger(9, 0, false, one, 1, 0, 1)));
+        assertFalse(CombatPolicy.inDanger(danger(10, 0, false, one, 1, 0, 1)));
+    }
+
+    @Test
+    public void theRunRuleReadsTheFleeLine() {
+        assertTrue(CombatPolicy.runsLow(CombatRules.FLEE_HEALTH, false));
+        assertFalse(CombatPolicy.runsLow(CombatRules.FLEE_HEALTH + 0.5f, false));
+        assertTrue(CombatPolicy.runsLow(CombatRules.FLEE_HEALTH + 0.5f, true));
+    }
+
+    @Test
+    public void aWitchStillKeepsTheLowRunOffEvenWithAnEmptyBag() {
+        // the witch rule was never about food: running from one is how you eat a potion
+        Decision one = new Decision(FIGHT_ONE, java.util.Set.of(), 1, 1, false);
+        assertFalse(CombatPolicy.inDanger(new CombatPolicy.Danger(6, 0, false, true, false, false, true, one, 1, 0, 1)));
+    }
+
+    // ---- no weapon, no charge
+
+    @Test
+    public void aLoneSkeletonIsNotAChargeWithNothingToSwing() {
+        Decision d = new CombatPolicy().decide(0, fighting(ONE_SKELETON).unarmed());
+        assertFalse(d.charging());
+        assertEquals(FIGHT_ONE, d.verdict());
+    }
+
+    @Test
+    public void theSameSkeletonIsAChargeOnceThereIsASword() {
+        assertEquals(CHARGE, new CombatPolicy().decide(0, fighting(ONE_SKELETON)).verdict());
+    }
+
+    @Test
+    public void losingTheWeaponEndsAChargeAndFindingOneStartsItAgain() {
+        CombatPolicy policy = new CombatPolicy();
+        assertEquals(CHARGE, policy.decide(0, fighting(ONE_SKELETON)).verdict());
+        // the commit does not hold the charge up, a bare hand is not a thing to commit to
+        assertEquals(FIGHT_ONE, policy.decide(1, fighting(ONE_SKELETON).unarmed()).verdict());
+        // out of weapon is not out of health: nothing is spent, the first sword is a charge again
+        assertEquals(CHARGE, policy.decide(2, fighting(ONE_SKELETON)).verdict());
+    }
+
+    @Test
+    public void twoShootersAndNothingToSwingIsNotAChargeEither() {
+        List<Mob> two = List.of(skeleton(1, 8, 0, true), skeleton(2, 0, 9, true));
+        assertEquals(FIGHT_ONE, new CombatPolicy().decide(0, fighting(two).unarmed()).verdict());
+    }
+
+    @Test
+    public void noWeaponChangesNothingAboutZombiesOrCrowds() {
+        // the charge is the only thing the weapon gates here
+        assertEquals(FIGHT_ONE, new CombatPolicy().decide(0, fighting(List.of(zombie(1, 2, 0))).unarmed()).verdict());
+        assertEquals(KITE, new CombatPolicy().decide(0, fighting(ring(6, 5)).unarmed()).verdict());
+    }
+
+    // ---- nothing to swing, nothing to stand with
+
+    @Test
+    public void unarmedHasNoStandCapacityWhateverItIsWearing() {
+        assertEquals(0, CombatPolicy.standCapacity(0, 0, false, false));
+        assertEquals(0, CombatPolicy.standCapacity(0, 0, true, false));
+        assertEquals(0, CombatPolicy.standCapacity(15, 3, true, false));
+        assertEquals(0, CombatPolicy.standCapacity(20, 4, true, false));
+    }
+
+    @Test
+    public void armedIsStillTheOldNumbers() {
+        assertEquals(1, CombatPolicy.standCapacity(0, 0, false, true));
+        assertEquals(2, CombatPolicy.standCapacity(0, 0, true, true));
+        assertEquals(CombatPolicy.STAND_MAX, CombatPolicy.standCapacity(15, 3, false, true));
+    }
+
+    @Test
+    public void aShieldAndNoWeaponDoesNotTakeOnALoneSkeleton() {
+        // the gear branch walks at a problem when capacity > the number of problems. one skeleton: 2 beat 1, 0 does not
+        assertTrue(CombatPolicy.standCapacity(0, 0, true, true) > 1);
+        assertFalse(CombatPolicy.standCapacity(0, 0, true, false) > 1);
+        // and the no-shield bot never did, so the two take the same branch now
+        assertFalse(CombatPolicy.standCapacity(0, 0, false, false) > 1);
+    }
 }

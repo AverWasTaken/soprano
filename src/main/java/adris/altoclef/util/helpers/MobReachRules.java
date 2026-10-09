@@ -19,6 +19,12 @@ public final class MobReachRules {
     // no closer by a block over two seconds means it is stuck on something
     public static final double STALL_PROGRESS = 1;
     public static final long STALL_TICKS = 40;
+    // a mob this close is arriving, not stuck. the tracker only watches the gap, and our own dodging and backing off keep
+    // the gap from closing, so the zombie right behind us used to read as stalled and get dropped from the threat count
+    public static final double STALL_EXEMPT_RANGE = CombatPolicy.CONTACT_RANGE;
+    // and while we are running (the low hp latch, or a danger run installed) anything this close is the thing we are running
+    // from: a mob that keeps pace with us never gets a block closer, which is all a stall is
+    public static final double FLEEING_STALL_RANGE = CombatPolicy.LOW_HP_RANGE;
 
     private MobReachRules() {
     }
@@ -50,6 +56,21 @@ public final class MobReachRules {
 
     private static boolean sideClosed(Terrain t, int x, int y, int z) {
         return t.wall(x, y, z) || t.solid(x, y + 1, z);
+    }
+
+    // how close a mob has to be to never count as stuck. running widens it, outside it the old forty ticks stand
+    public static double stallExemptRange(boolean fleeing) {
+        return fleeing ? Math.max(STALL_EXEMPT_RANGE, FLEEING_STALL_RANGE) : STALL_EXEMPT_RANGE;
+    }
+
+    // a verdict that was cached while the mob was further out stops holding once it is in the exempt range. only the
+    // stalled one: a wall is still a wall at two blocks
+    public static boolean verdictHolds(Verdict cached, double distance) {
+        return verdictHolds(cached, distance, false);
+    }
+
+    public static boolean verdictHolds(Verdict cached, double distance, boolean fleeing) {
+        return cached != Verdict.STALLED || distance > stallExemptRange(fleeing);
     }
 
     // directly above or below us, further than a mob can climb or safely drop. spiders skip this one, they climb
@@ -197,6 +218,11 @@ public final class MobReachRules {
 
         // record a sample, returns true if this mob has been stuck for STALL_TICKS
         public boolean update(int id, double distance, long now) {
+            return update(id, distance, now, false);
+        }
+
+        // fleeing: we are running from something, see FLEEING_STALL_RANGE
+        public boolean update(int id, double distance, long now, boolean fleeing) {
             Entry e = entries.get(id);
             if (e == null || now - e.lastSeen > FORGET_AFTER) {
                 e = new Entry();
@@ -205,6 +231,13 @@ public final class MobReachRules {
                 entries.put(id, e);
             }
             e.lastSeen = now;
+            if (distance <= stallExemptRange(fleeing)) {
+                // on top of us (or on our heels while we run), so the clock starts over from here: backing off from a zombie
+                // that follows is not it being stuck
+                e.best = distance;
+                e.since = now;
+                return false;
+            }
             if (distance <= e.best - STALL_PROGRESS) {
                 // got closer by enough, restart the clock from here
                 e.best = distance;
