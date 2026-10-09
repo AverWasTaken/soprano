@@ -75,4 +75,13 @@ public class CombatLogTest {
         assertEquals("combat: [nether] run over, 25 s cap, 52 blocks", line(Dimension.NETHER, Event.RUN_CAP, Why.NONE));
         assertEquals("combat: [end] run over, stuck 52 blocks from where it started", line(Dimension.END, Event.RUN_STUCK, Why.NONE));
     }
+
+    @Test
+    public void aChasedRunSaysItKeptGoingAndThenWhoItTurnedOn() {
+        assertEquals("combat: [overworld] run extended, still chased (hp 14)", line(Dimension.OVERWORLD, Event.RUN_EXTENDED, Why.LOW_HP));
+        assertEquals("combat: [overworld] chased too long, turning to fight zombie",
+                line(Dimension.OVERWORLD, Event.RUN_CHASED_FIGHT, Why.CHASED));
+        assertEquals("combat: [overworld] still chased, next zombie",
+                CombatLog.line(Dimension.OVERWORLD, Event.FIGHT_NEXT, Why.CHASED, true, "zombie", "zombie", "", 14, 0));
+    }
 }

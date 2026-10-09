@@ -202,8 +202,9 @@ final class CombatBrain {
             Event event = _commit.step(new CombatCommit.Tick(now, player.getHealth(), player.getX(), player.getZ(), foes, target));
             if (event != Event.NONE) {
                 log(mod, dimension, event, fighting, mobs);
-                // a new run is a new origin, a new fight is a new target, whatever the old ones were
-                _run = null;
+                // a new run is a new origin, a new fight is a new target, whatever the old ones were. an extended run is
+                // the same run from the same origin, so it keeps its task (a new one would cancel the path again)
+                if (event != Event.RUN_EXTENDED) _run = null;
             }
         } else if (_commit.mode() != Mode.NONE) {
             // switched off in the middle of one: let go of it, no line (it is not a transition the machine made)

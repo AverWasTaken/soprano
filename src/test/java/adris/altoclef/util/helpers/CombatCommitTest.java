@@ -270,12 +270,18 @@ public class CombatCommitTest {
         assertNull(CombatCommit.trigger(20, List.of(zombie(1, 2, TEN_SECONDS)), true));
     }
 
-    // being hurt with something close is never old news, the cooldown does not mute it
+    // being hurt with something on top of us, or something that just hit us, is never old news. one just standing within 8
+    // is what a capped run or a fight we turned around for leaves behind, and running from it again is the loop
     @Test
-    public void theCooldownDoesNotMuteLowHp() {
-        assertTrigger(Why.LOW_HP, 1, CombatCommit.trigger(5f, List.of(skeleton(1, 5)), true));
-        assertNull(CombatCommit.trigger(9f, List.of(skeleton(1, 5)), true));
-        assertNull(CombatCommit.trigger(5f, List.of(skeleton(1, 8.1)), true));
+    public void theCooldownOnlyLetsLowHpThroughForContactOrAFreshHit() {
+        assertNull(CombatCommit.trigger(5f, List.of(skeleton(1, 5)), true));
+        assertTrigger(Why.LOW_HP, 1, CombatCommit.trigger(5f, List.of(skeleton(1, 3)), true));
+        assertTrigger(Why.LOW_HP, 1, CombatCommit.trigger(5f, List.of(skeleton(1, 5, CombatCommit.FRESH)), true));
+        assertNull(CombatCommit.trigger(5f, List.of(skeleton(1, 5, CombatCommit.FRESH + 1)), true));
+        assertNull(CombatCommit.trigger(9f, List.of(skeleton(1, 3)), true));
+        assertNull(CombatCommit.trigger(5f, List.of(skeleton(1, 8.1, 0)), true));
+        // outside the cooldown it is still "anything within 8"
+        assertTrigger(Why.LOW_HP, 1, CombatCommit.trigger(5f, List.of(skeleton(1, 5)), false));
     }
 
     @Test
@@ -932,12 +938,12 @@ public class CombatCommitTest {
         assertEquals(Mode.NONE, c.mode());
     }
 
-    // a run only ends with nothing within 12 for two seconds, so a mob inside 8 right after one means it came back
+    // in the cooldown low hp only runs from something on top of us (or a fresh hit, see CombatCommitChasedTest)
     @Test
     public void lowHpStillStartsARunDuringTheCooldown() {
         CombatCommit c = wonFight();
         assertTrue(c.coolingDown(WON_AT + 1));
-        assertEquals(Event.RUN_START, c.step(tick(WON_AT + 1, 6f, null, zombie(2, 5))));
+        assertEquals(Event.RUN_START, c.step(tick(WON_AT + 1, 6f, null, zombie(2, 3))));
         assertEquals(Why.LOW_HP, c.why());
         assertEquals(Mode.RUN, c.mode());
     }

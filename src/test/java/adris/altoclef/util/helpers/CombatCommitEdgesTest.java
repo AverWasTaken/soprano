@@ -239,7 +239,11 @@ public class CombatCommitEdgesTest {
         assertEquals(Event.FIGHT_LOST, end);
         assertEquals(fightStart + 1 + CombatCommit.LOST_TICKS, t - 1);
         assertTrue(commit.isIgnored(5));
-        // hurt with it still within 8: back to a run straight away, cooldown or not
+        // hurt with it still within 8 but not on us and not hitting us: the cooldown sits it out, then it is a run again
+        long over = t - 1 + CombatCommit.COOLDOWN;
+        for (; t < over; t++) {
+            assertEquals("tick " + t, Event.NONE, commit.step(new Tick(t, 6, 0, 0, foes, null)));
+        }
         assertEquals(Event.RUN_START, commit.step(new Tick(t, 6, 0, 0, foes, null)));
         assertEquals(Why.LOW_HP, commit.why());
         // and stuck on the spot for as long as we like, the second tier has nobody left to try

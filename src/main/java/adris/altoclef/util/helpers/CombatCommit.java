@@ -63,7 +63,8 @@ public final class CombatCommit {
     // cornered rule above already has an answer (fight it)
     public static final long RUN_STUCK_TICKS = 100;
 
-    // after any commitment ends, only a fresh hit starts the next one
+    // after any commitment ends, only a fresh hit starts the next one. low hp too: only for something on top of us or one
+    // that just hit us, see trigger
     public static final long COOLDOWN = 100;
 
     // never hit us
@@ -75,7 +76,9 @@ public final class CombatCommit {
 
     // why a commitment started, so the chain can say so when it does
     public enum Why {
-        NONE, HIT, LOW_HP, HEAVY, CORNERED
+        NONE, HIT, LOW_HP, HEAVY, CORNERED,
+        // the run hit its cap twice with something still on our heels, so we turned around (boxed in rules, like CORNERED)
+        CHASED
     }
 
     public enum Event {
@@ -85,7 +88,9 @@ public final class CombatCommit {
         FIGHT_DEAD, FIGHT_LOST, FIGHT_STALLED,
         FIGHT_TO_RUN,
         RUN_CLEAR, RUN_CAP, RUN_STUCK,
-        RUN_TO_FIGHT
+        RUN_TO_FIGHT,
+        // the cap came with us still hurt and chased: one more cap window from the same origin, then a fight
+        RUN_EXTENDED, RUN_CHASED_FIGHT
     }
 
     // what sort of foe it is, which is the only thing the machine needs to know about a species
@@ -145,18 +150,21 @@ public final class CombatCommit {
 
     // the rule for "does anything here really need dealing with". almost always no: a crowd around us, a skeleton
     // shooting from range, a lit creeper and a zombie ten blocks off are all scenery and the task walks on.
-    // freshOnly is the cooldown, and it only gates the fight: danger is never old news.
+    // freshOnly is the cooldown. danger is never old news, low hp only counts something in contact or a fresh hit, and
+    // the fight only a fresh hit.
     // 1. something we never fight at this hp has got to us (a heavy hitter at 10 hp that hit us or is in contact, the
     //    warden within 8 or booming us): a run
-    // 2. we are hurt and something angry is within 8: a run. a run only ends with nothing within 12 for two seconds, so
-    //    a mob inside 8 right after one ended came back for us
+    // 2. we are hurt and something angry is within 8: a run. in the cooldown only if it is on top of us or just hit us,
+    //    a run that ran out of time or a fight we turned around for ends with the others still about, and "within 8"
+    //    alone would start the same run all over again
     // 3. it hit us and it is in contact: a fight. hitting back is the only way that one stops
     public static Trigger trigger(float health, List<Foe> foes, boolean freshOnly) {
         Foe danger = null;
         Foe near = null;
         for (Foe foe : foes) {
             if (foe.danger(health) && (danger == null || foe.distance < danger.distance)) danger = foe;
-            if (foe.distance <= LOW_HP_RANGE && (near == null || foe.distance < near.distance)) near = foe;
+            boolean counts = !freshOnly || foe.distance <= CONTACT || foe.fresh();
+            if (counts && foe.distance <= LOW_HP_RANGE && (near == null || foe.distance < near.distance)) near = foe;
         }
         if (danger != null) return new Trigger(Why.HEAVY, danger);
         if (health <= FLEE_HP && near != null) return new Trigger(Why.LOW_HP, near);
@@ -213,6 +221,9 @@ public final class CombatCommit {
 
     // run bookkeeping
     private long clearSince = -1;
+    // the cap counts from here, and a run gets one extension (startTick stays where the run really started)
+    private long capFrom;
+    private boolean extended;
     private long cornerSince = -1;
     private double cornerX;
     private double cornerZ;
@@ -266,6 +277,7 @@ public final class CombatCommit {
         cornered = false;
         lastTick = Long.MIN_VALUE;
         cooldownUntil = Long.MIN_VALUE / 2;
+        extended = false;
         farSince = -1;
         clearSince = -1;
         cornerSince = -1;
@@ -292,8 +304,9 @@ public final class CombatCommit {
     private Event idle(Tick t) {
         forgetIgnored(t);
         boolean cooling = coolingDown(t.now());
-        // danger is "anything that bad within 8", ignored or not, cooldown or not: leaving is not a fight with that one mob
-        Why run = runReason(t);
+        // danger is "anything that bad within 8", ignored or not, cooldown or not: leaving is not a fight with that one mob.
+        // low hp in the cooldown wants it on top of us or a fresh hit, see trigger
+        Why run = runReason(t, cooling);
         if (run != Why.NONE) return startRun(t, run, Event.RUN_START);
         // the fight is only for one we have not given up on, or one that has hit us since. empty-handed is fine, a punch
         // is still a punch and a zombie on us is not going anywhere
@@ -304,11 +317,11 @@ public final class CombatCommit {
 
     // what makes a fight in progress (or one about to start) a run instead, NONE for fit to fight. the same danger rules
     // as trigger(), plus the fight target itself (it can be outside the foe list and still be the thing to leave)
-    private static Why runReason(Tick t) {
+    private static Why runReason(Tick t, boolean freshOnly) {
         Foe target = t.target();
         // (the same "has it got to us" rule as for anything else, the fight target just gets asked too)
         if (target != null && target.danger(t.health())) return Why.HEAVY;
-        Trigger trigger = trigger(t.health(), t.foes(), false);
+        Trigger trigger = trigger(t.health(), t.foes(), freshOnly);
         if (trigger != null && trigger.why() != Why.HIT) return trigger.why();
         if (target != null && t.health() <= FLEE_HP && target.distance() <= LOW_HP_RANGE) return Why.LOW_HP;
         return Why.NONE;
@@ -347,7 +360,7 @@ public final class CombatCommit {
         // the bail-outs, and the only ones: the danger rules. a wobble above 8 is a fight, and so is hp 8 with nothing
         // within 8 (the last thing we were hitting died, that is a won fight, not a reason to run 24 blocks). boxed in
         // there is nowhere to bail to, so a cornered fight never asks
-        Why bail = cornered ? Why.NONE : runReason(t);
+        Why bail = cornered ? Why.NONE : runReason(t, false);
         if (bail != Why.NONE) return startRun(t, bail, Event.FIGHT_TO_RUN);
         if (target == null) return targetGone(t);
         // out of play: wandered off past LOST_RANGE and not hitting us. if it wants another go, that is a new fight
@@ -384,7 +397,9 @@ public final class CombatCommit {
     // the user task walking with a zombie in our face), otherwise it is over
     private Event targetGone(Tick t) {
         Foe next = nextTarget(t);
-        if (next != null) return startFight(t, next, cornered ? Why.CORNERED : Why.HIT, Event.FIGHT_NEXT, cornered);
+        // (a chased fight stays CHASED, it is the same reason we turned around)
+        Why boxed = why == Why.CHASED ? Why.CHASED : Why.CORNERED;
+        if (next != null) return startFight(t, next, cornered ? boxed : Why.HIT, Event.FIGHT_NEXT, cornered);
         // a boxed in fight never asked the bail rules, so the warden standing on us when the last thing dies is still ours to
         // leave: a gap and a five second cooldown next to it is not a plan
         if (cornered && anyDanger(t)) return startRun(t, Why.HEAVY, Event.FIGHT_TO_RUN);
@@ -433,6 +448,8 @@ public final class CombatCommit {
         originX = t.x();
         originZ = t.z();
         startTick = t.now();
+        capFrom = t.now();
+        extended = false;
         clearSince = -1;
         cornerSince = -1;
         stuckSince = -1;
@@ -452,7 +469,7 @@ public final class CombatCommit {
         } else if (clearSince < 0) {
             clearSince = t.now();
         }
-        if (t.now() - startTick >= RUN_CAP) return end(t, Event.RUN_CAP);
+        if (t.now() - capFrom >= RUN_CAP) return capped(t);
         if (fromOrigin >= RUN_DISTANCE && clearSince >= 0 && t.now() - clearSince >= RUN_CLEAR_TICKS) return end(t, Event.RUN_CLEAR);
 
         if (nearest > CORNER_WATCH) {
@@ -485,6 +502,43 @@ public final class CombatCommit {
         return startFight(t, closest, Why.CORNERED, Event.RUN_TO_FIGHT, true);
     }
 
+    // the cap with nothing on us is just the end of a run. hurt with something still inside 8, ending it only meant a fresh
+    // run with a fresh origin on the very next tick, forever. so: one more window from the same origin (the distance keeps
+    // adding up), and if that is not enough either, turn around and fight. bleeding out at a jog is the worst way to go
+    private Event capped(Tick t) {
+        if (!chased(t)) return end(t, Event.RUN_CAP);
+        if (!extended) {
+            extended = true;
+            capFrom = t.now();
+            return Event.RUN_EXTENDED;
+        }
+        Foe chaser = chaser(t);
+        // only the warden on us: that one stays a run (idle starts it again on the same step)
+        if (chaser == null) return end(t, Event.RUN_CAP);
+        return startFight(t, chaser, Why.CHASED, Event.RUN_CHASED_FIGHT, true);
+    }
+
+    private static boolean chased(Tick t) {
+        if (t.health() > FLEE_HP) return false;
+        for (Foe foe : t.foes()) {
+            if (foe.distance() <= LOW_HP_RANGE) return true;
+        }
+        return false;
+    }
+
+    // who to turn around on: the closest one on top of us or that hit us from inside 8, else the closest inside 8 we could
+    // walk up to and hit (same "no creeper, nothing we gave up on" as the corner pick). never the warden
+    private Foe chaser(Tick t) {
+        Foe onUs = null;
+        Foe near = null;
+        for (Foe foe : t.foes()) {
+            if (foe.distance() > LOW_HP_RANGE || foe.kind() == Kind.UNTOUCHABLE) continue;
+            if ((foe.distance() <= CONTACT || foe.hitUs()) && (onUs == null || foe.distance() < onUs.distance())) onUs = foe;
+            if (!foe.creeper() && !ignored.containsKey(foe.id()) && (near == null || foe.distance() < near.distance())) near = foe;
+        }
+        return onUs != null ? onUs : near;
+    }
+
     // nothing angry within CORNER_WATCH and no ground gained for RUN_STUCK_TICKS: the pathfinder has nowhere to take us (a lava
     // lake, the edge of the loaded world, an island)
     private Event stuck(Tick t) {
@@ -508,6 +562,7 @@ public final class CombatCommit {
         clearSince = -1;
         cornerSince = -1;
         stuckSince = -1;
+        extended = false;
         cooldownUntil = t.now() + COOLDOWN;
         return event;
     }
