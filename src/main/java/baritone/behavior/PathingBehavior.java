@@ -76,12 +76,9 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
 
     private final LinkedBlockingQueue<PathEvent> toDispatch = new LinkedBlockingQueue<>();
 
-    // the path a movement task's handover just cancelled, in case the next task asks for the same goal (PathKeep). any
-    // other cancel throws it away
-    private record Park(PathExecutor path, long tick, Object world, Object player) {
-    }
-
-    private Park park;
+    // the path a movement task's handover just cancelled, in case the next task asks for the same goal. any other cancel
+    // throws it away
+    private final PathKeep<PathExecutor> keep = new PathKeep<>();
     // our own tick count for the park's age, ticksElapsedSoFar gets reset by the eta
     private long tickCount;
 
@@ -303,19 +300,14 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
     // the parked path back as current, when PathKeep says it is still ours. the park is used up either way. the keys and the
     // block breaking that the cancel let go of come back on the executor's next tick, same as coming back from a pause
     private boolean unpark() {
-        Park p = park;
-        park = null;
-        if (p == null || p.path().failed() || p.path().finished()) {
-            return false;
-        }
-        IPath path = p.path().getPath();
-        boolean back = PathKeep.restore(Baritone.settings().keepPathOnSameGoal.value, goal.equals(path.getGoal()), tickCount - p.tick(),
-                path.positions().contains(ctx.playerFeet()), ctx.world() == p.world(), ctx.player() == p.player());
-        if (!back) {
+        BetterBlockPos feet = ctx.playerFeet();
+        PathExecutor back = keep.take(Baritone.settings().keepPathOnSameGoal.value, tickCount, ctx.world(), ctx.player(),
+                p -> !p.failed() && !p.finished() && goal.equals(p.getPath().getGoal()), p -> p.getPath().positions().contains(feet));
+        if (back == null) {
             return false;
         }
         logDebug("Same goal as the path a handover just cancelled, carrying on with it");
-        current = p.path();
+        current = back;
         next = null;
         return true;
     }
@@ -387,7 +379,7 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
 
     public void softCancelIfSafe() {
         synchronized (pathPlanLock) {
-            park = null;
+            keep.drop();
             getInProgress().ifPresent(AbstractNodeCostSearch::cancel); // only cancel ours
             if (!isSafeToCancel()) {
                 return;
@@ -403,7 +395,7 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
     public void secretInternalSegmentCancel() {
         queuePathEvent(PathEvent.CANCELED);
         synchronized (pathPlanLock) {
-            park = null;
+            keep.drop();
             getInProgress().ifPresent(AbstractNodeCostSearch::cancel);
             if (current != null) {
                 current = null;
@@ -427,14 +419,14 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
     // the next task's start are two cancels in the same tick, so the second one (with nothing left to park) keeps the
     // first one's park. NOT exposed on public api
     public void handoverCancel() {
-        PathExecutor keep = current;
-        Park before = park;
+        PathExecutor running = current;
+        PathKeep.Park<PathExecutor> before = keep.peek();
         forceCancel();
         if (!Baritone.settings().keepPathOnSameGoal.value || ctx.player() == null) {
             return;
         }
         synchronized (pathPlanLock) {
-            park = keep != null ? new Park(keep, tickCount, ctx.world(), ctx.player()) : before;
+            keep.handover(before, running, tickCount, ctx.world(), ctx.player());
         }
     }
 
@@ -442,7 +434,7 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
     // path lying around for the next half second. NOT exposed on public api
     public void dropPark() {
         synchronized (pathPlanLock) {
-            park = null;
+            keep.drop();
         }
     }
 
