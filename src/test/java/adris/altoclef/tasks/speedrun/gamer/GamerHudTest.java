@@ -34,8 +34,8 @@ public class GamerHudTest {
         GamerHudState card = hud.recovering(state, facts, cfg, 312.5, 2, HudRules.recoveryWords(47));
         assertEquals("Getting our stuff back, 47 blocks", card.action());
         assertTrue(card.rows().isEmpty());
-        // the coal detour is a side job of the phase, the phase is not running
-        assertNull(card.coal());
+        // the coal or gravel detour is a side job of the phase, the phase is not running
+        assertNull(card.detour());
         // and the rest of the card is the phase's: its name, its clock held where the recovery stopped it, the attempt
         assertEquals(GamerPhase.IRON, card.phase());
         assertEquals(312.5, card.secondsInPhase(), 1e-9);
@@ -73,7 +73,7 @@ public class GamerHudTest {
         GamerHudState last = new GamerHudState(GamerPhase.DRAGON, 300, 25, 2, "Fighting the dragon",
                 List.of(new GamerHudState.KitRow("bed", "Beds", Items.WHITE_BED, 8, 8, true, false)),
                 List.of(new GamerHudState.FurnaceRow("Smelting 3 iron", Items.FURNACE, 0, 200)),
-                new GamerHudState.CoalRow(12, 0, 30), 55, 70);
+                GamerHudState.DetourRow.coal(12, 0, 30), 55, 70);
         GamerHudState card = GamerHud.won(last, cfg, 41 * 60 + 12);
         assertEquals(GamerPhase.DONE, card.phase());
         assertEquals(41 * 60 + 12, card.secondsInPhase(), 1e-9);
@@ -81,7 +81,7 @@ public class GamerHudTest {
         assertEquals("Beat the game", card.action());
         assertTrue(card.rows().isEmpty());
         assertTrue(card.furnaces().isEmpty());
-        assertNull(card.coal());
+        assertNull(card.detour());
         // the footer is how the run left it, the attempt too
         assertEquals(55, card.foodUnits());
         assertEquals(70, card.foodTarget());

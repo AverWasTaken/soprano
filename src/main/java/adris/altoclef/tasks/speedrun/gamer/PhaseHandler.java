@@ -25,9 +25,16 @@ public interface PhaseHandler {
         return null;
     }
 
-    // the side jobs this phase runs, for the card's coal row. null = none
+    // the side jobs this phase runs. null = none
     default PrepSupport support() {
         return null;
+    }
+
+    // the coal or gravel detour that is going, for the card's detour row. null = none. PORTAL and NETHER have a gravel detour of
+    // their own and no PrepSupport, they say so themselves
+    default ResourceDetour detour() {
+        PrepSupport s = support();
+        return s == null ? null : s.activeDetour();
     }
 
     // true for the phases that run the station pickup themselves (Workbenches.tick with their plan: GATHER, IRON, PORTAL). for every

@@ -1,7 +1,7 @@
 package adris.altoclef.tasks.speedrun.gamer;
 
 import adris.altoclef.AltoClef;
-import adris.altoclef.tasks.speedrun.gamer.GamerHudState.CoalRow;
+import adris.altoclef.tasks.speedrun.gamer.GamerHudState.DetourRow;
 import adris.altoclef.tasks.speedrun.gamer.GamerHudState.FurnaceRow;
 import adris.altoclef.tasks.speedrun.gamer.GamerHudState.KitRow;
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
@@ -39,9 +39,9 @@ final class GamerHud {
         FoodPlan food = machine.food();
         List<KitRow> rows = kitRows(facts, food, h.kitRunner(), now);
         List<FurnaceRow> furnaces = furnaceRows(facts.furnaceJobs());
-        CoalRow coal = coalRow(mod, h.support(), cfg);
+        DetourRow detour = detourRow(mod, h.detour(), cfg);
         return new GamerHudState(state.phase, machine.secondsInPhase(), cfg.budgets.minutes(state.phase), machine.attempt(), action,
-                rows, furnaces, coal, food.held(), food.overworldMinimum());
+                rows, furnaces, detour, food.held(), food.overworldMinimum());
     }
 
     // the card while a death recovery or the nether trip has the wheel. neither goes through the phase, so build() is not reached and
@@ -190,14 +190,16 @@ final class GamerHud {
         return out;
     }
 
-    private static CoalRow coalRow(AltoClef mod, PrepSupport support, GamerConfig cfg) {
-        ResourceDetour coal = support == null ? null : support.coal();
-        if (coal == null || !coal.active()) {
+    private static DetourRow detourRow(AltoClef mod, ResourceDetour detour, GamerConfig cfg) {
+        if (detour == null || !detour.active()) {
             return null;
         }
-        BlockPos ore = coal.ore();
+        BlockPos ore = detour.ore();
         // -1 = no ore in sight right now, the row says so without a number
         int blocks = ore == null ? -1 : (int) Math.round(Math.sqrt(mod.getPlayer().blockPosition().distSqr(ore)));
-        return new CoalRow(blocks, coal.startTick(), cfg.overworld.coalSideSeconds);
+        DetourSpec spec = detour.spec();
+        boolean gravel = spec.resource == DetourSpec.Resource.GRAVEL;
+        return new DetourRow(gravel, blocks, detour.startTick(), spec.seconds(cfg.overworld), detour.dug(),
+                spec.limits(cfg.overworld).mineCap());
     }
 }

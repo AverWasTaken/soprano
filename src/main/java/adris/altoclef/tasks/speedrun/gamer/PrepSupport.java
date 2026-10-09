@@ -41,9 +41,13 @@ public final class PrepSupport {
         return hud;
     }
 
-    // for the card: the coal side job, which is the only one with a clock worth a row
-    public ResourceDetour coal() {
-        return coal;
+    // for the card: the coal or gravel side job that is going, the only ones with a clock worth a row. never both at once,
+    // one ending the other is how tick hands over
+    public ResourceDetour activeDetour() {
+        if (gravel.active()) {
+            return gravel;
+        }
+        return coal.active() ? coal : null;
     }
 
     public void onEnter(AltoClef mod) {

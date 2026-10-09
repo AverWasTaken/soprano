@@ -137,6 +137,19 @@ public class HudRulesTest {
     }
 
     @Test
+    public void theDetourRowSaysCoalDistanceOrGravelDug() {
+        // coal reads the way it always did
+        assertEquals("Coal detour", HudRules.detourName(false, -1, 0, 0));
+        assertEquals("Coal detour, 4 blocks", HudRules.detourName(false, 4, 0, 0));
+        // gravel counts against its cap, in sight or not
+        assertEquals("Gravel detour, 3/10 dug", HudRules.detourName(true, 2, 3, 10));
+        assertEquals("Gravel detour, 0/10 dug", HudRules.detourName(true, -1, 0, 10));
+        GamerHudState.DetourRow coal = GamerHudState.DetourRow.coal(4, 100, 30);
+        assertFalse(coal.gravel());
+        assertEquals(0, coal.digCap());
+    }
+
+    @Test
     public void detourSecondsLeft() {
         assertEquals(30, HudRules.detourSecondsLeft(100, 30, 100));
         assertEquals(21, HudRules.detourSecondsLeft(100, 30, 100 + 9 * 20));

@@ -131,6 +131,11 @@ public class NetherPhase implements PhaseHandler {
 
     // pure: what we hold decides, plus "the budget is nearly over" which only needs the game clock
     @Override
+    public ResourceDetour detour() {
+        return gravel;
+    }
+
+    @Override
     public boolean isDone(GamerFacts facts, RunState state, GamerConfig cfg) {
         return EyeMath.canLeaveNether(facts, cfg, state.framesFilled, budgetOver(facts, state, cfg) || state.netherRodsGaveUp);
     }

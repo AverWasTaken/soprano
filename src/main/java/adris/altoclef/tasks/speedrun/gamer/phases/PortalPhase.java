@@ -77,6 +77,11 @@ public class PortalPhase implements PhaseHandler {
     }
 
     @Override
+    public ResourceDetour detour() {
+        return gravel;
+    }
+
+    @Override
     public boolean ownsBenches() {
         return true;
     }

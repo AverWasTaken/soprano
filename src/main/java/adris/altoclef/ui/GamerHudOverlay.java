@@ -3,7 +3,7 @@ package adris.altoclef.ui;
 import adris.altoclef.AltoClef;
 import adris.altoclef.AltoSettings;
 import adris.altoclef.tasks.speedrun.gamer.GamerHudState;
-import adris.altoclef.tasks.speedrun.gamer.GamerHudState.CoalRow;
+import adris.altoclef.tasks.speedrun.gamer.GamerHudState.DetourRow;
 import adris.altoclef.tasks.speedrun.gamer.GamerHudState.FurnaceRow;
 import adris.altoclef.tasks.speedrun.gamer.GamerHudState.KitRow;
 import adris.altoclef.tasks.speedrun.gamer.GamerPhase;
@@ -29,7 +29,7 @@ import java.util.Map;
 
 // the #gamer card on the right: the phase in big gold with its clock against the budget, eleven dots for where the run is,
 // the thing being done right now, the kit as have/want rows with the game's own item icons, the furnace batches, the coal
-// detour, hp and food. a red strip on top only while the combat brain holds FIGHT or RUN.
+// or gravel detour, hp and food. a red strip on top only while the combat brain holds FIGHT or RUN.
 // laid out once per tick into a list of draw ops (same idea as CommandStatusOverlay's lines), drawn every frame. the
 // numbers come from GamerTask.hudSnapshot(), frozen by the engine's tick: the only live reads here are the combat
 // commitment (plain fields on the chain, it moves while the engine is paused for the fight) and the player's hp and
@@ -224,12 +224,12 @@ public class GamerHudOverlay {
         y = dots(s, y);
         ops.add(new Text(fit(font, s.action(), INNER), PAD_X, y, WHITE));
         y += LINE + 3;
-        // a fight ends the detour (CoalRules.preempted) and the engine is paused for it, so the row would sit at 0:00
-        CoalRow coal = fighting ? null : s.coal();
+        // a fight ends the detour (DetourRules gap rule, nobody asks it) and the engine is paused for it, so the row would sit at 0:00
+        DetourRow detour = fighting ? null : s.detour();
         // the row being worked, the furnaces right under it like the mockup, then the rest of the kit as far as the
-        // five rows go, the coal detour last
+        // five rows go, the detour last
         List<KitRow> rows = s.rows();
-        int kitRows = Math.min(rows.size(), HudRules.kitRowBudget(s.furnaces().size(), coal != null));
+        int kitRows = Math.min(rows.size(), HudRules.kitRowBudget(s.furnaces().size(), detour != null));
         int next = 0;
         if (!rows.isEmpty() && rows.get(0).working()) {
             y = kitRow(font, rows.get(0), y);
@@ -241,9 +241,10 @@ public class GamerHudOverlay {
         for (; next < kitRows; next++) {
             y = kitRow(font, rows.get(next), y);
         }
-        if (coal != null) {
-            String name = coal.blocks() < 0 ? "Coal detour" : "Coal detour, " + coal.blocks() + " blocks";
-            y = row(font, y, Items.COAL_ORE, name, GRAY, HudRules.clock(HudRules.detourSecondsLeft(coal.startTick(), coal.budgetSeconds(), now)), YELLOW);
+        if (detour != null) {
+            String name = HudRules.detourName(detour.gravel(), detour.blocks(), detour.dug(), detour.digCap());
+            y = row(font, y, detour.gravel() ? Items.GRAVEL : Items.COAL_ORE, name, GRAY,
+                    HudRules.clock(HudRules.detourSecondsLeft(detour.startTick(), detour.budgetSeconds(), now)), YELLOW);
         }
         y += 4;
         ops.add(new Rect(PAD_X, y, INNER, 1, RULE));

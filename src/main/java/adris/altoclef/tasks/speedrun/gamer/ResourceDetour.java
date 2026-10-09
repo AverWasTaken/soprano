@@ -108,6 +108,11 @@ public final class ResourceDetour {
         return rules.startTick();
     }
 
+    // blocks broken since the detour began (gravel's cap counts these)
+    public int dug() {
+        return tally.count();
+    }
+
     // the block we are on our way to, null when the last look found none
     public BlockPos ore() {
         return ore;
