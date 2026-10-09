@@ -33,11 +33,12 @@ public abstract class AbstractObjectBlacklist<T> {
             if (newTool.ordinal() > entry.bestTool.ordinal()) entry.bestTool = newTool;
             if (newDistance < entry.bestDistanceSq) entry.bestDistanceSq = newDistance;
             entry.numberOfFailures = 0;
-            Debug.logMessage("Blacklist RESET: " + item.toString());
+            // log file only, like the try count below. a new entry always "resets" (best distance starts at infinity)
+            Debug.logInternal("Blacklist RESET: " + item.toString());
         }
         entry.numberOfFailures++;
         entry.numberOfFailuresAllowed = numberOfFailuresAllowed;
-        Debug.logMessage("Blacklist: " + item.toString() + ": Try " + entry.numberOfFailures + " / " + entry.numberOfFailuresAllowed);
+        Debug.logInternal("Blacklist: " + item.toString() + ": Try " + entry.numberOfFailures + " / " + entry.numberOfFailuresAllowed);
     }
 
     // no retries, no chat line: whoever calls this already decided and logs it themselves
