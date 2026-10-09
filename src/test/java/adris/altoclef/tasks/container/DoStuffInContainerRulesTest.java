@@ -31,6 +31,16 @@ public class DoStuffInContainerRulesTest {
         assertTrue(DoStuffInContainerTask.makeNewNow(false, false, false, false, false));
     }
 
+    // never put down or craft a new one while ours stands within NEAR, whatever the subclass would allow
+    @Test
+    public void aNewOneIsNeverMadeWhileOursStandsNear() {
+        assertFalse(DoStuffInContainerTask.mayMakeNew(true, true));
+        assertFalse(DoStuffInContainerTask.mayMakeNew(false, true));
+        assertTrue(DoStuffInContainerTask.mayMakeNew(true, false));
+        // a task told to only use what exists still never makes one
+        assertFalse(DoStuffInContainerTask.mayMakeNew(false, false));
+    }
+
     // the placer instance lives on after the craft, so a table we left 30 blocks back still "stands"
     @Test
     public void aStandingTableThatIsTooFarToWalkStillLosesToANewOne() {

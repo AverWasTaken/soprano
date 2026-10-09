@@ -1,13 +1,18 @@
 package adris.altoclef.util.helpers;
 
-// a rough "how long is the walk" for deciding if going back to a placed station is worth it. a crafting table costs about
-// one log, so a trip that takes longer than fetching a new one is a loss. pure so it can be tested without a game
+// a rough "how long is the walk" for deciding if a dropped item is worth fetching (estimate / within below, the drop budgets), and
+// the one straight line distance the tables, furnaces and smokers go by (STATION_NEAR / STATION_FORGET, never a path cost).
+// pure so it can be tested without a game
 public final class WalkCost {
     // a block of height costs this many blocks of flat walking. down a cave you are digging, jumping and then climbing
     // back out, and the old straight line sphere called a 30 block drop "24 blocks away" (that was the cave trip)
     public static final double VERTICAL_WEIGHT = 4.0;
-    // the longest trip that still beats placing a fresh table (or a log's worth of wood). about 20 flat blocks
-    public static final double STATION_BUDGET = 20.0;
+    // a table, furnace or smoker of ours this close (straight line, height counts, no path cost) is reused instead of crafting
+    // another, and it is also the circle the bot has to stay in for us to keep carrying the station around. one number for
+    // both so "near enough to reuse" and "still in its area" can't disagree
+    public static final double STATION_NEAR = 21.0;
+    // a station further than this (straight line) is not worth a trip back and gets forgotten
+    public static final double STATION_FORGET = 128.0;
 
     // a dropped item is worth this much walking when we could make it right now from what we hold. a tree decayed on the
     // surface, dropped sticks, and the bot climbed out of its hole for them with the planks for the same sticks in the bag
@@ -32,11 +37,30 @@ public final class WalkCost {
         return Math.sqrt(dx * dx + dz * dz) + VERTICAL_WEIGHT * Math.abs(dy);
     }
 
+    // plain straight line distance, all three axes. a table 15 up and 15 across is 21.2 away, not "15 and some stairs"
+    public static double distance3d(double dx, double dy, double dz) {
+        return Math.sqrt(dx * dx + dy * dy + dz * dz);
+    }
+
+    // offsets are target minus us. this is the one test for "a station of ours is close enough to reuse"
+    public static boolean nearStation(double dx, double dy, double dz) {
+        return dx * dx + dy * dy + dz * dz <= STATION_NEAR * STATION_NEAR;
+    }
+
+    // the same with a block and a player position: the middle of the block against wherever the caller measures us from, so
+    // every caller (the planner, the container tasks, the pickup rules) lands on the same side of the line
+    public static boolean nearStationBlock(int bx, int by, int bz, double px, double py, double pz) {
+        return nearStation(bx + 0.5 - px, by + 0.5 - py, bz + 0.5 - pz);
+    }
+
+    public static double stationDistance(int bx, int by, int bz, double px, double py, double pz) {
+        return distance3d(bx + 0.5 - px, by + 0.5 - py, bz + 0.5 - pz);
+    }
+
     // what CraftInTableTask charges for "make a new table" against walking to the nearest one. infinity means walk to the
-    // old one. same budget with the table in hand or not: OwnTables.forgetFar lets go of a table past it, so a 40 block line
-    // out here sent crafting off to a table pickup had already written off (and the planner never budgeted a new one)
-    public static double newTableCost(boolean carryTable, boolean tableInBudget, boolean haveWood) {
-        if (tableInBudget) {
+    // old one (a table within STATION_NEAR, ours or a village's), a table in hand beats any table further out
+    public static double newTableCost(boolean carryTable, boolean tableNear, boolean haveWood) {
+        if (tableNear) {
             return Double.POSITIVE_INFINITY;
         }
         if (carryTable) {

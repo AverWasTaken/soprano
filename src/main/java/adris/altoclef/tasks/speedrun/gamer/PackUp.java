@@ -1,6 +1,5 @@
 package adris.altoclef.tasks.speedrun.gamer;
 
-import adris.altoclef.tasks.container.FurnaceReuse;
 import adris.altoclef.util.helpers.WalkCost;
 
 import java.util.List;
@@ -49,11 +48,11 @@ public final class PackUp {
         return best;
     }
 
-    // three times the stretched walk a furnace of ours gets everywhere else. this one is not about reusing it, it is the only
+    // 180 of walk cost (WalkCost units, the path-ish kind: this is a trip choice, not the station reuse line). not about reusing it, it is the only
     // chance to take the contents without a second trip down, so a furnace 10 down and 20 across (60) is still worth it, and
     // only one in another area waits for the plain due-collect
     public static double worthWalking() {
-        return FurnaceReuse.OURS_BUDGET * 3;
+        return 180;
     }
 
     // walk cost from us to the job's furnace

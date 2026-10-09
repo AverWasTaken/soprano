@@ -6,6 +6,7 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
+import adris.altoclef.util.helpers.WalkCost;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -71,5 +72,18 @@ public class PackUpTest {
         assertSame(near, PackUp.pick(List.of(near), new HashSet<>(), j -> 52, j -> PackUp.walk(j, 0.5, 30, 0.5)));
         RunState.FurnaceJob across = job(20, 20, 0, 900);
         assertSame(across, PackUp.pick(List.of(across), new HashSet<>(), j -> 50, j -> PackUp.walk(j, 0.5, 30, 0.5)));
+    }
+
+    // the pack-up trip is a one off chance to take the contents without a second trip down, so it keeps its own walk number and is
+    // not the station line: a furnace 30 across and 10 down is past STATION_NEAR as a straight line (31.5) and not reusable, but 70
+    // of walking is still worth the one trip
+    @Test
+    public void theTripLineIsItsOwnNumberNotTheStationLine() {
+        assertEquals(180, PackUp.worthWalking(), 0);
+        RunState.FurnaceJob farButWorthIt = job(30, 20, 0, 900);
+        double walk = PackUp.walk(farButWorthIt, 0.5, 30, 0.5);
+        assertFalse(WalkCost.nearStationBlock(farButWorthIt.pos.x, farButWorthIt.pos.y, farButWorthIt.pos.z, 0.5, 30, 0.5));
+        assertTrue(walk <= PackUp.worthWalking());
+        assertSame(farButWorthIt, PackUp.pick(List.of(farButWorthIt), new HashSet<>(), j -> 50, j -> PackUp.walk(j, 0.5, 30, 0.5)));
     }
 }

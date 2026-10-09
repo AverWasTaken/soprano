@@ -17,6 +17,7 @@ import adris.altoclef.tasks.speedrun.gamer.PortalPlanner;
 import adris.altoclef.tasks.speedrun.gamer.PortalPlanner.Method;
 import adris.altoclef.tasks.speedrun.gamer.RunState;
 import adris.altoclef.tasks.speedrun.gamer.Timeout;
+import adris.altoclef.tasks.speedrun.gamer.Workbenches;
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
 import adris.altoclef.tasks.speedrun.gamer.portal.LavaPoolPortalTask;
 import adris.altoclef.tasksystem.Task;
@@ -35,7 +36,9 @@ import java.util.Optional;
 // wanders, so a clock decides when to give up on it
 public class PortalPhase implements PhaseHandler {
     private final KitRunner runner = new KitRunner();
-    private final FurnaceWatch furnaces = new FurnaceWatch();
+    // the table the gate crafts on, and whatever else we put down on the way, comes with us before the portal is touched
+    private final Workbenches benches = new Workbenches();
+    private final FurnaceWatch furnaces = new FurnaceWatch(benches);
     private boolean gateDone;
     private boolean noGoldSaid;
     private boolean tracking;
@@ -69,6 +72,13 @@ public class PortalPhase implements PhaseHandler {
         return hudState;
     }
 
+    @Override
+    public boolean ownsBenches() {
+        return true;
+    }
+
+    // we are in the nether. a station left in the overworld is forgotten by then (Workbenches), so the part of "no phase ends with a
+    // pickup owed" that matters here is in tick: nothing leads to the portal while one is owed
     @Override
     public boolean isDone(GamerFacts facts, RunState state, GamerConfig cfg) {
         return facts.dimension() == Dimension.NETHER;
@@ -135,8 +145,23 @@ public class PortalPhase implements PhaseHandler {
                 return leaving;
             }
         }
+        // PORTAL ends the moment we are in the nether, which is too late for a table left standing in the overworld (this phase
+        // used to have no station tracking at all, and the gate crafts a bucket at one). so no portal task runs while one of
+        // ours is coming down or still owed: the same rule GATHER and IRON end by, with the gate as the plan
+        List<KitNeed> gate = gateDone ? List.of() : PortalPlanner.gate(f, ctx.cfg().overworld, ctx.cfg().end.beds);
+        if (f.dimension() == Dimension.OVERWORLD) {
+            Task pickup = benches.tick(mod, ctx, gate);
+            if (pickup != null) {
+                hudState = benches.hud();
+                return pickup;
+            }
+            // (only once the gate has nothing left to craft: a table the gate still wants is standing on purpose)
+            if (gate.isEmpty() && !Workbenches.phaseMayEnd(ctx.state(), f.dimension().name(), f.gameTime())) {
+                hudState = "Waiting to take the crafting table back";
+                return null;
+            }
+        }
         if (!gateDone) {
-            List<KitNeed> gate = PortalPlanner.gate(f, ctx.cfg().overworld, ctx.cfg().end.beds);
             if (!gate.isEmpty()) {
                 Task prep = runner.run(ctx, gate);
                 hudState = runner.hud();

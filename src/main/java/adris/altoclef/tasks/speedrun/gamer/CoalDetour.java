@@ -171,7 +171,7 @@ public final class CoalDetour {
         // the food need and the cook both have latches that count the time they lead for, a detour in the middle of one eats it
         boolean food = KitNeed.FOOD.equals(need) || KitNeed.isCookName(need);
         return new CoalRules.Inputs(f.dimension() == Dimension.OVERWORLD, hasPickaxe(f), coal, f.cookStation() != null, due,
-                OwnTables.loadInFlight(screen, AsyncSmelting.lastWork(), now), food, "coal".equals(need));
+                WorkbenchRules.loadInFlight(screen, AsyncSmelting.lastWork(), now), food, "coal".equals(need));
     }
 
     // stone or better. a wooden pick could mine coal, but the wooden pick days are for getting cobble and leaving, and its 59

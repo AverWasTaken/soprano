@@ -2,6 +2,7 @@ package adris.altoclef.tasks.speedrun.gamer;
 
 import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig;
 import adris.altoclef.util.helpers.FuelPolicy;
+import adris.altoclef.util.helpers.StationHook;
 import baritone.api.utils.Dimension;
 import net.minecraft.SharedConstants;
 import net.minecraft.server.Bootstrap;
@@ -72,6 +73,64 @@ public class CookGateTest {
         // one in the bag counts too
         FakeFacts bag = new FakeFacts().give(Items.MUTTON, 6).give(Items.COAL, 2).give(Items.SMOKER, 1);
         assertEquals(KitNeed.COOK_SMOKER, CookGate.need(bag, cfg, 8).catalogueName());
+    }
+
+    // WorkbenchRules.cookInSmoker: a smoker of ours standing near or in the bag is where the meat goes, whatever furnace is about
+    @Test
+    public void aSmokerStandingNearBeatsAFreeFurnaceStandingNear() {
+        f.give(Items.MUTTON, 6).give(Items.COAL, 2);
+        f.furnacePlaced = true;
+        f.smokerPlaced = true;
+        assertEquals(CookGate.Station.SMOKER, CookGate.station(f, cfg, true));
+        assertEquals(KitNeed.COOK_SMOKER, need().catalogueName());
+        // and with only a handful, the smoker is still the one standing there
+        FakeFacts few = new FakeFacts().give(Items.RABBIT, 2).give(Items.COAL, 2);
+        few.furnacePlaced = true;
+        few.smokerPlaced = true;
+        assertEquals(CookGate.Station.SMOKER, CookGate.station(few, cfg, false));
+    }
+
+    @Test
+    public void aSmokerInTheBagBeatsAFurnaceStandingNear() {
+        f.give(Items.MUTTON, 6).give(Items.COAL, 2).give(Items.SMOKER, 1);
+        f.furnacePlaced = true;
+        assertEquals(CookGate.Station.SMOKER, CookGate.station(f, cfg, true));
+        assertEquals(KitNeed.COOK_SMOKER, need().catalogueName());
+        // the furnace in the bag loses to it as well
+        FakeFacts both = new FakeFacts().give(Items.MUTTON, 6).give(Items.COAL, 2).give(Items.SMOKER, 1).give(Items.FURNACE, 1);
+        assertEquals(CookGate.Station.SMOKER, CookGate.station(both, cfg, true));
+    }
+
+    // the smoker in the bag is only worth putting down for a real pile, or when a station is already standing to cook the little
+    // there is (the smoker is the faster of the two). with nothing standing and a handful it is no cook at all
+    @Test
+    public void aSmokerInTheBagWithLittleMeatNeedsAStationAlreadyStanding() {
+        FakeFacts few = new FakeFacts().give(Items.RABBIT, 2).give(Items.COAL, 2).give(Items.SMOKER, 1);
+        few.furnacePlaced = true;
+        assertEquals(CookGate.Station.SMOKER, CookGate.station(few, cfg, false));
+        assertEquals(KitNeed.COOK_SMOKER, CookGate.need(few, cfg, 8).catalogueName());
+        // nothing standing at all: the bag smoker alone is not a trip for two rabbit
+        FakeFacts none = new FakeFacts().give(Items.RABBIT, 2).give(Items.COAL, 2).give(Items.SMOKER, 1);
+        assertEquals(CookGate.Station.NONE, CookGate.station(none, cfg, false));
+        assertNull(CookGate.need(none, cfg, 8));
+        // the same bag with a real pile is a cook
+        FakeFacts pile = new FakeFacts().give(Items.MUTTON, 4).give(Items.COAL, 2).give(Items.SMOKER, 1);
+        assertEquals(CookGate.Station.SMOKER, CookGate.station(pile, cfg, true));
+    }
+
+    // a cook that picked the furnace and is half way through loading it is not talked into a smoker that shows up in the bag or on
+    // the ground, the meat is already in the slot
+    @Test
+    public void aCookAlreadyRunningOnTheFurnaceKeepsItsFurnace() {
+        f.give(Items.MUTTON, 6).give(Items.COAL, 2).give(Items.SMOKER, 1);
+        f.smokerPlaced = true;
+        f.furnacePlaced = true;
+        f.cookStation = "furnace";
+        assertEquals(CookGate.Station.FURNACE, CookGate.station(f, cfg, true));
+        assertEquals(KitNeed.COOK_FURNACE, need().catalogueName());
+        // the other way round too
+        f.cookStation = "smoker";
+        assertEquals(CookGate.Station.SMOKER, CookGate.station(f, cfg, true));
     }
 
     @Test
@@ -247,10 +306,13 @@ public class CookGateTest {
         assertTrue(COOK.isGathering());
         assertFalse(COOK.isCraft());
         assertTrue(new KitNeed(KitNeed.COOK_SMOKER, 3).isSpecial());
-        // and it counts as the furnace being used again, so the furnace we are cooking in is not picked up under us
-        assertTrue(OwnTables.smeltsSoon(KitNeed.COOK_FURNACE, 0));
-        assertTrue(OwnTables.smeltsSoon(KitNeed.COOK_SMOKER, 0));
-        assertFalse(OwnTables.wantsFurnaceBack("food", KitNeed.COOK_FURNACE, OwnTables.smeltsSoon(KitNeed.COOK_FURNACE, 0)));
+        // the registry counts a cook as its station being used (the one we cook in is not picked up under us), and a cook never
+        // holds the table
+        assertFalse(WorkbenchRules.needsStation(StationHook.Kind.TABLE, KitNeed.COOK_FURNACE, true, true));
+        assertTrue(WorkbenchRules.needsStation(StationHook.Kind.FURNACE, KitNeed.COOK_FURNACE, true, true));
+        assertTrue(WorkbenchRules.needsStation(StationHook.Kind.SMOKER, KitNeed.COOK_SMOKER, true, true));
+        assertTrue(WorkbenchRules.neededSoon(StationHook.Kind.FURNACE, List.of("iron_pickaxe", KitNeed.COOK_FURNACE), true, true));
+        assertTrue(WorkbenchRules.neededSoon(StationHook.Kind.SMOKER, List.of("iron_pickaxe", KitNeed.COOK_SMOKER), true, true));
     }
 
     @Test

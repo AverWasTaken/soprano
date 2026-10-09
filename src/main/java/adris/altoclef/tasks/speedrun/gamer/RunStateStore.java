@@ -139,6 +139,10 @@ public final class RunStateStore {
         if (s.placedSmokers == null) {
             s.placedSmokers = new ArrayList<>();
         }
+        // a save from before stations remembered their dimension: all overworld (absent key keeps the field's empty map)
+        if (s.placedDimension == null) {
+            s.placedDimension = new java.util.HashMap<>();
+        }
         // files from before the village loot: nothing visited yet, nothing of ours to tell apart
         if (s.villageChestsTried == null) {
             s.villageChestsTried = new ArrayList<>();

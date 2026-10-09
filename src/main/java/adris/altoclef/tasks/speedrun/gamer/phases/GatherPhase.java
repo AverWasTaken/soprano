@@ -17,6 +17,7 @@ import adris.altoclef.tasks.speedrun.gamer.SmeltFiller;
 import adris.altoclef.tasks.speedrun.gamer.SmeltFiller.Decision;
 import adris.altoclef.tasks.speedrun.gamer.SmeltFiller.Trip;
 import adris.altoclef.tasks.speedrun.gamer.Timeout;
+import adris.altoclef.tasks.speedrun.gamer.Workbenches;
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
 import adris.altoclef.tasksystem.Task;
 import baritone.Baritone;
@@ -27,9 +28,11 @@ import java.util.List;
 // wood, table, stone tools, furnace, first food. the kit comes from KitPlanner so this never re-collects what we hold
 public class GatherPhase implements PhaseHandler {
     private final KitRunner runner = new KitRunner();
-    private final PrepSupport support = new PrepSupport(false);
+    // the stations this phase puts down and takes back, shared by the side jobs and the smoker watch
+    private final Workbenches benches = new Workbenches();
+    private final PrepSupport support = new PrepSupport(false, benches);
     // the smoker the food cooks in (the same watch IRON uses for its furnace, it does not care what is cooking)
-    private final FurnaceWatch furnaces = new FurnaceWatch();
+    private final FurnaceWatch furnaces = new FurnaceWatch(benches);
     // the need we are in the middle of while the food cooks, a different first need is the boundary where we turn around
     private KitNeed committed;
     // what the user had for altoAsyncSmelting, null when we did not touch it
@@ -62,18 +65,23 @@ public class GatherPhase implements PhaseHandler {
     }
 
     @Override
+    public boolean ownsBenches() {
+        return true;
+    }
+
+    @Override
     public boolean isDone(GamerFacts facts, RunState state, GamerConfig cfg) {
-        // a table or furnace of ours still standing next to us is picked up first, this is the last chance (see StationPickup)
+        // a table or furnace of ours still standing is picked up first, this is the last chance (Workbenches.phaseMayEnd)
         // food still cooking is food we do not have, and the smoker coming down is part of the job
         return KitPlanner.gather(facts, cfg.overworld, cfg.end.beds).isEmpty() && facts.furnaceJobs().isEmpty()
-                && !support.stationOwed() && !furnaces.pickingUp();
+                && Workbenches.phaseMayEnd(state, facts.dimension().name(), facts.gameTime()) && !furnaces.cooking();
     }
 
     @Override
     public void onEnter(AltoClef mod, GamerContext ctx) {
         runner.reset();
         support.onEnter(mod);
-        furnaces.newPhase(true);
+        furnaces.newPhase();
         committed = null;
         hudState = null;
         var async = Baritone.settings().altoAsyncSmelting;
@@ -86,7 +94,6 @@ public class GatherPhase implements PhaseHandler {
     @Override
     public void onExit(AltoClef mod, GamerContext ctx) {
         support.onExit(mod);
-        ctx.state().currentNeed = null;
         // nobody outside the phases that come back for the smoker would collect from it, same rule as IRON
         if (userAsync != null) {
             SettingsOverrides.put(Baritone.settings().altoAsyncSmelting, userAsync);

@@ -16,7 +16,8 @@ import adris.altoclef.tasks.speedrun.gamer.GamerPhase;
 import adris.altoclef.tasks.speedrun.gamer.KitNeed;
 import adris.altoclef.tasks.speedrun.gamer.KitPlanner;
 import adris.altoclef.tasks.speedrun.gamer.KitRunner;
-import adris.altoclef.tasks.speedrun.gamer.OwnTables;
+import adris.altoclef.tasks.speedrun.gamer.Workbenches;
+import adris.altoclef.tasks.speedrun.gamer.WorkbenchRules;
 import adris.altoclef.tasks.speedrun.gamer.PackUp;
 import adris.altoclef.tasks.speedrun.gamer.PhaseHandler;
 import adris.altoclef.tasks.speedrun.gamer.PickDiag;
@@ -52,8 +53,10 @@ import java.util.Set;
 // run out of things to do
 public class IronPhase implements PhaseHandler {
     private final KitRunner runner = new KitRunner();
-    private final PrepSupport support = new PrepSupport(true);
-    private final FurnaceWatch furnaces = new FurnaceWatch();
+    // the stations this phase puts down and takes back, shared by the side jobs and the furnace watch
+    private final Workbenches benches = new Workbenches();
+    private final PrepSupport support = new PrepSupport(true, benches);
+    private final FurnaceWatch furnaces = new FurnaceWatch(benches);
     private final SmeltSurface surface = new SmeltSurface();
     // says so (once) when the plan stops owning its iron pickaxe, see PickDiag
     private final PickDiag pickDiag = new PickDiag();
@@ -106,17 +109,23 @@ public class IronPhase implements PhaseHandler {
     }
 
     @Override
+    public boolean ownsBenches() {
+        return true;
+    }
+
+    @Override
     public boolean isDone(GamerFacts facts, RunState state, GamerConfig cfg) {
-        // a table or furnace of ours still standing next to us is picked up first, this is the last chance (see StationPickup)
+        // a table or furnace of ours still standing is picked up first, this is the last chance (Workbenches.phaseMayEnd)
         // iron still cooking is iron we do not have, however empty the plan looks
-        return KitPlanner.plan(facts, cfg.overworld, cfg.end.beds).isEmpty() && facts.furnaceJobs().isEmpty() && !support.stationOwed() && !furnaces.pickingUp();
+        return KitPlanner.plan(facts, cfg.overworld, cfg.end.beds).isEmpty() && facts.furnaceJobs().isEmpty()
+                && Workbenches.phaseMayEnd(state, facts.dimension().name(), facts.gameTime()) && !furnaces.cooking();
     }
 
     @Override
     public void onEnter(AltoClef mod, GamerContext ctx) {
         runner.reset();
         support.onEnter(mod);
-        furnaces.newPhase(true);
+        furnaces.newPhase();
         surface.reset();
         pickDiag.reset();
         packed.clear();
@@ -141,7 +150,6 @@ public class IronPhase implements PhaseHandler {
     public void onExit(AltoClef mod, GamerContext ctx) {
         support.onExit(mod);
         FoodHunt.setWoolWanted(false);
-        ctx.state().currentNeed = null;
         // other phases smelt too and nobody there would come back for the furnace, so the setting is ours for this phase only
         if (userAsync != null) {
             SettingsOverrides.put(Baritone.settings().altoAsyncSmelting, userAsync);
@@ -371,7 +379,7 @@ public class IronPhase implements PhaseHandler {
     }
 
     private static boolean loadInFlight(AltoClef mod, GamerContext ctx) {
-        return OwnTables.loadInFlight(mod.getPlayer().containerMenu instanceof AbstractFurnaceMenu, AsyncSmelting.lastWork(), ctx.facts().gameTime());
+        return WorkbenchRules.loadInFlight(mod.getPlayer().containerMenu instanceof AbstractFurnaceMenu, AsyncSmelting.lastWork(), ctx.facts().gameTime());
     }
 
     // the kit's own food need only leads when FoodGate says so, otherwise it waits behind the ore (it comes back the moment

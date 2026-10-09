@@ -28,6 +28,7 @@ import adris.altoclef.tasksystem.Task;
 import adris.altoclef.tasksystem.TaskChain;
 import adris.altoclef.util.helpers.DeathStash;
 import adris.altoclef.util.helpers.ItemHelper;
+import adris.altoclef.util.helpers.StationHook;
 import baritone.Baritone;
 import baritone.altoclef.SettingsOverrides;
 import baritone.api.Settings;
@@ -73,6 +74,8 @@ public class GamerTask extends Task {
     private final PhaseMachine machine;
     private final GamerPhase startAt;
     private final Host host = new Host();
+    // the pickup for phases that do not run their own (sweepBenches)
+    private final Workbenches benches = new Workbenches();
 
     private AltoClef mod;
     private MinecraftFacts facts;
@@ -88,7 +91,7 @@ public class GamerTask extends Task {
     private boolean resumedAsIs;
     private boolean pushed;
     private BotBehaviour.State level;
-    // watches for crafting tables and furnaces we place, so PrepSupport only ever takes back its own (OwnTables)
+    // watches for crafting tables, furnaces and smokers we place, so the registry (Workbenches) only ever takes back its own
     private Subscription<BlockPlaceEvent> placeWatch;
     // the engine owns the end portal walk flag: whatever a handler asked for last is put back on every (re)start
     private boolean wantWalkOnPortal;
@@ -210,6 +213,7 @@ public class GamerTask extends Task {
             // the food task must stop seeing our jobs once we are gone
             AsyncSmelting.clear();
             CookTrip.clear();
+            StationHook.clear();
             stopWatchingPlacements();
             releaseBehaviour(mod);
         }
@@ -418,6 +422,10 @@ public class GamerTask extends Task {
             RunState.Pos at = new RunState.Pos(p.getX(), p.getY(), p.getZ());
             return state.placedFurnaces.contains(at) || state.placedSmokers.contains(at);
         });
+        // and so the container tasks know where our stations stand (never craft a second one within reach) and which one is coming
+        // down (nothing may place or walk to it). rebuilt from the saved lists, so a relog keeps what we put down
+        Workbenches.sync(state, facts.gameTime());
+        StationHook.install(Workbenches.source(state, facts));
         deathsAtStart = state.deaths.size();
         lastSaveSeconds = machine.now();
         begun = true;
@@ -431,40 +439,28 @@ public class GamerTask extends Task {
         }
         placeWatch = EventBus.subscribe(BlockPlaceEvent.class, evt -> {
             // the hook publishes every conducting block that appears on the client level, so this is a guess about who put
-            // it there: a crafting table or furnace, in the overworld, inside our own placing reach
+            // it there: a crafting table, furnace or smoker, in whatever dimension we are in, inside our own placing reach
             LocalPlayer player = Minecraft.getInstance().player;
-            if (state == null || !begun || player == null || facts == null || facts.dimension() != Dimension.OVERWORLD
+            if (state == null || !begun || player == null || facts == null
                     || !(evt.blockState.is(Blocks.CRAFTING_TABLE) || evt.blockState.is(Blocks.FURNACE) || evt.blockState.is(Blocks.SMOKER)
                     || isJobBlock(evt.blockState))) {
                 return;
             }
             RunState.Pos pos = new RunState.Pos(evt.blockPos.getX(), evt.blockPos.getY(), evt.blockPos.getZ());
-            if (evt.blockState.is(Blocks.SMOKER)) {
-                // on the list of ours (a village's smoker never is). it comes down through FurnaceWatch once its cook job is
-                // collected, and through StationPickup when no job ever got to own it
-                if (OwnTables.placedByUs(player.getX(), player.getEyeY(), player.getZ(), pos)) {
-                    state.smokerUse.lastPlaceTick = facts.gameTime();
-                    state.smokerUse.useNeed = state.currentNeed;
-                    if (OwnTables.record(state.placedSmokers, pos)) {
-                        Debug.logInternal("smoker recorded at " + pos.x + " " + pos.y + " " + pos.z);
-                    }
-                }
-            } else if (isJobBlock(evt.blockState)) {
-                // same guess as the table below. VillageLoot must not take a blast furnace we crafted for a village
-                if (OwnTables.placedByUs(player.getX(), player.getEyeY(), player.getZ(), pos)) {
-                    OwnTables.record(state.placedJobBlocks, pos);
-                }
-            } else if (OwnTables.placedByUs(player.getX(), player.getEyeY(), player.getZ(), pos)) {
-                // a station that just went down is about to be used by the need that placed it, so the pickup waits for the
-                // next need (and a few seconds, for the debounce)
-                boolean furnace = evt.blockState.is(Blocks.FURNACE);
-                RunState.StationUse use = furnace ? state.furnaceUse : state.tableUse;
-                use.lastPlaceTick = facts.gameTime();
-                use.useNeed = state.currentNeed;
-                if (OwnTables.record(furnace ? state.placedFurnaces : state.placedTables, pos)) {
-                    // we had no way to tell which gate kept a pickup from happening, so the start of the story goes in the log
-                    Debug.logInternal((furnace ? "furnace" : "table") + " recorded at " + pos.x + " " + pos.y + " " + pos.z);
-                }
+            if (!WorkbenchRules.placedByUs(player.getX(), player.getEyeY(), player.getZ(), pos)) {
+                return;
+            }
+            if (isJobBlock(evt.blockState)) {
+                // VillageLoot must not take a blast furnace we crafted for a village
+                Workbenches.addOnce(state.placedJobBlocks, pos);
+                return;
+            }
+            // the registry takes it from here (a village's smoker never gets this far: it was not placed within reach of us)
+            StationHook.Kind kind = evt.blockState.is(Blocks.CRAFTING_TABLE) ? StationHook.Kind.TABLE
+                    : evt.blockState.is(Blocks.FURNACE) ? StationHook.Kind.FURNACE : StationHook.Kind.SMOKER;
+            if (Workbenches.record(state, kind, pos, facts.dimension().name(), facts.gameTime())) {
+                // a crash or a disconnect inside the autosave window must not lose the only record of a station we stood next to
+                host.save();
             }
         });
     }
@@ -637,10 +633,23 @@ public class GamerTask extends Task {
         }
         Task child = machine.tick(mod);
         if (!machine.ended()) {
+            child = sweepBenches(mod, child);
             updateHud(machine.current());
         }
         autosave(now);
         return child;
+    }
+
+    // GATHER, IRON and PORTAL run the station pickup with their own plan (PhaseHandler.ownsBenches). any other phase can still
+    // put a table down (a craft is a craft), and nobody would ever come back for it: the same rules with no plan take it back
+    // once its screen has been shut for a second. not in the End, nothing there is worth stopping a fight for
+    private Task sweepBenches(AltoClef mod, Task child) {
+        PhaseHandler h = machine.current();
+        if (h == null || h.ownsBenches() || facts.dimension() == Dimension.END) {
+            return child;
+        }
+        Task pickup = benches.sweep(mod, machine);
+        return pickup != null ? pickup : child;
     }
 
     // the smelt tasks cannot see our state, a furnace they loaded and walked away from is waiting in a queue for us

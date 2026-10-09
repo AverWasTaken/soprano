@@ -96,7 +96,9 @@ public final class CookGate {
         if ("furnace".equals(running) && !ironInFurnace) {
             return Station.FURNACE;
         }
-        if (f.smokerPlacedNearby() || (mayCraft && f.has(Items.SMOKER))) {
+        // a smoker of ours within NEAR or in the bag is where raw meat goes, before any furnace (WorkbenchRules.cookInSmoker). one in
+        // the bag only counts with enough meat to be worth putting it down, or a station already standing to cook the little there is
+        if (WorkbenchRules.cookInSmoker(f.smokerPlacedNearby(), f.has(Items.SMOKER) && (mayCraft || f.furnacePlacedNearby()))) {
             return Station.SMOKER;
         }
         if (furnaceFree && (f.furnacePlacedNearby() || (mayCraft && f.has(Items.FURNACE)))) {
@@ -230,7 +232,7 @@ public final class CookGate {
         return leads(needs, at, raw, surfaced, latched, false);
     }
 
-    // `loadBusy` = a furnace load that is not the cook's is in flight right now (OwnTables.loadInFlight, the caller leaves it
+    // `loadBusy` = a furnace load that is not the cook's is in flight right now (WorkbenchRules.loadInFlight, the caller leaves it
     // false once the cook is the one running): the cook does not start in the middle of it, latched or not. it took over with
     // three raw iron on the way into the new furnace (23:18:31, the latch was set four seconds earlier while the furnace was
     // still being crafted, the head latch only handed over later) and the bot walked off with the ore on the cursor. the cook

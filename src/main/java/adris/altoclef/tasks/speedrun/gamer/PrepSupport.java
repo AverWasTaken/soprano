@@ -15,8 +15,8 @@ public final class PrepSupport {
     private final RuinedPortalLoot loot;
     private final VillageLoot village;
     private final VillageBeds villageBeds = new VillageBeds();
-    // our crafting table and furnace, taken back at a need boundary
-    private final StationPickup stations = new StationPickup();
+    // our crafting table, furnace and smoker: kept, taken back or forgotten by the rules in WorkbenchRules (phases share one, see FurnaceWatch)
+    private final Workbenches benches;
     private final GolemHunt golem;
     // last in line, see tick
     private final CoalDetour coal = new CoalDetour();
@@ -24,6 +24,12 @@ public final class PrepSupport {
     private String hud;
 
     public PrepSupport(boolean lootRuinedPortals) {
+        this(lootRuinedPortals, new Workbenches());
+    }
+
+    // the phase's FurnaceWatch gets the same Workbenches, or they would each drive their own task for one pickup
+    public PrepSupport(boolean lootRuinedPortals, Workbenches benches) {
+        this.benches = benches;
         loot = lootRuinedPortals ? new RuinedPortalLoot() : null;
         village = lootRuinedPortals ? new VillageLoot() : null;
         golem = lootRuinedPortals ? new GolemHunt() : null;
@@ -47,7 +53,7 @@ public final class PrepSupport {
             loot.onEnter(mod);
             village.onEnter(mod);
         }
-        stations.reset();
+        benches.reset();
         coal.reset();
         hud = null;
     }
@@ -63,18 +69,14 @@ public final class PrepSupport {
             golem.onExit();
         }
         villageBeds.onExit(mod);
-        stations.reset();
+        benches.reset();
         coal.reset();
     }
 
-    // the phase may not call itself done while a station of ours is still owed back, see StationPickup.owed
-    public boolean stationOwed() {
-        return stations.owed();
-    }
-
     // the bot is standing by a smoker on purpose (SmeltFiller.standBy): a few seconds of waiting is the plan, so the side jobs that
-    // walk off (village chests and beds, ruined portals, a fresh golem, the table pickup) can all wait the 40 s. only a golem
-    // fight already going outranks it, same as it outranks everything
+    // walk off (village chests and beds, ruined portals, a fresh golem, a new station pickup) can all wait the 40 s. only a golem
+    // fight already going outranks it, same as it outranks everything. a pickup that already started is not a side job, it runs
+    // to the end (a half taken furnace is how stations got left behind)
     public Task tickStandBy(AltoClef mod, GamerContext ctx, List<KitNeed> needs) {
         danger.tick(mod, ctx.state());
         hud = null;
@@ -86,6 +88,11 @@ public final class PrepSupport {
                 hud = golem.hud();
                 return fight;
             }
+        }
+        Task pickup = benches.resume(mod, ctx);
+        if (pickup != null) {
+            hud = benches.hud();
+            return pickup;
         }
         return null;
     }
@@ -121,9 +128,9 @@ public final class PrepSupport {
                 return fight;
             }
         }
-        Task station = stations.tick(mod, ctx, current, needs, tracking);
+        Task station = benches.tick(mod, ctx, needs);
         if (station != null) {
-            hud = stations.hud();
+            hud = benches.hud();
             return station;
         }
         Task chest = loot == null ? null : loot.tick(mod, ctx);

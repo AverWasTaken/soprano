@@ -6,6 +6,7 @@ import adris.altoclef.tasks.container.AsyncSmelting;
 import adris.altoclef.trackers.storage.ContainerCache;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.ItemHelper;
+import adris.altoclef.util.helpers.WalkCost;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -54,11 +55,12 @@ final class StationMemory {
     // it read the loaded one's 37 ore as 0
     static BlockPos ourLoaded(AltoClef mod, net.minecraft.world.level.block.Block block) {
         var me = mod.getPlayer().position();
-        // within the stretched walk only: a stale look at a furnace across the map must not pin every smelt to it
+        // inside the forget distance only: a stale look at a furnace across the map must not pin every smelt to it (the registry
+        // forgets those too)
         return mod.getBlockTracker().getNearestTracking(me,
                 p -> AsyncSmelting.isOurFurnace(p) && adris.altoclef.util.helpers.WorldHelper.canReach(mod, p)
-                        && FurnaceReuse.ownedWithinReach(p.getX() + 0.5 - me.x, p.getY() - me.y, p.getZ() + 0.5 - me.z)
-                        && mod.getItemStorage().getContainerAtPosition(p).map(ContainerCache::holdsAnything).orElse(false), block).orElse(null);
+                        && WalkCost.distance3d(p.getX() + 0.5 - me.x, p.getY() + 0.5 - me.y, p.getZ() + 0.5 - me.z) <= WalkCost.STATION_FORGET
+                        && mod.getItemStorage().getContainerAtPosition(p).map(ContainerCache::holdsMoreThanFuel).orElse(false), block).orElse(null);
     }
 
     // a table to craft the station on: in the bag, standing close, or the wood to make one on the spot

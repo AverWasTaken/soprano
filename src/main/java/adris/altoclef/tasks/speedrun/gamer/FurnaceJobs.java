@@ -74,25 +74,12 @@ public final class FurnaceJobs {
         return total;
     }
 
-    // the furnace-likes we put down ourselves and so may pick up again. village furnaces and blast furnaces are never in here
-    public static boolean pickable(String kind) {
-        return "furnace".equals(kind) || "smoker".equals(kind);
-    }
-
     // the placed list a job's block belongs to, null for kinds we never take back
     public static List<RunState.Pos> placedFor(RunState state, String kind) {
         if ("furnace".equals(kind)) {
             return state.placedFurnaces;
         }
         return "smoker".equals(kind) ? state.placedSmokers : null;
-    }
-
-    // may the furnace-like of this finished job come down. inputLeft is what the collect trip saw still cooking: anything
-    // in there (or another job still pointing at the spot) and breaking it would drop the food on the floor, so it waits. a
-    // spare one in the bag means this one is not worth the trip, same as the furnace always was
-    public static boolean mayTakeBack(RunState state, String kind, RunState.Pos pos, int inputLeft, boolean holdsSpare) {
-        List<RunState.Pos> own = placedFor(state, kind);
-        return own != null && inputLeft <= 0 && !holdsSpare && own.contains(pos) && !isBusy(state, pos);
     }
 
     public static boolean anyDue(List<RunState.FurnaceJob> jobs, long now, long slackTicks) {

@@ -3,11 +3,10 @@ package adris.altoclef.tasks.speedrun.gamer;
 import adris.altoclef.AltoClef;
 import adris.altoclef.AltoSettings;
 import adris.altoclef.Debug;
-import adris.altoclef.tasks.container.FurnaceReuse;
 import adris.altoclef.tasks.resources.CollectFoodTask;
 import adris.altoclef.util.helpers.FoodHelper;
 import adris.altoclef.util.helpers.ItemHelper;
-import adris.altoclef.util.helpers.WalkCost;
+import adris.altoclef.util.helpers.StationHook;
 import adris.altoclef.util.helpers.WorldHelper;
 import baritone.api.utils.Dimension;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
@@ -78,10 +77,10 @@ public final class MinecraftFacts implements GamerFacts {
     // sticky: once the credits showed up the run is over, the screen going away again must not undo that
     private boolean credits;
     private boolean tableNearby;
-    // a table is recorded and was out of budget last tick, see OwnTables.returnBudget
-    private boolean tableFar;
     private boolean furnaceNearby;
     private boolean smokerNearby;
+    // a table is recorded and was out of NEAR last tick, see WorkbenchRules.returnRadius
+    private boolean tableFar;
 
     public MinecraftFacts(AltoClef mod) {
         this.mod = mod;
@@ -107,49 +106,34 @@ public final class MinecraftFacts implements GamerFacts {
             credits = true;
         }
         countItems(player);
-        // once the table has gone out of the budget it only comes back when we are well inside it (OwnTables.returnBudget), or
-        // the plan flips between a log trip and the cobble at the line (the walk down to the cobble and back up to a tree)
-        tableNearby = state != null && standingNearby(player, state.placedTables, Blocks.CRAFTING_TABLE,
-                OwnTables.returnBudget(tableFar, WalkCost.STATION_BUDGET));
-        tableFar = state != null && !tableNearby && !state.placedTables.isEmpty();
-        // furnaces keep no distance test: their reuse rule lives in FurnaceReuse and a far one is forgotten at a boundary
-        furnaceNearby = state != null && standingNearby(player, state.placedFurnaces, Blocks.FURNACE, Double.POSITIVE_INFINITY);
-        smokerNearby = state != null && smokerWorthWalking(player);
+        if (state != null) {
+            Workbenches.sync(state, gameTime);
+            // held when one of ours is within NEAR (a straight line, height counts), the same test the container tasks use. the table
+            // gets a latch on top (once out of NEAR it only counts again well inside it) because its planks decide whether the plan
+            // flips between a log trip and the cobble at the line. furnaces and smokers do not: the cook gate and the cobble floor
+            // must agree with the container tasks about whether one stands within NEAR, or the meat goes in the furnace with the
+            // smoker 18 blocks away
+            tableNearby = heldNear(player, StationHook.Kind.TABLE, tableFar);
+            tableFar = !tableNearby && Workbenches.any(state, StationHook.Kind.TABLE, dimension.name());
+            furnaceNearby = heldNear(player, StationHook.Kind.FURNACE, false);
+            smokerNearby = heldNear(player, StationHook.Kind.SMOKER, false);
+        } else {
+            tableNearby = false;
+            furnaceNearby = false;
+            smokerNearby = false;
+        }
         return true;
     }
 
-    // a smoker of ours the cook should walk back to. unlike the table this one does have a distance test: the cook need is a
-    // choice between this smoker and a new station, and a smoker 80 blocks below us (the 22:09 run: 40 s of walking down a
-    // cave) is not a reason to pick it. the line is FurnaceReuse's, with a margin once counted so it cannot flap
-    private boolean smokerWorthWalking(Player player) {
-        if (dimension != Dimension.OVERWORLD || state.placedSmokers.isEmpty()) {
-            return false;
-        }
-        double best = Double.MAX_VALUE;
-        for (RunState.Pos pos : state.placedSmokers) {
-            BlockPos at = new BlockPos(pos.x, pos.y, pos.z);
-            if (mod.getChunkTracker().isChunkLoaded(at) && !mod.getWorld().getBlockState(at).is(Blocks.SMOKER)) {
-                continue;
-            }
-            best = Math.min(best, OwnTables.walkCost(pos, player.getX(), player.getY(), player.getZ()));
-        }
-        return best != Double.MAX_VALUE && FurnaceReuse.smokerWorthWalking(smokerNearby, best);
-    }
-
-    // one of the stations this run placed (tables, furnaces) that we still own, and close enough to walk back to. the budget
-    // is the table's: WalkCost.STATION_BUDGET, the line CraftInTableTask and StationPickup use, so the plan only counts
-    // a table as held when crafting will really walk to it (a recorded one 60 blocks off meant no planks in the plan and then
-    // a second table crafted mid-cave). this used to have no distance test at all because a budget of 10 flipped the plan
-    // on a walk down to the cobble; the latch in refresh() is what keeps the line from flapping now. an unloaded chunk keeps
-    // its station if it is in budget
-    private boolean standingNearby(Player player, List<RunState.Pos> placed, Block kind, double budget) {
-        if (dimension != Dimension.OVERWORLD || placed.isEmpty()) {
-            return false;
-        }
-        return OwnTables.anyHeld(placed, pos -> {
-            BlockPos at = new BlockPos(pos.x, pos.y, pos.z);
-            return !mod.getChunkTracker().isChunkLoaded(at) || mod.getWorld().getBlockState(at).is(kind);
-        }, player.getX(), player.getY(), player.getZ(), budget);
+    // one of the stations this run placed (or is taking back) that is still there and within NEAR of us. the planner counts it as
+    // held exactly where crafting and smelting will walk to it, so the plan and the container tasks can't disagree about whether
+    // a second one is needed. an unloaded chunk keeps its station
+    private boolean heldNear(Player player, StationHook.Kind kind, boolean wasFar) {
+        return Workbenches.heldNear(state, kind, dimension.name(), player.getX(), player.getY(), player.getZ(),
+                WorkbenchRules.returnRadius(wasFar), pos -> {
+                    BlockPos at = new BlockPos(pos.x, pos.y, pos.z);
+                    return !mod.getChunkTracker().isChunkLoaded(at) || mod.getWorld().getBlockState(at).is(Workbenches.blockOf(kind));
+                });
     }
 
     @Override

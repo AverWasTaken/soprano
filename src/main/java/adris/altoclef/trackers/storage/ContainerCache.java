@@ -71,6 +71,13 @@ public class ContainerCache {
         return !_itemCounts.isEmpty();
     }
 
+    // something in the last look that is not just fuel: ore, meat, anything cooked. a station with only spare fuel in it is not
+    // holding anything worth keeping it standing for (a visit takes the spare fuel out anyway), and nothing ever visits a station
+    // that has no job, so counting it would leave it behind for good
+    public boolean holdsMoreThanFuel() {
+        return sumOver((item, count) -> adris.altoclef.util.helpers.ItemHelper.isFuel(item) ? 0.0 : count) > 0;
+    }
+
     // adds up f(item, count) over what the last look saw
     public double sumOver(java.util.function.ToDoubleBiFunction<Item, Integer> f) {
         double total = 0;

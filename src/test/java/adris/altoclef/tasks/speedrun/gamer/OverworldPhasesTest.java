@@ -2,8 +2,11 @@ package adris.altoclef.tasks.speedrun.gamer;
 
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
 import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig;
+import adris.altoclef.tasks.speedrun.gamer.phases.DragonPhase;
+import adris.altoclef.tasks.speedrun.gamer.phases.EyesPhase;
 import adris.altoclef.tasks.speedrun.gamer.phases.GatherPhase;
 import adris.altoclef.tasks.speedrun.gamer.phases.IronPhase;
+import adris.altoclef.tasks.speedrun.gamer.phases.NetherPhase;
 import adris.altoclef.tasks.speedrun.gamer.phases.PortalPhase;
 import baritone.api.utils.Dimension;
 import net.minecraft.SharedConstants;
@@ -101,6 +104,91 @@ public class OverworldPhasesTest {
         // a job nobody collected (more ingots than the kit needed): leaving now would leave them in the furnace
         f.cooking("iron_ingot", 5, 30);
         assertFalse(iron.isDone(f, state, cfg));
+    }
+
+    // a kit that is whole and a bag that is fed, so the only thing left to say "not done" is a station of ours
+    private static FakeFacts gatherDone() {
+        FakeFacts f = new FakeFacts().give(Items.STONE_PICKAXE, 2).give(Items.STONE_AXE, 1).give(Items.WOODEN_AXE, 1)
+                .give(Items.OAK_LOG, 64).give(Items.FURNACE, 1);
+        f.foodUnits = 70;
+        return f;
+    }
+
+    private FakeFacts ironDone() {
+        cfg.end.beds = 2;
+        cfg.overworld.armorPlan = OverworldConfig.ArmorPlan.NONE;
+        FakeFacts f = new FakeFacts().give(Items.WHITE_WOOL, 6);
+        for (var i : List.of(Items.STONE_PICKAXE, Items.STONE_AXE, Items.IRON_PICKAXE, Items.IRON_AXE, Items.FLINT_AND_STEEL,
+                Items.SHIELD, Items.SHEARS)) {
+            f.give(i, 1);
+        }
+        f.give(Items.BUCKET, 2).give(Items.LADDER, 3);
+        f.foodUnits = 100;
+        return f;
+    }
+
+    // WorkbenchRules.phaseMayEnd: an idle table standing in this dimension is the one that gets left behind, so the phase waits for
+    // the pickup. the phase never builds the registry itself, the gate syncs it from the saved lists
+    @Test
+    public void gatherAndIronWaitForATableOfOursStillStanding() {
+        GatherPhase gather = new GatherPhase();
+        IronPhase iron = new IronPhase();
+        FakeFacts g = gatherDone();
+        FakeFacts i = ironDone();
+        assertTrue(gather.isDone(g, state, cfg));
+        assertTrue(iron.isDone(i, state, cfg));
+        state.placedTables.add(new RunState.Pos(10, 64, 10));
+        assertFalse("table standing", gather.isDone(g, state, cfg));
+        assertFalse("table standing", iron.isDone(i, state, cfg));
+        // picked up, the list is empty again
+        state.placedTables.clear();
+        assertTrue(gather.isDone(g, state, cfg));
+        assertTrue(iron.isDone(i, state, cfg));
+    }
+
+    @Test
+    public void aFurnaceOrASmokerOfOursStandingHoldsThePhaseToo() {
+        GatherPhase gather = new GatherPhase();
+        FakeFacts g = gatherDone();
+        state.placedFurnaces.add(new RunState.Pos(3, 64, 3));
+        assertFalse(gather.isDone(g, state, cfg));
+        state.placedFurnaces.clear();
+        state.placedSmokers.add(new RunState.Pos(4, 64, 3));
+        assertFalse(gather.isDone(g, state, cfg));
+        state.placedSmokers.clear();
+        assertTrue(gather.isDone(g, state, cfg));
+    }
+
+    // a station in another dimension is already left behind (the registry forgets it), it is not a reason to hold this phase
+    @Test
+    public void aStationInAnotherDimensionDoesNotHoldThePhase() {
+        GatherPhase gather = new GatherPhase();
+        IronPhase iron = new IronPhase();
+        state.placedTables.add(new RunState.Pos(-3, 70, 9));
+        state.placedDimension.put("-3,70,9", "NETHER");
+        assertTrue(gather.isDone(gatherDone(), state, cfg));
+        assertTrue(iron.isDone(ironDone(), state, cfg));
+        // the same table with no dimension recorded is an overworld one (a fresh state, the registry keeps the dimension an entry
+        // was made with)
+        RunState plain = new RunState();
+        plain.placedTables.add(new RunState.Pos(-3, 70, 9));
+        assertFalse(gather.isDone(gatherDone(), plain, cfg));
+        assertFalse(iron.isDone(ironDone(), plain, cfg));
+        // and the other way round: a table left standing in the overworld while the facts say we are in the nether
+        FakeFacts nether = gatherDone();
+        nether.dimension = Dimension.NETHER;
+        assertTrue(gather.isDone(nether, plain, cfg));
+    }
+
+    @Test
+    public void thePhasesThatRunThePickupSaySo() {
+        assertTrue(new GatherPhase().ownsBenches());
+        assertTrue(new IronPhase().ownsBenches());
+        assertTrue(new PortalPhase().ownsBenches());
+        // everything else gets the sweep from the engine instead
+        assertFalse(new NetherPhase().ownsBenches());
+        assertFalse(new EyesPhase().ownsBenches());
+        assertFalse(new DragonPhase().ownsBenches());
     }
 
     @Test

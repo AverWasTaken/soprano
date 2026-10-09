@@ -11,6 +11,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -89,6 +90,8 @@ public class RunStateStoreTest {
         s.placedTables.add(new RunState.Pos(-3, 70, 9));
         s.placedFurnaces.add(new RunState.Pos(12, 64, -4));
         s.placedSmokers.add(new RunState.Pos(13, 64, -4));
+        // the second table stands in the nether, keyed by "x,y,z" (the overworld ones are not written down at all)
+        s.placedDimension.put("-3,70,9", "NETHER");
         s.villageChestsTried.add(new RunState.Pos(12, 64, -7));
         s.villageLootTicks = 1500;
         s.placedJobBlocks.add(new RunState.Pos(5, 64, 5));
@@ -133,6 +136,7 @@ public class RunStateStoreTest {
         assertEquals(Integer.valueOf(7), out.endDrops.get("minecraft:white_bed"));
         assertEquals(List.of(new RunState.Pos(245, 63, 40), new RunState.Pos(-3, 70, 9)), out.placedTables);
         assertEquals(List.of(new RunState.Pos(12, 64, -4)), out.placedFurnaces);
+        assertEquals(Map.of("-3,70,9", "NETHER"), out.placedDimension);
         assertEquals(List.of(new RunState.Pos(12, 64, -7)), out.villageChestsTried);
         assertEquals(1500L, out.villageLootTicks);
         assertEquals(List.of(new RunState.Pos(5, 64, 5)), out.placedJobBlocks);
@@ -230,6 +234,56 @@ public class RunStateStoreTest {
         write(file(), "{\"fingerprint\":\"" + FP + "\",\"phase\":\"IRON\",\"placedTables\":null,\"placedFurnaces\":null}");
         assertTrue(RunStateStore.load(file(), FP).state().placedTables.isEmpty());
         assertTrue(RunStateStore.load(file(), FP).state().placedFurnaces.isEmpty());
+    }
+
+    @Test
+    public void theDimensionOfAStationSurvivesASaveAndLoad() {
+        RunState s = new RunState();
+        s.fingerprint = FP;
+        s.placedTables.add(new RunState.Pos(1, 64, 1));
+        s.placedFurnaces.add(new RunState.Pos(2, 70, -3));
+        s.placedDimension.put("2,70,-3", "NETHER");
+        RunStateStore.save(file(), s);
+        RunState out = RunStateStore.load(file(), FP).state();
+        assertEquals(Map.of("2,70,-3", "NETHER"), out.placedDimension);
+        // the table that is not in the map is still an overworld one, nothing to write for it
+        assertFalse(out.placedDimension.containsKey("1,64,1"));
+    }
+
+    // every station in a save from before the dimension map was recorded in the overworld (the only place they were ever put down)
+    @Test
+    public void anOldSaveWithoutTheDimensionMapLoadsItEmpty() throws IOException {
+        write(file(), "{\"fingerprint\":\"" + FP + "\",\"phase\":\"IRON\",\"placedTables\":[{\"x\":1,\"y\":64,\"z\":2}]}");
+        RunState s = RunStateStore.load(file(), FP).state();
+        assertNotNull(s.placedDimension);
+        assertTrue(s.placedDimension.isEmpty());
+        assertEquals(1, s.placedTables.size());
+        // so the table in it reads as an overworld one
+        assertEquals(Workbenches.OVERWORLD, Workbenches.dimensionOf(s, new RunState.Pos(1, 64, 2)));
+    }
+
+    @Test
+    public void aNullDimensionMapIsAnEmptyOne() throws IOException {
+        write(file(), "{\"fingerprint\":\"" + FP + "\",\"phase\":\"IRON\",\"placedDimension\":null}");
+        RunState s = RunStateStore.load(file(), FP).state();
+        assertNotNull(s.placedDimension);
+        assertTrue(s.placedDimension.isEmpty());
+        // and it is a map we can put in, not an immutable stand-in
+        s.placedDimension.put("0,0,0", "NETHER");
+        assertEquals(1, s.placedDimension.size());
+    }
+
+    // the registry entries are rebuilt from the lists after a relog, writing them down would let the two disagree
+    @Test
+    public void theRegistryEntriesAreNeverWritten() {
+        RunState s = full();
+        s.benches.add(new Bench(adris.altoclef.util.helpers.StationHook.Kind.TABLE, new RunState.Pos(245, 63, 40), "OVERWORLD", 10));
+        s.benches.add(new Bench(adris.altoclef.util.helpers.StationHook.Kind.FURNACE, new RunState.Pos(12, 64, -4), "OVERWORLD", 20));
+        String json = RunStateStore.toJson(s);
+        assertFalse(json, json.contains("benches"));
+        assertFalse(json, json.contains("lastUsedTick"));
+        // and a load starts with none
+        assertTrue(RunStateStore.parse(json).benches.isEmpty());
     }
 
     @Test

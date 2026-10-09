@@ -85,21 +85,21 @@ public interface GamerFacts {
         return FurnaceJobs.pending(furnaceJobs(), BuiltInRegistries.ITEM.getKey(item).getPath());
     }
 
-    // a crafting table of ours is standing close enough to walk back to (and is still a table). it is on its way back to the
-    // bag, so for planning it is a held table: the moment it leaves the bag the kit used to ask for table planks, the head need
-    // flipped to log, and the pickup rules read that as the run moving on from the table it had just put down
+    // a crafting table of ours is standing within WorkbenchRules.NEAR of us (a straight line, height counts) and is still a table.
+    // it is on its way back to the bag too, so for planning it is a held table: the moment it leaves the bag the kit used to ask
+    // for table planks and the head need flipped to log
     default boolean tablePlacedNearby() {
         return false;
     }
 
-    // same for a furnace of ours (RunState.placedFurnaces), standing close enough to walk back to. only the cobble floor reads
-    // it: the 8 cobble it cost are not owed to a furnace that is already on the ground
+    // same for a furnace of ours (RunState.placedFurnaces), within NEAR. the cobble floor reads it: the 8 cobble it cost are not
+    // owed to a furnace that is already on the ground
     default boolean furnacePlacedNearby() {
         return false;
     }
 
-    // and a smoker of ours (RunState.placedSmokers) that is worth the walk back (FurnaceReuse.smokerWorthWalking, unlike the
-    // table and furnace this one has a distance test). the cook need reads it: a smoker standing is the cheapest place to put meat
+    // and a smoker of ours (RunState.placedSmokers), within NEAR. the cook need reads it: a smoker standing is the cheapest place to
+    // put meat, and it beats a furnace (WorkbenchRules.cookInSmoker)
     default boolean smokerPlacedNearby() {
         return false;
     }

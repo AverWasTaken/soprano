@@ -451,11 +451,11 @@ public class SmeltInFurnaceTask extends ResourceTask implements AsyncSmelting.Ha
             var me = mod.getPlayer().position();
             boolean cheap = FurnaceReuse.canMakeCheaply(mod.getItemStorage().hasItem(Items.FURNACE),
                     StationMemory.cobbleish(mod), StationMemory.tableAround(mod));
-            boolean ours = AsyncSmelting.isOurFurnace(known);
+
             // ore of ours sitting in it (the screen was closed on it half loaded) is not a furnace to walk away from
-            boolean holdsOurStuff = ours && mod.getItemStorage().getContainerAtPosition(known).map(ContainerCache::holdsAnything).orElse(false);
+            boolean holdsOurStuff = AsyncSmelting.isOurFurnace(known) && mod.getItemStorage().getContainerAtPosition(known).map(ContainerCache::holdsMoreThanFuel).orElse(false);
             // 0 = any walk at all costs more, so DoStuffInContainerTask places one here instead
-            return FurnaceReuse.makeNew(true, cheap, known.getX() + 0.5 - me.x, known.getY() - me.y, known.getZ() + 0.5 - me.z, ours, holdsOurStuff)
+            return FurnaceReuse.makeNew(true, cheap, known.getX() + 0.5 - me.x, known.getY() + 0.5 - me.y, known.getZ() + 0.5 - me.z, holdsOurStuff)
                     ? 0.0 : NEVER_MAKE_NEW;
         }
 

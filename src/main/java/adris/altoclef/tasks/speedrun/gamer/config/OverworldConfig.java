@@ -88,20 +88,13 @@ public class OverworldConfig {
     public double noLavaSeconds = 150;
     // throwaway blocks to carry through the portal (pillaring, bridging, plugging lava)
     public int portalBuildBlocks = 32;
-    // pick up a crafting table or furnace of ours (we hold none) when the crafting is done or the run moves on to another
-    // need, but only when the walk is cheap: horizontal blocks + 4 per block of height (WalkCost), so about 20 flat blocks
-    // or 5 up or down. a table is worth about a log, a longer trip is a loss, and one we are too far from is forgotten.
-    // it used to be a 24 block sphere, which is how the bot walked back down a cave for a table. (still called radius
-    // because the saved configs say so)
+    // NOT READ ANY MORE, kept so saved configs and their migration still load. the pickup distances are fixed now:
+    // WorkbenchRules.NEAR (21, straight line) to keep one, WorkbenchRules.FORGET_DISTANCE (128) to give up on one
     public int tableRecoverRadius = 20;
-    // ...and gets this long to do it before that station is written off
+    // a station pickup gets this long (per try, WorkbenchRules.MAX_TRIES of them) before it counts as failed
     public double tablePickupSeconds = 30;
-    // a station that was open or placed this recently is in use, leave it be. just a debounce now (the need boundary does
-    // the real deciding), it used to be 30 and the bot was long out of range by the time it ran out
+    // NOT READ ANY MORE (the registry's own gates replaced both of these, see WorkbenchRules.PLACE_GUARD_TICKS / SETTLE_TICKS)
     public double tableUseCooldownSeconds = 3;
-    // after taking one back, no second pickup of that kind for this long. just a floor now: a table is only taken once it
-    // was used since it went down (OwnTables.usedSincePlaced), that is what breaks a place/pickup loop. it was 120 and left
-    // a table behind every time two crafts landed inside it
     public double tableRecoverCooldownSeconds = 5;
 
     // smelting in the background (see SmeltFiller): the iron goes in the furnace and the bot does other things while it cooks,

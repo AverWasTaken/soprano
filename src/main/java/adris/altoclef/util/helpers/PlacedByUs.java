@@ -26,7 +26,7 @@ public final class PlacedByUs {
         return ((long) (x & 0x3FFFFFF) << 38) | ((long) (z & 0x3FFFFFF) << 12) | (y & 0xFFF);
     }
 
-    // measured from the player to the middle of the block, same rule as OwnTables.placedByUs
+    // measured from the player to the middle of the block, same rule as WorkbenchRules.placedByUs
     public static boolean withinReach(double px, double py, double pz, int bx, int by, int bz) {
         double dx = bx + 0.5 - px;
         double dy = by + 0.5 - py;

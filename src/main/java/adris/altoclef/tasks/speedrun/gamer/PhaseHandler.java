@@ -30,6 +30,12 @@ public interface PhaseHandler {
         return null;
     }
 
+    // true for the phases that run the station pickup themselves (Workbenches.tick with their plan: GATHER, IRON, PORTAL). for every
+    // other phase the engine sweeps instead, so a table placed by a craft anywhere in the run does not stay behind
+    default boolean ownsBenches() {
+        return false;
+    }
+
     // pure and cheap, the engine asks every tick. true = move on to the next phase
     boolean isDone(GamerFacts facts, RunState state, GamerConfig cfg);
 

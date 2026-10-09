@@ -6,7 +6,7 @@ import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
 
-// the cave trip: a table a few blocks down is a long walk back up, not "24 blocks away"
+// the walk estimate (still what drops and the pack-up trip are priced in) and the one straight line the stations use
 public class WalkCostTest {
     @Test
     public void flatWalkIsJustTheDistance() {
@@ -23,12 +23,12 @@ public class WalkCostTest {
     }
 
     @Test
-    public void budgetIsInclusiveAndTwentyByDefault() {
-        assertTrue(WalkCost.within(20, 0, 0, WalkCost.STATION_BUDGET));
-        assertFalse(WalkCost.within(20.1, 0, 0, WalkCost.STATION_BUDGET));
-        // five up is exactly the budget, six is a loss
-        assertTrue(WalkCost.within(0, 5, 0, WalkCost.STATION_BUDGET));
-        assertFalse(WalkCost.within(0, 6, 0, WalkCost.STATION_BUDGET));
+    public void withinIsInclusiveOnTheBudgetItIsGiven() {
+        assertTrue(WalkCost.within(20, 0, 0, 20));
+        assertFalse(WalkCost.within(20.1, 0, 0, 20));
+        // five up is exactly 20 of walk, six is a loss
+        assertTrue(WalkCost.within(0, 5, 0, 20));
+        assertFalse(WalkCost.within(0, 6, 0, 20));
     }
 
     @Test
@@ -51,23 +51,99 @@ public class WalkCostTest {
         assertTrue(WalkCost.dropBudget(true) < WalkCost.dropBudget(false));
     }
 
-    // 40 blocks of straight line used to be "close" with no table in hand, OwnTables.forgetFar says 20
     @Test
-    public void makingATableUsesTheSameBudgetCarriedOrNot() {
+    public void theStationLinesAreTwentyOneAndOneTwentyEight() {
+        assertEquals(21.0, WalkCost.STATION_NEAR, 0);
+        assertEquals(128.0, WalkCost.STATION_FORGET, 0);
+        // forgetting has to come well after reusing or a station would be dropped the moment it stopped being near
+        assertTrue(WalkCost.STATION_FORGET > WalkCost.STATION_NEAR);
+    }
+
+    @Test
+    public void distance3dIsThePlainStraightLine() {
+        assertEquals(5.0, WalkCost.distance3d(3, 0, 4), 1e-9);
+        assertEquals(5.0, WalkCost.distance3d(0, 3, 4), 1e-9);
+        assertEquals(Math.sqrt(3) * 10, WalkCost.distance3d(10, 10, 10), 1e-9);
+        // sign does not matter on any axis
+        assertEquals(WalkCost.distance3d(1, 2, 3), WalkCost.distance3d(-1, -2, -3), 1e-9);
+        assertEquals(0.0, WalkCost.distance3d(0, 0, 0), 0);
+    }
+
+    // height used to cost four flat blocks each, now it is just one more axis of the same line
+    @Test
+    public void heightCountsAsOneAxisNotFour() {
+        // 15 across and 15 up is 21.2 away, one hair past
+        assertEquals(21.213, WalkCost.distance3d(15, 15, 0), 1e-3);
+        assertFalse(WalkCost.nearStation(15, 15, 0));
+        assertFalse(WalkCost.nearStation(15, -15, 0));
+        // ...while 10 / 10 / 10 is 17.3
+        assertTrue(WalkCost.nearStation(10, 10, 10));
+        assertTrue(WalkCost.nearStation(-10, -10, -10));
+        // five up used to be 20 of walk and the edge of reuse, it is 5 of line
+        assertTrue(WalkCost.nearStation(0, 5, 0));
+        assertTrue(WalkCost.nearStation(8, -4, 0));
+    }
+
+    @Test
+    public void nearIsInclusiveAtExactlyTwentyOne() {
+        assertTrue(WalkCost.nearStation(21, 0, 0));
+        assertTrue(WalkCost.nearStation(0, 21, 0));
+        assertTrue(WalkCost.nearStation(0, 0, -21));
+        assertFalse(WalkCost.nearStation(21.01, 0, 0));
+        assertFalse(WalkCost.nearStation(0, -21.01, 0));
+        // 12 / 12 / 12 is 20.8, 13 / 12 / 12 is 21.2
+        assertTrue(WalkCost.nearStation(12, 12, 12));
+        assertFalse(WalkCost.nearStation(13, 12, 12));
+        // the line is a sphere, not a box: 20 across and 7 up is 21.2
+        assertFalse(WalkCost.nearStation(20, 7, 0));
+    }
+
+    @Test
+    public void aStationRightOnUsIsNear() {
+        assertTrue(WalkCost.nearStation(0, 0, 0));
+    }
+
+    // the callers all hand over the block and where they stand, and they must all land on the same side of the line
+    @Test
+    public void theBlockFormMeasuresToTheMiddleOfTheBlock() {
+        // the block at 21,0,0 has its middle 21.5 away from a player at the origin: past. one block closer is in
+        assertFalse(WalkCost.nearStationBlock(21, 0, 0, 0, 0, 0));
+        assertTrue(WalkCost.nearStationBlock(20, -1, 0, 0, 0, 0));
+        // from the block's own centre it is on top of us
+        assertTrue(WalkCost.nearStationBlock(5, 70, 5, 5.5, 70.5, 5.5));
+        // the same answer as the offsets form
+        assertEquals(WalkCost.nearStation(20.5 - 3.2, 64.5 - 70.0, 7.5 + 1.1), WalkCost.nearStationBlock(20, 64, 7, 3.2, 70.0, -1.1));
+        assertEquals(WalkCost.nearStation(30.5, 0.5, 0.5), WalkCost.nearStationBlock(30, 0, 0, 0, 0, 0));
+    }
+
+    @Test
+    public void stationDistanceIsTheSameLineWithTheNumberKept() {
+        assertEquals(WalkCost.distance3d(3.5, -2.5, 1.5), WalkCost.stationDistance(3, -3, 1, 0, 0, 0), 1e-9);
+        assertEquals(0.0, WalkCost.stationDistance(5, 70, 5, 5.5, 70.5, 5.5), 1e-9);
+        // and nearStationBlock is just that number against the line
+        double d = WalkCost.stationDistance(17, 64, 3, 0, 64, 0);
+        assertEquals(d <= WalkCost.STATION_NEAR, WalkCost.nearStationBlock(17, 64, 3, 0, 64, 0));
+    }
+
+    // a table within NEAR (ours or a village's) is walked to, a carried one beats any table further out, and the last resort is
+    // to craft one, cheaper with wood on us
+    @Test
+    public void makingATableUsesTheSameLineCarriedOrNot() {
         double inf = Double.POSITIVE_INFINITY;
         assertEquals(inf, WalkCost.newTableCost(true, true, true), 0);
         assertEquals(inf, WalkCost.newTableCost(false, true, false), 0);
-        // out of budget with a table in hand: placing it is free
+        // past the line with a table in hand: placing it is free
         assertEquals(0, WalkCost.newTableCost(true, false, false), 0);
-        // out of budget with nothing in hand: craft one, cheaper with wood on us
+        // past the line with nothing in hand: craft one, cheaper with wood on us
         assertEquals(10, WalkCost.newTableCost(false, false, true), 0);
         assertEquals(100, WalkCost.newTableCost(false, false, false), 0);
     }
 
+    // a table in a mine 34 down is not a table to go back for: not near, and the climb is far over any drop budget
     @Test
     public void theCaveTripIsNotWorthIt() {
-        // table at y 30, log at the surface y 64, a few blocks over: the old sphere said 34 and a bit, the walk says 136+
-        assertFalse(WalkCost.within(3, 34, 0, WalkCost.STATION_BUDGET));
+        assertFalse(WalkCost.nearStation(3, 34, 0));
+        assertFalse(WalkCost.within(3, 34, 0, WalkCost.DROP_BUDGET));
         assertTrue(WalkCost.estimate(3, 34, 0) > 100);
     }
 }

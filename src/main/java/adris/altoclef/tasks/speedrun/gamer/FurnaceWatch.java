@@ -2,17 +2,13 @@ package adris.altoclef.tasks.speedrun.gamer;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
-import adris.altoclef.tasks.construction.DestroyBlockTask;
 import adris.altoclef.tasks.container.CollectFromFurnaceTask;
 import adris.altoclef.tasks.container.CollectFromFurnaceTask.Mode;
-import adris.altoclef.tasks.movement.PickupDroppedItemTask;
 import adris.altoclef.tasks.resources.CookRawFoodTask;
 import adris.altoclef.tasksystem.Task;
-import adris.altoclef.util.helpers.WorldHelper;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
 
@@ -22,48 +18,49 @@ import java.util.List;
 // the game side of smelting in the background: keeps the job list honest (stale ones, furnaces that are gone) and hands out
 // the task that goes back for the iron. no leash: the bot goes wherever the work is and remembers where the furnace is. one
 // per phase that can have jobs (IRON, and PORTAL for the last look before we leave). the rules it follows are in FurnaceJobs
-// and SmeltFiller, this is only the part that needs a world
+// and SmeltFiller, this is only the part that needs a world. the station coming down after the last collect is Workbenches'
+// business now: this only decides that the visit that emptied it is the moment, and cooks first when the rules say so
 public final class FurnaceWatch {
     private CollectFromFurnaceTask task;
     private RunState.FurnaceJob target;
     private String hud;
-    // the IRON phase takes its furnace back once the last of the iron is out, so the next smelt can go down at the next work
-    // site. PORTAL takes the one it just emptied too (newExitPhase), but never loads meat into it
-    private boolean pickUpWhenEmpty;
+    private final Workbenches benches;
+    // PORTAL takes the one it just emptied too (newExitPhase), but never loads meat into it
     private boolean cookHere = true;
-    private Task pickup;
-    private BlockPos pickupAt;
-    // what is coming down: the block kind it was (furnace or smoker) and the item it turns into
-    private String pickupKind = "furnace";
-    private Item pickupItem = Items.FURNACE;
-    private boolean pickupBroken;
-    private long pickupStart;
     // the furnace we just emptied is standing right here and we carry raw meat: it cooks that before it comes down
     private Task cook;
     private long cookStart;
+    private RunState.Pos cookAt;
+    private boolean cookSmoker;
+
+    public FurnaceWatch() {
+        this(new Workbenches());
+    }
+
+    // the same Workbenches the phase's PrepSupport has, or the two would each hold a task for the same pickup
+    public FurnaceWatch(Workbenches benches) {
+        this.benches = benches;
+    }
 
     // jobs come and go, every batch empties the list
     public void reset() {
         cook = null;
+        cookAt = null;
         task = null;
         target = null;
         hud = null;
-        pickup = null;
-        pickupAt = null;
-        pickupBroken = false;
     }
 
     // a fresh phase
-    public void newPhase(boolean pickUpWhenEmpty) {
+    public void newPhase() {
         reset();
-        this.pickUpWhenEmpty = pickUpWhenEmpty;
-        cookHere = pickUpWhenEmpty;
+        cookHere = true;
     }
 
     // a phase that only wants the station off the ground on its way out: it would not come back for a furnace that gets
     // loaded with meat here, so it never loads one
     public void newExitPhase() {
-        newPhase(true);
+        newPhase();
         cookHere = false;
     }
 
@@ -73,12 +70,14 @@ public final class FurnaceWatch {
         cookHere = yes;
     }
 
-    // the furnace is coming down right now (the phase must not end under it)
-    public boolean pickingUp() {
-        return pickup != null || cook != null;
+    // the cook that runs before the station comes down is going (the phase must not end under it). the pickup itself is on the
+    // bench (Workbenches.phaseMayEnd)
+    public boolean cooking() {
+        return cook != null;
     }
 
-    // the furnace comes down after the last collect, run until the block is broken and the item is back in the bag
+    // what to do about the station we just emptied, first thing every tick: the cook that goes before it comes down, then the
+    // pickup that is in flight (any station's, a pickup runs to the end whatever the plan says)
     public Task finishing(AltoClef mod, GamerContext ctx) {
         if (cook != null) {
             // loaded is done (the job lands in the state next tick), and a cook that drags on is not worth holding the furnace for
@@ -87,72 +86,32 @@ public final class FurnaceWatch {
                 // timed out part way (a long coal trip) with the meat already in the furnace: it is not a job yet, and breaking the
                 // furnace now would spill it. leave a job, the furnace stays and the visit it brings takes the furnace back
                 boolean stranded = !finished && cook instanceof CookRawFoodTask raw && raw.recordLeftBehind(mod);
+                RunState.Pos spot = cookAt;
                 cook = null;
+                cookAt = null;
                 hud = null;
                 if (stranded) {
                     // same backoff as the cook's own give up, or the visit that takes the meat back out finds an empty furnace we
                     // are standing at and starts the same cook (and the same coal trip) all over again
                     CookTrip.suspend(ctx.facts().gameTime());
-                    Debug.logInternal(pickupKind + " still has our meat in it, leaving it for the job instead of breaking it at " + pickupAt.toShortString());
-                    pickupAt = null;
-                    return null;
+                    Debug.logInternal("bench: " + (cookSmoker ? "smoker" : "furnace") + " still has our meat in it, leaving it for the job instead of breaking it at " + spot);
+                } else if (spot != null) {
+                    // loaded: the job is the memory now and its last collect takes the furnace back (a station with a job is
+                    // not ours to take: LEAVE). not loaded (gave up, timed out, the meat was gone): it was coming down anyway
+                    boolean ours = ours(ctx.state(), cookSmoker ? "smoker" : "furnace", spot);
+                    if (WorkbenchRules.afterVisit(0, ours, FurnaceJobs.isBusy(ctx.state(), spot), false) == WorkbenchRules.Visit.PICK_UP) {
+                        Debug.logInternal("bench: " + (cookSmoker ? "smoker" : "furnace") + " did not get the meat, taking it back at " + spot);
+                        benches.pickUpNow(mod, ctx, spot, "the cook did not use it");
+                    }
                 }
-                // loaded: the job is the memory now and its last collect takes the furnace back. not loaded (gave up, timed
-                // out, the meat was gone): it was coming down anyway, so it still does, or it stood there for the rest of the run
-                RunState.Pos spot = new RunState.Pos(pickupAt.getX(), pickupAt.getY(), pickupAt.getZ());
-                boolean stillOurs = FurnaceJobs.mayTakeBack(ctx.state(), pickupKind, spot, 0, ctx.facts().has(pickupItem));
-                if (!stillOurs || !WorldHelper.canBreak(mod, pickupAt)) {
-                    pickupAt = null;
-                    return null;
-                }
-                Debug.logInternal(pickupKind + " did not get the meat, taking it back at " + pickupAt.toShortString());
-                startPickup(ctx);
             } else {
                 hud = "Cooking the meat while the furnace is free";
                 return cook;
             }
         }
-        if (pickup == null) {
-            return null;
-        }
-        if (!pickupBroken && pickup.isFinished(mod)) {
-            pickupBroken = true;
-            // only one of the two lists has this spot, removing from both is the cheap way to not care which
-            RunState.Pos gone = new RunState.Pos(pickupAt.getX(), pickupAt.getY(), pickupAt.getZ());
-            ctx.state().placedFurnaces.remove(gone);
-            ctx.state().placedSmokers.remove(gone);
-            pickup = new PickupDroppedItemTask(pickupItem, 1);
-        }
-        double elapsed = (ctx.facts().gameTime() - pickupStart) / 20.0;
-        if ((pickupBroken && ctx.facts().has(pickupItem)) || elapsed > ctx.cfg().overworld.tablePickupSeconds) {
-            Debug.logInternal(pickupKind + " pickup after the last collect: " + (pickupBroken ? "done" : "timed out") + " at " + pickupAt.toShortString());
-            pickup = null;
-            pickupAt = null;
-            pickupBroken = false;
-            hud = null;
-            return null;
-        }
-        hud = "Picking up the " + pickupKind;
+        Task pickup = benches.resume(mod, ctx);
+        hud = pickup == null ? null : benches.hud();
         return pickup;
-    }
-
-    // ours, a plain furnace or a smoker (never a village's blast furnace), nothing left in it, and we hold no spare. then it
-    // comes with us. the rule itself is FurnaceJobs.mayTakeBack, this only adds "can we actually reach it"
-    private boolean takeBack(AltoClef mod, GamerContext ctx, RunState.FurnaceJob job, int inputLeft) {
-        Item item = itemOf(job.kind);
-        if (!pickUpWhenEmpty || item == null
-                || !FurnaceJobs.mayTakeBack(ctx.state(), job.kind, job.pos, inputLeft, ctx.facts().has(item))) {
-            return false;
-        }
-        return WorldHelper.canBreak(mod, at(job));
-    }
-
-    private static Item itemOf(String kind) {
-        return switch (kind) {
-            case "furnace" -> Items.FURNACE;
-            case "smoker" -> Items.SMOKER;
-            default -> null;
-        };
     }
 
     // plain words for what we are doing about the furnace, null when nothing
@@ -231,31 +190,41 @@ public final class FurnaceWatch {
         task = null;
         target = null;
         hud = null;
-        if (takeBack(mod, ctx, visited, left)) {
-            // the cook needs to know where it is too: one that comes to nothing still takes the furnace back after
-            pickupAt = at(visited);
-            pickupKind = visited.kind;
-            pickupItem = itemOf(visited.kind);
-            // an empty furnace is the best place for the raw meat we are carrying, and we are standing at it
-            if (cookHere && CookGate.reusable(ctx.facts(), ctx.cfg().overworld, ctx.cfg().end.beds, "smoker".equals(visited.kind))) {
-                cook = new CookRawFoodTask("smoker".equals(visited.kind));
-                cookStart = ctx.facts().gameTime();
-                Debug.logInternal(visited.kind + " is empty and we hold " + CookGate.raw(ctx.facts()) + " raw meat, cooking it before taking the "
+        return afterVisit(mod, ctx, visited, left);
+    }
+
+    // the visit is over. a station that still has something cooking stays (busy, never taken). an emptied one of ours comes down
+    // right now, before we walk off and the next craft has a say: after the raw meat in the bag has cooked in it, but only when no
+    // smoker of ours is within NEAR or in the bag, the smoker is where meat goes (WorkbenchRules.cookInSmoker)
+    private Task afterVisit(AltoClef mod, GamerContext ctx, RunState.FurnaceJob visited, int left) {
+        GamerFacts f = ctx.facts();
+        RunState.Pos spot = new RunState.Pos(visited.pos.x, visited.pos.y, visited.pos.z);
+        boolean smoker = "smoker".equals(visited.kind);
+        boolean ours = ours(ctx.state(), visited.kind, spot);
+        // (CookGate.reusable already wants MIN_RAW meat, so a bagged smoker only ever vetoes a cook that was going to happen)
+        boolean mayCook = cookHere && WorkbenchRules.emptiedStationMayCook(smoker, f.smokerPlacedNearby(), f.has(Items.SMOKER))
+                && CookGate.reusable(f, ctx.cfg().overworld, ctx.cfg().end.beds, smoker);
+        switch (WorkbenchRules.afterVisit(left, ours, FurnaceJobs.isBusy(ctx.state(), spot), mayCook)) {
+            case COOK_THEN_PICK_UP -> {
+                // an empty furnace is the best place for the raw meat we are carrying, and we are standing at it
+                cook = new CookRawFoodTask(smoker);
+                cookStart = f.gameTime();
+                cookAt = spot;
+                cookSmoker = smoker;
+                Debug.logInternal("bench: " + visited.kind + " is empty and we hold " + CookGate.raw(f) + " raw meat, cooking it before taking the "
                         + visited.kind + " back");
                 return finishing(mod, ctx);
             }
-            startPickup(ctx);
-            Debug.logInternal(pickupKind + " is empty, taking it back at " + pickupAt.toShortString());
-            return finishing(mod, ctx);
+            case PICK_UP -> {
+                if (!benches.pickUpNow(mod, ctx, spot, "the visit emptied it")) {
+                    return null;
+                }
+                return finishing(mod, ctx);
+            }
+            default -> {
+                return null;
+            }
         }
-        return null;
-    }
-
-    // pickupAt/Kind/Item are set, the block comes down now
-    private void startPickup(GamerContext ctx) {
-        pickupStart = ctx.facts().gameTime();
-        pickupBroken = false;
-        pickup = new DestroyBlockTask(pickupAt);
     }
 
     // a new trip to the job that is ready first, null when there is no job here. NORMAL takes what is done, WAIT_ALL stays
@@ -301,6 +270,12 @@ public final class FurnaceWatch {
         task = new CollectFromFurnaceTask(at(job), block, job.kind, mode, nearly, cap);
         hud = mode == Mode.WAIT_ALL ? "Waiting for the furnace" : "Collecting from the furnace";
         return task;
+    }
+
+    // one of the stations we put down (a village's blast furnace has no list, so it is never ours)
+    private static boolean ours(RunState state, String kind, RunState.Pos pos) {
+        List<RunState.Pos> own = FurnaceJobs.placedFor(state, kind);
+        return own != null && own.contains(pos);
     }
 
     private static BlockPos at(RunState.FurnaceJob job) {

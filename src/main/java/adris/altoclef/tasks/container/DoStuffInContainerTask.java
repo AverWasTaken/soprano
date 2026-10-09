@@ -11,6 +11,7 @@ import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.BaritoneHelper;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.MineStick;
+import adris.altoclef.util.helpers.StationHook;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WalkCost;
 import adris.altoclef.util.helpers.WorldHelper;
@@ -32,6 +33,7 @@ public abstract class DoStuffInContainerTask extends Task {
 
     private final ItemTarget _containerTarget;
     private final Block[] _containerBlocks;
+    private final StationHook.Kind _stationKind;
     // a container this close is the one we are using, whatever the price of a new one says
     private static final double PLACED_CLOSE = 6.0;
 
@@ -55,6 +57,12 @@ public abstract class DoStuffInContainerTask extends Task {
         _placeTask = PlaceStationTask.isStation(_containerBlocks)
                 ? new PlaceStationTask(_containerBlocks)
                 : new PlaceBlockNearbyTask(_containerBlocks);
+        _stationKind = StationHook.kindOf(_containerBlocks);
+    }
+
+    // which workbench this task is for (the gamer's registry keeps those), null for chests, anvils and the like
+    public StationHook.Kind stationKind() {
+        return _stationKind;
     }
 
     private BlockPos placedPos() {
@@ -77,6 +85,14 @@ public abstract class DoStuffInContainerTask extends Task {
     @Override
     protected Task onTick(AltoClef mod) {
 
+        // a station of this kind is coming down right now, so nothing may place or craft another one: the block we would find
+        // missing is the one being broken, and the new one would stand where the old one was. the phase that owns the pickup
+        // runs it ahead of the kit task, so this only holds in the gaps (an interrupted pickup, a queued place)
+        if (_stationKind != null && StationHook.pickingUp(_stationKind)) {
+            setDebugState("Waiting, the " + _stationKind.word() + " is being picked up");
+            return null;
+        }
+
         // If we're placing, keep on placing.
         // the click takes the table out of the bag a few ticks before the world shows it (VERIFY), and a walk that cut in
         // there stopped the placer mid-verify. so no item left is fine as long as the placer is still waiting on the block
@@ -98,12 +114,15 @@ public abstract class DoStuffInContainerTask extends Task {
         Vec3 currentPos = mod.getPlayer().position();
         BlockPos override = overrideContainerPosition(mod);
 
-        if (override != null && mod.getBlockTracker().blockIsValid(override, _containerBlocks)) {
+        boolean overridden = override != null && mod.getBlockTracker().blockIsValid(override, _containerBlocks)
+                && !StationHook.pickingUp(override);
+        if (overridden) {
             // We have an override so go there instead.
             nearest = Optional.of(override);
         } else {
-            // Track nearest container
-            nearest = mod.getBlockTracker().getNearestTracking(currentPos, blockPos -> WorldHelper.canReach(mod, blockPos), _containerBlocks);
+            // Track nearest container, but never the one that is coming down
+            nearest = mod.getBlockTracker().getNearestTracking(currentPos,
+                    blockPos -> WorldHelper.canReach(mod, blockPos) && !StationHook.pickingUp(blockPos), _containerBlocks);
         }
         if (nearest.isEmpty()) {
             // If all else fails, try using our placed task
@@ -112,11 +131,22 @@ public abstract class DoStuffInContainerTask extends Task {
                 nearest = Optional.empty();
             }
         }
+        // the run's own registry knows where its stations stand even when the block tracker has not caught up (a rescan behind the
+        // block we just put down) or cannot reach it from here. one of ours within NEAR is used, never a reason to craft another
+        BlockPos ours = _stationKind == null ? null : StationHook.standingNear(_stationKind, currentPos.x, currentPos.y, currentPos.z);
+        if (ours != null && (!isContainerBlock(mod, ours) || StationHook.pickingUp(ours))) {
+            ours = null;
+        }
+        if (ours != null && !overridden && (nearest.isEmpty()
+                || WorldHelper.toVec3d(ours).distanceToSqr(currentPos) < WorldHelper.toVec3d(nearest.get()).distanceToSqr(currentPos))) {
+            nearest = Optional.of(ours);
+        }
         if (nearest.isPresent()) {
             costToWalk = BaritoneHelper.calculateGenericHeuristic(currentPos, WorldHelper.toVec3d(nearest.get()));
         }
 
-        if (nearest.isEmpty() && _cachedContainerPosition != null && isContainerBlock(mod, _cachedContainerPosition)) {
+        if (nearest.isEmpty() && _cachedContainerPosition != null && isContainerBlock(mod, _cachedContainerPosition)
+                && !StationHook.pickingUp(_cachedContainerPosition)) {
             // the tracker lost the one we were walking to (a rescan after a fuel trip did it, and the next thing the bot did was
             // mine the smoker it had just put down to "get the container item"). the world still has it, the world wins
             nearest = Optional.of(_cachedContainerPosition);
@@ -124,7 +154,8 @@ public abstract class DoStuffInContainerTask extends Task {
 
         nearest = stickToPreviousTarget(mod, nearest);
 
-        boolean mayMakeNew = canMakeNew(mod);
+        // crafting or placing a new one while ours stands within NEAR is the second table next to the first
+        boolean mayMakeNew = mayMakeNew(canMakeNew(mod), ours != null);
         if (nearest.isEmpty() && !mayMakeNew) {
             // we were told to use a container that already exists, so with none left we sit still and let whoever
             // picked us notice and pick something else. crafting one is how this task used to ruin that
@@ -195,6 +226,12 @@ public abstract class DoStuffInContainerTask extends Task {
         return _openTask;
     }
 
+    // a new one (placed from the bag or crafted first, the bag is checked where the item is fetched) is only an option while none of
+    // ours stands within STATION_NEAR: that is the second table next to the first
+    static boolean mayMakeNew(boolean subclassAllows, boolean oursStandingNear) {
+        return subclassAllows && !oursStandingNear;
+    }
+
     static boolean keepPlacing(boolean haveItem, boolean placerActive, boolean placerFinished, boolean placerVerifying) {
         return (haveItem || placerVerifying) && placerActive && !placerFinished;
     }
@@ -217,7 +254,8 @@ public abstract class DoStuffInContainerTask extends Task {
     // for unless the other is clearly closer (same 2x rule as the closest-block search), so what we walk to is what we click
     private Optional<BlockPos> stickToPreviousTarget(AltoClef mod, Optional<BlockPos> candidate) {
         BlockPos previous = _cachedContainerPosition;
-        if (candidate.isEmpty() || previous == null || candidate.get().equals(previous) || !isContainerBlock(mod, previous)) {
+        if (candidate.isEmpty() || previous == null || candidate.get().equals(previous) || !isContainerBlock(mod, previous)
+                || StationHook.pickingUp(previous)) {
             return candidate;
         }
         Vec3 me = mod.getPlayer().position();

@@ -205,30 +205,19 @@ public class RunState {
     // the extra bed near the portal took too long (or could not be placed): go to the End without a spawn bed
     public boolean spawnBedGaveUp;
 
-    // crafting tables this run placed (overworld), the only ones the table pickup may take back. see OwnTables
+    // crafting tables this run placed, the only ones the pickup may take back. these three lists are what is saved of the
+    // station registry (Workbenches), the rest of an entry (state, clocks, tries) is rebuilt from them after a relog
     public List<Pos> placedTables = new ArrayList<>();
     // same for furnaces (plain ones only, a blast furnace of ours goes in placedJobBlocks below)
     public List<Pos> placedFurnaces = new ArrayList<>();
     // smokers we crafted for the food. a list of their own so an old save without the key just loads empty
     public List<Pos> placedSmokers = new ArrayList<>();
+    // "x,y,z" -> dimension for the stations above that stand outside the overworld. an old save has no key, and every station
+    // in it is an overworld one (that is the only place they were ever recorded)
+    public Map<String, String> placedDimension = new HashMap<>();
 
-    // when a station was last open or placed, which kit need was running then, and when we last took one back. transient
-    // on purpose: they only gate a debounce and a backstop, a relog starting them over is fine. see OwnTables
-    public static final class StationUse {
-        public long lastUseTick = OwnTables.NEVER;
-        // split from the use stamp: a boundary ignores the last use, but a block that went down a moment ago still waits
-        public long lastPlaceTick = OwnTables.NEVER;
-        public long lastRecoveredTick = OwnTables.NEVER;
-        // catalogue name of the need, null = we do not know (relog, or placed outside a prep phase)
-        public String useNeed;
-    }
-
-    public transient StationUse tableUse = new StationUse();
-    public transient StationUse furnaceUse = new StationUse();
-    public transient StationUse smokerUse = new StationUse();
-    // the kit need the prep phase is running right now, so the placement hook in GamerTask can say which need used a
-    // station. null outside GATHER / IRON
-    public transient String currentNeed;
+    // the registry entries for the three lists above, see Workbenches.sync. transient: gson never writes it, a relog rebuilds it
+    public transient List<Bench> benches = new ArrayList<>();
     // game tick the early iron batch (EarlyIronPick) started loading, -1 = no load in flight. transient: a relog starting
     // it over is fine, the planner just goes back to looking at the bag
     public transient long earlyLoadTick = -1;

@@ -130,35 +130,17 @@ public class FurnaceJobsTest {
         assertEquals(30, FurnaceJobs.pendingUnits(jobs));
     }
 
+    // the lists a station can be ours in: furnaces and smokers have one each, a village's blast furnace (or anything else) has none,
+    // so a visit to one of those never takes it down (WorkbenchRules.afterVisit gets "ours" from this)
     @Test
-    public void onlyOurOwnEmptySmokersAndFurnacesComeBack() {
+    public void onlyFurnacesAndSmokersHaveAListOfOurs() {
         RunState s = new RunState();
         RunState.Pos spot = new RunState.Pos(4, 64, 4);
         s.placedSmokers.add(spot);
-        assertTrue(FurnaceJobs.mayTakeBack(s, "smoker", spot, 0, false));
+        assertTrue(FurnaceJobs.placedFor(s, "smoker").contains(spot));
         // a smoker is not in the furnace list and the other way round
-        assertFalse(FurnaceJobs.mayTakeBack(s, "furnace", spot, 0, false));
-        s.placedFurnaces.add(new RunState.Pos(9, 64, 9));
-        assertTrue(FurnaceJobs.mayTakeBack(s, "furnace", new RunState.Pos(9, 64, 9), 0, false));
-        // a village's smoker (never recorded) and a blast furnace of any kind stay where they are
-        assertFalse(FurnaceJobs.mayTakeBack(s, "smoker", new RunState.Pos(5, 64, 5), 0, false));
-        assertFalse(FurnaceJobs.mayTakeBack(s, "blast_furnace", spot, 0, false));
-        // a spare in the bag means this one is not worth a trip
-        assertTrue(!FurnaceJobs.mayTakeBack(s, "smoker", spot, 0, true));
-    }
-
-    @Test
-    public void neverBreakASmokerThatStillHasFood() {
-        RunState s = new RunState();
-        RunState.Pos spot = new RunState.Pos(4, 64, 0);
-        s.placedSmokers.add(spot);
-        // the collect trip left input cooking in there
-        assertFalse(FurnaceJobs.mayTakeBack(s, "smoker", spot, 3, false));
-        // or another job still points at the spot
-        s.furnaceJobs.add(meat(4, 3, 0));
-        assertFalse(FurnaceJobs.mayTakeBack(s, "smoker", spot, 0, false));
-        s.furnaceJobs.clear();
-        assertTrue(FurnaceJobs.mayTakeBack(s, "smoker", spot, 0, false));
+        assertFalse(FurnaceJobs.placedFor(s, "furnace").contains(spot));
+        assertNull(FurnaceJobs.placedFor(s, "blast_furnace"));
     }
 
     @Test
