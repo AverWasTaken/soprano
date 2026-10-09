@@ -10,6 +10,7 @@ import adris.altoclef.tasksystem.Task;
 import adris.altoclef.ui.HudText;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.LookHelper;
+import adris.altoclef.util.helpers.StationHook;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
@@ -344,6 +345,10 @@ public class PlaceBlockNearbyTask extends Task {
             boolean inside = WorldHelper.isInsidePlayer(mod, blockPos);
             // We can't break this block.
             if (solid && !WorldHelper.canBreak(mod, blockPos)) {
+                continue;
+            }
+            // nor a table, furnace or smoker, ours least of all: the builder breaks what stands in the cell
+            if (solid && StationHook.keepStanding(blockPos, mod.getWorld().getBlockState(blockPos).getBlock())) {
                 continue;
             }
             // We can't place here as defined by user.

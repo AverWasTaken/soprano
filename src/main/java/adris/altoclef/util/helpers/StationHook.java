@@ -124,6 +124,13 @@ public final class StationHook {
         return s != null && pos != null && s.parked(pos);
     }
 
+    // a block a station placer must never mine to make room: one of ours (the table the furnace was just crafted at is the usual
+    // victim), or any table, furnace or smoker at all. a crafting table has no block entity, so the carve's "somebody's" test let
+    // it through
+    public static boolean keepStanding(BlockPos pos, Block block) {
+        return ours(pos) || block == Blocks.CRAFTING_TABLE || block == Blocks.FURNACE || block == Blocks.SMOKER;
+    }
+
     // plain alto owes nothing, all of it can go into a furnace
     public static int cobbleOwed() {
         Source s = source;

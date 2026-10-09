@@ -852,6 +852,19 @@ public class WorkbenchesRegistryTest {
         }
     }
 
+    // the station placer asks this before it mines a cell for room: a table of ours is never the hole the furnace goes in
+    @Test
+    public void ourStationsAreNeverMinedForRoom() {
+        RunState state = new RunState();
+        Workbenches.record(state, Kind.TABLE, pos(144, 25, 102), OVERWORLD, 1);
+        StationHook.install(Workbenches.source(state, facts(Dimension.OVERWORLD, 100)));
+        try {
+            assertTrue(StationHook.keepStanding(new BlockPos(144, 25, 102), null));
+        } finally {
+            StationHook.clear();
+        }
+    }
+
     // the bug: ours 30 blocks off and 35 raw iron, cobble for a new one in the bag. the planner counts ours, the task walks to it.
     // 60 off it is a new furnace for both. a parked one is skipped by both (the task's walkBackUsable asks StationHook.parked)
     @Test

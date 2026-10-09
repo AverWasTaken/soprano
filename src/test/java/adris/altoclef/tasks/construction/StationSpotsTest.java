@@ -34,6 +34,8 @@ public class StationSpotsTest {
         final Set<String> unminable = new HashSet<>();
         // cells with water, lava, gravel in them: opening a neighbour lets them in
         final Set<String> wet = new HashSet<>();
+        // a station of ours or any workbench standing there (StationHook.keepStanding)
+        final Set<String> stations = new HashSet<>();
 
         FakeWorld(int floorY) {
             this.floorY = floorY;
@@ -92,6 +94,11 @@ public class StationSpotsTest {
         @Override
         public boolean floods(int x, int y, int z) {
             return wet.contains(key(x, y, z));
+        }
+
+        @Override
+        public boolean keep(int x, int y, int z) {
+            return stations.contains(key(x, y, z));
         }
 
         @Override
@@ -488,6 +495,20 @@ public class StationSpotsTest {
         StationSpots.Cell first = StationSpots.carveCandidates(w, inShaft(), bans).get(0);
         bans.ban(first.x(), first.y(), first.z());
         assertFalse(StationSpots.carveCandidates(w, inShaft(), bans).contains(first));
+    }
+
+    // the table we just crafted the furnace at stands beside our feet in the shaft. it is a full block, breakable, no block entity,
+    // so carvable alone says yes. it is never the hole the furnace goes in
+    @Test
+    public void ourTableIsNeverCarvedForRoom() {
+        FakeWorld w = shaft();
+        StationSpots.Cell table = new StationSpots.Cell(1, 65, 0);
+        assertTrue(carves(w).contains(table));
+        assertEquals(table, carves(w).get(0));
+        w.stations.add(FakeWorld.key(1, 65, 0));
+        assertFalse(carves(w).contains(table));
+        // the other walls still are
+        assertTrue(carves(w).contains(new StationSpots.Cell(-1, 65, 0)));
     }
 
     @Test

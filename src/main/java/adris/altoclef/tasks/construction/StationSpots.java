@@ -52,6 +52,12 @@ final class StationSpots {
 
         // opening the neighbour lets this in: a liquid that flows, or sand and gravel that fall
         boolean floods(int x, int y, int z);
+
+        // a station of ours or any workbench (StationHook.keepStanding): never carved, whatever carvable says. the furnace once
+        // went in the hole where the table it was crafted at had stood
+        default boolean keep(int x, int y, int z) {
+            return false;
+        }
     }
 
     // where we are standing and where the eye is (sneaking eye if we will sneak, the caller knows)
@@ -231,7 +237,7 @@ final class StationSpots {
     }
 
     private static void addCarve(Cells w, Stance me, Bans banned, List<Cell> out, int x, int y, int z) {
-        if (banned.isBanned(x, y, z) || !w.carvable(x, y, z)) {
+        if (banned.isBanned(x, y, z) || w.keep(x, y, z) || !w.carvable(x, y, z)) {
             return;
         }
         // a floor to stand the block on, in reach. the look from our eye down to that floor stays inside our own cell and the

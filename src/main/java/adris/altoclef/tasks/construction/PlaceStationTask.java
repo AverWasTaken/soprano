@@ -7,6 +7,7 @@ import adris.altoclef.tasksystem.Task;
 import adris.altoclef.ui.HudText;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.LookHelper;
+import adris.altoclef.util.helpers.StationHook;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.slots.Slot;
@@ -472,6 +473,12 @@ public class PlaceStationTask extends Task {
                 return false;
             }
             return s.isCollisionShapeFullBlock(level, p) && WorldHelper.canBreak(mod, p);
+        }
+
+        @Override
+        public boolean keep(int x, int y, int z) {
+            BlockPos p = new BlockPos(x, y, z);
+            return StationHook.keepStanding(p, level.getBlockState(p).getBlock());
         }
 
         @Override
