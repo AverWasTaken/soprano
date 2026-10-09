@@ -2146,6 +2146,18 @@ public class WorkbenchRulesTest {
         assertFalse(WorkbenchRules.holdFar(b, s.look(), true));
     }
 
+    // but not across the map: past WALK_BACK the phase-end trip is not made, the bench is forgotten. mid-work it is a hold, not a forget
+    @Test
+    public void thePhaseEndTripStopsAtTheWalkBackLine() {
+        Seen s = new Seen();
+        s.neededSoon = false;
+        s.distance = StationChoice.WALK_BACK;
+        assertFalse(WorkbenchRules.tooFarForLastTrip(s.look(), true));
+        s.distance = StationChoice.WALK_BACK + 1;
+        assertTrue(WorkbenchRules.tooFarForLastTrip(s.look(), true));
+        assertFalse(WorkbenchRules.tooFarForLastTrip(s.look(), false));
+    }
+
     // "done with it" from far off is not decided: the redecide waits for the next time we are within NEAR
     @Test
     public void doneWithItIsOnlyDecidedStandingNearIt() {

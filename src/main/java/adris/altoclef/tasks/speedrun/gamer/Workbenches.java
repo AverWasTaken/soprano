@@ -450,6 +450,11 @@ public final class Workbenches {
                 case UNREACHABLE -> failed(state, b, now, "cannot be broken at all", false);
                 case CONTINUE -> active = b;
                 case PICK_UP -> {
+                    if (WorkbenchRules.tooFarForLastTrip(look, lastChance)) {
+                        dropEntry(state, b, "it is " + Math.round(look.distance()) + " blocks away (more than " + Math.round(StationChoice.WALK_BACK)
+                                + ") and only the phase end wants it, not walking back across the map for that");
+                        break;
+                    }
                     if (WorkbenchRules.holdFar(b, look, lastChance)) {
                         if (!b.farHeldLogged) {
                             b.farHeldLogged = true;

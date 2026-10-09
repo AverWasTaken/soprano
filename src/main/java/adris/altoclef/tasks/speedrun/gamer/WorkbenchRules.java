@@ -347,6 +347,12 @@ public final class WorkbenchRules {
         return true;
     }
 
+    // the phase-end trip has a cap too: past StationChoice.WALK_BACK a station only the phase end wants is not worth the walk across
+    // the map, it is forgotten instead (and so stops holding phaseMayEnd). a pickup already under way is not asked
+    public static boolean tooFarForLastTrip(Look in, boolean lastChance) {
+        return lastChance && in.distance() > StationChoice.WALK_BACK;
+    }
+
     // the phase is only waiting on the benches: no need left in the plan, no job cooking anywhere. a far pickup is allowed then
     public static boolean lastChance(boolean planEmpty, boolean anyJob) {
         return planEmpty && !anyJob;
