@@ -26,8 +26,12 @@ public final class FurnacePlan {
     public static final int STALL_LIMIT = 2;
     // a smoker does 5 s an item, so a batch with more than this left when we first see it (a stack of 64 is five minutes) is not
     // worth standing at, it is worked like a furnace. decided once, at first sight, so a bot half way up a ladder is not pulled back
-    // when the clock reaches the mark
-    public static final long STAND_BY_MAX_TICKS = 1200;
+    // when the clock reaches the mark. a minute was a minute of a bot doing nothing, plus the patience on top: 20 s is four items,
+    // about what the walk off and back costs anyway
+    public static final long STAND_BY_MAX_TICKS = 400;
+    // the whole stand-by, from first sight, done or not. the patience is still the grace past done, it just can't stretch a
+    // 20 s batch into 50 s of standing
+    public static final long STAND_BY_CAP_TICKS = 600;
     // a job from a world that ran on without us (a relog days later) is not worth a walk: the contents are probably gone, or the
     // furnace is. half an hour of game time since it was loaded or last visited
     public static final long STALE_TICKS = 36000;
@@ -224,7 +228,7 @@ public final class FurnacePlan {
     // over, so a plan that flickers (the filler list emptying for a tick) cannot flip a trip that already walked there. the one
     // thing that still ends it is a quick smoker's stand-by budget.
     // `pick` = the trip to start now, null when there is none or one is already running. a quick smoker's stand-by outranks every
-    // other collect (it is out in under a minute, the furnace can wait that long), then the one that is ready first
+    // other collect (it is out in under 20 s, the furnace can wait that long), then the one that is ready first
     public static Plan plan(List<RunState.FurnaceJob> jobs, Moment m, long now, RunState.FurnaceJob active) {
         List<Verdict> out = new ArrayList<>();
         List<String> changes = new ArrayList<>();
@@ -328,7 +332,7 @@ public final class FurnacePlan {
             t.standSeen = true;
             t.standEligible = job.doneTick - now <= STAND_BY_MAX_TICKS;
             // a job already past due gets its patience from now, not from then
-            t.standUntil = Math.max(now, job.doneTick) + PATIENCE_TICKS;
+            t.standUntil = Math.min(Math.max(now, job.doneTick) + PATIENCE_TICKS, now + STAND_BY_CAP_TICKS);
         }
         return t.standEligible && now <= t.standUntil;
     }

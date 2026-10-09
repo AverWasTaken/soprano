@@ -141,22 +141,22 @@ public class FurnacePlanTest {
     // ---- standing by a quick smoker
 
     @Test
-    public void aSmokerThatIsOutInUnderAMinuteIsStoodByAndAFurnaceIsNot() {
-        Verdict s = one(plan(smoker(800), MID_NEED, 0));
+    public void aSmokerThatIsOutInUnderTwentySecondsIsStoodByAndAFurnaceIsNot() {
+        Verdict s = one(plan(smoker(300), MID_NEED, 0));
         assertEquals(Call.STAND_BY, s.call());
         assertEquals(Why.QUICK, s.why());
         assertEquals(Mode.WAIT_ALL, s.mode());
-        assertTrue(plan(smoker(800), MID_NEED, 0).standingBy());
+        assertTrue(plan(smoker(300), MID_NEED, 0).standingBy());
         // the furnace is 10 s an item and keeps its filler
-        Plan f = plan(furnace(800), MID_NEED, 0);
+        Plan f = plan(furnace(300), MID_NEED, 0);
         assertEquals(Call.LEAVE, one(f).call());
         assertFalse(f.standingBy());
         // GATHER's work is right there anyway
-        assertEquals(Call.LEAVE, one(plan(smoker(800), new Moment(true, false, false, false, false), 0)).call());
+        assertEquals(Call.LEAVE, one(plan(smoker(300), new Moment(true, false, false, false, false), 0)).call());
     }
 
     @Test
-    public void aBatchWithAMinuteOrLessLeftIsQuickAndOneSecondMoreIsNot() {
+    public void aBatchWithTwentySecondsOrLessLeftIsQuickAndOneTickMoreIsNot() {
         assertEquals(Why.QUICK, one(plan(smoker(FurnacePlan.STAND_BY_MAX_TICKS), MID_NEED, 0)).why());
         Verdict slow = one(plan(smoker(FurnacePlan.STAND_BY_MAX_TICKS + 1), MID_NEED, 0));
         assertEquals(Call.LEAVE, slow.call());
@@ -175,10 +175,12 @@ public class FurnacePlanTest {
 
     @Test
     public void aSmokerThatWasQuickAtFirstSightStaysQuickUntilItsBudgetEnds() {
-        RunState.FurnaceJob job = smoker(1000);
+        RunState.FurnaceJob job = smoker(300);
         assertEquals(Why.QUICK, one(plan(job, MID_NEED, 0)).why());
-        long until = 1000 + FurnacePlan.PATIENCE_TICKS;
-        assertEquals(Why.QUICK, one(plan(job, MID_NEED, 1000)).why());
+        // done at 300, and the patience past that is cut off by the cap: 30 s from first sight, not 45
+        long until = FurnacePlan.STAND_BY_CAP_TICKS;
+        assertTrue(until < 300 + FurnacePlan.PATIENCE_TICKS);
+        assertEquals(Why.QUICK, one(plan(job, MID_NEED, 300)).why());
         assertEquals(Why.QUICK, one(plan(job, MID_NEED, until)).why());
         // a smoker that never finishes does not hold the run
         assertNotEquals(Why.QUICK, one(plan(job, MID_NEED, until + 1)).why());
@@ -186,11 +188,11 @@ public class FurnacePlanTest {
 
     @Test
     public void theBudgetIsNotRestartedByARestampOrByTheTimeComingBack() {
-        RunState.FurnaceJob job = smoker(1000);
+        RunState.FurnaceJob job = smoker(FurnacePlan.STAND_BY_MAX_TICKS);
         plan(job, MID_NEED, 0);
-        long past = 1000 + FurnacePlan.PATIENCE_TICKS + 1;
+        long past = FurnacePlan.STAND_BY_CAP_TICKS + 1;
         assertNotEquals(Why.QUICK, one(plan(job, MID_NEED, past)).why());
-        // a visit re-stamped it (the job object is the same one) and it is again under a minute from done
+        // a visit re-stamped it (the job object is the same one) and it is again under 20 s from done
         job.doneTick = past + 300;
         job.visited = true;
         assertNotEquals("a smoker that keeps coming up short cannot restart the clock", Why.QUICK, one(plan(job, MID_NEED, past + 1)).why());
@@ -252,7 +254,7 @@ public class FurnacePlanTest {
         RunState.FurnaceJob idle = furnace(5000);
         idle.stalls = FurnacePlan.STALL_LIMIT;
         assertEquals(Call.TAKE_ALL, one(plan(idle, NOTHING_TO_DO, 0)).call());
-        RunState.FurnaceJob quick = smoker(800);
+        RunState.FurnaceJob quick = smoker(300);
         quick.stalls = FurnacePlan.STALL_LIMIT;
         assertEquals(Call.TAKE_ALL, one(plan(quick, MID_NEED, 0)).call());
         // a stuck job that nothing wants a trip for yet is still just left alone
@@ -309,10 +311,10 @@ public class FurnacePlanTest {
 
     @Test
     public void aQuickStandByHoldsThroughFlickersAndEndsOnlyWithItsBudget() {
-        RunState.FurnaceJob job = smoker(1000);
+        RunState.FurnaceJob job = smoker(FurnacePlan.STAND_BY_MAX_TICKS);
         List<String> lines = new ArrayList<>();
         RunState.FurnaceJob active = null;
-        for (long tick = 0; tick <= 1000 + FurnacePlan.PATIENCE_TICKS; tick += 10) {
+        for (long tick = 0; tick <= FurnacePlan.STAND_BY_CAP_TICKS; tick += 10) {
             Moment m = new Moment(tick % 20 == 0, tick % 30 == 0, tick % 40 == 0, false, true);
             Plan p = FurnacePlan.plan(List.of(job), m, tick, active);
             lines.addAll(p.changes());
@@ -323,7 +325,7 @@ public class FurnacePlanTest {
         }
         assertEquals(lines.toString(), 1, lines.size());
         // past the budget the trip under way is no longer a stand-by, it logs the change once
-        Plan over = FurnacePlan.plan(List.of(job), MID_NEED, 1000 + FurnacePlan.PATIENCE_TICKS + 1, active);
+        Plan over = FurnacePlan.plan(List.of(job), MID_NEED, FurnacePlan.STAND_BY_CAP_TICKS + 1, active);
         assertFalse(over.standingBy());
         assertEquals(1, over.changes().size());
     }
@@ -335,14 +337,14 @@ public class FurnacePlanTest {
         job.visited = true;
         Call last = null;
         int changes = 0;
-        for (long tick = 4000; tick <= 7000; tick++) {
+        for (long tick = 4700; tick <= 7000; tick++) {
             Call now = one(FurnacePlan.plan(List.of(job), BOUNDARY, tick, null)).call();
             if (now != last) {
                 changes++;
                 last = now;
             }
         }
-        // under a minute to go it stands by, the budget runs out a patience past done and it is due, and that is all
+        // under 20 s to go it stands by, the budget runs out at the cap and it is due, and that is all
         assertEquals(2, changes);
         assertEquals(Call.COLLECT_NOW, last);
     }
@@ -420,7 +422,7 @@ public class FurnacePlanTest {
         assertEquals(Call.LEAVE, one(FurnacePlan.plan(List.of(leaving), MID_NEED, 0, null)).call());
         assertEquals(Call.COLLECT_NOW, one(FurnacePlan.plan(List.of(leaving), BOUNDARY, 100, null)).call());
         // the phase starts standing by smokers: the quick call does not wait out the hold of the idle one
-        RunState.FurnaceJob meat = smoker(1000);
+        RunState.FurnaceJob meat = smoker(300);
         assertEquals(Why.IDLE_WAIT, one(FurnacePlan.plan(List.of(meat), new Moment(false, true, false, false, false), 0, null)).why());
         assertEquals(Why.QUICK, one(FurnacePlan.plan(List.of(meat), NOTHING_TO_DO, 5, null)).why());
         // stuck is not soft either
@@ -671,7 +673,8 @@ public class FurnacePlanTest {
     public void theClockIsInHumanNumbers() {
         assertEquals(10 * 20, FurnacePlan.NEARLY_TICKS);
         assertEquals(30 * 20, FurnacePlan.PATIENCE_TICKS);
-        assertEquals(60 * 20, FurnacePlan.STAND_BY_MAX_TICKS);
+        assertEquals(20 * 20, FurnacePlan.STAND_BY_MAX_TICKS);
+        assertEquals(30 * 20, FurnacePlan.STAND_BY_CAP_TICKS);
         assertEquals(30 * 60 * 20, FurnacePlan.STALE_TICKS);
         assertEquals(2, FurnacePlan.STALL_LIMIT);
         assertEquals(4 * 60 * 20, FurnacePlan.COOK_BACKOFF_TICKS);

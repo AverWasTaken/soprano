@@ -23,7 +23,7 @@ public final class IronActivity {
         // a golem fight that is going. a chest is not worth stepping off the pillar for (it only gets here without being the
         // activity when the old path or a re-entry left one running, see Scene.golemFighting)
         GOLEM_FIGHT("golem fight"),
-        // standing at a quick smoker (FurnacePlan STAND_BY QUICK): 40 s of waiting beats walking off and back, so every side job
+        // standing at a quick smoker (FurnacePlan STAND_BY QUICK): 30 s at most of waiting beats walking off and back, so every side job
         // that walks away waits for it. the old tickStandBy rule
         STAND_BY("smoker stand-by"),
         // taking our table, furnace or smoker back. above the loot because a station left standing is gone for good once we walk
