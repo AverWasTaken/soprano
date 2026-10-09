@@ -15,6 +15,7 @@ import net.minecraft.world.entity.EquipmentSlot;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.MiningRequirement;
+import adris.altoclef.util.helpers.FoeRules;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WorldHelper;
@@ -26,6 +27,7 @@ import baritone.api.utils.input.Input;
 import java.util.*;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.boss.EnderDragonPart;
 import net.minecraft.world.entity.boss.enderdragon.EndCrystal;
@@ -86,7 +88,14 @@ public class KillEnderDragonTask extends Task {
         mod.getBlockTracker().trackBlock(Blocks.END_PORTAL);
         // Don't forcefield endermen.
         mod.getBehaviour().addForceFieldExclusion(entity -> entity instanceof EnderMan || entity instanceof EnderDragon || entity instanceof EnderDragonPart);
+        // and mob defense keeps out too: an enderman mid-crystal is not worth a fight or a run
+        mod.getBehaviour().addMobDefenseExclusion(KillEnderDragonTask::ownedByTheDragonFight);
         mod.getBehaviour().setPreferredStairs(true);
+    }
+
+    // the mobs the dragon tasks deal with on their own terms while they are live (shared by the sword and the bed task)
+    public static boolean ownedByTheDragonFight(Entity entity) {
+        return FoeRules.dragonFightOwns(BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType()).getPath());
     }
 
     @Override

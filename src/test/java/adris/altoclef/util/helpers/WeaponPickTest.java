@@ -192,7 +192,7 @@ public class WeaponPickTest {
     // the pure rules end to end: what the bag says about being armed is what the machine fights or runs on
     private static CombatCommit.Event meetAZombie(boolean armed) {
         CombatCommit.Foe zombie = new CombatCommit.Foe(1, 1.5, false, false, 2);
-        return new CombatCommit().step(new CombatCommit.Tick(100, 20, armed, 0, 0, 3, List.of(zombie), null, false, false));
+        return new CombatCommit().step(new CombatCommit.Tick(100, 20, armed, 0, 0, 3, List.of(zombie), null, false));
     }
 
     @Test

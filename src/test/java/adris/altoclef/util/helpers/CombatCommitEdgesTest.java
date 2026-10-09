@@ -22,8 +22,8 @@ public class CombatCommitEdgesTest {
         return new Foe(id, distance, false, false, sinceHit);
     }
 
-    private static Tick tick(long now, float health, boolean armed, Foe target, boolean danger, Foe... foes) {
-        return new Tick(now, health, armed, 0, 0, 3, List.of(foes), target, danger, false);
+    private static Tick tick(long now, float health, boolean armed, Foe target, boolean paused, Foe... foes) {
+        return new Tick(now, health, armed, 0, 0, 3, List.of(foes), target, paused);
     }
 
     // a fight against zombie 1 that hit us, started at tick 100
@@ -59,7 +59,7 @@ public class CombatCommitEdgesTest {
     }
 
     @Test
-    public void aCorneredFightDoesNotBailOnTheDangerFlag() {
+    public void aCorneredFightDoesNotBailOnAWardenWalkingUp() {
         CombatCommit commit = new CombatCommit();
         Foe z = zombie(1, 1.5, 3);
         assertEquals(Event.RUN_START, commit.step(tick(100, 6, true, null, false, z)));
@@ -71,7 +71,8 @@ public class CombatCommitEdgesTest {
         assertEquals(Event.RUN_TO_FIGHT, event);
         assertTrue(commit.cornered());
         // a warden walking up does not undo it, there is nowhere to run to
-        assertEquals(Event.NONE, commit.step(tick(400, 6, true, z, true, z)));
+        Foe warden = new Foe(9, 5, false, false, NEVER, CombatCommit.Kind.UNTOUCHABLE);
+        assertEquals(Event.NONE, commit.step(tick(400, 6, true, z, false, z, warden)));
         assertEquals(Mode.FIGHT, commit.mode());
     }
 
@@ -79,14 +80,29 @@ public class CombatCommitEdgesTest {
     public void aRunWithNobodyNearStillEndsAtTheCapShortOfFiftyBlocks() {
         CombatCommit commit = new CombatCommit();
         assertEquals(Event.RUN_START, commit.step(tick(100, 5, true, null, false, zombie(1, 6, NEVER))));
-        // walked ten blocks and then nobody is there any more, standing at ten blocks for the rest of the cap
-        Tick far = new Tick(101, 5, true, 10, 0, 3, List.of(), null, false, false);
+        // walked ten blocks and then nobody is there any more, and the ground goes on slowly: two blocks every three seconds
+        // is nowhere near fifty and nowhere near stuck, so it is the cap that ends it
+        Tick far = new Tick(101, 5, true, 10, 0, 3, List.of(), null, false);
         assertEquals(Event.NONE, commit.step(far));
         for (long t = 102; t < 100 + CombatCommit.RUN_CAP; t++) {
-            assertEquals("tick " + t, Event.NONE, commit.step(new Tick(t, 5, true, 10, 0, 3, List.of(), null, false, false)));
+            double x = 10 + ((t - 101) / 60) * 2;
+            assertEquals("tick " + t, Event.NONE, commit.step(new Tick(t, 5, true, x, 0, 3, List.of(), null, false)));
         }
-        assertEquals(Event.RUN_CAP, commit.step(new Tick(100 + CombatCommit.RUN_CAP, 5, true, 10, 0, 3, List.of(), null, false, false)));
+        assertEquals(Event.RUN_CAP, commit.step(new Tick(100 + CombatCommit.RUN_CAP, 5, true, 40, 0, 3, List.of(), null, false)));
         assertEquals(Mode.NONE, commit.mode());
+    }
+
+    @Test
+    public void aRunStandingShortOfFiftyBlocksWithNobodyNearIsStuckLongBeforeTheCap() {
+        CombatCommit commit = new CombatCommit();
+        assertEquals(Event.RUN_START, commit.step(tick(100, 5, true, null, false, zombie(1, 6, NEVER))));
+        // the pathfinder has nowhere to take us and nothing is within eight
+        for (long t = 101; t <= 101 + CombatCommit.RUN_STUCK_TICKS - 1; t++) {
+            assertEquals("tick " + t, Event.NONE, commit.step(new Tick(t, 5, true, 10, 0, 3, List.of(), null, false)));
+        }
+        assertEquals(Event.RUN_STUCK, commit.step(new Tick(101 + CombatCommit.RUN_STUCK_TICKS, 5, true, 10, 0, 3, List.of(), null, false)));
+        assertEquals(Mode.NONE, commit.mode());
+        assertTrue(commit.coolingDown(101 + CombatCommit.RUN_STUCK_TICKS + 1));
     }
 
     @Test
@@ -152,7 +168,7 @@ public class CombatCommitEdgesTest {
         assertEquals(Event.RUN_START, commit.step(tick(DROPPED_AT + 150, 20, true, null, false, new Foe(2, 10, true, false, 0))));
         // the run is over (nothing in sight), and later the same skeleton hits us: a fresh start, a fight
         long over = DROPPED_AT + 150 + CombatCommit.RUN_CAP;
-        assertEquals(Event.RUN_CAP, commit.step(new Tick(over, 20, true, 0, 0, 3, List.of(), null, false, false)));
+        assertEquals(Event.RUN_CAP, commit.step(new Tick(over, 20, true, 0, 0, 3, List.of(), null, false)));
         assertEquals(Event.FIGHT_START, commit.step(tick(over + CombatCommit.COOLDOWN + 1, 20, true, null, false, new Foe(2, 10, true, false, 0))));
     }
 
@@ -163,14 +179,14 @@ public class CombatCommitEdgesTest {
         CombatCommit commit = new CombatCommit();
         Foe near = new Foe(5, 6, true, false, NEVER);
         Foe far = new Foe(6, 7.5, false, false, NEVER);
-        assertEquals(Event.RUN_START, commit.step(new Tick(100, 6, false, 0, 0, 3, List.of(near, far), null, false, false)));
+        assertEquals(Event.RUN_START, commit.step(new Tick(100, 6, false, 0, 0, 3, List.of(near, far), null, false)));
         Event event = Event.NONE;
         long t = 101;
         for (; t <= 101 + CombatCommit.CORNER_FAR_TICKS - 1 && event == Event.NONE; t++) {
-            event = commit.step(new Tick(t, 6, false, 0, 0, 3, List.of(near, far), null, false, false));
+            event = commit.step(new Tick(t, 6, false, 0, 0, 3, List.of(near, far), null, false));
         }
         assertEquals(Event.NONE, event);
-        assertEquals(Event.RUN_TO_FIGHT, commit.step(new Tick(t, 6, false, 0, 0, 3, List.of(near, far), null, false, false)));
+        assertEquals(Event.RUN_TO_FIGHT, commit.step(new Tick(t, 6, false, 0, 0, 3, List.of(near, far), null, false)));
         assertEquals(5, commit.targetId());
         assertTrue(commit.cornered());
     }
@@ -182,11 +198,11 @@ public class CombatCommitEdgesTest {
         CombatCommit commit = new CombatCommit();
         Foe skeleton = new Foe(5, 7, true, false, NEVER);
         List<Foe> foes = List.of(skeleton);
-        assertEquals(Event.RUN_START, commit.step(new Tick(100, 6, true, 0, 0, 3, foes, null, false, false)));
+        assertEquals(Event.RUN_START, commit.step(new Tick(100, 6, true, 0, 0, 3, foes, null, false)));
         long t = 101;
         Event event = Event.NONE;
         for (; event == Event.NONE; t++) {
-            event = commit.step(new Tick(t, 6, true, 0, 0, 3, foes, null, false, false));
+            event = commit.step(new Tick(t, 6, true, 0, 0, 3, foes, null, false));
         }
         assertEquals(Event.RUN_TO_FIGHT, event);
         assertEquals(5, commit.targetId());
@@ -194,17 +210,17 @@ public class CombatCommitEdgesTest {
         long fightStart = t - 1;
         Event end = Event.NONE;
         for (; end == Event.NONE; t++) {
-            end = commit.step(new Tick(t, 6, true, 0, 0, 3, foes, skeleton, false, false));
+            end = commit.step(new Tick(t, 6, true, 0, 0, 3, foes, skeleton, false));
         }
         assertEquals(Event.FIGHT_STALLED, end);
         assertEquals(fightStart + CombatCommit.STALL_TICKS, t - 1);
         assertTrue(commit.isIgnored(5));
         // hurt with it still within 8: back to a run straight away, cooldown or not
-        assertEquals(Event.RUN_START, commit.step(new Tick(t, 6, true, 0, 0, 3, foes, null, false, false)));
+        assertEquals(Event.RUN_START, commit.step(new Tick(t, 6, true, 0, 0, 3, foes, null, false)));
         assertEquals(Why.LOW_HP, commit.why());
         // and stuck on the spot for as long as we like, the second tier has nobody left to try
         for (long later = t + 1; later < t + 3 * CombatCommit.CORNER_FAR_TICKS; later++) {
-            assertEquals("tick " + later, Event.NONE, commit.step(new Tick(later, 6, true, 0, 0, 3, foes, null, false, false)));
+            assertEquals("tick " + later, Event.NONE, commit.step(new Tick(later, 6, true, 0, 0, 3, foes, null, false)));
         }
         assertEquals(Mode.RUN, commit.mode());
     }
@@ -213,13 +229,13 @@ public class CombatCommitEdgesTest {
     public void theSecondTierSkipsCreepersButAZombieOnTopOfUsIsAlwaysFairGame() {
         CombatCommit commit = new CombatCommit();
         Foe creeper = new Foe(5, 6, false, true, NEVER);
-        assertEquals(Event.RUN_START, commit.step(new Tick(100, 6, true, 0, 0, 3, List.of(creeper), null, false, false)));
+        assertEquals(Event.RUN_START, commit.step(new Tick(100, 6, true, 0, 0, 3, List.of(creeper), null, false)));
         for (long t = 101; t < 101 + 2 * CombatCommit.CORNER_FAR_TICKS; t++) {
-            assertEquals(Event.NONE, commit.step(new Tick(t, 6, true, 0, 0, 3, List.of(creeper), null, false, false)));
+            assertEquals(Event.NONE, commit.step(new Tick(t, 6, true, 0, 0, 3, List.of(creeper), null, false)));
         }
         // a zombie that walks up to us gets the first tier's fight at once, the window has been open all this time
         Foe zombie = new Foe(6, 2, false, false, NEVER);
-        assertEquals(Event.RUN_TO_FIGHT, commit.step(new Tick(700, 6, true, 0, 0, 3, List.of(creeper, zombie), null, false, false)));
+        assertEquals(Event.RUN_TO_FIGHT, commit.step(new Tick(700, 6, true, 0, 0, 3, List.of(creeper, zombie), null, false)));
         assertEquals(6, commit.targetId());
     }
 
@@ -227,9 +243,9 @@ public class CombatCommitEdgesTest {
     public void theFirstTierStillFiresAtThreeSecondsWithSomethingOnTopOfUs() {
         CombatCommit commit = new CombatCommit();
         Foe onUs = new Foe(5, 2, false, false, NEVER);
-        assertEquals(Event.RUN_START, commit.step(new Tick(100, 6, true, 0, 0, 3, List.of(onUs), null, false, false)));
-        assertEquals(Event.NONE, commit.step(new Tick(101, 6, true, 0, 0, 3, List.of(onUs), null, false, false)));
-        assertEquals(Event.RUN_TO_FIGHT, commit.step(new Tick(101 + CombatCommit.CORNER_TICKS, 6, true, 0, 0, 3, List.of(onUs), null, false, false)));
+        assertEquals(Event.RUN_START, commit.step(new Tick(100, 6, true, 0, 0, 3, List.of(onUs), null, false)));
+        assertEquals(Event.NONE, commit.step(new Tick(101, 6, true, 0, 0, 3, List.of(onUs), null, false)));
+        assertEquals(Event.RUN_TO_FIGHT, commit.step(new Tick(101 + CombatCommit.CORNER_TICKS, 6, true, 0, 0, 3, List.of(onUs), null, false)));
     }
 
     @Test
@@ -245,6 +261,6 @@ public class CombatCommitEdgesTest {
         assertEquals(6, CombatCommit.MELEE_ENGAGE, 0);
         assertEquals(15, CombatCommit.SHOOTER_ENGAGE, 0);
         assertEquals(24, CombatCommit.LOST_RANGE, 0);
-        assertFalse(CombatCommit.applies(true, baritone.api.utils.Dimension.NETHER));
+        assertEquals(5 * 20, CombatCommit.RUN_STUCK_TICKS);
     }
 }

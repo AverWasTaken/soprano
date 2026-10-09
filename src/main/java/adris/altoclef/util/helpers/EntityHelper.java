@@ -96,16 +96,6 @@ public class EntityHelper {
         return mod.getEntityTracker().getMobReachability().canWalkToPlayer(mod, mob);
     }
 
-    // is it close enough, or coming at us, to be worth dropping the task for. see MobReachRules.shouldEngage
-    public static boolean shouldEngageMob(AltoClef mod, Mob mob) {
-        return mod.getEntityTracker().getMobReachability().shouldEngage(mod, mob);
-    }
-
-    // still inside the zone a fight is allowed to chase in
-    public static boolean isMobInLeash(AltoClef mod, Mob mob) {
-        return mod.getEntityTracker().getMobReachability().inLeash(mod, mob);
-    }
-
     // can it hurt us at all, reachable or with a clear line for arrows. false means ignore it
     public static boolean canMobHarmPlayer(AltoClef mod, Mob mob) {
         return mod.getEntityTracker().getMobReachability().canHarmPlayer(mod, mob);

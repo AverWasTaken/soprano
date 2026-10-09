@@ -3,6 +3,7 @@ package adris.altoclef.control;
 import baritone.Baritone;
 import adris.altoclef.AltoClef;
 import adris.altoclef.tasks.entity.AbstractKillEntityTask;
+import adris.altoclef.util.helpers.CombatRules;
 import adris.altoclef.util.helpers.EntityHelper;
 import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.StlHelper;
@@ -86,7 +87,7 @@ public class KillAura {
             return;
         }
         Optional<Entity> entities = _targets.stream().min(StlHelper.compareValues(entity -> entity.distanceToSqr(mod.getPlayer())));
-        if (entities.isPresent() && mod.getPlayer().getHealth() >= 10 &&
+        if (entities.isPresent() && CombatRules.aboveFleeLine(mod.getPlayer().getHealth()) &&
                 !mod.getEntityTracker().entityFound(ThrownPotion.class) && !mod.getFoodChain().needsToEat() &&
                 (Double.isInfinite(_forceFieldRange) || entities.get().distanceToSqr(mod.getPlayer()) < _forceFieldRange * _forceFieldRange ||
                         entities.get().distanceToSqr(mod.getPlayer()) < 40) &&

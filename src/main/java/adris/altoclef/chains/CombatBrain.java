@@ -10,39 +10,44 @@ import adris.altoclef.trackers.EntityTracker;
 import adris.altoclef.util.helpers.CombatCommit;
 import adris.altoclef.util.helpers.CombatCommit.Event;
 import adris.altoclef.util.helpers.CombatCommit.Foe;
+import adris.altoclef.util.helpers.CombatCommit.Kind;
 import adris.altoclef.util.helpers.CombatCommit.Mode;
+import adris.altoclef.util.helpers.CombatLog;
 import adris.altoclef.util.helpers.CombatRules;
 import adris.altoclef.util.helpers.EntityHelper;
+import adris.altoclef.util.helpers.FoeRules;
 import adris.altoclef.util.helpers.MobReachability;
 import adris.altoclef.util.helpers.Provocations;
+import adris.altoclef.util.helpers.WorldHelper;
 import baritone.Baritone;
+import baritone.api.utils.Dimension;
 import java.util.ArrayList;
 import java.util.ConcurrentModificationException;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.entity.monster.Slime;
 import net.minecraft.world.item.Items;
 
-// the world half of CombatCommit, for the overworld. MobDefenseChain calls tick() once per game tick (that is the only
+// the world half of CombatCommit, for every dimension. MobDefenseChain calls tick() once per game tick (that is the only
 // place the machine moves) and then asks what to hold the wheel with. nothing in here hands the wheel back: that is the
-// chain's call, and it only does it when the machine says NONE
-final class OverworldCombat {
+// chain's call, and it only does it when the machine says NONE. who counts as a foe in which dimension is FoeRules
+final class CombatBrain {
 
     // the steady priorities of a commitment. above the user task (50) and the food chain (55), same numbers the old
     // kill (65) and flee (80) branches used, so nothing that was ordered against them moved
     static final float FIGHT_PRIORITY = 65;
     static final float RUN_PRIORITY = 80;
-    // a little past the clear line, so the run goal's own buffer (CommittedRunTask.CROWD_CLEAR) sees what it is buffering
-    // against. the machine only ever asks "within 16", the extra four blocks are for the goal
-    private static final double FOE_RANGE = CombatCommit.RUN_CLEAR + 4;
+    // the machine only ever asks "within 16", and the tracker's hostile list does not reach past that anyway (it keeps mobs
+    // closer than 16). the run goal's own 18 block buffer works off the same list, which is fine: nothing past 16 is angry
+    private static final double FOE_RANGE = CombatCommit.RUN_CLEAR;
 
     private final CombatCommit _commit = new CombatCommit();
     // this tick's angry hostiles, nearest first, and the entities they came from
@@ -58,6 +63,7 @@ final class OverworldCombat {
     private int _fightId = -1;
     private String _fightName = "it";
     private LocalPlayer _player;
+    private Dimension _dimension;
 
     Mode mode() {
         return _commit.mode();
@@ -150,15 +156,18 @@ final class OverworldCombat {
         return new ArrayList<>(_foeMobs);
     }
 
-    // one game tick. danger: something the old rules always ran from is close and we are hurt. fuseNear: a lit creeper close
-    // by, the chain is stepping away from it so the fight's clocks sit still. creeperClose: the wider ring that keeps us
-    // from sitting down to a meal next to one
-    void tick(AltoClef mod, long now, boolean danger, boolean fuseNear, boolean creeperClose) {
+    // one game tick. fuseNear: a lit creeper close by, the chain is stepping away from it so the fight's clocks sit still.
+    // creeperClose: the wider ring that keeps us from sitting down to a meal next to one. enabled: false is the off switch
+    // (altoCommitCombat), the foes are still worked out for the stance and the crit counts but nothing is ever committed to
+    void tick(AltoClef mod, long now, boolean fuseNear, boolean creeperClose, boolean enabled) {
         LocalPlayer player = mod.getPlayer();
-        // a new player is a respawn or a new world: whatever we were committed to died with the old one
-        if (player != _player) {
+        Dimension dimension = WorldHelper.getCurrentDimension();
+        // a new player is a respawn or a new world, and a new dimension is a new world too: whatever we were committed to
+        // (a run's origin, a target id) died with the old one
+        if (player != _player || dimension != _dimension) {
             reset();
             _player = player;
+            _dimension = dimension;
         }
         EntityTracker tracker = mod.getEntityTracker();
         Provocations book = tracker.getProvocations();
@@ -171,15 +180,10 @@ final class OverworldCombat {
                 if (!(entity instanceof Mob mob) || !mob.isAlive()) continue;
                 double distance = mob.distanceTo(player);
                 if (distance > FOE_RANGE) continue;
-                // a task that is fighting this one itself (golem on its pillar) does not want a second opinion
-                if (mod.getBehaviour().shouldExcludeFromMobDefense(mob) || !EntityHelper.isAngryAtPlayer(mod, mob)) continue;
-                // a size 1 slime cannot hurt us, it is a bouncing pet
-                if (mob instanceof Slime slime && slime.getSize() <= 1) continue;
-                long sinceHit = book.sinceHit(mob.getId(), now);
-                // something that hit us can hurt us, no questions. the rest has to be able to get at us (or shoot)
-                if (sinceHit > CombatCommit.HIT_MEMORY && !EntityHelper.canMobHarmPlayer(mod, mob)) continue;
+                Foe foe = FoeRules.accept(dimension, candidate(mod, mob, distance, book.sinceHit(mob.getId(), now)));
+                if (foe == null) continue;
                 mobs.add(mob);
-                foes.add(foe(mob, distance, sinceHit));
+                foes.add(foe);
             }
         } catch (ConcurrentModificationException ignored) {
             // the tracker rebuilds its lists on another thread sometimes, one tick of stale combat state is fine
@@ -192,7 +196,7 @@ final class OverworldCombat {
         if (_commit.mode() == Mode.FIGHT) {
             Entity entity = mod.getWorld().getEntity(_commit.targetId());
             if (entity instanceof Mob mob && mob.isAlive()) {
-                target = foe(mob, mob.distanceTo(player), book.sinceHit(mob.getId(), now));
+                target = foe(dimension, mob, mob.distanceTo(player), book.sinceHit(mob.getId(), now));
             }
         }
 
@@ -202,12 +206,17 @@ final class OverworldCombat {
         int crowdSize = Math.max(1, Baritone.settings().altoSwarmThreshold.value);
         // (a scan of the bag every tick is for nobody when nothing is around and nothing is going on)
         boolean armed = foes.isEmpty() && _commit.mode() == Mode.NONE || AbstractKillEntityTask.canFight(mod);
-        Event event = _commit.step(new CombatCommit.Tick(now, player.getHealth(), armed, player.getX(), player.getZ(), crowdSize,
-                foes, target, danger, fuseNear));
-        if (event != Event.NONE) {
-            log(mod, event, fighting, mobs);
-            // a new run is a new origin, a new fight is a new target, whatever the old ones were
-            _run = null;
+        if (enabled) {
+            Event event = _commit.step(new CombatCommit.Tick(now, player.getHealth(), armed, player.getX(), player.getZ(), crowdSize,
+                    foes, target, fuseNear));
+            if (event != Event.NONE) {
+                log(mod, dimension, event, fighting, mobs);
+                // a new run is a new origin, a new fight is a new target, whatever the old ones were
+                _run = null;
+            }
+        } else if (_commit.mode() != Mode.NONE) {
+            // switched off in the middle of one: let go of it, no line (it is not a transition the machine made)
+            _commit.reset();
         }
         if (_commit.mode() != Mode.RUN) _run = null;
         if (_commit.mode() != Mode.FIGHT) _fight = null;
@@ -238,8 +247,11 @@ final class OverworldCombat {
         return CombatCommit.stance(_commit.mode(), mod.getPlayer().getHealth(), nearest, creeperClose, gapple);
     }
 
-    private static Foe foe(Mob mob, double distance, long sinceHit) {
-        return new Foe(mob.getId(), distance, MobReachability.isRanged(mob), mob instanceof Creeper, sinceHit);
+    // the fight target looked up on its own: it can have stopped being angry (or being a candidate at all) and still be the
+    // one we are fighting
+    private static Foe foe(Dimension dimension, Mob mob, double distance, long sinceHit) {
+        Kind kind = FoeRules.kindOf(dimension, typeOf(mob));
+        return new Foe(mob.getId(), distance, MobReachability.isRanged(mob) || kind == Kind.FLYER, mob instanceof Creeper, sinceHit, kind);
     }
 
     private static void sortNearestFirst(List<Mob> mobs, List<Foe> foes) {
@@ -252,46 +264,30 @@ final class OverworldCombat {
         }
     }
 
-    // one line per transition, never per tick
-    private void log(AltoClef mod, Event event, String fighting, List<Mob> mobs) {
-        int hp = Math.round(mod.getPlayer().getHealth());
-        String target = nameOf(mod, _commit.targetId());
-        String crowd = describe(mobs);
-        switch (event) {
-            case FIGHT_START -> Debug.logInternal("combat: FIGHT " + target + " (" + (_commit.why() == CombatCommit.Why.HIT ? "hit us" : "in contact")
-                    + ", armed, hp " + hp + ")");
-            case FIGHT_NEXT -> Debug.logInternal(_commit.cornered() ? "combat: cornered, next " + target
-                    : "combat: target dead, next " + target + " (" + (_commit.why() == CombatCommit.Why.HIT ? "hit us" : "in contact") + ", hp " + hp + ")");
-            case RUN_START -> Debug.logInternal("combat: RUN from " + crowd + " (" + runWhy(mod, hp) + ")");
-            case FIGHT_TO_RUN -> Debug.logInternal("combat: FIGHT -> RUN from " + crowd + " (" + runWhy(mod, hp) + ")");
-            case RUN_TO_FIGHT -> Debug.logInternal("combat: cornered, fighting " + target);
-            case FIGHT_DEAD -> Debug.logInternal("combat: fight over, " + fighting + " dead");
-            case FIGHT_LOST -> Debug.logInternal("combat: fight over, lost track of " + fighting);
-            case FIGHT_STALLED -> Debug.logInternal("combat: fight over, can't get to " + fighting + ", ignoring it until it hits us again");
-            case RUN_CLEAR -> Debug.logInternal("combat: run over, " + Math.round(runBlocks(mod)) + " blocks, clear");
-            case RUN_CAP -> Debug.logInternal("combat: run over, " + CombatCommit.RUN_CAP / 20 + " s cap, " + Math.round(runBlocks(mod)) + " blocks");
-            default -> {
-            }
-        }
+    // one line per transition, never per tick (the text is CombatLog's)
+    private void log(AltoClef mod, Dimension dimension, Event event, String fighting, List<Mob> mobs) {
+        LocalPlayer player = mod.getPlayer();
+        String line = CombatLog.line(dimension, event, _commit.why(), _commit.cornered(), nameOf(mod, _commit.targetId()), fighting,
+                describe(mobs), CombatCommit.crowd(_foes), Math.round(player.getHealth()),
+                (int) Math.round(Math.hypot(player.getX() - _commit.originX(), player.getZ() - _commit.originZ())));
+        if (line != null) Debug.logInternal(line);
     }
 
     private static String nameOf(AltoClef mod, int id) {
         return mod.getWorld().getEntity(id) instanceof Mob mob ? MobReachability.shortName(mob) : "it";
     }
 
-    private double runBlocks(AltoClef mod) {
-        LocalPlayer player = mod.getPlayer();
-        return Math.hypot(player.getX() - _commit.originX(), player.getZ() - _commit.originZ());
+    private static String typeOf(Mob mob) {
+        return BuiltInRegistries.ENTITY_TYPE.getKey(mob.getType()).getPath();
     }
 
-    private String runWhy(AltoClef mod, int hp) {
-        return switch (_commit.why()) {
-            case UNARMED -> "unarmed, hp " + hp;
-            case CROWD -> "crowd of " + CombatCommit.crowd(_foes) + ", hp " + hp;
-            case DANGER -> "something nasty close, hp " + hp;
-            case UNREACHABLE -> "it hit us again and we can't get to it, hp " + hp;
-            default -> "hp " + hp;
-        };
+    // the costly questions are asked lazily, FoeRules only asks them when the cheap ones left the mob in the running
+    private static FoeRules.Candidate candidate(AltoClef mod, Mob mob, double distance, long sinceHit) {
+        return new FoeRules.Candidate(typeOf(mob), mob.getId(), distance,
+                () -> mod.getBehaviour().shouldExcludeFromMobDefense(mob),
+                () -> EntityHelper.isAngryAtPlayer(mod, mob),
+                () -> EntityHelper.canMobHarmPlayer(mod, mob),
+                sinceHit, mob instanceof Slime slime ? slime.getSize() : 0, MobReachability.isRanged(mob), mob instanceof Creeper);
     }
 
     // how many of each kind, in the order they showed up

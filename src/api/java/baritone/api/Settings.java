@@ -1997,53 +1997,30 @@ public final class Settings {
     public final Setting<Boolean> altoDodgeProjectiles = new Setting<>(true);
 
     /**
-     * Skeletons and big groups of mobs are a pain. With this on the bot may kill or run away from mobs that stay too
-     * close for too long. Needs {@link #altoMobDefense}.
+     * Skeletons and big groups of mobs are a pain. With this on the bot may fight or run from mobs that really need
+     * dealing with, see {@link #altoCommitCombat} for what that means. Off, the bot never commits to a fight or a run,
+     * mobs are scenery (the safety stays: fire, falls, a lit creeper, the arrow shield and the force field swinging at
+     * what is hitting it). Needs {@link #altoMobDefense}.
      */
     public final Setting<Boolean> altoKillOrAvoidAnnoyingHostiles = new Setting<>(true);
 
     /**
-     * How close (in blocks, horizontally) an angry mob has to be before the bot drops what it is doing to fight it or
-     * run from it, as long as it is also within {@link #altoHostileEngageHeight} vertically. Mobs outside that box are
-     * left alone until they start walking at the bot, or, if they shoot, until they have a clear line to it. Once the
-     * bot is fighting something it keeps going until the mob is a few blocks past this range, so it does not flip
-     * back and forth at the edge. Needs {@link #altoKillOrAvoidAnnoyingHostiles}.
-     */
-    public final Setting<Double> altoHostileEngageRange = new Setting<>(8D);
-
-    /**
-     * How far above or below the bot (in blocks) an angry mob can be and still count as close enough to fight, see
-     * {@link #altoHostileEngageRange}. A zombie ten blocks down a cave is not worth leaving the task for, it will come
-     * up on its own or it won't.
-     */
-    public final Setting<Double> altoHostileEngageHeight = new Setting<>(3D);
-
-    /**
-     * How many melee mobs within six blocks make a crowd. A crowd is backed away from, not fought on the spot: the bot
-     * runs, lets the group string out, and fights the front one at a time (or just keeps going). Below this it fights
-     * where it stands. If the retreat gets nowhere (a dead end) the bot falls back to standing with its shield up.
-     * Needs {@link #altoKillOrAvoidAnnoyingHostiles}.
+     * How many melee mobs within six blocks make a crowd. A crowd is not fought on the spot: the bot runs. Below this it
+     * fights where it stands. Needs {@link #altoKillOrAvoidAnnoyingHostiles}.
      */
     public final Setting<Integer> altoSwarmThreshold = new Setting<>(3);
 
     /**
-     * While the bot is walking somewhere, mobs that are not in its way are left alone: no stopping the task, no fight,
-     * no shield. Taking a hit, or a mob getting into reach or onto the path, ends that. This is how many ticks without
-     * any damage it takes before the bot trusts a quiet walk. Creepers close by, mobs that shoot with a clear line, and
-     * mobs faster than a sprinting player are never left alone. Needs {@link #altoKillOrAvoidAnnoyingHostiles}.
-     */
-    public final Setting<Integer> altoPassByGraceTicks = new Setting<>(100);
-
-    /**
-     * Overworld only. Mobs are ignored by default: the bot keeps walking its path past a skeleton that never hit it, or a
-     * zombie ten blocks away. It only does something about a mob that hit it, an angry melee mob in contact, or at 8 hp or
-     * less with an angry mob within 8 blocks. Then it commits. A fight holds until its target is dead (it only turns into
-     * a run at 8 hp or a crowd of {@link #altoSwarmThreshold} within six blocks), and a run holds until the bot is 50
-     * blocks from where it started with nothing hostile within 16, or 45 seconds, whichever comes first. A run that gets
-     * nowhere (three seconds with a mob on top of the bot, six with one within eight blocks) becomes a fight. The nether
-     * and the end keep the older decide-every-tick rules whatever this says, a lava fortress is no place to sprint 50
-     * blocks. While this is on, {@link #altoHostileEngageRange}, {@link #altoHostileEngageHeight} and
-     * {@link #altoPassByGraceTicks} do nothing in the overworld. Needs {@link #altoKillOrAvoidAnnoyingHostiles}.
+     * Mobs are ignored by default, in every dimension: the bot keeps walking its path past a skeleton that never hit it,
+     * or a zombie ten blocks away. It only does something about a mob that hit it, an angry melee mob in contact, or at
+     * 8 hp or less with an angry mob within 8 blocks. Then it commits. A fight holds until its target is dead (it only
+     * turns into a run at 8 hp, a crowd of {@link #altoSwarmThreshold} within six blocks, or 10 hp against a heavy
+     * hitter like a wither skeleton, hoglin or vindicator), and a run holds until the bot is 50 blocks from where it
+     * started with nothing hostile within 16, or 45 seconds, whichever comes first. A run that gets nowhere (three seconds
+     * with a mob on top of the bot, six with one within eight blocks) becomes a fight, and one that gets nowhere with
+     * nothing near is over after five. A few things are left to the tasks that own them: ghasts, the dragon, blazes while
+     * the rod task is working them, a golem being fought from its pillar. Off, the bot never commits to anything, which
+     * is the same as turning off {@link #altoKillOrAvoidAnnoyingHostiles}. Needs {@link #altoKillOrAvoidAnnoyingHostiles}.
      */
     public final Setting<Boolean> altoCommitCombat = new Setting<>(true);
 

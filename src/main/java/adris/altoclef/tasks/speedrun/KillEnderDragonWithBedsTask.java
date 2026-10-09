@@ -70,6 +70,10 @@ public class KillEnderDragonWithBedsTask extends Task {
         _healStall.reset();
         _perching = false;
         mod.getBlockTracker().trackBlock(Blocks.END_PORTAL);
+        // the sword task keeps mob defense out of the dragon fight and so does this one: endermen and the dragon are not a
+        // fight or a run while the beds go off
+        mod.getBehaviour().push();
+        mod.getBehaviour().addMobDefenseExclusion(KillEnderDragonTask::ownedByTheDragonFight);
     }
 
     // no beds left in the inventory and none placed and waiting to be clicked. the caller swaps to the sword when this
@@ -240,6 +244,7 @@ public class KillEnderDragonWithBedsTask extends Task {
     protected void onStop(AltoClef mod, Task interruptTask) {
         mod.getFoodChain().shouldStop(false);
         mod.getBlockTracker().stopTracking(Blocks.END_PORTAL);
+        mod.getBehaviour().pop();
     }
 
     // finished = out of beds and the dragon is not perched, the phase swaps to KillEnderDragonTask then. while perched we

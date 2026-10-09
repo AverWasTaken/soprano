@@ -7,15 +7,25 @@ package adris.altoclef.util.helpers;
 // vanilla cannot swing a sword while chewing. a piglin was very happy about this
 public final class CombatRules {
 
-    // a harmful mob this close is a fight, whatever it is doing right now
-    public static final double COMBAT_RANGE = 6;
-    // hit by something with a hostile still around, this long counts as still fighting
-    public static final long HURT_TICKS = 40;
     // creepers ruin your day from further than most things
     public static final double CREEPER_RANGE = 10;
+    // a lit fuse this close is not scenery any more, the chain steps away from it
+    public static final double CREEPER_NO_IGNORE = 7;
 
-    // at or below this (half hearts) in a fight we leave instead of trading blows
+    // an angry melee mob this close is hitting us whatever the history says, and "is it on top of us" generally
+    public static final double CONTACT_RANGE = 3;
+    // angry mobs this close count towards a crowd
+    public static final double SWARM_RANGE = 6;
+    // at or below FLEE_HEALTH anything angry this close is a reason to leave
+    public static final double LOW_HP_RANGE = 8;
+
+    // at or below this (half hearts) in a fight we leave instead of trading blows. the one hp line: the commitment, the
+    // chain's checks and the kill aura's shield gate all read this and nothing else
     public static final float FLEE_HEALTH = 8;
+    // the one exception, and it is a named one: a heavy hitter (wither skeleton, hoglin, brute, vindicator...) lands 8 to 13
+    // in one swing, so at 10 hp it is already "one hit from the respawn screen" and not a fight to start or to stay in.
+    // everything else in the world hits for less than 8, which is why the flee line is where it is
+    public static final float HEAVY_FLEE_HEALTH = 10;
     // at or below this a bite is better than a fight we are losing, as long as nothing is on top of us
     public static final float CRITICAL_HEALTH = 4;
     public static final double QUICK_BITE_CLEARANCE = 3;
@@ -49,15 +59,12 @@ public final class CombatRules {
         }
     }
 
-    // nearestThreat is the distance to the closest mob that can actually hurt us (infinity for none), ticksSinceHurt is
-    // how long ago we took a hit. a hit only counts while something hostile is still around: once the thing that did it
-    // is dead there is nothing left to fight and the bot may as well eat
-    public static boolean inCombat(double nearestThreat, long ticksSinceHurt, boolean fusingCreeperNear) {
-        if (fusingCreeperNear) return true;
-        if (Double.isInfinite(nearestThreat)) return false;
-        return nearestThreat <= COMBAT_RANGE || ticksSinceHurt <= HURT_TICKS;
+    // above the flee line: healthy enough for the aura to put a shield up and for a fight to carry on
+    public static boolean aboveFleeLine(float health) {
+        return health > FLEE_HEALTH;
     }
 
+    // nearestThreat is the distance to the closest mob that can actually hurt us (infinity for none)
     public static Stance stance(boolean inCombat, float health, double nearestThreat, boolean hasGapple) {
         if (!inCombat) return Stance.CALM;
         if (health <= FLEE_HEALTH && hasGapple) return Stance.EAT_GAPPLE;

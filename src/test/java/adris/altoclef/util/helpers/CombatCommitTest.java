@@ -8,11 +8,11 @@ import static org.junit.Assert.assertTrue;
 
 import adris.altoclef.util.helpers.CombatCommit.Event;
 import adris.altoclef.util.helpers.CombatCommit.Foe;
+import adris.altoclef.util.helpers.CombatCommit.Kind;
 import adris.altoclef.util.helpers.CombatCommit.Mode;
 import adris.altoclef.util.helpers.CombatCommit.Tick;
 import adris.altoclef.util.helpers.CombatCommit.Trigger;
 import adris.altoclef.util.helpers.CombatCommit.Why;
-import baritone.api.utils.Dimension;
 import java.util.List;
 import java.util.function.LongFunction;
 import org.junit.Test;
@@ -49,27 +49,39 @@ public class CombatCommitTest {
 
     // armed, standing at the origin, three angry mobs make a crowd. target is the foe we are fighting looked up on its own
     private static Tick tick(long now, float health, Foe target, Foe... foes) {
-        return new Tick(now, health, true, 0, 0, 3, List.of(foes), target, false, false);
+        return new Tick(now, health, true, 0, 0, 3, List.of(foes), target, false);
     }
 
     private static Tick unarmed(Tick t) {
-        return new Tick(t.now(), t.health(), false, t.x(), t.z(), t.crowdSize(), t.foes(), t.target(), t.danger(), t.paused());
+        return new Tick(t.now(), t.health(), false, t.x(), t.z(), t.crowdSize(), t.foes(), t.target(), t.paused());
     }
 
     private static Tick at(Tick t, double x, double z) {
-        return new Tick(t.now(), t.health(), t.armed(), x, z, t.crowdSize(), t.foes(), t.target(), t.danger(), t.paused());
-    }
-
-    private static Tick danger(Tick t) {
-        return new Tick(t.now(), t.health(), t.armed(), t.x(), t.z(), t.crowdSize(), t.foes(), t.target(), true, t.paused());
+        return new Tick(t.now(), t.health(), t.armed(), x, z, t.crowdSize(), t.foes(), t.target(), t.paused());
     }
 
     private static Tick paused(Tick t) {
-        return new Tick(t.now(), t.health(), t.armed(), t.x(), t.z(), t.crowdSize(), t.foes(), t.target(), t.danger(), true);
+        return new Tick(t.now(), t.health(), t.armed(), t.x(), t.z(), t.crowdSize(), t.foes(), t.target(), true);
     }
 
     private static Tick crowdOf(Tick t, int size) {
-        return new Tick(t.now(), t.health(), t.armed(), t.x(), t.z(), size, t.foes(), t.target(), t.danger(), t.paused());
+        return new Tick(t.now(), t.health(), t.armed(), t.x(), t.z(), size, t.foes(), t.target(), t.paused());
+    }
+
+    private static Foe heavy(int id, double distance, long sinceHit) {
+        return new Foe(id, distance, false, false, sinceHit, Kind.HEAVY);
+    }
+
+    private static Foe heavy(int id, double distance) {
+        return heavy(id, distance, NEVER);
+    }
+
+    private static Foe warden(int id, double distance, long sinceHit) {
+        return new Foe(id, distance, false, false, sinceHit, Kind.UNTOUCHABLE);
+    }
+
+    private static Foe blaze(int id, double distance, long sinceHit) {
+        return new Foe(id, distance, true, false, sinceHit, Kind.FLYER);
     }
 
     // a fight tick where the target is the only thing there is
@@ -108,10 +120,11 @@ public class CombatCommitTest {
         return fightOn(NOW, foe);
     }
 
-    // a run that began at `now` from x, z. danger is the cheapest way in, nothing else about it matters
+    // a run that began at `now` from x, z. hurt with a zombie at eight blocks is the cheapest way in, nothing else about it
+    // matters (the zombie is gone from every tick after)
     private static CombatCommit runFrom(long now, double x, double z) {
         CombatCommit c = new CombatCommit();
-        assertEquals(Event.RUN_START, c.step(at(danger(tick(now, 20, null)), x, z)));
+        assertEquals(Event.RUN_START, c.step(at(tick(now, 8, null, zombie(900, 8)), x, z)));
         return c;
     }
 
@@ -370,9 +383,10 @@ public class CombatCommitTest {
         assertEquals(Event.RUN_START, hurtInACrowd.step(tick(NOW, 8f, null, mob)));
         assertEquals(Why.LOW_HP, hurtInACrowd.why());
 
-        CombatCommit dangerous = new CombatCommit();
-        assertEquals(Event.RUN_START, dangerous.step(danger(tick(NOW, 8f, null, mob))));
-        assertEquals(Why.DANGER, dangerous.why());
+        // a heavy hitter in the pile is the worst of it, it names the run before the hp does
+        CombatCommit nasty = new CombatCommit();
+        assertEquals(Event.RUN_START, nasty.step(tick(NOW, 8f, null, mob[0], mob[1], heavy(4, 5))));
+        assertEquals(Why.HEAVY, nasty.why());
     }
 
     // ---- FIGHT
@@ -424,12 +438,14 @@ public class CombatCommitTest {
     }
 
     @Test
-    public void theDangerFlagBailsAFightToo() {
+    public void aHeavyHitterWalkingUpBailsAFightAtTenHp() {
         CombatCommit c = fightOn(zombie(7, 2, 0));
         Foe z = zombie(7, 2, 5);
-        assertEquals(Event.FIGHT_TO_RUN, c.step(danger(tick(NOW + 5, 20, z, z))));
+        // at 11 the zombie fight carries on with a hoglin at five blocks
+        assertEquals(Event.NONE, c.step(tick(NOW + 4, 11, z, z, heavy(8, 5))));
+        assertEquals(Event.FIGHT_TO_RUN, c.step(tick(NOW + 5, 10, z, z, heavy(8, 5))));
         assertEquals(Mode.RUN, c.mode());
-        assertEquals(Why.DANGER, c.why());
+        assertEquals(Why.HEAVY, c.why());
     }
 
     @Test
@@ -704,7 +720,8 @@ public class CombatCommitTest {
     @Test
     public void aRunHoldsShortOfFiftyBlocksNoMatterHowQuiet() {
         CombatCommit c = runFrom(NOW, 0, 0);
-        holds(c, NOW + 1, NOW + CombatCommit.RUN_CAP - 1, now -> runTick(now, 49, 0));
+        // (creeping about on the spot, a run standing dead still for five seconds is the stuck rule's)
+        holds(c, NOW + 1, NOW + CombatCommit.RUN_CAP - 1, now -> runTick(now, 47 + shuffle(now), 0));
         assertEquals(Mode.RUN, c.mode());
     }
 
@@ -732,14 +749,14 @@ public class CombatCommitTest {
     @Test
     public void aFoeWithinSixteenKeepsTheRunGoingAtFiftyBlocks() {
         CombatCommit c = runFrom(NOW, 0, 0);
-        holds(c, NOW + 1, NOW + 300, now -> runTick(now, 50, 0, zombie(1, 15)));
+        holds(c, NOW + 1, NOW + 300, now -> runTick(now, 50 + shuffle(now), 0, zombie(1, 15)));
         assertEquals(Mode.RUN, c.mode());
     }
 
     @Test
     public void aFoeExactlyAtSixteenStillCounts() {
         CombatCommit c = runFrom(NOW, 0, 0);
-        holds(c, NOW + 1, NOW + 300, now -> runTick(now, 50, 0, zombie(1, CombatCommit.RUN_CLEAR)));
+        holds(c, NOW + 1, NOW + 300, now -> runTick(now, 50 + shuffle(now), 0, zombie(1, CombatCommit.RUN_CLEAR)));
         assertEquals(Mode.RUN, c.mode());
     }
 
@@ -782,9 +799,19 @@ public class CombatCommitTest {
     @Test
     public void standingStillToEatKeepsTheRunGoing() {
         CombatCommit c = runFrom(NOW, 0, 0);
-        holds(c, NOW + 1, NOW + 600, now -> runTick(now, 0, 0));
+        // a meal is a couple of seconds: nothing within eight does not corner us, and the stuck rule waits five seconds
+        holds(c, NOW + 1, NOW + CombatCommit.RUN_STUCK_TICKS, now -> runTick(now, 0, 0));
         assertEquals(Mode.RUN, c.mode());
         assertFalse(c.cornered());
+    }
+
+    @Test
+    public void standingStillLongerThanAMealWithNobodyAboutIsStuckNotCornered() {
+        CombatCommit c = runFrom(NOW, 0, 0);
+        holds(c, NOW + 1, NOW + CombatCommit.RUN_STUCK_TICKS, now -> runTick(now, 0, 0));
+        assertEquals(Event.RUN_STUCK, c.step(runTick(NOW + CombatCommit.RUN_STUCK_TICKS + 1, 0, 0)));
+        assertFalse(c.cornered());
+        assertEquals(Mode.NONE, c.mode());
     }
 
     @Test
@@ -916,8 +943,11 @@ public class CombatCommitTest {
     @Test
     public void aFoeBeyondTheWatchRangeNeverCornersUs() {
         CombatCommit c = runFrom(NOW, 0, 0);
-        holds(c, NOW + 1, NOW + 400, now -> runTick(now, 0, 0, zombie(1, 8.1)));
+        holds(c, NOW + 1, NOW + CombatCommit.RUN_STUCK_TICKS, now -> runTick(now, 0, 0, zombie(1, 8.1)));
         assertEquals(Mode.RUN, c.mode());
+        // standing there for five seconds is the stuck rule's end, not a corner (that one needs something within eight)
+        assertEquals(Event.RUN_STUCK, c.step(runTick(NOW + CombatCommit.RUN_STUCK_TICKS + 1, 0, 0, zombie(1, 8.1))));
+        assertFalse(c.cornered());
     }
 
     @Test
@@ -933,7 +963,7 @@ public class CombatCommitTest {
         CombatCommit c = runFrom(NOW, 0, 0);
         // something at six opens the window for a moment, then it drops back to twelve and we stand there eating
         holds(c, NOW + 1, NOW + 10, now -> runTick(now, 0, 0, zombie(1, 6)));
-        holds(c, NOW + 11, NOW + 200, now -> runTick(now, 0, 0, zombie(1, 12)));
+        holds(c, NOW + 11, NOW + 200, now -> runTick(now, shuffle(now), 0, zombie(1, 12)));
         long arrives = NOW + 201;
         Foe z = zombie(1, 2);
         // it is not instantly cornered, the window opens now
@@ -1014,23 +1044,208 @@ public class CombatCommitTest {
         assertEquals(Why.CONTACT, c.why());
     }
 
-    // ---- danger
+    // ---- heavy hitters and things we never fight
 
     @Test
-    public void theDangerFlagStartsARunWithNoFoesAtAll() {
-        CombatCommit c = new CombatCommit();
-        assertEquals(Event.RUN_START, c.step(at(danger(tick(NOW, 20, null)), 5, 6)));
-        assertEquals(Mode.RUN, c.mode());
-        assertEquals(Why.DANGER, c.why());
-        assertEquals(5, c.originX(), 0);
-        assertEquals(6, c.originZ(), 0);
+    public void aHeavyHitterIsAFightAboveTenHpAndARunAtTenOrLess() {
+        // hoglin, wither skeleton, brute, vindicator, ravager: 8 to 13 a swing is one hit from the respawn screen at 10
+        for (float hp : new float[]{20, 14, 11}) {
+            CombatCommit fight = new CombatCommit();
+            assertEquals("hp " + hp, Event.FIGHT_START, fight.step(tick(NOW, hp, null, heavy(1, 2))));
+            assertEquals(Why.CONTACT, fight.why());
+        }
+        for (float hp : new float[]{10, 9.5f}) {
+            CombatCommit run = new CombatCommit();
+            assertEquals("hp " + hp, Event.RUN_START, run.step(tick(NOW, hp, null, heavy(1, 2))));
+            assertEquals(Why.HEAVY, run.why());
+        }
     }
 
     @Test
-    public void theDangerFlagStartsARunDuringTheCooldownToo() {
-        CombatCommit c = wonFight();
-        assertEquals(Event.RUN_START, c.step(danger(tick(WON_AT + 5, 20, null))));
-        assertEquals(Why.DANGER, c.why());
+    public void theHeavyLineIsItsOwnNumberAboveTheFleeLine() {
+        assertEquals(10, CombatCommit.HEAVY_FLEE_HP, 0);
+        assertEquals(8, CombatCommit.FLEE_HP, 0);
+        assertTrue(CombatCommit.HEAVY_FLEE_HP > CombatCommit.FLEE_HP);
+        // everything that is not heavy still fights at 9 and 10
+        assertEquals(Event.FIGHT_START, new CombatCommit().step(tick(NOW, 10, null, zombie(1, 2))));
+        assertEquals(Event.FIGHT_START, new CombatCommit().step(tick(NOW, 9, null, zombie(1, 2))));
+    }
+
+    @Test
+    public void aHeavyHitterThatHitUsFromSixBlocksOutIsTheSameCall() {
+        assertEquals(Event.RUN_START, new CombatCommit().step(tick(NOW, 10, null, heavy(1, 6, 3))));
+        assertEquals(Event.FIGHT_START, new CombatCommit().step(tick(NOW, 11, null, heavy(1, 6, 3))));
+        // not having hit us, a heavy hitter at five blocks is scenery like anything else (ignore by default)
+        assertEquals(Event.NONE, new CombatCommit().step(tick(NOW, 10.5f, null, heavy(1, 5))));
+    }
+
+    @Test
+    public void aTriggerFromAZombieWithAHeavyHitterCloseIsARun() {
+        CombatCommit c = new CombatCommit();
+        assertEquals(Event.RUN_START, c.step(tick(NOW, 10, null, zombie(1, 2, 3), heavy(2, 5))));
+        assertEquals(Why.HEAVY, c.why());
+    }
+
+    @Test
+    public void theWardenIsNeverAFightAtAnyHp() {
+        for (float hp : new float[]{20, 15, 12, 9}) {
+            // it hit us (the sonic boom reaches fifteen blocks)
+            CombatCommit hit = new CombatCommit();
+            assertEquals("hit at hp " + hp, Event.RUN_START, hit.step(tick(NOW, hp, null, warden(1, 14, 3))));
+            assertEquals(Why.HEAVY, hit.why());
+            // and in contact
+            CombatCommit contact = new CombatCommit();
+            assertEquals("contact at hp " + hp, Event.RUN_START, contact.step(tick(NOW, hp, null, warden(1, 2.5, NEVER))));
+            assertEquals(Why.HEAVY, contact.why());
+        }
+        // scenery until it does one of those
+        assertEquals(Event.NONE, new CombatCommit().step(tick(NOW, 20, null, warden(1, 10, NEVER))));
+        // a boom from sixteen is out of range like any other shooter at sixteen
+        assertEquals(Event.NONE, new CombatCommit().step(tick(NOW, 20, null, warden(1, 16, 3))));
+    }
+
+    @Test
+    public void theWardenNeverStartsAFightEvenWhenArmedAndHealthy() {
+        CombatCommit c = new CombatCommit();
+        assertEquals(Event.RUN_START, c.step(tick(NOW, 20, null, warden(1, 2, 3))));
+        assertEquals(Mode.RUN, c.mode());
+        assertEquals(-1, c.targetId());
+    }
+
+    @Test
+    public void aDeadTargetNeverChainsIntoAWarden() {
+        CombatCommit c = fightOn(zombie(1, 2, 0));
+        // the zombie dies while a warden that hit us stands at ten blocks: bailing (it is not within six) is idle's job next
+        // tick, chaining to it would be a fight
+        Event event = c.step(tick(NOW + 5, 20, null, warden(2, 10, 3)));
+        assertEquals(Event.FIGHT_DEAD, event);
+        assertEquals(Mode.NONE, c.mode());
+    }
+
+    @Test
+    public void aWardenWithinSixBailsAFightWhateverTheHp() {
+        CombatCommit c = fightOn(zombie(7, 2, 0));
+        Foe z = zombie(7, 2, 5);
+        assertEquals(Event.FIGHT_TO_RUN, c.step(tick(NOW + 5, 20, z, z, warden(8, 5.5, NEVER))));
+        assertEquals(Why.HEAVY, c.why());
+    }
+
+    @Test
+    public void aHeavyTargetOutsideTheFoeListStillBailsTheFight() {
+        // the target is looked up on its own: a hoglin we started on at 11 hp that drops us to 10 while it is 9 blocks out
+        CombatCommit c = fightOn(heavy(7, 2, 0));
+        // started above the heavy line
+        Foe h = heavy(7, 9, 5);
+        assertEquals(Event.FIGHT_TO_RUN, c.step(new Tick(NOW + 5, 10, true, 0, 0, 3, List.of(), h, false)));
+        assertEquals(Why.HEAVY, c.why());
+    }
+
+    @Test
+    public void aCorneredFightWithAWardenStillFights() {
+        // boxed in with nowhere to go, even the warden is a fight (nothing else is left)
+        CombatCommit c = new CombatCommit();
+        Foe w = warden(1, 2, 3);
+        assertEquals(Event.RUN_START, c.step(tick(NOW, 20, null, w)));
+        Event event = Event.NONE;
+        for (long t = NOW + 1; t <= NOW + 1 + CombatCommit.CORNER_TICKS + 1 && event == Event.NONE; t++) {
+            event = c.step(tick(t, 20, null, w));
+        }
+        assertEquals(Event.RUN_TO_FIGHT, event);
+        assertTrue(c.cornered());
+        assertEquals(Mode.FIGHT, c.mode());
+    }
+
+    // ---- flyers: a blaze hovering over lava
+
+    @Test
+    public void aBlazeThatHitUsFromBeyondContactIsARunNotAChase() {
+        CombatCommit c = new CombatCommit();
+        assertEquals(Event.RUN_START, c.step(tick(NOW, 20, null, blaze(1, 9, 3))));
+        assertEquals(Why.UNREACHABLE, c.why());
+        assertEquals(Mode.RUN, c.mode());
+    }
+
+    @Test
+    public void aBlazeThatHitUsWithinContactIsAnOrdinaryFight() {
+        CombatCommit c = new CombatCommit();
+        assertEquals(Event.FIGHT_START, c.step(tick(NOW, 20, null, blaze(1, 3, 3))));
+        assertEquals(Why.HIT, c.why());
+        assertEquals(Mode.FIGHT, c.mode());
+    }
+
+    @Test
+    public void aBlazeIsAShooterSoItCountsFromFifteenBlocksOut() {
+        assertEquals(Event.RUN_START, new CombatCommit().step(tick(NOW, 20, null, blaze(1, 15, 3))));
+        assertEquals(Event.NONE, new CombatCommit().step(tick(NOW, 20, null, blaze(1, 15.5, 3))));
+        // never having hit us it is scenery, in contact or not (a blaze is not a melee mob)
+        assertEquals(Event.NONE, new CombatCommit().step(tick(NOW, 20, null, blaze(1, 2, NEVER))));
+    }
+
+    @Test
+    public void aBlazeNeverMakesAFightFromAHealthyHitBeyondContactEvenArmed() {
+        CombatCommit c = new CombatCommit();
+        assertEquals(Event.RUN_START, c.step(tick(NOW, 20, null, blaze(1, 6, 0))));
+        assertEquals(-1, c.targetId());
+    }
+
+    @Test
+    public void aFlyerOutOfReachIsNotAReasonToChainAFight() {
+        CombatCommit c = fightOn(zombie(1, 2, 0));
+        // the zombie dies, a blaze that hit us is at eight blocks: no chain, the fight is over and the run is idle's call
+        Event event = c.step(tick(NOW + 5, 20, null, blaze(2, 8, 3)));
+        assertEquals(Event.FIGHT_DEAD, event);
+        assertEquals(Mode.NONE, c.mode());
+        // (a fresh hit gets through the cooldown, and it is a run)
+        assertEquals(Event.RUN_START, c.step(tick(NOW + 6, 20, null, blaze(2, 8, 0))));
+        assertEquals(Why.UNREACHABLE, c.why());
+    }
+
+    // ---- a run that is going nowhere with nothing near
+
+    @Test
+    public void aRunThatMakesNoGroundWithNothingNearIsOverAfterFiveSeconds() {
+        CombatCommit c = runFrom(NOW, 0, 0);
+        // standing at a lava lake: nothing angry within eight, no ground gained
+        holds(c, NOW + 1, NOW + CombatCommit.RUN_STUCK_TICKS, now -> runTick(now, 0, 0, zombie(2, 12)));
+        assertEquals(Event.RUN_STUCK, c.step(runTick(NOW + CombatCommit.RUN_STUCK_TICKS + 1, 0, 0, zombie(2, 12))));
+        assertEquals(Mode.NONE, c.mode());
+        assertTrue(c.coolingDown(NOW + CombatCommit.RUN_STUCK_TICKS + 2));
+    }
+
+    @Test
+    public void aRunThatKeepsMovingIsNeverStuck() {
+        CombatCommit c = runFrom(NOW, 0, 0);
+        // two blocks every second and a half: never five seconds on the same spot
+        holds(c, NOW + 1, NOW + 400, now -> runTick(now, ((now - NOW) / 30) * 2, 0, zombie(2, 12)));
+        assertEquals(Mode.RUN, c.mode());
+    }
+
+    @Test
+    public void aRunWithSomethingNearIsNotTheStuckRulesBusiness() {
+        CombatCommit c = runFrom(NOW, 0, 0);
+        // a zombie at six blocks: the corner window is the one that counts, and it is only an answer for something within three
+        // or, after six seconds, within eight
+        holds(c, NOW + 1, NOW + CombatCommit.CORNER_FAR_TICKS - 5, now -> runTick(now, 0, 0, zombie(2, 6)));
+        assertEquals(Mode.RUN, c.mode());
+    }
+
+    @Test
+    public void somethingComingNearRestartsTheStuckWindow() {
+        CombatCommit c = runFrom(NOW, 0, 0);
+        holds(c, NOW + 1, NOW + 60, now -> runTick(now, 0, 0, zombie(2, 12)));
+        // it walks inside eight for a moment (the corner window starts) and leaves: five seconds start over, not forty ticks
+        holds(c, NOW + 61, NOW + 65, now -> runTick(now, 0, 0, zombie(2, 7)));
+        holds(c, NOW + 66, NOW + 66 + CombatCommit.RUN_STUCK_TICKS - 1, now -> runTick(now, 0, 0, zombie(2, 12)));
+        assertEquals(Event.RUN_STUCK, c.step(runTick(NOW + 66 + CombatCommit.RUN_STUCK_TICKS, 0, 0, zombie(2, 12))));
+    }
+
+    @Test
+    public void aCreeperStepAwayHoldsTheStuckWindowStill() {
+        CombatCommit c = runFrom(NOW, 0, 0);
+        holds(c, NOW + 1, NOW + 60, now -> runTick(now, 0, 0, zombie(2, 12)));
+        // 100 paused ticks do not count as standing still
+        holds(c, NOW + 61, NOW + 160, now -> paused(runTick(now, 0, 0, zombie(2, 12))));
+        assertEquals(Mode.RUN, c.mode());
     }
 
     // ---- clocks
@@ -1098,17 +1313,5 @@ public class CombatCommitTest {
         assertTrue(gaveUp.isIgnored(1));
         gaveUp.reset();
         assertFalse(gaveUp.isIgnored(1));
-    }
-
-    // ---- dimensions
-
-    @Test
-    public void onlyTheOverworldWithTheSettingOnGetsTheMachine() {
-        assertTrue(CombatCommit.applies(true, Dimension.OVERWORLD));
-        assertFalse(CombatCommit.applies(false, Dimension.OVERWORLD));
-        assertFalse(CombatCommit.applies(true, Dimension.NETHER));
-        assertFalse(CombatCommit.applies(false, Dimension.NETHER));
-        assertFalse(CombatCommit.applies(true, Dimension.END));
-        assertFalse(CombatCommit.applies(false, Dimension.END));
     }
 }

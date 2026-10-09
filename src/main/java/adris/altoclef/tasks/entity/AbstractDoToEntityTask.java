@@ -5,7 +5,6 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.control.CritTiming;
 import adris.altoclef.tasks.construction.DestroyBlockTask;
-import adris.altoclef.tasks.movement.DodgeProjectilesTask;
 import adris.altoclef.tasks.movement.GetToEntityTask;
 import adris.altoclef.tasks.movement.TimeoutWanderTask;
 import adris.altoclef.tasksystem.ITaskRequiresGrounded;
@@ -109,10 +108,7 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
 
         // Oof
         if (checkEntity.isEmpty()) {
-            mod.getMobDefenseChain().resetTargetEntity();
             mod.getMobDefenseChain().resetForceField();
-        } else {
-            mod.getMobDefenseChain().setTargetEntity(checkEntity.get());
         }
         if (checkEntity.isPresent()) {
             Entity entity = checkEntity.get();
@@ -301,13 +297,6 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
 
     @Override
     protected void onStop(AltoClef mod, Task interruptTask) {
-        if (interruptTask instanceof DodgeProjectilesTask) {
-            // an arrow cut in, the fight is still on. clearing the target here is how a dodge used to turn into a run:
-            // no target means the flee checks think nobody is being fought
-            mod.getMobDefenseChain().parkTarget(mod.getWorld().getGameTime());
-        } else {
-            mod.getMobDefenseChain().setTargetEntity(null);
-        }
         mod.getMobDefenseChain().resetForceField();
     }
 

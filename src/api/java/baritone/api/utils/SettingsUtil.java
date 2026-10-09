@@ -45,6 +45,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.regex.Matcher;
@@ -57,6 +58,20 @@ public class SettingsUtil {
     public static final String SETTINGS_DEFAULT_NAME = "settings.txt";
     // key and value split by the first space. the value may be empty, "altoIdleCommand " is what an emptied string setting saves as
     private static final Pattern SETTING_PATTERN = Pattern.compile("^(?<setting>[^ ]+) +(?<value>.*)");
+    // settings that are gone. a settings file from before still names them, and "Unable to parse line" with a stack trace for a
+    // line that is just old is noise: they are skipped without a word (lowercase, like the lookup)
+    private static final Set<String> RETIRED = Set.of("altohostileengagerange", "altohostileengageheight", "altopassbygraceticks");
+
+    /**
+     * Whether a setting name (any case) belonged to a setting that has since been removed, so reading an old settings file
+     * can skip its line quietly.
+     *
+     * @param settingName the name from the settings file
+     * @return true if the setting is retired
+     */
+    public static boolean isRetired(String settingName) {
+        return RETIRED.contains(settingName.toLowerCase());
+    }
 
 
     private static boolean isComment(String line) {
@@ -89,6 +104,9 @@ public class SettingsUtil {
                 // TODO remove soonish
                 if ("allowjumpat256".equals(settingName)) {
                     settingName = "allowjumpatbuildlimit";
+                }
+                if (isRetired(settingName)) {
+                    return;
                 }
                 try {
                     parseAndApply(settings, settingName, settingValue);

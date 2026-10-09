@@ -149,11 +149,17 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
             }
         }
         if (!mod.getClientBaritone().getCustomGoalProcess().isActive()
-                && mod.getClientBaritone().getPathingBehavior().isSafeToCancel()) {
+                && mod.getClientBaritone().getPathingBehavior().isSafeToCancel() && mayIssueGoal(mod)) {
             mod.getClientBaritone().getCustomGoalProcess().setGoalAndPath(_cachedGoal);
         }
         setDebugState("Completing goal.");
         return null;
+    }
+
+    // asked on the ticks the goal is about to be handed to baritone again (it is not active: it was reached, or the search
+    // came back empty and baritone dropped it). yes is the default, a task whose goal can be out of reach says no for a bit
+    protected boolean mayIssueGoal(AltoClef mod) {
+        return true;
     }
 
     @Override

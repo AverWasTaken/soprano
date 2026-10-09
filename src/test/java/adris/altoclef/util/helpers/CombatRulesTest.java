@@ -11,109 +11,80 @@ import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
 
-// the piglin that killed the bot: hp 10, hit a second ago, standing right there
+// the piglin that killed the bot: hp 10, standing right there
 public class CombatRulesTest {
 
-    private static final long LONG_AGO = Long.MAX_VALUE / 2;
     private static final double NOBODY = Double.POSITIVE_INFINITY;
 
-    private static CombatRules.Stance stance(float health, double threat, long hurtAgo, boolean gapple) {
-        return CombatRules.stance(CombatRules.inCombat(threat, hurtAgo, false), health, threat, gapple);
-    }
-
-    @Test
-    public void mobRightNextToUsIsACombat() {
-        assertTrue(CombatRules.inCombat(2, LONG_AGO, false));
-        assertTrue(CombatRules.inCombat(6, LONG_AGO, false));
-    }
-
-    @Test
-    public void mobTenBlocksAwayIsNot() {
-        assertFalse(CombatRules.inCombat(10, LONG_AGO, false));
-    }
-
-    @Test
-    public void hitRecentlyWithSomethingStillAroundIsACombat() {
-        assertTrue(CombatRules.inCombat(10, 20, false));
-        assertTrue(CombatRules.inCombat(10, 40, false));
-        assertFalse(CombatRules.inCombat(10, 41, false));
-    }
-
-    @Test
-    public void hitRecentlyButNothingLeftIsOver() {
-        // we killed it, there is nobody to fight and nothing stopping us from a sandwich
-        assertFalse(CombatRules.inCombat(NOBODY, 5, false));
-    }
-
-    @Test
-    public void litCreeperIsACombatEvenWithNobodyElse() {
-        assertTrue(CombatRules.inCombat(NOBODY, LONG_AGO, true));
+    // in a fight with the nearest thing at `threat` blocks
+    private static CombatRules.Stance fighting(float health, double threat, boolean gapple) {
+        return CombatRules.stance(true, health, threat, gapple);
     }
 
     @Test
     public void calmMeansEatWhenYouWant() {
-        assertEquals(CALM, stance(10, NOBODY, LONG_AGO, false));
-        assertEquals(CALM, stance(2, 12, LONG_AGO, true));
+        assertEquals(CALM, CombatRules.stance(false, 10, NOBODY, false));
+        assertEquals(CALM, CombatRules.stance(false, 2, 12, true));
         assertTrue(CALM.mayEat());
     }
 
     @Test
     public void tenHpPiglinInOurFaceIsAFightNotALunch() {
         // the bug. needsToEat said yes at 10 hp, which turned the defense off, which killed us
-        CombatRules.Stance s = stance(10, 1.5, 10, false);
+        CombatRules.Stance s = fighting(10, 1.5, false);
         assertEquals(FIGHT, s);
         assertFalse(s.mayEat());
     }
 
     @Test
     public void healthyFightStaysAFight() {
-        assertEquals(FIGHT, stance(20, 3, 100, false));
-        assertEquals(FIGHT, stance(9, 3, 100, false));
+        assertEquals(FIGHT, fighting(20, 3, false));
+        assertEquals(FIGHT, fighting(9, 3, false));
     }
 
     @Test
     public void lowHpInAFightMeansLeave() {
-        CombatRules.Stance s = stance(8, 2, 5, false);
+        CombatRules.Stance s = fighting(8, 2, false);
         assertEquals(FLEE, s);
         assertFalse(s.mayEat());
-        assertEquals(FLEE, stance(5, 2, 5, false));
+        assertEquals(FLEE, fighting(5, 2, false));
     }
 
     @Test
     public void almostDeadWithNothingCloseTakesAQuickBite() {
-        CombatRules.Stance s = stance(4, 5, 10, false);
+        CombatRules.Stance s = fighting(4, 5, false);
         assertEquals(EAT, s);
         assertTrue(s.mayEat());
     }
 
     @Test
     public void almostDeadWithSomethingOnUsRuns() {
-        assertEquals(FLEE, stance(4, 2, 10, false));
-        assertEquals(FLEE, stance(2, 3, 10, false));
+        assertEquals(FLEE, fighting(4, 2, false));
+        assertEquals(FLEE, fighting(2, 3, false));
     }
 
     @Test
     public void quickBiteIsNotAnOptionAtEightHp() {
         // 8 hp with a mob five blocks out is still a flee, the bite is for the last four
-        assertEquals(FLEE, stance(8, 5, 10, false));
+        assertEquals(FLEE, fighting(8, 5, false));
     }
 
     @Test
     public void gappleInAFightIsEatenWhenHurt() {
-        CombatRules.Stance s = stance(8, 1, 3, true);
+        CombatRules.Stance s = fighting(8, 1, true);
         assertEquals(EAT_GAPPLE, s);
         assertTrue(s.mayEat());
-        assertEquals(EAT_GAPPLE, stance(3, 1, 3, true));
+        assertEquals(EAT_GAPPLE, fighting(3, 1, true));
     }
 
     @Test
     public void gappleIsNotWastedWhileHealthy() {
-        assertEquals(FIGHT, stance(16, 1, 3, true));
+        assertEquals(FIGHT, fighting(16, 1, true));
     }
 
     @Test
     public void gappleDoesNothingOutsideAFight() {
-        assertEquals(CALM, stance(4, NOBODY, LONG_AGO, true));
+        assertEquals(CALM, CombatRules.stance(false, 4, NOBODY, true));
     }
 
     @Test
@@ -128,6 +99,56 @@ public class CombatRulesTest {
 
     @Test
     public void fusingCreeperAtLowHpIsStillAFlee() {
-        assertEquals(FLEE, CombatRules.stance(CombatRules.inCombat(NOBODY, LONG_AGO, true), 6, 4, false));
+        assertEquals(FLEE, fighting(6, 4, false));
+    }
+
+    // ---- the one hp line
+
+    @Test
+    public void theFleeLineIsEight() {
+        assertEquals(8, CombatRules.FLEE_HEALTH, 0);
+    }
+
+    @Test
+    public void theCommitmentAndTheFleeStanceUseTheSameLine() {
+        assertEquals(CombatRules.FLEE_HEALTH, CombatCommit.FLEE_HP, 0);
+        // hp 8 is a flee in the stance and a run in the machine, hp 8.5 is neither
+        assertEquals(FLEE, fighting(CombatRules.FLEE_HEALTH, 2, false));
+        assertEquals(FIGHT, fighting(CombatRules.FLEE_HEALTH + 0.5f, 2, false));
+        assertEquals(CombatCommit.Event.RUN_START, new CombatCommit().step(new CombatCommit.Tick(100, CombatRules.FLEE_HEALTH, true, 0, 0,
+                3, java.util.List.of(new CombatCommit.Foe(1, 2, false, false, CombatCommit.NEVER)), null, false)));
+        assertEquals(CombatCommit.Event.FIGHT_START, new CombatCommit().step(new CombatCommit.Tick(100, CombatRules.FLEE_HEALTH + 0.5f, true, 0, 0,
+                3, java.util.List.of(new CombatCommit.Foe(1, 2, false, false, CombatCommit.NEVER)), null, false)));
+    }
+
+    @Test
+    public void theAuraShieldGateIsTheSameLine() {
+        // KillAura asks aboveFleeLine and nothing else: 8 is not healthy enough, 8.5 is, and the old 10 gate is gone
+        assertFalse(CombatRules.aboveFleeLine(CombatRules.FLEE_HEALTH));
+        assertTrue(CombatRules.aboveFleeLine(CombatRules.FLEE_HEALTH + 0.5f));
+        assertTrue(CombatRules.aboveFleeLine(9));
+        assertFalse(CombatRules.aboveFleeLine(0));
+    }
+
+    @Test
+    public void theHeavyLineIsTheOnlyExceptionAndItIsAboveTheFleeLine() {
+        assertEquals(10, CombatRules.HEAVY_FLEE_HEALTH, 0);
+        assertEquals(CombatRules.HEAVY_FLEE_HEALTH, CombatCommit.HEAVY_FLEE_HP, 0);
+        assertTrue(CombatRules.HEAVY_FLEE_HEALTH > CombatRules.FLEE_HEALTH);
+    }
+
+    @Test
+    public void theSharedRangesAreWhereTheMachineReadsThem() {
+        assertEquals(3, CombatRules.CONTACT_RANGE, 0);
+        assertEquals(6, CombatRules.SWARM_RANGE, 0);
+        assertEquals(8, CombatRules.LOW_HP_RANGE, 0);
+        assertEquals(7, CombatRules.CREEPER_NO_IGNORE, 0);
+        assertEquals(10, CombatRules.CREEPER_RANGE, 0);
+        assertEquals(CombatRules.CONTACT_RANGE, CombatCommit.CONTACT, 0);
+        assertEquals(CombatRules.SWARM_RANGE, CombatCommit.CROWD_RANGE, 0);
+        assertEquals(CombatRules.LOW_HP_RANGE, CombatCommit.LOW_HP_RANGE, 0);
+        // the stall tracker uses the same two, a mob in contact is never stuck and one on our heels while we run neither
+        assertEquals(CombatRules.CONTACT_RANGE, MobReachRules.STALL_EXEMPT_RANGE, 0);
+        assertEquals(CombatRules.LOW_HP_RANGE, MobReachRules.FLEEING_STALL_RANGE, 0);
     }
 }

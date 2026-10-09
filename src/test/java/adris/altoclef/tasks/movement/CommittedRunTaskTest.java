@@ -1,0 +1,35 @@
+package adris.altoclef.tasks.movement;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
+
+import org.junit.Test;
+
+// the pathfinder is left alone for a bit after a goal was handed to it and did not stick. a goal nothing can reach was
+// re-sent on every tick, a full search each time, for as long as the run lasted
+public class CommittedRunTaskTest {
+
+    @Test
+    public void theFirstIssueAlwaysGoesThrough() {
+        // nothing was handed over yet
+        assertTrue(CommittedRunTask.mayReissue(0, Long.MIN_VALUE / 2));
+        assertTrue(CommittedRunTask.mayReissue(5000, Long.MIN_VALUE / 2));
+    }
+
+    @Test
+    public void asksAreSpacedByTheGap() {
+        assertEquals(40, CommittedRunTask.REISSUE_GAP_TICKS);
+        long issued = 1000;
+        assertFalse(CommittedRunTask.mayReissue(issued + 1, issued));
+        assertFalse(CommittedRunTask.mayReissue(issued + 39, issued));
+        assertTrue(CommittedRunTask.mayReissue(issued + 40, issued));
+        assertTrue(CommittedRunTask.mayReissue(issued + 400, issued));
+    }
+
+    @Test
+    public void aClockThatWentBackwardsIsLongEnoughAgo() {
+        // a new world: the old issue time is nonsense
+        assertTrue(CommittedRunTask.mayReissue(10, 5000));
+    }
+}

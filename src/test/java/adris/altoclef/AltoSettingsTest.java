@@ -81,11 +81,31 @@ public class AltoSettingsTest {
     }
 
     @Test
+    public void theEngageZoneSettingsAreGoneAndAnOldFileSkipsTheirLinesQuietly() throws Exception {
+        Settings s = fresh();
+        for (String gone : new String[]{"altoHostileEngageRange", "altoHostileEngageHeight", "altoPassByGraceTicks"}) {
+            assertNull(gone, s.byLowerName.get(gone.toLowerCase()));
+            // the settings file reader checks this before it parses a line, so an old file does not print "Unable to parse
+            // line" and a stack trace for each of them
+            assertTrue(gone, SettingsUtil.isRetired(gone));
+            assertTrue(gone, SettingsUtil.isRetired(gone.toLowerCase()));
+        }
+        // a name that never existed is still an error, and a setting that exists is never skipped
+        assertFalse(SettingsUtil.isRetired("altoNotAThing"));
+        for (Settings.Setting<?> setting : altoSettings(s)) {
+            assertFalse(setting.getName(), SettingsUtil.isRetired(setting.getName()));
+        }
+        // the commit switch stays, and it is on by default
+        assertEquals(Boolean.TRUE, s.byLowerName.get("altocommitcombat").value);
+    }
+
+    @Test
     public void everyDefaultRoundTripsThroughItsText() throws Exception {
         Settings a = fresh();
         Settings b = fresh();
         List<Settings.Setting<?>> alto = altoSettings(a);
-        assertEquals(57, alto.size());
+        // (54 since the engage zone settings went: altoHostileEngageRange, altoHostileEngageHeight, altoPassByGraceTicks)
+        assertEquals(54, alto.size());
         for (Settings.Setting<?> setting : alto) {
             String text = SettingsUtil.settingDefaultToString(setting);
             SettingsUtil.parseAndApply(b, setting.getName().toLowerCase(), text);

@@ -2,7 +2,7 @@ package adris.altoclef.tasks.entity;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.tasksystem.Task;
-import adris.altoclef.util.helpers.CombatPolicy;
+import adris.altoclef.util.helpers.CombatRules;
 import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WeaponPick;
@@ -52,7 +52,7 @@ public abstract class AbstractKillEntityTask extends AbstractDoToEntityTask {
     private static boolean shieldUp(AltoClef mod) {
         try {
             for (Entity entity : mod.getEntityTracker().getHostiles()) {
-                if (entity instanceof LivingEntity living && living.isBlocking() && living.distanceTo(mod.getPlayer()) <= CombatPolicy.SWARM_RANGE) {
+                if (entity instanceof LivingEntity living && living.isBlocking() && living.distanceTo(mod.getPlayer()) <= CombatRules.SWARM_RANGE) {
                     return true;
                 }
             }
