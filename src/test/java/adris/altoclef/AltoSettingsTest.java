@@ -100,6 +100,20 @@ public class AltoSettingsTest {
     }
 
     @Test
+    public void anOldSettingsFileWithTheEngageLinesLoadsWithoutAFuss() throws Exception {
+        Settings s = fresh();
+        // a line that cannot be parsed goes through the chat helper (which needs a running game), so this throwing is how a
+        // missing skip shows up here
+        for (String line : new String[]{"altoHostileEngageRange 12", "altoHostileEngageHeight 5.5", "altoPassByGraceTicks 40",
+                "ALTOHOSTILEENGAGERANGE 8"}) {
+            SettingsUtil.applyLine(s, line);
+        }
+        // and the lines around them still count
+        SettingsUtil.applyLine(s, "altoSwarmThreshold 5");
+        assertEquals(5, s.byLowerName.get("altoswarmthreshold").value);
+    }
+
+    @Test
     public void everyDefaultRoundTripsThroughItsText() throws Exception {
         Settings a = fresh();
         Settings b = fresh();

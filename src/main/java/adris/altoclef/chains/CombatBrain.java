@@ -251,7 +251,7 @@ final class CombatBrain {
     // one we are fighting
     private static Foe foe(Dimension dimension, Mob mob, double distance, long sinceHit) {
         Kind kind = FoeRules.kindOf(dimension, typeOf(mob));
-        return new Foe(mob.getId(), distance, MobReachability.isRanged(mob) || kind == Kind.FLYER, mob instanceof Creeper, sinceHit, kind);
+        return new Foe(mob.getId(), distance, FoeRules.shoots(typeOf(mob), MobReachability.isRanged(mob), kind), mob instanceof Creeper, sinceHit, kind);
     }
 
     private static void sortNearestFirst(List<Mob> mobs, List<Foe> foes) {

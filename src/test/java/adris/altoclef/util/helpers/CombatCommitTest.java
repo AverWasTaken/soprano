@@ -1141,14 +1141,41 @@ public class CombatCommitTest {
     }
 
     @Test
-    public void aCorneredFightWithAWardenStillFights() {
-        // boxed in with nowhere to go, even the warden is a fight (nothing else is left)
+    public void aRunCorneredByAWardenIsNeverAFight() {
+        // the warden is never a fight in any state: boxed in, on top of us, for as long as the run lasts, it stays a run
         CombatCommit c = new CombatCommit();
         Foe w = warden(1, 2, 3);
         assertEquals(Event.RUN_START, c.step(tick(NOW, 20, null, w)));
+        holds(c, NOW + 1, NOW + CombatCommit.CORNER_FAR_TICKS + 40, now -> tick(now, 20, null, w));
+        assertEquals(Mode.RUN, c.mode());
+        assertFalse(c.cornered());
+        assertEquals(-1, c.targetId());
+    }
+
+    @Test
+    public void aRunCorneredByAWardenAndAZombieFightsTheZombie() {
+        CombatCommit c = new CombatCommit();
+        Foe w = warden(1, 2, 3);
+        Foe z = zombie(2, 2.5);
+        assertEquals(Event.RUN_START, c.step(tick(NOW, 20, null, w, z)));
         Event event = Event.NONE;
         for (long t = NOW + 1; t <= NOW + 1 + CombatCommit.CORNER_TICKS + 1 && event == Event.NONE; t++) {
-            event = c.step(tick(t, 20, null, w));
+            event = c.step(tick(t, 20, null, w, z));
+        }
+        // the warden is nearer and still not the pick
+        assertEquals(Event.RUN_TO_FIGHT, event);
+        assertEquals(2, c.targetId());
+    }
+
+    @Test
+    public void aRunCorneredByAHeavyHitterAtLowHpStillFightsIt() {
+        // boxed in with a hoglin on us at 9 hp: it is the one thing left to do (only the warden is off the table)
+        CombatCommit c = new CombatCommit();
+        Foe h = heavy(1, 2, 3);
+        assertEquals(Event.RUN_START, c.step(tick(NOW, 9, null, h)));
+        Event event = Event.NONE;
+        for (long t = NOW + 1; t <= NOW + 1 + CombatCommit.CORNER_TICKS + 1 && event == Event.NONE; t++) {
+            event = c.step(tick(t, 9, null, h));
         }
         assertEquals(Event.RUN_TO_FIGHT, event);
         assertTrue(c.cornered());

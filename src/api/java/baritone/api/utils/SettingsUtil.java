@@ -90,31 +90,39 @@ public class SettingsUtil {
         }
     }
 
+    /**
+     * Applies one line of a settings file. A line for a retired setting is skipped without a word.
+     *
+     * @param settings the settings to change
+     * @param line     one non-empty, non-comment line of the file
+     */
+    public static void applyLine(Settings settings, String line) {
+        Matcher matcher = SETTING_PATTERN.matcher(line);
+        if (!matcher.matches()) {
+            Helper.HELPER.logDirect("Invalid syntax in setting file: " + line);
+            return;
+        }
+
+        String settingName = matcher.group("setting").toLowerCase();
+        String settingValue = matcher.group("value");
+        // TODO remove soonish
+        if ("allowjumpat256".equals(settingName)) {
+            settingName = "allowjumpatbuildlimit";
+        }
+        if (isRetired(settingName)) {
+            return;
+        }
+        try {
+            parseAndApply(settings, settingName, settingValue);
+        } catch (Exception ex) {
+            Helper.HELPER.logDirect("Unable to parse line " + line);
+            ex.printStackTrace();
+        }
+    }
+
     public static void readAndApply(Settings settings, String settingsName) {
         try {
-            forEachLine(settingsByName(settingsName), line -> {
-                Matcher matcher = SETTING_PATTERN.matcher(line);
-                if (!matcher.matches()) {
-                    Helper.HELPER.logDirect("Invalid syntax in setting file: " + line);
-                    return;
-                }
-
-                String settingName = matcher.group("setting").toLowerCase();
-                String settingValue = matcher.group("value");
-                // TODO remove soonish
-                if ("allowjumpat256".equals(settingName)) {
-                    settingName = "allowjumpatbuildlimit";
-                }
-                if (isRetired(settingName)) {
-                    return;
-                }
-                try {
-                    parseAndApply(settings, settingName, settingValue);
-                } catch (Exception ex) {
-                    Helper.HELPER.logDirect("Unable to parse line " + line);
-                    ex.printStackTrace();
-                }
-            });
+            forEachLine(settingsByName(settingsName), line -> applyLine(settings, line));
         } catch (NoSuchFileException ignored) {
             Helper.HELPER.logDirect("Baritone settings file not found, resetting.");
         } catch (Exception ex) {

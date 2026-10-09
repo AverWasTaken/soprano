@@ -2005,7 +2005,7 @@ public final class Settings {
     public final Setting<Boolean> altoKillOrAvoidAnnoyingHostiles = new Setting<>(true);
 
     /**
-     * How many melee mobs within six blocks make a crowd. A crowd is not fought on the spot: the bot runs. Below this it
+     * How many angry mobs within six blocks make a crowd. A crowd is not fought on the spot: the bot runs. Below this it
      * fights where it stands. Needs {@link #altoKillOrAvoidAnnoyingHostiles}.
      */
     public final Setting<Integer> altoSwarmThreshold = new Setting<>(3);

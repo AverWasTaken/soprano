@@ -44,6 +44,14 @@ public class CommittedRunTask extends CustomBaritoneGoalTask {
     }
 
     @Override
+    protected void onStart(AltoClef mod) {
+        super.onStart(mod);
+        // an interrupt (a fall, a lava escape) restarts this same object and cancels baritone's path: the gap belongs to the
+        // path that just got cancelled, so the first ask afterwards always goes through
+        _lastIssue = Long.MIN_VALUE / 2;
+    }
+
+    @Override
     protected boolean mayIssueGoal(AltoClef mod) {
         long now = mod.getWorld().getGameTime();
         if (!mayReissue(now, _lastIssue)) return false;

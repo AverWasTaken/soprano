@@ -38,11 +38,21 @@ public final class FoeRules {
         // something that hit us can hurt us, no questions. the rest has to be able to get at us (or shoot)
         if (c.sinceHit() > CombatCommit.HIT_MEMORY && !c.canHarm().getAsBoolean()) return null;
         Kind kind = kindOf(dimension, c.type());
-        // a blaze shoots, so it counts from where a shooter stands (the warden's sonic boom is handled by its kind). a wither
-        // skeleton is a skeleton by class and a swordsman by trade: it only ever hits from where it stands next to us, and as
-        // a "shooter" its first swing would never count as contact
-        boolean ranged = (c.ranged() && !c.type().equals("wither_skeleton")) || kind == Kind.FLYER;
-        return new Foe(c.id(), c.distance(), ranged, c.creeper(), c.sinceHit(), kind);
+        return new Foe(c.id(), c.distance(), shoots(c.type(), c.ranged(), kind), c.creeper(), c.sinceHit(), kind);
+    }
+
+    // does it count from where a shooter stands. a blaze shoots (the warden's sonic boom is handled by its kind). a wither
+    // skeleton is a skeleton by class and a swordsman by trade: it only ever hits from where it stands next to us, and as a
+    // "shooter" its first swing would never count as contact. classRanged is what the class says (MobReachability.isRanged)
+    public static boolean shoots(String type, boolean classRanged, Kind kind) {
+        return (classRanged && !type.equals("wither_skeleton")) || kind == Kind.FLYER;
+    }
+
+    // may the aura swing at this one. the fight target and what is hitting us in contact (brainSwingsAt), and anything a task
+    // asked mob defense to stay out of but did not take off the aura's list: the rod task keeps blazes out of the chain and only
+    // takes them off the aura beyond 3.5 blocks, so one next to us is the aura's to hit
+    public static boolean auraMaySwingAt(boolean brainSwingsAt, boolean leftToATask) {
+        return brainSwingsAt || leftToATask;
     }
 
     // species that the chain stays out of in this dimension. the ghast cannot be walked up to and its fireballs are the aura's

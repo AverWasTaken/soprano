@@ -11,6 +11,7 @@ import adris.altoclef.util.baritone.CachedProjectile;
 import adris.altoclef.util.helpers.CombatCommit;
 import adris.altoclef.util.helpers.CombatRules;
 import adris.altoclef.util.helpers.EntityHelper;
+import adris.altoclef.util.helpers.FoeRules;
 import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.ProjectileHelper;
 import adris.altoclef.util.helpers.StorageHelper;
@@ -346,8 +347,11 @@ public class MobDefenseChain extends SingleTaskChain {
                     if (mod.getBehaviour().shouldExcludeFromForcefield(entity)) continue;
                     if (entity instanceof Mob) {
                         if (EntityHelper.isGenerallyHostileToPlayer(mod, entity)) {
-                            // the aura swings at the fight target and at what is hitting us in contact, nothing else
-                            if (LookHelper.seesPlayer(entity, mod.getPlayer(), 10) && _brain.swingsAt(entity.getId())) {
+                            // the aura swings at the fight target and at what is hitting us in contact, nothing else. and at
+                            // what a task kept out of mob defense without taking it off the aura (a blaze beside us in
+                            // the rod task), that one is the aura's by the task's own say
+                            if (LookHelper.seesPlayer(entity, mod.getPlayer(), 10)
+                                    && FoeRules.auraMaySwingAt(_brain.swingsAt(entity.getId()), mod.getBehaviour().shouldExcludeFromMobDefense(entity))) {
                                 shouldForce = true;
                             }
                         }
@@ -406,8 +410,8 @@ public class MobDefenseChain extends SingleTaskChain {
     private boolean isProjectileClose(AltoClef mod, boolean react) {
         List<CachedProjectile> projectiles = mod.getEntityTracker().getProjectiles();
         // a run keeps walking: stopping to turn round for a fireball is how the ghast gets a free volley on a bot that was
-        // leaving
-        boolean running = _brain.mode() == CombatCommit.Mode.RUN;
+        // leaving. a fight keeps swinging at its target for the same reason, only an idle chain stops to face the shooter
+        boolean committed = _brain.mode() != CombatCommit.Mode.NONE;
         try {
             if (!projectiles.isEmpty()) {
                 for (CachedProjectile projectile : projectiles) {
@@ -416,7 +420,7 @@ public class MobDefenseChain extends SingleTaskChain {
                         if (isGhastBall) {
                             Optional<Entity> ghastBall = mod.getEntityTracker().getClosestEntity(LargeFireball.class);
                             Optional<Entity> ghast = mod.getEntityTracker().getClosestEntity(Ghast.class);
-                            if (ghastBall.isPresent() && ghast.isPresent() && !running && _runAwayTask == null
+                            if (ghastBall.isPresent() && ghast.isPresent() && !committed && _runAwayTask == null
                                     && mod.getClientBaritone().getPathingBehavior().isSafeToCancel()) {
                                 mod.getClientBaritone().getPathingBehavior().requestPause();
                                 LookHelper.lookAt(mod, ghast.get().getEyePosition());
@@ -449,7 +453,7 @@ public class MobDefenseChain extends SingleTaskChain {
                         double verticalDistance = abs(delta.y);
                         if (horizontalDistanceSq < ARROW_KEEP_DISTANCE_HORIZONTAL * ARROW_KEEP_DISTANCE_HORIZONTAL && verticalDistance < ARROW_KEEP_DISTANCE_VERTICAL) {
                             // (a fight keeps walking at its target: no pause, no turning round to face the shooter)
-                            if (react && !running && _brain.mode() != CombatCommit.Mode.FIGHT && _runAwayTask == null
+                            if (react && !committed && _runAwayTask == null
                                     && mod.getClientBaritone().getPathingBehavior().isSafeToCancel()) {
                                 mod.getClientBaritone().getPathingBehavior().requestPause();
                                 if (projectile.projectileType instanceof Projectile projectileEntity) {

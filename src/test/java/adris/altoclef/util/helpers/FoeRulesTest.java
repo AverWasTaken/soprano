@@ -216,6 +216,27 @@ public class FoeRulesTest {
     }
 
     @Test
+    public void theFightTargetLookedUpOnItsOwnShootsTheSameWayAsAFoe() {
+        // CombatBrain builds the fight target outside the foe list and asks the same question
+        assertFalse(FoeRules.shoots("wither_skeleton", true, Kind.HEAVY));
+        assertTrue(FoeRules.shoots("skeleton", true, Kind.NORMAL));
+        assertTrue(FoeRules.shoots("blaze", false, Kind.FLYER));
+        assertFalse(FoeRules.shoots("zombie", false, Kind.NORMAL));
+        assertFalse(FoeRules.shoots("warden", false, Kind.UNTOUCHABLE));
+    }
+
+    @Test
+    public void theAuraKeepsSwingingAtABlazeBesideUsWhileTheRodTaskHasItOutOfMobDefense() {
+        // the rod task excludes blazes from mob defense and only takes them off the aura beyond 3.5 blocks: one beside us is
+        // the aura's, whether or not the chain's own swing list has it (it never will, an excluded mob is not a foe)
+        assertTrue(FoeRules.auraMaySwingAt(false, true));
+        assertTrue(FoeRules.auraMaySwingAt(true, false));
+        assertTrue(FoeRules.auraMaySwingAt(true, true));
+        // a hostile nobody is fighting and nobody hit us with is left alone
+        assertFalse(FoeRules.auraMaySwingAt(false, false));
+    }
+
+    @Test
     public void theWardenAndTheWitherAreNeverAFight() {
         for (String type : new String[]{"warden", "wither"}) {
             Foe foe = accept(Dimension.OVERWORLD, mob(type, 4));

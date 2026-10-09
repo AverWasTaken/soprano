@@ -77,6 +77,22 @@ public class CombatCommitEdgesTest {
     }
 
     @Test
+    public void aCorneredFightNeverChainsIntoAWardenTouchingUs() {
+        CombatCommit commit = new CombatCommit();
+        Foe z = zombie(1, 1.5, 3);
+        assertEquals(Event.RUN_START, commit.step(tick(100, 6, true, null, false, z)));
+        Event event = Event.NONE;
+        for (long t = 101; t <= 101 + CombatCommit.CORNER_TICKS + 1 && event == Event.NONE; t++) {
+            event = commit.step(tick(t, 6, true, null, false, z));
+        }
+        assertEquals(Event.RUN_TO_FIGHT, event);
+        // the zombie dies with a warden standing on us: the fight is over, nothing is chained to the warden
+        Foe warden = new Foe(9, 2, false, false, NEVER, CombatCommit.Kind.UNTOUCHABLE);
+        assertEquals(Event.FIGHT_DEAD, commit.step(tick(400, 6, true, null, false, warden)));
+        assertEquals(Mode.NONE, commit.mode());
+    }
+
+    @Test
     public void aRunWithNobodyNearStillEndsAtTheCapShortOfFiftyBlocks() {
         CombatCommit commit = new CombatCommit();
         assertEquals(Event.RUN_START, commit.step(tick(100, 5, true, null, false, zombie(1, 6, NEVER))));

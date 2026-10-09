@@ -430,9 +430,10 @@ public final class CombatCommit {
     private Foe nextTarget(Tick t) {
         Foe best = null;
         if (cornered) {
-            // still boxed in: whatever is touching us
+            // still boxed in: whatever is touching us (bar the one thing that is never a fight)
             for (Foe foe : t.foes()) {
-                if (foe.id() != targetId && foe.distance() <= CORNER_RANGE && (best == null || foe.distance() < best.distance())) best = foe;
+                if (foe.id() != targetId && foe.kind() != Kind.UNTOUCHABLE && foe.distance() <= CORNER_RANGE
+                        && (best == null || foe.distance() < best.distance())) best = foe;
             }
             return best;
         }
@@ -514,10 +515,11 @@ public final class CombatCommit {
         if (stuck < CORNER_TICKS || (nearest > CORNER_RANGE && stuck < CORNER_FAR_TICKS)) return Event.NONE;
         // nowhere to go and it is close: armed or not, hurt or not, this is a fight. on top of us anything will do. further out
         // only something we could walk up to and hit: no creeper, and nothing we already gave up on (a skeleton across water that
-        // stalled a fight would be picked again every six seconds, with a run in between, for as long as we stood there)
+        // stalled a fight would be picked again every six seconds, with a run in between, for as long as we stood there).
+        // the warden is the exception to "anything will do": never a fight in any state, boxed in or not
         Foe closest = null;
         for (Foe foe : t.foes()) {
-            if (foe.distance() > CORNER_WATCH) continue;
+            if (foe.distance() > CORNER_WATCH || foe.kind() == Kind.UNTOUCHABLE) continue;
             if (foe.distance() > CORNER_RANGE && (foe.creeper() || ignored.containsKey(foe.id()))) continue;
             if (closest == null || foe.distance() < closest.distance()) closest = foe;
         }
