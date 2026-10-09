@@ -111,6 +111,16 @@ public class CombatCommitChasedTest {
     }
 
     @Test
+    public void aWardenAboutAtTheSecondCapSkipsTheFightAndRunsAgain() {
+        Foe[] foes = {zombie(1, 2), warden(2, 7)};
+        CombatCommit c = extendedRun(foes);
+        holds(c, NOW + CAP + 1, NOW + 2 * CAP - 1, 7, foes);
+        assertEquals(Event.RUN_START, c.step(tick(NOW + 2 * CAP, 7, 0, foes)));
+        assertEquals(Event.RUN_CAP, c.endedFirst());
+        assertEquals(Why.HEAVY, c.why());
+    }
+
+    @Test
     public void onlyACreeperAtRangeLeftAtTheSecondCapJustEndsTheRun() {
         CombatCommit c = extendedRun(creeper(2, 5));
         holds(c, NOW + CAP + 1, NOW + 2 * CAP - 1, 7, creeper(2, 5));

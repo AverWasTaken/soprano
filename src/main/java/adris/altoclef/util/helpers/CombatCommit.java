@@ -540,7 +540,8 @@ public final class CombatCommit {
         Foe chaser = chaser(t);
         // nobody to turn on: the warden (danger starts the next run on the same step), or only a creeper at range or mobs we
         // gave up on (the run just ends, the cooldown waits for one of them to get on us or hit us)
-        if (chaser == null) return end(t, Event.RUN_CAP);
+        // and with danger about a fight would only bail again on the next step, so it is the next run straight away
+        if (chaser == null || anyDanger(t)) return end(t, Event.RUN_CAP);
         return startFight(t, chaser, Why.CHASED, Event.RUN_CHASED_FIGHT, true);
     }
 
