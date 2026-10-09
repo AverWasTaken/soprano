@@ -228,7 +228,8 @@ public class SmeltInSmokerTask extends ResourceTask implements AsyncSmelting.Han
             // We don't have enough materials...
             if (mod.getItemStorage().getItemCountInventoryOnly(materialTarget.getMatches()) < materialsNeeded) {
                 setDebugState("Getting Materials");
-                return getMaterialTask(_target.getMaterial());
+                // the shortfall, not the whole target, same as the furnace
+                return getMaterialTask(new ItemTarget(_target.getMaterial(), materialsNeeded));
             }
 
             // We don't have enough fuel...
