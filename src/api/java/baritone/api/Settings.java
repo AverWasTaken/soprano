@@ -1431,6 +1431,15 @@ public final class Settings {
     public final Setting<Boolean> cancelOnGoalInvalidation = new Setting<>(true);
 
     /**
+     * When a task hands over to another one that asks for the same goal within half a second, keep walking the path that
+     * was just cancelled instead of standing still while a new one is calculated.
+     * <p>
+     * Only cancels from movement tasks starting and stopping are kept. A user cancel, a dimension change, a death or the
+     * player ending up off the path always throw it away.
+     */
+    public final Setting<Boolean> keepPathOnSameGoal = new Setting<>(true);
+
+    /**
      * The "axis" command (aka GoalAxis) will go to a axis, or diagonal axis, at this Y level.
      */
     public final Setting<Integer> axisHeight = new Setting<>(120);

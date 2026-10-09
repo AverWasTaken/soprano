@@ -7,6 +7,8 @@ import net.minecraft.core.Direction;
 import net.minecraft.core.Vec3i;
 import net.minecraft.world.phys.Vec3;
 
+import java.util.Objects;
+
 public class GoalBlockSide implements Goal {
 
     private final BlockPos _block;
@@ -42,5 +44,17 @@ public class GoalBlockSide implements Goal {
         // WE ASSUME THAT dir IS NORMALIZED
         double distCorrect = dot;
         return distCorrect - this._buffer;
+    }
+
+    // made fresh per ask, equal by what it means, for the path a handover parked
+    @Override
+    public boolean equals(Object o) {
+        return o instanceof GoalBlockSide other && other._block.equals(_block) && other._direction == _direction
+                && Double.compare(other._buffer, _buffer) == 0;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(_block, _direction, _buffer);
     }
 }

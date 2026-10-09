@@ -175,9 +175,15 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
         cancelPath(mod);
     }
 
-    // how the path gets dropped when this task starts and stops: hard, mid movement or not. CommittedRunTask is softer in the air
+    // how the path gets dropped when this task starts and stops. another chain taking over (a fight, a fall, food) is a real
+    // stop and the path is not ours to keep. anything else is a handover: if the next task walks to the same goal,
+    // PathingBehavior keeps the path (keepPathOnSameGoal). CommittedRunTask overrides this to stay soft in the air
     protected void cancelPath(AltoClef mod) {
-        mod.getClientBaritone().getPathingBehavior().forceCancel();
+        if (isInterrupting()) {
+            mod.getClientBaritone().getPathingBehavior().forceCancel();
+        } else {
+            mod.getClientBaritone().getPathingBehavior().handoverCancel();
+        }
     }
 
     // fresh goals have never seen the world, so give them their first look right away

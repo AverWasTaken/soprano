@@ -23,4 +23,15 @@ public class GoalChunk implements Goal {
         double cx = (_pos.getMinBlockX() + _pos.getMaxBlockX()) / 2.0, cz = (_pos.getMinBlockZ() + _pos.getMaxBlockZ()) / 2.0;
         return GoalXZ.calculate(cx - x, cz - z);
     }
+
+    // made fresh per ask, equal by the chunk, for the path a handover parked
+    @Override
+    public boolean equals(Object o) {
+        return o instanceof GoalChunk other && other._pos.equals(_pos);
+    }
+
+    @Override
+    public int hashCode() {
+        return _pos.hashCode();
+    }
 }

@@ -57,4 +57,15 @@ public class GoalReachBlock implements Goal, IGoalRenderPos {
     public String toString() {
         return String.format("GoalReachBlock{x=%s,y=%s,z=%s}", SettingsUtil.maybeCensor(x), SettingsUtil.maybeCensor(y), SettingsUtil.maybeCensor(z));
     }
+
+    // DestroyBlockTask's goal, made fresh per ask. equal by the block, for the path a handover parked
+    @Override
+    public boolean equals(Object o) {
+        return o instanceof GoalReachBlock other && other.x == x && other.y == y && other.z == z;
+    }
+
+    @Override
+    public int hashCode() {
+        return (x * 31 + y) * 31 + z;
+    }
 }

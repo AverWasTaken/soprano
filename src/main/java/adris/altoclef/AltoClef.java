@@ -491,6 +491,8 @@ public class AltoClef {
      */
     public void cancelUserTask() {
         _userTaskChain.cancel(this);
+        // the movement task's stop parked its path for a handover (keepPathOnSameGoal), a user stop is not one
+        getClientBaritone().getPathingBehavior().dropPark();
     }
 
     /**

@@ -84,7 +84,8 @@ public class GetToEntityTask extends Task implements ITaskRequiresGrounded {
 
     @Override
     protected void onStart(AltoClef mod) {
-        mod.getClientBaritone().getPathingBehavior().forceCancel();
+        // same handover as CustomBaritoneGoalTask, GoalFollowEntity has an equals for it
+        mod.getClientBaritone().getPathingBehavior().handoverCancel();
         _progress.reset();
         stuckCheck.reset();
         _wanderTask.resetWander();
@@ -172,7 +173,11 @@ public class GetToEntityTask extends Task implements ITaskRequiresGrounded {
     @Override
     protected void onStop(AltoClef mod, Task interruptTask) {
         _calcWatch.disarm();
-        mod.getClientBaritone().getPathingBehavior().forceCancel();
+        if (isInterrupting()) {
+            mod.getClientBaritone().getPathingBehavior().forceCancel();
+        } else {
+            mod.getClientBaritone().getPathingBehavior().handoverCancel();
+        }
     }
 
     @Override

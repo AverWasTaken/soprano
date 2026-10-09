@@ -106,6 +106,7 @@ All off by default unless it says otherwise.
 - `sprintThroughDescends` (on by default, keeps sprinting off a ledge or step when the path carries on roughly the same way and the cells you coast over after landing are safe: no lava, fire, magma, powder snow, cactus, berry bushes, water or void, and no drop deeper than the planned one)
 - `sprintThroughCorners` (on by default, keeps sprinting through turns of 60 degrees or less and starts turning a fraction of a block early so the corner gets cut instead of clipped. Both of these stay off in the nether, near lava, at 6 health or less and next to anything placing or breaking blocks)
 - `keepFpsWhileBotting` (on by default, counts the bot working as keyboard and mouse input for the game's AFK frame limiter, so the frame rate does not drop to 30 while you watch it. Does nothing while the bot is idle)
+- `keepPathOnSameGoal` (on by default, when one AltoClef task hands over to another that wants the same goal, keeps walking the path instead of standing still while a new one is calculated)
 - `shortBaritonePrefix` (use `[S]` instead of `[Soprano]` in chat messages)
 
 `experimentalMovement` is the "just go fast" switch. It turns on all the parkour (neos, climb jumps and momentum jumps too), diagonal ascends and descends, sprint jumping, head hitters, ground shortcuts and faster pathing, takes falls that cost some health when that saves time, cuts corners, smooths straight runs, places blocks more freely and leans toward jumps. If you'd rather pick features one by one, leave it off and use the settings above.

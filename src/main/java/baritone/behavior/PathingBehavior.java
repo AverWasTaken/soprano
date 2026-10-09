@@ -76,6 +76,15 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
 
     private final LinkedBlockingQueue<PathEvent> toDispatch = new LinkedBlockingQueue<>();
 
+    // the path a movement task's handover just cancelled, in case the next task asks for the same goal (PathKeep). any
+    // other cancel throws it away
+    private record Park(PathExecutor path, long tick, Object world, Object player) {
+    }
+
+    private Park park;
+    // our own tick count for the park's age, ticksElapsedSoFar gets reset by the eta
+    private long tickCount;
+
     public PathingBehavior(Baritone baritone) {
         super(baritone);
     }
@@ -95,6 +104,7 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
 
     @Override
     public void onTick(TickEvent event) {
+        tickCount++;
         dispatchEvents();
         if (event.getType() == TickEvent.Type.OUT) {
             secretInternalSegmentCancel();
@@ -280,11 +290,34 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
                 if (inProgress != null) {
                     return false;
                 }
+                if (unpark()) {
+                    return true;
+                }
                 queuePathEvent(PathEvent.CALC_STARTED);
                 findPathInNewThread(expectedSegmentStart, true, context);
                 return true;
             }
         }
+    }
+
+    // the parked path back as current, when PathKeep says it is still ours. the park is used up either way. the keys and the
+    // block breaking that the cancel let go of come back on the executor's next tick, same as coming back from a pause
+    private boolean unpark() {
+        Park p = park;
+        park = null;
+        if (p == null || p.path().failed() || p.path().finished()) {
+            return false;
+        }
+        IPath path = p.path().getPath();
+        boolean back = PathKeep.restore(Baritone.settings().keepPathOnSameGoal.value, goal.equals(path.getGoal()), tickCount - p.tick(),
+                path.positions().contains(ctx.playerFeet()), ctx.world() == p.world(), ctx.player() == p.player());
+        if (!back) {
+            return false;
+        }
+        logDebug("Same goal as the path a handover just cancelled, carrying on with it");
+        current = p.path();
+        next = null;
+        return true;
     }
 
     @Override
@@ -333,6 +366,8 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
 
     @Override
     public boolean cancelEverything() {
+        // the user's cancel (and everything else that comes through here) is never a handover
+        dropPark();
         boolean doIt = isSafeToCancel();
         if (doIt) {
             secretInternalSegmentCancel();
@@ -352,6 +387,7 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
 
     public void softCancelIfSafe() {
         synchronized (pathPlanLock) {
+            park = null;
             getInProgress().ifPresent(AbstractNodeCostSearch::cancel); // only cancel ours
             if (!isSafeToCancel()) {
                 return;
@@ -367,6 +403,7 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
     public void secretInternalSegmentCancel() {
         queuePathEvent(PathEvent.CANCELED);
         synchronized (pathPlanLock) {
+            park = null;
             getInProgress().ifPresent(AbstractNodeCostSearch::cancel);
             if (current != null) {
                 current = null;
@@ -383,6 +420,29 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
         secretInternalSegmentCancel();
         synchronized (pathCalcLock) {
             inProgress = null;
+        }
+    }
+
+    // forceCancel for an alto movement task starting or stopping, the one cancel that parks the path (PathKeep). a stop and
+    // the next task's start are two cancels in the same tick, so the second one (with nothing left to park) keeps the
+    // first one's park. NOT exposed on public api
+    public void handoverCancel() {
+        PathExecutor keep = current;
+        Park before = park;
+        forceCancel();
+        if (!Baritone.settings().keepPathOnSameGoal.value || ctx.player() == null) {
+            return;
+        }
+        synchronized (pathPlanLock) {
+            park = keep != null ? new Park(keep, tickCount, ctx.world(), ctx.player()) : before;
+        }
+    }
+
+    // a stop that is nobody's handover (the user stopping the task) says so, so the stop's own handoverCancel can't leave a
+    // path lying around for the next half second. NOT exposed on public api
+    public void dropPark() {
+        synchronized (pathPlanLock) {
+            park = null;
         }
     }
 
