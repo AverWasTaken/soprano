@@ -7,14 +7,13 @@ package adris.altoclef.util.helpers;
 // vanilla cannot swing a sword while chewing. a piglin was very happy about this
 public final class CombatRules {
 
-    // creepers ruin your day from further than most things
+    // a lit fuse this close and we do not sit down to eat. we do not run from it either, walking past is faster
     public static final double CREEPER_RANGE = 10;
-    // a lit fuse this close is not scenery any more, the chain steps away from it
-    public static final double CREEPER_NO_IGNORE = 7;
 
-    // an angry melee mob this close is hitting us whatever the history says, and "is it on top of us" generally
+    // "is it on top of us": the only range a fight starts from (it also has to have hit us), and the corner rule's
     public static final double CONTACT_RANGE = 3;
-    // angry mobs this close count towards a crowd
+    // melee mobs this close make a crowd for the weapon pick and the crits. not a reason to run any more, just to swing
+    // for damage per second
     public static final double SWARM_RANGE = 6;
     // at or below FLEE_HEALTH anything angry this close is a reason to leave
     public static final double LOW_HP_RANGE = 8;

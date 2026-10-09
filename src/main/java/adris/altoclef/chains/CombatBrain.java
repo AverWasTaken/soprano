@@ -2,7 +2,6 @@ package adris.altoclef.chains;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
-import adris.altoclef.tasks.entity.AbstractKillEntityTask;
 import adris.altoclef.tasks.entity.KillEntityTask;
 import adris.altoclef.tasks.movement.CommittedRunTask;
 import adris.altoclef.tasksystem.Task;
@@ -19,7 +18,6 @@ import adris.altoclef.util.helpers.FoeRules;
 import adris.altoclef.util.helpers.MobReachability;
 import adris.altoclef.util.helpers.Provocations;
 import adris.altoclef.util.helpers.WorldHelper;
-import baritone.Baritone;
 import baritone.api.utils.Dimension;
 import java.util.ArrayList;
 import java.util.ConcurrentModificationException;
@@ -45,13 +43,12 @@ final class CombatBrain {
     // kill (65) and flee (80) branches used, so nothing that was ordered against them moved
     static final float FIGHT_PRIORITY = 65;
     static final float RUN_PRIORITY = 80;
-    // the tracker's hostile list does not reach past 16 anyway (it keeps mobs closer than 16), and a shooter that hit us
-    // engages out to 15, so this stays 16 even though a run now calls 12 clear. not RUN_CLEAR, that one moves
+    // the tracker's hostile list does not reach past 16 anyway (it keeps mobs closer than 16), and the warden's boom
+    // counts out to 15 (CombatCommit.BOOM_RANGE), so this stays 16 even though a run now calls 12 clear
     private static final double FOE_RANGE = 16;
 
     private final CombatCommit _commit = new CombatCommit();
-    // this tick's angry hostiles, nearest first, and the entities they came from
-    private List<Foe> _foes = List.of();
+    // this tick's angry hostiles as entities, nearest first (the run goal steers around them)
     private List<Mob> _foeMobs = List.of();
     // who the aura may swing at: the fight target and anything in contact that has hit us
     private final Set<Integer> _swingAt = new HashSet<>();
@@ -113,7 +110,6 @@ final class CombatBrain {
 
     void reset() {
         _commit.reset();
-        _foes = List.of();
         _foeMobs = List.of();
         _swingAt.clear();
         _stance = CombatRules.Stance.CALM;
@@ -134,7 +130,7 @@ final class CombatBrain {
                 // the same task object for the whole fight, a new one each tick would restart its stuck checks
                 if (_fight == null || _fightId != target.getId() || _fight.stopped()) {
                     _fight = new KillEntityTask(target);
-                    // armed includes a pickaxe, so the fight has to be willing to swing one
+                    // no sword or axe is still a fight, and a pickaxe beats a fist
                     _fight.useToolsWhenUnarmed();
                     _fightId = target.getId();
                 }
@@ -156,10 +152,10 @@ final class CombatBrain {
         return new ArrayList<>(_foeMobs);
     }
 
-    // one game tick. fuseNear: a lit creeper close by, the chain is stepping away from it so the fight's clocks sit still.
-    // creeperClose: the wider ring that keeps us from sitting down to a meal next to one. enabled: false is the off switch
-    // (altoCommitCombat), the foes are still worked out for the stance and the crit counts but nothing is ever committed to
-    void tick(AltoClef mod, long now, boolean fuseNear, boolean creeperClose, boolean enabled) {
+    // one game tick. creeperClose: a lit creeper close enough that we do not sit down to a meal next to it (we do not
+    // run from it either, the task walks on). enabled: false is the off switch (altoCommitCombat), the foes are still
+    // worked out for the stance and the crit counts but nothing is ever committed to
+    void tick(AltoClef mod, long now, boolean creeperClose, boolean enabled) {
         LocalPlayer player = mod.getPlayer();
         Dimension dimension = WorldHelper.getCurrentDimension();
         // a new player is a respawn or a new world, and a new dimension is a new world too: whatever we were committed to
@@ -190,7 +186,6 @@ final class CombatBrain {
         }
         sortNearestFirst(mobs, foes);
         _foeMobs = mobs;
-        _foes = foes;
 
         Foe target = null;
         if (_commit.mode() == Mode.FIGHT) {
@@ -203,12 +198,8 @@ final class CombatBrain {
         // the name is remembered while the target is alive, a dead mob is already gone from the world by the time we say so
         if (target != null && _commit.mode() == Mode.FIGHT) _fightName = nameOf(mod, _commit.targetId());
         String fighting = _fightName;
-        int crowdSize = Math.max(1, Baritone.settings().altoSwarmThreshold.value);
-        // (a scan of the bag every tick is for nobody when nothing is around and nothing is going on)
-        boolean armed = foes.isEmpty() && _commit.mode() == Mode.NONE || AbstractKillEntityTask.canFight(mod);
         if (enabled) {
-            Event event = _commit.step(new CombatCommit.Tick(now, player.getHealth(), armed, player.getX(), player.getZ(), crowdSize,
-                    foes, target, fuseNear));
+            Event event = _commit.step(new CombatCommit.Tick(now, player.getHealth(), player.getX(), player.getZ(), foes, target));
             if (event != Event.NONE) {
                 log(mod, dimension, event, fighting, mobs);
                 // a new run is a new origin, a new fight is a new target, whatever the old ones were
@@ -233,7 +224,7 @@ final class CombatBrain {
             if (foe.hitUs() && foe.distance() <= CombatCommit.CONTACT) _swingAt.add(foe.id());
             if (!foe.melee()) continue;
             if (foe.distance() <= CombatCommit.CONTACT) meleeNear++;
-            if (foe.distance() <= CombatCommit.CROWD_RANGE) meleeAround++;
+            if (foe.distance() <= CombatRules.SWARM_RANGE) meleeAround++;
         }
         if (_commit.mode() == Mode.FIGHT) _swingAt.add(_commit.targetId());
         _meleeNear = meleeNear;
@@ -268,7 +259,7 @@ final class CombatBrain {
     private void log(AltoClef mod, Dimension dimension, Event event, String fighting, List<Mob> mobs) {
         LocalPlayer player = mod.getPlayer();
         String line = CombatLog.line(dimension, event, _commit.why(), _commit.cornered(), nameOf(mod, _commit.targetId()), fighting,
-                describe(mobs), CombatCommit.crowd(_foes), Math.round(player.getHealth()),
+                describe(mobs), Math.round(player.getHealth()),
                 (int) Math.round(Math.hypot(player.getX() - _commit.originX(), player.getZ() - _commit.originZ())));
         if (line != null) Debug.logInternal(line);
     }

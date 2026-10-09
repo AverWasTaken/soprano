@@ -62,12 +62,6 @@ public abstract class AbstractKillEntityTask extends AbstractDoToEntityTask {
         return false;
     }
 
-    // armed, as far as deciding to fight goes: a sword or an axe, or failing that anything that hits harder than a fist
-    // (a pickaxe, a shovel). a bot with only a pickaxe fights the lone zombie that hits it, it does not run 24 blocks
-    public static boolean canFight(AltoClef mod) {
-        return WeaponPick.bestOrTool(candidates(mod), false, false) != null;
-    }
-
     // the hand first, so it wins ties and we don't swap between two equal weapons
     private static List<WeaponPick.Candidate> candidates(AltoClef mod) {
         List<ItemStack> invStacks = mod.getItemStorage().getItemStacksPlayerInventory(true);
@@ -104,7 +98,7 @@ public abstract class AbstractKillEntityTask extends AbstractDoToEntityTask {
         return false;
     }
 
-    // a defensive fight swings a pickaxe rather than punch when there is no sword or axe (canFight says armed for it)
+    // a defensive fight swings a pickaxe rather than punch when there is no sword or axe
     public void useToolsWhenUnarmed() {
         _toolFallback = true;
     }

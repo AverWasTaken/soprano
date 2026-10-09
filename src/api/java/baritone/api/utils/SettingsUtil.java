@@ -60,7 +60,8 @@ public class SettingsUtil {
     private static final Pattern SETTING_PATTERN = Pattern.compile("^(?<setting>[^ ]+) +(?<value>.*)");
     // settings that are gone. a settings file from before still names them, and "Unable to parse line" with a stack trace for a
     // line that is just old is noise: they are skipped without a word (lowercase, like the lookup)
-    private static final Set<String> RETIRED = Set.of("altohostileengagerange", "altohostileengageheight", "altopassbygraceticks");
+    private static final Set<String> RETIRED = Set.of("altohostileengagerange", "altohostileengageheight", "altopassbygraceticks",
+            "altoswarmthreshold");
 
     /**
      * Whether a setting name (any case) belonged to a setting that has since been removed, so reading an old settings file

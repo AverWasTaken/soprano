@@ -14,7 +14,7 @@ import org.junit.Test;
 public class CombatLogTest {
 
     private static String line(Dimension d, Event event, Why why) {
-        return CombatLog.line(d, event, why, false, "zombie", "zombie", "2 zombies, 1 skeleton", 3, 14, 52);
+        return CombatLog.line(d, event, why, false, "zombie", "zombie", "2 zombies, 1 skeleton", 14, 52);
     }
 
     @Test
@@ -51,22 +51,17 @@ public class CombatLogTest {
 
     @Test
     public void theFightLinesNameTheTargetAndTheHp() {
-        assertEquals("combat: [nether] FIGHT zombie (hit us, armed, hp 14)", line(Dimension.NETHER, Event.FIGHT_START, Why.HIT));
-        assertEquals("combat: [overworld] FIGHT zombie (in contact, armed, hp 14)", line(Dimension.OVERWORLD, Event.FIGHT_START, Why.CONTACT));
+        assertEquals("combat: [nether] FIGHT zombie (hit us, hp 14)", line(Dimension.NETHER, Event.FIGHT_START, Why.HIT));
         assertEquals("combat: [end] target dead, next zombie (hit us, hp 14)", line(Dimension.END, Event.FIGHT_NEXT, Why.HIT));
         assertEquals("combat: [end] cornered, next zombie",
-                CombatLog.line(Dimension.END, Event.FIGHT_NEXT, Why.CORNERED, true, "zombie", "zombie", "", 0, 14, 0));
+                CombatLog.line(Dimension.END, Event.FIGHT_NEXT, Why.CORNERED, true, "zombie", "zombie", "", 14, 0));
         assertEquals("combat: [nether] cornered, fighting zombie", line(Dimension.NETHER, Event.RUN_TO_FIGHT, Why.CORNERED));
     }
 
     @Test
     public void theRunLinesNameTheCrowdAndTheReason() {
         assertEquals("combat: [nether] RUN from 2 zombies, 1 skeleton (hp 14)", line(Dimension.NETHER, Event.RUN_START, Why.LOW_HP));
-        assertEquals("combat: [nether] RUN from 2 zombies, 1 skeleton (unarmed, hp 14)", line(Dimension.NETHER, Event.RUN_START, Why.UNARMED));
-        assertEquals("combat: [nether] RUN from 2 zombies, 1 skeleton (crowd of 3, hp 14)", line(Dimension.NETHER, Event.RUN_START, Why.CROWD));
         assertEquals("combat: [nether] RUN from 2 zombies, 1 skeleton (something nasty close, hp 14)", line(Dimension.NETHER, Event.RUN_START, Why.HEAVY));
-        assertEquals("combat: [nether] RUN from 2 zombies, 1 skeleton (it hit us and we can't get to it, hp 14)",
-                line(Dimension.NETHER, Event.RUN_START, Why.UNREACHABLE));
         assertEquals("combat: [overworld] FIGHT -> RUN from 2 zombies, 1 skeleton (hp 14)", line(Dimension.OVERWORLD, Event.FIGHT_TO_RUN, Why.LOW_HP));
     }
 

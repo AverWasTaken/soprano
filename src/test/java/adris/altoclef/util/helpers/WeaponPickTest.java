@@ -151,32 +151,31 @@ public class WeaponPickTest {
         assertEquals(0.8f, ItemHelper.getAttackSpeed(Items.WOODEN_AXE), 1e-4);
     }
 
-    // ---- armed means anything better than fists
+    // ---- a tool beats fists
 
     @Test
     public void aPickaxeOnlyBagIsNotAWeaponButItIsAToolThatBeatsFists() {
         assertNull(WeaponPick.best(List.of(fresh(Items.IRON_PICKAXE))));
         assertSame(Items.IRON_PICKAXE, WeaponPick.bestTool(List.of(fresh(Items.IRON_PICKAXE))));
-        assertSame(Items.IRON_PICKAXE, WeaponPick.bestOrTool(List.of(fresh(Items.IRON_PICKAXE)), false, false));
         assertTrue(ItemHelper.hitsHarderThanFists(Items.WOODEN_PICKAXE));
     }
 
     @Test
     public void shovelsCountToo() {
-        assertSame(Items.WOODEN_SHOVEL, WeaponPick.bestOrTool(List.of(fresh(Items.WOODEN_SHOVEL)), false, false));
+        assertSame(Items.WOODEN_SHOVEL, WeaponPick.bestTool(List.of(fresh(Items.WOODEN_SHOVEL))));
     }
 
     @Test
-    public void aBagWithNothingBetterThanFistsIsUnarmed() {
-        assertNull(WeaponPick.bestOrTool(List.of(), false, false));
-        assertNull(WeaponPick.bestOrTool(List.of(fresh(Items.STICK), fresh(Items.BREAD), fresh(Items.DIRT), fresh(Items.COBBLESTONE)), false, false));
+    public void aBagWithNothingBetterThanFistsHasNoTool() {
+        assertNull(WeaponPick.bestTool(List.of()));
+        assertNull(WeaponPick.bestTool(List.of(fresh(Items.STICK), fresh(Items.BREAD), fresh(Items.DIRT), fresh(Items.COBBLESTONE))));
         assertFalse(ItemHelper.hitsHarderThanFists(Items.STICK));
         assertFalse(ItemHelper.hitsHarderThanFists(Items.AIR));
     }
 
     @Test
     public void anyWeaponBeatsAnyToolAndTheHarderToolBeatsTheSofterOne() {
-        assertSame(Items.WOODEN_SWORD, WeaponPick.bestOrTool(List.of(fresh(Items.DIAMOND_PICKAXE), fresh(Items.WOODEN_SWORD)), false, false));
+        assertSame(Items.WOODEN_SWORD, WeaponPick.best(List.of(fresh(Items.DIAMOND_PICKAXE), fresh(Items.WOODEN_SWORD))));
         assertSame(Items.IRON_PICKAXE, WeaponPick.bestTool(List.of(fresh(Items.WOODEN_PICKAXE), fresh(Items.IRON_PICKAXE))));
     }
 
@@ -186,27 +185,15 @@ public class WeaponPickTest {
         assertSame(Items.STONE_PICKAXE, WeaponPick.bestTool(List.of(fresh(Items.STONE_PICKAXE), fresh(Items.STONE_PICKAXE))));
         // and a worn one is not worth a fight when it is all there is: the last uses of the only pick are worth more
         assertNull(WeaponPick.bestTool(List.of(worn(Items.DIAMOND_PICKAXE))));
-        assertNull(WeaponPick.bestOrTool(List.of(worn(Items.IRON_PICKAXE)), false, false));
     }
 
-    // the pure rules end to end: what the bag says about being armed is what the machine fights or runs on
-    private static CombatCommit.Event meetAZombie(boolean armed) {
+    // the bag has no say in whether we fight any more: a zombie chewing on us gets hit back with whatever there is, fists
+    // included. the machine does not even know what is in the bag
+    @Test
+    public void aZombieThatHitsUsInContactIsAFightWhateverIsInTheBag() {
         CombatCommit.Foe zombie = new CombatCommit.Foe(1, 1.5, false, false, 2);
-        return new CombatCommit().step(new CombatCommit.Tick(100, 20, armed, 0, 0, 3, List.of(zombie), null, false));
-    }
-
-    @Test
-    public void aBotWithOnlyAPickaxeFightsALoneZombieThatHitsIt() {
-        boolean armed = WeaponPick.bestOrTool(List.of(fresh(Items.IRON_PICKAXE)), false, false) != null;
-        assertTrue(armed);
-        assertEquals(CombatCommit.Event.FIGHT_START, meetAZombie(armed));
-    }
-
-    @Test
-    public void aBotWithNothingInTheBagRunsFromIt() {
-        boolean armed = WeaponPick.bestOrTool(List.of(fresh(Items.STICK)), false, false) != null;
-        assertFalse(armed);
-        assertEquals(CombatCommit.Event.RUN_START, meetAZombie(armed));
+        assertEquals(CombatCommit.Event.FIGHT_START,
+                new CombatCommit().step(new CombatCommit.Tick(100, 20, 0, 0, List.of(zombie), null)));
     }
 
     @Test

@@ -45,8 +45,8 @@ public class FoeRulesTest {
         return FoeRules.accept(dimension, c);
     }
 
-    private static Tick tick(long now, float health, boolean armed, Foe target, Foe... foes) {
-        return new Tick(now, health, armed, 0, 0, 3, List.of(foes), target, false);
+    private static Tick tick(long now, float health, Foe target, Foe... foes) {
+        return new Tick(now, health, 0, 0, List.of(foes), target);
     }
 
     // ---- the overworld is the baseline
@@ -146,7 +146,7 @@ public class FoeRulesTest {
         Foe ghast = accept(Dimension.NETHER, hitUs("ghast", 10, 2));
         if (ghast != null) foes.add(ghast);
         for (float hp : new float[]{20, 12, 8, 3}) {
-            assertEquals("hp " + hp, Event.NONE, c.step(tick(100, hp, true, null, foes.toArray(new Foe[0]))));
+            assertEquals("hp " + hp, Event.NONE, c.step(tick(100, hp, null, foes.toArray(new Foe[0]))));
         }
         assertEquals(Mode.NONE, c.mode());
     }
@@ -156,24 +156,24 @@ public class FoeRulesTest {
         Foe nether = accept(Dimension.NETHER, hitUs("blaze", 9, 3));
         assertNotNull(nether);
         assertEquals(Kind.FLYER, nether.kind());
-        // it shoots, so it counts from where a shooter stands
+        // it shoots
         assertTrue(nether.ranged());
-        assertTrue(nether.inEngageRange());
         assertEquals(Kind.NORMAL, accept(Dimension.OVERWORLD, mob("blaze", 9)).kind());
         assertEquals(Kind.NORMAL, accept(Dimension.END, mob("blaze", 9)).kind());
     }
 
     @Test
-    public void aBlazeThatHitUsFromBeyondContactIsARunNotAChase() {
+    public void aBlazeThatHitUsFromBeyondContactIsWalkedPast() {
+        // no chase and no run: walking on is what spoils its aim
         CombatCommit c = new CombatCommit();
-        assertEquals(Event.RUN_START, c.step(tick(100, 20, true, null, accept(Dimension.NETHER, hitUs("blaze", 9, 3)))));
-        assertEquals(Why.UNREACHABLE, c.why());
+        assertEquals(Event.NONE, c.step(tick(100, 20, null, accept(Dimension.NETHER, hitUs("blaze", 9, 3)))));
+        assertEquals(Mode.NONE, c.mode());
     }
 
     @Test
     public void aBlazeThatHitUsRightNextToUsIsAnOrdinaryFight() {
         CombatCommit c = new CombatCommit();
-        assertEquals(Event.FIGHT_START, c.step(tick(100, 20, true, null, accept(Dimension.NETHER, hitUs("blaze", 2, 3)))));
+        assertEquals(Event.FIGHT_START, c.step(tick(100, 20, null, accept(Dimension.NETHER, hitUs("blaze", 2, 3)))));
         assertEquals(Why.HIT, c.why());
     }
 
@@ -182,7 +182,7 @@ public class FoeRulesTest {
         // CollectBlazeRodsTask adds a mob defense exclusion for blazes, the foe filter honours it: nothing to fight or run from
         assertNull(accept(Dimension.NETHER, excluded("blaze", 9)));
         CombatCommit c = new CombatCommit();
-        assertEquals(Event.NONE, c.step(tick(100, 4, true, null)));
+        assertEquals(Event.NONE, c.step(tick(100, 4, null)));
     }
 
     @Test
@@ -201,8 +201,8 @@ public class FoeRulesTest {
 
     @Test
     public void aWitherSkeletonIsAMeleeMobEvenThoughItIsASkeleton() {
-        // the class says ranged, the sword says melee: contact (3 blocks) is a trigger for it, like for a zombie
-        Candidate wither = new Candidate("wither_skeleton", 5, 2.5, () -> false, () -> true, () -> true, NEVER, 0, true, false);
+        // the class says ranged, the sword says melee: it counts towards the melee numbers (crits, the weapon pick)
+        Candidate wither = new Candidate("wither_skeleton", 5, 2.5, () -> false, () -> true, () -> true, 3, 0, true, false);
         Foe foe = accept(Dimension.NETHER, wither);
         assertNotNull(foe);
         assertFalse(foe.ranged());
@@ -210,9 +210,9 @@ public class FoeRulesTest {
         // an ordinary skeleton stays a shooter
         Candidate skeleton = new Candidate("skeleton", 6, 2.5, () -> false, () -> true, () -> true, NEVER, 0, true, false);
         assertTrue(accept(Dimension.NETHER, skeleton).ranged());
-        // hurt enough that it is a run, and a fight above that, the first time it is next to us
-        assertEquals(Event.RUN_START, new CombatCommit().step(tick(100, 10, true, null, foe)));
-        assertEquals(Event.FIGHT_START, new CombatCommit().step(tick(100, 14, true, null, foe)));
+        // it hit us next to us: hurt enough that it is a run, and a fight above that
+        assertEquals(Event.RUN_START, new CombatCommit().step(tick(100, 10, null, foe)));
+        assertEquals(Event.FIGHT_START, new CombatCommit().step(tick(100, 14, null, foe)));
     }
 
     @Test
@@ -265,21 +265,22 @@ public class FoeRulesTest {
         Candidate calm = new Candidate("zombified_piglin", 1, 10, () -> false, () -> calmAt10, () -> true, NEVER, 0, false, false);
         assertNull(accept(Dimension.NETHER, calm));
         CombatCommit c = new CombatCommit();
-        assertEquals(Event.NONE, c.step(tick(100, 20, true, null)));
+        assertEquals(Event.NONE, c.step(tick(100, 20, null)));
 
         // one of them hit us (provoked), it is angry, it is in contact: a fight
         boolean angry = NeutralMobs.hostile(neutral, true, true, false, 2);
         assertTrue(angry);
         Foe one = accept(Dimension.NETHER, new Candidate("zombified_piglin", 1, 2, () -> false, () -> angry, () -> true, 3, 0, false, false));
-        assertEquals(Event.FIGHT_START, c.step(tick(101, 20, true, null, one)));
+        assertEquals(Event.FIGHT_START, c.step(tick(101, 20, null, one)));
 
-        // the group came with it: three within six is the crowd rule, a run
+        // the group came with it: three of them around us is not a reason to run, the one chewing on us is a fight
         CombatCommit group = new CombatCommit();
         Foe a = accept(Dimension.NETHER, new Candidate("zombified_piglin", 1, 2, () -> false, () -> true, () -> true, 3, 0, false, false));
         Foe b = accept(Dimension.NETHER, new Candidate("zombified_piglin", 2, 4, () -> false, () -> true, () -> true, NEVER, 0, false, false));
         Foe d = accept(Dimension.NETHER, new Candidate("zombified_piglin", 3, 5, () -> false, () -> true, () -> true, NEVER, 0, false, false));
-        assertEquals(Event.RUN_START, group.step(tick(100, 20, true, null, a, b, d)));
-        assertEquals(Why.CROWD, group.why());
+        assertEquals(Event.FIGHT_START, group.step(tick(100, 20, null, a, b, d)));
+        assertEquals(Why.HIT, group.why());
+        assertEquals(1, group.targetId());
     }
 
     @Test
@@ -290,7 +291,7 @@ public class FoeRulesTest {
         assertTrue(NeutralMobs.hostile(false, true, false, false, 12));
         Foe foe = accept(Dimension.NETHER, mob("piglin", 12));
         assertNotNull(foe);
-        assertEquals(Event.NONE, new CombatCommit().step(tick(100, 20, true, null, foe)));
+        assertEquals(Event.NONE, new CombatCommit().step(tick(100, 20, null, foe)));
     }
 
     // ---- the end
@@ -314,7 +315,7 @@ public class FoeRulesTest {
         List<Foe> foes = new ArrayList<>();
         if (dragon != null) foes.add(dragon);
         for (float hp : new float[]{20, 10, 8, 2}) {
-            assertEquals("hp " + hp, Event.NONE, c.step(tick(100, hp, true, null, foes.toArray(new Foe[0]))));
+            assertEquals("hp " + hp, Event.NONE, c.step(tick(100, hp, null, foes.toArray(new Foe[0]))));
         }
         assertEquals(Mode.NONE, c.mode());
     }
@@ -351,7 +352,7 @@ public class FoeRulesTest {
             if (foe != null) foes.add(foe);
         }
         assertTrue(foes.isEmpty());
-        assertEquals(Event.NONE, new CombatCommit().step(tick(100, 5, true, null, foes.toArray(new Foe[0]))));
+        assertEquals(Event.NONE, new CombatCommit().step(tick(100, 5, null, foes.toArray(new Foe[0]))));
     }
 
     // ---- the user tasks that fight on their own terms
@@ -360,7 +361,7 @@ public class FoeRulesTest {
     public void theGolemOnItsPillarIsNotAFoe() {
         // GolemFightTask excludes it from mob defense while it fights from above
         assertNull(accept(Dimension.OVERWORLD, excluded("iron_golem", 3)));
-        assertEquals(Event.NONE, new CombatCommit().step(tick(100, 5, true, null)));
+        assertEquals(Event.NONE, new CombatCommit().step(tick(100, 5, null)));
     }
 
     @Test
@@ -374,12 +375,12 @@ public class FoeRulesTest {
 
     @Test
     public void aPearlHuntedEndermanNotHittingUsIsNotACommitment() {
-        // PearlHunt runs its own kill task on endermen that are already after us. the chain only acts on a hit, contact, or
-        // low hp, so an angry enderman at five blocks is left to it in every dimension
+        // PearlHunt runs its own kill task on endermen that are already after us. the chain only acts on a hit in contact
+        // or danger, so an angry enderman at five blocks is left to it in every dimension
         for (Dimension d : Dimension.values()) {
             Foe man = accept(d, mob("enderman", 5));
             assertNotNull(man);
-            assertEquals(d.name(), Event.NONE, new CombatCommit().step(tick(100, 20, true, null, man)));
+            assertEquals(d.name(), Event.NONE, new CombatCommit().step(tick(100, 20, null, man)));
         }
     }
 
@@ -387,10 +388,10 @@ public class FoeRulesTest {
     public void anEndermanThatHitsUsIsTheSameFightPearlHuntWasHavingNotARun() {
         Foe man = accept(Dimension.NETHER, hitUs("enderman", 2, 2));
         CombatCommit c = new CombatCommit();
-        assertEquals(Event.FIGHT_START, c.step(tick(100, 20, true, null, man)));
+        assertEquals(Event.FIGHT_START, c.step(tick(100, 20, null, man)));
         assertEquals(man.id(), c.targetId());
         // dead: the fight is over and the user task (looting the pearl) has the wheel back
-        assertEquals(Event.FIGHT_DEAD, c.step(tick(130, 20, true, null)));
+        assertEquals(Event.FIGHT_DEAD, c.step(tick(130, 20, null)));
         assertEquals(Mode.NONE, c.mode());
     }
 

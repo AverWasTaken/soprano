@@ -3,8 +3,6 @@ package adris.altoclef.chains;
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.control.KillAura;
-import adris.altoclef.tasks.movement.CustomBaritoneGoalTask;
-import adris.altoclef.tasks.movement.RunAwayFromCreepersTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.tasksystem.TaskRunner;
 import adris.altoclef.util.baritone.CachedProjectile;
@@ -50,17 +48,15 @@ import java.util.Optional;
 import static java.lang.Math.abs;
 
 // the mob defense chain. mobs are scenery until the commitment machine (CombatBrain, CombatCommit) says one really needs
-// dealing with, in every dimension, and then the chain holds the wheel with a fight or a run until the machine lets go. the
-// only other things that take the wheel are a lit fuse close by, and fire, falls and the like that were never about mobs
+// dealing with, in every dimension, and then the chain holds the wheel with a fight or a run until the machine lets go.
+// nothing else here takes the wheel for a mob, not even a lit creeper: the task walks on and outpaces the fuse. fire,
+// falls and the arrow shield were never about the wheel
 public class MobDefenseChain extends SingleTaskChain {
-    private static final double CREEPER_KEEP_DISTANCE = 10;
     private static final double ARROW_KEEP_DISTANCE_HORIZONTAL = 2;
     private static final double ARROW_KEEP_DISTANCE_VERTICAL = 10;
     private static boolean _shielding = false;
     private final KillAura _killAura = new KillAura();
     private boolean _wasPuttingOutFire = false;
-    // the creeper step's run, the only run this chain starts on its own (the commitment's is installed by the brain)
-    private CustomBaritoneGoalTask _runAwayTask;
 
     // everything below is worked out once per game tick by snapshot(), no matter how many things ask
     private long _snapshotTick = Long.MIN_VALUE;
@@ -93,23 +89,11 @@ public class MobDefenseChain extends SingleTaskChain {
         super(runner);
     }
 
-    public static double getCreeperSafety(Vec3 pos, Creeper creeper) {
-        Vec3 at = creeper.position();
-        return getCreeperSafety(pos.x, pos.y, pos.z, at.x, at.y, at.z, creeper.getSwelling(1));
-    }
-
-    // the creeper as plain numbers, so the pathfinder thread can score nodes without touching the entity
-    public static double getCreeperSafety(double x, double y, double z, double creeperX, double creeperY, double creeperZ, float fuse) {
-        double dx = creeperX - x, dy = creeperY - y, dz = creeperZ - z;
-        double distance = dx * dx + dy * dy + dz * dz;
-
-        // Not fusing.
-        if (fuse <= 0.001f) return distance;
-        return distance * 0.2; // less is WORSE
-    }
-
-    private static void startShielding(AltoClef mod) {
-        startShielding(mod, true);
+    // squared distance, a lit one counts as five times closer. less is WORSE
+    private static double getCreeperSafety(Vec3 pos, Creeper creeper) {
+        double distance = creeper.position().distanceToSqr(pos);
+        if (creeper.getSwelling(1) <= 0.001f) return distance;
+        return distance * 0.2;
     }
 
     // standing still is the default. a fight raises the shield on the move: no sneak (it is walking at a third of the
@@ -170,10 +154,9 @@ public class MobDefenseChain extends SingleTaskChain {
         Task held = getCurrentTask();
         if (CombatRules.wheelPriority(priority, held != null, held != null && held.isFinished(mod)) > 0) return priority;
         // every branch that asks for the wheel just installed something to hold it with. if that something is gone or was
-        // born finished (a creeper step from a fuse we are already clear of), the wheel is not ours. (shielding and the force
-        // field act without a task, and never needed the wheel to do it)
+        // born finished (a run we are already outside of), the wheel is not ours. (shielding and the force field act without
+        // a task, and never needed the wheel to do it)
         if (held != null) onTaskFinish(mod);
-        _runAwayTask = null;
         return 0;
     }
 
@@ -219,49 +202,20 @@ public class MobDefenseChain extends SingleTaskChain {
         return commitPriority(mod);
     }
 
-    // a lit fuse: shield up if we have one and can stand still, otherwise step away. NaN means the shield took it and the
-    // wheel is not claimed, a number is the priority the run asked for
-    private float creeperStep(AltoClef mod, Creeper blowingUp, Item offhandItem) {
-        if (!mod.getFoodChain().needsToEat() && hasShield(mod) &&
-                !mod.getEntityTracker().entityFound(ThrownPotion.class) && _runAwayTask == null
-                && !mod.getPlayer().getCooldowns().isOnCooldown(new ItemStack(offhandItem))
-                && mod.getClientBaritone().getPathingBehavior().isSafeToCancel()) {
-            LookHelper.lookAt(mod, blowingUp.getEyePosition());
-            ItemStack shieldSlot = StorageHelper.getItemStackInSlot(PlayerSlot.OFFHAND_SLOT);
-            if (shieldSlot.getItem() != Items.SHIELD) {
-                mod.getSlotHandler().forceEquipItemToOffhand(Items.SHIELD);
-            } else {
-                startShielding(mod);
-            }
-            return Float.NaN;
-        }
-        float creeperPriority = 50 + blowingUp.getSwelling(1) * 50;
-        startRun(new RunAwayFromCreepersTask(CREEPER_KEEP_DISTANCE), creeperPriority);
-        return creeperPriority;
-    }
-
-    // the wheel. mobs are scenery until the commitment says otherwise, so the only things that take it unasked are a lit fuse
-    // close by (a real signal, short) and whatever the machine is holding. fire, lava and falls were settled before we got here
+    // the wheel. mobs are scenery until the commitment says otherwise, so the only thing that takes it is whatever the
+    // machine is holding. a lit creeper used to get a step away here, and the bot spent half its life backing off from
+    // creepers it could have just walked past. fire, lava and falls were settled before we got here
     private float commitPriority(AltoClef mod) {
         LocalPlayer player = mod.getPlayer();
         CombatCommit.Mode mode = _brain.mode();
         float hold = _brain.holdPriority();
         Item offhandItem = StorageHelper.getItemStackInSlot(PlayerSlot.OFFHAND_SLOT).getItem();
-        Creeper blowingUp = getClosestFusingCreeper(mod);
-        boolean fuseNear = blowingUp != null && blowingUp.distanceTo(player) <= CombatRules.CREEPER_NO_IGNORE;
-        if (fuseNear) {
-            float creeperPriority = creeperStep(mod, blowingUp, offhandItem);
-            // (a fight in progress keeps its wheel while it steps away, it is not a release)
-            if (!Float.isNaN(creeperPriority)) return Math.max(creeperPriority, hold);
-        } else if (!isProjectileClose(mod, false)) {
-            stopShielding(mod);
-        }
 
         // arrows: a shield that does not take the wheel. a fight walks on with it up, nothing else stops for an arrow, and a
         // run is feet's job
         boolean fighting = mode == CombatCommit.Mode.FIGHT;
         if (mode != CombatCommit.Mode.RUN && !mod.getFoodChain().needsToEat() && Baritone.settings().altoDodgeProjectiles.value && hasShield(mod)
-                && isProjectileClose(mod, true) && !mod.getEntityTracker().entityFound(ThrownPotion.class)
+                && isProjectileClose(mod) && !mod.getEntityTracker().entityFound(ThrownPotion.class)
                 && !player.getCooldowns().isOnCooldown(new ItemStack(offhandItem))
                 && (fighting || mod.getClientBaritone().getPathingBehavior().isSafeToCancel())) {
             if (StorageHelper.getItemStackInSlot(PlayerSlot.OFFHAND_SLOT).getItem() != Items.SHIELD) {
@@ -269,28 +223,18 @@ public class MobDefenseChain extends SingleTaskChain {
             } else {
                 startShielding(mod, !fighting);
             }
-        } else if (!fuseNear) {
+        } else {
             stopShielding(mod);
         }
 
         Task wheel = mode == CombatCommit.Mode.NONE ? null : _brain.wheelTask(mod);
         if (wheel == null) {
             // nothing committed: whatever we were holding belonged to the commitment that just ended
-            _runAwayTask = null;
             if (_mainTask != null) onTaskFinish(mod);
             return 0;
         }
-        _runAwayTask = null;
         setTask(wheel);
         return hold;
-    }
-
-    // setTask keeps the task it already has when the new one is "equal", so the bookkeeping has to follow whatever got
-    // installed and not the object we just built and threw away (the finished-run bug was exactly that: a field pointing
-    // at a task that was never going to tick)
-    private void startRun(CustomBaritoneGoalTask run, float priority) {
-        setTask(run);
-        _runAwayTask = getCurrentTask() instanceof CustomBaritoneGoalTask current ? current : null;
     }
 
     private BlockPos isInsideFireAndOnFire(AltoClef mod) {
@@ -405,9 +349,9 @@ public class MobDefenseChain extends SingleTaskChain {
         return target;
     }
 
-    // react: stop the path and turn to face the shooter when one is about to land. without a shield to put up that is the
-    // user task standing still for no reason
-    private boolean isProjectileClose(AltoClef mod, boolean react) {
+    // also stops the path and turns to face the shooter when one is about to land, so only ask with a shield to put up.
+    // without one that is the user task standing still for no reason
+    private boolean isProjectileClose(AltoClef mod) {
         List<CachedProjectile> projectiles = mod.getEntityTracker().getProjectiles();
         // a run keeps walking: stopping to turn round for a fireball is how the ghast gets a free volley on a bot that was
         // leaving. a fight keeps swinging at its target for the same reason, only an idle chain stops to face the shooter
@@ -420,7 +364,7 @@ public class MobDefenseChain extends SingleTaskChain {
                         if (isGhastBall) {
                             Optional<Entity> ghastBall = mod.getEntityTracker().getClosestEntity(LargeFireball.class);
                             Optional<Entity> ghast = mod.getEntityTracker().getClosestEntity(Ghast.class);
-                            if (ghastBall.isPresent() && ghast.isPresent() && !committed && _runAwayTask == null
+                            if (ghastBall.isPresent() && ghast.isPresent() && !committed
                                     && mod.getClientBaritone().getPathingBehavior().isSafeToCancel()) {
                                 mod.getClientBaritone().getPathingBehavior().requestPause();
                                 LookHelper.lookAt(mod, ghast.get().getEyePosition());
@@ -453,7 +397,7 @@ public class MobDefenseChain extends SingleTaskChain {
                         double verticalDistance = abs(delta.y);
                         if (horizontalDistanceSq < ARROW_KEEP_DISTANCE_HORIZONTAL * ARROW_KEEP_DISTANCE_HORIZONTAL && verticalDistance < ARROW_KEEP_DISTANCE_VERTICAL) {
                             // (a fight keeps walking at its target: no pause, no turning round to face the shooter)
-                            if (react && !committed && _runAwayTask == null
+                            if (!committed
                                     && mod.getClientBaritone().getPathingBehavior().isSafeToCancel()) {
                                 mod.getClientBaritone().getPathingBehavior().requestPause();
                                 if (projectile.projectileType instanceof Projectile projectileEntity) {
@@ -499,11 +443,11 @@ public class MobDefenseChain extends SingleTaskChain {
         LocalPlayer player = mod.getPlayer();
         Creeper fusing = getClosestFusingCreeper(mod);
         double fuseDistance = fusing == null ? Double.POSITIVE_INFINITY : fusing.distanceTo(player);
-        // the off switch: no commitments, mobs are scenery. the safety stays (fire, falls, a lit fuse, the arrow shield, the
-        // aura at what is on us), and the foes are still counted for the stance and the crits
+        // the off switch: no commitments, mobs are scenery. the safety stays (fire, falls, the arrow shield, the aura at what
+        // is on us), and the foes are still counted for the stance and the crits
         boolean enabled = Baritone.settings().altoMobDefense.value && Baritone.settings().altoKillOrAvoidAnnoyingHostiles.value
                 && Baritone.settings().altoCommitCombat.value;
-        _brain.tick(mod, now, fuseDistance <= CombatRules.CREEPER_NO_IGNORE, fuseDistance <= CombatRules.CREEPER_RANGE, enabled);
+        _brain.tick(mod, now, fuseDistance <= CombatRules.CREEPER_RANGE, enabled);
         _stance = _brain.stance();
         _meleeNear = _brain.meleeNear();
         _meleeAround = _brain.meleeAround();
@@ -547,7 +491,6 @@ public class MobDefenseChain extends SingleTaskChain {
         Task done = _mainTask;
         _mainTask = null;
         if (done != null) done.stop(mod);
-        if (_runAwayTask == done) _runAwayTask = null;
     }
 
     @Override

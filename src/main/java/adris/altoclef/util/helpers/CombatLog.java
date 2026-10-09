@@ -15,15 +15,15 @@ public final class CombatLog {
     // null for no transition. target is who the fight is about (the new one for a chain), fighting the name remembered from the
     // fight that just ended (the mob is already gone from the world by then), crowd the "2 zombies, 1 skeleton" list
     public static String line(Dimension dimension, Event event, Why why, boolean cornered, String target, String fighting,
-                              String crowd, int crowdCount, int hp, int blocks) {
+                              String crowd, int hp, int blocks) {
         String tag = "combat: [" + dimension.name().toLowerCase(Locale.ROOT) + "] ";
         return switch (event) {
             case NONE -> null;
-            case FIGHT_START -> tag + "FIGHT " + target + " (" + (why == Why.HIT ? "hit us" : "in contact") + ", armed, hp " + hp + ")";
+            case FIGHT_START -> tag + "FIGHT " + target + " (hit us, hp " + hp + ")";
             case FIGHT_NEXT -> cornered ? tag + "cornered, next " + target
-                    : tag + "target dead, next " + target + " (" + (why == Why.HIT ? "hit us" : "in contact") + ", hp " + hp + ")";
-            case RUN_START -> tag + "RUN from " + crowd + " (" + runWhy(why, crowdCount, hp) + ")";
-            case FIGHT_TO_RUN -> tag + "FIGHT -> RUN from " + crowd + " (" + runWhy(why, crowdCount, hp) + ")";
+                    : tag + "target dead, next " + target + " (hit us, hp " + hp + ")";
+            case RUN_START -> tag + "RUN from " + crowd + " (" + runWhy(why, hp) + ")";
+            case FIGHT_TO_RUN -> tag + "FIGHT -> RUN from " + crowd + " (" + runWhy(why, hp) + ")";
             case RUN_TO_FIGHT -> tag + "cornered, fighting " + target;
             case FIGHT_DEAD -> tag + "fight over, " + fighting + " dead";
             case FIGHT_LOST -> tag + "fight over, lost track of " + fighting;
@@ -34,12 +34,9 @@ public final class CombatLog {
         };
     }
 
-    public static String runWhy(Why why, int crowdCount, int hp) {
+    public static String runWhy(Why why, int hp) {
         return switch (why) {
-            case UNARMED -> "unarmed, hp " + hp;
-            case CROWD -> "crowd of " + crowdCount + ", hp " + hp;
             case HEAVY -> "something nasty close, hp " + hp;
-            case UNREACHABLE -> "it hit us and we can't get to it, hp " + hp;
             default -> "hp " + hp;
         };
     }

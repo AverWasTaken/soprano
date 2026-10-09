@@ -115,10 +115,10 @@ public class CombatRulesTest {
         // hp 8 is a flee in the stance and a run in the machine, hp 8.5 is neither
         assertEquals(FLEE, fighting(CombatRules.FLEE_HEALTH, 2, false));
         assertEquals(FIGHT, fighting(CombatRules.FLEE_HEALTH + 0.5f, 2, false));
-        assertEquals(CombatCommit.Event.RUN_START, new CombatCommit().step(new CombatCommit.Tick(100, CombatRules.FLEE_HEALTH, true, 0, 0,
-                3, java.util.List.of(new CombatCommit.Foe(1, 2, false, false, CombatCommit.NEVER)), null, false)));
-        assertEquals(CombatCommit.Event.FIGHT_START, new CombatCommit().step(new CombatCommit.Tick(100, CombatRules.FLEE_HEALTH + 0.5f, true, 0, 0,
-                3, java.util.List.of(new CombatCommit.Foe(1, 2, false, false, CombatCommit.NEVER)), null, false)));
+        assertEquals(CombatCommit.Event.RUN_START, new CombatCommit().step(new CombatCommit.Tick(100, CombatRules.FLEE_HEALTH, 0, 0,
+                java.util.List.of(new CombatCommit.Foe(1, 2, false, false, 3)), null)));
+        assertEquals(CombatCommit.Event.FIGHT_START, new CombatCommit().step(new CombatCommit.Tick(100, CombatRules.FLEE_HEALTH + 0.5f, 0, 0,
+                java.util.List.of(new CombatCommit.Foe(1, 2, false, false, 3)), null)));
     }
 
     @Test
@@ -142,10 +142,8 @@ public class CombatRulesTest {
         assertEquals(3, CombatRules.CONTACT_RANGE, 0);
         assertEquals(6, CombatRules.SWARM_RANGE, 0);
         assertEquals(8, CombatRules.LOW_HP_RANGE, 0);
-        assertEquals(7, CombatRules.CREEPER_NO_IGNORE, 0);
         assertEquals(10, CombatRules.CREEPER_RANGE, 0);
         assertEquals(CombatRules.CONTACT_RANGE, CombatCommit.CONTACT, 0);
-        assertEquals(CombatRules.SWARM_RANGE, CombatCommit.CROWD_RANGE, 0);
         assertEquals(CombatRules.LOW_HP_RANGE, CombatCommit.LOW_HP_RANGE, 0);
         // the stall tracker uses the same two, a mob in contact is never stuck and one on our heels while we run neither
         assertEquals(CombatRules.CONTACT_RANGE, MobReachRules.STALL_EXEMPT_RANGE, 0);

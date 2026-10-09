@@ -1,7 +1,6 @@
 package adris.altoclef.util.helpers;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import adris.altoclef.util.helpers.CombatCommit.Event;
@@ -22,57 +21,97 @@ public class CombatCommitEdgesTest {
         return new Foe(id, distance, false, false, sinceHit);
     }
 
-    private static Tick tick(long now, float health, boolean armed, Foe target, boolean paused, Foe... foes) {
-        return new Tick(now, health, armed, 0, 0, 3, List.of(foes), target, paused);
+    private static Tick tick(long now, float health, Foe target, Foe... foes) {
+        return new Tick(now, health, 0, 0, List.of(foes), target);
     }
 
     // a fight against zombie 1 that hit us, started at tick 100
     private static CombatCommit fighting() {
         CombatCommit commit = new CombatCommit();
         Foe z = zombie(1, 2, 3);
-        assertEquals(Event.FIGHT_START, commit.step(tick(100, 20, true, null, false, z)));
+        assertEquals(Event.FIGHT_START, commit.step(tick(100, 20, null, z)));
         return commit;
     }
 
     @Test
-    public void aDeadTargetDoesNotChainToSomethingWeCannotHit() {
+    public void aDeadTargetOnlyChainsToSomethingThatHitUsInContact() {
+        // another zombie standing on us that never swung is scenery, the fight is simply over
         CombatCommit commit = fighting();
-        // the weapon is gone and another zombie is on us: nothing to chain with, the fight is simply over
-        Event event = commit.step(tick(110, 20, false, null, false, zombie(2, 2, 3)));
-        assertEquals(Event.FIGHT_DEAD, event);
+        assertEquals(Event.FIGHT_DEAD, commit.step(tick(110, 20, null, zombie(2, 2, NEVER))));
         assertEquals(Mode.NONE, commit.mode());
+        // one that did swing is the next fight, no gap
+        CombatCommit other = fighting();
+        assertEquals(Event.FIGHT_NEXT, other.step(tick(110, 20, null, zombie(2, 2, 3))));
+        assertEquals(2, other.targetId());
+        assertEquals(Why.HIT, other.why());
     }
+
+    // ---- a mob we gave up on
+
+    // a zombie that hit us in contact, then hung back at five blocks (never closer, never far enough to be lost) for ten
+    // seconds: dropped
+    private static CombatCommit droppedZombie() {
+        CombatCommit commit = new CombatCommit();
+        assertEquals(Event.FIGHT_START, commit.step(tick(100, 20, null, zombie(2, 3, 3))));
+        Foe hangingBack = zombie(2, 5, 50);
+        for (long t = 101; t < 100 + CombatCommit.STALL_TICKS; t++) {
+            assertEquals("tick " + t, Event.NONE, commit.step(tick(t, 20, hangingBack, hangingBack)));
+        }
+        assertEquals(Event.FIGHT_STALLED, commit.step(tick(100 + CombatCommit.STALL_TICKS, 20, hangingBack, hangingBack)));
+        assertTrue(commit.isIgnored(2));
+        return commit;
+    }
+
+    private static final long DROPPED_AT = 100 + CombatCommit.STALL_TICKS;
 
     @Test
     public void aDeadTargetDoesNotChainToSomethingWeGaveUpOn() {
-        CombatCommit commit = new CombatCommit();
-        // a skeleton that hit us sits out of reach for ten seconds and is given up on
-        Foe far = new Foe(2, 10, true, false, 3);
-        assertEquals(Event.FIGHT_START, commit.step(tick(100, 20, true, null, false, far)));
-        assertEquals(Event.FIGHT_STALLED, commit.step(tick(100 + CombatCommit.STALL_TICKS, 20, true, far, false, far)));
-        // after the cooldown a fresh fight with zombie 1, then it dies while the ignored one stands in contact without
-        // having hit us since
-        long later = 100 + CombatCommit.STALL_TICKS + CombatCommit.COOLDOWN + 1;
-        assertEquals(Event.FIGHT_START, commit.step(tick(later, 20, true, null, false, zombie(1, 2, 3))));
-        Event event = commit.step(tick(later + 5, 20, true, null, false, zombie(2, 2, NEVER)));
-        assertEquals(Event.FIGHT_DEAD, event);
+        CombatCommit commit = droppedZombie();
+        // after the cooldown a fresh fight with zombie 1, then it dies while the dropped one stands in contact. its last hit
+        // was before we gave up on it, so it is no news
+        long later = DROPPED_AT + CombatCommit.COOLDOWN + 1;
+        assertEquals(Event.FIGHT_START, commit.step(tick(later, 20, null, zombie(1, 2, 3))));
+        long sinceItsLastHit = later + 5 - (DROPPED_AT - 10);
+        assertEquals(Event.FIGHT_DEAD, commit.step(tick(later + 5, 20, null, zombie(2, 2, sinceItsLastHit))));
     }
+
+    @Test
+    public void theDroppedMobHittingUsAgainInContactIsJustAFightAgain() {
+        // no "it is out of reach, run" any more: if it can hit us in contact we can hit it back
+        CombatCommit commit = droppedZombie();
+        assertTrue(commit.coolingDown(DROPPED_AT + 1));
+        // a fresh hit goes through the cooldown
+        assertEquals(Event.FIGHT_START, commit.step(tick(DROPPED_AT + 50, 20, null, zombie(2, 2, 0))));
+        assertEquals(Why.HIT, commit.why());
+        assertEquals(2, commit.targetId());
+    }
+
+    @Test
+    public void aSkeletonThatGotUsFromRangeIsNeverAFightOrARun() {
+        CombatCommit commit = new CombatCommit();
+        for (long t = 100; t < 400; t++) {
+            assertEquals("tick " + t, Event.NONE, commit.step(tick(t, 18, null, new Foe(7, 10, true, false, t % 30))));
+        }
+        assertEquals(Mode.NONE, commit.mode());
+    }
+
+    // ---- cornered
 
     @Test
     public void aCorneredFightDoesNotBailOnAWardenWalkingUp() {
         CombatCommit commit = new CombatCommit();
         Foe z = zombie(1, 1.5, 3);
-        assertEquals(Event.RUN_START, commit.step(tick(100, 6, true, null, false, z)));
+        assertEquals(Event.RUN_START, commit.step(tick(100, 6, null, z)));
         // stuck on the spot with it on us for three seconds
         Event event = Event.NONE;
         for (long t = 101; t <= 101 + CombatCommit.CORNER_TICKS + 1 && event == Event.NONE; t++) {
-            event = commit.step(tick(t, 6, true, null, false, z));
+            event = commit.step(tick(t, 6, null, z));
         }
         assertEquals(Event.RUN_TO_FIGHT, event);
         assertTrue(commit.cornered());
         // a warden walking up does not undo it, there is nowhere to run to
         Foe warden = new Foe(9, 5, false, false, NEVER, CombatCommit.Kind.UNTOUCHABLE);
-        assertEquals(Event.NONE, commit.step(tick(400, 6, true, z, false, z, warden)));
+        assertEquals(Event.NONE, commit.step(tick(400, 6, z, z, warden)));
         assertEquals(Mode.FIGHT, commit.mode());
     }
 
@@ -80,15 +119,15 @@ public class CombatCommitEdgesTest {
     public void aCorneredFightNeverChainsIntoAWardenTouchingUs() {
         CombatCommit commit = new CombatCommit();
         Foe z = zombie(1, 1.5, 3);
-        assertEquals(Event.RUN_START, commit.step(tick(100, 6, true, null, false, z)));
+        assertEquals(Event.RUN_START, commit.step(tick(100, 6, null, z)));
         Event event = Event.NONE;
         for (long t = 101; t <= 101 + CombatCommit.CORNER_TICKS + 1 && event == Event.NONE; t++) {
-            event = commit.step(tick(t, 6, true, null, false, z));
+            event = commit.step(tick(t, 6, null, z));
         }
         assertEquals(Event.RUN_TO_FIGHT, event);
         // the zombie dies with a warden standing on us: nothing is chained to the warden, and it is a run, not a gap
         Foe warden = new Foe(9, 2, false, false, NEVER, CombatCommit.Kind.UNTOUCHABLE);
-        assertEquals(Event.FIGHT_TO_RUN, commit.step(tick(400, 6, true, null, false, warden)));
+        assertEquals(Event.FIGHT_TO_RUN, commit.step(tick(400, 6, null, warden)));
         assertEquals(Mode.RUN, commit.mode());
         assertEquals(Why.HEAVY, commit.why());
         assertEquals(-1, commit.targetId());
@@ -98,15 +137,15 @@ public class CombatCommitEdgesTest {
     public void aCorneredFightWonAtFullHealthNextToAWardenIsARunAtOnce() {
         CombatCommit commit = new CombatCommit();
         Foe z = zombie(1, 1.5, 3);
-        assertEquals(Event.RUN_START, commit.step(tick(100, 6, true, null, false, z)));
+        assertEquals(Event.RUN_START, commit.step(tick(100, 6, null, z)));
         Event event = Event.NONE;
         for (long t = 101; t <= 101 + CombatCommit.CORNER_TICKS + 1 && event == Event.NONE; t++) {
-            event = commit.step(tick(t, 6, true, null, false, z));
+            event = commit.step(tick(t, 6, null, z));
         }
         assertEquals(Event.RUN_TO_FIGHT, event);
         // healed on the way (a golden apple), the zombie is dead, the warden is still on us: still not a cooldown gap
         Foe warden = new Foe(9, 2, false, false, NEVER, CombatCommit.Kind.UNTOUCHABLE);
-        assertEquals(Event.FIGHT_TO_RUN, commit.step(tick(400, 20, true, null, false, warden)));
+        assertEquals(Event.FIGHT_TO_RUN, commit.step(tick(400, 20, null, warden)));
         assertEquals(Mode.RUN, commit.mode());
     }
 
@@ -114,163 +153,98 @@ public class CombatCommitEdgesTest {
     public void aCorneredFightWonWithTheWardenFarOffIsJustOver() {
         CombatCommit commit = new CombatCommit();
         Foe z = zombie(1, 1.5, 3);
-        assertEquals(Event.RUN_START, commit.step(tick(100, 6, true, null, false, z)));
+        assertEquals(Event.RUN_START, commit.step(tick(100, 6, null, z)));
         Event event = Event.NONE;
         for (long t = 101; t <= 101 + CombatCommit.CORNER_TICKS + 1 && event == Event.NONE; t++) {
-            event = commit.step(tick(t, 6, true, null, false, z));
+            event = commit.step(tick(t, 6, null, z));
         }
         assertEquals(Event.RUN_TO_FIGHT, event);
-        // the warden is ten blocks away, not on us: the won fight is a won fight
+        // the warden is ten blocks away, not on us and not booming us: the won fight is a won fight
         Foe warden = new Foe(9, 10, false, false, NEVER, CombatCommit.Kind.UNTOUCHABLE);
-        assertEquals(Event.FIGHT_DEAD, commit.step(tick(400, 20, true, null, false, warden)));
+        assertEquals(Event.FIGHT_DEAD, commit.step(tick(400, 20, null, warden)));
         assertEquals(Mode.NONE, commit.mode());
     }
+
+    // ---- runs that are not going anywhere
 
     @Test
     public void aRunWithNobodyNearStillEndsAtTheCapShortOfTwentyFourBlocks() {
         CombatCommit commit = new CombatCommit();
-        assertEquals(Event.RUN_START, commit.step(tick(100, 5, true, null, false, zombie(1, 6, NEVER))));
+        assertEquals(Event.RUN_START, commit.step(tick(100, 5, null, zombie(1, 6, NEVER))));
         // walked four blocks and then nobody is there any more, and the ground goes on slowly: two blocks every three seconds
         // tops out at 20, short of 24 and nowhere near stuck, so it is the cap that ends it
-        Tick far = new Tick(101, 5, true, 4, 0, 3, List.of(), null, false);
+        Tick far = new Tick(101, 5, 4, 0, List.of(), null);
         assertEquals(Event.NONE, commit.step(far));
         for (long t = 102; t < 100 + CombatCommit.RUN_CAP; t++) {
             double x = 4 + ((t - 101) / 60) * 2;
-            assertEquals("tick " + t, Event.NONE, commit.step(new Tick(t, 5, true, x, 0, 3, List.of(), null, false)));
+            assertEquals("tick " + t, Event.NONE, commit.step(new Tick(t, 5, x, 0, List.of(), null)));
         }
-        assertEquals(Event.RUN_CAP, commit.step(new Tick(100 + CombatCommit.RUN_CAP, 5, true, 20, 0, 3, List.of(), null, false)));
+        assertEquals(Event.RUN_CAP, commit.step(new Tick(100 + CombatCommit.RUN_CAP, 5, 20, 0, List.of(), null)));
         assertEquals(Mode.NONE, commit.mode());
     }
 
     @Test
     public void aRunStandingShortOfTwentyFourBlocksWithNobodyNearIsStuckLongBeforeTheCap() {
         CombatCommit commit = new CombatCommit();
-        assertEquals(Event.RUN_START, commit.step(tick(100, 5, true, null, false, zombie(1, 6, NEVER))));
+        assertEquals(Event.RUN_START, commit.step(tick(100, 5, null, zombie(1, 6, NEVER))));
         // the pathfinder has nowhere to take us and nothing is within eight
         for (long t = 101; t <= 101 + CombatCommit.RUN_STUCK_TICKS - 1; t++) {
-            assertEquals("tick " + t, Event.NONE, commit.step(new Tick(t, 5, true, 10, 0, 3, List.of(), null, false)));
+            assertEquals("tick " + t, Event.NONE, commit.step(new Tick(t, 5, 10, 0, List.of(), null)));
         }
-        assertEquals(Event.RUN_STUCK, commit.step(new Tick(101 + CombatCommit.RUN_STUCK_TICKS, 5, true, 10, 0, 3, List.of(), null, false)));
+        assertEquals(Event.RUN_STUCK, commit.step(new Tick(101 + CombatCommit.RUN_STUCK_TICKS, 5, 10, 0, List.of(), null)));
         assertEquals(Mode.NONE, commit.mode());
         assertTrue(commit.coolingDown(101 + CombatCommit.RUN_STUCK_TICKS + 1));
-    }
-
-    @Test
-    public void aShooterThatHitUsAtFifteenStartsAFightAtTheStepLevel() {
-        CombatCommit commit = new CombatCommit();
-        Foe skeleton = new Foe(7, 15, true, false, 4);
-        assertEquals(Event.FIGHT_START, commit.step(tick(100, 18, true, null, false, skeleton)));
-        assertEquals(Why.HIT, commit.why());
-        assertEquals(7, commit.targetId());
-        // a hair further is scenery
-        CombatCommit other = new CombatCommit();
-        assertEquals(Event.NONE, other.step(tick(100, 18, true, null, false, new Foe(7, 15.1, true, false, 4))));
-    }
-
-    // ---- a mob we gave up on that hits us again
-
-    // a skeleton on a ledge: a fight against it, ten seconds of no progress, dropped
-    private static CombatCommit droppedSkeleton() {
-        CombatCommit commit = new CombatCommit();
-        Foe skeleton = new Foe(2, 10, true, false, 3);
-        assertEquals(Event.FIGHT_START, commit.step(tick(100, 20, true, null, false, skeleton)));
-        assertEquals(Event.FIGHT_STALLED, commit.step(tick(100 + CombatCommit.STALL_TICKS, 20, true, skeleton, false, skeleton)));
-        return commit;
-    }
-
-    private static final long DROPPED_AT = 100 + CombatCommit.STALL_TICKS;
-
-    @Test
-    public void theSameMobHittingUsAgainSoonAfterTheDropIsARunNotAFight() {
-        CombatCommit commit = droppedSkeleton();
-        assertTrue(commit.coolingDown(DROPPED_AT + 1));
-        // a fresh arrow from the same skeleton, through the cooldown (a fresh hit is the one thing it listens to)
-        assertEquals(Event.RUN_START, commit.step(tick(DROPPED_AT + 50, 20, true, null, false, new Foe(2, 10, true, false, 0))));
-        assertEquals(Why.UNREACHABLE, commit.why());
-        assertEquals(Mode.RUN, commit.mode());
-        assertEquals(DROPPED_AT + 50, commit.startTick());
-    }
-
-    @Test
-    public void theRunIsTheAnswerRightUpToTwentySecondsAfterTheDrop() {
-        CombatCommit commit = droppedSkeleton();
-        assertEquals(Event.RUN_START, commit.step(tick(DROPPED_AT + CombatCommit.REHIT_RUN, 20, true, null, false, new Foe(2, 10, true, false, 0))));
-        assertEquals(Why.UNREACHABLE, commit.why());
-    }
-
-    @Test
-    public void aHitMuchLaterIsAFreshStartWithThatMob() {
-        CombatCommit commit = droppedSkeleton();
-        assertEquals(Event.FIGHT_START, commit.step(tick(DROPPED_AT + CombatCommit.REHIT_RUN + 1, 20, true, null, false, new Foe(2, 10, true, false, 0))));
-        assertEquals(Why.HIT, commit.why());
-    }
-
-    @Test
-    public void aDifferentSkeletonHittingUsIsNotTheDroppedOne() {
-        CombatCommit commit = droppedSkeleton();
-        assertEquals(Event.FIGHT_START, commit.step(tick(DROPPED_AT + 150, 20, true, null, false, new Foe(9, 10, true, false, 0))));
-        assertEquals(Why.HIT, commit.why());
-    }
-
-    @Test
-    public void thePassingOfTheRunMakesItForgivenForTheNextTime() {
-        CombatCommit commit = droppedSkeleton();
-        assertEquals(Event.RUN_START, commit.step(tick(DROPPED_AT + 150, 20, true, null, false, new Foe(2, 10, true, false, 0))));
-        // the run is over (nothing in sight), and later the same skeleton hits us: a fresh start, a fight
-        long over = DROPPED_AT + 150 + CombatCommit.RUN_CAP;
-        assertEquals(Event.RUN_CAP, commit.step(new Tick(over, 20, true, 0, 0, 3, List.of(), null, false)));
-        assertEquals(Event.FIGHT_START, commit.step(tick(over + CombatCommit.COOLDOWN + 1, 20, true, null, false, new Foe(2, 10, true, false, 0))));
     }
 
     // ---- cornered, the second tier
 
     @Test
-    public void theSecondTierFightsTheNearestMobWithinEightEvenUnarmed() {
+    public void theSecondTierFightsTheNearestMobWithinEight() {
         CombatCommit commit = new CombatCommit();
         Foe near = new Foe(5, 6, true, false, NEVER);
         Foe far = new Foe(6, 7.5, false, false, NEVER);
-        assertEquals(Event.RUN_START, commit.step(new Tick(100, 6, false, 0, 0, 3, List.of(near, far), null, false)));
+        assertEquals(Event.RUN_START, commit.step(new Tick(100, 6, 0, 0, List.of(near, far), null)));
         Event event = Event.NONE;
         long t = 101;
         for (; t <= 101 + CombatCommit.CORNER_FAR_TICKS - 1 && event == Event.NONE; t++) {
-            event = commit.step(new Tick(t, 6, false, 0, 0, 3, List.of(near, far), null, false));
+            event = commit.step(new Tick(t, 6, 0, 0, List.of(near, far), null));
         }
         assertEquals(Event.NONE, event);
-        assertEquals(Event.RUN_TO_FIGHT, commit.step(new Tick(t, 6, false, 0, 0, 3, List.of(near, far), null, false)));
+        assertEquals(Event.RUN_TO_FIGHT, commit.step(new Tick(t, 6, 0, 0, List.of(near, far), null)));
         assertEquals(5, commit.targetId());
         assertTrue(commit.cornered());
     }
 
-    // hurt, boxed in, a skeleton across the water: the second tier tries a fight, the fight cannot get anywhere, and the
-    // skeleton is not picked again every six seconds with a run in between
+    // hurt, boxed in, a skeleton across the water: the second tier tries a fight, the skeleton is past the lost range and
+    // quiet so the fight is lost, and it is not picked again every six seconds with a run in between
     @Test
     public void aSkeletonAcrossTheWaterIsOnlyTriedOnce() {
         CombatCommit commit = new CombatCommit();
         Foe skeleton = new Foe(5, 7, true, false, NEVER);
         List<Foe> foes = List.of(skeleton);
-        assertEquals(Event.RUN_START, commit.step(new Tick(100, 6, true, 0, 0, 3, foes, null, false)));
+        assertEquals(Event.RUN_START, commit.step(new Tick(100, 6, 0, 0, foes, null)));
         long t = 101;
         Event event = Event.NONE;
         for (; event == Event.NONE; t++) {
-            event = commit.step(new Tick(t, 6, true, 0, 0, 3, foes, null, false));
+            event = commit.step(new Tick(t, 6, 0, 0, foes, null));
         }
         assertEquals(Event.RUN_TO_FIGHT, event);
         assertEquals(5, commit.targetId());
-        // ten seconds of getting nowhere
+        // three seconds of it standing out there not hitting us
         long fightStart = t - 1;
         Event end = Event.NONE;
         for (; end == Event.NONE; t++) {
-            end = commit.step(new Tick(t, 6, true, 0, 0, 3, foes, skeleton, false));
+            end = commit.step(new Tick(t, 6, 0, 0, foes, skeleton));
         }
-        assertEquals(Event.FIGHT_STALLED, end);
-        assertEquals(fightStart + CombatCommit.STALL_TICKS, t - 1);
+        assertEquals(Event.FIGHT_LOST, end);
+        assertEquals(fightStart + 1 + CombatCommit.LOST_TICKS, t - 1);
         assertTrue(commit.isIgnored(5));
         // hurt with it still within 8: back to a run straight away, cooldown or not
-        assertEquals(Event.RUN_START, commit.step(new Tick(t, 6, true, 0, 0, 3, foes, null, false)));
+        assertEquals(Event.RUN_START, commit.step(new Tick(t, 6, 0, 0, foes, null)));
         assertEquals(Why.LOW_HP, commit.why());
         // and stuck on the spot for as long as we like, the second tier has nobody left to try
         for (long later = t + 1; later < t + 3 * CombatCommit.CORNER_FAR_TICKS; later++) {
-            assertEquals("tick " + later, Event.NONE, commit.step(new Tick(later, 6, true, 0, 0, 3, foes, null, false)));
+            assertEquals("tick " + later, Event.NONE, commit.step(new Tick(later, 6, 0, 0, foes, null)));
         }
         assertEquals(Mode.RUN, commit.mode());
     }
@@ -279,13 +253,13 @@ public class CombatCommitEdgesTest {
     public void theSecondTierSkipsCreepersButAZombieOnTopOfUsIsAlwaysFairGame() {
         CombatCommit commit = new CombatCommit();
         Foe creeper = new Foe(5, 6, false, true, NEVER);
-        assertEquals(Event.RUN_START, commit.step(new Tick(100, 6, true, 0, 0, 3, List.of(creeper), null, false)));
+        assertEquals(Event.RUN_START, commit.step(new Tick(100, 6, 0, 0, List.of(creeper), null)));
         for (long t = 101; t < 101 + 2 * CombatCommit.CORNER_FAR_TICKS; t++) {
-            assertEquals(Event.NONE, commit.step(new Tick(t, 6, true, 0, 0, 3, List.of(creeper), null, false)));
+            assertEquals(Event.NONE, commit.step(new Tick(t, 6, 0, 0, List.of(creeper), null)));
         }
         // a zombie that walks up to us gets the first tier's fight at once, the window has been open all this time
         Foe zombie = new Foe(6, 2, false, false, NEVER);
-        assertEquals(Event.RUN_TO_FIGHT, commit.step(new Tick(101 + 2 * CombatCommit.CORNER_FAR_TICKS, 6, true, 0, 0, 3, List.of(creeper, zombie), null, false)));
+        assertEquals(Event.RUN_TO_FIGHT, commit.step(new Tick(101 + 2 * CombatCommit.CORNER_FAR_TICKS, 6, 0, 0, List.of(creeper, zombie), null)));
         assertEquals(6, commit.targetId());
     }
 
@@ -293,9 +267,9 @@ public class CombatCommitEdgesTest {
     public void theFirstTierStillFiresAtThreeSecondsWithSomethingOnTopOfUs() {
         CombatCommit commit = new CombatCommit();
         Foe onUs = new Foe(5, 2, false, false, NEVER);
-        assertEquals(Event.RUN_START, commit.step(new Tick(100, 6, true, 0, 0, 3, List.of(onUs), null, false)));
-        assertEquals(Event.NONE, commit.step(new Tick(101, 6, true, 0, 0, 3, List.of(onUs), null, false)));
-        assertEquals(Event.RUN_TO_FIGHT, commit.step(new Tick(101 + CombatCommit.CORNER_TICKS, 6, true, 0, 0, 3, List.of(onUs), null, false)));
+        assertEquals(Event.RUN_START, commit.step(new Tick(100, 6, 0, 0, List.of(onUs), null)));
+        assertEquals(Event.NONE, commit.step(new Tick(101, 6, 0, 0, List.of(onUs), null)));
+        assertEquals(Event.RUN_TO_FIGHT, commit.step(new Tick(101 + CombatCommit.CORNER_TICKS, 6, 0, 0, List.of(onUs), null)));
     }
 
     @Test
@@ -308,9 +282,10 @@ public class CombatCommitEdgesTest {
         assertEquals(10 * 20, CombatCommit.STALL_TICKS);
         assertEquals(3 * 20, CombatCommit.CORNER_TICKS);
         assertEquals(8, CombatCommit.FLEE_HP, 0);
-        assertEquals(6, CombatCommit.MELEE_ENGAGE, 0);
-        assertEquals(15, CombatCommit.SHOOTER_ENGAGE, 0);
-        assertEquals(24, CombatCommit.LOST_RANGE, 0);
+        assertEquals(3, CombatCommit.CONTACT, 0);
+        assertEquals(15, CombatCommit.BOOM_RANGE, 0);
+        assertEquals(6, CombatCommit.LOST_RANGE, 0);
+        assertEquals(3 * 20, CombatCommit.LOST_TICKS);
         assertEquals(5 * 20, CombatCommit.RUN_STUCK_TICKS);
     }
 }

@@ -1999,28 +1999,23 @@ public final class Settings {
     /**
      * Skeletons and big groups of mobs are a pain. With this on the bot may fight or run from mobs that really need
      * dealing with, see {@link #altoCommitCombat} for what that means. Off, the bot never commits to a fight or a run,
-     * mobs are scenery (the safety stays: fire, falls, a lit creeper, the arrow shield and the force field swinging at
-     * what is hitting it). Needs {@link #altoMobDefense}.
+     * mobs are scenery (the safety stays: fire, falls, the arrow shield and the force field swinging at what is hitting
+     * it). Needs {@link #altoMobDefense}.
      */
     public final Setting<Boolean> altoKillOrAvoidAnnoyingHostiles = new Setting<>(true);
 
     /**
-     * How many angry mobs within six blocks make a crowd. A crowd is not fought on the spot: the bot runs. Below this it
-     * fights where it stands. Needs {@link #altoKillOrAvoidAnnoyingHostiles}.
-     */
-    public final Setting<Integer> altoSwarmThreshold = new Setting<>(3);
-
-    /**
-     * Mobs are ignored by default, in every dimension: the bot keeps walking its path past a skeleton that never hit it,
-     * or a zombie ten blocks away. It only does something about a mob that hit it, an angry melee mob in contact, or at
-     * 8 hp or less with an angry mob within 8 blocks. Then it commits. A fight holds until its target is dead (it only
-     * turns into a run at 8 hp, a crowd of {@link #altoSwarmThreshold} within six blocks, or 10 hp against a heavy
-     * hitter like a wither skeleton, hoglin or vindicator), and a run holds until the bot is 24 blocks from where it
-     * started with nothing hostile within 12, or 25 seconds, whichever comes first. A run that gets nowhere (three seconds
-     * with a mob on top of the bot, six with one within eight blocks) becomes a fight, and one that gets nowhere with
-     * nothing near is over after five. A few things are left to the tasks that own them: ghasts, the dragon, blazes while
-     * the rod task is working them, a golem being fought from its pillar. Off, the bot never commits to anything, which
-     * is the same as turning off {@link #altoKillOrAvoidAnnoyingHostiles}. Needs {@link #altoKillOrAvoidAnnoyingHostiles}.
+     * Mobs are ignored by default, in every dimension: the bot keeps walking its path past a crowd of zombies, a lit
+     * creeper, or a skeleton shooting at it from across the field (walking spoils the aim). It only does something about
+     * a mob that hit it while in contact (a fight), or real danger: 8 hp or less with an angry mob within 8 blocks, 10 hp
+     * or less with a heavy hitter like a wither skeleton, hoglin or vindicator within 8, or the warden (a run). A fight
+     * holds until its target is dead or has been more than 6 blocks away and quiet for three seconds, and turns into a
+     * run on the danger rules. A run holds until the bot is 24 blocks from where it started with nothing hostile within
+     * 12, or 25 seconds, whichever comes first. A run that gets nowhere (three seconds with a mob on top of the bot, six
+     * with one within eight blocks) becomes a fight, and one that gets nowhere with nothing near is over after five. A few
+     * things are left to the tasks that own them: ghasts, the dragon, blazes while the rod task is working them, a golem
+     * being fought from its pillar. Off, the bot never commits to anything, which is the same as turning off
+     * {@link #altoKillOrAvoidAnnoyingHostiles}. Needs {@link #altoKillOrAvoidAnnoyingHostiles}.
      */
     public final Setting<Boolean> altoCommitCombat = new Setting<>(true);
 

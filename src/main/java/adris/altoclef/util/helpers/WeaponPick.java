@@ -37,13 +37,6 @@ public final class WeaponPick {
         return best(candidates, false, false);
     }
 
-    // the weapon to hold, or failing that the tool that hits hardest (a pickaxe in the bag beats a bare hand, so a bot with
-    // one is armed as far as "fight a lone zombie" goes), or null for nothing better than fists. a stick is not a tool
-    public static Item bestOrTool(Iterable<Candidate> candidates, boolean crowd, boolean shieldedTarget) {
-        Item weapon = best(candidates, crowd, shieldedTarget);
-        return weapon != null ? weapon : bestTool(candidates);
-    }
-
     // pickaxes, shovels and whatever else hits harder than a fist, the same ranking as the weapons (the harder hit, hand first
     // so ties never swap). a worn one is not on the list at all: every swing costs a tool two uses, and the last of the only
     // pickaxe is worth more than a fight we can run from

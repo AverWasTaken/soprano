@@ -6,7 +6,6 @@ import baritone.api.pathing.goals.GoalXZ;
 import baritone.api.pathing.goals.GoalYLevel;
 import java.util.Optional;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.monster.Creeper;
 
 public abstract class GoalRunAwayFromEntities implements Goal, SnapshotGoal {
 
@@ -39,9 +38,7 @@ public abstract class GoalRunAwayFromEntities implements Goal, SnapshotGoal {
         Optional<Entity> entity = getEntities(_mod);
         if (entity.isPresent() && entity.get().isAlive()) {
             Entity e = entity.get();
-            // swell is only a creeper thing, everything else just carries a zero around
-            float swell = e instanceof Creeper creeper ? creeper.getSwelling(1) : 0;
-            _target = new Target(e.getX(), e.getY(), e.getZ(), e.getBlockX(), e.getBlockY(), e.getBlockZ(), swell);
+            _target = new Target(e.getX(), e.getY(), e.getZ(), e.getBlockX(), e.getBlockY(), e.getBlockZ());
         } else {
             _target = null;
         }
@@ -92,7 +89,7 @@ public abstract class GoalRunAwayFromEntities implements Goal, SnapshotGoal {
         return heuristic; //entity.squaredDistanceTo(x, y, z);
     }
 
-    // an entity frozen in time: exact position, block position and creeper fuse
-    protected record Target(double x, double y, double z, int bx, int by, int bz, float swell) {
+    // an entity frozen in time: exact position and block position
+    protected record Target(double x, double y, double z, int bx, int by, int bz) {
     }
 }
