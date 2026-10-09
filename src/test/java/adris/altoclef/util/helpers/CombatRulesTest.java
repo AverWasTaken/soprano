@@ -11,7 +11,7 @@ import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
 
-// the piglin that killed the bot: hp 10, standing right there
+// the eat / fight / flee call and the one hp line, as numbers
 public class CombatRulesTest {
 
     private static final double NOBODY = Double.POSITIVE_INFINITY;
@@ -30,7 +30,7 @@ public class CombatRulesTest {
 
     @Test
     public void tenHpPiglinInOurFaceIsAFightNotALunch() {
-        // the bug. needsToEat said yes at 10 hp, which turned the defense off, which killed us
+        // needsToEat used to say yes at 10 hp, which turned the defense off in the middle of the fight
         CombatRules.Stance s = fighting(10, 1.5, false);
         assertEquals(FIGHT, s);
         assertFalse(s.mayEat());

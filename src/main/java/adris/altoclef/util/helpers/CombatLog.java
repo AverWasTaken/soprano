@@ -6,8 +6,7 @@ import baritone.api.utils.Dimension;
 import java.util.Locale;
 
 // the one `combat:` line a transition gets, as text, so every event can be checked to say what happened and where. the
-// dimension goes in square brackets right after the prefix, a play log from the nether and one from the overworld read the
-// same otherwise
+// dimension goes in square brackets right after the prefix, everything after it reads the same in all three
 public final class CombatLog {
 
     private CombatLog() {

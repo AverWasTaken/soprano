@@ -10,7 +10,7 @@ import adris.altoclef.util.helpers.CombatCommit.Why;
 import baritone.api.utils.Dimension;
 import org.junit.Test;
 
-// one `combat:` line per transition, and the dimension is in it. a play log from the nether reads like one from the overworld
+// one `combat:` line per transition, and the dimension is in it. the rest of the line reads the same in all three
 public class CombatLogTest {
 
     private static String line(Dimension d, Event event, Why why) {

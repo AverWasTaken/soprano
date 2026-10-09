@@ -338,7 +338,7 @@ public class MobDefenseChain extends SingleTaskChain {
         // first zombie that wanders up
         _killAura.setPolicy(_brain.auraKiting(), _brain.auraShield());
 
-        // Hit what is on us.
+        // hit what is on us.
         List<Entity> entities = mod.getEntityTracker().getCloseEntities();
         try {
             if (!entities.isEmpty()) {

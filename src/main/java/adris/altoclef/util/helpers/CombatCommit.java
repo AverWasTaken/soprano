@@ -424,6 +424,9 @@ public final class CombatCommit {
     private Event targetGone(Tick t) {
         Foe next = nextTarget(t);
         if (next != null) return startFight(t, next, cornered ? Why.CORNERED : (next.hitUs() ? Why.HIT : Why.CONTACT), Event.FIGHT_NEXT, cornered);
+        // a boxed in fight never asked the bail rules, so the warden standing on us when the last thing dies is still ours to
+        // leave: a gap and a five second cooldown next to it is not a plan
+        if (cornered && anyMustRun(t)) return startRun(t, Why.HEAVY, Event.FIGHT_TO_RUN);
         return end(t, Event.FIGHT_DEAD);
     }
 
