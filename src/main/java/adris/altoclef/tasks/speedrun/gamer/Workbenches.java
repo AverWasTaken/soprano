@@ -351,7 +351,7 @@ public final class Workbenches {
         // every station's "are we coming back to it" first: a table's anchor reads its furnace's answer. only the looks that have the
         // plan (tick, sweep): resume() runs first every tick with no plan and would let go of everything and take it back again
         if (startNew) {
-            comingBack(state, f, names, dimension, me);
+            comingBack(state, f, names, dimension, me, now);
         }
         // a furnace or smoker load in the tree or in flight: the furnace it goes in is not busy yet (the job is recorded when the
         // load is done), so "done with the table" waits for it, or the table could come down before the furnace anchors it
@@ -362,7 +362,7 @@ public final class Workbenches {
                 continue;
             }
             Bench.State before = b.state;
-            anchor(b, WorkbenchRules.anchorOf(b, state.benches, hasJob));
+            anchor(state, b, WorkbenchRules.anchorOf(b, state.benches, hasJob), now);
             WorkbenchRules.Look look = look(mod, ctx, b, me, dimension, WorkbenchRules.neededSoon(b.kind, names, wooden, stone), limit);
             if (startNew && !smelting && WorkbenchRules.doneUsing(b, look)) {
                 doneWith(mod, b, look, names, wooden, stone);
@@ -446,12 +446,12 @@ public final class Workbenches {
     // the one smoker or furnace of each kind the plan comes back to is the nearest of ours in this dimension (the one CookGate and
     // the smelt would use), and the meat goes in the furnace only when no smoker of ours stands near or sits in the bag, the same
     // test CookGate makes
-    private static void comingBack(RunState state, GamerFacts f, List<String> names, String dimension, Vec3 me) {
+    private static void comingBack(RunState state, GamerFacts f, List<String> names, String dimension, Vec3 me, long now) {
         boolean smokerOfOurs = f.smokerPlacedNearby() || f.count(Items.SMOKER) > 0;
         for (Bench b : state.benches) {
             String back = b.dimension.equals(dimension) && b == nearestOf(state, b.kind, dimension, me)
                     ? WorkbenchRules.comingBack(b.kind, names, smokerOfOurs) : null;
-            switch (WorkbenchRules.updateComingBack(b, back)) {
+            switch (WorkbenchRules.updateComingBack(b, back, now)) {
                 case ANCHORED -> log(b + ": keeping it, the plan brings us back " + back);
                 case RELEASED -> log(b + ": nothing brings us back to it now, deciding it again");
                 default -> {
@@ -472,9 +472,11 @@ public final class Workbenches {
     }
 
     // one line each way: it waits beside a cooking furnace now, or that furnace is done and this one gets decided again
-    private static void anchor(Bench b, Bench anchor) {
+    private static void anchor(RunState state, Bench b, Bench anchor, long now) {
         Bench was = b.anchor;
-        switch (WorkbenchRules.updateAnchor(b, anchor)) {
+        // the furnace coming down or gone is a real end, not a flicker to sit out
+        boolean left = was != null && (was.state == Bench.State.PICKING_UP || was.state == Bench.State.IN_BAG || !state.benches.contains(was));
+        switch (WorkbenchRules.updateAnchor(b, anchor, now, left)) {
             case ANCHORED -> log("keeping " + b.kind.word() + " at " + at(b) + (anchor.state == Bench.State.BUSY
                     ? ", the " + anchor.kind.word() + " at " + at(anchor) + " is cooking and we'll be back for it"
                     : ", we'll be back at the " + anchor.kind.word() + " at " + at(anchor) + " " + anchor.comingBack));

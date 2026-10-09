@@ -57,6 +57,9 @@ public final class WorkbenchRules {
     public static final long DRIVE_STEP_TICKS = 2;
     // a smelt task had its screen in hand this recently (AsyncSmelting.working) counts as a load in flight
     public static final long LOAD_GRACE_TICKS = 20;
+    // "coming back" and the anchor let go only after saying no this long in a row (3 s). the plan leaves FOOD for a tick now and
+    // then (a craft slots in, the planner rereads the bag) and that one tick used to start a smoker pickup mid hunt
+    public static final long LET_GO_TICKS = 60;
 
     private WorkbenchRules() {
     }
@@ -559,24 +562,52 @@ public final class WorkbenchRules {
 
     // the same for a furnace or smoker's own reason to stay. when it ends the station is decided again on the spot, like a table
     // whose anchor let go
-    public static Anchor updateComingBack(Bench b, String back) {
-        String before = b.comingBack;
-        b.comingBack = back;
-        if ((before == null) == (back == null)) {
-            return Anchor.SAME;
-        }
-        if (back == null) {
-            b.redecide = true;
-            return Anchor.RELEASED;
-        }
-        b.leaveNow = false;
-        b.redecide = false;
-        return Anchor.ANCHORED;
+    private static boolean lostLongEnough(long since, long now) {
+        return now - since >= LET_GO_TICKS;
     }
 
-    // moves the anchor along and says what happened, for the one log line each way
-    public static Anchor updateAnchor(Bench b, Bench anchor) {
+    // a "no" only counts once it has lasted LET_GO_TICKS, a yes is believed at once
+    public static Anchor updateComingBack(Bench b, String back, long now) {
+        String before = b.comingBack;
+        if (back != null) {
+            b.comingBackLostSince = NEVER;
+            b.comingBack = back;
+            if (before != null) {
+                return Anchor.SAME;
+            }
+            b.leaveNow = false;
+            b.redecide = false;
+            return Anchor.ANCHORED;
+        }
+        if (before == null) {
+            return Anchor.SAME;
+        }
+        if (b.comingBackLostSince == NEVER) {
+            b.comingBackLostSince = now;
+        }
+        if (!lostLongEnough(b.comingBackLostSince, now)) {
+            return Anchor.SAME;
+        }
+        b.comingBack = null;
+        b.comingBackLostSince = NEVER;
+        b.redecide = true;
+        return Anchor.RELEASED;
+    }
+
+    // moves the anchor along and says what happened, for the one log line each way. a flicker in the furnace's answer is held for
+    // LET_GO_TICKS like comingBack, but `anchorLeft` (the furnace is coming down, in the bag, or out of the registry) is not a
+    // flicker, the collect visit wants the table decided while we still stand at it
+    public static Anchor updateAnchor(Bench b, Bench anchor, long now, boolean anchorLeft) {
         Bench before = b.anchor;
+        if (anchor == null && before != null && !anchorLeft) {
+            if (b.anchorLostSince == NEVER) {
+                b.anchorLostSince = now;
+            }
+            if (!lostLongEnough(b.anchorLostSince, now)) {
+                return Anchor.SAME;
+            }
+        }
+        b.anchorLostSince = NEVER;
         b.anchor = anchor;
         if (before == anchor) {
             return Anchor.SAME;

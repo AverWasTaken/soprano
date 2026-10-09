@@ -68,6 +68,10 @@ public final class Bench {
     // a furnace or smoker the plan brings us back to soon, and why ("to cook", "to smelt"), null when it does not
     // (WorkbenchRules.comingBack). worked out every look like the anchor
     public String comingBack;
+    // the first tick of the stretch the plan has said "not coming back" / the anchor has been missing, NEVER while it holds.
+    // WorkbenchRules.LET_GO_TICKS of that and it lets go
+    public long comingBackLostSince = WorkbenchRules.NEVER;
+    public long anchorLostSince = WorkbenchRules.NEVER;
 
     public Bench(StationHook.Kind kind, RunState.Pos pos, String dimension, long placedTick) {
         this.kind = kind;

@@ -1711,15 +1711,15 @@ public class WorkbenchRulesTest {
         Bench furnace = cooking();
         Bench b = justUsed();
         List<Bench> all = List.of(furnace, b);
-        assertEquals(WorkbenchRules.Anchor.ANCHORED, WorkbenchRules.updateAnchor(b, anchorFor(b, all)));
+        assertEquals(WorkbenchRules.Anchor.ANCHORED, WorkbenchRules.updateAnchor(b, anchorFor(b, all), 0, false));
         assertSame(furnace, b.anchor);
         Seen s = new Seen();
         // the proactive path: no "done with it" while anchored
         assertFalse(WorkbenchRules.doneUsing(b, s.look()));
         // and even a far answer from before does not take it
         b.leaveNow = true;
-        WorkbenchRules.updateAnchor(b, null);
-        WorkbenchRules.updateAnchor(b, anchorFor(b, all));
+        WorkbenchRules.updateAnchor(b, null, 0, true);
+        WorkbenchRules.updateAnchor(b, anchorFor(b, all), 0, false);
         assertFalse(b.leaveNow);
         // the reactive path: off mining 40 blocks away for a minute, nothing in the plan wanting a table, and it stays
         s.distance = 40;
@@ -1734,7 +1734,7 @@ public class WorkbenchRulesTest {
         // not forgotten by distance either, the furnace is not
         s.distance = 200;
         assertEquals(Call.KEEP, decide(b, s));
-        assertEquals(WorkbenchRules.Anchor.SAME, WorkbenchRules.updateAnchor(b, anchorFor(b, all)));
+        assertEquals(WorkbenchRules.Anchor.SAME, WorkbenchRules.updateAnchor(b, anchorFor(b, all), 0, false));
     }
 
     @Test
@@ -1742,11 +1742,12 @@ public class WorkbenchRulesTest {
         Bench furnace = cooking();
         Bench b = justUsed();
         List<Bench> all = List.of(furnace, b);
-        WorkbenchRules.updateAnchor(b, anchorFor(b, all));
+        WorkbenchRules.updateAnchor(b, anchorFor(b, all), 0, false);
         WorkbenchRules.settleDone(b, KEEP);
         // the visit empties the furnace and starts taking it down: it is not cooking any more
         WorkbenchRules.beginPickup(furnace, 1000, 0, "the visit emptied it");
-        assertEquals(WorkbenchRules.Anchor.RELEASED, WorkbenchRules.updateAnchor(b, anchorFor(b, all)));
+        // a furnace coming down is a real end (Workbenches passes anchorLeft), no 3 s hold
+        assertEquals(WorkbenchRules.Anchor.RELEASED, WorkbenchRules.updateAnchor(b, anchorFor(b, all), 1000, true));
         assertTrue(b.redecide);
         Seen s = new Seen();
         s.now = 5000;
@@ -1817,10 +1818,10 @@ public class WorkbenchRulesTest {
         Bench b = justUsed();
         List<Bench> all = List.of(smoker, b);
         List<String> plan = List.of(KitNeed.FOOD, "shield");
-        assertEquals(WorkbenchRules.Anchor.ANCHORED, WorkbenchRules.updateComingBack(smoker, WorkbenchRules.comingBack(Kind.SMOKER, plan, true)));
+        assertEquals(WorkbenchRules.Anchor.ANCHORED, WorkbenchRules.updateComingBack(smoker, WorkbenchRules.comingBack(Kind.SMOKER, plan, true), 0));
         assertEquals("to cook", smoker.comingBack);
         // the table rides on it
-        assertEquals(WorkbenchRules.Anchor.ANCHORED, WorkbenchRules.updateAnchor(b, WorkbenchRules.anchorOf(b, all, x -> false)));
+        assertEquals(WorkbenchRules.Anchor.ANCHORED, WorkbenchRules.updateAnchor(b, WorkbenchRules.anchorOf(b, all, x -> false), 0, false));
         assertSame(smoker, b.anchor);
         // the hunt takes us 60 blocks off for a minute: neither comes down, and the smoker is never "done with"
         Seen s = new Seen();
@@ -1843,12 +1844,16 @@ public class WorkbenchRulesTest {
         Bench smoker = smokerAt15();
         Bench b = justUsed();
         List<Bench> all = List.of(smoker, b);
-        WorkbenchRules.updateComingBack(smoker, WorkbenchRules.comingBack(Kind.SMOKER, List.of(KitNeed.COOK_SMOKER), true));
-        WorkbenchRules.updateAnchor(b, WorkbenchRules.anchorOf(b, all, x -> false));
-        // the cook came out, nothing in the plan wants either of them
+        WorkbenchRules.updateComingBack(smoker, WorkbenchRules.comingBack(Kind.SMOKER, List.of(KitNeed.COOK_SMOKER), true), 0);
+        WorkbenchRules.updateAnchor(b, WorkbenchRules.anchorOf(b, all, x -> false), 0, false);
+        // the cook came out, nothing in the plan wants either of them. the "no" has to last 3 s, then both let go
         List<String> plan = List.of();
-        assertEquals(WorkbenchRules.Anchor.RELEASED, WorkbenchRules.updateComingBack(smoker, WorkbenchRules.comingBack(Kind.SMOKER, plan, true)));
-        assertEquals(WorkbenchRules.Anchor.RELEASED, WorkbenchRules.updateAnchor(b, WorkbenchRules.anchorOf(b, all, x -> false)));
+        assertEquals(WorkbenchRules.Anchor.SAME, WorkbenchRules.updateComingBack(smoker, WorkbenchRules.comingBack(Kind.SMOKER, plan, true), 100));
+        assertEquals(WorkbenchRules.Anchor.RELEASED, WorkbenchRules.updateComingBack(smoker, null, 100 + WorkbenchRules.LET_GO_TICKS));
+        // the table only starts its own count once the smoker stopped anchoring it
+        long t = 100 + WorkbenchRules.LET_GO_TICKS;
+        assertEquals(WorkbenchRules.Anchor.SAME, WorkbenchRules.updateAnchor(b, WorkbenchRules.anchorOf(b, all, x -> false), t, false));
+        assertEquals(WorkbenchRules.Anchor.RELEASED, WorkbenchRules.updateAnchor(b, WorkbenchRules.anchorOf(b, all, x -> false), t + WorkbenchRules.LET_GO_TICKS, false));
         Seen s = new Seen();
         s.now = 5000;
         s.neededSoon = false;
@@ -1862,7 +1867,7 @@ public class WorkbenchRulesTest {
     public void aTableNearAStationThePlanWillNotComeBackToFollowsTheNormalRules() {
         Bench smoker = smokerAt15();
         Bench b = table();
-        WorkbenchRules.updateComingBack(smoker, WorkbenchRules.comingBack(Kind.SMOKER, List.of("shield", "log"), true));
+        WorkbenchRules.updateComingBack(smoker, WorkbenchRules.comingBack(Kind.SMOKER, List.of("shield", "log"), true), 0);
         assertNull(smoker.comingBack);
         assertNull(WorkbenchRules.anchorOf(b, List.of(smoker, b), x -> false));
         Seen s = new Seen();
@@ -1909,9 +1914,9 @@ public class WorkbenchRulesTest {
     public void aFurnaceBeingLoadedAnchorsTheTableBeforeItsJobIsRecorded() {
         Bench furnace = new Bench(Kind.FURNACE, pos(15, 64, 0), OVERWORLD, 0);
         Bench b = justUsed();
-        WorkbenchRules.updateComingBack(furnace, WorkbenchRules.comingBack(Kind.FURNACE, List.of("iron_ingot", "shield"), true));
+        WorkbenchRules.updateComingBack(furnace, WorkbenchRules.comingBack(Kind.FURNACE, List.of("iron_ingot", "shield"), true), 0);
         assertSame(furnace, WorkbenchRules.anchorOf(b, List.of(furnace, b), x -> false));
-        WorkbenchRules.updateAnchor(b, furnace);
+        WorkbenchRules.updateAnchor(b, furnace, 0, false);
         assertFalse(WorkbenchRules.doneUsing(b, new Seen().look()));
         Seen s = new Seen();
         s.distance = 40;
@@ -1933,5 +1938,78 @@ public class WorkbenchRulesTest {
         s.distance = 5;
         s.neededSoon = false;
         assertEquals(Call.PICK_UP, decide(b, s));
+    }
+
+    // ---- coming back holds through a flicker
+
+    // the plan leaves FOOD for one tick mid hunt: the smoker and its table stay put, nothing gets decided again
+    @Test
+    public void aOneTickFlickerInThePlanLetsGoOfNothing() {
+        Bench smoker = smokerAt15();
+        Bench b = justUsed();
+        List<Bench> all = List.of(smoker, b);
+        List<String> hunt = List.of(KitNeed.FOOD, "shield");
+        List<String> flicker = List.of("stick", "shield");
+        WorkbenchRules.updateComingBack(smoker, WorkbenchRules.comingBack(Kind.SMOKER, hunt, true), 0);
+        WorkbenchRules.updateAnchor(b, WorkbenchRules.anchorOf(b, all, x -> false), 0, false);
+        assertEquals(WorkbenchRules.Anchor.SAME, WorkbenchRules.updateComingBack(smoker, WorkbenchRules.comingBack(Kind.SMOKER, flicker, true), 200));
+        assertEquals(WorkbenchRules.Anchor.SAME, WorkbenchRules.updateAnchor(b, WorkbenchRules.anchorOf(b, all, x -> false), 200, false));
+        assertEquals("to cook", smoker.comingBack);
+        assertSame(smoker, b.anchor);
+        assertFalse(smoker.redecide);
+        assertFalse(b.redecide);
+        Seen s = new Seen();
+        s.now = 200;
+        s.distance = 40;
+        s.neededSoon = false;
+        assertEquals(Call.KEEP, decide(smoker, s));
+        assertEquals(Call.KEEP, decide(b, s));
+        // back on the hunt next tick: the count starts over, so a second blip later gets its own 3 s
+        assertEquals(WorkbenchRules.Anchor.SAME, WorkbenchRules.updateComingBack(smoker, WorkbenchRules.comingBack(Kind.SMOKER, hunt, true), 201));
+        assertEquals(WorkbenchRules.NEVER, smoker.comingBackLostSince);
+        assertEquals(WorkbenchRules.Anchor.SAME, WorkbenchRules.updateComingBack(smoker, null, 201 + WorkbenchRules.LET_GO_TICKS - 1));
+        assertEquals(WorkbenchRules.Anchor.SAME, WorkbenchRules.updateComingBack(smoker, null, 201 + 2 * WorkbenchRules.LET_GO_TICKS - 2));
+        assertEquals("to cook", smoker.comingBack);
+    }
+
+    // 3 s of "no" really is no: the smoker lets go and is decided again, and the table follows 3 s after
+    @Test
+    public void threeSecondsOfNoLetsGo() {
+        Bench smoker = smokerAt15();
+        Bench b = justUsed();
+        List<Bench> all = List.of(smoker, b);
+        WorkbenchRules.updateComingBack(smoker, "to cook", 0);
+        WorkbenchRules.updateAnchor(b, WorkbenchRules.anchorOf(b, all, x -> false), 0, false);
+        long t = 100;
+        for (long i = 0; i < WorkbenchRules.LET_GO_TICKS; i++) {
+            assertEquals(WorkbenchRules.Anchor.SAME, WorkbenchRules.updateComingBack(smoker, null, t + i));
+        }
+        assertEquals(WorkbenchRules.Anchor.RELEASED, WorkbenchRules.updateComingBack(smoker, null, t + WorkbenchRules.LET_GO_TICKS));
+        assertNull(smoker.comingBack);
+        assertTrue(smoker.redecide);
+        long u = t + WorkbenchRules.LET_GO_TICKS;
+        assertEquals(WorkbenchRules.Anchor.SAME, WorkbenchRules.updateAnchor(b, WorkbenchRules.anchorOf(b, all, x -> false), u, false));
+        assertSame(smoker, b.anchor);
+        assertEquals(WorkbenchRules.Anchor.RELEASED, WorkbenchRules.updateAnchor(b, WorkbenchRules.anchorOf(b, all, x -> false), u + WorkbenchRules.LET_GO_TICKS, false));
+        assertNull(b.anchor);
+        assertTrue(b.redecide);
+        // and a yes is believed at once
+        assertEquals(WorkbenchRules.Anchor.ANCHORED, WorkbenchRules.updateComingBack(smoker, "to cook", u + 100));
+    }
+
+    // an anchor flicker is held too, but the furnace coming down is not a flicker
+    @Test
+    public void theAnchorSitsOutAFlickerButNotItsFurnaceLeaving() {
+        Bench furnace = cooking();
+        Bench b = justUsed();
+        WorkbenchRules.updateAnchor(b, furnace, 0, false);
+        assertEquals(WorkbenchRules.Anchor.SAME, WorkbenchRules.updateAnchor(b, null, 10, false));
+        assertSame(furnace, b.anchor);
+        // a different anchor is taken at once
+        Bench other = cooking();
+        assertEquals(WorkbenchRules.Anchor.ANCHORED, WorkbenchRules.updateAnchor(b, other, 11, false));
+        assertEquals(WorkbenchRules.NEVER, b.anchorLostSince);
+        assertEquals(WorkbenchRules.Anchor.RELEASED, WorkbenchRules.updateAnchor(b, null, 12, true));
+        assertTrue(b.redecide);
     }
 }
