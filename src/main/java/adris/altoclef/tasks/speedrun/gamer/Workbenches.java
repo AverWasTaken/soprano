@@ -11,6 +11,7 @@ import adris.altoclef.tasks.movement.PickupDroppedItemTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.trackers.storage.ContainerCache;
 import adris.altoclef.util.helpers.ItemHelper;
+import adris.altoclef.util.helpers.StationChoice;
 import adris.altoclef.util.helpers.StationHook;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.StationHook.Kind;
@@ -264,13 +265,27 @@ public final class Workbenches {
         return best;
     }
 
-    // the furnace or smoker StationChoice walks back to when the bag cannot make one (DoStuffInContainerTask's far one of ours): the
+    // the furnace or smoker StationChoice walks back to (DoStuffInContainerTask's far one of ours) when the bag cannot make one: the
     // nearest standing within the forget line, and `usable` (not coming down, nothing of ours cooking in it, reachable) says the
     // task would take it. a parked one (three pickups ran out on time) does not count: the task might still walk to it, but the
     // planner leaning short is a few cobble too many, leaning long is a furnace nobody budgeted
     public static Bench walkBackTo(RunState state, Kind kind, String dimension, double x, double y, double z, Predicate<Bench> usable) {
-        Bench far = nearestStanding(state, kind, dimension, x, y, z, WorkbenchRules.FORGET_DISTANCE);
+        return walkBackTo(state, kind, dimension, x, y, z, WorkbenchRules.FORGET_DISTANCE, usable);
+    }
+
+    // the same out to `radius`. the nearest standing one counts or none does, like the task's oursFar (a parked nearest one is not
+    // swapped for the next one out)
+    public static Bench walkBackTo(RunState state, Kind kind, String dimension, double x, double y, double z, double radius, Predicate<Bench> usable) {
+        Bench far = nearestStanding(state, kind, dimension, x, y, z, radius);
         return far != null && !far.pickupFailed && usable.test(far) ? far : null;
+    }
+
+    // the planner's half of StationChoice's walk back: no item in the bag and ours standing within oursReach (WALK_BACK when the bag
+    // could make one, the forget line when it can't). MinecraftFacts counts the furnace or smoker as held on this, so the plan never
+    // budgets a furnace the smelt is going to walk past. `canMake` is DoStuffInContainerTask.bagCanMake, `usable` its walkBackUsable
+    public static boolean plannerWalksBack(RunState state, Kind kind, String dimension, double x, double y, double z, boolean inBag,
+                                           boolean canMake, Predicate<Bench> usable) {
+        return !inBag && walkBackTo(state, kind, dimension, x, y, z, StationChoice.oursReach(kind, canMake), usable) != null;
     }
 
     // what the container tasks see (StationHook), wired in by the run
@@ -311,6 +326,12 @@ public final class Workbenches {
             public boolean givenUp(BlockPos pos) {
                 Bench b = here(pos);
                 return b != null && b.givenUp;
+            }
+
+            @Override
+            public boolean parked(BlockPos pos) {
+                Bench b = here(pos);
+                return b != null && b.pickupFailed;
             }
 
             private Bench here(BlockPos pos) {

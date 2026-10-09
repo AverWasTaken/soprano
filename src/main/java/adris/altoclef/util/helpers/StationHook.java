@@ -46,6 +46,12 @@ public final class StationHook {
         // in it is not a load to go back and finish
         boolean givenUp(BlockPos pos);
 
+        // this block is ours and three pickups ran out on time at it (Bench.pickupFailed). the walk back skips it, the planner
+        // never counted it either (Workbenches.walkBackTo)
+        default boolean parked(BlockPos pos) {
+            return false;
+        }
+
         // cobble in the bag that is already owed to something else (the gamer's stone tools). "the bag can make a furnace" only
         // counts what is left over, or 8 cobble for a pick, an axe and a sword reads as a furnace and the far one gets abandoned
         default int cobbleOwed() {
@@ -111,6 +117,11 @@ public final class StationHook {
     public static boolean givenUp(BlockPos pos) {
         Source s = source;
         return s != null && pos != null && s.givenUp(pos);
+    }
+
+    public static boolean parked(BlockPos pos) {
+        Source s = source;
+        return s != null && pos != null && s.parked(pos);
     }
 
     // plain alto owes nothing, all of it can go into a furnace

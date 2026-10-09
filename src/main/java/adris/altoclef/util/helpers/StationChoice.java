@@ -17,6 +17,11 @@ public final class StationChoice {
     // the one we are walking to keeps its place this far past the line, or a station sitting right on it trades places every time
     // a step moves us across
     public static final double HOLD = 2.0;
+    // a furnace or smoker of ours this close (straight line) is walked back to even when the bag could make another. making one is
+    // 8 cobble and a table and a craft, and then the old one sits out there until something walks back for it anyway (that walk
+    // was the bug: a new furnace went down 36 blocks from ours and the pickup trip for the old one left the smelt cooking alone).
+    // past this the new one wins if the bag has what it takes
+    public static final double WALK_BACK = 48.0;
 
     // strongest first
     public enum Role {
@@ -63,6 +68,13 @@ public final class StationChoice {
     // costs a pile of iron to make
     public static <T> Pick<T> decide(Collection<Candidate<T>> seen, T previous, boolean inBag, boolean mayMake, boolean canMakeNow,
                                      double worldReach) {
+        return decide(seen, previous, inBag, mayMake, canMakeNow, worldReach, WalkCost.STATION_NEAR);
+    }
+
+    // `walkBack`: how far ours is worth walking to when the bag could make another one (walkBackReach). with nothing to make one
+    // from it is the forget line whatever this says
+    public static <T> Pick<T> decide(Collection<Candidate<T>> seen, T previous, boolean inBag, boolean mayMake, boolean canMakeNow,
+                                     double worldReach, double walkBack) {
         List<Candidate<T>> merged = merge(seen);
         Candidate<T> best = nearest(merged, Role.PINNED, previous, Double.POSITIVE_INFINITY);
         if (best != null) {
@@ -79,19 +91,39 @@ public final class StationChoice {
         if (!mayMake) {
             return new Pick<>(Use.NONE, null);
         }
-        if (!inBag && !canMakeNow) {
+        // the one in the bag goes down right here, cheaper than any walk
+        if (!inBag) {
             // making one means mining 8 cobble (and logs, for a smoker) first, which is a trip of its own and usually a longer one
-            // than walking back to a station that still stands. ours first, then anybody's, out to the forget line
-            best = nearest(merged, Role.OURS, previous, WalkCost.STATION_FORGET);
+            // than walking back to a station that still stands. ours first, then anybody's, out to the forget line. with the
+            // stuff in the bag ours still gets its walkBack
+            best = nearest(merged, Role.OURS, previous, oursReach(canMakeNow, walkBack));
             if (best != null) {
                 return new Pick<>(Use.OURS, best.key());
             }
-            best = nearest(merged, Role.WORLD, previous, WalkCost.STATION_FORGET);
-            if (best != null) {
-                return new Pick<>(Use.WORLD, best.key());
+            if (!canMakeNow) {
+                best = nearest(merged, Role.WORLD, previous, WalkCost.STATION_FORGET);
+                if (best != null) {
+                    return new Pick<>(Use.WORLD, best.key());
+                }
             }
         }
         return new Pick<>(inBag ? Use.BAG : Use.MAKE, null);
+    }
+
+    // how far ours is worth walking to when the bag could make another: WALK_BACK for a furnace or smoker, NEAR (no extra walk) for a
+    // table, which is 4 planks and a click, and for the things the registry does not keep
+    public static double walkBackReach(StationHook.Kind kind) {
+        return kind == StationHook.Kind.FURNACE || kind == StationHook.Kind.SMOKER ? WALK_BACK : WalkCost.STATION_NEAR;
+    }
+
+    // the whole walk-back line in one number, for decide and for the planner (which has to count the same far station as held):
+    // walkBack when the bag could make one, the forget line when it can't
+    public static double oursReach(boolean canMakeNow, double walkBack) {
+        return canMakeNow ? walkBack : WalkCost.STATION_FORGET;
+    }
+
+    public static double oursReach(StationHook.Kind kind, boolean canMakeNow) {
+        return oursReach(canMakeNow, walkBackReach(kind));
     }
 
     // the bag holds what one more of this station takes (a table to craft it at aside, that is cheap): a table is 4 planks or a log,

@@ -250,6 +250,58 @@ public class StationChoiceTest {
         assertEquals("ours", StationChoice.decide(both, null, false, true, false, NEAR).key());
     }
 
+    // ---- the walk back with the stuff in the bag
+
+    private static Pick<String> furnace(List<Candidate<String>> seen, String previous, boolean inBag, boolean canMake) {
+        return StationChoice.decide(seen, previous, inBag, true, canMake, NEAR, StationChoice.walkBackReach(StationHook.Kind.FURNACE));
+    }
+
+    // a furnace of ours 30 blocks off is a walk, a new one is 8 cobble, a table, a craft and an old furnace somebody has to fetch
+    @Test
+    public void oursWithinWalkBackBeatsMakingOneFromTheCobbleInTheBag() {
+        assertPick(Use.OURS, "ours", furnace(List.of(ours("ours", 30)), null, false, true));
+        assertPick(Use.OURS, "ours", furnace(List.of(ours("ours", StationChoice.WALK_BACK)), null, false, true));
+        // past it making one is fine
+        assertPick(Use.MAKE, null, furnace(List.of(ours("ours", 60)), null, false, true));
+        assertPick(Use.MAKE, null, furnace(List.of(ours("ours", StationChoice.WALK_BACK + 0.01)), null, false, true));
+        // and with nothing to make one from the old forget line still holds
+        assertPick(Use.OURS, "ours", furnace(List.of(ours("ours", 60)), null, false, false));
+    }
+
+    @Test
+    public void theOneInTheBagStillGoesDownRightHere() {
+        assertPick(Use.BAG, null, furnace(List.of(ours("ours", 30)), null, true, true));
+        assertPick(Use.BAG, null, furnace(List.of(ours("ours", 30)), null, true, false));
+    }
+
+    // a village's furnace next to us is free, the walk back to ours is not
+    @Test
+    public void aWorldOneWithinNearStillBeatsTheWalkBack() {
+        assertPick(Use.WORLD, "village", furnace(List.of(ours("ours", 30), world("village", 10)), null, false, true));
+        // a far world one is not worth it when we can make one, the walk back to ours is
+        assertPick(Use.OURS, "ours", furnace(List.of(ours("ours", 30), world("village", 25)), null, false, true));
+    }
+
+    // the one we are walking to keeps HOLD past the line like everywhere else
+    @Test
+    public void theWalkBackKeepsItsTargetJustPastTheLine() {
+        double past = StationChoice.WALK_BACK + 1;
+        assertPick(Use.OURS, "ours", furnace(List.of(ours("ours", past)), "ours", false, true));
+        assertPick(Use.MAKE, null, furnace(List.of(ours("ours", past)), null, false, true));
+    }
+
+    // a table is 4 planks and a click, so it gets no walk past NEAR when the bag can make one
+    @Test
+    public void aTableIsNotWalkedBackToWhenThePlanksAreHere() {
+        assertEquals(NEAR, StationChoice.walkBackReach(StationHook.Kind.TABLE), 0);
+        assertEquals(NEAR, StationChoice.walkBackReach(null), 0);
+        assertEquals(StationChoice.WALK_BACK, StationChoice.walkBackReach(StationHook.Kind.SMOKER), 0);
+        assertPick(Use.MAKE, null, StationChoice.decide(List.of(ours("t", 30)), null, false, true, true, NEAR,
+                StationChoice.walkBackReach(StationHook.Kind.TABLE)));
+        assertEquals(WalkCost.STATION_FORGET, StationChoice.oursReach(StationHook.Kind.TABLE, false), 0);
+        assertEquals(StationChoice.WALK_BACK, StationChoice.oursReach(StationHook.Kind.FURNACE, true), 0);
+    }
+
     @Test
     public void whatMakingOneTakes() {
         assertTrue(StationChoice.canMakeFrom(StationHook.Kind.TABLE, 0, 1, 0, 0));

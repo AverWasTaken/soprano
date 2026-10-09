@@ -826,4 +826,46 @@ public class WorkbenchesRegistryTest {
         // and the kind is the kind
         assertEquals(30, Workbenches.walkBackTo(state, Kind.SMOKER, OVERWORLD, 0, 64, 0, b -> true).pos.x);
     }
+
+    // past the band the planner holds a furnace exactly when the smelt task would walk back to it: within WALK_BACK even with the
+    // cobble in the bag, out to the forget line without it, never with one in the bag. same block, same bag, same answer
+    @Test
+    public void thePlannersWalkBackIsStationChoicesWalkBack() {
+        int[] distances = {22, 30, 47, 48, 49, 60, 127, 128, 129, 200};
+        for (int d : distances) {
+            RunState state = new RunState();
+            state.placedFurnaces.add(pos(d, 64, 0));
+            Workbenches.sync(state, 500);
+            // the task measures to the middle of the block, so does the planner
+            double away = adris.altoclef.util.helpers.WalkCost.stationDistance(d, 64, 0, 0, 64, 0);
+            for (boolean inBag : new boolean[]{false, true}) {
+                for (boolean canMake : new boolean[]{false, true}) {
+                    var seen = List.of(new adris.altoclef.util.helpers.StationChoice.Candidate<>("ours", away,
+                            adris.altoclef.util.helpers.StationChoice.Role.OURS));
+                    var pick = adris.altoclef.util.helpers.StationChoice.decide(seen, null, inBag, true, canMake, WorkbenchRules.NEAR,
+                            adris.altoclef.util.helpers.StationChoice.walkBackReach(Kind.FURNACE));
+                    boolean held = Workbenches.plannerWalksBack(state, Kind.FURNACE, OVERWORLD, 0, 64, 0, inBag, canMake, b -> true);
+                    assertEquals("d " + d + " bag " + inBag + " make " + canMake,
+                            pick.use() == adris.altoclef.util.helpers.StationChoice.Use.OURS, held);
+                }
+            }
+        }
+    }
+
+    // the bug: ours 30 blocks off and 35 raw iron, cobble for a new one in the bag. the planner counts ours, the task walks to it.
+    // 60 off it is a new furnace for both. a parked one is skipped by both (the task's walkBackUsable asks StationHook.parked)
+    @Test
+    public void ourFurnaceThirtyBlocksOffIsHeldWithCobbleInTheBag() {
+        RunState state = new RunState();
+        state.placedFurnaces.add(pos(30, 64, 0));
+        Workbenches.sync(state, 500);
+        assertTrue(Workbenches.plannerWalksBack(state, Kind.FURNACE, OVERWORLD, 0, 64, 0, false, true, b -> true));
+        assertFalse(Workbenches.plannerWalksBack(state, Kind.FURNACE, OVERWORLD, 0, 64, 0, true, true, b -> true));
+        assertFalse(Workbenches.plannerWalksBack(state, Kind.FURNACE, OVERWORLD, -30, 64, 0, false, true, b -> true));
+        state.benches.get(0).pickupFailed = true;
+        assertFalse(Workbenches.plannerWalksBack(state, Kind.FURNACE, OVERWORLD, 0, 64, 0, false, true, b -> true));
+        StationHook.Source source = Workbenches.source(state, facts(Dimension.OVERWORLD, 100));
+        assertTrue(source.parked(new BlockPos(30, 64, 0)));
+        assertFalse(source.parked(new BlockPos(31, 64, 0)));
+    }
 }

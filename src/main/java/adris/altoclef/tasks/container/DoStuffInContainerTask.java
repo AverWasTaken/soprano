@@ -199,8 +199,9 @@ public abstract class DoStuffInContainerTask extends Task {
         if (usable(mod, ours)) {
             seen.add(candidate(ours, me, StationChoice.Role.OURS));
         }
-        // and the nearest of ours out to the forget line, for when making one is not on (StationChoice only walks that far when the bag
-        // cannot make one). an unloaded chunk reads as air, so out there the registry's word is taken
+        // and the nearest of ours out to the forget line, for the walk back (StationChoice takes it within WALK_BACK for a furnace or
+        // smoker, and anywhere out to the forget line when the bag cannot make one). an unloaded chunk reads as air, so out there the
+        // registry's word is taken
         BlockPos oursFar = _stationKind == null ? null : StationHook.standingWithin(_stationKind, me.x, me.y, me.z, WalkCost.STATION_FORGET);
         if (oursFar != null && !oursFar.equals(ours) && walkBackUsable(mod, oursFar, _containerBlocks)) {
             seen.add(candidate(oursFar, me, StationChoice.Role.OURS));
@@ -222,7 +223,8 @@ public abstract class DoStuffInContainerTask extends Task {
         world.ifPresent(p -> seen.add(candidate(p, me, StationChoice.Role.WORLD)));
 
         _canMakeNow = canMakeNow(mod);
-        _pick = StationChoice.decide(seen, previous, mod.getItemStorage().hasItem(_containerTarget), canMakeNew(mod), _canMakeNow, reach);
+        _pick = StationChoice.decide(seen, previous, mod.getItemStorage().hasItem(_containerTarget), canMakeNew(mod), _canMakeNow, reach,
+                StationChoice.walkBackReach(_stationKind));
         _pickTick = now;
         return _pick;
     }
@@ -234,7 +236,7 @@ public abstract class DoStuffInContainerTask extends Task {
     }
 
     // public for MinecraftFacts: the planner asks the same two questions so it counts a far furnace as held exactly when the walk
-    // back would go to it
+    // back would go to it (Workbenches.plannerWalksBack)
     public static boolean bagCanMake(AltoClef mod, StationHook.Kind kind) {
         var bag = mod.getItemStorage();
         // what the stone tools still eat is not furnace material (StationHook.cobbleOwed)
@@ -244,10 +246,11 @@ public abstract class DoStuffInContainerTask extends Task {
     }
 
     // the far one of ours the walk back may head for: not coming down, not one with our things cooking in it (that one is busy, a
-    // second load does not go in) and not one alto already gave up on reaching. an unloaded chunk reads as air, so out there the
-    // registry's word is taken
+    // second load does not go in), not one alto already gave up on reaching, and not a parked one (three pickups ran out on time at
+    // it; the planner never counted those, so the task skipping them keeps the two on the same block). an unloaded chunk reads as
+    // air, so out there the registry's word is taken
     public static boolean walkBackUsable(AltoClef mod, BlockPos pos, Block... blocks) {
-        return !StationHook.pickingUp(pos) && !StationMemory.holdsOurStuff(mod, pos)
+        return !StationHook.pickingUp(pos) && !StationHook.parked(pos) && !StationMemory.holdsOurStuff(mod, pos)
                 && (!mod.getChunkTracker().isChunkLoaded(pos) || (isBlockIn(mod, pos, blocks) && WorldHelper.canReach(mod, pos)));
     }
 
@@ -273,10 +276,14 @@ public abstract class DoStuffInContainerTask extends Task {
         Vec3 me = mod.getPlayer().position();
         String word = _stationKind.word();
         double away = pick.key() == null ? 0 : WalkCost.stationDistance(pick.key().getX(), pick.key().getY(), pick.key().getZ(), me.x, me.y, me.z);
-        // past NEAR is the walk back StationChoice only takes when the bag cannot make one
-        String back = away > WalkCost.STATION_NEAR ? ", walking back to it, the bag cannot make a " + word : "";
+        // past NEAR is the walk back: within WALK_BACK of a furnace or smoker even with the stuff to make one, past that only when
+        // the bag cannot make one
+        boolean far = away > WalkCost.STATION_NEAR;
+        String back = far ? ", walking back to it, the bag cannot make a " + word : "";
         String line = switch (pick.use()) {
-            case OURS -> "using ours at " + pick.key().toShortString() + ", " + Math.round(away) + " blocks away" + back;
+            case OURS -> far && _canMakeNow
+                    ? "walking back to ours at " + pick.key().toShortString() + " (" + Math.round(away) + " blocks), cheaper than making one"
+                    : "using ours at " + pick.key().toShortString() + ", " + Math.round(away) + " blocks away" + back;
             case WORLD -> "using a " + word + " nobody here placed at " + pick.key().toShortString() + back;
             case BAG -> "none within " + Math.round(WalkCost.STATION_NEAR) + " blocks, placing the one from the bag";
             case MAKE -> "none within " + Math.round(WalkCost.STATION_NEAR) + " blocks and none in the bag, making one"
