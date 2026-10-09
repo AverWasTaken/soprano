@@ -127,10 +127,11 @@ public final class DetourSpec {
     }
 
     // NETHER asks gravel only in the nether (the walk to the portal is the home walk's), and never while the phase is on something
-    // that can not wait: a blaze spawner we picked, a piglin trade going. a run from a ghast comes before this is asked and ends
-    // the detour itself (NetherPhase.tick), a fight is the combat chain's, it just stops asking us and the gap rule ends it
-    public static boolean netherMayDetour(boolean nether, boolean atSpawner, boolean trading) {
-        return nether && !atSpawner && !trading;
+    // that can not wait: a blaze spawner we picked, a piglin trade going, a pearl hunt going (an enderman we walk at, angry ones
+    // included). a run from a ghast comes before this is asked and ends the detour itself (NetherPhase.tick), a fight is the combat
+    // chain's, it just stops asking us and the gap rule ends it. the warped forest search is a walk, gravel on the way is fair
+    public static boolean netherMayDetour(boolean nether, boolean atSpawner, boolean trading, boolean hunting) {
+        return nether && !atSpawner && !trading && !hunting;
     }
 
     // gravel needs no pick, only a hand. a shovel is 3 to 6x faster and is the only tool that counts as right for gravel, so the

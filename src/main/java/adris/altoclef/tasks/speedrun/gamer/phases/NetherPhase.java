@@ -90,7 +90,7 @@ public class NetherPhase implements PhaseHandler {
     private final HomePortalWalk homeWalk = new HomePortalWalk();
     // flint from soul sand valley gravel, only while it is still owed (no flint and steel, fire charge or flint on us)
     private final ResourceDetour gravel = ResourceDetour.gravel();
-    // a barter ticked this recently is still going (see gravelSide)
+    // a barter or a pearl hunt ticked this recently is still going (see gravelSide)
     private static final double TRADE_FRESH_SECONDS = 1;
     private Task boots;
     private TradeWithPiglinsTask trade;
@@ -107,6 +107,8 @@ public class NetherPhase implements PhaseHandler {
     private double huntWanderSince = -1;
     private double barterSpent;
     private double barterTickAt = -1;
+    // the last time huntStep handed out the hunt, -1 never. same freshness idea as barterTickAt
+    private double huntTickAt = -1;
     private int lastHurt;
     private Task flee;
     private double fleeUntil;
@@ -187,6 +189,7 @@ public class NetherPhase implements PhaseHandler {
         huntWanderSince = -1;
         barterSpent = 0;
         barterTickAt = -1;
+        huntTickAt = -1;
         lastFortressCells = 0;
         lastWarpedCells = 0;
         hudState = null;
@@ -238,7 +241,9 @@ public class NetherPhase implements PhaseHandler {
         // barterTickAt is only put back when barterStep says no, and once the pearls are in nobody asks barterStep again. so a
         // trade is "going" only while it was ticked a moment ago, or one finished barter would keep gravel off for the phase
         boolean trading = barterTickAt >= 0 && now - barterTickAt < TRADE_FRESH_SECONDS;
-        if (!DetourSpec.netherMayDetour(ctx.facts().dimension() == Dimension.NETHER, atSpawner, trading)) {
+        // the pearl hunt the same way: an enderman we are walking at, angry or not, is the plan and not a place to stop for flint
+        boolean hunting = huntTickAt >= 0 && now - huntTickAt < TRADE_FRESH_SECONDS;
+        if (!DetourSpec.netherMayDetour(ctx.facts().dimension() == Dimension.NETHER, atSpawner, trading, hunting)) {
             gravel.preempted(ctx.facts().gameTime());
             return null;
         }
@@ -469,6 +474,7 @@ public class NetherPhase implements PhaseHandler {
             }
         }
         hudState = hunt.step();
+        huntTickAt = now;
         return hunt;
     }
 

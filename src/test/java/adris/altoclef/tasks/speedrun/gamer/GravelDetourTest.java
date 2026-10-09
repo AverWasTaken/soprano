@@ -236,11 +236,13 @@ public class GravelDetourTest {
     }
 
     @Test
-    public void netherOnlyAsksInTheNetherAndNeverAtASpawnerOrATrade() {
-        assertTrue(DetourSpec.netherMayDetour(true, false, false));
-        assertFalse(DetourSpec.netherMayDetour(false, false, false));
-        assertFalse(DetourSpec.netherMayDetour(true, true, false));
-        assertFalse(DetourSpec.netherMayDetour(true, false, true));
+    public void netherOnlyAsksInTheNetherAndNeverAtASpawnerATradeOrAHunt() {
+        assertTrue(DetourSpec.netherMayDetour(true, false, false, false));
+        assertFalse(DetourSpec.netherMayDetour(false, false, false, false));
+        assertFalse(DetourSpec.netherMayDetour(true, true, false, false));
+        assertFalse(DetourSpec.netherMayDetour(true, false, true, false));
+        // walking at an enderman, angry or not
+        assertFalse(DetourSpec.netherMayDetour(true, false, false, true));
     }
 
     // ---- the announce rule is the coal one
