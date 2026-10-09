@@ -18,6 +18,7 @@ import net.minecraft.client.gui.screens.ChatScreen;
 import net.minecraft.client.gui.screens.DeathScreen;
 import net.minecraft.client.gui.screens.PauseScreen;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.item.ItemStack;
 
@@ -97,7 +98,10 @@ public class PlayerInteractionFixChain extends TaskChain {
 
         // Refresh inventory
         if (_generalDuctTapeSwapTimeout.elapsed()) {
-            if (!mod.getControllerExtras().isBreakingBlock()) {
+            // not with a container open: a screen Slot doesn't know (hopper, brewing stand, a villager) maps our slots as if it
+            // were the inventory and the 72 clicks land in the container, and on the ones it does know they reset the slot
+            // cooldown under whatever task is working the screen. the timer stays elapsed, it goes the tick the screen shuts
+            if (!mod.getControllerExtras().isBreakingBlock() && !(Minecraft.getInstance().screen instanceof AbstractContainerScreen<?>)) {
                 // this fires every 30s for as long as altoclef runs, chat is no place for it
                 Debug.logInternal("Refreshed inventory...");
                 mod.getSlotHandler().refreshInventory();
