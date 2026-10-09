@@ -3,19 +3,27 @@ package adris.altoclef.chains;
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.control.KillAura;
+import adris.altoclef.tasks.movement.CreeperStepTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.tasksystem.TaskRunner;
 import adris.altoclef.util.baritone.CachedProjectile;
 import adris.altoclef.util.helpers.CombatCommit;
+import adris.altoclef.util.helpers.CombatLog;
 import adris.altoclef.util.helpers.CombatRules;
+import adris.altoclef.util.helpers.CreeperStep;
 import adris.altoclef.util.helpers.EntityHelper;
 import adris.altoclef.util.helpers.FoeRules;
 import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.ProjectileHelper;
 import adris.altoclef.util.helpers.StorageHelper;
+import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.slots.PlayerSlot;
 import adris.altoclef.util.slots.Slot;
 import baritone.Baritone;
+import baritone.api.pathing.calc.IPath;
+import baritone.api.pathing.path.IPathExecutor;
+import baritone.api.utils.BetterBlockPos;
+import baritone.api.utils.Dimension;
 import baritone.api.utils.Rotation;
 import baritone.api.utils.input.Input;
 import net.minecraft.client.player.LocalPlayer;
@@ -41,6 +49,7 @@ import net.minecraft.world.level.block.BaseFireBlock;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.phys.Vec3;
 
+import java.util.ArrayList;
 import java.util.ConcurrentModificationException;
 import java.util.List;
 import java.util.Optional;
@@ -49,14 +58,20 @@ import static java.lang.Math.abs;
 
 // the mob defense chain. mobs are scenery until the commitment machine (CombatBrain, CombatCommit) says one really needs
 // dealing with, in every dimension, and then the chain holds the wheel with a fight or a run until the machine lets go.
-// nothing else here takes the wheel for a mob, not even a lit creeper: the task walks on and outpaces the fuse. fire,
-// falls and the arrow shield were never about the wheel
+// nothing else here takes the wheel for a mob except a lit creeper within a few blocks (CreeperStep, a couple of steps and
+// straight back). an unlit one is walked past like everything else. fire, falls and the arrow shield were never about the wheel
 public class MobDefenseChain extends SingleTaskChain {
     private static final double ARROW_KEEP_DISTANCE_HORIZONTAL = 2;
     private static final double ARROW_KEEP_DISTANCE_VERTICAL = 10;
     private static boolean _shielding = false;
     private final KillAura _killAura = new KillAura();
     private boolean _wasPuttingOutFire = false;
+    // above a fight (65) and the food chain (55), under a run (80, which keeps its own number while it steps), lava and fire
+    private static final float CREEPER_STEP_PRIORITY = 70;
+    private final CreeperStep _creeperStep = new CreeperStep();
+    // a new player or dimension is a new world, creeper ids from the old one mean nothing (same reset as CombatBrain's)
+    private LocalPlayer _creeperPlayer;
+    private Dimension _creeperDimension;
 
     // everything below is worked out once per game tick by snapshot(), no matter how many things ask
     private long _snapshotTick = Long.MIN_VALUE;
@@ -188,7 +203,8 @@ public class MobDefenseChain extends SingleTaskChain {
         // it never needed the wheel), so the run walks on at chewing speed and the fight just stops swinging while it
         // chews. handing the wheel to the user task for the bite is a cycle at every crossing of the 8 block line, and the
         // user task walks its own route, often straight back at what we ran from
-        boolean committed = _brain.mode() != CombatCommit.Mode.NONE;
+        // (a creeper step does not stand down for a meal either: the line says we stepped, so we step)
+        boolean committed = _brain.mode() != CombatCommit.Mode.NONE || _creeperStep.active();
         if ((!committed && mod.getFoodChain().needsToEat()) || mod.getMLGBucketChain().isFallingOhNo(mod) ||
                 !mod.getMLGBucketChain().doneMLG() || mod.getMLGBucketChain().isChorusFruiting()) {
             _killAura.stopShielding(mod);
@@ -202,19 +218,42 @@ public class MobDefenseChain extends SingleTaskChain {
         return commitPriority(mod);
     }
 
-    // the wheel. mobs are scenery until the commitment says otherwise, so the only thing that takes it is whatever the
-    // machine is holding. a lit creeper used to get a step away here, and the bot spent half its life backing off from
-    // creepers it could have just walked past. fire, lava and falls were settled before we got here
+    // the wheel. mobs are scenery until the commitment says otherwise, so what takes it is whatever the machine is holding,
+    // and a lit creeper close enough to hurt. the old step away fired for any lit creeper within 7 and the bot spent half its
+    // life backing off from creepers it could have walked past, this one is 4 and lit only. fire, lava and falls were
+    // settled before we got here
     private float commitPriority(AltoClef mod) {
         LocalPlayer player = mod.getPlayer();
         CombatCommit.Mode mode = _brain.mode();
         float hold = _brain.holdPriority();
         Item offhandItem = StorageHelper.getItemStackInSlot(PlayerSlot.OFFHAND_SLOT).getItem();
 
+        // a lit creeper right next to us: a couple of steps out of the blast, or the shield when boxed in. not a commitment,
+        // the machine never hears of it, and whatever it was holding (a fight, a run) gets the wheel back after the bang
+        boolean creeperShield = false;
+        float stepPriority = Float.NaN;
+        if (_creeperStep.active()) {
+            Entity creeper = mod.getWorld().getEntity(_creeperStep.creeperId());
+            if (_creeperStep.cornered()) {
+                if (creeper != null) LookHelper.lookAt(mod, creeper.getEyePosition());
+                if (StorageHelper.getItemStackInSlot(PlayerSlot.OFFHAND_SLOT).getItem() != Items.SHIELD) {
+                    mod.getSlotHandler().forceEquipItemToOffhand(Items.SHIELD);
+                } else {
+                    startShielding(mod, true);
+                }
+                creeperShield = true;
+            } else {
+                setTask(new CreeperStepTask(_creeperStep.creeperId()));
+                stepPriority = Math.max(CREEPER_STEP_PRIORITY, hold);
+            }
+        }
+
         // arrows: a shield that does not take the wheel. a fight walks on with it up, nothing else stops for an arrow, and a
-        // run is feet's job
+        // run is feet's job. (not mid creeper step either, the arrow shield pauses the path and that is the step gone)
         boolean fighting = mode == CombatCommit.Mode.FIGHT;
-        if (mode != CombatCommit.Mode.RUN && !mod.getFoodChain().needsToEat() && Baritone.settings().altoDodgeProjectiles.value && hasShield(mod)
+        if (creeperShield) {
+            // the creeper's shield is up, leave it be
+        } else if (!_creeperStep.active() && mode != CombatCommit.Mode.RUN && !mod.getFoodChain().needsToEat() && Baritone.settings().altoDodgeProjectiles.value && hasShield(mod)
                 && isProjectileClose(mod) && !mod.getEntityTracker().entityFound(ThrownPotion.class)
                 && !player.getCooldowns().isOnCooldown(new ItemStack(offhandItem))
                 && (fighting || mod.getClientBaritone().getPathingBehavior().isSafeToCancel())) {
@@ -226,6 +265,7 @@ public class MobDefenseChain extends SingleTaskChain {
         } else {
             stopShielding(mod);
         }
+        if (!Float.isNaN(stepPriority)) return stepPriority;
 
         Task wheel = mode == CombatCommit.Mode.NONE ? null : _brain.wheelTask(mod);
         if (wheel == null) {
@@ -448,9 +488,62 @@ public class MobDefenseChain extends SingleTaskChain {
         boolean enabled = Baritone.settings().altoMobDefense.value && Baritone.settings().altoKillOrAvoidAnnoyingHostiles.value
                 && Baritone.settings().altoCommitCombat.value;
         _brain.tick(mod, now, fuseDistance <= CombatRules.CREEPER_RANGE, enabled);
+        stepCreepers(mod, now);
         _stance = _brain.stance();
         _meleeNear = _brain.meleeNear();
         _meleeAround = _brain.meleeAround();
+    }
+
+    // the creeper preempt moves once per tick too, wheel or not, so its 2.5 s clock is a real 2.5 s
+    private void stepCreepers(AltoClef mod, long now) {
+        LocalPlayer player = mod.getPlayer();
+        Dimension dimension = WorldHelper.getCurrentDimension();
+        if (player != _creeperPlayer || dimension != _creeperDimension) {
+            _creeperStep.reset();
+            _creeperPlayer = player;
+            _creeperDimension = dimension;
+        }
+        List<CreeperStep.Seen> seen = new ArrayList<>();
+        List<int[]> ahead = null;
+        try {
+            for (Creeper creeper : mod.getEntityTracker().getTrackedEntities(Creeper.class)) {
+                if (!creeper.isAlive()) continue;
+                double distance = creeper.distanceTo(player);
+                if (distance > CreeperStep.PATH_RANGE) continue;
+                // swell dir and ignited are both synced to the client, so the fuse counts from its very first tick
+                boolean lit = creeper.getSwellDir() > 0 || creeper.isIgnited();
+                boolean pathNear = false;
+                if (lit && distance > CreeperStep.TRIGGER) {
+                    if (ahead == null) ahead = pathAhead(mod);
+                    pathNear = CreeperStep.pathPassesNear(creeper.getX(), creeper.getY(), creeper.getZ(), ahead);
+                }
+                seen.add(new CreeperStep.Seen(creeper.getId(), lit, distance, pathNear));
+            }
+        } catch (ConcurrentModificationException | ArrayIndexOutOfBoundsException | NullPointerException e) {
+            // same weirdness as getClosestFusingCreeper. a tick with no creepers ends a step, the next tick starts it again
+            seen.clear();
+        }
+        boolean shieldReady = hasShield(mod) && !mod.getEntityTracker().entityFound(ThrownPotion.class)
+                && !player.getCooldowns().isOnCooldown(new ItemStack(StorageHelper.getItemStackInSlot(PlayerSlot.OFFHAND_SLOT).getItem()));
+        CreeperStep.Event event = _creeperStep.step(now, seen, shieldReady);
+        if (event == CreeperStep.Event.START && _creeperStep.shouldLog()) {
+            Debug.logInternal(CombatLog.creeperStep(dimension, _creeperStep.startedAt()));
+        }
+    }
+
+    // the next few nodes of the path we are walking, as block corners. empty when nothing is pathing
+    private static List<int[]> pathAhead(AltoClef mod) {
+        List<int[]> nodes = new ArrayList<>();
+        IPathExecutor current = mod.getClientBaritone().getPathingBehavior().getCurrent();
+        if (current == null) return nodes;
+        IPath path = current.getPath();
+        List<BetterBlockPos> positions = path.positions();
+        int from = Math.max(0, current.getPosition());
+        for (int i = from; i < positions.size() && i <= from + CreeperStep.PATH_LOOKAHEAD; i++) {
+            BetterBlockPos p = positions.get(i);
+            nodes.add(new int[]{p.x, p.y, p.z});
+        }
+        return nodes;
     }
 
     // melee mobs we are dealing with within contact range, and within the swarm range

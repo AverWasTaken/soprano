@@ -36,6 +36,12 @@ public final class CombatLog {
         };
     }
 
+    // the lit creeper preempt (CreeperStep), not a transition of the machine, so it gets its own line
+    public static String creeperStep(Dimension dimension, double distance) {
+        return "combat: [" + dimension.name().toLowerCase(Locale.ROOT) + "] lit creeper at " + Math.round(distance)
+                + " blocks, stepping out of the blast";
+    }
+
     public static String runWhy(Why why, int hp) {
         return switch (why) {
             case HEAVY -> "something nasty close, hp " + hp;
