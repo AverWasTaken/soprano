@@ -18,6 +18,11 @@ import adris.altoclef.util.helpers.FoeRules;
 import adris.altoclef.util.helpers.MobReachability;
 import adris.altoclef.util.helpers.Provocations;
 import adris.altoclef.util.helpers.WorldHelper;
+import baritone.api.behavior.IPathingBehavior;
+import baritone.api.pathing.calc.IPath;
+import baritone.api.pathing.movement.IMovement;
+import baritone.api.pathing.path.IPathExecutor;
+import baritone.api.utils.BetterBlockPos;
 import baritone.api.utils.Dimension;
 import java.util.ArrayList;
 import java.util.ConcurrentModificationException;
@@ -33,6 +38,7 @@ import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.entity.monster.Slime;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.phys.AABB;
 
 // the world half of CombatCommit, for every dimension. MobDefenseChain calls tick() once per game tick (that is the only
 // place the machine moves) and then asks what to hold the wheel with. nothing in here hands the wheel back: that is the
@@ -201,7 +207,8 @@ final class CombatBrain {
         if (enabled) {
             // how far the run got, asked before the step: an end chained into a new run has moved the origin by the time we say so
             int blocks = (int) Math.round(Math.hypot(player.getX() - _commit.originX(), player.getZ() - _commit.originZ()));
-            Event event = _commit.step(new CombatCommit.Tick(now, player.getHealth(), player.getX(), player.getZ(), foes, target));
+            Event event = _commit.step(new CombatCommit.Tick(now, player.getHealth(), player.getX(), player.getZ(), foes, target,
+                    way(mod, mobs, foes)));
             if (event != Event.NONE) {
                 // the old one ended and the next one started on the same step, both get their line, in that order
                 if (_commit.endedFirst() != Event.NONE) log(mod, dimension, _commit.endedFirst(), fighting, mobs, blocks);
@@ -235,6 +242,51 @@ final class CombatBrain {
         _meleeNear = meleeNear;
         _meleeAround = meleeAround;
         _stance = stance(mod, nearest, creeperClose);
+    }
+
+    // how many path nodes ahead count as "in the way". three is the next couple of steps, further out the mob has time to move
+    private static final int WAY_NODES = 3;
+
+    // the path's side of the tick: which of the mobs in contact sit in the next few nodes (feet or head) or in the block the
+    // current movement would place under its dest (a bridge or a step up into a zombie). baritone does wait for a mob to
+    // leave the place cell, but only 20 ticks, then it replans into the same cell
+    private static CombatCommit.Way way(AltoClef mod, List<Mob> mobs, List<Foe> foes) {
+        IPathingBehavior pathing = mod.getClientBaritone().getPathingBehavior();
+        boolean moving = pathing.isPathing() || pathing.getInProgress().isPresent();
+        double y = mod.getPlayer().getY();
+        IPathExecutor current = pathing.getCurrent();
+        if (current == null) return new CombatCommit.Way(Set.of(), moving, y);
+        List<AABB> cells = new ArrayList<>();
+        try {
+            IPath path = current.getPath();
+            List<BetterBlockPos> positions = path.positions();
+            int from = Math.max(0, current.getPosition());
+            // (from + 1: the node we are standing on is ours, a zombie hugging us is not "in the path")
+            for (int i = from + 1; i < positions.size() && i <= from + WAY_NODES; i++) {
+                BetterBlockPos p = positions.get(i);
+                cells.add(new AABB(p.x, p.y, p.z, p.x + 1, p.y + 2, p.z + 1));
+            }
+            List<IMovement> movements = path.movements();
+            if (from < movements.size()) {
+                BetterBlockPos dest = movements.get(from).getDest();
+                cells.add(new AABB(dest.x, dest.y - 1, dest.z, dest.x + 1, dest.y, dest.z + 1));
+            }
+        } catch (IndexOutOfBoundsException e) {
+            // the executor moved on between two reads, next tick has it
+        }
+        Set<Integer> inWay = new HashSet<>();
+        for (int i = 0; i < foes.size(); i++) {
+            if (foes.get(i).distance() > CombatCommit.CONTACT) continue;
+            // a hair bigger, a zombie leaning into the cell is in it
+            AABB box = mobs.get(i).getBoundingBox().inflate(0.05);
+            for (AABB cell : cells) {
+                if (cell.intersects(box)) {
+                    inWay.add(foes.get(i).id());
+                    break;
+                }
+            }
+        }
+        return new CombatCommit.Way(inWay, moving, y);
     }
 
     private CombatRules.Stance stance(AltoClef mod, double nearest, boolean creeperClose) {

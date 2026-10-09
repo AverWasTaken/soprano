@@ -3,6 +3,7 @@ package adris.altoclef.util.helpers;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 // the pure half of "do something about it, and then actually finish", for every dimension: mobs are ignored until one
 // really needs dealing with, and then we commit. "really" is doing a lot of work there: the task walks on past crowds,
@@ -67,6 +68,18 @@ public final class CombatCommit {
     // that just hit us, see trigger
     public static final long COOLDOWN = 100;
 
+    // a mob in contact that is standing in the path (or in the block we want to place) is a fight even before it swings:
+    // walking past it is not an option when it is the thing in the way, and baritone will try to place a block into it
+    // forever. no path progress for WAY_BOXED_TICKS with one in contact is the same thing in a 1 wide hole, where "the path"
+    // is a pillar going nowhere. the cornered rule above is the run's version of this and wants 3 s, this one 1.5
+    public static final long WAY_BOXED_TICKS = 30;
+    public static final double WAY_PROGRESS = 1;
+    // an in-the-way fight is over once it is this far off (and not hitting us), the path is clear again
+    public static final double WAY_RELEASE = 4;
+    // baritone drops the path for a tick or two between giving up on a place and the next search. that is not "we stopped
+    // wanting to move", so the boxed clock only starts over after this long without a path
+    public static final long WAY_GAP_TICKS = 10;
+
     // never hit us
     public static final long NEVER = Long.MAX_VALUE / 4;
 
@@ -77,6 +90,8 @@ public final class CombatCommit {
     // why a commitment started, so the chain can say so when it does
     public enum Why {
         NONE, HIT, LOW_HP, HEAVY, CORNERED,
+        // it was standing in our path (or we were boxed in with it) and the path could not go on
+        IN_WAY,
         // the run hit its cap twice with something still on our heels, so we turned around (boxed in rules, like CORNERED)
         CHASED
     }
@@ -86,6 +101,8 @@ public final class CombatCommit {
         // the target died and somebody else was already on us, so no gap
         FIGHT_NEXT,
         FIGHT_DEAD, FIGHT_LOST, FIGHT_STALLED,
+        // an in-the-way fight whose mob stepped off, the path is ours again
+        FIGHT_CLEARED,
         FIGHT_TO_RUN,
         RUN_CLEAR, RUN_CAP, RUN_STUCK,
         RUN_TO_FIGHT,
@@ -140,8 +157,18 @@ public final class CombatCommit {
     }
 
     // everything one tick of the machine wants to know. target is the foe we are fighting looked up on its own (it can be
-    // alive and outside the foe list), null when it is dead or gone
-    public record Tick(long now, float health, double x, double z, List<Foe> foes, Foe target) {
+    // alive and outside the foe list), null when it is dead or gone. way is the path's side of things
+    public record Tick(long now, float health, double x, double z, List<Foe> foes, Foe target, Way way) {
+        // no path in the picture
+        public Tick(long now, float health, double x, double z, List<Foe> foes, Foe target) {
+            this(now, health, x, z, foes, target, Way.NONE);
+        }
+    }
+
+    // inWay: ids of mobs sitting in the next few path nodes or the block baritone wants to place. pathing: something wants us
+    // to move (a path or a search going), y: our height, a pillar out of a hole is progress too
+    public record Way(Set<Integer> inWay, boolean pathing, double y) {
+        public static final Way NONE = new Way(Set.of(), false, 0);
     }
 
     // what started a commitment: the mob, and the reason (HEAVY and LOW_HP are runs, the foe is just who to name)
@@ -233,6 +260,13 @@ public final class CombatCommit {
     private double stuckX;
     private double stuckZ;
 
+    // the idle boxed-in window (inTheWay)
+    private long wayBoxSince = -1;
+    private long wayGapSince = -1;
+    private double wayBoxX;
+    private double wayBoxY;
+    private double wayBoxZ;
+
     // mobs we gave up on, and when. they get another go when they hit us again
     private final Map<Integer, Long> ignored = new HashMap<>();
 
@@ -290,6 +324,8 @@ public final class CombatCommit {
         clearSince = -1;
         cornerSince = -1;
         stuckSince = -1;
+        wayBoxSince = -1;
+        wayGapSince = -1;
         ignored.clear();
     }
 
@@ -320,7 +356,7 @@ public final class CombatCommit {
     private static Tick afterEnd(Tick t, int oldTarget) {
         boolean dead = oldTarget >= 0 && t.target() == null;
         List<Foe> foes = !dead ? t.foes() : t.foes().stream().filter(foe -> foe.id() != oldTarget).toList();
-        return new Tick(t.now(), t.health(), t.x(), t.z(), foes, null);
+        return new Tick(t.now(), t.health(), t.x(), t.z(), foes, null, t.way());
     }
 
     // ---- NONE
@@ -335,8 +371,58 @@ public final class CombatCommit {
         // the fight is only for one we have not given up on, or one that has hit us since. empty-handed is fine, a punch
         // is still a punch and a zombie on us is not going anywhere
         Foe hit = hitInContact(candidates(t), cooling);
-        if (hit == null) return Event.NONE;
-        return startFight(t, hit, Why.HIT, Event.FIGHT_START, false);
+        if (hit != null) return startFight(t, hit, Why.HIT, Event.FIGHT_START, false);
+        // not a swing yet, but it is the thing in the way. cooldown or not: the cooldown is about not picking a fight again
+        // with what is around us, and this one is a path that cannot go on until it is gone
+        Foe way = inTheWay(t);
+        if (way == null) return Event.NONE;
+        return startFight(t, way, Why.IN_WAY, Event.FIGHT_START, false);
+    }
+
+    // the closest one in contact that is in the path, or any in contact when the path has gone nowhere for 1.5 s. never a
+    // creeper (a lit one is CreeperStep's, an unlit one in the way is not worth the swing and the bang), never one we only
+    // run from, never one we gave up on
+    private Foe inTheWay(Tick t) {
+        Foe close = null;
+        Foe blocking = null;
+        for (Foe foe : candidates(t)) {
+            // (no shooters: they back off on their own, so in the way at 3 and gone at 5 is a fight, a clear, and the same
+            // fight again a few steps later, and they never block a cell for long anyway)
+            if (foe.distance() > CONTACT || !foe.melee() || foe.mustRun(t.health())) continue;
+            if (close == null || foe.distance() < close.distance()) close = foe;
+            if (t.way().inWay().contains(foe.id()) && (blocking == null || foe.distance() < blocking.distance())) blocking = foe;
+        }
+        if (blocking != null) {
+            wayBoxSince = -1;
+            return blocking;
+        }
+        // boxed in: the path wants to go somewhere and has not got 1 block anywhere (up counts) with one of them on us
+        if (t.way().pathing()) {
+            wayGapSince = -1;
+        } else if (wayGapSince < 0) {
+            wayGapSince = t.now();
+        }
+        boolean gaveUp = wayGapSince >= 0 && t.now() - wayGapSince >= WAY_GAP_TICKS;
+        if (close == null || gaveUp) {
+            wayBoxSince = -1;
+            return null;
+        }
+        if (!t.way().pathing()) return null;
+        double y = t.way().y();
+        if (wayBoxSince < 0 || Math.sqrt(sq(t.x() - wayBoxX) + sq(y - wayBoxY) + sq(t.z() - wayBoxZ)) >= WAY_PROGRESS) {
+            wayBoxSince = t.now();
+            wayBoxX = t.x();
+            wayBoxY = y;
+            wayBoxZ = t.z();
+            return null;
+        }
+        if (t.now() - wayBoxSince < WAY_BOXED_TICKS) return null;
+        wayBoxSince = -1;
+        return close;
+    }
+
+    private static double sq(double v) {
+        return v * v;
     }
 
     // what makes a fight in progress (or one about to start) a run instead, NONE for fit to fight. the same danger rules
@@ -388,6 +474,9 @@ public final class CombatCommit {
         Why bail = !cornered ? runReason(t, false) : why == Why.CHASED && anyDanger(t) ? Why.HEAVY : Why.NONE;
         if (bail != Why.NONE) return startRun(t, bail, Event.FIGHT_TO_RUN);
         if (target == null) return targetGone(t);
+        // it stepped out of the way and is not on us: the path goes on. (one that hit us since is a normal fight now and
+        // goes by the normal rules below)
+        if (why == Why.IN_WAY && target.distance() > WAY_RELEASE && !target.hitUs()) return end(t, Event.FIGHT_CLEARED);
         // out of play: wandered off past LOST_RANGE and not hitting us. if it wants another go, that is a new fight
         if (target.distance() > LOST_RANGE) {
             if (farSince < 0) farSince = t.now();
@@ -460,6 +549,7 @@ public final class CombatCommit {
         bestDistance = foe.distance();
         progressAt = t.now();
         farSince = -1;
+        wayBoxSince = -1;
         return event;
     }
 

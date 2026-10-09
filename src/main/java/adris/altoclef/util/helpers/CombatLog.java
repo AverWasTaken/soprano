@@ -19,7 +19,7 @@ public final class CombatLog {
         String tag = "combat: [" + dimension.name().toLowerCase(Locale.ROOT) + "] ";
         return switch (event) {
             case NONE -> null;
-            case FIGHT_START -> tag + "FIGHT " + target + " (hit us, hp " + hp + ")";
+            case FIGHT_START -> tag + "FIGHT " + target + " (" + (why == Why.IN_WAY ? "in our way" : "hit us") + ", hp " + hp + ")";
             case FIGHT_NEXT -> cornered ? tag + (why == Why.CHASED ? "still chased, next " : "cornered, next ") + target
                     : tag + "target dead, next " + target + " (hit us, hp " + hp + ")";
             case RUN_START -> tag + "RUN from " + crowd + " (" + runWhy(why, hp) + ")";
@@ -27,6 +27,7 @@ public final class CombatLog {
             case RUN_TO_FIGHT -> tag + "cornered, fighting " + target;
             case FIGHT_DEAD -> tag + "fight over, " + fighting + " dead";
             case FIGHT_LOST -> tag + "fight over, lost track of " + fighting;
+            case FIGHT_CLEARED -> tag + "fight over, " + fighting + " is out of the way";
             case FIGHT_STALLED -> tag + "fight over, can't get to " + fighting + ", ignoring it until it hits us again";
             case RUN_CLEAR -> tag + "run over, " + blocks + " blocks, clear";
             case RUN_CAP -> tag + "run over, " + CombatCommit.RUN_CAP / 20 + " s cap, " + blocks + " blocks";
