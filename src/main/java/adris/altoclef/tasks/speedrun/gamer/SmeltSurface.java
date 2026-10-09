@@ -18,7 +18,6 @@ public final class SmeltSurface {
     public static final int GO_UP_DEPTH = 8;
     // keep climbing until this close, so a hair under the line does not flip it back and forth
     public static final int ARRIVED_DEPTH = 2;
-    private static final double GIVE_UP_SECONDS = 90;
 
     private boolean climbing;
     // we already surfaced for this batch (one flag per thing waiting: the ore, the meat). coal or fuel underground must not
@@ -182,7 +181,7 @@ public final class SmeltSurface {
             bestDepth = depth;
             ctx.progress(why == Why.IRON ? "heading up to smelt" : "heading up to cook");
         }
-        if ((now - climbSince) / 20.0 > GIVE_UP_SECONDS) {
+        if (FurnacePlan.climbGaveUp(climbSince, now)) {
             gaveUp[kind] = true;
             climbing = false;
             climb = null;

@@ -120,16 +120,18 @@ public class GamerConfigsTest {
 
     @Test
     public void theRetiredFurnaceLeashKeysAreIgnoredAndTheRestStays() throws IOException {
-        // the leash is gone, a file saved before that still has its two numbers in the overworld section
+        // the leash is gone, a file saved before that still has its two numbers in the overworld section. the furnace waits moved to
+        // FurnacePlan's clock, so a file from before that has its two (wait and stale) as well
         write("{\"version\": " + GamerConfig.VERSION + ", \"overworld\": {\"furnaceLeashBlocks\": 64, \"furnaceMaxPullbacks\": 3,"
-                + " \"furnaceWaitSeconds\": 7.5, \"minFoodUnits\": 55}}");
+                + " \"furnaceWaitSeconds\": 7.5, \"furnaceStaleSeconds\": 60, \"minFoodUnits\": 55}}");
         GamerConfig c = GamerConfigs.load();
-        assertEquals(7.5, c.overworld.furnaceWaitSeconds, 0);
         assertEquals(55, c.overworld.minFoodUnits);
         // and the rewrite every load does drops them
         JsonObject overworld = onDisk().getAsJsonObject("overworld");
         assertFalse(overworld.has("furnaceLeashBlocks"));
         assertFalse(overworld.has("furnaceMaxPullbacks"));
+        assertFalse(overworld.has("furnaceWaitSeconds"));
+        assertFalse(overworld.has("furnaceStaleSeconds"));
     }
 
     @Test

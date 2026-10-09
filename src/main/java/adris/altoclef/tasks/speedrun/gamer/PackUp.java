@@ -8,27 +8,16 @@ import java.util.function.ToIntFunction;
 
 // leaving the mine with a furnace or smoker still cooking at the bottom of it. the jobs are a memory that survives the walk,
 // but the walk back down is the cost: this is the one chance to take the contents (and the station) along while we are
-// still standing next to it. pure (jobs and numbers in, a choice out), IronPhase does the walking
+// still standing next to it. pure (jobs and numbers in, a choice out), IronPhase does the walking. the trip itself is a TAKE_ALL
+// (FurnacePlan.leaving): it waits when the job is nearly done (FurnacePlan.leaveWindow) and otherwise takes the unfinished input
+// back out, so nothing is left behind either way
 public final class PackUp {
-    // a block of climbing at about the speed the bot gets out of a mine, in ticks. the wait for a nearly done job is measured
-    // against the time the walk away costs anyway
-    private static final long TICKS_PER_DEPTH = 20;
-    private static final long MIN_WAIT_TICKS = 200;
-    private static final long MAX_WAIT_TICKS = 600;
-
     private PackUp() {
     }
 
     // a job this deep below the open sky is one we would be climbing away from
     public static boolean stranded(int jobDepth) {
         return jobDepth > SmeltSurface.GO_UP_DEPTH;
-    }
-
-    // how long waiting for a job is no worse than leaving: the climb out takes this long anyway, and never less than 10 s. the
-    // trip is a TAKE_ALL with this as its "nearly done" window: it waits when the job is that close and otherwise (or when the
-    // wait runs out) takes the unfinished input back out with it, so nothing is left behind either way
-    public static long waitTicks(int depth) {
-        return Math.max(MIN_WAIT_TICKS, Math.min(MAX_WAIT_TICKS, depth * TICKS_PER_DEPTH));
     }
 
     // the stranded job to go and get, the one that is ready first. `tried` are the spots we already made a trip for, so one

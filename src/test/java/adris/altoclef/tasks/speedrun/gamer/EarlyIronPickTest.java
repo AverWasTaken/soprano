@@ -184,13 +184,15 @@ public class EarlyIronPickTest {
         boolean interrupt = EarlyIronPick.collectNow(f, cfg);
         assertTrue(interrupt);
         // mid mining, nothing done yet: keep digging
-        assertEquals(SmeltFiller.Trip.FILLER, SmeltFiller.decide(true, false, interrupt, f.gameTime(), f.furnaceJobs(), cfg).trip());
+        FurnacePlan.Moment mid = new FurnacePlan.Moment(true, false, interrupt, false, true);
+        assertEquals(FurnacePlan.Call.LEAVE, FurnacePlan.plan(f.furnaceJobs(), mid, f.gameTime(), null).verdicts().get(0).call());
         // done: go, whatever the mining need is up to
-        SmeltFiller.Decision go = SmeltFiller.decide(true, false, interrupt, f.seconds(31).gameTime(), f.furnaceJobs(), cfg);
-        assertEquals(SmeltFiller.Trip.COLLECT, go.trip());
-        assertEquals(SmeltFiller.Why.INTERRUPT, go.why());
+        FurnacePlan.Verdict go = FurnacePlan.plan(f.furnaceJobs(), mid, f.seconds(31).gameTime(), null).verdicts().get(0);
+        assertEquals(FurnacePlan.Call.COLLECT_NOW, go.call());
+        assertEquals(FurnacePlan.Why.INTERRUPT, go.why());
         // without the early pick rule the same moment waits for the end of the need
-        assertEquals(SmeltFiller.Trip.FILLER, SmeltFiller.decide(true, false, false, f.gameTime(), f.furnaceJobs(), cfg).trip());
+        FurnacePlan.Moment plain = new FurnacePlan.Moment(true, false, false, false, true);
+        assertEquals(FurnacePlan.Call.LEAVE, FurnacePlan.plan(f.furnaceJobs(), plain, f.gameTime(), null).verdicts().get(0).call());
     }
 
     @Test
@@ -200,7 +202,7 @@ public class EarlyIronPickTest {
         assertEquals("iron_ingot", s.runnable().get(0).catalogueName());
         assertTrue(names(s.blocked()).contains("iron_pickaxe"));
         // 31 s on, the job is due
-        assertTrue(FurnaceJobs.anyDue(f.furnaceJobs(), f.seconds(31).gameTime(), 0));
+        assertTrue(FurnacePlan.anyDue(f.furnaceJobs(), f.seconds(31).gameTime()));
     }
 
     // the 16:08 run: the first raw iron went into the furnace, the bag stopped showing three, the early need vanished and the
@@ -248,12 +250,12 @@ public class EarlyIronPickTest {
 
     @Test
     public void theFlightWindowHasAnEnd() {
-        assertFalse(EarlyIronPick.inFlight(-1, 100));
-        assertTrue(EarlyIronPick.inFlight(100, 100));
-        assertTrue(EarlyIronPick.inFlight(100, 100 + EarlyIronPick.LOAD_WINDOW - 1));
-        assertFalse(EarlyIronPick.inFlight(100, 100 + EarlyIronPick.LOAD_WINDOW));
+        assertFalse(FurnacePlan.earlyLoadInFlight(-1, 100));
+        assertTrue(FurnacePlan.earlyLoadInFlight(100, 100));
+        assertTrue(FurnacePlan.earlyLoadInFlight(100, 100 + FurnacePlan.EARLY_LOAD_TICKS - 1));
+        assertFalse(FurnacePlan.earlyLoadInFlight(100, 100 + FurnacePlan.EARLY_LOAD_TICKS));
         // a clock that went backwards (a relog, another world) is not a flight
-        assertFalse(EarlyIronPick.inFlight(5000, 10));
+        assertFalse(FurnacePlan.earlyLoadInFlight(5000, 10));
     }
 
     @Test

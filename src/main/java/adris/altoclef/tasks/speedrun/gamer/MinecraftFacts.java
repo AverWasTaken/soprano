@@ -162,12 +162,12 @@ public final class MinecraftFacts implements GamerFacts {
 
     @Override
     public boolean cookSuspended() {
-        return CookTrip.suspended(gameTime);
+        return state != null && FurnacePlan.cookSuspended(state.cook, gameTime);
     }
 
     @Override
     public String cookStation() {
-        return CookTrip.committed(gameTime);
+        return state == null ? null : FurnacePlan.cookStation(state.cook, gameTime);
     }
 
     @Override
@@ -471,7 +471,7 @@ public final class MinecraftFacts implements GamerFacts {
 
     @Override
     public boolean earlyLoadInFlight() {
-        return state != null && EarlyIronPick.inFlight(state.earlyLoadTick, gameTime);
+        return state != null && FurnacePlan.earlyLoadInFlight(state.earlyLoadTick, gameTime);
     }
 
     @Override

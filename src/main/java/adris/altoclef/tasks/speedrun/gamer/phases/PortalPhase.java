@@ -2,7 +2,7 @@ package adris.altoclef.tasks.speedrun.gamer.phases;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.tasks.construction.compound.ConstructNetherPortalObsidianTask;
-import adris.altoclef.tasks.container.CollectFromFurnaceTask.Mode;
+import adris.altoclef.tasks.speedrun.gamer.FurnacePlan;
 import adris.altoclef.tasks.speedrun.gamer.FurnaceWatch;
 import adris.altoclef.tasks.movement.DefaultGoToDimensionTask;
 import adris.altoclef.tasks.movement.EnterNetherPortalTask;
@@ -140,7 +140,7 @@ public class PortalPhase implements PhaseHandler {
         }
         if (f.dimension() == Dimension.OVERWORLD && !f.furnaceJobs().isEmpty()) {
             furnaces.housekeeping(mod, ctx);
-            Task leaving = furnaces.collect(mod, ctx, Mode.TAKE_ALL, "leaving the overworld with iron still cooking");
+            Task leaving = furnaces.leave(mod, ctx, FurnacePlan.Leaving.DIMENSION);
             if (leaving != null) {
                 hudState = furnaces.hud();
                 return leaving;

@@ -12,9 +12,6 @@ import java.util.List;
 public final class EarlyIronPick {
     // an iron pickaxe is three ingots, and 3 items is 30 s in a furnace, nothing to wait on
     public static final int INGOTS = 3;
-    // how long a started load stays "in flight" without finishing (a minute and a half of game time). the load itself is a
-    // few seconds, this is only the backstop for a furnace that got broken or a bot that died halfway
-    public static final long LOAD_WINDOW = 1800;
 
     private EarlyIronPick() {
     }
@@ -52,13 +49,9 @@ public final class EarlyIronPick {
         return raw >= INGOTS - ingots && raw + ingots < totalIngots;
     }
 
-    // is a load that started at `since` still worth waiting for. -1 = none
-    public static boolean inFlight(long since, long now) {
-        return since >= 0 && now >= since && now - since < LOAD_WINDOW;
-    }
-
     // IronPhase calls this every tick it plans. the tick the early batch becomes the head is the start of the load, and it
     // lasts until the job is recorded (GamerTask.takeLoadedFurnaces), the ingots are in the bag, or the window runs out
+    // (FurnacePlan.earlyLoadInFlight)
     public static void track(RunState state, KitNeed head, GamerFacts f, OverworldConfig cfg) {
         if (isEarlyBatch(head, f, cfg)) {
             if (!f.earlyLoadInFlight()) {

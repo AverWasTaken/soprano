@@ -1,6 +1,5 @@
 package adris.altoclef.tasks.speedrun.gamer;
 
-import java.util.ArrayList;
 import java.util.List;
 
 // the bookkeeping for furnaces we loaded and walked away from. pure (RunState.FurnaceJob in, numbers out) so the rules are
@@ -116,29 +115,6 @@ public final class FurnaceJobs {
         return "smoker".equals(kind) ? state.placedSmokers : null;
     }
 
-    public static boolean anyDue(List<RunState.FurnaceJob> jobs, long now, long slackTicks) {
-        for (RunState.FurnaceJob job : jobs) {
-            // the slack is for the first trip (walking there and a short wait). a job we already visited has an honest timer, and
-            // going back inside the slack of it is how the bot ping-ponged: leave with 11 s left, "due" a second later
-            if (now + (job.visited ? 0 : slackTicks) >= job.doneTick) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    // standing by a furnace is only "progress" while a job in it can still finish: until the last job is due plus the slack
-    // (the walk back, a collect that takes a moment). past that the wait is just a bot standing still and the stall timer
-    // should be allowed to say so
-    public static boolean waitIsHonest(List<RunState.FurnaceJob> jobs, long now, long slackTicks) {
-        for (RunState.FurnaceJob job : jobs) {
-            if (now <= job.doneTick + slackTicks) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     // the job that is ready first, null if there are none
     public static RunState.FurnaceJob soonest(List<RunState.FurnaceJob> jobs) {
         RunState.FurnaceJob best = null;
@@ -159,28 +135,10 @@ public final class FurnaceJobs {
         return left;
     }
 
-    // a job from a world that ran on without us (a relog days later) is not worth a walk, the contents are probably gone
-    // or the furnace is. returns what was dropped
-    public static List<RunState.FurnaceJob> dropStale(List<RunState.FurnaceJob> jobs, long now, double staleSeconds) {
-        List<RunState.FurnaceJob> gone = new ArrayList<>();
-        for (RunState.FurnaceJob job : jobs) {
-            if (now - job.startTick > staleSeconds * 20) {
-                gone.add(job);
-            }
-        }
-        jobs.removeAll(gone);
-        return gone;
-    }
-
     // ticks left on `inputCount` items when the one cooking right now is `arrow` of the way done (0..1). the furnace's own slots
     // are the truth, this is the same sum CollectFromFurnaceTask uses to decide between waiting and leaving
     public static long remainingTicks(String kind, int inputCount, double arrow) {
         return Math.round(ticksPerItem(kind) * (inputCount - Math.min(1.0, Math.max(0.0, arrow))));
-    }
-
-    // this job has been waited on to the end of its estimate more than once with nothing coming out of it
-    public static boolean stuck(RunState.FurnaceJob job) {
-        return job.stalls >= STALL_LIMIT;
     }
 
     // food that came back out of a station because it was not cooking: the cook that put it there starts again at once (raw in
@@ -200,15 +158,9 @@ public final class FurnaceJobs {
         afterVisit(jobs, job, inputLeft, remaining, now, false);
     }
 
-    // two capped visits in a row that saw nothing come out and the job is diagnosed (stuck): a furnace that is lit and just slow
-    // gets one more wait, one that did not move twice is not cooking
-    public static final int STALL_LIMIT = 2;
-
-    // how long past the estimate a wait at a furnace still counts as the bot doing something (the walk back, a collect that takes a moment)
-    public static final long WAIT_SLACK_TICKS = 600;
-
     // `capped` = the trip stood at the furnace until its cap ran out. the re-stamp below gives the job a fresh honest looking
     // timer, so without this count a furnace that never finishes looks fine at every visit and holds the phase for ever
+    // (FurnacePlan.stuck reads the count)
     public static void afterVisit(List<RunState.FurnaceJob> jobs, RunState.FurnaceJob job, int inputLeft, long remaining, long now,
                                   boolean capped) {
         if (inputLeft <= 0) {

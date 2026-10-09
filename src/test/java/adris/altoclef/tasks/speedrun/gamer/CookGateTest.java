@@ -550,17 +550,14 @@ public class CookGateTest {
         RunState.FurnaceJob iron = new RunState.FurnaceJob(new RunState.Pos(1, 64, 1), "OVERWORLD", "furnace", "raw_iron", 5, "iron_ingot", 0, 0);
         assertFalse(FurnaceJobs.backsOffCook(iron, true));
         // and the backoff really does stop the next cook
-        try {
-            CookTrip.suspend(1000);
-            assertTrue(CookTrip.suspended(1001));
-            f.gameTime = 1001;
-            f.cookSuspended = CookTrip.suspended(f.gameTime);
-            f.give(Items.PORKCHOP, 6).give(Items.COAL, 2);
-            f.smokerPlaced = true;
-            assertNull(need());
-        } finally {
-            CookTrip.clear();
-        }
+        RunState run = new RunState();
+        FurnacePlan.cookSuspend(run.cook, 1000);
+        assertTrue(FurnacePlan.cookSuspended(run.cook, 1001));
+        f.gameTime = 1001;
+        f.cookSuspended = FurnacePlan.cookSuspended(run.cook, f.gameTime);
+        f.give(Items.PORKCHOP, 6).give(Items.COAL, 2);
+        f.smokerPlaced = true;
+        assertNull(need());
     }
 
     @Test

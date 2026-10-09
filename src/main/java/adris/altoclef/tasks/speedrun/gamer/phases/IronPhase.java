@@ -3,13 +3,11 @@ package adris.altoclef.tasks.speedrun.gamer.phases;
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.tasks.container.AsyncSmelting;
-import adris.altoclef.tasks.container.CollectFromFurnaceTask;
-import adris.altoclef.tasks.container.CollectFromFurnaceTask.Mode;
 import adris.altoclef.tasks.speedrun.gamer.CookGate;
 import adris.altoclef.tasks.speedrun.gamer.EarlyIronPick;
 import adris.altoclef.tasks.speedrun.gamer.FoodGate;
 import adris.altoclef.tasks.speedrun.gamer.FoodPlan;
-import adris.altoclef.tasks.speedrun.gamer.FurnaceJobs;
+import adris.altoclef.tasks.speedrun.gamer.FurnacePlan;
 import adris.altoclef.tasks.speedrun.gamer.FurnaceWatch;
 import adris.altoclef.tasks.speedrun.gamer.GamerContext;
 import adris.altoclef.tasks.speedrun.gamer.GamerFacts;
@@ -25,9 +23,7 @@ import adris.altoclef.tasks.speedrun.gamer.PickDiag;
 import adris.altoclef.tasks.speedrun.gamer.PrepSupport;
 import adris.altoclef.tasks.speedrun.gamer.RunState;
 import adris.altoclef.tasks.speedrun.gamer.SmeltFiller;
-import adris.altoclef.tasks.speedrun.gamer.SmeltFiller.Decision;
 import adris.altoclef.tasks.speedrun.gamer.SmeltFiller.Schedule;
-import adris.altoclef.tasks.speedrun.gamer.SmeltFiller.Trip;
 import adris.altoclef.tasks.speedrun.gamer.SmeltSurface;
 import adris.altoclef.tasks.speedrun.gamer.Timeout;
 import adris.altoclef.tasks.resources.FoodHunt;
@@ -77,11 +73,6 @@ public class IronPhase implements PhaseHandler {
     private boolean foodCovered;
     // CookGate: a cook that started early (surface, or between jobs) keeps the front until the meat is cooked
     private boolean cookLatch;
-    // the smoker we are standing by for, and the game tick that stand by ends at at the latest (standingBy)
-    private RunState.FurnaceJob standJob;
-    private long standUntil = -1;
-    private boolean standGaveUp;
-    private boolean standEligible;
 
     @Override
     public GamerPhase phase() {
@@ -136,9 +127,6 @@ public class IronPhase implements PhaseHandler {
         foodCovered = false;
         cookLatch = false;
         foodBand = -1;
-        standJob = null;
-        standUntil = -1;
-        standGaveUp = false;
         var async = Baritone.settings().altoAsyncSmelting;
         if (!SettingsOverrides.isHeld(async)) {
             userAsync = async.value;
@@ -211,9 +199,15 @@ public class IronPhase implements PhaseHandler {
                 ctx.food());
         List<KitNeed> runnable = gateFood(mod, ctx, schedule.runnable());
         KitNeed head = runnable.isEmpty() ? null : runnable.get(0);
-        // a smoker cooks 5 s an item: standing at it for the 40 s a batch takes beats walking off to mine and back
-        boolean standBy = standingBy(ctx, f);
-        Task side = standBy ? support.tickStandBy(mod, ctx, runnable) : support.tick(mod, ctx, runnable);
+        // no pick yet and the early batch is done: the pick is worth the detour, the mining need would not end for 36 more
+        // ingots. nothing else cuts a need short, an iron craft waiting on the output is not a reason to leave a ladder.
+        // not in the middle of a cook's load either, that is a few seconds and the pick can wait for them
+        boolean boundary = head == null || !head.equals(committed);
+        boolean interrupt = EarlyIronPick.collectNow(f, ctx.cfg().overworld) && f.cookStation() == null;
+        // a smoker cooks 5 s an item: standing at it for the 40 s a batch takes beats walking off to mine and back (mayStandBy)
+        FurnacePlan.Moment moment = new FurnacePlan.Moment(head != null, boundary, interrupt, schedule.isStockUp(head), true);
+        FurnacePlan.Plan plan = furnaces.plan(ctx, moment);
+        Task side = plan.standingBy() ? support.tickStandBy(mod, ctx, runnable) : support.tick(mod, ctx, runnable);
         if (side != null) {
             hudState = support.hud();
             return side;
@@ -221,38 +215,19 @@ public class IronPhase implements PhaseHandler {
         // a furnace emptied down a mine is not a place to start the next batch of meat unless the work is down there too
         furnaces.mayCookHere(SmeltSurface.shallow(SmeltSurface.depthBelowSky(mod))
                 || SmeltSurface.nextWorkDown(head, f.count(Items.RAW_IRON), f.count(Items.IRON_INGOT), f.pendingOutput(Items.IRON_INGOT)));
-        Task trip = furnaces.active(mod, ctx);
-        if (trip == null && standBy) {
-            // the collect trip waits until everything is out (the screen stays closed between looks), then FurnaceWatch reloads
-            // or picks the smoker up as it always does, and the filler gets the bot back once no smoker is left
-            committed = null;
-            trip = furnaces.collectJob(mod, ctx, SmeltFiller.smokerJob(f.furnaceJobs()), Mode.WAIT_ALL, "a smoker is quick, waiting for it instead of mining");
-            if (waitIsHonest(f)) {
-                ctx.progress("waiting for the smoker");
-            }
-        }
-        if (trip == null) {
-            // no pick yet and the early batch is done: the pick is worth the detour, the mining need would not end for 36 more
-            // ingots. nothing else cuts a need short, an iron craft waiting on the output is not a reason to leave a ladder
-            boolean boundary = head == null || !head.equals(committed);
-            // not in the middle of a cook's load either, that is a few seconds and the pick can wait for them
-            boolean interrupt = EarlyIronPick.collectNow(f, ctx.cfg().overworld) && f.cookStation() == null;
-            Decision what = SmeltFiller.decide(head != null, boundary, interrupt, schedule.isStockUp(head), f.gameTime(), f.furnaceJobs(),
-                    ctx.cfg().overworld);
-            if (what.trip() != Trip.FILLER) {
-                committed = null;
-                trip = furnaces.collect(mod, ctx, what.trip() == Trip.WAIT ? Mode.WAIT_ALL : Mode.NORMAL,
-                        what.trip() == Trip.WAIT ? "nothing else to do, waiting it out" : what.why().text);
-                if (what.trip() == Trip.WAIT && waitIsHonest(f)) {
-                    // standing next to the furnace (screen closed between looks) is the plan, not a stall. but only until the job
-                    // is due: a furnace that never finishes used to keep the watchdog off on every tick of the wait
-                    ctx.progress("waiting for the furnace");
-                }
-            }
-        }
+        // the trip waits until everything is out for a stand-by (the screen stays closed between looks), then FurnaceWatch reloads
+        // or picks the smoker up as it always does, and the filler gets the bot back once no smoker is left
+        Task trip = furnaces.trip(mod, ctx, plan, moment);
         if (trip != null) {
-            // furnaces.hud() says "furnace" for a smoker too
-            hudState = standBy && isSmokerTrip(trip, f) ? "Waiting for the smoker" : furnaces.hud();
+            if (furnaces.started()) {
+                committed = null;
+            }
+            // standing next to the furnace (screen closed between looks) is the plan, not a stall. but only until the job is due plus
+            // the patience: a furnace that never finishes must not keep the watchdog off
+            if (furnaces.creditsWait(ctx)) {
+                ctx.progress("waiting for the furnace");
+            }
+            hudState = furnaces.hud();
             return trip;
         }
         if (head == null) {
@@ -275,47 +250,6 @@ public class IronPhase implements PhaseHandler {
         return task;
     }
 
-    // standing by a furnace counts as progress until the last job is due plus the slack, same rule GATHER uses
-    private static boolean waitIsHonest(GamerFacts f) {
-        return FurnaceJobs.waitIsHonest(f.furnaceJobs(), f.gameTime(), FurnaceJobs.WAIT_SLACK_TICKS);
-    }
-
-    // the collect trip going to the smoker, not to an iron furnace
-    private static boolean isSmokerTrip(Task trip, GamerFacts f) {
-        RunState.FurnaceJob smoker = SmeltFiller.smokerJob(f.furnaceJobs());
-        return smoker != null && trip instanceof CollectFromFurnaceTask collect
-                && collect.pos().equals(new BlockPos(smoker.pos.x, smoker.pos.y, smoker.pos.z));
-    }
-
-    // stand at the smoker while it cooks (SmeltFiller.standBy), for as long as its budget lasts. the budget is per job object, and a
-    // job keeps its object across visits, so a smoker that keeps coming up short does not get a fresh clock each time
-    private boolean standingBy(GamerContext ctx, GamerFacts f) {
-        RunState.FurnaceJob smoker = SmeltFiller.smokerJob(f.furnaceJobs());
-        if (smoker == null) {
-            standJob = null;
-            standUntil = -1;
-            return false;
-        }
-        long now = f.gameTime();
-        if (smoker != standJob) {
-            standJob = smoker;
-            standGaveUp = false;
-            standUntil = SmeltFiller.standByUntil(smoker, now);
-            standEligible = SmeltFiller.quickEnough(smoker, now);
-            Debug.logInternal("smoker at " + smoker.pos + " has " + smoker.count + " " + smoker.input + " cooking, ~" + Math.max(0, smoker.doneTick - now) / 20
-                    + (standEligible ? " s to go: standing by it instead of mining" : " s to go: too long to stand by, working like a furnace"));
-        }
-        if (!standEligible) {
-            return false;
-        }
-        boolean on = SmeltFiller.standBy(f.furnaceJobs(), now, standUntil);
-        if (!on && !standGaveUp) {
-            standGaveUp = true;
-            Debug.logInternal("smoker at " + smoker.pos + " is " + (now - smoker.doneTick) / 20 + " s past due, not standing by it any more");
-        }
-        return on;
-    }
-
     private static KitNeed second(List<KitNeed> needs) {
         return needs.size() > 1 ? needs.get(1) : null;
     }
@@ -335,8 +269,7 @@ public class IronPhase implements PhaseHandler {
             return null;
         }
         packed.add(job.pos);
-        return furnaces.collectJob(mod, ctx, job, Mode.TAKE_ALL, "leaving the mine with it still cooking down here",
-                PackUp.waitTicks(jobDepth(mod, job)));
+        return furnaces.leave(mod, ctx, job, FurnacePlan.Leaving.AREA, jobDepth(mod, job));
     }
 
     // blocks between the job's furnace and the open sky over it (over us, when its chunk is not loaded)

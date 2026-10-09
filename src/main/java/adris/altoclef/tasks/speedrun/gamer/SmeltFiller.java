@@ -8,8 +8,8 @@ import net.minecraft.world.item.Items;
 import java.util.ArrayList;
 import java.util.List;
 
-// what to do while the iron cooks, and when to go back for it. pure (facts and config in, needs out) so the order of the
-// filler and the trip rules can be tested without a game. nothing in here walks anywhere: IronPhase turns it into tasks.
+// what to do while the iron cooks. pure (facts and config in, needs out) so the order of the filler can be tested without a game.
+// nothing in here walks anywhere: IronPhase turns it into tasks. when to go back for the output is FurnacePlan's call.
 // there is no leash: a furnace in an unloaded chunk just pauses, so the bot goes where the work is and walks back for the
 // output when it is due (and whatever is in the furnace when we get there is the truth, see CollectFromFurnaceTask)
 public final class SmeltFiller {
@@ -24,37 +24,6 @@ public final class SmeltFiller {
         public boolean isStockUp(KitNeed need) {
             return need != null && stockUps.contains(need);
         }
-    }
-
-    public enum Trip {
-        // carry on with the first runnable need
-        FILLER,
-        // go to the furnace and take what is done (leave the rest if it is not nearly done)
-        COLLECT,
-        // nothing left to do out here, go and stand at the furnace until it is all out
-        WAIT
-    }
-
-    // why a collect trip starts, goes in the log
-    public enum Why {
-        NONE("not going"),
-        // the job is due and we are between two needs
-        BOUNDARY("due, and the need we were on is done"),
-        // the job is due and something is worth cutting the current need short for (the early pick, a smoker holding up the food)
-        INTERRUPT("due, and the output is holding up the plan"),
-        // the job is due and all we were doing was stocking up for later
-        STOCK_UP("due, and the need we were on is only a stock-up"),
-        // the job is due and there is nothing else useful to do
-        IDLE("due, and there is nothing else to do");
-
-        public final String text;
-
-        Why(String text) {
-            this.text = text;
-        }
-    }
-
-    public record Decision(Trip trip, Why why) {
     }
 
     private SmeltFiller() {
@@ -230,77 +199,5 @@ public final class SmeltFiller {
                 }
             }
         }
-    }
-
-    // ---- standing by for a smoker
-
-    // a smoker does 5 s an item, a batch of 8 meat is 40 s. mining for iron and walking back costs more than that, so while one
-    // is running the bot waits at it instead of working the filler (the furnace is 10 s an item and still gets the filler)
-    public static final String SMOKER = "smoker";
-    // past the estimate by this much and the stand by is given up, a smoker with no fuel or in a chunk that stopped ticking must
-    // not hold the run. the collect trip has its own cap on the same number (FurnaceWatch.collectJob)
-    private static final long STAND_BY_SLACK_TICKS = 30 * 20;
-
-    // the smoker job that is ready first, null when no smoker is running. meat left cold in a smoker is not running: standing by
-    // it was the "~0 s to go" wait that walked up and took the raw beef back out (13:11:01)
-    public static RunState.FurnaceJob smokerJob(List<RunState.FurnaceJob> jobs) {
-        RunState.FurnaceJob best = null;
-        for (RunState.FurnaceJob job : jobs) {
-            if (SMOKER.equals(job.kind) && !job.stranded && (best == null || job.doneTick < best.doneTick)) {
-                best = job;
-            }
-        }
-        return best;
-    }
-
-    // game tick the stand by for this job ends at whatever happens, taken when it starts. the job object is the same one across
-    // visits (afterVisit re-stamps it in place), so a smoker that keeps coming up short cannot restart the clock
-    public static long standByUntil(RunState.FurnaceJob smoker, long now) {
-        return Math.max(now, smoker.doneTick) + STAND_BY_SLACK_TICKS;
-    }
-
-    // a batch with more than this left when we first see it (a stack of 64 is five minutes) is not "fast": it is worked like a
-    // furnace job. decided once, at first sight, so a bot halfway up a ladder is not pulled back when the clock reaches the mark
-    private static final long STAND_BY_MAX_TICKS = 60 * 20;
-
-    public static boolean quickEnough(RunState.FurnaceJob smoker, long now) {
-        return smoker.doneTick - now <= STAND_BY_MAX_TICKS;
-    }
-
-    // stand by at the smoker instead of working the filler? `until` = standByUntil of the job we started on (-1 = not started)
-    public static boolean standBy(List<RunState.FurnaceJob> jobs, long now, long until) {
-        return smokerJob(jobs) != null && (until < 0 || now <= until);
-    }
-
-    // ---- when to go back
-
-    // fillerLeft = the runnable list is not empty. atBoundary = the need we were on is done (we are between two needs).
-    // interrupt = the one thing that may cut a need short: the early pick wants its ingots (EarlyIronPick.collectNow), or the
-    // food is stuck behind its own smoker (gatherBlocking). a due job otherwise waits for the need to end, however loudly an
-    // iron craft is waiting on it: the bot got pulled off a ladder need for exactly that. an empty filler list is the other
-    // way out, there is nothing left to cut short
-    public static Decision decide(boolean fillerLeft, boolean atBoundary, boolean interrupt, long now,
-                                  List<RunState.FurnaceJob> jobs, OverworldConfig cfg) {
-        return decide(fillerLeft, atBoundary, interrupt, false, now, jobs, cfg);
-    }
-
-    // `stockUp` = the need we are on is one of Schedule.stockUps. nothing waits on a stock-up, so a due job cuts it short
-    // (the log trip that kept a finished furnace waiting until the next boundary)
-    public static Decision decide(boolean fillerLeft, boolean atBoundary, boolean interrupt, boolean stockUp, long now,
-                                  List<RunState.FurnaceJob> jobs, OverworldConfig cfg) {
-        boolean due = FurnaceJobs.anyDue(jobs, now, Math.round(cfg.furnaceWaitSeconds * 20));
-        if (!fillerLeft) {
-            return due ? new Decision(Trip.COLLECT, Why.IDLE) : new Decision(Trip.WAIT, Why.NONE);
-        }
-        if (!due) {
-            return new Decision(Trip.FILLER, Why.NONE);
-        }
-        if (interrupt) {
-            return new Decision(Trip.COLLECT, Why.INTERRUPT);
-        }
-        if (stockUp) {
-            return new Decision(Trip.COLLECT, Why.STOCK_UP);
-        }
-        return atBoundary ? new Decision(Trip.COLLECT, Why.BOUNDARY) : new Decision(Trip.FILLER, Why.NONE);
     }
 }

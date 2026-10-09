@@ -1,9 +1,8 @@
 package adris.altoclef.tasks.speedrun.gamer.phases;
 
 import adris.altoclef.AltoClef;
-import adris.altoclef.tasks.container.CollectFromFurnaceTask.Mode;
 import adris.altoclef.tasks.speedrun.gamer.FoodPlan;
-import adris.altoclef.tasks.speedrun.gamer.FurnaceJobs;
+import adris.altoclef.tasks.speedrun.gamer.FurnacePlan;
 import adris.altoclef.tasks.speedrun.gamer.FurnaceWatch;
 import adris.altoclef.tasks.speedrun.gamer.GamerContext;
 import adris.altoclef.tasks.speedrun.gamer.GamerFacts;
@@ -15,8 +14,6 @@ import adris.altoclef.tasks.speedrun.gamer.PhaseHandler;
 import adris.altoclef.tasks.speedrun.gamer.PrepSupport;
 import adris.altoclef.tasks.speedrun.gamer.RunState;
 import adris.altoclef.tasks.speedrun.gamer.SmeltFiller;
-import adris.altoclef.tasks.speedrun.gamer.SmeltFiller.Decision;
-import adris.altoclef.tasks.speedrun.gamer.SmeltFiller.Trip;
 import adris.altoclef.tasks.speedrun.gamer.Timeout;
 import adris.altoclef.tasks.speedrun.gamer.Workbenches;
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
@@ -140,23 +137,20 @@ public class GatherPhase implements PhaseHandler {
             hudState = support.hud();
             return side;
         }
-        Task trip = furnaces.active(mod, ctx);
-        if (trip == null) {
-            boolean boundary = head == null || !head.equals(committed);
-            Decision what = SmeltFiller.decide(head != null, boundary, SmeltFiller.gatherBlocking(f, plan),
-                    f.gameTime(), f.furnaceJobs(), ctx.cfg().overworld);
-            if (what.trip() != Trip.FILLER) {
-                committed = null;
-                trip = furnaces.collect(mod, ctx, what.trip() == Trip.WAIT ? Mode.WAIT_ALL : Mode.NORMAL,
-                        what.trip() == Trip.WAIT ? "nothing else to do, waiting it out" : what.why().text);
-                if (what.trip() == Trip.WAIT && FurnaceJobs.waitIsHonest(f.furnaceJobs(), f.gameTime(), FurnaceJobs.WAIT_SLACK_TICKS)) {
-                    // standing by the smoker (screen closed between looks) is the plan, not a stall. but only until the food
-                    // is due: a smoker that never finishes used to keep this alive on every tick of the wait
-                    ctx.progress("waiting for the smoker");
-                }
-            }
-        }
+        // (no quick smoker stand-by here: the gather work is right next to the smoker anyway)
+        boolean boundary = head == null || !head.equals(committed);
+        FurnacePlan.Moment moment = new FurnacePlan.Moment(head != null, boundary, SmeltFiller.gatherBlocking(f, plan), false, false);
+        FurnacePlan.Plan calls = furnaces.plan(ctx, moment);
+        Task trip = furnaces.trip(mod, ctx, calls, moment);
         if (trip != null) {
+            if (furnaces.started()) {
+                committed = null;
+            }
+            // standing by the smoker (screen closed between looks) is the plan, not a stall. but only until the food is due plus the
+            // patience: a smoker that never finishes must not keep this alive
+            if (furnaces.creditsWait(ctx)) {
+                ctx.progress("waiting for the smoker");
+            }
             hudState = furnaces.hud();
             return trip;
         }

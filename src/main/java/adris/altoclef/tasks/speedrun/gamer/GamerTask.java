@@ -217,7 +217,7 @@ public class GamerTask extends Task {
             interruptedAt = -1;
             // the food task must stop seeing our jobs once we are gone
             AsyncSmelting.clear();
-            CookTrip.clear();
+            CookTrip.unbind();
             StationHook.clear();
             stopWatchingPlacements();
             releaseBehaviour(mod);
@@ -419,13 +419,14 @@ public class GamerTask extends Task {
         cfg = GamerConfigs.get();
         // a job from a run before this one is not ours to collect
         AsyncSmelting.clear();
-        CookTrip.clear();
         // and neither is a death from before the run started (the stash outlives the task that read it last)
         DeathStash.clear();
         startedOver = false;
         winShown = false;
         loadState(mod);
         facts.useState(state);
+        // the cook's backoff and station live in the run's state now, so a fresh state is a fresh cook
+        CookTrip.bind(state.cook);
         // so CollectFoodTask can count the meat that is cooking without knowing what a RunState is
         AsyncSmelting.watchJobs(facts::furnaceJobs);
         // and so the smelt task knows a furnace in the tracker is the one we put down (and not a reason to place another)

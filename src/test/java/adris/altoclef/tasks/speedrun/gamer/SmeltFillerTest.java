@@ -1,9 +1,6 @@
 package adris.altoclef.tasks.speedrun.gamer;
 
-import adris.altoclef.tasks.speedrun.gamer.SmeltFiller.Decision;
 import adris.altoclef.tasks.speedrun.gamer.SmeltFiller.Schedule;
-import adris.altoclef.tasks.speedrun.gamer.SmeltFiller.Trip;
-import adris.altoclef.tasks.speedrun.gamer.SmeltFiller.Why;
 import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig;
 import net.minecraft.SharedConstants;
 import net.minecraft.server.Bootstrap;
@@ -259,88 +256,14 @@ public class SmeltFillerTest {
         assertEquals(cfg.targetFoodUnits + 30, find(up.stockUps(), KitNeed.FOOD).count());
     }
 
-    @Test
-    public void aDueJobCutsAStockUpShortButNotARealNeed() {
-        List<RunState.FurnaceJob> jobs = atTheFurnace().cooking("iron_ingot", 10, 100).furnaceJobs();
-        long late = jobs.get(0).doneTick + 50;
-        assertEquals(new Decision(Trip.COLLECT, Why.STOCK_UP), SmeltFiller.decide(true, false, false, true, late, jobs, cfg));
-        // an ordinary need mid way is still left to finish
-        assertEquals(Trip.FILLER, SmeltFiller.decide(true, false, false, false, late, jobs, cfg).trip());
-        // and a job that is not due waits for nobody
-        assertEquals(Trip.FILLER, SmeltFiller.decide(true, false, false, true, jobs.get(0).startTick, jobs, cfg).trip());
-    }
-
-    private Decision decide(boolean fillerLeft, boolean atBoundary, boolean interrupt, long now, List<RunState.FurnaceJob> jobs) {
-        return SmeltFiller.decide(fillerLeft, atBoundary, interrupt, now, jobs, cfg);
-    }
+    // (when a due job is fetched, and the stand-by at a quick smoker, are FurnacePlanTest now)
 
     @Test
-    public void nothingToDoMeansWaitingAtTheFurnaceUntilItIsDone() {
-        List<RunState.FurnaceJob> jobs = atTheFurnace().cooking("iron_ingot", 10, 100).furnaceJobs();
-        long start = jobs.get(0).startTick;
-        assertEquals(new Decision(Trip.WAIT, Why.NONE), decide(false, true, false, start, jobs));
-        assertEquals(new Decision(Trip.COLLECT, Why.IDLE), decide(false, true, false, start + 100 * 20, jobs));
-    }
-
-    @Test
-    public void aFinishedFurnaceIsOnlyFetchedBetweenTwoNeeds() {
-        List<RunState.FurnaceJob> jobs = atTheFurnace().cooking("iron_ingot", 10, 100).furnaceJobs();
-        long late = jobs.get(0).doneTick + 50;
-        // mid need: keep going, even though it is long done
-        assertEquals(Trip.FILLER, decide(true, false, false, late, jobs).trip());
-        assertEquals(new Decision(Trip.COLLECT, Why.BOUNDARY), decide(true, true, false, late, jobs));
-        // at a boundary but not done yet: filler
-        assertEquals(Trip.FILLER, decide(true, true, false, jobs.get(0).startTick, jobs).trip());
-    }
-
-    @Test
-    public void nearlyDoneCountsAsDone() {
-        List<RunState.FurnaceJob> jobs = atTheFurnace().cooking("iron_ingot", 10, 100).furnaceJobs();
-        long soon = jobs.get(0).doneTick - Math.round(cfg.furnaceWaitSeconds * 20) + 1;
-        assertEquals(Trip.COLLECT, decide(true, true, false, soon, jobs).trip());
-        assertEquals(Trip.FILLER, decide(true, true, false, soon - 40, jobs).trip());
-    }
-
-    @Test
-    public void anIronCraftWaitingOnTheOutputDoesNotPullUsOffTheCurrentNeed() {
-        // the ladder run: the pickaxe is blocked behind the cooking ingots for the whole cook, and that is no reason to leave
+    public void anIronCraftIsBlockedBehindTheCookingIngotsForTheWholeCook() {
+        // the ladder run: the pickaxe waits on the ingots for as long as they cook, and FurnacePlan does not take that for a reason to
+        // leave the need we are on (it only hears about the interrupts the phase names)
         FakeFacts f = atTheFurnace().cooking("iron_ingot", 40, 100);
         assertFalse(SmeltFiller.schedule(f, cfg, BEDS).blocked().isEmpty());
-        long late = f.furnaceJobs().get(0).doneTick + 50;
-        // the decision only ever hears about the interrupts below, a blocked craft is not one of them
-        assertEquals(Trip.FILLER, decide(true, false, false, late, f.furnaceJobs()).trip());
-        assertEquals(new Decision(Trip.COLLECT, Why.BOUNDARY), decide(true, true, false, late, f.furnaceJobs()));
-    }
-
-    @Test
-    public void theEarlyPickAndAStuckSmokerAreWorthAnInterrupt() {
-        List<RunState.FurnaceJob> jobs = atTheFurnace().cooking("iron_ingot", 10, 100).furnaceJobs();
-        long late = jobs.get(0).doneTick + 50;
-        assertEquals(new Decision(Trip.COLLECT, Why.INTERRUPT), decide(true, false, true, late, jobs));
-        // an interrupt for a job that is not done cooking yet changes nothing
-        assertEquals(Trip.FILLER, decide(true, false, true, jobs.get(0).startTick, jobs).trip());
-    }
-
-    @Test
-    public void anEmptyFillerIsWhatMakesUsWait() {
-        List<RunState.FurnaceJob> jobs = atTheFurnace().cooking("iron_ingot", 10, 100).furnaceJobs();
-        long start = jobs.get(0).startTick;
-        assertEquals(Trip.FILLER, decide(true, false, false, start, jobs).trip());
-        assertEquals(Trip.WAIT, decide(false, false, false, start, jobs).trip());
-    }
-
-    @Test
-    public void aVisitedFurnaceIsNotRevisitedBeforeItsNewTimer() {
-        List<RunState.FurnaceJob> jobs = atTheFurnace().cooking("iron_ingot", 3, 30).furnaceJobs();
-        RunState.FurnaceJob j = jobs.get(0);
-        long now = 5000;
-        long slack = Math.round(cfg.furnaceWaitSeconds * 20);
-        // we got there, 3 items and 11 s of input left: the old slack would call this due after a second and turn us around
-        FurnaceJobs.afterVisit(jobs, j, 3, slack + 20, now);
-        assertEquals(Trip.FILLER, decide(true, true, false, now, jobs).trip());
-        assertEquals(Trip.FILLER, decide(true, true, false, now + 20, jobs).trip());
-        assertEquals(Trip.FILLER, decide(true, true, true, now + slack + 19, jobs).trip());
-        assertEquals(Trip.COLLECT, decide(true, true, false, now + slack + 20, jobs).trip());
     }
 
     @Test
@@ -378,77 +301,5 @@ public class SmeltFillerTest {
         assertEquals(3, SmeltFiller.planksWanted(List.of(), new FakeFacts().give(Items.WHITE_BED, 7), cfg, BEDS));
     }
 
-    // ---- standing by for a smoker (a smoker is 5 s an item, the furnace 10)
-
-    @Test
-    public void aRunningSmokerIsStoodByAndAFurnaceIsNot() {
-        FakeFacts iron = atTheFurnace().cooking("iron_ingot", 40, 400);
-        assertNull(SmeltFiller.smokerJob(iron.furnaceJobs()));
-        assertFalse("the furnace keeps its filler", SmeltFiller.standBy(iron.furnaceJobs(), iron.gameTime(), -1));
-        FakeFacts meat = atTheFurnace().cookingFood("cooked_mutton", 8, 6, 40);
-        assertNotNull(SmeltFiller.smokerJob(meat.furnaceJobs()));
-        assertTrue(SmeltFiller.standBy(meat.furnaceJobs(), meat.gameTime(), -1));
-        assertFalse("no jobs at all", SmeltFiller.standBy(List.of(), 0, -1));
-    }
-
-    // 13:11:01: the beef the cook left in the smoker was never lit, got a "~25 s" job and the iron phase stood by it for "0 s", then
-    // took the raw beef back out. only a smoker that is really cooking is stood by
-    @Test
-    public void meatLeftColdInASmokerIsNotStoodBy() {
-        FakeFacts cold = atTheFurnace().cookingFood("cooked_beef", 5, 8, 0);
-        cold.furnaceJobs().get(0).stranded = true;
-        assertNull(SmeltFiller.smokerJob(cold.furnaceJobs()));
-        assertFalse(SmeltFiller.standBy(cold.furnaceJobs(), cold.gameTime(), -1));
-        // lit, it is a smoker like any other
-        cold.furnaceJobs().get(0).stranded = false;
-        assertNotNull(SmeltFiller.smokerJob(cold.furnaceJobs()));
-        assertTrue(SmeltFiller.standBy(cold.furnaceJobs(), cold.gameTime(), -1));
-        // and a cold one beside a real one does not hide it
-        FakeFacts both = atTheFurnace().cookingFood("cooked_beef", 5, 8, 0).cookingFood("cooked_mutton", 3, 6, 15);
-        both.furnaceJobs().get(0).stranded = true;
-        assertEquals("cooked_mutton", SmeltFiller.smokerJob(both.furnaceJobs()).output);
-    }
-
-    @Test
-    public void aSmokerBesideALongFurnaceBatchIsStillStoodBy() {
-        FakeFacts both = atTheFurnace().cooking("iron_ingot", 40, 400).cookingFood("cooked_beef", 3, 8, 15);
-        assertTrue(SmeltFiller.standBy(both.furnaceJobs(), both.gameTime(), -1));
-        // the smoker is the one waited for, not the soonest of the lot
-        assertEquals("smoker", SmeltFiller.smokerJob(both.furnaceJobs()).kind);
-        // and once the smoker is out the furnace alone gets its filler back
-        both.furnaceJobs().removeIf(j -> "smoker".equals(j.kind));
-        assertFalse(SmeltFiller.standBy(both.furnaceJobs(), both.gameTime(), -1));
-    }
-
-    @Test
-    public void theStandByEndsThirtySecondsPastDue() {
-        FakeFacts meat = atTheFurnace().cookingFood("cooked_mutton", 8, 6, 40);
-        RunState.FurnaceJob smoker = SmeltFiller.smokerJob(meat.furnaceJobs());
-        long until = SmeltFiller.standByUntil(smoker, meat.gameTime());
-        assertEquals(smoker.doneTick + 30 * 20, until);
-        assertTrue(SmeltFiller.standBy(meat.furnaceJobs(), smoker.doneTick, until));
-        assertTrue(SmeltFiller.standBy(meat.furnaceJobs(), until, until));
-        assertFalse("a smoker that never finishes does not hold the run", SmeltFiller.standBy(meat.furnaceJobs(), until + 1, until));
-    }
-
-    @Test
-    public void aBigBatchIsNotStoodByAtAll() {
-        // a stack of 64 is five minutes, that is not a smoker to stand at. judged once, when the job is first seen
-        FakeFacts big = atTheFurnace().cookingFood("cooked_beef", 64, 8, 320);
-        RunState.FurnaceJob smoker = SmeltFiller.smokerJob(big.furnaceJobs());
-        assertFalse(SmeltFiller.quickEnough(smoker, big.gameTime()));
-        assertFalse(SmeltFiller.quickEnough(smoker, smoker.doneTick - 61 * 20));
-        assertTrue(SmeltFiller.quickEnough(smoker, smoker.doneTick - 60 * 20));
-        // 8 meat is 40 s
-        FakeFacts small = atTheFurnace().cookingFood("cooked_mutton", 8, 6, 40);
-        assertTrue(SmeltFiller.quickEnough(SmeltFiller.smokerJob(small.furnaceJobs()), small.gameTime()));
-    }
-
-    @Test
-    public void aJobAlreadyPastDueGetsItsThirtySecondsFromNowNotFromThen() {
-        FakeFacts meat = atTheFurnace().cookingFood("cooked_mutton", 8, 6, 40);
-        RunState.FurnaceJob smoker = SmeltFiller.smokerJob(meat.furnaceJobs());
-        long late = smoker.doneTick + 500;
-        assertEquals(late + 30 * 20, SmeltFiller.standByUntil(smoker, late));
-    }
+    // (standing by a smoker is FurnacePlanTest now)
 }

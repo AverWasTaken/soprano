@@ -3,7 +3,6 @@ package adris.altoclef.tasks.speedrun.gamer;
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.tasks.container.CollectFromFurnaceTask;
-import adris.altoclef.tasks.container.CollectFromFurnaceTask.Mode;
 import adris.altoclef.tasks.resources.CookRawFoodTask;
 import adris.altoclef.tasksystem.Task;
 import net.minecraft.core.BlockPos;
@@ -17,13 +16,16 @@ import java.util.List;
 
 // the game side of smelting in the background: keeps the job list honest (stale ones, furnaces that are gone) and hands out
 // the task that goes back for the iron. no leash: the bot goes wherever the work is and remembers where the furnace is. one
-// per phase that can have jobs (IRON, and PORTAL for the last look before we leave). the rules it follows are in FurnaceJobs
-// and SmeltFiller, this is only the part that needs a world. the station coming down after the last collect is Workbenches'
-// business now: this only decides that the visit that emptied it is the moment, and cooks first when the rules say so
+// per phase that can have jobs (IRON, and PORTAL for the last look before we leave). the calls it follows are FurnacePlan's (when
+// to go, how long to wait, when to give up), the bookkeeping is FurnaceJobs, this is only the part that needs a world. the station
+// coming down after the last collect is Workbenches' business now: this only decides that the visit that emptied it is the moment,
+// and cooks first when the rules say so
 public final class FurnaceWatch {
     private CollectFromFurnaceTask task;
     private RunState.FurnaceJob target;
     private String hud;
+    // the last trip() started a new trip (the phase resets what it was on when that happens)
+    private boolean fresh;
     private final Workbenches benches;
     // PORTAL takes the one it just emptied too (newExitPhase), but never loads meat into it
     private boolean cookHere = true;
@@ -82,7 +84,7 @@ public final class FurnaceWatch {
         if (cook != null) {
             // loaded is done (the job lands in the state next tick), and a cook that drags on is not worth holding the furnace for
             boolean finished = cook.isFinished(mod);
-            if (finished || (ctx.facts().gameTime() - cookStart) / 20.0 > ctx.cfg().overworld.tablePickupSeconds) {
+            if (finished || FurnacePlan.cookFirstExpired(cookStart, ctx.facts().gameTime())) {
                 // timed out part way (a long coal trip) with the meat already in the furnace: it is not a job yet, and breaking the
                 // furnace now would spill it. leave a job, the furnace stays and the visit it brings takes the furnace back
                 boolean stranded = !finished && cook instanceof CookRawFoodTask raw && raw.recordLeftBehind(mod);
@@ -93,7 +95,7 @@ public final class FurnaceWatch {
                 if (stranded) {
                     // same backoff as the cook's own give up, or the visit that takes the meat back out finds an empty furnace we
                     // are standing at and starts the same cook (and the same coal trip) all over again
-                    CookTrip.suspend(ctx.facts().gameTime());
+                    FurnacePlan.cookSuspend(ctx.state().cook, ctx.facts().gameTime());
                     Debug.logInternal("bench: " + (cookSmoker ? "smoker" : "furnace") + " still has our meat in it, leaving it for the job instead of breaking it at " + spot);
                 } else if (spot != null) {
                     // loaded: the job is the memory now and its last collect takes the furnace back (a station with a job is
@@ -123,11 +125,12 @@ public final class FurnaceWatch {
     public void housekeeping(AltoClef mod, GamerContext ctx) {
         List<RunState.FurnaceJob> jobs = ctx.state().furnaceJobs;
         long now = ctx.facts().gameTime();
-        List<RunState.FurnaceJob> gone = FurnaceJobs.dropStale(jobs, now, ctx.cfg().overworld.furnaceStaleSeconds);
+        List<RunState.FurnaceJob> gone = FurnacePlan.dropStale(jobs, now);
         if (!gone.isEmpty()) {
             ctx.log("giving up on a furnace we loaded a long time ago");
             for (RunState.FurnaceJob job : gone) {
                 Workbenches.giveUp(ctx.state(), job.pos, job.dimension);
+                say(FurnacePlan.done(job, FurnacePlan.Why.STALE, now));
             }
         }
         for (RunState.FurnaceJob job : new ArrayList<>(ctx.facts().furnaceJobs())) {
@@ -137,6 +140,7 @@ public final class FurnaceWatch {
                 // somebody (a creeper, us) took the furnace, and whatever was in it went with it
                 jobs.remove(job);
                 gone.add(job);
+                say(FurnacePlan.done(job, FurnacePlan.Why.GONE, now));
                 ctx.log("the furnace at " + job.pos + " is gone, forgetting what was in it");
             } else {
                 mod.getBehaviour().avoidBlockBreaking(at);
@@ -156,6 +160,11 @@ public final class FurnaceWatch {
     public Task active(AltoClef mod, GamerContext ctx) {
         if (task == null) {
             return null;
+        }
+        // what the visit decided at the station goes in the log next to the call the trip started with
+        CollectFromFurnaceTask.Said said = task.said();
+        if (said != null && target != null) {
+            say(FurnacePlan.say(target, said.call(), said.text(), ctx.facts().gameTime()));
         }
         if (!task.isFinished(mod)) {
             return task;
@@ -186,7 +195,7 @@ public final class FurnaceWatch {
         // meat that came back out because the station was cold: the cook that put it there would walk straight back and do the same
         // thing (raw in the bag, a station, enough fuel on paper), so it sits out the usual backoff
         if (FurnaceJobs.backsOffCook(visited, task.tookBackStalled())) {
-            CookTrip.suspend(now);
+            FurnacePlan.cookSuspend(ctx.state().cook, now);
             Debug.logInternal("took the " + visited.input + " back out of the cold " + visited.kind + ", the cook sits out a while");
         }
         ctx.save();
@@ -230,49 +239,75 @@ public final class FurnaceWatch {
         }
     }
 
-    // a new trip to the job that is ready first, null when there is no job here. NORMAL takes what is done, WAIT_ALL stays
-    // until everything is out, TAKE_ALL is for leaving. why = what started the trip, it goes in the log
-    public Task collect(AltoClef mod, GamerContext ctx, Mode mode, String why) {
+    // every tick the phase has jobs: one call per job (FurnacePlan.plan), the changes into the log. the trip under way holds its
+    // job's call, so this can be asked before active() has had its say
+    public FurnacePlan.Plan plan(GamerContext ctx, FurnacePlan.Moment moment) {
+        GamerFacts f = ctx.facts();
+        FurnacePlan.Plan plan = FurnacePlan.plan(f.furnaceJobs(), moment, f.gameTime(), task == null ? null : target);
+        for (String line : plan.changes()) {
+            say(line);
+        }
+        return plan;
+    }
+
+    // the trip that is under way, or the one the plan picked (a stand-by at a quick smoker, a collect, a take-back of what is
+    // stuck), null when the plan wants none. a trip that ends on this very call changes the jobs under the plan, so it is made again
+    public Task trip(AltoClef mod, GamerContext ctx, FurnacePlan.Plan plan, FurnacePlan.Moment moment) {
+        fresh = false;
+        boolean was = task != null;
         Task running = active(mod, ctx);
         if (running != null) {
             return running;
         }
-        return collectJob(mod, ctx, FurnaceJobs.soonest(ctx.facts().furnaceJobs()), mode, why);
+        FurnacePlan.Verdict pick = was ? plan(ctx, moment).pick() : plan.pick();
+        return pick == null ? null : start(mod, ctx, pick);
     }
 
-    // the same trip to one chosen job (leaving a mine picks the deep one, not the soonest)
-    public Task collectJob(AltoClef mod, GamerContext ctx, RunState.FurnaceJob job, Mode mode, String why) {
-        return collectJob(mod, ctx, job, mode, why, Math.round(ctx.cfg().overworld.furnaceWaitSeconds * 20));
+    // standing at the station waiting for the job the trip is for, and it can still finish: the phase tells the stall timer so
+    public boolean creditsWait(GamerContext ctx) {
+        return FurnacePlan.creditsWait(task != null && task.waiting(), target, ctx.facts().gameTime());
     }
 
-    // `nearly` = how close to done still counts as worth waiting for
-    public Task collectJob(AltoClef mod, GamerContext ctx, RunState.FurnaceJob job, Mode mode, String why, long nearly) {
+    // the last trip() started a new trip rather than handing back the one under way
+    public boolean started() {
+        return fresh;
+    }
+
+    // the phase is leaving (the mine, the dimension) and this job comes with us. `depth` = how far down it is, for the window a
+    // nearly done job is still waited for
+    public Task leave(AltoClef mod, GamerContext ctx, RunState.FurnaceJob job, FurnacePlan.Leaving why, int depth) {
+        fresh = false;
         Task running = active(mod, ctx);
         if (running != null) {
             return running;
         }
-        if (job == null) {
-            return null;
-        }
+        return job == null ? null : start(mod, ctx, FurnacePlan.leaving(job, why, depth));
+    }
+
+    // out of the dimension: the job that is ready first, then the next one on the next call
+    public Task leave(AltoClef mod, GamerContext ctx, FurnacePlan.Leaving why) {
+        return leave(mod, ctx, FurnaceJobs.soonest(ctx.facts().furnaceJobs()), why, 0);
+    }
+
+    private Task start(AltoClef mod, GamerContext ctx, FurnacePlan.Verdict v) {
+        RunState.FurnaceJob job = v.job();
         long now = ctx.facts().gameTime();
-        // two waits to the end of the estimate and nothing came out: it is not cooking (fuel that ran dry under a lit
-        // reading, an input it will not smelt). take the input back out and let the planner redo it, and the station comes
-        // down with it once it is empty. an unlit furnace with no fuel is already handled inside the trip, this is the rest
-        if (FurnaceJobs.stuck(job) && mode != Mode.TAKE_ALL) {
-            Debug.logInternal(job.kind + " at " + job.pos + " did not cook anything in " + job.stalls + " waits, taking the "
-                    + job.input + " back out");
-            mode = Mode.TAKE_ALL;
-        }
-        // the cap is how long past the estimate WAIT_ALL waits, a furnace that never finishes must not hold us for ever
-        long cap = Math.max(0, job.doneTick - now) + 600;
         Block block = BuiltInRegistries.BLOCK.getValue(ResourceLocation.withDefaultNamespace(job.kind));
         target = job;
-        // once per trip: the task is handed back by active() from here on
-        Debug.logInternal("collect trip to the " + job.kind + " at " + job.pos + ": " + why + " (" + mode + ", "
-                + Math.round((job.doneTick - now) / 20.0) + " s to go by the estimate)");
-        task = new CollectFromFurnaceTask(at(job), block, job.kind, mode, nearly, cap);
-        hud = mode == Mode.WAIT_ALL ? "Waiting for the furnace" : "Collecting from the furnace";
+        // the call is already in the log when the plan made it, a leaving one is announced here
+        say(FurnacePlan.say(job, v.call(), v.why().text, now));
+        task = new CollectFromFurnaceTask(at(job), block, job.kind, v.mode(), v.nearly(), FurnacePlan.waitCap(job, now));
+        boolean smoker = "smoker".equals(job.kind);
+        hud = v.call() == FurnacePlan.Call.STAND_BY ? (smoker ? "Waiting for the smoker" : "Waiting for the furnace")
+                : "Collecting from the " + (smoker ? "smoker" : "furnace");
+        fresh = true;
         return task;
+    }
+
+    private static void say(String line) {
+        if (line != null) {
+            Debug.logInternal(line);
+        }
     }
 
     // one of the stations we put down (a village's blast furnace has no list, so it is never ours)

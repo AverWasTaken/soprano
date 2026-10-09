@@ -55,15 +55,6 @@ public class FurnaceJobsTest {
     }
 
     @Test
-    public void dueWithSlack() {
-        List<RunState.FurnaceJob> jobs = List.of(job(1, 10, 0, "furnace"));
-        assertFalse(FurnaceJobs.anyDue(jobs, 1000, 0));
-        assertTrue(FurnaceJobs.anyDue(jobs, 2000, 0));
-        assertTrue(FurnaceJobs.anyDue(jobs, 1900, 200));
-        assertFalse(FurnaceJobs.anyDue(List.of(), 5000, 200));
-    }
-
-    @Test
     public void soonestAndTicksLeft() {
         RunState.FurnaceJob slow = job(1, 30, 0, "furnace");
         RunState.FurnaceJob quick = job(2, 5, 0, "blast_furnace");
@@ -72,15 +63,6 @@ public class FurnaceJobsTest {
         assertNull(FurnaceJobs.soonest(List.of()));
         assertEquals(6000 - 100, FurnaceJobs.ticksLeft(jobs, 100));
         assertEquals(0, FurnaceJobs.ticksLeft(jobs, 99999));
-    }
-
-    @Test
-    public void staleJobsAreDropped() {
-        List<RunState.FurnaceJob> jobs = new ArrayList<>(List.of(job(1, 10, 0, "furnace"), job(2, 10, 30_000, "furnace")));
-        List<RunState.FurnaceJob> gone = FurnaceJobs.dropStale(jobs, 40_000, 600);
-        assertEquals(1, gone.size());
-        assertEquals(1, jobs.size());
-        assertEquals(2, jobs.get(0).pos.x);
     }
 
     private static RunState.FurnaceJob meat(int x, int count, long start) {
@@ -159,7 +141,7 @@ public class FurnaceJobsTest {
     @Test
     public void leavingMoreThanTenSecondsOfWorkMeansComingBackLater() {
         // the rule CollectFromFurnaceTask applies on arrival: 2 items in a furnace is 20 s, not nearly done
-        double wait = new adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig().furnaceWaitSeconds * 20;
+        long wait = FurnacePlan.NEARLY_TICKS;
         assertTrue(FurnaceJobs.remainingTicks("furnace", 2, 0.0) > wait);
         // one item halfway is, and a smoker is a lot quicker: 3 items is 15 s, 1 is 5
         assertTrue(FurnaceJobs.remainingTicks("furnace", 1, 0.5) <= wait);
@@ -180,13 +162,13 @@ public class FurnaceJobsTest {
         assertEquals(now + 750, j.doneTick);
         assertTrue(j.visited);
         // not due while it cooks, and no slack either: the timer is the furnace's own now, so not even inside the last 200
-        assertFalse(FurnaceJobs.anyDue(jobs, now + 100, 200));
-        assertFalse(FurnaceJobs.anyDue(jobs, now + 749, 200));
-        assertTrue(FurnaceJobs.anyDue(jobs, now + 750, 200));
+        assertFalse(FurnacePlan.anyDue(jobs, now + 100));
+        assertFalse(FurnacePlan.anyDue(jobs, now + 749));
+        assertTrue(FurnacePlan.anyDue(jobs, now + 750));
         // a job nobody visited still gets the slack, that is for the walk there
         RunState.FurnaceJob guess = job(2, 10, 0, "furnace");
         assertFalse(guess.visited);
-        assertTrue(FurnaceJobs.anyDue(List.of(guess), guess.doneTick - 200, 200));
+        assertTrue(FurnacePlan.anyDue(List.of(guess), guess.doneTick - FurnacePlan.NEARLY_TICKS));
         // an honest estimate never says "now": a zero or negative remainder still gives the job a tick
         FurnaceJobs.afterVisit(jobs, j, 1, 0, now);
         assertEquals(now + 1, j.doneTick);
@@ -214,10 +196,10 @@ public class FurnaceJobsTest {
         assertEquals(1, j.stalls);
         assertTrue(j.visited);
         assertEquals(2600, j.doneTick);
-        assertFalse(FurnaceJobs.stuck(j));
+        assertFalse(FurnacePlan.stuck(j));
         // the second one is the tell, however fresh the timer looks
         FurnaceJobs.afterVisit(jobs, j, 5, 600, 3300, true);
-        assertTrue(FurnaceJobs.stuck(j));
+        assertTrue(FurnacePlan.stuck(j));
         assertEquals(1, jobs.size());
     }
 
@@ -232,27 +214,13 @@ public class FurnaceJobsTest {
         assertEquals(0, j.stalls);
         FurnaceJobs.afterVisit(jobs, j, 4, 600, 4000, true);
         assertEquals(1, j.stalls);
-        assertFalse(FurnaceJobs.stuck(j));
+        assertFalse(FurnacePlan.stuck(j));
         // a visit that chose to leave it cooking (not capped) says nothing either way
         FurnaceJobs.afterVisit(jobs, j, 4, 600, 4100, false);
         assertEquals(1, j.stalls);
         // and an empty furnace ends the job whatever the count was
         FurnaceJobs.afterVisit(jobs, j, 0, 0, 5000, true);
         assertTrue(jobs.isEmpty());
-    }
-
-    @Test
-    public void waitingByAFurnaceOnlyCountsUntilItsDuePlusSlack() {
-        List<RunState.FurnaceJob> jobs = new ArrayList<>();
-        // 5 mutton in a smoker from tick 1000: due at 1500
-        jobs.add(job(1, 5, 1000, "smoker"));
-        assertTrue(FurnaceJobs.waitIsHonest(jobs, 1200, 600));
-        assertTrue(FurnaceJobs.waitIsHonest(jobs, 1500 + 600, 600));
-        assertFalse(FurnaceJobs.waitIsHonest(jobs, 1500 + 601, 600));
-        // another job that is still cooking keeps the wait honest
-        jobs.add(job(2, 20, 1000, "furnace"));
-        assertTrue(FurnaceJobs.waitIsHonest(jobs, 3000, 600));
-        assertFalse(FurnaceJobs.waitIsHonest(new ArrayList<>(), 0, 600));
     }
 
     // ---- round 2: an interrupted load becomes a job
@@ -270,7 +238,7 @@ public class FurnaceJobsTest {
         assertEquals(5000, j.doneTick);
         List<RunState.FurnaceJob> jobs = new ArrayList<>();
         jobs.add(j);
-        assertTrue(FurnaceJobs.anyDue(jobs, 5000, 0));
+        assertTrue(FurnacePlan.anyDue(jobs, 5000));
         assertSame(j, FurnaceJobs.soonest(jobs));
     }
 

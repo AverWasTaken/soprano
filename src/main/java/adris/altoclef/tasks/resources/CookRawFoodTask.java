@@ -7,6 +7,7 @@ import adris.altoclef.tasks.container.SmeltInFurnaceTask;
 import adris.altoclef.tasks.container.SmeltInSmokerTask;
 import adris.altoclef.tasks.speedrun.gamer.CookGate;
 import adris.altoclef.tasks.speedrun.gamer.CookTrip;
+import adris.altoclef.tasks.speedrun.gamer.FurnacePlan;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.SmeltTarget;
@@ -18,8 +19,6 @@ import net.minecraft.world.item.Item;
 // only cooks inside its own need, and that need is met the moment raw meat counts at its cooked value. with async smelting on it
 // loads and walks away, the phases come back for the output like any other furnace job
 public class CookRawFoodTask extends Task {
-    // no change in the bag for this long and the cook is not going anywhere (no fuel to be found, no room for a smoker)
-    private static final long GIVE_UP_TICKS = 150 * 20;
     // still being ticked this long after the cook finished with no child: say so in the log once
     private static final long IDLE_LOG_TICKS = 5 * 20;
 
@@ -115,7 +114,7 @@ public class CookRawFoodTask extends Task {
             lastFuel = fuel;
             lastChange = now;
         }
-        if (now - lastChange > GIVE_UP_TICKS) {
+        if (FurnacePlan.cookGaveUp(lastChange, now)) {
             Debug.logMessage("Cooking the " + smelting.getDescriptionId() + " is going nowhere, leaving it raw for a while.");
             CookTrip.suspend(now);
             gaveUp = true;

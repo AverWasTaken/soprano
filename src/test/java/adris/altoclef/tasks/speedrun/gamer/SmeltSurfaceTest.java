@@ -4,7 +4,6 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
-import adris.altoclef.tasks.container.CollectFromFurnaceTask;
 import org.junit.Test;
 
 // when to carry the raw iron up out of the mine before the furnace goes down, and how long to stand by it
@@ -106,14 +105,5 @@ public class SmeltSurfaceTest {
         assertEquals(SmeltSurface.Why.IRON, SmeltSurface.why(iron(39), null, 39, 0, 0, 0, true));
     }
 
-    @Test
-    public void waitingByTheFurnaceReopensForTheNextOutputOrTheTimer() {
-        // an item due in 3 s: look then (plus a hair)
-        assertEquals(70, CollectFromFurnaceTask.idleTicks(60));
-        // nothing due for a minute: the 10 s timer
-        assertEquals(200, CollectFromFurnaceTask.idleTicks(1200));
-        // due right now: not a flicker, a second at least
-        assertEquals(20, CollectFromFurnaceTask.idleTicks(0));
-        assertEquals(20, CollectFromFurnaceTask.idleTicks(-50));
-    }
+    // (the screen closed between looks at a furnace is FurnacePlanVisitTest now)
 }

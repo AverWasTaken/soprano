@@ -107,7 +107,7 @@ public final class CoalDetour {
         BlockPos from = anchor == null ? me : anchor;
         CoalRules.Ore ore = new CoalRules.Ore(() -> (this.ore = nearest(mod, me, cfg.coalSideBudget, true)) != null,
                 () -> (this.ore = nearest(mod, from, keep, false)) != null, () -> dropNear(mod), () -> strayed(me, from, cfg));
-        CoalRules.Step step = rules.tick(now, inputs(mod, f, cfg, head, coal), cfg, ore);
+        CoalRules.Step step = rules.tick(now, inputs(mod, f, head, coal), cfg, ore);
         switch (step) {
             case START:
                 start(mod, ctx, cfg, me, coal);
@@ -162,11 +162,11 @@ public final class CoalDetour {
         ore = null;
     }
 
-    private static CoalRules.Inputs inputs(AltoClef mod, GamerFacts f, OverworldConfig cfg, KitNeed head, int coal) {
+    private static CoalRules.Inputs inputs(AltoClef mod, GamerFacts f, KitNeed head, int coal) {
         long now = f.gameTime();
         boolean screen = mod.getPlayer().containerMenu instanceof AbstractFurnaceMenu;
-        // the same "due" SmeltFiller.decide uses, so a detour never sits on a collect trip it is about to hold up
-        boolean due = FurnaceJobs.anyDue(f.furnaceJobs(), now, Math.round(cfg.furnaceWaitSeconds * 20));
+        // the same "due" the furnace plan uses, so a detour never sits on a collect trip it is about to hold up
+        boolean due = FurnacePlan.anyDue(f.furnaceJobs(), now);
         String need = head == null ? null : head.catalogueName();
         // the food need and the cook both have latches that count the time they lead for, a detour in the middle of one eats it
         boolean food = KitNeed.FOOD.equals(need) || KitNeed.isCookName(need);

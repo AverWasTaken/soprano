@@ -297,6 +297,30 @@ public class RunStateStoreTest {
         assertTrue(RunStateStore.parse(json).benches.isEmpty());
     }
 
+    // what the cook and the furnace plan remember between ticks is not the run's memory: a load starts them fresh
+    @Test
+    public void theCookAndWhatThePlanSaidAboutAJobAreNeverWritten() {
+        RunState s = new RunState();
+        FurnacePlan.cookSuspend(s.cook, 5000);
+        FurnacePlan.cookCommit(s.cook, true, 5000);
+        RunState.FurnaceJob job = new RunState.FurnaceJob(new RunState.Pos(1, 64, 2), "OVERWORLD", "smoker", "beef", 4, "cooked_beef", 0, 400);
+        job.track.standSeen = true;
+        job.track.standEligible = true;
+        job.track.standUntil = 999;
+        job.track.logged = FurnacePlan.Call.STAND_BY;
+        s.furnaceJobs.add(job);
+        String json = RunStateStore.toJson(s);
+        assertFalse(json, json.contains("\"cook\""));
+        assertFalse(json, json.contains("standUntil"));
+        assertFalse(json, json.contains("logged"));
+        RunState out = RunStateStore.parse(json);
+        assertEquals(-1, out.cook.until);
+        assertNull(out.cook.station);
+        assertEquals(1, out.furnaceJobs.size());
+        assertFalse(out.furnaceJobs.get(0).track.standSeen);
+        assertNull(out.furnaceJobs.get(0).track.logged);
+    }
+
     @Test
     public void aFileFromBeforeSmokersLoadsWithNoSmokersAndOldJobsAreNotFood() throws IOException {
         write(file(), "{\"fingerprint\":\"" + FP + "\",\"phase\":\"IRON\",\"placedFurnaces\":[{\"x\":1,\"y\":64,\"z\":2}],"

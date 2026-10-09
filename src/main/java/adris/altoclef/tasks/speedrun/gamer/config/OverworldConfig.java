@@ -99,11 +99,8 @@ public class OverworldConfig {
 
     // smelting in the background (see SmeltFiller): the iron goes in the furnace and the bot does other things while it cooks,
     // anywhere. a furnace in a chunk that does not tick just pauses, so the bot remembers where it is and walks back when the
-    // output is due. (old saved files may still carry furnaceLeashBlocks and furnaceMaxPullbacks, gson skips them)
-    // within this of "done" counts as done: a boundary goes back for it, and at the furnace we wait instead of leaving
-    public double furnaceWaitSeconds = 10;
-    // a job older than this is from a world that ran on without us (a relog days later), not worth a walk
-    public double furnaceStaleSeconds = 1800;
+    // output is due. (old saved files may still carry furnaceLeashBlocks, furnaceMaxPullbacks, furnaceWaitSeconds and
+    // furnaceStaleSeconds, gson skips them: how long to wait, collect or give up is FurnacePlan's clock now)
     // planks to stock for beds while waiting (3 a bed, the shield and sticks come on top of this)
     public int smeltBedPlanks = 12;
     // stock-up for when everything else is done and the iron is still cooking. one entry each: "food" = units over

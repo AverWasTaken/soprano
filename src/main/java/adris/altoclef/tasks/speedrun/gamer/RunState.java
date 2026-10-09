@@ -119,7 +119,7 @@ public class RunState {
         // nutrition of ONE finished item, 0 for anything that is not food. the food planner counts count * unitsEach as food
         // on the way. an old save has no key and reads 0, which is just "not food"
         public int unitsEach;
-        // doneTick came from the furnace's own slots on a visit, not from our guess when we loaded it (FurnaceJobs.anyDue). an
+        // doneTick came from the furnace's own slots on a visit, not from our guess when we loaded it (FurnacePlan.due). an
         // old save has no key and reads false, which is just "a guess"
         public boolean visited;
         // visits that stood at the furnace for the whole estimate and still saw no item come out (FurnaceJobs.afterVisit). an old
@@ -129,6 +129,9 @@ public class RunState {
         // food and not a smoker to stand by, and the visit lights it if the bag has the fuel now, else takes it back. an old
         // save has no key and reads false
         public boolean stranded;
+        // what FurnacePlan last decided about this job and the stand-by budget it started with. transient: a relog decides again, and
+        // a replaced job (a new load at the same spot) is a new batch with a fresh budget
+        public transient FurnacePlan.Track track = new FurnacePlan.Track();
 
         public FurnaceJob() {
         }
@@ -223,6 +226,18 @@ public class RunState {
     // game tick the early iron batch (EarlyIronPick) started loading, -1 = no load in flight. transient: a relog starting
     // it over is fine, the planner just goes back to looking at the bag
     public transient long earlyLoadTick = -1;
+    // what the running cook task tells the planner (backoff, the station it picked), see FurnacePlan.cookSuspended. it used to be
+    // static fields that outlived the run. transient: a relog starts the cook fresh, which is what clearing them on start did
+    public transient Cook cook = new Cook();
+
+    public static class Cook {
+        // game tick the backoff after a cook gave up ends at, -1 = not backed off
+        public long until = -1;
+        // "smoker" or "furnace" while a cook task has its station, null = none
+        public String station;
+        // game tick the task last said so (a task that stopped being ticked without a stop goes stale on its own)
+        public long stamp;
+    }
 
     // village blacksmith chests we already opened (or started to), and the game ticks spent in them. the budget in
     // VillageChests reads both, so a relog does not hand out a fresh one

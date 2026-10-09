@@ -31,11 +31,11 @@ public class PackUpTest {
     // is taken back out
     @Test
     public void theWaitIsAsLongAsTheWalkAwayAndNeverUnderTenSeconds() {
-        assertEquals(200, PackUp.waitTicks(1));
-        assertEquals(600, PackUp.waitTicks(500));
-        assertTrue(PackUp.waitTicks(20) > PackUp.waitTicks(10));
+        assertEquals(FurnacePlan.NEARLY_TICKS, FurnacePlan.leaveWindow(1));
+        assertEquals(FurnacePlan.PATIENCE_TICKS, FurnacePlan.leaveWindow(500));
+        assertTrue(FurnacePlan.leaveWindow(20) > FurnacePlan.leaveWindow(10));
         // 30 down: 600 ticks, a job that finishes inside it is waited for
-        assertEquals(600, PackUp.waitTicks(30));
+        assertEquals(600, FurnacePlan.leaveWindow(30));
     }
 
     @Test

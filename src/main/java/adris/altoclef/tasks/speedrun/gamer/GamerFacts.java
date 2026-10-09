@@ -105,7 +105,7 @@ public interface GamerFacts {
         return false;
     }
 
-    // the cook task gave up a while ago (no fuel to be found, no spot for a smoker...), see CookTrip. the planner stops asking
+    // the cook task gave up a while ago (no fuel to be found, no spot for a smoker...), see FurnacePlan.cookSuspended. the planner stops asking
     // for the cook until it is over, or a stuck smoker would hold the phase for ever
     default boolean cookSuspended() {
         return false;
@@ -134,7 +134,7 @@ public interface GamerFacts {
         return true;
     }
 
-    // the first three raw iron started into a furnace and the job is not recorded yet (EarlyIronPick.inFlight). the bag no
+    // the first three raw iron started into a furnace and the job is not recorded yet (FurnacePlan.earlyLoadInFlight). the bag no
     // longer shows the ore by then, this is what keeps the early need alive until it is lit
     default boolean earlyLoadInFlight() {
         return false;

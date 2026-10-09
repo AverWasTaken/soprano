@@ -5,6 +5,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import adris.altoclef.tasks.speedrun.gamer.FurnaceJobs;
+import adris.altoclef.tasks.speedrun.gamer.FurnacePlan;
 import adris.altoclef.tasks.speedrun.gamer.RunState;
 import java.util.ArrayList;
 import java.util.List;
@@ -64,7 +65,7 @@ public class AsyncSmeltingTest {
         RunState.FurnaceJob job = AsyncSmelting.strandedJob(new RunState.Pos(1, 64, 1), "OVERWORLD", "smoker", "porkchop", 6,
                 "cooked_porkchop", 8, 5000, false);
         // due the moment it is made, so the next visit goes and gets it (or lights it)
-        assertTrue(FurnaceJobs.anyDue(List.of(job), 5000, 0));
+        assertTrue(FurnacePlan.anyDue(List.of(job), 5000));
         assertTrue(job.stranded);
         // and it is not dinner on the way: the 5 unlit beef read as 77 units held and the stand-by waited "0 s" for them
         assertEquals(0, FurnaceJobs.pendingUnits(List.of(job)));
