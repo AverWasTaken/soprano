@@ -281,7 +281,7 @@ public class SmeltInFurnaceTask extends ResourceTask implements AsyncSmelting.Ha
             if (shown > 0 || isContainerOpen(mod)) {
                 return shown;
             }
-            return (int) StationMemory.known(false, shown, StationMemory.materialsRemembered(mod, rememberedFurnace(mod), _allMaterials));
+            return (int) StationMemory.known(false, shown, StationMemory.materialsRemembered(mod, stationInUse(mod), _allMaterials));
         }
 
         // same for the fuel: the coal we had already put in the fuel slot when the load got cut off is not coal to go and mine
@@ -290,7 +290,7 @@ public class SmeltInFurnaceTask extends ResourceTask implements AsyncSmelting.Ha
             if (seen || isContainerOpen(mod)) {
                 return 0;
             }
-            return StationMemory.fuelRemembered(mod, rememberedFurnace(mod), _allMaterials);
+            return StationMemory.fuelRemembered(mod, stationInUse(mod), _allMaterials);
         }
 
         // Override this if our materials must be acquired in a special way.
@@ -437,48 +437,16 @@ public class SmeltInFurnaceTask extends ResourceTask implements AsyncSmelting.Ha
             return null;
         }
 
+        // a furnace with our ore in it (the screen was closed on it half loaded, or we put stuff in it ourselves) is used from any
+        // distance and never left for a new one. that is also the "never put a furnace over our ore" rule: otherwise the choice
+        // decides (StationChoice), and the one we picked last tick only sticks while it still wins
         @Override
-        protected double getCostToMakeNew(AltoClef mod) {
-            // this used to compare the cache slots to null. they start as EMPTY stacks, never null, so it was "never make a
-            // new one" for every smelt and the cobble math below it was dead code. a furnace we put stuff in stays ours
-            if (hasStartedSmelting() || _furnaceCache.burnPercentage > 0) {
-                return NEVER_MAKE_NEW;
+        protected BlockPos pinnedStation(AltoClef mod) {
+            BlockPos kept = getTargetContainerPosition();
+            if (kept != null && (hasStartedSmelting() || _furnaceCache.burnPercentage > 0 || StationMemory.holdsOurStuff(mod, kept))) {
+                return kept;
             }
-            BlockPos known = rememberedFurnace(mod);
-            if (known == null) {
-                return NEVER_MAKE_NEW;
-            }
-            var me = mod.getPlayer().position();
-            boolean cheap = FurnaceReuse.canMakeCheaply(mod.getItemStorage().hasItem(Items.FURNACE),
-                    StationMemory.cobbleish(mod), StationMemory.tableAround(mod));
-
-            // ore of ours sitting in it (the screen was closed on it half loaded) is not a furnace to walk away from
-            boolean holdsOurStuff = AsyncSmelting.isOurFurnace(known) && mod.getItemStorage().getContainerAtPosition(known).map(ContainerCache::holdsMoreThanFuel).orElse(false);
-            // 0 = any walk at all costs more, so DoStuffInContainerTask places one here instead
-            return FurnaceReuse.makeNew(true, cheap, known.getX() + 0.5 - me.x, known.getY() + 0.5 - me.y, known.getZ() + 0.5 - me.z, holdsOurStuff)
-                    ? 0.0 : NEVER_MAKE_NEW;
-        }
-
-        private static final double NEVER_MAKE_NEW = 9999999.0;
-
-        // the furnace DoStuffInContainerTask would walk to: the one it already picked, or the closest the tracker knows
-        private BlockPos rememberedFurnace(AltoClef mod) {
-            BlockPos picked = getTargetContainerPosition();
-            if (picked != null && mod.getBlockTracker().blockIsValid(picked, Blocks.FURNACE)) {
-                return picked;
-            }
-            BlockPos loaded = StationMemory.ourLoaded(mod, Blocks.FURNACE);
-            if (loaded != null) {
-                return loaded;
-            }
-            return mod.getBlockTracker().getNearestTracking(mod.getPlayer().position(),
-                    p -> adris.altoclef.util.helpers.WorldHelper.canReach(mod, p), Blocks.FURNACE).orElse(null);
-        }
-
-        @Override
-        protected BlockPos overrideContainerPosition(AltoClef mod) {
-            // If we have a valid container position, KEEP it. otherwise a furnace of ours with our stuff in it beats the nearest
-            return getTargetContainerPosition() != null ? getTargetContainerPosition() : StationMemory.ourLoaded(mod, Blocks.FURNACE);
+            return StationMemory.ourLoaded(mod, Blocks.FURNACE);
         }
 
         // the caches start as EMPTY stacks and only change while the screen is open, so anything in them means we

@@ -43,6 +43,11 @@ public final class Bench {
     // why the last pickup was started, and the last wait reason that went to the log (so a wait is one line, not one per tick)
     public String why = "";
     public String waitLogged = "";
+    // the "busy in another dimension, keeping it" line went out for this stretch away
+    public boolean elsewhereLogged;
+    // the job at this station was dropped as stale (FurnaceWatch.housekeeping), so what the container tracker still remembers in it
+    // is not adopted back into a new one. clears once the station is seen empty or gets a real job. not saved, a relog decides again
+    public boolean givenUp;
 
     public Bench(StationHook.Kind kind, RunState.Pos pos, String dimension, long placedTick) {
         this.kind = kind;

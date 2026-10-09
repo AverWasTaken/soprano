@@ -191,6 +191,16 @@ public final class AsyncSmelting {
         return food == null || !FOOD_OUTPUTS.contains(name(output.getMatches()[0])) ? 0 : food.nutrition();
     }
 
+    // the same for an output we only know by name (an adopted load, Workbenches.adoptLoad): 0 for anything that is not cooked food
+    public static int unitsOfOutput(String outputName) {
+        if (!FOOD_OUTPUTS.contains(outputName)) {
+            return 0;
+        }
+        Item item = BuiltInRegistries.ITEM.getValue(net.minecraft.resources.ResourceLocation.withDefaultNamespace(outputName));
+        FoodProperties food = item.components().get(DataComponents.FOOD);
+        return food == null ? 0 : food.nutrition();
+    }
+
     // the cook was dropped with the meat already in the station and never handed off (the coal trip ran past its patience, or the
     // plan moved on mid load), so there is no load to hand off and nobody knows the station holds anything. `lit` = the last look
     // at the slots had it lit or fueled for the whole input (fuelCovers). then it is a cook like any other, with the usual timer.

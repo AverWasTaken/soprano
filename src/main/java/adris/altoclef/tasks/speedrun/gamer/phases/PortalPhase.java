@@ -77,8 +77,9 @@ public class PortalPhase implements PhaseHandler {
         return true;
     }
 
-    // we are in the nether. a station left in the overworld is forgotten by then (Workbenches), so the part of "no phase ends with a
-    // pickup owed" that matters here is in tick: nothing leads to the portal while one is owed
+    // we are in the nether. an idle station left in the overworld is forgotten by then (Workbenches), a busy one stays registered
+    // for the visit when we are back, so the part of "no phase ends with a pickup owed" that matters here is in tick: nothing leads
+    // to the portal while one is owed
     @Override
     public boolean isDone(GamerFacts facts, RunState state, GamerConfig cfg) {
         return facts.dimension() == Dimension.NETHER;

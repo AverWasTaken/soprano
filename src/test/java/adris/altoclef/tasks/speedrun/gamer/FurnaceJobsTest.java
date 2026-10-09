@@ -254,4 +254,100 @@ public class FurnaceJobsTest {
         assertTrue(FurnaceJobs.waitIsHonest(jobs, 3000, 600));
         assertFalse(FurnaceJobs.waitIsHonest(new ArrayList<>(), 0, 600));
     }
+
+    // ---- round 2: an interrupted load becomes a job
+
+    @Test
+    public void anAdoptedLoadIsAStrandedJobDueRightNow() {
+        RunState.FurnaceJob j = FurnaceJobs.adopted(new RunState.Pos(1, 64, 0), "OVERWORLD", "furnace", "raw_iron", 37, 5000);
+        assertTrue(j.stranded);
+        assertEquals("furnace", j.kind);
+        assertEquals("raw_iron", j.input);
+        assertEquals(37, j.count);
+        assertEquals("OVERWORLD", j.dimension);
+        // due at once, so the first collect trip goes to it
+        assertEquals(5000, j.startTick);
+        assertEquals(5000, j.doneTick);
+        List<RunState.FurnaceJob> jobs = new ArrayList<>();
+        jobs.add(j);
+        assertTrue(FurnaceJobs.anyDue(jobs, 5000, 0));
+        assertSame(j, FurnaceJobs.soonest(jobs));
+    }
+
+    // it is not cooking as far as we know: not iron on the way, not dinner on the way
+    @Test
+    public void anAdoptedLoadIsNotPendingOutputOrFood() {
+        List<RunState.FurnaceJob> jobs = new ArrayList<>();
+        jobs.add(FurnaceJobs.adopted(new RunState.Pos(1, 64, 0), "OVERWORLD", "furnace", "iron_ingot", 12, 100));
+        jobs.add(FurnaceJobs.adopted(new RunState.Pos(2, 64, 0), "OVERWORLD", "smoker", "beef", 8, 100));
+        assertEquals(0, FurnaceJobs.pending(jobs, "iron_ingot"));
+        assertEquals(0, FurnaceJobs.pendingUnits(jobs));
+    }
+
+    @Test
+    public void aJobThereMakesTheStationBusyInThatDimensionOnly() {
+        RunState state = new RunState();
+        FurnaceJobs.record(state.furnaceJobs, FurnaceJobs.adopted(new RunState.Pos(1, 64, 0), "NETHER", "furnace", "raw_gold", 3, 100));
+        assertTrue(FurnaceJobs.isBusy(state, new RunState.Pos(1, 64, 0), "NETHER"));
+        assertFalse(FurnaceJobs.isBusy(state, new RunState.Pos(1, 64, 0), "OVERWORLD"));
+        assertFalse(FurnaceJobs.isBusy(state, new RunState.Pos(2, 64, 0), "NETHER"));
+    }
+
+    // a visit that finds the adopted load lit makes it a live job, and pending() counts by output name: raw iron has to come back as
+    // iron, not as itself, or the planner over-asks for iron while the furnace is cooking it
+    @Test
+    public void anAdoptedLoadKnowsWhatItWillCookInto() {
+        assertEquals("iron_ingot", FurnaceJobs.smeltOutput("raw_iron"));
+        assertEquals("gold_ingot", FurnaceJobs.smeltOutput("raw_gold"));
+        assertEquals("copper_ingot", FurnaceJobs.smeltOutput("raw_copper"));
+        for (String meat : new String[]{"beef", "porkchop", "mutton", "chicken", "rabbit", "cod", "salmon"}) {
+            assertEquals("cooked_" + meat, FurnaceJobs.smeltOutput(meat));
+        }
+        assertEquals("baked_potato", FurnaceJobs.smeltOutput("potato"));
+        assertEquals("dried_kelp", FurnaceJobs.smeltOutput("kelp"));
+        // already a product (the output slot was what we saw), or nothing here cooks it
+        assertEquals("iron_ingot", FurnaceJobs.smeltOutput("iron_ingot"));
+        assertEquals("cooked_beef", FurnaceJobs.smeltOutput("cooked_beef"));
+        assertEquals("cobblestone", FurnaceJobs.smeltOutput("cobblestone"));
+    }
+
+    @Test
+    public void anAdoptedLoadThatTheVisitFindsLitCountsAsPendingIronNotAsItsInput() {
+        List<RunState.FurnaceJob> jobs = new ArrayList<>();
+        RunState.FurnaceJob j = FurnaceJobs.adopted(new RunState.Pos(1, 64, 0), "OVERWORLD", "furnace", "raw_iron", 10, 100);
+        jobs.add(j);
+        assertEquals(0, FurnaceJobs.pending(jobs, "iron_ingot"));
+        FurnaceJobs.afterVisit(jobs, j, 6, 1200, 400);
+        assertFalse(j.stranded);
+        assertEquals(6, FurnaceJobs.pending(jobs, "iron_ingot"));
+        assertEquals(0, FurnaceJobs.pending(jobs, "raw_iron"));
+    }
+
+    // a count of nothing would look like an emptied station to afterVisit; the visit reads the real slots anyway
+    @Test
+    public void anAdoptedLoadIsNeverEmpty() {
+        assertEquals(1, FurnaceJobs.adopted(new RunState.Pos(1, 64, 0), "OVERWORLD", "smoker", "beef", 0, 100).count);
+    }
+
+    // the visit that finds it empty ends the job, and that is what lets the station come down
+    @Test
+    public void theVisitThatEmptiesAnAdoptedLoadEndsTheJob() {
+        List<RunState.FurnaceJob> jobs = new ArrayList<>();
+        RunState.FurnaceJob j = FurnaceJobs.adopted(new RunState.Pos(1, 64, 0), "OVERWORLD", "furnace", "raw_iron", 10, 100);
+        jobs.add(j);
+        FurnaceJobs.afterVisit(jobs, j, 0, 0, 400);
+        assertTrue(jobs.isEmpty());
+    }
+
+    // a visit that finds it still cooking (lit, the fuel was in) makes it an ordinary job from there
+    @Test
+    public void aVisitThatFindsItCookingMakesItAnOrdinaryJob() {
+        List<RunState.FurnaceJob> jobs = new ArrayList<>();
+        RunState.FurnaceJob j = FurnaceJobs.adopted(new RunState.Pos(1, 64, 0), "OVERWORLD", "furnace", "raw_iron", 10, 100);
+        jobs.add(j);
+        FurnaceJobs.afterVisit(jobs, j, 6, 1200, 400);
+        assertFalse(j.stranded);
+        assertEquals(6, j.count);
+        assertEquals(1600, j.doneTick);
+    }
 }

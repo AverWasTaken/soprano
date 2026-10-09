@@ -126,6 +126,9 @@ public final class FurnaceWatch {
         List<RunState.FurnaceJob> gone = FurnaceJobs.dropStale(jobs, now, ctx.cfg().overworld.furnaceStaleSeconds);
         if (!gone.isEmpty()) {
             ctx.log("giving up on a furnace we loaded a long time ago");
+            for (RunState.FurnaceJob job : gone) {
+                Workbenches.giveUp(ctx.state(), job.pos, job.dimension);
+            }
         }
         for (RunState.FurnaceJob job : new ArrayList<>(ctx.facts().furnaceJobs())) {
             BlockPos at = at(job);

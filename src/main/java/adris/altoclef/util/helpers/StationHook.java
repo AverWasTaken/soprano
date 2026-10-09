@@ -5,8 +5,9 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 
 // what the container tasks (alto) can ask about the stations the gamer put down, without knowing there is a gamer. same pattern
-// as AsyncSmelting.isOurFurnace: the run wires a Source in when it starts and pulls it when it ends, a plain alto run sees no
-// source and behaves like it always did
+// as AsyncSmelting.isOurFurnace: the run wires a Source in when it starts and pulls it when it ends. the container tasks feed what
+// it says (and what the block tracker sees) to StationChoice, which is the one place that picks a station. a plain alto run has no
+// source: nothing is ours, nothing is coming down, and the nearest reachable station within NEAR is used, else one is placed or crafted
 public final class StationHook {
     // the three workbenches the registry keeps. blast furnaces and the like are the village's, never ours to take back
     public enum Kind {
@@ -31,6 +32,10 @@ public final class StationHook {
 
         // this exact block is the one coming down, no container task may walk to it or open it
         boolean pickingUp(BlockPos pos);
+
+        // the registry has this block, whatever state it is in and however far away. a table the run did not place (a village's)
+        // is not ours, so a container task may use it when it is near and nothing ever picks it up
+        boolean ours(BlockPos pos);
     }
 
     private static volatile Source source;
@@ -74,5 +79,12 @@ public final class StationHook {
     public static boolean pickingUp(BlockPos pos) {
         Source s = source;
         return s != null && pos != null && s.pickingUp(pos);
+    }
+
+    // no source (a plain alto run) means nothing is ours: every table the tracker sees within NEAR is a world one, and the choice
+    // (StationChoice) uses the nearest reachable one, else places or crafts
+    public static boolean ours(BlockPos pos) {
+        Source s = source;
+        return s != null && pos != null && s.ours(pos);
     }
 }

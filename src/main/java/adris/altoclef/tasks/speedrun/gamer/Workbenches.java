@@ -9,12 +9,14 @@ import adris.altoclef.tasks.container.DoStuffInContainerTask;
 import adris.altoclef.tasks.movement.PickupDroppedItemTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.trackers.storage.ContainerCache;
+import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.StationHook;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.StationHook.Kind;
 import adris.altoclef.util.helpers.WalkCost;
 import adris.altoclef.util.helpers.WorldHelper;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.AbstractFurnaceMenu;
@@ -131,8 +133,8 @@ public final class Workbenches {
             if (old == null || old.dimension.equals(dimension)) {
                 return false;
             }
-            // the same x y z in another dimension: the old one is behind us (it is forgotten for good a second after we left, this
-            // just gets there first) and the new block must not be mistaken for it
+            // the same x y z in another dimension: the lists key on x y z alone, so the old one has to go even if it was busy (the log
+            // line says so), or the new block would be mistaken for it
             forget(state, old, "a " + kind.word() + " went down on the same coordinates in the " + dimension.toLowerCase(java.util.Locale.ROOT));
         }
         list.add(pos);
@@ -154,6 +156,17 @@ public final class Workbenches {
             }
         }
         return true;
+    }
+
+    // a job at this spot was dropped as stale (FurnaceWatch.housekeeping): the container tracker still remembers our items in it, and
+    // adopting them back would undo the give up and send a trip every stale period. not adopted until the station is seen empty
+    public static void giveUp(RunState state, RunState.Pos pos, String dimension) {
+        for (Bench b : state.benches) {
+            if (b.pos.equals(pos) && b.dimension.equals(dimension) && b.kind != Kind.TABLE && !b.givenUp) {
+                b.givenUp = true;
+                log(b + ": the job here went stale and was dropped, not adopting what is still in it");
+            }
+        }
     }
 
     // the entry and its position are gone, with the reason in the log. everything that used to quietly drop a station from a list
@@ -212,7 +225,7 @@ public final class Workbenches {
     // the rule a phase's isDone asks: nothing of ours is standing idle or coming down in this dimension
     public static boolean phaseMayEnd(RunState state, String dimension, long now) {
         sync(state, now);
-        return WorkbenchRules.phaseMayEnd(state.benches, dimension);
+        return WorkbenchRules.phaseMayEnd(state.benches, dimension, b -> FurnaceJobs.isBusy(state, b.pos, b.dimension));
     }
 
     // what the container tasks see (StationHook), wired in by the run
@@ -245,6 +258,17 @@ public final class Workbenches {
             public boolean pickingUp(BlockPos pos) {
                 return WorkbenchRules.targetVetoed(state.benches, new RunState.Pos(pos.getX(), pos.getY(), pos.getZ()), facts.gameTime());
             }
+
+            @Override
+            public boolean ours(BlockPos pos) {
+                String dimension = facts.dimension().name();
+                for (Bench b : state.benches) {
+                    if (b.dimension.equals(dimension) && b.pos.x == pos.getX() && b.pos.y == pos.getY() && b.pos.z == pos.getZ()) {
+                        return true;
+                    }
+                }
+                return false;
+            }
         };
     }
 
@@ -253,22 +277,24 @@ public final class Workbenches {
     // the pickup that is in flight, if there is one, and nothing else: the phases call this first every tick so a pickup that
     // started finishes before the kit task gets a say (the next craft used to walk off with a furnace half taken)
     public Task resume(AltoClef mod, GamerContext ctx) {
-        return run(mod, ctx, List.of(), false);
+        return run(mod, ctx, List.of(), false, false);
     }
 
     // every bench gets its decision, an in-flight pickup is driven, and when none is in flight the first one that is owed
-    // starts. `plan` is the phase's need list in order. returns the pickup task or null
+    // starts. `plan` is the phase's need list in order. returns the pickup task or null. this is the call of the phases that go
+    // back for a furnace (GATHER, IRON, PORTAL), so it is also where a load that was cut off gets adopted as a job
     public Task tick(AltoClef mod, GamerContext ctx, List<KitNeed> plan) {
-        return run(mod, ctx, plan, true);
+        return run(mod, ctx, plan, true, true);
     }
 
     // a phase that does not run the plan side of this (everything after the portal): the same decisions with no needs, so an idle
-    // station that nothing is using comes down once its screen has been shut for a second
+    // station that nothing is using comes down once its screen has been shut for a second. no adoption: nothing there would ever
+    // collect the job
     public Task sweep(AltoClef mod, GamerContext ctx) {
-        return run(mod, ctx, List.of(), true);
+        return run(mod, ctx, List.of(), true, false);
     }
 
-    private Task run(AltoClef mod, GamerContext ctx, List<KitNeed> plan, boolean startNew) {
+    private Task run(AltoClef mod, GamerContext ctx, List<KitNeed> plan, boolean startNew, boolean adopt) {
         RunState state = ctx.state();
         GamerFacts f = ctx.facts();
         long now = f.gameTime();
@@ -301,6 +327,9 @@ public final class Workbenches {
             }
             Bench.State before = b.state;
             WorkbenchRules.Look look = look(mod, ctx, b, me, dimension, WorkbenchRules.neededSoon(b.kind, names, wooden, stone), limit);
+            if (adopt && WorkbenchRules.adoptable(b, look)) {
+                adoptLoad(mod, ctx, b, now);
+            }
             WorkbenchRules.Call call = WorkbenchRules.decide(b, look);
             if (before != b.state) {
                 log(b.kind.word() + " at " + b.pos + ": " + before + " -> " + b.state
@@ -309,10 +338,22 @@ public final class Workbenches {
             if (call != WorkbenchRules.Call.WAIT) {
                 b.waitLogged = "";
             }
+            if (call != WorkbenchRules.Call.ELSEWHERE) {
+                b.elsewhereLogged = false;
+            }
             switch (call) {
                 case FORGET_GONE -> dropEntry(state, b, "the block is gone (broken or blown up)");
                 case FORGET_TOO_FAR -> dropEntry(state, b, "it is " + Math.round(look.distance()) + " blocks away (more than " + Math.round(WorkbenchRules.FORGET_DISTANCE) + ")");
+                case FORGET_FAR_TABLE -> dropEntry(state, b, "it is " + Math.round(look.distance()) + " blocks away (more than "
+                        + Math.round(WorkbenchRules.FAR_TABLE_DISTANCE) + ") and the bag can make another");
                 case FORGET_LEFT_DIMENSION -> dropEntry(state, b, "we left the " + b.dimension.toLowerCase(java.util.Locale.ROOT));
+                case ELSEWHERE -> {
+                    if (!b.elsewhereLogged) {
+                        b.elsewhereLogged = true;
+                        log(b + ": busy and we are not in the " + b.dimension.toLowerCase(java.util.Locale.ROOT)
+                                + " any more, keeping it for the visit when we are back");
+                    }
+                }
                 case DROP_LOST -> dropEntry(state, b, "the block is down and its drop never made it into the bag");
                 case ABORT_BUSY -> abort(b, "it has our items in it now");
                 case TIMED_OUT -> failed(state, b, now, "ran out of time (" + Math.round(limit / 20.0) + " s)");
@@ -439,15 +480,35 @@ public final class Workbenches {
         long now = ctx.facts().gameTime();
         double distance = WalkCost.stationDistance(b.pos.x, b.pos.y, b.pos.z, me.x, me.y, me.z);
         if (!b.dimension.equals(dimension)) {
-            // the block coordinates mean nothing in this world
-            return new WorkbenchRules.Look(now, distance, false, false, true, false, false, neededSoon, false, limit);
+            // the block coordinates mean nothing in this world. a recorded job in that dimension is still evidence it holds our items
+            return new WorkbenchRules.Look(now, distance, false, false, true, false, jobHere(ctx, b), neededSoon, false, limit);
         }
         BlockPos at = bp(b.pos);
         boolean loaded = mod.getChunkTracker().isChunkLoaded(at);
         boolean gone = loaded && !mod.getWorld().getBlockState(at).is(blockOf(b.kind));
         boolean idle = idle(mod, ctx, b, now);
         boolean canBreak = !loaded || gone || WorldHelper.canBreak(mod, at);
-        return new WorkbenchRules.Look(now, distance, true, gone, idle, holdsStuff(mod, ctx, b), jobHere(ctx, b), neededSoon, canBreak, limit);
+        boolean canRecraft = b.kind == Kind.TABLE && WorkbenchRules.canRecraftTable(ctx.facts().count(ItemHelper.PLANKS), ctx.facts().count(ItemHelper.LOG));
+        return new WorkbenchRules.Look(now, distance, true, gone, idle, holdsStuff(mod, ctx, b), jobHere(ctx, b), neededSoon, canBreak, limit, canRecraft);
+    }
+
+    // an interrupted load: our items are in this one and no job points at it. the job it becomes is stranded (nothing is known to be
+    // cooking) and due now, so the phase's own collect trip walks there, takes what is in it and the empty-after-visit rule takes
+    // the station down. what the cache saw is only the dominant item and a count, the visit reads the real slots
+    private void adoptLoad(AltoClef mod, GamerContext ctx, Bench b, long now) {
+        ContainerCache cache = mod.getItemStorage().getContainerAtPosition(bp(b.pos)).orElse(null);
+        Item item = cache == null ? null : cache.mostOfNonFuel();
+        if (item == null) {
+            return;
+        }
+        int count = cache.nonFuelCount();
+        String input = BuiltInRegistries.ITEM.getKey(item).getPath();
+        RunState.FurnaceJob job = FurnaceJobs.adopted(b.pos, b.dimension, b.kind == Kind.SMOKER ? "smoker" : "furnace", input, count, now);
+        job.unitsEach = AsyncSmelting.unitsOfOutput(job.output);
+        FurnaceJobs.record(ctx.state().furnaceJobs, job);
+        ctx.save();
+        log(b + ": holds " + count + " of our " + input + " and no job points at it (a load that was cut off), adopting it as a stranded job"
+                + " so the next visit empties it");
     }
 
     // the screen is shut, nothing in the task tree is working at this kind of station, and no furnace load is half done
@@ -477,7 +538,7 @@ public final class Workbenches {
     // a recorded job is the hard evidence. the container tracker's last look can lag the slots by a tick or two, so it may keep a
     // station out of the pickup's start but never calls one off that is already coming down
     private static boolean jobHere(GamerContext ctx, Bench b) {
-        return b.kind != Kind.TABLE && FurnaceJobs.isBusy(ctx.state(), b.pos);
+        return b.kind != Kind.TABLE && FurnaceJobs.isBusy(ctx.state(), b.pos, b.dimension);
     }
 
     // an open screen of the kind is use. the closest bench of the kind is the one it belongs to
@@ -496,6 +557,9 @@ public final class Workbenches {
             }
             if (closest != null) {
                 closest.lastUsedTick = now;
+                // a smelt task has the screen open again, so whatever job it records is a new story and a load that gets cut off
+                // is adopted like any other
+                closest.givenUp = false;
             }
         }
     }

@@ -280,7 +280,7 @@ public class SmeltInSmokerTask extends ResourceTask implements AsyncSmelting.Han
             if (shown > 0 || isContainerOpen(mod)) {
                 return shown;
             }
-            return (int) StationMemory.known(false, shown, StationMemory.materialsRemembered(mod, rememberedSmoker(mod), _allMaterials));
+            return (int) StationMemory.known(false, shown, StationMemory.materialsRemembered(mod, stationInUse(mod), _allMaterials));
         }
 
         private double fuelKnownInSmoker(AltoClef mod) {
@@ -288,21 +288,7 @@ public class SmeltInSmokerTask extends ResourceTask implements AsyncSmelting.Han
             if (seen || isContainerOpen(mod)) {
                 return 0;
             }
-            return StationMemory.fuelRemembered(mod, rememberedSmoker(mod), _allMaterials);
-        }
-
-        // the smoker DoStuffInContainerTask would walk to: the one it already picked, or the closest the tracker knows
-        private BlockPos rememberedSmoker(AltoClef mod) {
-            BlockPos picked = getTargetContainerPosition();
-            if (picked != null && mod.getBlockTracker().blockIsValid(picked, Blocks.SMOKER)) {
-                return picked;
-            }
-            BlockPos loaded = StationMemory.ourLoaded(mod, Blocks.SMOKER);
-            if (loaded != null) {
-                return loaded;
-            }
-            return mod.getBlockTracker().getNearestTracking(mod.getPlayer().position(),
-                    p -> adris.altoclef.util.helpers.WorldHelper.canReach(mod, p), Blocks.SMOKER).orElse(null);
+            return StationMemory.fuelRemembered(mod, stationInUse(mod), _allMaterials);
         }
 
         // Override this if our materials must be acquired in a special way.
@@ -450,31 +436,6 @@ public class SmeltInSmokerTask extends ResourceTask implements AsyncSmelting.Han
             return null;
         }
 
-        @Override
-        protected double getCostToMakeNew(AltoClef mod) {
-            // this compared the cache slots to null, they start as EMPTY stacks and never are, so every smoker we knew about was
-            // "never make a new one" and the bot walked to it from anywhere. same fix as the furnace (FurnaceReuse): a smoker we
-            // put stuff in stays ours, otherwise the walk is priced against a fresh one
-            if (hasStartedSmelting() || _smokerCache.burnPercentage > 0) {
-                return NEVER_MAKE_NEW;
-            }
-            BlockPos known = rememberedSmoker(mod);
-            if (known == null) {
-                return NEVER_MAKE_NEW;
-            }
-            var me = mod.getPlayer().position();
-            boolean cheap = FurnaceReuse.canMakeSmokerCheaply(mod.getItemStorage().hasItem(Items.SMOKER), mod.getItemStorage().hasItem(Items.FURNACE),
-                    StationMemory.cobbleish(mod), mod.getItemStorage().getItemCount(ItemHelper.LOG), StationMemory.tableAround(mod));
-
-            // ore of ours sitting in it (the screen was closed on it half loaded) is not a smoker to walk away from
-            boolean holdsOurStuff = AsyncSmelting.isOurFurnace(known) && mod.getItemStorage().getContainerAtPosition(known).map(ContainerCache::holdsMoreThanFuel).orElse(false);
-            // 0 = any walk at all costs more, so DoStuffInContainerTask places one here instead
-            return FurnaceReuse.makeNew(true, cheap, known.getX() + 0.5 - me.x, known.getY() + 0.5 - me.y, known.getZ() + 0.5 - me.z, holdsOurStuff)
-                    ? 0.0 : NEVER_MAKE_NEW;
-        }
-
-        private static final double NEVER_MAKE_NEW = 9999999.0;
-
         // the caches start as EMPTY stacks and only change while the screen is open, so anything in them means we really did
         // put stuff in (or take stuff out of) a smoker
         public boolean hasStartedSmelting() {
@@ -482,10 +443,14 @@ public class SmeltInSmokerTask extends ResourceTask implements AsyncSmelting.Han
                     || !_smokerCache.outputSlot.isEmpty() || _smokerCache.burningFuelCount > 0;
         }
 
+        // same as the furnace: our meat in it pins it, from any distance, and a new smoker never goes down over it
         @Override
-        protected BlockPos overrideContainerPosition(AltoClef mod) {
-            // If we have a valid container position, KEEP it. otherwise a smoker of ours with our stuff in it beats the nearest
-            return getTargetContainerPosition() != null ? getTargetContainerPosition() : StationMemory.ourLoaded(mod, Blocks.SMOKER);
+        protected BlockPos pinnedStation(AltoClef mod) {
+            BlockPos kept = getTargetContainerPosition();
+            if (kept != null && (hasStartedSmelting() || _smokerCache.burnPercentage > 0 || StationMemory.holdsOurStuff(mod, kept))) {
+                return kept;
+            }
+            return StationMemory.ourLoaded(mod, Blocks.SMOKER);
         }
 
         private void tryUpdateOpenSmoker(AltoClef mod) {

@@ -50,6 +50,40 @@ public final class FurnaceJobs {
         return isBusy(state, new RunState.Pos(x, y, z));
     }
 
+    // the same in one dimension: the nether has its own x y z, and a job at 10 64 0 there is not the overworld furnace's
+    public static boolean isBusy(RunState state, RunState.Pos pos, String dimension) {
+        for (RunState.FurnaceJob job : state.furnaceJobs) {
+            if (sameSpot(job, pos, dimension)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // the job an interrupted load becomes (Workbenches.adoptLoad): our items are in the station and nothing points at it, nothing is
+    // known to be cooking, so it is stranded (not pending output, not pending food) and due now, which sends the next collect trip
+    // to it. `input` and `count` are the last look at the slots, the visit reads the real ones
+    public static RunState.FurnaceJob adopted(RunState.Pos pos, String dimension, String kind, String input, int count, long now) {
+        RunState.FurnaceJob job = new RunState.FurnaceJob(pos, dimension, kind, input, Math.max(1, count), smeltOutput(input), now, now);
+        job.stranded = true;
+        return job;
+    }
+
+    // what a visit that finds the station lit turns the adopted load into is a live job, and pending() counts by output name, so
+    // the name has to be the real one (raw ore to ingot, raw meat to cooked, a potato to a baked one). an item that is already a
+    // product, or that nothing here cooks, comes back as what it is
+    public static String smeltOutput(String input) {
+        if (input.startsWith("raw_")) {
+            return input.substring("raw_".length()) + "_ingot";
+        }
+        return switch (input) {
+            case "beef", "porkchop", "mutton", "chicken", "rabbit", "cod", "salmon" -> "cooked_" + input;
+            case "potato" -> "baked_potato";
+            case "kelp" -> "dried_kelp";
+            default -> input;
+        };
+    }
+
     // what the jobs for this dimension will have given us by the time they are all done
     public static int pending(List<RunState.FurnaceJob> jobs, String outputName) {
         int total = 0;

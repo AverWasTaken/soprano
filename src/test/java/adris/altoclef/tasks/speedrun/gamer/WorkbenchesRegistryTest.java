@@ -431,14 +431,37 @@ public class WorkbenchesRegistryTest {
     }
 
     @Test
-    public void busyOnesAndOtherDimensionsDoNotHoldAPhase() {
+    public void busyOnesWithAJobAndOtherDimensionsDoNotHoldAPhase() {
         RunState state = new RunState();
         Workbenches.record(state, Kind.FURNACE, pos(1, 64, 1), OVERWORLD, 100);
         Workbenches.record(state, Kind.TABLE, pos(9, 64, 1), NETHER, 100);
         Workbenches.find(state, Kind.FURNACE, pos(1, 64, 1)).state = Bench.State.BUSY;
+        state.furnaceJobs.add(new RunState.FurnaceJob(pos(1, 64, 1), OVERWORLD, "furnace", "raw_iron", 8, "iron_ingot", 0, 1600));
         assertTrue(Workbenches.phaseMayEnd(state, OVERWORLD, 110));
         // but the nether table holds a nether phase
         assertFalse(Workbenches.phaseMayEnd(state, NETHER, 110));
+    }
+
+    // an interrupted load: our ore in it, no job. the phase waits for the adoption and the visit instead of ending around it
+    @Test
+    public void aBusyStationWithNoJobHoldsThePhase() {
+        RunState state = new RunState();
+        Workbenches.record(state, Kind.SMOKER, pos(1, 64, 1), OVERWORLD, 100);
+        Workbenches.find(state, Kind.SMOKER, pos(1, 64, 1)).state = Bench.State.BUSY;
+        assertFalse(Workbenches.phaseMayEnd(state, OVERWORLD, 110));
+        // adopted
+        state.furnaceJobs.add(FurnaceJobs.adopted(pos(1, 64, 1), OVERWORLD, "smoker", "beef", 12, 120));
+        assertTrue(Workbenches.phaseMayEnd(state, OVERWORLD, 130));
+    }
+
+    // a job at the same x y z in the nether is not this furnace's
+    @Test
+    public void aJobInAnotherDimensionIsNotThisStationsJob() {
+        RunState state = new RunState();
+        Workbenches.record(state, Kind.FURNACE, pos(1, 64, 1), OVERWORLD, 100);
+        Workbenches.find(state, Kind.FURNACE, pos(1, 64, 1)).state = Bench.State.BUSY;
+        state.furnaceJobs.add(new RunState.FurnaceJob(pos(1, 64, 1), NETHER, "furnace", "raw_gold", 3, "gold_ingot", 0, 1600));
+        assertFalse(Workbenches.phaseMayEnd(state, OVERWORLD, 110));
     }
 
     // it builds the entries from the lists first, a state that was just loaded has none yet
@@ -574,5 +597,167 @@ public class WorkbenchesRegistryTest {
         b.drivenTick = 1140;
         assertTrue(source.pickingUp(Kind.TABLE));
         assertTrue(source.pickingUp(new BlockPos(4, 64, 0)));
+    }
+
+    // ---- round 2: who is ours (the container task leaves ours out of the world candidates, it never takes a village's table down)
+
+    @Test
+    public void oursKnowsEveryStationInTheRegistryWhateverItsStateOrDistance() {
+        RunState state = new RunState();
+        Workbenches.record(state, Kind.TABLE, pos(400, 64, 0), OVERWORLD, 1);
+        Workbenches.record(state, Kind.FURNACE, pos(4, 64, 0), OVERWORLD, 1);
+        Workbenches.record(state, Kind.SMOKER, pos(8, 64, 0), OVERWORLD, 1);
+        Workbenches.find(state, Kind.FURNACE, pos(4, 64, 0)).state = Bench.State.BUSY;
+        WorkbenchRules.beginPickup(Workbenches.find(state, Kind.SMOKER, pos(8, 64, 0)), 5, 0, "test");
+        StationHook.Source source = Workbenches.source(state, facts(Dimension.OVERWORLD, 100));
+        assertTrue(source.ours(new BlockPos(400, 64, 0)));
+        assertTrue(source.ours(new BlockPos(4, 64, 0)));
+        assertTrue(source.ours(new BlockPos(8, 64, 0)));
+    }
+
+    @Test
+    public void aVillagesTableIsNotOurs() {
+        RunState state = new RunState();
+        Workbenches.record(state, Kind.TABLE, pos(4, 64, 0), OVERWORLD, 1);
+        StationHook.Source source = Workbenches.source(state, facts(Dimension.OVERWORLD, 100));
+        assertFalse(source.ours(new BlockPos(5, 64, 0)));
+        assertFalse(source.ours(new BlockPos(4, 63, 0)));
+    }
+
+    // the nether has its own x y z: the overworld table is not that block
+    @Test
+    public void oursIsAboutTheDimensionWeAreIn() {
+        RunState state = new RunState();
+        Workbenches.record(state, Kind.TABLE, pos(4, 64, 0), NETHER, 1);
+        assertFalse(Workbenches.source(state, facts(Dimension.OVERWORLD, 100)).ours(new BlockPos(4, 64, 0)));
+        assertTrue(Workbenches.source(state, facts(Dimension.NETHER, 100)).ours(new BlockPos(4, 64, 0)));
+    }
+
+    @Test
+    public void withNoSourceInstalledNothingIsOursAndNothingIsComingDown() {
+        StationHook.clear();
+        assertFalse(StationHook.ours(new BlockPos(4, 64, 0)));
+        assertFalse(StationHook.pickingUp(new BlockPos(4, 64, 0)));
+        assertFalse(StationHook.pickingUp(Kind.TABLE));
+        assertNull(StationHook.standingNear(Kind.TABLE, 0.5, 64.5, 0.5));
+    }
+
+    // ---- round 2: the furnace and smoker band, through the registry the planner reads
+
+    // the planner's flag as MinecraftFacts keeps it: radius from last look's answer, answer fed back. the smoker is 20.5 east of the
+    // player's block middle at x = 0.5, so it is 20 blocks off when the player stands at x = 1.0 and so on
+    private static boolean[] plannerWalk(RunState state, Kind kind, double[] playerX) {
+        boolean[] out = new boolean[playerX.length];
+        Boolean held = null;
+        for (int i = 0; i < playerX.length; i++) {
+            double radius = WorkbenchRules.bandRadius(held);
+            out[i] = Workbenches.heldNear(state, kind, OVERWORLD, playerX[i], 64.5, 0.5, radius, p -> true);
+            held = Workbenches.any(state, kind, OVERWORLD) ? Boolean.valueOf(out[i]) : null;
+        }
+        return out;
+    }
+
+    @Test
+    public void aSmokerAtTwentyBlocksIsSeenOnTheWayInAndOnTheWayOut() {
+        RunState state = new RunState();
+        // the block middle is at x = 0.5, player at x = 20.5 on the way in is 20 from it
+        Workbenches.record(state, Kind.SMOKER, pos(0, 64, 0), OVERWORLD, 1);
+        // in from far away: 30, 24, 21.5 (not yet), 20.5 (20 away, in)
+        boolean[] in = plannerWalk(state, Kind.SMOKER, new double[]{30.5, 24.5, 22.0, 20.5});
+        assertFalse(in[0]);
+        assertFalse(in[1]);
+        assertFalse(in[2]);
+        assertTrue(in[3]);
+        // and out from inside: held at 20, held at the line itself (21), dropped the moment it is past it
+        boolean[] out = plannerWalk(state, Kind.SMOKER, new double[]{5.5, 20.5, 21.5, 22.4, 22.6});
+        assertTrue(out[0]);
+        assertTrue(out[1]);
+        assertTrue(out[2]);
+        assertFalse(out[3]);
+        assertFalse(out[4]);
+    }
+
+    @Test
+    public void aFurnaceAtTheEdgeFlipsOnceAsWeStepAcrossTheLine() {
+        RunState state = new RunState();
+        Workbenches.record(state, Kind.FURNACE, pos(0, 64, 0), OVERWORLD, 1);
+        // inside, then dithering around the line (21 away is x = 21.5): out once, and no flip back until it is a block in
+        boolean[] steps = plannerWalk(state, Kind.FURNACE, new double[]{18.5, 20.5, 21.7, 20.9, 21.8, 21.2, 20.6, 20.4});
+        assertTrue(steps[0]);
+        assertTrue(steps[1]);
+        for (int i = 2; i < 7; i++) {
+            assertFalse("step " + i, steps[i]);
+        }
+        assertTrue(steps[7]);
+        // the other way: out first, then the same dither never gets it back until 20
+        boolean[] outside = plannerWalk(state, Kind.FURNACE, new double[]{25.5, 21.7, 21.2, 20.9, 20.6, 20.4});
+        for (int i = 0; i < 5; i++) {
+            assertFalse("step " + i, outside[i]);
+        }
+        assertTrue(outside[5]);
+    }
+
+    // the plan and the container task must not disagree the harmful way: whenever the planner holds a furnace or smoker, the hook the
+    // container task asks answers with it, so the task walks to ours and never puts a second one down on stone the plan did not budget
+    @Test
+    public void whenThePlannerHoldsOneTheHookAnswersWithIt() {
+        for (Kind kind : new Kind[]{Kind.FURNACE, Kind.SMOKER}) {
+            RunState state = new RunState();
+            Workbenches.record(state, kind, pos(0, 64, 0), OVERWORLD, 1);
+            StationHook.Source source = Workbenches.source(state, facts(Dimension.OVERWORLD, 100));
+            double[] xs = new double[640];
+            for (int i = 0; i < xs.length; i++) {
+                int phase = i % 160;
+                xs[i] = 0.5 + 10 + (phase < 80 ? phase : 160 - phase) * 0.25;
+            }
+            boolean[] held = plannerWalk(state, kind, xs);
+            for (int i = 0; i < xs.length; i++) {
+                if (held[i]) {
+                    assertNotNull("planner holds a " + kind + " at x " + xs[i] + " the hook does not", source.standingNear(kind, xs[i], 64.5, 0.5));
+                }
+            }
+        }
+    }
+
+    // a load given up on is skipped by adoption until the station is seen empty
+    @Test
+    public void givingUpOnALoadMarksOnlyThatStationAndNotATable() {
+        RunState state = new RunState();
+        Workbenches.record(state, Kind.FURNACE, pos(1, 64, 1), OVERWORLD, 1);
+        Workbenches.record(state, Kind.SMOKER, pos(2, 64, 2), OVERWORLD, 1);
+        Workbenches.record(state, Kind.TABLE, pos(1, 64, 1), OVERWORLD, 1);
+        Workbenches.giveUp(state, pos(1, 64, 1), OVERWORLD);
+        assertTrue(Workbenches.find(state, Kind.FURNACE, pos(1, 64, 1)).givenUp);
+        assertFalse(Workbenches.find(state, Kind.SMOKER, pos(2, 64, 2)).givenUp);
+        assertFalse(Workbenches.find(state, Kind.TABLE, pos(1, 64, 1)).givenUp);
+        // another dimension's furnace at the same x y z is not that one
+        RunState other = new RunState();
+        Workbenches.record(other, Kind.FURNACE, pos(1, 64, 1), NETHER, 1);
+        Workbenches.giveUp(other, pos(1, 64, 1), OVERWORLD);
+        assertFalse(Workbenches.find(other, Kind.FURNACE, pos(1, 64, 1)).givenUp);
+    }
+
+    // a load that went stale does not hold a phase for a job nobody will make, an interrupted one that was not given up on still does
+    @Test
+    public void aGivenUpLoadDoesNotHoldThePhase() {
+        RunState state = new RunState();
+        Workbenches.record(state, Kind.FURNACE, pos(1, 64, 1), OVERWORLD, 1);
+        Workbenches.record(state, Kind.SMOKER, pos(2, 64, 2), OVERWORLD, 1);
+        Workbenches.find(state, Kind.FURNACE, pos(1, 64, 1)).state = Bench.State.BUSY;
+        Workbenches.find(state, Kind.SMOKER, pos(2, 64, 2)).state = Bench.State.BUSY;
+        Workbenches.giveUp(state, pos(1, 64, 1), OVERWORLD);
+        assertFalse(Workbenches.phaseMayEnd(state, OVERWORLD, 10));
+        Workbenches.giveUp(state, pos(2, 64, 2), OVERWORLD);
+        assertTrue(Workbenches.phaseMayEnd(state, OVERWORLD, 10));
+    }
+
+    // no station of the kind at all: no latch to carry, the first one that goes down is judged on the plain line
+    @Test
+    public void aFreshStationIsJudgedOnThePlainLine() {
+        RunState state = new RunState();
+        assertFalse(plannerWalk(state, Kind.SMOKER, new double[]{5.5})[0]);
+        Workbenches.record(state, Kind.SMOKER, pos(0, 64, 0), OVERWORLD, 1);
+        // 20.5 away from a 0.5 block middle at x = 21.0
+        assertTrue(plannerWalk(state, Kind.SMOKER, new double[]{21.0})[0]);
     }
 }

@@ -221,17 +221,14 @@ public class UpgradeInSmithingTableTask extends ResourceTask {
             return null;
         }
 
+        // two iron ingots and a table of planks to make one: a village's is worth a longer walk than a table. the old cost said
+        // 32 to 86 blocks depending on what we carried, this is one number
         @Override
-        protected double getCostToMakeNew(AltoClef mod) {
-            int price = 400;
-            if (mod.getItemStorage().hasItem(ItemHelper.LOG) || mod.getItemStorage().getItemCount(ItemHelper.PLANKS) >= 4) {
-                price -= 125;
-            }
-            if (mod.getItemStorage().getItemCount(Items.FLINT) >= 2) {
-                price -= 125;
-            }
-            return price;
+        protected double worldReach() {
+            return SMITHING_TABLE_REACH;
         }
     }
+
+    private static final double SMITHING_TABLE_REACH = 64;
 
 }

@@ -125,20 +125,6 @@ public class WalkCostTest {
         assertEquals(d <= WalkCost.STATION_NEAR, WalkCost.nearStationBlock(17, 64, 3, 0, 64, 0));
     }
 
-    // a table within NEAR (ours or a village's) is walked to, a carried one beats any table further out, and the last resort is
-    // to craft one, cheaper with wood on us
-    @Test
-    public void makingATableUsesTheSameLineCarriedOrNot() {
-        double inf = Double.POSITIVE_INFINITY;
-        assertEquals(inf, WalkCost.newTableCost(true, true, true), 0);
-        assertEquals(inf, WalkCost.newTableCost(false, true, false), 0);
-        // past the line with a table in hand: placing it is free
-        assertEquals(0, WalkCost.newTableCost(true, false, false), 0);
-        // past the line with nothing in hand: craft one, cheaper with wood on us
-        assertEquals(10, WalkCost.newTableCost(false, false, true), 0);
-        assertEquals(100, WalkCost.newTableCost(false, false, false), 0);
-    }
-
     // a table in a mine 34 down is not a table to go back for: not near, and the climb is far over any drop budget
     @Test
     public void theCaveTripIsNotWorthIt() {

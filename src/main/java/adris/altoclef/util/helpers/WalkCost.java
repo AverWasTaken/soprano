@@ -57,18 +57,6 @@ public final class WalkCost {
         return distance3d(bx + 0.5 - px, by + 0.5 - py, bz + 0.5 - pz);
     }
 
-    // what CraftInTableTask charges for "make a new table" against walking to the nearest one. infinity means walk to the
-    // old one (a table within STATION_NEAR, ours or a village's), a table in hand beats any table further out
-    public static double newTableCost(boolean carryTable, boolean tableNear, boolean haveWood) {
-        if (tableNear) {
-            return Double.POSITIVE_INFINITY;
-        }
-        if (carryTable) {
-            return 0;
-        }
-        return haveWood ? 10 : 100;
-    }
-
     public static boolean within(double dx, double dy, double dz, double budget) {
         return estimate(dx, dy, dz) <= budget;
     }

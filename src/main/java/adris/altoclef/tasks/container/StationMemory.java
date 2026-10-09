@@ -9,10 +9,6 @@ import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.WalkCost;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
-import net.minecraft.world.level.block.Blocks;
-
-import java.util.Optional;
 
 // what a smelt task knows about a furnace or smoker it is not looking at right now. an interrupt (the pickup, a mob, a death)
 // restarts the task with empty caches, and "nothing in the caches" used to read as "nothing in the furnace": the bot mined
@@ -56,26 +52,16 @@ final class StationMemory {
     static BlockPos ourLoaded(AltoClef mod, net.minecraft.world.level.block.Block block) {
         var me = mod.getPlayer().position();
         // inside the forget distance only: a stale look at a furnace across the map must not pin every smelt to it (the registry
-        // forgets those too)
+        // forgets those too). nearest is the same straight line the rest of the station choice goes by
         return mod.getBlockTracker().getNearestTracking(me,
-                p -> AsyncSmelting.isOurFurnace(p) && adris.altoclef.util.helpers.WorldHelper.canReach(mod, p)
-                        && WalkCost.distance3d(p.getX() + 0.5 - me.x, p.getY() + 0.5 - me.y, p.getZ() + 0.5 - me.z) <= WalkCost.STATION_FORGET
-                        && mod.getItemStorage().getContainerAtPosition(p).map(ContainerCache::holdsMoreThanFuel).orElse(false), block).orElse(null);
+                p -> holdsOurStuff(mod, p) && adris.altoclef.util.helpers.WorldHelper.canReach(mod, p)
+                        && WalkCost.distance3d(p.getX() + 0.5 - me.x, p.getY() + 0.5 - me.y, p.getZ() + 0.5 - me.z) <= WalkCost.STATION_FORGET,
+                (fx, fy, fz, tx, ty, tz) -> WalkCost.distance3d(tx - fx, ty - fy, tz - fz), block).orElse(null);
     }
 
-    // a table to craft the station on: in the bag, standing close, or the wood to make one on the spot
-    static boolean tableAround(AltoClef mod) {
-        if (mod.getItemStorage().hasItem(Items.CRAFTING_TABLE)
-                || mod.getItemStorage().hasItem(ItemHelper.LOG) || mod.getItemStorage().getItemCount(ItemHelper.PLANKS) >= 4) {
-            return true;
-        }
-        Optional<BlockPos> table = mod.getBlockTracker().getNearestTracking(Blocks.CRAFTING_TABLE);
-        return table.isPresent() && table.get().closerToCenterThan(mod.getPlayer().position(), 40);
-    }
-
-    // the stone for a furnace in the bag, whatever it comes in
-    static int cobbleish(AltoClef mod) {
-        return mod.getItemStorage().getItemCount(Items.COBBLESTONE, Items.COBBLED_DEEPSLATE, Items.BLACKSTONE);
+    // one we put down, with something of ours in it by the last look at its slots (a village's was never loaded by us)
+    static boolean holdsOurStuff(AltoClef mod, BlockPos at) {
+        return AsyncSmelting.isOurFurnace(at) && mod.getItemStorage().getContainerAtPosition(at).map(ContainerCache::holdsMoreThanFuel).orElse(false);
     }
 
     private static double fuelOf(ContainerCache cache, ItemTarget materials) {

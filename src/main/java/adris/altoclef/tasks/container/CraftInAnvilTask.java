@@ -31,9 +31,4 @@ public class CraftInAnvilTask extends DoStuffInContainerTask {
     protected Task containerSubTask(AltoClef mod) {
         throw new NotImplementedException("Anvil Not Implemented, whoops");
     }
-
-    @Override
-    protected double getCostToMakeNew(AltoClef mod) {
-        throw new NotImplementedException("Anvil Not Implemented, whoops");
-    }
 }

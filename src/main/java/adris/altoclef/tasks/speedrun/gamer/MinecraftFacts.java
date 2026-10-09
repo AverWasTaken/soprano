@@ -81,6 +81,9 @@ public final class MinecraftFacts implements GamerFacts {
     private boolean smokerNearby;
     // a table is recorded and was out of NEAR last tick, see WorkbenchRules.returnRadius
     private boolean tableFar;
+    // last look's answer for a furnace and a smoker, null while none is recorded (WorkbenchRules.bandRadius)
+    private Boolean furnaceHeld;
+    private Boolean smokerHeld;
 
     public MinecraftFacts(AltoClef mod) {
         this.mod = mod;
@@ -108,29 +111,35 @@ public final class MinecraftFacts implements GamerFacts {
         countItems(player);
         if (state != null) {
             Workbenches.sync(state, gameTime);
-            // held when one of ours is within NEAR (a straight line, height counts), the same test the container tasks use. the table
-            // gets a latch on top (once out of NEAR it only counts again well inside it) because its planks decide whether the plan
-            // flips between a log trip and the cobble at the line. furnaces and smokers do not: the cook gate and the cobble floor
-            // must agree with the container tasks about whether one stands within NEAR, or the meat goes in the furnace with the
-            // smoker 18 blocks away
-            tableNearby = heldNear(player, StationHook.Kind.TABLE, tableFar);
+            // held when one of ours is within NEAR (a straight line, height counts), the same test the container tasks use, with a
+            // latch on top so the plan does not flip at the line (the cobble floor, the cook gate, a log trip against the cobble).
+            // the table's is big (once out of NEAR it only counts again well inside it, its planks swing the plan). furnace and
+            // smoker only get a block, and only inward: the smoker first rule reads this flag and the container tasks read the
+            // plain line, so a smoker at 20 blocks is a smoker whichever way we got there, and the flag is never true where the
+            // task would put down a second one
+            tableNearby = heldNear(player, StationHook.Kind.TABLE, WorkbenchRules.returnRadius(tableFar));
             tableFar = !tableNearby && Workbenches.any(state, StationHook.Kind.TABLE, dimension.name());
-            furnaceNearby = heldNear(player, StationHook.Kind.FURNACE, false);
-            smokerNearby = heldNear(player, StationHook.Kind.SMOKER, false);
+            furnaceNearby = heldNear(player, StationHook.Kind.FURNACE, WorkbenchRules.bandRadius(furnaceHeld));
+            furnaceHeld = Workbenches.any(state, StationHook.Kind.FURNACE, dimension.name()) ? Boolean.valueOf(furnaceNearby) : null;
+            smokerNearby = heldNear(player, StationHook.Kind.SMOKER, WorkbenchRules.bandRadius(smokerHeld));
+            smokerHeld = Workbenches.any(state, StationHook.Kind.SMOKER, dimension.name()) ? Boolean.valueOf(smokerNearby) : null;
         } else {
             tableNearby = false;
             furnaceNearby = false;
             smokerNearby = false;
+            tableFar = false;
+            furnaceHeld = null;
+            smokerHeld = null;
         }
         return true;
     }
 
-    // one of the stations this run placed (or is taking back) that is still there and within NEAR of us. the planner counts it as
-    // held exactly where crafting and smelting will walk to it, so the plan and the container tasks can't disagree about whether
+    // one of the stations this run placed (or is taking back) that is still there and within `radius` of us. the planner counts it
+    // as held about where crafting and smelting will walk to it, so the plan and the container tasks can't disagree about whether
     // a second one is needed. an unloaded chunk keeps its station
-    private boolean heldNear(Player player, StationHook.Kind kind, boolean wasFar) {
+    private boolean heldNear(Player player, StationHook.Kind kind, double radius) {
         return Workbenches.heldNear(state, kind, dimension.name(), player.getX(), player.getY(), player.getZ(),
-                WorkbenchRules.returnRadius(wasFar), pos -> {
+                radius, pos -> {
                     BlockPos at = new BlockPos(pos.x, pos.y, pos.z);
                     return !mod.getChunkTracker().isChunkLoaded(at) || mod.getWorld().getBlockState(at).is(Workbenches.blockOf(kind));
                 });

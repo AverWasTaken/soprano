@@ -5,6 +5,7 @@ import adris.altoclef.util.helpers.WalkCost;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.function.Predicate;
 
 // every decision about the tables, furnaces and smokers this run put down, with no game in sight (Workbenches is the world half
 // that feeds these and acts on what they say). the old rules lived in four places and each priced the walk back differently
@@ -38,6 +39,14 @@ public final class WorkbenchRules {
     public static final long DROP_GIVE_UP_TICKS = 1200;
     // a station that comes back into NEAR after it was out of it only counts for the planner again once we are well inside
     public static final double RETURN_SHARE = 0.75;
+    // furnace and smoker get a smaller latch than the table: once out of NEAR they only count for the planner again this many
+    // blocks inside it, so a bot dithering over the line flips the flag once and not every step, and a smoker at 20 blocks is a
+    // smoker whichever way we got there. it only ever reaches inward: the planner may say "not held" where the container task would
+    // walk to ours (a few cobble too many), but never "held" where the task would make a second one the plan did not budget for
+    public static final double LATCH_BAND = 1.0;
+    // a table this far away (a straight line) is not worth the walk back when we can craft another one: it is forgotten with a
+    // log line instead. a furnace or smoker keeps the long trip up to FORGET_DISTANCE, it cost stone and a table to make
+    public static final double FAR_TABLE_DISTANCE = 48.0;
     // a block that shows up further away than we can place from did not come from us (another player, a chunk update)
     public static final double PLACE_REACH = 8.0;
     // "never happened" for the tick stamps (game time starts at 0, so -1 is safely before everything)
@@ -49,9 +58,9 @@ public final class WorkbenchRules {
     }
 
     // ---- where the next station comes from (rule 1)
-    // ours standing within NEAR, else the one in the bag, else a world one alto finds, else craft. the container tasks are alto
-    // and can't call this class, so the "never make a new one while ours is near" half lives in
-    // DoStuffInContainerTask.mayMakeNew, and the NEAR test itself in WalkCost
+    // ours standing within NEAR, else a world one within NEAR, else the one in the bag, else craft. the container tasks are alto
+    // and can't call this class, so the decision itself is util/helpers/StationChoice (fed by StationHook, which Workbenches
+    // answers), and the NEAR test itself is in WalkCost
 
     public static boolean near(double dx, double dy, double dz) {
         return WalkCost.nearStation(dx, dy, dz);
@@ -70,6 +79,17 @@ public final class WorkbenchRules {
     // plan flips every time we cross the line (a log trip up, a cobble trip down)
     public static double returnRadius(boolean wasFar) {
         return wasFar ? NEAR * RETURN_SHARE : NEAR;
+    }
+
+    // the same latch for a furnace or smoker, a band instead of a share: `held` is last look's answer (null before the first one,
+    // where the plain line is the only fair test). held stays held to the line, and not held needs NEAR - band to come back
+    public static double bandRadius(Boolean held) {
+        return held == null || held ? NEAR : NEAR - LATCH_BAND;
+    }
+
+    // a table past FAR_TABLE_DISTANCE that the bag can make again: 4 planks, or a log to make them from
+    public static boolean canRecraftTable(int planks, int logs) {
+        return planks >= 4 || logs >= 1;
     }
 
     // ---- what needs which station
@@ -118,8 +138,13 @@ public final class WorkbenchRules {
     // ---- rule 2 and 4: keep, pick up, forget
 
     // what the world half saw this tick. distance is the straight line from us to the middle of the block
+    // `canRecraft`: the bag can make this kind again right now (only a table asks, see FAR_TABLE_DISTANCE)
     public record Look(long now, double distance, boolean sameDimension, boolean blockGone, boolean idle, boolean holdsStuff, boolean jobHere,
-                       boolean neededSoon, boolean canBreak, long pickupLimitTicks) {
+                       boolean neededSoon, boolean canBreak, long pickupLimitTicks, boolean canRecraft) {
+        public Look(long now, double distance, boolean sameDimension, boolean blockGone, boolean idle, boolean holdsStuff, boolean jobHere,
+                    boolean neededSoon, boolean canBreak, long pickupLimitTicks) {
+            this(now, distance, sameDimension, blockGone, idle, holdsStuff, jobHere, neededSoon, canBreak, pickupLimitTicks, false);
+        }
     }
 
     public enum Call {
@@ -143,7 +168,11 @@ public final class WorkbenchRules {
         DROP_LOST,
         FORGET_GONE,
         FORGET_TOO_FAR,
-        FORGET_LEFT_DIMENSION
+        // a table out past FAR_TABLE_DISTANCE and we can craft another
+        FORGET_FAR_TABLE,
+        FORGET_LEFT_DIMENSION,
+        // busy in a dimension we left: it stays registered, a visit when we are back takes it down
+        ELSEWHERE
     }
 
     // one station, one tick. moves the bookkeeping on the bench (the outside clock, the dimension clock, BUSY / STANDING) and
@@ -153,6 +182,13 @@ public final class WorkbenchRules {
         if (!in.sameDimension()) {
             if (b.otherDimensionSince == NEVER) {
                 b.otherDimensionSince = now;
+            }
+            // a furnace or smoker with something of ours in it stays registered for the visit that takes it down when we are back
+            // (the job is what brings us, the entry only has to still be there). the state is last seen's, or a recorded job in
+            // that dimension after a relog rebuilt every entry as standing. nothing here forgets it, the run ending does
+            if (b.state == Bench.State.BUSY || in.jobHere()) {
+                b.state = Bench.State.BUSY;
+                return Call.ELSEWHERE;
             }
             // not forgotten at once: the dimension reads wrong for a tick or two around a portal and a loading screen
             return now - b.otherDimensionSince >= DIMENSION_TICKS ? Call.FORGET_LEFT_DIMENSION : Call.KEEP;
@@ -178,15 +214,42 @@ public final class WorkbenchRules {
         } else if (b.outsideSince == NEVER) {
             b.outsideSince = now;
         }
+        // seen empty, or with a real job in it again: whatever was given up on is over
+        if (!in.holdsStuff() || in.jobHere()) {
+            b.givenUp = false;
+        }
         if (in.holdsStuff()) {
             b.state = Bench.State.BUSY;
             return Call.BUSY;
         }
         b.state = Bench.State.STANDING;
+        // out past the far line for the usual five seconds with the wood to craft another: not worth the walk back, whatever the plan
+        // wants (the planner no longer counts it as held out there, so it asks for the planks)
+        if (b.kind == Kind.TABLE && in.distance() > FAR_TABLE_DISTANCE && in.canRecraft() && outsideLongEnough(b, now)) {
+            return Call.FORGET_FAR_TABLE;
+        }
         if (in.neededSoon() && !outsideLongEnough(b, now)) {
             return Call.KEEP;
         }
         return gates(b, in);
+    }
+
+    // a furnace or smoker of ours with our items in it and no job pointing at it (a load cut off before its job was recorded, a job
+    // dropped as stale): nothing would ever visit it and a phase would end around it. it is adopted as a stranded job so the normal
+    // collect visit empties it, and the empty-after-visit rule takes it down. only when nothing is working at it: a load in flight
+    // records its own job a tick later
+    public static boolean adoptable(Bench b, Look in) {
+        if (b.kind == Kind.TABLE || b.state == Bench.State.PICKING_UP || !in.sameDimension() || in.blockGone()) {
+            return false;
+        }
+        if (!in.holdsStuff() || in.jobHere() || !in.idle() || b.givenUp) {
+            return false;
+        }
+        long now = in.now();
+        if (now - b.placedTick < PLACE_GUARD_TICKS) {
+            return false;
+        }
+        return b.lastUsedTick == NEVER || now - b.lastUsedTick >= SETTLE_TICKS;
     }
 
     private static Call decidePickup(Bench b, Look in) {
@@ -195,6 +258,11 @@ public final class WorkbenchRules {
         if (b.broken) {
             // only the drop is left
             return running > DROP_GIVE_UP_TICKS ? Call.DROP_LOST : Call.CONTINUE;
+        }
+        // a table pickup that has not broken anything yet and is out past the far line, with the wood to make another (the bag got
+        // some since it started): not worth the rest of the walk
+        if (b.kind == Kind.TABLE && !in.blockGone() && in.distance() > FAR_TABLE_DISTANCE && in.canRecraft()) {
+            return Call.FORGET_FAR_TABLE;
         }
         if (!in.blockGone() && in.jobHere()) {
             return Call.ABORT_BUSY;
@@ -343,11 +411,17 @@ public final class WorkbenchRules {
     // ---- rule 6: a phase may end
 
     // nothing of ours is standing or coming down in this dimension. called with an empty plan (a phase that is out of needs):
-    // an idle station left standing at that point is exactly the one that gets left behind. busy ones are the jobs' business
-    // (the phase waits for those on its own), and what stands in another dimension is already forgotten
-    public static boolean phaseMayEnd(Collection<Bench> benches, String dimension) {
+    // an idle station left standing at that point is exactly the one that gets left behind. a busy one with a job is the job's
+    // business (the phase waits for those on its own), a busy one with no job is an interrupted load that has not been adopted yet
+    // (adoptable) and the phase waits for that. what stands in another dimension stays registered and does not hold this one
+    public static boolean phaseMayEnd(Collection<Bench> benches, String dimension, Predicate<Bench> hasJob) {
         for (Bench b : benches) {
-            if (b.dimension.equals(dimension) && (b.state == Bench.State.STANDING || b.state == Bench.State.PICKING_UP)) {
+            if (!b.dimension.equals(dimension)) {
+                continue;
+            }
+            // (a load the stale rule gave up on is not adopted either, so it can't hold the phase: it was never worth a walk)
+            if (b.state == Bench.State.STANDING || b.state == Bench.State.PICKING_UP
+                    || (b.state == Bench.State.BUSY && !b.givenUp && !hasJob.test(b))) {
                 return false;
             }
         }

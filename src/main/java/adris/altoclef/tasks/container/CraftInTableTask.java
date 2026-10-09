@@ -14,9 +14,7 @@ import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.RecipeTarget;
 import adris.altoclef.util.helpers.ItemHelper;
-import adris.altoclef.util.helpers.StationHook;
 import adris.altoclef.util.helpers.StorageHelper;
-import adris.altoclef.util.helpers.WalkCost;
 import adris.altoclef.util.slots.CraftingTableSlot;
 import adris.altoclef.util.slots.PlayerSlot;
 import adris.altoclef.util.slots.Slot;
@@ -32,9 +30,7 @@ import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.inventory.CraftingMenu;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.phys.Vec3;
 
 /**
  * Crafts an item in a crafting table, obtaining and placing the table down if none was found.
@@ -462,30 +458,6 @@ class DoCraftInTableTask extends DoStuffInContainerTask {
     public boolean isFinished(AltoClef mod) {
         // Check if the craft count is greater than or equal to the number of targets
         return _craftCount >= _targets.length;
-    }
-
-    /**
-     * Returns the cost to make a new AltoClef mod.
-     *
-     * @param mod The AltoClef mod instance.
-     * @return The cost to make a new AltoClef mod.
-     */
-    @Override
-    protected double getCostToMakeNew(AltoClef mod) {
-        // Get the nearest crafting table.
-        Optional<BlockPos> closestCraftingTable = mod.getBlockTracker().getNearestTracking(Blocks.CRAFTING_TABLE);
-
-        // an old table is worth walking to when it is within STATION_NEAR, a straight line with the height counted (a path cost
-        // called a table 5 blocks away up a shaft "far" and a second one got crafted next to it). ours from the run's registry
-        // counts even when the tracker has not seen it, and a village's counts the same
-        Vec3 me = mod.getPlayer().position();
-        boolean near = StationHook.standingNear(StationHook.Kind.TABLE, me.x, me.y, me.z) != null;
-        if (!near && closestCraftingTable.isPresent()) {
-            BlockPos at = closestCraftingTable.get();
-            near = WalkCost.nearStationBlock(at.getX(), at.getY(), at.getZ(), me.x, me.y, me.z);
-        }
-        boolean haveWood = mod.getItemStorage().hasItem(ItemHelper.LOG) || mod.getItemStorage().getItemCount(ItemHelper.PLANKS) >= 4;
-        return WalkCost.newTableCost(mod.getItemStorage().hasItem(Items.CRAFTING_TABLE), near, haveWood);
     }
 
     // every item the recipes use, and how many of it the crafts still to do will eat. an item with nothing left to craft

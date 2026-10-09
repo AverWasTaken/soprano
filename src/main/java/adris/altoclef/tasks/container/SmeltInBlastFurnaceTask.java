@@ -374,28 +374,19 @@ public class SmeltInBlastFurnaceTask extends ResourceTask {
             return null;
         }
 
+        // stay on the one we are walking to. before we have one, go to the one we were sent to instead of whichever is nearest
+        // (they're the same unless two are close, but the router picked THIS one)
         @Override
-        protected double getCostToMakeNew(AltoClef mod) {
-            if (_blastFurnaceCache.burnPercentage > 0 || _blastFurnaceCache.burningFuelCount > 0 ||
-                    _blastFurnaceCache.fuelSlot != null || _blastFurnaceCache.materialSlot != null ||
-                    _blastFurnaceCache.outputSlot != null) {
-                return 9999999.0;
-            }
-            if (mod.getItemStorage().getItemCount(Items.COBBLESTONE) > 11 &&
-                    mod.getItemStorage().getItemCount(Items.RAW_IRON) > 5) {
-                double cost = 100.0 - 90.0 * (((double) mod.getItemStorage().getItemCount(new Item[]{Items.COBBLESTONE})
-                        / 8.0) + ((double) mod.getItemStorage().getItemCount(Items.RAW_IRON) / 5.0));
-                return Math.max(cost, 10.0);
-            }
-            return StorageHelper.miningRequirementMetInventory(mod, MiningRequirement.WOOD) ? 50.0 : 100.0;
-        }
-
-        @Override
-        protected BlockPos overrideContainerPosition(AltoClef mod) {
-            // If we have a valid container position, KEEP it. before we have one, go to the one we were sent to
-            // instead of whichever is nearest (they're the same unless two are close, but the router picked THIS one)
+        protected BlockPos pinnedStation(AltoClef mod) {
             BlockPos kept = getTargetContainerPosition();
             return kept != null ? kept : _existing;
+        }
+
+        // a blast furnace is 5 iron, a furnace and three smooth stone, so a tracked one is worth the walk from anywhere. the old
+        // cost function said so by accident (it compared the cache slots to null, which they never are) and plain alto leans on it
+        @Override
+        protected double worldReach() {
+            return Double.POSITIVE_INFINITY;
         }
 
         @Override

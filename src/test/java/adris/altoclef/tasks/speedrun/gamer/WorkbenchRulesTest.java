@@ -43,9 +43,10 @@ public class WorkbenchRulesTest {
         boolean neededSoon = true;
         boolean canBreak = true;
         long limit = 600;
+        boolean canRecraft;
 
         Look look() {
-            return new Look(now, distance, sameDimension, blockGone, idle, holdsStuff, jobHere, neededSoon, canBreak, limit);
+            return new Look(now, distance, sameDimension, blockGone, idle, holdsStuff, jobHere, neededSoon, canBreak, limit, canRecraft);
         }
     }
 
@@ -1032,25 +1033,43 @@ public class WorkbenchRulesTest {
         return b;
     }
 
+    private static boolean mayEnd(List<Bench> benches, String dimension) {
+        // every busy one has its job
+        return WorkbenchRules.phaseMayEnd(benches, dimension, b -> true);
+    }
+
     @Test
     public void aPhaseCannotEndWithAStationStandingOrComingDown() {
-        assertFalse(WorkbenchRules.phaseMayEnd(List.of(in(Kind.TABLE, OVERWORLD, Bench.State.STANDING)), OVERWORLD));
-        assertFalse(WorkbenchRules.phaseMayEnd(List.of(in(Kind.FURNACE, OVERWORLD, Bench.State.PICKING_UP)), OVERWORLD));
-        assertFalse(WorkbenchRules.phaseMayEnd(List.of(in(Kind.FURNACE, OVERWORLD, Bench.State.BUSY),
+        assertFalse(mayEnd(List.of(in(Kind.TABLE, OVERWORLD, Bench.State.STANDING)), OVERWORLD));
+        assertFalse(mayEnd(List.of(in(Kind.FURNACE, OVERWORLD, Bench.State.PICKING_UP)), OVERWORLD));
+        assertFalse(mayEnd(List.of(in(Kind.FURNACE, OVERWORLD, Bench.State.BUSY),
                 in(Kind.TABLE, OVERWORLD, Bench.State.STANDING)), OVERWORLD));
     }
 
     @Test
     public void aPhaseMayEndWithNothingOrOnlyBusyOrFarAwayOnes() {
-        assertTrue(WorkbenchRules.phaseMayEnd(List.of(), OVERWORLD));
-        // busy is the jobs' business, the phase waits for those itself
-        assertTrue(WorkbenchRules.phaseMayEnd(List.of(in(Kind.FURNACE, OVERWORLD, Bench.State.BUSY),
+        assertTrue(mayEnd(List.of(), OVERWORLD));
+        // busy with a job is the job's business, the phase waits for those itself
+        assertTrue(mayEnd(List.of(in(Kind.FURNACE, OVERWORLD, Bench.State.BUSY),
                 in(Kind.SMOKER, OVERWORLD, Bench.State.BUSY)), OVERWORLD));
         // already forgotten, as far as this world goes
-        assertTrue(WorkbenchRules.phaseMayEnd(List.of(in(Kind.TABLE, "NETHER", Bench.State.STANDING),
+        assertTrue(mayEnd(List.of(in(Kind.TABLE, "NETHER", Bench.State.STANDING),
                 in(Kind.TABLE, "END", Bench.State.PICKING_UP)), OVERWORLD));
-        assertFalse(WorkbenchRules.phaseMayEnd(List.of(in(Kind.TABLE, "NETHER", Bench.State.STANDING)), "NETHER"));
-        assertTrue(WorkbenchRules.phaseMayEnd(List.of(in(Kind.TABLE, OVERWORLD, Bench.State.IN_BAG)), OVERWORLD));
+        assertFalse(mayEnd(List.of(in(Kind.TABLE, "NETHER", Bench.State.STANDING)), "NETHER"));
+        assertTrue(mayEnd(List.of(in(Kind.TABLE, OVERWORLD, Bench.State.IN_BAG)), OVERWORLD));
+    }
+
+    // an interrupted load that was not adopted yet: our items in it, no job, so nobody would ever visit it. the phase waits for the
+    // adoption (and the visit it brings) instead of ending around it
+    @Test
+    public void aBusyStationWithNoJobHoldsThePhaseUntilItIsAdopted() {
+        Bench loaded = in(Kind.FURNACE, OVERWORLD, Bench.State.BUSY);
+        assertFalse(WorkbenchRules.phaseMayEnd(List.of(loaded), OVERWORLD, b -> false));
+        assertFalse(WorkbenchRules.phaseMayEnd(List.of(in(Kind.SMOKER, OVERWORLD, Bench.State.BUSY)), OVERWORLD, b -> false));
+        // adopted: the job is the phase's business again
+        assertTrue(WorkbenchRules.phaseMayEnd(List.of(loaded), OVERWORLD, b -> b == loaded));
+        // a busy one in another dimension never holds this one, job or not
+        assertTrue(WorkbenchRules.phaseMayEnd(List.of(in(Kind.FURNACE, "NETHER", Bench.State.BUSY)), OVERWORLD, b -> false));
     }
 
     // ---- loads
@@ -1074,5 +1093,374 @@ public class WorkbenchRulesTest {
     public void aSmeltStampAtTickZeroIsARealStamp() {
         assertTrue(WorkbenchRules.loadInFlight(false, 0, 10));
         assertFalse(WorkbenchRules.loadInFlight(false, 0, 21));
+    }
+
+    // ---- round 2: a table too far to walk back to
+
+    // out past 48 for the usual five seconds with planks in the bag: not worth the trip, forget it (the log says why)
+    @Test
+    public void aTablePast48BlocksIsForgottenWhenTheBagCanCraftAnother() {
+        Bench b = table();
+        Seen s = new Seen();
+        s.distance = 60;
+        s.canRecraft = true;
+        s.now = 2000;
+        // the outside clock has to run first, a blip past the line is not a trip
+        assertEquals(Call.KEEP, decide(b, s));
+        s.now = 2000 + WorkbenchRules.OUTSIDE_TICKS - 1;
+        assertEquals(Call.KEEP, decide(b, s));
+        s.now = 2000 + WorkbenchRules.OUTSIDE_TICKS;
+        assertEquals(Call.FORGET_FAR_TABLE, decide(b, s));
+        assertEquals(48.0, WorkbenchRules.FAR_TABLE_DISTANCE, 0);
+    }
+
+    // the plan wanting the table changes nothing out there: the planner stopped counting it as held at NEAR, so it asks for the planks
+    @Test
+    public void aFarTableIsForgottenWhetherOrNotThePlanWantsIt() {
+        for (boolean wanted : new boolean[]{true, false}) {
+            Bench b = table();
+            Seen s = new Seen();
+            s.distance = 90;
+            s.canRecraft = true;
+            s.neededSoon = wanted;
+            s.now = 2000;
+            decide(b, s);
+            s.now = 2000 + WorkbenchRules.OUTSIDE_TICKS;
+            assertEquals(Call.FORGET_FAR_TABLE, decide(b, s));
+        }
+    }
+
+    // nothing to craft one from: the old trip back stays, up to the 128 that forgets everything
+    @Test
+    public void aFarTableWeCannotRemakeIsStillWalkedBackTo() {
+        Bench b = table();
+        Seen s = new Seen();
+        s.distance = 60;
+        s.canRecraft = false;
+        s.neededSoon = false;
+        s.now = 2000;
+        decide(b, s);
+        s.now = 2000 + WorkbenchRules.OUTSIDE_TICKS;
+        assertEquals(Call.PICK_UP, decide(b, s));
+    }
+
+    @Test
+    public void exactly48IsStillAWalkAndOnlyTablesGoThisWay() {
+        Seen s = new Seen();
+        s.canRecraft = true;
+        s.neededSoon = false;
+        s.distance = WorkbenchRules.FAR_TABLE_DISTANCE;
+        Bench t = table();
+        s.now = 2000;
+        decide(t, s);
+        s.now = 2000 + WorkbenchRules.OUTSIDE_TICKS;
+        assertEquals(Call.PICK_UP, decide(t, s));
+        // a furnace or a smoker keeps the long trip, they cost stone and a table to make
+        for (Kind kind : new Kind[]{Kind.FURNACE, Kind.SMOKER}) {
+            Bench b = bench(kind);
+            s.distance = 100;
+            s.now = 3000;
+            decide(b, s);
+            s.now = 3000 + WorkbenchRules.OUTSIDE_TICKS;
+            assertEquals(Call.PICK_UP, decide(b, s));
+        }
+    }
+
+    @Test
+    public void aTableWithinTheNearLineNeverCountsAsFar() {
+        Bench b = table();
+        Seen s = new Seen();
+        s.canRecraft = true;
+        s.distance = WorkbenchRules.NEAR;
+        s.now = 2000;
+        decide(b, s);
+        s.now = 90000;
+        assertEquals(Call.KEEP, decide(b, s));
+    }
+
+    @Test
+    public void whatTheBagCanRemake() {
+        assertTrue(WorkbenchRules.canRecraftTable(4, 0));
+        assertTrue(WorkbenchRules.canRecraftTable(0, 1));
+        assertTrue(WorkbenchRules.canRecraftTable(3, 1));
+        assertFalse(WorkbenchRules.canRecraftTable(3, 0));
+        assertFalse(WorkbenchRules.canRecraftTable(0, 0));
+    }
+
+    // ---- round 2: busy in a dimension we left
+
+    @Test
+    public void aBusyStationInAnotherDimensionIsKeptNotForgotten() {
+        for (Kind kind : new Kind[]{Kind.FURNACE, Kind.SMOKER}) {
+            Bench b = bench(kind);
+            b.state = Bench.State.BUSY;
+            Seen s = new Seen();
+            s.sameDimension = false;
+            s.now = 3000;
+            assertEquals(Call.ELSEWHERE, decide(b, s));
+            // a minute, an hour: nothing in the rules forgets it, the run ending does
+            s.now = 3000 + WorkbenchRules.DIMENSION_TICKS;
+            assertEquals(Call.ELSEWHERE, decide(b, s));
+            s.now = 3000 + 20 * 3600;
+            assertEquals(Call.ELSEWHERE, decide(b, s));
+            assertEquals(Bench.State.BUSY, b.state);
+        }
+    }
+
+    // a relog rebuilds every bench as standing, the job recorded in that dimension is what says it still holds our items
+    @Test
+    public void aRecordedJobThereKeepsAStationThatWasRebuiltAsStanding() {
+        Bench b = bench(Kind.FURNACE);
+        assertEquals(Bench.State.STANDING, b.state);
+        Seen s = new Seen();
+        s.sameDimension = false;
+        s.jobHere = true;
+        assertEquals(Call.ELSEWHERE, decide(b, s));
+        assertEquals(Bench.State.BUSY, b.state);
+    }
+
+    // an idle one is still forgotten a second after we left, like before. only the busy ones wait
+    @Test
+    public void anIdleStationInAnotherDimensionStillGoes() {
+        for (Kind kind : Kind.values()) {
+            Bench b = bench(kind);
+            Seen s = new Seen();
+            s.sameDimension = false;
+            s.now = 3000;
+            assertEquals(Call.KEEP, decide(b, s));
+            s.now = 3000 + WorkbenchRules.DIMENSION_TICKS;
+            assertEquals(Call.FORGET_LEFT_DIMENSION, decide(b, s));
+        }
+    }
+
+    // back in the dimension it is a normal busy station again: never forgotten by distance, picked up by the visit that empties it
+    @Test
+    public void backInTheDimensionABusyStationIsBusyAsBefore() {
+        Bench b = bench(Kind.FURNACE);
+        b.state = Bench.State.BUSY;
+        Seen s = new Seen();
+        s.sameDimension = false;
+        s.now = 3000;
+        assertEquals(Call.ELSEWHERE, decide(b, s));
+        s.sameDimension = true;
+        s.holdsStuff = true;
+        s.jobHere = true;
+        s.distance = 90;
+        s.now = 9000;
+        assertEquals(Call.BUSY, decide(b, s));
+        assertEquals(NEVER, b.otherDimensionSince);
+    }
+
+    // ---- round 2: an interrupted load is adopted
+
+    private static Look idleHolding() {
+        Seen s = new Seen();
+        s.holdsStuff = true;
+        return s.look();
+    }
+
+    @Test
+    public void aFurnaceOrSmokerHoldingOurItemsWithNoJobIsAdopted() {
+        assertTrue(WorkbenchRules.adoptable(bench(Kind.FURNACE), idleHolding()));
+        assertTrue(WorkbenchRules.adoptable(bench(Kind.SMOKER), idleHolding()));
+    }
+
+    @Test
+    public void aTableHoldsNothingAndIsNeverAdopted() {
+        assertFalse(WorkbenchRules.adoptable(table(), idleHolding()));
+    }
+
+    @Test
+    public void aStationWithAJobIsNotAdoptedAgain() {
+        Seen s = new Seen();
+        s.holdsStuff = true;
+        s.jobHere = true;
+        assertFalse(WorkbenchRules.adoptable(bench(Kind.FURNACE), s.look()));
+    }
+
+    @Test
+    public void anEmptyStationIsNotAdopted() {
+        assertFalse(WorkbenchRules.adoptable(bench(Kind.FURNACE), new Seen().look()));
+    }
+
+    // a load in flight records its own job a tick later, adopting under it would be a second job for the same spot
+    @Test
+    public void nothingIsAdoptedWhileAScreenOrALoadIsUsingIt() {
+        Seen s = new Seen();
+        s.holdsStuff = true;
+        s.idle = false;
+        assertFalse(WorkbenchRules.adoptable(bench(Kind.SMOKER), s.look()));
+    }
+
+    @Test
+    public void justPlacedOrJustUsedIsGivenAMoment() {
+        Seen s = new Seen();
+        s.holdsStuff = true;
+        s.now = 100;
+        Bench fresh = new Bench(Kind.FURNACE, pos(1, 64, 1), OVERWORLD, 100 - WorkbenchRules.PLACE_GUARD_TICKS + 1);
+        assertFalse(WorkbenchRules.adoptable(fresh, s.look()));
+        Bench used = bench(Kind.FURNACE);
+        used.lastUsedTick = s.now - WorkbenchRules.SETTLE_TICKS + 1;
+        assertFalse(WorkbenchRules.adoptable(used, s.look()));
+        used.lastUsedTick = s.now - WorkbenchRules.SETTLE_TICKS;
+        assertTrue(WorkbenchRules.adoptable(used, s.look()));
+    }
+
+    @Test
+    public void nothingComingDownOrGoneOrInAnotherDimensionIsAdopted() {
+        Seen s = new Seen();
+        s.holdsStuff = true;
+        assertFalse(WorkbenchRules.adoptable(pickingUp(Kind.FURNACE, 900), s.look()));
+        s.blockGone = true;
+        assertFalse(WorkbenchRules.adoptable(bench(Kind.FURNACE), s.look()));
+        s.blockGone = false;
+        s.sameDimension = false;
+        assertFalse(WorkbenchRules.adoptable(bench(Kind.FURNACE), s.look()));
+    }
+
+    // ---- round 2: the furnace and smoker band
+
+    // inward only: the planner may say "not held" where the container task would still walk to ours, never "held" where the task
+    // would make a second one (the plan did not budget the stone or the logs for it)
+    @Test
+    public void theBandOnlyReachesInsideTheLine() {
+        // before the first look the plain line is the only fair test
+        assertEquals(21.0, WorkbenchRules.bandRadius(null), 0);
+        assertEquals(21.0, WorkbenchRules.bandRadius(true), 0);
+        assertEquals(20.0, WorkbenchRules.bandRadius(false), 0);
+        assertTrue(WorkbenchRules.bandRadius(true) <= WorkbenchRules.NEAR);
+        assertTrue(WorkbenchRules.bandRadius(false) <= WorkbenchRules.NEAR);
+    }
+
+    // walk a path across the line and ask what the planner would say at each step, the way MinecraftFacts feeds it back
+    private static boolean[] walk(double[] distances, Boolean start) {
+        boolean[] out = new boolean[distances.length];
+        Boolean held = start;
+        for (int i = 0; i < distances.length; i++) {
+            out[i] = distances[i] <= WorkbenchRules.bandRadius(held);
+            held = out[i];
+        }
+        return out;
+    }
+
+    @Test
+    public void aSmokerTwentyBlocksAwayIsASmokerWhicheverWayWeGotThere() {
+        // never left: held the whole way in
+        assertTrue(walk(new double[]{20}, true)[0]);
+        // came in from outside: 20 is the edge of the band and counts
+        assertTrue(walk(new double[]{30, 25, 22, 21, 20}, null)[4]);
+        // first look right at 20.5 uses the plain line
+        assertFalse(walk(new double[]{21.5}, null)[0]);
+        assertTrue(walk(new double[]{20.5}, null)[0]);
+    }
+
+    // a bot mining at the edge: held while inside, one flip when it crosses the line, then no flip back until it is a block in
+    @Test
+    public void crossingTheLineBackAndForthFlipsOnceNotEveryStep() {
+        double[] dither = {20.6, 21.4, 20.8, 21.2, 20.9, 21.5, 20.7};
+        boolean[] latched = walk(dither, true);
+        int flips = 0;
+        for (int i = 1; i < latched.length; i++) {
+            if (latched[i] != latched[i - 1]) {
+                flips++;
+            }
+        }
+        assertEquals(1, flips);
+        assertTrue(latched[0]);
+        assertFalse(latched[1]);
+        assertFalse(latched[6]);
+        // the plain line flipped on every crossing
+        int plain = 0;
+        for (int i = 1; i < dither.length; i++) {
+            if ((dither[i] <= WorkbenchRules.NEAR) != (dither[i - 1] <= WorkbenchRules.NEAR)) {
+                plain++;
+            }
+        }
+        assertEquals(6, plain);
+        // and a block inside it is back
+        assertTrue(walk(new double[]{21.5, 20.0}, true)[1]);
+        assertFalse(walk(new double[]{21.5, 20.01}, true)[1]);
+    }
+
+    // the planner flag must never be true where the container task would make a second one: StationChoice takes ours within NEAR,
+    // so held <= NEAR for every walk, in and out, whatever the start
+    @Test
+    public void theFlagIsNeverTrueWhereTheTaskWouldNotWalkToOurs() {
+        // a triangle wave between 10 and 30 blocks, a quarter block a step, a few laps
+        double[] path = new double[640];
+        for (int i = 0; i < path.length; i++) {
+            int phase = i % 160;
+            path[i] = 10 + (phase < 80 ? phase : 160 - phase) * 0.25;
+        }
+        for (Boolean start : new Boolean[]{null, true, false}) {
+            boolean[] held = walk(path, start);
+            for (int i = 0; i < path.length; i++) {
+                if (held[i]) {
+                    assertTrue("held at " + path[i], path[i] <= WorkbenchRules.NEAR);
+                }
+            }
+        }
+    }
+
+    @Test
+    public void theBandIsNarrowerThanTheTablesLatch() {
+        assertTrue(WorkbenchRules.bandRadius(false) > WorkbenchRules.returnRadius(true));
+        assertEquals(1.0, WorkbenchRules.LATCH_BAND, 0);
+    }
+
+    // ---- round 2: review fixes
+
+    // a table pickup that is under way (nothing broken yet) and out past the far line, the bag now holding wood: forget it
+    @Test
+    public void aTablePickupUnderWayPastTheFarLineIsCalledOffWhenTheBagCanRemake() {
+        Bench b = pickingUp(1000);
+        Seen s = new Seen();
+        s.now = 1030;
+        s.distance = 70;
+        s.canRecraft = true;
+        assertEquals(Call.FORGET_FAR_TABLE, decide(b, s));
+        // nothing to remake it from: it keeps walking
+        s.canRecraft = false;
+        assertEquals(Call.CONTINUE, decide(b, s));
+        // the block already down: only the drop is left, which is right there
+        s.canRecraft = true;
+        WorkbenchRules.blockBroken(b, 1030);
+        assertEquals(Call.CONTINUE, decide(b, s));
+        // and a furnace coming down keeps going from as far as it was
+        Bench furnace = pickingUp(Kind.FURNACE, 1000);
+        assertEquals(Call.CONTINUE, decide(furnace, s));
+    }
+
+    // dropped as stale: what the container tracker still remembers in it is not adopted back into a new job
+    @Test
+    public void aLoadGivenUpOnIsNotAdoptedOrHeldForByThePhase() {
+        Bench b = bench(Kind.FURNACE);
+        b.state = Bench.State.BUSY;
+        b.givenUp = true;
+        assertFalse(WorkbenchRules.adoptable(b, idleHolding()));
+        assertTrue(WorkbenchRules.phaseMayEnd(List.of(b), OVERWORLD, x -> false));
+        // seen empty: over, and a later interrupted load is a new story
+        Seen s = new Seen();
+        decide(b, s);
+        assertFalse(b.givenUp);
+        assertTrue(WorkbenchRules.adoptable(b, idleHolding()));
+    }
+
+    @Test
+    public void aRealJobAtTheStationClearsTheGiveUp() {
+        Bench b = bench(Kind.SMOKER);
+        b.givenUp = true;
+        Seen s = new Seen();
+        s.holdsStuff = true;
+        s.jobHere = true;
+        assertEquals(Call.BUSY, decide(b, s));
+        assertFalse(b.givenUp);
+        // holding something with no job keeps it
+        Bench c = bench(Kind.SMOKER);
+        c.givenUp = true;
+        Seen t = new Seen();
+        t.holdsStuff = true;
+        assertEquals(Call.BUSY, decide(c, t));
+        assertTrue(c.givenUp);
     }
 }

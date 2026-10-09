@@ -24,6 +24,16 @@ public class AsyncSmeltingTest {
         assertFalse(AsyncSmelting.wantsName("iron_ingot", false, true));
     }
 
+    // an adopted load is not food unless its output is cooked food, and a name that is not asks nothing of the item registry
+    @Test
+    public void onlyCookedFoodHasNutritionForAnAdoptedLoad() {
+        assertEquals(0, AsyncSmelting.unitsOfOutput("iron_ingot"));
+        assertEquals(0, AsyncSmelting.unitsOfOutput("gold_ingot"));
+        assertEquals(0, AsyncSmelting.unitsOfOutput("dried_kelp"));
+        assertEquals(0, AsyncSmelting.unitsOfOutput("cobblestone"));
+        assertEquals(0, AsyncSmelting.unitsOfOutput(""));
+    }
+
     @Test
     public void foodNeedsBothSwitches() {
         assertTrue(AsyncSmelting.wantsName("cooked_mutton", true, true));

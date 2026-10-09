@@ -78,6 +78,24 @@ public class ContainerCache {
         return sumOver((item, count) -> adris.altoclef.util.helpers.ItemHelper.isFuel(item) ? 0.0 : count) > 0;
     }
 
+    // how much of the last look is not fuel, and the item there is most of (null for none). an interrupted load is adopted as a job
+    // from these (Workbenches.adoptLoad)
+    public int nonFuelCount() {
+        return (int) sumOver((item, count) -> adris.altoclef.util.helpers.ItemHelper.isFuel(item) ? 0.0 : count);
+    }
+
+    public Item mostOfNonFuel() {
+        Item best = null;
+        int most = 0;
+        for (var entry : _itemCounts.entrySet()) {
+            if (!adris.altoclef.util.helpers.ItemHelper.isFuel(entry.getKey()) && entry.getValue() > most) {
+                best = entry.getKey();
+                most = entry.getValue();
+            }
+        }
+        return best;
+    }
+
     // adds up f(item, count) over what the last look saw
     public double sumOver(java.util.function.ToDoubleBiFunction<Item, Integer> f) {
         double total = 0;
