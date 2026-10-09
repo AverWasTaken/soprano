@@ -158,7 +158,9 @@ public final class Workbenches {
         for (Bench other : state.benches) {
             if (other != placed && other.kind == kind && other.dimension.equals(dimension) && other.state != Bench.State.PICKING_UP
                     && WalkCost.nearStation(other.pos.x - pos.x, other.pos.y - pos.y, other.pos.z - pos.z)) {
-                log("DUPLICATE " + placed + ": " + other + " is "
+                // a split smelt puts the next furnace next to the one cooking on purpose (SmeltSplit), not the bug this line hunts
+                boolean split = kind == Kind.FURNACE && FurnaceJobs.isBusy(state, other.pos, dimension);
+                log((split ? "furnace for a split smelt " : "DUPLICATE ") + placed + ": " + other + (split ? " (cooking) is " : " is ")
                         + Math.round(WalkCost.distance3d(other.pos.x - pos.x, other.pos.y - pos.y, other.pos.z - pos.z)) + " blocks from it");
             }
         }
@@ -250,19 +252,44 @@ public final class Workbenches {
     // the nearest of ours of this kind standing in the world (not coming down, not in the bag) within `radius`, null for none. what
     // the container tasks get as standingWithin, and what the planner's walk back reads, so both pick the same block
     public static Bench nearestStanding(RunState state, Kind kind, String dimension, double x, double y, double z, double radius) {
+        return nearestStanding(state, kind, dimension, x, y, z, radius, b -> true);
+    }
+
+    // the nearest that `ok` likes, a split smelt's next load asks for the nearest idle furnace (the busy one next to us is load 1's)
+    public static Bench nearestStanding(RunState state, Kind kind, String dimension, double x, double y, double z, double radius,
+                                        Predicate<Bench> ok) {
         Bench best = null;
         double bestDistance = Double.MAX_VALUE;
         for (Bench b : state.benches) {
-            if (b.kind != kind || !b.dimension.equals(dimension) || b.state == Bench.State.PICKING_UP || b.state == Bench.State.IN_BAG) {
+            if (!standing(b, kind, dimension)) {
                 continue;
             }
             double d = WalkCost.stationDistance(b.pos.x, b.pos.y, b.pos.z, x, y, z);
-            if (d <= radius && d < bestDistance) {
+            if (d <= radius && d < bestDistance && ok.test(b)) {
                 best = b;
                 bestDistance = d;
             }
         }
         return best;
+    }
+
+    // how many standing ones within `radius` that `ok` likes (SmeltSplit counts the idle furnaces it can use for free)
+    public static int countStanding(RunState state, Kind kind, String dimension, double x, double y, double z, double radius, Predicate<Bench> ok) {
+        int n = 0;
+        for (Bench b : state.benches) {
+            if (standing(b, kind, dimension) && WalkCost.stationDistance(b.pos.x, b.pos.y, b.pos.z, x, y, z) <= radius && ok.test(b)) {
+                n++;
+            }
+        }
+        return n;
+    }
+
+    private static boolean standing(Bench b, Kind kind, String dimension) {
+        return b.kind == kind && b.dimension.equals(dimension) && b.state != Bench.State.PICKING_UP && b.state != Bench.State.IN_BAG;
+    }
+
+    private static BlockPos blockPos(Bench b) {
+        return new BlockPos(b.pos.x, b.pos.y, b.pos.z);
     }
 
     // the furnace or smoker StationChoice walks back to (DoStuffInContainerTask's far one of ours) when the bag cannot make one: the
@@ -305,6 +332,17 @@ public final class Workbenches {
             public BlockPos standingWithin(Kind kind, double x, double y, double z, double radius) {
                 Bench best = nearestStanding(state, kind, facts.dimension().name(), x, y, z, radius);
                 return best == null ? null : new BlockPos(best.pos.x, best.pos.y, best.pos.z);
+            }
+
+            @Override
+            public BlockPos standingWithin(Kind kind, double x, double y, double z, double radius, Predicate<BlockPos> ok) {
+                Bench best = nearestStanding(state, kind, facts.dimension().name(), x, y, z, radius, b -> ok.test(blockPos(b)));
+                return best == null ? null : blockPos(best);
+            }
+
+            @Override
+            public int countWithin(Kind kind, double x, double y, double z, double radius, Predicate<BlockPos> ok) {
+                return countStanding(state, kind, facts.dimension().name(), x, y, z, radius, b -> ok.test(blockPos(b)));
             }
 
             @Override

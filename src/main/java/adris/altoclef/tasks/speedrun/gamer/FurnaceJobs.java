@@ -94,6 +94,68 @@ public final class FurnaceJobs {
         return total;
     }
 
+    // the same with the loads that went in this tick and are still in AsyncSmelting's queue (the gamer only drains it on its next
+    // tick). a queued job replaces the job at its spot the way record() will, so a reload of the same furnace is counted once.
+    // `skip` leaves one spot out (the station a smelt task is reading off its own slots), null for none
+    public static int pending(List<RunState.FurnaceJob> jobs, List<RunState.FurnaceJob> queued, String outputName, RunState.Pos skip, String dimension) {
+        int total = 0;
+        for (RunState.FurnaceJob job : jobs) {
+            if (!queuedAt(queued, job) && !skipped(job, skip, dimension)) {
+                total += countOf(job, outputName);
+            }
+        }
+        for (int i = 0; i < queued.size(); i++) {
+            RunState.FurnaceJob job = queued.get(i);
+            // two loads of one furnace in one queue: the later one is what record() keeps
+            if (!laterAt(queued, i) && !skipped(job, skip, dimension)) {
+                total += countOf(job, outputName);
+            }
+        }
+        return total;
+    }
+
+    // a job of ours at this spot, in the list or in the queue
+    public static boolean jobAt(List<RunState.FurnaceJob> jobs, List<RunState.FurnaceJob> queued, RunState.Pos pos, String dimension) {
+        for (RunState.FurnaceJob job : jobs) {
+            if (sameSpot(job, pos, dimension)) {
+                return true;
+            }
+        }
+        for (RunState.FurnaceJob job : queued) {
+            if (sameSpot(job, pos, dimension)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static int countOf(RunState.FurnaceJob job, String outputName) {
+        return job.output.equals(outputName) && !job.stranded ? job.count : 0;
+    }
+
+    private static boolean skipped(RunState.FurnaceJob job, RunState.Pos skip, String dimension) {
+        return skip != null && sameSpot(job, skip, dimension);
+    }
+
+    private static boolean queuedAt(List<RunState.FurnaceJob> queued, RunState.FurnaceJob job) {
+        for (RunState.FurnaceJob q : queued) {
+            if (sameSpot(q, job.pos, job.dimension)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean laterAt(List<RunState.FurnaceJob> queued, int i) {
+        RunState.FurnaceJob job = queued.get(i);
+        for (int j = i + 1; j < queued.size(); j++) {
+            if (sameSpot(queued.get(j), job.pos, job.dimension)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     // nutrition the food jobs will have given us once they are done. not in the bag yet, so not in foodUnits(): the planner
     // adds this on top so a loaded smoker is not a reason to go hunting again
     public static int pendingUnits(List<RunState.FurnaceJob> jobs) {

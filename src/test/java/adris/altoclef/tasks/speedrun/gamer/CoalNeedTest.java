@@ -38,6 +38,25 @@ public class CoalNeedTest {
         assertEquals(1 + DetourSpec.NEED_MARGIN, DetourSpec.coalNeed(8, 0, 0, 0, 0));
     }
 
+    // a split smelt: a coal does not go in two furnaces, every load is whole coal on its own
+    @Test
+    public void aSplitSmeltRoundsEveryLoad() {
+        // 37 alone is 5 coal, 13/12/12 is 2 + 2 + 2
+        assertEquals(5 + DetourSpec.NEED_MARGIN, DetourSpec.coalNeed(37, 0, 0, 0, 0));
+        assertEquals(5 + DetourSpec.NEED_MARGIN, DetourSpec.coalNeed(37, 0, 0, 0, 0, 1));
+        assertEquals(6 + DetourSpec.NEED_MARGIN, DetourSpec.coalNeed(37, 0, 0, 0, 0, 3));
+        // 16 in two is 8 + 8, no rounding lost
+        assertEquals(2 + DetourSpec.NEED_MARGIN, DetourSpec.coalNeed(16, 0, 0, 0, 0, 2));
+        // what is held or cooking comes off before the split, the rest goes in the loads left
+        // (24 left in two loads of 12: 2 + 2)
+        assertEquals(4 + DetourSpec.NEED_MARGIN, DetourSpec.coalNeed(37, 0, 13, 0, 0, 2));
+        // the meat is its own smelts on top, and wood still covers some
+        assertEquals(7 + DetourSpec.NEED_MARGIN, DetourSpec.coalNeed(37, 0, 0, 8, 0, 3));
+        assertEquals(4 + DetourSpec.NEED_MARGIN, DetourSpec.coalNeed(37, 0, 0, 0, 16, 3));
+        // nothing owed is nothing to round
+        assertEquals(DetourSpec.NEED_MARGIN, DetourSpec.coalNeed(10, 10, 0, 0, 0, 3));
+    }
+
     @Test
     public void ingotsPendingInAFurnaceAreNotOwed() {
         assertEquals(DetourSpec.NEED_MARGIN, DetourSpec.coalNeed(10, 2, 8, 0, 0));

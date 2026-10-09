@@ -4,6 +4,8 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 
+import java.util.function.Predicate;
+
 // what the container tasks (alto) can ask about the stations the gamer put down, without knowing there is a gamer. same pattern
 // as AsyncSmelting.isOurFurnace: the run wires a Source in when it starts and pulls it when it ends. the container tasks feed what
 // it says (and what the block tracker sees) to StationChoice, which is the one place that picks a station. a plain alto run has no
@@ -30,6 +32,18 @@ public final class StationHook {
         // the usual question: within WalkCost.STATION_NEAR
         default BlockPos standingNear(Kind kind, double x, double y, double z) {
             return standingWithin(kind, x, y, z, WalkCost.STATION_NEAR);
+        }
+
+        // the closest one that `ok` likes (a split smelt wants the nearest idle furnace, not the nearest furnace). the default only
+        // asks about the closest, a source with the whole list (Workbenches) looks further down it
+        default BlockPos standingWithin(Kind kind, double x, double y, double z, double radius, Predicate<BlockPos> ok) {
+            BlockPos best = standingWithin(kind, x, y, z, radius);
+            return best != null && ok.test(best) ? best : null;
+        }
+
+        // how many of ours of this kind stand within `radius` that `ok` likes
+        default int countWithin(Kind kind, double x, double y, double z, double radius, Predicate<BlockPos> ok) {
+            return standingWithin(kind, x, y, z, radius, ok) == null ? 0 : 1;
         }
 
         // some station of this kind is being picked up right now, so nothing may place or craft another one
@@ -95,6 +109,21 @@ public final class StationHook {
     public static BlockPos standingWithin(Kind kind, double x, double y, double z, double radius) {
         Source s = source;
         return s == null || kind == null ? null : s.standingWithin(kind, x, y, z, radius);
+    }
+
+    public static BlockPos standingWithin(Kind kind, double x, double y, double z, double radius, Predicate<BlockPos> ok) {
+        Source s = source;
+        return s == null || kind == null ? null : s.standingWithin(kind, x, y, z, radius, ok);
+    }
+
+    public static int countWithin(Kind kind, double x, double y, double z, double radius, Predicate<BlockPos> ok) {
+        Source s = source;
+        return s == null || kind == null ? 0 : s.countWithin(kind, x, y, z, radius, ok);
+    }
+
+    // a run that keeps its stations here (the gamer). plain alto has none, and nothing is split for it (SmeltSplit)
+    public static boolean installed() {
+        return source != null;
     }
 
     public static boolean pickingUp(Kind kind) {

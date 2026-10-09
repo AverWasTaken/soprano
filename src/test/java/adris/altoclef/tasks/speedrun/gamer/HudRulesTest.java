@@ -90,6 +90,15 @@ public class HudRulesTest {
         assertEquals(1, HudRules.kitRowBudget(5, true));
     }
 
+    // a split smelt's three furnaces fit: with the coal row that is one kit row and still five rows on the card
+    @Test
+    public void threeFurnaceRowsFitTheCard() {
+        assertEquals(3, HudRules.MAX_FURNACES);
+        assertEquals(2, HudRules.kitRowBudget(HudRules.MAX_FURNACES, false));
+        assertEquals(1, HudRules.kitRowBudget(HudRules.MAX_FURNACES, true));
+        assertEquals(HudRules.MAX_ROWS, HudRules.kitRowBudget(HudRules.MAX_FURNACES, true) + HudRules.MAX_FURNACES + 1);
+    }
+
     @Test
     public void blocksToGoCountsDownTheFiftyAndStopsAtZero() {
         assertEquals(50, HudRules.blocksToGo(0, 0, 0, 0, 50));

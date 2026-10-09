@@ -1,5 +1,6 @@
 package adris.altoclef.tasks.speedrun.gamer;
 
+import adris.altoclef.tasks.container.SmeltSplit;
 import baritone.api.utils.Dimension;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.item.Item;
@@ -99,6 +100,17 @@ public interface GamerFacts {
     // owed to a furnace that is already on the ground
     default boolean furnacePlacedNearby() {
         return false;
+    }
+
+    // furnaces of ours standing within StationChoice.WALK_BACK with nothing of ours in them and no job: the ones a split smelt
+    // (SmeltSplit) gets for free. the first furnace is furnacePlacedNearby's business, this is for the extra ones
+    default int idleFurnaces() {
+        return 0;
+    }
+
+    // the split smelt still loading (SmeltSplit.active), null when there is none
+    default SmeltSplit.Batch smeltBatch() {
+        return null;
     }
 
     // and a smoker of ours (RunState.placedSmokers), within NEAR or walked back to like the furnace. the cook need reads it: a smoker standing is the cheapest place to

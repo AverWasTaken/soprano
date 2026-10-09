@@ -106,7 +106,21 @@ public final class DetourSpec {
     // coal is 8. plus the margin, never past the ceiling. a flat cap has no idea how much smelting is left, so it went mining
     // for coal nothing was ever going to burn
     public static int coalNeed(int ingotsOwed, int ingotsHeld, int ingotsPending, int rawMeat, int woodSmelts) {
-        int smelts = Math.max(0, ingotsOwed - ingotsHeld - ingotsPending) + Math.max(0, rawMeat);
+        return coalNeed(ingotsOwed, ingotsHeld, ingotsPending, rawMeat, woodSmelts, 1);
+    }
+
+    // the same when the iron goes in `loads` furnaces (SmeltSplit): a coal does not split between two furnaces, so each load is
+    // rounded up to whole coal on its own. 13/12/12 is 2+2+2 = 6 coal, the total alone said 5 and the third load went dry
+    public static int coalNeed(int ingotsOwed, int ingotsHeld, int ingotsPending, int rawMeat, int woodSmelts, int loads) {
+        int iron = Math.max(0, ingotsOwed - ingotsHeld - ingotsPending);
+        int ironSmelts = iron;
+        if (loads > 1) {
+            ironSmelts = 0;
+            for (int load : adris.altoclef.tasks.container.SmeltSplit.sizes(iron, loads)) {
+                ironSmelts += (load + SMELTS_PER_COAL - 1) / SMELTS_PER_COAL * SMELTS_PER_COAL;
+            }
+        }
+        int smelts = ironSmelts + Math.max(0, rawMeat);
         int left = Math.max(0, smelts - Math.max(0, woodSmelts));
         return Math.min(NEED_CEILING, (left + SMELTS_PER_COAL - 1) / SMELTS_PER_COAL + NEED_MARGIN);
     }

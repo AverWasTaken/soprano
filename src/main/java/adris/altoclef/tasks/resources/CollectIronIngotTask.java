@@ -2,21 +2,33 @@ package adris.altoclef.tasks.resources;
 
 import baritone.Baritone;
 import adris.altoclef.AltoClef;
+import adris.altoclef.Debug;
 import adris.altoclef.TaskCatalogue;
 import adris.altoclef.tasks.ResourceTask;
+import adris.altoclef.tasks.container.AsyncSmelting;
+import adris.altoclef.tasks.container.DoStuffInContainerTask;
 import adris.altoclef.tasks.container.SmeltInBlastFurnaceTask;
+import adris.altoclef.tasks.container.SmeltInFurnaceTask;
+import adris.altoclef.tasks.container.SmeltSplit;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.SmeltTarget;
+import adris.altoclef.util.helpers.StationChoice;
+import adris.altoclef.util.helpers.StationHook;
 import java.util.Optional;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.phys.Vec3;
 
 public class CollectIronIngotTask extends ResourceTask {
 
     private final int _count;
     private final SmeltRouter _router = new SmeltRouter();
+    // the split load in progress (a fresh task per load, the router would hand back the finished one) and the batch it is for
+    private SmeltInFurnaceTask _load;
+    private SmeltSplit.Batch _loadBatch;
+    private String _noSplitLogged = "";
 
     public CollectIronIngotTask(int count) {
         super(Items.IRON_INGOT, count);
@@ -59,7 +71,87 @@ public class CollectIronIngotTask extends ResourceTask {
             }
             return _router.furnace(new SmeltTarget(new ItemTarget(Items.IRON_INGOT, 5), new ItemTarget(Items.RAW_IRON, 5)));
         }
-        return _router.furnace(all);
+        return furnace(mod, all);
+    }
+
+    // the plain furnace, or a big batch split over a few of them (SmeltSplit). only the gamer splits: it is the one that walks away
+    // from a loaded furnace and comes back (async smelting), and the one that knows which furnaces are ours
+    private Task furnace(AltoClef mod, SmeltTarget all) {
+        if (!StationHook.installed() || !AsyncSmelting.wants(all.getItem())) {
+            return _router.furnace(all);
+        }
+        int bag = mod.getItemStorage().getItemCount(Items.IRON_INGOT);
+        int raw = mod.getItemStorage().getItemCount(Items.RAW_IRON);
+        // every furnace's load counts, the ones queued this tick too (the gamer only takes those in on its next tick)
+        int owed = _count - bag - AsyncSmelting.pendingOutput("iron_ingot", null);
+        SmeltSplit.Batch batch = SmeltSplit.held(_count);
+        if (batch == null) {
+            // still mining (the single smelt fetches the ore the way it always did), or few enough for one furnace. the call is made
+            // the moment the whole batch is in the bag, which is also when SmeltSurface takes us up
+            if (owed < SmeltSplit.MIN_SPLIT || raw < owed) {
+                return _router.furnace(all);
+            }
+            batch = decide(mod, owed);
+            if (batch == null) {
+                return _router.furnace(all);
+            }
+        }
+        if (_load != null && _loadBatch == batch) {
+            if (_load.handedOff()) {
+                batch.handedOff();
+                _load = null;
+                Debug.logInternal("smelt: load " + batch.issued() + " of " + batch.loads() + " is in, " + Math.max(0, owed) + " iron still to load");
+            } else {
+                BlockPos at = _load.loadingAt();
+                if (at != null) {
+                    batch.loadingAt(at);
+                }
+                return _load;
+            }
+        }
+        if (batch.over()) {
+            // all the loads are in: whatever is still owed (a load came back short) is a normal smelt, which counts the jobs too
+            return owed > 0 ? _router.furnace(all) : null;
+        }
+        int size = batch.nextLoad(owed, raw);
+        if (size <= 0) {
+            batch.end();
+            if (owed > 0) {
+                Debug.logInternal("smelt: no raw iron left for load " + (batch.issued() + 1) + " of " + batch.loads()
+                        + ", the other " + owed + " go the usual way");
+                return _router.furnace(all);
+            }
+            return null;
+        }
+        _load = SmeltInFurnaceTask.splitLoad(all, batch, size);
+        _loadBatch = batch;
+        Debug.logInternal("smelt: load " + (batch.issued() + 1) + " of " + batch.loads() + ", " + size + " raw iron"
+                + (batch.loadingAt() != null ? ", finishing the one started at " + batch.loadingAt().toShortString() : ""));
+        return _load;
+    }
+
+    // once per batch: how many furnaces, from what is standing idle, what is in the bag and the cobble the tools are not owed. a
+    // no is not held: the moment the first ore goes in, raw drops under owed and nothing asks again
+    private SmeltSplit.Batch decide(AltoClef mod, int owed) {
+        Vec3 me = mod.getPlayer().position();
+        int idle = StationHook.countWithin(StationHook.Kind.FURNACE, me.x, me.y, me.z, StationChoice.WALK_BACK,
+                p -> DoStuffInContainerTask.walkBackUsable(mod, p, Blocks.FURNACE) && !AsyncSmelting.jobAt(p));
+        int inBag = mod.getItemStorage().getItemCount(Items.FURNACE);
+        int spare = mod.getItemStorage().getItemCount(Items.COBBLESTONE, Items.COBBLED_DEEPSLATE, Items.BLACKSTONE) - StationHook.cobbleOwed();
+        int k = SmeltSplit.loads(owed, idle, inBag, spare);
+        String why = idle + " idle of ours within " + Math.round(StationChoice.WALK_BACK) + ", " + inBag + " in the bag, "
+                + Math.max(0, spare) + " spare cobble";
+        if (k <= 1) {
+            String line = "smelt: " + owed + " iron in one furnace, nothing for a second (" + why + ")";
+            if (!line.equals(_noSplitLogged)) {
+                _noSplitLogged = line;
+                Debug.logInternal(line);
+            }
+            return null;
+        }
+        int[] sizes = SmeltSplit.sizes(owed, k);
+        Debug.logInternal("smelt: splitting " + owed + " iron across " + k + " furnaces (" + SmeltSplit.words(sizes) + "; " + why + ")");
+        return SmeltSplit.start(_count, sizes);
     }
 
     @Override

@@ -493,6 +493,42 @@ public class WorkbenchesRegistryTest {
         assertEquals(new BlockPos(4, 64, 0), source.standingNear(Kind.TABLE, 0.5, 64.5, 0.5));
     }
 
+    // a split smelt's next load asks for the nearest IDLE furnace: load 1's busy one next to us must not hide the idle one further
+    // out (the plain question only ever looked at the nearest), and the count is what SmeltSplit gets for free
+    @Test
+    public void aSplitLoadGetsTheNearestIdleFurnaceNotTheNearestFurnace() {
+        RunState state = new RunState();
+        Workbenches.record(state, Kind.FURNACE, pos(2, 64, 0), OVERWORLD, 1);
+        Workbenches.record(state, Kind.FURNACE, pos(30, 64, 0), OVERWORLD, 1);
+        Workbenches.record(state, Kind.FURNACE, pos(60, 64, 0), OVERWORLD, 1);
+        StationHook.Source source = Workbenches.source(state, facts(Dimension.OVERWORLD, 100));
+        BlockPos busy = new BlockPos(2, 64, 0);
+        java.util.function.Predicate<BlockPos> idle = p -> !p.equals(busy);
+        assertEquals(busy, source.standingWithin(Kind.FURNACE, 0.5, 64.5, 0.5, 128, p -> true));
+        assertEquals(new BlockPos(30, 64, 0), source.standingWithin(Kind.FURNACE, 0.5, 64.5, 0.5, 128, idle));
+        // NEAR has no idle one in it: the choice then makes one (or walks back to the one at 30)
+        assertNull(source.standingWithin(Kind.FURNACE, 0.5, 64.5, 0.5, 21, idle));
+        assertEquals(1, source.countWithin(Kind.FURNACE, 0.5, 64.5, 0.5, 48, idle));
+        assertEquals(2, source.countWithin(Kind.FURNACE, 0.5, 64.5, 0.5, 48, p -> true));
+        assertEquals(2, source.countWithin(Kind.FURNACE, 0.5, 64.5, 0.5, 128, idle));
+        // the plain question is unchanged
+        assertEquals(busy, source.standingNear(Kind.FURNACE, 0.5, 64.5, 0.5));
+    }
+
+    // the next furnace goes down right next to the one cooking on purpose, that is not the duplicate bug
+    @Test
+    public void aFurnaceNextToOneThatIsCookingIsASplitNotADuplicate() {
+        RunState state = new RunState();
+        Workbenches.record(state, Kind.FURNACE, pos(2, 64, 0), OVERWORLD, 1);
+        state.furnaceJobs.add(new RunState.FurnaceJob(pos(2, 64, 0), OVERWORLD, "furnace", "raw_iron", 13, "iron_ingot", 0, 2600));
+        String log = logOf(() -> Workbenches.record(state, Kind.FURNACE, pos(3, 64, 0), OVERWORLD, 50));
+        assertNoDuplicate(log);
+        assertTrue(log, log.contains("split smelt"));
+        // an idle one next to it is still the bug
+        String idle = logOf(() -> Workbenches.record(state, Kind.FURNACE, pos(9, 64, 9), OVERWORLD, 60));
+        assertTrue(idle, idle.contains("DUPLICATE"));
+    }
+
     @Test
     public void standingNearStopsAtNearInThreeAxes() {
         RunState state = new RunState();

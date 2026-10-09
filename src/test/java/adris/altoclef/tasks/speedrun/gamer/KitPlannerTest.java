@@ -1,5 +1,6 @@
 package adris.altoclef.tasks.speedrun.gamer;
 
+import adris.altoclef.tasks.container.SmeltSplit;
 import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig;
 import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig.ArmorPlan;
 import net.minecraft.SharedConstants;
@@ -88,9 +89,10 @@ public class KitPlannerTest {
     public void freshStartGather() {
         List<KitNeed> gather = KitPlanner.gather(f, cfg, 8);
         // 3 logs is the table and the axe (9 planks), 15 is the whole run, and the axe is made in between
-        // 19 cobble is 2 picks 6 + axe 3 + furnace 8 + 2 slack, all of it mined before the first stone craft
+        // 35 cobble is 2 picks 6 + axe 3 + furnace 8 + the split smelt's other two furnaces 16 + 2 slack, all of it mined
+        // before the first stone craft
         assertEquals(List.of(new KitNeed("log", 3), new KitNeed("wooden_axe", 1), new KitNeed("log", 15),
-                new KitNeed("cobblestone", 19), new KitNeed("stone_pickaxe", 2), new KitNeed("stone_axe", 1), new KitNeed("furnace", 1),
+                new KitNeed("cobblestone", 35), new KitNeed("stone_pickaxe", 2), new KitNeed("stone_axe", 1), new KitNeed("furnace", 1),
                 new KitNeed(KitNeed.FOOD, 70)), gather);
     }
 
@@ -608,99 +610,104 @@ public class KitPlannerTest {
 
     @Test
     public void stoneBudgetForAFreshRunIsNineteen() {
-        // two picks 6, axe 3, furnace 8, and 2 of slack
-        assertEquals(19, KitPlanner.stoneNeed(f, cfg));
+        // two picks 6, axe 3, furnace 8, two more furnaces for the split smelt 16, and 2 of slack
+        assertEquals(35, KitPlanner.stoneNeed(f, cfg));
     }
 
     @Test
     public void heldCobbleTakesOffTheStoneBudgetAndStaysAtZeroThroughTheCrafts() {
-        assertEquals(9, KitPlanner.stoneNeed(new FakeFacts().give(Items.COBBLESTONE, 10), cfg));
-        assertEquals(0, KitPlanner.stoneNeed(new FakeFacts().give(Items.COBBLESTONE, 19), cfg));
+        assertEquals(25, KitPlanner.stoneNeed(new FakeFacts().give(Items.COBBLESTONE, 10), cfg));
+        assertEquals(0, KitPlanner.stoneNeed(new FakeFacts().give(Items.COBBLESTONE, 35), cfg));
         assertEquals(0, KitPlanner.stoneNeed(new FakeFacts().give(Items.COBBLESTONE, 40), cfg));
         // the picks are crafted: 6 cobble gone and 6 wanted gone, so a need that was met stays met (no second trip)
-        FakeFacts crafted = new FakeFacts().give(Items.COBBLESTONE, 13).give(Items.STONE_PICKAXE, 2);
+        FakeFacts crafted = new FakeFacts().give(Items.COBBLESTONE, 29).give(Items.STONE_PICKAXE, 2);
         assertEquals(0, KitPlanner.stoneNeed(crafted, cfg));
         // and the axe too
         crafted.give(Items.COBBLESTONE, -3).give(Items.STONE_AXE, 1);
         assertEquals(0, KitPlanner.stoneNeed(crafted, cfg));
-        // everything made: nothing left to want, not even the slack
+        // everything made (the split smelt's three furnaces too): nothing left to want, not even the slack
         assertEquals(0, KitPlanner.stoneNeed(new FakeFacts().give(Items.STONE_PICKAXE, 2).give(Items.STONE_AXE, 1)
+                .give(Items.FURNACE, 3), cfg));
+        // one furnace in the bag is still two to make for the split, and the slack with them
+        assertEquals(18, KitPlanner.stoneNeed(new FakeFacts().give(Items.STONE_PICKAXE, 2).give(Items.STONE_AXE, 1)
                 .give(Items.FURNACE, 1), cfg));
     }
 
     @Test
     public void cobbledDeepslateIsNotCobbleToTheRecipes() {
         // the catalogue recipes only take Items.COBBLESTONE, so deepslate in the bag would not reach the crafts
-        assertEquals(19, KitPlanner.stoneNeed(new FakeFacts().give(Items.COBBLED_DEEPSLATE, 30), cfg));
+        assertEquals(35, KitPlanner.stoneNeed(new FakeFacts().give(Items.COBBLED_DEEPSLATE, 30), cfg));
     }
 
     @Test
     public void stoneBudgetShrinksWithWhatIsAlreadyMade() {
         // a furnace in the bag is 8 less
-        assertEquals(11, KitPlanner.stoneNeed(new FakeFacts().give(Items.FURNACE, 1), cfg));
-        // a blast furnace counts as a furnace
+        assertEquals(27, KitPlanner.stoneNeed(new FakeFacts().give(Items.FURNACE, 1), cfg));
+        // a blast furnace counts as a furnace, and the iron goes in it, so there is no split to budget for
         assertEquals(11, KitPlanner.stoneNeed(new FakeFacts().give(Items.BLAST_FURNACE, 1), cfg));
         // one pick down: one more to make
-        assertEquals(16, KitPlanner.stoneNeed(new FakeFacts().give(Items.STONE_PICKAXE, 1), cfg));
+        assertEquals(32, KitPlanner.stoneNeed(new FakeFacts().give(Items.STONE_PICKAXE, 1), cfg));
     }
 
     @Test
     public void anIronPickCoversTheStoneBudgetOfTheStonePicks() {
-        // axe and furnace only: 11 and 2 of slack
-        assertEquals(13, KitPlanner.stoneNeed(new FakeFacts().give(Items.IRON_PICKAXE, 1), cfg));
-        assertEquals(13, KitPlanner.stoneNeed(new FakeFacts().give(Items.DIAMOND_PICKAXE, 1), cfg));
+        // axe and furnace only: 11, the split's 16 and 2 of slack
+        assertEquals(29, KitPlanner.stoneNeed(new FakeFacts().give(Items.IRON_PICKAXE, 1), cfg));
+        assertEquals(29, KitPlanner.stoneNeed(new FakeFacts().give(Items.DIAMOND_PICKAXE, 1), cfg));
     }
 
     @Test
     public void aWornStonePickIsAFreshOneInTheBudget() {
         f.spent.put(Items.STONE_PICKAXE, 1);
         // the worn one does not count, so both picks are still to make
-        assertEquals(19, KitPlanner.stoneNeed(f, cfg));
+        assertEquals(35, KitPlanner.stoneNeed(f, cfg));
         f.give(Items.STONE_PICKAXE, 1);
-        assertEquals(16, KitPlanner.stoneNeed(f, cfg));
+        assertEquals(32, KitPlanner.stoneNeed(f, cfg));
     }
 
     // ---- stone floor (what the movements must not spend) ----
 
     @Test
     public void stoneFloorIsTheWholeKitWithoutSlackOrWhatWeHold() {
-        // two picks 6, axe 3, furnace 8: the slack is for mining, not for keeping
-        assertEquals(17, KitPlanner.stoneFloor(f, cfg));
+        // two picks 6, axe 3, furnace 8, the split's other two 16: the slack is for mining, not for keeping
+        assertEquals(33, KitPlanner.stoneFloor(f, cfg));
         // holding cobble does not shrink it, the held cobble IS what it keeps
-        assertEquals(17, KitPlanner.stoneFloor(new FakeFacts().give(Items.COBBLESTONE, 18), cfg));
-        assertEquals(17, KitPlanner.stoneFloor(new FakeFacts().give(Items.COBBLESTONE, 3), cfg));
+        assertEquals(33, KitPlanner.stoneFloor(new FakeFacts().give(Items.COBBLESTONE, 18), cfg));
+        assertEquals(33, KitPlanner.stoneFloor(new FakeFacts().give(Items.COBBLESTONE, 3), cfg));
         // and deepslate is no cobble but it is not a reason to change the number either
-        assertEquals(17, KitPlanner.stoneFloor(new FakeFacts().give(Items.COBBLED_DEEPSLATE, 30), cfg));
+        assertEquals(33, KitPlanner.stoneFloor(new FakeFacts().give(Items.COBBLED_DEEPSLATE, 30), cfg));
     }
 
     @Test
     public void stoneFloorFallsAsTheStoneItemsGetMade() {
-        // the whole log: picks crafted, then the axe, then the furnace
+        // the whole log: picks crafted, then the axe, then the furnace, then the split's two
         FakeFacts made = new FakeFacts().give(Items.COBBLESTONE, 12).give(Items.STONE_PICKAXE, 2);
-        assertEquals(11, KitPlanner.stoneFloor(made, cfg));
+        assertEquals(27, KitPlanner.stoneFloor(made, cfg));
         made.give(Items.STONE_AXE, 1);
-        assertEquals(8, KitPlanner.stoneFloor(made, cfg));
+        assertEquals(24, KitPlanner.stoneFloor(made, cfg));
         made.give(Items.FURNACE, 1);
+        assertEquals(16, KitPlanner.stoneFloor(made, cfg));
+        made.give(Items.FURNACE, 2);
         assertEquals(0, KitPlanner.stoneFloor(made, cfg));
         // one pick down, and an iron pick covers both of them
-        assertEquals(14, KitPlanner.stoneFloor(new FakeFacts().give(Items.STONE_PICKAXE, 1), cfg));
-        assertEquals(11, KitPlanner.stoneFloor(new FakeFacts().give(Items.IRON_PICKAXE, 1), cfg));
+        assertEquals(30, KitPlanner.stoneFloor(new FakeFacts().give(Items.STONE_PICKAXE, 1), cfg));
+        assertEquals(27, KitPlanner.stoneFloor(new FakeFacts().give(Items.IRON_PICKAXE, 1), cfg));
     }
 
     @Test
     public void aFurnaceOnTheGroundIsHeldForTheStoneFloor() {
         // standing next to us and coming back to the bag: 8 less to keep
         f.furnacePlaced = true;
-        assertEquals(9, KitPlanner.stoneFloor(f, cfg));
+        assertEquals(25, KitPlanner.stoneFloor(f, cfg));
         // and what is left to mine agrees: the planner skips the furnace need for it, so no 8 cobble for it either
-        assertEquals(11, KitPlanner.stoneNeed(f, cfg));
-        // a furnace in the bag AND one on the ground is still one furnace
+        assertEquals(27, KitPlanner.stoneNeed(f, cfg));
+        // a furnace in the bag AND one on the ground is still one furnace (the split's extra ones leave the first to these two)
         f.give(Items.FURNACE, 1);
-        assertEquals(9, KitPlanner.stoneFloor(f, cfg));
+        assertEquals(25, KitPlanner.stoneFloor(f, cfg));
         // the table never cost any cobble, so it changes nothing
         FakeFacts table = new FakeFacts();
         table.tablePlaced = true;
-        assertEquals(17, KitPlanner.stoneFloor(table, cfg));
+        assertEquals(33, KitPlanner.stoneFloor(table, cfg));
     }
 
     @Test
@@ -710,12 +717,75 @@ public class KitPlannerTest {
         assertEquals(List.of("cobblestone", "stone_pickaxe", "stone_axe", "furnace", "food"), names(gather));
         // the total is held plus the shortfall, same shape as the log need
         FakeFacts some = new FakeFacts().give(Items.OAK_LOG, 15).give(Items.WOODEN_AXE, 1).give(Items.COBBLESTONE, 5);
-        assertEquals(new KitNeed("cobblestone", 19), find(KitPlanner.gather(some, cfg, 8), "cobblestone"));
+        assertEquals(new KitNeed("cobblestone", 35), find(KitPlanner.gather(some, cfg, 8), "cobblestone"));
         // enough of it: no gather entry, the crafts go straight in
-        some.give(Items.COBBLESTONE, 14);
+        some.give(Items.COBBLESTONE, 30);
         assertEquals(List.of("stone_pickaxe", "stone_axe", "furnace", "food"), names(KitPlanner.gather(some, cfg, 8)));
         // the wood is still first when it is short
         assertEquals("log", KitPlanner.gather(new FakeFacts().give(Items.COBBLESTONE, 2), cfg, 8).get(0).catalogueName());
+    }
+
+    // ---- the split smelt's furnaces (SmeltSplit)
+
+    @Test
+    public void theSplitBudgetsTwoMoreFurnacesNetOfIdleOnesAndTheBag() {
+        assertTrue(KitPlanner.ingotsNeeded(f, cfg) >= 27);
+        assertEquals(2, KitPlanner.extraFurnaces(f, cfg));
+        assertEquals(3, KitPlanner.smeltLoads(f, cfg));
+        // an idle one of ours standing is the first, a second idle one is one less to make
+        f.idleFurnaces = 1;
+        assertEquals(2, KitPlanner.extraFurnaces(f, cfg));
+        f.idleFurnaces = 2;
+        assertEquals(1, KitPlanner.extraFurnaces(f, cfg));
+        f.idleFurnaces = 1;
+        f.give(Items.FURNACE, 2);
+        assertEquals(0, KitPlanner.extraFurnaces(f, cfg));
+        // and the cobble agrees: the stone kit only, the furnaces are all there
+        FakeFacts tools = new FakeFacts().give(Items.STONE_PICKAXE, 2).give(Items.STONE_AXE, 1).give(Items.FURNACE, 1);
+        tools.idleFurnaces = 2;
+        assertEquals(0, KitPlanner.stoneNeed(tools, cfg));
+        assertEquals(0, KitPlanner.stoneFloor(tools, cfg));
+        // the tools' cobble is not the furnaces' (StationHook.cobbleOwed): the split never shows up there
+        assertEquals(9, KitPlanner.toolCobble(new FakeFacts(), cfg));
+    }
+
+    // a leftover or the early pick's handful is one furnace, nothing extra to budget
+    @Test
+    public void aSmallSmeltBudgetsNoExtraFurnace() {
+        int owed = KitPlanner.ingotsNeeded(f, cfg);
+        f.give(Items.IRON_INGOT, owed - 15);
+        assertEquals(0, KitPlanner.extraFurnaces(f, cfg));
+        assertEquals(1, KitPlanner.smeltLoads(f, cfg));
+        // cooking ingots count as held
+        FakeFacts cooking = new FakeFacts().cooking("iron_ingot", owed - 10, 60);
+        assertEquals(0, KitPlanner.extraFurnaces(cooking, cfg));
+    }
+
+    // mid batch it is the loads still to go in, not the split of what is left, so a decision is not re-made by the planner
+    @Test
+    public void aBatchUnderWayCountsItsLoadsLeft() {
+        try {
+            SmeltSplit.Batch batch = SmeltSplit.start(37, SmeltSplit.sizes(37, 3));
+            f.smeltBatch = batch;
+            f.furnacePlaced = true;
+            f.cooking("iron_ingot", 13, 130);
+            batch.handedOff();
+            // load 1 cooks in the one standing (busy, not idle): both others still to make, 16 cobble
+            assertEquals(2, KitPlanner.extraFurnaces(f, cfg));
+            assertEquals(2, KitPlanner.smeltLoads(f, cfg));
+            // load 2 crafted its furnace: one left
+            f.give(Items.FURNACE, 1);
+            assertEquals(1, KitPlanner.extraFurnaces(f, cfg));
+            batch.handedOff();
+            f.give(Items.FURNACE, -1);
+            assertEquals(1, KitPlanner.extraFurnaces(f, cfg));
+            assertEquals(1, KitPlanner.smeltLoads(f, cfg));
+            // a held no-split never asks
+            f.smeltBatch = SmeltSplit.start(20, new int[]{20});
+            assertEquals(0, KitPlanner.extraFurnaces(f, cfg));
+        } finally {
+            SmeltSplit.clear();
+        }
     }
 
     @Test

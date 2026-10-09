@@ -12,8 +12,9 @@ public final class HudRules {
     public static final int PHASES = GamerPhase.DRAGON.ordinal() + 1;
     // kit rows on the card at most, current need first. more than this and the card is a second task tree
     public static final int MAX_ROWS = 5;
-    // furnace rows at most, the overworld never runs more than two for us
-    public static final int MAX_FURNACES = 2;
+    // furnace rows at most: a split smelt runs three (SmeltSplit.MAX_LOADS). with the coal row that leaves the head need one kit row,
+    // which is the floor kitRowBudget keeps anyway
+    public static final int MAX_FURNACES = 3;
     // a need that just got satisfied stays on the card this long, dim with green numbers, so you see it land
     public static final long DONE_LINGER_TICKS = 8 * 20;
     // the card after a win stays up this long (wall clock, nothing on it counts down). the clock only starts once it can be

@@ -318,4 +318,56 @@ public class FurnaceJobsTest {
         assertEquals(6, j.count);
         assertEquals(1600, j.doneTick);
     }
+
+    // ---- a split smelt: the jobs plus the loads still in AsyncSmelting's queue
+
+    // load 2 went in this tick and the gamer has not taken it in yet: it counts, and only once
+    @Test
+    public void aQueuedLoadCountsOnce() {
+        List<RunState.FurnaceJob> jobs = new ArrayList<>(List.of(job(1, 13, 0, "furnace")));
+        List<RunState.FurnaceJob> queued = new ArrayList<>(List.of(job(2, 12, 100, "furnace")));
+        assertEquals(25, FurnaceJobs.pending(jobs, queued, "iron_ingot", null, "OVERWORLD"));
+        // the drain then records it, and the queue is empty: the same 25
+        FurnaceJobs.record(jobs, queued.remove(0));
+        assertEquals(25, FurnaceJobs.pending(jobs, queued, "iron_ingot", null, "OVERWORLD"));
+        assertEquals(25, FurnaceJobs.pending(jobs, "iron_ingot"));
+    }
+
+    // a reload of a furnace that already has a job replaces it on the drain (record), so the queue's count is the one
+    @Test
+    public void aQueuedReloadOfTheSameFurnaceReplacesItsJob() {
+        List<RunState.FurnaceJob> jobs = new ArrayList<>(List.of(job(1, 13, 0, "furnace"), job(2, 12, 0, "furnace")));
+        List<RunState.FurnaceJob> queued = new ArrayList<>(List.of(job(1, 16, 100, "furnace")));
+        assertEquals(28, FurnaceJobs.pending(jobs, queued, "iron_ingot", null, "OVERWORLD"));
+        // two loads of one furnace in one queue: the later one is what record() keeps
+        queued.add(job(1, 4, 120, "furnace"));
+        assertEquals(16, FurnaceJobs.pending(jobs, queued, "iron_ingot", null, "OVERWORLD"));
+    }
+
+    // the smelt task reads its own furnace off the slots, that job comes off; stranded ore and other dimensions never count
+    @Test
+    public void theSkippedSpotStrandedAndOtherDimensionsAreLeftOut() {
+        RunState.FurnaceJob cold = job(3, 9, 0, "furnace");
+        cold.stranded = true;
+        RunState.FurnaceJob nether = new RunState.FurnaceJob(new RunState.Pos(4, 64, 0), "NETHER", "furnace", "raw_iron", 7, "iron_ingot", 0, 1400);
+        List<RunState.FurnaceJob> jobs = List.of(job(1, 13, 0, "furnace"), job(2, 12, 0, "furnace"), cold);
+        List<RunState.FurnaceJob> queued = List.of(nether);
+        assertEquals(25, FurnaceJobs.pending(jobs, List.of(), "iron_ingot", null, "OVERWORLD"));
+        assertEquals(12, FurnaceJobs.pending(jobs, List.of(), "iron_ingot", new RunState.Pos(1, 64, 0), "OVERWORLD"));
+        // the same x y z in the nether is not the furnace we are standing at
+        assertEquals(25, FurnaceJobs.pending(jobs, List.of(), "iron_ingot", new RunState.Pos(1, 64, 0), "NETHER"));
+        // and the skip only leaves out the spot in its own dimension
+        assertEquals(25 + 7, FurnaceJobs.pending(jobs, queued, "iron_ingot", new RunState.Pos(4, 64, 0), "OVERWORLD"));
+        assertEquals(25, FurnaceJobs.pending(jobs, queued, "iron_ingot", new RunState.Pos(4, 64, 0), "NETHER"));
+    }
+
+    @Test
+    public void aJobAtASpotIsInTheListOrTheQueue() {
+        List<RunState.FurnaceJob> jobs = List.of(job(1, 13, 0, "furnace"));
+        List<RunState.FurnaceJob> queued = List.of(job(2, 12, 0, "furnace"));
+        assertTrue(FurnaceJobs.jobAt(jobs, queued, new RunState.Pos(1, 64, 0), "OVERWORLD"));
+        assertTrue(FurnaceJobs.jobAt(jobs, queued, new RunState.Pos(2, 64, 0), "OVERWORLD"));
+        assertFalse(FurnaceJobs.jobAt(jobs, queued, new RunState.Pos(3, 64, 0), "OVERWORLD"));
+        assertFalse(FurnaceJobs.jobAt(jobs, queued, new RunState.Pos(1, 64, 0), "NETHER"));
+    }
 }

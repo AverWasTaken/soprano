@@ -190,26 +190,31 @@ public abstract class DoStuffInContainerTask extends Task {
         }
         // the block our own placer put down, in the world before the tracker has caught up with it (a rescan behind the
         // table we just placed is how the second one got crafted)
+        // a split load (skipsBusy) sees only the furnaces with nothing of ours in them, so "ours is right here" never stops it making
+        // the second one. the registry is asked for the nearest idle one, not the nearest one, or a busy furnace next to us hid the
+        // idle one 30 blocks off
+        boolean skip = skipsBusy();
+        java.util.function.Predicate<BlockPos> free = p -> !skip || !busy(mod, p);
         BlockPos placed = placedPos();
-        if (usable(mod, placed)) {
+        if (usable(mod, placed) && free.test(placed)) {
             seen.add(candidate(placed, me, StationChoice.Role.OURS));
         }
         // the run's registry knows where its stations stand even when the tracker has not seen them or canReach says no
-        BlockPos ours = _stationKind == null ? null : StationHook.standingNear(_stationKind, me.x, me.y, me.z);
+        BlockPos ours = _stationKind == null ? null : StationHook.standingWithin(_stationKind, me.x, me.y, me.z, WalkCost.STATION_NEAR, free);
         if (usable(mod, ours)) {
             seen.add(candidate(ours, me, StationChoice.Role.OURS));
         }
         // and the nearest of ours out to the forget line, for the walk back (StationChoice takes it within WALK_BACK for a table, furnace
         // or smoker, and anywhere out to the forget line when the bag cannot make one). an unloaded chunk reads as air, so out there the
         // registry's word is taken
-        BlockPos oursFar = _stationKind == null ? null : StationHook.standingWithin(_stationKind, me.x, me.y, me.z, WalkCost.STATION_FORGET);
+        BlockPos oursFar = _stationKind == null ? null : StationHook.standingWithin(_stationKind, me.x, me.y, me.z, WalkCost.STATION_FORGET, free);
         if (oursFar != null && !oursFar.equals(ours) && walkBackUsable(mod, oursFar, _containerBlocks)) {
             seen.add(candidate(oursFar, me, StationChoice.Role.OURS));
         }
         // the tracker loses the one we were walking to now and then (a rescan after a fuel trip did it, and the next thing the
         // bot did was mine the smoker it had just put down). the world still has it, the world wins
         BlockPos previous = _cachedContainerPosition;
-        if (usable(mod, previous)) {
+        if (usable(mod, previous) && free.test(previous)) {
             seen.add(candidate(previous, me, StationHook.ours(previous) ? StationChoice.Role.OURS : StationChoice.Role.WORLD));
         }
         // a world one (a village's, or one of ours the registry already forgot, never in the registry) that alto can see and reach,
@@ -217,7 +222,7 @@ public abstract class DoStuffInContainerTask extends Task {
         double reach = worldReach();
         double lookOut = Math.max(reach, WalkCost.STATION_FORGET);
         Optional<BlockPos> world = mod.getBlockTracker().getNearestTracking(me,
-                p -> WorldHelper.canReach(mod, p) && !StationHook.pickingUp(p) && !StationHook.ours(p)
+                p -> WorldHelper.canReach(mod, p) && !StationHook.pickingUp(p) && !StationHook.ours(p) && free.test(p)
                         && WalkCost.stationDistance(p.getX(), p.getY(), p.getZ(), me.x, me.y, me.z) <= lookOut,
                 (fx, fy, fz, tx, ty, tz) -> WalkCost.distance3d(tx - fx, ty - fy, tz - fz), _containerBlocks);
         world.ifPresent(p -> seen.add(candidate(p, me, StationChoice.Role.WORLD)));
@@ -252,6 +257,12 @@ public abstract class DoStuffInContainerTask extends Task {
     public static boolean walkBackUsable(AltoClef mod, BlockPos pos, Block... blocks) {
         return !StationHook.pickingUp(pos) && !StationHook.parked(pos) && !StationMemory.holdsOurStuff(mod, pos)
                 && (!mod.getChunkTracker().isChunkLoaded(pos) || (isBlockIn(mod, pos, blocks) && WorldHelper.canReach(mod, pos)));
+    }
+
+    // something of ours is in it by the last look, or a job points at it (a load from this very tick is still in the queue and
+    // the container tracker may not have caught up)
+    static boolean busy(AltoClef mod, BlockPos pos) {
+        return StationMemory.holdsOurStuff(mod, pos) || AsyncSmelting.jobAt(pos);
     }
 
     private static StationChoice.Candidate<BlockPos> candidate(BlockPos pos, Vec3 me, StationChoice.Role role) {
@@ -320,6 +331,12 @@ public abstract class DoStuffInContainerTask extends Task {
     // new one (our ore in a half loaded furnace, the blast furnace the router picked). null = no such thing, the choice decides
     protected BlockPos pinnedStation(AltoClef mod) {
         return null;
+    }
+
+    // Virtual. true = walk past stations that already hold our things or have a job (a split smelt's next load), false = the usual
+    // choice
+    protected boolean skipsBusy() {
+        return false;
     }
 
     // Virtual. false means only ever use a container that is already there, never get/place one

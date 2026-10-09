@@ -54,6 +54,21 @@ public class SmeltInFurnaceTask extends ResourceTask implements AsyncSmelting.Ha
         this(new SmeltTarget[]{target});
     }
 
+    // one load of a split batch (SmeltSplit): the target stays the whole need, so the bag filling up from another furnace's collect
+    // doesn't read as this load being done, and at most `cap` goes in. it never goes into a furnace that is already busy with
+    // ours, and is not pinned to one (StationMemory.ourLoaded would send load 2 straight back into load 1's furnace)
+    public static SmeltInFurnaceTask splitLoad(SmeltTarget target, SmeltSplit.Batch batch, int cap) {
+        SmeltInFurnaceTask task = new SmeltInFurnaceTask(target);
+        task._doTask._split = batch;
+        task._doTask._loadCap = Math.max(1, cap);
+        return task;
+    }
+
+    // the furnace this load has started putting things in, null before it has
+    public BlockPos loadingAt() {
+        return _doTask.hasStartedSmelting() ? _doTask.getTargetContainerPosition() : null;
+    }
+
     private static ItemTarget[] extractItemTargets(SmeltTarget[] recipeTargets) {
         List<ItemTarget> result = new ArrayList<>(recipeTargets.length);
         for (SmeltTarget target : recipeTargets) {
@@ -164,6 +179,9 @@ public class SmeltInFurnaceTask extends ResourceTask implements AsyncSmelting.Ha
         private final FuelShortage _dryInside = new FuelShortage();
         // the slot is full of one fuel, the bag has only another, see stuckShort
         private final FuelShortage _cannotAdd = new FuelShortage();
+        // a split load (SmeltInFurnaceTask.splitLoad): the batch it belongs to and how much of the need goes in this furnace
+        private SmeltSplit.Batch _split;
+        private int _loadCap = Integer.MAX_VALUE;
 
         public DoSmeltInFurnaceTask(SmeltTarget target) {
             super(Blocks.FURNACE, new ItemTarget(Items.FURNACE));
@@ -178,7 +196,8 @@ public class SmeltInFurnaceTask extends ResourceTask implements AsyncSmelting.Ha
         @Override
         protected boolean isSubTaskEqual(DoStuffInContainerTask other) {
             if (other instanceof DoSmeltInFurnaceTask task) {
-                return task._target.equals(_target) && task._ignoreMaterials == _ignoreMaterials;
+                return task._target.equals(_target) && task._ignoreMaterials == _ignoreMaterials && task._split == _split
+                        && task._loadCap == _loadCap;
             }
             return false;
         }
@@ -208,11 +227,12 @@ public class SmeltInFurnaceTask extends ResourceTask implements AsyncSmelting.Ha
             ItemTarget outputTarget = _target.getItem();
             // Materials needed = (mat_target (- 0*mat_in_inventory) - out_in_inventory - mat_in_furnace - out_in_furnace)
             // ^ 0 * mat_in_inventory because we always care aobut the TARGET materials, not how many LEFT there are.
-            int materialsNeeded = materialTarget.getTargetCount()
-                    /*- mod.getItemStorage().getItemCountInventoryOnly(materialTarget.getMatches())*/ // See comment above
-                    - mod.getItemStorage().getItemCountInventoryOnly(outputTarget.getMatches())
-                    - materialsKnownInFurnace(mod)
-                    - (outputTarget.matches(_furnaceCache.outputSlot.getItem()) ? _furnaceCache.outputSlot.getCount() : 0);
+            int outInBag = mod.getItemStorage().getItemCountInventoryOnly(outputTarget.getMatches());
+            int outInSlot = outputTarget.matches(_furnaceCache.outputSlot.getItem()) ? _furnaceCache.outputSlot.getCount() : 0;
+            // what this furnace still has to make: the target less every other furnace's load (a split batch has two or three
+            // cooking) and capped at one load for a split. the station itself is read off its slots, so it comes off below
+            int owed = owedHere(mod, stationHere(mod), outInBag, outInSlot);
+            int materialsNeeded = owed - materialsKnownInFurnace(mod);
             double totalFuelInFurnace = ItemHelper.getFuelAmount(_furnaceCache.fuelSlot) + _furnaceCache.burningFuelCount + _furnaceCache.burnPercentage
                     + fuelKnownInFurnace(mod);
             // Fuel needed = (mat_target - out_in_inventory - out_in_furnace - totalFuelInFurnace)
@@ -223,8 +243,7 @@ public class SmeltInFurnaceTask extends ResourceTask implements AsyncSmelting.Ha
             int meatToLoad = _ignoreMaterials ? mod.getItemStorage().getItemCountInventoryOnly(materialTarget.getMatches()) : 0;
             double fuelNeeded = FuelShortage.needed(_ignoreMaterials,
                     (materialTarget.matches(_furnaceCache.materialSlot.getItem()) ? _furnaceCache.materialSlot.getCount() : 0) + meatToLoad,
-                    materialTarget.getTargetCount(), mod.getItemStorage().getItemCountInventoryOnly(outputTarget.getMatches()),
-                    outputTarget.matches(_furnaceCache.outputSlot.getItem()) ? _furnaceCache.outputSlot.getCount() : 0, totalFuelInFurnace);
+                    _ignoreMaterials ? materialTarget.getTargetCount() : owed + outInBag + outInSlot, outInBag, outInSlot, totalFuelInFurnace);
 
             // We don't have enough materials...
             if (mod.getItemStorage().getItemCountInventoryOnly(materialTarget.getMatches()) < materialsNeeded) {
@@ -271,6 +290,20 @@ public class SmeltInFurnaceTask extends ResourceTask implements AsyncSmelting.Ha
                     + "recording it so it gets picked up (" + (lit ? "lit" : "not lit") + ")");
             AsyncSmelting.leftBehind(mod, at, Blocks.FURNACE, material, _target.getItem(), lit);
             return true;
+        }
+
+        // the target less what is out already, less what the other furnaces' jobs are cooking for it, at most one load. only iron
+        // has jobs worth counting here (the meat's are the food task's business). `here` is the station we read off its own slots,
+        // its job would count twice. plain alto has no jobs and gets the old sum
+        private int owedHere(AltoClef mod, BlockPos here, int outInBag, int outInSlot) {
+            int elsewhere = AsyncSmelting.countsElsewhere(_target.getItem()) ? AsyncSmelting.pendingOutput("iron_ingot", here) : 0;
+            long owed = (long) _allMaterials.getTargetCount() - elsewhere - outInBag - outInSlot;
+            return (int) Math.max(Integer.MIN_VALUE, Math.min(owed, _loadCap));
+        }
+
+        // the block this task reads off its slots right now: the open one, else the one the choice walks to
+        private BlockPos stationHere(AltoClef mod) {
+            return isContainerOpen(mod) ? getTargetContainerPosition() : stationInUse(mod);
         }
 
         // what the screen showed, or when this task never had it open (an interrupt restarts us and the cache is empty) what the
@@ -364,9 +397,9 @@ public class SmeltInFurnaceTask extends ResourceTask implements AsyncSmelting.Ha
             // Materials needed in slot = (mat_target - out_in_inventory - out_in_furnace)
             ItemTarget materialTarget = _allMaterials;
 
-            int neededMaterialsInSlot = materialTarget.getTargetCount()
-                    - mod.getItemStorage().getItemCountInventoryOnly(_target.getItem().getMatches())
-                    - (_target.getItem().matches(output.getItem()) ? output.getCount() : 0);
+            int neededMaterialsInSlot = owedHere(mod, getTargetContainerPosition(),
+                    mod.getItemStorage().getItemCountInventoryOnly(_target.getItem().getMatches()),
+                    _target.getItem().matches(output.getItem()) ? output.getCount() : 0);
             // We don't have the right material or we need more
             if (!_allMaterials.matches(material.getItem()) || neededMaterialsInSlot > material.getCount()) {
                 int materialsAlreadyIn = (materialTarget.matches(material.getItem()) ? material.getCount() : 0);
@@ -440,13 +473,34 @@ public class SmeltInFurnaceTask extends ResourceTask implements AsyncSmelting.Ha
         // a furnace with our ore in it (the screen was closed on it half loaded, or we put stuff in it ourselves) is used from any
         // distance and never left for a new one. that is also the "never put a furnace over our ore" rule: otherwise the choice
         // decides (StationChoice), and the one we picked last tick only sticks while it still wins
+        // a split load only keeps its own furnace (or the one the load it replaces had started, the batch remembers it). the
+        // nearest loaded one is the previous load's, cooking, and pinning to it put load 2 on top of load 1
         @Override
         protected BlockPos pinnedStation(AltoClef mod) {
             BlockPos kept = getTargetContainerPosition();
-            if (kept != null && (hasStartedSmelting() || _furnaceCache.burnPercentage > 0 || StationMemory.holdsOurStuff(mod, kept))) {
+            boolean keep = kept != null && (hasStartedSmelting() || _furnaceCache.burnPercentage > 0 || StationMemory.holdsOurStuff(mod, kept));
+            BlockPos half = _split == null ? null : _split.loadingAt();
+            return pin(kept, keep, _split != null, half, half != null && AsyncSmelting.ironCookingAt(half),
+                    () -> StationMemory.ourLoaded(mod, Blocks.FURNACE));
+        }
+
+        // the pin rule without the world. a half load we started is ours to finish, unless it did go in after all and is cooking
+        // (its hand-off landed while we were away): that one is busy like any other
+        static <T> T pin(T kept, boolean keepKept, boolean split, T half, boolean halfCooking, java.util.function.Supplier<T> ourLoaded) {
+            if (keepKept) {
                 return kept;
             }
-            return StationMemory.ourLoaded(mod, Blocks.FURNACE);
+            if (split) {
+                return half == null || halfCooking ? null : half;
+            }
+            return ourLoaded.get();
+        }
+
+        // a split load walks past furnaces that already have our things in them (DoStuffInContainerTask.choose), and so makes or
+        // places one even with a busy one of ours right here
+        @Override
+        protected boolean skipsBusy() {
+            return _split != null;
         }
 
         // the caches start as EMPTY stacks and only change while the screen is open, so anything in them means we

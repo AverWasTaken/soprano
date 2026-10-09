@@ -38,6 +38,19 @@ public class FakeFacts implements GamerFacts {
     public boolean earlyLoad;
     // the jobs of this dimension, set by hand
     public final java.util.List<RunState.FurnaceJob> jobs = new java.util.ArrayList<>();
+    // idle furnaces of ours within the walk back, and the split smelt that is loading (null = none)
+    public int idleFurnaces;
+    public adris.altoclef.tasks.container.SmeltSplit.Batch smeltBatch;
+
+    @Override
+    public int idleFurnaces() {
+        return idleFurnaces;
+    }
+
+    @Override
+    public adris.altoclef.tasks.container.SmeltSplit.Batch smeltBatch() {
+        return smeltBatch;
+    }
 
     // an iron smelt that finishes `seconds` from now with `count` ingots in it
     public FakeFacts cooking(String output, int count, double seconds) {

@@ -113,6 +113,39 @@ public final class AsyncSmelting {
         return FurnaceJobs.pendingUnits(jobs.get());
     }
 
+    // what the jobs (and the loads still in the queue) will have made of this output, `skip` left out (null = none). the smelt
+    // task reads its own station off the slots and every other furnace off this, so a split batch counts each load once
+    public static int pendingOutput(String outputName, BlockPos skip) {
+        RunState.Pos at = skip == null ? null : new RunState.Pos(skip.getX(), skip.getY(), skip.getZ());
+        return FurnaceJobs.pending(jobs.get(), List.copyOf(LOADED), outputName, at, WorldHelper.getCurrentDimension().name());
+    }
+
+    // the smelt outputs whose jobs a smelt task takes off its own count (pendingOutput): iron only, the food task does its own
+    // sums for the meat
+    public static boolean countsElsewhere(ItemTarget output) {
+        Item[] matches = output.getMatches();
+        return matches.length == 1 && OUTPUTS.contains(name(matches[0]));
+    }
+
+    // a job of ours points at this block (recorded, or loaded this tick and still queued): busy, a split load goes elsewhere
+    public static boolean jobAt(BlockPos pos) {
+        return pos != null && FurnaceJobs.jobAt(jobs.get(), List.copyOf(LOADED), new RunState.Pos(pos.getX(), pos.getY(), pos.getZ()),
+                WorldHelper.getCurrentDimension().name());
+    }
+
+    // an iron job that is really cooking points at this block (a stranded one is our half load sitting cold, not a load to keep
+    // off). the pending sum with and without the spot, so it is the same book pendingOutput reads
+    public static boolean ironCookingAt(BlockPos pos) {
+        if (pos == null) {
+            return false;
+        }
+        RunState.Pos at = new RunState.Pos(pos.getX(), pos.getY(), pos.getZ());
+        String dimension = WorldHelper.getCurrentDimension().name();
+        List<RunState.FurnaceJob> queued = List.copyOf(LOADED);
+        return FurnaceJobs.pending(jobs.get(), queued, "iron_ingot", null, dimension)
+                > FurnaceJobs.pending(jobs.get(), queued, "iron_ingot", at, dimension);
+    }
+
     // is there enough fuel in (the lit item plus the fuel slot) to cook everything in the input slot without us. the numbers
     // are smelts, same units as the rest of the smelt task, so a coal is 8
     public static boolean fuelCovers(ItemStack fuelSlot, double litFuel, int inputCount) {
@@ -240,6 +273,7 @@ public final class AsyncSmelting {
         lastWork = -1;
         jobs = List::of;
         ours = pos -> false;
+        SmeltSplit.clear();
     }
 
     private static String name(Item item) {

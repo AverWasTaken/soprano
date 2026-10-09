@@ -251,7 +251,7 @@ public final class ResourceDetour {
         GamerFacts f = ctx.facts();
         OverworldConfig cfg = ctx.cfg().overworld;
         return DetourSpec.coalNeed(KitPlanner.ingotsNeeded(f, cfg), f.count(Items.IRON_INGOT), f.pendingOutput(Items.IRON_INGOT),
-                CookGate.raw(f), CookGate.woodSmelts(f, cfg, ctx.cfg().end.beds));
+                CookGate.raw(f), CookGate.woodSmelts(f, cfg, ctx.cfg().end.beds), KitPlanner.smeltLoads(f, cfg));
     }
 
     static int flintNeed(GamerFacts f) {
