@@ -127,7 +127,8 @@ public final class MinecraftFacts implements GamerFacts {
             furnaceNearby = held(player, StationHook.Kind.FURNACE, furnaceNear);
             boolean smokerNear = heldNear(player, StationHook.Kind.SMOKER, WorkbenchRules.bandRadius(smokerHeld));
             smokerHeld = Workbenches.any(state, StationHook.Kind.SMOKER, dimension.name()) ? Boolean.valueOf(smokerNear) : null;
-            smokerNearby = held(player, StationHook.Kind.SMOKER, smokerNear);
+            boolean furnaceAtHand = furnaceNear || mod.getItemStorage().hasItem(Items.FURNACE);
+            smokerNearby = WorkbenchRules.plannerSmoker(smokerNear, furnaceAtHand, !smokerNear && !furnaceAtHand && held(player, StationHook.Kind.SMOKER, false));
         } else {
             tableNearby = false;
             furnaceNearby = false;

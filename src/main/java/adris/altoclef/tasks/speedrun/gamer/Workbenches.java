@@ -36,6 +36,7 @@ import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.IntSupplier;
 import java.util.function.Predicate;
 
 // the one place that knows about every table, furnace and smoker this run put down: where they are, whether they are being used,
@@ -274,7 +275,17 @@ public final class Workbenches {
 
     // what the container tasks see (StationHook), wired in by the run
     public static StationHook.Source source(RunState state, GamerFacts facts) {
+        return source(state, facts, () -> 0);
+    }
+
+    // `cobbleOwed`: what the stone kit still eats (GamerTask, KitPlanner.toolCobble), kept out of "the bag can make a furnace"
+    public static StationHook.Source source(RunState state, GamerFacts facts, IntSupplier cobbleOwed) {
         return new StationHook.Source() {
+            @Override
+            public int cobbleOwed() {
+                return cobbleOwed.getAsInt();
+            }
+
             @Override
             public BlockPos standingWithin(Kind kind, double x, double y, double z, double radius) {
                 Bench best = nearestStanding(state, kind, facts.dimension().name(), x, y, z, radius);
@@ -489,9 +500,7 @@ public final class Workbenches {
     // one line each way: it waits beside a cooking furnace now, or that furnace is done and this one gets decided again
     private static void anchor(RunState state, Bench b, Bench anchor, long now) {
         Bench was = b.anchor;
-        // the furnace coming down or gone is a real end, not a flicker to sit out
-        boolean left = was != null && (was.state == Bench.State.PICKING_UP || was.state == Bench.State.IN_BAG || !state.benches.contains(was));
-        switch (WorkbenchRules.updateAnchor(b, anchor, now, left)) {
+        switch (WorkbenchRules.updateAnchor(b, anchor, now, WorkbenchRules.anchorLeft(was, state.benches))) {
             case ANCHORED -> log("keeping " + b.kind.word() + " at " + at(b) + (anchor.state == Bench.State.BUSY
                     ? ", the " + anchor.kind.word() + " at " + at(anchor) + " is cooking and we'll be back for it"
                     : ", we'll be back at the " + anchor.kind.word() + " at " + at(anchor) + " " + anchor.comingBack));

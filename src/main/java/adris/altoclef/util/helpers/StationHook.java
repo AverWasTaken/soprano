@@ -45,6 +45,12 @@ public final class StationHook {
         // this block is ours and its job went stale and was given up on (Bench.givenUp): what the container tracker still remembers
         // in it is not a load to go back and finish
         boolean givenUp(BlockPos pos);
+
+        // cobble in the bag that is already owed to something else (the gamer's stone tools). "the bag can make a furnace" only
+        // counts what is left over, or 8 cobble for a pick, an axe and a sword reads as a furnace and the far one gets abandoned
+        default int cobbleOwed() {
+            return 0;
+        }
     }
 
     private static volatile Source source;
@@ -105,5 +111,11 @@ public final class StationHook {
     public static boolean givenUp(BlockPos pos) {
         Source s = source;
         return s != null && pos != null && s.givenUp(pos);
+    }
+
+    // plain alto owes nothing, all of it can go into a furnace
+    public static int cobbleOwed() {
+        Source s = source;
+        return s == null ? 0 : s.cobbleOwed();
     }
 }

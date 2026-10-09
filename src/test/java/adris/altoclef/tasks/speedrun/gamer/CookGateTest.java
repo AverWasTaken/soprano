@@ -613,10 +613,48 @@ public class CookGateTest {
         assertTrue(CookGate.reusable(b, full, 8, true));
     }
 
+    // a far smoker does not pull the meat away from our furnace right here: smoker first is about the one next to us
+    @Test
+    public void aFarSmokerDoesNotBeatTheFurnaceHere() {
+        f.give(Items.MUTTON, 6).give(Items.COAL, 2);
+        f.furnacePlaced = true;
+        f.smokerPlaced = WorkbenchRules.plannerSmoker(false, true, true);
+        assertFalse(f.smokerPlaced);
+        assertEquals(CookGate.Station.FURNACE, CookGate.station(f, cfg, true));
+        // no furnace at hand: the far smoker is the walk worth making, and the cook is a smoker cook
+        FakeFacts away = new FakeFacts().give(Items.MUTTON, 6).give(Items.COAL, 2);
+        away.smokerPlaced = WorkbenchRules.plannerSmoker(false, false, true);
+        assertTrue(away.smokerPlaced);
+        assertEquals(CookGate.Station.SMOKER, CookGate.station(away, cfg, true));
+        // and one right here is smoker first, as always
+        assertTrue(WorkbenchRules.plannerSmoker(true, true, false));
+    }
+
     // what MinecraftFacts says for a furnace of ours 40 blocks off: held only while the smelt task would walk back to it
-    private static boolean walkBackFlag(FakeFacts f) {
-        boolean canMake = StationChoice.canMakeFrom(StationHook.Kind.FURNACE, f.count(Items.COBBLESTONE), 0, 0, f.count(Items.FURNACE));
+    // (DoStuffInContainerTask.bagCanMake: the cobble the stone tools still eat is not furnace material)
+    private boolean walkBackFlag(FakeFacts f) {
+        int free = f.count(Items.COBBLESTONE) - KitPlanner.toolCobble(f, cfg);
+        boolean canMake = StationChoice.canMakeFrom(StationHook.Kind.FURNACE, free, 0, 0, f.count(Items.FURNACE));
         return WorkbenchRules.plannerHeld(false, f.has(Items.FURNACE), canMake, true);
+    }
+
+    // mining for the stone tools walks the cobble up past 8: that is the tools' cobble, not a furnace. the far furnace stays held the
+    // whole way, so the plan never grows a furnace and its 8 cobble halfway through
+    @Test
+    public void cobbleForTheToolsDoesNotAbandonTheFarFurnace() {
+        f.give(Items.OAK_LOG, 15).give(Items.WOODEN_AXE, 1).give(Items.WOODEN_PICKAXE, 1);
+        int owed = KitPlanner.toolCobble(f, cfg);
+        assertTrue("the test needs tools that eat at least 8", owed >= 8);
+        f.furnacePlaced = walkBackFlag(f);
+        int target = KitPlanner.stoneNeed(f, cfg);
+        for (int held = 1; held <= owed + 2; held++) {
+            f.give(Items.COBBLESTONE, 1);
+            f.furnacePlaced = walkBackFlag(f);
+            assertTrue("cobble " + held, f.furnacePlaced);
+            assertFalse("cobble " + held, names(KitPlanner.gather(f, cfg, 8)).contains("furnace"));
+            // what is left to mine only ever goes down
+            assertEquals(Math.max(0, target - held), KitPlanner.stoneNeed(f, cfg));
+        }
     }
 
     // one flag, every reader: with no cobble the furnace 40 blocks off is ours to walk back to, so there is no furnace to craft, no
@@ -634,8 +672,10 @@ public class CookGateTest {
         assertEquals(CookGate.Station.FURNACE, CookGate.station(f, cfg, true));
         assertEquals(COOK, need());
         assertTrue(CookGate.cookFeasible(f, cfg, 8));
-        // 8 cobble: making one wins in StationChoice, and the planner lets go of the far one with it
-        f.give(Items.COBBLESTONE, 8);
+        // 8 cobble over what the tools eat: making one wins in StationChoice, and the planner lets go of the far one with it
+        f.give(Items.COBBLESTONE, KitPlanner.toolCobble(f, cfg) + 7);
+        assertTrue(walkBackFlag(f));
+        f.give(Items.COBBLESTONE, 1);
         f.furnacePlaced = walkBackFlag(f);
         assertFalse(f.furnacePlaced);
         assertTrue(names(KitPlanner.gather(f, cfg, 8)).contains("furnace"));

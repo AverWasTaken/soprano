@@ -1851,10 +1851,10 @@ public class WorkbenchRulesTest {
         List<String> plan = List.of();
         assertEquals(WorkbenchRules.Anchor.SAME, WorkbenchRules.updateComingBack(smoker, WorkbenchRules.comingBack(Kind.SMOKER, plan, true), 100));
         assertEquals(WorkbenchRules.Anchor.RELEASED, WorkbenchRules.updateComingBack(smoker, null, 100 + WorkbenchRules.LET_GO_TICKS));
-        // the table only starts its own count once the smoker stopped anchoring it
+        // the smoker's own "no" already sat out its 3 s, so the table goes with it on the same look
         long t = 100 + WorkbenchRules.LET_GO_TICKS;
-        assertEquals(WorkbenchRules.Anchor.SAME, WorkbenchRules.updateAnchor(b, WorkbenchRules.anchorOf(b, all, x -> false), t, false));
-        assertEquals(WorkbenchRules.Anchor.RELEASED, WorkbenchRules.updateAnchor(b, WorkbenchRules.anchorOf(b, all, x -> false), t + WorkbenchRules.LET_GO_TICKS, false));
+        assertTrue(WorkbenchRules.anchorLeft(smoker, all));
+        assertEquals(WorkbenchRules.Anchor.RELEASED, WorkbenchRules.updateAnchor(b, WorkbenchRules.anchorOf(b, all, x -> false), t, WorkbenchRules.anchorLeft(smoker, all)));
         Seen s = new Seen();
         s.now = 5000;
         s.neededSoon = false;
@@ -1973,7 +1973,7 @@ public class WorkbenchRulesTest {
         assertEquals("to cook", smoker.comingBack);
     }
 
-    // 3 s of "no" really is no: the smoker lets go and is decided again, and the table follows 3 s after
+    // 3 s of "no" really is no: the smoker lets go and is decided again, and the table goes on the same look (one 3 s end to end)
     @Test
     public void threeSecondsOfNoLetsGo() {
         Bench smoker = smokerAt15();
@@ -1984,14 +1984,15 @@ public class WorkbenchRulesTest {
         long t = 100;
         for (long i = 0; i < WorkbenchRules.LET_GO_TICKS; i++) {
             assertEquals(WorkbenchRules.Anchor.SAME, WorkbenchRules.updateComingBack(smoker, null, t + i));
+            assertEquals(WorkbenchRules.Anchor.SAME, WorkbenchRules.updateAnchor(b, WorkbenchRules.anchorOf(b, all, x -> false), t + i,
+                    WorkbenchRules.anchorLeft(smoker, all)));
         }
         assertEquals(WorkbenchRules.Anchor.RELEASED, WorkbenchRules.updateComingBack(smoker, null, t + WorkbenchRules.LET_GO_TICKS));
         assertNull(smoker.comingBack);
         assertTrue(smoker.redecide);
         long u = t + WorkbenchRules.LET_GO_TICKS;
-        assertEquals(WorkbenchRules.Anchor.SAME, WorkbenchRules.updateAnchor(b, WorkbenchRules.anchorOf(b, all, x -> false), u, false));
-        assertSame(smoker, b.anchor);
-        assertEquals(WorkbenchRules.Anchor.RELEASED, WorkbenchRules.updateAnchor(b, WorkbenchRules.anchorOf(b, all, x -> false), u + WorkbenchRules.LET_GO_TICKS, false));
+        // while the smoker's "no" was still being sat out the table never even saw a missing anchor
+        assertEquals(WorkbenchRules.Anchor.RELEASED, WorkbenchRules.updateAnchor(b, WorkbenchRules.anchorOf(b, all, x -> false), u, WorkbenchRules.anchorLeft(smoker, all)));
         assertNull(b.anchor);
         assertTrue(b.redecide);
         // and a yes is believed at once
@@ -2041,6 +2042,9 @@ public class WorkbenchRulesTest {
         WorkbenchRules.updateAnchor(b, furnace, 0, false);
         assertEquals(WorkbenchRules.Anchor.SAME, WorkbenchRules.updateAnchor(b, null, 10, false));
         assertSame(furnace, b.anchor);
+        // a busy furnace whose job flickers out is not "left", only the hold covers it
+        assertFalse(WorkbenchRules.anchorLeft(furnace, List.of(furnace, b)));
+        assertTrue(WorkbenchRules.anchorLeft(furnace, List.of(b)));
         // a different anchor is taken at once
         Bench other = cooking();
         assertEquals(WorkbenchRules.Anchor.ANCHORED, WorkbenchRules.updateAnchor(b, other, 11, false));

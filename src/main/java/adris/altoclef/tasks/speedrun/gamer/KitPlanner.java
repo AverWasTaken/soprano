@@ -214,6 +214,12 @@ public final class KitPlanner {
         return stoneWanted(f, cfg, f.furnacePlacedNearby());
     }
 
+    // the cobble the stone tools still eat, the furnace left out: what "the bag can make a furnace" must not count
+    // (StationHook.cobbleOwed). the furnace's own 8 are not owed to anything else, that is what they would be spent on
+    public static int toolCobble(GamerFacts f, OverworldConfig cfg) {
+        return stoneWanted(f, cfg, true);
+    }
+
     private static int stoneWanted(GamerFacts f, OverworldConfig cfg, boolean furnaceStanding) {
         List<KitItem> all = new ArrayList<>(cfg.starterKit);
         all.addAll(cfg.ironKit);

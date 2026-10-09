@@ -98,6 +98,13 @@ public final class WorkbenchRules {
         return heldNear || !inBag && !canMake && walkBackTarget;
     }
 
+    // the smoker's flag also says "smoker first" to CookGate, FurnaceWatch and comingBack, and that rule is about the smoker next to
+    // us: a far one (`walkBack`, plannerHeld past the band) never beats a furnace of ours within the band or in the bag. with no
+    // furnace at hand either, the smoker is the walk worth making
+    public static boolean plannerSmoker(boolean near, boolean furnaceAtHand, boolean walkBack) {
+        return near || !furnaceAtHand && walkBack;
+    }
+
     // a table past FAR_TABLE_DISTANCE that the bag can make again: 4 planks, or a log to make them from
     public static boolean canRecraftTable(int planks, int logs) {
         return planks >= 4 || logs >= 1;
@@ -600,6 +607,16 @@ public final class WorkbenchRules {
         b.comingBackLostSince = NEVER;
         b.redecide = true;
         return Anchor.RELEASED;
+    }
+
+    // the anchor is not flickering, it is done: coming down, in the bag, out of the registry. so is a standing one whose comingBack
+    // let go, that answer already sat out its own 3 s, and a second 3 s here walks us out of NEAR before the table is decided again
+    public static boolean anchorLeft(Bench was, Collection<Bench> benches) {
+        if (was == null) {
+            return false;
+        }
+        return was.state == Bench.State.PICKING_UP || was.state == Bench.State.IN_BAG || !benches.contains(was)
+                || was.state == Bench.State.STANDING && was.comingBack == null;
     }
 
     // moves the anchor along and says what happened, for the one log line each way. a flicker in the furnace's answer is held for

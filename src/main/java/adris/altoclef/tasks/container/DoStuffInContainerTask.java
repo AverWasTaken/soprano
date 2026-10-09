@@ -237,7 +237,8 @@ public abstract class DoStuffInContainerTask extends Task {
     // back would go to it
     public static boolean bagCanMake(AltoClef mod, StationHook.Kind kind) {
         var bag = mod.getItemStorage();
-        int cobble = bag.getItemCount(Items.COBBLESTONE, Items.COBBLED_DEEPSLATE, Items.BLACKSTONE);
+        // what the stone tools still eat is not furnace material (StationHook.cobbleOwed)
+        int cobble = bag.getItemCount(Items.COBBLESTONE, Items.COBBLED_DEEPSLATE, Items.BLACKSTONE) - StationHook.cobbleOwed();
         return StationChoice.canMakeFrom(kind, cobble, bag.getItemCount(ItemHelper.LOG), bag.getItemCount(ItemHelper.PLANKS),
                 bag.getItemCount(Items.FURNACE));
     }

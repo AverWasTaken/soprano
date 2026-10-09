@@ -312,6 +312,15 @@ public class GamerTask extends Task {
         mod.getBehaviour().setReserveFloor(level, cobble > 0 ? Map.of(Items.COBBLESTONE, cobble) : Map.of());
     }
 
+    // the same phases as the stone floor above. the furnace's own 8 are left out (KitPlanner.toolCobble), they are what a new one
+    // would be made of
+    private int toolCobbleOwed() {
+        if (state == null || (state.phase != GamerPhase.GATHER && state.phase != GamerPhase.IRON)) {
+            return 0;
+        }
+        return KitPlanner.toolCobble(facts, cfg.overworld);
+    }
+
     private void releaseBehaviour(AltoClef mod) {
         adris.altoclef.util.helpers.FuelPolicy.clear();
         try {
@@ -443,7 +452,7 @@ public class GamerTask extends Task {
         // and so the container tasks know where our stations stand (never craft a second one within reach) and which one is coming
         // down (nothing may place or walk to it). rebuilt from the saved lists, so a relog keeps what we put down
         Workbenches.sync(state, facts.gameTime());
-        StationHook.install(Workbenches.source(state, facts));
+        StationHook.install(Workbenches.source(state, facts, this::toolCobbleOwed));
         deathsAtStart = state.deaths.size();
         lastSaveSeconds = machine.now();
         begun = true;
