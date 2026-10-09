@@ -5,6 +5,7 @@ import adris.altoclef.tasks.movement.TimeoutWanderTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.helpers.DropExpect;
 import adris.altoclef.util.helpers.MineStick;
+import adris.altoclef.util.helpers.ScanWait;
 import adris.altoclef.util.helpers.WorldHelper;
 import java.util.HashMap;
 import java.util.Optional;
@@ -18,13 +19,10 @@ import net.minecraft.world.phys.Vec3;
  */
 public abstract class AbstractDoToClosestObjectTask<T> extends Task {
 
-    private static final int SCAN_WAIT_TICKS = 60;
-
     private final HashMap<T, CachedHeuristic> _heuristicMap = new HashMap<>();
     private T _currentlyPursuing = null;
     private boolean _wasWandering;
-    // game tick we started holding off the wander for a scan, or -1 if we aren't
-    private int _scanWaitStart = -1;
+    private final ScanWait _scanWait = new ScanWait();
     private Task _goalTask = null;
     // the break we just made, see DropExpect. subclasses arm it from onPursuitGone and say what they see in dropSeen
     private final DropExpect _expect = new DropExpect();
@@ -86,7 +84,7 @@ public abstract class AbstractDoToClosestObjectTask<T> extends Task {
     }
 
     public void resetSearch() {
-        _scanWaitStart = -1;
+        _scanWait.clear();
         _currentlyPursuing = null;
         _heuristicMap.clear();
         _goalTask = null;
@@ -190,7 +188,7 @@ public abstract class AbstractDoToClosestObjectTask<T> extends Task {
         }
 
         if (_currentlyPursuing != null) {
-            _scanWaitStart = -1;
+            _scanWait.clear();
             _goalTask = getGoalTask(_currentlyPursuing);
             return _goalTask;
         } else {
@@ -212,18 +210,9 @@ public abstract class AbstractDoToClosestObjectTask<T> extends Task {
         return null;
     }
 
-    // a scan is well under a second. the cap is for the day one gets stuck, so we go back to wandering instead of
-    // standing there forever
+    // a scan is well under a second. the cap (ScanWait) is for the day one gets stuck behind a slow one
     private boolean waitingOnFirstLook(AltoClef mod) {
-        if (!stillLooking(mod)) {
-            _scanWaitStart = -1;
-            return false;
-        }
-        int now = WorldHelper.getTicks();
-        if (_scanWaitStart < 0) {
-            _scanWaitStart = now;
-        }
-        return now - _scanWaitStart < SCAN_WAIT_TICKS;
+        return _scanWait.waiting(WorldHelper.getTicks(), stillLooking(mod));
     }
 
     private static class CachedHeuristic {
