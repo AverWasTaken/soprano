@@ -105,7 +105,7 @@ public class EndPrepPhase implements PhaseHandler {
 
         // a second try goes with what it has, the sword strat needs no wool and the budget is not endless
         int required = relaxed(ctx) ? 0 : cfg.beds;
-        EndGear.Gap gap = EndGear.missing(ctx.facts(), state, cfg, required);
+        EndGear.Gap gap = EndGear.missing(ctx.facts(), state, cfg, required, ctx.food());
         Task step = bedStep(mod, ctx, cfg, gap);
         if (step == null) {
             step = gearStep(mod, ctx, cfg, gap);
@@ -219,8 +219,9 @@ public class EndPrepPhase implements PhaseHandler {
         if (gap.food()) {
             _hudState = "Getting food";
             // the gate counts food we would eat, CollectFoodTask counts rotten flesh too, so a bag of junk makes it finish
-            // instantly while the gate stays short and we idle. same fix as KitRunner.foodTarget, rebuilt only when the number moves
-            int target = cfg.minFoodUnits + 8 + ctx.facts().junkFoodUnits();
+            // instantly while the gate stays short and we idle. FoodPlan adds the junk (the same call KitRunner.foodTarget makes),
+            // rebuilt only when the number moves
+            int target = ctx.food().endCollect();
             if (_food == null || target != _foodTarget) {
                 _foodTarget = target;
                 _food = new CollectFoodTask(target);

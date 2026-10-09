@@ -8,6 +8,7 @@ import adris.altoclef.tasks.container.CollectFromFurnaceTask.Mode;
 import adris.altoclef.tasks.speedrun.gamer.CookGate;
 import adris.altoclef.tasks.speedrun.gamer.EarlyIronPick;
 import adris.altoclef.tasks.speedrun.gamer.FoodGate;
+import adris.altoclef.tasks.speedrun.gamer.FoodPlan;
 import adris.altoclef.tasks.speedrun.gamer.FurnaceJobs;
 import adris.altoclef.tasks.speedrun.gamer.FurnaceWatch;
 import adris.altoclef.tasks.speedrun.gamer.GamerContext;
@@ -31,7 +32,6 @@ import adris.altoclef.tasks.speedrun.gamer.SmeltSurface;
 import adris.altoclef.tasks.speedrun.gamer.Timeout;
 import adris.altoclef.tasks.resources.FoodHunt;
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
-import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig;
 import adris.altoclef.tasksystem.Task;
 import baritone.Baritone;
 import baritone.altoclef.SettingsOverrides;
@@ -72,7 +72,7 @@ public class IronPhase implements PhaseHandler {
     private boolean foodTopUp;
     private int foodBand = -1;
     // the food need led last tick (a screen that opens then is its own, FoodGate.cookBusy) and the soft top-up was called off
-    // because the raw meat in the bag covers the hole (FoodGate.covered), the second only so it is announced once
+    // because the raw meat in the bag covers the hole (FoodPlan.covered), the second only so it is announced once
     private boolean foodLed;
     private boolean foodCovered;
     // CookGate: a cook that started early (surface, or between jobs) keeps the front until the meat is cooked
@@ -117,7 +117,7 @@ public class IronPhase implements PhaseHandler {
     public boolean isDone(GamerFacts facts, RunState state, GamerConfig cfg) {
         // a table or furnace of ours still standing is picked up first, this is the last chance (Workbenches.phaseMayEnd)
         // iron still cooking is iron we do not have, however empty the plan looks
-        return KitPlanner.plan(facts, cfg.overworld, cfg.end.beds).isEmpty() && facts.furnaceJobs().isEmpty()
+        return KitPlanner.plan(facts, cfg.overworld, cfg.end.beds, FoodPlan.of(facts, cfg)).isEmpty() && facts.furnaceJobs().isEmpty()
                 && Workbenches.phaseMayEnd(state, facts.dimension().name(), facts.gameTime()) && !furnaces.cooking();
     }
 
@@ -177,7 +177,7 @@ public class IronPhase implements PhaseHandler {
         // nothing in a furnace (or it just got collected): the plain kit loop
         furnaces.reset();
         committed = null;
-        List<KitNeed> needs = gateFood(mod, ctx, KitPlanner.plan(ctx.facts(), ctx.cfg().overworld, ctx.cfg().end.beds));
+        List<KitNeed> needs = gateFood(mod, ctx, KitPlanner.plan(ctx.facts(), ctx.cfg().overworld, ctx.cfg().end.beds, ctx.food()));
         KitNeed first = needs.isEmpty() ? null : needs.get(0);
         Task side = support.tick(mod, ctx, needs);
         if (side != null) {
@@ -207,7 +207,8 @@ public class IronPhase implements PhaseHandler {
         if (f.furnaceJobs().isEmpty()) {
             return null;
         }
-        Schedule schedule = SmeltFiller.schedule(f, ctx.cfg().overworld, ctx.cfg().end.beds, SmeltSurface.shallow(SmeltSurface.depthBelowSky(mod)));
+        Schedule schedule = SmeltFiller.schedule(f, ctx.cfg().overworld, ctx.cfg().end.beds, SmeltSurface.shallow(SmeltSurface.depthBelowSky(mod)),
+                ctx.food());
         List<KitNeed> runnable = gateFood(mod, ctx, schedule.runnable());
         KitNeed head = runnable.isEmpty() ? null : runnable.get(0);
         // a smoker cooks 5 s an item: standing at it for the 40 s a batch takes beats walking off to mine and back
@@ -386,21 +387,19 @@ public class IronPhase implements PhaseHandler {
     // we surface, and the food chain eats on its own in the meantime). the stock-up fillers
     // SmeltFiller adds are surface work and not touched
     private List<KitNeed> gateFoodNeed(AltoClef mod, GamerContext ctx, List<KitNeed> needs) {
-        OverworldConfig cfg = ctx.cfg().overworld;
-        // same sum the planner uses: the bag (raw meat at its cooked value while a cook is possible, plus what sits in an open
-        // furnace or smoker screen) and what a smoker is cooking for us. the three never overlap, loading a smoker takes the meat
-        // out of the bag
-        int held = KitPlanner.foodHeld(ctx.facts(), cfg, ctx.cfg().end.beds);
-        int band = FoodGate.band(held, cfg);
+        // the planner's own count (bag, open screen, what a smoker is cooking, the raw meat nobody can cook at its raw value)
+        FoodPlan food = ctx.food();
+        int held = food.held();
+        int band = food.band();
         if (band != foodBand) {
             // the user wants to see this one (an apple and six mutton was why the bot kept leaving the mine)
             if (foodBand >= 0) {
-                Debug.logInternal("food: " + held + " units held, " + (band == 0 ? "under the floor of " + cfg.minHeldFoodUnits
-                        : band == 1 ? "over " + cfg.minHeldFoodUnits + " but short of " + cfg.minFoodUnits : "at the " + cfg.minFoodUnits + " we want"));
+                Debug.logInternal("food: " + held + " units held, " + (band == 0 ? "under the floor of " + food.floor()
+                        : band == 1 ? "over " + food.floor() + " but short of " + food.overworldMinimum() : "at the " + food.overworldMinimum() + " we want"));
             }
             foodBand = band;
         }
-        int at = FoodGate.index(needs, cfg);
+        int at = FoodGate.index(needs, food);
         if (at < 0) {
             foodTopUp = false;
             foodLed = false;
@@ -413,18 +412,16 @@ public class IronPhase implements PhaseHandler {
         // yet and not in the held sum, which is how a half loaded smoker read as 56 units and sent the bot for cows. unless the
         // food need was the one leading: then the screen is the top-up's own and it must not cut itself off
         boolean busy = FoodGate.cookBusy(ctx.facts().cookStation() != null, loadInFlight(mod, ctx), foodLed);
-        // the cooked value of the raw meat that held does not count (no cook possible), see FoodGate.covered
-        int rawLeftOut = KitPlanner.rawGapLeftOut(ctx.facts(), cfg, ctx.cfg().end.beds);
-        boolean lead = FoodGate.leads(held, rawLeftOut, cfg, surfaced, foodTopUp, busy);
-        boolean covered = FoodGate.covered(held, rawLeftOut, cfg);
+        boolean lead = food.leads(surfaced, foodTopUp, busy);
+        boolean covered = food.covered();
         if (covered && !foodCovered) {
-            Debug.logInternal("food: " + held + " units held, short of " + cfg.minFoodUnits + " but the raw meat in the bag covers it once cooked, no trip");
+            Debug.logInternal("food: " + held + " units held, short of " + food.overworldMinimum() + " but the raw meat in the bag covers it once cooked, no trip");
         }
         foodCovered = covered;
         boolean wasTopUp = foodTopUp;
-        foodTopUp = FoodGate.nextTopUp(foodTopUp, held, rawLeftOut, cfg, lead);
+        foodTopUp = food.nextTopUp(foodTopUp, lead);
         if (foodTopUp && !wasTopUp) {
-            Debug.logInternal("food: topping up from " + held + " to " + cfg.minFoodUnits + " now that it is cheap");
+            Debug.logInternal("food: topping up from " + held + " to " + food.overworldMinimum() + " now that it is cheap");
         }
         foodLed = lead;
         return lead ? needs : FoodGate.without(needs, at);

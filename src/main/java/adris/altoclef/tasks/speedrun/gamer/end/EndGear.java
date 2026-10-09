@@ -1,5 +1,6 @@
 package adris.altoclef.tasks.speedrun.gamer.end;
 
+import adris.altoclef.tasks.speedrun.gamer.FoodPlan;
 import adris.altoclef.tasks.speedrun.gamer.GamerFacts;
 import adris.altoclef.tasks.speedrun.gamer.RunState;
 import adris.altoclef.tasks.speedrun.gamer.config.EndConfig;
@@ -45,15 +46,15 @@ public final class EndGear {
     }
 
     // bedsRequired is a parameter because a second attempt goes with what it has (the sword strat needs no wool at all)
-    // (weapon is a sword or an axe, whichever the bot made)
-    public static Gap missing(GamerFacts facts, RunState state, EndConfig cfg, int bedsRequired) {
+    // (weapon is a sword or an axe, whichever the bot made). food is the same count every other gate goes by (FoodPlan: raw meat
+    // nobody can cook is worth its raw value, a smoker's pending batch counts), against the End's own floor
+    public static Gap missing(GamerFacts facts, RunState state, EndConfig cfg, int bedsRequired, FoodPlan food) {
         int bedGap = bedShortfall(facts, state, cfg, bedsRequired, false);
         boolean weapon = !ownedOrDropped(facts, state, cfg, WEAPONS);
         boolean bucket = !ownedOrDropped(facts, state, cfg, Items.WATER_BUCKET);
         boolean pickaxe = !ownedOrDropped(facts, state, cfg, PICKAXES);
         int blocks = facts.buildBlocks() < cfg.minBuildBlocks ? cfg.buildBlocks : 0;
-        return new Gap(Math.max(0, bedGap), weapon, bucket, pickaxe, blocks, facts.foodUnits() < cfg.minFoodUnits,
-                armorToWear(facts));
+        return new Gap(Math.max(0, bedGap), weapon, bucket, pickaxe, blocks, food.shortOfEndFloor(), armorToWear(facts));
     }
 
     // beds still to get: required (+1 for the spawn bed) minus what we hold and what lies in the End. <= 0 means a spare

@@ -43,7 +43,8 @@ public interface GamerFacts {
     // sum of armor points of what is worn
     int armorPoints();
 
-    // nutrition we could eat right now (cooked and raw edible stuff, no poison)
+    // nutrition we could eat right now (cooked and raw edible stuff, no poison, raw meat at its cooked value). the building block,
+    // not the answer: FoodPlan makes the one "how much food do we hold" out of it, and the gates read that
     int foodUnits();
 
     // nutrition of the food foodUnits() leaves out (rotten flesh, gapples, spider eyes...). CollectFoodTask counts all of it,
@@ -52,8 +53,8 @@ public interface GamerFacts {
         return 0;
     }
 
-    // log numbers only (KitRunner's food line): the meat in the open furnace or smoker screen that foodUnits() counts, and the
-    // meat in it that was left out because it was already there when the food task opened the screen (FoodGate.leftover)
+    // log numbers only (FoodPlan.line): the meat in the open furnace or smoker screen that foodUnits() counts, and the
+    // meat in it that was left out because it was already there when the food task opened the screen (FoodPlan.leftover)
     default int stationFoodUnits() {
         return 0;
     }

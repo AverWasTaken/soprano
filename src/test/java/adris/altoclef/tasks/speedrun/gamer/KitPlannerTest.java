@@ -314,9 +314,10 @@ public class KitPlannerTest {
         f.foodUnits = 33;
         f.buildBlocks = 7;
         f.give(Items.IRON_INGOT, 4);
-        assertEquals(33, KitPlanner.progressOf(f, new KitNeed(KitNeed.FOOD, 70)));
-        assertEquals(7, KitPlanner.progressOf(f, new KitNeed(KitNeed.BUILD_BLOCKS, 32)));
-        assertEquals(4, KitPlanner.progressOf(f, new KitNeed("iron_ingot", 40)));
+        FoodPlan food = FoodPlan.ofBeds(f, cfg, 8);
+        assertEquals(33, KitPlanner.progressOf(f, new KitNeed(KitNeed.FOOD, 70), food));
+        assertEquals(7, KitPlanner.progressOf(f, new KitNeed(KitNeed.BUILD_BLOCKS, 32), food));
+        assertEquals(4, KitPlanner.progressOf(f, new KitNeed("iron_ingot", 40), food));
     }
 
     @Test

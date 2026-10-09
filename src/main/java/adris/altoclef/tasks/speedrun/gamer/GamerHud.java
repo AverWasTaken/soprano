@@ -35,14 +35,16 @@ final class GamerHud {
         long now = facts.gameTime();
         String sub = h.hudState();
         String action = sub == null ? h.hud() : sub;
-        List<KitRow> rows = kitRows(facts, h.kitRunner(), now);
+        // the card shows the number the food gates act on (FoodPlan.held), not the bag, or it says 62/70 while the gate sees 40
+        FoodPlan food = machine.food();
+        List<KitRow> rows = kitRows(facts, food, h.kitRunner(), now);
         List<FurnaceRow> furnaces = furnaceRows(facts.furnaceJobs());
         CoalRow coal = coalRow(mod, h.support(), cfg);
         return new GamerHudState(state.phase, machine.secondsInPhase(), cfg.budgets.minutes(state.phase), machine.attempt(), action,
-                rows, furnaces, coal, facts.foodUnits(), cfg.overworld.minFoodUnits);
+                rows, furnaces, coal, food.held(), food.overworldMinimum());
     }
 
-    private List<KitRow> kitRows(GamerFacts f, KitRunner runner, long now) {
+    private List<KitRow> kitRows(GamerFacts f, FoodPlan food, KitRunner runner, long now) {
         if (runner != lastRunner) {
             // another phase's kit, or none: what the old one had finished is not news on this one
             lastRunner = runner;
@@ -56,14 +58,14 @@ final class GamerHud {
         KitNeed current = runner.current();
         List<KitRow> live = new ArrayList<>(needs.size());
         for (KitNeed need : needs) {
-            live.add(row(f, need, need.equals(current)));
+            live.add(row(f, food, need, need.equals(current)));
         }
         // a counted row that was live last tick, is not a need any more and whose number is really there got satisfied:
         // keep it a while, dim and green. the number is checked because the list is sometimes the runnable subset (a
         // need waiting on the iron drops out of it while a batch cooks) and that is not the need being done. the
         // uncounted ones (armor on, meat to cook) leave for too many reasons to call any of them done
         for (KitRow was : lastRows) {
-            if (was.counted() && !hasName(needs, was.catalogueName()) && haveOf(f, was.catalogueName()) >= was.want()) {
+            if (was.counted() && !hasName(needs, was.catalogueName()) && haveOf(f, food, was.catalogueName()) >= was.want()) {
                 lingering.put(was.catalogueName(), new Done(new KitRow(was.catalogueName(), was.name(), was.icon(), was.want(), was.want(), false, true),
                         now + HudRules.DONE_LINGER_TICKS));
             }
@@ -98,22 +100,22 @@ final class GamerHud {
         return false;
     }
 
-    private KitRow row(GamerFacts f, KitNeed need, boolean working) {
+    private KitRow row(GamerFacts f, FoodPlan food, KitNeed need, boolean working) {
         String name = need.catalogueName();
         return switch (name) {
-            case KitNeed.FOOD -> new KitRow(name, "Food", Items.COOKED_BEEF, f.foodUnits(), need.count(), working, false);
+            case KitNeed.FOOD -> new KitRow(name, "Food", Items.COOKED_BEEF, food.held(), need.count(), working, false);
             case KitNeed.BUILD_BLOCKS -> new KitRow(name, "Building blocks", Items.COBBLESTONE, f.buildBlocks(), need.count(), working, false);
             case KitNeed.EQUIP_ARMOR -> new KitRow(name, "Armor on", Items.IRON_CHESTPLATE, 0, -1, working, false);
             case KitNeed.COOK_SMOKER -> new KitRow(name, "Raw meat to cook", Items.SMOKER, CookGate.raw(f), -1, working, false);
             case KitNeed.COOK_FURNACE -> new KitRow(name, "Raw meat to cook", Items.FURNACE, CookGate.raw(f), -1, working, false);
-            default -> new KitRow(name, nameOf(name), iconOf(name), haveOf(f, name), need.count(), working, false);
+            default -> new KitRow(name, nameOf(name), iconOf(name), haveOf(f, food, name), need.count(), working, false);
         };
     }
 
     // the number on the left of the slash, same source for a live row and for the done check
-    private static int haveOf(GamerFacts f, String name) {
+    private static int haveOf(GamerFacts f, FoodPlan food, String name) {
         return switch (name) {
-            case KitNeed.FOOD -> f.foodUnits();
+            case KitNeed.FOOD -> food.held();
             case KitNeed.BUILD_BLOCKS -> f.buildBlocks();
             default -> KitPlanner.have(f, name);
         };

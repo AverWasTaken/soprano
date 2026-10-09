@@ -75,9 +75,9 @@ public final class KitRunner {
     }
 
     // CollectFoodTask counts anything edible (rotten flesh, spider eyes...) but our facts only count what we would eat,
-    // so with a bag of junk it thinks it is done and wanders. ask it for the junk on top
-    public static int foodTarget(KitNeed need, GamerFacts f) {
-        return KitNeed.FOOD.equals(need.catalogueName()) ? need.count() + f.junkFoodUnits() : need.count();
+    // so with a bag of junk it thinks it is done and wanders. ask it for the junk on top (FoodPlan.collect)
+    public static int foodTarget(KitNeed need, FoodPlan food) {
+        return KitNeed.FOOD.equals(need.catalogueName()) ? food.collect(need.count()) : need.count();
     }
 
     // "log x13, wooden_axe x1, ..." so a kit item that never shows up in the plan is obvious in the log
@@ -114,7 +114,7 @@ public final class KitRunner {
         KitNeed need = HeadLatch.pick(key, keySince, f.gameTime(), needs, f);
         watchFood(ctx, needs, need);
         List<Item> equip = KitNeed.EQUIP_ARMOR.equals(need.catalogueName()) ? KitPlanner.toEquip(f, ctx.cfg().overworld) : List.of();
-        int food = foodTarget(need, f);
+        int food = foodTarget(need, ctx.food());
         watchProgress(ctx, need);
         if (!need.equals(key) || !equip.equals(equipKey) || food != foodKey) {
             if (!need.equals(key)) {
@@ -135,7 +135,7 @@ public final class KitRunner {
 
     // the food need showing up in the list or dropping out of it, one line per change with the numbers it was made of. a need that
     // flips with the same bag every few seconds is only visible as a pair of these (the smoker screen satisfying the need that
-    // opened it was, see FoodGate.leftover). a second food need replacing the first (minimum, then target) is not a change
+    // opened it was, see FoodPlan.leftover). a second food need replacing the first (minimum, then target) is not a change
     private void watchFood(GamerContext ctx, List<KitNeed> list, KitNeed running) {
         KitNeed food = null;
         for (KitNeed n : list) {
@@ -149,18 +149,15 @@ public final class KitRunner {
             return;
         }
         foodOn = on;
-        GamerFacts f = ctx.facts();
-        var cfg = ctx.cfg().overworld;
-        Debug.logInternal(FoodGate.line(on, KitPlanner.foodHeld(f, cfg, ctx.cfg().end.beds), on ? food.count() : cfg.minFoodUnits,
-                f.stationFoodUnits(), f.pendingFoodUnits(), KitPlanner.rawGapLeftOut(f, cfg, ctx.cfg().end.beds), f.stationFoodSkipped(),
-                running == null ? null : running.catalogueName()));
+        FoodPlan plan = ctx.food();
+        Debug.logInternal(plan.line(on, on ? food.count() : plan.overworldMinimum(), running == null ? null : running.catalogueName()));
     }
 
     // a need only counts as progress when its own number went up since we last looked at THAT need. the head changing says
     // nothing (two needs trading the head every few seconds never get anywhere), and a finished need is already covered
     // by the engine seeing the inventory change
     private void watchProgress(GamerContext ctx, KitNeed need) {
-        int now = KitPlanner.progressOf(ctx.facts(), need);
+        int now = KitPlanner.progressOf(ctx.facts(), need, ctx.food());
         Integer before = lastProgress.put(need.catalogueName(), now);
         if (before != null && now > before) {
             ctx.progress(need.catalogueName());

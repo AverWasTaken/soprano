@@ -50,10 +50,15 @@ public final class KitPlanner {
             "pickaxe", new int[]{3, 2}, "axe", new int[]{3, 2}, "sword", new int[]{2, 1},
             "shovel", new int[]{1, 2}, "hoe", new int[]{2, 2});
 
-    // wood -> axe -> the rest of the wood -> table -> stone tools -> furnace, then enough food to survive the next phase
-    public static List<KitNeed> gather(GamerFacts f, OverworldConfig cfg, int endBeds) {
-        List<KitNeed> out = new ArrayList<>(starter(f, cfg, endBeds, true, new ArrayList<>()));
-        addFood(out, foodHeld(f, cfg, endBeds), cfg.minFoodUnits);
+    // wood -> axe -> the rest of the wood -> table -> stone tools -> furnace, then enough food to survive the next phase.
+    // the engine hands in the tick's FoodPlan, the short form (package only, so the phases cannot reach for it) builds its own
+    static List<KitNeed> gather(GamerFacts f, OverworldConfig cfg, int endBeds) {
+        return gather(f, cfg, endBeds, FoodPlan.ofBeds(f, cfg, endBeds));
+    }
+
+    public static List<KitNeed> gather(GamerFacts f, OverworldConfig cfg, int endBeds, FoodPlan food) {
+        List<KitNeed> out = new ArrayList<>(starter(f, cfg, endBeds, true, new ArrayList<>(), food));
+        addFood(out, food, food.overworldMinimum());
         // no cook here: GATHER used to wait out the smoker with nothing else to do, and the meat cooks just as well while the
         // iron phase starts (it leads the plan on the surface, see CookGate.leads, and the output is collected on the way)
         return out;
@@ -61,16 +66,20 @@ public final class KitPlanner {
 
     // everything the overworld still owes us before the portal, in order: starter tools, food, ONE combined iron ingot
     // need (so the bot mines and smelts once instead of once per item), the crafts, armor on, wool, food top up.
-    // food can show up twice (min early, target at the end), the first unsatisfied one is the one that matters
-    public static List<KitNeed> plan(GamerFacts f, OverworldConfig cfg, int endBeds) {
+    // food can show up twice (min early, target at the end), the first unsatisfied one is the one that matters.
+    // the engine passes the tick's FoodPlan, the short form (package only) builds its own
+    static List<KitNeed> plan(GamerFacts f, OverworldConfig cfg, int endBeds) {
+        return plan(f, cfg, endBeds, FoodPlan.ofBeds(f, cfg, endBeds));
+    }
+
+    public static List<KitNeed> plan(GamerFacts f, OverworldConfig cfg, int endBeds, FoodPlan food) {
         // a worn pick we still carry gets replaced after the iron, not in the middle of it (see starter)
         List<KitNeed> late = new ArrayList<>();
-        List<KitNeed> out = new ArrayList<>(starter(f, cfg, endBeds, false, late));
-        int food = foodHeld(f, cfg, endBeds);
-        addFood(out, food, cfg.minFoodUnits);
+        List<KitNeed> out = new ArrayList<>(starter(f, cfg, endBeds, false, late, food));
+        addFood(out, food, food.overworldMinimum());
         out.addAll(iron(f, cfg, endBeds));
         out.addAll(late);
-        addFood(out, food, cfg.targetFoodUnits);
+        addFood(out, food, food.target());
         addCook(out, f, cfg, endBeds);
         return out;
     }
@@ -81,7 +90,8 @@ public final class KitPlanner {
     // trip. wood is only asked for before the first ore, while the surface is still right here.
     // `late` is where the IRON phase parks a pick replacement: a stone pick that is merely worn (85%, see wornOut) is still
     // a pick, and swapping it mid-mine once cost a 34 s log trip. only a bag with no pick at all keeps it up front
-    private static List<KitNeed> starter(GamerFacts f, OverworldConfig cfg, int endBeds, boolean gathering, List<KitNeed> late) {
+    private static List<KitNeed> starter(GamerFacts f, OverworldConfig cfg, int endBeds, boolean gathering, List<KitNeed> late,
+                                         FoodPlan food) {
         List<KitNeed> out = new ArrayList<>();
         List<KitItem> axes = new ArrayList<>();
         List<KitItem> rest = new ArrayList<>();
@@ -103,7 +113,7 @@ public final class KitPlanner {
                 addItem(out, f, a.item, a.count);
             }
             int logs = woodNeed(f, cfg, endBeds, true);
-            addLogs(out, f, logs + cookFuelLogs(f, cfg, endBeds, logs));
+            addLogs(out, f, logs + cookFuelLogs(f, cfg, endBeds, logs, food));
             // every cobble the stone kit eats in one trip, before the first stone craft, so the bot doesn't go back down
             // for the furnace's cobble after crafting the axe
             addCobble(out, f, stoneNeed(f, cfg));
@@ -148,7 +158,12 @@ public final class KitPlanner {
     // already hold count, so the request settles at cfg.cookFuelLogs of surplus instead of chasing itself. past the food the
     // answer is 0 whatever the bag says, or burning them would send the gather back to the trees
     static int cookFuelLogs(GamerFacts f, OverworldConfig cfg, int endBeds, int budgetLogsShort) {
-        if (cfg.cookFuelLogs <= 0 || CookGate.raw(f) > 0 || f.foodUnits() + f.pendingFoodUnits() >= cfg.minFoodUnits) {
+        return cookFuelLogs(f, cfg, endBeds, budgetLogsShort, FoodPlan.ofBeds(f, cfg, endBeds));
+    }
+
+    // (with no raw meat in the bag held is the plain bag plus pending, the raw correction is 0 by then)
+    static int cookFuelLogs(GamerFacts f, OverworldConfig cfg, int endBeds, int budgetLogsShort, FoodPlan food) {
+        if (cfg.cookFuelLogs <= 0 || CookGate.raw(f) > 0 || !food.shortOfMinimum()) {
             return 0;
         }
         // short of the budget every log is spoken for, so there is no spare to look for
@@ -407,26 +422,11 @@ public final class KitPlanner {
         }
     }
 
-    private static void addFood(List<KitNeed> out, int held, int units) {
-        if (held < units) {
+    // the food need at this line, if we hold less (FoodPlan has the one count every food rule goes by)
+    private static void addFood(List<KitNeed> out, FoodPlan food, int units) {
+        if (food.shortOf(units)) {
             out.add(new KitNeed(KitNeed.FOOD, units));
         }
-    }
-
-    // the food every food rule counts: the bag, what a smoker is cooking for us, and the raw meat at its cooked value only while
-    // a cook can really happen (CookGate.cookFeasible). with no station or fuel to cook it the meat gets eaten raw (FoodSelector
-    // takes it at 3 a porkchop, not 8), and counting it at 80 for ten of them meant the kit never hunted. one number for the
-    // planner, the food gate and the portal gate, so they cannot disagree
-    public static int foodHeld(GamerFacts f, OverworldConfig cfg, int endBeds) {
-        return f.foodUnits() + f.pendingFoodUnits() - rawGapLeftOut(f, cfg, endBeds);
-    }
-
-    // the part of the raw meat's cooked value that foodHeld takes back out: all of CookGate.rawGap while no cook can happen, none
-    // while one can (the sum has it then). FoodGate.covered needs it, adding the whole rawGap to a held that already counts it
-    // would pay the same chicken twice
-    public static int rawGapLeftOut(GamerFacts f, OverworldConfig cfg, int endBeds) {
-        int gap = CookGate.rawGap(f);
-        return gap > 0 && !CookGate.cookFeasible(f, cfg, endBeds) ? gap : 0;
     }
 
     // 3 wool a bed, and a bed we already carry is 3 wool we do not need to find. a bed wants three of ONE colour, so
@@ -536,10 +536,11 @@ public final class KitPlanner {
         return total;
     }
 
-    // for the "did that need get closer" check
-    public static int progressOf(GamerFacts f, KitNeed need) {
+    // for the "did that need get closer" check. food goes by the plain count, not held: held jumps by the raw meat's cooked value
+    // whenever a smoker is placed or picked up, and that is no progress
+    public static int progressOf(GamerFacts f, KitNeed need, FoodPlan food) {
         return switch (need.catalogueName()) {
-            case KitNeed.FOOD -> f.foodUnits() + f.pendingFoodUnits();
+            case KitNeed.FOOD -> food.counted();
             case KitNeed.BUILD_BLOCKS -> f.buildBlocks();
             case KitNeed.EQUIP_ARMOR -> -need.count();
             // less raw meat in the bag is closer (meat going into a smoker leaves it)

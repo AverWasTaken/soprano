@@ -65,13 +65,18 @@ public final class SmeltFiller {
     //   a. the rest of the kit that needs no iron (food, wool, armor we already hold) and the portal's build blocks
     //   b. prep for the blocked crafts: flint, planks and sticks
     //   c. stock-up, one entry of cfg.smeltExtras at a time
-    public static Schedule schedule(GamerFacts f, OverworldConfig cfg, int endBeds) {
+    // the engine passes the tick's FoodPlan, the two short forms (package only) build their own
+    static Schedule schedule(GamerFacts f, OverworldConfig cfg, int endBeds) {
         return schedule(f, cfg, endBeds, true);
     }
 
+    static Schedule schedule(GamerFacts f, OverworldConfig cfg, int endBeds, boolean nearSurface) {
+        return schedule(f, cfg, endBeds, nearSurface, FoodPlan.ofBeds(f, cfg, endBeds));
+    }
+
     // nearSurface = SmeltSurface.shallow: the log stock-up only happens where a tree is a short walk (see logStockTarget)
-    public static Schedule schedule(GamerFacts f, OverworldConfig cfg, int endBeds, boolean nearSurface) {
-        List<KitNeed> needs = KitPlanner.plan(f, cfg, endBeds);
+    public static Schedule schedule(GamerFacts f, OverworldConfig cfg, int endBeds, boolean nearSurface, FoodPlan food) {
+        List<KitNeed> needs = KitPlanner.plan(f, cfg, endBeds, food);
         if (f.furnaceJobs().isEmpty()) {
             return new Schedule(needs, List.of());
         }
@@ -83,7 +88,7 @@ public final class SmeltFiller {
         }
         prep(f, cfg, endBeds, blocked, runnable);
         List<KitNeed> stockUps = new ArrayList<>();
-        extras(f, cfg, endBeds, nearSurface, stockUps);
+        extras(f, cfg, endBeds, nearSurface, food, stockUps);
         runnable.addAll(stockUps);
         runnable.removeIf(need -> foodBlocked(f, need));
         return new Schedule(runnable, blocked, stockUps);
@@ -119,9 +124,13 @@ public final class SmeltFiller {
 
     // what GATHER can work on while its food cooks. there are no ingots to wait for here, the one thing that can be stuck is
     // food behind its own smoker
-    public static List<KitNeed> gatherRunnable(GamerFacts f, OverworldConfig cfg, int endBeds) {
+    static List<KitNeed> gatherRunnable(GamerFacts f, OverworldConfig cfg, int endBeds) {
+        return gatherRunnable(f, cfg, endBeds, FoodPlan.ofBeds(f, cfg, endBeds));
+    }
+
+    public static List<KitNeed> gatherRunnable(GamerFacts f, OverworldConfig cfg, int endBeds, FoodPlan food) {
         List<KitNeed> out = new ArrayList<>();
-        for (KitNeed need : KitPlanner.gather(f, cfg, endBeds)) {
+        for (KitNeed need : KitPlanner.gather(f, cfg, endBeds, food)) {
             if (!foodBlocked(f, need)) {
                 out.add(need);
             }
@@ -183,7 +192,7 @@ public final class SmeltFiller {
     // every stock-up is surface work (sheep, animals, a tree, loose stone), so none of them is worth climbing out of the mine for:
     // down there the list is empty and the wait is spent standing at the furnace instead. IronPhase asks for what it needs
     // itself while the surface is still close
-    private static void extras(GamerFacts f, OverworldConfig cfg, int endBeds, boolean nearSurface, List<KitNeed> out) {
+    private static void extras(GamerFacts f, OverworldConfig cfg, int endBeds, boolean nearSurface, FoodPlan food, List<KitNeed> out) {
         if (cfg.smeltExtras == null) {
             return;
         }
@@ -193,8 +202,8 @@ public final class SmeltFiller {
             }
             switch (extra.item) {
                 case "food" -> {
-                    int units = cfg.targetFoodUnits + extra.count;
-                    if (nearSurface && KitPlanner.foodHeld(f, cfg, endBeds) < units) {
+                    int units = food.stockUp(extra.count);
+                    if (nearSurface && food.shortOf(units)) {
                         out.add(new KitNeed(KitNeed.FOOD, units));
                     }
                 }

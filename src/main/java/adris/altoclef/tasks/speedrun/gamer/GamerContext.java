@@ -11,6 +11,12 @@ public interface GamerContext {
 
     GamerFacts facts();
 
+    // how much food we hold and what every gate makes of it, as of this tick. the engine builds it once per tick, the default
+    // (a test's stub) builds it on every ask. every food gate reads this and nothing else, see FoodPlan
+    default FoodPlan food() {
+        return FoodPlan.of(facts(), cfg());
+    }
+
     // 1 on the first try of this phase, 2 after a retry...
     int attempt();
 

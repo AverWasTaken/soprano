@@ -148,7 +148,7 @@ public class PortalPhase implements PhaseHandler {
         // PORTAL ends the moment we are in the nether, which is too late for a table left standing in the overworld (this phase
         // used to have no station tracking at all, and the gate crafts a bucket at one). so no portal task runs while one of
         // ours is coming down or still owed: the same rule GATHER and IRON end by, with the gate as the plan
-        List<KitNeed> gate = gateDone ? List.of() : PortalPlanner.gate(f, ctx.cfg().overworld, ctx.cfg().end.beds);
+        List<KitNeed> gate = gateDone ? List.of() : PortalPlanner.gate(f, ctx.cfg().overworld, ctx.cfg().end.beds, ctx.food());
         if (f.dimension() == Dimension.OVERWORLD) {
             Task pickup = benches.tick(mod, ctx, gate);
             if (pickup != null) {

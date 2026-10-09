@@ -81,7 +81,7 @@ public class SmeltFillerTest {
         assertNull(find(KitPlanner.gather(f, cfg, BEDS), KitNeed.FOOD));
         cfg.minFoodUnits = 80;
         assertEquals(new KitNeed(KitNeed.FOOD, 80), find(KitPlanner.gather(f, cfg, BEDS), KitNeed.FOOD));
-        assertEquals(10 + 60, KitPlanner.progressOf(f, new KitNeed(KitNeed.FOOD, 80)));
+        assertEquals(10 + 60, KitPlanner.progressOf(f, new KitNeed(KitNeed.FOOD, 80), FoodPlan.ofBeds(f, cfg, BEDS)));
     }
 
     @Test

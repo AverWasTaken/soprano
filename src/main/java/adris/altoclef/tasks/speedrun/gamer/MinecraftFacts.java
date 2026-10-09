@@ -55,7 +55,7 @@ public final class MinecraftFacts implements GamerFacts {
     // food in the input and output slots of the furnace-like screen that is open right now, at planned value
     private int stationFood;
     // how much of it foodUnits counted, and how much was already there when the food task opened the screen and so stays out
-    // (FoodGate.leftover, -1 = nothing to leave out), for the log line
+    // (FoodPlan.leftover, -1 = nothing to leave out), for the log line
     private int stationCounted;
     private int stationSkipped;
     private int stationLeftover = -1;
@@ -202,7 +202,7 @@ public final class MinecraftFacts implements GamerFacts {
             stationFood = foodIn(furnace.getSlot(0).getItem()) + foodIn(furnace.getSlot(2).getItem());
             stationSynced = furnace.getStateId() > 0;
             stationMenuId = furnace.containerId;
-            // which block the screen is, so only that station's own job hides its food (FoodGate.inStation)
+            // which block the screen is, so only that station's own job hides its food (FoodPlan.inStation)
             stationAt = mod.getItemStorage().getLastBlockPosInteraction().map(p -> new RunState.Pos(p.getX(), p.getY(), p.getZ())).orElse(null);
         }
         for (int i = 0; i < 4; i++) {
@@ -343,7 +343,7 @@ public final class MinecraftFacts implements GamerFacts {
                 build += n;
             }
         }
-        // what sat in a screen the food task opened is why it walked there, not food we hold (FoodGate.leftover)
+        // what sat in a screen the food task opened is why it walked there, not food we hold (FoodPlan.leftover)
         long foodTicks = CollectFoodTask.ticks();
         boolean foodTask = foodTicks != foodTaskSeen;
         foodTaskSeen = foodTicks;
@@ -351,9 +351,9 @@ public final class MinecraftFacts implements GamerFacts {
             stationLeftover = -1;
             leftoverMenuId = stationMenuId;
         }
-        stationLeftover = FoodGate.leftover(stationLeftover, stationFood, stationSynced, foodTask);
-        stationCounted = FoodGate.inStation(stationFood, furnaceJobs(), stationAt, dimension.name(), stationLeftover);
-        stationSkipped = FoodGate.inStation(stationFood, furnaceJobs(), stationAt, dimension.name()) - stationCounted;
+        stationLeftover = FoodPlan.leftover(stationLeftover, stationFood, stationSynced, foodTask);
+        stationCounted = FoodPlan.inStation(stationFood, furnaceJobs(), stationAt, dimension.name(), stationLeftover);
+        stationSkipped = FoodPlan.inStation(stationFood, furnaceJobs(), stationAt, dimension.name()) - stationCounted;
         foodUnits = food + stationCounted;
         junkFoodUnits = junk;
         buildBlocks = build;

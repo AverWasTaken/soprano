@@ -190,7 +190,7 @@ public class KitRunnerTest {
         List<KitNeed> plan = KitPlanner.gather(ctx.facts, ctx.cfg.overworld, 8);
         KitNeed food = plan.stream().filter(n -> n.catalogueName().equals(KitNeed.FOOD)).findFirst().orElseThrow();
         assertEquals(70, food.count());
-        assertEquals(150, KitRunner.foodTarget(food, ctx.facts));
+        assertEquals(150, KitRunner.foodTarget(food, ctx.food()));
         runner.run(ctx, List.of(food));
         assertEquals(List.of(150), foodTargets);
     }
@@ -234,7 +234,7 @@ public class KitRunnerTest {
     @Test
     public void nonFoodNeedsIgnoreJunk() {
         ctx.facts.junkFoodUnits = 80;
-        assertEquals(32, KitRunner.foodTarget(new KitNeed(KitNeed.BUILD_BLOCKS, 32), ctx.facts));
+        assertEquals(32, KitRunner.foodTarget(new KitNeed(KitNeed.BUILD_BLOCKS, 32), ctx.food()));
     }
 
     @Test

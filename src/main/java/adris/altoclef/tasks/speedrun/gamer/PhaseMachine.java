@@ -55,6 +55,8 @@ public final class PhaseMachine implements GamerContext {
     // when the death recovery last held the clocks, -1 when it is not running
     private double heldAt = -1;
 
+    // the tick's FoodPlan, see food()
+    private FoodPlan food;
     private int lastFingerprint;
     private int anchorX;
     private int anchorY;
@@ -222,6 +224,7 @@ public final class PhaseMachine implements GamerContext {
     // run ended)
     public Task tick(AltoClef mod) {
         this.mod = mod;
+        food = null;
         giveBackHeldTime(now());
         if (ended()) {
             return null;
@@ -442,6 +445,15 @@ public final class PhaseMachine implements GamerContext {
     @Override
     public GamerFacts facts() {
         return host.facts();
+    }
+
+    // built on the first ask of a tick and dropped when the next one starts: every gate in a tick reads the same food count
+    @Override
+    public FoodPlan food() {
+        if (food == null) {
+            food = FoodPlan.of(host.facts(), host.cfg());
+        }
+        return food;
     }
 
     @Override

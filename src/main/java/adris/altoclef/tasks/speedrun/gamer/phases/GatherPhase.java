@@ -2,6 +2,7 @@ package adris.altoclef.tasks.speedrun.gamer.phases;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.tasks.container.CollectFromFurnaceTask.Mode;
+import adris.altoclef.tasks.speedrun.gamer.FoodPlan;
 import adris.altoclef.tasks.speedrun.gamer.FurnaceJobs;
 import adris.altoclef.tasks.speedrun.gamer.FurnaceWatch;
 import adris.altoclef.tasks.speedrun.gamer.GamerContext;
@@ -73,7 +74,7 @@ public class GatherPhase implements PhaseHandler {
     public boolean isDone(GamerFacts facts, RunState state, GamerConfig cfg) {
         // a table or furnace of ours still standing is picked up first, this is the last chance (Workbenches.phaseMayEnd)
         // food still cooking is food we do not have, and the smoker coming down is part of the job
-        return KitPlanner.gather(facts, cfg.overworld, cfg.end.beds).isEmpty() && facts.furnaceJobs().isEmpty()
+        return KitPlanner.gather(facts, cfg.overworld, cfg.end.beds, FoodPlan.of(facts, cfg)).isEmpty() && facts.furnaceJobs().isEmpty()
                 && Workbenches.phaseMayEnd(state, facts.dimension().name(), facts.gameTime()) && !furnaces.cooking();
     }
 
@@ -116,7 +117,7 @@ public class GatherPhase implements PhaseHandler {
         }
         furnaces.reset();
         committed = null;
-        List<KitNeed> needs = KitPlanner.gather(ctx.facts(), ctx.cfg().overworld, ctx.cfg().end.beds);
+        List<KitNeed> needs = KitPlanner.gather(ctx.facts(), ctx.cfg().overworld, ctx.cfg().end.beds, ctx.food());
         Task side = support.tick(mod, ctx, needs);
         if (side != null) {
             hudState = support.hud();
@@ -131,8 +132,8 @@ public class GatherPhase implements PhaseHandler {
     // the gather list (wood, stone, crafts: all surface work) or the smoker itself when SmeltFiller says it is time. with nothing left to do the bot stands by the smoker with the screen closed, which beats staring at the gui
     private Task cookingTick(AltoClef mod, GamerContext ctx) {
         GamerFacts f = ctx.facts();
-        List<KitNeed> plan = KitPlanner.gather(f, ctx.cfg().overworld, ctx.cfg().end.beds);
-        List<KitNeed> runnable = SmeltFiller.gatherRunnable(f, ctx.cfg().overworld, ctx.cfg().end.beds);
+        List<KitNeed> plan = KitPlanner.gather(f, ctx.cfg().overworld, ctx.cfg().end.beds, ctx.food());
+        List<KitNeed> runnable = SmeltFiller.gatherRunnable(f, ctx.cfg().overworld, ctx.cfg().end.beds, ctx.food());
         KitNeed head = runnable.isEmpty() ? null : runnable.get(0);
         Task side = support.tick(mod, ctx, runnable);
         if (side != null) {

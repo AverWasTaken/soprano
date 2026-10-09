@@ -2,7 +2,9 @@ package adris.altoclef.tasks.speedrun.gamer;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
@@ -10,6 +12,8 @@ import baritone.api.utils.Dimension;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import net.minecraft.SharedConstants;
+import net.minecraft.server.Bootstrap;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -118,6 +122,27 @@ public class PhaseMachineTest {
         for (FakeHandler fh : handlers) {
             assertEquals(fh.phase.name(), List.of("enter1", "exit"), fh.events);
         }
+    }
+
+    @Test
+    public void everyGateInATickReadsTheSameFoodPlanAndTheNextTickBuildsANewOne() {
+        // the plan reads the item tables (raw meat), the only test in here that does
+        SharedConstants.tryDetectVersion();
+        Bootstrap.bootStrap();
+        start();
+        host.facts.foodUnits = 40;
+        machine.tick(null);
+        FoodPlan first = machine.food();
+        assertEquals(40, first.held());
+        // the bag moving under a handler mid tick does not move the plan: the gates must not disagree inside one tick
+        host.facts.foodUnits = 90;
+        assertSame(first, machine.food());
+        assertEquals(40, machine.food().held());
+        // the next tick reads the bag again
+        machine.tick(null);
+        assertNotSame(first, machine.food());
+        assertEquals(90, machine.food().held());
+        assertSame(machine.food(), machine.food());
     }
 
     @Test

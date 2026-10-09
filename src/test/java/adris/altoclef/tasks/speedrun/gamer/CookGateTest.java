@@ -318,9 +318,9 @@ public class CookGateTest {
     @Test
     public void progressIsTheMeatLeavingTheBag() {
         f.give(Items.MUTTON, 6);
-        int before = KitPlanner.progressOf(f, COOK);
+        int before = KitPlanner.progressOf(f, COOK, FoodPlan.ofBeds(f, cfg, 8));
         FakeFacts less = new FakeFacts().give(Items.MUTTON, 2);
-        assertTrue(KitPlanner.progressOf(less, COOK) > before);
+        assertTrue(KitPlanner.progressOf(less, COOK, FoodPlan.ofBeds(less, cfg, 8)) > before);
     }
 
     @Test

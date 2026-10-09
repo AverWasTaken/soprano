@@ -82,13 +82,18 @@ public final class PortalPlanner {
         return new TimeoutPlan(retry, next, timedOut);
     }
 
+    // the engine passes the tick's FoodPlan, this one (package only) builds its own
+    static List<KitNeed> gate(GamerFacts f, OverworldConfig cfg, int endBeds) {
+        return gate(f, cfg, endBeds, FoodPlan.ofBeds(f, cfg, endBeds));
+    }
+
     // what to hold before leaving the overworld (Marvion ordering: get it all here, not in the nether). the cast needs
     // two buckets (one becomes water, one lava) and a light, the end needs the water bucket back later
-    public static List<KitNeed> gate(GamerFacts f, OverworldConfig cfg, int endBeds) {
+    public static List<KitNeed> gate(GamerFacts f, OverworldConfig cfg, int endBeds, FoodPlan food) {
         List<KitNeed> out = new ArrayList<>();
         // the same count the kit plan uses, so meat still cooking for us (or meat that cannot be cooked) reads the same here
-        if (KitPlanner.foodHeld(f, cfg, endBeds) < cfg.minFoodUnits) {
-            out.add(new KitNeed(KitNeed.FOOD, cfg.minFoodUnits));
+        if (food.shortOfMinimum()) {
+            out.add(new KitNeed(KitNeed.FOOD, food.overworldMinimum()));
         }
         int buckets = KitPlanner.have(f, "bucket");
         if (buckets < 2) {
