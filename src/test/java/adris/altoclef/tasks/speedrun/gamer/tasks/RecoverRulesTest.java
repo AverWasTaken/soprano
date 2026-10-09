@@ -6,6 +6,7 @@ import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
 public class RecoverRulesTest {
@@ -115,6 +116,63 @@ public class RecoverRulesTest {
         }
         chase.reset();
         assertFalse(chase.update(3, t + 1));
+    }
+
+    @Test
+    public void aDropTenBlocksOutIsChasedNotWalkedBackFrom() {
+        // the loop: chasing it took us past ARRIVE_RANGE and the walk back fired. it can't anymore
+        assertEquals(RecoverRules.Step.PICKUP, RecoverRules.step(10, true));
+        assertEquals(RecoverRules.Step.PICKUP, RecoverRules.step(RecoverRules.DROP_RADIUS + RecoverRules.LEASH_MARGIN, true));
+        assertEquals(RecoverRules.Step.PICKUP, RecoverRules.step(0, true));
+    }
+
+    @Test
+    public void farOrEmptyMeansWalkBack() {
+        assertEquals(RecoverRules.Step.WALK, RecoverRules.step(RecoverRules.DROP_RADIUS + 1, false));
+        assertEquals(RecoverRules.Step.WALK, RecoverRules.step(10, false));
+        // dragged way off by a chase, the pile wins again
+        assertEquals(RecoverRules.Step.WALK, RecoverRules.step(RecoverRules.DROP_RADIUS + RecoverRules.LEASH_MARGIN + 0.5, true));
+    }
+
+    @Test
+    public void onThePileWithNothingAroundJustLooks() {
+        assertEquals(RecoverRules.Step.LOOK, RecoverRules.step(RecoverRules.ARRIVE_RANGE, false));
+        assertEquals(RecoverRules.Step.LOOK, RecoverRules.step(2, false));
+    }
+
+    @Test
+    public void twentySecondsOfTicksIsTwentySeconds() {
+        RecoverRules.Chase chase = new RecoverRules.Chase();
+        // every recover tick (10 a second) now counts, nothing in between idles it
+        double t = 0;
+        while (t < RecoverRules.CHASE_SECONDS - 0.2) {
+            assertFalse("at " + t, chase.update(5, t));
+            t += 0.1;
+        }
+        boolean gone = false;
+        for (int i = 0; i < 5 && !gone; i++) {
+            t += 0.1;
+            gone = chase.update(5, t);
+        }
+        assertTrue(gone);
+        assertTrue(t < RecoverRules.CHASE_SECONDS + 0.5);
+    }
+
+    @Test
+    public void thePickupIsPinnedToTheChosenDrop() {
+        RecoverRules.Pin<String> pin = new RecoverRules.Pin<>();
+        String andesite = new String("andesite");
+        String otherAndesite = new String("andesite");
+        assertTrue(pin.retarget(andesite));
+        assertSame(andesite, pin.drop());
+        // same drop next tick, keep the task (and its stuck checks)
+        assertFalse(pin.retarget(andesite));
+        // another drop of the same kind is still another drop, the old item-kind key missed this. equal is not enough,
+        // a drop back from out of range is a new entity that looks the same
+        assertTrue(pin.retarget(otherAndesite));
+        assertSame(otherAndesite, pin.drop());
+        pin.clear();
+        assertTrue(pin.retarget(otherAndesite));
     }
 
     @Test

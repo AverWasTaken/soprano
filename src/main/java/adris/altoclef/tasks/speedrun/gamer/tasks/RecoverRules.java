@@ -67,6 +67,57 @@ public final class RecoverRules {
         }
     }
 
+    // close enough that the drops are loaded and the pickup task can see them
+    public static final double ARRIVE_RANGE = 6;
+    // drops spread out a bit when a player dies, and fall down slopes
+    public static final double DROP_RADIUS = 24;
+    // how far past the drop radius a chase may drag us before walking back wins again. a drop 24 out on the far side
+    // is a bit further than 24 from where we stand when we finally grab it
+    public static final double LEASH_MARGIN = 8;
+
+    public enum Step {
+        // get back to the pile first
+        WALK,
+        // there's one of ours lying around, go get it
+        PICKUP,
+        // standing on the pile and nothing on it
+        LOOK
+    }
+
+    // what this tick is for. a drop near the pile always beats the walk back: the walk used to fire the moment a drop
+    // 6+ blocks out pulled us past ARRIVE_RANGE, finish instantly, hand back to the pickup, and around it went
+    public static Step step(double fromPile, boolean dropNearPile) {
+        if (dropNearPile && fromPile <= DROP_RADIUS + LEASH_MARGIN) {
+            return Step.PICKUP;
+        }
+        return fromPile > ARRIVE_RANGE ? Step.WALK : Step.LOOK;
+    }
+
+    // which drop the pickup task is pinned to. keyed by entity, not item kind: the old item-kind key kept a pickup that
+    // went for the nearest andesite anywhere in the world while we were counting the chase on a different one. and by
+    // the object, not the id: a drop that leaves tracking range comes back as a new entity with the same id, and the
+    // old one reads as dead
+    public static final class Pin<T> {
+        private T drop;
+
+        // true when the pickup has to be rebuilt for this drop
+        public boolean retarget(T chosen) {
+            if (chosen == drop) {
+                return false;
+            }
+            drop = chosen;
+            return true;
+        }
+
+        public T drop() {
+            return drop;
+        }
+
+        public void clear() {
+            drop = null;
+        }
+    }
+
     // remembers since when the pile has been crowded. a quiet moment resets the clock, the 30 seconds are 30 in a row
     public static final class Gate {
         private double crowdedSince = Double.NaN;

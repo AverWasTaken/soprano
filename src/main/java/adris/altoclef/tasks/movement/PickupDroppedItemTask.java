@@ -121,6 +121,12 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
         return _collectingPickaxeForThisResource;
     }
 
+    // virtual. false for a pickup on a clock that can't afford a stone pickaxe detour. bailing out of one halfway leaves
+    // the static flag up until we own a stone pick, and every ResourceTask ignores far drops until then
+    protected boolean mayGetPickaxeFirst() {
+        return true;
+    }
+
     @Override
     protected void onStart(AltoClef mod) {
         _wanderTask.reset();
@@ -192,7 +198,7 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
             mod.getClientBaritone().getPathingBehavior().forceCancel();
             if (_currentDrop != null && !_currentDrop.getItem().isEmpty()) {
                 // We might want to get a pickaxe first.
-                if (!isGettingPickaxeFirstFlag && Baritone.settings().altoCollectPickaxeFirst.value && !StorageHelper.miningRequirementMetInventory(mod, MiningRequirement.STONE)) {
+                if (mayGetPickaxeFirst() && !isGettingPickaxeFirstFlag && Baritone.settings().altoCollectPickaxeFirst.value && !StorageHelper.miningRequirementMetInventory(mod, MiningRequirement.STONE)) {
                     Debug.logMessage("Failed to pick up drop, will try to collect a stone pickaxe first and try again!");
                     _collectingPickaxeForThisResource = true;
                     isGettingPickaxeFirstFlag = true;
