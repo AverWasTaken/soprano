@@ -69,6 +69,13 @@ public class DoToClosestEntityTask extends AbstractDoToClosestObjectTask<Entity>
         return _getTargetTask.apply(obj);
     }
 
+    // mobs move and get kited or parked next to on purpose (a blaze hovering out of reach, the chicken we wait by for eggs),
+    // so "not getting closer" is how a fight looks, not a stuck walk. switching targets mid fight is the thing to never do
+    @Override
+    protected boolean repicksWhenStalled() {
+        return false;
+    }
+
     @Override
     protected boolean isValid(AltoClef mod, Entity obj) {
         return obj.isAlive() && mod.getEntityTracker().isEntityReachable(obj);

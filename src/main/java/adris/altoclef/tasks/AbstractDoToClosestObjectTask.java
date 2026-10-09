@@ -49,6 +49,11 @@ public abstract class AbstractDoToClosestObjectTask<T> extends Task {
         return false;
     }
 
+    // virtual. false keeps a pursuit that got nowhere for 7 s anyway (see PursuitProgress)
+    protected boolean repicksWhenStalled() {
+        return true;
+    }
+
     // virtual. the thing we were after stopped being valid (broken, picked up, dead) and we are about to pick another
     protected void onPursuitGone(AltoClef mod, T gone) {
     }
@@ -155,7 +160,7 @@ public abstract class AbstractDoToClosestObjectTask<T> extends Task {
         }
 
         if (_currentlyPursuing != null) {
-            _progress.tick(_currentlyPursuing, getPos(mod, _currentlyPursuing).distanceTo(mod.getPlayer().position()), brokeSomething(mod));
+            _progress.tick(_currentlyPursuing, getPos(mod, _currentlyPursuing).distanceTo(mod.getPlayer().position()), brokeSomething(mod), WorldHelper.getTicks());
         }
 
         // Get closest object
@@ -183,7 +188,7 @@ public abstract class AbstractDoToClosestObjectTask<T> extends Task {
                     h.updateHeuristic(currentHeuristic);
                     h.updateDistance(closestDistanceSqr);
                     h.setTickAttempted(lastTick);
-                    if (_progress.stalled()) {
+                    if (PursuitProgress.repick(repicksWhenStalled(), _progress.stalled(), _currentlyPursuing, newClosest)) {
                         // 7 s and not a step closer: the 2x rule below would keep us on it forever, whatever the pick
                         // says is nearest now gets a go instead
                         setDebugState("Current pursuit got nowhere, trying the nearest");
