@@ -123,10 +123,62 @@ public class CombatCommitChasedTest {
     public void neverTurnsOnTheWarden() {
         CombatCommit c = extendedRun(warden(2, 7));
         holds(c, NOW + CAP + 1, NOW + 2 * CAP - 1, 7, warden(2, 7));
-        Event event = c.step(tick(NOW + 2 * CAP, 7, 0, warden(2, 7)));
-        // it stays a run (danger starts it again), never a fight with it
-        assertTrue(event.toString(), event == Event.RUN_CAP || event == Event.RUN_START);
-        assertTrue(c.mode() != Mode.FIGHT);
+        // it stays a run, never a fight with it: the old run ends and danger starts the next one on the same step
+        assertEquals(Event.RUN_START, c.step(tick(NOW + 2 * CAP, 7, 5, warden(2, 7))));
+        assertEquals(Event.RUN_CAP, c.endedFirst());
+        assertEquals(Mode.RUN, c.mode());
+        assertEquals(Why.HEAVY, c.why());
+        assertEquals(5, c.originX(), 0);
+    }
+
+    // ---- no gap between one commitment and the next
+
+    @Test
+    public void aChasedFightThatWinsWithAFreshHitOnUsRunsOnTheSameStep() {
+        CombatCommit c = extendedRun(zombie(1, 5));
+        holds(c, NOW + CAP + 1, NOW + 2 * CAP - 1, 7, zombie(1, 5));
+        assertEquals(Event.RUN_CHASED_FIGHT, c.step(tick(NOW + 2 * CAP, 7, 0, zombie(1, 5))));
+        // zombie 1 dies as a skeleton puts an arrow in us from six blocks: the fight is over and the run is on, no tick between
+        Foe skeleton = new Foe(2, 6, true, false, 0);
+        assertEquals(Event.RUN_START, c.step(tick(NOW + 2 * CAP + 1, 6, 0, skeleton)));
+        assertEquals(Event.FIGHT_DEAD, c.endedFirst());
+        assertEquals(Mode.RUN, c.mode());
+        assertEquals(Why.LOW_HP, c.why());
+    }
+
+    @Test
+    public void aStalledFightWithSomethingElseSwingingAtUsGoesStraightToThatOne() {
+        CombatCommit c = new CombatCommit();
+        assertEquals(Event.FIGHT_START, c.step(tick(NOW, 20, 0, zombie(1, 2, 0))));
+        Foe hangingBack = zombie(1, 5, 50);
+        long stall = NOW + CombatCommit.STALL_TICKS;
+        for (long now = NOW + 1; now < stall; now++) {
+            assertEquals("tick " + now, Event.NONE, c.step(new Tick(now, 20, 0, 0, List.of(hangingBack, zombie(2, 5)), hangingBack)));
+        }
+        // the stall lands on the tick zombie 2 walks up and swings: one step, two lines, and never Mode.NONE in between
+        assertEquals(Event.FIGHT_START, c.step(new Tick(stall, 20, 0, 0, List.of(hangingBack, zombie(2, 2, 0)), hangingBack)));
+        assertEquals(Event.FIGHT_STALLED, c.endedFirst());
+        assertEquals(Mode.FIGHT, c.mode());
+        assertEquals(2, c.targetId());
+        assertTrue(c.isIgnored(1));
+    }
+
+    @Test
+    public void anEndWithNothingNextIsJustTheEnd() {
+        CombatCommit c = new CombatCommit();
+        assertEquals(Event.FIGHT_START, c.step(tick(NOW, 20, 0, zombie(1, 2, 0))));
+        assertEquals(Event.FIGHT_DEAD, c.step(tick(NOW + 1, 20, 0, zombie(2, 5))));
+        assertEquals(Event.NONE, c.endedFirst());
+        assertEquals(Mode.NONE, c.mode());
+        // and the next step forgets it
+        assertEquals(Event.NONE, c.step(tick(NOW + 2, 20, 0)));
+        assertEquals(Event.NONE, c.endedFirst());
+    }
+
+    @Test
+    public void aRunThatStartsFromIdleHasNothingEndedFirst() {
+        CombatCommit c = lowHpRun();
+        assertEquals(Event.NONE, c.endedFirst());
     }
 
     @Test

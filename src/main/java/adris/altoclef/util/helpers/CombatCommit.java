@@ -213,6 +213,8 @@ public final class CombatCommit {
     private long startTick;
     private long lastTick = Long.MIN_VALUE;
     private long cooldownUntil = Long.MIN_VALUE / 2;
+    // the commitment that ended on this step right before the one step() returned started, NONE when nothing chained
+    private Event endedFirst = Event.NONE;
 
     // fight bookkeeping
     private double bestDistance;
@@ -262,6 +264,11 @@ public final class CombatCommit {
         return startTick;
     }
 
+    // so the chain can still say how the old one ended when step() hands back the start of the next
+    public Event endedFirst() {
+        return endedFirst;
+    }
+
     public boolean coolingDown(long now) {
         return now < cooldownUntil;
     }
@@ -277,6 +284,7 @@ public final class CombatCommit {
         cornered = false;
         lastTick = Long.MIN_VALUE;
         cooldownUntil = Long.MIN_VALUE / 2;
+        endedFirst = Event.NONE;
         extended = false;
         farSince = -1;
         clearSince = -1;
@@ -289,14 +297,30 @@ public final class CombatCommit {
         // a clock that went backwards is a new world, nobody is owed a grudge from there
         if (lastTick != Long.MIN_VALUE && t.now() < lastTick) reset();
         lastTick = t.now();
-        switch (mode) {
-            case FIGHT:
-                return fight(t);
-            case RUN:
-                return run(t);
-            default:
-                return idle(t);
-        }
+        endedFirst = Event.NONE;
+        Mode before = mode;
+        int oldTarget = targetId;
+        Event event = switch (before) {
+            case FIGHT -> fight(t);
+            case RUN -> run(t);
+            default -> idle(t);
+        };
+        if (before == Mode.NONE || mode != Mode.NONE) return event;
+        // it just ended. whatever idle would start next tick starts now: a tick of NONE in between is a tick of the chain
+        // letting go of the wheel and the user task walking with the mob still on us
+        Event next = idle(afterEnd(t, oldTarget));
+        if (next == Event.NONE) return event;
+        endedFirst = event;
+        return next;
+    }
+
+    // what idle would have seen next tick: no fight target (there is none with nothing committed), and not the target if it
+    // just died. a dead one can still be in the foe list for a tick with its fresh hit, same idea as nextTarget skipping it.
+    // one we gave up on but is alive stays, ignored does its job and danger is still danger
+    private static Tick afterEnd(Tick t, int oldTarget) {
+        boolean dead = oldTarget >= 0 && t.target() == null;
+        List<Foe> foes = !dead ? t.foes() : t.foes().stream().filter(foe -> foe.id() != oldTarget).toList();
+        return new Tick(t.now(), t.health(), t.x(), t.z(), foes, null);
     }
 
     // ---- NONE

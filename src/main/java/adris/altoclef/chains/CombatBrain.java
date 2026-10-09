@@ -199,9 +199,13 @@ final class CombatBrain {
         if (target != null && _commit.mode() == Mode.FIGHT) _fightName = nameOf(mod, _commit.targetId());
         String fighting = _fightName;
         if (enabled) {
+            // how far the run got, asked before the step: an end chained into a new run has moved the origin by the time we say so
+            int blocks = (int) Math.round(Math.hypot(player.getX() - _commit.originX(), player.getZ() - _commit.originZ()));
             Event event = _commit.step(new CombatCommit.Tick(now, player.getHealth(), player.getX(), player.getZ(), foes, target));
             if (event != Event.NONE) {
-                log(mod, dimension, event, fighting, mobs);
+                // the old one ended and the next one started on the same step, both get their line, in that order
+                if (_commit.endedFirst() != Event.NONE) log(mod, dimension, _commit.endedFirst(), fighting, mobs, blocks);
+                log(mod, dimension, event, fighting, mobs, blocks);
                 // a new run is a new origin, a new fight is a new target, whatever the old ones were. an extended run is
                 // the same run from the same origin, so it keeps its task (a new one would cancel the path again)
                 if (event != Event.RUN_EXTENDED) _run = null;
@@ -257,11 +261,10 @@ final class CombatBrain {
     }
 
     // one line per transition, never per tick (the text is CombatLog's)
-    private void log(AltoClef mod, Dimension dimension, Event event, String fighting, List<Mob> mobs) {
+    private void log(AltoClef mod, Dimension dimension, Event event, String fighting, List<Mob> mobs, int blocks) {
         LocalPlayer player = mod.getPlayer();
         String line = CombatLog.line(dimension, event, _commit.why(), _commit.cornered(), nameOf(mod, _commit.targetId()), fighting,
-                describe(mobs), Math.round(player.getHealth()),
-                (int) Math.round(Math.hypot(player.getX() - _commit.originX(), player.getZ() - _commit.originZ())));
+                describe(mobs), Math.round(player.getHealth()), blocks);
         if (line != null) Debug.logInternal(line);
     }
 
