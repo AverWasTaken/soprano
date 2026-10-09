@@ -539,6 +539,8 @@ public class MineAndCollectTask extends ResourceTask {
             if (obj instanceof ItemEntity drop) {
                 // picked up or despawned, don't keep chasing a ghost. one we gave up on or the pickup task banned stays dead
                 if (!drop.isAlive() || _patience.gaveUp(drop.getId()) || !mod.getEntityTracker().isEntityReachable(drop)) return false;
+                // never worth a swim, whatever the water setting says
+                if (ItemPickupRules.lavaBlocksPickup(drop)) return false;
                 // in the water the pickup task can't see it anymore and would wander until the patience ran out
                 if (!Baritone.settings().altoPickupItemsInWater.value && !ItemPickupRules.isPickupSafe(drop)) return false;
                 Item item = drop.getItem().getItem();

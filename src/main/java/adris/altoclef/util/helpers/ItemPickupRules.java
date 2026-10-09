@@ -60,10 +60,49 @@ public final class ItemPickupRules {
         boolean open(int x, int y, int z);
     }
 
-    public static boolean isPickupSafe(ItemEntity item) {
+    // any lava at all, source or flowing
+    public interface Lava {
+        boolean at(int x, int y, int z);
+    }
+
+    // a drop in lava, on lava, or with lava on any side of it is not worth the walk. the body is 0.6 wide and the pickup
+    // circle is a block out from it, so lava beside it is where we would be standing or falling into. two levels of
+    // neighbours: the drop's own (a ledge with lava next to it) and the one below, because a drop lying on a lake shore
+    // sits one up from the lava surface and that is the one block step off into the lake
+    public static boolean nextToLava(double x, double y, double z, Lava lava) {
+        int bx = (int) Math.floor(x);
+        int by = (int) Math.floor(y);
+        int bz = (int) Math.floor(z);
+        for (int dy = 0; dy >= -1; dy--) {
+            for (int dx = -1; dx <= 1; dx++) {
+                for (int dz = -1; dz <= 1; dz++) {
+                    if (lava.at(bx + dx, by + dy, bz + dz)) return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    // lava somewhere around the drop is only a reason to leave it when every spot we could grab it from is also next to
+    // lava. a drop on a lake shore with solid dry ground behind it is a normal pickup, a drop on a one wide strip or an
+    // island in the lake is not. the spots are the ones the water rule uses (feet, pickup reach), and they have to pass
+    // nextToLava themselves
+    public static boolean lavaBlocksPickup(double x, double y, double z, Terrain terrain, Lava lava) {
+        if (!nextToLava(x, y, z, lava)) return false;
+        return !canGrabFromDryLand(terrain, x, y, z, lava);
+    }
+
+    public static boolean lavaBlocksPickup(ItemEntity item) {
         Level level = item.level();
-        BlockPos at = item.blockPosition();
-        Terrain terrain = new Terrain() {
+        return lavaBlocksPickup(item.getX(), item.getY(), item.getZ(), terrain(level), lava(level));
+    }
+
+    public static Lava lava(Level level) {
+        return (x, y, z) -> level.getFluidState(new BlockPos(x, y, z)).is(FluidTags.LAVA);
+    }
+
+    public static Terrain terrain(Level level) {
+        return new Terrain() {
             @Override
             public boolean water(int x, int y, int z) {
                 return level.getFluidState(new BlockPos(x, y, z)).is(FluidTags.WATER);
@@ -83,6 +122,11 @@ public final class ItemPickupRules {
                 return state.getFluidState().isEmpty() && state.getCollisionShape(level, pos).isEmpty();
             }
         };
+    }
+
+    public static boolean isPickupSafe(ItemEntity item) {
+        BlockPos at = item.blockPosition();
+        Terrain terrain = terrain(item.level());
         // isInWater is the entity's own idea, the fluid check covers the tick where the two disagree
         boolean inWater = item.isInWater() || terrain.water(at.getX(), at.getY(), at.getZ());
         return isPickupSafe(item.getX(), item.getY(), item.getZ(), inWater, terrain);
@@ -95,7 +139,7 @@ public final class ItemPickupRules {
         int bx = (int) Math.floor(x);
         int by = (int) Math.floor(y);
         int bz = (int) Math.floor(z);
-        return isWadeable(terrain, bx, by, bz) || canGrabFromDryLand(terrain, x, y, z);
+        return isWadeable(terrain, bx, by, bz) || canGrabFromDryLand(terrain, x, y, z, null);
     }
 
     // a puddle one block deep over a floor. you walk through it, no swimming involved. swamps and rain are full of these
@@ -103,8 +147,9 @@ public final class ItemPickupRules {
         return t.water(bx, by, bz) && t.solid(bx, by - 1, bz) && t.open(bx, by + 1, bz);
     }
 
-    // is there a spot we can stand on, dry, with the item inside pickup range of it
-    private static boolean canGrabFromDryLand(Terrain t, double x, double y, double z) {
+    // is there a spot we can stand on, dry, with the item inside pickup range of it. a lava lookup makes the spot count
+    // only when it is not next to lava itself (null = the water question, lava does not matter)
+    private static boolean canGrabFromDryLand(Terrain t, double x, double y, double z, Lava lava) {
         int bx = (int) Math.floor(x);
         int by = (int) Math.floor(y);
         int bz = (int) Math.floor(z);
@@ -115,7 +160,7 @@ public final class ItemPickupRules {
                 for (int sy = by - 3; sy <= by + 1; sy++) {
                     // feet at sy, the item has to sit between "reach below the feet" and "reach above the head"
                     if (y < sy - REACH_BELOW || y > sy + REACH_ABOVE) continue;
-                    if (standable(t, sx, sy, sz)) return true;
+                    if (standable(t, sx, sy, sz) && (lava == null || !nextToLava(sx + 0.5, sy + 0.5, sz + 0.5, lava))) return true;
                 }
             }
         }

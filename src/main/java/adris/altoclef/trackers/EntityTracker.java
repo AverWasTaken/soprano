@@ -19,6 +19,8 @@ import adris.altoclef.util.helpers.WorldHelper;
 import java.util.*;
 import java.util.function.Predicate;
 import net.minecraft.client.Minecraft;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.Mob;
@@ -57,12 +59,13 @@ public class EntityTracker extends Tracker {
     private DamageSource _lastNotedSource;
     // entity ids we already said we were skipping, so the log gets one line per drop and not one per tick
     private final Set<Integer> _skippedWetDrops = new HashSet<>();
+    private final Set<Integer> _skippedLavaDrops = new HashSet<>();
     // isPickupSafe can be ~45 block lookups per drop, so each drop's verdict lives a few ticks instead of being redone
     // every tick. rebuilt each update from the drops that were actually asked about, so dead ones fall out by themselves
     private HashMap<Integer, PickupVerdict> _pickupVerdicts = new HashMap<>();
     private static final int PICKUP_RECHECK_TICKS = 10;
 
-    private record PickupVerdict(long pos, long tick, boolean safe) {
+    private record PickupVerdict(long pos, long tick, boolean safe, boolean lava) {
     }
 
     private final HashMap<Player, Set<Entity>> _entitiesCollidingWithPlayerAccumulator = new HashMap<>();
@@ -439,7 +442,14 @@ public class EntityTracker extends Tracker {
                     if (ientity.onGround() || ientity.isInWater() || WorldHelper.isSolid(_mod, ientity.blockPosition().below(2)) || WorldHelper.isSolid(_mod, ientity.blockPosition().below(3))) {
                         // every drop lookup in altoclef goes through this map, so skipping wet items here covers all
                         // of them at once, and updateState only runs once a tick so it doubles as the cache
-                        if (!allowWetDrops && !isPickupSafeCached(ientity, now, verdicts)) {
+                        PickupVerdict verdict = pickupVerdict(ientity, now, verdicts, allowWetDrops);
+                        // lava is not a setting, nothing is worth dying for. it comes back by itself once the lava
+                        // is gone, the verdict is redone every few ticks
+                        if (verdict.lava()) {
+                            noteSkippedLavaDrop(ientity);
+                            continue;
+                        }
+                        if (!verdict.safe()) {
                             noteSkippedWetDrop(ientity);
                             continue;
                         }
@@ -487,15 +497,24 @@ public class EntityTracker extends Tracker {
         }
     }
 
-    // redo the check when the drop moves to another block or the verdict is old enough that the water may have changed
-    private boolean isPickupSafeCached(ItemEntity drop, long now, HashMap<Integer, PickupVerdict> verdicts) {
+    // redo the check when the drop moves to another block or the verdict is old enough that the water or lava may have
+    // changed. the water half is skipped (counts as safe) when wet drops are allowed
+    private PickupVerdict pickupVerdict(ItemEntity drop, long now, HashMap<Integer, PickupVerdict> verdicts, boolean allowWetDrops) {
         long pos = drop.blockPosition().asLong();
         PickupVerdict verdict = _pickupVerdicts.get(drop.getId());
         if (verdict == null || verdict.pos() != pos || now - verdict.tick() >= PICKUP_RECHECK_TICKS) {
-            verdict = new PickupVerdict(pos, now, ItemPickupRules.isPickupSafe(drop));
+            verdict = new PickupVerdict(pos, now, allowWetDrops || ItemPickupRules.isPickupSafe(drop), ItemPickupRules.lavaBlocksPickup(drop));
         }
         verdicts.put(drop.getId(), verdict);
-        return verdict.safe();
+        return verdict;
+    }
+
+    private void noteSkippedLavaDrop(ItemEntity drop) {
+        if (_skippedLavaDrops.add(drop.getId())) {
+            BlockPos at = drop.blockPosition();
+            Debug.logInternal("pickup: skipping " + BuiltInRegistries.ITEM.getKey(drop.getItem().getItem()).getPath()
+                    + " at " + at.getX() + " " + at.getY() + " " + at.getZ() + ", it is next to lava");
+        }
     }
 
     private void noteSkippedWetDrop(ItemEntity drop) {
@@ -510,6 +529,7 @@ public class EntityTracker extends Tracker {
         _entityBlacklist.clear();
         _mobReach.reset();
         _skippedWetDrops.clear();
+        _skippedLavaDrops.clear();
         _pickupVerdicts.clear();
         // these are keyed by LocalPlayer and hold entities, so each of them pins a whole ClientLevel. gone with the world
         _entitiesCollidingWithPlayerAccumulator.clear();

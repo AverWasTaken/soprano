@@ -2,6 +2,9 @@ package adris.altoclef.tasks.movement;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.util.helpers.ItemPickupRules;
+import adris.altoclef.util.helpers.LavaExit;
+import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
 import baritone.api.pathing.goals.Goal;
 import baritone.api.utils.input.Input;
@@ -9,6 +12,7 @@ import baritone.pathing.movement.MovementHelper;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.phys.Vec3;
 
 public class EscapeFromLavaTask extends CustomBaritoneGoalTask {
 
@@ -41,10 +45,23 @@ public class EscapeFromLavaTask extends CustomBaritoneGoalTask {
         // Sprint through lava + jump, it's faster
         if (mod.getPlayer().isInLava() || mod.getWorld().getBlockState(mod.getPlayer().blockPosition().below()).getBlock() == Blocks.LAVA) {
             mod.getInputControls().hold(Input.JUMP);
+            faceTheShore(mod);
             mod.getInputControls().hold(Input.SPRINT);
             mod.getInputControls().hold(Input.MOVE_FORWARD);
         }
         return super.onTick(mod);
+    }
+
+    // baritone steers while it has a path. with none (the first ticks, or a search that failed) holding forward swims
+    // wherever we happened to face, which was usually deeper into the lake, so turn to the closest dry cell first. nothing
+    // standable in range = a blind swim is all that is left
+    private void faceTheShore(AltoClef mod) {
+        if (mod.getClientBaritone().getPathingBehavior().isPathing()) return;
+        BlockPos at = mod.getPlayer().blockPosition();
+        LavaExit.Cell exit = LavaExit.nearest(at.getX(), at.getY(), at.getZ(), ItemPickupRules.terrain(mod.getWorld()), ItemPickupRules.lava(mod.getWorld()));
+        if (exit == null) return;
+        float yaw = LookHelper.getLookRotation(mod, new Vec3(exit.x() + 0.5, exit.y() + 0.5, exit.z() + 0.5)).getYaw();
+        mod.getInputControls().forceLook(yaw, mod.getPlayer().getXRot());
     }
 
     @Override

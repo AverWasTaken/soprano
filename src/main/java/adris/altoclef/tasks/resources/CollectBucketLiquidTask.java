@@ -10,10 +10,12 @@ import adris.altoclef.tasks.construction.DestroyBlockTask;
 import adris.altoclef.tasks.movement.DefaultGoToDimensionTask;
 import adris.altoclef.tasks.movement.GetCloseToBlockTask;
 import adris.altoclef.tasks.movement.TimeoutWanderTask;
+import adris.altoclef.tasks.slot.EnsureFreeInventorySlotTask;
 import adris.altoclef.tasksystem.Task;
 import baritone.api.utils.Dimension;
 import adris.altoclef.ui.HudText;
 import adris.altoclef.util.ItemTarget;
+import adris.altoclef.util.helpers.BucketFillRules;
 import adris.altoclef.util.helpers.FluidSources;
 import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.WorldHelper;
@@ -26,7 +28,9 @@ import java.util.Optional;
 import java.util.function.Predicate;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.NonNullList;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.block.Block;
@@ -55,6 +59,14 @@ public class CollectBucketLiquidTask extends ResourceTask {
     private int _scanWaitStart = -1;
     private int _lastClimbTick = -1000;
     private boolean _loggedWander = false;
+    // made when a fill has no slot to land in. a finished one is stuck (nothing to throw), and _noRoom remembers that
+    // until the bag stops needing room
+    private EnsureFreeInventorySlotTask _roomTask = null;
+    private boolean _noRoom = false;
+    private boolean _loggedNoRoom = false;
+    // when the current hold started (-1 = not holding), and when we started looking down for the spare bucket throw
+    private int _holdSince = -1;
+    private int _aimedSince = -1;
     // sources the stream climb has already handed over
     private final HashSet<BlockPos> _climbed = new HashSet<>();
 
@@ -86,6 +98,12 @@ public class CollectBucketLiquidTask extends ResourceTask {
         //_blacklist.clear();
 
         _progressChecker.reset();
+        // a restart gets a fresh look at whether anything can be thrown, the bag may have changed while we were away
+        _roomTask = null;
+        _noRoom = false;
+        _loggedNoRoom = false;
+        _holdSince = -1;
+        _aimedSince = -1;
     }
 
 
@@ -103,6 +121,22 @@ public class CollectBucketLiquidTask extends ResourceTask {
     protected Task onResourceTick(AltoClef mod) {
         if (mod.getClientBaritone().getPathingBehavior().isPathing()) {
             _progressChecker.reset();
+        }
+        // before either fill below (the one we're standing in and the one at the shore), not between a click and its wait
+        if (_pickedUpTimer.elapsed()) {
+            BucketFillRules.Fill fill = fillPlan(mod);
+            if (fill == BucketFillRules.Fill.MAKE_ROOM) {
+                setDebugState("Making room for the full bucket");
+                return roomTask();
+            }
+            if (fill != BucketFillRules.Fill.HOLD) {
+                _holdSince = -1;
+            } else if (!holdOrDropSpare(mod)) {
+                // not filling is the answer. nothing tells the caller, it just sees no lava bucket arrive; the portal phase's
+                // budget is what ends a stalled cast, and a plain `get lava_bucket` idles until somebody frees a slot (or
+                // until the spare buckets below are gone and the one left fills in place)
+                return null;
+            }
         }
         // If we're standing inside a liquid, go pick it up.
         if (_tryImmediatePickupTimer.elapsed() && !mod.getItemStorage().hasItem(Items.WATER_BUCKET)) {
@@ -224,6 +258,93 @@ public class CollectBucketLiquidTask extends ResourceTask {
         setDebugState("Searching for liquid by wandering around aimlessly");
 
         return new TimeoutWanderTask();
+    }
+
+    // what the next fill should do about the slot the full bucket needs (see BucketFillRules)
+    private BucketFillRules.Fill fillPlan(AltoClef mod) {
+        NonNullList<ItemStack> slots = mod.getPlayer().getInventory().items;
+        int[] bucketStacks = new int[slots.size()];
+        boolean freeSlot = false;
+        for (int i = 0; i < bucketStacks.length; i++) {
+            ItemStack stack = slots.get(i);
+            if (stack.isEmpty()) {
+                freeSlot = true;
+            } else if (stack.is(Items.BUCKET)) {
+                bucketStacks[i] = stack.getCount();
+            }
+        }
+        if (!BucketFillRules.needsFreeSlot(bucketStacks, freeSlot)) {
+            _roomTask = null;
+            _noRoom = false;
+            return BucketFillRules.Fill.GO;
+        }
+        // nothing to throw and nowhere to put it. latched, because handing the room task back next tick restarts it (stuck
+        // flag reset) and the fill path would get cancelled and restarted every other tick
+        if (_roomTask != null && _roomTask.isFinished(mod)) {
+            _noRoom = true;
+        }
+        BucketFillRules.Fill fill = BucketFillRules.plan(bucketStacks, freeSlot, _noRoom, _toCollect == Blocks.LAVA);
+        if (_noRoom && !_loggedNoRoom) {
+            _loggedNoRoom = true;
+            if (fill == BucketFillRules.Fill.HOLD) {
+                // in chat too: an idle bot with nothing on screen reads as frozen
+                Debug.logInternal("bucket: not filling " + _liquidName + ", no free slot");
+                Debug.logMessage("bag is full and nothing can go, can't fill " + _liquidName);
+            } else {
+                Debug.logInternal("bucket: filling " + _liquidName + " anyway, no free slot");
+            }
+        }
+        return fill;
+    }
+
+    // true when the fill may go ahead anyway (a lone bucket in hand fills in place, no new slot). false keeps holding, with
+    // the state set. after the wait it throws every spare bucket of the stack in hand at once, keeping one. they land at
+    // our feet with a 2 s pickup delay and are left to the pickup rules; the lone bucket is filled and we are off to the
+    // lake long before then, and if they do find us first they merge back and the hold starts over from scratch
+    private boolean holdOrDropSpare(AltoClef mod) {
+        int now = WorldHelper.getTicks();
+        if (_holdSince < 0) {
+            _holdSince = now;
+        }
+        int held = 0;
+        if (now - _holdSince >= BucketFillRules.HOLD_DROP_TICKS && mod.getSlotHandler().forceEquipItem(Items.BUCKET)) {
+            ItemStack hand = mod.getPlayer().getMainHandItem();
+            held = hand.is(Items.BUCKET) ? hand.getCount() : 0;
+        }
+        BucketFillRules.Hold step = BucketFillRules.holdStep(held, now - _holdSince);
+        if (step == BucketFillRules.Hold.FILL_IN_PLACE) {
+            return true;
+        }
+        if (step == BucketFillRules.Hold.DROP_SPARES) {
+            setDebugState("Dropping spare buckets to make room", "Dropping spare buckets");
+            // straight down, so they land at our feet and not in the lake we are standing next to. the look has to reach
+            // the server before the drop does (drop sends its packet right now, the rotation goes out with the tick), so
+            // look now and throw two ticks later. the same wait lets the hotbar slot change from the equip reach the server,
+            // drop does not sync the selected slot itself, so do not cut it to 1
+            mod.getInputControls().forceLook(mod.getPlayer().getYRot(), 90);
+            if (_aimedSince < 0) {
+                _aimedSince = now;
+            }
+            if (now - _aimedSince >= 2) {
+                _aimedSince = -1;
+                for (int i = BucketFillRules.spares(held); i > 0; i--) {
+                    mod.getPlayer().drop(false);
+                }
+                Debug.logInternal("bucket: held " + BucketFillRules.HOLD_DROP_TICKS / 20 + " s with no free slot, dropped "
+                        + BucketFillRules.spares(held) + " spare buckets, filling the last one in place");
+            }
+        } else {
+            _aimedSince = -1;
+            setDebugState("Waiting for a free slot to fill " + _liquidName, "Waiting for a free slot to fill " + _liquidName);
+        }
+        return false;
+    }
+
+    private Task roomTask() {
+        if (_roomTask == null) {
+            _roomTask = new EnsureFreeInventorySlotTask();
+        }
+        return _roomTask;
     }
 
     // true if it found a source and told the tracker, so the next tick's query can pick it up

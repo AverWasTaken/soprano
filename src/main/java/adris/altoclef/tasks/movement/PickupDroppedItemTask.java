@@ -331,6 +331,9 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
     @Override
     protected boolean isValid(AltoClef mod, ItemEntity obj) {
         if (!obj.isAlive() || _blacklist.contains(obj) || !mod.getEntityTracker().isEntityReachable(obj)) return false;
+        // a drop we were already walking to can slide next to lava after the tracker picked it, and the tracker's own
+        // skip only keeps new targets out. no setting for this one
+        if (ItemPickupRules.lavaBlocksPickup(obj)) return false;
         // it can end up in the water after we picked it as the target (broke the block over a lake), the tracker has
         // already forgotten it by then so we have to drop it ourselves
         return Baritone.settings().altoPickupItemsInWater.value || ItemPickupRules.isPickupSafe(obj);

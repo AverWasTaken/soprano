@@ -16,6 +16,11 @@ import net.minecraft.core.BlockPos;
  */
 public class GetCloseToBlockTask extends Task {
 
+    // the radius we ask baritone for until we are right next to the target. starting from the real distance and tightening
+    // a block at a time sounds nicer but repaths on every single step (the goal is met a block later, every block), and
+    // one path to the tightest radius is the whole point. Integer.MAX_VALUE here squares to 1 in an int, same goal
+    static final int START_RANGE = 1;
+
     private final BlockPos _toApproach;
     private int _currentRange;
 
@@ -25,7 +30,7 @@ public class GetCloseToBlockTask extends Task {
 
     @Override
     protected void onStart(AltoClef mod) {
-        _currentRange = Integer.MAX_VALUE;
+        _currentRange = START_RANGE;
     }
 
     @Override
@@ -33,8 +38,9 @@ public class GetCloseToBlockTask extends Task {
         // Always bump the range down if we've met it.
         // We have a strictly decreasing range, which means we will eventualy get
         // as close as we can.
-        if (inRange(mod)) {
-            _currentRange = getCurrentDistance(mod) - 1;
+        double distSq = mod.getPlayer().blockPosition().distSqr(_toApproach);
+        if (within(_currentRange, distSq)) {
+            _currentRange = shrunkRange(distSq);
         }
         return new GetWithinRangeOfBlockTask(_toApproach, _currentRange);
     }
@@ -44,12 +50,15 @@ public class GetCloseToBlockTask extends Task {
 
     }
 
-    private int getCurrentDistance(AltoClef mod) {
-        return (int) Math.sqrt(mod.getPlayer().blockPosition().distSqr(_toApproach));
+    // long math, an int range squared is what went wrong in the first place
+    static boolean within(int range, double distSq) {
+        long r = range;
+        return distSq <= r * r;
     }
 
-    private boolean inRange(AltoClef mod) {
-        return mod.getPlayer().blockPosition().distSqr(_toApproach) <= _currentRange * _currentRange;
+    // one block tighter than where we stand, never below the exact block and never past what GoalNear can square
+    static int shrunkRange(double distSq) {
+        return GetWithinRangeOfBlockTask.clampRange((int) Math.sqrt(distSq) - 1);
     }
 
     @Override
