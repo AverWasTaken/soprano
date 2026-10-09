@@ -90,6 +90,14 @@ public final class WorkbenchRules {
         return held == null || held ? NEAR : NEAR - LATCH_BAND;
     }
 
+    // the planner's word on a furnace or smoker of ours, the one flag stoneWanted, the kit's furnace skip, CookGate and cookFeasible
+    // all read: held inside the band as before, or anywhere the smelt would walk back to (StationChoice: no item in the bag and
+    // nothing to make one from, ours standing out to the forget line). without the second half the plan asked for 8 cobble for a
+    // furnace the smelt task then never made, it walked back to ours
+    public static boolean plannerHeld(boolean heldNear, boolean inBag, boolean canMake, boolean walkBackTarget) {
+        return heldNear || !inBag && !canMake && walkBackTarget;
+    }
+
     // a table past FAR_TABLE_DISTANCE that the bag can make again: 4 planks, or a log to make them from
     public static boolean canRecraftTable(int planks, int logs) {
         return planks >= 4 || logs >= 1;

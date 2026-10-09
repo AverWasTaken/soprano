@@ -93,13 +93,14 @@ public interface GamerFacts {
         return false;
     }
 
-    // same for a furnace of ours (RunState.placedFurnaces), within NEAR. the cobble floor reads it: the 8 cobble it cost are not
+    // same for a furnace of ours (RunState.placedFurnaces), within NEAR, or further out (to the forget line) when the bag can't make
+    // one and the smelt would walk back to it (WorkbenchRules.plannerHeld). the cobble floor reads it: the 8 cobble it cost are not
     // owed to a furnace that is already on the ground
     default boolean furnacePlacedNearby() {
         return false;
     }
 
-    // and a smoker of ours (RunState.placedSmokers), within NEAR. the cook need reads it: a smoker standing is the cheapest place to
+    // and a smoker of ours (RunState.placedSmokers), within NEAR or walked back to like the furnace. the cook need reads it: a smoker standing is the cheapest place to
     // put meat, and it beats a furnace (WorkbenchRules.cookInSmoker)
     default boolean smokerPlacedNearby() {
         return false;

@@ -2,6 +2,7 @@ package adris.altoclef.tasks.speedrun.gamer;
 
 import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig;
 import adris.altoclef.util.helpers.FuelPolicy;
+import adris.altoclef.util.helpers.StationChoice;
 import adris.altoclef.util.helpers.StationHook;
 import baritone.api.utils.Dimension;
 import net.minecraft.SharedConstants;
@@ -610,5 +611,33 @@ public class CookGateTest {
         assertFalse(CookGate.reusable(b, full, 8, false));
         // a smoker has no ore to mix it up with
         assertTrue(CookGate.reusable(b, full, 8, true));
+    }
+
+    // what MinecraftFacts says for a furnace of ours 40 blocks off: held only while the smelt task would walk back to it
+    private static boolean walkBackFlag(FakeFacts f) {
+        boolean canMake = StationChoice.canMakeFrom(StationHook.Kind.FURNACE, f.count(Items.COBBLESTONE), 0, 0, f.count(Items.FURNACE));
+        return WorkbenchRules.plannerHeld(false, f.has(Items.FURNACE), canMake, true);
+    }
+
+    // one flag, every reader: with no cobble the furnace 40 blocks off is ours to walk back to, so there is no furnace to craft, no
+    // 8 cobble mined for one, and the meat cooks in it. with 8 cobble StationChoice makes one here, and the plan budgets it
+    @Test
+    public void aFurnaceTheSmeltWalksBackToIsTheSameFurnaceForEveryReader() {
+        f.give(Items.MUTTON, 6).give(Items.COAL, 2);
+        FakeFacts none = new FakeFacts().give(Items.MUTTON, 6).give(Items.COAL, 2);
+        f.furnacePlaced = walkBackFlag(f);
+        assertTrue(f.furnacePlaced);
+        assertTrue(names(KitPlanner.gather(none, cfg, 8)).contains("furnace"));
+        assertFalse(names(KitPlanner.gather(f, cfg, 8)).contains("furnace"));
+        assertEquals(KitPlanner.stoneNeed(none, cfg) - 8, KitPlanner.stoneNeed(f, cfg));
+        assertEquals(KitPlanner.stoneFloor(none, cfg) - 8, KitPlanner.stoneFloor(f, cfg));
+        assertEquals(CookGate.Station.FURNACE, CookGate.station(f, cfg, true));
+        assertEquals(COOK, need());
+        assertTrue(CookGate.cookFeasible(f, cfg, 8));
+        // 8 cobble: making one wins in StationChoice, and the planner lets go of the far one with it
+        f.give(Items.COBBLESTONE, 8);
+        f.furnacePlaced = walkBackFlag(f);
+        assertFalse(f.furnacePlaced);
+        assertTrue(names(KitPlanner.gather(f, cfg, 8)).contains("furnace"));
     }
 }

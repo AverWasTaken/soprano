@@ -9,6 +9,7 @@ import static org.junit.Assert.assertTrue;
 import adris.altoclef.tasks.speedrun.gamer.WorkbenchRules.Call;
 import adris.altoclef.tasks.speedrun.gamer.WorkbenchRules.Look;
 import adris.altoclef.tasks.speedrun.gamer.WorkbenchRules.Visit;
+import adris.altoclef.util.helpers.StationChoice;
 import adris.altoclef.util.helpers.StationHook.Kind;
 import adris.altoclef.util.helpers.WalkCost;
 import java.util.List;
@@ -1995,6 +1996,41 @@ public class WorkbenchRulesTest {
         assertTrue(b.redecide);
         // and a yes is believed at once
         assertEquals(WorkbenchRules.Anchor.ANCHORED, WorkbenchRules.updateComingBack(smoker, "to cook", u + 100));
+    }
+
+    // ---- the planner's furnace / smoker against StationChoice
+
+    // whatever the bag and the distance, the planner says "held" exactly when the smelt task would walk to ours: near, or past
+    // NEAR with no item in the bag and nothing to make one from, out to the forget line
+    @Test
+    public void thePlannerHoldsAFurnaceExactlyWhenStationChoiceWalksToIt() {
+        double[] distances = {5, WorkbenchRules.NEAR, WorkbenchRules.NEAR + 0.5, 40, WorkbenchRules.FORGET_DISTANCE, WorkbenchRules.FORGET_DISTANCE + 1};
+        for (double d : distances) {
+            for (boolean inBag : new boolean[]{false, true}) {
+                for (boolean canMake : new boolean[]{false, true}) {
+                    List<StationChoice.Candidate<String>> seen = List.of(new StationChoice.Candidate<>("ours", d, StationChoice.Role.OURS));
+                    StationChoice.Pick<String> pick = StationChoice.decide(seen, null, inBag, true, canMake, WorkbenchRules.NEAR);
+                    boolean held = WorkbenchRules.plannerHeld(d <= WorkbenchRules.bandRadius(null), inBag, canMake, d <= WorkbenchRules.FORGET_DISTANCE);
+                    assertEquals("d " + d + " bag " + inBag + " make " + canMake, pick.use() == StationChoice.Use.OURS, held);
+                }
+            }
+        }
+    }
+
+    // the bag questions are StationChoice.canMakeFrom's, so 7 cobble walks back and 8 makes one, for the planner too
+    @Test
+    public void eightCobbleIsWhereTheWalkBackStops() {
+        assertTrue(WorkbenchRules.plannerHeld(false, false, StationChoice.canMakeFrom(Kind.FURNACE, 7, 0, 0, 0), true));
+        assertFalse(WorkbenchRules.plannerHeld(false, false, StationChoice.canMakeFrom(Kind.FURNACE, 8, 0, 0, 0), true));
+        // a smoker: 4 logs and a furnace (or the 8 cobble for one) make it
+        assertTrue(WorkbenchRules.plannerHeld(false, false, StationChoice.canMakeFrom(Kind.SMOKER, 0, 4, 0, 0), true));
+        assertFalse(WorkbenchRules.plannerHeld(false, false, StationChoice.canMakeFrom(Kind.SMOKER, 0, 4, 0, 1), true));
+        // one in the bag goes down here, nothing to walk back to
+        assertFalse(WorkbenchRules.plannerHeld(false, true, false, true));
+        // no usable one out there is no walk back
+        assertFalse(WorkbenchRules.plannerHeld(false, false, false, false));
+        // and near is held whatever the bag says, as before
+        assertTrue(WorkbenchRules.plannerHeld(true, true, true, false));
     }
 
     // an anchor flicker is held too, but the furnace coming down is not a flicker

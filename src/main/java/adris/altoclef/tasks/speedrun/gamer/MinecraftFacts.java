@@ -3,6 +3,7 @@ package adris.altoclef.tasks.speedrun.gamer;
 import adris.altoclef.AltoClef;
 import adris.altoclef.AltoSettings;
 import adris.altoclef.Debug;
+import adris.altoclef.tasks.container.DoStuffInContainerTask;
 import adris.altoclef.tasks.resources.CollectFoodTask;
 import adris.altoclef.util.helpers.FoodHelper;
 import adris.altoclef.util.helpers.ItemHelper;
@@ -119,10 +120,14 @@ public final class MinecraftFacts implements GamerFacts {
             // task would put down a second one
             tableNearby = heldNear(player, StationHook.Kind.TABLE, WorkbenchRules.returnRadius(tableFar));
             tableFar = !tableNearby && Workbenches.any(state, StationHook.Kind.TABLE, dimension.name());
-            furnaceNearby = heldNear(player, StationHook.Kind.FURNACE, WorkbenchRules.bandRadius(furnaceHeld));
-            furnaceHeld = Workbenches.any(state, StationHook.Kind.FURNACE, dimension.name()) ? Boolean.valueOf(furnaceNearby) : null;
-            smokerNearby = heldNear(player, StationHook.Kind.SMOKER, WorkbenchRules.bandRadius(smokerHeld));
-            smokerHeld = Workbenches.any(state, StationHook.Kind.SMOKER, dimension.name()) ? Boolean.valueOf(smokerNearby) : null;
+            // past the band a furnace or smoker of ours still counts when the smelt would walk back to it (plannerHeld). the latch only
+            // ever remembers the band's own answer, the walk back has no line to dither over
+            boolean furnaceNear = heldNear(player, StationHook.Kind.FURNACE, WorkbenchRules.bandRadius(furnaceHeld));
+            furnaceHeld = Workbenches.any(state, StationHook.Kind.FURNACE, dimension.name()) ? Boolean.valueOf(furnaceNear) : null;
+            furnaceNearby = held(player, StationHook.Kind.FURNACE, furnaceNear);
+            boolean smokerNear = heldNear(player, StationHook.Kind.SMOKER, WorkbenchRules.bandRadius(smokerHeld));
+            smokerHeld = Workbenches.any(state, StationHook.Kind.SMOKER, dimension.name()) ? Boolean.valueOf(smokerNear) : null;
+            smokerNearby = held(player, StationHook.Kind.SMOKER, smokerNear);
         } else {
             tableNearby = false;
             furnaceNearby = false;
@@ -143,6 +148,20 @@ public final class MinecraftFacts implements GamerFacts {
                     BlockPos at = new BlockPos(pos.x, pos.y, pos.z);
                     return !mod.getChunkTracker().isChunkLoaded(at) || mod.getWorld().getBlockState(at).is(Workbenches.blockOf(kind));
                 });
+    }
+
+    // the walk back half asks DoStuffInContainerTask's own two questions (can the bag make one, would it take that far one), so the
+    // planner and StationChoice agree on the block and on the bag. only worked out when the band said no
+    private boolean held(Player player, StationHook.Kind kind, boolean near) {
+        if (near) {
+            return true;
+        }
+        boolean inBag = mod.getItemStorage().hasItem(Workbenches.itemOf(kind));
+        boolean canMake = !inBag && DoStuffInContainerTask.bagCanMake(mod, kind);
+        Block block = Workbenches.blockOf(kind);
+        return WorkbenchRules.plannerHeld(false, inBag, canMake, !inBag && !canMake
+                && Workbenches.walkBackTo(state, kind, dimension.name(), player.getX(), player.getY(), player.getZ(),
+                b -> DoStuffInContainerTask.walkBackUsable(mod, new BlockPos(b.pos.x, b.pos.y, b.pos.z), block)) != null);
     }
 
     @Override

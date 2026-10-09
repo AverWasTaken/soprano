@@ -245,24 +245,39 @@ public final class Workbenches {
         return mayEnd;
     }
 
+    // the nearest of ours of this kind standing in the world (not coming down, not in the bag) within `radius`, null for none. what
+    // the container tasks get as standingWithin, and what the planner's walk back reads, so both pick the same block
+    public static Bench nearestStanding(RunState state, Kind kind, String dimension, double x, double y, double z, double radius) {
+        Bench best = null;
+        double bestDistance = Double.MAX_VALUE;
+        for (Bench b : state.benches) {
+            if (b.kind != kind || !b.dimension.equals(dimension) || b.state == Bench.State.PICKING_UP || b.state == Bench.State.IN_BAG) {
+                continue;
+            }
+            double d = WalkCost.stationDistance(b.pos.x, b.pos.y, b.pos.z, x, y, z);
+            if (d <= radius && d < bestDistance) {
+                best = b;
+                bestDistance = d;
+            }
+        }
+        return best;
+    }
+
+    // the furnace or smoker StationChoice walks back to when the bag cannot make one (DoStuffInContainerTask's far one of ours): the
+    // nearest standing within the forget line, and `usable` (not coming down, nothing of ours cooking in it, reachable) says the
+    // task would take it. a parked one (three pickups ran out on time) does not count: the task might still walk to it, but the
+    // planner leaning short is a few cobble too many, leaning long is a furnace nobody budgeted
+    public static Bench walkBackTo(RunState state, Kind kind, String dimension, double x, double y, double z, Predicate<Bench> usable) {
+        Bench far = nearestStanding(state, kind, dimension, x, y, z, WorkbenchRules.FORGET_DISTANCE);
+        return far != null && !far.pickupFailed && usable.test(far) ? far : null;
+    }
+
     // what the container tasks see (StationHook), wired in by the run
     public static StationHook.Source source(RunState state, GamerFacts facts) {
         return new StationHook.Source() {
             @Override
             public BlockPos standingWithin(Kind kind, double x, double y, double z, double radius) {
-                String dimension = facts.dimension().name();
-                Bench best = null;
-                double bestDistance = Double.MAX_VALUE;
-                for (Bench b : state.benches) {
-                    if (b.kind != kind || !b.dimension.equals(dimension) || b.state == Bench.State.PICKING_UP || b.state == Bench.State.IN_BAG) {
-                        continue;
-                    }
-                    double d = WalkCost.stationDistance(b.pos.x, b.pos.y, b.pos.z, x, y, z);
-                    if (d <= radius && d < bestDistance) {
-                        best = b;
-                        bestDistance = d;
-                    }
-                }
+                Bench best = nearestStanding(state, kind, facts.dimension().name(), x, y, z, radius);
                 return best == null ? null : new BlockPos(best.pos.x, best.pos.y, best.pos.z);
             }
 

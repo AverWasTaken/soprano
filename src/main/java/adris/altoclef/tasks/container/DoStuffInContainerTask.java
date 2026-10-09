@@ -202,10 +202,7 @@ public abstract class DoStuffInContainerTask extends Task {
         // and the nearest of ours out to the forget line, for when making one is not on (StationChoice only walks that far when the bag
         // cannot make one). an unloaded chunk reads as air, so out there the registry's word is taken
         BlockPos oursFar = _stationKind == null ? null : StationHook.standingWithin(_stationKind, me.x, me.y, me.z, WalkCost.STATION_FORGET);
-        // not one with our things cooking in it (that one is busy, a second load does not go in) and not one alto already gave up
-        // on reaching
-        if (oursFar != null && !oursFar.equals(ours) && !StationHook.pickingUp(oursFar) && !StationMemory.holdsOurStuff(mod, oursFar)
-                && (!mod.getChunkTracker().isChunkLoaded(oursFar) || (isContainerBlock(mod, oursFar) && WorldHelper.canReach(mod, oursFar)))) {
+        if (oursFar != null && !oursFar.equals(ours) && walkBackUsable(mod, oursFar, _containerBlocks)) {
             seen.add(candidate(oursFar, me, StationChoice.Role.OURS));
         }
         // the tracker loses the one we were walking to now and then (a rescan after a fuel trip did it, and the next thing the
@@ -233,13 +230,24 @@ public abstract class DoStuffInContainerTask extends Task {
     // what one more of this station takes is in the bag right now (StationChoice.canMakeFrom). chests, anvils and the like say yes,
     // their old behaviour
     private boolean canMakeNow(AltoClef mod) {
-        if (_stationKind == null) {
-            return true;
-        }
+        return _stationKind == null || bagCanMake(mod, _stationKind);
+    }
+
+    // public for MinecraftFacts: the planner asks the same two questions so it counts a far furnace as held exactly when the walk
+    // back would go to it
+    public static boolean bagCanMake(AltoClef mod, StationHook.Kind kind) {
         var bag = mod.getItemStorage();
         int cobble = bag.getItemCount(Items.COBBLESTONE, Items.COBBLED_DEEPSLATE, Items.BLACKSTONE);
-        return StationChoice.canMakeFrom(_stationKind, cobble, bag.getItemCount(ItemHelper.LOG), bag.getItemCount(ItemHelper.PLANKS),
+        return StationChoice.canMakeFrom(kind, cobble, bag.getItemCount(ItemHelper.LOG), bag.getItemCount(ItemHelper.PLANKS),
                 bag.getItemCount(Items.FURNACE));
+    }
+
+    // the far one of ours the walk back may head for: not coming down, not one with our things cooking in it (that one is busy, a
+    // second load does not go in) and not one alto already gave up on reaching. an unloaded chunk reads as air, so out there the
+    // registry's word is taken
+    public static boolean walkBackUsable(AltoClef mod, BlockPos pos, Block... blocks) {
+        return !StationHook.pickingUp(pos) && !StationMemory.holdsOurStuff(mod, pos)
+                && (!mod.getChunkTracker().isChunkLoaded(pos) || (isBlockIn(mod, pos, blocks) && WorldHelper.canReach(mod, pos)));
     }
 
     private static StationChoice.Candidate<BlockPos> candidate(BlockPos pos, Vec3 me, StationChoice.Role role) {
@@ -279,12 +287,16 @@ public abstract class DoStuffInContainerTask extends Task {
     }
 
     private boolean isContainerBlock(AltoClef mod, BlockPos pos) {
+        return isBlockIn(mod, pos, _containerBlocks);
+    }
+
+    private static boolean isBlockIn(AltoClef mod, BlockPos pos, Block[] blocks) {
         // blacklisted spots stay blacklisted, that is the whole point of the tracker's answer being empty
         if (mod.getBlockTracker().unreachable(pos)) {
             return false;
         }
         Block there = mod.getWorld().getBlockState(pos).getBlock();
-        for (Block block : _containerBlocks) {
+        for (Block block : blocks) {
             if (block == there) {
                 return true;
             }

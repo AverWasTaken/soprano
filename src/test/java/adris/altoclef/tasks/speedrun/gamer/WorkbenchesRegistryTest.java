@@ -796,4 +796,34 @@ public class WorkbenchesRegistryTest {
         state.furnaceJobs.remove(0);
         assertTrue(GamerTask.spotsOf(state, OVERWORLD).isEmpty());
     }
+
+    // the planner's walk back reads the same nearest block the container task's standingWithin hands it, and only counts it when
+    // the task would take it
+    @Test
+    public void theWalkBackIsTheNearestStandingOneTheTaskWouldTake() {
+        RunState state = new RunState();
+        state.placedFurnaces.add(pos(60, 64, 0));
+        state.placedFurnaces.add(pos(100, 64, 0));
+        state.placedSmokers.add(pos(30, 64, 0));
+        Workbenches.sync(state, 500);
+        Bench near = state.benches.stream().filter(b -> b.pos.x == 60).findFirst().orElseThrow();
+        Bench far = state.benches.stream().filter(b -> b.pos.x == 100).findFirst().orElseThrow();
+        assertSame(near, Workbenches.walkBackTo(state, Kind.FURNACE, OVERWORLD, 0, 64, 0, b -> true));
+        assertSame(near, Workbenches.nearestStanding(state, Kind.FURNACE, OVERWORLD, 0, 64, 0, WorkbenchRules.FORGET_DISTANCE));
+        // the task would not take the nearest (our iron cooking in it, alto cannot reach it): no walk back, it does not try the next
+        assertNull(Workbenches.walkBackTo(state, Kind.FURNACE, OVERWORLD, 0, 64, 0, b -> b != near));
+        // coming down is not standing: the next one out is the walk back
+        near.state = Bench.State.PICKING_UP;
+        assertSame(far, Workbenches.walkBackTo(state, Kind.FURNACE, OVERWORLD, 0, 64, 0, b -> true));
+        near.state = Bench.State.STANDING;
+        // parked (three pickups ran out on time): the planner leans short
+        near.pickupFailed = true;
+        assertNull(Workbenches.walkBackTo(state, Kind.FURNACE, OVERWORLD, 0, 64, 0, b -> true));
+        near.pickupFailed = false;
+        // past the forget line, or another dimension, is nothing
+        assertNull(Workbenches.walkBackTo(state, Kind.FURNACE, OVERWORLD, 300, 64, 0, b -> true));
+        assertNull(Workbenches.walkBackTo(state, Kind.FURNACE, NETHER, 0, 64, 0, b -> true));
+        // and the kind is the kind
+        assertEquals(30, Workbenches.walkBackTo(state, Kind.SMOKER, OVERWORLD, 0, 64, 0, b -> true).pos.x);
+    }
 }
