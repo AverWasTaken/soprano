@@ -78,8 +78,7 @@ public final class BaritoneSettingsScope {
                     Blocks.SMALL_AMETHYST_BUD, Blocks.MEDIUM_AMETHYST_BUD, Blocks.LARGE_AMETHYST_BUD,
                     Blocks.AMETHYST_CLUSTER, Blocks.SCULK, Blocks.SCULK_VEIN, Blocks.SUNFLOWER, Blocks.LILAC,
                     Blocks.ROSE_BUSH, Blocks.PEONY));
-            // Reduces a bit of far rendering to save FPS
-            set(s.fadePath, true);
+            // fadePath stays whatever the user picked. forcing it on cut the path off 20 blocks out, for a few fps nobody asked for
             // Don't let baritone scan dropped items, we handle that ourselves.
             set(s.mineScanDroppedItems, false);
             // Don't let baritone wait for drops, we handle that ourselves.
