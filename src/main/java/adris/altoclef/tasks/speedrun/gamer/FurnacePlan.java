@@ -24,12 +24,12 @@ public final class FurnacePlan {
     public static final long PATIENCE_TICKS = 600;
     // waits to the end of the estimate with nothing coming out before the job is called stuck and its input is taken back
     public static final int STALL_LIMIT = 2;
-    // a smoker does 5 s an item, so a batch with more than this left when we first see it (a stack of 64 is five minutes) is not
-    // worth standing at, it is worked like a furnace. decided once, at first sight, so a bot half way up a ladder is not pulled back
-    // when the clock reaches the mark. a minute was a minute of a bot doing nothing, plus the patience on top: 20 s is four items,
-    // about what the walk off and back costs anyway
+    // a smoker does 5 s an item, so a batch with more than this left (a stack of 64 is five minutes) is not worth standing at, it is
+    // worked like a furnace until it gets down to this. asked again every look until the stand-by starts: judging it once at first
+    // sight meant anything over four items was never stood by at all. a minute was a minute of a bot doing nothing, plus the
+    // patience on top: 20 s is four items, about what the walk off and back costs anyway
     public static final long STAND_BY_MAX_TICKS = 400;
-    // the whole stand-by, from first sight, done or not. the patience is still the grace past done, it just can't stretch a
+    // the whole stand-by, from the look that started it, done or not. the patience is still the grace past done, it just can't stretch a
     // 20 s batch into 50 s of standing
     public static final long STAND_BY_CAP_TICKS = 600;
     // a job from a world that ran on without us (a relog days later) is not worth a walk: the contents are probably gone, or the
@@ -146,10 +146,11 @@ public final class FurnacePlan {
         long idleSince = -1;
         // the last call that went into the log, from either layer: one line per change
         Call logged;
-        // the stand-by budget, taken at first sight and never again. the job object is the same one across visits (afterVisit
-        // re-stamps it in place), so a smoker that keeps coming up short cannot restart the clock
+        // the stand-by budget, taken the first look the batch is down to STAND_BY_MAX_TICKS and never again. the job object is the
+        // same one across visits (afterVisit re-stamps it in place), so a smoker that keeps coming up short cannot restart the clock
         boolean standSeen;
-        boolean standEligible;
+        // the last look said the batch has too long to go to stand at (the log says TOO_LONG instead of "not due yet")
+        boolean standTooLong;
         long standUntil = -1;
     }
 
@@ -341,16 +342,19 @@ public final class FurnacePlan {
     private static boolean standByOn(RunState.FurnaceJob job, long now) {
         Track t = job.track;
         if (!t.standSeen) {
+            t.standTooLong = job.doneTick - now > STAND_BY_MAX_TICKS;
+            if (t.standTooLong) {
+                return false;
+            }
             t.standSeen = true;
-            t.standEligible = job.doneTick - now <= STAND_BY_MAX_TICKS;
             // a job already past due gets its patience from now, not from then
             t.standUntil = Math.min(Math.max(now, job.doneTick) + PATIENCE_TICKS, now + STAND_BY_CAP_TICKS);
         }
-        return t.standEligible && now <= t.standUntil;
+        return now <= t.standUntil;
     }
 
     private static boolean tooLong(RunState.FurnaceJob job) {
-        return job.track.standSeen && !job.track.standEligible;
+        return !job.track.standSeen && job.track.standTooLong;
     }
 
     private static Verdict verdict(RunState.FurnaceJob job, Call call, Why why) {

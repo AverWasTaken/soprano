@@ -305,7 +305,7 @@ public class RunStateStoreTest {
         FurnacePlan.cookCommit(s.cook, true, 5000);
         RunState.FurnaceJob job = new RunState.FurnaceJob(new RunState.Pos(1, 64, 2), "OVERWORLD", "smoker", "beef", 4, "cooked_beef", 0, 400);
         job.track.standSeen = true;
-        job.track.standEligible = true;
+        job.track.standTooLong = true;
         job.track.standUntil = 999;
         job.track.logged = FurnacePlan.Call.STAND_BY;
         s.furnaceJobs.add(job);

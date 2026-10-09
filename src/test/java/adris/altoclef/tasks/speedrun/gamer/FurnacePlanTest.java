@@ -164,13 +164,29 @@ public class FurnacePlanTest {
         assertEquals(Why.TOO_LONG, slow.why());
     }
 
-    // a stack of 64 is five minutes: judged once, when the job is first seen
+    // a stack of 64 is five minutes: worked like a furnace, until it is down to the last 20 s like any small batch
     @Test
-    public void aBigBatchIsNeverStoodByAndTheTimeRunningDownDoesNotChangeThat() {
+    public void aBigBatchIsLeftUntilItIsDownToTwentySecondsThenStoodBy() {
         RunState.FurnaceJob big = smoker(6400);
-        assertEquals(Call.LEAVE, one(plan(big, MID_NEED, 0)).call());
-        assertEquals(Call.LEAVE, one(plan(big, MID_NEED, 6400 - 600)).call());
-        assertEquals(Call.LEAVE, one(plan(big, MID_NEED, 6399)).call());
+        Verdict first = one(plan(big, MID_NEED, 0));
+        assertEquals(Call.LEAVE, first.call());
+        assertEquals(Why.TOO_LONG, first.why());
+        long mark = 6400 - FurnacePlan.STAND_BY_MAX_TICKS;
+        assertEquals(Why.TOO_LONG, one(plan(big, MID_NEED, mark - 1)).why());
+        assertEquals(Why.QUICK, one(plan(big, MID_NEED, mark)).why());
+        // the budget is from the look that started it: 20 s to done and 10 s of the patience
+        assertEquals(Why.QUICK, one(plan(big, MID_NEED, mark + FurnacePlan.STAND_BY_CAP_TICKS)).why());
+        assertNotEquals(Why.QUICK, one(plan(big, MID_NEED, mark + FurnacePlan.STAND_BY_CAP_TICKS + 1)).why());
+        // and once it ended, the time still being short does not start another one
+        assertNotEquals(Why.QUICK, one(plan(big, MID_NEED, mark + FurnacePlan.STAND_BY_CAP_TICKS + 2)).why());
+    }
+
+    // a look that skipped the stand-by rules (GATHER, mayStandBy off) does not use up the chance of one later
+    @Test
+    public void aLookWithoutStandByDoesNotDecideTheLaterOnes() {
+        RunState.FurnaceJob job = smoker(1000);
+        assertEquals(Call.LEAVE, one(plan(job, new Moment(true, false, false, false, false), 700)).call());
+        assertEquals(Why.QUICK, one(plan(job, MID_NEED, 700)).why());
     }
 
     @Test
