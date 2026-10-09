@@ -45,6 +45,17 @@ public final class CrowdRepulsion {
         return shortfall / weights * COST_PER_BLOCK;
     }
 
+    // how much of the committed run is left, in the same ticks as heuristic(). a committed run wants to be this far from
+    // where it started as well as away from whoever is chasing, otherwise it loops round the spot it ran from
+    public static double originHeuristic(double originX, double originZ, double distance, double x, double z) {
+        return Math.max(0, distance - Math.hypot(x - originX, z - originZ)) * COST_PER_BLOCK;
+    }
+
+    // far enough from where the run began (flat, a hill is not a reason to run less)
+    public static boolean farFromOrigin(double originX, double originZ, double distance, double x, double z) {
+        return Math.hypot(x - originX, z - originZ) >= distance;
+    }
+
     private static double squaredDistance(Crowd crowd, int i, boolean xzOnly, double x, double y, double z) {
         double dx = crowd.x()[i] - x, dz = crowd.z()[i] - z;
         double sq = dx * dx + dz * dz;

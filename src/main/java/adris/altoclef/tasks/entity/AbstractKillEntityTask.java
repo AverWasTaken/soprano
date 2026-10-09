@@ -20,6 +20,7 @@ import net.minecraft.world.item.ItemStack;
  */
 public abstract class AbstractKillEntityTask extends AbstractDoToEntityTask {
     private static final double OTHER_FORCE_FIELD_RANGE = 2;
+    private boolean _toolFallback;
 
     // Not the "striking" distance, but the "ok we're close enough, lower our guard for other mobs and focus on this one" range.
     private static final double CONSIDER_COMBAT_RANGE = 10;
@@ -61,15 +62,25 @@ public abstract class AbstractKillEntityTask extends AbstractDoToEntityTask {
         return false;
     }
 
-    private static Item bestWeapon(AltoClef mod, boolean crowd, boolean shieldedTarget) {
+    // armed, as far as deciding to fight goes: a sword or an axe, or failing that anything that hits harder than a fist
+    // (a pickaxe, a shovel). a bot with only a pickaxe fights the lone zombie that hits it, it does not run 50 blocks
+    public static boolean canFight(AltoClef mod) {
+        return WeaponPick.bestOrTool(candidates(mod), false, false) != null;
+    }
+
+    // the hand first, so it wins ties and we don't swap between two equal weapons
+    private static List<WeaponPick.Candidate> candidates(AltoClef mod) {
         List<ItemStack> invStacks = mod.getItemStorage().getItemStacksPlayerInventory(true);
-        // the old loop compared every sword against the hand and kept whichever one it looked at last
         List<WeaponPick.Candidate> candidates = new ArrayList<>();
-        // hand first, so it wins ties and we don't swap between two equal weapons
         candidates.add(WeaponPick.Candidate.of(StorageHelper.getItemStackInSlot(PlayerSlot.getEquipSlot())));
         for (ItemStack invStack : invStacks) {
             candidates.add(WeaponPick.Candidate.of(invStack));
         }
+        return candidates;
+    }
+
+    private static Item bestWeapon(AltoClef mod, boolean crowd, boolean shieldedTarget) {
+        List<WeaponPick.Candidate> candidates = candidates(mod);
         // swords and axes by damage per swing, worn ones last (see WeaponPick). equipping goes by item, so a fresh and a
         // worn copy of the same axe are the slot handler's coin flip. the mining tool picker never sees any of this, it
         // only runs while we mine and an axe in hand is the right tool for a log anyway
@@ -77,13 +88,25 @@ public abstract class AbstractKillEntityTask extends AbstractDoToEntityTask {
     }
 
     public static boolean equipWeapon(AltoClef mod) {
+        return equipWeapon(mod, false);
+    }
+
+    // toolFallback: no sword or axe, so the hardest hitting tool still beats a bare hand. only a fight the bot picked for
+    // itself asks for it (see useToolsWhenUnarmed), hunting a cow or a pearl keeps its pickaxe's durability
+    public static boolean equipWeapon(AltoClef mod, boolean toolFallback) {
         Item bestWeapon = weaponForNow(mod);
+        if (bestWeapon == null && toolFallback) bestWeapon = WeaponPick.bestTool(candidates(mod));
         Item equipedWeapon = StorageHelper.getItemStackInSlot(PlayerSlot.getEquipSlot()).getItem();
         if (bestWeapon != null && bestWeapon != equipedWeapon) {
             mod.getSlotHandler().forceEquipItem(bestWeapon);
             return true;
         }
         return false;
+    }
+
+    // a defensive fight swings a pickaxe rather than punch when there is no sword or axe (canFight says armed for it)
+    public void useToolsWhenUnarmed() {
+        _toolFallback = true;
     }
 
     @Override
@@ -94,7 +117,7 @@ public abstract class AbstractKillEntityTask extends AbstractDoToEntityTask {
     @Override
     protected Task onEntityInteract(AltoClef mod, Entity entity) {
         // Equip weapon
-        if (!equipWeapon(mod)) {
+        if (!equipWeapon(mod, _toolFallback)) {
             // a crit hop starts a few ticks before the cooldown is full, so those ticks count while jumping is on
             if (mod.getControllerExtras().attackReady() || mod.getControllerExtras().wantsCritTick()) {
                 LookHelper.lookAt(mod, entity.getEyePosition());

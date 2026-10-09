@@ -102,6 +102,10 @@ public class MobDefenseChain extends SingleTaskChain {
     private int _meleeNear;
     private int _meleeAround;
 
+    // the overworld brain (OverworldCombat). while _commitPath is on, the latches and the policy below sit still
+    private final OverworldCombat _overworld = new OverworldCombat();
+    private boolean _commitPath;
+
     private final CombatPolicy _policy = new CombatPolicy();
     private final CombatPolicy.TravelTracker _travel = new CombatPolicy.TravelTracker();
     private Task _travelUserTask;
@@ -121,6 +125,8 @@ public class MobDefenseChain extends SingleTaskChain {
 
     // what it looks like when nobody is in charge: shield whenever it fits, nothing ignored, the old way
     private static final CombatPolicy.Decision NO_POLICY = new CombatPolicy.Decision(CombatPolicy.Verdict.STAND, Set.of(), 0, 0, false);
+    // and what it looks like in the overworld, where the machine decides: nothing ignored by the policy, no kite, no shield
+    private static final CombatPolicy.Decision OVERWORLD_DECISION = new CombatPolicy.Decision(CombatPolicy.Verdict.IGNORE, Set.of(), 0, 0, false);
     // how far a retreat goes before it checks in. far enough to string a crowd out, near enough that we do not leave town
     private static final double KITE_DISTANCE = 12;
     // faster than this (movement speed attribute) and a sprinting player is not outrunning it: vindicators, spiders, hoglins, babies
@@ -255,6 +261,10 @@ public class MobDefenseChain extends SingleTaskChain {
             return Float.NEGATIVE_INFINITY;
         }
 
+        // before anything can stand down below: the commitment moves once per tick whether or not we get to hold the wheel,
+        // otherwise a stretch of eating would be a stretch of the machine not knowing what happened
+        snapshot(mod);
+
         // Apply avoidance if we're vulnerable, avoiding mobs if at all possible.
         // mod.getClientBaritoneSettings().avoidance.value = isVulnurable(mod);
         // Doing you a favor by disabling avoidance
@@ -274,7 +284,12 @@ public class MobDefenseChain extends SingleTaskChain {
             _wasPuttingOutFire = false;
         }
 
-        if (mod.getFoodChain().needsToEat() || mod.getMLGBucketChain().isFallingOhNo(mod) ||
+        // a commitment does not stand down for a meal. eating is async (the food chain holds the use key and picks the food,
+        // it never needed the wheel), so the run walks on at chewing speed and the fight just stops swinging while it
+        // chews. handing the wheel to the user task for the bite is a cycle at every crossing of the 8 block line, and the
+        // user task walks its own route, often straight back at what we ran from
+        boolean committed = _commitPath && _overworld.mode() != CombatCommit.Mode.NONE;
+        if ((!committed && mod.getFoodChain().needsToEat()) || mod.getMLGBucketChain().isFallingOhNo(mod) ||
                 !mod.getMLGBucketChain().doneMLG() || mod.getMLGBucketChain().isChorusFruiting()) {
             _killAura.stopShielding(mod);
             stopShielding(mod);
@@ -283,6 +298,9 @@ public class MobDefenseChain extends SingleTaskChain {
 
         // Force field
         doForceField(mod);
+
+        // the overworld has one brain with one way in and one way out, none of the latches below run there
+        if (_commitPath) return commitPriority(mod);
 
         long now = mod.getWorld().getGameTime();
         boolean charging = _decision.charging();
@@ -311,26 +329,8 @@ public class MobDefenseChain extends SingleTaskChain {
         // Run away from creepers
         Creeper blowingUp = getClosestFusingCreeper(mod);
         if (blowingUp != null) {
-            if (!mod.getFoodChain().needsToEat() && (mod.getItemStorage().hasItem(Items.SHIELD) ||
-                    mod.getItemStorage().hasItemInOffhand(Items.SHIELD)) &&
-                    !mod.getEntityTracker().entityFound(ThrownPotion.class) && _runAwayTask == null
-                    && !mod.getPlayer().getCooldowns().isOnCooldown(new ItemStack(offhandItem))
-                    && mod.getClientBaritone().getPathingBehavior().isSafeToCancel()) {
-                _doingFunkyStuff = true;
-                LookHelper.lookAt(mod, blowingUp.getEyePosition());
-                ItemStack shieldSlot = StorageHelper.getItemStackInSlot(PlayerSlot.OFFHAND_SLOT);
-                if (shieldSlot.getItem() != Items.SHIELD) {
-                    mod.getSlotHandler().forceEquipItemToOffhand(Items.SHIELD);
-                } else {
-                    startShielding(mod);
-                }
-            } else {
-                _doingFunkyStuff = true;
-                //Debug.logMessage("RUNNING AWAY!");
-                float creeperPriority = 50 + blowingUp.getSwelling(1) * 50;
-                startRun(new RunAwayFromCreepersTask(CREEPER_KEEP_DISTANCE), creeperPriority);
-                return creeperPriority;
-            }
+            float creeperPriority = creeperStep(mod, blowingUp, offhandItem);
+            if (!Float.isNaN(creeperPriority)) return creeperPriority;
         } else {
             if (!isProjectileClose(mod)) {
                 stopShielding(mod);
@@ -533,6 +533,98 @@ public class MobDefenseChain extends SingleTaskChain {
         return 0;
     }
 
+    // a lit fuse: shield up if we have one and can stand still, otherwise step away. NaN means the shield took it and the
+    // wheel is not claimed, a number is the priority the run asked for. the old brain and the overworld one share this
+    private float creeperStep(AltoClef mod, Creeper blowingUp, Item offhandItem) {
+        if (!mod.getFoodChain().needsToEat() && (mod.getItemStorage().hasItem(Items.SHIELD) ||
+                mod.getItemStorage().hasItemInOffhand(Items.SHIELD)) &&
+                !mod.getEntityTracker().entityFound(ThrownPotion.class) && _runAwayTask == null
+                && !mod.getPlayer().getCooldowns().isOnCooldown(new ItemStack(offhandItem))
+                && mod.getClientBaritone().getPathingBehavior().isSafeToCancel()) {
+            _doingFunkyStuff = true;
+            LookHelper.lookAt(mod, blowingUp.getEyePosition());
+            ItemStack shieldSlot = StorageHelper.getItemStackInSlot(PlayerSlot.OFFHAND_SLOT);
+            if (shieldSlot.getItem() != Items.SHIELD) {
+                mod.getSlotHandler().forceEquipItemToOffhand(Items.SHIELD);
+            } else {
+                startShielding(mod);
+            }
+            return Float.NaN;
+        }
+        _doingFunkyStuff = true;
+        float creeperPriority = 50 + blowingUp.getSwelling(1) * 50;
+        startRun(new RunAwayFromCreepersTask(CREEPER_KEEP_DISTANCE), creeperPriority);
+        return creeperPriority;
+    }
+
+    // the overworld wheel. mobs are scenery until the commitment says otherwise, so the only things that take it unasked are
+    // a lit fuse close by (a real signal, short) and whatever the machine is holding. fire, lava and falls were settled before
+    // we got here
+    private float commitPriority(AltoClef mod) {
+        LocalPlayer player = mod.getPlayer();
+        CombatCommit.Mode mode = _overworld.mode();
+        float hold = _overworld.holdPriority();
+        _doingFunkyStuff = false;
+        Item offhandItem = StorageHelper.getItemStackInSlot(PlayerSlot.OFFHAND_SLOT).getItem();
+        Creeper blowingUp = getClosestFusingCreeper(mod);
+        boolean fuseNear = blowingUp != null && blowingUp.distanceTo(player) <= CombatPolicy.CREEPER_NO_IGNORE;
+        if (fuseNear) {
+            float creeperPriority = creeperStep(mod, blowingUp, offhandItem);
+            // (a fight in progress keeps its wheel while it steps away, it is not a release)
+            if (!Float.isNaN(creeperPriority)) return Math.max(creeperPriority, hold);
+        } else if (!isProjectileClose(mod, false)) {
+            stopShielding(mod);
+        }
+
+        // arrows: a shield that does not take the wheel. a fight walks on with it up, nothing else stops for an arrow, and a
+        // run is feet's job
+        boolean fighting = mode == CombatCommit.Mode.FIGHT;
+        if (mode != CombatCommit.Mode.RUN && !mod.getFoodChain().needsToEat() && Baritone.settings().altoDodgeProjectiles.value && hasShield(mod)
+                && isProjectileClose(mod, true) && !mod.getEntityTracker().entityFound(ThrownPotion.class)
+                && !player.getCooldowns().isOnCooldown(new ItemStack(offhandItem))
+                && (fighting || mod.getClientBaritone().getPathingBehavior().isSafeToCancel())) {
+            if (StorageHelper.getItemStackInSlot(PlayerSlot.OFFHAND_SLOT).getItem() != Items.SHIELD) {
+                mod.getSlotHandler().forceEquipItemToOffhand(Items.SHIELD);
+            } else {
+                startShielding(mod, !fighting);
+            }
+        } else if (!fuseNear) {
+            stopShielding(mod);
+        }
+
+        Task wheel = mode == CombatCommit.Mode.NONE ? null : _overworld.wheelTask(mod);
+        if (wheel == null) {
+            // nothing committed: whatever we were holding belonged to the commitment that just ended
+            _runAwayTask = null;
+            _dangerRun = null;
+            if (_mainTask != null) onTaskFinish(mod);
+            return 0;
+        }
+        _runAwayTask = null;
+        _dangerRun = null;
+        setTask(wheel);
+        return hold;
+    }
+
+    // which brain is on. the old latches and the new commitment never run in the same tick, so crossing over starts clean
+    private void switchBrain(AltoClef mod, boolean commit) {
+        _commitPath = commit;
+        _overworld.reset();
+        // whatever we were holding was the other brain's
+        if (_mainTask != null) onTaskFinish(mod);
+        _runAwayTask = null;
+        _dangerRun = null;
+        _runLatchUntil = Long.MIN_VALUE / 2;
+        _parkedUntil = Long.MIN_VALUE / 2;
+        _targetEntity = null;
+        _lowHpLatched = false;
+        _holdWheel = false;
+        _routeOutrun = false;
+        _dealWith = List.of();
+        _decision = NO_POLICY;
+        _policy.idle();
+    }
+
     // a lone zombie-ish thing: walks (so it is melee), does not outrun us, and there is exactly one of it
     private static boolean soloSlowMelee(List<Entity> dealWith) {
         return dealWith.size() == 1 && dealWith.get(0) instanceof Mob mob && !MobReachability.isRanged(mob)
@@ -664,7 +756,12 @@ public class MobDefenseChain extends SingleTaskChain {
         snapshot(mod);
         _killAura.tickStart();
         // the shield is for standing in a pile, not for the first zombie that wanders up
-        _killAura.setPolicy(_decision.kiting(), _decision.shield());
+        if (_commitPath) {
+            // all feet and no hands on a run, the shield only when boxed in
+            _killAura.setPolicy(_overworld.auraKiting(), _overworld.auraShield());
+        } else {
+            _killAura.setPolicy(_decision.kiting(), _decision.shield());
+        }
 
         // Hit all hostiles close to us.
         List<Entity> entities = mod.getEntityTracker().getCloseEntities();
@@ -677,7 +774,8 @@ public class MobDefenseChain extends SingleTaskChain {
                     if (_decision.ignored().contains(entity.getId())) continue;
                     if (entity instanceof Mob) {
                         if (EntityHelper.isGenerallyHostileToPlayer(mod, entity)) {
-                            if (LookHelper.seesPlayer(entity, mod.getPlayer(), 10)) {
+                            // the overworld aura swings at the fight target and at what is hitting us in contact, nothing else
+                            if (LookHelper.seesPlayer(entity, mod.getPlayer(), 10) && (!_commitPath || _overworld.swingsAt(entity.getId()))) {
                                 shouldForce = true;
                             }
                         }
@@ -732,6 +830,12 @@ public class MobDefenseChain extends SingleTaskChain {
     }
 
     private boolean isProjectileClose(AltoClef mod) {
+        return isProjectileClose(mod, true);
+    }
+
+    // react: stop the path and turn to face the shooter when one is about to land. the overworld only wants that with a
+    // shield to put up, without one it is the user task standing still for no reason
+    private boolean isProjectileClose(AltoClef mod, boolean react) {
         List<CachedProjectile> projectiles = mod.getEntityTracker().getProjectiles();
         try {
             if (!projectiles.isEmpty()) {
@@ -777,7 +881,7 @@ public class MobDefenseChain extends SingleTaskChain {
                         if (horizontalDistanceSq < ARROW_KEEP_DISTANCE_HORIZONTAL * ARROW_KEEP_DISTANCE_HORIZONTAL && verticalDistance < ARROW_KEEP_DISTANCE_VERTICAL) {
                             // (a charge keeps walking: no pause, no turning round to face the shooter, we are already going
                             // at it)
-                            if (!_decision.charging() && _runAwayTask == null && mod.getClientBaritone().getPathingBehavior().isSafeToCancel()) {
+                            if (react && !_decision.charging() && _runAwayTask == null && mod.getClientBaritone().getPathingBehavior().isSafeToCancel()) {
                                 mod.getClientBaritone().getPathingBehavior().requestPause();
                                 if (projectile.projectileType instanceof Projectile projectileEntity) {
                                     Entity owner = projectileEntity.getOwner();
@@ -952,6 +1056,15 @@ public class MobDefenseChain extends SingleTaskChain {
         if (freshHit && (player.getHealth() <= LOW_HEALTH || !hitByProjectile(player))) _lastHurtTick = now;
 
         boolean policyOn = Baritone.settings().altoKillOrAvoidAnnoyingHostiles.value;
+        // the overworld has its own brain, one commitment instead of a stack of latches. nether and end keep the rest of
+        // this method exactly as it was
+        boolean commit = CombatCommit.applies(Baritone.settings().altoCommitCombat.value && policyOn && Baritone.settings().altoMobDefense.value,
+                WorldHelper.getCurrentDimension());
+        if (commit != _commitPath) switchBrain(mod, commit);
+        if (commit) {
+            commitSnapshot(mod, now);
+            return;
+        }
         boolean travelling = policyOn && updateTravel(mod, now);
         MobReachability reach = mod.getEntityTracker().getMobReachability();
         // running (the latch from last tick, or a danger run that is the live task): a mob that keeps pace with us is the one we
@@ -1048,6 +1161,25 @@ public class MobDefenseChain extends SingleTaskChain {
         double nearestProblem = dealWith.isEmpty() ? Double.POSITIVE_INFINITY : dealWith.get(0).distanceTo(player);
         _holdWheel = CombatPolicy.holdsTheWheel(_lowHpLatched, _stance, nearestProblem);
         _routeOutrun = routeClear && !_holdWheel;
+    }
+
+    // the overworld picture: the machine moves, the stance and the crit counts follow from it, the old policy and its
+    // latches are not asked anything (so none of them can run, or hold a stale answer for when we come back)
+    private void commitSnapshot(AltoClef mod, long now) {
+        LocalPlayer player = mod.getPlayer();
+        Creeper fusing = getClosestFusingCreeper(mod);
+        double fuseDistance = fusing == null ? Double.POSITIVE_INFINITY : fusing.distanceTo(player);
+        // the old rule ran from wither, warden and company below 10 hp and so does this one, it is a run like any other
+        boolean danger = player.getHealth() <= LOW_HEALTH && getUniversallyDangerousMob(mod).isPresent();
+        _overworld.tick(mod, now, danger, fuseDistance <= CombatPolicy.CREEPER_NO_IGNORE, fuseDistance <= CombatRules.CREEPER_RANGE);
+        _decision = OVERWORLD_DECISION;
+        _stance = _overworld.stance();
+        _meleeNear = _overworld.meleeNear();
+        _meleeAround = _overworld.meleeAround();
+        _lowHpLatched = false;
+        _holdWheel = false;
+        _routeOutrun = false;
+        _dealWith = List.of();
     }
 
     // everything the policy wants to know about one mob, as plain numbers

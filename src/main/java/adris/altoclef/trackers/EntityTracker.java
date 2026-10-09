@@ -53,6 +53,8 @@ public class EntityTracker extends Tracker {
     private final MobReachability _mobReach = new MobReachability();
     // who we hit and who hit us lately, the only honest "it is angry at us" the client can get (see NeutralMobs)
     private final Provocations _provocations = new Provocations();
+    // the last damage source noteAttackers turned into a "hit us" mark, by identity (see there)
+    private DamageSource _lastNotedSource;
     // entity ids we already said we were skipping, so the log gets one line per drop and not one per tick
     private final Set<Integer> _skippedWetDrops = new HashSet<>();
     // isPickupSafe can be ~45 block lookups per drop, so each drop's verdict lives a few ticks instead of being redone
@@ -365,6 +367,20 @@ public class EntityTracker extends Tracker {
         // the attacker for melee and a shot's shooter, and the thing that actually touched us
         noteProvoked(source.getEntity());
         noteProvoked(source.getDirectEntity());
+        // the client keeps one source for two seconds, but every hit brings a new object. the first time we see an object
+        // is the hit, the other forty ticks are just the same hit still being around
+        if (source != _lastNotedSource) {
+            _lastNotedSource = source;
+            noteHitUs(source.getEntity());
+            noteHitUs(source.getDirectEntity());
+        }
+    }
+
+    // the strict book: this mob hit us, right now. a hit by an arrow is the shooter's hit (the arrow is no Mob)
+    private void noteHitUs(Entity entity) {
+        if (entity instanceof Mob && Minecraft.getInstance().level != null) {
+            _provocations.markHit(entity.getId(), Minecraft.getInstance().level.getGameTime());
+        }
     }
 
     @Override

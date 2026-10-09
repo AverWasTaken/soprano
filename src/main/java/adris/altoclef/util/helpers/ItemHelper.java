@@ -489,6 +489,11 @@ public class ItemHelper {
         return (float) mainHandAttribute(item, Attributes.ATTACK_DAMAGE, PLAYER_BASE_ATTACK_DAMAGE);
     }
 
+    // anything that hits for more than a bare hand does: swords, axes, pickaxes and shovels all do, a stick does not
+    public static boolean hitsHarderThanFists(Item item) {
+        return getAttackDamage(item) > PLAYER_BASE_ATTACK_DAMAGE;
+    }
+
     // full swings per second with this in the main hand. fists 4, sword 1.6, wooden axe 0.8. the tie break when two
     // weapons hit for the same (see WeaponPick)
     public static float getAttackSpeed(Item item) {

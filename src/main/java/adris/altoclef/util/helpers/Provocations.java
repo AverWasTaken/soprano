@@ -10,7 +10,30 @@ import java.util.Map;
 public final class Provocations {
     private static final int PRUNE_AT = 128;
 
+    // sinceHit() for a mob that never hit us. far from the long limit so adding to it can't wrap
+    public static final long NEVER = Long.MAX_VALUE / 4;
+
     private final Map<Integer, Long> stamps = new HashMap<>();
+    // the stricter book: only the times a mob hit US. the one above also fills when we hit it, which is fine for deciding
+    // if a wolf is angry and useless for deciding who started it
+    private final Map<Integer, Long> hits = new HashMap<>();
+
+    // one real hit, noted once. the tracker watches the damage source change, so a hit is one tick and not the two
+    // seconds the client keeps the source around
+    public synchronized void markHit(int id, long now) {
+        hits.put(id, now);
+        if (hits.size() > PRUNE_AT) {
+            hits.values().removeIf(at -> now - at < 0 || now - at > NeutralMobs.MEMORY_TICKS);
+        }
+    }
+
+    // ticks since it hit us, NEVER for no record (or a clock that went backwards: new world, nobody is owed a grudge)
+    public synchronized long sinceHit(int id, long now) {
+        Long at = hits.get(id);
+        if (at == null) return NEVER;
+        long age = now - at;
+        return age < 0 ? NEVER : age;
+    }
 
     public synchronized void mark(int id, long now) {
         stamps.put(id, now);
@@ -38,5 +61,6 @@ public final class Provocations {
 
     public synchronized void clear() {
         stamps.clear();
+        hits.clear();
     }
 }

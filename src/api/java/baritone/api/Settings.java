@@ -2028,6 +2028,19 @@ public final class Settings {
     public final Setting<Integer> altoPassByGraceTicks = new Setting<>(100);
 
     /**
+     * Overworld only. Mobs are ignored by default: the bot keeps walking its path past a skeleton that never hit it, or a
+     * zombie ten blocks away. It only does something about a mob that hit it, an angry melee mob in contact, or at 8 hp or
+     * less with an angry mob within 8 blocks. Then it commits. A fight holds until its target is dead (it only turns into
+     * a run at 8 hp or a crowd of {@link #altoSwarmThreshold} within six blocks), and a run holds until the bot is 50
+     * blocks from where it started with nothing hostile within 16, or 45 seconds, whichever comes first. A run that gets
+     * nowhere (three seconds with a mob on top of the bot, six with one within eight blocks) becomes a fight. The nether
+     * and the end keep the older decide-every-tick rules whatever this says, a lava fortress is no place to sprint 50
+     * blocks. While this is on, {@link #altoHostileEngageRange}, {@link #altoHostileEngageHeight} and
+     * {@link #altoPassByGraceTicks} do nothing in the overworld. Needs {@link #altoKillOrAvoidAnnoyingHostiles}.
+     */
+    public final Setting<Boolean> altoCommitCombat = new Setting<>(true);
+
+    /**
      * Avoid going underwater when pathing is not giving the bot movement instructions. Turn it off if you want the bot
      * to be able to sink.
      */

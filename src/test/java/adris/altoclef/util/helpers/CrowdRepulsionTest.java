@@ -78,4 +78,34 @@ public class CrowdRepulsionTest {
         double many = CrowdRepulsion.heuristic(crowd(ten), 12, false, 0, 0, 0);
         assertEquals(one, many, 1e-9);
     }
+
+    // the committed run: far from where it started is part of the goal, and it pulls like the crowd does
+    @Test
+    public void farFromTheOriginIsFlatDistance() {
+        assertFalse(CrowdRepulsion.farFromOrigin(100, 100, 50, 100, 149.9));
+        assertTrue(CrowdRepulsion.farFromOrigin(100, 100, 50, 100, 150));
+        // a hill is not a reason to run less (or more)
+        assertTrue(CrowdRepulsion.farFromOrigin(0, 0, 50, 30, 40));
+        assertFalse(CrowdRepulsion.farFromOrigin(0, 0, 50, 30, 39.9));
+    }
+
+    @Test
+    public void theOriginPullShrinksToZeroAtTheDistance() {
+        double last = Double.MAX_VALUE;
+        for (int x = 0; x <= 50; x += 5) {
+            double h = CrowdRepulsion.originHeuristic(0, 0, 50, x, 0);
+            assertTrue("x " + x, h < last);
+            last = h;
+        }
+        assertEquals(0, last, 0);
+        // and past it there is nothing left to want
+        assertEquals(0, CrowdRepulsion.originHeuristic(0, 0, 50, 80, 0), 0);
+    }
+
+    @Test
+    public void standingOnTheOriginIsTheWholeDistanceToGo() {
+        // the same ticks per block as the crowd's pull, so the two add up in one currency
+        double perBlock = CrowdRepulsion.heuristic(crowd(new double[][]{{0, 0, 0}}), 12, true, 0, 0, 0) / 12;
+        assertEquals(50 * perBlock, CrowdRepulsion.originHeuristic(7, 7, 50, 7, 7), 1e-9);
+    }
 }
