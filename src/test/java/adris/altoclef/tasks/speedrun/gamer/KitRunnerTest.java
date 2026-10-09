@@ -115,6 +115,38 @@ public class KitRunnerTest {
     }
 
     @Test
+    public void aNeedThatBlinksOutOfThePlanKeepsItsTask() {
+        KitNeed logs = new KitNeed("log", 29);
+        KitNeed cobble = new KitNeed("cobblestone", 19);
+        ctx.facts.give(Items.STONE_PICKAXE, 1).give(Items.OAK_LOG, 3);
+        Task first = runner.run(ctx, List.of(logs, cobble));
+        ctx.facts.seconds(30);
+        // gone for a tick and back: same task, nothing rebuilt
+        assertSame(first, runner.run(ctx, List.of(cobble)));
+        ctx.facts.seconds(0.05);
+        assertSame(first, runner.run(ctx, List.of(logs, cobble)));
+        assertEquals(1, built);
+        // gone for good: kept through the dwell, then the cobble takes over
+        ctx.facts.seconds(1);
+        assertSame(first, runner.run(ctx, List.of(cobble)));
+        ctx.facts.seconds(4.95);
+        assertSame(first, runner.run(ctx, List.of(cobble)));
+        ctx.facts.seconds(0.05);
+        assertNotSame(first, runner.run(ctx, List.of(cobble)));
+        assertEquals(2, built);
+    }
+
+    @Test
+    public void aNeedWeHoldNowHandsOverAtOnce() {
+        KitNeed logs = new KitNeed("log", 29);
+        KitNeed cobble = new KitNeed("cobblestone", 19);
+        ctx.facts.give(Items.STONE_PICKAXE, 1);
+        Task first = runner.run(ctx, List.of(logs, cobble));
+        ctx.facts.give(Items.OAK_LOG, 29);
+        assertNotSame(first, runner.run(ctx, List.of(cobble)));
+    }
+
+    @Test
     public void aMissingPickaxeIsNotMadeToWait() {
         Task first = runner.run(ctx, List.of(new KitNeed("iron_ingot", 39)));
         assertNotSame(first, runner.run(ctx, List.of(new KitNeed("stone_pickaxe", 1), new KitNeed("iron_ingot", 39))));
@@ -173,11 +205,15 @@ public class KitRunnerTest {
             runner.run(ctx, b);
         }
         assertTrue(ctx.progress.isEmpty());
+        // the iron is kept through a blink (HeadLatch), so the cobble only takes over once the iron has been gone a dwell
+        ctx.facts.seconds(6);
+        runner.run(ctx, b);
+        assertEquals("Mining stone", runner.hud());
         // a real gain on one of them still counts
         ctx.facts.give(Items.COBBLESTONE, 3);
         runner.run(ctx, b);
         assertEquals(List.of("cobblestone"), ctx.progress);
-        // and going back to the other one is not a gain either
+        // and the other one turning up again is not a gain either
         runner.run(ctx, a);
         assertEquals(1, ctx.progress.size());
     }

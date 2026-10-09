@@ -90,17 +90,12 @@ public final class WorkbenchRules {
         return held == null || held ? NEAR : NEAR - LATCH_BAND;
     }
 
-    // the planner's word on a furnace or smoker of ours, the one flag stoneWanted, the kit's furnace skip, CookGate and cookFeasible
-    // all read: held inside the band as before, or anywhere the smelt would walk back to (StationChoice: no item in the bag and
-    // nothing to make one from, ours standing out to the forget line). without the second half the plan asked for 8 cobble for a
-    // furnace the smelt task then never made, it walked back to ours. the walk back now also reaches WALK_BACK with the stuff in the
-    // bag, which this can't see (canMake short-circuits it): the planner should ask Workbenches.plannerWalksBack instead
-    public static boolean plannerHeld(boolean heldNear, boolean inBag, boolean canMake, boolean walkBackTarget) {
-        return heldNear || !inBag && !canMake && walkBackTarget;
-    }
+    // the planner's word on a station of ours (the one flag stoneWanted, the kit's furnace skip, CookGate and cookFeasible read) is
+    // held inside the band, or Workbenches.plannerWalksBack: anywhere the container task would walk back to it. without the second
+    // half the plan asked for 8 cobble for a furnace the smelt task then never made, it walked back to ours
 
     // the smoker's flag also says "smoker first" to CookGate, FurnaceWatch and comingBack, and that rule is about the smoker next to
-    // us: a far one (`walkBack`, plannerHeld past the band) never beats a furnace of ours within the band or in the bag. with no
+    // us: a far one (`walkBack`, plannerWalksBack past the band) never beats a furnace of ours within the band or in the bag. with no
     // furnace at hand either, the smoker is the walk worth making
     public static boolean plannerSmoker(boolean near, boolean furnaceAtHand, boolean walkBack) {
         return near || !furnaceAtHand && walkBack;

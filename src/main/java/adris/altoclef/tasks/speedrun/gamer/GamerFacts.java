@@ -86,15 +86,16 @@ public interface GamerFacts {
         return FurnaceJobs.pending(furnaceJobs(), BuiltInRegistries.ITEM.getKey(item).getPath());
     }
 
-    // a crafting table of ours is standing within WorkbenchRules.NEAR of us (a straight line, height counts) and is still a table.
-    // it is on its way back to the bag too, so for planning it is a held table: the moment it leaves the bag the kit used to ask
-    // for table planks and the head need flipped to log
+    // a crafting table of ours is standing within WorkbenchRules.NEAR of us (a straight line, height counts) and is still a table,
+    // or further out where the craft would walk back to it (Workbenches.plannerWalksBack, StationChoice.oursReach). it is on its
+    // way back to the bag too, so for planning it is a held table: the moment it leaves the bag the kit used to ask for table planks
+    // and the head need flipped to log
     default boolean tablePlacedNearby() {
         return false;
     }
 
-    // same for a furnace of ours (RunState.placedFurnaces), within NEAR, or further out (to the forget line) when the bag can't make
-    // one and the smelt would walk back to it (WorkbenchRules.plannerHeld). the cobble floor reads it: the 8 cobble it cost are not
+    // same for a furnace of ours (RunState.placedFurnaces), within NEAR, or further out wherever the smelt would walk back to it
+    // (Workbenches.plannerWalksBack: WALK_BACK with the cobble in the bag, the forget line without). the cobble floor reads it: the 8 cobble it cost are not
     // owed to a furnace that is already on the ground
     default boolean furnacePlacedNearby() {
         return false;

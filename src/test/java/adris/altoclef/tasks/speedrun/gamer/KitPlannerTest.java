@@ -43,6 +43,21 @@ public class KitPlannerTest {
         return needs.stream().filter(n -> n.catalogueName().equals(name)).findFirst().orElse(null);
     }
 
+    // a bag one table's worth of planks off the wood budget: the log need is there exactly when the table is not held. walking
+    // from the trees (near our table) to the stone 22 blocks off used to cross the latch every trip, and the log need and the
+    // cobble traded the head every few seconds without either getting a block. the table counts out to 48 now (the craft walks
+    // back to it that far), so the walk changes nothing
+    @Test
+    public void walkingBetweenTheTreesAndTheStoneDoesNotFlipTheLogNeed() {
+        cfg.cookFuelLogs = 14;
+        FakeFacts bag = new FakeFacts().give(Items.WOODEN_AXE, 1).give(Items.WOODEN_PICKAXE, 1).give(Items.OAK_LOG, 23)
+                .give(Items.OAK_PLANKS, 4).give(Items.STICK, 6);
+        bag.tablePlaced = false;
+        assertTrue(names(KitPlanner.gather(bag, cfg, 8)).contains("log"));
+        bag.tablePlaced = true;
+        assertFalse(names(KitPlanner.gather(bag, cfg, 8)).contains("log"));
+    }
+
     // everything the default kit asks for, so a test can take one thing away
     private FakeFacts complete() {
         FakeFacts full = new FakeFacts();

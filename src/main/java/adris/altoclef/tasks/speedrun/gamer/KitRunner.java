@@ -7,6 +7,7 @@ import adris.altoclef.tasks.resources.CollectFoodTask;
 import adris.altoclef.tasks.resources.CookRawFoodTask;
 import adris.altoclef.tasks.resources.GetBuildingMaterialsTask;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.util.helpers.ItemHelper;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 
@@ -27,6 +28,8 @@ public final class KitRunner {
     private KitNeed key;
     // game tick the current key started at, for the dwell
     private long keySince;
+    // game tick the key dropped out of the plan, HeadLatch.NEVER while it is in it
+    private long missingSince = HeadLatch.NEVER;
     private List<Item> equipKey = List.of();
     private int foodKey;
     private Task task;
@@ -53,6 +56,7 @@ public final class KitRunner {
     public void reset() {
         key = null;
         keySince = 0;
+        missingSince = HeadLatch.NEVER;
         equipKey = List.of();
         foodKey = 0;
         task = null;
@@ -100,6 +104,10 @@ public final class KitRunner {
     public Task run(GamerContext ctx, List<KitNeed> needs) {
         this.needs = needs;
         if (needs.isEmpty()) {
+            // nothing to run, so whatever we were on is let go. kept, it would sit out a whole dwell against the next plan's head
+            key = null;
+            task = null;
+            missingSince = HeadLatch.NEVER;
             watchFood(ctx, needs, null);
             hud = null;
             current = null;
@@ -110,8 +118,14 @@ public final class KitRunner {
             Debug.logMessage("Kit plan: " + describe(needs));
         }
         GamerFacts f = ctx.facts();
+        watchGone(f, needs);
         // the need we are running keeps the head for a few seconds, see HeadLatch
-        KitNeed need = HeadLatch.pick(key, keySince, f.gameTime(), needs, f);
+        KitNeed need = HeadLatch.pick(key, keySince, missingSince, f.gameTime(), needs, f);
+        if (missingSince != HeadLatch.NEVER && !need.equals(key)) {
+            Debug.logInternal("kit: " + key.catalogueName() + " x" + key.count() + " handed over to " + need.catalogueName() + " x" + need.count()
+                    + (HeadLatch.satisfied(key, f) ? ", we hold it" : " after " + (f.gameTime() - missingSince) + " ticks out of the plan"));
+            missingSince = HeadLatch.NEVER;
+        }
         watchFood(ctx, needs, need);
         List<Item> equip = KitNeed.EQUIP_ARMOR.equals(need.catalogueName()) ? KitPlanner.toEquip(f, ctx.cfg().overworld) : List.of();
         int food = foodTarget(need, ctx.food());
@@ -151,6 +165,37 @@ public final class KitRunner {
         foodOn = on;
         FoodPlan plan = ctx.food();
         Debug.logInternal(plan.line(on, on ? food.count() : plan.overworldMinimum(), running == null ? null : running.catalogueName()));
+    }
+
+    // the running need dropping out of the plan and coming back, one line per change with what the planner counted. a need that
+    // trades the head every few seconds is a planner input wobbling, and these lines say which one
+    private void watchGone(GamerFacts f, List<KitNeed> list) {
+        if (key == null) {
+            return;
+        }
+        KitNeed same = HeadLatch.sameJob(list, key);
+        if (same == null && missingSince == HeadLatch.NEVER) {
+            // done (we hold it, or a special need) is just done, no clock and no line
+            if (HeadLatch.keepWhileGone(key, f.gameTime(), f.gameTime(), f)) {
+                missingSince = f.gameTime();
+                Debug.logInternal("kit: " + key.catalogueName() + " x" + key.count() + " dropped out of the plan but we do not hold it ("
+                        + goneWhy(f, key) + "), keeping at it for up to " + HeadLatch.DWELL_TICKS + " ticks");
+            }
+        } else if (same != null && missingSince != HeadLatch.NEVER) {
+            Debug.logInternal("kit: " + key.catalogueName() + " back in the plan as x" + same.count() + " after "
+                    + (f.gameTime() - missingSince) + " ticks (" + goneWhy(f, key) + ")");
+            missingSince = HeadLatch.NEVER;
+        }
+    }
+
+    // the numbers the planner had for this need. logs get the table too, a table that counts or not swings the log need
+    static String goneWhy(GamerFacts f, KitNeed need) {
+        String line = "hold " + KitPlanner.have(f, need.catalogueName());
+        if (need.catalogueName().equals("log")) {
+            line += ", planks " + f.count(ItemHelper.PLANKS) + ", sticks " + f.count(Items.STICK)
+                    + ", table held " + KitPlanner.tableHeld(f) + ", table planks " + KitPlanner.tablePlanks(f);
+        }
+        return line;
     }
 
     // a need only counts as progress when its own number went up since we last looked at THAT need. the head changing says

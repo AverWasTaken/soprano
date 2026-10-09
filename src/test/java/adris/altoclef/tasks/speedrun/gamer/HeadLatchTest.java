@@ -34,52 +34,120 @@ public class HeadLatchTest {
         cfg = new OverworldConfig();
     }
 
+    // the running need is in the plan (or only just left it), the clock KitRunner keeps is not running
+    private static KitNeed pick(KitNeed running, long since, long now, List<KitNeed> needs, GamerFacts f) {
+        return HeadLatch.pick(running, since, HeadLatch.NEVER, now, needs, f);
+    }
+
     @Test
     public void theRunningNeedStaysHeadInsideTheDwell() {
         // the planner flipped the order under us, 2 s into the task
-        assertEquals(IRON, HeadLatch.pick(IRON, 0, 40, List.of(FOOD, IRON), f));
-        assertEquals(IRON, HeadLatch.pick(IRON, 0, HeadLatch.DWELL_TICKS - 1, List.of(PICK, IRON), f));
+        assertEquals(IRON, pick(IRON, 0, 40, List.of(FOOD, IRON), f));
+        assertEquals(IRON, pick(IRON, 0, HeadLatch.DWELL_TICKS - 1, List.of(PICK, IRON), f));
     }
 
     @Test
     public void thePlannerTakesOverWhenTheDwellIsUp() {
-        assertEquals(FOOD, HeadLatch.pick(IRON, 0, HeadLatch.DWELL_TICKS, List.of(FOOD, IRON), f));
+        assertEquals(FOOD, pick(IRON, 0, HeadLatch.DWELL_TICKS, List.of(FOOD, IRON), f));
         // a task that has run for minutes is never held, this is only for the first few seconds
-        assertEquals(PICK, HeadLatch.pick(IRON, 100, 6000, List.of(PICK, IRON), f));
+        assertEquals(PICK, pick(IRON, 100, 6000, List.of(PICK, IRON), f));
     }
 
     @Test
     public void aNeedThatIsNoLongerOwedIsLetGo() {
-        // satisfied (gone from the list)
-        assertEquals(FOOD, HeadLatch.pick(IRON, 0, 10, List.of(FOOD), f));
+        // satisfied (gone from the list, and the bag holds the count)
+        assertEquals(FOOD, pick(IRON, 0, 10, List.of(FOOD), f.give(Items.IRON_INGOT, 39)));
         // or asked for differently, that is a different job
-        assertEquals(FOOD, HeadLatch.pick(IRON, 0, 10, List.of(FOOD, new KitNeed("iron_ingot", 36)), f));
+        assertEquals(FOOD, pick(IRON, 0, 10, List.of(FOOD, new KitNeed("iron_ingot", 36)), f));
+    }
+
+    private static final KitNeed LOG = new KitNeed("log", 29);
+    private static final KitNeed COBBLE = new KitNeed("cobblestone", 19);
+
+    @Test
+    public void aRunningNeedGoneForOneTickKeepsTheHead() {
+        // the log need dropped out for a tick with 3 of 29 logs in the bag: still the job
+        FakeFacts bag = new FakeFacts().give(Items.OAK_LOG, 3);
+        assertEquals(LOG, HeadLatch.pick(LOG, 0, 40, 40, List.of(COBBLE), bag));
+        assertEquals(LOG, HeadLatch.pick(LOG, 0, 40, 41, List.of(COBBLE), bag));
+        // long past its own dwell too: a task that has run for minutes still is not dropped on one tick
+        assertEquals(LOG, HeadLatch.pick(LOG, 0, 6000, 6001, List.of(COBBLE), bag));
+        // nobody started the clock yet: that is the first tick of it
+        assertEquals(LOG, HeadLatch.pick(LOG, 0, HeadLatch.NEVER, 6001, List.of(COBBLE), bag));
+    }
+
+    @Test
+    public void aRunningNeedGoneForTheDwellHandsOver() {
+        FakeFacts bag = new FakeFacts().give(Items.OAK_LOG, 3);
+        assertEquals(LOG, HeadLatch.pick(LOG, 0, 40, 40 + HeadLatch.DWELL_TICKS - 1, List.of(COBBLE), bag));
+        assertEquals(COBBLE, HeadLatch.pick(LOG, 0, 40, 40 + HeadLatch.DWELL_TICKS, List.of(COBBLE), bag));
+        // a clock that went backwards does not hold for ever
+        assertEquals(COBBLE, HeadLatch.pick(LOG, 0, 500, 40, List.of(COBBLE), bag));
+    }
+
+    @Test
+    public void aRunningNeedWeHoldHandsOverAtOnce() {
+        FakeFacts bag = new FakeFacts().give(Items.OAK_LOG, 29);
+        assertEquals(COBBLE, HeadLatch.pick(LOG, 0, 40, 40, List.of(COBBLE), bag));
+        // any kind of log counts, same as the planner
+        FakeFacts mixed = new FakeFacts().give(Items.OAK_LOG, 20).give(Items.BIRCH_LOG, 9);
+        assertEquals(COBBLE, HeadLatch.pick(LOG, 0, HeadLatch.NEVER, 40, List.of(COBBLE), mixed));
+        // cobble the same way
+        assertEquals(LOG, HeadLatch.pick(COBBLE, 0, 40, 41, List.of(LOG), new FakeFacts().give(Items.COBBLESTONE, 19)));
+        assertEquals(COBBLE, HeadLatch.pick(COBBLE, 0, 40, 41, List.of(LOG), new FakeFacts().give(Items.COBBLESTONE, 18)));
+    }
+
+    @Test
+    public void onlyThePlainGathersAreHeldWhileGone() {
+        // food, cook, armor and blocks have no item count to check, gone is done
+        assertEquals(LOG, HeadLatch.pick(FOOD, 0, 40, 41, List.of(LOG), new FakeFacts()));
+        assertEquals(LOG, HeadLatch.pick(new KitNeed(KitNeed.BUILD_BLOCKS, 32), 0, 40, 41, List.of(LOG), new FakeFacts()));
+        // iron drops out once the batch in the furnace covers it, and the bag can't see that: holding it would go mining for more
+        FakeFacts cooking = new FakeFacts().give(Items.STONE_PICKAXE, 1).cooking("iron_ingot", 39, 60);
+        assertEquals(FOOD, HeadLatch.pick(IRON, 0, 40, 41, List.of(FOOD), cooking));
+        // a replaced worn pick: the need counted the spent one, the bag does not
+        FakeFacts worn = new FakeFacts().give(Items.STONE_PICKAXE, 1);
+        worn.spent.put(Items.STONE_PICKAXE, 1);
+        assertEquals(LOG, HeadLatch.pick(new KitNeed("stone_pickaxe", 2), 0, 40, 41, List.of(LOG), worn));
+    }
+
+    @Test
+    public void aResizedNeedIsStillADifferentJob() {
+        // the gone rule is for gone, a different count of the same thing hands over like it always did
+        FakeFacts bag = new FakeFacts().give(Items.OAK_LOG, 3);
+        assertEquals(COBBLE, HeadLatch.pick(LOG, 0, HeadLatch.NEVER, 10, List.of(COBBLE, new KitNeed("log", 30)), bag));
+        assertEquals(new KitNeed("log", 30), HeadLatch.pick(LOG, 0, HeadLatch.NEVER, 10, List.of(new KitNeed("log", 30), COBBLE), bag));
+    }
+
+    @Test
+    public void aMissingPickStillCutsInWhileTheRunningNeedIsGone() {
+        assertEquals(PICK, HeadLatch.pick(LOG, 0, 40, 41, List.of(PICK), new FakeFacts().give(Items.OAK_LOG, 3)));
     }
 
     @Test
     public void theSameHeadOrNoRunningNeedIsJustTheHead() {
-        assertEquals(IRON, HeadLatch.pick(IRON, 0, 10, List.of(IRON, FOOD), f));
-        assertEquals(FOOD, HeadLatch.pick(null, 0, 10, List.of(FOOD, IRON), f));
-        assertEquals(FOOD, HeadLatch.pick(null, 0, 10, List.of(FOOD), f));
+        assertEquals(IRON, pick(IRON, 0, 10, List.of(IRON, FOOD), f));
+        assertEquals(FOOD, pick(null, 0, 10, List.of(FOOD, IRON), f));
+        assertEquals(FOOD, pick(null, 0, 10, List.of(FOOD), f));
     }
 
     @Test
     public void aClockThatWentBackwardsDoesNotHoldForEver() {
-        assertEquals(FOOD, HeadLatch.pick(IRON, 5000, 10, List.of(FOOD, IRON), f));
+        assertEquals(FOOD, pick(IRON, 5000, 10, List.of(FOOD, IRON), f));
     }
 
     @Test
     public void aMissingPickaxeCutsInAtOnceButAWornOneDoesNot() {
         FakeFacts none = new FakeFacts();
-        assertEquals(PICK, HeadLatch.pick(IRON, 0, 10, List.of(PICK, IRON), none));
+        assertEquals(PICK, pick(IRON, 0, 10, List.of(PICK, IRON), none));
         // worn out is still in the bag (MinecraftFacts keeps it in spent, not count)
         FakeFacts worn = new FakeFacts();
         worn.spent.put(Items.STONE_PICKAXE, 1);
-        assertEquals(IRON, HeadLatch.pick(IRON, 0, 10, List.of(PICK, IRON), worn));
+        assertEquals(IRON, pick(IRON, 0, 10, List.of(PICK, IRON), worn));
         // a pick of any tier is a pick
-        assertEquals(IRON, HeadLatch.pick(IRON, 0, 10, List.of(PICK, IRON), new FakeFacts().give(Items.DIAMOND_PICKAXE, 1)));
+        assertEquals(IRON, pick(IRON, 0, 10, List.of(PICK, IRON), new FakeFacts().give(Items.DIAMOND_PICKAXE, 1)));
         // and only a pickaxe need is that urgent, a missing sword waits like anything else
-        assertEquals(IRON, HeadLatch.pick(IRON, 0, 10, List.of(new KitNeed("stone_axe", 1), IRON), none));
+        assertEquals(IRON, pick(IRON, 0, 10, List.of(new KitNeed("stone_axe", 1), IRON), none));
     }
 
     // ---- what the planner puts first in IRON ----
@@ -148,13 +216,13 @@ public class HeadLatchTest {
         moving.earlyLoad = true;
         List<KitNeed> plan = KitPlanner.plan(moving, cfg, 8);
         assertEquals(early, plan.get(0));
-        assertEquals(early, HeadLatch.pick(early, 0, 20, plan, moving));
+        assertEquals(early, pick(early, 0, 20, plan, moving));
         // without the flight the plan has no early need and the latch can only hand over, which is what used to happen
         FakeFacts plain = new FakeFacts().give(Items.STONE_PICKAXE, 1).give(Items.STONE_AXE, 1).give(Items.FURNACE, 1)
                 .give(Items.LADDER, 3).give(Items.RAW_IRON, 1);
         plain.foodUnits = 70;
         List<KitNeed> old = KitPlanner.plan(plain, cfg, 8);
-        assertEquals(new KitNeed("iron_ingot", 40), HeadLatch.pick(early, 0, 20, old, plain));
+        assertEquals(new KitNeed("iron_ingot", 40), pick(early, 0, 20, old, plain));
     }
 
     // 13:11:01 and 13:11:14: the cook started, the meat went into the smoker, and five seconds after the start the dwell ran out
@@ -165,12 +233,12 @@ public class HeadLatchTest {
         List<KitNeed> plan = List.of(IRON, cook);
         FakeFacts running = new FakeFacts().give(Items.STONE_PICKAXE, 1);
         running.cookStation = "smoker";
-        assertEquals(cook, HeadLatch.pick(cook, 0, 6000, plan, running));
+        assertEquals(cook, pick(cook, 0, 6000, plan, running));
         // not running (or never committed) is the plain dwell
         running.cookStation = null;
-        assertEquals(IRON, HeadLatch.pick(cook, 0, 6000, plan, running));
+        assertEquals(IRON, pick(cook, 0, 6000, plan, running));
         // and a cook the plan dropped is let go whatever the pin says
         running.cookStation = "smoker";
-        assertEquals(IRON, HeadLatch.pick(cook, 0, 6000, List.of(IRON), running));
+        assertEquals(IRON, pick(cook, 0, 6000, List.of(IRON), running));
     }
 }

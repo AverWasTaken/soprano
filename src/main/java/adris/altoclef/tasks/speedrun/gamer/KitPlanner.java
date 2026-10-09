@@ -277,7 +277,7 @@ public final class KitPlanner {
 
     // planks for a table (or two): with no tool made yet the first one is still ahead of us, and the second is the
     // spare for the iron crafts if the first is too far to walk back to
-    private static int tablePlanks(GamerFacts f) {
+    static int tablePlanks(GamerFacts f) {
         if (tableHeld(f)) {
             return 0;
         }
@@ -287,7 +287,7 @@ public final class KitPlanner {
 
     // a table standing next to us is coming back to the bag, so it is as good as in it. without this the plan asked for
     // table planks the second the table went down and walked off to chop with the axe still uncrafted
-    private static boolean tableHeld(GamerFacts f) {
+    static boolean tableHeld(GamerFacts f) {
         return f.has(Items.CRAFTING_TABLE) || f.tablePlacedNearby();
     }
 

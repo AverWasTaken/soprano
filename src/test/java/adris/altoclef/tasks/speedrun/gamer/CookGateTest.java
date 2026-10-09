@@ -630,12 +630,12 @@ public class CookGateTest {
         assertTrue(WorkbenchRules.plannerSmoker(true, true, false));
     }
 
-    // what MinecraftFacts says for a furnace of ours 40 blocks off: held only while the smelt task would walk back to it
-    // (DoStuffInContainerTask.bagCanMake: the cobble the stone tools still eat is not furnace material)
+    // what MinecraftFacts says for a furnace of ours 60 blocks off (past WALK_BACK, so the cobble decides): held only while the smelt
+    // task would walk back to it (DoStuffInContainerTask.bagCanMake: the cobble the stone tools still eat is not furnace material)
     private boolean walkBackFlag(FakeFacts f) {
         int free = f.count(Items.COBBLESTONE) - KitPlanner.toolCobble(f, cfg);
         boolean canMake = StationChoice.canMakeFrom(StationHook.Kind.FURNACE, free, 0, 0, f.count(Items.FURNACE));
-        return WorkbenchRules.plannerHeld(false, f.has(Items.FURNACE), canMake, true);
+        return !f.has(Items.FURNACE) && 60 <= StationChoice.oursReach(StationHook.Kind.FURNACE, canMake);
     }
 
     // mining for the stone tools walks the cobble up past 8: that is the tools' cobble, not a furnace. the far furnace stays held the

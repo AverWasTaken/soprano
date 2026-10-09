@@ -828,13 +828,24 @@ public class WorkbenchesRegistryTest {
     }
 
     // past the band the planner holds a furnace exactly when the smelt task would walk back to it: within WALK_BACK even with the
-    // cobble in the bag, out to the forget line without it, never with one in the bag. same block, same bag, same answer
+    // cobble in the bag, out to the forget line without it, never with one in the bag. same block, same bag, same answer. the table
+    // and the smoker go through the same two functions, so they get the same check
     @Test
     public void thePlannersWalkBackIsStationChoicesWalkBack() {
+        for (Kind kind : Kind.values()) {
+            walkBackAgrees(kind);
+        }
+    }
+
+    private void walkBackAgrees(Kind kind) {
         int[] distances = {22, 30, 47, 48, 49, 60, 127, 128, 129, 200};
         for (int d : distances) {
             RunState state = new RunState();
-            state.placedFurnaces.add(pos(d, 64, 0));
+            switch (kind) {
+                case TABLE -> state.placedTables.add(pos(d, 64, 0));
+                case FURNACE -> state.placedFurnaces.add(pos(d, 64, 0));
+                case SMOKER -> state.placedSmokers.add(pos(d, 64, 0));
+            }
             Workbenches.sync(state, 500);
             // the task measures to the middle of the block, so does the planner
             double away = adris.altoclef.util.helpers.WalkCost.stationDistance(d, 64, 0, 0, 64, 0);
@@ -843,9 +854,9 @@ public class WorkbenchesRegistryTest {
                     var seen = List.of(new adris.altoclef.util.helpers.StationChoice.Candidate<>("ours", away,
                             adris.altoclef.util.helpers.StationChoice.Role.OURS));
                     var pick = adris.altoclef.util.helpers.StationChoice.decide(seen, null, inBag, true, canMake, WorkbenchRules.NEAR,
-                            adris.altoclef.util.helpers.StationChoice.walkBackReach(Kind.FURNACE));
-                    boolean held = Workbenches.plannerWalksBack(state, Kind.FURNACE, OVERWORLD, 0, 64, 0, inBag, canMake, b -> true);
-                    assertEquals("d " + d + " bag " + inBag + " make " + canMake,
+                            adris.altoclef.util.helpers.StationChoice.walkBackReach(kind));
+                    boolean held = Workbenches.plannerWalksBack(state, kind, OVERWORLD, 0, 64, 0, inBag, canMake, b -> true);
+                    assertEquals(kind + " d " + d + " bag " + inBag + " make " + canMake,
                             pick.use() == adris.altoclef.util.helpers.StationChoice.Use.OURS, held);
                 }
             }

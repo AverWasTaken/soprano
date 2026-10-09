@@ -118,10 +118,13 @@ public final class MinecraftFacts implements GamerFacts {
             // smoker only get a block, and only inward: the smoker first rule reads this flag and the container tasks read the
             // plain line, so a smoker at 20 blocks is a smoker whichever way we got there, and the flag is never true where the
             // task would put down a second one
-            tableNearby = heldNear(player, StationHook.Kind.TABLE, WorkbenchRules.returnRadius(tableFar));
-            tableFar = !tableNearby && Workbenches.any(state, StationHook.Kind.TABLE, dimension.name());
-            // past the band a furnace or smoker of ours still counts when the smelt would walk back to it (plannerHeld). the latch only
-            // ever remembers the band's own answer, the walk back has no line to dither over
+            boolean tableNear = heldNear(player, StationHook.Kind.TABLE, WorkbenchRules.returnRadius(tableFar));
+            tableFar = !tableNear && Workbenches.any(state, StationHook.Kind.TABLE, dimension.name());
+            // past the latch a table of ours still counts as far as the craft would walk back to it (Workbenches.plannerWalksBack),
+            // the latch only remembers its own answer like the furnace's
+            tableNearby = held(player, StationHook.Kind.TABLE, tableNear);
+            // past the band a furnace or smoker of ours still counts when the smelt would walk back to it (plannerWalksBack). the latch
+            // only ever remembers the band's own answer, the walk back has no line to dither over
             boolean furnaceNear = heldNear(player, StationHook.Kind.FURNACE, WorkbenchRules.bandRadius(furnaceHeld));
             furnaceHeld = Workbenches.any(state, StationHook.Kind.FURNACE, dimension.name()) ? Boolean.valueOf(furnaceNear) : null;
             furnaceNearby = held(player, StationHook.Kind.FURNACE, furnaceNear);
@@ -160,9 +163,9 @@ public final class MinecraftFacts implements GamerFacts {
         boolean inBag = mod.getItemStorage().hasItem(Workbenches.itemOf(kind));
         boolean canMake = !inBag && DoStuffInContainerTask.bagCanMake(mod, kind);
         Block block = Workbenches.blockOf(kind);
-        return WorkbenchRules.plannerHeld(false, inBag, canMake, !inBag && !canMake
-                && Workbenches.walkBackTo(state, kind, dimension.name(), player.getX(), player.getY(), player.getZ(),
-                b -> DoStuffInContainerTask.walkBackUsable(mod, new BlockPos(b.pos.x, b.pos.y, b.pos.z), block)) != null);
+        // in the bag is no walk back (KitPlanner counts a table in the bag itself, the furnace's readers ask the bag too)
+        return Workbenches.plannerWalksBack(state, kind, dimension.name(), player.getX(), player.getY(), player.getZ(), inBag, canMake,
+                b -> DoStuffInContainerTask.walkBackUsable(mod, new BlockPos(b.pos.x, b.pos.y, b.pos.z), block));
     }
 
     @Override
