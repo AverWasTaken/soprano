@@ -614,7 +614,8 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
                     Item bestToolItem = best.getItem();
                     // three misses and we swing with what we hold, a hand we can't change is no reason to never swing
                     if (isAllowedToManage && _toolSwap.mayTry(bestToolItem)) {
-                        Debug.logMessage("Found better tool in inventory, equipping " + bestToolItem.getDescriptionId() + ".");
+                        // the log file only: mining swaps pick and shovel every other block and chat drowned in it
+                        Debug.logInternal("Found better tool in inventory, equipping " + bestToolItem.getDescriptionId() + ".");
                         if (mod.getSlotHandler().forceEquipItem(bestToolItem)) {
                             _toolSwap.landed();
                         } else {
