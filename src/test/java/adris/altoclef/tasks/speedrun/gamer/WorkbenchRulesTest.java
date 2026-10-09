@@ -1804,4 +1804,118 @@ public class WorkbenchRulesTest {
         Bench coming = pickingUp(900);
         assertNull(anchorFor(coming, List.of(cooking(), coming)));
     }
+
+    // ---- coming back: the plan is about to cook or smelt at a station of ours
+
+    private static Bench smokerAt15() {
+        return new Bench(Kind.SMOKER, pos(15, 64, 0), OVERWORLD, 0);
+    }
+
+    @Test
+    public void huntingWithASmokerStandingKeepsTheSmokerAndTheTableBesideIt() {
+        Bench smoker = smokerAt15();
+        Bench b = justUsed();
+        List<Bench> all = List.of(smoker, b);
+        List<String> plan = List.of(KitNeed.FOOD, "shield");
+        assertEquals(WorkbenchRules.Anchor.ANCHORED, WorkbenchRules.updateComingBack(smoker, WorkbenchRules.comingBack(Kind.SMOKER, plan, true)));
+        assertEquals("to cook", smoker.comingBack);
+        // the table rides on it
+        assertEquals(WorkbenchRules.Anchor.ANCHORED, WorkbenchRules.updateAnchor(b, WorkbenchRules.anchorOf(b, all, x -> false)));
+        assertSame(smoker, b.anchor);
+        // the hunt takes us 60 blocks off for a minute: neither comes down, and the smoker is never "done with"
+        Seen s = new Seen();
+        s.distance = 60;
+        s.canRecraft = true;
+        assertEquals(Call.KEEP, decide(smoker, s));
+        assertEquals(Call.KEEP, decide(b, s));
+        s.now += 1200;
+        assertEquals(Call.KEEP, decide(smoker, s));
+        assertEquals(Call.KEEP, decide(b, s));
+        smoker.lastUsedTick = 0;
+        assertFalse(WorkbenchRules.doneUsing(smoker, new Seen().look()));
+        // past the forget line too: we are coming back to cook
+        s.distance = WorkbenchRules.FORGET_DISTANCE + 10;
+        assertEquals(Call.KEEP, decide(smoker, s));
+    }
+
+    @Test
+    public void whenTheCookIsDoneAndNothingIsAheadBothComeDownOnThatVisit() {
+        Bench smoker = smokerAt15();
+        Bench b = justUsed();
+        List<Bench> all = List.of(smoker, b);
+        WorkbenchRules.updateComingBack(smoker, WorkbenchRules.comingBack(Kind.SMOKER, List.of(KitNeed.COOK_SMOKER), true));
+        WorkbenchRules.updateAnchor(b, WorkbenchRules.anchorOf(b, all, x -> false));
+        // the cook came out, nothing in the plan wants either of them
+        List<String> plan = List.of();
+        assertEquals(WorkbenchRules.Anchor.RELEASED, WorkbenchRules.updateComingBack(smoker, WorkbenchRules.comingBack(Kind.SMOKER, plan, true)));
+        assertEquals(WorkbenchRules.Anchor.RELEASED, WorkbenchRules.updateAnchor(b, WorkbenchRules.anchorOf(b, all, x -> false)));
+        Seen s = new Seen();
+        s.now = 5000;
+        s.neededSoon = false;
+        assertTrue(WorkbenchRules.doneUsing(b, s.look()));
+        WorkbenchRules.settleDone(b, WorkbenchRules.doneWith(false, false, WorkbenchRules.UNKNOWN_SITE, true));
+        assertEquals(Call.PICK_UP, decide(b, s));
+        assertEquals(Call.PICK_UP, decide(smoker, s));
+    }
+
+    @Test
+    public void aTableNearAStationThePlanWillNotComeBackToFollowsTheNormalRules() {
+        Bench smoker = smokerAt15();
+        Bench b = table();
+        WorkbenchRules.updateComingBack(smoker, WorkbenchRules.comingBack(Kind.SMOKER, List.of("shield", "log"), true));
+        assertNull(smoker.comingBack);
+        assertNull(WorkbenchRules.anchorOf(b, List.of(smoker, b), x -> false));
+        Seen s = new Seen();
+        s.distance = 30;
+        assertEquals(Call.KEEP, decide(b, s));
+        s.now += WorkbenchRules.OUTSIDE_TICKS;
+        assertEquals(Call.PICK_UP, decide(b, s));
+    }
+
+    @Test
+    public void whatBringsUsBackToAStation() {
+        // a cook in the next few needs, for the station it cooks in
+        assertEquals("to cook", WorkbenchRules.comingBack(Kind.SMOKER, List.of("log", "shield", KitNeed.COOK_SMOKER), true));
+        assertNull(WorkbenchRules.comingBack(Kind.FURNACE, List.of(KitNeed.COOK_SMOKER), true));
+        assertEquals("to cook", WorkbenchRules.comingBack(Kind.FURNACE, List.of(KitNeed.COOK_FURNACE), true));
+        // past the lookahead is not soon
+        assertNull(WorkbenchRules.comingBack(Kind.SMOKER, List.of("a", "b", "c", "d", KitNeed.COOK_SMOKER), true));
+        // iron is a smelt in the furnace
+        assertEquals("to smelt", WorkbenchRules.comingBack(Kind.FURNACE, List.of("log", "iron_ingot"), true));
+        assertNull(WorkbenchRules.comingBack(Kind.SMOKER, List.of("iron_ingot"), true));
+        // hunting right now: the smoker, or the furnace when we have no smoker at all
+        assertEquals("to cook", WorkbenchRules.comingBack(Kind.SMOKER, List.of(KitNeed.FOOD), true));
+        assertNull(WorkbenchRules.comingBack(Kind.FURNACE, List.of(KitNeed.FOOD), true));
+        assertEquals("to cook", WorkbenchRules.comingBack(Kind.FURNACE, List.of(KitNeed.FOOD), false));
+        // a hunt later in the plan is not one under way
+        assertNull(WorkbenchRules.comingBack(Kind.SMOKER, List.of("log", KitNeed.FOOD), true));
+        // never a table, and nothing in an empty plan
+        assertNull(WorkbenchRules.comingBack(Kind.TABLE, List.of(KitNeed.FOOD, "shield"), true));
+        assertNull(WorkbenchRules.comingBack(Kind.SMOKER, List.of(), true));
+    }
+
+    // only a table is anchored now: a furnace beside a smoker we are coming back to has its own reason or none
+    @Test
+    public void onlyATableRidesOnAnAnchor() {
+        Bench smoker = smokerAt15();
+        smoker.comingBack = "to cook";
+        Bench furnace = new Bench(Kind.FURNACE, pos(12, 64, 0), OVERWORLD, 0);
+        assertNull(WorkbenchRules.anchorOf(furnace, List.of(smoker, furnace), x -> false));
+    }
+
+    // the first iron: the furnace is down and the load is going in, but its job is only recorded when the load is done. the iron in
+    // the plan already brings us back to it, so the table beside it is anchored before the job exists
+    @Test
+    public void aFurnaceBeingLoadedAnchorsTheTableBeforeItsJobIsRecorded() {
+        Bench furnace = new Bench(Kind.FURNACE, pos(15, 64, 0), OVERWORLD, 0);
+        Bench b = justUsed();
+        WorkbenchRules.updateComingBack(furnace, WorkbenchRules.comingBack(Kind.FURNACE, List.of("iron_ingot", "shield"), true));
+        assertSame(furnace, WorkbenchRules.anchorOf(b, List.of(furnace, b), x -> false));
+        WorkbenchRules.updateAnchor(b, furnace);
+        assertFalse(WorkbenchRules.doneUsing(b, new Seen().look()));
+        Seen s = new Seen();
+        s.distance = 40;
+        s.now += WorkbenchRules.OUTSIDE_TICKS * 2;
+        assertEquals(Call.KEEP, decide(b, s));
+    }
 }

@@ -65,6 +65,9 @@ public final class Bench {
     public Bench anchor;
     // the anchor let go: the next look decides this one again as if we had just finished with it
     public boolean redecide;
+    // a furnace or smoker the plan brings us back to soon, and why ("to cook", "to smelt"), null when it does not
+    // (WorkbenchRules.comingBack). worked out every look like the anchor
+    public String comingBack;
 
     public Bench(StationHook.Kind kind, RunState.Pos pos, String dimension, long placedTick) {
         this.kind = kind;

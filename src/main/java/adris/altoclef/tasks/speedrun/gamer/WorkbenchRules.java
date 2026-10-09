@@ -201,7 +201,7 @@ public final class WorkbenchRules {
         }
         // a station with a job in it is not forgotten by distance: the job is what brings us back, and the visit takes the station.
         // holdsStuff counts too, the state is last tick's (and a relog rebuilds every bench as STANDING)
-        if (in.distance() > FORGET_DISTANCE && b.state != Bench.State.BUSY && !in.holdsStuff() && b.anchor == null) {
+        if (in.distance() > FORGET_DISTANCE && b.state != Bench.State.BUSY && !in.holdsStuff() && b.anchor == null && b.comingBack == null) {
             return Call.FORGET_TOO_FAR;
         }
         if (pickingUp) {
@@ -223,9 +223,10 @@ public final class WorkbenchRules {
             return Call.BUSY;
         }
         b.state = Bench.State.STANDING;
-        // the furnace next to it is cooking and FurnacePlan brings us back to it, so this one waits for that visit: no far table, no
-        // outside clock, no "done with it". the visit that takes the furnace down decides this one again (anchorOf / updateAnchor)
-        if (b.anchor != null) {
+        // the furnace next to it is cooking (FurnacePlan brings us back) or the plan is about to cook or smelt there, so this one waits
+        // for that visit: no far table, no outside clock, no "done with it". the furnace or smoker we are coming back to is kept for
+        // the same reason, however far the hunt takes us. when the reason ends this one is decided again (anchorOf / updateAnchor)
+        if (b.anchor != null || b.comingBack != null) {
             return Call.KEEP;
         }
         // the tries ran out on time and it still stands. trying again right here is the same walk that just failed three times, so it
@@ -427,7 +428,7 @@ public final class WorkbenchRules {
         if (!in.sameDimension() || in.blockGone() || in.holdsStuff() || in.jobHere() || !in.idle()) {
             return false;
         }
-        if (b.state == Bench.State.PICKING_UP || b.state == Bench.State.BUSY || b.anchor != null) {
+        if (b.state == Bench.State.PICKING_UP || b.state == Bench.State.BUSY || b.anchor != null || b.comingBack != null) {
             return false;
         }
         // the anchor let go: decided again on this look, used or not
@@ -474,15 +475,41 @@ public final class WorkbenchRules {
     // carrying. one station per kind per anchor (the nearest to it), and the anchor has to be ours, cooking a real job (not a given
     // up one) and in the same dimension
 
-    // a furnace or smoker FurnacePlan will send us back to
+    // a furnace or smoker we are coming back to: cooking a real job (FurnacePlan sends us), or standing with the plan about to cook or
+    // smelt in it (comingBack)
     public static boolean anchors(Bench a, Predicate<Bench> hasJob) {
-        return a.kind != Kind.TABLE && a.state == Bench.State.BUSY && !a.givenUp && hasJob.test(a);
+        if (a.kind == Kind.TABLE) {
+            return false;
+        }
+        return a.state == Bench.State.BUSY ? !a.givenUp && hasJob.test(a) : a.state == Bench.State.STANDING && a.comingBack != null;
+    }
+
+    // why the plan brings us back to a furnace or smoker of ours soon, null when it does not. the window is the current need and the
+    // LOOKAHEAD after it, same as neededSoon. a hunt for food is a cook coming (the meat goes in the smoker, or in the furnace when we
+    // have no smoker standing or in the bag, same order as CookGate), an iron need is a smelt
+    public static String comingBack(Kind kind, List<String> plan, boolean smokerOfOurs) {
+        if (kind == Kind.TABLE) {
+            return null;
+        }
+        int last = Math.min(plan.size(), 1 + LOOKAHEAD);
+        for (int i = 0; i < last; i++) {
+            String need = plan.get(i);
+            if (kind == Kind.SMOKER ? KitNeed.COOK_SMOKER.equals(need) : KitNeed.COOK_FURNACE.equals(need)) {
+                return "to cook";
+            }
+            if (kind == Kind.FURNACE && "iron_ingot".equals(need)) {
+                return "to smelt";
+            }
+        }
+        boolean hunting = !plan.isEmpty() && KitNeed.FOOD.equals(plan.get(0));
+        return hunting && (kind == Kind.SMOKER || !smokerOfOurs) ? "to cook" : null;
     }
 
     // the busy station this one waits beside, null for none. only a standing one is anchored, and only the nearest of its kind to
     // that anchor: a second table next to the same furnace follows the normal rules
     public static Bench anchorOf(Bench b, Collection<Bench> benches, Predicate<Bench> hasJob) {
-        if (b.state != Bench.State.STANDING) {
+        // tables only: a furnace or smoker is kept by its own job or by comingBack
+        if (b.kind != Kind.TABLE || b.state != Bench.State.STANDING) {
             return null;
         }
         Bench best = null;
@@ -524,6 +551,23 @@ public final class WorkbenchRules {
         ANCHORED,
         // the furnace it waited for is done (collected and coming down, gone, forgotten, given up): decide it again on this look
         RELEASED
+    }
+
+    // the same for a furnace or smoker's own reason to stay. when it ends the station is decided again on the spot, like a table
+    // whose anchor let go
+    public static Anchor updateComingBack(Bench b, String back) {
+        String before = b.comingBack;
+        b.comingBack = back;
+        if ((before == null) == (back == null)) {
+            return Anchor.SAME;
+        }
+        if (back == null) {
+            b.redecide = true;
+            return Anchor.RELEASED;
+        }
+        b.leaveNow = false;
+        b.redecide = false;
+        return Anchor.ANCHORED;
     }
 
     // moves the anchor along and says what happened, for the one log line each way

@@ -348,6 +348,20 @@ public final class Workbenches {
         Bench start = null;
         WorkbenchRules.Look startLook = null;
         Predicate<Bench> hasJob = x -> FurnaceJobs.isBusy(state, x.pos, x.dimension);
+        // every station's "are we coming back to it" first: a table's anchor reads its furnace's answer
+        boolean smokerOfOurs = f.count(Items.SMOKER) > 0 || any(state, Kind.SMOKER, dimension);
+        for (Bench b : state.benches) {
+            String back = startNew && b.dimension.equals(dimension) ? WorkbenchRules.comingBack(b.kind, names, smokerOfOurs) : null;
+            switch (WorkbenchRules.updateComingBack(b, back)) {
+                case ANCHORED -> log(b + ": keeping it, the plan brings us back " + back);
+                case RELEASED -> log(b + ": nothing brings us back to it now, deciding it again");
+                default -> {
+                }
+            }
+        }
+        // a furnace or smoker load in the tree or in flight: the furnace it goes in is not busy yet (the job is recorded when the
+        // load is done), so "done with the table" waits for it, or the table could come down before the furnace anchors it
+        boolean smelting = smeltingNow(mod, now);
         for (Bench b : new ArrayList<>(state.benches)) {
             boolean flying = b.state == Bench.State.PICKING_UP;
             if (!flying && !startNew) {
@@ -356,7 +370,7 @@ public final class Workbenches {
             Bench.State before = b.state;
             anchor(b, WorkbenchRules.anchorOf(b, state.benches, hasJob));
             WorkbenchRules.Look look = look(mod, ctx, b, me, dimension, WorkbenchRules.neededSoon(b.kind, names, wooden, stone), limit);
-            if (startNew && WorkbenchRules.doneUsing(b, look)) {
+            if (startNew && !smelting && WorkbenchRules.doneUsing(b, look)) {
                 doneWith(mod, b, look, names, wooden, stone);
             }
             if (adopt && WorkbenchRules.adoptable(b, look)) {
@@ -439,10 +453,11 @@ public final class Workbenches {
     private static void anchor(Bench b, Bench anchor) {
         Bench was = b.anchor;
         switch (WorkbenchRules.updateAnchor(b, anchor)) {
-            case ANCHORED -> log("keeping " + b.kind.word() + " at " + at(b) + ", the " + anchor.kind.word() + " at " + at(anchor)
-                    + " is cooking and we'll be back for it");
-            case RELEASED -> log(b.kind.word() + " at " + at(b) + ": the " + was.kind.word() + " at " + at(was)
-                    + " is not cooking any more, deciding this one again");
+            case ANCHORED -> log("keeping " + b.kind.word() + " at " + at(b) + (anchor.state == Bench.State.BUSY
+                    ? ", the " + anchor.kind.word() + " at " + at(anchor) + " is cooking and we'll be back for it"
+                    : ", we'll be back at the " + anchor.kind.word() + " at " + at(anchor) + " " + anchor.comingBack));
+            case RELEASED -> log(b.kind.word() + " at " + at(b) + ": we are not coming back to the " + was.kind.word() + " at " + at(was)
+                    + " any more, deciding this one again");
             default -> {
             }
         }
@@ -459,7 +474,10 @@ public final class Workbenches {
         String next = names.isEmpty() ? null : names.get(0);
         boolean usesThis = WorkbenchRules.needsStation(b.kind, next, wooden, stone);
         double site = usesThis || !look.neededSoon() ? WorkbenchRules.UNKNOWN_SITE : siteDistance(mod, b, WorkbenchRules.siteOf(next));
-        WorkbenchRules.Done done = WorkbenchRules.doneWith(look.neededSoon(), usesThis, site, b.redecide);
+        // "we are standing at both" only holds when we are: a release from far off (a stale give up, a furnace that blew up) is a
+        // plain unknown and the outside clock has it
+        boolean released = b.redecide && look.distance() <= WorkbenchRules.NEAR;
+        WorkbenchRules.Done done = WorkbenchRules.doneWith(look.neededSoon(), usesThis, site, released);
         WorkbenchRules.settleDone(b, done);
         String head = "done with " + b.kind.word() + " at " + at(b) + ", ";
         log(head + switch (done) {
@@ -643,13 +661,23 @@ public final class Workbenches {
                 + " so the next visit empties it");
     }
 
+    private static boolean smeltingNow(AltoClef mod, long now) {
+        if (WorkbenchRules.loadInFlight(mod.getPlayer().containerMenu instanceof AbstractFurnaceMenu, AsyncSmelting.lastWork(), now)) {
+            return true;
+        }
+        Task root = mod.getUserTaskChain().getCurrentTask();
+        return root != null && root.thisOrChildSatisfies(t -> t instanceof DoStuffInContainerTask d
+                && (d.stationKind() == Kind.FURNACE || d.stationKind() == Kind.SMOKER));
+    }
+
     // the screen is shut, nothing in the task tree is working at this kind of station, and no furnace load is half done
     private boolean idle(AltoClef mod, GamerContext ctx, Bench b, long now) {
         AbstractContainerMenu menu = mod.getPlayer().containerMenu;
         if (menuOf(b.kind, menu)) {
             return false;
         }
-        if (b.kind != Kind.TABLE && WorkbenchRules.loadInFlight(menu instanceof AbstractFurnaceMenu, AsyncSmelting.lastWork(), now)) {
+        // the table too: its pickup takes the wheel and would shut a furnace screen halfway through the load like any other
+        if (WorkbenchRules.loadInFlight(menu instanceof AbstractFurnaceMenu, AsyncSmelting.lastWork(), now)) {
             return false;
         }
         // the tree is last tick's, which is exactly what we want to look at: a craft or a smelt anywhere under the user task
