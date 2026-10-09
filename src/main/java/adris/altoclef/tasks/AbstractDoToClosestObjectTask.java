@@ -5,6 +5,7 @@ import adris.altoclef.tasks.movement.TimeoutWanderTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.helpers.DropExpect;
 import adris.altoclef.util.helpers.MineStick;
+import adris.altoclef.util.helpers.PursuitProgress;
 import adris.altoclef.util.helpers.ScanWait;
 import adris.altoclef.util.helpers.WorldHelper;
 import java.util.HashMap;
@@ -23,6 +24,10 @@ public abstract class AbstractDoToClosestObjectTask<T> extends Task {
     private T _currentlyPursuing = null;
     private boolean _wasWandering;
     private final ScanWait _scanWait = new ScanWait();
+    // is the current pursuit getting anywhere, see PursuitProgress
+    private final PursuitProgress _progress = new PursuitProgress();
+    // the block the controller was last seen breaking, so a break on the way to the pursuit counts as progress
+    private BlockPos _lastBreaking;
     private Task _goalTask = null;
     // the break we just made, see DropExpect. subclasses arm it from onPursuitGone and say what they see in dropSeen
     private final DropExpect _expect = new DropExpect();
@@ -85,6 +90,8 @@ public abstract class AbstractDoToClosestObjectTask<T> extends Task {
 
     public void resetSearch() {
         _scanWait.clear();
+        _progress.clear();
+        _lastBreaking = null;
         _currentlyPursuing = null;
         _heuristicMap.clear();
         _goalTask = null;
@@ -104,6 +111,21 @@ public abstract class AbstractDoToClosestObjectTask<T> extends Task {
     private boolean breakingPursuit(AltoClef mod) {
         return _currentlyPursuing instanceof BlockPos at && mod.getControllerExtras().isBreakingBlock()
                 && at.equals(mod.getControllerExtras().getBreakingBlockPos());
+    }
+
+    // a block we were breaking is gone now (or we are on the pursuit itself, which is the opposite of getting nowhere)
+    private boolean brokeSomething(AltoClef mod) {
+        if (breakingPursuit(mod)) {
+            return true;
+        }
+        boolean broke = _lastBreaking != null && mod.getWorld().getBlockState(_lastBreaking).isAir();
+        if (broke) {
+            _lastBreaking = null;
+        }
+        if (mod.getControllerExtras().isBreakingBlock()) {
+            _lastBreaking = mod.getControllerExtras().getBreakingBlockPos();
+        }
+        return broke;
     }
 
     private boolean isMovingToClosestPos(AltoClef mod) {
@@ -132,6 +154,10 @@ public abstract class AbstractDoToClosestObjectTask<T> extends Task {
             return null;
         }
 
+        if (_currentlyPursuing != null) {
+            _progress.tick(_currentlyPursuing, getPos(mod, _currentlyPursuing).distanceTo(mod.getPlayer().position()), brokeSomething(mod));
+        }
+
         // Get closest object
         Optional<T> checkNewClosest = getClosestTo(mod, getOriginPos(mod));
 
@@ -157,7 +183,12 @@ public abstract class AbstractDoToClosestObjectTask<T> extends Task {
                     h.updateHeuristic(currentHeuristic);
                     h.updateDistance(closestDistanceSqr);
                     h.setTickAttempted(lastTick);
-                    if (_heuristicMap.containsKey(newClosest)) {
+                    if (_progress.stalled()) {
+                        // 7 s and not a step closer: the 2x rule below would keep us on it forever, whatever the pick
+                        // says is nearest now gets a go instead
+                        setDebugState("Current pursuit got nowhere, trying the nearest");
+                        _currentlyPursuing = newClosest;
+                    } else if (_heuristicMap.containsKey(newClosest)) {
                         // Our new object has a past potential heuristic calculated, if it's better try it out.
                         CachedHeuristic maybeReAttempt = _heuristicMap.get(newClosest);
                         double maybeClosestDistance = getPos(mod, newClosest).distanceToSqr(mod.getPlayer().position());
