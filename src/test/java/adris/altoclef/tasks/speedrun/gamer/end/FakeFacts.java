@@ -21,10 +21,17 @@ class FakeFacts implements GamerFacts {
     int z;
     long gameTime = 100_000;
     boolean credits;
+    // a smoker of ours standing next to us
+    boolean smokerPlaced;
 
     FakeFacts with(Item item, int count) {
         items.put(item, count);
         return this;
+    }
+
+    @Override
+    public boolean smokerPlacedNearby() {
+        return smokerPlaced;
     }
 
     // worn pieces count as owned, like the real facts do

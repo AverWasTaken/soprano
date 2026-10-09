@@ -1,6 +1,7 @@
 package adris.altoclef.tasks.speedrun.gamer;
 
 import adris.altoclef.tasks.speedrun.gamer.config.EndConfig;
+import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
 import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig;
 import adris.altoclef.tasks.speedrun.gamer.end.EndGear;
 import adris.altoclef.util.helpers.FoodHelper;
@@ -46,8 +47,17 @@ public class FoodPlanTest {
         return FoodPlan.ofBeds(f, cfg, beds);
     }
 
+    // the kit's phases, where the cook runs
     private FoodPlan plan(FakeFacts f) {
-        return FoodPlan.of(f, cfg, end);
+        return FoodPlan.of(f, cfg, end, true);
+    }
+
+    // the same bag as a given phase sees it, through the entry the engine uses
+    private FoodPlan planIn(FakeFacts f, GamerPhase phase) {
+        GamerConfig all = new GamerConfig();
+        all.overworld = cfg;
+        all.end = end;
+        return FoodPlan.of(f, all, phase);
     }
 
     // ---- the valuation
@@ -123,6 +133,129 @@ public class FoodPlanTest {
         cooking.cookingFood("cooked_porkchop", 4, 8, 20);
         assertEquals(80 + 32, plan(cooking, 10).held());
         assertEquals(32, plan(cooking, 10).pending());
+    }
+
+    // ---- the phase decides whether a standing smoker makes dinner
+
+    @Test
+    public void onlyTheKitsPhasesCook() {
+        for (GamerPhase p : GamerPhase.values()) {
+            boolean kit = p == GamerPhase.GATHER || p == GamerPhase.IRON || p == GamerPhase.PORTAL;
+            assertEquals(p.name(), kit, p.cooks());
+        }
+    }
+
+    private FakeFacts rawPorkAndASmoker() {
+        // three raw porkchop (24 on paper, 9 to eat), a smoker standing and coal to burn: the planner would cook it
+        FakeFacts f = new FakeFacts();
+        f.give(Items.PORKCHOP, 3).give(Items.COAL, 2);
+        f.smokerPlaced = true;
+        f.foodUnits = 3 * FoodHelper.plannedNutrition(Items.PORKCHOP);
+        assertTrue(CookGate.cookFeasible(f, cfg, end.beds));
+        return f;
+    }
+
+    @Test
+    public void rawMeatIsCookedValueInThePhasesThatCookAndRawValueInTheRest() {
+        FakeFacts f = rawPorkAndASmoker();
+        for (GamerPhase p : new GamerPhase[]{GamerPhase.GATHER, GamerPhase.IRON, GamerPhase.PORTAL}) {
+            assertEquals(p.name(), 24, planIn(f, p).held());
+            assertEquals(p.name(), 0, planIn(f, p).rawLeftOut());
+        }
+        for (GamerPhase p : new GamerPhase[]{GamerPhase.NETHER, GamerPhase.EYES, GamerPhase.RETURN, GamerPhase.LOCATE, GamerPhase.ROOM,
+                GamerPhase.OPEN, GamerPhase.END_PREP, GamerPhase.DRAGON}) {
+            assertEquals(p.name(), 9, planIn(f, p).held());
+            assertEquals(p.name(), 15, planIn(f, p).rawLeftOut());
+            // counted is the plain sum in every phase, it is only for "did we get closer"
+            assertEquals(p.name(), 24, planIn(f, p).counted());
+        }
+    }
+
+    @Test
+    public void theCookingPhasesReadWhatTheyAlwaysDid() {
+        // the same bags through the phase entry and through the old no-phase one: every number the kit acts on is the same
+        FakeFacts empty = new FakeFacts();
+        FakeFacts noCook = tenRawPork();
+        FakeFacts station = tenRawPork();
+        station.smokerPlaced = true;
+        station.give(Items.COAL, 4);
+        FakeFacts dry = tenRawPork();
+        dry.smokerPlaced = true;
+        FakeFacts loading = tenRawPork();
+        loading.cookStation = "smoker";
+        FakeFacts cooking = tenRawPork();
+        cooking.cookingFood("cooked_porkchop", 4, 8, 20);
+        FakeFacts mixed = rawPorkAndASmoker();
+        mixed.give(Items.COOKED_BEEF, 5);
+        mixed.foodUnits += 40;
+        for (FakeFacts f : new FakeFacts[]{empty, noCook, station, dry, loading, cooking, mixed}) {
+            for (GamerPhase p : new GamerPhase[]{GamerPhase.GATHER, GamerPhase.IRON, GamerPhase.PORTAL}) {
+                FoodPlan now = planIn(f, p);
+                FoodPlan before = plan(f);
+                assertEquals(p.name(), before.held(), now.held());
+                assertEquals(p.name(), before.rawLeftOut(), now.rawLeftOut());
+                assertEquals(p.name(), before.counted(), now.counted());
+                assertEquals(p.name(), before.covered(), now.covered());
+                assertEquals(p.name(), before.band(), now.band());
+            }
+        }
+    }
+
+    @Test
+    public void aBatchPendingWhereNothingCollectsItDoesNotSaveTheRawMeat() {
+        // nothing goes back to a station after PORTAL and the food task will not load a second batch behind the first, so the
+        // ten porkchop in the bag stay raw (30 to eat) with a batch out there or without one
+        FakeFacts f = tenRawPork();
+        f.cookingFood("cooked_porkchop", 4, 8, 20);
+        for (GamerPhase p : new GamerPhase[]{GamerPhase.NETHER, GamerPhase.LOCATE, GamerPhase.END_PREP, GamerPhase.DRAGON}) {
+            assertEquals(p.name(), 50, planIn(f, p).rawLeftOut());
+            assertEquals(p.name(), 30 + 32, planIn(f, p).held());
+            assertEquals(p.name(), 30, planIn(tenRawPork(), p).held());
+        }
+        // the kit's phases do go back for it, the cook is happening and the bag is cooked-valued
+        assertEquals(0, planIn(f, GamerPhase.IRON).rawLeftOut());
+        assertEquals(80 + 32, planIn(f, GamerPhase.IRON).held());
+    }
+
+    @Test
+    public void threeRawBeefBehindAStaleBatchAreWorthNineWhereNothingCooks() {
+        // 3 raw beef is 24 on paper, 9 to eat, and a batch of 32 is cooking in a smoker nobody will come back to
+        FakeFacts f = new FakeFacts();
+        f.give(Items.BEEF, 3);
+        f.foodUnits = 3 * FoodHelper.plannedNutrition(Items.BEEF);
+        f.cookingFood("cooked_porkchop", 4, 8, 20);
+        FoodPlan p = planIn(f, GamerPhase.END_PREP);
+        assertEquals(15, p.rawLeftOut());
+        assertEquals(32, p.pending());
+        // held still counts the batch (the other gates would), what the bag is worth is the 9
+        assertEquals(41, p.held());
+        assertEquals(9, p.held() - p.pending());
+        assertTrue(p.held() - p.pending() < end.minFoodUnits);
+    }
+
+    @Test
+    public void theFoodFloorOfAPhaseThatNeverCooksSeesTheRawValue() {
+        // LOCATE with 3 raw porkchop and a smoker standing: the floor used to read 24 and sit comfortably over 24
+        FakeFacts f = rawPorkAndASmoker();
+        assertFalse(planIn(f, GamerPhase.IRON).floorNext(false));
+        FoodPlan locate = planIn(f, GamerPhase.LOCATE);
+        assertTrue(locate.held() < cfg.minHeldFoodUnits);
+        assertTrue(locate.floorNext(false));
+    }
+
+    @Test
+    public void theEngineBuildsTheTicksPlanForThePhaseItIsIn() {
+        // the default context (what a stub or a test hands a handler) takes the phase from the state
+        StubContext ctx = new StubContext();
+        ctx.cfg.overworld = cfg;
+        ctx.cfg.end = end;
+        ctx.facts.give(Items.PORKCHOP, 3).give(Items.COAL, 2);
+        ctx.facts.smokerPlaced = true;
+        ctx.facts.foodUnits = 3 * FoodHelper.plannedNutrition(Items.PORKCHOP);
+        ctx.state.phase = GamerPhase.IRON;
+        assertEquals(24, ctx.food().held());
+        ctx.state.phase = GamerPhase.END_PREP;
+        assertEquals(9, ctx.food().held());
     }
 
     @Test
@@ -638,7 +771,8 @@ public class FoodPlanTest {
         assertTrue(PortalPlanner.gate(v.f, cfg, 8, plan(v.f, 8)).stream().anyMatch(n -> KitNeed.FOOD.equals(n.catalogueName())));
     }
 
-    // a bag, and whether each gate says the food is short. every row is one bag read by all of them
+    // a bag, and whether each gate says the food is short. every row is one bag read by all of them, each in its own phase: the
+    // kit and the portal in the ones that cook, the End gate in END_PREP where nothing does
     private void assertGatesAgree(String bag, FakeFacts f, boolean shortOfMinimum, boolean shortOfEnd) {
         FoodPlan p = plan(f);
         assertEquals(bag + " (plan)", shortOfMinimum, p.shortOfMinimum());
@@ -648,7 +782,7 @@ public class FoodPlanTest {
                 .anyMatch(n -> KitNeed.FOOD.equals(n.catalogueName())));
         assertEquals(bag + " (portal)", shortOfMinimum, PortalPlanner.gate(f, cfg, end.beds, p).stream()
                 .anyMatch(n -> KitNeed.FOOD.equals(n.catalogueName())));
-        assertEquals(bag + " (end)", shortOfEnd, EndGear.missing(f, new RunState(), end, 0, p).food());
+        assertEquals(bag + " (end)", shortOfEnd, EndGear.missing(f, new RunState(), end, 0, planIn(f, GamerPhase.END_PREP)).food());
     }
 
     @Test
@@ -671,13 +805,15 @@ public class FoodPlanTest {
         assertEquals(15, plan(rawNoCook).held());
         assertGatesAgree("5 raw porkchop, no cook", rawNoCook, true, true);
 
-        // the same five with a smoker standing and coal to burn: they are 40 and the cook turns them into 40
+        // the same five with a smoker standing and coal to burn: the kit's phases cook them, so there they are 40. END_PREP never
+        // goes back to the smoker, so the End gate still sees the 15 it can eat
         FakeFacts rawCook = new FakeFacts();
         rawCook.give(Items.PORKCHOP, 5).give(Items.COAL, 2);
         rawCook.smokerPlaced = true;
         rawCook.foodUnits = 5 * FoodHelper.plannedNutrition(Items.PORKCHOP);
         assertEquals(40, plan(rawCook).held());
-        assertGatesAgree("5 raw porkchop, smoker standing", rawCook, true, false);
+        assertEquals(15, planIn(rawCook, GamerPhase.END_PREP).held());
+        assertGatesAgree("5 raw porkchop, smoker standing", rawCook, true, true);
     }
 
     // ---- where the gates used to disagree, and what they say now
@@ -690,14 +826,16 @@ public class FoodPlanTest {
         f.foodUnits = 3 * FoodHelper.plannedNutrition(Items.PORKCHOP);
         assertEquals(24, f.foodUnits);
         assertFalse("the old read", f.foodUnits() < end.minFoodUnits);
-        assertEquals(9, plan(f).held());
-        assertTrue(EndGear.missing(f, new RunState(), end, 0, plan(f)).food());
-        // with a smoker standing and fuel the planner can cook them, so the same bag is worth its cooked 24 here as in every other
-        // gate (END_PREP does not run the cook itself, held is not phase aware)
+        FoodPlan atTheEnd = planIn(f, GamerPhase.END_PREP);
+        assertEquals(9, atTheEnd.held());
+        assertTrue(EndGear.missing(f, new RunState(), end, 0, atTheEnd).food());
+        // with a smoker standing and fuel the kit's phases can cook them, and it is the kit's phases that count them at 24. the
+        // End gate is read in END_PREP, which never does, so a smoker that only stands there does not turn 9 into 24
         f.smokerPlaced = true;
         f.give(Items.COAL, 1);
-        assertEquals(24, plan(f).held());
-        assertFalse(EndGear.missing(f, new RunState(), end, 0, plan(f)).food());
+        assertEquals(24, planIn(f, GamerPhase.IRON).held());
+        assertEquals(9, planIn(f, GamerPhase.END_PREP).held());
+        assertTrue(EndGear.missing(f, new RunState(), end, 0, planIn(f, GamerPhase.END_PREP)).food());
     }
 
     @Test

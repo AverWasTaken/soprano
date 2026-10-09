@@ -10,6 +10,8 @@ import java.util.List;
 // and they drifted: the End gate read the bare bag, two phases kept their own copy of the latch, and two configs both call their
 // line minFoodUnits. held is the one valuation: the bag and the furnace screen we have open (raw meat at its cooked value), plus
 // what a smoker is cooking for us, minus the cooked value of raw meat nothing can cook (it gets eaten raw, 3 a porkchop and not 8).
+// what can cook depends on the phase: GATHER, IRON and PORTAL run the cook, so a standing smoker with fuel and three raw meat
+// makes dinner, from the nether on nothing does and the meat counts raw, a pending batch or not (GamerPhase.cooks).
 // counted is the same without that correction and is only for "did we get closer", held jumps by a chicken whenever a smoker comes
 // or goes. the lines are named so the two minFoodUnits cannot be mixed up: overworldMinimum is 70 (OverworldConfig), endFloor is 24
 // (EndConfig), floor is OverworldConfig.minHeldFoodUnits. pure: facts and configs in, numbers out
@@ -45,28 +47,37 @@ public final class FoodPlan {
         this.endFloor = end.minFoodUnits;
     }
 
-    public static FoodPlan of(GamerFacts f, GamerConfig cfg) {
-        return of(f, cfg.overworld, cfg.end);
+    // the phase is what says whether a cook can happen at all, so there is no way to ask without one
+    public static FoodPlan of(GamerFacts f, GamerConfig cfg, GamerPhase phase) {
+        return of(f, cfg.overworld, cfg.end, phase.cooks());
     }
 
-    public static FoodPlan of(GamerFacts f, OverworldConfig ow, EndConfig end) {
-        return new FoodPlan(f.foodUnits(), f.pendingFoodUnits(), rawLeftOut(f, ow, end.beds), f.junkFoodUnits(), f.stationFoodUnits(),
-                f.stationFoodSkipped(), ow, end);
+    // `cooksHere` = the phase runs the cook (GamerPhase.cooks)
+    public static FoodPlan of(GamerFacts f, OverworldConfig ow, EndConfig end, boolean cooksHere) {
+        return new FoodPlan(f.foodUnits(), f.pendingFoodUnits(), rawLeftOut(f, ow, end.beds, cooksHere), f.junkFoodUnits(),
+                f.stationFoodUnits(), f.stationFoodSkipped(), ow, end);
     }
 
     // for the planners' short entry points, which know the bed count and nothing else of the End. the End lines are the config
-    // defaults there, so a caller that reads endFloor() wants the other overload
+    // defaults there, so a caller that reads endFloor() wants the other overload. the planners behind them are the kit's, which
+    // run in the cooking phases
     public static FoodPlan ofBeds(GamerFacts f, OverworldConfig ow, int endBeds) {
         EndConfig end = new EndConfig();
         end.beds = endBeds;
-        return of(f, ow, end);
+        return of(f, ow, end, true);
     }
 
     // the cooked value of the raw meat that held does not count: all of CookGate.rawGap while no cook can happen, none while one
-    // can (the bag figure has it in already, adding it again would pay the same chicken twice)
-    private static int rawLeftOut(GamerFacts f, OverworldConfig ow, int endBeds) {
+    // can (the bag figure has it in already, adding it again would pay the same chicken twice). in a phase that never cooks all of it
+    // stays out, whatever stands there or cooks there: nobody loads a station and nothing collects one after PORTAL, so a batch
+    // still pending is not food we will get and the raw meat behind it never reaches a smoker (CollectFoodTask will not load a
+    // second one while the first is out). a standing smoker and fuel are only a dream there
+    private static int rawLeftOut(GamerFacts f, OverworldConfig ow, int endBeds, boolean cooksHere) {
         int gap = CookGate.rawGap(f);
-        return gap > 0 && !CookGate.cookFeasible(f, ow, endBeds) ? gap : 0;
+        if (gap <= 0) {
+            return 0;
+        }
+        return cooksHere && CookGate.cookFeasible(f, ow, endBeds) ? 0 : gap;
     }
 
     // ---- the numbers
@@ -190,8 +201,8 @@ public final class FoodPlan {
 
     // the food floor of the phases with no food need of their own (FoodFloor): starts under the floor and carries on to the
     // minimum, flipping at the line would stop the hunt halfway. no covered() here on purpose, those phases never run the cook,
-    // so a hole is not closed by raw meat that only counts once it is cooked. (held itself is not phase aware: it still counts
-    // raw meat at the cooked value when the planner could cook it, same as everywhere else)
+    // so a hole is not closed by raw meat that only counts once it is cooked. (held is phase aware for the same reason: no raw
+    // meat at the cooked value in a phase that never cooks, covered() just stays out of it)
     public boolean floorNext(boolean active) {
         if (held() >= minimum) {
             return false;

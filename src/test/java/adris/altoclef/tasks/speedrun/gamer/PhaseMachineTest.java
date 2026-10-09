@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Optional;
 import net.minecraft.SharedConstants;
 import net.minecraft.server.Bootstrap;
+import net.minecraft.world.item.Items;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -142,6 +143,25 @@ public class PhaseMachineTest {
         machine.tick(null);
         assertNotSame(first, machine.food());
         assertEquals(90, machine.food().held());
+        assertSame(machine.food(), machine.food());
+    }
+
+    @Test
+    public void theTicksFoodPlanFollowsThePhaseItIsAskedIn() {
+        SharedConstants.tryDetectVersion();
+        Bootstrap.bootStrap();
+        start();
+        // three raw porkchop, a smoker standing and coal: the kit's phases cook them (24), the rest eat them raw (9)
+        host.facts.give(Items.PORKCHOP, 3).give(Items.COAL, 2);
+        host.facts.smokerPlaced = true;
+        host.facts.foodUnits = 24;
+        host.state.phase = GamerPhase.IRON;
+        FoodPlan inIron = machine.food();
+        assertEquals(24, inIron.held());
+        // a move inside the tick must not keep the old phase's plan
+        host.state.phase = GamerPhase.END_PREP;
+        assertEquals(9, machine.food().held());
+        assertNotSame(inIron, machine.food());
         assertSame(machine.food(), machine.food());
     }
 

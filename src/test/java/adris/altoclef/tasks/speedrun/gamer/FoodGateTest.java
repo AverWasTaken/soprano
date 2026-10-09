@@ -36,7 +36,7 @@ public class FoodGateTest {
     }
 
     private FoodPlan plan(FakeFacts f) {
-        return FoodPlan.of(f, cfg, end);
+        return FoodPlan.of(f, cfg, end, true);
     }
 
     @Test

@@ -1,8 +1,10 @@
 package adris.altoclef.tasks.speedrun.gamer.end;
 
 import adris.altoclef.tasks.speedrun.gamer.FoodPlan;
+import adris.altoclef.tasks.speedrun.gamer.GamerPhase;
 import adris.altoclef.tasks.speedrun.gamer.RunState;
 import adris.altoclef.tasks.speedrun.gamer.config.EndConfig;
+import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
 import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig;
 import adris.altoclef.util.helpers.FoodHelper;
 import net.minecraft.SharedConstants;
@@ -28,9 +30,11 @@ public class EndGearTest {
         Bootstrap.bootStrap();
     }
 
-    // the gap as END_PREP asks for it: the engine builds the tick's FoodPlan from the same facts and hands it in
+    // the gap as END_PREP asks for it: the engine builds the tick's FoodPlan from the same facts, for that phase, and hands it in
     private EndGear.Gap missing(FakeFacts f, RunState s, int beds) {
-        return EndGear.missing(f, s, cfg, beds, FoodPlan.of(f, new OverworldConfig(), cfg));
+        GamerConfig all = new GamerConfig();
+        all.end = cfg;
+        return EndGear.missing(f, s, cfg, beds, FoodPlan.of(f, all, GamerPhase.END_PREP));
     }
 
     private FakeFacts ready() {
@@ -103,6 +107,16 @@ public class EndGearTest {
         f.with(Items.COOKED_BEEF, 3);
         f.food += 3 * FoodHelper.plannedNutrition(Items.COOKED_BEEF);
         assertFalse(missing(f, new RunState(), cfg.beds).food());
+    }
+
+    @Test
+    public void aSmokerStandingNextToRawMeatDoesNotMakeItDinnerAtTheGate() {
+        // three raw porkchop with a smoker and coal at hand: the kit would cook them, END_PREP never walks back to the smoker
+        FakeFacts f = ready().with(Items.PORKCHOP, 3).with(Items.COAL, 2);
+        f.smokerPlaced = true;
+        f.food = 3 * FoodHelper.plannedNutrition(Items.PORKCHOP);
+        assertEquals(cfg.minFoodUnits, f.food);
+        assertTrue(missing(f, new RunState(), cfg.beds).food());
     }
 
     @Test

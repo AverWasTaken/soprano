@@ -55,8 +55,9 @@ public final class PhaseMachine implements GamerContext {
     // when the death recovery last held the clocks, -1 when it is not running
     private double heldAt = -1;
 
-    // the tick's FoodPlan, see food()
+    // the tick's FoodPlan, see food(), and the phase it was built for (a move inside the tick must not keep the old phase's cook)
     private FoodPlan food;
+    private GamerPhase foodPhase;
     private int lastFingerprint;
     private int anchorX;
     private int anchorY;
@@ -450,8 +451,10 @@ public final class PhaseMachine implements GamerContext {
     // built on the first ask of a tick and dropped when the next one starts: every gate in a tick reads the same food count
     @Override
     public FoodPlan food() {
-        if (food == null) {
-            food = FoodPlan.of(host.facts(), host.cfg());
+        GamerPhase phase = host.state().phase;
+        if (food == null || foodPhase != phase) {
+            food = FoodPlan.of(host.facts(), host.cfg(), phase);
+            foodPhase = phase;
         }
         return food;
     }
