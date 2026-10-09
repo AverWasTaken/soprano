@@ -118,7 +118,8 @@ public final class PrepSupport {
         // it can never hold one of them up, and one of them taking the tick is the clean signal that ends a detour.
         // gravel goes after coal (coal burns this phase, flint waits for the portal), but a gravel detour that is going keeps the
         // wheel: coal showing up halfway would end it into its 2 min cooldown for a 5 s job
-        if (gravel.active()) {
+        boolean gravelAsked = gravel.active();
+        if (gravelAsked) {
             Task flint = gravelDetour(mod, ctx, current);
             if (flint != null) {
                 return flint;
@@ -129,7 +130,8 @@ public final class PrepSupport {
             gravel.preempted(ctx.facts().gameTime());
             return ore;
         }
-        return gravelDetour(mod, ctx, current);
+        // a detour that just ended above is done for this tick, asking it twice would only count its look twice
+        return gravelAsked ? null : gravelDetour(mod, ctx, current);
     }
 
     private Task rankedJobs(AltoClef mod, GamerContext ctx, List<KitNeed> needs, KitNeed current) {

@@ -90,6 +90,8 @@ public class NetherPhase implements PhaseHandler {
     private final HomePortalWalk homeWalk = new HomePortalWalk();
     // flint from soul sand valley gravel, only while it is still owed (no flint and steel, fire charge or flint on us)
     private final ResourceDetour gravel = ResourceDetour.gravel();
+    // a barter ticked this recently is still going (see gravelSide)
+    private static final double TRADE_FRESH_SECONDS = 1;
     private Task boots;
     private TradeWithPiglinsTask trade;
     private int tradeTarget;
@@ -223,7 +225,7 @@ public class NetherPhase implements PhaseHandler {
         if (tickCounter++ % SCAN_EVERY_TICKS == 0) {
             scanSights(mod, ctx);
         }
-        Task flint = gravelSide(mod, ctx);
+        Task flint = gravelSide(mod, ctx, now);
         if (flint != null) {
             return flint;
         }
@@ -231,9 +233,11 @@ public class NetherPhase implements PhaseHandler {
     }
 
     // the gravel detour, between the ghast cover and the next step. a spawner we are on or a trade that is going wins outright
-    private Task gravelSide(AltoClef mod, GamerContext ctx) {
+    private Task gravelSide(AltoClef mod, GamerContext ctx, double now) {
         boolean atSpawner = rodsTask != null && rodsTask.currentSpawner() != null;
-        boolean trading = barterTickAt >= 0;
+        // barterTickAt is only put back when barterStep says no, and once the pearls are in nobody asks barterStep again. so a
+        // trade is "going" only while it was ticked a moment ago, or one finished barter would keep gravel off for the phase
+        boolean trading = barterTickAt >= 0 && now - barterTickAt < TRADE_FRESH_SECONDS;
         if (!DetourSpec.netherMayDetour(ctx.facts().dimension() == Dimension.NETHER, atSpawner, trading)) {
             gravel.preempted(ctx.facts().gameTime());
             return null;

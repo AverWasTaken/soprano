@@ -77,7 +77,10 @@ public class GravelDetourTest {
         for (int mined = 0; mined < 10; mined++) {
             assertEquals("mined " + mined, Step.KEEP, rules.tick(1001 + mined, calm(0, mined), LIM, ore(true)));
         }
-        assertEquals(Step.CAPPED, rules.tick(1011, calm(0, 10), LIM, ore(true)));
+        // the 10th block's drop gets its moment first, then it is over
+        assertEquals(Step.SETTLE, rules.tick(1011, calm(0, 10), LIM, ore(true)));
+        assertEquals(Step.SETTLE, rules.tick(1011 + DetourRules.DROP_GRACE_TICKS - 1, calm(0, 10), LIM, ore(true)));
+        assertEquals(Step.CAPPED, rules.tick(1011 + DetourRules.DROP_GRACE_TICKS, calm(0, 10), LIM, ore(true)));
         assertFalse(rules.running());
         assertEquals("dug its share, no flint", DetourSpec.GRAVEL.ended(Step.CAPPED));
     }
@@ -96,7 +99,32 @@ public class GravelDetourTest {
         DetourRules rules = new DetourRules(DetourSpec.GRAVEL.cooldownTicks);
         rules.tick(1000, calm(0, 0), lim, ore(true));
         assertEquals(Step.KEEP, rules.tick(1001, calm(0, 2), lim, ore(true)));
-        assertEquals(Step.CAPPED, rules.tick(1002, calm(0, 3), lim, ore(true)));
+        assertEquals(Step.SETTLE, rules.tick(1002, calm(0, 3), lim, ore(true)));
+        assertEquals(Step.CAPPED, rules.tick(1002 + DetourRules.DROP_GRACE_TICKS, calm(0, 3), lim, ore(true)));
+    }
+
+    @Test
+    public void theFlintFromTheTenthBlockStillGetsPickedUp() {
+        DetourRules rules = started(1000);
+        DetourRules.Ore flintOnTheFloor = new DetourRules.Ore(() -> true, () -> true, () -> true, () -> false);
+        // block 10 just went and its flint is lying there: no cap while it is, however long the walk to it takes
+        for (long now = 1001; now <= 1001 + 3 * DetourRules.DROP_GRACE_TICKS; now += 20) {
+            assertEquals(Step.SETTLE, rules.tick(now, calm(0, 10), LIM, flintOnTheFloor));
+        }
+        assertEquals(Step.DONE, rules.tick(1002 + 3 * DetourRules.DROP_GRACE_TICKS, calm(1, 10), LIM, flintOnTheFloor));
+    }
+
+    @Test
+    public void aDropWeNeverReachStillEndsOnTheClock() {
+        DetourRules rules = started(1000);
+        DetourRules.Ore flintOnTheFloor = new DetourRules.Ore(() -> true, () -> true, () -> true, () -> false);
+        long now = 1001;
+        assertEquals(Step.SETTLE, rules.tick(now, calm(0, 10), LIM, flintOnTheFloor));
+        while (now + 20 <= 1000 + LIM.maxTicks()) {
+            now += 20;
+            assertEquals(Step.SETTLE, rules.tick(now, calm(0, 10), LIM, flintOnTheFloor));
+        }
+        assertEquals(Step.CAPPED, rules.tick(now + 20, calm(0, 10), LIM, flintOnTheFloor));
     }
 
     @Test
@@ -127,11 +155,13 @@ public class GravelDetourTest {
     public void twoMinutesBeforeTheNextGravelDetour() {
         assertEquals(2 * 60 * 20, DetourSpec.GRAVEL.cooldownTicks);
         DetourRules rules = started(1000);
-        assertEquals(Step.CAPPED, rules.tick(1001, calm(0, 10), LIM, ore(true)));
+        assertEquals(Step.SETTLE, rules.tick(1001, calm(0, 10), LIM, ore(true)));
+        long end = 1001 + DetourRules.DROP_GRACE_TICKS;
+        assertEquals(Step.CAPPED, rules.tick(end, calm(0, 10), LIM, ore(true)));
         // the next patch is right there and nothing is in the bag, still too soon
-        assertEquals(Step.IDLE, rules.tick(1002, calm(0, 0), LIM, ore(true)));
-        assertEquals(Step.IDLE, rules.tick(1001 + 2400 - 1, calm(0, 0), LIM, ore(true)));
-        assertEquals(Step.START, rules.tick(1001 + 2400, calm(0, 0), LIM, ore(true)));
+        assertEquals(Step.IDLE, rules.tick(end + 1, calm(0, 0), LIM, ore(true)));
+        assertEquals(Step.IDLE, rules.tick(end + 2400 - 1, calm(0, 0), LIM, ore(true)));
+        assertEquals(Step.START, rules.tick(end + 2400, calm(0, 0), LIM, ore(true)));
     }
 
     @Test

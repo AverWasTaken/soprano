@@ -102,6 +102,8 @@ public final class DetourRules {
     private long cooldownUntil;
     // when the last ore left the reach, -1 while there is some
     private long goneSince = -1;
+    // when the block cap was hit, -1 before that (see going)
+    private long cappedSince = -1;
     // the last spot and time the chat line went out at, for announce
     private boolean announced;
     private long announcedTick;
@@ -182,6 +184,7 @@ public final class DetourRules {
         running = true;
         startTick = now;
         goneSince = -1;
+        cappedSince = -1;
         return Step.START;
     }
 
@@ -192,9 +195,18 @@ public final class DetourRules {
         if (enough(in, lim)) {
             return end(now, Step.DONE);
         }
-        // after enough on purpose: the 10th gravel that drops the flint is a success, not a cap
+        // after enough on purpose, and only once the last block's drop had its chance: the tally counts a block the tick it goes,
+        // the flint shows up a tick or two later and still has to be walked over. a 10th gravel that drops the flint is a success
         if (capped(in, lim)) {
-            return end(now, Step.CAPPED);
+            if (cappedSince < 0) {
+                cappedSince = now;
+            }
+            boolean waited = now - cappedSince >= DROP_GRACE_TICKS;
+            // a drop we can't get to before the clock runs out is not worth more than the clock
+            if (waited && !ore.drop().getAsBoolean() || now - startTick > lim.maxTicks()) {
+                return end(now, Step.CAPPED);
+            }
+            return Step.SETTLE;
         }
         boolean standing = ore.keep().getAsBoolean();
         if (!standing && !ore.drop().getAsBoolean()) {
@@ -215,6 +227,7 @@ public final class DetourRules {
     private Step end(long now, Step why) {
         running = false;
         goneSince = -1;
+        cappedSince = -1;
         cooldownUntil = now + cooldownTicks;
         return why;
     }
@@ -231,6 +244,7 @@ public final class DetourRules {
     public void reset() {
         running = false;
         goneSince = -1;
+        cappedSince = -1;
         cooldownUntil = 0;
         lastTick = 0;
         announced = false;
