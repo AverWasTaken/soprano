@@ -93,7 +93,8 @@ public final class WorkbenchRules {
     // the planner's word on a furnace or smoker of ours, the one flag stoneWanted, the kit's furnace skip, CookGate and cookFeasible
     // all read: held inside the band as before, or anywhere the smelt would walk back to (StationChoice: no item in the bag and
     // nothing to make one from, ours standing out to the forget line). without the second half the plan asked for 8 cobble for a
-    // furnace the smelt task then never made, it walked back to ours
+    // furnace the smelt task then never made, it walked back to ours. the walk back now also reaches WALK_BACK with the stuff in the
+    // bag, which this can't see (canMake short-circuits it): the planner should ask Workbenches.plannerWalksBack instead
     public static boolean plannerHeld(boolean heldNear, boolean inBag, boolean canMake, boolean walkBackTarget) {
         return heldNear || !inBag && !canMake && walkBackTarget;
     }
@@ -469,8 +470,8 @@ public final class WorkbenchRules {
         if (!in.sameDimension() || in.blockGone() || in.holdsStuff() || in.jobHere() || !in.idle()) {
             return false;
         }
-        // only decided standing near it: from 36 blocks off "nothing wants it" turned into a trip back across the map. the
-        // redecide (or the use) waits for the next time we pass within NEAR
+        // only decided standing near it: from far off any "take it" answer is a trip back across the map. the redecide (or the
+        // use) waits for the next time we pass within NEAR
         if (in.distance() > NEAR) {
             return false;
         }

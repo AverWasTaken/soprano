@@ -18,9 +18,8 @@ public final class StationChoice {
     // a step moves us across
     public static final double HOLD = 2.0;
     // a furnace or smoker of ours this close (straight line) is walked back to even when the bag could make another. making one is
-    // 8 cobble and a table and a craft, and then the old one sits out there until something walks back for it anyway (that walk
-    // was the bug: a new furnace went down 36 blocks from ours and the pickup trip for the old one left the smelt cooking alone).
-    // past this the new one wins if the bag has what it takes
+    // 8 cobble and a table and a craft, and then the old one sits out there until something walks back for it anyway, which is the
+    // same walk plus a pickup. past this the new one wins if the bag has what it takes
     public static final double WALK_BACK = 48.0;
 
     // strongest first

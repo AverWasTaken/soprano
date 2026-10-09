@@ -2185,6 +2185,23 @@ public class WorkbenchRulesTest {
         assertTrue(WorkbenchRules.doneUsing(used, far.look()));
     }
 
+    // walked back to a released furnace to use it: once we stand at it with its screen up, the held redecide does not take it from
+    // under the load
+    @Test
+    public void walkingBackToAReleasedFurnaceToUseItDoesNotPickItUp() {
+        Bench b = bench(Kind.FURNACE);
+        b.redecide = true;
+        Seen s = new Seen();
+        s.distance = 3;
+        s.neededSoon = true;
+        s.idle = false;
+        assertFalse(WorkbenchRules.doneUsing(b, s.look()));
+        assertEquals(Call.KEEP, decide(b, s));
+        // nothing wants a furnace either: still only a wait while it is in use
+        s.neededSoon = false;
+        assertEquals(Call.WAIT, decide(b, s));
+    }
+
     // the bug: an emptied furnace held for "to smelt", a new furnace goes down 36 blocks away and becomes the nearest, the old one's
     // comingBack lets go. it is not fetched from there, mid-work, whatever the plan says about furnaces. passing within NEAR later
     // decides it, and then it comes along

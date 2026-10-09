@@ -53,8 +53,8 @@ final class StationSpots {
         // opening the neighbour lets this in: a liquid that flows, or sand and gravel that fall
         boolean floods(int x, int y, int z);
 
-        // a station of ours or any workbench (StationHook.keepStanding): never carved, whatever carvable says. the furnace once
-        // went in the hole where the table it was crafted at had stood
+        // a station of ours or any workbench (StationHook.keepStanding): never carved, whatever carvable says. mining the table we
+        // just crafted at to make room for the furnace is a table we then have to make again
         default boolean keep(int x, int y, int z) {
             return false;
         }
