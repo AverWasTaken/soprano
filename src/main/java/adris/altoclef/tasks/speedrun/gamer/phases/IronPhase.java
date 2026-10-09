@@ -118,7 +118,7 @@ public class IronPhase implements PhaseHandler {
     public boolean isDone(GamerFacts facts, RunState state, GamerConfig cfg) {
         // a table or furnace of ours still standing is picked up first, this is the last chance (Workbenches.phaseMayEnd)
         // iron still cooking is iron we do not have, however empty the plan looks
-        return KitPlanner.plan(facts, cfg.overworld, cfg.end.beds, FoodPlan.of(facts, cfg, GamerPhase.IRON)).isEmpty() && facts.furnaceJobs().isEmpty()
+        return KitPlanner.plan(facts, cfg.overworld, cfg.end.beds, FoodPlan.of(facts, cfg, GamerPhase.IRON, state.foodRefilling)).isEmpty() && facts.furnaceJobs().isEmpty()
                 && Workbenches.phaseMayEnd(state, facts.dimension().name(), facts.gameTime()) && !furnaces.cooking();
     }
 

@@ -57,8 +57,14 @@ public class OverworldPhasesTest {
         assertFalse("no furnace yet", gather.isDone(f, state, cfg));
         f.give(Items.FURNACE, 1);
         assertTrue(gather.isDone(f, state, cfg));
+        // 69 with no trip on is fine, the refill only starts under 45. once one is under way it runs to the minimum
         f.foodUnits = 69;
-        assertFalse("food under the minimum", gather.isDone(f, state, cfg));
+        assertTrue("69 is not a trip", gather.isDone(f, state, cfg));
+        state.foodRefilling = true;
+        assertFalse("a trip under way runs to the minimum", gather.isDone(f, state, cfg));
+        state.foodRefilling = false;
+        f.foodUnits = 44;
+        assertFalse("under the refill start", gather.isDone(f, state, cfg));
     }
 
     @Test

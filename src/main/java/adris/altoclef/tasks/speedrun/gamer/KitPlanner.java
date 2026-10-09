@@ -56,7 +56,7 @@ public final class KitPlanner {
 
     public static List<KitNeed> gather(GamerFacts f, OverworldConfig cfg, int endBeds, FoodPlan food) {
         List<KitNeed> out = new ArrayList<>(starter(f, cfg, endBeds, true, new ArrayList<>(), food));
-        addFood(out, food, food.overworldMinimum());
+        addRefill(out, food);
         // no cook here: GATHER used to wait out the smoker with nothing else to do, and the meat cooks just as well while the
         // iron phase starts (it leads the plan on the surface, see CookGate.leads, and the output is collected on the way)
         return out;
@@ -74,7 +74,7 @@ public final class KitPlanner {
         // a worn pick we still carry gets replaced after the iron, not in the middle of it (see starter)
         List<KitNeed> late = new ArrayList<>();
         List<KitNeed> out = new ArrayList<>(starter(f, cfg, endBeds, false, late, food));
-        addFood(out, food, food.overworldMinimum());
+        addRefill(out, food);
         out.addAll(iron(f, cfg, endBeds));
         out.addAll(late);
         addFood(out, food, food.target());
@@ -159,9 +159,10 @@ public final class KitPlanner {
         return cookFuelLogs(f, cfg, endBeds, budgetLogsShort, FoodPlan.ofBeds(f, cfg, endBeds));
     }
 
-    // (with no raw meat in the bag held is the plain bag plus pending, the raw correction is 0 by then)
+    // (with no raw meat in the bag held is the plain bag plus pending, the raw correction is 0 by then). keyed on the same refill
+    // as the food need, logs for a hunt that is not coming are just more trees
     static int cookFuelLogs(GamerFacts f, OverworldConfig cfg, int endBeds, int budgetLogsShort, FoodPlan food) {
-        if (cfg.cookFuelLogs <= 0 || CookGate.raw(f) > 0 || !food.shortOfMinimum()) {
+        if (cfg.cookFuelLogs <= 0 || CookGate.raw(f) > 0 || !food.wantsRefill()) {
             return 0;
         }
         // short of the budget every log is spoken for, so there is no spare to look for
@@ -442,6 +443,13 @@ public final class KitPlanner {
     private static void addFood(List<KitNeed> out, FoodPlan food, int units) {
         if (food.shortOf(units)) {
             out.add(new KitNeed(KitNeed.FOOD, units));
+        }
+    }
+
+    // the minimum only goes in when a trip is due or under way (FoodPlan.wantsRefill), 69 is not a reason to drop the pick
+    private static void addRefill(List<KitNeed> out, FoodPlan food) {
+        if (food.wantsRefill()) {
+            out.add(new KitNeed(KitNeed.FOOD, food.overworldMinimum()));
         }
     }
 

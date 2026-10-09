@@ -51,7 +51,7 @@ final class GamerHud {
     GamerHudState recovering(RunState state, GamerFacts facts, GamerConfig cfg, double secondsInPhase, int attempt, String action) {
         lastRows = List.of();
         lingering.clear();
-        FoodPlan food = FoodPlan.of(facts, cfg, state.phase);
+        FoodPlan food = FoodPlan.of(facts, cfg, state.phase, state.foodRefilling);
         return new GamerHudState(state.phase, secondsInPhase, cfg.budgets.minutes(state.phase), attempt, action, List.of(),
                 furnaceRows(facts.furnaceJobs()), null, food.held(), food.overworldMinimum());
     }

@@ -91,8 +91,9 @@ public final class PortalPlanner {
     // two buckets (one becomes water, one lava) and a light, the end needs the water bucket back later
     public static List<KitNeed> gate(GamerFacts f, OverworldConfig cfg, int endBeds, FoodPlan food) {
         List<KitNeed> out = new ArrayList<>();
-        // the same count the kit plan uses, so meat still cooking for us (or meat that cannot be cooked) reads the same here
-        if (food.shortOfMinimum()) {
+        // the same count the kit plan uses, so meat still cooking for us (or meat that cannot be cooked) reads the same here. and
+        // the same refill gap: 69 at the portal is not a trip
+        if (food.wantsRefill()) {
             out.add(new KitNeed(KitNeed.FOOD, food.overworldMinimum()));
         }
         int buckets = KitPlanner.have(f, "bucket");

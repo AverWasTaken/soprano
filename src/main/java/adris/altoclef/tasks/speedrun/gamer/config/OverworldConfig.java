@@ -44,6 +44,9 @@ public class OverworldConfig {
     // nutrition points, a cooked steak is 8. enough for an hour or so, the food chain eats on its own
     public int minFoodUnits = 70;
     public int targetFoodUnits = 100;
+    // a food trip only starts under this, then runs to minFoodUnits (FoodPlan.wantsRefill). with no gap one bite at 70 sent the
+    // bot off whatever it was doing for a single unit
+    public int refillStartFoodUnits = 45;
     // the IRON phase leaves the mine for food only below this (or on the surface, up to minFoodUnits).
     // a bot with an apple and six mutton used to climb out for a hunt in the middle of a vein
     public int minHeldFoodUnits = 24;

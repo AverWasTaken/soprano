@@ -34,7 +34,7 @@ public class EndGearTest {
     private EndGear.Gap missing(FakeFacts f, RunState s, int beds) {
         GamerConfig all = new GamerConfig();
         all.end = cfg;
-        return EndGear.missing(f, s, cfg, beds, FoodPlan.of(f, all, GamerPhase.END_PREP));
+        return EndGear.missing(f, s, cfg, beds, FoodPlan.of(f, all, GamerPhase.END_PREP, false));
     }
 
     private FakeFacts ready() {

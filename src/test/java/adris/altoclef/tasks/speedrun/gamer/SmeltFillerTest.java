@@ -77,6 +77,8 @@ public class SmeltFillerTest {
         // 10 + 60 covers the 70 unit need but not an 80 one, and the bag number never lied about it
         assertNull(find(KitPlanner.gather(f, cfg, BEDS), KitNeed.FOOD));
         cfg.minFoodUnits = 80;
+        // and a trip that starts right there, or 70 sits in the no-trip gap
+        cfg.refillStartFoodUnits = 80;
         assertEquals(new KitNeed(KitNeed.FOOD, 80), find(KitPlanner.gather(f, cfg, BEDS), KitNeed.FOOD));
         assertEquals(10 + 60, KitPlanner.progressOf(f, new KitNeed(KitNeed.FOOD, 80), FoodPlan.ofBeds(f, cfg, BEDS)));
     }

@@ -38,13 +38,26 @@ public class FoodPlanTest {
         end = new EndConfig();
     }
 
-    // a plan with exactly this held and this much raw meat left out of it, no facts needed
+    // a plan with exactly this held and this much raw meat left out of it, no facts needed. a refill is under way: the soft
+    // top-up tests live in one, it is the only place the top-up exists (wantsRefill)
     private FoodPlan held(int held, int rawLeftOut) {
-        return new FoodPlan(held + rawLeftOut, 0, rawLeftOut, 0, 0, 0, cfg, end);
+        return new FoodPlan(held + rawLeftOut, 0, rawLeftOut, 0, 0, 0, cfg, end, true);
+    }
+
+    // the same, with no trip under way
+    private FoodPlan idle(int held) {
+        return new FoodPlan(held, 0, 0, 0, 0, 0, cfg, end, false);
     }
 
     private FoodPlan plan(FakeFacts f, int beds) {
         return FoodPlan.ofBeds(f, cfg, beds);
+    }
+
+    // the same bag in the middle of a food trip (RunState.foodRefilling)
+    private FoodPlan refill(FakeFacts f, int beds) {
+        EndConfig e = new EndConfig();
+        e.beds = beds;
+        return FoodPlan.of(f, cfg, e, true, true);
     }
 
     // the kit's phases, where the cook runs
@@ -57,7 +70,7 @@ public class FoodPlanTest {
         GamerConfig all = new GamerConfig();
         all.overworld = cfg;
         all.end = end;
-        return FoodPlan.of(f, all, phase);
+        return FoodPlan.of(f, all, phase, false);
     }
 
     // ---- the valuation
@@ -460,7 +473,7 @@ public class FoodPlanTest {
 
     // the soft rule as IronPhase asks it, standing on the surface with nobody else's load going
     private boolean softLeads(FakeFacts f, boolean topUp) {
-        return plan(f, 10).leads(true, topUp, false);
+        return refill(f, 10).leads(true, topUp, false);
     }
 
     @Test
@@ -659,9 +672,9 @@ public class FoodPlanTest {
             return SmeltFiller.schedule(f, cfg, 8, true, plan(f, 8)).isStockUp(new KitNeed(KitNeed.FOOD, cfg.targetFoodUnits + 30));
         }
 
-        // the minimum need, the one that would replace the filler mid load
+        // the minimum need, the one that would replace the filler mid load. asked with a trip under way, the strict case
         boolean minimumOn() {
-            return FoodGate.index(KitPlanner.plan(f, cfg, 8, plan(f, 8)), plan(f, 8)) >= 0;
+            return FoodGate.index(KitPlanner.plan(f, cfg, 8, refill(f, 8)), refill(f, 8)) >= 0;
         }
     }
 
@@ -792,8 +805,8 @@ public class FoodPlanTest {
         assertEquals(60, KitPlanner.progressOf(v.f, FOOD, plan(v.f, 8)));
         // the min need is in the plan, the floor and the soft top-up read the same held, and the portal's need is the same sum
         assertTrue(v.minimumOn());
-        assertTrue(plan(v.f, 8).leads(true, true, FoodGate.cookBusy(false, true, true)));
-        assertTrue(PortalPlanner.gate(v.f, cfg, 8, plan(v.f, 8)).stream().anyMatch(n -> KitNeed.FOOD.equals(n.catalogueName())));
+        assertTrue(refill(v.f, 8).leads(true, true, FoodGate.cookBusy(false, true, true)));
+        assertTrue(PortalPlanner.gate(v.f, cfg, 8, refill(v.f, 8)).stream().anyMatch(n -> KitNeed.FOOD.equals(n.catalogueName())));
     }
 
     // a bag, and whether each gate says the food is short. every row is one bag read by all of them, each in its own phase: the
@@ -931,8 +944,15 @@ public class FoodPlanTest {
             f.foodUnits = units;
             FoodPlan p = plan(f, 8);
             assertEquals(units, p.held());
-            assertEquals(units + " units", p.shortOfMinimum() ? cfg.cookFuelLogs : 0, KitPlanner.cookFuelLogs(f, cfg, 8, 0, p));
+            assertEquals(units + " units", p.wantsRefill() ? cfg.cookFuelLogs : 0, KitPlanner.cookFuelLogs(f, cfg, 8, 0, p));
+            FoodPlan trip = refill(f, 8);
+            assertEquals(units + " units on a trip", trip.wantsRefill() ? cfg.cookFuelLogs : 0, KitPlanner.cookFuelLogs(f, cfg, 8, 0, trip));
         }
+        // 69 with no trip is no hunt, so no logs to cook it with either. on a trip it still wants them
+        FakeFacts f = new FakeFacts();
+        f.foodUnits = 69;
+        assertEquals(0, KitPlanner.cookFuelLogs(f, cfg, 8, 0, plan(f, 8)));
+        assertEquals(cfg.cookFuelLogs, KitPlanner.cookFuelLogs(f, cfg, 8, 0, refill(f, 8)));
     }
 
     // ---- the log line
@@ -946,5 +966,128 @@ public class FoodPlanTest {
         assertEquals("food: need on, held 110 of 130 (station 0, pending 0, raw left out 6), running food, "
                 + "24 was already in the open screen, not counted", left.line(true, 130, "food"));
         assertTrue(held(0, 0).line(true, 70, null).endsWith("running nothing"));
+    }
+
+    // ---- the refill gap: a trip starts under 45 and runs to 70
+
+    private boolean planHasMinimum(FakeFacts f, FoodPlan p) {
+        return FoodGate.index(KitPlanner.plan(f, cfg, 8, p), p) >= 0;
+    }
+
+    private static boolean hasFood(List<KitNeed> needs) {
+        return needs.stream().anyMatch(n -> KitNeed.FOOD.equals(n.catalogueName()) && n.count() <= 70);
+    }
+
+    @Test
+    public void oneBiteUnderTheMinimumIsNotATrip() {
+        FakeFacts f = new FakeFacts();
+        f.foodUnits = 69;
+        FoodPlan p = plan(f, 8);
+        assertFalse(p.wantsRefill());
+        assertFalse(planHasMinimum(f, p));
+        assertFalse(hasFood(KitPlanner.gather(f, cfg, 8, p)));
+        assertFalse(hasFood(PortalPlanner.gate(f, cfg, 8, p)));
+        // and the soft top-up does not start on the surface either, it only lives inside a refill
+        assertFalse(p.leads(true, false, false));
+        assertFalse(p.nextTopUp(false, true));
+        assertFalse(idle(46).leads(true, false, false));
+        assertFalse(idle(46).leads(true, true, false));
+        assertFalse(idle(46).nextTopUp(true, true));
+    }
+
+    @Test
+    public void underTheStartIsATrip() {
+        FakeFacts f = new FakeFacts();
+        f.foodUnits = 44;
+        FoodPlan p = plan(f, 8);
+        assertTrue(p.wantsRefill());
+        assertTrue(p.nextRefilling());
+        assertTrue(planHasMinimum(f, p));
+        assertTrue(hasFood(KitPlanner.gather(f, cfg, 8, p)));
+        assertTrue(hasFood(PortalPlanner.gate(f, cfg, 8, p)));
+        assertTrue(p.leads(true, false, false));
+        // still the soft rule down the mine: it waits for the surface
+        assertFalse(p.leads(false, false, false));
+        // the edge: 45 itself is not under the start
+        assertFalse(idle(45).wantsRefill());
+        assertTrue(idle(44).wantsRefill());
+    }
+
+    @Test
+    public void aTripThatStartedRunsToTheMinimum() {
+        GamerConfig all = new GamerConfig();
+        all.overworld = cfg;
+        all.end = end;
+        RunState s = new RunState();
+        s.phase = GamerPhase.IRON;
+        List<String> log = new java.util.ArrayList<>();
+        FakeFacts f = new FakeFacts();
+        f.foodUnits = 60;
+        assertFalse(FoodPlan.latched(f, all, s, log::add).wantsRefill());
+        assertFalse(s.foodRefilling);
+        f.foodUnits = 44;
+        FoodPlan p = FoodPlan.latched(f, all, s, log::add);
+        assertTrue(s.foodRefilling);
+        assertTrue(p.refilling());
+        assertTrue(p.wantsRefill());
+        for (int units : new int[]{50, 60, 69}) {
+            f.foodUnits = units;
+            p = FoodPlan.latched(f, all, s, log::add);
+            assertTrue("at " + units, p.wantsRefill());
+            assertTrue("at " + units, planHasMinimum(f, p));
+        }
+        f.foodUnits = 70;
+        p = FoodPlan.latched(f, all, s, log::add);
+        assertFalse(s.foodRefilling);
+        assertFalse(p.wantsRefill());
+        // the next dip waits for the start again
+        f.foodUnits = 60;
+        assertFalse(FoodPlan.latched(f, all, s, log::add).wantsRefill());
+        assertEquals(List.of("food: refilling from 44 (under 45), up to 70", "food: refill done at 70"), log);
+    }
+
+    @Test
+    public void theFloorStillAlwaysLeads() {
+        FoodPlan p = idle(23);
+        assertTrue(p.wantsRefill());
+        assertTrue(p.leads(false, false, false));
+        // a floor configured over the start still wins
+        cfg.minHeldFoodUnits = 50;
+        assertTrue(idle(48).wantsRefill());
+        assertTrue(idle(48).leads(false, false, false));
+    }
+
+    @Test
+    public void theLatchIsAnswerNeutral() {
+        // whoever asks before the engine moves the latch reads the same need: wantsRefill with the old latch equals the new one
+        for (int units = 0; units <= 110; units++) {
+            for (boolean was : new boolean[]{false, true}) {
+                FoodPlan before = new FoodPlan(units, 0, 0, 0, 0, 0, cfg, end, was);
+                FoodPlan after = new FoodPlan(units, 0, 0, 0, 0, 0, cfg, end, before.nextRefilling());
+                assertEquals(units + " " + was, before.wantsRefill(), after.wantsRefill());
+            }
+        }
+    }
+
+    @Test
+    public void theLatchDropsOutsideTheCookingPhases() {
+        GamerConfig all = new GamerConfig();
+        RunState s = new RunState();
+        s.foodRefilling = true;
+        s.phase = GamerPhase.LOCATE;
+        List<String> log = new java.util.ArrayList<>();
+        FakeFacts f = new FakeFacts();
+        f.foodUnits = 30;
+        FoodPlan.latched(f, all, s, log::add);
+        assertFalse(s.foodRefilling);
+        assertTrue(log.isEmpty());
+    }
+
+    @Test
+    public void aStartOverTheMinimumIsTheMinimum() {
+        cfg.refillStartFoodUnits = 200;
+        assertEquals(70, idle(0).refillStart());
+        assertTrue(idle(69).wantsRefill());
+        assertFalse(idle(70).wantsRefill());
     }
 }

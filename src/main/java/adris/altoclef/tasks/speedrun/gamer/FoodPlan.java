@@ -5,6 +5,7 @@ import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
 import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig;
 
 import java.util.List;
+import java.util.function.Consumer;
 
 // how much food we hold and what every gate makes of it, built once per tick (GamerContext.food). every gate used to do its own sum
 // and they drifted: the End gate read the bare bag, two phases kept their own copy of the latch, and two configs both call their
@@ -33,8 +34,14 @@ public final class FoodPlan {
     private final int minimum;
     private final int target;
     private final int endFloor;
+    private final int refillStart;
+    private final boolean refilling;
 
     FoodPlan(int bag, int pending, int rawLeftOut, int junk, int station, int skipped, OverworldConfig ow, EndConfig end) {
+        this(bag, pending, rawLeftOut, junk, station, skipped, ow, end, false);
+    }
+
+    FoodPlan(int bag, int pending, int rawLeftOut, int junk, int station, int skipped, OverworldConfig ow, EndConfig end, boolean refilling) {
         this.bag = bag;
         this.pending = pending;
         this.rawLeftOut = rawLeftOut;
@@ -45,17 +52,43 @@ public final class FoodPlan {
         this.minimum = ow.minFoodUnits;
         this.target = ow.targetFoodUnits;
         this.endFloor = end.minFoodUnits;
+        // a start over the minimum would be a trip that is done before it begins, so it never goes past it
+        this.refillStart = Math.min(ow.refillStartFoodUnits, ow.minFoodUnits);
+        this.refilling = refilling;
     }
 
-    // the phase is what says whether a cook can happen at all, so there is no way to ask without one
-    public static FoodPlan of(GamerFacts f, GamerConfig cfg, GamerPhase phase) {
-        return of(f, cfg.overworld, cfg.end, phase.cooks());
+    // the phase is what says whether a cook can happen at all, and `refilling` whether a food trip is under way
+    // (RunState.foodRefilling), so there is no way to ask without either
+    public static FoodPlan of(GamerFacts f, GamerConfig cfg, GamerPhase phase, boolean refilling) {
+        return of(f, cfg.overworld, cfg.end, phase.cooks(), refilling);
     }
 
-    // `cooksHere` = the phase runs the cook (GamerPhase.cooks)
+    // `cooksHere` = the phase runs the cook (GamerPhase.cooks). no trip under way, the tests' entry
     public static FoodPlan of(GamerFacts f, OverworldConfig ow, EndConfig end, boolean cooksHere) {
+        return of(f, ow, end, cooksHere, false);
+    }
+
+    public static FoodPlan of(GamerFacts f, OverworldConfig ow, EndConfig end, boolean cooksHere, boolean refilling) {
         return new FoodPlan(f.foodUnits(), f.pendingFoodUnits(), rawLeftOut(f, ow, end.beds, cooksHere), f.junkFoodUnits(),
-                f.stationFoodUnits(), f.stationFoodSkipped(), ow, end);
+                f.stationFoodUnits(), f.stationFoodSkipped(), ow, end, refilling);
+    }
+
+    // the tick's plan, with the refill latch in `state` moved on to what this bag says. the engine's food() and a test context's
+    // both come through here, so the latch lives in one place. only the cooking phases have the kit's food need, everywhere else
+    // the latch just drops (quietly, FoodFloor has its own). `log` hears the start and the end of a trip
+    public static FoodPlan latched(GamerFacts f, GamerConfig cfg, RunState state, Consumer<String> log) {
+        GamerPhase phase = state.phase;
+        FoodPlan plan = of(f, cfg, phase, state.foodRefilling);
+        boolean next = phase.cooks() && plan.nextRefilling();
+        if (next == state.foodRefilling) {
+            return plan;
+        }
+        if (phase.cooks()) {
+            log.accept(plan.refillLine(next));
+        }
+        state.foodRefilling = next;
+        // wantsRefill reads the same on both sides of the flip, the rebuild is only so refilling() tells the truth
+        return of(f, cfg, phase, next);
     }
 
     // for the planners' short entry points, which know the bed count and nothing else of the End. the End lines are the config
@@ -115,6 +148,16 @@ public final class FoodPlan {
         return minimum;
     }
 
+    // OverworldConfig.refillStartFoodUnits (never over the minimum): a food trip starts under it
+    public int refillStart() {
+        return refillStart;
+    }
+
+    // a food trip is under way, as of the start of this tick (see latched)
+    public boolean refilling() {
+        return refilling;
+    }
+
     // OverworldConfig.targetFoodUnits: the stock-up at the end of the kit
     public int target() {
         return target;
@@ -158,6 +201,27 @@ public final class FoodPlan {
         return shortOf(minimum);
     }
 
+    // does the kit want its food need (the minimum) in the plan. a trip starts under refillStart and then runs to the minimum,
+    // in between with no trip on the bot keeps working: without the gap one bite at 70 made food the head for a single unit.
+    // the floor is under the start anyway, the check is for a config that put it higher. reads the same whether the latch was
+    // moved on this tick or not (under the start is on either way, between the lines the latch says, over the minimum is off),
+    // so nobody has to care who asked first
+    public boolean wantsRefill() {
+        int held = held();
+        return held < floor || held < refillStart || (refilling && held < minimum);
+    }
+
+    // the latch for the next tick: on from under the start (or the floor) until the minimum
+    public boolean nextRefilling() {
+        int held = held();
+        return held < minimum && (refilling || held < refillStart || held < floor);
+    }
+
+    // the log line when the latch flips, `on` = it starts
+    public String refillLine(boolean on) {
+        return on ? "food: refilling from " + held() + " (under " + Math.max(refillStart, floor) + "), up to " + minimum : "food: refill done at " + held();
+    }
+
     // the End gate. food still cooking is not ours yet: END_PREP never goes back to a furnace, so a batch in a smoker is food we would
     // walk away from. everything else is held (raw meat nothing will cook is already at its raw value there, see rawLeftOut)
     public boolean shortOfEndFloor() {
@@ -179,7 +243,8 @@ public final class FoodPlan {
         return held >= floor && held < minimum && minimum - held <= SMALL_GAP && held + rawLeftOut >= minimum;
     }
 
-    // does the food need go first in the IRON phase. always below the floor, otherwise only where a top-up is cheap, which is the
+    // does the food need go first in the IRON phase. always below the floor, otherwise only during a refill (wantsRefill, between
+    // the start and the minimum with no trip on there is no trip to lead) and only where a top-up is cheap, which is the
     // surface (a cook or a craft being next in a mine is not a cheap moment, the hunt is a climb either way), and once one starts
     // it carries on to the minimum. `topUp` is one already under way (nextTopUp), `cookBusy` a cook that picked its station and is
     // still loading it or somebody's furnace screen (FoodGate.cookBusy): the soft top-up waits for that, the meat in the station
@@ -189,7 +254,7 @@ public final class FoodPlan {
         if (held < floor) {
             return true;
         }
-        if (held >= minimum || cookBusy || covered()) {
+        if (held >= minimum || cookBusy || covered() || !wantsRefill()) {
             return false;
         }
         return topUp || onSurface;
@@ -197,10 +262,11 @@ public final class FoodPlan {
 
     // a top-up that started on the soft rule keeps going until the minimum, it must not flip every tick as the bot walks up and
     // down or the count wobbles at the line. under the floor it was forced anyway, that does not start one. one that is covered
-    // ends: leads() already says no for it, and a latch left on would wake up off the surface the next time the raw meat is eaten
+    // ends: leads() already says no for it, and a latch left on would wake up off the surface the next time the raw meat is eaten.
+    // with no refill under way there is nothing to top up either
     public boolean nextTopUp(boolean topUp, boolean leads) {
         int held = held();
-        if (held >= minimum || covered()) {
+        if (held >= minimum || covered() || !wantsRefill()) {
             return false;
         }
         return topUp || (leads && held >= floor);

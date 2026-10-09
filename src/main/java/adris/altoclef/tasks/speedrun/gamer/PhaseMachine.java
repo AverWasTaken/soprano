@@ -239,6 +239,11 @@ public final class PhaseMachine implements GamerContext {
         if (ended()) {
             return null;
         }
+        // the refill latch moves when the plan is built, so build it every tick in the phases that have the food need, even one
+        // that happens not to ask. a stale latch would start a trip at 60 the next time somebody does
+        if (host.state().phase.cooks()) {
+            food();
+        }
         PhaseHandler h = current();
         try {
             return h.tick(mod, this);
@@ -453,7 +458,7 @@ public final class PhaseMachine implements GamerContext {
     public FoodPlan food() {
         GamerPhase phase = host.state().phase;
         if (food == null || foodPhase != phase) {
-            food = FoodPlan.of(host.facts(), host.cfg(), phase);
+            food = FoodPlan.latched(host.facts(), host.cfg(), host.state(), Debug::logInternal);
             foodPhase = phase;
         }
         return food;

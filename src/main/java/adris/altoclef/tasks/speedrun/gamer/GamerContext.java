@@ -1,5 +1,6 @@
 package adris.altoclef.tasks.speedrun.gamer;
 
+import adris.altoclef.Debug;
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
 
 // what a phase handler gets from the engine each tick
@@ -13,9 +14,10 @@ public interface GamerContext {
 
     // how much food we hold and what every gate makes of it, as of this tick. the engine builds it once per tick, the default
     // (a test's stub) builds it on every ask. every food gate reads this and nothing else, see FoodPlan. the phase it is built for
-    // is the state's: that is what decides whether raw meat in the bag can become dinner
+    // is the state's: that is what decides whether raw meat in the bag can become dinner. the refill latch moves on every ask,
+    // same answer for the same bag
     default FoodPlan food() {
-        return FoodPlan.of(facts(), cfg(), state().phase);
+        return FoodPlan.latched(facts(), cfg(), state(), Debug::logInternal);
     }
 
     // 1 on the first try of this phase, 2 after a retry...
