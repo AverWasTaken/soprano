@@ -335,6 +335,25 @@ public final class WorkbenchRules {
         return in.canBreak() ? Call.PICK_UP : Call.UNREACHABLE;
     }
 
+    // a pickup that is owed but would START from further than NEAR: not mid-work. that is a dedicated walk back across the map while
+    // the work (and the smelt we just loaded) waits, and "nothing wants it" is no reason for a walk. it stays standing with redecide
+    // set, gets decided the next time we pass within NEAR, and the 128 forget (or the far-table one) has it if we never do.
+    // `lastChance`: the phase has nothing left in its plan and nothing cooking, only the bench holds it (phaseMayEnd), so the walk
+    // is the last thing to do anyway. true = hold it this tick
+    public static boolean holdFar(Bench b, Look in, boolean lastChance) {
+        if (in.distance() <= NEAR || lastChance) {
+            b.farHeldLogged = false;
+            return false;
+        }
+        b.redecide = true;
+        return true;
+    }
+
+    // the phase is only waiting on the benches: no need left in the plan, no job cooking anywhere. a far pickup is allowed then
+    public static boolean lastChance(boolean planEmpty, boolean anyJob) {
+        return planEmpty && !anyJob;
+    }
+
     public static boolean outsideLongEnough(Bench b, long now) {
         return b.outsideSince != NEVER && now - b.outsideSince >= OUTSIDE_TICKS;
     }
@@ -448,6 +467,11 @@ public final class WorkbenchRules {
     // not decided yet (one decision per time we used it)
     public static boolean doneUsing(Bench b, Look in) {
         if (!in.sameDimension() || in.blockGone() || in.holdsStuff() || in.jobHere() || !in.idle()) {
+            return false;
+        }
+        // only decided standing near it: from 36 blocks off "nothing wants it" turned into a trip back across the map. the
+        // redecide (or the use) waits for the next time we pass within NEAR
+        if (in.distance() > NEAR) {
             return false;
         }
         if (b.state == Bench.State.PICKING_UP || b.state == Bench.State.BUSY || b.anchor != null || b.comingBack != null) {

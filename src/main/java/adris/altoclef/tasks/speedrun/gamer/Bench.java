@@ -65,6 +65,8 @@ public final class Bench {
     public Bench anchor;
     // the anchor let go: the next look decides this one again as if we had just finished with it
     public boolean redecide;
+    // the "should come down but we are too far from it" line went out for this stretch away (WorkbenchRules.holdFar)
+    public boolean farHeldLogged;
     // a furnace or smoker the plan brings us back to soon, and why ("to cook", "to smelt"), null when it does not
     // (WorkbenchRules.comingBack). worked out every look like the anchor
     public String comingBack;

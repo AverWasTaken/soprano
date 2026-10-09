@@ -395,6 +395,9 @@ public final class Workbenches {
         Bench start = null;
         WorkbenchRules.Look startLook = null;
         Predicate<Bench> hasJob = x -> FurnaceJobs.isBusy(state, x.pos, x.dimension);
+        // a pickup may start from far off only when the phase is waiting on nothing but the benches. sweep never: no phase end waits
+        // on it, a far one there just stands until the forget line has it
+        boolean lastChance = adopt && WorkbenchRules.lastChance(plan.isEmpty(), !f.furnaceJobs().isEmpty());
         // every station's "are we coming back to it" first: a table's anchor reads its furnace's answer. only the looks that have the
         // plan (tick, sweep): resume() runs first every tick with no plan and would let go of everything and take it back again
         if (startNew) {
@@ -447,6 +450,15 @@ public final class Workbenches {
                 case UNREACHABLE -> failed(state, b, now, "cannot be broken at all", false);
                 case CONTINUE -> active = b;
                 case PICK_UP -> {
+                    if (WorkbenchRules.holdFar(b, look, lastChance)) {
+                        if (!b.farHeldLogged) {
+                            b.farHeldLogged = true;
+                            log(b + ": should come down (" + WorkbenchRules.reason(b, look) + ") but we are " + Math.round(look.distance())
+                                    + " blocks from it, no trip back mid-work, leaving it standing until we pass within "
+                                    + Math.round(WorkbenchRules.NEAR) + " of it");
+                        }
+                        break;
+                    }
                     // the table first (the kit wants it for the crafts after), then the nearest
                     if (start == null || better(b, start, me)) {
                         start = b;

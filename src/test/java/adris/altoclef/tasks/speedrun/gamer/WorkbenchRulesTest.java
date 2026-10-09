@@ -2115,4 +2115,110 @@ public class WorkbenchRulesTest {
         assertFalse(WorkbenchRules.nothingAhead(Kind.FURNACE, false, 5, false, false));
         assertFalse(WorkbenchRules.nothingAhead(Kind.FURNACE, false, 0, false, true));
     }
+
+    // ---- no trip back across the map mid-work
+
+    // nothing in the plan wants the furnace: decide says it is owed, but from 36 blocks it does not start, it waits for us to pass
+    // near it. within NEAR it starts like before
+    @Test
+    public void anUnwantedPickupDoesNotStartFromBeyondNear() {
+        Bench b = bench(Kind.FURNACE);
+        Seen s = new Seen();
+        s.neededSoon = false;
+        s.distance = 36;
+        assertEquals(Call.PICK_UP, decide(b, s));
+        assertTrue(WorkbenchRules.holdFar(b, s.look(), false));
+        assertTrue(b.redecide);
+        // dead on the line is near
+        s.distance = WorkbenchRules.NEAR;
+        assertEquals(Call.PICK_UP, decide(b, s));
+        assertFalse(WorkbenchRules.holdFar(b, s.look(), false));
+        s.distance = 10;
+        assertFalse(WorkbenchRules.holdFar(b, s.look(), false));
+    }
+
+    // the outside clock is a walk back too: held while the work goes on
+    @Test
+    public void theOutsideClockDoesNotSendUsBackMidWork() {
+        Bench b = bench(Kind.FURNACE);
+        Seen s = new Seen();
+        s.distance = 40;
+        s.now = 1000;
+        assertEquals(Call.KEEP, decide(b, s));
+        s.now = 1000 + WorkbenchRules.OUTSIDE_TICKS;
+        assertEquals(Call.PICK_UP, decide(b, s));
+        assertTrue(WorkbenchRules.holdFar(b, s.look(), false));
+    }
+
+    // the phase has nothing left but the benches (empty plan, nothing cooking): the walk is the last job, it goes
+    @Test
+    public void theLastChanceAtPhaseEndStillFetchesIt() {
+        assertTrue(WorkbenchRules.lastChance(true, false));
+        assertFalse(WorkbenchRules.lastChance(true, true));
+        assertFalse(WorkbenchRules.lastChance(false, false));
+        assertFalse(WorkbenchRules.lastChance(false, true));
+        Bench b = bench(Kind.FURNACE);
+        Seen s = new Seen();
+        s.neededSoon = false;
+        s.distance = 60;
+        assertFalse(WorkbenchRules.holdFar(b, s.look(), true));
+    }
+
+    // "done with it" from far off is not decided: the redecide waits for the next time we are within NEAR
+    @Test
+    public void doneWithItIsOnlyDecidedStandingNearIt() {
+        Bench b = bench(Kind.FURNACE);
+        b.redecide = true;
+        Seen s = new Seen();
+        s.distance = 36;
+        assertFalse(WorkbenchRules.doneUsing(b, s.look()));
+        assertTrue(b.redecide);
+        s.distance = 15;
+        assertTrue(WorkbenchRules.doneUsing(b, s.look()));
+        // a plain use too: shut its screen and walked off before the second settled
+        Bench used = bench(Kind.TABLE);
+        used.lastUsedTick = 900;
+        Seen far = new Seen();
+        far.distance = 30;
+        assertFalse(WorkbenchRules.doneUsing(used, far.look()));
+        far.distance = 8;
+        assertTrue(WorkbenchRules.doneUsing(used, far.look()));
+    }
+
+    // the bug: an emptied furnace held for "to smelt", a new furnace goes down 36 blocks away and becomes the nearest, the old one's
+    // comingBack lets go. it is not fetched from there, mid-work, whatever the plan says about furnaces. passing within NEAR later
+    // decides it, and then it comes along
+    @Test
+    public void anOldFurnaceReplacedByANewOneIsNotFetchedFromAfar() {
+        Bench old = bench(Kind.FURNACE);
+        assertEquals(WorkbenchRules.Anchor.ANCHORED, WorkbenchRules.updateComingBack(old, "to smelt", 0));
+        WorkbenchRules.updateComingBack(old, null, 100);
+        assertEquals(WorkbenchRules.Anchor.RELEASED, WorkbenchRules.updateComingBack(old, null, 100 + WorkbenchRules.LET_GO_TICKS));
+        assertTrue(old.redecide);
+        Seen s = new Seen();
+        s.now = 1000;
+        s.distance = 36;
+        // nothing in the next 4 wants a furnace
+        s.neededSoon = false;
+        assertFalse(WorkbenchRules.doneUsing(old, s.look()));
+        assertEquals(Call.PICK_UP, decide(old, s));
+        assertTrue(WorkbenchRules.holdFar(old, s.look(), false));
+        // the plan wants a furnace again (the new one), we have been out of NEAR for ages: still not a trip
+        s.neededSoon = true;
+        s.now = 1000 + 10 * WorkbenchRules.OUTSIDE_TICKS;
+        assertEquals(Call.PICK_UP, decide(old, s));
+        assertTrue(WorkbenchRules.holdFar(old, s.look(), false));
+        // never forgotten for being held, the 128 line still has it
+        s.distance = WorkbenchRules.FORGET_DISTANCE + 1;
+        assertEquals(Call.FORGET_TOO_FAR, decide(old, s));
+        // walking past it later: decided on the spot, nothing near wants it, it comes along
+        s.distance = 12;
+        s.neededSoon = false;
+        assertTrue(WorkbenchRules.doneUsing(old, s.look()));
+        WorkbenchRules.Done done = WorkbenchRules.doneWith(false, false, WorkbenchRules.UNKNOWN_SITE, old.redecide);
+        assertEquals(WorkbenchRules.Done.PICK_UP_UNWANTED, done);
+        WorkbenchRules.settleDone(old, done);
+        assertEquals(Call.PICK_UP, decide(old, s));
+        assertFalse(WorkbenchRules.holdFar(old, s.look(), false));
+    }
 }
