@@ -118,42 +118,119 @@ public final class PrepSupport {
     }
 
     private Task rankedJobs(AltoClef mod, GamerContext ctx, List<KitNeed> needs, KitNeed current) {
-        danger.tick(mod, ctx.state());
-        hud = null;
+        beginTick(mod, ctx);
         // a golem fight in progress outranks everything, a chest is not worth stepping off the pillar for
-        if (golem != null && golem.active()) {
-            Task fight = golem.tick(mod, ctx, current);
-            if (fight != null) {
-                hud = golem.hud();
-                return fight;
-            }
+        Task fight = golemFight(mod, ctx, current);
+        if (fight != null) {
+            return fight;
         }
-        Task station = benches.tick(mod, ctx, needs);
+        Task station = station(mod, ctx, needs);
         if (station != null) {
-            hud = benches.hud();
             return station;
         }
-        Task chest = loot == null ? null : loot.tick(mod, ctx);
+        Task chest = ruinedPortal(mod, ctx);
         if (chest != null) {
-            hud = "Looting a ruined portal";
             return chest;
         }
-        Task blacksmith = village == null ? null : village.tick(mod, ctx, current);
+        Task blacksmith = villageChest(mod, ctx, current);
         if (blacksmith != null) {
-            hud = "Looting a village chest";
             return blacksmith;
         }
         // not behind the lootRuinedPortals flag: GATHER is where we usually meet the village, and a bed is a bed
         // and before the golem, a bed is a few seconds of punching and a golem is a minute on a pillar
-        Task bed = villageBeds.tick(mod, ctx);
+        Task bed = bed(mod, ctx);
         if (bed != null) {
-            hud = "Taking a village bed (" + villageBeds.toGo() + " to go)";
             return bed;
         }
+        return golemStart(mod, ctx, current);
+    }
+
+    // ---- one job at a time, for IronActivity's driver (IronPhase). the old tick above runs them in its fixed order, the
+    // arbiter asks the one it picked. each sets the hud when it hands back a task
+
+    // once per tick, before any job is asked
+    public void beginTick(AltoClef mod, GamerContext ctx) {
+        danger.tick(mod, ctx.state());
+        hud = null;
+    }
+
+    // whether the side jobs that loot (ruined portals, village chests, golems) are on in this phase
+    public boolean loots() {
+        return loot != null;
+    }
+
+    public boolean golemFighting() {
+        return golem != null && golem.active();
+    }
+
+    // the fight that is going, null when there is none (never starts one)
+    public Task golemFight(AltoClef mod, GamerContext ctx, KitNeed current) {
+        if (!golemFighting()) {
+            return null;
+        }
+        Task fight = golem.tick(mod, ctx, current);
+        if (fight != null) {
+            hud = golem.hud();
+        }
+        return fight;
+    }
+
+    // a new hunt when the trigger says go, or the fight it already started
+    public Task golemStart(AltoClef mod, GamerContext ctx, KitNeed current) {
         Task fight = golem == null ? null : golem.tick(mod, ctx, current);
         if (fight != null) {
             hud = golem.hud();
         }
         return fight;
+    }
+
+    public Task station(AltoClef mod, GamerContext ctx, List<KitNeed> needs) {
+        Task station = benches.tick(mod, ctx, needs);
+        if (station != null) {
+            hud = benches.hud();
+        }
+        return station;
+    }
+
+    public Task ruinedPortal(AltoClef mod, GamerContext ctx) {
+        Task chest = loot == null ? null : loot.tick(mod, ctx);
+        if (chest != null) {
+            hud = "Looting a ruined portal";
+        }
+        return chest;
+    }
+
+    public Task villageChest(AltoClef mod, GamerContext ctx, KitNeed current) {
+        Task blacksmith = village == null ? null : village.tick(mod, ctx, current);
+        if (blacksmith != null) {
+            hud = "Looting a village chest";
+        }
+        return blacksmith;
+    }
+
+    public Task bed(AltoClef mod, GamerContext ctx) {
+        Task bed = villageBeds.tick(mod, ctx);
+        if (bed != null) {
+            hud = "Taking a village bed (" + villageBeds.toGo() + " to go)";
+        }
+        return bed;
+    }
+
+    public Task coalDetour(AltoClef mod, GamerContext ctx, KitNeed current) {
+        Task ore = coal.tick(mod, ctx, current);
+        if (ore != null) {
+            hud = coal.hud();
+        }
+        return ore;
+    }
+
+    // something else took the wheel from a detour, it is over (not paused), same as the old tick
+    public void endCoal(long now) {
+        coal.preempted(now);
+    }
+
+    // how the last detour ended, in words
+    public String coalEnded() {
+        return coal.ended();
     }
 }

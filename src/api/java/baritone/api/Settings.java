@@ -2025,6 +2025,14 @@ public final class Settings {
     public final Setting<Boolean> altoCommitCombat = new Setting<>(true);
 
     /**
+     * {@code #gamer} only, the IRON phase. One chooser decides what the bot is doing (a furnace trip, a station pickup, a
+     * village chest, a coal detour, the climb out of the mine, the kit) and an activity that started holds until it is
+     * done, instead of the side jobs and the furnace trips each cutting in on every tick. Turn it off to get the older
+     * fixed order back for comparison. Every change of activity goes to the log as an {@code activity:} line.
+     */
+    public final Setting<Boolean> altoIronArbiter = new Setting<>(true);
+
+    /**
      * Avoid going underwater when pathing is not giving the bot movement instructions. Turn it off if you want the bot
      * to be able to sink.
      */

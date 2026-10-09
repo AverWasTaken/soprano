@@ -12,6 +12,8 @@ import adris.altoclef.tasks.speedrun.gamer.FurnaceWatch;
 import adris.altoclef.tasks.speedrun.gamer.GamerContext;
 import adris.altoclef.tasks.speedrun.gamer.GamerFacts;
 import adris.altoclef.tasks.speedrun.gamer.GamerPhase;
+import adris.altoclef.tasks.speedrun.gamer.IronActivity;
+import adris.altoclef.tasks.speedrun.gamer.IronActivity.Kind;
 import adris.altoclef.tasks.speedrun.gamer.KitNeed;
 import adris.altoclef.tasks.speedrun.gamer.KitPlanner;
 import adris.altoclef.tasks.speedrun.gamer.KitRunner;
@@ -59,8 +61,16 @@ public class IronPhase implements PhaseHandler {
     // furnaces we already made a pack-up trip to (PackUp), so a trip that left input cooking is not repeated
     private final Set<RunState.Pos> packed = new HashSet<>();
     // the need we are in the middle of while a furnace cooks. a different first need means the last one is done, which is
-    // the only time a finished furnace gets fetched
+    // the only time a finished furnace gets fetched. old path only, the arbiter keeps its own (kitHead)
     private KitNeed committed;
+    // what we are doing right now (altoIronArbiter). the jobs above are its candidates
+    private final IronActivity arbiter = new IronActivity();
+    // the kit head the arbiter last ran while something cooked, same job as `committed` on the old path
+    private KitNeed kitHead;
+    // which path ran last tick, so flipping the setting mid phase starts the other one clean
+    private Boolean arbiterOn;
+    // a furnace backed kind was already asked this tick: the plan from the top of the tick may be about a visit that just ended
+    private boolean furnaceAsked;
     // what the user had for altoAsyncSmelting, null when we did not touch it
     private Boolean userAsync;
     private String hudState;
@@ -121,6 +131,9 @@ public class IronPhase implements PhaseHandler {
         pickDiag.reset();
         packed.clear();
         committed = null;
+        arbiter.reset();
+        kitHead = null;
+        arbiterOn = null;
         hudState = null;
         foodTopUp = false;
         foodLed = false;
@@ -153,6 +166,198 @@ public class IronPhase implements PhaseHandler {
         }
         // the food task is another tree entirely, this is how it learns that a sheep is worth more shorn than eaten
         FoodHunt.setWoolWanted(KitPlanner.woolShortfall(ctx.facts(), ctx.cfg().end.beds) > 0);
+        boolean on = Baritone.settings().altoIronArbiter.value;
+        if (arbiterOn == null || on != arbiterOn) {
+            arbiter.reset();
+            kitHead = null;
+            committed = null;
+            arbiterOn = on;
+        }
+        return on ? arbiterTick(mod, ctx) : oldTick(mod, ctx);
+    }
+
+    // ---- the arbiter path (altoIronArbiter): IronActivity picks, this asks the one job it picked
+
+    private Task arbiterTick(AltoClef mod, GamerContext ctx) {
+        GamerFacts f = ctx.facts();
+        long now = f.gameTime();
+        if (!f.furnaceJobs().isEmpty()) {
+            furnaces.housekeeping(mod, ctx);
+        }
+        boolean jobs = !f.furnaceJobs().isEmpty();
+        Schedule schedule = null;
+        List<KitNeed> needs;
+        if (jobs) {
+            schedule = SmeltFiller.schedule(f, ctx.cfg().overworld, ctx.cfg().end.beds, SmeltSurface.shallow(SmeltSurface.depthBelowSky(mod)), ctx.food());
+            needs = gateFood(mod, ctx, schedule.runnable());
+        } else {
+            kitHead = null;
+            needs = gateFood(mod, ctx, KitPlanner.plan(f, ctx.cfg().overworld, ctx.cfg().end.beds, ctx.food()));
+        }
+        KitNeed head = needs.isEmpty() ? null : needs.get(0);
+        FurnacePlan.Moment moment = null;
+        FurnacePlan.Plan plan = null;
+        if (jobs) {
+            // same moment the old cooking tick built: a new head is the boundary, the early pick cuts the mining need short
+            boolean boundary = head == null || !head.equals(kitHead);
+            boolean interrupt = EarlyIronPick.collectNow(f, ctx.cfg().overworld) && f.cookStation() == null;
+            moment = new FurnacePlan.Moment(head != null, boundary, interrupt, schedule.isStockUp(head), true);
+            plan = furnaces.plan(ctx, moment);
+            furnaces.mayCookHere(SmeltSurface.shallow(SmeltSurface.depthBelowSky(mod))
+                    || SmeltSurface.nextWorkDown(head, f.count(Items.RAW_IRON), f.count(Items.IRON_INGOT), f.pendingOutput(Items.IRON_INGOT)));
+        }
+        IronActivity.Scene scene = new IronActivity.Scene(jobs, plan != null && plan.standingBy(), head != null, support.loots(),
+                support.golemFighting());
+        support.beginTick(mod, ctx);
+        furnaceAsked = false;
+        Kind before = arbiter.current();
+        for (Kind k : arbiter.ask(scene, now)) {
+            Task task = offer(k, mod, ctx, needs, head, jobs, plan, moment);
+            if (task == null) {
+                // the kit with an empty runnable list while something cooks is a flicker, not the end of anything (no line pair)
+                if (k == arbiter.current() && !(k == Kind.KIT && jobs && head == null)) {
+                    arbiter.ended(k, now, endWords(k));
+                }
+                continue;
+            }
+            Kind got = k;
+            if ((k == Kind.STAND_BY || k == Kind.FURNACE || k == Kind.PACK_UP) && furnaces.handedOver()) {
+                // the visit ended on this call and what came back is the cook or the pickup after it: that is the finishing. no
+                // ended() and so no rest, a pack-up with a second furnace down here has to come straight back after the pickup
+                got = Kind.FINISHING;
+            } else if ((k == Kind.STAND_BY || k == Kind.FURNACE) && furnaces.started()) {
+                // a fresh trip: which one it is depends on the call it started with, not on who asked
+                got = furnaces.standingBy() ? Kind.STAND_BY : Kind.FURNACE;
+                if (got != k && k == arbiter.current()) {
+                    arbiter.ended(k, now, "visit over, next trip");
+                }
+            }
+            say(arbiter.chose(got, now));
+            if (before == Kind.COAL && got != Kind.COAL) {
+                support.endCoal(now);
+            }
+            if (!jobs && got != Kind.FINISHING) {
+                // nothing cooking and nothing being finished: the furnace side starts the next batch clean
+                furnaces.reset();
+            }
+            return task;
+        }
+        if (!(arbiter.current() == Kind.KIT && jobs && head == null)) {
+            say(arbiter.idle(now));
+        }
+        if (before == Kind.COAL) {
+            support.endCoal(now);
+        }
+        if (!jobs) {
+            furnaces.reset();
+        }
+        hudState = null;
+        return null;
+    }
+
+    // the one job the arbiter asked for. each sets the hud when it hands back a task
+    private Task offer(Kind k, AltoClef mod, GamerContext ctx, List<KitNeed> needs, KitNeed head, boolean jobs, FurnacePlan.Plan plan,
+                       FurnacePlan.Moment moment) {
+        Task task = switch (k) {
+            case FINISHING -> furnaces.finishing(mod, ctx);
+            case GOLEM_FIGHT -> support.golemFight(mod, ctx, head);
+            case STAND_BY, FURNACE -> furnaceTrip(mod, ctx, plan, moment);
+            case STATION -> support.station(mod, ctx, needs);
+            case RUINED_PORTAL -> support.ruinedPortal(mod, ctx);
+            case VILLAGE_CHEST -> support.villageChest(mod, ctx, head);
+            case BED -> support.bed(mod, ctx);
+            case GOLEM_START -> support.golemStart(mod, ctx, head);
+            case COAL -> support.coalDetour(mod, ctx, head);
+            case PACK_UP -> packUpTrip(mod, ctx, head, second(needs), jobs);
+            case SURFACE -> jobs && head == null ? null : surface.tick(mod, ctx, head, second(needs));
+            case KIT -> kit(ctx, needs, head, jobs);
+        };
+        if (task != null) {
+            hudState = switch (k) {
+                case FINISHING, STAND_BY, FURNACE, PACK_UP -> furnaces.hud();
+                case SURFACE -> surface.hud();
+                case KIT -> runner.hud() + (jobs ? " while a batch cooks" : "");
+                default -> support.hud();
+            };
+        }
+        return task;
+    }
+
+    private Task furnaceTrip(AltoClef mod, GamerContext ctx, FurnacePlan.Plan plan, FurnacePlan.Moment moment) {
+        if (plan == null) {
+            return null;
+        }
+        // a pack-up or a stand-by ended earlier this tick: its visit changed the jobs, so the plan is made again (trip() only
+        // re-plans for a trip that ends inside its own call)
+        FurnacePlan.Plan fresh = furnaceAsked ? furnaces.plan(ctx, moment) : plan;
+        furnaceAsked = true;
+        Task trip = furnaces.trip(mod, ctx, fresh, moment);
+        if (trip == null) {
+            return null;
+        }
+        if (furnaces.started()) {
+            kitHead = null;
+        }
+        // standing next to the furnace (screen closed between looks) is the plan, not a stall. but only until the job is due plus
+        // the patience: a furnace that never finishes must not keep the watchdog off
+        if (furnaces.creditsWait(ctx)) {
+            ctx.progress("waiting for the furnace");
+        }
+        return trip;
+    }
+
+    // the pack-up trip that is going, or a new one when we are about to climb. it runs on FurnaceWatch like a collect does, so the
+    // one under way comes back first (packUp only picks a furnace once, the next tick it would find nothing and drop the trip)
+    private Task packUpTrip(AltoClef mod, GamerContext ctx, KitNeed head, KitNeed next, boolean jobs) {
+        if (!jobs) {
+            return null;
+        }
+        furnaceAsked = true;
+        Task running = furnaces.active(mod, ctx);
+        if (running != null) {
+            return running;
+        }
+        return head == null ? null : packUp(mod, ctx, head, next);
+    }
+
+    private Task kit(GamerContext ctx, List<KitNeed> needs, KitNeed head, boolean jobs) {
+        // the runnable list goes empty for a tick now and then while something cooks, the old cooking tick just waited it out
+        if (jobs && head == null) {
+            return null;
+        }
+        // the early batch is about to go in: from here it stays owed until the furnace is lit. the old path only did this with
+        // nothing cooking, an early batch while a smoker cooks needs the latch just the same
+        EarlyIronPick.track(ctx.state(), head, ctx.facts(), ctx.cfg().overworld);
+        if (jobs) {
+            kitHead = head;
+        }
+        return runner.run(ctx, needs);
+    }
+
+    // why the activity that just handed back null is over, for the activity line
+    private String endWords(Kind k) {
+        return switch (k) {
+            case COAL -> support.coalEnded();
+            case STAND_BY, FURNACE, PACK_UP -> "visit over";
+            case STATION -> "pickup over";
+            case GOLEM_FIGHT, GOLEM_START -> "fight over";
+            case RUINED_PORTAL, VILLAGE_CHEST -> "nothing left to loot";
+            case BED -> "no bed left to take";
+            case SURFACE -> "up top, or the climb gave up";
+            case FINISHING -> "station dealt with";
+            case KIT -> "nothing left in the plan";
+        };
+    }
+
+    private static void say(String line) {
+        if (line != null) {
+            Debug.logInternal(line);
+        }
+    }
+
+    // ---- the old path (altoIronArbiter off), kept for one round to compare against
+
+    private Task oldTick(AltoClef mod, GamerContext ctx) {
         // the furnace we just emptied is coming down, a few seconds and it goes with us to the next work site
         Task takingBack = furnaces.finishing(mod, ctx);
         if (takingBack != null) {

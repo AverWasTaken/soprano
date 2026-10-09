@@ -124,7 +124,8 @@ public final class CoalRules {
     // the things that are never worth a detour, for starting and for staying alike:
     //  - not the overworld, or no stone pick or better in the bag (coal is wood tier, but the wooden pick stage doesn't detour)
     //  - a cook has picked its station, a furnace load is in flight (a screen open, a smelt task just had one), or a job is
-    //    due (the collect trip goes first). SmeltFiller's smoker stand-by never gets here, PrepSupport.tickStandBy skips us
+    //    due (the collect trip goes first). a quick smoker stand-by never gets here, it cuts in on a detour
+    //    (IronActivity.preempts, PrepSupport.tickStandBy on the old path)
     //  - the food or the cook leads the plan, or coal is the head need and the kit task is already on it
     public static boolean blocked(Inputs in) {
         return !in.overworld() || !in.pickaxe() || in.cookStation() || in.furnaceDue() || in.loadInFlight() || in.foodLeads()

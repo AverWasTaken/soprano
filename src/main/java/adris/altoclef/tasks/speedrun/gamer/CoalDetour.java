@@ -55,9 +55,15 @@ public final class CoalDetour {
     private BlockPos ore;
     // the "we hold enough" line went out and is still true
     private boolean enoughSaid;
+    private String ended;
 
     String hud() {
         return hud;
+    }
+
+    // how the last detour ended, in words, for the activity line
+    String ended() {
+        return ended;
     }
 
     // ---- for the card (GamerHud), plain reads
@@ -163,6 +169,12 @@ public final class CoalDetour {
 
     private void finish(int coal, CoalRules.Step why) {
         Debug.logInternal("coal side job: " + why + ", " + coalAtStart + " -> " + coal + " coal held");
+        ended = switch (why) {
+            case DONE -> "cluster mined";
+            case TIMEOUT -> "out of time";
+            case STRAYED -> "wandered off the cluster";
+            default -> "a never rule said stop (furnace due, food, a load in flight)";
+        };
         mine = null;
         anchor = null;
         hud = null;

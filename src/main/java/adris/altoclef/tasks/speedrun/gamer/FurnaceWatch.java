@@ -26,6 +26,10 @@ public final class FurnaceWatch {
     private String hud;
     // the last trip() started a new trip (the phase resets what it was on when that happens)
     private boolean fresh;
+    // the trip under way started as a stand-by at a quick smoker (IronActivity tells that apart from a plain collect)
+    private boolean quick;
+    // the last call handed back the finishing (the cook before the pickup, or the pickup) because a visit just ended
+    private boolean handedOver;
     private final Workbenches benches;
     // PORTAL takes the one it just emptied too (newExitPhase), but never loads meat into it
     private boolean cookHere = true;
@@ -158,6 +162,7 @@ public final class FurnaceWatch {
     // the collect trip that is already under way (finishing it when it is done), null when there is none. a trip that
     // started keeps going whatever the plan says, it already walked there
     public Task active(AltoClef mod, GamerContext ctx) {
+        handedOver = false;
         if (task == null) {
             return null;
         }
@@ -202,7 +207,9 @@ public final class FurnaceWatch {
         task = null;
         target = null;
         hud = null;
-        return afterVisit(mod, ctx, visited, left);
+        Task next = afterVisit(mod, ctx, visited, left);
+        handedOver = next != null;
+        return next;
     }
 
     // the visit is over. a station that still has something cooking stays (busy, never taken). an emptied one of ours comes down
@@ -273,6 +280,16 @@ public final class FurnaceWatch {
         return fresh;
     }
 
+    // the trip under way is a stand-by at a quick smoker
+    public boolean standingBy() {
+        return task != null && quick;
+    }
+
+    // the last trip()/leave()/active() ended a visit and handed back what comes after it (the cook, the pickup) instead of a trip
+    public boolean handedOver() {
+        return handedOver;
+    }
+
     // the phase is leaving (the mine, the dimension) and this job comes with us. `depth` = how far down it is, for the window a
     // nearly done job is still waited for
     public Task leave(AltoClef mod, GamerContext ctx, RunState.FurnaceJob job, FurnacePlan.Leaving why, int depth) {
@@ -294,6 +311,7 @@ public final class FurnaceWatch {
         long now = ctx.facts().gameTime();
         Block block = BuiltInRegistries.BLOCK.getValue(ResourceLocation.withDefaultNamespace(job.kind));
         target = job;
+        quick = v.call() == FurnacePlan.Call.STAND_BY && v.why() == FurnacePlan.Why.QUICK;
         // the call is already in the log when the plan made it, a leaving one is announced here
         say(FurnacePlan.say(job, v.call(), v.why().text, now));
         task = new CollectFromFurnaceTask(at(job), block, job.kind, v.mode(), v.nearly(), FurnacePlan.waitCap(job, now));

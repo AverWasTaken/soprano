@@ -118,8 +118,8 @@ public class AltoSettingsTest {
         Settings a = fresh();
         Settings b = fresh();
         List<Settings.Setting<?>> alto = altoSettings(a);
-        // (54 since the engage zone settings went: altoHostileEngageRange, altoHostileEngageHeight, altoPassByGraceTicks)
-        assertEquals(54, alto.size());
+        // (54 since the engage zone settings went: altoHostileEngageRange, altoHostileEngageHeight, altoPassByGraceTicks; 55 with altoIronArbiter)
+        assertEquals(55, alto.size());
         for (Settings.Setting<?> setting : alto) {
             String text = SettingsUtil.settingDefaultToString(setting);
             SettingsUtil.parseAndApply(b, setting.getName().toLowerCase(), text);
