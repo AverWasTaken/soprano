@@ -29,7 +29,7 @@ public final class FurnacePlan {
     // sight meant anything over four items was never stood by at all. a minute was a minute of a bot doing nothing, plus the
     // patience on top: 20 s is four items, about what the walk off and back costs anyway
     public static final long STAND_BY_MAX_TICKS = 400;
-    // the whole stand-by, from the look that started it, done or not. the patience is still the grace past done, it just can't stretch a
+    // the whole stand-by, from the moment its trip starts, done or not. the patience is still the grace past done, it just can't stretch a
     // 20 s batch into 50 s of standing
     public static final long STAND_BY_CAP_TICKS = 600;
     // a job from a world that ran on without us (a relog days later) is not worth a walk: the contents are probably gone, or the
@@ -146,7 +146,7 @@ public final class FurnacePlan {
         long idleSince = -1;
         // the last call that went into the log, from either layer: one line per change
         Call logged;
-        // the stand-by budget, taken the first look the batch is down to STAND_BY_MAX_TICKS and never again. the job object is the
+        // the stand-by budget, taken when the stand-by trip starts and never again. the job object is the
         // same one across visits (afterVisit re-stamps it in place), so a smoker that keeps coming up short cannot restart the clock
         boolean standSeen;
         // the last look said the batch has too long to go to stand at (the log says TOO_LONG instead of "not due yet")
@@ -262,13 +262,20 @@ public final class FurnacePlan {
                 }
             }
             out.add(v);
-            standingBy |= v.call() == Call.STAND_BY && v.why() == Why.QUICK;
         }
         Verdict pick = null;
         if (active == null) {
             pick = soonest(out, v -> v.call() == Call.STAND_BY && v.why() == Why.QUICK);
             if (pick == null) {
                 pick = soonest(out, v -> v.call() == Call.COLLECT_NOW || v.call() == Call.STAND_BY || v.call() == Call.TAKE_ALL);
+            }
+        }
+        // a quick smoker only counts as stood at once its trip is the one going: one that is quick while another job's trip
+        // runs neither holds the side jobs nor burns its budget out there
+        for (Verdict v : out) {
+            if (v.call() == Call.STAND_BY && v.why() == Why.QUICK && (v == pick || v.job() == active)) {
+                standingBy = true;
+                startStandBy(v.job(), now);
             }
         }
         return new Plan(out, pick, changes, standingBy);
@@ -342,15 +349,22 @@ public final class FurnacePlan {
     private static boolean standByOn(RunState.FurnaceJob job, long now) {
         Track t = job.track;
         if (!t.standSeen) {
+            // not started yet: quick is only a question of what is left, asked again every look
             t.standTooLong = job.doneTick - now > STAND_BY_MAX_TICKS;
-            if (t.standTooLong) {
-                return false;
-            }
-            t.standSeen = true;
-            // a job already past due gets its patience from now, not from then
-            t.standUntil = Math.min(Math.max(now, job.doneTick) + PATIENCE_TICKS, now + STAND_BY_CAP_TICKS);
+            return !t.standTooLong;
         }
         return now <= t.standUntil;
+    }
+
+    // the stand-by trip is the one going (picked now, or the active one): the budget starts here and never again
+    private static void startStandBy(RunState.FurnaceJob job, long now) {
+        Track t = job.track;
+        if (t.standSeen) {
+            return;
+        }
+        t.standSeen = true;
+        // a job already past due gets its patience from now, not from then
+        t.standUntil = Math.min(Math.max(now, job.doneTick) + PATIENCE_TICKS, now + STAND_BY_CAP_TICKS);
     }
 
     private static boolean tooLong(RunState.FurnaceJob job) {

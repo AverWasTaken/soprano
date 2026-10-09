@@ -181,6 +181,25 @@ public class FurnacePlanTest {
         assertNotEquals(Why.QUICK, one(plan(big, MID_NEED, mark + FurnacePlan.STAND_BY_CAP_TICKS + 2)).why());
     }
 
+    // quick while another job's trip is going: the budget waits for its own trip, it doesn't run out while we are elsewhere
+    @Test
+    public void theBudgetStartsWithTheStandByTripNotWithTheFirstQuickLook() {
+        RunState.FurnaceJob iron = furnace(100);
+        assertSame(iron, FurnacePlan.plan(List.of(iron), BOUNDARY, 200, null).pick().job());
+        RunState.FurnaceJob meat = smoker(300);
+        Plan busy = FurnacePlan.plan(List.of(iron, meat), BOUNDARY, 200, iron);
+        assertEquals(Why.QUICK, busy.verdicts().get(1).why());
+        assertNull(busy.pick());
+        // not stood at, so the side jobs are not held for it either
+        assertFalse(busy.standingBy());
+        // the iron trip took long. a budget taken at 200 would be gone by now
+        Plan free = FurnacePlan.plan(List.of(meat), BOUNDARY, 1500, null);
+        assertSame(meat, free.pick().job());
+        assertTrue(free.standingBy());
+        assertEquals(Why.QUICK, one(FurnacePlan.plan(List.of(meat), BOUNDARY, 1500 + FurnacePlan.STAND_BY_CAP_TICKS, meat)).why());
+        assertNotEquals(Why.QUICK, one(FurnacePlan.plan(List.of(meat), BOUNDARY, 1500 + FurnacePlan.STAND_BY_CAP_TICKS + 1, meat)).why());
+    }
+
     // a look that skipped the stand-by rules (GATHER, mayStandBy off) does not use up the chance of one later
     @Test
     public void aLookWithoutStandByDoesNotDecideTheLaterOnes() {
