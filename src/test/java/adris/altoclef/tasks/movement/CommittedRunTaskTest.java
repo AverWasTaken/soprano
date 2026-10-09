@@ -32,4 +32,14 @@ public class CommittedRunTaskTest {
         // a new world: the old issue time is nonsense
         assertTrue(CommittedRunTask.mayReissue(10, 5000));
     }
+
+    @Test
+    public void aRunThatStartsMidFallLetsTheFallFinish() {
+        // in the air: the soft cancel, the fall movement keeps its bucket or clutch
+        assertFalse(CommittedRunTask.mayCancelHard(false, false, false));
+        // standing, swimming or on a ladder there is nothing to fall out of
+        assertTrue(CommittedRunTask.mayCancelHard(true, false, false));
+        assertTrue(CommittedRunTask.mayCancelHard(false, true, false));
+        assertTrue(CommittedRunTask.mayCancelHard(false, false, true));
+    }
 }

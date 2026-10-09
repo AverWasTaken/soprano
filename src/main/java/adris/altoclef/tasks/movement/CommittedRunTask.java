@@ -7,6 +7,7 @@ import adris.altoclef.util.helpers.CombatCommit;
 import baritone.api.pathing.goals.Goal;
 import java.util.List;
 import java.util.function.Supplier;
+import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.entity.Entity;
 
 // the run CombatCommit asked for. it never finishes on its own: the commitment knows when 24 blocks and two quiet seconds
@@ -40,8 +41,26 @@ public class CommittedRunTask extends CustomBaritoneGoalTask {
     @Override
     protected Goal newGoal(AltoClef mod) {
         // run NOW, not after the user's path finishes its segment
-        mod.getClientBaritone().getPathingBehavior().forceCancel();
+        cancelPath(mod);
         return new GoalCommittedRun(_originX, _originZ, CombatCommit.RUN_DISTANCE, CROWD_CLEAR, _crowd);
+    }
+
+    // ...unless we're in the air. a hard cancel mid fall drops the MovementFall doing the bucket or the clutch, and the mlg
+    // chain grabs the fall halfway down with worse odds. the soft one still stops the processes, the fall movement finishes
+    // (it is not safe to cancel), and the goal goes in once it is (the goal task waits for isSafeToCancel anyway)
+    @Override
+    protected void cancelPath(AltoClef mod) {
+        LocalPlayer player = mod.getPlayer();
+        if (mayCancelHard(player.onGround(), player.isInWater(), player.onClimbable())) {
+            mod.getClientBaritone().getPathingBehavior().forceCancel();
+        } else {
+            mod.getClientBaritone().getPathingBehavior().cancelEverything();
+        }
+    }
+
+    // standing on something, swimming or on a ladder: nothing to fall out of
+    static boolean mayCancelHard(boolean onGround, boolean inWater, boolean onClimbable) {
+        return onGround || inWater || onClimbable;
     }
 
     @Override

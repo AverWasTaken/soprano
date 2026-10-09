@@ -81,7 +81,7 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
 
     @Override
     protected void onStart(AltoClef mod) {
-        mod.getClientBaritone().getPathingBehavior().forceCancel();
+        cancelPath(mod);
         _checker.reset();
         stuckCheck.reset();
     }
@@ -172,6 +172,11 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
 
     @Override
     protected void onStop(AltoClef mod, Task interruptTask) {
+        cancelPath(mod);
+    }
+
+    // how the path gets dropped when this task starts and stops: hard, mid movement or not. CommittedRunTask is softer in the air
+    protected void cancelPath(AltoClef mod) {
         mod.getClientBaritone().getPathingBehavior().forceCancel();
     }
 
