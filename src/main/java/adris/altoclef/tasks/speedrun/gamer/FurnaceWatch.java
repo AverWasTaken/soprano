@@ -312,6 +312,9 @@ public final class FurnaceWatch {
         Block block = BuiltInRegistries.BLOCK.getValue(ResourceLocation.withDefaultNamespace(job.kind));
         target = job;
         quick = v.call() == FurnacePlan.Call.STAND_BY && v.why() == FurnacePlan.Why.QUICK;
+        if (quick) {
+            FurnacePlan.startStandBy(job, now);
+        }
         // the call is already in the log when the plan made it, a leaving one is announced here
         say(FurnacePlan.say(job, v.call(), v.why().text, now));
         task = new CollectFromFurnaceTask(at(job), block, job.kind, v.mode(), v.nearly(), FurnacePlan.waitCap(job, now, quick));

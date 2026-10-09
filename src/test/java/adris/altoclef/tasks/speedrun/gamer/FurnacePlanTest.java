@@ -43,8 +43,16 @@ public class FurnacePlanTest {
         return plan.verdicts().get(0);
     }
 
+    // the plan and, like FurnaceWatch.start, a picked quick stand-by starting right away
     private static Plan plan(RunState.FurnaceJob job, Moment m, long now) {
-        return FurnacePlan.plan(List.of(job), m, now, null);
+        return started(FurnacePlan.plan(List.of(job), m, now, null), now);
+    }
+
+    private static Plan started(Plan p, long now) {
+        if (p.pick() != null && p.pick().call() == Call.STAND_BY && p.pick().why() == Why.QUICK) {
+            FurnacePlan.startStandBy(p.pick().job(), now);
+        }
+        return p;
     }
 
     // ---- due
@@ -196,8 +204,14 @@ public class FurnacePlanTest {
         Plan free = FurnacePlan.plan(List.of(meat), BOUNDARY, 1500, null);
         assertSame(meat, free.pick().job());
         assertTrue(free.standingBy());
-        assertEquals(Why.QUICK, one(FurnacePlan.plan(List.of(meat), BOUNDARY, 1500 + FurnacePlan.STAND_BY_CAP_TICKS, meat)).why());
-        assertNotEquals(Why.QUICK, one(FurnacePlan.plan(List.of(meat), BOUNDARY, 1500 + FurnacePlan.STAND_BY_CAP_TICKS + 1, meat)).why());
+        // picked, but the wheel is somewhere else (a golem fight, the climb out) for longer than the whole budget: the pick
+        // alone starts nothing
+        long freeAt = 1500 + FurnacePlan.STAND_BY_CAP_TICKS + 1;
+        assertEquals(Why.QUICK, one(FurnacePlan.plan(List.of(meat), BOUNDARY, freeAt, null)).why());
+        // the trip starts when the wheel is free, and it gets the whole budget from there
+        FurnacePlan.startStandBy(meat, freeAt);
+        assertEquals(Why.QUICK, one(FurnacePlan.plan(List.of(meat), BOUNDARY, freeAt + FurnacePlan.STAND_BY_CAP_TICKS, meat)).why());
+        assertNotEquals(Why.QUICK, one(FurnacePlan.plan(List.of(meat), BOUNDARY, freeAt + FurnacePlan.STAND_BY_CAP_TICKS + 1, meat)).why());
     }
 
     // a look that skipped the stand-by rules (GATHER, mayStandBy off) does not use up the chance of one later
@@ -351,7 +365,7 @@ public class FurnacePlanTest {
         RunState.FurnaceJob active = null;
         for (long tick = 0; tick <= FurnacePlan.STAND_BY_CAP_TICKS; tick += 10) {
             Moment m = new Moment(tick % 20 == 0, tick % 30 == 0, tick % 40 == 0, false, true);
-            Plan p = FurnacePlan.plan(List.of(job), m, tick, active);
+            Plan p = started(FurnacePlan.plan(List.of(job), m, tick, active), tick);
             lines.addAll(p.changes());
             assertTrue("tick " + tick, p.standingBy());
             if (active == null && p.pick() != null) {
@@ -373,7 +387,7 @@ public class FurnacePlanTest {
         Call last = null;
         int changes = 0;
         for (long tick = 4700; tick <= 7000; tick++) {
-            Call now = one(FurnacePlan.plan(List.of(job), BOUNDARY, tick, null)).call();
+            Call now = one(started(FurnacePlan.plan(List.of(job), BOUNDARY, tick, null), tick)).call();
             if (now != last) {
                 changes++;
                 last = now;

@@ -270,12 +270,10 @@ public final class FurnacePlan {
                 pick = soonest(out, v -> v.call() == Call.COLLECT_NOW || v.call() == Call.STAND_BY || v.call() == Call.TAKE_ALL);
             }
         }
-        // a quick smoker only counts as stood at once its trip is the one going: one that is quick while another job's trip
-        // runs neither holds the side jobs nor burns its budget out there
+        // a quick smoker only holds the side jobs once its trip is the one picked or going, not while another job's trip runs
         for (Verdict v : out) {
             if (v.call() == Call.STAND_BY && v.why() == Why.QUICK && (v == pick || v.job() == active)) {
                 standingBy = true;
-                startStandBy(v.job(), now);
             }
         }
         return new Plan(out, pick, changes, standingBy);
@@ -356,8 +354,9 @@ public final class FurnacePlan {
         return now <= t.standUntil;
     }
 
-    // the stand-by trip is the one going (picked now, or the active one): the budget starts here and never again
-    private static void startStandBy(RunState.FurnaceJob job, long now) {
+    // the stand-by trip really starts (FurnaceWatch.start): the budget starts here and never again. not at the pick, a pick
+    // can sit behind a golem fight or the climb out for longer than the whole budget
+    public static void startStandBy(RunState.FurnaceJob job, long now) {
         Track t = job.track;
         if (t.standSeen) {
             return;
