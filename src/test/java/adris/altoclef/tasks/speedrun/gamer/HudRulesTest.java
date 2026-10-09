@@ -11,6 +11,7 @@ import static adris.altoclef.tasks.speedrun.gamer.HudRules.Dot.NOW;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
 // the sums behind the gamer card. no game in any of it
 public class HudRulesTest {
@@ -142,6 +143,60 @@ public class HudRulesTest {
         // half a second in rounds up, the clock reads 30 until a whole second has gone
         assertEquals(30, HudRules.detourSecondsLeft(100, 30, 110));
         assertEquals(0, HudRules.detourSecondsLeft(100, 30, 100 + 40 * 20));
+    }
+
+    @Test
+    public void aWonRunShowsTheTotalAndAFullBarInsteadOfAClockAgainstABudget() {
+        assertEquals("9:41 / 22:00", HudRules.titleClock(GamerPhase.IRON, 581, 22));
+        assertEquals("41:12", HudRules.titleClock(GamerPhase.DONE, 41 * 60 + 12, 0));
+        assertEquals(0.5, HudRules.titleFraction(GamerPhase.IRON, 660, 22), 1e-9);
+        // no budget on a win to be against, the bar is just full
+        assertEquals(1, HudRules.titleFraction(GamerPhase.DONE, 2472, 0), 1e-9);
+        // and all eleven dots green
+        assertEquals(11, HudRules.dots(GamerPhase.DONE).length);
+        for (HudRules.Dot dot : HudRules.dots(GamerPhase.DONE)) {
+            assertEquals(DONE, dot);
+        }
+    }
+
+    @Test
+    public void theTotalRunTimeIsGameTimeSinceTheStartAndFallsBackToTheTicksTheEngineRan() {
+        // 20 ticks a second from the tick the run began
+        assertEquals(60, HudRules.runSeconds(1000, 1000 + 60 * 20, 5), 1e-9);
+        // a fight the engine sat out is in it, runTicks would have missed it
+        assertEquals(41 * 60 + 12, HudRules.runSeconds(200_000, 200_000 + (41 * 60 + 12) * 20, 40 * 60 * 20), 1e-9);
+        // a save from before the start was written down, and a clock that went backwards (another world): the engine's ticks
+        assertEquals(30, HudRules.runSeconds(-1, 99_999, 600), 1e-9);
+        assertEquals(30, HudRules.runSeconds(5000, 4000, 600), 1e-9);
+        assertEquals(0, HudRules.runSeconds(-1, 0, 0), 1e-9);
+    }
+
+    @Test
+    public void theWinCardStaysThirtySecondsFromTheFirstFrameItCanBeSeen() {
+        assertEquals(30_000, HudRules.WIN_LINGER_MILLIS);
+        HudRules.Linger linger = new HudRules.Linger();
+        // nothing to time before it has been shown
+        assertFalse(linger.over(1_000_000));
+        assertTrue(linger.visible(1_000, false));
+        assertTrue(linger.visible(1_000 + 29_999, false));
+        assertFalse(linger.over(1_000 + 29_999));
+        // the thirty seconds are up, and it stays up
+        assertFalse(linger.visible(1_000 + 30_000, false));
+        assertTrue(linger.over(1_000 + 30_000));
+        assertFalse(linger.visible(1_000 + 90_000, false));
+    }
+
+    @Test
+    public void theCreditsDoNotUseUpTheWinCard() {
+        // the credits cover the screen for a minute or two: the card is not drawn then and its time has not started
+        HudRules.Linger linger = new HudRules.Linger();
+        assertFalse(linger.visible(0, true));
+        assertFalse(linger.visible(100_000, true));
+        assertFalse(linger.over(100_000));
+        // the first frame after them starts the thirty seconds
+        assertTrue(linger.visible(100_500, false));
+        assertTrue(linger.visible(100_500 + 29_000, false));
+        assertFalse(linger.visible(100_500 + 30_000, false));
     }
 
     @Test

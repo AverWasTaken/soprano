@@ -16,6 +16,9 @@ public final class HudRules {
     public static final int MAX_FURNACES = 2;
     // a need that just got satisfied stays on the card this long, dim with green numbers, so you see it land
     public static final long DONE_LINGER_TICKS = 8 * 20;
+    // the card after a win stays up this long (wall clock, nothing on it counts down). the clock only starts once it can be
+    // seen, the credits cover the whole screen
+    public static final long WIN_LINGER_MILLIS = 30_000;
 
     public enum Dot {
         DONE, NOW, LATER
@@ -98,6 +101,46 @@ public final class HudRules {
     // "IRON", "END PREP"
     public static String title(GamerPhase phase) {
         return phase.name().replace('_', ' ');
+    }
+
+    // the clock next to the title: "9:41 / 22:00" against the phase's budget, and once the run is won just the total, there is no
+    // budget left to be against
+    public static String titleClock(GamerPhase phase, double seconds, double budgetMinutes) {
+        return phase == GamerPhase.DONE ? clock(seconds) : clock(seconds) + " / " + budget(budgetMinutes);
+    }
+
+    // the bar under the title: time against the budget, full once the run is won
+    public static double titleFraction(GamerPhase phase, double seconds, double budgetMinutes) {
+        return phase == GamerPhase.DONE ? 1 : fraction(seconds, budgetMinutes * 60);
+    }
+
+    // the whole run in seconds: game time since the run began, so a fight or a meal the engine sat out still counts, and a relog
+    // does not. a save from before the start was written down (startedGameTime < 0) only knows the ticks the engine ran
+    public static double runSeconds(long startedGameTime, long nowGameTime, long runTicks) {
+        long ticks = startedGameTime >= 0 && nowGameTime >= startedGameTime ? nowGameTime - startedGameTime : runTicks;
+        return Math.max(0, ticks) / 20.0;
+    }
+
+    // the clock of the card after a win. it starts on the first frame the card can be seen: a frame under the credits (covered)
+    // neither starts it nor draws, and the thirty seconds count from the first one that is not
+    public static final class Linger {
+        private long shownAt = -1;
+
+        // draw the card this frame. false while covered, and for good once the time is up
+        public boolean visible(long now, boolean covered) {
+            if (covered) {
+                return false;
+            }
+            if (shownAt < 0) {
+                shownAt = now;
+            }
+            return !over(now);
+        }
+
+        // the time is up, the card can be dropped
+        public boolean over(long now) {
+            return shownAt >= 0 && now - shownAt >= WIN_LINGER_MILLIS;
+        }
     }
 
     // whole blocks of straight line, for the recovery words

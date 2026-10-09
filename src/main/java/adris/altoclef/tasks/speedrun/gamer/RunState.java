@@ -16,6 +16,8 @@ public class RunState {
     // "<level name>|<server ip>", a stale file from another world with the same folder name gets ignored
     public String fingerprint = "";
     public long startedEpochMs;
+    // the level's game time when the run began, for the total on the win card. -1 on a save from before it was written down
+    public long startedGameTime = -1;
     public GamerPhase phase = GamerPhase.GATHER;
     // attempts per phase name, so a retry survives a relog
     public Map<String, Integer> phaseAttempts = new HashMap<>();

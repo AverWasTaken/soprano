@@ -27,6 +27,7 @@ public class RunStateStoreTest {
         RunState s = new RunState();
         s.fingerprint = FP;
         s.startedEpochMs = 1_700_000_000_123L;
+        s.startedGameTime = 424_242L;
         s.phase = GamerPhase.ROOM;
         s.phaseAttempts.put("GATHER", 2);
         s.phaseAttempts.put("NETHER", 1);
@@ -160,8 +161,18 @@ public class RunStateStoreTest {
         assertEquals(Integer.valueOf(2), out.regressCounts.get("LOCATE>NETHER"));
         assertEquals(2, out.deathsThisPhase);
         assertEquals(1_700_000_000_123L, out.startedEpochMs);
+        assertEquals(424_242L, out.startedGameTime);
         assertTrue(out.stuck);
         assertTrue(out.dragonDead);
+    }
+
+    @Test
+    public void aSaveFromBeforeTheRunClockHasNoStartTick() {
+        // -1, not 0: the win card falls back to the ticks the engine ran for those, 0 would read as a run that began with the world
+        RunState old = RunStateStore.parse("{\"phase\":\"NETHER\",\"startedEpochMs\":1700000000123}");
+        assertNotNull(old);
+        assertEquals(-1L, old.startedGameTime);
+        assertEquals(-1L, new RunState().startedGameTime);
     }
 
     @Test

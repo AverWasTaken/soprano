@@ -89,6 +89,10 @@ public class GamerTask extends Task {
     private double interruptedAt = -1;
     // set by loadState when the saved run carries on as it was, so the attempt clocks keep their real start
     private boolean resumedAsIs;
+    // the saved run was already won when this task began (#gamer on a finished world): no win card for a run we did not just play
+    private boolean startedOver;
+    // the win card went to the overlay, it goes once
+    private boolean winShown;
     private boolean pushed;
     private BotBehaviour.State level;
     // watches for crafting tables, furnaces and smokers we place, so the registry (Workbenches) only ever takes back its own
@@ -204,6 +208,7 @@ public class GamerTask extends Task {
             if (state != null && begun) {
                 host.save();
                 machine.exitCurrent(mod);
+                showWin(mod);
             }
         } catch (RuntimeException e) {
             Debug.logInternal("gamer: onStop " + e);
@@ -269,6 +274,11 @@ public class GamerTask extends Task {
         // is finished but never stopped (altoRunsWhenIdle) still leaves a saved DONE behind
         if (begun && !machine.ended() && Minecraft.getInstance().screen instanceof WinScreen) {
             machine.finish(true);
+        }
+        // the win card is handed over here and not only on stop: with altoRunsWhenIdle the runner stays up and a finished task is
+        // dropped without ever being stopped
+        if (begun && machine.ended()) {
+            showWin(mod);
         }
         return machine.ended();
     }
@@ -412,6 +422,8 @@ public class GamerTask extends Task {
         CookTrip.clear();
         // and neither is a death from before the run started (the stash outlives the task that read it last)
         DeathStash.clear();
+        startedOver = false;
+        winShown = false;
         loadState(mod);
         facts.useState(state);
         // so CollectFoodTask can count the meat that is cooking without knowing what a RunState is
@@ -496,6 +508,7 @@ public class GamerTask extends Task {
         }
         if (state.startedEpochMs == 0) {
             state.startedEpochMs = System.currentTimeMillis();
+            state.startedGameTime = facts.gameTime();
         }
         if (state.phase == GamerPhase.STUCK) {
             // never written by us, but a hand edit could, and there is no handler for it
@@ -510,6 +523,8 @@ public class GamerTask extends Task {
 
     private void jumpTo(GamerPhase phase) {
         state.phase = phase;
+        // a jump starts a new run as far as the win card's total goes, or a jump to the dragon would show the hours since GATHER
+        state.startedGameTime = facts.gameTime();
         state.stuck = false;
         state.stuckReason = "";
         state.finished = false;
@@ -524,6 +539,7 @@ public class GamerTask extends Task {
 
     private void resumeSaved() {
         if (state.finished || state.phase == GamerPhase.DONE) {
+            startedOver = true;
             state.phase = GamerPhase.DONE;
             state.finished = true;
             host.say("This world's run is already finished. #gamer reset starts a new one.");
@@ -714,6 +730,18 @@ public class GamerTask extends Task {
 
     private int blocksTo(int x, int y, int z) {
         return HudRules.blocksAway(facts.x() - x, facts.y() - y, facts.z() - z);
+    }
+
+    // the run ended DONE: the task goes away with the runner and nothing of ours draws once it is idle, so the last card is
+    // handed to the overlay, which keeps it up for a while (HudRules.WIN_LINGER_MILLIS). STUCK hides at once as it always did, and
+    // so does a run that was already over when this one started: there is nothing in that to show off
+    private void showWin(AltoClef mod) {
+        if (winShown || !state.finished || state.phase != GamerPhase.DONE || startedOver || !Baritone.settings().altoGamerHud.value) {
+            return;
+        }
+        winShown = true;
+        double total = HudRules.runSeconds(state.startedGameTime, facts.gameTime(), state.runTicks);
+        mod.getGamerHudOverlay().win(GamerHud.won(hudSnapshot, cfg, total));
     }
 
     // the card's numbers as of the last engine tick, null while there is no run on the screen worth a card

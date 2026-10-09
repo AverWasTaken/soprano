@@ -56,6 +56,14 @@ final class GamerHud {
                 furnaceRows(facts.furnaceJobs()), null, food.held(), food.overworldMinimum());
     }
 
+    // the run ended DONE: the last card with every dot lit and the total time where the phase clock was, no kit, no furnaces, no
+    // detour. last is the card as the run left it (the footer's food comes from there, the world may be going away), null if it
+    // never drew one
+    static GamerHudState won(GamerHudState last, GamerConfig cfg, double totalSeconds) {
+        return new GamerHudState(GamerPhase.DONE, totalSeconds, 0, last == null ? 1 : last.attempt(), "Beat the game", List.of(),
+                List.of(), null, last == null ? 0 : last.foodUnits(), last == null ? cfg.overworld.minFoodUnits : last.foodTarget());
+    }
+
     private List<KitRow> kitRows(GamerFacts f, FoodPlan food, KitRunner runner, long now) {
         if (runner != lastRunner) {
             // another phase's kit, or none: what the old one had finished is not news on this one

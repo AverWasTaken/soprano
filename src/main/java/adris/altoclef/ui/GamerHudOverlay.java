@@ -6,6 +6,7 @@ import adris.altoclef.tasks.speedrun.gamer.GamerHudState;
 import adris.altoclef.tasks.speedrun.gamer.GamerHudState.CoalRow;
 import adris.altoclef.tasks.speedrun.gamer.GamerHudState.FurnaceRow;
 import adris.altoclef.tasks.speedrun.gamer.GamerHudState.KitRow;
+import adris.altoclef.tasks.speedrun.gamer.GamerPhase;
 import adris.altoclef.tasks.speedrun.gamer.GamerTask;
 import adris.altoclef.tasks.speedrun.gamer.HudRules;
 import adris.altoclef.util.helpers.CombatCommit;
@@ -13,6 +14,7 @@ import baritone.Baritone;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.screens.WinScreen;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.resources.ResourceLocation;
@@ -61,6 +63,7 @@ public class GamerHudOverlay {
     private static final int GOLD = 0xFFFFAA00;
     private static final int GOLD_DIM = 0xFFB07400;
     private static final int GREEN = 0xFF55FF55;
+    private static final int GREEN_DIM = 0xFF2E9E2E;
     private static final int YELLOW = 0xFFFFFF55;
     private static final int BLACK = 0xFF000000;
     // the bar's rim and a dot for a phase that has not happened
@@ -130,6 +133,21 @@ public class GamerHudOverlay {
     private long layoutTick = -1;
     private float layoutScale;
     private int height;
+    // the card of a run that was just won, and how long it has been up. the task that made it is gone by the time anyone looks,
+    // so this is the one place that keeps it
+    private GamerHudState won;
+    private HudRules.Linger linger = new HudRules.Linger();
+    // the connection it was won on. the respawn after the credits builds a new level but keeps the connection, leaving the world
+    // does not, and the card must not follow us into the next one
+    private Object wonOn;
+
+    // GamerTask hands over its last card when the run ends DONE
+    public void win(GamerHudState card) {
+        won = card;
+        wonOn = Minecraft.getInstance().getConnection();
+        linger = new HudRules.Linger();
+        layoutTick = -1;
+    }
 
     public void render(AltoClef mod, GuiGraphics graphics) {
         Minecraft mc = Minecraft.getInstance();
@@ -140,7 +158,15 @@ public class GamerHudOverlay {
         if (!Baritone.settings().altoGamerHud.value) {
             return;
         }
-        GamerHudState state = mod.getUserTaskChain().getCurrentTask() instanceof GamerTask run ? run.hudSnapshot() : null;
+        // only a run that is going has a live card, the old task can sit in the chain after the runner went idle
+        GamerHudState state = mod.getTaskRunner().isActive() && mod.getUserTaskChain().getCurrentTask() instanceof GamerTask run
+                ? run.hudSnapshot() : null;
+        if (state != null) {
+            // a new run took over, the old win is history
+            won = null;
+        } else {
+            state = lingeringWin(mc);
+        }
         if (state == null) {
             ops.clear();
             layoutTick = -1;
@@ -168,9 +194,30 @@ public class GamerHudOverlay {
         graphics.pose().popPose();
     }
 
+    // the win card while its thirty seconds last. they start with the first frame it can be seen: the credits cover the whole
+    // screen for a minute or two after the dragon, and a card that timed out behind them would never have been shown
+    private GamerHudState lingeringWin(Minecraft mc) {
+        if (won == null) {
+            return null;
+        }
+        if (mc.getConnection() != wonOn) {
+            won = null;
+            return null;
+        }
+        long now = System.currentTimeMillis();
+        boolean show = linger.visible(now, mc.screen instanceof WinScreen);
+        if (linger.over(now)) {
+            won = null;
+            return null;
+        }
+        return show ? won : null;
+    }
+
     private void layout(AltoClef mod, LocalPlayer player, Font font, GamerHudState s, long now) {
         ops.clear();
-        boolean fighting = mod.getMobDefenseChain().overworldMode() != CombatCommit.Mode.NONE;
+        boolean over = s.phase() == GamerPhase.DONE;
+        // no fight strip on a win card, the runner is idle and whatever the combat chain remembers is not about this
+        boolean fighting = !over && mod.getMobDefenseChain().overworldMode() != CombatCommit.Mode.NONE;
         int y = fighting ? combat(mod, player, font) : PAD_TOP;
         // the phase, big and gold, with its clock against the budget sitting on the same baseline
         y = title(font, s, y);
@@ -237,7 +284,7 @@ public class GamerHudOverlay {
         // "END PREP" and a ten minute clock do not both fit at 152 wide: pack the letters, then drop the budget off the
         // clock (the bar under it still shows it). the title's size never changes, see HudRules.titleFit
         String shortClock = HudRules.clock(s.secondsInPhase());
-        String clock = shortClock + " / " + HudRules.budget(s.budgetMinutes());
+        String clock = HudRules.titleClock(s.phase(), s.secondsInPhase(), s.budgetMinutes());
         HudRules.TitleFit fit = HudRules.titleFit(glyphs2x, glyphs.length, font.width(clock), font.width(shortClock), INNER);
         int letterGap = fit == HudRules.TitleFit.SPACED ? 1 : 0;
         int x = PAD_X;
@@ -245,13 +292,16 @@ public class GamerHudOverlay {
             xs[i] = x;
             x += font.width(glyphs[i]) * 2 + letterGap;
         }
-        ops.add(new BigText(glyphs, xs, y, GOLD));
+        // a won run is green all the way down, the dots under it are too
+        boolean over = s.phase() == GamerPhase.DONE;
+        ops.add(new BigText(glyphs, xs, y, over ? GREEN : GOLD));
         if (fit == HudRules.TitleFit.SHORT_CLOCK) {
             clock = shortClock;
         }
         ops.add(new Text(clock, PAD_X + INNER - font.width(clock), y + TITLE - FONT, DIM));
         y += TITLE + 2;
-        bar(PAD_X, y, INNER, HudRules.fraction(s.secondsInPhase(), s.budgetMinutes() * 60), GOLD_DIM, GOLD);
+        double fraction = HudRules.titleFraction(s.phase(), s.secondsInPhase(), s.budgetMinutes());
+        bar(PAD_X, y, INNER, fraction, over ? GREEN_DIM : GOLD_DIM, over ? GREEN : GOLD);
         return y + BAR + 3;
     }
 

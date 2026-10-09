@@ -208,8 +208,14 @@ public class AltoClef {
         // nothing of ours on screen unless we are the ones driving
         if (_taskRunner.isActive()) {
             _commandStatusOverlay.render(this, graphics);
-            _gamerHudOverlay.render(this, graphics);
         }
+        // not behind the check: after a win the runner is idle and the card is still up for a while. it works out for itself when
+        // there is nothing to draw
+        _gamerHudOverlay.render(this, graphics);
+    }
+
+    public GamerHudOverlay getGamerHudOverlay() {
+        return _gamerHudOverlay;
     }
 
     // Soprano: TaskRunner calls these as it switches on and off. Everything altoclef changes about baritone happens

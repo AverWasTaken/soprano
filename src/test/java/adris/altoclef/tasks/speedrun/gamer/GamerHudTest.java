@@ -9,11 +9,13 @@ import net.minecraft.world.item.Items;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
+import java.util.List;
+
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
-// the cards GamerHud builds without the engine's tick: the one for a recovery that has the wheel
+// the cards GamerHud builds without the engine's tick: the one for a recovery that has the wheel, and the one a won run leaves
 public class GamerHudTest {
     private final GamerConfig cfg = new GamerConfig();
     private final RunState state = new RunState();
@@ -60,6 +62,44 @@ public class GamerHudTest {
         assertEquals(1, card.furnaces().size());
         assertEquals("Smelting 12 iron", card.furnaces().get(0).words());
         assertEquals(Items.FURNACE, card.furnaces().get(0).icon());
+    }
+
+    @Test
+    public void aWonRunLeavesACardWithEveryDotLitTheTotalTimeAndNothingElse() {
+        // the last card the run drew: some kit, a furnace, a detour, food at 55 of 70
+        state.phase = GamerPhase.DRAGON;
+        facts.foodUnits = 55;
+        facts.cooking("iron_ingot", 3, 10);
+        GamerHudState last = new GamerHudState(GamerPhase.DRAGON, 300, 25, 2, "Fighting the dragon",
+                List.of(new GamerHudState.KitRow("bed", "Beds", Items.WHITE_BED, 8, 8, true, false)),
+                List.of(new GamerHudState.FurnaceRow("Smelting 3 iron", Items.FURNACE, 0, 200)),
+                new GamerHudState.CoalRow(12, 0, 30), 55, 70);
+        GamerHudState card = GamerHud.won(last, cfg, 41 * 60 + 12);
+        assertEquals(GamerPhase.DONE, card.phase());
+        assertEquals(41 * 60 + 12, card.secondsInPhase(), 1e-9);
+        assertEquals("41:12", HudRules.titleClock(card.phase(), card.secondsInPhase(), card.budgetMinutes()));
+        assertEquals("Beat the game", card.action());
+        assertTrue(card.rows().isEmpty());
+        assertTrue(card.furnaces().isEmpty());
+        assertNull(card.coal());
+        // the footer is how the run left it, the attempt too
+        assertEquals(55, card.foodUnits());
+        assertEquals(70, card.foodTarget());
+        assertEquals(2, card.attempt());
+        for (HudRules.Dot dot : HudRules.dots(card.phase())) {
+            assertEquals(HudRules.Dot.DONE, dot);
+        }
+    }
+
+    @Test
+    public void aWinWithNoCardDrawnYetStillMakesOne() {
+        // the run ended before its first tick drew anything (a resume that finished at once): the footer takes the config's line
+        GamerHudState card = GamerHud.won(null, cfg, 90);
+        assertEquals(GamerPhase.DONE, card.phase());
+        assertEquals(1, card.attempt());
+        assertEquals(0, card.foodUnits());
+        assertEquals(cfg.overworld.minFoodUnits, card.foodTarget());
+        assertEquals("1:30", HudRules.titleClock(card.phase(), card.secondsInPhase(), card.budgetMinutes()));
     }
 
     @Test
