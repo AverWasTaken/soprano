@@ -53,6 +53,8 @@ public final class WorkbenchRules {
     public static final double PLACE_REACH = 8.0;
     // "never happened" for the tick stamps (game time starts at 0, so -1 is safely before everything)
     public static final long NEVER = -1;
+    // two runs of the pickup this close together are one stretch of it (a skipped tick is not a fight)
+    public static final long DRIVE_STEP_TICKS = 2;
     // a smelt task had its screen in hand this recently (AsyncSmelting.working) counts as a load in flight
     public static final long LOAD_GRACE_TICKS = 20;
 
@@ -221,6 +223,19 @@ public final class WorkbenchRules {
             return Call.BUSY;
         }
         b.state = Bench.State.STANDING;
+        // the tries ran out on time and it still stands. trying again right here is the same walk that just failed three times, so it
+        // waits for us to have been out of NEAR and back (the next trip past it). the phase does not wait on it (phaseMayEnd)
+        if (b.pickupFailed) {
+            if (in.distance() > NEAR) {
+                b.leftSinceFail = true;
+                return Call.KEEP;
+            }
+            if (!b.leftSinceFail) {
+                return Call.KEEP;
+            }
+            b.pickupFailed = false;
+            b.leftSinceFail = false;
+        }
         // out past the far line for the usual five seconds with the wood to craft another: not worth the walk back, whatever the plan
         // wants (the planner no longer counts it as held out there, so it asks for the planks)
         if (b.kind == Kind.TABLE && in.distance() > FAR_TABLE_DISTANCE && in.canRecraft() && outsideLongEnough(b, now)) {
@@ -251,8 +266,8 @@ public final class WorkbenchRules {
     }
 
     private static Call decidePickup(Bench b, Look in) {
-        long now = in.now();
-        long running = now - b.pickupStart;
+        // only the ticks it had the wheel: off fighting a zombie for a minute does not burn the try
+        long running = b.ranTicks;
         if (b.broken) {
             // only the drop is left
             return running > DROP_GIVE_UP_TICKS ? Call.DROP_LOST : Call.CONTINUE;
@@ -308,6 +323,7 @@ public final class WorkbenchRules {
         b.state = Bench.State.PICKING_UP;
         b.pickupStart = now;
         b.drivenTick = now;
+        b.ranTicks = 0;
         b.broken = false;
         b.bagBefore = bagBefore;
         b.why = why;
@@ -318,6 +334,23 @@ public final class WorkbenchRules {
         b.broken = true;
         // the drop gets its own clock
         b.pickupStart = now;
+        b.ranTicks = 0;
+    }
+
+    // the world half ran the pickup this tick. a gap since the last run is somebody else's time (a fight, the kit task, a menu), so
+    // only back to back ticks add up
+    public static void drove(Bench b, long now) {
+        if (b.drivenTick != NEVER && now > b.drivenTick && now - b.drivenTick <= DRIVE_STEP_TICKS) {
+            b.ranTicks += now - b.drivenTick;
+        }
+        b.drivenTick = now;
+    }
+
+    // the tries ran out on time alone and the block still stands: not forgotten, parked until we come back near it (decide)
+    public static void parkFailed(Bench b) {
+        b.pickupFailed = true;
+        b.leftSinceFail = false;
+        b.tries = 0;
     }
 
     // a try that did not work out (timed out, or could not start). true = that was the last one, forget the station
@@ -415,6 +448,11 @@ public final class WorkbenchRules {
     public static boolean phaseMayEnd(Collection<Bench> benches, String dimension, Predicate<Bench> hasJob) {
         for (Bench b : benches) {
             if (!b.dimension.equals(dimension)) {
+                continue;
+            }
+            // a parked one (tries ran out on time, the block still stands) does not hold it either: three tries already failed and
+            // the next trip past it gets another go
+            if (b.state == Bench.State.STANDING && b.pickupFailed) {
                 continue;
             }
             // (a load the stale rule gave up on is not adopted either, so it can't hold the phase: it was never worth a walk)

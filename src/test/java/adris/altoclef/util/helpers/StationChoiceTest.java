@@ -1,7 +1,9 @@
 package adris.altoclef.util.helpers;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 
 import adris.altoclef.util.helpers.StationChoice.Candidate;
 import adris.altoclef.util.helpers.StationChoice.Pick;
@@ -217,5 +219,50 @@ public class StationChoiceTest {
         assertEquals(false, decide(List.of(), null, true, true).walks());
         assertEquals(true, decide(ours("a", 3)).walks());
         assertEquals(true, decide(world("a", 3)).walks());
+    }
+
+    // ---- making one costs something
+
+    @Test
+    public void withoutTheMaterialsWeWalkBackToOursInsteadOfCrafting() {
+        List<StationChoice.Candidate<String>> seen = List.of(new StationChoice.Candidate<>("ours", 90, StationChoice.Role.OURS));
+        StationChoice.Pick<String> pick = StationChoice.decide(seen, null, false, true, false, NEAR);
+        assertEquals(StationChoice.Use.OURS, pick.use());
+        assertEquals("ours", pick.key());
+        // with the cobble in the bag the far one is not worth the walk, same as before
+        assertEquals(StationChoice.Use.MAKE, StationChoice.decide(seen, null, false, true, true, NEAR).use());
+        // in the bag: place it, whatever stands far off
+        assertEquals(StationChoice.Use.BAG, StationChoice.decide(seen, null, true, true, false, NEAR).use());
+        // past the forget line there is nothing to walk back to
+        List<StationChoice.Candidate<String>> tooFar = List.of(new StationChoice.Candidate<>("ours", 130, StationChoice.Role.OURS));
+        assertEquals(StationChoice.Use.MAKE, StationChoice.decide(tooFar, null, false, true, false, NEAR).use());
+    }
+
+    @Test
+    public void withoutTheMaterialsAStandingOneNobodyOwnsBeatsCraftingToo() {
+        // one of ours the registry already forgot is just a block in the world now
+        List<StationChoice.Candidate<String>> seen = List.of(new StationChoice.Candidate<>("forgotten", 60, StationChoice.Role.WORLD));
+        assertEquals(StationChoice.Use.WORLD, StationChoice.decide(seen, null, false, true, false, NEAR).use());
+        assertEquals(StationChoice.Use.MAKE, StationChoice.decide(seen, null, false, true, true, NEAR).use());
+        // ours still goes first
+        List<StationChoice.Candidate<String>> both = List.of(new StationChoice.Candidate<>("forgotten", 30, StationChoice.Role.WORLD),
+                new StationChoice.Candidate<>("ours", 80, StationChoice.Role.OURS));
+        assertEquals("ours", StationChoice.decide(both, null, false, true, false, NEAR).key());
+    }
+
+    @Test
+    public void whatMakingOneTakes() {
+        assertTrue(StationChoice.canMakeFrom(StationHook.Kind.TABLE, 0, 1, 0, 0));
+        assertTrue(StationChoice.canMakeFrom(StationHook.Kind.TABLE, 0, 0, 4, 0));
+        assertFalse(StationChoice.canMakeFrom(StationHook.Kind.TABLE, 64, 0, 3, 0));
+        assertTrue(StationChoice.canMakeFrom(StationHook.Kind.FURNACE, 8, 0, 0, 0));
+        assertFalse(StationChoice.canMakeFrom(StationHook.Kind.FURNACE, 7, 64, 64, 0));
+        // a smoker is a furnace and 4 logs
+        assertTrue(StationChoice.canMakeFrom(StationHook.Kind.SMOKER, 0, 4, 0, 1));
+        assertTrue(StationChoice.canMakeFrom(StationHook.Kind.SMOKER, 8, 4, 0, 0));
+        assertFalse(StationChoice.canMakeFrom(StationHook.Kind.SMOKER, 0, 4, 0, 0));
+        assertFalse(StationChoice.canMakeFrom(StationHook.Kind.SMOKER, 8, 3, 0, 1));
+        // anything that is not one of ours keeps its old answer
+        assertTrue(StationChoice.canMakeFrom(null, 0, 0, 0, 0));
     }
 }

@@ -47,9 +47,11 @@ import org.apache.commons.lang3.ArrayUtils;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 // beats the game: a phase state machine over PhaseHandlers with its memory in RunState (see gamer-design.md). this class is
 // the part that touches the game: facts, deaths, saving, the hud and the settings for the run. which phase we are in and
@@ -290,6 +292,9 @@ public class GamerTask extends Task {
         level = mod.getBehaviour().push();
         pushed = true;
         mod.getBehaviour().addProtectedItems(PROTECTED);
+        // a furnace or smoker with a job of ours in it is not ours to dig through. one predicate in our own level, reading a snapshot
+        // (baritone asks from its own thread), so a station stops being protected the moment its job is done
+        mod.getBehaviour().avoidBlockBreaking(p -> jobSpots.contains(p));
         mod.getBlockTracker().trackBlock(TRACKED);
         applyRunSettings();
     }
@@ -595,6 +600,22 @@ public class GamerTask extends Task {
         }
     }
 
+    // the blocks of this dimension's furnace jobs, a fresh immutable set each tick
+    private volatile Set<BlockPos> jobSpots = Set.of();
+
+    static Set<BlockPos> spotsOf(RunState state, String dimension) {
+        if (state == null || state.furnaceJobs.isEmpty()) {
+            return Set.of();
+        }
+        Set<BlockPos> out = new HashSet<>();
+        for (RunState.FurnaceJob job : state.furnaceJobs) {
+            if (dimension.equals(job.dimension)) {
+                out.add(new BlockPos(job.pos.x, job.pos.y, job.pos.z));
+            }
+        }
+        return Set.copyOf(out);
+    }
+
     private Task engineTick(AltoClef mod) {
         if (!facts.refresh()) {
             // no player yet (an idle command on join): the clocks must not start from zero
@@ -607,6 +628,7 @@ public class GamerTask extends Task {
             return null;
         }
         cfg = GamerConfigs.get();
+        jobSpots = spotsOf(state, facts.dimension().name());
         double now = machine.now();
         if (interruptedAt >= 0) {
             // first fresh tick after another chain had the wheel. forgiven, not reset: a reset made two chains trading the

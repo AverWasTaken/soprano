@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Optional;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.inventory.ClickType;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.phys.Vec3;
 
@@ -48,6 +49,7 @@ public abstract class DoStuffInContainerTask extends Task {
     private long _pickTick = Long.MIN_VALUE;
     private StationChoice.Pick<BlockPos> _pick = new StationChoice.Pick<>(StationChoice.Use.NONE, null);
     private String _loggedChoice = "";
+    private boolean _canMakeNow = true;
 
     public DoStuffInContainerTask(Block[] containerBlocks, ItemTarget containerTarget) {
         _containerBlocks = containerBlocks;
@@ -197,23 +199,45 @@ public abstract class DoStuffInContainerTask extends Task {
         if (usable(mod, ours)) {
             seen.add(candidate(ours, me, StationChoice.Role.OURS));
         }
+        // and the nearest of ours out to the forget line, for when making one is not on (StationChoice only walks that far when the bag
+        // cannot make one). an unloaded chunk reads as air, so out there the registry's word is taken
+        BlockPos oursFar = _stationKind == null ? null : StationHook.standingWithin(_stationKind, me.x, me.y, me.z, WalkCost.STATION_FORGET);
+        if (oursFar != null && !oursFar.equals(ours) && !StationHook.pickingUp(oursFar)
+                && (!mod.getChunkTracker().isChunkLoaded(oursFar) || isContainerBlock(mod, oursFar))) {
+            seen.add(candidate(oursFar, me, StationChoice.Role.OURS));
+        }
         // the tracker loses the one we were walking to now and then (a rescan after a fuel trip did it, and the next thing the
         // bot did was mine the smoker it had just put down). the world still has it, the world wins
         BlockPos previous = _cachedContainerPosition;
         if (usable(mod, previous)) {
             seen.add(candidate(previous, me, StationHook.ours(previous) ? StationChoice.Role.OURS : StationChoice.Role.WORLD));
         }
-        // a world one (a village's, never in the registry) that alto can see and reach, the nearest in a straight line
+        // a world one (a village's, or one of ours the registry already forgot, never in the registry) that alto can see and reach,
+        // the nearest in a straight line. out to the forget line: past worldReach it only counts when the bag cannot make one
         double reach = worldReach();
+        double lookOut = Math.max(reach, WalkCost.STATION_FORGET);
         Optional<BlockPos> world = mod.getBlockTracker().getNearestTracking(me,
                 p -> WorldHelper.canReach(mod, p) && !StationHook.pickingUp(p) && !StationHook.ours(p)
-                        && WalkCost.stationDistance(p.getX(), p.getY(), p.getZ(), me.x, me.y, me.z) <= reach,
+                        && WalkCost.stationDistance(p.getX(), p.getY(), p.getZ(), me.x, me.y, me.z) <= lookOut,
                 (fx, fy, fz, tx, ty, tz) -> WalkCost.distance3d(tx - fx, ty - fy, tz - fz), _containerBlocks);
         world.ifPresent(p -> seen.add(candidate(p, me, StationChoice.Role.WORLD)));
 
-        _pick = StationChoice.decide(seen, previous, mod.getItemStorage().hasItem(_containerTarget), canMakeNew(mod), reach);
+        _canMakeNow = canMakeNow(mod);
+        _pick = StationChoice.decide(seen, previous, mod.getItemStorage().hasItem(_containerTarget), canMakeNew(mod), _canMakeNow, reach);
         _pickTick = now;
         return _pick;
+    }
+
+    // what one more of this station takes is in the bag right now (StationChoice.canMakeFrom). chests, anvils and the like say yes,
+    // their old behaviour
+    private boolean canMakeNow(AltoClef mod) {
+        if (_stationKind == null) {
+            return true;
+        }
+        var bag = mod.getItemStorage();
+        int cobble = bag.getItemCount(Items.COBBLESTONE, Items.COBBLED_DEEPSLATE, Items.BLACKSTONE);
+        return StationChoice.canMakeFrom(_stationKind, cobble, bag.getItemCount(ItemHelper.LOG), bag.getItemCount(ItemHelper.PLANKS),
+                bag.getItemCount(Items.FURNACE));
     }
 
     private static StationChoice.Candidate<BlockPos> candidate(BlockPos pos, Vec3 me, StationChoice.Role role) {
@@ -237,12 +261,16 @@ public abstract class DoStuffInContainerTask extends Task {
         _loggedChoice = key;
         Vec3 me = mod.getPlayer().position();
         String word = _stationKind.word();
+        double away = pick.key() == null ? 0 : WalkCost.stationDistance(pick.key().getX(), pick.key().getY(), pick.key().getZ(), me.x, me.y, me.z);
+        // past NEAR is the walk back StationChoice only takes when the bag cannot make one
+        String back = away > WalkCost.STATION_NEAR ? ", walking back to it, the bag cannot make a " + word : "";
         String line = switch (pick.use()) {
-            case OURS -> "using ours at " + pick.key().toShortString() + ", "
-                    + Math.round(WalkCost.stationDistance(pick.key().getX(), pick.key().getY(), pick.key().getZ(), me.x, me.y, me.z)) + " blocks away";
-            case WORLD -> "using a " + word + " nobody here placed at " + pick.key().toShortString();
+            case OURS -> "using ours at " + pick.key().toShortString() + ", " + Math.round(away) + " blocks away" + back;
+            case WORLD -> "using a " + word + " nobody here placed at " + pick.key().toShortString() + back;
             case BAG -> "none within " + Math.round(WalkCost.STATION_NEAR) + " blocks, placing the one from the bag";
-            case MAKE -> "none within " + Math.round(WalkCost.STATION_NEAR) + " blocks and none in the bag, making one";
+            case MAKE -> "none within " + Math.round(WalkCost.STATION_NEAR) + " blocks and none in the bag, making one"
+                    + (_canMakeNow ? " (the bag has what it takes)" : " (nothing standing within " + Math.round(WalkCost.STATION_FORGET)
+                    + " either, gathering for it)");
             case NONE -> "none to use and not allowed to make one";
         };
         Debug.logInternal("bench: " + word + " choice: " + line);

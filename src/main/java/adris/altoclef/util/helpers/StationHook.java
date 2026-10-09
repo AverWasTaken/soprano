@@ -23,9 +23,14 @@ public final class StationHook {
     }
 
     public interface Source {
-        // the closest station of ours of this kind that is standing in this world within WalkCost.STATION_NEAR (straight line,
-        // height counts) of the point, null when there is none. a station being taken back is not standing any more
-        BlockPos standingNear(Kind kind, double x, double y, double z);
+        // the closest station of ours of this kind that is standing in this world within `radius` (straight line, height counts) of
+        // the point, null when there is none. a station being taken back is not standing any more
+        BlockPos standingWithin(Kind kind, double x, double y, double z, double radius);
+
+        // the usual question: within WalkCost.STATION_NEAR
+        default BlockPos standingNear(Kind kind, double x, double y, double z) {
+            return standingWithin(kind, x, y, z, WalkCost.STATION_NEAR);
+        }
 
         // some station of this kind is being picked up right now, so nothing may place or craft another one
         boolean pickingUp(Kind kind);
@@ -73,6 +78,11 @@ public final class StationHook {
     public static BlockPos standingNear(Kind kind, double x, double y, double z) {
         Source s = source;
         return s == null || kind == null ? null : s.standingNear(kind, x, y, z);
+    }
+
+    public static BlockPos standingWithin(Kind kind, double x, double y, double z, double radius) {
+        Source s = source;
+        return s == null || kind == null ? null : s.standingWithin(kind, x, y, z, radius);
     }
 
     public static boolean pickingUp(Kind kind) {

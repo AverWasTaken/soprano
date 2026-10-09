@@ -53,10 +53,16 @@ public final class StationChoice {
     private StationChoice() {
     }
 
-    // `previous` is the station we were heading for last tick (null for none), `inBag` we hold the item, `mayMake` the task is
-    // allowed to place or craft one at all (a blast furnace somebody sent us to is not). `worldReach`: how far a world one is worth
-    // the walk, NEAR for a table or furnace, more for a station that costs a pile of iron to make
     public static <T> Pick<T> decide(Collection<Candidate<T>> seen, T previous, boolean inBag, boolean mayMake, double worldReach) {
+        return decide(seen, previous, inBag, mayMake, true, worldReach);
+    }
+
+    // `previous` is the station we were heading for last tick (null for none), `inBag` we hold the item, `mayMake` the task is
+    // allowed to place or craft one at all (a blast furnace somebody sent us to is not), `canMakeNow` the bag holds what making one
+    // takes (canMakeFrom). `worldReach`: how far a world one is worth the walk, NEAR for a table or furnace, more for a station that
+    // costs a pile of iron to make
+    public static <T> Pick<T> decide(Collection<Candidate<T>> seen, T previous, boolean inBag, boolean mayMake, boolean canMakeNow,
+                                     double worldReach) {
         List<Candidate<T>> merged = merge(seen);
         Candidate<T> best = nearest(merged, Role.PINNED, previous, Double.POSITIVE_INFINITY);
         if (best != null) {
@@ -73,7 +79,32 @@ public final class StationChoice {
         if (!mayMake) {
             return new Pick<>(Use.NONE, null);
         }
+        if (!inBag && !canMakeNow) {
+            // making one means mining 8 cobble (and logs, for a smoker) first, which is a trip of its own and usually a longer one
+            // than walking back to a station that still stands. ours first, then anybody's, out to the forget line
+            best = nearest(merged, Role.OURS, previous, WalkCost.STATION_FORGET);
+            if (best != null) {
+                return new Pick<>(Use.OURS, best.key());
+            }
+            best = nearest(merged, Role.WORLD, previous, WalkCost.STATION_FORGET);
+            if (best != null) {
+                return new Pick<>(Use.WORLD, best.key());
+            }
+        }
         return new Pick<>(inBag ? Use.BAG : Use.MAKE, null);
+    }
+
+    // the bag holds what one more of this station takes (a table to craft it at aside, that is cheap): a table is 4 planks or a log,
+    // a furnace 8 cobble, a smoker a furnace (or the 8 cobble for it) and 4 logs
+    public static boolean canMakeFrom(StationHook.Kind kind, int cobble, int logs, int planks, int furnaces) {
+        if (kind == null) {
+            return true;
+        }
+        return switch (kind) {
+            case TABLE -> planks >= 4 || logs >= 1;
+            case FURNACE -> cobble >= 8;
+            case SMOKER -> logs >= 4 && (furnaces >= 1 || cobble >= 8);
+        };
     }
 
     // the same block can come in twice (the registry and the tracker both know it), the stronger role is the one that counts

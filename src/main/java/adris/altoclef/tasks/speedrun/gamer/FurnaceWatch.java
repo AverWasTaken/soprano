@@ -121,7 +121,9 @@ public final class FurnaceWatch {
         return hud;
     }
 
-    // every tick that has jobs: forget the old ones and the ones whose furnace is gone, and keep our own digging off the rest
+    // every tick that has jobs: forget the old ones and the ones whose furnace is gone. our own digging is kept off the rest by
+    // GamerTask's jobSpots, which follows the job list (it used to be avoidBlockBreaking(at) here, every tick, into whatever
+    // behaviour level was on top: those never came off, so a furnace that once had a job stayed "do not mine" for the whole run)
     public void housekeeping(AltoClef mod, GamerContext ctx) {
         List<RunState.FurnaceJob> jobs = ctx.state().furnaceJobs;
         long now = ctx.facts().gameTime();
@@ -142,8 +144,6 @@ public final class FurnaceWatch {
                 gone.add(job);
                 say(FurnacePlan.done(job, FurnacePlan.Why.GONE, now));
                 ctx.log("the furnace at " + job.pos + " is gone, forgetting what was in it");
-            } else {
-                mod.getBehaviour().avoidBlockBreaking(at);
             }
         }
         if (!gone.isEmpty()) {

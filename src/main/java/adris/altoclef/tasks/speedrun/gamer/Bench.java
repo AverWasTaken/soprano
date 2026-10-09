@@ -40,6 +40,12 @@ public final class Bench {
     public int bagBefore;
     // the last tick a phase ran this pickup. a pickup nobody drives is not a reason to veto anything
     public long drivenTick = WorkbenchRules.NEVER;
+    // ticks the pickup really had the wheel since it began (or since the block came down). the time limits count these, not the
+    // clock: a mob fight or a craft in between is not the pickup failing
+    public long ranTicks;
+    // the tries ran out on time alone and the block still stands: kept, and tried again once we have been away and come back near
+    public boolean pickupFailed;
+    public boolean leftSinceFail;
     // why the last pickup was started, and the last wait reason that went to the log (so a wait is one line, not one per tick)
     public String why = "";
     public String waitLogged = "";

@@ -782,4 +782,18 @@ public class WorkbenchesRegistryTest {
         // 20.5 away from a 0.5 block middle at x = 21.0
         assertTrue(plannerWalk(state, Kind.SMOKER, new double[]{21.0})[0]);
     }
+
+    // the "do not dig through it" list follows the job list: a furnace whose job is done stops being protected, so its pickup (and
+    // anything else) can break it. it used to stay on the list for the whole run
+    @Test
+    public void onlyFurnacesWithAJobInThisDimensionAreProtected() {
+        RunState state = new RunState();
+        assertTrue(GamerTask.spotsOf(state, OVERWORLD).isEmpty());
+        assertTrue(GamerTask.spotsOf(null, OVERWORLD).isEmpty());
+        state.furnaceJobs.add(new RunState.FurnaceJob(pos(1, 64, 1), OVERWORLD, "furnace", "raw_iron", 8, "iron_ingot", 0, 100));
+        state.furnaceJobs.add(new RunState.FurnaceJob(pos(2, 64, 2), NETHER, "smoker", "beef", 4, "cooked_beef", 0, 100));
+        assertEquals(java.util.Set.of(new BlockPos(1, 64, 1)), GamerTask.spotsOf(state, OVERWORLD));
+        state.furnaceJobs.remove(0);
+        assertTrue(GamerTask.spotsOf(state, OVERWORLD).isEmpty());
+    }
 }

@@ -15,7 +15,6 @@ import adris.altoclef.util.helpers.StationHook;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.StationHook.Kind;
 import adris.altoclef.util.helpers.WalkCost;
-import adris.altoclef.util.helpers.WorldHelper;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.entity.player.Player;
@@ -245,7 +244,7 @@ public final class Workbenches {
     public static StationHook.Source source(RunState state, GamerFacts facts) {
         return new StationHook.Source() {
             @Override
-            public BlockPos standingNear(Kind kind, double x, double y, double z) {
+            public BlockPos standingWithin(Kind kind, double x, double y, double z, double radius) {
                 String dimension = facts.dimension().name();
                 Bench best = null;
                 double bestDistance = Double.MAX_VALUE;
@@ -254,7 +253,7 @@ public final class Workbenches {
                         continue;
                     }
                     double d = WalkCost.stationDistance(b.pos.x, b.pos.y, b.pos.z, x, y, z);
-                    if (d <= WorkbenchRules.NEAR && d < bestDistance) {
+                    if (d <= radius && d < bestDistance) {
                         best = b;
                         bestDistance = d;
                     }
@@ -379,8 +378,8 @@ public final class Workbenches {
                 }
                 case DROP_LOST -> dropEntry(state, b, "the block is down and its drop never made it into the bag");
                 case ABORT_BUSY -> abort(b, "it has our items in it now");
-                case TIMED_OUT -> failed(state, b, now, "ran out of time (" + Math.round(limit / 20.0) + " s)");
-                case UNREACHABLE -> failed(state, b, now, "cannot be broken from here");
+                case TIMED_OUT -> failed(state, b, now, "ran out of time (" + Math.round(limit / 20.0) + " s of trying)", true);
+                case UNREACHABLE -> failed(state, b, now, "cannot be broken at all", false);
                 case CONTINUE -> active = b;
                 case PICK_UP -> {
                     // the table first (the kit wants it for the crafts after), then the nearest
@@ -451,8 +450,8 @@ public final class Workbenches {
                 return false;
             }
         }
-        if (!WorldHelper.canBreak(mod, bp(b.pos))) {
-            log(b + ": emptied but cannot be broken from here, the next look decides");
+        if (!breakable(mod, bp(b.pos))) {
+            log(b + ": emptied but cannot be broken at all, the next look decides");
             return false;
         }
         b.state = Bench.State.STANDING;
@@ -471,10 +470,18 @@ public final class Workbenches {
         }
     }
 
-    private void failed(RunState state, Bench b, long now, String why) {
+    // `onTime`: the try ran out of its (driven) time, the block is still there. those never forget it, three of them park it until we
+    // come back near. only a block that cannot be broken at all is written off
+    private void failed(RunState state, Bench b, long now, String why, boolean onTime) {
         boolean last = WorkbenchRules.failedTry(b, now);
         if (taskFor == b) {
             reset();
+        }
+        if (last && onTime) {
+            WorkbenchRules.parkFailed(b);
+            log(b + ": pickup " + why + ", " + WorkbenchRules.MAX_TRIES + " tries used up and the block still stands, keeping it and"
+                    + " trying again once we have been away and come back near");
+            return;
         }
         if (last) {
             dropEntry(state, b, "pickup " + why + ", " + WorkbenchRules.MAX_TRIES + " tries used up");
@@ -513,9 +520,18 @@ public final class Workbenches {
         boolean loaded = mod.getChunkTracker().isChunkLoaded(at);
         boolean gone = loaded && !mod.getWorld().getBlockState(at).is(blockOf(b.kind));
         boolean idle = idle(mod, ctx, b, now);
-        boolean canBreak = !loaded || gone || WorldHelper.canBreak(mod, at);
+        boolean canBreak = !loaded || gone || breakable(mod, at);
         boolean canRecraft = b.kind == Kind.TABLE && WorkbenchRules.canRecraftTable(ctx.facts().count(ItemHelper.PLANKS), ctx.facts().count(ItemHelper.LOG));
         return new WorkbenchRules.Look(now, distance, true, gone, idle, holdsStuff(mod, ctx, b), jobHere(ctx, b), neededSoon, canBreak, limit, canRecraft);
+    }
+
+    // can the pickup break this block at all. not WorldHelper.canBreak: that one says no to anything on the "don't mine this" list,
+    // and every furnace that ever had a job is on it (FurnaceWatch keeps our digging off it, the collect task too while it is at
+    // it), so a smoker we had just emptied was "cannot be broken from here" three times and forgotten standing. it also says no to
+    // a spot the tracker marked unreachable, which is a walk that failed, and walking into reach is DestroyBlockTask's job. a
+    // furnace, a smoker or a table can always be broken
+    static boolean breakable(AltoClef mod, BlockPos at) {
+        return mod.getWorld().getBlockState(at).getDestroySpeed(mod.getWorld(), at) >= 0;
     }
 
     // an interrupted load: our items are in this one and no job points at it. the job it becomes is stranded (nothing is known to be
@@ -602,7 +618,7 @@ public final class Workbenches {
     private Task drive(AltoClef mod, GamerContext ctx, Bench b) {
         GamerFacts f = ctx.facts();
         long now = f.gameTime();
-        b.drivenTick = now;
+        WorkbenchRules.drove(b, now);
         BlockPos at = bp(b.pos);
         Item item = itemOf(b.kind);
         if (taskFor != b) {

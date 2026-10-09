@@ -65,6 +65,13 @@ public class WorkbenchRulesTest {
         return b;
     }
 
+    // the pickup holds the wheel every tick after `from` up to `to`
+    private static void run(Bench b, long from, long to) {
+        for (long t = from + 1; t <= to; t++) {
+            WorkbenchRules.drove(b, t);
+        }
+    }
+
     // ---- one distance for everything
 
     @Test
@@ -710,8 +717,10 @@ public class WorkbenchRulesTest {
         Bench b = pickingUp(1000);
         Seen s = new Seen();
         s.limit = 600;
+        run(b, 1000, 1600);
         s.now = 1600;
         assertEquals(Call.CONTINUE, decide(b, s));
+        run(b, 1600, 1601);
         s.now = 1601;
         assertEquals(Call.TIMED_OUT, decide(b, s));
         // the block already down is not a timeout, the world half is about to notice it
@@ -724,8 +733,10 @@ public class WorkbenchRulesTest {
         Bench b = pickingUp(1000);
         Seen s = new Seen();
         s.limit = 40;
+        run(b, 1000, 1040);
         s.now = 1040;
         assertEquals(Call.CONTINUE, decide(b, s));
+        run(b, 1040, 1041);
         s.now = 1041;
         assertEquals(Call.TIMED_OUT, decide(b, s));
     }
@@ -733,15 +744,19 @@ public class WorkbenchRulesTest {
     @Test
     public void aDropThatNeverArrivesIsGivenUpAfterItsOwnWindow() {
         Bench b = pickingUp(1000);
+        WorkbenchRules.drove(b, 2000);
         WorkbenchRules.blockBroken(b, 2000);
         Seen s = new Seen();
         s.blockGone = true;
         s.limit = 600;
         // the break phase limit means nothing any more
+        run(b, 2000, 2000 + 601);
         s.now = 2000 + 601;
         assertEquals(Call.CONTINUE, decide(b, s));
+        run(b, 2000 + 601, 2000 + WorkbenchRules.DROP_GIVE_UP_TICKS);
         s.now = 2000 + WorkbenchRules.DROP_GIVE_UP_TICKS;
         assertEquals(Call.CONTINUE, decide(b, s));
+        run(b, 2000 + WorkbenchRules.DROP_GIVE_UP_TICKS, 2000 + WorkbenchRules.DROP_GIVE_UP_TICKS + 1);
         s.now = 2000 + WorkbenchRules.DROP_GIVE_UP_TICKS + 1;
         assertEquals(Call.DROP_LOST, decide(b, s));
     }
@@ -846,6 +861,7 @@ public class WorkbenchRulesTest {
         Bench b = pickingUp(1000);
         Seen s = new Seen();
         s.limit = 100;
+        run(b, 1000, 1101);
         s.now = 1101;
         assertEquals(Call.TIMED_OUT, decide(b, s));
         assertFalse(WorkbenchRules.failedTry(b, s.now));
@@ -1478,5 +1494,69 @@ public class WorkbenchRulesTest {
         decide(b, new Seen());
         assertFalse(b.givenUp);
         assertFalse(b.givenUpLogged);
+    }
+
+    // ---- a pickup try only burns while the pickup has the wheel
+
+    @Test
+    public void triesDoNotBurnWhileSomethingElseHasTheWheel() {
+        Bench b = pickingUp(1000);
+        Seen s = new Seen();
+        s.limit = 600;
+        // ten ticks of the pickup, then a chicken, a pig and a stone axe for four minutes
+        run(b, 1000, 1010);
+        s.now = 1010 + 4800;
+        assertEquals(Call.CONTINUE, decide(b, s));
+        assertEquals(10, b.ranTicks);
+        // back on it: the gap was not ours, the next tick adds one and not 4800
+        WorkbenchRules.drove(b, s.now);
+        assertEquals(10, b.ranTicks);
+        run(b, s.now, s.now + 590);
+        s.now += 590;
+        assertEquals(Call.CONTINUE, decide(b, s));
+        run(b, s.now, s.now + 1);
+        s.now += 1;
+        assertEquals(Call.TIMED_OUT, decide(b, s));
+        // a skipped tick in the middle of a stretch still counts, the pickup was running
+        Bench c = pickingUp(0);
+        WorkbenchRules.drove(c, 1);
+        WorkbenchRules.drove(c, 3);
+        assertEquals(3, c.ranTicks);
+    }
+
+    @Test
+    public void aStandingStationIsNotForgottenWhenItsTriesRanOutOnTime() {
+        Bench b = table();
+        for (int i = 0; i < WorkbenchRules.MAX_TRIES - 1; i++) {
+            assertFalse(WorkbenchRules.failedTry(b, 1000));
+        }
+        assertTrue(WorkbenchRules.failedTry(b, 1000));
+        WorkbenchRules.parkFailed(b);
+        assertEquals(0, b.tries);
+        Seen s = new Seen();
+        s.neededSoon = false;
+        s.now = 5000;
+        // right where the three tries failed: not a fourth go at the same walk
+        assertEquals(Call.KEEP, decide(b, s));
+        // and it does not hold the phase
+        assertTrue(WorkbenchRules.phaseMayEnd(List.of(b), OVERWORLD, x -> false));
+        // off on the next job, then past it again
+        s.distance = 40;
+        assertEquals(Call.KEEP, decide(b, s));
+        assertTrue(b.leftSinceFail);
+        s.distance = 5;
+        assertEquals(Call.PICK_UP, decide(b, s));
+        assertFalse(b.pickupFailed);
+        // still forgotten when the block really is gone or it is past the forget line
+        Bench gone = table();
+        WorkbenchRules.parkFailed(gone);
+        Seen g = new Seen();
+        g.blockGone = true;
+        assertEquals(Call.FORGET_GONE, decide(gone, g));
+        Bench far = table();
+        WorkbenchRules.parkFailed(far);
+        Seen f = new Seen();
+        f.distance = WorkbenchRules.FORGET_DISTANCE + 1;
+        assertEquals(Call.FORGET_TOO_FAR, decide(far, f));
     }
 }
