@@ -2052,4 +2052,52 @@ public class WorkbenchRulesTest {
         assertEquals(WorkbenchRules.Anchor.RELEASED, WorkbenchRules.updateAnchor(b, null, 12, true));
         assertTrue(b.redecide);
     }
+
+    // ---- the visit that empties a station with nothing ahead (no 3 s hold for that one)
+
+    @Test
+    public void anEmptyingVisitWithNothingAheadPicksUpAtOnce() {
+        Bench furnace = bench(Kind.FURNACE);
+        WorkbenchRules.updateComingBack(furnace, "to smelt", 100);
+        // the visit took the last ingots: the plan says no on the next look and the hold starts counting
+        WorkbenchRules.updateComingBack(furnace, null, 101);
+        assertEquals("to smelt", furnace.comingBack);
+        boolean nothing = WorkbenchRules.nothingAhead(Kind.FURNACE, false, 0, false, false);
+        assertTrue(nothing);
+        assertFalse(WorkbenchRules.keepForComingBack(furnace, nothing));
+        // also before the plan caught up (the look that still had iron_ingot in it): the bag says the iron is done
+        Bench stale = bench(Kind.FURNACE);
+        WorkbenchRules.updateComingBack(stale, "to smelt", 100);
+        assertFalse(WorkbenchRules.keepForComingBack(stale, nothing));
+        // a smoker with no raw meat and enough food
+        Bench smoker = bench(Kind.SMOKER);
+        WorkbenchRules.updateComingBack(smoker, "to cook", 100);
+        assertFalse(WorkbenchRules.keepForComingBack(smoker, WorkbenchRules.nothingAhead(Kind.SMOKER, true, 0, true, false)));
+    }
+
+    @Test
+    public void aPlanFlickerStillHoldsTheEmptiedStation() {
+        Bench furnace = bench(Kind.FURNACE);
+        WorkbenchRules.updateComingBack(furnace, "to smelt", 100);
+        // the plan's head flipped for a tick, but iron is still owed: the bag knows better, it stays
+        WorkbenchRules.updateComingBack(furnace, null, 101);
+        assertTrue(WorkbenchRules.keepForComingBack(furnace, WorkbenchRules.nothingAhead(Kind.FURNACE, true, 0, false, false)));
+        // a smoker with meat to cook, or a hunt ahead (short of food), is the same
+        Bench smoker = bench(Kind.SMOKER);
+        WorkbenchRules.updateComingBack(smoker, "to cook", 100);
+        WorkbenchRules.updateComingBack(smoker, null, 101);
+        assertTrue(WorkbenchRules.keepForComingBack(smoker, WorkbenchRules.nothingAhead(Kind.SMOKER, false, 3, true, false)));
+        assertTrue(WorkbenchRules.keepForComingBack(smoker, WorkbenchRules.nothingAhead(Kind.SMOKER, false, 0, true, true)));
+        // and nothing to keep it for in the first place is no hold at all
+        assertFalse(WorkbenchRules.keepForComingBack(bench(Kind.FURNACE), false));
+    }
+
+    @Test
+    public void nothingAheadForAFurnaceIgnoresMeatWhenOurSmokerTakesIt() {
+        // the meat goes in the smoker, the furnace has nothing coming
+        assertTrue(WorkbenchRules.nothingAhead(Kind.FURNACE, false, 5, true, true));
+        // no smoker of ours: the meat (or the hunt) comes back to this furnace
+        assertFalse(WorkbenchRules.nothingAhead(Kind.FURNACE, false, 5, false, false));
+        assertFalse(WorkbenchRules.nothingAhead(Kind.FURNACE, false, 0, false, true));
+    }
 }

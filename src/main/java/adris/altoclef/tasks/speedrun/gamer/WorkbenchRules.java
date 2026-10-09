@@ -609,6 +609,22 @@ public final class WorkbenchRules {
         return Anchor.RELEASED;
     }
 
+    // nothing in the bag or the plan's facts has a use for this furnace or smoker: no iron owed (a furnace), no raw meat that would go
+    // in it and not short of food (a hunt fills the smoker next). these are bag counts, they do not flicker the way the plan's
+    // head does
+    public static boolean nothingAhead(Kind kind, boolean ironOwed, int rawMeat, boolean smokerOfOurs, boolean foodShort) {
+        boolean meatHere = (rawMeat > 0 || foodShort) && (kind == Kind.SMOKER || !smokerOfOurs);
+        return kind == Kind.SMOKER ? !meatHere : !ironOwed && !meatHere;
+    }
+
+    // the visit that emptied a station keeps it standing for the comingBack reason only while something is really ahead for it.
+    // the 3 s hold in updateComingBack is for a plan that flickers, and the plan says no for a tick then; the bag does not. a
+    // visit that took the last of it with nothing ahead is the real end, and we are standing right at it, so it comes down now
+    // instead of after the hold (by when we may have walked out of NEAR)
+    public static boolean keepForComingBack(Bench b, boolean nothingAhead) {
+        return b.comingBack != null && !nothingAhead;
+    }
+
     // the anchor is not flickering, it is done: coming down, in the bag, out of the registry. so is a standing one whose comingBack
     // let go, that answer already sat out its own 3 s, and a second 3 s here walks us out of NEAR before the table is decided again
     public static boolean anchorLeft(Bench was, Collection<Bench> benches) {
