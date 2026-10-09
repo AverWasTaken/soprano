@@ -281,7 +281,7 @@ public abstract class DoStuffInContainerTask extends Task {
             case BAG -> "none within " + Math.round(WalkCost.STATION_NEAR) + " blocks, placing the one from the bag";
             case MAKE -> "none within " + Math.round(WalkCost.STATION_NEAR) + " blocks and none in the bag, making one"
                     + (_canMakeNow ? " (the bag has what it takes)" : " (nothing standing within " + Math.round(WalkCost.STATION_FORGET)
-                    + " either, gathering for it)");
+                    + " either, gathering for it" + (StationHook.cobbleOwed() > 0 ? ", " + StationHook.cobbleOwed() + " cobble owed to the tools" : "") + ")");
             case NONE -> "none to use and not allowed to make one";
         };
         Debug.logInternal("bench: " + word + " choice: " + line);
