@@ -418,9 +418,15 @@ public final class KitPlanner {
     // takes it at 3 a porkchop, not 8), and counting it at 80 for ten of them meant the kit never hunted. one number for the
     // planner, the food gate and the portal gate, so they cannot disagree
     public static int foodHeld(GamerFacts f, OverworldConfig cfg, int endBeds) {
-        int held = f.foodUnits() + f.pendingFoodUnits();
+        return f.foodUnits() + f.pendingFoodUnits() - rawGapLeftOut(f, cfg, endBeds);
+    }
+
+    // the part of the raw meat's cooked value that foodHeld takes back out: all of CookGate.rawGap while no cook can happen, none
+    // while one can (the sum has it then). FoodGate.covered needs it, adding the whole rawGap to a held that already counts it
+    // would pay the same chicken twice
+    public static int rawGapLeftOut(GamerFacts f, OverworldConfig cfg, int endBeds) {
         int gap = CookGate.rawGap(f);
-        return gap > 0 && !CookGate.cookFeasible(f, cfg, endBeds) ? held - gap : held;
+        return gap > 0 && !CookGate.cookFeasible(f, cfg, endBeds) ? gap : 0;
     }
 
     // 3 wool a bed, and a bed we already carry is 3 wool we do not need to find. a bed wants three of ONE colour, so

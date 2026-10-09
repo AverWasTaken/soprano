@@ -65,6 +65,10 @@ public class IronPhase implements PhaseHandler {
     // FoodGate: a food top-up that started on the surface runs to the full amount, and the band the count was last in (-1 = unset)
     private boolean foodTopUp;
     private int foodBand = -1;
+    // the food need led last tick (a screen that opens then is its own, FoodGate.cookBusy) and the soft top-up was called off
+    // because the raw meat in the bag covers the hole (FoodGate.covered), the second only so it is announced once
+    private boolean foodLed;
+    private boolean foodCovered;
     // CookGate: a cook that started early (surface, or between jobs) keeps the front until the meat is cooked
     private boolean cookLatch;
     // the smoker we are standing by for, and the game tick that stand by ends at at the latest (standingBy)
@@ -105,6 +109,8 @@ public class IronPhase implements PhaseHandler {
         committed = null;
         hudState = null;
         foodTopUp = false;
+        foodLed = false;
+        foodCovered = false;
         cookLatch = false;
         foodBand = -1;
         standJob = null;
@@ -370,18 +376,30 @@ public class IronPhase implements PhaseHandler {
         int at = FoodGate.index(needs, cfg);
         if (at < 0) {
             foodTopUp = false;
+            foodLed = false;
+            foodCovered = false;
             return needs;
         }
         // the heightmap only matters between the two lines
         boolean surfaced = band == 1 && SmeltSurface.shallow(SmeltSurface.depthBelowSky(mod));
         // a cook picked its station, or a smelt screen is in hand right now: the meat in that screen is not in the bag, not a job
-        // yet and not in the held sum, which is how a half loaded smoker read as 56 units and sent the bot for cows (23:18:36)
-        boolean lead = FoodGate.leads(held, cfg, surfaced, foodTopUp, ctx.facts().cookStation() != null || loadInFlight(mod, ctx));
+        // yet and not in the held sum, which is how a half loaded smoker read as 56 units and sent the bot for cows. unless the
+        // food need was the one leading: then the screen is the top-up's own and it must not cut itself off
+        boolean busy = FoodGate.cookBusy(ctx.facts().cookStation() != null, loadInFlight(mod, ctx), foodLed);
+        // the cooked value of the raw meat that held does not count (no cook possible), see FoodGate.covered
+        int rawLeftOut = KitPlanner.rawGapLeftOut(ctx.facts(), cfg, ctx.cfg().end.beds);
+        boolean lead = FoodGate.leads(held, rawLeftOut, cfg, surfaced, foodTopUp, busy);
+        boolean covered = FoodGate.covered(held, rawLeftOut, cfg);
+        if (covered && !foodCovered) {
+            Debug.logInternal("food: " + held + " units held, short of " + cfg.minFoodUnits + " but the raw meat in the bag covers it once cooked, no trip");
+        }
+        foodCovered = covered;
         boolean wasTopUp = foodTopUp;
-        foodTopUp = FoodGate.nextTopUp(foodTopUp, held, cfg, lead);
+        foodTopUp = FoodGate.nextTopUp(foodTopUp, held, rawLeftOut, cfg, lead);
         if (foodTopUp && !wasTopUp) {
             Debug.logInternal("food: topping up from " + held + " to " + cfg.minFoodUnits + " now that it is cheap");
         }
+        foodLed = lead;
         return lead ? needs : FoodGate.without(needs, at);
     }
 
