@@ -138,9 +138,14 @@ public final class FoodPlan {
         return units + junk;
     }
 
-    // the End hunt: the floor and a margin, plus the junk
+    // the End hunt: the floor and a margin, plus the junk, plus what is still cooking. the hunt must not count a batch any more than
+    // the gate does (shortOfEndFloor), but CollectFoodTask books one in a smoker as food on the way and that is not ours to switch
+    // off from here: asking for the same number on top cancels it, so the task hunts for units that are really in the bag
     public int endCollect() {
-        return collect(endFloor + END_MARGIN);
+        // and while a batch is out the task will not cook the raw meat in the bag (one smoker, one slot) but still counts it cooked:
+        // without the raw gap on top it thinks it has enough, cannot cook, and wanders instead of hunting. with nothing pending
+        // it cooks the meat itself, so the gap is real food there
+        return collect(endFloor + END_MARGIN) + pending + (pending > 0 ? rawLeftOut : 0);
     }
 
     // ---- the verdicts
@@ -153,8 +158,10 @@ public final class FoodPlan {
         return shortOf(minimum);
     }
 
+    // the End gate. food still cooking is not ours yet: END_PREP never goes back to a furnace, so a batch in a smoker is food we would
+    // walk away from. everything else is held (raw meat nothing will cook is already at its raw value there, see rawLeftOut)
     public boolean shortOfEndFloor() {
-        return shortOf(endFloor);
+        return held() - pending < endFloor;
     }
 
     // which side of the two overworld lines held is on (0 under the floor, 1 between, 2 at the minimum or over), for the log line

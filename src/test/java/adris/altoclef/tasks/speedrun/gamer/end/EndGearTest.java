@@ -120,6 +120,37 @@ public class EndGearTest {
     }
 
     @Test
+    public void foodStillCookingDoesNotCountAtTheGate() {
+        // 4 porkchop in a smoker we left behind: it is held for the kit and the portal, and for the End it is not there yet
+        FakeFacts f = ready();
+        f.food = 0;
+        f.cookingFood("cooked_porkchop", 4, 8);
+        assertEquals(32, FoodPlan.of(f, new OverworldConfig(), cfg, true).held());
+        assertTrue(missing(f, new RunState(), cfg.beds).food());
+        assertFalse(missing(f, new RunState(), cfg.beds).none());
+        // the bag has to carry the floor by itself, the batch is on top and moves nothing
+        f.food = cfg.minFoodUnits;
+        assertFalse(missing(f, new RunState(), cfg.beds).food());
+        f.food = cfg.minFoodUnits - 1;
+        assertTrue(missing(f, new RunState(), cfg.beds).food());
+    }
+
+    @Test
+    public void rawMeatBehindAStaleBatchIsStillWorthItsRawValueAtTheGate() {
+        // three raw beef (24 on paper, 9 to eat) and a batch cooking in a smoker that END_PREP will never go back to: the gate has
+        // the 9, not the 24 the old read gave, and not the batch either
+        FakeFacts f = ready().with(Items.BEEF, 3);
+        f.food = 3 * FoodHelper.plannedNutrition(Items.BEEF);
+        f.cookingFood("cooked_porkchop", 4, 8);
+        assertEquals(cfg.minFoodUnits, f.food);
+        assertTrue(missing(f, new RunState(), cfg.beds).food());
+        // real cooked food on top clears it, the batch still does not count
+        f.with(Items.COOKED_BEEF, 2);
+        f.food += 2 * FoodHelper.plannedNutrition(Items.COOKED_BEEF);
+        assertFalse(missing(f, new RunState(), cfg.beds).food());
+    }
+
+    @Test
     public void bedsAreCountedAcrossColours() {
         FakeFacts f = ready().with(Items.WHITE_BED, 5).with(Items.RED_BED, 2);
         assertEquals(1, missing(f, new RunState(), cfg.beds).beds());

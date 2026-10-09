@@ -231,6 +231,31 @@ public class FoodPlanTest {
         assertEquals(41, p.held());
         assertEquals(9, p.held() - p.pending());
         assertTrue(p.held() - p.pending() < end.minFoodUnits);
+        // and the End gate says so: 9 of 24, the batch and the 24 on paper do not get it through
+        assertTrue(p.shortOfEndFloor());
+        assertTrue(EndGear.missing(f, new RunState(), end, 0, p).food());
+        // the hunt asks for the batch on top (the food task counts it as food on the way, the gate does not), and for the raw gap,
+        // which the task counts cooked but will not cook while the batch is out
+        assertEquals(end.minFoodUnits + FoodPlan.END_MARGIN + 32 + 15, p.endCollect());
+    }
+
+    @Test
+    public void enoughRawMeatOnPaperBehindAStaleBatchStillSendsTheHuntOut() {
+        // 5 raw beef: 40 on paper, 15 to eat. the food task's own count is 40 + the batch's 32 = 72, which used to clear a target of
+        // 64, so it sat in its convert branch unable to cook and wandered. the target has to be over what it counts
+        FakeFacts f = new FakeFacts();
+        f.give(Items.BEEF, 5);
+        f.foodUnits = 5 * FoodHelper.plannedNutrition(Items.BEEF);
+        f.cookingFood("cooked_porkchop", 4, 8, 20);
+        FoodPlan p = planIn(f, GamerPhase.END_PREP);
+        assertTrue(p.shortOfEndFloor());
+        assertEquals(32 + 32 + 25, p.endCollect());
+        assertTrue(f.foodUnits + p.pending() < p.endCollect());
+        // with no batch out the task cooks the raw meat itself, so the gap is not asked for
+        FakeFacts noBatch = new FakeFacts();
+        noBatch.give(Items.BEEF, 5);
+        noBatch.foodUnits = 40;
+        assertEquals(32, planIn(noBatch, GamerPhase.END_PREP).endCollect());
     }
 
     @Test
@@ -839,16 +864,38 @@ public class FoodPlanTest {
     }
 
     @Test
-    public void theEndGateCountsABatchTheSmokerIsCookingForUs() {
-        // empty bag, 4 pork in the smoker (32 units): every other gate calls that held, the End one only saw the bag
+    public void theEndGateLeavesOutABatchStillCooking() {
+        // empty bag, 4 pork in the smoker (32 units): every other gate calls that held, but nothing in END_PREP goes back to
+        // the smoker, so the End gate has an empty bag to go on
         FakeFacts f = new FakeFacts();
         f.cookingFood("cooked_porkchop", 4, 8, 20);
         assertEquals(0, f.foodUnits());
+        FoodPlan p = planIn(f, GamerPhase.END_PREP);
+        assertEquals(32, p.held());
+        assertEquals(32, p.pending());
+        assertTrue(p.shortOfEndFloor());
+        assertTrue(EndGear.missing(f, new RunState(), end, 0, p).food());
+        // the kit and the portal gate still count it, they do go back for it: 32 is under their 70 and over the End's 24
         assertEquals(32, plan(f).held());
-        assertTrue("the old read", f.foodUnits() < end.minFoodUnits);
-        assertFalse(EndGear.missing(f, new RunState(), end, 0, plan(f)).food());
-        // the kit and the portal gate are short of 70 with it, as they always were
         assertTrue(plan(f).shortOfMinimum());
+        assertFalse(plan(f).held() < end.minFoodUnits);
+        // and the hunt asks for it on top, CollectFoodTask books a batch in a smoker as food on the way
+        assertEquals(end.minFoodUnits + FoodPlan.END_MARGIN + 32, p.endCollect());
+    }
+
+    @Test
+    public void aBatchCookingNextToFoodInTheBagOnlyCountsTheBag() {
+        // 30 cooked in the bag and 40 on the way: held is 70, the End gate has the 30 and clears its 24
+        FakeFacts f = new FakeFacts();
+        f.foodUnits = 30;
+        f.cookingFood("cooked_porkchop", 5, 8, 20);
+        FoodPlan p = planIn(f, GamerPhase.END_PREP);
+        assertEquals(70, p.held());
+        assertFalse(p.shortOfEndFloor());
+        // 20 in the bag is under the line whatever is cooking
+        f.foodUnits = 20;
+        assertEquals(60, planIn(f, GamerPhase.END_PREP).held());
+        assertTrue(planIn(f, GamerPhase.END_PREP).shortOfEndFloor());
     }
 
     @Test

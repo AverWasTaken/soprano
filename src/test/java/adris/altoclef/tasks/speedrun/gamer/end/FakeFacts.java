@@ -1,11 +1,14 @@
 package adris.altoclef.tasks.speedrun.gamer.end;
 
 import adris.altoclef.tasks.speedrun.gamer.GamerFacts;
+import adris.altoclef.tasks.speedrun.gamer.RunState;
 import baritone.api.utils.Dimension;
 import net.minecraft.world.item.Item;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -21,12 +24,27 @@ class FakeFacts implements GamerFacts {
     int z;
     long gameTime = 100_000;
     boolean credits;
-    // a smoker of ours standing next to us
+    // a smoker of ours standing next to us, and the batches cooking in stations of ours
     boolean smokerPlaced;
+    final List<RunState.FurnaceJob> jobs = new ArrayList<>();
 
     FakeFacts with(Item item, int count) {
         items.put(item, count);
         return this;
+    }
+
+    // meat in a smoker, `count` items worth `unitsEach` nutrition apiece once done
+    FakeFacts cookingFood(String output, int count, int unitsEach) {
+        RunState.FurnaceJob job = new RunState.FurnaceJob(new RunState.Pos(5, 64, 0), dimension.name(), "smoker", "porkchop", count,
+                output, gameTime, gameTime + 400);
+        job.unitsEach = unitsEach;
+        jobs.add(job);
+        return this;
+    }
+
+    @Override
+    public List<RunState.FurnaceJob> furnaceJobs() {
+        return jobs;
     }
 
     @Override
