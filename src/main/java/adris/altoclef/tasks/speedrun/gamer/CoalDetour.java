@@ -13,6 +13,7 @@ import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.MiningRequirement;
 import adris.altoclef.util.helpers.WorldHelper;
 import baritone.api.utils.Dimension;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.inventory.AbstractFurnaceMenu;
@@ -231,7 +232,8 @@ public final class CoalDetour {
     private long sightTick = Long.MIN_VALUE;
 
     private boolean visible(AltoClef mod, BlockPos pos) {
-        long now = mod.getWorld().getGameTime();
+        // the gui clock and not game time, which stands still under /tick freeze while we keep walking
+        long now = Minecraft.getInstance().gui.getGuiTicks();
         if (now != sightTick) {
             sight.clear();
             sightTick = now;

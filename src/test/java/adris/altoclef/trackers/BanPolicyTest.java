@@ -37,7 +37,7 @@ public class BanPolicyTest {
         bans.toolTier(2);
         assertFalse(bans.blockBanned(Dimension.OVERWORLD, 1, 2, 3));
         BanPolicy.blockStrike(bans, Dimension.OVERWORLD, 1, 2, 3, 0, 50, "r");
-        bans.chunkUnloaded(Dimension.OVERWORLD, 0, 0);
+        bans.chunkUnloaded(0, 0);
         bans.chunkLoaded(Dimension.OVERWORLD, 0, 0);
         assertFalse(bans.blockBanned(Dimension.OVERWORLD, 1, 2, 3));
     }

@@ -93,7 +93,7 @@ public class BlockTracker extends Tracker {
         // going lit looks like (Bans.chunkLoaded)
         EventBus.subscribe(ChunkUnloadEvent.class, evt -> {
             if (Minecraft.getInstance().level != null) {
-                _mod.getBans().chunkUnloaded(WorldHelper.getCurrentDimension(), evt.chunkPos.x, evt.chunkPos.z);
+                _mod.getBans().chunkUnloaded(evt.chunkPos.x, evt.chunkPos.z);
             }
         });
         EventBus.subscribe(ChunkLoadEvent.class, evt -> {

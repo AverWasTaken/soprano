@@ -60,6 +60,7 @@ public final class Bans {
     // the "n failures then out" bookkeeping, see strike
     private static final class Strikes {
         int failures;
+        long last;
         double bestDistSq = Double.POSITIVE_INFINITY;
         int bestTool;
     }
@@ -106,13 +107,24 @@ public final class Bans {
         tool = tier;
     }
 
-    // only remembered for a chunk that holds a CHUNK_RELOAD ban, walking across the map unloads thousands
-    public synchronized void chunkUnloaded(Dimension dim, int chunkX, int chunkZ) {
+    // only remembered for a chunk that holds a CHUNK_RELOAD ban, walking across the map unloads thousands. matched on the ban's
+    // own dimension and not the caller's: through a portal the old level's forget packets land after we switched levels
+    public synchronized void chunkUnloaded(int chunkX, int chunkZ) {
         for (List<Ban> list : bans.values()) {
             for (Ban b : list) {
-                if (inChunk(b, dim, chunkX, chunkZ)) {
-                    unloaded.computeIfAbsent(dim, d -> new HashSet<>()).add(chunkKey(chunkX, chunkZ));
-                    return;
+                if (b.key.dim != null && inChunk(b, b.key.dim, chunkX, chunkZ)) {
+                    unloaded.computeIfAbsent(b.key.dim, d -> new HashSet<>()).add(chunkKey(chunkX, chunkZ));
+                }
+            }
+        }
+    }
+
+    // we left this dimension: all of it unloaded as far as we are concerned, whether or not a forget packet ever said so
+    public synchronized void dimensionLeft(Dimension dim) {
+        for (List<Ban> list : bans.values()) {
+            for (Ban b : list) {
+                if (b.key.dim == dim && b.events.contains(Until.CHUNK_RELOAD)) {
+                    unloaded.computeIfAbsent(dim, d -> new HashSet<>()).add(chunkKey(b.key.x >> 4, b.key.z >> 4));
                 }
             }
         }
@@ -183,6 +195,12 @@ public final class Bans {
             return false;
         }
         Strikes s = strikes.computeIfAbsent(key, k -> new Strikes());
+        // a count that sat as long as its ban would have lasted is old news, not two halves of one ban
+        if (s.failures > 0 && ticks != RUN && now - s.last >= ticks) {
+            strikes.remove(key);
+            s = strikes.computeIfAbsent(key, k -> new Strikes());
+        }
+        s.last = now;
         if (tool > s.bestTool || distSq < s.bestDistSq - 1) {
             s.bestTool = Math.max(s.bestTool, tool);
             s.bestDistSq = Math.min(s.bestDistSq, distSq);

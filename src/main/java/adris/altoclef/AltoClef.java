@@ -18,6 +18,8 @@ import adris.altoclef.ui.MessageSender;
 import adris.altoclef.util.helpers.InputHelper;
 import adris.altoclef.util.helpers.SeenFilter;
 import adris.altoclef.util.helpers.StorageHelper;
+import adris.altoclef.util.helpers.WorldHelper;
+import baritone.api.utils.Dimension;
 import baritone.altoclef.BaritoneSettingsScope;
 import baritone.Baritone;
 import baritone.altoclef.AltoClefSettings;
@@ -72,6 +74,7 @@ public class AltoClef {
     // every "leave that alone" anybody decided, the trackers ask it before they offer a thing (see Bans)
     private final Bans _bans = new Bans(Debug::logInternal);
     private int _banToolTicks;
+    private Dimension _banDimension;
     private MiscBlockTracker _miscBlockTracker;
     // Renderers
     private CommandStatusOverlay _commandStatusOverlay;
@@ -213,6 +216,11 @@ public class AltoClef {
             return;
         }
         _bans.tick(level.getGameTime());
+        Dimension dim = WorldHelper.getCurrentDimension();
+        if (_banDimension != null && dim != _banDimension) {
+            _bans.dimensionLeft(_banDimension);
+        }
+        _banDimension = dim;
         // our own count and not game time % 20, a server time correction can jump right over the 20
         if (++_banToolTicks % 20 == 0) {
             _bans.toolTier(StorageHelper.getCurrentMiningRequirement(this).ordinal());

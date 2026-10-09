@@ -118,10 +118,9 @@ public class BansTest {
         bans.ban(block(17, 60, -1), "a", Bans.RUN, Until.CHUNK_RELOAD);
         bans.ban(block(40, 60, -1), "b", Bans.RUN, Until.CHUNK_RELOAD);
         bans.ban(block(18, 60, -2), "c", Bans.RUN);
-        bans.chunkUnloaded(Dimension.NETHER, 1, -1);
+        bans.chunkUnloaded(1, -1);
         bans.chunkLoaded(Dimension.NETHER, 1, -1);
-        assertTrue(bans.blockBanned(Dimension.OVERWORLD, 17, 60, -1));
-        bans.chunkUnloaded(Dimension.OVERWORLD, 1, -1);
+        assertTrue("a nether load is not this chunk", bans.blockBanned(Dimension.OVERWORLD, 17, 60, -1));
         bans.chunkLoaded(Dimension.OVERWORLD, 1, -1);
         assertFalse(bans.blockBanned(Dimension.OVERWORLD, 17, 60, -1));
         assertTrue(bans.blockBanned(Dimension.OVERWORLD, 40, 60, -1));
@@ -205,14 +204,14 @@ public class BansTest {
         bans.ban(block(17, 60, -1), "a", Bans.RUN, Until.CHUNK_RELOAD);
         bans.chunkLoaded(Dimension.OVERWORLD, 1, -1);
         assertTrue(bans.blockBanned(Dimension.OVERWORLD, 17, 60, -1));
-        bans.chunkUnloaded(Dimension.OVERWORLD, 1, -1);
+        bans.chunkUnloaded(1, -1);
         bans.chunkLoaded(Dimension.OVERWORLD, 1, -1);
         assertFalse(bans.blockBanned(Dimension.OVERWORLD, 17, 60, -1));
     }
 
     @Test
     public void anUnloadOfAChunkWithNoReloadBanIsNotKept() {
-        bans.chunkUnloaded(Dimension.OVERWORLD, 1, -1);
+        bans.chunkUnloaded(1, -1);
         // the ban comes after, so the next load is not a reload for it
         bans.ban(block(17, 60, -1), "a", Bans.RUN, Until.CHUNK_RELOAD);
         bans.chunkLoaded(Dimension.OVERWORLD, 1, -1);
@@ -242,5 +241,27 @@ public class BansTest {
         assertFalse(bans.strike(k, "r", 0, 100, 1000));
         assertEquals(1, bans.count());
         assertEquals(lines0, lines.size());
+    }
+
+    @Test
+    public void aPortalRoundTripIsAReload() {
+        // no forget packet for the overworld ever reaches us under the overworld's name, leaving the dimension is the unload
+        bans.ban(block(17, 60, -1), "a", Bans.RUN, Until.CHUNK_RELOAD);
+        bans.dimensionLeft(Dimension.OVERWORLD);
+        bans.chunkLoaded(Dimension.NETHER, 1, -1);
+        assertTrue(bans.blockBanned(Dimension.OVERWORLD, 17, 60, -1));
+        bans.chunkLoaded(Dimension.OVERWORLD, 1, -1);
+        assertFalse(bans.blockBanned(Dimension.OVERWORLD, 17, 60, -1));
+    }
+
+    @Test
+    public void anOldStrikeCountDecays() {
+        Key k = block(0, 0, 0);
+        bans.tick(0);
+        bans.strike(k, "r", 1, 100, 50);
+        bans.tick(50);
+        assertFalse("the first one is as old as its ban would have been", bans.strike(k, "r", 1, 100, 50));
+        bans.tick(60);
+        assertTrue(bans.strike(k, "r", 1, 100, 50));
     }
 }
