@@ -124,6 +124,10 @@ public class GamerTask extends Task {
     private int hudAttempt;
     private String hudDebug = "";
     private String hudText = "";
+    private boolean hudCardOn;
+    // the card on the right (GamerHudOverlay reads the snapshot, the builder keeps the rows that just finished)
+    private final GamerHud hudCard = new GamerHud();
+    private GamerHudState hudSnapshot;
 
     public GamerTask() {
         this(null);
@@ -663,14 +667,23 @@ public class GamerTask extends Task {
     private void updateHud(PhaseHandler h) {
         String sub = h.hudState();
         int attempt = machine.attempt();
-        if (h != hudHandler || attempt != hudAttempt || (sub == null ? hudState != null : !sub.equals(hudState))) {
+        // with the card on, the tree's line is just the phase: the step, the kit and the clocks are on the card
+        boolean card = Baritone.settings().altoGamerHud.value;
+        if (h != hudHandler || attempt != hudAttempt || card != hudCardOn || (sub == null ? hudState != null : !sub.equals(hudState))) {
             hudHandler = h;
             hudState = sub;
             hudAttempt = attempt;
+            hudCardOn = card;
             hudDebug = "Phase " + state.phase + ", attempt " + attempt;
-            hudText = sub == null ? h.hud() : h.hud() + ": " + sub;
+            hudText = sub == null || card ? h.hud() : h.hud() + ": " + sub;
         }
         setDebugState(hudDebug, hudText);
+        hudSnapshot = card ? hudCard.build(mod, machine, state, facts, cfg, h) : null;
+    }
+
+    // the card's numbers as of the last engine tick, null while there is no run on the screen worth a card
+    public GamerHudState hudSnapshot() {
+        return begun && !machine.ended() ? hudSnapshot : null;
     }
 
     // ---- deaths

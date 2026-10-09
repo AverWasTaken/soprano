@@ -12,6 +12,7 @@ import adris.altoclef.trackers.*;
 import adris.altoclef.trackers.storage.ContainerSubTracker;
 import adris.altoclef.trackers.storage.ItemStorageTracker;
 import adris.altoclef.ui.CommandStatusOverlay;
+import adris.altoclef.ui.GamerHudOverlay;
 import adris.altoclef.ui.MessagePriority;
 import adris.altoclef.ui.MessageSender;
 import adris.altoclef.util.helpers.InputHelper;
@@ -70,6 +71,7 @@ public class AltoClef {
     private MiscBlockTracker _miscBlockTracker;
     // Renderers
     private CommandStatusOverlay _commandStatusOverlay;
+    private GamerHudOverlay _gamerHudOverlay;
     // Misc managers/input
     private MessageSender _messageSender;
     private InputControls _inputControls;
@@ -125,6 +127,7 @@ public class AltoClef {
 
         // Renderers
         _commandStatusOverlay = new CommandStatusOverlay();
+        _gamerHudOverlay = new GamerHudOverlay();
 
         // Misc managers
         _messageSender = new MessageSender();
@@ -205,6 +208,7 @@ public class AltoClef {
         // nothing of ours on screen unless we are the ones driving
         if (_taskRunner.isActive()) {
             _commandStatusOverlay.render(this, graphics);
+            _gamerHudOverlay.render(this, graphics);
         }
     }
 

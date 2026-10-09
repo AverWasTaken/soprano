@@ -52,6 +52,16 @@ public class GatherPhase implements PhaseHandler {
     }
 
     @Override
+    public KitRunner kitRunner() {
+        return runner;
+    }
+
+    @Override
+    public PrepSupport support() {
+        return support;
+    }
+
+    @Override
     public boolean isDone(GamerFacts facts, RunState state, GamerConfig cfg) {
         // a table or furnace of ours still standing next to us is picked up first, this is the last chance (see StationPickup)
         // food still cooking is food we do not have, and the smoker coming down is part of the job

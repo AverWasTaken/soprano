@@ -33,6 +33,11 @@ public final class PrepSupport {
         return hud;
     }
 
+    // for the card: the coal side job, which is the only one with a clock worth a row
+    public CoalDetour coal() {
+        return coal;
+    }
+
     public void onEnter(AltoClef mod) {
         if (!tracking) {
             mod.getBlockTracker().trackBlock(Blocks.CRAFTING_TABLE);

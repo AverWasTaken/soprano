@@ -63,6 +63,15 @@ final class OverworldCombat {
         return _commit.mode();
     }
 
+    CombatCommit commit() {
+        return _commit;
+    }
+
+    // "zombie", for the card's red strip. "it" until a fight has named its target
+    String fightName() {
+        return _fightName;
+    }
+
     CombatRules.Stance stance() {
         return _stance;
     }

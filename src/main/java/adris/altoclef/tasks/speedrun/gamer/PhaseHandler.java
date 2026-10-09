@@ -20,6 +20,16 @@ public interface PhaseHandler {
         return null;
     }
 
+    // the kit runner this phase drives, for the card's rows. null = the phase has no kit (the card shows no rows)
+    default KitRunner kitRunner() {
+        return null;
+    }
+
+    // the side jobs this phase runs, for the card's coal row. null = none
+    default PrepSupport support() {
+        return null;
+    }
+
     // pure and cheap, the engine asks every tick. true = move on to the next phase
     boolean isDone(GamerFacts facts, RunState state, GamerConfig cfg);
 

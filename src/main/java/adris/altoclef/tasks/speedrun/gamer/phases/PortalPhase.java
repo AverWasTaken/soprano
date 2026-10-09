@@ -60,6 +60,11 @@ public class PortalPhase implements PhaseHandler {
     }
 
     @Override
+    public KitRunner kitRunner() {
+        return runner;
+    }
+
+    @Override
     public String hudState() {
         return hudState;
     }

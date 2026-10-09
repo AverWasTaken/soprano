@@ -32,7 +32,7 @@ import java.util.Set;
 // cluster grows as we dig into it). when the task gives up on a block it sets off for a far vein, and the leash from that spot
 // cuts the walk short and the ban keeps us off that cluster. the tracker is the mining task's own business, it tracks on start
 // and lets go on stop, so nothing here needs releasing when the phase leaves, only forgetting
-final class CoalDetour {
+public final class CoalDetour {
     // the same two blocks TaskCatalogue mines for "coal". an array of our own: the iron task's list must not learn about coal,
     // two mine tasks with the same blocks are the same task to the task system and coal would count towards the iron
     private static final Block[] ORES = {Blocks.COAL_ORE, Blocks.DEEPSLATE_COAL_ORE};
@@ -51,9 +51,26 @@ final class CoalDetour {
     private int coalAtStart;
     private int coalLast;
     private String hud;
+    // the ore the rules last looked at, for the card's "N blocks". the look happens anyway, this just keeps the answer
+    private BlockPos ore;
 
     String hud() {
         return hud;
+    }
+
+    // ---- for the card (GamerHud), plain reads
+
+    public boolean active() {
+        return rules.running() && mine != null;
+    }
+
+    public long startTick() {
+        return rules.startTick();
+    }
+
+    // the coal ore we are on our way to, null when the last look found none
+    public BlockPos ore() {
+        return ore;
     }
 
     // a detour that is going, over (see CoalRules.preempted)
@@ -88,8 +105,8 @@ final class CoalDetour {
         BlockPos me = mod.getPlayer().blockPosition();
         double keep = CoalRules.keepBudget(cfg.coalSideBudget);
         BlockPos from = anchor == null ? me : anchor;
-        CoalRules.Ore ore = new CoalRules.Ore(() -> nearest(mod, me, cfg.coalSideBudget, true) != null,
-                () -> nearest(mod, from, keep, false) != null, () -> dropNear(mod), () -> strayed(me, from, cfg));
+        CoalRules.Ore ore = new CoalRules.Ore(() -> (this.ore = nearest(mod, me, cfg.coalSideBudget, true)) != null,
+                () -> (this.ore = nearest(mod, from, keep, false)) != null, () -> dropNear(mod), () -> strayed(me, from, cfg));
         CoalRules.Step step = rules.tick(now, inputs(mod, f, cfg, head, coal), cfg, ore);
         switch (step) {
             case START:
@@ -142,6 +159,7 @@ final class CoalDetour {
         mine = null;
         anchor = null;
         hud = null;
+        ore = null;
     }
 
     private static CoalRules.Inputs inputs(AltoClef mod, GamerFacts f, OverworldConfig cfg, KitNeed head, int coal) {

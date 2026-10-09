@@ -35,6 +35,10 @@ public final class KitRunner {
     private String hud;
     // one line per phase entry (reset() is the entry) with everything the planner wants, first non empty plan only
     private boolean planLogged;
+    // the list we were last handed and the need picked out of it, for the card (GamerHud). the key above is the same
+    // need but it is also the task cache's key, keep the two jobs apart
+    private List<KitNeed> needs = List.of();
+    private KitNeed current;
 
     public KitRunner() {
         this(KitRunner::build);
@@ -53,6 +57,18 @@ public final class KitRunner {
         lastProgress.clear();
         hud = null;
         planLogged = false;
+        needs = List.of();
+        current = null;
+    }
+
+    // the plan as of the last run(), empty when there was nothing to do
+    public List<KitNeed> needs() {
+        return needs;
+    }
+
+    // the need the task is for, null when there was nothing to do
+    public KitNeed current() {
+        return current;
     }
 
     // CollectFoodTask counts anything edible (rotten flesh, spider eyes...) but our facts only count what we would eat,
@@ -79,8 +95,10 @@ public final class KitRunner {
     }
 
     public Task run(GamerContext ctx, List<KitNeed> needs) {
+        this.needs = needs;
         if (needs.isEmpty()) {
             hud = null;
+            current = null;
             return null;
         }
         if (!planLogged) {
@@ -106,6 +124,7 @@ public final class KitRunner {
             }
         }
         hud = words(need, f);
+        current = need;
         return task;
     }
 

@@ -1895,6 +1895,13 @@ public final class Settings {
     public final Setting<Boolean> altoHudDetailed = new Setting<>(false);
 
     /**
+     * The #gamer card on the right of the screen while a run is going: the phase and its clock against the budget,
+     * what the bot is doing, the kit it is collecting with the game's own item icons, the furnace batches, and hp and
+     * food. Sized by {@link #altoHudScale} like the task list. The task list keeps the phase as its one line.
+     */
+    public final Setting<Boolean> altoGamerHud = new Setting<>(true);
+
+    /**
      * Hide all of AltoClef's warning logs. Not recommended, it makes debugging harder, but if you know what you are
      * doing go nuts.
      */

@@ -106,6 +106,23 @@ public class MobDefenseChain extends SingleTaskChain {
     private final OverworldCombat _overworld = new OverworldCombat();
     private boolean _commitPath;
 
+    // ---- for the gamer card: the commitment as it stands, plain field reads, nothing here moves the machine
+
+    public CombatCommit.Mode overworldMode() {
+        return _commitPath ? _overworld.mode() : CombatCommit.Mode.NONE;
+    }
+
+    public String overworldFightName() {
+        return _overworld.fightName();
+    }
+
+    public double overworldRunOriginX() {
+        return _overworld.commit().originX();
+    }
+
+    public double overworldRunOriginZ() {
+        return _overworld.commit().originZ();
+    }
     private final CombatPolicy _policy = new CombatPolicy();
     private final CombatPolicy.TravelTracker _travel = new CombatPolicy.TravelTracker();
     private Task _travelUserTask;
