@@ -88,14 +88,8 @@ public class OverworldConfig {
     public double noLavaSeconds = 150;
     // throwaway blocks to carry through the portal (pillaring, bridging, plugging lava)
     public int portalBuildBlocks = 32;
-    // NOT READ ANY MORE, kept so saved configs and their migration still load. the pickup distances are fixed now:
-    // WorkbenchRules.NEAR (21, straight line) to keep one, WorkbenchRules.FORGET_DISTANCE (128) to give up on one
-    public int tableRecoverRadius = 20;
-    // a station pickup gets this long (per try, WorkbenchRules.MAX_TRIES of them) before it counts as failed
-    public double tablePickupSeconds = 30;
-    // NOT READ ANY MORE (the registry's own gates replaced both of these, see WorkbenchRules.PLACE_GUARD_TICKS / SETTLE_TICKS)
-    public double tableUseCooldownSeconds = 3;
-    public double tableRecoverCooldownSeconds = 5;
+    // (old saved files may still carry tableRecoverRadius, tablePickupSeconds, tableUseCooldownSeconds and
+    // tableRecoverCooldownSeconds, gson skips them: every station number lives in WorkbenchRules now)
 
     // smelting in the background (see SmeltFiller): the iron goes in the furnace and the bot does other things while it cooks,
     // anywhere. a furnace in a chunk that does not tick just pauses, so the bot remembers where it is and walks back when the

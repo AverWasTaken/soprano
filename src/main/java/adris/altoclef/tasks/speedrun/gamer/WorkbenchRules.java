@@ -31,6 +31,8 @@ public final class WorkbenchRules {
     public static final long RETRY_GAP_TICKS = 100;
     // pickups that ran out of time (or could not even start) before the entry is written off
     public static final int MAX_TRIES = 3;
+    // one try gets this long (30 s) to break the block. it was the tablePickupSeconds config knob, nobody ever turned it
+    public static final long PICKUP_TRY_TICKS = 600;
     // being in another dimension has to last this long before we call the station left behind (a loading screen is not leaving)
     public static final long DIMENSION_TICKS = 20;
     // a pickup nobody ran for this long is not in flight any more: it stops vetoing the placers, and goes back to standing
@@ -61,10 +63,6 @@ public final class WorkbenchRules {
     // ours standing within NEAR, else a world one within NEAR, else the one in the bag, else craft. the container tasks are alto
     // and can't call this class, so the decision itself is util/helpers/StationChoice (fed by StationHook, which Workbenches
     // answers), and the NEAR test itself is in WalkCost
-
-    public static boolean near(double dx, double dy, double dz) {
-        return WalkCost.nearStation(dx, dy, dz);
-    }
 
     // blocks in the world (not ours) can pop into existence near us too, so "near" is the only evidence we have of who placed
     // it. measured from the player to the middle of the block
@@ -216,7 +214,7 @@ public final class WorkbenchRules {
         }
         // seen empty, or with a real job in it again: whatever was given up on is over
         if (!in.holdsStuff() || in.jobHere()) {
-            b.givenUp = false;
+            b.clearGivenUp();
         }
         if (in.holdsStuff()) {
             b.state = Bench.State.BUSY;
@@ -426,6 +424,18 @@ public final class WorkbenchRules {
             }
         }
         return true;
+    }
+
+    // the ones phaseMayEnd lets go on purpose: busy in this dimension, no job, and the stale rule gave up on them. they stay standing
+    // with our items in them, the world half says so in the log
+    public static List<Bench> leftGivenUp(Collection<Bench> benches, String dimension, Predicate<Bench> hasJob) {
+        List<Bench> out = new java.util.ArrayList<>();
+        for (Bench b : benches) {
+            if (b.dimension.equals(dimension) && b.state == Bench.State.BUSY && b.givenUp && !hasJob.test(b)) {
+                out.add(b);
+            }
+        }
+        return out;
     }
 
     // ---- loads

@@ -14,7 +14,8 @@ final class HaySweep {
     static final double BUDGET_SECONDS = 60;
     // hand vs wooden hoe is ~15 ticks vs ~8 per bale, so under a handful it is not worth the craft
     static final int HOE_PILE_MIN = 6;
-    // checking for a table walks a cube of blocks, once in a while is plenty
+    // a world table this close counts as handy (ours counts out to WalkCost.STATION_NEAR through StationHook). checking walks a
+    // cube of blocks, so it stays small and once in a while is plenty
     static final double HOE_TABLE_RANGE = 6;
     static final double HOE_CHECK_SECONDS = 3;
     // the hoe craft is two items and a table, if it takes longer than this something is off and we just mine by hand

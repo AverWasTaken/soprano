@@ -27,7 +27,7 @@ public final class PackUp {
                                            java.util.function.ToDoubleFunction<RunState.FurnaceJob> walkOf) {
         RunState.FurnaceJob best = null;
         for (RunState.FurnaceJob job : jobs) {
-            if (tried.contains(job.pos) || !stranded(depthOf.applyAsInt(job)) || walkOf.applyAsDouble(job) > worthWalking()) {
+            if (tried.contains(job.pos) || !stranded(depthOf.applyAsInt(job)) || walkOf.applyAsDouble(job) > TRIP_BUDGET) {
                 continue;
             }
             if (best == null || job.doneTick < best.doneTick) {
@@ -37,12 +37,11 @@ public final class PackUp {
         return best;
     }
 
-    // 180 of walk cost (WalkCost units, the path-ish kind: this is a trip choice, not the station reuse line). not about reusing it, it is the only
-    // chance to take the contents without a second trip down, so a furnace 10 down and 20 across (60) is still worth it, and
-    // only one in another area waits for the plain due-collect
-    public static double worthWalking() {
-        return 180;
-    }
+    // the trip budget, in WalkCost.estimate units (4 per block of height), not the station line: this is not about reusing the
+    // furnace, it is the one chance to take the contents without a second climb down. a furnace 10 down and 20 across (60) is
+    // well worth it, one in another area waits for the plain due-collect. STATION_FORGET (128) is a straight line, it would
+    // let this walk 128 down a shaft (512 of climbing) and is the wrong question anyway
+    public static final double TRIP_BUDGET = 180;
 
     // walk cost from us to the job's furnace
     public static double walk(RunState.FurnaceJob job, double px, double py, double pz) {

@@ -749,6 +749,28 @@ public class WorkbenchesRegistryTest {
         assertFalse(Workbenches.phaseMayEnd(state, OVERWORLD, 10));
         Workbenches.giveUp(state, pos(2, 64, 2), OVERWORLD);
         assertTrue(Workbenches.phaseMayEnd(state, OVERWORLD, 10));
+        // both are left standing with our items, and that went to the log once each
+        assertTrue(Workbenches.find(state, Kind.FURNACE, pos(1, 64, 1)).givenUpLogged);
+        assertTrue(Workbenches.find(state, Kind.SMOKER, pos(2, 64, 2)).givenUpLogged);
+    }
+
+    // the smelt tasks' "finish the load that was cut off" pin (StationMemory.ourLoaded) asks this, so a stale job's furnace is not
+    // walked straight back to
+    @Test
+    public void theHookSaysWhichStationWasGivenUp() {
+        RunState state = new RunState();
+        Workbenches.record(state, Kind.FURNACE, pos(1, 64, 1), OVERWORLD, 1);
+        Workbenches.record(state, Kind.SMOKER, pos(2, 64, 2), OVERWORLD, 1);
+        Workbenches.giveUp(state, pos(1, 64, 1), OVERWORLD);
+        StationHook.Source overworld = Workbenches.source(state, facts(Dimension.OVERWORLD, 100));
+        assertTrue(overworld.givenUp(new BlockPos(1, 64, 1)));
+        assertFalse(overworld.givenUp(new BlockPos(2, 64, 2)));
+        assertFalse(overworld.givenUp(new BlockPos(9, 64, 9)));
+        // the same x y z seen from the nether is not that furnace
+        assertFalse(Workbenches.source(state, facts(Dimension.NETHER, 100)).givenUp(new BlockPos(1, 64, 1)));
+        // and with no run wired in nothing is given up
+        StationHook.clear();
+        assertFalse(StationHook.givenUp(new BlockPos(1, 64, 1)));
     }
 
     // no station of the kind at all: no latch to carry, the first one that goes down is judged on the plain line

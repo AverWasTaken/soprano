@@ -6,6 +6,7 @@ import adris.altoclef.tasks.construction.DestroyBlockTask;
 import adris.altoclef.tasks.container.AsyncSmelting;
 import adris.altoclef.tasks.container.CollectFromFurnaceTask;
 import adris.altoclef.tasks.container.DoStuffInContainerTask;
+import adris.altoclef.tasks.container.LootContainerTask;
 import adris.altoclef.tasks.movement.PickupDroppedItemTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.trackers.storage.ContainerCache;
@@ -225,7 +226,19 @@ public final class Workbenches {
     // the rule a phase's isDone asks: nothing of ours is standing idle or coming down in this dimension
     public static boolean phaseMayEnd(RunState state, String dimension, long now) {
         sync(state, now);
-        return WorkbenchRules.phaseMayEnd(state.benches, dimension, b -> FurnaceJobs.isBusy(state, b.pos, b.dimension));
+        Predicate<Bench> hasJob = b -> FurnaceJobs.isBusy(state, b.pos, b.dimension);
+        boolean mayEnd = WorkbenchRules.phaseMayEnd(state.benches, dimension, hasJob);
+        if (mayEnd) {
+            // the phase does not wait for these on purpose (the job was not worth a walk), but the station and what is in it stay
+            // behind, and that should be in the log and not a surprise. once per bench per give up
+            for (Bench b : WorkbenchRules.leftGivenUp(state.benches, dimension, hasJob)) {
+                if (!b.givenUpLogged) {
+                    b.givenUpLogged = true;
+                    log(b + ": the phase may end with it still holding our items (its job went stale and was given up), leaving it standing");
+                }
+            }
+        }
+        return mayEnd;
     }
 
     // what the container tasks see (StationHook), wired in by the run
@@ -261,13 +274,23 @@ public final class Workbenches {
 
             @Override
             public boolean ours(BlockPos pos) {
+                return here(pos) != null;
+            }
+
+            @Override
+            public boolean givenUp(BlockPos pos) {
+                Bench b = here(pos);
+                return b != null && b.givenUp;
+            }
+
+            private Bench here(BlockPos pos) {
                 String dimension = facts.dimension().name();
                 for (Bench b : state.benches) {
                     if (b.dimension.equals(dimension) && b.pos.x == pos.getX() && b.pos.y == pos.getY() && b.pos.z == pos.getZ()) {
-                        return true;
+                        return b;
                     }
                 }
-                return false;
+                return null;
             }
         };
     }
@@ -316,7 +339,7 @@ public final class Workbenches {
         }
         boolean wooden = KitPlanner.have(f, "wooden_pickaxe") > 0;
         boolean stone = KitPlanner.have(f, "stone_pickaxe") > 0;
-        long limit = Math.round(ctx.cfg().overworld.tablePickupSeconds * 20);
+        long limit = WorkbenchRules.PICKUP_TRY_TICKS;
         Bench active = null;
         Bench start = null;
         WorkbenchRules.Look startLook = null;
@@ -386,7 +409,10 @@ public final class Workbenches {
         AbstractContainerMenu menu = mod.getPlayer().containerMenu;
         boolean stationScreen = menu instanceof CraftingMenu || menu instanceof FurnaceMenu || menu instanceof SmokerMenu;
         Task root = mod.getUserTaskChain().getCurrentTask();
-        boolean working = root != null && root.thisOrChildSatisfies(t -> t instanceof DoStuffInContainerTask || t instanceof CollectFromFurnaceTask);
+        // a loot task counts as working too: its click can land on the furnace next to a village chest, and it shuts that screen
+        // itself before the next click (InteractWithBlockTask), so us shutting it as well is two closes racing one re-click
+        boolean working = root != null && root.thisOrChildSatisfies(t -> t instanceof DoStuffInContainerTask || t instanceof CollectFromFurnaceTask
+                || t instanceof LootContainerTask);
         if (!stationScreen || working) {
             strayScreenSince = -1;
             return;
@@ -559,7 +585,7 @@ public final class Workbenches {
                 closest.lastUsedTick = now;
                 // a smelt task has the screen open again, so whatever job it records is a new story and a load that gets cut off
                 // is adopted like any other
-                closest.givenUp = false;
+                closest.clearGivenUp();
             }
         }
     }

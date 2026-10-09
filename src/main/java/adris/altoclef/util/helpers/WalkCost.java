@@ -49,10 +49,6 @@ public final class WalkCost {
 
     // the same with a block and a player position: the middle of the block against wherever the caller measures us from, so
     // every caller (the planner, the container tasks, the pickup rules) lands on the same side of the line
-    public static boolean nearStationBlock(int bx, int by, int bz, double px, double py, double pz) {
-        return nearStation(bx + 0.5 - px, by + 0.5 - py, bz + 0.5 - pz);
-    }
-
     public static double stationDistance(int bx, int by, int bz, double px, double py, double pz) {
         return distance3d(bx + 0.5 - px, by + 0.5 - py, bz + 0.5 - pz);
     }

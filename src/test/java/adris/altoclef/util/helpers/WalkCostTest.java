@@ -107,22 +107,19 @@ public class WalkCostTest {
     @Test
     public void theBlockFormMeasuresToTheMiddleOfTheBlock() {
         // the block at 21,0,0 has its middle 21.5 away from a player at the origin: past. one block closer is in
-        assertFalse(WalkCost.nearStationBlock(21, 0, 0, 0, 0, 0));
-        assertTrue(WalkCost.nearStationBlock(20, -1, 0, 0, 0, 0));
+        assertFalse(WalkCost.stationDistance(21, 0, 0, 0, 0, 0) <= WalkCost.STATION_NEAR);
+        assertTrue(WalkCost.stationDistance(20, -1, 0, 0, 0, 0) <= WalkCost.STATION_NEAR);
         // from the block's own centre it is on top of us
-        assertTrue(WalkCost.nearStationBlock(5, 70, 5, 5.5, 70.5, 5.5));
+        assertTrue(WalkCost.stationDistance(5, 70, 5, 5.5, 70.5, 5.5) <= WalkCost.STATION_NEAR);
         // the same answer as the offsets form
-        assertEquals(WalkCost.nearStation(20.5 - 3.2, 64.5 - 70.0, 7.5 + 1.1), WalkCost.nearStationBlock(20, 64, 7, 3.2, 70.0, -1.1));
-        assertEquals(WalkCost.nearStation(30.5, 0.5, 0.5), WalkCost.nearStationBlock(30, 0, 0, 0, 0, 0));
+        assertEquals(WalkCost.nearStation(20.5 - 3.2, 64.5 - 70.0, 7.5 + 1.1), WalkCost.stationDistance(20, 64, 7, 3.2, 70.0, -1.1) <= WalkCost.STATION_NEAR);
+        assertEquals(WalkCost.nearStation(30.5, 0.5, 0.5), WalkCost.stationDistance(30, 0, 0, 0, 0, 0) <= WalkCost.STATION_NEAR);
     }
 
     @Test
     public void stationDistanceIsTheSameLineWithTheNumberKept() {
         assertEquals(WalkCost.distance3d(3.5, -2.5, 1.5), WalkCost.stationDistance(3, -3, 1, 0, 0, 0), 1e-9);
         assertEquals(0.0, WalkCost.stationDistance(5, 70, 5, 5.5, 70.5, 5.5), 1e-9);
-        // and nearStationBlock is just that number against the line
-        double d = WalkCost.stationDistance(17, 64, 3, 0, 64, 0);
-        assertEquals(d <= WalkCost.STATION_NEAR, WalkCost.nearStationBlock(17, 64, 3, 0, 64, 0));
     }
 
     // a table in a mine 34 down is not a table to go back for: not near, and the climb is far over any drop budget

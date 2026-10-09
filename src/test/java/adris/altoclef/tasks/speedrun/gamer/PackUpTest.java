@@ -79,11 +79,11 @@ public class PackUpTest {
     // of walking is still worth the one trip
     @Test
     public void theTripLineIsItsOwnNumberNotTheStationLine() {
-        assertEquals(180, PackUp.worthWalking(), 0);
+        assertEquals(180, PackUp.TRIP_BUDGET, 0);
         RunState.FurnaceJob farButWorthIt = job(30, 20, 0, 900);
         double walk = PackUp.walk(farButWorthIt, 0.5, 30, 0.5);
-        assertFalse(WalkCost.nearStationBlock(farButWorthIt.pos.x, farButWorthIt.pos.y, farButWorthIt.pos.z, 0.5, 30, 0.5));
-        assertTrue(walk <= PackUp.worthWalking());
+        assertFalse(WalkCost.stationDistance(farButWorthIt.pos.x, farButWorthIt.pos.y, farButWorthIt.pos.z, 0.5, 30, 0.5) <= WalkCost.STATION_NEAR);
+        assertTrue(walk <= PackUp.TRIP_BUDGET);
         assertSame(farButWorthIt, PackUp.pick(List.of(farButWorthIt), new HashSet<>(), j -> 50, j -> PackUp.walk(j, 0.5, 30, 0.5)));
     }
 }

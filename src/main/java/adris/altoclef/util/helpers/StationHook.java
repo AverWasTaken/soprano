@@ -36,6 +36,10 @@ public final class StationHook {
         // the registry has this block, whatever state it is in and however far away. a table the run did not place (a village's)
         // is not ours, so a container task may use it when it is near and nothing ever picks it up
         boolean ours(BlockPos pos);
+
+        // this block is ours and its job went stale and was given up on (Bench.givenUp): what the container tracker still remembers
+        // in it is not a load to go back and finish
+        boolean givenUp(BlockPos pos);
     }
 
     private static volatile Source source;
@@ -86,5 +90,10 @@ public final class StationHook {
     public static boolean ours(BlockPos pos) {
         Source s = source;
         return s != null && pos != null && s.ours(pos);
+    }
+
+    public static boolean givenUp(BlockPos pos) {
+        Source s = source;
+        return s != null && pos != null && s.givenUp(pos);
     }
 }

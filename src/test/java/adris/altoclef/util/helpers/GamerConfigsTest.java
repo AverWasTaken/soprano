@@ -257,31 +257,28 @@ public class GamerConfigsTest {
     }
 
     @Test
-    public void anOldFileGetsTheNewStationPickupDefaults() throws IOException {
-        // what the shipped defaults said before v5: radius 10, cooldown 120
-        write("{\"version\": 4, \"overworld\": {\"tableRecoverRadius\": 10, \"tableRecoverCooldownSeconds\": 120.0}}");
+    public void theRetiredStationPickupKeysStillLoad() throws IOException {
+        // the four table numbers went to WorkbenchRules. a file saved before that (the user's own, or a v4 one going through the
+        // migration) still has them, and it has to load with everything else intact
+        String old = "\"overworld\": {\"tableRecoverRadius\": 20, \"tablePickupSeconds\": 30.0, \"tableUseCooldownSeconds\": 3.0,"
+                + " \"tableRecoverCooldownSeconds\": 5.0, \"minFoodUnits\": 55}";
+        write("{\"version\": " + GamerConfig.VERSION + ", \"targetEyes\": 16, " + old + "}");
         GamerConfig c = GamerConfigs.load();
-        GamerConfig d = new GamerConfig();
-        assertEquals(d.overworld.tableRecoverRadius, c.overworld.tableRecoverRadius);
-        assertEquals(d.overworld.tableRecoverCooldownSeconds, c.overworld.tableRecoverCooldownSeconds, 0);
-        assertEquals(20, c.overworld.tableRecoverRadius);
-        assertEquals(5, c.overworld.tableRecoverCooldownSeconds, 0);
-        assertEquals(20, onDisk().getAsJsonObject("overworld").get("tableRecoverRadius").getAsInt());
-    }
-
-    @Test
-    public void aStationPickupNumberSomebodyPickedSurvivesTheMigration() throws IOException {
-        write("{\"version\": 4, \"overworld\": {\"tableRecoverRadius\": 14, \"tableRecoverCooldownSeconds\": 30.0}}");
-        GamerConfig c = GamerConfigs.load();
-        assertEquals(14, c.overworld.tableRecoverRadius);
-        assertEquals(30, c.overworld.tableRecoverCooldownSeconds, 0);
-    }
-
-    @Test
-    public void aCurrentFileKeepsItsOldLookingStationNumbers() throws IOException {
-        // only a migration rewrites them, a v5 file that says 10 means 10
-        write("{\"version\": " + GamerConfig.VERSION + ", \"overworld\": {\"tableRecoverRadius\": 10}}");
-        assertEquals(10, GamerConfigs.load().overworld.tableRecoverRadius);
+        assertEquals(GamerConfig.VERSION, c.version);
+        assertEquals(16, c.targetEyes);
+        assertEquals(55, c.overworld.minFoodUnits);
+        JsonObject overworld = onDisk().getAsJsonObject("overworld");
+        for (String key : List.of("tableRecoverRadius", "tablePickupSeconds", "tableUseCooldownSeconds", "tableRecoverCooldownSeconds")) {
+            assertFalse(key, overworld.has(key));
+        }
+        // the old v4 shape (radius 10, cooldown 120, what the migration used to retune) goes through the migration fine too
+        write("{\"version\": 4, \"targetEyes\": 16, \"overworld\": {\"tableRecoverRadius\": 10, \"tableRecoverCooldownSeconds\": 120.0,"
+                + " \"minFoodUnits\": 55}}");
+        GamerConfig migrated = GamerConfigs.load();
+        assertEquals(GamerConfig.VERSION, migrated.version);
+        assertEquals(16, migrated.targetEyes);
+        assertEquals(55, migrated.overworld.minFoodUnits);
+        assertFalse(onDisk().getAsJsonObject("overworld").has("tableRecoverRadius"));
     }
 
     @Test

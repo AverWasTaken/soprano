@@ -18,6 +18,7 @@ import adris.altoclef.util.RecipeTarget;
 import adris.altoclef.util.SmeltTarget;
 import adris.altoclef.util.helpers.CropRules;
 import adris.altoclef.util.helpers.ItemHelper;
+import adris.altoclef.util.helpers.StationHook;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.slots.SmokerSlot;
@@ -561,8 +562,12 @@ public class CollectFoodTask extends Task {
         }
         _hoeCheckTimer.reset();
         boolean hasHoe = mod.getItemStorage().hasItemInventoryOnly(HOES);
+        var me = mod.getPlayer().position();
+        // ours within NEAR is a table the craft would walk to anyway (StationChoice), so it counts from as far as that. a world one
+        // only from the small cube scan, a 21 block cube every few seconds is 80k cells for a hoe
         boolean tableHandy = mod.getItemStorage().hasItemInventoryOnly(Items.CRAFTING_TABLE)
-                || mod.getBlockTracker().getNearestWithinRange(mod.getPlayer().position(), HaySweep.HOE_TABLE_RANGE, Blocks.CRAFTING_TABLE).isPresent();
+                || StationHook.standingNear(StationHook.Kind.TABLE, me.x, me.y, me.z) != null
+                || mod.getBlockTracker().getNearestWithinRange(me, HaySweep.HOE_TABLE_RANGE, Blocks.CRAFTING_TABLE).isPresent();
         int cobble = mod.getItemStorage().getItemCountInventoryOnly(Items.COBBLESTONE);
         int planks = mod.getItemStorage().getItemCountInventoryOnly(ItemHelper.PLANKS);
         int sticks = mod.getItemStorage().getItemCountInventoryOnly(Items.STICK);

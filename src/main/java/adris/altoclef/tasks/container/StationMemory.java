@@ -6,6 +6,7 @@ import adris.altoclef.tasks.container.AsyncSmelting;
 import adris.altoclef.trackers.storage.ContainerCache;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.ItemHelper;
+import adris.altoclef.util.helpers.StationHook;
 import adris.altoclef.util.helpers.WalkCost;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.item.ItemStack;
@@ -52,9 +53,10 @@ final class StationMemory {
     static BlockPos ourLoaded(AltoClef mod, net.minecraft.world.level.block.Block block) {
         var me = mod.getPlayer().position();
         // inside the forget distance only: a stale look at a furnace across the map must not pin every smelt to it (the registry
-        // forgets those too). nearest is the same straight line the rest of the station choice goes by
+        // forgets those too). nearest is the same straight line the rest of the station choice goes by. a station whose job went
+        // stale and was given up is not a load to finish either, or the next smelt walks right back to what we just gave up on
         return mod.getBlockTracker().getNearestTracking(me,
-                p -> holdsOurStuff(mod, p) && adris.altoclef.util.helpers.WorldHelper.canReach(mod, p)
+                p -> holdsOurStuff(mod, p) && !StationHook.givenUp(p) && adris.altoclef.util.helpers.WorldHelper.canReach(mod, p)
                         && WalkCost.distance3d(p.getX() + 0.5 - me.x, p.getY() + 0.5 - me.y, p.getZ() + 0.5 - me.z) <= WalkCost.STATION_FORGET,
                 (fx, fy, fz, tx, ty, tz) -> WalkCost.distance3d(tx - fx, ty - fy, tz - fz), block).orElse(null);
     }

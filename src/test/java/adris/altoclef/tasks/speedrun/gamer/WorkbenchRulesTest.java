@@ -70,32 +70,32 @@ public class WorkbenchRulesTest {
     @Test
     public void reuseIsAStraightLineInAllThreeAxes() {
         // 15 across and 15 up is 21.2, not "15 and some stairs"
-        assertFalse(WorkbenchRules.near(15, 15, 0));
-        assertFalse(WorkbenchRules.near(0, -15, 15));
-        assertFalse(WorkbenchRules.near(15, 0, -15));
+        assertFalse(WalkCost.nearStation(15, 15, 0));
+        assertFalse(WalkCost.nearStation(0, -15, 15));
+        assertFalse(WalkCost.nearStation(15, 0, -15));
         // 10 / 10 / 10 is 17.3
-        assertTrue(WorkbenchRules.near(10, 10, 10));
-        assertTrue(WorkbenchRules.near(-10, -10, -10));
+        assertTrue(WalkCost.nearStation(10, 10, 10));
+        assertTrue(WalkCost.nearStation(-10, -10, -10));
         // the table five up a shaft that used to cost more than a new one
-        assertTrue(WorkbenchRules.near(0, 5, 0));
-        assertTrue(WorkbenchRules.near(0, -20, 0));
-        assertFalse(WorkbenchRules.near(0, -22, 0));
+        assertTrue(WalkCost.nearStation(0, 5, 0));
+        assertTrue(WalkCost.nearStation(0, -20, 0));
+        assertFalse(WalkCost.nearStation(0, -22, 0));
         // 12 each way is 20.8, 13 each way is 22.5
-        assertTrue(WorkbenchRules.near(12, 12, 12));
-        assertFalse(WorkbenchRules.near(13, 13, 13));
+        assertTrue(WalkCost.nearStation(12, 12, 12));
+        assertFalse(WalkCost.nearStation(13, 13, 13));
     }
 
     @Test
     public void exactlyTheRadiusIsNearAndAHairMoreIsNot() {
         assertEquals(21.0, WorkbenchRules.NEAR, 0);
-        assertTrue(WorkbenchRules.near(21, 0, 0));
-        assertTrue(WorkbenchRules.near(0, 0, -21));
-        assertFalse(WorkbenchRules.near(21.01, 0, 0));
-        assertFalse(WorkbenchRules.near(0, 21.01, 0));
+        assertTrue(WalkCost.nearStation(21, 0, 0));
+        assertTrue(WalkCost.nearStation(0, 0, -21));
+        assertFalse(WalkCost.nearStation(21.01, 0, 0));
+        assertFalse(WalkCost.nearStation(0, 21.01, 0));
         // 4 / 8 / 19 and 8 / 16 / 11 are both exactly 21 in all three axes
-        assertTrue(WorkbenchRules.near(4, 8, 19));
-        assertTrue(WorkbenchRules.near(8, 16, 11));
-        assertFalse(WorkbenchRules.near(4, 8, 19.01));
+        assertTrue(WalkCost.nearStation(4, 8, 19));
+        assertTrue(WalkCost.nearStation(8, 16, 11));
+        assertFalse(WalkCost.nearStation(4, 8, 19.01));
     }
 
     // the planner, the container tasks and the pickup rules all measure from the player to the middle of the block, or they land
@@ -103,29 +103,16 @@ public class WorkbenchRulesTest {
     @Test
     public void theMiddleOfTheBlockIsWhatGetsMeasured() {
         // block 21 east, player in the middle of his own block: dead on the line
-        assertTrue(WalkCost.nearStationBlock(21, 0, 0, 0.5, 0.5, 0.5));
+        assertTrue(WalkCost.stationDistance(21, 0, 0, 0.5, 0.5, 0.5) <= WalkCost.STATION_NEAR);
         assertEquals(21.0, WalkCost.stationDistance(21, 0, 0, 0.5, 0.5, 0.5), 0);
         // one step further west and it is out
-        assertFalse(WalkCost.nearStationBlock(21, 0, 0, 0.0, 0.5, 0.5));
+        assertFalse(WalkCost.stationDistance(21, 0, 0, 0.0, 0.5, 0.5) <= WalkCost.STATION_NEAR);
         assertTrue(WalkCost.stationDistance(21, 0, 0, 0.0, 0.5, 0.5) > WorkbenchRules.NEAR);
         // feet at y 64.5 and a block at y 85: 21 up. feet at 64.0 and it is 21.5
-        assertTrue(WalkCost.nearStationBlock(0, 85, 0, 0.5, 64.5, 0.5));
-        assertFalse(WalkCost.nearStationBlock(0, 85, 0, 0.5, 64.0, 0.5));
+        assertTrue(WalkCost.stationDistance(0, 85, 0, 0.5, 64.5, 0.5) <= WalkCost.STATION_NEAR);
+        assertFalse(WalkCost.stationDistance(0, 85, 0, 0.5, 64.0, 0.5) <= WalkCost.STATION_NEAR);
         // same block, same player: nothing between them
         assertEquals(0.0, WalkCost.stationDistance(3, 70, -4, 3.5, 70.5, -3.5), 0);
-    }
-
-    // two spellings of the same question must never disagree, that was the whole bug
-    @Test
-    public void nearBlockAndStationDistanceAgreeEverywhere() {
-        for (int bx = -30; bx <= 30; bx += 3) {
-            for (int by = -30; by <= 30; by += 3) {
-                for (int bz = -30; bz <= 30; bz += 5) {
-                    double d = WalkCost.stationDistance(bx, by, bz, 0.5, 0.5, 0.5);
-                    assertEquals(bx + "," + by + "," + bz, d <= WorkbenchRules.NEAR, WalkCost.nearStationBlock(bx, by, bz, 0.5, 0.5, 0.5));
-                }
-            }
-        }
     }
 
     @Test
@@ -1462,5 +1449,34 @@ public class WorkbenchRulesTest {
         t.holdsStuff = true;
         assertEquals(Call.BUSY, decide(c, t));
         assertTrue(c.givenUp);
+    }
+
+    // the phase lets these go on purpose, and the world half names each one in the log: busy, given up, no job, this dimension
+    @Test
+    public void leftGivenUpIsExactlyWhatThePhaseLetsGo() {
+        Bench left = bench(Kind.FURNACE);
+        left.state = Bench.State.BUSY;
+        left.givenUp = true;
+        Bench interrupted = bench(Kind.SMOKER);
+        interrupted.state = Bench.State.BUSY;
+        Bench withJob = bench(Kind.FURNACE);
+        withJob.state = Bench.State.BUSY;
+        withJob.givenUp = true;
+        Bench nether = in(Kind.FURNACE, "NETHER", Bench.State.BUSY);
+        nether.givenUp = true;
+        List<Bench> all = List.of(left, interrupted, withJob, nether);
+        assertEquals(List.of(left), WorkbenchRules.leftGivenUp(all, OVERWORLD, b -> b == withJob));
+        assertEquals(List.of(), WorkbenchRules.leftGivenUp(List.of(bench(Kind.FURNACE)), OVERWORLD, b -> false));
+    }
+
+    // the log line is once per give up: clearing it lets the next give up say so again
+    @Test
+    public void clearingTheGiveUpClearsItsLogLine() {
+        Bench b = bench(Kind.FURNACE);
+        b.givenUp = true;
+        b.givenUpLogged = true;
+        decide(b, new Seen());
+        assertFalse(b.givenUp);
+        assertFalse(b.givenUpLogged);
     }
 }

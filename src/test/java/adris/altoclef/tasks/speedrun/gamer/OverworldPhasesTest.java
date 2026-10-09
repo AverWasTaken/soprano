@@ -264,7 +264,6 @@ public class OverworldPhasesTest {
         assertEquals(70, o.minFoodUnits);
         assertEquals(100, o.targetFoodUnits);
         assertEquals(7.0, o.castGiveUpMinutes, 0);
-        assertEquals(30.0, o.tablePickupSeconds, 0);
         assertEquals(60, o.ruinedPortalLootRadius);
         assertEquals(48, o.villageLootRadius);
         assertEquals(6, o.villageChestJobRadius);
@@ -275,9 +274,6 @@ public class OverworldPhasesTest {
         assertEquals(120.0, o.villageBedSeconds, 0);
         assertEquals(20.0, o.villageBedEachSeconds, 0);
         assertEquals(32, o.portalBuildBlocks);
-        assertEquals(20, o.tableRecoverRadius);
-        assertEquals(3.0, o.tableUseCooldownSeconds, 0);
-        assertEquals(5.0, o.tableRecoverCooldownSeconds, 0);
         assertEquals(32, o.golemHuntRadius);
         assertEquals(5, o.golemMinBlocks);
         assertEquals(14.0, o.golemMinHealth, 0);

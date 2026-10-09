@@ -48,12 +48,20 @@ public final class Bench {
     // the job at this station was dropped as stale (FurnaceWatch.housekeeping), so what the container tracker still remembers in it
     // is not adopted back into a new one. clears once the station is seen empty or gets a real job. not saved, a relog decides again
     public boolean givenUp;
+    // the "phase ends with it still holding our items" line went out for this give up
+    public boolean givenUpLogged;
 
     public Bench(StationHook.Kind kind, RunState.Pos pos, String dimension, long placedTick) {
         this.kind = kind;
         this.pos = pos;
         this.dimension = dimension;
         this.placedTick = placedTick;
+    }
+
+    // seen empty, a real job, or a screen of it open again: the give up is over, and the next one gets its own log line
+    public void clearGivenUp() {
+        givenUp = false;
+        givenUpLogged = false;
     }
 
     public boolean is(StationHook.Kind k, RunState.Pos p) {
