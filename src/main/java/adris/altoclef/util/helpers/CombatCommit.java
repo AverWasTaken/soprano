@@ -384,7 +384,8 @@ public final class CombatCommit {
         // the bail-outs, and the only ones: the danger rules. a wobble above 8 is a fight, and so is hp 8 with nothing
         // within 8 (the last thing we were hitting died, that is a won fight, not a reason to run 24 blocks). boxed in
         // there is nowhere to bail to, so a cornered fight never asks
-        Why bail = cornered ? Why.NONE : runReason(t, false);
+        // a fight we turned around for is out in the open though: the warden or a heavy walking up is still a run
+        Why bail = !cornered ? runReason(t, false) : why == Why.CHASED && anyDanger(t) ? Why.HEAVY : Why.NONE;
         if (bail != Why.NONE) return startRun(t, bail, Event.FIGHT_TO_RUN);
         if (target == null) return targetGone(t);
         // out of play: wandered off past LOST_RANGE and not hitting us. if it wants another go, that is a new fight
@@ -537,7 +538,8 @@ public final class CombatCommit {
             return Event.RUN_EXTENDED;
         }
         Foe chaser = chaser(t);
-        // only the warden on us: that one stays a run (idle starts it again on the same step)
+        // nobody to turn on: the warden (danger starts the next run on the same step), or only a creeper at range or mobs we
+        // gave up on (the run just ends, the cooldown waits for one of them to get on us or hit us)
         if (chaser == null) return end(t, Event.RUN_CAP);
         return startFight(t, chaser, Why.CHASED, Event.RUN_CHASED_FIGHT, true);
     }

@@ -100,6 +100,25 @@ public class CombatCommitChasedTest {
     }
 
     @Test
+    public void aWardenWalkingUpMidChasedFightIsStillARun() {
+        CombatCommit c = extendedRun(zombie(1, 5));
+        holds(c, NOW + CAP + 1, NOW + 2 * CAP - 1, 7, zombie(1, 5));
+        assertEquals(Event.RUN_CHASED_FIGHT, c.step(tick(NOW + 2 * CAP, 7, 0, zombie(1, 5))));
+        Foe target = zombie(1, 2);
+        assertEquals(Event.FIGHT_TO_RUN, c.step(new Tick(NOW + 2 * CAP + 1, 7, 0, 0, List.of(target, warden(2, 6)), target)));
+        assertEquals(Mode.RUN, c.mode());
+        assertEquals(Why.HEAVY, c.why());
+    }
+
+    @Test
+    public void onlyACreeperAtRangeLeftAtTheSecondCapJustEndsTheRun() {
+        CombatCommit c = extendedRun(creeper(2, 5));
+        holds(c, NOW + CAP + 1, NOW + 2 * CAP - 1, 7, creeper(2, 5));
+        assertEquals(Event.RUN_CAP, c.step(tick(NOW + 2 * CAP, 7, 0, creeper(2, 5))));
+        assertEquals(Mode.NONE, c.mode());
+    }
+
+    @Test
     public void theTurnPicksWhatIsOnUsOrHitUsOverTheClosest() {
         // 2 is closest but never touched us, 3 hit us from six blocks: 3 it is
         Foe[] foes = {zombie(2, 4), zombie(3, 6, 20)};
