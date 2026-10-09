@@ -112,6 +112,10 @@ public class MovementFall extends Movement {
     // the clutch ran out of things to try (nothing in reach in time, nothing to hang on), so it's the bucket or nothing
     private boolean clutchGaveUp;
 
+    // hp was under experimentalMinHealth the last tick we stood on the ledge, so this fall gets no clutch start to finish
+    // (canAffordClutch). asked only on the ledge: once we're off it a hit must not take away the save we're in
+    private boolean lowAtLedge;
+
     // the ladder we right-clicked onto the wall, and whether the world agreed that it's there. vines drop nothing without
     // shears so they're never recorded, and a ladder somebody else put up never is either, it's theirs
     private BlockPos ladder;
@@ -131,6 +135,7 @@ public class MovementFall extends Movement {
     public void reset() {
         super.reset();
         clutchGaveUp = false;
+        lowAtLedge = false;
         hurt = false;
         plannedDamage = -1;
         ladder = null;
@@ -142,8 +147,8 @@ public class MovementFall extends Movement {
     private FallMode fallMode() {
         CalculationContext context = new CalculationContext(baritone);
         MutableMoveResult result = new MutableMoveResult();
-        // no clutch health gate here: the planner already asked, and this runs every tick of the fall
-        if (MovementDescend.dynamicFallCost(context, src.x, src.y, src.z, dest.x, dest.z, 0, context.get(dest.x, src.y - 2, dest.z), result, false)) {
+        // the clutch health gate is whatever the ledge said, not this tick's hp (see lowAtLedge)
+        if (MovementDescend.dynamicFallCost(context, src.x, src.y, src.z, dest.x, dest.z, 0, context.get(dest.x, src.y - 2, dest.z), result, lowAtLedge)) {
             return FallMode.BUCKET;
         }
         if (result.damage > 0) {
@@ -166,7 +171,7 @@ public class MovementFall extends Movement {
         }
         CalculationContext context = new CalculationContext(baritone);
         MutableMoveResult result = new MutableMoveResult();
-        boolean bucket = MovementDescend.dynamicFallCost(context, src.x, src.y, src.z, dest.x, dest.z, 0, context.get(dest.x, src.y - 2, dest.z), result, false);
+        boolean bucket = MovementDescend.dynamicFallCost(context, src.x, src.y, src.z, dest.x, dest.z, 0, context.get(dest.x, src.y - 2, dest.z), result, lowAtLedge);
         plannedDamage = bucket ? 0 : result.damage;
     }
 
@@ -202,9 +207,15 @@ public class MovementFall extends Movement {
         }
 
         boolean isWater = destState.getFluidState().getType() instanceof WaterFluid;
-        if (hurt && !isWater && playerFeet.equals(src) && ctx.player().onGround() && !stillPossible()) {
+        boolean atLedge = playerFeet.equals(src) && ctx.player().onGround();
+        if (atLedge) {
+            double health = ctx.player().getHealth() + ctx.player().getAbsorptionAmount();
+            lowAtLedge = !ExperimentalMovement.canAffordClutch(health, Baritone.settings().experimentalMinHealth.value);
+        }
+        if ((hurt || lowAtLedge) && !isWater && atLedge && !stillPossible()) {
             // we got hurt (or something else dropped our health) since the plan was made, and this fall would now cost us
-            // more than we agreed to. nothing has happened yet, so the executor can just replan
+            // more than we agreed to, or it was a clutch and a clutch is off at this hp. nothing has happened yet, so the
+            // executor can just replan
             return state.setStatus(MovementStatus.UNREACHABLE);
         }
         FallMode mode = isWater ? FallMode.NONE : fallMode();
