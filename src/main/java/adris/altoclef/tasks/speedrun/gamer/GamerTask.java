@@ -619,6 +619,7 @@ public class GamerTask extends Task {
             machine.observe();
             machine.holdClocks();
             setDebugState("Going back to the nether for our stuff.", "Getting our stuff back");
+            updateRecoveryHud(tripWords());
             autosave(now);
             return netherTrip;
         }
@@ -628,6 +629,7 @@ public class GamerTask extends Task {
             machine.observe();
             machine.holdClocks();
             setDebugState("Recovering items after a death.", "Getting our stuff back");
+            updateRecoveryHud(HudRules.recoveryWords(blocksTo(deathPos)));
             autosave(now);
             return recover;
         }
@@ -688,6 +690,30 @@ public class GamerTask extends Task {
         }
         setDebugState(hudDebug, hudText);
         hudSnapshot = card ? hudCard.build(mod, machine, state, facts, cfg, h) : null;
+    }
+
+    // a recovery (the walk back for a death pile, or the trip into the nether for one) never reaches updateHud, so the card is
+    // told what it is doing here instead. the kit rows are gone while it lasts, see GamerHud.recovering
+    private void updateRecoveryHud(String action) {
+        hudSnapshot = Baritone.settings().altoGamerHud.value
+                ? hudCard.recovering(state, facts, cfg, machine.secondsInPhase(), machine.attempt(), action) : null;
+    }
+
+    // the nether trip's stage in words. the pile is only a distance worth showing once we are in the nether with it (the portal
+    // and the dirt stages are in the overworld, where the pile's x and z mean nothing)
+    private String tripWords() {
+        RunState.NetherTrip trip = state.netherTrip;
+        NetherTripRules.Stage stage = NetherTripRules.Stage.parse(trip.stage);
+        boolean there = stage == NetherTripRules.Stage.WALK || stage == NetherTripRules.Stage.RECOVER;
+        return HudRules.tripWords(stage, there ? blocksTo(trip.pile.x, trip.pile.y, trip.pile.z) : -1);
+    }
+
+    private int blocksTo(BlockPos at) {
+        return blocksTo(at.getX(), at.getY(), at.getZ());
+    }
+
+    private int blocksTo(int x, int y, int z) {
+        return HudRules.blocksAway(facts.x() - x, facts.y() - y, facts.z() - z);
     }
 
     // the card's numbers as of the last engine tick, null while there is no run on the screen worth a card

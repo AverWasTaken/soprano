@@ -44,6 +44,18 @@ final class GamerHud {
                 rows, furnaces, coal, food.held(), food.overworldMinimum());
     }
 
+    // the card while a death recovery or the nether trip has the wheel. neither goes through the phase, so build() is not reached and
+    // the card would sit on the last step and the kit while the tree says "Getting our stuff back": the action is the recovery
+    // now, and the kit rows are gone (the bag is empty or on its way back, a row asking for planks would be a lie). the phase, its
+    // clock (held while we recover) and the footer stay. what the old rows had finished is not news when the kit comes back
+    GamerHudState recovering(RunState state, GamerFacts facts, GamerConfig cfg, double secondsInPhase, int attempt, String action) {
+        lastRows = List.of();
+        lingering.clear();
+        FoodPlan food = FoodPlan.of(facts, cfg, state.phase);
+        return new GamerHudState(state.phase, secondsInPhase, cfg.budgets.minutes(state.phase), attempt, action, List.of(),
+                furnaceRows(facts.furnaceJobs()), null, food.held(), food.overworldMinimum());
+    }
+
     private List<KitRow> kitRows(GamerFacts f, FoodPlan food, KitRunner runner, long now) {
         if (runner != lastRunner) {
             // another phase's kit, or none: what the old one had finished is not news on this one

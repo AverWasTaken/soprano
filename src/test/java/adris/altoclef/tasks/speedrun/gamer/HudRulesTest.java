@@ -1,5 +1,6 @@
 package adris.altoclef.tasks.speedrun.gamer;
 
+import adris.altoclef.tasks.speedrun.gamer.tasks.NetherTripRules;
 import org.junit.Test;
 
 import java.util.List;
@@ -9,6 +10,7 @@ import static adris.altoclef.tasks.speedrun.gamer.HudRules.Dot.LATER;
 import static adris.altoclef.tasks.speedrun.gamer.HudRules.Dot.NOW;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 
 // the sums behind the gamer card. no game in any of it
 public class HudRulesTest {
@@ -140,5 +142,46 @@ public class HudRulesTest {
         // half a second in rounds up, the clock reads 30 until a whole second has gone
         assertEquals(30, HudRules.detourSecondsLeft(100, 30, 110));
         assertEquals(0, HudRules.detourSecondsLeft(100, 30, 100 + 40 * 20));
+    }
+
+    @Test
+    public void blocksAwayIsTheStraightLineRounded() {
+        assertEquals(0, HudRules.blocksAway(0, 0, 0));
+        assertEquals(50, HudRules.blocksAway(30, 0, 40));
+        // the pile is above or below us too, not just across
+        assertEquals(13, HudRules.blocksAway(3, 4, 12));
+        assertEquals(50, HudRules.blocksAway(-30, 0, -40));
+        // 1.4 blocks reads 1, 1.5 reads 2
+        assertEquals(1, HudRules.blocksAway(1, 1, 0));
+        assertEquals(2, HudRules.blocksAway(1.5, 0, 0));
+    }
+
+    @Test
+    public void recoveryWordsCountTheBlocksOrLeaveThemOut() {
+        assertEquals("Getting our stuff back, 47 blocks", HudRules.recoveryWords(47));
+        assertEquals("Getting our stuff back, 1 block", HudRules.recoveryWords(1));
+        // standing on it, or no idea how far: the plain words
+        assertEquals("Getting our stuff back", HudRules.recoveryWords(0));
+        assertEquals("Getting our stuff back", HudRules.recoveryWords(-1));
+    }
+
+    @Test
+    public void everyStageOfTheNetherTripHasItsOwnWords() {
+        assertEquals("Getting blocks for the walk", HudRules.tripWords(NetherTripRules.Stage.BLOCKS, -1));
+        assertEquals("Heading back to the nether", HudRules.tripWords(NetherTripRules.Stage.PORTAL, -1));
+        assertEquals("Walking to our stuff, 212 blocks", HudRules.tripWords(NetherTripRules.Stage.WALK, 212));
+        assertEquals("Walking to our stuff", HudRules.tripWords(NetherTripRules.Stage.WALK, -1));
+        // at the pile the trip reads like the plain recovery
+        assertEquals(HudRules.recoveryWords(9), HudRules.tripWords(NetherTripRules.Stage.RECOVER, 9));
+        assertEquals("Putting our armor back on", HudRules.tripWords(NetherTripRules.Stage.WEAR, -1));
+        assertEquals("Heading home empty handed", HudRules.tripWords(NetherTripRules.Stage.HOME, -1));
+        // a distance on a stage that has no use for one is left out
+        assertEquals("Heading back to the nether", HudRules.tripWords(NetherTripRules.Stage.PORTAL, 40));
+        // and a saved stage that does not parse is just a recovery
+        assertEquals("Getting our stuff back, 5 blocks", HudRules.tripWords(null, 5));
+        // every stage says something
+        for (NetherTripRules.Stage stage : NetherTripRules.Stage.values()) {
+            assertFalse(stage.name(), HudRules.tripWords(stage, -1).isEmpty());
+        }
     }
 }

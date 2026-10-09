@@ -1,5 +1,7 @@
 package adris.altoclef.tasks.speedrun.gamer;
 
+import adris.altoclef.tasks.speedrun.gamer.tasks.NetherTripRules;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -96,6 +98,37 @@ public final class HudRules {
     // "IRON", "END PREP"
     public static String title(GamerPhase phase) {
         return phase.name().replace('_', ' ');
+    }
+
+    // whole blocks of straight line, for the recovery words
+    public static int blocksAway(double dx, double dy, double dz) {
+        return (int) Math.round(Math.sqrt(dx * dx + dy * dy + dz * dz));
+    }
+
+    // ", 47 blocks". nothing for an unknown distance or when we are standing on it
+    private static String away(int blocks) {
+        return blocks < 1 ? "" : ", " + blocks + (blocks == 1 ? " block" : " blocks");
+    }
+
+    // the action line while a death recovery has the wheel, the same words the tree uses plus how far there is to go
+    public static String recoveryWords(int blocks) {
+        return "Getting our stuff back" + away(blocks);
+    }
+
+    // and for the walk back into the nether for a pile: one line per stage of the trip. blocks is only known for the two stages
+    // that are in the nether with the pile (-1 for the rest). a stage that does not parse is just the plain recovery
+    public static String tripWords(NetherTripRules.Stage stage, int blocks) {
+        if (stage == null) {
+            return recoveryWords(blocks);
+        }
+        return switch (stage) {
+            case BLOCKS -> "Getting blocks for the walk";
+            case PORTAL -> "Heading back to the nether";
+            case WALK -> "Walking to our stuff" + away(blocks);
+            case RECOVER -> recoveryWords(blocks);
+            case WEAR -> "Putting our armor back on";
+            case HOME -> "Heading home empty handed";
+        };
     }
 
     // whole blocks still to run, from where the run began. 0 once the distance is covered, the run may still be on
