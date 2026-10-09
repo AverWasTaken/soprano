@@ -205,13 +205,14 @@ public class MovementDiagonal extends Movement {
             boolean BLow = MovementHelper.canWalkThrough(context, destX, y, z, pb2);
             ALow &= !isBlockingDoor(pb0, x, destZ, destX, z);
             BLow &= !isBlockingDoor(pb2, destX, z, x, destZ);
-            if ((!(ATop && AMid && ALow) && !(BTop && BMid && BLow)) // no option
+            // going up a diagonal the 0.6 wide box sweeps through both corner columns, feet to head, right as it leaves
+            // the ground. a solid block in either one is a wall we grind into and then slide back down off of, and that
+            // includes a ceiling one (head bonk), so both corners have to be open. traverse + ascend picks up the rest
+            if (!(ATop && AMid && ALow) || !(BTop && BMid && BLow)
                     || MovementHelper.avoidWalkingInto(pb0) // bad
                     || MovementHelper.avoidWalkingInto(pb2) // bad
                     || (ATop && AMid && MovementHelper.canWalkOn(context, x, y, destZ, pb0)) // we could just ascend
-                    || (BTop && BMid && MovementHelper.canWalkOn(context, destX, y, z, pb2)) // we could just ascend
-                    || (!ATop && AMid && ALow) // head bonk A
-                    || (!BTop && BMid && BLow)) { // head bonk B
+                    || (BTop && BMid && MovementHelper.canWalkOn(context, destX, y, z, pb2))) { // we could just ascend
                 return;
             }
             res.cost = multiplier * SQRT_2 + JUMP_ONE_BLOCK_COST;
