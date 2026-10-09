@@ -20,11 +20,11 @@ public class CoalRulesTest {
 
     // a world where we are mining in the overworld with a pick and nothing else is going on
     private static Inputs calm() {
-        return new Inputs(true, true, 0, false, false, false, false, false);
+        return new Inputs(true, true, 0, Integer.MAX_VALUE, false, false, false, false, false);
     }
 
     private static Inputs calm(int coal) {
-        return new Inputs(true, true, coal, false, false, false, false, false);
+        return new Inputs(true, true, coal, Integer.MAX_VALUE, false, false, false, false, false);
     }
 
     // answers that can change between ticks, and a count of how often each was asked
@@ -130,13 +130,13 @@ public class CoalRulesTest {
     // ---- the never rules
 
     private static final List<UnaryOperator<Inputs>> NEVER = List.of(
-            in -> new Inputs(false, in.pickaxe(), in.coal(), in.cookStation(), in.furnaceDue(), in.loadInFlight(), in.foodLeads(), in.coalHead()),
-            in -> new Inputs(in.overworld(), false, in.coal(), in.cookStation(), in.furnaceDue(), in.loadInFlight(), in.foodLeads(), in.coalHead()),
-            in -> new Inputs(in.overworld(), in.pickaxe(), in.coal(), true, in.furnaceDue(), in.loadInFlight(), in.foodLeads(), in.coalHead()),
-            in -> new Inputs(in.overworld(), in.pickaxe(), in.coal(), in.cookStation(), true, in.loadInFlight(), in.foodLeads(), in.coalHead()),
-            in -> new Inputs(in.overworld(), in.pickaxe(), in.coal(), in.cookStation(), in.furnaceDue(), true, in.foodLeads(), in.coalHead()),
-            in -> new Inputs(in.overworld(), in.pickaxe(), in.coal(), in.cookStation(), in.furnaceDue(), in.loadInFlight(), true, in.coalHead()),
-            in -> new Inputs(in.overworld(), in.pickaxe(), in.coal(), in.cookStation(), in.furnaceDue(), in.loadInFlight(), in.foodLeads(), true));
+            in -> new Inputs(false, in.pickaxe(), in.coal(), in.need(), in.cookStation(), in.furnaceDue(), in.loadInFlight(), in.foodLeads(), in.coalHead()),
+            in -> new Inputs(in.overworld(), false, in.coal(), in.need(), in.cookStation(), in.furnaceDue(), in.loadInFlight(), in.foodLeads(), in.coalHead()),
+            in -> new Inputs(in.overworld(), in.pickaxe(), in.coal(), in.need(), true, in.furnaceDue(), in.loadInFlight(), in.foodLeads(), in.coalHead()),
+            in -> new Inputs(in.overworld(), in.pickaxe(), in.coal(), in.need(), in.cookStation(), true, in.loadInFlight(), in.foodLeads(), in.coalHead()),
+            in -> new Inputs(in.overworld(), in.pickaxe(), in.coal(), in.need(), in.cookStation(), in.furnaceDue(), true, in.foodLeads(), in.coalHead()),
+            in -> new Inputs(in.overworld(), in.pickaxe(), in.coal(), in.need(), in.cookStation(), in.furnaceDue(), in.loadInFlight(), true, in.coalHead()),
+            in -> new Inputs(in.overworld(), in.pickaxe(), in.coal(), in.need(), in.cookStation(), in.furnaceDue(), in.loadInFlight(), in.foodLeads(), true));
     private static final List<String> NEVER_NAMES = List.of("nether", "no pick", "cook has its station", "furnace due", "load in flight",
             "food leads", "coal is the head");
 
@@ -176,8 +176,9 @@ public class CoalRulesTest {
 
     @Test
     public void everyNeverRuleIsInTheTable() {
-        // a field added to Inputs without a rule here would be an unchecked way to go mining
-        assertEquals(Inputs.class.getRecordComponents().length - 1, NEVER.size());
+        // a field added to Inputs without a rule here would be an unchecked way to go mining. coal and need are the two that
+        // are not never rules, CoalNeedTest has those
+        assertEquals(Inputs.class.getRecordComponents().length - 2, NEVER.size());
     }
 
     // ---- hysteresis

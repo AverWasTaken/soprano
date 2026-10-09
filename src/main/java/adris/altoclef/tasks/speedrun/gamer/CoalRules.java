@@ -37,6 +37,11 @@ public final class CoalRules {
     // long since we did
     public static final double ANNOUNCE_BLOCKS = 8;
     public static final long ANNOUNCE_TICKS = 60 * 20;
+    // the coal the plan still burns: a coal is 8 smelts, and a couple more than the sum so a stray smelt does not send us out
+    public static final int SMELTS_PER_COAL = 8;
+    public static final int NEED_MARGIN = 2;
+    // whatever the sum says, a detour never takes us past this. a full run's iron and meat is about 10
+    public static final int NEED_CEILING = 16;
     // the offset tables are cubes of this size at the most, a typo'd 500 in the config is not 40 million entries
     static final double MAX_BUDGET = 48;
 
@@ -49,7 +54,7 @@ public final class CoalRules {
         KEEP,
         // the ore is gone and the drop is not up yet: give it a moment before calling it done
         SETTLE,
-        // over: the cluster is mined, or the bag is full enough
+        // over: no ore we can see is left in the cluster, or we hold what the plan needs
         DONE,
         // over: out of time, so whatever is still standing gets banned
         TIMEOUT,
@@ -60,14 +65,14 @@ public final class CoalRules {
         BLOCKED
     }
 
-    // what the phase knows this tick. the world half builds it, the rules never read the game
-    public record Inputs(boolean overworld, boolean pickaxe, int coal, boolean cookStation, boolean furnaceDue,
+    // what the phase knows this tick. the world half builds it, the rules never read the game. need = coalNeed, what we stop at
+    public record Inputs(boolean overworld, boolean pickaxe, int coal, int need, boolean cookStation, boolean furnaceDue,
                          boolean loadInFlight, boolean foodLeads, boolean coalHead) {
     }
 
     // the questions about the world, asked lazily because the first three are block reads: a veined cave wall costs thousands.
-    // start = a coal ore worth starting on (in reach, seen, breakable, not banned), keep = any ore left in the looser reach
-    // around where the detour began, drop = a coal item on the floor close by that fits in the bag, strayed = we are further
+    // start = a coal ore worth starting on (in reach, in sight right now (CoalSight), breakable, not banned), keep = any ore we
+    // can still see in the looser reach around where the detour began, drop = a coal item on the floor close by that fits in the bag, strayed = we are further
     // from where it began than the leash
     public record Ore(BooleanSupplier start, BooleanSupplier keep, BooleanSupplier drop, BooleanSupplier strayed) {
     }
@@ -126,6 +131,20 @@ public final class CoalRules {
                 || in.coalHead();
     }
 
+    // coal enough for the rest of the plan: every iron ingot still owed that is not in the bag or in one of our furnaces, plus
+    // the raw meat in the bag, is a smelt. the wood we would burn anyway (above the reserve) covers some, the rest is coal, a
+    // coal is 8. plus the margin, never past the ceiling. a flat 24 kept a bot with 14 coal and 3 ingots to go mining for more
+    public static int coalNeed(int ingotsOwed, int ingotsHeld, int ingotsPending, int rawMeat, int woodSmelts) {
+        int smelts = Math.max(0, ingotsOwed - ingotsHeld - ingotsPending) + Math.max(0, rawMeat);
+        int left = Math.max(0, smelts - Math.max(0, woodSmelts));
+        return Math.min(NEED_CEILING, (left + SMELTS_PER_COAL - 1) / SMELTS_PER_COAL + NEED_MARGIN);
+    }
+
+    // the coal held covers the plan (and the config's own cap, if somebody set that lower)
+    public static boolean enough(Inputs in, OverworldConfig cfg) {
+        return in.coal() >= Math.min(in.need(), cfg.coalSideCap);
+    }
+
     public static long maxTicks(OverworldConfig cfg) {
         return Math.round(cfg.coalSideSeconds * 20);
     }
@@ -142,7 +161,7 @@ public final class CoalRules {
 
     private Step idle(long now, Inputs in, OverworldConfig cfg, Ore ore) {
         // the cheap questions first, the ore question is a world scan
-        if (now < cooldownUntil || blocked(in) || in.coal() >= cfg.coalSideCap || !ore.start().getAsBoolean()) {
+        if (now < cooldownUntil || blocked(in) || enough(in, cfg) || !ore.start().getAsBoolean()) {
             return Step.IDLE;
         }
         running = true;
@@ -155,7 +174,7 @@ public final class CoalRules {
         if (blocked(in)) {
             return end(now, Step.BLOCKED);
         }
-        if (in.coal() >= cfg.coalSideCap) {
+        if (enough(in, cfg)) {
             return end(now, Step.DONE);
         }
         boolean standing = ore.keep().getAsBoolean();

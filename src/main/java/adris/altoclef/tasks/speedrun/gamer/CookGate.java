@@ -136,12 +136,20 @@ public final class CookGate {
 
     // `logsSpoken` = logs about to go into something else (a smoker), taken off the spare wood first
     static int fuelSmelts(GamerFacts f, OverworldConfig cfg, int endBeds, int logsSpoken) {
-        int smelts = burnable(f, Items.COAL, Items.CHARCOAL) * COAL_SMELTS;
+        return burnable(f, Items.COAL, Items.CHARCOAL) * COAL_SMELTS + woodSmelts(f, cfg, endBeds, logsSpoken);
+    }
+
+    // the wood half of fuelSmelts: logs and planks above the reserve. the coal detour counts it towards the coal we already have
+    public static int woodSmelts(GamerFacts f, OverworldConfig cfg, int endBeds) {
+        return woodSmelts(f, cfg, endBeds, 0);
+    }
+
+    private static int woodSmelts(GamerFacts f, OverworldConfig cfg, int endBeds, int logsSpoken) {
         WoodReserve.Keep keep = WoodReserve.keep(f, cfg, endBeds);
         int logs = Math.max(0, burnable(f, ItemHelper.LOG) - keep.logs() - logsSpoken);
         int planks = Math.max(0, burnable(f, ItemHelper.PLANKS) - keep.planks());
         // a log and a plank are both 300 ticks of fire, 1.5 items (ItemHelper.getFuelAmount). planks used to be 0.75 in here
-        return smelts + (logs + planks) * 3 / 2;
+        return (logs + planks) * 3 / 2;
     }
 
     // how many of these we hold that a furnace may burn

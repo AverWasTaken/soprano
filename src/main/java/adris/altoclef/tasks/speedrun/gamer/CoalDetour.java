@@ -11,7 +11,6 @@ import adris.altoclef.trackers.BanPolicy;
 import adris.altoclef.trackers.Bans;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.MiningRequirement;
-import adris.altoclef.util.helpers.SeenFilter;
 import adris.altoclef.util.helpers.WorldHelper;
 import baritone.api.utils.Dimension;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -49,6 +48,8 @@ public final class CoalDetour {
     private String hud;
     // the ore the rules last looked at, for the card's "N blocks". the look happens anyway, this just keeps the answer
     private BlockPos ore;
+    // the "we hold enough" line went out and is still true
+    private boolean enoughSaid;
 
     String hud() {
         return hud;
@@ -101,9 +102,11 @@ public final class CoalDetour {
         BlockPos me = mod.getPlayer().blockPosition();
         double keep = CoalRules.keepBudget(cfg.coalSideBudget);
         BlockPos from = anchor == null ? me : anchor;
-        CoalRules.Ore ore = new CoalRules.Ore(() -> (this.ore = nearest(mod, me, cfg.coalSideBudget, true)) != null,
-                () -> (this.ore = nearest(mod, from, keep, false)) != null, () -> dropNear(mod), () -> strayed(me, from, cfg));
-        CoalRules.Step step = rules.tick(now, inputs(mod, f, head, coal), cfg, ore);
+        CoalRules.Ore ore = new CoalRules.Ore(() -> (this.ore = nearest(mod, me, cfg.coalSideBudget)) != null,
+                () -> (this.ore = nearest(mod, from, keep)) != null, () -> dropNear(mod), () -> strayed(me, from, cfg));
+        CoalRules.Inputs in = inputs(mod, ctx, head, coal);
+        noteEnough(in, cfg);
+        CoalRules.Step step = rules.tick(now, in, cfg, ore);
         switch (step) {
             case START:
                 start(mod, ctx, cfg, me, coal);
@@ -135,7 +138,8 @@ public final class CoalDetour {
 
     private void start(AltoClef mod, GamerContext ctx, OverworldConfig cfg, BlockPos me, int coal) {
         // the target is the cap in total, so the task never calls itself finished before the rules do
-        mine = new MineAndCollectTask(new ItemTarget(Items.COAL, cfg.coalSideCap), ORES, MiningRequirement.WOOD);
+        // and it only ever picks coal we can see from where we stand, so a vein behind the wall is not a tunnel (CoalSight)
+        mine = new MineAndCollectTask(new ItemTarget(Items.COAL, cfg.coalSideCap), ORES, MiningRequirement.WOOD).onlyWhere(pos -> visible(mod, pos));
         anchor = me;
         coalAtStart = coal;
         coalLast = coal;
@@ -145,7 +149,7 @@ public final class CoalDetour {
         if (said) {
             ctx.log("Mining coal since we found it here");
         }
-        BlockPos first = nearest(mod, me, cfg.coalSideBudget, true);
+        BlockPos first = nearest(mod, me, cfg.coalSideBudget);
         Debug.logInternal("coal side job: started with " + coal + " coal held" + (first == null ? "" : ", nearest ore " + first.toShortString())
                 + (said ? "" : ", chat line skipped, near the last one"));
     }
@@ -158,7 +162,25 @@ public final class CoalDetour {
         ore = null;
     }
 
-    private static CoalRules.Inputs inputs(AltoClef mod, GamerFacts f, KitNeed head, int coal) {
+    // one line when the plan's coal is covered, not one per look. said again only after it stopped being true
+    private void noteEnough(CoalRules.Inputs in, OverworldConfig cfg) {
+        boolean enough = CoalRules.enough(in, cfg);
+        if (enough && !enoughSaid && !rules.running()) {
+            Debug.logInternal("coal side job: skipping, we hold " + in.coal() + " coal and the plan needs " + Math.min(in.need(), cfg.coalSideCap));
+        }
+        enoughSaid = enough;
+    }
+
+    // CoalRules.coalNeed over the facts. raw iron in the bag is still owed (ingotsNeeded counts the missing items, not the ore)
+    static int coalNeed(GamerContext ctx) {
+        GamerFacts f = ctx.facts();
+        OverworldConfig cfg = ctx.cfg().overworld;
+        return CoalRules.coalNeed(KitPlanner.ingotsNeeded(f, cfg), f.count(Items.IRON_INGOT), f.pendingOutput(Items.IRON_INGOT),
+                CookGate.raw(f), CookGate.woodSmelts(f, cfg, ctx.cfg().end.beds));
+    }
+
+    private static CoalRules.Inputs inputs(AltoClef mod, GamerContext ctx, KitNeed head, int coal) {
+        GamerFacts f = ctx.facts();
         long now = f.gameTime();
         boolean screen = mod.getPlayer().containerMenu instanceof AbstractFurnaceMenu;
         // the same "due" the furnace plan uses, so a detour never sits on a collect trip it is about to hold up
@@ -166,7 +188,7 @@ public final class CoalDetour {
         String need = head == null ? null : head.catalogueName();
         // the food need and the cook both have latches that count the time they lead for, a detour in the middle of one eats it
         boolean food = KitNeed.FOOD.equals(need) || KitNeed.isCookName(need);
-        return new CoalRules.Inputs(f.dimension() == Dimension.OVERWORLD, hasPickaxe(f), coal, f.cookStation() != null, due,
+        return new CoalRules.Inputs(f.dimension() == Dimension.OVERWORLD, hasPickaxe(f), coal, coalNeed(ctx), f.cookStation() != null, due,
                 WorkbenchRules.loadInFlight(screen, AsyncSmelting.lastWork(), now), food, "coal".equals(need));
     }
 
@@ -180,11 +202,11 @@ public final class CoalDetour {
         return state.is(Blocks.COAL_ORE) || state.is(Blocks.DEEPSLATE_COAL_ORE);
     }
 
-    // the nearest coal ore within the budget of `center` that we could mine and have not given up on. for the start it also has to
-    // have been in sight at some point (SeenFilter), so a bot in a stone shaft does not tunnel to a vein it could only know about
-    // by reading the chunk. the ones next to a vein we are already on count without it. a banned ore is skipped here and by the
-    // mining task alike (the tracker asks the same book), so a closer banned one no longer has to block the start
-    private BlockPos nearest(AltoClef mod, BlockPos center, double budget, boolean forStart) {
+    // the nearest coal ore within the budget of `center` that we could mine, have not given up on, and can see right now (CoalSight:
+    // an air face and a clear line from the eyes, within 8). start and keep both ask it, so the detour ends when the only coal left
+    // in the cluster is behind stone. "seen once" (SeenFilter) was not enough: a glimpse through a crack 30 blocks off counted.
+    // a banned ore is skipped here and by the mining task alike (the tracker asks the same book)
+    private BlockPos nearest(AltoClef mod, BlockPos center, double budget) {
         ClientLevel level = mod.getWorld();
         Bans bans = mod.getBans();
         BlockPos.MutableBlockPos at = new BlockPos.MutableBlockPos();
@@ -194,11 +216,29 @@ public final class CoalDetour {
                 continue;
             }
             BlockPos found = at.immutable();
-            if (WorldHelper.canBreak(mod, found) && (!forStart || SeenFilter.isSeen(mod, found))) {
+            if (WorldHelper.canBreak(mod, found) && visible(mod, found)) {
                 return found;
             }
         }
         return null;
+    }
+
+    private static boolean visible(AltoClef mod, BlockPos pos) {
+        ClientLevel level = mod.getWorld();
+        Vec3 eye = mod.getPlayer().getEyePosition();
+        BlockPos.MutableBlockPos at = new BlockPos.MutableBlockPos();
+        CoalSight.Cells cells = new CoalSight.Cells() {
+            @Override
+            public boolean air(int x, int y, int z) {
+                return level.getBlockState(at.set(x, y, z)).isAir();
+            }
+
+            @Override
+            public boolean blocksView(int x, int y, int z) {
+                return level.getBlockState(at.set(x, y, z)).canOcclude();
+            }
+        };
+        return CoalSight.visible(cells, eye.x, eye.y, eye.z, pos.getX(), pos.getY(), pos.getZ());
     }
 
     // further from where the detour began than the leash, as the crow flies

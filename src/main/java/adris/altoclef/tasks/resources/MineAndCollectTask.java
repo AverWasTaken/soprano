@@ -69,6 +69,13 @@ public class MineAndCollectTask extends ResourceTask {
         this(new ItemTarget(item, count), blocksToMine, requirement);
     }
 
+    // only ever pick blocks that pass this as the next one to break (the coal detour: only coal we can see). a block already
+    // being broken is not asked again, the swing that is halfway through finishes
+    public MineAndCollectTask onlyWhere(Predicate<BlockPos> only) {
+        _subtask._only = only;
+        return this;
+    }
+
     public static Block[] itemTargetToBlockList(ItemTarget[] targets) {
         List<Block> result = new ArrayList<>(targets.length);
         for (ItemTarget target : targets) {
@@ -189,6 +196,8 @@ public class MineAndCollectTask extends ResourceTask {
         private BlockPos _anchor;
         private boolean _anchorAnnounced;
         private ItemEntity _lockedDrop;
+        // a caller's extra say on which blocks may be picked (see onlyWhere). last in the test, it may be the costly one
+        private Predicate<BlockPos> _only = check -> true;
 
         public MineOrCollectTask(Block[] blocks, ItemTarget[] targets) {
             _blocks = blocks;
@@ -300,7 +309,7 @@ public class MineAndCollectTask extends ResourceTask {
         private Optional<BlockPos> pickBlock(AltoClef mod, Vec3 pos) {
             Predicate<BlockPos> usable = check -> {
                 if (mod.getBlockTracker().unreachable(check)) return false;
-                return WorldHelper.canBreak(mod, check);
+                return WorldHelper.canBreak(mod, check) && _only.test(check);
             };
             // what we put down ourselves is scaffolding, not a resource. it is the best looking stone there is (exposed, at
             // our feet) and eating it is how the table placement looped. only when nothing else is close do we take it

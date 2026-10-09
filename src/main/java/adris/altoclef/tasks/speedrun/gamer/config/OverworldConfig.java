@@ -77,8 +77,8 @@ public class OverworldConfig {
 
     // coal on the way (see CoalRules): while GATHER and IRON mine, coal ore this close is worth a short detour, because a smelt
     // that runs short of fuel sends us out for coal anyway. the reach is WalkCost, blocks across plus 4 per block of height, so
-    // about 12 flat or 3 up or down. it stops at coalSideCap in the bag, and a detour gets coalSideSeconds before the vein is
-    // written off for the rest of the run
+    // about 12 flat or 3 up or down. it stops at what the plan still burns (CoalRules.coalNeed, never past 16) or coalSideCap in
+    // the bag, whichever is lower, and a detour gets coalSideSeconds before the vein is banned for a while (BanPolicy.COAL)
     public double coalSideBudget = 12;
     public int coalSideCap = 24;
     public double coalSideSeconds = 30;
