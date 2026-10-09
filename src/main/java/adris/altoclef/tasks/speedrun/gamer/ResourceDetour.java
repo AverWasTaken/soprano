@@ -270,7 +270,7 @@ public final class ResourceDetour {
         boolean place = gravel ? DetourSpec.gravelPhase(ctx.state().phase, f.dimension()) : overworld;
         boolean tool = gravel || hasPickaxe(f);
         int want = gravel ? flintNeed(f) : coalNeed(ctx);
-        return new DetourRules.Inputs(place, tool, held, want, cook, due, load, food, spec.headNeed.equals(need), tally.count());
+        return new DetourRules.Inputs(place, tool, held, want, cook, due, load, food, spec.kitIsOnIt(need), tally.count());
     }
 
     // stone or better. a wooden pick could mine coal, but the wooden pick days are for getting cobble and leaving, and its 59

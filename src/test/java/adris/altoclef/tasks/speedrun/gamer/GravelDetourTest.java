@@ -64,7 +64,18 @@ public class GravelDetourTest {
     public void theKitOnFlintAlreadyIsNoDetour() {
         Inputs head = new Inputs(true, true, 0, 1, false, false, false, false, true, 0);
         assertTrue(DetourRules.blocked(head));
-        assertEquals("flint", DetourSpec.GRAVEL.headNeed);
+        assertTrue(DetourSpec.GRAVEL.kitIsOnIt("flint"));
+    }
+
+    @Test
+    public void theKitOnTheFlintAndSteelIsOnTheFlintToo() {
+        assertTrue(DetourSpec.GRAVEL.kitIsOnIt("flint_and_steel"));
+        assertFalse(DetourSpec.GRAVEL.kitIsOnIt("iron_ingot"));
+        assertFalse(DetourSpec.GRAVEL.kitIsOnIt(null));
+        // coal only ever stood aside for coal
+        assertTrue(DetourSpec.COAL.kitIsOnIt("coal"));
+        assertFalse(DetourSpec.COAL.kitIsOnIt("flint_and_steel"));
+        assertFalse(DetourSpec.COAL.kitIsOnIt(null));
     }
 
     // ---- the cap

@@ -37,7 +37,7 @@ public final class DetourSpec {
     public final Resource resource;
     // for the log lines ("coal side job: ...") and the activity words
     public final String name;
-    // the kit need that means the kit task is already on it (DetourRules.blocked)
+    // the kit need that means the kit task is already on it (DetourRules.blocked), see kitIsOnIt
     public final String headNeed;
     // once per detour in chat (DetourRules.announce)
     public final String chat;
@@ -64,6 +64,15 @@ public final class DetourSpec {
         this.heldCap = heldCap;
         this.seconds = seconds;
         this.mineCap = mineCap;
+    }
+
+    // the kit's head need is this resource already. for gravel the flint and steel counts too: its craft fetches the flint
+    // itself (CollectFlintTask), and a detour next to it would just race it for the same gravel
+    public boolean kitIsOnIt(String need) {
+        if (resource == Resource.GRAVEL && "flint_and_steel".equals(need)) {
+            return true;
+        }
+        return headNeed.equals(need);
     }
 
     // the start reach, WalkCost
