@@ -175,7 +175,7 @@ public final class KitRunner {
         }
         KitNeed same = HeadLatch.sameJob(list, key);
         if (same == null && missingSince == HeadLatch.NEVER) {
-            // done (we hold it, or a special need) is just done, no clock and no line
+            // done (we hold it, or it is not one of the plain gathers HeadLatch holds) is just done, no clock and no line
             if (HeadLatch.keepWhileGone(key, f.gameTime(), f.gameTime(), f)) {
                 missingSince = f.gameTime();
                 Debug.logInternal("kit: " + key.catalogueName() + " x" + key.count() + " dropped out of the plan but we do not hold it ("
