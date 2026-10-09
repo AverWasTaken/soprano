@@ -101,7 +101,10 @@ public class PlayerInteractionFixChain extends TaskChain {
             // not with a container open: a screen Slot doesn't know (hopper, brewing stand, a villager) maps our slots as if it
             // were the inventory and the 72 clicks land in the container, and on the ones it does know they reset the slot
             // cooldown under whatever task is working the screen. the timer stays elapsed, it goes the tick the screen shuts
-            if (!mod.getControllerExtras().isBreakingBlock() && !(Minecraft.getInstance().screen instanceof AbstractContainerScreen<?>)) {
+            // the clicks go to containerMenu, so a menu still open behind a closed screen counts too
+            boolean containerOpen = Minecraft.getInstance().screen instanceof AbstractContainerScreen<?>
+                    || mod.getPlayer().containerMenu != mod.getPlayer().inventoryMenu;
+            if (!mod.getControllerExtras().isBreakingBlock() && !containerOpen) {
                 // this fires every 30s for as long as altoclef runs, chat is no place for it
                 Debug.logInternal("Refreshed inventory...");
                 mod.getSlotHandler().refreshInventory();
