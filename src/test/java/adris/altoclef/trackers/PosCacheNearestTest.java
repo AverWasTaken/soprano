@@ -1,5 +1,6 @@
 package adris.altoclef.trackers;
 
+import baritone.api.utils.Dimension;
 import net.minecraft.SharedConstants;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.Bootstrap;
@@ -110,5 +111,47 @@ public class PosCacheNearestTest {
             Optional<BlockPos> got = cache.getNearest(from, valid, blockIsValid, SCORER, types);
             assertEquals("round " + round, want, got);
         }
+    }
+
+    @Test
+    public void aBannedBlockIsSkippedAndComesBackWhenTheBanEnds() {
+        Bans bans = new Bans(line -> {
+        });
+        bans.tick(0);
+        BlockTracker.PosCache cache = new BlockTracker.PosCache(bans, Dimension.OVERWORLD);
+        cache.addBlock(Blocks.COAL_ORE, new BlockPos(1, 0, 0));
+        cache.addBlock(Blocks.COAL_ORE, new BlockPos(5, 0, 0));
+        BanPolicy.coal(bans, 1, 0, 0);
+        assertEquals(Optional.of(new BlockPos(5, 0, 0)), cache.getNearest(new Vec3(0, 0, 0), p -> true, p -> true, SCORER, Blocks.COAL_ORE));
+        assertTrue(cache.blockUnreachable(new BlockPos(1, 0, 0)));
+        bans.tick(BanPolicy.COAL);
+        // still in the cache, nothing had to rescan it
+        assertEquals(Optional.of(new BlockPos(1, 0, 0)), cache.getNearest(new Vec3(0, 0, 0), p -> true, p -> true, SCORER, Blocks.COAL_ORE));
+    }
+
+    @Test
+    public void aBanInAnotherDimensionIsNotThisCachesBusiness() {
+        Bans bans = new Bans(line -> {
+        });
+        BlockTracker.PosCache nether = new BlockTracker.PosCache(bans, Dimension.NETHER);
+        nether.addBlock(Blocks.COAL_ORE, new BlockPos(1, 0, 0));
+        BanPolicy.coal(bans, 1, 0, 0);
+        assertEquals(Optional.of(new BlockPos(1, 0, 0)), nether.getNearest(new Vec3(0, 0, 0), p -> true, p -> true, SCORER, Blocks.COAL_ORE));
+    }
+
+    @Test
+    public void entityLookupsSkipBannedIds() {
+        Bans bans = new Bans(line -> {
+        });
+        record Mob(int id, double dist) {
+        }
+        List<Mob> mobs = List.of(new Mob(1, 2), new Mob(2, 5), new Mob(3, 9));
+        assertEquals(1, EntityTracker.closest(bans, mobs, Mob::id, m -> true, Mob::dist).id());
+        BanPolicy.noPath(bans, 1, "cow");
+        assertEquals(2, EntityTracker.closest(bans, mobs, Mob::id, m -> true, Mob::dist).id());
+        assertEquals(3, EntityTracker.closest(bans, mobs, Mob::id, m -> m.id() != 2, Mob::dist).id());
+        BanPolicy.noPath(bans, 2, "cow");
+        BanPolicy.noPath(bans, 3, "cow");
+        assertNull(EntityTracker.closest(bans, mobs, Mob::id, m -> true, Mob::dist));
     }
 }

@@ -10,11 +10,12 @@ import adris.altoclef.tasks.slot.EnsureFreeInventorySlotTask;
 import adris.altoclef.tasks.slot.FreeSlotPlan;
 import adris.altoclef.tasksystem.ITaskRequiresGrounded;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.trackers.BanPolicy;
+import adris.altoclef.trackers.EntityTracker;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.MiningRequirement;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.ItemPickupRules;
-import adris.altoclef.util.helpers.StlHelper;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
@@ -33,9 +34,7 @@ import net.minecraft.world.level.block.FenceGateBlock;
 import net.minecraft.world.level.block.FlowerBlock;
 import net.minecraft.world.phys.Vec3;
 import java.util.Arrays;
-import java.util.HashSet;
 import java.util.Optional;
-import java.util.Set;
 
 public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEntity> implements ITaskRequiresGrounded {
     private static final Task getPickaxeFirstTask = new SatisfyMiningRequirementTask(MiningRequirement.STONE);
@@ -47,8 +46,6 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
     private final WaterPickupWatchdog _waterWatchdog = new WaterPickupWatchdog();
     private final ItemTarget[] _itemTargets;
 
-    // This happens all the time in mineshafts and swamps/jungles
-    private final Set<ItemEntity> _blacklist = new HashSet<>();
     private final boolean _freeInventoryIfFull;
     private Task _unstuckTask = null;
     // Am starting to regret not making this a singleton
@@ -121,6 +118,12 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
         return _collectingPickaxeForThisResource;
     }
 
+    // virtual. the progress checker ran out on this drop. this used to go in a set of the task's own that the tracker never
+    // heard of, now it is a short ban everybody honours
+    protected void gaveUpOnDrop(AltoClef mod, ItemEntity drop) {
+        BanPolicy.pickupStalled(mod.getBans(), drop.getId(), EntityTracker.describe(drop));
+    }
+
     // virtual. false for a pickup on a clock that can't afford a stone pickaxe detour. bailing out of one halfway leaves
     // the static flag up until we own a stone pick, and every ResourceTask ignores far drops until then
     protected boolean mayGetPickaxeFirst() {
@@ -172,8 +175,7 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
         if (_currentDrop != null && isValid(mod, _currentDrop)
                 && _waterWatchdog.update(_currentDrop, mod.getPlayer().isInWater(), mod.getPlayer().distanceTo(_currentDrop), WorldHelper.getTicks())) {
             Debug.logInternal("Giving up on " + _currentDrop.getItem().getItem().getDescriptionId() + ", in water and not getting closer");
-            _blacklist.add(_currentDrop);
-            mod.getEntityTracker().banEntity(_currentDrop);
+            BanPolicy.wetDrop(mod.getBans(), _currentDrop.getId(), EntityTracker.describe(_currentDrop));
             mod.getClientBaritone().getPathingBehavior().forceCancel();
             _currentDrop = null;
             _waterWatchdog.reset();
@@ -204,9 +206,9 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
                     isGettingPickaxeFirstFlag = true;
                     return getPickaxeFirstTask;
                 }
-                Debug.logMessage(StlHelper.toString(_blacklist, element -> element == null ? "(null)" : element.getItem().getItem().getDescriptionId()));
                 Debug.logMessage("Failed to pick up drop, suggesting it's unreachable.");
-                _blacklist.add(_currentDrop);
+                // the strike stays too, the fourth one is the longer ban
+                gaveUpOnDrop(mod, _currentDrop);
                 mod.getEntityTracker().requestEntityUnreachable(_currentDrop);
                 return _wanderTask;
             }
@@ -221,7 +223,7 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
     // Wander task start and die after every single kill, the pickups all worked). a parent that asks gets a plain yes instead
     @Override
     public boolean isFinished(AltoClef mod) {
-        if (_currentDrop == null || _blacklist.contains(_currentDrop)) {
+        if (_currentDrop == null || !mod.getEntityTracker().isEntityReachable(_currentDrop)) {
             return false;
         }
         boolean gone = !_currentDrop.isAlive() || _currentDrop.getItem().isEmpty();
@@ -304,8 +306,7 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
                 }
                 if (room == ItemPickupRules.Room.GIVE_UP) {
                     Debug.logMessage("Giving up on " + itemEntity.getItem().getItem().getDescriptionId() + ", the bag is full of things we keep.");
-                    _blacklist.add(itemEntity);
-                    _mod.getEntityTracker().banEntity(itemEntity);
+                    BanPolicy.noRoom(_mod.getBans(), itemEntity.getId(), EntityTracker.describe(itemEntity));
                     _currentDrop = null;
                     _progressChecker.reset();
                     return null;
@@ -336,7 +337,7 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
 
     @Override
     protected boolean isValid(AltoClef mod, ItemEntity obj) {
-        if (!obj.isAlive() || _blacklist.contains(obj) || !mod.getEntityTracker().isEntityReachable(obj)) return false;
+        if (!obj.isAlive() || !mod.getEntityTracker().isEntityReachable(obj)) return false;
         // a drop we were already walking to can slide next to lava after the tracker picked it, and the tracker's own
         // skip only keeps new targets out. no setting for this one
         if (ItemPickupRules.lavaBlocksPickup(obj)) return false;

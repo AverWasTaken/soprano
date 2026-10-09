@@ -6,7 +6,6 @@ import adris.altoclef.eventbus.EventBus;
 import adris.altoclef.eventbus.events.PlayerCollidedWithEntityEvent;
 import baritone.Baritone;
 import baritone.utils.accessor.IPersistentProjectile;
-import adris.altoclef.trackers.blacklisting.EntityLocateBlacklist;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.baritone.CachedProjectile;
 import adris.altoclef.util.helpers.BaritoneHelper;
@@ -18,6 +17,8 @@ import adris.altoclef.util.helpers.ProjectileHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import java.util.*;
 import java.util.function.Predicate;
+import java.util.function.ToDoubleFunction;
+import java.util.function.ToIntFunction;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -51,7 +52,6 @@ public class EntityTracker extends Tracker {
     private final HashMap<String, Player> _playerMap = new HashMap<>();
     private final HashMap<String, Vec3> _playerLastCoordinates = new HashMap<>();
 
-    private final EntityLocateBlacklist _entityBlacklist = new EntityLocateBlacklist();
     private final MobReachability _mobReach = new MobReachability();
     // who we hit and who hit us lately, the only honest "it is angry at us" the client can get (see NeutralMobs)
     private final Provocations _provocations = new Provocations();
@@ -152,15 +152,14 @@ public class EntityTracker extends Tracker {
         for (ItemTarget target : targets) {
             for (Item item : target.getMatches()) {
                 if (!itemDropped(item)) continue;
-                for (ItemEntity entity : _itemDropLocations.get(item)) {
-                    if (_entityBlacklist.unreachable(entity)) continue;
-                    if (!entity.getItem().getItem().equals(item)) continue;
-                    if (!acceptPredicate.test(entity)) continue;
-
-                    float cost = (float) BaritoneHelper.calculateGenericHeuristic(position, entity.position());
+                ItemEntity best = closest(_mod.getBans(), _itemDropLocations.get(item), Entity::getId,
+                        entity -> entity.getItem().getItem().equals(item) && acceptPredicate.test(entity),
+                        entity -> (float) BaritoneHelper.calculateGenericHeuristic(position, entity.position()));
+                if (best != null) {
+                    float cost = (float) BaritoneHelper.calculateGenericHeuristic(position, best.position());
                     if (cost < minCost) {
                         minCost = cost;
-                        closestEntity = entity;
+                        closestEntity = best;
                     }
                 }
             }
@@ -186,15 +185,14 @@ public class EntityTracker extends Tracker {
         for (Class toFind : entityTypes) {
             synchronized (BaritoneHelper.MINECRAFT_LOCK) {
                 if (_entityMap.containsKey(toFind)) {
-                    for (Entity entity : _entityMap.get(toFind)) {
-                        // Don't accept entities that no longer exist
-                        if (_entityBlacklist.unreachable(entity)) continue;
-                        if (!entity.isAlive()) continue;
-                        if (!acceptPredicate.test(entity)) continue;
-                        double cost = entity.distanceToSqr(position);
+                    // Don't accept entities that no longer exist
+                    Entity best = closest(_mod.getBans(), _entityMap.get(toFind), Entity::getId,
+                            entity -> entity.isAlive() && acceptPredicate.test(entity), entity -> entity.distanceToSqr(position));
+                    if (best != null) {
+                        double cost = best.distanceToSqr(position);
                         if (cost < minCost) {
                             minCost = cost;
-                            closestEntity = entity;
+                            closestEntity = best;
                         }
                     }
                 }
@@ -209,7 +207,7 @@ public class EntityTracker extends Tracker {
             if (_itemDropLocations.containsKey(item)) {
                 // Find a non-blacklisted item
                 for (ItemEntity entity : _itemDropLocations.get(item)) {
-                    if (!_entityBlacklist.unreachable(entity)) return true;
+                    if (!_mod.getBans().entityBanned(entity.getId())) return true;
                 }
             }
         }
@@ -325,25 +323,38 @@ public class EntityTracker extends Tracker {
         return Optional.empty();
     }
 
-    /**
-     * Tells the entity tracker that we were unable to reach this entity.
-     */
+    // we could not get to it. the fourth time (none of them from closer than the last) it is banned, see BanPolicy.entityStrike
     public void requestEntityUnreachable(Entity entity) {
-        _entityBlacklist.blackListItem(_mod, entity, 3);
+        BanPolicy.entityStrike(_mod.getBans(), entity.getId(), 3, entity.position().distanceToSqr(_mod.getPlayer().position()),
+                "couldn't reach " + describe(entity));
     }
 
-    /**
-     * Gives up on this entity for good (until the world changes), no retries.
-     */
-    public void banEntity(Entity entity) {
-        _entityBlacklist.banItem(entity);
-    }
-
-    /**
-     * Whether we have decided that this entity is unreachable.
-     */
+    // false while anybody's ban on it holds
     public boolean isEntityReachable(Entity entity) {
-        return !_entityBlacklist.unreachable(entity);
+        return !_mod.getBans().entityBanned(entity.getId());
+    }
+
+    // what a ban line calls it: the item for a drop, the mob type otherwise
+    public static String describe(Entity entity) {
+        if (entity instanceof ItemEntity drop) {
+            return BuiltInRegistries.ITEM.getKey(drop.getItem().getItem()).getPath();
+        }
+        return BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType()).getPath();
+    }
+
+    // the nearest unbanned one that passes, by cost. the one loop both lookups go through, so a ban is a ban for every caller
+    static <T> T closest(Bans bans, Iterable<T> candidates, ToIntFunction<T> id, Predicate<T> accept, ToDoubleFunction<T> cost) {
+        T best = null;
+        double min = Double.POSITIVE_INFINITY;
+        for (T c : candidates) {
+            if (bans.entityBanned(id.applyAsInt(c)) || !accept.test(c)) continue;
+            double v = cost.applyAsDouble(c);
+            if (v < min) {
+                min = v;
+                best = c;
+            }
+        }
+        return best;
     }
 
     // not baked into getHostiles on purpose: "it is angry" is still true for the run away and eating checks even when it
@@ -383,6 +394,8 @@ public class EntityTracker extends Tracker {
     private void noteHitUs(Entity entity) {
         if (entity instanceof Mob && Minecraft.getInstance().level != null) {
             _provocations.markHit(entity.getId(), Minecraft.getInstance().level.getGameTime());
+            // it got to us, so "no path to it" was wrong or is over
+            _mod.getBans().hitBy(entity.getId());
         }
     }
 
@@ -525,8 +538,7 @@ public class EntityTracker extends Tracker {
 
     @Override
     protected void reset() {
-        // Dirty clears everything else.
-        _entityBlacklist.clear();
+        // Dirty clears everything else. the bans are cleared by the tracker manager, they are not ours
         _mobReach.reset();
         _skippedWetDrops.clear();
         _skippedLavaDrops.clear();

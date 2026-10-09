@@ -5,6 +5,8 @@ import adris.altoclef.Debug;
 import adris.altoclef.util.helpers.AnnoyingBlocks;
 import adris.altoclef.tasksystem.ITaskRequiresGrounded;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.trackers.BanPolicy;
+import adris.altoclef.trackers.EntityTracker;
 import adris.altoclef.util.baritone.GoalFollowEntity;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
@@ -142,7 +144,7 @@ public class GetToEntityTask extends Task implements ITaskRequiresGrounded {
         if (_calcWatch.failed(mod.getClientBaritone().getPathingBehavior().calcFailures()) && !(_entity instanceof Player)) {
             if (++_misses >= 2) {
                 Debug.logMessage("No path to " + _entity.getType().getDescriptionId() + ", not chasing it.");
-                mod.getEntityTracker().banEntity(_entity);
+                BanPolicy.noPath(mod.getBans(), _entity.getId(), EntityTracker.describe(_entity));
             }
         }
         if (!mod.getEntityTracker().isEntityReachable(_entity)) {

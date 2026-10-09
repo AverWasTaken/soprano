@@ -32,6 +32,8 @@ public class GamerCommand extends AltoClefCommand {
     protected void run(AltoClef mod, String label, IArgConsumer args) throws CommandException {
         args.requireMax(2);
         if (!args.hasAny()) {
+            // a new gamer task is a new run, the bans of the last one (and of whatever ran before it) go with it
+            mod.getBans().clearRun("new #gamer");
             startTask(mod, new GamerTask());
             return;
         }
@@ -49,7 +51,9 @@ public class GamerCommand extends AltoClefCommand {
             }
             case "phase" -> {
                 args.requireExactly(1);
-                startTask(mod, new GamerTask(parsePhase(args.getString())));
+                GamerTask task = new GamerTask(parsePhase(args.getString()));
+                mod.getBans().clearRun("new #gamer");
+                startTask(mod, task);
             }
             default -> throw new CommandInvalidStateException("\"" + sub + "\" is not a gamer command, try one of: " + String.join(", ", SUBCOMMANDS));
         }

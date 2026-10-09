@@ -38,6 +38,8 @@ public class TrackerManager {
         // This is a a spaghetti. Fix at some point.
         _mod.getChunkTracker().reset(_mod);
         _mod.getMiscBlockTracker().reset();
+        // a ban is about a block or a mob in this world, the next one has its own
+        _mod.getBans().clearRun("world left");
         _wasInGame = false;
     }
 

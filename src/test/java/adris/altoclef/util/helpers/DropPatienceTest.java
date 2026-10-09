@@ -2,6 +2,7 @@ package adris.altoclef.util.helpers;
 
 import org.junit.Test;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
@@ -26,10 +27,10 @@ public class DropPatienceTest {
         }
         p.tick();
         assertTrue(p.expired());
-        p.giveUp();
+        // the id comes back for the ban (BanPolicy.dropGaveUp), the clock lets go
+        assertEquals(7, p.giveUp());
         assertFalse(p.isLocked());
-        assertTrue(p.gaveUp(7));
-        assertFalse(p.gaveUp(8));
+        assertEquals(-1, p.giveUp());
     }
 
     @Test
@@ -104,16 +105,13 @@ public class DropPatienceTest {
         p.unlock();
         p.lock(8);
         assertFalse(p.expired());
-        assertFalse(p.gaveUp(7));
     }
 
     @Test
-    public void clearForgetsWhoWeGaveUpOn() {
+    public void clearLetsGoOfTheLock() {
         DropPatience p = new DropPatience();
         p.lock(7);
-        p.giveUp();
         p.clear();
-        assertFalse(p.gaveUp(7));
         assertFalse(p.isLocked());
     }
 

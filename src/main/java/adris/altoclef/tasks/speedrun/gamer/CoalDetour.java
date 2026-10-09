@@ -7,9 +7,10 @@ import adris.altoclef.tasks.resources.MineAndCollectTask;
 import adris.altoclef.tasks.speedrun.gamer.CoalRules.Offset;
 import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.trackers.BanPolicy;
+import adris.altoclef.trackers.Bans;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.MiningRequirement;
-import adris.altoclef.util.helpers.BaritoneHelper;
 import adris.altoclef.util.helpers.SeenFilter;
 import adris.altoclef.util.helpers.WorldHelper;
 import baritone.api.utils.Dimension;
@@ -22,15 +23,13 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 
-import java.util.HashSet;
-import java.util.Set;
-
 // the world half of CoalRules: finds coal ore near the player, runs a MineAndCollectTask of its own at it, and hands the task
 // back to PrepSupport until the rules say stop. it is the last side job there is, everything ranked above it wins the tick.
 // the mining task asks the tracker for the nearest coal wherever it is, so the rules end the job when the ore near the spot it
 // began at is gone (a count target would send it off to a vein 80 blocks away, and "hold N" is a bad question anyway: the
 // cluster grows as we dig into it). when the task gives up on a block it sets off for a far vein, and the leash from that spot
-// cuts the walk short and the ban keeps us off that cluster. the tracker is the mining task's own business, it tracks on start
+// cuts the walk short and the ban keeps us off that cluster. the bans go in the shared book (Bans), which the tracker honours,
+// so the mining task itself skips them too. the tracker is the mining task's own business, it tracks on start
 // and lets go on stop, so nothing here needs releasing when the phase leaves, only forgetting
 public final class CoalDetour {
     // the same two blocks TaskCatalogue mines for "coal". an array of our own: the iron task's list must not learn about coal,
@@ -40,9 +39,6 @@ public final class CoalDetour {
     private static final int LOOK_EVERY_TICKS = 10;
 
     private final CoalRules rules = new CoalRules();
-    // ore we gave up on, for as long as this handler lives (GATHER and IRON each have their own, made once per run). memory only:
-    // a relog forgets, and the worst that costs is one more 30 s try
-    private final Set<Long> banned = new HashSet<>();
     private Task mine;
     // where the detour began. the keep reach, the leash and the ban are all measured from here and not from the player: the player
     // is the thing that wanders off when the mining task gives up on a block
@@ -83,7 +79,7 @@ public final class CoalDetour {
         anchor = null;
     }
 
-    // the phase is entering or leaving. the bans stay, they are about the world and not the phase
+    // the phase is entering or leaving. the bans stay, they are about the world and not the phase (and live in Bans anyway)
     void reset() {
         rules.reset();
         mine = null;
@@ -186,41 +182,23 @@ public final class CoalDetour {
 
     // the nearest coal ore within the budget of `center` that we could mine and have not given up on. for the start it also has to
     // have been in sight at some point (SeenFilter), so a bot in a stone shaft does not tunnel to a vein it could only know about
-    // by reading the chunk. the ones next to a vein we are already on count without it.
-    // a banned ore the mining task would pick before the one we would start on means no start: it goes for the nearest coal it knows
-    // of, cannot be told about our bans, and would walk straight back to the block that stalled it last time
+    // by reading the chunk. the ones next to a vein we are already on count without it. a banned ore is skipped here and by the
+    // mining task alike (the tracker asks the same book), so a closer banned one no longer has to block the start
     private BlockPos nearest(AltoClef mod, BlockPos center, double budget, boolean forStart) {
         ClientLevel level = mod.getWorld();
+        Bans bans = mod.getBans();
         BlockPos.MutableBlockPos at = new BlockPos.MutableBlockPos();
         for (Offset o : CoalRules.offsets(budget)) {
             at.set(center.getX() + o.dx(), center.getY() + o.dy(), center.getZ() + o.dz());
-            if (!isCoalOre(level.getBlockState(at)) || banned.contains(at.asLong())) {
+            if (!isCoalOre(level.getBlockState(at)) || bans.blockBanned(Dimension.OVERWORLD, at.getX(), at.getY(), at.getZ())) {
                 continue;
             }
             BlockPos found = at.immutable();
             if (WorldHelper.canBreak(mod, found) && (!forStart || SeenFilter.isSeen(mod, found))) {
-                return forStart && bannedCloser(mod, found) ? null : found;
+                return found;
             }
         }
         return null;
-    }
-
-    // the mining task ranks by baritone's heuristic from the player (ore below us is nearly free, unlike our WalkCost), so that is
-    // the measure here. the ban list is short, a few clusters at the most
-    private boolean bannedCloser(AltoClef mod, BlockPos found) {
-        Vec3 me = mod.getPlayer().position();
-        double ours = heuristic(me, found);
-        for (long key : banned) {
-            BlockPos pos = BlockPos.of(key);
-            if (isCoalOre(mod.getWorld().getBlockState(pos)) && heuristic(me, pos) < ours) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private static double heuristic(Vec3 me, BlockPos pos) {
-        return BaritoneHelper.calculateGenericHeuristic(me.x, me.y, me.z, pos.getX(), pos.getY(), pos.getZ());
     }
 
     // further from where the detour began than the leash, as the crow flies
@@ -236,11 +214,11 @@ public final class CoalDetour {
         int added = 0;
         for (Offset o : CoalRules.offsets(budget)) {
             at.set(center.getX() + o.dx(), center.getY() + o.dy(), center.getZ() + o.dz());
-            if (isCoalOre(level.getBlockState(at)) && banned.add(at.asLong())) {
+            if (isCoalOre(level.getBlockState(at)) && BanPolicy.coal(mod.getBans(), at.getX(), at.getY(), at.getZ())) {
                 added++;
             }
         }
-        Debug.logInternal("coal side job: banned " + added + " ore blocks, " + banned.size() + " in all");
+        Debug.logInternal("coal side job: banned " + added + " ore blocks");
     }
 
     // a coal item on the floor close by that the bag has room for. one it has no room for would hold the detour until its clock

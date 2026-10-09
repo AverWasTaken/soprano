@@ -4,7 +4,7 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.eventbus.EventBus;
 import adris.altoclef.eventbus.events.BlockPlaceEvent;
-import adris.altoclef.trackers.blacklisting.WorldLocateBlacklist;
+import adris.altoclef.eventbus.events.ChunkLoadEvent;
 import baritone.api.utils.Dimension;
 import adris.altoclef.util.helpers.BaritoneHelper;
 import adris.altoclef.util.helpers.ConfigHelper;
@@ -35,7 +35,7 @@ import net.minecraft.world.phys.Vec3;
  * Gives you a "Check and don't care" interface where you can check for blocks and their locations over and over again
  * without scanning the world over and over again.
  * <p>
- * Also keeps track of blacklists for unreachable blocks
+ * Banned blocks (see Bans) are never offered
  */
 public class BlockTracker extends Tracker {
 
@@ -87,6 +87,12 @@ public class BlockTracker extends Tracker {
         EventBus.subscribe(BlockPlaceEvent.class, evt -> {
             addBlock(evt.blockState.getBlock(), evt.blockPos);
             rememberOurPlacement(evt.blockPos);
+        });
+        // "until the chunk reloads" bans (the n-failures rule) end here
+        EventBus.subscribe(ChunkLoadEvent.class, evt -> {
+            if (Minecraft.getInstance().level != null) {
+                _mod.getBans().chunkLoaded(WorldHelper.getCurrentDimension(), evt.chunkPos.x, evt.chunkPos.z);
+            }
         });
     }
 
@@ -597,16 +603,13 @@ public class BlockTracker extends Tracker {
      * @param allowedFailures how many times we can try reaching before we finally declare this block "unreachable"
      */
     public void requestBlockUnreachable(BlockPos pos, int allowedFailures) {
-        synchronized (_scanMutex) {
-            currentCache().blacklistBlockUnreachable(_mod, pos, allowedFailures);
-        }
+        requestBlockUnreachable(pos, allowedFailures, "couldn't reach it");
     }
 
-    // lifts a ban somebody put on a block on purpose (DangerFilter, when an outpost expires)
-    public void clearBlockUnreachable(BlockPos pos) {
-        synchronized (_scanMutex) {
-            currentCache().unblacklistBlock(pos);
-        }
+    // the n-failures rule lives in the ban book now (BanPolicy.blockStrike), the reason is what its log line says
+    public void requestBlockUnreachable(BlockPos pos, int allowedFailures, String reason) {
+        double distSq = WorldHelper.toVec3d(pos).distanceToSqr(_mod.getPlayer().position());
+        BanPolicy.blockStrike(_mod.getBans(), WorldHelper.getCurrentDimension(), pos.getX(), pos.getY(), pos.getZ(), allowedFailures, distSq, reason);
     }
 
     public void requestBlockUnreachable(BlockPos pos) {
@@ -616,7 +619,7 @@ public class BlockTracker extends Tracker {
     private PosCache currentCache() {
         Dimension dimension = WorldHelper.getCurrentDimension();
         if (!_caches.containsKey(dimension)) {
-            _caches.put(dimension, new PosCache());
+            _caches.put(dimension, new PosCache(_mod.getBans(), dimension));
         }
         return _caches.get(dimension);
     }
@@ -627,9 +630,22 @@ public class BlockTracker extends Tracker {
 
         private final HashMap<BlockPos, Block> _cachedByPosition = new HashMap<>();
 
-        private final WorldLocateBlacklist _blacklist = new WorldLocateBlacklist();
+        // the ban book and which dimension of it we are. the cache used to keep its own blacklist, now everybody's bans count
+        private final Bans _bans;
+        private final Dimension _dimension;
 
         final ScanCoverage<Block> coverage = new ScanCoverage<>();
+
+        PosCache(Bans bans, Dimension dimension) {
+            _bans = bans;
+            _dimension = dimension;
+        }
+
+        // for tests: an empty book of its own
+        PosCache() {
+            this(new Bans(line -> {
+            }), Dimension.OVERWORLD);
+        }
 
         public boolean anyFound(Block... blocks) {
             for (Block block : blocks) {
@@ -697,7 +713,6 @@ public class BlockTracker extends Tracker {
             Debug.logInternal("CLEARED BLOCK CACHE");
             _cachedBlocks.clear();
             _cachedByPosition.clear();
-            _blacklist.clear();
             coverage.clear();
         }
 
@@ -711,16 +726,8 @@ public class BlockTracker extends Tracker {
             return count;
         }
 
-        public void blacklistBlockUnreachable(AltoClef mod, BlockPos pos, int allowedFailures) {
-            _blacklist.blackListItem(mod, pos, allowedFailures);
-        }
-
-        public void unblacklistBlock(BlockPos pos) {
-            _blacklist.unbanItem(pos);
-        }
-
         public boolean blockUnreachable(BlockPos pos) {
-            return _blacklist.unreachable(pos);
+            return _bans.blockBanned(_dimension, pos.getX(), pos.getY(), pos.getZ());
         }
 
         // Gets nearest block. For now does linear search. In the future might optimize this a bit
@@ -769,6 +776,10 @@ public class BlockTracker extends Tracker {
                 }
                 scores[best] = Double.NaN; // NaN < anything is false, so it's out of the running
                 BlockPos pos = blockList.get(best);
+                // banned is skipped, not removed: it comes back as the answer the moment the ban runs out
+                if (blockUnreachable(pos)) {
+                    continue;
+                }
                 // If our current block isn't valid, fix it up. This cleans while we're iterating.
                 // anything we never get to stays put, which is fine: every rescan walks the whole cache and does the same cleanup
                 if (!blockIsValid.test(pos)) {
@@ -832,7 +843,7 @@ public class BlockTracker extends Tracker {
                         Set<BlockPos> seen = new HashSet<>(size * 2);
                         int count = 0;
                         for (BlockPos pos : tracking) {
-                            if (_blacklist.unreachable(pos) || !seen.add(pos)) continue;
+                            if (blockUnreachable(pos) || !seen.add(pos)) continue;
                             kept[count] = pos;
                             dist[count] = pos.distToCenterSqr(playerPos.x, playerPos.y, playerPos.z);
                             count++;

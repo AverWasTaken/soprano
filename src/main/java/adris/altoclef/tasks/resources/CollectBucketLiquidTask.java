@@ -6,6 +6,7 @@ import adris.altoclef.TaskCatalogue;
 import adris.altoclef.tasks.DoToClosestBlockTask;
 import adris.altoclef.tasks.InteractWithBlockTask;
 import adris.altoclef.tasks.ResourceTask;
+import adris.altoclef.trackers.BanPolicy;
 import adris.altoclef.tasks.construction.DestroyBlockTask;
 import adris.altoclef.tasks.movement.DefaultGoToDimensionTask;
 import adris.altoclef.tasks.movement.GetCloseToBlockTask;
@@ -38,7 +39,6 @@ import net.minecraft.world.level.block.Blocks;
 
 public class CollectBucketLiquidTask extends ResourceTask {
 
-    private final HashSet<BlockPos> _blacklist = new HashSet<>();
     private final TimerGame _tryImmediatePickupTimer = new TimerGame(3);
     private final TimerGame _pickedUpTimer = new TimerGame(0.5);
     private final int _count;
@@ -94,8 +94,6 @@ public class CollectBucketLiquidTask extends ResourceTask {
         // Avoid breaking / placing blocks at our liquid
         mod.getBehaviour().avoidBlockBreaking((pos) -> Minecraft.getInstance().level.getBlockState(pos).getBlock() == _toCollect);
         mod.getBehaviour().avoidBlockPlacing((pos) -> Minecraft.getInstance().level.getBlockState(pos).getBlock() == _toCollect);
-
-        //_blacklist.clear();
 
         _progressChecker.reset();
         // a restart gets a fresh look at whether anything can be thrown, the bag may have changed while we were away
@@ -172,7 +170,7 @@ public class CollectBucketLiquidTask extends ResourceTask {
         }
 
         Predicate<BlockPos> isSourceLiquid = blockPos -> {
-            if (_blacklist.contains(blockPos)) return false;
+            if (mod.getBlockTracker().unreachable(blockPos)) return false;
             if (!WorldHelper.canReach(mod, blockPos)) return false;
             if (!WorldHelper.canReach(mod, blockPos.above())) return false; // We may try reaching the block above.
             assert Minecraft.getInstance().level != null;
@@ -203,7 +201,8 @@ public class CollectBucketLiquidTask extends ResourceTask {
                             mod.getClientBaritone().getCustomGoalProcess().onLostControl();
                             Debug.logMessage("Failed to break, blacklisting.");
                             mod.getBlockTracker().requestBlockUnreachable(blockPos);
-                            _blacklist.add(blockPos);
+                            // was a set of this task's own that never emptied, now a ban with a clock
+                            BanPolicy.bucketLidStuck(mod.getBans(), WorldHelper.getCurrentDimension(), blockPos.getX(), blockPos.getY(), blockPos.getZ());
                         }
                         return new DestroyBlockTask(blockPos.above());
                     }

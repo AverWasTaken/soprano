@@ -13,8 +13,6 @@ import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
 import adris.altoclef.util.time.TimerGame;
-import java.util.HashSet;
-import java.util.Set;
 import java.util.function.Predicate;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.item.Items;
@@ -26,7 +24,6 @@ public class CollectObsidianTask extends ResourceTask {
 
     private final TimerGame _placeWaterTimeout = new TimerGame(6);
     private final MovementProgressChecker _lavaTimeout = new MovementProgressChecker();
-    private final Set<BlockPos> _lavaBlacklist = new HashSet<>();
     private final int _count;
     private Task _forceCompleteTask = null;
     private BlockPos _lavaWaitCurrentPos;

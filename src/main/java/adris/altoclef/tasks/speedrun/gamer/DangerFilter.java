@@ -1,6 +1,8 @@
 package adris.altoclef.tasks.speedrun.gamer;
 
 import adris.altoclef.AltoClef;
+import adris.altoclef.trackers.BanPolicy;
+import adris.altoclef.trackers.Bans;
 import adris.altoclef.trackers.BlockTracker;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.WorldHelper;
@@ -15,14 +17,13 @@ import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 // things the block tracker offers that are traps wearing a crafting table: trial chamber furniture (sits on copper),
-// pillager outpost wool and logs, witch hut tables. the tracked blocks get blacklisted so the leaf tasks never walk
-// to them. only looks at block types somebody already tracks (no extra scanning) and only every couple of seconds
+// pillager outpost wool and logs, witch hut tables. the tracked blocks get banned (Bans, which the tracker honours) so the
+// leaf tasks never walk to them. only looks at block types somebody already tracks (no extra scanning) and only every couple
+// of seconds
 public final class DangerFilter {
     private static final int EVERY_TICKS = 40;
     private static final double PILLAGER_RADIUS = 40;
@@ -31,8 +32,6 @@ public final class DangerFilter {
     // a minute of standing around: patrols walk, outposts do not
     private final PillagerWatch pillagerWatch = new PillagerWatch(1200);
     private int ticks;
-    // logs and wool we banned because of an outpost, so we can unban exactly those when it expires
-    private final Set<BlockPos> outpostBans = new HashSet<>();
     private Block[] copperBlocks;
     private Block[] beds;
     private Block[] logs;
@@ -49,29 +48,31 @@ public final class DangerFilter {
             logs = ItemHelper.itemsToBlocks(ItemHelper.LOG);
             wools = ItemHelper.itemsToBlocks(ItemHelper.WOOL);
         }
-        blacklistOnCopper(mod, tracker, Blocks.CRAFTING_TABLE);
-        blacklistOnCopper(mod, tracker, Blocks.CHEST);
+        Bans bans = mod.getBans();
+        Dimension dim = WorldHelper.getCurrentDimension();
+        blacklistOnCopper(mod, tracker, bans, dim, Blocks.CRAFTING_TABLE);
+        blacklistOnCopper(mod, tracker, bans, dim, Blocks.CHEST);
         for (Block bed : beds) {
-            blacklistOnCopper(mod, tracker, bed);
+            blacklistOnCopper(mod, tracker, bans, dim, bed);
         }
-        blacklistWitchOrPillageTables(mod, tracker, state);
-        blacklistNearOutposts(mod, tracker);
+        blacklistWitchOrPillageTables(mod, tracker, bans, dim, state);
+        blacklistNearOutposts(mod, tracker, bans, dim);
     }
 
     // trial chambers are built on copper, a table or bed or chest on top of it is not ours to take
-    private void blacklistOnCopper(AltoClef mod, BlockTracker tracker, Block block) {
+    private void blacklistOnCopper(AltoClef mod, BlockTracker tracker, Bans bans, Dimension dim, Block block) {
         if (!tracker.isTracking(block)) {
             return;
         }
         for (BlockPos pos : tracker.getKnownLocations(block)) {
             Block below = mod.getWorld().getBlockState(pos.below()).getBlock();
             if (isCopper(below)) {
-                blacklist(tracker, pos);
+                BanPolicy.trap(bans, dim, pos.getX(), pos.getY(), pos.getZ(), "trial chamber furniture");
             }
         }
     }
 
-    private void blacklistWitchOrPillageTables(AltoClef mod, BlockTracker tracker, RunState state) {
+    private void blacklistWitchOrPillageTables(AltoClef mod, BlockTracker tracker, Bans bans, Dimension dim, RunState state) {
         if (!tracker.isTracking(Blocks.CRAFTING_TABLE)) {
             return;
         }
@@ -84,13 +85,13 @@ public final class DangerFilter {
             // outposts put white wool two above their tables
             boolean outpost = mod.getWorld().getBlockState(pos.above(2)).getBlock() == Blocks.WHITE_WOOL;
             if (outpost || nearAny(pos, witches, WITCH_RADIUS)) {
-                blacklist(tracker, pos);
+                BanPolicy.trap(bans, dim, pos.getX(), pos.getY(), pos.getZ(), outpost ? "outpost table" : "witch hut table");
             }
         }
     }
 
     // only around an outpost (pillagers that stand still), a patrol passing through is not worth losing a forest over
-    private void blacklistNearOutposts(AltoClef mod, BlockTracker tracker) {
+    private void blacklistNearOutposts(AltoClef mod, BlockTracker tracker, Bans bans, Dimension dim) {
         Map<Integer, double[]> pillagers = new HashMap<>();
         for (Pillager p : mod.getEntityTracker().getTrackedEntities(Pillager.class)) {
             // a dead pillager is not holding an outpost
@@ -99,49 +100,40 @@ public final class DangerFilter {
             }
         }
         pillagerWatch.update(ticks, pillagers);
-        liftExpiredBans(tracker);
+        liftExpiredBans(bans, pillagerWatch);
         if (pillagerWatch.outposts() == 0) {
             return;
         }
         for (Block block : logs) {
-            blacklistNear(tracker, block);
+            blacklistNear(tracker, bans, dim, block);
         }
         for (Block block : wools) {
-            blacklistNear(tracker, block);
+            blacklistNear(tracker, bans, dim, block);
         }
     }
 
-    private void blacklistNear(BlockTracker tracker, Block block) {
+    private void blacklistNear(BlockTracker tracker, Bans bans, Dimension dim, Block block) {
         if (!tracker.isTracking(block)) {
             return;
         }
         for (BlockPos pos : tracker.getKnownLocations(block)) {
-            // only the bans we put there are ours to lift later, a block that was already unreachable stays that way
-            if (pillagerWatch.nearOutpost(pos.getX(), pos.getZ(), PILLAGER_RADIUS) && !tracker.unreachable(pos)) {
-                blacklist(tracker, pos);
-                outpostBans.add(pos.immutable());
+            // a ban of its own reason, so the lift below takes only these. a block that was unreachable anyway keeps that ban
+            if (pillagerWatch.nearOutpost(pos.getX(), pos.getZ(), PILLAGER_RADIUS)) {
+                BanPolicy.outpost(bans, dim, pos.getX(), pos.getY(), pos.getZ());
             }
         }
     }
 
     // an outpost nobody has seen a live pillager at for a few minutes is gone (cleared, or we left and it despawned them),
-    // its logs and wool go back on the menu unless another outpost still covers them
-    private void liftExpiredBans(BlockTracker tracker) {
-        // the tracker unbans in the dimension we are standing in, so an outpost that runs out while we are in the nether
-        // waits in the queue until we are back
-        if (WorldHelper.getCurrentDimension() != Dimension.OVERWORLD) {
-            return;
+    // its logs and wool go back on the menu unless another outpost still covers them. pure past the watch, so a test can
+    // run it. the book is not per dimension like the tracker's blacklist was, so this works from the nether too
+    static int liftExpiredBans(Bans bans, PillagerWatch watch) {
+        int lifted = 0;
+        for (double[] gone : watch.drainExpired()) {
+            lifted += BanPolicy.liftOutpost(bans, gone[0], gone[1], PILLAGER_RADIUS,
+                    key -> watch.nearOutpost(key.x(), key.z(), PILLAGER_RADIUS));
         }
-        for (double[] gone : pillagerWatch.drainExpired()) {
-            outpostBans.removeIf(pos -> {
-                boolean ofThatOne = Math.hypot(pos.getX() - gone[0], pos.getZ() - gone[1]) <= PILLAGER_RADIUS;
-                if (!ofThatOne || pillagerWatch.nearOutpost(pos.getX(), pos.getZ(), PILLAGER_RADIUS)) {
-                    return false;
-                }
-                tracker.clearBlockUnreachable(pos);
-                return true;
-            });
-        }
+        return lifted;
     }
 
     // pure so a test can poke it: is this block one the run itself placed
@@ -156,12 +148,6 @@ public final class DangerFilter {
             }
         }
         return false;
-    }
-
-    private static void blacklist(BlockTracker tracker, BlockPos pos) {
-        if (!tracker.unreachable(pos)) {
-            tracker.requestBlockUnreachable(pos, 0);
-        }
     }
 
     private static List<Vec3> positions(List<? extends Entity> entities) {

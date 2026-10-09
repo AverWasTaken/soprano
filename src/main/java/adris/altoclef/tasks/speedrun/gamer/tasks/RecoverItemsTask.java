@@ -7,6 +7,8 @@ import adris.altoclef.tasks.movement.GetWithinRangeOfBlockTask;
 import adris.altoclef.tasks.movement.PickupDroppedItemTask;
 import adris.altoclef.tasks.movement.RunAwayFromHostilesTask;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.trackers.BanPolicy;
+import adris.altoclef.trackers.EntityTracker;
 import adris.altoclef.ui.HudText;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.EntityHelper;
@@ -22,10 +24,8 @@ import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
 import java.util.ConcurrentModificationException;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 
 // after a death: walk back to where we died and pick up whatever is lying around there. bounded on purpose, the pile might
 // be in lava or the void and a bot that stares at it for ten minutes helps nobody
@@ -39,7 +39,6 @@ public class RecoverItemsTask extends Task {
     private final Task _walk;
     private final RecoverRules.Gate _gate = new RecoverRules.Gate();
     private final RecoverRules.Chase _chase = new RecoverRules.Chase();
-    private final Set<Integer> _writtenOff = new HashSet<>();
     private Task _standOff;
     private final RecoverRules.Pin<ItemEntity> _pin = new RecoverRules.Pin<>();
     private PickupThisDrop _pickup;
@@ -113,8 +112,7 @@ public class RecoverItemsTask extends Task {
             // block closer, so this is the only count that ever ends
             Debug.logMessage("Can't get at " + drop.getItem().getItem().getDescriptionId() + " after "
                     + (int) RecoverRules.CHASE_SECONDS + " s, leaving it.");
-            _writtenOff.add(drop.getId());
-            mod.getEntityTracker().banEntity(drop);
+            BanPolicy.recoverGaveUp(mod.getBans(), drop.getId(), EntityTracker.describe(drop));
             _pickup = null;
             _pin.clear();
             return null;
@@ -123,17 +121,16 @@ public class RecoverItemsTask extends Task {
         setDebugState("Picking up a drop.", "Picking up our stuff");
         if (PickupThisDrop.refuses(drop)) {
             // next to lava or out in water the pickup won't touch it. pinned to it, the pickup would wander off for the
-            // whole chase instead, so it goes on the list right now
-            _writtenOff.add(drop.getId());
-            mod.getEntityTracker().banEntity(drop);
+            // whole chase instead, so it is banned right now (the shared book, the tracker stops offering it to anyone)
+            BanPolicy.recoverRefused(mod.getBans(), drop.getId(), EntityTracker.describe(drop));
             _pickup = null;
             _pin.clear();
             return null;
         }
         boolean moved = _pin.retarget(drop);
         if (_pickup == null || moved || _pickup.stalled(mod)) {
-            // a stall blacklists the drop inside the pickup for good. a fresh one gets another go and the chase clock above
-            // is the only judge (the tracker's three strikes usually land around the same time)
+            // a stall only flags this pickup (see gaveUpOnDrop below), it bans nothing. a fresh one gets another go and the chase
+            // clock above is the only judge (the tracker's strikes, the fourth bans, usually land around the same time)
             _pickup = new PickupThisDrop(drop);
         }
         return _pickup;
@@ -157,9 +154,18 @@ public class RecoverItemsTask extends Task {
                     || (!Baritone.settings().altoPickupItemsInWater.value && !ItemPickupRules.isPickupSafe(drop));
         }
 
-        // gave up on its own: a progress fail puts the drop on the internal blacklist and it never comes off
+        private boolean _stalled;
+
+        // gave up on its own: a progress fail, or anything else that made it stop wanting the drop
         boolean stalled(AltoClef mod) {
-            return _drop.isAlive() && !isValid(mod, _drop);
+            return _drop.isAlive() && (_stalled || !isValid(mod, _drop));
+        }
+
+        // the stock pickup bans a drop it got nowhere with for a minute. here that would hide the pile's drop from the recover
+        // for most of its budget, and the chase clock is the one that is supposed to decide
+        @Override
+        protected void gaveUpOnDrop(AltoClef mod, ItemEntity drop) {
+            _stalled = true;
         }
 
         // the budget is 90 s and the bag is empty, a stone pickaxe trip is the whole budget and then some
@@ -233,7 +239,7 @@ public class RecoverItemsTask extends Task {
             double d = e.position().distanceToSqr(_deathPos.getX() + 0.5, _deathPos.getY() + 0.5, _deathPos.getZ() + 0.5);
             // a drop that slid into lava is a drop we are not going swimming for
             boolean lost = RecoverRules.hopeless(level.getFluidState(e.blockPosition()).is(FluidTags.LAVA), e.blockPosition().getY(), level.getMinY());
-            if (d <= RecoverRules.DROP_RADIUS * RecoverRules.DROP_RADIUS && d < bestDist && !lost && !_writtenOff.contains(e.getId())
+            if (d <= RecoverRules.DROP_RADIUS * RecoverRules.DROP_RADIUS && d < bestDist && !lost
                     && mod.getEntityTracker().isEntityReachable(e)) {
                 bestDist = d;
                 best = e;

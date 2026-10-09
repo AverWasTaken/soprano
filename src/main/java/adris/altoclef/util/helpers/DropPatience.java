@@ -1,18 +1,15 @@
 package adris.altoclef.util.helpers;
 
-import java.util.HashSet;
-import java.util.Set;
-
 // a drop we have started walking to stays the answer until it is in the bag, gone, or we ran out of patience. before this
 // every tick re-asked "what is nearest" and a block one step from the drop could take it away halfway (raw_iron picked up,
 // interrupted by the ore next to it, picked up again, three times in three seconds). the patience is for the drop that
-// sits in leaves or a hole and never comes: after 5 seconds it is somebody else's problem. pure, the caller says when a tick went by
+// sits in leaves or a hole and never comes: after 5 seconds it is somebody else's problem. pure, the caller says when a tick went by.
+// the give-up itself is a ban now (BanPolicy.dropGaveUp), this only keeps the clock
 public final class DropPatience {
     public static final int TICKS = 100;
     // 30 s. walking closer resets the clock, so this is what stops a drop we keep almost reaching
     public static final int HARD_CAP = 600;
 
-    private final Set<Integer> gaveUp = new HashSet<>();
     private int lockedId = -1;
     private int waited;
     private int total;
@@ -60,20 +57,14 @@ public final class DropPatience {
         lockedId = -1;
     }
 
-    // the locked drop never came. never lock on it again
-    public void giveUp() {
-        if (isLocked()) {
-            gaveUp.add(lockedId);
-        }
+    // the locked drop never came. hands back its id for the ban (-1 when nothing was locked), the ban is what keeps us off it
+    public int giveUp() {
+        int id = lockedId;
         unlock();
-    }
-
-    public boolean gaveUp(int id) {
-        return gaveUp.contains(id);
+        return id;
     }
 
     public void clear() {
-        gaveUp.clear();
         unlock();
     }
 

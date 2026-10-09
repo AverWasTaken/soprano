@@ -7,6 +7,8 @@ import adris.altoclef.tasks.ResourceTask;
 import adris.altoclef.tasks.construction.DestroyBlockTask;
 import adris.altoclef.tasks.movement.PickupDroppedItemTask;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.trackers.BanPolicy;
+import adris.altoclef.trackers.EntityTracker;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.MiningRequirement;
 import baritone.Baritone;
@@ -177,7 +179,6 @@ public class MineAndCollectTask extends ResourceTask {
         private final Block[] _blocks;
         private final boolean _stoneOnly;
         private final ItemTarget[] _targets;
-        private final Set<BlockPos> _blacklist = new HashSet<>();
         private final MovementProgressChecker _progressChecker = new MovementProgressChecker();
         private final Task _pickupTask;
         private final MineStick _stick = new MineStick();
@@ -298,7 +299,6 @@ public class MineAndCollectTask extends ResourceTask {
         // the next block to break. around the one we just broke while there is anything there, otherwise the nearest
         private Optional<BlockPos> pickBlock(AltoClef mod, Vec3 pos) {
             Predicate<BlockPos> usable = check -> {
-                if (_blacklist.contains(check)) return false;
                 if (mod.getBlockTracker().unreachable(check)) return false;
                 return WorldHelper.canBreak(mod, check);
             };
@@ -348,7 +348,7 @@ public class MineAndCollectTask extends ResourceTask {
             if (_stoneOnly) {
                 return;
             }
-            if (_blacklist.contains(pos) || mod.getBlockTracker().unreachable(pos) || mod.getBlockTracker().blockIsValid(pos, _blocks)) {
+            if (mod.getBlockTracker().unreachable(pos) || mod.getBlockTracker().blockIsValid(pos, _blocks)) {
                 return;
             }
             Vec3 spot = Vec3.atCenterOf(pos);
@@ -374,7 +374,7 @@ public class MineAndCollectTask extends ResourceTask {
         // stone has its own idea of where to dig next (see StoneDigRank), a neighbourhood would walk it down a shaft
         private void noteBreak(AltoClef mod) {
             BlockPos was = _miningPos;
-            if (was == null || _stoneOnly || _blacklist.contains(was) || mod.getBlockTracker().unreachable(was)) {
+            if (was == null || _stoneOnly || mod.getBlockTracker().unreachable(was)) {
                 return;
             }
             if (!mod.getBlockTracker().blockIsValid(was, _blocks)) {
@@ -408,7 +408,7 @@ public class MineAndCollectTask extends ResourceTask {
             }
             Debug.logInternal("Giving up on a drop that never came");
             _patience.giveUp();
-            mod.getEntityTracker().banEntity(drop);
+            BanPolicy.dropGaveUp(mod.getBans(), drop.getId(), EntityTracker.describe(drop));
             mod.getClientBaritone().getPathingBehavior().forceCancel();
             _lockedDrop = null;
             return false;
@@ -422,7 +422,7 @@ public class MineAndCollectTask extends ResourceTask {
             }
             Vec3 feet = mod.getPlayer().position();
             Predicate<ItemEntity> worthIt = drop -> {
-                if (_patience.gaveUp(drop.getId())) return false;
+                if (!mod.getEntityTracker().isEntityReachable(drop)) return false;
                 if (!skipInReach) return true;
                 Vec3 at = drop.position();
                 return !DropPatience.alreadyInReach(at.x - feet.x, at.y - feet.y, at.z - feet.z)
@@ -452,7 +452,7 @@ public class MineAndCollectTask extends ResourceTask {
 
         // one of the blocks we are after, still standing, not given up on, and close enough to keep swinging at
         private boolean stillOurs(AltoClef mod, BlockPos pos) {
-            if (_blacklist.contains(pos) || mod.getBlockTracker().unreachable(pos)) return false;
+            if (mod.getBlockTracker().unreachable(pos)) return false;
             if (!mod.getBlockTracker().blockIsValid(pos, _blocks)) return false;
             return mod.getPlayer().getEyePosition().distanceToSqr(Vec3.atCenterOf(pos)) <= HOLD_REACH_SQ;
         }
@@ -504,8 +504,10 @@ public class MineAndCollectTask extends ResourceTask {
             if (_miningPos != null && !_progressChecker.check(mod)) {
                 mod.getClientBaritone().getPathingBehavior().forceCancel();
                 Debug.logMessage("Failed to mine block. Suggesting it may be unreachable.");
-                mod.getBlockTracker().requestBlockUnreachable(_miningPos, 2);
-                _blacklist.add(_miningPos);
+                // a short ban right away (the tracker honours it, so the next pick is somewhere else) and a strike, three of which
+                // is the long one. the short one used to be a set of this task's own that no other task could see
+                BanPolicy.miningStalled(mod.getBans(), WorldHelper.getCurrentDimension(), _miningPos.getX(), _miningPos.getY(), _miningPos.getZ());
+                mod.getBlockTracker().requestBlockUnreachable(_miningPos, 2, "mining got nowhere");
                 _miningPos = null;
                 _progressChecker.reset();
             }
@@ -533,12 +535,12 @@ public class MineAndCollectTask extends ResourceTask {
             if (obj instanceof BlockPos b) {
                 // a block we gave up on is not valid anymore, or the "new target must be twice as close" rule would
                 // keep us on it (it used to be swapped out for any other nearest block, which is how it got away with this)
-                return !_blacklist.contains(b) && !mod.getBlockTracker().unreachable(b)
+                return !mod.getBlockTracker().unreachable(b)
                         && mod.getBlockTracker().blockIsValid(b, _blocks) && WorldHelper.canBreak(mod, b);
             }
             if (obj instanceof ItemEntity drop) {
                 // picked up or despawned, don't keep chasing a ghost. one we gave up on or the pickup task banned stays dead
-                if (!drop.isAlive() || _patience.gaveUp(drop.getId()) || !mod.getEntityTracker().isEntityReachable(drop)) return false;
+                if (!drop.isAlive() || !mod.getEntityTracker().isEntityReachable(drop)) return false;
                 // never worth a swim, whatever the water setting says
                 if (ItemPickupRules.lavaBlocksPickup(drop)) return false;
                 // in the water the pickup task can't see it anymore and would wander until the patience ran out

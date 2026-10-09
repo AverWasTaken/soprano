@@ -17,6 +17,7 @@ import adris.altoclef.ui.MessagePriority;
 import adris.altoclef.ui.MessageSender;
 import adris.altoclef.util.helpers.InputHelper;
 import adris.altoclef.util.helpers.SeenFilter;
+import adris.altoclef.util.helpers.StorageHelper;
 import baritone.altoclef.BaritoneSettingsScope;
 import baritone.Baritone;
 import baritone.altoclef.AltoClefSettings;
@@ -68,6 +69,8 @@ public class AltoClef {
     private EntityTracker _entityTracker;
     private BlockTracker _blockTracker;
     private SimpleChunkTracker _chunkTracker;
+    // every "leave that alone" anybody decided, the trackers ask it before they offer a thing (see Bans)
+    private final Bans _bans = new Bans(Debug::logInternal);
     private MiscBlockTracker _miscBlockTracker;
     // Renderers
     private CommandStatusOverlay _commandStatusOverlay;
@@ -188,6 +191,7 @@ public class AltoClef {
             _storageTracker.setDirty();
             _containerSubTracker.onServerTick();
             _miscBlockTracker.tick();
+            tickBans();
 
             _trackerManager.tick();
             _blockTracker.preTickTask();
@@ -199,6 +203,19 @@ public class AltoClef {
         _messageSender.tick();
 
         _inputControls.onTickPost();
+    }
+
+    // the clock, and every second the pick tier (a few inventory looks, not worth doing 20 times a second)
+    private void tickBans() {
+        ClientLevel level = Minecraft.getInstance().level;
+        if (level == null || getPlayer() == null) {
+            return;
+        }
+        long now = level.getGameTime();
+        _bans.tick(now);
+        if (now % 20 == 0) {
+            _bans.toolTier(StorageHelper.getCurrentMiningRequirement(this).ordinal());
+        }
     }
 
     /// GETTERS AND SETTERS
@@ -345,6 +362,10 @@ public class AltoClef {
      */
     public BlockTracker getBlockTracker() {
         return _blockTracker;
+    }
+
+    public Bans getBans() {
+        return _bans;
     }
 
     /**
