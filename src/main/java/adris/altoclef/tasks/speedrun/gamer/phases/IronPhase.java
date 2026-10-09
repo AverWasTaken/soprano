@@ -19,6 +19,7 @@ import adris.altoclef.tasks.speedrun.gamer.KitRunner;
 import adris.altoclef.tasks.speedrun.gamer.OwnTables;
 import adris.altoclef.tasks.speedrun.gamer.PackUp;
 import adris.altoclef.tasks.speedrun.gamer.PhaseHandler;
+import adris.altoclef.tasks.speedrun.gamer.PickDiag;
 import adris.altoclef.tasks.speedrun.gamer.PrepSupport;
 import adris.altoclef.tasks.speedrun.gamer.RunState;
 import adris.altoclef.tasks.speedrun.gamer.SmeltFiller;
@@ -54,6 +55,8 @@ public class IronPhase implements PhaseHandler {
     private final PrepSupport support = new PrepSupport(true);
     private final FurnaceWatch furnaces = new FurnaceWatch();
     private final SmeltSurface surface = new SmeltSurface();
+    // says so (once) when the plan stops owning its iron pickaxe, see PickDiag
+    private final PickDiag pickDiag = new PickDiag();
     // furnaces we already made a pack-up trip to (PackUp), so a trip that left input cooking is not repeated
     private final Set<RunState.Pos> packed = new HashSet<>();
     // the need we are in the middle of while a furnace cooks. a different first need means the last one is done, which is
@@ -105,6 +108,7 @@ public class IronPhase implements PhaseHandler {
         support.onEnter(mod);
         furnaces.newPhase(true);
         surface.reset();
+        pickDiag.reset();
         packed.clear();
         committed = null;
         hudState = null;
@@ -136,6 +140,11 @@ public class IronPhase implements PhaseHandler {
 
     @Override
     public Task tick(AltoClef mod, GamerContext ctx) {
+        int pick = KitPlanner.have(ctx.facts(), "iron_pickaxe");
+        if (pickDiag.lost(pick)) {
+            Debug.logInternal(PickDiag.missing(pick, KitPlanner.held(ctx.facts(), "iron_pickaxe"), ctx.facts().spent(Items.IRON_PICKAXE),
+                    ctx.facts().pickScan()));
+        }
         // the food task is another tree entirely, this is how it learns that a sheep is worth more shorn than eaten
         FoodHunt.setWoolWanted(KitPlanner.woolShortfall(ctx.facts(), ctx.cfg().end.beds) > 0);
         // the furnace we just emptied is coming down, a few seconds and it goes with us to the next work site

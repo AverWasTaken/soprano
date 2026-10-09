@@ -32,6 +32,12 @@ public interface GamerFacts {
         return 0;
     }
 
+    // diagnostics only: the pickaxes the last scan saw and the open screen, as one greppable tail (PickDiag.scan). the fakes
+    // have no inventory to scan
+    default String pickScan() {
+        return "no scan";
+    }
+
     boolean armorEquipped(Item item);
 
     // sum of armor points of what is worn

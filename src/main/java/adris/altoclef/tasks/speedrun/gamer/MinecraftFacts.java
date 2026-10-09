@@ -2,6 +2,7 @@ package adris.altoclef.tasks.speedrun.gamer;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.AltoSettings;
+import adris.altoclef.Debug;
 import adris.altoclef.tasks.container.FurnaceReuse;
 import adris.altoclef.util.helpers.FoodHelper;
 import adris.altoclef.util.helpers.ItemHelper;
@@ -17,8 +18,10 @@ import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.AbstractFurnaceMenu;
 import net.minecraft.world.inventory.CraftingMenu;
+import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -37,6 +40,12 @@ public final class MinecraftFacts implements GamerFacts {
     private final Object2IntOpenHashMap<Item> counts = new Object2IntOpenHashMap<>(64);
     private final Object2IntOpenHashMap<Item> spent = new Object2IntOpenHashMap<>(4);
     private final ItemStack[] worn = new ItemStack[5];
+    // diagnostics only (PickDiag): every pickaxe the last scan saw, in scan order. nobody carries more than eight on purpose
+    private final PickSeen[] picks = new PickSeen[8];
+    private int picksSeen;
+    // an iron pick was worn out in the last scan, so the log line goes out once per wear out and not once per tick
+    private boolean ironWornNow;
+    private boolean ironWornLogged;
 
     private RunState state;
     private Dimension dimension = Dimension.OVERWORLD;
@@ -64,6 +73,9 @@ public final class MinecraftFacts implements GamerFacts {
     public MinecraftFacts(AltoClef mod) {
         this.mod = mod;
         java.util.Arrays.fill(worn, ItemStack.EMPTY);
+        for (int i = 0; i < picks.length; i++) {
+            picks[i] = new PickSeen();
+        }
     }
 
     // false when there is no player to read (loading screen), the old numbers stay
@@ -161,15 +173,17 @@ public final class MinecraftFacts implements GamerFacts {
     private void countItems(Player player) {
         counts.clear();
         spent.clear();
+        picksSeen = 0;
+        ironWornNow = false;
         Inventory inv = player.getInventory();
         // main + hotbar (0..35), armor (36..39) and the offhand (40) are all in the container
         for (int i = 0; i < inv.getContainerSize(); i++) {
-            add(inv.getItem(i));
+            add(inv.getItem(i), areaOf(i), i);
         }
         // the cursor and the 2x2 grid are "ours" for a moment while we craft, not gone
-        add(player.containerMenu.getCarried());
+        add(player.containerMenu.getCarried(), "cursor", -1);
         for (int slot = 1; slot <= 4 && slot < player.inventoryMenu.slots.size(); slot++) {
-            add(player.inventoryMenu.getSlot(slot).getItem());
+            add(player.inventoryMenu.getSlot(slot).getItem(), "grid", slot);
         }
         // same for the 3x3 of an open crafting table. this was missing and it made a smoker craft thrash: the furnace is
         // a single item, so the moment it moved into the grid we owned 0 furnaces, the kit said "make a furnace" and
@@ -177,7 +191,7 @@ public final class MinecraftFacts implements GamerFacts {
         if (player.containerMenu instanceof CraftingMenu table) {
             // slot 0 is the output, which we do NOT own until it is taken (see InventorySubTracker)
             for (int slot = 1; slot <= 9 && slot < table.slots.size(); slot++) {
-                add(table.getSlot(slot).getItem());
+                add(table.getSlot(slot).getItem(), "table", slot);
             }
         }
         // meat on its way into a smoker (or cooked on its way out) is not in the bag for a few ticks and not a job yet. the
@@ -194,7 +208,18 @@ public final class MinecraftFacts implements GamerFacts {
             worn[i] = inv.getArmor(i);
         }
         worn[4] = inv.getItem(Inventory.SLOT_OFFHAND);
+        ironWornLogged = ironWornNow;
         summarize();
+    }
+
+    private static String areaOf(int invSlot) {
+        if (invSlot < 9) {
+            return "hotbar";
+        }
+        if (invSlot < 36) {
+            return "bag";
+        }
+        return invSlot < 40 ? "armor" : "offhand";
     }
 
     private static int foodIn(ItemStack stack) {
@@ -204,17 +229,95 @@ public final class MinecraftFacts implements GamerFacts {
         return FoodHelper.plannedNutrition(stack.getItem()) * stack.getCount();
     }
 
-    private void add(ItemStack stack) {
+    private void add(ItemStack stack, String where, int slot) {
         if (stack.isEmpty()) {
             return;
         }
+        Item item = stack.getItem();
+        boolean wornOut = KitPlanner.wornOut(item, stack.getDamageValue(), stack.getMaxDamage());
+        if (isPick(item)) {
+            notePick(stack, where, slot, wornOut);
+        }
         // a pick on its last legs is not a pick we own, the planner makes the next one while there is still a table (the
         // catalogue still sees it in the bag, hence the separate count)
-        if (KitPlanner.wornOut(stack.getItem(), stack.getDamageValue(), stack.getMaxDamage())) {
-            spent.addTo(stack.getItem(), stack.getCount());
+        if (wornOut) {
+            spent.addTo(item, stack.getCount());
             return;
         }
-        counts.addTo(stack.getItem(), stack.getCount());
+        counts.addTo(item, stack.getCount());
+    }
+
+    private static boolean isPick(Item item) {
+        return item == Items.IRON_PICKAXE || item == Items.STONE_PICKAXE || item == Items.WOODEN_PICKAXE
+                || item == Items.GOLDEN_PICKAXE || item == Items.DIAMOND_PICKAXE || item == Items.NETHERITE_PICKAXE;
+    }
+
+    // the scan's own record of the picks it saw, plus the one line when the iron one crosses the worn out line
+    private void notePick(ItemStack stack, String where, int slot, boolean wornOut) {
+        if (picksSeen < picks.length) {
+            picks[picksSeen++].set(stack, where, slot, wornOut);
+        }
+        if (wornOut && stack.getItem() == Items.IRON_PICKAXE) {
+            ironWornNow = true;
+            if (!ironWornLogged) {
+                // also keeps a second worn one in the same scan quiet. countItems re-arms this when none is worn any more
+                ironWornLogged = true;
+                Debug.logInternal(PickDiag.wornOut(stack.getDamageValue(), stack.getMaxDamage(), where, slot));
+            }
+        }
+    }
+
+    private static final class PickSeen {
+        private String item;
+        private int damage;
+        private int max;
+        private String where;
+        private int slot;
+        private boolean worn;
+
+        void set(ItemStack stack, String where, int slot, boolean worn) {
+            this.item = BuiltInRegistries.ITEM.getKey(stack.getItem()).getPath();
+            this.damage = stack.getDamageValue();
+            this.max = stack.getMaxDamage();
+            this.where = where;
+            this.slot = slot;
+            this.worn = worn;
+        }
+
+        String text() {
+            return PickDiag.stack(item, damage, max, where, slot, worn);
+        }
+    }
+
+    // diagnostics: the report IronPhase logs when the plan loses its iron pickaxe, built from the last refresh() plus what the
+    // open screen holds right now
+    @Override
+    public String pickScan() {
+        List<String> seen = new ArrayList<>();
+        for (int i = 0; i < picksSeen; i++) {
+            seen.add(picks[i].text());
+        }
+        List<String> open = new ArrayList<>();
+        Minecraft mc = Minecraft.getInstance();
+        Player player = mod.getPlayer();
+        String menuName = "none";
+        if (player != null && player.containerMenu != player.inventoryMenu) {
+            AbstractContainerMenu menu = player.containerMenu;
+            menuName = menu.getClass().getSimpleName();
+            // the slots that are not the player's own: a chest, a furnace, the table's output. the table's 3x3 is in the
+            // scan above already
+            boolean table = menu instanceof CraftingMenu;
+            for (Slot slot : menu.slots) {
+                boolean scanned = slot.container == player.getInventory() || (table && slot.index >= 1 && slot.index <= 9);
+                if (!scanned && isPick(slot.getItem().getItem())) {
+                    ItemStack s = slot.getItem();
+                    open.add(PickDiag.stack(BuiltInRegistries.ITEM.getKey(s.getItem()).getPath(), s.getDamageValue(), s.getMaxDamage(),
+                            "menu", slot.index, false));
+                }
+            }
+        }
+        String screen = mc.screen == null ? "none" : mc.screen.getClass().getSimpleName();
+        return PickDiag.scan(seen, open, screen, menuName);
     }
 
     // one pass over the distinct item types: food, building blocks and the "did anything change" number together
