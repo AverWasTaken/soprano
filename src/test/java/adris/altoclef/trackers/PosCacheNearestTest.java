@@ -121,10 +121,10 @@ public class PosCacheNearestTest {
         BlockTracker.PosCache cache = new BlockTracker.PosCache(bans, Dimension.OVERWORLD);
         cache.addBlock(Blocks.COAL_ORE, new BlockPos(1, 0, 0));
         cache.addBlock(Blocks.COAL_ORE, new BlockPos(5, 0, 0));
-        BanPolicy.coal(bans, 1, 0, 0);
+        BanPolicy.miningStalled(bans, Dimension.OVERWORLD, 1, 0, 0);
         assertEquals(Optional.of(new BlockPos(5, 0, 0)), cache.getNearest(new Vec3(0, 0, 0), p -> true, p -> true, SCORER, Blocks.COAL_ORE));
         assertTrue(cache.blockUnreachable(new BlockPos(1, 0, 0)));
-        bans.tick(BanPolicy.COAL);
+        bans.tick(BanPolicy.TASK_GAVE_UP);
         // still in the cache, nothing had to rescan it
         assertEquals(Optional.of(new BlockPos(1, 0, 0)), cache.getNearest(new Vec3(0, 0, 0), p -> true, p -> true, SCORER, Blocks.COAL_ORE));
     }
@@ -135,8 +135,20 @@ public class PosCacheNearestTest {
         });
         BlockTracker.PosCache nether = new BlockTracker.PosCache(bans, Dimension.NETHER);
         nether.addBlock(Blocks.COAL_ORE, new BlockPos(1, 0, 0));
-        BanPolicy.coal(bans, 1, 0, 0);
+        BanPolicy.miningStalled(bans, Dimension.OVERWORLD, 1, 0, 0);
         assertEquals(Optional.of(new BlockPos(1, 0, 0)), nether.getNearest(new Vec3(0, 0, 0), p -> true, p -> true, SCORER, Blocks.COAL_ORE));
+    }
+
+    @Test
+    public void aCoalDetourBanIsNotTheTrackersBusiness() {
+        // the fuel task asks the tracker, and the detour giving up on an ore says nothing about it
+        Bans bans = new Bans(line -> {
+        });
+        BlockTracker.PosCache cache = new BlockTracker.PosCache(bans, Dimension.OVERWORLD);
+        cache.addBlock(Blocks.COAL_ORE, new BlockPos(1, 0, 0));
+        BanPolicy.coal(bans, 1, 0, 0);
+        assertEquals(Optional.of(new BlockPos(1, 0, 0)), cache.getNearest(new Vec3(0, 0, 0), p -> true, p -> true, SCORER, Blocks.COAL_ORE));
+        assertFalse(cache.blockUnreachable(new BlockPos(1, 0, 0)));
     }
 
     @Test

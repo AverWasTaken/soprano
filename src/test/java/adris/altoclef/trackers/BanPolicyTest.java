@@ -78,14 +78,21 @@ public class BanPolicyTest {
     }
 
     @Test
-    public void coalIsAnOverworldBlockBanWithAClock() {
+    public void coalIsADetourOnlyOverworldBanWithAClock() {
         bans.tick(0);
         assertTrue(BanPolicy.coal(bans, 3, 40, 3));
         assertFalse("the same ore twice is one ban", BanPolicy.coal(bans, 3, 40, 3));
-        assertTrue(bans.blockBanned(Dimension.OVERWORLD, 3, 40, 3));
-        assertFalse(bans.blockBanned(Dimension.NETHER, 3, 40, 3));
+        assertTrue(BanPolicy.coalBanned(bans, 3, 40, 3));
+        assertFalse("the trackers, and the fuel task through them, still see it", bans.blockBanned(Dimension.OVERWORLD, 3, 40, 3));
+        assertTrue(lines.get(0), lines.get(0).endsWith("only for " + BanPolicy.COAL_SCOPE));
         bans.tick(BanPolicy.COAL);
-        assertFalse(bans.blockBanned(Dimension.OVERWORLD, 3, 40, 3));
+        assertFalse(BanPolicy.coalBanned(bans, 3, 40, 3));
+    }
+
+    @Test
+    public void theDetourAlsoHonoursEverybodysBans() {
+        BanPolicy.blockStrike(bans, Dimension.OVERWORLD, 3, 40, 3, 0, 4, "couldn't reach it");
+        assertTrue(BanPolicy.coalBanned(bans, 3, 40, 3));
     }
 
     @Test
@@ -103,9 +110,8 @@ public class BanPolicyTest {
 
     @Test
     public void anOutpostLiftTakesOnlyItsOwnBansInItsReachThatNoOtherOutpostCovers() {
-        BanPolicy.outpost(bans, Dimension.OVERWORLD, 10, 70, 0);
-        BanPolicy.outpost(bans, Dimension.OVERWORLD, 30, 70, 0);
-        BanPolicy.outpost(bans, Dimension.OVERWORLD, 100, 70, 0);
+        BanPolicy.outpost(bans, List.of(Key.block(Dimension.OVERWORLD, 10, 70, 0), Key.block(Dimension.OVERWORLD, 30, 70, 0),
+                Key.block(Dimension.OVERWORLD, 100, 70, 0)), 0, 0);
         // unreachable for its own reasons, the lift must leave it alone
         BanPolicy.blockStrike(bans, Dimension.OVERWORLD, 10, 70, 0, 0, 4, "couldn't reach it");
         BanPolicy.trap(bans, Dimension.OVERWORLD, 12, 70, 0, "outpost table");

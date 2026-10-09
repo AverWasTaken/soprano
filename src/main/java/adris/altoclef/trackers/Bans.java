@@ -9,6 +9,7 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
@@ -53,8 +54,12 @@ public final class Bans {
         }
     }
 
-    // strike = this ban is the one the strike count earned (see strike), the count goes with it and nothing else
-    private record Ban(Key key, String reason, long until, EnumSet<Until> events, int tool, boolean strike) {
+    // strike = this ban is the one the strike count earned (see strike), the count goes with it and nothing else.
+    // scope null = everybody honours it (the trackers do), otherwise only a caller that asks for that scope sees it
+    private record Ban(Key key, String reason, long until, EnumSet<Until> events, int tool, boolean strike, String scope) {
+        boolean holds(long now, String asking) {
+            return until > now && (scope == null || scope.equals(asking));
+        }
     }
 
     // the "n failures then out" bookkeeping, see strike
@@ -167,22 +172,45 @@ public final class Bans {
     // ban it now. the same key for the same reason again just keeps the ban that is there (DangerFilter asks every 2 s),
     // a different reason is a second ban that has to run out on its own
     public synchronized boolean ban(Key key, String reason, long ticks, Until... until) {
-        return add(key, reason, ticks, false, until);
+        return add(key, reason, ticks, false, null, false, until);
     }
 
-    private boolean add(Key key, String reason, long ticks, boolean strike, Until... until) {
+    // a ban only callers asking for `scope` see (banned(key, scope)). the trackers never ask, so every other task still gets
+    // offered the thing: the coal detour giving up on an ore says nothing about the fuel task that really needs coal
+    public synchronized boolean banFor(String scope, Key key, String reason, long ticks, Until... until) {
+        return add(key, reason, ticks, false, scope, false, until);
+    }
+
+    // a batch with one line for the lot ("ban: + N <summary>, <how long>") instead of one per key. an outpost is a hundred
+    // logs and wool, and a hundred lines at once is a log nobody reads
+    public synchronized int banAll(Iterable<Key> keys, String reason, long ticks, String summary) {
+        int n = 0;
+        for (Key key : keys) {
+            if (add(key, reason, ticks, false, null, true)) {
+                n++;
+            }
+        }
+        if (n > 0) {
+            log.accept("ban: + " + n + " " + summary + ", " + describe(ticks, EnumSet.noneOf(Until.class)));
+        }
+        return n;
+    }
+
+    private boolean add(Key key, String reason, long ticks, boolean strike, String scope, boolean quiet, Until... until) {
         List<Ban> list = bans.computeIfAbsent(key, k -> new ArrayList<>(1));
         for (Ban b : list) {
-            if (b.reason.equals(reason) && b.until > now) {
+            if (b.reason.equals(reason) && Objects.equals(b.scope, scope) && b.until > now) {
                 return false;
             }
         }
         long end = ticks == RUN ? RUN : now + ticks;
         EnumSet<Until> events = until.length == 0 ? EnumSet.noneOf(Until.class) : EnumSet.of(until[0], until);
-        Ban b = new Ban(key, reason, end, events, tool, strike);
+        Ban b = new Ban(key, reason, end, events, tool, strike, scope);
         list.add(b);
         nextExpiry = Math.min(nextExpiry, end);
-        log.accept("ban: + " + key + ", " + reason + ", " + describe(ticks, events));
+        if (!quiet) {
+            log.accept("ban: + " + key + ", " + reason + ", " + describe(ticks, events) + (scope == null ? "" : ", only for " + scope));
+        }
         return true;
     }
 
@@ -210,7 +238,7 @@ public final class Bans {
         if (s.failures <= allowed) {
             return false;
         }
-        return add(key, reason + " (" + s.failures + (s.failures == 1 ? " try)" : " tries)"), ticks, true, until);
+        return add(key, reason + " (" + s.failures + (s.failures == 1 ? " try)" : " tries)"), ticks, true, null, false, until);
     }
 
     private boolean struckOut(Key key) {
@@ -228,19 +256,34 @@ public final class Bans {
     // lifts the bans with this reason that match, and only those. a block banned for something else stays banned.
     // the "until-event" for bans whose end only the caller can see (an outpost going quiet)
     public synchronized int lift(String reason, Predicate<Key> which) {
-        return expireIf(b -> b.reason.equals(reason) && which.test(b.key), "lifted");
+        return expireIf(b -> b.reason.equals(reason) && which.test(b.key), "lifted", false);
+    }
+
+    // the banAll of lifting, one line for the lot
+    public synchronized int liftAll(String reason, Predicate<Key> which, String summary) {
+        int n = expireIf(b -> b.reason.equals(reason) && which.test(b.key), "lifted", true);
+        if (n > 0) {
+            log.accept("ban: - " + n + " " + summary + " (lifted)");
+        }
+        return n;
     }
 
     // ---- the query
 
-    public synchronized boolean banned(Key key) {
+    // what everybody honours, the trackers ask this
+    public boolean banned(Key key) {
+        return banned(key, null);
+    }
+
+    // the everybody bans plus the ones only `scope` sees
+    public synchronized boolean banned(Key key, String scope) {
         List<Ban> list = bans.get(key);
         if (list == null) {
             return false;
         }
         for (Ban b : list) {
             // a ban past its clock is over even if the sweep has not been round yet
-            if (b.until > now) {
+            if (b.holds(now, scope)) {
                 return true;
             }
         }
@@ -266,6 +309,10 @@ public final class Bans {
     // ---- inside
 
     private int expireIf(Predicate<Ban> gone, String why) {
+        return expireIf(gone, why, false);
+    }
+
+    private int expireIf(Predicate<Ban> gone, String why, boolean quiet) {
         int n = 0;
         Iterator<Map.Entry<Key, List<Ban>>> it = bans.entrySet().iterator();
         while (it.hasNext()) {
@@ -276,7 +323,9 @@ public final class Bans {
                 if (gone.test(b)) {
                     inner.remove();
                     n++;
-                    log.accept("ban: - " + b.key + ", " + b.reason + " (" + why + ")");
+                    if (!quiet) {
+                        log.accept("ban: - " + b.key + ", " + b.reason + " (" + why + ")");
+                    }
                     // the count starts over when the ban it earned is over. a short ban some task put on the same key
                     // running out says nothing about the count, or "three stalls and it's the long one" never got to three
                     if (b.strike) {

@@ -104,24 +104,40 @@ public final class DangerFilter {
         if (pillagerWatch.outposts() == 0) {
             return;
         }
+        List<BlockPos> near = new ArrayList<>();
         for (Block block : logs) {
-            blacklistNear(tracker, bans, dim, block);
-        }
-        for (Block block : wools) {
-            blacklistNear(tracker, bans, dim, block);
-        }
-    }
-
-    private void blacklistNear(BlockTracker tracker, Bans bans, Dimension dim, Block block) {
-        if (!tracker.isTracking(block)) {
-            return;
-        }
-        for (BlockPos pos : tracker.getKnownLocations(block)) {
-            // a ban of its own reason, so the lift below takes only these. a block that was unreachable anyway keeps that ban
-            if (pillagerWatch.nearOutpost(pos.getX(), pos.getZ(), PILLAGER_RADIUS)) {
-                BanPolicy.outpost(bans, dim, pos.getX(), pos.getY(), pos.getZ());
+            if (tracker.isTracking(block)) {
+                near.addAll(tracker.getKnownLocations(block));
             }
         }
+        for (Block block : wools) {
+            if (tracker.isTracking(block)) {
+                near.addAll(tracker.getKnownLocations(block));
+            }
+        }
+        banNearOutposts(bans, pillagerWatch, dim, near);
+    }
+
+    // a ban of its own reason, so the lift below takes only these (a block that was unreachable anyway keeps that ban). one
+    // log line per outpost per pass, not one per log. pure past the watch
+    static int banNearOutposts(Bans bans, PillagerWatch watch, Dimension dim, List<BlockPos> candidates) {
+        Map<Long, List<Bans.Key>> byOutpost = new HashMap<>();
+        Map<Long, double[]> spots = new HashMap<>();
+        for (BlockPos pos : candidates) {
+            double[] at = watch.outpostNear(pos.getX(), pos.getZ(), PILLAGER_RADIUS);
+            if (at == null) {
+                continue;
+            }
+            long id = ((long) Math.floor(at[0]) << 32) | (Math.round(Math.floor(at[1])) & 0xFFFFFFFFL);
+            spots.putIfAbsent(id, at);
+            byOutpost.computeIfAbsent(id, k -> new ArrayList<>()).add(Bans.Key.block(dim, pos.getX(), pos.getY(), pos.getZ()));
+        }
+        int added = 0;
+        for (Map.Entry<Long, List<Bans.Key>> e : byOutpost.entrySet()) {
+            double[] at = spots.get(e.getKey());
+            added += BanPolicy.outpost(bans, e.getValue(), at[0], at[1]);
+        }
+        return added;
     }
 
     // an outpost nobody has seen a live pillager at for a few minutes is gone (cleared, or we left and it despawned them),

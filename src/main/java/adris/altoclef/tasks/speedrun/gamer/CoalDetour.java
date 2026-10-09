@@ -31,8 +31,8 @@ import java.util.Map;
 // the mining task asks the tracker for the nearest coal wherever it is, so the rules end the job when the ore near the spot it
 // began at is gone (a count target would send it off to a vein 80 blocks away, and "hold N" is a bad question anyway: the
 // cluster grows as we dig into it). when the task gives up on a block it sets off for a far vein, and the leash from that spot
-// cuts the walk short and the ban keeps us off that cluster. the bans go in the shared book (Bans), which the tracker honours,
-// so the mining task itself skips them too. the tracker is the mining task's own business, it tracks on start
+// cuts the walk short and the ban keeps us off that cluster. the bans go in the shared book (Bans) scoped to the detour: our
+// mining task skips them through onlyWhere, and the fuel task that really needs coal still gets offered them. the tracker is the mining task's own business, it tracks on start
 // and lets go on stop, so nothing here needs releasing when the phase leaves, only forgetting
 public final class CoalDetour {
     // the same two blocks TaskCatalogue mines for "coal". an array of our own: the iron task's list must not learn about coal,
@@ -142,8 +142,10 @@ public final class CoalDetour {
 
     private void start(AltoClef mod, GamerContext ctx, OverworldConfig cfg, BlockPos me, int coal) {
         // the target is the cap in total, so the task never calls itself finished before the rules do
-        // and it only ever picks coal we can see from where we stand, so a vein behind the wall is not a tunnel (CoalSight)
-        mine = new MineAndCollectTask(new ItemTarget(Items.COAL, cfg.coalSideCap), ORES, MiningRequirement.WOOD).onlyWhere(pos -> visible(mod, pos));
+        // and it only ever picks coal we can see from where we stand, so a vein behind the wall is not a tunnel (CoalSight).
+        // our own give-ups too: they are scoped to the detour, the tracker still offers them to everybody else
+        mine = new MineAndCollectTask(new ItemTarget(Items.COAL, cfg.coalSideCap), ORES, MiningRequirement.WOOD)
+                .onlyWhere(pos -> !BanPolicy.coalBanned(mod.getBans(), pos.getX(), pos.getY(), pos.getZ()) && visible(mod, pos));
         anchor = me;
         coalAtStart = coal;
         coalLast = coal;
@@ -209,14 +211,14 @@ public final class CoalDetour {
     // the nearest coal ore within the budget of `center` that we could mine, have not given up on, and can see right now (CoalSight:
     // an air face and a clear line from the eyes, within 8). start and keep both ask it, so the detour ends when the only coal left
     // in the cluster is behind stone. "seen once" (SeenFilter) was not enough: a glimpse through a crack 30 blocks off counted.
-    // a banned ore is skipped here and by the mining task alike (the tracker asks the same book)
+    // a banned ore (ours, scoped to the detour, or anybody's) is skipped here and by the detour's mining task alike (onlyWhere)
     private BlockPos nearest(AltoClef mod, BlockPos center, double budget) {
         ClientLevel level = mod.getWorld();
         Bans bans = mod.getBans();
         BlockPos.MutableBlockPos at = new BlockPos.MutableBlockPos();
         for (Offset o : CoalRules.offsets(budget)) {
             at.set(center.getX() + o.dx(), center.getY() + o.dy(), center.getZ() + o.dz());
-            if (!isCoalOre(level.getBlockState(at)) || bans.blockBanned(Dimension.OVERWORLD, at.getX(), at.getY(), at.getZ())) {
+            if (!isCoalOre(level.getBlockState(at)) || BanPolicy.coalBanned(bans, at.getX(), at.getY(), at.getZ())) {
                 continue;
             }
             BlockPos found = at.immutable();

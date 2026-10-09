@@ -28,6 +28,8 @@ public final class BanPolicy {
     public static final long COAL = 6000;
 
     public static final String COAL_REASON = "coal detour gave up on it";
+    // the coal bans are the detour's business only (Bans.banFor): the fuel task, or coal as the head need, still mines them
+    public static final String COAL_SCOPE = "the coal detour";
     public static final String OUTPOST_REASON = "near a pillager outpost";
 
     private BanPolicy() {
@@ -94,7 +96,12 @@ public final class BanPolicy {
     }
 
     public static boolean coal(Bans bans, int x, int y, int z) {
-        return bans.ban(Key.block(Dimension.OVERWORLD, x, y, z), COAL_REASON, COAL);
+        return bans.banFor(COAL_SCOPE, Key.block(Dimension.OVERWORLD, x, y, z), COAL_REASON, COAL);
+    }
+
+    // what the detour asks: the everybody bans plus its own
+    public static boolean coalBanned(Bans bans, int x, int y, int z) {
+        return bans.banned(Key.block(Dimension.OVERWORLD, x, y, z), COAL_SCOPE);
     }
 
     // DangerFilter: trial chamber furniture, witch hut and outpost tables. they do not stop being traps, so the run
@@ -102,15 +109,17 @@ public final class BanPolicy {
         return bans.ban(Key.block(dim, x, y, z), what, Bans.RUN);
     }
 
-    // DangerFilter: logs and wool by an outpost. for the run, but lifted the moment the outpost goes quiet (liftOutpost)
-    public static boolean outpost(Bans bans, Dimension dim, int x, int y, int z) {
-        return bans.ban(Key.block(dim, x, y, z), OUTPOST_REASON, Bans.RUN);
+    // DangerFilter: logs and wool by the outpost at (x, z), one pass. for the run, but lifted the moment the outpost goes quiet
+    // (liftOutpost). one line for the pass, the already banned ones don't count
+    public static int outpost(Bans bans, Iterable<Key> blocks, double x, double z) {
+        return bans.banAll(blocks, OUTPOST_REASON, Bans.RUN, "logs/wool near the pillager outpost at " + (int) x + " " + (int) z);
     }
 
     // an outpost at (x, z) went quiet. its bans go unless `stillCovered` says another live outpost reaches the block.
     // only the outpost bans: a log that was unreachable for its own reasons stays that way
     public static int liftOutpost(Bans bans, double x, double z, double radius, Predicate<Key> stillCovered) {
-        return bans.lift(OUTPOST_REASON, key -> key.kind() == Bans.Kind.BLOCK && key.dim() == Dimension.OVERWORLD
-                && Math.hypot(key.x() - x, key.z() - z) <= radius && !stillCovered.test(key));
+        return bans.liftAll(OUTPOST_REASON, key -> key.kind() == Bans.Kind.BLOCK && key.dim() == Dimension.OVERWORLD
+                && Math.hypot(key.x() - x, key.z() - z) <= radius && !stillCovered.test(key),
+                "logs/wool near the pillager outpost at " + (int) x + " " + (int) z + ", it went quiet");
     }
 }

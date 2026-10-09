@@ -96,6 +96,16 @@ public final class PillagerWatch {
         return false;
     }
 
+    // {x, z} of the first known outpost within radius, null when none. for the "near the outpost at x z" ban line
+    public double[] outpostNear(double x, double z, double radius) {
+        for (double[] o : outposts) {
+            if (Math.hypot(o[0] - x, o[1] - z) <= radius) {
+                return new double[]{o[0], o[1]};
+            }
+        }
+        return null;
+    }
+
     public int outposts() {
         return outposts.size();
     }

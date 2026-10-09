@@ -264,4 +264,36 @@ public class BansTest {
         bans.tick(60);
         assertTrue(bans.strike(k, "r", 1, 100, 50));
     }
+
+    @Test
+    public void aScopedBanIsOnlyForWhoAsks() {
+        bans.banFor("detour", block(1, 2, 3), "gave up", Bans.RUN);
+        assertFalse("the trackers ask without a scope", bans.blockBanned(Dimension.OVERWORLD, 1, 2, 3));
+        assertTrue(bans.banned(block(1, 2, 3), "detour"));
+        assertFalse(bans.banned(block(1, 2, 3), "someone else"));
+        // and a plain ban counts for the scoped asker too
+        bans.ban(block(4, 2, 3), "trap", Bans.RUN);
+        assertTrue(bans.banned(block(4, 2, 3), "detour"));
+    }
+
+    @Test
+    public void aScopedAndAPlainBanOfTheSameReasonAreTwoBans() {
+        bans.banFor("detour", block(1, 2, 3), "r", Bans.RUN);
+        assertTrue(bans.ban(block(1, 2, 3), "r", Bans.RUN));
+        assertTrue(bans.blockBanned(Dimension.OVERWORLD, 1, 2, 3));
+    }
+
+    @Test
+    public void aBatchIsOneLineAndOnlyCountsTheNewOnes() {
+        bans.ban(block(0, 0, 0), "outpost", Bans.RUN);
+        lines.clear();
+        int n = bans.banAll(List.of(block(0, 0, 0), block(1, 0, 0), block(2, 0, 0)), "outpost", Bans.RUN, "logs near x");
+        assertEquals(2, n);
+        assertEquals(List.of("ban: + 2 logs near x, for the run"), lines);
+        assertEquals(0, bans.banAll(List.of(block(1, 0, 0)), "outpost", Bans.RUN, "logs near x"));
+        assertEquals(1, lines.size());
+        assertEquals(3, bans.liftAll("outpost", k -> true, "logs near x"));
+        assertEquals("ban: - 3 logs near x (lifted)", lines.get(1));
+        assertEquals(2, lines.size());
+    }
 }
