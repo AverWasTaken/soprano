@@ -8,6 +8,7 @@ import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
+import adris.altoclef.trace.Trace;
 import baritone.api.utils.Dimension;
 import java.util.ArrayList;
 import java.util.List;
@@ -548,6 +549,37 @@ public class PhaseMachineTest {
         machine.exitCurrent(null);
         machine.exitCurrent(null);
         assertEquals(List.of("enter1", "exit"), h(GamerPhase.IRON).events);
+    }
+
+    @Test
+    public void aStuckRunDumpsTheTrace() {
+        List<String> dumped = new ArrayList<>();
+        Trace.setSink(dumped::add);
+        try {
+            host.state.phase = GamerPhase.IRON;
+            start();
+            machine.stuck("out of ideas");
+        } finally {
+            Trace.setSink(null);
+        }
+        assertTrue(dumped.get(0), dumped.get(0).startsWith("TRACE DUMP (stuck: out of ideas) build "));
+        assertTrue(dumped.get(dumped.size() - 1).startsWith("END TRACE DUMP"));
+    }
+
+    @Test
+    public void aStuckRunOnlyDumpsOnce() {
+        host.state.phase = GamerPhase.IRON;
+        start();
+        machine.stuck("first");
+        List<String> dumped = new ArrayList<>();
+        Trace.setSink(dumped::add);
+        try {
+            // already over, a second stuck is ignored and must not dump again
+            machine.stuck("second");
+        } finally {
+            Trace.setSink(null);
+        }
+        assertTrue(dumped.isEmpty());
     }
 
     @Test

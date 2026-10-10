@@ -7,6 +7,7 @@ import adris.altoclef.tasks.speedrun.gamer.GamerTask;
 import adris.altoclef.tasks.speedrun.gamer.RunState;
 import adris.altoclef.tasks.speedrun.gamer.RunStateStore;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.trace.Trace;
 import baritone.api.IBaritone;
 import baritone.api.command.argument.IArgConsumer;
 import baritone.api.command.exception.CommandException;
@@ -22,7 +23,7 @@ import java.util.stream.Stream;
 // #gamer: beat the game. no argument starts it (or carries on from the saved run of this world), the words after it look at
 // the run or poke it
 public class GamerCommand extends AltoClefCommand {
-    private static final List<String> SUBCOMMANDS = List.of("status", "reset", "phase");
+    private static final List<String> SUBCOMMANDS = List.of("status", "reset", "phase", "trace");
 
     public GamerCommand(IBaritone baritone) {
         super(baritone, "gamer");
@@ -47,6 +48,13 @@ public class GamerCommand extends AltoClefCommand {
             case "reset" -> {
                 args.requireMax(0);
                 reset(mod);
+                done();
+            }
+            case "trace" -> {
+                args.requireMax(0);
+                // the last few hundred log lines, to the log file and not the chat
+                Trace.dump("command");
+                Debug.logMessage("Dumped the last " + Trace.snapshot().size() + " log lines to the log.");
                 done();
             }
             case "phase" -> {
@@ -140,6 +148,7 @@ public class GamerCommand extends AltoClefCommand {
                 "> gamer status - Show the phase and what has been found so far.",
                 "> gamer reset - Forget the saved run (not while it is running).",
                 "> gamer phase <name> - Start in that phase, for testing one part of the run.",
+                "> gamer trace - Write the last 300 log lines to the log file.",
                 "",
                 "Examples:",
                 "> gamer phase locate"

@@ -4,6 +4,7 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.trace.Trace;
 import baritone.api.utils.Dimension;
 
 import java.util.List;
@@ -386,6 +387,8 @@ public final class PhaseMachine implements GamerContext {
         host.save();
         host.say("Gave up at " + s.phase.hud().toLowerCase() + ": " + reason + ". State saved, type #gamer to pick it back up."
                 + restartHint(s.phase));
+        // after the message so the dump has the line that says why it gave up
+        Trace.dump("stuck: " + reason);
     }
 
     // a run that died its way to STUCK in the End comes back to the End with the same deaths on the books, the gear check is

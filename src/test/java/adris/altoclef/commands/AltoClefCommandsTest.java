@@ -224,8 +224,10 @@ public class AltoClefCommandsTest {
 
     @Test
     public void gamerCompletesItsSubcommandsAndPhases() throws Exception {
-        assertEquals(List.of("phase", "reset", "status"), tab("gamer", ""));
+        assertEquals(List.of("phase", "reset", "status", "trace"), tab("gamer", ""));
         assertEquals(List.of("status"), tab("gamer", "st"));
+        assertEquals(List.of("trace"), tab("gamer", "tr"));
+        assertTrue(tab("gamer", "trace ").isEmpty());
         assertEquals(List.of("locate"), tab("gamer", "phase lo"));
         assertEquals(11, tab("gamer", "phase ").size());
         assertTrue(tab("gamer", "phase ").containsAll(List.of("gather", "end_prep", "dragon")));
