@@ -15,6 +15,7 @@ import adris.altoclef.util.helpers.CombatCommit.Mode;
 import adris.altoclef.util.helpers.CombatLog;
 import adris.altoclef.util.helpers.CombatRules;
 import adris.altoclef.util.helpers.EntityHelper;
+import adris.altoclef.util.helpers.FightNames;
 import adris.altoclef.util.helpers.FoeRules;
 import adris.altoclef.util.helpers.MobReachability;
 import adris.altoclef.util.helpers.Provocations;
@@ -81,7 +82,8 @@ final class CombatBrain {
     private CommittedRunTask _run;
     private KillEntityTask _fight;
     private int _fightId = -1;
-    private String _fightName = "it";
+    private String _fightName = FightNames.UNKNOWN;
+    private final FightNames _names = new FightNames();
     private LocalPlayer _player;
     private Dimension _dimension;
 
@@ -151,7 +153,8 @@ final class CombatBrain {
         _run = null;
         _fight = null;
         _fightId = -1;
-        _fightName = "it";
+        _fightName = FightNames.UNKNOWN;
+        _names.clear();
     }
 
     // what to hold the wheel with right now, null for nothing (the chain lets go of whatever it has)
@@ -229,14 +232,20 @@ final class CombatBrain {
             }
         }
 
-        // the name is remembered while the target is alive, a dead mob is already gone from the world by the time we say so
-        if (target != null && _commit.mode() == Mode.FIGHT) _fightName = nameOf(mod, _commit.targetId());
-        String fighting = _fightName;
+        // the name is written down while the target is alive, a dead mob is already gone from the world by the time we say so.
+        // by id: "the last name we saw" said zombie for a skeleton whose fight ended before anyone looked at it
+        if (target != null && _commit.mode() == Mode.FIGHT) _names.note(_commit.targetId(), nameOf(mod, _commit.targetId()));
+        String fighting = _names.of(_commit.targetId());
         if (enabled) {
             // how far the run got, asked before the step: an end chained into a new run has moved the origin by the time we say so
             int blocks = (int) Math.round(Math.hypot(player.getX() - _commit.originX(), player.getZ() - _commit.originZ()));
             Event event = _commit.step(new CombatCommit.Tick(now, player.getHealth(), player.getX(), player.getZ(), foes, target,
                     way(mod, mobs, foes), armed(mod, foes), tryingToMove(mod, player), anchored));
+            // a fight that just started has its target in the world right now, which is the only chance to learn its name
+            if (_commit.mode() == Mode.FIGHT) {
+                _names.note(_commit.targetId(), nameOf(mod, _commit.targetId()));
+                _fightName = _names.of(_commit.targetId());
+            }
             if (event != Event.NONE) {
                 // the old one ended and the next one started on the same step, both get their line, in that order
                 if (_commit.endedFirst() != Event.NONE) log(mod, dimension, _commit.endedFirst(), fighting, mobs, blocks);
