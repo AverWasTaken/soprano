@@ -150,7 +150,7 @@ public final class CombatCommit {
     }
 
     // an angry hostile that can hurt us, as plain numbers. sinceHit: ticks since it hit us (NEVER for not yet)
-    // reachGap: eye to the nearest point of its box, what the server counts as reach (ReachRules). infinite when nobody measured
+    // reachGap: eye to the nearest point of its box, the three block reach (ReachRules). infinite when nobody measured
     // it, which is every foe that does not come from the world: the no room rule only believes a gap somebody really took
     public record Foe(int id, double distance, boolean ranged, boolean creeper, long sinceHit, Kind kind, double reachGap) {
         // a plain mob
@@ -167,7 +167,7 @@ public final class CombatCommit {
             return kind == Kind.LOBBER ? LOBBER_RANGE : CONTACT;
         }
 
-        // close enough that a swing of ours lands, by the number the server uses
+        // close enough that a swing of ours lands, by the three block number
         public boolean inReach() {
             return reachGap <= ReachRules.MELEE_REACH;
         }

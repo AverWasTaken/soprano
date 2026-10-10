@@ -87,19 +87,23 @@ public abstract class AbstractKillEntityTask extends AbstractDoToEntityTask {
         return equipWeapon(mod, false);
     }
 
-    // toolFallback: no sword or axe, so the hardest hitting tool still beats a bare hand. only a fight the bot picked for
-    // itself asks for it (see useToolsWhenUnarmed), hunting a cow or a pearl keeps its pickaxe's durability
     // the last pick we said out loud, so the log gets a line per change and not one per swing
     private static Item _loggedPick;
+    // swings that had gone out the last time the hand changed (see WeaponPick.hold)
+    private static long _swingsAtSwap;
 
+    // toolFallback: no sword or axe, so the hardest hitting tool still beats a bare hand. only a fight the bot picked for
+    // itself asks for it (see useToolsWhenUnarmed), hunting a cow or a pearl keeps its pickaxe's durability
     public static boolean equipWeapon(AltoClef mod, boolean toolFallback) {
         Item bestWeapon = weaponForNow(mod);
         if (bestWeapon == null && toolFallback) bestWeapon = WeaponPick.bestTool(candidates(mod));
         Item equipedWeapon = StorageHelper.getItemStackInSlot(PlayerSlot.getEquipSlot()).getItem();
         logPick(mod, bestWeapon, equipedWeapon);
         // (the pick can flip with the crowd, the hand does not: see WeaponPick.hold)
-        Item hold = WeaponPick.hold(equipedWeapon, bestWeapon, mod.getControllerExtras().chargedTicks());
+        long swings = mod.getControllerExtras().swings();
+        Item hold = WeaponPick.hold(equipedWeapon, bestWeapon, mod.getControllerExtras().chargedTicks(), swings != _swingsAtSwap);
         if (hold != equipedWeapon) {
+            _swingsAtSwap = swings;
             mod.getSlotHandler().forceEquipItem(hold);
             return true;
         }
@@ -129,8 +133,9 @@ public abstract class AbstractKillEntityTask extends AbstractDoToEntityTask {
         return true;
     }
 
-    // eye to the nearest point of its box, like the server counts it, so a swing never spends the cooldown on a mob that is only
-    // close by the feet line. out of it, the plan is the normal approach
+    // eye to the nearest point of its box within a plain player's three blocks (what a vanilla client can pick, and what a picky
+    // server enforces), so a swing never spends the cooldown on a mob that is only close by the feet line. out of it, the plan
+    // is the normal approach
     @Override
     protected boolean inReach(AltoClef mod, Entity entity) {
         return mod.getControllerExtras().inServerReach(entity);

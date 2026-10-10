@@ -175,8 +175,8 @@ public class PlayerExtraController {
     }
 
     // every melee swing at a mob goes through here so the crit timing lives in one place. returns whether a swing or a
-    // jump went out this tick. with altoJumpCrits off (or a target that can't crit) it is exactly the old rule: hit when
-    // the cooldown is full and we are on the ground, falling, or in water
+    // jump went out this tick. with altoJumpCrits off (or a target that can't crit) it is the plain rule: hit when the
+    // cooldown is full and we are on the ground, falling, in water, or rising with no crit hop in flight
     public boolean melee(Entity entity) {
         LocalPlayer player = _mod.getPlayer();
         if (!(entity instanceof LivingEntity target) || !Baritone.settings().altoJumpCrits.value) {
@@ -251,7 +251,7 @@ public class PlayerExtraController {
         if (!line.equals(_lastCritLog)) {
             _lastCritLog = line;
             // hand, raw scale and the eye to box gap ride along: a cooldown that never fills is either the wrong item (a swap
-            // resets it) or a mob that is not in the reach the server means, and those two look the same without them
+            // resets it) or a mob that is not in the three block reach, and those two look the same without them
             LocalPlayer player = _mod.getPlayer();
             Debug.logInternal("crit: " + line + ", to full " + String.format("%.1f", s.ticksToFull) + ", near " + s.meleeNear
                     + ", hp " + s.health + (s.pathing ? ", pathing" : "")
@@ -278,7 +278,7 @@ public class PlayerExtraController {
         return ReachRules.gap(eye.x, eye.y, eye.z, box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ);
     }
 
-    // the kill tasks' idea of "close enough to hit": the feet line the attack packet needs and the reach the server means, eye to
+    // the kill tasks' idea of "close enough to hit": the feet line the attack packet needs and the plain three block reach, eye to
     // the nearest point of the box. a zombie 3.5 away on the flat is inside the first and outside the second
     public boolean inServerReach(Entity entity) {
         return inRange(entity) && ReachRules.inReach(reachGap(_mod.getPlayer(), entity), reachOf(_mod.getPlayer()));

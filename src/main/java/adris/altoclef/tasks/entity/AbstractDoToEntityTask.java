@@ -13,6 +13,7 @@ import adris.altoclef.util.helpers.ApproachRules;
 import adris.altoclef.util.helpers.BackOffRules;
 import adris.altoclef.util.helpers.EntityBlockerRules;
 import adris.altoclef.util.helpers.ItemHelper;
+import adris.altoclef.util.helpers.StandCap;
 import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WorldHelper;
@@ -62,9 +63,10 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
     private GoalRunAway _backOffGoal;
     // the approach child was in the tree last tick (it is walking, a stop now would cut the path), see ApproachRules
     private boolean _approachLive;
-    // ticks in a row spent standing in reach with the swing gated, see ApproachRules.WAIT_TICKS. for a kill task it counts
-    // ticks in reach since the last swing that really went out, whatever the plan flickered through in between
+    // ticks in a row spent standing in reach with the swing gated, see ApproachRules.WAIT_TICKS. the kill tasks use _standCap
+    // instead, which counts ticks since the last swing that really went out whatever the plan flickered through
     private int _waitTicks;
+    private final StandCap _standCap = new StandCap();
     private Entity _waitEntity;
     private long _swingsSeen;
     // the back-off we started has to be getting somewhere, and a stuck one is not started again for a while
@@ -91,6 +93,7 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
         _approach = null;
         _approachLive = false;
         _waitTicks = 0;
+        _standCap.reset();
         _waitEntity = null;
         _swingsSeen = mod.getControllerExtras().swings();
         _backOffWatch.clear();
@@ -154,7 +157,9 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
             // and hits: the run-away would only own the keys, and "too close" is not a problem we can fix there
             boolean backOffOk = !isKillTask() || (now >= _backOffMutedUntil && mod.getControllerExtras().roomToBackOff());
             boolean tooClose = backOffOk && sqDist < maintainDistance * maintainDistance;
-            watchBackOff(mod, now);
+            if (isKillTask()) {
+                watchBackOff(mod, now);
+            }
 
             // Step away if we're too close, unless a crit hop is on (or about to be): backing off mid hop is exactly what
             // leaves the mob out of reach when we come down
@@ -185,7 +190,8 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
             ApproachRules.Policy policy = !isKillTask() ? ApproachRules.Policy.OTHER
                     : gatesOpen ? ApproachRules.Policy.KILL : ApproachRules.Policy.KILL_GATED;
             ApproachRules.Plan plan = ApproachRules.plan(wasWalking && _approachEntity == entity, inReach, shot, ready,
-                    mod.getClientBaritone().getPathingBehavior().isSafeToCancel(), tooClose, _waitTicks >= ApproachRules.WAIT_TICKS, policy);
+                    mod.getClientBaritone().getPathingBehavior().isSafeToCancel(), tooClose,
+                    isKillTask() ? _standCap.waitedLong() : _waitTicks >= ApproachRules.WAIT_TICKS, policy);
             if (!isKillTask()) {
                 _waitTicks = plan == ApproachRules.Plan.WAIT ? _waitTicks + 1 : 0;
             }
@@ -208,6 +214,7 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
                     // stood in reach this long with no swing: whatever path is in the way goes, the hit is what is owed
                     _progress.reset();
                     _blocker = null;
+                    _standCap.forced();
                     dropBackOff(mod);
                     mod.getClientBaritone().getPathingBehavior().cancelEverything();
                     setDebugState("In reach, swinging through the stall");
@@ -244,16 +251,16 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
         return null;
     }
 
-    // ticks stood in reach without a swing going out. a swing, a new target or the mob leaving reach starts it over
+    // feeds the stand cap: a swing, a new target or the mob leaving reach starts it over
     private void countStandingTicks(AltoClef mod, Entity entity, boolean standingInReach) {
         long swings = mod.getControllerExtras().swings();
         boolean swung = swings != _swingsSeen;
         _swingsSeen = swings;
         if (_waitEntity != entity) {
             _waitEntity = entity;
-            _waitTicks = 0;
+            _standCap.reset();
         }
-        _waitTicks = (!standingInReach || swung) ? 0 : _waitTicks + 1;
+        _standCap.tick(standingInReach, swung);
     }
 
     // the run-away we started has to be moving us, or it is dropped and left alone for a bit

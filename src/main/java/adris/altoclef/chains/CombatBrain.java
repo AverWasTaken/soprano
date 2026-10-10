@@ -395,7 +395,7 @@ final class CombatBrain {
                 reachGap);
     }
 
-    // eye to its box, the number the server's reach check uses
+    // eye to its box, the number the reach rules use
     private static double reachGap(LocalPlayer player, Mob mob) {
         Vec3 eye = player.getEyePosition();
         AABB box = mob.getBoundingBox();

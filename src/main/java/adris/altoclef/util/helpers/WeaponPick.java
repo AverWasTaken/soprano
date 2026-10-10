@@ -74,11 +74,18 @@ public final class WeaponPick {
     // what to have in hand this tick, given what we hold, what the pick says, and how many ticks of cooldown are charged
     // (scale times the delay of what we hold). the pick is null when there is nothing to pick
     public static Item hold(Item inHand, Item pick, double chargedTicks) {
+        return hold(inHand, pick, chargedTicks, false);
+    }
+
+    // swungSinceSwap: a swing went out since the last time the hand changed. the tick right after a swing is a narrow window
+    // and a kill task that is mid hop misses it, so any swing since the last swap opens the door once, and a pick that flips
+    // back and forth then moves the hand once per swing and no more
+    public static Item hold(Item inHand, Item pick, double chargedTicks, boolean swungSinceSwap) {
         if (pick == null || pick == inHand) {
             return inHand;
         }
         // a bucket, a pick or food has no cooldown worth protecting
-        if (!isWeapon(inHand) || chargedTicks <= JUST_SWUNG_TICKS) {
+        if (!isWeapon(inHand) || swungSinceSwap || chargedTicks <= JUST_SWUNG_TICKS) {
             return pick;
         }
         return inHand;

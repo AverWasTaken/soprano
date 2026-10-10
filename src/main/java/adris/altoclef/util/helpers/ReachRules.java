@@ -1,6 +1,7 @@
 package adris.altoclef.util.helpers;
 
-// what "in reach" means to the server's melee check: the eye to the nearest point of the target's box, not feet to feet. a
+// what "in reach" means to a vanilla client's melee pick (and to a picky server): the eye to the nearest point of the
+// target's box, not feet to feet. a vanilla server itself takes up to twice that. a
 // zombie on our head is feet 1.8 away and a spider across a gap is feet 3.4 away and both are closer than that sounds
 public final class ReachRules {
 

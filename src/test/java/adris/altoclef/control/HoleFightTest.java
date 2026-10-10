@@ -3,6 +3,7 @@ package adris.altoclef.control;
 import adris.altoclef.util.helpers.ApproachRules;
 import adris.altoclef.util.helpers.ApproachRules.Plan;
 import adris.altoclef.util.helpers.BackOffRules;
+import adris.altoclef.util.helpers.StandCap;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.Test;
@@ -152,5 +153,61 @@ public class HoleFightTest {
         // the rule the task asks before it will start a run-away at all
         assertEquals(false, BackOffRules.roomToBackOff(false, true));
         assertEquals(false, BackOffRules.roomToBackOff(false, false));
+    }
+
+    // a path nobody will drop (not ours, or the watch is not there): the plan says wait while it is alive, and the cap is what
+    // gets the swing out, then keeps getting it out every REPEAT_TICKS instead of once per five seconds
+    @Test
+    public void aPathThatNeverLetsGoStillGetsASwingAtTheCapAndThenSteadily() {
+        StandCap cap = new StandCap();
+        int ticker = 0;
+        boolean swungLast = false;
+        List<Integer> swings = new ArrayList<>();
+        for (int tick = 0; tick < 400; tick++) {
+            ticker++;
+            cap.tick(true, swungLast);
+            swungLast = false;
+            Plan plan = ApproachRules.plan(false, true, true, true, false, false, cap.waitedLong(), ApproachRules.Policy.KILL);
+            if (plan == Plan.SWING_NOW) {
+                cap.forced();
+                if ((AXE_DELAY - ticker - 0.5) <= 0) {
+                    ticker = 0;
+                    swungLast = true;
+                    swings.add(tick);
+                }
+            } else {
+                assertEquals("tick " + tick, Plan.WAIT, plan);
+            }
+        }
+        assertTrue("no forced swing", !swings.isEmpty());
+        assertTrue("first at " + swings.get(0), swings.get(0) <= ApproachRules.WAIT_TICKS + 1);
+        for (int i = 1; i < swings.size(); i++) {
+            int gap = swings.get(i) - swings.get(i - 1);
+            assertTrue("gap " + gap, gap <= StandCap.REPEAT_TICKS + 1);
+        }
+    }
+
+    // the run-away we started owns the keys and goes nowhere: the watch drops it ten ticks in, and the swing goes out on the
+    // cooldown instead of waiting for the cap
+    @Test
+    public void aBackOffThatGoesNowhereIsDroppedAndTheSwingStillComesOnTheCooldown() {
+        BackOffRules.Watch watch = new BackOffRules.Watch();
+        boolean goalLive = true;
+        int ticker = 0;
+        int firstSwing = -1;
+        int dropped = -1;
+        for (int tick = 0; tick < 60 && firstSwing < 0; tick++) {
+            ticker++;
+            if (goalLive && watch.stuck(tick, 5, 5)) {
+                goalLive = false;
+                dropped = tick;
+            }
+            Plan plan = ApproachRules.plan(false, true, true, true, !goalLive, false, false, ApproachRules.Policy.KILL);
+            if (plan == Plan.INTERACT && (AXE_DELAY - ticker - 0.5) <= 0) {
+                firstSwing = tick;
+            }
+        }
+        assertEquals(BackOffRules.STUCK_TICKS, dropped);
+        assertEquals(24, firstSwing);
     }
 }

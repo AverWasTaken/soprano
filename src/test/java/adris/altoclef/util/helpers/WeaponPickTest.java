@@ -243,4 +243,13 @@ public class WeaponPickTest {
         assertSame(Items.STONE_AXE, WeaponPick.hold(Items.STONE_AXE, null, 0));
         assertSame(Items.STONE_AXE, WeaponPick.hold(Items.STONE_AXE, Items.STONE_AXE, 0));
     }
+
+    @Test
+    public void anySwingSinceTheLastSwapOpensTheDoorOnce() {
+        // mid cooldown, past the just swung window, but a swing went out since the hand last changed
+        assertSame(Items.STONE_SWORD, WeaponPick.hold(Items.STONE_AXE, Items.STONE_SWORD, 12, true));
+        assertSame(Items.STONE_AXE, WeaponPick.hold(Items.STONE_AXE, Items.STONE_SWORD, 12, false));
+        // and a pick that is already in hand never moves it
+        assertSame(Items.STONE_AXE, WeaponPick.hold(Items.STONE_AXE, Items.STONE_AXE, 12, true));
+    }
 }
