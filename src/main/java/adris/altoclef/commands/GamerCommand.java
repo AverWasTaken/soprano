@@ -33,6 +33,10 @@ public class GamerCommand extends AltoClefCommand {
     protected void run(AltoClef mod, String label, IArgConsumer args) throws CommandException {
         args.requireMax(2);
         if (!args.hasAny()) {
+            // same story as the phase jump: a second #gamer is thrown away as the same task, it must not cost the bans
+            if (running(mod) != null) {
+                throw new CommandInvalidStateException("The gamer is already running.");
+            }
             // a new gamer task is a new run, the bans of the last one (and of whatever ran before it) go with it
             mod.getBans().clearRun("new #gamer");
             startTask(mod, new GamerTask());
@@ -59,7 +63,13 @@ public class GamerCommand extends AltoClefCommand {
             }
             case "phase" -> {
                 args.requireExactly(1);
-                GamerTask task = new GamerTask(parsePhase(args.getString()));
+                GamerPhase phase = parsePhase(args.getString());
+                // a running gamer counts as the same task whatever phase we ask for, so the jump would be dropped on the
+                // floor after wiping the run's bans. say so instead of pretending
+                if (running(mod) != null) {
+                    throw new CommandInvalidStateException("The gamer is running right now, stop it first and then jump.");
+                }
+                GamerTask task = new GamerTask(phase);
                 mod.getBans().clearRun("new #gamer");
                 startTask(mod, task);
             }
