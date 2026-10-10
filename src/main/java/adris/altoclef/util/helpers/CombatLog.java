@@ -28,7 +28,8 @@ public final class CombatLog {
             case FIGHT_START -> tag + "FIGHT " + target + " (" + (why == Why.IN_WAY ? "in our way" : "hit us") + ", hp " + hp + ")";
             case FIGHT_NEXT -> cornered ? tag + (why == Why.CHASED ? "still chased, next " : "cornered, next ") + target
                     : tag + "target dead, next " + target + " (hit us, hp " + hp + ")";
-            case RUN_START -> tag + "RUN from " + crowd + " (" + runWhy(why, hp) + ")";
+            case RUN_START -> why == Why.LOBBER ? tag + "RUN from witch (can't reach it)"
+                    : tag + "RUN from " + crowd + " (" + runWhy(why, hp) + ")";
             case FIGHT_TO_RUN -> tag + "FIGHT -> RUN from " + crowd + " (" + runWhy(why, hp) + ")";
             case RUN_TO_FIGHT -> tag + (noRoom ? "cornered, no room, fighting " : "cornered, fighting ") + target;
             case FIGHT_DEAD -> tag + "fight over, " + fighting + " dead";

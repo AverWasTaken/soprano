@@ -107,12 +107,10 @@ public class WitchHitTest {
         assertEquals(Event.NONE, c.step(tick(NOW, null, plinker)));
     }
 
-    @Test
-    public void aWitchWeGaveUpOnComesBackTheMomentItHitsUsAgain() {
-        CombatCommit c = new CombatCommit();
+    // a fight with a witch that holds its distance for good while the poison keeps ticking (a tick of it every 25 ticks): the stall
+    // rule writes it off after STALL_TICKS. returns the tick it happened on
+    private static long stallAFightWithAWitch(CombatCommit c) {
         assertEquals(Event.FIGHT_START, c.step(tick(NOW, null, lobber(8, 3))));
-        // it holds its distance for good while the poison keeps ticking (a tick of it every 25 ticks), so the stall rule writes
-        // it off before the lost track rule can
         for (long t = NOW + 1; t < NOW + CombatCommit.STALL_TICKS; t++) {
             Foe w = lobber(8, (t - NOW) % 25);
             assertEquals("tick " + t, Event.NONE, c.step(tick(t, w, w)));
@@ -121,11 +119,45 @@ public class WitchHitTest {
         Foe stale = lobber(8, (gaveUp - NOW) % 25);
         assertEquals(Event.FIGHT_STALLED, c.step(tick(gaveUp, stale, stale)));
         assertTrue(c.isIgnored(5));
-        // the poison went on ticking but nobody blamed the witch: the old rule, ignored for good
+        return gaveUp;
+    }
+
+    @Test
+    public void aWitchWeCouldNotGetToIsARunTheNextTimeItIsBlamedNotAnotherFight() {
+        CombatCommit c = new CombatCommit();
+        long gaveUp = stallAFightWithAWitch(c);
+        // the poison went on ticking but nobody blamed the witch: the old rule, ignored
         assertEquals(Event.NONE, c.step(tick(gaveUp + 10, null, lobber(8, gaveUp + 10 - NOW))));
-        // the next poison tick is blamed on it: news, so it is a fight again once a fresh hit gets through the cooldown
-        assertEquals(Event.FIGHT_START, c.step(tick(gaveUp + 20, null, lobber(8, 2))));
+        // blamed again twenty ticks later: the normal run, with its own reason
+        assertEquals(Event.RUN_START, c.step(tick(gaveUp + 20, null, lobber(8, 2))));
+        assertEquals(Mode.RUN, c.mode());
+        assertEquals(CombatCommit.Why.LOBBER, c.why());
+        assertEquals("combat: [overworld] RUN from witch (can't reach it)",
+                CombatLog.line(Dimension.OVERWORLD, Event.RUN_START, c.why(), false, "witch", "it", "1 witch", 20, 0));
+    }
+
+    @Test
+    public void blamingItAgainAfterThirtySecondsTriesTheFightAgain() {
+        CombatCommit c = new CombatCommit();
+        long gaveUp = stallAFightWithAWitch(c);
+        long later = gaveUp + CombatCommit.LOBBER_GIVE_UP_TICKS + 20;
+        assertEquals(Event.FIGHT_START, c.step(tick(later, null, lobber(8, 2))));
+        assertEquals(Mode.FIGHT, c.mode());
+        assertEquals(CombatCommit.Why.HIT, c.why());
         assertEquals(5, c.targetId());
+    }
+
+    @Test
+    public void aWitchWeCanReachIsStillFoughtToTheDeath() {
+        CombatCommit c = new CombatCommit();
+        assertEquals(Event.FIGHT_START, c.step(tick(NOW, null, lobber(8, 3))));
+        // it walks into contact (or we do) and keeps hitting us: no stall, no give up, no run
+        for (long t = NOW + 1; t < NOW + 300; t++) {
+            Foe w = lobber(2, t % 25);
+            assertEquals("tick " + t, Event.NONE, c.step(tick(t, w, w)));
+        }
+        assertEquals(Mode.FIGHT, c.mode());
+        assertEquals(Event.FIGHT_DEAD, c.step(tick(NOW + 300, null)));
     }
 
     private static Foe lobber(double distance, long sinceHit) {

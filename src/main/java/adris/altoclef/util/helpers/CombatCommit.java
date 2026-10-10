@@ -99,6 +99,10 @@ public final class CombatCommit {
     // how far a witch can be and still be what the poison is blamed on)
     public static final double LOBBER_RANGE = FoeRules.WITCH_HIT_RANGE;
 
+    // a fight with a lobber that stalled (we could not get to it) is not tried again for this long: the next blame in that
+    // time is a run out of its range. thirty seconds, then it is a fight again
+    public static final long LOBBER_GIVE_UP_TICKS = 600;
+
     // never hit us
     public static final long NEVER = Long.MAX_VALUE / 4;
 
@@ -117,7 +121,9 @@ public final class CombatCommit {
         // enough of them on us at once (CROWD_SIZE, or HURT_CROWD_SIZE while hurt): not a fight to take
         CROWD,
         // something hit us and we have nothing better than bare hands. a punch is not a fight, feet are
-        UNARMED
+        UNARMED,
+        // a lobber we already failed to get to hit us again: not another fight, a run out of its range
+        LOBBER
     }
 
     public enum Event {
@@ -387,6 +393,9 @@ public final class CombatCommit {
     private double wayBoxY;
     private double wayBoxZ;
 
+    // when a fight with a lobber last stalled, for the run that replaces the next fight with it (see LOBBER_GIVE_UP_TICKS)
+    private long lobberGaveUpAt = Long.MIN_VALUE / 2;
+
     // mobs we gave up on, and when. they get another go when they hit us again
     private final Map<Integer, Long> ignored = new HashMap<>();
 
@@ -454,6 +463,12 @@ public final class CombatCommit {
         wayBoxSince = -1;
         wayGapSince = -1;
         ignored.clear();
+        lobberGaveUpAt = Long.MIN_VALUE / 2;
+    }
+
+    // a lobber that hit us when we already failed to reach one lately: running is the answer, a second fight would stall the same
+    private boolean gaveUpOn(Foe foe, long now) {
+        return foe.kind() == Kind.LOBBER && now >= lobberGaveUpAt && now - lobberGaveUpAt <= LOBBER_GIVE_UP_TICKS;
     }
 
     public Event step(Tick t) {
@@ -499,6 +514,7 @@ public final class CombatCommit {
         // fist it is a run instead: a punch is not a fight, and the cornered rules still turn us round when a run goes nowhere
         Foe hit = hitInContact(candidates(t), cooling);
         if (hit != null) {
+            if (gaveUpOn(hit, t.now())) return startRun(t, Why.LOBBER, Event.RUN_START);
             if (!t.armed()) return startRun(t, Why.UNARMED, Event.RUN_START);
             return startFight(t, hit, Why.HIT, Event.FIGHT_START, false);
         }
@@ -635,6 +651,7 @@ public final class CombatCommit {
         }
         if (t.now() - progressAt >= STALL_TICKS) {
             ignored.put(target.id(), t.now());
+            if (target.kind() == Kind.LOBBER) lobberGaveUpAt = t.now();
             return end(t, Event.FIGHT_STALLED);
         }
         return Event.NONE;
@@ -666,7 +683,7 @@ public final class CombatCommit {
         // the next thing chewing on us, same rule as starting one. (not one we gave up on, idle sorts that out once this fight
         // is over, and not one we only run from, runReason already had its say)
         List<Foe> rest = candidates(t).stream()
-                .filter(foe -> foe.id() != targetId && !ignored.containsKey(foe.id()) && !foe.mustRun(t.health()))
+                .filter(foe -> foe.id() != targetId && !ignored.containsKey(foe.id()) && !foe.mustRun(t.health()) && !gaveUpOn(foe, t.now()))
                 .toList();
         return hitInContact(rest, false);
     }
