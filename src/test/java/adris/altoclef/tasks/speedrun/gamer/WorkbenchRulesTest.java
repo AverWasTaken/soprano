@@ -2232,4 +2232,42 @@ public class WorkbenchRulesTest {
         assertEquals(Call.PICK_UP, decide(old, s));
         assertFalse(WorkbenchRules.holdFar(old, s.look(), false));
     }
+
+    // ---- the portal phase's hold on a station of ours
+
+    @Test
+    public void aStationTheCastIsWorkingAtDoesNotHoldTheCast() {
+        // gate done, a station stands, the tree is working at it: the cast keeps running (holding it would empty the tree)
+        assertFalse(WorkbenchRules.portalHold(true, false, true, true));
+        // the same station idle and unwanted: the phase holds until it is down
+        assertTrue(WorkbenchRules.portalHold(true, false, true, false));
+        // nothing standing, or the gate still has needs: no hold either way
+        assertFalse(WorkbenchRules.portalHold(true, true, true, false));
+        assertFalse(WorkbenchRules.portalHold(false, false, true, false));
+    }
+
+    @Test
+    public void beforeTheGateIsDoneAStandingStationStillHolds() {
+        assertTrue(WorkbenchRules.portalHold(true, false, false, true));
+        assertTrue(WorkbenchRules.portalHold(true, false, false, false));
+        assertFalse(WorkbenchRules.portalHold(true, true, false, true));
+    }
+
+    @Test
+    public void aStationInUseWithNothingWantingItWaitsAndOnceIdleAndPastTheGuardComesDown() {
+        Bench furnace = new Bench(Kind.FURNACE, pos(10, 64, 0), OVERWORLD, 990);
+        Seen s = new Seen();
+        s.now = 1000;
+        s.distance = 2;
+        s.neededSoon = false;
+        // placed a moment ago and being used: not picked up
+        s.idle = false;
+        assertEquals(Call.WAIT, decide(furnace, s));
+        // idle but still inside the place guard
+        s.idle = true;
+        assertEquals(Call.WAIT, decide(furnace, s));
+        // idle and past it, and nothing in the plan wants it: it comes down
+        s.now = 990 + WorkbenchRules.PLACE_GUARD_TICKS + WorkbenchRules.SETTLE_TICKS + 1;
+        assertEquals(Call.PICK_UP, decide(furnace, s));
+    }
 }

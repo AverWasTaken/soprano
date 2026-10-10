@@ -19,6 +19,7 @@ import adris.altoclef.tasks.speedrun.gamer.PortalPlanner.Method;
 import adris.altoclef.tasks.speedrun.gamer.ResourceDetour;
 import adris.altoclef.tasks.speedrun.gamer.RunState;
 import adris.altoclef.tasks.speedrun.gamer.Timeout;
+import adris.altoclef.tasks.speedrun.gamer.WorkbenchRules;
 import adris.altoclef.tasks.speedrun.gamer.Workbenches;
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
 import adris.altoclef.tasks.speedrun.gamer.portal.LavaPoolPortalTask;
@@ -168,7 +169,9 @@ public class PortalPhase implements PhaseHandler {
                 return pickup;
             }
             // (only once the gate has nothing left to craft: a table the gate still wants is standing on purpose)
-            if (gate.isEmpty() && !Workbenches.phaseMayEnd(ctx.state(), f.dimension().name(), f.gameTime())) {
+            // (and not the cast's own station while the cast is at it, see portalHold)
+            boolean mayEnd = Workbenches.phaseMayEnd(ctx.state(), f.dimension().name(), f.gameTime());
+            if (WorkbenchRules.portalHold(gate.isEmpty(), mayEnd, gateDone, gateDone && !mayEnd && benches.inUse(mod, ctx))) {
                 hudState = "Waiting to take the crafting table back";
                 return null;
             }

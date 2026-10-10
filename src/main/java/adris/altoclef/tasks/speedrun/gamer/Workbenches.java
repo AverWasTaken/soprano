@@ -779,6 +779,21 @@ public final class Workbenches {
         forget(state, b, why);
     }
 
+    // a station of ours in this dimension that the task tree is working at right now: a screen open at it, a load in flight, or a
+    // craft or smelt of its kind under the user task. the same judgement the bench makes for its own wait, so a phase that has handed
+    // the wheel to a task can ask it before holding that task for the stations (the hold would end the work that keeps them in use)
+    public boolean inUse(AltoClef mod, GamerContext ctx) {
+        RunState state = ctx.state();
+        String dimension = ctx.facts().dimension().name();
+        long now = ctx.facts().gameTime();
+        for (Bench b : state.benches) {
+            if (b.dimension.equals(dimension) && (b.state == Bench.State.STANDING || b.state == Bench.State.BUSY) && !idle(mod, ctx, b, now)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     // one line per reason, a wait is a state and not an event
     private static void waiting(Bench b, WorkbenchRules.Look look, long now) {
         String why = !look.idle() ? "it is in use" : now - b.placedTick < WorkbenchRules.PLACE_GUARD_TICKS ? "just placed"

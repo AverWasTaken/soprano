@@ -373,6 +373,13 @@ public final class WorkbenchRules {
         return "we have been outside " + Math.round(NEAR) + " blocks of it for " + OUTSIDE_TICKS / 20 + " s";
     }
 
+    // the portal phase's hold: nothing runs while a station of ours is standing and the plan has nothing left to craft at it. but once
+    // the gate is done the old cast tree is what runs, and a station it placed itself is in use by that very tree: holding it (a null
+    // task) empties the tree, which makes the station idle, which brings it down, and the cast starts over and places it again
+    public static boolean portalHold(boolean gateEmpty, boolean mayEnd, boolean gateDone, boolean castInUse) {
+        return gateEmpty && !mayEnd && !(gateDone && castInUse);
+    }
+
     // ---- pickup bookkeeping
 
     public static void beginPickup(Bench b, long now, int bagBefore, String why) {
