@@ -439,9 +439,6 @@ public class GamerTask extends Task {
         winShown = false;
         loadState(mod);
         facts.useState(state);
-        // the first read had no state to look in, so station flags and furnace jobs came out empty and the phase's first plan
-        // would have been made on that
-        facts.refresh();
         // the cook's backoff and station live in the run's state now, so a fresh state is a fresh cook
         CookTrip.bind(state.cook);
         // so CollectFoodTask can count the meat that is cooking without knowing what a RunState is
@@ -456,6 +453,9 @@ public class GamerTask extends Task {
         // down (nothing may place or walk to it). rebuilt from the saved lists, so a relog keeps what we put down
         Workbenches.sync(state, facts.gameTime());
         StationHook.install(Workbenches.source(state, facts, this::toolCobbleOwed));
+        // the first read had no state to look in, so station flags and furnace jobs came out empty and the phase's first plan
+        // would have been made on that. after the hook: the held flags ask it what is owed and what is coming down
+        facts.refresh();
         deathsAtStart = state.deaths.size();
         lastSaveSeconds = machine.now();
         begun = true;
