@@ -144,6 +144,31 @@ public class FurnacePlanTest {
     }
 
     @Test
+    public void aLongTripStandByIsHeldUntilTheVisitEnds() {
+        long now = 1000;
+        RunState.FurnaceJob job = furnace(now + 300);
+        Plan start = FurnacePlan.plan(List.of(job), tripAhead(away(5)), now, null);
+        assertEquals(Why.FAR_TRIP, one(start).why());
+        // started: the sheep turn up close, or we have walked off a bit, the trip under way keeps its call
+        Moment changed = new Moment(true, false, false, NOBODY, false, true, away(40), "wool", false);
+        Plan held = FurnacePlan.plan(List.of(job), changed, now + 20, job);
+        assertEquals(Call.STAND_BY, one(held).call());
+        assertEquals(Why.FAR_TRIP, one(held).why());
+        assertTrue(held.changes().isEmpty());
+    }
+
+    @Test
+    public void aStandByThatRanOutItsCapIsNotStartedAgain() {
+        long now = 1000;
+        RunState.FurnaceJob job = furnace(now + 100);
+        // the visit stood at it to the cap and nothing came out: re-stamped with the patience, which is inside the window
+        FurnaceJobs.afterVisit(new ArrayList<>(List.of(job)), job, job.count, FurnacePlan.PATIENCE_TICKS, now, true);
+        Plan again = FurnacePlan.plan(List.of(job), tripAhead(away(5)), now, null);
+        assertEquals(Call.LEAVE, one(again).call());
+        assertNull(again.pick());
+    }
+
+    @Test
     public void aLongTripGoesAheadWhenTheBatchIsStillAWayOff() {
         long now = 1000;
         Plan later = FurnacePlan.plan(List.of(furnace(now + FurnacePlan.STAND_BY_CAP_TICKS + 1)), tripAhead(away(5)), now, null);

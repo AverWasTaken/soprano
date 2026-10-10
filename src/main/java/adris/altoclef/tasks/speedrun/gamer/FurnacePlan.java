@@ -99,7 +99,7 @@ public final class FurnacePlan {
         STOCK_UP("due, and all we were doing was stocking up for later"),
         IDLE_DUE("due, and there is nothing else to do"),
         FAR_BUSY("due, but we are far off and busy, collecting after"),
-        FAR_TRIP("a long trip is next and this is nearly done, collecting it first"),
+        FAR_TRIP("a long trip is next, so this batch is seen to first"),
         IDLE_WAIT("nothing else to do, waiting it out"),
         QUICK("a smoker is quick, waiting for it instead of mining"),
         TOO_LONG("not due, and too long a batch to stand at, working it like a furnace"),
@@ -385,8 +385,10 @@ public final class FurnacePlan {
             v = due ? verdict(job, Call.COLLECT_NOW, Why.IDLE_DUE) : verdict(job, Call.STAND_BY, Why.IDLE_WAIT);
         } else if (!due) {
             // setting off on a long trip with a batch about to finish leaves it sitting done until we are back: the walk back is
-            // the expensive part, so this one is waited for (no longer than a stand-by is allowed to take)
-            boolean waitFirst = close && m.farTrip() && job.doneTick - now <= STAND_BY_CAP_TICKS;
+            // the expensive part, so one that finishes within the stand-by cap is waited for. a job that already stood out a visit
+            // without anything coming out (stalls) or a smoker that used its quick budget is not: both are re-stamped with a fresh
+            // half minute, and standing again would just be the same wait twice
+            boolean waitFirst = close && m.farTrip() && job.doneTick - now <= STAND_BY_CAP_TICKS && job.stalls == 0 && !job.track.standSeen;
             v = waitFirst ? verdict(job, Call.STAND_BY, Why.FAR_TRIP)
                     : verdict(job, Call.LEAVE, tooLong(job) ? Why.TOO_LONG : Why.COOKING);
         } else {
