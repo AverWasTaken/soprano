@@ -25,6 +25,7 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.LiquidBlock;
 import net.minecraft.world.level.block.state.BlockState;
 
 /**
@@ -166,10 +167,12 @@ public class ConstructNetherPortalBucketTask extends Task {
         }
 
         if (_currentDestroyTarget != null) {
-            if (!WorldHelper.isSolid(mod, _currentDestroyTarget)) {
+            // same test the picker below uses, or a fluid/fire/plant in the interior gets picked and dropped every tick
+            BlockState targetState = mod.getWorld().getBlockState(_currentDestroyTarget);
+            if (targetState.isAir()) {
                 _currentDestroyTarget = null;
             } else {
-                return new DestroyBlockTask(_currentDestroyTarget);
+                return clearInteriorCell(targetState, _currentDestroyTarget);
             }
         }
         // Get flint & steel if we don't have one
@@ -299,6 +302,15 @@ public class ConstructNetherPortalBucketTask extends Task {
     @Override
     protected String toDebugString() {
         return "Construct Nether Portal";
+    }
+
+    // fluids come out with a bucket, everything else gets broken. the obsidian variant asks too
+    static boolean isLiquid(BlockState state) {
+        return state.getBlock() instanceof LiquidBlock;
+    }
+
+    static Task clearInteriorCell(BlockState state, BlockPos pos) {
+        return isLiquid(state) ? new ClearLiquidTask(pos) : new DestroyBlockTask(pos);
     }
 
     private List<BlockPos> frameCells() {

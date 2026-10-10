@@ -4,7 +4,6 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.TaskCatalogue;
 import adris.altoclef.tasks.InteractWithBlockTask;
-import adris.altoclef.tasks.construction.DestroyBlockTask;
 import adris.altoclef.tasks.construction.PlaceBlockTask;
 import adris.altoclef.tasks.movement.TimeoutWanderTask;
 import adris.altoclef.tasksystem.Task;
@@ -30,7 +29,7 @@ public class ConstructNetherPortalObsidianTask extends Task {
     // retangle the two together.
 
     // Order here matters
-    private static final Vec3i[] PORTAL_FRAME = new Vec3i[]{
+    static final Vec3i[] PORTAL_FRAME = new Vec3i[]{
             // Left side
             new Vec3i(0, 0, -1),
             new Vec3i(0, 1, -1),
@@ -47,7 +46,7 @@ public class ConstructNetherPortalObsidianTask extends Task {
             new Vec3i(0, -1, 1)
     };
 
-    private static final Vec3i[] PORTAL_INTERIOR = new Vec3i[]{
+    static final Vec3i[] PORTAL_INTERIOR = new Vec3i[]{
             //Inside
             new Vec3i(0, 0, 0),
             new Vec3i(0, 1, 0),
@@ -71,7 +70,26 @@ public class ConstructNetherPortalObsidianTask extends Task {
             new Vec3i(-1, 2, 1)
     };
 
-    private static final Vec3i PORTALABLE_REGION_SIZE = new Vec3i(3, 6, 6);
+    // every cell the build touches (frame and the space we clear) plus one all the way round, like the bucket variant's
+    // portalable region, so nothing we place or break has lava or water next to it. both corners are inclusive
+    static final Vec3i SCAN_MIN;
+    static final Vec3i SCAN_MAX;
+
+    static {
+        int minX = 0, minY = 0, minZ = 0, maxX = 0, maxY = 0, maxZ = 0;
+        for (Vec3i[] cells : new Vec3i[][]{PORTAL_FRAME, PORTAL_INTERIOR}) {
+            for (Vec3i cell : cells) {
+                minX = Math.min(minX, cell.getX());
+                minY = Math.min(minY, cell.getY());
+                minZ = Math.min(minZ, cell.getZ());
+                maxX = Math.max(maxX, cell.getX());
+                maxY = Math.max(maxY, cell.getY());
+                maxZ = Math.max(maxZ, cell.getZ());
+            }
+        }
+        SCAN_MIN = new Vec3i(minX - 1, minY - 1, minZ - 1);
+        SCAN_MAX = new Vec3i(maxX + 1, maxY + 1, maxZ + 1);
+    }
 
     private final TimerGame _areaSearchTimer = new TimerGame(5);
 
@@ -81,7 +99,7 @@ public class ConstructNetherPortalObsidianTask extends Task {
 
     private static BlockPos getBuildableAreaNearby(AltoClef mod) {
         BlockPos checkOrigin = mod.getPlayer().blockPosition();
-        for (BlockPos toCheck : WorldHelper.scanRegion(mod, checkOrigin, checkOrigin.offset(PORTALABLE_REGION_SIZE))) {
+        for (BlockPos toCheck : WorldHelper.scanRegion(mod, checkOrigin.offset(SCAN_MIN), checkOrigin.offset(SCAN_MAX))) {
             if (Minecraft.getInstance().level == null) {
                 return null;
             }
@@ -167,13 +185,13 @@ public class ConstructNetherPortalObsidianTask extends Task {
 
         // Clear middle
         if (_destroyTarget != null && !WorldHelper.isAir(mod, _destroyTarget)) {
-            return new DestroyBlockTask(_destroyTarget);
+            return ConstructNetherPortalBucketTask.clearInteriorCell(mod.getWorld().getBlockState(_destroyTarget), _destroyTarget);
         }
         for (Vec3i middleOffs : PORTAL_INTERIOR) {
             BlockPos middlePos = _origin.offset(middleOffs);
             if (!WorldHelper.isAir(mod, middlePos)) {
                 _destroyTarget = middlePos;
-                return new DestroyBlockTask(_destroyTarget);
+                return ConstructNetherPortalBucketTask.clearInteriorCell(mod.getWorld().getBlockState(middlePos), middlePos);
             }
         }
         // Flint and steel
