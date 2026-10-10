@@ -115,7 +115,8 @@ public class UserTaskChain extends SingleTaskChain {
         }
         double seconds = _taskStopwatch.time();
         Task oldTask = _mainTask;
-        // same as the finished branch in SingleTaskChain, this one is also reached from cancel (where it is a no-op)
+        // same as the finished branch in SingleTaskChain. cancel and the runner shutdown stop the task first, so there
+        // it has nothing left to do, it is cheap insurance for the paths that drop the root without a stop
         if (oldTask != null) {
             oldTask.letGoOfKeys(mod);
         }

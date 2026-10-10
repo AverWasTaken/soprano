@@ -49,6 +49,21 @@ public class TaskHashTest {
         assertEquals(a.hashCode(), b.hashCode());
     }
 
+    // a plain pickup equals the recover subclass of it, so a hash by class would disagree with equals
+    private static class NamedKid extends Named {
+        NamedKid(String name) {
+            super(name);
+        }
+    }
+
+    @Test
+    public void equalTasksOfDifferentClassesHashEqual() {
+        Named a = new Named("x");
+        Named kid = new NamedKid("x");
+        assertTrue(a.equals(kid));
+        assertEquals(a.hashCode(), kid.hashCode());
+    }
+
     @Test
     public void aHashSetFindsAnEqualTask() {
         Set<Task> set = new HashSet<>();

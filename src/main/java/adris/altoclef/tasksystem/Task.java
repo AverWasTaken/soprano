@@ -271,6 +271,9 @@ public abstract class Task {
                 letGo(mod);
             }
             _paused = true;
+        } else {
+            // onStart can hold and then throw, which leaves _first set with a key down
+            letGo(mod);
         }
 
         if (_sub != null && !_sub.stopped()) {
@@ -382,10 +385,12 @@ public abstract class Task {
         return false;
     }
 
-    // equals is whatever the subclass's isEqual says, so the class is the only thing equal tasks are sure to share
+    // equals is whatever the subclass's isEqual says, and some of those accept a whole family (a plain pickup equals
+    // the recover pickup subclass), so not even the class is safe to hash. a constant is the only hash that always
+    // agrees with equals. nothing keys a map on a task, so the buckets being one long list does not matter
     @Override
     public int hashCode() {
-        return getClass().hashCode();
+        return 31;
     }
 
     public boolean thisOrChildSatisfies(Predicate<Task> pred) {

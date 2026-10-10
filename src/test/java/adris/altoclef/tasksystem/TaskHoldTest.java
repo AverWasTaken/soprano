@@ -211,6 +211,58 @@ public class TaskHoldTest {
     }
 
     @Test
+    public void aStaleChainFlagDoesNotKeepATasksKeyDown() {
+        // a chain held it, then the game let every key go (a screen opened) without anybody calling release
+        controls.hold(Input.SNEAK);
+        keys.setDown(Input.SNEAK, false);
+        Holder t = new Holder("t", Input.SNEAK);
+        t.tick(mod, chain);
+        t.stop(mod);
+        assertFalse(keys.isDown(Input.SNEAK));
+    }
+
+    @Test
+    public void theOwnerComesBackAfterAnOnTickThatThrows() {
+        Holder boom = new Holder("boom", null) {
+            @Override
+            protected Task onTick(AltoClef m) {
+                throw new IllegalStateException("boom");
+            }
+        };
+        try {
+            boom.tick(mod, chain);
+        } catch (IllegalStateException expected) {
+            // that is the point
+        }
+        assertTrue(Task.currentOwner() == null);
+    }
+
+    @Test
+    public void aChildStoppedFromInsideItsParentsOnTickHoldsNothingForTheParent() {
+        Holder kid = new Holder("child", null);
+        kid.holdOnStop = Input.SNEAK;
+        boolean[] drop = {false};
+        Holder parent = new Holder("parent", null) {
+            @Override
+            protected Task onTick(AltoClef m) {
+                if (drop[0]) {
+                    // dropChild is the one stop that runs inside an onTick stack
+                    dropChild(m);
+                    return null;
+                }
+                return kid;
+            }
+        };
+        parent.tick(mod, chain);
+        drop[0] = true;
+        parent.tick(mod, chain);
+        // the child's onStop held it while the parent's onTick was running, but it is nobody's claim
+        assertTrue(keys.isDown(Input.SNEAK));
+        parent.stop(mod);
+        assertTrue(keys.isDown(Input.SNEAK));
+    }
+
+    @Test
     public void aStopWithoutAModIsHarmless() {
         Holder t = new Holder("t", null);
         t.tick(null, chain);

@@ -108,8 +108,14 @@ public class InputControls {
             _keys.setDown(input, false);
             return;
         }
+        // a key that is up has no real holders, whatever the books say (the game lets every key go when a screen opens,
+        // and onTickPre drops tryPress keys). a stale claim would keep the next owner's stop from lifting it
+        boolean wasDown = _keys.isDown(input);
+        if (!wasDown) {
+            forget(input);
+        }
         claim(input, owner);
-        if (!_keys.isDown(input)) {
+        if (!wasDown) {
             _keys.click(input);
         }
         _keys.setDown(input, true);
