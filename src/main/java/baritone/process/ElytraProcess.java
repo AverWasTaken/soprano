@@ -521,9 +521,11 @@ public class ElytraProcess extends BaritoneProcessHelper implements IBaritonePro
 
     @Override
     public void onWorldEvent(WorldEvent event) {
-        if (event.getWorld() != null && event.getState() == EventState.POST) {
-            // Exiting the world, just destroy
+        if (event.getState() == EventState.POST) {
+            // POST fires both when we join a world (or change dimension) and when we leave one (world is null).
+            // either way the context was built for the old dimension, so it goes too, not just the behavior
             destroyBehaviorAsync();
+            destroyNpfContextAsync();
         }
     }
 
@@ -765,13 +767,23 @@ public class ElytraProcess extends BaritoneProcessHelper implements IBaritonePro
     }
 
     private NetherPathfinderContext getNpfContext() {
+        if (this.npfContext != null && ctx.world() != null && this.npfContext.getDimension() != ctx.world().dimension()) {
+            // built for another dimension (wrong minY, height and cache folder), the semaphore below waits for its teardown
+            destroyNpfContextAsync();
+        }
         if(this.npfContext == null) {
             npfSema.acquireUninterruptibly();
-            this.npfContext = new NetherPathfinderContext(
-                    Baritone.settings().elytraNetherSeed.value,
-                    Baritone.settings().elytraUseCache.value ? baritone.getWorldProvider().getCurrentWorld().directory.resolve("cache") : null,
-                    ctx.world()
-            );
+            try {
+                this.npfContext = new NetherPathfinderContext(
+                        Baritone.settings().elytraNetherSeed.value,
+                        Baritone.settings().elytraUseCache.value ? baritone.getWorldProvider().getCurrentWorld().directory.resolve("cache") : null,
+                        ctx.world()
+                );
+            } catch (Throwable t) {
+                // no context means nobody will ever release this permit, and the next call would hang on it forever
+                npfSema.release();
+                throw t;
+            }
         }
         return this.npfContext;
     }

@@ -89,6 +89,10 @@ public final class NetherPathfinderContext implements IElytraPathFinder {
         this.boi = new BlockStateOctreeInterface(this);
     }
 
+    public ResourceKey<Level> getDimension() {
+        return this.dimension;
+    }
+
     public boolean hasChunk(ChunkPos pos) {
         return this.context.hasChunkFromCaller(pos.x, pos.z);
     }
