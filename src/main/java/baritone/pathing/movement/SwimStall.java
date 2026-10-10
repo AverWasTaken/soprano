@@ -18,8 +18,8 @@
 package baritone.pathing.movement;
 
 // a swimmer pinned on a block keeps the swim state, keeps sprinting and goes nowhere, and the only way out used to be
-// the movement timeout. this watches the distance to dest: no progress for a second means try a dive under whatever
-// is at head height, and if that goes nowhere either, give up so the executor replans.
+// the movement timeout. this watches the distance to dest: no progress for a second and a half means try a dive under
+// whatever is at head height, and if that goes nowhere either, give up so the executor replans (around it, see SwimStalls).
 // no game in here so it can be tested on its own, Movement feeds it a distance and whether a dive makes sense
 final class SwimStall {
 
@@ -27,8 +27,9 @@ final class SwimStall {
         SWIM, DIVE, GIVE_UP
     }
 
-    // a second of sprint swimming covers five blocks, a tenth of one in a second is pinned, not slow
-    static final int WINDOW = 20;
+    // a second of sprint swimming covers five blocks, a tenth of one in a second and a half is pinned, not slow.
+    // the extra half second is slack for a door or a clumsy climb out onto the bank
+    static final int WINDOW = 30;
     static final double MIN_PROGRESS = 0.1;
     static final int DIVE_TICKS = 20;
 
