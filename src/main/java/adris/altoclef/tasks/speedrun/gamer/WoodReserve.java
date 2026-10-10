@@ -2,7 +2,6 @@ package adris.altoclef.tasks.speedrun.gamer;
 
 import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig;
 import adris.altoclef.util.helpers.FuelPolicy;
-import adris.altoclef.util.helpers.ItemHelper;
 import baritone.api.utils.Dimension;
 import net.minecraft.world.item.Item;
 
@@ -11,10 +10,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.IntPredicate;
 
-// the gather chops the whole wood budget up front (KitPlanner.woodNeed), and a furnace with logs in the bag burned the batch
-// it just cut. this works out how many logs and planks are surplus to that budget and tells FuelPolicy to keep the rest. the
-// budget itself is KitPlanner's: a log is surplus while woodNeed still says 0 with it gone, so the margin it builds in stays
-// ours too. pure on facts, FuelPolicy is the only side effect
+// the gather chops the whole wood budget up front (WoodBudget), and a furnace with logs in the bag burned the batch it just cut.
+// the budget works out how many logs and planks are surplus and this tells FuelPolicy to keep the rest. FuelPolicy is the only
+// side effect in here, the rest is helpers for the search
 public final class WoodReserve {
     private WoodReserve() {
     }
@@ -22,30 +20,20 @@ public final class WoodReserve {
     public record Keep(int logs, int planks) {
     }
 
-    // called every engine tick, a handful of woodNeed evaluations
-    public static void update(GamerFacts f, OverworldConfig cfg, int endBeds) {
-        if (f.dimension() != Dimension.OVERWORLD) {
-            // the run lets wood burn (GamerTask.withWoodFuel) for the overworld cook. nothing down there budgets it, so a clear
-            // reserve would let one smelt eat every log in the bag: keep all of it, coal still burns
-            FuelPolicy.set(f.count(ItemHelper.LOG), f.count(ItemHelper.PLANKS), true);
-            return;
-        }
-        Keep keep = keep(f, cfg, endBeds);
+    // the engine hands the furnaces the tick's budget (GamerTask), so the planner and the fuel policy read the same numbers
+    public static void apply(WoodBudget wood) {
+        Keep keep = wood.fuelKeep();
         FuelPolicy.set(keep.logs(), keep.planks(), true);
     }
 
+    // the same for a caller with no budget at hand
+    public static void update(GamerFacts f, OverworldConfig cfg, int endBeds) {
+        apply(WoodBudget.of(f, cfg, endBeds));
+    }
+
+    // wood the budget keeps back from the furnace, the short form for a caller with no budget (the search is WoodBudget's)
     public static Keep keep(GamerFacts f, OverworldConfig cfg, int endBeds) {
-        int logs = f.count(ItemHelper.LOG);
-        int planks = f.count(ItemHelper.PLANKS);
-        if (KitPlanner.woodNeed(f, cfg, endBeds) > 0) {
-            // still short of the budget: every piece of wood is spoken for
-            return new Keep(logs, planks);
-        }
-        // woodNeed only falls as we hold more, so the biggest k with "still 0 after losing k" is a binary search
-        int spareLogs = most(logs, k -> KitPlanner.woodNeed(without(f, ItemHelper.LOG, k), cfg, endBeds) == 0);
-        GamerFacts afterLogs = without(f, ItemHelper.LOG, spareLogs);
-        int sparePlanks = most(planks, k -> KitPlanner.woodNeed(without(afterLogs, ItemHelper.PLANKS, k), cfg, endBeds) == 0);
-        return new Keep(logs - spareLogs, planks - sparePlanks);
+        return WoodBudget.of(f, cfg, endBeds).keep();
     }
 
     // largest k in [0, max] the predicate holds for, given it holds for 0 and only gets harder as k grows

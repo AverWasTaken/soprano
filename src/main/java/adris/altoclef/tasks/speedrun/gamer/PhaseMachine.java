@@ -59,6 +59,10 @@ public final class PhaseMachine implements GamerContext {
     // the tick's FoodPlan, see food(), and the phase it was built for (a move inside the tick must not keep the old phase's cook)
     private FoodPlan food;
     private GamerPhase foodPhase;
+    // the tick's WoodBudget, see wood(). the engine may have built it a moment before the tick (GamerTask feeds the furnaces from it),
+    // `woodGiven` keeps tick() from throwing that one away
+    private WoodBudget wood;
+    private boolean woodGiven;
     private int lastFingerprint;
     private int anchorX;
     private int anchorY;
@@ -227,6 +231,10 @@ public final class PhaseMachine implements GamerContext {
     public Task tick(AltoClef mod) {
         this.mod = mod;
         food = null;
+        if (!woodGiven) {
+            wood = null;
+        }
+        woodGiven = false;
         giveBackHeldTime(now());
         if (ended()) {
             return null;
@@ -465,6 +473,22 @@ public final class PhaseMachine implements GamerContext {
             foodPhase = phase;
         }
         return food;
+    }
+
+    // built on the first ask of a tick and dropped when the next one starts, same as the food plan. no phase in it: wood is the bag
+    // and the config, nothing a phase change moves
+    @Override
+    public WoodBudget wood() {
+        if (wood == null) {
+            wood = WoodBudget.of(host.facts(), host.cfg().overworld, host.cfg().end.beds);
+        }
+        return wood;
+    }
+
+    // the engine built this tick's budget before the tick (to feed the furnaces), the handlers read that one
+    public void giveWood(WoodBudget budget) {
+        wood = budget;
+        woodGiven = true;
     }
 
     @Override

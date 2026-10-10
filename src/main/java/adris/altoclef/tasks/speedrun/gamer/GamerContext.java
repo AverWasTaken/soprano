@@ -20,6 +20,13 @@ public interface GamerContext {
         return FoodPlan.latched(facts(), cfg(), state(), Debug::logInternal);
     }
 
+    // how much wood we hold, owe and may burn, as of this tick: the one answer every wood question reads (see WoodBudget). the engine
+    // builds it once per tick and hands the same object to the furnaces' reserve, the default (a test's stub) builds it on every ask.
+    // no food plan in it, so asking never moves the refill latch
+    default WoodBudget wood() {
+        return WoodBudget.of(facts(), cfg().overworld, cfg().end.beds);
+    }
+
     // 1 on the first try of this phase, 2 after a retry...
     int attempt();
 

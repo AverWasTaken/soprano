@@ -40,14 +40,7 @@ public final class KitPlanner {
     private KitPlanner() {
     }
 
-    private static final int PLANKS_PER_LOG = 4;
-    // 4 sticks come out of 2 planks, so sticks are bought in fours
-    private static final int STICKS_PER_CRAFT = 4;
-    private static final int TABLE_PLANKS = 4;
-    // planks and sticks per kind of tool: only the wooden tier pays the planks, every tier pays the sticks
-    private static final Map<String, int[]> TOOL_WOOD = Map.of(
-            "pickaxe", new int[]{3, 2}, "axe", new int[]{3, 2}, "sword", new int[]{2, 1},
-            "shovel", new int[]{1, 2}, "hoe", new int[]{2, 2});
+    static final int TABLE_PLANKS = 4;
 
     // wood -> axe -> the rest of the wood -> table -> stone tools -> furnace, then enough food to survive the next phase.
     // the engine hands in the tick's FoodPlan, the short form (package only, so the phases cannot reach for it) builds its own
@@ -55,8 +48,13 @@ public final class KitPlanner {
         return gather(f, cfg, endBeds, FoodPlan.ofBeds(f, cfg, endBeds));
     }
 
+    // (no ctx at hand, so the wood budget is built here. the engine passes the tick's, see GamerContext.wood)
     public static List<KitNeed> gather(GamerFacts f, OverworldConfig cfg, int endBeds, FoodPlan food) {
-        List<KitNeed> out = new ArrayList<>(starter(f, cfg, endBeds, true, new ArrayList<>(), food));
+        return gather(f, cfg, endBeds, food, WoodBudget.of(f, cfg, endBeds));
+    }
+
+    public static List<KitNeed> gather(GamerFacts f, OverworldConfig cfg, int endBeds, FoodPlan food, WoodBudget wood) {
+        List<KitNeed> out = new ArrayList<>(starter(f, cfg, endBeds, true, new ArrayList<>(), food, wood));
         addRefill(out, food);
         // no cook here: GATHER used to wait out the smoker with nothing else to do, and the meat cooks just as well while the
         // iron phase starts (it leads the plan on the surface, see CookGate.leads, and the output is collected on the way)
@@ -72,6 +70,10 @@ public final class KitPlanner {
     }
 
     public static List<KitNeed> plan(GamerFacts f, OverworldConfig cfg, int endBeds, FoodPlan food) {
+        return plan(f, cfg, endBeds, food, WoodBudget.of(f, cfg, endBeds));
+    }
+
+    public static List<KitNeed> plan(GamerFacts f, OverworldConfig cfg, int endBeds, FoodPlan food, WoodBudget wood) {
         // a worn pick we still carry gets replaced after the iron, not in the middle of it (see starter)
         List<KitNeed> late = new ArrayList<>();
         // under the floor the refill leads whatever the starter is missing (a bag with no pick has it and its wood chain up front):
@@ -81,7 +83,7 @@ public final class KitPlanner {
         if (hungry) {
             addRefill(out, food);
         }
-        out.addAll(starter(f, cfg, endBeds, false, late, food));
+        out.addAll(starter(f, cfg, endBeds, false, late, food, wood));
         if (!hungry) {
             addRefill(out, food);
         }
@@ -99,7 +101,7 @@ public final class KitPlanner {
     // `late` is where the IRON phase parks a pick replacement: a stone pick that is merely worn (85%, see wornOut) is still
     // a pick, and swapping it mid-mine once cost a 34 s log trip. only a bag with no pick at all keeps it up front
     private static List<KitNeed> starter(GamerFacts f, OverworldConfig cfg, int endBeds, boolean gathering, List<KitNeed> late,
-                                         FoodPlan food) {
+                                         FoodPlan food, WoodBudget wood) {
         List<KitNeed> out = new ArrayList<>();
         List<KitItem> axes = new ArrayList<>();
         List<KitItem> rest = new ArrayList<>();
@@ -115,18 +117,17 @@ public final class KitPlanner {
         }
         if (gathering) {
             if (axes.stream().anyMatch(a -> missing(f, a.item, a.count) > 0)) {
-                addLogs(out, f, firstBatchLogs(f, cfg));
+                addLogs(out, f, wood.firstBatchLogs());
             }
             for (KitItem a : axes) {
                 addItem(out, f, a.item, a.count);
             }
-            int logs = woodNeed(f, cfg, endBeds, true);
-            addLogs(out, f, logs + cookFuelLogs(f, cfg, endBeds, logs, food));
+            addLogs(out, f, wood.gatherChopLogs(food));
             // every cobble the stone kit eats in one trip, before the first stone craft, so the bot doesn't go back down
             // for the furnace's cobble after crafting the axe
             addCobble(out, f, stoneNeed(f, cfg));
         } else if (!ironStarted(f)) {
-            addLogs(out, f, woodNeed(f, cfg, endBeds, false));
+            addLogs(out, f, wood.ironChopLogs());
         }
         for (KitItem k : rest) {
             // the spare pick is for the gather. once underground one fresh pick is the plan and the next is a craft
@@ -151,13 +152,13 @@ public final class KitPlanner {
     // the axe for the logs, not the weapon: stone_axe and iron_axe are in the kit now too (instead of the swords) and they
     // are crafts like any other. calling them the log axe would have fetched them before the stone pick and skipped their
     // sticks once the iron phase starts
-    private static boolean isAxe(String name) {
+    static boolean isAxe(String name) {
         return name.equals("wooden_axe");
     }
 
     // ore in the bag, raw or cooking: the cave trip has begun and wood is no reason to leave it.
     // an early load in flight counts too, mid-move the bag is empty and we'd go chop a tree with the furnace open
-    private static boolean ironStarted(GamerFacts f) {
+    static boolean ironStarted(GamerFacts f) {
         return f.count(Items.RAW_IRON, Items.IRON_INGOT) + f.pendingOutput(Items.IRON_INGOT) > 0 || f.earlyLoadInFlight();
     }
 
@@ -172,12 +173,7 @@ public final class KitPlanner {
     // (with no raw meat in the bag held is the plain bag plus pending, the raw correction is 0 by then). keyed on the same refill
     // as the food need, logs for a hunt that is not coming are just more trees
     static int cookFuelLogs(GamerFacts f, OverworldConfig cfg, int endBeds, int budgetLogsShort, FoodPlan food) {
-        if (cfg.cookFuelLogs <= 0 || CookGate.raw(f) > 0 || !food.wantsRefill()) {
-            return 0;
-        }
-        // short of the budget every log is spoken for, so there is no spare to look for
-        int spare = budgetLogsShort > 0 ? 0 : Math.max(0, f.count(ItemHelper.LOG) - WoodReserve.keep(f, cfg, endBeds).logs());
-        return Math.max(0, cfg.cookFuelLogs - spare);
+        return WoodBudget.of(f, cfg, endBeds).cookFuelLogs(food, budgetLogsShort);
     }
 
     private static void addLogs(List<KitNeed> out, GamerFacts f, int logs) {
@@ -269,41 +265,15 @@ public final class KitPlanner {
     }
 
     // logs still to fetch for everything wooden the overworld will craft, one log of slack included, 0 when we hold
-    // enough. summed over every kit item still missing (starter and iron kits, ladders, the axe, a table or two, beds)
-    // with the planks, sticks and logs we hold taken off
+    // enough (the arithmetic is WoodBudget's, this is the short form for a caller with no budget)
     public static int woodNeed(GamerFacts f, OverworldConfig cfg, int endBeds) {
-        return woodNeed(f, cfg, endBeds, true);
+        return WoodBudget.owed(f, cfg, endBeds, true);
     }
 
     // gathering is false once the plan is past the gather: a lost axe is not worth a log, and neither are the beds
     // (package only so the wood golden can ask the iron form too)
     static int woodNeed(GamerFacts f, OverworldConfig cfg, int endBeds, boolean gathering) {
-        int[] wood = new int[2];
-        List<KitItem> all = new ArrayList<>(cfg.starterKit);
-        all.addAll(cfg.ironKit);
-        for (KitItem k : all) {
-            if (!gathering && isAxe(k.item)) {
-                continue;
-            }
-            int count = !gathering && k.item.endsWith("_pickaxe") ? Math.min(k.count, 1) : k.count;
-            int m = missing(f, k.item, count);
-            addWood(wood, k.item, m);
-            // a stone pick is made with a wooden one, unless something in the bag already mines stone
-            boolean needsWooden = k.item.equals("stone_pickaxe") && m > 0 && have(f, "stone_pickaxe") == 0;
-            if (needsWooden && f.count(Items.WOODEN_PICKAXE) == 0) {
-                addWood(wood, "wooden_pickaxe", 1);
-            }
-        }
-        if (wood[0] + wood[1] > 0) {
-            wood[0] += tablePlanks(f);
-        }
-        // a bed is wool and 3 planks, a held bed is both already. a village handing us beds only shrinks the leftovers.
-        // only the gather asks: the iron phase is done with wool in hand, the planks for the beds are not its business
-        if (gathering) {
-            wood[0] += 3 * Math.max(0, endBeds - f.count(ItemHelper.BED));
-        }
-        // the margin is the gather's up-front chop. in the iron phase exactly enough planks is enough, a spare log is a trip
-        return logsShort(f, wood[0], wood[1], gathering);
+        return WoodBudget.owed(f, cfg, endBeds, gathering);
     }
 
     // planks for a table (or two): with no tool made yet the first one is still ahead of us, and the second is the
@@ -325,54 +295,7 @@ public final class KitPlanner {
     // the first trip to the trees: just the table and the axe, so the axe is in hand for the real batch
     // (package only so the wood golden can see it)
     static int firstBatchLogs(GamerFacts f, OverworldConfig cfg) {
-        int[] wood = new int[2];
-        for (KitItem k : cfg.starterKit) {
-            if (isAxe(k.item)) {
-                addWood(wood, k.item, missing(f, k.item, k.count));
-            }
-        }
-        if (wood[0] + wood[1] == 0) {
-            return 0;
-        }
-        if (!tableHeld(f)) {
-            wood[0] += TABLE_PLANKS;
-        }
-        return logsShort(f, wood[0], wood[1], false);
-    }
-
-    private static void addWood(int[] wood, String item, int count) {
-        if (count <= 0) {
-            return;
-        }
-        switch (item) {
-            case "shield" -> wood[0] += 6 * count;
-            case "bed" -> wood[0] += 3 * count;
-            // 7 sticks make 3 ladders
-            case "ladder" -> wood[1] += 7 * ((count + 2) / 3);
-            default -> {
-                int us = item.indexOf('_');
-                int[] tool = us < 0 ? null : TOOL_WOOD.get(item.substring(us + 1));
-                if (tool != null) {
-                    wood[0] += item.startsWith("wooden_") ? tool[0] * count : 0;
-                    wood[1] += tool[1] * count;
-                }
-            }
-        }
-    }
-
-    // planks and sticks to logs: sticks are bought in fours (two planks), logs in fours (planks), what we hold comes off
-    private static int logsShort(GamerFacts f, int planks, int sticks, boolean margin) {
-        int stickShort = Math.max(0, sticks - f.count(Items.STICK));
-        int total = planks + 2 * ((stickShort + STICKS_PER_CRAFT - 1) / STICKS_PER_CRAFT);
-        if (total <= 0) {
-            return 0;
-        }
-        // the slack is part of what we hold ourselves to, not a bonus when short, or the need would flicker at the edge
-        if (margin) {
-            total += PLANKS_PER_LOG;
-        }
-        int missingPlanks = total - f.count(ItemHelper.PLANKS) - PLANKS_PER_LOG * f.count(ItemHelper.LOG);
-        return missingPlanks <= 0 ? 0 : (missingPlanks + PLANKS_PER_LOG - 1) / PLANKS_PER_LOG;
+        return WoodBudget.firstBatchLogs(f, cfg);
     }
 
     private static List<KitNeed> iron(GamerFacts f, OverworldConfig cfg, int endBeds) {
