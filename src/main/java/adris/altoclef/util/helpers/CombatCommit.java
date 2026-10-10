@@ -108,6 +108,8 @@ public final class CombatCommit {
     // standing still while a shooter lands two arrows this close together is "really needed": the aim is never spoiled, so
     // walking on (the answer for a bot on the move) is not an answer any more
     public static final long PIN_WINDOW = 160;
+    // a shooter with a line to us that hit us this lately counts as near for the low hp rule, whatever the distance
+    public static final long SHOT_MEMORY = 100;
 
     // whether a run is really trying to get somewhere this tick, for noRoomFight. the "search came back with no path" half is
     // only believed while it is the latest news: any path executing or search going takes the count of failures as the new base
@@ -147,6 +149,8 @@ public final class CombatCommit {
         LOBBER,
         // the same story for a sniper that pinned us down: we could not get to it, so the next hits are a run
         UNREACHABLE,
+        // hurt, and a shooter with a line to us hit us lately: near enough to leave, whatever the distance
+        SHOT,
         // we stood still and a shooter landed two arrows on us: not a mob to walk past, a fight
         PINNED
     }
@@ -232,6 +236,11 @@ public final class CombatCommit {
             return sniper() && sight && distance <= FOE_RANGE && sinceHitBefore <= PIN_WINDOW && (!freshOnly || fresh());
         }
 
+        // it shot us lately and still has a line: at low hp that is as good as standing next to us
+        public boolean shooting() {
+            return ranged && !creeper && sight && distance <= FOE_RANGE && sinceHit <= SHOT_MEMORY;
+        }
+
         // this one is a run, not a fight, at this hp
         public boolean mustRun(float health) {
             return kind == Kind.UNTOUCHABLE || (kind == Kind.HEAVY && health <= HEAVY_FLEE_HP);
@@ -290,7 +299,8 @@ public final class CombatCommit {
     // the fight only a fresh hit.
     // 1. something we never fight at this hp has got to us (a heavy hitter at 10 hp that hit us or is in contact, the
     //    warden within 8 or booming us): a run
-    // 2. we are hurt and something angry is within 8: a run. in the cooldown only if it is on top of us or just hit us,
+    // 2. we are hurt and something angry is within 8 (or a shooter with a line to us has hit us in the last SHOT_MEMORY ticks,
+    //    from anywhere): a run. in the cooldown only if it is on top of us or just hit us,
     //    a run that ran out of time or a fight we turned around for ends with the others still about, and "within 8"
     //    alone would start the same run all over again
     // 3. it hit us and it is in contact: a fight. hitting back is the only way that one stops
@@ -300,10 +310,11 @@ public final class CombatCommit {
         for (Foe foe : foes) {
             if (foe.danger(health) && (danger == null || foe.distance < danger.distance)) danger = foe;
             boolean counts = !freshOnly || foe.distance <= CONTACT || foe.fresh();
-            if (counts && foe.distance <= LOW_HP_RANGE && (near == null || foe.distance < near.distance)) near = foe;
+            // a shooter with a line that hit us lately is near enough, however far it stands
+            if (counts && (foe.distance <= LOW_HP_RANGE || foe.shooting()) && (near == null || foe.distance < near.distance)) near = foe;
         }
         if (danger != null) return new Trigger(Why.HEAVY, danger);
-        if (health <= FLEE_HP && near != null) return new Trigger(Why.LOW_HP, near);
+        if (health <= FLEE_HP && near != null) return new Trigger(near.distance <= LOW_HP_RANGE ? Why.LOW_HP : Why.SHOT, near);
         Foe hit = hitInContact(foes, freshOnly);
         return hit == null ? null : new Trigger(Why.HIT, hit);
     }

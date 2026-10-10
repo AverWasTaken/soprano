@@ -82,11 +82,15 @@ public class CombatCommitPinnedTest {
         assertEquals(Event.NONE, new CombatCommit().step(still(skeleton(CombatCommit.FOE_RANGE + 1, 3, 63, true))));
     }
 
-    // at or under the bail line the machine would run, not fight, so the pinned rule does not start anything
+    // at or under the bail line the low hp rule decides, and that one is a run, never a fight
     @Test
     public void atTheBailLineThePinnedRuleStepsAside() {
-        assertEquals(Event.NONE, new CombatCommit().step(tick(NOW, CombatCommit.FLEE_HP, true, null, pinner())));
+        CombatCommit c = new CombatCommit();
+        assertEquals(Event.RUN_START, c.step(tick(NOW, CombatCommit.FLEE_HP, true, null, pinner())));
+        assertEquals(CombatCommit.Why.SHOT, c.why());
         assertEquals(Event.FIGHT_START, new CombatCommit().step(tick(NOW, CombatCommit.FLEE_HP + 1, true, null, pinner())));
+        // and with no line (so nothing for the low hp rule either) the pinned rule stays out of it by itself
+        assertEquals(Event.NONE, new CombatCommit().step(tick(NOW, CombatCommit.FLEE_HP, true, null, skeleton(12, 3, 63, false))));
     }
 
     @Test

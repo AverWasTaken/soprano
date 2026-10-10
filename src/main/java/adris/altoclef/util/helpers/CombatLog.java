@@ -91,6 +91,7 @@ public final class CombatLog {
     public static String runWhy(Why why, int hp) {
         return switch (why) {
             case UNREACHABLE -> "can't reach it, hp " + hp;
+            case SHOT -> "hp " + hp + ", it is shooting";
             case HEAVY -> "something nasty close, hp " + hp;
             case CROWD -> "a crowd on us, hp " + hp;
             case UNARMED -> "it hit us and we have nothing to hit back with, hp " + hp;
