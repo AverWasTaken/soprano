@@ -28,15 +28,20 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
-// the golden for the wood budget refactor: a few thousand seeded bags, and every wood answer the gamer gives about each of them,
-// recorded from the code as it was before the views were folded into one. nothing in here may change when the wood arithmetic
-// moves, that is the whole point. WOOD_GOLDEN_WRITE=<path> rewrites the file instead of checking it (only ever do that from
-// code that is known to be right, a rewrite from a broken refactor just blesses the break)
+// the golden for the wood budget: a few thousand seeded bags, and every wood answer the gamer gives about each of them, once with
+// the budget the gather builds and once with the iron phase's. the first file was recorded before the views were folded into one,
+// and it only moves when a behaviour round says it should (the commit says which answers, and in which bags). the second file is
+// the same bags asked as the IRON phase.
+// WOOD_GOLDEN_WRITE=<dir> rewrites both files into <dir> instead of checking them (only ever do that from code that is known to
+// be right, a rewrite from a broken change just blesses the break). WOOD_GOLDEN_FULL=<dir> dumps every answer in full, for
+// diffing two versions of the code state by state
 public class WoodBudgetEquivalenceTest {
     private static final int STATES = 5000;
     // the first lines are stored whole so a failure says which answer moved, the rest are one hash each
     private static final int FULL_LINES = 200;
-    private static final String RESOURCE = "/adris/altoclef/tasks/speedrun/gamer/wood-budget-golden.txt";
+    private static final String GATHER_FILE = "wood-budget-golden.txt";
+    private static final String IRON_FILE = "wood-budget-iron-golden.txt";
+    private static final String RESOURCES = "/adris/altoclef/tasks/speedrun/gamer/";
 
     // the item tables below need the registries up before the class even finishes loading
     static {
@@ -60,16 +65,12 @@ public class WoodBudgetEquivalenceTest {
 
     @Test
     public void everyWoodAnswerIsStillTheSameAsItWas() throws IOException {
-        List<String> lines = new ArrayList<>();
-        Random r = new Random(0x600D5EEDL);
+        List<String> lines = lines(GamerPhase.GATHER);
         int shortOfBudget = 0;
         int spareWood = 0;
         int smokerOwed = 0;
         int cooking = 0;
-        for (int i = 0; i < STATES; i++) {
-            State s = State.generate(r);
-            String line = answers(s);
-            lines.add(line);
+        for (String line : lines) {
             // a tally of what the generator reaches, so a generator that quietly stops varying something fails loudly
             if (line.startsWith("need=0;")) {
                 spareWood++;
@@ -87,17 +88,39 @@ public class WoodBudgetEquivalenceTest {
         assertTrue("generator never had the budget covered: " + spareWood, spareWood > 500);
         assertTrue("generator never asked for a smoker cook: " + smokerOwed, smokerOwed > 100);
         assertTrue("generator never asked for a cook: " + cooking, cooking > 300);
+        check(lines, GATHER_FILE, "gather-full.txt");
+    }
 
+    // the same bags asked as the iron phase: the claims the IRON budget makes (WoodBudget) show up here and nowhere in the file above
+    @Test
+    public void everyIronPhaseWoodAnswerIsStillTheSameAsItWas() throws IOException {
+        check(lines(GamerPhase.IRON), IRON_FILE, "iron-full.txt");
+    }
+
+    private static List<String> lines(GamerPhase phase) {
+        List<String> lines = new ArrayList<>();
+        Random r = new Random(0x600D5EEDL);
+        for (int i = 0; i < STATES; i++) {
+            lines.add(answers(State.generate(r), phase));
+        }
+        return lines;
+    }
+
+    private static void check(List<String> lines, String file, String fullFile) throws IOException {
+        String full = System.getenv("WOOD_GOLDEN_FULL");
+        if (full != null && !full.isEmpty()) {
+            Files.write(Path.of(full, fullFile), lines, StandardCharsets.UTF_8);
+        }
         String write = System.getenv("WOOD_GOLDEN_WRITE");
         if (write != null && !write.isEmpty()) {
             List<String> out = new ArrayList<>();
             for (int i = 0; i < lines.size(); i++) {
                 out.add(i < FULL_LINES ? i + "|" + hash(lines.get(i)) + "|" + lines.get(i) : i + "|" + hash(lines.get(i)));
             }
-            Files.write(Path.of(write), out, StandardCharsets.UTF_8);
+            Files.write(Path.of(write, file), out, StandardCharsets.UTF_8);
             return;
         }
-        List<String> golden = readGolden();
+        List<String> golden = readGolden(file);
         assertEquals("states in the golden", STATES, golden.size());
         int bad = 0;
         StringBuilder why = new StringBuilder();
@@ -116,12 +139,12 @@ public class WoodBudgetEquivalenceTest {
                 }
             }
         }
-        assertEquals(bad + " of " + STATES + " states moved\n" + why, 0, bad);
+        assertEquals(file + ": " + bad + " of " + STATES + " states moved\n" + why, 0, bad);
     }
 
-    private static List<String> readGolden() throws IOException {
-        try (InputStream in = WoodBudgetEquivalenceTest.class.getResourceAsStream(RESOURCE)) {
-            assertNotNull("missing " + RESOURCE, in);
+    private static List<String> readGolden(String file) throws IOException {
+        try (InputStream in = WoodBudgetEquivalenceTest.class.getResourceAsStream(RESOURCES + file)) {
+            assertNotNull("missing " + file, in);
             return List.of(new String(in.readAllBytes(), StandardCharsets.UTF_8).split("\\R"));
         }
     }
@@ -141,73 +164,76 @@ public class WoodBudgetEquivalenceTest {
 
     // ---- every answer for one bag
 
-    private static String answers(State s) {
+    private static String answers(State s, GamerPhase phase) {
         FakeFacts f = s.f;
         OverworldConfig cfg = s.cfg;
         int beds = s.endBeds;
         EndConfig end = new EndConfig();
         end.beds = beds;
-        FoodPlan food = FoodPlan.of(f, cfg, end, true, s.refilling);
+        WoodBudget w = WoodBudget.of(f, cfg, beds, phase);
+        FoodPlan food = FoodPlan.of(f, cfg, end, true, s.refilling, w);
         FoodPlan atMinimum = food.atMinimum();
+        // the planners' own plan, with no trip under way
+        FoodPlan calm = FoodPlan.of(f, cfg, end, true, false, w);
         StringBuilder sb = new StringBuilder();
 
-        int need = KitPlanner.woodNeed(f, cfg, beds);
+        int need = w.gatherLogsOwed();
         sb.append("need=").append(need).append(';');
-        sb.append("ironNeed=").append(KitPlanner.woodNeed(f, cfg, beds, false)).append(';');
-        sb.append("first=").append(KitPlanner.firstBatchLogs(f, cfg)).append(';');
-        WoodReserve.Keep keep = WoodReserve.keep(f, cfg, beds);
+        sb.append("ironNeed=").append(w.ironLogsOwed()).append(';');
+        sb.append("first=").append(w.firstBatchLogs()).append(';');
+        WoodReserve.Keep keep = w.keep();
         sb.append("keep=").append(keep.logs()).append('/').append(keep.planks()).append(';');
-        sb.append("fuel=").append(fuelAfterUpdate(f, cfg, beds)).append(';');
-        sb.append("cookFuel=").append(KitPlanner.cookFuelLogs(f, cfg, beds, 0, food)).append('/')
-                .append(KitPlanner.cookFuelLogs(f, cfg, beds, need, food)).append('/')
-                .append(KitPlanner.cookFuelLogs(f, cfg, beds, 5, food)).append('/')
-                .append(KitPlanner.cookFuelLogs(f, cfg, beds, need)).append(';');
+        sb.append("fuel=").append(fuelAfterApply(w)).append(';');
+        sb.append("cookFuel=").append(w.cookFuelLogs(food, 0)).append('/')
+                .append(w.cookFuelLogs(food, need)).append('/')
+                .append(w.cookFuelLogs(food, 5)).append('/')
+                .append(w.cookFuelLogs(calm, need)).append(';');
         sb.append("food=").append(food.held()).append('/').append(food.wantsRefill()).append(';');
 
-        List<KitNeed> gather = KitPlanner.gather(f, cfg, beds, food);
-        List<KitNeed> plan = KitPlanner.plan(f, cfg, beds, food);
+        List<KitNeed> gather = KitPlanner.gather(f, cfg, beds, food, w);
+        List<KitNeed> plan = KitPlanner.plan(f, cfg, beds, food, w);
         sb.append("gatherLogs=").append(logs(gather)).append(';');
         sb.append("planLogs=").append(logs(plan)).append(';');
         sb.append("gather=").append(names(gather)).append(';');
         sb.append("plan=").append(names(plan)).append(';');
-        sb.append("gather3=").append(names(KitPlanner.gather(f, cfg, beds))).append(';');
-        sb.append("plan3=").append(names(KitPlanner.plan(f, cfg, beds))).append(';');
-        sb.append("gatherDone=").append(names(KitPlanner.gather(f, cfg, beds, atMinimum))).append(';');
-        sb.append("planDone=").append(names(KitPlanner.plan(f, cfg, beds, atMinimum))).append(';');
+        sb.append("gather3=").append(names(KitPlanner.gather(f, cfg, beds, calm, w))).append(';');
+        sb.append("plan3=").append(names(KitPlanner.plan(f, cfg, beds, calm, w))).append(';');
+        sb.append("gatherDone=").append(names(KitPlanner.gather(f, cfg, beds, atMinimum, w))).append(';');
+        sb.append("planDone=").append(names(KitPlanner.plan(f, cfg, beds, atMinimum, w))).append(';');
 
-        KitNeed cook = CookGate.need(f, cfg, beds);
+        KitNeed cook = CookGate.need(f, cfg, beds, w);
         sb.append("cook=").append(cook == null ? "-" : cook.catalogueName()).append(';');
         for (boolean mayCraft : new boolean[]{false, true}) {
-            CookGate.Station station = CookGate.station(f, cfg, mayCraft);
+            CookGate.Station station = CookGate.station(f, cfg, mayCraft, w);
             sb.append("station").append(mayCraft ? "Y=" : "N=").append(station).append(';');
             sb.append("toMake").append(mayCraft ? "Y=" : "N=").append(CookGate.smokerToMake(f, station)).append(';');
         }
         sb.append("smokerLogs=").append(CookGate.smokerLogs(f)).append(';');
-        sb.append("feasible=").append(CookGate.cookFeasible(f, cfg, beds)).append(';');
-        sb.append("reusable=").append(CookGate.reusable(f, cfg, beds, true)).append('/').append(CookGate.reusable(f, cfg, beds, false))
+        sb.append("feasible=").append(CookGate.cookFeasible(f, cfg, beds, w)).append(';');
+        sb.append("reusable=").append(CookGate.reusable(f, cfg, beds, true, w)).append('/').append(CookGate.reusable(f, cfg, beds, false, w))
                 .append(';');
-        sb.append("woodSmelts=").append(CookGate.woodSmelts(f, cfg, beds));
+        sb.append("woodSmelts=").append(w.burnableWoodSmelts(0));
         for (int spoken : new int[]{0, 4, 5}) {
-            sb.append('/').append(CookGate.woodSmelts(f, cfg, beds, spoken));
+            sb.append('/').append(w.burnableWoodSmelts(spoken));
         }
         sb.append(';');
-        sb.append("fuelSmelts=").append(CookGate.fuelSmelts(f, cfg, beds));
+        sb.append("fuelSmelts=").append(CookGate.fuelSmelts(f, w, 0));
         for (int spoken : new int[]{0, 4, 5}) {
-            sb.append('/').append(CookGate.fuelSmelts(f, cfg, beds, spoken));
+            sb.append('/').append(CookGate.fuelSmelts(f, w, spoken));
         }
         sb.append(';');
 
         sb.append("stock=");
         for (int wanted : new int[]{4, 8, 16}) {
-            sb.append(SmeltFiller.logStockTarget(f, wanted, true)).append('/').append(SmeltFiller.logStockTarget(f, wanted, false)).append(',');
+            sb.append(w.stockUpLogs(wanted, true)).append('/').append(w.stockUpLogs(wanted, false)).append(',');
         }
         sb.append(';');
         for (boolean near : new boolean[]{false, true}) {
-            SmeltFiller.Schedule schedule = SmeltFiller.schedule(f, cfg, beds, near, food);
+            SmeltFiller.Schedule schedule = SmeltFiller.schedule(f, cfg, beds, near, food, w);
             sb.append("sched").append(near ? "Y=" : "N=").append(names(schedule.runnable())).append('|').append(names(schedule.blocked()))
                     .append('|').append(names(schedule.stockUps())).append(';');
         }
-        sb.append("gatherRunnable=").append(names(SmeltFiller.gatherRunnable(f, cfg, beds, food))).append(';');
+        sb.append("gatherRunnable=").append(names(SmeltFiller.gatherRunnable(f, cfg, beds, food, w))).append(';');
 
         StubContext ctx = new StubContext() {
             @Override
@@ -217,6 +243,7 @@ public class WoodBudgetEquivalenceTest {
         };
         ctx.cfg.overworld = cfg;
         ctx.cfg.end.beds = beds;
+        ctx.state.phase = phase;
         sb.append("coal=").append(ResourceDetour.coalNeed(ctx)).append(';');
         return sb.toString();
     }
@@ -239,9 +266,9 @@ public class WoodBudgetEquivalenceTest {
     }
 
     // what the furnaces are told to keep, read back the only way FuelPolicy lets us: how much of a big stack may burn
-    private static String fuelAfterUpdate(FakeFacts f, OverworldConfig cfg, int beds) {
+    private static String fuelAfterApply(WoodBudget w) {
         FuelPolicy.clear();
-        WoodReserve.update(f, cfg, beds);
+        WoodReserve.apply(w);
         List<ItemStack> stacks = List.of(new ItemStack(Items.OAK_LOG, 1000), new ItemStack(Items.OAK_PLANKS, 1000));
         int[] usable = FuelPolicy.usable(stacks);
         String out = (1000 - usable[0]) + "/" + (1000 - usable[1]);

@@ -17,6 +17,8 @@ import java.util.Map;
 // no food in here on purpose: the food plan itself asks the cook gate about fuel, so the budget has to exist before it. the two
 // answers that do depend on the food plan take it as an argument (cookFuelLogs, gatherChopLogs)
 public record WoodBudget(
+        // the phase it was built for
+        GamerPhase phase,
         // what the bag holds, every species of a group added up
         int logs, int planks, int sticks,
         // logs still to fetch for everything wooden the kit crafts, a log of slack included: the gather's form (axe, beds and all)
@@ -51,7 +53,12 @@ public record WoodBudget(
     // a smoker is a furnace (8 cobble) and 4 logs
     private static final int SMOKER_LOGS = 4;
 
+    // no phase = the gather's view, which is what every test and every phase but IRON has always had
     public static WoodBudget of(GamerFacts f, OverworldConfig cfg, int endBeds) {
+        return of(f, cfg, endBeds, GamerPhase.GATHER);
+    }
+
+    public static WoodBudget of(GamerFacts f, OverworldConfig cfg, int endBeds, GamerPhase phase) {
         int logs = f.count(ItemHelper.LOG);
         int planks = f.count(ItemHelper.PLANKS);
         int gather = owed(f, cfg, endBeds, true);
@@ -60,7 +67,7 @@ public record WoodBudget(
         // reserve would let one smelt eat every log in the bag: keep all of it, coal still burns
         WoodReserve.Keep fuel = f.dimension() == Dimension.OVERWORLD ? keep : new WoodReserve.Keep(logs, planks);
         int iron = owed(f, cfg, endBeds, false);
-        return new WoodBudget(logs, planks, f.count(Items.STICK), gather, iron, bedPlanksOwed(f, endBeds), firstBatchLogs(f, cfg),
+        return new WoodBudget(phase, logs, planks, f.count(Items.STICK), gather, iron, bedPlanksOwed(f, endBeds), firstBatchLogs(f, cfg),
                 keep, fuel, smokerLogsFor(f), smokerOwedFor(f), burnable(f, ItemHelper.LOG), burnable(f, ItemHelper.PLANKS),
                 cfg.cookFuelLogs <= 0 || CookGate.raw(f) > 0 ? 0 : cfg.cookFuelLogs);
     }

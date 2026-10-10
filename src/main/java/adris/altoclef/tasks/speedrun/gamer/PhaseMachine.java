@@ -475,12 +475,13 @@ public final class PhaseMachine implements GamerContext {
         return food;
     }
 
-    // built on the first ask of a tick and dropped when the next one starts, same as the food plan. no phase in it: wood is the bag
-    // and the config, nothing a phase change moves
+    // built on the first ask of a tick and dropped when the next one starts, same as the food plan, and for the state's phase (a
+    // move inside the tick must not keep the old phase's view of the wood)
     @Override
     public WoodBudget wood() {
-        if (wood == null) {
-            wood = WoodBudget.of(host.facts(), host.cfg().overworld, host.cfg().end.beds);
+        GamerPhase phase = host.state().phase;
+        if (wood == null || wood.phase() != phase) {
+            wood = WoodBudget.of(host.facts(), host.cfg().overworld, host.cfg().end.beds, phase);
         }
         return wood;
     }

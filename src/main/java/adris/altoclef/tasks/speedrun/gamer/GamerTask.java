@@ -656,7 +656,7 @@ public class GamerTask extends Task {
         state.runTicks++;
         takeLoadedFurnaces();
         // the furnaces read this: wood the kit still wants is not fuel. the handlers get the same budget (machine.wood)
-        WoodBudget wood = WoodBudget.of(facts, cfg.overworld, cfg.end.beds);
+        WoodBudget wood = WoodBudget.of(facts, cfg.overworld, cfg.end.beds, state.phase);
         WoodReserve.apply(wood);
         machine.giveWood(wood);
         updateStoneFloor(mod);
