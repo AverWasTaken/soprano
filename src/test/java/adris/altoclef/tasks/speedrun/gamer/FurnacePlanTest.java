@@ -115,6 +115,63 @@ public class FurnacePlanTest {
 
     private static final Predicate<RunState.FurnaceJob> NOBODY = job -> false;
 
+    // ---- a long trip is about to start from beside the furnace
+
+    private static Moment tripAhead(RunState.Pos me) {
+        return new Moment(true, false, false, NOBODY, false, true, me, "wool", true);
+    }
+
+    @Test
+    public void aLongTripWaitsForADueJobBesideUs() {
+        // due, and the next need is a long walk: collected first, where a near need would have left it (MID_NEED)
+        Verdict due = one(FurnacePlan.plan(List.of(furnace(1000)), tripAhead(away(5)), 2000, null));
+        assertEquals(Call.COLLECT_NOW, due.call());
+        assertEquals(Why.FAR_TRIP, due.why());
+        assertEquals(Why.MID_NEED, one(FurnacePlan.plan(List.of(furnace(1000)), far(away(5), false, false, NOBODY), 2000, null)).why());
+    }
+
+    @Test
+    public void aLongTripStandsByForABatchThatIsAlmostDone() {
+        // not due yet, but done within the stand-by cap: stood at instead of walked away from
+        long now = 1000;
+        Plan soon = FurnacePlan.plan(List.of(furnace(now + FurnacePlan.STAND_BY_CAP_TICKS)), tripAhead(away(5)), now, null);
+        assertEquals(Call.STAND_BY, one(soon).call());
+        assertEquals(Why.FAR_TRIP, one(soon).why());
+        assertEquals(Mode.WAIT_ALL, one(soon).mode());
+        assertEquals(one(soon), soon.pick());
+        // the same batch with a near need is left alone like always
+        assertEquals(Call.LEAVE, one(FurnacePlan.plan(List.of(furnace(now + FurnacePlan.STAND_BY_CAP_TICKS)), far(away(5), false, false, NOBODY), now, null)).call());
+    }
+
+    @Test
+    public void aLongTripGoesAheadWhenTheBatchIsStillAWayOff() {
+        long now = 1000;
+        Plan later = FurnacePlan.plan(List.of(furnace(now + FurnacePlan.STAND_BY_CAP_TICKS + 1)), tripAhead(away(5)), now, null);
+        assertEquals(Call.LEAVE, one(later).call());
+        assertEquals(Why.COOKING, one(later).why());
+        assertNull(later.pick());
+    }
+
+    @Test
+    public void aLongTripDoesNotTurnAFarOutWalkAround() {
+        // already out past the cut-in range: the far wait stays exactly as it was
+        Verdict out = one(FurnacePlan.plan(List.of(furnace(1000)), tripAhead(away(100)), 2000, null));
+        assertEquals(Call.LEAVE, out.call());
+        assertEquals(Why.FAR_BUSY, out.why());
+        Verdict notDue = one(FurnacePlan.plan(List.of(furnace(2000 + FurnacePlan.STAND_BY_CAP_TICKS / 2)), tripAhead(away(100)), 2000, null));
+        assertEquals(Why.COOKING, notDue.why());
+    }
+
+    @Test
+    public void onlyWoolWithNoSheepInReachIsALongTrip() {
+        assertTrue(WorkbenchRules.farTrip("wool", WorkbenchRules.UNKNOWN_SITE));
+        assertTrue(WorkbenchRules.farTrip("wool", FurnacePlan.COLLECT_CUT_IN + 1));
+        assertFalse(WorkbenchRules.farTrip("wool", FurnacePlan.COLLECT_CUT_IN));
+        assertFalse(WorkbenchRules.farTrip("wool", 4));
+        assertFalse(WorkbenchRules.farTrip("log", WorkbenchRules.UNKNOWN_SITE));
+        assertFalse(WorkbenchRules.farTrip(null, 500));
+    }
+
     @Test
     public void aFarDueJobWaitsForTheWoolThenGoes() {
         RunState.FurnaceJob job = furnace(1000);

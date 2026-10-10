@@ -99,6 +99,7 @@ public final class FurnacePlan {
         STOCK_UP("due, and all we were doing was stocking up for later"),
         IDLE_DUE("due, and there is nothing else to do"),
         FAR_BUSY("due, but we are far off and busy, collecting after"),
+        FAR_TRIP("a long trip is next and this is nearly done, collecting it first"),
         IDLE_WAIT("nothing else to do, waiting it out"),
         QUICK("a smoker is quick, waiting for it instead of mining"),
         TOO_LONG("not due, and too long a batch to stand at, working it like a furnace"),
@@ -133,11 +134,18 @@ public final class FurnacePlan {
     //   stockUp: the need we are on is only there to use the wait, nothing waits on it. mayStandBy: the phase stands at a quick
     //   smoker instead of mining (IRON does, GATHER's work is right there anyway).
     //   me: where we stand, null = no idea (everything counts as close, the old behaviour). doing: what the far line says we are on
+    //   farTrip: the need we are about to start is a long walk away (WorkbenchRules.farTrip), so a job that finishes soon is worth
+    //   waiting for before we go: left behind it would sit done and cost a walk back
     public record Moment(boolean fillerLeft, boolean atBoundary, boolean headDone, Predicate<RunState.FurnaceJob> waitsOn, boolean stockUp,
-                         boolean mayStandBy, RunState.Pos me, String doing) {
+                         boolean mayStandBy, RunState.Pos me, String doing, boolean farTrip) {
+        public Moment(boolean fillerLeft, boolean atBoundary, boolean headDone, Predicate<RunState.FurnaceJob> waitsOn, boolean stockUp,
+                      boolean mayStandBy, RunState.Pos me, String doing) {
+            this(fillerLeft, atBoundary, headDone, waitsOn, stockUp, mayStandBy, me, doing, false);
+        }
+
         // the short form the tests grew up on: one interrupt for every job, and nowhere in particular
         public Moment(boolean fillerLeft, boolean atBoundary, boolean interrupt, boolean stockUp, boolean mayStandBy) {
-            this(fillerLeft, atBoundary, atBoundary, job -> interrupt, stockUp, mayStandBy, null, null);
+            this(fillerLeft, atBoundary, atBoundary, job -> interrupt, stockUp, mayStandBy, null, null, false);
         }
     }
 
@@ -376,7 +384,11 @@ public final class FurnacePlan {
             // nothing else to do is the end of everything, any distance
             v = due ? verdict(job, Call.COLLECT_NOW, Why.IDLE_DUE) : verdict(job, Call.STAND_BY, Why.IDLE_WAIT);
         } else if (!due) {
-            v = verdict(job, Call.LEAVE, tooLong(job) ? Why.TOO_LONG : Why.COOKING);
+            // setting off on a long trip with a batch about to finish leaves it sitting done until we are back: the walk back is
+            // the expensive part, so this one is waited for (no longer than a stand-by is allowed to take)
+            boolean waitFirst = close && m.farTrip() && job.doneTick - now <= STAND_BY_CAP_TICKS;
+            v = waitFirst ? verdict(job, Call.STAND_BY, Why.FAR_TRIP)
+                    : verdict(job, Call.LEAVE, tooLong(job) ? Why.TOO_LONG : Why.COOKING);
         } else {
             v = dueCall(job, m, close);
         }
@@ -395,6 +407,11 @@ public final class FurnacePlan {
         }
         if (close ? m.atBoundary() : m.headDone()) {
             return verdict(job, Call.COLLECT_NOW, Why.BOUNDARY);
+        }
+        // a long trip about to start from right beside the furnace. a far job while we are already out still waits below, this is
+        // not a reason to turn around halfway
+        if (close && m.farTrip()) {
+            return verdict(job, Call.COLLECT_NOW, Why.FAR_TRIP);
         }
         return verdict(job, Call.LEAVE, close ? Why.MID_NEED : Why.FAR_BUSY);
     }

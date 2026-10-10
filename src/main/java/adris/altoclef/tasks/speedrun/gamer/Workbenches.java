@@ -643,7 +643,15 @@ public final class Workbenches {
 
     // straight line from the middle of the station to the nearest place the trackers know for that work, UNKNOWN_SITE when they know none
     private static double siteDistance(AltoClef mod, Bench b, WorkbenchRules.Site site) {
-        Vec3 at = new Vec3(b.pos.x + 0.5, b.pos.y + 0.5, b.pos.z + 0.5);
+        return siteDistance(mod, new Vec3(b.pos.x + 0.5, b.pos.y + 0.5, b.pos.z + 0.5), site);
+    }
+
+    // the same from any point, for the furnace plan's "is the next trip a long one" (from where we stand)
+    public static double siteFrom(AltoClef mod, Vec3 at, String need) {
+        return siteDistance(mod, at, WorkbenchRules.siteOf(need));
+    }
+
+    private static double siteDistance(AltoClef mod, Vec3 at, WorkbenchRules.Site site) {
         return switch (site) {
             case NONE -> WorkbenchRules.UNKNOWN_SITE;
             case SHEEP -> mobDistance(mod, at, Sheep.class);

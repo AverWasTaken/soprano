@@ -467,6 +467,12 @@ public final class WorkbenchRules {
         };
     }
 
+    // a need whose work is further than a furnace job may cut in from (FurnacePlan.COLLECT_CUT_IN), or nobody has seen where it is: the
+    // walk out and back is what a batch left behind costs. wool only, the sheep are the one site that is both far and a whole outing
+    public static boolean farTrip(String need, double siteDistance) {
+        return siteOf(need) == Site.SHEEP && (Double.isNaN(siteDistance) || siteDistance > FurnacePlan.COLLECT_CUT_IN);
+    }
+
     // the first look after a use of it settled: same dimension, standing, empty, idle, its screen shut long enough, and this use was
     // not decided yet (one decision per time we used it)
     public static boolean doneUsing(Bench b, Look in) {

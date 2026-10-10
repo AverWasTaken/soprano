@@ -500,7 +500,16 @@ public class IronPhase implements PhaseHandler {
         boolean extraFood = stockUp && !FoodGate.refillHead(needs, ctx.food());
         return new FurnacePlan.Moment(head != null, boundary, done,
                 job -> (pick && "iron_ingot".equals(job.output)) || FurnacePlan.feeds(head, job, hungry, extraFood), stockUp, true,
-                FurnaceWatch.where(mod), doing(head));
+                FurnaceWatch.where(mod), doing(head), farTrip(mod, head));
+    }
+
+    // the head need is a long walk from where the furnaces are (we stand next to them when this matters). only asked for the need
+    // WorkbenchRules.farTrip knows, so the entity lookup is not paid every tick
+    private static boolean farTrip(AltoClef mod, KitNeed head) {
+        if (head == null || mod.getPlayer() == null || WorkbenchRules.siteOf(head.catalogueName()) != WorkbenchRules.Site.SHEEP) {
+            return false;
+        }
+        return WorkbenchRules.farTrip(head.catalogueName(), Workbenches.siteFrom(mod, mod.getPlayer().position(), head.catalogueName()));
     }
 
     // the side jobs whose end counts as finishing what we were out there for (NeedEnd.sideEnded). the furnace kinds, the climb and
