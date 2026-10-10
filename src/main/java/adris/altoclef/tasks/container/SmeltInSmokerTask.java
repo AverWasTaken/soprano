@@ -233,18 +233,26 @@ public class SmeltInSmokerTask extends ResourceTask implements AsyncSmelting.Han
             }
 
             // We don't have enough fuel...
-            double bagFuel = StorageHelper.calculateInventoryFuelCount(mod);
-            double trip = _dryInside.fetchTarget(bagFuel);
-            if (trip > 0) {
-                setDebugState("Getting Fuel");
-                return new CollectFuelTask(trip);
-            }
-            boolean lacking = _smokerCache.burningFuelCount <= 0 && bagFuel < fuelNeeded;
-            if (_fuelShort.confirmed(lacking, mod.getWorld().getGameTime())) {
-                setDebugState("Getting Fuel");
-                // the exact shortfall, no + 1: the go-back test above and CollectFuelTask's finish test are the same number now, so
-                // there is nothing to round up for. 8 items is one coal, not two
-                return new CollectFuelTask(fuelNeeded);
+            // not asked while our own smoker is being made: a smoker is a furnace and four logs, and logs are fuel. with them out of
+            // the bag for the craft it reads short, the fuel trip cancels the craft, the logs come back, and round it goes for ever.
+            // the question waits for the smoker to land in the bag
+            if (!makingContainer()) {
+                double bagFuel = StorageHelper.calculateInventoryFuelCount(mod);
+                double trip = _dryInside.fetchTarget(bagFuel);
+                if (trip > 0) {
+                    setDebugState("Getting Fuel");
+                    return new CollectFuelTask(trip);
+                }
+                boolean lacking = _smokerCache.burningFuelCount <= 0 && bagFuel < fuelNeeded;
+                if (_fuelShort.confirmed(lacking, mod.getWorld().getGameTime())) {
+                    setDebugState("Getting Fuel");
+                    // the exact shortfall, no + 1: the go-back test above and CollectFuelTask's finish test are the same number now, so
+                    // there is nothing to round up for. 8 items is one coal, not two
+                    return new CollectFuelTask(fuelNeeded);
+                }
+            } else {
+                // and it starts from zero afterwards, a clock started on a half crafted bag is not worth keeping
+                _fuelShort.reset();
             }
 
             // Make sure our materials are accessible in our inventory

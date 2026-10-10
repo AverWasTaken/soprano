@@ -50,6 +50,8 @@ public abstract class DoStuffInContainerTask extends Task {
     private StationChoice.Pick<BlockPos> _pick = new StationChoice.Pick<>(StationChoice.Use.NONE, null);
     private String _loggedChoice = "";
     private boolean _canMakeNow = true;
+    // the last tick handed out the "go make the container" child, see makingContainer
+    private boolean _makingContainer;
 
     public DoStuffInContainerTask(Block[] containerBlocks, ItemTarget containerTarget) {
         _containerBlocks = containerBlocks;
@@ -82,10 +84,13 @@ public abstract class DoStuffInContainerTask extends Task {
         // Protect container since we might place it.
         mod.getBehaviour().addProtectedItems(ItemHelper.blocksToItems(_containerBlocks));
         _pickTick = Long.MIN_VALUE;
+        _makingContainer = false;
     }
 
     @Override
     protected Task onTick(AltoClef mod) {
+        // only the one return down in MAKE says yes
+        _makingContainer = false;
 
         // a station of this kind is coming down right now, so nothing may place or craft another one: the block we would find
         // missing is the one being broken, and the new one would stand where the old one was. the phase that owns the pickup
@@ -127,6 +132,7 @@ public abstract class DoStuffInContainerTask extends Task {
                 // Get if we don't have...
                 if (!mod.getItemStorage().hasItem(_containerTarget)) {
                     setDebugState("Getting container item");
+                    _makingContainer = true;
                     return TaskCatalogue.getItemTask(_containerTarget);
                 }
 
@@ -361,8 +367,15 @@ public abstract class DoStuffInContainerTask extends Task {
         return pick.walks() ? pick.key() : null;
     }
 
+    // our own container was being made as of the last tick, so the bag is mid craft and counting what is left in it is not a
+    // real answer. a subclass ticks before us, last tick's word is the one it gets
+    protected final boolean makingContainer() {
+        return _makingContainer;
+    }
+
     @Override
     protected void onStop(AltoClef mod, Task interruptTask) {
+        _makingContainer = false;
         mod.getBehaviour().pop();
         mod.getBlockTracker().stopTracking(_containerBlocks);
     }
