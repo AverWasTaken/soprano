@@ -23,6 +23,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
@@ -106,7 +107,51 @@ public class DestroyBlockVinesTest {
     public void closingInFallsBackToTouching() {
         MapGetter w = trunk();
         w.set(LOG.east(), vineOn(Direction.WEST));
+        // nothing to step off of (no feet given) is the plain touching goal
         assertTrue(DestroyBlockTask.pickGoal(w, LOG, true) instanceof GoalNear);
+        // far from the log: any cell touching it will do
+        Goal far = DestroyBlockTask.pickGoal(w, LOG, true, new BlockPos(9, 64, 9));
+        assertTrue(far.isInGoal(LOG.west()));
+        assertTrue(far.isInGoal(LOG.east()));
+    }
+
+    @Test
+    public void closingInFromBesideItMeansAnotherCell() {
+        MapGetter w = trunk();
+        w.set(LOG.east(), vineOn(Direction.WEST));
+        BlockPos feet = LOG.west();
+        Goal goal = DestroyBlockTask.pickGoal(w, LOG, true, feet);
+        // the cell we're already in must not count as arrived, that's the whole stall
+        assertFalse(goal.isInGoal(feet));
+        assertTrue(goal.isInGoal(LOG.north()));
+        assertTrue(goal.isInGoal(LOG.south()));
+        assertTrue(goal.isInGoal(LOG.east()));
+    }
+
+    @Test
+    public void closingInSkipsCellsYouCantStandIn() {
+        MapGetter w = trunk();
+        w.set(LOG.north(), Blocks.STONE.defaultBlockState());
+        Goal goal = DestroyBlockTask.pickGoal(w, LOG, true, LOG.west());
+        assertFalse(goal.isInGoal(LOG.north()));
+        assertTrue(goal.isInGoal(LOG.south()));
+    }
+
+    @Test
+    public void boxedInFallsBackToTheOldGoal() {
+        MapGetter w = trunk();
+        for (Direction side : Direction.values()) {
+            if (side != Direction.WEST) {
+                w.set(LOG.relative(side), Blocks.STONE.defaultBlockState());
+            }
+        }
+        assertTrue(DestroyBlockTask.pickGoal(w, LOG, true, LOG.west()) instanceof GoalNear);
+    }
+
+    @Test
+    public void feetOnlyMattersWhenClosingIn() {
+        MapGetter w = trunk();
+        assertTrue(DestroyBlockTask.pickGoal(w, LOG, false, LOG.west()) instanceof GoalNear);
     }
 
     @Test
