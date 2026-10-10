@@ -108,13 +108,23 @@ public final class FoodPlan {
         return of(f, cfg.overworld, cfg.end, phase.cooks(), refilling);
     }
 
+    // `wood` = the tick's budget, so the cook check reads the wood the planner counts instead of working it out again
+    public static FoodPlan of(GamerFacts f, GamerConfig cfg, GamerPhase phase, boolean refilling, WoodBudget wood) {
+        return of(f, cfg.overworld, cfg.end, phase.cooks(), refilling, wood);
+    }
+
     // `cooksHere` = the phase runs the cook (GamerPhase.cooks). no trip under way, the tests' entry
     public static FoodPlan of(GamerFacts f, OverworldConfig ow, EndConfig end, boolean cooksHere) {
         return of(f, ow, end, cooksHere, false);
     }
 
     public static FoodPlan of(GamerFacts f, OverworldConfig ow, EndConfig end, boolean cooksHere, boolean refilling) {
-        return new FoodPlan(f.foodUnits(), f.pendingFoodUnits(), rawLeftOut(f, ow, end.beds, cooksHere), f.junkFoodUnits(),
+        return of(f, ow, end, cooksHere, refilling, null);
+    }
+
+    // (null wood = work it out here, only worth doing for a cook check that is actually asked)
+    public static FoodPlan of(GamerFacts f, OverworldConfig ow, EndConfig end, boolean cooksHere, boolean refilling, WoodBudget wood) {
+        return new FoodPlan(f.foodUnits(), f.pendingFoodUnits(), rawLeftOut(f, ow, end.beds, cooksHere, wood), f.junkFoodUnits(),
                 f.stationFoodUnits(), f.stationFoodSkipped(), ow, end, refilling, f.nearSurface(), f.bagFull());
     }
 
@@ -122,8 +132,12 @@ public final class FoodPlan {
     // both come through here, so the latch lives in one place. only the cooking phases have the kit's food need, everywhere else
     // the latch just drops (quietly, FoodFloor has its own). `log` hears the start and the end of a trip
     public static FoodPlan latched(GamerFacts f, GamerConfig cfg, RunState state, Consumer<String> log) {
+        return latched(f, cfg, state, log, null);
+    }
+
+    public static FoodPlan latched(GamerFacts f, GamerConfig cfg, RunState state, Consumer<String> log, WoodBudget wood) {
         GamerPhase phase = state.phase;
-        FoodPlan plan = of(f, cfg, phase, state.foodRefilling);
+        FoodPlan plan = of(f, cfg, phase, state.foodRefilling, wood);
         // a start has to last REFILL_CONFIRM_TICKS. under the floor never waits, that is not ours to soften
         long now = f.gameTime();
         boolean due = phase.cooks() && !state.foodRefilling && plan.held() >= plan.floor && plan.startDue();
@@ -152,7 +166,7 @@ public final class FoodPlan {
         }
         state.foodRefilling = next;
         // wantsRefill reads the same on both sides of the flip, the rebuild is only so refilling() tells the truth
-        FoodPlan moved = of(f, cfg, phase, next);
+        FoodPlan moved = of(f, cfg, phase, next, wood);
         return plan.waiting ? moved.waiting() : moved;
     }
 
@@ -170,12 +184,12 @@ public final class FoodPlan {
     // stays out, whatever stands there or cooks there: nobody loads a station and nothing collects one after PORTAL, so a batch
     // still pending is not food we will get and the raw meat behind it never reaches a smoker (CollectFoodTask will not load a
     // second one while the first is out). a standing smoker and fuel are only a dream there
-    private static int rawLeftOut(GamerFacts f, OverworldConfig ow, int endBeds, boolean cooksHere) {
+    private static int rawLeftOut(GamerFacts f, OverworldConfig ow, int endBeds, boolean cooksHere, WoodBudget wood) {
         int gap = CookGate.rawGap(f);
         if (gap <= 0) {
             return 0;
         }
-        return cooksHere && CookGate.cookFeasible(f, ow, endBeds) ? 0 : gap;
+        return cooksHere && (wood == null ? CookGate.cookFeasible(f, ow, endBeds) : CookGate.cookFeasible(f, ow, endBeds, wood)) ? 0 : gap;
     }
 
     // ---- the numbers

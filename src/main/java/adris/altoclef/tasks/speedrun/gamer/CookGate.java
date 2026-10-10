@@ -188,6 +188,11 @@ public final class CookGate {
         return f.cookStation() != null || f.pendingFoodUnits() > 0 || need(f, cfg, endBeds) != null;
     }
 
+    // the same with the tick's wood budget, which is what the food plan has when the engine builds it
+    public static boolean cookFeasible(GamerFacts f, OverworldConfig cfg, int endBeds, WoodBudget wood) {
+        return f.cookStation() != null || f.pendingFoodUnits() > 0 || need(f, cfg, endBeds, wood) != null;
+    }
+
     // the cook need, or null when there is nothing to do about the raw meat right now
     public static KitNeed need(GamerFacts f, OverworldConfig cfg, int endBeds) {
         return need(f, cfg, endBeds, WoodBudget.of(f, cfg, endBeds));

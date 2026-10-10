@@ -17,7 +17,7 @@ public interface GamerContext {
     // is the state's: that is what decides whether raw meat in the bag can become dinner. the refill latch moves on every ask,
     // same answer for the same bag
     default FoodPlan food() {
-        return FoodPlan.latched(facts(), cfg(), state(), Debug::logInternal);
+        return FoodPlan.latched(facts(), cfg(), state(), Debug::logInternal, wood());
     }
 
     // how much wood we hold, owe and may burn, as of this tick: the one answer every wood question reads (see WoodBudget). the engine

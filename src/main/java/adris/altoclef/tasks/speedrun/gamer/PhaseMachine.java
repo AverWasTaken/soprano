@@ -469,7 +469,7 @@ public final class PhaseMachine implements GamerContext {
     public FoodPlan food() {
         GamerPhase phase = host.state().phase;
         if (food == null || foodPhase != phase) {
-            food = FoodPlan.latched(host.facts(), host.cfg(), host.state(), Debug::logInternal);
+            food = FoodPlan.latched(host.facts(), host.cfg(), host.state(), Debug::logInternal, wood());
             foodPhase = phase;
         }
         return food;
