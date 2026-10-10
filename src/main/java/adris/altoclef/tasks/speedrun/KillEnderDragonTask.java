@@ -20,6 +20,7 @@ import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.time.TimerGame;
+import baritone.altoclef.SettingsOverrides;
 import baritone.api.pathing.goals.GoalGetToBlock;
 import baritone.api.utils.Rotation;
 import baritone.api.utils.RotationUtils;
@@ -254,6 +255,9 @@ public class KillEnderDragonTask extends Task {
         private BlockPos _randomWanderPos;
         private boolean _wasHitting;
         private boolean _wasReleased;
+        // what the user had for auto jump, null when we did not touch it
+        private Boolean _userAutoJump;
+        private static final String AUTO_JUMP = "options.autoJump";
 
         private PunkEnderDragonTask() {
         }
@@ -338,7 +342,7 @@ public class KillEnderDragonTask extends Task {
                             Rotation targetRotation = RotationUtils.calcRotationFromVec3d(mod.getClientBaritone().getPlayerContext().playerHead(), targetLookPos, mod.getClientBaritone().getPlayerContext().playerRotations());
                             mod.getClientBaritone().getLookBehavior().updateTarget(targetRotation, true);
                             // Also look towards da dragon
-                            Minecraft.getInstance().options.autoJump().set(false);
+                            forceAutoJumpOff();
                             mod.getClientBaritone().getInputOverrideHandler().setInputForceState(Input.MOVE_FORWARD, true);
                             hit(mod);
                         } else {
@@ -410,8 +414,27 @@ public class KillEnderDragonTask extends Task {
             return null;
         }
 
+        // through SettingsOverrides so options.txt never sees the false and the user's value comes back
+        private void forceAutoJumpOff() {
+            var autoJump = Minecraft.getInstance().options.autoJump();
+            if (!SettingsOverrides.isHeld(AUTO_JUMP)) {
+                _userAutoJump = autoJump.get();
+            }
+            SettingsOverrides.put(AUTO_JUMP, autoJump::get, autoJump::set, false);
+        }
+
+        // only while the hold is still ours, a change the user made in the meantime is theirs
+        private void releaseAutoJump() {
+            var autoJump = Minecraft.getInstance().options.autoJump();
+            if (_userAutoJump != null && SettingsOverrides.isHeld(AUTO_JUMP) && !autoJump.get()) {
+                SettingsOverrides.put(AUTO_JUMP, autoJump::get, autoJump::set, _userAutoJump);
+            }
+            _userAutoJump = null;
+        }
+
         @Override
         protected void onStop(AltoClef mod, Task interruptTask) {
+            releaseAutoJump();
             mod.getClientBaritone().getCustomGoalProcess().onLostControl();
             mod.getClientBaritone().getInputOverrideHandler().setInputForceState(Input.MOVE_FORWARD, false);
             //mod.getControllerExtras().mouseClickOverride(0, false);
