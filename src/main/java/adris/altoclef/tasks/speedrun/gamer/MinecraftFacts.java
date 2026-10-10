@@ -9,6 +9,7 @@ import adris.altoclef.tasks.resources.CollectFoodTask;
 import adris.altoclef.util.helpers.FoodHelper;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.StationHook;
+import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import baritone.api.utils.Dimension;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
@@ -72,6 +73,7 @@ public final class MinecraftFacts implements GamerFacts {
     private RunState.Pos stationAt;
     private int buildBlocks;
     private boolean nearSurface;
+    private boolean bagFull;
     private int fingerprint;
     private int x;
     private int y;
@@ -114,6 +116,8 @@ public final class MinecraftFacts implements GamerFacts {
             credits = true;
         }
         countItems(player);
+        // the junk scan only runs with every slot taken, which is rare
+        bagFull = !mod.getItemStorage().hasEmptyInventorySlot() && StorageHelper.getJunkSlot(mod).isEmpty();
         if (state != null) {
             Workbenches.sync(state, gameTime);
             // held when one of ours is within NEAR (a straight line, height counts), the same test the container tasks use, with a
@@ -474,6 +478,11 @@ public final class MinecraftFacts implements GamerFacts {
     @Override
     public boolean nearSurface() {
         return nearSurface;
+    }
+
+    @Override
+    public boolean bagFull() {
+        return bagFull;
     }
 
     @Override

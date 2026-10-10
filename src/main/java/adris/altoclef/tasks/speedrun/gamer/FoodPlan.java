@@ -38,6 +38,7 @@ public final class FoodPlan {
     private final int refillStop;
     private final boolean refilling;
     private final boolean surface;
+    private final boolean bagFull;
 
     FoodPlan(int bag, int pending, int rawLeftOut, int junk, int station, int skipped, OverworldConfig ow, EndConfig end) {
         this(bag, pending, rawLeftOut, junk, station, skipped, ow, end, false);
@@ -49,14 +50,20 @@ public final class FoodPlan {
 
     FoodPlan(int bag, int pending, int rawLeftOut, int junk, int station, int skipped, OverworldConfig ow, EndConfig end, boolean refilling,
              boolean surface) {
+        this(bag, pending, rawLeftOut, junk, station, skipped, ow, end, refilling, surface, false);
+    }
+
+    FoodPlan(int bag, int pending, int rawLeftOut, int junk, int station, int skipped, OverworldConfig ow, EndConfig end, boolean refilling,
+             boolean surface, boolean bagFull) {
         // a start over the minimum would be a trip that is done before it begins, so it never goes past it. a stop under the
         // minimum would end the trip before the kit's own need is met, so it never goes under it
         this(bag, pending, rawLeftOut, junk, station, skipped, ow.minHeldFoodUnits, ow.minFoodUnits, ow.targetFoodUnits, end.minFoodUnits,
-                Math.min(ow.refillStartFoodUnits, ow.minFoodUnits), Math.max(ow.refillStopFoodUnits, ow.minFoodUnits), refilling, surface);
+                Math.min(ow.refillStartFoodUnits, ow.minFoodUnits), Math.max(ow.refillStopFoodUnits, ow.minFoodUnits), refilling, surface,
+                bagFull);
     }
 
     private FoodPlan(int bag, int pending, int rawLeftOut, int junk, int station, int skipped, int floor, int minimum, int target,
-                     int endFloor, int refillStart, int refillStop, boolean refilling, boolean surface) {
+                     int endFloor, int refillStart, int refillStop, boolean refilling, boolean surface, boolean bagFull) {
         this.bag = bag;
         this.pending = pending;
         this.rawLeftOut = rawLeftOut;
@@ -71,13 +78,14 @@ public final class FoodPlan {
         this.refillStop = refillStop;
         this.refilling = refilling;
         this.surface = surface;
+        this.bagFull = bagFull;
     }
 
     // the same bag with the trip ending at the minimum, for the phase-done checks: a phase is done with its food once the kit's
     // need is met, the rest of a trip carries on in the next phase (the latch lives in RunState, not in the phase)
     public FoodPlan atMinimum() {
         return new FoodPlan(bag, pending, rawLeftOut, junk, station, skipped, floor, minimum, target, endFloor, refillStart, minimum, refilling,
-                surface);
+                surface, bagFull);
     }
 
     // the phase is what says whether a cook can happen at all, and `refilling` whether a food trip is under way
@@ -93,7 +101,7 @@ public final class FoodPlan {
 
     public static FoodPlan of(GamerFacts f, OverworldConfig ow, EndConfig end, boolean cooksHere, boolean refilling) {
         return new FoodPlan(f.foodUnits(), f.pendingFoodUnits(), rawLeftOut(f, ow, end.beds, cooksHere), f.junkFoodUnits(),
-                f.stationFoodUnits(), f.stationFoodSkipped(), ow, end, refilling, f.nearSurface());
+                f.stationFoodUnits(), f.stationFoodSkipped(), ow, end, refilling, f.nearSurface(), f.bagFull());
     }
 
     // the tick's plan, with the refill latch in `state` moved on to what this bag says. the engine's food() and a test context's
@@ -239,13 +247,19 @@ public final class FoodPlan {
     // so nobody has to care who asked first
     public boolean wantsRefill() {
         int held = held();
-        return held < floor || held < refillStart || surfaceTopUp() || (refilling && held < refillStop);
+        return held < floor || held < refillStart || surfaceTopUp() || (refilling && held < tripEnd());
     }
 
     // the latch for the next tick: on from under the start (or the floor, or the surface top-up) until the stop
     public boolean nextRefilling() {
         int held = held();
-        return held < refillStop && (refilling || held < refillStart || held < floor || surfaceTopUp());
+        return held < tripEnd() && (refilling || held < refillStart || held < floor || surfaceTopUp());
+    }
+
+    // where a trip ends: refillStop, or the minimum once the bag has no room. past the minimum more food would cost a slot of
+    // something we carry on purpose (the hunt throws whatever the task is not using), under it the kit needs it anyway
+    private int tripEnd() {
+        return bagFull ? minimum : refillStop;
     }
 
     // up top and short of the minimum: the trip costs a walk here, and the same trip from a mine later is a climb out and back.
@@ -253,13 +267,14 @@ public final class FoodPlan {
     // once cooked is not one (coveredAt, the smoker coming and going swings held by a chicken right at this line)
     public boolean surfaceTopUp() {
         int held = held();
-        return surface && held >= floor && held < minimum && !coveredAt(minimum);
+        // with no room in the bag the trip would end at the minimum it started under, one bite's worth of hunt
+        return surface && !bagFull && held >= floor && held < minimum && !coveredAt(minimum);
     }
 
     // the log line when the latch flips, `on` = it starts
     public String refillLine(boolean on) {
         if (!on) {
-            return "food: refill done at " + held();
+            return "food: refill done at " + held() + (bagFull && held() < refillStop ? ", the bag is full" : "");
         }
         int held = held();
         String why = held < Math.max(refillStart, floor) ? "under " + Math.max(refillStart, floor) : "on the surface, under " + minimum;

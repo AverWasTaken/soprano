@@ -70,6 +70,11 @@ public interface GamerFacts {
         return false;
     }
 
+    // no empty slot and no junk to throw for one (StorageHelper.getJunkSlot): more food would cost something we carry on purpose
+    default boolean bagFull() {
+        return false;
+    }
+
     // throwaway blocks we can pillar/bridge with
     int buildBlocks();
 

@@ -35,6 +35,8 @@ public class FakeFacts implements GamerFacts {
     public int fingerprint;
     // up near the open sky (the surface food top-up)
     public boolean nearSurface;
+    // no empty slot and no junk to throw
+    public boolean bagFull;
     public boolean earlyIronPick = true;
     // the first raw iron is in a furnace and the job is not recorded yet
     public boolean earlyLoad;
@@ -144,6 +146,11 @@ public class FakeFacts implements GamerFacts {
     @Override
     public boolean nearSurface() {
         return nearSurface;
+    }
+
+    @Override
+    public boolean bagFull() {
+        return bagFull;
     }
 
     @Override

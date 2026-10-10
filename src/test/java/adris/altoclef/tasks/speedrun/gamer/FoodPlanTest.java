@@ -1214,15 +1214,66 @@ public class FoodPlanTest {
     }
 
     @Test
-    public void theSurfaceLatchIsAnswerNeutralToo() {
+    public void theSurfaceAndBagLatchIsAnswerNeutralToo() {
         for (int units = 0; units <= 150; units++) {
             for (boolean was : new boolean[]{false, true}) {
                 for (boolean up : new boolean[]{false, true}) {
-                    FoodPlan before = new FoodPlan(units, 0, 0, 0, 0, 0, cfg, end, was, up);
-                    FoodPlan after = new FoodPlan(units, 0, 0, 0, 0, 0, cfg, end, before.nextRefilling(), up);
-                    assertEquals(units + " " + was + " " + up, before.wantsRefill(), after.wantsRefill());
+                    for (boolean full : new boolean[]{false, true}) {
+                        FoodPlan before = new FoodPlan(units, 0, 0, 0, 0, 0, cfg, end, was, up, full);
+                        FoodPlan after = new FoodPlan(units, 0, 0, 0, 0, 0, cfg, end, before.nextRefilling(), up, full);
+                        assertEquals(units + " " + was + " " + up + " " + full, before.wantsRefill(), after.wantsRefill());
+                    }
                 }
             }
         }
+    }
+
+    // ---- no room in the bag
+
+    @Test
+    public void aFullBagEndsTheTripEarly() {
+        RunState s = inIron();
+        List<String> log = new java.util.ArrayList<>();
+        FakeFacts f = new FakeFacts();
+        f.foodUnits = 44;
+        FoodPlan.latched(f, all(), s, log::add);
+        assertTrue(s.foodRefilling);
+        f.foodUnits = 90;
+        assertTrue(FoodPlan.latched(f, all(), s, log::add).wantsRefill());
+        // every slot taken and nothing to throw: done at 96, not 130
+        f.foodUnits = 96;
+        f.bagFull = true;
+        FoodPlan p = FoodPlan.latched(f, all(), s, log::add);
+        assertFalse(s.foodRefilling);
+        assertFalse(p.wantsRefill());
+        assertFalse(p.leads(true, true, false));
+        assertFalse(KitPlanner.plan(f, cfg, 8, p).contains(new KitNeed(KitNeed.FOOD, 130)));
+        assertEquals("food: refill done at 96, the bag is full", log.get(log.size() - 1));
+        // and a slot coming free at 96 does not start it again, that is no hole
+        f.bagFull = false;
+        assertFalse(FoodPlan.latched(f, all(), s, log::add).wantsRefill());
+        assertEquals(2, log.size());
+    }
+
+    @Test
+    public void aFullBagStillHuntsToTheMinimum() {
+        RunState s = inIron();
+        List<String> log = new java.util.ArrayList<>();
+        FakeFacts f = new FakeFacts();
+        f.bagFull = true;
+        f.foodUnits = 40;
+        FoodPlan.latched(f, all(), s, log::add);
+        assertTrue(s.foodRefilling);
+        // under the minimum the kit needs it, a full bag or not
+        f.foodUnits = 69;
+        assertTrue(FoodPlan.latched(f, all(), s, log::add).wantsRefill());
+        f.foodUnits = 70;
+        assertFalse(FoodPlan.latched(f, all(), s, log::add).wantsRefill());
+        assertFalse(s.foodRefilling);
+        // and up top a full bag does not start the top-up, it would end the moment it got to where it started
+        f.nearSurface = true;
+        f.foodUnits = 60;
+        assertFalse(FoodPlan.latched(f, all(), s, log::add).wantsRefill());
+        assertFalse(s.foodRefilling);
     }
 }

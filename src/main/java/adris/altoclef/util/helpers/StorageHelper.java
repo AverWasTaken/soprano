@@ -182,6 +182,16 @@ public class StorageHelper {
 
     // Gets a slot with an item we can throw away
     public static Optional<Slot> getGarbageSlot(AltoClef mod) {
+        Optional<Slot> junk = getJunkSlot(mod);
+        if (junk.isPresent()) {
+            return junk;
+        }
+        return getGarbageSlotPastJunk(mod);
+    }
+
+    // the cheap half of getGarbageSlot: throwaway items (dirt, cobble past the building reserve, rotten flesh). what comes after is
+    // worse tools and, with altoThrowAwayUnusedItems, anything the task is not using, which is not room anybody should plan on
+    public static Optional<Slot> getJunkSlot(AltoClef mod) {
         // Throwaway items, but keep a few for building.
         final List<Slot> throwawayBlockItems = new ArrayList<>();
         int totalBlockThrowaways = 0;
@@ -207,7 +217,10 @@ public class StorageHelper {
                 return Optional.ofNullable(throwawayBlockItem);
             }
         }
+        return Optional.empty();
+    }
 
+    private static Optional<Slot> getGarbageSlotPastJunk(AltoClef mod) {
         // Try throwing away lower tier tools
         final HashMap<Class, Integer> bestMaterials = new HashMap<>();
         final HashMap<Class, Slot> bestTool = new HashMap<>();
