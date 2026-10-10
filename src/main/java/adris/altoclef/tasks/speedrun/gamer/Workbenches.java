@@ -344,10 +344,12 @@ public final class Workbenches {
     }
 
     // `hold`: how far past that line it still counts, for a station the planner already counted last look (StationChoice.HOLD is the
-    // task's own, it keeps the one it is walking to that far past the line)
+    // task's own, it keeps the one it is walking to that far past the line). only with the bag able to make one: without, the line is
+    // the forget line, and a station out there goes with the forget (decide) and not with a slack
     public static boolean plannerWalksBack(RunState state, Kind kind, String dimension, double x, double y, double z, boolean inBag,
                                            boolean canMake, double hold, Predicate<Bench> usable) {
-        return !inBag && walkBackTo(state, kind, dimension, x, y, z, StationChoice.oursReach(kind, canMake) + hold, usable) != null;
+        double reach = StationChoice.oursReach(kind, canMake) + (canMake ? hold : 0);
+        return !inBag && walkBackTo(state, kind, dimension, x, y, z, reach, usable) != null;
     }
 
     // what the container tasks see (StationHook), wired in by the run

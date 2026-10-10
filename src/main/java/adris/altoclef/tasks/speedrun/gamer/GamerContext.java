@@ -27,7 +27,7 @@ public interface GamerContext {
         return WoodBudget.of(facts(), cfg().overworld, cfg().end.beds, state().phase);
     }
 
-    // every station answer as of this tick: held for the planner, standing near, coming down, may the phase end (StationVerdict). the engine
+    // what the planner holds of the stations as of this tick (StationVerdict). the engine
     // hands out the one the facts built in refresh() and drops its copy when the next tick starts, the default (a test's stub) asks the facts
     default StationVerdict stations() {
         return facts().stations();

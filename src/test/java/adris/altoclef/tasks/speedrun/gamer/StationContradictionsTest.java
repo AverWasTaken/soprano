@@ -74,12 +74,12 @@ public class StationContradictionsTest {
     }
 
     private static StationVerdict look(RunState state, Bag bag, StationLatches latches) {
-        return StationVerdict.of(state, DIM, PX, PY, PZ, NOW, bag, latches);
+        return StationVerdict.of(state, DIM, PX, PY, PZ, bag, latches);
     }
 
     // a look from `d` blocks along x from the middle of a block at 0 64 0 (a station placed there is d away)
     private static StationVerdict lookAt(RunState state, Bag bag, StationLatches latches, double d) {
-        return StationVerdict.of(state, DIM, PX + d, PY, PZ, NOW, bag, latches);
+        return StationVerdict.of(state, DIM, PX + d, PY, PZ, bag, latches);
     }
 
     // (A) FIXED. a table 49 blocks away that the bag could make again. the planner's walk back used to stop flat at WALK_BACK (48) and
@@ -115,6 +115,14 @@ public class StationContradictionsTest {
                 "t", false, true, true, 21.0, StationChoice.walkBackReach(Kind.TABLE)).use());
         assertFalse(lookAt(state, new Bag(), latches, 49.0).table().heldForPlanner());
         assertTrue(lookAt(state, new Bag(), latches, 48.0).table().heldForPlanner());
+        // with nothing to make a table from the line is the forget line (128), and there is no slack past it: a table out there goes
+        // with the forget, and the task only walks to it from the registry (which stops at 128) or with a previous target
+        Bag broke = new Bag();
+        broke.canMake = false;
+        StationLatches far = new StationLatches();
+        assertTrue(lookAt(state, broke, far, 127.0).table().heldForPlanner());
+        assertTrue(lookAt(state, broke, far, 128.0).table().heldForPlanner());
+        assertFalse(lookAt(state, broke, far, 129.0).table().heldForPlanner());
     }
 
     // (G) KNOWN LEFTOVER of (A), accepted. the planner holds a table in the 48 < d <= 50 ring once it has counted it from inside, but
@@ -153,7 +161,7 @@ public class StationContradictionsTest {
             assertTrue("from outside at " + d, lookAt(state, bag, outside, d).smoker().heldForPlanner());
             // standing still does not flip it, and the task's side does not care which way either
             assertTrue(lookAt(state, bag, outside, d).smoker().heldForPlanner());
-            assertTrue(lookAt(state, bag, outside, d).smoker().standingNear());
+            assertTrue(Workbenches.nearestStanding(state, Kind.SMOKER, DIM, PX + d, PY, PZ, WorkbenchRules.NEAR) != null);
         }
         // and past the line it is gone from both sides, the furnace in the bag is a furnace at hand so no smoker walk back
         StationLatches latches = new StationLatches();

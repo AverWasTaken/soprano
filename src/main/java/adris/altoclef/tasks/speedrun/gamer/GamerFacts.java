@@ -115,8 +115,8 @@ public interface GamerFacts {
         return false;
     }
 
-    // every answer about the stations of ours, as of this tick (StationVerdict). the real facts build it in refresh(); the default is for
-    // a test's facts, it knows only the three flags above and says nothing is registered
+    // what the planner holds of the stations of ours, as of this tick (StationVerdict). the real facts build it in refresh(); the default
+    // is for a test's facts, it is the three flags above
     default StationVerdict stations() {
         return StationVerdict.fromFlags(tablePlacedNearby(), furnacePlacedNearby(), smokerPlacedNearby());
     }

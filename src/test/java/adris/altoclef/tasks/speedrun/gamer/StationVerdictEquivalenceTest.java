@@ -196,7 +196,8 @@ public class StationVerdictEquivalenceTest {
 
     // ---- one room
 
-    private static final class Room {
+    // (package private: StationPropertyTest builds its rooms the same way)
+    static final class Room {
         final String dimension;
         final double[][] looks = new double[3][];
         final RunState state = new RunState();
@@ -231,7 +232,7 @@ public class StationVerdictEquivalenceTest {
             this.dimension = dimension;
         }
 
-        private static String key(Kind kind, RunState.Pos p) {
+        static String key(Kind kind, RunState.Pos p) {
             return kind + ":" + p.x + "," + p.y + "," + p.z;
         }
 
@@ -405,7 +406,7 @@ public class StationVerdictEquivalenceTest {
         sb.append("flags=");
         for (int i = 0; i < 3; i++) {
             double[] p = room.looks[i];
-            last = StationVerdict.of(state, dim, p[0], p[1], p[2], NOW, room.world(), room.latches);
+            last = StationVerdict.of(state, dim, p[0], p[1], p[2], room.world(), room.latches);
             sb.append(t(last.table().heldForPlanner())).append(t(last.furnace().heldForPlanner())).append(t(last.smoker().heldForPlanner()));
             // after the table's latch, whether a furnace and a smoker stand within NEAR ("-" for none). that used to be their latch
             sb.append('/').append(t(room.latches.tableFar)).append(nearMark(room, Kind.FURNACE, p)).append(nearMark(room, Kind.SMOKER, p)).append(',');
@@ -427,14 +428,6 @@ public class StationVerdictEquivalenceTest {
             wb.append(t(walks));
             sb.append(t(walks));
             sb.append(t(Workbenches.any(state, kind, dim)));
-            // the verdict's own fields are the same registry questions, asked once at the third look
-            StationVerdict.Station s = last.of(kind);
-            assertEquals(Workbenches.any(state, kind, dim), s.present());
-            assertEquals(Workbenches.nearestStanding(state, kind, dim, px, py, pz, WorkbenchRules.NEAR) != null, s.standingNear());
-            assertEquals(Workbenches.nearestStanding(state, kind, dim, px, py, pz, WorkbenchRules.FORGET_DISTANCE) != null, s.standingFar());
-            assertEquals(WorkbenchRules.placeVetoed(state.benches, kind, NOW), s.pickingUp());
-            Bench nearest = Workbenches.nearestStanding(state, kind, dim, px, py, pz, Double.MAX_VALUE);
-            assertEquals(nearest == null ? null : nearest.pos, s.nearest());
             for (double radius : new double[]{WorkbenchRules.NEAR, WorkbenchRules.returnRadius(true), WorkbenchRules.NEAR - 1, WorkbenchRules.FORGET_DISTANCE}) {
                 sb.append(t(Workbenches.heldNear(state, kind, dim, px, py, pz, radius, pos -> room.stands.getOrDefault(Room.key(kind, pos), true))));
             }
@@ -559,7 +552,6 @@ public class StationVerdictEquivalenceTest {
         // may the phase end with them standing, and the portal's hold over every combination
         List<Bench> snapshot = new ArrayList<>(state.benches);
         sb.append(";mayEnd=").append(t(WorkbenchRules.phaseMayEnd(snapshot, dim, x -> FurnaceJobs.isBusy(state, x.pos, x.dimension))));
-        assertEquals(WorkbenchRules.phaseMayEnd(snapshot, dim, x -> FurnaceJobs.isBusy(state, x.pos, x.dimension)), last.mayEnd());
         sb.append("/").append(WorkbenchRules.leftGivenUp(snapshot, dim, x -> FurnaceJobs.isBusy(state, x.pos, x.dimension)).size());
         sb.append(";portal=");
         for (int bits = 0; bits < 16; bits++) {
