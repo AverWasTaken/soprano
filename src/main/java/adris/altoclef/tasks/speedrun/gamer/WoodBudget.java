@@ -105,6 +105,11 @@ public record WoodBudget(
     // a stock-up is not worth climbing out of the mine for, so down there it never happens (the iron phase asks for wood
     // itself while the surface is still close)
     public int stockUpLogs(int wantedLogs, boolean nearSurface) {
+        return stockUp(logs, planks, wantedLogs, nearSurface);
+    }
+
+    // (the same question for a caller that only has the counts)
+    static int stockUp(int logs, int planks, int wantedLogs, boolean nearSurface) {
         if (!nearSurface) {
             return 0;
         }

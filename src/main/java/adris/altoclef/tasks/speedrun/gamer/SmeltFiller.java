@@ -51,7 +51,11 @@ public final class SmeltFiller {
 
     // nearSurface = SmeltSurface.shallow: the log stock-up only happens where a tree is a short walk (see logStockTarget)
     public static Schedule schedule(GamerFacts f, OverworldConfig cfg, int endBeds, boolean nearSurface, FoodPlan food) {
-        List<KitNeed> needs = KitPlanner.plan(f, cfg, endBeds, food);
+        return schedule(f, cfg, endBeds, nearSurface, food, WoodBudget.of(f, cfg, endBeds));
+    }
+
+    public static Schedule schedule(GamerFacts f, OverworldConfig cfg, int endBeds, boolean nearSurface, FoodPlan food, WoodBudget wood) {
+        List<KitNeed> needs = KitPlanner.plan(f, cfg, endBeds, food, wood);
         if (f.furnaceJobs().isEmpty()) {
             return new Schedule(needs, List.of());
         }
@@ -61,9 +65,9 @@ public final class SmeltFiller {
         if (f.buildBlocks() < cfg.portalBuildBlocks) {
             runnable.add(new KitNeed(KitNeed.BUILD_BLOCKS, cfg.portalBuildBlocks));
         }
-        prep(f, cfg, endBeds, blocked, runnable);
+        prep(f, cfg, wood, blocked, runnable);
         List<KitNeed> stockUps = new ArrayList<>();
-        extras(f, cfg, endBeds, nearSurface, food, stockUps);
+        extras(f, cfg, endBeds, nearSurface, food, wood, stockUps);
         runnable.addAll(stockUps);
         runnable.removeIf(need -> foodBlocked(f, need));
         // the same out of the stock-ups, so they stay exactly the tail of runnable (isStockUp counts on that)
@@ -106,8 +110,12 @@ public final class SmeltFiller {
     }
 
     public static List<KitNeed> gatherRunnable(GamerFacts f, OverworldConfig cfg, int endBeds, FoodPlan food) {
+        return gatherRunnable(f, cfg, endBeds, food, WoodBudget.of(f, cfg, endBeds));
+    }
+
+    public static List<KitNeed> gatherRunnable(GamerFacts f, OverworldConfig cfg, int endBeds, FoodPlan food, WoodBudget wood) {
         List<KitNeed> out = new ArrayList<>();
-        for (KitNeed need : KitPlanner.gather(f, cfg, endBeds, food)) {
+        for (KitNeed need : KitPlanner.gather(f, cfg, endBeds, food, wood)) {
             if (!foodBlocked(f, need)) {
                 out.add(need);
             }
@@ -122,12 +130,12 @@ public final class SmeltFiller {
         return !plan.isEmpty() && foodBlocked(f, plan.get(0));
     }
 
-    private static void prep(GamerFacts f, OverworldConfig cfg, int endBeds, List<KitNeed> blocked, List<KitNeed> out) {
+    private static void prep(GamerFacts f, OverworldConfig cfg, WoodBudget wood, List<KitNeed> blocked, List<KitNeed> out) {
         boolean flintAndSteel = isBlocked(blocked, "flint_and_steel");
         if (flintAndSteel && f.count(Items.FLINT) < 1 && f.count(Items.FLINT_AND_STEEL, Items.FIRE_CHARGE) < 1) {
             out.add(new KitNeed("flint", 1));
         }
-        int planks = planksWanted(blocked, f, cfg, endBeds);
+        int planks = planksWanted(blocked, cfg, wood.bedPlanksOwed());
         if (planks > 0 && f.count(ItemHelper.PLANKS) < planks) {
             out.add(new KitNeed("planks", planks));
         }
@@ -136,6 +144,11 @@ public final class SmeltFiller {
     // shield is 6 planks, the pickaxe and axe 4 sticks between them (2 planks make 4), a bed is 3 planks (a few beds'
     // worth is stocked, the rest is chopped when the beds are made)
     static int planksWanted(List<KitNeed> blocked, GamerFacts f, OverworldConfig cfg, int endBeds) {
+        return planksWanted(blocked, cfg, WoodBudget.bedPlanksOwed(f, endBeds));
+    }
+
+    // `bedPlanksOwed` = WoodBudget's, 3 planks for every bed the end fight still wants and we do not hold
+    static int planksWanted(List<KitNeed> blocked, OverworldConfig cfg, int bedPlanksOwed) {
         int planks = 0;
         if (isBlocked(blocked, "shield")) {
             planks += 6;
@@ -143,8 +156,7 @@ public final class SmeltFiller {
         if (isBlocked(blocked, "iron_pickaxe") || isBlocked(blocked, "iron_axe") || isBlocked(blocked, "iron_sword")) {
             planks += 2;
         }
-        int bedsShort = Math.max(0, endBeds - f.count(ItemHelper.BED));
-        return planks + Math.min(cfg.smeltBedPlanks, 3 * bedsShort);
+        return planks + Math.min(cfg.smeltBedPlanks, bedPlanksOwed);
     }
 
     private static boolean isBlocked(List<KitNeed> blocked, String name) {
@@ -155,21 +167,14 @@ public final class SmeltFiller {
     // a stock-up is not worth climbing out of the mine for, so down there it never happens (the iron phase asks for wood
     // itself while the surface is still close)
     static int logStockTarget(GamerFacts f, int wantedLogs, boolean nearSurface) {
-        if (!nearSurface) {
-            return 0;
-        }
-        int missing = 4 * wantedLogs - f.count(ItemHelper.PLANKS) - 4 * f.count(ItemHelper.LOG);
-        if (missing <= 0) {
-            return 0;
-        }
-        // held logs already count, the need is a total like every other log need
-        return wantedLogs - f.count(ItemHelper.PLANKS) / 4;
+        return WoodBudget.stockUp(f.count(ItemHelper.LOG), f.count(ItemHelper.PLANKS), wantedLogs, nearSurface);
     }
 
     // every stock-up is surface work (sheep, animals, a tree, loose stone), so none of them is worth climbing out of the mine for:
     // down there the list is empty and the wait is spent standing at the furnace instead. IronPhase asks for what it needs
     // itself while the surface is still close
-    private static void extras(GamerFacts f, OverworldConfig cfg, int endBeds, boolean nearSurface, FoodPlan food, List<KitNeed> out) {
+    private static void extras(GamerFacts f, OverworldConfig cfg, int endBeds, boolean nearSurface, FoodPlan food, WoodBudget wood,
+                               List<KitNeed> out) {
         if (cfg.smeltExtras == null) {
             return;
         }
@@ -197,7 +202,7 @@ public final class SmeltFiller {
                     }
                 }
                 case "log" -> {
-                    int logs = logStockTarget(f, extra.count, nearSurface);
+                    int logs = wood.stockUpLogs(extra.count, nearSurface);
                     if (logs > 0) {
                         out.add(new KitNeed("log", logs));
                     }
