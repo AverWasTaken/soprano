@@ -1,11 +1,13 @@
 package adris.altoclef.util.helpers;
 
-// what "in reach" means to a vanilla client's melee pick (and to a picky server): the eye to the nearest point of the
-// target's box, not feet to feet. a vanilla server itself takes up to twice that. a
-// zombie on our head is feet 1.8 away and a spider across a gap is feet 3.4 away and both are closer than that sounds
+// how close is close enough to hit. two measures: feet to feet, which is what the reach setting has always been compared
+// against, and eye to the nearest point of the target's box, which is how vanilla measures. the feet line misjudges a mob
+// in our own cell, straight above (the eye is 1.62 up, so it is nearer than its feet) and straight below (we hit the top of
+// its head, so it is farther) and a wide box (a spider's near face is closer than its feet)
 public final class ReachRules {
 
-    // the interaction range of a plain player
+    // a plain player's interaction range: contact. the corner rules use it as "it is on us", where the setting's looser
+    // reach would call a zombie across a gap contact
     public static final double MELEE_REACH = 3.0;
 
     private ReachRules() {
@@ -21,5 +23,11 @@ public final class ReachRules {
 
     public static boolean inReach(double gap, double reach) {
         return gap <= reach;
+    }
+
+    // the kill tasks' reach: the old feet line OR the eye to box gap inside the same setting. only ever adds to what the feet
+    // line allowed, the server takes a hit from further out than this (up to 6) so cutting it only made the bot walk more
+    public static boolean killReach(boolean feetLine, double gap, double setting) {
+        return feetLine || inReach(gap, setting);
     }
 }

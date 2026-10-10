@@ -82,7 +82,7 @@ public class PlayerExtraController {
     }
 
     public boolean attack(Entity entity) {
-        if (inRange(entity)) {
+        if (inKillReach(entity)) {
             // every deliberate swing comes through here: the one we hit is angry at us now, neutral or not
             _mod.getEntityTracker().noteProvoked(entity);
             _mod.getController().attack(_mod.getPlayer(), entity);
@@ -278,10 +278,11 @@ public class PlayerExtraController {
         return ReachRules.gap(eye.x, eye.y, eye.z, box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ);
     }
 
-    // the kill tasks' idea of "close enough to hit": the feet line the attack packet needs and the plain three block reach, eye to
-    // the nearest point of the box. a zombie 3.5 away on the flat is inside the first and outside the second
-    public boolean inServerReach(Entity entity) {
-        return inRange(entity) && ReachRules.inReach(reachGap(_mod.getPlayer(), entity), reachOf(_mod.getPlayer()));
+    // the kill tasks' idea of "close enough to hit": the feet line the setting has always meant, or the eye to the nearest point
+    // of its box inside the same number. never less than the feet line, only adds the cells it misjudges (our own cell, straight
+    // above and below, a wide box)
+    public boolean inKillReach(Entity entity) {
+        return ReachRules.killReach(inRange(entity), reachGap(_mod.getPlayer(), entity), Baritone.settings().altoEntityReachRange.value);
     }
 
     // how fast the target is going away from us along the flat line between us, blocks per tick (negative when it is

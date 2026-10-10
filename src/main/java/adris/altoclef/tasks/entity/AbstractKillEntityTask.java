@@ -133,12 +133,11 @@ public abstract class AbstractKillEntityTask extends AbstractDoToEntityTask {
         return true;
     }
 
-    // eye to the nearest point of its box within a plain player's three blocks (what a vanilla client can pick, and what a picky
-    // server enforces), so a swing never spends the cooldown on a mob that is only close by the feet line. out of it, the plan
-    // is the normal approach
+    // the feet line or the eye to box gap inside the reach setting (ReachRules.killReach), so the cells the feet line misjudges
+    // count too and nothing that was in reach before stops being
     @Override
     protected boolean inReach(AltoClef mod, Entity entity) {
-        return mod.getControllerExtras().inServerReach(entity);
+        return mod.getControllerExtras().inKillReach(entity);
     }
 
     @Override
