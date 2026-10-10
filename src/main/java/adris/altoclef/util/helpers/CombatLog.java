@@ -16,6 +16,12 @@ public final class CombatLog {
     // fight that just ended (the mob is already gone from the world by then), crowd the "2 zombies, 1 skeleton" list
     public static String line(Dimension dimension, Event event, Why why, boolean cornered, String target, String fighting,
                               String crowd, int hp, int blocks) {
+        return line(dimension, event, why, cornered, false, target, fighting, crowd, hp, blocks);
+    }
+
+    // noRoom: the corner fight came from a run that went nowhere with the foe in reach, not from the three second window
+    public static String line(Dimension dimension, Event event, Why why, boolean cornered, boolean noRoom, String target, String fighting,
+                              String crowd, int hp, int blocks) {
         String tag = "combat: [" + dimension.name().toLowerCase(Locale.ROOT) + "] ";
         return switch (event) {
             case NONE -> null;
@@ -24,7 +30,7 @@ public final class CombatLog {
                     : tag + "target dead, next " + target + " (hit us, hp " + hp + ")";
             case RUN_START -> tag + "RUN from " + crowd + " (" + runWhy(why, hp) + ")";
             case FIGHT_TO_RUN -> tag + "FIGHT -> RUN from " + crowd + " (" + runWhy(why, hp) + ")";
-            case RUN_TO_FIGHT -> tag + "cornered, fighting " + target;
+            case RUN_TO_FIGHT -> tag + (noRoom ? "cornered, no room, fighting " : "cornered, fighting ") + target;
             case FIGHT_DEAD -> tag + "fight over, " + fighting + " dead";
             case FIGHT_LOST -> tag + "fight over, lost track of " + fighting;
             case FIGHT_CLEARED -> tag + "fight over, " + fighting + " is out of the way";

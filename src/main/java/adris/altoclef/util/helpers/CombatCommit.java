@@ -64,6 +64,13 @@ public final class CombatCommit {
     // cornered rule above already has an answer (fight it)
     public static final long RUN_STUCK_TICKS = 100;
 
+    // a run that has moved us less than this far in this many ticks with a melee foe inside real reach is going nowhere: no room,
+    // so it is the cornered fight now and not after CORNER_TICKS. the grace is the path search at the start of a run, where we
+    // stand still for a few ticks on purpose
+    public static final long NO_ROOM_TICKS = 10;
+    public static final double NO_ROOM_BLOCKS = 1;
+    public static final long NO_ROOM_GRACE = 10;
+
     // after any commitment ends, only a fresh hit starts the next one. low hp too: only for something on top of us or one
     // that just hit us, see trigger
     public static final long COOLDOWN = 100;
@@ -136,10 +143,21 @@ public final class CombatCommit {
     }
 
     // an angry hostile that can hurt us, as plain numbers. sinceHit: ticks since it hit us (NEVER for not yet)
-    public record Foe(int id, double distance, boolean ranged, boolean creeper, long sinceHit, Kind kind) {
+    // reachGap: eye to the nearest point of its box, what the server counts as reach (ReachRules). infinite when nobody measured
+    // it, which is every foe that does not come from the world: the no room rule only believes a gap somebody really took
+    public record Foe(int id, double distance, boolean ranged, boolean creeper, long sinceHit, Kind kind, double reachGap) {
         // a plain mob
         public Foe(int id, double distance, boolean ranged, boolean creeper, long sinceHit) {
             this(id, distance, ranged, creeper, sinceHit, Kind.NORMAL);
+        }
+
+        public Foe(int id, double distance, boolean ranged, boolean creeper, long sinceHit, Kind kind) {
+            this(id, distance, ranged, creeper, sinceHit, kind, Double.POSITIVE_INFINITY);
+        }
+
+        // close enough that a swing of ours lands, by the number the server uses
+        public boolean inReach() {
+            return reachGap <= ReachRules.MELEE_REACH;
         }
 
         public boolean melee() {
@@ -337,6 +355,11 @@ public final class CombatCommit {
     private long stuckSince = -1;
     private double stuckX;
     private double stuckZ;
+    private long noRoomSince = -1;
+    private double noRoomX;
+    private double noRoomZ;
+    // the fight we are in came from the no room rule (the log says so)
+    private boolean noRoom;
 
     // the idle boxed-in window (inTheWay)
     private long wayBoxSince = -1;
@@ -362,6 +385,10 @@ public final class CombatCommit {
 
     public boolean cornered() {
         return cornered;
+    }
+
+    public boolean noRoom() {
+        return noRoom;
     }
 
     public double originX() {
@@ -403,6 +430,8 @@ public final class CombatCommit {
         bittenSince = -1;
         cornerSince = -1;
         stuckSince = -1;
+        noRoomSince = -1;
+        noRoom = false;
         wayBoxSince = -1;
         wayGapSince = -1;
         ignored.clear();
@@ -626,6 +655,7 @@ public final class CombatCommit {
     private Event startFight(Tick t, Foe foe, Why reason, Event event, boolean boxedIn) {
         // a new fight with a mob we once gave up on is a clean slate with it (it hit us since, or we are boxed in with it)
         ignored.remove(foe.id());
+        noRoom = false;
         mode = Mode.FIGHT;
         why = reason;
         targetId = foe.id();
@@ -654,6 +684,31 @@ public final class CombatCommit {
         bittenSince = -1;
         cornerSince = -1;
         stuckSince = -1;
+        noRoomSince = -1;
+        noRoom = false;
+        return event;
+    }
+
+    // a run that is not moving us with a melee foe in reach: nowhere to run, so this is the cornered fight already. the same
+    // exit as the corner window below, only quicker, and it needs a gap somebody measured (see Foe.reachGap)
+    private Event noRoomFight(Tick t) {
+        Foe onUs = null;
+        for (Foe foe : t.foes()) {
+            if (foe.melee() && foe.kind() != Kind.UNTOUCHABLE && foe.inReach() && (onUs == null || foe.distance() < onUs.distance())) onUs = foe;
+        }
+        if (onUs == null || t.now() - startTick < NO_ROOM_GRACE) {
+            noRoomSince = -1;
+            return Event.NONE;
+        }
+        if (noRoomSince < 0 || Math.hypot(t.x() - noRoomX, t.z() - noRoomZ) >= NO_ROOM_BLOCKS) {
+            noRoomSince = t.now();
+            noRoomX = t.x();
+            noRoomZ = t.z();
+            return Event.NONE;
+        }
+        if (t.now() - noRoomSince < NO_ROOM_TICKS) return Event.NONE;
+        Event event = startFight(t, onUs, Why.CORNERED, Event.RUN_TO_FIGHT, true);
+        noRoom = true;
         return event;
     }
 
@@ -684,6 +739,9 @@ public final class CombatCommit {
         } else if (t.armed() && t.now() - bittenSince >= BITTEN_TICKS && !anyDanger(t)) {
             return startFight(t, biter, Why.CHASED, Event.RUN_CHASED_FIGHT, true);
         }
+
+        Event cramped = noRoomFight(t);
+        if (cramped != Event.NONE) return cramped;
 
         if (nearest > CORNER_WATCH) {
             cornerSince = -1;

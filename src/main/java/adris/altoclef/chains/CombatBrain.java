@@ -17,6 +17,7 @@ import adris.altoclef.util.helpers.EntityHelper;
 import adris.altoclef.util.helpers.FoeRules;
 import adris.altoclef.util.helpers.MobReachability;
 import adris.altoclef.util.helpers.Provocations;
+import adris.altoclef.util.helpers.ReachRules;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WeaponPick;
 import adris.altoclef.util.slots.PlayerSlot;
@@ -45,6 +46,7 @@ import net.minecraft.world.entity.monster.Slime;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 
 // the world half of CombatCommit, for every dimension. MobDefenseChain calls tick() once per game tick (that is the only
 // place the machine moves) and then asks what to hold the wheel with. nothing in here hands the wheel back: that is the
@@ -203,7 +205,7 @@ final class CombatBrain {
                 if (!(entity instanceof Mob mob) || !mob.isAlive()) continue;
                 double distance = mob.distanceTo(player);
                 if (distance > FOE_RANGE) continue;
-                Foe foe = FoeRules.accept(dimension, candidate(mod, mob, distance, book.sinceHit(mob.getId(), now)));
+                Foe foe = FoeRules.accept(dimension, candidate(mod, mob, distance, book.sinceHit(mob.getId(), now), reachGap(player, mob)));
                 if (foe == null) continue;
                 mobs.add(mob);
                 foes.add(foe);
@@ -218,7 +220,7 @@ final class CombatBrain {
         if (_commit.mode() == Mode.FIGHT) {
             Entity entity = mod.getWorld().getEntity(_commit.targetId());
             if (entity instanceof Mob mob && mob.isAlive()) {
-                target = foe(dimension, mob, mob.distanceTo(player), book.sinceHit(mob.getId(), now));
+                target = foe(dimension, mob, mob.distanceTo(player), book.sinceHit(mob.getId(), now), reachGap(player, mob));
             }
         }
 
@@ -387,9 +389,17 @@ final class CombatBrain {
 
     // the fight target looked up on its own: it can have stopped being angry (or being a candidate at all) and still be the
     // one we are fighting
-    private static Foe foe(Dimension dimension, Mob mob, double distance, long sinceHit) {
+    private static Foe foe(Dimension dimension, Mob mob, double distance, long sinceHit, double reachGap) {
         Kind kind = FoeRules.kindOf(dimension, typeOf(mob));
-        return new Foe(mob.getId(), distance, FoeRules.shoots(typeOf(mob), MobReachability.isRanged(mob), kind), mob instanceof Creeper, sinceHit, kind);
+        return new Foe(mob.getId(), distance, FoeRules.shoots(typeOf(mob), MobReachability.isRanged(mob), kind), mob instanceof Creeper, sinceHit, kind,
+                reachGap);
+    }
+
+    // eye to its box, the number the server's reach check uses
+    private static double reachGap(LocalPlayer player, Mob mob) {
+        Vec3 eye = player.getEyePosition();
+        AABB box = mob.getBoundingBox();
+        return ReachRules.gap(eye.x, eye.y, eye.z, box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ);
     }
 
     private static void sortNearestFirst(List<Mob> mobs, List<Foe> foes) {
@@ -405,7 +415,7 @@ final class CombatBrain {
     // one line per transition, never per tick (the text is CombatLog's)
     private void log(AltoClef mod, Dimension dimension, Event event, String fighting, List<Mob> mobs, int blocks) {
         LocalPlayer player = mod.getPlayer();
-        String line = CombatLog.line(dimension, event, _commit.why(), _commit.cornered(), nameOf(mod, _commit.targetId()), fighting,
+        String line = CombatLog.line(dimension, event, _commit.why(), _commit.cornered(), _commit.noRoom(), nameOf(mod, _commit.targetId()), fighting,
                 describe(mobs), Math.round(player.getHealth()), blocks);
         if (line != null) Debug.logInternal(line);
     }
@@ -419,12 +429,12 @@ final class CombatBrain {
     }
 
     // the costly questions are asked lazily, FoeRules only asks them when the cheap ones left the mob in the running
-    private static FoeRules.Candidate candidate(AltoClef mod, Mob mob, double distance, long sinceHit) {
+    private static FoeRules.Candidate candidate(AltoClef mod, Mob mob, double distance, long sinceHit, double reachGap) {
         return new FoeRules.Candidate(typeOf(mob), mob.getId(), distance,
                 () -> mod.getBehaviour().shouldExcludeFromMobDefense(mob),
                 () -> EntityHelper.isAngryAtPlayer(mod, mob),
                 () -> EntityHelper.canMobHarmPlayer(mod, mob),
-                sinceHit, mob instanceof Slime slime ? slime.getSize() : 0, MobReachability.isRanged(mob), mob instanceof Creeper);
+                sinceHit, mob instanceof Slime slime ? slime.getSize() : 0, MobReachability.isRanged(mob), mob instanceof Creeper, reachGap);
     }
 
     // how many of each kind, in the order they showed up

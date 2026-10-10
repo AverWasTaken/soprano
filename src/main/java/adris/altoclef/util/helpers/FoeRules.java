@@ -26,7 +26,11 @@ public final class FoeRules {
     // stands around it) and does not want a second opinion. angry and canHarm are EntityHelper's answers. slimeSize is 0 for
     // anything that is not a slime
     public record Candidate(String type, int id, double distance, BooleanSupplier excluded, BooleanSupplier angry,
-                            BooleanSupplier canHarm, long sinceHit, int slimeSize, boolean ranged, boolean creeper) {
+                            BooleanSupplier canHarm, long sinceHit, int slimeSize, boolean ranged, boolean creeper, double reachGap) {
+        public Candidate(String type, int id, double distance, BooleanSupplier excluded, BooleanSupplier angry,
+                         BooleanSupplier canHarm, long sinceHit, int slimeSize, boolean ranged, boolean creeper) {
+            this(type, id, distance, excluded, angry, canHarm, sinceHit, slimeSize, ranged, creeper, Double.POSITIVE_INFINITY);
+        }
     }
 
     // the foe this candidate makes in this dimension, null when it is not one
@@ -38,7 +42,7 @@ public final class FoeRules {
         // something that hit us can hurt us, no questions. the rest has to be able to get at us (or shoot)
         if (c.sinceHit() > CombatCommit.HIT_MEMORY && !c.canHarm().getAsBoolean()) return null;
         Kind kind = kindOf(dimension, c.type());
-        return new Foe(c.id(), c.distance(), shoots(c.type(), c.ranged(), kind), c.creeper(), c.sinceHit(), kind);
+        return new Foe(c.id(), c.distance(), shoots(c.type(), c.ranged(), kind), c.creeper(), c.sinceHit(), kind, c.reachGap());
     }
 
     // does it count from where a shooter stands. a blaze shoots (the warden's sonic boom is handled by its kind). a wither
