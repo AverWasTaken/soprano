@@ -17,9 +17,9 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
-// places where two station readers answer what looks like ONE question differently. every test here is KNOWN WRONG, pinned as it
-// behaves today, waiting on the behaviour round that picks an answer (StationVerdict keeps both answers under their own names and
-// does not unify them). when one of these fails because someone fixed the disagreement, change the assert and say so in the commit
+// places where two station readers answer what looks like ONE question differently, and what became of each. FIXED ones now pin the
+// agreement (A, B, E, F), BY DESIGN ones pin the reasoning (C, D), and (G) is the one leftover we accepted. when one of these fails,
+// someone changed the answer: say so in the commit
 public class StationContradictionsTest {
     private static final long NOW = 6000;
     private static final String DIM = Workbenches.OVERWORLD;
@@ -117,6 +117,22 @@ public class StationContradictionsTest {
         assertTrue(lookAt(state, new Bag(), latches, 48.0).table().heldForPlanner());
     }
 
+    // (G) KNOWN LEFTOVER of (A), accepted. the planner holds a table in the 48 < d <= 50 ring once it has counted it from inside, but
+    // it cannot know whether a craft is already walking to it. a craft that STARTS in the ring with no previous target (the bot
+    // walked out past 48 for other work, then needs the table) finds none within 48, and with the bag able to make a table it makes
+    // one from planks / a log already in the bag. exactly: table of ours at 48 < d <= 50, latched held, bag can make a table, new
+    // task. the old table is forgotten after 5 s outside (FORGET_FAR_TABLE), so nothing loops; the cost is 4 planks or a log
+    @Test
+    public void aFreshCraftInTheRingMakesATableWhileTheLatchedPlannerStillHoldsOne() {
+        RunState state = new RunState();
+        place(state, Kind.TABLE, pos(0, 64, 0), DIM);
+        StationLatches latches = new StationLatches();
+        assertTrue(lookAt(state, new Bag(), latches, 47.0).table().heldForPlanner());
+        assertTrue(lookAt(state, new Bag(), latches, 49.0).table().heldForPlanner());
+        List<StationChoice.Candidate<String>> seen = List.of(new StationChoice.Candidate<>("t", 49.0, StationChoice.Role.OURS));
+        assertEquals(StationChoice.Use.MAKE, StationChoice.decide(seen, null, false, true, true, 21.0, StationChoice.walkBackReach(Kind.TABLE)).use());
+    }
+
     // (B) FIXED. a smoker 21 blocks away with a furnace in the bag. the planner's latch used to enter at 20 once the smoker was out and
     // at 21 while it was held or never seen, so the same smoker at the same spot was held or not by which side we came from, and the
     // container task (which only looks at the plain line, 21) used it both times. the furnace and smoker have no latch now, the
@@ -175,40 +191,71 @@ public class StationContradictionsTest {
         assertFalse(lookAt(state, parked, parkedLatches, 21.5).furnace().heldForPlanner());
     }
 
-    // (C) a bench on its way back to the bag. the planner counts it as held (the kit must not ask for table planks the moment it leaves
-    // the bag), standing() does not, and neither do the container tasks (StationHook.standingWithin): they would place a second one,
-    // which is what the pickup veto is for
+    // (C) BY DESIGN. a bench on its way back to the bag. the planner counts it as held (the item is about to be in the bag, so the kit
+    // must not ask for table planks the moment it leaves the ground), and standing() / the container tasks do not count it. what stops
+    // the task from placing or crafting a second one is the pickup veto (DoStuffInContainerTask.onTick waits while
+    // StationHook.pickingUp(kind)), which holds as long as somebody drives the pickup. it cannot hold the plan forever: a failed or
+    // timed out try puts the bench back to STANDING (failedTry), a pickup nobody drives goes back too (dropStaleDrive), one that finds
+    // our items in it goes to BUSY (abort), and the rest are forgotten (DROP_LOST, the far table). a pickup only starts when nothing
+    // needs the station soon, so the planner holding it is the plan agreeing with that
     @Test
-    public void aBenchComingDownIsHeldForThePlannerAndNotStanding() {
+    public void aBenchComingDownIsHeldForThePlannerAndTheTaskWaitsForIt() {
         RunState state = new RunState();
         Bench b = place(state, Kind.TABLE, pos(5, 64, 0), DIM);
-        b.state = Bench.State.PICKING_UP;
-        StationVerdict v = look(state, new Bag(), new StationLatches());
-        assertTrue(v.table().heldForPlanner());
+        WorkbenchRules.beginPickup(b, NOW, 0, "test");
+        assertTrue(look(state, new Bag(), new StationLatches()).table().heldForPlanner());
         assertFalse(Workbenches.standing(b, Kind.TABLE, DIM));
-        assertFalse(v.table().standingNear());
-        // (the veto itself only holds while somebody drives the pickup, nobody does in this room)
-        assertFalse(v.table().pickingUp());
         assertNull(Workbenches.nearestStanding(state, Kind.TABLE, DIM, PX, PY, PZ, WorkbenchRules.NEAR));
+        // driven this tick: nothing may place or craft another, nor walk to the block coming down
+        assertTrue(WorkbenchRules.placeVetoed(state.benches, Kind.TABLE, NOW));
+        assertTrue(WorkbenchRules.targetVetoed(state.benches, b.pos, NOW));
+
+        // the try fails: standing again, the veto is gone and the task walks to it like to any other
+        WorkbenchRules.failedTry(b, NOW);
+        assertEquals(Bench.State.STANDING, b.state);
+        assertTrue(look(state, new Bag(), new StationLatches()).table().heldForPlanner());
+        assertTrue(Workbenches.standing(b, Kind.TABLE, DIM));
+        assertFalse(WorkbenchRules.placeVetoed(state.benches, Kind.TABLE, NOW));
+
+        // nobody drives it any more: it stops vetoing and goes back to standing, so the plan is not left holding a ghost
+        WorkbenchRules.beginPickup(b, NOW, 0, "test");
+        long later = NOW + WorkbenchRules.DRIVE_GRACE_TICKS + 1;
+        assertFalse(WorkbenchRules.placeVetoed(state.benches, Kind.TABLE, later));
+        Workbenches.sync(state, later);
+        assertEquals(Bench.State.STANDING, b.state);
     }
 
-    // (D) a furnace with a job in it. the planner counts it as held, so it budgets no furnace; DoStuffInContainerTask's `free` test
-    // (a split load, skipsBusy) refuses a busy one, finds nothing near and places a second
+    // (D) BY DESIGN. a furnace with a job in it. the planner counts it as held, so it budgets no furnace, and DoStuffInContainerTask's
+    // `free` test (a split load, skipsBusy) refuses a busy one, finds nothing near and may place a second: that is the split smelt
+    // (SmeltSplit), a second furnace next to the one cooking on purpose. the planner asks for no cobble for it (KitPlanner.COBBLE_COST,
+    // the mine brings back far more than the 16 spare), and the task cannot eat what the kit still owes: SmeltSplit.loads and
+    // DoStuffInContainerTask.bagCanMake both count cobble minus StationHook.cobbleOwed (KitPlanner.toolCobble, the stone tools'
+    // cobble, which is also the kit's stone floor while a furnace stands). short on spare cobble the split is fewer loads, never a
+    // trip for stone
     @Test
-    public void aBusyFurnaceIsHeldForThePlannerAndSkippedByTheSplitLoad() {
+    public void aBusyFurnaceIsHeldForThePlannerAndTheSplitLoadMakesAnotherOnlyFromSpareCobble() {
         RunState state = new RunState();
         Bench b = place(state, Kind.FURNACE, pos(3, 64, 0), DIM);
         FurnaceJobs.record(state.furnaceJobs, new RunState.FurnaceJob(b.pos, DIM, "furnace", "raw_iron", 4, "iron_ingot", NOW - 200, NOW + 400));
-        StationVerdict v = look(state, new Bag(), new StationLatches());
-        assertTrue(v.furnace().heldForPlanner());
+        assertTrue(look(state, new Bag(), new StationLatches()).furnace().heldForPlanner());
         FakeFacts facts = new FakeFacts();
         StationHook.Source source = Workbenches.source(state, facts);
         // `busy` in the task is the container tracker or a queued job, a recorded job stands in for it here
         BlockPos any = source.standingWithin(Kind.FURNACE, PX, PY, PZ, WorkbenchRules.NEAR);
         assertTrue(any != null);
         BlockPos free = source.standingWithin(Kind.FURNACE, PX, PY, PZ, WorkbenchRules.NEAR,
-                p -> !FurnaceJobs.isBusy(state, pos(p.getX(), p.getY(), p.getZ())));
+                p -> !FurnaceJobs.isBusy(state, pos(p.getX(), p.getY(), p.getZ()), DIM));
         assertNull(free);
+        // 37 iron wants 3 furnaces and none is idle (every load but a free one is 8 cobble). 14 cobble go to the tools: 21 in the bag
+        // is 7 spare, nothing to make a furnace from, one load
+        int owed = 14;
+        assertEquals(1, adris.altoclef.tasks.container.SmeltSplit.loads(37, 0, 0, 21 - owed));
+        assertFalse(StationChoice.canMakeFrom(Kind.FURNACE, 21 - owed, 0, 0, 0));
+        // 8 spare makes a furnace, and it takes 16 for two more
+        assertTrue(StationChoice.canMakeFrom(Kind.FURNACE, 22 - owed, 0, 0, 0));
+        assertEquals(1, adris.altoclef.tasks.container.SmeltSplit.loads(37, 0, 0, 29 - owed));
+        assertEquals(2, adris.altoclef.tasks.container.SmeltSplit.loads(37, 0, 0, 30 - owed));
+        assertEquals(3, adris.altoclef.tasks.container.SmeltSplit.loads(37, 0, 0, 38 - owed));
     }
 
     // (E) WorkbenchRules.decide forgets a station by distance even when something is using it. 130 blocks away a standing furnace with
