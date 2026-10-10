@@ -309,6 +309,12 @@ public abstract class Task {
         return false;
     }
 
+    // equals is whatever the subclass's isEqual says, so the class is the only thing equal tasks are sure to share
+    @Override
+    public int hashCode() {
+        return getClass().hashCode();
+    }
+
     public boolean thisOrChildSatisfies(Predicate<Task> pred) {
         Task t = this;
         while (t != null) {
