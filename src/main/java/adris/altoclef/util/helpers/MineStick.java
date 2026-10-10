@@ -13,15 +13,39 @@ public final class MineStick {
     // 1.5 s. longer than any pause we cause ourselves, shorter than anything worth staying for
     public static final int GRACE_TICKS = 30;
 
+    // a drop this old (client ticks since we first saw it, so a lower bound) is a few seconds from despawning and is
+    // worth walking off a block for. 6000 is the despawn age, 400 ticks is 20 s of walking
+    public static final int DESPAWN_SOON_AGE = 6000 - 400;
+
     private BlockPos pos;
     private int seenTick;
+    // the target we already got one free hold for, see begin
+    private BlockPos begun;
 
     // the controller says this block is being broken right now (and it is one of ours: the caller checks that)
     public void breaking(int now, BlockPos at) {
         if (at != null) {
             pos = at;
+            begun = at;
             seenTick = now;
         }
+    }
+
+    // we picked this block and it is in reach (or the last step away), but the controller has not said a word yet. the
+    // first ticks of a break were the unprotected ones: a drop out of the last block rolled out of the pickup box in that
+    // window, won the pick, and the crack never got to start. one hold per target, it is not renewed (a block we can't
+    // hit would otherwise be held forever), only a real break renews it
+    public void begin(int now, BlockPos at) {
+        if (wouldBegin(at)) {
+            pos = at;
+            begun = at;
+            seenTick = now;
+        }
+    }
+
+    // true when begin would start a hold (so the caller can say so once)
+    public boolean wouldBegin(BlockPos at) {
+        return at != null && !at.equals(begun);
     }
 
     // the block to stay on, or null. `stillGood` is the caller's idea of "still ours, still there, still in reach": a
@@ -30,7 +54,12 @@ public final class MineStick {
         if (pos == null) {
             return null;
         }
-        if (now - seenTick > GRACE_TICKS || !stillGood.test(pos)) {
+        boolean good = stillGood.test(pos);
+        if (now - seenTick > GRACE_TICKS || !good) {
+            // a block that broke may come back as a new block, and that one is a fresh start
+            if (!good) {
+                begun = null;
+            }
             pos = null;
             return null;
         }
@@ -44,6 +73,20 @@ public final class MineStick {
 
     public void clear() {
         pos = null;
+        begun = null;
+    }
+
+    // a drop takes over from a block nobody is holding, never from a held one (unless it is about to despawn), and never
+    // from another drop: the one we are walking to is the one we get, the nearer one comes after
+    public static boolean dropMayTakeOver(boolean currentIsDrop, boolean currentHeld, boolean dropDespawning) {
+        if (currentIsDrop) {
+            return false;
+        }
+        return !currentHeld || dropDespawning;
+    }
+
+    public static boolean aboutToDespawn(int dropAge) {
+        return dropAge >= DESPAWN_SOON_AGE;
     }
 
     // a target we have never tried has to be at least twice as close (distance, so a quarter of it squared) to take over

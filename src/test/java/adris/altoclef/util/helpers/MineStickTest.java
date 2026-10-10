@@ -93,4 +93,107 @@ public class MineStickTest {
         assertFalse(MineStick.toolSwapWouldReset(false, BLOCK, 0.3, BLOCK));
         assertFalse(MineStick.toolSwapWouldReset(true, null, 0.3, BLOCK));
     }
+
+    @Test
+    public void aBlockInReachIsHeldBeforeTheControllerSaysAnything() {
+        // the first ticks of a break: nothing has called breaking() yet
+        MineStick stick = new MineStick();
+        assertTrue(stick.wouldBegin(BLOCK));
+        stick.begin(0, BLOCK);
+        assertEquals(BLOCK, stick.holdOn(1, p -> true));
+        assertTrue(stick.isHolding(BLOCK));
+    }
+
+    @Test
+    public void aDropAppearingMidBreakWaitsForTheBreakToFinish() {
+        MineStick stick = new MineStick();
+        stick.begin(0, BLOCK);
+        boolean[] broken = {false};
+        for (int tick = 1; tick <= 12; tick++) {
+            if (tick > 3) {
+                stick.breaking(tick, BLOCK);
+            }
+            // a drop is rolling around the whole time and would win the pick, but a held block is not up for it
+            assertEquals("tick " + tick, BLOCK, stick.holdOn(tick, p -> !broken[0]));
+            assertFalse(MineStick.dropMayTakeOver(false, stick.isHolding(BLOCK), false));
+        }
+        // the block broke, now the drop gets its turn
+        broken[0] = true;
+        assertNull(stick.holdOn(13, p -> !broken[0]));
+        assertTrue(MineStick.dropMayTakeOver(false, stick.isHolding(BLOCK), false));
+    }
+
+    @Test
+    public void aDropAboutToDespawnStillTakesOver() {
+        assertTrue(MineStick.dropMayTakeOver(false, true, true));
+        assertFalse(MineStick.aboutToDespawn(100));
+        assertFalse(MineStick.aboutToDespawn(MineStick.DESPAWN_SOON_AGE - 1));
+        assertTrue(MineStick.aboutToDespawn(MineStick.DESPAWN_SOON_AGE));
+    }
+
+    @Test
+    public void twoDropsDoNotTradePlaces() {
+        // we are on one, the other being nearer or in reach changes nothing, in either state of the block hold
+        assertFalse(MineStick.dropMayTakeOver(true, false, false));
+        assertFalse(MineStick.dropMayTakeOver(true, true, false));
+        assertFalse(MineStick.dropMayTakeOver(true, false, true));
+        // off a block that nobody holds, the drop is welcome
+        assertTrue(MineStick.dropMayTakeOver(false, false, false));
+    }
+
+    @Test
+    public void aBreakNeverGetsAbandonedWhileDropsKeepAppearing() {
+        // ten blocks in a row, a drop in sight on every tick of every one of them. the way it used to go, the drop won
+        // the first ticks and each block was left at its first crack. a block is abandoned if it is not the hold while
+        // it is still standing
+        MineStick stick = new MineStick();
+        int tick = 0;
+        int abandoned = 0;
+        int finished = 0;
+        for (int n = 0; n < 10; n++) {
+            BlockPos block = BLOCK.offset(n, 0, 0);
+            boolean[] gone = {false};
+            stick.begin(tick, block);
+            for (int t = 0; t < 14; t++) {
+                tick++;
+                if (t >= 2) {
+                    stick.breaking(tick, block);
+                }
+                BlockPos held = stick.holdOn(tick, p -> !gone[0]);
+                if (!block.equals(held)) {
+                    abandoned++;
+                }
+            }
+            gone[0] = true;
+            assertNull(stick.holdOn(++tick, p -> !gone[0]));
+            finished++;
+        }
+        assertEquals(0, abandoned);
+        assertEquals(10, finished);
+    }
+
+    @Test
+    public void aBlockWeNeverStartOnIsHeldOnceAndNotForever() {
+        // it is in reach but nothing ever hits it (a wall in the way). one grace, then it is just a block again
+        MineStick stick = new MineStick();
+        stick.begin(0, BLOCK);
+        assertEquals(BLOCK, stick.holdOn(MineStick.GRACE_TICKS, p -> true));
+        assertNull(stick.holdOn(MineStick.GRACE_TICKS + 1, p -> true));
+        // asking again for the same target is not a new start
+        assertFalse(stick.wouldBegin(BLOCK));
+        stick.begin(MineStick.GRACE_TICKS + 2, BLOCK);
+        assertNull(stick.holdOn(MineStick.GRACE_TICKS + 3, p -> true));
+        // a different one is
+        assertTrue(stick.wouldBegin(BLOCK.east()));
+    }
+
+    @Test
+    public void aBlockThatBrokeAndCameBackIsAFreshStart() {
+        MineStick stick = new MineStick();
+        stick.begin(0, BLOCK);
+        assertNull(stick.holdOn(1, p -> false));
+        assertTrue(stick.wouldBegin(BLOCK));
+        stick.begin(5, BLOCK);
+        assertEquals(BLOCK, stick.holdOn(6, p -> true));
+    }
 }

@@ -272,11 +272,19 @@ public class MineAndCollectTask extends ResourceTask {
             }
 
             // halfway through a block is not the time to go and get a drop. the drop gets its turn when the block is gone
+            // (a drop we are already walking to is not traded for a block that happens to be cracking behind us)
             BlockPos breaking = mod.getControllerExtras().getBreakingBlockPos();
-            if (breaking != null && mod.getControllerExtras().isBreakingBlock() && stillOurs(mod, breaking)) {
+            if (locked == null && breaking != null && mod.getControllerExtras().isBreakingBlock() && stillOurs(mod, breaking)) {
                 _stick.breaking(now, breaking);
+            } else if (locked == null) {
+                beginHold(mod, now);
             }
             BlockPos held = _stick.holdOn(now, check -> stillOurs(mod, check));
+            if (held != null && despawningDropNear(mod, now, pos)) {
+                // the one exception: a drop a few seconds from gone is worth a cracked block
+                _stick.clear();
+                held = null;
+            }
             if (held != null) {
                 return Optional.of(held);
             }
@@ -304,6 +312,30 @@ public class MineAndCollectTask extends ResourceTask {
             } else {
                 return closestBlock.map(Object.class::cast);
             }
+        }
+
+        // the block we were handed counts as started once we can reach it, not only once the controller reports the crack: a
+        // drop from the last block rolling out of the pickup box in between used to win and the block was never touched
+        private void beginHold(AltoClef mod, int now) {
+            BlockPos at = _miningPos;
+            if (at == null || !_stick.wouldBegin(at) || !stillOurs(mod, at)) {
+                return;
+            }
+            _stick.begin(now, at);
+            if (mod.getEntityTracker().itemDropped(_targets)) {
+                // so the next play log shows how often a drop was around for the first ticks of a break
+                Debug.logInternal("mine: holding " + at.toShortString() + " from the first tick, a drop is in sight");
+            }
+        }
+
+        // a drop within the first-pick range that has been around long enough to be nearly gone. every 5th tick, this is
+        // the exception and not worth a tracker query per tick of every break
+        private boolean despawningDropNear(AltoClef mod, int now, Vec3 pos) {
+            if (now % 5 != 0) {
+                return false;
+            }
+            Optional<ItemEntity> drop = nearestDrop(mod, pos, true);
+            return drop.isPresent() && MineStick.aboutToDespawn(drop.get().getAge()) && drop.get().distanceToSqr(pos) <= DROP_FIRST_RANGE_SQ;
         }
 
         // the next block to break. around the one we just broke while there is anything there, otherwise the nearest
@@ -513,12 +545,14 @@ public class MineAndCollectTask extends ResourceTask {
         private static final double HOLD_REACH_SQ = 5.5 * 5.5;
 
         // the block we are breaking beats a never-tried one no matter how close the new one is. a drop beats a block we
-        // haven't cracked yet too: getClosestTo only hands one out when it should win, and the one the break just made
-        // shows up a tick after the block is gone, by when we already picked the next log
+        // haven't started yet: getClosestTo only hands one out when it should win, and the one the break just made shows up
+        // a tick after the block is gone, by when we already picked the next log. once the block is started (MineStick) or
+        // we are on a drop, nothing but a drop about to despawn moves us
         @Override
         protected boolean mustSwitchTo(AltoClef mod, Object current, Object candidate) {
-            if (candidate instanceof ItemEntity) {
-                return true;
+            if (candidate instanceof ItemEntity drop) {
+                boolean held = current instanceof BlockPos at && _stick.isHolding(at);
+                return MineStick.dropMayTakeOver(current instanceof ItemEntity, held, MineStick.aboutToDespawn(drop.getAge()));
             }
             return candidate instanceof BlockPos b && _stick.isHolding(b);
         }
