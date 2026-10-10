@@ -25,6 +25,11 @@ public final class EarlyIronPick {
         if (!f.earlyIronPick() || KitPlanner.missing(f, "iron_pickaxe", 1) == 0) {
             return false;
         }
+        // a diamond pick is on its way out of the bag's diamonds (DiamondSpend), three ingots for an iron one we would outclass
+        // the moment it is crafted is not an early pick, it is a waste of a furnace load
+        if (DiamondSpend.takesThePick(f, cfg)) {
+            return false;
+        }
         for (KitItem k : cfg.ironKit) {
             if ("iron_pickaxe".equals(k.item)) {
                 return true;

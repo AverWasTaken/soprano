@@ -268,6 +268,31 @@ public class KitRunnerTest {
     }
 
     @Test
+    public void theDiamondCraftsComingAndGoingAreLoggedOncePerChange() {
+        PrintStream real = System.out;
+        ByteArrayOutputStream captured = new ByteArrayOutputStream();
+        System.setOut(new PrintStream(captured, true));
+        try {
+            KitNeed iron = new KitNeed("iron_ingot", 39);
+            ctx.facts.give(Items.DIAMOND, 3);
+            runner.run(ctx, List.of(iron));
+            runner.run(ctx, List.of(new KitNeed("diamond_pickaxe", 1), iron));
+            runner.run(ctx, List.of(new KitNeed("diamond_pickaxe", 1), iron));
+            ctx.facts.give(Items.DIAMOND, 4);
+            runner.run(ctx, List.of(new KitNeed("diamond_pickaxe", 1), new KitNeed("diamond_boots", 1), iron));
+            runner.run(ctx, List.of(iron));
+            runner.run(ctx, List.of(iron));
+        } finally {
+            System.setOut(real);
+        }
+        List<String> lines = captured.toString().lines().filter(l -> l.contains("diamonds:")).toList();
+        assertEquals(lines.toString(), 3, lines.size());
+        assertTrue(lines.get(0), lines.get(0).endsWith("diamonds: 3 held -> [diamond_pickaxe]"));
+        assertTrue(lines.get(1), lines.get(1).endsWith("diamonds: 7 held -> [diamond_pickaxe, diamond_boots]"));
+        assertTrue(lines.get(2), lines.get(2).endsWith("diamonds: 7 held -> []"));
+    }
+
+    @Test
     public void nonFoodNeedsIgnoreJunk() {
         ctx.facts.junkFoodUnits = 80;
         assertEquals(32, KitRunner.foodTarget(new KitNeed(KitNeed.BUILD_BLOCKS, 32), ctx.food()));

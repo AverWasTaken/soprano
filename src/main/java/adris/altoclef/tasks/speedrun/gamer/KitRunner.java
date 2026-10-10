@@ -40,6 +40,8 @@ public final class KitRunner {
     private boolean planLogged;
     // the food need was in the last list, so watchFood only speaks when that changes
     private boolean foodOn;
+    // the diamond crafts in the last list (DiamondSpend), so watchDiamonds only speaks when that changes
+    private List<String> spendKey = List.of();
     // the list we were last handed and the need picked out of it, for the card (GamerHud). the key above is the same
     // need but it is also the task cache's key, keep the two jobs apart
     private List<KitNeed> needs = List.of();
@@ -64,6 +66,7 @@ public final class KitRunner {
         hud = null;
         planLogged = false;
         foodOn = false;
+        spendKey = List.of();
         needs = List.of();
         current = null;
     }
@@ -103,6 +106,7 @@ public final class KitRunner {
 
     public Task run(GamerContext ctx, List<KitNeed> needs) {
         this.needs = needs;
+        watchDiamonds(ctx.facts(), needs);
         if (needs.isEmpty()) {
             // nothing to run, so whatever we were on is let go. kept, it would sit out a whole dwell against the next plan's head
             key = null;
@@ -176,6 +180,18 @@ public final class KitRunner {
         foodOn = on;
         FoodPlan plan = ctx.food();
         Debug.logInternal(plan.line(on, on ? food.count() : plan.overworldMinimum(), running == null ? null : running.catalogueName()));
+    }
+
+    // the diamond crafts the plan holds changing (one coming up, one done and gone, the count swapping the boots for the leggings),
+    // one line per change with the diamonds in the bag. the plan is the source and not DiamondSpend, so a runner that was handed
+    // a list with no spend in it (the portal gate) never claims there was one
+    private void watchDiamonds(GamerFacts f, List<KitNeed> list) {
+        List<String> now = list.stream().map(KitNeed::catalogueName).filter(n -> n.startsWith("diamond_")).toList();
+        if (now.equals(spendKey)) {
+            return;
+        }
+        spendKey = now;
+        Debug.logInternal("diamonds: " + f.count(Items.DIAMOND) + " held -> " + now);
     }
 
     // the running need dropping out of the plan and coming back, one line per change with what the planner counted. a need that

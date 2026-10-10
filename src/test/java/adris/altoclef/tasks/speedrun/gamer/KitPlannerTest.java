@@ -940,4 +940,119 @@ public class KitPlannerTest {
         // something that cannot break is not worn
         assertFalse(KitPlanner.wornOut(Items.STONE_PICKAXE, 5, 0));
     }
+
+    // ---- diamonds in the bag (DiamondSpend)
+
+    @Test
+    public void underThreeDiamondsEveryPlanIsTheOneItWas() {
+        f.foodUnits = 40;
+        List<KitNeed> bare = KitPlanner.plan(f, cfg, 8);
+        for (int d = 1; d < DiamondSpend.MIN; d++) {
+            FakeFacts rich = new FakeFacts().give(Items.DIAMOND, d);
+            rich.foodUnits = 40;
+            assertEquals(bare, KitPlanner.plan(rich, cfg, 8));
+        }
+        assertEquals(List.of(), KitPlanner.plan(complete(), cfg, 8));
+        assertEquals(List.of(), KitPlanner.plan(complete().give(Items.DIAMOND, 2), cfg, 8));
+    }
+
+    @Test
+    public void switchedOffTheDiamondsSitInTheBag() {
+        cfg.diamondSpend = false;
+        f.foodUnits = 40;
+        List<KitNeed> bare = KitPlanner.plan(f, cfg, 8);
+        FakeFacts rich = new FakeFacts().give(Items.DIAMOND, 40);
+        rich.foodUnits = 40;
+        assertEquals(bare, KitPlanner.plan(rich, cfg, 8));
+        assertEquals(List.of(), KitPlanner.plan(complete().give(Items.DIAMOND, 40), cfg, 8));
+    }
+
+    @Test
+    public void threeDiamondsAndAnIronPickMakeTheDiamondPickBeforeAnyIronCraft() {
+        f.give(Items.IRON_PICKAXE, 1).give(Items.DIAMOND, 3).give(Items.STICK, 2);
+        f.foodUnits = 40;
+        List<String> n = names(KitPlanner.plan(f, cfg, 8));
+        assertTrue(n.toString(), n.indexOf("diamond_pickaxe") >= 0);
+        assertTrue(n.indexOf("diamond_pickaxe") < n.indexOf("iron_ingot"));
+        assertTrue(n.indexOf("diamond_pickaxe") < n.indexOf("iron_axe"));
+        // the iron pick was already in the bag, so the iron kit is what it was
+        assertEquals(40 - 3, find(KitPlanner.plan(f, cfg, 8), "iron_ingot").count());
+        assertEquals(new KitNeed("diamond_pickaxe", 1), find(KitPlanner.plan(f, cfg, 8), "diamond_pickaxe"));
+    }
+
+    @Test
+    public void theDiamondPickTakesTheIronPicksPlaceAndItsIngots() {
+        f.give(Items.DIAMOND, 3);
+        List<KitNeed> plan = KitPlanner.plan(f, cfg, 8);
+        assertNull(find(plan, "iron_pickaxe"));
+        assertEquals(40 - 3, find(plan, "iron_ingot").count());
+        assertEquals(37, KitPlanner.ingotsNeeded(f, cfg));
+        // nothing was held back by the swap: the same bag without diamonds still asks for the iron one
+        assertEquals(new KitNeed("iron_pickaxe", 1), find(KitPlanner.plan(new FakeFacts(), cfg, 8), "iron_pickaxe"));
+    }
+
+    @Test
+    public void rawIronForAnEarlyPickIsNotSmeltedForAPickWeAreAboutToOutclass() {
+        FakeFacts raw = new FakeFacts().give(Items.RAW_IRON, 5).give(Items.DIAMOND, 3);
+        assertFalse(EarlyIronPick.wanted(raw, cfg));
+        assertFalse(EarlyIronPick.due(raw, cfg, KitPlanner.ingotsNeeded(raw, cfg)));
+        // and without the diamonds it is the early batch it always was
+        assertTrue(EarlyIronPick.due(new FakeFacts().give(Items.RAW_IRON, 5), cfg, 40));
+    }
+
+    @Test
+    public void aDiamondChestplateIsNotSmeltedFor() {
+        // the pick is already diamond, so 8 diamonds are the chestplate
+        f.give(Items.DIAMOND_PICKAXE, 1).give(Items.DIAMOND, 8);
+        List<KitNeed> plan = KitPlanner.plan(f, cfg, 8);
+        assertNull(find(plan, "iron_chestplate"));
+        assertEquals(new KitNeed("diamond_chestplate", 1), find(plan, "diamond_chestplate"));
+        // pick held, so 3 off already; the chestplate is 8 more off the 40
+        assertEquals(40 - 3 - 8, find(plan, "iron_ingot").count());
+        assertEquals(40 - 3 - 8, KitPlanner.ingotsNeeded(f, cfg));
+        assertEquals(List.of("diamond_chestplate"), names(plan).stream().filter(s -> s.startsWith("diamond_")).toList());
+    }
+
+    @Test
+    public void diamondCraftsComeBeforeTheIronOnesAndAfterTheStarter() {
+        f.give(Items.DIAMOND, 11);
+        f.foodUnits = 40;
+        List<String> n = names(KitPlanner.plan(f, cfg, 8));
+        assertEquals(List.of("diamond_pickaxe", "diamond_chestplate"), n.stream().filter(s -> s.startsWith("diamond_")).toList());
+        assertTrue(n.indexOf("stone_axe") < n.indexOf("diamond_pickaxe"));
+        assertTrue(n.indexOf("diamond_chestplate") < n.indexOf("iron_ingot"));
+        assertEquals(n.indexOf("diamond_pickaxe") + 1, n.indexOf("diamond_chestplate"));
+    }
+
+    @Test
+    public void hungerStillLeadsTheDiamonds() {
+        f.give(Items.DIAMOND, 11).give(Items.STONE_PICKAXE, 2).give(Items.STONE_AXE, 1).give(Items.FURNACE, 1);
+        f.foodUnits = 5;
+        List<KitNeed> plan = KitPlanner.plan(f, cfg, 8);
+        assertEquals(KitNeed.FOOD, plan.get(0).catalogueName());
+        assertTrue(names(plan).contains("diamond_pickaxe"));
+    }
+
+    @Test
+    public void theChoiceHoldsStillThroughACraft() {
+        // the pick goes into the grid (MinecraftFacts counts it, so the diamonds never dip), comes out as a pick, and the
+        // chestplate that was behind it is the plan with no wobble in between
+        FakeFacts bag = complete().give(Items.DIAMOND, 11);
+        bag.items.remove(Items.IRON_PICKAXE);
+        List<String> before = names(KitPlanner.plan(bag, cfg, 8)).stream().filter(s -> s.startsWith("diamond_")).toList();
+        assertEquals(List.of("diamond_pickaxe", "diamond_chestplate"), before);
+        bag.items.put(Items.DIAMOND, 8);
+        bag.give(Items.DIAMOND_PICKAXE, 1);
+        assertEquals(List.of("diamond_chestplate"), names(KitPlanner.plan(bag, cfg, 8)));
+    }
+
+    @Test
+    public void goldInTheHelmetSlotKeepsTheDiamondsOffIt() {
+        FakeFacts bag = complete().give(Items.DIAMOND_PICKAXE, 1).give(Items.DIAMOND, 5).give(Items.GOLDEN_HELMET, 1);
+        bag.items.remove(Items.IRON_HELMET);
+        bag.worn.remove(Items.IRON_HELMET);
+        bag.worn.add(Items.GOLDEN_HELMET);
+        // 5 buys exactly the helmet, and the slot is the piglin piece
+        assertFalse(names(KitPlanner.plan(bag, cfg, 8)).contains("diamond_helmet"));
+    }
 }

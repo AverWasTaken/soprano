@@ -321,7 +321,12 @@ public final class KitPlanner {
             ingots += missing * INGOTS.getOrDefault(k.item, 0);
             crafts.add(new KitNeed(k.item, held(f, k.item) + missing));
         }
+        // the diamonds go first: they need no furnace and no ore, the bag already has them, and each one is an iron item that
+        // ironItems no longer owes (so nothing gets smelted for a pick or a chestplate we are about to outclass)
         List<KitNeed> out = new ArrayList<>();
+        for (String name : DiamondSpend.choose(f, cfg)) {
+            out.add(new KitNeed(name, held(f, name) + 1));
+        }
         // the ingots for the pick (and the shears) are in the bag: make them before mining a single ore more (EarlyIronPick)
         if (EarlyIronPick.craftFirst(f, cfg)) {
             moveToFront(crafts, out, "iron_pickaxe");
@@ -357,10 +362,20 @@ public final class KitPlanner {
     }
 
     private static List<KitItem> ironItems(GamerFacts f, OverworldConfig cfg) {
-        List<KitItem> all = new ArrayList<>(cfg.ironKit);
+        // whatever DiamondSpend picked is a diamond item from this tick on and stops being an iron one. nothing already smelted or
+        // crafted goes anywhere, the diamond piece just wins the slot
+        List<String> diamond = DiamondSpend.choose(f, cfg);
+        List<KitItem> all = new ArrayList<>();
+        for (KitItem k : cfg.ironKit) {
+            if (!DiamondSpend.replaces(diamond, k.item)) {
+                all.add(k);
+            }
+        }
         // one piece may be gold instead (PiglinGold), which is exactly the iron it no longer costs
         for (String armor : PiglinGold.swap(f, armorNames(cfg))) {
-            all.add(new KitItem(armor, 1));
+            if (!DiamondSpend.replaces(diamond, armor)) {
+                all.add(new KitItem(armor, 1));
+            }
         }
         return all;
     }
