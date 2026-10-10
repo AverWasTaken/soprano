@@ -11,7 +11,7 @@ import java.util.function.ToIntFunction;
 // what is different between one detour and the next: the words, the numbers, and the bits of maths only one resource has.
 // pure, no blocks or items in here (ResourceDetour maps a Resource to those), so the tests can poke it without a bootstrap
 public final class DetourSpec {
-    public enum Resource { COAL, GRAVEL }
+    public enum Resource { COAL, GRAVEL, DIAMOND }
 
     // ---- coal: the coal the plan still burns. a coal is 8 smelts, and a couple more than the sum so a stray smelt does not send
     // us out. whatever the sum says, a detour never takes us past the ceiling, a full run's iron and meat is about 10
@@ -37,6 +37,11 @@ public final class DetourSpec {
     public static final DetourSpec GRAVEL = new DetourSpec(Resource.GRAVEL, "gravel", "flint", "gravel", "Getting flint from this gravel",
             "Getting flint from gravel", "digging gravel for flint", GRAVEL_COOLDOWN_TICKS,
             c -> c.gravelSideBudget, c -> 1, c -> c.gravelSideSeconds, c -> c.gravelSideBlocks, c -> GRAVEL_TARGET);
+    // nobody asks for a count of diamonds, so the need is the cap itself (diamondNeed). the cooldown is coal's, a vein goes in one
+    // detour and the next one is a different cluster
+    public static final DetourSpec DIAMOND = new DetourSpec(Resource.DIAMOND, "diamond", "diamond", "ore", "Diamonds! Might as well mine them",
+            "Mining diamonds while they are close", "mining diamonds", DetourRules.COOLDOWN_TICKS,
+            c -> c.diamondSideBudget, c -> c.diamondSideCap, c -> c.diamondSideSeconds, c -> 0, c -> c.diamondSideCap);
 
     public final Resource resource;
     // for the log lines ("coal side job: ...") and the activity words
@@ -141,6 +146,28 @@ public final class DetourSpec {
         int smelts = ironSmelts + Math.max(0, rawMeat);
         int left = Math.max(0, smelts - Math.max(0, woodSmelts));
         return Math.min(NEED_CEILING, (left + SMELTS_PER_COAL - 1) / SMELTS_PER_COAL + NEED_MARGIN);
+    }
+
+    // ---- diamond
+
+    // hold up to the cap, or nothing at all when the config has it switched off (a need of 0 is always enough, see
+    // DetourRules.enough, so the flag is just this). a spare diamond is never wasted: it is armor, tools and the enchanting
+    // table, and whoever spends them (KitPlanner) only gets to when we hold some
+    public static int diamondNeed(boolean on, int cap) {
+        return on ? Math.max(0, cap) : 0;
+    }
+
+    // "is there lava in that cell", the caller closes over the world so this file stays free of blocks
+    public interface Lava {
+        boolean at(int x, int y, int z);
+    }
+
+    // lava in any of the six cells around the ore. baritone's own break check only looks up and to the four sides, and even
+    // there it lets a trickle through when something below it is liquid too. nothing looks underneath, and a vein hugging a
+    // lava pocket is the classic way to lose a bag of diamonds, so the detour just leaves those to somebody who needs them
+    public static boolean lavaTouches(Lava lava, int x, int y, int z) {
+        return lava.at(x + 1, y, z) || lava.at(x - 1, y, z) || lava.at(x, y + 1, z) || lava.at(x, y - 1, z)
+                || lava.at(x, y, z + 1) || lava.at(x, y, z - 1);
     }
 
     // ---- gravel

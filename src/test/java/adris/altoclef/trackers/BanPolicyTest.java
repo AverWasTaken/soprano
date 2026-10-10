@@ -90,6 +90,21 @@ public class BanPolicyTest {
     }
 
     @Test
+    public void diamondIsItsOwnScopeWithTheSameClock() {
+        bans.tick(0);
+        assertTrue(BanPolicy.diamond(bans, 3, -50, 3));
+        assertFalse(BanPolicy.diamond(bans, 3, -50, 3));
+        assertTrue(BanPolicy.diamondBanned(bans, 3, -50, 3));
+        assertFalse("a diamond we gave up on says nothing about coal", BanPolicy.coalBanned(bans, 3, -50, 3));
+        assertFalse(BanPolicy.gravelBanned(bans, Dimension.OVERWORLD, 3, -50, 3));
+        assertFalse("the kit's own diamond task still sees it", bans.blockBanned(Dimension.OVERWORLD, 3, -50, 3));
+        assertTrue(lines.get(0), lines.get(0).endsWith("only for " + BanPolicy.DIAMOND_SCOPE));
+        assertEquals(6000, BanPolicy.DIAMOND);
+        bans.tick(BanPolicy.DIAMOND);
+        assertFalse(BanPolicy.diamondBanned(bans, 3, -50, 3));
+    }
+
+    @Test
     public void theDetourAlsoHonoursEverybodysBans() {
         BanPolicy.blockStrike(bans, Dimension.OVERWORLD, 3, 40, 3, 0, 4, "couldn't reach it");
         assertTrue(BanPolicy.coalBanned(bans, 3, 40, 3));

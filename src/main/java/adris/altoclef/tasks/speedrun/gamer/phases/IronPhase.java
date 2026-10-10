@@ -294,6 +294,9 @@ public class IronPhase implements PhaseHandler {
                 }
             }
             say(IronActivity.withDetail(arbiter.chose(got, now), asked, i, scene));
+            if (before == Kind.DIAMOND && got != Kind.DIAMOND) {
+                support.endDiamond(now);
+            }
             if (before == Kind.COAL && got != Kind.COAL) {
                 support.endCoal(now);
             }
@@ -308,6 +311,9 @@ public class IronPhase implements PhaseHandler {
         }
         if (!(arbiter.current() == Kind.KIT && jobs && head == null)) {
             say(IronActivity.withDetail(arbiter.idle(now), asked, asked.size(), scene));
+        }
+        if (before == Kind.DIAMOND) {
+            support.endDiamond(now);
         }
         if (before == Kind.COAL) {
             support.endCoal(now);
@@ -347,6 +353,7 @@ public class IronPhase implements PhaseHandler {
             case VILLAGE_CHEST -> support.villageChest(mod, ctx, head);
             case BED -> support.bed(mod, ctx);
             case GOLEM_START -> support.golemStart(mod, ctx, head);
+            case DIAMOND -> support.diamondDetour(mod, ctx, head);
             case COAL -> support.coalDetour(mod, ctx, head);
             case GRAVEL -> support.gravelDetour(mod, ctx, head);
             case PACK_UP -> packUpTrip(mod, ctx, head, second(needs), jobs);
@@ -420,6 +427,7 @@ public class IronPhase implements PhaseHandler {
     // why the activity that just handed back null is over, for the activity line
     private String endWords(Kind k) {
         return switch (k) {
+            case DIAMOND -> support.diamondEnded();
             case COAL -> support.coalEnded();
             case GRAVEL -> support.gravelEnded();
             case STAND_BY, FURNACE, PACK_UP -> "visit over";

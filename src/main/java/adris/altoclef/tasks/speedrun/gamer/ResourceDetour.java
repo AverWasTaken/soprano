@@ -17,6 +17,7 @@ import baritone.api.utils.Dimension;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
+import net.minecraft.tags.FluidTags;
 import net.minecraft.world.inventory.AbstractFurnaceMenu;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
@@ -28,7 +29,7 @@ import net.minecraft.world.phys.Vec3;
 import java.util.HashMap;
 import java.util.Map;
 
-// the world half of DetourRules: finds a block worth a detour near the player (coal ore, gravel), runs a MineAndCollectTask of
+// the world half of DetourRules: finds a block worth a detour near the player (coal ore, gravel, diamond ore), runs a MineAndCollectTask of
 // its own at it, and hands the task back to the phase until the rules say stop. it is the last side job there is, everything
 // ranked above it wins the tick. the mining task asks the tracker for the nearest block wherever it is, so the rules end the job
 // when the blocks near the spot it began at are gone (a count target would send it off to a vein 80 blocks away, and "hold N" is
@@ -81,6 +82,12 @@ public final class ResourceDetour {
     // it sits in trail ruins and ocean ruins we are not digging up anyway
     public static ResourceDetour gravel() {
         return new ResourceDetour(DetourSpec.GRAVEL, new Block[]{Blocks.GRAVEL}, Items.FLINT, MiningRequirement.HAND);
+    }
+
+    // the two blocks TaskCatalogue mines for "diamond". it needs an iron pick, and the tool gate in inputs() means we only get
+    // here holding one, so the mining task never goes and makes a pick of its own
+    public static ResourceDetour diamond() {
+        return new ResourceDetour(DetourSpec.DIAMOND, new Block[]{Blocks.DIAMOND_ORE, Blocks.DEEPSLATE_DIAMOND_ORE}, Items.DIAMOND, MiningRequirement.IRON);
     }
 
     public DetourSpec spec() {
@@ -266,17 +273,37 @@ public final class ResourceDetour {
         String need = head == null ? null : head.catalogueName();
         // the food need and the cook both have latches that count the time they lead for, a detour in the middle of one eats it
         boolean food = KitNeed.FOOD.equals(need) || KitNeed.isCookName(need);
-        boolean gravel = spec.resource == Resource.GRAVEL;
-        boolean place = gravel ? DetourSpec.gravelPhase(ctx.state().phase, f.dimension()) : overworld;
-        boolean tool = gravel || hasPickaxe(f);
-        int want = gravel ? flintNeed(f) : coalNeed(ctx);
-        return new DetourRules.Inputs(place, tool, held, want, cook, due, load, food, spec.kitIsOnIt(need), tally.count());
+        boolean place = spec.resource == Resource.GRAVEL ? DetourSpec.gravelPhase(ctx.state().phase, f.dimension()) : overworld;
+        return new DetourRules.Inputs(place, hasTool(f), held, want(ctx), cook, due, load, food, spec.kitIsOnIt(need), tally.count());
+    }
+
+    // the spec's tool gate. gravel needs nothing but a hand
+    private boolean hasTool(GamerFacts f) {
+        return switch (spec.resource) {
+            case GRAVEL -> true;
+            case COAL -> hasPickaxe(f);
+            case DIAMOND -> hasIronPickaxe(f);
+        };
+    }
+
+    // what we stop at, see each resource's need
+    private int want(GamerContext ctx) {
+        return switch (spec.resource) {
+            case GRAVEL -> flintNeed(ctx.facts());
+            case COAL -> coalNeed(ctx);
+            case DIAMOND -> DetourSpec.diamondNeed(ctx.cfg().overworld.diamondSide, ctx.cfg().overworld.diamondSideCap);
+        };
     }
 
     // stone or better. a wooden pick could mine coal, but the wooden pick days are for getting cobble and leaving, and its 59
     // uses are spoken for. gold is wood tier with worse durability, so it doesn't count either
     private static boolean hasPickaxe(GamerFacts f) {
         return f.has(Items.STONE_PICKAXE) || f.has(Items.IRON_PICKAXE) || f.has(Items.DIAMOND_PICKAXE) || f.has(Items.NETHERITE_PICKAXE);
+    }
+
+    // iron or better, which is what diamond ore wants. no pick of that kind is no side job, it never makes a need for one
+    private static boolean hasIronPickaxe(GamerFacts f) {
+        return f.count(Items.IRON_PICKAXE, Items.DIAMOND_PICKAXE, Items.NETHERITE_PICKAXE) > 0;
     }
 
     private static boolean hasShovel(GamerFacts f) {
@@ -295,14 +322,20 @@ public final class ResourceDetour {
 
     private boolean banned(AltoClef mod, int x, int y, int z) {
         Bans bans = mod.getBans();
-        return spec.resource == Resource.GRAVEL ? BanPolicy.gravelBanned(bans, WorldHelper.getCurrentDimension(), x, y, z)
-                : BanPolicy.coalBanned(bans, x, y, z);
+        return switch (spec.resource) {
+            case GRAVEL -> BanPolicy.gravelBanned(bans, WorldHelper.getCurrentDimension(), x, y, z);
+            case COAL -> BanPolicy.coalBanned(bans, x, y, z);
+            case DIAMOND -> BanPolicy.diamondBanned(bans, x, y, z);
+        };
     }
 
     private boolean banOne(AltoClef mod, int x, int y, int z) {
         Bans bans = mod.getBans();
-        return spec.resource == Resource.GRAVEL ? BanPolicy.gravel(bans, WorldHelper.getCurrentDimension(), x, y, z)
-                : BanPolicy.coal(bans, x, y, z);
+        return switch (spec.resource) {
+            case GRAVEL -> BanPolicy.gravel(bans, WorldHelper.getCurrentDimension(), x, y, z);
+            case COAL -> BanPolicy.coal(bans, x, y, z);
+            case DIAMOND -> BanPolicy.diamond(bans, x, y, z);
+        };
     }
 
     // the nearest block within the budget of `center` that we could mine, have not given up on, and can see right now (DetourSight:
@@ -327,10 +360,13 @@ public final class ResourceDetour {
 
     // in sight, and for gravel not a column hanging over our head. DestroyBlockTask already digs loose columns from the side and
     // never swings from under one, this keeps the detour from picking that block in the first place. the one that falls into
-    // the hole we dug from the side is gravel in plain view, it is simply the next pick
+    // the hole we dug from the side is gravel in plain view, it is simply the next pick. for diamonds no lava touching the ore
     private boolean pickable(AltoClef mod, BlockPos pos) {
         if (!visible(mod, pos)) {
             return false;
+        }
+        if (spec.resource == Resource.DIAMOND) {
+            return !lavaBeside(mod.getWorld(), pos);
         }
         if (spec.resource != Resource.GRAVEL) {
             return true;
@@ -338,6 +374,11 @@ public final class ResourceDetour {
         BlockPos feet = mod.getPlayer().blockPosition();
         int stack = 1 + WorldHelper.fallingAbove(mod.getWorld(), pos);
         return !DetourSpec.underTallColumn(feet.getX(), feet.getY(), feet.getZ(), pos.getX(), pos.getY(), pos.getZ(), stack);
+    }
+
+    private static boolean lavaBeside(ClientLevel level, BlockPos pos) {
+        BlockPos.MutableBlockPos at = new BlockPos.MutableBlockPos();
+        return DetourSpec.lavaTouches((x, y, z) -> level.getFluidState(at.set(x, y, z)).is(FluidTags.LAVA), pos.getX(), pos.getY(), pos.getZ());
     }
 
     // the mining task asks this for every candidate, twice a pick, every tick. same block same tick is the same answer

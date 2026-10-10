@@ -37,6 +37,10 @@ public final class IronActivity {
         // a bed is a few seconds of punching, a golem is a minute on a pillar
         BED("village bed"),
         GOLEM_START("golem hunt"),
+        // a diamond ore in sight is the rarest thing any of these walks to, so it goes ahead of the coal and the gravel. it sits
+        // inside the STATION..GRAVEL range on purpose, the stand-by and the side job checks need no new ends. same rules as coal
+        // (it ends itself on a due furnace close by too)
+        DIAMOND("diamond detour"),
         // last of the side jobs: coal is the only one for something we might need rather than something we do. it ends itself
         // on a furnace that is due and close (DetourRules), so it never sits on a collect
         COAL("coal detour"),
@@ -113,7 +117,7 @@ public final class IronActivity {
     // stay: a chest can be the food, a bed is seconds, and the smoker the food cooks in is a station the plan still wants. the
     // pack-up stays too: it is a walk to a furnace we are about to climb away from, and it keeps its once per furnace book
     public static boolean yields(Kind k) {
-        return k == Kind.FURNACE || k == Kind.COAL || k == Kind.GRAVEL;
+        return k == Kind.FURNACE || k == Kind.DIAMOND || k == Kind.COAL || k == Kind.GRAVEL;
     }
 
     // what the hunger line is about: the walk the bag took the wheel from (the one held, or the furnace trip that was due to start),
@@ -131,7 +135,7 @@ public final class IronActivity {
             case STAND_BY -> s.jobs() && s.standingBy();
             // standing by a smoker is the plan, nothing that walks off starts meanwhile
             case STATION, BED -> !s.standingBy();
-            case COAL, GRAVEL -> !s.standingBy() && !s.starving();
+            case DIAMOND, COAL, GRAVEL ->!s.standingBy() && !s.starving();
             case RUINED_PORTAL, VILLAGE_CHEST -> s.loots() && !s.standingBy();
             // (a fight that is going is not a start, so this never drops one)
             case GOLEM_START -> s.loots() && !s.standingBy() && !s.golemFighting() && !s.starving();

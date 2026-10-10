@@ -95,6 +95,14 @@ public class OverworldConfig {
     public double gravelSideBudget = 12;
     public int gravelSideBlocks = 10;
     public double gravelSideSeconds = 30;
+    // diamonds on the way (DetourSpec.DIAMOND): a diamond ore this close, in sight and with no lava touching it, is worth a short
+    // detour when we hold an iron pick or better, whatever the plan is up to. nothing asks for a count of them, so it just
+    // holds up to diamondSideCap and stops. diamondSide = false turns it off (a need of 0 never starts anything). a deepslate
+    // diamond takes about a second with an iron pick, so the 30 s clock covers a vein
+    public boolean diamondSide = true;
+    public double diamondSideBudget = 12;
+    public int diamondSideCap = 24;
+    public double diamondSideSeconds = 30;
 
     // casting with no lava in sight for this long, while we already hold a diamond pickaxe, flips to obsidian early.
     // without the pickaxe we keep wandering for a lake until castGiveUpMinutes

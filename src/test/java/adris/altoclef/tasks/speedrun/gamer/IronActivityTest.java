@@ -73,7 +73,48 @@ public class IronActivityTest {
     @Test
     public void theOrderIsTheDocumentedOne() {
         assertEquals(List.of(Kind.FINISHING, Kind.GOLEM_FIGHT, Kind.STAND_BY, Kind.STATION, Kind.RUINED_PORTAL, Kind.VILLAGE_CHEST,
-                Kind.BED, Kind.GOLEM_START, Kind.COAL, Kind.GRAVEL, Kind.FURNACE, Kind.PACK_UP, Kind.SURFACE, Kind.KIT), List.of(Kind.values()));
+                Kind.BED, Kind.GOLEM_START, Kind.DIAMOND, Kind.COAL, Kind.GRAVEL, Kind.FURNACE, Kind.PACK_UP, Kind.SURFACE, Kind.KIT),
+                List.of(Kind.values()));
+    }
+
+    @Test
+    public void diamondsAreAskedBeforeCoalAndGravelAndInsideTheSideJobRanges() {
+        assertEquals(Kind.COAL.ordinal(), Kind.DIAMOND.ordinal() + 1);
+        assertTrue(Kind.DIAMOND.ordinal() > Kind.GOLEM_START.ordinal());
+        // the quick smoker's cut-in range runs STATION..GRAVEL, and IronPhase.sideJob GOLEM_FIGHT..GRAVEL: both hold it
+        assertTrue(Kind.DIAMOND.ordinal() > Kind.STATION.ordinal() && Kind.DIAMOND.ordinal() < Kind.GRAVEL.ordinal());
+        assertTrue(IronActivity.preempts(Kind.STAND_BY, Kind.DIAMOND, false));
+        assertEquals("diamond detour", Kind.DIAMOND.words);
+        // with all three eligible and nothing held, the diamonds come out first
+        List<Kind> asked = new IronActivity().ask(PLAIN, 0);
+        assertTrue(asked.indexOf(Kind.DIAMOND) < asked.indexOf(Kind.COAL));
+        assertTrue(asked.indexOf(Kind.COAL) < asked.indexOf(Kind.GRAVEL));
+    }
+
+    @Test
+    public void aSideJobThatIsGoingKeepsTheWheelFromADiamondAndAHeldDiamondFromCoal() {
+        Sim sim = new Sim();
+        // nobody preempts a coal detour that is going, a diamond ore showing up halfway waits for it
+        assertEquals(Kind.COAL, sim.tick(PLAIN, Kind.COAL, Kind.KIT));
+        assertEquals(Kind.COAL, sim.tick(PLAIN, Kind.DIAMOND, Kind.COAL, Kind.KIT));
+        Sim other = new Sim();
+        assertEquals(Kind.DIAMOND, other.tick(PLAIN, Kind.COAL, Kind.DIAMOND, Kind.KIT));
+        assertEquals(Kind.DIAMOND, other.tick(PLAIN, Kind.DIAMOND, Kind.COAL, Kind.KIT));
+        assertEquals(Kind.DIAMOND, other.tick(PLAIN, Kind.COAL, Kind.DIAMOND, Kind.KIT));
+    }
+
+    @Test
+    public void aDiamondDetourWaitsForAFullBagAndAQuietSmokerLikeCoal() {
+        assertTrue(IronActivity.yields(Kind.DIAMOND));
+        assertTrue(IronActivity.eligible(Kind.DIAMOND, PLAIN));
+        assertTrue(IronActivity.eligible(Kind.DIAMOND, COOKING));
+        assertFalse(IronActivity.eligible(Kind.DIAMOND, STARVING_PLAIN));
+        assertFalse(IronActivity.eligible(Kind.DIAMOND, STANDING));
+        Sim sim = new Sim();
+        assertEquals(Kind.DIAMOND, sim.tick(PLAIN, Kind.DIAMOND, Kind.KIT));
+        // the bag runs dry mid-detour: it lets go, the kit's head is the food
+        assertEquals(Kind.KIT, sim.tick(STARVING_PLAIN, Kind.DIAMOND, Kind.KIT));
+        assertEquals(Kind.DIAMOND, IronActivity.gave(Kind.DIAMOND, true));
     }
 
     @Test
@@ -105,7 +146,7 @@ public class IronActivityTest {
     @Test
     public void standingByPausesEverythingThatWalksOff() {
         assertTrue(IronActivity.eligible(Kind.STAND_BY, STANDING));
-        for (Kind k : List.of(Kind.STATION, Kind.RUINED_PORTAL, Kind.VILLAGE_CHEST, Kind.BED, Kind.GOLEM_START, Kind.COAL, Kind.GRAVEL, Kind.FURNACE)) {
+        for (Kind k : List.of(Kind.STATION, Kind.RUINED_PORTAL, Kind.VILLAGE_CHEST, Kind.BED, Kind.GOLEM_START, Kind.DIAMOND, Kind.COAL, Kind.GRAVEL, Kind.FURNACE)) {
             assertFalse(k.name(), IronActivity.eligible(k, STANDING));
             assertTrue(k.name(), IronActivity.eligible(k, COOKING));
         }
@@ -432,7 +473,7 @@ public class IronActivityTest {
 
     @Test
     public void theDetoursThatAreNotFoodWaitForAnEmptyBagToo() {
-        for (Kind k : List.of(Kind.COAL, Kind.GRAVEL, Kind.GOLEM_START)) {
+        for (Kind k : List.of(Kind.DIAMOND, Kind.COAL, Kind.GRAVEL, Kind.GOLEM_START)) {
             assertTrue(k.name(), IronActivity.eligible(k, PLAIN));
             assertFalse(k.name(), IronActivity.eligible(k, STARVING_PLAIN));
         }
@@ -487,7 +528,7 @@ public class IronActivityTest {
         sim.tick(COOKING, Kind.COAL);
         assertEquals(Kind.STAND_BY, sim.tick(STANDING, Kind.COAL, Kind.STAND_BY, Kind.KIT));
         assertEquals("activity: coal detour -> smoker stand-by (a quick smoker comes before the coal detour)", sim.lines.get(1));
-        for (Kind side : List.of(Kind.STATION, Kind.RUINED_PORTAL, Kind.VILLAGE_CHEST, Kind.BED, Kind.GOLEM_START, Kind.COAL, Kind.GRAVEL)) {
+        for (Kind side : List.of(Kind.STATION, Kind.RUINED_PORTAL, Kind.VILLAGE_CHEST, Kind.BED, Kind.GOLEM_START, Kind.DIAMOND, Kind.COAL, Kind.GRAVEL)) {
             assertTrue(side.name(), IronActivity.preempts(Kind.STAND_BY, side, false));
         }
     }

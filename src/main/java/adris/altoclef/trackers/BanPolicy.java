@@ -35,6 +35,11 @@ public final class BanPolicy {
     public static final long GRAVEL = 6000;
     public static final String GRAVEL_REASON = "gravel detour gave up on it";
     public static final String GRAVEL_SCOPE = "the gravel detour";
+    // and the diamond detour, the same five minutes. a vein we gave up on says nothing about coal, and the kit's own diamond
+    // task (the head need "diamond") still mines it
+    public static final long DIAMOND = 6000;
+    public static final String DIAMOND_REASON = "diamond detour gave up on it";
+    public static final String DIAMOND_SCOPE = "the diamond detour";
     public static final String OUTPOST_REASON = "near a pillager outpost";
     public static final String DEEP_DARK_REASON = "in the deep dark (ancient city / warden)";
 
@@ -108,6 +113,15 @@ public final class BanPolicy {
     // what the detour asks: the everybody bans plus its own
     public static boolean coalBanned(Bans bans, int x, int y, int z) {
         return bans.banned(Key.block(Dimension.OVERWORLD, x, y, z), COAL_SCOPE);
+    }
+
+    // overworld only like coal, so no dimension to take
+    public static boolean diamond(Bans bans, int x, int y, int z) {
+        return bans.banFor(DIAMOND_SCOPE, Key.block(Dimension.OVERWORLD, x, y, z), DIAMOND_REASON, DIAMOND);
+    }
+
+    public static boolean diamondBanned(Bans bans, int x, int y, int z) {
+        return bans.banned(Key.block(Dimension.OVERWORLD, x, y, z), DIAMOND_SCOPE);
     }
 
     // gravel comes in the nether too (soul sand valleys), so this one takes the dimension
