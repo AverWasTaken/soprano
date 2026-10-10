@@ -212,7 +212,8 @@ public class KillEnderDragonTask extends Task {
 
     @Override
     protected boolean isEqual(Task other) {
-        return other instanceof KillEnderDragonTask;
+        // the outer islands trip must not be mistaken for the plain fight, it never walks into the exit portal
+        return other instanceof KillEnderDragonTask task && task._enterExitPortal == _enterExitPortal;
     }
 
     @Override

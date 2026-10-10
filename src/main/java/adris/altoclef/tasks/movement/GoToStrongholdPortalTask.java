@@ -70,7 +70,8 @@ public class GoToStrongholdPortalTask extends Task {
 
     @Override
     protected boolean isEqual(Task other) {
-        return other instanceof GoToStrongholdPortalTask;
+        // 1 eye for #locate and 12 for the playground are different jobs, same class
+        return other instanceof GoToStrongholdPortalTask task && task._targetEyes == _targetEyes;
     }
 
     @Override

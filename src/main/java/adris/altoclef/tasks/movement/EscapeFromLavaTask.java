@@ -80,7 +80,7 @@ public class EscapeFromLavaTask extends CustomBaritoneGoalTask {
 
     @Override
     protected boolean isEqual(Task other) {
-        return other instanceof EscapeFromLavaTask;
+        return other instanceof EscapeFromLavaTask task && task._strength == _strength;
     }
 
     @Override

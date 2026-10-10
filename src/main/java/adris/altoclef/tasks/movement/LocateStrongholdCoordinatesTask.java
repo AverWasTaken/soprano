@@ -198,7 +198,8 @@ public class LocateStrongholdCoordinatesTask extends Task {
 
     @Override
     protected boolean isEqual(Task other) {
-        return other instanceof LocateStrongholdCoordinatesTask;
+        return other instanceof LocateStrongholdCoordinatesTask task
+                && task._targetEyes == _targetEyes && task._minimumEyes == _minimumEyes;
     }
 
     @Override
