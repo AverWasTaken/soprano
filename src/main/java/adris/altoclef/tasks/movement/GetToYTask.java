@@ -38,9 +38,14 @@ public class GetToYTask extends CustomBaritoneGoalTask {
     @Override
     protected boolean isEqual(Task other) {
         if (other instanceof GetToYTask task) {
-            return task._yLevel == _yLevel;
+            return task._yLevel == _yLevel && task._dimension == _dimension;
         }
         return false;
+    }
+
+    @Override
+    public boolean isFinished(AltoClef mod) {
+        return super.isFinished(mod) && (_dimension == null || _dimension == WorldHelper.getCurrentDimension());
     }
 
     @Override
