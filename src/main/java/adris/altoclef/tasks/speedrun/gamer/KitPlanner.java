@@ -108,7 +108,7 @@ public final class KitPlanner {
         for (KitItem k : cfg.starterKit) {
             if (isAxe(k.item)) {
                 axes.add(k);
-            } else if (k.item.equals("furnace") && f.furnacePlacedNearby()) {
+            } else if (k.item.equals("furnace") && f.stations().furnace().heldForPlanner()) {
                 // standing on the ground (cooking the meat in it, say) and coming back to the bag: not a second one to craft
                 continue;
             } else if (gathering || !PLACEABLE.contains(k.item)) {
@@ -206,7 +206,7 @@ public final class KitPlanner {
     // answer stays 0 through them. the gather only: once ore is in the bag a worn pick is a just in time craft
     public static int stoneNeed(GamerFacts f, OverworldConfig cfg) {
         // a furnace of ours standing close by is skipped as a need above, so it is no 8 cobble here either (stoneFloor knew)
-        int wanted = stoneWanted(f, cfg, f.furnacePlacedNearby());
+        int wanted = stoneWanted(f, cfg, f.stations().furnace().heldForPlanner());
         if (wanted <= 0) {
             return 0;
         }
@@ -238,7 +238,7 @@ public final class KitPlanner {
     // a furnace of ours standing close by is a furnace we own (8 cobble the kit is not about to spend), same as a placed
     // table is held for the planks. plain cobblestone only, the build blocks the iron phase places on purpose are not in here
     public static int stoneFloor(GamerFacts f, OverworldConfig cfg) {
-        return stoneWanted(f, cfg, f.furnacePlacedNearby());
+        return stoneWanted(f, cfg, f.stations().furnace().heldForPlanner());
     }
 
     // the cobble the stone tools still eat, the furnace left out: what "the bag can make a furnace" must not count
@@ -290,7 +290,7 @@ public final class KitPlanner {
     // a table standing next to us is coming back to the bag, so it is as good as in it. without this the plan asked for
     // table planks the second the table went down and walked off to chop with the axe still uncrafted
     static boolean tableHeld(GamerFacts f) {
-        return f.has(Items.CRAFTING_TABLE) || f.tablePlacedNearby();
+        return f.has(Items.CRAFTING_TABLE) || f.stations().table().heldForPlanner();
     }
 
     // the first trip to the trees: just the table and the axe, so the axe is in hand for the real batch
