@@ -162,6 +162,14 @@ public class EndPrepPhase implements PhaseHandler {
         if (state.spawnBedSet || !_setSpawn.isFinished(mod)) {
             return;
         }
+        // finished because the bed task found nowhere to put a bed, which is not a spawn. the spawn is optional, so skip it
+        // (once: the task stays finished and this runs every tick)
+        if (_setSpawn.gaveUp()) {
+            if (!state.spawnBedGaveUp) {
+                giveUpSpawn(ctx, "nowhere to put the spawn bed");
+            }
+            return;
+        }
         try {
             BlockPos at = _setSpawn.getBedSleptPos();
             state.spawnBed = new RunState.Pos(at.getX(), at.getY(), at.getZ());

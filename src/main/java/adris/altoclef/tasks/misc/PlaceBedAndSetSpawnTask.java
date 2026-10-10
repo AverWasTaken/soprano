@@ -100,6 +100,9 @@ public class PlaceBedAndSetSpawnTask extends Task {
     private boolean _sleepAttemptMade;
     private boolean _wasSleeping;
     private BlockPos _bedForSpawnPoint;
+    // the search for a spot ended because the wander looking for one was stuck, not because a spawn got set. sticky
+    // until resetSleep: onStart runs again after every interrupt and the wander (same instance) is still the stuck one
+    private boolean _noBedSpot;
 
     public PlaceBedAndSetSpawnTask() {
 
@@ -198,6 +201,7 @@ public class PlaceBedAndSetSpawnTask extends Task {
     }
 
     public void resetSleep() {
+        _noBedSpot = false;
         _spawnSet = false;
         _sleepAttemptMade = false;
         _wasSleeping = false;
@@ -342,6 +346,12 @@ public class PlaceBedAndSetSpawnTask extends Task {
         }
         if (_currentBedRegion == null) {
             setDebugState("Searching for spot to place bed, wandering...");
+            // the wander can't even leave its spot, so no bed region is coming. setting a spawn is optional, so this
+            // ends the task and gaveUp tells the reader it was not a spawn. only this wander counts: the two escape
+            // wanders above (water, portal) clear the region too and must never give up
+            if (thisOrChildWanderFailing()) {
+                _noBedSpot = true;
+            }
             return new TimeoutWanderTask();
         }
 
@@ -497,6 +507,10 @@ public class PlaceBedAndSetSpawnTask extends Task {
             return true; // If not in the overworld, the player is considered finished
         }
 
+        if (_noBedSpot) {
+            return true;
+        }
+
         // Check if player is sleeping
         boolean isSleeping = mod.getPlayer() != null && mod.getPlayer().isSleeping();
 
@@ -507,6 +521,11 @@ public class PlaceBedAndSetSpawnTask extends Task {
         boolean isFinished = _spawnSet && !isSleeping && timerElapsed;
 
         return isFinished;
+    }
+
+    // finished, but only because there was nowhere to put a bed. a caller that reads finished as "spawn is set" has to ask
+    public boolean gaveUp() {
+        return _noBedSpot;
     }
 
     /**
