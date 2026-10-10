@@ -76,6 +76,11 @@ public final class StationHook {
         // stood. the same spot twice (reported and heard) is one entry, the book keys on kind + dimension + position
         default void placed(Kind kind, BlockPos pos, String dimension, long now) {
         }
+
+        // a container task is working at or walking to exactly this station, said every tick it does (a short lease: the book treats
+        // the station as in use for a little while after the last one, so a tick with an empty task tree does not read as "done")
+        default void touch(Kind kind, BlockPos pos, String dimension, long now) {
+        }
     }
 
     private static volatile Source source;
@@ -170,6 +175,15 @@ public final class StationHook {
         Source s = source;
         if (s != null && kind != null && pos != null && dimension != null) {
             s.placed(kind, pos.immutable(), dimension, now);
+        }
+    }
+
+    // a container task is working at / walking to this station right now, called every tick it is. a station the book does not know
+    // (a village's) is ignored
+    public static void touch(Kind kind, BlockPos pos, String dimension, long now) {
+        Source s = source;
+        if (s != null && kind != null && pos != null && dimension != null) {
+            s.touch(kind, pos, dimension, now);
         }
     }
 

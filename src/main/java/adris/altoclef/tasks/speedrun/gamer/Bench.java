@@ -25,6 +25,9 @@ public final class Bench {
     public final long placedTick;
     // the last tick its screen was open, WorkbenchRules.NEVER = never
     public long lastUsedTick = WorkbenchRules.NEVER;
+    // the last tick a container task said it was working at or walking to this very station (StationHook.touch), NEVER = none. not
+    // saved: a relog has no task working at anything
+    public long leasedTick = WorkbenchRules.NEVER;
     // the first tick of the stretch we have been further than NEAR from it, NEVER while we are inside
     public long outsideSince = WorkbenchRules.NEVER;
     // same for being in another dimension than the one it stands in

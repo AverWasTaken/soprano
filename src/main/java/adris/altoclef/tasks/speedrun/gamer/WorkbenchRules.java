@@ -63,7 +63,26 @@ public final class WorkbenchRules {
     // then (a craft slots in, the planner rereads the bag) and that one tick used to start a smoker pickup mid hunt
     public static final long LET_GO_TICKS = 60;
 
+    // a container task says "this station is mine right now" every tick it works at or walks to it (StationHook.touch), and the book
+    // believes it for this long after the last time. 40 is two LOAD_GRACE: the tree can be empty for a tick or two between a task and
+    // the next one it hands the wheel to (a hold, a chain with the wheel for a fight or a meal), and that gap must not read as the
+    // work being over. it is well under DRIVE_GRACE (a pickup nobody drives), and the SETTLE after a screen shut still comes on top
+    // of it, so a station is never taken the instant the lease lapses. it only ever adds to "in use" (idle below)
+    public static final long LEASE_TICKS = 40;
+
     private WorkbenchRules() {
+    }
+
+    // somebody touched this bench lately. a clock that went backwards (another world) is no lease, it can not hold a bench for ever
+    public static boolean leased(Bench b, long now) {
+        return b.leasedTick != NEVER && now >= b.leasedTick && now - b.leasedTick <= LEASE_TICKS;
+    }
+
+    // nothing is using the bench: no lease, no screen of its kind open, no furnace load in flight and (the inference this slice does
+    // not replace, the lease is OR'd onto it) no container task of its kind anywhere in the tree. the tree scan is per KIND, so with
+    // two furnaces standing every one of them is held by a smelt at either; the lease is per station, narrowing that is a follow up
+    public static boolean idle(Bench b, long now, boolean screenOpen, boolean loadInFlight, boolean treeWorksAtKind) {
+        return !leased(b, now) && !screenOpen && !loadInFlight && !treeWorksAtKind;
     }
 
     // ---- where the next station comes from (rule 1)

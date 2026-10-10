@@ -86,7 +86,20 @@ public abstract class DoStuffInContainerTask extends Task {
         super.tick(mod, parentChain);
         if (isActive()) {
             reportPlaced(mod);
+            touchTarget(mod);
         }
+    }
+
+    // the station we are walking to or working at says so every tick, a short lease in the book (WorkbenchRules.LEASE_TICKS) that
+    // holds it as in use even on a tick the task tree has nothing of ours in it. not a station that is coming down. a station the
+    // book does not know (a village's) is ignored over there. the cached target is this tick's choice, or last tick's when a
+    // subclass returned before choosing (the screen is open), which is the same block
+    private void touchTarget(AltoClef mod) {
+        BlockPos at = _cachedContainerPosition;
+        if (_stationKind == null || at == null || StationHook.pickingUp(at)) {
+            return;
+        }
+        StationHook.touch(_stationKind, at, WorldHelper.getCurrentDimension().name(), mod.getWorld().getGameTime());
     }
 
     // our placer is done and the block is really there: tell the book, so it does not have to guess from a block event and how far

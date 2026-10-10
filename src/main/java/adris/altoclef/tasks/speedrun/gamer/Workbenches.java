@@ -373,9 +373,18 @@ public final class Workbenches {
             // the same record the block event uses, so a station that was reported and heard (either way round) is one bench
             @Override
             public void placed(Kind kind, BlockPos pos, String dimension, long now) {
-                if (record(state, kind, new RunState.Pos(pos.getX(), pos.getY(), pos.getZ()), dimension, now)) {
+                RunState.Pos at = new RunState.Pos(pos.getX(), pos.getY(), pos.getZ());
+                if (record(state, kind, at, dimension, now)) {
                     recorded.run();
                 }
+                // putting it down is the first use of it: the task goes on to the craft or the load, and a tick with nothing in the
+                // tree in between must not look like it is over
+                Workbenches.touch(state, kind, at, dimension, now);
+            }
+
+            @Override
+            public void touch(Kind kind, BlockPos pos, String dimension, long now) {
+                Workbenches.touch(state, kind, new RunState.Pos(pos.getX(), pos.getY(), pos.getZ()), dimension, now);
             }
 
             @Override
@@ -882,18 +891,32 @@ public final class Workbenches {
 
     // the screen is shut, nothing in the task tree is working at this kind of station, and no furnace load is half done
     private boolean idle(AltoClef mod, GamerContext ctx, Bench b, long now) {
+        // the container task working at this very station said so lately (a lease), and that holds on a tick the tree is empty
+        if (WorkbenchRules.leased(b, now)) {
+            return false;
+        }
         AbstractContainerMenu menu = mod.getPlayer().containerMenu;
-        if (menuOf(b.kind, menu)) {
-            return false;
-        }
+        boolean screen = menuOf(b.kind, menu);
         // the table too: its pickup takes the wheel and would shut a furnace screen halfway through the load like any other
-        if (WorkbenchRules.loadInFlight(menu instanceof AbstractFurnaceMenu, AsyncSmelting.lastWork(), now)) {
+        boolean load = WorkbenchRules.loadInFlight(menu instanceof AbstractFurnaceMenu, AsyncSmelting.lastWork(), now);
+        // the tree is last tick's, which is exactly what we want to look at: a craft or a smelt anywhere under the user task
+        // means a station of this kind is about to be used (collecting its ingredients does not count, the plan lookahead has that).
+        // per kind, not per station, so it still holds every bench of the kind (see WorkbenchRules.idle)
+        Task root = mod.getUserTaskChain().getCurrentTask();
+        boolean tree = !screen && !load && root != null
+                && root.thisOrChildSatisfies(t -> t instanceof DoStuffInContainerTask d && d.stationKind() == b.kind);
+        return WorkbenchRules.idle(b, now, screen, load, tree);
+    }
+
+    // a container task is working at or walking to this station: its lease starts over. false when the book has no such bench (a
+    // village's table, one already forgotten)
+    public static boolean touch(RunState state, Kind kind, RunState.Pos pos, String dimension, long now) {
+        Bench b = find(state, kind, pos);
+        if (b == null || !b.dimension.equals(dimension)) {
             return false;
         }
-        // the tree is last tick's, which is exactly what we want to look at: a craft or a smelt anywhere under the user task
-        // means a station of this kind is about to be used (collecting its ingredients does not count, the plan lookahead has that)
-        Task root = mod.getUserTaskChain().getCurrentTask();
-        return root == null || !root.thisOrChildSatisfies(t -> t instanceof DoStuffInContainerTask d && d.stationKind() == b.kind);
+        b.leasedTick = now;
+        return true;
     }
 
     // a furnace or smoker with a job in it, or that the container tracker last saw with something in it (we are the only ones who
