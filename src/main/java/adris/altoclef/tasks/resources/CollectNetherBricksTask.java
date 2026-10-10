@@ -45,7 +45,7 @@ public class CollectNetherBricksTask extends ResourceTask {
         }
 
         ItemTarget b = new ItemTarget(Items.NETHER_BRICK, 1);
-        return new CraftInInventoryTask(new RecipeTarget(Items.NETHER_BRICK, _count, CraftingRecipe.newShapedRecipe("nether_brick", new ItemTarget[]{b, b, b, b}, 1)));
+        return new CraftInInventoryTask(new RecipeTarget(Items.NETHER_BRICKS, _count, CraftingRecipe.newShapedRecipe("nether_brick", new ItemTarget[]{b, b, b, b}, 1)));
     }
 
     @Override
