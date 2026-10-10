@@ -266,7 +266,9 @@ public record WoodBudget(
             items[i] = species.get(i).item();
             counts[i] = species.get(i).count();
         }
-        int[] usable = FuelPolicy.usable(items, counts, keep.logs() + spokenLogs, keep.planks());
+        // fuelKeep, not keep: it is the reserve the furnace is actually told (every log outside the overworld), so the count is
+        // never wood the furnace will refuse
+        int[] usable = FuelPolicy.usable(items, counts, fuelKeep.logs() + spokenLogs, fuelKeep.planks());
         int burnable = 0;
         for (int i = 0; i < items.length; i++) {
             if (species.get(i).burnable()) {
