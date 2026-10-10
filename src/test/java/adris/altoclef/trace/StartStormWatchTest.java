@@ -107,4 +107,17 @@ public class StartStormWatchTest {
         assertTrue(w.start(Integer.class, 21));
         assertFalse(w.start(Long.class, 21));
     }
+
+    @Test
+    public void recentCountsTheStartsInsideTheWindowOnly() {
+        StartStormWatch w = new StartStormWatch();
+        assertEquals(0, w.recent(String.class, 0));
+        for (int i = 0; i < 15; i++) {
+            w.start(String.class, i * 1000L);
+        }
+        assertEquals(15, w.recent(String.class, 15_000));
+        // the first five are a minute and more old by now
+        assertEquals(10, w.recent(String.class, 65_000));
+        assertEquals(0, w.recent(Integer.class, 65_000));
+    }
 }

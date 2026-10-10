@@ -5,6 +5,7 @@ import adris.altoclef.tasksystem.Task;
 import adris.altoclef.tasksystem.TaskChain;
 import adris.altoclef.trace.CursorWatch;
 import adris.altoclef.trace.Lines;
+import adris.altoclef.trace.MonitorErrors;
 import adris.altoclef.trace.Trace;
 import adris.altoclef.trace.Vitals;
 import adris.altoclef.util.helpers.StorageHelper;
@@ -46,7 +47,22 @@ public final class Monitors {
                 Debug.logInternal(vitals(mod, player));
             }
         } catch (RuntimeException e) {
-            // a log line is never worth a crash in the tick
+            // a log line is never worth a crash in the tick, but a monitor that always throws should not look like a quiet one
+            broke("vitals", e);
+        }
+    }
+
+    private static final MonitorErrors ERRORS = new MonitorErrors();
+
+    // the first throw from each monitor is said once, after that it stays swallowed. the saying can't throw either
+    public static void broke(String monitor, RuntimeException error) {
+        try {
+            String line = ERRORS.first(monitor, error);
+            if (line != null) {
+                Debug.logInternal(line);
+            }
+        } catch (RuntimeException ignored) {
+            // nothing left to tell
         }
     }
 
@@ -59,7 +75,7 @@ public final class Monitors {
         try {
             watchCursor();
         } catch (RuntimeException e) {
-            // see above
+            broke("cursor", e);
         }
     }
 

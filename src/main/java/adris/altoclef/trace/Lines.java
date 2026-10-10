@@ -27,6 +27,14 @@ public final class Lines {
         return "MONITOR: start storm " + taskClass + " x" + (StartStormWatch.LIMIT + 1) + " in 60 s";
     }
 
+    // by is who stopped it most, parent says whether that was a parent dropping it (and not another task taking over). null by = nobody to blame
+    public static String startStorm(String taskClass, String by, boolean parent) {
+        if (by == null) {
+            return startStorm(taskClass);
+        }
+        return startStorm(taskClass) + ", mostly " + (parent ? "dropped by parent " : "cut off by ") + by;
+    }
+
     public static String cursorStuck(String item, int count, long seconds) {
         return "MONITOR: cursor stuck " + item + " x" + count + " for " + seconds + " s, no container screen open";
     }

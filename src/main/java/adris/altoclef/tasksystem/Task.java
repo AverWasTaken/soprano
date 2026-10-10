@@ -2,13 +2,18 @@ package adris.altoclef.tasksystem;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
+import adris.altoclef.Monitors;
 import adris.altoclef.tasks.movement.TimeoutWanderTask;
+import adris.altoclef.trace.CutRing;
 import adris.altoclef.trace.Lines;
 import adris.altoclef.trace.RepeatCounter;
 import adris.altoclef.trace.StartStormWatch;
+import adris.altoclef.trace.StormGate;
 import adris.altoclef.trace.Trace;
 import adris.altoclef.ui.HudText;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.function.Predicate;
 
 public abstract class Task {
@@ -17,6 +22,12 @@ public abstract class Task {
     // starts across every task, the main thread is the only one that ticks them
     private static final RepeatCounter REPEATS = new RepeatCounter();
     private static final StartStormWatch STARTS = new StartStormWatch();
+    // who stopped whom, to name the other side of a storm. and the outermost-only rule for flagging one
+    private static final CutRing CUTS = new CutRing();
+    private static final StormGate STORM_GATE = new StormGate();
+
+    // whoever ticked this task last, only read when a storm is flagged
+    private Task _parent;
 
     private String _oldDebugState = "";
     private String _debugState = "";
@@ -77,11 +88,13 @@ public abstract class Task {
             }
 
             // Run our child
+            _sub._parent = this;
             _sub.tick(mod, parentChain);
         } else {
             // We are null
             if (_sub != null && canBeInterrupted(mod, _sub, null)) {
                 // Our previous sub must be interrupted.
+                noteCut(_sub.getClass(), getClass(), true);
                 _sub.stop(mod);
                 _sub = null;
             }
@@ -159,12 +172,43 @@ public abstract class Task {
     // a flag and never an action: 21 starts of one class in a minute is a loop, say so and keep the lead up
     private void watchStart() {
         try {
-            if (STARTS.start(getClass(), System.currentTimeMillis())) {
-                Debug.logInternal(Lines.startStorm(className()));
-                Trace.dump("monitor:storm");
+            long now = System.currentTimeMillis();
+            if (STARTS.start(getClass(), now)) {
+                flagStorm(now);
             }
         } catch (RuntimeException e) {
-            // a monitor must never keep a task from starting
+            // a monitor must never keep a task from starting, but a broken one should say so once
+            Monitors.broke("start storm", e);
+        }
+    }
+
+    // the storm is real, now only the line and who gets it. a class under one that is already flagged (or about to be) stays quiet
+    private void flagStorm(long now) {
+        List<Class<?>> ancestors = new ArrayList<>();
+        for (Task up = _parent; up != null && ancestors.size() < 8; up = up._parent) {
+            ancestors.add(up.getClass());
+        }
+        boolean quiet = STORM_GATE.shadowed(getClass(), ancestors, now, up -> STARTS.recent(up, now));
+        STORM_GATE.seen(getClass(), now);
+        if (quiet) {
+            return;
+        }
+        CutRing.Culprit by = CUTS.mostCommon(getClass(), now, StartStormWatch.WINDOW_MS);
+        Debug.logInternal(by == null ? Lines.startStorm(className()) : Lines.startStorm(className(), nameOf(by.by()), by.parent()));
+        Trace.dump("monitor:storm");
+    }
+
+    private static String nameOf(Class<?> type) {
+        String name = type.getSimpleName();
+        return name.isEmpty() ? type.getName() : name;
+    }
+
+    // one task stopped another (or a parent let go of it): kept for the storm line
+    private void noteCut(Class<?> victim, Class<?> cutter, boolean byParent) {
+        try {
+            CUTS.record(victim, cutter, byParent, System.currentTimeMillis());
+        } catch (RuntimeException e) {
+            Monitors.broke("cut ring", e);
         }
     }
 
@@ -179,7 +223,7 @@ public abstract class Task {
                 Debug.logInternal(Lines.repeat(className(), _debugState, times));
             }
         } catch (RuntimeException e) {
-            // same as watchStart
+            Monitors.broke("repeat", e);
         }
     }
 
@@ -229,6 +273,9 @@ public abstract class Task {
     public void stop(AltoClef mod, Task interruptTask) {
         if (!_active) return;
         Debug.logInternal("Task STOP: " + this + ", interrupted by " + interruptTask);
+        if (interruptTask != null) {
+            noteCut(getClass(), interruptTask.getClass(), false);
+        }
         try {
             if (!_first) {
                 stopAs(mod, interruptTask);
@@ -262,6 +309,9 @@ public abstract class Task {
      */
     public void interrupt(AltoClef mod, Task interruptTask) {
         if (!_active) return;
+        if (interruptTask != null) {
+            noteCut(getClass(), interruptTask.getClass(), false);
+        }
         if (!_first) {
             _interrupting = true;
             try {

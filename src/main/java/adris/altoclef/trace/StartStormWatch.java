@@ -51,6 +51,12 @@ public final class StartStormWatch {
         return true;
     }
 
+    // how many starts of this class are inside the window right now (0 for a class never seen). no allocation
+    public int recent(Object key, long nowMs) {
+        Entry e = entries.get(key);
+        return e == null ? 0 : inWindow(e, nowMs);
+    }
+
     private static int inWindow(Entry e, long nowMs) {
         int n = 0;
         for (int i = 0; i < e.count; i++) {

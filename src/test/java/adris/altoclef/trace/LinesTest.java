@@ -42,6 +42,16 @@ public class LinesTest {
     }
 
     @Test
+    public void theStormLineNamesWhoKeptCuttingItOff() {
+        assertEquals("MONITOR: start storm DestroyBlockTask x21 in 60 s, mostly cut off by PickupDroppedItemTask",
+                Lines.startStorm("DestroyBlockTask", "PickupDroppedItemTask", false));
+        assertEquals("MONITOR: start storm GetToEntityTask x21 in 60 s, mostly dropped by parent KillEntityTask",
+                Lines.startStorm("GetToEntityTask", "KillEntityTask", true));
+        // nobody to blame is the plain line
+        assertEquals(Lines.startStorm("ClickSlotTask"), Lines.startStorm("ClickSlotTask", null, false));
+    }
+
+    @Test
     public void theCursorLine() {
         assertEquals("MONITOR: cursor stuck cobblestone x12 for 5 s, no container screen open", Lines.cursorStuck("cobblestone", 12, 5));
     }
