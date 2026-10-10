@@ -67,6 +67,40 @@ public final class RecoverRules {
         }
     }
 
+    // the give-up clock for the whole recovery. it only charges for ticks the task actually ran: a wall clock also billed
+    // every second spent running from zombies, which is not time spent recovering. and it survives a restart (resume does
+    // not clear the total), or interrupts could keep a recovery alive forever
+    public static final class Budget {
+        private static final double TICK_SECONDS = 0.05;
+        private final double limit;
+        private double spent;
+        private double lastNow = Double.NaN;
+
+        public Budget(double limitSeconds) {
+            limit = limitSeconds;
+        }
+
+        // one running tick. true once the total has crossed the limit
+        public boolean update(double nowSeconds) {
+            // same idea as Chase: a gap bigger than a tick or two was not us running, so it is not billed
+            // the first tick after a restart has no last tick to measure from, so it is billed as one flat tick. a task that
+            // keeps getting interrupted after a single tick still pays for every one of them
+            double dt = Double.isNaN(lastNow) ? TICK_SECONDS : Math.min(Math.max(0, nowSeconds - lastNow), 1.0);
+            lastNow = nowSeconds;
+            spent += dt;
+            return spent > limit;
+        }
+
+        // we were just (re)started, the time since the last tick was somebody else's. keeps the total
+        public void resume() {
+            lastNow = Double.NaN;
+        }
+
+        public double spent() {
+            return spent;
+        }
+    }
+
     // close enough that the drops are loaded and the pickup task can see them
     public static final double ARRIVE_RANGE = 6;
     // drops spread out a bit when a player dies, and fall down slopes
