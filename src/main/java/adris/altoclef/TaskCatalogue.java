@@ -268,8 +268,9 @@ mine("pale_oak_sapling", Blocks.PALE_OAK_LEAVES, Items.PALE_OAK_SAPLING);
             shapedRecipe2x2("sugar", Items.SUGAR, 1, "sugar_cane", o, o, o);
             shapedRecipe2x2("bone_meal", Items.BONE_MEAL, 3, "bone", o, o, o);
             shapedRecipe2x2("melon_seeds", Items.MELON_SEEDS, 1, "melon_slice", o, o, o);
-            shapedRecipe2x2("bamboo_planks", Items.BAMBOO_PLANKS, 2, "bamboo_block", o, o, o);
+            // the block goes first: a slot name that isn't registered yet quietly matches nothing, and the planks recipe had no ingredient at all
             shapedRecipe3x3Block("bamboo_block", Items.BAMBOO_BLOCK, "bamboo");
+            shapedRecipe2x2("bamboo_planks", Items.BAMBOO_PLANKS, 2, "bamboo_block", o, o, o);
             simple("hay_block", Items.HAY_BLOCK, CollectHayBlockTask::new).dontMineIfPresent();
             shapedRecipe2x2Block("polished_andesite", Items.POLISHED_ANDESITE, 4, "andesite");
             shapedRecipe2x2Block("polished_diorite", Items.POLISHED_DIORITE, 4, "diorite");
@@ -437,8 +438,8 @@ mine("pale_oak_sapling", Blocks.PALE_OAK_LEAVES, Items.PALE_OAK_SAPLING);
                 shapedRecipe3x3("map", Items.MAP, 1, a, a, a, a, "compass", a, a, a, a);
             }
             shapedRecipe3x3("fishing_rod", Items.FISHING_ROD, 1, o, o, s, o, s, "string", s, o, "string");
-            shapedRecipe2x2("carrot_on_a_stick", Items.CARROT_ON_A_STICK, 1, "fishing_rod", "carrot", o, o);
-            shapedRecipe2x2("warped_fungus_on_a_stick", Items.WARPED_FUNGUS_ON_A_STICK, 1, "fishing_rod", "warped_fungus", o, o);
+            shapedRecipe2x2("carrot_on_a_stick", Items.CARROT_ON_A_STICK, 1, "fishing_rod", o, o, "carrot");
+            shapedRecipe2x2("warped_fungus_on_a_stick", Items.WARPED_FUNGUS_ON_A_STICK, 1, "fishing_rod", o, o, "warped_fungus");
             shapedRecipe3x3("spyglass", Items.SPYGLASS, 1, o, "amethyst_shard", o, o, "copper_ingot", o, o, "copper_ingot", o);
             shapedRecipe3x3("glass_bottle", Items.GLASS_BOTTLE, 3, "glass", o, "glass", o, "glass", o, o, o, o);
             {
@@ -631,7 +632,7 @@ mine("pale_oak_sapling", Blocks.PALE_OAK_LEAVES, Items.PALE_OAK_SAPLING);
             mine("apple", Blocks.OAK_LEAVES, Items.APPLE);
             smelt("baked_potato", Items.BAKED_POTATO, "potato");
             shapedRecipe2x2("mushroom_stew", Items.MUSHROOM_STEW, 1, "red_mushroom", "brown_mushroom", "bowl", o);
-            shapedRecipe2x2("suspicious_stew", Items.SUSPICIOUS_STEW, 1, "red_mushroom", "brown_mushroom", "bowl", "flower");
+            shapedRecipe2x2Targets("suspicious_stew", Items.SUSPICIOUS_STEW, 1, t("red_mushroom"), t("brown_mushroom"), t("bowl"), new ItemTarget(ItemHelper.SUSPICIOUS_STEW_FLOWERS));
             shapedRecipe3x3("bread", Items.BREAD, 1, "wheat", "wheat", "wheat", o, o, o, o, o, o);
             shapedRecipe3x3("cookie", Items.COOKIE, 8, "wheat", "cocoa_beans", "wheat", o, o, o, o, o, o);
             shapedRecipe2x2("pumpkin_pie", Items.PUMPKIN_PIE, 1, "pumpkin", "sugar", o, "egg");
@@ -735,7 +736,8 @@ mine("pale_oak_sapling", Blocks.PALE_OAK_LEAVES, Items.PALE_OAK_SAPLING);
         return _itemToResourceTask.containsKey(item);
     }
 
-    // name -> single craft target for every recipe the shaped helpers (and the wood buttons) registered
+    // name -> single craft target for every recipe the shaped helpers (and the wood buttons) registered.
+    // the recipe parity test needs these, and it can't just ask for the tasks: building any Task wants the live player, which a headless test doesn't have
     static Map<String, RecipeTarget> craftedRecipes() {
         return Collections.unmodifiableMap(_craftedRecipes);
     }
@@ -788,7 +790,12 @@ mine("pale_oak_sapling", Blocks.PALE_OAK_LEAVES, Items.PALE_OAK_SAPLING);
     }
 
     private static CataloguedResource shapedRecipe2x2(String name, Item match, int outputCount, String s0, String s1, String s2, String s3) {
-        CraftingRecipe recipe = CraftingRecipe.newShapedRecipe(name, new ItemTarget[]{t(s0), t(s1), t(s2), t(s3)}, outputCount);
+        return shapedRecipe2x2Targets(name, match, outputCount, t(s0), t(s1), t(s2), t(s3));
+    }
+
+    // for the slots a catalogue name can't say, like a flower list that isn't a catalogue entry
+    private static CataloguedResource shapedRecipe2x2Targets(String name, Item match, int outputCount, ItemTarget s0, ItemTarget s1, ItemTarget s2, ItemTarget s3) {
+        CraftingRecipe recipe = CraftingRecipe.newShapedRecipe(name, new ItemTarget[]{s0, s1, s2, s3}, outputCount);
         _craftedRecipes.put(name, new RecipeTarget(match, 1, recipe));
         return put(name, new Item[]{match}, count -> new CraftInInventoryTask(new RecipeTarget(match, count, recipe)));
     }
@@ -898,15 +905,16 @@ mine("pale_oak_sapling", Blocks.PALE_OAK_LEAVES, Items.PALE_OAK_SAPLING);
         return woodTasks(baseName, getMatch, getTask, false);
     }
 
-    // woodTasks, but eager, so the recipe is in _craftedRecipes without anyone asking for a task
+    // woodTasks, but eager, so the recipe is in _craftedRecipes without anyone asking for a task.
+    // the planks come from the catalogue name because bamboo has no planks field in WoodItems (it can't, bamboo_planks is registered by hand)
     private static void woodButtons() {
         for (WoodType woodType : WoodType.values()) {
             ItemHelper.WoodItems woodItems = ItemHelper.getWoodItems(woodType);
             if (woodItems.button == null) continue;
             String name = woodItems.prefix + "_button";
-            CraftingRecipe recipe = CraftingRecipe.newShapedRecipe(name, new ItemTarget[]{new ItemTarget(woodItems.planks, 1), null, null, null}, 1);
+            CraftingRecipe recipe = CraftingRecipe.newShapedRecipe(name, new ItemTarget[]{t(woodItems.prefix + "_planks"), null, null, null}, 1);
             _craftedRecipes.put(name, new RecipeTarget(woodItems.button, 1, recipe));
-            put(name, new Item[]{woodItems.button}, count -> new CraftInInventoryTask(new RecipeTarget(woodItems.button, 1, recipe)));
+            put(name, new Item[]{woodItems.button}, count -> new CraftInInventoryTask(new RecipeTarget(woodItems.button, count, recipe)));
         }
     }
 

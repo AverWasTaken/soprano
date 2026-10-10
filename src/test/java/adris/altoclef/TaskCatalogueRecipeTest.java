@@ -288,7 +288,9 @@ public class TaskCatalogueRecipeTest {
     }
 
     // vanilla often splits one result into a recipe per variant (suspicious_stew_from_<flower>, rabbit_stew_from_<mushroom>).
-    // when variants only differ in a single ingredient, a slot taking any of them is fine, so union that ingredient
+    // when variants only differ in a single ingredient, a slot taking any of them is fine, so union that ingredient.
+    // kept this strict on purpose: with every other ingredient identical, the union is exactly what vanilla accepts in that slot.
+    // variants that differ in two places would let the catalogue mix halves of different recipes, so those are never merged
     private static List<Vanilla> mergeVariants(List<Vanilla> all) {
         Map<String, List<Vanilla>> groups = new LinkedHashMap<>();
         for (Vanilla v : all) {
