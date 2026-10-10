@@ -11,8 +11,9 @@ import adris.altoclef.util.helpers.WalkCost;
 //
 // what is NOT in it on purpose: the per-bench decisions (WorkbenchRules.decide moves the bench's clocks and reads the phase's plan, so
 // it stays in Workbenches.run), idle / in use (they ask the task tree), and the container tasks' own choice (StationChoice is alto's,
-// it runs on candidates the task builds from the tracker). phaseMayEnd is here as `mayEnd` for the readers that ask at the top of a
-// tick, but the isDone predicates keep calling Workbenches.phaseMayEnd: they are asked again after the tick's pickups moved the bench
+// it runs on candidates the task builds from the tracker). phaseMayEnd is here as `mayEnd` (same WorkbenchRules function), but no
+// reader reads it: the isDone predicates and PortalPhase ask AFTER the tick's pickups moved the registry (and have no ctx), a value
+// built in refresh() would answer one tick late, so they keep calling Workbenches.phaseMayEnd. one implementation, two call sites
 public final class StationVerdict {
     // nobody is placed anywhere, nothing is held
     public static final StationVerdict NONE = fromFlags(false, false, false);

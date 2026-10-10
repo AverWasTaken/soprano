@@ -346,7 +346,8 @@ public final class FurnaceWatch {
     }
 
     // one of the stations we put down (a village's blast furnace has no list, so it is never ours)
-    private static boolean ours(RunState state, String kind, RunState.Pos pos) {
+    // (package private so StationContradictionsTest can pin that it ignores the dimension, nothing else calls it from outside)
+    static boolean ours(RunState state, String kind, RunState.Pos pos) {
         List<RunState.Pos> own = FurnaceJobs.placedFor(state, kind);
         return own != null && own.contains(pos);
     }
