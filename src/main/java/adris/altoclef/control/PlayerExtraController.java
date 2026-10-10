@@ -102,6 +102,13 @@ public class PlayerExtraController {
         return _mod.getPlayer().getAttackStrengthScale(SERVER_PARTIAL) >= 1;
     }
 
+    // ticks of cooldown the held item has charged, capped at its delay. the weapon pick uses it to tell a fresh swing (a swap
+    // is free) from a half charged one (a swap throws it away)
+    public double chargedTicks() {
+        LocalPlayer player = _mod.getPlayer();
+        return player.getAttackStrengthScale(SERVER_PARTIAL) * player.getCurrentItemAttackStrengthDelay();
+    }
+
     // ticks until the swing is at full strength, 0 or less when it is. the scale already knows the weapon's delay
     private double ticksToFull() {
         LocalPlayer player = _mod.getPlayer();

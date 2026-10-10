@@ -170,6 +170,9 @@ public class KillAura {
             if (mod.getPlayer() == null) {
                 return;
             }
+            // the weapon goes in hand before the gate asks about the cooldown. a swap resets it, so judging the gate on one item
+            // and swinging another was how a charge that was nearly full turned back into a fresh one
+            toHit.ifPresent(entity -> readyTheWeapon(mod, entity));
             // a not yet full swing is a quiet tick, unless a crit hop is about to start or is in the air (never while
             // baritone is walking, so travelling past a mob still doesn't turn our head every tick)
             if (!mod.getControllerExtras().attackReady() && !mod.getControllerExtras().wantsCritTick()) {
@@ -178,6 +181,20 @@ public class KillAura {
 
             toHit.ifPresent(entity -> attack(mod, entity, true, true));
         }
+    }
+
+    // the same guards attack() has before it equips, so a mob we would not swing at does not get a weapon swap either
+    private void readyTheWeapon(AltoClef mod, Entity entity) {
+        if (entity == null || entity instanceof LargeFireball) return;
+        if (entity instanceof Mob mob && EntityHelper.isCalmNeutral(mod, mob)) return;
+        if (inFieldRange(mod, entity)) {
+            equipWeapon(mod);
+        }
+    }
+
+    private boolean inFieldRange(AltoClef mod, Entity entity) {
+        return Double.isInfinite(_forceFieldRange) || entity.distanceToSqr(mod.getPlayer()) < _forceFieldRange * _forceFieldRange ||
+                entity.distanceToSqr(mod.getPlayer()) < 40;
     }
 
     private void performFastestAttack(AltoClef mod) {
@@ -207,8 +224,7 @@ public class KillAura {
         if (!(entity instanceof LargeFireball)) {
             LookHelper.lookAt(mod, entity.getEyePosition());
         }
-        if (Double.isInfinite(_forceFieldRange) || entity.distanceToSqr(mod.getPlayer()) < _forceFieldRange * _forceFieldRange ||
-                entity.distanceToSqr(mod.getPlayer()) < 40) {
+        if (inFieldRange(mod, entity)) {
             if (entity instanceof LargeFireball) {
                 mod.getControllerExtras().attack(entity);
                 return;

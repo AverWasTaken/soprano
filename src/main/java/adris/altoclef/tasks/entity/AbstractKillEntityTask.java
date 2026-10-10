@@ -97,8 +97,10 @@ public abstract class AbstractKillEntityTask extends AbstractDoToEntityTask {
         if (bestWeapon == null && toolFallback) bestWeapon = WeaponPick.bestTool(candidates(mod));
         Item equipedWeapon = StorageHelper.getItemStackInSlot(PlayerSlot.getEquipSlot()).getItem();
         logPick(mod, bestWeapon, equipedWeapon);
-        if (bestWeapon != null && bestWeapon != equipedWeapon) {
-            mod.getSlotHandler().forceEquipItem(bestWeapon);
+        // (the pick can flip with the crowd, the hand does not: see WeaponPick.hold)
+        Item hold = WeaponPick.hold(equipedWeapon, bestWeapon, mod.getControllerExtras().chargedTicks());
+        if (hold != equipedWeapon) {
+            mod.getSlotHandler().forceEquipItem(hold);
             return true;
         }
         return false;

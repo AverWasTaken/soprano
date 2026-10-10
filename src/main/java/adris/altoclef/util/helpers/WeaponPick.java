@@ -65,6 +65,25 @@ public final class WeaponPick {
         return best == null ? null : best.item();
     }
 
+    // a swap costs the whole cooldown (vanilla resets the ticker for any change of item type), so once a weapon is in hand
+    // it stays there until the swing lands. a pick that flips with the crowd count would otherwise keep the cooldown
+    // from ever filling. this much charge or less counts as just swung: the swap is nearly free then, the new weapon starts
+    // its own cooldown from about where the old one is
+    public static final double JUST_SWUNG_TICKS = 2;
+
+    // what to have in hand this tick, given what we hold, what the pick says, and how many ticks of cooldown are charged
+    // (scale times the delay of what we hold). the pick is null when there is nothing to pick
+    public static Item hold(Item inHand, Item pick, double chargedTicks) {
+        if (pick == null || pick == inHand) {
+            return inHand;
+        }
+        // a bucket, a pick or food has no cooldown worth protecting
+        if (!isWeapon(inHand) || chargedTicks <= JUST_SWUNG_TICKS) {
+            return pick;
+        }
+        return inHand;
+    }
+
     private static boolean beats(Candidate a, Candidate b, boolean crowd, boolean shieldedTarget) {
         boolean aWorn = ToolWear.wornOut(a.damage(), a.maxDamage());
         boolean bWorn = ToolWear.wornOut(b.damage(), b.maxDamage());

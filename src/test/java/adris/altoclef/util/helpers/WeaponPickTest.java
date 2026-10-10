@@ -203,4 +203,44 @@ public class WeaponPickTest {
         assertEquals(7f, ItemHelper.getAttackDamage(Items.WOODEN_AXE), 1e-6);
         assertEquals(10f, ItemHelper.getAttackDamage(Items.NETHERITE_AXE), 1e-6);
     }
+
+    // the pick flips with the crowd count, the hand must not: every swap hands the cooldown back to zero
+    @Test
+    public void aCrowdFlagFlippingEveryTickNeverChangesTheHandMidCooldown() {
+        Item inHand = Items.STONE_AXE;
+        for (int tick = 0; tick < 25; tick++) {
+            Item pick = tick % 2 == 0 ? Items.STONE_SWORD : Items.STONE_AXE;
+            // charging: past the just swung window and under a full cooldown, then full as well
+            double charged = Math.min(tick + 3, 25);
+            inHand = WeaponPick.hold(inHand, pick, charged);
+            assertSame("tick " + tick, Items.STONE_AXE, inHand);
+        }
+    }
+
+    @Test
+    public void aFullCooldownWeaponAlsoStaysUntilTheSwingLands() {
+        assertSame(Items.STONE_AXE, WeaponPick.hold(Items.STONE_AXE, Items.IRON_SWORD, 25));
+    }
+
+    @Test
+    public void rightAfterASwingTheSwapIsAllowed() {
+        assertSame(Items.STONE_SWORD, WeaponPick.hold(Items.STONE_AXE, Items.STONE_SWORD, 0));
+        assertSame(Items.STONE_SWORD, WeaponPick.hold(Items.STONE_AXE, Items.STONE_SWORD, WeaponPick.JUST_SWUNG_TICKS));
+        assertSame(Items.STONE_AXE, WeaponPick.hold(Items.STONE_AXE, Items.STONE_SWORD, WeaponPick.JUST_SWUNG_TICKS + 0.5));
+    }
+
+    @Test
+    public void aHandWithoutAWeaponSwapsAtOnceWhateverTheCharge() {
+        assertSame(Items.STONE_AXE, WeaponPick.hold(Items.WATER_BUCKET, Items.STONE_AXE, 25));
+        assertSame(Items.STONE_SWORD, WeaponPick.hold(Items.DIAMOND_PICKAXE, Items.STONE_SWORD, 9));
+        assertSame(Items.STONE_SWORD, WeaponPick.hold(Items.BREAD, Items.STONE_SWORD, 9));
+        assertSame(Items.STONE_SWORD, WeaponPick.hold(Items.AIR, Items.STONE_SWORD, 9));
+    }
+
+    @Test
+    public void noPickMeansTheHandStaysAsItIs() {
+        assertSame(Items.BREAD, WeaponPick.hold(Items.BREAD, null, 0));
+        assertSame(Items.STONE_AXE, WeaponPick.hold(Items.STONE_AXE, null, 0));
+        assertSame(Items.STONE_AXE, WeaponPick.hold(Items.STONE_AXE, Items.STONE_AXE, 0));
+    }
 }
