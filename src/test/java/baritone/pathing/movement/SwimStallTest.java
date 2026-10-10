@@ -48,6 +48,17 @@ public class SwimStallTest {
     }
 
     @Test
+    public void aSecondOfStandingStillIsNotAStall() {
+        // a door or a fumbled climb onto the bank, then off we go again. the window is a second and a half
+        assertEquals(30, SwimStall.WINDOW);
+        SwimStall s = new SwimStall();
+        assertEquals(SWIM, sit(s, 25, 3, false));
+        assertEquals(SWIM, s.tick(2.5, false));
+        assertEquals(SWIM, sit(s, 25, 2.5, false));
+        assertFalse(s.diving());
+    }
+
+    @Test
     public void pinnedWithSomethingOverheadDivesThenGivesUp() {
         SwimStall s = new SwimStall();
         // the first tick only sets the baseline, the window counts from there
