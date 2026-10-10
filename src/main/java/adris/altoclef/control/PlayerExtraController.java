@@ -10,6 +10,7 @@ import adris.altoclef.util.helpers.ItemHelper;
 import baritone.api.utils.input.Input;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.tags.FluidTags;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.effect.MobEffects;
@@ -202,8 +203,14 @@ public class PlayerExtraController {
         }
         if (!line.equals(_lastCritLog)) {
             _lastCritLog = line;
+            // hand, raw scale and the eye to box gap ride along: a cooldown that never fills is either the wrong item (a swap
+            // resets it) or a mob that is not in the reach the server means, and those two look the same without them
+            LocalPlayer player = _mod.getPlayer();
             Debug.logInternal("crit: " + line + ", to full " + String.format("%.1f", s.ticksToFull) + ", near " + s.meleeNear
-                    + ", hp " + s.health + (s.pathing ? ", pathing" : ""));
+                    + ", hp " + s.health + (s.pathing ? ", pathing" : "")
+                    + ", hand " + BuiltInRegistries.ITEM.getKey(player.getMainHandItem().getItem()).getPath()
+                    + ", scale " + String.format("%.2f", player.getAttackStrengthScale(SERVER_PARTIAL))
+                    + ", gap " + String.format("%.2f", s.reachGap));
         }
     }
 

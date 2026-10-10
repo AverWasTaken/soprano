@@ -1,6 +1,7 @@
 package adris.altoclef.tasks.entity;
 
 import adris.altoclef.AltoClef;
+import adris.altoclef.Debug;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.helpers.CombatRules;
 import adris.altoclef.util.helpers.LookHelper;
@@ -10,6 +11,7 @@ import adris.altoclef.util.slots.PlayerSlot;
 import java.util.ArrayList;
 import java.util.ConcurrentModificationException;
 import java.util.List;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.Item;
@@ -87,15 +89,32 @@ public abstract class AbstractKillEntityTask extends AbstractDoToEntityTask {
 
     // toolFallback: no sword or axe, so the hardest hitting tool still beats a bare hand. only a fight the bot picked for
     // itself asks for it (see useToolsWhenUnarmed), hunting a cow or a pearl keeps its pickaxe's durability
+    // the last pick we said out loud, so the log gets a line per change and not one per swing
+    private static Item _loggedPick;
+
     public static boolean equipWeapon(AltoClef mod, boolean toolFallback) {
         Item bestWeapon = weaponForNow(mod);
         if (bestWeapon == null && toolFallback) bestWeapon = WeaponPick.bestTool(candidates(mod));
         Item equipedWeapon = StorageHelper.getItemStackInSlot(PlayerSlot.getEquipSlot()).getItem();
+        logPick(mod, bestWeapon, equipedWeapon);
         if (bestWeapon != null && bestWeapon != equipedWeapon) {
             mod.getSlotHandler().forceEquipItem(bestWeapon);
             return true;
         }
         return false;
+    }
+
+    // a swap resets the cooldown (vanilla does it for any change of item type), so every change of mind is worth a line
+    private static void logPick(AltoClef mod, Item pick, Item inHand) {
+        if (pick == null || pick == _loggedPick) return;
+        Item from = _loggedPick == null ? inHand : _loggedPick;
+        _loggedPick = pick;
+        Debug.logInternal("weapon: " + itemName(from) + " -> " + itemName(pick) + " (crowd " + mod.getMobDefenseChain().meleeAround(mod)
+                + ", hand " + itemName(inHand) + ")");
+    }
+
+    private static String itemName(Item item) {
+        return BuiltInRegistries.ITEM.getKey(item).getPath();
     }
 
     // a defensive fight swings a pickaxe rather than punch when there is no sword or axe
