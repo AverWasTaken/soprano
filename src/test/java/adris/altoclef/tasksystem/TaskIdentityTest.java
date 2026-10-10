@@ -39,7 +39,7 @@ public class TaskIdentityTest {
         ALLOWED.put("SafeRandomShimmyTask", "randomLookInterval only seeds a timer, every caller wants the shimmy that is already running");
         // the terminator's own helpers, the terminator is a one off that nobody restarts with new args
         ALLOWED.put("TerminatorTask", "center/radius/predicate are set once by the command, callers never vary");
-        ALLOWED.put("RunAwayFromPlayersTask", "rebuilt every scared tick for whoever is closest, comparing the entity would restart the run constantly");
+        ALLOWED.put("RunAwayFromPlayersTask", "rebuilt every scared tick for whoever is closest, so it keeps fleeing the first one instead of restarting when the closest changes");
     }
 
     private record Hit(String file, String className) {
@@ -167,6 +167,20 @@ public class TaskIdentityTest {
     }
 
     @Test
+    public void seesQualifiedAndFinalTaskParams() {
+        assertEquals(List.of("Q", "F"), names(scan("""
+                class Q extends Task {
+                    Q(int x) { }
+                    protected boolean isEqual(adris.altoclef.tasksystem.Task other) { return other instanceof Q; }
+                }
+                class F extends Task {
+                    F(int x) { }
+                    protected boolean isEqual(final Task other) { return other instanceof F; }
+                }
+                """)));
+    }
+
+    @Test
     public void ignoresAnonymousTasksCommentsAndStrings() {
         assertEquals(List.of(), names(scan("""
                 class Host {
@@ -206,7 +220,7 @@ public class TaskIdentityTest {
     }
 
     private static final Pattern CLASS_DECL = Pattern.compile("(?<![.\\w])(?:class|enum|interface|record)\\s+(\\w+)");
-    private static final Pattern IS_EQUAL = Pattern.compile("boolean\\s+isEqual\\s*\\(\\s*Task\\s+(\\w+)\\s*\\)\\s*\\{");
+    private static final Pattern IS_EQUAL = Pattern.compile("boolean\\s+isEqual\\s*\\(\\s*(?:final\\s+|@\\w+\\s+)*(?:[\\w.]+\\.)?Task\\s+(\\w+)\\s*\\)\\s*\\{");
 
     static List<Hit> scan(String source) {
         String code = blank(source);
