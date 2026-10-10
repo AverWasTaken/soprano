@@ -436,7 +436,10 @@ public class SmeltInFurnaceTask extends ResourceTask implements AsyncSmelting.Ha
             double progress = StorageHelper.getFurnaceCookPercent();
             double slotFuel = fuel.isEmpty() ? 0 : ItemHelper.getFuelAmount(fuel);
             var bag = mod.getItemStorage().getItemStacksPlayerInventory(true);
-            var pick = FuelShortage.fill(bag, fuel, material.getCount(), lit, progress, AltoSettings::isSupportedFuel, ItemHelper::getFuelAmount);
+            // a split load takes its own share and leaves the rest of the batch's fuel in the bag for the next furnace
+            var pick = _split != null
+                    ? FuelShortage.fillShare(bag, fuel, material.getCount(), lit, progress, AltoSettings::isSupportedFuel, ItemHelper::getFuelAmount)
+                    : FuelShortage.fill(bag, fuel, material.getCount(), lit, progress, AltoSettings::isSupportedFuel, ItemHelper::getFuelAmount);
             if (pick != null) {
                 setDebugState("Filling fuel");
                 return new MoveItemToSlotFromInventoryTask(new ItemTarget(pick.stack().getItem(), pick.count()), FurnaceSlot.INPUT_SLOT_FUEL);

@@ -13,6 +13,7 @@ import adris.altoclef.tasks.container.SmeltSplit;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.SmeltTarget;
+import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.StationChoice;
 import adris.altoclef.util.helpers.StationHook;
 import java.util.Optional;
@@ -29,6 +30,9 @@ public class CollectIronIngotTask extends ResourceTask {
     private SmeltInFurnaceTask _load;
     private SmeltSplit.Batch _loadBatch;
     private String _noSplitLogged = "";
+    // the fuel fetch before load 1 (SmeltSplit.fuelStep) and the batch it is for. its clock lives on the batch
+    private SmeltSplit.Batch _fuelFor;
+    private CollectFuelTask _fuelTask;
 
     public CollectIronIngotTask(int count) {
         super(Items.IRON_INGOT, count);
@@ -95,7 +99,7 @@ public class CollectIronIngotTask extends ResourceTask {
             // still mining (the single smelt fetches the ore the way it always did), or few enough for one furnace. the call is made
             // once the whole batch is in the bag and we are where it gets smelted (SmeltSplit.atSite: surfaced, or the climb gave
             // up). anywhere else the arbiter has the climb in front of us, a tick that slips through is the old single smelt
-            if (owed < SmeltSplit.MIN_SPLIT || raw < owed || !SmeltSplit.atSite()) {
+            if (SmeltSplit.fuelGaveUpFor(_count) || owed < SmeltSplit.MIN_SPLIT || raw < owed || !SmeltSplit.atSite()) {
                 return _router.furnace(all);
             }
             batch = decide(mod, owed);
@@ -120,6 +124,22 @@ public class CollectIronIngotTask extends ResourceTask {
             // all the loads are in: whatever is still owed (a load came back short) is a normal smelt, which counts the jobs too
             return _router.furnace(all);
         }
+        if (!batch.fuelReady()) {
+            if (batch.issued() > 0 || batch.loadingAt() != null) {
+                // ore is already in a furnace, too late to hold load 1 back. the loads fetch their own like they used to
+                batch.fuelReady(true);
+            } else {
+                Task fuel = fuelFirst(mod, batch, owed);
+                if (fuel != null) {
+                    return fuel;
+                }
+                // the bag covers it, or the batch shrank to what it covers (or to nothing)
+                batch = SmeltSplit.held(_count);
+                if (batch == null) {
+                    return _router.furnace(all);
+                }
+            }
+        }
         int size = batch.nextLoad(owed, raw);
         if (size <= 0) {
             batch.end();
@@ -132,6 +152,51 @@ public class CollectIronIngotTask extends ResourceTask {
         Debug.logInternal("smelt: load " + (batch.issued() + 1) + " of " + batch.loads() + ", " + size + " raw iron"
                 + (batch.loadingAt() != null ? ", finishing the one started at " + batch.loadingAt().toShortString() : ""));
         return _load;
+    }
+
+    // the whole batch's fuel goes in the bag before load 1, coal trips in between loads are what we're avoiding. null = load now
+    private Task fuelFirst(AltoClef mod, SmeltSplit.Batch batch, int owed) {
+        if (_fuelFor != batch) {
+            _fuelFor = batch;
+            _fuelTask = null;
+        }
+        int[] sizes = batch.sizes();
+        double have = StorageHelper.calculateInventoryFuelCount(mod);
+        int need = SmeltSplit.batchFuel(sizes, 0);
+        String haveWords = Math.round(have * 10) / 10.0 + "";
+        String needWords = need + " (" + need / SmeltSplit.SMELTS_PER_COAL + " coal)";
+        switch (SmeltSplit.fuelStep(sizes, have, batch.fuelFetchTicks())) {
+            case LOAD -> {
+                batch.fuelReady(true);
+                return null;
+            }
+            case FETCH -> {
+                if (batch.fuelFetchTicks() == 0) {
+                    Debug.logInternal("smelt: gathering fuel for the whole batch, need " + needWords + ", have " + haveWords
+                            + " (smelts, a coal is " + SmeltSplit.SMELTS_PER_COAL + ")");
+                }
+                batch.fuelFetchTick();
+                if (_fuelTask == null) {
+                    _fuelTask = new CollectFuelTask(need);
+                }
+                return _fuelTask;
+            }
+            default -> {
+                int k = SmeltSplit.loadsFuelCovers(owed, sizes.length, have);
+                if (k <= 1) {
+                    batch.end();
+                    SmeltSplit.fuelGaveUp(_count);
+                    Debug.logInternal("smelt: no fuel for a split after " + batch.fuelFetchTicks() / 20 + " s of looking (need " + needWords
+                            + ", have " + haveWords + "), " + owed + " iron in one furnace");
+                    return null;
+                }
+                int[] smaller = SmeltSplit.sizes(owed, k);
+                Debug.logInternal("smelt: fuel covers " + k + " furnaces, not " + sizes.length + " (have " + haveWords
+                        + ", " + sizes.length + " needed " + needWords + "), splitting " + SmeltSplit.words(smaller));
+                SmeltSplit.start(_count, smaller).fuelReady(true);
+                return null;
+            }
+        }
     }
 
     // once per batch: how many furnaces, from what is standing idle, what is in the bag and the cobble the tools are not owed. a

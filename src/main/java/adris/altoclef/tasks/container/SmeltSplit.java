@@ -23,6 +23,9 @@ public final class SmeltSplit {
     // are we where the smelt happens (the iron phase hands in SmeltSurface.smeltSite). null = nobody says, and then nothing is
     // split: only the phase that took us up knows we are up
     private static volatile BooleanSupplier site;
+    // the iron count whose fuel ran out of time with not even two loads covered: it goes the single way, nobody decides it again
+    // (the task that decided it is rebuilt on every head change, so this can't live on the task)
+    private static volatile int fuelGaveUpFor = -1;
 
     private SmeltSplit() {
     }
@@ -78,6 +81,51 @@ public final class SmeltSplit {
         return Math.min(size, raw);
     }
 
+    // ---- the fuel for the whole batch, fetched before load 1
+
+    // a coal is 8 smelts, and the trip that fetches fuel brings coal (CollectFuelTask)
+    public static final int SMELTS_PER_COAL = 8;
+    // how long the fetch before load 1 may take (ticks it actually ran), then the split shrinks to what the bag covers
+    public static final int FUEL_FETCH_TICKS = 1800;
+
+    // smelts of fuel the loads from `from` on need. a coal does not split between two furnaces, so each load rounds up to whole
+    // coal on its own: 13/12/12 is 2+2+2 = 6 coal, not the 5 the total says (same rule as DetourSpec.coalNeed)
+    public static int batchFuel(int[] sizes, int from) {
+        int smelts = 0;
+        for (int i = Math.max(0, from); i < sizes.length; i++) {
+            smelts += (Math.max(0, sizes[i]) + SMELTS_PER_COAL - 1) / SMELTS_PER_COAL * SMELTS_PER_COAL;
+        }
+        return smelts;
+    }
+
+    // the most loads, k or fewer, the fuel in the bag covers once re-split evenly. 1 = not even two, it all goes the single way
+    public static int loadsFuelCovers(int owed, int k, double fuel) {
+        for (int n = Math.max(1, k); n >= 2; n--) {
+            if (batchFuel(sizes(owed, n), 0) <= fuel) {
+                return n;
+            }
+        }
+        return 1;
+    }
+
+    public enum FuelStep {
+        // the bag covers every load, start loading
+        LOAD,
+        // go get the rest before anything goes in
+        FETCH,
+        // the fetch ran out of time, fewer furnaces (loadsFuelCovers)
+        SHRINK
+    }
+
+    // before load 1: loading furnace 1 and then finding furnace 2 short is a coal trip in the middle of the smelt with one furnace
+    // already cooking. so the bag has to hold the whole batch's fuel first
+    public static FuelStep fuelStep(int[] sizes, double bagFuel, int fetchTicks) {
+        if (bagFuel >= batchFuel(sizes, 0)) {
+            return FuelStep.LOAD;
+        }
+        return fetchTicks < FUEL_FETCH_TICKS ? FuelStep.FETCH : FuelStep.SHRINK;
+    }
+
     // ---- the held decision
 
     public static final class Batch {
@@ -89,6 +137,10 @@ public final class SmeltSplit {
         // the load here instead of reading the ore it already put in as busy (and making a fourth furnace)
         private BlockPos loadingAt;
         private boolean over;
+        // the whole batch's fuel was in the bag before load 1 (fuelStep). load 1 eats into it, so it is asked once
+        private boolean fuelReady;
+        // ticks the fetch before load 1 actually ran, against FUEL_FETCH_TICKS. on the batch so a rebuilt task keeps the clock
+        private int fuelFetchTicks;
 
         Batch(int count, int[] sizes) {
             this.count = count;
@@ -118,6 +170,22 @@ public final class SmeltSplit {
 
         public boolean over() {
             return over || issued >= sizes.length;
+        }
+
+        public boolean fuelReady() {
+            return fuelReady;
+        }
+
+        public void fuelReady(boolean ready) {
+            fuelReady = ready;
+        }
+
+        public int fuelFetchTicks() {
+            return fuelFetchTicks;
+        }
+
+        public void fuelFetchTick() {
+            fuelFetchTicks++;
         }
 
         public BlockPos loadingAt() {
@@ -175,6 +243,15 @@ public final class SmeltSplit {
     public static void clear() {
         current = null;
         site = null;
+        fuelGaveUpFor = -1;
+    }
+
+    public static void fuelGaveUp(int count) {
+        fuelGaveUpFor = count;
+    }
+
+    public static boolean fuelGaveUpFor(int count) {
+        return fuelGaveUpFor == count;
     }
 
     // the iron phase wires this in on enter and pulls it on exit

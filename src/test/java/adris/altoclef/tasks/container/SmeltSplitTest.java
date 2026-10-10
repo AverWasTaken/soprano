@@ -203,4 +203,68 @@ public class SmeltSplitTest {
         // unless it went in after all and is cooking: busy
         assertNull(SmeltInFurnaceTask.DoSmeltInFurnaceTask.pin(null, false, true, "half", true, () -> loadOne));
     }
+
+    // ---- the whole batch's fuel before load 1
+
+    @Test
+    public void thirtySevenInThreeNeedsSixCoalBeforeLoadOne() {
+        int[] sizes = SmeltSplit.sizes(37, 3);
+        // 2 + 2 + 2 coal, the 37 alone would say 5 and the third furnace would go dry
+        assertEquals(48, SmeltSplit.batchFuel(sizes, 0));
+        assertEquals(6, SmeltSplit.batchFuel(sizes, 0) / SmeltSplit.SMELTS_PER_COAL);
+        // two coal is not the batch: go get the rest before anything goes in
+        assertEquals(SmeltSplit.FuelStep.FETCH, SmeltSplit.fuelStep(sizes, 16, 0));
+        assertEquals(SmeltSplit.FuelStep.FETCH, SmeltSplit.fuelStep(sizes, 47.9, SmeltSplit.FUEL_FETCH_TICKS - 1));
+        // the loads still to go, once some are in
+        assertEquals(32, SmeltSplit.batchFuel(sizes, 1));
+    }
+
+    @Test
+    public void aBagWithEnoughFuelLoadsStraightAway() {
+        int[] sizes = SmeltSplit.sizes(37, 3);
+        assertEquals(SmeltSplit.FuelStep.LOAD, SmeltSplit.fuelStep(sizes, 48, 0));
+        // wood counts in smelts like the rest (a stack of planks is 96)
+        assertEquals(SmeltSplit.FuelStep.LOAD, SmeltSplit.fuelStep(sizes, 96, 0));
+        // even with the clock long out
+        assertEquals(SmeltSplit.FuelStep.LOAD, SmeltSplit.fuelStep(sizes, 50, SmeltSplit.FUEL_FETCH_TICKS * 2));
+    }
+
+    @Test
+    public void fuelThatCannotBeFoundShrinksTheSplit() {
+        int[] sizes = SmeltSplit.sizes(37, 3);
+        assertEquals(SmeltSplit.FuelStep.SHRINK, SmeltSplit.fuelStep(sizes, 40, SmeltSplit.FUEL_FETCH_TICKS));
+        // 37 in two is 19/18 = 3 + 3 coal = 48 too, so 40 is not two either: one furnace
+        assertEquals(1, SmeltSplit.loadsFuelCovers(37, 3, 40));
+        // 30 in three is 10/10/10 = 6 coal, in two 15/15 = 4 coal: 32 smelts covers two, not three
+        assertEquals(2, SmeltSplit.loadsFuelCovers(30, 3, 32));
+        assertEquals(3, SmeltSplit.loadsFuelCovers(30, 3, 48));
+        // never more loads than were asked for
+        assertEquals(2, SmeltSplit.loadsFuelCovers(20, 2, 500));
+    }
+
+    @Test
+    public void theFuelIsAskedOncePerBatch() {
+        SmeltSplit.Batch b = SmeltSplit.start(37, SmeltSplit.sizes(37, 3));
+        assertFalse(b.fuelReady());
+        b.fuelReady(true);
+        assertTrue(SmeltSplit.held(37).fuelReady());
+        // a new batch asks again
+        assertFalse(SmeltSplit.start(37, SmeltSplit.sizes(37, 2)).fuelReady());
+    }
+
+    // the clock and the give up outlive the task that started them, it gets rebuilt on every head change
+    @Test
+    public void theFetchClockAndTheGiveUpLiveOutsideTheTask() {
+        SmeltSplit.Batch b = SmeltSplit.start(37, SmeltSplit.sizes(37, 3));
+        b.fuelFetchTick();
+        b.fuelFetchTick();
+        assertEquals(2, SmeltSplit.held(37).fuelFetchTicks());
+        assertFalse(SmeltSplit.fuelGaveUpFor(37));
+        SmeltSplit.fuelGaveUp(37);
+        assertTrue(SmeltSplit.fuelGaveUpFor(37));
+        assertFalse(SmeltSplit.fuelGaveUpFor(40));
+        // a new run forgets it
+        SmeltSplit.clear();
+        assertFalse(SmeltSplit.fuelGaveUpFor(37));
+    }
 }

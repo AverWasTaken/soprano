@@ -83,6 +83,25 @@ final class FuelShortage {
         return FuelPolicy.chooseFor(bag, slot, missing(input, Math.max(lit, 0), Math.max(progress, 0), slotFuel), supported, fuelPerItem);
     }
 
+    // fill for one load of a split batch: the bag holds every load's fuel (SmeltSplit.fuelStep), and choose puts coal in as the
+    // whole stack, so load 1 would burn through furnace 2's coal and furnace 2 would go fetch. any item is capped at what this
+    // load is short of, rounded up to a whole item. the cap is on the slot's total, the same count chooseFor hands back
+    static FuelPolicy.Pick fillShare(List<ItemStack> bag, ItemStack slot, int input, double lit, double progress,
+                                     Predicate<Item> supported, ToDoubleFunction<Item> fuelPerItem) {
+        FuelPolicy.Pick pick = fill(bag, slot, input, lit, progress, supported, fuelPerItem);
+        if (pick == null) {
+            return null;
+        }
+        double each = fuelPerItem.applyAsDouble(pick.stack().getItem());
+        if (each <= 0) {
+            return pick;
+        }
+        double slotFuel = slot.isEmpty() ? 0 : fuelPerItem.applyAsDouble(slot.getItem()) * slot.getCount();
+        double short_ = missing(input, Math.max(lit, 0), Math.max(progress, 0), slotFuel);
+        int cap = (slot.isEmpty() ? 0 : slot.getCount()) + Math.max(1, (int) Math.ceil(short_ / each - 1e-9));
+        return cap < pick.count() ? new FuelPolicy.Pick(pick.stack(), cap) : pick;
+    }
+
     // fill's other half: the pick that replaces what is in the slot, only when it covers the whole job by itself (FuelPolicy.chooseSwap).
     // asked after stuckShort has held, not before
     static FuelPolicy.Pick swap(List<ItemStack> bag, ItemStack slot, int input, double lit, double progress,

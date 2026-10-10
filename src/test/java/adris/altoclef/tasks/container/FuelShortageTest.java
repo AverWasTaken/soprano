@@ -416,4 +416,24 @@ public class FuelShortageTest {
         long untilDry = 880 - arrive;
         assertTrue(FurnacePlan.dryingSoon(true, FurnacePlan.Mode.NORMAL, untilDry, FurnacePlan.NEARLY_TICKS));
     }
+
+    // a split load with the whole batch's coal in the bag takes its own share, not the stack: 13 ore is 2 coal, the other 4 are
+    // furnace 2 and 3's
+    @Test
+    public void aSplitLoadTakesItsShareOfTheBatchCoal() {
+        FuelPolicy.set(0, 0, true);
+        List<ItemStack> bag = List.of(new ItemStack(Items.COAL, 6));
+        FuelPolicy.Pick share = FuelShortage.fillShare(bag, ItemStack.EMPTY, 13, 0, 0, item -> true, FuelShortageTest::fuel);
+        assertEquals(Items.COAL, share.stack().getItem());
+        assertEquals(2, share.count());
+        // 16 exactly is still 2, and 12 is 2 too
+        assertEquals(2, FuelShortage.fillShare(bag, ItemStack.EMPTY, 16, 0, 0, item -> true, FuelShortageTest::fuel).count());
+        assertEquals(2, FuelShortage.fillShare(bag, ItemStack.EMPTY, 12, 0, 0, item -> true, FuelShortageTest::fuel).count());
+        // a coal already in the slot: the slot should hold 2 in all
+        assertEquals(2, FuelShortage.fillShare(bag, new ItemStack(Items.COAL, 1), 13, 0, 0, item -> true, FuelShortageTest::fuel).count());
+        // and covered is nothing to add
+        assertNull(FuelShortage.fillShare(bag, new ItemStack(Items.COAL, 2), 13, 0, 0, item -> true, FuelShortageTest::fuel));
+        // the plain fill still puts the whole stack in, the leftover comes back at the collect
+        assertEquals(6, fill(bag, ItemStack.EMPTY, 13, 0, 0).count());
+    }
 }
