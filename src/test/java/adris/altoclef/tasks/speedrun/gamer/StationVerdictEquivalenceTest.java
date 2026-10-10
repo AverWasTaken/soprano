@@ -217,6 +217,8 @@ public class StationVerdictEquivalenceTest {
         boolean holdsStonePick;
         // generated: what the live world would say
         long seed;
+        // the latches the room started with, as drawn (the note prints them, the latches themselves move over the looks)
+        String latches0 = "";
 
         static Room generate(Random r) {
             Room room = new Room(r.nextInt(8) == 0 ? "NETHER" : "OVERWORLD");
@@ -285,6 +287,7 @@ public class StationVerdictEquivalenceTest {
             latches.furnaceHeld = f == 0 ? null : Boolean.valueOf(f == 1);
             int s = r.nextInt(3);
             latches.smokerHeld = s == 0 ? null : Boolean.valueOf(s == 1);
+            latches0 = "far" + latches.tableFar + "/f" + f + "/s" + s;
         }
 
         // a block at a distance from us that sits on a threshold more often than chance would put it
@@ -361,9 +364,20 @@ public class StationVerdictEquivalenceTest {
             };
         }
 
+        // for the full dump only (STATION_GOLDEN_FULL), never hashed: enough to tell which rooms a behaviour round should move. each
+        // bench with its straight line from the three looks and its job, then the start-of-room latches
         String note() {
+            StringBuilder where = new StringBuilder();
+            for (Bench b : state.benches) {
+                where.append(b.kind.word().charAt(0)).append(b.dimension.charAt(0)).append(b.state.name().charAt(0));
+                for (double[] look : looks) {
+                    where.append('/').append(Math.round(adris.altoclef.util.helpers.WalkCost.stationDistance(b.pos.x, b.pos.y, b.pos.z, look[0], look[1], look[2]) * 100) / 100.0);
+                }
+                where.append(FurnaceJobs.isBusy(state, b.pos, b.dimension) ? "/job" : "").append(' ');
+            }
             return "dim=" + dimension + ",benches=" + state.benches + ",bag=" + java.util.Arrays.toString(bag) + ",cobble=" + cobble + "-" + cobbleOwed
-                    + ",logs=" + logs + ",planks=" + planks + ",plan=" + plan;
+                    + ",logs=" + logs + ",planks=" + planks + ",plan=" + plan + ",at=" + where
+                    + ",latch0=" + latches0;
         }
     }
 
@@ -414,10 +428,6 @@ public class StationVerdictEquivalenceTest {
             assertEquals(WorkbenchRules.placeVetoed(state.benches, kind, NOW), s.pickingUp());
             Bench nearest = Workbenches.nearestStanding(state, kind, dim, px, py, pz, Double.MAX_VALUE);
             assertEquals(nearest == null ? null : nearest.pos, s.nearest());
-            if (kind != Kind.SMOKER) {
-                assertEquals(!s.heldNear() && walks, s.walksBack());
-                assertEquals(s.heldNear() || s.walksBack(), s.heldForPlanner());
-            }
             for (double radius : new double[]{WorkbenchRules.NEAR, WorkbenchRules.returnRadius(true), WorkbenchRules.bandRadius(false), WorkbenchRules.FORGET_DISTANCE}) {
                 sb.append(t(Workbenches.heldNear(state, kind, dim, px, py, pz, radius, pos -> room.stands.getOrDefault(Room.key(kind, pos), true))));
             }

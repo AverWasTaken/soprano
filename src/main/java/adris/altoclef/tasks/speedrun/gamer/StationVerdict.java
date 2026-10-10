@@ -1,5 +1,6 @@
 package adris.altoclef.tasks.speedrun.gamer;
 
+import adris.altoclef.util.helpers.StationChoice;
 import adris.altoclef.util.helpers.StationHook.Kind;
 import adris.altoclef.util.helpers.WalkCost;
 
@@ -42,8 +43,7 @@ public final class StationVerdict {
             // PICKING_UP bench counts (it is on its way to the bag), and a smoker's also says "smoker first" so it only counts the far
             // ones when no furnace is at hand (WorkbenchRules.plannerSmoker). this one and the task's view (standingNear / standingFar)
             // disagree: a bench coming down is held here and not standing there, a smoker in (20, 21] is held or not here by which side
-            // we came from and plain standing there, a table past WALK_BACK is walked back to by the task (previous target + HOLD) and
-            // not held here. known wrong, pinned in StationContradictionsTest, not fixed here
+            // we came from and plain standing there. known wrong, pinned in StationContradictionsTest, not fixed here
             boolean heldForPlanner,
             // inside the latch radius (WorkbenchRules.returnRadius / bandRadius) before any walk back, stands or is coming down
             boolean heldNear,
@@ -123,7 +123,10 @@ public final class StationVerdict {
         latches.tableFar = !tableNear && Workbenches.any(state, Kind.TABLE, dimension);
         // past the latch a table of ours still counts as far as the craft would walk back to it (Workbenches.plannerWalksBack),
         // the latch only remembers its own answer like the furnace's
-        boolean tableBack = !tableNear && walksBack(state, Kind.TABLE, dimension, px, py, pz, world);
+        // and once it counts that way it keeps counting HOLD past the line, the same slack the task gives the one it is walking to
+        // (StationChoice.nearest), or the plan asks for table planks while the craft is still on its way to the table
+        boolean tableBack = !tableNear && walksBack(state, Kind.TABLE, dimension, px, py, pz, latches.tableBack ? StationChoice.HOLD : 0, world);
+        latches.tableBack = tableBack;
         // past the band a furnace or smoker of ours still counts when the smelt would walk back to it (plannerWalksBack). the latch
         // only ever remembers the band's own answer, the walk back has no line to dither over
         boolean furnaceNear = heldNear(state, Kind.FURNACE, dimension, px, py, pz, WorkbenchRules.bandRadius(latches.furnaceHeld), world);
@@ -162,9 +165,13 @@ public final class StationVerdict {
     // the walk back half asks DoStuffInContainerTask's own two questions (can the bag make one, would it take that far one), so the
     // planner and StationChoice agree on the block and on the bag
     private static boolean walksBack(RunState state, Kind kind, String dimension, double px, double py, double pz, World world) {
+        return walksBack(state, kind, dimension, px, py, pz, 0, world);
+    }
+
+    private static boolean walksBack(RunState state, Kind kind, String dimension, double px, double py, double pz, double hold, World world) {
         boolean inBag = world.inBag(kind);
         boolean canMake = !inBag && world.canMake(kind);
         // in the bag is no walk back (KitPlanner counts a table in the bag itself, the furnace's readers ask the bag too)
-        return Workbenches.plannerWalksBack(state, kind, dimension, px, py, pz, inBag, canMake, b -> world.walkUsable(kind, b));
+        return Workbenches.plannerWalksBack(state, kind, dimension, px, py, pz, inBag, canMake, hold, b -> world.walkUsable(kind, b));
     }
 }

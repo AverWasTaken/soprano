@@ -340,7 +340,14 @@ public final class Workbenches {
     // budgets a furnace the smelt is going to walk past. `canMake` is DoStuffInContainerTask.bagCanMake, `usable` its walkBackUsable
     public static boolean plannerWalksBack(RunState state, Kind kind, String dimension, double x, double y, double z, boolean inBag,
                                            boolean canMake, Predicate<Bench> usable) {
-        return !inBag && walkBackTo(state, kind, dimension, x, y, z, StationChoice.oursReach(kind, canMake), usable) != null;
+        return plannerWalksBack(state, kind, dimension, x, y, z, inBag, canMake, 0, usable);
+    }
+
+    // `hold`: how far past that line it still counts, for a station the planner already counted last look (StationChoice.HOLD is the
+    // task's own, it keeps the one it is walking to that far past the line)
+    public static boolean plannerWalksBack(RunState state, Kind kind, String dimension, double x, double y, double z, boolean inBag,
+                                           boolean canMake, double hold, Predicate<Bench> usable) {
+        return !inBag && walkBackTo(state, kind, dimension, x, y, z, StationChoice.oursReach(kind, canMake) + hold, usable) != null;
     }
 
     // what the container tasks see (StationHook), wired in by the run

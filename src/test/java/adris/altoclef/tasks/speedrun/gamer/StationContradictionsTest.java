@@ -76,30 +76,44 @@ public class StationContradictionsTest {
         return StationVerdict.of(state, DIM, PX, PY, PZ, NOW, bag, latches);
     }
 
-    // (A) a table 49 blocks away that the bag could make again. the planner's walk back stops at WALK_BACK (48) and says "not held", so
-    // the kit asks for the planks; StationChoice keeps walking to the one it was heading for out to WALK_BACK + HOLD (50) and never
-    // makes another. the planner budgets planks the task then never spends
+    // a look from `d` blocks along x from the middle of a block at 0 64 0 (a station placed there is d away)
+    private static StationVerdict lookAt(RunState state, Bag bag, StationLatches latches, double d) {
+        return StationVerdict.of(state, DIM, PX + d, PY, PZ, NOW, bag, latches);
+    }
+
+    // (A) FIXED. a table 49 blocks away that the bag could make again. the planner's walk back used to stop flat at WALK_BACK (48) and
+    // say "not held", so the kit asked for planks while StationChoice kept walking to the one it was heading for out to WALK_BACK +
+    // HOLD (50). now the planner gets the same slack once it has counted the table: acquired at 48, kept to 50, gone past it
     @Test
-    public void aTablePastWalkBackIsNotHeldButTheTaskKeepsWalkingToIt() {
+    public void aTablePastWalkBackStaysHeldOnceItWasHeldAndTheTaskKeepsWalkingToIt() {
         for (int d : new int[]{49, 50}) {
             RunState state = new RunState();
-            place(state, Kind.TABLE, pos(d, 64, 0), DIM);
-            StationVerdict v = look(state, new Bag(), new StationLatches());
-            assertFalse("planner at " + d, v.table().heldForPlanner());
-            assertFalse(v.table().walksBack());
+            place(state, Kind.TABLE, pos(0, 64, 0), DIM);
+            // walked out from 47 (held by the walk back), now d away
+            StationLatches latches = new StationLatches();
+            assertTrue(lookAt(state, new Bag(), latches, 47.0).table().heldForPlanner());
+            assertTrue("planner at " + d, lookAt(state, new Bag(), latches, d).table().heldForPlanner());
+            // standing still does not flip it
+            assertTrue(lookAt(state, new Bag(), latches, d).table().heldForPlanner());
             // the task's side: the registry's candidate, the one it headed for last tick, the bag can make a table
             List<StationChoice.Candidate<String>> seen = List.of(new StationChoice.Candidate<>("t", d, StationChoice.Role.OURS));
             StationChoice.Pick<String> kept = StationChoice.decide(seen, "t", false, true, true, 21.0, StationChoice.walkBackReach(Kind.TABLE));
             assertEquals("task at " + d, StationChoice.Use.OURS, kept.use());
-            // with no previous target the task agrees with the planner
+            // acquired at the plain 48: the same spot reached from outside is not held, and the task with no previous target agrees
+            assertFalse(lookAt(state, new Bag(), new StationLatches(), d).table().heldForPlanner());
             assertEquals(StationChoice.Use.MAKE, StationChoice.decide(seen, null, false, true, true, 21.0, StationChoice.walkBackReach(Kind.TABLE)).use());
         }
-        // and at 51 they agree again
+        // past 50 both let go, and it takes the plain 48 to get it back
         RunState state = new RunState();
-        place(state, Kind.TABLE, pos(51, 64, 0), DIM);
-        assertFalse(look(state, new Bag(), new StationLatches()).table().heldForPlanner());
+        place(state, Kind.TABLE, pos(0, 64, 0), DIM);
+        StationLatches latches = new StationLatches();
+        assertTrue(lookAt(state, new Bag(), latches, 48.0).table().heldForPlanner());
+        assertTrue(lookAt(state, new Bag(), latches, 50.0).table().heldForPlanner());
+        assertFalse(lookAt(state, new Bag(), latches, 50.5).table().heldForPlanner());
         assertEquals(StationChoice.Use.MAKE, StationChoice.decide(List.of(new StationChoice.Candidate<>("t", 51.0, StationChoice.Role.OURS)),
                 "t", false, true, true, 21.0, StationChoice.walkBackReach(Kind.TABLE)).use());
+        assertFalse(lookAt(state, new Bag(), latches, 49.0).table().heldForPlanner());
+        assertTrue(lookAt(state, new Bag(), latches, 48.0).table().heldForPlanner());
     }
 
     // (B) a smoker 21 blocks away with a furnace in the bag. the planner's band is NEAR (21) while it was held or never seen, NEAR - 1

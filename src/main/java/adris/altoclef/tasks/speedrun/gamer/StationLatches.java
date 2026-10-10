@@ -5,12 +5,16 @@ package adris.altoclef.tasks.speedrun.gamer;
 final class StationLatches {
     // a table is recorded and was out of NEAR last look, see WorkbenchRules.returnRadius
     boolean tableFar;
+    // the table was held last look by the walk back and not by being near (StationVerdict.of): it stays held out to the walk back
+    // line + StationChoice.HOLD, the way the task keeps the one it is walking to
+    boolean tableBack;
     // last look's answer for a furnace and a smoker, null while none is recorded (WorkbenchRules.bandRadius)
     Boolean furnaceHeld;
     Boolean smokerHeld;
 
     void clear() {
         tableFar = false;
+        tableBack = false;
         furnaceHeld = null;
         smokerHeld = null;
     }
