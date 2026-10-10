@@ -85,12 +85,38 @@ public final class Workbenches {
         };
     }
 
-    private static String key(RunState.Pos pos) {
+    // the kind is part of the key: a table and a furnace on the same x y z in two dimensions are two entries
+    private static String key(Kind kind, RunState.Pos pos) {
+        return kind.name() + ":" + legacyKey(pos);
+    }
+
+    // what saves wrote before the kind was in the key
+    private static String legacyKey(RunState.Pos pos) {
         return pos.x + "," + pos.y + "," + pos.z;
     }
 
-    static String dimensionOf(RunState state, RunState.Pos pos) {
-        return state.placedDimension.getOrDefault(key(pos), OVERWORLD);
+    static String dimensionOf(RunState state, Kind kind, RunState.Pos pos) {
+        return state.placedDimension.getOrDefault(key(kind, pos), OVERWORLD);
+    }
+
+    // an old "x,y,z" entry goes to every kind standing there (it could not tell them apart, which is the bug), then it is gone
+    private static void upgradeKeys(RunState state) {
+        if (state.placedDimension.keySet().stream().noneMatch(k -> k.indexOf(':') < 0)) {
+            return;
+        }
+        for (String old : new ArrayList<>(state.placedDimension.keySet())) {
+            if (old.indexOf(':') >= 0) {
+                continue;
+            }
+            String dimension = state.placedDimension.remove(old);
+            for (Kind kind : Kind.values()) {
+                for (RunState.Pos pos : listOf(state, kind)) {
+                    if (legacyKey(pos).equals(old)) {
+                        state.placedDimension.putIfAbsent(key(kind, pos), dimension);
+                    }
+                }
+            }
+        }
     }
 
     public static Bench find(RunState state, Kind kind, RunState.Pos pos) {
@@ -115,10 +141,11 @@ public final class Workbenches {
     // the lists are the truth (they are what is saved): an entry the lists do not have is dropped, a position they have that has no
     // entry gets one. a pickup in flight keeps its entry whatever the list says, its block is already down
     public static void sync(RunState state, long now) {
+        upgradeKeys(state);
         for (Kind kind : Kind.values()) {
             for (RunState.Pos pos : listOf(state, kind)) {
                 if (find(state, kind, pos) == null) {
-                    state.benches.add(new Bench(kind, pos, dimensionOf(state, pos), now));
+                    state.benches.add(new Bench(kind, pos, dimensionOf(state, kind, pos), now));
                 }
             }
         }
@@ -146,10 +173,10 @@ public final class Workbenches {
         }
         list.add(pos);
         if (!OVERWORLD.equals(dimension)) {
-            state.placedDimension.put(key(pos), dimension);
+            state.placedDimension.put(key(kind, pos), dimension);
         } else {
-            // the map says nothing for the overworld, a stale key from another kind at the same x y z would read as the nether
-            state.placedDimension.remove(key(pos));
+            // the map says nothing for the overworld, a stale key from an earlier station of this kind would read as the nether
+            state.placedDimension.remove(key(kind, pos));
         }
         Bench placed = new Bench(kind, pos, dimension, now);
         state.benches.add(placed);
@@ -182,7 +209,7 @@ public final class Workbenches {
     // comes through here
     public static void forget(RunState state, Bench b, String why) {
         listOf(state, b.kind).remove(b.pos);
-        state.placedDimension.remove(key(b.pos));
+        state.placedDimension.remove(key(b.kind, b.pos));
         state.benches.remove(b);
         log("forgot " + b + ": " + why);
     }
@@ -192,7 +219,7 @@ public final class Workbenches {
         log(b + " -> " + Bench.State.IN_BAG + " (picked up, " + (b.tries > 0 ? b.tries + " failed tries before" : "first try") + ")");
         b.state = Bench.State.IN_BAG;
         listOf(state, b.kind).remove(b.pos);
-        state.placedDimension.remove(key(b.pos));
+        state.placedDimension.remove(key(b.kind, b.pos));
         state.benches.remove(b);
     }
 

@@ -206,11 +206,39 @@ public class WorkbenchesRegistryTest {
         assertEquals(NETHER, state.benches.get(0).dimension);
         assertEquals(900, state.benches.get(0).placedTick);
         assertEquals(List.of(pos(10, 70, 10)), state.placedTables);
-        assertEquals(Map.of("10,70,10", NETHER), state.placedDimension);
+        assertEquals(Map.of("TABLE:10,70,10", NETHER), state.placedDimension);
         // and the other way round, back home: the nether entry goes and the map has nothing left to say about the spot
         assertTrue(Workbenches.record(state, Kind.TABLE, pos(10, 70, 10), OVERWORLD, 2000));
         assertEquals(OVERWORLD, state.benches.get(0).dimension);
         assertTrue(state.placedDimension.isEmpty());
+    }
+
+    @Test
+    public void twoKindsOnTheSameCoordinatesKeepTheirOwnDimension() {
+        RunState state = new RunState();
+        assertTrue(Workbenches.record(state, Kind.FURNACE, pos(4, 64, 4), NETHER, 1));
+        assertTrue(Workbenches.record(state, Kind.TABLE, pos(4, 64, 4), OVERWORLD, 2));
+        assertEquals(Map.of("FURNACE:4,64,4", NETHER), state.placedDimension);
+        RunState back = RunStateStore.parse(RunStateStore.toJson(state));
+        assertNotNull(back);
+        Workbenches.sync(back, 5000);
+        assertEquals(NETHER, Workbenches.find(back, Kind.FURNACE, pos(4, 64, 4)).dimension);
+        assertEquals(OVERWORLD, Workbenches.find(back, Kind.TABLE, pos(4, 64, 4)).dimension);
+        // forgetting the overworld table leaves the furnace's entry alone
+        Workbenches.forget(back, Workbenches.find(back, Kind.TABLE, pos(4, 64, 4)), "test");
+        assertEquals(Map.of("FURNACE:4,64,4", NETHER), back.placedDimension);
+    }
+
+    @Test
+    public void anOldSaveKeyedByCoordinatesOnlyStillSaysNether() {
+        RunState old = RunStateStore.parse("{\"phase\":\"IRON\",\"placedFurnaces\":[{\"x\":3,\"y\":40,\"z\":3}],"
+                + "\"placedTables\":[{\"x\":1,\"y\":64,\"z\":1}],\"placedDimension\":{\"3,40,3\":\"NETHER\",\"9,9,9\":\"NETHER\"}}");
+        assertNotNull(old);
+        Workbenches.sync(old, 10);
+        assertEquals(NETHER, Workbenches.find(old, Kind.FURNACE, pos(3, 40, 3)).dimension);
+        assertEquals(OVERWORLD, Workbenches.find(old, Kind.TABLE, pos(1, 64, 1)).dimension);
+        // upgraded in place, and an entry for a spot nothing stands on is dropped
+        assertEquals(Map.of("FURNACE:3,40,3", NETHER), old.placedDimension);
     }
 
     @Test
@@ -231,8 +259,8 @@ public class WorkbenchesRegistryTest {
         Workbenches.record(state, Kind.TABLE, pos(1, 64, 1), OVERWORLD, 1);
         assertTrue(state.placedDimension.isEmpty());
         Workbenches.record(state, Kind.FURNACE, pos(-5, 40, 7), NETHER, 2);
-        // x,y,z is the key the saves use, so it does not change
-        assertEquals(Map.of("-5,40,7", NETHER), state.placedDimension);
+        // kind and x,y,z: two kinds on one spot in two dimensions must not share an entry
+        assertEquals(Map.of("FURNACE:-5,40,7", NETHER), state.placedDimension);
         assertEquals(NETHER, Workbenches.find(state, Kind.FURNACE, pos(-5, 40, 7)).dimension);
     }
 

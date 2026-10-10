@@ -270,7 +270,7 @@ public class RunStateStoreTest {
         assertTrue(s.placedDimension.isEmpty());
         assertEquals(1, s.placedTables.size());
         // so the table in it reads as an overworld one
-        assertEquals(Workbenches.OVERWORLD, Workbenches.dimensionOf(s, new RunState.Pos(1, 64, 2)));
+        assertEquals(Workbenches.OVERWORLD, Workbenches.dimensionOf(s, adris.altoclef.util.helpers.StationHook.Kind.TABLE, new RunState.Pos(1, 64, 2)));
     }
 
     @Test
