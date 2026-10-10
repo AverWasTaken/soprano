@@ -1015,13 +1015,32 @@ public class KitPlannerTest {
 
     @Test
     public void diamondCraftsComeBeforeTheIronOnesAndAfterTheStarter() {
-        f.give(Items.DIAMOND, 11);
+        f.give(Items.DIAMOND, 11).give(Items.STICK, 2);
         f.foodUnits = 40;
         List<String> n = names(KitPlanner.plan(f, cfg, 8));
         assertEquals(List.of("diamond_pickaxe", "diamond_chestplate"), n.stream().filter(s -> s.startsWith("diamond_")).toList());
         assertTrue(n.indexOf("stone_axe") < n.indexOf("diamond_pickaxe"));
         assertTrue(n.indexOf("diamond_chestplate") < n.indexOf("iron_ingot"));
         assertEquals(n.indexOf("diamond_pickaxe") + 1, n.indexOf("diamond_chestplate"));
+    }
+
+    @Test
+    public void aDiamondToolWithNoSticksWaitsBehindTheIronCraftsButArmorDoesNot() {
+        // no sticks, planks or logs: the pick would go and chop its own wood from the middle of the mine
+        f.give(Items.DIAMOND, 11);
+        f.foodUnits = 40;
+        List<String> n = names(KitPlanner.plan(f, cfg, 8));
+        assertTrue(n.indexOf("diamond_chestplate") < n.indexOf("iron_ingot"));
+        assertTrue(n.indexOf("diamond_pickaxe") > n.indexOf("iron_boots"));
+        assertTrue(n.toString(), n.indexOf("diamond_pickaxe") < n.indexOf("wool"));
+        // a log, two planks or two sticks and it is back at the front
+        for (FakeFacts wood : List.of(new FakeFacts().give(Items.OAK_LOG, 1), new FakeFacts().give(Items.OAK_PLANKS, 2),
+                new FakeFacts().give(Items.STICK, 2))) {
+            wood.give(Items.DIAMOND, 11);
+            wood.foodUnits = 40;
+            List<String> m = names(KitPlanner.plan(wood, cfg, 8));
+            assertTrue(m.toString(), m.indexOf("diamond_pickaxe") < m.indexOf("iron_ingot"));
+        }
     }
 
     @Test

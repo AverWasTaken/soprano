@@ -323,9 +323,14 @@ public final class KitPlanner {
         }
         // the diamonds go first: they need no furnace and no ore, the bag already has them, and each one is an iron item that
         // ironItems no longer owes (so nothing gets smelted for a pick or a chestplate we are about to outclass)
+        // a tool with no sticks or wood to make them from would fetch its own wood in the middle of the mine, same trip the late
+        // list keeps a worn pick's replacement out of, so it waits behind the iron crafts instead. armor has no sticks
         List<KitNeed> out = new ArrayList<>();
+        List<KitNeed> stickless = new ArrayList<>();
+        boolean sticks = DiamondSpend.sticksInHand(f);
         for (String name : DiamondSpend.choose(f, cfg)) {
-            out.add(new KitNeed(name, held(f, name) + 1));
+            KitNeed need = new KitNeed(name, held(f, name) + 1);
+            (isTool(name) && !sticks ? stickless : out).add(need);
         }
         // the ingots for the pick (and the shears) are in the bag: make them before mining a single ore more (EarlyIronPick)
         if (EarlyIronPick.craftFirst(f, cfg)) {
@@ -345,6 +350,7 @@ public final class KitPlanner {
             out.add(new KitNeed("iron_ingot", ingots));
         }
         out.addAll(crafts);
+        out.addAll(stickless);
         int worn = toEquip(f, cfg).size();
         if (worn > 0) {
             out.add(new KitNeed(KitNeed.EQUIP_ARMOR, worn));

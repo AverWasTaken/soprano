@@ -2,17 +2,16 @@ package adris.altoclef.tasks.speedrun.gamer;
 
 import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig;
 import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig.KitItem;
+import adris.altoclef.util.helpers.ItemHelper;
 import net.minecraft.world.item.Items;
 
 import java.util.ArrayList;
 import java.util.List;
 
-// what to spend the diamonds in the bag on, and the only place that asks. a diamond in the bag (mined on the way, or out of a
-// village or portal chest) is worth more as an upgrade than as a trophy, so the kit plan crafts them into the list below, in
-// this order, each one taken when it is not already ours at diamond tier and the diamonds left after the ones before it still
-// pay for it. no sword (the stone axe out-hits a diamond sword in WeaponPick), no shovel, no hoe, and fewer than 3 is nothing.
-// pure: the bag in, catalogue names out. KitPlanner.iron reads it for the crafts, and for what the iron side no longer owes
-// (a diamond piece in a slot is iron we do not smelt), WoodBudget.owed reads it for the sticks
+// what the diamonds in the bag buy, and the only place that asks. a diamond is worth more as an upgrade than as a trophy, so the
+// kit plan crafts the list below in order, each one when it is not already ours at diamond tier and what is left still pays for it.
+// no sword (the stone axe out-hits it, see WeaponPick), no shovel, no hoe. pure: facts in, catalogue names out.
+// KitPlanner.iron reads it (and drops the iron it replaces), WoodBudget.owed reads it for the sticks
 public final class DiamondSpend {
     // the cheapest thing on the list is 3, below that there is nothing to choose
     public static final int MIN = 3;
@@ -101,6 +100,11 @@ public final class DiamondSpend {
             }
         }
         return false;
+    }
+
+    // two sticks, or the planks or log they come out of, are in the bag: a diamond pick or axe can be crafted right here
+    static boolean sticksInHand(GamerFacts f) {
+        return f.count(Items.STICK) >= 2 || f.count(ItemHelper.PLANKS) >= 2 || f.count(ItemHelper.LOG) >= 1;
     }
 
     // is this iron kit item the one a chosen diamond item stands in for (iron_pickaxe <-> diamond_pickaxe, and so on)
