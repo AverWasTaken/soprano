@@ -68,12 +68,9 @@ public class PearlHuntTask extends Task {
 
     @Override
     protected void onStart(AltoClef mod) {
-        hotspotDone = false;
+        // the angry cap and the hotspot walk cap keep counting across restarts: onStart runs again after every interrupt
+        // (mob defense, eating) and a fresh 20 s or 150 s each time would never run out
         endermanLatch.reset();
-        hotspotWalkingTo = null;
-        angryTarget = null;
-        angryTask = null;
-        angryGivenUp.clear();
     }
 
     @Override
@@ -124,13 +121,17 @@ public class PearlHuntTask extends Task {
     private Task walkToHotspot(AltoClef mod) {
         RunState.Pos spot = hotspot.get();
         boolean endermanHere = endermanLatch.update(mod.getEntityTracker().entityFound(EnderMan.class), System.currentTimeMillis() / 1000.0);
-        if (spot == null || hotspotDone || endermanHere) {
+        if (spot == null || endermanHere) {
             return null;
         }
         if (!spot.equals(hotspotWalkingTo)) {
             hotspotWalkingTo = spot;
             hotspotSinceMs = System.currentTimeMillis();
             toHotspot = new GetToXZTask(spot.x, spot.z);
+            hotspotDone = false;
+        }
+        if (hotspotDone) {
+            return null;
         }
         double dx = mod.getPlayer().getX() - spot.x;
         double dz = mod.getPlayer().getZ() - spot.z;
