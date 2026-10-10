@@ -18,6 +18,7 @@ import adris.altoclef.tasks.speedrun.gamer.IronActivity.Kind;
 import adris.altoclef.tasks.speedrun.gamer.KitNeed;
 import adris.altoclef.tasks.speedrun.gamer.KitPlanner;
 import adris.altoclef.tasks.speedrun.gamer.KitRunner;
+import adris.altoclef.tasks.speedrun.gamer.NeedEnd;
 import adris.altoclef.tasks.speedrun.gamer.Workbenches;
 import adris.altoclef.tasks.speedrun.gamer.WorkbenchRules;
 import adris.altoclef.tasks.speedrun.gamer.PackUp;
@@ -68,6 +69,8 @@ public class IronPhase implements PhaseHandler {
     private final IronActivity arbiter = new IronActivity();
     // the kit head the arbiter last ran while something cooked, same job as `committed` on the old path
     private KitNeed kitHead;
+    // the stricter "that need is over" a far due job waits for (FurnacePlan.COLLECT_CUT_IN), both paths
+    private final NeedEnd needEnd = new NeedEnd();
     // which path ran last tick, so flipping the setting mid phase starts the other one clean
     private Boolean arbiterOn;
     // a furnace backed kind was already asked this tick: the plan from the top of the tick may be about a visit that just ended
@@ -137,6 +140,7 @@ public class IronPhase implements PhaseHandler {
         committed = null;
         arbiter.reset();
         kitHead = null;
+        needEnd.reset();
         arbiterOn = null;
         hudState = null;
         foodTopUp = false;
@@ -176,6 +180,7 @@ public class IronPhase implements PhaseHandler {
             arbiter.reset();
             kitHead = null;
             committed = null;
+            needEnd.reset();
             arbiterOn = on;
         }
         return on ? arbiterTick(mod, ctx) : oldTick(mod, ctx);
@@ -197,6 +202,7 @@ public class IronPhase implements PhaseHandler {
             needs = gateFood(mod, ctx, schedule.runnable());
         } else {
             kitHead = null;
+            needEnd.reset();
             needs = gateFood(mod, ctx, KitPlanner.plan(f, ctx.cfg().overworld, ctx.cfg().end.beds, ctx.food()));
         }
         KitNeed head = needs.isEmpty() ? null : needs.get(0);
@@ -205,8 +211,7 @@ public class IronPhase implements PhaseHandler {
         if (jobs) {
             // same moment the old cooking tick built: a new head is the boundary, the early pick cuts the mining need short
             boolean boundary = head == null || !head.equals(kitHead);
-            boolean interrupt = EarlyIronPick.collectNow(f, ctx.cfg().overworld) && f.cookStation() == null;
-            moment = new FurnacePlan.Moment(head != null, boundary, interrupt, schedule.isStockUp(head), true);
+            moment = moment(mod, ctx, needs, head, boundary, schedule);
             plan = furnaces.plan(ctx, moment);
             furnaces.mayCookHere(SmeltSurface.shallow(SmeltSurface.depthBelowSky(mod))
                     || SmeltSurface.nextWorkDown(head, f.count(Items.RAW_IRON), f.count(Items.IRON_INGOT), f.pendingOutput(Items.IRON_INGOT)));
@@ -222,6 +227,10 @@ public class IronPhase implements PhaseHandler {
                 // the kit with an empty runnable list while something cooks is a flicker, not the end of anything (no line pair)
                 if (k == arbiter.current() && !(k == Kind.KIT && jobs && head == null)) {
                     arbiter.ended(k, now, endWords(k));
+                    if (sideJob(k)) {
+                        // the village chest is empty, the bed is punched: that is a finish too, a far furnace may go now
+                        needEnd.sideEnded();
+                    }
                 }
                 continue;
             }
@@ -309,6 +318,7 @@ public class IronPhase implements PhaseHandler {
         }
         if (furnaces.started()) {
             kitHead = null;
+            needEnd.reset();
         }
         // standing next to the furnace (screen closed between looks) is the plan, not a stall. but only until the job is due plus
         // the patience: a furnace that never finishes must not keep the watchdog off
@@ -342,6 +352,7 @@ public class IronPhase implements PhaseHandler {
         EarlyIronPick.track(ctx.state(), head, ctx.facts(), ctx.cfg().overworld);
         if (jobs) {
             kitHead = head;
+            needEnd.working(head, ctx.facts().gameTime());
         }
         return runner.run(ctx, needs);
     }
@@ -383,6 +394,7 @@ public class IronPhase implements PhaseHandler {
         // nothing in a furnace (or it just got collected): the plain kit loop
         furnaces.reset();
         committed = null;
+        needEnd.reset();
         List<KitNeed> needs = gateFood(mod, ctx, KitPlanner.plan(ctx.facts(), ctx.cfg().overworld, ctx.cfg().end.beds, ctx.food()));
         KitNeed first = needs.isEmpty() ? null : needs.get(0);
         Task side = support.tick(mod, ctx, needs);
@@ -421,9 +433,7 @@ public class IronPhase implements PhaseHandler {
         // ingots. nothing else cuts a need short, an iron craft waiting on the output is not a reason to leave a ladder.
         // not in the middle of a cook's load either, that is a few seconds and the pick can wait for them
         boolean boundary = head == null || !head.equals(committed);
-        boolean interrupt = EarlyIronPick.collectNow(f, ctx.cfg().overworld) && f.cookStation() == null;
-        // a smoker cooks 5 s an item: standing at a batch with 20 s left (30 s at most, see FurnacePlan) beats walking off to mine and back (mayStandBy)
-        FurnacePlan.Moment moment = new FurnacePlan.Moment(head != null, boundary, interrupt, schedule.isStockUp(head), true);
+        FurnacePlan.Moment moment = moment(mod, ctx, runnable, head, boundary, schedule);
         FurnacePlan.Plan plan = furnaces.plan(ctx, moment);
         Task side = plan.standingBy() ? support.tickStandBy(mod, ctx, runnable) : support.tick(mod, ctx, runnable);
         if (side != null) {
@@ -439,6 +449,7 @@ public class IronPhase implements PhaseHandler {
         if (trip != null) {
             if (furnaces.started()) {
                 committed = null;
+                needEnd.reset();
             }
             // standing next to the furnace (screen closed between looks) is the plan, not a stall. but only until the job is due plus
             // the patience: a furnace that never finishes must not keep the watchdog off
@@ -463,9 +474,43 @@ public class IronPhase implements PhaseHandler {
             return up;
         }
         committed = head;
+        needEnd.working(head, f.gameTime());
         Task task = runner.run(ctx, runnable);
         hudState = runner.hud() + " while a batch cooks";
         return task;
+    }
+
+    // the furnace's view of this tick, both paths. the early pick only waits on ingots (it used to send us to a due smoker as well),
+    // a hungry food need at the head waits on the food jobs (FurnacePlan.feeds),
+    // and where we stand decides whether a due job may cut in at all (FurnacePlan.COLLECT_CUT_IN). a smoker cooks 5 s an item:
+    // standing at a batch with 20 s left (30 s at most, see FurnacePlan) beats walking off to mine and back (mayStandBy)
+    private FurnacePlan.Moment moment(AltoClef mod, GamerContext ctx, List<KitNeed> needs, KitNeed head, boolean boundary, Schedule schedule) {
+        GamerFacts f = ctx.facts();
+        boolean pick = EarlyIronPick.collectNow(f, ctx.cfg().overworld) && f.cookStation() == null;
+        boolean done = needEnd.done(needs, f.gameTime());
+        boolean stockUp = schedule.isStockUp(head);
+        boolean hungry = ctx.food().band() == 0 || ctx.food().bag() <= 0;
+        // only feeds hears the gate's own word on it, close by a stock-up is cut short the way it always was
+        boolean extraFood = stockUp && !FoodGate.refillHead(needs, ctx.food());
+        return new FurnacePlan.Moment(head != null, boundary, done,
+                job -> (pick && "iron_ingot".equals(job.output)) || FurnacePlan.feeds(head, job, hungry, extraFood), stockUp, true,
+                FurnaceWatch.where(mod), doing(head));
+    }
+
+    // the side jobs whose end counts as finishing what we were out there for (NeedEnd.sideEnded). the furnace kinds, the climb and
+    // the kit are not that
+    private static boolean sideJob(Kind k) {
+        return k.ordinal() >= Kind.GOLEM_FIGHT.ordinal() && k.ordinal() <= Kind.GRAVEL.ordinal() && k != Kind.STAND_BY;
+    }
+
+    // what the far line says we are busy with: the side job that holds the wheel, else the head need. (the old path has no
+    // activity, it always says the head need)
+    private String doing(KitNeed head) {
+        Kind k = arbiter.current();
+        if (k != null && k != Kind.KIT && k != Kind.FURNACE && k != Kind.STAND_BY) {
+            return k.words;
+        }
+        return head == null ? "nothing" : head.catalogueName();
     }
 
     private static KitNeed second(List<KitNeed> needs) {

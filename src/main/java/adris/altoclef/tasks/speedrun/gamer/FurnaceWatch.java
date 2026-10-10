@@ -337,6 +337,15 @@ public final class FurnaceWatch {
         return own != null && own.contains(pos);
     }
 
+    // where we stand, for the Moment's cut-in distance. null without a player, which the plan reads as close (the old rules)
+    public static RunState.Pos where(AltoClef mod) {
+        if (mod.getPlayer() == null) {
+            return null;
+        }
+        BlockPos p = mod.getPlayer().blockPosition();
+        return new RunState.Pos(p.getX(), p.getY(), p.getZ());
+    }
+
     private static BlockPos at(RunState.FurnaceJob job) {
         return new BlockPos(job.pos.x, job.pos.y, job.pos.z);
     }

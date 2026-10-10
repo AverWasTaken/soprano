@@ -51,4 +51,10 @@ public final class FoodGate {
         out.remove(at);
         return out;
     }
+
+    // the head of the list is the kit's own refill (index's test), not a stock-up that happens to be food. the two can be the same
+    // record (130 both), and a stock-up reads as "keep hunting out here" to FurnacePlan.feeds: a hungry bot must never look like that
+    public static boolean refillHead(List<KitNeed> needs, FoodPlan food) {
+        return index(needs, food) == 0;
+    }
 }

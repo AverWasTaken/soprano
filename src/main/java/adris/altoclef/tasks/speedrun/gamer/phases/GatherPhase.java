@@ -10,6 +10,7 @@ import adris.altoclef.tasks.speedrun.gamer.GamerPhase;
 import adris.altoclef.tasks.speedrun.gamer.KitNeed;
 import adris.altoclef.tasks.speedrun.gamer.KitPlanner;
 import adris.altoclef.tasks.speedrun.gamer.KitRunner;
+import adris.altoclef.tasks.speedrun.gamer.NeedEnd;
 import adris.altoclef.tasks.speedrun.gamer.PhaseHandler;
 import adris.altoclef.tasks.speedrun.gamer.PrepSupport;
 import adris.altoclef.tasks.speedrun.gamer.RunState;
@@ -33,6 +34,8 @@ public class GatherPhase implements PhaseHandler {
     private final FurnaceWatch furnaces = new FurnaceWatch(benches);
     // the need we are in the middle of while the food cooks, a different first need is the boundary where we turn around
     private KitNeed committed;
+    // the stricter "that need is over" a far smoker waits for (FurnacePlan.COLLECT_CUT_IN)
+    private final NeedEnd needEnd = new NeedEnd();
     // what the user had for altoAsyncSmelting, null when we did not touch it
     private Boolean userAsync;
     private String hudState;
@@ -82,6 +85,7 @@ public class GatherPhase implements PhaseHandler {
         support.onEnter(mod);
         furnaces.newPhase();
         committed = null;
+        needEnd.reset();
         hudState = null;
         var async = Baritone.settings().altoAsyncSmelting;
         if (!SettingsOverrides.isHeld(async)) {
@@ -115,6 +119,7 @@ public class GatherPhase implements PhaseHandler {
         }
         furnaces.reset();
         committed = null;
+        needEnd.reset();
         List<KitNeed> needs = KitPlanner.gather(ctx.facts(), ctx.cfg().overworld, ctx.cfg().end.beds, ctx.food());
         Task side = support.tick(mod, ctx, needs);
         if (side != null) {
@@ -140,12 +145,18 @@ public class GatherPhase implements PhaseHandler {
         }
         // (no quick smoker stand-by here: the gather work is right next to the smoker anyway)
         boolean boundary = head == null || !head.equals(committed);
-        FurnacePlan.Moment moment = new FurnacePlan.Moment(head != null, boundary, SmeltFiller.gatherBlocking(f, plan), false, false);
+        // food stuck behind its smoker, or a hungry food need at the head, only waits on food jobs. from far off only that (or the end of
+        // the need) brings us back
+        boolean blocking = SmeltFiller.gatherBlocking(f, plan);
+        boolean hungry = ctx.food().band() == 0 || ctx.food().bag() <= 0;
+        FurnacePlan.Moment moment = new FurnacePlan.Moment(head != null, boundary, needEnd.done(runnable, f.gameTime()),
+                job -> (blocking && job.unitsEach > 0) || FurnacePlan.feeds(head, job, hungry, false), false, false, FurnaceWatch.where(mod), head == null ? "nothing" : head.catalogueName());
         FurnacePlan.Plan calls = furnaces.plan(ctx, moment);
         Task trip = furnaces.trip(mod, ctx, calls, moment);
         if (trip != null) {
             if (furnaces.started()) {
                 committed = null;
+                needEnd.reset();
             }
             // standing by the smoker (screen closed between looks) is the plan, not a stall. but only until the food is due plus the
             // patience: a smoker that never finishes must not keep this alive
@@ -159,6 +170,7 @@ public class GatherPhase implements PhaseHandler {
             return null;
         }
         committed = head;
+        needEnd.working(head, f.gameTime());
         Task task = runner.run(ctx, runnable);
         hudState = runner.hud() + " while the food cooks";
         return task;

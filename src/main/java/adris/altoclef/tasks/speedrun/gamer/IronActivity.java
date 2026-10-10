@@ -24,7 +24,8 @@ public final class IronActivity {
         // activity when the old path or a re-entry left one running, see Scene.golemFighting)
         GOLEM_FIGHT("golem fight"),
         // standing at a quick smoker (FurnacePlan STAND_BY QUICK): 30 s at most of waiting beats walking off and back, so every side job
-        // that walks away waits for it. the old tickStandBy rule
+        // that walks away waits for it. the old tickStandBy rule. only offered from within FurnacePlan.COLLECT_CUT_IN, so it never
+        // drags a side job home from across the map
         STAND_BY("smoker stand-by"),
         // taking our table, furnace or smoker back. above the loot because a station left standing is gone for good once we walk
         // past FORGET, a chest is still there next time
@@ -36,10 +37,10 @@ public final class IronActivity {
         BED("village bed"),
         GOLEM_START("golem hunt"),
         // last of the side jobs: coal is the only one for something we might need rather than something we do. it ends itself
-        // on a furnace that is due (DetourRules), so it never sits on a collect
+        // on a furnace that is due and close (DetourRules), so it never sits on a collect
         COAL("coal detour"),
         // gravel for flint, right behind coal: coal is burnt this phase, the flint waits for the portal. same rules otherwise
-        // (it ends itself on a due furnace too), and its 2 min cooldown keeps it from taking every patch we walk past
+        // (it ends itself on a due furnace close by too), and its 2 min cooldown keeps it from taking every patch we walk past
         GRAVEL("gravel detour"),
         // a collect, a take-back, the early pick interrupt, the idle wait. after the side jobs like it always was (a trip only
         // starts when the wheel is free)

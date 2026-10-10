@@ -81,6 +81,34 @@ public class FoodGateTest {
     }
 
     @Test
+    public void aHungryKitFoodHeadFeedsOnAFarSmokerAndAFoodStockUpDoesNot() {
+        FakeFacts f = new FakeFacts().cooking("iron_ingot", 10, 60);
+        f.foodUnits = 5;
+        FoodPlan food = plan(f);
+        assertEquals(0, food.band());
+        SmeltFiller.Schedule s = SmeltFiller.schedule(f, cfg, 8);
+        int at = FoodGate.index(s.runnable(), food);
+        assertTrue(at >= 0);
+        // the list as it is once the refill is the head (the gate keeps it where the planner put it, the vein goes first)
+        List<KitNeed> headed = s.runnable().subList(at, s.runnable().size());
+        KitNeed own = headed.get(0);
+        assertTrue(FoodGate.refillHead(headed, food));
+        RunState.FurnaceJob meat = new RunState.FurnaceJob(new RunState.Pos(200, 64, 0), "OVERWORLD", "smoker", "mutton", 8, "cooked_mutton", 0, 100);
+        meat.unitsEach = 6;
+        // what IronPhase.moment hands feeds: a stock-up only when the head is not the gate's own refill, even if the records match
+        assertTrue(FurnacePlan.feeds(own, meat, true, s.isStockUp(own) && !FoodGate.refillHead(headed, food)));
+        // no refill going (fed, over the line) and a food stock-up at the head: that one keeps hunting out here
+        FakeFacts fed = new FakeFacts().cooking("iron_ingot", 10, 60);
+        fed.foodUnits = cfg.minFoodUnits + 5;
+        FoodPlan full = plan(fed);
+        SmeltFiller.Schedule s2 = SmeltFiller.schedule(fed, cfg, 8);
+        KitNeed extra = s2.stockUps().stream().filter(n -> KitNeed.FOOD.equals(n.catalogueName())).findFirst().orElseThrow();
+        List<KitNeed> stocking = List.of(extra);
+        assertFalse(FoodGate.refillHead(stocking, full));
+        assertFalse(FurnacePlan.feeds(extra, meat, true, s2.isStockUp(extra) && !FoodGate.refillHead(stocking, full)));
+    }
+
+    @Test
     public void thePlannerStillListsTheFoodAtTheFullAmountOnlyWhenShort() {
         // the gate works on the planner's list: 70 and over has no minimum entry, so there is nothing to gate
         FakeFacts f = new FakeFacts();

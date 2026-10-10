@@ -264,8 +264,10 @@ public final class ResourceDetour {
         boolean overworld = f.dimension() == Dimension.OVERWORLD;
         boolean screen = mod.getPlayer().containerMenu instanceof AbstractFurnaceMenu;
         // the same "due" the furnace plan uses, so a detour never sits on a collect trip it is about to hold up. only in the
-        // overworld: from the nether a due furnace is a furnace nobody is walking to, it must not keep gravel off for good
-        boolean due = overworld && FurnacePlan.anyDue(f.furnaceJobs(), now);
+        // overworld: from the nether a due furnace is a furnace nobody is walking to, it must not keep gravel off for good. and only
+        // from close by: a far one waits for the end of what we are doing (FurnacePlan.COLLECT_CUT_IN), ending the detour for it
+        // would just be the coal we did not dig
+        boolean due = overworld && FurnacePlan.anyDueClose(f.furnaceJobs(), now, FurnaceWatch.where(mod));
         boolean cook = overworld && f.cookStation() != null;
         boolean load = overworld && WorkbenchRules.loadInFlight(screen, AsyncSmelting.lastWork(), now);
         String need = head == null ? null : head.catalogueName();

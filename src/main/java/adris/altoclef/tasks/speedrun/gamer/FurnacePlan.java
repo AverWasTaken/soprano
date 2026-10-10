@@ -63,6 +63,13 @@ public final class FurnacePlan {
     // for a furnace that got broken or a bot that died half way
     public static final long EARLY_LOAD_TICKS = 1800;
 
+    // ---- the one distance
+
+    // a due job only cuts into what we are doing from this close (blocks, 3d, inclusive). further out it waits for the end of the
+    // thing: iron in a furnace does not spoil, a walk of 100 blocks back and 100 out again to finish the wool is the expensive part.
+    // inside this the walk back is a few seconds and the work is still right there after
+    public static final int COLLECT_CUT_IN = 32;
+
     private FurnacePlan() {
     }
 
@@ -91,6 +98,7 @@ public final class FurnacePlan {
         INTERRUPT("due, and the output is holding up the plan"),
         STOCK_UP("due, and all we were doing was stocking up for later"),
         IDLE_DUE("due, and there is nothing else to do"),
+        FAR_BUSY("due, but we are far off and busy, collecting after"),
         IDLE_WAIT("nothing else to do, waiting it out"),
         QUICK("a smoker is quick, waiting for it instead of mining"),
         TOO_LONG("not due, and too long a batch to stand at, working it like a furnace"),
@@ -118,11 +126,19 @@ public final class FurnacePlan {
     }
 
     // what is going on around the furnace right now, as the phase sees it. the phase knows its plan, this knows the furnace
-    //   fillerLeft: the runnable list is not empty. atBoundary: the need we were on is done (we are between two needs).
-    //   interrupt: the one thing that may cut a need short (the early pick wants its ingots, food stuck behind its own smoker).
+    //   fillerLeft: the runnable list is not empty. atBoundary: the plan head changed (we are between two needs, close by that is
+    //   enough). headDone: the stricter one for far off, the need we were on is really over or a side job just ended (NeedEnd).
+    //   waitsOn: the jobs whose output the plan is stuck on, the one thing that may cut a need short from any distance (the early
+    //   pick wants its ingots, food stuck behind its own smoker). per job, so a pick waiting on iron does not drag us to a smoker.
     //   stockUp: the need we are on is only there to use the wait, nothing waits on it. mayStandBy: the phase stands at a quick
-    //   smoker instead of mining (IRON does, GATHER's work is right there anyway)
-    public record Moment(boolean fillerLeft, boolean atBoundary, boolean interrupt, boolean stockUp, boolean mayStandBy) {
+    //   smoker instead of mining (IRON does, GATHER's work is right there anyway).
+    //   me: where we stand, null = no idea (everything counts as close, the old behaviour). doing: what the far line says we are on
+    public record Moment(boolean fillerLeft, boolean atBoundary, boolean headDone, Predicate<RunState.FurnaceJob> waitsOn, boolean stockUp,
+                         boolean mayStandBy, RunState.Pos me, String doing) {
+        // the short form the tests grew up on: one interrupt for every job, and nowhere in particular
+        public Moment(boolean fillerLeft, boolean atBoundary, boolean interrupt, boolean stockUp, boolean mayStandBy) {
+            this(fillerLeft, atBoundary, atBoundary, job -> interrupt, stockUp, mayStandBy, null, null);
+        }
     }
 
     // where we are heading when we leave
@@ -152,6 +168,9 @@ public final class FurnacePlan {
         // the last look said the batch has too long to go to stand at (the log says TOO_LONG instead of "not due yet")
         boolean standTooLong;
         long standUntil = -1;
+        // the "too far, collecting after" line went out for this wait. back to false once a trip (or any call but LEAVE) happens,
+        // so walking in and out of the cut-in range is not a line every time
+        boolean farSaid;
     }
 
     // ---- the trip layer
@@ -169,6 +188,39 @@ public final class FurnacePlan {
     public static boolean anyDue(List<RunState.FurnaceJob> jobs, long now) {
         for (RunState.FurnaceJob job : jobs) {
             if (due(job, now)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // is `me` within COLLECT_CUT_IN of the job. no idea where we are counts as close, that is how it always was
+    public static boolean close(RunState.FurnaceJob job, RunState.Pos me) {
+        if (me == null) {
+            return true;
+        }
+        long dx = job.pos.x - me.x;
+        long dy = job.pos.y - me.y;
+        long dz = job.pos.z - me.z;
+        return dx * dx + dy * dy + dz * dz <= (long) COLLECT_CUT_IN * COLLECT_CUT_IN;
+    }
+
+    // the head need is food we really need now (`hungry`: under the floor, or nothing edible in the bag) and this job is food cooking
+    // for us: its output is the need, so it goes from any distance, same as the pick waiting on its ingots. a stock-up or a top-up
+    // between the floor and the target keeps hunting where we are, the smoker is still there after. meat left cold in a station is
+    // not cooking, that one waits. the cook never counts: CookGate does not ask for it while a food job is pending, and when it does
+    // it picks or places its own station rather than waiting on ours
+    public static boolean feeds(KitNeed head, RunState.FurnaceJob job, boolean hungry, boolean stockUp) {
+        if (head == null || !hungry || stockUp || job.unitsEach <= 0 || job.stranded) {
+            return false;
+        }
+        return KitNeed.FOOD.equals(head.catalogueName());
+    }
+
+    // a due job close enough to cut in: what a detour ends itself on. a far one waits for the detour like it waits for the wool
+    public static boolean anyDueClose(List<RunState.FurnaceJob> jobs, long now, RunState.Pos me) {
+        for (RunState.FurnaceJob job : jobs) {
+            if (due(job, now) && close(job, me)) {
                 return true;
             }
         }
@@ -253,10 +305,10 @@ public final class FurnacePlan {
             if (running && !budgetEnded(job, m, now)) {
                 v = held(job);
             } else {
-                v = settle(job, decide(job, m, now), now);
+                v = settle(job, decide(job, m, now), m, now);
                 t.call = v.call();
                 t.why = v.why();
-                String line = say(job, v.call(), v.why().text, now);
+                String line = line(job, v, m, now);
                 if (line != null) {
                     changes.add(line);
                 }
@@ -279,12 +331,14 @@ public final class FurnacePlan {
         return new Plan(out, pick, changes, standingBy);
     }
 
-    // LEAVE -> an idle STAND_BY is the one change that follows a flickering input (the filler list having nothing runnable), so it has
-    // to be the answer SOFT_HOLD_TICKS in a row. everything else (the way back to LEAVE, a first call, a due job, a quick smoker, stuck,
-    // leaving) goes through at once. a held answer is the old call, never a half way STAND_BY the pick could start a trip from
-    private static Verdict settle(RunState.FurnaceJob job, Verdict raw, long now) {
+    // LEAVE -> an idle STAND_BY follows a flickering input (the filler list having nothing runnable), so it has to be the answer
+    // SOFT_HOLD_TICKS in a row. so does LEAVE -> a far IDLE_DUE: one empty tick 100 blocks out would be a trip that then holds to
+    // the end. everything else (the way back to LEAVE, a first call, a close due job, a quick smoker, stuck, leaving) goes through at
+    // once. a held answer is the old call, never a half way STAND_BY the pick could start a trip from
+    private static Verdict settle(RunState.FurnaceJob job, Verdict raw, Moment m, long now) {
         Track t = job.track;
-        if (raw.call() != Call.STAND_BY || raw.why() != Why.IDLE_WAIT) {
+        boolean farIdle = raw.why() == Why.IDLE_DUE && !close(job, m.me());
+        if (!farIdle && (raw.call() != Call.STAND_BY || raw.why() != Why.IDLE_WAIT)) {
             t.idleSince = -1;
             return raw;
         }
@@ -310,25 +364,39 @@ public final class FurnacePlan {
     }
 
     private static Verdict decide(RunState.FurnaceJob job, Moment m, long now) {
-        if (quickCandidate(job, m) && standByOn(job, now)) {
+        boolean close = close(job, m.me());
+        // a quick stand-by from far off is 20 s of smoker behind a walk longer than its whole budget, and it cuts in on the side
+        // jobs (IronActivity.preempts). it gets its chance again once we are back in range
+        if (close && quickCandidate(job, m) && standByOn(job, now)) {
             return stuckOr(job, verdict(job, Call.STAND_BY, Why.QUICK));
         }
         boolean due = due(job, now);
         Verdict v;
         if (!m.fillerLeft()) {
+            // nothing else to do is the end of everything, any distance
             v = due ? verdict(job, Call.COLLECT_NOW, Why.IDLE_DUE) : verdict(job, Call.STAND_BY, Why.IDLE_WAIT);
         } else if (!due) {
             v = verdict(job, Call.LEAVE, tooLong(job) ? Why.TOO_LONG : Why.COOKING);
-        } else if (m.interrupt()) {
-            v = verdict(job, Call.COLLECT_NOW, Why.INTERRUPT);
-        } else if (m.stockUp()) {
-            v = verdict(job, Call.COLLECT_NOW, Why.STOCK_UP);
-        } else if (m.atBoundary()) {
-            v = verdict(job, Call.COLLECT_NOW, Why.BOUNDARY);
         } else {
-            v = verdict(job, Call.LEAVE, Why.MID_NEED);
+            v = dueCall(job, m, close);
         }
         return stuckOr(job, v);
+    }
+
+    // due, with something to do. the plan stuck on this output goes from anywhere, and so does the end of what we are on (from far
+    // off only a real end, headDone: that IS the thing we came out here to finish). cutting a stock-up short only pays from close
+    // by: from far off it is 200 blocks of walking to save a few seconds of waiting that cost nothing
+    private static Verdict dueCall(RunState.FurnaceJob job, Moment m, boolean close) {
+        if (m.waitsOn().test(job)) {
+            return verdict(job, Call.COLLECT_NOW, Why.INTERRUPT);
+        }
+        if (close && m.stockUp()) {
+            return verdict(job, Call.COLLECT_NOW, Why.STOCK_UP);
+        }
+        if (close ? m.atBoundary() : m.headDone()) {
+            return verdict(job, Call.COLLECT_NOW, Why.BOUNDARY);
+        }
+        return verdict(job, Call.LEAVE, close ? Why.MID_NEED : Why.FAR_BUSY);
     }
 
     // two waits to the end of the estimate and nothing came out: it is not cooking (fuel that ran dry under a lit reading, an input it
@@ -414,6 +482,32 @@ public final class FurnacePlan {
         long left = job.doneTick - now;
         String timer = left > 0 ? "~" + Math.round(left / 20.0) + " s to go" : "due " + Math.round(-left / 20.0) + " s ago";
         return "furnace: " + job.kind + " at " + job.pos + ": " + call + " (" + reason + "; " + job.count + " " + job.input + ", " + timer + ")";
+    }
+
+    // the plan's line for a fresh verdict. a far wait is a LEAVE like the ones around it, so the per-call dedupe would never say it:
+    // it gets its own line, once per wait
+    private static String line(RunState.FurnaceJob job, Verdict v, Moment m, long now) {
+        Track t = job.track;
+        if (v.why() != Why.FAR_BUSY) {
+            if (v.call() != Call.LEAVE) {
+                t.farSaid = false;
+            }
+            return say(job, v.call(), v.why().text, now);
+        }
+        t.logged = v.call();
+        if (t.farSaid) {
+            return null;
+        }
+        t.farSaid = true;
+        return "furnace: " + job.kind + " at " + job.pos.x + "," + job.pos.y + "," + job.pos.z + " is due, but we're " + away(job, m.me())
+                + " blocks away doing " + (m.doing() == null ? "something" : m.doing()) + ", collecting after";
+    }
+
+    private static long away(RunState.FurnaceJob job, RunState.Pos me) {
+        double dx = job.pos.x - me.x;
+        double dy = job.pos.y - me.y;
+        double dz = job.pos.z - me.z;
+        return Math.round(Math.sqrt(dx * dx + dy * dy + dz * dz));
     }
 
     // a job that is over without a visit: dropped as stale, or its block is gone

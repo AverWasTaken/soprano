@@ -11,6 +11,7 @@ import org.junit.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Predicate;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -98,6 +99,177 @@ public class FurnacePlanTest {
         assertEquals(Why.STOCK_UP, one(plan(furnace(1000), new Moment(true, false, false, true, true), 2000)).why());
         // an interrupt for a job that is not done cooking yet changes nothing
         assertEquals(Call.LEAVE, one(plan(furnace(9000), new Moment(true, false, true, true, true), 0)).call());
+    }
+
+    // ---- far off: a due job only cuts in from within COLLECT_CUT_IN
+
+    // the furnace() job stands at 0,64,0, so x is the distance
+    private static RunState.Pos away(int x) {
+        return new RunState.Pos(x, 64, 0);
+    }
+
+    // `boundary` here is a real one (the head changed AND NeedEnd says the old need is over)
+    private static Moment far(RunState.Pos me, boolean boundary, boolean stockUp, Predicate<RunState.FurnaceJob> waitsOn) {
+        return new Moment(true, boundary, boundary, waitsOn, stockUp, true, me, "wool");
+    }
+
+    private static final Predicate<RunState.FurnaceJob> NOBODY = job -> false;
+
+    @Test
+    public void aFarDueJobWaitsForTheWoolThenGoes() {
+        RunState.FurnaceJob job = furnace(1000);
+        List<RunState.FurnaceJob> jobs = List.of(job);
+        // wool is a stock-up, 100 blocks out: the furnace does not drag us home for it
+        Plan busy = FurnacePlan.plan(jobs, far(away(100), false, true, NOBODY), 2000, null);
+        assertEquals(Call.LEAVE, one(busy).call());
+        assertEquals(Why.FAR_BUSY, one(busy).why());
+        assertNull(busy.pick());
+        assertEquals(List.of("furnace: furnace at 0,64,0 is due, but we're 100 blocks away doing wool, collecting after"), busy.changes());
+        // one line per wait, also through a walk in and out of the range
+        assertTrue(FurnacePlan.plan(jobs, far(away(100), false, true, NOBODY), 2001, null).changes().isEmpty());
+        assertEquals(Why.MID_NEED, one(FurnacePlan.plan(jobs, far(away(20), false, false, NOBODY), 2002, null)).why());
+        assertTrue(FurnacePlan.plan(jobs, far(away(90), false, false, NOBODY), 2003, null).changes().isEmpty());
+        // the wool as a plain kit need is the same wait
+        assertEquals(Why.FAR_BUSY, one(FurnacePlan.plan(jobs, far(away(100), false, false, NOBODY), 2004, null)).why());
+        // the head only moved (the food gate jumped in front, a flicker): from close by that is a boundary, from far off it is not
+        Moment moved = new Moment(true, true, false, NOBODY, false, true, away(100), "wool");
+        assertEquals(Why.FAR_BUSY, one(FurnacePlan.plan(jobs, moved, 2005, null)).why());
+        assertEquals(Why.BOUNDARY, one(FurnacePlan.plan(List.of(furnace(1000)),
+                new Moment(true, true, false, NOBODY, false, true, away(20), "wool"), 2005, null)).why());
+        // wool done for real (NeedEnd): that is the end of the thing, go (even if the next head is another stock-up)
+        Plan done = FurnacePlan.plan(jobs, far(away(100), true, true, NOBODY), 2006, null);
+        assertEquals(Call.COLLECT_NOW, one(done).call());
+        assertEquals(Why.BOUNDARY, one(done).why());
+        assertSame(job, done.pick().job());
+    }
+
+    @Test
+    public void aCloseDueJobStillCutsTheStockUpShort() {
+        Plan p = FurnacePlan.plan(List.of(furnace(1000)), far(away(20), false, true, NOBODY), 2000, null);
+        assertEquals(Call.COLLECT_NOW, one(p).call());
+        assertEquals(Why.STOCK_UP, one(p).why());
+        assertNotNull(p.pick());
+    }
+
+    @Test
+    public void farOffTheOutputTheHeadNeedWaitsOnStillGoesAndNothingElseDoes() {
+        Predicate<RunState.FurnaceJob> ingots = job -> "iron_ingot".equals(job.output);
+        Verdict iron = one(FurnacePlan.plan(List.of(furnace(1000)), far(away(100), false, false, ingots), 2000, null));
+        assertEquals(Call.COLLECT_NOW, iron.call());
+        assertEquals(Why.INTERRUPT, iron.why());
+        // the pick waiting on ingots is no reason to walk 100 blocks to a smoker
+        RunState.FurnaceJob meat = smoker(1000);
+        Verdict smoke = one(FurnacePlan.plan(List.of(meat), new Moment(true, false, false, ingots, false, false, new RunState.Pos(105, 64, 0), "wool"), 2000, null));
+        assertEquals(Why.FAR_BUSY, smoke.why());
+    }
+
+    @Test
+    public void farOffAHungryFoodHeadStillGoesForTheFoodCookingForUs() {
+        KitNeed food = new KitNeed(KitNeed.FOOD, 20);
+        RunState.FurnaceJob meat = smoker(1000);
+        assertTrue(FurnacePlan.feeds(food, meat, true, false));
+        // a stock-up or a top-up over the floor keeps hunting where we are
+        assertFalse(FurnacePlan.feeds(food, meat, true, true));
+        assertFalse(FurnacePlan.feeds(food, meat, false, false));
+        // the cook never waits on our smoker, iron is not food, wool is not hungry, and meat left cold is not cooking for anyone
+        assertFalse(FurnacePlan.feeds(new KitNeed(KitNeed.COOK_SMOKER, 3), meat, true, false));
+        assertFalse(FurnacePlan.feeds(food, furnace(1000), true, false));
+        assertFalse(FurnacePlan.feeds(new KitNeed("wool", 3), meat, true, false));
+        RunState.FurnaceJob cold = smoker(1000);
+        cold.stranded = true;
+        assertFalse(FurnacePlan.feeds(food, cold, true, false));
+        assertFalse(FurnacePlan.feeds(null, meat, true, false));
+        RunState.Pos far = new RunState.Pos(105, 64, 0);
+        // under the floor, 100 blocks out, smoker due: go
+        Moment starving = new Moment(true, false, false, job -> FurnacePlan.feeds(food, job, true, false), false, false, far, "food");
+        Verdict v = one(FurnacePlan.plan(List.of(meat), starving, 2000, null));
+        assertEquals(Call.COLLECT_NOW, v.call());
+        assertEquals(Why.INTERRUPT, v.why());
+        // a food stock-up at the head, same smoker: keep hunting out here
+        RunState.FurnaceJob later = smoker(1000);
+        Moment stocking = new Moment(true, false, false, job -> FurnacePlan.feeds(food, job, true, true), true, false, far, "food");
+        assertEquals(Why.FAR_BUSY, one(FurnacePlan.plan(List.of(later), stocking, 2000, null)).why());
+    }
+
+    @Test
+    public void leavingTakesItAlongFromAnyDistance() {
+        RunState.FurnaceJob job = furnace(1000);
+        assertEquals(Why.FAR_BUSY, one(FurnacePlan.plan(List.of(job), far(away(200), false, false, NOBODY), 2000, null)).why());
+        Verdict v = FurnacePlan.leaving(job, Leaving.DIMENSION, 0);
+        assertEquals(Call.TAKE_ALL, v.call());
+        // the trip it started holds, however far off we still are
+        Verdict held = one(FurnacePlan.plan(List.of(job), far(away(200), false, false, NOBODY), 2001, job));
+        assertEquals(Call.TAKE_ALL, held.call());
+        assertEquals(Why.LEAVING_DIMENSION, held.why());
+    }
+
+    @Test
+    public void nothingElseToDoGoesFromAnyDistance() {
+        Moment idle = new Moment(false, true, true, NOBODY, false, true, away(150), "nothing");
+        Verdict due = one(FurnacePlan.plan(List.of(furnace(1000)), idle, 2000, null));
+        assertEquals(Call.COLLECT_NOW, due.call());
+        assertEquals(Why.IDLE_DUE, due.why());
+        assertEquals(Why.IDLE_WAIT, one(FurnacePlan.plan(List.of(furnace(5000)), idle, 0, null)).why());
+    }
+
+    @Test
+    public void oneEmptyTickFarOffIsNotATrip() {
+        RunState.FurnaceJob job = furnace(1000);
+        List<RunState.FurnaceJob> jobs = List.of(job);
+        Moment busy = far(away(150), false, false, NOBODY);
+        Moment idle = new Moment(false, true, true, NOBODY, false, true, away(150), "nothing");
+        assertEquals(Why.FAR_BUSY, one(FurnacePlan.plan(jobs, busy, 2000, null)).why());
+        // the filler list empties for a tick and comes straight back: no pick, still the same wait
+        Plan flicker = FurnacePlan.plan(jobs, idle, 2001, null);
+        assertEquals(Call.LEAVE, one(flicker).call());
+        assertNull(flicker.pick());
+        assertEquals(Why.FAR_BUSY, one(FurnacePlan.plan(jobs, busy, 2002, null)).why());
+        // nothing to do for real: after the soft hold it goes
+        assertNull(FurnacePlan.plan(jobs, idle, 2003, null).pick());
+        assertNull(FurnacePlan.plan(jobs, idle, 2003 + FurnacePlan.SOFT_HOLD_TICKS - 1, null).pick());
+        Plan go = FurnacePlan.plan(jobs, idle, 2003 + FurnacePlan.SOFT_HOLD_TICKS, null);
+        assertEquals(Why.IDLE_DUE, one(go).why());
+        assertSame(job, go.pick().job());
+        // close by the same flicker goes at once, like it always did
+        RunState.FurnaceJob near = furnace(1000);
+        assertEquals(Why.MID_NEED, one(FurnacePlan.plan(List.of(near), far(away(10), false, false, NOBODY), 2000, null)).why());
+        assertEquals(Why.IDLE_DUE, one(FurnacePlan.plan(List.of(near), new Moment(false, true, true, NOBODY, false, true, away(10), "x"), 2001, null)).why());
+    }
+
+    @Test
+    public void thirtyTwoBlocksIsStillClose() {
+        RunState.FurnaceJob job = furnace(1000);
+        assertEquals(32, FurnacePlan.COLLECT_CUT_IN);
+        assertTrue(FurnacePlan.close(job, away(32)));
+        assertFalse(FurnacePlan.close(job, away(33)));
+        // 3d: straight up counts the same, and 20 + 25 sideways is just over
+        assertTrue(FurnacePlan.close(job, new RunState.Pos(0, 96, 0)));
+        assertFalse(FurnacePlan.close(job, new RunState.Pos(20, 64, 25)));
+        assertTrue(FurnacePlan.close(job, null));
+        assertEquals(Why.STOCK_UP, one(FurnacePlan.plan(List.of(furnace(1000)), far(away(32), false, true, NOBODY), 2000, null)).why());
+        assertEquals(Why.FAR_BUSY, one(FurnacePlan.plan(List.of(furnace(1000)), far(away(33), false, true, NOBODY), 2000, null)).why());
+        // and what a detour ends itself on
+        assertTrue(FurnacePlan.anyDueClose(List.of(job), 2000, away(32)));
+        assertFalse(FurnacePlan.anyDueClose(List.of(job), 2000, away(33)));
+        assertFalse(FurnacePlan.anyDueClose(List.of(job), 0, away(1)));
+    }
+
+    @Test
+    public void aQuickSmokerIsOnlyStoodAtFromCloseByButAStartedOneHolds() {
+        // smoker() stands at 5,64,0 with 15 s left: quick from next door, not from 100 blocks out
+        Moment farOff = new Moment(true, false, false, NOBODY, false, true, new RunState.Pos(105, 64, 0), "wool");
+        Plan p = plan(smoker(300), farOff, 0);
+        assertEquals(Call.LEAVE, one(p).call());
+        assertFalse(p.standingBy());
+        RunState.FurnaceJob meat = smoker(300);
+        Moment near = new Moment(true, false, false, NOBODY, false, true, new RunState.Pos(10, 64, 0), "wool");
+        Plan go = plan(meat, near, 0);
+        assertEquals(Why.QUICK, one(go).why());
+        assertTrue(go.standingBy());
+        // the walk wandered out of range: the stand-by already going keeps its own budget, distance is not part of it
+        Plan held = FurnacePlan.plan(List.of(meat), farOff, 20, meat);
+        assertEquals(Why.QUICK, one(held).why());
+        assertTrue(held.standingBy());
     }
 
     @Test
