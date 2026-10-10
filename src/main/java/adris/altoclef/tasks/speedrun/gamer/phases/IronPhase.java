@@ -207,12 +207,13 @@ public class IronPhase implements PhaseHandler {
         Schedule schedule = null;
         List<KitNeed> needs;
         if (jobs) {
-            schedule = SmeltFiller.schedule(f, ctx.cfg().overworld, ctx.cfg().end.beds, SmeltSurface.shallow(SmeltSurface.depthBelowSky(mod)), ctx.food());
+            schedule = SmeltFiller.schedule(f, ctx.cfg().overworld, ctx.cfg().end.beds, SmeltSurface.shallow(SmeltSurface.depthBelowSky(mod)), ctx.food(),
+                    ctx.wood());
             needs = gateFood(mod, ctx, schedule.runnable());
         } else {
             kitHead = null;
             needEnd.reset();
-            needs = gateFood(mod, ctx, KitPlanner.plan(f, ctx.cfg().overworld, ctx.cfg().end.beds, ctx.food()));
+            needs = gateFood(mod, ctx, KitPlanner.plan(f, ctx.cfg().overworld, ctx.cfg().end.beds, ctx.food(), ctx.wood()));
         }
         KitNeed head = needs.isEmpty() ? null : needs.get(0);
         FurnacePlan.Moment moment = null;
@@ -437,7 +438,8 @@ public class IronPhase implements PhaseHandler {
         furnaces.reset();
         committed = null;
         needEnd.reset();
-        List<KitNeed> needs = gateFood(mod, ctx, KitPlanner.plan(ctx.facts(), ctx.cfg().overworld, ctx.cfg().end.beds, ctx.food()));
+        List<KitNeed> needs = gateFood(mod, ctx, KitPlanner.plan(ctx.facts(), ctx.cfg().overworld, ctx.cfg().end.beds, ctx.food(),
+                ctx.wood()));
         KitNeed first = needs.isEmpty() ? null : needs.get(0);
         Task side = support.tick(mod, ctx, needs);
         if (side != null) {
@@ -468,7 +470,7 @@ public class IronPhase implements PhaseHandler {
             return null;
         }
         Schedule schedule = SmeltFiller.schedule(f, ctx.cfg().overworld, ctx.cfg().end.beds, SmeltSurface.shallow(SmeltSurface.depthBelowSky(mod)),
-                ctx.food());
+                ctx.food(), ctx.wood());
         List<KitNeed> runnable = gateFood(mod, ctx, schedule.runnable());
         KitNeed head = runnable.isEmpty() ? null : runnable.get(0);
         // no pick yet and the early batch is done: the pick is worth the detour, the mining need would not end for 36 more

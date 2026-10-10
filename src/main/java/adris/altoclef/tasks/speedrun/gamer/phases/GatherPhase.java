@@ -118,7 +118,7 @@ public class GatherPhase implements PhaseHandler {
         furnaces.reset();
         committed = null;
         needEnd.reset();
-        List<KitNeed> needs = KitPlanner.gather(ctx.facts(), ctx.cfg().overworld, ctx.cfg().end.beds, ctx.food());
+        List<KitNeed> needs = KitPlanner.gather(ctx.facts(), ctx.cfg().overworld, ctx.cfg().end.beds, ctx.food(), ctx.wood());
         Task side = support.tick(mod, ctx, needs);
         if (side != null) {
             hudState = support.hud();
@@ -133,8 +133,8 @@ public class GatherPhase implements PhaseHandler {
     // the gather list (wood, stone, crafts: all surface work) or the smoker itself when SmeltFiller says it is time. with nothing left to do the bot stands by the smoker with the screen closed, which beats staring at the gui
     private Task cookingTick(AltoClef mod, GamerContext ctx) {
         GamerFacts f = ctx.facts();
-        List<KitNeed> plan = KitPlanner.gather(f, ctx.cfg().overworld, ctx.cfg().end.beds, ctx.food());
-        List<KitNeed> runnable = SmeltFiller.gatherRunnable(f, ctx.cfg().overworld, ctx.cfg().end.beds, ctx.food());
+        List<KitNeed> plan = KitPlanner.gather(f, ctx.cfg().overworld, ctx.cfg().end.beds, ctx.food(), ctx.wood());
+        List<KitNeed> runnable = SmeltFiller.gatherRunnable(f, ctx.cfg().overworld, ctx.cfg().end.beds, ctx.food(), ctx.wood());
         KitNeed head = runnable.isEmpty() ? null : runnable.get(0);
         Task side = support.tick(mod, ctx, runnable);
         if (side != null) {
