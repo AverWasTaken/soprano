@@ -87,6 +87,7 @@ public final class NetherSweepPlanner {
     private static final int EXHAUSTED_BLOCKS = 192;
     // not asked for this long = something else had the wheel
     private static final double IDLE_SECONDS = 5;
+    private static final int MAX_GAP_RESETS = 2;
 
     private final RunState state;
     private final NetherConfig cfg;
@@ -103,6 +104,7 @@ public final class NetherSweepPlanner {
     // best distance to the aim so far and the walking seconds since it last got 'waypointNoProgressBlocks' better
     private double bestDist = Double.NaN;
     private double stuckFor;
+    private int gaps;
     // seconds between this step and the last one, 0 when something else had the wheel in between
     private double stepSeconds;
     // waypoints given up on or skipped, for the life of this planner: a cell picked up again never hands them back
@@ -268,9 +270,13 @@ public final class NetherSweepPlanner {
         if (stepSeconds > IDLE_SECONDS) {
             waypointSince = now;
             stepSeconds = 0;
-            // and whatever dragged us off (a fight, a ghast run) moved us, so the old best distance means nothing either
+            // and whatever dragged us off (a fight, a ghast run) moved us, so the old best distance means nothing either. the
+            // stuck seconds start over for the first couple of gaps only, or a waypoint that keeps getting interrupted would
+            // never be given up on
             bestDist = Double.NaN;
-            stuckFor = 0;
+            if (++gaps <= MAX_GAP_RESETS) {
+                stuckFor = 0;
+            }
         }
         lastStepAt = now;
         if (goalMet(goal)) {
@@ -313,6 +319,7 @@ public final class NetherSweepPlanner {
     }
 
     private void freshWaypoint() {
+        gaps = 0;
         judged = false;
         bestDist = Double.NaN;
         stuckFor = 0;
@@ -382,7 +389,12 @@ public final class NetherSweepPlanner {
     // only stepped seconds add up, so a fight or a ghast in the middle does not read as standing still
     private boolean noProgress(int px, int pz, Point to) {
         double d = Math.sqrt(dist2(px, pz, to.x(), to.z()));
-        if (Double.isNaN(bestDist) || d <= bestDist - cfg.waypointNoProgressBlocks) {
+        if (Double.isNaN(bestDist)) {
+            // (first look: whoever cleared bestDist decided what happens to the stuck seconds, see step and freshWaypoint)
+            bestDist = d;
+            return false;
+        }
+        if (d <= bestDist - cfg.waypointNoProgressBlocks) {
             bestDist = d;
             stuckFor = 0;
             return false;

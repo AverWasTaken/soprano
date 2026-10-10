@@ -26,7 +26,7 @@ public final class StandScan {
         Block at(int x, int y, int z);
     }
 
-    // feet cells from the lowest floor (bedrock, y 0) to just under the roof bedrock (it starts at 123, head cell < 123)
+    // floors from y 1 (the bedrock layer under it counts as one too) to just under the roof bedrock, which starts at 123
     static final int LOWEST_FLOOR = 1;
     static final int HIGHEST_FLOOR = 119;
 

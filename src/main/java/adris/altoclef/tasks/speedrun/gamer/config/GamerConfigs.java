@@ -163,6 +163,11 @@ public final class GamerConfigs {
         c.nether.maxCells = Math.max(1, c.nether.maxCells);
         c.nether.sweepSpacingChunks = Math.max(1, c.nether.sweepSpacingChunks);
         c.nether.waypointSeconds = positive(c.nether.waypointSeconds, d.nether.waypointSeconds);
+        // 0 turns the no progress rule off, but a negative or NaN is a typo; the shift is a column scan, 16 blocks is plenty
+        c.nether.waypointNoProgressSeconds = c.nether.waypointNoProgressSeconds >= 0 ? c.nether.waypointNoProgressSeconds
+                : d.nether.waypointNoProgressSeconds;
+        c.nether.waypointNoProgressBlocks = Math.max(0, c.nether.waypointNoProgressBlocks);
+        c.nether.waypointShiftBlocks = Math.max(0, Math.min(16, c.nether.waypointShiftBlocks));
         clampBudgets(c.budgets, d.budgets);
     }
 

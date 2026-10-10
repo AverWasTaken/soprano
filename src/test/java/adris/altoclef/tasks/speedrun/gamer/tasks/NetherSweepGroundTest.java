@@ -194,6 +194,16 @@ public class NetherSweepGroundTest {
     }
 
     @Test
+    public void aWaypointThatKeepsGettingInterruptedIsStillGivenUpOnEventually() {
+        walk(-300, 0, 0, 15);
+        walk(-300, 0, 60, 75);
+        walk(-300, 0, 120, 135);
+        // the third gap no longer wipes the 15 stuck seconds, so five more walking seconds are enough
+        assertEquals(0, walk(-300, 0, 200, 204).x());
+        assertEquals(100, walk(-300, 0, 205, 205).x());
+    }
+
+    @Test
     public void aLongInterruptionBeforeAnyWalkingIsNotHeldAgainstTheWaypoint() {
         walk(-300, 0, 0, 0);
         assertEquals(0, walk(-300, 0, 60, 70).x());
