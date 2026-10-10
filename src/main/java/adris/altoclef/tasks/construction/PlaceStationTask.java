@@ -74,6 +74,7 @@ public class PlaceStationTask extends Task {
     private BlockPos _carving;
     private StationSpots.Cell _carved;
     private boolean _fallbackLogged;
+    private boolean _placedLogged;
 
     public PlaceStationTask(Block... toPlace) {
         _toPlace = toPlace;
@@ -104,6 +105,7 @@ public class PlaceStationTask extends Task {
         _carving = null;
         _carved = null;
         _fallbackLogged = false;
+        _placedLogged = false;
         // whatever walked us here may still be pathing, and a builder that wakes up is the thing this task replaces
         mod.getClientBaritone().getPathingBehavior().forceCancel();
         mod.getClientBaritone().getBuilderProcess().onLostControl();
@@ -122,7 +124,8 @@ public class PlaceStationTask extends Task {
                 mod.getInputControls().release(Input.SNEAK);
                 if (!_fallbackLogged) {
                     _fallbackLogged = true;
-                    Debug.logInternal("station: falling back to the old placer (" + _attempt.fallbackWhy() + ")");
+                    // the builder pillars and bridges with throwaway blocks. a warning so a play log shows whether it still runs
+                    Debug.logWarning("station fallback: builder placing " + kindWord() + " after " + _attempt.totalTicks() + " ticks, " + _attempt.fallbackWhy());
                 }
                 setDebugState("Out of ideas, letting the old placer try.");
                 yield _fallback;
@@ -136,14 +139,17 @@ public class PlaceStationTask extends Task {
             return null;
         }
         setDebugState("Looking for a spot.");
-        Optional<StationSpots.Spot> spot = StationSpots.best(new World(mod), stance(mod), _bans, _carved);
+        StationSpots.Refusals why = new StationSpots.Refusals();
+        StationSpots.Stance stance = stance(mod);
+        Optional<StationSpots.Spot> spot = StationSpots.best(new World(mod), stance, _bans, _carved, why);
         if (spot.isEmpty()) {
-            Debug.logInternal("station spots: nothing clickable around " + mod.getPlayer().blockPosition().toShortString());
+            Debug.logInternal("station spots: no spot around " + mod.getPlayer().blockPosition().toShortString() + ": " + why.summary());
             _attempt.noSpot();
             return null;
         }
         _spot = spot.get();
-        Debug.logInternal("station spot: " + describe(_spot));
+        Debug.logInternal("station spot: " + kindWord() + " at " + describe(_spot) + ", dy=" + (_spot.y() - stance.feetY())
+                + ", stand at " + new BlockPos(stance.feetX(), stance.feetY(), stance.feetZ()).toShortString());
         _attempt.picked();
         return null;
     }
@@ -235,6 +241,7 @@ public class PlaceStationTask extends Task {
         StationAttempt.Phase after = _attempt.phase();
         if (after == StationAttempt.Phase.DONE) {
             mod.getInputControls().release(Input.SNEAK);
+            logPlaced(spotCell(_spot));
         } else if (after != StationAttempt.Phase.VERIFY) {
             // verify() lost the try
             Debug.logInternal("station spot: no block at " + describe(_spot) + " after the click, banning it");
@@ -269,6 +276,29 @@ public class PlaceStationTask extends Task {
     @Override
     protected void onStop(AltoClef mod, Task interruptTask) {
         mod.getInputControls().release(Input.SNEAK);
+        // the old placer finishes inside its own task, nothing in our tick sees it land. the block tells us when it is there
+        if (interruptTask == null && _attempt.phase() == StationAttempt.Phase.FALLBACK && _fallback.isFinished(mod)) {
+            logPlaced(_fallback.getPlaced());
+        }
+    }
+
+    // once per attempt: how long it took and which road got the block down
+    private void logPlaced(BlockPos at) {
+        if (_placedLogged) {
+            return;
+        }
+        _placedLogged = true;
+        Debug.logInternal("station placed: " + kindWord() + " at " + (at == null ? "?" : at.toShortString()) + " in " + _attempt.totalTicks()
+                + " ticks via " + _attempt.how());
+    }
+
+    // "crafting table", or "furnace/smoker" when more than one will do
+    private String kindWord() {
+        StringBuilder out = new StringBuilder();
+        for (Block block : _toPlace) {
+            out.append(out.length() == 0 ? "" : "/").append(BuiltInRegistries.BLOCK.getKey(block).getPath().replace('_', ' '));
+        }
+        return out.toString();
     }
 
     @Override
