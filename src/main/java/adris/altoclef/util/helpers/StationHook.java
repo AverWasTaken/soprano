@@ -4,12 +4,14 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 
+import java.util.function.Function;
 import java.util.function.Predicate;
 
 // what the container tasks (alto) can ask about the stations the gamer put down, without knowing there is a gamer. same pattern
 // as AsyncSmelting.isOurFurnace: the run wires a Source in when it starts and pulls it when it ends. the container tasks feed what
 // it says (and what the block tracker sees) to StationChoice, which is the one place that picks a station. a plain alto run has no
-// source: nothing is ours, nothing is coming down, and the nearest reachable station within NEAR is used, else one is placed or crafted
+// source: nothing is ours, nothing is coming down, and the nearest reachable station within NEAR is used, else one is placed or crafted.
+// plain alto does keep a small book of its own (StationBook) of what its placer reported, record only for now (see ownedWithin)
 public final class StationHook {
     // the three workbenches the registry keeps. blast furnaces and the like are the village's, never ours to take back
     public enum Kind {
@@ -170,21 +172,70 @@ public final class StationHook {
         return ours(pos) || block == Blocks.CRAFTING_TABLE || block == Blocks.FURNACE || block == Blocks.SMOKER;
     }
 
-    // our placer finished a station and the block is in the world. no source (plain alto) hears nothing
+    // plain alto's own small book (StationBook): what the placer reported and which station a task is working at. it never replaces the
+    // run's registry, the source wins whenever one is installed. record only unless plainAnswers is turned on, see ownedWithin
+    private static final StationBook plain = new StationBook();
+    private static volatile boolean plainAnswers = false;
+
+    // our placer finished a station and the block is in the world. with a run installed it goes to the registry, without one into
+    // plain alto's book
     public static void reportPlaced(Kind kind, BlockPos pos, String dimension, long now) {
+        if (kind == null || pos == null || dimension == null) {
+            return;
+        }
         Source s = source;
-        if (s != null && kind != null && pos != null && dimension != null) {
+        if (s != null) {
             s.placed(kind, pos.immutable(), dimension, now);
+        } else {
+            plain.report(kind, pos, dimension, now);
+            plain.touch(kind, pos, dimension, now);
         }
     }
 
     // a container task is working at / walking to this station right now, called every tick it is. a station the book does not know
     // (a village's) is ignored
     public static void touch(Kind kind, BlockPos pos, String dimension, long now) {
-        Source s = source;
-        if (s != null && kind != null && pos != null && dimension != null) {
-            s.touch(kind, pos, dimension, now);
+        if (kind == null || pos == null || dimension == null) {
+            return;
         }
+        Source s = source;
+        if (s != null) {
+            s.touch(kind, pos, dimension, now);
+        } else {
+            plain.touch(kind, pos, dimension, now);
+        }
+    }
+
+    // "the closest station of ours of this kind within `radius`" for the container task's choice. with a run installed this is exactly
+    // the registry's standingWithin. without one it asks plain alto's book, but only when plainAnswers is on (off: null, plain alto
+    // behaves as it always did and the book is record only). what turning it on changes is listed in the commit that added the book:
+    // StationChoice sees the bot's own tables as OURS, so they go ahead of a nearer village table within NEAR, and are walked back to
+    // (to WALK_BACK, to the forget line with nothing to make one from) instead of placing or crafting another
+    public static BlockPos ownedWithin(Kind kind, String dimension, double x, double y, double z, double radius, Predicate<BlockPos> ok,
+                                       Function<BlockPos, StationBook.Standing> standing) {
+        if (kind == null) {
+            return null;
+        }
+        Source s = source;
+        if (s != null) {
+            return s.standingWithin(kind, x, y, z, radius, ok);
+        }
+        return plainAnswers ? plain.nearest(kind, dimension, x, y, z, radius, ok, standing) : null;
+    }
+
+    // plain alto's book, for the tests and for whoever flips plainAnswers
+    static StationBook plainBook() {
+        return plain;
+    }
+
+    // test hook, and the one switch for the plain book's answers
+    static void plainAnswers(boolean on) {
+        plainAnswers = on;
+    }
+
+    // the world was left: what the book remembers belongs to a world that is gone
+    public static void clearPlain() {
+        plain.clear();
     }
 
     // plain alto owes nothing, all of it can go into a furnace

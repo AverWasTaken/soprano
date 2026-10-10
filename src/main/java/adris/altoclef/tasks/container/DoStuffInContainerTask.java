@@ -11,6 +11,7 @@ import adris.altoclef.tasksystem.Task;
 import adris.altoclef.tasksystem.TaskChain;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.ItemHelper;
+import adris.altoclef.util.helpers.StationBook;
 import adris.altoclef.util.helpers.StationChoice;
 import adris.altoclef.util.helpers.StationHook;
 import adris.altoclef.util.helpers.StorageHelper;
@@ -263,14 +264,18 @@ public abstract class DoStuffInContainerTask extends Task {
             seen.add(candidate(placed, me, StationChoice.Role.OURS));
         }
         // the run's registry knows where its stations stand even when the tracker has not seen them or canReach says no
-        BlockPos ours = _stationKind == null ? null : StationHook.standingWithin(_stationKind, me.x, me.y, me.z, WalkCost.STATION_NEAR, free);
+        // (ownedWithin is that same registry question with a run installed. plain alto asks its own small book, which only answers
+        // once StationHook.plainAnswers is switched on, so today it still says nothing)
+        String dimension = WorldHelper.getCurrentDimension().name();
+        java.util.function.Function<BlockPos, StationBook.Standing> standing = p -> plainStanding(mod, p);
+        BlockPos ours = _stationKind == null ? null : StationHook.ownedWithin(_stationKind, dimension, me.x, me.y, me.z, WalkCost.STATION_NEAR, free, standing);
         if (usable(mod, ours)) {
             seen.add(candidate(ours, me, StationChoice.Role.OURS));
         }
         // and the nearest of ours out to the forget line, for the walk back (StationChoice takes it within WALK_BACK for a table, furnace
         // or smoker, and anywhere out to the forget line when the bag cannot make one). an unloaded chunk reads as air, so out there the
         // registry's word is taken
-        BlockPos oursFar = _stationKind == null ? null : StationHook.standingWithin(_stationKind, me.x, me.y, me.z, WalkCost.STATION_FORGET, free);
+        BlockPos oursFar = _stationKind == null ? null : StationHook.ownedWithin(_stationKind, dimension, me.x, me.y, me.z, WalkCost.STATION_FORGET, free, standing);
         if (oursFar != null && !oursFar.equals(ours) && walkBackUsable(mod, oursFar, _containerBlocks)) {
             seen.add(candidate(oursFar, me, StationChoice.Role.OURS));
         }
@@ -295,6 +300,18 @@ public abstract class DoStuffInContainerTask extends Task {
                 StationChoice.walkBackReach(_stationKind));
         _pickTick = now;
         return _pick;
+    }
+
+    // what the plain book's remembered block looks like from here: there (loaded, the right block, alto can reach it), gone for sure (loaded,
+    // something else stands there, the book forgets it) or not known (an unloaded chunk reads as air, so nothing is assumed)
+    private StationBook.Standing plainStanding(AltoClef mod, BlockPos pos) {
+        if (!mod.getChunkTracker().isChunkLoaded(pos)) {
+            return StationBook.Standing.UNKNOWN;
+        }
+        if (!isContainerBlockInWorld(mod, pos)) {
+            return StationBook.Standing.GONE;
+        }
+        return WorldHelper.canReach(mod, pos) ? StationBook.Standing.STANDS : StationBook.Standing.UNKNOWN;
     }
 
     // what one more of this station takes is in the bag right now (StationChoice.canMakeFrom). chests, anvils and the like say yes,

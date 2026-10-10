@@ -307,6 +307,8 @@ public class AltoClef {
             }
             // what the gamer has seen belongs to a world that is gone too
             SeenFilter.reset();
+            // and so does what the placer told plain alto's station book
+            adris.altoclef.util.helpers.StationHook.clearPlain();
         }
     }
 

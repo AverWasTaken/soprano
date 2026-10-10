@@ -761,6 +761,7 @@ public class WorkbenchesRegistryTest {
         StationHook.clear();
         // no source: nothing to tell, nothing throws
         StationHook.reportPlaced(Kind.TABLE, new BlockPos(1, 64, 1), OVERWORLD, 500);
+        StationHook.clearPlain();
         RunState state = new RunState();
         StationHook.install(Workbenches.source(state, facts(Dimension.OVERWORLD, 500)));
         try {
