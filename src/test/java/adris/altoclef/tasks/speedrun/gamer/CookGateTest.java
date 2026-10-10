@@ -203,10 +203,28 @@ public class CookGateTest {
         assertEquals(KitNeed.COOK_SMOKER, CookGate.need(wood, cfg, 0).catalogueName());
     }
 
+    // logs the kit and the beds still hold back from a bag that has none of the kit (the cook need runs with 8 end beds)
+    private int woodOwed() {
+        return WoodReserve.keep(new FakeFacts().give(Items.OAK_LOG, 200), cfg, 8).logs();
+    }
+
+    @Test
+    public void logsTheKitStillOwesAreNotASmoker() {
+        // four logs and a table, but the tools and beds still want every one of them: no smoker, a furnace from the cobble
+        f.give(Items.MUTTON, 6).give(Items.COAL, 2).give(Items.OAK_LOG, 4).give(Items.COBBLESTONE, 60);
+        f.tablePlaced = true;
+        assertEquals(CookGate.Station.FURNACE, CookGate.station(f, cfg, true, 8));
+        assertEquals(KitNeed.COOK_FURNACE, need().catalogueName());
+        // the same four logs on top of what the wood budget wants are spare, so the smoker is back
+        FakeFacts spare = new FakeFacts().give(Items.MUTTON, 6).give(Items.COAL, 2).give(Items.OAK_LOG, woodOwed() + 4).give(Items.COBBLESTONE, 60);
+        spare.tablePlaced = true;
+        assertEquals(CookGate.Station.SMOKER, CookGate.station(spare, cfg, true, 8));
+    }
+
     @Test
     public void aSmokerWithoutATableCostsALogMore() {
         // four logs is the smoker, the table to craft it on is the fifth
-        f.give(Items.MUTTON, 6).give(Items.COAL, 2).give(Items.OAK_LOG, 4).give(Items.COBBLESTONE, 60);
+        f.give(Items.MUTTON, 6).give(Items.COAL, 2).give(Items.OAK_LOG, woodOwed() + 4).give(Items.COBBLESTONE, 60);
         f.cooking("iron_ingot", 12, 60);
         assertNull(need());
         f.tablePlaced = true;
@@ -216,7 +234,7 @@ public class CookGateTest {
     @Test
     public void enoughMeatBuildsAStationButNotOutOfTheStoneFloor() {
         // the stone pick still wants its cobble: the furnace and the tools come first
-        f.give(Items.MUTTON, 6).give(Items.COAL, 2).give(Items.OAK_LOG, 8).give(Items.COBBLESTONE, 10);
+        f.give(Items.MUTTON, 6).give(Items.COAL, 2).give(Items.OAK_LOG, woodOwed() + 8).give(Items.COBBLESTONE, 10);
         assertNull(need());
         // plenty over the floor: a smoker (logs for it, cobble for its furnace)
         f.give(Items.COBBLESTONE, 40);
@@ -234,7 +252,7 @@ public class CookGateTest {
         // one input slot, loading meat would swap the ore back out
         assertNull(need());
         // a smoker (even one we still have to make) is the way round
-        f.give(Items.OAK_LOG, 8).give(Items.COBBLESTONE, 60);
+        f.give(Items.OAK_LOG, woodOwed() + 8).give(Items.COBBLESTONE, 60);
         assertEquals(KitNeed.COOK_SMOKER, need().catalogueName());
         // and a smoker that is already there is free
         FakeFacts standing = new FakeFacts().give(Items.MUTTON, 6).give(Items.COAL, 2);
@@ -395,7 +413,7 @@ public class CookGateTest {
         // the furnace in the bag is the iron's, and nothing to build a smoker from: no cook yet
         assertNull(CookGate.need(b, full, 8));
         // with the logs for a smoker (and the furnace it is made from, already in the bag) the meat gets its own
-        b.give(Items.OAK_LOG, 8);
+        b.give(Items.OAK_LOG, woodOwed() + 8);
         assertEquals(KitNeed.COOK_SMOKER, CookGate.need(b, full, 8).catalogueName());
         // a smoker standing is free, same as always
         FakeFacts standing = boundary().give(Items.COAL, 2);
