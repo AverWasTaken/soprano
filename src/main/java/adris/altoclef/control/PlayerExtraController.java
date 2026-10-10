@@ -15,6 +15,9 @@ import net.minecraft.world.InteractionHand;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.NeutralMob;
+import net.minecraft.world.entity.animal.Animal;
+import net.minecraft.world.entity.monster.Enemy;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
@@ -156,6 +159,12 @@ public class PlayerExtraController {
                 attack(entity);
                 return true;
             case WAIT:
+                // a held opener while the approach path is still alive: baritone has the keys and is about to be told
+                // to stop, nothing of ours to press. (mid hop a path is a give up, so this is the only WAIT on the ground
+                // with one. in the air it is a free crit waiting on sprint, and that one needs the lines below)
+                if (heldOpener(sample)) {
+                    return false;
+                }
                 // mid hop. jumping straight up while the mob stands 2 blocks off is how the fall ends with nothing to hit,
                 // so keep closing (no sprint, that is the crit killer)
                 player.setSprinting(false);
@@ -167,14 +176,23 @@ public class PlayerExtraController {
     }
 
     // what the machine said, once per change and not per tick, so the play log shows which veto is still keeping the bot
-    // from crit hopping. WAIT is the boring middle of every hop and stays out of it
+    // from crit hopping. WAIT is the boring middle of every hop and stays out of it, except the opener being held on the
+    // ground, which is worth a line
     private String _lastCritLog = "";
 
+    // a WAIT on the ground with a path alive. the machine only says that for a harmless opener
+    private static boolean heldOpener(CritTiming.Sample s) {
+        return s.onGround && s.pathing;
+    }
+
     private void logStep(CritTiming.Step step, CritTiming.Sample s) {
-        if (step == CritTiming.Step.WAIT) {
+        if (step == CritTiming.Step.WAIT && !heldOpener(s)) {
             return;
         }
         String line = step.name();
+        if (step == CritTiming.Step.WAIT) {
+            line += " (holding the opener for the path to let go)";
+        }
         if (step == CritTiming.Step.PLAIN || step == CritTiming.Step.APPROACH) {
             String veto = CritTiming.hopVeto(s);
             line += veto == null ? " (nothing vetoes: mob too far or leaving, or a plain hit is owed after a give up)" :" (" + veto + ")";
@@ -277,12 +295,20 @@ public class PlayerExtraController {
         s.sprinting = player.isSprinting();
         s.meleeNear = _mod.getMobDefenseChain().meleeNear(_mod);
         s.health = player.getHealth();
+        // with a melee mob close the swing is owed again, no free openers while something is on us
+        s.harmless = s.meleeNear == 0 && harmless(target);
         Level level = _mod.getWorld();
         BlockPos feet = player.blockPosition();
         // the jump is 1.25 up and we are 1.8 tall, so the cell two above our feet is the one a ceiling bonks us with
         s.lowHeadroom = !passable(level, feet.above(2));
         s.unsafeFloor = !floorAround(level, feet);
         return s;
+    }
+
+    // food on legs: pig, cow, sheep, chicken, rabbit. a wolf, a bee or a polar bear bites back once poked (NeutralMob), a
+    // hoglin is an Animal that never needed poking (Enemy), and everything that is not an Animal is a no by default
+    private static boolean harmless(LivingEntity target) {
+        return target instanceof Animal && !(target instanceof Enemy) && !(target instanceof NeutralMob);
     }
 
     private static boolean passable(Level level, BlockPos pos) {

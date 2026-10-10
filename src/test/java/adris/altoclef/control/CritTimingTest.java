@@ -522,6 +522,202 @@ public class CritTimingTest {
         assertEquals(Step.JUMP, t.step(20, ready()));
     }
 
+    // ---- the opener on something that can't hit back
+
+    // walked up to an animal: in reach, cooldown long since full, nothing in the way
+    private static Sample opener() {
+        Sample s = new Sample();
+        s.harmless = true;
+        s.ticksToFull = 0;
+        return s;
+    }
+
+    private static Sample harmless(Sample s) {
+        s.harmless = true;
+        return s;
+    }
+
+    // jump at `start`, six ticks up with the cooldown full the whole way, crit on the seventh
+    private static void assertHopsAndCrits(CritTiming t, long start) {
+        assertEquals(Step.JUMP, t.step(start, opener()));
+        for (int tick = 1; tick <= 6; tick++) {
+            assertEquals("tick " + tick, Step.WAIT, t.step(start + tick, harmless(rising(0))));
+        }
+        assertEquals(Step.SWING, t.step(start + 7, harmless(falling(0))));
+        assertFalse(t.inFlight(start + 7));
+    }
+
+    @Test
+    public void aHarmlessTargetGetsAHopOnAFullCooldownAndTheCritOnTheWayDown() {
+        // six rising ticks with a full cooldown is past the ready-wait cap, which would have swung on the way up
+        assertTrue(6 > CritTiming.MAX_READY_WAIT);
+        assertNull(CritTiming.hopVeto(opener()));
+        assertHopsAndCrits(new CritTiming(), 0);
+    }
+
+    @Test
+    public void theSameFullCooldownOnSomethingThatFightsBackIsStillAPlainHit() {
+        Sample s = opener();
+        s.harmless = false;
+        assertEquals("cooldown full, swing now", CritTiming.hopVeto(s));
+        assertEquals(Step.PLAIN, new CritTiming().step(0, s));
+        // and its hop still has the cap
+        CritTiming t = new CritTiming();
+        t.step(0, ready());
+        for (int tick = 1; tick <= CritTiming.MAX_READY_WAIT; tick++) {
+            assertEquals(Step.WAIT, t.step(tick, rising(0)));
+        }
+        assertEquals(Step.SWING, t.step(CritTiming.MAX_READY_WAIT + 1, rising(0)));
+    }
+
+    @Test
+    public void aHarmlessOpenerWaitsForThePathToLetGoAndThenHops() {
+        CritTiming t = new CritTiming();
+        Sample walking = opener();
+        walking.pathing = true;
+        assertEquals(Step.WAIT, t.step(0, walking));
+        assertFalse(t.inFlight(0));
+        assertEquals(Step.WAIT, t.step(1, walking));
+        assertHopsAndCrits(t, 2);
+    }
+
+    @Test
+    public void aPathThatNeverLetsGoGetsAPlainHitAfterTheCap() {
+        CritTiming t = new CritTiming();
+        Sample walking = opener();
+        walking.pathing = true;
+        for (int tick = 0; tick < CritTiming.MAX_OPENER_HOLD; tick++) {
+            assertEquals("tick " + tick, Step.WAIT, t.step(tick, walking));
+        }
+        assertEquals(Step.PLAIN, t.step(CritTiming.MAX_OPENER_HOLD, walking));
+        // and it stays plain until the swing has gone out, no second helping
+        assertEquals(Step.PLAIN, t.step(CritTiming.MAX_OPENER_HOLD + 1, walking));
+    }
+
+    @Test
+    public void aHarmlessMobABitTooFarIsWalkedUpToAndThenJustHit() {
+        CritTiming t = new CritTiming();
+        Sample far = opener();
+        far.reachGap = 2.9;
+        for (int tick = 0; tick < CritTiming.MAX_OPENER_HOLD; tick++) {
+            assertEquals("tick " + tick, Step.APPROACH, t.step(tick, far));
+        }
+        assertEquals(Step.PLAIN, t.step(CritTiming.MAX_OPENER_HOLD, far));
+        // closing the gap in time is a hop
+        CritTiming closes = new CritTiming();
+        assertEquals(Step.APPROACH, closes.step(0, far));
+        assertHopsAndCrits(closes, 1);
+    }
+
+    @Test
+    public void thePathAndTheGapShareOneHold() {
+        CritTiming t = new CritTiming();
+        Sample walking = opener();
+        walking.pathing = true;
+        walking.reachGap = 2.9;
+        Sample far = opener();
+        far.reachGap = 2.9;
+        for (int tick = 0; tick < CritTiming.MAX_OPENER_HOLD; tick++) {
+            assertEquals("tick " + tick, tick < 4 ? Step.WAIT : Step.APPROACH, t.step(tick, tick < 4 ? walking : far));
+        }
+        assertEquals(Step.PLAIN, t.step(CritTiming.MAX_OPENER_HOLD, far));
+    }
+
+    @Test
+    public void aHarmlessOpenerIsNotHeldForAnythingElse() {
+        assertOpenerPlain(s -> s.normalHitKills = true);
+        assertOpenerPlain(s -> s.retreatSpeed = 0.2);
+        assertOpenerPlain(s -> s.unsafeFloor = true);
+        assertOpenerPlain(s -> s.lowHeadroom = true);
+        assertOpenerPlain(s -> s.meleeNear = CritTiming.CROWD_NO_CRIT);
+        assertOpenerPlain(s -> s.health = CritTiming.LOW_HEALTH_NO_CRIT);
+        assertOpenerPlain(s -> s.shielding = true);
+        assertOpenerPlain(s -> s.usingItem = true);
+        assertOpenerPlain(s -> s.inFluid = true);
+    }
+
+    // with and without a path in the way, the path must not turn another veto into a hold
+    private static void assertOpenerPlain(java.util.function.Consumer<Sample> spoil) {
+        Sample s = opener();
+        spoil.accept(s);
+        assertEquals(Step.PLAIN, new CritTiming().step(0, s));
+        s.pathing = true;
+        assertEquals(Step.PLAIN, new CritTiming().step(0, s));
+    }
+
+    @Test
+    public void aPathShowingUpMidHopStillGivesUpOnAHarmlessTarget() {
+        CritTiming t = new CritTiming();
+        assertEquals(Step.JUMP, t.step(0, opener()));
+        Sample walking = harmless(rising(0));
+        walking.pathing = true;
+        assertEquals(Step.PLAIN, t.step(1, walking));
+        assertFalse(t.inFlight(1));
+    }
+
+    @Test
+    public void everyAnimalOfAHuntGetsItsHopNotJustTheFirst() {
+        // a hunt is all openers: we walk up to each one, so the cooldown is full every time we arrive
+        CritTiming t = new CritTiming();
+        assertHopsAndCrits(t, 0);
+        assertHopsAndCrits(t, 60);
+        assertHopsAndCrits(t, 200);
+    }
+
+    @Test
+    public void aHoldThatRanOutOnOneAnimalIsNotOwedByTheNext() {
+        CritTiming t = new CritTiming();
+        Sample walking = opener();
+        walking.pathing = true;
+        for (int tick = 0; tick <= CritTiming.MAX_OPENER_HOLD; tick++) {
+            t.step(tick, walking);
+        }
+        // the next one, after a walk: a fresh hold and then its hop
+        assertEquals(Step.WAIT, t.step(100, walking));
+        assertHopsAndCrits(t, 101);
+        // same animal, the plain hit went out and the cooldown came back: also a fresh hold
+        CritTiming same = new CritTiming();
+        for (int tick = 0; tick <= CritTiming.MAX_OPENER_HOLD; tick++) {
+            same.step(tick, walking);
+        }
+        Sample recharging = harmless(ready());
+        recharging.ticksToFull = CritTiming.LEAD_TICKS + 5;
+        assertEquals(Step.PLAIN, same.step(CritTiming.MAX_OPENER_HOLD + 1, recharging));
+        assertEquals(Step.WAIT, same.step(CritTiming.MAX_OPENER_HOLD + 2, walking));
+    }
+
+    @Test
+    public void aGiveUpDoesNotBuyAFreshHold() {
+        CritTiming t = new CritTiming();
+        Sample walking = opener();
+        walking.pathing = true;
+        for (int tick = 0; tick < CritTiming.MAX_OPENER_HOLD; tick++) {
+            assertEquals(Step.WAIT, t.step(tick, walking));
+        }
+        // the path lets go on the last tick of the hold, the hop starts and a new path kills it
+        long now = CritTiming.MAX_OPENER_HOLD;
+        assertEquals(Step.JUMP, t.step(now, opener()));
+        Sample up = harmless(rising(0));
+        up.pathing = true;
+        assertEquals(Step.PLAIN, t.step(now + 1, up));
+        // the plain hit owed after a give up, and then no more waiting on this cooldown
+        assertEquals(Step.PLAIN, t.step(now + 2, walking));
+        assertEquals(Step.PLAIN, t.step(now + 3, walking));
+    }
+
+    @Test
+    public void aHarmlessGiveUpMidRiseStillOwesAHitOnLanding() {
+        CritTiming t = new CritTiming();
+        assertEquals(Step.JUMP, t.step(0, opener()));
+        Sample gone = harmless(rising(0));
+        gone.inReach = false;
+        assertEquals(Step.PLAIN, t.step(1, gone));
+        // still on the way up: a plain call here can't swing, so it must not spend the promise
+        assertEquals(Step.PLAIN, t.step(2, harmless(rising(0))));
+        // down and in reach with a full cooldown: the owed hit, not a second hop
+        assertEquals(Step.PLAIN, t.step(3, opener()));
+    }
+
     @Test
     public void swordCooldownAndAxeCooldownBothFindTheirLead() {
         // a sword is ready every 12.5 ticks, an axe every 25: the lead is in ticks, not in fractions of the cooldown
