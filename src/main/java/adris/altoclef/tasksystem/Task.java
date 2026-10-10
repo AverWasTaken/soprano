@@ -3,11 +3,19 @@ package adris.altoclef.tasksystem;
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.tasks.movement.TimeoutWanderTask;
+import adris.altoclef.trace.RepeatCounter;
+import adris.altoclef.trace.StartStormWatch;
+import adris.altoclef.trace.Trace;
 import adris.altoclef.ui.HudText;
 
 import java.util.function.Predicate;
 
 public abstract class Task {
+
+    // debug state only logs on change, so a retry loop looks like a few unrelated lines. these count the flips and the
+    // starts across every task, the main thread is the only one that ticks them
+    private static final RepeatCounter REPEATS = new RepeatCounter();
+    private static final StartStormWatch STARTS = new StartStormWatch();
 
     private String _oldDebugState = "";
     private String _debugState = "";
@@ -32,6 +40,7 @@ public abstract class Task {
         parentChain.addTaskToChain(this);
         if (_first) {
             Debug.logInternal("Task START: " + this);
+            watchStart();
             _paused = false;
             _active = true;
             onStart(mod);
@@ -45,6 +54,7 @@ public abstract class Task {
         if (!_oldDebugState.equals(_debugState)) {
             Debug.logInternal(toString());
             _oldDebugState = _debugState;
+            watchRepeat();
         }
         // We have a sub task
         if (newSub != null) {
@@ -70,6 +80,30 @@ public abstract class Task {
                 _sub = null;
             }
         }
+    }
+
+    // a flag and never an action: 21 starts of one class in a minute is a loop, say so and keep the lead up
+    private void watchStart() {
+        if (STARTS.start(getClass(), System.currentTimeMillis())) {
+            Debug.logInternal("MONITOR: start storm " + className() + " x" + (StartStormWatch.LIMIT + 1) + " in 60 s");
+            Trace.dump("monitor:storm");
+        }
+    }
+
+    // the state flipped into something new. the same (class, state) coming round again and again is a retry loop
+    private void watchRepeat() {
+        if (_debugState.isEmpty()) {
+            return;
+        }
+        int times = REPEATS.hit(className() + "|" + _debugState, System.currentTimeMillis());
+        if (times > 0) {
+            Debug.logInternal("repeat: " + className() + " \"" + _debugState + "\" x" + times + " in 60 s");
+        }
+    }
+
+    private String className() {
+        String name = getClass().getSimpleName();
+        return name.isEmpty() ? getClass().getName() : name;
     }
 
     public void reset() {
