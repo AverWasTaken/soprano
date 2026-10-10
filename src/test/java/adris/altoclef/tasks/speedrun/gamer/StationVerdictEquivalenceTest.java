@@ -60,7 +60,7 @@ public class StationVerdictEquivalenceTest {
         Bootstrap.bootStrap();
     }
 
-    // where the distances sit: the thresholds are 15.75 (table return), 20 / 21 (band, NEAR), 48 (walk back), 128 (forget)
+    // where the distances sit: the thresholds are 15.75 (table return), 20 / 21 (NEAR), 48 / 50 (walk back, + HOLD), 128 (forget)
     private static final int[] AXIS = {0, 1, 5, 10, 15, 16, 17, 19, 20, 21, 22, 23, 30, 40, 46, 47, 48, 49, 50, 51, 52, 60, 100, 127, 128, 129, 140};
     private static final double[] SHELL = {15.75, 20, 21, 48, 128};
     private static final String[] NEEDS = {"log", "planks", "cobblestone", "coal", "iron_ingot", "food", "cook_in_smoker", "cook_in_furnace",
@@ -281,12 +281,11 @@ public class StationVerdictEquivalenceTest {
             }
             holdsPick = r.nextBoolean();
             holdsStonePick = holdsPick && r.nextBoolean();
-            // the previous look's latches
+            // the previous look's latch
             latches.tableFar = r.nextInt(3) == 0;
+            // two draws that used to seed the furnace's and the smoker's latch, which are gone. kept so every room is the same room
             int f = r.nextInt(3);
-            latches.furnaceHeld = f == 0 ? null : Boolean.valueOf(f == 1);
             int s = r.nextInt(3);
-            latches.smokerHeld = s == 0 ? null : Boolean.valueOf(s == 1);
             latches0 = "far" + latches.tableFar + "/f" + f + "/s" + s;
         }
 
@@ -387,6 +386,14 @@ public class StationVerdictEquivalenceTest {
         return b ? "T" : "F";
     }
 
+    private static String nearMark(Room room, Kind kind, double[] p) {
+        if (!Workbenches.any(room.state, kind, room.dimension)) {
+            return "-";
+        }
+        return t(Workbenches.heldNear(room.state, kind, room.dimension, p[0], p[1], p[2], WorkbenchRules.NEAR,
+                pos -> room.stands.getOrDefault(Room.key(kind, pos), true)));
+    }
+
     private static String answers(Room room) {
         StringBuilder sb = new StringBuilder();
         Random r = new Random(room.seed);
@@ -400,8 +407,8 @@ public class StationVerdictEquivalenceTest {
             double[] p = room.looks[i];
             last = StationVerdict.of(state, dim, p[0], p[1], p[2], NOW, room.world(), room.latches);
             sb.append(t(last.table().heldForPlanner())).append(t(last.furnace().heldForPlanner())).append(t(last.smoker().heldForPlanner()));
-            sb.append('/').append(t(room.latches.tableFar)).append(room.latches.furnaceHeld == null ? "-" : t(room.latches.furnaceHeld))
-                    .append(room.latches.smokerHeld == null ? "-" : t(room.latches.smokerHeld)).append(',');
+            // after the table's latch, whether a furnace and a smoker stand within NEAR ("-" for none). that used to be their latch
+            sb.append('/').append(t(room.latches.tableFar)).append(nearMark(room, Kind.FURNACE, p)).append(nearMark(room, Kind.SMOKER, p)).append(',');
         }
         // the third look's three flags once more, on their own, for the tally (the verdict was built before any bench moved, which is
         // when mayEnd and the others are asked below)
@@ -428,7 +435,7 @@ public class StationVerdictEquivalenceTest {
             assertEquals(WorkbenchRules.placeVetoed(state.benches, kind, NOW), s.pickingUp());
             Bench nearest = Workbenches.nearestStanding(state, kind, dim, px, py, pz, Double.MAX_VALUE);
             assertEquals(nearest == null ? null : nearest.pos, s.nearest());
-            for (double radius : new double[]{WorkbenchRules.NEAR, WorkbenchRules.returnRadius(true), WorkbenchRules.bandRadius(false), WorkbenchRules.FORGET_DISTANCE}) {
+            for (double radius : new double[]{WorkbenchRules.NEAR, WorkbenchRules.returnRadius(true), WorkbenchRules.NEAR - 1, WorkbenchRules.FORGET_DISTANCE}) {
                 sb.append(t(Workbenches.heldNear(state, kind, dim, px, py, pz, radius, pos -> room.stands.getOrDefault(Room.key(kind, pos), true))));
             }
             sb.append(Workbenches.countStanding(state, kind, dim, px, py, pz, WorkbenchRules.NEAR, b -> true)).append('/')

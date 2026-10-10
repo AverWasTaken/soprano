@@ -82,7 +82,7 @@ public final class MinecraftFacts implements GamerFacts {
     private boolean credits;
     // every station answer of this tick, see StationVerdict
     private StationVerdict stations = StationVerdict.NONE;
-    // what the verdict remembers from the last look (a table out of NEAR, the furnace's and smoker's band)
+    // what the verdict remembers from the last look (the table: out of NEAR, held by the walk back)
     private final StationLatches latches = new StationLatches();
 
     public MinecraftFacts(AltoClef mod) {

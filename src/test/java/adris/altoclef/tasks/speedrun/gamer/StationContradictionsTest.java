@@ -39,6 +39,7 @@ public class StationContradictionsTest {
     private static final class Bag implements StationVerdict.World {
         boolean furnaceInBag;
         boolean canMake = true;
+        boolean usable = true;
 
         @Override
         public boolean stands(Kind kind, RunState.Pos pos) {
@@ -57,7 +58,7 @@ public class StationContradictionsTest {
 
         @Override
         public boolean walkUsable(Kind kind, Bench b) {
-            return true;
+            return usable;
         }
     }
 
@@ -116,26 +117,62 @@ public class StationContradictionsTest {
         assertTrue(lookAt(state, new Bag(), latches, 48.0).table().heldForPlanner());
     }
 
-    // (B) a smoker 21 blocks away with a furnace in the bag. the planner's band is NEAR (21) while it was held or never seen, NEAR - 1
-    // (20) once it was out, so the same smoker at the same spot is held or not by which side we came from. WorkbenchRules says a smoker
-    // at 20 blocks is a smoker whichever way we got there; the container task only ever looks at the plain line and finds it both times
+    // (B) FIXED. a smoker 21 blocks away with a furnace in the bag. the planner's latch used to enter at 20 once the smoker was out and
+    // at 21 while it was held or never seen, so the same smoker at the same spot was held or not by which side we came from, and the
+    // container task (which only looks at the plain line, 21) used it both times. the furnace and smoker have no latch now, the
+    // planner's line is the task's. it must not reach PAST the line either (a band that did was a bug once): the task puts the one from
+    // the bag down, or skips a parked one and makes another, and the plan budgeted neither
     @Test
-    public void aSmokerOnTheLineIsHeldOrNotByWhichSideWeCameFrom() {
+    public void aSmokerOnTheLineIsHeldWhicheverSideWeCameFrom() {
         RunState state = new RunState();
-        place(state, Kind.SMOKER, pos(21, 64, 0), DIM);
+        place(state, Kind.SMOKER, pos(0, 64, 0), DIM);
         Bag bag = new Bag();
         bag.furnaceInBag = true;
-        StationLatches cameFromInside = new StationLatches();
-        cameFromInside.smokerHeld = Boolean.TRUE;
-        StationLatches cameFromOutside = new StationLatches();
-        cameFromOutside.smokerHeld = Boolean.FALSE;
-        StationVerdict in = look(state, bag, cameFromInside);
-        StationVerdict out = look(state, bag, cameFromOutside);
-        assertTrue(in.smoker().heldForPlanner());
-        assertFalse(out.smoker().heldForPlanner());
-        // the task's side does not care
-        assertTrue(in.smoker().standingNear());
-        assertTrue(out.smoker().standingNear());
+        for (double d : new double[]{20.5, 21.0}) {
+            StationLatches inside = new StationLatches();
+            assertTrue(lookAt(state, bag, inside, 5.0).smoker().heldForPlanner());
+            assertTrue("from inside at " + d, lookAt(state, bag, inside, d).smoker().heldForPlanner());
+            StationLatches outside = new StationLatches();
+            assertFalse(lookAt(state, bag, outside, 40.0).smoker().heldForPlanner());
+            assertTrue("from outside at " + d, lookAt(state, bag, outside, d).smoker().heldForPlanner());
+            // standing still does not flip it, and the task's side does not care which way either
+            assertTrue(lookAt(state, bag, outside, d).smoker().heldForPlanner());
+            assertTrue(lookAt(state, bag, outside, d).smoker().standingNear());
+        }
+        // and past the line it is gone from both sides, the furnace in the bag is a furnace at hand so no smoker walk back
+        StationLatches latches = new StationLatches();
+        lookAt(state, bag, latches, 5.0);
+        assertFalse(lookAt(state, bag, latches, 21.5).smoker().heldForPlanner());
+        assertFalse(lookAt(state, bag, latches, 21.5).smoker().heldForPlanner());
+    }
+
+    // the same line for a furnace, and what the old latch got wrong from the other side: past the line a furnace in the bag, or one
+    // the task would not walk back to, is not held (the task puts the bag one down / skips the parked one and makes another)
+    @Test
+    public void aFurnacePastTheLineIsOnlyHeldWhereTheTaskWalksBackToIt() {
+        RunState state = new RunState();
+        place(state, Kind.FURNACE, pos(0, 64, 0), DIM);
+        // a usable one the bag could replace is walked back to, so it is held all the way across the line
+        Bag usable = new Bag();
+        StationLatches latches = new StationLatches();
+        lookAt(state, usable, latches, 5.0);
+        for (double d : new double[]{20.5, 21.0, 21.5, 22.5, 21.5, 20.5}) {
+            assertTrue("usable at " + d, lookAt(state, usable, latches, d).furnace().heldForPlanner());
+        }
+        // a furnace in the bag: the task places that one past the line
+        Bag carrying = new Bag();
+        carrying.furnaceInBag = true;
+        StationLatches carryingLatches = new StationLatches();
+        lookAt(state, carrying, carryingLatches, 5.0);
+        assertTrue(lookAt(state, carrying, carryingLatches, 21.0).furnace().heldForPlanner());
+        assertFalse(lookAt(state, carrying, carryingLatches, 21.5).furnace().heldForPlanner());
+        // a parked or loaded one (walkBackUsable says no): the task skips it past the line
+        Bag parked = new Bag();
+        parked.usable = false;
+        StationLatches parkedLatches = new StationLatches();
+        lookAt(state, parked, parkedLatches, 5.0);
+        assertTrue(lookAt(state, parked, parkedLatches, 21.0).furnace().heldForPlanner());
+        assertFalse(lookAt(state, parked, parkedLatches, 21.5).furnace().heldForPlanner());
     }
 
     // (C) a bench on its way back to the bag. the planner counts it as held (the kit must not ask for table planks the moment it leaves

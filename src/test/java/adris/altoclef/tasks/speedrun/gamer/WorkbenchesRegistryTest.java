@@ -706,17 +706,14 @@ public class WorkbenchesRegistryTest {
         assertNull(StationHook.standingNear(Kind.TABLE, 0.5, 64.5, 0.5));
     }
 
-    // ---- round 2: the furnace and smoker band, through the registry the planner reads
+    // ---- round 2: the furnace and smoker line, through the registry the planner reads
 
-    // the planner's flag as MinecraftFacts keeps it: radius from last look's answer, answer fed back. the smoker is 20.5 east of the
-    // player's block middle at x = 0.5, so it is 20 blocks off when the player stands at x = 1.0 and so on
+    // the planner's near answer as MinecraftFacts asks it: the plain line, no latch. the smoker is 20.5 east of the player's block
+    // middle at x = 0.5, so it is 20 blocks off when the player stands at x = 1.0 and so on
     private static boolean[] plannerWalk(RunState state, Kind kind, double[] playerX) {
         boolean[] out = new boolean[playerX.length];
-        Boolean held = null;
         for (int i = 0; i < playerX.length; i++) {
-            double radius = WorkbenchRules.bandRadius(held);
-            out[i] = Workbenches.heldNear(state, kind, OVERWORLD, playerX[i], 64.5, 0.5, radius, p -> true);
-            held = Workbenches.any(state, kind, OVERWORLD) ? Boolean.valueOf(out[i]) : null;
+            out[i] = Workbenches.heldNear(state, kind, OVERWORLD, playerX[i], 64.5, 0.5, WorkbenchRules.NEAR, p -> true);
         }
         return out;
     }
@@ -726,12 +723,13 @@ public class WorkbenchesRegistryTest {
         RunState state = new RunState();
         // the block middle is at x = 0.5, player at x = 20.5 on the way in is 20 from it
         Workbenches.record(state, Kind.SMOKER, pos(0, 64, 0), OVERWORLD, 1);
-        // in from far away: 30, 24, 21.5 (not yet), 20.5 (20 away, in)
-        boolean[] in = plannerWalk(state, Kind.SMOKER, new double[]{30.5, 24.5, 22.0, 20.5});
+        // in from far away: 30, 24, 22 (not yet), 21.5 (the line itself, in), 20.5 (20 away, in)
+        boolean[] in = plannerWalk(state, Kind.SMOKER, new double[]{30.5, 24.5, 22.0, 21.5, 20.5});
         assertFalse(in[0]);
         assertFalse(in[1]);
         assertFalse(in[2]);
         assertTrue(in[3]);
+        assertTrue(in[4]);
         // and out from inside: held at 20, held at the line itself (21), dropped the moment it is past it
         boolean[] out = plannerWalk(state, Kind.SMOKER, new double[]{5.5, 20.5, 21.5, 22.4, 22.6});
         assertTrue(out[0]);
@@ -739,26 +737,6 @@ public class WorkbenchesRegistryTest {
         assertTrue(out[2]);
         assertFalse(out[3]);
         assertFalse(out[4]);
-    }
-
-    @Test
-    public void aFurnaceAtTheEdgeFlipsOnceAsWeStepAcrossTheLine() {
-        RunState state = new RunState();
-        Workbenches.record(state, Kind.FURNACE, pos(0, 64, 0), OVERWORLD, 1);
-        // inside, then dithering around the line (21 away is x = 21.5): out once, and no flip back until it is a block in
-        boolean[] steps = plannerWalk(state, Kind.FURNACE, new double[]{18.5, 20.5, 21.7, 20.9, 21.8, 21.2, 20.6, 20.4});
-        assertTrue(steps[0]);
-        assertTrue(steps[1]);
-        for (int i = 2; i < 7; i++) {
-            assertFalse("step " + i, steps[i]);
-        }
-        assertTrue(steps[7]);
-        // the other way: out first, then the same dither never gets it back until 20
-        boolean[] outside = plannerWalk(state, Kind.FURNACE, new double[]{25.5, 21.7, 21.2, 20.9, 20.6, 20.4});
-        for (int i = 0; i < 5; i++) {
-            assertFalse("step " + i, outside[i]);
-        }
-        assertTrue(outside[5]);
     }
 
     // the plan and the container task must not disagree the harmful way: whenever the planner holds a furnace or smoker, the hook the
