@@ -1,5 +1,8 @@
 package adris.altoclef.tasks.construction;
 
+import java.util.EnumSet;
+import java.util.Set;
+
 // the bookkeeping of PlaceStationTask with the game taken out: which step we are in, how many tries have gone wrong,
 // how many times we gave up on the neighbourhood. the old task had its fail count on a per-spot object that got thrown
 // away with the spot, so "fail 4 times, try something else" never got to 4. pure so it tests without a world
@@ -20,8 +23,8 @@ final class StationAttempt {
     enum Phase {
         // choose a spot
         PICK,
-        // nothing clickable around: mine a block out of the wall beside us and put the station in the hole, like a player
-        // in a tunnel would
+        // nothing usable around and no better floor to walk to: mine a block out of the wall beside us and put the station in
+        // the hole, like a player in a tunnel would
         CARVE,
         // equip, turn, wait for the crosshair to land on the face, click
         AIM,
@@ -29,7 +32,7 @@ final class StationAttempt {
         VERIFY,
         // walking to a better patch of floor
         RELOCATE,
-        // the player way is out of ideas, let PlaceBlockNearbyTask have it
+        // the player way is out of ideas, let PlaceBlockNearbyTask have it. the only phase that pillars and bridges
         FALLBACK,
         DONE
     }
@@ -39,7 +42,10 @@ final class StationAttempt {
     private int relocations;
     private int carves;
     private int phaseTicks;
+    private int totalTicks;
     private int landedTicks;
+    // every phase we have been in, for how()
+    private final Set<Phase> reached = EnumSet.of(Phase.PICK);
     // why the player way ran dry, for the log line when the old placer takes over
     private String fallbackWhy = "";
 
@@ -70,9 +76,27 @@ final class StationAttempt {
     // once per task tick
     void tick() {
         phaseTicks++;
+        totalTicks++;
+    }
+
+    // task ticks since the attempt began, for the line that says how long a placement took
+    int totalTicks() {
+        return totalTicks;
+    }
+
+    // the furthest we had to go to get the station down: pick (the first look worked), relocate (walked), carve (dug), fallback
+    String how() {
+        if (reached.contains(Phase.FALLBACK)) {
+            return "fallback";
+        }
+        if (reached.contains(Phase.CARVE)) {
+            return "carve";
+        }
+        return reached.contains(Phase.RELOCATE) ? "relocate" : "pick";
     }
 
     private void enter(Phase next) {
+        reached.add(next);
         phase = next;
         phaseTicks = 0;
         landedTicks = 0;
@@ -82,19 +106,24 @@ final class StationAttempt {
         enter(Phase.AIM);
     }
 
-    // nothing in reach is clickable. dig out some room first, then walk, then the old placer. this used to go straight to
-    // the walk, and a shaft has nowhere to walk to, so it went straight to the old placer, which pillared
+    // nothing usable in reach. walk to open ground first (free, and the next pick is the cheap one), then dig out some room
+    // (one wall block, which is the right answer in a one wide tunnel), then the old placer. the walk and the dig both used to
+    // be the other way round, and a dig is a block we mined for a station we could have put down in the next room
     void noSpot() {
-        if (carves < MAX_CARVES) {
+        if (relocations < MAX_RELOCATIONS) {
+            walk();
+        } else if (carves < MAX_CARVES) {
             enter(Phase.CARVE);
         } else {
-            giveUpOnThisPatch("nothing clickable and " + carves + " holes dug didn't help");
+            fallbackWhy = "nothing usable, " + relocations + " walks and " + carves + " holes dug didn't help";
+            enter(Phase.FALLBACK);
         }
     }
 
-    // nothing around us that is worth (or safe) to mine out
+    // nothing around us that is worth (or safe) to mine out, and the walks are used up: the last stop before the old placer
     void noCarve() {
-        giveUpOnThisPatch("nothing clickable and nothing safe to mine out for room");
+        fallbackWhy = "nothing usable, nothing safe to mine out for room, and already moved " + relocations + " times";
+        enter(Phase.FALLBACK);
     }
 
     // the hole is dug (or the digging timed out, same thing: look at what we've got now). counts either way so a wall that
@@ -138,21 +167,31 @@ final class StationAttempt {
         }
     }
 
+    private void walk() {
+        relocations++;
+        tries = 0;
+        enter(Phase.RELOCATE);
+    }
+
     private void giveUpOnThisPatch(String why) {
         if (relocations < MAX_RELOCATIONS) {
-            relocations++;
-            tries = 0;
-            enter(Phase.RELOCATE);
+            walk();
         } else {
             fallbackWhy = why + ", and already moved " + relocations + " times";
             enter(Phase.FALLBACK);
         }
     }
 
-    // nowhere better to stand within reach of here. asking again would find the same nothing
+    // nowhere better to stand within reach of here. asking again would find the same nothing, so the walks are spent and the
+    // dig is next
     void noStandpoint() {
-        fallbackWhy = "nowhere better to stand within " + StationSpots.MAX_MOVE + " blocks";
-        enter(Phase.FALLBACK);
+        relocations = MAX_RELOCATIONS;
+        if (carves < MAX_CARVES) {
+            enter(Phase.CARVE);
+        } else {
+            fallbackWhy = "nowhere better to stand within " + StationSpots.MAX_MOVE + " blocks, and " + carves + " holes dug didn't help";
+            enter(Phase.FALLBACK);
+        }
     }
 
     // we are at the new patch (or the walk timed out, same thing: look again from where we are)

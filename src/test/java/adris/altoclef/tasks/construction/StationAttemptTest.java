@@ -117,76 +117,77 @@ public class StationAttemptTest {
         assertEquals(0, a.tries());
     }
 
-    // nothing clickable and nothing to carve: the walk is next
+    // nothing usable here: the walk is next
     private static void nothingHere(StationAttempt a) {
         a.noSpot();
-        assertEquals(CARVE, a.phase());
-        a.noCarve();
+        assertEquals(RELOCATE, a.phase());
     }
 
-    // the log: a shaft, nothing clickable, and it went straight to the old placer. carving comes before any of the rest
-    @Test
-    public void noSpotCarvesBeforeAnythingElse() {
-        StationAttempt a = new StationAttempt();
-        a.noSpot();
-        assertEquals(CARVE, a.phase());
-        assertEquals(0, a.relocations());
-    }
-
-    // even with the walks used up, "no spot" digs before it gives up
-    @Test
-    public void noSpotOnTheLastPatchStillCarvesFirst() {
-        StationAttempt a = new StationAttempt();
+    // both walks used and nothing at either end. the dig is what is left
+    private static void walkedTwiceAndStillNothing(StationAttempt a) {
         nothingHere(a);
         a.arrived();
         nothingHere(a);
         a.arrived();
         a.noSpot();
         assertEquals(CARVE, a.phase());
+    }
+
+    // a shaft, nothing usable, and it went straight to digging (and before that to the old placer, which pillared). the walk
+    // is free and a block mined for a station is not: it comes first
+    @Test
+    public void noSpotWalksBeforeAnythingElse() {
+        StationAttempt a = new StationAttempt();
+        a.noSpot();
+        assertEquals(RELOCATE, a.phase());
+        assertEquals(1, a.relocations());
+        assertEquals(0, a.carves());
+    }
+
+    // with the walks used up, "no spot" digs before it gives up
+    @Test
+    public void noSpotOnTheLastPatchCarvesBeforeTheOldPlacer() {
+        StationAttempt a = new StationAttempt();
+        walkedTwiceAndStillNothing(a);
         a.noCarve();
         assertEquals(FALLBACK, a.phase());
+        assertFalse(a.fallbackWhy().isEmpty());
     }
 
     @Test
     public void aDugHoleGetsALookBeforeAnythingElse() {
         StationAttempt a = new StationAttempt();
-        a.noSpot();
+        walkedTwiceAndStillNothing(a);
         a.carveDone();
         assertEquals(PICK, a.phase());
         assertEquals(1, a.carves());
     }
 
     @Test
-    public void nothingToCarveWalksNext() {
+    public void holesThatDontHelpRunOutAndTheOldPlacerGetsIt() {
         StationAttempt a = new StationAttempt();
-        a.noSpot();
-        a.noCarve();
-        assertEquals(RELOCATE, a.phase());
-        assertEquals(1, a.relocations());
-    }
-
-    @Test
-    public void holesThatDontHelpRunOutAndWeWalk() {
-        StationAttempt a = new StationAttempt();
+        nothingHere(a);
+        a.arrived();
+        nothingHere(a);
+        a.arrived();
         for (int i = 0; i < StationAttempt.MAX_CARVES; i++) {
             a.noSpot();
             assertEquals(CARVE, a.phase());
             a.carveDone();
         }
         a.noSpot();
-        assertEquals(RELOCATE, a.phase());
+        assertEquals(FALLBACK, a.phase());
+        assertTrue(a.fallbackWhy(), a.fallbackWhy().contains(StationAttempt.MAX_CARVES + " holes"));
     }
 
+    // a walk that found nowhere better to stand spends both of them: the next "no spot" would only find the same nothing
     @Test
-    public void aNewPatchHasItsOwnHolesToTry() {
+    public void noStandpointGoesToDiggingAndStaysThere() {
         StationAttempt a = new StationAttempt();
-        for (int i = 0; i < StationAttempt.MAX_CARVES; i++) {
-            a.noSpot();
-            a.carveDone();
-        }
-        a.noSpot();
-        a.arrived();
-        assertEquals(0, a.carves());
+        nothingHere(a);
+        a.noStandpoint();
+        assertEquals(CARVE, a.phase());
+        a.carveDone();
         a.noSpot();
         assertEquals(CARVE, a.phase());
     }
@@ -206,6 +207,7 @@ public class StationAttemptTest {
         assertEquals("", a.fallbackWhy());
         nothingHere(a);
         a.noStandpoint();
+        a.noCarve();
         assertEquals(FALLBACK, a.phase());
         assertFalse(a.fallbackWhy().isEmpty());
     }
@@ -225,19 +227,19 @@ public class StationAttemptTest {
     }
 
     @Test
-    public void twoRelocationsThenTheOldPlacerGetsIt() {
+    public void twoRelocationsThenTheDigThenTheOldPlacerGetsIt() {
         StationAttempt a = new StationAttempt();
         nothingHere(a);
-        assertEquals(RELOCATE, a.phase());
         a.arrived();
         nothingHere(a);
-        assertEquals(RELOCATE, a.phase());
         assertEquals(2, a.relocations());
         a.arrived();
-        nothingHere(a);
+        a.noSpot();
+        assertEquals(CARVE, a.phase());
+        a.noCarve();
         assertEquals(FALLBACK, a.phase());
         assertFalse(a.fallbackWhy().isEmpty());
-        // the cap holds: losing tries on the last patch goes to the fallback too
+        // the cap holds
         assertEquals(2, a.relocations());
     }
 
@@ -256,12 +258,36 @@ public class StationAttemptTest {
     }
 
     @Test
-    public void nowhereToStandMeansFallBackNow() {
+    public void nowhereToStandMeansDigNow() {
         StationAttempt a = new StationAttempt();
         nothingHere(a);
-        assertEquals(RELOCATE, a.phase());
         a.noStandpoint();
-        assertEquals(FALLBACK, a.phase());
+        assertEquals(CARVE, a.phase());
+        assertEquals(StationAttempt.MAX_RELOCATIONS, a.relocations());
+    }
+
+    @Test
+    public void totalTicksAndHowItWentCoverTheWholeAttempt() {
+        StationAttempt clean = new StationAttempt();
+        tickN(clean, 4);
+        clean.picked();
+        tickN(clean, 3);
+        assertEquals(7, clean.totalTicks());
+        assertEquals("pick", clean.how());
+        StationAttempt walked = new StationAttempt();
+        nothingHere(walked);
+        walked.arrived();
+        walked.picked();
+        assertEquals("relocate", walked.how());
+        StationAttempt dug = new StationAttempt();
+        walkedTwiceAndStillNothing(dug);
+        dug.carveDone();
+        dug.picked();
+        assertEquals("carve", dug.how());
+        StationAttempt out = new StationAttempt();
+        walkedTwiceAndStillNothing(out);
+        out.noCarve();
+        assertEquals("fallback", out.how());
     }
 
     @Test
