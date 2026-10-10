@@ -557,8 +557,9 @@ public class IronPhase implements PhaseHandler {
             foodCovered = false;
             return needs;
         }
-        // the heightmap only matters between the two lines
-        boolean surfaced = band == 1 && SmeltSurface.shallow(SmeltSurface.depthBelowSky(mod));
+        // the heightmap only matters over the floor. a trip runs past the minimum to refillStop now, so band 2 needs it too: a trip
+        // GATHER handed over at 80 would never lead up top otherwise, and sit latched until we ate back under 70
+        boolean surfaced = band >= 1 && SmeltSurface.shallow(SmeltSurface.depthBelowSky(mod));
         // a cook picked its station, or a smelt screen is in hand right now: the meat in that screen is not in the bag, not a job
         // yet and not in the held sum, which is how a half loaded smoker read as 56 units and sent the bot for cows. unless the
         // food need was the one leading: then the screen is the top-up's own and it must not cut itself off
