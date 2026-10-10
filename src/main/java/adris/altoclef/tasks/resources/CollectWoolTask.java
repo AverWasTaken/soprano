@@ -35,7 +35,7 @@ public class CollectWoolTask extends ResourceTask {
     private int _deepDarkKnown = -1;
 
     public CollectWoolTask(DyeColor[] colors, int count) {
-        super(new ItemTarget(ItemHelper.WOOL, count));
+        super(new ItemTarget(getWoolColorItems(colors), count));
         _colors = new HashSet<>(Arrays.asList(colors));
         _count = count;
         _wools = getWoolColorItems(colors);
@@ -134,7 +134,7 @@ public class CollectWoolTask extends ResourceTask {
 
     @Override
     protected boolean isEqualResource(ResourceTask other) {
-        return other instanceof CollectWoolTask && ((CollectWoolTask) other)._count == _count;
+        return other instanceof CollectWoolTask task && task._count == _count && task._colors.equals(_colors);
     }
 
     @Override
