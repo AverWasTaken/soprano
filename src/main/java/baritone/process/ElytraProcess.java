@@ -793,8 +793,11 @@ public class ElytraProcess extends BaritoneProcessHelper implements IBaritonePro
         if (npf != null) {
             this.npfContext = null;
             Baritone.getExecutor().execute(() -> {
-                npf.destroy();
-                npfSema.release();
+                try {
+                    npf.destroy();
+                } finally {
+                    npfSema.release(); // a throwing destroy shouldn't strand the permit either
+                }
             });
         }
     }
