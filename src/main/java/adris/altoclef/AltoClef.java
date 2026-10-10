@@ -199,8 +199,11 @@ public class AltoClef {
 
             _trackerManager.tick();
             _blockTracker.preTickTask();
-            _taskRunner.tick();
-            _blockTracker.postTickTask();
+            try {
+                _taskRunner.tick();
+            } finally {
+                _blockTracker.postTickTask();
+            }
         }
 
         _butler.tick();
