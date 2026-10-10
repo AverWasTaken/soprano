@@ -133,8 +133,7 @@ public class StationAttemptTest {
         assertEquals(CARVE, a.phase());
     }
 
-    // a shaft, nothing usable, and it went straight to digging (and before that to the old placer, which pillared). the walk
-    // is free and a block mined for a station is not: it comes first
+    // a shaft, nothing usable around. the walk is free and a block mined for a station is not, so it comes first
     @Test
     public void noSpotWalksBeforeAnythingElse() {
         StationAttempt a = new StationAttempt();

@@ -241,24 +241,23 @@ final class StationSpots {
         if (me.isOwnCell(x, y, z) || !w.placeable(x, y, z)) {
             return refuse(why, Refusal.IN_THE_WAY);
         }
-        if (!dugByUs) {
-            // the dug cell is exempt from all three: it is a hole in rock, and rock over it and around it is the whole point
-            if (!leavesAWayOut(w, me, x, y, z)) {
-                return refuse(why, Refusal.SEALS_US_IN);
-            }
-            // the use-walk aims at the top of a station, rock over it is what makes the walk dig
-            if (!w.passable(x, y + 1, z)) {
-                return refuse(why, Refusal.ROOFED);
-            }
-            if (!memo.floorBeside(x, y, z)) {
-                return refuse(why, Refusal.BOXED_IN);
-            }
+        // the dug cell skips the next two: it is a hole in rock, and rock over it and around it is the whole point. it still
+        // needs a standing cell beside it, our own is the usual one
+        if (!dugByUs && !leavesAWayOut(w, me, x, y, z)) {
+            return refuse(why, Refusal.SEALS_US_IN);
+        }
+        // the use-walk aims at the top of a station, rock over it is what makes the walk dig
+        if (!dugByUs && !w.passable(x, y + 1, z)) {
+            return refuse(why, Refusal.ROOFED);
+        }
+        if (!memo.floorBeside(x, y, z)) {
+            return refuse(why, Refusal.BOXED_IN);
         }
         Spot spot = sides ? sideSupport(w, me, x, y, z) : topSupport(w, me, x, y, z);
         if (spot == null) {
             return refuse(why, sides || w.faceSturdy(x, y - 1, z, 0, 1, 0) ? Refusal.NOT_CLICKABLE : Refusal.NO_FLOOR);
         }
-        if (!dugByUs && !reachableStanding(memo, me, x, y, z)) {
+        if (!reachableStanding(memo, me, x, y, z)) {
             return refuse(why, Refusal.BOXED_IN);
         }
         if (!leavesStationsUsable(w, memo, x, y, z)) {
@@ -307,15 +306,16 @@ final class StationSpots {
     // a table that bricks us into the dead end is the same hole we would have to dig out of
     private static boolean reachableStanding(Memo memo, Stance me, int x, int y, int z) {
         boolean wasOpen = memo.wasOpenToTheEdge();
-        int found = flood(memo, me, true, x, y, z, wasOpen);
+        int found = flood(memo, me, true, x, y, z, wasOpen, null);
         return (found & FOUND_STANDING) != 0 && (!wasOpen || (found & FOUND_EDGE) != 0);
     }
 
     // a flood over standable cells from our feet, one step up or down at a time, with the block at (bx,by,bz) in the way if
     // `blocked`. stops the moment it has what it was sent for
-    private static int flood(Memo memo, Stance me, boolean blocked, int bx, int by, int bz, boolean wantEdge) {
+    // `collect` (if given) is the seen set to fill, and the flood runs to the end instead of stopping early
+    private static int flood(Memo memo, Stance me, boolean blocked, int bx, int by, int bz, boolean wantEdge, Set<Long> collect) {
         ArrayDeque<int[]> open = new ArrayDeque<>();
-        Set<Long> seen = new HashSet<>();
+        Set<Long> seen = collect != null ? collect : new HashSet<>();
         open.add(new int[]{me.feetX(), me.feetY(), me.feetZ()});
         seen.add(Memo.key(me.feetX(), me.feetY(), me.feetZ()));
         int found = 0;
@@ -327,7 +327,7 @@ final class StationSpots {
             if (Math.abs(c[0] - me.feetX()) == FLOOD_RADIUS || Math.abs(c[2] - me.feetZ()) == FLOOD_RADIUS || Math.abs(c[1] - me.feetY()) == 3) {
                 found |= FOUND_EDGE;
             }
-            if ((!blocked || (found & FOUND_STANDING) != 0) && (!wantEdge || (found & FOUND_EDGE) != 0)) {
+            if (collect == null && (!blocked || (found & FOUND_STANDING) != 0) && (!wantEdge || (found & FOUND_EDGE) != 0)) {
                 return found;
             }
             for (int[] h : HORIZONTALS) {
@@ -399,7 +399,7 @@ final class StationSpots {
         // can we walk out of the neighbourhood as it stands (the flood reaches its edge). asked once a search
         boolean wasOpenToTheEdge() {
             if (openToTheEdge == null) {
-                openToTheEdge = (flood(this, me, false, 0, 0, 0, true) & FOUND_EDGE) != 0;
+                openToTheEdge = (flood(this, me, false, 0, 0, 0, true, null) & FOUND_EDGE) != 0;
             }
             return openToTheEdge;
         }
@@ -453,20 +453,18 @@ final class StationSpots {
     }
 
     // blocks to mine out when nothing around us takes a station, best first: beside our feet (what a player does in a tunnel:
-    // knock out the wall and put the furnace in the hole), then beside our head, then two out along a line that is already
-    // open. each needs a full block under it for the floor and nothing next to it that would pour in once it is open
+    // knock out the wall and put the furnace in the hole), then two out along a line that is already open. each needs a full
+    // block under it for the floor and nothing next to it that would pour in once it is open. never beside our head: a
+    // station up there has no cell to stand beside it at its own level, and the walk back to it would pillar one
     static List<Cell> carveCandidates(Cells w, Stance me, Bans banned) {
         List<Cell> out = new ArrayList<>();
         for (int[] h : HORIZONTALS) {
             addCarve(w, me, banned, out, me.feetX() + h[0], me.feetY(), me.feetZ() + h[1]);
         }
         for (int[] h : HORIZONTALS) {
-            addCarve(w, me, banned, out, me.feetX() + h[0], me.feetY() + 1, me.feetZ() + h[1]);
-        }
-        for (int[] h : HORIZONTALS) {
-            // the look down at the floor two out goes through the cell between, so that one has to be open. it never dips
-            // under feet level on the way, so the floor of the cell between doesn't matter
-            if (w.passable(me.feetX() + h[0], me.feetY(), me.feetZ() + h[1])) {
+            // the look down at the floor two out goes through the cell between, so that one has to be open. and it is the
+            // cell we stand in to use the station, so it needs a floor too
+            if (w.standable(me.feetX() + h[0], me.feetY(), me.feetZ() + h[1])) {
                 addCarve(w, me, banned, out, me.feetX() + 2 * h[0], me.feetY(), me.feetZ() + 2 * h[1]);
             }
         }
@@ -511,6 +509,11 @@ final class StationSpots {
                 }
             }
         }
+        // and one a plain walk gets to. the walk is baritone's own and breaks or places if that is cheaper, so a stand behind a
+        // wall or across a gap is a dig or a bridge, which is the thing this is trying not to do
+        Set<Long> walkable = new HashSet<>();
+        flood(new Memo(w, me), me, false, 0, 0, 0, false, walkable);
+        stands.removeIf(s -> !walkable.contains(Memo.key(s.x(), s.y(), s.z())));
         stands.sort(Comparator.comparingDouble((Stand s) -> sq(s.x() - me.feetX()) + sq(s.z() - me.feetZ()) + LEVEL * Math.abs(s.y() - me.feetY())));
         int tried = 0;
         for (Stand s : stands) {

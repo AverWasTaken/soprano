@@ -376,6 +376,32 @@ public class StationSpotsTest {
         assertTrue(far >= StationSpots.MIN_MOVE && far <= StationSpots.MAX_MOVE);
     }
 
+    // the walk to a standpoint is baritone's own and digs or bridges if that is cheaper, so a stand it would have to dig to is out
+    @Test
+    public void aStandpointBehindAWallIsNotOneWeCanWalkTo() {
+        FakeWorld w = new FakeWorld(64);
+        w.onlyPlaceable = new HashSet<>();
+        for (int z = -2; z <= 2; z++) {
+            w.onlyPlaceable.add(FakeWorld.key(5, 65, z));
+        }
+        // clear of the wall the east side is a fine stand
+        assertTrue(StationSpots.standpoint(w, flat(), new StationSpots.Bans(), SNEAK_EYE).isPresent());
+        for (int z = -8; z <= 8; z++) {
+            for (int y = 65; y <= 67; y++) {
+                w.put(2, y, z, Kind.FULL);
+            }
+        }
+        assertTrue(StationSpots.standpoint(w, flat(), new StationSpots.Bans(), SNEAK_EYE).isEmpty());
+    }
+
+    // a hole dug beside our head has no cell to stand beside it at its own level, so it is no spot even though we dug it
+    @Test
+    public void aCarvedHoleStillNeedsAStandingCellBesideIt() {
+        FakeWorld w = shaft();
+        w.put(1, 66, 0, Kind.AIR);
+        assertTrue(StationSpots.best(w, inShaft(), new StationSpots.Bans(), new StationSpots.Cell(1, 66, 0)).isEmpty());
+    }
+
     @Test
     public void noStandpointWhenNothingAnywhereTakesABlock() {
         FakeWorld w = new FakeWorld(64);
@@ -403,7 +429,7 @@ public class StationSpotsTest {
 
     // ---- carving ----
 
-    // the log: a 1x1 shaft in solid rock. our two cells, and open air straight up and down. nothing around takes a block
+    // a 1x1 shaft in solid rock. our two cells, and open air straight up and down. nothing around takes a block
     private static FakeWorld shaft() {
         FakeWorld w = new FakeWorld(200);
         for (int y = 60; y <= 80; y++) {
@@ -428,16 +454,14 @@ public class StationSpotsTest {
     }
 
     @Test
-    public void carveOrderIsFeetThenHeadAndTwoOutNeedsAnOpenCellBetween() {
+    public void carveOrderIsFeetThenTwoOutAndTwoOutNeedsAStandingCellBetween() {
         List<StationSpots.Cell> list = carves(shaft());
-        // four at feet level, four at head level, nothing two out: the cell between is stone
-        assertEquals(8, list.size());
+        // four at feet level and nothing else: never beside the head (no cell to stand beside it at its level), and nothing two
+        // out, the cell between is stone
+        assertEquals(4, list.size());
         for (int i = 0; i < 4; i++) {
             assertEquals(65, list.get(i).y());
             assertEquals(1, Math.abs(list.get(i).x()) + Math.abs(list.get(i).z()));
-        }
-        for (int i = 4; i < 8; i++) {
-            assertEquals(66, list.get(i).y());
         }
         // a tunnel east: now the cell two out that way is a candidate, after the near ones
         FakeWorld tunnel = shaft();
@@ -445,6 +469,9 @@ public class StationSpotsTest {
         List<StationSpots.Cell> withTunnel = carves(tunnel);
         assertEquals(new StationSpots.Cell(2, 65, 0), withTunnel.get(withTunnel.size() - 1));
         assertFalse(withTunnel.contains(new StationSpots.Cell(1, 65, 0)));
+        // the tunnel's floor gone: the cell between is open but nobody stands in it, so there is no way to use a station past it
+        tunnel.put(1, 64, 0, Kind.AIR);
+        assertFalse(carves(tunnel).contains(new StationSpots.Cell(2, 65, 0)));
     }
 
     @Test
@@ -472,21 +499,13 @@ public class StationSpotsTest {
     @Test
     public void bedrockContainersAndOreAreNeverCarved() {
         FakeWorld w = shaft();
-        // all four feet-level neighbours are off limits, so the head level is what is left
+        assertEquals(4, carves(w).size());
         w.unminable.add(FakeWorld.key(1, 65, 0));
         w.unminable.add(FakeWorld.key(-1, 65, 0));
         w.unminable.add(FakeWorld.key(0, 65, 1));
+        // three of four off limits leaves the last
+        assertEquals(List.of(new StationSpots.Cell(0, 65, -1)), carves(w));
         w.unminable.add(FakeWorld.key(0, 65, -1));
-        List<StationSpots.Cell> list = carves(w);
-        assertEquals(4, list.size());
-        for (StationSpots.Cell c : list) {
-            assertEquals(66, c.y());
-        }
-        // and with the head level off limits too there is nothing
-        w.unminable.add(FakeWorld.key(1, 66, 0));
-        w.unminable.add(FakeWorld.key(-1, 66, 0));
-        w.unminable.add(FakeWorld.key(0, 66, 1));
-        w.unminable.add(FakeWorld.key(0, 66, -1));
         assertTrue(carves(w).isEmpty());
     }
 
@@ -686,6 +705,15 @@ public class StationSpotsTest {
         assertEquals(0, why.count(StationSpots.Refusal.ROOFED));
         assertTrue(why.summary(), why.summary().contains("no floor"));
         assertEquals("nothing in range", new StationSpots.Refusals().summary());
+        StationSpots.Refusals counted = new StationSpots.Refusals();
+        counted.add(StationSpots.Refusal.ROOFED);
+        counted.add(StationSpots.Refusal.NO_FLOOR);
+        counted.add(StationSpots.Refusal.ROOFED);
+        counted.add(StationSpots.Refusal.NO_FLOOR);
+        counted.add(StationSpots.Refusal.NO_FLOOR);
+        counted.add(StationSpots.Refusal.BOXED_IN);
+        assertEquals("3 no floor, 2 roofed, 1 boxed in", counted.summary());
+        assertEquals(6, counted.total());
         // a ban is its own reason
         StationSpots.Bans bans = new StationSpots.Bans();
         for (int x = -StationSpots.RADIUS; x <= StationSpots.RADIUS; x++) {
