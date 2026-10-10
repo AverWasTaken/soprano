@@ -277,7 +277,8 @@ public class PlaceStationTask extends Task {
     protected void onStop(AltoClef mod, Task interruptTask) {
         mod.getInputControls().release(Input.SNEAK);
         // the old placer finishes inside its own task, nothing in our tick sees it land. the block tells us when it is there
-        if (interruptTask == null && _attempt.phase() == StationAttempt.Phase.FALLBACK && _fallback.isFinished(mod)) {
+        // (the container task swaps us out the tick after, so an interrupt here is the normal way to be done)
+        if (_attempt.phase() == StationAttempt.Phase.FALLBACK && _fallback.isFinished(mod)) {
             logPlaced(_fallback.getPlaced());
         }
     }
