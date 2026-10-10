@@ -262,8 +262,9 @@ public class StationContradictionsTest {
     // the mine brings back far more than the 16 spare), and the task cannot eat what the kit still owes: SmeltSplit.loads and
     // DoStuffInContainerTask.bagCanMake both count cobble minus StationHook.cobbleOwed (KitPlanner.toolCobble, the stone tools'
     // cobble, which is also the kit's stone floor while a furnace stands). short on spare cobble the split is fewer loads, never a
-    // trip for stone. KNOWN GAP, older than this round: both count cobbled deepslate and blackstone as spare, while owed is plain
-    // cobblestone and the furnace recipe takes plain cobblestone only, so 14 cobble + 8 deepslate with 14 owed reads as 8 spare
+    // trip for stone. OPEN, left alone on purpose: both count cobbled deepslate and blackstone as spare, which is what vanilla 1.21.4
+    // takes for a furnace (#minecraft:stone_crafting_materials), but TaskCatalogue's furnace recipe puts plain cobblestone in the
+    // slots, so the narrow side is the catalogue and 14 cobble + 8 deepslate with 14 owed reads as 8 spare the craft cannot use
     @Test
     public void aBusyFurnaceIsHeldForThePlannerAndTheSplitLoadMakesAnotherOnlyFromSpareCobble() {
         RunState state = new RunState();
