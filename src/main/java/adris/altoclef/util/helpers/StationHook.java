@@ -233,7 +233,8 @@ public final class StationHook {
         plainAnswers = on;
     }
 
-    // the world was left: what the book remembers belongs to a world that is gone
+    // the world was left: what the book remembers belongs to a world that is gone. (a proxy switch with no leave keeps the old
+    // entries, harmless while the book only records)
     public static void clearPlain() {
         plain.clear();
     }

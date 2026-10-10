@@ -66,8 +66,8 @@ public final class WorkbenchRules {
     // a container task says "this station is mine right now" every tick it works at or walks to it (StationHook.touch), and the book
     // believes it for this long after the last time. 40 is two LOAD_GRACE: the tree can be empty for a tick or two between a task and
     // the next one it hands the wheel to (a hold, a chain with the wheel for a fight or a meal), and that gap must not read as the
-    // work being over. it is well under DRIVE_GRACE (a pickup nobody drives), and the SETTLE after a screen shut still comes on top
-    // of it, so a station is never taken the instant the lease lapses. it only ever adds to "in use" (idle below)
+    // work being over. it is well under DRIVE_GRACE (a pickup nobody drives). the SETTLE after a screen shut runs alongside it, not
+    // on top, so an owed bench goes one tick after the lease lapses. it only ever adds to "in use" (idle below)
     public static final long LEASE_TICKS = 40;
 
     private WorkbenchRules() {

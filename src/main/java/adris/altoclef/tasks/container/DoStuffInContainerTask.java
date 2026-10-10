@@ -93,11 +93,14 @@ public abstract class DoStuffInContainerTask extends Task {
 
     // the station we are walking to or working at says so every tick, a short lease in the book (WorkbenchRules.LEASE_TICKS) that
     // holds it as in use even on a tick the task tree has nothing of ours in it. not a station that is coming down. a station the
-    // book does not know (a village's) is ignored over there. the cached target is this tick's choice, or last tick's when a
-    // subclass returned before choosing (the screen is open), which is the same block
+    // book does not know (a village's) is ignored over there. the cached target is this tick's choice, or an older one when a
+    // subclass returned before choosing (screen open, a fuel trip, the pickup wait, the first ticks after a restart): the tree scan
+    // holds the whole kind on those ticks anyway, so a stale lease costs nothing today, but whoever narrows the scan to the lease
+    // has to handle it
     private void touchTarget(AltoClef mod) {
         BlockPos at = _cachedContainerPosition;
-        if (_stationKind == null || at == null || StationHook.pickingUp(at)) {
+        // (a pickup of this kind running means we are waiting, not working at anything: nothing to lease)
+        if (_stationKind == null || at == null || StationHook.pickingUp(at) || StationHook.pickingUp(_stationKind)) {
             return;
         }
         StationHook.touch(_stationKind, at, WorldHelper.getCurrentDimension().name(), mod.getWorld().getGameTime());
@@ -116,7 +119,9 @@ public abstract class DoStuffInContainerTask extends Task {
             _reportedAt = null;
             return;
         }
-        if (at.equals(_reportedAt) || !station.isFinished(mod) || !isContainerBlockInWorld(mod, at)) {
+        // (a placer cut off while it waits to see the block, VERIFY, never gets to DONE: the block is in the world and it is ours, the
+        // cell was free until our click)
+        if (at.equals(_reportedAt) || !(station.isFinished(mod) || station.isVerifying()) || !isContainerBlockInWorld(mod, at)) {
             return;
         }
         _reportedAt = at.immutable();

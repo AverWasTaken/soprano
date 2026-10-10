@@ -19,7 +19,7 @@ import org.junit.rules.Timeout;
 // the lease: a container task says "this station is mine" every tick it works at or walks to it, and the book holds the station as
 // in use for LEASE_TICKS after the last time. everything here is a fake clock over the pure rules, no game. the loop it fixes: the
 // portal phase's hold returned no task, the empty tree made the furnace the cast had just placed look idle, it was picked up and the
-// cast placed it again, 15 times
+// cast placed it again, in a loop
 public class StationLeaseTest {
     private static final String OVERWORLD = Workbenches.OVERWORLD;
     private static final long PLACED = 1000;

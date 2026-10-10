@@ -60,7 +60,7 @@ public class SpareCobbleTest {
         assertEquals(1, SmeltSplit.loads(37, 0, 0, spare(bag, 14)));
         Map<Item, Integer> more = Map.of(Items.COBBLESTONE, 30, Items.COBBLED_DEEPSLATE, 8);
         assertEquals(2, SmeltSplit.loads(37, 0, 0, spare(more, 14)));
-        // owed cobble never goes below zero spare when the bag is short of it, loads copes with the negative
+        // spare can come out negative when the bag is short of what is owed, loads copes with that
         assertEquals(-4, spare(Map.of(Items.COBBLESTONE, 10), 14));
         assertEquals(1, SmeltSplit.loads(37, 0, 0, spare(Map.of(Items.COBBLESTONE, 10), 14)));
     }
