@@ -24,21 +24,53 @@ public class InputControls {
 
     private final Queue<Input> _toUnpress = new ArrayDeque<>();
     private final Set<Input> _waitForRelease = new HashSet<>(); // a click requires a release.
+    private final KeyPort _keys;
 
-    private static KeyMapping inputToKeyBinding(Input input) {
-        Options o = Minecraft.getInstance().options;
-        return switch (input) {
-            case MOVE_FORWARD -> o.keyUp;
-            case MOVE_BACK -> o.keyDown;
-            case MOVE_LEFT -> o.keyLeft;
-            case MOVE_RIGHT -> o.keyRight;
-            case CLICK_LEFT -> o.keyAttack;
-            case CLICK_RIGHT -> o.keyUse;
-            case JUMP -> o.keyJump;
-            case SNEAK -> o.keyShift;
-            case SPRINT -> o.keySprint;
-            default -> throw new IllegalArgumentException("Invalid key input/not accounted for: " + input);
-        };
+    public InputControls() {
+        this(new GameKeys());
+    }
+
+    public InputControls(KeyPort keys) {
+        _keys = keys;
+    }
+
+    // the real keys. the only place that knows about Minecraft.getInstance()
+    private static final class GameKeys implements KeyPort {
+        private static KeyMapping inputToKeyBinding(Input input) {
+            Options o = Minecraft.getInstance().options;
+            return switch (input) {
+                case MOVE_FORWARD -> o.keyUp;
+                case MOVE_BACK -> o.keyDown;
+                case MOVE_LEFT -> o.keyLeft;
+                case MOVE_RIGHT -> o.keyRight;
+                case CLICK_LEFT -> o.keyAttack;
+                case CLICK_RIGHT -> o.keyUse;
+                case JUMP -> o.keyJump;
+                case SNEAK -> o.keyShift;
+                case SPRINT -> o.keySprint;
+                default -> throw new IllegalArgumentException("Invalid key input/not accounted for: " + input);
+            };
+        }
+
+        @Override
+        public boolean isDown(Input input) {
+            return inputToKeyBinding(input).isDown();
+        }
+
+        @Override
+        public void setDown(Input input, boolean down) {
+            inputToKeyBinding(input).setDown(down);
+        }
+
+        @Override
+        public void click(Input input) {
+            KeyMapping.click(inputToKeyBinding(input).getDefaultKey());
+        }
+
+        @Override
+        public boolean aimedAtEntity() {
+            return Minecraft.getInstance().hitResult instanceof EntityHitResult;
+        }
     }
 
     public void tryPress(Input input) {
@@ -46,31 +78,31 @@ public class InputControls {
         if (_waitForRelease.contains(input)) {
             return;
         }
-        inputToKeyBinding(input).setDown(true);
+        _keys.setDown(input, true);
         // Also necessary to ensure the game registers the input as "pressed"
-        KeyMapping.click(inputToKeyBinding(input).getDefaultKey());
+        _keys.click(input);
         _toUnpress.add(input);
         _waitForRelease.add(input);
     }
 
     public void hold(Input input) {
         // the only way a block click turns into a swing at a mob. tryPress is left alone, the dragon task wants its hits
-        if (input == Input.CLICK_LEFT && !ClickGuard.allowLeftHold(Minecraft.getInstance().hitResult instanceof EntityHitResult)) {
-            inputToKeyBinding(input).setDown(false);
+        if (input == Input.CLICK_LEFT && !ClickGuard.allowLeftHold(_keys.aimedAtEntity())) {
+            _keys.setDown(input, false);
             return;
         }
-        if (!inputToKeyBinding(input).isDown()) {
-            KeyMapping.click(inputToKeyBinding(input).getDefaultKey());
+        if (!_keys.isDown(input)) {
+            _keys.click(input);
         }
-        inputToKeyBinding(input).setDown(true);
+        _keys.setDown(input, true);
     }
 
     public void release(Input input) {
-        inputToKeyBinding(input).setDown(false);
+        _keys.setDown(input, false);
     }
 
     public boolean isHeldDown(Input input) {
-        return inputToKeyBinding(input).isDown();
+        return _keys.isDown(input);
     }
 
     public void forceLook(float yaw, float pitch) {
@@ -83,7 +115,7 @@ public class InputControls {
     // Before the user calls input commands for the frame
     public void onTickPre() {
         while (!_toUnpress.isEmpty()) {
-            inputToKeyBinding(_toUnpress.remove()).setDown(false);
+            _keys.setDown(_toUnpress.remove(), false);
         }
     }
 
