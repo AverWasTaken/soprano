@@ -12,6 +12,7 @@ import baritone.api.utils.input.Input;
 import java.util.Objects;
 import java.util.Optional;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.component.DataComponents;
@@ -55,6 +56,7 @@ public class FoodChain extends SingleTaskChain {
     // BiteRules has the rules, these are what the chain remembers between ticks: whether we hold the use key, whether the
     // meal began standing (and so the pause is ours until stopEat), and the counters for the log lines
     private final BiteRules.Waiting _waiting = new BiteRules.Waiting();
+    private final BiteRules.UseWatch _useWatch = new BiteRules.UseWatch();
     private boolean _biting = false;
     private boolean _standing = false;
 
@@ -73,6 +75,11 @@ public class FoodChain extends SingleTaskChain {
     // once a tick that the eat branch wants to chew. BiteRules says whether that is now: outside a fight a bite only starts
     // standing, because chewing is a 0.2 move multiplier and no movement knows about it
     private void tryEat(AltoClef mod, Item food, boolean avoidInteractable) {
+        if (_useWatch.backingOff()) {
+            // the use would not start, leave it be for a bit (the path walks on, the key is up)
+            stopEat(mod);
+            return;
+        }
         BiteRules.Scene scene = scene(mod);
         BiteRules.Verdict verdict = BiteRules.verdict(scene);
         boolean waiting = verdict == BiteRules.Verdict.ASK_STOP || verdict == BiteRules.Verdict.WAIT;
@@ -122,7 +129,40 @@ public class FoodChain extends SingleTaskChain {
             snapshotBite(mod, food);
         }
         mod.getSlotHandler().forceEquipItem(new Item[]{food}, true); //"true" because it's food
-        holdBite(mod);
+        watchUse(mod);
+    }
+
+    // the bite that never starts: the key is down and the game never begins using the item (a stale key with no rising edge
+    // is the lead suspect). so after a while we let go of it for a tick and press it again
+    private void watchUse(AltoClef mod) {
+        LocalPlayer player = mod.getPlayer();
+        boolean using = player.isUsingItem() && player.getUseItem().getItem().components().has(DataComponents.FOOD);
+        BiteRules.Press press = _useWatch.step(using);
+        if (_useWatch.startedThisTick()) {
+            logBiteStart(mod, player);
+        }
+        switch (press) {
+            case HOLD -> holdBite(mod);
+            case PRESS_AGAIN -> {
+                // once per stuck bite is plenty
+                if (_useWatch.retries() == 1) {
+                    Screen screen = Minecraft.getInstance().screen;
+                    Debug.logInternal(String.format("food: use did not start (held=%s using=false key=%s screen=%s), pressing again",
+                            BuiltInRegistries.ITEM.getKey(player.getMainHandItem().getItem()).getPath(),
+                            mod.getInputControls().isHeldDown(Input.CLICK_RIGHT) ? "down" : "up",
+                            screen == null ? "none" : screen.getClass().getSimpleName()));
+                }
+                // the muzzle stays on, a click getting through while the key is up for a tick would break or place something
+                mod.getInputControls().release(Input.CLICK_RIGHT);
+                mod.getExtraBaritoneSettings().setInteractionPaused(true);
+                _biting = true;
+            }
+            case BACK_OFF -> {
+                Debug.logInternal(String.format("food: use still not starting after %d presses, backing off %dt",
+                        BiteRules.RETRIES, BiteRules.BACKOFF_TICKS));
+                stopEat(mod);
+            }
+        }
     }
 
     private void holdBite(AltoClef mod) {
@@ -133,9 +173,17 @@ public class FoodChain extends SingleTaskChain {
         mod.getExtraBaritoneSettings().setInteractionPaused(true);
     }
 
+    private void logBiteStart(AltoClef mod, LocalPlayer player) {
+        Item item = _bite != null ? _bite : player.getUseItem().getItem();
+        String when = _standing ? "stopped " + _useWatch.ticksToStart() + "t ago" : "on the move";
+        Debug.logInternal(String.format("food: bite started %s (%s, hp %.1f, hunger %d)",
+                BuiltInRegistries.ITEM.getKey(item).getPath(), when, player.getHealth(), player.getFoodData().getFoodLevel()));
+    }
+
     private void stopEat(AltoClef mod) {
         // whatever the meal was, the next one starts from scratch (a back off in progress is not part of the meal)
         _waiting.reset();
+        _useWatch.reset();
         _biting = false;
         _standing = false;
         if (_isTryingToEat) {
@@ -194,6 +242,8 @@ public class FoodChain extends SingleTaskChain {
     @Override
     public float getPriority(AltoClef mod) {
         _dragonBreathTracker.updateBreath(mod);
+        // the clock runs whether or not anybody is eating, that is what a back off is
+        _useWatch.tickBackoff();
         watchBite(mod);
         // one list of reasons we will not eat right now. the eat branch below and needsToEat() both go by it, so
         // everything that pauses for a meal (progress checkers, container waits) stops waiting when we refuse to eat.
@@ -291,6 +341,7 @@ public class FoodChain extends SingleTaskChain {
     protected void onStop(AltoClef mod) {
         super.onStop(mod);
         stopEat(mod);
+        _useWatch.clear();
     }
 
     // everything that makes the eat branch back off. cheap enough to read from getPriority, needsToEat() uses the cached answer
