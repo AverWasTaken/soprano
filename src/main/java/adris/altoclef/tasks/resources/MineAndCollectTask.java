@@ -14,6 +14,7 @@ import adris.altoclef.util.MiningRequirement;
 import baritone.Baritone;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.ItemPickupRules;
+import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.DropPatience;
 import adris.altoclef.util.helpers.DropWatch;
@@ -342,7 +343,49 @@ public class MineAndCollectTask extends ResourceTask {
                     closestBlock = anything;
                 }
             }
+            if (_stoneOnly && closestBlock.isPresent()) {
+                closestBlock = Optional.of(reachableStone(mod, pos, closestBlock.get(), check -> mod.getBlockTracker().blockIsValid(check, _blocks) && notOurs.test(check)));
+            }
             return closestBlock;
+        }
+
+        // the last reach decision. the pick runs every tick and raycasts aren't free, so standing in the same block with the
+        // same best we just reuse the answer
+        private BlockPos _reachFeet;
+        private BlockPos _reachBest;
+        private BlockPos _reachPick;
+        // only stone this close to the eye gets a raycast, past it nothing is going to be in reach anyway
+        private static final double REACH_LOOK_SQ = 5 * 5;
+
+        // the score ranks from the feet and doesn't care about the dirt in front of the face, so the best stone can be one
+        // we have to walk to while one just as good is right there to hit. when the best is out of reach, a near tie we can
+        // hit from here wins (see StoneDigRank.preferReachable)
+        private BlockPos reachableStone(AltoClef mod, Vec3 pos, BlockPos best, Predicate<BlockPos> ok) {
+            BlockPos feet = mod.getPlayer().blockPosition();
+            if (feet.equals(_reachFeet) && best.equals(_reachBest) && (_reachPick.equals(best) || ok.test(_reachPick))) {
+                return _reachPick;
+            }
+            _reachFeet = feet;
+            _reachBest = best;
+            _reachPick = best;
+            if (LookHelper.getReach(best).isPresent()) {
+                return best;
+            }
+            Vec3 eye = mod.getPlayer().getEyePosition();
+            double bestScore = stoneScore(mod, pos.x, pos.y, pos.z, best.getX(), best.getY(), best.getZ());
+            List<StoneDigRank.Scored> near = new ArrayList<>();
+            for (BlockPos check : mod.getBlockTracker().getKnownLocations(_blocks)) {
+                if (check.equals(best) || eye.distanceToSqr(Vec3.atCenterOf(check)) > REACH_LOOK_SQ || !ok.test(check)) {
+                    continue;
+                }
+                near.add(new StoneDigRank.Scored(check, stoneScore(mod, pos.x, pos.y, pos.z, check.getX(), check.getY(), check.getZ())));
+            }
+            BlockPos hittable = StoneDigRank.preferReachable(near, bestScore, StoneDigRank.REACH_MARGIN, StoneDigRank.REACH_CHECKS,
+                    check -> LookHelper.getReach(check).isPresent());
+            if (hittable != null) {
+                _reachPick = hittable;
+            }
+            return _reachPick;
         }
 
         // a block of ours going away is a break, and its drop is a tick or two from existing. picking the next block

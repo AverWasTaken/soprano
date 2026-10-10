@@ -10,6 +10,7 @@ import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.MineStick;
+import adris.altoclef.util.helpers.ReachHold;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.ToolSwap;
 import baritone.utils.ToolSet;
@@ -96,6 +97,13 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
     private int _dropPending;
     private static final int FALL_WAIT_MAX = 60;
     private static final int DROP_PENDING_MAX = 10;
+
+    // the reach ray flickers on a corner, this keeps us swinging (or walking) through the flicker. see ReachHold
+    private final ReachHold _reachHold = new ReachHold();
+    // where we last had a clean ray, and at what (the vine counts). the hold keeps looking there
+    private Rotation _lastReach;
+    private BlockPos _lastSwingAt;
+    private int _reachHoldTick = Integer.MIN_VALUE / 2;
 
     public DestroyBlockTask(BlockPos pos) {
         _pos = pos;
@@ -385,6 +393,9 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
         _moveChecker.reset();
         stuckCheck.reset();
         _stepOffs.reset();
+        _reachHold.reset();
+        _lastReach = null;
+        _lastSwingAt = null;
 
         // never scaffold onto the square above the block we're here to break. only bites once
         // _fromSide is set, so ordinary blocks path exactly like before
@@ -546,6 +557,31 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
                 swingAt = vine;
             }
         }
+        // the ray is checked against face points but the distance against the center, so a ray that hit counts as close
+        // enough on its own, or a block right at the edge of reach would never get swung at
+        double reachDist = mod.getClientBaritone().getPlayerContext().playerController().getBlockReachDistance();
+        boolean inDistance = reach.isPresent() || mod.getPlayer().getEyePosition().distanceToSqr(Vec3.atCenterOf(_pos)) <= reachDist * reachDist;
+        // a tick that returned early (stepping off, waiting on sand, unsticking) didn't feed the hold, and the look it
+        // remembers is from wherever we stood before all that. start over instead of holding on to it
+        int now = WorldHelper.getTicks();
+        if (now - _reachHoldTick > 1) {
+            _reachHold.reset();
+            _lastReach = null;
+        }
+        _reachHoldTick = now;
+        // buried can't wait for three rays in a row, that's three ticks of suffocating
+        boolean inRange = _reachHold.step(reach.isPresent(), mod.getClientBaritone().getPathingBehavior().isPathing() && !buried, inDistance);
+        if (reach.isPresent()) {
+            _lastReach = reach.get();
+            _lastSwingAt = swingAt;
+        }
+        // no ray this tick but the hold says we're still in: keep the last look and swing at what it was on
+        // (unless what it was on is gone, a vine we already cut down is nothing to stare at)
+        boolean holding = inRange && reach.isEmpty() && _lastReach != null && !mod.getWorld().getBlockState(_lastSwingAt).isAir();
+        if (holding) {
+            swingAt = _lastSwingAt;
+        }
+        inRange = inRange && (reach.isPresent() || holding);
         // breaking while soaked is up to 25x slower, so we get somewhere dry first unless that's the worse deal
         boolean slowed = slowedByWater(mod);
         if (!slowed) {
@@ -556,7 +592,7 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
         }
         boolean waitForLand = false;
         boolean mayBreak = false;
-        if (reach.isPresent()) {
+        if (inRange) {
             if (slowed) {
                 _wetTicks++;
                 double air = mod.getPlayer().getAirSupply() / (double) Math.max(1, mod.getPlayer().getMaxAirSupply());
@@ -575,7 +611,7 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
             mod.getClientBaritone().getCustomGoalProcess().onLostControl();
         }
         // buried skips the ground and water patience too: in the air, on a ladder or wet, the head still has to come out
-        if (reach.isPresent() && (mayBreak || buried) && !dropsOnUs
+        if (inRange && (mayBreak || buried) && !dropsOnUs
                 && (buried || !mod.getFoodChain().needsToEat()) && !WorldHelper.isInNetherPortal(mod)
                 && mod.getClientBaritone().getPathingBehavior().isSafeToCancel()) {
             setDebugState("Block in range, mining...");
@@ -587,8 +623,9 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
             mod.getInputControls().release(Input.MOVE_FORWARD);
             mod.getClientBaritone().getCustomGoalProcess().onLostControl();
             mod.getClientBaritone().getBuilderProcess().onLostControl();
-            if (!LookHelper.isLookingAt(mod, reach.get())) {
-                LookHelper.lookAt(mod, reach.get());
+            Rotation look = reach.orElse(_lastReach);
+            if (!LookHelper.isLookingAt(mod, look)) {
+                LookHelper.lookAt(mod, look);
             }
             BlockState state = mod.getWorld().getBlockState(swingAt);
             Optional<Slot> bestToolSlot = StorageHelper.getBestToolSlot(mod, state);
@@ -633,7 +670,10 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
                     _toolSwap.landed();
                 }
             }
-            mod.getClientBaritone().getInputOverrideHandler().setInputForceState(Input.CLICK_LEFT, true);
+            // holding on an old look: the crosshair might be on the dirt in front now, and cracking that is the exact thing
+            // this is here to stop. no click until it's back on the block
+            boolean click = !holding || LookHelper.isLookingAt(mod, swingAt);
+            mod.getClientBaritone().getInputOverrideHandler().setInputForceState(Input.CLICK_LEFT, click);
         } else {
             boolean fromSide = mustMineFromSide(mod);
             if (dropsOnUs) {
@@ -648,7 +688,7 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
             // we were swinging in the water (that only happens when WaterBreakGuard ran out of patience) and the current
             // took the block out of reach: it isn't worth chasing across a lake, let someone pick another. when it's
             // still in reach and we just stopped for dry land that's not a reason to give up on it
-            if (isMining && reach.isEmpty() && mod.getPlayer().isInWater()) {
+            if (isMining && !inRange && mod.getPlayer().isInWater()) {
                 isMining = false;
                 mod.getBlockTracker().requestBlockUnreachable(_pos);
             } else {

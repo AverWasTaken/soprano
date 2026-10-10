@@ -1,9 +1,13 @@
 package adris.altoclef.util.helpers;
 
+import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 
+import java.util.Comparator;
+import java.util.List;
 import java.util.Set;
+import java.util.function.Predicate;
 
 // which stone to chew on next. plain distance is wrong for this and baritone's heuristic is worse (it thinks down is
 // nearly free, so the nearest "stone" was always the floor and we dug a shaft, then had to climb out of it with cobble we
@@ -71,5 +75,32 @@ public final class StoneDigRank {
         }
         cost += FALLING_EXTRA * Math.min(Math.max(fallingAbove, 0), FALLING_CAP);
         return cost;
+    }
+
+    // a stone and what score() gave it
+    public record Scored(BlockPos pos, double score) {
+    }
+
+    // how much worse than the best a stone may score and still win by being hittable from right here. 2 is about two
+    // blocks of extra walk, way less than BELOW_EXTRA or BURIED, so this never talks us down a shaft or into the floor.
+    // it only breaks near-ties, which is the "walk to the dirt-covered one with a good one in reach" case
+    public static final double REACH_MARGIN = 2.0;
+    // reach raycasts per fresh pick, on top of the one for the best. the rest of the pick is cheap, these aren't
+    public static final int REACH_CHECKS = 4;
+
+    // the best is out of reach from where we stand: the first stone (by score) within margin of it that reachable says
+    // yes to, checking at most cap of them. null when none of them is. pure, reachable is the caller's raycast
+    public static BlockPos preferReachable(List<Scored> candidates, double bestScore, double margin, int cap, Predicate<BlockPos> reachable) {
+        List<Scored> close = candidates.stream()
+                .filter(c -> c.score() <= bestScore + margin)
+                .sorted(Comparator.comparingDouble(Scored::score))
+                .limit(cap)
+                .toList();
+        for (Scored c : close) {
+            if (reachable.test(c.pos())) {
+                return c.pos();
+            }
+        }
+        return null;
     }
 }
