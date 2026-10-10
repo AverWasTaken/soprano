@@ -107,7 +107,7 @@ public class UpgradeInSmithingTableTask extends ResourceTask {
                 return null;
             }
             // Take off our armor
-            if (mod.getItemStorage().hasEmptyInventorySlot()) {
+            if (!mod.getItemStorage().hasEmptyInventorySlot()) {
                 return new EnsureFreeInventorySlotTask();
             }
             for (Slot armorSlot : PlayerSlot.ARMOR_SLOTS) {
