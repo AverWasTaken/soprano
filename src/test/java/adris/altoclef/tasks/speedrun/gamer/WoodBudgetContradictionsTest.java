@@ -225,7 +225,9 @@ public class WoodBudgetContradictionsTest {
             for (int planks = 0; planks <= 12; planks++) {
                 for (int beds : new int[]{0, 1, 3, 8}) {
                     for (boolean pick : new boolean[]{true, false}) {
+                      for (String running : new String[]{null, "smoker"}) {
                         FakeFacts f = madeEverything().give(Items.BEEF, 5).give(Items.COBBLESTONE, 30);
+                        f.cookStation = running;
                         if (!pick) {
                             f.items.remove(Items.IRON_PICKAXE);
                             f.items.remove(Items.STONE_PICKAXE);
@@ -238,11 +240,12 @@ public class WoodBudgetContradictionsTest {
                         assertTrue("logs=" + logs + " planks=" + planks + " beds=" + beds + " pick=" + pick + ": keep " + keep + " kit " + kit,
                                 4 * keep.logs() + keep.planks() >= 4 * kit.logs() + kit.planks());
                         cases++;
+                      }
                     }
                 }
             }
         }
-        assertEquals(7 * 13 * 4 * 2, cases);
+        assertEquals(7 * 13 * 4 * 2 * 2, cases);
     }
 
     // (b) the coal detour used to count the wood a furnace could burn WITHOUT the logs a smoker still to make would eat, where the

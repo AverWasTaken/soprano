@@ -166,7 +166,10 @@ public record WoodBudget(
         // short of the claim by the oak logs it takes before the furnace would be handed the claim's worth: the reserve is dealt out
         // by name (FuelPolicy.usable), a species the furnace won't burn can soak it up or leave it to the oak, so ask the same rule
         int chop = 0;
-        if (f.nearSurface() && claim > 0) {
+        // (while the gather still owes wood the reserve grows with every log chopped, so a species that sorts after the oak and
+        // burns nothing can take a few trips to settle. stems in an overworld bag are not a thing, so that is left alone. and no
+        // chopping at all if oak itself is not fuel, it would never open the gate)
+        if (f.nearSurface() && claim > 0 && f.burnable(Items.OAK_LOG)) {
             while (chop <= claim + keep.logs() && usableLogs(species, keep.logs(), chop) < claim) {
                 chop++;
             }
