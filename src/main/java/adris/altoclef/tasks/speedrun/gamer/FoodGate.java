@@ -13,7 +13,8 @@ public final class FoodGate {
     // where the kit's own food need is in the list (the refill one, not the stock-up target or a filler's), -1 if none. the refill
     // asks for refillStop, which can be the very number a stock-up asks for (130 both), so the count alone cannot tell them apart.
     // the planners put the refill ahead of every other food need and only while FoodPlan.wantsRefill, so it is the first one then.
-    // a first one asking for anything else (the target) is not it
+    // a first one asking for anything else (the target) is not it. under the floor the first one can be the floor-level bite that
+    // leads the tools (FoodPlan.isRefillNeed knows both shapes), the full refill behind the tools is not what we look for then
     public static int index(List<KitNeed> needs, FoodPlan food) {
         if (!food.wantsRefill()) {
             return -1;
@@ -21,7 +22,7 @@ public final class FoodGate {
         for (int i = 0; i < needs.size(); i++) {
             KitNeed need = needs.get(i);
             if (KitNeed.FOOD.equals(need.catalogueName())) {
-                return need.count() == food.refillStop() ? i : -1;
+                return food.isRefillNeed(need) ? i : -1;
             }
         }
         return -1;

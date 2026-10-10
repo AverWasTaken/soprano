@@ -259,6 +259,12 @@ public final class FoodPlan {
         return endFloor;
     }
 
+    // the two shapes the planner gives the kit's own refill: the whole trip (refillStop), or, under the floor with tools still to
+    // make, the floor-level bite that goes ahead of them (KitPlanner.plan). anything else asking for food is a stock-up or a filler
+    public boolean isRefillNeed(KitNeed need) {
+        return KitNeed.FOOD.equals(need.catalogueName()) && (need.count() == refillStop || (held() < floor && need.count() == floor));
+    }
+
     // a stock-up on top of the target (SmeltFiller's smeltExtras), in the same units
     public int stockUp(int extra) {
         return target + extra;

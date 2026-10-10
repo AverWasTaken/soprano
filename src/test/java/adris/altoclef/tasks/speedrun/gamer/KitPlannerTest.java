@@ -15,6 +15,7 @@ import java.util.List;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
@@ -303,25 +304,76 @@ public class KitPlannerTest {
         f.foodUnits = 100;
         assertEquals(null, find(KitPlanner.plan(f, cfg, 8), KitNeed.FOOD));
         f.foodUnits = 10;
-        assertEquals(2, KitPlanner.plan(f, cfg, 8).stream().filter(n -> n.catalogueName().equals(KitNeed.FOOD)).count());
+        // under the floor with tools still to make: the floor bite, the whole refill behind the tools, and the target
+        assertEquals(3, KitPlanner.plan(f, cfg, 8).stream().filter(n -> n.catalogueName().equals(KitNeed.FOOD)).count());
     }
 
     @Test
     public void anEmptyBagEatsBeforeItBuildsAnything() {
-        // no food, no pick, no wood: the starter chain (logs, the stone pick) has a lot to ask for, and the refill still leads
+        // no food, no pick, no wood: the starter chain (logs, the stone pick) has a lot to ask for, and food still leads, but only
+        // up to the floor. the rest of the refill waits behind the tools
         FoodPlan food = FoodPlan.ofBeds(f, cfg, 8);
         List<KitNeed> plan = KitPlanner.plan(f, cfg, 8, food);
-        assertEquals(new KitNeed(KitNeed.FOOD, food.refillStop()), plan.get(0));
+        assertEquals(new KitNeed(KitNeed.FOOD, food.floor()), plan.get(0));
         assertTrue(names(plan).contains("stone_pickaxe"));
         assertTrue(names(plan).contains("log"));
         assertTrue(names(plan).indexOf("log") > 0);
         // the head the gate cares about is that one
         assertEquals(0, FoodGate.index(plan, food));
-        // one under the floor is the same, and the refill is in the list once up front (the target one still closes the plan)
+        // one under the floor is the same: the floor bite, the tools, the whole refill, and the target closing the plan
         f.foodUnits = 23;
         plan = KitPlanner.plan(f, cfg, 8);
-        assertEquals(KitNeed.FOOD, plan.get(0).catalogueName());
-        assertEquals(2, plan.stream().filter(n -> n.catalogueName().equals(KitNeed.FOOD)).count());
+        assertEquals(new KitNeed(KitNeed.FOOD, food.floor()), plan.get(0));
+        assertEquals(3, plan.stream().filter(n -> n.catalogueName().equals(KitNeed.FOOD)).count());
+    }
+
+    @Test
+    public void anEmptyBagEatsThenArmsItselfThenFinishesStockingFood() {
+        FoodPlan food = FoodPlan.ofBeds(f, cfg, 8);
+        List<KitNeed> plan = KitPlanner.plan(f, cfg, 8, food);
+        int bite = 0;
+        int tools = names(plan).indexOf("stone_pickaxe");
+        int rest = plan.indexOf(new KitNeed(KitNeed.FOOD, food.refillStop()));
+        assertEquals(new KitNeed(KitNeed.FOOD, food.floor()), plan.get(bite));
+        assertTrue("the pick comes after the first bite", tools > bite);
+        assertTrue("and the rest of the food after the pick", rest > tools);
+        // the weapon too, not just the pick
+        assertTrue(names(plan).indexOf("stone_axe") < rest);
+        // and the ore only after all of it
+        assertTrue(names(plan).indexOf("iron_ingot") > rest);
+        // once the bite is eaten the plan is the fed one, tools first and the refill behind them
+        f.foodUnits = food.floor();
+        List<KitNeed> fed = KitPlanner.plan(f, cfg, 8);
+        assertEquals(plan.subList(1, plan.size()), fed.subList(0, plan.size() - 1));
+    }
+
+    @Test
+    public void anArmedBagUnderTheFloorStillRefillsInOnePieceUpFront() {
+        // nothing in the starter to make, so there is nothing to split the refill around
+        FakeFacts armed = complete();
+        armed.foodUnits = 5;
+        FoodPlan food = FoodPlan.ofBeds(armed, cfg, 8);
+        List<KitNeed> plan = KitPlanner.plan(armed, cfg, 8, food);
+        assertEquals(new KitNeed(KitNeed.FOOD, food.refillStop()), plan.get(0));
+        assertEquals(0, FoodGate.index(plan, food));
+    }
+
+    @Test
+    public void aBagAtOrOverTheFloorGetsTheSamePlanAsBefore() {
+        // the fed order: starter, refill (only while one is due), iron, the rest. nothing in it asks for the floor bite
+        for (int units : new int[] {24, 30, 44, 45, 60, 100, 130}) {
+            FakeFacts fed = new FakeFacts();
+            fed.foodUnits = units;
+            FoodPlan food = FoodPlan.ofBeds(fed, cfg, 8);
+            List<KitNeed> plan = KitPlanner.plan(fed, cfg, 8, food);
+            assertNotEquals("units " + units, new KitNeed(KitNeed.FOOD, food.floor()), plan.get(0));
+            assertFalse("units " + units, plan.contains(new KitNeed(KitNeed.FOOD, food.floor())));
+            int first = names(plan).indexOf(KitNeed.FOOD);
+            int pick = names(plan).indexOf("stone_pickaxe");
+            if (food.wantsRefill()) {
+                assertTrue("units " + units, pick < first);
+            }
+        }
     }
 
     @Test

@@ -55,6 +55,33 @@ public class FoodGateTest {
     }
 
     @Test
+    public void theFloorBiteThatLeadsTheToolsIsTheGatedHeadToo() {
+        // an empty bag: the floor bite, the tools, then the whole refill. the gate has to see the bite or the IRON phase
+        // would think nothing food-ish leads and drop the furnace-trip and detour manners that keep a starving bot eating
+        cfg.cookFuelLogs = 0;
+        FakeFacts empty = new FakeFacts();
+        FoodPlan food = plan(empty);
+        List<KitNeed> needs = KitPlanner.plan(empty, cfg, 8, food);
+        assertEquals(new KitNeed(KitNeed.FOOD, food.floor()), needs.get(0));
+        assertEquals(0, FoodGate.index(needs, food));
+        assertTrue(FoodGate.refillHead(needs, food));
+        // starving stays the bag's word, not the list's, and the gate keeps the head in under the floor
+        assertTrue(food.starving(null));
+        assertTrue(food.leads(false, false, false));
+        // the full refill further back is not what the gate looks for first
+        assertEquals(1, needs.stream().filter(n -> n.equals(new KitNeed(KitNeed.FOOD, food.refillStop()))).count());
+        // over the floor there is no bite, the old way of finding the refill still works
+        FakeFacts fed = new FakeFacts();
+        fed.foodUnits = 40;
+        FoodPlan fedFood = plan(fed);
+        List<KitNeed> fedNeeds = KitPlanner.plan(fed, cfg, 8, fedFood);
+        assertTrue(FoodGate.index(fedNeeds, fedFood) > 0);
+        assertFalse(food.isRefillNeed(new KitNeed("iron_ingot", food.floor())));
+        // and a bite-sized need is only the refill while we are under the floor
+        assertFalse(fedFood.isRefillNeed(new KitNeed(KitNeed.FOOD, fedFood.floor())));
+    }
+
+    @Test
     public void theHeadIsOreMeansTheNextJobIsTheMine() {
         assertTrue(FoodGate.headIsOre(List.of(FOOD, ORE), 0));
         assertFalse(FoodGate.headIsOre(List.of(FOOD, CRAFT, ORE), 0));
