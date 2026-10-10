@@ -287,7 +287,7 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
 
     @SuppressWarnings("BooleanMethodIsAlwaysInverted")
     private boolean doubleCheck(double a, double b) {
-        if (Double.isInfinite(a) == Double.isInfinite(b)) return true;
+        if (Double.isInfinite(a) || Double.isInfinite(b)) return Double.isInfinite(a) == Double.isInfinite(b);
         return Math.abs(a - b) < 0.1;
     }
 
