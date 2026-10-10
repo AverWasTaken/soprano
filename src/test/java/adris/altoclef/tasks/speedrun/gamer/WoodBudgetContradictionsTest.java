@@ -170,8 +170,9 @@ public class WoodBudgetContradictionsTest {
         }
     }
 
-    // (b) the coal detour counts the wood a furnace could burn WITHOUT the logs a smoker still to make would eat, the cook need
-    // takes those off. so the detour thinks there is more fuel than the cook does and fetches a coal or two short
+    // (b) the coal detour used to count the wood a furnace could burn WITHOUT the logs a smoker still to make would eat, where the
+    // cook need took those off, so the detour thought there was more fuel than the cook did and fetched a coal short. both read
+    // CookGate.woodSmeltsAfterClaims now
     @Test
     public void theCoalDetourDoesNotSubtractTheSmokersLogs() {
         FakeFacts f = madeEverything().give(Items.OAK_LOG, 12).give(Items.BEEF, 5).give(Items.COBBLESTONE, 30).give(Items.WHITE_BED, 8);
@@ -190,11 +191,11 @@ public class WoodBudgetContradictionsTest {
         int ingots = KitPlanner.ingotsNeeded(f, cfg);
         int loads = KitPlanner.smeltLoads(f, cfg);
         int withSpoken = DetourSpec.coalNeed(ingots, 0, 0, CookGate.raw(f), w.burnableWoodSmelts(w.smokerLogs()), loads);
-        assertEquals(DetourSpec.coalNeed(ingots, 0, 0, CookGate.raw(f), w.burnableWoodSmelts(0), loads), detour);
-        // known wrong: the cook's own count is the lower one, so it needs more coal than the detour goes for
-        assertNotEquals(withSpoken, detour);
-        assertEquals(5, detour);
-        assertEquals(6, withSpoken);
+        assertEquals(w.burnableWoodSmelts(w.smokerLogs()), CookGate.woodSmeltsAfterClaims(f, cfg, w));
+        assertEquals(withSpoken, detour);
+        // the cook's own count is the lower one and the detour goes by it: one more coal than before
+        assertNotEquals(DetourSpec.coalNeed(ingots, 0, 0, CookGate.raw(f), w.burnableWoodSmelts(0), loads), detour);
+        assertEquals(6, detour);
     }
 
     // (c) the log stock-up asks for logs in the wait for the iron, and the wood budget has no use for them (the kit is made), so

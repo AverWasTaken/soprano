@@ -169,6 +169,18 @@ public final class CookGate {
         return coalSmelts(f) + wood.burnableWoodSmelts(logsSpoken);
     }
 
+    // smelts of wood the cook may count: the wood above the reserve less the logs a smoker still to be made will eat (the smoker got
+    // built and then sat there cold). the ONE number, the cook need and the coal detour both read it, so the detour fetches the coal
+    // the cook is short of and not one less
+    static int woodSmeltsAfterClaims(WoodBudget wood, Station station) {
+        return wood.burnableWoodSmelts(wood.logsSpokenFor(station == Station.SMOKER));
+    }
+
+    // (for a caller that has not asked for the station: where the meat in the bag would go)
+    static int woodSmeltsAfterClaims(GamerFacts f, OverworldConfig cfg, WoodBudget wood) {
+        return woodSmeltsAfterClaims(wood, station(f, cfg, raw(f) >= MIN_RAW, wood));
+    }
+
     // the wood half of fuelSmelts: logs and planks above the reserve. the coal detour counts it towards the coal we already have
     public static int woodSmelts(GamerFacts f, OverworldConfig cfg, int endBeds) {
         return woodSmelts(f, cfg, endBeds, 0);
@@ -238,12 +250,10 @@ public final class CookGate {
         if (station == Station.NONE) {
             return null;
         }
-        // a smoker still to make eats wood the fuel count would otherwise have burned. the smoker got built and then sat there cold
-        int spoken = wood.logsSpokenFor(station == Station.SMOKER);
         // the first load is the biggest pile, the others cook after it has been collected. a cook that is already loading skips
         // this: the coal it put in the smoker left the bag, so the count dips under the pile the moment the fuel goes in and
         // the cook walked out of its own plan with the meat in the slot (23:18:36). the smelt task fetches what it is short of
-        if (!loading && fuelSmelts(f, wood, spoken) < pile(f)) {
+        if (!loading && coalSmelts(f) + woodSmeltsAfterClaims(wood, station) < pile(f)) {
             return null;
         }
         return new KitNeed(station == Station.SMOKER ? KitNeed.COOK_SMOKER : KitNeed.COOK_FURNACE, MIN_RAW);
