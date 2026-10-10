@@ -23,6 +23,8 @@ public abstract class SearchChunksExploreTask extends Task {
     private final Object _searcherMutex = new Object();
     private final Set<ChunkPos> _alreadyExplored = new HashSet<>();
     private ChunkSearchTask _searcher;
+    // a searcher ran out of chunks and nothing new has turned up since
+    private boolean _searchExhausted;
     private AltoClef _mod;
     private Subscription<ChunkLoadEvent> _chunkLoadedSubscription;
 
@@ -53,11 +55,13 @@ public abstract class SearchChunksExploreTask extends Task {
             if (_searcher.isActive() && _searcher.isFinished(mod)) {
                 Debug.logWarning("Target object search failed.");
                 _alreadyExplored.addAll(_searcher.getSearchedChunks());
+                _searchExhausted = true;
                 _searcher = null;
             } else if (_searcher.finished()) {
                 setDebugState("Searching for target object...");
                 Debug.logMessage("Search finished.");
                 _alreadyExplored.addAll(_searcher.getSearchedChunks());
+                _searchExhausted = true;
                 _searcher = null;
             }
             //Debug.logMessage("wtf: " + (_searcher == null? "(null)" :_searcher.finished()));
@@ -80,6 +84,7 @@ public abstract class SearchChunksExploreTask extends Task {
                 if (!_alreadyExplored.contains(pos)) {
                     Debug.logMessage("New searcher: " + pos);
                     _searcher = new SearchSubTask(pos);
+                    _searchExhausted = false;
                 }
             }
         }
@@ -102,12 +107,13 @@ public abstract class SearchChunksExploreTask extends Task {
     protected abstract boolean isChunkWithinSearchSpace(AltoClef mod, ChunkPos pos);
 
     public boolean failedSearch() {
-        return _searcher == null;
+        return _searcher == null && _searchExhausted;
     }
 
     public void resetSearch(AltoClef mod) {
         //Debug.logMessage("Search reset");
         _searcher = null;
+        _searchExhausted = false;
         _alreadyExplored.clear();
         // We want to search the currently loaded chunks too!!!
         for (ChunkPos start : mod.getChunkTracker().getLoadedChunks()) {
