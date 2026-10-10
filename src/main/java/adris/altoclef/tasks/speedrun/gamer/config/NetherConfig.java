@@ -26,6 +26,12 @@ public class NetherConfig {
     public double waypointSeconds = 90;
     // close enough to a waypoint (blocks): the view distance does the rest
     public int waypointArriveBlocks = 24;
+    // a waypoint we have not got waypointNoProgressBlocks closer to in this long (walking time, not the clock on the wall)
+    // is dropped for the rest of the sweep. 0 = off, only the waypointSeconds backstop is left
+    public double waypointNoProgressSeconds = 20;
+    public int waypointNoProgressBlocks = 8;
+    // a waypoint with no floor under it (lava sea) is moved to the nearest place that has one inside this many blocks
+    public int waypointShiftBlocks = 12;
     // total time we are willing to spend on the barter top-up
     public double barterMinutes = 8;
     // endermen wandering in the nether with no warped forest known: give up after this long without a pearl

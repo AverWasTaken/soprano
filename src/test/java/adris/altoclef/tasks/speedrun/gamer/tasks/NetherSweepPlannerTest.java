@@ -208,6 +208,8 @@ public class NetherSweepPlannerTest {
 
     @Test
     public void slowWaypointIsSkippedAfterTheTimeout() {
+        // a stationary player would trip the no progress rule at 20 s, this one pins the flat backstop
+        cfg.waypointNoProgressSeconds = 0;
         assertEquals(0, stepAt(planner, Goal.FORTRESS, 500, 500, 0, 89).x());
         // 90 s: skipped, the timer restarts on the next one
         assertEquals(100, stepAt(planner, Goal.FORTRESS, 500, 500, 90, 90).x());
@@ -344,6 +346,7 @@ public class NetherSweepPlannerTest {
 
     @Test
     public void idlingDoesNotEatTheWaypointClock() {
+        cfg.waypointNoProgressSeconds = 0;
         assertEquals(0, planner.step(Goal.FORTRESS, 500, 500, 0).x());
         // rods, a ghast, whatever had the wheel for ten minutes: the waypoint is as fresh as it was
         assertEquals(0, planner.step(Goal.FORTRESS, 500, 500, 600).x());

@@ -1,6 +1,7 @@
 package adris.altoclef.tasks.speedrun.gamer.phases;
 
 import adris.altoclef.AltoClef;
+import adris.altoclef.Debug;
 import adris.altoclef.tasks.misc.EquipArmorTask;
 import adris.altoclef.tasks.movement.GetToXZTask;
 import adris.altoclef.tasks.movement.RunAwayFromPositionTask;
@@ -23,6 +24,7 @@ import adris.altoclef.tasks.speedrun.gamer.tasks.FindNetherStructureTask;
 import adris.altoclef.tasks.speedrun.gamer.tasks.GhastWatch;
 import adris.altoclef.tasks.speedrun.gamer.tasks.HoldLatch;
 import adris.altoclef.tasks.speedrun.gamer.tasks.HomePortalWalk;
+import adris.altoclef.tasks.speedrun.gamer.tasks.NetherGround;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NetherSweepPlanner;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NetherSweepPlanner.Goal;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NetherSweepPlanner.Sight;
@@ -168,6 +170,8 @@ public class NetherPhase implements PhaseHandler {
         NetherConfig n = ctx.cfg().nether;
         s.netherRodsGaveUp = false;
         planner = new NetherSweepPlanner(s, n);
+        planner.setGround(new NetherGround(mod, () -> n.waypointShiftBlocks));
+        planner.setLog(Debug::logInternal);
         rodsWatch = new RodsWatch(n.spawnerCampMinutes * 60, n.rodsBudgetMinutes * 60);
         campPinger = new CampPinger(CAMP_PING_SECONDS);
         ghastWatch = new GhastWatch(2, n.ghastWindowSeconds);
