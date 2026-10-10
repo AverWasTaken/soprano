@@ -84,14 +84,6 @@ public class LootContainerTask extends Task {
             return null;
         }
         ItemStack stack = StorageHelper.getItemStackInSlot(optimal.get());
-        // the loot is protected, so a full bag with no garbage has nothing to throw and the stack would go back in the
-        // chest just to be looted again. same fit question as the cursor branch above, or the two disagree and it loops
-        if (mod.getItemStorage().getSlotThatCanFitInPlayerInventory(stack, false).isEmpty()
-                && StorageHelper.getGarbageSlot(mod).isEmpty()
-                && !ItemHelper.canThrowAwayStack(mod, stack)) {
-            _weDoneHere = true;
-            return null;
-        }
         setDebugState("Looting items: " + targets);
         _taken.merge(BuiltInRegistries.ITEM.getKey(stack.getItem()).getPath(), stack.getCount(), Integer::sum);
         mod.getSlotHandler().clickSlot(optimal.get(), 0, ClickType.PICKUP);
@@ -126,10 +118,19 @@ public class LootContainerTask extends Task {
         for (Item item : targets) {
             List<Slot> slots = mod.getItemStorage().getSlotsWithItemContainer(item);
             if (!slots.isEmpty()) for (Slot slot : slots) {
-                if (_check.test(StorageHelper.getItemStackInSlot(slot))) return Optional.of(slot);
+                ItemStack stack = StorageHelper.getItemStackInSlot(slot);
+                if (_check.test(stack) && hasRoomFor(mod, stack)) return Optional.of(slot);
             }
         }
         return Optional.empty();
+    }
+
+    // the loot is protected, so a full bag with no garbage of its own has nothing to throw and the stack would go back in
+    // the chest just to be looted again. same fit question as the cursor branch, or the two disagree and it loops.
+    // chest junk doesn't count, the free slot task would dump it on the floor one stack at a time for nothing
+    private static boolean hasRoomFor(AltoClef mod, ItemStack stack) {
+        return mod.getItemStorage().getSlotThatCanFitInPlayerInventory(stack, false).isPresent()
+                || StorageHelper.getGarbageSlot(mod).filter(Slot::isSlotInPlayerInventory).isPresent();
     }
 
     // a chest menu with real chest slots on top of the 36 player ones, ie. the contents have somewhere to land
