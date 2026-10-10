@@ -31,6 +31,9 @@ import java.util.*;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.tags.FluidTags;
+import net.minecraft.util.Mth;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.entity.item.FallingBlockEntity;
 import net.minecraft.world.phys.AABB;
 
@@ -66,6 +69,8 @@ public abstract class Movement implements IMovement, MovementHelper {
     private Set<BetterBlockPos> validPositionsCached = null;
 
     private Boolean calculatedWhileLoaded;
+
+    private final SwimStall swimStall = new SwimStall();
 
     protected Movement(IBaritone baritone, BetterBlockPos src, BetterBlockPos dest, BetterBlockPos[] toBreak, BetterBlockPos toPlace) {
         this.baritone = baritone;
@@ -140,14 +145,23 @@ public abstract class Movement implements IMovement, MovementHelper {
                 // waiting for gravity to pull the eye under
                 currentState.setInput(Input.SPRINT, true);
                 ctx.player().setSprinting(true);
-                if (currentState.getStatus() == MovementStatus.RUNNING && ctx.player().isSwimming() && !ctx.player().onGround()) {
+                boolean floating = ctx.player().isSwimming() && !ctx.player().onGround();
+                if (currentState.getStatus() == MovementStatus.RUNNING) {
+                    watchSwimStall(floating);
+                } else {
+                    swimStall.reset();
+                }
+                if (currentState.getStatus() == MovementStatus.RUNNING && floating) {
                     holdWaterline();
-                    preTurnIntoTheBend();
+                    if (!swimStall.diving()) {
+                        preTurnIntoTheBend();
+                    }
                 } else if (!ctx.player().isSwimming() && ctx.player().onGround() && ctx.player().position().y < dest.y + 0.6) {
                     // swim state hasn't latched yet and we're on the bottom: the old bob, for one tick
                     currentState.setInput(Input.JUMP, true);
                 }
             } else {
+                swimStall.reset();
                 if (Baritone.settings().allowSwimming.value && ctx.player().isSwimming()) {
                     // standing up to breathe (see shouldSwim). sprintInWater is on by default and traverse
                     // requests sprint every tick, which would keep us crawling along the bottom with our
@@ -159,6 +173,8 @@ public abstract class Movement implements IMovement, MovementHelper {
                     currentState.setInput(Input.JUMP, true);
                 }
             }
+        } else {
+            swimStall.reset();
         }
         if (ctx.player().isInWall()) {
             ctx.getSelectedBlock().ifPresent(pos -> MovementHelper.switchToBestToolFor(ctx, BlockStateInterface.get(ctx, pos)));
@@ -228,6 +244,14 @@ public abstract class Movement implements IMovement, MovementHelper {
     // the early turn starts when the corner is closer than this
     private static final double WATER_COAST_TICKS = 5;
 
+    // where the feet go during a dive, relative to dest's block. the 0.6 tall box tops out 0.38 under anything at head
+    // height. not any deeper: playerFeet rounds into the block below past -0.125, and traverse stops pressing W the
+    // moment it thinks we're on the wrong y
+    private static final double DIVE_FEET = 0.02;
+
+    // half the swim box plus a hair, so a block the box is pressed flat against counts as in the way
+    private static final double SWIM_HALF_WIDTH = 0.31;
+
     /**
      * Holding sprint is what keeps the vanilla swim state alive, so swimming is only on the table when
      * we're actually in water, sprinting is allowed, and we have the hunger to sprint
@@ -276,6 +300,10 @@ public abstract class Movement implements IMovement, MovementHelper {
         double surfaceY = feetY + ctx.player().getFluidHeight(FluidTags.WATER);
         // the waterline, unless the movement is taking us higher (climbing out onto land)
         double targetY = Math.max(surfaceY - WATERLINE_DEPTH, dest.y + DEST_CLEARANCE);
+        if (swimStall.diving()) {
+            // down from the waterline, where the box pokes into head height, to just above dest's floor
+            targetY = dest.y + DIVE_FEET;
+        }
         double wanted = WATERLINE_GAIN * (targetY - feetY) - WATERLINE_DAMPING * ctx.player().getDeltaMovement().y;
         float pitch = pitchForSwimVelocity(wanted);
         if (pitch == ctx.playerRotations().getPitch()) {
@@ -327,11 +355,95 @@ public abstract class Movement implements IMovement, MovementHelper {
         double speed = Math.hypot(ctx.player().getDeltaMovement().x, ctx.player().getDeltaMovement().z);
         double dist = Math.hypot(dest.x + 0.5 - ctx.player().position().x, dest.z + 0.5 - ctx.player().position().z);
         if (dist < speed * WATER_COAST_TICKS) {
+            BlockStateInterface bsi = new BlockStateInterface(ctx);
+            double nx = next.x + 0.5;
+            double nz = next.z + 0.5;
+            if (!swimSweepClear(bsi, nx, nz, dest.y, next) || !swimSweepClear(bsi, nx, nz, dest.y + 1, next)) {
+                // cutting the bend drags the box across the inside corner, and that one's a block. go the long way
+                return;
+            }
             float yaw = RotationUtils.calcRotationFromVec3d(ctx.playerHead(), VecUtils.getBlockPosCenter(next), ctx.playerRotations()).getYaw();
             currentState.getTarget().getRotation().ifPresent(rotation ->
                     currentState.setTarget(new MovementState.MovementTarget(new Rotation(yaw, rotation.getPitch()), false))
             );
         }
+    }
+
+    // feeds SwimStall. horizontal moves only, a pillar or a downward in water has no distance to dest worth watching
+    private void watchSwimStall(boolean floating) {
+        if (dest.x == src.x && dest.z == src.z) {
+            return;
+        }
+        double feetY = ctx.player().position().y;
+        double flat = Math.hypot(dest.x + 0.5 - ctx.player().position().x, dest.z + 0.5 - ctx.player().position().z);
+        // climbing out onto a bank is mostly going up while pressed against it, that counts as getting somewhere.
+        // nothing else gets the height, or a dive would look like progress all by itself
+        double up = dest.y > src.y ? Math.max(0, dest.y - feetY) : 0;
+        if (flat < 0.3 || (feetY < dest.y - 0.5 && !swimStall.diving())) {
+            // right over dest, or sunk under it after a fall into the water. the distance can't get any better here,
+            // floating back up is what finishes the movement, so there's no stall to see
+            swimStall.reset();
+            return;
+        }
+        boolean wasDiving = swimStall.diving();
+        switch (swimStall.tick(Math.hypot(flat, up), floating && canDive())) {
+            case DIVE -> {
+                if (!wasDiving) {
+                    logDebug("swimming into something at head height, diving under it");
+                }
+            }
+            case GIVE_UP -> {
+                logDebug("stuck while swimming, replanning");
+                swimStall.reset();
+                currentState.setStatus(MovementStatus.FAILED);
+            }
+            default -> {
+            }
+        }
+    }
+
+    // a dive only gets under something at head height, with water at our level the whole way and more under it (so the
+    // feet hovering just over dest's floor never touch a bottom and lose the swim), and never on borrowed air:
+    // surfacing to breathe beats everything
+    private boolean canDive() {
+        if (ctx.player().getAirSupply() < SURFACE_AT_AIR || dest.y > src.y) {
+            return false;
+        }
+        BlockStateInterface bsi = new BlockStateInterface(ctx);
+        double tx = dest.x + 0.5;
+        double tz = dest.z + 0.5;
+        return !swimSweepClear(bsi, tx, tz, dest.y + 1, null)
+                && swimSweep(bsi, tx, tz, dest.y, null, true)
+                && swimSweep(bsi, tx, tz, dest.y - 1, null, true);
+    }
+
+    private boolean swimSweepClear(BlockStateInterface bsi, double tx, double tz, int y, BetterBlockPos next) {
+        return swimSweep(bsi, tx, tz, y, next, false);
+    }
+
+    // drags the swim box in a straight line from where we are to (tx, tz) at level y and asks if every block it
+    // touches lets a swimmer through (or is plain water, for waterOnly). with next set the path's own columns get a
+    // pass, the planner already checked those, we're after the corners in between
+    private boolean swimSweep(BlockStateInterface bsi, double tx, double tz, int y, BetterBlockPos next, boolean waterOnly) {
+        double px = ctx.player().position().x;
+        double pz = ctx.player().position().z;
+        int steps = Math.max(1, (int) Math.ceil(Math.hypot(tx - px, tz - pz) / 0.25));
+        for (int i = 0; i <= steps; i++) {
+            double cx = px + (tx - px) * i / steps;
+            double cz = pz + (tz - pz) * i / steps;
+            for (int corner = 0; corner < 4; corner++) {
+                int bx = Mth.floor(cx + ((corner & 1) == 0 ? -SWIM_HALF_WIDTH : SWIM_HALF_WIDTH));
+                int bz = Mth.floor(cz + ((corner & 2) == 0 ? -SWIM_HALF_WIDTH : SWIM_HALF_WIDTH));
+                if (next != null && ((bx == src.x && bz == src.z) || (bx == dest.x && bz == dest.z) || (bx == next.x && bz == next.z))) {
+                    continue;
+                }
+                BlockState state = bsi.get0(bx, y, bz);
+                if (waterOnly ? !state.is(Blocks.WATER) : !MovementHelper.swimmerFits(bsi, bx, y, bz, state)) {
+                    return false;
+                }
+            }
+        }
+        return true;
     }
 
     /**
@@ -487,6 +599,7 @@ public abstract class Movement implements IMovement, MovementHelper {
         fallWaited = 0;
         fallPending = 0;
         waitingOnFall = false;
+        swimStall.reset();
     }
 
     /**
