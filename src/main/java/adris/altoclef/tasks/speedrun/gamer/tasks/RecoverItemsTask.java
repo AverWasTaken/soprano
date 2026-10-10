@@ -43,6 +43,7 @@ public class RecoverItemsTask extends Task {
     private final RecoverRules.Pin<ItemEntity> _pin = new RecoverRules.Pin<>();
     private PickupThisDrop _pickup;
     private boolean _finished;
+    private boolean _started;
 
     public RecoverItemsTask(BlockPos deathPos, double budgetSeconds) {
         _deathPos = deathPos;
@@ -52,11 +53,16 @@ public class RecoverItemsTask extends Task {
 
     @Override
     protected void onStart(AltoClef mod) {
-        _budget.reset();
         _empty.reset();
-        _gate.reset();
-        // the chase counts and write offs are NOT reset here: onStart runs again after every interrupt, and mob defense
-        // flickering at the pile would hand every stuck drop a fresh 20 s each time
+        // the budget and the crowd gate are NOT restarted here either: onStart runs again after every interrupt, and the
+        // 30 s are 30 in a row, not 30 since the last time mob defense let go of us
+        if (!_started) {
+            _started = true;
+            _budget.reset();
+            _gate.reset();
+        }
+        // the chase counts and write offs are NOT reset here: mob defense flickering at the pile would hand every stuck
+        // drop a fresh 20 s each time
         _standOff = null;
     }
 
