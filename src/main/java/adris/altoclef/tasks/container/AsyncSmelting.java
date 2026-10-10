@@ -163,12 +163,13 @@ public final class AsyncSmelting {
         return Math.max(litFuel, 0) + Math.max(progress, 0) + Math.max(slotFuel, 0) >= inputCount;
     }
 
-    // how many of the `inputCount` items the fuel in and under the station gets through before it runs dry, all of them when it is
-    // covered. rounded up: the job is due when that many are done, and a visit a bit late finds a cold station it can refuel,
-    // while one a bit early finds it lit, re-stamps a timer that assumes the fuel keeps going and comes back after it is out
-    public static int cookable(double slotFuel, double litFuel, double progress, int inputCount) {
+    // how much of the `inputCount` items the fuel in and under the station gets through before it runs dry, all of them when it
+    // is covered. not rounded: the job is due the tick the fire goes out. rounding up had it due up to a whole item after that,
+    // the trip showed up to a cold furnace, and a cold furnace winds the arrow back, so the last item started over. a visit a bit
+    // early is fine now, it stands at a fire that is about to go out (FurnacePlan.dryingSoon), feeds it and waits out the rest
+    public static double cookable(double slotFuel, double litFuel, double progress, int inputCount) {
         double smelts = Math.max(litFuel, 0) + Math.max(progress, 0) + Math.max(slotFuel, 0);
-        return (int) Math.max(1, Math.min(inputCount, Math.ceil(smelts - 1e-9)));
+        return Math.max(0, Math.min(inputCount, smelts));
     }
 
     // whatever is on the cursor goes back in the bag before the smelt task lets go of the screen or calls the load done: a fuel
@@ -208,7 +209,7 @@ public final class AsyncSmelting {
 
     // `cookable` = how much of the input the fuel will cook. a station left with less fuel than it needs (the slot is full of one
     // fuel and the bag has another) is due when the fuel is, not after the whole input: the visit then finds it cold and refuels it
-    public static void loaded(AltoClef mod, BlockPos pos, Block kind, ItemStack input, ItemTarget output, int cookable) {
+    public static void loaded(AltoClef mod, BlockPos pos, Block kind, ItemStack input, ItemTarget output, double cookable) {
         long now = mod.getWorld().getGameTime();
         String kindName = BuiltInRegistries.BLOCK.getKey(kind).getPath();
         RunState.FurnaceJob job = new RunState.FurnaceJob(new RunState.Pos(pos.getX(), pos.getY(), pos.getZ()),

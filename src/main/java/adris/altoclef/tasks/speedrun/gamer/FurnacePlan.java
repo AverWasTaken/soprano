@@ -466,7 +466,10 @@ public final class FurnacePlan {
         }
         // not lit and no fuel to light it with is a furnace that will never finish. not lit WITH fuel is one tick from lit
         boolean stalled = !l.lit() && l.fuelSlotEmpty();
-        boolean nearlyDone = l.lit() && l.remaining() <= nearly;
+        // fuel in the slot counts as lit: the tick after we feed it the fire still reads out, and leaving then walked off with the
+        // last item a few seconds from done and came straight back for it. a feed this visit always leaves fuel or fire, so
+        // fedBefore is already in here
+        boolean nearlyDone = !stalled && l.remaining() <= nearly;
         // it did not finish when it should have. what is in there stays in there (the job keeps its own count), or comes back out
         // when we are leaving
         boolean capped = l.waited() >= 0 && l.waited() > cap;
@@ -527,6 +530,20 @@ public final class FurnacePlan {
     }
 
     // what a visit says about itself, for the log
+    // what the slots looked like when the visit picked `act`, for the log. the fire reads out the tick after a feed, and whether a
+    // leave was that or a real cold station is the whole question when one comes back for the last ingot
+    public static String visitState(Act act, Look l) {
+        String secs = l.remaining() == Long.MAX_VALUE ? "?" : String.valueOf(Math.round(l.remaining() / 20.0));
+        String dry = l.untilDry() == Long.MAX_VALUE ? "covered" : "dry in ~" + Math.round(l.untilDry() / 20.0) + " s";
+        return act + " (" + (l.lit() ? "lit" : "not lit") + ", fuel slot " + (l.fuelSlotEmpty() ? "empty" : "has fuel") + ", "
+                + l.input() + " in, ~" + secs + " s left, " + dry + ")";
+    }
+
+    // the part of visitState that is worth a new line: the act and the two fire readings, not the clocks ticking down
+    public static String visitKey(Act act, Look l) {
+        return act + "/" + l.lit() + "/" + l.fuelSlotEmpty();
+    }
+
     public static String visitText(Act act, Look l) {
         String secs = l.remaining() == Long.MAX_VALUE ? "?" : String.valueOf(Math.round(l.remaining() / 20.0));
         return switch (act) {

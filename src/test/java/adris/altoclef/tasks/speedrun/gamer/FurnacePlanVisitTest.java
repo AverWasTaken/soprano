@@ -82,11 +82,25 @@ public class FurnacePlanVisitTest {
     }
 
     @Test
-    public void aStationThatIsNotLitYetIsNotNearlyDone() {
-        // fuel in the slot and not lit is one tick from lit, not a stalled one, and not a reason to wait either
+    public void aStationOneTickFromLitIsNearlyDoneLikeALitOne() {
+        // fuel in the slot and not lit is one tick from lit: same nearly line as a lit one, not a walk off and straight back
         Look oneTickFromLit = new Look(false, 5, false, false, true, 50, Long.MAX_VALUE, -1);
-        assertEquals(Act.LEAVE_COOKING, at(oneTickFromLit, Mode.NORMAL));
+        assertEquals(Act.WAIT, at(oneTickFromLit, Mode.NORMAL));
         assertEquals(Act.WAIT, at(oneTickFromLit, Mode.WAIT_ALL));
+        assertEquals(Act.LEAVE_COOKING, at(remaining(oneTickFromLit, NEARLY + 1), Mode.NORMAL));
+    }
+
+    // the last item, the fire out: take what's done, feed it, and the tick after the feed (fuel in, fire not showing yet) is a wait
+    // for the one left, not a leave and a trip back for it
+    @Test
+    public void theTickAfterAFeedWaitsForTheLastItem() {
+        Look last = new Look(false, 1, false, true, false, 200, 0, -1);
+        assertEquals(Act.FEED, at(last, Mode.NORMAL));
+        Look fedNotLit = new Look(false, 1, false, false, true, 200, Long.MAX_VALUE, -1);
+        assertEquals(Act.WAIT, FurnacePlan.atStation(fedNotLit, Mode.NORMAL, NEARLY, CAP, true, false, () -> true));
+        // and once it lights it is the usual nearly done
+        Look lit = new Look(false, 1, true, false, true, 180, Long.MAX_VALUE, 0);
+        assertEquals(Act.WAIT, FurnacePlan.atStation(lit, Mode.NORMAL, NEARLY, CAP, true, false, () -> true));
     }
 
     @Test
@@ -301,5 +315,17 @@ public class FurnacePlanVisitTest {
         assertEquals(Call.STAND_BY, Act.WAIT.call);
         assertEquals(Call.DONE, Act.DONE.call);
         assertTrue(FurnacePlan.visitText(Act.LEAVE_COOKING, l).contains("20 s"));
+    }
+
+    // the debug line says what the fire read when the act was picked, and only a change of act or fire is a new line
+    @Test
+    public void theVisitLineCarriesTheFireAndOnlyChangesWithIt() {
+        Look fedNotLit = new Look(false, 1, false, false, true, 120, Long.MAX_VALUE, -1);
+        assertTrue(FurnacePlan.visitState(Act.WAIT, fedNotLit).contains("not lit"));
+        assertTrue(FurnacePlan.visitState(Act.WAIT, fedNotLit).contains("fuel slot has fuel"));
+        assertTrue(FurnacePlan.visitState(Act.WAIT, look()).contains("(lit,"));
+        // the clock ticking down is the same line
+        assertEquals(FurnacePlan.visitKey(Act.WAIT, remaining(look(), 100)), FurnacePlan.visitKey(Act.WAIT, remaining(look(), 80)));
+        assertFalse(FurnacePlan.visitKey(Act.WAIT, fedNotLit).equals(FurnacePlan.visitKey(Act.WAIT, look())));
     }
 }

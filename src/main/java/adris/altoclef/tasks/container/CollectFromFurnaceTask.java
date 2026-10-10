@@ -2,6 +2,7 @@ package adris.altoclef.tasks.container;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.AltoSettings;
+import adris.altoclef.Debug;
 import adris.altoclef.tasks.InteractWithBlockTask;
 import adris.altoclef.tasks.slot.EnsureFreeInventorySlotTask;
 import adris.altoclef.tasks.slot.MoveItemToSlotFromInventoryTask;
@@ -52,6 +53,8 @@ public class CollectFromFurnaceTask extends Task {
     private FuelPolicy.Pick feedPick;
     // the call this visit is in, and the change nobody has read yet
     private FurnacePlan.Call visitCall;
+    // the last act + fire reading we logged, one line per change (FurnacePlan.visitKey)
+    private String visitKey;
     private Said said;
 
     // a change of call during the visit, for the log
@@ -164,6 +167,11 @@ public class CollectFromFurnaceTask extends Task {
                     AltoSettings::isSupportedFuel, ItemHelper::getFuelAmount);
             return feedPick != null;
         });
+        String key = FurnacePlan.visitKey(act, look);
+        if (!key.equals(visitKey)) {
+            visitKey = key;
+            Debug.logInternal("furnace visit at " + pos.toShortString() + ": " + FurnacePlan.visitState(act, look));
+        }
         if (!act.quiet && act.call != visitCall) {
             visitCall = act.call;
             said = new Said(act.call, FurnacePlan.visitText(act, look));

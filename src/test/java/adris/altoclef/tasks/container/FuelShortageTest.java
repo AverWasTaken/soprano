@@ -10,6 +10,7 @@ import static org.junit.Assert.fail;
 import adris.altoclef.tasks.speedrun.gamer.CookGate;
 import adris.altoclef.tasks.speedrun.gamer.FakeFacts;
 import adris.altoclef.tasks.speedrun.gamer.FurnaceJobs;
+import adris.altoclef.tasks.speedrun.gamer.FurnacePlan;
 import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig;
 import adris.altoclef.util.helpers.FuelPolicy;
 import adris.altoclef.util.helpers.StorageHelper;
@@ -148,7 +149,7 @@ public class FuelShortageTest {
         List<ItemStack> bag = List.of(new ItemStack(Items.OAK_PLANKS, 10));
         assertNull(fill(bag, slot, 37, StorageHelper.litItems(1600, 200), 0));
         assertTrue(AsyncSmelting.fuelCovers(smelts(slot), StorageHelper.litItems(1600, 200), 0, 37));
-        assertEquals(37, AsyncSmelting.cookable(smelts(slot), 8, 0, 37));
+        assertEquals(37, AsyncSmelting.cookable(smelts(slot), 8, 0, 37), 1e-9);
         assertFalse(FuelShortage.stuckShort(37, 8, 0, smelts(slot), 15));
     }
 
@@ -198,7 +199,7 @@ public class FuelShortageTest {
         // the bag can finish the job at the next visit, so this is where the bot leaves instead of waiting for the slot to empty
         assertTrue(FuelShortage.stuckShort(37, 0, 0, smelts(slot), 32));
         // 9 smelts in the slot and the planks cooked 9 of the 37, the job is due when the fuel is
-        assertEquals(9, AsyncSmelting.cookable(smelts(slot), 0, 0, 37));
+        assertEquals(9, AsyncSmelting.cookable(smelts(slot), 0, 0, 37), 1e-9);
     }
 
     @Test
@@ -392,16 +393,27 @@ public class FuelShortageTest {
 
     @Test
     public void theJobIsDueWhenTheFuelIsNotAfterTheWholeInput() {
-        // 16 in the slot and a coal lit is 24 smelts out of 37, a tenth of a smelt over rounds up so we are late, not early
-        assertEquals(24, AsyncSmelting.cookable(16, 8, 0, 37));
-        assertEquals(25, AsyncSmelting.cookable(16, 8.1, 0, 37));
+        // 16 in the slot and a coal lit is 24 smelts out of 37, due the tick the fire goes out, not rounded either way
+        assertEquals(24, AsyncSmelting.cookable(16, 8, 0, 37), 1e-9);
+        assertEquals(24.1, AsyncSmelting.cookable(16, 8.1, 0, 37), 1e-9);
         // the arrow of the item in hand is fuel already spent
-        assertEquals(25, AsyncSmelting.cookable(16, 8, 0.5, 37));
-        // covered is the whole input, and never zero
-        assertEquals(37, AsyncSmelting.cookable(40, 8, 0, 37));
-        assertEquals(1, AsyncSmelting.cookable(0, 0, 0, 37));
+        assertEquals(24.5, AsyncSmelting.cookable(16, 8, 0.5, 37), 1e-9);
+        // covered is the whole input
+        assertEquals(37, AsyncSmelting.cookable(40, 8, 0, 37), 1e-9);
+        assertEquals(0, AsyncSmelting.cookable(0, 0, 0, 37), 1e-9);
         // the furnace takes 200 ticks an item, the smoker 100
         assertEquals(24 * 200L, FurnaceJobs.doneTick("furnace", 0, AsyncSmelting.cookable(16, 8, 0, 37)));
         assertEquals(24 * 100L, FurnaceJobs.doneTick("smoker", 0, AsyncSmelting.cookable(16, 8, 0, 37)));
+    }
+
+    // 5 raw iron with fuel for 4.4: the old round up had the job due at 5 items, a whole 0.6 of an item after the fire went out.
+    // now it is due when the fire goes out, and the first trip (NEARLY early) finds it still lit and about to dry
+    @Test
+    public void aShortLoadIsDueWhenItsFireGoesOut() {
+        double cook = AsyncSmelting.cookable(4.4, 0, 0, 5);
+        assertEquals(880L, FurnaceJobs.doneTick("furnace", 0, cook));
+        long arrive = FurnaceJobs.doneTick("furnace", 0, cook) - FurnacePlan.NEARLY_TICKS;
+        long untilDry = 880 - arrive;
+        assertTrue(FurnacePlan.dryingSoon(true, FurnacePlan.Mode.NORMAL, untilDry, FurnacePlan.NEARLY_TICKS));
     }
 }

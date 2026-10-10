@@ -24,6 +24,11 @@ public final class FurnaceJobs {
         return startTick + (long) ticksPerItem(kind) * count;
     }
 
+    // the same for a part of the input (a load left short is due when its fuel is, AsyncSmelting.cookable), to the nearest tick
+    public static long doneTick(String kind, long startTick, double count) {
+        return startTick + Math.round(ticksPerItem(kind) * Math.max(0, count));
+    }
+
     // a job for this spot replaces the old one: the count was read off the furnace's input slot a moment ago, so it is
     // newer than whatever we remembered
     public static void record(List<RunState.FurnaceJob> jobs, RunState.FurnaceJob job) {
