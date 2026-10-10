@@ -59,7 +59,7 @@ public class LinesTest {
 
     private static Lines.Stand stand(String move, String goal, String task, String last) {
         return new Lines.Stand(41, 10.25, 64, -3.5, move, 3, 17, goal, false, "SET_GOAL_AND_PATH", "Custom goal", false,
-                "MOVE_FORWARD,SPRINT", null, null, true, false, "none", "UserTaskChain", task, last);
+                "MOVE_FORWARD,SPRINT", "FORWARD", false, null, null, true, false, "none", "UserTaskChain", task, last);
     }
 
     @Test
@@ -70,14 +70,14 @@ public class LinesTest {
                 + " | move=MovementTraverse 1,64,2->2,64,2 state=RUNNING onCurrent=12/153 owner=movement"
                 + " | pathPos=3/17 goal=GoalXZ{x=1,z=2}"
                 + " | paused=false lastCmd=SET_GOAL_AND_PATH by=Custom goal"
-                + " | interactionPaused=false | keys=MOVE_FORWARD,SPRINT | screen=none"
+                + " | interactionPaused=false | keys=MOVE_FORWARD,SPRINT held=FORWARD sneak=false | screen=none"
                 + " | using=none onGround=true inWater=false | calc=none"
                 + " | chain=UserTaskChain task=<GetToXZTask> walking | last=Pausing (7t ago)", line);
     }
 
     @Test
     public void theStandLineNeverPrintsNullOrBreaksTheRow() {
-        Lines.Stand blank = new Lines.Stand(40, 0, 0, 0, null, 0, 0, null, true, null, null, true, null, null, null, false,
+        Lines.Stand blank = new Lines.Stand(40, 0, 0, 0, null, 0, 0, null, true, null, null, true, null, null, false, null, null, false,
                 true, null, null, null, null);
         String line = Lines.standing(blank);
         assertFalse(line.contains("null"));
@@ -86,6 +86,15 @@ public class LinesTest {
         String messy = Lines.standing(stand("m", "Goal\nwith\r\nlines", "task\nx", "line one\nline two"));
         assertFalse(messy.contains("\n"));
         assertFalse(messy.contains("\r"));
+    }
+
+    @Test
+    public void aCrouchShowsUpWhoeverCausedIt() {
+        Lines.Stand crouched = new Lines.Stand(41, 0, 64, 0, null, 0, 0, null, false, null, null, false, null, "SNEAK,BACK", true,
+                null, null, true, false, null, null, null, null);
+        String line = Lines.standing(crouched);
+        assertTrue(line.contains(" | keys=none held=SNEAK,BACK sneak=true | "));
+        assertTrue(Lines.standing(stand("m", "g", "t", "l")).contains("held=FORWARD sneak=false"));
     }
 
     @Test

@@ -42,7 +42,7 @@ public final class Lines {
     // everything the stand line says, read off the game by the caller. strings are as they come: this decides what null
     // and an empty string look like
     public record Stand(int ticks, double x, double y, double z, String move, int pathIndex, int pathLength, String goal,
-                        boolean paused, String lastCmd, String by, boolean interactionPaused, String keys, String screen,
+                        boolean paused, String lastCmd, String by, boolean interactionPaused, String keys, String held, boolean sneaking, String screen,
                         String using, boolean onGround, boolean inWater, String calc, String chain, String task,
                         String last) {
     }
@@ -60,7 +60,7 @@ public final class Lines {
         sb.append(" goal=").append(clip(s.goal(), GOAL_MAX));
         sb.append(" | paused=").append(s.paused()).append(" lastCmd=").append(word(s.lastCmd())).append(" by=").append(word(s.by()));
         sb.append(" | interactionPaused=").append(s.interactionPaused());
-        sb.append(" | keys=").append(word(s.keys()));
+        sb.append(" | keys=").append(word(s.keys())).append(" held=").append(word(s.held())).append(" sneak=").append(s.sneaking());
         sb.append(" | screen=").append(word(s.screen()));
         sb.append(" | using=").append(word(s.using())).append(" onGround=").append(s.onGround()).append(" inWater=").append(s.inWater());
         sb.append(" | calc=").append(word(s.calc()));

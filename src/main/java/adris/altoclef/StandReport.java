@@ -13,7 +13,9 @@ import baritone.behavior.PathingBehavior;
 import baritone.pathing.movement.Movement;
 import baritone.pathing.movement.MovementState;
 import baritone.pathing.path.PathExecutor;
+import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.Options;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.item.ItemStack;
@@ -64,7 +66,7 @@ final class StandReport {
         return Lines.standing(new Lines.Stand(ticks, player.getX(), player.getY(), player.getZ(), move(exec, path, index),
                 index, path == null ? 0 : path.length(), String.valueOf(pb.getGoal()), exec != null && !pb.isPathing(),
                 command.map(c -> c.commandType.name()).orElse(null), by, mod.getExtraBaritoneSettings().isInteractionPaused(),
-                keys(baritone, player), mc.screen == null ? null : mc.screen.getClass().getSimpleName(), using(player),
+                keys(baritone, player), held(mc.options), player.isCrouching(), mc.screen == null ? null : mc.screen.getClass().getSimpleName(), using(player),
                 player.onGround(), player.isInWater(), calc(pb), chain(taskChain), taskChain == null ? null : leaf(taskChain.getTasks()),
                 Lines.lastDebug(lastDebug, lastDebugAgo)));
     }
@@ -131,6 +133,25 @@ final class StandReport {
             sb.append(sb.length() == 0 ? "" : ",").append("SPRINT");
         }
         return sb.length() == 0 ? null : sb.toString();
+    }
+
+    // the vanilla key mappings that are actually down, whoever pressed them. baritone's forced inputs and altoclef's own
+    // holds both end up here, which is the only place a crouch with no obvious owner shows up
+    private static String held(Options options) {
+        StringBuilder sb = new StringBuilder();
+        held(sb, "SNEAK", options.keyShift);
+        held(sb, "BACK", options.keyDown);
+        held(sb, "FORWARD", options.keyUp);
+        held(sb, "JUMP", options.keyJump);
+        held(sb, "USE", options.keyUse);
+        held(sb, "ATTACK", options.keyAttack);
+        return sb.length() == 0 ? null : sb.toString();
+    }
+
+    private static void held(StringBuilder sb, String name, KeyMapping key) {
+        if (key.isDown()) {
+            sb.append(sb.length() == 0 ? "" : ",").append(name);
+        }
     }
 
     private static String using(LocalPlayer player) {
