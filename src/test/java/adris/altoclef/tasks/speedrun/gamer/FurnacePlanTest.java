@@ -246,15 +246,6 @@ public class FurnacePlanTest {
     }
 
     @Test
-    public void onlyRealFoodInAStationCooksForUs() {
-        assertTrue(FurnacePlan.cooksFood(smoker(1000)));
-        assertFalse(FurnacePlan.cooksFood(furnace(1000)));
-        RunState.FurnaceJob cold = smoker(1000);
-        cold.stranded = true;
-        assertFalse(FurnacePlan.cooksFood(cold));
-    }
-
-    @Test
     public void farOffAHungryFoodHeadStillGoesForTheFoodCookingForUs() {
         KitNeed food = new KitNeed(KitNeed.FOOD, 20);
         RunState.FurnaceJob meat = smoker(1000);

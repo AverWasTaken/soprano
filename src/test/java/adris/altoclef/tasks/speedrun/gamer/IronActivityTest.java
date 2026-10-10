@@ -402,19 +402,13 @@ public class IronActivityTest {
         // nothing was asked of the furnace and nothing was said about a change either: the kit just kept going
         assertTrue(sim.lines.toString(), sim.lines.size() == 1);
         assertFalse(IronActivity.eligible(Kind.FURNACE, STARVING));
-        assertFalse(IronActivity.eligible(Kind.PACK_UP, STARVING));
-    }
-
-    @Test
-    public void foodCookingForUsKeepsTheTripsAsTheyWere() {
-        // FoodPlan.starving is false whenever a food job is cooking, so the scene is the plain cooking one and the furnace wins
-        Sim sim = new Sim();
-        sim.run(COOKING, 5, Kind.KIT);
-        assertEquals(Kind.FURNACE, sim.tick(COOKING, Kind.FURNACE, Kind.KIT));
+        // the climb's pack-up is not a trip that gives way, it has its own once per furnace book
+        assertTrue(IronActivity.eligible(Kind.PACK_UP, STARVING));
     }
 
     @Test
     public void aFedBagKeepsTheIronTripOverTheKit() {
+        // (and a trip for food in a station is a scene that is not starving either, FoodPlanTest pins that half)
         Sim sim = new Sim();
         sim.run(COOKING, 5, Kind.KIT);
         assertEquals(Kind.FURNACE, sim.tick(COOKING, Kind.FURNACE, Kind.KIT));
@@ -466,6 +460,18 @@ public class IronActivityTest {
         Sim sim = new Sim();
         assertEquals(Kind.GOLEM_FIGHT, sim.tick(fight, Kind.GOLEM_FIGHT, Kind.KIT));
         assertEquals(Kind.GOLEM_FIGHT, sim.tick(fight, Kind.GOLEM_FIGHT, Kind.KIT));
+    }
+
+    @Test
+    public void theHungerLineIsAboutTheWalkThatLostTheWheel() {
+        // the one that held it, else the trip that was due, else nobody lost anything and there is nothing to say
+        assertEquals(Kind.COAL, IronActivity.gave(Kind.COAL, true));
+        assertEquals(Kind.FURNACE, IronActivity.gave(Kind.FURNACE, false));
+        assertEquals(Kind.FURNACE, IronActivity.gave(Kind.KIT, true));
+        assertEquals(Kind.FURNACE, IronActivity.gave(null, true));
+        assertNull(IronActivity.gave(null, false));
+        assertNull(IronActivity.gave(Kind.KIT, false));
+        assertNull(IronActivity.gave(Kind.BED, false));
     }
 
     @Test

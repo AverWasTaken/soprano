@@ -338,19 +338,12 @@ public final class FoodPlan {
         return held() < floor ? 0 : held() < minimum ? 1 : 2;
     }
 
-    // an empty bag with no help on the way: under the floor and no furnace of ours is cooking food. IronActivity reads it, a furnace
-    // trip for iron or a detour never takes the wheel from the food then. cooked food waiting in a station IS the fastest food,
-    // so any such job (FurnacePlan.feeds' own test) keeps the trips as they were
-    public boolean starving(List<RunState.FurnaceJob> jobs) {
-        if (held() >= floor) {
-            return false;
-        }
-        for (RunState.FurnaceJob job : jobs) {
-            if (FurnacePlan.cooksFood(job)) {
-                return false;
-            }
-        }
-        return true;
+    // an empty bag and the trip on the table is not food: under the floor, and `trip` (the furnace job a trip is under way for, or
+    // the one the plan would send us to, null = none) is not something we eat. IronActivity reads it, an iron trip or a detour never
+    // takes the wheel from the food then. food in a station IS the fastest food, cooked or the cold meat a pickup brings back, so
+    // a trip for that keeps the wheel like it always did
+    public boolean starving(RunState.FurnaceJob trip) {
+        return held() < floor && (trip == null || trip.unitsEach <= 0);
     }
 
     // the soft top-up has nothing left to do: the hole under the trip's stop is small and the raw meat in the bag, cooked, fills it. one

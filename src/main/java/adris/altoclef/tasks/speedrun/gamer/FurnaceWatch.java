@@ -270,6 +270,20 @@ public final class FurnaceWatch {
         return pick == null ? null : start(mod, ctx, pick);
     }
 
+    // the job the trip under way is for, null when there is no trip
+    public RunState.FurnaceJob tripJob() {
+        return task != null ? target : null;
+    }
+
+    // the phase let the trip go (the food has the wheel). the task goes with its wait clock, or the first look after we are back
+    // would read the whole detour as time spent standing at the furnace and give up on a job that is fine. the plan decides again
+    public void drop() {
+        task = null;
+        target = null;
+        quick = false;
+        hud = null;
+    }
+
     // standing at the station waiting for the job the trip is for, and it can still finish: the phase tells the stall timer so
     public boolean creditsWait(GamerContext ctx) {
         return FurnacePlan.creditsWait(task != null && task.waiting(), target, ctx.facts().gameTime());

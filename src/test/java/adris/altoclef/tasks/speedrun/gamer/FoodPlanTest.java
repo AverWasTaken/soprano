@@ -374,20 +374,24 @@ public class FoodPlanTest {
     }
 
     @Test
-    public void starvingIsUnderTheFloorWithNoFoodCookingForUs() {
-        FakeFacts iron = new FakeFacts().cooking("iron_ingot", 11, 30);
-        assertTrue(held(0, 0).starving(iron.furnaceJobs()));
-        assertTrue(held(23, 0).starving(iron.furnaceJobs()));
-        assertTrue(held(0, 0).starving(List.of()));
+    public void starvingIsUnderTheFloorWithATripThatIsNotFood() {
+        FakeFacts jobs = new FakeFacts().cooking("iron_ingot", 11, 30).cookingFood("cooked_mutton", 8, 6, 30);
+        RunState.FurnaceJob iron = jobs.furnaceJobs().get(0);
+        RunState.FurnaceJob meat = jobs.furnaceJobs().get(1);
+        assertTrue(held(0, 0).starving(iron));
+        assertTrue(held(23, 0).starving(iron));
+        // no trip at all: the detours still give way
+        assertTrue(held(0, 0).starving(null));
         // at the floor and over it the bag is fed
-        assertFalse(held(24, 0).starving(iron.furnaceJobs()));
-        assertFalse(held(130, 0).starving(iron.furnaceJobs()));
-        // cooked food waiting in a station is the fastest food there is, the trips stay what they were
-        FakeFacts meat = new FakeFacts().cooking("iron_ingot", 11, 30).cookingFood("cooked_mutton", 8, 6, 30);
-        assertFalse(held(0, 0).starving(meat.furnaceJobs()));
-        // cold meat left in a station is not cooking for anybody
-        meat.furnaceJobs().get(1).stranded = true;
-        assertTrue(held(0, 0).starving(meat.furnaceJobs()));
+        assertFalse(held(24, 0).starving(iron));
+        assertFalse(held(130, 0).starving(iron));
+        // a trip for food is the fastest food there is, it keeps the wheel even with a smoker's worth already counted in held
+        assertFalse(held(0, 0).starving(meat));
+        // and the cold meat a pickup brings back is food too
+        meat.stranded = true;
+        assertFalse(held(0, 0).starving(meat));
+        // but one smoker cooking somewhere does not excuse the iron trip
+        assertTrue(held(0, 0).starving(iron));
     }
 
     @Test

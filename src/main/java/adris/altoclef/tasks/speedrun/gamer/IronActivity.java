@@ -107,11 +107,18 @@ public final class IronActivity {
         return k != Kind.KIT;
     }
 
-    // the walks that give way to an empty bag: the furnace trips (iron, not food, that is what starving means) and the detours that
+    // the walks that give way to an empty bag: the furnace trip (iron, not food, that is what starving means) and the detours that
     // are for something we might need rather than something we do. the kit's head is the food then. loot, beds and station pickups
-    // stay: a chest can be the food, a bed is seconds, and the smoker the food cooks in is a station the plan still wants
+    // stay: a chest can be the food, a bed is seconds, and the smoker the food cooks in is a station the plan still wants. the
+    // pack-up stays too: it is a walk to a furnace we are about to climb away from, and it keeps its once per furnace book
     public static boolean yields(Kind k) {
-        return k == Kind.FURNACE || k == Kind.PACK_UP || k == Kind.COAL || k == Kind.GRAVEL;
+        return k == Kind.FURNACE || k == Kind.COAL || k == Kind.GRAVEL;
+    }
+
+    // what the hunger line is about: the walk the bag took the wheel from (the one held, or the furnace trip that was due to start),
+    // null when it cost nobody anything
+    public static Kind gave(Kind held, boolean tripDue) {
+        return held != null && yields(held) ? held : tripDue ? Kind.FURNACE : null;
     }
 
     // may this kind be asked at all this tick. this is the start test only: an activity that holds is asked whatever this says,
@@ -128,7 +135,7 @@ public final class IronActivity {
             // (a fight that is going is not a start, so this never drops one)
             case GOLEM_START -> s.loots() && !s.standingBy() && !s.golemFighting() && !s.starving();
             case FURNACE -> s.jobs() && !s.standingBy() && !s.starving();
-            case PACK_UP -> s.jobs() && s.hasHead() && !s.starving();
+            case PACK_UP -> s.jobs() && s.hasHead();
             case SURFACE -> s.hasHead();
         };
     }

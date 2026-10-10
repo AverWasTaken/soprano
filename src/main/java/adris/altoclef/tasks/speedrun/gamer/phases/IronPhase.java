@@ -225,14 +225,23 @@ public class IronPhase implements PhaseHandler {
             furnaces.mayCookHere(SmeltSurface.shallow(SmeltSurface.depthBelowSky(mod))
                     || SmeltSurface.nextWorkDown(head, f.count(Items.RAW_IRON), f.count(Items.IRON_INGOT), f.pendingOutput(Items.IRON_INGOT)));
         }
-        // an empty bag with no food cooking for us: the iron trips and the optional detours give way to the food at the head
-        boolean starving = ctx.food().starving(f.furnaceJobs());
+        // an empty bag and a trip that is not for food (the one under way, else the one the plan would start): the iron trip and the
+        // optional detours give way to the food at the head
+        RunState.FurnaceJob tripJob = furnaces.tripJob();
+        if (tripJob == null && plan != null && plan.pick() != null) {
+            tripJob = plan.pick().job();
+        }
+        boolean starving = ctx.food().starving(tripJob);
         IronActivity.Scene scene = new IronActivity.Scene(jobs, plan != null && plan.standingBy(), head != null, support.loots(),
                 support.golemFighting(), starving);
         support.beginTick(mod, ctx);
         furnaceAsked = false;
         Kind before = arbiter.current();
-        sayStarving(starving, before, plan, ctx.food());
+        sayStarving(starving, before, plan != null && plan.pick() != null, ctx.food());
+        if (starving && before == Kind.FURNACE) {
+            // the trip on its way is let go for real, see FurnaceWatch.drop
+            furnaces.drop();
+        }
         for (Kind k : arbiter.ask(scene, now)) {
             Task task = offer(k, mod, ctx, needs, head, jobs, plan, moment);
             if (task == null) {
@@ -288,12 +297,12 @@ public class IronPhase implements PhaseHandler {
     }
 
     // one line per run dry, and only when it actually cost something a trip: the one that holds the wheel, or one that is due to start
-    private void sayStarving(boolean starving, Kind held, FurnacePlan.Plan plan, FoodPlan food) {
+    private void sayStarving(boolean starving, Kind held, boolean tripDue, FoodPlan food) {
         if (!starving) {
             starvedSaid = false;
             return;
         }
-        Kind gives = held != null && IronActivity.yields(held) ? held : plan != null && plan.pick() != null ? Kind.FURNACE : null;
+        Kind gives = IronActivity.gave(held, tripDue);
         if (gives != null && !starvedSaid) {
             say(IronActivity.starvingLine(gives, food.held(), food.floor()));
         }
