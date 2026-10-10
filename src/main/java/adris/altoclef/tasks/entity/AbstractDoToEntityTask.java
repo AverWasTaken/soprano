@@ -9,6 +9,7 @@ import adris.altoclef.tasks.movement.GetToEntityTask;
 import adris.altoclef.tasks.movement.TimeoutWanderTask;
 import adris.altoclef.tasksystem.ITaskRequiresGrounded;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.util.helpers.ApproachRules;
 import adris.altoclef.util.helpers.EntityBlockerRules;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.LookHelper;
@@ -58,6 +59,8 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
     private Entity _blockerTarget;
     private int _blockerDigs;
     private GoalRunAway _backOffGoal;
+    // the approach child was in the tree last tick (it is walking, a stop now would cut the path), see ApproachRules
+    private boolean _approachLive;
 
     public AbstractDoToEntityTask(double maintainDistance, double combatGuardLowerRange, double combatGuardLowerFieldRadius) {
         _maintainDistance = maintainDistance;
@@ -77,6 +80,7 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
     protected void onStart(AltoClef mod) {
         _progress.reset();
         _approach = null;
+        _approachLive = false;
         _blocker = null;
         _blockerTarget = null;
         _blockerDigs = 0;
@@ -102,6 +106,8 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
         if (mod.getClientBaritone().getPathingBehavior().isPathing()) {
             _progress.reset();
         }
+        boolean wasWalking = _approachLive;
+        _approachLive = false;
 
         Optional<Entity> checkEntity = getEntityTarget(mod);
         if (checkEntity.isEmpty()) _blocker = null;
@@ -145,17 +151,35 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
                 }
             }
 
-            if (mod.getControllerExtras().inRange(entity) && result != null &&
-                    result.getType() == HitResult.Type.ENTITY && !mod.getFoodChain().needsToEat() &&
+            boolean ready = !mod.getFoodChain().needsToEat() &&
                     !mod.getMLGBucketChain().isFallingOhNo(mod) && mod.getMLGBucketChain().doneMLG() &&
                     !mod.getMLGBucketChain().isChorusFruiting() &&
-                    mod.getClientBaritone().getPathingBehavior().isSafeToCancel() &&
-                    (mod.getPlayer().onGround() || mod.getControllerExtras().critInFlight())) {
-                _progress.reset();
-                _blocker = null;
-                return onEntityInteract(mod, entity);
-            } else if (!tooClose) {
-                return approach(mod, entity, maintainDistance);
+                    (mod.getPlayer().onGround() || mod.getControllerExtras().critInFlight());
+            ApproachRules.Plan plan = ApproachRules.plan(wasWalking, mod.getControllerExtras().inRange(entity),
+                    result != null && result.getType() == HitResult.Type.ENTITY, ready,
+                    mod.getClientBaritone().getPathingBehavior().isSafeToCancel(), tooClose);
+            switch (plan) {
+                case INTERACT:
+                    _progress.reset();
+                    _blocker = null;
+                    return onEntityInteract(mod, entity);
+                case APPROACH:
+                    return approach(mod, entity, maintainDistance);
+                case KEEP_CHILD:
+                    // halfway through a step: let it land, the swing goes next tick that is safe. stopping the child here
+                    // cut the path mid stride and the next tick started it again
+                    _progress.reset();
+                    _blocker = null;
+                    setDebugState("Finishing the step before the swing");
+                    _approachLive = true;
+                    return _approach;
+                case WAIT:
+                    _progress.reset();
+                    _blocker = null;
+                    setDebugState("In reach, waiting for the swing");
+                    return null;
+                default:
+                    break;
             }
         }
         _blocker = null;
@@ -227,6 +251,7 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
             _approachEntity = entity;
             _approachDistance = maintainDistance;
         }
+        _approachLive = true;
         return _approach;
     }
 
