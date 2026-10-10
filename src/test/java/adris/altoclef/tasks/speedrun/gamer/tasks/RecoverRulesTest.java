@@ -221,6 +221,17 @@ public class RecoverRulesTest {
     }
 
     @Test
+    public void theRangeEdgeDecidesWhereTheClockStarts() {
+        // first ask right on the edge: loaded, ages from the death. a block further out it is not, the clock waits for us
+        RecoverRules.Allowance in = new RecoverRules.Allowance(1000, 240);
+        assertFalse(in.expired(1100, RecoverRules.LOADED_RANGE));
+        assertTrue(in.expired(1240.5, RecoverRules.LOADED_RANGE));
+        RecoverRules.Allowance out = new RecoverRules.Allowance(1000, 240);
+        assertFalse(out.expired(1100, RecoverRules.LOADED_RANGE + 1));
+        assertFalse(out.expired(1500, RecoverRules.LOADED_RANGE + 1));
+    }
+
+    @Test
     public void walkingOffAgainDoesNotRestartTheClock() {
         RecoverRules.Allowance a = new RecoverRules.Allowance(1000, 240);
         assertFalse(a.expired(1010, 10));

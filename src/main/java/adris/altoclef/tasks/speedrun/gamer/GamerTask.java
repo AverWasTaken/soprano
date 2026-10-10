@@ -890,7 +890,8 @@ public class GamerTask extends Task {
         // for a spot, a hand restart is a clean slate
         int killedBefore = DeathRules.killedHere(state.deaths.subList(Math.min(deathsAtStart, state.deaths.size()), state.deaths.size()),
                 deathDimension, deathPos.getX(), deathPos.getZ());
-        boolean wasRecovering = recover != null;
+        // a recovery that finished is only dropped on a tick of ours, and we may not have had one since
+        boolean wasRecovering = recover != null && !recover.isFinished(mod);
         boolean diedAtThePile = wasRecovering && recoverPos != null && deathDimension == recoverDimension
                 && DeathRules.sameSpot(deathPos.getX(), deathPos.getZ(), recoverPos.getX(), recoverPos.getZ());
         RunState.Death death = new RunState.Death();

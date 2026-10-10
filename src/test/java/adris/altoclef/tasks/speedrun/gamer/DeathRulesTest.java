@@ -184,10 +184,11 @@ public class DeathRulesTest {
         // a stone axe alone is not a pile
         assertEquals(bag(0, 0, false, 0, false), DeathRules.worth(new FakeFacts().give(Items.STONE_AXE, 1)));
         // eyes, pearls, rods, obsidian, a bed or a bucket are the run itself
-        assertTrue(DeathRules.worth(new FakeFacts().give(Items.ENDER_PEARL, 1)).run());
-        assertTrue(DeathRules.worth(new FakeFacts().give(Items.BLAZE_ROD, 3)).run());
-        assertTrue(DeathRules.worth(new FakeFacts().give(Items.RED_BED, 1)).run());
-        assertTrue(DeathRules.worth(new FakeFacts().give(Items.WATER_BUCKET, 1)).run());
+        for (net.minecraft.world.item.Item item : new net.minecraft.world.item.Item[] {Items.ENDER_EYE, Items.ENDER_PEARL, Items.BLAZE_ROD,
+                Items.BLAZE_POWDER, Items.OBSIDIAN, Items.DIAMOND, Items.BUCKET, Items.WATER_BUCKET, Items.LAVA_BUCKET,
+                Items.FLINT_AND_STEEL, Items.RED_BED, Items.WHITE_BED}) {
+            assertTrue(item.toString(), DeathRules.worth(new FakeFacts().give(item, 1)).run());
+        }
     }
 
     @Test

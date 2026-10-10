@@ -130,10 +130,8 @@ public final class DeathRules {
     }
 
     // null = go back for it, else why not, in the words the log gets. a null `worth` is a bag we never got to see: go.
-    // dying again where we were going back for a pile is the loop to stop, however rich the new one is: that is how the same
-    // zombies get you twice. so is a spot that already killed us KILLS_AT_A_SPOT times. one old death there is fine, a bag
-    // recovered in between and a second life spent mining the same cave is not a loop. (a death on the way to an older pile
-    // ends that trip too, GamerTask says so, but a new pile somewhere else is judged on its own)
+    // dying again at the pile we were going back for is the loop to stop, however rich the new one is, and so is a spot that
+    // already killed us KILLS_AT_A_SPOT times. one old death there is fine: a pile recovered in between is not a loop
     public static String refuse(boolean sameDimension, double blocks, int reach, Worth worth, int foodLine, int killedBefore,
                                 boolean diedAtThePile) {
         if (!sameDimension) {

@@ -116,7 +116,6 @@ public class RecoverItemsTask extends Task {
             }
             return null;
         }
-        _wentForADrop = true;
         // every tick a drop is the target counts, so 20 s of chasing is 20 s and not 20 s of the ticks the walk left over
         if (_chase.update(drop.getId(), mod.getWorld().getGameTime() / 20.0)) {
             // visible, "reachable" and still not ours after all that: the pickup task's own retries reset every time we get a
@@ -138,6 +137,8 @@ public class RecoverItemsTask extends Task {
             _pin.clear();
             return null;
         }
+        // only a drop we actually set out to pick up counts, a written off one is not "got it"
+        _wentForADrop = true;
         boolean moved = _pin.retarget(drop);
         if (_pickup == null || moved || _pickup.stalled(mod)) {
             // a stall only flags this pickup (see gaveUpOnDrop below), it bans nothing. a fresh one gets another go and the chase

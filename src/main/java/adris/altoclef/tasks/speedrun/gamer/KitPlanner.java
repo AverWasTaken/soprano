@@ -87,7 +87,7 @@ public final class KitPlanner {
         if (split) {
             out.add(new KitNeed(KitNeed.FOOD, food.floor()));
         } else if (hungry) {
-            // nothing to make, so the refill is the whole job and goes up front in one piece
+            // nothing to arm, so the refill is the whole job and goes up front in one piece
             addRefill(out, food);
         }
         out.addAll(starter);
