@@ -10,6 +10,7 @@ import adris.altoclef.tasks.movement.EnterNetherPortalTask;
 import adris.altoclef.tasks.movement.EscapeFromLavaTask;
 import adris.altoclef.tasks.movement.GetToBlockTask;
 import adris.altoclef.tasks.movement.SafeRandomShimmyTask;
+import adris.altoclef.tasksystem.Task;
 import adris.altoclef.tasksystem.TaskRunner;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.LookHelper;
@@ -167,7 +168,10 @@ public class WorldSurvivalChain extends SingleTaskChain {
     }
 
     private boolean isStuckInNetherPortal(AltoClef mod) {
-        return WorldHelper.isInNetherPortal(mod) && !mod.getUserTaskChain().getCurrentTask().thisOrChildSatisfies(task -> task instanceof EnterNetherPortalTask);
+        if (!WorldHelper.isInNetherPortal(mod)) return false;
+        // no user task at all is not entering a portal either
+        Task userTask = mod.getUserTaskChain().getCurrentTask();
+        return userTask == null || !userTask.thisOrChildSatisfies(task -> task instanceof EnterNetherPortalTask);
     }
 
     @Override
