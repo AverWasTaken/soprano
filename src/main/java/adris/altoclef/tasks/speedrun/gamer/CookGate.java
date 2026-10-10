@@ -111,10 +111,10 @@ public final class CookGate {
         }
         // a smoker of ours within NEAR or in the bag is where raw meat goes, before any furnace (WorkbenchRules.cookInSmoker). one in
         // the bag only counts with enough meat to be worth putting it down, or a station already standing to cook the little there is
-        if (WorkbenchRules.cookInSmoker(f.smokerPlacedNearby(), f.has(Items.SMOKER) && (mayCraft || f.furnacePlacedNearby()))) {
+        if (WorkbenchRules.cookInSmoker(f.stations().smoker().heldForPlanner(), f.has(Items.SMOKER) && (mayCraft || f.stations().furnace().heldForPlanner()))) {
             return Station.SMOKER;
         }
-        if (furnaceFree && (f.furnacePlacedNearby() || (mayCraft && f.has(Items.FURNACE)))) {
+        if (furnaceFree && (f.stations().furnace().heldForPlanner() || (mayCraft && f.has(Items.FURNACE)))) {
             return Station.FURNACE;
         }
         if (!mayCraft) {
