@@ -70,8 +70,8 @@ public class ConstructNetherPortalObsidianTask extends Task {
             new Vec3i(-1, 2, 1)
     };
 
-    // every cell the build touches (frame and the space we clear) plus one all the way round, like the bucket variant's
-    // portalable region, so nothing we place or break has lava or water next to it. both corners are inclusive
+    // every cell the build touches (frame and the space we clear) plus one all the way round, the same "never break
+    // a block next to lava" buffer the bucket variant's portalable region keeps, so nothing we place or break has lava or water next to it. both corners are inclusive
     static final Vec3i SCAN_MIN;
     static final Vec3i SCAN_MAX;
 
