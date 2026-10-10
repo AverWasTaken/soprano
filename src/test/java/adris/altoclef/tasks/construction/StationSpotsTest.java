@@ -126,12 +126,30 @@ public class StationSpotsTest {
     }
 
     @Test
-    public void feetLevelBeatsLowerAtSimilarDistance() {
-        // a step down right next to us is a worse answer than the floor a block or two further on our own level
-        assertTrue(StationSpots.score(4, 0) < StationSpots.score(1, 1));
+    public void feetLevelBeatsEveryOtherLevelAtAnyDistance() {
+        // a step off our level is a worse answer than the floor on it, even all the way out at the edge of the scan
+        double farthest = 2.0 * StationSpots.RADIUS * StationSpots.RADIUS;
+        assertTrue(StationSpots.score(farthest, 0) < StationSpots.score(1, 1));
+        assertTrue(StationSpots.score(farthest, 0) < StationSpots.score(0, -1));
         assertTrue(StationSpots.score(1, 0) < StationSpots.score(1, 1));
         // a climb is a climb whichever way it goes
         assertEquals(StationSpots.score(2, 1), StationSpots.score(2, -1), 0);
+    }
+
+    // a two wide ledge one up beside us, and a floor cell on our own level three out. the ledge one is a lot closer
+    @Test
+    public void ourLevelWinsEvenWhenTheLedgeIsRightNextToUs() {
+        FakeWorld w = new FakeWorld(64);
+        for (int x = 1; x <= 2; x++) {
+            for (int z = 0; z <= 1; z++) {
+                w.put(x, 65, z, Kind.FULL);
+            }
+        }
+        // the ledge cell is good on its own: floor under it, air over it, a walk to the cell beside it
+        w.onlyPlaceable = new HashSet<>(Set.of(FakeWorld.key(1, 66, 0)));
+        assertEquals(new StationSpots.Spot(1, 66, 0, 1, 65, 0), best(w, flat()).orElseThrow());
+        w.onlyPlaceable.add(FakeWorld.key(3, 65, 0));
+        assertEquals(new StationSpots.Spot(3, 65, 0, 3, 64, 0), best(w, flat()).orElseThrow());
     }
 
     @Test
@@ -164,9 +182,10 @@ public class StationSpotsTest {
         assertTrue(best(slabs, onFence).isEmpty());
     }
 
-    // the log: standing on a fence, it just sat there. one gap in the fence line and the ground under it is the answer
+    // standing on a fence line, a one cell gap in it used to be the answer. it is a pit now: a table down there has fence on
+    // every side, nothing to stand beside it
     @Test
-    public void aGapInTheFenceLineLetsUsPlaceOnTheGroundBelow() {
+    public void aGapInTheFenceLineIsAPitNotASpot() {
         FakeWorld w = new FakeWorld(63);
         for (int x = -5; x <= 5; x++) {
             for (int z = -5; z <= 5; z++) {
@@ -175,12 +194,10 @@ public class StationSpotsTest {
         }
         w.put(2, 64, 0, Kind.AIR);
         StationSpots.Stance onFence = new StationSpots.Stance(0, 65, 0, 0.5, 65 + SNEAK_EYE, 0.5);
-        StationSpots.Spot s = best(w, onFence).orElseThrow();
-        assertEquals(2, s.x());
-        assertEquals(64, s.y());
-        assertEquals(0, s.z());
-        assertTrue(s.isTopFace());
-        assertEquals(63, s.sy());
+        StationSpots.Refusals why = new StationSpots.Refusals();
+        assertTrue(StationSpots.best(w, onFence, new StationSpots.Bans(), null, why).isEmpty());
+        // every cell on our level has fence under it, so the gap is not the only one with nothing to stand beside it
+        assertTrue(why.summary(), why.count(StationSpots.Refusal.BOXED_IN) > 0);
     }
 
     @Test
@@ -242,23 +259,36 @@ public class StationSpotsTest {
         assertTrue(StationSpots.best(w, flat(), bans).isEmpty());
     }
 
+    // the wall pass is for a cell over a hole (or a fence top, a slab): no floor to click, a pillar beside it to click, and
+    // ground next to it to stand on, so it still passes for a spot we can use
     @Test
     public void aWallSideIsTheFallbackWhenNoFloorWorks() {
-        FakeWorld w = new FakeWorld(63);
-        for (int x = -5; x <= 5; x++) {
-            for (int z = -5; z <= 5; z++) {
-                w.put(x, 64, z, Kind.FENCE);
-            }
-        }
-        // a stone pillar three blocks east, up through our level
-        w.put(3, 64, 0, Kind.FULL).put(3, 65, 0, Kind.FULL).put(3, 66, 0, Kind.FULL);
-        StationSpots.Stance onFence = new StationSpots.Stance(0, 65, 0, 0.5, 65 + SNEAK_EYE, 0.5);
-        StationSpots.Spot s = best(w, onFence).orElseThrow();
+        FakeWorld w = new FakeWorld(64);
+        // a stone pillar three blocks east, up through our level, and a hole in the floor in front of it
+        w.put(3, 65, 0, Kind.FULL).put(3, 66, 0, Kind.FULL).put(2, 64, 0, Kind.AIR);
+        w.onlyPlaceable = new HashSet<>(Set.of(FakeWorld.key(2, 65, 0)));
+        StationSpots.Spot s = best(w, flat()).orElseThrow();
         assertFalse(s.isTopFace());
         // the cell west of the pillar, clicking the pillar's west face
         assertEquals(new StationSpots.Spot(2, 65, 0, 3, 65, 0), s);
         assertEquals(-1, s.faceX());
         assertEquals(0, s.faceY());
+    }
+
+    // the same wall with no ground to stand on beside the cell: a station hanging off a cliff
+    @Test
+    public void aWallSideStillNeedsSomewhereToStand() {
+        FakeWorld w = new FakeWorld(64);
+        w.put(3, 65, 0, Kind.FULL).put(3, 66, 0, Kind.FULL);
+        for (int x = 1; x <= 2; x++) {
+            for (int z = -1; z <= 1; z++) {
+                w.put(x, 64, z, Kind.AIR);
+            }
+        }
+        // (2,65,0) has air under it and under every cell beside it that we could stand in
+        w.put(2, 63, 0, Kind.AIR);
+        w.onlyPlaceable = new HashSet<>(Set.of(FakeWorld.key(2, 65, 0)));
+        assertTrue(best(w, flat()).isEmpty());
     }
 
     @Test
@@ -516,6 +546,231 @@ public class StationSpotsTest {
         // nothing solid to mine on the floor level of an open room: the neighbours are air, not candidates
         FakeWorld w = new FakeWorld(64);
         assertTrue(StationSpots.carveCandidates(w, flat(), new StationSpots.Bans()).isEmpty());
+    }
+
+    // ---- a spot we can use as it is ----
+
+    private static StationSpots.Refusals ask(FakeWorld w, StationSpots.Stance me) {
+        StationSpots.Refusals why = new StationSpots.Refusals();
+        StationSpots.best(w, me, new StationSpots.Bans(), null, why);
+        return why;
+    }
+
+    private static void station(FakeWorld w, int x, int y, int z) {
+        w.put(x, y, z, Kind.FULL);
+        w.stations.add(FakeWorld.key(x, y, z));
+    }
+
+    @Test
+    public void aPitBesideUsIsNeverPicked() {
+        FakeWorld w = new FakeWorld(64);
+        // one deep, ground on every side of it. a table in there is a table we dig for
+        w.put(1, 64, 0, Kind.AIR);
+        w.onlyPlaceable = new HashSet<>(Set.of(FakeWorld.key(1, 64, 0)));
+        assertTrue(best(w, flat()).isEmpty());
+        assertEquals(1, ask(w, flat()).count(StationSpots.Refusal.BOXED_IN));
+        // two deep is out of the scan altogether
+        w.put(1, 63, 0, Kind.AIR);
+        w.onlyPlaceable = new HashSet<>(Set.of(FakeWorld.key(1, 63, 0)));
+        assertTrue(best(w, flat()).isEmpty());
+        assertEquals(0, ask(w, flat()).count(StationSpots.Refusal.BOXED_IN));
+    }
+
+    @Test
+    public void aCellWithRockOverItIsRefused() {
+        FakeWorld w = new FakeWorld(64);
+        w.put(1, 66, 0, Kind.FULL);
+        w.onlyPlaceable = new HashSet<>(Set.of(FakeWorld.key(1, 65, 0)));
+        assertTrue(best(w, flat()).isEmpty());
+        assertEquals(1, ask(w, flat()).count(StationSpots.Refusal.ROOFED));
+        w.put(1, 66, 0, Kind.AIR);
+        assertTrue(best(w, flat()).isPresent());
+    }
+
+    @Test
+    public void aCellWhoseNeighboursAreAllWallIsRefused() {
+        FakeWorld w = new FakeWorld(64);
+        // (3,65,0) is open and has a floor, and stone on the three sides we don't come from: only (2,65,0) is left to stand on,
+        // so wall it too and nothing is
+        w.put(4, 65, 0, Kind.FULL).put(3, 65, 1, Kind.FULL).put(3, 65, -1, Kind.FULL).put(2, 65, 0, Kind.FULL);
+        w.onlyPlaceable = new HashSet<>(Set.of(FakeWorld.key(3, 65, 0)));
+        assertTrue(best(w, flat()).isEmpty());
+        assertEquals(1, ask(w, flat()).count(StationSpots.Refusal.BOXED_IN));
+    }
+
+    // a one wide tunnel that runs on past the edge of what we look at: along it is fine while a way out remains, and the dead
+    // end is not, however far down the tunnel the table would go
+    @Test
+    public void aTunnelTakesAStationOnlyWhileAWayOutRemains() {
+        FakeWorld w = new FakeWorld(200);
+        for (int x = -8; x <= 8; x++) {
+            w.put(x, 65, 0, Kind.AIR).put(x, 66, 0, Kind.AIR);
+        }
+        StationSpots.Spot s = best(w, flat()).orElseThrow();
+        assertEquals(0, s.z());
+        assertEquals(65, s.y());
+        assertEquals(1, Math.abs(s.x()));
+        // bricked up on the west side we stand at a dead end: the table would be the plug between us and the rest of the tunnel
+        w.put(-1, 65, 0, Kind.FULL).put(-1, 66, 0, Kind.FULL);
+        StationSpots.Refusals why = ask(w, flat());
+        assertTrue(best(w, flat()).isEmpty());
+        assertTrue(why.summary(), why.count(StationSpots.Refusal.BOXED_IN) > 0);
+        assertTrue(why.summary(), why.count(StationSpots.Refusal.SEALS_US_IN) > 0);
+    }
+
+    // the only standing cell beside the spot is on the far side of the spot itself
+    @Test
+    public void aStandingCellWeCannotWalkToDoesNotCount() {
+        FakeWorld w = new FakeWorld(200);
+        for (int x = -3; x <= 5; x++) {
+            w.put(x, 65, 0, Kind.AIR).put(x, 66, 0, Kind.AIR);
+        }
+        // a hole in the tunnel floor at x=1 and the spot at x=2: the room east of it is behind the table
+        w.put(1, 64, 0, Kind.AIR);
+        w.onlyPlaceable = new HashSet<>(Set.of(FakeWorld.key(2, 65, 0)));
+        StationSpots.Refusals why = ask(w, flat());
+        assertTrue(best(w, flat()).isEmpty());
+        assertEquals(1, why.count(StationSpots.Refusal.BOXED_IN));
+    }
+
+    @Test
+    public void aSecondStationNextToTheFirstIsFineWhileBothKeepAStandingCell() {
+        FakeWorld w = new FakeWorld(64);
+        station(w, 1, 65, 0);
+        w.onlyPlaceable = new HashSet<>(Set.of(FakeWorld.key(2, 65, 0)));
+        assertEquals(new StationSpots.Spot(2, 65, 0, 2, 64, 0), best(w, flat()).orElseThrow());
+    }
+
+    @Test
+    public void aSecondStationNeverTakesTheFirstOnesOnlyStandingCell() {
+        FakeWorld w = new FakeWorld(64);
+        // a table in a nook: stone on three sides, the cell we are about to take is the only way to it
+        station(w, 3, 65, 0);
+        w.put(4, 65, 0, Kind.FULL).put(3, 65, 1, Kind.FULL).put(3, 65, -1, Kind.FULL);
+        w.onlyPlaceable = new HashSet<>(Set.of(FakeWorld.key(2, 65, 0)));
+        assertTrue(best(w, flat()).isEmpty());
+        assertEquals(1, ask(w, flat()).count(StationSpots.Refusal.CROWDS_A_STATION));
+        // open a second side and the nook has a door left
+        w.put(3, 65, 1, Kind.AIR);
+        assertTrue(best(w, flat()).isPresent());
+    }
+
+    @Test
+    public void nothingGoesOnTopOfAStation() {
+        // the floor is at y=65 here, the table is part of it, and the cell on top has plenty of floor beside it
+        FakeWorld w = new FakeWorld(65);
+        station(w, 2, 65, 0);
+        StationSpots.Stance me = new StationSpots.Stance(0, 66, 0, 0.5, 66 + SNEAK_EYE, 0.5);
+        w.onlyPlaceable = new HashSet<>(Set.of(FakeWorld.key(2, 66, 0)));
+        assertTrue(StationSpots.best(w, me, new StationSpots.Bans()).isEmpty());
+        assertEquals(1, ask(w, me).count(StationSpots.Refusal.CROWDS_A_STATION));
+        // a plain block there is a perfectly good floor
+        w.stations.clear();
+        assertTrue(StationSpots.best(w, me, new StationSpots.Bans()).isPresent());
+    }
+
+    @Test
+    public void refusalsAreCountedAndWordedBiggestFirst() {
+        // a fence line: every neighbour on our level has no floor to click
+        FakeWorld w = new FakeWorld(63);
+        for (int x = -5; x <= 5; x++) {
+            for (int z = -5; z <= 5; z++) {
+                w.put(x, 64, z, Kind.FENCE);
+            }
+        }
+        StationSpots.Stance onFence = new StationSpots.Stance(0, 65, 0, 0.5, 65 + SNEAK_EYE, 0.5);
+        StationSpots.Refusals why = ask(w, onFence);
+        assertTrue(why.count(StationSpots.Refusal.NO_FLOOR) > 0);
+        // dy = -1 is the fence itself, in the way
+        assertTrue(why.count(StationSpots.Refusal.IN_THE_WAY) > 0);
+        assertEquals(0, why.count(StationSpots.Refusal.ROOFED));
+        assertTrue(why.summary(), why.summary().contains("no floor"));
+        assertEquals("nothing in range", new StationSpots.Refusals().summary());
+        // a ban is its own reason
+        StationSpots.Bans bans = new StationSpots.Bans();
+        for (int x = -StationSpots.RADIUS; x <= StationSpots.RADIUS; x++) {
+            for (int z = -StationSpots.RADIUS; z <= StationSpots.RADIUS; z++) {
+                bans.ban(x, 65, z);
+            }
+        }
+        StationSpots.Refusals banned = new StationSpots.Refusals();
+        assertTrue(StationSpots.best(new FakeWorld(64), flat(), bans, null, banned).isEmpty());
+        assertTrue(banned.summary(), banned.count(StationSpots.Refusal.BANNED) > 0);
+    }
+
+    // random 9x9x5 rooms around a standing player. whatever spot comes back has a floor under it (or a wall to click), air over
+    // it, a standing cell beside it that a walk from the feet gets to with the block in place, and a click that reaches
+    @Test
+    public void everyPickedSpotCanBeUsedAsItIs() {
+        java.util.Random rng = new java.util.Random(26_10_10);
+        int picked = 0;
+        for (int round = 0; round < 400; round++) {
+            FakeWorld w = new FakeWorld(64);
+            double air = 0.35 + rng.nextDouble() * 0.5;
+            for (int x = -6; x <= 6; x++) {
+                for (int z = -6; z <= 6; z++) {
+                    for (int y = 63; y <= 68; y++) {
+                        w.put(x, y, z, rng.nextDouble() < air ? Kind.AIR : Kind.FULL);
+                    }
+                }
+            }
+            // somewhere to stand
+            w.put(0, 64, 0, Kind.FULL).put(0, 65, 0, Kind.AIR).put(0, 66, 0, Kind.AIR);
+            if (rng.nextInt(3) == 0) {
+                w.hidden.add(FakeWorld.key(rng.nextInt(5) - 2, 64, rng.nextInt(5) - 2));
+            }
+            Optional<StationSpots.Spot> found = best(w, flat());
+            if (found.isEmpty()) {
+                continue;
+            }
+            picked++;
+            StationSpots.Spot s = found.get();
+            String where = "round " + round + " " + s;
+            assertTrue(where, w.placeable(s.x(), s.y(), s.z()));
+            assertTrue(where, Math.abs(s.y() - 65) <= 1);
+            assertTrue(where, w.passable(s.x(), s.y() + 1, s.z()));
+            assertTrue(where, StationSpots.faceDistSq(flat(), s) <= StationSpots.REACH * StationSpots.REACH);
+            assertTrue(where, w.faceSturdy(s.sx(), s.sy(), s.sz(), s.faceX(), s.faceY(), s.faceZ()));
+            assertFalse(where, w.hidden.contains(FakeWorld.key(s.sx(), s.sy(), s.sz())));
+            assertTrue(where, StationSpots.leavesAWayOut(w, flat(), s.x(), s.y(), s.z()));
+            // the oracle: the block goes down for real, and a plain walk over standable cells has to reach a cell beside it
+            w.put(s.x(), s.y(), s.z(), Kind.FULL);
+            assertTrue(where, walkReaches(w, s));
+        }
+        // the sweep is worth nothing if the rooms never gave an answer
+        assertTrue("picked " + picked, picked > 40);
+    }
+
+    // breadth first from the feet over standable cells, one step up or down, inside the flood box. a cell beside the spot at its level
+    private static boolean walkReaches(FakeWorld w, StationSpots.Spot s) {
+        java.util.ArrayDeque<int[]> open = new java.util.ArrayDeque<>();
+        Set<String> seen = new HashSet<>();
+        open.add(new int[]{0, 65, 0});
+        seen.add(FakeWorld.key(0, 65, 0));
+        int[][] dirs = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+        while (!open.isEmpty()) {
+            int[] c = open.poll();
+            if (c[1] == s.y() && Math.abs(c[0] - s.x()) + Math.abs(c[2] - s.z()) == 1) {
+                return true;
+            }
+            for (int[] d : dirs) {
+                for (int up : new int[]{0, 1, -1}) {
+                    int nx = c[0] + d[0];
+                    int ny = c[1] + up;
+                    int nz = c[2] + d[1];
+                    if (Math.abs(nx) > StationSpots.FLOOD_RADIUS || Math.abs(nz) > StationSpots.FLOOD_RADIUS || Math.abs(ny - 65) > 3
+                            || seen.contains(FakeWorld.key(nx, ny, nz)) || !w.standable(nx, ny, nz)) {
+                        continue;
+                    }
+                    boolean room = up == 0 || (up > 0 ? w.passable(c[0], c[1] + 2, c[2]) : w.passable(nx, c[1] + 1, nz));
+                    if (room) {
+                        seen.add(FakeWorld.key(nx, ny, nz));
+                        open.add(new int[]{nx, ny, nz});
+                    }
+                }
+            }
+        }
+        return false;
     }
 
     @Test
