@@ -70,9 +70,18 @@ public class BiteRulesTest {
     @Test
     public void floatingIdleWithNoPathIsStillAMeal() {
         // nothing is steering us, so there is no movement to ruin. starving in a lake is not a reason to starve more
-        assertEquals(EAT_NOW, BiteRules.verdict(Scene.standing().withInWater(true)));
-        assertEquals(EAT_NOW, BiteRules.verdict(Scene.standing().withOnLadder(true)));
-        assertEquals(EAT_NOW, BiteRules.verdict(Scene.standing().withRiding(true)));
+        // (and none of these are on the ground, as far as the game is concerned)
+        assertEquals(EAT_NOW, BiteRules.verdict(Scene.standing().withOnGround(false).withInWater(true)));
+        assertEquals(EAT_NOW, BiteRules.verdict(Scene.standing().withOnGround(false).withOnLadder(true)));
+        assertEquals(EAT_NOW, BiteRules.verdict(Scene.standing().withOnGround(false).withRiding(true)));
+        // but a bare fall is still a fall
+        assertEquals(WAIT, BiteRules.verdict(Scene.standing().withOnGround(false)));
+    }
+
+    @Test
+    public void everybodyElseGetsTheirChecksBackAfterTheWaitLine() {
+        assertFalse(BiteRules.waitedTooLong(BiteRules.WAIT_LOG_TICKS - 1));
+        assertTrue(BiteRules.waitedTooLong(BiteRules.WAIT_LOG_TICKS));
     }
 
     @Test

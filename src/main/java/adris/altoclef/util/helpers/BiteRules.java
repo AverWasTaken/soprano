@@ -84,7 +84,7 @@ public final class BiteRules {
         // a bite cannot start with a screen open (the game does not look at the use key then), so do not fight it
         if (s.screen()) return Verdict.WAIT;
         // falls end by themselves, waiting is the whole plan
-        if (!s.onGround()) return Verdict.WAIT;
+        if (!grounded(s)) return Verdict.WAIT;
         if (!s.pathLive()) {
             // nothing is steering us. water and ladders only matter to a movement that wants full speed
             return s.speed() > STILL_SPEED ? Verdict.WAIT : Verdict.EAT_NOW;
@@ -99,10 +99,22 @@ public final class BiteRules {
         return s.safeToCancel() ? Verdict.ASK_STOP : Verdict.WAIT;
     }
 
+    // floating in water, hanging on a ladder or sitting in a boat are all "not on the ground" to the game, but with nothing
+    // steering us that is a perfectly good place to chew. only a live path makes them a reason to wait
+    private static boolean grounded(Scene s) {
+        return s.onGround() || (!s.pathLive() && (s.inWater() || s.onLadder() || s.riding()));
+    }
+
+    // how long we can want a stop before everybody else gets to stop pretending we are busy eating (the food chain's
+    // needsToEat() goes quiet past this, the wanting itself carries on)
+    public static boolean waitedTooLong(int ticks) {
+        return ticks >= WAIT_LOG_TICKS;
+    }
+
     // why we are not eating yet, for the log line. only built when the line is going out
     public static String why(Scene s) {
         if (s.screen()) return "screen";
-        if (!s.onGround()) return "mid-air";
+        if (!grounded(s)) return "mid-air";
         if (!s.pathLive()) return "moving";
         if (s.inWater()) return "water";
         if (s.onLadder()) return "ladder";
