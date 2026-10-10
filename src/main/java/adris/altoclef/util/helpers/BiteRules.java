@@ -14,6 +14,9 @@ public final class BiteRules {
     // presses again before we give up for a while, and how long a while is
     public static final int RETRIES = 3;
     public static final int BACKOFF_TICKS = 40;
+    // starving and stuck behind a stop that does not come: ticks of wanting one, and the hunger that makes it an emergency
+    public static final int ESCAPE_TICKS = 200;
+    public static final int STARVING_HUNGER = 6;
 
     private BiteRules() {
     }
@@ -84,7 +87,7 @@ public final class BiteRules {
         // a bite cannot start with a screen open (the game does not look at the use key then), so do not fight it
         if (s.screen()) return Verdict.WAIT;
         // falls end by themselves, waiting is the whole plan
-        if (!grounded(s)) return Verdict.WAIT;
+        if (airborne(s)) return Verdict.WAIT;
         if (!s.pathLive()) {
             // nothing is steering us. water and ladders only matter to a movement that wants full speed
             return s.speed() > STILL_SPEED ? Verdict.WAIT : Verdict.EAT_NOW;
@@ -99,10 +102,19 @@ public final class BiteRules {
         return s.safeToCancel() ? Verdict.ASK_STOP : Verdict.WAIT;
     }
 
-    // floating in water, hanging on a ladder or sitting in a boat are all "not on the ground" to the game, but with nothing
-    // steering us that is a perfectly good place to chew. only a live path makes them a reason to wait
-    private static boolean grounded(Scene s) {
-        return s.onGround() || (!s.pathLive() && (s.inWater() || s.onLadder() || s.riding()));
+    // floating in water, hanging on a ladder or sitting in a boat are all "not on the ground" to the game, but that is not
+    // falling. with nothing steering us they are a perfectly good place to chew, with a path they are waits of their own
+    private static boolean airborne(Scene s) {
+        return !s.onGround() && !s.inWater() && !s.onLadder() && !s.riding();
+    }
+
+    // starving behind a stop that does not come. only water and a boat are worth the risk of chewing on the move: a swim
+    // or a ride can be as long as the ocean, while mid-air ends by itself, a ladder is a few blocks and a movement that is
+    // not safe to cancel is over in a moment
+    public static boolean starvingEscape(int waitedTicks, int hunger, float health, String why) {
+        if (waitedTicks < ESCAPE_TICKS) return false;
+        if (hunger > STARVING_HUNGER && !CombatRules.desperateMeal(health, hunger)) return false;
+        return "water".equals(why) || "boat".equals(why);
     }
 
     // how long we can want a stop before everybody else gets to stop pretending we are busy eating (the food chain's
@@ -114,7 +126,7 @@ public final class BiteRules {
     // why we are not eating yet, for the log line. only built when the line is going out
     public static String why(Scene s) {
         if (s.screen()) return "screen";
-        if (!grounded(s)) return "mid-air";
+        if (airborne(s)) return "mid-air";
         if (!s.pathLive()) return "moving";
         if (s.inWater()) return "water";
         if (s.onLadder()) return "ladder";

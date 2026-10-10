@@ -60,6 +60,8 @@ public class FoodChain extends SingleTaskChain {
     private final BiteRules.UseWatch _useWatch = new BiteRules.UseWatch();
     private boolean _biting = false;
     private boolean _standing = false;
+    // the starving escape is on: this meal is eaten on the move, no matter what the table says, until stopEat
+    private boolean _onTheMove = false;
     // the "use did not start" line is for the first press of a stuck bite, not every lap of the back off
     private boolean _stuckLogged = false;
 
@@ -89,6 +91,9 @@ public class FoodChain extends SingleTaskChain {
         }
         BiteRules.Scene scene = scene(mod);
         BiteRules.Verdict verdict = BiteRules.verdict(scene);
+        if (verdict == BiteRules.Verdict.WAIT) {
+            verdict = starvingEscape(mod, scene);
+        }
         boolean waiting = verdict == BiteRules.Verdict.ASK_STOP || verdict == BiteRules.Verdict.WAIT;
         String line = _waiting.tick(verdict, waiting ? BiteRules.why(scene) : null);
         if (line != null) {
@@ -123,6 +128,20 @@ public class FoodChain extends SingleTaskChain {
         }
     }
 
+    // a swim or a boat ride can outlast any hunger bar. after long enough of that and starving, the bite goes ahead on the
+    // move, the same way a fight's does (the combat path of the rule). never in the air or on a ladder, those end soon
+    private BiteRules.Verdict starvingEscape(AltoClef mod, BiteRules.Scene scene) {
+        LocalPlayer player = mod.getPlayer();
+        String why = BiteRules.why(scene);
+        int hunger = player.getFoodData().getFoodLevel();
+        if (!BiteRules.starvingEscape(_waiting.ticks(), hunger, player.getHealth(), why)) {
+            return BiteRules.Verdict.WAIT;
+        }
+        _onTheMove = true;
+        Debug.logInternal("food: no safe stop for " + _waiting.ticks() + "t, eating on the move (" + why + ")");
+        return BiteRules.Verdict.CHEW_ON_THE_MOVE;
+    }
+
     private BiteRules.Scene scene(AltoClef mod) {
         LocalPlayer player = mod.getPlayer();
         Baritone baritone = mod.getClientBaritone();
@@ -132,7 +151,8 @@ public class FoodChain extends SingleTaskChain {
         MobDefenseChain defense = mod.getMobDefenseChain();
         // a committed run or fight, or a stance that is not calm (the quick bite and the gapple live there)
         boolean combat = defense != null && (defense.combatMode() != CombatCommit.Mode.NONE || stance(mod) != CombatRules.Stance.CALM);
-        return new BiteRules.Scene(combat, _biting, Minecraft.getInstance().screen != null, player.onGround(), player.isInWater(),
+        // (an escape in progress rides the same road as a fight's meal until it is done: no pause, no standing)
+        return new BiteRules.Scene(combat || _onTheMove, _biting, Minecraft.getInstance().screen != null, player.onGround(), player.isInWater(),
                 player.onClimbable(), player.isPassenger(), player.getDeltaMovement().horizontalDistance(), pathLive,
                 hasCurrent && !baritone.getPathingBehavior().isPathing(), baritone.getPathingBehavior().isSafeToCancel());
     }
@@ -213,6 +233,7 @@ public class FoodChain extends SingleTaskChain {
         _useWatch.reset();
         _biting = false;
         _standing = false;
+        _onTheMove = false;
         if (_isTryingToEat) {
             if (mod.getItemStorage().hasItem(Items.SHIELD) || mod.getItemStorage().hasItemInOffhand(Items.SHIELD)) {
                 if (StorageHelper.getItemStackInSlot(PlayerSlot.OFFHAND_SLOT).getItem() != Items.SHIELD) {

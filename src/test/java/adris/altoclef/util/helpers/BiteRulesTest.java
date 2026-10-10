@@ -79,6 +79,42 @@ public class BiteRulesTest {
     }
 
     @Test
+    public void swimmingWithAPathIsWaterAndNotMidAir() {
+        // the game says not on ground for a swimmer, a ladder hanger and a passenger. the reason has to be the real one
+        assertEquals("water", BiteRules.why(walking().withOnGround(false).withInWater(true)));
+        assertEquals("ladder", BiteRules.why(walking().withOnGround(false).withOnLadder(true)));
+        assertEquals("boat", BiteRules.why(walking().withOnGround(false).withRiding(true)));
+        assertEquals("mid-air", BiteRules.why(walking().withOnGround(false)));
+        assertEquals(WAIT, BiteRules.verdict(walking().withOnGround(false).withInWater(true)));
+    }
+
+    @Test
+    public void starvingInTheWaterEventuallyEatsOnTheMove() {
+        int line = BiteRules.ESCAPE_TICKS;
+        assertFalse(BiteRules.starvingEscape(line - 1, 6, 20, "water"));
+        assertTrue(BiteRules.starvingEscape(line, 6, 20, "water"));
+        assertTrue(BiteRules.starvingEscape(line, 0, 20, "boat"));
+        assertTrue(BiteRules.starvingEscape(line * 3, 3, 4, "water"));
+    }
+
+    @Test
+    public void notHungryEnoughKeepsWaiting() {
+        assertFalse(BiteRules.starvingEscape(1000, 7, 20, "water"));
+        assertFalse(BiteRules.starvingEscape(1000, 12, 18, "boat"));
+        // hurt and a bit hungry is the desperate meal, that one counts at any hunger under 20
+        assertTrue(BiteRules.starvingEscape(1000, 15, 10, "water"));
+        assertFalse(BiteRules.starvingEscape(1000, 20, 10, "water"));
+    }
+
+    @Test
+    public void airLaddersAndUnsafeMovementsNeverEatOnTheMove() {
+        for (String why : new String[]{"mid-air", "ladder", "movement not safe", "pause not granted", "sliding to a stop",
+                "screen", "moving"}) {
+            assertFalse(why, BiteRules.starvingEscape(10_000, 0, 1, why));
+        }
+    }
+
+    @Test
     public void everybodyElseGetsTheirChecksBackAfterTheWaitLine() {
         assertFalse(BiteRules.waitedTooLong(BiteRules.WAIT_LOG_TICKS - 1));
         assertTrue(BiteRules.waitedTooLong(BiteRules.WAIT_LOG_TICKS));
