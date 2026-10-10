@@ -4,12 +4,14 @@ import adris.altoclef.tasks.speedrun.gamer.GamerTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.tasksystem.TaskChain;
 import adris.altoclef.trace.CursorWatch;
+import adris.altoclef.trace.DebugCollapse;
 import adris.altoclef.trace.Lines;
 import adris.altoclef.trace.MonitorErrors;
 import adris.altoclef.trace.Trace;
 import adris.altoclef.trace.Vitals;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WorldHelper;
+import baritone.api.utils.DebugTap;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.player.LocalPlayer;
@@ -21,9 +23,9 @@ import net.minecraft.world.item.ItemStack;
 import java.util.List;
 import java.util.Locale;
 
-// the two things the log keeps an eye on that no task owns: a line of vitals every few seconds while we drive, and an
-// item that has been on the cursor for too long. both only ever flag, nothing here touches the bot. every tick is one
-// integer compare, the reading and formatting happen when a line is due
+// the things the log keeps an eye on that no task owns: a line of vitals every few seconds while we drive, an item that
+// has been on the cursor for too long, and the feet standing still on a live path. all of them only ever flag, nothing
+// here touches the bot. every tick is a few compares, the reading and formatting happen when a line is due
 public final class Monitors {
 
     // 5 s of ticks
@@ -34,6 +36,21 @@ public final class Monitors {
     private int vitalsTicks;
     private int cursorTicks;
     private final CursorWatch cursorWatch = new CursorWatch();
+
+    // baritone's logDebug goes nowhere unless chatDebug is on, which is most of what it says about why it stopped. the
+    // collapse is static because the tap is, and so is the tick it stamps lines with (the path threads log too)
+    private static final DebugCollapse BARITONE = new DebugCollapse();
+    private static volatile long clientTick;
+
+    // once, at startup
+    public static void tapBaritone() {
+        DebugTap.setSink(text -> BARITONE.offer(text.replace('\n', ' ').replace('\r', ' '), System.currentTimeMillis(), clientTick,
+                Monitors::sayBaritone));
+    }
+
+    private static void sayBaritone(String text) {
+        Debug.logInternal("baritone: " + text);
+    }
 
     // while the task runner is active, after it has ticked so the chain's task list is this tick's
     public void onActiveTick(AltoClef mod) {
@@ -67,7 +84,13 @@ public final class Monitors {
     }
 
     // every tick, runner or not: the cursor can get stuck while we are idle too
-    public void onTick() {
+    public void onTick(AltoClef mod) {
+        clientTick++;
+        try {
+            BARITONE.flush(System.currentTimeMillis(), Monitors::sayBaritone);
+        } catch (RuntimeException e) {
+            broke("baritone tap", e);
+        }
         if (++cursorTicks < CURSOR_EVERY) {
             return;
         }

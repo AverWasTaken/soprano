@@ -145,11 +145,12 @@ public interface Helper {
     }
 
     /**
-     * Send a message to chat only if chatDebug is on
+     * Send a message to chat only if chatDebug is on. It always goes to the {@link DebugTap}, if there is one
      *
      * @param message The message to display in chat
      */
     default void logDebug(String message) {
+        DebugTap.accept(message);
         if (!BaritoneAPI.getSettings().chatDebug.value) {
             //System.out.println("Suppressed debug message:");
             //System.out.println(message);

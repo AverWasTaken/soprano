@@ -111,6 +111,8 @@ public class AltoClef {
         // This code should be run after Minecraft loads everything else in.
         // Soprano calls it from the first title screen tick (it used to be a TitleScreen mixin).
         _instance = this;
+        // baritone's quiet debug lines go to the log from here on
+        Monitors.tapBaritone();
 
         // Central Managers
         _taskRunner = new TaskRunner(this);
@@ -211,7 +213,7 @@ public class AltoClef {
             _monitors.onActiveTick(this);
         }
 
-        _monitors.onTick();
+        _monitors.onTick(this);
         _butler.tick();
         _messageSender.tick();
 
