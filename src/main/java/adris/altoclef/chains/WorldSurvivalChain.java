@@ -169,9 +169,9 @@ public class WorldSurvivalChain extends SingleTaskChain {
 
     private boolean isStuckInNetherPortal(AltoClef mod) {
         if (!WorldHelper.isInNetherPortal(mod)) return false;
-        // no user task at all is not entering a portal either
+        // nothing running means nobody asked us to be anywhere, so a player standing in a portal gets left alone
         Task userTask = mod.getUserTaskChain().getCurrentTask();
-        return userTask == null || !userTask.thisOrChildSatisfies(task -> task instanceof EnterNetherPortalTask);
+        return userTask != null && !userTask.thisOrChildSatisfies(task -> task instanceof EnterNetherPortalTask);
     }
 
     @Override
