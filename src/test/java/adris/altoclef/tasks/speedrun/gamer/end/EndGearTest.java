@@ -227,9 +227,29 @@ public class EndGearTest {
     }
 
     @Test
-    public void wornIronBeatsASpareDiamondPieceInTheSameSlot() {
+    public void aSpareDiamondPieceGoesOverWornIronInTheSameSlot() {
+        // skip unless what we hold is strictly better than what is on: a diamond helmet is, so it swaps
         FakeFacts f = ready().with(Items.DIAMOND_HELMET, 1);
+        assertEquals(List.of(Items.DIAMOND_HELMET), EndGear.armorToWear(f));
+    }
+
+    @Test
+    public void theSwappedOutIronPieceIsNotWornBack() {
+        FakeFacts f = ready().with(Items.DIAMOND_HELMET, 1);
+        f.worn.remove(Items.IRON_HELMET);
+        f.worn.add(Items.DIAMOND_HELMET);
+        // the iron helmet is still in the bag (with(..) counts it), and it ranks below what is on
         assertTrue(EndGear.armorToWear(f).isEmpty());
+    }
+
+    @Test
+    public void wornDiamondBeatsABagOfIronAndNetheriteBeatsWornDiamond() {
+        FakeFacts f = ready().with(Items.DIAMOND_CHESTPLATE, 1);
+        f.worn.remove(Items.IRON_CHESTPLATE);
+        f.worn.add(Items.DIAMOND_CHESTPLATE);
+        assertTrue(EndGear.armorToWear(f).isEmpty());
+        f.with(Items.NETHERITE_CHESTPLATE, 1);
+        assertEquals(List.of(Items.NETHERITE_CHESTPLATE), EndGear.armorToWear(f));
     }
 
     @Test

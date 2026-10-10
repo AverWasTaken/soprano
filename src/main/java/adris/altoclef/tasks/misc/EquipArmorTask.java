@@ -132,12 +132,29 @@ public class EquipArmorTask extends Task {
             }
         }
 
+        // putting a better piece over one we already wear swaps them, and the old one comes up on the cursor. the slot click is
+        // done the moment the new piece sits there, so park the old one in the bag before calling it a day
+        Optional<Slot> park = cursorArmorSpot(mod);
+        if (park.isPresent()) {
+            setDebugState("Parking the swapped piece");
+            mod.getSlotHandler().clickSlot(park.get(), 0, ClickType.PICKUP);
+        }
         return null;
+    }
+
+    // where the armor piece riding the cursor can go, empty when the cursor holds nothing of the sort (or there is no room, in
+    // which case it stays put and we do not wait on it for ever)
+    private static Optional<Slot> cursorArmorSpot(AltoClef mod) {
+        ItemStack cursor = StorageHelper.getItemStackInCursorSlot();
+        if (cursor.isEmpty() || !(cursor.getItem() instanceof ArmorItem)) {
+            return Optional.empty();
+        }
+        return mod.getItemStorage().getSlotThatCanFitInPlayerInventory(cursor, false);
     }
 
     @Override
     public boolean isFinished(AltoClef mod) {
-        return armorEquipped(mod);
+        return armorEquipped(mod) && cursorArmorSpot(mod).isEmpty();
     }
 
     @Override

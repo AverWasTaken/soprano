@@ -472,23 +472,25 @@ public final class KitPlanner {
         return have(f, "stone_pickaxe") >= 1 && (have(f, "stone_axe") >= 1 || have(f, "stone_sword") >= 1);
     }
 
-    // armor pieces we carry but are not wearing (best tier we hold per slot), for EquipArmorTask
+    // armor pieces we carry that are a better tier than what is on that slot (nothing on it counts as the worst), best tier we hold
+    // per slot, for EquipArmorTask. options run worst to best, so a diamond piece in the bag goes over worn iron and the iron it
+    // swapped out (still in the bag, as a lower tier) is never a reason to swap back
     public static List<Item> toEquip(GamerFacts f, OverworldConfig cfg) {
         List<Item> out = new ArrayList<>();
         for (String name : PiglinGold.swap(f, armorNames(cfg))) {
             Item[] options = counted(name);
-            boolean worn = Arrays.stream(options).anyMatch(f::armorEquipped);
-            if (worn) {
-                continue;
-            }
-            Item best = null;
-            for (Item option : options) {
-                if (f.count(option) > 0) {
-                    best = option;
+            int worn = -1;
+            int best = -1;
+            for (int i = 0; i < options.length; i++) {
+                if (f.armorEquipped(options[i])) {
+                    worn = i;
+                }
+                if (f.count(options[i]) > 0) {
+                    best = i;
                 }
             }
-            if (best != null) {
-                out.add(best);
+            if (best > worn) {
+                out.add(options[best]);
             }
         }
         PiglinGold.addToEquip(f, out);

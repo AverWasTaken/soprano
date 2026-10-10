@@ -1034,6 +1034,23 @@ public class KitPlannerTest {
     }
 
     @Test
+    public void ironAlreadyWornIsUpgradedAndTheNewPieceIsWornAfterTheCraft() {
+        FakeFacts bag = complete().give(Items.DIAMOND_PICKAXE, 1).give(Items.DIAMOND, 8);
+        List<KitNeed> plan = KitPlanner.plan(bag, cfg, 8);
+        assertEquals(List.of(new KitNeed("diamond_chestplate", 1)), plan);
+        // crafted: the diamonds are gone, the new piece is in the bag and the iron one still on
+        bag.items.put(Items.DIAMOND, 0);
+        bag.give(Items.DIAMOND_CHESTPLATE, 1);
+        assertEquals(List.of(Items.DIAMOND_CHESTPLATE), KitPlanner.toEquip(bag, cfg));
+        assertEquals(List.of(new KitNeed(KitNeed.EQUIP_ARMOR, 1)), KitPlanner.plan(bag, cfg, 8));
+        // worn: iron sits in the bag below it and asks for nothing, the plan is empty and stays that way
+        bag.worn.remove(Items.IRON_CHESTPLATE);
+        bag.worn.add(Items.DIAMOND_CHESTPLATE);
+        assertEquals(List.of(), KitPlanner.toEquip(bag, cfg));
+        assertEquals(List.of(), KitPlanner.plan(bag, cfg, 8));
+    }
+
+    @Test
     public void theChoiceHoldsStillThroughACraft() {
         // the pick goes into the grid (MinecraftFacts counts it, so the diamonds never dip), comes out as a pick, and the
         // chestplate that was behind it is the plan with no wobble in between
@@ -1054,5 +1071,31 @@ public class KitPlannerTest {
         bag.worn.add(Items.GOLDEN_HELMET);
         // 5 buys exactly the helmet, and the slot is the piglin piece
         assertFalse(names(KitPlanner.plan(bag, cfg, 8)).contains("diamond_helmet"));
+    }
+
+    // ---- toEquip over a tier
+
+    @Test
+    public void aBetterPieceInTheBagGoesOverWornIron() {
+        f.give(Items.IRON_CHESTPLATE, 1).give(Items.DIAMOND_CHESTPLATE, 1);
+        f.worn.add(Items.IRON_CHESTPLATE);
+        assertEquals(List.of(Items.DIAMOND_CHESTPLATE), KitPlanner.toEquip(f, cfg));
+        // and the iron one now in the bag is not a reason to swap back
+        f.worn.clear();
+        f.worn.add(Items.DIAMOND_CHESTPLATE);
+        assertEquals(List.of(), KitPlanner.toEquip(f, cfg));
+    }
+
+    @Test
+    public void netherriteGoesOverDiamondAndWornDiamondBeatsABagOfIron() {
+        f.give(Items.DIAMOND_BOOTS, 1).give(Items.NETHERITE_BOOTS, 1).give(Items.IRON_BOOTS, 1);
+        f.worn.add(Items.DIAMOND_BOOTS);
+        assertEquals(List.of(Items.NETHERITE_BOOTS), KitPlanner.toEquip(f, cfg));
+        f.worn.clear();
+        f.worn.add(Items.NETHERITE_BOOTS);
+        assertEquals(List.of(), KitPlanner.toEquip(f, cfg));
+        FakeFacts lower = new FakeFacts().give(Items.DIAMOND_LEGGINGS, 1).give(Items.IRON_LEGGINGS, 1);
+        lower.worn.add(Items.DIAMOND_LEGGINGS);
+        assertEquals(List.of(), KitPlanner.toEquip(lower, cfg));
     }
 }
