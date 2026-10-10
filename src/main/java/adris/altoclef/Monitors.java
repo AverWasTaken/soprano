@@ -4,6 +4,7 @@ import adris.altoclef.tasks.speedrun.gamer.GamerTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.tasksystem.TaskChain;
 import adris.altoclef.trace.CursorWatch;
+import adris.altoclef.trace.Lines;
 import adris.altoclef.trace.Trace;
 import adris.altoclef.trace.Vitals;
 import adris.altoclef.util.helpers.StorageHelper;
@@ -67,8 +68,7 @@ public final class Monitors {
         boolean screen = Minecraft.getInstance().screen instanceof AbstractContainerScreen<?>;
         long now = System.currentTimeMillis();
         if (cursorWatch.tick(!carried.isEmpty(), screen, now)) {
-            Debug.logInternal("MONITOR: cursor stuck " + name(carried.getItem()) + " x" + carried.getCount() + " for "
-                    + cursorWatch.stuckMs(now) / 1000 + " s, no container screen open");
+            Debug.logInternal(Lines.cursorStuck(name(carried.getItem()), carried.getCount(), cursorWatch.stuckMs(now) / 1000));
             Trace.dump("monitor:cursor");
         }
     }
@@ -89,7 +89,7 @@ public final class Monitors {
         return Vitals.format(player.getHealth(), player.getAbsorptionAmount(), player.getFoodData().getFoodLevel(),
                 player.getFoodData().getSaturationLevel(), player.getArmorValue(), held.isEmpty() ? null : name(held.getItem()),
                 carried.isEmpty() ? null : name(carried.getItem()), carried.getCount(), at.getX(), at.getY(), at.getZ(),
-                WorldHelper.getCurrentDimension().name().toLowerCase(Locale.ROOT), chain == null ? null : chain.getName(), task, gamer);
+                WorldHelper.getCurrentDimension().name().toLowerCase(Locale.ROOT), chain == null ? null : chain.getClass().getSimpleName(), task, gamer);
     }
 
     private static String name(Item item) {

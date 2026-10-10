@@ -3,6 +3,7 @@ package adris.altoclef.tasksystem;
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.tasks.movement.TimeoutWanderTask;
+import adris.altoclef.trace.Lines;
 import adris.altoclef.trace.RepeatCounter;
 import adris.altoclef.trace.StartStormWatch;
 import adris.altoclef.trace.Trace;
@@ -85,7 +86,7 @@ public abstract class Task {
     // a flag and never an action: 21 starts of one class in a minute is a loop, say so and keep the lead up
     private void watchStart() {
         if (STARTS.start(getClass(), System.currentTimeMillis())) {
-            Debug.logInternal("MONITOR: start storm " + className() + " x" + (StartStormWatch.LIMIT + 1) + " in 60 s");
+            Debug.logInternal(Lines.startStorm(className()));
             Trace.dump("monitor:storm");
         }
     }
@@ -97,7 +98,7 @@ public abstract class Task {
         }
         int times = REPEATS.hit(className() + "|" + _debugState, System.currentTimeMillis());
         if (times > 0) {
-            Debug.logInternal("repeat: " + className() + " \"" + _debugState + "\" x" + times + " in 60 s");
+            Debug.logInternal(Lines.repeat(className(), _debugState, times));
         }
     }
 
