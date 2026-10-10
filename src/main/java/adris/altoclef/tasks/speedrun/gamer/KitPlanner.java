@@ -276,7 +276,8 @@ public final class KitPlanner {
     }
 
     // gathering is false once the plan is past the gather: a lost axe is not worth a log, and neither are the beds
-    private static int woodNeed(GamerFacts f, OverworldConfig cfg, int endBeds, boolean gathering) {
+    // (package only so the wood golden can ask the iron form too)
+    static int woodNeed(GamerFacts f, OverworldConfig cfg, int endBeds, boolean gathering) {
         int[] wood = new int[2];
         List<KitItem> all = new ArrayList<>(cfg.starterKit);
         all.addAll(cfg.ironKit);
@@ -322,7 +323,8 @@ public final class KitPlanner {
     }
 
     // the first trip to the trees: just the table and the axe, so the axe is in hand for the real batch
-    private static int firstBatchLogs(GamerFacts f, OverworldConfig cfg) {
+    // (package only so the wood golden can see it)
+    static int firstBatchLogs(GamerFacts f, OverworldConfig cfg) {
         int[] wood = new int[2];
         for (KitItem k : cfg.starterKit) {
             if (isAxe(k.item)) {

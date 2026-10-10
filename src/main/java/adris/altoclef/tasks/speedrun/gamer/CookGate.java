@@ -118,12 +118,14 @@ public final class CookGate {
 
     // logs a new smoker costs: its four, and one more for a table when there is none to craft it on (the table's planks used to
     // take the fourth log, and the catalogue went chopping a tree from the bottom of the mine)
-    private static int smokerLogs(GamerFacts f) {
+    // (package only so the wood golden can see it)
+    static int smokerLogs(GamerFacts f) {
         return SMOKER_LOGS + (f.has(Items.CRAFTING_TABLE) || f.tablePlacedNearby() ? 0 : 1);
     }
 
     // a smoker we still have to make: the logs it eats are not fuel
-    private static boolean smokerToMake(GamerFacts f, Station station) {
+    // (package only so the wood golden can see it)
+    static boolean smokerToMake(GamerFacts f, Station station) {
         return station == Station.SMOKER && !f.has(Items.SMOKER) && !f.smokerPlacedNearby() && f.cookStation() == null;
     }
 
@@ -144,7 +146,8 @@ public final class CookGate {
         return woodSmelts(f, cfg, endBeds, 0);
     }
 
-    private static int woodSmelts(GamerFacts f, OverworldConfig cfg, int endBeds, int logsSpoken) {
+    // (package only so the wood golden can see the spoken form)
+    static int woodSmelts(GamerFacts f, OverworldConfig cfg, int endBeds, int logsSpoken) {
         WoodReserve.Keep keep = WoodReserve.keep(f, cfg, endBeds);
         int logs = Math.max(0, burnable(f, ItemHelper.LOG) - keep.logs() - logsSpoken);
         int planks = Math.max(0, burnable(f, ItemHelper.PLANKS) - keep.planks());
