@@ -74,6 +74,23 @@ public class VitalsTest {
     }
 
     @Test
+    public void pathAndStandComeLastSoOldGrepsStillWork() {
+        String line = Vitals.format(17f, 0f, 14, 3.2f, 10, "iron_pickaxe", null, 0, 1, 64, 2, "overworld", "UserTaskChain",
+                "<Idle>", new Vitals.Gamer("IRON", 1, "iron_ingot", 4, 6, 12), "live", 137);
+        assertTrue(line.contains(" task=\"<Idle>\" gamer=IRON att=1 head=iron_ingot x4 food=6/12 path=live stand=137"));
+        assertTrue(line.endsWith(" path=live stand=137"));
+    }
+
+    @Test
+    public void noPathWordMeansNeitherFieldIsPrinted() {
+        String line = Vitals.format(1f, 0f, 1, 0f, 0, "air", null, 0, 0, 0, 0, "overworld", "c", "t", null, null, 5);
+        assertFalse(line.contains("path="));
+        assertFalse(line.contains("stand="));
+        assertTrue(Vitals.format(1f, 0f, 1, 0f, 0, "air", null, 0, 0, 0, 0, "overworld", "c", "t", null, "none", 0)
+                .endsWith(" path=none stand=0"));
+    }
+
+    @Test
     public void missingWordsDoNotPrintNull() {
         String line = Vitals.format(1f, 0f, 1, 0f, 0, null, null, 0, 0, 0, 0, null, null, null, null);
         assertFalse(line.contains("null"));

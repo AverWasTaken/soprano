@@ -140,7 +140,7 @@ public final class Monitors {
         }
     }
 
-    private static String vitals(AltoClef mod, LocalPlayer player) {
+    private String vitals(AltoClef mod, LocalPlayer player) {
         ItemStack carried = StorageHelper.getItemStackInCursorSlot();
         ItemStack held = player.getMainHandItem();
         BlockPos at = player.blockPosition();
@@ -156,7 +156,8 @@ public final class Monitors {
         return Vitals.format(player.getHealth(), player.getAbsorptionAmount(), player.getFoodData().getFoodLevel(),
                 player.getFoodData().getSaturationLevel(), player.getArmorValue(), held.isEmpty() ? null : name(held.getItem()),
                 carried.isEmpty() ? null : name(carried.getItem()), carried.getCount(), at.getX(), at.getY(), at.getZ(),
-                WorldHelper.getCurrentDimension().name().toLowerCase(Locale.ROOT), chain == null ? null : chain.getClass().getSimpleName(), task, gamer);
+                WorldHelper.getCurrentDimension().name().toLowerCase(Locale.ROOT), chain == null ? null : chain.getClass().getSimpleName(), task, gamer,
+                StandReport.pathWord(mod.getClientBaritone()), standWatch.stillTicks());
     }
 
     private static String name(Item item) {

@@ -16,6 +16,15 @@ public final class Vitals {
     public static String format(float hp, float absorption, int hunger, float saturation, int armor, String held,
                                 String cursorItem, int cursorCount, int x, int y, int z, String dim, String chain,
                                 String task, Gamer gamer) {
+        return format(hp, absorption, hunger, saturation, armor, held, cursorItem, cursorCount, x, y, z, dim, chain, task,
+                gamer, null, 0);
+    }
+
+    // path is none, live or calc, stand is the ticks since the feet last moved. they come last so a grep for the old
+    // tail of the line keeps working. a null path leaves both off
+    public static String format(float hp, float absorption, int hunger, float saturation, int armor, String held,
+                                String cursorItem, int cursorCount, int x, int y, int z, String dim, String chain,
+                                String task, Gamer gamer, String path, int stand) {
         StringBuilder sb = new StringBuilder(160);
         sb.append("vitals hp=").append(one(hp)).append(" abs=").append(one(absorption));
         sb.append(" hunger=").append(hunger).append(" sat=").append(one(saturation));
@@ -38,6 +47,9 @@ public final class Vitals {
                 sb.append(gamer.headItem()).append(" x").append(gamer.headCount());
             }
             sb.append(" food=").append(gamer.foodUnits()).append('/').append(gamer.foodTarget());
+        }
+        if (path != null) {
+            sb.append(" path=").append(word(path)).append(" stand=").append(stand);
         }
         return sb.toString();
     }
