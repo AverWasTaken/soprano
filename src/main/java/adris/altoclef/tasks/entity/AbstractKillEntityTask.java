@@ -129,6 +129,13 @@ public abstract class AbstractKillEntityTask extends AbstractDoToEntityTask {
         return true;
     }
 
+    // eye to the nearest point of its box, like the server counts it, so a swing never spends the cooldown on a mob that is only
+    // close by the feet line. out of it, the plan is the normal approach
+    @Override
+    protected boolean inReach(AltoClef mod, Entity entity) {
+        return mod.getControllerExtras().inServerReach(entity);
+    }
+
     @Override
     protected boolean isKillTask() {
         return true;

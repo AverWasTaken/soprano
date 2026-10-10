@@ -175,7 +175,7 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
                     !mod.getMLGBucketChain().isChorusFruiting() &&
                     (mod.getPlayer().onGround() || mod.getControllerExtras().critInFlight());
             // a child that was walking to some other mob is not the one to keep
-            boolean inReach = mod.getControllerExtras().inRange(entity);
+            boolean inReach = inReach(mod, entity);
             boolean shot = result != null && result.getType() == HitResult.Type.ENTITY;
             if (isKillTask()) {
                 countStandingTicks(mod, entity, inReach && shot);
@@ -226,6 +226,12 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
             return null;
         }
         return new TimeoutWanderTask();
+    }
+
+    // close enough to interact. the feet line for everyone (trading, shearing, frames), the kill tasks ask for the reach the
+    // server means instead
+    protected boolean inReach(AltoClef mod, Entity entity) {
+        return mod.getControllerExtras().inRange(entity);
     }
 
     // the kill tasks are committed to the mob in front of them: they stand and hit what is in reach and do not shuffle off it

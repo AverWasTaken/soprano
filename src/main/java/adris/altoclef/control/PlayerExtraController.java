@@ -10,6 +10,7 @@ import adris.altoclef.util.helpers.ItemHelper;
 import baritone.api.utils.input.Input;
 import net.minecraft.client.player.LocalPlayer;
 import adris.altoclef.util.helpers.BackOffRules;
+import adris.altoclef.util.helpers.ReachRules;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -274,10 +275,13 @@ public class PlayerExtraController {
     private static double reachGap(LocalPlayer player, Entity target) {
         Vec3 eye = player.getEyePosition();
         AABB box = target.getBoundingBox();
-        double dx = Math.max(Math.max(box.minX - eye.x, 0), eye.x - box.maxX);
-        double dy = Math.max(Math.max(box.minY - eye.y, 0), eye.y - box.maxY);
-        double dz = Math.max(Math.max(box.minZ - eye.z, 0), eye.z - box.maxZ);
-        return Math.sqrt(dx * dx + dy * dy + dz * dz);
+        return ReachRules.gap(eye.x, eye.y, eye.z, box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ);
+    }
+
+    // the kill tasks' idea of "close enough to hit": the feet line the attack packet needs and the reach the server means, eye to
+    // the nearest point of the box. a zombie 3.5 away on the flat is inside the first and outside the second
+    public boolean inServerReach(Entity entity) {
+        return inRange(entity) && ReachRules.inReach(reachGap(_mod.getPlayer(), entity), reachOf(_mod.getPlayer()));
     }
 
     // how fast the target is going away from us along the flat line between us, blocks per tick (negative when it is
@@ -295,7 +299,7 @@ public class PlayerExtraController {
     // the interaction range attribute (3 for a plain player, creative and tools can change it)
     private static double reachOf(LocalPlayer player) {
         double reach = player.entityInteractionRange();
-        return reach > 0 ? reach : 3.0;
+        return reach > 0 ? reach : ReachRules.MELEE_REACH;
     }
 
     // a hop is on, or about to be, and the back-off in the kill tasks should keep its hands to itself. this asks the real
