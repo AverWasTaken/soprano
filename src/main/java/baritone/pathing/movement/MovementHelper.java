@@ -456,6 +456,20 @@ public interface MovementHelper extends ActionCosts, Helper {
                 || block == Blocks.BUBBLE_COLUMN;
     }
 
+    // can a swimmer's box pass through this block. not canWalkThrough: that one turns down water with more water
+    // over it (it's asking about standing, not floating) and flowing water. plants in the water are fine,
+    // a waterlogged anything is as solid as its shape
+    static boolean swimmerFits(BlockStateInterface bsi, int x, int y, int z, BlockState state) {
+        Block block = state.getBlock();
+        if (block == Blocks.WATER || block == Blocks.KELP || block == Blocks.KELP_PLANT || block == Blocks.SEAGRASS || block == Blocks.TALL_SEAGRASS) {
+            return true;
+        }
+        if (!state.getFluidState().isEmpty()) {
+            return false;
+        }
+        return canWalkThrough(bsi, x, y, z, state) && !avoidWalkingInto(state);
+    }
+
     /**
      * Can I walk on this block without anything weird happening like me falling
      * through? Includes water because we know that we automatically jump on

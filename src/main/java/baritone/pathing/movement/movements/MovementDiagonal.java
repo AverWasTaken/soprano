@@ -196,6 +196,12 @@ public class MovementDiagonal extends Movement {
         }
         BlockState pb0 = context.get(x, y, destZ);
         BlockState pb2 = context.get(destX, y, z);
+        if (water && context.allowSwimming && !swimCornersOpen(context, x, y, z, destX, destZ, pb0, pb2)) {
+            // a swimmer can't edge. it floats with the box at head height and coasts on momentum, so a corner it
+            // would edge past on land is one it pins itself on. mining the corner out instead means standing up in
+            // the water to do it (see shouldSwim), slow and soggy. traverse twice around it instead
+            return;
+        }
         if (ascend) {
             boolean ATop = MovementHelper.canWalkThrough(context, x, y + 2, destZ);
             boolean AMid = MovementHelper.canWalkThrough(context, x, y + 1, destZ);
@@ -277,6 +283,14 @@ public class MovementDiagonal extends Movement {
         }
         res.x = destX;
         res.z = destZ;
+    }
+
+    // both corner columns, feet and head, same rule as the diagonal ascend
+    private static boolean swimCornersOpen(CalculationContext context, int x, int y, int z, int destX, int destZ, BlockState pb0, BlockState pb2) {
+        return MovementHelper.swimmerFits(context.bsi, x, y, destZ, pb0)
+                && MovementHelper.swimmerFits(context.bsi, destX, y, z, pb2)
+                && MovementHelper.swimmerFits(context.bsi, x, y + 1, destZ, context.get(x, y + 1, destZ))
+                && MovementHelper.swimmerFits(context.bsi, destX, y + 1, z, context.get(destX, y + 1, z));
     }
 
     @Override
