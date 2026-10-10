@@ -869,7 +869,7 @@ public class WorkbenchesRegistryTest {
         assertEquals(30, Workbenches.walkBackTo(state, Kind.SMOKER, OVERWORLD, 0, 64, 0, b -> true).pos.x);
     }
 
-    // past the band the planner holds a furnace exactly when the smelt task would walk back to it: within WALK_BACK even with the
+    // past NEAR the planner holds a furnace exactly when the smelt task would walk back to it: within WALK_BACK even with the
     // cobble in the bag, out to the forget line without it, never with one in the bag. same block, same bag, same answer. the table
     // and the smoker go through the same two functions, so they get the same check
     @Test

@@ -202,10 +202,14 @@ public class StationContradictionsTest {
     // (C) BY DESIGN. a bench on its way back to the bag. the planner counts it as held (the item is about to be in the bag, so the kit
     // must not ask for table planks the moment it leaves the ground), and standing() / the container tasks do not count it. what stops
     // the task from placing or crafting a second one is the pickup veto (DoStuffInContainerTask.onTick waits while
-    // StationHook.pickingUp(kind)), which holds as long as somebody drives the pickup. it cannot hold the plan forever: a failed or
-    // timed out try puts the bench back to STANDING (failedTry), a pickup nobody drives goes back too (dropStaleDrive), one that finds
-    // our items in it goes to BUSY (abort), and the rest are forgotten (DROP_LOST, the far table). a pickup only starts when nothing
-    // needs the station soon, so the planner holding it is the plan agreeing with that
+    // StationHook.pickingUp(kind)), which holds as long as somebody drives the pickup. it ends: a failed or timed out try puts the
+    // bench back to STANDING (failedTry), a pickup nobody drives before the block is down goes back too (dropStaleDrive), one that
+    // finds our items in it goes to BUSY (abort), and the rest are forgotten (DROP_LOST, the far table) or finish. the planner holding
+    // it is the plan agreeing that the item is about to be in the bag; most pickups start because nothing needs the station soon,
+    // the ones that start while it is (done with it and the next job is far, the outside clock) are held the same way.
+    // KNOWN HOLE, not fixed: with the block already down and the pickup undriven past DRIVE_GRACE the veto lapses and dropStaleDrive
+    // skips it (broken), so the planner holds a bench whose block is gone until the pickup is driven again. the phases drive it first
+    // every tick, so it takes a fight over 5 s with the block down
     @Test
     public void aBenchComingDownIsHeldForThePlannerAndTheTaskWaitsForIt() {
         RunState state = new RunState();
@@ -242,7 +246,8 @@ public class StationContradictionsTest {
     // the mine brings back far more than the 16 spare), and the task cannot eat what the kit still owes: SmeltSplit.loads and
     // DoStuffInContainerTask.bagCanMake both count cobble minus StationHook.cobbleOwed (KitPlanner.toolCobble, the stone tools'
     // cobble, which is also the kit's stone floor while a furnace stands). short on spare cobble the split is fewer loads, never a
-    // trip for stone
+    // trip for stone. KNOWN GAP, older than this round: both count cobbled deepslate and blackstone as spare, while owed is plain
+    // cobblestone and the furnace recipe takes plain cobblestone only, so 14 cobble + 8 deepslate with 14 owed reads as 8 spare
     @Test
     public void aBusyFurnaceIsHeldForThePlannerAndTheSplitLoadMakesAnotherOnlyFromSpareCobble() {
         RunState state = new RunState();
@@ -272,7 +277,8 @@ public class StationContradictionsTest {
     // (E) FIXED. WorkbenchRules.decide used to forget a station by distance even when something was using it: 130 blocks away a standing
     // furnace with its screen open (idle = false) was dropped, and so was a table 50 away with the wood to recraft once it had been
     // outside for 5 s, while the craft using it was walking to it (the task keeps its target out to 48 + HOLD). now neither goes
-    // while it is in use, and both are decided again when the use ends. a job that went stale is dropped on its own clock
+    // while it is in use, and both are decided again when the use ends. in use is per kind (any container task of the kind in the
+    // tree, even one gathering to make a new table), so it holds every far one of that kind until that task ends. a job that went stale is dropped on its own clock
     // (FurnacePlan.dropStale), so this holds nothing for ever
     @Test
     public void decideDoesNotForgetAStationByDistanceWhileItIsInUse() {
