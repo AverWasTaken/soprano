@@ -133,6 +133,74 @@ public class StationAttemptTest {
         assertEquals(CARVE, a.phase());
     }
 
+    @Test
+    public void nineEmptyGroundedPicksThenASpotNeverWalks() {
+        StationAttempt a = new StationAttempt();
+        for (int i = 0; i < StationAttempt.NO_SPOT_TICKS - 1; i++) {
+            a.noSpot(true);
+            assertEquals(PICK, a.phase());
+        }
+        a.picked();
+        assertEquals(AIM, a.phase());
+        assertEquals(0, a.relocations());
+    }
+
+    @Test
+    public void tenEmptyGroundedPicksWalk() {
+        StationAttempt a = new StationAttempt();
+        for (int i = 0; i < StationAttempt.NO_SPOT_TICKS - 1; i++) {
+            a.noSpot(true);
+        }
+        assertEquals(PICK, a.phase());
+        a.noSpot(true);
+        assertEquals(RELOCATE, a.phase());
+        assertEquals(1, a.relocations());
+    }
+
+    // a tick in the air doesn't count, and it starts the wait over
+    @Test
+    public void airborneTicksDoNotCountAndResetTheWait() {
+        StationAttempt a = new StationAttempt();
+        for (int i = 0; i < StationAttempt.NO_SPOT_TICKS * 3; i++) {
+            a.noSpot(false);
+        }
+        assertEquals(PICK, a.phase());
+        for (int i = 0; i < StationAttempt.NO_SPOT_TICKS - 1; i++) {
+            a.noSpot(true);
+        }
+        a.noSpot(false);
+        for (int i = 0; i < StationAttempt.NO_SPOT_TICKS - 1; i++) {
+            a.noSpot(true);
+            assertEquals(PICK, a.phase());
+        }
+        a.noSpot(true);
+        assertEquals(RELOCATE, a.phase());
+    }
+
+    // the wait is for the walk. once the walks are spent the dig doesn't hang about
+    @Test
+    public void theDigDoesNotWait() {
+        StationAttempt a = new StationAttempt();
+        nothingHere(a);
+        a.arrived();
+        nothingHere(a);
+        a.arrived();
+        a.noSpot(true);
+        assertEquals(CARVE, a.phase());
+    }
+
+    @Test
+    public void aNewPickStartsTheWaitFresh() {
+        StationAttempt a = new StationAttempt();
+        for (int i = 0; i < StationAttempt.NO_SPOT_TICKS - 1; i++) {
+            a.noSpot(true);
+        }
+        a.picked();
+        a.failed();
+        assertEquals(PICK, a.phase());
+        assertEquals(0, a.noSpotTicks());
+    }
+
     // a shaft, nothing usable around. the walk is free and a block mined for a station is not, so it comes first
     @Test
     public void noSpotWalksBeforeAnythingElse() {

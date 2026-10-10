@@ -143,8 +143,11 @@ public class PlaceStationTask extends Task {
         StationSpots.Stance stance = stance(mod);
         Optional<StationSpots.Spot> spot = StationSpots.best(new World(mod), stance, _bans, _carved, why);
         if (spot.isEmpty()) {
-            Debug.logInternal("station spots: no spot around " + mod.getPlayer().blockPosition().toShortString() + ": " + why.summary());
-            _attempt.noSpot();
+            _attempt.noSpot(mod.getPlayer().onGround());
+            // once per streak, the picks that follow ask the same question
+            if (_attempt.noSpotTicks() == 1 || _attempt.phase() != StationAttempt.Phase.PICK) {
+                Debug.logInternal("station spots: no spot around " + mod.getPlayer().blockPosition().toShortString() + ": " + why.summary());
+            }
             return null;
         }
         _spot = spot.get();

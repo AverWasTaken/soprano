@@ -17,6 +17,8 @@ final class StationAttempt {
     // tries on one patch of floor before we go somewhere else
     static final int TRIES_BEFORE_RELOCATE = 3;
     static final int MAX_RELOCATIONS = 2;
+    // an empty pick has to hold this long, on the ground, before it costs a walk
+    static final int NO_SPOT_TICKS = 10;
     // holes we dig for room before we try walking somewhere else. a hole that didn't help, it's the wall's fault, not ours
     static final int MAX_CARVES = 3;
 
@@ -43,6 +45,7 @@ final class StationAttempt {
     private int carves;
     private int phaseTicks;
     private int totalTicks;
+    private int noSpotTicks;
     private int landedTicks;
     // every phase we have been in, for how()
     private final Set<Phase> reached = EnumSet.of(Phase.PICK);
@@ -99,6 +102,7 @@ final class StationAttempt {
         reached.add(next);
         phase = next;
         phaseTicks = 0;
+        noSpotTicks = 0;
         landedTicks = 0;
     }
 
@@ -118,6 +122,25 @@ final class StationAttempt {
             fallbackWhy = "nothing usable, " + relocations + " walks and " + carves + " holes dug didn't help";
             enter(Phase.FALLBACK);
         }
+    }
+
+    // one pick came back empty. a walk only follows an answer that held for NO_SPOT_TICKS grounded ticks in a row: a hop, a
+    // knockback or a mob standing in the only cell is a bad answer for a moment, not a bad patch of floor. a tick in the air
+    // doesn't count and starts the wait over. the digs and the old placer come after the walks and don't wait
+    void noSpot(boolean grounded) {
+        if (relocations >= MAX_RELOCATIONS) {
+            noSpot();
+            return;
+        }
+        noSpotTicks = grounded ? noSpotTicks + 1 : 0;
+        if (noSpotTicks >= NO_SPOT_TICKS) {
+            noSpot();
+        }
+    }
+
+    // grounded empty picks in a row, for the log line that says the first one
+    int noSpotTicks() {
+        return noSpotTicks;
     }
 
     // nothing around us that is worth (or safe) to mine out, and the walks are used up: the last stop before the old placer
