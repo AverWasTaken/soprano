@@ -28,14 +28,14 @@ public final class WanderGiveUp {
 
     // how far from its first position a wander has ever been. the first note is the anchor and nothing moves it after,
     // so an onStart that runs again after an interrupt can't hand out a fresh start
-    static final class Excursion {
+    public static final class Excursion {
         private boolean anchored;
         private double ax;
         private double ay;
         private double az;
         private double max;
 
-        void note(double x, double y, double z) {
+        public void note(double x, double y, double z) {
             if (!anchored) {
                 anchored = true;
                 ax = x;
@@ -48,7 +48,7 @@ public final class WanderGiveUp {
             max = Math.max(max, Math.sqrt(dx * dx + dy * dy + dz * dz));
         }
 
-        double max() {
+        public double max() {
             return max;
         }
     }

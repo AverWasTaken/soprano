@@ -15,6 +15,7 @@ import adris.altoclef.tasks.entity.KillEntitiesTask;
 import adris.altoclef.tasks.movement.DefaultGoToDimensionTask;
 import adris.altoclef.tasks.movement.GetToBlockTask;
 import adris.altoclef.tasks.movement.TimeoutWanderTask;
+import adris.altoclef.tasks.movement.WanderGiveUp;
 import adris.altoclef.tasksystem.Task;
 import baritone.api.utils.Dimension;
 import adris.altoclef.util.ItemTarget;
@@ -103,6 +104,9 @@ public class PlaceBedAndSetSpawnTask extends Task {
     // the search for a spot ended because the wander looking for one was stuck, not because a spawn got set. sticky
     // until resetSleep: onStart runs again after every interrupt and the wander (same instance) is still the stuck one
     private boolean _noBedSpot;
+    // ticks spent in the search branch and how far we got from where it started, see the branch
+    private int _searchTicks;
+    private WanderGiveUp.Excursion _searchExcursion = new WanderGiveUp.Excursion();
 
     public PlaceBedAndSetSpawnTask() {
 
@@ -202,6 +206,8 @@ public class PlaceBedAndSetSpawnTask extends Task {
 
     public void resetSleep() {
         _noBedSpot = false;
+        _searchTicks = 0;
+        _searchExcursion = new WanderGiveUp.Excursion();
         _spawnSet = false;
         _sleepAttemptMade = false;
         _wasSleeping = false;
@@ -344,12 +350,22 @@ public class PlaceBedAndSetSpawnTask extends Task {
                 _currentBedRegion = this.locateBedRegion(mod, mod.getPlayer().blockPosition());
             }
         }
-        if (_currentBedRegion == null) {
+        if (_currentBedRegion != null) {
+            // found one, the next search starts over
+            if (_searchTicks != 0) {
+                _searchTicks = 0;
+                _searchExcursion = new WanderGiveUp.Excursion();
+            }
+        } else {
             setDebugState("Searching for spot to place bed, wandering...");
-            // the wander can't even leave its spot, so no bed region is coming. setting a spawn is optional, so this
-            // ends the task and gaveUp tells the reader it was not a spawn. only this wander counts: the two escape
-            // wanders above (water, portal) clear the region too and must never give up
-            if (thisOrChildWanderFailing()) {
+            // nowhere to put a bed and the search can't even leave its spot. setting a spawn is optional, so this ends
+            // the task and gaveUp tells the reader it was not a spawn. the clock is ours and not the wander's: the two
+            // escape wanders above (water, portal) are the same instance as this one (infinite wanders are equal), and
+            // time spent stuck in a pond must not count against the search. same decision as the wander uses
+            Vec3 pos = mod.getPlayer().position();
+            _searchExcursion.note(pos.x(), pos.y(), pos.z());
+            _searchTicks++;
+            if (WanderGiveUp.decide(_searchTicks / 20.0, _searchExcursion.max()) == WanderGiveUp.Stage.FAILING) {
                 _noBedSpot = true;
             }
             return new TimeoutWanderTask();
