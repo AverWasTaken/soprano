@@ -16,6 +16,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.core.Holder;
 import net.minecraft.core.Vec3i;
 import net.minecraft.network.Connection;
+import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.PortalProcessor;
 import net.minecraft.world.entity.item.FallingBlockEntity;
@@ -74,11 +75,11 @@ public interface WorldHelper {
     }
 
     static Vec3i toVec3i(Vec3 pos) {
-        return new Vec3i((int) pos.x(), (int) pos.y(), (int) pos.z());
+        return new Vec3i(Mth.floor(pos.x()), Mth.floor(pos.y()), Mth.floor(pos.z()));
     }
 
     static BlockPos toBlockPos(Vec3 pos) {
-        return new BlockPos((int) pos.x(), (int) pos.y(), (int) pos.z());
+        return new BlockPos(Mth.floor(pos.x()), Mth.floor(pos.y()), Mth.floor(pos.z()));
     }
 
     static boolean isSourceBlock(AltoClef mod, BlockPos pos, boolean onlyAcceptStill) {
@@ -361,8 +362,8 @@ public interface WorldHelper {
     }
 
     static Iterable<BlockPos> getBlocksTouchingBox(AltoClef mod, AABB box) {
-        BlockPos min = new BlockPos((int) box.minX, (int) box.minY, (int) box.minZ);
-        BlockPos max = new BlockPos((int) box.maxX, (int) box.maxY, (int) box.maxZ);
+        BlockPos min = new BlockPos(Mth.floor(box.minX), Mth.floor(box.minY), Mth.floor(box.minZ));
+        BlockPos max = new BlockPos(Mth.floor(box.maxX), Mth.floor(box.maxY), Mth.floor(box.maxZ));
         return scanRegion(mod, min, max);
     }
 
