@@ -176,13 +176,21 @@ public class NetherSweepGroundTest {
 
     @Test
     public void timeSpentOnSomethingElseDoesNotCountAsNoCloser() {
-        walk(-300, 0, 0, 1);
+        walk(-300, 0, 0, 10);
         // a fight, a ghast, a pick craft: the sweep is not asked for a minute
-        assertEquals(0, walk(-300, 0, 120, 120).x());
-        assertEquals(0, walk(-300, 0, 121, 137).x());
-        // only the walking seconds add up: 1 before the gap, 17 after it, 19 now, the twentieth is the next one
-        assertEquals(0, walk(-300, 0, 138, 138).x());
-        assertEquals(100, walk(-300, 0, 139, 140).x());
+        assertEquals(0, walk(-300, 0, 70, 70).x());
+        // the clock starts over after a gap, 19 walking seconds later it is still alive and the twentieth drops it
+        assertEquals(0, walk(-300, 0, 71, 89).x());
+        assertEquals(100, walk(-300, 0, 90, 90).x());
+    }
+
+    @Test
+    public void beingDraggedFurtherAwayByAnInterruptionIsNotHeldAgainstTheWaypoint() {
+        walk(-300, 0, 0, 15);
+        // the fight ended 40 blocks further out than the best we had
+        assertEquals(0, walk(-340, 0, 60, 60).x());
+        assertEquals(0, walk(-340, 0, 61, 78).x());
+        assertEquals(100, walk(-340, 0, 79, 80).x());
     }
 
     @Test

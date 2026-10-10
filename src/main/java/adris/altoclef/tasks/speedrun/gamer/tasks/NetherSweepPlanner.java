@@ -264,11 +264,13 @@ public final class NetherSweepPlanner {
         playerZ = pz;
         // we were busy with something else (rods, a ghast, a barter) so the waypoint's clock did not run for real:
         // without this the first step back would time the waypoint out on the spot
-        // (the no progress clock only adds up the time we really stepped, same reason)
         stepSeconds = Double.isNaN(lastStepAt) ? 0 : now - lastStepAt;
         if (stepSeconds > IDLE_SECONDS) {
             waypointSince = now;
             stepSeconds = 0;
+            // and whatever dragged us off (a fight, a ghast run) moved us, so the old best distance means nothing either
+            bestDist = Double.NaN;
+            stuckFor = 0;
         }
         lastStepAt = now;
         if (goalMet(goal)) {
