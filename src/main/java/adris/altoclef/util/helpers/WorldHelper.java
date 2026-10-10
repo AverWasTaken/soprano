@@ -238,12 +238,19 @@ public interface WorldHelper {
         return -1;
     }
 
+    // the block would take over BreakRules.MAX_TICKS with the best thing in the bag (obsidian under an iron pick). not a
+    // question for bedrock or liquids, those say what they always said
+    static boolean tooSlowToBreak(AltoClef mod, BlockPos pos) {
+        return BreakRules.tooSlow(mod.getPlayer().getInventory().items, mod.getWorld().getBlockState(pos));
+    }
+
     static boolean canBreak(AltoClef mod, BlockPos pos) {
         // cheap rejects go first. the context is cached per tick now but plausibleToBreak and the ocean check in canReach
         // still cost something, and most callers are asking about 25 blocks that mostly fail one of these
         if (mod.getWorld().getBlockState(pos).getDestroySpeed(mod.getWorld(), pos) < 0
                 || mod.getExtraBaritoneSettings().shouldAvoidBreaking(pos)
-                || mod.getBlockTracker().unreachable(pos)) {
+                || mod.getBlockTracker().unreachable(pos)
+                || tooSlowToBreak(mod, pos)) {
             return false;
         }
         // the old "JANK: check without paused interactions" toggle lives in the cache now, that's where it's read.

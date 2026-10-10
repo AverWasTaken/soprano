@@ -2,6 +2,7 @@ package adris.altoclef.tasks.construction;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.util.helpers.AnnoyingBlocks;
+import adris.altoclef.util.helpers.BreakRules;
 import adris.altoclef.Debug;
 import adris.altoclef.tasks.movement.RunAwayFromPositionTask;
 import adris.altoclef.tasks.movement.SafeRandomShimmyTask;
@@ -88,6 +89,8 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
     private String _what = "block";
     // said once that we are swinging with something that is not a tool
     private boolean _handSaid;
+    // said once that this block is not worth the time, and banned it
+    private boolean _slowSaid;
     // the swinging distance goal didn't work out here, stand next to it
     private boolean closeIn;
     // cells we stood in beside the block without a ray to it, so closing in tries somewhere else each time
@@ -491,11 +494,31 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
         mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ClickType.PICKUP);
     }
 
+    private Task refuseSlowBreak(AltoClef mod, BlockState there) {
+        String time = BreakRules.describe(mod.getPlayer().getInventory().items, there);
+        if (!_slowSaid) {
+            _slowSaid = true;
+            Debug.logMessage("not breaking " + _what + " at " + _pos.toShortString() + ", " + time);
+            mod.getClientBaritone().getPathingBehavior().forceCancel();
+            mod.getBlockTracker().requestBlockUnreachable(_pos, 0, "takes " + time + " to break");
+        }
+        setDebugState("Not breaking " + _what + ", " + time, "Skipping a block that takes too long");
+        isMining = false;
+        mod.getClientBaritone().getInputOverrideHandler().setInputForceState(Input.CLICK_LEFT, false);
+        stopBackingUp(mod);
+        return null;
+    }
+
     @Override
     protected Task onTick(AltoClef mod) {
         BlockState there = mod.getWorld().getBlockState(_pos);
         if (!there.isAir()) {
             _what = BuiltInRegistries.BLOCK.getKey(there.getBlock()).getPath();
+        }
+        // a break that takes minutes is not a break. the ban is what a failed break ends in anyway (the progress checker
+        // below does the same after its timeout), this just doesn't make us swing at it until then
+        if (!there.isAir() && BreakRules.tooSlow(mod.getPlayer().getInventory().items, there)) {
+            return refuseSlowBreak(mod, there);
         }
         // Check if there is white wool at the specified position
         if (there.getBlock() == Blocks.WHITE_WOOL) {

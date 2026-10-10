@@ -24,7 +24,7 @@ public final class ToolPick {
         boolean tool = ItemHelper.isTool(stack.getItem());
         boolean shears = stack.getItem() == Items.SHEARS && ItemHelper.areShearsEffective(state.getBlock());
         // only a tool that could matter gets the speed worked out, most of a bag is cobble and food
-        boolean worthAsking = tool && !stack.isEmpty();
+        boolean worthAsking = (tool || shears) && !stack.isEmpty();
         return new Option(tool, tool && stack.isCorrectToolForDrops(state), shears, worthAsking ? ToolSet.calculateSpeedVsBlock(stack, state) : 0);
     }
 
