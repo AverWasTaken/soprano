@@ -211,6 +211,7 @@ public class KillAura {
                 entity.distanceToSqr(mod.getPlayer()) < 40) {
             if (entity instanceof LargeFireball) {
                 mod.getControllerExtras().attack(entity);
+                return;
             }
             boolean canAttack;
             if (equipSword) {
