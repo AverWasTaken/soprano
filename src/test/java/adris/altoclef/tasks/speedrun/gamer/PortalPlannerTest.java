@@ -29,6 +29,8 @@ public class PortalPlannerTest {
     @Before
     public void setUp() {
         cfg = new OverworldConfig();
+        // the gate tests below pin the list without the nether picks, those have their own tests at the bottom
+        cfg.netherSparePicks = 0;
     }
 
     @Test
@@ -192,6 +194,53 @@ public class PortalPlannerTest {
         FakeFacts f = readyToGo().give(Items.GOLD_INGOT, 9).give(Items.GOLDEN_BOOTS, 1);
         f.worn.add(Items.GOLDEN_BOOTS);
         assertTrue(PortalPlanner.gate(f, cfg, 10).isEmpty());
+    }
+
+    // ---- the spare picks for the nether
+
+    private List<KitNeed> picksGate(FakeFacts f) {
+        cfg.netherSparePicks = 3;
+        return PortalPlanner.gate(f, cfg, 10);
+    }
+
+    @Test
+    public void gateAsksForThreeSparesOnTopOfTheIronPick() {
+        FakeFacts f = readyToGo().give(Items.IRON_PICKAXE, 1);
+        // the iron pick is the one we dig with, three stone ones are the spares
+        assertEquals(List.of(new KitNeed("stone_pickaxe", 3)), picksGate(f));
+    }
+
+    @Test
+    public void gateCountsEveryTierAndKeepsTheTargetAboveTheStoneOnesHeld() {
+        FakeFacts f = readyToGo().give(Items.IRON_PICKAXE, 1).give(Items.STONE_PICKAXE, 1).give(Items.DIAMOND_PICKAXE, 1);
+        // three usable picks of four: one more, and the target is exact stone picks so it is 1 held + 1
+        assertEquals(List.of(new KitNeed("stone_pickaxe", 2)), picksGate(f));
+        f.give(Items.STONE_PICKAXE, 1);
+        assertTrue(picksGate(f).isEmpty());
+    }
+
+    @Test
+    public void aWornPickIsSpentAndDoesNotCountAsASpare() {
+        FakeFacts f = readyToGo().give(Items.IRON_PICKAXE, 1).give(Items.STONE_PICKAXE, 2);
+        f.spent.put(Items.STONE_PICKAXE, 1);
+        // 3 usable of 4, the worn one is still in the bag so the catalogue's count starts above it: 3 stone held + 1
+        assertEquals(List.of(new KitNeed("stone_pickaxe", 4)), picksGate(f));
+    }
+
+    @Test
+    public void gateWithNoPickAtAllWantsFourAndPutsThemBeforeTheBuildBlocks() {
+        FakeFacts f = new FakeFacts();
+        cfg.netherSparePicks = 3;
+        List<String> names = PortalPlanner.gate(f, cfg, 10).stream().map(KitNeed::catalogueName).toList();
+        assertEquals(List.of("food", "bucket", "water_bucket", "flint_and_steel", "stone_pickaxe", "build_blocks"), names);
+        assertEquals(4, PortalPlanner.gate(f, cfg, 10).get(4).count());
+    }
+
+    @Test
+    public void zeroSparesSwitchesTheNeedOff() {
+        cfg.netherSparePicks = 0;
+        assertTrue(PortalPlanner.gate(readyToGo().give(Items.STONE_PICKAXE, 1), cfg, 10).isEmpty());
+        assertTrue("not even for a bag with no pick", PortalPlanner.gate(readyToGo(), cfg, 10).isEmpty());
     }
 
     @Test

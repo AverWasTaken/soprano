@@ -112,6 +112,12 @@ public final class PortalPlanner {
         if (unworn > 0) {
             out.add(new KitNeed(KitNeed.EQUIP_ARMOR, unworn));
         }
+        // the nether has no stone and no trees worth the name, so the picks it will wear out are made here. before the build
+        // blocks: the picks eat cobble and the blocks are what is left after that
+        int picks = KitPlanner.sparePicksShort(f, cfg);
+        if (picks > 0) {
+            out.add(new KitNeed("stone_pickaxe", KitPlanner.held(f, "stone_pickaxe") + picks));
+        }
         if (f.buildBlocks() < cfg.portalBuildBlocks) {
             out.add(new KitNeed(KitNeed.BUILD_BLOCKS, cfg.portalBuildBlocks));
         }

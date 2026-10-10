@@ -40,6 +40,10 @@ public class OverworldConfig {
             // sticks only, no iron. for ladder clutching on the long falls in the nether (one ladder gets picked back up)
             new KitItem("ladder", 3)));
     public ArmorPlan armorPlan = ArmorPlan.FULL_IRON;
+    // stone-or-better pickaxes the bag holds on top of the one we dig with when the portal is entered (PortalPlanner.gate). the
+    // nether digs netherrack all day and a stone pick is 3 cobble and 2 sticks, nothing next to running out. 0 = off. a plain
+    // number and not a kit list, so an old saved config just gets 3 and GamerConfig.VERSION stays
+    public int netherSparePicks = 3;
     // diamonds in the bag (mined, or out of a chest) get crafted into upgrades instead of sitting there: a pick, then armor, see
     // DiamondSpend. off = the plan is exactly what it was. a plain flag, not a kit list, so an old saved config just gets true
     public boolean diamondSpend = true;

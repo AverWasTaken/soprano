@@ -744,6 +744,12 @@ mine("pale_oak_sapling", Blocks.PALE_OAK_LEAVES, Items.PALE_OAK_SAPLING);
         return Collections.unmodifiableMap(_craftedRecipes);
     }
 
+    // the recipe a shaped catalogue item is crafted with (null for anything else), for a caller that has to craft from the bag
+    // and must not go through the catalogue's tasks, which collect whatever the bag is short of
+    public static RecipeTarget recipeOf(String name) {
+        return _craftedRecipes.get(name);
+    }
+
     public static Collection<String> resourceNames() {
         return _nameToResourceTask.keySet();
     }

@@ -1,0 +1,190 @@
+package adris.altoclef.tasks.speedrun.gamer;
+
+import adris.altoclef.tasks.speedrun.gamer.NetherPick.Bag;
+import adris.altoclef.tasks.speedrun.gamer.NetherPick.Tier;
+import baritone.api.utils.Dimension;
+import net.minecraft.SharedConstants;
+import net.minecraft.server.Bootstrap;
+import net.minecraft.world.item.Items;
+import org.junit.BeforeClass;
+import org.junit.Test;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
+
+public class NetherPickTest {
+    @BeforeClass
+    public static void boot() {
+        SharedConstants.tryDetectVersion();
+        Bootstrap.bootStrap();
+    }
+
+    private static FakeFacts nether() {
+        FakeFacts f = new FakeFacts();
+        f.dimension = Dimension.NETHER;
+        return f;
+    }
+
+    @Test
+    public void anEmptyBagMakesNothing() {
+        assertEquals(Tier.NONE, NetherPick.choose(nether()));
+    }
+
+    @Test
+    public void threeIngotsAndNoWoodMakeNothing() {
+        assertEquals(Tier.NONE, NetherPick.choose(nether().give(Items.IRON_INGOT, 3)));
+    }
+
+    @Test
+    public void threeIngotsOneStemAndATableMakeAnIronPick() {
+        // the stem is 4 planks, 2 of them the sticks, the table is already in the bag
+        FakeFacts f = nether().give(Items.IRON_INGOT, 3).give(Items.CRIMSON_STEM, 1).give(Items.CRAFTING_TABLE, 1);
+        assertEquals(Tier.IRON, NetherPick.choose(f));
+    }
+
+    @Test
+    public void threeIngotsAndAStemButNoTableIsOnePlankShort() {
+        // 2 for the sticks + 4 for the table = 6 planks, one stem is 4
+        FakeFacts f = nether().give(Items.IRON_INGOT, 3).give(Items.CRIMSON_STEM, 1);
+        assertEquals(Tier.NONE, NetherPick.choose(f));
+        assertEquals(Tier.IRON, NetherPick.choose(f.give(Items.WARPED_PLANKS, 2)));
+    }
+
+    @Test
+    public void cobbleAndSticksNeedNoWoodBeyondTheTable() {
+        FakeFacts f = nether().give(Items.COBBLESTONE, 3).give(Items.STICK, 2);
+        // no table and no planks to make one
+        assertEquals(Tier.NONE, NetherPick.choose(f));
+        assertEquals(Tier.STONE, NetherPick.choose(f.give(Items.CRAFTING_TABLE, 1)));
+    }
+
+    @Test
+    public void aTableStandingNextToUsCountsAsOne() {
+        FakeFacts f = nether().give(Items.COBBLESTONE, 3).give(Items.STICK, 2);
+        f.tablePlaced = true;
+        assertEquals(Tier.STONE, NetherPick.choose(f));
+    }
+
+    @Test
+    public void twoStemsAloneMakeAWoodenPick() {
+        // 8 planks: 3 head + 2 sticks + 4 table = 9. one short
+        FakeFacts f = nether().give(Items.CRIMSON_STEM, 2);
+        assertEquals(Tier.NONE, NetherPick.choose(f));
+        // a table in the bag makes it 5 of 8
+        assertEquals(Tier.WOODEN, NetherPick.choose(f.give(Items.CRAFTING_TABLE, 1)));
+    }
+
+    @Test
+    public void aUsablePickMeansNoCraft() {
+        FakeFacts f = nether().give(Items.IRON_INGOT, 3).give(Items.STICK, 2).give(Items.CRAFTING_TABLE, 1)
+                .give(Items.STONE_PICKAXE, 1);
+        assertEquals(Tier.NONE, NetherPick.choose(f));
+    }
+
+    @Test
+    public void aWornPickDoesNotCount() {
+        // MinecraftFacts keeps worn picks out of count(), they are only 'spent'
+        FakeFacts f = nether().give(Items.IRON_INGOT, 3).give(Items.STICK, 2).give(Items.CRAFTING_TABLE, 1);
+        f.spent.put(Items.IRON_PICKAXE, 1);
+        assertEquals(Tier.IRON, NetherPick.choose(f));
+    }
+
+    @Test
+    public void ironBeatsStoneBeatsWood() {
+        Bag all = new Bag(3, 3, 20, 4, 0, true);
+        assertEquals(Tier.IRON, NetherPick.choose(all));
+        assertEquals(Tier.STONE, NetherPick.choose(new Bag(2, 3, 20, 4, 0, true)));
+        assertEquals(Tier.WOODEN, NetherPick.choose(new Bag(2, 2, 20, 4, 0, true)));
+    }
+
+    // the whole point: a tier only ever comes back when every input count is in the bag, whatever the bag is
+    @Test
+    public void aTierIsNeverChosenWhenAnInputIsShort() {
+        for (int ingots = 0; ingots <= 4; ingots++) {
+            for (int cobble = 0; cobble <= 4; cobble++) {
+                for (int planks = 0; planks <= 10; planks++) {
+                    for (int sticks = 0; sticks <= 3; sticks++) {
+                        for (int logs = 0; logs <= 3; logs++) {
+                            for (boolean table : new boolean[]{false, true}) {
+                                Bag b = new Bag(ingots, cobble, planks, sticks, logs, table);
+                                Tier t = NetherPick.choose(b);
+                                if (t == Tier.NONE) {
+                                    continue;
+                                }
+                                String why = t + " from " + b;
+                                int head = t == Tier.IRON ? ingots : t == Tier.STONE ? cobble : planks + 4 * logs;
+                                assertTrue(why, head >= 3);
+                                assertTrue(why, NetherPick.woodNeeded(b, t) <= planks + 4 * logs);
+                                // sticks short = wood for them is in the count, none short = no wood asked for them
+                                if (sticks >= 2 && table && t != Tier.WOODEN) {
+                                    assertEquals(why, 0, NetherPick.woodNeeded(b, t));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    public void theCraftRunsPlanksSticksTableThenThePick() {
+        // two stems and ingots, nothing else: cut them up (8 planks), sticks (2), the table (4), then the pick
+        Bag b = new Bag(3, 0, 0, 0, 2, false);
+        assertEquals(NetherPick.Stage.PLANKS, NetherPick.stage(b, Tier.IRON));
+        b = new Bag(3, 0, 8, 0, 0, false);
+        assertEquals(NetherPick.Stage.STICKS, NetherPick.stage(b, Tier.IRON));
+        // the sticks took 2 planks and the need dropped by 2 with them: still covered
+        b = new Bag(3, 0, 6, 4, 0, false);
+        assertEquals(NetherPick.Stage.TABLE, NetherPick.stage(b, Tier.IRON));
+        b = new Bag(3, 0, 2, 4, 0, true);
+        assertEquals(NetherPick.Stage.PICK, NetherPick.stage(b, Tier.IRON));
+    }
+
+    @Test
+    public void aStageNeverSurvivesAShortInput() {
+        // the table went down but the planks were the last 4 of the table's: nothing is owed any more, still fine
+        assertEquals(NetherPick.Stage.PICK, NetherPick.stage(new Bag(3, 0, 0, 2, 0, true), Tier.IRON));
+        // an ingot fell out of the bag mid craft
+        assertEquals(NetherPick.Stage.ABORT, NetherPick.stage(new Bag(2, 0, 0, 2, 0, true), Tier.IRON));
+        // the sticks are gone and so is the wood to make them
+        assertEquals(NetherPick.Stage.ABORT, NetherPick.stage(new Bag(3, 0, 1, 0, 0, true), Tier.IRON));
+    }
+
+    // every stage on the way keeps the whole craft covered, whatever bag it starts from, so ABORT can only mean something was lost
+    @Test
+    public void everyStageStepKeepsTheCraftCovered() {
+        for (int planks = 0; planks <= 10; planks++) {
+            for (int sticks = 0; sticks <= 3; sticks++) {
+                for (int logs = 0; logs <= 3; logs++) {
+                    for (boolean table : new boolean[]{false, true}) {
+                        Bag b = new Bag(3, 3, planks, sticks, logs, table);
+                        for (Tier t : new Tier[]{Tier.IRON, Tier.STONE, Tier.WOODEN}) {
+                            if (!NetherPick.covered(b, t)) {
+                                continue;
+                            }
+                            Bag next = switch (NetherPick.stage(b, t)) {
+                                case PLANKS -> new Bag(b.ingots(), b.cobble(), b.planks() + 4, b.sticks(), b.logs() - 1, b.table());
+                                case STICKS -> new Bag(b.ingots(), b.cobble(), b.planks() - 2, b.sticks() + 4, b.logs(), b.table());
+                                case TABLE -> new Bag(b.ingots(), b.cobble(), b.planks() - 4, b.sticks(), b.logs(), true);
+                                default -> null;
+                            };
+                            if (next != null) {
+                                assertTrue(b + " -> " + next + " as " + t, NetherPick.covered(next, t));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    public void theLinesNameTheBagAndTheTier() {
+        assertEquals("nether: no pickaxe left, crafting stone from the bag", NetherPick.craftLine(Tier.STONE));
+        assertEquals("nether: no pickaxe and nothing to make one from (ingots 2, cobble 1, planks 9, sticks 0, table no)",
+                NetherPick.shortLine(new Bag(2, 1, 1, 0, 2, false)));
+        assertFalse(NetherPick.covered(new Bag(3, 0, 0, 0, 0, false), Tier.IRON));
+    }
+}

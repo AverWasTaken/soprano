@@ -171,7 +171,9 @@ public class GamerTask extends Task {
                 Items.IRON_PICKAXE, Items.DIAMOND_PICKAXE, Items.IRON_SWORD, Items.DIAMOND_SWORD, Items.IRON_AXE, Items.DIAMOND_AXE,
                 Items.IRON_INGOT, Items.RAW_IRON, Items.GOLD_INGOT, Items.DIAMOND, Items.COAL, Items.CHARCOAL, Items.FLINT,
                 Items.SHEARS, Items.CARVED_PUMPKIN, Items.GOLDEN_BOOTS, Items.GOLDEN_HELMET, Items.GOLD_BLOCK, Items.GOLD_NUGGET,
-                Items.RAW_GOLD, Items.LADDER};
+                Items.RAW_GOLD, Items.LADDER,
+                // the nether digs a lot of netherrack and the spares are all that stands between that and bare hands
+                Items.STONE_PICKAXE, Items.WOODEN_PICKAXE};
         Item[] all = own;
         for (Item[] more : new Item[][]{ItemHelper.BED, ItemHelper.WOOL, ItemHelper.IRON_ARMORS, ItemHelper.DIAMOND_ARMORS, ItemHelper.GOLDEN_ARMORS}) {
             all = ArrayUtils.addAll(all, more);

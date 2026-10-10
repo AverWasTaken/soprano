@@ -12,6 +12,7 @@ import adris.altoclef.tasks.speedrun.gamer.EyeMath;
 import adris.altoclef.tasks.speedrun.gamer.GamerContext;
 import adris.altoclef.tasks.speedrun.gamer.GamerFacts;
 import adris.altoclef.tasks.speedrun.gamer.GamerPhase;
+import adris.altoclef.tasks.speedrun.gamer.NetherPick;
 import adris.altoclef.tasks.speedrun.gamer.PhaseHandler;
 import adris.altoclef.tasks.speedrun.gamer.PiglinGold;
 import adris.altoclef.tasks.speedrun.gamer.ResourceDetour;
@@ -25,6 +26,7 @@ import adris.altoclef.tasks.speedrun.gamer.tasks.GhastWatch;
 import adris.altoclef.tasks.speedrun.gamer.tasks.HoldLatch;
 import adris.altoclef.tasks.speedrun.gamer.tasks.HomePortalWalk;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NetherGround;
+import adris.altoclef.tasks.speedrun.gamer.tasks.NetherPickTask;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NetherSweepPlanner;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NetherSweepPlanner.Goal;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NetherSweepPlanner.Sight;
@@ -38,6 +40,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.monster.EnderMan;
+import net.minecraft.world.entity.monster.Blaze;
 import net.minecraft.world.entity.monster.Ghast;
 import net.minecraft.world.entity.monster.piglin.Piglin;
 import net.minecraft.world.entity.player.Player;
@@ -94,7 +97,14 @@ public class NetherPhase implements PhaseHandler {
     private final ResourceDetour gravel = ResourceDetour.gravel();
     // a barter ticked this recently is still going (see gravelSide)
     private static final double TRADE_FRESH_SECONDS = 1;
+    // a pick craft that fell over (an input went missing, or it hung) is not tried again for this long
+    private static final double PICK_RETRY_SECONDS = 60;
     private Task boots;
+    // the pick we are making from the bag (see pickSide) and whether we already said there is nothing to make one from
+    private NetherPick.Tier pickTier = NetherPick.Tier.NONE;
+    private NetherPickTask pickTask;
+    private double pickRetryAt;
+    private boolean noPickSaid;
     private TradeWithPiglinsTask trade;
     private int tradeTarget;
 
@@ -186,6 +196,10 @@ public class NetherPhase implements PhaseHandler {
         hunt = null;
         trade = null;
         boots = null;
+        pickTier = NetherPick.Tier.NONE;
+        pickTask = null;
+        pickRetryAt = 0;
+        noPickSaid = false;
         flee = null;
         fleeUntil = 0;
         lastHurt = 0;
@@ -238,7 +252,61 @@ public class NetherPhase implements PhaseHandler {
         if (flint != null) {
             return flint;
         }
+        Task pick = pickSide(mod, ctx, now);
+        if (pick != null) {
+            return pick;
+        }
         return nextStep(mod, ctx, now);
+    }
+
+    // no pick that works and the bag can make one right now: make it, here, before the next netherrack is dug by hand. only from
+    // what the bag holds (NetherPick checks every input, the task is dropped the tick one is short), so this never turns into a
+    // collection trip in a dimension with no cobble and no oaks. not at a spawner, not with a blaze or a ghast in sight, not while a
+    // trade or a pearl hunt is going: the same reasons the gravel detour stays out. a fight is the combat chain's and never asks us
+    private Task pickSide(AltoClef mod, GamerContext ctx, double now) {
+        GamerFacts f = ctx.facts();
+        if (NetherPick.hasUsablePick(f)) {
+            pickTier = NetherPick.Tier.NONE;
+            pickTask = null;
+            noPickSaid = false;
+            return null;
+        }
+        NetherPick.Bag bag = NetherPick.bagOf(f);
+        // the tier we started stays while the bag still covers it, or a table going down (planks into the table) could flip it
+        NetherPick.Tier tier = pickTier != NetherPick.Tier.NONE && NetherPick.covered(bag, pickTier) ? pickTier : NetherPick.choose(bag);
+        if (tier == NetherPick.Tier.NONE) {
+            pickTier = tier;
+            pickTask = null;
+            if (!noPickSaid) {
+                noPickSaid = true;
+                ctx.log(NetherPick.shortLine(bag));
+            }
+            return null;
+        }
+        noPickSaid = false;
+        if (pickBusy(mod, ctx, now) || now < pickRetryAt) {
+            return null;
+        }
+        if (pickTask != null && pickTask.failed()) {
+            // stuck or an input went missing under us: leave it alone for a while, the sweep goes on with what it has
+            pickTask = null;
+            pickRetryAt = now + PICK_RETRY_SECONDS;
+            return null;
+        }
+        if (tier != pickTier || pickTask == null) {
+            pickTier = tier;
+            pickTask = new NetherPickTask(tier, () -> NetherPick.bagOf(ctx.facts()), () -> NetherPick.hasUsablePick(ctx.facts()));
+            ctx.log(NetherPick.craftLine(tier));
+        }
+        hudState = "Making a pickaxe";
+        return pickTask;
+    }
+
+    private boolean pickBusy(AltoClef mod, GamerContext ctx, double now) {
+        boolean atSpawner = rodsTask != null && (rodsTask.currentSpawner() != null || rodsTask.isCampingSpawner());
+        boolean trading = barterTickAt >= 0 && now - barterTickAt < TRADE_FRESH_SECONDS;
+        boolean hunting = pearlsNext(ctx) && mod.getEntityTracker().entityFound(EnderMan.class);
+        return atSpawner || trading || hunting || mod.getEntityTracker().entityFound(Blaze.class, Ghast.class);
     }
 
     // the gravel detour, between the ghast cover and the next step. a spawner we are on or a trade that is going wins outright

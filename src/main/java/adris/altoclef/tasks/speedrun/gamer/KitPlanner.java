@@ -149,6 +149,16 @@ public final class KitPlanner {
         return name.endsWith("_pickaxe") || name.endsWith("_axe") || name.endsWith("_sword");
     }
 
+    // stone-or-better picks we still need to make to walk into the nether with the one we dig with plus netherSparePicks that are
+    // not worn out. have() counts the better tiers and leaves worn ones out (they are 'spent'), so an iron pick plus two stone
+    // ones is three, and a diamond pick is a pick like any other. 0 when the bag has them
+    public static int sparePicksShort(GamerFacts f, OverworldConfig cfg) {
+        if (cfg.netherSparePicks <= 0) {
+            return 0;
+        }
+        return Math.max(0, 1 + cfg.netherSparePicks - have(f, "stone_pickaxe"));
+    }
+
     // any pickaxe at all in the bag, worn out ones included: it still breaks blocks, it just is not one we count on
     public static boolean holdsAnyPick(GamerFacts f) {
         for (String tier : TIERS) {
