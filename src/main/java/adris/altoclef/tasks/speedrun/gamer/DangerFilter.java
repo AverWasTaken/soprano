@@ -50,21 +50,25 @@ public final class DangerFilter {
         }
         Bans bans = mod.getBans();
         Dimension dim = WorldHelper.getCurrentDimension();
-        blacklistOnCopper(mod, tracker, bans, dim, Blocks.CRAFTING_TABLE);
-        blacklistOnCopper(mod, tracker, bans, dim, Blocks.CHEST);
+        blacklistOnCopper(mod, tracker, bans, dim, state, Blocks.CRAFTING_TABLE);
+        blacklistOnCopper(mod, tracker, bans, dim, state, Blocks.CHEST);
         for (Block bed : beds) {
-            blacklistOnCopper(mod, tracker, bans, dim, bed);
+            blacklistOnCopper(mod, tracker, bans, dim, state, bed);
         }
         blacklistWitchOrPillageTables(mod, tracker, bans, dim, state);
         blacklistNearOutposts(mod, tracker, bans, dim);
     }
 
     // trial chambers are built on copper, a table or bed or chest on top of it is not ours to take
-    private void blacklistOnCopper(AltoClef mod, BlockTracker tracker, Bans bans, Dimension dim, Block block) {
+    private void blacklistOnCopper(AltoClef mod, BlockTracker tracker, Bans bans, Dimension dim, RunState state, Block block) {
         if (!tracker.isTracking(block)) {
             return;
         }
         for (BlockPos pos : tracker.getKnownLocations(block)) {
+            // our own table on a copper floor is still ours (there is no placed list for chests or beds)
+            if (block == Blocks.CRAFTING_TABLE && ownStation(state == null ? null : state.placedTables, pos)) {
+                continue;
+            }
             Block below = mod.getWorld().getBlockState(pos.below()).getBlock();
             if (isCopper(below)) {
                 BanPolicy.trap(bans, dim, pos.getX(), pos.getY(), pos.getZ(), "trial chamber furniture");
