@@ -21,6 +21,8 @@ import net.minecraft.world.entity.monster.Guardian;
 import net.minecraft.world.entity.monster.Shulker;
 import net.minecraft.world.entity.monster.Spider;
 import net.minecraft.world.entity.monster.Vex;
+import net.minecraft.world.entity.monster.Witch;
+import net.minecraft.world.entity.monster.breeze.Breeze;
 import net.minecraft.world.entity.monster.Drowned;
 import net.minecraft.world.entity.monster.RangedAttackMob;
 import net.minecraft.world.entity.monster.CrossbowAttackMob;
@@ -144,6 +146,8 @@ public class MobReachability {
     }
 
     private void noteIgnored(Mob mob, Verdict verdict) {
+        // a shooter that "can't reach us" still hurts from where it stands, so the line would be a lie about it
+        if (isRanged(mob)) return;
         if (_logged.add(((long) mob.getId() << 3) | verdict.ordinal())) {
             Debug.logInternal("Ignoring " + shortName(mob) + " #" + mob.getId() + ", it can't reach us (" + verdict.name().toLowerCase() + ")");
         }
@@ -183,7 +187,9 @@ public class MobReachability {
         // drowned only shoot if they found a trident, piglins only if they hold a crossbow. otherwise they are melee
         if (mob instanceof Piglin) return mob.isHolding(Items.CROSSBOW);
         if (mob instanceof Drowned) return mob.isHolding(Items.TRIDENT);
-        return mob instanceof RangedAttackMob || mob instanceof CrossbowAttackMob || mob instanceof SpellcasterIllager;
+        // (the witch is a RangedAttackMob already and the breeze is not: it shoots wind charges from across the room)
+        return mob instanceof RangedAttackMob || mob instanceof CrossbowAttackMob || mob instanceof SpellcasterIllager
+                || mob instanceof Witch || mob instanceof Breeze;
     }
 
     private static Terrain terrain(Level level) {

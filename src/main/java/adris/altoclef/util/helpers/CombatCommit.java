@@ -95,6 +95,10 @@ public final class CombatCommit {
     // a run that something in contact keeps hitting us through for this long is not working, and an armed bot turns on it
     public static final long BITTEN_TICKS = 20;
 
+    // how far a lobber that hit us is still worth a fight (FoeRules.WITCH_HIT_RANGE is the same number from the other side:
+    // how far a witch can be and still be what the poison is blamed on)
+    public static final double LOBBER_RANGE = FoeRules.WITCH_HIT_RANGE;
+
     // never hit us
     public static final long NEVER = Long.MAX_VALUE / 4;
 
@@ -139,7 +143,10 @@ public final class CombatCommit {
         // lands 8 to 13 in one swing (wither skeleton, hoglin, brute, vindicator): a run at HEAVY_FLEE_HP instead of FLEE_HP
         HEAVY,
         // not a fight at any hp (warden, wither): whatever fires, it is a run
-        UNTOUCHABLE
+        UNTOUCHABLE,
+        // throws things from where it stands (the witch). a poison that keeps ticking is the hit, so one that hit us is a fight
+        // from LOBBER_RANGE and not only in contact: it never walks up to us, and waiting for it is how a minute of poison happens
+        LOBBER
     }
 
     // an angry hostile that can hurt us, as plain numbers. sinceHit: ticks since it hit us (NEVER for not yet)
@@ -153,6 +160,11 @@ public final class CombatCommit {
 
         public Foe(int id, double distance, boolean ranged, boolean creeper, long sinceHit, Kind kind) {
             this(id, distance, ranged, creeper, sinceHit, kind, Double.POSITIVE_INFINITY);
+        }
+
+        // how far away a hit of its counts as "on us" for the fight rules: in contact, or for a lobber where it stands
+        public double strikeRange() {
+            return kind == Kind.LOBBER ? LOBBER_RANGE : CONTACT;
         }
 
         // close enough that a swing of ours lands, by the number the server uses
@@ -240,7 +252,7 @@ public final class CombatCommit {
         Foe hit = null;
         for (Foe foe : foes) {
             boolean hitCounts = freshOnly ? foe.fresh() : foe.hitUs();
-            if (hitCounts && foe.distance <= CONTACT && (hit == null || foe.distance < hit.distance)) hit = foe;
+            if (hitCounts && foe.distance <= foe.strikeRange() && (hit == null || foe.distance < hit.distance)) hit = foe;
         }
         return hit;
     }

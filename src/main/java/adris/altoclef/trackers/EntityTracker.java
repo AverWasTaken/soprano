@@ -10,6 +10,7 @@ import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.baritone.CachedProjectile;
 import adris.altoclef.util.helpers.BaritoneHelper;
 import adris.altoclef.util.helpers.EntityHelper;
+import adris.altoclef.util.helpers.FoeRules;
 import adris.altoclef.util.helpers.ItemPickupRules;
 import adris.altoclef.util.helpers.MobReachability;
 import adris.altoclef.util.helpers.Provocations;
@@ -20,11 +21,14 @@ import java.util.function.Predicate;
 import java.util.function.ToDoubleFunction;
 import java.util.function.ToIntFunction;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.monster.Witch;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.projectile.AbstractArrow;
@@ -374,9 +378,40 @@ public class EntityTracker extends Tracker {
         }
     }
 
+    // the damage source and the harmful effects we had last tick, for blaming a witch (see noteWitch)
+    private DamageSource _lastMagicSource;
+    private boolean _hadHarmfulEffect;
+
+    // a witch's poison arrives as magic damage with nobody attached, and gaining poison, weakness or slowness has no sender at
+    // all. without a name the "it hit us" memory never hears about the witch, and a fight that stalled on it stays given up on
+    // for as long as the poison runs. the nearest witch with a line to us inside FoeRules.WITCH_HIT_RANGE gets the blame
+    private void noteWitch(LocalPlayer player, DamageSource source) {
+        boolean harmfulNow = player.hasEffect(MobEffects.POISON) || player.hasEffect(MobEffects.WEAKNESS) || player.hasEffect(MobEffects.MOVEMENT_SLOWDOWN);
+        boolean gained = harmfulNow && !_hadHarmfulEffect;
+        _hadHarmfulEffect = harmfulNow;
+        boolean magic = source != null && source != _lastMagicSource && FoeRules.unattributedMagic(source.getMsgId(), source.getEntity() != null);
+        if (source != null) _lastMagicSource = source;
+        if (!gained && !magic) return;
+        List<FoeRules.WitchLook> looks = new ArrayList<>();
+        Map<Integer, Witch> byId = new HashMap<>();
+        for (Entity entity : Minecraft.getInstance().level.entitiesForRendering()) {
+            if (entity instanceof Witch witch && witch.isAlive()) {
+                looks.add(new FoeRules.WitchLook(witch.getId(), witch.distanceTo(player), witch.hasLineOfSight(player)));
+                byId.put(witch.getId(), witch);
+            }
+        }
+        FoeRules.WitchLook culprit = FoeRules.witchBehind(true, looks);
+        if (culprit != null) {
+            Witch witch = byId.get(culprit.id());
+            noteProvoked(witch);
+            noteHitUs(witch);
+        }
+    }
+
     private void noteAttackers() {
         if (_mod.getPlayer() == null) return;
         DamageSource source = _mod.getPlayer().getLastDamageSource();
+        if (Minecraft.getInstance().level != null) noteWitch(_mod.getPlayer(), source);
         if (source == null) return;
         // the attacker for melee and a shot's shooter, and the thing that actually touched us
         noteProvoked(source.getEntity());

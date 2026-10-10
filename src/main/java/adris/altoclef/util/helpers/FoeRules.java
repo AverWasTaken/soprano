@@ -17,7 +17,33 @@ public final class FoeRules {
     // not a fight at any hp. the warden one shots a full bar, the wither is a boss we never summoned
     private static final Set<String> UNTOUCHABLE = Set.of("warden", "wither");
 
+    // a witch this close with a line to us is who the poison is blamed on. the potion has the witch as its owner on the
+    // server, but the client is only told "magic damage" with nobody attached
+    public static final double WITCH_HIT_RANGE = 12;
+
     private FoeRules() {
+    }
+
+    // one witch as the tracker sees it: id, distance, and whether it has a line to us
+    public record WitchLook(int id, double distance, boolean sight) {
+    }
+
+    // magic damage with nobody attached. (starvation, falling, fire and the rest have their own names, and a harming potion
+    // thrown by a witch arrives with the witch attached already, which is the normal hit rule)
+    public static boolean unattributedMagic(String damageType, boolean hasAttacker) {
+        return !hasAttacker && "magic".equals(damageType);
+    }
+
+    // who the unexplained harm (magic damage, or just gaining poison, weakness or slowness) is blamed on: the nearest witch
+    // inside WITCH_HIT_RANGE that can see us, null when nobody fits and nothing changes
+    public static WitchLook witchBehind(boolean unexplainedHarm, Iterable<WitchLook> witches) {
+        if (!unexplainedHarm) return null;
+        WitchLook best = null;
+        for (WitchLook witch : witches) {
+            if (!witch.sight() || witch.distance() > WITCH_HIT_RANGE) continue;
+            if (best == null || witch.distance() < best.distance()) best = witch;
+        }
+        return best;
     }
 
     // one hostile as the world half sees it. the three questions that cost something (a raycast, a reachability verdict, the
@@ -80,6 +106,7 @@ public final class FoeRules {
     public static Kind kindOf(Dimension dimension, String type) {
         if (UNTOUCHABLE.contains(type)) return Kind.UNTOUCHABLE;
         if (HEAVY.contains(type)) return Kind.HEAVY;
+        if (type.equals("witch")) return Kind.LOBBER;
         // blazes only live in the nether, and there they hover over lava where nothing walks up to them
         if (dimension == Dimension.NETHER && type.equals("blaze")) return Kind.FLYER;
         return Kind.NORMAL;
