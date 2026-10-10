@@ -1083,6 +1083,22 @@ public class KitPlannerTest {
     }
 
     @Test
+    public void goldArrivingAfterADiamondHelmetGoesOnTheBootsInstead() {
+        FakeFacts bag = complete().give(Items.DIAMOND_HELMET, 1).give(Items.GOLD_INGOT, 5);
+        bag.worn.remove(Items.IRON_HELMET);
+        bag.worn.add(Items.DIAMOND_HELMET);
+        assertEquals(List.of(new KitNeed("golden_boots", 1)), PiglinGold.gate(bag));
+        assertTrue(PiglinGold.swap(bag, KitPlanner.armorNames(cfg)).contains("golden_boots"));
+        assertTrue(PiglinGold.swap(bag, KitPlanner.armorNames(cfg)).contains("iron_helmet"));
+        // iron on the head and the same gold: the helmet, like it always was
+        FakeFacts iron = complete().give(Items.GOLD_INGOT, 5);
+        assertEquals(List.of(new KitNeed("golden_helmet", 1)), PiglinGold.gate(iron));
+        // diamond boots as well: nothing left to protect, the helmet it is
+        bag.give(Items.DIAMOND_BOOTS, 1);
+        assertEquals(List.of(new KitNeed("golden_helmet", 1)), PiglinGold.gate(bag));
+    }
+
+    @Test
     public void goldInTheHelmetSlotKeepsTheDiamondsOffIt() {
         FakeFacts bag = complete().give(Items.DIAMOND_PICKAXE, 1).give(Items.DIAMOND, 5).give(Items.GOLDEN_HELMET, 1);
         bag.items.remove(Items.IRON_HELMET);

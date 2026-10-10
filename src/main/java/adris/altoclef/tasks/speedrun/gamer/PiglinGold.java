@@ -64,13 +64,19 @@ public final class PiglinGold {
             return null;
         }
         int gold = available(f);
-        if (gold >= HELMET_INGOTS && names.contains("iron_helmet")) {
+        if (gold >= HELMET_INGOTS && names.contains("iron_helmet") && !(bootsInstead(f) && names.contains("iron_boots"))) {
             return "helmet";
         }
         if (gold >= BOOTS_INGOTS && names.contains("iron_boots")) {
             return "boots";
         }
         return null;
+    }
+
+    // the helmet is already diamond and the boots are not: the gold goes on the boots (4 ingots, 5 spent diamonds stay on our head).
+    // the diamond helmet is only ever made while the slot is still iron, so this never flips a slot that went gold first
+    private static boolean bootsInstead(GamerFacts f) {
+        return KitPlanner.have(f, "diamond_helmet") > 0 && KitPlanner.have(f, "diamond_boots") == 0 && available(f) >= BOOTS_INGOTS;
     }
 
     // a gold piece in the bag while none is on gets worn even when its slot is not in the plan (lighter plans, chestplate
@@ -96,7 +102,7 @@ public final class PiglinGold {
             return List.of();
         }
         int gold = available(f);
-        if (gold >= HELMET_INGOTS) {
+        if (gold >= HELMET_INGOTS && !bootsInstead(f)) {
             return List.of(new KitNeed("golden_helmet", 1));
         }
         return gold >= BOOTS_INGOTS ? List.of(new KitNeed("golden_boots", 1)) : List.of();
