@@ -51,6 +51,8 @@ public class TaskCatalogue {
     private static final HashMap<String, CataloguedResource> _nameToResourceTask = new HashMap<>();
     private static final HashMap<Item, CataloguedResource> _itemToResourceTask = new HashMap<>();
     private static final HashSet<Item> _resourcesObtainable = new HashSet<>();
+    // every recipe the shaped helpers register, by name. building the task needs a running client, so the recipe parity test reads these instead
+    private static final TreeMap<String, RecipeTarget> _craftedRecipes = new TreeMap<>();
 
     static {
         /// DEFINE RESOURCE TASKS HERE
@@ -468,7 +470,7 @@ mine("pale_oak_sapling", Blocks.PALE_OAK_LEAVES, Items.PALE_OAK_SAPLING);
             simple("wooden_pressure_plate", ItemHelper.WOOD_PRESSURE_PLATE, CollectWoodenPressurePlateTask::new);
             woodTasks("pressure_plate", woodItems -> woodItems.pressurePlate, (woodItems, count) -> new CollectWoodenPressurePlateTask(woodItems.pressurePlate, woodItems.prefix + "_planks", count));
             simple("wooden_button", ItemHelper.WOOD_BUTTON, CollectWoodenButtonTask::new);
-            woodTasks("button", woodItems -> woodItems.button, (woodItems, count) -> new CraftInInventoryTask(new RecipeTarget(woodItems.button, 1, CraftingRecipe.newShapedRecipe(woodItems.prefix + "_button", new ItemTarget[]{new ItemTarget(woodItems.planks, 1), null, null, null}, 1))));
+            woodButtons();
             shapedRecipe2x2("stone_pressure_plate", Items.STONE_PRESSURE_PLATE, 1, o, o, "stone", "stone");
             shapedRecipe2x2("stone_button", Items.STONE_BUTTON, 1, "stone", o, o, o);
             shapedRecipe2x2("polished_blackstone_pressure_plate", Items.POLISHED_BLACKSTONE_PRESSURE_PLATE, 1, o, o, "polished_blackstone", "polished_blackstone");
@@ -733,6 +735,11 @@ mine("pale_oak_sapling", Blocks.PALE_OAK_LEAVES, Items.PALE_OAK_SAPLING);
         return _itemToResourceTask.containsKey(item);
     }
 
+    // name -> single craft target for every recipe the shaped helpers (and the wood buttons) registered
+    static Map<String, RecipeTarget> craftedRecipes() {
+        return Collections.unmodifiableMap(_craftedRecipes);
+    }
+
     public static Collection<String> resourceNames() {
         return _nameToResourceTask.keySet();
     }
@@ -782,11 +789,13 @@ mine("pale_oak_sapling", Blocks.PALE_OAK_LEAVES, Items.PALE_OAK_SAPLING);
 
     private static CataloguedResource shapedRecipe2x2(String name, Item match, int outputCount, String s0, String s1, String s2, String s3) {
         CraftingRecipe recipe = CraftingRecipe.newShapedRecipe(name, new ItemTarget[]{t(s0), t(s1), t(s2), t(s3)}, outputCount);
+        _craftedRecipes.put(name, new RecipeTarget(match, 1, recipe));
         return put(name, new Item[]{match}, count -> new CraftInInventoryTask(new RecipeTarget(match, count, recipe)));
     }
 
     private static CataloguedResource shapedRecipe3x3(String name, Item match, int outputCount, String s0, String s1, String s2, String s3, String s4, String s5, String s6, String s7, String s8) {
         CraftingRecipe recipe = CraftingRecipe.newShapedRecipe(name, new ItemTarget[]{t(s0), t(s1), t(s2), t(s3), t(s4), t(s5), t(s6), t(s7), t(s8)}, outputCount);
+        _craftedRecipes.put(name, new RecipeTarget(match, 1, recipe));
         return put(name, new Item[]{match}, count -> new CraftInTableTask(new RecipeTarget(match, count, recipe)));
     }
 
@@ -887,6 +896,18 @@ mine("pale_oak_sapling", Blocks.PALE_OAK_LEAVES, Items.PALE_OAK_SAPLING);
 
     private static CataloguedResource[] woodTasks(String baseName, Function<ItemHelper.WoodItems, Item> getMatch, BiFunction<ItemHelper.WoodItems, Integer, ResourceTask> getTask) {
         return woodTasks(baseName, getMatch, getTask, false);
+    }
+
+    // woodTasks, but eager, so the recipe is in _craftedRecipes without anyone asking for a task
+    private static void woodButtons() {
+        for (WoodType woodType : WoodType.values()) {
+            ItemHelper.WoodItems woodItems = ItemHelper.getWoodItems(woodType);
+            if (woodItems.button == null) continue;
+            String name = woodItems.prefix + "_button";
+            CraftingRecipe recipe = CraftingRecipe.newShapedRecipe(name, new ItemTarget[]{new ItemTarget(woodItems.planks, 1), null, null, null}, 1);
+            _craftedRecipes.put(name, new RecipeTarget(woodItems.button, 1, recipe));
+            put(name, new Item[]{woodItems.button}, count -> new CraftInInventoryTask(new RecipeTarget(woodItems.button, 1, recipe)));
+        }
     }
 
     private static void tools(String toolMaterialName, String material, Item pickaxeItem, Item shovelItem, Item swordItem, Item axeItem, Item hoeItem) {
