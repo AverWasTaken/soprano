@@ -84,6 +84,16 @@ public class MovementMomentum extends Movement implements CurvedMovement {
         this.after = after;
     }
 
+    // the executor rewinds and replays movements it already ran, all of this is per run. runway/after are refreshed by
+    // calculateCost so they stay
+    @Override
+    public void reset() {
+        super.reset();
+        jumped = hopping = running = false;
+        hopAir = runTicks = failedRuns = stuckTicks = 0;
+        flight = null;
+    }
+
     // where the table of run ups is kept between launches, see MomentumJump.TABLE_VERSION. MomentumJump doesn't know what a
     // game directory is, so whoever does hands it over
     public static void setTableFile(Path file) {

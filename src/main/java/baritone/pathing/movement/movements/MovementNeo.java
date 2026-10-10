@@ -78,6 +78,16 @@ public class MovementNeo extends Movement implements CurvedMovement {
         this.openBeyond = openBeyond;
     }
 
+    // the executor rewinds and replays movements it already ran, all of this is per run. walls/runway/openBeyond are
+    // refreshed by calculateCost so they stay
+    @Override
+    public void reset() {
+        super.reset();
+        jumped = hopping = running = false;
+        hopAir = runTicks = failedRuns = stuckTicks = 0;
+        flight = null;
+    }
+
     // where the table of run ups is kept between launches, see NeoJump.TABLE_VERSION. NeoJump doesn't know what a game
     // directory is, so whoever does hands it over
     public static void setTableFile(Path file) {

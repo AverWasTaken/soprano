@@ -71,6 +71,16 @@ public class MovementClimb extends Movement {
         this.control = new ClimbJump.Control(false);
     }
 
+    // the executor rewinds and replays movements it already ran, all of this is per run. shape is refreshed by
+    // calculateCost so it stays
+    @Override
+    public void reset() {
+        super.reset();
+        control = new ClimbJump.Control(false);
+        running = sneaked = false;
+        failedRuns = stuckTicks = stageTicks = 0;
+    }
+
     public static MovementClimb grab(CalculationContext context, BetterBlockPos src, Direction dir) {
         // dest == src never matches anything in Path.runBackwards, and calculateCost can't find a shape. so it's inert
         return new MovementClimb(context.getBaritone(), src, dir, grabShape(context, src.x, src.y, src.z, dir));
