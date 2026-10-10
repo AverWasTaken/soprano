@@ -2,6 +2,7 @@ package adris.altoclef.chains;
 
 import baritone.Baritone;
 import adris.altoclef.AltoClef;
+import adris.altoclef.Debug;
 import adris.altoclef.tasks.resources.CollectFoodTask;
 import adris.altoclef.tasks.speedrun.DragonBreathTracker;
 import adris.altoclef.tasksystem.TaskRunner;
@@ -14,6 +15,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.component.DataComponents;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.util.Tuple;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.item.Item;
@@ -41,6 +43,12 @@ public class FoodChain extends SingleTaskChain {
     private float _lastFoodHealth = -1;
     private boolean shouldStop = false;
     private boolean _eatBlocked = false;
+    // what we are chewing and how things stood when the bite started, so the log line can say what a meal was for
+    private Item _bite;
+    private int _biteCount = -1;
+    private int _biteHunger;
+    private float _biteSaturation;
+    private float _biteHealth;
 
     private final AltoClef _mod;
 
@@ -58,6 +66,9 @@ public class FoodChain extends SingleTaskChain {
         //Debug.logInternal("EATING " + toUse.getTranslationKey() + " : " + test);
         _isTryingToEat = true;
         _requestFillup = true;
+        if (food != _bite) {
+            snapshotBite(mod, food);
+        }
         mod.getSlotHandler().forceEquipItem(new Item[]{food}, true); //"true" because it's food
         mod.getInputControls().hold(Input.CLICK_RIGHT);
         mod.getExtraBaritoneSettings().setInteractionPaused(true);
@@ -85,9 +96,42 @@ public class FoodChain extends SingleTaskChain {
         return _isTryingToEat;
     }
 
+    private void snapshotBite(AltoClef mod, Item food) {
+        LocalPlayer player = mod.getPlayer();
+        _bite = food;
+        _biteCount = mod.getItemStorage().getItemCount(food);
+        _biteHunger = player.getFoodData().getFoodLevel();
+        _biteSaturation = player.getFoodData().getSaturationLevel();
+        _biteHealth = player.getHealth();
+    }
+
+    // one line per item actually eaten, with the hunger it was eaten at. the stack going down is the bite landing: the hunger bar
+    // can't tell a gapple at full hunger, and starting to chew is not eating (a fight spits it out). the gamer reads these to see
+    // how fast a cave leg burns food
+    private void watchBite(AltoClef mod) {
+        if (_bite == null) {
+            return;
+        }
+        int count = mod.getItemStorage().getItemCount(_bite);
+        if (count < _biteCount) {
+            Debug.logInternal(String.format("food: ate %s at hunger %d (saturation %.1f, hp %.1f)",
+                    BuiltInRegistries.ITEM.getKey(_bite).getPath(), _biteHunger, _biteSaturation, _biteHealth));
+            // the next one in a fillup starts from here
+            snapshotBite(mod, _bite);
+        } else if (count > _biteCount) {
+            // picked one up mid bite, or the stack would have to drop twice to show the bite
+            _biteCount = count;
+        }
+        if (!_isTryingToEat) {
+            _bite = null;
+            _biteCount = -1;
+        }
+    }
+
     @Override
     public float getPriority(AltoClef mod) {
         _dragonBreathTracker.updateBreath(mod);
+        watchBite(mod);
         // one list of reasons we will not eat right now. the eat branch below and needsToEat() both go by it, so
         // everything that pauses for a meal (progress checkers, container waits) stops waiting when we refuse to eat.
         // before, "needs to eat" stayed true through a fall or a lava dip and no watchdog could fire
