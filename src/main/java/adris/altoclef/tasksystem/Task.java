@@ -406,6 +406,12 @@ public abstract class Task {
         return thisOrChildSatisfies(task -> task instanceof TimeoutWanderTask);
     }
 
+    // a wander in the chain below that has run a long time without getting anywhere. a plain thisOrChildAreTimedOut
+    // is true the whole time a wander is active, this one only once it is stuck
+    public boolean thisOrChildWanderFailing() {
+        return thisOrChildSatisfies(task -> task instanceof TimeoutWanderTask w && w.failing());
+    }
+
     // a force held longer than this is assumed to be stuck, so it can't deadlock the whole tree
     private static final long FORCE_TIMEOUT_MS = 10_000;
     private long _forcedSinceMs = -1;

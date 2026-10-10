@@ -11,9 +11,7 @@ import adris.altoclef.tasksystem.TaskRunner;
 import org.junit.Before;
 import org.junit.Test;
 
-// the wander's clock and anchor have to outlive an interrupt, or a wander that is going nowhere restarts its budget.
-// a real TimeoutWanderTask can't be built here (its progress checkers read the game clock in the constructor), so the
-// stand in below is wired exactly like it: the Task clock plus the same Excursion, fed through the same decision
+// the wander's clock and anchor have to outlive an interrupt, or a wander that is going nowhere restarts its budget
 public class WanderFailingTest {
     private TaskChain chain;
 
@@ -49,19 +47,41 @@ public class WanderFailingTest {
         };
     }
 
-    private static class FakeWander extends Task {
-        final WanderGiveUp.Excursion excursion = new WanderGiveUp.Excursion();
+    // a real wander with the world taken out: the real onStart and onTick want a player. the clock, the excursion and
+    // the decision are all the real ones
+    private static class Driven extends TimeoutWanderTask {
         double x;
 
         @Override
         protected void onStart(AltoClef mod) {
-            // the real onStart resets _origin and its checkers, and nothing of the excursion
         }
 
         @Override
         protected Task onTick(AltoClef mod) {
-            excursion.note(x, 64, 0);
+            noteAt(x, 64, 0);
             return null;
+        }
+
+        @Override
+        protected void onStop(AltoClef mod, Task interruptTask) {
+        }
+    }
+
+    // a parent that hands out whatever child it was given, like most of the tasks that wander
+    private static class Holder extends Task {
+        final Task child;
+
+        Holder(Task child) {
+            this.child = child;
+        }
+
+        @Override
+        protected void onStart(AltoClef mod) {
+        }
+
+        @Override
+        protected Task onTick(AltoClef mod) {
+            return child;
         }
 
         @Override
@@ -70,16 +90,12 @@ public class WanderFailingTest {
 
         @Override
         protected boolean isEqual(Task other) {
-            return other instanceof FakeWander;
+            return other == this;
         }
 
         @Override
         protected String toDebugString() {
-            return "fake wander";
-        }
-
-        boolean failing() {
-            return TimeoutWanderTask.failing(timeOnTaskSeconds(), excursion.max());
+            return "holder";
         }
     }
 
@@ -112,7 +128,7 @@ public class WanderFailingTest {
 
     @Test
     public void interruptsDoNotBuyAFreshBudget() {
-        FakeWander w = new FakeWander();
+        Driven w = new Driven();
         // 30 s, interrupted, 30 s more. every restart used to look like a new wander
         for (int attempt = 0; attempt < 2; attempt++) {
             ticks(w, 30 * 20);
@@ -124,7 +140,7 @@ public class WanderFailingTest {
 
     @Test
     public void youngWanderStaysOkAcrossARestart() {
-        FakeWander w = new FakeWander();
+        Driven w = new Driven();
         ticks(w, 20 * 20);
         w.interrupt(null, null);
         w.reset();
@@ -134,7 +150,7 @@ public class WanderFailingTest {
 
     @Test
     public void theAnchorSurvivesARestartSoAFarTripStillCounts() {
-        FakeWander w = new FakeWander();
+        Driven w = new Driven();
         ticks(w, 10);
         w.interrupt(null, null);
         w.reset();
@@ -146,7 +162,7 @@ public class WanderFailingTest {
 
     @Test
     public void anExcursionIsKeptEvenAfterWalkingBack() {
-        FakeWander w = new FakeWander();
+        Driven w = new Driven();
         ticks(w, 1);
         w.x = 3.5;
         ticks(w, 1);
@@ -157,11 +173,53 @@ public class WanderFailingTest {
 
     @Test
     public void pacingInPlaceFails() {
-        FakeWander w = new FakeWander();
+        Driven w = new Driven();
         for (int i = 0; i < 50 * 20; i++) {
             w.x = (i % 2) * 1.5;
             w.tick(null, chain);
         }
         assertTrue(w.failing());
+    }
+
+    @Test
+    public void aFailingWanderTwoLevelsDownShowsInTheRoot() {
+        Driven w = new Driven();
+        Holder root = new Holder(new Holder(w));
+        ticks(root, 46 * 20);
+        assertTrue(root.thisOrChildWanderFailing());
+        // the old question stays true the whole time, failing or not
+        assertTrue(root.thisOrChildAreTimedOut());
+    }
+
+    @Test
+    public void aYoungWanderIsNotFailingInTheTree() {
+        Holder root = new Holder(new Holder(new Driven()));
+        ticks(root, 20 * 20);
+        assertFalse(root.thisOrChildWanderFailing());
+        assertTrue(root.thisOrChildAreTimedOut());
+    }
+
+    @Test
+    public void aWanderThatGotSomewhereIsNotFailingInTheTree() {
+        Driven w = new Driven();
+        Holder root = new Holder(w);
+        ticks(root, 1);
+        w.x = 5;
+        ticks(root, 60 * 20);
+        assertFalse(root.thisOrChildWanderFailing());
+    }
+
+    @Test
+    public void aTreeWithNoWanderIsNeverFailing() {
+        Holder root = new Holder(new Holder(new Holder(null)));
+        ticks(root, 100 * 20);
+        assertFalse(root.thisOrChildWanderFailing());
+    }
+
+    @Test
+    public void theRootCanBeTheWander() {
+        Driven w = new Driven();
+        ticks(w, 46 * 20);
+        assertTrue(w.thisOrChildWanderFailing());
     }
 }
