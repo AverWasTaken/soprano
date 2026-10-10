@@ -18,7 +18,7 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 // places where two station readers answer what looks like ONE question differently, and what became of each. FIXED ones now pin the
-// agreement (A, B, E, F), BY DESIGN ones pin the reasoning (C, D), and (G) is the one leftover we accepted. when one of these fails,
+// agreement (A, E, F), BY DESIGN ones pin the reasoning (B the band, C, D), and (G) is the one leftover we accepted. when one fails,
 // someone changed the answer: say so in the commit
 public class StationContradictionsTest {
     private static final long NOW = 6000;
@@ -262,9 +262,10 @@ public class StationContradictionsTest {
     // the mine brings back far more than the 16 spare), and the task cannot eat what the kit still owes: SmeltSplit.loads and
     // DoStuffInContainerTask.bagCanMake both count cobble minus StationHook.cobbleOwed (KitPlanner.toolCobble, the stone tools'
     // cobble, which is also the kit's stone floor while a furnace stands). short on spare cobble the split is fewer loads, never a
-    // trip for stone. OPEN, left alone on purpose: both count cobbled deepslate and blackstone as spare, which is what vanilla 1.21.4
-    // takes for a furnace (#minecraft:stone_crafting_materials), but TaskCatalogue's furnace recipe puts plain cobblestone in the
-    // slots, so the narrow side is the catalogue and 14 cobble + 8 deepslate with 14 owed reads as 8 spare the craft cannot use
+    // trip for stone. OPEN, left alone on purpose: the spare count (CollectIronIngotTask.decide, DoStuffInContainerTask.bagCanMake)
+    // includes cobbled deepslate and blackstone, which is what vanilla 1.21.4 takes for a furnace (#minecraft:stone_crafting_materials),
+    // but TaskCatalogue's furnace recipe puts plain cobblestone in the slots, so the narrow side is the catalogue. 14 cobble + 8
+    // deepslate with 14 owed reads as 8 spare, and the craft then takes 8 of the 14 plain cobble the tools were owed
     @Test
     public void aBusyFurnaceIsHeldForThePlannerAndTheSplitLoadMakesAnotherOnlyFromSpareCobble() {
         RunState state = new RunState();
