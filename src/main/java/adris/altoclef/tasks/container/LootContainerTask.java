@@ -83,8 +83,13 @@ public class LootContainerTask extends Task {
             setDebugState("Waiting for the container to sync");
             return null;
         }
-        setDebugState("Looting items: " + targets);
         ItemStack stack = StorageHelper.getItemStackInSlot(optimal.get());
+        // the loot is protected, so a full bag has nothing to throw and the stack would go back in the chest just to be looted again
+        if (mod.getItemStorage().getSlotThatCanFitInPlayerInventory(stack, true).isEmpty()) {
+            _weDoneHere = true;
+            return null;
+        }
+        setDebugState("Looting items: " + targets);
         _taken.merge(BuiltInRegistries.ITEM.getKey(stack.getItem()).getPath(), stack.getCount(), Integer::sum);
         mod.getSlotHandler().clickSlot(optimal.get(), 0, ClickType.PICKUP);
         return null;
