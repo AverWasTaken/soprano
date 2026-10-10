@@ -77,6 +77,24 @@ public class RepeatCounterTest {
     }
 
     @Test
+    public void aSlowTrickleAfterABurstLetsTheNextBurstBeHeard() {
+        RepeatCounter c = new RepeatCounter();
+        for (int i = 1; i <= 5; i++) {
+            c.hit("A|x", i * 1000L);
+        }
+        // one every 40 s keeps the entry alive without ever being five in a window
+        long t = 5000;
+        for (int i = 0; i < 6; i++) {
+            t += 40_000;
+            assertEquals(0, c.hit("A|x", t));
+        }
+        // the last two trickle hits are still in the window, so the third of these makes five
+        assertEquals(0, c.hit("A|x", t + 100));
+        assertEquals(0, c.hit("A|x", t + 101));
+        assertEquals(5, c.hit("A|x", t + 102));
+    }
+
+    @Test
     public void rearmsAfterTheWindowGoesQuiet() {
         RepeatCounter c = new RepeatCounter();
         for (int i = 0; i < 5; i++) {

@@ -30,10 +30,14 @@ public final class RepeatCounter {
     }
 
     private final Map<String, Entry> entries = new HashMap<>();
+    private long lastSweep = Long.MIN_VALUE / 2;
 
     // returns the milestone just reached (5, 10 or 20), 0 when there is nothing to say
     public int hit(String key, long nowMs) {
-        if (entries.size() > SWEEP_AT) {
+        // a state that carries a changing number mints a key per flip. the sweep walks the whole map, so it gets to run
+        // once a second at most
+        if (entries.size() > SWEEP_AT && nowMs - lastSweep >= 1000) {
+            lastSweep = nowMs;
             sweep(nowMs);
         }
         Entry e = entries.computeIfAbsent(key, k -> new Entry());
@@ -55,6 +59,10 @@ public final class RepeatCounter {
             if (nowMs - e.times[(e.head + i) % cap] <= WINDOW_MS) {
                 inWindow++;
             }
+        }
+        // a slow trickle keeps the entry alive forever, so quiet has to mean "under the first milestone", not "empty"
+        if (inWindow < MILESTONES[0]) {
+            e.told = 0;
         }
         int reached = 0;
         for (int m : MILESTONES) {

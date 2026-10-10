@@ -2,6 +2,7 @@ package adris.altoclef.trace;
 
 import org.junit.Test;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
@@ -69,6 +70,30 @@ public class StartStormWatchTest {
             fired |= w.start(String.class, later + i * 100L);
         }
         assertTrue(fired);
+    }
+
+    @Test
+    public void aClassHoveringJustUnderTheLimitDoesNotFlapIntoASecondDump() {
+        StartStormWatch w = new StartStormWatch();
+        int fired = 0;
+        for (int i = 0; i < 21; i++) {
+            if (w.start(String.class, i * 1000L)) {
+                fired++;
+            }
+        }
+        // then 15 a minute for ten minutes: under the limit, but nowhere near half of it
+        for (long t = 24_000; t < 600_000; t += 4000) {
+            if (w.start(String.class, t)) {
+                fired++;
+            }
+        }
+        // and a burst on top of that is still the same incident
+        for (int i = 0; i < 30; i++) {
+            if (w.start(String.class, 600_000 + i * 100L)) {
+                fired++;
+            }
+        }
+        assertEquals(1, fired);
     }
 
     @Test
