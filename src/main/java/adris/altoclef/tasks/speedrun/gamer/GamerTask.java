@@ -7,6 +7,7 @@ import adris.altoclef.Debug;
 import adris.altoclef.eventbus.EventBus;
 import adris.altoclef.eventbus.Subscription;
 import adris.altoclef.eventbus.events.BlockPlaceEvent;
+import adris.altoclef.tasks.construction.StationBox;
 import adris.altoclef.tasks.container.AsyncSmelting;
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfigs;
@@ -37,6 +38,8 @@ import baritone.Baritone;
 import baritone.altoclef.SettingsOverrides;
 import baritone.api.Settings;
 import baritone.api.utils.Dimension;
+import it.unimi.dsi.fastutil.longs.LongSet;
+import it.unimi.dsi.fastutil.longs.LongSets;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.DeathScreen;
 import net.minecraft.client.gui.screens.WinScreen;
@@ -305,6 +308,9 @@ public class GamerTask extends Task {
         // a furnace or smoker with a job of ours in it is not ours to dig through. one predicate in our own level, reading a snapshot
         // (baritone asks from its own thread), so a station stops being protected the moment its job is done
         mod.getBehaviour().avoidBlockBreaking(p -> jobSpots.contains(p));
+        // and nothing builds on or beside a standing station: the cell over it and the four around it. breaking stays free, a box
+        // there would refuse the ore and the logs next to the table
+        mod.getBehaviour().avoidBlockPlacing(p -> StationBox.avoids(stationBox, p));
         mod.getBlockTracker().trackBlock(TRACKED);
         applyRunSettings();
     }
@@ -627,6 +633,32 @@ public class GamerTask extends Task {
 
     // the blocks of this dimension's furnace jobs, a fresh immutable set each tick
     private volatile Set<BlockPos> jobSpots = Set.of();
+    // the cells around the standing stations of this dimension (StationBox), rebuilt only when the stations change
+    private volatile LongSet stationBox = LongSets.EMPTY_SET;
+    private List<BlockPos> boxedStations = List.of();
+
+    // the stations of ours that stand in this dimension, from the registry (RunState.benches). one being picked up is not in it:
+    // the pickup may need to build its way to it
+    static List<BlockPos> standingStations(RunState state, String dimension) {
+        if (state == null || state.benches.isEmpty()) {
+            return List.of();
+        }
+        List<BlockPos> out = new ArrayList<>();
+        for (Bench b : state.benches) {
+            if (b.dimension.equals(dimension) && b.state != Bench.State.PICKING_UP && b.state != Bench.State.IN_BAG) {
+                out.add(new BlockPos(b.pos.x, b.pos.y, b.pos.z));
+            }
+        }
+        return out;
+    }
+
+    private void refreshStationBox(String dimension) {
+        List<BlockPos> stations = standingStations(state, dimension);
+        if (!stations.equals(boxedStations)) {
+            boxedStations = stations;
+            stationBox = StationBox.offLimits(stations);
+        }
+    }
 
     static Set<BlockPos> spotsOf(RunState state, String dimension) {
         if (state == null || state.furnaceJobs.isEmpty()) {
@@ -654,6 +686,7 @@ public class GamerTask extends Task {
         }
         cfg = GamerConfigs.get();
         jobSpots = spotsOf(state, facts.dimension().name());
+        refreshStationBox(facts.dimension().name());
         double now = machine.now();
         if (interruptedAt >= 0) {
             // first fresh tick after another chain had the wheel. forgiven, not reset: a reset made two chains trading the

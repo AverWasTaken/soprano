@@ -429,8 +429,10 @@ public class PlaceStationTask extends Task {
             if (!s.getFluidState().isEmpty() || !(s.isAir() || s.canBeReplaced())) {
                 return false;
             }
-            // same question BlockItem asks: does a mob, an arrow-less entity or us stand in the way
-            return !mod.getExtraBaritoneSettings().shouldAvoidPlacingAt(p) && level.isUnobstructed(placing, p, CollisionContext.of(me));
+            // same question BlockItem asks: does a mob, an arrow-less entity or us stand in the way. the box around our standing
+            // stations is not this question's business, StationSpots keeps each of them reachable on its own
+            boolean avoided = StationBox.asPicker(() -> mod.getExtraBaritoneSettings().shouldAvoidPlacingAt(p));
+            return !avoided && level.isUnobstructed(placing, p, CollisionContext.of(me));
         }
 
         @Override
