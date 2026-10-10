@@ -26,7 +26,7 @@ public final class NetherPick {
     static final int HEAD = 3;
     public static final int STICKS = 2;
     static final int TABLE_PLANKS = 4;
-    static final int PLANKS_PER_LOG = 4;
+    public static final int PLANKS_PER_LOG = 4;
     // 2 planks make 4 sticks
     static final int STICKS_PER_CRAFT = 4;
     static final int PLANKS_PER_STICK_CRAFT = 2;

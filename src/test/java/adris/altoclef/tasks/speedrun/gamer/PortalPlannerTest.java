@@ -237,6 +237,20 @@ public class PortalPlannerTest {
     }
 
     @Test
+    public void aWornStonePickAndADiamondOneStillLeaveTheTargetAboveWhatTheCatalogueSees() {
+        // diamond + 2 good stone = 3 usable of 4 wanted, one more. the catalogue counts the worn stone one too (3 held), so it stops at 4
+        FakeFacts f = readyToGo().give(Items.DIAMOND_PICKAXE, 1).give(Items.STONE_PICKAXE, 2);
+        f.spent.put(Items.STONE_PICKAXE, 1);
+        assertEquals(List.of(new KitNeed("stone_pickaxe", 4)), picksGate(f));
+    }
+
+    @Test
+    public void aDiamondAndTwoIronPicksNeedOneMoreStone() {
+        FakeFacts f = readyToGo().give(Items.DIAMOND_PICKAXE, 1).give(Items.IRON_PICKAXE, 2);
+        assertEquals(List.of(new KitNeed("stone_pickaxe", 1)), picksGate(f));
+    }
+
+    @Test
     public void theDefaultConfigAsksForThreeSpares() {
         // setUp turns them off for the old gate tests, a fresh config is what a run really gets
         OverworldConfig fresh = new OverworldConfig();

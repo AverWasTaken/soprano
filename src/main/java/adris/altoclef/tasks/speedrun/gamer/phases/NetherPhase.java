@@ -99,10 +99,12 @@ public class NetherPhase implements PhaseHandler {
     private static final double TRADE_FRESH_SECONDS = 1;
     // a pick craft that fell over (an input went missing, or it hung) is not tried again for this long
     private static final double PICK_RETRY_SECONDS = 60;
+    private static final int PICK_TRIES = 3;
     private Task boots;
     // the pick we are making from the bag (see pickSide) and whether we already said there is nothing to make one from
     private NetherPickTask pickTask;
     private double pickRetryAt;
+    private int pickFails;
     private boolean noPickSaid;
     private TradeWithPiglinsTask trade;
     private int tradeTarget;
@@ -197,6 +199,7 @@ public class NetherPhase implements PhaseHandler {
         boots = null;
         pickTask = null;
         pickRetryAt = 0;
+        pickFails = 0;
         noPickSaid = false;
         flee = null;
         fleeUntil = 0;
@@ -272,6 +275,12 @@ public class NetherPhase implements PhaseHandler {
             // stuck or an input went missing under us: leave it alone for a while, the sweep goes on with what it has
             pickTask = null;
             pickRetryAt = now + PICK_RETRY_SECONDS;
+            if (++pickFails >= PICK_TRIES) {
+                ctx.log("nether: the pickaxe craft keeps failing, giving up on it");
+            }
+        }
+        if (pickFails >= PICK_TRIES) {
+            return null;
         }
         if (pickTask != null) {
             // under way: the task reads the bag itself every tick (and the bag reads odd for a moment when the table goes down)
