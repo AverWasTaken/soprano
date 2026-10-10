@@ -159,7 +159,7 @@ public interface MovementHelper extends ActionCosts, Helper {
     // that block so its box clears the bank, and we're off it a tick later
     static boolean canFloatBoat(BlockStateInterface bsi, int x, int y, int z, int landDx, int landDz) {
         BlockState here = bsi.get0(x, y, z);
-        if (!isWater(here) || isWater(bsi.get0(x, y + 1, z))) {
+        if (!isRealWater(here) || isRealWater(bsi.get0(x, y + 1, z))) {
             return false;
         }
         if (isBlockNormalCube(bsi.get0(x, y + 2, z))) {
@@ -192,7 +192,13 @@ public interface MovementHelper extends ActionCosts, Helper {
 
     // nothing the boat's box would bump: water, air, and the flowers-and-grass kind of block
     static boolean boatCanOverlap(BlockState state) {
-        return isWater(state) || fullyPassableBlockState(state) == YES;
+        return isRealWater(state) || fullyPassableBlockState(state) == YES;
+    }
+
+    // isWater says yes to lava while altoclef's swim through lava is on, and a boat on lava is a burning boat
+    static boolean isRealWater(BlockState state) {
+        Fluid f = state.getFluidState().getType();
+        return f == Fluids.WATER || f == Fluids.FLOWING_WATER;
     }
 
     static boolean canWalkThrough(BlockStateInterface bsi, int x, int y, int z) {
