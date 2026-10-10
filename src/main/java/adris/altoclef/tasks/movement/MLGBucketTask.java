@@ -465,6 +465,13 @@ public class MLGBucketTask extends Task {
         public List<Item> clutchItems = List.of(Items.HAY_BLOCK, Items.TWISTING_VINES);
     }
 
+    // if it's not lava and is not deadly, land on it if it's higher than before OR if our best alternative is lava or a
+    // fall that kills us (only ever set without a clutch item, so the clutch item case is untouched)
+    static boolean replacesBest(boolean lava, boolean isDeadlyFall, boolean hasClutchItem, boolean closestSoFar,
+                                boolean highestSoFar, boolean bestIsLava, boolean bestIsDeadlyFall) {
+        return !lava && !isDeadlyFall && ((closestSoFar && hasClutchItem) && highestSoFar || bestIsLava || bestIsDeadlyFall);
+    }
+
     class ConeClutchContext {
         private final boolean hasClutchItem;
         public BlockPos bestBlock = null;
@@ -502,7 +509,7 @@ public class MLGBucketTask extends Task {
                     bestBlock == null || // No target was found.
                             (water && !bestBlockIsSafe) || // We ALWAYS land in water if we can
                             (lava && lavaWillProtect && bestBlockIsDeadlyFall && !hasClutchItem) || // Land in lava if our best alternative is death by fall damage
-                            (!lava && !isDeadlyFall && ((closestSoFar && hasClutchItem) && highestSoFar || bestBlockIsLava)) // If it's not lava and is not deadly, land on it if it's higher than before OR if our best alternative is lava
+                            replacesBest(lava, isDeadlyFall, hasClutchItem, closestSoFar, highestSoFar, bestBlockIsLava, bestBlockIsDeadlyFall)
             ) {
                 if (canTravelToInAir((lava || water) ? check.below() : check)) {
                     if (highestSoFar) {
