@@ -69,13 +69,14 @@ public final class StationVerdict {
 
     // the verdict for one look from (px, py, pz). moves `latches`: this is the only place they are written
     static StationVerdict of(RunState state, String dimension, double px, double py, double pz, World world, StationLatches latches) {
-        // held when one of ours is within NEAR (a straight line, height counts), the same test the container tasks use. the table has a
-        // latch on top so the plan does not flip at the line (the cobble floor, the cook gate, a log trip against the cobble): once
-        // out of NEAR it only counts again well inside it, its planks swing the plan. furnace and smoker have the plain line and no
-        // latch: the smoker first rule reads this flag and the container tasks read the plain line, so a smoker at 20 blocks is a
-        // smoker whichever way we got there. a latch that reached past the line (it did, once) says "held" at 21.5 where the task
-        // puts the one from the bag down, or skips a parked one and makes another. the walk back below already holds a usable one
-        // all the way across the line, which is what the latch was for
+        // held when one of ours is within NEAR (a straight line, height counts), the same test the container tasks use, with a latch on
+        // top so the plan does not flip at the line (the cobble floor, the cook gate, a log trip against the cobble). the table's is big
+        // (once out of NEAR it only counts again well inside it, its planks swing the plan). furnace and smoker only get a block, and
+        // only inward: a bot digging at the line would swing the stone need by 8 cobble on every step, and the flag is never true
+        // where the task would put down a second one (a latch that reached past the line did that once: at 21.5 the task puts the one
+        // from the bag down, or skips a parked one and makes another). in (20, 21] the planner may say "not held" where the task
+        // would use ours, a conservative plan inside a one block ring
+        // (table first, then furnace, then smoker: each latch is read before it is written, in the order the flags always ran in)
         boolean tableNear = heldNear(state, Kind.TABLE, dimension, px, py, pz, WorkbenchRules.returnRadius(latches.tableFar), world);
         latches.tableFar = !tableNear && Workbenches.any(state, Kind.TABLE, dimension);
         // past the latch a table of ours still counts as far as the craft would walk back to it (Workbenches.plannerWalksBack), and
@@ -83,10 +84,13 @@ public final class StationVerdict {
         // (StationChoice.nearest), or the plan asks for table planks while the craft is still on its way to the table
         boolean tableBack = !tableNear && walksBack(state, Kind.TABLE, dimension, px, py, pz, latches.tableBack ? StationChoice.HOLD : 0, world);
         latches.tableBack = tableBack;
-        // past NEAR a furnace or smoker of ours still counts when the smelt would walk back to it (plannerWalksBack)
-        boolean furnaceNear = heldNear(state, Kind.FURNACE, dimension, px, py, pz, WorkbenchRules.NEAR, world);
+        // past the band a furnace or smoker of ours still counts when the smelt would walk back to it (plannerWalksBack). the latch
+        // only ever remembers the band's own answer, the walk back has no line to dither over
+        boolean furnaceNear = heldNear(state, Kind.FURNACE, dimension, px, py, pz, WorkbenchRules.bandRadius(latches.furnaceHeld), world);
+        latches.furnaceHeld = Workbenches.any(state, Kind.FURNACE, dimension) ? Boolean.valueOf(furnaceNear) : null;
         boolean furnaceBack = !furnaceNear && walksBack(state, Kind.FURNACE, dimension, px, py, pz, world);
-        boolean smokerNear = heldNear(state, Kind.SMOKER, dimension, px, py, pz, WorkbenchRules.NEAR, world);
+        boolean smokerNear = heldNear(state, Kind.SMOKER, dimension, px, py, pz, WorkbenchRules.bandRadius(latches.smokerHeld), world);
+        latches.smokerHeld = Workbenches.any(state, Kind.SMOKER, dimension) ? Boolean.valueOf(smokerNear) : null;
         boolean furnaceAtHand = furnaceNear || world.inBag(Kind.FURNACE);
         boolean smokerBack = !smokerNear && !furnaceAtHand && walksBack(state, Kind.SMOKER, dimension, px, py, pz, world);
         boolean smokerHeld = WorkbenchRules.plannerSmoker(smokerNear, furnaceAtHand, smokerBack);

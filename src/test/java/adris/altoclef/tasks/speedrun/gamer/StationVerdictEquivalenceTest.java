@@ -282,11 +282,12 @@ public class StationVerdictEquivalenceTest {
             }
             holdsPick = r.nextBoolean();
             holdsStonePick = holdsPick && r.nextBoolean();
-            // the previous look's latch
+            // the previous look's latches
             latches.tableFar = r.nextInt(3) == 0;
-            // two draws that used to seed the furnace's and the smoker's latch, which are gone. kept so every room is the same room
             int f = r.nextInt(3);
+            latches.furnaceHeld = f == 0 ? null : Boolean.valueOf(f == 1);
             int s = r.nextInt(3);
+            latches.smokerHeld = s == 0 ? null : Boolean.valueOf(s == 1);
             latches0 = "far" + latches.tableFar + "/f" + f + "/s" + s;
         }
 
@@ -387,14 +388,6 @@ public class StationVerdictEquivalenceTest {
         return b ? "T" : "F";
     }
 
-    private static String nearMark(Room room, Kind kind, double[] p) {
-        if (!Workbenches.any(room.state, kind, room.dimension)) {
-            return "-";
-        }
-        return t(Workbenches.heldNear(room.state, kind, room.dimension, p[0], p[1], p[2], WorkbenchRules.NEAR,
-                pos -> room.stands.getOrDefault(Room.key(kind, pos), true)));
-    }
-
     private static String answers(Room room) {
         StringBuilder sb = new StringBuilder();
         Random r = new Random(room.seed);
@@ -408,8 +401,8 @@ public class StationVerdictEquivalenceTest {
             double[] p = room.looks[i];
             last = StationVerdict.of(state, dim, p[0], p[1], p[2], room.world(), room.latches);
             sb.append(t(last.table().heldForPlanner())).append(t(last.furnace().heldForPlanner())).append(t(last.smoker().heldForPlanner()));
-            // after the table's latch, whether a furnace and a smoker stand within NEAR ("-" for none). that used to be their latch
-            sb.append('/').append(t(room.latches.tableFar)).append(nearMark(room, Kind.FURNACE, p)).append(nearMark(room, Kind.SMOKER, p)).append(',');
+            sb.append('/').append(t(room.latches.tableFar)).append(room.latches.furnaceHeld == null ? "-" : t(room.latches.furnaceHeld))
+                    .append(room.latches.smokerHeld == null ? "-" : t(room.latches.smokerHeld)).append(',');
         }
         // the third look's three flags once more, on their own, for the tally (the verdict was built before any bench moved, which is
         // when mayEnd and the others are asked below)
@@ -428,7 +421,7 @@ public class StationVerdictEquivalenceTest {
             wb.append(t(walks));
             sb.append(t(walks));
             sb.append(t(Workbenches.any(state, kind, dim)));
-            for (double radius : new double[]{WorkbenchRules.NEAR, WorkbenchRules.returnRadius(true), WorkbenchRules.NEAR - 1, WorkbenchRules.FORGET_DISTANCE}) {
+            for (double radius : new double[]{WorkbenchRules.NEAR, WorkbenchRules.returnRadius(true), WorkbenchRules.bandRadius(false), WorkbenchRules.FORGET_DISTANCE}) {
                 sb.append(t(Workbenches.heldNear(state, kind, dim, px, py, pz, radius, pos -> room.stands.getOrDefault(Room.key(kind, pos), true))));
             }
             sb.append(Workbenches.countStanding(state, kind, dim, px, py, pz, WorkbenchRules.NEAR, b -> true)).append('/')

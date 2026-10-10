@@ -141,29 +141,45 @@ public class StationContradictionsTest {
         assertEquals(StationChoice.Use.MAKE, StationChoice.decide(seen, null, false, true, true, 21.0, StationChoice.walkBackReach(Kind.TABLE)).use());
     }
 
-    // (B) FIXED. a smoker 21 blocks away with a furnace in the bag. the planner's latch used to enter at 20 once the smoker was out and
-    // at 21 while it was held or never seen, so the same smoker at the same spot was held or not by which side we came from, and the
-    // container task (which only looks at the plain line, 21) used it both times. the furnace and smoker have no latch now, the
-    // planner's line is the task's. it must not reach PAST the line either (a band that did was a bug once): the task puts the one from
-    // the bag down, or skips a parked one and makes another, and the plan budgeted neither
+    // (B) BY DESIGN: hysteresis. a smoker 20.5 blocks away with a furnace in the bag. the planner's latch enters at 20 once the smoker
+    // was out and keeps it to 21 while held, so in (20, 21] the planner may say "not held" where the container task (which only looks
+    // at the plain line, 21) would use the smoker. that costs a conservative plan inside a one block ring (a few cobble or logs the
+    // task then does not spend) and is the price of not dithering: a bot digging at the line would swing the stone need by 8 cobble on
+    // every step. it never reaches PAST the line (a band that did was a bug once): the task puts the one from the bag down, or skips
+    // a parked one and makes another, and the plan budgeted neither. a usable one with nothing in the bag is held across the line by
+    // the walk back anyway (next test)
     @Test
-    public void aSmokerOnTheLineIsHeldWhicheverSideWeCameFrom() {
+    public void aSmokerOnTheLineIsHeldOrNotByWhichSideWeCameFromAndNeverPastIt() {
         RunState state = new RunState();
         place(state, Kind.SMOKER, pos(0, 64, 0), DIM);
         Bag bag = new Bag();
         bag.furnaceInBag = true;
-        for (double d : new double[]{20.5, 21.0}) {
-            StationLatches inside = new StationLatches();
-            assertTrue(lookAt(state, bag, inside, 5.0).smoker().heldForPlanner());
-            assertTrue("from inside at " + d, lookAt(state, bag, inside, d).smoker().heldForPlanner());
-            StationLatches outside = new StationLatches();
-            assertFalse(lookAt(state, bag, outside, 40.0).smoker().heldForPlanner());
-            assertTrue("from outside at " + d, lookAt(state, bag, outside, d).smoker().heldForPlanner());
-            // standing still does not flip it, and the task's side does not care which way either
-            assertTrue(lookAt(state, bag, outside, d).smoker().heldForPlanner());
-            assertTrue(Workbenches.nearestStanding(state, Kind.SMOKER, DIM, PX + d, PY, PZ, WorkbenchRules.NEAR) != null);
+        StationLatches inside = new StationLatches();
+        assertTrue(lookAt(state, bag, inside, 5.0).smoker().heldForPlanner());
+        assertTrue(lookAt(state, bag, inside, 20.5).smoker().heldForPlanner());
+        assertTrue(lookAt(state, bag, inside, 21.0).smoker().heldForPlanner());
+        StationLatches outside = new StationLatches();
+        assertFalse(lookAt(state, bag, outside, 40.0).smoker().heldForPlanner());
+        assertFalse("from outside at 20.5", lookAt(state, bag, outside, 20.5).smoker().heldForPlanner());
+        assertFalse(lookAt(state, bag, outside, 21.0).smoker().heldForPlanner());
+        assertTrue(lookAt(state, bag, outside, 20.0).smoker().heldForPlanner());
+        // the task uses it either way
+        assertTrue(Workbenches.nearestStanding(state, Kind.SMOKER, DIM, PX + 20.5, PY, PZ, WorkbenchRules.NEAR) != null);
+        // standing still does not flip it, and a dither over the line flips it once
+        StationLatches dither = new StationLatches();
+        lookAt(state, bag, dither, 20.0);
+        int flips = 0;
+        boolean was = true;
+        for (double d : new double[]{20.6, 21.4, 20.8, 21.2, 20.9, 21.5, 20.7}) {
+            boolean now = lookAt(state, bag, dither, d).smoker().heldForPlanner();
+            assertEquals(now, lookAt(state, bag, dither, d).smoker().heldForPlanner());
+            if (now != was) {
+                flips++;
+            }
+            was = now;
         }
-        // and past the line it is gone from both sides, the furnace in the bag is a furnace at hand so no smoker walk back
+        assertEquals(1, flips);
+        // never past the line, from either side: the furnace in the bag is a furnace at hand so no smoker walk back
         StationLatches latches = new StationLatches();
         lookAt(state, bag, latches, 5.0);
         assertFalse(lookAt(state, bag, latches, 21.5).smoker().heldForPlanner());

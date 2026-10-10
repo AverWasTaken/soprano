@@ -1324,6 +1324,96 @@ public class WorkbenchRulesTest {
         assertFalse(WorkbenchRules.adoptable(bench(Kind.FURNACE), s.look()));
     }
 
+    // ---- round 2: the furnace and smoker band
+
+    // inward only: the planner may say "not held" where the container task would still walk to ours, never "held" where the task
+    // would make a second one (the plan did not budget the stone or the logs for it)
+    @Test
+    public void theBandOnlyReachesInsideTheLine() {
+        // before the first look the plain line is the only fair test
+        assertEquals(21.0, WorkbenchRules.bandRadius(null), 0);
+        assertEquals(21.0, WorkbenchRules.bandRadius(true), 0);
+        assertEquals(20.0, WorkbenchRules.bandRadius(false), 0);
+        assertTrue(WorkbenchRules.bandRadius(true) <= WorkbenchRules.NEAR);
+        assertTrue(WorkbenchRules.bandRadius(false) <= WorkbenchRules.NEAR);
+    }
+
+    // walk a path across the line and ask what the planner would say at each step, the way MinecraftFacts feeds it back
+    private static boolean[] walk(double[] distances, Boolean start) {
+        boolean[] out = new boolean[distances.length];
+        Boolean held = start;
+        for (int i = 0; i < distances.length; i++) {
+            out[i] = distances[i] <= WorkbenchRules.bandRadius(held);
+            held = out[i];
+        }
+        return out;
+    }
+
+    @Test
+    public void aSmokerTwentyBlocksAwayIsASmokerWhicheverWayWeGotThere() {
+        // never left: held the whole way in
+        assertTrue(walk(new double[]{20}, true)[0]);
+        // came in from outside: 20 is the edge of the band and counts
+        assertTrue(walk(new double[]{30, 25, 22, 21, 20}, null)[4]);
+        // first look right at 20.5 uses the plain line
+        assertFalse(walk(new double[]{21.5}, null)[0]);
+        assertTrue(walk(new double[]{20.5}, null)[0]);
+    }
+
+    // a bot mining at the edge: held while inside, one flip when it crosses the line, then no flip back until it is a block in
+    @Test
+    public void crossingTheLineBackAndForthFlipsOnceNotEveryStep() {
+        double[] dither = {20.6, 21.4, 20.8, 21.2, 20.9, 21.5, 20.7};
+        boolean[] latched = walk(dither, true);
+        int flips = 0;
+        for (int i = 1; i < latched.length; i++) {
+            if (latched[i] != latched[i - 1]) {
+                flips++;
+            }
+        }
+        assertEquals(1, flips);
+        assertTrue(latched[0]);
+        assertFalse(latched[1]);
+        assertFalse(latched[6]);
+        // the plain line flipped on every crossing
+        int plain = 0;
+        for (int i = 1; i < dither.length; i++) {
+            if ((dither[i] <= WorkbenchRules.NEAR) != (dither[i - 1] <= WorkbenchRules.NEAR)) {
+                plain++;
+            }
+        }
+        assertEquals(6, plain);
+        // and a block inside it is back
+        assertTrue(walk(new double[]{21.5, 20.0}, true)[1]);
+        assertFalse(walk(new double[]{21.5, 20.01}, true)[1]);
+    }
+
+    // the planner flag must never be true where the container task would make a second one: StationChoice takes ours within NEAR,
+    // so held <= NEAR for every walk, in and out, whatever the start
+    @Test
+    public void theFlagIsNeverTrueWhereTheTaskWouldNotWalkToOurs() {
+        // a triangle wave between 10 and 30 blocks, a quarter block a step, a few laps
+        double[] path = new double[640];
+        for (int i = 0; i < path.length; i++) {
+            int phase = i % 160;
+            path[i] = 10 + (phase < 80 ? phase : 160 - phase) * 0.25;
+        }
+        for (Boolean start : new Boolean[]{null, true, false}) {
+            boolean[] held = walk(path, start);
+            for (int i = 0; i < path.length; i++) {
+                if (held[i]) {
+                    assertTrue("held at " + path[i], path[i] <= WorkbenchRules.NEAR);
+                }
+            }
+        }
+    }
+
+    @Test
+    public void theBandIsNarrowerThanTheTablesLatch() {
+        assertTrue(WorkbenchRules.bandRadius(false) > WorkbenchRules.returnRadius(true));
+        assertEquals(1.0, WorkbenchRules.LATCH_BAND, 0);
+    }
+
     // ---- round 2: review fixes
 
     // a table pickup that is under way (nothing broken yet) and out past the far line, the bag now holding wood: forget it

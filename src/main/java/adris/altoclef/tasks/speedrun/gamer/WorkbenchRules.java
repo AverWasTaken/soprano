@@ -42,6 +42,11 @@ public final class WorkbenchRules {
     public static final long DROP_GIVE_UP_TICKS = 1200;
     // a station that comes back into NEAR after it was out of it only counts for the planner again once we are well inside
     public static final double RETURN_SHARE = 0.75;
+    // furnace and smoker get a smaller latch than the table: once out of NEAR they only count for the planner again this many
+    // blocks inside it, so a bot dithering over the line flips the flag once and not every step, and a smoker at 20 blocks is a
+    // smoker whichever way we got there. it only ever reaches inward: the planner may say "not held" where the container task would
+    // walk to ours (a few cobble too many), but never "held" where the task would make a second one the plan did not budget for
+    public static final double LATCH_BAND = 1.0;
     // a table this far away (a straight line) is not worth the walk back when we can craft another one: it is forgotten with a
     // log line instead. a furnace or smoker keeps the long trip up to FORGET_DISTANCE, it cost stone and a table to make
     // (the same line the craft walks back to it, StationChoice.WALK_BACK: past it the task makes a new one, so the old is let go)
@@ -81,14 +86,19 @@ public final class WorkbenchRules {
         return wasFar ? NEAR * RETURN_SHARE : NEAR;
     }
 
+    // the same latch for a furnace or smoker, a band instead of a share: `held` is last look's answer (null before the first one,
+    // where the plain line is the only fair test). held stays held to the line, and not held needs NEAR - band to come back. never
+    // outward: a band past the line says "held" where the task puts the bag's one down or skips a parked one and makes another
+    public static double bandRadius(Boolean held) {
+        return held == null || held ? NEAR : NEAR - LATCH_BAND;
+    }
+
     // the planner's word on a station of ours (the one flag stoneWanted, the kit's furnace skip, CookGate and cookFeasible read) is
-    // held inside NEAR, or Workbenches.plannerWalksBack: anywhere the container task would walk back to it. without the second
-    // half the plan asked for 8 cobble for a furnace the smelt task then never made, it walked back to ours. a furnace or smoker has
-    // no latch of its own (it had a band, 1 block inward, then one outward that was wrong): the plain line is the task's line, and
-    // the walk back holds a usable one across it
+    // held inside the band, or Workbenches.plannerWalksBack: anywhere the container task would walk back to it. without the second
+    // half the plan asked for 8 cobble for a furnace the smelt task then never made, it walked back to ours
 
     // the smoker's flag also says "smoker first" to CookGate, FurnaceWatch and comingBack, and that rule is about the smoker next to
-    // us: a far one (`walkBack`, plannerWalksBack past NEAR) never beats a furnace of ours within NEAR or in the bag. with no
+    // us: a far one (`walkBack`, plannerWalksBack past the band) never beats a furnace of ours within the band or in the bag. with no
     // furnace at hand either, the smoker is the walk worth making
     public static boolean plannerSmoker(boolean near, boolean furnaceAtHand, boolean walkBack) {
         return near || !furnaceAtHand && walkBack;
