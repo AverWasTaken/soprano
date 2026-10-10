@@ -17,20 +17,29 @@ public class WhisperChecker {
     private static String _lastMessage = null;
 
     public static MessageResult tryParse(String ourUsername, String whisperFormat, String message) {
-        List<String> parts = new ArrayList<>(Arrays.asList("{from}", "{to}", "{message}"));
-
-        // Sort by the order of appearance in whisperFormat.
-        parts.sort(Comparator.comparingInt(whisperFormat::indexOf));
-        parts.removeIf(part -> !whisperFormat.contains(part));
-
-        String regexFormat = Pattern.quote(whisperFormat);
-        for (String part : parts) {
-            regexFormat = regexFormat.replace(part, "(.+)");
+        // walk the format placeholder by placeholder: every literal chunk in between gets quoted on its own, so a "[" or a
+        // "." in the format is text and not regex. parts ends up in the order the groups appear
+        List<String> parts = new ArrayList<>();
+        StringBuilder regex = new StringBuilder();
+        int at = 0;
+        while (true) {
+            int next = -1;
+            String found = null;
+            for (String part : new String[]{"{from}", "{to}", "{message}"}) {
+                int i = whisperFormat.indexOf(part, at);
+                if (i != -1 && (next == -1 || i < next)) {
+                    next = i;
+                    found = part;
+                }
+            }
+            if (found == null) break;
+            if (next > at) regex.append(Pattern.quote(whisperFormat.substring(at, next)));
+            regex.append("(.+)");
+            parts.add(found);
+            at = next + found.length();
         }
-        if (regexFormat.startsWith("\\Q")) regexFormat = regexFormat.substring("\\Q".length());
-        if (regexFormat.endsWith("\\E")) regexFormat = regexFormat.substring(0, regexFormat.length() - "\\E".length());
-        //Debug.logInternal("FORMAT: " + regexFormat + " tested on " + message);
-        Pattern p = Pattern.compile(regexFormat);
+        if (at < whisperFormat.length()) regex.append(Pattern.quote(whisperFormat.substring(at)));
+        Pattern p = Pattern.compile(regex.toString());
         Matcher m = p.matcher(message);
         Map<String, String> values = new HashMap<>();
         if (m.matches()) {
