@@ -103,6 +103,10 @@ final class StandReport {
 
     // a boat trip, a ground shortcut or a sprint jump flight takes the tick away from the movement
     private static String owner(PathExecutor exec) {
+        // a missing field would read as "nobody has it", which is a claim we can't back up
+        if (BOAT == null || SHORTCUT == null || FLIGHT == null) {
+            return "?";
+        }
         if (read(BOAT, exec) != null) {
             return "boat";
         }

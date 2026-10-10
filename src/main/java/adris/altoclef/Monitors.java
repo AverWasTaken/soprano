@@ -111,7 +111,8 @@ public final class Monitors {
     }
 
     // a live path is baritone holding an executor (the path on screen). paused, or stuck inside a movement, or starved of
-    // input all still count, naming which is the whole job of the line
+    // input all still count, naming which is the whole job of the line. this runs ahead of baritone's own tick, so
+    // paused/keys/state are as of the tick before
     private void watchStand(AltoClef mod) {
         LocalPlayer player = Minecraft.getInstance().player;
         if (player == null) {
