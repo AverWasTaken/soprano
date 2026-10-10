@@ -98,6 +98,8 @@ public class CalculationContext {
     public int maxFallHeightNoWater;
     public final int maxFallHeightBucket;
     public final double waterWalkSpeed;
+    // the executor will sprint swim through water, same conditions as Movement.shouldSwim minus the live ones
+    public final boolean allowSwimming;
     // rowing, when there's a boat to row. equal to waterWalkSpeed when there isn't so the min is a no-op
     public final double boatWaterSpeed;
     public final double breakBlockAdditionalCost;
@@ -195,7 +197,8 @@ public class CalculationContext {
         this.maxFallHeightNoWater = Baritone.settings().maxFallHeightNoWater.value;
         this.maxFallHeightBucket = Baritone.settings().maxFallHeightBucket.value;
         double waterSpeed = ActionCosts.WALK_ONE_IN_WATER_COST * (1 - waterSpeedMultiplier) + ActionCosts.WALK_ONE_BLOCK_COST * waterSpeedMultiplier;
-        if (Baritone.settings().allowSwimming.value && this.canSprint) {
+        this.allowSwimming = Baritone.settings().allowSwimming.value && this.canSprint;
+        if (this.allowSwimming) {
             // sprint swimming beats wading on the bottom, unless depth strider is good enough to flip that
             waterSpeed = Math.min(waterSpeed, ActionCosts.SWIM_ONE_BLOCK_COST);
         }
