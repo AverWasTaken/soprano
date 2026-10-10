@@ -103,7 +103,10 @@ public class TaskCatalogueRecipeTest {
             }
             checked++;
             String outId = BuiltInRegistries.ITEM.getKey(c.output()).toString();
-            String problem = check(c.name(), c.recipe(), vanilla.getOrDefault(outId, List.of()));
+            String problem = uncollectable(c.name(), c.recipe());
+            if (problem == null) {
+                problem = check(c.name(), c.recipe(), vanilla.getOrDefault(outId, List.of()));
+            }
             if (problem != null) {
                 problems.add(problem);
             }
@@ -141,6 +144,33 @@ public class TaskCatalogueRecipeTest {
             }
         }
         return ids;
+    }
+
+    private static boolean hasNullMatch(ItemTarget target) {
+        for (Item item : target.getMatches()) {
+            if (item == null) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // CollectRecipeCataloguedResourcesTask only fetches slots that are a catalogue name or exactly one item, and skips any other
+    // multi-item slot with a log line, so the bot would never gather it. a null item in a slot is the same kind of silent hole
+    static String uncollectable(String name, CraftingRecipe recipe) {
+        for (int i = 0; i < recipe.getSlotCount(); i++) {
+            ItemTarget slot = recipe.getSlot(i);
+            if (slot.isEmpty()) {
+                continue;
+            }
+            if (hasNullMatch(slot)) {
+                return name + ": slot " + i + " has a null item in it";
+            }
+            if (!slot.isCatalogueItem() && slot.getMatches().length != 1) {
+                return name + ": slot " + i + " takes " + slot.getMatches().length + " items but isn't a catalogue name, so the recipe collector would skip it";
+            }
+        }
+        return null;
     }
 
     // null if the recipe is fine, else a one line description of what is wrong with it
@@ -308,12 +338,15 @@ public class TaskCatalogueRecipeTest {
                 union.add(new TreeSet<>(cell));
             }
             int folded = 1;
+            // every folded variant has to vary the same ingredient, or [A'|B] + [A|B'] would add up to an [A'|B'] vanilla has no file for
+            int varying = -1;
             for (int k = 1; k < group.size(); k++) {
                 List<Set<String>> other = group.get(k).grid().cells();
                 int[] pair = differingPair(base, other);
-                if (pair == null) {
+                if (pair == null || (varying >= 0 && pair[0] != varying)) {
                     continue;
                 }
+                varying = pair[0];
                 union.get(pair[0]).addAll(other.get(pair[1]));
                 folded++;
             }
@@ -637,6 +670,30 @@ public class TaskCatalogueRecipeTest {
         // but not something neither variant has
         CraftingRecipe stray = CraftingRecipe.newShapedRecipe("t", new ItemTarget[]{new ItemTarget(Items.BOWL), new ItemTarget(new Item[]{Items.BROWN_MUSHROOM, Items.CRIMSON_FUNGUS}), null, null}, 1);
         assertNotNull(check("t", stray, List.of(brown, red)));
+    }
+
+    @Test
+    public void comparatorDoesNotMixVariantsThatVaryDifferentIngredients() {
+        Vanilla base = van(true, 2, 1, 1, List.of(ids("minecraft:bowl"), ids("minecraft:poppy")));
+        Vanilla varyFirst = van(true, 2, 1, 1, List.of(ids("minecraft:stick"), ids("minecraft:poppy")));
+        Vanilla varySecond = van(true, 2, 1, 1, List.of(ids("minecraft:bowl"), ids("minecraft:allium")));
+        // stick + allium is in none of the three files
+        CraftingRecipe mixed = CraftingRecipe.newShapedRecipe("t", slots(Items.STICK, Items.ALLIUM, null, null), 1);
+        assertNotNull(check("t", mixed, List.of(base, varyFirst, varySecond)));
+        CraftingRecipe real = CraftingRecipe.newShapedRecipe("t", slots(Items.STICK, Items.POPPY, null, null), 1);
+        assertNull(check("t", real, List.of(base, varyFirst, varySecond)));
+    }
+
+    @Test
+    public void collectorBlindSpotsAreCaught() {
+        // several items in a slot with no catalogue name: the recipe collector skips it
+        CraftingRecipe wide = CraftingRecipe.newShapedRecipe("t", new ItemTarget[]{new ItemTarget(new Item[]{Items.POPPY, Items.ALLIUM}), null, null, null}, 1);
+        assertNotNull(uncollectable("t", wide));
+        // a null item (what bamboo's missing planks field used to give the button recipe)
+        CraftingRecipe nothing = CraftingRecipe.newShapedRecipe("t", new ItemTarget[]{new ItemTarget((Item) null), null, null, null}, 1);
+        assertNotNull(uncollectable("t", nothing));
+        CraftingRecipe fine = CraftingRecipe.newShapedRecipe("t", slots(Items.POPPY, null, null, null), 1);
+        assertNull(uncollectable("t", fine));
     }
 
     @Test

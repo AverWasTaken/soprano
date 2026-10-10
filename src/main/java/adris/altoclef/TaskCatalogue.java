@@ -179,6 +179,8 @@ mine("pale_oak_sapling", Blocks.PALE_OAK_LEAVES, Items.PALE_OAK_SAPLING);
             shear("glow_lichen", Blocks.GLOW_LICHEN, Items.GLOW_LICHEN).dontMineIfPresent();
             // Flowers
             simple("flower", ItemHelper.FLOWER, CollectFlowerTask::new);
+            // a recipe slot with several items has to be a catalogue name, or the recipe collector skips it and never fetches anything
+            mine("suspicious_stew_flower", MiningRequirement.HAND, ItemHelper.SUSPICIOUS_STEW_FLOWERS, ItemHelper.SUSPICIOUS_STEW_FLOWERS);
             mine("allium", Items.ALLIUM);
             mine("azure_bluet", Items.AZURE_BLUET);
             mine("blue_orchid", Items.BLUE_ORCHID);
@@ -632,7 +634,7 @@ mine("pale_oak_sapling", Blocks.PALE_OAK_LEAVES, Items.PALE_OAK_SAPLING);
             mine("apple", Blocks.OAK_LEAVES, Items.APPLE);
             smelt("baked_potato", Items.BAKED_POTATO, "potato");
             shapedRecipe2x2("mushroom_stew", Items.MUSHROOM_STEW, 1, "red_mushroom", "brown_mushroom", "bowl", o);
-            shapedRecipe2x2Targets("suspicious_stew", Items.SUSPICIOUS_STEW, 1, t("red_mushroom"), t("brown_mushroom"), t("bowl"), new ItemTarget(ItemHelper.SUSPICIOUS_STEW_FLOWERS));
+            shapedRecipe2x2("suspicious_stew", Items.SUSPICIOUS_STEW, 1, "red_mushroom", "brown_mushroom", "bowl", "suspicious_stew_flower");
             shapedRecipe3x3("bread", Items.BREAD, 1, "wheat", "wheat", "wheat", o, o, o, o, o, o);
             shapedRecipe3x3("cookie", Items.COOKIE, 8, "wheat", "cocoa_beans", "wheat", o, o, o, o, o, o);
             shapedRecipe2x2("pumpkin_pie", Items.PUMPKIN_PIE, 1, "pumpkin", "sugar", o, "egg");
@@ -790,12 +792,7 @@ mine("pale_oak_sapling", Blocks.PALE_OAK_LEAVES, Items.PALE_OAK_SAPLING);
     }
 
     private static CataloguedResource shapedRecipe2x2(String name, Item match, int outputCount, String s0, String s1, String s2, String s3) {
-        return shapedRecipe2x2Targets(name, match, outputCount, t(s0), t(s1), t(s2), t(s3));
-    }
-
-    // for the slots a catalogue name can't say, like a flower list that isn't a catalogue entry
-    private static CataloguedResource shapedRecipe2x2Targets(String name, Item match, int outputCount, ItemTarget s0, ItemTarget s1, ItemTarget s2, ItemTarget s3) {
-        CraftingRecipe recipe = CraftingRecipe.newShapedRecipe(name, new ItemTarget[]{s0, s1, s2, s3}, outputCount);
+        CraftingRecipe recipe = CraftingRecipe.newShapedRecipe(name, new ItemTarget[]{t(s0), t(s1), t(s2), t(s3)}, outputCount);
         _craftedRecipes.put(name, new RecipeTarget(match, 1, recipe));
         return put(name, new Item[]{match}, count -> new CraftInInventoryTask(new RecipeTarget(match, count, recipe)));
     }
