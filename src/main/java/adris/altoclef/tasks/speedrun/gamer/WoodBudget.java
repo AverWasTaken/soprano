@@ -443,12 +443,12 @@ public record WoodBudget(
     // logs a new smoker costs: its four, and one more for a table when there is none to craft it on (the table's planks used to
     // take the fourth log, and the catalogue went chopping a tree from the bottom of the mine)
     static int smokerLogsFor(GamerFacts f) {
-        return SMOKER_LOGS + (f.has(Items.CRAFTING_TABLE) || f.tablePlacedNearby() ? 0 : 1);
+        return SMOKER_LOGS + (f.has(Items.CRAFTING_TABLE) || f.stations().table().heldForPlanner() ? 0 : 1);
     }
 
     // a smoker we still have to make: nothing held, standing or cooking for us
     static boolean smokerOwedFor(GamerFacts f) {
-        return !f.has(Items.SMOKER) && !f.smokerPlacedNearby() && f.cookStation() == null;
+        return !f.has(Items.SMOKER) && !f.stations().smoker().heldForPlanner() && f.cookStation() == null;
     }
 
     // how many of these we hold that a furnace may burn (f.burnable, altoSupportedFuels)
