@@ -93,6 +93,13 @@ public class CoverWithSandTask extends Task {
         return null;
     }
 
+    // a command nobody is waiting on forever: the lava search wander can't even leave its spot, so there is nothing left
+    // to try
+    @Override
+    public boolean isFinished(AltoClef mod) {
+        return thisOrChildWanderFailing();
+    }
+
     @Override
     protected void onStop(AltoClef mod, Task interruptTask) {
         mod.getBlockTracker().stopTracking(Blocks.LAVA);
