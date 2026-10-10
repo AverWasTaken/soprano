@@ -339,6 +339,18 @@ public final class FurnacePlan {
         return new Plan(out, pick, changes, standingBy);
     }
 
+    // the bag is under the food floor: if the trip picked is not for food but a food job wants one too, that one goes first. the
+    // plain pick is just the soonest ready, and an iron job ready a minute earlier would shadow the meat the bag is waiting for
+    public static Plan foodFirst(Plan plan) {
+        Verdict pick = plan.pick();
+        if (pick == null || pick.job().unitsEach > 0) {
+            return plan;
+        }
+        Verdict food = soonest(plan.verdicts(), v -> v.job().unitsEach > 0
+                && (v.call() == Call.COLLECT_NOW || v.call() == Call.STAND_BY || v.call() == Call.TAKE_ALL));
+        return food == null ? plan : new Plan(plan.verdicts(), food, plan.changes(), plan.standingBy());
+    }
+
     // LEAVE -> an idle STAND_BY follows a flickering input (the filler list having nothing runnable), so it has to be the answer
     // SOFT_HOLD_TICKS in a row. so does LEAVE -> a far IDLE_DUE: one empty tick 100 blocks out would be a trip that then holds to
     // the end. everything else (the way back to LEAVE, a first call, a close due job, a quick smoker, stuck, leaving) goes through at

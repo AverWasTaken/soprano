@@ -222,24 +222,29 @@ public class IronPhase implements PhaseHandler {
             boolean boundary = head == null || !head.equals(kitHead);
             moment = moment(mod, ctx, needs, head, boundary, schedule);
             plan = furnaces.plan(ctx, moment);
+            if (ctx.food().held() < ctx.food().floor()) {
+                plan = FurnacePlan.foodFirst(plan);
+            }
             furnaces.mayCookHere(SmeltSurface.shallow(SmeltSurface.depthBelowSky(mod))
                     || SmeltSurface.nextWorkDown(head, f.count(Items.RAW_IRON), f.count(Items.IRON_INGOT), f.pendingOutput(Items.IRON_INGOT)));
         }
         // an empty bag and a trip that is not for food (the one under way, else the one the plan would start): the iron trip and the
-        // optional detours give way to the food at the head
+        // optional detours give way to the food at the head. a visit with the furnace screen open finishes first, walking off in the
+        // middle of a take would leave the job's books out of step with the bag
         RunState.FurnaceJob tripJob = furnaces.tripJob();
         if (tripJob == null && plan != null && plan.pick() != null) {
             tripJob = plan.pick().job();
         }
-        boolean starving = ctx.food().starving(tripJob);
+        boolean atScreen = mod.getPlayer().containerMenu instanceof AbstractFurnaceMenu;
+        boolean starving = !atScreen && ctx.food().starving(tripJob);
         IronActivity.Scene scene = new IronActivity.Scene(jobs, plan != null && plan.standingBy(), head != null, support.loots(),
                 support.golemFighting(), starving);
         support.beginTick(mod, ctx);
         furnaceAsked = false;
         Kind before = arbiter.current();
         sayStarving(starving, before, plan != null && plan.pick() != null, ctx.food());
-        if (starving && before == Kind.FURNACE) {
-            // the trip on its way is let go for real, see FurnaceWatch.drop
+        if (starving && before != Kind.PACK_UP && furnaces.tripJob() != null) {
+            // the trip on its way is let go for real (whoever cut in on it since, a pack-up has its own book), see FurnaceWatch.drop
             furnaces.drop();
         }
         for (Kind k : arbiter.ask(scene, now)) {

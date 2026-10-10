@@ -246,6 +246,28 @@ public class FurnacePlanTest {
     }
 
     @Test
+    public void underTheFloorADueFoodJobIsPickedBeforeAnEarlierIronOne() {
+        RunState.FurnaceJob iron = furnace(100);
+        // meat in a plain furnace, a smoker's quick stand-by would be picked first on its own
+        RunState.FurnaceJob meat = furnace(500);
+        meat.unitsEach = 6;
+        Plan plan = FurnacePlan.plan(List.of(iron, meat), BOUNDARY, 1000, null);
+        // the plain pick is whoever finished first
+        assertSame(iron, plan.pick().job());
+        Plan hungry = FurnacePlan.foodFirst(plan);
+        assertSame(meat, hungry.pick().job());
+        assertEquals(plan.verdicts(), hungry.verdicts());
+        // nothing to change when the pick is food already, when no food job wants a trip, and when nothing was picked
+        assertSame(hungry, FurnacePlan.foodFirst(hungry));
+        Plan ironOnly = FurnacePlan.plan(List.of(furnace(100), furnace(200)), BOUNDARY, 1000, null);
+        assertSame(ironOnly, FurnacePlan.foodFirst(ironOnly));
+        Plan notDue = FurnacePlan.plan(List.of(furnace(100), smoker(90000)), BOUNDARY, 1000, null);
+        assertSame(notDue.pick(), FurnacePlan.foodFirst(notDue).pick());
+        Plan running = FurnacePlan.plan(List.of(furnace(100), smoker(500)), BOUNDARY, 1000, iron);
+        assertNull(FurnacePlan.foodFirst(running).pick());
+    }
+
+    @Test
     public void farOffAHungryFoodHeadStillGoesForTheFoodCookingForUs() {
         KitNeed food = new KitNeed(KitNeed.FOOD, 20);
         RunState.FurnaceJob meat = smoker(1000);

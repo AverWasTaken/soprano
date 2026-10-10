@@ -67,7 +67,7 @@ public final class IronActivity {
     // what the phase can say about this tick for the eligibility rules. jobs = something is cooking, standingBy = the plan
     // stands at a quick smoker, hasHead = the plan has a need, loots = village/portal/golem jobs are on (IRON yes, GATHER no),
     // golemFighting = a golem fight task exists whatever the activity is, starving = FoodPlan.starving (the bag is under the food
-    // floor and no furnace is cooking food for us), so the walks that are not food give way to the kit
+    // floor and the furnace trip on the table is not for food), so the walks that are not food give way to the kit
     public record Scene(boolean jobs, boolean standingBy, boolean hasHead, boolean loots, boolean golemFighting, boolean starving) {
         // every scene from before the starving fact was a fed one
         public Scene(boolean jobs, boolean standingBy, boolean hasHead, boolean loots, boolean golemFighting) {
