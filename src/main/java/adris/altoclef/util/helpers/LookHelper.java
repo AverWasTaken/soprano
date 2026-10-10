@@ -170,7 +170,7 @@ public interface LookHelper {
 
     // the epsilon is for callers that aim exactly maxRange away (end = start + dir * maxRange), float noise must not flip them
     static boolean beyondRange(Vec3 start, Vec3 end, double maxRange) {
-        double limit = maxRange + 1.0E-6;
+        double limit = maxRange + 1.0E-4;
         return start.distanceToSqr(end) > limit * limit;
     }
 
