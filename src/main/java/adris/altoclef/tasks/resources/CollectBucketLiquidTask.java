@@ -260,7 +260,7 @@ public class CollectBucketLiquidTask extends ResourceTask {
                     // We can reach the block.
                     if (LookHelper.getReach(blockPos).isPresent() &&
                             mod.getClientBaritone().getPathingBehavior().isSafeToCancel()) {
-                        return new InteractWithBlockTask(new ItemTarget(Items.BUCKET, 1), blockPos, _toCollect != Blocks.LAVA);
+                        return InteractWithBlockTask.scoop(new ItemTarget(Items.BUCKET, 1), blockPos, _toCollect != Blocks.LAVA);
                     }
                     // Get close enough.
                     // up because if we go below we'll try to move next to the liquid (for lava, not a good move)

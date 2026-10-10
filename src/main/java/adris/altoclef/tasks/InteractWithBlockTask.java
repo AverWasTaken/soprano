@@ -55,6 +55,8 @@ public class InteractWithBlockTask extends Task {
     private final Vec3i _interactOffset;
     private final Input _interactInput;
     private final boolean _shiftClick;
+    // scooping a liquid with a bucket. set by scoop(), see the notes there
+    private boolean _scoop;
     private final TimerGame _clickTimer = new TimerGame(5);
     private final TimeoutWanderTask _wanderTask = new TimeoutWanderTask(5, true);
     private Task _unstuckTask = null;
@@ -133,6 +135,36 @@ public class InteractWithBlockTask extends Task {
 
     public InteractWithBlockTask(BlockPos target) {
         this(ItemTarget.EMPTY, null, target, Input.CLICK_RIGHT, false, false);
+    }
+
+    // a bucket on a liquid source. differs from a plain click in two ways:
+    // - it never sneaks. the sneak was there so a click can't open whatever is behind the target, but the click only goes
+    //   out once the crosshair is on the source itself, so there is nothing to open, and the crouch moves the eyes from 1.62
+    //   to 1.27: a reach that was fine standing is not crouched, the next tick lets go and walks, and it flips forever
+    // - a click that stays unanswered for a whole click timeout bans the source, so the collector moves on to the next one
+    //   instead of wandering off and coming back to the same one for good
+    public static InteractWithBlockTask scoop(ItemTarget bucket, BlockPos source, boolean walkInto) {
+        InteractWithBlockTask task = new InteractWithBlockTask(bucket, null, source, Input.CLICK_RIGHT, walkInto, Vec3i.ZERO, false);
+        task._scoop = true;
+        return task;
+    }
+
+    // the sneak after a click is for plain interactions only (see scoop)
+    static boolean sneaksAfterClick(boolean shiftClick, boolean scoop) {
+        return shiftClick && !scoop;
+    }
+
+    // an unanswered click timeout is only news for a scoop, a door that doesn't open is a different problem
+    static boolean bansOnClickTimeout(boolean scoop) {
+        return scoop;
+    }
+
+    // wandering off crouched is slow and pointless, the sneak is for the click
+    private Task wander(AltoClef mod) {
+        if (_shiftClick) {
+            mod.getInputControls().release(Input.SNEAK);
+        }
+        return _wanderTask;
     }
 
     // where to walk to instead of the stock goal, for whoever knows better where the block is best used from (the station walk)
@@ -273,12 +305,12 @@ public class InteractWithBlockTask extends Task {
         if (_wanderTask.isActive() && !_wanderTask.isFinished(mod)) {
             _moveChecker.reset();
             _clickTimer.reset();
-            return _wanderTask;
+            return wander(mod);
         }
         if (!_moveChecker.check(mod)) {
             Debug.logMessage("Failed, blacklisting and wandering.");
             mod.getBlockTracker().requestBlockUnreachable(_target);
-            return _wanderTask;
+            return wander(mod);
         }
 
         int reachDistance = 0;
@@ -317,7 +349,11 @@ public class InteractWithBlockTask extends Task {
                 if (_clickTimer.elapsed()) {
                     // We tried clicking but failed.
                     _clickTimer.reset();
-                    return _wanderTask;
+                    if (bansOnClickTimeout(_scoop)) {
+                        Debug.logInternal("interact: clicked " + _target.toShortString() + " for a whole click timeout and the bucket never filled, giving up on it");
+                        mod.getBlockTracker().requestBlockUnreachable(_target, 0, "the bucket never filled");
+                    }
+                    return wander(mod);
                 }
             }
         }
@@ -346,7 +382,7 @@ public class InteractWithBlockTask extends Task {
             if (task._toUse != null && !task._toUse.equals(_toUse)) return false;
             if (!task._target.equals(_target)) return false;
             if (!task._interactInput.equals(_interactInput)) return false;
-            return task._walkInto == _walkInto && Objects.equals(task._goalFor, _goalFor);
+            return task._walkInto == _walkInto && task._scoop == _scoop && Objects.equals(task._goalFor, _goalFor);
         }
         return false;
     }
@@ -424,7 +460,7 @@ public class InteractWithBlockTask extends Task {
                 }
                 mod.getInputControls().hold(_interactInput);
                 if (mod.getInputControls().isHeldDown(_interactInput)) {
-                    if (_shiftClick) {
+                    if (sneaksAfterClick(_shiftClick, _scoop)) {
                         mod.getInputControls().hold(Input.SNEAK);
                     }
                     mod.getInputControls().release(_interactInput);
