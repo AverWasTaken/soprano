@@ -22,6 +22,8 @@ public abstract class Task {
     private String _debugState = "";
     private String _hudState = "";
 
+    private final TaskClock _clock = new TaskClock();
+
     private Task _sub = null;
 
     private boolean _first = true;
@@ -50,6 +52,9 @@ public abstract class Task {
         }
         if (_stopped) return;
 
+        // ticks only when the task really runs, so an interrupt is never billed. note a parent's clock keeps running
+        // while its child does the work, that is on purpose: the parent's give up covers everything it asked for
+        _clock.tick();
         Task newSub = onTick(mod);
         // Debug state print
         if (!_oldDebugState.equals(_debugState)) {
@@ -113,6 +118,16 @@ public abstract class Task {
     private String className() {
         String name = getClass().getSimpleName();
         return name.isEmpty() ? getClass().getName() : name;
+    }
+
+    // how long this task has really run. nothing in here ever clears it, reset() included: SingleTaskChain calls reset()
+    // on every resume after an interrupt, so clearing there would give every interrupt a fresh budget again
+    protected final double timeOnTaskSeconds() {
+        return _clock.spentSeconds();
+    }
+
+    protected final boolean overTimeOnTask(double limitSeconds) {
+        return _clock.over(limitSeconds);
     }
 
     public void reset() {
