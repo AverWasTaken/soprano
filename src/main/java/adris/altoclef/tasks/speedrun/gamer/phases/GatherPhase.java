@@ -10,6 +10,7 @@ import adris.altoclef.tasks.speedrun.gamer.GamerPhase;
 import adris.altoclef.tasks.speedrun.gamer.KitNeed;
 import adris.altoclef.tasks.speedrun.gamer.KitPlanner;
 import adris.altoclef.tasks.speedrun.gamer.KitRunner;
+import adris.altoclef.tasks.speedrun.gamer.WoodBudget;
 import adris.altoclef.tasks.speedrun.gamer.NeedEnd;
 import adris.altoclef.tasks.speedrun.gamer.PhaseHandler;
 import adris.altoclef.tasks.speedrun.gamer.PrepSupport;
@@ -72,10 +73,27 @@ public class GatherPhase implements PhaseHandler {
 
     @Override
     public boolean isDone(GamerFacts facts, RunState state, GamerConfig cfg) {
+        // no tick at hand (a test): plans of its own, the same bag gives the same answers
+        WoodBudget wood = WoodBudget.of(facts, cfg.overworld, cfg.end.beds, GamerPhase.GATHER);
+        return done(facts, state, cfg, FoodPlan.of(facts, cfg, GamerPhase.GATHER, state.foodRefilling, wood), wood);
+    }
+
+    // the engine's way: the tick's plan and budget, the very ones tick() walks, so done cannot say yes while they still want a chop
+    @Override
+    public boolean isDone(GamerContext ctx) {
+        return done(ctx.facts(), ctx.state(), ctx.cfg(), ctx.food(), ctx.wood());
+    }
+
+    private boolean done(GamerFacts facts, RunState state, GamerConfig cfg, FoodPlan food, WoodBudget wood) {
         // a table or furnace of ours still standing is picked up first, this is the last chance (Workbenches.phaseMayEnd)
         // food still cooking is food we do not have, and the smoker coming down is part of the job
-        // the food half is the kit's minimum (atMinimum): a trip still running past it carries on in IRON, the latch goes with us
-        return KitPlanner.gather(facts, cfg.overworld, cfg.end.beds, FoodPlan.of(facts, cfg, GamerPhase.GATHER, state.foodRefilling).atMinimum()).isEmpty() && facts.furnaceJobs().isEmpty()
+        // the food half is the kit's minimum (atMinimum): a trip still running past it carries on in IRON, the latch goes with us.
+        // the wood half is not: the trip's fuel logs are in the tick's plan (the cook has something to burn when the meat comes in),
+        // and a phase that calls itself done with a chop still in its own plan walks off from it. so everything the tick's plan wants
+        // bar the food has to be gone as well
+        boolean kitDone = KitPlanner.gather(facts, cfg.overworld, cfg.end.beds, food.atMinimum(), wood).isEmpty()
+                && KitPlanner.gather(facts, cfg.overworld, cfg.end.beds, food, wood).stream().allMatch(n -> KitNeed.FOOD.equals(n.catalogueName()));
+        return kitDone && facts.furnaceJobs().isEmpty()
                 && Workbenches.phaseMayEnd(state, facts.dimension().name(), facts.gameTime()) && !furnaces.cooking();
     }
 

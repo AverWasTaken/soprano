@@ -53,10 +53,10 @@ final class GamerHud {
     // the card would sit on the last step and the kit while the tree says "Getting our stuff back": the action is the recovery
     // now, and the kit rows are gone (the bag is empty or on its way back, a row asking for planks would be a lie). the phase, its
     // clock (held while we recover) and the footer stay. what the old rows had finished is not news when the kit comes back
-    GamerHudState recovering(RunState state, GamerFacts facts, GamerConfig cfg, double secondsInPhase, int attempt, String action) {
+    GamerHudState recovering(RunState state, GamerFacts facts, GamerConfig cfg, FoodPlan food, double secondsInPhase, int attempt,
+                             String action) {
         lastRows = List.of();
         lingering.clear();
-        FoodPlan food = FoodPlan.of(facts, cfg, state.phase, state.foodRefilling);
         return new GamerHudState(state.phase, secondsInPhase, cfg.budgets.minutes(state.phase), attempt, action, List.of(),
                 furnaceRows(facts.furnaceJobs()), null, food.held(), footerLine(food));
     }

@@ -18,6 +18,7 @@ import adris.altoclef.tasks.speedrun.gamer.IronActivity.Kind;
 import adris.altoclef.tasks.speedrun.gamer.KitNeed;
 import adris.altoclef.tasks.speedrun.gamer.KitPlanner;
 import adris.altoclef.tasks.speedrun.gamer.KitRunner;
+import adris.altoclef.tasks.speedrun.gamer.WoodBudget;
 import adris.altoclef.tasks.speedrun.gamer.NeedEnd;
 import adris.altoclef.tasks.speedrun.gamer.Workbenches;
 import adris.altoclef.tasks.speedrun.gamer.WorkbenchRules;
@@ -123,10 +124,22 @@ public class IronPhase implements PhaseHandler {
 
     @Override
     public boolean isDone(GamerFacts facts, RunState state, GamerConfig cfg) {
+        // no tick at hand (a test): plans of its own, the same bag gives the same answers
+        WoodBudget wood = WoodBudget.of(facts, cfg.overworld, cfg.end.beds, GamerPhase.IRON);
+        return done(facts, state, cfg, FoodPlan.of(facts, cfg, GamerPhase.IRON, state.foodRefilling, wood), wood);
+    }
+
+    // the engine's way: the tick's plan and budget, the very ones tick() walks, so done cannot say yes while they still want something
+    @Override
+    public boolean isDone(GamerContext ctx) {
+        return done(ctx.facts(), ctx.state(), ctx.cfg(), ctx.food(), ctx.wood());
+    }
+
+    private boolean done(GamerFacts facts, RunState state, GamerConfig cfg, FoodPlan food, WoodBudget wood) {
         // a table or furnace of ours still standing is picked up first, this is the last chance (Workbenches.phaseMayEnd)
         // iron still cooking is iron we do not have, however empty the plan looks
         // the food half is the kit's minimum (atMinimum): a trip still running past it carries on in the next phase
-        return KitPlanner.plan(facts, cfg.overworld, cfg.end.beds, FoodPlan.of(facts, cfg, GamerPhase.IRON, state.foodRefilling).atMinimum()).isEmpty() && facts.furnaceJobs().isEmpty()
+        return KitPlanner.plan(facts, cfg.overworld, cfg.end.beds, food.atMinimum(), wood).isEmpty() && facts.furnaceJobs().isEmpty()
                 && Workbenches.phaseMayEnd(state, facts.dimension().name(), facts.gameTime()) && !furnaces.cooking();
     }
 

@@ -7,8 +7,9 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import adris.altoclef.tasks.speedrun.gamer.config.EndConfig;
-import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
 import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig;
+import adris.altoclef.tasks.speedrun.gamer.phases.GatherPhase;
+import adris.altoclef.tasks.speedrun.gamer.phases.IronPhase;
 import adris.altoclef.util.helpers.FuelPolicy;
 import adris.altoclef.util.helpers.ItemHelper;
 import java.util.List;
@@ -230,30 +231,53 @@ public class WoodBudgetContradictionsTest {
         assertEquals(new WoodReserve.Keep(0, 0), cooking.keep());
     }
 
-    // (d) GatherPhase.isDone and IronPhase's build their own FoodPlan, at the kit's minimum with the latch from the state, and
-    // not the tick's latched ctx.food(). mid trip the two disagree about the cook's logs (and about the food need), so isDone says
-    // the phase is finished while the plan it just walked still has a chop in it
+    // (d) GatherPhase.isDone and IronPhase's built their own FoodPlan, at the kit's minimum with the latch from the state, and not
+    // the tick's latched ctx.food() (nor the tick's wood). mid trip the two disagreed about the cook's logs, so isDone said the phase
+    // was finished while the plan it had just walked still had a chop in it. the engine asks with the context now. the food half
+    // stays the kit's minimum on purpose (a trip past it carries on in the next phase, the latch is the run's), the wood half is
+    // the tick's: a chop still in the plan keeps the phase going
     @Test
-    public void isDoneAndThePlanDisagreeAboutTheGatherAndTheFood() {
+    public void isDoneReadsTheTicksPlanForTheChopsAndStopsAtTheMinimumForTheFood() {
         FakeFacts f = madeEverything().give(Items.OAK_LOG, 3).give(Items.WHITE_BED, 8).give(Items.COBBLESTONE, 30);
         f.foodUnits = 100;
-        GamerConfig gc = new GamerConfig();
+        StubContext ctx = new StubContext() {
+            @Override
+            public GamerFacts facts() {
+                return f;
+            }
+        };
+        ctx.cfg.end.beds = BEDS;
+        ctx.state.phase = GamerPhase.GATHER;
         // a food trip is on (state.foodRefilling), the bag is past the minimum but not at the trip's stop
-        FoodPlan tick = FoodPlan.of(f, gc, GamerPhase.GATHER, true);
-        FoodPlan done = FoodPlan.of(f, gc, GamerPhase.GATHER, true).atMinimum();
-        assertTrue(tick.wantsRefill());
-        assertFalse(done.wantsRefill());
-        List<KitNeed> plan = KitPlanner.gather(f, gc.overworld, BEDS, tick);
-        List<KitNeed> isDone = KitPlanner.gather(f, gc.overworld, BEDS, done);
-        // known wrong: one says 14 logs to chop for the cook and food to hunt, the other says nothing is left
+        ctx.state.foodRefilling = true;
+        List<KitNeed> plan = KitPlanner.gather(f, ctx.cfg.overworld, BEDS, ctx.food(), ctx.wood());
         assertEquals(List.of(new KitNeed("log", 14), new KitNeed(KitNeed.FOOD, 130)), plan);
-        assertTrue(isDone.isEmpty());
+        // 14 logs to chop for the cook is still owed, so GATHER is not done (it used to say yes: its own plan at the minimum had no chop)
+        GatherPhase gather = new GatherPhase();
+        assertFalse(gather.isDone(ctx));
+        // with the logs in the bag only the trip is left, and that one carries on in IRON
+        f.give(Items.OAK_LOG, 14);
+        assertEquals(List.of(new KitNeed(KitNeed.FOOD, 130)), KitPlanner.gather(f, ctx.cfg.overworld, BEDS, ctx.food(), ctx.wood()));
+        assertTrue(gather.isDone(ctx));
 
-        // the same in IRON: the plan hunts to the trip's stop, isDone's minimum is already met
-        FoodPlan ironTick = FoodPlan.of(f, gc, GamerPhase.IRON, true);
-        FoodPlan ironDone = ironTick.atMinimum();
-        assertTrue(KitPlanner.plan(f, gc.overworld, BEDS, ironTick).contains(new KitNeed(KitNeed.FOOD, 130)));
-        assertFalse(KitPlanner.plan(f, gc.overworld, BEDS, ironDone).contains(new KitNeed(KitNeed.FOOD, 130)));
+        // IRON: the cook's chop is in the tick's plan, and the phase is not done while it is
+        FakeFacts raw = new FakeFacts().give(Items.OAK_LOG, 5).give(Items.BEEF, 5).give(Items.COBBLESTONE, 30).give(Items.CRAFTING_TABLE, 1)
+                .give(Items.WHITE_BED, 8);
+        raw.foodUnits = 100;
+        raw.nearSurface = true;
+        StubContext iron = new StubContext() {
+            @Override
+            public GamerFacts facts() {
+                return raw;
+            }
+        };
+        iron.cfg.overworld.ironKit.clear();
+        iron.cfg.overworld.starterKit.clear();
+        iron.cfg.overworld.armorPlan = OverworldConfig.ArmorPlan.NONE;
+        iron.state.phase = GamerPhase.IRON;
+        List<KitNeed> ironPlan = KitPlanner.plan(raw, iron.cfg.overworld, iron.cfg.end.beds, iron.food(), iron.wood());
+        assertEquals(8, logNeed(ironPlan));
+        assertFalse(new IronPhase().isDone(iron));
     }
 
     // (e, found on the way) the cook gate's count of wood a furnace may burn takes the reserve off the burnable logs only, but

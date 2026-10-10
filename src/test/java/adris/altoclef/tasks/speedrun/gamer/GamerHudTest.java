@@ -28,10 +28,17 @@ public class GamerHudTest {
         Bootstrap.bootStrap();
     }
 
+    // the card as the engine draws it: with the food plan the machine hands out this tick, built for the phase the state is in
+    private GamerHudState recovering(double seconds, int attempt, String action) {
+        WoodBudget wood = WoodBudget.of(facts, cfg.overworld, cfg.end.beds, state.phase);
+        FoodPlan food = FoodPlan.latched(facts, cfg, state, line -> { }, wood);
+        return hud.recovering(state, facts, cfg, food, seconds, attempt, action);
+    }
+
     @Test
     public void aRecoveryCardSaysWhatTheRecoveryIsDoingAndShowsNoKit() {
         state.phase = GamerPhase.IRON;
-        GamerHudState card = hud.recovering(state, facts, cfg, 312.5, 2, HudRules.recoveryWords(47));
+        GamerHudState card = recovering(312.5, 2, HudRules.recoveryWords(47));
         assertEquals("Getting our stuff back, 47 blocks", card.action());
         assertTrue(card.rows().isEmpty());
         // the coal or gravel detour is a side job of the phase, the phase is not running
@@ -46,10 +53,10 @@ public class GamerHudTest {
     @Test
     public void theNetherTripReadsItsStageOnTheSameCard() {
         state.phase = GamerPhase.NETHER;
-        GamerHudState walk = hud.recovering(state, facts, cfg, 10, 1, HudRules.tripWords(NetherTripRules.Stage.WALK, 212));
+        GamerHudState walk = recovering(10, 1, HudRules.tripWords(NetherTripRules.Stage.WALK, 212));
         assertEquals("Walking to our stuff, 212 blocks", walk.action());
         assertTrue(walk.rows().isEmpty());
-        GamerHudState portal = hud.recovering(state, facts, cfg, 10, 1, HudRules.tripWords(NetherTripRules.Stage.PORTAL, -1));
+        GamerHudState portal = recovering(10, 1, HudRules.tripWords(NetherTripRules.Stage.PORTAL, -1));
         assertEquals("Heading back to the nether", portal.action());
     }
 
@@ -58,7 +65,7 @@ public class GamerHudTest {
         // a batch in a furnace does not care that we died, its clock runs on and the card keeps counting it
         state.phase = GamerPhase.IRON;
         facts.cooking("iron_ingot", 12, 60);
-        GamerHudState card = hud.recovering(state, facts, cfg, 100, 1, HudRules.recoveryWords(10));
+        GamerHudState card = recovering(100, 1, HudRules.recoveryWords(10));
         assertEquals(1, card.furnaces().size());
         assertEquals("Smelting 12 iron", card.furnaces().get(0).words());
         assertEquals(Items.FURNACE, card.furnaces().get(0).icon());
@@ -109,10 +116,10 @@ public class GamerHudTest {
         facts.smokerPlaced = true;
         facts.foodUnits = 3 * FoodHelper.plannedNutrition(Items.PORKCHOP);
         state.phase = GamerPhase.IRON;
-        GamerHudState iron = hud.recovering(state, facts, cfg, 0, 1, HudRules.recoveryWords(5));
+        GamerHudState iron = recovering(0, 1, HudRules.recoveryWords(5));
         assertEquals(24, iron.foodUnits());
         assertEquals(cfg.overworld.minFoodUnits, iron.foodTarget());
         state.phase = GamerPhase.LOCATE;
-        assertEquals(9, hud.recovering(state, facts, cfg, 0, 1, HudRules.recoveryWords(5)).foodUnits());
+        assertEquals(9, recovering(0, 1, HudRules.recoveryWords(5)).foodUnits());
     }
 }

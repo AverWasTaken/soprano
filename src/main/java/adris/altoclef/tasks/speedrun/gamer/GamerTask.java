@@ -753,8 +753,10 @@ public class GamerTask extends Task {
     // a recovery (the walk back for a death pile, or the trip into the nether for one) never reaches updateHud, so the card is
     // told what it is doing here instead. the kit rows are gone while it lasts, see GamerHud.recovering
     private void updateRecoveryHud(String action) {
+        // the machine does not tick through a recovery, so the plan it cached is from before it and the bag has changed since
+        machine.dropFood();
         hudSnapshot = Baritone.settings().altoGamerHud.value
-                ? hudCard.recovering(state, facts, cfg, machine.secondsInPhase(), machine.attempt(), action) : null;
+                ? hudCard.recovering(state, facts, cfg, machine.food(), machine.secondsInPhase(), machine.attempt(), action) : null;
     }
 
     // the nether trip's stage in words. the pile is only a distance worth showing once we are in the nether with it (the portal

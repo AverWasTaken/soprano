@@ -319,7 +319,7 @@ public final class PhaseMachine implements GamerContext {
         RunState s = host.state();
         PhaseRules.Decision d;
         try {
-            d = rules.decide(s.phase, host.facts(), s, host.cfg(), now());
+            d = rules.decide(s.phase, this, now());
         } catch (RuntimeException e) {
             handlerThrew(current(), e);
             return;
@@ -473,6 +473,12 @@ public final class PhaseMachine implements GamerContext {
             foodPhase = phase;
         }
         return food;
+    }
+
+    // a tick the machine does not run (a recovery has the wheel) still draws the card, and the plan cached from the last real tick
+    // is out of date by then
+    public void dropFood() {
+        food = null;
     }
 
     // built on the first ask of a tick and dropped when the next one starts, same as the food plan, and for the state's phase (a
