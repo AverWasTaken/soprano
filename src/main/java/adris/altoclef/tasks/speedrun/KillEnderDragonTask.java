@@ -137,6 +137,12 @@ public class KillEnderDragonTask extends Task {
             if (armor == Items.DIAMOND_HELMET && pumpkinWorn(mod)) {
                 continue;
             }
+            // worn netherite is better than the diamond piece in the bag (EndGear.armorToWear's rule), swapping would only make the
+            // two of them trade places every time the dragon phase hands us back
+            Item netherite = ItemHelper.NETHERITE_ARMORS[java.util.Arrays.asList(ItemHelper.DIAMOND_ARMORS).indexOf(armor)];
+            if (StorageHelper.isArmorEquipped(mod, netherite)) {
+                continue;
+            }
             try {
                 if (mod.getItemStorage().hasItem(armor) && !StorageHelper.isArmorEquipped(mod, armor)) {
                     setDebugState("Equipping " + armor);
