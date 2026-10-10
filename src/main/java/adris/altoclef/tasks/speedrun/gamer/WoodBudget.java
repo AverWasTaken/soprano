@@ -138,8 +138,14 @@ public record WoodBudget(
         int chop = f.nearSurface() ? Math.max(0, claim - Math.max(0, Math.min(logs, burnableLogs) - kit.logs())) : 0;
         // the log stock-up (SmeltFiller) chops towards a pile to craft with, planks counting as wood. the reserve keeps what it
         // chopped, or the furnace burns the pile and the next wait chops it again. the cook outranks it, so while the cook has a
-        // claim the stock is not protected. it overlaps the beds' share, it is the same wood and not a second pile
-        int stock = claim > 0 ? 0 : Math.min(logs, Math.max(0, stockTarget(cfg) - planks / PLANKS_PER_LOG));
+        // claim the stock is not protected, and so does the fuel the smelts still ahead need: the stock only holds back logs that
+        // coal and spare planks leave unneeded, or an iron batch with no coal would find its fuel locked up in a pile of
+        // nice-to-have. it overlaps the beds' share, it is the same wood and not a second pile
+        int smeltsAhead = Math.max(0, KitPlanner.ingotsNeeded(f, cfg) - f.count(Items.IRON_INGOT)) + CookGate.raw(f);
+        int fuelInHand = CookGate.coalSmelts(f) + Math.max(0, burnablePlanks - keep.planks()) * 3 / 2;
+        int logsForFuel = smeltsAhead > fuelInHand ? (2 * (smeltsAhead - fuelInHand) + 2) / 3 : 0;
+        int stock = claim > 0 ? 0 : Math.min(Math.max(0, Math.min(logs, burnableLogs) - logsForFuel),
+                Math.max(0, stockTarget(cfg) - planks / PLANKS_PER_LOG));
         if (stock > keep.logs()) {
             keep = new WoodReserve.Keep(stock, keep.planks());
         }

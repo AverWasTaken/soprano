@@ -119,6 +119,7 @@ public class WoodBudgetEquivalenceTest {
                 + ",raw=" + CookGate.raw(f) + ",pile=" + CookGate.pile(f) + ",coal=" + f.count(Items.COAL, Items.CHARCOAL)
                 + ",cookStation=" + f.cookStation + ",suspended=" + f.cookSuspended + ",smoker=" + (f.count(Items.SMOKER) > 0 || f.smokerPlaced)
                 + ",furnace=" + (f.count(Items.FURNACE) > 0 || f.furnacePlaced) + ",near=" + f.nearSurface + ",dim=" + f.dimension
+                + ",smeltsAhead=" + (Math.max(0, KitPlanner.ingotsNeeded(f, s.cfg) - f.count(Items.IRON_INGOT)) + CookGate.raw(f))
                 + ",jobs=" + f.jobs.size() + ",beds=" + s.endBeds + ",burn=" + f.unburnable.size();
     }
 

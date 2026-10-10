@@ -202,10 +202,12 @@ public class WoodBudgetContradictionsTest {
     // (c) the log stock-up asks for logs in the wait for the iron. they are wood to craft with later (SmeltFiller: "it is only there
     // so we have wood to craft with", smeltExtras: "logs to hold"), not fuel, and the wood budget had no use for them (the kit is
     // made), so the reserve called every one spare and the furnace burned what the stock-up chopped, for the next wait to chop it
-    // again. the iron budget holds them back now (stockClaim), the cook's claim is the one thing that outranks it
+    // again. the iron budget holds them back now (stockClaim), under two things that outrank it: the cook's claim, and the fuel the
+    // smelts still ahead need (an iron batch with no coal must be able to burn the pile, or the claim is a new way to stall)
     @Test
     public void theLogStockUpChopsForLogsTheFurnaceMayNotBurn() {
-        FakeFacts f = madeEverything().give(Items.OAK_LOG, 3).give(Items.WHITE_BED, 8);
+        // coal for every smelt ahead, so the logs are not fuel
+        FakeFacts f = madeEverything().give(Items.OAK_LOG, 3).give(Items.WHITE_BED, 8).give(Items.COAL, 8);
         WoodBudget gather = WoodBudget.of(f, cfg, BEDS);
         assertEquals(0, gather.gatherLogsOwed());
         // the gather has no stock-up, its view is what it was
@@ -225,10 +227,28 @@ public class WoodBudgetContradictionsTest {
         assertEquals(0, WoodBudget.of(f, cfg, BEDS, GamerPhase.IRON).stockUpLogs(8, true));
         assertEquals(0, WoodBudget.of(f, cfg, BEDS, GamerPhase.IRON).stockClaim());
         // the cook outranks it: raw meat waiting and the claim is the cook's, the logs are fuel and a smoker again
-        FakeFacts meat = madeEverything().give(Items.OAK_LOG, 3).give(Items.WHITE_BED, 8).give(Items.BEEF, 5).give(Items.COBBLESTONE, 30);
+        FakeFacts meat = madeEverything().give(Items.OAK_LOG, 3).give(Items.WHITE_BED, 8).give(Items.BEEF, 5).give(Items.COBBLESTONE, 30)
+                .give(Items.COAL, 8);
         WoodBudget cooking = WoodBudget.of(meat, cfg, BEDS, GamerPhase.IRON);
         assertEquals(0, cooking.stockClaim());
         assertEquals(new WoodReserve.Keep(0, 0), cooking.keep());
+    }
+
+    // and the fuel in hand outranks the stock: no coal, a batch of iron ahead, and the logs stay burnable
+    @Test
+    public void theLogStockUpNeverLocksUpTheFuelTheSmeltsAheadNeed() {
+        FakeFacts f = madeEverything().give(Items.OAK_LOG, 3).give(Items.WHITE_BED, 8);
+        int ahead = Math.max(0, KitPlanner.ingotsNeeded(f, cfg) - f.count(Items.IRON_INGOT));
+        assertTrue("iron is still to be smelted", ahead > 4);
+        WoodBudget w = WoodBudget.of(f, cfg, BEDS, GamerPhase.IRON);
+        assertEquals(0, w.stockClaim());
+        assertEquals(new WoodReserve.Keep(0, 0), w.keep());
+        assertEquals(4, w.burnableWoodSmelts(0));
+        // coal for most of it: the wood left over is the stock's, as far as the smelts do not need it
+        f.give(Items.COAL, (ahead - 3) / 8 + 1);
+        WoodBudget some = WoodBudget.of(f, cfg, BEDS, GamerPhase.IRON);
+        int fuel = CookGate.fuelSmelts(f, some, 0);
+        assertTrue("never less fuel than the smelts ahead, if there was that much", fuel >= Math.min(ahead, ((ahead - 3) / 8 + 1) * 8 + 4));
     }
 
     // (d) GatherPhase.isDone and IronPhase's built their own FoodPlan, at the kit's minimum with the latch from the state, and not
