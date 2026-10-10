@@ -106,7 +106,9 @@ public class BaritoneRegionTest {
         try {
             final NetherPathfinder ctx = new NetherPathfinder(1, regions.toString(), NetherPathfinder.Dimension.NETHER, 128);
             assertNull(ctx.getChunk(3, 5));
-            assertTrue(ctx.tryLoadRegion(20, 20) > 0);
+            // the return is the milliseconds spent reading, and a warm jvm reads this in under one,
+            // so it is 0 more often than not. the chunk showing up is the real signal
+            ctx.tryLoadRegion(20, 20);
             assertNotNull(ctx.getChunk(3, 5));
             assertTrue(ctx.hasChunkFromCaller(3, 5));
             assertTrue(ctx.getChunk(3, 5).isSolid(1, 2, 3));
