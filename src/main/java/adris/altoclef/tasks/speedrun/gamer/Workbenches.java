@@ -311,7 +311,8 @@ public final class Workbenches {
         return n;
     }
 
-    private static boolean standing(Bench b, Kind kind, String dimension) {
+    // package private so the station golden can ask it per bench, nothing else calls it from outside this class
+    static boolean standing(Bench b, Kind kind, String dimension) {
         return b.kind == kind && b.dimension.equals(dimension) && b.state != Bench.State.PICKING_UP && b.state != Bench.State.IN_BAG;
     }
 
