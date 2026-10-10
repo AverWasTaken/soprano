@@ -200,7 +200,7 @@ public class PortalPhase implements PhaseHandler {
                 return enter;
             }
             if (!pool.failed()) {
-                hudState = "Building the portal on a lava pool";
+                hudState = pool.searching() ? "Scanning for lava lakes" : "Building the portal on a lava pool";
                 poolStarted = true;
                 return pool;
             }

@@ -191,6 +191,8 @@ public class LavaPoolPortalTask extends Task {
     private Task search(AltoClef mod) {
         if (searchStart < 0) {
             searchStart = tick;
+            // we stand still for this part, say so or it looks like the bot fell asleep
+            log.accept("portal: scanning for lava lakes");
         }
         if (tick - searchStart > SEARCH_TICKS) {
             return giveUp(mod, "no 4 wide lava pool with a shore nearby");
@@ -479,7 +481,12 @@ public class LavaPoolPortalTask extends Task {
 
     @Override
     protected String toHudString() {
-        return "Building a portal on a lava pool";
+        return searching() ? "Scanning for lava lakes" : "Building a portal on a lava pool";
+    }
+
+    // no pool picked yet, we're still looking through the lava we know about
+    public boolean searching() {
+        return layout == null;
     }
 
     @Override
