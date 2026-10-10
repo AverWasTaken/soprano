@@ -205,6 +205,31 @@ public class CreeperEscapeTest {
         }
     }
 
+    // the same flat run, underground: a ground cell with a negative y is still ground
+    @Test
+    public void belowYZeroIsJustGround() {
+        Cells deep = (x, y, z) -> y <= -21 ? Kind.SOLID : Kind.OPEN;
+        Heading h = CreeperEscape.choose(0.5, -20, 0.5, -2.5, 0.5, deep);
+        assertNotNull(h);
+        assertEquals(0, h.degrees());
+    }
+
+    @Test
+    public void aFenceIsAWallNotAStep() {
+        Heading h = run(new FakeWorld().set(1, 64, 0, Kind.WALL));
+        assertNotNull(h);
+        assertFalse(h.degrees() == 0);
+    }
+
+    @Test
+    public void standingOnATallFloorIsNotAStep() {
+        // farmland and friends put y a hair under the next block up
+        Heading h = CreeperEscape.choose(0.5, 63.9375, 0.5, -2.5, 0.5, new FakeWorld());
+        assertNotNull(h);
+        assertEquals(0, h.degrees());
+        assertFalse(h.jump());
+    }
+
     @Test
     public void aCreeperOnTopOfUsHasNoAway() {
         assertNull(CreeperEscape.choose(0.5, 64, 0.5, 0.5, 0.5, new FakeWorld()));

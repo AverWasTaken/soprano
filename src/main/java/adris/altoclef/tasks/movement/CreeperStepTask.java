@@ -14,6 +14,7 @@ import java.util.Optional;
 import java.util.Set;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.tags.FluidTags;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.monster.Creeper;
@@ -21,6 +22,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.shapes.VoxelShape;
 
 // eight blocks away from one lit creeper, through baritone's own planner (so no walking off ledges or into lava),
 // then stand there. never finishes by itself: CreeperStep says when the fuse is over and the chain lets go.
@@ -32,8 +34,9 @@ public class CreeperStepTask extends CustomBaritoneGoalTask {
     static final long REISSUE_GAP_TICKS = 10;
 
     // how long we steer ourselves before giving up on the path showing up. 10 ticks of sprinting from a standstill is two
-    // and a bit blocks, and a path that starts where we were still counts us as on it up to 3 blocks off (PathExecutor),
-    // so any longer and the path we are waiting for throws itself away the moment it arrives
+    // and a bit blocks. baritone searches from the block we were in, and walking out of that block can cancel the search
+    // or orphan its result (PathingBehavior), so every extra tick of sprint is a tick the path may have to restart. it
+    // restarts from the new block and short searches finish in a tick or two, but it is why this is not 50
     static final long RAW_TICKS = 10;
 
     // blocks that hurt to stand on or in, or hold you there, and that have no collision to tell us so
@@ -96,7 +99,8 @@ public class CreeperStepTask extends CustomBaritoneGoalTask {
     // ground again, so a ledge or a wall that shows up mid sprint turns us or stops us
     private void sprintAway(AltoClef mod) {
         if (!_raw) return;
-        if (mod.getClientBaritone().getPathingBehavior().isPathing()
+        // a path running before the goal went out is the user's old one that was not safe to cancel, not ours to wait for
+        if ((_issued && mod.getClientBaritone().getPathingBehavior().isPathing())
                 || mod.getWorld().getGameTime() - _startTick >= RAW_TICKS) {
             endRaw(mod);
             return;
@@ -162,7 +166,12 @@ public class CreeperStepTask extends CustomBaritoneGoalTask {
                 return CreeperEscape.Kind.DANGER;
             }
             if (state.getFluidState().is(FluidTags.WATER)) return CreeperEscape.Kind.WATER;
-            return state.getCollisionShape(level, pos).isEmpty() ? CreeperEscape.Kind.OPEN : CreeperEscape.Kind.SOLID;
+            VoxelShape shape = state.getCollisionShape(level, pos);
+            if (shape.isEmpty()) return CreeperEscape.Kind.OPEN;
+            double top = shape.max(Direction.Axis.Y);
+            // carpet and snow layers are walked over without a jump, fences are taller than one
+            if (top <= 0.25) return CreeperEscape.Kind.OPEN;
+            return top > 1.0 ? CreeperEscape.Kind.WALL : CreeperEscape.Kind.SOLID;
         };
     }
 
@@ -171,8 +180,8 @@ public class CreeperStepTask extends CustomBaritoneGoalTask {
         long now = mod.getWorld().getGameTime();
         if (now >= _lastIssue && now - _lastIssue < REISSUE_GAP_TICKS) return false;
         _lastIssue = now;
-        // asked again while not standing in the goal = the search came back with nothing. said once, it is a diagnosis
-        // and not a heartbeat
+        // asked again while not standing in the goal = baritone dropped it without getting there (an empty search, or ours
+        // cancelled by the sprint, it can't tell us which). said once, it is a diagnosis and not a heartbeat
         if (!_issued) {
             _issued = true;
             Debug.logInternal(CombatLog.creeperPath(WorldHelper.getCurrentDimension(), false));

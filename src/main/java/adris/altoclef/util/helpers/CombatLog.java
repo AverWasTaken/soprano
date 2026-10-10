@@ -53,10 +53,10 @@ public final class CombatLog {
         return "combat: [" + dimension.name().toLowerCase(Locale.ROOT) + "] creeper step: no safe heading, waiting on the path";
     }
 
-    // the goal going to baritone, and the search coming back with nothing (so it gets asked again)
+    // the goal going to baritone, and it being dropped before we got there (so it gets asked again)
     public static String creeperPath(Dimension dimension, boolean failed) {
         return "combat: [" + dimension.name().toLowerCase(Locale.ROOT) + "] creeper step: "
-                + (failed ? "no path yet, asking again" : "path asked for");
+                + (failed ? "no path running, asking again" : "path asked for");
     }
 
     public static String runWhy(Why why, int hp) {

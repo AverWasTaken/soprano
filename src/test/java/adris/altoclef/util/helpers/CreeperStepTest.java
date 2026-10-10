@@ -163,7 +163,7 @@ public class CreeperStepTest {
         assertEquals("combat: [nether] creeper step: sprinting 45 degrees off straight away", CombatLog.creeperSprint(d, -45));
         assertEquals("combat: [nether] creeper step: no safe heading, waiting on the path", CombatLog.creeperNoHeading(d));
         assertEquals("combat: [nether] creeper step: path asked for", CombatLog.creeperPath(d, false));
-        assertEquals("combat: [nether] creeper step: no path yet, asking again", CombatLog.creeperPath(d, true));
+        assertEquals("combat: [nether] creeper step: no path running, asking again", CombatLog.creeperPath(d, true));
     }
 
     @Test

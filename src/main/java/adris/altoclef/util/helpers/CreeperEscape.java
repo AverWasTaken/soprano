@@ -20,8 +20,10 @@ public final class CreeperEscape {
     public enum Kind {
         // nothing to collide with and no liquid
         OPEN,
-        // a body does not go through it
+        // a body does not go through it, and it is a block's height at most so one jump gets onto it
         SOLID,
+        // taller than a jump (fences, walls): not through it, not onto it, not along it
+        WALL,
         // water is fine to run through and to land in, it is just slow
         WATER,
         // lava, fire, cactus, berries, powder snow, cobweb: not into it, not onto it
@@ -64,7 +66,8 @@ public final class CreeperEscape {
 
     // -1 = not safe to run, 0 = run, 1 = run and jump
     private static int runway(double px, double py, double pz, double dx, double dz, Cells cells) {
-        int y = (int) Math.floor(py);
+        // standing on farmland or soul sand puts py a hair under the next block up, so nudge it or the floor reads as a step
+        int y = (int) Math.floor(py + 0.2);
         int lastX = (int) Math.floor(px);
         int lastZ = (int) Math.floor(pz);
         boolean jump = false;
@@ -76,7 +79,7 @@ public final class CreeperEscape {
             if (x != lastX && z != lastZ && (!free(cells, x, y, lastZ) || !free(cells, lastX, y, z))) return -1;
             Kind feet = cells.kind(x, y, z);
             Kind head = cells.kind(x, y + 1, z);
-            if (feet == Kind.DANGER || head == Kind.DANGER) return -1;
+            if (feet == Kind.DANGER || head == Kind.DANGER || feet == Kind.WALL || head == Kind.WALL) return -1;
             if (feet == Kind.SOLID) {
                 // one block up is a jump, a wall two high (or a low ceiling over the step) is a wall. the cell over our own
                 // head has to be open too or the jump just bonks
@@ -88,16 +91,19 @@ public final class CreeperEscape {
             } else {
                 if (head == Kind.SOLID) return -1;
                 if (feet != Kind.WATER) {
-                    int ground = -1;
+                    // a flag and not -1 for "none": below y 0 the ground cell itself is negative (deepslate caves)
+                    boolean found = false;
+                    int ground = y;
                     for (int drop = 1; drop <= MAX_DROP + 1; drop++) {
                         Kind below = cells.kind(x, y - drop, z);
-                        if (below == Kind.DANGER) return -1;
+                        if (below == Kind.DANGER || below == Kind.WALL) return -1;
                         if (below == Kind.SOLID || below == Kind.WATER) {
                             ground = y - drop + 1;
+                            found = true;
                             break;
                         }
                     }
-                    if (ground < 0) return -1;
+                    if (!found) return -1;
                     y = ground;
                 }
             }
