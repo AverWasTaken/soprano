@@ -137,18 +137,37 @@ public class WoodBudgetContradictionsTest {
     // nothing to chop": either the cook goes with what is held, or the plan chops, and after that chop the cook goes
     @Test
     public void theIronCookIsNeverLeftWaitingOnLogsNothingChops() {
+        int cases = 0;
         for (boolean kitWantsWood : new boolean[]{false, true}) {
-            for (int beds : new int[]{0, 3, 8}) {
+          for (boolean table : new boolean[]{true, false}) {
+           for (int coal : new int[]{0, 1, 3}) {
+            for (int planks : new int[]{0, 6}) {
+             for (boolean ore : new boolean[]{false, true}) {
+              for (int beds : new int[]{0, 3, 8}) {
                 for (int logs = 0; logs <= 12; logs++) {
                     FakeFacts f = madeEverything().give(Items.BEEF, 5).give(Items.COBBLESTONE, 30);
                     if (kitWantsWood) {
                         f.items.remove(Items.IRON_PICKAXE);
                     }
+                    if (!table) {
+                        f.items.remove(Items.CRAFTING_TABLE);
+                    }
+                    if (coal > 0) {
+                        f.give(Items.COAL, coal);
+                    }
+                    if (planks > 0) {
+                        f.give(Items.OAK_PLANKS, planks);
+                    }
+                    if (ore) {
+                        f.give(Items.RAW_IRON, 3);
+                    }
                     f.nearSurface = true;
                     if (logs > 0) {
                         f.give(Items.OAK_LOG, logs);
                     }
-                    String where = "kitWantsWood=" + kitWantsWood + " beds=" + beds + " logs=" + logs;
+                    cases++;
+                    String where = "kitWantsWood=" + kitWantsWood + " table=" + table + " coal=" + coal + " planks=" + planks + " ore=" + ore
+                            + " beds=" + beds + " logs=" + logs;
                     boolean cooked = false;
                     // two chops at most: the claim is sized to be met by one, a second would be a chase
                     for (int round = 0; round < 3 && !cooked; round++) {
@@ -167,8 +186,63 @@ public class WoodBudgetContradictionsTest {
                     }
                     assertTrue(where + ": still no cook after the chop", cooked);
                 }
+              }
+             }
+            }
+           }
+          }
+        }
+        assertEquals(2 * 2 * 3 * 2 * 2 * 3 * 13, cases);
+    }
+
+    // a cook that is under way has its meat in the slot (the bag reads no raw) and the claim that sized its fuel is gone with it: the
+    // furnace must still be handed the logs it burns, or the smoker is crafted and loaded and then sits cold
+    @Test
+    public void aCookThatHasStartedStillMayBurnItsLogs() {
+        FakeFacts f = madeEverything().give(Items.OAK_LOG, 5).give(Items.COBBLESTONE, 30);
+        f.cookStation = "smoker";
+        f.smokerPlaced = true;
+        f.nearSurface = true;
+        WoodBudget w = WoodBudget.of(f, cfg, BEDS, GamerPhase.IRON);
+        // the beds are still owed on the gather's books, which would keep all 5
+        assertTrue(w.gatherLogsOwed() > 0);
+        assertEquals(new WoodReserve.Keep(0, 0), w.fuelKeep());
+        assertEquals(0, w.stockClaim());
+        WoodReserve.apply(w);
+        assertEquals(5, FuelPolicy.usable(List.of(new ItemStack(Items.OAK_LOG, 5)))[0]);
+        // nothing is chopped for a cook that is already going
+        assertEquals(0, w.cookChopLogs());
+        // the gather does not do this
+        assertEquals(new WoodReserve.Keep(5, 0), WoodBudget.of(f, cfg, BEDS).fuelKeep());
+    }
+
+    // whatever the cook takes, the reserve never drops under what the kit holds (in planks, a log is four), where the two searches
+    // split the kit's wood into logs and planks differently
+    @Test
+    public void theCooksClaimNeverEatsIntoTheKitsWood() {
+        int cases = 0;
+        for (int logs = 0; logs <= 6; logs++) {
+            for (int planks = 0; planks <= 12; planks++) {
+                for (int beds : new int[]{0, 1, 3, 8}) {
+                    for (boolean pick : new boolean[]{true, false}) {
+                        FakeFacts f = madeEverything().give(Items.BEEF, 5).give(Items.COBBLESTONE, 30);
+                        if (!pick) {
+                            f.items.remove(Items.IRON_PICKAXE);
+                            f.items.remove(Items.STONE_PICKAXE);
+                            f.items.remove(Items.STONE_AXE);
+                        }
+                        f.give(Items.OAK_LOG, logs).give(Items.OAK_PLANKS, planks);
+                        WoodBudget w = WoodBudget.of(f, cfg, beds, GamerPhase.IRON);
+                        WoodReserve.Keep kit = w.kitClaim();
+                        WoodReserve.Keep keep = w.keep();
+                        assertTrue("logs=" + logs + " planks=" + planks + " beds=" + beds + " pick=" + pick + ": keep " + keep + " kit " + kit,
+                                4 * keep.logs() + keep.planks() >= 4 * kit.logs() + kit.planks());
+                        cases++;
+                    }
+                }
             }
         }
+        assertEquals(7 * 13 * 4 * 2, cases);
     }
 
     // (b) the coal detour used to count the wood a furnace could burn WITHOUT the logs a smoker still to make would eat, where the

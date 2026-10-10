@@ -132,7 +132,11 @@ public class IronPhase implements PhaseHandler {
     // the engine's way: the tick's plan and budget, the very ones tick() walks, so done cannot say yes while they still want something
     @Override
     public boolean isDone(GamerContext ctx) {
-        return done(ctx.facts(), ctx.state(), ctx.cfg(), ctx.food(), ctx.wood());
+        // the cascade asks while the state is still GATHER (the phase before this one just said done), and the budget in the context
+        // is that phase's: the plan walked here is the iron phase's, so it gets the iron budget
+        WoodBudget wood = ctx.wood().phase() == GamerPhase.IRON
+                ? ctx.wood() : WoodBudget.of(ctx.facts(), ctx.cfg().overworld, ctx.cfg().end.beds, GamerPhase.IRON);
+        return done(ctx.facts(), ctx.state(), ctx.cfg(), ctx.food(), wood);
     }
 
     private boolean done(GamerFacts facts, RunState state, GamerConfig cfg, FoodPlan food, WoodBudget wood) {

@@ -177,6 +177,33 @@ public class WoodBudgetTest {
     }
 
     @Test
+    public void aPhaseMoveInsideTheTickGetsThatPhasesBudget() {
+        TestHost host = new TestHost();
+        PhaseMachine machine = new PhaseMachine(new ArrayList<PhaseHandler>(FakeHandler.full()), host);
+        machine.begin(null);
+        host.state.phase = GamerPhase.GATHER;
+        WoodBudget gather = machine.wood();
+        assertEquals(GamerPhase.GATHER, gather.phase());
+        host.state.phase = GamerPhase.IRON;
+        WoodBudget iron = machine.wood();
+        assertEquals(GamerPhase.IRON, iron.phase());
+        assertSame(iron, machine.wood());
+    }
+
+    @Test
+    public void theRecoveryCardsFoodPlanLeavesTheRefillLatchAlone() {
+        TestHost host = new TestHost();
+        PhaseMachine machine = new PhaseMachine(new ArrayList<PhaseHandler>(FakeHandler.full()), host);
+        machine.begin(null);
+        host.state.phase = GamerPhase.IRON;
+        // an empty bag after a death: the latch would start a trip on it if the card moved it
+        host.facts.foodUnits = 0;
+        assertFalse(host.state.foodRefilling);
+        assertEquals(0, machine.foodForCard().held());
+        assertFalse(host.state.foodRefilling);
+    }
+
+    @Test
     public void theIronChopFollowsTheEarlyLoadLatchEvenWhenItStartsAfterTheBudget() {
         // a bare bag owes iron-phase wood, and the latch can start mid tick (EarlyIronPick.track runs after the plan)
         FakeFacts f = new FakeFacts();

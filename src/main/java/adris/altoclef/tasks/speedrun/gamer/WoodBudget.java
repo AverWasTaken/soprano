@@ -90,8 +90,9 @@ public record WoodBudget(
         int iron = owed(f, cfg, endBeds, false);
         int burnableLogs = burnable(f, ItemHelper.LOG);
         int burnablePlanks = burnable(f, ItemHelper.PLANKS);
+        List<Species> species = speciesOf(f);
         Claims claims = phase == GamerPhase.IRON
-                ? claimsOf(f, cfg, endBeds, logs, planks, burnableLogs, burnablePlanks, gatherKeep, iron)
+                ? claimsOf(f, cfg, endBeds, logs, planks, burnableLogs, burnablePlanks, gatherKeep, iron, species)
                 : new Claims(gatherKeep, NOTHING, 0, 0, NOTHING, 0, 0);
         WoodReserve.Keep keep = claims.keep();
         // the run lets wood burn (GamerTask.withWoodFuel) for the overworld cook. nothing down in the nether budgets it, so a clear
@@ -100,7 +101,7 @@ public record WoodBudget(
         return new WoodBudget(phase, logs, planks, f.count(Items.STICK), gather, iron, bedPlanksOwed(f, endBeds), firstBatchLogs(f, cfg),
                 keep, fuel, smokerLogsFor(f), smokerOwedFor(f), burnableLogs, burnablePlanks,
                 cfg.cookFuelLogs <= 0 || CookGate.raw(f) > 0 ? 0 : cfg.cookFuelLogs,
-                claims.kit(), claims.smoker(), claims.fuel(), claims.bed(), claims.chop(), claims.stock(), speciesOf(f));
+                claims.kit(), claims.smoker(), claims.fuel(), claims.bed(), claims.chop(), claims.stock(), species);
     }
 
     private static List<Species> speciesOf(GamerFacts f) {
@@ -140,23 +141,36 @@ public record WoodBudget(
     // eats the spare logs first (nothing speaks for them), then the beds' share down to the kit's claim. no claim, no change: IRON
     // goes on running on the gather's keep, slack and all
     private static Claims claimsOf(GamerFacts f, OverworldConfig cfg, int endBeds, int logs, int planks, int burnableLogs,
-                                   int burnablePlanks, WoodReserve.Keep gatherKeep, int ironOwedNow) {
+                                   int burnablePlanks, WoodReserve.Keep gatherKeep, int ironOwedNow, List<Species> species) {
         WoodReserve.Keep kit = kitKeepOf(f, cfg, endBeds, logs, planks, ironOwedNow);
+        // the planks the kit holds are never fuel, even where its search split logs and planks differently from the gather's
+        int keptPlanks = Math.max(gatherKeep.planks(), kit.planks());
         int smoker = 0;
         int fuel = 0;
         if (CookGate.waiting(f)) {
             CookGate.Station station = CookGate.stationIfLogs(f, cfg);
             if (station != CookGate.Station.NONE) {
                 smoker = station == CookGate.Station.SMOKER && smokerOwedFor(f) ? smokerLogsFor(f) : 0;
-                fuel = fuelLogsFor(f, Math.max(0, burnablePlanks - gatherKeep.planks()));
+                fuel = fuelLogsFor(f, Math.max(0, burnablePlanks - keptPlanks));
             }
         }
         int claim = smoker + fuel;
-        int fromBeds = Math.min(Math.max(0, claim - (logs - gatherKeep.logs())), Math.max(0, gatherKeep.logs() - kit.logs()));
-        WoodReserve.Keep keep = new WoodReserve.Keep(gatherKeep.logs() - fromBeds, gatherKeep.planks());
+        // a cook that is under way has its meat in the slot and the bag reads no raw, so nothing sizes its fuel any more and the
+        // claim would drop the tick it starts (and the smoker be loaded with logs the furnace is then refused): until it is over it
+        // may burn whatever the kit does not hold. no chop for it, the claim above is what sizes that
+        boolean committed = f.cookStation() != null;
+        int reserveClaim = committed ? logs : claim;
+        int fromBeds = Math.min(Math.max(0, reserveClaim - (logs - gatherKeep.logs())), Math.max(0, gatherKeep.logs() - kit.logs()));
+        WoodReserve.Keep keep = new WoodReserve.Keep(gatherKeep.logs() - fromBeds, reserveClaim > 0 ? keptPlanks : gatherKeep.planks());
         WoodReserve.Keep bed = new WoodReserve.Keep(Math.max(0, keep.logs() - kit.logs()), Math.max(0, keep.planks() - kit.planks()));
-        // short of the claim by what the bag holds beyond the kit that a furnace could burn (the gate counts burnable logs)
-        int chop = f.nearSurface() ? Math.max(0, claim - Math.max(0, Math.min(logs, burnableLogs) - kit.logs())) : 0;
+        // short of the claim by the oak logs it takes before the furnace would be handed the claim's worth: the reserve is dealt out
+        // by name (FuelPolicy.usable), a species the furnace won't burn can soak it up or leave it to the oak, so ask the same rule
+        int chop = 0;
+        if (f.nearSurface() && claim > 0) {
+            while (chop <= claim + keep.logs() && usableLogs(species, keep.logs(), chop) < claim) {
+                chop++;
+            }
+        }
         // the log stock-up (SmeltFiller) chops towards a pile to craft with, planks counting as wood. the reserve keeps what it
         // chopped, or the furnace burns the pile and the next wait chops it again. the cook outranks it, so while the cook has a
         // claim the stock is not protected, and so does the fuel the smelts still ahead need: the stock only holds back logs that
@@ -165,12 +179,43 @@ public record WoodBudget(
         int smeltsAhead = Math.max(0, KitPlanner.ingotsNeeded(f, cfg) - f.count(Items.IRON_INGOT)) + CookGate.raw(f);
         int fuelInHand = CookGate.coalSmelts(f) + Math.max(0, burnablePlanks - keep.planks()) * 3 / 2;
         int logsForFuel = smeltsAhead > fuelInHand ? (2 * (smeltsAhead - fuelInHand) + 2) / 3 : 0;
-        int stock = claim > 0 ? 0 : Math.min(Math.max(0, Math.min(logs, burnableLogs) - logsForFuel),
+        int stock = claim > 0 || committed ? 0 : Math.min(Math.max(0, Math.min(logs, burnableLogs) - logsForFuel),
                 Math.max(0, stockTarget(cfg) - planks / PLANKS_PER_LOG));
         if (stock > keep.logs()) {
             keep = new WoodReserve.Keep(stock, keep.planks());
         }
         return new Claims(keep, kit, smoker, fuel, bed, chop, stock);
+    }
+
+    // logs a furnace would be handed with `reserve` logs kept back and `extraOak` more oak chopped (the same rule the furnace gets)
+    private static int usableLogs(List<Species> species, int reserve, int extraOak) {
+        List<Species> all = new ArrayList<>(species);
+        if (extraOak > 0) {
+            all.add(new Species(Items.OAK_LOG, extraOak, true));
+        }
+        Item[] items = new Item[all.size()];
+        int[] counts = new int[items.length];
+        for (int i = 0; i < items.length; i++) {
+            items[i] = all.get(i).item();
+            counts[i] = all.get(i).count();
+        }
+        int[] usable = FuelPolicy.usable(items, counts, reserve, 0);
+        int total = 0;
+        for (int i = 0; i < items.length; i++) {
+            if (all.get(i).burnable() && isLog(items[i])) {
+                total += usable[i];
+            }
+        }
+        return total;
+    }
+
+    private static boolean isLog(Item item) {
+        for (Item log : ItemHelper.LOG) {
+            if (log == item) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // logs of fuel for the biggest pile of raw meat: the smelts left after coal and `sparePlanks` (a log and a plank are both 1.5 smelts)

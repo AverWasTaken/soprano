@@ -28,10 +28,10 @@ public class GamerHudTest {
         Bootstrap.bootStrap();
     }
 
-    // the card as the engine draws it: with the food plan the machine hands out this tick, built for the phase the state is in
+    // the card as the engine draws it (PhaseMachine.foodForCard): the state's phase and wood budget, and the latch left where it is
     private GamerHudState recovering(double seconds, int attempt, String action) {
         WoodBudget wood = WoodBudget.of(facts, cfg.overworld, cfg.end.beds, state.phase);
-        FoodPlan food = FoodPlan.latched(facts, cfg, state, line -> { }, wood);
+        FoodPlan food = FoodPlan.of(facts, cfg, state.phase, state.foodRefilling, wood);
         return hud.recovering(state, facts, cfg, food, seconds, attempt, action);
     }
 

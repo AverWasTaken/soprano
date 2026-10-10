@@ -476,9 +476,10 @@ public final class PhaseMachine implements GamerContext {
     }
 
     // a tick the machine does not run (a recovery has the wheel) still draws the card, and the plan cached from the last real tick
-    // is out of date by then
-    public void dropFood() {
-        food = null;
+    // is out of date by then (the bag changed). this one is built now from the engine's wood budget, and does NOT move the refill
+    // latch: the bag is empty after a death, and a latch moved on it would buy a hunt the moment the pile is back
+    public FoodPlan foodForCard() {
+        return FoodPlan.of(host.facts(), host.cfg(), host.state().phase, host.state().foodRefilling, wood());
     }
 
     // built on the first ask of a tick and dropped when the next one starts, same as the food plan, and for the state's phase (a
