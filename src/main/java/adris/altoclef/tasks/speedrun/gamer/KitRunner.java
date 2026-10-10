@@ -133,6 +133,7 @@ public final class KitRunner {
         if (!need.equals(key) || !equip.equals(equipKey) || food != foodKey) {
             if (!need.equals(key)) {
                 keySince = f.gameTime();
+                logHead(key, need, needs);
             }
             key = need;
             equipKey = equip;
@@ -145,6 +146,16 @@ public final class KitRunner {
         hud = words(need, f);
         current = need;
         return task;
+    }
+
+    // the head of the plan changing hands, with the next few behind it so a flip-flop shows what it is flipping between
+    static String headLine(KitNeed from, KitNeed to, List<KitNeed> plan) {
+        return "switch kit head from=" + (from == null ? "none" : describe(List.of(from))) + " to=" + describe(List.of(to))
+                + " plan=[" + describe(plan.subList(0, Math.min(4, plan.size()))) + "]";
+    }
+
+    private static void logHead(KitNeed from, KitNeed to, List<KitNeed> plan) {
+        Debug.logInternal(headLine(from, to, plan));
     }
 
     // the food need showing up in the list or dropping out of it, one line per change with the numbers it was made of. a need that

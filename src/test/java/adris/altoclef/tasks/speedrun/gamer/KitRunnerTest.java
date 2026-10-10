@@ -284,4 +284,20 @@ public class KitRunnerTest {
         r.run(ctx, List.of(new KitNeed(KitNeed.EQUIP_ARMOR, 1)));
         assertEquals(List.of(List.of(Items.IRON_HELMET)), seen);
     }
+
+    @Test
+    public void theHeadLineNamesOldNewAndTheFirstFourNeeds() {
+        List<KitNeed> plan = List.of(new KitNeed("iron_ingot", 4), new KitNeed("food", 12), new KitNeed("log", 3),
+                new KitNeed("coal", 2), new KitNeed("flint", 1));
+        assertEquals("switch kit head from=none to=iron_ingot x4 plan=[iron_ingot x4, food x12, log x3, coal x2]",
+                KitRunner.headLine(null, plan.get(0), plan));
+        assertEquals("switch kit head from=food x12 to=log x3 plan=[iron_ingot x4, food x12, log x3, coal x2]",
+                KitRunner.headLine(plan.get(1), plan.get(2), plan));
+    }
+
+    @Test
+    public void aShortPlanIsListedWhole() {
+        List<KitNeed> plan = List.of(new KitNeed("flint", 1));
+        assertEquals("switch kit head from=none to=flint x1 plan=[flint x1]", KitRunner.headLine(null, plan.get(0), plan));
+    }
 }
