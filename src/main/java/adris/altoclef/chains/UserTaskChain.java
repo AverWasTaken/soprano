@@ -59,7 +59,8 @@ public class UserTaskChain extends SingleTaskChain {
     }
 
     public void cancel(AltoClef mod) {
-        if (_mainTask != null && _mainTask.isActive()) {
+        // installed but not ticked yet is not active, and that one has to be cancellable too
+        if (_mainTask != null) {
             stop(mod);
             onTaskFinish(mod);
         }
