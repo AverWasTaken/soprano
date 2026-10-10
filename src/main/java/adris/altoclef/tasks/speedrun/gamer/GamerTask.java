@@ -27,6 +27,8 @@ import adris.altoclef.tasks.speedrun.gamer.tasks.NetherTripRules;
 import adris.altoclef.tasks.speedrun.gamer.tasks.RecoverItemsTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.tasksystem.TaskChain;
+import adris.altoclef.trace.Trace;
+import adris.altoclef.trace.Vitals;
 import adris.altoclef.util.helpers.DeathStash;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.StationHook;
@@ -787,6 +789,28 @@ public class GamerTask extends Task {
         return begun && !machine.ended() ? hudSnapshot : null;
     }
 
+    // the gamer group of the vitals line. the card's numbers when there is a card, else just the phase and attempt (the
+    // card setting being off is no reason for the log to go blind). null before the run has begun
+    public Vitals.Gamer vitals() {
+        if (!begun || state == null) {
+            return null;
+        }
+        GamerHudState s = hudSnapshot();
+        if (s == null) {
+            return new Vitals.Gamer(state.phase.name(), machine.attempt(), null, 0, -1, -1);
+        }
+        String head = null;
+        int want = 0;
+        for (GamerHudState.KitRow row : s.rows()) {
+            if (row.working()) {
+                head = row.catalogueName();
+                want = row.want();
+                break;
+            }
+        }
+        return new Vitals.Gamer(s.phase().name(), s.attempt(), head, want, s.foodUnits(), s.foodTarget());
+    }
+
     // ---- deaths
 
     // respawning swaps the LocalPlayer (and so does changing dimension), so a new instance only means a death when something
@@ -840,6 +864,8 @@ public class GamerTask extends Task {
     }
 
     private void onRespawn(DeathRules.Source seenBy) {
+        // first thing, before this method logs and the lead up scrolls off the end of the buffer
+        Trace.dump("respawn");
         // the same two numbers shouldRecover() decides on, and who told us about it
         double awayX = facts.x() - deathPos.getX();
         double awayZ = facts.z() - deathPos.getZ();

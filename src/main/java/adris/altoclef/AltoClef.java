@@ -74,6 +74,8 @@ public class AltoClef {
     // every "leave that alone" anybody decided, the trackers ask it before they offer a thing (see Bans)
     private final Bans _bans = new Bans(Debug::logInternal);
     private int _banToolTicks;
+    // the vitals line and the stuck cursor flag, see Monitors
+    private final Monitors _monitors = new Monitors();
     private Dimension _banDimension;
     private MiscBlockTracker _miscBlockTracker;
     // Renderers
@@ -206,8 +208,10 @@ public class AltoClef {
             } finally {
                 _blockTracker.postTickTask();
             }
+            _monitors.onActiveTick(this);
         }
 
+        _monitors.onTick();
         _butler.tick();
         _messageSender.tick();
 
