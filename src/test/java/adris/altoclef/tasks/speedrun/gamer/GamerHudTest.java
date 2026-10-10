@@ -72,6 +72,14 @@ public class GamerHudTest {
     }
 
     @Test
+    public void theCoalRowFactoryIsTheOreWithNoCap() {
+        GamerHudState.DetourRow coal = GamerHudState.DetourRow.coal(4, 100, 30);
+        assertEquals(Items.COAL_ORE, coal.icon());
+        assertEquals("coal", coal.name());
+        assertEquals(0, coal.digCap());
+    }
+
+    @Test
     public void aWonRunLeavesACardWithEveryDotLitTheTotalTimeAndNothingElse() {
         // the last card the run drew: some kit, a furnace, a detour, food at 55 of 70
         state.phase = GamerPhase.DRAGON;

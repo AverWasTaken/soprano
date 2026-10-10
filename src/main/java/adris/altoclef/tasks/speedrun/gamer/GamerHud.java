@@ -203,8 +203,13 @@ final class GamerHud {
         // -1 = no ore in sight right now, the row says so without a number
         int blocks = ore == null ? -1 : (int) Math.round(Math.sqrt(mod.getPlayer().blockPosition().distSqr(ore)));
         DetourSpec spec = detour.spec();
-        boolean gravel = spec.resource == DetourSpec.Resource.GRAVEL;
-        return new DetourRow(gravel, blocks, detour.startTick(), spec.seconds(cfg.overworld), detour.dug(),
+        // the gravel row shows the block, the coal row the ore, the diamond row the diamond itself
+        Item icon = switch (spec.resource) {
+            case GRAVEL -> Items.GRAVEL;
+            case COAL -> Items.COAL_ORE;
+            case DIAMOND -> Items.DIAMOND;
+        };
+        return new DetourRow(icon, spec.name, blocks, detour.startTick(), spec.seconds(cfg.overworld), detour.dug(),
                 spec.limits(cfg.overworld).mineCap());
     }
 }

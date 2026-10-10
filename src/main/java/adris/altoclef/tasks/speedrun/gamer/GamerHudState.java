@@ -1,6 +1,7 @@
 package adris.altoclef.tasks.speedrun.gamer;
 
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.Items;
 
 import java.util.List;
 
@@ -23,11 +24,12 @@ public record GamerHudState(GamerPhase phase, double secondsInPhase, double budg
     public record FurnaceRow(String words, Item icon, long startTick, long doneTick) {
     }
 
-    // the coal or gravel side job while one is on. blocks = how far the block we are after is (-1 none in sight), dug / digCap =
-    // the gravel count against its per detour cap (coal has no cap, 0 / 0)
-    public record DetourRow(boolean gravel, int blocks, long startTick, double budgetSeconds, int dug, int digCap) {
+    // the coal, gravel or diamond side job while one is on. icon = the block (or item) it is after, name = the word on the row
+    // ("coal"), blocks = how far the block we are after is (-1 none in sight), dug / digCap = the gravel count against its per
+    // detour cap (the others have no cap, 0 / 0)
+    public record DetourRow(Item icon, String name, int blocks, long startTick, double budgetSeconds, int dug, int digCap) {
         public static DetourRow coal(int blocks, long startTick, double budgetSeconds) {
-            return new DetourRow(false, blocks, startTick, budgetSeconds, 0, 0);
+            return new DetourRow(Items.COAL_ORE, "coal", blocks, startTick, budgetSeconds, 0, 0);
         }
     }
 }

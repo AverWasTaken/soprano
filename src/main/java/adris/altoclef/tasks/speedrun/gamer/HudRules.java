@@ -227,16 +227,17 @@ public final class HudRules {
         return (food ? "Cooking " : "Smelting ") + count + (what.isEmpty() ? "" : " " + what);
     }
 
-    // the detour row's words. coal says how far the ore is, gravel how much of its cap it dug (the cap is the stop that matters
-    // there, the patch is right in front of us anyway)
-    public static String detourName(boolean gravel, int blocks, int dug, int digCap) {
-        if (gravel) {
-            return "Gravel detour, " + dug + "/" + digCap + " dug";
+    // the detour row's words. coal and diamonds say how far the ore is, gravel how much of its cap it dug (the cap is the stop
+    // that matters there, the patch is right in front of us anyway). `name` is the spec's, lowercase
+    public static String detourName(String name, int blocks, int dug, int digCap) {
+        String label = Character.toUpperCase(name.charAt(0)) + name.substring(1) + " detour";
+        if (digCap > 0) {
+            return label + ", " + dug + "/" + digCap + " dug";
         }
-        return blocks < 0 ? "Coal detour" : "Coal detour, " + blocks + " blocks";
+        return blocks < 0 ? label : label + ", " + blocks + " blocks";
     }
 
-    // seconds a coal or gravel detour has left of its budget, whole, never under 0
+    // seconds a mining detour has left of its budget, whole, never under 0
     public static int detourSecondsLeft(long startTick, double budgetSeconds, long now) {
         return (int) Math.max(0, Math.ceil(budgetSeconds - (now - startTick) / 20.0));
     }

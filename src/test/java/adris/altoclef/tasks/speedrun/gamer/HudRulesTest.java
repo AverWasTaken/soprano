@@ -1,5 +1,6 @@
 package adris.altoclef.tasks.speedrun.gamer;
 
+import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NetherTripRules;
 import org.junit.Test;
 
@@ -156,14 +157,22 @@ public class HudRulesTest {
     @Test
     public void theDetourRowSaysCoalDistanceOrGravelDug() {
         // coal reads the way it always did
-        assertEquals("Coal detour", HudRules.detourName(false, -1, 0, 0));
-        assertEquals("Coal detour, 4 blocks", HudRules.detourName(false, 4, 0, 0));
+        assertEquals("Coal detour", HudRules.detourName("coal", -1, 0, 0));
+        assertEquals("Coal detour, 4 blocks", HudRules.detourName("coal", 4, 0, 0));
         // gravel counts against its cap, in sight or not
-        assertEquals("Gravel detour, 3/10 dug", HudRules.detourName(true, 2, 3, 10));
-        assertEquals("Gravel detour, 0/10 dug", HudRules.detourName(true, -1, 0, 10));
-        GamerHudState.DetourRow coal = GamerHudState.DetourRow.coal(4, 100, 30);
-        assertFalse(coal.gravel());
-        assertEquals(0, coal.digCap());
+        assertEquals("Gravel detour, 3/10 dug", HudRules.detourName("gravel", 2, 3, 10));
+        assertEquals("Gravel detour, 0/10 dug", HudRules.detourName("gravel", -1, 0, 10));
+        // diamonds say how far the ore is, like coal
+        assertEquals("Diamond detour", HudRules.detourName("diamond", -1, 0, 0));
+        assertEquals("Diamond detour, 6 blocks", HudRules.detourName("diamond", 6, 0, 0));
+    }
+
+    @Test
+    public void theDetourRowWordsComeFromTheSpecName() {
+        // the card row is built from the spec: its name is the row's word
+        assertEquals("Diamond detour, 2 blocks", HudRules.detourName(DetourSpec.DIAMOND.name, 2, 0, DetourSpec.DIAMOND.limits(new OverworldConfig()).mineCap()));
+        assertEquals("Coal detour, 2 blocks", HudRules.detourName(DetourSpec.COAL.name, 2, 0, DetourSpec.COAL.limits(new OverworldConfig()).mineCap()));
+        assertEquals("Gravel detour, 1/10 dug", HudRules.detourName(DetourSpec.GRAVEL.name, 2, 1, DetourSpec.GRAVEL.limits(new OverworldConfig()).mineCap()));
     }
 
     @Test

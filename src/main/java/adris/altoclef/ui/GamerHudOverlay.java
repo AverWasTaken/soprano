@@ -21,7 +21,6 @@ import net.minecraft.client.renderer.RenderType;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -245,8 +244,8 @@ public class GamerHudOverlay {
             y = kitRow(font, rows.get(next), y);
         }
         if (detour != null) {
-            String name = HudRules.detourName(detour.gravel(), detour.blocks(), detour.dug(), detour.digCap());
-            y = row(font, y, detour.gravel() ? Items.GRAVEL : Items.COAL_ORE, name, GRAY,
+            String name = HudRules.detourName(detour.name(), detour.blocks(), detour.dug(), detour.digCap());
+            y = row(font, y, detour.icon(), name, GRAY,
                     HudRules.clock(HudRules.detourSecondsLeft(detour.startTick(), detour.budgetSeconds(), now)), YELLOW);
         }
         y += 4;
