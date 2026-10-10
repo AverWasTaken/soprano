@@ -417,7 +417,8 @@ public class KillEnderDragonTask extends Task {
         // through SettingsOverrides so options.txt never sees the false and the user's value comes back
         private void forceAutoJumpOff() {
             var autoJump = Minecraft.getInstance().options.autoJump();
-            if (!SettingsOverrides.isHeld(AUTO_JUMP)) {
+            // a hold the user changed behind our back is not ours any more, what is in there is theirs
+            if (_userAutoJump == null || !SettingsOverrides.isHeld(AUTO_JUMP)) {
                 _userAutoJump = autoJump.get();
             }
             SettingsOverrides.put(AUTO_JUMP, autoJump::get, autoJump::set, false);
