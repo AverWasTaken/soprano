@@ -26,7 +26,6 @@ public final class MineStick {
     public void breaking(int now, BlockPos at) {
         if (at != null) {
             pos = at;
-            begun = at;
             seenTick = now;
         }
     }
@@ -57,7 +56,7 @@ public final class MineStick {
         boolean good = stillGood.test(pos);
         if (now - seenTick > GRACE_TICKS || !good) {
             // a block that broke may come back as a new block, and that one is a fresh start
-            if (!good) {
+            if (!good && pos.equals(begun)) {
                 begun = null;
             }
             pos = null;

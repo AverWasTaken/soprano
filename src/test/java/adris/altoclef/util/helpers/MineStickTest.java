@@ -188,6 +188,17 @@ public class MineStickTest {
     }
 
     @Test
+    public void breakingSomethingElseOnTheWayDoesNotBuyTheTargetAnotherFreeHold() {
+        MineStick stick = new MineStick();
+        BlockPos other = BLOCK.east();
+        stick.begin(0, BLOCK);
+        // a block in the tunnel gets cracked first, then it is gone and the target is up again
+        stick.breaking(5, other);
+        assertNull(stick.holdOn(6, p -> !p.equals(other)));
+        assertFalse(stick.wouldBegin(BLOCK));
+    }
+
+    @Test
     public void aBlockThatBrokeAndCameBackIsAFreshStart() {
         MineStick stick = new MineStick();
         stick.begin(0, BLOCK);

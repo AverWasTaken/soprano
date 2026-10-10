@@ -16,11 +16,13 @@ public class ApproachRulesTest {
         boolean live;
         int starts;
         int stops;
+        int waited;
 
         Plan tick(boolean ready, boolean safe) {
             boolean inRange = dist <= REACH;
             boolean tooClose = dist < MAINTAIN;
-            Plan plan = ApproachRules.plan(live, inRange, inRange, ready, safe, tooClose);
+            Plan plan = ApproachRules.plan(live, inRange, inRange, ready, safe, tooClose, waited >= ApproachRules.WAIT_TICKS);
+            waited = plan == Plan.WAIT ? waited + 1 : 0;
             boolean next = plan == Plan.APPROACH || plan == Plan.KEEP_CHILD;
             if (next && !live) starts++;
             if (!next && live) stops++;
@@ -33,40 +35,40 @@ public class ApproachRulesTest {
 
     @Test
     public void inReachWithAClearShotAndAllGatesOpenIsTheSwing() {
-        assertEquals(Plan.INTERACT, ApproachRules.plan(true, true, true, true, true, false));
-        assertEquals(Plan.INTERACT, ApproachRules.plan(false, true, true, true, true, true));
+        assertEquals(Plan.INTERACT, ApproachRules.plan(true, true, true, true, true, false, false));
+        assertEquals(Plan.INTERACT, ApproachRules.plan(false, true, true, true, true, true, false));
     }
 
     @Test
     public void outOfReachWalksAndKeepsTheSameChild() {
-        assertEquals(Plan.APPROACH, ApproachRules.plan(false, false, false, true, true, false));
-        assertEquals(Plan.APPROACH, ApproachRules.plan(true, false, false, true, false, false));
+        assertEquals(Plan.APPROACH, ApproachRules.plan(false, false, false, true, true, false, false));
+        assertEquals(Plan.APPROACH, ApproachRules.plan(true, false, false, true, false, false, false));
     }
 
     @Test
     public void halfwayThroughAStepTheWalkingChildIsNotCutOff() {
         // in reach and close, but baritone is mid step: this used to return null and stop the child
-        assertEquals(Plan.KEEP_CHILD, ApproachRules.plan(true, true, true, true, false, true));
-        assertEquals(Plan.KEEP_CHILD, ApproachRules.plan(true, true, true, true, false, false));
+        assertEquals(Plan.KEEP_CHILD, ApproachRules.plan(true, true, true, true, false, true, false));
+        assertEquals(Plan.KEEP_CHILD, ApproachRules.plan(true, true, true, true, false, false, false));
         // and when nothing is walking there is nothing to start
-        assertEquals(Plan.WAIT, ApproachRules.plan(false, true, true, true, false, true));
+        assertEquals(Plan.WAIT, ApproachRules.plan(false, true, true, true, false, true, false));
     }
 
     @Test
     public void inReachWithAGateClosedStandsStillInsteadOfStartingTheChild() {
         // eating, a fall, the bucket: not a reason to walk. the old rule started the child on every such tick past the line
-        assertEquals(Plan.WAIT, ApproachRules.plan(false, true, true, false, true, false));
-        assertEquals(Plan.WAIT, ApproachRules.plan(false, true, true, false, true, true));
-        assertEquals(Plan.KEEP_CHILD, ApproachRules.plan(true, true, true, false, true, false));
+        assertEquals(Plan.WAIT, ApproachRules.plan(false, true, true, false, true, false, false));
+        assertEquals(Plan.WAIT, ApproachRules.plan(false, true, true, false, true, true, false));
+        assertEquals(Plan.KEEP_CHILD, ApproachRules.plan(true, true, true, false, true, false, false));
     }
 
     @Test
     public void noShotInReachStillApproachesToFindOneOrDigTowardsIt() {
-        assertEquals(Plan.APPROACH, ApproachRules.plan(false, true, false, true, true, false));
+        assertEquals(Plan.APPROACH, ApproachRules.plan(false, true, false, true, true, false, false));
         // too close with no shot is the old shuffle, unless a step is running
-        assertEquals(Plan.WANDER, ApproachRules.plan(false, true, false, true, true, true));
-        assertEquals(Plan.WAIT, ApproachRules.plan(false, true, false, true, false, true));
-        assertEquals(Plan.KEEP_CHILD, ApproachRules.plan(true, true, false, true, false, true));
+        assertEquals(Plan.WANDER, ApproachRules.plan(false, true, false, true, true, true, false));
+        assertEquals(Plan.WAIT, ApproachRules.plan(false, true, false, true, false, true, false));
+        assertEquals(Plan.KEEP_CHILD, ApproachRules.plan(true, true, false, true, false, true, false));
     }
 
     @Test
@@ -117,5 +119,30 @@ public class ApproachRulesTest {
             run.dist = was;
         }
         assertEquals(0, run.starts);
+    }
+
+    @Test
+    public void aGateThatNeverOpensDoesNotFreezeUsForever() {
+        // swimming next to a mob: in reach, a clear shot, but never on the ground. we stand a while, then the old rules
+        // get a go (walk when there is room, shuffle when too close)
+        Run run = new Run();
+        run.dist = 3.5;
+        int standing = 0;
+        boolean moved = false;
+        for (int tick = 0; tick < 3 * ApproachRules.WAIT_TICKS; tick++) {
+            Plan plan = run.tick(false, true);
+            if (plan == Plan.WAIT) standing++;
+            if (plan == Plan.APPROACH || plan == Plan.WANDER) moved = true;
+        }
+        assertEquals(true, moved);
+        // never more than the wait in a row before it tries something
+        assertEquals(true, standing >= ApproachRules.WAIT_TICKS);
+        assertEquals(Plan.APPROACH, ApproachRules.plan(false, true, true, false, true, false, true));
+        assertEquals(Plan.WANDER, ApproachRules.plan(false, true, true, false, true, true, true));
+    }
+
+    @Test
+    public void aWalkingChildOfThisMobStillBeatsTheWaitCap() {
+        assertEquals(Plan.KEEP_CHILD, ApproachRules.plan(true, true, true, true, false, true, true));
     }
 }

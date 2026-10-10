@@ -280,8 +280,9 @@ public class MineAndCollectTask extends ResourceTask {
                 beginHold(mod, now);
             }
             BlockPos held = _stick.holdOn(now, check -> stillOurs(mod, check));
-            if (held != null && despawningDropNear(mod, now, pos)) {
-                // the one exception: a drop a few seconds from gone is worth a cracked block
+            if (held != null && !mod.getControllerExtras().isBreakingBlock() && despawningDropNear(mod, now, pos)) {
+                // the one exception: a drop a few seconds from gone is worth a block we have not cracked yet (mid crack the base task
+                // refuses every switch anyway, and a lock it never acts on would just burn the patience)
                 _stick.clear();
                 held = null;
             }
@@ -323,7 +324,7 @@ public class MineAndCollectTask extends ResourceTask {
             }
             _stick.begin(now, at);
             if (mod.getEntityTracker().itemDropped(_targets)) {
-                // so the next play log shows how often a drop was around for the first ticks of a break
+                // once per block, so the unprotected first ticks can be counted instead of guessed at
                 Debug.logInternal("mine: holding " + at.toShortString() + " from the first tick, a drop is in sight");
             }
         }

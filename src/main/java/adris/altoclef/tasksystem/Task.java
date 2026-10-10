@@ -94,7 +94,9 @@ public abstract class Task {
             // We are null
             if (_sub != null && canBeInterrupted(mod, _sub, null)) {
                 // Our previous sub must be interrupted.
-                noteCut(_sub.getClass(), getClass(), true);
+                if (_sub.isActive()) {
+                    noteCut(_sub.getClass(), getClass(), true);
+                }
                 _sub.stop(mod);
                 _sub = null;
             }

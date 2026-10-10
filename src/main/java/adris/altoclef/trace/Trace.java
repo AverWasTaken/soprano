@@ -54,8 +54,9 @@ public final class Trace {
                 out.accept(line);
             }
             out.accept("END TRACE DUMP (" + reason + ") " + lines.size() + " lines");
-        } catch (RuntimeException ignored) {
-            // see the class comment
+        } catch (RuntimeException e) {
+            // record() stays silent (reporting goes through Debug, which feeds it), a dump that broke can say so
+            adris.altoclef.Monitors.broke("trace dump", e);
         }
     }
 

@@ -61,6 +61,8 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
     private GoalRunAway _backOffGoal;
     // the approach child was in the tree last tick (it is walking, a stop now would cut the path), see ApproachRules
     private boolean _approachLive;
+    // ticks in a row spent standing in reach with the swing gated, see ApproachRules.WAIT_TICKS
+    private int _waitTicks;
 
     public AbstractDoToEntityTask(double maintainDistance, double combatGuardLowerRange, double combatGuardLowerFieldRadius) {
         _maintainDistance = maintainDistance;
@@ -81,6 +83,7 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
         _progress.reset();
         _approach = null;
         _approachLive = false;
+        _waitTicks = 0;
         _blocker = null;
         _blockerTarget = null;
         _blockerDigs = 0;
@@ -155,9 +158,11 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
                     !mod.getMLGBucketChain().isFallingOhNo(mod) && mod.getMLGBucketChain().doneMLG() &&
                     !mod.getMLGBucketChain().isChorusFruiting() &&
                     (mod.getPlayer().onGround() || mod.getControllerExtras().critInFlight());
-            ApproachRules.Plan plan = ApproachRules.plan(wasWalking, mod.getControllerExtras().inRange(entity),
+            // a child that was walking to some other mob is not the one to keep
+            ApproachRules.Plan plan = ApproachRules.plan(wasWalking && _approachEntity == entity, mod.getControllerExtras().inRange(entity),
                     result != null && result.getType() == HitResult.Type.ENTITY, ready,
-                    mod.getClientBaritone().getPathingBehavior().isSafeToCancel(), tooClose);
+                    mod.getClientBaritone().getPathingBehavior().isSafeToCancel(), tooClose, _waitTicks >= ApproachRules.WAIT_TICKS);
+            _waitTicks = plan == ApproachRules.Plan.WAIT ? _waitTicks + 1 : 0;
             switch (plan) {
                 case INTERACT:
                     _progress.reset();
