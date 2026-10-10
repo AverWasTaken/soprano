@@ -242,7 +242,7 @@ public class SlotHandler {
         ItemStack cursor = StorageHelper.getItemStackInSlot(CursorSlot.SLOT);
         if (isBad.test(cursor)) {
             // Throw away cursor slot OR move
-            Optional<Slot> fittableSlots = _mod.getItemStorage().getSlotThatCanFitInPlayerInventory(equip, false);
+            Optional<Slot> fittableSlots = _mod.getItemStorage().getSlotThatCanFitInPlayerInventory(cursor, false);
             if (fittableSlots.isEmpty()) {
                 // Try to swap items with the first non-bad slot.
                 for (Slot slot : Slot.getCurrentScreenSlots()) {
