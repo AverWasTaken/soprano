@@ -167,6 +167,48 @@ public class CombatCommitCrowdTest {
         assertEquals(Mode.FIGHT, c.mode());
     }
 
+    @Test
+    public void aCrowdThatIsBackOnUsAfterTheCooldownIsAnotherRun() {
+        // known and on purpose: a clean getaway ends the run, and a crowd standing right where we need to be is a crowd again
+        CombatCommit c = new CombatCommit();
+        assertEquals(Event.RUN_START, c.step(tick(NOW, 20, null, zombie(1, 2, 3), zombie(2, 2, 3), zombie(3, 2, 3))));
+        long now = NOW + 1;
+        Event end = Event.NONE;
+        while (end == Event.NONE && now < NOW + 200) {
+            end = c.step(tick(now++, 20, 30, true, null));
+        }
+        assertEquals(Event.RUN_CLEAR, end);
+        assertTrue(c.coolingDown(now));
+        // the cooldown only listens to news, three of them in contact is news
+        assertEquals(Event.RUN_START, c.step(tick(now + 20, 20, 30, true, null, zombie(1, 2, NEVER), zombie(2, 2, NEVER), zombie(3, 2, NEVER))));
+        assertEquals(Why.CROWD, c.why());
+        // but two in contact and one at five blocks is not
+        CombatCommit again = new CombatCommit();
+        again.step(tick(NOW, 20, null, zombie(1, 2, 3), zombie(2, 2, 3), zombie(3, 2, 3)));
+        long later = NOW + 1;
+        Event over = Event.NONE;
+        while (over == Event.NONE && later < NOW + 200) {
+            over = again.step(tick(later++, 20, 30, true, null));
+        }
+        assertEquals(Event.NONE, again.step(tick(later + 20, 20, 30, true, null, zombie(1, 2, NEVER), zombie(2, 2, NEVER), zombie(3, 5, NEVER))));
+    }
+
+    @Test
+    public void unarmedDoesNotFistFightWhatIsInThePathEither() {
+        Foe z = zombie(1, 2, NEVER);
+        Way inWay = new Way(java.util.Set.of(1), true, 0);
+        CombatCommit armed = new CombatCommit();
+        assertEquals(Event.FIGHT_START, armed.step(new Tick(NOW, 20, 0, 0, List.of(z), null, inWay, true)));
+        assertEquals(Why.IN_WAY, armed.why());
+        CombatCommit bare = new CombatCommit();
+        for (long now = NOW; now < NOW + 100; now++) {
+            assertEquals(Event.NONE, bare.step(new Tick(now, 20, 0, 0, List.of(z), null, inWay, false)));
+        }
+        // it swings: now it is the unarmed run
+        assertEquals(Event.RUN_START, bare.step(new Tick(NOW + 100, 20, 0, 0, List.of(zombie(1, 2, 0)), null, inWay, false)));
+        assertEquals(Why.UNARMED, bare.why());
+    }
+
     // ---- bare hands
 
     @Test
@@ -236,7 +278,8 @@ public class CombatCommitCrowdTest {
         c.step(tick(NOW, 8, null, zombie(1, 5, NEVER)));
         assertEquals(Event.RUN_CHASED_FIGHT, bittenRun(c, true, NOW + 1, NOW + 100, 8));
         // at hp 5 with the zombie on us and a second one joining, still the same fight: it holds until the target is dead
-        long start = NOW + 100;
+        // (the turn was at NOW + 21, so this starts on the very next tick)
+        long start = NOW + 22;
         for (long now = start; now < start + 300; now++) {
             Foe target = zombie(1, 2, 1);
             assertEquals("tick " + now, Event.NONE, c.step(tick(now, 5, target, target, zombie(2, 2.5, 1))));
@@ -284,7 +327,7 @@ public class CombatCommitCrowdTest {
         assertEquals(Mode.RUN, c.mode());
     }
 
-    // ---- the two sequences that started this, as plain walks
+    // ---- longer walks
 
     @Test
     public void hurtByShootersThenCaughtByAFastBiterWhileRunning() {

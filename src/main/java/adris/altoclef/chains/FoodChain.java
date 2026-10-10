@@ -43,6 +43,9 @@ public class FoodChain extends SingleTaskChain {
     private float _lastFoodHealth = -1;
     private boolean shouldStop = false;
     private boolean _eatBlocked = false;
+    // where the fillup latch stops. a full bar for any meal the older rules asked for, the regen line for one that only the heal
+    // rule wanted (hurt, hunger under 18): that is the point of the meal, the rest is food spent for nothing
+    private int _fillTo = 20;
     // what we are chewing and how things stood when the bite started, so the log line can say what a meal was for
     private Item _bite;
     private int _biteCount = -1;
@@ -161,7 +164,7 @@ public class FoodChain extends SingleTaskChain {
             _foodCalcAge++;
         }
         // If we requested a fillup but we're full, stop.
-        if (_requestFillup && mod.getPlayer().getFoodData().getFoodLevel() >= 20) {
+        if (_requestFillup && mod.getPlayer().getFoodData().getFoodLevel() >= _fillTo) {
             _requestFillup = false;
         }
         // If we no longer have food, we no longer can eat.
@@ -179,6 +182,7 @@ public class FoodChain extends SingleTaskChain {
         } else if (stance.mayEat() && _hasFood && (needsToEat() || _requestFillup) && _cachedPerfectFood.isPresent() &&
                 !mod.getMLGBucketChain().isChorusFruiting() && !mod.getPlayer().isBlocking()) {
             Item toUse = _cachedPerfectFood.get();
+            if (!_requestFillup) _fillTo = rawNeedsToEat(false) ? 20 : CombatRules.REGEN_HUNGER;
             // Make sure we're not facing a container
             LookHelper.tryAvoidingInteractable(mod);
             startEat(mod, toUse);
@@ -248,7 +252,7 @@ public class FoodChain extends SingleTaskChain {
         CombatRules.Stance stance = stance(_mod);
         if (stance == CombatRules.Stance.EAT_GAPPLE) return true;
         if (!stance.mayEat()) return false;
-        return rawNeedsToEat();
+        return rawNeedsToEat(true);
     }
 
     // the chains are built one after another, so early on there may be no mob defense to ask yet
@@ -265,7 +269,8 @@ public class FoodChain extends SingleTaskChain {
         return _mod == null || _mod.getMobDefenseChain() == null || !_mod.getMobDefenseChain().isShotAt(_mod);
     }
 
-    private boolean rawNeedsToEat() {
+    // heal: whether the hurt-and-under-the-regen-line rule counts (the meal's fillup line asks without it)
+    private boolean rawNeedsToEat(boolean heal) {
         if (!hasFood()) {
             return false;
         }
@@ -280,7 +285,7 @@ public class FoodChain extends SingleTaskChain {
         // hurt with a hunger bar too low to regenerate: eat until it is back at 18. not on last resort food (chorus fruit
         // throws us across the map), not in front of a shooter, and the fillup latch below carries on to a full bar like any
         // other meal
-        if (CombatRules.healingMeal(health, foodLevel) && healsWithoutHarm()) {
+        if (heal && CombatRules.healingMeal(health, foodLevel) && healsWithoutHarm()) {
             return true;
         }
         //Debug.logMessage("FOOD: " + foodLevel + " -- HEALTH: " + health);

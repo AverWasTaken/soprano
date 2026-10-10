@@ -266,7 +266,13 @@ public final class CombatCommit {
 
     public static CombatRules.Stance stance(Mode mode, float health, double nearest, boolean creeperClose, boolean gapple,
                                             Bite bite) {
-        if (!fighting(mode, health, nearest, creeperClose, bite)) return CombatRules.Stance.CALM;
+        boolean fighting = fighting(mode, health, nearest, creeperClose, bite);
+        // chewing a gapple counts as "biting" too, and the abort line is 5: without this the gapple that a hurt run wants at
+        // 5 to 10 blocks would be dropped on the next tick and picked up on the one after, forever
+        if (!fighting && gapple && mode == Mode.RUN && bite.biting() && health <= FLEE_HP) {
+            fighting = fighting(mode, health, nearest, creeperClose, new Bite(bite.shotAt(), bite.nearestFast(), false));
+        }
+        if (!fighting) return CombatRules.Stance.CALM;
         CombatRules.Stance stance = CombatRules.stance(true, health, nearest, gapple);
         // the quick bite at hp 4 is for nothing next to us. committed means something is close, so feet first, bite later
         if (stance == CombatRules.Stance.EAT && mode != Mode.NONE) return CombatRules.Stance.FLEE;
@@ -276,8 +282,8 @@ public final class CombatCommit {
     private static boolean fighting(Mode mode, float health, double nearest, boolean creeperClose, Bite bite) {
         return switch (mode) {
             case FIGHT -> true;
-            case RUN -> bite.shotAt() || (bite.biting() ? nearest < CombatRules.RUN_BITE_ABORT
-                    : nearest < CombatRules.RUN_BITE_START || bite.nearestFast() < CombatRules.RUN_BITE_START_FAST);
+            case RUN -> bite.biting() ? nearest < CombatRules.RUN_BITE_ABORT
+                    : bite.shotAt() || nearest < CombatRules.RUN_BITE_START || bite.nearestFast() < CombatRules.RUN_BITE_START_FAST;
             default -> creeperClose || (health <= FLEE_HP && nearest <= LOW_HP_RANGE);
         };
     }
@@ -291,8 +297,9 @@ public final class CombatCommit {
         }
         return switch (mode) {
             case FIGHT -> "fighting, no meals mid fight";
-            case RUN -> bite.shotAt() ? "running, a shooter has a line on us"
-                    : !bite.biting() && nearest >= CombatRules.RUN_BITE_START ? "running, something fast is too close to start a bite"
+            case RUN -> bite.biting() ? "running, " + near + ", too close to keep chewing"
+                    : bite.shotAt() ? "running, a shooter has a line on us"
+                    : nearest >= CombatRules.RUN_BITE_START ? "running, something fast is too close to start a bite"
                     : "running, " + near + ", too close to eat";
             default -> creeperClose ? "a lit creeper is close"
                     : "hp " + Math.round(health) + " with something within " + (int) LOW_HP_RANGE + ", " + near;
@@ -450,7 +457,8 @@ public final class CombatCommit {
         // not a swing yet, but it is the thing in the way. cooldown or not: the cooldown is about not picking a fight again
         // with what is around us, and this one is a path that cannot go on until it is gone
         Foe way = inTheWay(t);
-        if (way == null) return Event.NONE;
+        // (not with bare hands: it would punch the thing down to the flee line. it hits us, and that is the unarmed run above)
+        if (way == null || !t.armed()) return Event.NONE;
         return startFight(t, way, Why.IN_WAY, Event.FIGHT_START, false);
     }
 

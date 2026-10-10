@@ -49,8 +49,8 @@ public final class CombatRules {
 
     // the meal rules, all in one place so the food chain and the tests read the same numbers.
     // natural regeneration only runs with the hunger bar at 18 or more, so hurt and under it means eat until it is there.
-    // it is the one rule that heals a bot that is not hungry enough for the others: hp 14 and hunger 15 used to neither heal
-    // nor eat, for minutes
+    // the older rules (hp under BRUISED_HEALTH, or hunger at HUNGRY_AT or less) leave a band where a bot neither regenerates
+    // nor eats, and this closes it
     public static final int REGEN_HUNGER = 18;
     public static final float HURT_HEALTH = 18;
     // at or below this health any hunger under 20 is a meal

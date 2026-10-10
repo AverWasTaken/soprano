@@ -70,7 +70,7 @@ final class CombatBrain {
     private boolean _shotAt;
     private static final long STANCE_LOG_GAP = 20;
     private CombatRules.Stance _loggedStance = CombatRules.Stance.CALM;
-    private long _stanceLogAt = Long.MIN_VALUE;
+    private long _stanceLogAt = Long.MIN_VALUE / 2;
     private float _lastHealth = -1;
     private DamageSource _lastSource;
     private CommittedRunTask _run;
@@ -139,7 +139,7 @@ final class CombatBrain {
         _meleeAround = 0;
         _shotAt = false;
         _loggedStance = CombatRules.Stance.CALM;
-        _stanceLogAt = Long.MIN_VALUE;
+        _stanceLogAt = Long.MIN_VALUE / 2;
         _lastHealth = -1;
         _lastSource = null;
         _run = null;

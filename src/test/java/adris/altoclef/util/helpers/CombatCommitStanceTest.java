@@ -96,6 +96,32 @@ public class CombatCommitStanceTest {
     }
 
     @Test
+    public void theSameWalkInWorksWhenHurt() {
+        // the walk above at 10 hp, now at 6: nothing about the hp changes the lines, and the quick bite is not a thing here
+        double d = 10;
+        CombatCommit.Bite biting = new CombatCommit.Bite(false, NOBODY, true);
+        for (int tick = 0; tick < 32; tick++) {
+            assertEquals("tick " + tick, Stance.CALM, CombatCommit.stance(Mode.RUN, 6, d, false, false, biting));
+            d -= 1.5 / 20;
+        }
+        // inside the abort line it is feet again, and hp 3 does not turn it into the quick bite
+        assertEquals(Stance.FLEE, CombatCommit.stance(Mode.RUN, 3, 4.5, false, false, biting));
+    }
+
+    // chewing a gapple is "biting" too, and the gapple's own lines (hp 8 or less, anything inside the start line) have to
+    // hold through it or the use key toggles every other tick
+    @Test
+    public void aGappleKeepsBeingEatenThroughTheBiteBandWhileHurt() {
+        CombatCommit.Bite biting = new CombatCommit.Bite(false, NOBODY, true);
+        assertEquals(Stance.EAT_GAPPLE, CombatCommit.stance(Mode.RUN, 7, 7, false, true, biting));
+        assertEquals(Stance.EAT_GAPPLE, CombatCommit.stance(Mode.RUN, 7, 7, false, true, CombatCommit.Bite.NONE));
+        // far enough that the gapple was never wanted: ordinary food, ordinary bite
+        assertEquals(Stance.CALM, CombatCommit.stance(Mode.RUN, 7, 11, false, true, biting));
+        // healthy, a gapple is not a snack even mid bite
+        assertEquals(Stance.CALM, CombatCommit.stance(Mode.RUN, 15, 7, false, true, biting));
+    }
+
+    @Test
     public void somethingFastIsKeptOutOfMayStartInsteadOfWideningTheAbortLine() {
         // spider: ~4 blocks a second, gains 3.2 on a chewing player. baby zombie: ~5.2, gains 4.3
         double start = firstStart(true);
@@ -116,8 +142,8 @@ public class CombatCommitStanceTest {
         CombatCommit.Bite shot = new CombatCommit.Bite(true, NOBODY, false);
         assertFalse(CombatCommit.stance(Mode.RUN, 7, 15, false, false, shot).mayEat());
         assertEquals(Stance.FLEE, CombatCommit.stance(Mode.RUN, 3, NOBODY, false, false, shot));
-        // one that finds us mid bite stops it too
-        assertFalse(CombatCommit.stance(Mode.RUN, 7, 15, false, false, new CombatCommit.Bite(true, NOBODY, true)).mayEat());
+        // one that finds us mid bite does not stop it, only a threat inside the abort line does
+        assertTrue(CombatCommit.stance(Mode.RUN, 7, 15, false, false, new CombatCommit.Bite(true, NOBODY, true)).mayEat());
         // not shot at, same spot: lunch
         assertTrue(CombatCommit.stance(Mode.RUN, 7, 15, false, false).mayEat());
     }
@@ -156,7 +182,7 @@ public class CombatCommitStanceTest {
         assertEquals(Stance.CALM, CombatCommit.stance(Mode.NONE, 7, 9, false, false));
     }
 
-    // the shape of the cave sequence in neutral terms: hurt but not hungry enough to regenerate, nothing around, food in the bag
+    // hurt but not hungry enough to regenerate, nothing around, food in the bag
     @Test
     public void hurtAndCalmWithFoodInTheBagIsAMealtimeThatTheHealRuleWants() {
         float hp = 14;

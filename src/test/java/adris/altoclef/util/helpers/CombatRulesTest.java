@@ -141,7 +141,7 @@ public class CombatRulesTest {
 
     @Test
     public void hurtWithAHungerBarTooLowToRegenerateIsAMeal() {
-        // the hole: hp 14 and hunger 15 used to neither heal nor eat
+        // hp 14 with hunger 15 is under neither older line (hp under 14, hunger 10 or less) and under the regen line
         assertTrue(CombatRules.healingMeal(14, 15));
         assertTrue(CombatRules.healingMeal(17.5f, 17));
         assertTrue(CombatRules.healingMeal(5, 11));
