@@ -84,8 +84,11 @@ public class LootContainerTask extends Task {
             return null;
         }
         ItemStack stack = StorageHelper.getItemStackInSlot(optimal.get());
-        // the loot is protected, so a full bag has nothing to throw and the stack would go back in the chest just to be looted again
-        if (mod.getItemStorage().getSlotThatCanFitInPlayerInventory(stack, true).isEmpty()) {
+        // the loot is protected, so a full bag with no garbage has nothing to throw and the stack would go back in the
+        // chest just to be looted again. same fit question as the cursor branch above, or the two disagree and it loops
+        if (mod.getItemStorage().getSlotThatCanFitInPlayerInventory(stack, false).isEmpty()
+                && StorageHelper.getGarbageSlot(mod).isEmpty()
+                && !ItemHelper.canThrowAwayStack(mod, stack)) {
             _weDoneHere = true;
             return null;
         }
