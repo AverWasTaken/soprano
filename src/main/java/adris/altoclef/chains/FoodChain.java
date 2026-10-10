@@ -257,6 +257,14 @@ public class FoodChain extends SingleTaskChain {
         return mod.getMobDefenseChain().getCombatStance(mod);
     }
 
+    // the heal rule fires a lot more often than the old ones (any hp under 18), so it is the careful one
+    private boolean healsWithoutHarm() {
+        // (raw chicken is the same kind of bad idea, the hunger effect eats the bar we are trying to fill)
+        if (_cachedPerfectFood.isPresent() && (_cachedPerfectFood.get() == Items.CHORUS_FRUIT
+                || _cachedPerfectFood.get() == Items.CHICKEN)) return false;
+        return _mod == null || _mod.getMobDefenseChain() == null || !_mod.getMobDefenseChain().isShotAt(_mod);
+    }
+
     private boolean rawNeedsToEat() {
         if (!hasFood()) {
             return false;
@@ -266,7 +274,13 @@ public class FoodChain extends SingleTaskChain {
         int foodLevel = player.getFoodData().getFoodLevel();
         float health = player.getHealth();
 
-        if (health <= 10 && foodLevel <= 19) {
+        if (CombatRules.desperateMeal(health, foodLevel)) {
+            return true;
+        }
+        // hurt with a hunger bar too low to regenerate: eat until it is back at 18. not on last resort food (chorus fruit
+        // throws us across the map), not in front of a shooter, and the fillup latch below carries on to a full bar like any
+        // other meal
+        if (CombatRules.healingMeal(health, foodLevel) && healsWithoutHarm()) {
             return true;
         }
         //Debug.logMessage("FOOD: " + foodLevel + " -- HEALTH: " + health);
@@ -346,8 +360,8 @@ public class FoodChain extends SingleTaskChain {
 
     static class FoodChainConfig {
         public int alwaysEatWhenWitherOrFireAndHealthBelow = 6;
-        public int alwaysEatWhenBelowHunger = 10;
-        public int alwaysEatWhenBelowHealth = 14;
+        public int alwaysEatWhenBelowHunger = CombatRules.HUNGRY_AT;
+        public int alwaysEatWhenBelowHealth = CombatRules.BRUISED_HEALTH;
         public int alwaysEatWhenBelowHungerAndPerfectFit = 20 - 5;
         public int prioritizeSaturationWhenBelowHealth = 8;
         public float foodPickPrioritizeSaturationSaturationMultiplier = 8;

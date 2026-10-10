@@ -61,6 +61,7 @@ final class CombatBrain {
     private CombatRules.Stance _stance = CombatRules.Stance.CALM;
     private int _meleeNear;
     private int _meleeAround;
+    private boolean _shotAt;
     private CommittedRunTask _run;
     private KillEntityTask _fight;
     private int _fightId = -1;
@@ -83,6 +84,10 @@ final class CombatBrain {
 
     CombatRules.Stance stance() {
         return _stance;
+    }
+
+    boolean shotAt() {
+        return _shotAt;
     }
 
     int meleeNear() {
@@ -121,6 +126,7 @@ final class CombatBrain {
         _stance = CombatRules.Stance.CALM;
         _meleeNear = 0;
         _meleeAround = 0;
+        _shotAt = false;
         _run = null;
         _fight = null;
         _fightId = -1;
@@ -231,8 +237,15 @@ final class CombatBrain {
         int meleeNear = 0;
         int meleeAround = 0;
         double nearest = Double.POSITIVE_INFINITY;
-        for (Foe foe : foes) {
+        boolean shotAt = false;
+        for (int i = 0; i < foes.size(); i++) {
+            Foe foe = foes.get(i);
             nearest = Math.min(nearest, foe.distance());
+            // a shooter close enough to hit us with a line to us. the los ray is only cast for the ones that are in range
+            if (!shotAt && foe.ranged() && !foe.creeper() && foe.distance() <= CombatRules.SHOOTER_RANGE
+                    && mobs.get(i).hasLineOfSight(player)) {
+                shotAt = true;
+            }
             if (foe.hitUs() && foe.distance() <= CombatCommit.CONTACT) _swingAt.add(foe.id());
             if (!foe.melee()) continue;
             if (foe.distance() <= CombatCommit.CONTACT) meleeNear++;
@@ -241,7 +254,8 @@ final class CombatBrain {
         if (_commit.mode() == Mode.FIGHT) _swingAt.add(_commit.targetId());
         _meleeNear = meleeNear;
         _meleeAround = meleeAround;
-        _stance = stance(mod, nearest, creeperClose);
+        _shotAt = shotAt;
+        _stance = stance(mod, nearest, creeperClose, shotAt);
     }
 
     // how many path nodes ahead count as "in the way". three is the next couple of steps, further out the mob has time to move
@@ -289,10 +303,10 @@ final class CombatBrain {
         return new CombatCommit.Way(inWay, moving, y);
     }
 
-    private CombatRules.Stance stance(AltoClef mod, double nearest, boolean creeperClose) {
+    private CombatRules.Stance stance(AltoClef mod, double nearest, boolean creeperClose, boolean shotAt) {
         // gapples are never picked as food (FoodSelector keeps them for exactly this), so check the bag ourselves
         boolean gapple = mod.getItemStorage().hasItem(Items.GOLDEN_APPLE) || mod.getItemStorage().hasItem(Items.ENCHANTED_GOLDEN_APPLE);
-        return CombatCommit.stance(_commit.mode(), mod.getPlayer().getHealth(), nearest, creeperClose, gapple);
+        return CombatCommit.stance(_commit.mode(), mod.getPlayer().getHealth(), nearest, creeperClose, gapple, shotAt);
     }
 
     // the fight target looked up on its own: it can have stopped being angry (or being a candidate at all) and still be the

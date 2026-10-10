@@ -546,6 +546,13 @@ public class MobDefenseChain extends SingleTaskChain {
         return nodes;
     }
 
+    // a shooter has a line on us right now (the heal meal does not sit down in front of one)
+    public boolean isShotAt(AltoClef mod) {
+        if (!AltoClef.inGame()) return false;
+        snapshot(mod);
+        return _brain.shotAt();
+    }
+
     // melee mobs we are dealing with within contact range, and within the swarm range
     public int meleeNear(AltoClef mod) {
         if (!AltoClef.inGame()) return 0;

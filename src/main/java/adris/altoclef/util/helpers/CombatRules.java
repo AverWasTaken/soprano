@@ -28,8 +28,36 @@ public final class CombatRules {
     // at or below this a bite is better than a fight we are losing, as long as nothing is on top of us
     public static final float CRITICAL_HEALTH = 4;
     public static final double QUICK_BITE_CLEARANCE = 3;
+    // a run may stop to chew once the nearest thing angry at us is further than this, and nothing that shoots can see us.
+    // the bite is dropped the moment somebody closes inside it again (the stance flips back to FLEE), chewing is walking at a
+    // fraction of the speed
+    public static final double RUN_BITE_CLEARANCE = 8;
+    // a shooter this far off with a line to us counts as "being shot at": no sitting down to a meal in its sights
+    public static final double SHOOTER_RANGE = 15;
+
+    // the meal rules, all in one place so the food chain and the tests read the same numbers.
+    // natural regeneration only runs with the hunger bar at 18 or more, so hurt and under it means eat until it is there.
+    // it is the one rule that heals a bot that is not hungry enough for the others: hp 14 and hunger 15 used to neither heal
+    // nor eat, for minutes
+    public static final int REGEN_HUNGER = 18;
+    public static final float HURT_HEALTH = 18;
+    // at or below this health any hunger under 20 is a meal
+    public static final float DESPERATE_HEALTH = 10;
+    // the older rules (the food chain config defaults): hungry at or below HUNGRY_AT, or below BRUISED_HEALTH with a
+    // bar that is above it
+    public static final int HUNGRY_AT = 10;
+    public static final int BRUISED_HEALTH = 14;
 
     private CombatRules() {
+    }
+
+    // hurt, and the hunger bar is under the line where we start healing by ourselves
+    public static boolean healingMeal(float health, int hunger) {
+        return health < HURT_HEALTH && hunger < REGEN_HUNGER;
+    }
+
+    public static boolean desperateMeal(float health, int hunger) {
+        return health <= DESPERATE_HEALTH && hunger < 20;
     }
 
     // the chain asked for the wheel at this priority. a priority is a promise that something is running, so with no task

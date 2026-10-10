@@ -137,6 +137,39 @@ public class CombatRulesTest {
         assertTrue(CombatRules.HEAVY_FLEE_HEALTH > CombatRules.FLEE_HEALTH);
     }
 
+    // ---- the meal lines
+
+    @Test
+    public void hurtWithAHungerBarTooLowToRegenerateIsAMeal() {
+        // the hole: hp 14 and hunger 15 used to neither heal nor eat
+        assertTrue(CombatRules.healingMeal(14, 15));
+        assertTrue(CombatRules.healingMeal(17.5f, 17));
+        assertTrue(CombatRules.healingMeal(5, 11));
+        assertTrue(CombatRules.healingMeal(1, 0));
+    }
+
+    @Test
+    public void notHurtOrAlreadyRegeneratingIsNotAHealingMeal() {
+        // 18 is where the bar regenerates by itself
+        assertFalse(CombatRules.healingMeal(14, CombatRules.REGEN_HUNGER));
+        assertFalse(CombatRules.healingMeal(14, 20));
+        // and 18 hp is not hurt enough to bother
+        assertFalse(CombatRules.healingMeal(CombatRules.HURT_HEALTH, 10));
+        assertFalse(CombatRules.healingMeal(20, 5));
+    }
+
+    @Test
+    public void theOlderMealLinesKeepTheirNumbers() {
+        assertEquals(18, CombatRules.REGEN_HUNGER);
+        assertEquals(18, CombatRules.HURT_HEALTH, 0);
+        assertEquals(10, CombatRules.DESPERATE_HEALTH, 0);
+        assertEquals(10, CombatRules.HUNGRY_AT);
+        assertEquals(14, CombatRules.BRUISED_HEALTH);
+        assertTrue(CombatRules.desperateMeal(10, 19));
+        assertFalse(CombatRules.desperateMeal(10, 20));
+        assertFalse(CombatRules.desperateMeal(10.5f, 5));
+    }
+
     @Test
     public void theSharedRangesAreWhereTheMachineReadsThem() {
         assertEquals(3, CombatRules.CONTACT_RANGE, 0);

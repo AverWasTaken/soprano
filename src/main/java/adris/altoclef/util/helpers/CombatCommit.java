@@ -209,24 +209,49 @@ public final class CombatCommit {
         return hit;
     }
 
-    // fight / flee / eat for the food chain. a fight is never a mealtime. a run is one only once nothing angry is within
-    // RUN_CLEAR, the same line the run itself calls clear: chewing is walking at a third of the speed, so a bite with
-    // somebody following at 9 blocks is abandoned a second later when they close to 8, and then it starts again, and
-    // all that does is slow the run down. the commitment stays through a bite, it does not even hand the wheel over.
+    // fight / flee / eat for the food chain. a fight is never a mealtime. a run is one once nothing angry is within
+    // RUN_BITE_CLEARANCE and nothing that shoots can see us: a hurt bot that never eats while it runs just bleeds slower.
+    // chewing is walking at a fraction of the speed, so the moment somebody closes inside the line this goes back to FLEE
+    // and the bite is dropped (it used to be the run's own RUN_CLEAR, which meant a bot being chased for a minute never got
+    // to eat at all). the commitment stays through a bite, it does not even hand the wheel over.
     // with nobody committed it is calm unless a lit creeper is close or we are hurt with something near. nearest is the
     // distance to the closest angry thing, infinity for none
     public static CombatRules.Stance stance(Mode mode, float health, double nearest, boolean creeperClose, boolean gapple) {
-        boolean hurtAndNear = health <= FLEE_HP && nearest <= LOW_HP_RANGE;
-        boolean fighting = switch (mode) {
-            case FIGHT -> true;
-            case RUN -> nearest <= RUN_CLEAR;
-            default -> creeperClose || hurtAndNear;
-        };
-        if (!fighting) return CombatRules.Stance.CALM;
+        return stance(mode, health, nearest, creeperClose, gapple, false);
+    }
+
+    // shotAt: a shooter with a line to us is close enough to matter (the run does not sit down in front of one)
+    public static CombatRules.Stance stance(Mode mode, float health, double nearest, boolean creeperClose, boolean gapple,
+                                            boolean shotAt) {
+        if (!fighting(mode, health, nearest, creeperClose, shotAt)) return CombatRules.Stance.CALM;
         CombatRules.Stance stance = CombatRules.stance(true, health, nearest, gapple);
         // the quick bite at hp 4 is for nothing next to us. committed means something is close, so feet first, bite later
         if (stance == CombatRules.Stance.EAT && mode != Mode.NONE) return CombatRules.Stance.FLEE;
         return stance;
+    }
+
+    private static boolean fighting(Mode mode, float health, double nearest, boolean creeperClose, boolean shotAt) {
+        return switch (mode) {
+            case FIGHT -> true;
+            case RUN -> nearest <= CombatRules.RUN_BITE_CLEARANCE || shotAt;
+            default -> creeperClose || (health <= FLEE_HP && nearest <= LOW_HP_RANGE);
+        };
+    }
+
+    // why the stance is what it is, for the log line that says so when it changes (and so why a hurt bot is not eating).
+    // only ever built when a line is going out
+    public static String stanceWhy(Mode mode, float health, double nearest, boolean creeperClose, boolean shotAt) {
+        String near = Double.isInfinite(nearest) ? "nothing angry in sight" : "nearest " + Math.round(nearest) + " blocks";
+        if (!fighting(mode, health, nearest, creeperClose, shotAt)) {
+            return mode == Mode.RUN ? "running, " + near + ", free to eat" : "calm, " + near;
+        }
+        return switch (mode) {
+            case FIGHT -> "fighting, no meals mid fight";
+            case RUN -> shotAt && nearest > CombatRules.RUN_BITE_CLEARANCE ? "running, a shooter has a line on us"
+                    : "running, " + near + ", too close to eat";
+            default -> creeperClose ? "a lit creeper is close"
+                    : "hp " + Math.round(health) + " with something within " + (int) LOW_HP_RANGE + ", " + near;
+        };
     }
 
     // ---- state
