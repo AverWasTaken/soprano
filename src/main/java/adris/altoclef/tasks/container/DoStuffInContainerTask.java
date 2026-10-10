@@ -324,10 +324,18 @@ public abstract class DoStuffInContainerTask extends Task {
     // back would go to it (Workbenches.plannerWalksBack)
     public static boolean bagCanMake(AltoClef mod, StationHook.Kind kind) {
         var bag = mod.getItemStorage();
-        // what the stone tools still eat is not furnace material (StationHook.cobbleOwed)
-        int cobble = bag.getItemCount(Items.COBBLESTONE, Items.COBBLED_DEEPSLATE, Items.BLACKSTONE) - StationHook.cobbleOwed();
+        int cobble = spareCobble(item -> bag.getItemCount(item), StationHook.cobbleOwed());
         return StationChoice.canMakeFrom(kind, cobble, bag.getItemCount(ItemHelper.LOG), bag.getItemCount(ItemHelper.PLANKS),
                 bag.getItemCount(Items.FURNACE));
+    }
+
+    // the cobble a furnace can really be made from: plain cobblestone only, because the furnace recipe in TaskCatalogue puts plain
+    // cobblestone in the slots (vanilla would take cobbled deepslate and blackstone too, the craft here does not). the stone tools'
+    // owed cobble (StationHook.cobbleOwed) is plain cobblestone as well, so counting deepslate on top read 14 + 8 with 14 owed as
+    // 8 spare and then the craft ate 8 of the 14 the tools needed. the three places that ask (this, the planner through bagCanMake,
+    // the split smelt's decide) all come through here
+    public static int spareCobble(java.util.function.ToIntFunction<net.minecraft.world.item.Item> count, int owed) {
+        return count.applyAsInt(Items.COBBLESTONE) - owed;
     }
 
     // the far one of ours the walk back may head for: not coming down, not one with our things cooking in it (that one is busy, a

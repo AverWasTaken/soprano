@@ -206,7 +206,7 @@ public class CollectIronIngotTask extends ResourceTask {
         int idle = StationHook.countWithin(StationHook.Kind.FURNACE, me.x, me.y, me.z, StationChoice.WALK_BACK,
                 p -> DoStuffInContainerTask.walkBackUsable(mod, p, Blocks.FURNACE) && !AsyncSmelting.jobAt(p));
         int inBag = mod.getItemStorage().getItemCount(Items.FURNACE);
-        int spare = mod.getItemStorage().getItemCount(Items.COBBLESTONE, Items.COBBLED_DEEPSLATE, Items.BLACKSTONE) - StationHook.cobbleOwed();
+        int spare = DoStuffInContainerTask.spareCobble(item -> mod.getItemStorage().getItemCount(item), StationHook.cobbleOwed());
         int k = SmeltSplit.loads(owed, idle, inBag, spare);
         String why = idle + " idle of ours within " + Math.round(StationChoice.WALK_BACK) + ", " + inBag + " in the bag, "
                 + Math.max(0, spare) + " spare cobble";
