@@ -45,6 +45,8 @@ public final class CreeperStep {
 
     private int _id = -1;
     private long _since;
+    // when the creeper we hold last went lit, -1 while it is unlit. the cap only blacklists one that sat lit the whole time
+    private long _litSince = -1;
     private double _startDistance;
     private boolean _cornered;
     private boolean _log;
@@ -86,6 +88,8 @@ public final class CreeperStep {
         _log = false;
         if (_id >= 0) {
             Seen held = find(creepers, _id);
+            if (held != null && !held.lit()) _litSince = -1;
+            else if (held != null && _litSince < 0) _litSince = now;
             Event end = Event.NONE;
             if (held == null) end = Event.END_GONE;
             // the fuse is really out when it is unlit AND drained, or we are well away from it. unlit with charge left and still
@@ -101,8 +105,10 @@ public final class CreeperStep {
                 }
                 return Event.NONE;
             }
-            // a capped one stays lit next to us somehow (charged and stuck?), it is not worth holding the wheel forever
-            if (end == Event.END_CAP) remember(_capped, _id);
+            // a capped one stays lit next to us somehow (charged and stuck?), it is not worth holding the wheel forever. a hold that
+            // only ran long because the fuse lit, deflated and relit is not that one: it explodes after 30 lit ticks in total, so it
+            // gets stepped from again if it relights
+            if (end == Event.END_CAP && _litSince >= 0 && now - _litSince >= HOLD_CAP) remember(_capped, _id);
             _id = -1;
             _cornered = false;
             return end;
@@ -115,6 +121,7 @@ public final class CreeperStep {
         if (pick == null) return Event.NONE;
         _id = pick.id();
         _since = now;
+        _litSince = now;
         _startDistance = pick.distance();
         _cornered = false;
         _log = remember(_logged, pick.id());

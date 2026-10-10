@@ -109,10 +109,31 @@ public class CreeperStepTest {
     public void aFuseThatNeverDrainsStillHitsTheCap() {
         CreeperStep step = new CreeperStep();
         step.step(0, lit(7, 3), false);
+        // lit for a while, then deflating and never draining: the cap ends the hold
+        assertEquals(Event.NONE, step.step(10, List.of(new Seen(7, false, 2, false, true)), false));
         assertEquals(Event.END_CAP, step.step(CreeperStep.HOLD_CAP, List.of(new Seen(7, false, 2, false, true)), false));
-        // and is not held again
-        assertEquals(Event.NONE, step.step(CreeperStep.HOLD_CAP + 1, lit(7, 2), false));
         assertFalse(step.active());
+    }
+
+    @Test
+    public void aHoldThatOnlyRanLongBecauseItRelitIsNotBlacklisted() {
+        CreeperStep step = new CreeperStep();
+        step.step(0, lit(7, 3), false);
+        for (int t = 1; t < 20; t++) step.step(t, lit(7, 3), false);
+        for (int t = 20; t < 35; t++) step.step(t, List.of(new Seen(7, false, 3, false, true)), false);
+        for (int t = 35; t < CreeperStep.HOLD_CAP; t++) step.step(t, lit(7, 3), false);
+        // the cap lands, but it has only been lit again for fifteen ticks
+        assertEquals(Event.END_CAP, step.step(CreeperStep.HOLD_CAP, lit(7, 3), false));
+        // so its next relight beside us is stepped from again
+        assertEquals(Event.START, step.step(CreeperStep.HOLD_CAP + 1, lit(7, 3), false));
+    }
+
+    @Test
+    public void aCreeperThatSatLitThroughTheWholeCapIsNotHeldAgain() {
+        CreeperStep step = new CreeperStep();
+        step.step(0, lit(7, 3), false);
+        assertEquals(Event.END_CAP, step.step(CreeperStep.HOLD_CAP, lit(7, 3), false));
+        assertEquals(Event.NONE, step.step(CreeperStep.HOLD_CAP + 1, lit(7, 3), false));
     }
 
     @Test
