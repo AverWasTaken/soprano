@@ -52,6 +52,11 @@ public class FoodChain extends SingleTaskChain {
     private int _biteHunger;
     private float _biteSaturation;
     private float _biteHealth;
+    // BiteRules has the rules, these are what the chain remembers between ticks: whether we hold the use key, whether the
+    // meal began standing (and so the pause is ours until stopEat), and the counters for the log lines
+    private final BiteRules.Waiting _waiting = new BiteRules.Waiting();
+    private boolean _biting = false;
+    private boolean _standing = false;
 
     private final AltoClef _mod;
 
@@ -65,6 +70,50 @@ public class FoodChain extends SingleTaskChain {
         // Nothing.
     }
 
+    // once a tick that the eat branch wants to chew. BiteRules says whether that is now: outside a fight a bite only starts
+    // standing, because chewing is a 0.2 move multiplier and no movement knows about it
+    private void tryEat(AltoClef mod, Item food, boolean avoidInteractable) {
+        BiteRules.Scene scene = scene(mod);
+        BiteRules.Verdict verdict = BiteRules.verdict(scene);
+        boolean waiting = verdict == BiteRules.Verdict.ASK_STOP || verdict == BiteRules.Verdict.WAIT;
+        String line = _waiting.tick(verdict, waiting ? BiteRules.why(scene) : null);
+        if (line != null) {
+            Debug.logInternal(line);
+        }
+        switch (verdict) {
+            // nothing but the pause: a slot swap now would fight the tool the path is using, and the use key would
+            // freeze the clicks it needs. the latch is only granted at a tick where the movement says it is safe
+            case ASK_STOP -> mod.getClientBaritone().getPathingBehavior().requestPause();
+            case WAIT -> {
+            }
+            case EAT_NOW -> {
+                // asked again every tick of the meal, like the shield does, so one stop covers every bite of a fillup
+                _standing = true;
+                mod.getClientBaritone().getPathingBehavior().requestPause();
+                if (avoidInteractable) LookHelper.tryAvoidingInteractable(mod);
+                startEat(mod, food);
+            }
+            case CHEW_ON_THE_MOVE -> {
+                // the fight owns the wheel and the legs. no pause here, ever: it must not hold us still under a mob
+                _standing = false;
+                if (avoidInteractable) LookHelper.tryAvoidingInteractable(mod);
+                startEat(mod, food);
+            }
+        }
+    }
+
+    private BiteRules.Scene scene(AltoClef mod) {
+        LocalPlayer player = mod.getPlayer();
+        Baritone baritone = mod.getClientBaritone();
+        boolean pathLive = baritone.getPathingBehavior().getCurrent() != null;
+        MobDefenseChain defense = mod.getMobDefenseChain();
+        // a committed run or fight, or a stance that is not calm (the quick bite and the gapple live there)
+        boolean combat = defense != null && (defense.combatMode() != CombatCommit.Mode.NONE || stance(mod) != CombatRules.Stance.CALM);
+        return new BiteRules.Scene(combat, _biting, Minecraft.getInstance().screen != null, player.onGround(), player.isInWater(),
+                player.onClimbable(), player.isPassenger(), player.getDeltaMovement().horizontalDistance(), pathLive,
+                pathLive && !baritone.getPathingBehavior().isPathing(), baritone.getPathingBehavior().isSafeToCancel());
+    }
+
     private void startEat(AltoClef mod, Item food) {
         //Debug.logInternal("EATING " + toUse.getTranslationKey() + " : " + test);
         _isTryingToEat = true;
@@ -73,11 +122,22 @@ public class FoodChain extends SingleTaskChain {
             snapshotBite(mod, food);
         }
         mod.getSlotHandler().forceEquipItem(new Item[]{food}, true); //"true" because it's food
+        holdBite(mod);
+    }
+
+    private void holdBite(AltoClef mod) {
+        _biting = true;
         mod.getInputControls().hold(Input.CLICK_RIGHT);
+        // the click muzzle goes on with the key and not before: asking for a stop is not chewing, and the movement that
+        // wants to place or break while we wait for the stop has to be able to
         mod.getExtraBaritoneSettings().setInteractionPaused(true);
     }
 
     private void stopEat(AltoClef mod) {
+        // whatever the meal was, the next one starts from scratch (a back off in progress is not part of the meal)
+        _waiting.reset();
+        _biting = false;
+        _standing = false;
         if (_isTryingToEat) {
             if (mod.getItemStorage().hasItem(Items.SHIELD) || mod.getItemStorage().hasItemInOffhand(Items.SHIELD)) {
                 if (StorageHelper.getItemStackInSlot(PlayerSlot.OFFHAND_SLOT).getItem() != Items.SHIELD) {
@@ -177,17 +237,16 @@ public class FoodChain extends SingleTaskChain {
         if (stance == CombatRules.Stance.EAT_GAPPLE && !mod.getPlayer().isBlocking()) {
             // not in the food list on purpose, this is the one fight where the gapple is the point
             Item gapple = mod.getItemStorage().hasItem(Items.GOLDEN_APPLE) ? Items.GOLDEN_APPLE : Items.ENCHANTED_GOLDEN_APPLE;
-            LookHelper.tryAvoidingInteractable(mod);
             // (a gapple meal tops up like an ordinary one afterwards, not to the last heal meal's line)
             _fillTo = 20;
-            startEat(mod, gapple);
-        } else if (stance.mayEat() && _hasFood && (needsToEat() || _requestFillup) && _cachedPerfectFood.isPresent() &&
+            tryEat(mod, gapple, true);
+        } else if (stance.mayEat() && _hasFood && (wantsToEat() || _requestFillup) && _cachedPerfectFood.isPresent() &&
                 !mod.getMLGBucketChain().isChorusFruiting() && !mod.getPlayer().isBlocking()) {
             Item toUse = _cachedPerfectFood.get();
             if (!_requestFillup) _fillTo = rawNeedsToEat(false) ? 20 : CombatRules.REGEN_HUNGER;
-            // Make sure we're not facing a container
-            LookHelper.tryAvoidingInteractable(mod);
-            startEat(mod, toUse);
+            // (tryEat makes sure we're not facing a container, once it is actually time to chew: looking around while a
+            // path is still walking is not ours to do)
+            tryEat(mod, toUse, true);
         } else {
             stopEat(mod);
         }
@@ -249,7 +308,15 @@ public class FoodChain extends SingleTaskChain {
 
     // this is also "are we busy chewing", half the codebase asks it to know whether it may swing or click. so it says no
     // when a fight stops us eating, and yes when the fight is the reason we are eating (the gapple)
+    // (a meal we are standing for counts as needing to eat even after the rules stop asking for it: the fillup tail is
+    // still chewing, and the progress checkers that forgive a meal must not see 6 seconds of a bot standing still)
     public boolean needsToEat() {
+        return wantsToEat() || (_standing && !shouldStop && !_eatBlocked && stance(_mod).mayEat());
+    }
+
+    // what the eat branch goes by. needsToEat() adds the standing meal on top, and the branch cannot go by that or a meal
+    // would keep itself alive forever
+    private boolean wantsToEat() {
         if (shouldStop || _eatBlocked) return false;
         CombatRules.Stance stance = stance(_mod);
         if (stance == CombatRules.Stance.EAT_GAPPLE) return true;
