@@ -235,8 +235,8 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
         return new TimeoutWanderTask();
     }
 
-    // close enough to interact. the feet line for everyone (trading, shearing, frames), the kill tasks ask for the reach the
-    // server means instead
+    // close enough to interact. the feet line for everyone (trading, shearing, frames), the kill tasks also count the eye to box
+    // gap (ReachRules.killReach)
     protected boolean inReach(AltoClef mod, Entity entity) {
         return mod.getControllerExtras().inRange(entity);
     }

@@ -103,6 +103,21 @@ public final class CombatCommit {
     // time is a run out of its range. thirty seconds, then it is a fight again
     public static final long LOBBER_GIVE_UP_TICKS = 600;
 
+    // whether a run is really trying to get somewhere this tick, for noRoomFight. the "search came back with no path" half is
+    // only believed while it is the latest news: any path executing or search going takes the count of failures as the new base
+    public static final class Drive {
+        private int base;
+
+        public boolean trying(boolean running, boolean pathing, boolean searching, int failures, boolean usingItem, boolean onGround,
+                              boolean inWater) {
+            if (!running || pathing || searching) {
+                base = failures;
+            }
+            boolean failed = running && !pathing && !searching && failures > base;
+            return running && (pathing || failed) && !usingItem && onGround && !inWater;
+        }
+    }
+
     // never hit us
     public static final long NEVER = Long.MAX_VALUE / 4;
 
@@ -395,6 +410,8 @@ public final class CombatCommit {
 
     // when a fight with a lobber last stalled, for the run that replaces the next fight with it (see LOBBER_GIVE_UP_TICKS)
     private long lobberGaveUpAt = Long.MIN_VALUE / 2;
+    // this fight got into contact with its target at some point (a lobber we never touched was out of reach, whatever ended it)
+    private boolean contacted;
 
     // mobs we gave up on, and when. they get another go when they hit us again
     private final Map<Integer, Long> ignored = new HashMap<>();
@@ -467,8 +484,9 @@ public final class CombatCommit {
     }
 
     // a lobber that hit us when we already failed to reach one lately: running is the answer, a second fight would stall the same
+    // (one that has walked into contact is a plain fight, that is the reachable witch)
     private boolean gaveUpOn(Foe foe, long now) {
-        return foe.kind() == Kind.LOBBER && now >= lobberGaveUpAt && now - lobberGaveUpAt <= LOBBER_GIVE_UP_TICKS;
+        return foe.kind() == Kind.LOBBER && foe.distance() > CONTACT && now >= lobberGaveUpAt && now - lobberGaveUpAt <= LOBBER_GIVE_UP_TICKS;
     }
 
     public Event step(Tick t) {
@@ -633,6 +651,8 @@ public final class CombatCommit {
                 // boxed in, the second tier picks within 8, so a lost one would be picked again every few seconds. same
                 // deal as a stall: written off until it hits us again
                 if (cornered) ignored.put(target.id(), t.now());
+                // a lobber we never reached and lost track of is the same story as one that stalled: the poison goes on
+                if (target.kind() == Kind.LOBBER && !contacted) lobberGaveUpAt = t.now();
                 return end(t, Event.FIGHT_LOST);
             }
         } else {
@@ -641,6 +661,7 @@ public final class CombatCommit {
         // getting anywhere? contact is the best kind of progress, closing in counts, running off just moves the baseline
         double d = target.distance();
         if (d <= CONTACT) {
+            contacted = true;
             bestDistance = d;
             progressAt = t.now();
         } else if (d < bestDistance - PROGRESS) {
@@ -692,6 +713,7 @@ public final class CombatCommit {
         // a new fight with a mob we once gave up on is a clean slate with it (it hit us since, or we are boxed in with it)
         ignored.remove(foe.id());
         noRoom = false;
+        contacted = false;
         mode = Mode.FIGHT;
         why = reason;
         targetId = foe.id();
@@ -860,6 +882,8 @@ public final class CombatCommit {
         Foe near = null;
         for (Foe foe : t.foes()) {
             if (foe.distance() > LOW_HP_RANGE || foe.kind() == Kind.UNTOUCHABLE) continue;
+            // (a lobber we could not reach is not who the run turns round on)
+            if (gaveUpOn(foe, t.now())) continue;
             if ((foe.distance() <= CONTACT || foe.hitUs()) && (onUs == null || foe.distance() < onUs.distance())) onUs = foe;
             if (!foe.creeper() && !ignored.containsKey(foe.id()) && (near == null || foe.distance() < near.distance())) near = foe;
         }

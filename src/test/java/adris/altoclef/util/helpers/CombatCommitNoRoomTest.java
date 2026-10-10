@@ -33,15 +33,12 @@ public class CombatCommitNoRoomTest {
         return runTick(now, 20, x, z, trying, foes);
     }
 
-    private static CombatCommit runFrom(long now, float health) {
+    // hurt with a zombie at eight is the cheapest way into a run, nothing else about it matters
+    private static CombatCommit runFrom(long now) {
         CombatCommit c = new CombatCommit();
         Foe far = new Foe(900, 8, false, false, CombatCommit.NEVER);
         assertEquals(Event.RUN_START, c.step(new Tick(now, 8, 0, 0, List.of(far), null)));
         return c;
-    }
-
-    private static CombatCommit runFrom(long now) {
-        return runFrom(now, 8);
     }
 
     private static void holds(CombatCommit c, long from, long to, LongFunction<Tick> scene) {
@@ -84,7 +81,7 @@ public class CombatCommitNoRoomTest {
 
     @Test
     public void lowHpInTheOpenWithAPathThatStartsLateIsStillARun() {
-        CombatCommit c = runFrom(NOW, 7);
+        CombatCommit c = runFrom(NOW);
         Foe close = measured(7, 2.5, 2.4);
         // the search takes a while at hp 7, then the path goes live and the bot is on its way
         holds(c, NOW + 1, NOW + 25, now -> runTick(now, 7, 0, 0, false, close));
@@ -158,5 +155,29 @@ public class CombatCommitNoRoomTest {
         String cramped = CombatLog.line(Dimension.OVERWORLD, Event.RUN_TO_FIGHT, CombatCommit.Why.CORNERED, true, true, "zombie", "it", "1 zombie", 20, 0);
         assertEquals("combat: [overworld] cornered, fighting zombie", plain);
         assertEquals("combat: [overworld] cornered, no room, fighting zombie", cramped);
+    }
+
+    // the decision the brain feeds the machine, with the search failure count as it comes out of baritone
+    @Test
+    public void aFailedSearchOnlyCountsWhileItIsTheLatestNews() {
+        CombatCommit.Drive drive = new CombatCommit.Drive();
+        // not running: never trying, whatever baritone says
+        assertFalse(drive.trying(false, true, false, 0, false, true, false));
+        // a search going (no path yet), a bite, the air and water: not trying
+        assertFalse(drive.trying(true, false, true, 0, false, true, false));
+        assertFalse(drive.trying(true, true, false, 0, true, true, false));
+        assertFalse(drive.trying(true, true, false, 0, false, false, false));
+        assertFalse(drive.trying(true, true, false, 0, false, true, true));
+        // a path executing is trying
+        assertTrue(drive.trying(true, true, false, 0, false, true, false));
+        // the search came back empty: trying, and it stays so while nothing else starts
+        assertFalse(drive.trying(true, false, true, 0, false, true, false));
+        assertTrue(drive.trying(true, false, false, 1, false, true, false));
+        assertTrue(drive.trying(true, false, false, 1, false, true, false));
+        // a new search, then a path that gets there: the old failure is history, a later re-path is not trying until it lands
+        assertFalse(drive.trying(true, false, true, 1, false, true, false));
+        assertTrue(drive.trying(true, true, false, 1, false, true, false));
+        assertFalse(drive.trying(true, false, false, 1, false, true, false));
+        assertFalse(drive.trying(true, false, true, 1, false, true, false));
     }
 }

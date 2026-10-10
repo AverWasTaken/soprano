@@ -163,4 +163,29 @@ public class WitchHitTest {
     private static Foe lobber(double distance, long sinceHit) {
         return new Foe(5, distance, true, false, sinceHit, Kind.LOBBER);
     }
+
+    // the poison stopped for a few seconds (a missed potion, a line that broke) and the fight lost track of a witch it never
+    // got near: the same story as a stall, so the next blame is a run
+    @Test
+    public void aWitchWeLostTrackOfWithoutEverReachingItIsARunTheNextTimeToo() {
+        CombatCommit c = new CombatCommit();
+        assertEquals(Event.FIGHT_START, c.step(tick(NOW, null, lobber(8, 3))));
+        Event ended = Event.NONE;
+        long t = NOW + 1;
+        for (; t < NOW + 200 && ended == Event.NONE; t++) {
+            Foe w = lobber(8, 3 + (t - NOW));
+            ended = c.step(tick(t, w, w));
+        }
+        assertEquals(Event.FIGHT_LOST, ended);
+        assertEquals(Event.RUN_START, c.step(tick(t + 20, null, lobber(8, 2))));
+        assertEquals(CombatCommit.Why.LOBBER, c.why());
+    }
+
+    @Test
+    public void aWitchStandingInContactIsFoughtEvenInsideTheGiveUpWindow() {
+        CombatCommit c = new CombatCommit();
+        long gaveUp = stallAFightWithAWitch(c);
+        assertEquals(Event.FIGHT_START, c.step(tick(gaveUp + 20, null, lobber(2, 2))));
+        assertEquals(Mode.FIGHT, c.mode());
+    }
 }
