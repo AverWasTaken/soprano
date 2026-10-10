@@ -25,6 +25,7 @@ import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
 import adris.altoclef.tasks.speedrun.gamer.portal.LavaPoolPortalTask;
 import adris.altoclef.tasksystem.Task;
 import baritone.Baritone;
+import baritone.altoclef.SettingsOverrides;
 import baritone.api.utils.Dimension;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.item.Items;
@@ -45,6 +46,8 @@ public class PortalPhase implements PhaseHandler {
     // flint from gravel we walk past while the gate packs (DetourSpec.portalMayDetour). no PrepSupport here, so its own
     private final ResourceDetour gravel = ResourceDetour.gravel();
     private boolean gateDone;
+    // what altoAsyncSmelting was when we came in, null when we are not holding it
+    private Boolean userAsync;
     private boolean noGoldSaid;
     private boolean tracking;
     private long castStartTick = -1;
@@ -102,6 +105,11 @@ public class PortalPhase implements PhaseHandler {
         furnaces.newExitPhase();
         gateDone = false;
         castStartTick = -1;
+        // the cast smelts its bucket iron the old way and waits at the furnace. with fire and forget on it walks off, and the
+        // leaving-the-dimension rule below takes the ore straight back out, forever. so it's off for this phase
+        var async = Baritone.settings().altoAsyncSmelting;
+        userAsync = async.value;
+        SettingsOverrides.put(async, false);
         cast = new DefaultGoToDimensionTask(Dimension.NETHER);
         pool = new LavaPoolPortalTask(ctx::log);
         poolStarted = false;
@@ -128,6 +136,12 @@ public class PortalPhase implements PhaseHandler {
             tracking = false;
         }
         gravel.reset();
+        // same idea as IronPhase.releaseAsync, the other way round: only hand it back if the hold is still ours
+        var async = Baritone.settings().altoAsyncSmelting;
+        if (userAsync != null && SettingsOverrides.isHeld(async) && !async.value) {
+            SettingsOverrides.put(async, userAsync);
+        }
+        userAsync = null;
         // we get here standing in the nether side of the pair
         PortalPlanner.recordArrival(ctx.state(), ctx.facts());
         if (ctx.state().overworldPortal == null) {
