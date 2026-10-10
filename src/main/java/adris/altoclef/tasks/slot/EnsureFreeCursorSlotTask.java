@@ -31,7 +31,8 @@ public class EnsureFreeCursorSlotTask extends Task {
                 return null;
             }
             if (ItemHelper.canThrowAwayStack(mod, cursor)) {
-                setDebugState("Incompatible cursor stack, throwing");
+                // name it: when a throw does not take, the log should at least say what is stuck on the cursor
+                setDebugState("Incompatible cursor stack, throwing " + cursor.getCount() + " " + cursor.getItem());
                 mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ClickType.PICKUP);
             } else {
                 Optional<Slot> garbage = StorageHelper.getGarbageSlot(mod);
@@ -40,6 +41,7 @@ public class EnsureFreeCursorSlotTask extends Task {
                     setDebugState("Picking up garbage");
                     mod.getSlotHandler().clickSlot(garbage.get(), 0, ClickType.PICKUP);
                 } else {
+                    setDebugState("Nothing to swap, throwing " + cursor.getCount() + " " + cursor.getItem());
                     mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ClickType.PICKUP);
                 }
             }
