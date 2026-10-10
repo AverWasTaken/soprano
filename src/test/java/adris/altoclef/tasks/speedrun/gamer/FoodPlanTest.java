@@ -374,6 +374,23 @@ public class FoodPlanTest {
     }
 
     @Test
+    public void starvingIsUnderTheFloorWithNoFoodCookingForUs() {
+        FakeFacts iron = new FakeFacts().cooking("iron_ingot", 11, 30);
+        assertTrue(held(0, 0).starving(iron.furnaceJobs()));
+        assertTrue(held(23, 0).starving(iron.furnaceJobs()));
+        assertTrue(held(0, 0).starving(List.of()));
+        // at the floor and over it the bag is fed
+        assertFalse(held(24, 0).starving(iron.furnaceJobs()));
+        assertFalse(held(130, 0).starving(iron.furnaceJobs()));
+        // cooked food waiting in a station is the fastest food there is, the trips stay what they were
+        FakeFacts meat = new FakeFacts().cooking("iron_ingot", 11, 30).cookingFood("cooked_mutton", 8, 6, 30);
+        assertFalse(held(0, 0).starving(meat.furnaceJobs()));
+        // cold meat left in a station is not cooking for anybody
+        meat.furnaceJobs().get(1).stranded = true;
+        assertTrue(held(0, 0).starving(meat.furnaceJobs()));
+    }
+
+    @Test
     public void onlyTheSurfaceMakesTheSoftTopUpCheap() {
         assertTrue(held(40, 0).leads(true, false, false));
         // a cook or a craft next in a mine used to count as "between jobs" (a smoker deep down and then a cow hunt through the

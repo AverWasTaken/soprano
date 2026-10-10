@@ -21,6 +21,11 @@ public class IronActivityTest {
     // standing by a quick smoker
     private static final Scene STANDING = new Scene(true, true, true, true, false);
 
+    // something cooking that is not food, and the bag is under the floor (FoodPlan.starving)
+    private static final Scene STARVING = new Scene(true, false, true, true, false, true);
+    // the same with nothing cooking at all
+    private static final Scene STARVING_PLAIN = new Scene(false, false, true, true, false, true);
+
     // the driver loop of IronPhase.arbiterTick with the jobs swapped for "does this one hand back a task this tick"
     private static final class Sim {
         final IronActivity a = new IronActivity();
@@ -384,6 +389,89 @@ public class IronActivityTest {
         for (int i = 0; i < 40; i++) {
             assertEquals(Kind.STATION, sim.tick(PLAIN, Kind.STATION, Kind.KIT));
         }
+    }
+
+    // ---- an empty bag eats first
+
+    @Test
+    public void aDueIronTripDoesNotTakeTheWheelFromAnEmptyBag() {
+        Sim sim = new Sim();
+        sim.run(STARVING, 5, Kind.KIT);
+        assertEquals(Kind.KIT, sim.tick(STARVING, Kind.FURNACE, Kind.KIT));
+        assertFalse(sim.asked.contains(Kind.FURNACE));
+        // nothing was asked of the furnace and nothing was said about a change either: the kit just kept going
+        assertTrue(sim.lines.toString(), sim.lines.size() == 1);
+        assertFalse(IronActivity.eligible(Kind.FURNACE, STARVING));
+        assertFalse(IronActivity.eligible(Kind.PACK_UP, STARVING));
+    }
+
+    @Test
+    public void foodCookingForUsKeepsTheTripsAsTheyWere() {
+        // FoodPlan.starving is false whenever a food job is cooking, so the scene is the plain cooking one and the furnace wins
+        Sim sim = new Sim();
+        sim.run(COOKING, 5, Kind.KIT);
+        assertEquals(Kind.FURNACE, sim.tick(COOKING, Kind.FURNACE, Kind.KIT));
+    }
+
+    @Test
+    public void aFedBagKeepsTheIronTripOverTheKit() {
+        Sim sim = new Sim();
+        sim.run(COOKING, 5, Kind.KIT);
+        assertEquals(Kind.FURNACE, sim.tick(COOKING, Kind.FURNACE, Kind.KIT));
+        assertTrue(IronActivity.eligible(Kind.FURNACE, COOKING));
+        assertTrue(IronActivity.eligible(Kind.PACK_UP, COOKING));
+    }
+
+    @Test
+    public void aTripOnItsWayLetsGoWhenTheBagRunsDry() {
+        Sim sim = new Sim();
+        sim.run(COOKING, 3, Kind.KIT);
+        assertEquals(Kind.FURNACE, sim.tick(COOKING, Kind.FURNACE, Kind.KIT));
+        assertEquals(Kind.FURNACE, sim.tick(COOKING, Kind.FURNACE, Kind.KIT));
+        // the bag goes under the floor mid-walk: the trip is not asked any more, the kit has the wheel
+        assertEquals(Kind.KIT, sim.tick(STARVING, Kind.FURNACE, Kind.KIT));
+        assertEquals(Kind.KIT, sim.tick(STARVING, Kind.FURNACE, Kind.KIT));
+        assertFalse(sim.asked.contains(Kind.FURNACE));
+        // and when the food is back the trip takes it again, no rest owed: it never ended on its own
+        assertEquals(Kind.FURNACE, sim.tick(COOKING, Kind.FURNACE, Kind.KIT));
+    }
+
+    @Test
+    public void theDetoursThatAreNotFoodWaitForAnEmptyBagToo() {
+        for (Kind k : List.of(Kind.COAL, Kind.GRAVEL, Kind.GOLEM_START)) {
+            assertTrue(k.name(), IronActivity.eligible(k, PLAIN));
+            assertFalse(k.name(), IronActivity.eligible(k, STARVING_PLAIN));
+        }
+        // a coal detour that is going lets go, a golem hunt is only kept from starting
+        Sim sim = new Sim();
+        assertEquals(Kind.COAL, sim.tick(PLAIN, Kind.COAL, Kind.KIT));
+        assertEquals(Kind.KIT, sim.tick(STARVING_PLAIN, Kind.COAL, Kind.KIT));
+        assertTrue(IronActivity.yields(Kind.COAL));
+        assertFalse(IronActivity.yields(Kind.GOLEM_START));
+    }
+
+    @Test
+    public void lootBedsAndStationPickupsStayOnForAnEmptyBag() {
+        // a chest can be the food, a bed is seconds, and the station pickup is the smoker coming down (or the table the food needs)
+        for (Kind k : List.of(Kind.STATION, Kind.RUINED_PORTAL, Kind.VILLAGE_CHEST, Kind.BED)) {
+            assertTrue(k.name(), IronActivity.eligible(k, STARVING_PLAIN));
+            assertFalse(k.name(), IronActivity.yields(k));
+        }
+        assertEquals(Kind.FINISHING, new Sim().tick(STARVING, Kind.FINISHING, Kind.KIT));
+    }
+
+    @Test
+    public void aGolemFightThatIsGoingIsNeverDroppedForTheBag() {
+        Scene fight = new Scene(false, false, true, true, true, true);
+        Sim sim = new Sim();
+        assertEquals(Kind.GOLEM_FIGHT, sim.tick(fight, Kind.GOLEM_FIGHT, Kind.KIT));
+        assertEquals(Kind.GOLEM_FIGHT, sim.tick(fight, Kind.GOLEM_FIGHT, Kind.KIT));
+    }
+
+    @Test
+    public void theHungerLineSaysWhatWaits() {
+        assertEquals("activity: food first, 0 units held under the floor of 24, the furnace trip waits",
+                IronActivity.starvingLine(Kind.FURNACE, 0, 24));
     }
 
     @Test

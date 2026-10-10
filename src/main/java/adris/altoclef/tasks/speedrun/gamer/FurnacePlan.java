@@ -219,10 +219,16 @@ public final class FurnacePlan {
     // not cooking, that one waits. the cook never counts: CookGate does not ask for it while a food job is pending, and when it does
     // it picks or places its own station rather than waiting on ours
     public static boolean feeds(KitNeed head, RunState.FurnaceJob job, boolean hungry, boolean stockUp) {
-        if (head == null || !hungry || stockUp || job.unitsEach <= 0 || job.stranded) {
+        if (head == null || !hungry || stockUp || !cooksFood(job)) {
             return false;
         }
         return KitNeed.FOOD.equals(head.catalogueName());
+    }
+
+    // food in a station that is really cooking, cold meat left behind (stranded) is a pickup and not dinner. feeds and
+    // FoodPlan.starving go by the same word
+    public static boolean cooksFood(RunState.FurnaceJob job) {
+        return job.unitsEach > 0 && !job.stranded;
     }
 
     // a due job close enough to cut in: what a detour ends itself on. a far one waits for the detour like it waits for the wool

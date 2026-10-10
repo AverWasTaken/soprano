@@ -338,6 +338,21 @@ public final class FoodPlan {
         return held() < floor ? 0 : held() < minimum ? 1 : 2;
     }
 
+    // an empty bag with no help on the way: under the floor and no furnace of ours is cooking food. IronActivity reads it, a furnace
+    // trip for iron or a detour never takes the wheel from the food then. cooked food waiting in a station IS the fastest food,
+    // so any such job (FurnacePlan.feeds' own test) keeps the trips as they were
+    public boolean starving(List<RunState.FurnaceJob> jobs) {
+        if (held() >= floor) {
+            return false;
+        }
+        for (RunState.FurnaceJob job : jobs) {
+            if (FurnacePlan.cooksFood(job)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     // the soft top-up has nothing left to do: the hole under the trip's stop is small and the raw meat in the bag, cooked, fills it. one
     // raw chicken is 2 units raw and 6 cooked, and held counts it at 6 only while a smoker stands nearby (a cook is feasible then),
     // so picking the smoker up or putting it down moves the sum by 4. a top-up that starts and stops on 4 units the bag already

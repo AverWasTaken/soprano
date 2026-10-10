@@ -66,8 +66,13 @@ public final class IronActivity {
 
     // what the phase can say about this tick for the eligibility rules. jobs = something is cooking, standingBy = the plan
     // stands at a quick smoker, hasHead = the plan has a need, loots = village/portal/golem jobs are on (IRON yes, GATHER no),
-    // golemFighting = a golem fight task exists whatever the activity is
-    public record Scene(boolean jobs, boolean standingBy, boolean hasHead, boolean loots, boolean golemFighting) {
+    // golemFighting = a golem fight task exists whatever the activity is, starving = FoodPlan.starving (the bag is under the food
+    // floor and no furnace is cooking food for us), so the walks that are not food give way to the kit
+    public record Scene(boolean jobs, boolean standingBy, boolean hasHead, boolean loots, boolean golemFighting, boolean starving) {
+        // every scene from before the starving fact was a fed one
+        public Scene(boolean jobs, boolean standingBy, boolean hasHead, boolean loots, boolean golemFighting) {
+            this(jobs, standingBy, hasHead, loots, golemFighting, false);
+        }
     }
 
     private Kind current;
@@ -102,6 +107,13 @@ public final class IronActivity {
         return k != Kind.KIT;
     }
 
+    // the walks that give way to an empty bag: the furnace trips (iron, not food, that is what starving means) and the detours that
+    // are for something we might need rather than something we do. the kit's head is the food then. loot, beds and station pickups
+    // stay: a chest can be the food, a bed is seconds, and the smoker the food cooks in is a station the plan still wants
+    public static boolean yields(Kind k) {
+        return k == Kind.FURNACE || k == Kind.PACK_UP || k == Kind.COAL || k == Kind.GRAVEL;
+    }
+
     // may this kind be asked at all this tick. this is the start test only: an activity that holds is asked whatever this says,
     // its own job decides when it is over
     public static boolean eligible(Kind k, Scene s) {
@@ -110,13 +122,20 @@ public final class IronActivity {
             case GOLEM_FIGHT -> s.loots() && s.golemFighting();
             case STAND_BY -> s.jobs() && s.standingBy();
             // standing by a smoker is the plan, nothing that walks off starts meanwhile
-            case STATION, BED, COAL, GRAVEL -> !s.standingBy();
+            case STATION, BED -> !s.standingBy();
+            case COAL, GRAVEL -> !s.standingBy() && !s.starving();
             case RUINED_PORTAL, VILLAGE_CHEST -> s.loots() && !s.standingBy();
-            case GOLEM_START -> s.loots() && !s.standingBy() && !s.golemFighting();
-            case FURNACE -> s.jobs() && !s.standingBy();
-            case PACK_UP -> s.jobs() && s.hasHead();
+            // (a fight that is going is not a start, so this never drops one)
+            case GOLEM_START -> s.loots() && !s.standingBy() && !s.golemFighting() && !s.starving();
+            case FURNACE -> s.jobs() && !s.standingBy() && !s.starving();
+            case PACK_UP -> s.jobs() && s.hasHead() && !s.starving();
             case SURFACE -> s.hasHead();
         };
+    }
+
+    // the line for a walk the food pre-empted. same style as the activity: lines, said once per dry spell by the driver
+    public static String starvingLine(Kind gave, int held, int floor) {
+        return "activity: food first, " + held + " units held under the floor of " + floor + ", the " + gave.words + " waits";
     }
 
     public void reset() {
@@ -148,6 +167,10 @@ public final class IronActivity {
     public List<Kind> ask(Scene s, long now) {
         List<Kind> out = new ArrayList<>();
         Kind held = current != null && commits(current) ? current : null;
+        // a trip or a detour that started on a full bag lets go the tick the bag runs dry, the kit's head is the food now
+        if (held != null && s.starving() && yields(held)) {
+            held = null;
+        }
         if (held != null) {
             for (Kind k : Kind.values()) {
                 if (k.ordinal() >= held.ordinal()) {
