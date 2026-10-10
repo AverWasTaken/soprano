@@ -213,4 +213,69 @@ public class WoodBudgetTest {
         f.earlyLoad = true;
         assertEquals(0, w.ironChopLogs(f));
     }
+
+    // ---- the sticks a diamond pick or axe is made with (DiamondSpend), hand written: the golden generators hold no raw diamonds
+
+    // every kit item held and a table standing, so the only wood owed is what a diamond craft adds
+    private static FakeFacts kitBag() {
+        FakeFacts f = new FakeFacts();
+        for (net.minecraft.world.item.Item i : new net.minecraft.world.item.Item[]{Items.STONE_PICKAXE, Items.STONE_AXE, Items.FURNACE,
+                Items.IRON_PICKAXE, Items.IRON_AXE, Items.FLINT_AND_STEEL, Items.SHIELD, Items.SHEARS}) {
+            f.give(i, 1);
+        }
+        f.give(Items.BUCKET, 2).give(Items.LADDER, 3);
+        f.tablePlaced = true;
+        return f;
+    }
+
+    @Test
+    public void noDiamondsOweNoStickWood() {
+        FakeFacts f = kitBag();
+        assertEquals(0, KitPlanner.woodNeed(f, cfg, BEDS, false));
+        assertEquals(0, KitPlanner.woodNeed(f.give(Items.DIAMOND, 2), cfg, BEDS, false));
+    }
+
+    @Test
+    public void aDiamondPickUpgradeOnTopOfAnIronOneOwesItsTwoSticks() {
+        FakeFacts f = kitBag().give(Items.DIAMOND, 3);
+        // two sticks are two planks are one log
+        assertEquals(1, KitPlanner.woodNeed(f, cfg, BEDS, false));
+        // sticks in the bag settle it
+        assertEquals(0, KitPlanner.woodNeed(f.give(Items.STICK, 2), cfg, BEDS, false));
+    }
+
+    @Test
+    public void theDiamondPickPaysTheSticksTheIronOneWould() {
+        // no iron pick: its two sticks are the diamond one's two sticks, the wood owed is the same with and without the diamonds
+        FakeFacts without = kitBag();
+        without.items.remove(Items.IRON_PICKAXE);
+        FakeFacts with = kitBag().give(Items.DIAMOND, 3);
+        with.items.remove(Items.IRON_PICKAXE);
+        assertEquals(KitPlanner.woodNeed(without, cfg, BEDS, false), KitPlanner.woodNeed(with, cfg, BEDS, false));
+        assertEquals(1, KitPlanner.woodNeed(with, cfg, BEDS, false));
+        // and in the gather's view too
+        assertEquals(KitPlanner.woodNeed(without, cfg, BEDS, true), KitPlanner.woodNeed(with, cfg, BEDS, true));
+    }
+
+    @Test
+    public void aDiamondAxeStandingInForTheIronOneOwesNoMore() {
+        FakeFacts without = kitBag();
+        without.items.remove(Items.IRON_PICKAXE);
+        without.items.remove(Items.IRON_AXE);
+        FakeFacts with = kitBag().give(Items.DIAMOND, 6);
+        with.items.remove(Items.IRON_PICKAXE);
+        with.items.remove(Items.IRON_AXE);
+        assertEquals(List.of("diamond_pickaxe", "diamond_axe"), DiamondSpend.choose(with, cfg));
+        assertEquals(KitPlanner.woodNeed(without, cfg, BEDS, false), KitPlanner.woodNeed(with, cfg, BEDS, false));
+    }
+
+    @Test
+    public void armorCostsNoWoodAndTheSettingOffOwesNone() {
+        FakeFacts f = kitBag().give(Items.DIAMOND_PICKAXE, 1).give(Items.DIAMOND, 8);
+        assertEquals(List.of("diamond_chestplate"), DiamondSpend.choose(f, cfg));
+        assertEquals(0, KitPlanner.woodNeed(f, cfg, BEDS, false));
+        FakeFacts off = kitBag().give(Items.DIAMOND, 3);
+        cfg.diamondSpend = false;
+        assertEquals(0, KitPlanner.woodNeed(off, cfg, BEDS, false));
+    }
 }

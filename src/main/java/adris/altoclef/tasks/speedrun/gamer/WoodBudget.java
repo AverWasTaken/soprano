@@ -335,8 +335,14 @@ public record WoodBudget(
         int[] wood = new int[2];
         List<KitItem> all = new ArrayList<>(cfg.starterKit);
         all.addAll(cfg.ironKit);
+        // a diamond pick or axe has the same two sticks as the iron one it stands in for, so the kit item steps aside and the
+        // diamond one is paid below (a pick we upgrade on top of an iron one we hold is the only case that adds sticks)
+        List<String> diamond = DiamondSpend.choose(f, cfg);
         for (KitItem k : all) {
             if (!gathering && KitPlanner.isAxe(k.item)) {
+                continue;
+            }
+            if (DiamondSpend.replaces(diamond, k.item)) {
                 continue;
             }
             int count = !gathering && k.item.endsWith("_pickaxe") ? Math.min(k.count, 1) : k.count;
@@ -347,6 +353,9 @@ public record WoodBudget(
             if (needsWooden && f.count(Items.WOODEN_PICKAXE) == 0) {
                 addWood(wood, "wooden_pickaxe", 1);
             }
+        }
+        for (String name : diamond) {
+            addWood(wood, name, 1);
         }
         if (wood[0] + wood[1] > 0) {
             wood[0] += KitPlanner.tablePlanks(f);
