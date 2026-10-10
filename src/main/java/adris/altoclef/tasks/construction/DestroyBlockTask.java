@@ -54,7 +54,9 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
+import java.util.HashSet;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Destroy a block at a position.
@@ -81,6 +83,8 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
     private boolean _swapGiveUpLogged;
     // the swinging distance goal didn't work out here, stand next to it
     private boolean closeIn;
+    // cells we stood in beside the block without a ray to it, so closing in tries somewhere else each time
+    private final Set<BlockPos> _triedFeet = new HashSet<>();
     // ticks we've been soaked with the block in reach. see WaterBreakGuard
     private int _wetTicks;
     // the dry spots to get to first, looked up every so often instead of every tick. null = none (or not looked yet)
@@ -119,6 +123,11 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
         _fallWaited = inFlight ? _fallWaited + 1 : 0;
         _dropPending = pending ? _dropPending + 1 : 0;
         return inFlight && _fallWaited <= FALL_WAIT_MAX || pending && _dropPending <= DROP_PENDING_MAX;
+    }
+
+    private Set<BlockPos> triedFeet(BlockPos feet) {
+        _triedFeet.add(feet.immutable());
+        return _triedFeet;
     }
 
     // the back-up-sneaking below holds keys across ticks, so a tick that returns early has to let go of them itself
@@ -168,24 +177,26 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
         return pickGoal(world, pos, closeIn, null);
     }
 
-    // feet is the cell we stand on when we're already beside the block and still can't hit it: GoalNear counts that cell
-    // as arrived, so we'd stand there until the progress checker gave the block up. null = nothing to step off of
-    public static Goal pickGoal(BlockGetter world, BlockPos pos, boolean closeIn, BlockPos feet) {
+    // standingIn is the cells we stood in beside the block and still couldn't hit it: GoalNear counts the one we're in as
+    // arrived, so we'd stand there until the progress checker gave the block up, and leaving only the latest one would
+    // just shuffle between two. null = nothing to step off of
+    public static Goal pickGoal(BlockGetter world, BlockPos pos, boolean closeIn, Set<BlockPos> standingIn) {
         if (world.getBlockState(pos.above()).getBlock() == Blocks.SNOW) {
             return new GoalBlock(pos);
         }
         if (!closeIn && vineNextTo(world, pos)) {
             return new GoalReachBlock(pos);
         }
-        return closeIn && feet != null ? touchingElsewhere(world, pos, feet) : new GoalNear(pos, 1);
+        return closeIn && standingIn != null && !standingIn.isEmpty() ? touchingElsewhere(world, pos, standingIn) : new GoalNear(pos, 1);
     }
 
-    // the cells touching the block that we could stand in, minus the one we're in
-    private static Goal touchingElsewhere(BlockGetter world, BlockPos pos, BlockPos feet) {
+    // the cells touching the block that we could stand in, minus the ones we've been in. nothing under it, that's our head
+    // in the block. once none are left it's the plain goal again and the progress checker takes it from there
+    private static Goal touchingElsewhere(BlockGetter world, BlockPos pos, Set<BlockPos> standingIn) {
         List<Goal> spots = new ArrayList<>();
         for (Direction side : Direction.values()) {
             BlockPos spot = pos.relative(side);
-            if (!spot.equals(feet) && world.getBlockState(spot).getCollisionShape(world, spot).isEmpty()) {
+            if (side != Direction.DOWN && !standingIn.contains(spot) && world.getBlockState(spot).getCollisionShape(world, spot).isEmpty()) {
                 spots.add(new GoalBlock(spot));
             }
         }
@@ -423,6 +434,7 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
         _reachHold.reset();
         _lastReach = null;
         _lastSwingAt = null;
+        _triedFeet.clear();
 
         // never scaffold onto the square above the block we're here to break. only bites once
         // _fromSide is set, so ordinary blocks path exactly like before
@@ -600,6 +612,7 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
         // buried can't wait for three rays in a row, that's three ticks of suffocating
         boolean inRange = _reachHold.step(reach.isPresent(), mod.getClientBaritone().getPathingBehavior().isPathing() && !buried, inDistance);
         if (reach.isPresent()) {
+            _triedFeet.clear();
             _lastReach = reach.get();
             _lastSwingAt = swingAt;
         }
@@ -768,14 +781,14 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
                         // arrived. the goal finished instantly every tick and we stood at the edge sneaking backwards for
                         // 49 seconds. same way out as the branch below: walk up and touch it
                         closeIn = true;
-                        goal = pickGoal(mod.getWorld(), _pos, true, feet);
+                        goal = pickGoal(mod.getWorld(), _pos, true, triedFeet(feet));
                     }
                 } else {
-                    goal = pickGoal(mod.getWorld(), _pos, closeIn, reach.isEmpty() ? feet : null);
+                    goal = pickGoal(mod.getWorld(), _pos, closeIn, reach.isEmpty() ? triedFeet(feet) : null);
                     if (goal instanceof GoalReachBlock && goal.isInGoal(feet) && reach.isEmpty()) {
                         // already there and it still can't be hit (leaves, other logs, a wall), so touch it like before
                         closeIn = true;
-                        goal = pickGoal(mod.getWorld(), _pos, true, feet);
+                        goal = pickGoal(mod.getWorld(), _pos, true, triedFeet(feet));
                     }
                 }
                 mod.getClientBaritone().getCustomGoalProcess().setGoalAndPath(goal);
