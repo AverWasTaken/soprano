@@ -130,8 +130,8 @@ public final class CookGate {
     }
 
     // smelts of fuel the cook could burn: what the smelt task is allowed to burn (f.burnable, altoSupportedFuels), and wood only
-    // above what the run keeps for crafting (the same reserve FuelPolicy honours). this is FuelPolicy.usableFuel over the facts:
-    // the gate said yes to a stack of logs the smoker then refused, and the meat was already in it by the time anyone noticed
+    // above what the run keeps for crafting (the same reserve FuelPolicy honours). this is FuelPolicy.usableFuel over the facts, give or take a species
+    // nothing burns (WoodBudgetContradictionsTest): the gate said yes to a stack of logs the smoker then refused, and the meat was already in it by the time anyone noticed
     public static int fuelSmelts(GamerFacts f, OverworldConfig cfg, int endBeds) {
         return fuelSmelts(f, cfg, endBeds, 0);
     }

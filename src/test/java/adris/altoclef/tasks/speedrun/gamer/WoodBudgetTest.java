@@ -179,4 +179,15 @@ public class WoodBudgetTest {
         assertNotSame(given, machine.wood());
         assertEquals(4, machine.wood().logs());
     }
+
+    @Test
+    public void theIronChopFollowsTheEarlyLoadLatchEvenWhenItStartsAfterTheBudget() {
+        // a bare bag owes iron-phase wood, and the latch can start mid tick (EarlyIronPick.track runs after the plan)
+        FakeFacts f = new FakeFacts();
+        WoodBudget w = WoodBudget.of(f, cfg, BEDS);
+        assertTrue(w.ironLogsOwed() > 0);
+        assertEquals(w.ironLogsOwed(), w.ironChopLogs(f));
+        f.earlyLoad = true;
+        assertEquals(0, w.ironChopLogs(f));
+    }
 }

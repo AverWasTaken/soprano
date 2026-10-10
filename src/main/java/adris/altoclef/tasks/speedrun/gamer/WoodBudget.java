@@ -38,8 +38,6 @@ public record WoodBudget(
         boolean smokerOwed,
         // logs and planks a furnace is allowed to touch at all (altoSupportedFuels), before the reserve comes off
         int burnableLogs, int burnablePlanks,
-        // what the iron phase chops: the whole owed amount before the first ore is in the bag, nothing after
-        int ironChopLogs,
         // the most logs cookFuelLogs asks for: cfg.cookFuelLogs while no raw meat is in the bag, else 0. the rest is the food plan's say
         int cookFuelCap) {
 
@@ -64,7 +62,7 @@ public record WoodBudget(
         int iron = owed(f, cfg, endBeds, false);
         return new WoodBudget(logs, planks, f.count(Items.STICK), gather, iron, bedPlanksOwed(f, endBeds), firstBatchLogs(f, cfg),
                 keep, fuel, smokerLogsFor(f), smokerOwedFor(f), burnable(f, ItemHelper.LOG), burnable(f, ItemHelper.PLANKS),
-                KitPlanner.ironStarted(f) ? 0 : iron, cfg.cookFuelLogs <= 0 || CookGate.raw(f) > 0 ? 0 : cfg.cookFuelLogs);
+                cfg.cookFuelLogs <= 0 || CookGate.raw(f) > 0 ? 0 : cfg.cookFuelLogs);
     }
 
     // ---- what we hold beyond the reserve
@@ -94,6 +92,12 @@ public record WoodBudget(
         }
         int spare = logsShort > 0 ? 0 : Math.max(0, spareLogs());
         return Math.max(0, cookFuelCap - spare);
+    }
+
+    // what the iron phase chops: the whole owed amount before the first ore is in the bag, nothing after. asked of the live facts,
+    // not frozen into the budget: the early load latch (EarlyIronPick.track) can start in the middle of a tick, after the budget
+    public int ironChopLogs(GamerFacts f) {
+        return KitPlanner.ironStarted(f) ? 0 : ironLogsOwed;
     }
 
     // what the gather asks the trees for: the whole budget and the cook's logs on top

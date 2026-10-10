@@ -52,7 +52,7 @@ public class WoodBudgetContradictionsTest {
         FakeFacts f = madeEverything().give(Items.OAK_LOG, 5).give(Items.BEEF, 5).give(Items.COBBLESTONE, 30);
         WoodBudget w = WoodBudget.of(f, cfg, BEDS);
         assertEquals(0, w.ironLogsOwed());
-        assertEquals(0, w.ironChopLogs());
+        assertEquals(0, w.ironChopLogs(f));
         // known wrong: the gather's view of the beds is what the reserve is built from, in every phase
         assertEquals(2, w.gatherLogsOwed());
         assertEquals(new WoodReserve.Keep(5, 0), w.keep());
@@ -148,5 +148,20 @@ public class WoodBudgetContradictionsTest {
         // known wrong: the furnace may burn all 12 oak (18 smelts), the 7 kept were taken from the stems
         assertEquals(3, usable[0]);
         assertEquals(12, usable[1]);
+    }
+
+    // (f, found by the verifier) outside the overworld the furnaces are told to keep every log, but the smelts the coal detour and the
+    // cook gate count still take the planner's (smaller) keep off, so they count wood as fuel that FuelPolicy will not let burn
+    @Test
+    public void downInTheNetherTheCountedFuelIsWoodTheFurnaceMayNotBurn() {
+        FakeFacts f = madeEverything().give(Items.OAK_LOG, 12);
+        f.dimension = baritone.api.utils.Dimension.NETHER;
+        WoodBudget w = WoodBudget.of(f, cfg, BEDS);
+        assertEquals(new WoodReserve.Keep(12, 0), w.fuelKeep());
+        // known wrong: 5 logs spare by the planner's keep of 7, 7 smelts counted, none of it burnable
+        assertEquals(new WoodReserve.Keep(7, 0), w.keep());
+        assertEquals(7, w.burnableWoodSmelts(0));
+        WoodReserve.apply(w);
+        assertEquals(0, FuelPolicy.usable(List.of(new ItemStack(Items.OAK_LOG, 12)))[0]);
     }
 }

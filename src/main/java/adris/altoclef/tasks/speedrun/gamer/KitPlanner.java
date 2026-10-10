@@ -127,7 +127,7 @@ public final class KitPlanner {
             // for the furnace's cobble after crafting the axe
             addCobble(out, f, stoneNeed(f, cfg));
         } else if (!ironStarted(f)) {
-            addLogs(out, f, wood.ironChopLogs());
+            addLogs(out, f, wood.ironChopLogs(f));
         }
         for (KitItem k : rest) {
             // the spare pick is for the gather. once underground one fresh pick is the plan and the next is a craft
