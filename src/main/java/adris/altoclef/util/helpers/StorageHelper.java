@@ -152,32 +152,20 @@ public class StorageHelper {
         //      PREFER (Always use silk touch if we have)
         //      AVOID  (Don't use silk touch if we can)
         //  }
-        Slot bestToolSlot = null;
-        double highestSpeed = Double.NEGATIVE_INFINITY;
-        if (Slot.getCurrentScreenSlots() != null) {
-            for (Slot slot : Slot.getCurrentScreenSlots()) {
-                if (!slot.isSlotInPlayerInventory())
-                    continue;
-                ItemStack stack = getItemStackInSlot(slot);
-                if (ItemHelper.isTool(stack.getItem())) {
-                    if (stack.isCorrectToolForDrops(state)) {
-                        double speed = ToolSet.calculateSpeedVsBlock(stack, state);
-                        if (speed > highestSpeed) {
-                            highestSpeed = speed;
-                            bestToolSlot = slot;
-                        }
-                    }
-                }
-                if (stack.getItem() == Items.SHEARS) {
-                    // Shears take priority over leaf blocks.
-                    if (ItemHelper.areShearsEffective(state.getBlock())) {
-                        bestToolSlot = slot;
-                        break;
-                    }
-                }
-            }
+        if (Slot.getCurrentScreenSlots() == null) {
+            return Optional.empty();
         }
-        return Optional.ofNullable(bestToolSlot);
+        // the choosing is ToolPick's (pure, tested), this is only the slot bookkeeping
+        List<Slot> slots = new ArrayList<>();
+        List<ItemStack> stacks = new ArrayList<>();
+        for (Slot slot : Slot.getCurrentScreenSlots()) {
+            if (!slot.isSlotInPlayerInventory())
+                continue;
+            slots.add(slot);
+            stacks.add(getItemStackInSlot(slot));
+        }
+        int best = ToolPick.best(stacks, state);
+        return best < 0 ? Optional.empty() : Optional.of(slots.get(best));
     }
 
     // Gets a slot with an item we can throw away

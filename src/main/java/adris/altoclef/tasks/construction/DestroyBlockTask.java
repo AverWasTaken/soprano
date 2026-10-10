@@ -12,6 +12,7 @@ import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.MineStick;
 import adris.altoclef.util.helpers.ReachHold;
 import adris.altoclef.util.helpers.StorageHelper;
+import adris.altoclef.util.helpers.ToolPick;
 import adris.altoclef.util.helpers.ToolSwap;
 import baritone.utils.ToolSet;
 import adris.altoclef.util.helpers.WorldHelper;
@@ -38,11 +39,13 @@ import baritone.api.utils.Rotation;
 import baritone.api.utils.RotationUtils;
 import baritone.api.utils.input.Input;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.monster.Pillager;
 import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.DoorBlock;
@@ -81,6 +84,10 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
     private int _swapBlockedTicks;
     private static final int SWAP_BLOCKED_CAP = 20;
     private boolean _swapGiveUpLogged;
+    // what is in the cell, for the debug line and the log. kept from the last tick it was still there, an air cell is a bad name
+    private String _what = "block";
+    // said once that we are swinging with something that is not a tool
+    private boolean _handSaid;
     // the swinging distance goal didn't work out here, stand next to it
     private boolean closeIn;
     // cells we stood in beside the block without a ray to it, so closing in tries somewhere else each time
@@ -164,7 +171,7 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
     private void markFromSide(AltoClef mod) {
         if (!_fromSide) {
             _fromSide = true;
-            Debug.logInternal("Destroy block at " + _pos.toShortString() + " is dangerous from above, mining it from the side");
+            Debug.logInternal("Destroy " + _what + " at " + _pos.toShortString() + " is dangerous from above, mining it from the side");
             // whatever plain goal is running would happily stand on top of it
             mod.getClientBaritone().getCustomGoalProcess().onLostControl();
         }
@@ -486,8 +493,12 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
 
     @Override
     protected Task onTick(AltoClef mod) {
+        BlockState there = mod.getWorld().getBlockState(_pos);
+        if (!there.isAir()) {
+            _what = BuiltInRegistries.BLOCK.getKey(there.getBlock()).getPath();
+        }
         // Check if there is white wool at the specified position
-        if (mod.getWorld().getBlockState(_pos).getBlock() == Blocks.WHITE_WOOL) {
+        if (there.getBlock() == Blocks.WHITE_WOOL) {
             // Iterate over all entities in the world
             Iterable<Entity> entities = mod.getWorld().entitiesForRendering();
             for (Entity entity : entities) {
@@ -561,7 +572,7 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
         }
         if (_stepOffs.tick(steppingOff)) {
             // we keep ending up on top of it. a different ore is a better idea than a tenth lap
-            Debug.logInternal("Destroy block at " + _pos.toShortString() + ": stepped off it too many times, giving it up");
+            Debug.logInternal("Destroy " + _what + " at " + _pos.toShortString() + ": stepped off it too many times, giving it up");
             mod.getBlockTracker().requestBlockUnreachable(_pos, 0);
         }
         if (steppingOff) {
@@ -682,14 +693,27 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
             // (and not with a crack on the block: a different item in hand starts the break over)
             boolean crackedAlready = MineStick.toolSwapWouldReset(mod.getControllerExtras().isBreakingBlock(),
                     mod.getControllerExtras().getBreakingBlockPos(), mod.getControllerExtras().getBreakingBlockProgress(), swingAt);
+            ItemStack held = StorageHelper.getItemStackInSlot(currentEquipped);
+            boolean handIsATool = ItemHelper.isTool(held.getItem()) || held.getItem() == Items.SHEARS;
+            // the two quiet ways to end up swinging a bucket at a wall: nothing in the bag does better, or a crack is in progress
+            if (!_handSaid && (bestToolSlot.isEmpty() || crackedAlready) && !handIsATool && !breaksInstantly(mod, swingAt)) {
+                _handSaid = true;
+                String why = crackedAlready ? "a swap would reset the crack" : "nothing in the bag does better";
+                Debug.logInternal("mining " + _what + " at " + _pos.toShortString() + " with " + ToolPick.nameOf(held) + " in hand (" + why + ")");
+            }
+            if (_handSaid && !handIsATool) {
+                setDebugState("Block in range, mining... (swinging " + ToolPick.nameOf(held) + ")");
+            }
             // a block that goes in one swing doesn't care what is in the hand
             if (bestToolSlot.isPresent() && !crackedAlready && !breaksInstantly(mod, swingAt)) {
-                ItemStack held = StorageHelper.getItemStackInSlot(currentEquipped);
                 ItemStack best = StorageHelper.getItemStackInSlot(bestToolSlot.get());
+                double heldSpeed = ToolSet.calculateSpeedVsBlock(held, state);
+                double bestSpeed = ToolSet.calculateSpeedVsBlock(best, state);
                 // by item and by speed, not by slot: the slot object is new every tick, and two tools that are equally
-                // fast would trade places forever (see ToolSwap)
-                if (ToolSwap.worthSwapping(false, held.getItem(), held.isCorrectToolForDrops(state), ToolSet.calculateSpeedVsBlock(held, state),
-                        best.getItem(), ToolSet.calculateSpeedVsBlock(best, state))) {
+                // fast would trade places forever (see ToolSwap). a best that is only the fastest wrong tool (iron on
+                // obsidian) has to be strictly faster than the hand, "the hand is wrong too" is not a reason to swap
+                if (ToolSwap.worthSwapping(false, held.getItem(), held.isCorrectToolForDrops(state), heldSpeed, best.getItem(), bestSpeed)
+                        && (best.isCorrectToolForDrops(state) || bestSpeed > heldSpeed)) {
                     boolean isAllowedToManage = !mod.getClientBaritone().getPathingBehavior().isPathing()
                             && !mod.getFoodChain().isTryingToEat();
                     if (!isAllowedToManage && _swapBlockedTicks++ < SWAP_BLOCKED_CAP) {
@@ -883,7 +907,7 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
     @Override
     protected String toDebugString() {
         if (_pos != null) {
-            return "Destroy block at " + _pos.toShortString();
+            return "Destroy " + _what + " at " + _pos.toShortString();
         } else {
             return "Destroy block at unknown position";
         }
