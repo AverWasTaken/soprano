@@ -80,6 +80,9 @@ public class PlaceBlockNearbyTask extends Task {
         _progressChecker.reset();
         _failures.clear();
         _placing = null;
+        // a restart is a new placement, the old one (still standing, probably) is not this run's doing
+        _justPlaced = null;
+        _tryPlace = null;
         _blockedTicks = 0;
         _spotTimer.reset();
         _mod = mod;
