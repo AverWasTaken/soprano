@@ -185,7 +185,6 @@ public class PlaceBlockNearbyTask extends Task {
         }
         if (_tryPlace != null) {
             setDebugState("Trying to place at " + _tryPlace);
-            _justPlaced = _tryPlace;
             // a table on a spot we picked needs no scaffolding. autocollect here sent us off to mine 32 dirt first
             if (_placing == null) {
                 _placing = new PlaceBlockTask(_tryPlace, _toPlace, false, false);
@@ -232,6 +231,11 @@ public class PlaceBlockNearbyTask extends Task {
 
     @Override
     public boolean isFinished(AltoClef mod) {
+        // the spot we picked never held one of ours to begin with (see locateClosePlacePos), so once the builder says it
+        // does, we put it there
+        if (_placing != null && _tryPlace != null && _placing.isFinished(mod)) {
+            _justPlaced = _tryPlace;
+        }
         return _justPlaced != null && ArrayUtils.contains(_toPlace, mod.getWorld().getBlockState(_justPlaced).getBlock());
     }
 
@@ -341,6 +345,10 @@ public class PlaceBlockNearbyTask extends Task {
         BlockPos start = mod.getPlayer().blockPosition().offset(-range, -range, -range);
         BlockPos end = mod.getPlayer().blockPosition().offset(range, range, range);
         for (BlockPos blockPos : WorldHelper.scanRegion(mod, start, end)) {
+            // already one of ours (signs and chests don't count as solid, so nothing else keeps them out)
+            if (ArrayUtils.contains(_toPlace, mod.getWorld().getBlockState(blockPos).getBlock())) {
+                continue;
+            }
             boolean solid = WorldHelper.isSolid(mod, blockPos);
             boolean inside = WorldHelper.isInsidePlayer(mod, blockPos);
             // We can't break this block.
