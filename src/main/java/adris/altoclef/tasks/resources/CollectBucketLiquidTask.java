@@ -13,17 +13,20 @@ import adris.altoclef.tasks.movement.GetCloseToBlockTask;
 import adris.altoclef.tasks.movement.TimeoutWanderTask;
 import adris.altoclef.tasks.slot.EnsureFreeInventorySlotTask;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.tasksystem.TaskClock;
 import baritone.api.utils.Dimension;
 import adris.altoclef.ui.HudText;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.BreakRules;
 import adris.altoclef.util.helpers.BucketFillRules;
+import adris.altoclef.util.helpers.BucketSourceRules;
 import adris.altoclef.util.helpers.FluidSources;
 import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
 import adris.altoclef.util.time.TimerGame;
 import baritone.api.utils.input.Input;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
@@ -73,6 +76,17 @@ public class CollectBucketLiquidTask extends ResourceTask {
     private final HashSet<BlockPos> _climbed = new HashSet<>();
     // sources skipped because the block over them is too slow to break, so the line is said once and the ban handed out once
     private final HashSet<BlockPos> _lidsSkipped = new HashSet<>();
+
+    // time spent on each lid, for the ban that doesn't care what the pathing resets are up to. only ticks while we are near
+    // it and not already cracking it, so a long walk or a slow honest break is not billed
+    private final HashMap<BlockPos, TaskClock> _lidClocks = new HashMap<>();
+    private static final double LID_GIVE_UP_SECONDS = 15;
+    private static final double LID_NEAR_SQ = 12 * 12;
+    // whether any source we can scoop as it is is known. asked every so often, not every tick: it is a walk over every known
+    // source and the answer changes when a scan lands or something gets banned
+    private boolean _openKnown;
+    private int _openKnownAt = Integer.MIN_VALUE / 2;
+    private static final int OPEN_LOOK_TICKS = 20;
 
     public CollectBucketLiquidTask(String liquidName, Item filledBucket, int targetCount, Block toCollect) {
         super(filledBucket, targetCount);
@@ -173,7 +187,8 @@ public class CollectBucketLiquidTask extends ResourceTask {
             return TaskCatalogue.getItemTask(Items.BUCKET, bucketsNeeded);
         }
 
-        Predicate<BlockPos> isSourceLiquid = blockPos -> {
+        // what is a source at all, banned or not. the ranking below decides which of those are worth going to
+        Predicate<BlockPos> isSource = blockPos -> {
             if (mod.getBlockTracker().unreachable(blockPos)) return false;
             if (!WorldHelper.canReach(mod, blockPos)) return false;
             if (!WorldHelper.canReach(mod, blockPos.above())) return false; // We may try reaching the block above.
@@ -190,6 +205,29 @@ public class CollectBucketLiquidTask extends ResourceTask {
             }
             return WorldHelper.isSourceBlock(mod, blockPos, false);
         };
+        BucketSourceRules.Cells cells = new BucketSourceRules.Cells() {
+            @Override
+            public boolean solid(int x, int y, int z) {
+                return WorldHelper.isSolid(mod, new BlockPos(x, y, z));
+            }
+
+            @Override
+            public boolean open(int x, int y, int z) {
+                BlockPos at = new BlockPos(x, y, z);
+                return mod.getWorld().getBlockState(at).getCollisionShape(mod.getWorld(), at).isEmpty();
+            }
+        };
+        // open sources first, a lid only when there is no open one to be had, and never one that can't be got at (see
+        // BucketSourceRules)
+        int tickNow = WorldHelper.getTicks();
+        if (tickNow - _openKnownAt >= OPEN_LOOK_TICKS) {
+            _openKnownAt = tickNow;
+            _openKnown = mod.getBlockTracker().getNearestTracking(
+                    p -> isSource.test(p) && BucketSourceRules.classify(cells, p.getX(), p.getY(), p.getZ()) == BucketSourceRules.Kind.OPEN,
+                    _toCollect).isPresent();
+        }
+        Predicate<BlockPos> isSourceLiquid = blockPos -> isSource.test(blockPos)
+                && BucketSourceRules.worthGoingTo(BucketSourceRules.classify(cells, blockPos.getX(), blockPos.getY(), blockPos.getZ()), _openKnown);
 
         // Find nearest water and right click it
         if (mod.getBlockTracker().isTracking(_toCollect)) {
@@ -204,7 +242,8 @@ public class CollectBucketLiquidTask extends ResourceTask {
                     // Clear above if lava because we can't enter.
                     // but NOT if we're standing right above.
                     if (WorldHelper.isSolid(mod, blockPos.above())) {
-                        if (!_progressChecker.check(mod)) {
+                        boolean slow = !_progressChecker.check(mod);
+                        if (slow || lidTimedOut(mod, blockPos)) {
                             mod.getClientBaritone().getPathingBehavior().cancelEverything();
                             mod.getClientBaritone().getPathingBehavior().forceCancel();
                             mod.getClientBaritone().getExploreProcess().onLostControl();
@@ -213,6 +252,8 @@ public class CollectBucketLiquidTask extends ResourceTask {
                             mod.getBlockTracker().requestBlockUnreachable(blockPos);
                             // was a set of this task's own that never emptied, now a ban with a clock
                             BanPolicy.bucketLidStuck(mod.getBans(), WorldHelper.getCurrentDimension(), blockPos.getX(), blockPos.getY(), blockPos.getZ());
+                            // a failed checker stays failed, so without this the next source got banned on its first tick
+                            _progressChecker.reset();
                         }
                         return new DestroyBlockTask(blockPos.above());
                     }
@@ -267,6 +308,21 @@ public class CollectBucketLiquidTask extends ResourceTask {
         setDebugState("Searching for liquid by wandering around aimlessly");
 
         return new TimeoutWanderTask();
+    }
+
+    // true once we have spent LID_GIVE_UP_SECONDS working on the lid over this source and it is still there
+    private boolean lidTimedOut(AltoClef mod, BlockPos source) {
+        BlockPos lid = source.above();
+        TaskClock clock = _lidClocks.computeIfAbsent(source.immutable(), k -> new TaskClock());
+        boolean cracking = mod.getControllerExtras().isBreakingBlock() && lid.equals(mod.getControllerExtras().getBreakingBlockPos());
+        if (!cracking && mod.getPlayer().distanceToSqr(lid.getX() + 0.5, lid.getY() + 0.5, lid.getZ() + 0.5) <= LID_NEAR_SQ) {
+            clock.tick();
+        }
+        if (!clock.over(LID_GIVE_UP_SECONDS)) {
+            return false;
+        }
+        Debug.logInternal("bucket: " + LID_GIVE_UP_SECONDS + " s on the block over the " + _liquidName + " at " + source.toShortString() + " and it is still there, giving up on it");
+        return true;
     }
 
     // the same ban the "couldn't break the block over this source" path hands out, just without the wait
