@@ -18,9 +18,11 @@ import adris.altoclef.tasks.speedrun.gamer.portal.PortalMold.P;
 import adris.altoclef.tasks.speedrun.gamer.portal.PortalMold.Step;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.ItemTarget;
+import adris.altoclef.util.helpers.WorldHelper;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.ClipContext;
@@ -288,8 +290,14 @@ public class LavaPoolPortalTask extends Task {
                 if (there != null) {
                     return there;
                 }
+                BlockPos junk = toPos(step.cell());
+                // a stray obsidian in the mold is not a guide block, breaking it takes minutes. the cast goes elsewhere
+                if (WorldHelper.tooSlowToBreak(mod, junk)) {
+                    return giveUp(mod, BuiltInRegistries.BLOCK.getKey(mod.getWorld().getBlockState(junk).getBlock()).getPath()
+                            + " in the way at " + junk.toShortString() + ", takes too long to break");
+                }
                 mod.getBehaviour().setRayTracingFluidHandling(ClipContext.Fluid.NONE);
-                return new DestroyBlockTask(toPos(step.cell()));
+                return new DestroyBlockTask(junk);
             }
             case LIGHT -> {
                 mod.getBehaviour().setRayTracingFluidHandling(ClipContext.Fluid.NONE);
@@ -384,6 +392,10 @@ public class LavaPoolPortalTask extends Task {
             fallbackCast = null;
             stepKey = "";
             return null;
+        }
+        // the slow cast bans its cell when something in it takes too long to break, waiting out the clock after that is pointless
+        if (mod.getBlockTracker().unreachable(toPos(t))) {
+            return giveUp(mod, fallbackCast.name + " is ruined, the slow cast can't clear it");
         }
         if (tick - fallbackSince > FALLBACK_TICKS) {
             return giveUp(mod, fallbackCast.name + " would not cast even the slow way");

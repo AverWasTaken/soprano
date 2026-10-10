@@ -16,6 +16,7 @@ import adris.altoclef.tasksystem.Task;
 import baritone.api.utils.Dimension;
 import adris.altoclef.ui.HudText;
 import adris.altoclef.util.ItemTarget;
+import adris.altoclef.util.helpers.BreakRules;
 import adris.altoclef.util.helpers.BucketFillRules;
 import adris.altoclef.util.helpers.FluidSources;
 import adris.altoclef.util.helpers.LookHelper;
@@ -30,6 +31,7 @@ import java.util.function.Predicate;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.NonNullList;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -69,6 +71,8 @@ public class CollectBucketLiquidTask extends ResourceTask {
     private int _aimedSince = -1;
     // sources the stream climb has already handed over
     private final HashSet<BlockPos> _climbed = new HashSet<>();
+    // sources skipped because the block over them is too slow to break, so the line is said once and the ban handed out once
+    private final HashSet<BlockPos> _lidsSkipped = new HashSet<>();
 
     public CollectBucketLiquidTask(String liquidName, Item filledBucket, int targetCount, Block toCollect) {
         super(filledBucket, targetCount);
@@ -178,6 +182,12 @@ public class CollectBucketLiquidTask extends ResourceTask {
             if (mod.getWorld().getBlockState(blockPos.above()).getBlock() == Blocks.BEDROCK) {
                 return false;
             }
+            // obsidian over the source (or anything else that takes minutes) is a source we are not getting at. skipped
+            // now, not after the progress checker has watched us swing at it
+            if (WorldHelper.isSolid(mod, blockPos.above()) && WorldHelper.tooSlowToBreak(mod, blockPos.above())) {
+                skipLid(mod, blockPos);
+                return false;
+            }
             return WorldHelper.isSourceBlock(mod, blockPos, false);
         };
 
@@ -257,6 +267,18 @@ public class CollectBucketLiquidTask extends ResourceTask {
         setDebugState("Searching for liquid by wandering around aimlessly");
 
         return new TimeoutWanderTask();
+    }
+
+    // the same ban the "couldn't break the block over this source" path hands out, just without the wait
+    private void skipLid(AltoClef mod, BlockPos source) {
+        if (!_lidsSkipped.add(source.immutable())) {
+            return;
+        }
+        BlockPos lid = source.above();
+        Debug.logMessage("not breaking " + BuiltInRegistries.BLOCK.getKey(mod.getWorld().getBlockState(lid).getBlock()).getPath()
+                + " over the " + _liquidName + " at " + source.toShortString() + ", " + BreakRules.describe(mod.getPlayer().getInventory().items, mod.getWorld().getBlockState(lid)));
+        mod.getBlockTracker().requestBlockUnreachable(source, 0, "the block over it takes too long to break");
+        BanPolicy.bucketLidStuck(mod.getBans(), WorldHelper.getCurrentDimension(), source.getX(), source.getY(), source.getZ());
     }
 
     // what the next fill should do about the slot the full bucket needs (see BucketFillRules)

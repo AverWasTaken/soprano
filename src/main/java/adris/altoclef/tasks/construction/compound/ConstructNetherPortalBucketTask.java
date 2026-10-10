@@ -11,17 +11,21 @@ import adris.altoclef.tasks.movement.PickupDroppedItemTask;
 import adris.altoclef.tasks.movement.TimeoutWanderTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.ItemTarget;
+import adris.altoclef.util.helpers.BreakRules;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
 import adris.altoclef.util.time.TimerGame;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.function.Predicate;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Vec3i;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
@@ -171,6 +175,9 @@ public class ConstructNetherPortalBucketTask extends Task {
             BlockState targetState = mod.getWorld().getBlockState(_currentDestroyTarget);
             if (targetState.isAir()) {
                 _currentDestroyTarget = null;
+            } else if (!isLiquid(targetState) && WorldHelper.tooSlowToBreak(mod, _currentDestroyTarget)) {
+                moveFrame(mod, _currentDestroyTarget, "portal interior");
+                return null;
             } else {
                 return clearInteriorCell(targetState, _currentDestroyTarget);
             }
@@ -270,7 +277,12 @@ public class ConstructNetherPortalBucketTask extends Task {
         for (Vec3i offs : PORTAL_INTERIOR) {
             BlockPos p = _portalOrigin.offset(offs);
             assert Minecraft.getInstance().level != null;
-            if (!Minecraft.getInstance().level.getBlockState(p).isAir()) {
+            BlockState inside = Minecraft.getInstance().level.getBlockState(p);
+            if (!inside.isAir()) {
+                if (!isLiquid(inside) && WorldHelper.tooSlowToBreak(mod, p)) {
+                    moveFrame(mod, p, "portal interior");
+                    return null;
+                }
                 setDebugState("Clearing inside of portal");
                 _currentDestroyTarget = p;
                 return null;
@@ -311,6 +323,40 @@ public class ConstructNetherPortalBucketTask extends Task {
 
     static Task clearInteriorCell(BlockState state, BlockPos pos) {
         return isLiquid(state) ? new ClearLiquidTask(pos) : new DestroyBlockTask(pos);
+    }
+
+    // a block in the build area that takes too long to break, and is not one of our own finished frame cells (those are
+    // obsidian by design, the frame loop skips them)
+    static boolean strayBlock(BlockPos origin, BlockPos cell, boolean tooSlow, boolean obsidian) {
+        if (!tooSlow) {
+            return false;
+        }
+        if (obsidian) {
+            for (Vec3i frame : PORTAL_FRAME) {
+                if (cell.equals(origin.offset(frame))) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    static boolean anyBanned(BlockPos origin, Predicate<BlockPos> banned) {
+        for (Vec3i frame : PORTAL_FRAME) {
+            if (banned.test(origin.offset(frame))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // the frame moves: nothing here is worth another look
+    private void moveFrame(AltoClef mod, BlockPos stray, String role) {
+        Debug.logMessage("cast ruined: " + BuiltInRegistries.BLOCK.getKey(mod.getWorld().getBlockState(stray).getBlock()).getPath()
+                + " at " + stray.toShortString() + " where the " + role + " cell goes, moving the frame");
+        mod.getClientBaritone().getPathingBehavior().forceCancel();
+        _portalOrigin = null;
+        _currentDestroyTarget = null;
     }
 
     private List<BlockPos> frameCells() {
@@ -382,6 +428,7 @@ public class ConstructNetherPortalBucketTask extends Task {
 
         double minDistanceToPlayer = Double.POSITIVE_INFINITY;
         BlockPos bestPos = null;
+        List<ItemStack> bag = mod.getPlayer().getInventory().items;
 
         for (Vec3i direction : directions) {
 
@@ -392,6 +439,7 @@ public class ConstructNetherPortalBucketTask extends Task {
 
                 boolean found = true;
                 boolean solidFound = false;
+                BlockPos origin = lava.offset(offset).offset(sizeOffset).offset(PORTAL_ORIGIN_RELATIVE_TO_REGION);
                 // check for collision with lava in box
                 // We have an extra buffer to make sure we never break a block NEXT to lava.
                 moveAlongLine:
@@ -405,6 +453,12 @@ public class ConstructNetherPortalBucketTask extends Task {
                                 found = false;
                                 break moveAlongLine;
                             }
+                            // a block we could never get out of the way in time (obsidian from some old lava and water) ruins
+                            // the spot: the cast has to clear it, and the frame would just move again once it found out
+                            if (strayBlock(origin, toCheck, BreakRules.tooSlow(bag, state), state.is(Blocks.OBSIDIAN))) {
+                                found = false;
+                                break moveAlongLine;
+                            }
                             // Also check for at least 1 solid block for us to place on...
                             if (dy <= 1 && !solidFound && WorldHelper.isSolid(mod, toCheck)) {
                                 solidFound = true;
@@ -415,6 +469,11 @@ public class ConstructNetherPortalBucketTask extends Task {
                 // Check for solid ground at least somewhere
                 if (!solidFound) {
                     break;
+                }
+
+                // a frame cell we were already told is a lost cause (the cast bans it when something in it is too slow to break)
+                if (found && anyBanned(origin, mod.getBlockTracker()::unreachable)) {
+                    found = false;
                 }
 
                 if (found) {
