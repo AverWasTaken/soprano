@@ -171,8 +171,9 @@ try {
 def buildTime = new Date().format("yyyy-MM-dd HH:mm:ss")
 
 processResources {
+    // the id is the input, the time is not: a time that changes every configure would redo the resources (and so
+    // the tests and the jar) on every single build
     inputs.property "buildId", buildId
-    inputs.property "buildTime", buildTime
     filesMatching("adris/altoclef/build-id.properties") {
         expand "buildId": buildId, "buildTime": buildTime
     }

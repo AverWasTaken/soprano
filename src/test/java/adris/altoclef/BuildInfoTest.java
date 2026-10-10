@@ -28,6 +28,17 @@ public class BuildInfoTest {
     }
 
     @Test
+    public void gradleActuallyExpandedTheFile() throws Exception {
+        // the cleaned values would read "unknown" for an unexpanded file too, so look at the raw text
+        try (java.io.InputStream in = BuildInfo.class.getResourceAsStream("/adris/altoclef/build-id.properties")) {
+            assertNotNull(in);
+            String raw = new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+            assertTrue(raw, raw.contains("buildId="));
+            assertFalse(raw, raw.contains("${"));
+        }
+    }
+
+    @Test
     public void theGradleExpandedFileIsReadBack() {
         // processResources runs before the tests, so this is the real build's id and never the raw placeholder
         assertNotNull(BuildInfo.id());

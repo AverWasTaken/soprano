@@ -61,6 +61,8 @@ public class GamerHudOverlay {
     private static final int GRAY = 0xFFAAAAAA;
     // same dim as the tree, minecraft's dark_gray vanishes on snow
     private static final int DIM = 0xFF8A8A8A;
+    // read once, the id never changes while the game runs
+    private static final String BUILD_TAG = HudRules.buildTag(BuildInfo.id());
     private static final int GOLD = 0xFFFFAA00;
     private static final int GOLD_DIM = 0xFFB07400;
     private static final int GREEN = 0xFF55FF55;
@@ -373,7 +375,7 @@ public class GamerHudOverlay {
         ops.add(new Text(attempt, PAD_X + INNER - font.width(attempt), y + 1, DIM));
         y += LINE;
         // one more row under the vitals, which is what the card height grows by (it is just where y ends up)
-        ops.add(new Text(fit(font, HudRules.buildTag(BuildInfo.id()), INNER), PAD_X, y + 1, DIM));
+        ops.add(new Text(fit(font, BUILD_TAG, INNER), PAD_X, y + 1, DIM));
         return y + LINE;
     }
 
