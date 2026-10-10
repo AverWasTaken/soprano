@@ -232,6 +232,8 @@ public class RunState {
     // a food trip is under way: started under refillStartFoodUnits, runs to refillStopFoodUnits (FoodPlan.latched moves it every tick).
     // transient: after a relog the bag says again whether one is needed, worst case the trip waits for the next 45
     public transient boolean foodRefilling;
+    // the game tick a trip first looked due with no trip on, -1 when it does not (FoodPlan.latched waits REFILL_CONFIRM_TICKS on it)
+    public transient long foodDueSince = -1;
 
     public static class Cook {
         // game tick the backoff after a cook gave up ends at, -1 = not backed off

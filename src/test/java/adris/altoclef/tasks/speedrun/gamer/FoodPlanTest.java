@@ -1045,24 +1045,21 @@ public class FoodPlanTest {
 
     @Test
     public void aTripThatStartedRunsFrom44To130() {
-        GamerConfig all = new GamerConfig();
-        all.overworld = cfg;
-        all.end = end;
         RunState s = new RunState();
         s.phase = GamerPhase.IRON;
         List<String> log = new java.util.ArrayList<>();
         FakeFacts f = new FakeFacts();
         f.foodUnits = 60;
-        assertFalse(FoodPlan.latched(f, all, s, log::add).wantsRefill());
+        assertFalse(latch(f, s, log).wantsRefill());
         assertFalse(s.foodRefilling);
         f.foodUnits = 44;
-        FoodPlan p = FoodPlan.latched(f, all, s, log::add);
+        FoodPlan p = latch(f, s, log);
         assertTrue(s.foodRefilling);
         assertTrue(p.refilling());
         assertTrue(p.wantsRefill());
         for (int units : new int[]{50, 60, 69, 70, 80, 100, 129}) {
             f.foodUnits = units;
-            p = FoodPlan.latched(f, all, s, log::add);
+            p = latch(f, s, log);
             assertTrue("at " + units, p.wantsRefill());
             assertTrue("at " + units, planHasMinimum(f, p));
             // and the hunt is asked for the whole trip, not the minimum
@@ -1071,12 +1068,12 @@ public class FoodPlanTest {
             assertEquals("at " + units, units < 70, p.atMinimum().wantsRefill());
         }
         f.foodUnits = 130;
-        p = FoodPlan.latched(f, all, s, log::add);
+        p = latch(f, s, log);
         assertFalse(s.foodRefilling);
         assertFalse(p.wantsRefill());
         // the next dip waits for the start again
         f.foodUnits = 60;
-        assertFalse(FoodPlan.latched(f, all, s, log::add).wantsRefill());
+        assertFalse(latch(f, s, log).wantsRefill());
         assertEquals(List.of("food: refilling from 44 (under 45), up to 130", "food: refill done at 130"), log);
     }
 
@@ -1105,14 +1102,13 @@ public class FoodPlanTest {
 
     @Test
     public void theLatchDropsOutsideTheCookingPhases() {
-        GamerConfig all = new GamerConfig();
         RunState s = new RunState();
         s.foodRefilling = true;
         s.phase = GamerPhase.LOCATE;
         List<String> log = new java.util.ArrayList<>();
         FakeFacts f = new FakeFacts();
         f.foodUnits = 30;
-        FoodPlan.latched(f, all, s, log::add);
+        latch(f, s, log);
         assertFalse(s.foodRefilling);
         assertTrue(log.isEmpty());
     }
@@ -1134,6 +1130,13 @@ public class FoodPlanTest {
         return all;
     }
 
+    // the latch as the engine moves it, with the bag held long enough for a due start to count (REFILL_CONFIRM_TICKS)
+    private FoodPlan latch(FakeFacts f, RunState s, List<String> log) {
+        FoodPlan.latched(f, all(), s, log::add);
+        f.gameTime += FoodPlan.REFILL_CONFIRM_TICKS;
+        return FoodPlan.latched(f, all(), s, log::add);
+    }
+
     private static RunState inIron() {
         RunState s = new RunState();
         s.phase = GamerPhase.IRON;
@@ -1147,14 +1150,14 @@ public class FoodPlanTest {
         FakeFacts f = new FakeFacts();
         f.foodUnits = 69;
         // down a mine 69 is nothing, and neither is 46
-        assertFalse(FoodPlan.latched(f, all(), s, log::add).wantsRefill());
+        assertFalse(latch(f, s, log).wantsRefill());
         f.foodUnits = 46;
-        assertFalse(FoodPlan.latched(f, all(), s, log::add).wantsRefill());
+        assertFalse(latch(f, s, log).wantsRefill());
         assertFalse(s.foodRefilling);
         // up top the same 69 is a trip, and a whole one: to 130
         f.foodUnits = 69;
         f.nearSurface = true;
-        FoodPlan p = FoodPlan.latched(f, all(), s, log::add);
+        FoodPlan p = latch(f, s, log);
         assertTrue(s.foodRefilling);
         assertTrue(p.wantsRefill());
         assertTrue(KitPlanner.plan(f, cfg, 8, p).contains(new KitNeed(KitNeed.FOOD, 130)));
@@ -1162,16 +1165,16 @@ public class FoodPlanTest {
         f.nearSurface = false;
         for (int units : new int[]{75, 100, 129}) {
             f.foodUnits = units;
-            assertTrue("at " + units, FoodPlan.latched(f, all(), s, log::add).wantsRefill());
+            assertTrue("at " + units, latch(f, s, log).wantsRefill());
         }
         f.foodUnits = 130;
-        FoodPlan.latched(f, all(), s, log::add);
+        latch(f, s, log);
         assertFalse(s.foodRefilling);
         assertEquals(List.of("food: refilling from 69 (on the surface, under 70), up to 130", "food: refill done at 130"), log);
         // at the minimum up top there is nothing to top up
         f.nearSurface = true;
         f.foodUnits = 70;
-        assertFalse(FoodPlan.latched(f, all(), s, log::add).wantsRefill());
+        assertFalse(latch(f, s, log).wantsRefill());
         assertFalse(s.foodRefilling);
     }
 
@@ -1181,7 +1184,7 @@ public class FoodPlanTest {
         List<String> log = new java.util.ArrayList<>();
         FakeFacts f = new FakeFacts();
         f.foodUnits = 23;
-        FoodPlan p = FoodPlan.latched(f, all(), s, log::add);
+        FoodPlan p = latch(f, s, log);
         assertTrue(s.foodRefilling);
         // leads with no surface, no latch, and a cook in the way
         assertTrue(p.leads(false, false, true));
@@ -1201,7 +1204,7 @@ public class FoodPlanTest {
         for (boolean smoker : new boolean[]{true, false, true, false}) {
             FakeFacts f = chickenBag(smoker);
             f.nearSurface = true;
-            assertFalse(FoodPlan.latched(f, all(), s, log::add).wantsRefill());
+            assertFalse(latch(f, s, log).wantsRefill());
             assertFalse(s.foodRefilling);
         }
         assertTrue(log.isEmpty());
@@ -1209,7 +1212,7 @@ public class FoodPlanTest {
         FakeFacts f = chickenBag(false);
         f.foodUnits = 56 + FoodHelper.plannedNutrition(Items.CHICKEN);
         f.nearSurface = true;
-        assertTrue(FoodPlan.latched(f, all(), s, log::add).wantsRefill());
+        assertTrue(latch(f, s, log).wantsRefill());
         assertTrue(s.foodRefilling);
     }
 
@@ -1228,6 +1231,82 @@ public class FoodPlanTest {
         }
     }
 
+    // ---- a dip of a second or two is not a trip
+
+    @Test
+    public void aCookCutOffMidLoadDoesNotStartASecondTrip() {
+        // a trip just ended, and up top with 80 the cook takes its 3 raw porkchop to a smoker. it loses the head halfway: the meat
+        // in the smoker belongs to no job for a moment (-24) and the rest of the raw meat reads raw (-15). then the stranded load is
+        // adopted as a job and it all comes back
+        RunState s = inIron();
+        s.foodRefilling = true;
+        List<String> log = new java.util.ArrayList<>();
+        FakeFacts f = new FakeFacts();
+        f.nearSurface = true;
+        f.foodUnits = 130;
+        FoodPlan.latched(f, all(), s, log::add);
+        assertFalse(s.foodRefilling);
+        f.foodUnits = 80;
+        FoodPlan.latched(f, all(), s, log::add);
+        int[] dip = {56, 56, 41, 41, 41, 80, 80};
+        for (int units : dip) {
+            f.foodUnits = units;
+            f.gameTime += 10;
+            FoodPlan p = FoodPlan.latched(f, all(), s, log::add);
+            assertFalse("at " + units, s.foodRefilling);
+            assertFalse("at " + units, p.wantsRefill());
+            assertFalse("at " + units, p.leads(true, false, false));
+            assertFalse("at " + units, FoodGate.index(KitPlanner.plan(f, cfg, 8, p), p) >= 0);
+        }
+        assertEquals(List.of("food: refill done at 130", "food: back to 80 inside 5 s, no trip"), log);
+    }
+
+    @Test
+    public void aHoleThatStaysIsATripAfterTheWait() {
+        RunState s = inIron();
+        List<String> log = new java.util.ArrayList<>();
+        FakeFacts f = new FakeFacts();
+        f.foodUnits = 44;
+        for (int t = 0; t < FoodPlan.REFILL_CONFIRM_TICKS; t += 20) {
+            assertFalse("tick " + t, FoodPlan.latched(f, all(), s, log::add).wantsRefill());
+            f.gameTime += 20;
+        }
+        FoodPlan p = FoodPlan.latched(f, all(), s, log::add);
+        assertTrue(s.foodRefilling);
+        assertTrue(p.wantsRefill());
+        assertEquals(List.of("food: refilling from 44 (under 45), up to 130"), log);
+    }
+
+    @Test
+    public void theFloorDoesNotWait() {
+        RunState s = inIron();
+        List<String> log = new java.util.ArrayList<>();
+        FakeFacts f = new FakeFacts();
+        f.foodUnits = 44;
+        FoodPlan.latched(f, all(), s, log::add);
+        f.gameTime += 10;
+        f.foodUnits = 23;
+        assertTrue(FoodPlan.latched(f, all(), s, log::add).wantsRefill());
+        assertTrue(s.foodRefilling);
+        assertEquals(List.of("food: refilling from 23 (under 45), up to 130"), log);
+    }
+
+    @Test
+    public void aClockThatJumpsBackRestartsTheWait() {
+        RunState s = inIron();
+        List<String> log = new java.util.ArrayList<>();
+        FakeFacts f = new FakeFacts();
+        f.gameTime = 1000;
+        f.foodUnits = 44;
+        FoodPlan.latched(f, all(), s, log::add);
+        f.gameTime = 10;
+        assertFalse(FoodPlan.latched(f, all(), s, log::add).wantsRefill());
+        f.gameTime = 10 + FoodPlan.REFILL_CONFIRM_TICKS - 1;
+        assertFalse(FoodPlan.latched(f, all(), s, log::add).wantsRefill());
+        f.gameTime = 10 + FoodPlan.REFILL_CONFIRM_TICKS;
+        assertTrue(FoodPlan.latched(f, all(), s, log::add).wantsRefill());
+    }
+
     // ---- no room in the bag
 
     @Test
@@ -1236,14 +1315,14 @@ public class FoodPlanTest {
         List<String> log = new java.util.ArrayList<>();
         FakeFacts f = new FakeFacts();
         f.foodUnits = 44;
-        FoodPlan.latched(f, all(), s, log::add);
+        latch(f, s, log);
         assertTrue(s.foodRefilling);
         f.foodUnits = 90;
-        assertTrue(FoodPlan.latched(f, all(), s, log::add).wantsRefill());
+        assertTrue(latch(f, s, log).wantsRefill());
         // every slot taken and nothing to throw: done at 96, not 130
         f.foodUnits = 96;
         f.bagFull = true;
-        FoodPlan p = FoodPlan.latched(f, all(), s, log::add);
+        FoodPlan p = latch(f, s, log);
         assertFalse(s.foodRefilling);
         assertFalse(p.wantsRefill());
         assertFalse(p.leads(true, true, false));
@@ -1251,7 +1330,7 @@ public class FoodPlanTest {
         assertEquals("food: refill done at 96, the bag is full", log.get(log.size() - 1));
         // and a slot coming free at 96 does not start it again, that is no hole
         f.bagFull = false;
-        assertFalse(FoodPlan.latched(f, all(), s, log::add).wantsRefill());
+        assertFalse(latch(f, s, log).wantsRefill());
         assertEquals(2, log.size());
     }
 
@@ -1262,18 +1341,18 @@ public class FoodPlanTest {
         FakeFacts f = new FakeFacts();
         f.bagFull = true;
         f.foodUnits = 40;
-        FoodPlan.latched(f, all(), s, log::add);
+        latch(f, s, log);
         assertTrue(s.foodRefilling);
         // under the minimum the kit needs it, a full bag or not
         f.foodUnits = 69;
-        assertTrue(FoodPlan.latched(f, all(), s, log::add).wantsRefill());
+        assertTrue(latch(f, s, log).wantsRefill());
         f.foodUnits = 70;
-        assertFalse(FoodPlan.latched(f, all(), s, log::add).wantsRefill());
+        assertFalse(latch(f, s, log).wantsRefill());
         assertFalse(s.foodRefilling);
         // and up top a full bag does not start the top-up, it would end the moment it got to where it started
         f.nearSurface = true;
         f.foodUnits = 60;
-        assertFalse(FoodPlan.latched(f, all(), s, log::add).wantsRefill());
+        assertFalse(latch(f, s, log).wantsRefill());
         assertFalse(s.foodRefilling);
     }
 }

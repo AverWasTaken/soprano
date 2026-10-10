@@ -23,6 +23,11 @@ public final class FoodPlan {
     public static final int SMALL_GAP = 10;
     // the End hunt aims this far over its floor, or it would stop on the very unit the gate starts at and flip with every bite
     public static final int END_MARGIN = 8;
+    // a trip that looks due (not under the floor) has to stay due this long before it starts. held dips for a second or two when
+    // a cook loses the head halfway through a load: the meat sits in a smoker no job points at yet and the rest of the raw meat
+    // reads raw, so held drops by half for a moment and a trip started on that ends the tick the job is adopted. a real drain takes
+    // minutes, 5 s costs it nothing
+    public static final int REFILL_CONFIRM_TICKS = 100;
 
     private final int bag;
     private final int pending;
@@ -39,6 +44,8 @@ public final class FoodPlan {
     private final boolean refilling;
     private final boolean surface;
     private final boolean bagFull;
+    // a start is due but has not lasted REFILL_CONFIRM_TICKS yet (latched), so it does not count. false off the latch
+    private final boolean waiting;
 
     FoodPlan(int bag, int pending, int rawLeftOut, int junk, int station, int skipped, OverworldConfig ow, EndConfig end) {
         this(bag, pending, rawLeftOut, junk, station, skipped, ow, end, false);
@@ -59,11 +66,11 @@ public final class FoodPlan {
         // minimum would end the trip before the kit's own need is met, so it never goes under it
         this(bag, pending, rawLeftOut, junk, station, skipped, ow.minHeldFoodUnits, ow.minFoodUnits, ow.targetFoodUnits, end.minFoodUnits,
                 Math.min(ow.refillStartFoodUnits, ow.minFoodUnits), Math.max(ow.refillStopFoodUnits, ow.minFoodUnits), refilling, surface,
-                bagFull);
+                bagFull, false);
     }
 
     private FoodPlan(int bag, int pending, int rawLeftOut, int junk, int station, int skipped, int floor, int minimum, int target,
-                     int endFloor, int refillStart, int refillStop, boolean refilling, boolean surface, boolean bagFull) {
+                     int endFloor, int refillStart, int refillStop, boolean refilling, boolean surface, boolean bagFull, boolean waiting) {
         this.bag = bag;
         this.pending = pending;
         this.rawLeftOut = rawLeftOut;
@@ -79,13 +86,20 @@ public final class FoodPlan {
         this.refilling = refilling;
         this.surface = surface;
         this.bagFull = bagFull;
+        this.waiting = waiting;
     }
 
     // the same bag with the trip ending at the minimum, for the phase-done checks: a phase is done with its food once the kit's
     // need is met, the rest of a trip carries on in the next phase (the latch lives in RunState, not in the phase)
     public FoodPlan atMinimum() {
         return new FoodPlan(bag, pending, rawLeftOut, junk, station, skipped, floor, minimum, target, endFloor, refillStart, minimum, refilling,
-                surface, bagFull);
+                surface, bagFull, waiting);
+    }
+
+    // the same bag with a due start still sitting out REFILL_CONFIRM_TICKS
+    private FoodPlan waiting() {
+        return new FoodPlan(bag, pending, rawLeftOut, junk, station, skipped, floor, minimum, target, endFloor, refillStart, refillStop,
+                refilling, surface, bagFull, true);
     }
 
     // the phase is what says whether a cook can happen at all, and `refilling` whether a food trip is under way
@@ -110,7 +124,26 @@ public final class FoodPlan {
     public static FoodPlan latched(GamerFacts f, GamerConfig cfg, RunState state, Consumer<String> log) {
         GamerPhase phase = state.phase;
         FoodPlan plan = of(f, cfg, phase, state.foodRefilling);
+        // a start has to last REFILL_CONFIRM_TICKS. under the floor never waits, that is not ours to soften
+        long now = f.gameTime();
+        boolean due = phase.cooks() && !state.foodRefilling && plan.held() >= plan.floor && plan.startDue();
+        boolean dipOver = false;
+        if (due) {
+            // a clock that went backwards (the server's time packets) restarts the wait instead of making it negative
+            if (state.foodDueSince < 0 || now < state.foodDueSince) {
+                state.foodDueSince = now;
+            }
+            if (now - state.foodDueSince < REFILL_CONFIRM_TICKS) {
+                plan = plan.waiting();
+            }
+        } else {
+            dipOver = state.foodDueSince >= 0;
+            state.foodDueSince = -1;
+        }
         boolean next = phase.cooks() && plan.nextRefilling();
+        if (dipOver && !next && !state.foodRefilling && phase.cooks()) {
+            log.accept("food: back to " + plan.held() + " inside " + REFILL_CONFIRM_TICKS / 20 + " s, no trip");
+        }
         if (next == state.foodRefilling) {
             return plan;
         }
@@ -119,7 +152,8 @@ public final class FoodPlan {
         }
         state.foodRefilling = next;
         // wantsRefill reads the same on both sides of the flip, the rebuild is only so refilling() tells the truth
-        return of(f, cfg, phase, next);
+        FoodPlan moved = of(f, cfg, phase, next);
+        return plan.waiting ? moved.waiting() : moved;
     }
 
     // for the planners' short entry points, which know the bed count and nothing else of the End. the End lines are the config
@@ -247,13 +281,18 @@ public final class FoodPlan {
     // so nobody has to care who asked first
     public boolean wantsRefill() {
         int held = held();
-        return held < floor || held < refillStart || surfaceTopUp() || (refilling && held < tripEnd());
+        return held < floor || (!waiting && startDue()) || (refilling && held < tripEnd());
     }
 
     // the latch for the next tick: on from under the start (or the floor, or the surface top-up) until the stop
     public boolean nextRefilling() {
         int held = held();
-        return held < tripEnd() && (refilling || held < refillStart || held < floor || surfaceTopUp());
+        return held < tripEnd() && (refilling || held < floor || (!waiting && startDue()));
+    }
+
+    // a trip would start here (the floor aside): under refillStart, or the surface top-up
+    boolean startDue() {
+        return held() < refillStart || surfaceTopUp();
     }
 
     // where a trip ends: refillStop, or the minimum once the bag has no room. past the minimum more food would cost a slot of
