@@ -124,6 +124,51 @@ public class ProvocationsTest {
     }
 
     @Test
+    public void theHitBeforeTheLastOneIsRemembered() {
+        Provocations p = new Provocations();
+        assertEquals(Provocations.NEVER, p.sinceHitBefore(7, 1000));
+        p.markHit(7, 1000);
+        // one arrow is not "twice"
+        assertEquals(Provocations.NEVER, p.sinceHitBefore(7, 1010));
+        p.markHit(7, 1060);
+        assertEquals(60, p.sinceHit(7, 1120));
+        assertEquals(120, p.sinceHitBefore(7, 1120));
+        // a third one pushes the first out
+        p.markHit(7, 1100);
+        assertEquals(60, p.sinceHitBefore(7, 1120));
+    }
+
+    // a melee hit is noted for the attacker and for the thing that touched us, the same mob twice on the same tick
+    @Test
+    public void theSameHitNotedTwiceIsStillOneHit() {
+        Provocations p = new Provocations();
+        p.markHit(7, 1000);
+        p.markHit(7, 1000);
+        assertEquals(Provocations.NEVER, p.sinceHitBefore(7, 1005));
+    }
+
+    @Test
+    public void theBeforeBookIsPerMobAndClearedWithTheRest() {
+        Provocations p = new Provocations();
+        p.markHit(7, 100);
+        p.markHit(7, 150);
+        assertEquals(Provocations.NEVER, p.sinceHitBefore(8, 160));
+        p.clear();
+        assertEquals(Provocations.NEVER, p.sinceHitBefore(7, 160));
+    }
+
+    @Test
+    public void aClockThatWentBackwardsForgetsTheHitBefore() {
+        Provocations p = new Provocations();
+        p.markHit(7, 50_000);
+        p.markHit(7, 50_050);
+        assertEquals(Provocations.NEVER, p.sinceHitBefore(7, 100));
+        // and the new world's first hit is not the second of an old pair
+        p.markHit(7, 100);
+        assertEquals(Provocations.NEVER, p.sinceHitBefore(7, 110));
+    }
+
+    @Test
     public void theHitBookDoesNotGrowForever() {
         Provocations p = new Provocations();
         for (int i = 0; i < 1000; i++) p.markHit(i, i * 10L);

@@ -6,6 +6,7 @@ import adris.altoclef.tasks.entity.KillEntityTask;
 import adris.altoclef.tasks.movement.CommittedRunTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.trackers.EntityTracker;
+import adris.altoclef.util.helpers.AnchorWatch;
 import adris.altoclef.util.helpers.CombatCommit;
 import adris.altoclef.util.helpers.CombatCommit.Event;
 import adris.altoclef.util.helpers.CombatCommit.Foe;
@@ -59,9 +60,11 @@ final class CombatBrain {
     static final float RUN_PRIORITY = 80;
     // the tracker's hostile list does not reach past 16 anyway (it keeps mobs closer than 16), and the warden's boom
     // counts out to 15 (CombatCommit.BOOM_RANGE), so this stays 16 even though a run now calls 12 clear
-    private static final double FOE_RANGE = 16;
+    private static final double FOE_RANGE = CombatCommit.FOE_RANGE;
 
     private final CombatCommit _commit = new CombatCommit();
+    // standing about is a different fight from walking about (see AnchorWatch)
+    private final AnchorWatch _anchor = new AnchorWatch();
     // this tick's angry hostiles as entities, nearest first (the run goal steers around them)
     private List<Mob> _foeMobs = List.of();
     // who the aura may swing at: the fight target and anything in contact that has hit us
@@ -134,6 +137,7 @@ final class CombatBrain {
 
     void reset() {
         _commit.reset();
+        _anchor.reset();
         _foeMobs = List.of();
         _swingAt.clear();
         _stance = CombatRules.Stance.CALM;
@@ -198,6 +202,7 @@ final class CombatBrain {
         Provocations book = tracker.getProvocations();
         MobReachability reach = tracker.getMobReachability();
 
+        boolean anchored = _anchor.update(now, player.getX(), player.getY(), player.getZ());
         List<Mob> mobs = new ArrayList<>();
         List<Foe> foes = new ArrayList<>();
         try {
@@ -205,7 +210,7 @@ final class CombatBrain {
                 if (!(entity instanceof Mob mob) || !mob.isAlive()) continue;
                 double distance = mob.distanceTo(player);
                 if (distance > FOE_RANGE) continue;
-                Foe foe = FoeRules.accept(dimension, candidate(mod, mob, distance, book.sinceHit(mob.getId(), now), reachGap(player, mob)));
+                Foe foe = FoeRules.accept(dimension, candidate(mod, mob, distance, book, now, player));
                 if (foe == null) continue;
                 mobs.add(mob);
                 foes.add(foe);
@@ -220,7 +225,7 @@ final class CombatBrain {
         if (_commit.mode() == Mode.FIGHT) {
             Entity entity = mod.getWorld().getEntity(_commit.targetId());
             if (entity instanceof Mob mob && mob.isAlive()) {
-                target = foe(dimension, mob, mob.distanceTo(player), book.sinceHit(mob.getId(), now), reachGap(player, mob));
+                target = foe(dimension, mob, mob.distanceTo(player), book, now, player);
             }
         }
 
@@ -231,7 +236,7 @@ final class CombatBrain {
             // how far the run got, asked before the step: an end chained into a new run has moved the origin by the time we say so
             int blocks = (int) Math.round(Math.hypot(player.getX() - _commit.originX(), player.getZ() - _commit.originZ()));
             Event event = _commit.step(new CombatCommit.Tick(now, player.getHealth(), player.getX(), player.getZ(), foes, target,
-                    way(mod, mobs, foes), armed(mod, foes), tryingToMove(mod, player)));
+                    way(mod, mobs, foes), armed(mod, foes), tryingToMove(mod, player), anchored));
             if (event != Event.NONE) {
                 // the old one ended and the next one started on the same step, both get their line, in that order
                 if (_commit.endedFirst() != Event.NONE) log(mod, dimension, _commit.endedFirst(), fighting, mobs, blocks);
@@ -267,7 +272,7 @@ final class CombatBrain {
             }
             // a shooter close enough to hit us with a line to us. the los ray is only cast for the ones that are in range
             if (!shotAt && foe.ranged() && !foe.creeper() && foe.distance() <= CombatRules.SHOOTER_RANGE
-                    && mobs.get(i).hasLineOfSight(player)) {
+                    && (foe.sight() || mobs.get(i).hasLineOfSight(player))) {
                 shotAt = true;
             }
             if (foe.hitUs() && foe.distance() <= CombatCommit.CONTACT) _swingAt.add(foe.id());
@@ -335,7 +340,8 @@ final class CombatBrain {
     private boolean armed(AltoClef mod, List<Foe> foes) {
         boolean asked = _commit.mode() == Mode.RUN;
         for (Foe foe : foes) {
-            if (foe.distance() <= CombatCommit.CONTACT) asked = true;
+            // (a sniper that is pinning us down is a fight we would start, so it wants to know too)
+            if (foe.distance() <= CombatCommit.CONTACT || foe.pinning(false)) asked = true;
         }
         if (!asked) return true;
         List<WeaponPick.Candidate> candidates = new ArrayList<>();
@@ -399,10 +405,16 @@ final class CombatBrain {
 
     // the fight target looked up on its own: it can have stopped being angry (or being a candidate at all) and still be the
     // one we are fighting
-    private static Foe foe(Dimension dimension, Mob mob, double distance, long sinceHit, double reachGap) {
+    private static Foe foe(Dimension dimension, Mob mob, double distance, Provocations book, long now, LocalPlayer player) {
         Kind kind = FoeRules.kindOf(dimension, typeOf(mob));
+        long sinceHit = book.sinceHit(mob.getId(), now);
         return new Foe(mob.getId(), distance, FoeRules.shoots(typeOf(mob), MobReachability.isRanged(mob), kind), mob instanceof Creeper, sinceHit, kind,
-                reachGap);
+                reachGap(player, mob), sees(mob, sinceHit, player), book.sinceHitBefore(mob.getId(), now));
+    }
+
+    // a line to us, asked only of a shooter that hit us lately: the ray is the costly bit and nothing else wants the answer
+    private static boolean sees(Mob mob, long sinceHit, LocalPlayer player) {
+        return sinceHit <= CombatCommit.HIT_MEMORY && MobReachability.isRanged(mob) && !(mob instanceof Creeper) && mob.hasLineOfSight(player);
     }
 
     // eye to its box, the number the reach rules use
@@ -439,12 +451,14 @@ final class CombatBrain {
     }
 
     // the costly questions are asked lazily, FoeRules only asks them when the cheap ones left the mob in the running
-    private static FoeRules.Candidate candidate(AltoClef mod, Mob mob, double distance, long sinceHit, double reachGap) {
+    private static FoeRules.Candidate candidate(AltoClef mod, Mob mob, double distance, Provocations book, long now, LocalPlayer player) {
+        long sinceHit = book.sinceHit(mob.getId(), now);
         return new FoeRules.Candidate(typeOf(mob), mob.getId(), distance,
                 () -> mod.getBehaviour().shouldExcludeFromMobDefense(mob),
                 () -> EntityHelper.isAngryAtPlayer(mod, mob),
                 () -> EntityHelper.canMobHarmPlayer(mod, mob),
-                sinceHit, mob instanceof Slime slime ? slime.getSize() : 0, MobReachability.isRanged(mob), mob instanceof Creeper, reachGap);
+                sinceHit, mob instanceof Slime slime ? slime.getSize() : 0, MobReachability.isRanged(mob), mob instanceof Creeper,
+                reachGap(player, mob), sees(mob, sinceHit, player), book.sinceHitBefore(mob.getId(), now));
     }
 
     // how many of each kind, in the order they showed up

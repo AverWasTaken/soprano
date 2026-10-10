@@ -17,14 +17,32 @@ public final class Provocations {
     // the stricter book: only the times a mob hit US. the one above also fills when we hit it, which is fine for deciding
     // if a wolf is angry and useless for deciding who started it
     private final Map<Integer, Long> hits = new HashMap<>();
+    // and the hit before the last one, so two arrows close together can be told from two arrows a minute apart
+    private final Map<Integer, Long> before = new HashMap<>();
 
     // one real hit, noted once. the tracker watches the damage source change, so a hit is one tick and not the two
     // seconds the client keeps the source around
     public synchronized void markHit(int id, long now) {
-        hits.put(id, now);
+        Long last = hits.put(id, now);
+        // the hit before this one, for "it shot us twice". noted twice on the same tick (the shooter and the thing that touched
+        // us are the same mob for a melee hit) is still one hit, and a clock that went backwards is a new world
+        if (last != null && last < now) {
+            before.put(id, last);
+        } else if (last != null && last > now) {
+            before.remove(id);
+        }
         if (hits.size() > PRUNE_AT) {
             hits.values().removeIf(at -> now - at < 0 || now - at > NeutralMobs.MEMORY_TICKS);
+            before.keySet().retainAll(hits.keySet());
         }
+    }
+
+    // ticks since the hit before the last one, NEVER when it has hit us fewer than twice
+    public synchronized long sinceHitBefore(int id, long now) {
+        Long at = before.get(id);
+        if (at == null) return NEVER;
+        long age = now - at;
+        return age < 0 ? NEVER : age;
     }
 
     // ticks since it hit us, NEVER for no record (or a clock that went backwards: new world, nobody is owed a grudge)
@@ -62,5 +80,6 @@ public final class Provocations {
     public synchronized void clear() {
         stamps.clear();
         hits.clear();
+        before.clear();
     }
 }

@@ -50,9 +50,15 @@ public final class FoeRules {
     // behaviour stack) come in as suppliers and are only asked when the cheap ones did not already say no.
     // excluded: a task is fighting this one on its own terms (the blaze rods, the golem on its pillar, the dragon and whatever
     // stands around it) and does not want a second opinion. angry and canHarm are EntityHelper's answers. slimeSize is 0 for
-    // anything that is not a slime
+    // anything that is not a slime. sight and sinceHitBefore are for the rules about a shooter that keeps hitting us (see Foe)
     public record Candidate(String type, int id, double distance, BooleanSupplier excluded, BooleanSupplier angry,
-                            BooleanSupplier canHarm, long sinceHit, int slimeSize, boolean ranged, boolean creeper, double reachGap) {
+                            BooleanSupplier canHarm, long sinceHit, int slimeSize, boolean ranged, boolean creeper, double reachGap,
+                            boolean sight, long sinceHitBefore) {
+        public Candidate(String type, int id, double distance, BooleanSupplier excluded, BooleanSupplier angry,
+                         BooleanSupplier canHarm, long sinceHit, int slimeSize, boolean ranged, boolean creeper, double reachGap) {
+            this(type, id, distance, excluded, angry, canHarm, sinceHit, slimeSize, ranged, creeper, reachGap, false, CombatCommit.NEVER);
+        }
+
         public Candidate(String type, int id, double distance, BooleanSupplier excluded, BooleanSupplier angry,
                          BooleanSupplier canHarm, long sinceHit, int slimeSize, boolean ranged, boolean creeper) {
             this(type, id, distance, excluded, angry, canHarm, sinceHit, slimeSize, ranged, creeper, Double.POSITIVE_INFINITY);
@@ -68,7 +74,7 @@ public final class FoeRules {
         // something that hit us can hurt us, no questions. the rest has to be able to get at us (or shoot)
         if (c.sinceHit() > CombatCommit.HIT_MEMORY && !c.canHarm().getAsBoolean()) return null;
         Kind kind = kindOf(dimension, c.type());
-        return new Foe(c.id(), c.distance(), shoots(c.type(), c.ranged(), kind), c.creeper(), c.sinceHit(), kind, c.reachGap());
+        return new Foe(c.id(), c.distance(), shoots(c.type(), c.ranged(), kind), c.creeper(), c.sinceHit(), kind, c.reachGap(), c.sight(), c.sinceHitBefore());
     }
 
     // does it count from where a shooter stands. a blaze shoots (the warden's sonic boom is handled by its kind). a wither

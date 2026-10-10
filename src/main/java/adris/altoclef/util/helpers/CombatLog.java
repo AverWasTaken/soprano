@@ -25,7 +25,7 @@ public final class CombatLog {
         String tag = "combat: [" + dimension.name().toLowerCase(Locale.ROOT) + "] ";
         return switch (event) {
             case NONE -> null;
-            case FIGHT_START -> tag + "FIGHT " + target + " (" + (why == Why.IN_WAY ? "in our way" : "hit us") + ", hp " + hp + ")";
+            case FIGHT_START -> tag + "FIGHT " + target + " (" + fightWhy(why) + ", hp " + hp + ")";
             case FIGHT_NEXT -> cornered ? tag + (why == Why.CHASED ? "still chased, next " : "cornered, next ") + target
                     : tag + "target dead, next " + target + " (hit us, hp " + hp + ")";
             case RUN_START -> why == Why.LOBBER ? tag + "RUN from witch (can't reach it)"
@@ -80,8 +80,17 @@ public final class CombatLog {
         return tag + " by " + who + (how == null ? "" : " (" + how + ")");
     }
 
+    private static String fightWhy(Why why) {
+        return switch (why) {
+            case IN_WAY -> "in our way";
+            case PINNED -> "shot us twice while we stood still";
+            default -> "hit us";
+        };
+    }
+
     public static String runWhy(Why why, int hp) {
         return switch (why) {
+            case UNREACHABLE -> "can't reach it, hp " + hp;
             case HEAVY -> "something nasty close, hp " + hp;
             case CROWD -> "a crowd on us, hp " + hp;
             case UNARMED -> "it hit us and we have nothing to hit back with, hp " + hp;
