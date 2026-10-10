@@ -40,6 +40,7 @@ import net.minecraft.world.level.block.FenceGateBlock;
 import net.minecraft.world.level.block.FlowerBlock;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Function;
 
 /**
  * Left or Right click on a block on a particular (or any) side of the block.
@@ -132,6 +133,14 @@ public class InteractWithBlockTask extends Task {
 
     public InteractWithBlockTask(BlockPos target) {
         this(ItemTarget.EMPTY, null, target, Input.CLICK_RIGHT, false, false);
+    }
+
+    // where to walk to instead of the stock goal, for whoever knows better where the block is best used from (the station walk)
+    private Function<BlockPos, Goal> _goalFor;
+
+    public InteractWithBlockTask walkTo(Function<BlockPos, Goal> goalFor) {
+        _goalFor = goalFor;
+        return this;
     }
 
     private static BlockPos[] generateSides(BlockPos pos) {
@@ -276,6 +285,8 @@ public class InteractWithBlockTask extends Task {
         Goal moveGoal;
         if (mod.getExtraBaritoneSettings().shouldAvoidBreaking(_target.above())) {
             moveGoal = new GoalTwoBlocks(_target.north());
+        } else if (_goalFor != null) {
+            moveGoal = _goalFor.apply(_target);
         } else {
             moveGoal = createGoalForInteract(_target, reachDistance, _direction, _interactOffset, _walkInto);
         }
@@ -335,7 +346,7 @@ public class InteractWithBlockTask extends Task {
             if (task._toUse != null && !task._toUse.equals(_toUse)) return false;
             if (!task._target.equals(_target)) return false;
             if (!task._interactInput.equals(_interactInput)) return false;
-            return task._walkInto == _walkInto;
+            return task._walkInto == _walkInto && Objects.equals(task._goalFor, _goalFor);
         }
         return false;
     }

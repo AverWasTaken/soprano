@@ -23,6 +23,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Function;
+import baritone.api.pathing.goals.Goal;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.item.Items;
@@ -38,6 +40,8 @@ public abstract class DoStuffInContainerTask extends Task {
     private final ItemTarget _containerTarget;
     private final Block[] _containerBlocks;
     private final StationHook.Kind _stationKind;
+    // one instance, so two walks to the same station are equal tasks (InteractWithBlockTask compares it)
+    private static final Function<BlockPos, Goal> BESIDE = StationWalk::goal;
 
     // tables and furnaces go down the way a player does it (PlaceStationTask, with the old placer inside as its last
     // resort), anything else (anvil, smithing table, chest) keeps the old one
@@ -232,7 +236,10 @@ public abstract class DoStuffInContainerTask extends Task {
         }
         if (_openTask == null || !target.equals(_openTaskPos)) {
             _openTaskPos = target;
-            _openTask = new InteractWithBlockTask(_openTaskPos);
+            InteractWithBlockTask open = new InteractWithBlockTask(_openTaskPos);
+            // a station of the gamer's own gets walked to from beside it, not from on top of it: the top is a climb and, in a low
+            // tunnel, a ceiling to dig. plain alto and anything that is not a station keep the stock walk
+            _openTask = _stationKind != null && StationHook.ours(_openTaskPos) ? open.walkTo(BESIDE) : open;
         }
         return _openTask;
     }
