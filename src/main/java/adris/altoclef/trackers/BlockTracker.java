@@ -528,7 +528,10 @@ public class BlockTracker extends Tracker {
 
         synchronized (_scanMutex) {
             if (Minecraft.getInstance().level != null) {
+                // hits were found in scanDimension, so they don't go into whatever cache is current now
+                boolean sameDimension = WorldHelper.getCurrentDimension() == scanDimension;
                 for (Map.Entry<Block, List<BlockPos>> entry : found.entrySet()) {
+                    if (!sameDimension) break;
                     synchronized (_trackingBlocks) {
                         if (!_trackingBlocks.containsKey(entry.getKey())) continue;
                     }
@@ -705,7 +708,7 @@ public class BlockTracker extends Tracker {
                     return;
                 } else {
                     // We're tracked incorrectly, fix
-                    removeBlock(pos, block);
+                    removeBlock(pos, _cachedByPosition.get(pos));
                 }
             }
             if (!anyFound(block)) {
@@ -863,6 +866,11 @@ public class BlockTracker extends Tracker {
                         int keep = Math.min(count, _config.maxCacheSizePerBlockType);
                         List<BlockPos> trimmed = new ArrayList<>(keep);
                         for (int i = 0; i < keep; i++) trimmed.add(kept[order[i]]);
+                        // addBlock bails on a byPosition hit, so anything dropped here has to leave that map too or it's never seen again
+                        Set<BlockPos> keptSet = new HashSet<>(trimmed);
+                        for (BlockPos pos : tracking) {
+                            if (!keptSet.contains(pos)) _cachedByPosition.remove(pos, block);
+                        }
                         tracking = trimmed;
                         // This won't update otherwise.
                         _cachedBlocks.put(block, tracking);

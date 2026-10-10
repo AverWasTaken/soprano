@@ -152,6 +152,27 @@ public class PosCacheNearestTest {
     }
 
     @Test
+    public void aTrimmedPositionCanBeLearnedAgain() {
+        BlockTracker.PosCache cache = new BlockTracker.PosCache();
+        for (int x = 0; x < 30; x++) cache.addBlock(Blocks.COAL_ORE, new BlockPos(x, 0, 0));
+        cache.smartPurge(null, Vec3.ZERO);
+        BlockPos dropped = new BlockPos(29, 0, 0);
+        assertFalse(cache.getKnownLocations(Blocks.COAL_ORE).contains(dropped));
+        cache.addBlock(Blocks.COAL_ORE, dropped);
+        assertTrue(cache.getKnownLocations(Blocks.COAL_ORE).contains(dropped));
+    }
+
+    @Test
+    public void aPositionThatChangedBlockLeavesTheOldList() {
+        BlockTracker.PosCache cache = new BlockTracker.PosCache();
+        BlockPos pos = new BlockPos(1, 0, 0);
+        cache.addBlock(Blocks.COAL_ORE, pos);
+        cache.addBlock(Blocks.IRON_ORE, pos);
+        assertFalse(cache.anyFound(Blocks.COAL_ORE));
+        assertEquals(List.of(pos), cache.getKnownLocations(Blocks.IRON_ORE));
+    }
+
+    @Test
     public void entityLookupsSkipBannedIds() {
         Bans bans = new Bans(line -> {
         });
