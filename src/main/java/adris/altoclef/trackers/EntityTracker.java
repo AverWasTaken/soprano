@@ -546,5 +546,6 @@ public class EntityTracker extends Tracker {
         // these are keyed by LocalPlayer and hold entities, so each of them pins a whole ClientLevel. gone with the world
         _entitiesCollidingWithPlayerAccumulator.clear();
         _entitiesCollidingWithPlayer.clear();
+        _playerLastCoordinates.clear();
     }
 }
