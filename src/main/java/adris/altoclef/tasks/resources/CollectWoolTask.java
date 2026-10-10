@@ -4,11 +4,18 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.tasks.ResourceTask;
 import adris.altoclef.tasks.entity.ShearSheepTask;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.trackers.BlockTracker;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.MiningRequirement;
 import adris.altoclef.util.helpers.ItemHelper;
+import adris.altoclef.util.helpers.WorldHelper;
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import net.minecraft.core.BlockPos;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.world.level.biome.Biomes;
 import net.minecraft.world.entity.animal.Sheep;
 import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.item.Item;
@@ -21,6 +28,11 @@ public class CollectWoolTask extends ResourceTask {
 
     private final HashSet<DyeColor> _colors;
     private final Item[] _wools;
+
+    // the deep dark pass asks for a biome per tracked wool, a second apart is plenty (DangerFilter does 2 s)
+    private static final int DEEP_DARK_EVERY = 20;
+    private int _deepDarkTicks;
+    private int _deepDarkKnown = -1;
 
     public CollectWoolTask(DyeColor[] colors, int count) {
         super(new ItemTarget(ItemHelper.WOOL, count));
@@ -53,6 +65,20 @@ public class CollectWoolTask extends ResourceTask {
     @Override
     protected void onResourceStart(AltoClef mod) {
         mod.getBlockTracker().trackBlock(ItemHelper.itemsToBlocks(_wools));
+        _deepDarkTicks = 0;
+        _deepDarkKnown = -1;
+    }
+
+    // lives here and not in DangerFilter so plain alto's wool gets it too, and this task is the only one tracking wool
+    private static void banDeepDarkWool(AltoClef mod, List<BlockPos> known) {
+        ClientLevel level = mod.getWorld();
+        // only the colours we track get looked at, but the block check is still "is this wool at all" (a stale entry that
+        // got recoloured is still city carpet)
+        Set<Block> wool = new HashSet<>(Arrays.asList(ItemHelper.itemsToBlocks(ItemHelper.WOOL)));
+        DeepDarkRules.banPass(mod.getBans(), WorldHelper.getCurrentDimension(), known,
+                pos -> mod.getChunkTracker().isChunkLoaded(pos),
+                pos -> wool.contains(level.getBlockState(pos).getBlock()),
+                pos -> level.getBiome(pos).is(Biomes.DEEP_DARK));
     }
 
     @Override
@@ -64,7 +90,17 @@ public class CollectWoolTask extends ResourceTask {
 
         // If we find a wool block, break it.
         Block[] woolBlocks = ItemHelper.itemsToBlocks(_wools);
-        if (mod.getBlockTracker().anyFound(woolBlocks)) {
+        BlockTracker tracker = mod.getBlockTracker();
+        List<BlockPos> known = tracker.getKnownLocations(woolBlocks);
+        // also the tick a scan brings new wool in, so the mine task never gets a city block to walk at for a second
+        if (_deepDarkTicks-- <= 0 || known.size() != _deepDarkKnown) {
+            _deepDarkTicks = DEEP_DARK_EVERY;
+            _deepDarkKnown = known.size();
+            banDeepDarkWool(mod, known);
+        }
+        // the plain anyFound counts banned blocks too (getNearest skips them, the cache keeps them), so an ancient city in
+        // range would park us in a mine task with nothing to mine instead of going for sheep
+        if (tracker.anyFound(p -> !tracker.unreachable(p), woolBlocks)) {
             return new MineAndCollectTask(new ItemTarget(_wools), woolBlocks, MiningRequirement.HAND);
         }
 

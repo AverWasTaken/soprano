@@ -36,6 +36,7 @@ public final class BanPolicy {
     public static final String GRAVEL_REASON = "gravel detour gave up on it";
     public static final String GRAVEL_SCOPE = "the gravel detour";
     public static final String OUTPOST_REASON = "near a pillager outpost";
+    public static final String DEEP_DARK_REASON = "in the deep dark (ancient city / warden)";
 
     private BanPolicy() {
     }
@@ -127,6 +128,11 @@ public final class BanPolicy {
     // (liftOutpost). one line for the pass, the already banned ones don't count
     public static int outpost(Bans bans, Iterable<Key> blocks, double x, double z) {
         return bans.banAll(blocks, OUTPOST_REASON, Bans.RUN, "logs/wool near the pillager outpost at " + (int) x + " " + (int) z);
+    }
+
+    // DeepDarkRules: wool in the deep dark, one pass, one line. never lifted, the warden is not going anywhere
+    public static int deepDarkWool(Bans bans, Iterable<Key> blocks, long x, long z) {
+        return bans.banAll(blocks, DEEP_DARK_REASON, Bans.RUN, "wool in the deep dark near " + x + " " + z);
     }
 
     // an outpost at (x, z) went quiet. its bans go unless `stillCovered` says another live outpost reaches the block.
