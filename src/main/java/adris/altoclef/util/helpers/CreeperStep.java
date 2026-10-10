@@ -11,8 +11,10 @@ public final class CreeperStep {
 
     // a lit creeper this close gets stepped away from. the fuse starts at 3, so this fires on the tick it lights
     public static final double TRIGGER = 4;
-    // where the step walks to. the blast reaches about 6 (power 3, twice that is the falloff radius), past it is a scratch
-    public static final double SAFE = 6;
+    // where the step walks to. the blast reaches about 6 (power 3, twice that is the falloff radius), past it is a scratch,
+    // and a creeper that gets more than 7 away stops swelling, so 8 clears both with a block to spare for the search's
+    // idea of where the creeper is being a tick old
+    public static final double SAFE = 8;
     // the path walking into a lit one: the next few nodes coming within this of it count like being within TRIGGER
     public static final double PATH_NEAR = 3;
     public static final int PATH_LOOKAHEAD = 6;
@@ -21,7 +23,8 @@ public final class CreeperStep {
     // the fuse is 1.5 s, so 2.5 s of standing about is plenty. one that is still lit by then gets left alone
     public static final long HOLD_CAP = 50;
     // no ground gained after this long while still inside TRIGGER is boxed in. a shield takes over then. a second, because
-    // the cancel waits for a safe moment and the search takes a few ticks too, and the fuse is 30 so the shield still makes it
+    // the cancel waits for a safe moment and the search takes a few ticks too, and the fuse is 30 so the shield still makes it.
+    // it only looks at where we are, so the raw sprint at the start of the step counts as ground gained like any other
     public static final long CORNER_TICKS = 20;
     public static final double CORNER_GAIN = 0.75;
     // ids we remember (logged once, capped once). creeper ids are per world, a small bag is plenty
