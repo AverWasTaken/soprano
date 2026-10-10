@@ -182,4 +182,50 @@ public class RecoverRulesTest {
         gate.reset();
         assertEquals(Verdict.WAIT, gate.update(100, 3));
     }
+
+    // ---- the far pile
+
+    @Test
+    public void theWalkIsPartOfTheTaskBudgetNotTakenOutOfThePileTime() {
+        // a pile next door is the old 90 s and a bit, a thousand blocks gets the whole walk on top
+        assertEquals(90, RecoverRules.budget(90, 0), 0);
+        assertEquals(90 + 1000 / RecoverRules.WALK_SPEED, RecoverRules.budget(90, 1000), 1e-9);
+        // slower than a sprint on purpose, caves and detours are in the number
+        assertTrue(RecoverRules.WALK_SPEED < 5.6);
+    }
+
+    @Test
+    public void theAllowanceDoesNotRunDownWhileWeWalkThere() {
+        double death = 1000;
+        RecoverRules.Allowance a = new RecoverRules.Allowance(death, 240);
+        // respawned a thousand blocks out, which at the walking speed is over five minutes before the pile is even loaded
+        double now = death + 5;
+        assertFalse(a.expired(now, 1000));
+        for (int blocks = 1000; blocks > RecoverRules.LOADED_RANGE; blocks -= 50) {
+            now += RecoverRules.walkSeconds(50);
+            assertFalse("at " + blocks + " blocks, " + (now - death) + " s after the death", a.expired(now, blocks));
+        }
+        assertTrue(now - death > 240);
+        // in range now: the 240 s start here
+        assertFalse(a.expired(now, RecoverRules.LOADED_RANGE));
+        assertFalse(a.expired(now + 240, 20));
+        assertTrue(a.expired(now + 240.5, 20));
+    }
+
+    @Test
+    public void aPileWeRespawnedNextToAgesFromTheDeath() {
+        RecoverRules.Allowance a = new RecoverRules.Allowance(1000, 240);
+        assertFalse(a.expired(1010, 60));
+        assertFalse(a.expired(1240, 60));
+        assertTrue(a.expired(1240.5, 60));
+    }
+
+    @Test
+    public void walkingOffAgainDoesNotRestartTheClock() {
+        RecoverRules.Allowance a = new RecoverRules.Allowance(1000, 240);
+        assertFalse(a.expired(1010, 10));
+        // wandered out of range for a while: the pile was loaded for the time it was, the clock keeps its start
+        assertFalse(a.expired(1100, 400));
+        assertTrue(a.expired(1300, 400));
+    }
 }

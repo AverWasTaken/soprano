@@ -94,13 +94,13 @@ public class GamerConfigsTest {
     @Test
     public void aCurrentFileKeepsItsChangedValues() throws IOException {
         write("{\"version\": " + GamerConfig.VERSION + ", \"targetEyes\": 16, \"floorEyes\": 13,"
-                + " \"nether\": {\"sweepSpacingChunks\": 5}, \"budgets\": {\"gather\": 3.5}, \"death\": {\"recoverBlocks\": 50}}");
+                + " \"nether\": {\"sweepSpacingChunks\": 5}, \"budgets\": {\"gather\": 3.5}, \"death\": {\"recoverReach\": 50}}");
         GamerConfig c = GamerConfigs.load();
         assertEquals(16, c.targetEyes);
         assertEquals(13, c.floorEyes);
         assertEquals(5, c.nether.sweepSpacingChunks);
         assertEquals(3.5, c.budgets.gather, 0);
-        assertEquals(50, c.death.recoverBlocks);
+        assertEquals(50, c.death.recoverReach);
         // what the file did not mention keeps the default, nested objects too
         assertEquals(new GamerConfig().nether.rodsBudgetMinutes, c.nether.rodsBudgetMinutes, 0);
         assertEquals(new GamerConfig().budgets.iron, c.budgets.iron, 0);
@@ -156,10 +156,19 @@ public class GamerConfigsTest {
     }
 
     @Test
+    public void aFileFromBeforeTheBiggerReachGetsTheBiggerReach() throws IOException {
+        // the old key is dead and ignored, so the default is what an old file ends up with
+        write("{\"version\": " + GamerConfig.VERSION + ", \"death\": {\"recoverBlocks\": 300, \"recoverSeconds\": 240, \"maxPerPhase\": 2}}");
+        GamerConfig c = GamerConfigs.load();
+        assertEquals(1000, c.death.recoverReach);
+        assertEquals(2, c.death.maxPerPhase);
+    }
+
+    @Test
     public void numbersThatWouldBreakARunAreClamped() throws IOException {
         write("{\"version\": " + GamerConfig.VERSION + ", \"maxAttempts\": 0, \"targetEyes\": 0, \"floorEyes\": 99,"
                 + " \"budgets\": {\"gather\": 0, \"nether\": -5, \"dragon\": 0,\"iron\": 30},"
-                + " \"death\": {\"maxPerPhase\": 0, \"maxTotal\": -1, \"recoverBlocks\": -3},"
+                + " \"death\": {\"maxPerPhase\": 0, \"maxTotal\": -1, \"recoverReach\": -3},"
                 + " \"end\": {\"attempts\": 0, \"beds\": -2},"
                 + " \"stronghold\": {\"maxThrows\": 0, \"maxEmptyThrows\": 0, \"sigmaDeg\": 0, \"spiralRadiusChunks\": 0},"
                 + " \"nether\": {\"maxCells\": 0, \"sweepSpacingChunks\": 0, \"waypointSeconds\": -1}}");
@@ -175,7 +184,7 @@ public class GamerConfigsTest {
         assertEquals(30, c.budgets.iron, 0);
         assertEquals(1, c.death.maxPerPhase);
         assertEquals(1, c.death.maxTotal);
-        assertEquals(0, c.death.recoverBlocks);
+        assertEquals(0, c.death.recoverReach);
         assertEquals(1, c.end.attempts);
         assertEquals(0, c.end.beds);
         assertEquals(1, c.stronghold.maxThrows);

@@ -25,6 +25,7 @@ import adris.altoclef.tasks.speedrun.gamer.phases.RoomPhase;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NetherRecoverTask;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NetherTripRules;
 import adris.altoclef.tasks.speedrun.gamer.tasks.RecoverItemsTask;
+import adris.altoclef.tasks.speedrun.gamer.tasks.RecoverRules;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.tasksystem.TaskChain;
 import adris.altoclef.trace.Trace;
@@ -117,6 +118,9 @@ public class GamerTask extends Task {
     private long deathGameTime;
     private NetherTripRules.Cause deathCause = NetherTripRules.Cause.OTHER;
     private RecoverItemsTask recover;
+    // the pile's age clock (starts when it can be loaded, not at the death) and what the bag held the last tick we were alive
+    private RecoverRules.Allowance allowance;
+    private DeathRules.Worth worth;
     // the walk back into the nether for a pile we left there, alive for as long as state.netherTrip is set
     private NetherRecoverTask netherTrip;
     // deaths on the books when this run was (re)started by hand, so the run wide cap only counts the new ones
@@ -832,9 +836,14 @@ public class GamerTask extends Task {
             lastPlayer = player;
             deadSeen = false;
         }
-        if (!deadSeen && (player.isDeadOrDying() || Minecraft.getInstance().screen instanceof DeathScreen)) {
+        boolean dying = player.isDeadOrDying() || Minecraft.getInstance().screen instanceof DeathScreen;
+        if (!deadSeen && dying) {
             deadSeen = true;
             adopt(DeathStash.snapshot(player));
+        }
+        if (!dying) {
+            // after the swap above on purpose: the respawn already read the last living bag, this one is the new body's
+            worth = DeathRules.worth(facts);
         }
     }
 
@@ -869,12 +878,14 @@ public class GamerTask extends Task {
     private void onRespawn(DeathRules.Source seenBy) {
         // first thing, before this method logs and the lead up scrolls off the end of the buffer
         Trace.dump("respawn");
-        // the same two numbers shouldRecover() decides on, and who told us about it
-        double awayX = facts.x() - deathPos.getX();
-        double awayZ = facts.z() - deathPos.getZ();
+        // the same number the recovery decides on, and who told us about it
+        double blocks = flatBlocksTo(deathPos);
         Debug.logInternal("respawned after dying in " + deathDimension + " at " + deathPos.toShortString() + ", now in " + facts.dimension()
-                + " " + Math.round(Math.sqrt(awayX * awayX + awayZ * awayZ)) + " blocks away (recovery goes up to " + cfg.death.recoverBlocks
+                + " " + Math.round(blocks) + " blocks away (recovery goes up to " + cfg.death.recoverReach
                 + ", seen by " + seenBy.name().toLowerCase(Locale.ROOT).replace('_', ' ') + ")");
+        // both read before this death goes in the book and before the old recovery is dropped
+        int killedHere = DeathRules.killedHere(state.deaths, deathDimension, deathPos.getX(), deathPos.getZ());
+        boolean wasRecovering = recover != null;
         RunState.Death death = new RunState.Death();
         death.dimension = deathDimension.name();
         death.x = deathPos.getX();
@@ -902,11 +913,23 @@ public class GamerTask extends Task {
             machine.stuck("died " + (state.deaths.size() - deathsAtStart) + " times since the run was started");
             return;
         }
-        if (shouldRecover()) {
-            host.say("Died, going back for our stuff");
-            recover = new RecoverItemsTask(deathPos, RECOVER_BUDGET_SECONDS);
-        } else if (!wasOnTrip) {
-            maybeGoBackToTheNether();
+        if (wasRecovering) {
+            // the older pile is not worth another life either, and the new one is judged below on its own
+            host.say("death: died on the way to the last pile, giving that one up");
+        }
+        String why = DeathRules.refuse(facts.dimension() == deathDimension, blocks, cfg.death.recoverReach, worth,
+                cfg.overworld.refillStartFoodUnits, killedHere);
+        if (why == null) {
+            host.say(DeathRules.going(blocks, worth));
+            recover = new RecoverItemsTask(deathPos, RecoverRules.budget(RECOVER_BUDGET_SECONDS, blocks));
+            allowance = new RecoverRules.Allowance(deathGameTime / 20.0, cfg.death.recoverSeconds);
+        } else if (NetherTripRules.applies(deathDimension, facts.dimension())) {
+            // the nether has its own trip and its own words
+            if (!wasOnTrip) {
+                maybeGoBackToTheNether();
+            }
+        } else {
+            host.say(DeathRules.leaving(why));
         }
     }
 
@@ -932,21 +955,28 @@ public class GamerTask extends Task {
         host.say("nether death at " + where + ", going back for it");
     }
 
-    private boolean shouldRecover() {
-        if (facts.dimension() != deathDimension) {
-            return false;
-        }
-        double dx = facts.x() - deathPos.getX();
-        double dz = facts.z() - deathPos.getZ();
-        return dx * dx + dz * dz <= (double) cfg.death.recoverBlocks * cfg.death.recoverBlocks;
+    // flat, height does not make a walk longer
+    private double flatBlocksTo(BlockPos at) {
+        double dx = facts.x() - at.getX();
+        double dz = facts.z() - at.getZ();
+        return Math.sqrt(dx * dx + dz * dz);
     }
 
     private boolean recoverStillWanted(double now) {
         if (recover == null) {
             return false;
         }
-        boolean tooOld = now - deathGameTime / 20.0 > cfg.death.recoverSeconds;
-        if (tooOld || facts.dimension() != deathDimension || recover.isFinished(mod)) {
+        // every way out says so once, the task's own gave-up lines cover the rest of what it can decide
+        String over = null;
+        if (facts.dimension() != deathDimension) {
+            over = "we left the dimension";
+        } else if (recover.isFinished(mod)) {
+            over = "done with it";
+        } else if (allowance == null || allowance.expired(now, flatBlocksTo(deathPos))) {
+            over = "it has been lying there too long";
+        }
+        if (over != null) {
+            host.say("death: no longer going for the pile, " + over);
             recover = null;
             return false;
         }

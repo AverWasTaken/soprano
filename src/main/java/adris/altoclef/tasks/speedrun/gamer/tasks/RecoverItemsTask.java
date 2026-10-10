@@ -69,6 +69,7 @@ public class RecoverItemsTask extends Task {
     protected Task onTick(AltoClef mod) {
         if (overTimeOnTask(_budgetSeconds)) {
             setDebugState("Out of time.", "Giving up on our stuff");
+            Debug.logMessage("death: out of time on our stuff, leaving it.");
             _finished = true;
             return null;
         }
@@ -107,6 +108,8 @@ public class RecoverItemsTask extends Task {
             _chase.idle();
             setDebugState("Nothing left here.", "Looking for our stuff");
             if (_empty.elapsed()) {
+                // despawned, burned, or somebody else got it: not our business which, but somebody should say
+                Debug.logMessage("death: nothing at the pile, moving on.");
                 _finished = true;
             }
             return null;

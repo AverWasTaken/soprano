@@ -118,6 +118,46 @@ public final class RecoverRules {
         }
     }
 
+    // the despawn timer only runs while the pile's chunk is loaded, and a pile we respawned far from is not: it keeps its age
+    // until we are back in range. the server loads about this far around us, so this is where the allowance starts
+    public static final double LOADED_RANGE = 128;
+    // blocks per second we count on for the walk back. a sprint is about 5.6 on flat ground, caves and detours eat the rest
+    public static final double WALK_SPEED = 3;
+
+    public static double walkSeconds(double blocks) {
+        return blocks / WALK_SPEED;
+    }
+
+    // the task's time on task budget: the 90 s that were always there for the pile itself, plus the walk to it. before this the
+    // walk came out of the same 90 s and a pile past 270 blocks could never be reached
+    public static double budget(double pileSeconds, double blocks) {
+        return pileSeconds + walkSeconds(blocks);
+    }
+
+    // how long GamerTask keeps the recovery alive for the pile's age. it starts when the pile can be loaded: at the death when
+    // we respawned inside LOADED_RANGE (the items age from the death, same as it always was), otherwise the first time we come
+    // within it. the walk there is not in it, a long one used to spend the whole allowance before it got anywhere
+    public static final class Allowance {
+        private final double deathSeconds;
+        private final double seconds;
+        private double since = Double.NaN;
+        private boolean asked;
+
+        public Allowance(double deathSeconds, double seconds) {
+            this.deathSeconds = deathSeconds;
+            this.seconds = seconds;
+        }
+
+        public boolean expired(double nowSeconds, double blocksToPile) {
+            boolean first = !asked;
+            asked = true;
+            if (Double.isNaN(since) && blocksToPile <= LOADED_RANGE) {
+                since = first ? deathSeconds : nowSeconds;
+            }
+            return !Double.isNaN(since) && nowSeconds - since > seconds;
+        }
+    }
+
     // remembers since when the pile has been crowded. a quiet moment resets the clock, the 30 seconds are 30 in a row
     public static final class Gate {
         private double crowdedSince = Double.NaN;

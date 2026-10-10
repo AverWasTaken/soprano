@@ -32,9 +32,12 @@ public class GamerConfig {
     public EndConfig end = new EndConfig();
 
     public static class Death {
-        // go back for our stuff when we died this close in the dimension we respawned in
-        public int recoverBlocks = 300;
-        // items despawn after 5 minutes, leave margin
+        // go back for our stuff when we died this close (flat distance) in the dimension we respawned in, and the pile was worth it
+        // (DeathRules.refuse). far is fine: a pile in a chunk nobody has loaded does not age. this used to be recoverBlocks (300),
+        // a saved file keeps its numbers, so a new name is how the new default reaches the old files
+        public int recoverReach = 1000;
+        // items despawn after 5 minutes, leave margin. counted from when the pile can be loaded (RecoverRules.Allowance), the
+        // walk there is not part of it
         public int recoverSeconds = 240;
         public int maxPerPhase = 3;
         // deaths since the run was (re)started by hand, over every phase together

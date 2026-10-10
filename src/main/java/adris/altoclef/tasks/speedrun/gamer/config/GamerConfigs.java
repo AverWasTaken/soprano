@@ -147,7 +147,7 @@ public final class GamerConfigs {
         c.floorEyes = floor;
         c.death.maxPerPhase = Math.max(1, c.death.maxPerPhase);
         c.death.maxTotal = Math.max(1, c.death.maxTotal);
-        c.death.recoverBlocks = Math.max(0, c.death.recoverBlocks);
+        c.death.recoverReach = Math.max(0, c.death.recoverReach);
         c.death.recoverSeconds = Math.max(0, c.death.recoverSeconds);
         c.death.netherTripSeconds = Math.max(0, c.death.netherTripSeconds);
         c.death.netherBlocks = Math.max(0, c.death.netherBlocks);
