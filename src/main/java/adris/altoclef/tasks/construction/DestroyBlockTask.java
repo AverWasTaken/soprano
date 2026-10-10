@@ -91,6 +91,11 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
     private boolean _handSaid;
     // said once that this block is not worth the time, and banned it
     private boolean _slowSaid;
+    // when it was refused and when we last complained about still being asked, for the warning in refuseSlowBreak
+    private int _refusedAt;
+    private int _stillAskedAt = Integer.MIN_VALUE;
+    private static final int STILL_ASKED_TICKS = 100;
+    private static final int STILL_ASKED_REPEAT_TICKS = 600;
     // the swinging distance goal didn't work out here, stand next to it
     private boolean closeIn;
     // cells we stood in beside the block without a ray to it, so closing in tries somewhere else each time
@@ -496,13 +501,21 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
 
     private Task refuseSlowBreak(AltoClef mod, BlockState there) {
         String time = BreakRules.describe(WorldHelper.bagOf(mod), there);
+        int now = WorldHelper.getTicks();
         if (!_slowSaid) {
             _slowSaid = true;
+            _refusedAt = now;
             Debug.logMessage("not breaking " + _what + " at " + _pos.toShortString() + ", " + time);
             mod.getClientBaritone().getPathingBehavior().forceCancel();
             mod.getBlockTracker().requestBlockUnreachable(_pos, 0, "takes " + time + " to break");
         }
-        setDebugState("Not breaking " + _what + ", " + time, "Skipping a block that takes too long");
+        // idling after the ban is a way to stand still, so a parent that never reads the ban gets told about once in a
+        // while. (Task keeps its parent private, so the line can't name it)
+        if (now - _refusedAt >= STILL_ASKED_TICKS && (_stillAskedAt == Integer.MIN_VALUE || now - _stillAskedAt >= STILL_ASKED_REPEAT_TICKS)) {
+            _stillAskedAt = now;
+            Debug.logWarning("destroy: still asked for " + _what + " at " + _pos.toShortString() + " " + (now - _refusedAt) + "t after refusing it");
+        }
+        setDebugState("Refusing " + _what + " at " + _pos.toShortString() + ", too slow (" + time + ")", "Skipping a block that takes too long");
         isMining = false;
         mod.getClientBaritone().getInputOverrideHandler().setInputForceState(Input.CLICK_LEFT, false);
         stopBackingUp(mod);
