@@ -207,8 +207,11 @@ public final class WorkbenchRules {
             return Call.FORGET_GONE;
         }
         // a station with a job in it is not forgotten by distance: the job is what brings us back, and the visit takes the station.
-        // holdsStuff counts too, the state is last tick's (and a relog rebuilds every bench as STANDING)
-        if (in.distance() > FORGET_DISTANCE && b.state != Bench.State.BUSY && !in.holdsStuff() && b.anchor == null && b.comingBack == null) {
+        // holdsStuff counts too, the state is last tick's (and a relog rebuilds every bench as STANDING). so does being in use (a
+        // screen open, a craft or smelt of its kind in the tree, a load in flight): it is decided again when that ends, and a job
+        // that went stale is dropped on its own clock (FurnacePlan.STALE_TICKS), so nothing holds a bench for ever
+        if (in.distance() > FORGET_DISTANCE && b.state != Bench.State.BUSY && !in.holdsStuff() && !in.jobHere() && in.idle()
+                && b.anchor == null && b.comingBack == null) {
             return Call.FORGET_TOO_FAR;
         }
         if (pickingUp) {
@@ -254,8 +257,9 @@ public final class WorkbenchRules {
             b.leftSinceFail = false;
         }
         // out past the far line for the usual five seconds with the wood to craft another: not worth the walk back, whatever the plan
-        // wants (the planner no longer counts it as held out there, so it asks for the planks)
-        if (b.kind == Kind.TABLE && in.distance() > FAR_TABLE_DISTANCE && in.canRecraft() && outsideLongEnough(b, now)) {
+        // wants (the planner no longer counts it as held out there, so it asks for the planks). not while a craft is using it, that
+        // craft may be walking to this very table (the task keeps its target out to 48 + HOLD), it goes when the craft ends
+        if (b.kind == Kind.TABLE && in.distance() > FAR_TABLE_DISTANCE && in.canRecraft() && in.idle() && outsideLongEnough(b, now)) {
             return Call.FORGET_FAR_TABLE;
         }
         // done with it and the next job is a walk away from it: the plan still wants one of these but not this one, so it comes down

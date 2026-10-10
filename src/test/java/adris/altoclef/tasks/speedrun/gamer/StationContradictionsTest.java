@@ -258,19 +258,30 @@ public class StationContradictionsTest {
         assertEquals(3, adris.altoclef.tasks.container.SmeltSplit.loads(37, 0, 0, 38 - owed));
     }
 
-    // (E) WorkbenchRules.decide forgets a station by distance even when something is using it. 130 blocks away a standing furnace with
-    // its screen open (idle = false) is dropped, and a table 50 away with the wood to recraft is dropped once it has been outside for 10 s (the rule wants 5).
-    // only a station holding our items is spared; "in use" alone is not a reason
+    // (E) FIXED. WorkbenchRules.decide used to forget a station by distance even when something was using it: 130 blocks away a standing
+    // furnace with its screen open (idle = false) was dropped, and so was a table 50 away with the wood to recraft once it had been
+    // outside for 5 s, while the craft using it was walking to it (the task keeps its target out to 48 + HOLD). now neither goes
+    // while it is in use, and both are decided again when the use ends. a job that went stale is dropped on its own clock
+    // (FurnacePlan.dropStale), so this holds nothing for ever
     @Test
-    public void decideForgetsAStationByDistanceEvenWhileItIsInUse() {
+    public void decideDoesNotForgetAStationByDistanceWhileItIsInUse() {
         Bench far = new Bench(Kind.FURNACE, pos(130, 64, 0), DIM, 100);
         WorkbenchRules.Look inUse = new WorkbenchRules.Look(NOW, 130, true, false, false, false, false, true, true, 600);
-        assertEquals(WorkbenchRules.Call.FORGET_TOO_FAR, WorkbenchRules.decide(far, inUse));
+        assertEquals(WorkbenchRules.Call.KEEP, WorkbenchRules.decide(far, inUse));
+        // the use ends (idle): gone
+        WorkbenchRules.Look idle = new WorkbenchRules.Look(NOW, 130, true, false, true, false, false, true, true, 600);
+        assertEquals(WorkbenchRules.Call.FORGET_TOO_FAR, WorkbenchRules.decide(far, idle));
+        // a job recorded at it counts as in use as well, even if the look says nothing is in it
+        Bench jobbed = new Bench(Kind.FURNACE, pos(130, 64, 0), DIM, 100);
+        WorkbenchRules.Look job = new WorkbenchRules.Look(NOW, 130, true, false, true, false, true, true, true, 600);
+        assertTrue(WorkbenchRules.decide(jobbed, job) != WorkbenchRules.Call.FORGET_TOO_FAR);
 
         Bench table = new Bench(Kind.TABLE, pos(50, 64, 0), DIM, 100);
         table.outsideSince = NOW - 200;
         WorkbenchRules.Look busyTable = new WorkbenchRules.Look(NOW, 50, true, false, false, false, false, true, true, 600, true);
-        assertEquals(WorkbenchRules.Call.FORGET_FAR_TABLE, WorkbenchRules.decide(table, busyTable));
+        assertEquals(WorkbenchRules.Call.WAIT, WorkbenchRules.decide(table, busyTable));
+        WorkbenchRules.Look idleTable = new WorkbenchRules.Look(NOW, 50, true, false, true, false, false, true, true, 600, true);
+        assertEquals(WorkbenchRules.Call.FORGET_FAR_TABLE, WorkbenchRules.decide(table, idleTable));
     }
 
     // (F) FurnaceWatch asks two dimension blind questions where Workbenches asks them with the dimension: a job (or a placed furnace) at

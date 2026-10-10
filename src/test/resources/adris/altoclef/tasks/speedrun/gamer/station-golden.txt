@@ -44,13 +44,13 @@
 43|7c2d877a018cbe79|flags=TFT/FFF,TFT/FFF,TFT/FFF,;flags2=TFT;walks=FTTTTT0/0-1-1-1 TFTFFFT0/1-12-1 FTTFFFT0/1-111 F;wb=FFT;standing=FTTFFF,TFFFFF,TFFFFF,;choice=MAKE:null|MAKE:null| OURS:b2|OURS:b2| OURS:b1|OURS:b1| ;soon=TTTTnullnull FFFFnullnull FFFFnullnull ;decide=tFFF-FF-F-CONTINUE/we have been outside 21 blocks of it for 5 s/PICKING_UP/5950/-1/TFF,sFFTrFF-F-PICK_UP/nothing in the next 4 needs wants the smoker/STANDING/5960/-1/TFF,fFFTrFF-T-PICK_UP/nothing in the next 4 needs wants the furnace/STANDING/5885/-1/TFF,;mayEnd=F/0;portal=FTFFFTFFFTFFFFFF;live=F;gather=[log:5,stone_pickaxe:2,stone_axe:1,furnace:1,];plan=[stone_axe:1,iron_ingot:40,iron_pickaxe:1,iron_axe:1,bucket:2,flint_and_steel:1,shield:1,shears:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,];cook=-;stationN=SMOKER;stationY=SMOKER;feasible=false
 44|0f8c8aa3706cbf3e|flags=TFF/F--,TFF/F--,TFF/F--,;flags2=TFF;walks=FTTFTT1/111-1 FFFFFFF0/0-1-1-1 FFFFFFF0/0-1-1-1 F;wb=FFF;standing=FFFFFF,TFFFFF,;choice=OURS:b1|OURS:b1| BAG:null|BAG:null| MAKE:null|MAKE:null| ;soon=TTTTnullnull FFFFnullnull FFFFnullnull ;decide=tFFTrFF-F-CONTINUE/we have been outside 21 blocks of it for 5 s/PICKING_UP/-1/-1/TFF,tTFF-FF-F-KEEP/we have been outside 21 blocks of it for 5 s/STANDING/-1/-1/TFF,;mayEnd=F/0;portal=FTFFFTFFFTFFFFFF;live=F;gather=[log:2,wooden_axe:1,log:7,stone_pickaxe:2,stone_axe:1,food:130,];plan=[food:130,stone_pickaxe:1,stone_axe:1,iron_pickaxe:1,iron_ingot:40,iron_axe:1,bucket:2,flint_and_steel:1,shield:1,shears:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,food:100,];cook=-;stationN=NONE;stationY=NONE;feasible=false
 45|2a1ce052512cea81|flags=FFF/F-F,FFF/F-F,FFF/F-F,;flags2=FFF;walks=FFFFFF0/0-1-1-1 FFFFFFF0/0-1-1-1 FFTFFFT0/0-1-1-1 T;wb=FFF;standing=FFFFFF,FTTFFF,;choice=WORLD:w1|WORLD:w1| NONE:null|NONE:null| BAG:null|BAG:null| ;soon=TTFFnullnull FFFFnullnull TTTTto cookto cook ;decide=sFFTrFF-F-KEEP/we have been outside 21 blocks of it for 5 s/PICKING_UP/5810/5997/TFF,sFFTrFF-T-CONTINUE/we have been outside 21 blocks of it for 5 s/PICKING_UP/5935/-1/TFF,;mayEnd=F/0;portal=FTFFFTFFFTFFFFFF;live=F;gather=[wooden_axe:1,log:5,stone_pickaxe:2,stone_axe:1,];plan=[log:2,stone_pickaxe:1,stone_axe:1,iron_ingot:40,iron_pickaxe:1,iron_axe:1,bucket:2,flint_and_steel:1,shield:1,shears:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,food:100,];cook=-;stationN=NONE;stationY=SMOKER;feasible=false
-46|157f4e65bce7765a|flags=FTF/FTF,FFF/FFF,FFF/FFF,;flags2=FFF;walks=FFFFFF0/0-1-1-1 FFTFFFT0/2-11-1 FFTFFFT0/1-10-1 F;wb=FFF;standing=TFFFFF,TFFFFF,TFFFFF,TFFFFF,;choice=BAG:null|BAG:null| WORLD:w1|WORLD:w1| OURS:b0|OURS:b0| ;soon=TTTTnullnull FFFFnullnull FFFFnullnull ;decide=sFFTrFF-T-PICK_UP/nothing in the next 4 needs wants the smoker/STANDING/5974/-1/FFF,fFFTrFF-F-FORGET_GONE/nothing in the next 4 needs wants the furnace/STANDING/-1/-1/FFF,fFFTrFF-T-FORGET_TOO_FAR/nothing in the next 4 needs wants the furnace/STANDING/5890/-1/FFF,fFFTrFF-F-PICK_UP/nothing in the next 4 needs wants the furnace/STANDING/5878/-1/FFF,;mayEnd=F/1;portal=FTFFFTFFFTFFFFFF;live=F;gather=[cobblestone:19,stone_pickaxe:2,stone_axe:1,furnace:1,];plan=[stone_axe:1,iron_pickaxe:1,shears:1,iron_ingot:40,iron_axe:1,bucket:2,flint_and_steel:1,shield:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,stone_pickaxe:1,food:100,];cook=-;stationN=NONE;stationY=NONE;feasible=false
+46|8e29d603e4e33947|flags=FTF/FTF,FFF/FFF,FFF/FFF,;flags2=FFF;walks=FFFFFF0/0-1-1-1 FFTFFFT0/2-11-1 FFTFFFT0/1-10-1 F;wb=FFF;standing=TFFFFF,TFFFFF,TFFFFF,TFFFFF,;choice=BAG:null|BAG:null| WORLD:w1|WORLD:w1| OURS:b0|OURS:b0| ;soon=TTTTnullnull FFFFnullnull FFFFnullnull ;decide=sFFTrFF-T-PICK_UP/nothing in the next 4 needs wants the smoker/STANDING/5974/-1/FFF,fFFTrFF-F-FORGET_GONE/nothing in the next 4 needs wants the furnace/STANDING/-1/-1/FFF,fFFTrFF-T-WAIT/nothing in the next 4 needs wants the furnace/STANDING/5890/-1/FFF,fFFTrFF-F-PICK_UP/nothing in the next 4 needs wants the furnace/STANDING/5878/-1/FFF,;mayEnd=F/1;portal=FTFFFTFFFTFFFFFF;live=F;gather=[cobblestone:19,stone_pickaxe:2,stone_axe:1,furnace:1,];plan=[stone_axe:1,iron_pickaxe:1,shears:1,iron_ingot:40,iron_axe:1,bucket:2,flint_and_steel:1,shield:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,stone_pickaxe:1,food:100,];cook=-;stationN=NONE;stationY=NONE;feasible=false
 47|115a0f5508cd9cc5|flags=FFF/T--,FFF/T--,FFF/T--,;flags2=FFF;walks=FTFFFT0/0-1-1-1 FFFFFFF0/0-1-1-1 FFFFFFF0/0-1-1-1 F;wb=FFF;standing=FFFFFF,;choice=BAG:null|BAG:null| WORLD:w0|WORLD:w0| MAKE:null|MAKE:null| ;soon=TTTTnullnull FFFFnullnull FFFFnullnull ;decide=tFFTrFFrT-CONTINUE/we have been outside 21 blocks of it for 5 s/PICKING_UP/5959/-1/FFF,;mayEnd=F/0;portal=FTFFFTFFFTFFFFFF;live=F;gather=[log:6,cobblestone:19,stone_pickaxe:2,stone_axe:1,furnace:1,food:130,];plan=[food:130,log:5,stone_pickaxe:1,stone_axe:1,iron_ingot:40,iron_pickaxe:1,iron_axe:1,bucket:2,flint_and_steel:1,shield:1,shears:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,food:100,];cook=-;stationN=NONE;stationY=NONE;feasible=false
 48|edf05b1c1b5d7f12|flags=FFF/FF-,FFF/FF-,FFF/FF-,;flags2=FFF;walks=FFFFFF0/0-1-1-1 FFTFFFT0/1-11-1 FFFFFFF0/0-1-1-1 T;wb=FFF;standing=FTTFFF,TFFFFF,;choice=WORLD:w0|WORLD:w0| BAG:null|BAG:null| NONE:null|NONE:null| ;soon=FFFFnullnull FFFFnullnull FFFFnullnull ;decide=sFFTrFF-T-KEEP/nothing in the next 4 needs wants the smoker/PICKING_UP/-1/6000/FFF,fFFTrFF-F-KEEP/nothing in the next 4 needs wants the furnace/STANDING/5833/-1/FFF,;mayEnd=F/0;portal=FTFFFTFFFTFFFFFF;live=F;gather=[wooden_axe:1,log:5,stone_pickaxe:2,stone_axe:1,];plan=[log:2,stone_pickaxe:1,stone_axe:1,iron_ingot:40,iron_pickaxe:1,iron_axe:1,bucket:2,flint_and_steel:1,shield:1,shears:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,];cook=-;stationN=NONE;stationY=NONE;feasible=false
 49|fc3cb41525c73756|flags=FFF/T--,FFF/T--,FFF/T--,;flags2=FFF;walks=FTFFFF0/1-11-1 FFFFFFF0/0-1-1-1 FFFFFFF0/0-1-1-1 F;wb=FFF;standing=FFFTTT,TFFFFF,;choice=MAKE:null|MAKE:null| WORLD:w0|WORLD:w0| BAG:null|BAG:null| ;soon=FFFFnullnull FFFFnullnull FFFFnullnull ;decide=sFFF-FF-F-ELSEWHERE/nothing in the next 4 needs wants the smoker/BUSY/5844/5959/FFT,tFFTrFFrT-FORGET_GONE/nothing in the next 4 needs wants the table/STANDING/5857/-1/TFF,;mayEnd=F/0;portal=FTFFFTFFFTFFFFFF;live=F;gather=[log:7,cobblestone:19,stone_pickaxe:2,stone_axe:1,furnace:1,];plan=[log:6,stone_pickaxe:1,stone_axe:1,iron_ingot:40,iron_pickaxe:1,iron_axe:1,bucket:2,flint_and_steel:1,shield:1,shears:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,food:100,];cook=-;stationN=NONE;stationY=SMOKER;feasible=false
 50|5f0cdd4be49c6189|flags=FFT/F-T,FFT/F-T,FFT/F-T,;flags2=FFT;walks=FFFFFF0/0-1-1-1 FFFFFFF0/0-1-1-1 FFTTFTT1/2222 F;wb=FFF;standing=TFFFTT,TFFFTT,TFFFTT,;choice=WORLD:w0|WORLD:w0| WORLD:w0|WORLD:w0| OURS:b0|OURS:b0| ;soon=TTTTnullnull FFFFnullnull FFFFnullnull ;decide=sFFTrFF-T-BUSY/nothing in the next 4 needs wants the smoker/BUSY/6000/-1/TFF,sFFTrFFrT-FORGET_GONE/nothing in the next 4 needs wants the smoker/STANDING/5940/-1/TFF,sFFF-FF-F-BUSY/nothing in the next 4 needs wants the smoker/BUSY/-1/-1/TFF,;mayEnd=F/0;portal=FTFFFTFFFTFFFFFF;live=F;gather=[cobblestone:16,stone_pickaxe:2,stone_axe:1,furnace:1,food:130,];plan=[stone_axe:1,food:130,iron_ingot:40,iron_pickaxe:1,iron_axe:1,bucket:2,flint_and_steel:1,shield:1,shears:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,food:100,cook_in_smoker:3,];cook=cook_in_smoker;stationN=SMOKER;stationY=SMOKER;feasible=true
 51|e4afd748d49bd73a|flags=FFF/T--,FFF/T--,FFF/T--,;flags2=FFF;walks=FTFFFF0/0-1-1-1 FFFFFFF0/0-1-1-1 FFFFFFF0/0-1-1-1 F;wb=FFF;standing=FFFFFF,TFFFFF,FFFFTT,;choice=OURS:b1|OURS:b1| MAKE:null|MAKE:null| MAKE:null|MAKE:null| ;soon=FFFFnullnull FFFFnullnull FFFFnullnull ;decide=sFFF-FF-F-FORGET_LEFT_DIMENSION/nothing in the next 4 needs wants the smoker/STANDING/5970/5975/FFF,tFFTrFF-T-WAIT/nothing in the next 4 needs wants the table/STANDING/6000/-1/TFF,fFFTrFF-F-ELSEWHERE/nothing in the next 4 needs wants the furnace/BUSY/5812/6000/TFF,;mayEnd=F/0;portal=FTFFFTFFFTFFFFFF;live=F;gather=[log:20,cobblestone:19,stone_pickaxe:2,stone_axe:1,furnace:1,food:130,];plan=[food:130,stone_pickaxe:1,stone_axe:1,iron_ingot:40,iron_pickaxe:1,iron_axe:1,bucket:2,flint_and_steel:1,shield:1,shears:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,food:100,];cook=-;stationN=NONE;stationY=NONE;feasible=false
-52|d35496af766c4d83|flags=FFT/T-T,FFT/T-T,FFT/T-T,;flags2=FFT;walks=FTFFFT0/1-11-1 FFFFFFF0/0-1-1-1 FFTTTTT1/122-1 F;wb=FFF;standing=FFFFTT,TFFFFF,TFFFTT,;choice=BAG:null|BAG:null| BAG:null|BAG:null| OURS:b2|OURS:b2| ;soon=TTTTnullnull FFFFnullnull FFFFnullnull ;decide=sFFTrFF-T-CONTINUE/nothing in the next 4 needs wants the smoker/PICKING_UP/-1/-1/TFF,tFFTrFF-T-FORGET_FAR_TABLE/we have been outside 21 blocks of it for 5 s/STANDING/5868/-1/FFF,sFFF-FF-F-BUSY/nothing in the next 4 needs wants the smoker/BUSY/-1/-1/FFF,;mayEnd=F/0;portal=FTFFFTFFFTFFFFFF;live=F;gather=[log:5,stone_pickaxe:2,stone_axe:1,food:130,];plan=[food:130,stone_pickaxe:1,stone_axe:1,iron_pickaxe:1,shears:1,iron_ingot:40,iron_axe:1,bucket:2,flint_and_steel:1,shield:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,food:100,cook_in_smoker:3,];cook=cook_in_smoker;stationN=SMOKER;stationY=SMOKER;feasible=true
+52|8c5c0b81fd4c1c3b|flags=FFT/T-T,FFT/T-T,FFT/T-T,;flags2=FFT;walks=FTFFFT0/1-11-1 FFFFFFF0/0-1-1-1 FFTTTTT1/122-1 F;wb=FFF;standing=FFFFTT,TFFFFF,TFFFTT,;choice=BAG:null|BAG:null| BAG:null|BAG:null| OURS:b2|OURS:b2| ;soon=TTTTnullnull FFFFnullnull FFFFnullnull ;decide=sFFTrFF-T-CONTINUE/nothing in the next 4 needs wants the smoker/PICKING_UP/-1/-1/TFF,tFFTrFF-T-WAIT/we have been outside 21 blocks of it for 5 s/STANDING/5868/-1/FFF,sFFF-FF-F-BUSY/nothing in the next 4 needs wants the smoker/BUSY/-1/-1/FFF,;mayEnd=F/0;portal=FTFFFTFFFTFFFFFF;live=F;gather=[log:5,stone_pickaxe:2,stone_axe:1,food:130,];plan=[food:130,stone_pickaxe:1,stone_axe:1,iron_pickaxe:1,shears:1,iron_ingot:40,iron_axe:1,bucket:2,flint_and_steel:1,shield:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,food:100,cook_in_smoker:3,];cook=cook_in_smoker;stationN=SMOKER;stationY=SMOKER;feasible=true
 53|f22ceb19fd6b9056|flags=FFF/F--,FFF/F--,FFF/F--,;flags2=FFF;walks=FFFFFF0/0-1-1-1 FFFFFFF0/0-1-1-1 FFFFFFF0/0-1-1-1 F;wb=FFF;standing=;choice=WORLD:w0|WORLD:w0| WORLD:w0|WORLD:w0| MAKE:null|MAKE:null| ;soon=TTTTnullnull FFFFnullnull TTTTnullnull ;decide=;mayEnd=T/0;portal=FTFFFTFFFTFFFFFF;live=T;gather=[log:6,cobblestone:19,stone_pickaxe:2,stone_axe:1,furnace:1,];plan=[stone_pickaxe:1,stone_axe:1,iron_pickaxe:1,shears:1,iron_ingot:40,iron_axe:1,bucket:2,flint_and_steel:1,shield:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,];cook=-;stationN=NONE;stationY=NONE;feasible=false
 54|bbbf47d3b917162b|flags=FFF/T--,FFF/T--,FFF/T--,;flags2=FFF;walks=FTFFFF0/0-1-1-1 FFFFFFF0/0-1-1-1 FFFFFFF0/0-1-1-1 F;wb=FFF;standing=FFFFFF,FFFFTT,;choice=MAKE:null|MAKE:null| MAKE:null|MAKE:null| WORLD:w0|WORLD:w0| ;soon=TTTTnullnull TTTTto cookto cook TTTTnullnull ;decide=tFFTrFF-T-FORGET_TOO_FAR/we have been outside 21 blocks of it for 5 s/PICKING_UP/5950/-1/TFF,sFFTrFFrF-ELSEWHERE/we have been outside 21 blocks of it for 5 s/BUSY/5787/6000/TFF,;mayEnd=F/0;portal=FTFFFTFFFTFFFFFF;live=F;gather=[log:3,cobblestone:19,stone_pickaxe:2,stone_axe:1,furnace:1,];plan=[stone_pickaxe:1,stone_axe:1,iron_ingot:5,iron_ingot:40,iron_pickaxe:1,iron_axe:1,bucket:2,flint_and_steel:1,shield:1,shears:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,food:100,];cook=-;stationN=NONE;stationY=NONE;feasible=false
 55|1cb34918f1aa696d|flags=FFF/T--,FFF/T--,FFF/T--,;flags2=FFF;walks=FTFFFT0/1-10-1 FFFFFFF0/0-1-1-1 FFFFFFF0/0-1-1-1 F;wb=FFF;standing=TFFFFF,;choice=WORLD:w1|WORLD:w1| WORLD:w0|WORLD:w0| WORLD:w0|WORLD:w0| ;soon=FFFFnullnull FFFFnullnull FFFFnullnull ;decide=tFFTrFF-T-FORGET_FAR_TABLE/nothing in the next 4 needs wants the table/STANDING/5856/-1/TFF,;mayEnd=F/0;portal=FTFFFTFFFTFFFFFF;live=F;gather=[cobblestone:16,stone_pickaxe:2,stone_axe:1,furnace:1,];plan=[stone_axe:1,iron_ingot:5,iron_ingot:40,iron_pickaxe:1,iron_axe:1,bucket:2,flint_and_steel:1,shield:1,shears:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,food:100,];cook=-;stationN=NONE;stationY=NONE;feasible=false
@@ -127,7 +127,7 @@
 126|87f0801d1c5ec69a|flags=FFF/F--,FFF/F--,FFF/F--,;flags2=FFF;walks=FFFFFF0/0-1-1-1 FFFFFFF0/0-1-1-1 FFFFFFF0/0-1-1-1 F;wb=FFF;standing=;choice=MAKE:null|MAKE:null| WORLD:w0|WORLD:w0| WORLD:w0|WORLD:w0| ;soon=FFFFnullnull FFFFnullnull FFFFnullnull ;decide=;mayEnd=T/0;portal=FTFFFTFFFTFFFFFF;live=T;gather=[log:6,stone_pickaxe:2,stone_axe:1,];plan=[log:5,stone_axe:1,iron_ingot:40,iron_pickaxe:1,iron_axe:1,bucket:2,flint_and_steel:1,shield:1,shears:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,stone_pickaxe:1,food:100,];cook=-;stationN=NONE;stationY=NONE;feasible=false
 127|890eed549bce7990|flags=FFF/FFF,FFF/FFF,FFF/FFF,;flags2=FFF;walks=FFFFFF0/0-1-1-1 FFTFFFT0/1-12-1 FFTFFFT0/2-10-1 F;wb=FFF;standing=TFFFFF,TFFFFF,TFFFFF,FFFFFF,;choice=BAG:null|BAG:null| BAG:null|BAG:null| BAG:null|BAG:null| ;soon=TTTTnullnull FFFFnullnull FFFFnullnull ;decide=sFFTrFF-F-PICK_UP/nothing in the next 4 needs wants the smoker/STANDING/5910/-1/TFF,sFFTrFF-F-FORGET_GONE/nothing in the next 4 needs wants the smoker/STANDING/-1/-1/FFF,fFFTrFF-F-PICK_UP/nothing in the next 4 needs wants the furnace/STANDING/5952/-1/TFF,fFFTrFF-T-CONTINUE/nothing in the next 4 needs wants the furnace/PICKING_UP/5986/-1/TFF,;mayEnd=F/0;portal=FTFFFTFFFTFFFFFF;live=F;gather=[log:5,cobblestone:11,stone_pickaxe:2,stone_axe:1,food:130,];plan=[food:130,log:4,stone_pickaxe:1,stone_axe:1,iron_ingot:40,iron_pickaxe:1,iron_axe:1,bucket:2,flint_and_steel:1,shield:1,shears:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,food:100,];cook=-;stationN=NONE;stationY=SMOKER;feasible=false
 128|3767f31822b5a9b9|flags=TFF/T--,TFF/T--,TFF/T--,;flags2=TFF;walks=TTFFFT0/2-111 FFFFFFF0/0-1-1-1 FFFFFFF0/0-1-1-1 F;wb=TFF;standing=TFFFFF,TFFFFF,;choice=OURS:b1|OURS:b1| WORLD:w0|WORLD:w0| MAKE:null|MAKE:null| ;soon=TTTTnullnull FFFFnullnull FFFFnullnull ;decide=tFFTrFFrT-KEEP/we have been outside 21 blocks of it for 5 s/STANDING/5957/-1/TFF,tFFTrFF-F-PICK_UP/we have been outside 21 blocks of it for 5 s/STANDING/5798/-1/TFF,;mayEnd=F/0;portal=FTFFFTFFFTFFFFFF;live=F;gather=[stone_pickaxe:2,stone_axe:1,furnace:1,];plan=[stone_axe:1,iron_ingot:40,iron_pickaxe:1,iron_axe:1,bucket:2,flint_and_steel:1,shield:1,shears:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,food:100,];cook=-;stationN=NONE;stationY=NONE;feasible=false
-129|6e45229a4517f5e8|flags=FFF/TFF,FFF/TFF,FFF/TFF,;flags2=FFF;walks=FTFFFT0/1-12-1 FFTFFFF0/0-1-1-1 FFTFFFT0/1-100 F;wb=FFF;standing=TFFFTT,TFFFFF,TFFFFF,;choice=MAKE:null|MAKE:null| BAG:null|BAG:null| OURS:b0|OURS:b0| ;soon=FFFFnullnull FFFFnullnull FFFFnullnull ;decide=sFFTrFF-F-BUSY/nothing in the next 4 needs wants the smoker/BUSY/6000/-1/FFF,fFFTrFFrT-FORGET_TOO_FAR/nothing in the next 4 needs wants the furnace/STANDING/5898/-1/TTF,tFFTrFF-T-FORGET_FAR_TABLE/nothing in the next 4 needs wants the table/STANDING/5785/-1/TFF,;mayEnd=F/0;portal=FTFFFTFFFTFFFFFF;live=F;gather=[wooden_axe:1,log:3,cobblestone:8,stone_pickaxe:2,stone_axe:1,];plan=[stone_axe:1,iron_ingot:40,iron_pickaxe:1,iron_axe:1,bucket:2,flint_and_steel:1,shield:1,shears:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,];cook=-;stationN=NONE;stationY=SMOKER;feasible=false
+129|b54549674731d005|flags=FFF/TFF,FFF/TFF,FFF/TFF,;flags2=FFF;walks=FTFFFT0/1-12-1 FFTFFFF0/0-1-1-1 FFTFFFT0/1-100 F;wb=FFF;standing=TFFFTT,TFFFFF,TFFFFF,;choice=MAKE:null|MAKE:null| BAG:null|BAG:null| OURS:b0|OURS:b0| ;soon=FFFFnullnull FFFFnullnull FFFFnullnull ;decide=sFFTrFF-F-BUSY/nothing in the next 4 needs wants the smoker/BUSY/6000/-1/FFF,fFFTrFFrT-FORGET_TOO_FAR/nothing in the next 4 needs wants the furnace/STANDING/5898/-1/TTF,tFFTrFF-T-WAIT/nothing in the next 4 needs wants the table/STANDING/5785/-1/TFF,;mayEnd=F/0;portal=FTFFFTFFFTFFFFFF;live=F;gather=[wooden_axe:1,log:3,cobblestone:8,stone_pickaxe:2,stone_axe:1,];plan=[stone_axe:1,iron_ingot:40,iron_pickaxe:1,iron_axe:1,bucket:2,flint_and_steel:1,shield:1,shears:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,];cook=-;stationN=NONE;stationY=SMOKER;feasible=false
 130|fa3fa124f2eeacd7|flags=FFF/F--,FFF/F--,FFF/F--,;flags2=FFF;walks=FFFFFF0/0-1-1-1 FFFFFFF0/0-1-1-1 FFFFFFF0/0-1-1-1 F;wb=FFF;standing=FFFFFF,;choice=MAKE:null|MAKE:null| BAG:null|BAG:null| NONE:null|NONE:null| ;soon=TTTTnullnull FFFFnullnull FFFFnullnull ;decide=tFFF-FF-F-KEEP/we have been outside 21 blocks of it for 5 s/STANDING/5805/6000/TFF,;mayEnd=T/0;portal=FTFFFTFFFTFFFFFF;live=T;gather=[wooden_axe:1,log:8,cobblestone:11,stone_pickaxe:2,stone_axe:1,food:130,];plan=[log:6,stone_pickaxe:1,stone_axe:1,food:130,iron_ingot:40,iron_pickaxe:1,iron_axe:1,bucket:2,flint_and_steel:1,shield:1,shears:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,food:100,];cook=-;stationN=NONE;stationY=NONE;feasible=false
 131|4835d0d8daca1e75|flags=FFF/T-F,FFF/T-F,FFF/T-F,;flags2=FFF;walks=FTFFFT0/0-1-1-1 TFFFFFF0/0-1-1-1 FFTFFFT0/0-1-1-1 T;wb=FFF;standing=FTTFFF,FFFFFF,FTTFFF,;choice=WORLD:w1|WORLD:w1| NONE:null|NONE:null| WORLD:w1|WORLD:w1| ;soon=TTTTnullnull FFFFnullnull FFFFnullnull ;decide=sFFTrFF-F-CONTINUE/nothing in the next 4 needs wants the smoker/PICKING_UP/5795/-1/FFF,sFFTrFF-F-TIMED_OUT/nothing in the next 4 needs wants the smoker/PICKING_UP/-1/-1/FFF,tFFTrFF-F-CONTINUE/we have been outside 21 blocks of it for 5 s/PICKING_UP/5942/-1/FFF,;mayEnd=F/0;portal=FTFFFTFFFTFFFFFF;live=F;gather=[log:6,cobblestone:8,stone_pickaxe:2,stone_axe:1,];plan=[log:5,stone_axe:1,iron_ingot:40,iron_pickaxe:1,iron_axe:1,bucket:2,flint_and_steel:1,shield:1,shears:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,food:100,];cook=-;stationN=NONE;stationY=NONE;feasible=false
 132|2399ce0414c1c78d|flags=FTF/FT-,FTF/FT-,FTF/FT-,;flags2=FTF;walks=FFFFFF0/0-1-1-1 FFTTTTT1/222-1 FFFFFFF0/0-1-1-1 F;wb=FFF;standing=FFFFFF,TFFFFF,TFFFFF,;choice=BAG:null|BAG:null| OURS:b2|OURS:b2| MAKE:null|MAKE:null| ;soon=FFFFnullnull FFFFnullnull FFFFnullnull ;decide=fFFTrFF-T-CONTINUE/nothing in the next 4 needs wants the furnace/PICKING_UP/-1/-1/TFF,fFFTrFF-T-KEEP/nothing in the next 4 needs wants the furnace/STANDING/5810/-1/TFF,fFFF-FF-F-PICK_UP/nothing in the next 4 needs wants the furnace/STANDING/-1/-1/TFF,;mayEnd=F/0;portal=FTFFFTFFFTFFFFFF;live=F;gather=[log:6,stone_pickaxe:2,stone_axe:1,];plan=[log:5,stone_pickaxe:1,stone_axe:1,iron_ingot:40,iron_pickaxe:1,iron_axe:1,bucket:2,flint_and_steel:1,shield:1,shears:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,food:100,];cook=-;stationN=NONE;stationY=NONE;feasible=false
@@ -195,10 +195,10 @@
 194|5830733a2c732c6d|flags=TFF/F--,TFF/F--,TFF/F--,;flags2=TFF;walks=FTTTTT1/100-1 FFFFFFF0/0-1-1-1 FFFFFFF0/0-1-1-1 F;wb=FFF;standing=TFFFFF,;choice=OURS:b0|OURS:b0| MAKE:null|MAKE:null| MAKE:null|MAKE:null| ;soon=FFFFnullnull FFFFnullnull FFFFnullnull ;decide=tTFF-FF-F-PICK_UP/nothing in the next 4 needs wants the table/STANDING/-1/-1/FFF,;mayEnd=T/0;portal=FTFFFTFFFTFFFFFF;live=T;gather=[wooden_axe:1,log:3,cobblestone:16,stone_pickaxe:2,stone_axe:1,furnace:1,];plan=[stone_axe:1,iron_ingot:40,iron_pickaxe:1,iron_axe:1,bucket:2,flint_and_steel:1,shield:1,shears:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,];cook=-;stationN=NONE;stationY=NONE;feasible=false
 195|9f43802576aec67d|flags=FFF/F--,FFF/F--,FFF/F--,;flags2=FFF;walks=FFFFFF0/0-1-1-1 FFFFFFF0/0-1-1-1 FFFFFFF0/0-1-1-1 F;wb=FFF;standing=;choice=MAKE:null|MAKE:null| WORLD:w0|WORLD:w0| MAKE:null|MAKE:null| ;soon=FFFFnullnull FFFFnullnull FFFFnullnull ;decide=;mayEnd=T/0;portal=FTFFFTFFFTFFFFFF;live=T;gather=[wooden_axe:1,cobblestone:19,stone_pickaxe:2,stone_axe:1,furnace:1,];plan=[stone_pickaxe:1,stone_axe:1,iron_ingot:40,iron_pickaxe:1,iron_axe:1,bucket:2,flint_and_steel:1,shield:1,shears:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,];cook=-;stationN=NONE;stationY=NONE;feasible=false
 196|6d2fcd462b232a3b|flags=FFF/FF-,FFF/FF-,FFF/FF-,;flags2=FFF;walks=FFFFFF0/0-1-1-1 FFTFFFT0/0-1-1-1 TFFFFFF0/0-1-1-1 F;wb=FFF;standing=FTTFFF,FFFFTT,;choice=BAG:null|BAG:null| BAG:null|BAG:null| WORLD:w1|WORLD:w1| ;soon=TTTTnullnull FFFFto cooknull TTTTto cookto cook ;decide=fFFF-FF-F-KEEP/nothing in the next 4 needs wants the furnace/PICKING_UP/-1/6000/TFF,fFFTrFF-T-ABORT_BUSY/nothing in the next 4 needs wants the furnace/PICKING_UP/5840/-1/FFF,;mayEnd=F/0;portal=FTFFFTFFFTFFFFFF;live=F;gather=[log:1,wooden_axe:1,log:6,cobblestone:11,stone_pickaxe:2,stone_axe:1,];plan=[stone_pickaxe:1,stone_axe:1,iron_pickaxe:1,shears:1,iron_ingot:40,iron_axe:1,bucket:2,flint_and_steel:1,shield:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,food:100,];cook=-;stationN=NONE;stationY=SMOKER;feasible=false
-197|847b2dcb5e171695|flags=TFT/TFT,TFF/TFF,FFF/TFF,;flags2=FFF;walks=FTFFFT0/1-12-1 FFTFFFT0/1-11-1 FFTFFFT0/1-10-1 F;wb=FFF;standing=TFFFTT,TFFFTT,TFFFFF,;choice=OURS:b2|OURS:b2| WORLD:w0|WORLD:w0| WORLD:w0|WORLD:w0| ;soon=FFFFnullnull TTTTto cookto cook FFFFnullnull ;decide=sFFTrFF-F-BUSY/nothing in the next 4 needs wants the smoker/BUSY/6000/-1/FFF,fFFTrFF-T-BUSY/we are done with it and the next job is more than 21 blocks from it/BUSY/6000/-1/TFF,tFFTrFF-T-FORGET_FAR_TABLE/nothing in the next 4 needs wants the table/STANDING/5816/-1/TFF,;mayEnd=F/1;portal=FTFFFTFFFTFFFFFF;live=F;gather=[wooden_axe:1,log:5,stone_pickaxe:2,stone_axe:1,food:130,];plan=[food:130,log:3,stone_pickaxe:1,stone_axe:1,iron_ingot:40,iron_pickaxe:1,iron_axe:1,bucket:2,flint_and_steel:1,shield:1,shears:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,food:100,];cook=-;stationN=NONE;stationY=NONE;feasible=false
+197|747f5edfe37d8867|flags=TFT/TFT,TFF/TFF,FFF/TFF,;flags2=FFF;walks=FTFFFT0/1-12-1 FFTFFFT0/1-11-1 FFTFFFT0/1-10-1 F;wb=FFF;standing=TFFFTT,TFFFTT,TFFFFF,;choice=OURS:b2|OURS:b2| WORLD:w0|WORLD:w0| WORLD:w0|WORLD:w0| ;soon=FFFFnullnull TTTTto cookto cook FFFFnullnull ;decide=sFFTrFF-F-BUSY/nothing in the next 4 needs wants the smoker/BUSY/6000/-1/FFF,fFFTrFF-T-BUSY/we are done with it and the next job is more than 21 blocks from it/BUSY/6000/-1/TFF,tFFTrFF-T-WAIT/nothing in the next 4 needs wants the table/STANDING/5816/-1/TFF,;mayEnd=F/1;portal=FTFFFTFFFTFFFFFF;live=F;gather=[wooden_axe:1,log:5,stone_pickaxe:2,stone_axe:1,food:130,];plan=[food:130,log:3,stone_pickaxe:1,stone_axe:1,iron_ingot:40,iron_pickaxe:1,iron_axe:1,bucket:2,flint_and_steel:1,shield:1,shears:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,food:100,];cook=-;stationN=NONE;stationY=NONE;feasible=false
 198|12504cb63ee21c7e|flags=FTF/FF-,FTF/FF-,FTF/FF-,;flags2=FTF;walks=FFFFFF0/0-1-1-1 FTTFFFT0/1-100 FFFFFFF0/0-1-1-1 F;wb=FTF;standing=TFFFFF,FFFFFF,;choice=WORLD:w0|WORLD:w0| OURS:b0|OURS:b0| BAG:null|BAG:null| ;soon=FFFFnullnull FFFFnullnull FFFFnullnull ;decide=fFFTrFF-F-KEEP/nothing in the next 4 needs wants the furnace/STANDING/6000/-1/FFF,fFFTrFF-F-ELSEWHERE/nothing in the next 4 needs wants the furnace/BUSY/5814/6000/TFF,;mayEnd=F/0;portal=FTFFFTFFFTFFFFFF;live=F;gather=[log:6,stone_pickaxe:2,stone_axe:1,];plan=[log:5,stone_axe:1,iron_ingot:40,iron_pickaxe:1,iron_axe:1,bucket:2,flint_and_steel:1,shield:1,shears:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,stone_pickaxe:1,food:100,cook_in_smoker:3,];cook=cook_in_smoker;stationN=SMOKER;stationY=SMOKER;feasible=true
 199|c2634297d437c4b5|flags=TFF/F--,TFF/F--,TFF/F--,;flags2=TFF;walks=FTTTTT1/211-1 FFFFFFF0/0-1-1-1 FFFFFFF0/0-1-1-1 F;wb=FFF;standing=TFFFFF,TFFFFF,;choice=OURS:b1|OURS:b1| NONE:null|NONE:null| MAKE:null|MAKE:null| ;soon=TTTTnullnull FFFFnullnull FFFFnullnull ;decide=tFFTrFF-T-FORGET_GONE/we have been outside 21 blocks of it for 5 s/STANDING/5866/-1/FFF,tTFFrFFrF-KEEP/we have been outside 21 blocks of it for 5 s/STANDING/-1/-1/FFF,;mayEnd=F/0;portal=FTFFFTFFFTFFFFFF;live=F;gather=[wooden_axe:1,log:6,cobblestone:19,stone_pickaxe:2,stone_axe:1,furnace:1,food:130,];plan=[food:130,log:4,stone_pickaxe:1,stone_axe:1,iron_ingot:40,iron_pickaxe:1,iron_axe:1,bucket:2,flint_and_steel:1,shield:1,shears:1,ladder:3,iron_chestplate:1,iron_helmet:1,iron_leggings:1,iron_boots:1,food:100,];cook=-;stationN=NONE;stationY=NONE;feasible=false
-200|3a2fae58d3ffd6f8
+200|c03ddb5b2180d7bc
 201|0c5829e74562ea45
 202|c0f7f23dde449f15
 203|b83525e11252ace3
@@ -218,7 +218,7 @@
 217|2b55ef1c152492a5
 218|36b03fb95d57edeb
 219|a47643d096a1c075
-220|91cb05b074f9f150
+220|e2fd9ec0d801253e
 221|89992a43627e0233
 222|c82b6bf8d1158f30
 223|16376276ee677479
@@ -310,10 +310,10 @@
 309|e233e3659a411453
 310|f680627a02fca751
 311|d3020e6dafc11c8c
-312|8ce75bc4e72c1e1f
+312|12113c8807a6f2a0
 313|36072d1134a6069a
 314|84946d774b8309a9
-315|e8869d1f49e192a3
+315|18af116d0d55b086
 316|2d3c8dfd10bf37f3
 317|23c7b5b8b9743b31
 318|cc24fd20d4e8be4d
@@ -333,7 +333,7 @@
 332|c5b3bb770b8fb296
 333|1d5cdba0b9f7f497
 334|992908ed68451c11
-335|953f947660a57d2e
+335|5435f3e41c33ad15
 336|ebc05f4cbb19a372
 337|4bb4d935474411d8
 338|64586448575dab14
@@ -344,7 +344,7 @@
 343|777df5a0f0d38df1
 344|7609c2e1eecb08f3
 345|c1439b9827453d3d
-346|750b9fcf3f3130f3
+346|b478d1784705517a
 347|f7877610e91b4a42
 348|47e1fec4a6ed4922
 349|d1390152202b7492
@@ -392,7 +392,7 @@
 391|b8d851dec0e72977
 392|7b918af1ee92f336
 393|4e8e9045c7cc24a3
-394|5c1b37a4597ae388
+394|d78640fab10998ef
 395|80f392cf6163ce2b
 396|77d4bf45f866f9fa
 397|0bde5728053b6145
@@ -425,7 +425,7 @@
 424|88645c8f529251b3
 425|4a7d65a7d9bfac68
 426|de7dd49d94be4a8b
-427|f1d509296229ae46
+427|579ff4a67c24946b
 428|40fcafa1544f1e2e
 429|79e7642efb80ecaf
 430|837211f75d71666b
@@ -495,7 +495,7 @@
 494|51f6de721211a507
 495|313fa8d5d231ebed
 496|3446fd360bd28c0b
-497|95169cca535769b3
+497|c98b6f0b730d4b31
 498|1e949d8ea8b80bbe
 499|a2313b40fc506c67
 500|6cb03a986773d28c
@@ -536,7 +536,7 @@
 535|3f58af7d5d75183b
 536|7f51c9688a4cf727
 537|046065315253bcbd
-538|e6dd8267873b3e8d
+538|768b4ad98025695b
 539|74ef7f0ecf1138dc
 540|5a0f952ff02fc07f
 541|974ac2d6d49d3e60
@@ -775,7 +775,7 @@
 774|f86631d23056c68d
 775|66ba53b343f91b3c
 776|7ec55e9db29845ad
-777|15aaa6b951f67961
+777|fe85f2a78fdff658
 778|f0c0d56f29c43ecf
 779|664ef132b6344ac2
 780|d86e1e432a695024
@@ -783,7 +783,7 @@
 782|6244ba9e2239fe1f
 783|e321812acc87587b
 784|cd822c17093e16d5
-785|e74cdf752c9ddee6
+785|e05a8cec1fef5860
 786|6f76d388d9c2c279
 787|a8064575cf43bd28
 788|9c3f92d4c136ceea
@@ -848,7 +848,7 @@
 847|96828104b4945ce0
 848|c5181da689fa9d08
 849|a25165af0fbb0fb2
-850|589d29228f294aaf
+850|1fb947515602c075
 851|bf61642eb0bea408
 852|7150ba04aab17be8
 853|dc2395c38e27c8c9
@@ -880,7 +880,7 @@
 879|8d47e0e01206d9e8
 880|7b40c8933db375fc
 881|5c4500b9cbe54691
-882|6dd310ced5315ad9
+882|4a071931215c552d
 883|6dc9ef69eefbd3c3
 884|0a51f7e5d31af59c
 885|5d558791aab7585e
@@ -973,7 +973,7 @@
 972|4fbc2aa498b17384
 973|c495ec1feed6535c
 974|362958316dca329f
-975|fdf42d8ce98a8270
+975|1b58385be0995401
 976|ec1388abad62a125
 977|fa2e46fa8e2da99b
 978|67d0e7c18a2832ff
@@ -1023,7 +1023,7 @@
 1022|179435fed389639f
 1023|99551da4cd4e7d8e
 1024|ba06b37a40470b7a
-1025|35b4ffc41536656a
+1025|0befbe783d7982f6
 1026|01e5c9be67dac7b6
 1027|c8fa94a09ee5305e
 1028|59850453b739b1d3
@@ -1094,7 +1094,7 @@
 1093|e5bc6d6e184a254b
 1094|fa8464326198cc17
 1095|922c55ffcb79803f
-1096|1c2c56dae528c8bd
+1096|90b59d518be00afd
 1097|ec5e8899ccd40dc2
 1098|e9988ab25b8da0ad
 1099|4a01d8c01ca30abd
@@ -1173,7 +1173,7 @@
 1172|15eecbd94da71179
 1173|956775e6690fb1b5
 1174|2836ec06ba5e1b2a
-1175|876062673a1748a0
+1175|922b0bd1f529696b
 1176|52e7c4a41082798f
 1177|739cf56c18c1c198
 1178|731375c277dfd2eb
@@ -1222,7 +1222,7 @@
 1221|a1a6be03c5104841
 1222|e20820180ebdf06f
 1223|6f1cd334c87e4730
-1224|120c525558b79e08
+1224|91f8d0fe97ce92d2
 1225|05397f8f306d1baf
 1226|a1012e782d246498
 1227|cd76280dabb95196
@@ -1263,7 +1263,7 @@
 1262|5c575d96b0ef8749
 1263|ef23ed93dcda4319
 1264|56f5e741c30afffc
-1265|c570b9beb7484c36
+1265|cd079ecfdaa39088
 1266|70f7ccd179f243ff
 1267|29019d81612839ef
 1268|a68448f387745a24
@@ -1349,7 +1349,7 @@
 1348|a94d458c8eb4a9a6
 1349|2cb29f68a119444c
 1350|d0604e1141292574
-1351|22769ce9127fd140
+1351|66270d747100ecd4
 1352|a7e826e60c7ac375
 1353|2769ec0da74a89fd
 1354|ad67f51809400b83
@@ -1403,7 +1403,7 @@
 1402|abdbd7c0754432cc
 1403|070de0eb0ac8ce8a
 1404|c2d22529efc9036c
-1405|93b75111fa9bec3b
+1405|94226d508a73cf55
 1406|66c7c396bcd52fec
 1407|2c49c53f9ebb288e
 1408|002634bada343f90
@@ -1488,13 +1488,13 @@
 1487|ef1348ce1b1aac0b
 1488|3eac5eef91b6bb9a
 1489|28735f3903edbc18
-1490|692546857988ceaf
+1490|eaddda68316fac24
 1491|e69951de4a15610a
 1492|72b77dfc55a5c645
 1493|44eddbdb7f367eb4
 1494|9ce7030aa80c8484
 1495|c77480e0b38e1eba
-1496|7977bce50cc67c3e
+1496|e8206fb914df9314
 1497|535f42799d56c57e
 1498|6dcf2ad51a6af9a6
 1499|55a3bc3bbd24d69b
@@ -1514,7 +1514,7 @@
 1513|998aa7fd20dbb193
 1514|82eeec1bb0dcddaa
 1515|9454e9083df6434b
-1516|2ff4e24c3aa2df0c
+1516|f868c495fda13cb5
 1517|94db01bf101fa8e9
 1518|d78113b74c94f7e3
 1519|a440901c2c1c1d34
@@ -1524,7 +1524,7 @@
 1523|60fc2aa85f8f7244
 1524|b09133c70e67813f
 1525|7eeef05d2be343f6
-1526|ee32b727927ca4da
+1526|42295ead8457cf1b
 1527|72bf8b16350e2eee
 1528|5fbc490f27946eb0
 1529|6b4cf7d06713db2c
@@ -1550,7 +1550,7 @@
 1549|a0a86f0601740c0b
 1550|953bdd9ed7577694
 1551|2cf8afaa4e8098ac
-1552|eff01189b369d3d2
+1552|72662a5e4c1043d5
 1553|974d049e412c0ac1
 1554|297c973c5139432a
 1555|f1fb70dbeb7207f9
@@ -1598,13 +1598,13 @@
 1597|4deec774a8b715de
 1598|76b4184e30d512d7
 1599|7c7311c761c02e18
-1600|0b9669b91d845f72
+1600|d57cdda510a86f33
 1601|fc407127cd7377b6
 1602|8129b81bec2a2163
 1603|ebc60eae427dd0cc
 1604|b124642185101af7
 1605|0537b26bc86d303e
-1606|a0e4ba9a4718e6b4
+1606|75d7625554105966
 1607|ea213ef98492dd7b
 1608|83d969dba82b5864
 1609|d897349492e7aaeb
@@ -1647,7 +1647,7 @@
 1646|63b5971043b6ef43
 1647|01e4e6901d0242d2
 1648|6698567528424d76
-1649|63939e73f9f4ddc0
+1649|b1a1d9ab7df6b1f4
 1650|0f29097a9de0b5fe
 1651|190bd3eebd6db0dc
 1652|500d722276412309
@@ -1689,7 +1689,7 @@
 1688|9dd14690af776641
 1689|f3eec6790fb1b034
 1690|0bc636df3440cf0b
-1691|4ab6b4442bf32ca1
+1691|09e0e36bc24df848
 1692|c453c1a833e53c57
 1693|abb6ba7c7943ad20
 1694|be573fa33c8af03a
@@ -1751,7 +1751,7 @@
 1750|3de5654f8f6b3794
 1751|14e9c7f502a55357
 1752|fac829aaff2ff7a5
-1753|fa1e5ecec0bac5bf
+1753|36a186a9a878df43
 1754|7f63af7f11279e62
 1755|e98147ec8454d3fb
 1756|b7f5999de8dc0198
@@ -1840,7 +1840,7 @@
 1839|6ada3f35cec61203
 1840|a8c8ecaab6e43a9b
 1841|5065bf4b86cf404a
-1842|53353682e972f8fc
+1842|3b754a6683b0f63c
 1843|ff100bd9521c3ec5
 1844|87463fe2c4917371
 1845|42ae109309e4227c
@@ -1875,14 +1875,14 @@
 1874|749905c03cb8aba7
 1875|d33dd6ba2a4bde4c
 1876|fc91ef08c56b4c58
-1877|62e3fc630d26e457
+1877|4a1830b6dd296076
 1878|2e96cc77df4fdfc4
 1879|f01f419cf37b5aaf
 1880|2bf0cc8bc2c77741
 1881|66f07aa39a53b04d
 1882|66e4d7568c06ee35
 1883|60984d1fc7f69747
-1884|159a02b31d0d6b5d
+1884|e32bca6eeef90937
 1885|44abe591269a7e7e
 1886|fa374de5b941bbc3
 1887|1a91715e0be4852f
@@ -1972,7 +1972,7 @@
 1971|97ee65ca6e787031
 1972|17510942f50677fa
 1973|6276e9f39482f73f
-1974|bcf2b5c2f40f4ca4
+1974|33f66087e053b4d0
 1975|6ec9d6e53dec1605
 1976|42b276a575102fd3
 1977|967c571ada5c9da8
@@ -2024,10 +2024,10 @@
 2023|2504a4173a46703c
 2024|bfa9b1fc97efac2c
 2025|b317ee692a4de4af
-2026|044dace7d3727f57
+2026|2833dd0d820a2a43
 2027|222bf9ef5750ce20
 2028|b2761b77c2f742b2
-2029|f07e13116ac25cc8
+2029|e021742cc3910bdb
 2030|6d629e9321841a0d
 2031|b585f6b8ce1ea4dd
 2032|d7aa56e00cd65b97
@@ -2057,7 +2057,7 @@
 2056|593efd94107c9af1
 2057|6a38a937a9ad34f7
 2058|562a7d407152e57c
-2059|6b25f20d0085df21
+2059|89c29ae64d479d7a
 2060|20573b426029531f
 2061|2c7a4c479c7a5b1b
 2062|484e777ed61ee0f5
@@ -2142,7 +2142,7 @@
 2141|d42e2b69492db2ff
 2142|9ade3ed677e5dd59
 2143|f52ccffd900ddfcf
-2144|d78ea205ee2b981f
+2144|5984397a0d09fe92
 2145|dbf5ddc730f8ab0d
 2146|1dd602567373709c
 2147|07c7108dc6767f50
@@ -2154,7 +2154,7 @@
 2153|f382c4b47cbd6ceb
 2154|6785cd069a69fb94
 2155|8528d90faca1f6c8
-2156|62dde19cb95ac853
+2156|5268af06dd7bbbd2
 2157|03c033e10972dab8
 2158|8ac9e0875a85347f
 2159|aed6d9601887dc70
@@ -2174,7 +2174,7 @@
 2173|b4736a4184b5e9fe
 2174|09d417200ffc95d8
 2175|965b50010bcfe51e
-2176|791a3d50103cdb71
+2176|68c21bef9e27cddf
 2177|2675cdcb4c9c103c
 2178|9208ccd707ed924d
 2179|f9c7e96c0f5fbfd3
@@ -2218,7 +2218,7 @@
 2217|6faf846114f61a42
 2218|c7e3a775595e0299
 2219|1e7b67189219cada
-2220|574a9d639141230c
+2220|9c10ee4d8b137935
 2221|1afe7642d9741837
 2222|8597f8a1198ab2fc
 2223|c8105af524cfbc2d
@@ -2275,7 +2275,7 @@
 2274|aa5f763005749e8f
 2275|1d14a545ac50af23
 2276|f705e7925bc3dca4
-2277|dd4027330f5824e2
+2277|8ed274a5e5aaee49
 2278|7761438a851d807c
 2279|532ef916c1fcd6c3
 2280|fdccd7624dadbc24
@@ -2324,14 +2324,14 @@
 2323|d26aaf6191553d76
 2324|1aca1c28a818df1a
 2325|53a1fcfe5e030f4f
-2326|0c2e41f19269bae8
+2326|7290e152c507539d
 2327|8d79d72aea4c84d7
 2328|ebdae0d6ee5a8fc1
 2329|a1b13a2de690b0f9
 2330|31bef8789140d2f3
 2331|9e3bc658d2666666
 2332|7b16d4cc7aaae5d8
-2333|f8f89528088423ab
+2333|01fc9ad2e0c5b3ca
 2334|7bd0eda9398d83de
 2335|85d94c84759d82db
 2336|371b4e4b6cac3490
@@ -2470,7 +2470,7 @@
 2469|8f5c2edb13fd3357
 2470|316413c2deb3173a
 2471|734c3545dc07a675
-2472|09dbc39532c95b28
+2472|6e06939d0c255a5c
 2473|2cdf781715f4314d
 2474|c0e6d67aa4e67ab0
 2475|5b41b0745537ccc3
@@ -2548,8 +2548,8 @@
 2547|4f59fb185dd45328
 2548|4c53b7756a9774c7
 2549|f67bf38df0819c79
-2550|a14926108c4b35d3
-2551|ccf07d8e561bb1b0
+2550|ddf66263cc7bdb2c
+2551|3ee870e5c4e52091
 2552|70048c6c9e6af346
 2553|13785f3b49aa6a2a
 2554|d3464c4481f0b704
@@ -2558,14 +2558,14 @@
 2557|b5a750176f490858
 2558|4d736f4302aae04e
 2559|c28bb40dd1f364a3
-2560|97b5972789c81c3b
+2560|98a7944f8da22353
 2561|fb41c282c5e4173b
 2562|848e2b743da0fceb
 2563|6e12fee96d7a6601
 2564|c8aa61760adb87ab
 2565|90cac96894da59da
 2566|01ff480ec05ef534
-2567|2b44773fe1031382
+2567|948792686a1cb9d4
 2568|70e0da006e47247e
 2569|06eac9c2dce14084
 2570|1dfa47a2c1e834f1
@@ -2592,7 +2592,7 @@
 2591|26ef34c110925004
 2592|fa4e9850b42def66
 2593|ffe2ecb2a0412ce6
-2594|2aa4dbf08f2949a7
+2594|6d98b3679240cd9b
 2595|243dcad6fce390c7
 2596|ce496fe94bf400cd
 2597|ee12be9653c15aee
@@ -2607,7 +2607,7 @@
 2606|ca372e58f0a78db7
 2607|215694607226be00
 2608|899d6f7dbeaf7f31
-2609|330724334dba1801
+2609|7bcf89b008599a46
 2610|5d2990a8cbb1cf5d
 2611|0bf329d0240a60fa
 2612|e4a804cf7ef0599f
@@ -2672,7 +2672,7 @@
 2671|bb6434bf73ba12b2
 2672|dfe84d1cf0210552
 2673|09f45076db55f5d6
-2674|6dcaf9f903ce3078
+2674|3e3dc38594de0772
 2675|1f36318c796d3025
 2676|ccb294090f478601
 2677|ecdfc72adabef019
@@ -2713,7 +2713,7 @@
 2712|9e8003949ffca4f8
 2713|afebcf5215e010b3
 2714|a7666b514ecde985
-2715|849e9cb25755a507
+2715|709c9ec3d0fa834b
 2716|285206a96d772110
 2717|5304e4fed72204c4
 2718|4edbe134e76d14cb
@@ -2807,7 +2807,7 @@
 2806|94d4ca1966eaf26b
 2807|83c967463c59c416
 2808|6e21eab68dcf4597
-2809|058cbe9897030534
+2809|2f0aae9bdbf2f86b
 2810|e5549b60b4d800ca
 2811|e58df7e4cbdfb388
 2812|7f987c9eaa9a4d54
@@ -2850,7 +2850,7 @@
 2849|03cae51cf35e7d7a
 2850|de15d0bf25034c29
 2851|5b321b10b619f290
-2852|adfae761bd288931
+2852|39f23e824373fb71
 2853|07928bb4ae3851ef
 2854|dd7d4f6c3fea7cf6
 2855|b04dc740e358bbd5
@@ -2961,7 +2961,7 @@
 2960|8aaaf021bf8d4097
 2961|8d566959eface903
 2962|814d893476362ab4
-2963|6410b17dce7fc12a
+2963|983965e3ea24d469
 2964|6a3b4e251b313c38
 2965|e1afe3c3f24553bf
 2966|4387a9c0d1a2c4d3
@@ -2985,7 +2985,7 @@
 2984|79c4b78831d56ffe
 2985|d84751aae0b873b9
 2986|32fb0668316bb3f5
-2987|418a0b12c58c6dcc
+2987|37d7531ebe1d327d
 2988|985ca943897c2122
 2989|d5f1f598f4060582
 2990|1909f366e2da5279
@@ -3069,9 +3069,9 @@
 3068|18dfe114a211c1bb
 3069|d360e69bfde6ded2
 3070|18f25a09f8fd2d31
-3071|69010eaf4586c339
+3071|92f9b5f7ad798ff6
 3072|a8caecb2cb121e3c
-3073|4516fa77e17f6069
+3073|086732ac0aabdb0a
 3074|47f13be34dd70989
 3075|c75239a4f2d6e9d7
 3076|65a90dbfc95eb0cf
@@ -3130,7 +3130,7 @@
 3129|6edc9ae70832f8d2
 3130|7bcc4e58a6352422
 3131|ddc8a224f8caa43b
-3132|74be3dae278595e1
+3132|9f968dd37e08204a
 3133|d86cd2a0619be22c
 3134|b43b64ab91aa25e5
 3135|734c4e97df725a6b
@@ -3211,7 +3211,7 @@
 3210|1e0650198c7cd188
 3211|48fa177b828cfba0
 3212|d450226d23b728af
-3213|c658498bcaf2787d
+3213|772ee0c746b4d4ef
 3214|46db452a9f065343
 3215|51ea43ade2b2aa13
 3216|13e7260d08c28346
@@ -3221,7 +3221,7 @@
 3220|4828b4b28d02043c
 3221|6ae2343d336e7c2e
 3222|575c86d37d7d7929
-3223|f6835c13540be50f
+3223|63f0d9cae37e7b58
 3224|34d286ec4b6898b5
 3225|2642d93361955f9f
 3226|c9fe0467933244b0
@@ -3235,14 +3235,14 @@
 3234|905aa6394d3c5a82
 3235|2c9879393783a94b
 3236|e0a3f862622842be
-3237|168d26d7319931cb
+3237|57db36395b039934
 3238|9990a38933f4c691
 3239|0a532db9703c7b15
 3240|b47ee52430c4afd9
 3241|22a269643eda5fb3
 3242|18fbe9015a6b001d
 3243|10a9693dccfb969c
-3244|39f8bd5b23dc4626
+3244|6f6967c941097a53
 3245|db1deae63bbe0da7
 3246|66959c0e5f1d3ade
 3247|aaffaca52394b308
@@ -3253,7 +3253,7 @@
 3252|b1fb746ea87ddb07
 3253|1c4a9a7c15b89f91
 3254|4a6d7255091f14be
-3255|93373a4ac6db5909
+3255|249f4da858f7755c
 3256|08ae860288f9215e
 3257|c7739929385f6716
 3258|2c2a8e7ac979b1cb
@@ -3273,7 +3273,7 @@
 3272|d17a906cbc61d8f6
 3273|0dddd1d450a53849
 3274|b135f863d7043495
-3275|7b92b53a21bd51b2
+3275|546ce624b4b05b1f
 3276|435e801d374d3f84
 3277|46270068d8063f40
 3278|19955313b81072f0
@@ -3313,7 +3313,7 @@
 3312|ce41c8bb78b06014
 3313|afc385ec60f43f3f
 3314|8e8ff2a467743cb3
-3315|f088cf99a9574c4c
+3315|9d9b11a291e2b115
 3316|466a6875f917a098
 3317|a7b954184e5380cc
 3318|627ada99b27a0d66
@@ -3367,7 +3367,7 @@
 3366|226154c85584cc46
 3367|2e5c506e1c5357bf
 3368|c1b26709d109cf24
-3369|9e9184c652f78cb7
+3369|94ee414bd3091ca9
 3370|e6d671e21ab06474
 3371|84d19e2e0acc910f
 3372|8849512ebd0a017a
@@ -3508,7 +3508,7 @@
 3507|9c5a89899e4756ae
 3508|313ddf125c684a58
 3509|bf06b8611d7e3c89
-3510|e69c9c2551b11b63
+3510|610a80096191ec18
 3511|21c8a8c193ddb073
 3512|285f32cf95294aa4
 3513|c980a0e3155ee37b
@@ -3544,13 +3544,13 @@
 3543|2c2d8bc17820f9bc
 3544|76211af8bba52c59
 3545|f8d090dab700cd87
-3546|ade0882a65b67499
+3546|cdf39f513f60efac
 3547|6189db2e678a89f1
 3548|2ce5d770d5dc2d3d
 3549|211ea741c4cb1bf3
 3550|ee377f48e1fca547
 3551|8b4a03f50889270b
-3552|3f6cabd4e524d377
+3552|8939b735d651a70e
 3553|a3d0ba2eada2f233
 3554|40eadab053b68239
 3555|6572cd8e144a761f
@@ -3560,7 +3560,7 @@
 3559|151c869dd54abf03
 3560|31bd6be8878853df
 3561|b05cd4bb0593d6f8
-3562|264a48bd0b1b9b37
+3562|b2546af04f039e20
 3563|2257d6c55dbb3654
 3564|d9b3d2399eaa36da
 3565|10fdaab7059ea662
@@ -3651,7 +3651,7 @@
 3650|9b457ba32e5b332a
 3651|b7dbd2006281b3c9
 3652|c5f8b0f4eda329a1
-3653|94cbe93a30e6048b
+3653|55f9b3251e59a928
 3654|a56e4783ca097c87
 3655|436f54399cdbd467
 3656|7a8cb404c33763a6
@@ -3677,7 +3677,7 @@
 3676|b359fdc9a27e2d7d
 3677|75623a9e9b3be9d4
 3678|008657f0ab9da74e
-3679|bda37ac4b253bfb8
+3679|d088d5b3d83fed7b
 3680|73b774e9e4dd3718
 3681|0228adf285bdf9f6
 3682|0f513f17df98acf5
@@ -3719,8 +3719,8 @@
 3718|113141e83292e168
 3719|d9a4315f5c64a352
 3720|8518504ca01b123f
-3721|d4d9ed811530d1c1
-3722|518d848b1ea0c8e0
+3721|05863cb2895228a1
+3722|5d6c146d227a6356
 3723|9047419186b1fb36
 3724|7ede1c30ebcbbaed
 3725|20f77a60f83b1618
@@ -3730,7 +3730,7 @@
 3729|ba8d4457387af8f3
 3730|008fe718b05c19b1
 3731|a71159a6fe08f49c
-3732|f13167ac49854639
+3732|42bf82de723700e2
 3733|be525a01d7c34bdb
 3734|f69a6b1bd8063fc5
 3735|6796fc3a273b6860
@@ -3753,7 +3753,7 @@
 3752|9dd8616a1be9178e
 3753|31d3ffcd80746b38
 3754|a5b0c614c89d6035
-3755|0b3f71133c4e99d4
+3755|40de75078898565c
 3756|c7cad256af94692c
 3757|396797154c584453
 3758|dfea837cf5642bd7
@@ -3805,12 +3805,12 @@
 3804|89aa587b6d6e6b6d
 3805|ecb3ae492d203b42
 3806|066aa782d5b02658
-3807|9dd37d6e28cc0251
+3807|b58d1c19e14a5030
 3808|763263fced716906
 3809|0023b2db36a19c8c
 3810|2125302859c63179
 3811|bf538ac0e9845585
-3812|75d32c94798fd0b0
+3812|4f727e33372546c3
 3813|d7ed526fb64ff8b1
 3814|729cb1c9542e4c63
 3815|1c8be19cdb45c264
@@ -3833,7 +3833,7 @@
 3832|a9b8b54f8896ac36
 3833|c2331b4f36c329c8
 3834|e06be0fd160dfc21
-3835|5404f45e8de43c84
+3835|07702b2dde72a230
 3836|5c40f4eea15dae10
 3837|73b33e4a1cdd943e
 3838|2381fea2b055a434
@@ -3845,7 +3845,7 @@
 3844|55a5a03a07c7f7fc
 3845|dd574d784acd12c2
 3846|89a0cb2a1e5482d1
-3847|d96c4dc759283312
+3847|c7aedcd289c3cb0e
 3848|5373ee06d5f053bb
 3849|c5046b0dbaca9bd0
 3850|59c1a02b9799a3c5
@@ -3922,7 +3922,7 @@
 3921|36355f9c36ee91b6
 3922|a405603e6f1e1316
 3923|9ce357650831b4ef
-3924|2e02ac17d9f08adf
+3924|2a22a9f22af0fa8b
 3925|1d98f66ee77d926e
 3926|86fd529d595c6210
 3927|1ce7bdb8ed1cb41d
@@ -3945,7 +3945,7 @@
 3944|15daf7e3261ff521
 3945|b4328ee2d993c5f3
 3946|fcd5680af097419d
-3947|d353c2fa3b73689a
+3947|8a0e268d28ad7aa7
 3948|6128052c5beb249b
 3949|2a89c7b4ad060c49
 3950|ae2d44d7635df283
@@ -3958,7 +3958,7 @@
 3957|495477bfd81edd54
 3958|2d868292418d8594
 3959|49e8fb25d44e74a8
-3960|27e05759a378c13a
+3960|20ac11defa3380bc
 3961|1551c021e8a31077
 3962|5a04ffda07198f7c
 3963|e188302f16a76c3d
