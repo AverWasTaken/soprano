@@ -3,6 +3,7 @@ package adris.altoclef.tasks.container;
 import net.minecraft.core.BlockPos;
 
 import java.util.Arrays;
+import java.util.function.BooleanSupplier;
 
 // a big iron smelt goes in up to three furnaces at once instead of one. 37 ore in one furnace is 370 s of cooking, in three it is
 // about 130 s, for 16 more cobble and two more clicks of placing. small batches (the early pick's 3-5, a leftover) stay in one
@@ -19,6 +20,9 @@ public final class SmeltSplit {
 
     // the batch we decided on, null for none. one at a time: the planner only ever asks for one iron need
     private static volatile Batch current;
+    // are we where the smelt happens (the iron phase hands in SmeltSurface.smeltSite). null = nobody says, and then nothing is
+    // split: only the phase that took us up knows we are up
+    private static volatile BooleanSupplier site;
 
     private SmeltSplit() {
     }
@@ -34,7 +38,7 @@ public final class SmeltSplit {
 
     // how many furnaces this batch actually gets. idle ones of ours (within the walk back) and the ones in the bag are free, every
     // other one is 8 cobble, and only cobble the tools are not owed counts. a short bag means fewer loads, never a cobble trip in
-    // the middle of the smelt (the planner already asked for that cobble in the gather, KitPlanner.extraFurnaces)
+    // the middle of the smelt. the planner asks for none of it: the mine always brings back far more than 16 spare
     public static int loads(int owed, int idleOurs, int inBag, int cobbleSpare) {
         int want = wanted(owed);
         if (want == 1) {
@@ -55,12 +59,6 @@ public final class SmeltSplit {
             out[i] = base + (i < extra ? 1 : 0);
         }
         return out;
-    }
-
-    // furnaces to craft on top of the first one (the kit's own furnace, or the one standing): what the planner budgets 8 cobble
-    // each for. `have` = idle ones of ours within the walk back plus the ones in the bag
-    public static int extraToCraft(int k, int have) {
-        return Math.max(0, k - Math.max(1, have));
     }
 
     // the size of the next load. the last one takes whatever is still owed, so a count that drifted (a visit took output early)
@@ -176,6 +174,18 @@ public final class SmeltSplit {
     // a new run starts with nothing decided (AsyncSmelting.clear)
     public static void clear() {
         current = null;
+        site = null;
+    }
+
+    // the iron phase wires this in on enter and pulls it on exit
+    public static void watchSite(BooleanSupplier s) {
+        site = s;
+    }
+
+    // the split may be decided now: all the ore is in the bag AND we are at the smelt site, not still in the mine or halfway up
+    public static boolean atSite() {
+        BooleanSupplier s = site;
+        return s != null && s.getAsBoolean();
     }
 
     // the log line's "13/12/12"

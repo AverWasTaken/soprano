@@ -68,18 +68,6 @@ public class SmeltSplitTest {
         assertEquals(2, SmeltSplit.loads(20, 5, 4, 64));
     }
 
-    // the planner's half: the first furnace is the kit's own, only the ones past it are 8 cobble each
-    @Test
-    public void extraToCraftLeavesTheFirstToTheKit() {
-        assertEquals(2, SmeltSplit.extraToCraft(3, 0));
-        assertEquals(2, SmeltSplit.extraToCraft(3, 1));
-        assertEquals(1, SmeltSplit.extraToCraft(3, 2));
-        assertEquals(0, SmeltSplit.extraToCraft(3, 3));
-        assertEquals(0, SmeltSplit.extraToCraft(3, 7));
-        assertEquals(0, SmeltSplit.extraToCraft(1, 0));
-        assertEquals(1, SmeltSplit.extraToCraft(2, 0));
-    }
-
     @Test
     public void theLastLoadTakesWhatIsStillOwed() {
         int[] sizes = SmeltSplit.sizes(37, 3);
@@ -151,8 +139,22 @@ public class SmeltSplitTest {
     @Test
     public void aNewRunForgetsTheBatch() {
         SmeltSplit.start(37, SmeltSplit.sizes(37, 3));
+        SmeltSplit.watchSite(() -> true);
         AsyncSmelting.clear();
         assertNull(SmeltSplit.active());
+        assertFalse(SmeltSplit.atSite());
+    }
+
+    // nobody saying where we are is not "at the site": only the iron phase knows we surfaced
+    @Test
+    public void theSiteIsOnlyWhatTheIronPhaseSays() {
+        assertFalse(SmeltSplit.atSite());
+        SmeltSplit.watchSite(() -> false);
+        assertFalse(SmeltSplit.atSite());
+        SmeltSplit.watchSite(() -> true);
+        assertTrue(SmeltSplit.atSite());
+        SmeltSplit.watchSite(null);
+        assertFalse(SmeltSplit.atSite());
     }
 
     // ---- the loads as tasks

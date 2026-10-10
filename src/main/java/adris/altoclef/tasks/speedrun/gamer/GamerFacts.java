@@ -102,12 +102,6 @@ public interface GamerFacts {
         return false;
     }
 
-    // furnaces of ours standing within StationChoice.WALK_BACK with nothing of ours in them and no job: the ones a split smelt
-    // (SmeltSplit) gets for free. the first furnace is furnacePlacedNearby's business, this is for the extra ones
-    default int idleFurnaces() {
-        return 0;
-    }
-
     // the split smelt still loading (SmeltSplit.active), null when there is none
     default SmeltSplit.Batch smeltBatch() {
         return null;

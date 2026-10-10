@@ -106,4 +106,16 @@ public class SmeltSurfaceTest {
     }
 
     // (the screen closed between looks at a furnace is FurnacePlanVisitTest now)
+
+    // a split smelt is decided up top, after surfacing, or where the climb gave up. never deep in the mine, never on the way up
+    @Test
+    public void theSplitIsDecidedOnlyAtTheSmeltSite() {
+        assertFalse("deep in the mine", SmeltSurface.smeltSite(false, false, false, 30));
+        assertFalse("on the way up", SmeltSurface.smeltSite(true, false, false, 5));
+        assertTrue("up top", SmeltSurface.smeltSite(false, false, false, 1));
+        assertTrue("a shallow ditch is the surface", SmeltSurface.smeltSite(false, false, false, SmeltSurface.GO_UP_DEPTH));
+        assertFalse(SmeltSurface.smeltSite(false, false, false, SmeltSurface.GO_UP_DEPTH + 1));
+        assertTrue("surfaced for this batch", SmeltSurface.smeltSite(false, true, false, 1));
+        assertTrue("the climb gave up, smelting down here", SmeltSurface.smeltSite(false, false, true, 30));
+    }
 }

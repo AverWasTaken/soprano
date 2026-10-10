@@ -8,7 +8,6 @@ import adris.altoclef.tasks.container.SmeltSplit;
 import adris.altoclef.tasks.resources.CollectFoodTask;
 import adris.altoclef.util.helpers.FoodHelper;
 import adris.altoclef.util.helpers.ItemHelper;
-import adris.altoclef.util.helpers.StationChoice;
 import adris.altoclef.util.helpers.StationHook;
 import adris.altoclef.util.helpers.WorldHelper;
 import baritone.api.utils.Dimension;
@@ -82,7 +81,6 @@ public final class MinecraftFacts implements GamerFacts {
     private boolean tableNearby;
     private boolean furnaceNearby;
     private boolean smokerNearby;
-    private int idleFurnaces;
     // a table is recorded and was out of NEAR last tick, see WorkbenchRules.returnRadius
     private boolean tableFar;
     // last look's answer for a furnace and a smoker, null while none is recorded (WorkbenchRules.bandRadius)
@@ -135,13 +133,7 @@ public final class MinecraftFacts implements GamerFacts {
             smokerHeld = Workbenches.any(state, StationHook.Kind.SMOKER, dimension.name()) ? Boolean.valueOf(smokerNear) : null;
             boolean furnaceAtHand = furnaceNear || mod.getItemStorage().hasItem(Items.FURNACE);
             smokerNearby = WorkbenchRules.plannerSmoker(smokerNear, furnaceAtHand, !smokerNear && !furnaceAtHand && held(player, StationHook.Kind.SMOKER, false));
-            // the split smelt's free furnaces: the walk back's own test (CollectIronIngotTask asks the same one when it decides)
-            String dim = dimension.name();
-            idleFurnaces = Workbenches.countStanding(state, StationHook.Kind.FURNACE, dim, player.getX(), player.getY(), player.getZ(),
-                    StationChoice.WALK_BACK, b -> !b.pickupFailed && !FurnaceJobs.isBusy(state, b.pos, dim)
-                            && DoStuffInContainerTask.walkBackUsable(mod, new BlockPos(b.pos.x, b.pos.y, b.pos.z), Blocks.FURNACE));
         } else {
-            idleFurnaces = 0;
             tableNearby = false;
             furnaceNearby = false;
             smokerNearby = false;
@@ -190,11 +182,6 @@ public final class MinecraftFacts implements GamerFacts {
     @Override
     public boolean smokerPlacedNearby() {
         return smokerNearby;
-    }
-
-    @Override
-    public int idleFurnaces() {
-        return idleFurnaces;
     }
 
     @Override

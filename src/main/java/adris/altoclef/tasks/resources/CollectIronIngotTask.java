@@ -93,8 +93,9 @@ public class CollectIronIngotTask extends ResourceTask {
         SmeltSplit.Batch batch = SmeltSplit.held(_count);
         if (batch == null) {
             // still mining (the single smelt fetches the ore the way it always did), or few enough for one furnace. the call is made
-            // the moment the whole batch is in the bag, which is also when SmeltSurface takes us up
-            if (owed < SmeltSplit.MIN_SPLIT || raw < owed) {
+            // once the whole batch is in the bag and we are where it gets smelted (SmeltSplit.atSite: surfaced, or the climb gave
+            // up). anywhere else the arbiter has the climb in front of us, a tick that slips through is the old single smelt
+            if (owed < SmeltSplit.MIN_SPLIT || raw < owed || !SmeltSplit.atSite()) {
                 return _router.furnace(all);
             }
             batch = decide(mod, owed);

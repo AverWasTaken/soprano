@@ -3,6 +3,7 @@ package adris.altoclef.tasks.speedrun.gamer.phases;
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.tasks.container.AsyncSmelting;
+import adris.altoclef.tasks.container.SmeltSplit;
 import adris.altoclef.tasks.speedrun.gamer.CookGate;
 import adris.altoclef.tasks.speedrun.gamer.EarlyIronPick;
 import adris.altoclef.tasks.speedrun.gamer.FoodGate;
@@ -128,6 +129,8 @@ public class IronPhase implements PhaseHandler {
         support.onEnter(mod);
         furnaces.newPhase();
         surface.reset();
+        // a split smelt is only decided up top (or where the climb gave up), never in the mine
+        SmeltSplit.watchSite(() -> surface.smeltSite(mod));
         pickDiag.reset();
         packed.clear();
         committed = null;
@@ -151,6 +154,7 @@ public class IronPhase implements PhaseHandler {
     public void onExit(AltoClef mod, GamerContext ctx) {
         support.onExit(mod);
         FoodHunt.setWoolWanted(false);
+        SmeltSplit.watchSite(null);
         // other phases smelt too and nobody there would come back for the furnace, so the setting is ours for this phase only
         if (userAsync != null) {
             SettingsOverrides.put(Baritone.settings().altoAsyncSmelting, userAsync);

@@ -188,8 +188,8 @@ public final class KitPlanner {
     // cobble a stray placement can eat before the crafts, so one misplaced block is not a second trip
     private static final int STONE_SLACK = 2;
     // cobble per item: the tool shapes (pickaxe and axe 3, sword and hoe 2, shovel 1) and the furnace's ring of 8.
-    // the kit makes the axe and not the sword (3 cobble, not 2), so a fresh run mines 19, plus 16 for the split smelt's other two
-    // furnaces (extraFurnaces)
+    // the kit makes the axe and not the sword (3 cobble, not 2), so a fresh run mines 19. the split smelt's extra furnaces are not
+    // in here: the mine brings back far more spare cobble than 16, and SmeltSplit.loads uses what is spare when it decides
     private static final Map<String, Integer> COBBLE_COST = Map.of(
             "stone_pickaxe", 3, "stone_axe", 3, "stone_sword", 2, "stone_hoe", 2, "stone_shovel", 1, "furnace", 8);
 
@@ -200,32 +200,19 @@ public final class KitPlanner {
     // answer stays 0 through them. the gather only: once ore is in the bag a worn pick is a just in time craft
     public static int stoneNeed(GamerFacts f, OverworldConfig cfg) {
         // a furnace of ours standing close by is skipped as a need above, so it is no 8 cobble here either (stoneFloor knew)
-        int wanted = stoneWanted(f, cfg, f.furnacePlacedNearby()) + COBBLE_COST.get("furnace") * extraFurnaces(f, cfg);
+        int wanted = stoneWanted(f, cfg, f.furnacePlacedNearby());
         if (wanted <= 0) {
             return 0;
         }
         return Math.max(0, wanted + STONE_SLACK - held(f, COBBLE));
     }
 
-    // furnaces a split smelt (SmeltSplit) will craft on top of the first one, so their cobble is mined with the rest in the gather
-    // and kept off the scaffolding after. a batch that is loading counts the loads it still has, before that it is the split the
-    // owed iron would get. idle ones of ours within the walk back and the ones in the bag come off either way. the first furnace
-    // stays the kit's furnace item (and furnacePlacedNearby), this is only the extra ones
-    public static int extraFurnaces(GamerFacts f, OverworldConfig cfg) {
-        // a blast furnace is twice as quick on its own and the iron goes there (CollectIronIngotTask), no split
-        if (f.count(Items.BLAST_FURNACE) > 0) {
-            return 0;
-        }
-        int have = f.idleFurnaces() + f.count(Items.FURNACE);
-        SmeltSplit.Batch batch = f.smeltBatch();
-        if (batch != null) {
-            return batch.splitting() ? Math.max(0, batch.loadsLeft() - have) : 0;
-        }
-        return SmeltSplit.extraToCraft(SmeltSplit.wanted(ironOwed(f, cfg)), have);
-    }
-
-    // how many loads the iron still to smelt goes in (the coal rounds per load, DetourSpec.coalNeed)
+    // how many loads the iron still to smelt goes in (the coal rounds per load, DetourSpec.coalNeed). before the batch is decided
+    // it is the split the owed iron would get, a coal or two too many if the cobble ends up short. a blast furnace takes it all
     public static int smeltLoads(GamerFacts f, OverworldConfig cfg) {
+        if (f.count(Items.BLAST_FURNACE) > 0) {
+            return 1;
+        }
         SmeltSplit.Batch batch = f.smeltBatch();
         if (batch != null && batch.splitting()) {
             return Math.max(1, batch.loadsLeft());
@@ -245,7 +232,7 @@ public final class KitPlanner {
     // a furnace of ours standing close by is a furnace we own (8 cobble the kit is not about to spend), same as a placed
     // table is held for the planks. plain cobblestone only, the build blocks the iron phase places on purpose are not in here
     public static int stoneFloor(GamerFacts f, OverworldConfig cfg) {
-        return stoneWanted(f, cfg, f.furnacePlacedNearby()) + COBBLE_COST.get("furnace") * extraFurnaces(f, cfg);
+        return stoneWanted(f, cfg, f.furnacePlacedNearby());
     }
 
     // the cobble the stone tools still eat, the furnace left out: what "the bag can make a furnace" must not count

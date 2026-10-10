@@ -61,6 +61,16 @@ public final class SmeltSurface {
         return depth(mod.getWorld().getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, feet.getX(), feet.getZ()), feet.getY());
     }
 
+    // where a split smelt may be decided (SmeltSplit.atSite): up top, surfaced for this batch, or the climb gave up and we smelt
+    // down here. never on the way up, and never down a mine we are still working (the furnaces would end up half down there)
+    public static boolean smeltSite(boolean climbing, boolean surfaced, boolean gaveUp, int depth) {
+        return !climbing && (surfaced || gaveUp || shallow(depth));
+    }
+
+    public boolean smeltSite(AltoClef mod) {
+        return smeltSite(climbing, settled[IRON], gaveUp[IRON], depthBelowSky(mod));
+    }
+
     public static boolean wantsUp(boolean alreadyClimbing, int depth) {
         return alreadyClimbing ? depth > ARRIVED_DEPTH : depth > GO_UP_DEPTH;
     }

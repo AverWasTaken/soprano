@@ -56,8 +56,6 @@ public class OverworldPhasesTest {
         f.give(Items.OAK_LOG, 64);
         assertFalse("no furnace yet", gather.isDone(f, state, cfg));
         f.give(Items.FURNACE, 1);
-        assertFalse("no cobble for the split smelt's other two furnaces", gather.isDone(f, state, cfg));
-        f.give(Items.COBBLESTONE, 18);
         assertTrue(gather.isDone(f, state, cfg));
         // 69 with no trip on is fine, the refill only starts under 45. once one is under way it runs to the minimum
         f.foodUnits = 69;
@@ -117,7 +115,7 @@ public class OverworldPhasesTest {
     // a kit that is whole and a bag that is fed, so the only thing left to say "not done" is a station of ours
     private static FakeFacts gatherDone() {
         FakeFacts f = new FakeFacts().give(Items.STONE_PICKAXE, 2).give(Items.STONE_AXE, 1).give(Items.WOODEN_AXE, 1)
-                .give(Items.OAK_LOG, 64).give(Items.FURNACE, 1).give(Items.COBBLESTONE, 18);
+                .give(Items.OAK_LOG, 64).give(Items.FURNACE, 1);
         f.foodUnits = 70;
         return f;
     }

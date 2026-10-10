@@ -38,14 +38,8 @@ public class FakeFacts implements GamerFacts {
     public boolean earlyLoad;
     // the jobs of this dimension, set by hand
     public final java.util.List<RunState.FurnaceJob> jobs = new java.util.ArrayList<>();
-    // idle furnaces of ours within the walk back, and the split smelt that is loading (null = none)
-    public int idleFurnaces;
+    // the split smelt that is loading (null = none)
     public adris.altoclef.tasks.container.SmeltSplit.Batch smeltBatch;
-
-    @Override
-    public int idleFurnaces() {
-        return idleFurnaces;
-    }
 
     @Override
     public adris.altoclef.tasks.container.SmeltSplit.Batch smeltBatch() {
