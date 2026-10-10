@@ -80,10 +80,9 @@ public final class MinecraftFacts implements GamerFacts {
     private long gameTime;
     // sticky: once the credits showed up the run is over, the screen going away again must not undo that
     private boolean credits;
-    private boolean tableNearby;
-    private boolean furnaceNearby;
-    private boolean smokerNearby;
-    // what the three flags above remember from the last look (a table out of NEAR, the furnace's and smoker's band)
+    // every station answer of this tick, see StationVerdict
+    private StationVerdict stations = StationVerdict.NONE;
+    // what the verdict remembers from the last look (a table out of NEAR, the furnace's and smoker's band)
     private final StationLatches latches = new StationLatches();
 
     public MinecraftFacts(AltoClef mod) {
@@ -116,7 +115,7 @@ public final class MinecraftFacts implements GamerFacts {
         bagFull = !mod.getItemStorage().hasEmptyInventorySlot() && StorageHelper.getJunkSlot(mod).isEmpty();
         if (state != null) {
             Workbenches.sync(state, gameTime);
-            PlannerFlags flags = plannerFlags(state, dimension.name(), player.getX(), player.getY(), player.getZ(), new HeldWorld() {
+            stations = StationVerdict.of(state, dimension.name(), player.getX(), player.getY(), player.getZ(), gameTime, new StationVerdict.World() {
                 @Override
                 public boolean stands(StationHook.Kind kind, RunState.Pos pos) {
                     BlockPos at = new BlockPos(pos.x, pos.y, pos.z);
@@ -138,95 +137,32 @@ public final class MinecraftFacts implements GamerFacts {
                     return DoStuffInContainerTask.walkBackUsable(mod, new BlockPos(b.pos.x, b.pos.y, b.pos.z), Workbenches.blockOf(kind));
                 }
             }, latches);
-            tableNearby = flags.table();
-            furnaceNearby = flags.furnace();
-            smokerNearby = flags.smoker();
         } else {
-            tableNearby = false;
-            furnaceNearby = false;
-            smokerNearby = false;
+            stations = StationVerdict.NONE;
             latches.clear();
         }
         return true;
     }
 
-    // what the planner's flags ask of the game, as questions. MinecraftFacts answers them from the world, the equivalence test from a table
-    interface HeldWorld {
-        // the block is still there (an unloaded chunk keeps its station)
-        boolean stands(StationHook.Kind kind, RunState.Pos pos);
-
-        // the bag holds one of the item
-        boolean inBag(StationHook.Kind kind);
-
-        // DoStuffInContainerTask.bagCanMake: the bag has what one more takes
-        boolean canMake(StationHook.Kind kind);
-
-        // DoStuffInContainerTask.walkBackUsable for this bench
-        boolean walkUsable(StationHook.Kind kind, Bench b);
-    }
-
-    record PlannerFlags(boolean table, boolean furnace, boolean smoker) {
-    }
-
-    // held when one of ours is within NEAR (a straight line, height counts), the same test the container tasks use, with a
-    // latch on top so the plan does not flip at the line (the cobble floor, the cook gate, a log trip against the cobble).
-    // the table's is big (once out of NEAR it only counts again well inside it, its planks swing the plan). furnace and
-    // smoker only get a block, and only inward: the smoker first rule reads this flag and the container tasks read the
-    // plain line, so a smoker at 20 blocks is a smoker whichever way we got there, and the flag is never true where the
-    // task would put down a second one
-    static PlannerFlags plannerFlags(RunState state, String dimension, double px, double py, double pz, HeldWorld world, StationLatches latches) {
-        boolean tableNear = heldNear(state, StationHook.Kind.TABLE, dimension, px, py, pz, WorkbenchRules.returnRadius(latches.tableFar), world);
-        latches.tableFar = !tableNear && Workbenches.any(state, StationHook.Kind.TABLE, dimension);
-        // past the latch a table of ours still counts as far as the craft would walk back to it (Workbenches.plannerWalksBack),
-        // the latch only remembers its own answer like the furnace's
-        boolean table = held(state, StationHook.Kind.TABLE, dimension, px, py, pz, tableNear, world);
-        // past the band a furnace or smoker of ours still counts when the smelt would walk back to it (plannerWalksBack). the latch
-        // only ever remembers the band's own answer, the walk back has no line to dither over
-        boolean furnaceNear = heldNear(state, StationHook.Kind.FURNACE, dimension, px, py, pz, WorkbenchRules.bandRadius(latches.furnaceHeld), world);
-        latches.furnaceHeld = Workbenches.any(state, StationHook.Kind.FURNACE, dimension) ? Boolean.valueOf(furnaceNear) : null;
-        boolean furnace = held(state, StationHook.Kind.FURNACE, dimension, px, py, pz, furnaceNear, world);
-        boolean smokerNear = heldNear(state, StationHook.Kind.SMOKER, dimension, px, py, pz, WorkbenchRules.bandRadius(latches.smokerHeld), world);
-        latches.smokerHeld = Workbenches.any(state, StationHook.Kind.SMOKER, dimension) ? Boolean.valueOf(smokerNear) : null;
-        boolean furnaceAtHand = furnaceNear || world.inBag(StationHook.Kind.FURNACE);
-        boolean smoker = WorkbenchRules.plannerSmoker(smokerNear, furnaceAtHand,
-                !smokerNear && !furnaceAtHand && held(state, StationHook.Kind.SMOKER, dimension, px, py, pz, false, world));
-        return new PlannerFlags(table, furnace, smoker);
-    }
-
-    // one of the stations this run placed (or is taking back) that is still there and within `radius` of us. the planner counts it
-    // as held about where crafting and smelting will walk to it, so the plan and the container tasks can't disagree about whether
-    // a second one is needed. an unloaded chunk keeps its station
-    private static boolean heldNear(RunState state, StationHook.Kind kind, String dimension, double px, double py, double pz, double radius,
-                                    HeldWorld world) {
-        return Workbenches.heldNear(state, kind, dimension, px, py, pz, radius, pos -> world.stands(kind, pos));
-    }
-
-    // the walk back half asks DoStuffInContainerTask's own two questions (can the bag make one, would it take that far one), so the
-    // planner and StationChoice agree on the block and on the bag. only worked out when the band said no
-    private static boolean held(RunState state, StationHook.Kind kind, String dimension, double px, double py, double pz, boolean near,
-                                HeldWorld world) {
-        if (near) {
-            return true;
-        }
-        boolean inBag = world.inBag(kind);
-        boolean canMake = !inBag && world.canMake(kind);
-        // in the bag is no walk back (KitPlanner counts a table in the bag itself, the furnace's readers ask the bag too)
-        return Workbenches.plannerWalksBack(state, kind, dimension, px, py, pz, inBag, canMake, b -> world.walkUsable(kind, b));
+    // the tick's station verdict, built by refresh() (the latches move there, every tick, whoever asks)
+    @Override
+    public StationVerdict stations() {
+        return stations;
     }
 
     @Override
     public boolean tablePlacedNearby() {
-        return tableNearby;
+        return stations.table().heldForPlanner();
     }
 
     @Override
     public boolean furnacePlacedNearby() {
-        return furnaceNearby;
+        return stations.furnace().heldForPlanner();
     }
 
     @Override
     public boolean smokerPlacedNearby() {
-        return smokerNearby;
+        return stations.smoker().heldForPlanner();
     }
 
     @Override

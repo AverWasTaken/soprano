@@ -102,6 +102,8 @@ public interface GamerFacts {
     // or further out where the craft would walk back to it (Workbenches.plannerWalksBack, StationChoice.oursReach). it is on its
     // way back to the bag too, so for planning it is a held table: the moment it leaves the bag the kit used to ask for table planks
     // and the head need flipped to log
+    // (these three flags are the verdict's planner fields: MinecraftFacts answers them from stations(), a test's facts answer stations()
+    // from them. readers ask stations(), these stay for the facts that set them by hand)
     default boolean tablePlacedNearby() {
         return false;
     }
@@ -111,6 +113,12 @@ public interface GamerFacts {
     // owed to a furnace that is already on the ground
     default boolean furnacePlacedNearby() {
         return false;
+    }
+
+    // every answer about the stations of ours, as of this tick (StationVerdict). the real facts build it in refresh(); the default is for
+    // a test's facts, it knows only the three flags above and says nothing is registered
+    default StationVerdict stations() {
+        return StationVerdict.fromFlags(tablePlacedNearby(), furnacePlacedNearby(), smokerPlacedNearby());
     }
 
     // the split smelt still loading (SmeltSplit.active), null when there is none

@@ -63,6 +63,8 @@ public final class PhaseMachine implements GamerContext {
     // `woodGiven` keeps tick() from throwing that one away
     private WoodBudget wood;
     private boolean woodGiven;
+    // the tick's StationVerdict, see stations()
+    private StationVerdict stations;
     private int lastFingerprint;
     private int anchorX;
     private int anchorY;
@@ -231,6 +233,7 @@ public final class PhaseMachine implements GamerContext {
     public Task tick(AltoClef mod) {
         this.mod = mod;
         food = null;
+        stations = null;
         if (!woodGiven) {
             wood = null;
         }
@@ -491,6 +494,16 @@ public final class PhaseMachine implements GamerContext {
             wood = WoodBudget.of(host.facts(), host.cfg().overworld, host.cfg().end.beds, phase);
         }
         return wood;
+    }
+
+    // the facts built the verdict in refresh(), before the tick: this keeps the first one asked for and drops it when the next tick
+    // starts, so every reader in a tick holds the same object
+    @Override
+    public StationVerdict stations() {
+        if (stations == null) {
+            stations = host.facts().stations();
+        }
+        return stations;
     }
 
     // the engine built this tick's budget before the tick (to feed the furnaces), the handlers read that one

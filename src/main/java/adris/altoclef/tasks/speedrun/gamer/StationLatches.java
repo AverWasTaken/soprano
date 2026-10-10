@@ -1,7 +1,7 @@
 package adris.altoclef.tasks.speedrun.gamer;
 
 // what the planner's held flags remember from the last look, so the plan does not flip at the line (WorkbenchRules.returnRadius /
-// bandRadius). MinecraftFacts owns one and the flag work (MinecraftFacts.plannerFlags) is the only thing that moves it
+// bandRadius). MinecraftFacts owns one and building a StationVerdict is the only thing that moves it
 final class StationLatches {
     // a table is recorded and was out of NEAR last look, see WorkbenchRules.returnRadius
     boolean tableFar;

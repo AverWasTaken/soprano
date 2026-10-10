@@ -126,6 +126,11 @@ public final class WoodReserve {
         }
 
         @Override
+        public StationVerdict stations() {
+            return base.stations();
+        }
+
+        @Override
         public boolean tablePlacedNearby() {
             return base.tablePlacedNearby();
         }

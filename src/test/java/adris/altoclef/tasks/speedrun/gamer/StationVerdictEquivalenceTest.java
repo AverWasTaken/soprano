@@ -43,8 +43,10 @@ import static org.junit.Assert.assertTrue;
 // kind, StationChoice.decide fed the candidates DoStuffInContainerTask.choose would build (a MODEL of choose, the real one needs a
 // client), WorkbenchRules.decide for every bench (the call, the reason, what it did to the bench), neededSoon, comingBack, phaseMayEnd,
 // portalHold, anchorOf, doneUsing, holdFar, and what KitPlanner and CookGate make of the flags.
-// what it can not reach: anything that asks the live world (the tracker, the task tree, the menu: idle, inUse, holdsStuff are
-// generated), Workbenches.run itself, and the container tasks' own use of the pick.
+// what it can NOT reach, and so does not pin: DoStuffInContainerTask.choose (the choice above is a model of it, if choose changes
+// this test will not notice), Workbenches.idle and Workbenches.inUse (the task tree and the menu are generated, idle is just a coin
+// per bench), holdsStuff's container tracker read, Workbenches.run itself, and the container tasks' own use of the pick.
+// every room is built fresh and decide() runs on a fresh copy of each bench, so rooms can not leak into each other.
 // STATION_GOLDEN_WRITE=<dir> rewrites the file into <dir> instead of checking it (only ever from code that is known to be right).
 // STATION_GOLDEN_FULL=<dir> dumps every answer in full, for diffing two versions state by state
 public class StationVerdictEquivalenceTest {
@@ -335,8 +337,8 @@ public class StationVerdictEquivalenceTest {
             b.farHeldLogged = r.nextBoolean();
         }
 
-        MinecraftFacts.HeldWorld world() {
-            return new MinecraftFacts.HeldWorld() {
+        StationVerdict.World world() {
+            return new StationVerdict.World() {
                 @Override
                 public boolean stands(Kind kind, RunState.Pos pos) {
                     return stands.getOrDefault(key(kind, pos), true);
@@ -378,17 +380,18 @@ public class StationVerdictEquivalenceTest {
         String dim = room.dimension;
 
         // the planner's flags over three looks, the latches carrying from one to the next
-        MinecraftFacts.PlannerFlags last = null;
+        StationVerdict last = null;
         sb.append("flags=");
         for (int i = 0; i < 3; i++) {
             double[] p = room.looks[i];
-            last = MinecraftFacts.plannerFlags(state, dim, p[0], p[1], p[2], room.world(), room.latches);
-            sb.append(t(last.table())).append(t(last.furnace())).append(t(last.smoker()));
+            last = StationVerdict.of(state, dim, p[0], p[1], p[2], NOW, room.world(), room.latches);
+            sb.append(t(last.table().heldForPlanner())).append(t(last.furnace().heldForPlanner())).append(t(last.smoker().heldForPlanner()));
             sb.append('/').append(t(room.latches.tableFar)).append(room.latches.furnaceHeld == null ? "-" : t(room.latches.furnaceHeld))
                     .append(room.latches.smokerHeld == null ? "-" : t(room.latches.smokerHeld)).append(',');
         }
-        // the third look's three flags once more, on their own, for the tally
-        sb.append(";flags2=").append(t(last.table())).append(t(last.furnace())).append(t(last.smoker()));
+        // the third look's three flags once more, on their own, for the tally (the verdict was built before any bench moved, which is
+        // when mayEnd and the others are asked below)
+        sb.append(";flags2=").append(t(last.table().heldForPlanner())).append(t(last.furnace().heldForPlanner())).append(t(last.smoker().heldForPlanner()));
         double px = room.looks[2][0];
         double py = room.looks[2][1];
         double pz = room.looks[2][2];
@@ -403,6 +406,18 @@ public class StationVerdictEquivalenceTest {
             wb.append(t(walks));
             sb.append(t(walks));
             sb.append(t(Workbenches.any(state, kind, dim)));
+            // the verdict's own fields are the same registry questions, asked once at the third look
+            StationVerdict.Station s = last.of(kind);
+            assertEquals(Workbenches.any(state, kind, dim), s.present());
+            assertEquals(Workbenches.nearestStanding(state, kind, dim, px, py, pz, WorkbenchRules.NEAR) != null, s.standingNear());
+            assertEquals(Workbenches.nearestStanding(state, kind, dim, px, py, pz, WorkbenchRules.FORGET_DISTANCE) != null, s.standingFar());
+            assertEquals(WorkbenchRules.placeVetoed(state.benches, kind, NOW), s.pickingUp());
+            Bench nearest = Workbenches.nearestStanding(state, kind, dim, px, py, pz, Double.MAX_VALUE);
+            assertEquals(nearest == null ? null : nearest.pos, s.nearest());
+            if (kind != Kind.SMOKER) {
+                assertEquals(!s.heldNear() && walks, s.walksBack());
+                assertEquals(s.heldNear() || s.walksBack(), s.heldForPlanner());
+            }
             for (double radius : new double[]{WorkbenchRules.NEAR, WorkbenchRules.returnRadius(true), WorkbenchRules.bandRadius(false), WorkbenchRules.FORGET_DISTANCE}) {
                 sb.append(t(Workbenches.heldNear(state, kind, dim, px, py, pz, radius, pos -> room.stands.getOrDefault(Room.key(kind, pos), true))));
             }
@@ -525,6 +540,7 @@ public class StationVerdictEquivalenceTest {
         // may the phase end with them standing, and the portal's hold over every combination
         List<Bench> snapshot = new ArrayList<>(state.benches);
         sb.append(";mayEnd=").append(t(WorkbenchRules.phaseMayEnd(snapshot, dim, x -> FurnaceJobs.isBusy(state, x.pos, x.dimension))));
+        assertEquals(WorkbenchRules.phaseMayEnd(snapshot, dim, x -> FurnaceJobs.isBusy(state, x.pos, x.dimension)), last.mayEnd());
         sb.append("/").append(WorkbenchRules.leftGivenUp(snapshot, dim, x -> FurnaceJobs.isBusy(state, x.pos, x.dimension)).size());
         sb.append(";portal=");
         for (int bits = 0; bits < 16; bits++) {
@@ -537,9 +553,9 @@ public class StationVerdictEquivalenceTest {
         FakeFacts f = new FakeFacts();
         f.dimension = Dimension.valueOf(dim);
         f.gameTime = NOW;
-        f.tablePlaced = last.table();
-        f.furnacePlaced = last.furnace();
-        f.smokerPlaced = last.smoker();
+        f.tablePlaced = last.table().heldForPlanner();
+        f.furnacePlaced = last.furnace().heldForPlanner();
+        f.smokerPlaced = last.smoker().heldForPlanner();
         f.give(Items.CRAFTING_TABLE, room.bag[0]);
         f.give(Items.FURNACE, room.bag[1]);
         f.give(Items.SMOKER, room.bag[2]);
