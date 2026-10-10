@@ -97,6 +97,8 @@ public class KitPlannerTest {
 
     @Test
     public void freshStartFullPlanOrder() {
+        // fed enough to be over the floor: a bag under it leads with the refill (anEmptyBagEatsBeforeItBuildsAnything)
+        f.foodUnits = 40;
         List<KitNeed> plan = KitPlanner.plan(f, cfg, 8);
         // no axe and no bed planks past the gather, but a plan that starts bare still does its wood before any ore
         assertEquals(List.of("log", "stone_pickaxe", "stone_axe", "food", "iron_ingot", "iron_pickaxe", "iron_axe", "bucket",
@@ -302,6 +304,35 @@ public class KitPlannerTest {
         assertEquals(null, find(KitPlanner.plan(f, cfg, 8), KitNeed.FOOD));
         f.foodUnits = 10;
         assertEquals(2, KitPlanner.plan(f, cfg, 8).stream().filter(n -> n.catalogueName().equals(KitNeed.FOOD)).count());
+    }
+
+    @Test
+    public void anEmptyBagEatsBeforeItBuildsAnything() {
+        // no food, no pick, no wood: the starter chain (logs, the stone pick) has a lot to ask for, and the refill still leads
+        FoodPlan food = FoodPlan.ofBeds(f, cfg, 8);
+        List<KitNeed> plan = KitPlanner.plan(f, cfg, 8, food);
+        assertEquals(new KitNeed(KitNeed.FOOD, food.refillStop()), plan.get(0));
+        assertTrue(names(plan).contains("stone_pickaxe"));
+        assertTrue(names(plan).contains("log"));
+        assertTrue(names(plan).indexOf("log") > 0);
+        // the head the gate cares about is that one
+        assertEquals(0, FoodGate.index(plan, food));
+        // one under the floor is the same, and the refill is in the list once up front (the target one still closes the plan)
+        f.foodUnits = 23;
+        plan = KitPlanner.plan(f, cfg, 8);
+        assertEquals(KitNeed.FOOD, plan.get(0).catalogueName());
+        assertEquals(2, plan.stream().filter(n -> n.catalogueName().equals(KitNeed.FOOD)).count());
+    }
+
+    @Test
+    public void atTheFloorTheStarterStillGoesFirst() {
+        // the same bag with food at the floor: a refill may be due, but it waits behind the tools like it always did
+        f.foodUnits = 24;
+        List<KitNeed> plan = KitPlanner.plan(f, cfg, 8);
+        assertFalse(KitNeed.FOOD.equals(plan.get(0).catalogueName()));
+        assertTrue(names(plan).contains(KitNeed.FOOD));
+        f.foodUnits = 40;
+        assertFalse(KitNeed.FOOD.equals(KitPlanner.plan(f, cfg, 8).get(0).catalogueName()));
     }
 
     @Test
@@ -585,6 +616,8 @@ public class KitPlannerTest {
     @Test
     public void ironPhaseDoesNotAskForWoodOnceTheOreIsInTheBag() {
         // the whole point: no cave to surface trip for one more log
+        // (fed: an empty stomach puts the refill ahead of the wood, anEmptyBagEatsBeforeItBuildsAnything)
+        f.foodUnits = 40;
         assertEquals("log", names(KitPlanner.plan(f, cfg, 8)).get(0));
         FakeFacts raw = new FakeFacts().give(Items.RAW_IRON, 1);
         assertFalse(names(KitPlanner.plan(raw, cfg, 8)).contains("log"));

@@ -119,6 +119,18 @@ public class FoodGateTest {
     }
 
     @Test
+    public void anEmptyBagWithNoPickHasTheFoodAtTheHeadAfterTheGate() {
+        // the whole IRON list for a bag with nothing in it: food leads (the gate says so under the floor, mine or no mine) and
+        // stays the head, so the furnace's call about the head need is a food call
+        FakeFacts f = new FakeFacts();
+        FoodPlan food = plan(f);
+        assertTrue(food.leads(false, false, false));
+        List<KitNeed> needs = KitPlanner.plan(f, cfg, 8, food);
+        assertTrue(FoodGate.refillHead(needs, food));
+        assertEquals(KitNeed.FOOD, needs.get(0).catalogueName());
+    }
+
+    @Test
     public void shallowIsTheSameLineAsGoingUp() {
         assertTrue(SmeltSurface.shallow(SmeltSurface.GO_UP_DEPTH));
         assertFalse(SmeltSurface.shallow(SmeltSurface.GO_UP_DEPTH + 1));

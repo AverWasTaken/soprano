@@ -74,8 +74,17 @@ public final class KitPlanner {
     public static List<KitNeed> plan(GamerFacts f, OverworldConfig cfg, int endBeds, FoodPlan food) {
         // a worn pick we still carry gets replaced after the iron, not in the middle of it (see starter)
         List<KitNeed> late = new ArrayList<>();
-        List<KitNeed> out = new ArrayList<>(starter(f, cfg, endBeds, false, late, food));
-        addRefill(out, food);
+        // under the floor the refill leads whatever the starter is missing (a bag with no pick has it and its wood chain up front):
+        // the tools can be made on a full stomach. at or over the floor the starter goes first like it always did
+        boolean hungry = food.held() < food.floor();
+        List<KitNeed> out = new ArrayList<>();
+        if (hungry) {
+            addRefill(out, food);
+        }
+        out.addAll(starter(f, cfg, endBeds, false, late, food));
+        if (!hungry) {
+            addRefill(out, food);
+        }
         out.addAll(iron(f, cfg, endBeds));
         out.addAll(late);
         addFood(out, food, food.target());
