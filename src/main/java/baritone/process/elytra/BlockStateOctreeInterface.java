@@ -30,11 +30,21 @@ public final class BlockStateOctreeInterface {
     private final int minY;
     // The chunk the last lookup fell in, so that a run of lookups inside one chunk costs one table
     // lookup. Cleared under the write lock by whatever replaces or culls chunks.
-    Chunk chunk;
+    // the solver thread and the game thread both come through here, so the coordinates and the chunk live in one
+    // object with final fields. three loose fields could be read half from one thread's lookup and half from the other's
+    private static final class Last {
+        final int x;
+        final int z;
+        final Chunk chunk;
 
-    // Guarantee that the first lookup will fetch the context by setting MAX_VALUE
-    private int prevChunkX = Integer.MAX_VALUE;
-    private int prevChunkZ = Integer.MAX_VALUE;
+        Last(int x, int z, Chunk chunk) {
+            this.x = x;
+            this.z = z;
+            this.chunk = chunk;
+        }
+    }
+
+    private Last last;
 
     public BlockStateOctreeInterface(final NetherPathfinderContext context) {
         this.context = context;
@@ -49,11 +59,17 @@ public final class BlockStateOctreeInterface {
         }
         final int chunkX = x >> 4;
         final int chunkZ = z >> 4;
-        if (this.chunk == null | ((chunkX ^ this.prevChunkX) | (chunkZ ^ this.prevChunkZ)) != 0) {
-            this.prevChunkX = chunkX;
-            this.prevChunkZ = chunkZ;
-            this.chunk = this.pathfinder.getChunkOrDefault(chunkX, chunkZ, true);
+        // read it once, another thread may swap it out under us
+        Last last = this.last;
+        if (last == null || last.x != chunkX || last.z != chunkZ) {
+            last = new Last(chunkX, chunkZ, this.pathfinder.getChunkOrDefault(chunkX, chunkZ, true));
+            this.last = last;
         }
-        return this.chunk.isSolid(x & 0xF, adjustedY, z & 0xF);
+        return last.chunk.isSolid(x & 0xF, adjustedY, z & 0xF);
+    }
+
+    // only call this with the write lock held, no reader can be mid lookup then
+    void clearCache() {
+        this.last = null;
     }
 }
