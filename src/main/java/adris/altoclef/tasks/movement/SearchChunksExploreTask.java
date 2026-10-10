@@ -25,6 +25,8 @@ public abstract class SearchChunksExploreTask extends Task {
     private ChunkSearchTask _searcher;
     // a searcher ran out of chunks and nothing new has turned up since
     private boolean _searchExhausted;
+    // the wander under us is failing and that has already been counted as an exhausted search
+    private boolean _failingWanderCounted;
     private AltoClef _mod;
     private Subscription<ChunkLoadEvent> _chunkLoadedSubscription;
 
@@ -46,6 +48,7 @@ public abstract class SearchChunksExploreTask extends Task {
     @Override
     protected Task onTick(AltoClef mod) {
         synchronized (_searcherMutex) {
+            countFailingWander();
             if (_searcher == null) {
                 setDebugState("Exploring/Searching for valid chunk");
                 // Explore
@@ -67,6 +70,20 @@ public abstract class SearchChunksExploreTask extends Task {
             //Debug.logMessage("wtf: " + (_searcher == null? "(null)" :_searcher.finished()));
             setDebugState("Searching within chunks...");
             return _searcher;
+        }
+    }
+
+    // a wander that has been exploring forever and never got out of its spot means no chunk is coming, which is the
+    // same news as a searcher running out. counted once per bad wander: whoever reads failedSearch resets the search,
+    // and with nothing loaded to search the wander is still the one failing, so counting it every tick would reset
+    // every tick
+    private void countFailingWander() {
+        if (!thisOrChildWanderFailing()) {
+            _failingWanderCounted = false;
+        } else if (_searcher == null && !_failingWanderCounted) {
+            _failingWanderCounted = true;
+            _searchExhausted = true;
+            Debug.logWarning("Search wander is failing, counting the search as exhausted.");
         }
     }
 
