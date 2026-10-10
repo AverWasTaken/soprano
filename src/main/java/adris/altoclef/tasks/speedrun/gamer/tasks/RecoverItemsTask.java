@@ -34,7 +34,7 @@ public class RecoverItemsTask extends Task {
     private static final double EMPTY_SECONDS = 4;
 
     private final BlockPos _deathPos;
-    private final RecoverRules.Budget _budget;
+    private final double _budgetSeconds;
     private final TimerGame _empty = new TimerGame(EMPTY_SECONDS);
     private final Task _walk;
     private final RecoverRules.Gate _gate = new RecoverRules.Gate();
@@ -47,16 +47,15 @@ public class RecoverItemsTask extends Task {
 
     public RecoverItemsTask(BlockPos deathPos, double budgetSeconds) {
         _deathPos = deathPos;
-        _budget = new RecoverRules.Budget(budgetSeconds);
+        _budgetSeconds = budgetSeconds;
         _walk = new GetWithinRangeOfBlockTask(deathPos, (int) RecoverRules.ARRIVE_RANGE);
     }
 
     @Override
     protected void onStart(AltoClef mod) {
         _empty.reset();
-        // the budget total and the crowd gate are NOT restarted here either: onStart runs again after every interrupt, and the
-        // 30 s are 30 in a row, not 30 since the last time mob defense let go of us. the budget just stops billing the gap
-        _budget.resume();
+        // the crowd gate is NOT restarted here either: onStart runs again after every interrupt, and the 30 s are 30 in a
+        // row, not 30 since the last time mob defense let go of us. the time on task clock never restarts on its own
         if (!_started) {
             _started = true;
             _gate.reset();
@@ -68,7 +67,7 @@ public class RecoverItemsTask extends Task {
 
     @Override
     protected Task onTick(AltoClef mod) {
-        if (_budget.update(mod.getWorld().getGameTime() / 20.0)) {
+        if (overTimeOnTask(_budgetSeconds)) {
             setDebugState("Out of time.", "Giving up on our stuff");
             _finished = true;
             return null;
