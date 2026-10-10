@@ -32,6 +32,7 @@ import baritone.pathing.calc.AStarPathFinder;
 import baritone.pathing.calc.AbstractNodeCostSearch;
 import baritone.pathing.movement.CalculationContext;
 import baritone.pathing.movement.MovementHelper;
+import baritone.pathing.movement.SwimStalls;
 import baritone.pathing.path.PathExecutor;
 import baritone.process.ElytraProcess;
 import baritone.utils.PathRenderer;
@@ -82,8 +83,14 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
     // our own tick count for the park's age, ticksElapsedSoFar gets reset by the eta
     private long tickCount;
 
+    private final SwimStalls swimStalls = new SwimStalls();
+
     public PathingBehavior(Baritone baritone) {
         super(baritone);
+    }
+
+    public SwimStalls swimStalls() {
+        return swimStalls;
     }
 
     private void queuePathEvent(PathEvent event) {

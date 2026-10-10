@@ -393,8 +393,9 @@ public abstract class Movement implements IMovement, MovementHelper {
                 }
             }
             case GIVE_UP -> {
-                logDebug("stuck while swimming, replanning");
+                logDebug("stuck while swimming, replanning around it");
                 swimStall.reset();
+                ((PathingBehavior) baritone.getPathingBehavior()).swimStalls().record(src, dest, ctx.world(), System.currentTimeMillis());
                 currentState.setStatus(MovementStatus.FAILED);
             }
             default -> {

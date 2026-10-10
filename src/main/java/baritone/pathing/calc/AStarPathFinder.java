@@ -167,6 +167,8 @@ public final class AStarPathFinder extends AbstractNodeCostSearch {
                             SettingsUtil.maybeCensor(res.y),
                             SettingsUtil.maybeCensor(currentNode.y + moves.yOffset)));
                 }
+                // a move a swimmer just got pinned on, don't hand it right back
+                actionCost += calcContext.swimStalls.penalty(currentNode.x, currentNode.y, currentNode.z, res.x, res.y, res.z);
                 long hashCode = BetterBlockPos.longHash(res.x, res.y, res.z);
                 PathNode neighbor = getNodeAtPosition(res.x, res.y, res.z, hashCode);
                 if (isFavoring) {
