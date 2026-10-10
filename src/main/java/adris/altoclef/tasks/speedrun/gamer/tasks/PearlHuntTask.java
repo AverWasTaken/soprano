@@ -7,6 +7,7 @@ import adris.altoclef.tasks.movement.GetToXZTask;
 import adris.altoclef.tasks.resources.KillAndLootTask;
 import adris.altoclef.tasks.speedrun.gamer.RunState;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.tasksystem.TaskClock;
 import adris.altoclef.ui.HudText;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.WorldHelper;
@@ -43,36 +44,17 @@ public class PearlHuntTask extends Task {
 
     private GetToXZTask toHotspot;
     private RunState.Pos hotspotWalkingTo;
-    private final Spent hotspotSpent = new Spent();
+    // these two are phase clocks, not time on task: each only ticks in its own branch and restarts with its target.
+    // the caps survive interrupts, and a long fight with something else (or a death) in between does not eat them
+    private final TaskClock hotspotSpent = new TaskClock();
     private boolean hotspotDone;
     private Entity angryTarget;
     private KillEntityTask angryTask;
-    private final Spent angrySpent = new Spent();
+    private final TaskClock angrySpent = new TaskClock();
     private final Set<Entity> angryGivenUp = Collections.newSetFromMap(new IdentityHashMap<>());
     private String step = "Looking for endermen";
     // same latch the phase uses, an enderman behind a pillar must not switch the hotspot walk off and on
     private final HoldLatch endermanLatch = new HoldLatch(ENDERMAN_HOLD_SECONDS);
-
-    // time on a job that only counts the ticks we were actually at it: the caps survive interrupts, but a long fight with
-    // something else (or a death) in between must not eat them either
-    private static final class Spent {
-        private static final long GAP_MS = 1000;
-        private long ms;
-        private long lastMs;
-
-        void tick() {
-            long now = System.currentTimeMillis();
-            if (lastMs != 0 && now - lastMs < GAP_MS) {
-                ms += now - lastMs;
-            }
-            lastMs = now;
-        }
-
-        void reset() {
-            ms = 0;
-            lastMs = 0;
-        }
-    }
 
     public PearlHuntTask(int pearlsTotal, Dimension dimension, Supplier<RunState.Pos> hotspot) {
         this.pearlsTotal = pearlsTotal;
@@ -130,7 +112,7 @@ public class PearlHuntTask extends Task {
                 angrySpent.reset();
             }
             angrySpent.tick();
-            if (angrySpent.ms > ANGRY_SECONDS * 1000) {
+            if (angrySpent.over(ANGRY_SECONDS)) {
                 angryGivenUp.add(man);
                 continue;
             }
@@ -162,7 +144,7 @@ public class PearlHuntTask extends Task {
         double dz = mod.getPlayer().getZ() - spot.z;
         boolean there = dx * dx + dz * dz <= AT_HOTSPOT_BLOCKS * AT_HOTSPOT_BLOCKS;
         hotspotSpent.tick();
-        boolean tooLong = hotspotSpent.ms > HOTSPOT_WALK_SECONDS * 1000;
+        boolean tooLong = hotspotSpent.over(HOTSPOT_WALK_SECONDS);
         if (there || tooLong) {
             hotspotDone = true;
             return null;
