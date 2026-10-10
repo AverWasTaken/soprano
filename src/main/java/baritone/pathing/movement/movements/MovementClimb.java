@@ -475,6 +475,8 @@ public class MovementClimb extends Movement {
             logDebug("not on the ladder anymore");
             return state.setStatus(MovementStatus.UNREACHABLE);
         }
+        // decide flips launched on every GO, so the sneak release below has to look at what it was going in
+        boolean launchedBefore = control.launched;
         ClimbJump.Action action = sim.decide(control, u, player.getY() - src.y, vu, vel.y, ground, sprinting, player.horizontalCollision, wantSprint);
         switch (action.status()) {
             case ClimbJump.DONE:
@@ -486,7 +488,7 @@ public class MovementClimb extends Movement {
             default:
                 break;
         }
-        if (!grab && sneaked && !control.launched) {
+        if (!grab && sneaked && !launchedBefore) {
             // good to go, except we're still crouched, and that's a tick of 0.3 x speed that the sim doesn't know about
             sneaked = false;
             control = new ClimbJump.Control(false);
