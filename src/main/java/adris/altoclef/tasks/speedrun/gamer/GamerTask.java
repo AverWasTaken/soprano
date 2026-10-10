@@ -455,7 +455,8 @@ public class GamerTask extends Task {
         // and so the container tasks know where our stations stand (never craft a second one within reach) and which one is coming
         // down (nothing may place or walk to it). rebuilt from the saved lists, so a relog keeps what we put down
         Workbenches.sync(state, facts.gameTime());
-        StationHook.install(Workbenches.source(state, facts, this::toolCobbleOwed));
+        // (a station the placer reports goes into the book the way a heard one does, with the save a crash must not lose)
+        StationHook.install(Workbenches.source(state, facts, this::toolCobbleOwed, host::save));
         // the first read had no state to look in, so station flags and furnace jobs came out empty and the phase's first plan
         // would have been made on that. after the hook: the held flags ask it what is owed and what is coming down
         facts.refresh();

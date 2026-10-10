@@ -71,6 +71,11 @@ public final class StationHook {
         default int cobbleOwed() {
             return 0;
         }
+
+        // the container task that put this station down says so, instead of the book guessing from a block event and how far away we
+        // stood. the same spot twice (reported and heard) is one entry, the book keys on kind + dimension + position
+        default void placed(Kind kind, BlockPos pos, String dimension, long now) {
+        }
     }
 
     private static volatile Source source;
@@ -158,6 +163,14 @@ public final class StationHook {
     // it through
     public static boolean keepStanding(BlockPos pos, Block block) {
         return ours(pos) || block == Blocks.CRAFTING_TABLE || block == Blocks.FURNACE || block == Blocks.SMOKER;
+    }
+
+    // our placer finished a station and the block is in the world. no source (plain alto) hears nothing
+    public static void reportPlaced(Kind kind, BlockPos pos, String dimension, long now) {
+        Source s = source;
+        if (s != null && kind != null && pos != null && dimension != null) {
+            s.placed(kind, pos.immutable(), dimension, now);
+        }
     }
 
     // plain alto owes nothing, all of it can go into a furnace

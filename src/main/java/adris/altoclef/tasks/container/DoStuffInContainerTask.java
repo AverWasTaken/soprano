@@ -8,6 +8,7 @@ import adris.altoclef.tasks.construction.PlaceBlockNearbyTask;
 import adris.altoclef.tasks.construction.PlaceStationTask;
 import adris.altoclef.tasks.slot.EnsureFreeInventorySlotTask;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.tasksystem.TaskChain;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.StationChoice;
@@ -41,6 +42,8 @@ public abstract class DoStuffInContainerTask extends Task {
     // resort), anything else (anvil, smithing table, chest) keeps the old one
     private final Task _placeTask;
     private BlockPos _cachedContainerPosition = null;
+    // the block our placer put down that the book was already told about (reportPlaced)
+    private BlockPos _reportedAt = null;
     // the walk and the click used to be decided in two places (our nearest here, a closest-block search over there) and with
     // two furnaces standing they disagreed. this is the one block we both walk to and click, rebuilt only when it changes
     private Task _openTask;
@@ -74,6 +77,47 @@ public abstract class DoStuffInContainerTask extends Task {
 
     public DoStuffInContainerTask(Block containerBlock, ItemTarget containerTarget) {
         this(new Block[]{containerBlock}, containerTarget);
+    }
+
+    // after the whole tick, the placer included: it is a child, so the tick it reaches DONE in is this one. a subclass that returns
+    // before super.onTick (the screen is open, a load is going in) is covered too
+    @Override
+    public void tick(AltoClef mod, TaskChain parentChain) {
+        super.tick(mod, parentChain);
+        if (isActive()) {
+            reportPlaced(mod);
+        }
+    }
+
+    // our placer is done and the block is really there: tell the book, so it does not have to guess from a block event and how far
+    // away we stood (WorkbenchRules.placedByUs still catches whatever does not come through here). the book keys on kind + dimension +
+    // position, so it does not matter which of the two gets there first
+    private void reportPlaced(AltoClef mod) {
+        if (_stationKind == null || !(_placeTask instanceof PlaceStationTask station)) {
+            return;
+        }
+        BlockPos at = station.getPlaced();
+        if (at == null) {
+            // the placer started over, the next block it puts down is a new one
+            _reportedAt = null;
+            return;
+        }
+        if (at.equals(_reportedAt) || !station.isFinished(mod) || !isContainerBlockInWorld(mod, at)) {
+            return;
+        }
+        _reportedAt = at.immutable();
+        StationHook.reportPlaced(_stationKind, at, WorldHelper.getCurrentDimension().name(), mod.getWorld().getGameTime());
+    }
+
+    // not isContainerBlock: a spot alto blacklisted as unreachable is still a block we just put down
+    private boolean isContainerBlockInWorld(AltoClef mod, BlockPos pos) {
+        Block there = mod.getWorld().getBlockState(pos).getBlock();
+        for (Block block : _containerBlocks) {
+            if (block == there) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Override

@@ -697,6 +697,81 @@ public class WorkbenchesRegistryTest {
         assertTrue(Workbenches.source(state, facts(Dimension.NETHER, 100)).ours(new BlockPos(4, 64, 0)));
     }
 
+    // ---- the placer reports (StationHook.reportPlaced), the block event is only the fallback
+
+    @Test
+    public void aReportedStationIsOneBenchWithTheSamePlacedTickAsAHeardOne() {
+        RunState reported = new RunState();
+        int[] saved = {0};
+        StationHook.Source source = Workbenches.source(reported, facts(Dimension.OVERWORLD, 500), () -> 0, () -> saved[0]++);
+        source.placed(Kind.FURNACE, new BlockPos(4, 64, 0), OVERWORLD, 500);
+        RunState heard = new RunState();
+        assertTrue(Workbenches.record(heard, Kind.FURNACE, pos(4, 64, 0), OVERWORLD, 500));
+        assertEquals(1, reported.benches.size());
+        assertEquals(heard.placedFurnaces, reported.placedFurnaces);
+        assertEquals(heard.benches.get(0).placedTick, reported.benches.get(0).placedTick);
+        assertEquals(heard.benches.get(0).state, reported.benches.get(0).state);
+        assertEquals(heard.placedDimension, reported.placedDimension);
+        assertEquals("a new station is a save", 1, saved[0]);
+        assertEquals(new BlockPos(4, 64, 0), source.standingNear(Kind.FURNACE, 0.5, 64.5, 0.5));
+    }
+
+    // reported and then heard, or heard and then reported: one bench, one save, and the placed tick is the first one
+    @Test
+    public void reportedAndHeardIsOneBenchWhicheverComesFirst() {
+        for (boolean reportFirst : new boolean[]{true, false}) {
+            RunState state = new RunState();
+            int[] saved = {0};
+            StationHook.Source source = Workbenches.source(state, facts(Dimension.OVERWORLD, 500), () -> 0, () -> saved[0]++);
+            if (reportFirst) {
+                source.placed(Kind.TABLE, new BlockPos(1, 64, 1), OVERWORLD, 500);
+                assertFalse(Workbenches.record(state, Kind.TABLE, pos(1, 64, 1), OVERWORLD, 503));
+            } else {
+                assertTrue(Workbenches.record(state, Kind.TABLE, pos(1, 64, 1), OVERWORLD, 500));
+                source.placed(Kind.TABLE, new BlockPos(1, 64, 1), OVERWORLD, 503);
+            }
+            assertEquals(1, state.benches.size());
+            assertEquals(1, state.placedTables.size());
+            assertEquals(500, state.benches.get(0).placedTick);
+            assertEquals(reportFirst ? 1 : 0, saved[0]);
+            // and again, nothing grows
+            source.placed(Kind.TABLE, new BlockPos(1, 64, 1), OVERWORLD, 510);
+            assertEquals(1, state.benches.size());
+        }
+    }
+
+    // the key is kind + dimension + position: the same x y z as another kind is another bench, and the other dimension takes over
+    // the coordinates exactly like a heard one does (the lists key on x y z alone)
+    @Test
+    public void aReportKeysOnKindAndDimensionAndPosition() {
+        RunState state = new RunState();
+        StationHook.Source source = Workbenches.source(state, facts(Dimension.OVERWORLD, 500));
+        source.placed(Kind.TABLE, new BlockPos(1, 64, 1), OVERWORLD, 500);
+        source.placed(Kind.FURNACE, new BlockPos(1, 64, 1), OVERWORLD, 500);
+        assertEquals(2, state.benches.size());
+        source.placed(Kind.TABLE, new BlockPos(2, 64, 1), OVERWORLD, 500);
+        assertEquals(3, state.benches.size());
+        source.placed(Kind.SMOKER, new BlockPos(9, 40, 9), NETHER, 500);
+        assertEquals(4, state.benches.size());
+        assertEquals(NETHER, Workbenches.find(state, Kind.SMOKER, pos(9, 40, 9)).dimension);
+    }
+
+    @Test
+    public void reportPlacedThroughTheHookReachesTheInstalledSourceAndNoOneElse() {
+        StationHook.clear();
+        // no source: nothing to tell, nothing throws
+        StationHook.reportPlaced(Kind.TABLE, new BlockPos(1, 64, 1), OVERWORLD, 500);
+        RunState state = new RunState();
+        StationHook.install(Workbenches.source(state, facts(Dimension.OVERWORLD, 500)));
+        try {
+            StationHook.reportPlaced(Kind.TABLE, new BlockPos(1, 64, 1), OVERWORLD, 500);
+            StationHook.reportPlaced(null, new BlockPos(1, 64, 1), OVERWORLD, 500);
+            assertEquals(1, state.benches.size());
+        } finally {
+            StationHook.clear();
+        }
+    }
+
     @Test
     public void withNoSourceInstalledNothingIsOursAndNothingIsComingDown() {
         StationHook.clear();

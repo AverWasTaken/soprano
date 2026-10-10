@@ -359,10 +359,23 @@ public final class Workbenches {
 
     // `cobbleOwed`: what the stone kit still eats (GamerTask, KitPlanner.toolCobble), kept out of "the bag can make a furnace"
     public static StationHook.Source source(RunState state, GamerFacts facts, IntSupplier cobbleOwed) {
+        return source(state, facts, cobbleOwed, () -> { });
+    }
+
+    // `recorded`: a new station went into the book (the run saves, same as when the block event hears one)
+    public static StationHook.Source source(RunState state, GamerFacts facts, IntSupplier cobbleOwed, Runnable recorded) {
         return new StationHook.Source() {
             @Override
             public int cobbleOwed() {
                 return cobbleOwed.getAsInt();
+            }
+
+            // the same record the block event uses, so a station that was reported and heard (either way round) is one bench
+            @Override
+            public void placed(Kind kind, BlockPos pos, String dimension, long now) {
+                if (record(state, kind, new RunState.Pos(pos.getX(), pos.getY(), pos.getZ()), dimension, now)) {
+                    recorded.run();
+                }
             }
 
             @Override
