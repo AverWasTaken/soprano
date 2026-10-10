@@ -155,4 +155,24 @@ public class CreeperStepTest {
         assertEquals("combat: [overworld] lit creeper at 3 blocks, stepping out of the blast",
                 CombatLog.creeperStep(baritone.api.utils.Dimension.OVERWORLD, 3.2));
     }
+
+    @Test
+    public void theRawSprintAndPathLinesSayWhatHappened() {
+        baritone.api.utils.Dimension d = baritone.api.utils.Dimension.NETHER;
+        assertEquals("combat: [nether] creeper step: sprinting straight away", CombatLog.creeperSprint(d, 0));
+        assertEquals("combat: [nether] creeper step: sprinting 45 degrees off straight away", CombatLog.creeperSprint(d, -45));
+        assertEquals("combat: [nether] creeper step: no safe heading, waiting on the path", CombatLog.creeperNoHeading(d));
+        assertEquals("combat: [nether] creeper step: path asked for", CombatLog.creeperPath(d, false));
+        assertEquals("combat: [nether] creeper step: no path yet, asking again", CombatLog.creeperPath(d, true));
+    }
+
+    @Test
+    public void theStepGoesEightBlocksAndCornersStillCountPositionOnly() {
+        assertEquals(8, CreeperStep.SAFE, 0);
+        // the clock-and-distance test does not care how the ground was gained, so sprinting out of a corner is not cornered
+        CreeperStep step = new CreeperStep();
+        step.step(0, lit(7, 3), true);
+        assertEquals(Event.NONE, step.step(CreeperStep.CORNER_TICKS, lit(7, 3.8), true));
+        assertFalse(step.cornered());
+    }
 }

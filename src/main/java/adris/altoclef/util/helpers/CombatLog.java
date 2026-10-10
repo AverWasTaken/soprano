@@ -43,6 +43,22 @@ public final class CombatLog {
                 + " blocks, stepping out of the blast";
     }
 
+    // what the step does before baritone has a path: sprints (degrees off straight away, 0 = straight) or has nowhere safe to
+    public static String creeperSprint(Dimension dimension, int degrees) {
+        return "combat: [" + dimension.name().toLowerCase(Locale.ROOT) + "] creeper step: sprinting "
+                + (degrees == 0 ? "straight away" : Math.abs(degrees) + " degrees off straight away");
+    }
+
+    public static String creeperNoHeading(Dimension dimension) {
+        return "combat: [" + dimension.name().toLowerCase(Locale.ROOT) + "] creeper step: no safe heading, waiting on the path";
+    }
+
+    // the goal going to baritone, and the search coming back with nothing (so it gets asked again)
+    public static String creeperPath(Dimension dimension, boolean failed) {
+        return "combat: [" + dimension.name().toLowerCase(Locale.ROOT) + "] creeper step: "
+                + (failed ? "no path yet, asking again" : "path asked for");
+    }
+
     public static String runWhy(Why why, int hp) {
         return switch (why) {
             case HEAVY -> "something nasty close, hp " + hp;
