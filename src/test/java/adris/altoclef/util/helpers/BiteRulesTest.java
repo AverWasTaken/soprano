@@ -3,6 +3,7 @@ package adris.altoclef.util.helpers;
 import static adris.altoclef.util.helpers.BiteRules.Verdict.ASK_STOP;
 import static adris.altoclef.util.helpers.BiteRules.Verdict.CHEW_ON_THE_MOVE;
 import static adris.altoclef.util.helpers.BiteRules.Verdict.EAT_NOW;
+import static adris.altoclef.util.helpers.BiteRules.Verdict.NOT_NOW;
 import static adris.altoclef.util.helpers.BiteRules.Verdict.WAIT;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -287,12 +288,63 @@ public class BiteRulesTest {
     }
 
     @Test
+    public void aHitDropsAStandingMealAtOnce() {
+        Scene chewing = walking().withPath(true, true, true).withSpeed(0).withMeal(true);
+        assertEquals(EAT_NOW, BiteRules.verdict(chewing));
+        assertEquals(NOT_NOW, BiteRules.verdict(chewing.withHitAge(10)));
+        assertEquals(NOT_NOW, BiteRules.verdict(Scene.standing().withMeal(true).withHitAge(0)));
+    }
+
+    @Test
+    public void aHitWindowIsFortyTicksAndNoMore() {
+        assertEquals(NOT_NOW, BiteRules.verdict(Scene.standing().withHitAge(BiteRules.HIT_TICKS)));
+        assertEquals(EAT_NOW, BiteRules.verdict(Scene.standing().withHitAge(BiteRules.HIT_TICKS + 1)));
+        assertEquals(EAT_NOW, BiteRules.verdict(Scene.standing().withHitAge(BiteRules.NO_HIT)));
+        // a clock that went backwards (a new world) is not a hit
+        assertEquals(EAT_NOW, BiteRules.verdict(Scene.standing().withHitAge(-5)));
+        assertTrue(BiteRules.recentlyHit(0));
+        assertFalse(BiteRules.recentlyHit(BiteRules.NO_HIT));
+    }
+
+    @Test
+    public void aHitStopsEveryWayOfStartingAMeal() {
+        assertEquals(NOT_NOW, BiteRules.verdict(walking().withHitAge(5)));
+        assertEquals(NOT_NOW, BiteRules.verdict(walking().withPath(true, true, true).withSpeed(0).withHitAge(5)));
+        assertEquals(NOT_NOW, BiteRules.verdict(walking().withOnGround(false).withHitAge(5)));
+        assertEquals(NOT_NOW, BiteRules.verdict(Scene.standing().withScreen(true).withHitAge(5)));
+    }
+
+    @Test
+    public void aHitNeverTouchesTheFightsOwnMeal() {
+        assertEquals(CHEW_ON_THE_MOVE, BiteRules.verdict(walking().withCombat(true).withHitAge(0)));
+        assertEquals(CHEW_ON_THE_MOVE, BiteRules.verdict(walking().withCombat(true).withMeal(true).withHitAge(10)));
+    }
+
+    @Test
+    public void onlyThingsWithABodyCountAsAHit() {
+        // poison, wither, a fall, fire, lava, hunger: no attacker and nothing carrying it
+        assertFalse(BiteRules.entityHit(false, false));
+        // a zombie, an arrow with a skeleton behind it, a fireball, an arrow from nobody we can see
+        assertTrue(BiteRules.entityHit(true, true));
+        assertTrue(BiteRules.entityHit(true, false));
+        assertTrue(BiteRules.entityHit(false, true));
+    }
+
+    @Test
+    public void aPoisonTickLeavesTheMealAlone() {
+        // the chain never records a hit for a source with no body, so the age stays at "none"
+        Scene chewing = Scene.standing().withMeal(true).withHitAge(BiteRules.NO_HIT);
+        assertEquals(EAT_NOW, BiteRules.verdict(chewing));
+    }
+
+    @Test
     public void everyVerdictIsReachable() {
         // a guard on the table above: if one of these stops being possible somebody changed what the words mean
         assertEquals(EAT_NOW, BiteRules.verdict(Scene.standing()));
         assertEquals(ASK_STOP, BiteRules.verdict(walking()));
         assertEquals(WAIT, BiteRules.verdict(walking().withOnGround(false)));
         assertEquals(CHEW_ON_THE_MOVE, BiteRules.verdict(walking().withCombat(true)));
-        assertEquals(4, Verdict.values().length);
+        assertEquals(NOT_NOW, BiteRules.verdict(Scene.standing().withHitAge(1)));
+        assertEquals(5, Verdict.values().length);
     }
 }

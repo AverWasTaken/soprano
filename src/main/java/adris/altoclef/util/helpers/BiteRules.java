@@ -14,6 +14,9 @@ public final class BiteRules {
     // presses again before we give up for a while, and how long a while is
     public static final int RETRIES = 3;
     public static final int BACKOFF_TICKS = 40;
+    // something with a name hit us this recently and a standing meal is off (the game forgets the damage source after 40)
+    public static final int HIT_TICKS = 40;
+    public static final int NO_HIT = Integer.MAX_VALUE;
     // starving and stuck behind a stop that does not come: ticks of wanting one, and the hunger that makes it an emergency
     public static final int ESCAPE_TICKS = 200;
     public static final int STARVING_HUNGER = 6;
@@ -29,59 +32,68 @@ public final class BiteRules {
         // we cannot stop here (air, water, ladder, boat, a movement that is mid jump): do nothing, ask again next tick
         WAIT,
         // the combat machine has the wheel, chewing on the move is how it works there and nothing changes
-        CHEW_ON_THE_MOVE
+        CHEW_ON_THE_MOVE,
+        // something hit us a moment ago: no standing meal starts and one going is dropped. asks for nothing, holds nothing
+        NOT_NOW
     }
 
     // combat: a committed run or fight, or a stance that is not calm (the gapple and the quick bite live there).
     // meal: a bite is already going, it is ours to finish. pathLive: pathing has a path. pathPaused: it has one and it
     // did not tick this tick because we asked
     public record Scene(boolean combat, boolean meal, boolean screen, boolean onGround, boolean inWater, boolean onLadder,
-                        boolean riding, double speed, boolean pathLive, boolean pathPaused, boolean safeToCancel) {
+                        boolean riding, double speed, boolean pathLive, boolean pathPaused, boolean safeToCancel, int hitAge) {
         // everything calm and still, no path: the starving-in-a-field case
         public static Scene standing() {
-            return new Scene(false, false, false, true, false, false, false, 0, false, false, true);
+            return new Scene(false, false, false, true, false, false, false, 0, false, false, true, NO_HIT);
         }
 
         public Scene withCombat(boolean v) {
-            return new Scene(v, meal, screen, onGround, inWater, onLadder, riding, speed, pathLive, pathPaused, safeToCancel);
+            return new Scene(v, meal, screen, onGround, inWater, onLadder, riding, speed, pathLive, pathPaused, safeToCancel, hitAge);
         }
 
         public Scene withMeal(boolean v) {
-            return new Scene(combat, v, screen, onGround, inWater, onLadder, riding, speed, pathLive, pathPaused, safeToCancel);
+            return new Scene(combat, v, screen, onGround, inWater, onLadder, riding, speed, pathLive, pathPaused, safeToCancel, hitAge);
         }
 
         public Scene withScreen(boolean v) {
-            return new Scene(combat, meal, v, onGround, inWater, onLadder, riding, speed, pathLive, pathPaused, safeToCancel);
+            return new Scene(combat, meal, v, onGround, inWater, onLadder, riding, speed, pathLive, pathPaused, safeToCancel, hitAge);
         }
 
         public Scene withOnGround(boolean v) {
-            return new Scene(combat, meal, screen, v, inWater, onLadder, riding, speed, pathLive, pathPaused, safeToCancel);
+            return new Scene(combat, meal, screen, v, inWater, onLadder, riding, speed, pathLive, pathPaused, safeToCancel, hitAge);
         }
 
         public Scene withInWater(boolean v) {
-            return new Scene(combat, meal, screen, onGround, v, onLadder, riding, speed, pathLive, pathPaused, safeToCancel);
+            return new Scene(combat, meal, screen, onGround, v, onLadder, riding, speed, pathLive, pathPaused, safeToCancel, hitAge);
         }
 
         public Scene withOnLadder(boolean v) {
-            return new Scene(combat, meal, screen, onGround, inWater, v, riding, speed, pathLive, pathPaused, safeToCancel);
+            return new Scene(combat, meal, screen, onGround, inWater, v, riding, speed, pathLive, pathPaused, safeToCancel, hitAge);
         }
 
         public Scene withRiding(boolean v) {
-            return new Scene(combat, meal, screen, onGround, inWater, onLadder, v, speed, pathLive, pathPaused, safeToCancel);
+            return new Scene(combat, meal, screen, onGround, inWater, onLadder, v, speed, pathLive, pathPaused, safeToCancel, hitAge);
         }
 
         public Scene withSpeed(double v) {
-            return new Scene(combat, meal, screen, onGround, inWater, onLadder, riding, v, pathLive, pathPaused, safeToCancel);
+            return new Scene(combat, meal, screen, onGround, inWater, onLadder, riding, v, pathLive, pathPaused, safeToCancel, hitAge);
+        }
+
+        public Scene withHitAge(int v) {
+            return new Scene(combat, meal, screen, onGround, inWater, onLadder, riding, speed, pathLive, pathPaused, safeToCancel, v);
         }
 
         public Scene withPath(boolean live, boolean paused, boolean safe) {
-            return new Scene(combat, meal, screen, onGround, inWater, onLadder, riding, speed, live, paused, safe);
+            return new Scene(combat, meal, screen, onGround, inWater, onLadder, riding, speed, live, paused, safe, hitAge);
         }
     }
 
     public static Verdict verdict(Scene s) {
         // the fight code decides how it eats, we are not in that business
         if (s.combat()) return Verdict.CHEW_ON_THE_MOVE;
+        // somebody just hit us. standing still to chew is the last thing to do, and the fight code gets to decide what
+        // happens next. before the meal check on purpose, a bite going is dropped too
+        if (recentlyHit(s.hitAge())) return Verdict.NOT_NOW;
         // already chewing: dropping a bite halfway is worse than any of the below
         if (s.meal()) return Verdict.EAT_NOW;
         // a bite cannot start with a screen open (the game does not look at the use key then), so do not fight it
@@ -106,6 +118,17 @@ public final class BiteRules {
     // falling. with nothing steering us they are a perfectly good place to chew, with a path they are waits of their own
     private static boolean airborne(Scene s) {
         return !s.onGround() && !s.inWater() && !s.onLadder() && !s.riding();
+    }
+
+    // the damage source's own age is only known to the game for 40 ticks, the chain keeps its own count
+    public static boolean recentlyHit(int ticksSinceHit) {
+        return ticksSinceHit >= 0 && ticksSinceHit <= HIT_TICKS;
+    }
+
+    // what counts as a hit: something with a body did it (the attacker, or the arrow or fireball that carried it). poison,
+    // wither, falls, fire, lava and hunger have neither
+    public static boolean entityHit(boolean hasAttacker, boolean hasDirectEntity) {
+        return hasAttacker || hasDirectEntity;
     }
 
     // starving behind a stop that does not come. only water and a boat are worth the risk of chewing on the move: a swim

@@ -18,6 +18,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.util.Tuple;
+import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.inventory.InventoryMenu;
 import net.minecraft.world.item.Item;
@@ -62,6 +63,13 @@ public class FoodChain extends SingleTaskChain {
     private boolean _standing = false;
     // the starving escape is on: this meal is eaten on the move, no matter what the table says, until stopEat
     private boolean _onTheMove = false;
+    // the last hit by something with a body (a mob, an arrow), and when. getLastDamageSource forgets after 40 ticks and
+    // is replaced by a poison tick, this keeps the hit. a fresh source object is a fresh hit, same as the combat log goes by
+    private DamageSource _hitSource;
+    private long _hitAt = Long.MIN_VALUE;
+    private LocalPlayer _hitPlayer;
+    // the rule said not now this tick (somebody just hit us): needsToEat() keeps its mouth shut about it
+    private boolean _notNow = false;
     // the "use did not start" line is for the first press of a stuck bite, not every lap of the back off
     private boolean _stuckLogged = false;
 
@@ -103,6 +111,11 @@ public class FoodChain extends SingleTaskChain {
             // nothing but the pause: a slot swap now would fight the tool the path is using, and the use key would
             // freeze the clicks it needs. the latch is only granted at a tick where the movement says it is safe
             case ASK_STOP -> mod.getClientBaritone().getPathingBehavior().requestPause();
+            case NOT_NOW -> {
+                // key up, muzzle off, no pause: the path moves this very tick, and the fight code decides what happens next
+                _notNow = true;
+                stopEat(mod);
+            }
             case WAIT -> {
                 // a container left open is how the old code ate too: looking at the screen closes it (or puts the cursor
                 // away), and then the bite can start. the player's own inventory is the task's to close
@@ -142,6 +155,27 @@ public class FoodChain extends SingleTaskChain {
         return BiteRules.Verdict.CHEW_ON_THE_MOVE;
     }
 
+    private void noteHit(AltoClef mod) {
+        LocalPlayer player = mod.getPlayer();
+        if (player == null) return;
+        if (player != _hitPlayer) {
+            _hitPlayer = player;
+            _hitSource = null;
+            _hitAt = Long.MIN_VALUE;
+        }
+        DamageSource source = player.getLastDamageSource();
+        if (source == null || source == _hitSource) return;
+        _hitSource = source;
+        if (BiteRules.entityHit(source.getEntity() != null, source.getDirectEntity() != null)) {
+            _hitAt = mod.getWorld().getGameTime();
+        }
+    }
+
+    private int hitAge(AltoClef mod) {
+        if (_hitAt == Long.MIN_VALUE) return BiteRules.NO_HIT;
+        return (int) Math.max(Math.min(mod.getWorld().getGameTime() - _hitAt, BiteRules.NO_HIT - 1L), Integer.MIN_VALUE);
+    }
+
     private BiteRules.Scene scene(AltoClef mod) {
         LocalPlayer player = mod.getPlayer();
         Baritone baritone = mod.getClientBaritone();
@@ -154,7 +188,7 @@ public class FoodChain extends SingleTaskChain {
         // (an escape in progress rides the same road as a fight's meal until it is done: no pause, no standing)
         return new BiteRules.Scene(combat || _onTheMove, _biting, Minecraft.getInstance().screen != null, player.onGround(), player.isInWater(),
                 player.onClimbable(), player.isPassenger(), player.getDeltaMovement().horizontalDistance(), pathLive,
-                hasCurrent && !baritone.getPathingBehavior().isPathing(), baritone.getPathingBehavior().isSafeToCancel());
+                hasCurrent && !baritone.getPathingBehavior().isPathing(), baritone.getPathingBehavior().isSafeToCancel(), hitAge(mod));
     }
 
     private void startEat(AltoClef mod, Item food) {
@@ -292,6 +326,8 @@ public class FoodChain extends SingleTaskChain {
         _dragonBreathTracker.updateBreath(mod);
         // the clock runs whether or not anybody is eating, that is what a back off is
         _useWatch.tickBackoff();
+        _notNow = false;
+        noteHit(mod);
         watchBite(mod);
         // one list of reasons we will not eat right now. the eat branch below and needsToEat() both go by it, so
         // everything that pauses for a meal (progress checkers, container waits) stops waiting when we refuse to eat.
@@ -412,6 +448,7 @@ public class FoodChain extends SingleTaskChain {
     // (a stop that does not come for a few seconds, or a use that will not start, is not a meal: the checkers that forgive
     // eating, the defense and the swings get to carry on while we keep trying)
     public boolean needsToEat() {
+        if (_notNow) return false;
         boolean stuck = BiteRules.waitedTooLong(_waiting.ticks()) || _useWatch.backingOff();
         return (!stuck && wantsToEat()) || (_standing && !shouldStop && !_eatBlocked && stance(_mod).mayEat());
     }
