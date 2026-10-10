@@ -140,6 +140,12 @@ public class WaterBreakCostTest {
     }
 
     @Test
+    public void eyesUnderWaterOverADryBlockStillCount() {
+        double dry = breakPart(false, false, true);
+        assertEquals(dry * 5, breakPart(false, true, true), 1e-6);
+    }
+
+    @Test
     public void floatingOnTopOfThatIsTwentyFive() {
         double dry = breakPart(false, false, true);
         assertEquals(dry * 25, breakPart(true, true, false), 1e-6);

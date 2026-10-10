@@ -737,15 +737,21 @@ public interface MovementHelper extends ActionCosts, Helper {
     // the player is in while breaking. only ever inflates, so it can't strand the planner
     static double waterBreakMultiplier(CalculationContext context, int srcX, int srcY, int srcZ) {
         double setting = context.waterBreakCostMultiplier;
-        // one lookup and out, which is every move that isn't swimming
-        if (setting <= 1 || !isWater(context.get(srcX, srcY, srcZ))) {
+        if (setting <= 1) {
+            return 1;
+        }
+        // it's the eyes (the block above our feet) that have to be under for the 5x, not the feet. a dry square with water
+        // over our head is just as slow. two lookups and out, which is every move that isn't in or under water
+        boolean feetWet = isWater(context.get(srcX, srcY, srcZ));
+        boolean eyesWet = isWater(context.get(srcX, srcY + 1, srcZ));
+        if (!feetWet && !eyesWet) {
             return 1;
         }
         // wading with your head dry is not slowed down, floating is
         // canWalkOn says yes to water with more water on top (baritone calls that wading), but vanilla isn't on the ground there
         BlockState below = context.get(srcX, srcY - 1, srcZ);
         boolean floating = isWater(below) || !canWalkOn(context, srcX, srcY - 1, srcZ, below);
-        double mult = isWater(context.get(srcX, srcY + 1, srcZ)) ? setting : 1;
+        double mult = eyesWet ? setting : 1;
         return floating ? mult * 5 : mult;
     }
 
