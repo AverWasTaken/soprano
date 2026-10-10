@@ -122,14 +122,10 @@ public class WoodBudgetTest {
     }
 
     @Test
-    public void applyingTheBudgetSetsWhatUpdateWould() {
+    public void applyingTheBudgetTellsTheFurnacesItsFuelKeep() {
         FakeFacts f = new FakeFacts().give(Items.OAK_LOG, 20).give(Items.OAK_PLANKS, 6);
         WoodReserve.apply(WoodBudget.of(f, cfg, BEDS));
         int[] viaApply = burnable();
-        FuelPolicy.clear();
-        WoodReserve.update(f, cfg, BEDS);
-        assertEquals(viaApply[0], burnable()[0]);
-        assertEquals(viaApply[1], burnable()[1]);
         // 14 logs and 4 planks kept
         assertEquals(6, viaApply[0]);
         assertEquals(2, viaApply[1]);

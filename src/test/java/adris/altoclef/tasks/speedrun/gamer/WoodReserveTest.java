@@ -24,27 +24,27 @@ public class WoodReserveTest {
     @Test
     public void shortOfTheBudgetKeepsEverything() {
         FakeFacts f = new FakeFacts().give(Items.OAK_LOG, 10).give(Items.OAK_PLANKS, 6);
-        assertEquals(new Keep(10, 6), WoodReserve.keep(f, cfg, BEDS));
+        assertEquals(new Keep(10, 6), WoodBudget.of(f, cfg, BEDS).keep());
     }
 
     @Test
     public void onlyWhatIsAboveTheBudgetBurns() {
         // 15 logs is exactly the budget (see KitPlannerTest), 5 more are fuel
         FakeFacts f = new FakeFacts().give(Items.OAK_LOG, 20);
-        assertEquals(new Keep(15, 0), WoodReserve.keep(f, cfg, BEDS));
+        assertEquals(new Keep(15, 0), WoodBudget.of(f, cfg, BEDS).keep());
     }
 
     @Test
     public void speciesShareOnePool() {
         FakeFacts f = new FakeFacts().give(Items.OAK_LOG, 9).give(Items.BIRCH_LOG, 9);
-        assertEquals(new Keep(15, 0), WoodReserve.keep(f, cfg, BEDS));
+        assertEquals(new Keep(15, 0), WoodBudget.of(f, cfg, BEDS).keep());
     }
 
     @Test
     public void planksCountTowardsTheBudgetToo() {
         // the planner asks in whole logs, so 60 planks is where it stops asking and the other 8 are spare
         FakeFacts f = new FakeFacts().give(Items.OAK_PLANKS, 68);
-        assertEquals(new Keep(0, 60), WoodReserve.keep(f, cfg, BEDS));
+        assertEquals(new Keep(0, 60), WoodBudget.of(f, cfg, BEDS).keep());
     }
 
     @Test
@@ -55,7 +55,7 @@ public class WoodReserveTest {
                 .give(Items.CRAFTING_TABLE, 1).give(Items.FURNACE, 1).give(Items.SHIELD, 1).give(Items.LADDER, 3)
                 .give(Items.IRON_PICKAXE, 1).give(Items.IRON_SWORD, 1).give(Items.BUCKET, 2).give(Items.SHEARS, 1)
                 .give(Items.FLINT_AND_STEEL, 1);
-        Keep keep = WoodReserve.keep(f, cfg, 0);
+        Keep keep = WoodBudget.of(f, cfg, 0).keep();
         assertEquals(0, keep.planks());
         // whatever it keeps, it keeps no more than it holds
         assertEquals(true, keep.logs() <= 3);

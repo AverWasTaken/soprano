@@ -49,7 +49,7 @@ public final class SmeltFiller {
         return schedule(f, cfg, endBeds, nearSurface, FoodPlan.ofBeds(f, cfg, endBeds));
     }
 
-    // nearSurface = SmeltSurface.shallow: the log stock-up only happens where a tree is a short walk (see logStockTarget)
+    // nearSurface = SmeltSurface.shallow: the log stock-up only happens where a tree is a short walk (see WoodBudget.stockUpLogs)
     public static Schedule schedule(GamerFacts f, OverworldConfig cfg, int endBeds, boolean nearSurface, FoodPlan food) {
         return schedule(f, cfg, endBeds, nearSurface, food, WoodBudget.of(f, cfg, endBeds));
     }
@@ -161,13 +161,6 @@ public final class SmeltFiller {
 
     private static boolean isBlocked(List<KitNeed> blocked, String name) {
         return blocked.stream().anyMatch(n -> n.catalogueName().equals(name));
-    }
-
-    // the log stock-up counts planks as wood too (4 to a log), it is only there so we have wood to craft with. 0 = no trip.
-    // a stock-up is not worth climbing out of the mine for, so down there it never happens (the iron phase asks for wood
-    // itself while the surface is still close)
-    static int logStockTarget(GamerFacts f, int wantedLogs, boolean nearSurface) {
-        return WoodBudget.stockUp(f.count(ItemHelper.LOG), f.count(ItemHelper.PLANKS), wantedLogs, nearSurface);
     }
 
     // every stock-up is surface work (sheep, animals, a tree, loose stone), so none of them is worth climbing out of the mine for:

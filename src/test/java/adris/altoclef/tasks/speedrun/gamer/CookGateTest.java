@@ -489,7 +489,7 @@ public class CookGateTest {
             FakeFacts bag = kitDone().give(Items.OAK_LOG, 14).give(Items.SPRUCE_LOG, 5).give(Items.OAK_PLANKS, 6).give(Items.COAL, 2)
                     .give(Items.CHARCOAL, 1);
             try {
-                WoodReserve.Keep keep = WoodReserve.keep(bag, cfg, beds);
+                WoodReserve.Keep keep = WoodBudget.of(bag, cfg, beds).keep();
                 FuelPolicy.set(keep.logs(), keep.planks(), true);
                 double policy = FuelPolicy.usableFuel(stacks, i -> true, CookGateTest::smelts);
                 assertEquals("beds " + beds, (int) policy, CookGate.fuelSmelts(bag, cfg, beds));

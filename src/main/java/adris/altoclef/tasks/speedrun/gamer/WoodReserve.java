@@ -1,6 +1,5 @@
 package adris.altoclef.tasks.speedrun.gamer;
 
-import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig;
 import adris.altoclef.util.helpers.FuelPolicy;
 import baritone.api.utils.Dimension;
 import net.minecraft.world.item.Item;
@@ -24,16 +23,6 @@ public final class WoodReserve {
     public static void apply(WoodBudget wood) {
         Keep keep = wood.fuelKeep();
         FuelPolicy.set(keep.logs(), keep.planks(), true);
-    }
-
-    // the same for a caller with no budget at hand
-    public static void update(GamerFacts f, OverworldConfig cfg, int endBeds) {
-        apply(WoodBudget.of(f, cfg, endBeds));
-    }
-
-    // wood the budget keeps back from the furnace, the short form for a caller with no budget (the search is WoodBudget's)
-    public static Keep keep(GamerFacts f, OverworldConfig cfg, int endBeds) {
-        return WoodBudget.of(f, cfg, endBeds).keep();
     }
 
     // largest k in [0, max] the predicate holds for, given it holds for 0 and only gets harder as k grows

@@ -188,9 +188,9 @@ public class SmeltFillerTest {
         // 3 logs and 8 planks is 20 of the 32: the old answer asked for 5 more logs, 2 logs' worth of planks make it 3 more
         FakeFacts shy = atTheFurnace().cooking("iron_ingot", 39, 400).give(Items.OAK_LOG, 3).give(Items.OAK_PLANKS, 8);
         assertEquals(new KitNeed("log", 6), find(SmeltFiller.schedule(shy, cfg, BEDS).runnable(), "log"));
-        assertEquals(0, SmeltFiller.logStockTarget(new FakeFacts().give(Items.OAK_PLANKS, 32), 8, true));
-        assertEquals(8, SmeltFiller.logStockTarget(new FakeFacts().give(Items.OAK_PLANKS, 3), 8, true));
-        assertEquals(8, SmeltFiller.logStockTarget(new FakeFacts(), 8, true));
+        assertEquals(0, WoodBudget.of(new FakeFacts().give(Items.OAK_PLANKS, 32), cfg, 0).stockUpLogs(8, true));
+        assertEquals(8, WoodBudget.of(new FakeFacts().give(Items.OAK_PLANKS, 3), cfg, 0).stockUpLogs(8, true));
+        assertEquals(8, WoodBudget.of(new FakeFacts(), cfg, 0).stockUpLogs(8, true));
     }
 
     @Test
