@@ -171,7 +171,7 @@ public class OverworldPhasesTest {
         GatherPhase gather = new GatherPhase();
         IronPhase iron = new IronPhase();
         state.placedTables.add(new RunState.Pos(-3, 70, 9));
-        state.placedDimension.put("-3,70,9", "NETHER");
+        state.placedDimension.put("TABLE:-3,70,9", "NETHER");
         assertTrue(gather.isDone(gatherDone(), state, cfg));
         assertTrue(iron.isDone(ironDone(), state, cfg));
         // the same table with no dimension recorded is an overworld one (a fresh state, the registry keeps the dimension an entry
