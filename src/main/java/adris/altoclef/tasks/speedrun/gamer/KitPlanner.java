@@ -77,13 +77,13 @@ public final class KitPlanner {
         // a worn pick we still carry gets replaced after the iron, not in the middle of it (see starter)
         List<KitNeed> late = new ArrayList<>();
         // under the floor food leads whatever the starter is missing (a bag with no pick has it and its wood chain up front), but
-        // only up to the floor: enough to stop starving, then the tools (an empty bag hunting a whole refill with bare hands is how
-        // it picked fights it could not win), then the rest of the refill where it always sat. at or over the floor the starter
-        // goes first and the refill behind it, like it always did
+        // only up to the floor: enough to stop starving, then the tools (hunting a whole refill with bare hands is a lot of fist
+        // fights), then the rest of the refill where it always sat. at or over the floor the starter goes first and the refill
+        // behind it, like it always did. a bag that already has its pick and weapon and only owes logs keeps the one piece refill
         boolean hungry = food.held() < food.floor();
         List<KitNeed> out = new ArrayList<>();
         List<KitNeed> starter = starter(f, cfg, endBeds, false, late, food, wood);
-        boolean split = hungry && !starter.isEmpty();
+        boolean split = hungry && starter.stream().anyMatch(n -> isTool(n.catalogueName()));
         if (split) {
             out.add(new KitNeed(KitNeed.FOOD, food.floor()));
         } else if (hungry) {
@@ -143,6 +143,10 @@ public final class KitPlanner {
             addItem(pick && holdsAnyPick(f) ? late : out, f, k.item, pick ? Math.min(k.count, 1) : k.count);
         }
         return out;
+    }
+
+    private static boolean isTool(String name) {
+        return name.endsWith("_pickaxe") || name.endsWith("_axe") || name.endsWith("_sword");
     }
 
     // any pickaxe at all in the bag, worn out ones included: it still breaks blocks, it just is not one we count on

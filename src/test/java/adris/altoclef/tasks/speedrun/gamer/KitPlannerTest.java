@@ -359,6 +359,19 @@ public class KitPlannerTest {
     }
 
     @Test
+    public void aBagWithItsToolsThatOnlyOwesLogsKeepsTheOnePieceRefill() {
+        // pick and weapon in hand, no wood at all: the starter is not empty but there is nothing to arm
+        FakeFacts armed = new FakeFacts().give(Items.STONE_PICKAXE, 1).give(Items.STONE_AXE, 1);
+        armed.foodUnits = 5;
+        FoodPlan food = FoodPlan.ofBeds(armed, cfg, 8);
+        List<KitNeed> plan = KitPlanner.plan(armed, cfg, 8, food);
+        assertEquals(new KitNeed(KitNeed.FOOD, food.refillStop()), plan.get(0));
+        assertFalse(plan.contains(new KitNeed(KitNeed.FOOD, food.floor())));
+        assertTrue(names(plan).contains("log"));
+        assertEquals(0, FoodGate.index(plan, food));
+    }
+
+    @Test
     public void aBagAtOrOverTheFloorGetsTheSamePlanAsBefore() {
         // the fed order: starter, refill (only while one is due), iron, the rest. nothing in it asks for the floor bite
         for (int units : new int[] {24, 30, 44, 45, 60, 100, 130}) {

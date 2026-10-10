@@ -118,9 +118,10 @@ public final class RecoverRules {
         }
     }
 
-    // the despawn timer only runs while the pile's chunk is loaded, and a pile we respawned far from is not: it keeps its age
-    // until we are back in range. the server loads about this far around us, so this is where the allowance starts
-    public static final double LOADED_RANGE = 128;
+    // the despawn timer only runs while the pile's chunk is ticking, and a pile we respawned far from is not: it keeps its age
+    // until we are back in range. items tick out to the simulation distance (12 chunks by default), a bit generous on purpose:
+    // starting the allowance early only costs a few seconds of the walk, starting it late is chasing a pile that is gone
+    public static final double LOADED_RANGE = 192;
     // blocks per second we count on for the walk back. a sprint is about 5.6 on flat ground, caves and detours eat the rest
     public static final double WALK_SPEED = 3;
 

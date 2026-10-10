@@ -120,6 +120,9 @@ public class GamerTask extends Task {
     private RecoverItemsTask recover;
     // the pile's age clock (starts when it can be loaded, not at the death) and what the bag held the last tick we were alive
     private RecoverRules.Allowance allowance;
+    // which pile the recovery is for, deathPos is already the next death's by the time we need it
+    private BlockPos recoverPos;
+    private Dimension recoverDimension;
     private DeathRules.Worth worth;
     // the walk back into the nether for a pile we left there, alive for as long as state.netherTrip is set
     private NetherRecoverTask netherTrip;
@@ -692,7 +695,7 @@ public class GamerTask extends Task {
             machine.observe();
             machine.holdClocks();
             setDebugState("Recovering items after a death.", "Getting our stuff back");
-            updateRecoveryHud(HudRules.recoveryWords(blocksTo(deathPos)));
+            updateRecoveryHud(HudRules.recoveryWords(blocksTo(recoverPos)));
             autosave(now);
             return recover;
         }
@@ -883,9 +886,13 @@ public class GamerTask extends Task {
         Debug.logInternal("respawned after dying in " + deathDimension + " at " + deathPos.toShortString() + ", now in " + facts.dimension()
                 + " " + Math.round(blocks) + " blocks away (recovery goes up to " + cfg.death.recoverReach
                 + ", seen by " + seenBy.name().toLowerCase(Locale.ROOT).replace('_', ' ') + ")");
-        // both read before this death goes in the book and before the old recovery is dropped
-        int killedHere = DeathRules.killedHere(state.deaths, deathDimension, deathPos.getX(), deathPos.getZ());
+        // all read before this death goes in the book and before the old recovery is dropped. only this run's deaths count
+        // for a spot, a hand restart is a clean slate
+        int killedBefore = DeathRules.killedHere(state.deaths.subList(Math.min(deathsAtStart, state.deaths.size()), state.deaths.size()),
+                deathDimension, deathPos.getX(), deathPos.getZ());
         boolean wasRecovering = recover != null;
+        boolean diedAtThePile = wasRecovering && recoverPos != null && deathDimension == recoverDimension
+                && DeathRules.sameSpot(deathPos.getX(), deathPos.getZ(), recoverPos.getX(), recoverPos.getZ());
         RunState.Death death = new RunState.Death();
         death.dimension = deathDimension.name();
         death.x = deathPos.getX();
@@ -906,10 +913,12 @@ public class GamerTask extends Task {
         host.save();
         recover = null;
         if (state.deathsThisPhase >= cfg.death.maxPerPhase) {
+            host.say(DeathRules.leaving("died " + state.deathsThisPhase + " times in this phase, the run is stuck"));
             machine.stuck("died " + state.deathsThisPhase + " times in this phase");
             return;
         }
         if (state.deaths.size() - deathsAtStart >= cfg.death.maxTotal) {
+            host.say(DeathRules.leaving("died " + (state.deaths.size() - deathsAtStart) + " times since the run was started, the run is stuck"));
             machine.stuck("died " + (state.deaths.size() - deathsAtStart) + " times since the run was started");
             return;
         }
@@ -918,10 +927,12 @@ public class GamerTask extends Task {
             host.say("death: died on the way to the last pile, giving that one up");
         }
         String why = DeathRules.refuse(facts.dimension() == deathDimension, blocks, cfg.death.recoverReach, worth,
-                cfg.overworld.refillStartFoodUnits, killedHere);
+                cfg.overworld.refillStartFoodUnits, killedBefore, diedAtThePile);
         if (why == null) {
             host.say(DeathRules.going(blocks, worth));
             recover = new RecoverItemsTask(deathPos, RecoverRules.budget(RECOVER_BUDGET_SECONDS, blocks));
+            recoverPos = deathPos;
+            recoverDimension = deathDimension;
             allowance = new RecoverRules.Allowance(deathGameTime / 20.0, cfg.death.recoverSeconds);
         } else if (NetherTripRules.applies(deathDimension, facts.dimension())) {
             // the nether has its own trip and its own words
@@ -966,13 +977,15 @@ public class GamerTask extends Task {
         if (recover == null) {
             return false;
         }
-        // every way out says so once, the task's own gave-up lines cover the rest of what it can decide
+        // every way out says so once. a task that finished itself already said why (all four of its ways out log), so that one
+        // is quiet here. recoverPos and not deathPos: a death on the way has already written the next pile over deathPos
         String over = null;
-        if (facts.dimension() != deathDimension) {
+        if (recover.isFinished(mod)) {
+            recover = null;
+            return false;
+        } else if (facts.dimension() != recoverDimension) {
             over = "we left the dimension";
-        } else if (recover.isFinished(mod)) {
-            over = "done with it";
-        } else if (allowance == null || allowance.expired(now, flatBlocksTo(deathPos))) {
+        } else if (allowance == null || allowance.expired(now, flatBlocksTo(recoverPos))) {
             over = "it has been lying there too long";
         }
         if (over != null) {

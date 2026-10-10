@@ -76,11 +76,15 @@ public class DeathRulesTest {
     private static final int FOOD_LINE = 45;
 
     private static DeathRules.Worth rich() {
-        return new DeathRules.Worth(35, 1, true, 120);
+        return new DeathRules.Worth(30, 1, true, 100, false);
     }
 
-    private static String why(double blocks, DeathRules.Worth worth, int killedHere) {
-        return DeathRules.refuse(true, blocks, 1000, worth, FOOD_LINE, killedHere);
+    private static DeathRules.Worth bag(int iron, int gear, boolean pick, int food, boolean run) {
+        return new DeathRules.Worth(iron, gear, pick, food, run);
+    }
+
+    private static String why(double blocks, DeathRules.Worth worth, int killedBefore) {
+        return DeathRules.refuse(true, blocks, 1000, worth, FOOD_LINE, killedBefore, false);
     }
 
     @Test
@@ -90,7 +94,7 @@ public class DeathRulesTest {
 
     @Test
     public void aFarRichPileWithinReachIsStillWorthIt() {
-        assertNull(why(469, rich(), 0));
+        assertNull(why(450, rich(), 0));
         assertNull(why(1000, rich(), 0));
     }
 
@@ -101,31 +105,40 @@ public class DeathRulesTest {
 
     @Test
     public void aPoorPileIsLeftAtAnyDistance() {
-        DeathRules.Worth poor = new DeathRules.Worth(0, 0, false, 6);
-        assertEquals("the bag was nearly empty (6 food)", why(40, poor, 0));
-        assertEquals("the bag was nearly empty (nothing much)", why(600, new DeathRules.Worth(0, 0, false, 0), 0));
+        assertEquals("the bag was nearly empty (6 food)", why(40, bag(0, 0, false, 6, false), 0));
+        assertEquals("the bag was nearly empty (nothing much)", why(600, bag(0, 0, false, 0, false), 0));
         // two iron is a smelt away from nothing, a handful of food is a hunt
-        assertTrue(why(40, new DeathRules.Worth(2, 0, false, FOOD_LINE - 1), 0).startsWith("the bag was nearly empty"));
+        assertTrue(why(40, bag(2, 0, false, FOOD_LINE - 1, false), 0).startsWith("the bag was nearly empty"));
     }
 
     @Test
     public void eachKindOfRichIsRichOnItsOwn() {
-        assertNull(why(500, new DeathRules.Worth(3, 0, false, 0), 0));
-        assertNull(why(500, new DeathRules.Worth(0, 1, false, 0), 0));
-        assertNull(why(500, new DeathRules.Worth(0, 0, false, FOOD_LINE), 0));
+        assertNull(why(500, bag(3, 0, false, 0, false), 0));
+        assertNull(why(500, bag(0, 1, false, 0, false), 0));
+        assertNull(why(500, bag(0, 0, false, FOOD_LINE, false), 0));
+        // a late bag: eyes, pearls, rods, a bed and no iron tool in sight
+        assertNull(why(500, bag(0, 0, false, 0, true), 0));
     }
 
     @Test
     public void aBarePickIsOnlyWorthAShortWalk() {
-        DeathRules.Worth pick = new DeathRules.Worth(0, 0, true, 10);
+        DeathRules.Worth pick = bag(0, 0, true, 10, false);
         assertNull(why(DeathRules.NEAR_BLOCKS, pick, 0));
         assertTrue(why(DeathRules.NEAR_BLOCKS + 1, pick, 0).startsWith("the bag was nearly empty"));
     }
 
     @Test
-    public void aSpotThatHasKilledUsBeforeIsNotWalkedIntoAgainWhateverIsThere() {
-        assertEquals("this spot has killed us 2 times", why(80, rich(), 1));
+    public void aSpotThatKilledUsTwiceIsNotWalkedIntoAThirdTime() {
+        // one earlier death there is a bag recovered and a second life spent in the same cave, not a loop
+        assertNull(why(80, rich(), 1));
         assertEquals("this spot has killed us 3 times", why(80, rich(), 2));
+        assertEquals("this spot has killed us 4 times", why(80, rich(), 3));
+    }
+
+    @Test
+    public void dyingAtThePileWeWereGoingBackForEndsItWhateverIsInTheBag() {
+        assertEquals("it killed us on the way back for the last pile",
+                DeathRules.refuse(true, 80, 1000, rich(), FOOD_LINE, 0, true));
     }
 
     @Test
@@ -135,7 +148,7 @@ public class DeathRulesTest {
 
     @Test
     public void aPileInAnotherDimensionIsNotThisRulesBusiness() {
-        assertEquals("it is in another dimension", DeathRules.refuse(false, 10, 1000, rich(), FOOD_LINE, 0));
+        assertEquals("it is in another dimension", DeathRules.refuse(false, 10, 1000, rich(), FOOD_LINE, 0, false));
     }
 
     private static RunState.Death death(Dimension dimension, int x, int z) {
@@ -156,24 +169,32 @@ public class DeathRulesTest {
         assertEquals(0, DeathRules.killedHere(List.of(), Dimension.OVERWORLD, 0, 0));
         // an old save can have no dimension on an entry, that must not blow up
         assertEquals(0, DeathRules.killedHere(List.of(new RunState.Death()), Dimension.OVERWORLD, 0, 0));
+        assertTrue(DeathRules.sameSpot(0, 0, 48, 0));
+        assertFalse(DeathRules.sameSpot(0, 0, 49, 0));
     }
 
     @Test
     public void whatTheBagHeldComesOffTheFacts() {
-        FakeFacts f = new FakeFacts().give(Items.RAW_IRON, 30).give(Items.IRON_INGOT, 5).give(Items.IRON_PICKAXE, 1)
+        FakeFacts f = new FakeFacts().give(Items.RAW_IRON, 25).give(Items.IRON_INGOT, 5).give(Items.IRON_PICKAXE, 1)
                 .give(Items.STONE_AXE, 1);
         f.worn.add(Items.IRON_CHESTPLATE);
-        f.foodUnits = 120;
-        assertEquals(new DeathRules.Worth(35, 2, true, 120), DeathRules.worth(f));
-        assertEquals(new DeathRules.Worth(0, 0, false, 0), DeathRules.worth(new FakeFacts()));
+        f.foodUnits = 100;
+        assertEquals(bag(30, 2, true, 100, false), DeathRules.worth(f));
+        assertEquals(bag(0, 0, false, 0, false), DeathRules.worth(new FakeFacts()));
         // a stone axe alone is not a pile
-        assertEquals(new DeathRules.Worth(0, 0, false, 0), DeathRules.worth(new FakeFacts().give(Items.STONE_AXE, 1)));
+        assertEquals(bag(0, 0, false, 0, false), DeathRules.worth(new FakeFacts().give(Items.STONE_AXE, 1)));
+        // eyes, pearls, rods, obsidian, a bed or a bucket are the run itself
+        assertTrue(DeathRules.worth(new FakeFacts().give(Items.ENDER_PEARL, 1)).run());
+        assertTrue(DeathRules.worth(new FakeFacts().give(Items.BLAZE_ROD, 3)).run());
+        assertTrue(DeathRules.worth(new FakeFacts().give(Items.RED_BED, 1)).run());
+        assertTrue(DeathRules.worth(new FakeFacts().give(Items.WATER_BUCKET, 1)).run());
     }
 
     @Test
     public void theLogLinesSayWhatWasInIt() {
-        assertEquals("death: going back for the pile, 469 blocks, 35 iron, 1 iron or better piece, a pick, 120 food",
-                DeathRules.going(469.2, rich()));
+        assertEquals("death: going back for the pile, 450 blocks, 30 iron, 1 iron or better piece, a pick, 100 food",
+                DeathRules.going(450.2, rich()));
+        assertEquals("death: going back for the pile, 450 blocks, run items", DeathRules.going(450, bag(0, 0, false, 0, true)));
         assertEquals("death: going back for the pile, 12 blocks", DeathRules.going(12, null));
         assertEquals("death: leaving the pile, it is a long way", DeathRules.leaving("it is a long way"));
     }

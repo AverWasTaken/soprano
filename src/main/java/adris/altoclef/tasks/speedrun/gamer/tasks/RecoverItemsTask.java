@@ -44,6 +44,8 @@ public class RecoverItemsTask extends Task {
     private PickupThisDrop _pickup;
     private boolean _finished;
     private boolean _started;
+    // at least one drop of ours was the target, so an empty pile at the end means we got it
+    private boolean _wentForADrop;
 
     public RecoverItemsTask(BlockPos deathPos, double budgetSeconds) {
         _deathPos = deathPos;
@@ -108,12 +110,13 @@ public class RecoverItemsTask extends Task {
             _chase.idle();
             setDebugState("Nothing left here.", "Looking for our stuff");
             if (_empty.elapsed()) {
-                // despawned, burned, or somebody else got it: not our business which, but somebody should say
-                Debug.logMessage("death: nothing at the pile, moving on.");
+                // two ways to get here: we picked it all up, or there was never anything (despawned, burned, taken)
+                Debug.logMessage(_wentForADrop ? "death: picked up what was at the pile." : "death: nothing at the pile, moving on.");
                 _finished = true;
             }
             return null;
         }
+        _wentForADrop = true;
         // every tick a drop is the target counts, so 20 s of chasing is 20 s and not 20 s of the ticks the walk left over
         if (_chase.update(drop.getId(), mod.getWorld().getGameTime() / 20.0)) {
             // visible, "reachable" and still not ours after all that: the pickup task's own retries reset every time we get a
@@ -176,7 +179,7 @@ public class RecoverItemsTask extends Task {
             _stalled = true;
         }
 
-        // the budget is 90 s and the bag is empty, a stone pickaxe trip is the whole budget and then some
+        // the budget is short and the bag is empty, a stone pickaxe trip is the whole pile allowance and then some
         @Override
         protected boolean mayGetPickaxeFirst() {
             return false;
