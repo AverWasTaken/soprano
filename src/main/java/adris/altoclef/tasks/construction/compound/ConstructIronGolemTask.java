@@ -119,7 +119,7 @@ public class ConstructIronGolemTask extends Task {
     public boolean isFinished(AltoClef mod) {
         if (_position == null) return false;
         Optional<Entity> closestIronGolem = mod.getEntityTracker().getClosestEntity(new Vec3(_position.getX(), _position.getY(), _position.getZ()), IronGolem.class);
-        return closestIronGolem.isPresent() && closestIronGolem.get().blockPosition().closerThan(_position, 2) && _canBeFinished;
+        return closestIronGolem.isPresent() && closestIronGolem.get().blockPosition().closerThan(_position, 3) && _canBeFinished;
     }
 
     @Override
