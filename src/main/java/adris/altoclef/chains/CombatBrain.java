@@ -231,7 +231,7 @@ final class CombatBrain {
             // how far the run got, asked before the step: an end chained into a new run has moved the origin by the time we say so
             int blocks = (int) Math.round(Math.hypot(player.getX() - _commit.originX(), player.getZ() - _commit.originZ()));
             Event event = _commit.step(new CombatCommit.Tick(now, player.getHealth(), player.getX(), player.getZ(), foes, target,
-                    way(mod, mobs, foes), armed(mod, foes)));
+                    way(mod, mobs, foes), armed(mod, foes), tryingToMove(mod, player)));
             if (event != Event.NONE) {
                 // the old one ended and the next one started on the same step, both get their line, in that order
                 if (_commit.endedFirst() != Event.NONE) log(mod, dimension, _commit.endedFirst(), fighting, mobs, blocks);
@@ -318,6 +318,21 @@ final class CombatBrain {
             }
         }
         Debug.logInternal(CombatLog.hurt(dimension, before - hp, who, how));
+    }
+
+    // the search failure count the last time we were not running, so "a search came back with no path" means since this run began
+    private int _failuresBase;
+
+    // the run is really trying to get somewhere: a path executing, or the search came back with none, and we are not using an
+    // item (a run bite crawls by design), in the air or in water. the no room rule only counts these ticks
+    private boolean tryingToMove(AltoClef mod, LocalPlayer player) {
+        int failures = mod.getClientBaritone().getPathingBehavior().calcFailures();
+        if (_commit.mode() != Mode.RUN) {
+            _failuresBase = failures;
+            return false;
+        }
+        boolean pathing = mod.getClientBaritone().getPathingBehavior().isPathing() || failures > _failuresBase;
+        return pathing && !player.isUsingItem() && player.onGround() && !player.isInWater();
     }
 
     // a sword, an axe, or a tool that hits harder than a fist (the fight task swings those, see useToolsWhenUnarmed). only the

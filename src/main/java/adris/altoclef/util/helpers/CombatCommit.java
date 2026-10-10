@@ -64,12 +64,12 @@ public final class CombatCommit {
     // cornered rule above already has an answer (fight it)
     public static final long RUN_STUCK_TICKS = 100;
 
-    // a run that has moved us less than this far in this many ticks with a melee foe inside real reach is going nowhere: no room,
-    // so it is the cornered fight now and not after CORNER_TICKS. the grace is the path search at the start of a run, where we
-    // stand still for a few ticks on purpose
+    // a run that is really trying to move (a path executing, or the search came back with none) and has moved us less than this
+    // far over this many such ticks with a melee foe in contact (ReachRules.MELEE_REACH, eye to box) has no room: it is the
+    // cornered fight now and not after CORNER_TICKS. ticks where the run is not trying (the search still going, a bite, the air,
+    // water) do not count at all: standing still there is by design and says nothing about room
     public static final long NO_ROOM_TICKS = 10;
     public static final double NO_ROOM_BLOCKS = 1;
-    public static final long NO_ROOM_GRACE = 10;
 
     // after any commitment ends, only a fresh hit starts the next one. low hp too: only for something on top of us or one
     // that just hit us, see trigger
@@ -202,14 +202,20 @@ public final class CombatCommit {
     // everything one tick of the machine wants to know. target is the foe we are fighting looked up on its own (it can be
     // alive and outside the foe list), null when it is dead or gone. way is the path's side of things. armed: anything better
     // than a fist in the bag (a sword, an axe, or a tool that hits harder than a hand)
-    public record Tick(long now, float health, double x, double z, List<Foe> foes, Foe target, Way way, boolean armed) {
+    // trying: the run is really trying to get somewhere this tick, see noRoomFight. false by default, so nothing that does not say
+    // so can flip a run into a fight with it
+    public record Tick(long now, float health, double x, double z, List<Foe> foes, Foe target, Way way, boolean armed, boolean trying) {
+        public Tick(long now, float health, double x, double z, List<Foe> foes, Foe target, Way way, boolean armed) {
+            this(now, health, x, z, foes, target, way, armed, false);
+        }
+
         public Tick(long now, float health, double x, double z, List<Foe> foes, Foe target, Way way) {
-            this(now, health, x, z, foes, target, way, true);
+            this(now, health, x, z, foes, target, way, true, false);
         }
 
         // no path in the picture
         public Tick(long now, float health, double x, double z, List<Foe> foes, Foe target) {
-            this(now, health, x, z, foes, target, Way.NONE, true);
+            this(now, health, x, z, foes, target, Way.NONE, true, false);
         }
     }
 
@@ -368,6 +374,7 @@ public final class CombatCommit {
     private double stuckX;
     private double stuckZ;
     private long noRoomSince = -1;
+    private int noRoomCount;
     private double noRoomX;
     private double noRoomZ;
     // the fight we are in came from the no room rule (the log says so)
@@ -476,7 +483,7 @@ public final class CombatCommit {
     private static Tick afterEnd(Tick t, int oldTarget) {
         boolean dead = oldTarget >= 0 && t.target() == null;
         List<Foe> foes = !dead ? t.foes() : t.foes().stream().filter(foe -> foe.id() != oldTarget).toList();
-        return new Tick(t.now(), t.health(), t.x(), t.z(), foes, null, t.way(), t.armed());
+        return new Tick(t.now(), t.health(), t.x(), t.z(), foes, null, t.way(), t.armed(), t.trying());
     }
 
     // ---- NONE
@@ -708,17 +715,21 @@ public final class CombatCommit {
         for (Foe foe : t.foes()) {
             if (foe.melee() && foe.kind() != Kind.UNTOUCHABLE && foe.inReach() && (onUs == null || foe.distance() < onUs.distance())) onUs = foe;
         }
-        if (onUs == null || t.now() - startTick < NO_ROOM_GRACE) {
+        if (onUs == null) {
             noRoomSince = -1;
             return Event.NONE;
         }
+        // (not trying: paused, the count and the anchor stay where they were)
+        if (!t.trying()) return Event.NONE;
         if (noRoomSince < 0 || Math.hypot(t.x() - noRoomX, t.z() - noRoomZ) >= NO_ROOM_BLOCKS) {
             noRoomSince = t.now();
+            noRoomCount = 1;
             noRoomX = t.x();
             noRoomZ = t.z();
-            return Event.NONE;
+        } else {
+            noRoomCount++;
         }
-        if (t.now() - noRoomSince < NO_ROOM_TICKS) return Event.NONE;
+        if (noRoomCount < NO_ROOM_TICKS) return Event.NONE;
         Event event = startFight(t, onUs, Why.CORNERED, Event.RUN_TO_FIGHT, true);
         noRoom = true;
         return event;
