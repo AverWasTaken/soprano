@@ -46,7 +46,7 @@ public abstract class Task {
             watchStart();
             _paused = false;
             _active = true;
-            onStart(mod);
+            startAs(mod);
             _first = false;
             _stopped = false;
         }
@@ -55,7 +55,7 @@ public abstract class Task {
         // ticks only when the task really runs, so an interrupt is never billed. note a parent's clock keeps running
         // while its child does the work, that is on purpose: the parent's give up covers everything it asked for
         _clock.tick();
-        Task newSub = onTick(mod);
+        Task newSub = tickAs(mod);
         // Debug state print
         if (!_oldDebugState.equals(_debugState)) {
             Debug.logInternal(toString());
@@ -85,6 +85,74 @@ public abstract class Task {
                 _sub.stop(mod);
                 _sub = null;
             }
+        }
+    }
+
+    // the task whose onStart/onTick is running right now, so InputControls knows whose hand is on a key. only those two
+    // are claimed: a hold made in onStop (or by a chain's getPriority) has no owner and stays down like it always did.
+    // restoring the old one instead of nulling means a child that is driven from inside its parent's onTick gives the
+    // key back to the parent when it is done
+    private static Task _holdOwner = null;
+
+    public static Task currentOwner() {
+        return _holdOwner;
+    }
+
+    private void startAs(AltoClef mod) {
+        Task before = _holdOwner;
+        _holdOwner = this;
+        try {
+            onStart(mod);
+        } finally {
+            _holdOwner = before;
+        }
+    }
+
+    private Task tickAs(AltoClef mod) {
+        Task before = _holdOwner;
+        _holdOwner = this;
+        try {
+            return onTick(mod);
+        } finally {
+            _holdOwner = before;
+        }
+    }
+
+    // onStop is where a task lets go on purpose, so nothing it presses in there belongs to it (or to whoever is
+    // calling stop on it from inside their own onTick)
+    private void stopAs(AltoClef mod, Task interruptTask) {
+        Task before = _holdOwner;
+        _holdOwner = null;
+        try {
+            onStop(mod, interruptTask);
+        } finally {
+            _holdOwner = before;
+        }
+    }
+
+    private void pausedStopAs(AltoClef mod) {
+        Task before = _holdOwner;
+        _holdOwner = null;
+        try {
+            onStopWhilePaused(mod);
+        } finally {
+            _holdOwner = before;
+        }
+    }
+
+    // lets go of every key this task is holding, after its own onStop had its say. the other owners of a key keep it down
+    private void letGo(AltoClef mod) {
+        if (mod == null || mod.getInputControls() == null) {
+            return;
+        }
+        mod.getInputControls().releaseOwnedBy(this);
+    }
+
+    // for a root that is done without anybody calling stop on it (stop would run onStop, and that is not the plan here):
+    // the whole tree of children lets go of its keys
+    public final void letGoOfKeys(AltoClef mod) {
+        for (Task t = this; t != null; t = t._sub) {
+            t.letGo(mod);
         }
     }
 
@@ -161,11 +229,15 @@ public abstract class Task {
     public void stop(AltoClef mod, Task interruptTask) {
         if (!_active) return;
         Debug.logInternal("Task STOP: " + this + ", interrupted by " + interruptTask);
-        if (!_first) {
-            onStop(mod, interruptTask);
-        } else if (_paused) {
-            _paused = false;
-            onStopWhilePaused(mod);
+        try {
+            if (!_first) {
+                stopAs(mod, interruptTask);
+            } else if (_paused) {
+                _paused = false;
+                pausedStopAs(mod);
+            }
+        } finally {
+            letGo(mod);
         }
 
         if (_sub != null && !_sub.stopped()) {
@@ -193,9 +265,10 @@ public abstract class Task {
         if (!_first) {
             _interrupting = true;
             try {
-                onStop(mod, interruptTask);
+                stopAs(mod, interruptTask);
             } finally {
                 _interrupting = false;
+                letGo(mod);
             }
             _paused = true;
         }

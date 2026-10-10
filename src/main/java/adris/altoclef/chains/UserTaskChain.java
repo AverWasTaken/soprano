@@ -115,6 +115,10 @@ public class UserTaskChain extends SingleTaskChain {
         }
         double seconds = _taskStopwatch.time();
         Task oldTask = _mainTask;
+        // same as the finished branch in SingleTaskChain, this one is also reached from cancel (where it is a no-op)
+        if (oldTask != null) {
+            oldTask.letGoOfKeys(mod);
+        }
         _mainTask = null;
         if (_currentOnFinish != null) {
             //noinspection unchecked

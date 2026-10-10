@@ -33,6 +33,9 @@ public abstract class SingleTaskChain extends TaskChain {
 
         if (_mainTask != null) {
             if ((_mainTask.isFinished(mod)) || _mainTask.stopped()) {
+                // a finished root is dropped without stop (onStop is not part of the plan), so the keys it and its
+                // children still hold have to be let go of here or they stay down for the next task
+                _mainTask.letGoOfKeys(mod);
                 onTaskFinish(mod);
             } else {
                 _mainTask.tick(mod, this);

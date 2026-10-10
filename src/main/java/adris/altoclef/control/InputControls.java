@@ -1,8 +1,15 @@
 package adris.altoclef.control;
 
+import adris.altoclef.tasksystem.Task;
 import baritone.api.utils.input.Input;
 import java.util.ArrayDeque;
+import java.util.Collections;
+import java.util.EnumMap;
+import java.util.EnumSet;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
+import java.util.Iterator;
+import java.util.Map;
 import java.util.Queue;
 import java.util.Set;
 import net.minecraft.client.KeyMapping;
@@ -25,6 +32,10 @@ public class InputControls {
     private final Queue<Input> _toUnpress = new ArrayDeque<>();
     private final Set<Input> _waitForRelease = new HashSet<>(); // a click requires a release.
     private final KeyPort _keys;
+    // who has a hand on each key. a key can have several owners, and holds with no task behind them (chains) are
+    // tracked as "unowned": those are never let go of by anybody's stop, only by a plain release
+    private final Map<Input, Set<Object>> _owners = new EnumMap<>(Input.class);
+    private final Set<Input> _unowned = EnumSet.noneOf(Input.class);
 
     public InputControls() {
         this(new GameKeys());
@@ -85,20 +96,61 @@ public class InputControls {
         _waitForRelease.add(input);
     }
 
+    // whoever is ticking right now (a task in onStart/onTick) is the owner, anything else (a chain) is nobody
     public void hold(Input input) {
+        hold(input, Task.currentOwner());
+    }
+
+    public void hold(Input input, Object owner) {
         // the only way a block click turns into a swing at a mob. tryPress is left alone, the dragon task wants its hits
         if (input == Input.CLICK_LEFT && !ClickGuard.allowLeftHold(_keys.aimedAtEntity())) {
+            forget(input);
             _keys.setDown(input, false);
             return;
         }
+        claim(input, owner);
         if (!_keys.isDown(input)) {
             _keys.click(input);
         }
         _keys.setDown(input, true);
     }
 
+    // unconditional: the key goes up and every claim on it is gone, owned or not
     public void release(Input input) {
+        forget(input);
         _keys.setDown(input, false);
+    }
+
+    // the owner is done (stopped, interrupted, finished). its claims go, and a key only comes up when nobody else is
+    // still holding it, owned or not
+    public void releaseOwnedBy(Object owner) {
+        if (owner == null) {
+            return;
+        }
+        Iterator<Map.Entry<Input, Set<Object>>> it = _owners.entrySet().iterator();
+        while (it.hasNext()) {
+            Map.Entry<Input, Set<Object>> e = it.next();
+            Input input = e.getKey();
+            if (e.getValue().remove(owner) && e.getValue().isEmpty()) {
+                it.remove();
+                if (!_unowned.contains(input)) {
+                    _keys.setDown(input, false);
+                }
+            }
+        }
+    }
+
+    private void claim(Input input, Object owner) {
+        if (owner == null) {
+            _unowned.add(input);
+            return;
+        }
+        _owners.computeIfAbsent(input, k -> Collections.newSetFromMap(new IdentityHashMap<>())).add(owner);
+    }
+
+    private void forget(Input input) {
+        _unowned.remove(input);
+        _owners.remove(input);
     }
 
     public boolean isHeldDown(Input input) {
