@@ -137,14 +137,16 @@ public class ItemHelper {
             Blocks.OAK_SIGN, Blocks.JUNGLE_SIGN, Blocks.SPRUCE_SIGN, Blocks.ACACIA_WALL_SIGN, Blocks.BIRCH_WALL_SIGN,
             Blocks.DARK_OAK_WALL_SIGN, Blocks.OAK_WALL_SIGN, Blocks.JUNGLE_WALL_SIGN, Blocks.SPRUCE_WALL_SIGN,
             Blocks.MANGROVE_SIGN, Blocks.MANGROVE_WALL_SIGN, Blocks.BAMBOO_SIGN, Blocks.BAMBOO_WALL_SIGN,
-            Blocks.CHERRY_SIGN, Blocks.PALE_OAK_SIGN, Blocks.CHERRY_WALL_SIGN, Blocks.PALE_OAK_WALL_SIGN};
+            Blocks.CHERRY_SIGN, Blocks.PALE_OAK_SIGN, Blocks.CHERRY_WALL_SIGN, Blocks.PALE_OAK_WALL_SIGN,
+            Blocks.CRIMSON_SIGN, Blocks.CRIMSON_WALL_SIGN, Blocks.WARPED_SIGN, Blocks.WARPED_WALL_SIGN};
     public static final Block[] WOOD_HANGING_SIGNS_ALL = new Block[]{Blocks.ACACIA_HANGING_SIGN,
             Blocks.ACACIA_WALL_HANGING_SIGN, Blocks.BIRCH_HANGING_SIGN, Blocks.BIRCH_WALL_HANGING_SIGN,
             Blocks.DARK_OAK_HANGING_SIGN, Blocks.DARK_OAK_WALL_HANGING_SIGN, Blocks.OAK_HANGING_SIGN,
             Blocks.OAK_WALL_HANGING_SIGN, Blocks.JUNGLE_HANGING_SIGN, Blocks.JUNGLE_WALL_HANGING_SIGN,
             Blocks.SPRUCE_HANGING_SIGN, Blocks.SPRUCE_WALL_HANGING_SIGN, Blocks.MANGROVE_HANGING_SIGN,
             Blocks.MANGROVE_WALL_HANGING_SIGN, Blocks.BAMBOO_HANGING_SIGN, Blocks.BAMBOO_WALL_HANGING_SIGN,
-            Blocks.CHERRY_HANGING_SIGN, Blocks.PALE_OAK_HANGING_SIGN, Blocks.CHERRY_WALL_HANGING_SIGN, Blocks.PALE_OAK_WALL_HANGING_SIGN};
+            Blocks.CHERRY_HANGING_SIGN, Blocks.PALE_OAK_HANGING_SIGN, Blocks.CHERRY_WALL_HANGING_SIGN, Blocks.PALE_OAK_WALL_HANGING_SIGN,
+            Blocks.CRIMSON_HANGING_SIGN, Blocks.CRIMSON_WALL_HANGING_SIGN, Blocks.WARPED_HANGING_SIGN, Blocks.WARPED_WALL_HANGING_SIGN};
     private static final Map<Item, Item> _logToPlanks = new HashMap<>() {
         {
             put(Items.CHERRY_LOG, Items.CHERRY_PLANKS);
@@ -430,7 +432,7 @@ public class ItemHelper {
     public static boolean canStackTogether(ItemStack from, ItemStack to) {
         if (to.isEmpty() && from.getCount() <= from.getMaxStackSize())
             return true;
-        return to.getItem().equals(from.getItem()) && (from.getCount() + to.getCount() < to.getMaxStackSize());
+        return to.getItem().equals(from.getItem()) && (from.getCount() + to.getCount() <= to.getMaxStackSize());
     }
 
     private static Map<Item, Integer> getFuelTimeMap() {
