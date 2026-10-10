@@ -30,7 +30,7 @@ public interface PhaseHandler {
         return null;
     }
 
-    // the coal or gravel detour that is going, for the card's detour row. null = none. PORTAL and NETHER have a gravel detour of
+    // the diamond, coal or gravel detour that is going, for the card's detour row. null = none. PORTAL and NETHER have a gravel detour of
     // their own and no PrepSupport, they say so themselves
     default ResourceDetour detour() {
         PrepSupport s = support();

@@ -12,6 +12,9 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.function.UnaryOperator;
+import net.minecraft.server.Bootstrap;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.Items;
 import org.junit.Test;
 
 // diamonds on the way: coal's machine with the cap as the need, an iron pick as the tool and no lava next to the ore. the world
@@ -76,6 +79,19 @@ public class DiamondDetourTest {
         Inputs bare = calm(0, false, true, 24);
         assertTrue(DetourRules.blocked(bare));
         assertEquals(Step.IDLE, rules().tick(1000, bare, LIM, ore(true)));
+    }
+
+    @Test
+    public void onlyIronDiamondAndNetheritePicksCountAsTheTool() {
+        Bootstrap.bootStrap();
+        assertFalse(ResourceDetour.hasIronPickaxe(new FakeFacts()));
+        // stone gets coal going, a golden or wooden pick would not mine a diamond at all
+        for (Item weak : List.of(Items.WOODEN_PICKAXE, Items.STONE_PICKAXE, Items.GOLDEN_PICKAXE, Items.IRON_SHOVEL, Items.DIAMOND)) {
+            assertFalse(weak.toString(), ResourceDetour.hasIronPickaxe(new FakeFacts().give(weak, 1)));
+        }
+        for (Item good : List.of(Items.IRON_PICKAXE, Items.DIAMOND_PICKAXE, Items.NETHERITE_PICKAXE)) {
+            assertTrue(good.toString(), ResourceDetour.hasIronPickaxe(new FakeFacts().give(good, 1)));
+        }
     }
 
     @Test

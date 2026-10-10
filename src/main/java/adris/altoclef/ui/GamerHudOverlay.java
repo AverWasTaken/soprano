@@ -28,8 +28,8 @@ import java.util.List;
 import java.util.Map;
 
 // the #gamer card on the right: the phase in big gold with its clock against the budget, eleven dots for where the run is,
-// the thing being done right now, the kit as have/want rows with the game's own item icons, the furnace batches, the coal
-// or gravel detour, hp and food. a red strip on top only while the combat brain holds FIGHT or RUN.
+// the thing being done right now, the kit as have/want rows with the game's own item icons, the furnace batches, the coal,
+// gravel or diamond detour, hp and food. a red strip on top only while the combat brain holds FIGHT or RUN.
 // laid out once per tick into a list of draw ops (same idea as CommandStatusOverlay's lines), drawn every frame. the
 // numbers come from GamerTask.hudSnapshot(), frozen by the engine's tick: the only live reads here are the combat
 // commitment (plain fields on the chain, it moves while the engine is paused for the fight) and the player's hp and

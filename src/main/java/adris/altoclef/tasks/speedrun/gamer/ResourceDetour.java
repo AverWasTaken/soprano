@@ -46,7 +46,7 @@ public final class ResourceDetour {
     // an array of our own per detour: the iron task's list must not learn about coal, two mine tasks with the same blocks are the
     // same task to the task system and coal would count towards the iron
     private final Block[] blocks;
-    // what we came for: coal from coal ore, flint from gravel (the gravel itself is junk, see altoThrowawayItems)
+    // what we came for: coal from coal ore, flint from gravel, diamonds from diamond ore (the gravel itself is junk, see altoThrowawayItems)
     private final Item item;
     private final MiningRequirement requirement;
     private final DetourRules rules;
@@ -302,7 +302,7 @@ public final class ResourceDetour {
     }
 
     // iron or better, which is what diamond ore wants. no pick of that kind is no side job, it never makes a need for one
-    private static boolean hasIronPickaxe(GamerFacts f) {
+    static boolean hasIronPickaxe(GamerFacts f) {
         return f.count(Items.IRON_PICKAXE, Items.DIAMOND_PICKAXE, Items.NETHERITE_PICKAXE) > 0;
     }
 

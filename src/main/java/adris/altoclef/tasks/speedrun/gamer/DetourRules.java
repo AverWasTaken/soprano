@@ -12,7 +12,7 @@ import java.util.function.LongPredicate;
 
 // a resource on the way: while the phases mine, a block worth having that is close by gets a short detour, since we would come
 // out for it later anyway and out here it is already in sight. coal was the first (a smelt that runs short of fuel sends us out
-// for coal anyway), gravel for flint is the second. this is the deciding half (ResourceDetour is the half that touches the world,
+// for coal anyway), gravel for flint is the second, a diamond ore in sight the third. this is the deciding half (ResourceDetour is the half that touches the world,
 // DetourSpec says what is different per resource). one instance holds one detour at a time. it starts on a strict test, stays
 // on a looser one, and every way out is a named Step, so it cannot flap between ticks
 public final class DetourRules {
@@ -65,7 +65,7 @@ public final class DetourRules {
     }
 
     // what the phase knows this tick. the world half builds it, the rules never read the game. dimension = this resource may be
-    // dug here at all (coal: the overworld, gravel: see DetourSpec.gravelPhase), tool = the spec's tool gate, held = what we hold
+    // dug here at all (coal and diamond: the overworld, gravel: see DetourSpec.gravelPhase), tool = the spec's tool gate, held = what we hold
     // of the item we came for, need = what we stop at, resourceHead = the kit task is already on this exact thing, mined = blocks
     // broken since the detour began (Tally)
     public record Inputs(boolean dimension, boolean tool, int held, int need, boolean cookStation, boolean furnaceDue,

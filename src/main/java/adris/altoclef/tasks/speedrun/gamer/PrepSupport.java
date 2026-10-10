@@ -8,7 +8,7 @@ import java.util.List;
 
 
 // the side jobs the overworld phases share: danger filtering, taking our crafting table and furnace back, ruined portal chests,
-// village chests, the odd iron golem, and a bit of coal or a bit of gravel (for flint) when it is right there.
+// village chests, the odd iron golem, and a bit of diamond, coal or gravel (for flint) when it is right there.
 // all of them return a task to run INSTEAD of the kit task this tick, or null
 public final class PrepSupport {
     private final DangerFilter danger = new DangerFilter();
