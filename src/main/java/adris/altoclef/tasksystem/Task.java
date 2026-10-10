@@ -85,9 +85,13 @@ public abstract class Task {
 
     // a flag and never an action: 21 starts of one class in a minute is a loop, say so and keep the lead up
     private void watchStart() {
-        if (STARTS.start(getClass(), System.currentTimeMillis())) {
-            Debug.logInternal(Lines.startStorm(className()));
-            Trace.dump("monitor:storm");
+        try {
+            if (STARTS.start(getClass(), System.currentTimeMillis())) {
+                Debug.logInternal(Lines.startStorm(className()));
+                Trace.dump("monitor:storm");
+            }
+        } catch (RuntimeException e) {
+            // a monitor must never keep a task from starting
         }
     }
 
@@ -96,9 +100,13 @@ public abstract class Task {
         if (_debugState.isEmpty()) {
             return;
         }
-        int times = REPEATS.hit(className() + "|" + _debugState, System.currentTimeMillis());
-        if (times > 0) {
-            Debug.logInternal(Lines.repeat(className(), _debugState, times));
+        try {
+            int times = REPEATS.hit(className() + "|" + _debugState, System.currentTimeMillis());
+            if (times > 0) {
+                Debug.logInternal(Lines.repeat(className(), _debugState, times));
+            }
+        } catch (RuntimeException e) {
+            // same as watchStart
         }
     }
 

@@ -165,6 +165,12 @@ def buildId = "unknown"
 try {
     def described = 'git describe --always --dirty'.execute().text.trim()
     if (!described.isEmpty()) buildId = described
+    if (buildId.endsWith("-dirty")) {
+        // two edits on the same commit are two different jars, a short hash of the diff tells them apart (and only
+        // changes when the diff does, so the resources stay up to date between builds of the same edit)
+        def diff = 'git diff HEAD'.execute().text
+        buildId += "." + Integer.toHexString(diff.hashCode())
+    }
 } catch (Exception e) {
     println "Build id detection failed: " + e
 }

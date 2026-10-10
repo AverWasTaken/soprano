@@ -60,8 +60,9 @@ public final class RepeatCounter {
                 inWindow++;
             }
         }
-        // a slow trickle keeps the entry alive forever, so quiet has to mean "under the first milestone", not "empty"
-        if (inWindow < MILESTONES[0]) {
+        // a slow trickle keeps the entry alive forever, so quiet has to mean "well under the first milestone", not "empty".
+        // not just under it: a retry every 15 s sits right on 4/5 and would announce itself every other lap
+        if (inWindow <= MILESTONES[0] / 2) {
             e.told = 0;
         }
         int reached = 0;

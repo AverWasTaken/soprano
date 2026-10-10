@@ -95,6 +95,21 @@ public class RepeatCounterTest {
     }
 
     @Test
+    public void aRetryRightOnTheEdgeOfFiveDoesNotAnnounceEveryOtherLap() {
+        RepeatCounter c = new RepeatCounter();
+        int told = 0;
+        long t = 0;
+        // gaps wobbling around 15 s: four or five in a window, back and forth
+        for (int i = 0; i < 60; i++) {
+            if (c.hit("A|x", t) != 0) {
+                told++;
+            }
+            t += i % 2 == 0 ? 14_500 : 15_500;
+        }
+        assertEquals(1, told);
+    }
+
+    @Test
     public void rearmsAfterTheWindowGoesQuiet() {
         RepeatCounter c = new RepeatCounter();
         for (int i = 0; i < 5; i++) {
