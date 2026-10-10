@@ -1231,6 +1231,26 @@ public class FoodPlanTest {
         }
     }
 
+    @Test
+    public void rawMeatWaitingOnFuelIsNotASurfaceTrip() {
+        // a trip ended at 130 with 16 raw porkchop at the cooked value, then a craft ate the fuel: the pile reads raw (16 x 5 under
+        // the cooked sum) and held is 50. up top that is short of 70, but the meat is in the bag, it wants coal and not cows
+        RunState s = inIron();
+        List<String> log = new java.util.ArrayList<>();
+        FakeFacts f = new FakeFacts();
+        f.nearSurface = true;
+        f.give(Items.PORKCHOP, 16);
+        f.foodUnits = 2 + 16 * FoodHelper.plannedNutrition(Items.PORKCHOP);
+        FoodPlan p = latch(f, s, log);
+        assertEquals(50, p.held());
+        assertFalse(p.surfaceTopUp());
+        assertFalse(p.wantsRefill());
+        assertFalse(s.foodRefilling);
+        // under the start it is a trip all the same
+        f.foodUnits -= 6;
+        assertTrue(latch(f, s, log).wantsRefill());
+    }
+
     // ---- a dip of a second or two is not a trip
 
     @Test

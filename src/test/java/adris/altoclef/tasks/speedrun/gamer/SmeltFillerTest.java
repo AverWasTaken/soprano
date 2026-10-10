@@ -243,6 +243,24 @@ public class SmeltFillerTest {
     // ---- stock-ups are surface work
 
     @Test
+    public void aFoodTripIsNotTakenForTheFoodStockUp() {
+        // the refill asks for 130 and so does the default food stock-up (100 + 30): a due iron job must not cut the trip short
+        // as if it were filler
+        FakeFacts f = atTheFurnace().cooking("iron_ingot", 40, 400);
+        f.foodUnits = 40;
+        Schedule s = SmeltFiller.schedule(f, cfg, BEDS, true);
+        KitNeed trip = new KitNeed(KitNeed.FOOD, cfg.refillStopFoodUnits);
+        assertEquals(cfg.targetFoodUnits + 30, cfg.refillStopFoodUnits);
+        assertTrue(s.stockUps().contains(trip));
+        assertTrue(s.runnable().contains(trip));
+        assertFalse(s.isStockUp(trip));
+        // with no trip on, the very same need is the stock-up
+        f.foodUnits = 110;
+        Schedule fed = SmeltFiller.schedule(f, cfg, BEDS, true);
+        assertTrue(fed.isStockUp(trip));
+    }
+
+    @Test
     public void downTheMineNoStockUpIsRunnable() {
         FakeFacts f = atTheFurnace().cooking("iron_ingot", 40, 400);
         f.foodUnits = 20;

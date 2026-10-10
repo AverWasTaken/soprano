@@ -41,7 +41,12 @@ final class GamerHud {
         List<FurnaceRow> furnaces = furnaceRows(facts.furnaceJobs());
         DetourRow detour = detourRow(mod, h.detour(), cfg);
         return new GamerHudState(state.phase, machine.secondsInPhase(), cfg.budgets.minutes(state.phase), machine.attempt(), action,
-                rows, furnaces, detour, food.held(), food.overworldMinimum());
+                rows, furnaces, detour, food.held(), footerLine(food));
+    }
+
+    // the minimum, or the trip's stop while a trip is on: 70/70 with the bot still hunting reads like it forgot to stop
+    static int footerLine(FoodPlan food) {
+        return food.refilling() ? food.refillStop() : food.overworldMinimum();
     }
 
     // the card while a death recovery or the nether trip has the wheel. neither goes through the phase, so build() is not reached and
@@ -53,7 +58,7 @@ final class GamerHud {
         lingering.clear();
         FoodPlan food = FoodPlan.of(facts, cfg, state.phase, state.foodRefilling);
         return new GamerHudState(state.phase, secondsInPhase, cfg.budgets.minutes(state.phase), attempt, action, List.of(),
-                furnaceRows(facts.furnaceJobs()), null, food.held(), food.overworldMinimum());
+                furnaceRows(facts.furnaceJobs()), null, food.held(), footerLine(food));
     }
 
     // the run ended DONE: the last card with every dot lit and the total time where the phase clock was, no kit, no furnaces, no

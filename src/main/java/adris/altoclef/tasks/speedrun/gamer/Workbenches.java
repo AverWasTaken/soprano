@@ -689,7 +689,7 @@ public final class Workbenches {
         // emptied in the middle of a hunt or with more iron to come: we are coming back to it, so it stays for the next batch
         GamerFacts f = ctx.facts();
         boolean nothingAhead = WorkbenchRules.nothingAhead(b.kind, CookGate.ironOwed(f, ctx.cfg().overworld), CookGate.raw(f),
-                f.smokerPlacedNearby() || f.count(Items.SMOKER) > 0, ctx.food().shortOf(ctx.food().target()));
+                f.smokerPlacedNearby() || f.count(Items.SMOKER) > 0, ctx.food().shortOf(ctx.food().huntsTo()));
         if (WorkbenchRules.keepForComingBack(b, nothingAhead)) {
             log(b + ": emptied, but the plan brings us back " + b.comingBack + ", leaving it standing");
             return false;

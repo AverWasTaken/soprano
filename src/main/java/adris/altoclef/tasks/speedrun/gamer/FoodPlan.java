@@ -225,6 +225,11 @@ public final class FoodPlan {
         return refillStop;
     }
 
+    // the highest line the plan hunts to right now outside a stock-up: the trip's stop while one is due or on, else the target
+    public int huntsTo() {
+        return wantsRefill() ? Math.max(refillStop, target) : target;
+    }
+
     // a food trip is under way, as of the start of this tick (see latched)
     public boolean refilling() {
         return refilling;
@@ -302,12 +307,14 @@ public final class FoodPlan {
     }
 
     // up top and short of the minimum: the trip costs a walk here, and the same trip from a mine later is a climb out and back.
-    // so on the surface a trip starts under the minimum, in a mine only under refillStart. a hole the raw meat in the bag covers
-    // once cooked is not one (coveredAt, the smoker coming and going swings held by a chicken right at this line)
+    // so on the surface a trip starts under the minimum, in a mine only under refillStart. a hole the raw meat in the bag fills once
+    // cooked is not one, however big (counted, raw at the cooked value): the smoker coming and going swings held by a chicken right
+    // at this line, and a trip's pile of 16 raw meat reads raw the moment the fuel dips under the pile, 80 units gone with the
+    // meat still in the bag. that wants coal, not cows. under refillStart it is a trip anyway
     public boolean surfaceTopUp() {
         int held = held();
         // with no room in the bag the trip would end at the minimum it started under, one bite's worth of hunt
-        return surface && !bagFull && held >= floor && held < minimum && !coveredAt(minimum);
+        return surface && !bagFull && held >= floor && held < minimum && counted() < minimum;
     }
 
     // the log line when the latch flips, `on` = it starts
@@ -337,13 +344,8 @@ public final class FoodPlan {
     // holds is pure churn. the cap is the reason the raw valuation exists at all: ten raw porkchop is a 50 unit gap, and that one
     // still gets a real hunt. under the floor never counts, that rule is not ours to soften
     public boolean covered() {
-        return coveredAt(refillStop);
-    }
-
-    // the same rule against any line
-    private boolean coveredAt(int line) {
         int held = held();
-        return held >= floor && held < line && line - held <= SMALL_GAP && held + rawLeftOut >= line;
+        return held >= floor && held < refillStop && refillStop - held <= SMALL_GAP && held + rawLeftOut >= refillStop;
     }
 
     // does the food need go first in the IRON phase. always below the floor, otherwise only during a refill (wantsRefill, between

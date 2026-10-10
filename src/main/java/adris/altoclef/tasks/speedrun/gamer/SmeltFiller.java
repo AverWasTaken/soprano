@@ -20,9 +20,15 @@ public final class SmeltFiller {
             this(runnable, blocked, List.of());
         }
 
-        // is this need one of the stock-ups. record equality, so a plan need that happens to match one counts too, which is fine
+        // is this need one of the stock-ups. record equality (HeadLatch hands back last tick's copy), so a plan need that matches one
+        // is the plan's: the food refill asks for 130 and so does the default food stock-up (100 + 30), and a due iron job cutting
+        // the refill short as if it were filler sent the hunt home halfway. stock-ups sit at the end of runnable
         public boolean isStockUp(KitNeed need) {
-            return need != null && stockUps.contains(need);
+            if (need == null || !stockUps.contains(need)) {
+                return false;
+            }
+            int planPart = Math.max(0, runnable.size() - stockUps.size());
+            return !runnable.subList(0, planPart).contains(need);
         }
     }
 
@@ -60,6 +66,8 @@ public final class SmeltFiller {
         extras(f, cfg, endBeds, nearSurface, food, stockUps);
         runnable.addAll(stockUps);
         runnable.removeIf(need -> foodBlocked(f, need));
+        // the same out of the stock-ups, so they stay exactly the tail of runnable (isStockUp counts on that)
+        stockUps.removeIf(need -> foodBlocked(f, need));
         return new Schedule(runnable, blocked, stockUps);
     }
 

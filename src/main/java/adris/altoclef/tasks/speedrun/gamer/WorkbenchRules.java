@@ -638,7 +638,7 @@ public final class WorkbenchRules {
     }
 
     // nothing in the bag or the plan's facts has a use for this furnace or smoker: no iron owed (a furnace), no raw meat that would go
-    // in it and not short of food (a hunt fills the smoker next; the caller asks against the food target, the highest line the
+    // in it and not short of food (a hunt fills the smoker next; the caller asks against FoodPlan.huntsTo, the highest line the
     // plan hunts to outside a stock-up). these are bag counts, they do not flicker the way the plan's head does
     public static boolean nothingAhead(Kind kind, boolean ironOwed, int rawMeat, boolean smokerOfOurs, boolean foodShort) {
         boolean meatHere = (rawMeat > 0 || foodShort) && (kind == Kind.SMOKER || !smokerOfOurs);
