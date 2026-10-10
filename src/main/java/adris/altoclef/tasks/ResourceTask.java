@@ -225,11 +225,13 @@ public abstract class ResourceTask extends Task implements ITaskCanForce {
                     // refuses it, and picking it here anyway flipped between that refusal and the craft every tick
                     Optional<BlockPos> closest = mod.getBlockTracker().getNearestTracking(mod.getPlayer().position(),
                             p -> WorldHelper.canBreak(mod, p), _mineIfPresent);
-                    if (closest.isPresent() && closest.get().closerToCenterThan(mod.getPlayer().position(), Baritone.settings().altoResourceMineRange.value)) {
+                    // -1 means always mine, and closerToCenterThan would call that "nothing is close enough"
+                    double mineRange = Baritone.settings().altoResourceMineRange.value;
+                    if (closest.isPresent() && (mineRange < 0 || closest.get().closerToCenterThan(mod.getPlayer().position(), mineRange))) {
                         _mineLastClosest = closest.get();
                     }
                     if (_mineLastClosest != null) {
-                        if (_mineLastClosest.closerToCenterThan(mod.getPlayer().position(), Baritone.settings().altoResourceMineRange.value * 1.5 + 20)) {
+                        if (mineRange < 0 || _mineLastClosest.closerToCenterThan(mod.getPlayer().position(), mineRange * 1.5 + 20)) {
                             return new MineAndCollectTask(_itemTargets, _mineIfPresent, MiningRequirement.HAND);
                         }
                     }
