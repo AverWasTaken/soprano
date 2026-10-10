@@ -21,6 +21,8 @@ import baritone.Baritone;
 import baritone.api.cache.ICachedRegion;
 import baritone.api.utils.BlockUtils;
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.dimension.DimensionType;
 
@@ -246,7 +248,9 @@ public final class CachedRegion implements ICachedRegion {
                     for (int z = 0; z < 32; z++) {
                         if (present[x][z]) {
                             for (int i = 0; i < 256; i++) {
-                                overview[x][z][i] = BlockUtils.stringToBlockRequired(in.readUTF()).defaultBlockState();
+                                // a block that isn't registered anymore (mod removed, renamed) shouldn't throw away the whole region
+                                Block block = BlockUtils.stringToBlockNullable(in.readUTF());
+                                overview[x][z][i] = (block == null ? Blocks.STONE : block).defaultBlockState();
                             }
                         }
                     }
@@ -261,9 +265,11 @@ public final class CachedRegion implements ICachedRegion {
                             int numSpecialBlockTypes = in.readShort() & 0xffff;
                             for (int i = 0; i < numSpecialBlockTypes; i++) {
                                 String blockName = in.readUTF();
-                                BlockUtils.stringToBlockRequired(blockName);
                                 List<BlockPos> locs = new ArrayList<>();
-                                location[x][z].put(blockName, locs);
+                                // unknown name: still has to read its locations to stay in step with the stream, just don't keep them
+                                if (BlockUtils.stringToBlockNullable(blockName) != null) {
+                                    location[x][z].put(blockName, locs);
+                                }
                                 int numLocations = in.readShort() & 0xffff;
                                 if (numLocations == 0) {
                                     // an entire chunk full of air can happen in the end
