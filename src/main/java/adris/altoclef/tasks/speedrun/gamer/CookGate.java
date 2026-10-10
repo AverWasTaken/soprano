@@ -2,7 +2,6 @@ package adris.altoclef.tasks.speedrun.gamer;
 
 import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig;
 import adris.altoclef.util.helpers.FoodHelper;
-import adris.altoclef.util.helpers.ItemHelper;
 import baritone.api.utils.Dimension;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
@@ -21,9 +20,8 @@ public final class CookGate {
     // this much raw meat is worth a trip of its own. fewer than this only gets cooked as the last thing, and only where a
     // station is already standing (nobody crafts a smoker for one rabbit)
     public static final int MIN_RAW = 3;
-    // a smoker is a furnace (8 cobble) and 4 logs
+    // a smoker is a furnace (8 cobble) and 4 logs (WoodBudget has the logs)
     private static final int SMOKER_COBBLE = 8;
-    private static final int SMOKER_LOGS = 4;
     // smelts a coal burns, the unit the smelt tasks count fuel in
     private static final int COAL_SMELTS = 8;
 
@@ -83,6 +81,11 @@ public final class CookGate {
     // `mayCraft` = enough meat to be worth a trip. without it only a station standing on the ground counts: a furnace in the bag
     // is a place, cook, walk back, pick up for two rabbit, and the phase waits on all of it
     public static Station station(GamerFacts f, OverworldConfig cfg, boolean mayCraft) {
+        // the beds only move what the kit owes, station reads the logs held and what a smoker costs
+        return station(f, cfg, mayCraft, WoodBudget.of(f, cfg, 0));
+    }
+
+    public static Station station(GamerFacts f, OverworldConfig cfg, boolean mayCraft, WoodBudget wood) {
         boolean ironInFurnace = furnaceHasIron(f);
         // the furnace is for meat only once the iron is done with it (or never needs it): while iron is owed the meat gets a
         // smoker of its own, which cooks twice as fast anyway, and a bag with no way to make one just keeps the meat until
@@ -110,23 +113,20 @@ public final class CookGate {
         // the stone floor is the cobble the kit still owes its tools, a smoker is not allowed to eat the stone pick
         int free = f.count(Items.COBBLESTONE) - KitPlanner.stoneFloor(f, cfg);
         boolean furnaceInBag = f.has(Items.FURNACE);
-        if (f.count(ItemHelper.LOG) >= smokerLogs(f) && (furnaceInBag || free >= SMOKER_COBBLE)) {
+        if (wood.logs() >= wood.smokerLogs() && (furnaceInBag || free >= SMOKER_COBBLE)) {
             return Station.SMOKER;
         }
         return furnaceFree && free >= SMOKER_COBBLE ? Station.FURNACE : Station.NONE;
     }
 
-    // logs a new smoker costs: its four, and one more for a table when there is none to craft it on (the table's planks used to
-    // take the fourth log, and the catalogue went chopping a tree from the bottom of the mine)
-    // (package only so the wood golden can see it)
+    // logs a new smoker costs (WoodBudget has the rule). package only so the wood golden can see it
     static int smokerLogs(GamerFacts f) {
-        return SMOKER_LOGS + (f.has(Items.CRAFTING_TABLE) || f.tablePlacedNearby() ? 0 : 1);
+        return WoodBudget.smokerLogsFor(f);
     }
 
-    // a smoker we still have to make: the logs it eats are not fuel
-    // (package only so the wood golden can see it)
+    // a smoker we still have to make: the logs it eats are not fuel. package only so the wood golden can see it
     static boolean smokerToMake(GamerFacts f, Station station) {
-        return station == Station.SMOKER && !f.has(Items.SMOKER) && !f.smokerPlacedNearby() && f.cookStation() == null;
+        return station == Station.SMOKER && WoodBudget.smokerOwedFor(f);
     }
 
     // smelts of fuel the cook could burn: what the smelt task is allowed to burn (f.burnable, altoSupportedFuels), and wood only
@@ -138,7 +138,12 @@ public final class CookGate {
 
     // `logsSpoken` = logs about to go into something else (a smoker), taken off the spare wood first
     static int fuelSmelts(GamerFacts f, OverworldConfig cfg, int endBeds, int logsSpoken) {
-        return burnable(f, Items.COAL, Items.CHARCOAL) * COAL_SMELTS + woodSmelts(f, cfg, endBeds, logsSpoken);
+        return fuelSmelts(f, WoodBudget.of(f, cfg, endBeds), logsSpoken);
+    }
+
+    // (the budget has to be this bag's, it holds the wood half)
+    static int fuelSmelts(GamerFacts f, WoodBudget wood, int logsSpoken) {
+        return burnable(f, Items.COAL, Items.CHARCOAL) * COAL_SMELTS + wood.burnableWoodSmelts(logsSpoken);
     }
 
     // the wood half of fuelSmelts: logs and planks above the reserve. the coal detour counts it towards the coal we already have
@@ -148,11 +153,7 @@ public final class CookGate {
 
     // (package only so the wood golden can see the spoken form)
     static int woodSmelts(GamerFacts f, OverworldConfig cfg, int endBeds, int logsSpoken) {
-        WoodReserve.Keep keep = WoodReserve.keep(f, cfg, endBeds);
-        int logs = Math.max(0, burnable(f, ItemHelper.LOG) - keep.logs() - logsSpoken);
-        int planks = Math.max(0, burnable(f, ItemHelper.PLANKS) - keep.planks());
-        // a log and a plank are both 300 ticks of fire, 1.5 items (ItemHelper.getFuelAmount). planks used to be 0.75 in here
-        return (logs + planks) * 3 / 2;
+        return WoodBudget.of(f, cfg, endBeds).burnableWoodSmelts(logsSpoken);
     }
 
     // how many of these we hold that a furnace may burn
@@ -189,6 +190,10 @@ public final class CookGate {
 
     // the cook need, or null when there is nothing to do about the raw meat right now
     public static KitNeed need(GamerFacts f, OverworldConfig cfg, int endBeds) {
+        return need(f, cfg, endBeds, WoodBudget.of(f, cfg, endBeds));
+    }
+
+    public static KitNeed need(GamerFacts f, OverworldConfig cfg, int endBeds, WoodBudget wood) {
         int raw = raw(f);
         // a cook that is mid load has the meat in the station's slot, not the bag: with the last kind in there raw reads 0, and
         // dropping the need then swaps the task out from under a half loaded smoker
@@ -201,16 +206,16 @@ public final class CookGate {
         if (!loading && stranded(f)) {
             return null;
         }
-        Station station = station(f, cfg, raw >= MIN_RAW);
+        Station station = station(f, cfg, raw >= MIN_RAW, wood);
         if (station == Station.NONE) {
             return null;
         }
         // a smoker still to make eats wood the fuel count would otherwise have burned. the smoker got built and then sat there cold
-        int spoken = smokerToMake(f, station) ? smokerLogs(f) : 0;
+        int spoken = wood.logsSpokenFor(station == Station.SMOKER);
         // the first load is the biggest pile, the others cook after it has been collected. a cook that is already loading skips
         // this: the coal it put in the smoker left the bag, so the count dips under the pile the moment the fuel goes in and
         // the cook walked out of its own plan with the meat in the slot (23:18:36). the smelt task fetches what it is short of
-        if (!loading && fuelSmelts(f, cfg, endBeds, spoken) < pile(f)) {
+        if (!loading && fuelSmelts(f, wood, spoken) < pile(f)) {
             return null;
         }
         return new KitNeed(station == Station.SMOKER ? KitNeed.COOK_SMOKER : KitNeed.COOK_FURNACE, MIN_RAW);
@@ -219,12 +224,16 @@ public final class CookGate {
     // a furnace or smoker we just emptied, with meat in the bag: load it before it goes back in the bag (FurnaceWatch). no
     // station question, we are standing at one
     public static boolean reusable(GamerFacts f, OverworldConfig cfg, int endBeds, boolean smoker) {
+        return reusable(f, cfg, endBeds, smoker, WoodBudget.of(f, cfg, endBeds));
+    }
+
+    public static boolean reusable(GamerFacts f, OverworldConfig cfg, int endBeds, boolean smoker, WoodBudget wood) {
         // the plain furnace we are standing at is the iron's while ore is owed, same rule as station(): the big batch walks back
         // to the furnace it remembers and would swap the meat out
         if (!smoker && ironOwed(f, cfg)) {
             return false;
         }
-        return raw(f) >= MIN_RAW && !f.cookSuspended() && f.pendingFoodUnits() == 0 && !stranded(f) && fuelSmelts(f, cfg, endBeds) >= pile(f);
+        return raw(f) >= MIN_RAW && !f.cookSuspended() && f.pendingFoodUnits() == 0 && !stranded(f) && fuelSmelts(f, wood, 0) >= pile(f);
     }
 
     public static int index(List<KitNeed> needs) {

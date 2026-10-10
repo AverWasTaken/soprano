@@ -10,7 +10,9 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import org.junit.After;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.Timeout;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -46,6 +48,10 @@ public class WoodBudgetEquivalenceTest {
     private static final Item[] PLANKS = {Items.OAK_PLANKS, Items.SPRUCE_PLANKS, Items.BIRCH_PLANKS, Items.CRIMSON_PLANKS};
     private static final Item[] MEAT = {Items.BEEF, Items.PORKCHOP, Items.MUTTON, Items.CHICKEN, Items.COD};
     private static final int[] END_BEDS = {0, 3, 8};
+
+    // a loop in the wood arithmetic should fail this, not hang the build
+    @Rule
+    public Timeout timeout = Timeout.seconds(120);
 
     @After
     public void clearFuel() {

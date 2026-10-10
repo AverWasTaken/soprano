@@ -90,7 +90,7 @@ public final class KitPlanner {
         out.addAll(iron(f, cfg, endBeds));
         out.addAll(late);
         addFood(out, food, food.target());
-        addCook(out, f, cfg, endBeds);
+        addCook(out, f, cfg, endBeds, wood);
         return out;
     }
 
@@ -386,8 +386,8 @@ public final class KitPlanner {
     }
 
     // the raw meat in the bag gets cooked as the last thing, see CookGate for when it jumps the queue
-    private static void addCook(List<KitNeed> out, GamerFacts f, OverworldConfig cfg, int endBeds) {
-        KitNeed cook = CookGate.need(f, cfg, endBeds);
+    private static void addCook(List<KitNeed> out, GamerFacts f, OverworldConfig cfg, int endBeds, WoodBudget wood) {
+        KitNeed cook = CookGate.need(f, cfg, endBeds, wood);
         if (cook != null) {
             out.add(cook);
         }
