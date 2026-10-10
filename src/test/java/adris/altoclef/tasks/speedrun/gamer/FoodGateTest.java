@@ -16,7 +16,8 @@ import static org.junit.Assert.assertTrue;
 
 // the list and world half of the IRON food gate. the numbers and the verdicts are FoodPlanTest's
 public class FoodGateTest {
-    private static final KitNeed FOOD = new KitNeed(KitNeed.FOOD, 70);
+    // the refill need asks for refillStopFoodUnits
+    private static final KitNeed FOOD = new KitNeed(KitNeed.FOOD, 130);
     private static final KitNeed ORE = new KitNeed("iron_ingot", 39);
     private static final KitNeed CRAFT = new KitNeed("iron_pickaxe", 1);
 
@@ -47,6 +48,10 @@ public class FoodGateTest {
         // the target and the stock-up are not it, and neither is a plan with no food at all
         assertEquals(-1, FoodGate.index(List.of(ORE, new KitNeed(KitNeed.FOOD, 100)), food));
         assertEquals(-1, FoodGate.index(List.of(), food));
+        // with no trip due there is no refill need, a stock-up asking for the same 130 is a filler's
+        FakeFacts fed = new FakeFacts();
+        fed.foodUnits = 110;
+        assertEquals(-1, FoodGate.index(List.of(ORE, new KitNeed(KitNeed.FOOD, 130)), plan(fed)));
     }
 
     @Test

@@ -92,7 +92,7 @@ public class KitPlannerTest {
         // 19 cobble is 2 picks 6 + axe 3 + furnace 8 + 2 slack, all of it mined before the first stone craft
         assertEquals(List.of(new KitNeed("log", 3), new KitNeed("wooden_axe", 1), new KitNeed("log", 15),
                 new KitNeed("cobblestone", 19), new KitNeed("stone_pickaxe", 2), new KitNeed("stone_axe", 1), new KitNeed("furnace", 1),
-                new KitNeed(KitNeed.FOOD, 70)), gather);
+                new KitNeed(KitNeed.FOOD, 130)), gather);
     }
 
     @Test

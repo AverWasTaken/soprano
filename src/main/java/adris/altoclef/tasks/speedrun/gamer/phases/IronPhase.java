@@ -119,7 +119,8 @@ public class IronPhase implements PhaseHandler {
     public boolean isDone(GamerFacts facts, RunState state, GamerConfig cfg) {
         // a table or furnace of ours still standing is picked up first, this is the last chance (Workbenches.phaseMayEnd)
         // iron still cooking is iron we do not have, however empty the plan looks
-        return KitPlanner.plan(facts, cfg.overworld, cfg.end.beds, FoodPlan.of(facts, cfg, GamerPhase.IRON, state.foodRefilling)).isEmpty() && facts.furnaceJobs().isEmpty()
+        // the food half is the kit's minimum (atMinimum): a trip still running past it carries on in the next phase
+        return KitPlanner.plan(facts, cfg.overworld, cfg.end.beds, FoodPlan.of(facts, cfg, GamerPhase.IRON, state.foodRefilling).atMinimum()).isEmpty() && facts.furnaceJobs().isEmpty()
                 && Workbenches.phaseMayEnd(state, facts.dimension().name(), facts.gameTime()) && !furnaces.cooking();
     }
 
@@ -565,13 +566,13 @@ public class IronPhase implements PhaseHandler {
         boolean lead = food.leads(surfaced, foodTopUp, busy);
         boolean covered = food.covered();
         if (covered && !foodCovered) {
-            Debug.logInternal("food: " + held + " units held, short of " + food.overworldMinimum() + " but the raw meat in the bag covers it once cooked, no trip");
+            Debug.logInternal("food: " + held + " units held, short of " + food.refillStop() + " but the raw meat in the bag covers it once cooked, no trip");
         }
         foodCovered = covered;
         boolean wasTopUp = foodTopUp;
         foodTopUp = food.nextTopUp(foodTopUp, lead);
         if (foodTopUp && !wasTopUp) {
-            Debug.logInternal("food: topping up from " + held + " to " + food.overworldMinimum() + " now that it is cheap");
+            Debug.logInternal("food: topping up from " + held + " to " + food.refillStop() + " now that it is cheap");
         }
         foodLed = lead;
         return lead ? needs : FoodGate.without(needs, at);

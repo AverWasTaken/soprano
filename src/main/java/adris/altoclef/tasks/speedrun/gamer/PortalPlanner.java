@@ -94,7 +94,7 @@ public final class PortalPlanner {
         // the same count the kit plan uses, so meat still cooking for us (or meat that cannot be cooked) reads the same here. and
         // the same refill gap: 69 at the portal is not a trip
         if (food.wantsRefill()) {
-            out.add(new KitNeed(KitNeed.FOOD, food.overworldMinimum()));
+            out.add(new KitNeed(KitNeed.FOOD, food.refillStop()));
         }
         int buckets = KitPlanner.have(f, "bucket");
         if (buckets < 2) {

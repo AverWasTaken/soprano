@@ -35,6 +35,7 @@ public final class FoodPlan {
     private final int target;
     private final int endFloor;
     private final int refillStart;
+    private final int refillStop;
     private final boolean refilling;
 
     FoodPlan(int bag, int pending, int rawLeftOut, int junk, int station, int skipped, OverworldConfig ow, EndConfig end) {
@@ -42,19 +43,33 @@ public final class FoodPlan {
     }
 
     FoodPlan(int bag, int pending, int rawLeftOut, int junk, int station, int skipped, OverworldConfig ow, EndConfig end, boolean refilling) {
+        // a start over the minimum would be a trip that is done before it begins, so it never goes past it. a stop under the
+        // minimum would end the trip before the kit's own need is met, so it never goes under it
+        this(bag, pending, rawLeftOut, junk, station, skipped, ow.minHeldFoodUnits, ow.minFoodUnits, ow.targetFoodUnits, end.minFoodUnits,
+                Math.min(ow.refillStartFoodUnits, ow.minFoodUnits), Math.max(ow.refillStopFoodUnits, ow.minFoodUnits), refilling);
+    }
+
+    private FoodPlan(int bag, int pending, int rawLeftOut, int junk, int station, int skipped, int floor, int minimum, int target,
+                     int endFloor, int refillStart, int refillStop, boolean refilling) {
         this.bag = bag;
         this.pending = pending;
         this.rawLeftOut = rawLeftOut;
         this.junk = junk;
         this.station = station;
         this.skipped = skipped;
-        this.floor = ow.minHeldFoodUnits;
-        this.minimum = ow.minFoodUnits;
-        this.target = ow.targetFoodUnits;
-        this.endFloor = end.minFoodUnits;
-        // a start over the minimum would be a trip that is done before it begins, so it never goes past it
-        this.refillStart = Math.min(ow.refillStartFoodUnits, ow.minFoodUnits);
+        this.floor = floor;
+        this.minimum = minimum;
+        this.target = target;
+        this.endFloor = endFloor;
+        this.refillStart = refillStart;
+        this.refillStop = refillStop;
         this.refilling = refilling;
+    }
+
+    // the same bag with the trip ending at the minimum, for the phase-done checks: a phase is done with its food once the kit's
+    // need is met, the rest of a trip carries on in the next phase (the latch lives in RunState, not in the phase)
+    public FoodPlan atMinimum() {
+        return new FoodPlan(bag, pending, rawLeftOut, junk, station, skipped, floor, minimum, target, endFloor, refillStart, minimum, refilling);
     }
 
     // the phase is what says whether a cook can happen at all, and `refilling` whether a food trip is under way
@@ -143,7 +158,8 @@ public final class FoodPlan {
         return floor;
     }
 
-    // OverworldConfig.minFoodUnits: the kit's food need, the portal gate, where a top-up ends. not the End's line
+    // OverworldConfig.minFoodUnits: what the phases need held to be done, the HUD line. a trip runs past it to refillStop. not the
+    // End's line
     public int overworldMinimum() {
         return minimum;
     }
@@ -151,6 +167,12 @@ public final class FoodPlan {
     // OverworldConfig.refillStartFoodUnits (never over the minimum): a food trip starts under it
     public int refillStart() {
         return refillStart;
+    }
+
+    // OverworldConfig.refillStopFoodUnits (never under the minimum): a food trip, once it starts, runs to this. the food need asks
+    // for it while a trip is due or under way, so one trip buys a real pile and not the 25 units the old stop at the minimum did
+    public int refillStop() {
+        return refillStop;
     }
 
     // a food trip is under way, as of the start of this tick (see latched)
@@ -201,25 +223,25 @@ public final class FoodPlan {
         return shortOf(minimum);
     }
 
-    // does the kit want its food need (the minimum) in the plan. a trip starts under refillStart and then runs to the minimum,
+    // does the kit want its food need in the plan. a trip starts under refillStart and then runs to refillStop,
     // in between with no trip on the bot keeps working: without the gap one bite at 70 made food the head for a single unit.
     // the floor is under the start anyway, the check is for a config that put it higher. reads the same whether the latch was
-    // moved on this tick or not (under the start is on either way, between the lines the latch says, over the minimum is off),
+    // moved on this tick or not (under the start is on either way, between the lines the latch says, over the stop is off),
     // so nobody has to care who asked first
     public boolean wantsRefill() {
         int held = held();
-        return held < floor || held < refillStart || (refilling && held < minimum);
+        return held < floor || held < refillStart || (refilling && held < refillStop);
     }
 
-    // the latch for the next tick: on from under the start (or the floor) until the minimum
+    // the latch for the next tick: on from under the start (or the floor) until the stop
     public boolean nextRefilling() {
         int held = held();
-        return held < minimum && (refilling || held < refillStart || held < floor);
+        return held < refillStop && (refilling || held < refillStart || held < floor);
     }
 
     // the log line when the latch flips, `on` = it starts
     public String refillLine(boolean on) {
-        return on ? "food: refilling from " + held() + " (under " + Math.max(refillStart, floor) + "), up to " + minimum : "food: refill done at " + held();
+        return on ? "food: refilling from " + held() + " (under " + Math.max(refillStart, floor) + "), up to " + refillStop : "food: refill done at " + held();
     }
 
     // the End gate. food still cooking is not ours yet: END_PREP never goes back to a furnace, so a batch in a smoker is food we would
@@ -233,20 +255,20 @@ public final class FoodPlan {
         return held() < floor ? 0 : held() < minimum ? 1 : 2;
     }
 
-    // the soft top-up has nothing left to do: the hole under the minimum is small and the raw meat in the bag, cooked, fills it. one
+    // the soft top-up has nothing left to do: the hole under the trip's stop is small and the raw meat in the bag, cooked, fills it. one
     // raw chicken is 2 units raw and 6 cooked, and held counts it at 6 only while a smoker stands nearby (a cook is feasible then),
     // so picking the smoker up or putting it down moves the sum by 4. a top-up that starts and stops on 4 units the bag already
     // holds is pure churn. the cap is the reason the raw valuation exists at all: ten raw porkchop is a 50 unit gap, and that one
     // still gets a real hunt. under the floor never counts, that rule is not ours to soften
     public boolean covered() {
         int held = held();
-        return held >= floor && held < minimum && minimum - held <= SMALL_GAP && held + rawLeftOut >= minimum;
+        return held >= floor && held < refillStop && refillStop - held <= SMALL_GAP && held + rawLeftOut >= refillStop;
     }
 
     // does the food need go first in the IRON phase. always below the floor, otherwise only during a refill (wantsRefill, between
     // the start and the minimum with no trip on there is no trip to lead) and only where a top-up is cheap, which is the
     // surface (a cook or a craft being next in a mine is not a cheap moment, the hunt is a climb either way), and once one starts
-    // it carries on to the minimum. `topUp` is one already under way (nextTopUp), `cookBusy` a cook that picked its station and is
+    // it carries on to the trip's stop. `topUp` is one already under way (nextTopUp), `cookBusy` a cook that picked its station and is
     // still loading it or somebody's furnace screen (FoodGate.cookBusy): the soft top-up waits for that, the meat in the station
     // is food too
     public boolean leads(boolean onSurface, boolean topUp, boolean cookBusy) {
@@ -254,19 +276,19 @@ public final class FoodPlan {
         if (held < floor) {
             return true;
         }
-        if (held >= minimum || cookBusy || covered() || !wantsRefill()) {
+        if (held >= refillStop || cookBusy || covered() || !wantsRefill()) {
             return false;
         }
         return topUp || onSurface;
     }
 
-    // a top-up that started on the soft rule keeps going until the minimum, it must not flip every tick as the bot walks up and
+    // a top-up that started on the soft rule keeps going until the trip's stop, it must not flip every tick as the bot walks up and
     // down or the count wobbles at the line. under the floor it was forced anyway, that does not start one. one that is covered
     // ends: leads() already says no for it, and a latch left on would wake up off the surface the next time the raw meat is eaten.
     // with no refill under way there is nothing to top up either
     public boolean nextTopUp(boolean topUp, boolean leads) {
         int held = held();
-        if (held >= minimum || covered() || !wantsRefill()) {
+        if (held >= refillStop || covered() || !wantsRefill()) {
             return false;
         }
         return topUp || (leads && held >= floor);

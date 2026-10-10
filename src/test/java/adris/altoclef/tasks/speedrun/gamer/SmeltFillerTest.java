@@ -79,7 +79,7 @@ public class SmeltFillerTest {
         cfg.minFoodUnits = 80;
         // and a trip that starts right there, or 70 sits in the no-trip gap
         cfg.refillStartFoodUnits = 80;
-        assertEquals(new KitNeed(KitNeed.FOOD, 80), find(KitPlanner.gather(f, cfg, BEDS), KitNeed.FOOD));
+        assertEquals(new KitNeed(KitNeed.FOOD, cfg.refillStopFoodUnits), find(KitPlanner.gather(f, cfg, BEDS), KitNeed.FOOD));
         assertEquals(10 + 60, KitPlanner.progressOf(f, new KitNeed(KitNeed.FOOD, 80), FoodPlan.ofBeds(f, cfg, BEDS)));
     }
 

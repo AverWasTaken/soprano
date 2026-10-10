@@ -229,7 +229,7 @@ public class RunState {
     // what the running cook task tells the planner (backoff, the station it picked), see FurnacePlan.cookSuspended. it used to be
     // static fields that outlived the run. transient: a relog starts the cook fresh, which is what clearing them on start did
     public transient Cook cook = new Cook();
-    // a food trip is under way: started under refillStartFoodUnits, runs to minFoodUnits (FoodPlan.latched moves it every tick).
+    // a food trip is under way: started under refillStartFoodUnits, runs to refillStopFoodUnits (FoodPlan.latched moves it every tick).
     // transient: after a relog the bag says again whether one is needed, worst case the trip waits for the next 45
     public transient boolean foodRefilling;
 

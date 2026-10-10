@@ -10,12 +10,18 @@ public final class FoodGate {
     private FoodGate() {
     }
 
-    // where the kit's own food need is in the list (the minimum one, not the stock-up target or a filler's), -1 if none
+    // where the kit's own food need is in the list (the refill one, not the stock-up target or a filler's), -1 if none. the refill
+    // asks for refillStop, which can be the very number a stock-up asks for (130 both), so the count alone cannot tell them apart.
+    // the planners put the refill ahead of every other food need and only while FoodPlan.wantsRefill, so it is the first one then.
+    // a first one asking for anything else (the target) is not it
     public static int index(List<KitNeed> needs, FoodPlan food) {
+        if (!food.wantsRefill()) {
+            return -1;
+        }
         for (int i = 0; i < needs.size(); i++) {
             KitNeed need = needs.get(i);
-            if (KitNeed.FOOD.equals(need.catalogueName()) && need.count() <= food.overworldMinimum()) {
-                return i;
+            if (KitNeed.FOOD.equals(need.catalogueName())) {
+                return need.count() == food.refillStop() ? i : -1;
             }
         }
         return -1;

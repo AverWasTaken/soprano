@@ -116,7 +116,7 @@ public class FoodPlanTest {
         assertFalse(CookGate.cookFeasible(f, cfg, 10));
         assertEquals(30, plan(f, 10).held());
         assertEquals(50, plan(f, 10).rawLeftOut());
-        assertEquals(new KitNeed(KitNeed.FOOD, cfg.minFoodUnits), KitPlanner.gather(f, cfg, 10, plan(f, 10)).stream()
+        assertEquals(new KitNeed(KitNeed.FOOD, cfg.refillStopFoodUnits), KitPlanner.gather(f, cfg, 10, plan(f, 10)).stream()
                 .filter(n -> n.catalogueName().equals(KitNeed.FOOD)).findFirst().orElse(null));
     }
 
@@ -397,8 +397,11 @@ public class FoodPlanTest {
 
     @Test
     public void atTheFullAmountItNeverLeads() {
-        assertFalse(held(70, 0).leads(true, true, false));
-        assertFalse(held(100, 0).leads(true, false, false));
+        assertFalse(held(130, 0).leads(true, true, false));
+        assertFalse(held(150, 0).leads(true, false, false));
+        // the minimum is not the end of a trip any more, it carries on to refillStop
+        assertTrue(held(70, 0).leads(true, true, false));
+        assertTrue(held(100, 0).leads(false, true, false));
     }
 
     @Test
@@ -416,15 +419,15 @@ public class FoodPlanTest {
         assertTrue(lead);
         assertTrue(topUp);
         // the hunt takes it under ground or into a ravine, and the count climbs: still leading, every tick
-        for (count = 41; count < 70; count += 7) {
+        for (count = 41; count < 130; count += 7) {
             lead = held(count, 0).leads(false, topUp, false);
             topUp = held(count, 0).nextTopUp(topUp, lead);
             assertTrue("at " + count, lead);
             assertTrue(topUp);
         }
-        // 70 and it is over, and the next dip starts from scratch
-        lead = held(70, 0).leads(false, topUp, false);
-        topUp = held(70, 0).nextTopUp(topUp, lead);
+        // 130 and it is over, and the next dip starts from scratch
+        lead = held(130, 0).leads(false, topUp, false);
+        topUp = held(130, 0).nextTopUp(topUp, lead);
         assertFalse(lead);
         assertFalse(topUp);
         assertFalse(held(60, 0).leads(false, topUp, false));
@@ -450,6 +453,7 @@ public class FoodPlanTest {
 
     @Test
     public void theFoodFloorIgnoresWhatTheRawMeatWouldBeWorthCooked() {
+        stopAtMinimum();
         // LOCATE and the like never cook, so the part of the raw meat that held leaves out is not coming: it keeps hunting at 66
         // where the IRON phase, which does cook, calls the same bag covered
         assertTrue(held(66, 4).floorNext(true));
@@ -458,6 +462,25 @@ public class FoodPlanTest {
     }
 
     // ---- a small shortfall the raw meat in the bag covers is not worth a trip (one raw chicken, 4 units)
+
+    // covered() is about the line a trip ends on. these cases were written when that was the minimum (70), the rule is the same
+    // at refillStop, so they put the stop back where the numbers make sense
+    private void stopAtMinimum() {
+        cfg.refillStopFoodUnits = cfg.minFoodUnits;
+    }
+
+    @Test
+    public void theRawMeatCoversTheLastBitOfABigTrip() {
+        // the same rule at the default stop: 126 held and a chicken that cooks to the last 4
+        assertTrue(held(126, 4).covered());
+        assertFalse(held(126, 4).leads(true, true, false));
+        assertFalse(held(126, 4).nextTopUp(true, false));
+        assertFalse(held(119, 50).covered());
+        assertTrue(held(119, 50).leads(true, true, false));
+        // at the old line it is no hole at all, the trip carries on
+        assertFalse(held(66, 4).covered());
+        assertTrue(held(66, 4).leads(true, true, false));
+    }
 
     // 64 units of other food and one raw chicken. foodUnits books the chicken at the cooked 6, so 70 in the sum
     private static FakeFacts chickenBag(boolean smokerNearby) {
@@ -478,6 +501,7 @@ public class FoodPlanTest {
 
     @Test
     public void aSmallGapTheRawMeatCoversDoesNotLead() {
+        stopAtMinimum();
         // 66 held, the chicken's 4 not in it: cooked it is 70, so no trip, latched top-up or not
         assertFalse(held(66, 4).leads(true, false, false));
         assertFalse(held(66, 4).leads(true, true, false));
@@ -509,6 +533,7 @@ public class FoodPlanTest {
 
     @Test
     public void twoRawBeefAndTheSmokerComingAndGoingDoNotChurnEither() {
+        stopAtMinimum();
         // under MIN_RAW the cook is feasible only with a smoker standing: that is the biggest swing the smoker can make, 2 x 5
         for (Item meat : new Item[]{Items.BEEF, Items.PORKCHOP}) {
             FakeFacts nearby = new FakeFacts();
@@ -548,6 +573,7 @@ public class FoodPlanTest {
 
     @Test
     public void aBigGapOfRawMeatStillGetsAHunt() {
+        stopAtMinimum();
         // ten raw porkchop and no way to cook them: 30 real units, 50 on paper. nowhere near a steak's worth of hole
         FakeFacts f = tenRawPork();
         assertEquals(30, plan(f, 10).held());
@@ -572,12 +598,14 @@ public class FoodPlanTest {
         // the floor is not a small hole even when the config puts the two lines next to each other
         cfg.minHeldFoodUnits = 24;
         cfg.minFoodUnits = 28;
+        stopAtMinimum();
         assertTrue(held(23, 100).leads(false, false, false));
         assertFalse(held(24, 100).leads(true, false, false));
     }
 
     @Test
     public void aTopUpUnderWayEndsWhenTheRawMeatCoversTheRest() {
+        stopAtMinimum();
         // the hunt got us to 66 and the bag holds the chicken that fills the last 4: done, the latch is cleared too
         assertFalse(held(66, 4).leads(false, true, false));
         assertFalse(held(66, 4).nextTopUp(true, false));
@@ -672,9 +700,11 @@ public class FoodPlanTest {
             return SmeltFiller.schedule(f, cfg, 8, true, plan(f, 8)).isStockUp(new KitNeed(KitNeed.FOOD, cfg.targetFoodUnits + 30));
         }
 
-        // the minimum need, the one that would replace the filler mid load. asked with a trip under way, the strict case
+        // the minimum need, the one that would replace the filler mid load. asked with a trip under way that ends at the minimum,
+        // the strict case (a trip to refillStop is on at 100 whatever the screen does, that is not a dip)
         boolean minimumOn() {
-            return FoodGate.index(KitPlanner.plan(f, cfg, 8, refill(f, 8)), refill(f, 8)) >= 0;
+            FoodPlan p = refill(f, 8).atMinimum();
+            return FoodGate.index(KitPlanner.plan(f, cfg, 8, p), p) >= 0;
         }
     }
 
@@ -814,8 +844,7 @@ public class FoodPlanTest {
     private void assertGatesAgree(String bag, FakeFacts f, boolean shortOfMinimum, boolean shortOfEnd) {
         FoodPlan p = plan(f);
         assertEquals(bag + " (plan)", shortOfMinimum, p.shortOfMinimum());
-        assertEquals(bag + " (kit)", shortOfMinimum, KitPlanner.plan(f, cfg, end.beds, p).stream()
-                .anyMatch(n -> KitNeed.FOOD.equals(n.catalogueName()) && n.count() == cfg.minFoodUnits));
+        assertEquals(bag + " (kit)", shortOfMinimum, FoodGate.index(KitPlanner.plan(f, cfg, end.beds, p), p) >= 0);
         assertEquals(bag + " (gather)", shortOfMinimum, KitPlanner.gather(f, cfg, end.beds, p).stream()
                 .anyMatch(n -> KitNeed.FOOD.equals(n.catalogueName())));
         assertEquals(bag + " (portal)", shortOfMinimum, PortalPlanner.gate(f, cfg, end.beds, p).stream()
@@ -968,14 +997,15 @@ public class FoodPlanTest {
         assertTrue(held(0, 0).line(true, 70, null).endsWith("running nothing"));
     }
 
-    // ---- the refill gap: a trip starts under 45 and runs to 70
+    // ---- the refill gap: a trip starts under 45 and runs to 130
 
     private boolean planHasMinimum(FakeFacts f, FoodPlan p) {
         return FoodGate.index(KitPlanner.plan(f, cfg, 8, p), p) >= 0;
     }
 
-    private static boolean hasFood(List<KitNeed> needs) {
-        return needs.stream().anyMatch(n -> KitNeed.FOOD.equals(n.catalogueName()) && n.count() <= 70);
+    // the refill need, not the kit's target of 100 at the end of the plan
+    private boolean hasFood(List<KitNeed> needs) {
+        return needs.stream().anyMatch(n -> KitNeed.FOOD.equals(n.catalogueName()) && n.count() == cfg.refillStopFoodUnits);
     }
 
     @Test
@@ -1014,7 +1044,7 @@ public class FoodPlanTest {
     }
 
     @Test
-    public void aTripThatStartedRunsToTheMinimum() {
+    public void aTripThatStartedRunsFrom44To130() {
         GamerConfig all = new GamerConfig();
         all.overworld = cfg;
         all.end = end;
@@ -1030,20 +1060,24 @@ public class FoodPlanTest {
         assertTrue(s.foodRefilling);
         assertTrue(p.refilling());
         assertTrue(p.wantsRefill());
-        for (int units : new int[]{50, 60, 69}) {
+        for (int units : new int[]{50, 60, 69, 70, 80, 100, 129}) {
             f.foodUnits = units;
             p = FoodPlan.latched(f, all, s, log::add);
             assertTrue("at " + units, p.wantsRefill());
             assertTrue("at " + units, planHasMinimum(f, p));
+            // and the hunt is asked for the whole trip, not the minimum
+            assertTrue("at " + units, KitPlanner.plan(f, cfg, 8, p).contains(new KitNeed(KitNeed.FOOD, 130)));
+            // the phase-done checks only want the minimum: past it a phase may end and the trip goes on in the next one
+            assertEquals("at " + units, units < 70, p.atMinimum().wantsRefill());
         }
-        f.foodUnits = 70;
+        f.foodUnits = 130;
         p = FoodPlan.latched(f, all, s, log::add);
         assertFalse(s.foodRefilling);
         assertFalse(p.wantsRefill());
         // the next dip waits for the start again
         f.foodUnits = 60;
         assertFalse(FoodPlan.latched(f, all, s, log::add).wantsRefill());
-        assertEquals(List.of("food: refilling from 44 (under 45), up to 70", "food: refill done at 70"), log);
+        assertEquals(List.of("food: refilling from 44 (under 45), up to 130", "food: refill done at 130"), log);
     }
 
     @Test
@@ -1060,7 +1094,7 @@ public class FoodPlanTest {
     @Test
     public void theLatchIsAnswerNeutral() {
         // whoever asks before the engine moves the latch reads the same need: wantsRefill with the old latch equals the new one
-        for (int units = 0; units <= 110; units++) {
+        for (int units = 0; units <= 150; units++) {
             for (boolean was : new boolean[]{false, true}) {
                 FoodPlan before = new FoodPlan(units, 0, 0, 0, 0, 0, cfg, end, was);
                 FoodPlan after = new FoodPlan(units, 0, 0, 0, 0, 0, cfg, end, before.nextRefilling());

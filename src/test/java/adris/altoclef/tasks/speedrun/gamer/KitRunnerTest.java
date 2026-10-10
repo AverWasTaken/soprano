@@ -225,10 +225,10 @@ public class KitRunnerTest {
         ctx.facts.junkFoodUnits = 80;
         List<KitNeed> plan = KitPlanner.gather(ctx.facts, ctx.cfg.overworld, 8);
         KitNeed food = plan.stream().filter(n -> n.catalogueName().equals(KitNeed.FOOD)).findFirst().orElseThrow();
-        assertEquals(70, food.count());
-        assertEquals(150, KitRunner.foodTarget(food, ctx.food()));
+        assertEquals(130, food.count());
+        assertEquals(210, KitRunner.foodTarget(food, ctx.food()));
         runner.run(ctx, List.of(food));
-        assertEquals(List.of(150), foodTargets);
+        assertEquals(List.of(210), foodTargets);
     }
 
     @Test

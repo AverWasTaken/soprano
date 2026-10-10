@@ -71,7 +71,8 @@ public class GatherPhase implements PhaseHandler {
     public boolean isDone(GamerFacts facts, RunState state, GamerConfig cfg) {
         // a table or furnace of ours still standing is picked up first, this is the last chance (Workbenches.phaseMayEnd)
         // food still cooking is food we do not have, and the smoker coming down is part of the job
-        return KitPlanner.gather(facts, cfg.overworld, cfg.end.beds, FoodPlan.of(facts, cfg, GamerPhase.GATHER, state.foodRefilling)).isEmpty() && facts.furnaceJobs().isEmpty()
+        // the food half is the kit's minimum (atMinimum): a trip still running past it carries on in IRON, the latch goes with us
+        return KitPlanner.gather(facts, cfg.overworld, cfg.end.beds, FoodPlan.of(facts, cfg, GamerPhase.GATHER, state.foodRefilling).atMinimum()).isEmpty() && facts.furnaceJobs().isEmpty()
                 && Workbenches.phaseMayEnd(state, facts.dimension().name(), facts.gameTime()) && !furnaces.cooking();
     }
 

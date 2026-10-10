@@ -466,10 +466,11 @@ public final class KitPlanner {
         }
     }
 
-    // the minimum only goes in when a trip is due or under way (FoodPlan.wantsRefill), 69 is not a reason to drop the pick
+    // the food need only goes in when a trip is due or under way (FoodPlan.wantsRefill), 69 is not a reason to drop the pick.
+    // it asks for the trip's stop, so the hunt keeps going past the minimum instead of coming back for more in 20 minutes
     private static void addRefill(List<KitNeed> out, FoodPlan food) {
         if (food.wantsRefill()) {
-            out.add(new KitNeed(KitNeed.FOOD, food.overworldMinimum()));
+            out.add(new KitNeed(KitNeed.FOOD, food.refillStop()));
         }
     }
 
