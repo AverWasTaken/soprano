@@ -284,20 +284,28 @@ public class StationContradictionsTest {
         assertEquals(WorkbenchRules.Call.FORGET_FAR_TABLE, WorkbenchRules.decide(table, idleTable));
     }
 
-    // (F) FurnaceWatch asks two dimension blind questions where Workbenches asks them with the dimension: a job (or a placed furnace) at
-    // the same x y z in the nether is "busy" and "ours" in the overworld for the visit that decides whether to take a station down
+    // (F) FIXED. FurnaceWatch used to ask two dimension blind questions where Workbenches asks them with the dimension: a job (or a
+    // placed furnace) at the same x y z in the nether was "busy" and "ours" in the overworld for the visit that decides whether to
+    // take a station down. both ask with the dimension we stand in now, and the blind forms are gone
     @Test
-    public void theVisitsBusyAndOursIgnoreTheDimension() {
+    public void theVisitsBusyAndOursAskTheDimension() {
         RunState state = new RunState();
         RunState.Pos at = pos(7, 64, 7);
         place(state, Kind.FURNACE, at, "NETHER");
         FurnaceJobs.record(state.furnaceJobs, new RunState.FurnaceJob(at, "NETHER", "furnace", "raw_iron", 4, "iron_ingot", NOW - 200, NOW + 400));
-        // the visit's two questions, 2 arg and blind
-        assertTrue(FurnaceJobs.isBusy(state, at));
-        assertTrue(FurnaceWatch.ours(state, "furnace", at));
-        // the registry's, with the dimension we stand in (the overworld)
+        // the overworld's answer is no, the nether's is yes
         assertFalse(FurnaceJobs.isBusy(state, at, DIM));
+        assertFalse(FurnaceWatch.ours(state, "furnace", at, DIM));
+        assertTrue(FurnaceJobs.isBusy(state, at, "NETHER"));
+        assertTrue(FurnaceWatch.ours(state, "furnace", at, "NETHER"));
+        // and the kind is the kind
+        assertFalse(FurnaceWatch.ours(state, "smoker", at, "NETHER"));
         FakeFacts facts = new FakeFacts();
         assertFalse(Workbenches.source(state, facts).ours(new BlockPos(7, 64, 7)));
+        // an overworld furnace on the same spot is ours in the overworld
+        RunState home = new RunState();
+        place(home, Kind.FURNACE, at, DIM);
+        assertTrue(FurnaceWatch.ours(home, "furnace", at, DIM));
+        assertFalse(FurnaceWatch.ours(home, "furnace", at, "NETHER"));
     }
 }

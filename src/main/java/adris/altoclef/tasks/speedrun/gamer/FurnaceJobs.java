@@ -40,21 +40,8 @@ public final class FurnaceJobs {
         return job.pos.equals(pos) && job.dimension.equals(dimension);
     }
 
-    // the furnace at this spot has something of ours in it. fix-pickup-stations asks this before it takes a furnace back
-    public static boolean isBusy(RunState state, RunState.Pos pos) {
-        for (RunState.FurnaceJob job : state.furnaceJobs) {
-            if (job.pos.equals(pos)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    public static boolean isBusy(RunState state, int x, int y, int z) {
-        return isBusy(state, new RunState.Pos(x, y, z));
-    }
-
-    // the same in one dimension: the nether has its own x y z, and a job at 10 64 0 there is not the overworld furnace's
+    // the station at this spot has something of ours in it. the nether has its own x y z, and a job at 10 64 0 there is not the
+    // overworld furnace's, so the dimension is always asked (the visit that takes a station back asks it too)
     public static boolean isBusy(RunState state, RunState.Pos pos, String dimension) {
         for (RunState.FurnaceJob job : state.furnaceJobs) {
             if (sameSpot(job, pos, dimension)) {

@@ -48,10 +48,9 @@ public class FurnaceJobsTest {
     public void busyMeansSomeJobStandsOnThatBlock() {
         RunState s = new RunState();
         s.furnaceJobs.add(job(7, 3, 0, "furnace"));
-        assertTrue(FurnaceJobs.isBusy(s, new RunState.Pos(7, 64, 0)));
-        assertTrue(FurnaceJobs.isBusy(s, 7, 64, 0));
-        assertFalse(FurnaceJobs.isBusy(s, 8, 64, 0));
-        assertFalse(FurnaceJobs.isBusy(new RunState(), 7, 64, 0));
+        assertTrue(FurnaceJobs.isBusy(s, new RunState.Pos(7, 64, 0), "OVERWORLD"));
+        assertFalse(FurnaceJobs.isBusy(s, new RunState.Pos(8, 64, 0), "OVERWORLD"));
+        assertFalse(FurnaceJobs.isBusy(new RunState(), new RunState.Pos(7, 64, 0), "OVERWORLD"));
     }
 
     @Test

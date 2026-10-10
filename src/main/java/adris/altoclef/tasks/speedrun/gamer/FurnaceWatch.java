@@ -5,6 +5,7 @@ import adris.altoclef.Debug;
 import adris.altoclef.tasks.container.CollectFromFurnaceTask;
 import adris.altoclef.tasks.resources.CookRawFoodTask;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.util.helpers.StationHook.Kind;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
@@ -104,8 +105,9 @@ public final class FurnaceWatch {
                 } else if (spot != null) {
                     // loaded: the job is the memory now and its last collect takes the furnace back (a station with a job is
                     // not ours to take: LEAVE). not loaded (gave up, timed out, the meat was gone): it was coming down anyway
-                    boolean ours = ours(ctx.state(), cookSmoker ? "smoker" : "furnace", spot);
-                    if (WorkbenchRules.afterVisit(0, ours, FurnaceJobs.isBusy(ctx.state(), spot), false) == WorkbenchRules.Visit.PICK_UP) {
+                    String dimension = ctx.facts().dimension().name();
+                    boolean ours = ours(ctx.state(), cookSmoker ? "smoker" : "furnace", spot, dimension);
+                    if (WorkbenchRules.afterVisit(0, ours, FurnaceJobs.isBusy(ctx.state(), spot, dimension), false) == WorkbenchRules.Visit.PICK_UP) {
                         Debug.logInternal("bench: " + (cookSmoker ? "smoker" : "furnace") + " did not get the meat, taking it back at " + spot);
                         benches.pickUpNow(mod, ctx, spot, "the cook did not use it");
                     }
@@ -219,11 +221,12 @@ public final class FurnaceWatch {
         GamerFacts f = ctx.facts();
         RunState.Pos spot = new RunState.Pos(visited.pos.x, visited.pos.y, visited.pos.z);
         boolean smoker = "smoker".equals(visited.kind);
-        boolean ours = ours(ctx.state(), visited.kind, spot);
+        String dimension = f.dimension().name();
+        boolean ours = ours(ctx.state(), visited.kind, spot, dimension);
         // (CookGate.reusable already wants MIN_RAW meat, so a bagged smoker only ever vetoes a cook that was going to happen)
         boolean mayCook = cookHere && WorkbenchRules.emptiedStationMayCook(smoker, ctx.stations().smoker().heldForPlanner(), f.has(Items.SMOKER))
                 && CookGate.reusable(f, ctx.cfg().overworld, ctx.cfg().end.beds, smoker, ctx.wood());
-        switch (WorkbenchRules.afterVisit(left, ours, FurnaceJobs.isBusy(ctx.state(), spot), mayCook)) {
+        switch (WorkbenchRules.afterVisit(left, ours, FurnaceJobs.isBusy(ctx.state(), spot, dimension), mayCook)) {
             case COOK_THEN_PICK_UP -> {
                 // an empty furnace is the best place for the raw meat we are carrying, and we are standing at it
                 cook = new CookRawFoodTask(smoker);
@@ -345,11 +348,13 @@ public final class FurnaceWatch {
         }
     }
 
-    // one of the stations we put down (a village's blast furnace has no list, so it is never ours)
-    // (package private so StationContradictionsTest can pin that it ignores the dimension, nothing else calls it from outside)
-    static boolean ours(RunState state, String kind, RunState.Pos pos) {
+    // one of the stations we put down in this dimension (a village's blast furnace has no list, so it is never ours). the lists key on
+    // x y z alone, so the dimension it was placed in is asked too, or a furnace at the same spot in the nether is ours here
+    // (package private so the tests can ask it, nothing else calls it from outside)
+    static boolean ours(RunState state, String kind, RunState.Pos pos, String dimension) {
         List<RunState.Pos> own = FurnaceJobs.placedFor(state, kind);
-        return own != null && own.contains(pos);
+        Kind which = "smoker".equals(kind) ? Kind.SMOKER : Kind.FURNACE;
+        return own != null && own.contains(pos) && Workbenches.dimensionOf(state, which, pos).equals(dimension);
     }
 
     // where we stand, for the Moment's cut-in distance. null without a player, which the plan reads as close (the old rules)

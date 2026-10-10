@@ -451,7 +451,9 @@ public class StationVerdictEquivalenceTest {
         for (Bench b : state.benches) {
             sb.append(t(Workbenches.standing(b, b.kind, dim))).append(t(WorkbenchRules.inFlight(b, NOW)))
                     .append(t(WorkbenchRules.targetVetoed(state.benches, b.pos, NOW))).append(t(WorkbenchRules.placedByUs(px, py, pz, b.pos)))
-                    .append(t(FurnaceJobs.isBusy(state, b.pos))).append(t(FurnaceJobs.isBusy(state, b.pos, b.dimension))).append(',');
+                    // the visit's two questions (FurnaceWatch asks them in the dimension we stand in), then the registry's busy
+                    .append(t(FurnaceJobs.isBusy(state, b.pos, dim))).append(t(FurnaceJobs.isBusy(state, b.pos, b.dimension)))
+                    .append(b.kind == Kind.TABLE ? "-" : t(FurnaceWatch.ours(state, b.kind.word(), b.pos, dim))).append(',');
         }
 
         // where the next station comes from, the candidates built the way DoStuffInContainerTask.choose builds them
