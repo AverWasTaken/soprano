@@ -149,7 +149,7 @@ public class CraftGenericManuallyTask extends Task implements ITaskUsesCraftingG
                 boolean oversatisfies = present.getCount() > requiredPerSlot;
                 if (oversatisfies) {
                     setDebugState("OVER SATISFIED slot! Right clicking slot to extract half and spread it out more.");
-                    mod.getSlotHandler().clickSlot(currentCraftSlot, 0, ClickType.PICKUP);
+                    mod.getSlotHandler().clickSlot(currentCraftSlot, 1, ClickType.PICKUP);
                 }
             }
         }
