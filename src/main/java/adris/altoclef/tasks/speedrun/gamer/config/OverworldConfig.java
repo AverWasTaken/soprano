@@ -40,6 +40,9 @@ public class OverworldConfig {
             // sticks only, no iron. for ladder clutching on the long falls in the nether (one ladder gets picked back up)
             new KitItem("ladder", 3)));
     public ArmorPlan armorPlan = ArmorPlan.FULL_IRON;
+    // diamonds in the bag (mined, or out of a chest) get crafted into upgrades instead of sitting there: a pick, then armor, see
+    // DiamondSpend. off = the plan is exactly what it was. a plain flag, not a kit list, so an old saved config just gets true
+    public boolean diamondSpend = true;
 
     // nutrition points, a cooked steak is 8. enough for an hour or so, the food chain eats on its own
     public int minFoodUnits = 70;

@@ -1,0 +1,115 @@
+package adris.altoclef.tasks.speedrun.gamer;
+
+import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig;
+import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig.KitItem;
+import net.minecraft.world.item.Items;
+
+import java.util.ArrayList;
+import java.util.List;
+
+// what to spend the diamonds in the bag on, and the only place that asks. a diamond in the bag (mined on the way, or out of a
+// village or portal chest) is worth more as an upgrade than as a trophy, so the kit plan crafts them into the list below, in
+// this order, each one taken when it is not already ours at diamond tier and the diamonds left after the ones before it still
+// pay for it. no sword (the stone axe out-hits a diamond sword in WeaponPick), no shovel, no hoe, and fewer than 3 is nothing.
+// pure: the bag in, catalogue names out. KitPlanner.iron reads it for the crafts, and for what the iron side no longer owes
+// (a diamond piece in a slot is iron we do not smelt), WoodBudget.owed reads it for the sticks
+public final class DiamondSpend {
+    // the cheapest thing on the list is 3, below that there is nothing to choose
+    public static final int MIN = 3;
+
+    // pick first: it mines faster than anything we make and the side job that finds more diamonds wants it. then the armor,
+    // chestplate first for the same reason as the iron plan (biggest chunk of points). the axe is last and only replaces the
+    // iron one (3 ingots less to smelt), we never upgrade an iron axe we already hold
+    private static final String[] ORDER = {"diamond_pickaxe", "diamond_chestplate", "diamond_leggings", "diamond_boots",
+            "diamond_helmet", "diamond_axe"};
+    private static final int[] COST = {3, 8, 7, 4, 5, 3};
+
+    private DiamondSpend() {
+    }
+
+    // which of the six are still up for grabs (not owned at diamond tier, and in the plan at all). same order as ORDER
+    public record Open(boolean pickaxe, boolean chestplate, boolean leggings, boolean boots, boolean helmet, boolean axe) {
+        boolean at(int i) {
+            return switch (i) {
+                case 0 -> pickaxe;
+                case 1 -> chestplate;
+                case 2 -> leggings;
+                case 3 -> boots;
+                case 4 -> helmet;
+                default -> axe;
+            };
+        }
+    }
+
+    public static int cost(String name) {
+        for (int i = 0; i < ORDER.length; i++) {
+            if (ORDER[i].equals(name)) {
+                return COST[i];
+            }
+        }
+        return 0;
+    }
+
+    // the greedy walk: in order, take what is open and what the diamonds left can pay for, and go on. an item we already own
+    // costs nothing and takes nothing, so crafting the first pick of the list changes nothing about the rest of the answer
+    // (the diamonds it ate and the item it became cancel out). one more diamond can still swap an item for a dearer one
+    // (9 buys the boots, 10 the leggings), that is the price of using all of them
+    public static List<String> spend(int diamonds, Open open) {
+        List<String> out = new ArrayList<>();
+        int left = diamonds;
+        for (int i = 0; i < ORDER.length; i++) {
+            if (open.at(i) && COST[i] <= left) {
+                out.add(ORDER[i]);
+                left -= COST[i];
+            }
+        }
+        return out;
+    }
+
+    // what the bag can pay for, [] with the setting off or too few diamonds. the count is the same one the iron ingots use, so
+    // diamonds sitting in the crafting grid or on the cursor are still ours and the answer holds still through a craft
+    public static List<String> choose(GamerFacts f, OverworldConfig cfg) {
+        if (!cfg.diamondSpend) {
+            return List.of();
+        }
+        int diamonds = f.count(Items.DIAMOND);
+        return diamonds < MIN ? List.of() : spend(diamonds, open(f, cfg));
+    }
+
+    // better tiers count as owned (KitPlanner.have), so a netherite piece closes its slot too. an armor slot the plan has gone gold
+    // in (PiglinGold) is not iron, so it is not ours to hand to a diamond either
+    static Open open(GamerFacts f, OverworldConfig cfg) {
+        List<String> slots = PiglinGold.swap(f, KitPlanner.armorNames(cfg));
+        return new Open(
+                KitPlanner.have(f, "diamond_pickaxe") == 0,
+                slot(f, slots, "chestplate"),
+                slot(f, slots, "leggings"),
+                slot(f, slots, "boots"),
+                slot(f, slots, "helmet"),
+                axeOpen(f, cfg));
+    }
+
+    private static boolean slot(GamerFacts f, List<String> slots, String piece) {
+        return slots.contains("iron_" + piece) && KitPlanner.have(f, "diamond_" + piece) == 0;
+    }
+
+    // only as a stand in for the iron axe: the kit has to want one and nothing iron or better can be in the bag
+    private static boolean axeOpen(GamerFacts f, OverworldConfig cfg) {
+        for (KitItem k : cfg.ironKit) {
+            if ("iron_axe".equals(k.item)) {
+                return KitPlanner.have(f, "iron_axe") == 0;
+            }
+        }
+        return false;
+    }
+
+    // is this iron kit item the one a chosen diamond item stands in for (iron_pickaxe <-> diamond_pickaxe, and so on)
+    static boolean replaces(List<String> chosen, String ironItem) {
+        return !chosen.isEmpty() && ironItem.startsWith("iron_") && chosen.contains("diamond_" + ironItem.substring("iron_".length()));
+    }
+
+    // the diamond pick is chosen: the iron one is not worth three ingots, and not worth smelting an early batch for either
+    static boolean takesThePick(GamerFacts f, OverworldConfig cfg) {
+        return choose(f, cfg).contains("diamond_pickaxe");
+    }
+}
