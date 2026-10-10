@@ -1232,9 +1232,10 @@ public class FoodPlanTest {
     }
 
     @Test
-    public void rawMeatWaitingOnFuelIsNotASurfaceTrip() {
+    public void rawMeatWaitingOnFuelIsATripThatOnlyCooks() {
         // a trip ended at 130 with 16 raw porkchop at the cooked value, then a craft ate the fuel: the pile reads raw (16 x 5 under
-        // the cooked sum) and held is 50. up top that is short of 70, but the meat is in the bag, it wants coal and not cows
+        // the cooked sum) and held is 50. nothing else asks for fuel, so up top this is a trip on purpose: the food task counts the
+        // pile cooked, finds it already has its 130 and goes straight to the smoker, which fetches the fuel. no cows
         RunState s = inIron();
         List<String> log = new java.util.ArrayList<>();
         FakeFacts f = new FakeFacts();
@@ -1243,12 +1244,34 @@ public class FoodPlanTest {
         f.foodUnits = 2 + 16 * FoodHelper.plannedNutrition(Items.PORKCHOP);
         FoodPlan p = latch(f, s, log);
         assertEquals(50, p.held());
-        assertFalse(p.surfaceTopUp());
-        assertFalse(p.wantsRefill());
-        assertFalse(s.foodRefilling);
-        // under the start it is a trip all the same
-        f.foodUnits -= 6;
-        assertTrue(latch(f, s, log).wantsRefill());
+        assertTrue(p.surfaceTopUp());
+        assertTrue(s.foodRefilling);
+        assertTrue(KitPlanner.plan(f, cfg, 8, p).contains(new KitNeed(KitNeed.FOOD, 130)));
+        assertTrue(p.counted() >= KitRunner.foodTarget(new KitNeed(KitNeed.FOOD, 130), p));
+    }
+
+    @Test
+    public void huntsToFollowsTheTrip() {
+        // on a trip it is the stop, with none on it is the target
+        assertEquals(130, held(120, 0).huntsTo());
+        assertEquals(100, idle(80).huntsTo());
+        // a full bag past the minimum has no trip left, the target is the line again
+        FoodPlan full = new FoodPlan(80, 0, 0, 0, 0, 0, cfg, end, true, false, true);
+        assertFalse(full.wantsRefill());
+        assertEquals(100, full.huntsTo());
+        // a due start still sitting out the wait is not a trip yet
+        RunState s = inIron();
+        FakeFacts f = new FakeFacts();
+        f.foodUnits = 44;
+        assertEquals(100, FoodPlan.latched(f, all(), s, l -> { }).huntsTo());
+    }
+
+    @Test
+    public void theCardShowsWhereTheTripEnds() {
+        assertEquals(130, GamerHud.footerLine(held(90, 0)));
+        assertEquals(70, GamerHud.footerLine(idle(90)));
+        // a full bag ends the trip at the minimum, so that is what the card says
+        assertEquals(70, GamerHud.footerLine(new FoodPlan(60, 0, 0, 0, 0, 0, cfg, end, true, false, true)));
     }
 
     // ---- a dip of a second or two is not a trip

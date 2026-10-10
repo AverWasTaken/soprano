@@ -44,9 +44,9 @@ final class GamerHud {
                 rows, furnaces, detour, food.held(), footerLine(food));
     }
 
-    // the minimum, or the trip's stop while a trip is on: 70/70 with the bot still hunting reads like it forgot to stop
+    // the minimum, or where the trip ends while one is on: 70/70 with the bot still hunting reads like it forgot to stop
     static int footerLine(FoodPlan food) {
-        return food.refilling() ? food.refillStop() : food.overworldMinimum();
+        return food.refilling() ? food.tripEnd() : food.overworldMinimum();
     }
 
     // the card while a death recovery or the nether trip has the wheel. neither goes through the phase, so build() is not reached and
