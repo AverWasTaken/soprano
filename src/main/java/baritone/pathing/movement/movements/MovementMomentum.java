@@ -530,7 +530,9 @@ public class MovementMomentum extends Movement implements CurvedMovement {
     private boolean hanging(BetterBlockPos feet) {
         int along = (feet.x - dest.x) * direction.getStepX() + (feet.z - dest.z) * direction.getStepZ();
         int across = (feet.x - dest.x) * side.getStepX() + (feet.z - dest.z) * side.getStepZ();
-        return feet.y == dest.y && (along == 0 || along == 1) && across == 0 && !feet.equals(dest);
+        // -1 is the other way to hang: the box is on dest (the sim takes a sliver of overlap) but the feet cell rounds to
+        // the block before it. it's standing on the landing block, so shuffling on is right
+        return feet.y == dest.y && along >= -1 && along <= 1 && across == 0 && !feet.equals(dest);
     }
 
     // same bail outs as MovementNeo. the sim is vanilla or nothing
