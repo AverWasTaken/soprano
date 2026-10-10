@@ -492,7 +492,12 @@ public class MovementNeo extends Movement implements CurvedMovement {
     private boolean hanging(BetterBlockPos feet) {
         int along = (feet.x - dest.x) * direction.getStepX() + (feet.z - dest.z) * direction.getStepZ();
         int across = (feet.x - dest.x) * side.getStepX() + (feet.z - dest.z) * side.getStepZ();
-        return feet.y == dest.y && (along == 0 || along == 1) && (across == 0 || across == 1) && !feet.equals(dest);
+        // -1: the sim takes a sliver of overlap on the landing block, which can leave the feet cell one short of it. that
+        // only happens with open air before dest. if that cell is a wall the box can't be overlapping dest from there (it'd
+        // be inside the wall), so it's just somebody standing on the side lane's floor and the old replan is right
+        boolean wallBeforeDest = (walls >> (dist - 2) & 1) != 0;
+        int minAlong = wallBeforeDest ? 0 : -1;
+        return feet.y == dest.y && along >= minAlong && along <= 1 && (across == 0 || across == 1) && !feet.equals(dest);
     }
 
     // same bail outs as SprintJump. the sim is vanilla or nothing
