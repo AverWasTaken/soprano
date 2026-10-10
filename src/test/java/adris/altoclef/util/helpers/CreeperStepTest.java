@@ -79,6 +79,42 @@ public class CreeperStepTest {
         assertFalse(step.active());
     }
 
+    // a creeper that lost its line to us goes unlit with the swell still up, and relights the moment we walk back in
+    @Test
+    public void aDeflatingFuseCloseByKeepsTheHold() {
+        CreeperStep step = new CreeperStep();
+        step.step(0, lit(7, 3), false);
+        for (int t = 1; t < CreeperStep.HOLD_CAP; t++) {
+            assertEquals("tick " + t, Event.NONE, step.step(t, List.of(new Seen(7, false, CreeperStep.HOLD_RADIUS, false, true)), false));
+            assertTrue(step.active());
+        }
+    }
+
+    @Test
+    public void aDrainedFuseEndsTheHoldAtOnce() {
+        CreeperStep step = new CreeperStep();
+        step.step(0, lit(7, 3), false);
+        assertEquals(Event.END_UNLIT, step.step(10, List.of(new Seen(7, false, 3, false, false)), false));
+        assertFalse(step.active());
+    }
+
+    @Test
+    public void aDeflatingFuseFarAwayEndsTheHold() {
+        CreeperStep step = new CreeperStep();
+        step.step(0, lit(7, 3), false);
+        assertEquals(Event.END_UNLIT, step.step(10, List.of(new Seen(7, false, CreeperStep.HOLD_RADIUS + 0.1, false, true)), false));
+    }
+
+    @Test
+    public void aFuseThatNeverDrainsStillHitsTheCap() {
+        CreeperStep step = new CreeperStep();
+        step.step(0, lit(7, 3), false);
+        assertEquals(Event.END_CAP, step.step(CreeperStep.HOLD_CAP, List.of(new Seen(7, false, 2, false, true)), false));
+        // and is not held again
+        assertEquals(Event.NONE, step.step(CreeperStep.HOLD_CAP + 1, lit(7, 2), false));
+        assertFalse(step.active());
+    }
+
     @Test
     public void twoAndAHalfSecondsIsTheCapAndTheSameOneIsNotHeldAgain() {
         CreeperStep step = new CreeperStep();

@@ -22,6 +22,8 @@ public final class CreeperStep {
     public static final double PATH_RANGE = 8;
     // the fuse is 1.5 s, so 2.5 s of standing about is plenty. one that is still lit by then gets left alone
     public static final long HOLD_CAP = 50;
+    // an unlit creeper with charge still in its fuse keeps the step held while it is within this
+    public static final double HOLD_RADIUS = 5;
     // no ground gained after this long while still inside TRIGGER is boxed in. a shield takes over then. a second, because
     // the cancel waits for a safe moment and the search takes a few ticks too, and the fuse is 30 so the shield still makes it.
     // it only looks at where we are, so the raw sprint at the start of the step counts as ground gained like any other
@@ -33,7 +35,12 @@ public final class CreeperStep {
     public enum Event { NONE, START, CORNERED, END_GONE, END_UNLIT, END_CAP }
 
     // one creeper as the world sees it this tick. lit = swelling up or flint-and-steeled, pathNear = the path walks into it
-    public record Seen(int id, boolean lit, double distance, boolean pathNear) {
+    // fusing = the fuse still has charge in it, lit or deflating (a creeper that lost its line to us goes unlit with the swell
+    // still up and relights the moment we walk back in)
+    public record Seen(int id, boolean lit, double distance, boolean pathNear, boolean fusing) {
+        public Seen(int id, boolean lit, double distance, boolean pathNear) {
+            this(id, lit, distance, pathNear, lit);
+        }
     }
 
     private int _id = -1;
@@ -81,7 +88,10 @@ public final class CreeperStep {
             Seen held = find(creepers, _id);
             Event end = Event.NONE;
             if (held == null) end = Event.END_GONE;
-            else if (!held.lit()) end = Event.END_UNLIT;
+            // the fuse is really out when it is unlit AND drained, or we are well away from it. unlit with charge left and still
+            // close is a deflating fuse, and the user task walking back in relights it: that was the wheel flipping back and
+            // forth. the cap below is the backstop for one that never drains
+            else if (!held.lit() && !(held.fusing() && held.distance() <= HOLD_RADIUS)) end = Event.END_UNLIT;
             else if (now < _since || now - _since >= HOLD_CAP) end = Event.END_CAP;
             if (end == Event.NONE) {
                 if (!_cornered && shieldReady && now - _since >= CORNER_TICKS && held.distance() <= TRIGGER
