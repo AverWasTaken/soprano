@@ -40,8 +40,6 @@ import java.util.Map;
 public final class ResourceDetour {
     // a few thousand block reads per look, twice a second is a lot of watching already
     private static final int LOOK_EVERY_TICKS = 10;
-    // the gravel detour digs until the rules stop it, flint or not. any count the task could reach first would end it early
-    private static final int GRAVEL_TARGET = 64;
 
     private final DetourSpec spec;
     // an array of our own per detour: the iron task's list must not learn about coal, two mine tasks with the same blocks are the
@@ -177,7 +175,7 @@ public final class ResourceDetour {
                 return mine;
             case TIMEOUT:
             case STRAYED:
-                Debug.logInternal(spec.name + " side job: " + step + " with " + held + " " + itemWord() + " held, banning what is left around " + from.toShortString());
+                Debug.logInternal(spec.name + " side job: " + step + " with " + held + " " + spec.itemWord + " held, banning what is left around " + from.toShortString());
                 ban(mod, from, keep);
                 finish(held, step);
                 return null;
@@ -195,8 +193,7 @@ public final class ResourceDetour {
         // the target is the cap in total, so the task never calls itself finished before the rules do
         // and it only ever picks blocks we can see from where we stand, so a vein behind the wall is not a tunnel (DetourSight).
         // our own give-ups too: they are scoped to the detour, the tracker still offers them to everybody else
-        int target = spec.resource == Resource.GRAVEL ? GRAVEL_TARGET : cfg.coalSideCap;
-        mine = new MineAndCollectTask(new ItemTarget(item, target), blocks, requirement)
+        mine = new MineAndCollectTask(new ItemTarget(item, spec.mineTarget(cfg)), blocks, requirement)
                 .onlyWhere(pos -> !banned(mod, pos.getX(), pos.getY(), pos.getZ()) && pickable(mod, pos));
         anchor = me;
         heldAtStart = held;
@@ -210,22 +207,18 @@ public final class ResourceDetour {
         }
         BlockPos first = nearest(mod, me, spec.budget(cfg));
         String tool = spec.resource == Resource.GRAVEL ? ", with " + DetourSpec.gravelTool(hasShovel(ctx.facts())) : "";
-        Debug.logInternal(spec.name + " side job: started with " + held + " " + itemWord() + " held" + tool
-                + (first == null ? "" : ", nearest " + (spec.resource == Resource.GRAVEL ? "gravel " : "ore ") + first.toShortString()) + (said ? "" : ", chat line skipped, near the last one"));
+        Debug.logInternal(spec.name + " side job: started with " + held + " " + spec.itemWord + " held" + tool
+                + (first == null ? "" : ", nearest " + spec.spotWord + " " + first.toShortString()) + (said ? "" : ", chat line skipped, near the last one"));
     }
 
     private void finish(int held, DetourRules.Step why) {
-        Debug.logInternal(spec.name + " side job: " + why + ", " + heldAtStart + " -> " + held + " " + itemWord() + " held"
+        Debug.logInternal(spec.name + " side job: " + why + ", " + heldAtStart + " -> " + held + " " + spec.itemWord + " held"
                 + (spec.resource == Resource.GRAVEL ? ", " + tally.count() + " gravel dug" : ""));
         ended = spec.ended(why);
         mine = null;
         anchor = null;
         hud = null;
         ore = null;
-    }
-
-    private String itemWord() {
-        return spec.resource == Resource.GRAVEL ? "flint" : "coal";
     }
 
     // the break we are on, counted once it is gone (DetourRules.Tally). only the gravel cap reads it, coal counts it for nothing
@@ -240,7 +233,7 @@ public final class ResourceDetour {
     private void noteEnough(DetourRules.Inputs in, DetourRules.Limits lim) {
         boolean enough = DetourRules.enough(in, lim);
         if (enough && !enoughSaid && !rules.running()) {
-            Debug.logInternal(spec.name + " side job: skipping, we hold " + in.held() + " " + itemWord() + " and the plan needs "
+            Debug.logInternal(spec.name + " side job: skipping, we hold " + in.held() + " " + spec.itemWord + " and the plan needs "
                     + Math.min(in.need(), lim.heldCap()));
         }
         enoughSaid = enough;
@@ -396,7 +389,7 @@ public final class ResourceDetour {
                 added++;
             }
         }
-        Debug.logInternal(spec.name + " side job: banned " + added + " " + (spec.resource == Resource.GRAVEL ? "gravel" : "ore") + " blocks");
+        Debug.logInternal(spec.name + " side job: banned " + added + " " + spec.spotWord + " blocks");
     }
 
     // an item we came for on the floor close by that the bag has room for. one it has no room for would hold the detour until its

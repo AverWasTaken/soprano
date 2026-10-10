@@ -26,19 +26,26 @@ public final class DetourSpec {
     // of more than this straight over us is a block we do not pick
     public static final int TALL_COLUMN = 2;
 
-    public static final DetourSpec COAL = new DetourSpec(Resource.COAL, "coal", "coal", "Mining coal since we found it here",
+    // what the gravel mining task is told to collect. the detour digs until the rules stop it, flint or not, so any count the
+    // task could reach first would end it early
+    public static final int GRAVEL_TARGET = 64;
+
+    public static final DetourSpec COAL = new DetourSpec(Resource.COAL, "coal", "coal", "ore", "Mining coal since we found it here",
             "Mining coal while it is close", "mining coal", DetourRules.COOLDOWN_TICKS,
-            c -> c.coalSideBudget, c -> c.coalSideCap, c -> c.coalSideSeconds, c -> 0);
+            c -> c.coalSideBudget, c -> c.coalSideCap, c -> c.coalSideSeconds, c -> 0, c -> c.coalSideCap);
     // the held cap is 1: one flint is the flint and steel, and the need is 0 or 1 anyway
-    public static final DetourSpec GRAVEL = new DetourSpec(Resource.GRAVEL, "gravel", "flint", "Getting flint from this gravel",
+    public static final DetourSpec GRAVEL = new DetourSpec(Resource.GRAVEL, "gravel", "flint", "gravel", "Getting flint from this gravel",
             "Getting flint from gravel", "digging gravel for flint", GRAVEL_COOLDOWN_TICKS,
-            c -> c.gravelSideBudget, c -> 1, c -> c.gravelSideSeconds, c -> c.gravelSideBlocks);
+            c -> c.gravelSideBudget, c -> 1, c -> c.gravelSideSeconds, c -> c.gravelSideBlocks, c -> GRAVEL_TARGET);
 
     public final Resource resource;
     // for the log lines ("coal side job: ...") and the activity words
     public final String name;
     // the kit need that means the kit task is already on it (DetourRules.blocked), see kitIsOnIt
     public final String headNeed;
+    // the thing we came for and the kind of block we find it in, for the log lines ("started with 3 coal held, nearest ore ...")
+    public final String itemWord;
+    public final String spotWord;
     // once per detour in chat (DetourRules.announce)
     public final String chat;
     public final String hud;
@@ -49,13 +56,18 @@ public final class DetourSpec {
     private final ToIntFunction<OverworldConfig> heldCap;
     private final ToDoubleFunction<OverworldConfig> seconds;
     private final ToIntFunction<OverworldConfig> mineCap;
+    private final ToIntFunction<OverworldConfig> target;
 
-    private DetourSpec(Resource resource, String name, String headNeed, String chat, String hud, String progress, long cooldownTicks,
-                       ToDoubleFunction<OverworldConfig> budget, ToIntFunction<OverworldConfig> heldCap,
-                       ToDoubleFunction<OverworldConfig> seconds, ToIntFunction<OverworldConfig> mineCap) {
+    // the item we came for is also the kit need that means the kit task is already on it (kitIsOnIt), so one word does both
+    private DetourSpec(Resource resource, String name, String item, String spot, String chat, String hud, String progress,
+                       long cooldownTicks, ToDoubleFunction<OverworldConfig> budget, ToIntFunction<OverworldConfig> heldCap,
+                       ToDoubleFunction<OverworldConfig> seconds, ToIntFunction<OverworldConfig> mineCap,
+                       ToIntFunction<OverworldConfig> target) {
         this.resource = resource;
         this.name = name;
-        this.headNeed = headNeed;
+        this.headNeed = item;
+        this.itemWord = item;
+        this.spotWord = spot;
         this.chat = chat;
         this.hud = hud;
         this.progress = progress;
@@ -64,6 +76,7 @@ public final class DetourSpec {
         this.heldCap = heldCap;
         this.seconds = seconds;
         this.mineCap = mineCap;
+        this.target = target;
     }
 
     // the kit's head need is this resource already. for gravel the flint and steel counts too: its craft fetches the flint
@@ -82,6 +95,11 @@ public final class DetourSpec {
 
     public double seconds(OverworldConfig cfg) {
         return seconds.applyAsDouble(cfg);
+    }
+
+    // what the mining task is told to collect, see GRAVEL_TARGET
+    public int mineTarget(OverworldConfig cfg) {
+        return target.applyAsInt(cfg);
     }
 
     public Limits limits(OverworldConfig cfg) {
