@@ -33,6 +33,8 @@ public class FakeFacts implements GamerFacts {
     // the station a running cook committed to
     public String cookStation;
     public int fingerprint;
+    // up near the open sky (the surface food top-up)
+    public boolean nearSurface;
     public boolean earlyIronPick = true;
     // the first raw iron is in a furnace and the job is not recorded yet
     public boolean earlyLoad;
@@ -137,6 +139,11 @@ public class FakeFacts implements GamerFacts {
     @Override
     public long gameTime() {
         return gameTime;
+    }
+
+    @Override
+    public boolean nearSurface() {
+        return nearSurface;
     }
 
     @Override

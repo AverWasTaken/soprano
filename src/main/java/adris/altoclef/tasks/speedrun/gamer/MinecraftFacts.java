@@ -71,6 +71,7 @@ public final class MinecraftFacts implements GamerFacts {
     // the block that screen is, null when nothing says
     private RunState.Pos stationAt;
     private int buildBlocks;
+    private boolean nearSurface;
     private int fingerprint;
     private int x;
     private int y;
@@ -106,6 +107,8 @@ public final class MinecraftFacts implements GamerFacts {
         y = player.getBlockY();
         z = player.getBlockZ();
         gameTime = mod.getWorld().getGameTime();
+        // the same test IronPhase's food gate and the smelt site use, the nether's roof is not a sky
+        nearSurface = dimension == Dimension.OVERWORLD && SmeltSurface.shallow(SmeltSurface.depthBelowSky(mod));
         armorPoints = player.getArmorValue();
         if (Minecraft.getInstance().screen instanceof WinScreen) {
             credits = true;
@@ -466,6 +469,11 @@ public final class MinecraftFacts implements GamerFacts {
     @Override
     public int stationFoodSkipped() {
         return stationSkipped;
+    }
+
+    @Override
+    public boolean nearSurface() {
+        return nearSurface;
     }
 
     @Override

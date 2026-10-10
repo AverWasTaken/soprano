@@ -1124,4 +1124,105 @@ public class FoodPlanTest {
         assertTrue(idle(69).wantsRefill());
         assertFalse(idle(70).wantsRefill());
     }
+
+    // ---- the surface top-up: up top a trip starts under the minimum, in a mine only under the start
+
+    private GamerConfig all() {
+        GamerConfig all = new GamerConfig();
+        all.overworld = cfg;
+        all.end = end;
+        return all;
+    }
+
+    private static RunState inIron() {
+        RunState s = new RunState();
+        s.phase = GamerPhase.IRON;
+        return s;
+    }
+
+    @Test
+    public void aSurfaceTopUpStartsAt69UpTopButNotInAMine() {
+        RunState s = inIron();
+        List<String> log = new java.util.ArrayList<>();
+        FakeFacts f = new FakeFacts();
+        f.foodUnits = 69;
+        // down a mine 69 is nothing, and neither is 46
+        assertFalse(FoodPlan.latched(f, all(), s, log::add).wantsRefill());
+        f.foodUnits = 46;
+        assertFalse(FoodPlan.latched(f, all(), s, log::add).wantsRefill());
+        assertFalse(s.foodRefilling);
+        // up top the same 69 is a trip, and a whole one: to 130
+        f.foodUnits = 69;
+        f.nearSurface = true;
+        FoodPlan p = FoodPlan.latched(f, all(), s, log::add);
+        assertTrue(s.foodRefilling);
+        assertTrue(p.wantsRefill());
+        assertTrue(KitPlanner.plan(f, cfg, 8, p).contains(new KitNeed(KitNeed.FOOD, 130)));
+        // latched: the hunt dives into a ravine past the minimum and the trip carries on
+        f.nearSurface = false;
+        for (int units : new int[]{75, 100, 129}) {
+            f.foodUnits = units;
+            assertTrue("at " + units, FoodPlan.latched(f, all(), s, log::add).wantsRefill());
+        }
+        f.foodUnits = 130;
+        FoodPlan.latched(f, all(), s, log::add);
+        assertFalse(s.foodRefilling);
+        assertEquals(List.of("food: refilling from 69 (on the surface, under 70), up to 130", "food: refill done at 130"), log);
+        // at the minimum up top there is nothing to top up
+        f.nearSurface = true;
+        f.foodUnits = 70;
+        assertFalse(FoodPlan.latched(f, all(), s, log::add).wantsRefill());
+        assertFalse(s.foodRefilling);
+    }
+
+    @Test
+    public void theFloorStillForcesATripDownAMine() {
+        RunState s = inIron();
+        List<String> log = new java.util.ArrayList<>();
+        FakeFacts f = new FakeFacts();
+        f.foodUnits = 23;
+        FoodPlan p = FoodPlan.latched(f, all(), s, log::add);
+        assertTrue(s.foodRefilling);
+        // leads with no surface, no latch, and a cook in the way
+        assertTrue(p.leads(false, false, true));
+        assertEquals(List.of("food: refilling from 23 (under 45), up to 130"), log);
+        // under the start in a mine: a trip, but it waits for the surface to lead
+        FoodPlan mine = new FoodPlan(44, 0, 0, 0, 0, 0, cfg, end, true, false);
+        assertTrue(mine.wantsRefill());
+        assertFalse(mine.leads(false, false, false));
+        assertTrue(mine.leads(true, false, false));
+    }
+
+    @Test
+    public void theSmokerComingAndGoingDoesNotStartASurfaceTopUp() {
+        // 66 and a chicken that cooks to the last 4: covered at the minimum, so no trip up top whether the smoker is there or not
+        RunState s = inIron();
+        List<String> log = new java.util.ArrayList<>();
+        for (boolean smoker : new boolean[]{true, false, true, false}) {
+            FakeFacts f = chickenBag(smoker);
+            f.nearSurface = true;
+            assertFalse(FoodPlan.latched(f, all(), s, log::add).wantsRefill());
+            assertFalse(s.foodRefilling);
+        }
+        assertTrue(log.isEmpty());
+        // a real hole up top is still a trip: 58 and the chicken, 12 short is more than the chicken fills
+        FakeFacts f = chickenBag(false);
+        f.foodUnits = 56 + FoodHelper.plannedNutrition(Items.CHICKEN);
+        f.nearSurface = true;
+        assertTrue(FoodPlan.latched(f, all(), s, log::add).wantsRefill());
+        assertTrue(s.foodRefilling);
+    }
+
+    @Test
+    public void theSurfaceLatchIsAnswerNeutralToo() {
+        for (int units = 0; units <= 150; units++) {
+            for (boolean was : new boolean[]{false, true}) {
+                for (boolean up : new boolean[]{false, true}) {
+                    FoodPlan before = new FoodPlan(units, 0, 0, 0, 0, 0, cfg, end, was, up);
+                    FoodPlan after = new FoodPlan(units, 0, 0, 0, 0, 0, cfg, end, before.nextRefilling(), up);
+                    assertEquals(units + " " + was + " " + up, before.wantsRefill(), after.wantsRefill());
+                }
+            }
+        }
+    }
 }

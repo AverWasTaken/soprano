@@ -45,7 +45,8 @@ public class OverworldConfig {
     public int minFoodUnits = 70;
     public int targetFoodUnits = 100;
     // a food trip only starts under this, then runs to refillStopFoodUnits (FoodPlan.wantsRefill). with no gap one bite at 70 sent the
-    // bot off whatever it was doing for a single unit
+    // bot off whatever it was doing for a single unit. on the surface a trip starts under minFoodUnits instead (FoodPlan.surfaceTopUp),
+    // the hunt is a walk there and a climb from a mine
     public int refillStartFoodUnits = 45;
     // and once a trip starts it runs to this, not to minFoodUnits. a cave leg eats 40-50 units, so a trip that stopped at 70 bought
     // one cave leg and the next surface visit was another hunt. 130 is about a stack of steak, one smoker load

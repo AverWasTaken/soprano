@@ -64,6 +64,12 @@ public interface GamerFacts {
         return 0;
     }
 
+    // close to the open sky in the overworld (SmeltSurface.shallow), where a food trip is a walk and not a climb out of a mine.
+    // false in a test that does not say, so a stub bag never starts the surface top-up behind a test's back
+    default boolean nearSurface() {
+        return false;
+    }
+
     // throwaway blocks we can pillar/bridge with
     int buildBlocks();
 
