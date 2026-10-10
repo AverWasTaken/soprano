@@ -8,6 +8,7 @@ import adris.altoclef.tasks.movement.RunAwayFromPositionTask;
 import adris.altoclef.tasks.movement.SafeRandomShimmyTask;
 import adris.altoclef.tasksystem.ITaskRequiresGrounded;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.tasksystem.TaskClock;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.MineStick;
@@ -116,6 +117,21 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
     private int _dropPending;
     private static final int FALL_WAIT_MAX = 60;
     private static final int DROP_PENDING_MAX = 10;
+
+    // the from-side approach's own give-up clocks. idle only runs with no live path, total runs whatever the path is doing.
+    // nothing but a swing that really cracks the block clears them, unlike the movement checkers, which a path (or a
+    // search that just landed) keeps clearing
+    private final TaskClock _sideIdle = new TaskClock();
+    private final TaskClock _sideTotal = new TaskClock();
+    private boolean _sideGaveUp;
+    // consecutive ticks the back-up keys were held from the cell we are in, so a wall behind us is ten ticks of grinding
+    // and not a minute of it
+    private int _backedUp;
+    private BlockPos _backedUpFrom;
+    // searches that came back empty, as of the last look, and the tick one last did
+    private int _calcFailuresSeen = -1;
+    private int _calcFailedAt = Integer.MIN_VALUE / 2;
+    private static final int CALC_FAILED_RECENT_TICKS = 40;
 
     // the reach ray flickers on a corner, this keeps us swinging (or walking) through the flicker. see ReachHold
     private final ReachHold _reachHold = new ReachHold();
@@ -499,6 +515,50 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
         mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ClickType.PICKUP);
     }
 
+    // the clocks and the call for one tick spent trying to get beside a block we won't mine from on top of
+    private FromSideRules.Verdict sideVerdict(AltoClef mod, boolean cracking) {
+        var pathing = mod.getClientBaritone().getPathingBehavior();
+        _sideTotal.tick();
+        if (!pathing.isPathing()) {
+            _sideIdle.tick();
+        }
+        int now = WorldHelper.getTicks();
+        int failures = pathing.calcFailures();
+        if (_calcFailuresSeen >= 0 && failures > _calcFailuresSeen) {
+            _calcFailedAt = now;
+        }
+        _calcFailuresSeen = failures;
+        BlockPos feet = mod.getClientBaritone().getPlayerContext().playerFeet();
+        if (pathing.isPathing() || !feet.equals(_backedUpFrom)) {
+            _backedUpFrom = feet;
+            _backedUp = 0;
+        }
+        return FromSideRules.decide(_sideIdle.spentSeconds(), _sideTotal.spentSeconds(), pathing.isPathing(),
+                now - _calcFailedAt <= CALC_FAILED_RECENT_TICKS, cracking, _backedUp);
+    }
+
+    private boolean crackingThis(AltoClef mod) {
+        return mod.getControllerExtras().isBreakingBlock() && _pos.equals(mod.getControllerExtras().getBreakingBlockPos());
+    }
+
+    // fails the way a failed break does: the ban is what the parent reads (a source whose lid is banned drops out of
+    // CollectBucketLiquidTask's pick), and then we stand down instead of swinging at the wall
+    private Task giveUpOnSide(AltoClef mod) {
+        if (!_sideGaveUp) {
+            _sideGaveUp = true;
+            Debug.logInternal("destroy: could not get beside " + _what + " at " + _pos.toShortString() + " to mine it from the side, giving up after "
+                    + Math.round(_sideIdle.spentSeconds() * 20) + "t");
+            mod.getClientBaritone().getPathingBehavior().forceCancel();
+            mod.getClientBaritone().getCustomGoalProcess().onLostControl();
+            mod.getBlockTracker().requestBlockUnreachable(_pos, 0, "couldn't get beside it to mine it from the side");
+        }
+        setDebugState("Giving up on " + _what + " at " + _pos.toShortString() + ", can't get beside it", "Couldn't get beside it");
+        isMining = false;
+        mod.getClientBaritone().getInputOverrideHandler().setInputForceState(Input.CLICK_LEFT, false);
+        stopBackingUp(mod);
+        return null;
+    }
+
     private Task refuseSlowBreak(AltoClef mod, BlockState there) {
         String time = BreakRules.describe(WorldHelper.bagOf(mod), there);
         int now = WorldHelper.getTicks();
@@ -582,6 +642,10 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
         if (!there.isAir() && !_pos.equals(WorldHelper.buriedInFallenBlock(mod))
                 && BreakRules.tooSlow(WorldHelper.bagOf(mod), there)) {
             return refuseSlowBreak(mod, there);
+        }
+
+        if (_sideGaveUp) {
+            return giveUpOnSide(mod);
         }
 
         // Check if the move checker or the stuck check failed
@@ -715,6 +779,10 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
             _triedFeet.clear();
             stuckCheck.reset();
             _stepOffs.reset();
+            if (crackingThis(mod)) {
+                _sideIdle.reset();
+                _sideTotal.reset();
+            }
             isMining = true;
             mod.getInputControls().release(Input.SNEAK);
             mod.getInputControls().release(Input.MOVE_BACK);
@@ -827,12 +895,19 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
                 }
                 return null;
             }
+            // the from-side approach has its own way out. a search that finds nothing is not "not pathing, so back up", and
+            // ten seconds without a swing or a path is not a reason to keep trying
+            FromSideRules.Verdict side = fromSide ? sideVerdict(mod, crackingThis(mod)) : FromSideRules.Verdict.KEEP_TRYING;
+            if (side == FromSideRules.Verdict.GIVE_UP) {
+                return giveUpOnSide(mod);
+            }
             boolean isCloseToMoveBack = _pos.closerToCenterThan(mod.getPlayer().position(), 2);
             if (isCloseToMoveBack) {
-                if (!mod.getClientBaritone().getPathingBehavior().isPathing() && !mod.getPlayer().isInWater() &&
+                if (side == FromSideRules.Verdict.KEEP_TRYING && !mod.getClientBaritone().getPathingBehavior().isPathing() && !mod.getPlayer().isInWater() &&
                         !mod.getFoodChain().needsToEat()) {
                     mod.getInputControls().hold(Input.MOVE_BACK);
                     mod.getInputControls().hold(Input.SNEAK);
+                    _backedUp++;
                 } else {
                     mod.getInputControls().release(Input.MOVE_BACK);
                     mod.getInputControls().release(Input.SNEAK);
@@ -848,9 +923,9 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
                     // with a stack hanging on it the shaft two below is out as well, it comes down that shaft
                     goal = new GoalMineFromSide(_pos, !looseColumn, openBelow(mod, _pos));
                     if (goal.isInGoal(feet) && reach.isEmpty()) {
-                        // "from the side" only looks at offsets, so a spot by the trunk with leaves in the way counts as
-                        // arrived. the goal finished instantly every tick and we stood at the edge sneaking backwards for
-                        // 49 seconds. same way out as the branch below: walk up and touch it
+                        // "from the side" only looks at offsets, so a spot by the trunk with leaves in the way (or a cell
+                        // across a wall's corner) counts as arrived and the goal finishes instantly, every tick. same way out
+                        // as the branch below: walk up and touch it
                         closeIn = true;
                         // never the top or the shaft here, and when every side has been tried the side goal stays
                         Goal touching = pickGoal(mod.getWorld(), _pos, true, triedFeet(feet), true);
