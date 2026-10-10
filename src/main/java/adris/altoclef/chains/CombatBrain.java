@@ -213,7 +213,7 @@ final class CombatBrain {
                 if (!(entity instanceof Mob mob) || !mob.isAlive()) continue;
                 double distance = mob.distanceTo(player);
                 if (distance > FOE_RANGE) continue;
-                Foe foe = FoeRules.accept(dimension, candidate(mod, mob, distance, book, now, player));
+                Foe foe = FoeRules.accept(dimension, candidate(mod, dimension, mob, distance, book, now, player));
                 if (foe == null) continue;
                 mobs.add(mob);
                 foes.add(foe);
@@ -418,12 +418,15 @@ final class CombatBrain {
         Kind kind = FoeRules.kindOf(dimension, typeOf(mob));
         long sinceHit = book.sinceHit(mob.getId(), now);
         return new Foe(mob.getId(), distance, FoeRules.shoots(typeOf(mob), MobReachability.isRanged(mob), kind), mob instanceof Creeper, sinceHit, kind,
-                reachGap(player, mob), sees(mob, sinceHit, player), book.sinceHitBefore(mob.getId(), now));
+                reachGap(player, mob), sees(dimension, mob, sinceHit, player), book.sinceHitBefore(mob.getId(), now));
     }
 
-    // a line to us, asked only of a shooter that hit us lately: the ray is the costly bit and nothing else wants the answer
-    private static boolean sees(Mob mob, long sinceHit, LocalPlayer player) {
-        return sinceHit <= CombatCommit.HIT_MEMORY && MobReachability.isRanged(mob) && !(mob instanceof Creeper) && mob.hasLineOfSight(player);
+    // a line to us, asked only of a shooter that hit us lately: the ray is the costly bit and nothing else wants the answer.
+    // "shooter" is the same word the Foe gets (a blaze is one, though it is not a ranged attack mob by class)
+    private static boolean sees(Dimension dimension, Mob mob, long sinceHit, LocalPlayer player) {
+        if (sinceHit > CombatCommit.HIT_MEMORY || mob instanceof Creeper) return false;
+        Kind kind = FoeRules.kindOf(dimension, typeOf(mob));
+        return FoeRules.shoots(typeOf(mob), MobReachability.isRanged(mob), kind) && mob.hasLineOfSight(player);
     }
 
     // eye to its box, the number the reach rules use
@@ -460,14 +463,15 @@ final class CombatBrain {
     }
 
     // the costly questions are asked lazily, FoeRules only asks them when the cheap ones left the mob in the running
-    private static FoeRules.Candidate candidate(AltoClef mod, Mob mob, double distance, Provocations book, long now, LocalPlayer player) {
+    private static FoeRules.Candidate candidate(AltoClef mod, Dimension dimension, Mob mob, double distance, Provocations book, long now,
+                                                LocalPlayer player) {
         long sinceHit = book.sinceHit(mob.getId(), now);
         return new FoeRules.Candidate(typeOf(mob), mob.getId(), distance,
                 () -> mod.getBehaviour().shouldExcludeFromMobDefense(mob),
                 () -> EntityHelper.isAngryAtPlayer(mod, mob),
                 () -> EntityHelper.canMobHarmPlayer(mod, mob),
                 sinceHit, mob instanceof Slime slime ? slime.getSize() : 0, MobReachability.isRanged(mob), mob instanceof Creeper,
-                reachGap(player, mob), sees(mob, sinceHit, player), book.sinceHitBefore(mob.getId(), now));
+                reachGap(player, mob), sees(dimension, mob, sinceHit, player), book.sinceHitBefore(mob.getId(), now));
     }
 
     // how many of each kind, in the order they showed up

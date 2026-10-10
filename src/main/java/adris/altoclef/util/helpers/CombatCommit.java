@@ -727,7 +727,9 @@ public final class CombatCommit {
         // goes by the normal rules below)
         if (why == Why.IN_WAY && target.distance() > WAY_RELEASE && !target.hitUs()) return end(t, Event.FIGHT_CLEARED);
         // out of play: wandered off past LOST_RANGE and not hitting us. if it wants another go, that is a new fight
-        if (target.distance() > LOST_RANGE) {
+        // (not a sniper we are still walking up to: it is far by design, an arrow in the air or a miss is no reason to lose it
+        // after three seconds, only the stall rule below writes that one off)
+        if (target.distance() > LOST_RANGE && !(why == Why.PINNED && !contacted)) {
             if (farSince < 0) farSince = t.now();
             if (t.now() - farSince >= LOST_TICKS && target.sinceHit() > LOST_TICKS) {
                 // boxed in, the second tier picks within 8, so a lost one would be picked again every few seconds. same
@@ -965,7 +967,7 @@ public final class CombatCommit {
         Foe near = null;
         for (Foe foe : t.foes()) {
             if (foe.distance() > LOW_HP_RANGE || foe.kind() == Kind.UNTOUCHABLE) continue;
-            // (a lobber we could not reach is not who the run turns round on)
+            // (a lobber or sniper we could not reach is not who the run turns round on)
             if (gaveUpOn(foe, t.now())) continue;
             if ((foe.distance() <= CONTACT || foe.hitUs()) && (onUs == null || foe.distance() < onUs.distance())) onUs = foe;
             if (!foe.creeper() && !ignored.containsKey(foe.id()) && (near == null || foe.distance() < near.distance())) near = foe;

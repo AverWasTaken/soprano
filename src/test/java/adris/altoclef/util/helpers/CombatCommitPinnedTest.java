@@ -191,6 +191,22 @@ public class CombatCommitPinnedTest {
                 CombatLog.line(Dimension.OVERWORLD, Event.RUN_START, c.why(), false, "skeleton", "it", "1 skeleton", 20, 0));
     }
 
+    // a miss, or an arrow still in the air, is not a sniper lost: we are closing in, and only a real stall writes it off
+    @Test
+    public void aSniperWeAreWalkingUpToIsNotLostForAMissedArrow() {
+        CombatCommit c = new CombatCommit();
+        assertEquals(Event.FIGHT_START, c.step(still(skeleton(16, 3, 63, true))));
+        for (long t = NOW + 1; t < NOW + 150; t++) {
+            // closing at a block a second, no more arrows: the old lost rule would have fired at 60 ticks
+            Foe s = skeleton(16 - (t - NOW) * 0.05, t - NOW + 3, t - NOW + 63, true);
+            assertEquals("tick " + t, Event.NONE, c.step(tick(t, 20, true, s, s)));
+        }
+        assertEquals(Mode.FIGHT, c.mode());
+        // and once it is in contact the fight is the ordinary one
+        Foe close = new Foe(SKELETON, 2, true, false, 90);
+        assertEquals(Event.NONE, c.step(tick(NOW + 150, 20, true, close, close)));
+    }
+
     @Test
     public void aSniperThatStaysQuietWhileIgnoredIsStillIgnored() {
         CombatCommit c = new CombatCommit();

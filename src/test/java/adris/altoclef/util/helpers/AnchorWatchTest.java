@@ -70,6 +70,15 @@ public class AnchorWatchTest {
         assertFalse(w.update(100, 0, 64, 0));
     }
 
+    // the server re-syncs the game clock, a tick or two back or a short hitch is the same standing about
+    @Test
+    public void aSmallWobbleInTheClockIsNotAReset() {
+        AnchorWatch w = new AnchorWatch();
+        for (long t = 0; t <= AnchorWatch.TICKS + 5; t++) w.update(t, 0, 64, 0);
+        assertTrue(w.update(AnchorWatch.TICKS + 3, 0, 64, 0));
+        assertTrue(w.update(AnchorWatch.TICKS + 12, 0, 64, 0));
+    }
+
     @Test
     public void resetForgetsIt() {
         AnchorWatch w = new AnchorWatch();
