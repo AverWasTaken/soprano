@@ -225,8 +225,11 @@ public class StationContradictionsTest {
         assertTrue(Workbenches.standing(b, Kind.TABLE, DIM));
         assertFalse(WorkbenchRules.placeVetoed(state.benches, Kind.TABLE, NOW));
 
-        // nobody drives it any more: it stops vetoing and goes back to standing, so the plan is not left holding a ghost
+        // nobody drove it for a while but inside the grace: the planner still holds it and the veto still stops a second one
         WorkbenchRules.beginPickup(b, NOW, 0, "test");
+        long within = NOW + WorkbenchRules.DRIVE_GRACE_TICKS;
+        assertTrue(WorkbenchRules.placeVetoed(state.benches, Kind.TABLE, within));
+        // nobody drives it any more: it stops vetoing and goes back to standing, so the plan is not left holding a ghost
         long later = NOW + WorkbenchRules.DRIVE_GRACE_TICKS + 1;
         assertFalse(WorkbenchRules.placeVetoed(state.benches, Kind.TABLE, later));
         Workbenches.sync(state, later);

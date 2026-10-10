@@ -26,7 +26,11 @@ import static org.junit.Assert.assertTrue;
 //
 // ONE named exception, StationContradictionsTest (G): a table the planner counted from inside and now lies at 48 < d <= 50 is only
 // walked to by a task that already heads for it (previous target, the task's HOLD). a fresh craft there makes one. the rule is checked
-// for that case with the previous target, and the exception is counted so it cannot quietly grow
+// for that case with the previous target, and the exception is counted (pinned to this seed) so it cannot quietly grow
+//
+// out of the model on purpose: a split smelt's load (skipsBusy) refuses a busy furnace and makes another next to the one cooking, while
+// the planner holds the busy one (StationContradictionsTest D, by design), and the pickup veto only ever shows up as "driven this tick"
+// here (the C test walks the undriven window)
 public class StationPropertyTest {
     private static final long NOW = 6000;
     private static final int ROOMS = 6000;
@@ -148,7 +152,8 @@ public class StationPropertyTest {
         assertTrue("held looks " + heldLooks, heldLooks > 3000);
         assertTrue("walked " + walked, walked > 2000);
         assertTrue("vetoed " + vetoed, vetoed > 50);
-        assertTrue("ring " + ring, ring > 0);
+        // exactly what this seed reaches today: a change that widens the exception moves it
+        assertEquals("ring", 18, ring);
         assertEquals(failures + " held looks the task does not walk to:\n" + bad, 0, failures);
     }
 
