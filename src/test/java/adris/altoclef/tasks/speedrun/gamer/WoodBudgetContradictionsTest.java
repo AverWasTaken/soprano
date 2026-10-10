@@ -309,13 +309,15 @@ public class WoodBudgetContradictionsTest {
         f.unburnable.add(Items.CRIMSON_STEM);
         WoodBudget w = WoodBudget.of(f, cfg, BEDS);
         assertEquals(new WoodReserve.Keep(7, 0), w.keep());
-        // 12 burnable logs less the 7 kept: 5 logs, 7 smelts
-        assertEquals(7, w.burnableWoodSmelts(0));
         WoodReserve.apply(w);
         int[] usable = FuelPolicy.usable(List.of(new ItemStack(Items.CRIMSON_STEM, 10), new ItemStack(Items.OAK_LOG, 12)));
-        // known wrong: the furnace may burn all 12 oak (18 smelts), the 7 kept were taken from the stems
+        // the furnace may burn all 12 oak, the 7 kept were taken from the stems (they sort first), and the gate counts what it is handed
         assertEquals(3, usable[0]);
         assertEquals(12, usable[1]);
+        assertEquals(18, w.burnableWoodSmelts(0));
+        assertEquals(usable[1] * 3 / 2, w.burnableWoodSmelts(0));
+        // logs about to be a smoker come off the same pool: 7 kept and 4 spoken for are 11, the ten stems soak up ten, the oak one
+        assertEquals(11 * 3 / 2, w.burnableWoodSmelts(4));
     }
 
     // (f, found by the verifier) outside the overworld the furnaces are told to keep every log, but the smelts the coal detour and the

@@ -2,6 +2,7 @@ package adris.altoclef.tasks.speedrun.gamer;
 
 import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig;
 import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig.KitItem;
+import adris.altoclef.util.helpers.FuelPolicy;
 import adris.altoclef.util.helpers.ItemHelper;
 import baritone.api.utils.Dimension;
 import net.minecraft.world.item.Item;
@@ -57,7 +58,14 @@ public record WoodBudget(
         int cookChopLogs,
         // logs the log stock-up wants held to craft with (smeltExtras "log", planks count as a quarter log each), held back from the
         // furnaces once the cook has no claim. the same wood as the beds' share, not a second pile
-        int stockClaim) {
+        int stockClaim,
+        // every species of log and plank in the bag, and whether a furnace may burn it: what burnableWoodSmelts hands the reserve to,
+        // the way FuelPolicy hands it out (by name over every species, burnable or not)
+        List<Species> species) {
+
+    // a held stack of one species of wood
+    public record Species(Item item, int count, boolean burnable) {
+    }
 
     // planks and sticks per kind of tool: only the wooden tier pays the planks, every tier pays the sticks
     private static final Map<String, int[]> TOOL_WOOD = Map.of(
@@ -92,7 +100,20 @@ public record WoodBudget(
         return new WoodBudget(phase, logs, planks, f.count(Items.STICK), gather, iron, bedPlanksOwed(f, endBeds), firstBatchLogs(f, cfg),
                 keep, fuel, smokerLogsFor(f), smokerOwedFor(f), burnableLogs, burnablePlanks,
                 cfg.cookFuelLogs <= 0 || CookGate.raw(f) > 0 ? 0 : cfg.cookFuelLogs,
-                claims.kit(), claims.smoker(), claims.fuel(), claims.bed(), claims.chop(), claims.stock());
+                claims.kit(), claims.smoker(), claims.fuel(), claims.bed(), claims.chop(), claims.stock(), speciesOf(f));
+    }
+
+    private static List<Species> speciesOf(GamerFacts f) {
+        List<Species> out = new ArrayList<>();
+        for (Item[] group : new Item[][]{ItemHelper.LOG, ItemHelper.PLANKS}) {
+            for (Item item : group) {
+                int n = f.count(item);
+                if (n > 0) {
+                    out.add(new Species(item, n, f.burnable(item)));
+                }
+            }
+        }
+        return out;
     }
 
     private static final WoodReserve.Keep NOTHING = new WoodReserve.Keep(0, 0);
@@ -235,10 +256,24 @@ public record WoodBudget(
 
     // smelts of fuel in the wood above the reserve: logs and planks the furnace may burn, `spokenLogs` taken off the spare logs first
     // (logs about to go into something else). a log and a plank are both 300 ticks of fire, 1.5 items (ItemHelper.getFuelAmount)
+    // the reserve is handed out the way FuelPolicy hands it to the furnace (FuelPolicy.usable, by name over every species whether it
+    // burns or not), so a stack the furnace won't touch can soak up the reserve and leave the oak burnable, and the count is the
+    // furnace's and not a subtraction of its own
     public int burnableWoodSmelts(int spokenLogs) {
-        int spareLogs = Math.max(0, burnableLogs - keep.logs() - spokenLogs);
-        int sparePlanks = Math.max(0, burnablePlanks - keep.planks());
-        return (spareLogs + sparePlanks) * 3 / 2;
+        Item[] items = new Item[species.size()];
+        int[] counts = new int[items.length];
+        for (int i = 0; i < items.length; i++) {
+            items[i] = species.get(i).item();
+            counts[i] = species.get(i).count();
+        }
+        int[] usable = FuelPolicy.usable(items, counts, keep.logs() + spokenLogs, keep.planks());
+        int burnable = 0;
+        for (int i = 0; i < items.length; i++) {
+            if (species.get(i).burnable()) {
+                burnable += usable[i];
+            }
+        }
+        return burnable * 3 / 2;
     }
 
     // ---- the arithmetic, everything above is built from it

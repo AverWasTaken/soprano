@@ -50,23 +50,34 @@ public final class FuelPolicy {
     // to put it in the furnace moved it in the list, the reserve landed on it instead of the oak, the oak became the pick, the
     // acacia went back, and the bot swapped logs on the cursor four times a second with the furnace window open
     public static int[] usable(List<ItemStack> stacks) {
-        int[] out = new int[stacks.size()];
-        int logs = keepLogs;
-        int planks = keepPlanks;
+        Item[] items = new Item[stacks.size()];
+        int[] counts = new int[items.length];
+        for (int i = 0; i < items.length; i++) {
+            items[i] = stacks.get(i).getItem();
+            counts[i] = stacks.get(i).getCount();
+        }
+        return usable(items, counts, keepLogs, keepPlanks);
+    }
+
+    // the same over plain counts and a reserve of the caller's choosing: items[i] is held counts[i] times, the answer is how many of
+    // each may burn. this IS the rule, the stack form above and the gamer's wood budget (what its cook counts as fuel) both go
+    // through it, so what the gate counts is what the furnace will be handed, species the furnace won't touch included
+    public static int[] usable(Item[] items, int[] counts, int reserveLogs, int reservePlanks) {
+        int[] out = new int[items.length];
+        int logs = Math.max(0, reserveLogs);
+        int planks = Math.max(0, reservePlanks);
         List<Integer> order = new ArrayList<>();
         for (int i = 0; i < out.length; i++) {
             order.add(i);
         }
-        order.sort(Comparator.<Integer, String>comparing(i -> stacks.get(i).getItem().getDescriptionId())
-                .thenComparing(i -> -stacks.get(i).getCount()));
+        order.sort(Comparator.<Integer, String>comparing(i -> items[i].getDescriptionId()).thenComparing(i -> -counts[i]));
         for (int i : order) {
-            ItemStack stack = stacks.get(i);
-            int count = stack.getCount();
-            if (in(stack.getItem(), ItemHelper.LOG)) {
+            int count = counts[i];
+            if (in(items[i], ItemHelper.LOG)) {
                 int kept = Math.min(count, logs);
                 logs -= kept;
                 count -= kept;
-            } else if (in(stack.getItem(), ItemHelper.PLANKS)) {
+            } else if (in(items[i], ItemHelper.PLANKS)) {
                 int kept = Math.min(count, planks);
                 planks -= kept;
                 count -= kept;
