@@ -94,6 +94,9 @@ public class PlaceBedAndSetSpawnTask extends Task {
     private final MovementProgressChecker _progressChecker = new MovementProgressChecker();
     private boolean _stayInBed;
     private BlockPos _currentBedRegion;
+    // spots dropped for a slow block in the clear box. the search only asks canBreak about part of that box, so without
+    // this it would hand the same spot straight back
+    private final java.util.Set<BlockPos> _slowRegions = new java.util.HashSet<>();
     private BlockPos _currentStructure, _currentBreak;
     private boolean _spawnSet;
     private Subscription<ChatMessageEvent> _respawnPointSetMessageCheck;
@@ -387,11 +390,12 @@ public class PlaceBedAndSetSpawnTask extends Task {
                 for (int dy = 0; dy < BED_CLEAR_SIZE.getY(); ++dy) {
                     BlockPos toClear = _currentBedRegion.offset(dx, dy, dz);
                     if (WorldHelper.isSolid(mod, toClear)) {
-                        // the region was picked with canBreak, so this is a block that turned up since (or a pick we lost).
                         // the destroy task would refuse it and idle, so the spot goes and the search starts over
                         if (WorldHelper.tooSlowToBreak(mod, toClear)) {
+                            _slowRegions.add(_currentBedRegion.immutable());
                             _currentBedRegion = null;
                             _currentBreak = null;
+                            _currentStructure = null;
                             return null;
                         }
                         _currentBreak = toClear;
@@ -595,7 +599,7 @@ public class PlaceBedAndSetSpawnTask extends Task {
                         continue; // Skip if the distance is greater than the closest distance found so far
                     }
 
-                    if (isGoodPosition(mod, attemptPos)) {
+                    if (!_slowRegions.contains(attemptPos) && isGoodPosition(mod, attemptPos)) {
                         closestGood = attemptPos;
                         closestDist = distance;
                     }
