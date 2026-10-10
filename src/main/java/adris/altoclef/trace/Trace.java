@@ -16,6 +16,8 @@ public final class Trace {
 
     private static final TraceRing RING = new TraceRing();
 
+    private static volatile DumpCooldown cooldown = new DumpCooldown();
+
     // where the dump goes. a seam so a test can listen without scraping stdout
     private static volatile Consumer<String> sink = System.out::println;
 
@@ -36,7 +38,15 @@ public final class Trace {
 
     // straight to the sink and not through Debug, so the dump does not land in the ring it is printing
     public static void dump(String reason) {
+        dump(reason, System.currentTimeMillis());
+    }
+
+    // the clock comes in so a test does not have to wait a minute
+    static void dump(String reason, long nowMs) {
         try {
+            if (!cooldown.allow(reason, nowMs)) {
+                return;
+            }
             Consumer<String> out = sink;
             List<String> lines = RING.snapshot();
             out.accept("TRACE DUMP (" + reason + ") build " + BuildInfo.id());
@@ -51,6 +61,11 @@ public final class Trace {
 
     public static List<String> snapshot() {
         return RING.snapshot();
+    }
+
+    // tests only
+    static void forgetCooldown() {
+        cooldown = new DumpCooldown();
     }
 
     // tests only
