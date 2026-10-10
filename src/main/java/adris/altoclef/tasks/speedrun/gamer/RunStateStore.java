@@ -58,6 +58,11 @@ public final class RunStateStore {
             return fresh(fingerprint);
         }
         if (!fingerprint.equals(parsed.fingerprint)) {
+            if (isSharedFallback(file)) {
+                // every world without a cache folder writes here, so the next autosave would eat that world's run
+                moveAside(file, "it belongs to another world (\"" + parsed.fingerprint + "\" vs \"" + fingerprint + "\")");
+                return fresh(fingerprint);
+            }
             Debug.logInternal("gamer: " + file + " belongs to another world (\"" + parsed.fingerprint + "\" vs \"" + fingerprint + "\"), ignoring it");
             return fresh(fingerprint);
         }

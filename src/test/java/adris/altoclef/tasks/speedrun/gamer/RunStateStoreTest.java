@@ -422,6 +422,21 @@ public class RunStateStoreTest {
     }
 
     @Test
+    public void theSharedFallbackMovesAnotherWorldsRunAsideInsteadOfOverwritingIt() throws IOException {
+        Path shared = tmp.getRoot().toPath().resolve("gamer-nocache.json");
+        RunState other = full();
+        other.fingerprint = "Other World|";
+        RunStateStore.save(shared, other);
+        RunStateStore.Loaded loaded = RunStateStore.load(shared, FP);
+        assertFalse(loaded.resumed());
+        assertEquals(FP, loaded.state().fingerprint);
+        assertFalse(Files.exists(shared));
+        RunState kept = RunStateStore.parse(Files.readString(shared.resolveSibling("gamer-nocache.json.bad")));
+        assertEquals("Other World|", kept.fingerprint);
+        assertEquals(GamerPhase.ROOM, kept.phase);
+    }
+
+    @Test
     public void deleteForgetsTheRun() {
         RunStateStore.save(file(), full());
         assertTrue(RunStateStore.delete(file()));
