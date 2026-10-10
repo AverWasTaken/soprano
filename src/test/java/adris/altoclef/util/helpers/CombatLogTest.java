@@ -66,6 +66,30 @@ public class CombatLogTest {
     }
 
     @Test
+    public void theNewRunReasonsSayWhy() {
+        assertEquals("combat: [overworld] RUN from 2 zombies, 1 skeleton (a crowd on us, hp 14)", line(Dimension.OVERWORLD, Event.RUN_START, Why.CROWD));
+        assertEquals("combat: [overworld] RUN from 2 zombies, 1 skeleton (it hit us and we have nothing to hit back with, hp 14)",
+                line(Dimension.OVERWORLD, Event.RUN_START, Why.UNARMED));
+        assertEquals("combat: [overworld] FIGHT -> RUN from 2 zombies, 1 skeleton (a crowd on us, hp 14)",
+                line(Dimension.OVERWORLD, Event.FIGHT_TO_RUN, Why.CROWD));
+    }
+
+    @Test
+    public void aStanceChangeSaysFromToAndWhy() {
+        assertEquals("combat: [overworld] stance CALM -> FLEE (running, nearest 6 blocks, too close to eat, hp 7)",
+                CombatLog.stance(Dimension.OVERWORLD, CombatRules.Stance.CALM, CombatRules.Stance.FLEE,
+                        "running, nearest 6 blocks, too close to eat", 7));
+    }
+
+    @Test
+    public void aHitSaysWhoAndHowWhenTheClientKnows() {
+        assertEquals("combat: [overworld] hurt 4.0 by skeleton (arrow)", CombatLog.hurt(Dimension.OVERWORLD, 4f, "skeleton", "arrow"));
+        assertEquals("combat: [nether] hurt 2.5 (fall)", CombatLog.hurt(Dimension.NETHER, 2.5f, null, "fall"));
+        assertEquals("combat: [end] hurt 1.0 by zombie", CombatLog.hurt(Dimension.END, 1f, "zombie", null));
+        assertEquals("combat: [end] hurt 1.0 (source unknown)", CombatLog.hurt(Dimension.END, 1f, null, null));
+    }
+
+    @Test
     public void theEndingLinesSayHowItEnded() {
         assertEquals("combat: [overworld] fight over, zombie dead", line(Dimension.OVERWORLD, Event.FIGHT_DEAD, Why.NONE));
         assertEquals("combat: [overworld] fight over, lost track of zombie", line(Dimension.OVERWORLD, Event.FIGHT_LOST, Why.NONE));

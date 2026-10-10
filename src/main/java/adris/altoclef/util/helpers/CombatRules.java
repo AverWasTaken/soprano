@@ -28,10 +28,22 @@ public final class CombatRules {
     // at or below this a bite is better than a fight we are losing, as long as nothing is on top of us
     public static final float CRITICAL_HEALTH = 4;
     public static final double QUICK_BITE_CLEARANCE = 3;
-    // a run may stop to chew once the nearest thing angry at us is further than this, and nothing that shoots can see us.
-    // the bite is dropped the moment somebody closes inside it again (the stance flips back to FLEE), chewing is walking at a
-    // fraction of the speed
-    public static final double RUN_BITE_CLEARANCE = 8;
+    // a run may sit down to a bite when the nearest thing angry at us is at least RUN_BITE_START away (and nothing that shoots
+    // has a line on us), and once it has started it is only dropped when somebody gets inside RUN_BITE_ABORT. one line for
+    // both made a follower at 9 cancel every bite, and a bite that never lands is just a slower run.
+    // the arithmetic: a bite is 32 ticks (1.6 s) and a chewing player walks at a fifth of the speed, about 0.9 blocks a second
+    // (and cannot sprint). a zombie goes about 2.3 (the speed attribute counts twice for a mob, once as the speed and once as
+    // the forward input), so it gains about 1.5 blocks a second, 2.4 over a bite: a bite started at 10 ends with it at 7.6,
+    // 2.6 blocks clear of the abort line. a spider (0.3) goes about 4 and gains 5.1 over a bite, a baby zombie (0.345) about
+    // 5.2 and gains 6.9: no pair of lines gives those margin at 10, and widening the abort line would drop every bite, so
+    // they are kept out of "may start" instead: nothing that fast within RUN_BITE_START_FAST, which is the abort line plus
+    // the worst gain (6.9) plus a block of slack, after which they end a bite at 6 or more
+    public static final double RUN_BITE_START = 10;
+    public static final double RUN_BITE_ABORT = 5;
+    public static final double RUN_BITE_START_FAST = 13;
+    // a mob with at least this movement speed attribute is "fast" for the bite (spiders, baby zombies, vindicators; a plain
+    // zombie is 0.23, a skeleton 0.25)
+    public static final double FAST_MOB_SPEED = 0.3;
     // a shooter this far off with a line to us counts as "being shot at": no sitting down to a meal in its sights
     public static final double SHOOTER_RANGE = 15;
 

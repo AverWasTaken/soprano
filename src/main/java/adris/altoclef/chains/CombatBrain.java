@@ -17,6 +17,9 @@ import adris.altoclef.util.helpers.EntityHelper;
 import adris.altoclef.util.helpers.FoeRules;
 import adris.altoclef.util.helpers.MobReachability;
 import adris.altoclef.util.helpers.Provocations;
+import adris.altoclef.util.helpers.StorageHelper;
+import adris.altoclef.util.helpers.WeaponPick;
+import adris.altoclef.util.slots.PlayerSlot;
 import adris.altoclef.util.helpers.WorldHelper;
 import baritone.api.behavior.IPathingBehavior;
 import baritone.api.pathing.calc.IPath;
@@ -33,10 +36,13 @@ import java.util.Map;
 import java.util.Set;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.entity.monster.Slime;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.phys.AABB;
 
@@ -62,6 +68,11 @@ final class CombatBrain {
     private int _meleeNear;
     private int _meleeAround;
     private boolean _shotAt;
+    private static final long STANCE_LOG_GAP = 20;
+    private CombatRules.Stance _loggedStance = CombatRules.Stance.CALM;
+    private long _stanceLogAt = Long.MIN_VALUE;
+    private float _lastHealth = -1;
+    private DamageSource _lastSource;
     private CommittedRunTask _run;
     private KillEntityTask _fight;
     private int _fightId = -1;
@@ -127,6 +138,10 @@ final class CombatBrain {
         _meleeNear = 0;
         _meleeAround = 0;
         _shotAt = false;
+        _loggedStance = CombatRules.Stance.CALM;
+        _stanceLogAt = Long.MIN_VALUE;
+        _lastHealth = -1;
+        _lastSource = null;
         _run = null;
         _fight = null;
         _fightId = -1;
@@ -214,7 +229,7 @@ final class CombatBrain {
             // how far the run got, asked before the step: an end chained into a new run has moved the origin by the time we say so
             int blocks = (int) Math.round(Math.hypot(player.getX() - _commit.originX(), player.getZ() - _commit.originZ()));
             Event event = _commit.step(new CombatCommit.Tick(now, player.getHealth(), player.getX(), player.getZ(), foes, target,
-                    way(mod, mobs, foes)));
+                    way(mod, mobs, foes), armed(mod, foes)));
             if (event != Event.NONE) {
                 // the old one ended and the next one started on the same step, both get their line, in that order
                 if (_commit.endedFirst() != Event.NONE) log(mod, dimension, _commit.endedFirst(), fighting, mobs, blocks);
@@ -238,9 +253,16 @@ final class CombatBrain {
         int meleeAround = 0;
         double nearest = Double.POSITIVE_INFINITY;
         boolean shotAt = false;
+        double nearestFast = Double.POSITIVE_INFINITY;
         for (int i = 0; i < foes.size(); i++) {
             Foe foe = foes.get(i);
             nearest = Math.min(nearest, foe.distance());
+            // (the nearest fast one gets to say when a bite may start, see CombatRules.RUN_BITE_START_FAST. shooters keep
+            // their distance, so they are not chasers)
+            if (foe.melee() && foe.distance() < nearestFast
+                    && mobs.get(i).getAttributeValue(Attributes.MOVEMENT_SPEED) >= CombatRules.FAST_MOB_SPEED) {
+                nearestFast = foe.distance();
+            }
             // a shooter close enough to hit us with a line to us. the los ray is only cast for the ones that are in range
             if (!shotAt && foe.ranged() && !foe.creeper() && foe.distance() <= CombatRules.SHOOTER_RANGE
                     && mobs.get(i).hasLineOfSight(player)) {
@@ -255,7 +277,61 @@ final class CombatBrain {
         _meleeNear = meleeNear;
         _meleeAround = meleeAround;
         _shotAt = shotAt;
-        _stance = stance(mod, nearest, creeperClose, shotAt);
+        CombatCommit.Bite bite = new CombatCommit.Bite(shotAt, nearestFast, mod.getFoodChain().isTryingToEat());
+        _stance = stance(mod, nearest, creeperClose, bite);
+        logStance(mod, dimension, now, nearest, creeperClose, bite);
+        logHurt(mod, dimension);
+    }
+
+    // a stance change is a line, but a follower hovering right on the bite line would flip it every tick, so a line is at most
+    // one per STANCE_LOG_GAP ticks and carries from the last stance we said to the one we are in now. the reason string is only
+    // built when the line goes out
+    private void logStance(AltoClef mod, Dimension dimension, long now, double nearest, boolean creeperClose, CombatCommit.Bite bite) {
+        if (_stance == _loggedStance || (now >= _stanceLogAt && now - _stanceLogAt < STANCE_LOG_GAP)) return;
+        LocalPlayer player = mod.getPlayer();
+        String why = CombatCommit.stanceWhy(_commit.mode(), player.getHealth(), nearest, creeperClose, bite);
+        Debug.logInternal(CombatLog.stance(dimension, _loggedStance, _stance, why, Math.round(player.getHealth())));
+        _loggedStance = _stance;
+        _stanceLogAt = now;
+    }
+
+    // hp went down: one line per new damage source object (the client makes a fresh one per hit), naming who if it knows
+    private void logHurt(AltoClef mod, Dimension dimension) {
+        LocalPlayer player = mod.getPlayer();
+        float hp = player.getHealth();
+        float before = _lastHealth;
+        _lastHealth = hp;
+        if (before < 0 || hp >= before) return;
+        DamageSource source = player.getLastDamageSource();
+        if (source != null && source == _lastSource) return;
+        _lastSource = source;
+        String who = null;
+        String how = null;
+        if (source != null) {
+            how = source.getMsgId();
+            Entity attacker = source.getEntity();
+            if (attacker != null) {
+                who = attacker instanceof Mob mob ? MobReachability.shortName(mob)
+                        : BuiltInRegistries.ENTITY_TYPE.getKey(attacker.getType()).getPath();
+            }
+        }
+        Debug.logInternal(CombatLog.hurt(dimension, before - hp, who, how));
+    }
+
+    // a sword, an axe, or a tool that hits harder than a fist (the fight task swings those, see useToolsWhenUnarmed). only the
+    // machine's idle and run ask, so the bag is only walked when something is on us or we are already running
+    private boolean armed(AltoClef mod, List<Foe> foes) {
+        boolean asked = _commit.mode() == Mode.RUN;
+        for (Foe foe : foes) {
+            if (foe.distance() <= CombatCommit.CONTACT) asked = true;
+        }
+        if (!asked) return true;
+        List<WeaponPick.Candidate> candidates = new ArrayList<>();
+        candidates.add(WeaponPick.Candidate.of(StorageHelper.getItemStackInSlot(PlayerSlot.getEquipSlot())));
+        for (ItemStack stack : mod.getItemStorage().getItemStacksPlayerInventory(true)) {
+            candidates.add(WeaponPick.Candidate.of(stack));
+        }
+        return WeaponPick.best(candidates) != null || WeaponPick.bestTool(candidates) != null;
     }
 
     // how many path nodes ahead count as "in the way". three is the next couple of steps, further out the mob has time to move
@@ -303,10 +379,10 @@ final class CombatBrain {
         return new CombatCommit.Way(inWay, moving, y);
     }
 
-    private CombatRules.Stance stance(AltoClef mod, double nearest, boolean creeperClose, boolean shotAt) {
+    private CombatRules.Stance stance(AltoClef mod, double nearest, boolean creeperClose, CombatCommit.Bite bite) {
         // gapples are never picked as food (FoodSelector keeps them for exactly this), so check the bag ourselves
         boolean gapple = mod.getItemStorage().hasItem(Items.GOLDEN_APPLE) || mod.getItemStorage().hasItem(Items.ENCHANTED_GOLDEN_APPLE);
-        return CombatCommit.stance(_commit.mode(), mod.getPlayer().getHealth(), nearest, creeperClose, gapple, shotAt);
+        return CombatCommit.stance(_commit.mode(), mod.getPlayer().getHealth(), nearest, creeperClose, gapple, bite);
     }
 
     // the fight target looked up on its own: it can have stopped being angry (or being a candidate at all) and still be the

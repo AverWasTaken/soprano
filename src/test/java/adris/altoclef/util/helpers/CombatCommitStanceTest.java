@@ -36,40 +36,100 @@ public class CombatCommitStanceTest {
         assertFalse(CombatCommit.stance(Mode.RUN, 6, 5, false, false).mayEat());
     }
 
-    // the run stays through a bite and the food chain does it in the background, once the nearest thing angry at us is past
-    // the bite clearance. closer than that chewing (walking at a fraction of the speed) just hands them the gap
+    // the run stays through a bite and the food chain does it in the background. a bite may START with the nearest angry thing
+    // at RUN_BITE_START or further, and once started only a threat inside RUN_BITE_ABORT drops it
     @Test
-    public void aRunMayEatOnceNothingAngryIsWithinEight() {
+    public void aRunMayStartABiteOnlyFromTenBlocksOut() {
         assertTrue(CombatCommit.stance(Mode.RUN, 20, 12.5, false, false).mayEat());
         assertTrue(CombatCommit.stance(Mode.RUN, 5, 30, false, false).mayEat());
         assertTrue(CombatCommit.stance(Mode.RUN, 3, NOBODY, false, false).mayEat());
-        assertTrue(CombatCommit.stance(Mode.RUN, 7, 8.5, false, false).mayEat());
+        assertTrue(CombatCommit.stance(Mode.RUN, 7, CombatRules.RUN_BITE_START, false, false).mayEat());
+        // a follower at 9 does not start one (it would be cancelled a second later)
+        assertFalse(CombatCommit.stance(Mode.RUN, 7, 9.9, false, false).mayEat());
+        assertEquals(Stance.FLEE, CombatCommit.stance(Mode.RUN, 3, 9, false, false));
     }
 
     @Test
-    public void aFollowerBetweenEightAndTwelveMayNowWatchUsEat() {
-        // (this used to be a no meal band all the way out to the run's own clear line, so a hurt bot with a spider on its
-        // heels never ate at all)
-        assertEquals(Stance.CALM, CombatCommit.stance(Mode.RUN, 20, 11, false, false));
-        assertEquals(Stance.CALM, CombatCommit.stance(Mode.RUN, 7, 9, false, false));
-        assertEquals(Stance.CALM, CombatCommit.stance(Mode.RUN, 7, CombatCommit.RUN_CLEAR, false, false));
-        // and the moment it closes to the line the bite is off again
-        assertEquals(Stance.FLEE, CombatCommit.stance(Mode.RUN, 3, CombatRules.RUN_BITE_CLEARANCE, false, false));
-        assertFalse(CombatCommit.stance(Mode.RUN, 20, CombatRules.RUN_BITE_CLEARANCE, false, false).mayEat());
+    public void aBiteThatHasStartedOnlyStopsInsideFive() {
+        CombatCommit.Bite biting = new CombatCommit.Bite(false, NOBODY, true);
+        // the same follower that could not start one at 9 does not stop one under way
+        assertEquals(Stance.CALM, CombatCommit.stance(Mode.RUN, 7, 9, false, false, biting));
+        assertEquals(Stance.CALM, CombatCommit.stance(Mode.RUN, 7, 5, false, false, biting));
+        assertEquals(Stance.FLEE, CombatCommit.stance(Mode.RUN, 3, 4.9, false, false, biting));
+        assertFalse(CombatCommit.stance(Mode.RUN, 20, 4.9, false, false, biting).mayEat());
+        // and a bite that was dropped does not start again at 7
+        assertFalse(CombatCommit.stance(Mode.RUN, 7, 7, false, false).mayEat());
+    }
+
+    // the numbers behind the pair, walked: a chewing player gains nothing on a follower (0.86 blocks a second), and a bite is
+    // 32 ticks. closing is the blocks a second the follower gains, and each one has to finish its bite with a margin
+    private static double firstStart(boolean fast) {
+        for (double d = 5; d < 30; d += 0.05) {
+            CombatCommit.Bite bite = new CombatCommit.Bite(false, fast ? d : NOBODY, false);
+            if (CombatCommit.stance(Mode.RUN, 10, d, false, false, bite) == Stance.CALM) return d;
+        }
+        throw new AssertionError("never starts");
+    }
+
+    private static double finishedAt(double start, double closing) {
+        double d = start;
+        CombatCommit.Bite biting = new CombatCommit.Bite(false, NOBODY, true);
+        for (int tick = 0; tick < 32; tick++) {
+            assertEquals("tick " + tick + " at " + d, Stance.CALM, CombatCommit.stance(Mode.RUN, 10, d, false, false, biting));
+            d -= closing / 20;
+        }
+        return d;
+    }
+
+    @Test
+    public void aWalkingZombieWalkedInFromTenNeverInterruptsTheBite() {
+        double start = firstStart(false);
+        assertEquals(10, start, 0.05);
+        // a zombie goes about 2.3 blocks a second, the chewing player 0.9: it gains 1.5
+        double end = finishedAt(start, 1.5);
+        assertTrue("ends at " + end, end > CombatRules.RUN_BITE_ABORT + 2);
+        // and only once it gets inside the abort line does the stance go back to feet
+        double d = end;
+        CombatCommit.Bite biting = new CombatCommit.Bite(false, NOBODY, true);
+        while (CombatCommit.stance(Mode.RUN, 10, d, false, false, biting) == Stance.CALM) d -= 0.05;
+        assertEquals(CombatRules.RUN_BITE_ABORT, d, 0.1);
+    }
+
+    @Test
+    public void somethingFastIsKeptOutOfMayStartInsteadOfWideningTheAbortLine() {
+        // spider: ~4 blocks a second, gains 3.2 on a chewing player. baby zombie: ~5.2, gains 4.3
+        double start = firstStart(true);
+        assertEquals(CombatRules.RUN_BITE_START_FAST, start, 0.05);
+        assertTrue(finishedAt(start, 3.2) > CombatRules.RUN_BITE_ABORT + 2);
+        assertTrue(finishedAt(start, 4.3) > CombatRules.RUN_BITE_ABORT);
+        // a plain zombie's start would not have survived them, that is why they have their own
+        assertTrue(10 - 4.3 * 1.6 < CombatRules.RUN_BITE_ABORT);
+        // a fast one at 12 does not let a bite start even with nothing else near
+        assertFalse(CombatCommit.stance(Mode.RUN, 5, 12, false, false, new CombatCommit.Bite(false, 12, false)).mayEat());
+        assertTrue(CombatCommit.stance(Mode.RUN, 5, 13, false, false, new CombatCommit.Bite(false, 13, false)).mayEat());
+        // but one that closes in on a bite under way is the abort line's business, not the start line's
+        assertEquals(Stance.CALM, CombatCommit.stance(Mode.RUN, 5, 8, false, false, new CombatCommit.Bite(false, 8, true)));
     }
 
     @Test
     public void aShooterWithALineOnUsKeepsTheRunOffTheMenu() {
-        assertFalse(CombatCommit.stance(Mode.RUN, 7, 11, false, false, true).mayEat());
-        assertEquals(Stance.FLEE, CombatCommit.stance(Mode.RUN, 3, NOBODY, false, false, true));
+        CombatCommit.Bite shot = new CombatCommit.Bite(true, NOBODY, false);
+        assertFalse(CombatCommit.stance(Mode.RUN, 7, 15, false, false, shot).mayEat());
+        assertEquals(Stance.FLEE, CombatCommit.stance(Mode.RUN, 3, NOBODY, false, false, shot));
+        // one that finds us mid bite stops it too
+        assertFalse(CombatCommit.stance(Mode.RUN, 7, 15, false, false, new CombatCommit.Bite(true, NOBODY, true)).mayEat());
         // not shot at, same spot: lunch
-        assertTrue(CombatCommit.stance(Mode.RUN, 7, 11, false, false, false).mayEat());
+        assertTrue(CombatCommit.stance(Mode.RUN, 7, 15, false, false).mayEat());
     }
 
     @Test
-    public void theBiteLineIsEightBlocksAndShootersCountFromFifteen() {
-        assertEquals(8, CombatRules.RUN_BITE_CLEARANCE, 0);
+    public void theBiteLinesAreNamedAndOrdered() {
+        assertEquals(10, CombatRules.RUN_BITE_START, 0);
+        assertEquals(5, CombatRules.RUN_BITE_ABORT, 0);
+        assertEquals(13, CombatRules.RUN_BITE_START_FAST, 0);
         assertEquals(15, CombatRules.SHOOTER_RANGE, 0);
+        assertTrue(CombatRules.RUN_BITE_ABORT < CombatRules.RUN_BITE_START);
+        assertTrue(CombatRules.RUN_BITE_START < CombatRules.RUN_BITE_START_FAST);
     }
 
     // the quick bite at hp 4 means "nothing next to us". committed, something is within 8, so it is a flee
@@ -122,8 +182,10 @@ public class CombatCommitStanceTest {
         // it falls back to 10 and the bot may chew while it walks on
         assertEquals(Stance.CALM, CombatCommit.stance(c.mode(), hp, 10, false, false));
         assertTrue(CombatRules.healingMeal(hp, hunger));
-        // and it closes to 7: the bite stops
-        assertEquals(Stance.FLEE, CombatCommit.stance(c.mode(), hp, 7, false, false));
+        // and it closes to 7 mid bite: still chewing, only a threat inside 5 drops it
+        CombatCommit.Bite biting = new CombatCommit.Bite(false, NOBODY, true);
+        assertEquals(Stance.CALM, CombatCommit.stance(c.mode(), hp, 7, false, false, biting));
+        assertEquals(Stance.FLEE, CombatCommit.stance(c.mode(), hp, 4, false, false, biting));
         // far away and quiet for two seconds, 30 blocks out: the run is over
         CombatCommit.Event last = CombatCommit.Event.NONE;
         for (long now = t + 1; now <= t + 100 && c.mode() == Mode.RUN; now++) {
@@ -139,13 +201,13 @@ public class CombatCommitStanceTest {
 
     @Test
     public void whyTheStanceIsWhatItIsSaysSo() {
-        assertEquals("running, nearest 6 blocks, too close to eat", CombatCommit.stanceWhy(Mode.RUN, 6, 6, false, false));
-        assertEquals("running, nearest 10 blocks, free to eat", CombatCommit.stanceWhy(Mode.RUN, 6, 10, false, false));
-        assertEquals("running, a shooter has a line on us", CombatCommit.stanceWhy(Mode.RUN, 6, 10, false, true));
-        assertEquals("fighting, no meals mid fight", CombatCommit.stanceWhy(Mode.FIGHT, 15, 2, false, false));
-        assertEquals("a lit creeper is close", CombatCommit.stanceWhy(Mode.NONE, 15, NOBODY, true, false));
-        assertEquals("hp 7 with something within 8, nearest 5 blocks", CombatCommit.stanceWhy(Mode.NONE, 7, 5, false, false));
-        assertEquals("calm, nothing angry in sight", CombatCommit.stanceWhy(Mode.NONE, 15, NOBODY, false, false));
+        assertEquals("running, nearest 6 blocks, too close to eat", CombatCommit.stanceWhy(Mode.RUN, 6, 6, false, CombatCommit.Bite.NONE));
+        assertEquals("running, nearest 10 blocks, free to eat", CombatCommit.stanceWhy(Mode.RUN, 6, 10, false, CombatCommit.Bite.NONE));
+        assertEquals("running, a shooter has a line on us", CombatCommit.stanceWhy(Mode.RUN, 6, 10, false, new CombatCommit.Bite(true, NOBODY, false)));
+        assertEquals("fighting, no meals mid fight", CombatCommit.stanceWhy(Mode.FIGHT, 15, 2, false, CombatCommit.Bite.NONE));
+        assertEquals("a lit creeper is close", CombatCommit.stanceWhy(Mode.NONE, 15, NOBODY, true, CombatCommit.Bite.NONE));
+        assertEquals("hp 7 with something within 8, nearest 5 blocks", CombatCommit.stanceWhy(Mode.NONE, 7, 5, false, CombatCommit.Bite.NONE));
+        assertEquals("calm, nothing angry in sight", CombatCommit.stanceWhy(Mode.NONE, 15, NOBODY, false, CombatCommit.Bite.NONE));
     }
 
     @Test

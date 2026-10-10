@@ -59,9 +59,25 @@ public final class CombatLog {
                 + (failed ? "no path running, asking again" : "path asked for");
     }
 
+    // the food chain's stance moved. reason is CombatCommit.stanceWhy, so a hurt bot that is not eating says why not
+    public static String stance(Dimension dimension, CombatRules.Stance from, CombatRules.Stance to, String reason, int hp) {
+        return "combat: [" + dimension.name().toLowerCase(Locale.ROOT) + "] stance " + from + " -> " + to + " (" + reason + ", hp " + hp + ")";
+    }
+
+    // hp went down. amount in hearts-and-halves, who is the attacker's name or null, how is the damage type ("arrow",
+    // "mob", "fall"), both null when the client does not know
+    public static String hurt(Dimension dimension, float amount, String who, String how) {
+        String tag = "combat: [" + dimension.name().toLowerCase(Locale.ROOT) + "] hurt " + String.format(Locale.ROOT, "%.1f", amount);
+        if (who == null && how == null) return tag + " (source unknown)";
+        if (who == null) return tag + " (" + how + ")";
+        return tag + " by " + who + (how == null ? "" : " (" + how + ")");
+    }
+
     public static String runWhy(Why why, int hp) {
         return switch (why) {
             case HEAVY -> "something nasty close, hp " + hp;
+            case CROWD -> "a crowd on us, hp " + hp;
+            case UNARMED -> "it hit us and we have nothing to hit back with, hp " + hp;
             default -> "hp " + hp;
         };
     }

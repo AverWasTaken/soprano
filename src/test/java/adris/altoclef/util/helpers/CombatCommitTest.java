@@ -414,7 +414,8 @@ public class CombatCommitTest {
     }
 
     @Test
-    public void aCrowdJoiningAFightDoesNotBailIt() {
+    public void twoOnUsAndTwoBystandersDoNotBailAFightAtFullHealth() {
+        // (only the ones actually on us count towards a crowd, see CombatCommitCrowdTest: two on us is a fight at 20 hp)
         CombatCommit c = fightOn(zombie(7, 2, 0));
         holds(c, NOW + 1, NOW + 100, now -> {
             Foe z = zombie(7, 2, now - NOW);

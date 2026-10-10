@@ -100,7 +100,7 @@ public class CombatCommitEdgesTest {
     @Test
     public void aCorneredFightDoesNotBailOnAWardenWalkingUp() {
         CombatCommit commit = new CombatCommit();
-        Foe z = zombie(1, 1.5, 3);
+        Foe z = zombie(1, 1.5, NEVER);
         assertEquals(Event.RUN_START, commit.step(tick(100, 6, null, z)));
         // stuck on the spot with it on us for three seconds
         Event event = Event.NONE;
@@ -118,7 +118,7 @@ public class CombatCommitEdgesTest {
     @Test
     public void aCorneredFightNeverChainsIntoAWardenTouchingUs() {
         CombatCommit commit = new CombatCommit();
-        Foe z = zombie(1, 1.5, 3);
+        Foe z = zombie(1, 1.5, NEVER);
         assertEquals(Event.RUN_START, commit.step(tick(100, 6, null, z)));
         Event event = Event.NONE;
         for (long t = 101; t <= 101 + CombatCommit.CORNER_TICKS + 1 && event == Event.NONE; t++) {
@@ -136,7 +136,7 @@ public class CombatCommitEdgesTest {
     @Test
     public void aCorneredFightWonAtFullHealthNextToAWardenIsARunAtOnce() {
         CombatCommit commit = new CombatCommit();
-        Foe z = zombie(1, 1.5, 3);
+        Foe z = zombie(1, 1.5, NEVER);
         assertEquals(Event.RUN_START, commit.step(tick(100, 6, null, z)));
         Event event = Event.NONE;
         for (long t = 101; t <= 101 + CombatCommit.CORNER_TICKS + 1 && event == Event.NONE; t++) {
@@ -152,7 +152,7 @@ public class CombatCommitEdgesTest {
     @Test
     public void aCorneredFightWonWithTheWardenFarOffIsJustOver() {
         CombatCommit commit = new CombatCommit();
-        Foe z = zombie(1, 1.5, 3);
+        Foe z = zombie(1, 1.5, NEVER);
         assertEquals(Event.RUN_START, commit.step(tick(100, 6, null, z)));
         Event event = Event.NONE;
         for (long t = 101; t <= 101 + CombatCommit.CORNER_TICKS + 1 && event == Event.NONE; t++) {
