@@ -53,6 +53,7 @@ public abstract class DoStuffInContainerTask extends Task {
     // two furnaces standing they disagreed. this is the one block we both walk to and click, rebuilt only when it changes
     private Task _openTask;
     private BlockPos _openTaskPos;
+    private boolean _openBeside;
     // the choice is made once per game tick, the smelt tasks ask it too (stationInUse) and the tracker search is not free
     private long _pickTick = Long.MIN_VALUE;
     private StationChoice.Pick<BlockPos> _pick = new StationChoice.Pick<>(StationChoice.Use.NONE, null);
@@ -234,12 +235,15 @@ public abstract class DoStuffInContainerTask extends Task {
             mod.getSlotHandler().clickSlot(toMoveTo.get(), 0, ClickType.PICKUP);
             return null;
         }
-        if (_openTask == null || !target.equals(_openTaskPos)) {
+        // a station of the gamer's own gets walked to from beside it, not from on top of it: the top is a climb and, in a low
+        // tunnel, a ceiling to dig. plain alto and anything that is not a station keep the stock walk. asked every tick because the
+        // registry can learn about a station a tick after the task started walking to it
+        boolean beside = _stationKind != null && StationHook.ours(target);
+        if (_openTask == null || !target.equals(_openTaskPos) || beside != _openBeside) {
             _openTaskPos = target;
+            _openBeside = beside;
             InteractWithBlockTask open = new InteractWithBlockTask(_openTaskPos);
-            // a station of the gamer's own gets walked to from beside it, not from on top of it: the top is a climb and, in a low
-            // tunnel, a ceiling to dig. plain alto and anything that is not a station keep the stock walk
-            _openTask = _stationKind != null && StationHook.ours(_openTaskPos) ? open.walkTo(BESIDE) : open;
+            _openTask = beside ? open.walkTo(BESIDE) : open;
         }
         return _openTask;
     }
