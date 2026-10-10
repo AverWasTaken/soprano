@@ -7,10 +7,12 @@ import adris.altoclef.trace.CursorWatch;
 import adris.altoclef.trace.DebugCollapse;
 import adris.altoclef.trace.Lines;
 import adris.altoclef.trace.MonitorErrors;
+import adris.altoclef.trace.StandWatch;
 import adris.altoclef.trace.Trace;
 import adris.altoclef.trace.Vitals;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WorldHelper;
+import baritone.Baritone;
 import baritone.api.utils.DebugTap;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
@@ -36,6 +38,7 @@ public final class Monitors {
     private int vitalsTicks;
     private int cursorTicks;
     private final CursorWatch cursorWatch = new CursorWatch();
+    private final StandWatch standWatch = new StandWatch();
 
     // baritone's logDebug goes nowhere unless chatDebug is on, which is most of what it says about why it stopped. the
     // collapse is static because the tap is, and so is the tick it stamps lines with (the path threads log too)
@@ -91,6 +94,11 @@ public final class Monitors {
         } catch (RuntimeException e) {
             broke("baritone tap", e);
         }
+        try {
+            watchStand(mod);
+        } catch (RuntimeException e) {
+            broke("stand", e);
+        }
         if (++cursorTicks < CURSOR_EVERY) {
             return;
         }
@@ -99,6 +107,26 @@ public final class Monitors {
             watchCursor();
         } catch (RuntimeException e) {
             broke("cursor", e);
+        }
+    }
+
+    // a live path is baritone holding an executor (the path on screen). paused, or stuck inside a movement, or starved of
+    // input all still count, naming which is the whole job of the line
+    private void watchStand(AltoClef mod) {
+        LocalPlayer player = Minecraft.getInstance().player;
+        if (player == null) {
+            return;
+        }
+        Baritone baritone = mod.getClientBaritone();
+        StandWatch.Event event = standWatch.tick(StandReport.live(baritone), player.getX(), player.getY(), player.getZ());
+        if (event == StandWatch.Event.OVER) {
+            Debug.logInternal(Lines.standOver(standWatch.lastStand(), standWatch.overBecauseMoved()));
+        } else if (event == StandWatch.Event.FIRE) {
+            Debug.logInternal(StandReport.line(mod, baritone, player, standWatch.ticks(), BARITONE.latest(), clientTick - BARITONE.latestTick()));
+            if (standWatch.wantsDump()) {
+                // after the line, so the dump has it. the cooldown keeps this to one a minute with the other monitors
+                Trace.dump("monitor:stand");
+            }
         }
     }
 
