@@ -29,8 +29,8 @@ public record WoodBudget(
         int bedPlanksOwed,
         // the first small trip of the gather, just a table and the axe, so the axe is in hand for the real batch
         int firstBatchLogs,
-        // wood spoken for, the rest is spare. it is the GATHER's view of what is owed (gatherLogsOwed) in every phase, which is
-        // known-wrong in IRON: there the beds are not owed any more, but the reserve still keeps their planks (see WoodBudgetTest)
+        // wood spoken for, the rest is spare. the GATHER's view of what is owed (gatherLogsOwed) in every phase but IRON; there it is
+        // that view less what the cook takes off the beds' share (see the claims below)
         WoodReserve.Keep keep,
         // what the furnaces are told to leave alone (FuelPolicy): keep in the overworld, all of it everywhere else
         WoodReserve.Keep fuelKeep,
@@ -41,7 +41,20 @@ public record WoodBudget(
         // logs and planks a furnace is allowed to touch at all (altoSupportedFuels), before the reserve comes off
         int burnableLogs, int burnablePlanks,
         // the most logs cookFuelLogs asks for: cfg.cookFuelLogs while no raw meat is in the bag, else 0. the rest is the food plan's say
-        int cookFuelCap) {
+        int cookFuelCap,
+        // ---- the claims on the logs we hold, IRON only (0 in the other phases, which keep the gather's view). in priority order: the
+        // kit, then the cook, then the end beds with whatever is left. when logs are scarce the cook eats logs that were banked for
+        // beds and the END phase chops again, on purpose: fed now beats beds later
+        // the wood the kit's remaining crafts hold, the iron form: no lost axe, no beds, no slack. the logs it holds are never the cook's
+        WoodReserve.Keep kitClaim,
+        // logs a smoker still to be made will eat, while raw meat is waiting and nothing can cook it yet (0 once a smoker exists)
+        int smokerClaim,
+        // logs of fuel the waiting raw meat needs, only the part coal and the planks above the reserve do not cover
+        int fuelClaim,
+        // what the reserve keeps for the end beds (and the gather's slack) on top of the kit's claim, once the cook has had its share
+        WoodReserve.Keep bedClaim,
+        // logs the iron phase chops for the cook: its claim less the logs held beyond the kit. 0 down in a mine, no climb out for it
+        int cookChopLogs) {
 
     // planks and sticks per kind of tool: only the wooden tier pays the planks, every tier pays the sticks
     private static final Map<String, int[]> TOOL_WOOD = Map.of(
@@ -62,14 +75,61 @@ public record WoodBudget(
         int logs = f.count(ItemHelper.LOG);
         int planks = f.count(ItemHelper.PLANKS);
         int gather = owed(f, cfg, endBeds, true);
-        WoodReserve.Keep keep = keepOf(f, cfg, endBeds, logs, planks, gather);
+        WoodReserve.Keep gatherKeep = keepOf(f, cfg, endBeds, logs, planks, gather);
+        int iron = owed(f, cfg, endBeds, false);
+        int burnableLogs = burnable(f, ItemHelper.LOG);
+        int burnablePlanks = burnable(f, ItemHelper.PLANKS);
+        Claims claims = phase == GamerPhase.IRON
+                ? claimsOf(f, cfg, endBeds, logs, planks, burnableLogs, burnablePlanks, gatherKeep, iron)
+                : new Claims(gatherKeep, NOTHING, 0, 0, NOTHING, 0);
+        WoodReserve.Keep keep = claims.keep();
         // the run lets wood burn (GamerTask.withWoodFuel) for the overworld cook. nothing down in the nether budgets it, so a clear
         // reserve would let one smelt eat every log in the bag: keep all of it, coal still burns
         WoodReserve.Keep fuel = f.dimension() == Dimension.OVERWORLD ? keep : new WoodReserve.Keep(logs, planks);
-        int iron = owed(f, cfg, endBeds, false);
         return new WoodBudget(phase, logs, planks, f.count(Items.STICK), gather, iron, bedPlanksOwed(f, endBeds), firstBatchLogs(f, cfg),
-                keep, fuel, smokerLogsFor(f), smokerOwedFor(f), burnable(f, ItemHelper.LOG), burnable(f, ItemHelper.PLANKS),
-                cfg.cookFuelLogs <= 0 || CookGate.raw(f) > 0 ? 0 : cfg.cookFuelLogs);
+                keep, fuel, smokerLogsFor(f), smokerOwedFor(f), burnableLogs, burnablePlanks,
+                cfg.cookFuelLogs <= 0 || CookGate.raw(f) > 0 ? 0 : cfg.cookFuelLogs,
+                claims.kit(), claims.smoker(), claims.fuel(), claims.bed(), claims.chop());
+    }
+
+    private static final WoodReserve.Keep NOTHING = new WoodReserve.Keep(0, 0);
+
+    private record Claims(WoodReserve.Keep keep, WoodReserve.Keep kit, int smoker, int fuel, WoodReserve.Keep bed, int chop) {
+    }
+
+    // IRON's claims on what we hold. the kit comes first and holds what its crafts need (iron form). the cook comes second: with raw
+    // meat waiting and no way to cook it yet it holds the smoker's logs (if one still has to be made) and the fuel logs the meat
+    // needs. the beds get what is left of their usual share. the reserve is the gather's keep less whatever the cook takes: it
+    // eats the spare logs first (nothing speaks for them), then the beds' share down to the kit's claim. no claim, no change: IRON
+    // goes on running on the gather's keep, slack and all
+    private static Claims claimsOf(GamerFacts f, OverworldConfig cfg, int endBeds, int logs, int planks, int burnableLogs,
+                                   int burnablePlanks, WoodReserve.Keep gatherKeep, int ironOwedNow) {
+        WoodReserve.Keep kit = kitKeepOf(f, cfg, endBeds, logs, planks, ironOwedNow);
+        int smoker = 0;
+        int fuel = 0;
+        if (CookGate.waiting(f)) {
+            CookGate.Station station = CookGate.stationIfLogs(f, cfg);
+            if (station != CookGate.Station.NONE) {
+                smoker = station == CookGate.Station.SMOKER && smokerOwedFor(f) ? smokerLogsFor(f) : 0;
+                fuel = fuelLogsFor(f, Math.max(0, burnablePlanks - gatherKeep.planks()));
+            }
+        }
+        int claim = smoker + fuel;
+        int fromBeds = Math.min(Math.max(0, claim - (logs - gatherKeep.logs())), Math.max(0, gatherKeep.logs() - kit.logs()));
+        WoodReserve.Keep keep = new WoodReserve.Keep(gatherKeep.logs() - fromBeds, gatherKeep.planks());
+        WoodReserve.Keep bed = new WoodReserve.Keep(Math.max(0, keep.logs() - kit.logs()), Math.max(0, keep.planks() - kit.planks()));
+        // short of the claim by what the bag holds beyond the kit that a furnace could burn (the gate counts burnable logs)
+        int chop = f.nearSurface() ? Math.max(0, claim - Math.max(0, Math.min(logs, burnableLogs) - kit.logs())) : 0;
+        return new Claims(keep, kit, smoker, fuel, bed, chop);
+    }
+
+    // logs of fuel for the biggest pile of raw meat: the smelts left after coal and `sparePlanks` (a log and a plank are both 1.5 smelts)
+    private static int fuelLogsFor(GamerFacts f, int sparePlanks) {
+        int smelts = CookGate.pile(f) - CookGate.coalSmelts(f);
+        if (smelts <= 0) {
+            return 0;
+        }
+        return Math.max(0, (2 * smelts + 2) / 3 - sparePlanks);
     }
 
     // ---- what we hold beyond the reserve
@@ -102,8 +162,13 @@ public record WoodBudget(
     }
 
     // what the iron phase chops: the whole owed amount before the first ore is in the bag, nothing after. asked of the live facts,
-    // not frozen into the budget: the early load latch (EarlyIronPick.track) can start in the middle of a tick, after the budget
+    // not frozen into the budget: the early load latch (EarlyIronPick.track) can start in the middle of a tick, after the budget.
+    // the cook's logs go on top whenever we are near the surface, ore in the bag or not (that is the one term the first ore does not
+    // end), and the kit's own short rides along then: the logs are one pool, a chop for the cook alone would be eaten by the kit first
     public int ironChopLogs(GamerFacts f) {
+        if (cookChopLogs > 0) {
+            return ironLogsOwed + cookChopLogs;
+        }
         return KitPlanner.ironStarted(f) ? 0 : ironLogsOwed;
     }
 
@@ -247,6 +312,17 @@ public record WoodBudget(
         int spareLogs = WoodReserve.most(logs, k -> owed(WoodReserve.without(f, ItemHelper.LOG, k), cfg, endBeds, true) == 0);
         GamerFacts afterLogs = WoodReserve.without(f, ItemHelper.LOG, spareLogs);
         int sparePlanks = WoodReserve.most(planks, k -> owed(WoodReserve.without(afterLogs, ItemHelper.PLANKS, k), cfg, endBeds, true) == 0);
+        return new WoodReserve.Keep(logs - spareLogs, planks - sparePlanks);
+    }
+
+    // the same search in the iron form: the wood the kit's remaining crafts hold, no slack. short of it, all of it is the kit's
+    private static WoodReserve.Keep kitKeepOf(GamerFacts f, OverworldConfig cfg, int endBeds, int logs, int planks, int ironOwedNow) {
+        if (ironOwedNow > 0) {
+            return new WoodReserve.Keep(logs, planks);
+        }
+        int spareLogs = WoodReserve.most(logs, k -> owed(WoodReserve.without(f, ItemHelper.LOG, k), cfg, endBeds, false) == 0);
+        GamerFacts afterLogs = WoodReserve.without(f, ItemHelper.LOG, spareLogs);
+        int sparePlanks = WoodReserve.most(planks, k -> owed(WoodReserve.without(afterLogs, ItemHelper.PLANKS, k), cfg, endBeds, false) == 0);
         return new WoodReserve.Keep(logs - spareLogs, planks - sparePlanks);
     }
 

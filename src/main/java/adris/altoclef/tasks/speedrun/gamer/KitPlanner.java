@@ -97,7 +97,7 @@ public final class KitPlanner {
     // gathering: all the wood comes first, so nothing climbs out of a cave for one more log later. a small batch (table
     // and axe), the axe, the rest of the budget with the axe in hand, then the stone tools.
     // not gathering (IRON on): stations are not asked for again, a lost axe stays lost and the spare pick is not worth a
-    // trip. wood is only asked for before the first ore, while the surface is still right here.
+    // trip. wood is only asked for before the first ore, while the surface is still right here (bar the cook's logs, near the surface).
     // `late` is where the IRON phase parks a pick replacement: a stone pick that is merely worn (85%, see wornOut) is still
     // a pick, and swapping it mid-mine once cost a 34 s log trip. only a bag with no pick at all keeps it up front
     private static List<KitNeed> starter(GamerFacts f, OverworldConfig cfg, int endBeds, boolean gathering, List<KitNeed> late,
@@ -126,7 +126,8 @@ public final class KitPlanner {
             // every cobble the stone kit eats in one trip, before the first stone craft, so the bot doesn't go back down
             // for the furnace's cobble after crafting the axe
             addCobble(out, f, stoneNeed(f, cfg));
-        } else if (!ironStarted(f)) {
+        } else {
+            // (the first ore ends the kit's chop, not the cook's: the budget asks, see ironChopLogs)
             addLogs(out, f, wood.ironChopLogs(f));
         }
         for (KitItem k : rest) {

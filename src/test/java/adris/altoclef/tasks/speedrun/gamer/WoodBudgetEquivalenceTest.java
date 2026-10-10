@@ -97,19 +97,39 @@ public class WoodBudgetEquivalenceTest {
         check(lines(GamerPhase.IRON), IRON_FILE, "iron-full.txt");
     }
 
+    // what the bag of each state looked like, for the full dump (the diff of two versions is read against it)
+    private static List<String> notes = List.of();
+
     private static List<String> lines(GamerPhase phase) {
         List<String> lines = new ArrayList<>();
+        List<String> bags = new ArrayList<>();
         Random r = new Random(0x600D5EEDL);
         for (int i = 0; i < STATES; i++) {
-            lines.add(answers(State.generate(r), phase));
+            State s = State.generate(r);
+            lines.add(answers(s, phase));
+            bags.add(note(s));
         }
+        notes = bags;
         return lines;
+    }
+
+    private static String note(State s) {
+        FakeFacts f = s.f;
+        return "logs=" + f.count(adris.altoclef.util.helpers.ItemHelper.LOG) + ",planks=" + f.count(adris.altoclef.util.helpers.ItemHelper.PLANKS)
+                + ",raw=" + CookGate.raw(f) + ",pile=" + CookGate.pile(f) + ",coal=" + f.count(Items.COAL, Items.CHARCOAL)
+                + ",cookStation=" + f.cookStation + ",suspended=" + f.cookSuspended + ",smoker=" + (f.count(Items.SMOKER) > 0 || f.smokerPlaced)
+                + ",furnace=" + (f.count(Items.FURNACE) > 0 || f.furnacePlaced) + ",near=" + f.nearSurface + ",dim=" + f.dimension
+                + ",jobs=" + f.jobs.size() + ",beds=" + s.endBeds + ",burn=" + f.unburnable.size();
     }
 
     private static void check(List<String> lines, String file, String fullFile) throws IOException {
         String full = System.getenv("WOOD_GOLDEN_FULL");
         if (full != null && !full.isEmpty()) {
-            Files.write(Path.of(full, fullFile), lines, StandardCharsets.UTF_8);
+            List<String> dump = new ArrayList<>();
+            for (int i = 0; i < lines.size(); i++) {
+                dump.add(lines.get(i) + "#" + notes.get(i));
+            }
+            Files.write(Path.of(full, fullFile), dump, StandardCharsets.UTF_8);
         }
         String write = System.getenv("WOOD_GOLDEN_WRITE");
         if (write != null && !write.isEmpty()) {

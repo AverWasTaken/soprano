@@ -86,6 +86,16 @@ public final class CookGate {
     }
 
     public static Station station(GamerFacts f, OverworldConfig cfg, boolean mayCraft, WoodBudget wood) {
+        return station(f, cfg, mayCraft, wood.logs() >= wood.smokerLogs());
+    }
+
+    // the station the meat would go to if the bag held the smoker's logs: what the wood budget's cook claim is sized for. asking with
+    // the logs we hold would flip between a furnace and a smoker as the chop lands, and the claim with it
+    static Station stationIfLogs(GamerFacts f, OverworldConfig cfg) {
+        return station(f, cfg, true, true);
+    }
+
+    private static Station station(GamerFacts f, OverworldConfig cfg, boolean mayCraft, boolean logsForSmoker) {
         boolean ironInFurnace = furnaceHasIron(f);
         // the furnace is for meat only once the iron is done with it (or never needs it): while iron is owed the meat gets a
         // smoker of its own, which cooks twice as fast anyway, and a bag with no way to make one just keeps the meat until
@@ -113,10 +123,23 @@ public final class CookGate {
         // the stone floor is the cobble the kit still owes its tools, a smoker is not allowed to eat the stone pick
         int free = f.count(Items.COBBLESTONE) - KitPlanner.stoneFloor(f, cfg);
         boolean furnaceInBag = f.has(Items.FURNACE);
-        if (wood.logs() >= wood.smokerLogs() && (furnaceInBag || free >= SMOKER_COBBLE)) {
+        if (logsForSmoker && (furnaceInBag || free >= SMOKER_COBBLE)) {
             return Station.SMOKER;
         }
         return furnaceFree && free >= SMOKER_COBBLE ? Station.FURNACE : Station.NONE;
+    }
+
+    // raw meat worth a cook sitting in the bag with nothing standing in the way but a station and fuel: the overworld, a cook that
+    // has not started, not backed off, no batch pending and no meat left cold in a station. the early outs of need(), as a question
+    // of its own so the wood budget can claim logs for a cook that need() is turning down for want of them
+    static boolean waiting(GamerFacts f) {
+        return f.dimension() == Dimension.OVERWORLD && raw(f) >= MIN_RAW && f.cookStation() == null && !f.cookSuspended()
+                && f.pendingFoodUnits() == 0 && !stranded(f);
+    }
+
+    // smelts the coal and charcoal in the bag give (the ones a furnace may burn)
+    static int coalSmelts(GamerFacts f) {
+        return burnable(f, Items.COAL, Items.CHARCOAL) * COAL_SMELTS;
     }
 
     // logs a new smoker costs (WoodBudget has the rule). package only so the wood golden can see it
@@ -143,7 +166,7 @@ public final class CookGate {
 
     // (the budget has to be this bag's, it holds the wood half)
     static int fuelSmelts(GamerFacts f, WoodBudget wood, int logsSpoken) {
-        return burnable(f, Items.COAL, Items.CHARCOAL) * COAL_SMELTS + wood.burnableWoodSmelts(logsSpoken);
+        return coalSmelts(f) + wood.burnableWoodSmelts(logsSpoken);
     }
 
     // the wood half of fuelSmelts: logs and planks above the reserve. the coal detour counts it towards the coal we already have
