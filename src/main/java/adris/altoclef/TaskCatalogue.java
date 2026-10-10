@@ -283,12 +283,12 @@ mine("pale_oak_sapling", Blocks.PALE_OAK_LEAVES, Items.PALE_OAK_SAPLING);
             shapedRecipe2x2Block("cut_sandstone", Items.CUT_SANDSTONE, 4, "sandstone");
             shapedRecipe2x2Block("cut_red_sandstone", Items.CUT_RED_SANDSTONE, 4, "red_sandstone");
             shapedRecipe2x2Block("quartz_bricks", Items.QUARTZ_BRICKS, 4, "quartz_block");
-            shapedRecipe2x2("quartz_pillar", Items.QUARTZ_PILLAR, 4, "quartz_block", o, "quartz_block", o);
+            shapedRecipe2x2("quartz_pillar", Items.QUARTZ_PILLAR, 2, "quartz_block", o, "quartz_block", o);
             shapedRecipe2x2Block("stone_bricks", Items.STONE_BRICKS, 4, "stone");
             shapedRecipe2x2("mossy_stone_bricks", Items.MOSSY_STONE_BRICKS, 1, "stone_bricks", "vine", o, o);
             shapedRecipe2x2("mossy_cobblestone", Items.MOSSY_COBBLESTONE, 1, "cobblestone", "vine", o, o);
             simple("nether_bricks", Items.NETHER_BRICKS, CollectNetherBricksTask::new).dontMineIfPresent();
-            shapedRecipe2x2Block("red_nether_bricks", Items.RED_NETHER_BRICKS, 4, "nether_wart");
+            shapedRecipe2x2("red_nether_bricks", Items.RED_NETHER_BRICKS, 1, "nether_brick", "nether_wart", "nether_wart", "nether_brick");
             smelt("cracked_stone_bricks", Items.CRACKED_STONE_BRICKS, "stone_bricks");
             smelt("cracked_nether_bricks", Items.CRACKED_NETHER_BRICKS, "nether_bricks");
             smelt("cracked_polished_blackstone_bricks", Items.CRACKED_POLISHED_BLACKSTONE_BRICKS, "polished_blackstone_bricks");
@@ -451,7 +451,7 @@ mine("pale_oak_sapling", Blocks.PALE_OAK_LEAVES, Items.PALE_OAK_SAPLING);
             alias("netherite_pick", "netherite_pickaxe");
             simple("boat", ItemHelper.WOOD_BOAT, CollectBoatTask::new);
             woodTasks("boat", woodItems -> woodItems.boat, (woodItems, count) -> new CollectBoatTask(woodItems.boat, woodItems.prefix + "_planks", count));
-            shapedRecipe3x3("lead", Items.LEAD, 1, "string", "string", o, "string", "slime_ball", o, o, o, "string");
+            shapedRecipe3x3("lead", Items.LEAD, 2, "string", "string", o, "string", "slime_ball", o, o, o, "string");
 
             simple("honeycomb", Items.HONEYCOMB, CollectHoneycombTask::new);
             {
@@ -516,7 +516,7 @@ mine("pale_oak_sapling", Blocks.PALE_OAK_LEAVES, Items.PALE_OAK_SAPLING);
                 shapedRecipe2x2Block("bricks", Items.BRICKS, b);
                 shapedRecipeSlab("brick_slab", Items.BRICK_SLAB, b);
                 shapedRecipeStairs("brick_stairs", Items.BRICK_STAIRS, b);
-                shapedRecipeStairs("brick_wall", Items.BRICK_WALL, "brick");
+                shapedRecipeWall("brick_wall", Items.BRICK_WALL, "bricks");
             }
             shapedRecipe3x3("ladder", Items.LADDER, 3, s, o, s, s, s, s, s, o, s);
             shapedRecipe3x3("jukebox", Items.JUKEBOX, 1, p, p, p, p, "diamond", p, p, p, p);
