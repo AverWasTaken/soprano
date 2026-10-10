@@ -384,7 +384,7 @@ public final class PhaseMachine implements GamerContext {
         s.stuck = true;
         s.stuckReason = reason;
         host.save();
-        host.say("Gave up at " + s.phase.hud().toLowerCase() + ": " + reason + ". State saved, #gamer resumes."
+        host.say("Gave up at " + s.phase.hud().toLowerCase() + ": " + reason + ". State saved, type #gamer to pick it back up."
                 + restartHint(s.phase));
     }
 

@@ -184,7 +184,7 @@ public class PhaseMachineTest {
         assertTrue(host.state.stuckReason, host.state.stuckReason.contains("8 minutes"));
         // the phase stays where it was, so #gamer resumes there
         assertEquals(GamerPhase.GATHER, host.state.phase);
-        assertTrue(host.said.get(host.said.size() - 1).contains("State saved, #gamer resumes."));
+        assertTrue(host.said.get(host.said.size() - 1).contains("State saved, type #gamer to pick it back up."));
         assertTrue(host.said.get(host.said.size() - 1).contains("getting started"));
         assertNull(machine.tick(null));
     }
