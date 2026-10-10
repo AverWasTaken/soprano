@@ -17,6 +17,14 @@ import static org.junit.Assert.assertTrue;
 public class HudRulesTest {
 
     @Test
+    public void buildTagSaysBuildAndFallsBackWhenThereIsNoId() {
+        assertEquals("build b410e00-dirty", HudRules.buildTag("b410e00-dirty"));
+        assertEquals("build b410e00", HudRules.buildTag("  b410e00 "));
+        assertEquals("build unknown", HudRules.buildTag(null));
+        assertEquals("build unknown", HudRules.buildTag(" "));
+    }
+
+    @Test
     public void clockIsMinutesAndPaddedSeconds() {
         assertEquals("0:00", HudRules.clock(0));
         assertEquals("0:05", HudRules.clock(5));

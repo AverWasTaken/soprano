@@ -57,6 +57,11 @@ public final class HudRules {
     private HudRules() {
     }
 
+    // the dim line at the bottom of the card, so a screenshot says which jar it came from
+    public static String buildTag(String id) {
+        return "build " + (id == null || id.isBlank() ? "unknown" : id.trim());
+    }
+
     // "9:41". hours never happen in a phase, the budgets are minutes
     public static String clock(double seconds) {
         long s = Math.max(0, Math.round(seconds));

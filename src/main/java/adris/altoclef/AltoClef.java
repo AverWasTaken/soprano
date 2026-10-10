@@ -154,6 +154,8 @@ public class AltoClef {
 
         // External mod initialization
         runEnqueuedPostInits();
+
+        Debug.logInternal(BuildInfo.line());
     }
 
     // Client tick. Soprano calls this at the top of its own tick (ahead of baritone's behaviors and processes), the

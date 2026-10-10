@@ -2,6 +2,7 @@ package adris.altoclef.ui;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.AltoSettings;
+import adris.altoclef.BuildInfo;
 import adris.altoclef.tasks.speedrun.gamer.GamerHudState;
 import adris.altoclef.tasks.speedrun.gamer.GamerHudState.DetourRow;
 import adris.altoclef.tasks.speedrun.gamer.GamerHudState.FurnaceRow;
@@ -370,6 +371,9 @@ public class GamerHudOverlay {
         ops.add(new Text(s.foodUnits() + "/" + s.foodTarget(), x, y + 1, WHITE));
         String attempt = "attempt " + s.attempt();
         ops.add(new Text(attempt, PAD_X + INNER - font.width(attempt), y + 1, DIM));
+        y += LINE;
+        // one more row under the vitals, which is what the card height grows by (it is just where y ends up)
+        ops.add(new Text(fit(font, HudRules.buildTag(BuildInfo.id()), INNER), PAD_X, y + 1, DIM));
         return y + LINE;
     }
 

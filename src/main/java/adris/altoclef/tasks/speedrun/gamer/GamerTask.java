@@ -2,6 +2,7 @@ package adris.altoclef.tasks.speedrun.gamer;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.BotBehaviour;
+import adris.altoclef.BuildInfo;
 import adris.altoclef.Debug;
 import adris.altoclef.eventbus.EventBus;
 import adris.altoclef.eventbus.Subscription;
@@ -459,6 +460,8 @@ public class GamerTask extends Task {
         deathsAtStart = state.deaths.size();
         lastSaveSeconds = machine.now();
         begun = true;
+        // so a log of a run says which jar played it
+        Debug.logInternal(BuildInfo.line());
         watchPlacements();
         machine.begin(mod, resumedAsIs);
     }

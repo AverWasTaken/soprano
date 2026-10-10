@@ -158,3 +158,22 @@ javadoc {
     source = sourceSets.api.allJava
     classpath += sourceSets.api.compileClasspath
 }
+
+// the build id is for matching a log to the jar that wrote it. separate from the version logic up top,
+// which falls back to a constant when the tag doesn't start with v
+def buildId = "unknown"
+try {
+    def described = 'git describe --always --dirty'.execute().text.trim()
+    if (!described.isEmpty()) buildId = described
+} catch (Exception e) {
+    println "Build id detection failed: " + e
+}
+def buildTime = new Date().format("yyyy-MM-dd HH:mm:ss")
+
+processResources {
+    inputs.property "buildId", buildId
+    inputs.property "buildTime", buildTime
+    filesMatching("adris/altoclef/build-id.properties") {
+        expand "buildId": buildId, "buildTime": buildTime
+    }
+}
