@@ -221,7 +221,7 @@ public final class FurnaceWatch {
         boolean smoker = "smoker".equals(visited.kind);
         boolean ours = ours(ctx.state(), visited.kind, spot);
         // (CookGate.reusable already wants MIN_RAW meat, so a bagged smoker only ever vetoes a cook that was going to happen)
-        boolean mayCook = cookHere && WorkbenchRules.emptiedStationMayCook(smoker, f.smokerPlacedNearby(), f.has(Items.SMOKER))
+        boolean mayCook = cookHere && WorkbenchRules.emptiedStationMayCook(smoker, ctx.stations().smoker().heldForPlanner(), f.has(Items.SMOKER))
                 && CookGate.reusable(f, ctx.cfg().overworld, ctx.cfg().end.beds, smoker, ctx.wood());
         switch (WorkbenchRules.afterVisit(left, ours, FurnaceJobs.isBusy(ctx.state(), spot), mayCook)) {
             case COOK_THEN_PICK_UP -> {

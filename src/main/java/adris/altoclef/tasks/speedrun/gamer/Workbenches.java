@@ -467,7 +467,7 @@ public final class Workbenches {
         // every station's "are we coming back to it" first: a table's anchor reads its furnace's answer. only the looks that have the
         // plan (tick, sweep): resume() runs first every tick with no plan and would let go of everything and take it back again
         if (startNew) {
-            comingBack(state, f, names, dimension, me, now);
+            comingBack(state, f, ctx.stations(), names, dimension, me, now);
         }
         // a furnace or smoker load in the tree or in flight: the furnace it goes in is not busy yet (the job is recorded when the
         // load is done), so "done with the table" waits for it, or the table could come down before the furnace anchors it
@@ -576,8 +576,8 @@ public final class Workbenches {
     // the one smoker or furnace of each kind the plan comes back to is the nearest of ours in this dimension (the one CookGate and
     // the smelt would use), and the meat goes in the furnace only when no smoker of ours stands near or sits in the bag, the same
     // test CookGate makes
-    private static void comingBack(RunState state, GamerFacts f, List<String> names, String dimension, Vec3 me, long now) {
-        boolean smokerOfOurs = f.smokerPlacedNearby() || f.count(Items.SMOKER) > 0;
+    private static void comingBack(RunState state, GamerFacts f, StationVerdict stations, List<String> names, String dimension, Vec3 me, long now) {
+        boolean smokerOfOurs = stations.smoker().heldForPlanner() || f.count(Items.SMOKER) > 0;
         for (Bench b : state.benches) {
             String back = b.dimension.equals(dimension) && b == nearestOf(state, b.kind, dimension, me)
                     ? WorkbenchRules.comingBack(b.kind, names, smokerOfOurs) : null;
@@ -725,7 +725,7 @@ public final class Workbenches {
         // emptied in the middle of a hunt or with more iron to come: we are coming back to it, so it stays for the next batch
         GamerFacts f = ctx.facts();
         boolean nothingAhead = WorkbenchRules.nothingAhead(b.kind, CookGate.ironOwed(f, ctx.cfg().overworld), CookGate.raw(f),
-                f.smokerPlacedNearby() || f.count(Items.SMOKER) > 0, ctx.food().shortOf(ctx.food().huntsTo()));
+                ctx.stations().smoker().heldForPlanner() || f.count(Items.SMOKER) > 0, ctx.food().shortOf(ctx.food().huntsTo()));
         if (WorkbenchRules.keepForComingBack(b, nothingAhead)) {
             log(b + ": emptied, but the plan brings us back " + b.comingBack + ", leaving it standing");
             return false;
