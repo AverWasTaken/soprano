@@ -35,6 +35,7 @@ import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
 import adris.altoclef.tasksystem.Task;
 import baritone.Baritone;
 import baritone.altoclef.SettingsOverrides;
+import baritone.api.Settings;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.inventory.AbstractFurnaceMenu;
 import net.minecraft.world.item.Items;
@@ -161,8 +162,13 @@ public class IronPhase implements PhaseHandler {
         FoodHunt.setWoolWanted(false);
         SmeltSplit.watchSite(null);
         // other phases smelt too and nobody there would come back for the furnace, so the setting is ours for this phase only
-        if (userAsync != null) {
-            SettingsOverrides.put(Baritone.settings().altoAsyncSmelting, userAsync);
+        releaseAsync(Baritone.settings().altoAsyncSmelting, userAsync);
+    }
+
+    // only while the hold is still ours: a #set in the middle of the phase dropped it, and that value is the user's now
+    static void releaseAsync(Settings.Setting<Boolean> async, Boolean user) {
+        if (user != null && SettingsOverrides.isHeld(async) && async.value) {
+            SettingsOverrides.put(async, user);
         }
     }
 

@@ -98,9 +98,7 @@ public class GatherPhase implements PhaseHandler {
     public void onExit(AltoClef mod, GamerContext ctx) {
         support.onExit(mod);
         // nobody outside the phases that come back for the smoker would collect from it, same rule as IRON
-        if (userAsync != null) {
-            SettingsOverrides.put(Baritone.settings().altoAsyncSmelting, userAsync);
-        }
+        IronPhase.releaseAsync(Baritone.settings().altoAsyncSmelting, userAsync);
     }
 
     @Override
