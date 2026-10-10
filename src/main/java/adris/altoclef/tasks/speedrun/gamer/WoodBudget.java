@@ -54,7 +54,10 @@ public record WoodBudget(
         // what the reserve keeps for the end beds (and the gather's slack) on top of the kit's claim, once the cook has had its share
         WoodReserve.Keep bedClaim,
         // logs the iron phase chops for the cook: its claim less the logs held beyond the kit. 0 down in a mine, no climb out for it
-        int cookChopLogs) {
+        int cookChopLogs,
+        // logs the log stock-up wants held to craft with (smeltExtras "log", planks count as a quarter log each), held back from the
+        // furnaces once the cook has no claim. the same wood as the beds' share, not a second pile
+        int stockClaim) {
 
     // planks and sticks per kind of tool: only the wooden tier pays the planks, every tier pays the sticks
     private static final Map<String, int[]> TOOL_WOOD = Map.of(
@@ -81,7 +84,7 @@ public record WoodBudget(
         int burnablePlanks = burnable(f, ItemHelper.PLANKS);
         Claims claims = phase == GamerPhase.IRON
                 ? claimsOf(f, cfg, endBeds, logs, planks, burnableLogs, burnablePlanks, gatherKeep, iron)
-                : new Claims(gatherKeep, NOTHING, 0, 0, NOTHING, 0);
+                : new Claims(gatherKeep, NOTHING, 0, 0, NOTHING, 0, 0);
         WoodReserve.Keep keep = claims.keep();
         // the run lets wood burn (GamerTask.withWoodFuel) for the overworld cook. nothing down in the nether budgets it, so a clear
         // reserve would let one smelt eat every log in the bag: keep all of it, coal still burns
@@ -89,12 +92,25 @@ public record WoodBudget(
         return new WoodBudget(phase, logs, planks, f.count(Items.STICK), gather, iron, bedPlanksOwed(f, endBeds), firstBatchLogs(f, cfg),
                 keep, fuel, smokerLogsFor(f), smokerOwedFor(f), burnableLogs, burnablePlanks,
                 cfg.cookFuelLogs <= 0 || CookGate.raw(f) > 0 ? 0 : cfg.cookFuelLogs,
-                claims.kit(), claims.smoker(), claims.fuel(), claims.bed(), claims.chop());
+                claims.kit(), claims.smoker(), claims.fuel(), claims.bed(), claims.chop(), claims.stock());
     }
 
     private static final WoodReserve.Keep NOTHING = new WoodReserve.Keep(0, 0);
 
-    private record Claims(WoodReserve.Keep keep, WoodReserve.Keep kit, int smoker, int fuel, WoodReserve.Keep bed, int chop) {
+    private record Claims(WoodReserve.Keep keep, WoodReserve.Keep kit, int smoker, int fuel, WoodReserve.Keep bed, int chop, int stock) {
+    }
+
+    // the logs smeltExtras says to hold ("log"), 0 when the config has no such entry
+    private static int stockTarget(OverworldConfig cfg) {
+        int total = 0;
+        if (cfg.smeltExtras != null) {
+            for (KitItem extra : cfg.smeltExtras) {
+                if ("log".equals(extra.item) && extra.count > 0) {
+                    total += extra.count;
+                }
+            }
+        }
+        return total;
     }
 
     // IRON's claims on what we hold. the kit comes first and holds what its crafts need (iron form). the cook comes second: with raw
@@ -120,7 +136,14 @@ public record WoodBudget(
         WoodReserve.Keep bed = new WoodReserve.Keep(Math.max(0, keep.logs() - kit.logs()), Math.max(0, keep.planks() - kit.planks()));
         // short of the claim by what the bag holds beyond the kit that a furnace could burn (the gate counts burnable logs)
         int chop = f.nearSurface() ? Math.max(0, claim - Math.max(0, Math.min(logs, burnableLogs) - kit.logs())) : 0;
-        return new Claims(keep, kit, smoker, fuel, bed, chop);
+        // the log stock-up (SmeltFiller) chops towards a pile to craft with, planks counting as wood. the reserve keeps what it
+        // chopped, or the furnace burns the pile and the next wait chops it again. the cook outranks it, so while the cook has a
+        // claim the stock is not protected. it overlaps the beds' share, it is the same wood and not a second pile
+        int stock = claim > 0 ? 0 : Math.min(logs, Math.max(0, stockTarget(cfg) - planks / PLANKS_PER_LOG));
+        if (stock > keep.logs()) {
+            keep = new WoodReserve.Keep(stock, keep.planks());
+        }
+        return new Claims(keep, kit, smoker, fuel, bed, chop, stock);
     }
 
     // logs of fuel for the biggest pile of raw meat: the smelts left after coal and `sparePlanks` (a log and a plank are both 1.5 smelts)

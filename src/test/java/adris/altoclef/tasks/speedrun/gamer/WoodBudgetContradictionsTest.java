@@ -198,18 +198,36 @@ public class WoodBudgetContradictionsTest {
         assertEquals(6, detour);
     }
 
-    // (c) the log stock-up asks for logs in the wait for the iron, and the wood budget has no use for them (the kit is made), so
-    // the reserve calls every one of them spare and the furnace is free to burn what the stock-up chopped
+    // (c) the log stock-up asks for logs in the wait for the iron. they are wood to craft with later (SmeltFiller: "it is only there
+    // so we have wood to craft with", smeltExtras: "logs to hold"), not fuel, and the wood budget had no use for them (the kit is
+    // made), so the reserve called every one spare and the furnace burned what the stock-up chopped, for the next wait to chop it
+    // again. the iron budget holds them back now (stockClaim), the cook's claim is the one thing that outranks it
     @Test
-    public void theLogStockUpChopsForLogsTheFurnaceMayBurn() {
+    public void theLogStockUpChopsForLogsTheFurnaceMayNotBurn() {
         FakeFacts f = madeEverything().give(Items.OAK_LOG, 3).give(Items.WHITE_BED, 8);
-        WoodBudget w = WoodBudget.of(f, cfg, BEDS);
-        assertEquals(0, w.gatherLogsOwed());
-        assertEquals(new WoodReserve.Keep(0, 0), w.keep());
-        // known wrong: it wants a pile of 8, none of it spoken for
+        WoodBudget gather = WoodBudget.of(f, cfg, BEDS);
+        assertEquals(0, gather.gatherLogsOwed());
+        // the gather has no stock-up, its view is what it was
+        assertEquals(new WoodReserve.Keep(0, 0), gather.keep());
+        WoodBudget w = WoodBudget.of(f, cfg, BEDS, GamerPhase.IRON);
+        // it wants a pile of 8 and holds 3 of them, all spoken for
         assertEquals(8, w.stockUpLogs(8, true));
-        assertEquals(3, w.spareLogs());
-        assertEquals(4, w.burnableWoodSmelts(0));
+        assertEquals(3, w.stockClaim());
+        assertEquals(new WoodReserve.Keep(3, 0), w.keep());
+        assertEquals(0, w.spareLogs());
+        assertEquals(0, w.burnableWoodSmelts(0));
+        // planks are wood to it too: 12 of them are three logs of the pile
+        f.give(Items.OAK_PLANKS, 12);
+        WoodBudget planked = WoodBudget.of(f, cfg, BEDS, GamerPhase.IRON);
+        assertEquals(3, planked.stockClaim());
+        f.give(Items.OAK_PLANKS, 20);
+        assertEquals(0, WoodBudget.of(f, cfg, BEDS, GamerPhase.IRON).stockUpLogs(8, true));
+        assertEquals(0, WoodBudget.of(f, cfg, BEDS, GamerPhase.IRON).stockClaim());
+        // the cook outranks it: raw meat waiting and the claim is the cook's, the logs are fuel and a smoker again
+        FakeFacts meat = madeEverything().give(Items.OAK_LOG, 3).give(Items.WHITE_BED, 8).give(Items.BEEF, 5).give(Items.COBBLESTONE, 30);
+        WoodBudget cooking = WoodBudget.of(meat, cfg, BEDS, GamerPhase.IRON);
+        assertEquals(0, cooking.stockClaim());
+        assertEquals(new WoodReserve.Keep(0, 0), cooking.keep());
     }
 
     // (d) GatherPhase.isDone and IronPhase's build their own FoodPlan, at the kit's minimum with the latch from the state, and
