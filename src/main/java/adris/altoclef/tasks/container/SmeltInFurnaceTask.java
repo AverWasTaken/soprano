@@ -57,9 +57,12 @@ public class SmeltInFurnaceTask extends ResourceTask implements AsyncSmelting.Ha
     // one load of a split batch (SmeltSplit): the target stays the whole need, so the bag filling up from another furnace's collect
     // doesn't read as this load being done, and at most `cap` goes in. it never goes into a furnace that is already busy with
     // ours, and is not pinned to one (StationMemory.ourLoaded would send load 2 straight back into load 1's furnace)
-    public static SmeltInFurnaceTask splitLoad(SmeltTarget target, SmeltSplit.Batch batch, int cap) {
+    // `index` is which load this is: 13/12/12's last two have the same cap, and without it load 3 was "equal" to the finished load 2,
+    // so the task system kept ticking the finished one and the batch sat there with 12 raw iron in the bag
+    public static SmeltInFurnaceTask splitLoad(SmeltTarget target, SmeltSplit.Batch batch, int index, int cap) {
         SmeltInFurnaceTask task = new SmeltInFurnaceTask(target);
         task._doTask._split = batch;
+        task._doTask._loadIndex = index;
         task._doTask._loadCap = Math.max(1, cap);
         return task;
     }
@@ -182,6 +185,7 @@ public class SmeltInFurnaceTask extends ResourceTask implements AsyncSmelting.Ha
         // a split load (SmeltInFurnaceTask.splitLoad): the batch it belongs to and how much of the need goes in this furnace
         private SmeltSplit.Batch _split;
         private int _loadCap = Integer.MAX_VALUE;
+        private int _loadIndex = -1;
 
         public DoSmeltInFurnaceTask(SmeltTarget target) {
             super(Blocks.FURNACE, new ItemTarget(Items.FURNACE));
@@ -196,10 +200,16 @@ public class SmeltInFurnaceTask extends ResourceTask implements AsyncSmelting.Ha
         @Override
         protected boolean isSubTaskEqual(DoStuffInContainerTask other) {
             if (other instanceof DoSmeltInFurnaceTask task) {
-                return task._target.equals(_target) && task._ignoreMaterials == _ignoreMaterials && task._split == _split
-                        && task._loadCap == _loadCap;
+                return task._target.equals(_target) && task._ignoreMaterials == _ignoreMaterials
+                        && sameLoad(task._split, task._loadIndex, task._loadCap, _split, _loadIndex, _loadCap);
             }
             return false;
+        }
+
+        // two split loads are one task only if they are the same load of the same batch (see splitLoad, the index is what tells
+        // 13/12/12's last two apart)
+        static boolean sameLoad(SmeltSplit.Batch a, int indexA, int capA, SmeltSplit.Batch b, int indexB, int capB) {
+            return a == b && indexA == indexB && capA == capB;
         }
 
         @Override
@@ -297,8 +307,12 @@ public class SmeltInFurnaceTask extends ResourceTask implements AsyncSmelting.Ha
         // its job would count twice. plain alto has no jobs and gets the old sum
         private int owedHere(AltoClef mod, BlockPos here, int outInBag, int outInSlot) {
             int elsewhere = AsyncSmelting.countsElsewhere(_target.getItem()) ? AsyncSmelting.pendingOutput("iron_ingot", here) : 0;
-            long owed = (long) _allMaterials.getTargetCount() - elsewhere - outInBag - outInSlot;
-            return (int) Math.max(Integer.MIN_VALUE, Math.min(owed, _loadCap));
+            return owed(_allMaterials.getTargetCount(), elsewhere, outInBag, outInSlot, _loadCap);
+        }
+
+        static int owed(int target, int elsewhere, int outInBag, int outInSlot, int cap) {
+            long owed = (long) target - elsewhere - outInBag - outInSlot;
+            return (int) Math.max(Integer.MIN_VALUE, Math.min(owed, cap));
         }
 
         // the block this task reads off its slots right now: the open one, else the one the choice walks to
@@ -464,6 +478,11 @@ public class SmeltInFurnaceTask extends ResourceTask implements AsyncSmelting.Ha
                 AsyncSmelting.loaded(mod, at, Blocks.FURNACE, material, _target.getItem(),
                         AsyncSmelting.cookable(slotFuel, lit, progress, material.getCount()));
                 _loaded = true;
+                // the batch moves on from here: after the last load the planner drops the iron need the same tick and the parent never
+                // ticks again to see it, which left a batch with a load "to go" and the planner budgeting cobble for its furnace
+                if (_split != null) {
+                    _split.loaded(_loadIndex);
+                }
                 return null;
             }
             setDebugState("Waiting...");

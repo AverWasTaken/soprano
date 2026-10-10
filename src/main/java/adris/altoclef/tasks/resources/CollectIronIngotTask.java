@@ -51,7 +51,9 @@ public class CollectIronIngotTask extends ResourceTask {
         SmeltTarget all = new SmeltTarget(new ItemTarget(Items.IRON_INGOT, _count), new ItemTarget(Items.RAW_IRON, _count));
         // a blast furnace that is already standing close (village armorer) beats a plain furnace, and works with
         // altoUseBlastFurnace off since that one is only about making our own
-        Task nearby = _router.tryNearbyBlast(mod, all);
+        // but not in the middle of a split batch: the router never saw those loads start, and the blast task would count the iron
+        // already cooking in our furnaces as still to mine
+        Task nearby = SmeltSplit.held(_count) == null ? _router.tryNearbyBlast(mod, all) : null;
         if (nearby != null) {
             return nearby;
         }
@@ -84,6 +86,10 @@ public class CollectIronIngotTask extends ResourceTask {
         int raw = mod.getItemStorage().getItemCount(Items.RAW_IRON);
         // every furnace's load counts, the ones queued this tick too (the gamer only takes those in on its next tick)
         int owed = _count - bag - AsyncSmelting.pendingOutput("iron_ingot", null);
+        if (owed <= 0) {
+            // all of it is in a furnace somewhere, the jobs bring it back (the planner drops the need about now anyway)
+            return null;
+        }
         SmeltSplit.Batch batch = SmeltSplit.held(_count);
         if (batch == null) {
             // still mining (the single smelt fetches the ore the way it always did), or few enough for one furnace. the call is made
@@ -98,9 +104,9 @@ public class CollectIronIngotTask extends ResourceTask {
         }
         if (_load != null && _loadBatch == batch) {
             if (_load.handedOff()) {
-                batch.handedOff();
+                // the load moved the batch on itself (SmeltSplit.Batch.loaded), this only lets go of it
                 _load = null;
-                Debug.logInternal("smelt: load " + batch.issued() + " of " + batch.loads() + " is in, " + Math.max(0, owed) + " iron still to load");
+                Debug.logInternal("smelt: load " + batch.issued() + " of " + batch.loads() + " is in, " + owed + " iron still to load");
             } else {
                 BlockPos at = _load.loadingAt();
                 if (at != null) {
@@ -111,19 +117,16 @@ public class CollectIronIngotTask extends ResourceTask {
         }
         if (batch.over()) {
             // all the loads are in: whatever is still owed (a load came back short) is a normal smelt, which counts the jobs too
-            return owed > 0 ? _router.furnace(all) : null;
+            return _router.furnace(all);
         }
         int size = batch.nextLoad(owed, raw);
         if (size <= 0) {
             batch.end();
-            if (owed > 0) {
-                Debug.logInternal("smelt: no raw iron left for load " + (batch.issued() + 1) + " of " + batch.loads()
-                        + ", the other " + owed + " go the usual way");
-                return _router.furnace(all);
-            }
-            return null;
+            Debug.logInternal("smelt: no raw iron left for load " + (batch.issued() + 1) + " of " + batch.loads()
+                    + ", the other " + owed + " go the usual way");
+            return _router.furnace(all);
         }
-        _load = SmeltInFurnaceTask.splitLoad(all, batch, size);
+        _load = SmeltInFurnaceTask.splitLoad(all, batch, batch.issued(), size);
         _loadBatch = batch;
         Debug.logInternal("smelt: load " + (batch.issued() + 1) + " of " + batch.loads() + ", " + size + " raw iron"
                 + (batch.loadingAt() != null ? ", finishing the one started at " + batch.loadingAt().toShortString() : ""));

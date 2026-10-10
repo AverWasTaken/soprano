@@ -119,12 +119,18 @@ public class SmeltSplitTest {
         // half loaded and cut off: the fresh load task finishes it at its size, whatever the bag still holds
         b.loadingAt(new BlockPos(1, 64, 1));
         assertEquals(13, b.nextLoad(37, 3));
-        b.handedOff();
+        b.loaded(0);
         assertNull(b.loadingAt());
         assertEquals(2, b.loadsLeft());
+        // a second word about the same load, or a late one about an older load, moves nothing
+        b.loaded(0);
+        assertEquals(1, b.issued());
         assertEquals(12, b.nextLoad(24, 24));
-        b.handedOff();
-        b.handedOff();
+        b.loaded(1);
+        b.loaded(0);
+        assertEquals(2, b.issued());
+        // the last load closes the batch by itself, nobody has to tick the parent after it (the planner drops the need that tick)
+        b.loaded(2);
         assertTrue(b.over());
         assertEquals(0, b.loadsLeft());
         assertEquals(0, b.nextLoad(5, 5));
@@ -135,7 +141,7 @@ public class SmeltSplitTest {
     @Test
     public void anEndedBatchLetsGo() {
         SmeltSplit.Batch b = SmeltSplit.start(37, SmeltSplit.sizes(37, 3));
-        b.handedOff();
+        b.loaded(0);
         b.end();
         assertTrue(b.over());
         assertEquals(0, b.loadsLeft());
@@ -147,6 +153,36 @@ public class SmeltSplitTest {
         SmeltSplit.start(37, SmeltSplit.sizes(37, 3));
         AsyncSmelting.clear();
         assertNull(SmeltSplit.active());
+    }
+
+    // ---- the loads as tasks
+
+    // 13/12/12: loads 2 and 3 have the same target and the same cap. if they were equal the task system would keep ticking the
+    // finished load 2 and load 3 never ran
+    @Test
+    public void twoLoadsWithTheSameCapAreNotTheSameTask() {
+        // (a task can't be built without a game, the equality is this rule)
+        SmeltSplit.Batch b = SmeltSplit.start(37, SmeltSplit.sizes(37, 3));
+        assertFalse(SmeltInFurnaceTask.DoSmeltInFurnaceTask.sameLoad(b, 1, 12, b, 2, 12));
+        assertTrue(SmeltInFurnaceTask.DoSmeltInFurnaceTask.sameLoad(b, 1, 12, b, 1, 12));
+        // and a split load is never the plain smelt of the same target
+        assertFalse(SmeltInFurnaceTask.DoSmeltInFurnaceTask.sameLoad(b, 1, 12, null, -1, Integer.MAX_VALUE));
+        assertTrue(SmeltInFurnaceTask.DoSmeltInFurnaceTask.sameLoad(null, -1, Integer.MAX_VALUE, null, -1, Integer.MAX_VALUE));
+    }
+
+    // what goes in: the target less the bag, the output slot and every OTHER furnace's job, at most one load
+    @Test
+    public void owedCountsEveryFurnaceOnce() {
+        // 37 cooking in the one we are topping up (its slots are read, its job is left out), 40 owed: 3 more
+        assertEquals(3, SmeltInFurnaceTask.DoSmeltInFurnaceTask.owed(40, 0, 0, 0, Integer.MAX_VALUE) - 37);
+        // three furnaces 13/12/12, topping up the 13 one: the other two are 24 elsewhere, 3 more
+        assertEquals(3, SmeltInFurnaceTask.DoSmeltInFurnaceTask.owed(40, 24, 0, 0, Integer.MAX_VALUE) - 13);
+        // load 2 of 37 with 13 cooking in load 1's: 24 owed, capped at its 12
+        assertEquals(12, SmeltInFurnaceTask.DoSmeltInFurnaceTask.owed(37, 13, 0, 0, 12));
+        // the last load sees what is left, ingots in the bag and the output slot included
+        assertEquals(9, SmeltInFurnaceTask.DoSmeltInFurnaceTask.owed(37, 25, 2, 1, 12));
+        // plain alto: no jobs, no cap, the old sum
+        assertEquals(30, SmeltInFurnaceTask.DoSmeltInFurnaceTask.owed(37, 0, 5, 2, Integer.MAX_VALUE));
     }
 
     // ---- the pin

@@ -130,10 +130,13 @@ public final class SmeltSplit {
             loadingAt = pos;
         }
 
-        // the load in progress is in and lit
-        public void handedOff() {
-            issued++;
-            loadingAt = null;
+        // load `index` (0 based) is in and lit. the load task says it itself, by index, so a second word about the same load (or a
+        // late one about an older load) moves nothing
+        public void loaded(int index) {
+            if (index + 1 > issued) {
+                issued = index + 1;
+                loadingAt = null;
+            }
         }
 
         // nothing left to load (or no ore left to load it with): whatever is still owed goes the usual way

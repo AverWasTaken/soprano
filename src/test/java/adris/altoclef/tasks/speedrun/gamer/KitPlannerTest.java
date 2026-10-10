@@ -769,14 +769,14 @@ public class KitPlannerTest {
             f.smeltBatch = batch;
             f.furnacePlaced = true;
             f.cooking("iron_ingot", 13, 130);
-            batch.handedOff();
+            batch.loaded(0);
             // load 1 cooks in the one standing (busy, not idle): both others still to make, 16 cobble
             assertEquals(2, KitPlanner.extraFurnaces(f, cfg));
             assertEquals(2, KitPlanner.smeltLoads(f, cfg));
             // load 2 crafted its furnace: one left
             f.give(Items.FURNACE, 1);
             assertEquals(1, KitPlanner.extraFurnaces(f, cfg));
-            batch.handedOff();
+            batch.loaded(1);
             f.give(Items.FURNACE, -1);
             assertEquals(1, KitPlanner.extraFurnaces(f, cfg));
             assertEquals(1, KitPlanner.smeltLoads(f, cfg));
