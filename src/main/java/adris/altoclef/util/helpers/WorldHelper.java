@@ -241,7 +241,18 @@ public interface WorldHelper {
     // the block would take over BreakRules.MAX_TICKS with the best thing in the bag (obsidian under an iron pick). not a
     // question for bedrock or liquids, those say what they always said
     static boolean tooSlowToBreak(AltoClef mod, BlockPos pos) {
-        return BreakRules.tooSlow(mod.getPlayer().getInventory().items, mod.getWorld().getBlockState(pos));
+        net.minecraft.world.level.block.state.BlockState state = mod.getWorld().getBlockState(pos);
+        // most blocks asked about are quick, and those shouldn't cost a list
+        return !BreakRules.alwaysFine(state) && BreakRules.tooSlow(bagOf(mod), state);
+    }
+
+    // what a break could be done with: the bag and the offhand (the tool gates count a pick over there too)
+    static java.util.List<net.minecraft.world.item.ItemStack> bagOf(AltoClef mod) {
+        net.minecraft.world.entity.player.Inventory inv = mod.getPlayer().getInventory();
+        java.util.List<net.minecraft.world.item.ItemStack> bag = new java.util.ArrayList<>(inv.items.size() + inv.offhand.size());
+        bag.addAll(inv.items);
+        bag.addAll(inv.offhand);
+        return bag;
     }
 
     static boolean canBreak(AltoClef mod, BlockPos pos) {

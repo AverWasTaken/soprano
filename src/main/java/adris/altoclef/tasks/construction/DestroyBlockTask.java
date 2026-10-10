@@ -495,7 +495,7 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
     }
 
     private Task refuseSlowBreak(AltoClef mod, BlockState there) {
-        String time = BreakRules.describe(mod.getPlayer().getInventory().items, there);
+        String time = BreakRules.describe(WorldHelper.bagOf(mod), there);
         if (!_slowSaid) {
             _slowSaid = true;
             Debug.logMessage("not breaking " + _what + " at " + _pos.toShortString() + ", " + time);
@@ -514,11 +514,6 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
         BlockState there = mod.getWorld().getBlockState(_pos);
         if (!there.isAir()) {
             _what = BuiltInRegistries.BLOCK.getKey(there.getBlock()).getPath();
-        }
-        // a break that takes minutes is not a break. the ban is what a failed break ends in anyway (the progress checker
-        // below does the same after its timeout), this just doesn't make us swing at it until then
-        if (!there.isAir() && BreakRules.tooSlow(mod.getPlayer().getInventory().items, there)) {
-            return refuseSlowBreak(mod, there);
         }
         // Check if there is white wool at the specified position
         if (there.getBlock() == Blocks.WHITE_WOOL) {
@@ -565,6 +560,15 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
             mod.getClientBaritone().getCustomGoalProcess().onLostControl();
             mod.getClientBaritone().getExploreProcess().onLostControl();
             return _unstuckTask;
+        }
+
+        // a break that takes minutes is not a break. the ban is what a failed break ends in anyway (the progress checker
+        // below does the same after its timeout), this just doesn't make us swing at it until then. after the portal exit
+        // and the wiggle above, those are still ours to do. the block our head is buried in is the one exception: digging
+        // slowly beats standing in it
+        if (!there.isAir() && !_pos.equals(WorldHelper.buriedInFallenBlock(mod))
+                && BreakRules.tooSlow(WorldHelper.bagOf(mod), there)) {
+            return refuseSlowBreak(mod, there);
         }
 
         // Check if the move checker or the stuck check failed
@@ -719,12 +723,13 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
             ItemStack held = StorageHelper.getItemStackInSlot(currentEquipped);
             boolean handIsATool = ItemHelper.isTool(held.getItem()) || held.getItem() == Items.SHEARS;
             // the two quiet ways to end up swinging a bucket at a wall: nothing in the bag does better, or a crack is in progress
-            if (!_handSaid && (bestToolSlot.isEmpty() || crackedAlready) && !handIsATool && !breaksInstantly(mod, swingAt)) {
+            // (an empty hand isn't news, that is every block at the start of a run)
+            if (!_handSaid && (bestToolSlot.isEmpty() || crackedAlready) && !handIsATool && !held.isEmpty() && !breaksInstantly(mod, swingAt)) {
                 _handSaid = true;
                 String why = crackedAlready ? "a swap would reset the crack" : "nothing in the bag does better";
                 Debug.logInternal("mining " + _what + " at " + _pos.toShortString() + " with " + ToolPick.nameOf(held) + " in hand (" + why + ")");
             }
-            if (_handSaid && !handIsATool) {
+            if (_handSaid && !handIsATool && !held.isEmpty()) {
                 setDebugState("Block in range, mining... (swinging " + ToolPick.nameOf(held) + ")");
             }
             // a block that goes in one swing doesn't care what is in the hand

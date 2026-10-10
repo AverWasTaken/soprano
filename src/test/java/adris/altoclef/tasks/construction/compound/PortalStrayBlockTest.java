@@ -35,6 +35,15 @@ public class PortalStrayBlockTest {
     }
 
     @Test
+    public void onlyCellsTheBuildClearsCount() {
+        // the air over the top row is cleared (lava, water, then one more), the buffer round the box and a mould cell are not
+        assertTrue(ConstructNetherPortalBucketTask.strayBlock(ORIGIN, ORIGIN.offset(0, 5, 0), true, true));
+        assertFalse(ConstructNetherPortalBucketTask.strayBlock(ORIGIN, ORIGIN.offset(-2, -1, -3), true, true));
+        assertFalse(ConstructNetherPortalBucketTask.strayBlock(ORIGIN, ORIGIN.offset(0, 6, 0), true, true));
+        assertFalse(ConstructNetherPortalBucketTask.strayBlock(ORIGIN, ORIGIN.offset(2, 0, 0), true, true));
+    }
+
+    @Test
     public void obsidianOnAFrameCellIsOursAndFine() {
         // (0,0,-1) is the first frame cell, the frame loop skips it when it is already obsidian
         assertFalse(ConstructNetherPortalBucketTask.strayBlock(ORIGIN, ORIGIN.offset(0, 0, -1), true, true));

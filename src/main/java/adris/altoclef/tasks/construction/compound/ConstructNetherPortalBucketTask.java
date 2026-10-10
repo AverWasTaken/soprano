@@ -325,10 +325,27 @@ public class ConstructNetherPortalBucketTask extends Task {
         return isLiquid(state) ? new ClearLiquidTask(pos) : new DestroyBlockTask(pos);
     }
 
-    // a block in the build area that takes too long to break, and is not one of our own finished frame cells (those are
-    // obsidian by design, the frame loop skips them)
+    // a cell the build actually has to clear: the frame cells (the cast breaks what is in them), the air over each (lava and
+    // water cells get two cleared above), and the interior. the buffer round the box and the mould blocks are never broken
+    static boolean clearedCell(BlockPos origin, BlockPos cell) {
+        for (Vec3i frame : PORTAL_FRAME) {
+            BlockPos f = origin.offset(frame);
+            if (cell.equals(f) || cell.equals(f.above()) || cell.equals(f.above(2))) {
+                return true;
+            }
+        }
+        for (Vec3i inside : PORTAL_INTERIOR) {
+            if (cell.equals(origin.offset(inside))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // a block in a cell the build clears that takes too long to break, and is not one of our own finished frame cells
+    // (those are obsidian by design, the frame loop skips them)
     static boolean strayBlock(BlockPos origin, BlockPos cell, boolean tooSlow, boolean obsidian) {
-        if (!tooSlow) {
+        if (!tooSlow || !clearedCell(origin, cell)) {
             return false;
         }
         if (obsidian) {
@@ -428,7 +445,7 @@ public class ConstructNetherPortalBucketTask extends Task {
 
         double minDistanceToPlayer = Double.POSITIVE_INFINITY;
         BlockPos bestPos = null;
-        List<ItemStack> bag = mod.getPlayer().getInventory().items;
+        List<ItemStack> bag = WorldHelper.bagOf(mod);
 
         for (Vec3i direction : directions) {
 

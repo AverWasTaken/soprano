@@ -44,17 +44,19 @@ public final class BreakRules {
         return ticks(pick < 0 ? handSpeed : options.get(pick).speed());
     }
 
+    // true when no bag needs looking at: a fluid, no hardness, or hard enough to matter only past what the bare hand manages
+    public static boolean alwaysFine(BlockState state) {
+        if (state.getBlock() instanceof LiquidBlock) {
+            return true;
+        }
+        float hardness = state.getDestroySpeed(null, null);
+        return hardness < 0 || hardness <= ALWAYS_FINE_HARDNESS;
+    }
+
     // the real thing. bedrock and friends (no hardness) are not ours to judge, that is what canBreak's own check is for,
     // and a fluid is never "broken" so it is never too slow either
     public static boolean tooSlow(List<ItemStack> bag, BlockState state) {
-        if (state.getBlock() instanceof LiquidBlock) {
-            return false;
-        }
-        float hardness = state.getDestroySpeed(null, null);
-        if (hardness < 0 || hardness <= ALWAYS_FINE_HARDNESS) {
-            return false;
-        }
-        return tooSlow(bestTicks(ToolPick.optionsOf(bag, state), ToolSet.calculateSpeedVsBlock(ItemStack.EMPTY, state)));
+        return !alwaysFine(state) && tooSlow(bestTicks(ToolPick.optionsOf(bag, state), ToolSet.calculateSpeedVsBlock(ItemStack.EMPTY, state)));
     }
 
     // seconds and the tool for the log line: "not breaking obsidian at x y z, 41.7s with iron_pickaxe"

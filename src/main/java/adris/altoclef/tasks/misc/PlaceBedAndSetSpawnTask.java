@@ -387,6 +387,13 @@ public class PlaceBedAndSetSpawnTask extends Task {
                 for (int dy = 0; dy < BED_CLEAR_SIZE.getY(); ++dy) {
                     BlockPos toClear = _currentBedRegion.offset(dx, dy, dz);
                     if (WorldHelper.isSolid(mod, toClear)) {
+                        // the region was picked with canBreak, so this is a block that turned up since (or a pick we lost).
+                        // the destroy task would refuse it and idle, so the spot goes and the search starts over
+                        if (WorldHelper.tooSlowToBreak(mod, toClear)) {
+                            _currentBedRegion = null;
+                            _currentBreak = null;
+                            return null;
+                        }
                         _currentBreak = toClear;
                         break outer;
                     }

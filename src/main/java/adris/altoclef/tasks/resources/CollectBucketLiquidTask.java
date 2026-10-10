@@ -276,7 +276,7 @@ public class CollectBucketLiquidTask extends ResourceTask {
         }
         BlockPos lid = source.above();
         Debug.logMessage("not breaking " + BuiltInRegistries.BLOCK.getKey(mod.getWorld().getBlockState(lid).getBlock()).getPath()
-                + " over the " + _liquidName + " at " + source.toShortString() + ", " + BreakRules.describe(mod.getPlayer().getInventory().items, mod.getWorld().getBlockState(lid)));
+                + " over the " + _liquidName + " at " + source.toShortString() + ", " + BreakRules.describe(WorldHelper.bagOf(mod),mod.getWorld().getBlockState(lid)));
         mod.getBlockTracker().requestBlockUnreachable(source, 0, "the block over it takes too long to break");
         BanPolicy.bucketLidStuck(mod.getBans(), WorldHelper.getCurrentDimension(), source.getX(), source.getY(), source.getZ());
     }
