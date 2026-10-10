@@ -43,15 +43,36 @@ public class PearlHuntTask extends Task {
 
     private GetToXZTask toHotspot;
     private RunState.Pos hotspotWalkingTo;
-    private long hotspotSinceMs;
+    private final Spent hotspotSpent = new Spent();
     private boolean hotspotDone;
     private Entity angryTarget;
     private KillEntityTask angryTask;
-    private long angrySinceMs;
+    private final Spent angrySpent = new Spent();
     private final Set<Entity> angryGivenUp = Collections.newSetFromMap(new IdentityHashMap<>());
     private String step = "Looking for endermen";
     // same latch the phase uses, an enderman behind a pillar must not switch the hotspot walk off and on
     private final HoldLatch endermanLatch = new HoldLatch(ENDERMAN_HOLD_SECONDS);
+
+    // time on a job that only counts the ticks we were actually at it: the caps survive interrupts, but a long fight with
+    // something else (or a death) in between must not eat them either
+    private static final class Spent {
+        private static final long GAP_MS = 1000;
+        private long ms;
+        private long lastMs;
+
+        void tick() {
+            long now = System.currentTimeMillis();
+            if (lastMs != 0 && now - lastMs < GAP_MS) {
+                ms += now - lastMs;
+            }
+            lastMs = now;
+        }
+
+        void reset() {
+            ms = 0;
+            lastMs = 0;
+        }
+    }
 
     public PearlHuntTask(int pearlsTotal, Dimension dimension, Supplier<RunState.Pos> hotspot) {
         this.pearlsTotal = pearlsTotal;
@@ -68,8 +89,8 @@ public class PearlHuntTask extends Task {
 
     @Override
     protected void onStart(AltoClef mod) {
-        // the angry cap and the hotspot walk cap keep counting across restarts: onStart runs again after every interrupt
-        // (mob defense, eating) and a fresh 20 s or 150 s each time would never run out
+        // the angry cap, the hotspot walk and its clock are NOT reset here: onStart runs again after every interrupt, and
+        // mob defense flickering would hand them a fresh 20 s / 150 s each time
         endermanLatch.reset();
     }
 
@@ -106,9 +127,10 @@ public class PearlHuntTask extends Task {
             if (angryTarget != man) {
                 angryTarget = man;
                 angryTask = new KillEntityTask(man);
-                angrySinceMs = System.currentTimeMillis();
+                angrySpent.reset();
             }
-            if (System.currentTimeMillis() - angrySinceMs > ANGRY_SECONDS * 1000) {
+            angrySpent.tick();
+            if (angrySpent.ms > ANGRY_SECONDS * 1000) {
                 angryGivenUp.add(man);
                 continue;
             }
@@ -121,22 +143,26 @@ public class PearlHuntTask extends Task {
     private Task walkToHotspot(AltoClef mod) {
         RunState.Pos spot = hotspot.get();
         boolean endermanHere = endermanLatch.update(mod.getEntityTracker().entityFound(EnderMan.class), System.currentTimeMillis() / 1000.0);
-        if (spot == null || endermanHere) {
+        if (spot == null) {
+            return null;
+        }
+        // a new hotspot is a new walk, the same one coming back after an interrupt is not
+        if (!spot.equals(hotspotWalkingTo)) {
+            hotspotDone = false;
+        }
+        if (hotspotDone || endermanHere) {
             return null;
         }
         if (!spot.equals(hotspotWalkingTo)) {
             hotspotWalkingTo = spot;
-            hotspotSinceMs = System.currentTimeMillis();
+            hotspotSpent.reset();
             toHotspot = new GetToXZTask(spot.x, spot.z);
-            hotspotDone = false;
-        }
-        if (hotspotDone) {
-            return null;
         }
         double dx = mod.getPlayer().getX() - spot.x;
         double dz = mod.getPlayer().getZ() - spot.z;
         boolean there = dx * dx + dz * dz <= AT_HOTSPOT_BLOCKS * AT_HOTSPOT_BLOCKS;
-        boolean tooLong = System.currentTimeMillis() - hotspotSinceMs > HOTSPOT_WALK_SECONDS * 1000;
+        hotspotSpent.tick();
+        boolean tooLong = hotspotSpent.ms > HOTSPOT_WALK_SECONDS * 1000;
         if (there || tooLong) {
             hotspotDone = true;
             return null;
