@@ -92,14 +92,14 @@ public class StationContradictionsTest {
             StationChoice.Pick<String> kept = StationChoice.decide(seen, "t", false, true, true, 21.0, StationChoice.walkBackReach(Kind.TABLE));
             assertEquals("task at " + d, StationChoice.Use.OURS, kept.use());
             // with no previous target the task agrees with the planner
-            assertEquals(StationChoice.Use.MAKE, StationChoice.decide(seen, null, false, true, true, 21.0, StationChoice.WALK_BACK).use());
+            assertEquals(StationChoice.Use.MAKE, StationChoice.decide(seen, null, false, true, true, 21.0, StationChoice.walkBackReach(Kind.TABLE)).use());
         }
         // and at 51 they agree again
         RunState state = new RunState();
         place(state, Kind.TABLE, pos(51, 64, 0), DIM);
         assertFalse(look(state, new Bag(), new StationLatches()).table().heldForPlanner());
         assertEquals(StationChoice.Use.MAKE, StationChoice.decide(List.of(new StationChoice.Candidate<>("t", 51.0, StationChoice.Role.OURS)),
-                "t", false, true, true, 21.0, StationChoice.WALK_BACK).use());
+                "t", false, true, true, 21.0, StationChoice.walkBackReach(Kind.TABLE)).use());
     }
 
     // (B) a smoker 21 blocks away with a furnace in the bag. the planner's band is NEAR (21) while it was held or never seen, NEAR - 1
@@ -136,6 +136,8 @@ public class StationContradictionsTest {
         assertTrue(v.table().heldForPlanner());
         assertFalse(Workbenches.standing(b, Kind.TABLE, DIM));
         assertFalse(v.table().standingNear());
+        // (the veto itself only holds while somebody drives the pickup, nobody does in this room)
+        assertFalse(v.table().pickingUp());
         assertNull(Workbenches.nearestStanding(state, Kind.TABLE, DIM, PX, PY, PZ, WorkbenchRules.NEAR));
     }
 
@@ -159,7 +161,7 @@ public class StationContradictionsTest {
     }
 
     // (E) WorkbenchRules.decide forgets a station by distance even when something is using it. 130 blocks away a standing furnace with
-    // its screen open (idle = false) is dropped, and a table 50 away with the wood to recraft is dropped after the usual 5 s outside.
+    // its screen open (idle = false) is dropped, and a table 50 away with the wood to recraft is dropped once it has been outside for 10 s (the rule wants 5).
     // only a station holding our items is spared; "in use" alone is not a reason
     @Test
     public void decideForgetsAStationByDistanceEvenWhileItIsInUse() {

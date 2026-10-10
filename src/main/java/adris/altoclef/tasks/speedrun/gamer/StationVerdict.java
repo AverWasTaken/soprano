@@ -113,7 +113,12 @@ public final class StationVerdict {
 
     // the verdict for one look from (px, py, pz). moves `latches`: this is the only place they are written
     static StationVerdict of(RunState state, String dimension, double px, double py, double pz, long now, World world, StationLatches latches) {
-        // table first, then furnace, then smoker: each latch is read before it is written, in the order the flags always ran in
+        // held when one of ours is within NEAR (a straight line, height counts), the same test the container tasks use, with a latch on
+        // top so the plan does not flip at the line (the cobble floor, the cook gate, a log trip against the cobble). the table's is big
+        // (once out of NEAR it only counts again well inside it, its planks swing the plan). furnace and smoker only get a block, and
+        // only inward: the smoker first rule reads this flag and the container tasks read the plain line, so a smoker at 20 blocks is a
+        // smoker whichever way we got there, and the flag is never true where the task would put down a second one
+        // (table first, then furnace, then smoker: each latch is read before it is written, in the order the flags always ran in)
         boolean tableNear = heldNear(state, Kind.TABLE, dimension, px, py, pz, WorkbenchRules.returnRadius(latches.tableFar), world);
         latches.tableFar = !tableNear && Workbenches.any(state, Kind.TABLE, dimension);
         // past the latch a table of ours still counts as far as the craft would walk back to it (Workbenches.plannerWalksBack),
@@ -133,7 +138,7 @@ public final class StationVerdict {
                 station(state, Kind.TABLE, dimension, px, py, pz, now, tableNear || tableBack, tableNear, tableBack, tableNear ? "near" : tableBack ? "walk back" : "none"),
                 station(state, Kind.FURNACE, dimension, px, py, pz, now, furnaceNear || furnaceBack, furnaceNear, furnaceBack, furnaceNear ? "near" : furnaceBack ? "walk back" : "none"),
                 station(state, Kind.SMOKER, dimension, px, py, pz, now, smokerHeld, smokerNear, smokerBack,
-                        smokerNear ? "near" : smokerHeld ? "walk back" : smokerBack ? "walk back, but a furnace is at hand" : "none"),
+                        smokerNear ? "near" : smokerHeld ? "walk back" : "none"),
                 WorkbenchRules.phaseMayEnd(state.benches, dimension, b -> FurnaceJobs.isBusy(state, b.pos, b.dimension)));
     }
 
