@@ -247,7 +247,10 @@ public class IronPhase implements PhaseHandler {
             // the trip on its way is let go for real (whoever cut in on it since, a pack-up has its own book), see FurnaceWatch.drop
             furnaces.drop();
         }
-        for (Kind k : arbiter.ask(scene, now)) {
+        // asked once and kept: the line below says who was lined up and who said no
+        List<Kind> asked = arbiter.ask(scene, now);
+        for (int i = 0; i < asked.size(); i++) {
+            Kind k = asked.get(i);
             Task task = offer(k, mod, ctx, needs, head, jobs, plan, moment);
             if (task == null) {
                 // the kit with an empty runnable list while something cooks is a flicker, not the end of anything (no line pair)
@@ -272,7 +275,7 @@ public class IronPhase implements PhaseHandler {
                     arbiter.ended(k, now, "visit over, next trip");
                 }
             }
-            say(arbiter.chose(got, now));
+            say(IronActivity.withDetail(arbiter.chose(got, now), asked, i, scene));
             if (before == Kind.COAL && got != Kind.COAL) {
                 support.endCoal(now);
             }
@@ -286,7 +289,7 @@ public class IronPhase implements PhaseHandler {
             return task;
         }
         if (!(arbiter.current() == Kind.KIT && jobs && head == null)) {
-            say(arbiter.idle(now));
+            say(IronActivity.withDetail(arbiter.idle(now), asked, asked.size(), scene));
         }
         if (before == Kind.COAL) {
             support.endCoal(now);

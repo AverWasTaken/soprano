@@ -551,4 +551,31 @@ public class IronActivityTest {
         assertFalse(a.resting(Kind.COAL, 2));
         assertEquals("activity: nothing -> kit (first pick)", a.chose(Kind.KIT, 3));
     }
+
+    @Test
+    public void theDetailNamesWhoWasAskedWhoDeclinedAndTheScene() {
+        List<Kind> asked = List.of(Kind.COAL, Kind.FURNACE, Kind.KIT);
+        Scene s = new Scene(true, false, true, false, false, true);
+        assertEquals("cands=[coal,furnace,kit] declined=[coal,furnace] scene=jobs:1,standby:0,head:1,loots:0,golem:0,starving:1",
+                IronActivity.detail(asked, 2, s));
+    }
+
+    @Test
+    public void theDetailIsAppendedAndTheOldLineIsLeftAlone() {
+        IronActivity a = new IronActivity();
+        String line = a.chose(Kind.KIT, 0);
+        assertEquals("activity: nothing -> kit (first pick)", line);
+        String full = IronActivity.withDetail(line, List.of(Kind.KIT), 0, PLAIN);
+        assertTrue(full.startsWith(line + " cands=[kit] declined=[] scene="));
+    }
+
+    @Test
+    public void noLineMeansNoDetail() {
+        assertNull(IronActivity.withDetail(null, List.of(Kind.KIT), 0, PLAIN));
+    }
+
+    @Test
+    public void everyoneDecliningListsEveryone() {
+        assertTrue(IronActivity.detail(List.of(Kind.COAL, Kind.KIT), 2, PLAIN).contains("declined=[coal,kit]"));
+    }
 }

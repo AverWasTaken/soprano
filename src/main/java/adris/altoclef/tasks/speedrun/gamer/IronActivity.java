@@ -3,6 +3,7 @@ package adris.altoclef.tasks.speedrun.gamer;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 // the one place IRON decides "what are we doing right now". same deal as CombatCommit for fights: one way in, one way out,
@@ -248,6 +249,34 @@ public final class IronActivity {
             why = "switched";
         }
         return "activity: " + from + " -> " + to + " (" + why + ")";
+    }
+
+    // the activity line plus who was lined up, who said no before the winner (the first `declined` of `cands`) and what the scene
+    // looked like, so a flip can be read without guessing which job wasn't eligible. built only when there is a line to extend,
+    // null stays null
+    public static String withDetail(String line, List<Kind> cands, int declined, Scene s) {
+        if (line == null) {
+            return null;
+        }
+        return line + " " + detail(cands, declined, s);
+    }
+
+    static String detail(List<Kind> cands, int declined, Scene s) {
+        StringBuilder sb = new StringBuilder("cands=[");
+        for (int i = 0; i < cands.size(); i++) {
+            sb.append(i == 0 ? "" : ",").append(cands.get(i).name().toLowerCase(Locale.ROOT));
+        }
+        sb.append("] declined=[");
+        for (int i = 0; i < Math.min(declined, cands.size()); i++) {
+            sb.append(i == 0 ? "" : ",").append(cands.get(i).name().toLowerCase(Locale.ROOT));
+        }
+        return sb.append("] scene=jobs:").append(bit(s.jobs())).append(",standby:").append(bit(s.standingBy()))
+                .append(",head:").append(bit(s.hasHead())).append(",loots:").append(bit(s.loots()))
+                .append(",golem:").append(bit(s.golemFighting())).append(",starving:").append(bit(s.starving())).toString();
+    }
+
+    private static int bit(boolean b) {
+        return b ? 1 : 0;
     }
 
     // nothing wanted the wheel, not even the kit
