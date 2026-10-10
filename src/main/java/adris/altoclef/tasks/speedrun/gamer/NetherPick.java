@@ -90,6 +90,18 @@ public final class NetherPick {
         return wood;
     }
 
+    // the table leaves the bag the tick it goes down and the station book only knows it a moment later. in that gap the bag reads
+    // "no table", the need grows by four planks and the craft would either give up with the table on the ground or make a second
+    // one. so for a few seconds after the pick stage was running a missing table is taken as still there
+    public static final double TABLE_GRACE_SECONDS = 3;
+
+    public static Bag graceTable(Bag b, boolean wasPicking, double secondsSincePick) {
+        if (b.table() || !wasPicking || secondsSincePick > TABLE_GRACE_SECONDS) {
+            return b;
+        }
+        return new Bag(b.ingots(), b.cobble(), b.planks(), b.sticks(), b.logs(), true);
+    }
+
     public enum Stage {
         // an input is short (the bag changed under us): drop the whole thing, never go and fetch it
         ABORT,

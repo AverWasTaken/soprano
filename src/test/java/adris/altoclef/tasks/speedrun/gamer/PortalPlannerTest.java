@@ -237,6 +237,15 @@ public class PortalPlannerTest {
     }
 
     @Test
+    public void theDefaultConfigAsksForThreeSpares() {
+        // setUp turns them off for the old gate tests, a fresh config is what a run really gets
+        OverworldConfig fresh = new OverworldConfig();
+        assertEquals(3, fresh.netherSparePicks);
+        assertEquals(List.of(new KitNeed("stone_pickaxe", 3)),
+                PortalPlanner.gate(readyToGo().give(Items.IRON_PICKAXE, 1), fresh, 10));
+    }
+
+    @Test
     public void zeroSparesSwitchesTheNeedOff() {
         cfg.netherSparePicks = 0;
         assertTrue(PortalPlanner.gate(readyToGo().give(Items.STONE_PICKAXE, 1), cfg, 10).isEmpty());

@@ -181,6 +181,19 @@ public class NetherPickTest {
     }
 
     @Test
+    public void aTableThatJustWentDownIsStillThereForAFewSeconds() {
+        // 3 cobble and 2 sticks, the table was in the bag a tick ago and is on the ground now, the book does not know it yet
+        Bag gone = new Bag(0, 3, 0, 2, 0, false);
+        assertEquals(NetherPick.Stage.ABORT, NetherPick.stage(gone, Tier.STONE));
+        Bag graced = NetherPick.graceTable(gone, true, 1);
+        assertTrue(graced.table());
+        assertEquals(NetherPick.Stage.PICK, NetherPick.stage(graced, Tier.STONE));
+        // but not for ever, and not when we were not at the pick stage
+        assertFalse(NetherPick.graceTable(gone, true, NetherPick.TABLE_GRACE_SECONDS + 1).table());
+        assertFalse(NetherPick.graceTable(gone, false, 0).table());
+    }
+
+    @Test
     public void theLinesNameTheBagAndTheTier() {
         assertEquals("nether: no pickaxe left, crafting stone from the bag", NetherPick.craftLine(Tier.STONE));
         assertEquals("nether: no pickaxe and nothing to make one from (ingots 2, cobble 1, planks 9, sticks 0, table no)",

@@ -30,6 +30,7 @@ public class NetherPickTask extends Task {
     private final BooleanSupplier hasPick;
 
     private Stage stage;
+    private double lastPickAt = Double.NEGATIVE_INFINITY;
     private Task step;
     private boolean failed;
 
@@ -46,6 +47,7 @@ public class NetherPickTask extends Task {
     @Override
     protected void onStart(AltoClef mod) {
         stage = null;
+        lastPickAt = Double.NEGATIVE_INFINITY;
         step = null;
         failed = false;
     }
@@ -59,7 +61,13 @@ public class NetherPickTask extends Task {
             failed = true;
             return null;
         }
-        Bag b = bag.get();
+        double now = timeOnTaskSeconds();
+        Bag raw = bag.get();
+        // (the grace runs from the last tick the book really had a table, so it cannot hold the craft up for ever)
+        if (raw.table() && NetherPick.stage(raw, tier) == Stage.PICK) {
+            lastPickAt = now;
+        }
+        Bag b = NetherPick.graceTable(raw, stage == Stage.PICK, now - lastPickAt);
         Stage next = NetherPick.stage(b, tier);
         if (next == Stage.ABORT) {
             failed = true;

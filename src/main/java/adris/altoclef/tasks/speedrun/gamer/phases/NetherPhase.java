@@ -101,7 +101,6 @@ public class NetherPhase implements PhaseHandler {
     private static final double PICK_RETRY_SECONDS = 60;
     private Task boots;
     // the pick we are making from the bag (see pickSide) and whether we already said there is nothing to make one from
-    private NetherPick.Tier pickTier = NetherPick.Tier.NONE;
     private NetherPickTask pickTask;
     private double pickRetryAt;
     private boolean noPickSaid;
@@ -196,7 +195,6 @@ public class NetherPhase implements PhaseHandler {
         hunt = null;
         trade = null;
         boots = null;
-        pickTier = NetherPick.Tier.NONE;
         pickTask = null;
         pickRetryAt = 0;
         noPickSaid = false;
@@ -266,17 +264,26 @@ public class NetherPhase implements PhaseHandler {
     private Task pickSide(AltoClef mod, GamerContext ctx, double now) {
         GamerFacts f = ctx.facts();
         if (NetherPick.hasUsablePick(f)) {
-            pickTier = NetherPick.Tier.NONE;
             pickTask = null;
             noPickSaid = false;
             return null;
         }
-        NetherPick.Bag bag = NetherPick.bagOf(f);
-        // the tier we started stays while the bag still covers it, or a table going down (planks into the table) could flip it
-        NetherPick.Tier tier = pickTier != NetherPick.Tier.NONE && NetherPick.covered(bag, pickTier) ? pickTier : NetherPick.choose(bag);
-        if (tier == NetherPick.Tier.NONE) {
-            pickTier = tier;
+        if (pickTask != null && pickTask.failed()) {
+            // stuck or an input went missing under us: leave it alone for a while, the sweep goes on with what it has
             pickTask = null;
+            pickRetryAt = now + PICK_RETRY_SECONDS;
+        }
+        if (pickTask != null) {
+            // under way: the task reads the bag itself every tick (and the bag reads odd for a moment when the table goes down)
+            if (pickBusy(mod, ctx, now)) {
+                return null;
+            }
+            hudState = "Making a pickaxe";
+            return pickTask;
+        }
+        NetherPick.Bag bag = NetherPick.bagOf(f);
+        NetherPick.Tier tier = NetherPick.choose(bag);
+        if (tier == NetherPick.Tier.NONE) {
             if (!noPickSaid) {
                 noPickSaid = true;
                 ctx.log(NetherPick.shortLine(bag));
@@ -287,17 +294,8 @@ public class NetherPhase implements PhaseHandler {
         if (pickBusy(mod, ctx, now) || now < pickRetryAt) {
             return null;
         }
-        if (pickTask != null && pickTask.failed()) {
-            // stuck or an input went missing under us: leave it alone for a while, the sweep goes on with what it has
-            pickTask = null;
-            pickRetryAt = now + PICK_RETRY_SECONDS;
-            return null;
-        }
-        if (tier != pickTier || pickTask == null) {
-            pickTier = tier;
-            pickTask = new NetherPickTask(tier, () -> NetherPick.bagOf(ctx.facts()), () -> NetherPick.hasUsablePick(ctx.facts()));
-            ctx.log(NetherPick.craftLine(tier));
-        }
+        pickTask = new NetherPickTask(tier, () -> NetherPick.bagOf(ctx.facts()), () -> NetherPick.hasUsablePick(ctx.facts()));
+        ctx.log(NetherPick.craftLine(tier));
         hudState = "Making a pickaxe";
         return pickTask;
     }
