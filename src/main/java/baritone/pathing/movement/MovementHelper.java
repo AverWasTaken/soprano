@@ -846,7 +846,8 @@ public interface MovementHelper extends ActionCosts, Helper {
             return; // paused means hands off the hotbar
         }
         if (Baritone.settings().autoTool.value && !Baritone.settings().assumeExternalAutoTool.value) {
-            ctx.player().getInventory().selected = ts.getBestSlot(b.getBlock(), preferSilkTouch);
+            // the state, not the block: the Block overload rebuilds a default state and loses what a forced tool predicate looks at
+            ctx.player().getInventory().selected = ts.getBestSlot(b, preferSilkTouch, false);
         }
     }
 
