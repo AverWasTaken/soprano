@@ -10,6 +10,7 @@ import adris.altoclef.tasks.movement.TimeoutWanderTask;
 import adris.altoclef.tasksystem.ITaskRequiresGrounded;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.helpers.ApproachRules;
+import adris.altoclef.util.helpers.BackOffRules;
 import adris.altoclef.util.helpers.EntityBlockerRules;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.LookHelper;
@@ -61,8 +62,14 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
     private GoalRunAway _backOffGoal;
     // the approach child was in the tree last tick (it is walking, a stop now would cut the path), see ApproachRules
     private boolean _approachLive;
-    // ticks in a row spent standing in reach with the swing gated, see ApproachRules.WAIT_TICKS
+    // ticks in a row spent standing in reach with the swing gated, see ApproachRules.WAIT_TICKS. for a kill task it counts
+    // ticks in reach since the last swing that really went out, whatever the plan flickered through in between
     private int _waitTicks;
+    private Entity _waitEntity;
+    private long _swingsSeen;
+    // the back-off we started has to be getting somewhere, and a stuck one is not started again for a while
+    private final BackOffRules.Watch _backOffWatch = new BackOffRules.Watch();
+    private long _backOffMutedUntil = Long.MIN_VALUE;
 
     public AbstractDoToEntityTask(double maintainDistance, double combatGuardLowerRange, double combatGuardLowerFieldRadius) {
         _maintainDistance = maintainDistance;
@@ -84,6 +91,10 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
         _approach = null;
         _approachLive = false;
         _waitTicks = 0;
+        _waitEntity = null;
+        _swingsSeen = mod.getControllerExtras().swings();
+        _backOffWatch.clear();
+        _backOffMutedUntil = Long.MIN_VALUE;
         _blocker = null;
         _blockerTarget = null;
         _blockerDigs = 0;
@@ -138,7 +149,12 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
             // If we don't specify a maintain distance, default to within 1 block of our reach.
             double maintainDistance = _maintainDistance >= 0 ? _maintainDistance : playerReach - 1;
 
-            boolean tooClose = sqDist < maintainDistance * maintainDistance;
+            long now = mod.getWorld().getGameTime();
+            // a kill task with nowhere to step back to (a shaft, a low tunnel), or whose last step back went nowhere, stands
+            // and hits: the run-away would only own the keys, and "too close" is not a problem we can fix there
+            boolean backOffOk = !isKillTask() || (now >= _backOffMutedUntil && mod.getControllerExtras().roomToBackOff());
+            boolean tooClose = backOffOk && sqDist < maintainDistance * maintainDistance;
+            watchBackOff(mod, now);
 
             // Step away if we're too close, unless a crit hop is on (or about to be): backing off mid hop is exactly what
             // leaves the mob out of reach when we come down
@@ -159,10 +175,20 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
                     !mod.getMLGBucketChain().isChorusFruiting() &&
                     (mod.getPlayer().onGround() || mod.getControllerExtras().critInFlight());
             // a child that was walking to some other mob is not the one to keep
-            ApproachRules.Plan plan = ApproachRules.plan(wasWalking && _approachEntity == entity, mod.getControllerExtras().inRange(entity),
-                    result != null && result.getType() == HitResult.Type.ENTITY, ready,
-                    mod.getClientBaritone().getPathingBehavior().isSafeToCancel(), tooClose, _waitTicks >= ApproachRules.WAIT_TICKS);
-            _waitTicks = plan == ApproachRules.Plan.WAIT ? _waitTicks + 1 : 0;
+            boolean inReach = mod.getControllerExtras().inRange(entity);
+            boolean shot = result != null && result.getType() == HitResult.Type.ENTITY;
+            if (isKillTask()) {
+                countStandingTicks(mod, entity, inReach && shot);
+            }
+            boolean gatesOpen = !mod.getFoodChain().needsToEat() && !mod.getMLGBucketChain().isFallingOhNo(mod)
+                    && mod.getMLGBucketChain().doneMLG() && !mod.getMLGBucketChain().isChorusFruiting();
+            ApproachRules.Policy policy = !isKillTask() ? ApproachRules.Policy.OTHER
+                    : gatesOpen ? ApproachRules.Policy.KILL : ApproachRules.Policy.KILL_GATED;
+            ApproachRules.Plan plan = ApproachRules.plan(wasWalking && _approachEntity == entity, inReach, shot, ready,
+                    mod.getClientBaritone().getPathingBehavior().isSafeToCancel(), tooClose, _waitTicks >= ApproachRules.WAIT_TICKS, policy);
+            if (!isKillTask()) {
+                _waitTicks = plan == ApproachRules.Plan.WAIT ? _waitTicks + 1 : 0;
+            }
             switch (plan) {
                 case INTERACT:
                     _progress.reset();
@@ -178,6 +204,14 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
                     setDebugState("Finishing the step before the swing");
                     _approachLive = true;
                     return _approach;
+                case SWING_NOW:
+                    // stood in reach this long with no swing: whatever path is in the way goes, the hit is what is owed
+                    _progress.reset();
+                    _blocker = null;
+                    dropBackOff(mod);
+                    mod.getClientBaritone().getPathingBehavior().cancelEverything();
+                    setDebugState("In reach, swinging through the stall");
+                    return onStalledSwing(mod, entity);
                 case WAIT:
                     _progress.reset();
                     _blocker = null;
@@ -192,6 +226,41 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
             return null;
         }
         return new TimeoutWanderTask();
+    }
+
+    // the kill tasks are committed to the mob in front of them: they stand and hit what is in reach and do not shuffle off it
+    protected boolean isKillTask() {
+        return false;
+    }
+
+    // the swing for a stall the plan gave up waiting out (kill tasks only)
+    protected Task onStalledSwing(AltoClef mod, Entity entity) {
+        return null;
+    }
+
+    // ticks stood in reach without a swing going out. a swing, a new target or the mob leaving reach starts it over
+    private void countStandingTicks(AltoClef mod, Entity entity, boolean standingInReach) {
+        long swings = mod.getControllerExtras().swings();
+        boolean swung = swings != _swingsSeen;
+        _swingsSeen = swings;
+        if (_waitEntity != entity) {
+            _waitEntity = entity;
+            _waitTicks = 0;
+        }
+        _waitTicks = (!standingInReach || swung) ? 0 : _waitTicks + 1;
+    }
+
+    // the run-away we started has to be moving us, or it is dropped and left alone for a bit
+    private void watchBackOff(AltoClef mod, long now) {
+        var goalProcess = mod.getClientBaritone().getCustomGoalProcess();
+        if (_backOffGoal == null || goalProcess.getGoal() != _backOffGoal || !goalProcess.isActive()) {
+            _backOffWatch.clear();
+            return;
+        }
+        if (_backOffWatch.stuck(now, mod.getPlayer().getX(), mod.getPlayer().getZ())) {
+            dropBackOff(mod);
+            _backOffMutedUntil = now + BackOffRules.MUTE_TICKS;
+        }
     }
 
     // only the kill tasks swing, so only they have a hop for the back-off to get out of the way of. shearing a sheep right

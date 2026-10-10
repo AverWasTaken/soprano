@@ -19,7 +19,18 @@ public final class ApproachRules {
         // out of reach (or no clear shot): the approach, the same child as last tick if there was one
         APPROACH,
         // too close, no clear shot, nothing mid-step: shuffle
-        WANDER
+        WANDER,
+        // a kill task stood in reach for WAIT_TICKS without a swing going out: let go of the path and hit it
+        SWING_NOW
+    }
+
+    // who is asking. the kill tasks are committed to the mob in front of them, so they never shuffle away from one that is in
+    // reach, and (gates open) they swing through a stall instead of standing there. everyone else keeps the old rules
+    public enum Policy {
+        OTHER,
+        // a kill task, but eating or the bucket has the gates shut right now: stand, do not swing, do not shuffle
+        KILL_GATED,
+        KILL
     }
 
     // 5 s. an unsafe step lasts a handful of ticks, an eating pause a couple of seconds, anything longer is not a hiccup
@@ -34,14 +45,24 @@ public final class ApproachRules {
     // WAIT_TICKS in a row already. a gate that stays shut (swimming, a ladder) must not freeze us in place for good, so
     // after that the old rules get a go again: walk if there is room, shuffle if not
     public static Plan plan(boolean childLive, boolean inRange, boolean shot, boolean ready, boolean safeToCancel, boolean tooClose, boolean waitedLong) {
+        return plan(childLive, inRange, shot, ready, safeToCancel, tooClose, waitedLong, Policy.OTHER);
+    }
+
+    public static Plan plan(boolean childLive, boolean inRange, boolean shot, boolean ready, boolean safeToCancel, boolean tooClose,
+                            boolean waitedLong, Policy policy) {
         if (inRange && shot) {
+            // (first, before the swing is even considered: a kill task that was told to swing for this long and has not is
+            // stuck in the swing's own gates too, a hop waiting on a fall that never comes, and no path is what blocks it)
+            if (policy == Policy.KILL && waitedLong) {
+                return Plan.SWING_NOW;
+            }
             if (ready && safeToCancel) {
                 return Plan.INTERACT;
             }
             if (childLive) {
                 return Plan.KEEP_CHILD;
             }
-            if (!waitedLong) {
+            if (!waitedLong || policy != Policy.OTHER) {
                 return Plan.WAIT;
             }
             if (!tooClose) {
@@ -52,7 +73,7 @@ public final class ApproachRules {
         if (!tooClose) {
             return Plan.APPROACH;
         }
-        if (!safeToCancel) {
+        if (!safeToCancel || (inRange && policy != Policy.OTHER)) {
             return childLive ? Plan.KEEP_CHILD : Plan.WAIT;
         }
         return Plan.WANDER;

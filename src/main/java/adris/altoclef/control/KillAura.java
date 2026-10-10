@@ -240,7 +240,8 @@ public class KillAura {
             if (canAttack) {
                 if (crit && !(entity instanceof LargeFireball)) {
                     mod.getControllerExtras().melee(entity);
-                } else if (mod.getPlayer().onGround() || mod.getPlayer().getDeltaMovement().y() < 0 || mod.getPlayer().isInWater()) {
+                } else if (mod.getPlayer().onGround() || mod.getPlayer().getDeltaMovement().y() < 0 || mod.getPlayer().isInWater()
+                        || !mod.getControllerExtras().critInFlight()) {
                     mod.getControllerExtras().attack(entity);
                 }
             }

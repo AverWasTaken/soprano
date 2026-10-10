@@ -730,4 +730,29 @@ public class CritTimingTest {
         axe.ticksToFull = 7;
         assertEquals(Step.JUMP, new CritTiming().step(0, axe));
     }
+
+    // a ceiling two above the feet: the hop is off the table for the whole cooldown, so the verdict has to settle on PLAIN
+    // and the caller's plain swing goes out the tick the cooldown is full. no JUMP, no APPROACH, no flip in between
+    @Test
+    public void underARoofTheVerdictSettlesOnPlainAndTheSwingIsOwedTheTickItFills() {
+        CritTiming t = new CritTiming();
+        int swungAt = -1;
+        double ticksToFull = 24.5;
+        for (int tick = 0; tick < 40; tick++) {
+            Sample s = new Sample();
+            s.lowHeadroom = true;
+            s.ticksToFull = ticksToFull;
+            Step step = t.step(tick, s);
+            assertEquals("tick " + tick, Step.PLAIN, step);
+            assertEquals("low headroom", CritTiming.hopVeto(s));
+            // the controller's plainSwing: a full cooldown and a PLAIN verdict is the hit
+            if (ticksToFull <= 0) {
+                swungAt = tick;
+                break;
+            }
+            ticksToFull -= 1;
+        }
+        // 24.5 down to 0 or less is 25 steps, the swing is on tick 25 and not a tick later
+        assertEquals(25, swungAt);
+    }
 }

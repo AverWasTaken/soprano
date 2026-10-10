@@ -9,7 +9,9 @@ import adris.altoclef.eventbus.events.BlockBreakingEvent;
 import adris.altoclef.util.helpers.ItemHelper;
 import baritone.api.utils.input.Input;
 import net.minecraft.client.player.LocalPlayer;
+import adris.altoclef.util.helpers.BackOffRules;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.tags.FluidTags;
 import net.minecraft.world.InteractionHand;
@@ -71,13 +73,50 @@ public class PlayerExtraController {
         return _mod.getPlayer().closerThan(entity, Baritone.settings().altoEntityReachRange.value);
     }
 
-    public void attack(Entity entity) {
+    // swings that really went out, for the kill task's "stood in reach and nothing swung" cap
+    private volatile long _swings;
+
+    public long swings() {
+        return _swings;
+    }
+
+    public boolean attack(Entity entity) {
         if (inRange(entity)) {
             // every deliberate swing comes through here: the one we hit is angry at us now, neutral or not
             _mod.getEntityTracker().noteProvoked(entity);
             _mod.getController().attack(_mod.getPlayer(), entity);
             _mod.getPlayer().swing(InteractionHand.MAIN_HAND);
+            _swings++;
+            return true;
         }
+        return false;
+    }
+
+    // the stall breaker for a kill task that has stood in reach for too long: no hop, no ground check, no look at the keys,
+    // just the hit when the cooldown allows it
+    public boolean swingNow(Entity entity) {
+        if (!attackReady()) {
+            return false;
+        }
+        _crit.reset();
+        _mod.getPlayer().setSprinting(false);
+        return attack(entity);
+    }
+
+    // room to take a step back from a mob on us: a free neighbour cell (feet and head height) and the headroom the hop needs.
+    // a shaft or a low tunnel has none, and a run-away path there only takes the keys from the swing
+    public boolean roomToBackOff() {
+        Level level = _mod.getWorld();
+        BlockPos feet = _mod.getPlayer().blockPosition();
+        boolean side = false;
+        for (Direction dir : Direction.Plane.HORIZONTAL) {
+            BlockPos cell = feet.relative(dir);
+            if (passable(level, cell) && passable(level, cell.above())) {
+                side = true;
+                break;
+            }
+        }
+        return BackOffRules.roomToBackOff(side, passable(level, feet.above(2)));
     }
 
     // one machine for the whole bot. the kill task and the force field both swing at the same mob in the same tick, and
@@ -278,8 +317,10 @@ public class PlayerExtraController {
         return CritTiming.wantsHop(s);
     }
 
+    // on the ground, coming down or swimming is the old rule, and it is what keeps a swing from spending the rise of a crit hop.
+    // with no hop in flight there is no crit to spare, so a bot climbing or pillaring with a mob on it gets to hit it too
     private boolean plainSwing(LocalPlayer player, Entity entity) {
-        if (attackReady() && (player.onGround() || player.getDeltaMovement().y() < 0 || player.isInWater())) {
+        if (attackReady() && (player.onGround() || player.getDeltaMovement().y() < 0 || player.isInWater() || !critInFlight())) {
             attack(entity);
             return true;
         }

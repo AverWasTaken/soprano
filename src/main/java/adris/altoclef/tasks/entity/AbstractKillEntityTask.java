@@ -130,6 +130,21 @@ public abstract class AbstractKillEntityTask extends AbstractDoToEntityTask {
     }
 
     @Override
+    protected boolean isKillTask() {
+        return true;
+    }
+
+    // the plan gave up waiting for a swing that the gates never let out: weapon in hand, face it, hit it on a full cooldown
+    @Override
+    protected Task onStalledSwing(AltoClef mod, Entity entity) {
+        if (!equipWeapon(mod, _toolFallback)) {
+            LookHelper.lookAt(mod, entity.getEyePosition());
+            mod.getControllerExtras().swingNow(entity);
+        }
+        return null;
+    }
+
+    @Override
     protected Task onEntityInteract(AltoClef mod, Entity entity) {
         // Equip weapon
         if (!equipWeapon(mod, _toolFallback)) {

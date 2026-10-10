@@ -145,4 +145,46 @@ public class ApproachRulesTest {
     public void aWalkingChildOfThisMobStillBeatsTheWaitCap() {
         assertEquals(Plan.KEEP_CHILD, ApproachRules.plan(true, true, true, true, false, true, true));
     }
+
+    @Test
+    public void aKillTaskThatStoodInReachForTheCapSwingsThroughWhateverIsInTheWay() {
+        // the path is alive (not safe to cancel), nothing is mid step for the child, and the cap is up
+        assertEquals(Plan.SWING_NOW, ApproachRules.plan(false, true, true, true, false, true, true, ApproachRules.Policy.KILL));
+        assertEquals(Plan.SWING_NOW, ApproachRules.plan(true, true, true, true, false, false, true, ApproachRules.Policy.KILL));
+        // even when the swing is allowed on paper: a hop that waits on a fall that never comes is stuck just the same
+        assertEquals(Plan.SWING_NOW, ApproachRules.plan(false, true, true, true, true, true, true, ApproachRules.Policy.KILL));
+        // not before the cap
+        assertEquals(Plan.WAIT, ApproachRules.plan(false, true, true, true, false, true, false, ApproachRules.Policy.KILL));
+    }
+
+    @Test
+    public void aKillTaskNeverShufflesOffAMobInReachAndEatingIsNotForcedThrough() {
+        for (boolean tooClose : new boolean[]{false, true}) {
+            for (boolean safe : new boolean[]{false, true}) {
+                assertEquals(Plan.WAIT, ApproachRules.plan(false, true, true, false, safe, tooClose, true, ApproachRules.Policy.KILL_GATED));
+                assertEquals(Plan.WAIT, ApproachRules.plan(false, true, false, true, safe, true, false, ApproachRules.Policy.KILL));
+            }
+        }
+        // out of reach is still the approach, and everybody else keeps the old shuffle
+        assertEquals(Plan.APPROACH, ApproachRules.plan(false, false, false, true, true, false, true, ApproachRules.Policy.KILL));
+        assertEquals(Plan.WANDER, ApproachRules.plan(false, true, true, false, true, true, true, ApproachRules.Policy.OTHER));
+    }
+
+    // the plan flickering between INTERACT and WAIT used to put the cap back to zero every other tick. counting ticks since the
+    // last swing does not care what the plan said
+    @Test
+    public void aFlickeringPlanStillReachesTheCap() {
+        int sinceSwing = 0;
+        Plan last = null;
+        for (int tick = 0; tick < 3 * ApproachRules.WAIT_TICKS; tick++) {
+            boolean ready = tick % 2 == 0;
+            last = ApproachRules.plan(false, true, true, ready, ready, true, sinceSwing >= ApproachRules.WAIT_TICKS, ApproachRules.Policy.KILL);
+            if (last == Plan.SWING_NOW) {
+                assertEquals(true, tick >= ApproachRules.WAIT_TICKS);
+                return;
+            }
+            sinceSwing++;
+        }
+        throw new AssertionError("never forced a swing, last plan " + last);
+    }
 }
