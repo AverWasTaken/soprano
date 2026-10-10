@@ -71,7 +71,7 @@ public class FastTravelTask extends Task {
     @Override
     protected Task onTick(AltoClef mod) {
 
-        BlockPos netherTarget = new BlockPos(_target.getX() / 8, _target.getY(), _target.getZ() / 8);
+        BlockPos netherTarget = new BlockPos(Math.floorDiv(_target.getX(), 8), _target.getY(), Math.floorDiv(_target.getZ(), 8));
 
         boolean canBuildPortal = mod.getItemStorage().hasItem(Items.DIAMOND_PICKAXE) || mod.getItemStorage().getItemCount(Items.OBSIDIAN) >= 10;
         boolean canLightPortal = mod.getItemStorage().hasItem(Items.FLINT_AND_STEEL, Items.FIRE_CHARGE);
