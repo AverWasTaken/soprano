@@ -83,10 +83,6 @@ public final class CookGate {
     // `mayCraft` = enough meat to be worth a trip. without it only a station standing on the ground counts: a furnace in the bag
     // is a place, cook, walk back, pick up for two rabbit, and the phase waits on all of it
     public static Station station(GamerFacts f, OverworldConfig cfg, boolean mayCraft) {
-        return station(f, cfg, mayCraft, 0);
-    }
-
-    static Station station(GamerFacts f, OverworldConfig cfg, boolean mayCraft, int endBeds) {
         boolean ironInFurnace = furnaceHasIron(f);
         // the furnace is for meat only once the iron is done with it (or never needs it): while iron is owed the meat gets a
         // smoker of its own, which cooks twice as fast anyway, and a bag with no way to make one just keeps the meat until
@@ -114,10 +110,7 @@ public final class CookGate {
         // the stone floor is the cobble the kit still owes its tools, a smoker is not allowed to eat the stone pick
         int free = f.count(Items.COBBLESTONE) - KitPlanner.stoneFloor(f, cfg);
         boolean furnaceInBag = f.has(Items.FURNACE);
-        // same for the logs: the ones the kit still owes its tools and bed are spoken for (WoodReserve.keep), a smoker only
-        // gets the spare ones or gather has to go chop again
-        int spareLogs = f.count(ItemHelper.LOG) - WoodReserve.keep(f, cfg, endBeds).logs();
-        if (spareLogs >= smokerLogs(f) && (furnaceInBag || free >= SMOKER_COBBLE)) {
+        if (f.count(ItemHelper.LOG) >= smokerLogs(f) && (furnaceInBag || free >= SMOKER_COBBLE)) {
             return Station.SMOKER;
         }
         return furnaceFree && free >= SMOKER_COBBLE ? Station.FURNACE : Station.NONE;
@@ -205,7 +198,7 @@ public final class CookGate {
         if (!loading && stranded(f)) {
             return null;
         }
-        Station station = station(f, cfg, raw >= MIN_RAW, endBeds);
+        Station station = station(f, cfg, raw >= MIN_RAW);
         if (station == Station.NONE) {
             return null;
         }
