@@ -514,8 +514,8 @@ mine("pale_oak_sapling", Blocks.PALE_OAK_LEAVES, Items.PALE_OAK_SAPLING);
                 shapedRecipe3x3("decorated_pot", Items.DECORATED_POT, 1, o, b, o, b, o, b, o, b, o);
                 shapedRecipe3x3("flower_pot", Items.FLOWER_POT, 1, b, o, b, o, b, o, o, o, o);
                 shapedRecipe2x2Block("bricks", Items.BRICKS, b);
-                shapedRecipeSlab("brick_slab", Items.BRICK_SLAB, b);
-                shapedRecipeStairs("brick_stairs", Items.BRICK_STAIRS, b);
+                shapedRecipeSlab("brick_slab", Items.BRICK_SLAB, "bricks");
+                shapedRecipeStairs("brick_stairs", Items.BRICK_STAIRS, "bricks");
                 shapedRecipeWall("brick_wall", Items.BRICK_WALL, "bricks");
             }
             shapedRecipe3x3("ladder", Items.LADDER, 3, s, o, s, s, s, s, s, o, s);
