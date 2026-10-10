@@ -178,6 +178,8 @@ public class FoodChain extends SingleTaskChain {
             // not in the food list on purpose, this is the one fight where the gapple is the point
             Item gapple = mod.getItemStorage().hasItem(Items.GOLDEN_APPLE) ? Items.GOLDEN_APPLE : Items.ENCHANTED_GOLDEN_APPLE;
             LookHelper.tryAvoidingInteractable(mod);
+            // (a gapple meal tops up like an ordinary one afterwards, not to the last heal meal's line)
+            _fillTo = 20;
             startEat(mod, gapple);
         } else if (stance.mayEat() && _hasFood && (needsToEat() || _requestFillup) && _cachedPerfectFood.isPresent() &&
                 !mod.getMLGBucketChain().isChorusFruiting() && !mod.getPlayer().isBlocking()) {
@@ -283,8 +285,7 @@ public class FoodChain extends SingleTaskChain {
             return true;
         }
         // hurt with a hunger bar too low to regenerate: eat until it is back at 18. not on last resort food (chorus fruit
-        // throws us across the map), not in front of a shooter, and the fillup latch below carries on to a full bar like any
-        // other meal
+        // throws us across the map), not in front of a shooter, and the meal stops at the regen line (_fillTo)
         if (heal && CombatRules.healingMeal(health, foodLevel) && healsWithoutHarm()) {
             return true;
         }

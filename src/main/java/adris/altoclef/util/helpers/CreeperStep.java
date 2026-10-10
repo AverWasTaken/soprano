@@ -106,8 +106,8 @@ public final class CreeperStep {
                 return Event.NONE;
             }
             // a capped one stays lit next to us somehow (charged and stuck?), it is not worth holding the wheel forever. a hold that
-            // only ran long because the fuse lit, deflated and relit is not that one: it explodes after 30 lit ticks in total, so it
-            // gets stepped from again if it relights
+            // only ran long because the fuse lit, deflated and relit is not that one: it still has to light up to explode, so it
+            // gets stepped from again if it relights (and one that flickers at the swell edge is the shield's problem, not a blacklist's)
             if (end == Event.END_CAP && _litSince >= 0 && now - _litSince >= HOLD_CAP) remember(_capped, _id);
             _id = -1;
             _cornered = false;
