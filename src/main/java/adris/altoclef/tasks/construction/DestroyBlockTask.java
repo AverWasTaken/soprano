@@ -181,22 +181,27 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
     // arrived, so we'd stand there until the progress checker gave the block up, and leaving only the latest one would
     // just shuffle between two. null = nothing to step off of
     public static Goal pickGoal(BlockGetter world, BlockPos pos, boolean closeIn, Set<BlockPos> standingIn) {
+        return pickGoal(world, pos, closeIn, standingIn, false);
+    }
+
+    // sidesOnly is a block we won't break from on top of (or under, with a column hanging on it)
+    static Goal pickGoal(BlockGetter world, BlockPos pos, boolean closeIn, Set<BlockPos> standingIn, boolean sidesOnly) {
         if (world.getBlockState(pos.above()).getBlock() == Blocks.SNOW) {
             return new GoalBlock(pos);
         }
         if (!closeIn && vineNextTo(world, pos)) {
             return new GoalReachBlock(pos);
         }
-        return closeIn && standingIn != null && !standingIn.isEmpty() ? touchingElsewhere(world, pos, standingIn) : new GoalNear(pos, 1);
+        return closeIn && standingIn != null && !standingIn.isEmpty() ? touchingElsewhere(world, pos, standingIn, sidesOnly) : new GoalNear(pos, 1);
     }
 
     // the cells touching the block that we could stand in, minus the ones we've been in. nothing under it, that's our head
     // in the block. once none are left it's the plain goal again and the progress checker takes it from there
-    private static Goal touchingElsewhere(BlockGetter world, BlockPos pos, Set<BlockPos> standingIn) {
+    private static Goal touchingElsewhere(BlockGetter world, BlockPos pos, Set<BlockPos> standingIn, boolean sidesOnly) {
         List<Goal> spots = new ArrayList<>();
         for (Direction side : Direction.values()) {
             BlockPos spot = pos.relative(side);
-            if (side != Direction.DOWN && !standingIn.contains(spot) && world.getBlockState(spot).getCollisionShape(world, spot).isEmpty()) {
+            if (side != Direction.DOWN && !(sidesOnly && side == Direction.UP) && !standingIn.contains(spot) && world.getBlockState(spot).getCollisionShape(world, spot).isEmpty()) {
                 spots.add(new GoalBlock(spot));
             }
         }
@@ -612,7 +617,6 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
         // buried can't wait for three rays in a row, that's three ticks of suffocating
         boolean inRange = _reachHold.step(reach.isPresent(), mod.getClientBaritone().getPathingBehavior().isPathing() && !buried, inDistance);
         if (reach.isPresent()) {
-            _triedFeet.clear();
             _lastReach = reach.get();
             _lastSwingAt = swingAt;
         }
@@ -656,6 +660,8 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
                 && (buried || !mod.getFoodChain().needsToEat()) && !WorldHelper.isInNetherPortal(mod)
                 && mod.getClientBaritone().getPathingBehavior().isSafeToCancel()) {
             setDebugState("Block in range, mining...");
+            // swinging for real, not a glimpse of a ray on the way past: the spots we gave up on can be tried again
+            _triedFeet.clear();
             stuckCheck.reset();
             _stepOffs.reset();
             isMining = true;
@@ -781,10 +787,14 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
                         // arrived. the goal finished instantly every tick and we stood at the edge sneaking backwards for
                         // 49 seconds. same way out as the branch below: walk up and touch it
                         closeIn = true;
-                        goal = pickGoal(mod.getWorld(), _pos, true, triedFeet(feet));
+                        // never the top or the shaft here, and when every side has been tried the side goal stays
+                        Goal touching = pickGoal(mod.getWorld(), _pos, true, triedFeet(feet), true);
+                        if (!(touching instanceof GoalNear)) {
+                            goal = touching;
+                        }
                     }
                 } else {
-                    goal = pickGoal(mod.getWorld(), _pos, closeIn, reach.isEmpty() ? triedFeet(feet) : null);
+                    goal = pickGoal(mod.getWorld(), _pos, closeIn, closeIn && reach.isEmpty() ? triedFeet(feet) : null);
                     if (goal instanceof GoalReachBlock && goal.isInGoal(feet) && reach.isEmpty()) {
                         // already there and it still can't be hit (leaves, other logs, a wall), so touch it like before
                         closeIn = true;

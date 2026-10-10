@@ -149,6 +149,16 @@ public class DestroyBlockVinesTest {
     }
 
     @Test
+    public void aBlockMinedFromTheSideIsNeverClosedInOnFromOnTop() {
+        MapGetter w = new MapGetter();
+        w.set(LOG, Blocks.JUNGLE_LOG.defaultBlockState());
+        Goal goal = DestroyBlockTask.pickGoal(w, LOG, true, Set.of(LOG.west()), true);
+        assertFalse(goal.isInGoal(LOG.above()));
+        assertFalse(goal.isInGoal(LOG.below()));
+        assertTrue(goal.isInGoal(LOG.east()));
+    }
+
+    @Test
     public void boxedInFallsBackToTheOldGoal() {
         MapGetter w = trunk();
         for (Direction side : Direction.values()) {
