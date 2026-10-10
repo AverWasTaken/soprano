@@ -63,6 +63,33 @@ public class WaterFlowTest {
     }
 
     @Test
+    public void keysRoundTripFarFromSpawnInEveryDirection() {
+        int[] xz = {0, 1, -1, 4095, -4097, -5000, 100_000, -100_000, 29_999_984, -29_999_984};
+        int[] ys = {-64, 0, 63, 320};
+        for (int x : xz) {
+            for (int z : xz) {
+                for (int y : ys) {
+                    long k = WaterFlow.key(x, y, z);
+                    assertEquals(x, WaterFlow.x(k));
+                    assertEquals(y, WaterFlow.y(k));
+                    assertEquals(z, WaterFlow.z(k));
+                }
+            }
+        }
+    }
+
+    @Test
+    public void waterSpreadsTheSameWhereZIsFarNegative() {
+        // the same flat world shifted 6000 blocks the wrong way: a z below -4096 used to smear over the y and x fields
+        WaterFlow.World shifted = (x, y, z) -> flat(x + 12000, y, z + 6000);
+        WaterFlow.Result r = WaterFlow.run(shifted, new int[][]{{-12000 + 3, 1, -6000}});
+        assertTrue(r.hasWater(-12000 + 3, 1, -6000));
+        assertTrue(r.hasWater(-12000 + 3, 1, -6000 + 7));
+        assertTrue(r.isObsidian(-12000 + 10, 0, -6000));
+        assertFalse(r.isObsidian(-12000 + 11, 0, -6000));
+    }
+
+    @Test
     public void exposureLimitCutsTheFlowShort() {
         WaterFlow.Result r = WaterFlow.run(WaterFlowTest::flat, new int[][]{{0, 1, 0}}, 2);
         assertTrue(r.hasWater(2, 1, 0));

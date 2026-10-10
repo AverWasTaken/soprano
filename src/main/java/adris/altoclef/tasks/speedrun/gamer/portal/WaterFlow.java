@@ -50,20 +50,27 @@ public final class WaterFlow {
         this.maxGen = maxGen;
     }
 
+    // world coordinates: x and z get 26 bits each (the border is +-30M), y gets 12. every field is biased up and masked, so a
+    // negative one cannot smear over its neighbours
+    private static final int XZ_BIAS = 1 << 25;
+    private static final long XZ_MASK = (1L << 26) - 1;
+    private static final int Y_BIAS = 2048;
+    private static final long Y_MASK = (1L << 12) - 1;
+
     public static long key(int x, int y, int z) {
-        return ((long) (x + 4096) << 40) | ((long) (y + 4096) << 20) | (long) (z + 4096);
+        return (((long) x + XZ_BIAS) & XZ_MASK) << 38 | (((long) z + XZ_BIAS) & XZ_MASK) << 12 | ((long) y + Y_BIAS) & Y_MASK;
     }
 
     public static int x(long k) {
-        return (int) (k >> 40) - 4096;
+        return (int) ((k >>> 38) & XZ_MASK) - XZ_BIAS;
     }
 
     public static int y(long k) {
-        return (int) ((k >> 20) & 0xFFFFF) - 4096;
+        return (int) (k & Y_MASK) - Y_BIAS;
     }
 
     public static int z(long k) {
-        return (int) (k & 0xFFFFF) - 4096;
+        return (int) ((k >>> 12) & XZ_MASK) - XZ_BIAS;
     }
 
     // sources: cells that hold a water source from the start (the bucket spots)
