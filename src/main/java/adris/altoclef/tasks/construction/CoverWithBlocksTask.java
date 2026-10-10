@@ -32,15 +32,24 @@ public class CoverWithBlocksTask extends Task {
     private static final Task goToOverworld = new DefaultGoToDimensionTask(Dimension.OVERWORLD);
     private static Task getBlocks;
     private BlockPos lavaPos;
+    private boolean _searching;
+    private boolean _noLava;
 
     @Override
     protected void onStart(AltoClef mod) {
+        _searching = false;
+        _noLava = false;
         timer.reset();
         mod.getBlockTracker().trackBlock(Blocks.LAVA);
     }
 
     @Override
     protected Task onTick(AltoClef mod) {
+        // only the lava search wander counts, and only if we were already searching last tick: the wander under us is
+        // kept across branches (all infinite wanders are equal), so the tick the branch flips it can still be the one
+        // from getting blocks or crossing dimensions
+        boolean wasSearching = _searching;
+        _searching = false;
         Item[] throwAways = AltoSettings.getThrowawayItems(mod, true);
         Item[] throwAwaysToUse = Arrays.stream(throwAways).filter(item -> !(Block.byItem(item) instanceof LeavesBlock) &&
                 !(Block.byItem(item) instanceof FallingBlock) && item instanceof BlockItem).toArray(Item[]::new);
@@ -78,6 +87,10 @@ public class CoverWithBlocksTask extends Task {
         if (coverLavaWithSand(mod) == null) {
             setDebugState("Searching valid lava.");
             timer.reset();
+            _searching = true;
+            if (wasSearching && thisOrChildWanderFailing()) {
+                _noLava = true;
+            }
             return new TimeoutWanderTask();
         }
         setDebugState("Covering lava with blocks");
@@ -127,10 +140,11 @@ public class CoverWithBlocksTask extends Task {
     }
 
     // a command nobody is waiting on forever: the lava search wander can't even leave its spot, so there is nothing left
-    // to try
+    // to try. a flag from the search branch and not thisOrChildWanderFailing, which would also end it for a stuck wander
+    // down in the block or dimension tasks
     @Override
     public boolean isFinished(AltoClef mod) {
-        return thisOrChildWanderFailing();
+        return _noLava;
     }
 
     @Override
