@@ -24,7 +24,8 @@ import net.minecraft.network.chat.Component;
 import java.util.List;
 
 // the click gui as a vanilla screen: all the kit gets from here is a canvas, input in framebuffer pixels and the time.
-// everything the game does with a screen (pause, esc, blur, tab focus, narration) is switched off or ignored.
+// everything the game does with a screen (pause, esc, tab focus, narration) is switched off or ignored, except the
+// menu blur, which we ask for ourselves.
 //
 // keybinds: MixinMinecraft.passEvents hands Minecraft.tick a null screen while pathing so handleKeybinds still runs,
 // but those only fire from KeyMapping.click, which only happens with no screen open. typing in here cannot leak
@@ -196,7 +197,9 @@ public class GuiScreen extends Screen {
         McAtlases.releaseAll();
     }
 
-    // vanilla would blur the world and dim it. the scrim is ours and drawn in render
+    // vanilla's renderBackground would blur the world and then paint its dim texture on top. we want the blur and
+    // not the texture, so render calls the blur itself and the scrim is ours. this never runs anyway, render does
+    // not go through super
     @Override
     public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float partial) {
     }
@@ -235,6 +238,11 @@ public class GuiScreen extends Screen {
             // the hud's items leave depth behind at z 150 and nothing of ours uses depth, so start clean
             g.flush();
             RenderSystem.clear(256);
+            // the frosted glass: vanilla's own menu blur over the world, which is a no-op when the player has
+            // turned menu blur off. it only touches the main target, the pose below does not know it happened
+            if (!shell.closing()) {
+                renderBlurredBackground();
+            }
             float inv = (float) (1.0 / win.getGuiScale());
             g.pose().pushPose();
             posed = true;

@@ -27,9 +27,10 @@ public final class Icons {
     }
 
     // stroke width in pixels for a box this big: two grid units, so it scales with the glyph instead of slamming
-    // into a floor that makes 12px icons heavier than 24px ones. one pixel is as thin as the atlas can draw
+    // into a floor that makes 12px icons heavier than 24px ones. the floor is 1.25 and not 1: a one pixel line
+    // that lands on a pixel boundary is two rows of 50% grey, and a 12px plus made of those is barely there
     public static float strokePx(int size) {
-        return Math.max(1f, size * STROKE_UNITS / 24f);
+        return Math.max(1.25f, size * STROKE_UNITS / 24f);
     }
 
     // where grid coordinate g lands in pixels inside a size box. the canvas uses this for the go to path dots so they

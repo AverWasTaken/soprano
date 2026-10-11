@@ -8,7 +8,8 @@ public final class Theme {
 
     // these are also the default dark palette. resolve a token through color() before blending or fading it. every
     // dark value has to be unique, color() switches on it
-    public static final int SCRIM = 0x66000000;
+    // lighter than it used to be because the world behind it is blurred now, the scrim only has to settle it down
+    public static final int SCRIM = 0x52000000;
     public static final int SIDEBAR = 0xFF1B1B1D;
     public static final int PANEL = 0xFF232325;
     public static final int SURFACE = 0xFF2C2C2E;
@@ -117,11 +118,11 @@ public final class Theme {
             return token;
         }
         int light = switch (token) {
-            case SCRIM -> 0x40000000;
+            case SCRIM -> 0x33000000;
             case SIDEBAR -> 0xFFE6E6EB;
             case PANEL -> 0xFFF2F2F7;
             case SURFACE -> 0xFFFFFFFF;
-            case RAISED -> 0xFFEEEEF3;
+            case RAISED -> 0xFFE3E3E8;
             case FIELD -> 0xFFEAEAEF;
             case HOVER -> 0xFFE9E9EE;
             case PRESSED -> 0xFFDCDCE1;

@@ -262,8 +262,10 @@ public class Shell extends Widget implements ShellContext {
         };
     }
 
+    // group labels cost a section each, and under about 480 design px that comes straight out of the rows. a 540p
+    // window lands just under it, so there the sidebar is a plain list
     private boolean groupStart(int i) {
-        return h >= theme.px(430) && !group(i).isEmpty() && (i == 0 || !group(i).equals(group(i - 1)));
+        return h >= theme.px(480) && !group(i).isEmpty() && (i == 0 || !group(i).equals(group(i - 1)));
     }
 
     public int sidebarW() {
