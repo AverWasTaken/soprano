@@ -67,7 +67,7 @@ public class GetTabPreviewTest {
             Widget g = grid();
             int cols = ((VirtualGrid<?>) g).columns();
             int cwReal = (g.w() - p.theme.px(10)) / cols;
-            int ch = p.theme.px(88);
+            int ch = ((VirtualGrid<?>) g).cellHeight();
             p.click(g.x() + (i % cols) * cwReal + cwReal / 2f, g.y() + (i / cols) * ch + ch / 2f, mods);
         }
 

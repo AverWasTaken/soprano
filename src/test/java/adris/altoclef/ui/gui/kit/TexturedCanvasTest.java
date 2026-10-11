@@ -56,6 +56,27 @@ public class TexturedCanvasTest {
         centredText(c, s, theme.label, x + 14, y, 30, textColor);
     }
 
+    @Test
+    public void pathDotsGetARingOnlyWhenTheGlyphIsDrawnInOnAccent() {
+        int size = 48;
+        float cx = 10 + Icons.toPx(size, 5);
+        float cy = 10 + Icons.toPx(size, 19);
+        // six pixels above the start dot's centre: outside the dot itself, inside where a ring would be, and clear of
+        // the path, which leaves the dot to the right
+        int x = Math.round(cx);
+        int y = Math.round(cy) - 6;
+        Java2dCanvas plain = canvas(80, 80);
+        plain.icon(Icon.GOTO, 10, 10, size, Theme.TEXT_2);
+        assertEquals("no ring on a neutral surface", BG, px(plain, x, y));
+        Java2dCanvas lit = canvas(80, 80);
+        lit.icon(Icon.GOTO, 10, 10, size, Theme.ON_ACCENT);
+        int p = px(lit, x, y);
+        assertTrue("ring in the glyph's white on the accent", (p & 255) > 200 && ((p >> 8) & 255) > 200 && ((p >> 16) & 255) > 200);
+        // and the dot itself is still green
+        int d = px(lit, Math.round(cx), Math.round(cy));
+        assertTrue("start dot stays green", ((d >> 8) & 255) > (d & 255) + 40 && ((d >> 8) & 255) > ((d >> 16) & 255) + 40);
+    }
+
     // the whole family at every size the gui draws it, zoomed, so a heavy 12px or a drifting dot is visible at a
     // glance. one row per size, every icon in enum order
     private void iconSheet() throws IOException {

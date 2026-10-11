@@ -44,6 +44,10 @@ public class VirtualGrid<T> extends VirtualView<T> {
         return ((items.size() + cols - 1) / cols) * cellH;
     }
 
+    public int cellHeight() {
+        return cellH;
+    }
+
     @Override
     protected int step() {
         return cellH;

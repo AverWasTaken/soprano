@@ -14,7 +14,7 @@ final class ListCard {
     // the scrollbar lives in this strip at the right of a list. owners widen the list by it so the card is as wide as
     // the controls above it
     static int gutter(Theme theme) {
-        return theme.px(10);
+        return theme.px(VirtualView.GUTTER);
     }
 
     // one card around all the rows, as tall as they are. it is drawn in the list's scroll space and clipped to the

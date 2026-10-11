@@ -6,6 +6,7 @@ import adris.altoclef.ui.gui.kit.Icon;
 import adris.altoclef.ui.gui.kit.TextMeasurer;
 import adris.altoclef.ui.gui.kit.TextStyle;
 import adris.altoclef.ui.gui.kit.Theme;
+import adris.altoclef.ui.gui.kit.VirtualView;
 import adris.altoclef.ui.gui.model.Pinned;
 
 import java.util.HashMap;
@@ -27,17 +28,21 @@ final class GetTiles {
         return theme.px(88);
     }
 
+    // 88 at full scale. the item icon does not shrink under scale 1 (it stays a whole multiple of 16), so at 0.75 the
+    // icon plus two lines of name would not fit in 66 and the cell grows to hold them instead
     int cellH() {
-        return theme.px(88);
+        int lines = 2 * (int) Math.ceil(theme.measurer.lineHeight(theme.small));
+        int needed = theme.px(Theme.SPACE_2 + Theme.SPACE_1) + 2 * theme.itemIconPx() + theme.px(Theme.SPACE_1) + lines + theme.px(Theme.SPACE_2);
+        return Math.max(theme.px(88), needed);
     }
 
     // same maths as VirtualGrid, so the recent strip lines up with the columns under it
     int columns(int w) {
-        return Math.max(1, (w - theme.px(10)) / cellW());
+        return Math.max(1, (w - theme.px(VirtualView.GUTTER)) / cellW());
     }
 
     int cellWidth(int w) {
-        return Math.max(1, (w - theme.px(10)) / columns(w));
+        return Math.max(1, (w - theme.px(VirtualView.GUTTER)) / columns(w));
     }
 
     // up to two lines, broken at a space, only the second one ellipsized. the label block is always two lines tall

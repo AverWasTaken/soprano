@@ -2,6 +2,7 @@ package adris.altoclef.ui.gui.tabs;
 
 import adris.altoclef.ui.gui.facade.StatsAccess;
 import adris.altoclef.ui.gui.facade.StatusAccess;
+import adris.altoclef.ui.gui.facade.WorldAccess;
 import adris.altoclef.ui.gui.kit.Keys;
 import adris.altoclef.ui.gui.kit.Tab;
 import adris.altoclef.ui.gui.kit.TextField;
@@ -14,6 +15,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 // the product shots: every tab in both appearances, the panel alone on a transparent surround with its shadow kept
 // in the alpha, at 2x so they survive being tilted on a page. populated wherever the fake data allows, nobody
@@ -41,6 +43,12 @@ public class SitePreviewTest {
                 new StatsAccess.Stat("Time played", "3h 12m"), new StatsAccess.Stat("Deaths", "2"),
                 new StatsAccess.Stat("Items crafted", "360"), new StatsAccess.Stat("Damage dealt", "2 100"));
         f.world.following = "Steve";
+        // three players so the players card closes above the entities instead of being cut off, and a position a
+        // real walk away from the typed destination so the hint under it is not "1 block"
+        while (f.world.players.size() > 3) {
+            f.world.players.remove(f.world.players.size() - 1);
+        }
+        f.world.pos = new WorldAccess.Position(-212.5, 70.0, 418.5);
         GotoRecent.clear();
         GotoRecent.push(402, 23, 1190, "overworld");
         GotoRecent.push(-1205, null, 388, "overworld");
@@ -69,6 +77,8 @@ public class SitePreviewTest {
         p.hover(-100, -100);
         p.settle();
         p.advance(400);
+        // a product shot of an empty basket would be a green test and a wrong picture
+        assertTrue("basket filled", ((GetTab) tabs.get(0)).panel().goButton().enabled());
         p.savePanelCutout("site/get_" + theme, pad);
 
         // go to: a destination typed in, recent trips under it
@@ -85,6 +95,8 @@ public class SitePreviewTest {
         p.hover(-100, -100);
         p.settle();
         p.advance(400);
+        assertEquals("120", xBox.text());
+        assertEquals("-30", zBox.text());
         p.savePanelCutout("site/goto_" + theme, pad);
 
         for (int i = 2; i < tabs.size(); i++) {

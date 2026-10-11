@@ -301,7 +301,7 @@ public class GetTabTest {
         var g = tab.grid();
         int cols = g.columns();
         int cw = (g.w() - theme.px(10)) / cols;
-        int ch = theme.px(88);
+        int ch = g.cellHeight();
         return new float[] {g.x() + (i % cols) * cw + cw / 2f, g.y() + (i / cols) * ch + ch / 2f};
     }
 

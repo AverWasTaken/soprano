@@ -141,8 +141,12 @@ public abstract class VirtualView<T> extends Control implements FocusOnClick {
         return fadeCanvas.reset(c, fade, (1f - fade) * theme.px(6));
     }
 
+    // the strip at the right of a list where the scrollbar lives, in design px. one number, so a card drawn around the
+    // rows and the rows themselves cannot drift apart by a pixel
+    public static final int GUTTER = 10;
+
     protected final int gutter() {
-        return theme.px(10);
+        return theme.px(GUTTER);
     }
 
     private int trackY() {
