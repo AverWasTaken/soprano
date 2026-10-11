@@ -363,8 +363,14 @@ public class StorageHelper {
         return false;
     }
 
+    // the blocks that count as building materials: throwaway blocks minus the ones that fall over. the count and the collect
+    // target both come from here, or a bag of gravel finishes the collect task and still reads as no blocks at all
+    public static Item[] getBuildingMaterials(AltoClef mod) {
+        return Arrays.stream(AltoSettings.getThrowawayItems(mod, true)).filter(item -> item instanceof BlockItem && !item.equals(Items.GRAVEL) && !item.equals(Items.SAND)).toArray(Item[]::new);
+    }
+
     public static int getBuildingMaterialCount(AltoClef mod) {
-        return mod.getItemStorage().getItemCount(Arrays.stream(AltoSettings.getThrowawayItems(mod, true)).filter(item -> item instanceof BlockItem && !item.equals(Items.GRAVEL) && !item.equals(Items.SAND)).toArray(Item[]::new));
+        return mod.getItemStorage().getItemCount(getBuildingMaterials(mod));
     }
 
     private static boolean isScreenOpenInner(Predicate<AbstractContainerMenu> pNotNull) {

@@ -20,6 +20,12 @@ public interface GamerContext {
         return FoodPlan.latched(facts(), cfg(), state(), Debug::logInternal, wood());
     }
 
+    // the build blocks band as of this tick (BuildBlocks): a refill under way keeps running to its target, a fresh one is refused
+    // once the phase entry has used up its refills
+    default BuildBlocks buildBlocks() {
+        return BuildBlocks.of(facts(), state(), Debug::logMessage);
+    }
+
     // how much wood we hold, owe and may burn, as of this tick: the one answer every wood question reads (see WoodBudget). the engine
     // builds it once per tick and hands the same object to the furnaces' reserve, the default (a test's stub) builds it on every ask.
     // it is the state's phase's view of the wood, and has no food plan in it, so asking never moves the refill latch

@@ -234,6 +234,12 @@ public class RunState {
     public transient boolean foodRefilling;
     // the game tick a trip first looked due with no trip on, -1 when it does not (FoodPlan.latched waits REFILL_CONFIRM_TICKS on it)
     public transient long foodDueSince = -1;
+    // build blocks (BuildBlocks): the target of a refill under way (0 = none), how many fresh ones this phase entry has started (the base need, and the stock-up on top of it apart),
+    // and whether the cap's line was said. transient: a relog counts again from nothing, the bag says whether one is needed
+    public transient int buildRefill;
+    public transient int buildRefills;
+    public transient int buildExtraRefills;
+    public transient boolean buildCapSaid;
 
     public static class Cook {
         // game tick the backoff after a cook gave up ends at, -1 = not backed off

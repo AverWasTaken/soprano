@@ -134,6 +134,10 @@ public final class KitRunner {
         List<Item> equip = KitNeed.EQUIP_ARMOR.equals(need.catalogueName()) ? KitPlanner.toEquip(f, ctx.cfg().overworld) : List.of();
         int food = foodTarget(need, ctx.food());
         watchProgress(ctx, need);
+        if (KitNeed.BUILD_BLOCKS.equals(need.catalogueName())) {
+            // the first tick of a fresh refill is one for the cap, the rest of it is the same refill (BuildBlocks)
+            BuildBlocks.started(ctx.state(), need.count(), need.count() > ctx.cfg().overworld.portalBuildBlocks);
+        }
         if (!need.equals(key) || !equip.equals(equipKey) || food != foodKey) {
             if (!need.equals(key)) {
                 keySince = f.gameTime();

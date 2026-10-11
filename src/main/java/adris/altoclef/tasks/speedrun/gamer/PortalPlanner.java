@@ -90,6 +90,11 @@ public final class PortalPlanner {
     // what to hold before leaving the overworld (Marvion ordering: get it all here, not in the nether). the cast needs
     // two buckets (one becomes water, one lava) and a light, the end needs the water bucket back later
     public static List<KitNeed> gate(GamerFacts f, OverworldConfig cfg, int endBeds, FoodPlan food) {
+        return gate(f, cfg, endBeds, food, BuildBlocks.NONE);
+    }
+
+    // `build` is the tick's band (ctx.buildBlocks()): the blocks need starts under portalBuildBlocksLow and runs to portalBuildBlocks
+    public static List<KitNeed> gate(GamerFacts f, OverworldConfig cfg, int endBeds, FoodPlan food, BuildBlocks build) {
         List<KitNeed> out = new ArrayList<>();
         // the same count the kit plan uses, so meat still cooking for us (or meat that cannot be cooked) reads the same here. and
         // the same refill gap: 69 at the portal is not a trip
@@ -118,8 +123,9 @@ public final class PortalPlanner {
         if (picks > 0) {
             out.add(new KitNeed("stone_pickaxe", KitPlanner.held(f, "stone_pickaxe") + picks));
         }
-        if (f.buildBlocks() < cfg.portalBuildBlocks) {
-            out.add(new KitNeed(KitNeed.BUILD_BLOCKS, cfg.portalBuildBlocks));
+        int blocks = build.want(f.buildBlocks(), cfg.portalBuildBlocksLow, cfg.portalBuildBlocks);
+        if (blocks > 0) {
+            out.add(new KitNeed(KitNeed.BUILD_BLOCKS, blocks));
         }
         return out;
     }

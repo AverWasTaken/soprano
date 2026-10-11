@@ -4,6 +4,7 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.tasks.container.AsyncSmelting;
 import adris.altoclef.tasks.container.SmeltSplit;
+import adris.altoclef.tasks.speedrun.gamer.BuildBlocks;
 import adris.altoclef.tasks.speedrun.gamer.CookGate;
 import adris.altoclef.tasks.speedrun.gamer.EarlyIronPick;
 import adris.altoclef.tasks.speedrun.gamer.FoodGate;
@@ -150,6 +151,7 @@ public class IronPhase implements PhaseHandler {
     @Override
     public void onEnter(AltoClef mod, GamerContext ctx) {
         runner.reset();
+        BuildBlocks.newEntry(ctx.state());
         support.onEnter(mod);
         furnaces.newPhase();
         surface.reset();
@@ -225,7 +227,7 @@ public class IronPhase implements PhaseHandler {
         List<KitNeed> needs;
         if (jobs) {
             schedule = SmeltFiller.schedule(f, ctx.cfg().overworld, ctx.cfg().end.beds, SmeltSurface.shallow(SmeltSurface.depthBelowSky(mod)), ctx.food(),
-                    ctx.wood());
+                    ctx.wood(), ctx.buildBlocks());
             needs = gateFood(mod, ctx, schedule.runnable());
         } else {
             kitHead = null;
@@ -495,7 +497,7 @@ public class IronPhase implements PhaseHandler {
             return null;
         }
         Schedule schedule = SmeltFiller.schedule(f, ctx.cfg().overworld, ctx.cfg().end.beds, SmeltSurface.shallow(SmeltSurface.depthBelowSky(mod)),
-                ctx.food(), ctx.wood());
+                ctx.food(), ctx.wood(), ctx.buildBlocks());
         List<KitNeed> runnable = gateFood(mod, ctx, schedule.runnable());
         KitNeed head = runnable.isEmpty() ? null : runnable.get(0);
         // no pick yet and the early batch is done: the pick is worth the detour, the mining need would not end for 36 more

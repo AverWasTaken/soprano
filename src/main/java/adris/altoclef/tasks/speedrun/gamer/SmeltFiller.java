@@ -55,6 +55,12 @@ public final class SmeltFiller {
     }
 
     public static Schedule schedule(GamerFacts f, OverworldConfig cfg, int endBeds, boolean nearSurface, FoodPlan food, WoodBudget wood) {
+        return schedule(f, cfg, endBeds, nearSurface, food, wood, BuildBlocks.NONE);
+    }
+
+    // `build` is the tick's band (ctx.buildBlocks()), see BuildBlocks
+    public static Schedule schedule(GamerFacts f, OverworldConfig cfg, int endBeds, boolean nearSurface, FoodPlan food, WoodBudget wood,
+                                    BuildBlocks build) {
         List<KitNeed> needs = KitPlanner.plan(f, cfg, endBeds, food, wood);
         if (f.furnaceJobs().isEmpty()) {
             return new Schedule(needs, List.of());
@@ -62,12 +68,13 @@ public final class SmeltFiller {
         List<KitNeed> runnable = new ArrayList<>();
         List<KitNeed> blocked = new ArrayList<>();
         split(f, needs, runnable, blocked);
-        if (f.buildBlocks() < cfg.portalBuildBlocks) {
-            runnable.add(new KitNeed(KitNeed.BUILD_BLOCKS, cfg.portalBuildBlocks));
+        int base = build.want(f.buildBlocks(), cfg.ironBuildBlocksLow, cfg.portalBuildBlocks);
+        if (base > 0) {
+            runnable.add(new KitNeed(KitNeed.BUILD_BLOCKS, base));
         }
         prep(f, cfg, wood, blocked, runnable);
         List<KitNeed> stockUps = new ArrayList<>();
-        extras(f, cfg, endBeds, nearSurface, food, wood, stockUps);
+        extras(f, cfg, endBeds, nearSurface, food, wood, build, stockUps);
         runnable.addAll(stockUps);
         runnable.removeIf(need -> foodBlocked(f, need));
         // the same out of the stock-ups, so they stay exactly the tail of runnable (isStockUp counts on that)
@@ -167,7 +174,7 @@ public final class SmeltFiller {
     // down there the list is empty and the wait is spent standing at the furnace instead. IronPhase asks for what it needs
     // itself while the surface is still close
     private static void extras(GamerFacts f, OverworldConfig cfg, int endBeds, boolean nearSurface, FoodPlan food, WoodBudget wood,
-                               List<KitNeed> out) {
+                               BuildBlocks build, List<KitNeed> out) {
         if (cfg.smeltExtras == null) {
             return;
         }
@@ -189,8 +196,10 @@ public final class SmeltFiller {
                     }
                 }
                 case "build_blocks" -> {
-                    int blocks = cfg.portalBuildBlocks + extra.count;
-                    if (nearSurface && f.buildBlocks() < blocks) {
+                    // starts from well under a full base and not under the stock-up target, or every pillar after the first fill would
+                    // send us back for more. once it does start it runs to the target, and it gets one trip per phase entry
+                    int blocks = nearSurface ? build.wantExtra(f.buildBlocks(), cfg.stockUpBuildBlocksLow, cfg.portalBuildBlocks + extra.count) : 0;
+                    if (blocks > 0) {
                         out.add(new KitNeed(KitNeed.BUILD_BLOCKS, blocks));
                     }
                 }
