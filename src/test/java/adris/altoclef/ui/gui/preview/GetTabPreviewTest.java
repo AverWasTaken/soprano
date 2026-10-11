@@ -11,8 +11,8 @@ import org.junit.Test;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
-// the get tab inside the real shell, rendered to pngs. child order of the content is seg, strip, grid, panel and the
-// panel's is list, clear, go, limit minus, limit box, limit plus: that is public api, so the test can find things without reaching into the tab
+// the get tab inside the real shell, rendered to pngs. child order of the content is seg, category, strip, grid, panel
+// and the panel's is list, clear, go, limit minus, limit box, limit plus: that is public api, so the test can find things without reaching into the tab
 public class GetTabPreviewTest {
 
     private static final int SHIFT = 1;
@@ -38,15 +38,15 @@ public class GetTabPreviewTest {
         }
 
         Widget strip() {
-            return tab.content().children().get(1);
-        }
-
-        Widget grid() {
             return tab.content().children().get(2);
         }
 
-        Widget panel() {
+        Widget grid() {
             return tab.content().children().get(3);
+        }
+
+        Widget panel() {
+            return tab.content().children().get(4);
         }
 
         Widget list() {

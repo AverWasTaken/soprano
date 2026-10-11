@@ -73,8 +73,8 @@ public class KeyCapture extends Control implements FocusOnClick {
         ringA.set(bind.capturing ? 1f : 0f, now, Theme.ANIM_FAST);
         float r = theme.pxf(Theme.CONTROL_RADIUS);
         float ring = ringA.value(now);
-        c.fillRoundRect(x, y, w, h, r, Theme.lerp(Theme.RAISED, Theme.HOVER, hoverA.value(now) * 0.8f));
-        int border = Theme.lerp(Theme.HAIRLINE, Theme.HAIRLINE_STRONG, Math.max(ring, focused ? 1f : 0f));
+        c.fillRoundRect(x, y, w, h, r, Theme.lerp(theme.color(Theme.RAISED), theme.color(Theme.HOVER), hoverA.value(now) * 0.8f));
+        int border = Theme.lerp(theme.color(Theme.HAIRLINE), theme.color(Theme.HAIRLINE_STRONG), Math.max(ring, focused ? 1f : 0f));
         c.strokeRoundRect(x, y, w, h, r, border);
         if (ring > 0.01f) {
             focusRing(c, r, ring);
@@ -83,10 +83,10 @@ public class KeyCapture extends Control implements FocusOnClick {
         int col;
         if (bind.capturing) {
             text = "Press a key";
-            col = Theme.TEXT;
+            col = theme.color(Theme.TEXT);
         } else if (bind.key < 0) {
             text = "Unbound";
-            col = Theme.TEXT_3;
+            col = theme.color(Theme.TEXT_3);
         } else {
             String n = null;
             try {
@@ -95,7 +95,7 @@ public class KeyCapture extends Control implements FocusOnClick {
                 Safe.report("key name", e);
             }
             text = n == null || n.isEmpty() ? "Key " + bind.key : n;
-            col = Theme.TEXT;
+            col = theme.color(Theme.TEXT);
         }
         text = theme.measurer.ellipsize(text, theme.label, Math.max(0, w - theme.px(12)));
         float tw = c.measure(text, theme.label);

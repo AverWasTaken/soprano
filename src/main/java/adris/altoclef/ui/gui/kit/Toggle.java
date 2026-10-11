@@ -2,21 +2,21 @@ package adris.altoclef.ui.gui.kit;
 
 import java.util.function.Consumer;
 
-// the on/off switch. the knob slides, the track fills white. setOn is for code (snaps, no callback), clicking is for
+// the on/off switch. the knob slides, the track fills cyan. setOn is for code (snaps, no callback), clicking is for
 // people (animates, calls back)
 public class Toggle extends Control {
 
     private boolean on;
     private boolean held;
     private final Consumer<Boolean> onChange;
-    private final Anim slide;
+    private final Spring slide;
     private final Anim hoverA = new Anim(0f);
 
     public Toggle(Theme theme, boolean on, Consumer<Boolean> onChange) {
         super(theme);
         this.on = on;
         this.onChange = onChange;
-        this.slide = new Anim(on ? 1f : 0f);
+        this.slide = new Spring(on ? 1f : 0f);
     }
 
     public boolean on() {
@@ -62,16 +62,16 @@ public class Toggle extends Control {
         float ty = y + (h - th) / 2f;
         float s = slide.value(now);
         float hv = hoverA.value(now);
-        int track = Theme.lerp(Theme.HAIRLINE_STRONG, Theme.ACCENT, s);
-        track = Theme.lerp(track, on ? 0xFFE4E4E7 : 0xFF46464D, hv * 0.6f);
+        int track = Theme.lerp(theme.color(Theme.HAIRLINE_STRONG), theme.color(Theme.ACCENT), s);
+        track = Theme.lerp(track, on ? theme.color(Theme.ACCENT_HOVER) : theme.color(Theme.TEXT_3), hv * 0.6f);
         c.fillRoundRect(tx, ty, tw, th, th / 2f, track);
         if (focused) {
-            c.strokeRoundRect(tx - 1, ty - 1, tw + 2, th + 2, th / 2f + 1, Theme.HAIRLINE_STRONG);
+            c.strokeRoundRect(tx - 1, ty - 1, tw + 2, th + 2, th / 2f + 1, theme.color(Theme.HAIRLINE_STRONG));
         }
         float knob = theme.px(14);
         float pad = (th - knob) / 2f;
         float kx = tx + pad + (tw - knob - 2 * pad) * s;
-        c.fillRoundRect(kx, ty + pad, knob, knob, knob / 2f, Theme.lerp(Theme.TEXT_2, Theme.ON_ACCENT, s));
+        c.fillRoundRect(kx, ty + pad, knob, knob, knob / 2f, 0xFFFFFFFF);
     }
 
     // a release only counts if the press started here, or dragging a text selection across a toggle would flip it

@@ -8,7 +8,7 @@ import java.io.InputStream;
 import java.util.HashMap;
 import java.util.Map;
 
-// the three inter files as awt fonts. createFont does not register them with the system, so nothing leaks into
+// the bundled faces as awt fonts. createFont does not register them with the system, so nothing leaks into
 // anybody else's font menu. derived fonts are cached because deriveFont(Map) is not free and the atlas asks a lot
 public final class AwtFonts {
 
@@ -45,7 +45,7 @@ public final class AwtFonts {
         if (f == null) {
             Map<TextAttribute, Object> attrs = new HashMap<>();
             attrs.put(TextAttribute.SIZE, (float) sizePx);
-            // kerning is off by default in awt, and inter without it looks like a ransom note
+            // kerning is off by default in awt
             attrs.put(TextAttribute.KERNING, TextAttribute.KERNING_ON);
             f = base[w.ordinal()].deriveFont(attrs);
             bySize.put(sizePx, f);

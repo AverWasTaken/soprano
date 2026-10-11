@@ -85,8 +85,8 @@ final class SettingKeyCard extends Widget {
     @Override
     public void draw(Canvas c, Frame f) {
         float r = theme.pxf(8);
-        c.fillRoundRect(x, y, w, h, r, Theme.RAISED);
-        c.strokeRoundRect(x, y, w, h, r, Theme.HAIRLINE);
+        c.fillRoundRect(x, y, w, h, r, theme.color(Theme.RAISED));
+        c.strokeRoundRect(x, y, w, h, r, theme.color(Theme.HAIRLINE));
         int pad = theme.px(16);
         int is = theme.px(Theme.ICON);
         float textX = x + pad + is + theme.px(12);
@@ -96,16 +96,16 @@ final class SettingKeyCard extends Widget {
         float block = lh1 + gap + lh2;
         float top = compact ? y + theme.px(14) : y + (h - block) / 2f;
         float room = (compact ? x + w - pad : capture.x() - theme.px(16)) - textX;
-        c.icon(Icon.KEY, x + pad, top + (block - is) / 2f, is, Theme.TEXT_2);
-        c.text(TITLE, textX, top + c.ascent(theme.label), theme.label, Theme.TEXT);
+        c.icon(Icon.KEY, x + pad, top + (block - is) / 2f, is, theme.color(Theme.TEXT_2));
+        c.text(TITLE, textX, top + c.ascent(theme.label), theme.label, theme.color(Theme.TEXT));
         if (bodyShown == null) {
             bodyShown = theme.measurer.ellipsize(BODY, theme.small, Math.max(0, room));
         }
-        c.text(bodyShown, textX, top + lh1 + gap + c.ascent(theme.small), theme.small, Theme.TEXT_2);
+        c.text(bodyShown, textX, top + lh1 + gap + c.ascent(theme.small), theme.small, theme.color(Theme.TEXT_2));
 
         capture.draw(c, f);
         c.text(ENABLED, enabled.x() - theme.px(8) - labelW, enabled.y() + enabled.h() / 2f + (c.ascent(theme.small) - c.descent(theme.small)) / 2f,
-                theme.small, Theme.TEXT_2);
+                theme.small, theme.color(Theme.TEXT_2));
         enabled.draw(c, f);
     }
 }

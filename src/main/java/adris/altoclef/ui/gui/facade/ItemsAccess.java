@@ -8,8 +8,13 @@ public interface ItemsAccess {
 
     // name is what the command takes ("oak_log"), displayName what the player reads ("Oak Log", the item's own
     // name in the player's language, or the id title-cased when no single item owns the name), iconItemId is a
-    // registry id for the icon ("minecraft:oak_log"), maxStack is the stack size shift-click steps by
-    record ItemEntry(String name, String displayName, String iconItemId, int maxStack) {
+    // registry id for the icon ("minecraft:oak_log"), maxStack is the stack size shift-click steps by, category is
+    // the creative mode tab the item sits in ("Building Blocks", "Tools & Utilities"...) or "" when there is none
+    record ItemEntry(String name, String displayName, String iconItemId, int maxStack, String category) {
+
+        public ItemEntry(String name, String displayName, String iconItemId, int maxStack) {
+            this(name, displayName, iconItemId, maxStack, "");
+        }
 
         // "oak_log" -> "Oak Log", for names no item can speak for
         public static String titleCase(String id) {

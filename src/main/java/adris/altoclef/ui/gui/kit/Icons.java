@@ -36,7 +36,7 @@ public final class Icons {
         g.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE);
         g.setColor(Color.WHITE);
 
-        float sw = Math.max(1.3f, size / 9.5f);
+        float sw = Math.max(1.3f, size / 12f);
         // the stroke's outer edge sits half a pixel inside the box, so nothing gets sliced by the atlas edge
         float lo = 0.5f + sw * 0.5f;
         float scale = (size - 2f * lo) / GRID_SPAN;
@@ -116,6 +116,11 @@ public final class Icons {
                 line(g, 3, 17, 5.5f, 17);
                 line(g, 12.5f, 17, 21, 17);
                 g.draw(new Ellipse2D.Float(5.5f, 14, 7, 7));
+            }
+            case STATS -> {
+                g.fill(new RoundRectangle2D.Float(3, 14, 4, 7, 1, 1));
+                g.fill(new RoundRectangle2D.Float(10, 8, 4, 13, 1, 1));
+                g.fill(new RoundRectangle2D.Float(17, 3, 4, 18, 1, 1));
             }
             case SEARCH -> {
                 g.draw(new Ellipse2D.Float(3.5f, 3.5f, 13, 13));

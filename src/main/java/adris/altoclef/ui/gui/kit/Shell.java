@@ -7,6 +7,7 @@ import adris.altoclef.ui.gui.model.KeyBind;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
 import java.util.function.IntConsumer;
 
 // the chrome around the tabs: panel, sidebar, header with search, status strip, toast layer and the overlay layer for
@@ -25,13 +26,16 @@ public class Shell extends Widget implements ShellContext {
 
     private final SearchField search;
     private final KeyCapture keyCapture;
+    private final Segmented appearance;
     private final Button stop;
     private final Toast toast;
     private final List<Widget> kids = new ArrayList<>();
     private final FadeCanvas fade = new FadeCanvas();
+    private final FadeCanvas contentFade = new FadeCanvas();
 
-    private final Anim openAnim = new Anim(1f);
-    private final Anim barY = new Anim(0f);
+    private final Spring openAnim = new Spring(1f);
+    private final Spring barY = new Spring(0f);
+    private final Spring contentAnim = new Spring(1f);
     private final Anim[] tabHover;
     private final Anim[] tabActive;
     private final Anim busyAnim = new Anim(0f);
@@ -43,6 +47,7 @@ public class Shell extends Widget implements ShellContext {
     private boolean closing;
     private boolean closeFired;
     private long lastNow;
+    private Consumer<Boolean> onAppearanceChanged;
     private int winW;
     private int winH;
 
@@ -58,6 +63,28 @@ public class Shell extends Widget implements ShellContext {
     private int contentY;
     private int contentW;
     private int contentH;
+
+    // a user-dragged size, -1 until they touch an edge. survives window resizes, which is the point of dragging
+    private int manualW = -1;
+    private int manualH = -1;
+    private int resizeDir;
+    private int resizeStartW;
+    private int resizeStartH;
+    private int resizeStartX;
+    private int resizeStartY;
+    private float resizeGrabX;
+    private float resizeGrabY;
+    private boolean resizing;
+    private boolean moving;
+    private int movePanelX;
+    private int movePanelY;
+    private float moveGrabX;
+    private float moveGrabY;
+
+    private static final int EDGE_LEFT = 1;
+    private static final int EDGE_RIGHT = 2;
+    private static final int EDGE_TOP = 4;
+    private static final int EDGE_BOTTOM = 8;
 
     public Shell(Theme theme, List<Tab> tabs, StatusAccess status, KeyNames keyNames, int currentOpenKey,
                  IntConsumer onRebind, Clipboard clipboard, Runnable onCloseRequest) {
@@ -100,12 +127,19 @@ public class Shell extends Widget implements ShellContext {
                 Safe.run("rebind", () -> onRebind.accept(k));
             }
         }, this);
+        appearance = new Segmented(theme, List.of("Light", "Dark"), theme.dark() ? 1 : 0, i -> {
+            setDarkMode(i == 1);
+            if (onAppearanceChanged != null) {
+                Safe.run("appearance", () -> onAppearanceChanged.accept(theme.dark()));
+            }
+        });
         stop = new Button(theme, "Stop", Button.Kind.DANGER, Icon.STOP, this::stopClicked);
         toast = new Toast(theme);
 
         kids.add(contents.length > 0 ? contents[0] : new Blank(theme));
         kids.add(search);
         kids.add(keyCapture);
+        kids.add(appearance);
         kids.add(stop);
 
         if (!this.tabs.isEmpty()) {
@@ -148,6 +182,19 @@ public class Shell extends Widget implements ShellContext {
         return keyCapture;
     }
 
+    public Segmented appearance() {
+        return appearance;
+    }
+
+    public void setOnAppearanceChanged(Consumer<Boolean> onChange) {
+        onAppearanceChanged = onChange;
+    }
+
+    public void setDarkMode(boolean dark) {
+        theme.setDark(dark, lastNow);
+        appearance.setSelected(dark ? 1 : 0);
+    }
+
     public Toast toast() {
         return toast;
     }
@@ -177,11 +224,12 @@ public class Shell extends Widget implements ShellContext {
     }
 
     public int tabRowY(int i) {
-        return y + headerH + i * theme.px(Theme.ROW_H);
+        return y + headerH + i * tabRowH();
     }
 
     public int tabRowH() {
-        return theme.px(Theme.ROW_H);
+        int room = h - statusH - headerH - theme.px(112);
+        return Math.max(theme.px(18), Math.min(theme.px(Theme.ROW_H), room / Math.max(1, tabs.size())));
     }
 
     public int sidebarW() {
@@ -220,7 +268,8 @@ public class Shell extends Widget implements ShellContext {
 
     // ----- sizing
 
-    // 62% by 70% of the window, clamped, centred. min and max are in design pixels so they scale with everything else
+    // about 62% by 72% of the window, clamped, centred, and only until the player drags an edge (then their size
+    // sticks). min and max are in design pixels so they scale with everything else
     public void setViewport(int windowW, int windowH) {
         // the screen may call this every frame, relaying out every time would also snap the sliding tab bar
         if (windowW == winW && windowH == winH && w > 0) {
@@ -228,14 +277,75 @@ public class Shell extends Widget implements ShellContext {
         }
         winW = windowW;
         winH = windowH;
-        int pw = Math.round(windowW * 0.68f);
-        int ph = Math.round(windowH * 0.76f);
-        pw = Math.max(theme.px(760), Math.min(theme.px(1400), pw));
-        ph = Math.max(theme.px(480), Math.min(theme.px(900), ph));
+        int pw = manualW > 0 ? manualW : Math.round(windowW * 0.62f);
+        int ph = manualH > 0 ? manualH : Math.round(windowH * 0.72f);
+        pw = Math.max(theme.px(640), Math.min(theme.px(1500), pw));
+        ph = Math.max(theme.px(440), Math.min(theme.px(1000), ph));
         int margin = theme.px(8);
         pw = Math.min(pw, Math.max(1, windowW - 2 * margin));
         ph = Math.min(ph, Math.max(1, windowH - 2 * margin));
         setBounds((windowW - pw) / 2, (windowH - ph) / 2, pw, ph);
+    }
+
+    // which edge (or corner) the pointer is on, 0 when it is inside the panel proper
+    private int edgeAt(float mx, float my) {
+        int g = theme.px(6);
+        int e = 0;
+        if (mx >= x && mx < x + g) {
+            e |= EDGE_LEFT;
+        } else if (mx >= x + w - g && mx < x + w) {
+            e |= EDGE_RIGHT;
+        }
+        if (my >= y && my < y + g) {
+            e |= EDGE_TOP;
+        } else if (my >= y + h - g && my < y + h) {
+            e |= EDGE_BOTTOM;
+        }
+        return e;
+    }
+
+    private void resizePanel(float mx, float my) {
+        int minW = theme.px(560);
+        int minH = theme.px(360);
+        int nx = resizeStartX;
+        int ny = resizeStartY;
+        int nw = resizeStartW;
+        int nh = resizeStartH;
+        if ((resizeDir & EDGE_RIGHT) != 0) {
+            nw = Math.max(minW, resizeStartW + Math.round(mx - resizeGrabX));
+        }
+        if ((resizeDir & EDGE_BOTTOM) != 0) {
+            nh = Math.max(minH, resizeStartH + Math.round(my - resizeGrabY));
+        }
+        // the left and top edges move the far side: the panel keeps its right/bottom pinned
+        if ((resizeDir & EDGE_LEFT) != 0) {
+            nw = Math.max(minW, resizeStartW - Math.round(mx - resizeGrabX));
+            nx = resizeStartX + (resizeStartW - nw);
+        }
+        if ((resizeDir & EDGE_TOP) != 0) {
+            nh = Math.max(minH, resizeStartH - Math.round(my - resizeGrabY));
+            ny = resizeStartY + (resizeStartH - nh);
+        }
+        nw = Math.min(nw, Math.max(1, winW - nx));
+        nh = Math.min(nh, Math.max(1, winH - ny));
+        manualW = nw;
+        manualH = nh;
+        setBounds(nx, ny, nw, nh);
+    }
+
+    // drag the header strip to move the whole panel. the search box lives in the same strip, so it is excluded at
+    // the moment the drag starts; once dragging, the panel follows the pointer
+    private boolean inHeader(float mx, float my) {
+        return my >= y && my < y + headerH && !search.contains(mx, my);
+    }
+
+    private void movePanel(float mx, float my) {
+        int nx = movePanelX + Math.round(mx - moveGrabX);
+        int ny = movePanelY + Math.round(my - moveGrabY);
+        // keep a sliver of the header on screen so the panel can never be dragged somewhere unreachable
+        nx = Math.max(-(w - theme.px(80)), Math.min(winW - theme.px(80), nx));
+        ny = Math.max(0, Math.min(winH - theme.px(40), ny));
+        setBounds(nx, ny, w, h);
     }
 
     @Override
@@ -258,6 +368,8 @@ public class Shell extends Widget implements ShellContext {
         int footerLabelW = Math.round(theme.measurer.measure("Open key", theme.small));
         int capW = Math.max(theme.px(64), sideW - 2 * theme.px(Theme.PAD) - footerLabelW - theme.px(8));
         keyCapture.setBounds(x + sideW - theme.px(Theme.PAD) - capW, y + h - statusH - theme.px(Theme.PAD) - ch, capW, ch);
+        appearance.setBounds(x + theme.px(Theme.PAD), keyCapture.y() - theme.px(Theme.GAP) - ch,
+                sideW - 2 * theme.px(Theme.PAD), ch);
 
         int sh = theme.px(28);
         int sbw = stop.preferredWidth();
@@ -334,6 +446,8 @@ public class Shell extends Widget implements ShellContext {
         applySearchFor(t);
         Safe.run("tab shown", t::onShown);
         barY.set(tabRowY(i) + tabRowH() / 2f, lastNow, Theme.ANIM);
+        contentAnim.snap(0f);
+        contentAnim.set(1f, lastNow, Theme.ANIM);
     }
 
     // the search box belongs to the shell, the tab only says whether it wants one
@@ -465,6 +579,7 @@ public class Shell extends Widget implements ShellContext {
     private void drawShell(Canvas c, Frame f) {
         long now = f.nowNanos();
         lastNow = now;
+        theme.update(now);
         if (closing && !closeFired && !openAnim.running(now) && openAnim.target() == 0f) {
             closeFired = true;
             if (onCloseRequest != null) {
@@ -481,22 +596,23 @@ public class Shell extends Widget implements ShellContext {
         }
 
         float r = theme.pxf(Theme.PANEL_RADIUS);
-        g.shadow(x, y, w, h, r, Theme.SHADOW);
-        g.fillRoundRect(x, y, w, h, r, Theme.PANEL);
+        g.shadow(x, y, w, h, r, theme.color(Theme.SHADOW));
+        g.fillRoundRect(x, y, w, h, r, theme.color(Theme.PANEL));
 
         drawSidebar(g, f, now, r);
         drawHeader(g, f, now);
 
         g.pushClip(contentX, contentY, contentW, contentH);
         Widget content = kids.get(0);
-        Canvas target = g;
+        float contentA = contentAnim.value(now);
+        Canvas target = contentA >= 0.999f ? g : contentFade.reset(g, contentA, (1f - contentA) * theme.px(6));
         Safe.run("tab draw", () -> content.draw(target, f));
         g.popClip();
 
         drawStatus(g, f, now);
         toast.draw(g, f);
-        g.strokeRoundRect(x, y, w, h, r, Theme.HAIRLINE);
-        drawBar(g, now);
+        g.strokeRoundRect(x, y, w, h, r, theme.color(Theme.HAIRLINE));
+        drawResizeGrip(g);
 
         Widget o = overlay;
         if (o != null && o.visible()) {
@@ -514,19 +630,20 @@ public class Shell extends Widget implements ShellContext {
 
     private void drawSidebar(Canvas g, Frame f, long now, float r) {
         // only the top left corner is round: the panel's own corners cover the rest, so square off the others
-        g.fillRoundRect(x, y, sideW, h - statusH, r, Theme.SIDEBAR);
-        g.fillRect(x + sideW / 2f, y, sideW / 2f, h - statusH, Theme.SIDEBAR);
-        g.fillRect(x, y + (h - statusH) / 2f, sideW / 2f, (h - statusH) / 2f, Theme.SIDEBAR);
-        g.fillRect(x + sideW, y, 1, h - statusH, Theme.HAIRLINE);
+        g.fillRoundRect(x, y, sideW, h - statusH, r, theme.color(Theme.SIDEBAR));
+        g.fillRect(x + sideW / 2f, y, sideW / 2f, h - statusH, theme.color(Theme.SIDEBAR));
+        g.fillRect(x, y + (h - statusH) / 2f, sideW / 2f, (h - statusH) / 2f, theme.color(Theme.SIDEBAR));
+        g.fillRect(x + sideW, y, 1, h - statusH, theme.color(Theme.HAIRLINE));
 
         int pad = theme.px(Theme.PAD);
-        g.text("soprano", x + pad + theme.px(8), baselineIn(g, theme.label, y, headerH), theme.label, Theme.TEXT_2);
+        g.text("soprano", x + pad + theme.px(8), baselineIn(g, theme.title, y, headerH), theme.title, theme.color(Theme.TEXT_2));
 
         int rowH = tabRowH();
-        // the active pill slides between rows (same anim as the accent bar), hovered rows get a fainter one
+        // the rounded selection follows the same spring as the segment and switch controls
         if (!tabs.isEmpty()) {
             float py = barY.value(now) - rowH / 2f;
-            g.fillRoundRect(x + theme.px(8), py, sideW - theme.px(16), rowH, theme.pxf(Theme.ROW_RADIUS), Theme.HOVER);
+            g.fillRoundRect(x + theme.px(8), py, sideW - theme.px(16), rowH,
+                    theme.pxf(Theme.ROW_RADIUS), theme.color(Theme.ACCENT_SOFT));
         }
         for (int i = 0; i < tabs.size(); i++) {
             Tab t = tabs.get(i);
@@ -538,9 +655,9 @@ public class Shell extends Widget implements ShellContext {
             float rx = x + theme.px(8);
             float rw = sideW - theme.px(16);
             if (hv > 0.01f && av < 0.99f) {
-                g.fillRoundRect(rx, ry, rw, rowH, theme.pxf(Theme.ROW_RADIUS), Theme.fade(Theme.HOVER, hv * 0.5f * (1f - av)));
+                g.fillRoundRect(rx, ry, rw, rowH, theme.pxf(Theme.ROW_RADIUS), Theme.fade(theme.color(Theme.HOVER), hv * 0.5f * (1f - av)));
             }
-            int col = Theme.lerp(Theme.lerp(Theme.TEXT_2, Theme.TEXT, hv * 0.7f), Theme.TEXT, av);
+            int col = Theme.lerp(Theme.lerp(theme.color(Theme.TEXT_2), theme.color(Theme.TEXT), hv * 0.7f), theme.color(Theme.ACCENT), av);
             int is = theme.px(Theme.ICON);
             Icon icon = tabIcon(t);
             if (icon != null) {
@@ -550,8 +667,10 @@ public class Shell extends Widget implements ShellContext {
             g.text(title, rx + theme.px(10) + is + theme.px(10), baselineIn(g, theme.label, ry, rowH), theme.label, col);
         }
 
-        g.text("Open key", x + pad, baselineIn(g, theme.small, keyCapture.y(), keyCapture.h()), theme.small, Theme.TEXT_3);
+        g.text("Open key", x + pad, baselineIn(g, theme.small, keyCapture.y(), keyCapture.h()), theme.small, theme.color(Theme.TEXT_3));
         keyCapture.draw(g, f);
+        g.text("Appearance", x + pad, appearance.y() - theme.px(8), theme.small, theme.color(Theme.TEXT_3));
+        appearance.draw(g, f);
     }
 
     private static Icon tabIcon(Tab t) {
@@ -573,17 +692,22 @@ public class Shell extends Widget implements ShellContext {
         }
     }
 
-    private void drawBar(Canvas g, long now) {
-        if (tabs.isEmpty()) {
-            return;
+    // three dots climbing the bottom-right corner, the quiet way of saying "you can drag this"
+    private void drawResizeGrip(Canvas g) {
+        int m = theme.px(6);
+        int s = theme.px(2);
+        for (int i = 0; i < 3; i++) {
+            int o = i * theme.px(4);
+            g.fillRect(x + w - m - o, y + h - m - o, s, s, theme.color(Theme.HAIRLINE_STRONG));
         }
-        float cy = barY.value(now);
-        float bh = theme.px(20);
-        g.fillRect(x, cy - bh / 2f, theme.px(Theme.TAB_BAR_W), bh, Theme.ACCENT);
     }
 
     private void drawHeader(Canvas g, Frame f, long now) {
-        g.fillRect(contentX, y + headerH, contentW, 1, Theme.HAIRLINE);
+        float radius = theme.pxf(Theme.PANEL_RADIUS);
+        g.fillRoundRect(contentX, y, contentW, headerH, radius, theme.color(Theme.SIDEBAR));
+        g.fillRect(contentX, y, radius, headerH, theme.color(Theme.SIDEBAR));
+        g.fillRect(contentX, y + headerH / 2f, contentW, headerH / 2f, theme.color(Theme.SIDEBAR));
+        g.fillRect(contentX, y + headerH, contentW, 1, theme.color(Theme.HAIRLINE));
         if (tabs.isEmpty()) {
             return;
         }
@@ -591,7 +715,7 @@ public class Shell extends Widget implements ShellContext {
         String title = tabTitle(tabs.get(active));
         float room = contentW - 2 * pad - (search.visible() ? search.w() + pad : 0);
         title = theme.measurer.ellipsize(title, theme.title, Math.max(0f, room));
-        g.text(title, contentX + pad, baselineIn(g, theme.title, y, headerH), theme.title, Theme.TEXT);
+        g.text(title, contentX + pad, baselineIn(g, theme.title, y, headerH), theme.title, theme.color(Theme.TEXT));
         if (search.visible()) {
             search.draw(g, f);
         }
@@ -600,14 +724,14 @@ public class Shell extends Widget implements ShellContext {
     private void drawStatus(Canvas g, Frame f, long now) {
         pollStatusIfIdle();
         int top = y + h - statusH;
-        g.fillRect(x, top, w, 1, Theme.HAIRLINE);
+        g.fillRect(x, top, w, 1, theme.color(Theme.HAIRLINE));
         int pad = theme.px(Theme.PAD);
         busyAnim.set(activity.busy() ? 1f : 0f, now, Theme.ANIM);
         float bv = busyAnim.value(now);
         int is = theme.px(12);
         float iy = top + 1 + (statusH - 1 - is) / 2f;
-        g.icon(Icon.RING, x + pad, iy, is, Theme.fade(Theme.HAIRLINE_STRONG, 1f - bv));
-        g.icon(Icon.DOT, x + pad, iy, is, Theme.fade(Theme.ACCENT, bv));
+        g.icon(Icon.RING, x + pad, iy, is, Theme.fade(theme.color(Theme.HAIRLINE_STRONG), 1f - bv));
+        g.icon(Icon.DOT, x + pad, iy, is, Theme.fade(theme.color(Theme.ACCENT), bv));
 
         float right = stop.x() - theme.px(Theme.GAP);
         String phase = activity.gamerPhase();
@@ -615,8 +739,8 @@ public class Shell extends Widget implements ShellContext {
             float pw = phaseW + theme.px(16);
             float ph = theme.px(22);
             float px = right - pw;
-            g.fillRoundRect(px, top + 1 + (statusH - 1 - ph) / 2f, pw, ph, ph / 2f, Theme.RAISED);
-            g.text(phase, px + theme.px(8), baselineIn(g, theme.smallLabel, top + 1, statusH - 1), theme.smallLabel, Theme.TEXT_2);
+            g.fillRoundRect(px, top + 1 + (statusH - 1 - ph) / 2f, pw, ph, theme.pxf(Theme.CONTROL_RADIUS), theme.color(Theme.RAISED));
+            g.text(phase, px + theme.px(8), baselineIn(g, theme.smallLabel, top + 1, statusH - 1), theme.smallLabel, theme.color(Theme.TEXT_2));
             right = px - theme.px(Theme.GAP);
         }
 
@@ -625,7 +749,7 @@ public class Shell extends Widget implements ShellContext {
         String line = activity.line() == null ? "" : activity.line();
         float base = baselineIn(g, theme.body, top + 1, statusH - 1);
         String shown = lineW <= room ? line : theme.measurer.ellipsize(line, theme.body, room);
-        g.text(shown, tx, base, theme.body, Theme.TEXT);
+        g.text(shown, tx, base, theme.body, theme.color(Theme.TEXT));
         String detail = activity.detail();
         if (detail != null && !detail.isEmpty() && lineW < room) {
             float dx = tx + lineW + theme.px(6);
@@ -633,9 +757,9 @@ public class Shell extends Widget implements ShellContext {
             float dotW = g.measure(dot, theme.body);
             float dRoom = right - dx - dotW - theme.px(6);
             if (dRoom > theme.px(24)) {
-                g.text(dot, dx, base, theme.body, Theme.TEXT_3);
+                g.text(dot, dx, base, theme.body, theme.color(Theme.TEXT_3));
                 String d = detailW <= dRoom ? detail : theme.measurer.ellipsize(detail, theme.small, dRoom);
-                g.text(d, dx + dotW + theme.px(6), baselineIn(g, theme.small, top + 1, statusH - 1), theme.small, Theme.TEXT_2);
+                g.text(d, dx + dotW + theme.px(6), baselineIn(g, theme.small, top + 1, statusH - 1), theme.small, theme.color(Theme.TEXT_2));
             }
         }
         stop.draw(g, f);
@@ -714,9 +838,31 @@ public class Shell extends Widget implements ShellContext {
             if (!contains(mx, my)) {
                 return false;
             }
+            // grabbing an edge starts a resize, not a click into the tab under it
+            int edge = button == 0 ? edgeAt(mx, my) : 0;
+            if (edge != 0) {
+                resizing = true;
+                resizeDir = edge;
+                resizeStartW = w;
+                resizeStartH = h;
+                resizeStartX = x;
+                resizeStartY = y;
+                resizeGrabX = mx;
+                resizeGrabY = my;
+                return true;
+            }
             int t = tabAt(mx, my);
             if (t >= 0) {
                 switchTab(t);
+                return true;
+            }
+            // dragging the header moves the panel; the search box sitting in it still wants its click
+            if (button == 0 && inHeader(mx, my)) {
+                moving = true;
+                movePanelX = x;
+                movePanelY = y;
+                moveGrabX = mx;
+                moveGrabY = my;
                 return true;
             }
             super.mouseDown(mx, my, button, mods);
@@ -751,6 +897,8 @@ public class Shell extends Widget implements ShellContext {
     @Override
     public boolean mouseUp(float mx, float my, int button, int mods) {
         try {
+            resizing = false;
+            moving = false;
             Widget o = overlay;
             if (o != null && o.visible()) {
                 return o.mouseUp(mx, my, button, mods);
@@ -765,6 +913,14 @@ public class Shell extends Widget implements ShellContext {
     @Override
     public boolean mouseDrag(float mx, float my, int button, float dx, float dy) {
         try {
+            if (resizing) {
+                resizePanel(mx, my);
+                return true;
+            }
+            if (moving) {
+                movePanel(mx, my);
+                return true;
+            }
             Widget o = overlay;
             if (o != null && o.visible()) {
                 return o.mouseDrag(mx, my, button, dx, dy);
@@ -798,6 +954,7 @@ public class Shell extends Widget implements ShellContext {
             search.collectFocusable(out);
         }
         kids.get(0).collectFocusable(out);
+        appearance.collectFocusable(out);
         stop.collectFocusable(out);
     }
 

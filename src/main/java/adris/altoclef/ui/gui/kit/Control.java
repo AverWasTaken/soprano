@@ -15,13 +15,13 @@ public abstract class Control extends Widget {
     }
 
     // baseline that puts the cap height in the middle of a box. the real ascent and descent differ per font, this
-    // lands within a pixel for inter
+    // keeps light headings and the smaller labels aligned using each face's own metrics
     protected static float baseline(Canvas c, TextStyle s, float top, float height) {
         return top + height / 2f + (c.ascent(s) - c.descent(s)) / 2f;
     }
 
     protected final void focusRing(Canvas c, float radius, float fade) {
-        c.strokeRoundRect(x - 1, y - 1, w + 2, h + 2, radius + 1, Theme.fade(Theme.HAIRLINE_STRONG, fade));
+        c.strokeRoundRect(x - 1, y - 1, w + 2, h + 2, radius + 1, Theme.fade(theme.color(Theme.ACCENT), fade));
     }
 
     protected final void hoverTo(Anim a, boolean on) {

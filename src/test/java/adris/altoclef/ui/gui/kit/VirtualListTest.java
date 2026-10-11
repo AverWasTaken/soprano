@@ -303,7 +303,7 @@ public class VirtualListTest {
         draw(g, 1000);
         assertEquals(12, drawn.size());
         List<String> clicks = new ArrayList<>();
-        g.onClick((item, i, mods) -> clicks.add(item + "/" + mods));
+        g.onClick((item, i, mods, mx, my, cx, cy, cw, ch) -> clicks.add(item + "/" + mods));
         g.mouseDown(150, 100, 0, Keys.MOD_SHIFT);
         g.mouseUp(150, 100, 0, Keys.MOD_SHIFT);
         assertEquals(List.of("5/1"), clicks);

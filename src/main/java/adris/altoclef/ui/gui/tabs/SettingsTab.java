@@ -39,6 +39,7 @@ public final class SettingsTab implements Tab, SettingHost {
     private List<SettingView> all = List.of();
     private String category = SettingsFilter.ALL;
     private boolean modifiedOnly;
+    private boolean advanced;
     private String query = "";
 
     public SettingsTab(Theme theme, BotFacade facade, ShellContext ctx) {
@@ -50,7 +51,7 @@ public final class SettingsTab implements Tab, SettingHost {
             return row;
         });
         list.setKeyFunction(SettingView::name);
-        column = new SettingCategoryColumn(theme, this::pickCategory, this::pickModifiedOnly);
+        column = new SettingCategoryColumn(theme, this::pickCategory, this::pickModifiedOnly, this::pickAdvanced);
         keyCard = new SettingKeyCard(theme, ctx, facade.keyNames(), currentKey(), currentKeyEnabled(), this::keyCaptured, this::keyToggled);
         content = new SettingsContent(theme, column, keyCard, list, this::flushEdits);
         reload();
@@ -120,7 +121,7 @@ public final class SettingsTab implements Tab, SettingHost {
     }
 
     private void refilter() {
-        List<SettingView> shown = SettingsFilter.apply(all, category, modifiedOnly, query, this::description);
+        List<SettingView> shown = SettingsFilter.apply(all, category, modifiedOnly, advanced, query, this::description);
         list.setItems(shown);
         list.scroller().snapTo(0f);
         if (content.detail() != null && shown.stream().noneMatch(v -> v.name().equals(content.detail().name()))) {
@@ -132,7 +133,8 @@ public final class SettingsTab implements Tab, SettingHost {
     }
 
     private void pushColumn() {
-        column.setData(SettingsFilter.counts(all), all.size(), category, SettingsFilter.modifiedCount(all), modifiedOnly);
+        column.setData(SettingsFilter.counts(all, advanced), all.size(), category, SettingsFilter.modifiedCount(all),
+                modifiedOnly, SettingsFilter.advancedCount(all), advanced);
     }
 
     private String countLine(int n) {
@@ -145,6 +147,9 @@ public final class SettingsTab implements Tab, SettingHost {
         }
         if (modifiedOnly) {
             sb.append(" · modified only");
+        }
+        if (!advanced && SettingsFilter.advancedCount(all) > 0) {
+            sb.append(" · advanced hidden");
         }
         return sb.toString();
     }
@@ -171,6 +176,18 @@ public final class SettingsTab implements Tab, SettingHost {
     private void pickModifiedOnly(boolean on) {
         flushEdits();
         modifiedOnly = on;
+        refilter();
+    }
+
+    private void pickAdvanced(boolean on) {
+        flushEdits();
+        advanced = on;
+        refilter();
+    }
+
+    // test hook: the column's toggle is a widget, tests flip the flag directly
+    void setAdvanced(boolean on) {
+        advanced = on;
         refilter();
     }
 

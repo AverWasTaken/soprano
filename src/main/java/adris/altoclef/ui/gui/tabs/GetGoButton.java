@@ -56,11 +56,11 @@ final class GetGoButton extends Control {
         int fill;
         int col;
         if (enabled) {
-            fill = held ? 0xFFC8C8CD : Theme.lerp(Theme.ACCENT, 0xFFE4E4E7, hv);
-            col = Theme.ON_ACCENT;
+            fill = held ? 0xFFC8C8CD : Theme.lerp(theme.color(Theme.ACCENT), 0xFFE4E4E7, hv);
+            col = theme.color(Theme.ON_ACCENT);
         } else {
-            fill = Theme.HOVER;
-            col = Theme.TEXT_3;
+            fill = theme.color(Theme.HOVER);
+            col = theme.color(Theme.TEXT_3);
         }
         c.fillRoundRect(x, y, w, h, r, fill);
         if (focused) {

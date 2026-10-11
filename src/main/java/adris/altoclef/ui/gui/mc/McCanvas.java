@@ -82,12 +82,12 @@ final class McCanvas extends TexturedCanvas {
             return;
         }
         // nothing registered under that id: a tile with its first letter beats the missing texture
-        fillRoundRect(x, y, size, size, size / 6f, Theme.RAISED);
+        fillRoundRect(x, y, size, size, size / 6f, color(Theme.RAISED));
         TextStyle style = new TextStyle(Weight.MEDIUM, Math.max(4, Math.round(size * 0.5f)));
         String letter = McDraw.letterOf(itemId);
         float w = measure(letter, style);
         float baseline = y + (size + ascent(style) - descent(style)) * 0.5f;
-        text(letter, x + (size - w) * 0.5f, baseline, style, Theme.TEXT_2);
+        text(letter, x + (size - w) * 0.5f, baseline, style, color(Theme.TEXT_2));
     }
 
     @Override

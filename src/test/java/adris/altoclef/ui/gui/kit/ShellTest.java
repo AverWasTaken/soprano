@@ -168,8 +168,8 @@ public class ShellTest {
 
     @Test
     public void panelIsCentredAndSizedFromTheWindow() {
-        assertEquals(Math.round(1920 * 0.68f), shell.w());
-        assertEquals(Math.round(1080 * 0.76f), shell.h());
+        assertEquals(Math.round(1920 * 0.62f), shell.w());
+        assertEquals(Math.round(1080 * 0.72f), shell.h());
         assertEquals((1920 - shell.w()) / 2, shell.x());
         assertEquals((1080 - shell.h()) / 2, shell.y());
     }
@@ -177,13 +177,30 @@ public class ShellTest {
     @Test
     public void panelClampsToTheMinimumAndMaximum() {
         shell.setViewport(1000, 600);
-        assertEquals(760, shell.w());
-        assertEquals(480, shell.h());
+        assertEquals(640, shell.w());
+        assertEquals(440, shell.h());
         shell.setViewport(4000, 3000);
-        assertEquals(1400, shell.w());
-        assertEquals(900, shell.h());
+        assertEquals(1500, shell.w());
+        assertEquals(1000, shell.h());
         shell.setViewport(700, 400);
         assertTrue(shell.w() <= 700 && shell.h() <= 400);
+    }
+
+    @Test
+    public void draggingTheHeaderMovesThePanel() {
+        int beforeX = shell.x();
+        int beforeY = shell.y();
+        // the header strip, clear of the search box and the tab rows
+        shell.mouseDown(shell.x() + 200, shell.y() + 20, 0, 0);
+        shell.mouseDrag(shell.x() + 240, shell.y() + 45, 0, 40, 25);
+        assertEquals(beforeX + 40, shell.x());
+        assertEquals(beforeY + 25, shell.y());
+        shell.mouseUp(shell.x() + 240, shell.y() + 45, 0, 0);
+        // a second drag still works, it is not a one shot
+        shell.mouseDown(shell.x() + 200, shell.y() + 20, 0, 0);
+        shell.mouseDrag(shell.x() + 190, shell.y() + 10, 0, -10, -10);
+        assertEquals(beforeX + 30, shell.x());
+        assertEquals(beforeY + 15, shell.y());
     }
 
     @Test
@@ -283,21 +300,24 @@ public class ShellTest {
     @Test
     public void tabCyclesFocusInOrder() {
         List<Widget> seen = new ArrayList<>();
-        for (int i = 0; i < 5; i++) {
+        for (int i = 0; i < 6; i++) {
             shell.keyDown(Keys.TAB, 0);
             seen.add(shell.focusedWidget());
         }
         assertSame(shell.search(), seen.get(0));
         assertSame(a.box.button, seen.get(1));
         assertSame(a.box.field, seen.get(2));
-        assertSame(shell.stopButton(), seen.get(3));
-        assertSame(shell.search(), seen.get(4));
+        assertSame(shell.appearance(), seen.get(3));
+        assertSame(shell.stopButton(), seen.get(4));
+        assertSame(shell.search(), seen.get(5));
     }
 
     @Test
     public void shiftTabGoesBackwards() {
         shell.keyDown(Keys.TAB, Keys.MOD_SHIFT);
         assertSame(shell.stopButton(), shell.focusedWidget());
+        shell.keyDown(Keys.TAB, Keys.MOD_SHIFT);
+        assertSame(shell.appearance(), shell.focusedWidget());
         shell.keyDown(Keys.TAB, Keys.MOD_SHIFT);
         assertSame(a.box.field, shell.focusedWidget());
     }

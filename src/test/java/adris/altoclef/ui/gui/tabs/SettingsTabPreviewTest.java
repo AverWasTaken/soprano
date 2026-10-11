@@ -22,6 +22,9 @@ public class SettingsTabPreviewTest {
             return List.of(tab);
         });
         p.settle();
+        // these previews reach for settings of every kind, so keep the advanced ones in sight
+        tab.setAdvanced(true);
+        p.settle();
         p.advance(400);
         p.settle();
         return p;

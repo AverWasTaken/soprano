@@ -128,16 +128,16 @@ public class Toast extends Control {
         float r = theme.pxf(Theme.CONTROL_RADIUS);
 
         Canvas g = fade.reset(c, a, rise);
-        g.shadow(bx, by, bw, bh, r, Theme.SHADOW);
-        g.fillRoundRect(bx, by, bw, bh, r, Theme.RAISED);
-        g.strokeRoundRect(bx, by, bw, bh, r, Theme.HAIRLINE);
+        g.shadow(bx, by, bw, bh, r, theme.color(Theme.SHADOW));
+        g.fillRoundRect(bx, by, bw, bh, r, theme.color(Theme.RAISED));
+        g.strokeRoundRect(bx, by, bw, bh, r, theme.color(Theme.HAIRLINE));
         float room = bw - 2 * pad;
         float ty = by + theme.px(12);
         String line = e.lineW <= room ? e.line : m.ellipsize(e.line, theme.body, room);
-        g.text(line, bx + pad, ty + m.ascent(theme.body), theme.body, e.ok ? Theme.TEXT : Theme.DANGER);
+        g.text(line, bx + pad, ty + m.ascent(theme.body), theme.body, e.ok ? theme.color(Theme.TEXT) : theme.color(Theme.DANGER));
         if (e.command != null) {
             String cmd = e.cmdW <= room ? e.command : m.ellipsize(e.command, theme.small, room);
-            g.text(cmd, bx + pad, ty + lh + theme.px(4) + m.ascent(theme.small), theme.small, Theme.TEXT_2);
+            g.text(cmd, bx + pad, ty + lh + theme.px(4) + m.ascent(theme.small), theme.small, theme.color(Theme.TEXT_2));
         }
     }
 

@@ -220,12 +220,12 @@ final class GetBasketRow extends RowWidgets.Row<GetBasketRow.Item> {
         hotA.set(hot ? 1f : 0f, now, Theme.ANIM_FAST);
         float v = hotA.value(now);
         if (v > 0.01f) {
-            c.fillRoundRect(x, y + theme.px(1), w, h - theme.px(2), theme.pxf(Theme.ROW_RADIUS), Theme.fade(Theme.HOVER, v));
+            c.fillRoundRect(x, y + theme.px(1), w, h - theme.px(2), theme.pxf(Theme.ROW_RADIUS), Theme.fade(theme.color(Theme.HOVER), v));
         }
         int s = iconPx();
         c.itemIcon(item.entry().iconItemId(), iconX, y + (h - s) / 2, s);
         float tx = iconX + s + theme.px(10);
-        c.text(shownName, tx, y + h / 2f + (c.ascent(theme.body) - c.descent(theme.body)) / 2f, theme.body, Theme.TEXT);
+        c.text(shownName, tx, y + h / 2f + (c.ascent(theme.body) - c.descent(theme.body)) / 2f, theme.body, theme.color(Theme.TEXT));
 
         if (v > 0.02f) {
             Canvas g = fade.reset(c, v, 0f);
@@ -247,7 +247,7 @@ final class GetBasketRow extends RowWidgets.Row<GetBasketRow.Item> {
             float restX = x + w - theme.px(10) - tw;
             float boxX = count.x() + Math.max(theme.px(4), (count.w() - tw) / 2f);
             float base = count.y() + count.h() / 2f + (c.ascent(theme.body) - c.descent(theme.body)) / 2f;
-            c.text(t, restX + (boxX - restX) * v, base, theme.body, Theme.TEXT_2);
+            c.text(t, restX + (boxX - restX) * v, base, theme.body, theme.color(Theme.TEXT_2));
         }
     }
 }

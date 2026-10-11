@@ -65,7 +65,7 @@ public class Label extends Widget {
             default -> x;
         };
         float base = y + h / 2f + (c.ascent(style) - c.descent(style)) / 2f;
-        c.text(shown, tx, base, style, colour);
+        c.text(shown, tx, base, style, theme.color(colour));
     }
 
     @Override

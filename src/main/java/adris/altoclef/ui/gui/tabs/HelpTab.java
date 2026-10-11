@@ -47,7 +47,7 @@ public final class HelpTab implements Tab {
 
         @Override
         protected void drawAdornments(Canvas c, Frame f) {
-            c.text("#", x + theme.px(10), baseline(c, theme.body, y, h), theme.body, focused ? Theme.TEXT_2 : Theme.TEXT_3);
+            c.text("#", x + theme.px(10), baseline(c, theme.body, y, h), theme.body, focused ? theme.color(Theme.TEXT_2) : theme.color(Theme.TEXT_3));
         }
 
         @Override
@@ -132,7 +132,7 @@ public final class HelpTab implements Tab {
 
         private void drawResult(Canvas c) {
             String text = inlineText();
-            int col = last == null ? Theme.TEXT_3 : last.ok() ? Theme.TEXT_2 : Theme.DANGER;
+            int col = last == null ? theme.color(Theme.TEXT_3) : last.ok() ? theme.color(Theme.TEXT_2) : theme.color(Theme.DANGER);
             int pad = theme.px(Theme.PAD);
             float room = w - 2 * pad;
             String shown = theme.measurer.ellipsize(text, theme.small, room);

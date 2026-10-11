@@ -6,6 +6,7 @@ import adris.altoclef.ui.gui.facade.ItemsAccess;
 import adris.altoclef.ui.gui.facade.KeyNames;
 import adris.altoclef.ui.gui.facade.Result;
 import adris.altoclef.ui.gui.facade.SettingsAccess;
+import adris.altoclef.ui.gui.facade.StatsAccess;
 import adris.altoclef.ui.gui.facade.StatusAccess;
 import adris.altoclef.ui.gui.facade.WorldAccess;
 import adris.altoclef.ui.gui.kit.Clipboard;
@@ -29,9 +30,10 @@ public final class McFacade implements BotFacade {
     private final StatusAccess status;
     private final KeyNames keyNames;
     private final Clipboard clipboard;
+    private final StatsAccess stats;
 
     public McFacade(SettingsAccess settings, CommandsAccess commands, ItemsAccess items, WorldAccess world,
-                    StatusAccess status, KeyNames keyNames, Clipboard clipboard) {
+                    StatusAccess status, KeyNames keyNames, Clipboard clipboard, StatsAccess stats) {
         this.settings = settings;
         this.commands = commands;
         this.items = items;
@@ -39,11 +41,12 @@ public final class McFacade implements BotFacade {
         this.status = status;
         this.keyNames = keyNames;
         this.clipboard = clipboard;
+        this.stats = stats;
     }
 
     public static McFacade create() {
         return new McFacade(new McSettings(), new McCommands(), itemsFactory.get(), worldFactory.get(),
-                new McStatus(), new McKeyNames(), new McClipboard());
+                new McStatus(), new McKeyNames(), new McClipboard(), new McStats());
     }
 
     private static <T> T guarded(String name, Supplier<? extends T> make, Supplier<? extends T> fallback) {
@@ -88,6 +91,11 @@ public final class McFacade implements BotFacade {
     @Override
     public Clipboard clipboard() {
         return clipboard;
+    }
+
+    @Override
+    public StatsAccess stats() {
+        return stats;
     }
 
     private static final class EmptyItems implements ItemsAccess {

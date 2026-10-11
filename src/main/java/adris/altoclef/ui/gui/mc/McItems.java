@@ -7,12 +7,15 @@ import adris.altoclef.ui.gui.facade.Result;
 import adris.altoclef.ui.gui.kit.Safe;
 import adris.altoclef.ui.gui.model.Wording;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -38,6 +41,37 @@ public final class McItems implements ItemsAccess {
     private volatile List<ItemEntry> gettable;
     private volatile List<ItemEntry> mineable;
 
+    // item path -> creative tab label, so the get tab can sort like the creative inventory does. the search tab is
+    // skipped: everything is in some category already and the search tab is just "all of it again"
+    private static volatile Map<String, String> categories;
+
+    private static Map<String, String> categories() {
+        Map<String, String> out = categories;
+        if (out != null) {
+            return out;
+        }
+        out = new HashMap<>();
+        try {
+            for (CreativeModeTab tab : BuiltInRegistries.CREATIVE_MODE_TAB) {
+                String label = tab.getDisplayName().getString();
+                for (ItemStack stack : tab.getDisplayItems()) {
+                    String path = BuiltInRegistries.ITEM.getKey(stack.getItem()).getPath();
+                    out.putIfAbsent(path, label);
+                }
+            }
+        } catch (Throwable t) {
+            Safe.report("gui creative categories", t);
+        }
+        categories = out;
+        return out;
+    }
+
+    // the creative tab an item lives in, or "" for the catalogue names no tab owns ("planks", say)
+    static String categoryOf(String name) {
+        String hit = categories().get(name);
+        return hit == null ? "" : hit;
+    }
+
     public McItems() {
         this(new McCommands());
     }
@@ -58,7 +92,7 @@ public final class McItems implements ItemsAccess {
             out = new ArrayList<>(names.size());
             for (String name : names) {
                 out.add(new ItemEntry(name, Wording.soprano(displayOf(name)),
-                        iconOrUnknown(IconResolver.forResource(name), name), stackOf(name)));
+                        iconOrUnknown(IconResolver.forResource(name), name), stackOf(name), categoryOf(name)));
             }
             gettable = List.copyOf(out);
             return gettable;
@@ -83,7 +117,7 @@ public final class McItems implements ItemsAccess {
                 String path = BuiltInRegistries.BLOCK.getKey(block).getPath();
                 built.add(new ItemEntry(path, Wording.soprano(nameOf(block.asItem(), path)),
                         iconOrUnknown(IconResolver.forBlock(block), path),
-                        Math.max(1, block.asItem().getDefaultMaxStackSize())));
+                        Math.max(1, block.asItem().getDefaultMaxStackSize()), categoryOf(path)));
             }
             built.sort(Comparator.comparing(ItemEntry::name));
             mineable = List.copyOf(built);

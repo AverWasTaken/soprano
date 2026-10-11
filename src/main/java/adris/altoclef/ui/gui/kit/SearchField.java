@@ -54,7 +54,7 @@ public class SearchField extends TextField {
     @Override
     protected void drawAdornments(Canvas c, Frame f) {
         int is = theme.px(Theme.ICON);
-        c.icon(Icon.SEARCH, x + theme.px(10), y + (h - is) / 2f, is, focused ? Theme.TEXT_2 : Theme.TEXT_3);
+        c.icon(Icon.SEARCH, x + theme.px(10), y + (h - is) / 2f, is, focused ? theme.color(Theme.TEXT_2) : theme.color(Theme.TEXT_3));
         if (hasText()) {
             placeClear();
             clear.draw(c, f);

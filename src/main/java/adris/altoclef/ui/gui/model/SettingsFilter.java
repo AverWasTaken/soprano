@@ -22,11 +22,21 @@ public final class SettingsFilter {
 
     public static List<SettingView> apply(List<SettingView> all, String category, boolean modifiedOnly, String query,
                                           Function<String, String> description) {
+        return apply(all, category, modifiedOnly, true, query, description);
+    }
+
+    // showAdvanced false hides the tuning the everyday player does not reach for, so the list reads like a menu and
+    // not a config file
+    public static List<SettingView> apply(List<SettingView> all, String category, boolean modifiedOnly, boolean showAdvanced,
+                                          String query, Function<String, String> description) {
         boolean anyCategory = category == null || category.isEmpty() || category.equals(ALL);
         String[] tokens = tokens(query);
         List<SettingView> out = new ArrayList<>();
         List<Integer> tiers = new ArrayList<>();
         for (SettingView v : all) {
+            if (!showAdvanced && SettingCategories.isAdvanced(v.name())) {
+                continue;
+            }
             if (modifiedOnly && !v.modified()) {
                 continue;
             }
@@ -59,11 +69,18 @@ public final class SettingsFilter {
 
     // how many settings each category has, in the column's order, only the ones that have any
     public static Map<String, Integer> counts(List<SettingView> all) {
+        return counts(all, true);
+    }
+
+    public static Map<String, Integer> counts(List<SettingView> all, boolean showAdvanced) {
         Map<String, Integer> out = new LinkedHashMap<>();
         for (String c : SettingCategories.names()) {
             out.put(c, 0);
         }
         for (SettingView v : all) {
+            if (!showAdvanced && SettingCategories.isAdvanced(v.name())) {
+                continue;
+            }
             out.merge(SettingCategories.categoryOf(v.name()), 1, Integer::sum);
         }
         out.values().removeIf(n -> n == 0);
@@ -74,6 +91,16 @@ public final class SettingsFilter {
         int n = 0;
         for (SettingView v : all) {
             if (v.modified()) {
+                n++;
+            }
+        }
+        return n;
+    }
+
+    public static int advancedCount(List<SettingView> all) {
+        int n = 0;
+        for (SettingView v : all) {
+            if (SettingCategories.isAdvanced(v.name())) {
                 n++;
             }
         }

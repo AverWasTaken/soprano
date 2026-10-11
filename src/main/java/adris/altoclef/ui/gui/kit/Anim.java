@@ -39,7 +39,7 @@ public final class Anim {
     }
 
     public float value(long nowNanos) {
-        if (durNanos <= 0L || nowNanos - startNanos >= durNanos) {
+        if (!enabled || durNanos <= 0L || nowNanos - startNanos >= durNanos) {
             return to;
         }
         float t = (nowNanos - startNanos) / (float) durNanos;
@@ -47,7 +47,7 @@ public final class Anim {
     }
 
     public boolean running(long nowNanos) {
-        return durNanos > 0L && nowNanos - startNanos < durNanos;
+        return enabled && durNanos > 0L && nowNanos - startNanos < durNanos;
     }
 
     public float target() {

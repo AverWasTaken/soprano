@@ -100,6 +100,9 @@ public final class Preview {
 
     public void key(int key) {
         shell.keyDown(key, 0);
+        // a real key press releases too, and the shell relies on the up to clear a key it was swallowing (a
+        // rebind, a capture cancel). without it the next typed char vanishes and the search box reads empty
+        shell.keyUp(key);
         advance(16);
     }
 
@@ -133,12 +136,14 @@ public final class Preview {
 
     public Java2dCanvas render() {
         Java2dCanvas c = new Java2dCanvas(winW, winH, glyphs, shapes);
+        c.setTheme(theme);
+        theme.update(now);
         // a dim green world behind the scrim so the panel edge and shadow are judged against something
         c.clear(WORLD);
         for (int i = 0; i < winW; i += 64) {
             c.fillRect(i, 0, 32, winH, WORLD_2);
         }
-        c.fillRect(0, 0, winW, winH, Theme.SCRIM);
+        c.fillRect(0, 0, winW, winH, theme.color(Theme.SCRIM));
         int before = Safe.reports();
         shell.mouseMove(mouseX, mouseY);
         shell.draw(c, frame());

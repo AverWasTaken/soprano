@@ -108,6 +108,7 @@ All off by default unless it says otherwise.
 - `sprintThroughCorners` (on by default, keeps sprinting through turns of 60 degrees or less and starts turning a fraction of a block early so the corner gets cut instead of clipped. Both of these stay off in the nether, near lava, at 6 health or less and next to anything placing or breaking blocks)
 - `keepFpsWhileBotting` (on by default, counts the bot working as keyboard and mouse input for the game's AFK frame limiter, so the frame rate does not drop to 30 while you watch it. Does nothing while the bot is idle)
 - `guiKey` (344, right shift: the GLFW key code that opens the click gui, which does everything a chat command does with buttons. -1 unbinds it and `#gui` still works. The gui's Settings tab has a key capture control for it) and `guiKeyEnabled` (on by default, turns the key off without unbinding it)
+- `guiDarkMode` (on by default, uses the dark appearance. The sidebar's Light and Dark buttons save your choice) and `guiAnimations` (on by default, animates transitions and scrolling. Turn off for reduced motion)
 - `keepPathOnSameGoal` (on by default, when one AltoClef task hands over to another that wants the same goal, keeps walking the path instead of standing still while a new one is calculated)
 - `shortBaritonePrefix` (use `[S]` instead of `[Soprano]` in chat messages)
 

@@ -377,22 +377,22 @@ final class FollowContent extends Widget {
     }
 
     private void drawStrip(Canvas c) {
-        c.fillRoundRect(stripX, stripY, stripW, stripH, theme.pxf(Theme.CONTROL_RADIUS), Theme.RAISED);
+        c.fillRoundRect(stripX, stripY, stripW, stripH, theme.pxf(Theme.CONTROL_RADIUS), theme.color(Theme.RAISED));
         float is = theme.px(14);
-        c.icon(Icon.DOT, stripX + theme.px(12), stripY + (stripH - is) / 2f, is, Theme.ACCENT);
+        c.icon(Icon.DOT, stripX + theme.px(12), stripY + (stripH - is) / 2f, is, theme.color(Theme.ACCENT));
         float tx = stripX + theme.px(12) + is + theme.px(8);
         float by = base(c, theme.label, stripY, stripH);
-        tx += c.text("Following ", tx, by, theme.label, Theme.TEXT_2);
+        tx += c.text("Following ", tx, by, theme.label, theme.color(Theme.TEXT_2));
         float room = stopBtn.x() - theme.px(12) - tx;
-        c.text(c.ellipsize(following, theme.label, Math.max(0, room)), tx, by, theme.label, Theme.TEXT);
+        c.text(c.ellipsize(following, theme.label, Math.max(0, room)), tx, by, theme.label, theme.color(Theme.TEXT));
     }
 
     private void drawHeader(Canvas c, String title, int count, int hx, int hy, int hw) {
         int hdr = theme.px(28);
         float by = base(c, theme.label, hy, hdr - theme.px(4));
-        float adv = c.text(title, hx, by, theme.label, Theme.TEXT);
-        c.text(" · " + count + " nearby", hx + adv, by, theme.label, Theme.TEXT_2);
-        c.fillRect(hx, hy + hdr - 1, hw, 1, Theme.HAIRLINE);
+        float adv = c.text(title, hx, by, theme.label, theme.color(Theme.TEXT));
+        c.text(" · " + count + " nearby", hx + adv, by, theme.label, theme.color(Theme.TEXT_2));
+        c.fillRect(hx, hy + hdr - 1, hw, 1, theme.color(Theme.HAIRLINE));
     }
 
     private void drawEmpty(Canvas c, VirtualList<?> list, String line, String hint) {
@@ -401,9 +401,9 @@ final class FollowContent extends Widget {
         }
         float cy = list.y() + Math.min(list.h() / 2f, theme.px(60));
         float w1 = c.measure(line, theme.body);
-        c.text(line, list.x() + (list.w() - w1) / 2f, cy - theme.px(2), theme.body, Theme.TEXT_2);
+        c.text(line, list.x() + (list.w() - w1) / 2f, cy - theme.px(2), theme.body, theme.color(Theme.TEXT_2));
         float w2 = c.measure(hint, theme.small);
-        c.text(hint, list.x() + (list.w() - w2) / 2f, cy + theme.px(18), theme.small, Theme.TEXT_3);
+        c.text(hint, list.x() + (list.w() - w2) / 2f, cy + theme.px(18), theme.small, theme.color(Theme.TEXT_3));
     }
 
     // the hover button lives in a fixed slot at the right edge so the distance next to it never jumps
@@ -433,10 +433,10 @@ final class FollowContent extends Widget {
         float by = ry + (rh - buttonH()) / 2f;
         boolean over = f.mouseX() >= bx && f.mouseX() < bx + buttonW() && f.mouseY() >= by && f.mouseY() < by + buttonH();
         if (over) {
-            c.fillRoundRect(bx, by, buttonW(), buttonH(), theme.pxf(Theme.CONTROL_RADIUS), Theme.PRESSED);
+            c.fillRoundRect(bx, by, buttonW(), buttonH(), theme.pxf(Theme.CONTROL_RADIUS), theme.color(Theme.PRESSED));
         }
         float tw = c.measure(label, theme.label);
-        c.text(label, bx + (buttonW() - tw) / 2f, base(c, theme.label, by, buttonH()), theme.label, over ? Theme.TEXT : Theme.TEXT_2);
+        c.text(label, bx + (buttonW() - tw) / 2f, base(c, theme.label, by, buttonH()), theme.label, over ? theme.color(Theme.TEXT) : theme.color(Theme.TEXT_2));
     }
 
     private float distanceRight(int rx, int rw) {
@@ -445,11 +445,11 @@ final class FollowContent extends Widget {
 
     private void dot(Canvas c, int rx, int ry, int rh) {
         float s = theme.px(14);
-        c.icon(Icon.DOT, rx + theme.px(2), ry + (rh - s) / 2f, s, Theme.ACCENT);
+        c.icon(Icon.DOT, rx + theme.px(2), ry + (rh - s) / 2f, s, theme.color(Theme.ACCENT));
     }
 
     private void rowBg(Canvas c, int rx, int ry, int rw, int rh) {
-        c.fillRoundRect(rx, ry + theme.px(2), rw, rh - theme.px(4), theme.pxf(Theme.ROW_RADIUS), Theme.HOVER);
+        c.fillRoundRect(rx, ry + theme.px(2), rw, rh - theme.px(4), theme.pxf(Theme.ROW_RADIUS), theme.color(Theme.HOVER));
     }
 
     private void pill(Canvas c, String text, float px, int ry, int rh, int fill, int col) {
@@ -476,7 +476,7 @@ final class FollowContent extends Widget {
         float fy = ry + (rh - face) / 2f;
         c.playerFace(p.name(), fx, fy, face);
         if (!near && !p.self()) {
-            c.fillRoundRect(fx, fy, face, face, face / 6f, Theme.alpha(Theme.PANEL, 0.6f));
+            c.fillRoundRect(fx, fy, face, face, face / 6f, Theme.alpha(theme.color(Theme.PANEL), 0.6f));
         }
         float tx = fx + face + theme.px(10);
         float right = distanceRight(rx, rw);
@@ -485,15 +485,15 @@ final class FollowContent extends Widget {
             String d = near ? EntityGroups.meters(p.distance()) : "not nearby";
             TextStyle ds = near ? theme.body.asTabular() : theme.small;
             float dw = c.measure(d, ds);
-            c.text(d, right - dw, base(c, ds, ry, rh), ds, near ? Theme.TEXT_2 : Theme.TEXT_3);
+            c.text(d, right - dw, base(c, ds, ry, rh), ds, near ? theme.color(Theme.TEXT_2) : theme.color(Theme.TEXT_3));
             limit = right - dw - theme.px(12);
         }
-        int nameCol = near || p.self() ? Theme.TEXT : Theme.TEXT_3;
+        int nameCol = near || p.self() ? theme.color(Theme.TEXT) : theme.color(Theme.TEXT_3);
         float pillRoom = p.self() ? pillW(c, "you") + theme.px(8) : 0f;
         String name = c.ellipsize(p.name(), theme.body, Math.max(0, limit - tx - pillRoom));
         c.text(name, tx, base(c, theme.body, ry, rh), theme.body, nameCol);
         if (p.self()) {
-            pill(c, "you", tx + c.measure(name, theme.body) + theme.px(8), ry, rh, Theme.RAISED, Theme.TEXT_2);
+            pill(c, "you", tx + c.measure(name, theme.body) + theme.px(8), ry, rh, theme.color(Theme.RAISED), theme.color(Theme.TEXT_2));
         }
         if (over(f, rx, ry, rw, rh) && !p.self() && near) {
             drawGhost(c, f, "Follow", rx, ry, rw, rh);
@@ -523,32 +523,32 @@ final class FollowContent extends Widget {
         float cx = rx + theme.px(18);
         float cy = ry + (rh - cs) / 2f;
         float open = chevronValue(g, f.nowNanos());
-        c.icon(Icon.CHEVRON_RIGHT, cx, cy, cs, Theme.fade(Theme.TEXT_2, 1f - open));
-        c.icon(Icon.CHEVRON_DOWN, cx, cy, cs, Theme.fade(Theme.TEXT_2, open));
+        c.icon(Icon.CHEVRON_RIGHT, cx, cy, cs, Theme.fade(theme.color(Theme.TEXT_2), 1f - open));
+        c.icon(Icon.CHEVRON_DOWN, cx, cy, cs, Theme.fade(theme.color(Theme.TEXT_2), open));
 
         float tile = theme.px(24);
         float tx = rx + theme.px(42);
         float ty = ry + (rh - tile) / 2f;
-        c.fillRoundRect(tx, ty, tile, tile, theme.pxf(Theme.ROW_RADIUS), Theme.RAISED);
+        c.fillRoundRect(tx, ty, tile, tile, theme.pxf(Theme.ROW_RADIUS), theme.color(Theme.RAISED));
         if (g.iconItemId() != null) {
             float is = theme.itemIconPx();
             c.itemIcon(g.iconItemId(), tx + (tile - is) / 2f, ty + (tile - is) / 2f, is);
         } else {
             float is = theme.px(16);
-            c.icon(Icon.ENTITY, tx + (tile - is) / 2f, ty + (tile - is) / 2f, is, Theme.TEXT_2);
+            c.icon(Icon.ENTITY, tx + (tile - is) / 2f, ty + (tile - is) / 2f, is, theme.color(Theme.TEXT_2));
         }
 
         float nx = tx + tile + theme.px(10);
         String d = EntityGroups.meters(g.nearest());
         float dw = c.measure(d, theme.body.asTabular());
         float right = distanceRight(rx, rw);
-        c.text(d, right - dw, base(c, theme.body, ry, rh), theme.body.asTabular(), Theme.TEXT_2);
+        c.text(d, right - dw, base(c, theme.body, ry, rh), theme.body.asTabular(), theme.color(Theme.TEXT_2));
         String count = "x" + g.count();
         float pw = pillW(c, count);
         float room = right - dw - theme.px(12) - nx - pw - theme.px(8);
         String name = c.ellipsize(g.typeName(), theme.label, Math.max(0, room));
-        c.text(name, nx, base(c, theme.label, ry, rh), theme.label, Theme.TEXT);
-        pill(c, count, nx + c.measure(name, theme.label) + theme.px(8), ry, rh, hot ? Theme.PANEL : Theme.RAISED, Theme.TEXT_2);
+        c.text(name, nx, base(c, theme.label, ry, rh), theme.label, theme.color(Theme.TEXT));
+        pill(c, count, nx + c.measure(name, theme.label) + theme.px(8), ry, rh, hot ? theme.color(Theme.PANEL) : theme.color(Theme.RAISED), theme.color(Theme.TEXT_2));
         // a group that is only here for one named member would follow the whole type, which is not what the search said
         if (over(f, rx, ry, rw, rh) && !g.memberOnly()) {
             drawGhost(c, f, "Follow all", rx, ry, rw, rh);
@@ -556,7 +556,7 @@ final class FollowContent extends Widget {
     }
 
     private void drawMember(Canvas c, Frame f, EntityEntry e, int rx, int ry, int rw, int rh, boolean hot) {
-        c.fillRect(rx + theme.px(26), ry, 1, rh, Theme.HAIRLINE);
+        c.fillRect(rx + theme.px(26), ry, 1, rh, theme.color(Theme.HAIRLINE));
         if (EntityGroups.followsEntity(following, e)) {
             dot(c, rx, ry, rh);
         }
@@ -565,16 +565,16 @@ final class FollowContent extends Widget {
         float right = distanceRight(rx, rw);
         String d = EntityGroups.meters(e.distance());
         float dw = c.measure(d, theme.body.asTabular());
-        c.text(d, right - dw, base(c, theme.body, ry, rh), theme.body.asTabular(), Theme.TEXT_2);
+        c.text(d, right - dw, base(c, theme.body, ry, rh), theme.body.asTabular(), theme.color(Theme.TEXT_2));
         float room = right - dw - theme.px(12) - nx;
         String label = EntityGroups.label(e);
         boolean named = EntityGroups.named(e);
         float typeW = named ? c.measure(e.typeName(), theme.small) + theme.px(8) : 0f;
         String shown = c.ellipsize(label, theme.body, Math.max(0, room - typeW));
-        c.text(shown, nx, base(c, theme.body, ry, rh), theme.body, Theme.TEXT);
+        c.text(shown, nx, base(c, theme.body, ry, rh), theme.body, theme.color(Theme.TEXT));
         if (named) {
             float tx = nx + c.measure(shown, theme.body) + theme.px(8);
-            c.text(e.typeName(), tx, base(c, theme.small, ry, rh), theme.small, Theme.TEXT_2);
+            c.text(e.typeName(), tx, base(c, theme.small, ry, rh), theme.small, theme.color(Theme.TEXT_2));
         }
         if (over(f, rx, ry, rw, rh)) {
             drawGhost(c, f, "Follow", rx, ry, rw, rh);

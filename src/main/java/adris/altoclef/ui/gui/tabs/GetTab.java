@@ -5,6 +5,7 @@ import adris.altoclef.ui.gui.facade.ItemsAccess.BasketLine;
 import adris.altoclef.ui.gui.facade.ItemsAccess.ItemEntry;
 import adris.altoclef.ui.gui.facade.Result;
 import adris.altoclef.ui.gui.kit.Canvas;
+import adris.altoclef.ui.gui.kit.Dropdown;
 import adris.altoclef.ui.gui.kit.Frame;
 import adris.altoclef.ui.gui.kit.Icon;
 import adris.altoclef.ui.gui.kit.Safe;
@@ -15,9 +16,12 @@ import adris.altoclef.ui.gui.kit.Theme;
 import adris.altoclef.ui.gui.kit.VirtualGrid;
 import adris.altoclef.ui.gui.kit.Widget;
 import adris.altoclef.ui.gui.model.Basket;
+import adris.altoclef.ui.gui.model.CreativeCategories;
 import adris.altoclef.ui.gui.model.ItemSearch;
+import adris.altoclef.ui.gui.model.Pinned;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -34,6 +38,7 @@ public final class GetTab implements Tab {
     private final Map<String, ItemEntry> mineByName = new HashMap<>();
     private final GetTiles tiles;
     private final Segmented seg;
+    private final Dropdown catDrop;
     private final VirtualGrid<ItemEntry> grid;
     private final GetRecentStrip strip;
     private final GetBasketPanel panel;
@@ -43,6 +48,7 @@ public final class GetTab implements Tab {
     private List<ItemEntry> shown = List.of();
     private boolean mine;
     private String query = "";
+    private String category = "";
     private boolean dirty;
 
     public GetTab(Theme theme, BotFacade facade, ShellContext ctx) {
@@ -52,10 +58,21 @@ public final class GetTab implements Tab {
         tiles = new GetTiles(theme);
 
         seg = new Segmented(theme, List.of("Get", "Mine"), 0, i -> setMine(i == 1));
+        catDrop = new Dropdown(theme, List.of("All"), 0, i -> pickCategory(i), ctx);
         grid = new VirtualGrid<>(theme, tiles.cellW(), tiles.cellH(),
-                (c, f, e, i, x, y, w, h, hot) -> tiles.draw(c, e, countOf(e.name()), x, y, w, h, hot));
+                (c, f, e, i, x, y, w, h, hot) -> {
+                    tiles.draw(c, e, countOf(e.name()), x, y, w, h, hot);
+                    tiles.drawPin(c, e, x, y, w, h, hot);
+                });
         grid.setKeyFunction(ItemEntry::name);
-        grid.onClick((e, i, mods) -> addEntry(e, mods, true));
+        grid.onClick((e, i, mods, mx, my, cx, cy, cw, ch) -> {
+            int[] z = tiles.pinZone(cx, cy, cw, ch);
+            if (mx >= z[0] && mx < z[0] + z[2] && my >= z[1] && my < z[1] + z[3]) {
+                togglePin(e);
+            } else {
+                addEntry(e, mods, true);
+            }
+        });
         strip = new GetRecentStrip(theme, tiles, this::countOf, (e, mods) -> addEntry(e, mods, true));
         panel = new GetBasketPanel(theme, new GetBasketRow.Actions() {
             @Override
@@ -193,7 +210,8 @@ public final class GetTab implements Tab {
                 }
                 String icon = e.iconItemId() == null || e.iconItemId().isBlank() ? "minecraft:" + e.name() : e.iconItemId();
                 String shown = e.displayName() == null || e.displayName().isBlank() ? ItemEntry.titleCase(e.name()) : e.displayName();
-                clean.add(new ItemEntry(e.name(), shown, icon, Math.max(1, e.maxStack())));
+                String category = e.category() == null ? "" : e.category();
+                clean.add(new ItemEntry(e.name(), shown, icon, Math.max(1, e.maxStack()), category));
             }
             return clean;
         } catch (Throwable t) {
@@ -226,12 +244,69 @@ public final class GetTab implements Tab {
         }
         flush();
         mine = m;
+        category = "";
         panel.bind(basket(), mine, this::resolve);
         applyFilter(true);
     }
 
+    // "All" plus every creative category the current list actually has, in the game's own tab order
+    private List<String> categoryOptions() {
+        List<String> out = new ArrayList<>();
+        out.add("All");
+        List<String> cats = new ArrayList<>();
+        for (ItemEntry e : source()) {
+            String c = e.category();
+            if (c != null && !c.isEmpty() && !cats.contains(c)) {
+                cats.add(c);
+            }
+        }
+        cats.sort(Comparator.comparingInt(CreativeCategories::order));
+        out.addAll(cats);
+        return out;
+    }
+
+    private void pickCategory(int i) {
+        // the dropdown already updated its selection; a category that no longer exists falls back to All
+        List<String> opts = categoryOptions();
+        String chosen = i >= 0 && i < opts.size() ? opts.get(i) : "All";
+        category = "All".equals(chosen) ? "" : chosen;
+        applyFilter(true);
+    }
+
+    private void togglePin(ItemEntry e) {
+        boolean now = Pinned.toggleItem(e.name());
+        ctx.toast(now ? "Pinned " + e.displayName() : "Unpinned " + e.displayName(), null);
+        applyFilter(false);
+    }
+
     private void applyFilter(boolean toTop) {
-        shown = ItemSearch.filter(source(), query);
+        List<ItemEntry> filtered = ItemSearch.filter(source(), query);
+        if (!category.isEmpty()) {
+            filtered = new ArrayList<>(filtered);
+            filtered.removeIf(e -> !category.equals(e.category()));
+        }
+        // a search keeps its ranking; an empty box shows the items the way the creative inventory would: by category,
+        // then by name, with whatever you pinned floated to the top. a facade that gave no categories (the fake in
+        // tests) keeps its own order, there is nothing to group by
+        if (query.trim().isEmpty()) {
+            filtered = new ArrayList<>(filtered);
+            boolean anyCategory = filtered.stream().anyMatch(e -> e.category() != null && !e.category().isEmpty());
+            if (anyCategory) {
+                Comparator<ItemEntry> byCategory = Comparator
+                        .comparingInt((ItemEntry e) -> CreativeCategories.order(e.category()))
+                        .thenComparing((ItemEntry e) -> e.displayName() == null || e.displayName().isBlank() ? e.name() : e.displayName(),
+                                String.CASE_INSENSITIVE_ORDER);
+                filtered.sort(byCategory);
+            }
+            List<ItemEntry> pinned = new ArrayList<>();
+            List<ItemEntry> rest = new ArrayList<>();
+            for (ItemEntry e : filtered) {
+                (Pinned.isItem(e.name()) ? pinned : rest).add(e);
+            }
+            pinned.addAll(rest);
+            filtered = pinned;
+        }
+        shown = filtered;
         grid.setItems(shown);
         if (toTop) {
             grid.scroller().snapTo(0f);
@@ -245,6 +320,10 @@ public final class GetTab implements Tab {
             }
         }
         strip.setEntries(recent);
+        // the category menu tracks the list, so a tab switch or a reload does not leave it pointing at nothing
+        List<String> opts = categoryOptions();
+        int at = category.isEmpty() ? 0 : Math.max(0, opts.indexOf(category));
+        catDrop.setOptions(opts, at);
         content.relayout();
     }
 
@@ -343,7 +422,7 @@ public final class GetTab implements Tab {
 
         Content(Theme theme) {
             super(theme);
-            kids = List.of(seg, strip, grid, panel);
+            kids = List.of(seg, catDrop, strip, grid, panel);
         }
 
         // applyFilter runs once from the constructor, before the shell has given us a size
@@ -363,6 +442,8 @@ public final class GetTab implements Tab {
             int lw = w - 2 * pad - bw - gap;
             int topH = theme.px(Theme.CONTROL_H);
             seg.setBounds(lx, y + pad, seg.preferredWidth(), topH);
+            int catW = Math.max(theme.px(140), Math.min(theme.px(220), lw - seg.preferredWidth() - gap - theme.px(40)));
+            catDrop.setBounds(seg.x() + seg.preferredWidth() + gap, y + pad, catW, topH);
             int cy = y + pad + topH + gap;
             int bottom = y + h - pad;
             // the strip only earns its space when the grid under it still has a couple of rows left
@@ -403,11 +484,12 @@ public final class GetTab implements Tab {
         public void draw(Canvas c, Frame f) {
             flush();
             seg.draw(c, f);
+            catDrop.draw(c, f);
             drawCountText(c);
             if (strip.visible()) {
                 strip.draw(c, f);
                 float ly = grid.y() - theme.px(Theme.GAP) / 2f;
-                c.fillRect(grid.x() + theme.px(6), ly, grid.w() - theme.px(12), 1, Theme.HAIRLINE);
+                c.fillRect(grid.x() + theme.px(6), ly, grid.w() - theme.px(12), 1, theme.color(Theme.HAIRLINE));
             }
             grid.draw(c, f);
             drawEmpty(c);
@@ -422,7 +504,10 @@ public final class GetTab implements Tab {
             float tw = c.measure(t, theme.small);
             float base = seg.y() + seg.h() / 2f + (c.ascent(theme.small) - c.descent(theme.small)) / 2f;
             float right = grid.x() + grid.w() - theme.px(6);
-            c.text(t, right - tw, base, theme.small, Theme.TEXT_3);
+            // a narrow window needs the category picker more than an item count
+            if (right - tw >= catDrop.x() + catDrop.w() + theme.px(Theme.GAP)) {
+                c.text(t, right - tw, base, theme.small, theme.color(Theme.TEXT_3));
+            }
         }
 
         private void drawEmpty(Canvas c) {
@@ -434,7 +519,7 @@ public final class GetTab implements Tab {
             String fit = c.ellipsize(msg, theme.body, grid.w() - 2 * theme.px(Theme.PAD));
             float tw = c.measure(fit, theme.body);
             float base = grid.y() + grid.h() / 2f + (c.ascent(theme.body) - c.descent(theme.body)) / 2f;
-            c.text(fit, grid.x() + (grid.w() - tw) / 2f, base, theme.body, Theme.TEXT_2);
+            c.text(fit, grid.x() + (grid.w() - tw) / 2f, base, theme.body, theme.color(Theme.TEXT_2));
         }
     }
 }

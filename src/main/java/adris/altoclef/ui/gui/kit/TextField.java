@@ -210,8 +210,8 @@ public class TextField extends Control implements FocusOnClick {
         followCaret();
         focusA.set(focused ? 1f : 0f, now, Theme.ANIM_FAST);
         float r = theme.pxf(Theme.CONTROL_RADIUS);
-        int border = invalid ? Theme.DANGER : Theme.lerp(Theme.HAIRLINE, Theme.HAIRLINE_STRONG, focusA.value(now));
-        c.fillRoundRect(x, y, w, h, r, Theme.RAISED);
+        int border = invalid ? theme.color(Theme.DANGER) : Theme.lerp(theme.color(Theme.HAIRLINE), theme.color(Theme.ACCENT), focusA.value(now));
+        c.fillRoundRect(x, y, w, h, r, theme.color(Theme.RAISED));
         c.strokeRoundRect(x, y, w, h, r, border);
 
         float tx = x + leftInset();
@@ -220,19 +220,19 @@ public class TextField extends Control implements FocusOnClick {
         c.pushClip(tx, y + 1, avail, h - 2);
         if (edit.text().isEmpty()) {
             if (!placeholder.isEmpty()) {
-                c.text(placeholder, tx, base, theme.body, Theme.TEXT_3);
+                c.text(placeholder, tx, base, theme.body, theme.color(Theme.TEXT_3));
             }
         } else {
             if (selToPx > selFromPx) {
                 float inset = theme.px(6);
                 c.fillRoundRect(tx + selFromPx - scrollX, y + inset, selToPx - selFromPx, h - 2 * inset, 2,
-                        Theme.HAIRLINE_STRONG);
+                        theme.color(Theme.ACCENT_SOFT));
             }
-            c.text(edit.text(), tx - scrollX, base, theme.body, Theme.TEXT);
+            c.text(edit.text(), tx - scrollX, base, theme.body, theme.color(Theme.TEXT));
         }
         if (focused && caretOn()) {
             float inset = theme.px(7);
-            c.fillRect(Math.round(tx + caretPx - scrollX), y + inset, 1, h - 2 * inset, Theme.TEXT);
+            c.fillRect(Math.round(tx + caretPx - scrollX), y + inset, 1, h - 2 * inset, theme.color(Theme.TEXT));
         }
         c.popClip();
         drawAdornments(c, f);

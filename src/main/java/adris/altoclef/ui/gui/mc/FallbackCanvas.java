@@ -13,6 +13,17 @@ final class FallbackCanvas implements Canvas {
     private final McDraw draw;
     private int width;
     private int height;
+    private Theme theme;
+
+    @Override
+    public void setTheme(Theme theme) {
+        this.theme = theme;
+    }
+
+    @Override
+    public int color(int token) {
+        return theme == null ? token : theme.color(token);
+    }
 
     FallbackCanvas(McDraw draw) {
         this.draw = draw;
@@ -78,17 +89,17 @@ final class FallbackCanvas implements Canvas {
         if (draw.item(itemId, x, y, size)) {
             return;
         }
-        draw.fill(x, y, size, size, Theme.RAISED);
+        draw.fill(x, y, size, size, color(Theme.RAISED));
         String letter = McDraw.letterOf(itemId);
         float fs = Math.max(4f, size * 0.5f);
         draw.vanillaText(letter, x + (size - draw.vanillaWidth(letter, fs)) * 0.5f,
-                y + (size + draw.vanillaAscent(fs) - draw.vanillaDescent(fs)) * 0.5f, fs, Theme.TEXT_2);
+                y + (size + draw.vanillaAscent(fs) - draw.vanillaDescent(fs)) * 0.5f, fs, color(Theme.TEXT_2));
     }
 
     @Override
     public void playerFace(String playerName, float x, float y, float size) {
         if (!draw.face(playerName, x, y, size)) {
-            draw.fill(x, y, size, size, Theme.RAISED);
+            draw.fill(x, y, size, size, color(Theme.RAISED));
         }
     }
 

@@ -8,6 +8,7 @@ public enum Icon {
     WAYPOINTS,      // flag
     HELP,           // question mark in a ring
     SETTINGS,       // two sliders
+    STATS,          // three bars, ascending
     SEARCH,         // magnifier
     CLOSE,          // x
     PLUS,

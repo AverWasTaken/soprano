@@ -12,7 +12,7 @@ public class Segmented extends Control {
     private final float[] textW;
     private final float[] segX;
     private final float[] segW;
-    private final Anim slide;
+    private final Spring slide;
     private int selected;
 
     public Segmented(Theme theme, List<String> options, int selected, IntConsumer onChange) {
@@ -28,7 +28,7 @@ public class Segmented extends Control {
             textW[i] = theme.measurer.measure(options.get(i), theme.label);
         }
         this.selected = Math.max(0, Math.min(Math.max(0, n - 1), selected));
-        this.slide = new Anim(this.selected);
+        this.slide = new Spring(this.selected);
     }
 
     public int selected() {
@@ -92,8 +92,8 @@ public class Segmented extends Control {
             return;
         }
         float r = theme.pxf(Theme.CONTROL_RADIUS);
-        c.fillRoundRect(x, y, w, h, r, Theme.RAISED);
-        c.strokeRoundRect(x, y, w, h, r, Theme.HAIRLINE);
+        c.fillRoundRect(x, y, w, h, r, theme.color(Theme.RAISED));
+        c.strokeRoundRect(x, y, w, h, r, theme.color(Theme.HAIRLINE));
         float pos = slide.value(now);
         int i0 = Math.max(0, Math.min(n - 1, (int) Math.floor(pos)));
         int i1 = Math.min(n - 1, i0 + 1);
@@ -101,13 +101,13 @@ public class Segmented extends Control {
         float px = segX[i0] + (segX[i1] - segX[i0]) * fr;
         float pw = segW[i0] + (segW[i1] - segW[i0]) * fr;
         float in = inset();
-        c.fillRoundRect(x + in + px, y + in, pw, h - 2 * in, Math.max(2f, r - in), Theme.HOVER);
+        c.fillRoundRect(x + in + px, y + in, pw, h - 2 * in, Math.max(0f, r - in), theme.color(Theme.SELECTED));
         if (focused) {
-            c.strokeRoundRect(x - 1, y - 1, w + 2, h + 2, r + 1, Theme.HAIRLINE_STRONG);
+            c.strokeRoundRect(x - 1, y - 1, w + 2, h + 2, r + 1, theme.color(Theme.HAIRLINE_STRONG));
         }
         for (int i = 0; i < n; i++) {
             float near = 1f - Math.min(1f, Math.abs(pos - i));
-            int col = Theme.lerp(Theme.TEXT_2, Theme.TEXT, near);
+            int col = Theme.lerp(theme.color(Theme.TEXT_2), theme.color(Theme.TEXT), near);
             float tx = x + in + segX[i] + (segW[i] - textW[i]) / 2f;
             c.text(options.get(i), tx, baseline(c, theme.label, y, h), theme.label, col);
         }

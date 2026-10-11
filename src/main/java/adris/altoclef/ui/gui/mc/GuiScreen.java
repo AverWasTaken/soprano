@@ -78,12 +78,15 @@ public class GuiScreen extends Screen {
             pc = new FallbackCanvas(draw);
             c = pc;
         }
+        Settings s = Baritone.settings();
+        Anim.enabled = s.guiAnimations.value;
         Theme t = new Theme(Theme.scaleFor(windowHeight), c);
+        t.setDark(s.guiDarkMode.value);
+        c.setTheme(t);
         if (ac != null) {
             at.prewarm(t);
         }
         BotFacade f = McFacade.create();
-        Settings s = Baritone.settings();
         // the tabs go in the shell's constructor but want the shell for toasts, so they get a context that is
         // pointed at it right after
         DeferredContext ctx = new DeferredContext(t, f.clipboard());
@@ -91,6 +94,13 @@ public class GuiScreen extends Screen {
                 f.clipboard(), this::closeRequested);
         ctx.attach(sh);
         sh.setOpenKeyEnabled(s.guiKeyEnabled.value);
+        sh.setOnAppearanceChanged(dark -> {
+            Result result = f.settings().set("guiDarkMode", Boolean.toString(dark));
+            if (result != null && !result.ok()) {
+                sh.setDarkMode(s.guiDarkMode.value);
+                sh.toast(result);
+            }
+        });
 
         atlases = at;
         atlasCanvas = ac;
@@ -161,7 +171,7 @@ public class GuiScreen extends Screen {
     @Override
     public void tick() {
         try {
-            syncKey();
+            syncPreferences();
             shell.tick();
             // the close request only fires from inside a draw that works, this covers a screen that cannot draw
             if (shell.closed(System.nanoTime())) {
@@ -240,12 +250,13 @@ public class GuiScreen extends Screen {
             began = true;
 
             scrim.set(shell.closing() ? 0f : 1f, now, Theme.ANIM_SLOW);
+            theme.update(now);
             float s = scrim.value(now);
             if (s > 0.003f) {
-                canvas.fillRect(0, 0, winW, winH, Theme.fade(Theme.SCRIM, s));
+                canvas.fillRect(0, 0, winW, winH, Theme.fade(theme.color(Theme.SCRIM), s));
             }
 
-            syncKey();
+            syncPreferences();
             shell.setViewport(winW, winH);
             float px = pointerX();
             float py = pointerY();
@@ -299,13 +310,17 @@ public class GuiScreen extends Screen {
         }
     }
 
-    // the settings tab (or #set) can change the key and the enable switch under us, the shell has its own copy
-    private void syncKey() {
+    // the settings tab and #set can change these while the panel is open
+    private void syncPreferences() {
         Settings s = Baritone.settings();
         if (shell.openKey() != s.guiKey.value && !shell.keyCapture().capturing()) {
             shell.setOpenKey(s.guiKey.value);
         }
         shell.setOpenKeyEnabled(s.guiKeyEnabled.value);
+        Anim.enabled = s.guiAnimations.value;
+        if (theme.dark() != s.guiDarkMode.value) {
+            shell.setDarkMode(s.guiDarkMode.value);
+        }
     }
 
     // ----- input. the game hands us gui units, the kit lives in framebuffer pixels

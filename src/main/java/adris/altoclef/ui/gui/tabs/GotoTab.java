@@ -330,14 +330,14 @@ public final class GotoTab implements Tab {
 
     private void drawRecent(Canvas c, Frame f, GotoRecent.Entry e, int index, int rx, int ry, int rw, int rh, boolean hot) {
         if (hot) {
-            c.fillRoundRect(rx, ry, rw, rh, theme.pxf(Theme.ROW_RADIUS), Theme.HOVER);
+            c.fillRoundRect(rx, ry, rw, rh, theme.pxf(Theme.ROW_RADIUS), theme.color(Theme.HOVER));
         }
         TextStyle body = theme.body.asTabular();
         TextStyle small = theme.small.asTabular();
         float tx = rx + theme.px(12);
         float base = mid(c, body, ry, rh);
         String coords = GotoRecent.label(e);
-        c.text(coords, tx, base, body, Theme.TEXT);
+        c.text(coords, tx, base, body, theme.color(Theme.TEXT));
         float cw = c.measure(coords, body);
 
         int gw = theme.px(40);
@@ -348,16 +348,16 @@ public final class GotoTab implements Tab {
         boolean live = sameDimension(e);
         boolean over = live && f.mouseX() >= gx && f.mouseX() < gx + gw && f.mouseY() >= gy && f.mouseY() < gy + gh;
         if (over) {
-            c.fillRoundRect(gx, gy, gw, gh, theme.pxf(Theme.CONTROL_RADIUS), Theme.PRESSED);
+            c.fillRoundRect(gx, gy, gw, gh, theme.pxf(Theme.CONTROL_RADIUS), theme.color(Theme.PRESSED));
         }
         float lw = c.measure("Go", theme.label);
-        int goCol = !live ? Theme.TEXT_3 : over ? Theme.TEXT : Theme.TEXT_2;
+        int goCol = !live ? theme.color(Theme.TEXT_3) : over ? theme.color(Theme.TEXT) : theme.color(Theme.TEXT_2);
         c.text("Go", gx + (gw - lw) / 2f, mid(c, theme.label, gy, gh), theme.label, goCol);
 
         String dim = Coords.dimensionName(e.dimension());
         String tail = " · " + (dim.isEmpty() ? "" : dim + " · ") + GotoRecent.ago(e.millis(), GotoRecent.clock.getAsLong());
         float room = gx - theme.px(8) - (tx + cw);
-        c.text(c.ellipsize(tail, small, Math.max(0, room)), tx + cw, base, small, Theme.TEXT_2);
+        c.text(c.ellipsize(tail, small, Math.max(0, room)), tx + cw, base, small, theme.color(Theme.TEXT_2));
     }
 
     private static float mid(Canvas c, TextStyle s, float top, float height) {
@@ -421,7 +421,7 @@ public final class GotoTab implements Tab {
             String[] names = {"X", "Y", "Z"};
             for (int i = 0; i < 3; i++) {
                 c.text(names[i], fields[i].x() + theme.px(2), mid(c, theme.smallLabel, labelTop, theme.px(16)),
-                        theme.smallLabel, Theme.TEXT_2);
+                        theme.smallLabel, theme.color(Theme.TEXT_2));
             }
             for (Widget k : kids) {
                 if (k != recent) {
@@ -434,14 +434,14 @@ public final class GotoTab implements Tab {
                 drawMotif(c, f, x + pad, ruleY, w - 2 * pad, y + h - ruleY - theme.px(Theme.PAD));
                 return;
             }
-            c.fillRect(x + pad, ruleY, w - 2 * pad, 1, Theme.HAIRLINE);
-            c.text("Recent", x + pad + theme.px(2), mid(c, theme.smallLabel, headerTop, theme.px(16)), theme.smallLabel, Theme.TEXT_2);
+            c.fillRect(x + pad, ruleY, w - 2 * pad, 1, theme.color(Theme.HAIRLINE));
+            c.text("Recent", x + pad + theme.px(2), mid(c, theme.smallLabel, headerTop, theme.px(16)), theme.smallLabel, theme.color(Theme.TEXT_2));
             recent.draw(c, f);
         }
 
         private void drawStatus(Canvas c) {
             String line = statusLine();
-            int col = statusIsError() ? Theme.DANGER : Theme.TEXT_2;
+            int col = statusIsError() ? theme.color(Theme.DANGER) : theme.color(Theme.TEXT_2);
             int pad = theme.px(Theme.PAD);
             String shown = c.ellipsize(line, theme.small.asTabular(), w - 2 * pad);
             c.text(shown, x + pad + theme.px(2), mid(c, theme.small, statusTop, theme.px(16)), theme.small.asTabular(), col);
@@ -471,7 +471,7 @@ public final class GotoTab implements Tab {
             float nextDab = 0f;
             for (int i = 0; i < pts.length && cum[i] <= reach; i++) {
                 if (cum[i] >= nextDab) {
-                    c.fillRoundRect(pts[i][0] - t / 2f, pts[i][1] - t / 2f, t, t, t / 2f, Theme.TEXT_3);
+                    c.fillRoundRect(pts[i][0] - t / 2f, pts[i][1] - t / 2f, t, t, t / 2f, theme.color(Theme.TEXT_3));
                     nextDab = cum[i] + 1f;
                 }
             }
@@ -483,7 +483,7 @@ public final class GotoTab implements Tab {
 
             String cap = "Nowhere yet. Pick a spot and press Go.";
             float cw = c.measure(cap, theme.body);
-            c.text(cap, rx + (rw - cw) / 2f, mid(c, theme.body, by + bh + theme.px(16), capH), theme.body, Theme.TEXT_3);
+            c.text(cap, rx + (rw - cw) / 2f, mid(c, theme.body, by + bh + theme.px(16), capH), theme.body, theme.color(Theme.TEXT_3));
         }
 
         // PATH with its two corners rounded off: straight, curve, straight, curve, straight, sampled finely

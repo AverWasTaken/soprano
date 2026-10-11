@@ -1,10 +1,11 @@
 package adris.altoclef.ui.gui.kit;
 
-// the three static inter files we ship. the variable font would be one file but awt handles the statics better
+// static faces keep awt and the game's atlas on the same font metrics
 public enum Weight {
-    REGULAR("Inter-Regular.ttf"),
-    MEDIUM("Inter-Medium.ttf"),
-    SEMIBOLD("Inter-SemiBold.ttf");
+    LIGHT("Roboto-Light.ttf"),
+    REGULAR("Roboto-Regular.ttf"),
+    MEDIUM("Roboto-Medium.ttf"),
+    SEMIBOLD("Roboto-Bold.ttf");
 
     public final String file;
 

@@ -2,12 +2,15 @@ package adris.altoclef.ui.gui.preview;
 
 import adris.altoclef.ui.gui.facade.StatusAccess;
 import adris.altoclef.ui.gui.kit.Keys;
+import adris.altoclef.ui.gui.kit.Tab;
 import adris.altoclef.ui.gui.tabs.Tabs;
+
+import java.util.ArrayList;
+import java.util.List;
 
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
 
 // the whole panel with every real tab, at 1920x1080 (scale 1): the pictures the owner looks at. each tab's
 // own preview test covers its states, this is the final look of each one plus the open animation
@@ -17,9 +20,13 @@ public class GuiPreviewTest {
     public void everyTab() throws Exception {
         FakeFacade f = new FakeFacade();
         f.status.activity = new StatusAccess.Activity(true, "Mining iron_ore", "goal 120 64 -30", null);
-        Preview p = new Preview(1920, 1080, f, pv -> Tabs.create(pv.facade, pv.theme, pv.ctx));
+        List<Tab> tabs = new ArrayList<>();
+        Preview p = new Preview(1920, 1080, f, pv -> {
+            tabs.addAll(Tabs.create(pv.facade, pv.theme, pv.ctx));
+            return tabs;
+        });
         p.tick();
-        assertEquals(6, p.shell.children().size() > 0 ? 6 : 0);
+        assertEquals(7, tabs.size());
 
         // get: a few things in the basket
         float gx = p.shell.contentX() + 40;
@@ -32,33 +39,15 @@ public class GuiPreviewTest {
         p.advance(300);
         p.save("gui_get");
 
-        p.shell.switchTab(1);
-        p.settle();
-        p.advance(500);
-        p.save("gui_goto");
-
-        p.shell.switchTab(2);
         f.world.following = "Steve";
-        p.tick();
-        p.settle();
-        p.advance(300);
-        p.save("gui_follow");
-
-        p.shell.switchTab(3);
-        p.tick();
-        p.settle();
-        p.advance(300);
-        p.save("gui_waypoints");
-
-        p.shell.switchTab(4);
-        p.settle();
-        p.advance(300);
-        p.save("gui_help");
-
-        p.shell.switchTab(5);
-        p.settle();
-        p.advance(300);
-        p.save("gui_settings");
+        for (int i = 1; i < tabs.size(); i++) {
+            p.shell.switchTab(i);
+            p.tick();
+            p.settle();
+            p.advance(500);
+            p.save("gui_" + tabs.get(i).id());
+            p.savePanel("gui_" + tabs.get(i).id() + "_panel");
+        }
 
         // the opening frames, for the feel of the fade
         p.shell.switchTab(0);
@@ -67,6 +56,5 @@ public class GuiPreviewTest {
         p.save("gui_opening_60ms");
         p.advance(80);
         p.save("gui_opening_140ms");
-        assertTrue(f.actions.isEmpty() || !f.actions.isEmpty());
     }
 }

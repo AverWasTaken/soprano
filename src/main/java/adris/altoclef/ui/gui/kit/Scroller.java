@@ -9,7 +9,7 @@ public final class Scroller {
     private float contentH;
     private float viewH;
     private float target;
-    private final Anim pos = new Anim(0f);
+    private final Spring pos = new Spring(0f);
     private final Anim vis = new Anim(0f);
     private long lastTouch = Long.MIN_VALUE / 2;
 

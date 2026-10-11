@@ -5,6 +5,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 // which shelf a setting lives on. 332 settings in one list is a wall, so the tab cuts them up by what the name says.
 // names are camelCase, so the rules look at whole words: "ore" must find oreBlocks and must not find "explore"
@@ -38,7 +39,45 @@ public final class SettingCategories {
         RULES.put(INTERFACE, new String[] {"=gui", "=key", "=keys"});
     }
 
+    // the settings an everyday player actually reaches for. everything not in here (the alto* block, the pathing
+    // cost internals, the cache tuning...) is advanced and hides behind the "show advanced" switch
+    private static final Set<String> EVERYDAY = Set.of(
+            "allowBreak", "allowSprint", "allowPlace", "allowPlaceInFluidsSource", "allowPlaceInFluidsFlow",
+            "allowInventory", "ticksBetweenInventoryMoves", "inventoryMoveOnlyIfStationary", "autoTool",
+            "assumeExternalAutoTool", "allowWaterBucketFall", "allowLadderClutch", "pickupLadders", "assumeWalkOnWater",
+            "assumeStep", "assumeSafeWalk", "allowParkour", "allowParkourPlace", "allowParkourAscend", "allowNeos",
+            "allowClimbJumps", "allowVines", "allowWalkOnBottomSlab", "allowWalkOnMagmaBlocks", "allowDiagonalAscend",
+            "allowDiagonalDescend", "allowDownward", "allowSwimming", "allowBoats", "boatPickup", "sprintAscends",
+            "sprintThroughDescends", "sprintThroughCorners", "sprintJumping", "preferFasterPathing", "allowGroundShortcuts",
+            "fastMode", "walkWhileBreaking", "useSwordToMine", "freeLook", "blockFreeLook", "elytraFreeLook", "smoothLook",
+            "elytraSmoothLook", "antiCheatCompatibility", "rightClickSpeed", "blockReachDistance", "blockBreakSpeed",
+            "considerPotionEffects", "pauseMiningForFallingBlocks",
+            "mineGoalUpdateInterval", "minYLevelWhileMining", "maxYLevelWhileMining", "legitMine", "legitMineYLevel",
+            "allowOnlyExposedOres", "allowOnlyExposedOresDistance", "exploreForBlocks", "replantCrops", "replantNetherWart",
+            "farmWaitForGrowth", "mineScanDroppedItems", "itemSaver", "itemSaverThreshold", "preferSilkTouch",
+            "buildInLayers", "layerOrder", "layerHeight", "startAtLayer", "buildRepeat", "buildRepeatCount",
+            "buildRepeatSneaky", "buildOnlySelection", "breakFromAbove", "mapArtMode", "schematicOrientationX",
+            "schematicOrientationY", "schematicOrientationZ", "buildSchematicRotation", "buildSchematicMirror",
+            "buildIgnoreExisting", "buildIgnoreDirection",
+            "renderPath", "renderPathAsLine", "renderPathRibbon", "renderGoal", "renderSelection", "renderCachedChunks",
+            "cachedChunksOpacity", "pathRenderLineWidthPixels", "goalRenderLineWidthPixels", "selectionOpacity",
+            "selectionLineWidth", "renderSelectionCorners", "renderGoalXZBeacon", "renderSelectionBoxes",
+            "renderPathIgnoreDepth", "renderGoalIgnoreDepth", "renderSelectionBoxesIgnoreDepth",
+            "prefix", "prefixControl", "shortBaritonePrefix", "chatControl", "chatControlAnyway", "logAsToast",
+            "censorCoordinates", "censorRanCommands", "echoCommands", "desktopNotifications", "notificationOnPathComplete",
+            "guiKey", "guiKeyEnabled", "guiDarkMode", "guiAnimations", "keepFpsWhileBotting", "doBedWaypoints", "doDeathWaypoints", "backfill",
+            "followRadius", "followOffsetDistance", "followOffsetDirection", "disconnectOnArrival", "enterPortal",
+            "rightClickContainerOnArrival", "splicePath",
+            "elytraAutoJump", "elytraAutoSwap", "elytraConserveFireworks", "elytraPitchRange", "elytraFireworkSpeed",
+            "elytraTermsAccepted", "elytraAllowAboveRoof", "elytraAllowAboveBuildLimit", "elytraUseCache",
+            "elytraAllowLandOnNetherFortress"
+    );
+
     private SettingCategories() {
+    }
+
+    public static boolean isAdvanced(String name) {
+        return name == null || name.isEmpty() || !EVERYDAY.contains(name);
     }
 
     // "All" is the tab's own idea, it is not in here

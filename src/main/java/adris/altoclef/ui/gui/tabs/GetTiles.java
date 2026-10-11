@@ -2,9 +2,11 @@ package adris.altoclef.ui.gui.tabs;
 
 import adris.altoclef.ui.gui.facade.ItemsAccess.ItemEntry;
 import adris.altoclef.ui.gui.kit.Canvas;
+import adris.altoclef.ui.gui.kit.Icon;
 import adris.altoclef.ui.gui.kit.TextMeasurer;
 import adris.altoclef.ui.gui.kit.TextStyle;
 import adris.altoclef.ui.gui.kit.Theme;
+import adris.altoclef.ui.gui.model.Pinned;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -80,10 +82,10 @@ final class GetTiles {
         float rh = h - 2 * inset;
         float radius = theme.pxf(Theme.ROW_RADIUS);
         if (hovered) {
-            c.fillRoundRect(rx, ry, rw, rh, radius, Theme.HOVER);
+            c.fillRoundRect(rx, ry, rw, rh, radius, theme.color(Theme.HOVER));
         }
         if (count >= 0) {
-            c.strokeRoundRect(rx, ry, rw, rh, radius, Theme.ACCENT);
+            c.strokeRoundRect(rx, ry, rw, rh, radius, theme.color(Theme.ACCENT));
         }
         // the item is the star of the tile: two whole icon sizes, still a multiple of 16
         int s = theme.itemIconPx() * 2;
@@ -97,7 +99,7 @@ final class GetTiles {
         float step = (float) Math.ceil(c.lineHeight(small));
         for (int i = 0; i < lines.length; i++) {
             float tw = c.measure(lines[i], small);
-            c.text(lines[i], x + (w - tw) / 2f, base + i * step, small, hovered || count >= 0 ? Theme.TEXT : Theme.TEXT_2);
+            c.text(lines[i], x + (w - tw) / 2f, base + i * step, small, hovered || count >= 0 ? theme.color(Theme.TEXT) : theme.color(Theme.TEXT_2));
         }
 
         if (count > 0) {
@@ -107,9 +109,35 @@ final class GetTiles {
             float pw = Math.max(ph, c.measure(t, bs) + theme.px(10));
             float px = rx + rw - pw - theme.px(5);
             float py = ry + theme.px(5);
-            c.fillRoundRect(px, py, pw, ph, ph / 2f, Theme.ACCENT);
+            c.fillRoundRect(px, py, pw, ph, ph / 2f, theme.color(Theme.ACCENT));
             float tb = py + ph / 2f + (c.ascent(bs) - c.descent(bs)) / 2f;
-            c.text(t, px + (pw - c.measure(t, bs)) / 2f, tb, bs, Theme.ON_ACCENT);
+            c.text(t, px + (pw - c.measure(t, bs)) / 2f, tb, bs, theme.color(Theme.ON_ACCENT));
         }
+    }
+
+    // the top left corner of the tile: an accent pin when the item is pinned, a ghost pin that appears on hover to
+    // pin it otherwise. drawn by the grid only, the recent strip wants none of it
+    void drawPin(Canvas c, ItemEntry e, int x, int y, int w, int h, boolean hovered) {
+        boolean pinned = Pinned.isItem(e.name());
+        if (!pinned && !hovered) {
+            return;
+        }
+        int[] z = pinZone(x, y, w, h);
+        float radius = theme.pxf(Theme.CONTROL_RADIUS);
+        int is = theme.px(Theme.ICON);
+        if (pinned) {
+            c.fillRoundRect(z[0], z[1], z[2], z[3], radius, theme.color(Theme.ACCENT));
+            c.icon(Icon.PIN, z[0] + (z[2] - is) / 2f, z[1] + (z[3] - is) / 2f, is, theme.color(Theme.ON_ACCENT));
+        } else {
+            c.fillRoundRect(z[0], z[1], z[2], z[3], radius, Theme.fade(theme.color(Theme.HOVER), 0.9f));
+            c.strokeRoundRect(z[0], z[1], z[2], z[3], radius, theme.color(Theme.HAIRLINE));
+            c.icon(Icon.PIN, z[0] + (z[2] - is) / 2f, z[1] + (z[3] - is) / 2f, is, theme.color(Theme.TEXT_2));
+        }
+    }
+
+    // the pin button's rect within a cell, for hit testing a click against it
+    int[] pinZone(int x, int y, int w, int h) {
+        int s = theme.px(22);
+        return new int[] {x + theme.px(4), y + theme.px(4), s, s};
     }
 }

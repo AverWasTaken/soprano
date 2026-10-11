@@ -7,6 +7,17 @@ public abstract class TexturedCanvas implements Canvas {
 
     protected final GlyphAtlas glyphs;
     protected final ShapeAtlas shapes;
+    private Theme theme;
+
+    @Override
+    public void setTheme(Theme theme) {
+        this.theme = theme;
+    }
+
+    @Override
+    public int color(int token) {
+        return theme == null ? token : theme.color(token);
+    }
 
     protected TexturedCanvas(GlyphAtlas glyphs, ShapeAtlas shapes) {
         this.glyphs = glyphs;
@@ -234,8 +245,8 @@ public abstract class TexturedCanvas implements Canvas {
         float sy = dy + px * (19f / 24f) - d / 2f;
         float ex = dx + px * (19f / 24f) - d / 2f;
         float ey = dy + px * (5f / 24f) - d / 2f;
-        fillRoundRect(sx, sy, d, d, d / 2f, Theme.alpha(Theme.PATH_START, a));
-        fillRoundRect(ex, ey, d, d, d / 2f, Theme.alpha(Theme.PATH_END, a));
+        fillRoundRect(sx, sy, d, d, d / 2f, Theme.alpha(color(Theme.PATH_START), a));
+        fillRoundRect(ex, ey, d, d, d / 2f, Theme.alpha(color(Theme.PATH_END), a));
     }
 
     private void corner(ShapeAtlas.Slice s, int dx, int dy, int argb) {

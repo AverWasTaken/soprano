@@ -70,16 +70,16 @@ public class Dropdown extends Control implements FocusOnClick {
         hoverTo(hoverA, hovered);
         float r = theme.pxf(Theme.CONTROL_RADIUS);
         boolean open = isOpen();
-        int fill = Theme.lerp(Theme.RAISED, Theme.HOVER, hoverA.value(now));
+        int fill = Theme.lerp(theme.color(Theme.RAISED), theme.color(Theme.HOVER), hoverA.value(now));
         c.fillRoundRect(x, y, w, h, r, fill);
-        c.strokeRoundRect(x, y, w, h, r, focused || open ? Theme.HAIRLINE_STRONG : Theme.HAIRLINE);
+        c.strokeRoundRect(x, y, w, h, r, focused || open ? theme.color(Theme.HAIRLINE_STRONG) : theme.color(Theme.HAIRLINE));
         int is = theme.px(Theme.ICON);
         int pad = theme.px(10);
         float room = w - pad * 2 - is - theme.px(6);
         String t = selected >= 0 && selected < options.size() ? options.get(selected) : "";
         String shown = theme.measurer.ellipsize(t, theme.body, Math.max(0f, room));
-        c.text(shown, x + pad, baseline(c, theme.body, y, h), theme.body, Theme.TEXT);
-        c.icon(Icon.CHEVRON_DOWN, x + w - pad - is + theme.px(2), y + (h - is) / 2f, is, Theme.TEXT_2);
+        c.text(shown, x + pad, baseline(c, theme.body, y, h), theme.body, theme.color(Theme.TEXT));
+        c.icon(Icon.CHEVRON_DOWN, x + w - pad - is + theme.px(2), y + (h - is) / 2f, is, theme.color(Theme.TEXT_2));
     }
 
     private void toggle() {
@@ -163,9 +163,9 @@ public class Dropdown extends Control implements FocusOnClick {
         public void draw(Canvas c, Frame f) {
             stamp(f);
             float r = theme.pxf(Theme.CONTROL_RADIUS);
-            c.shadow(x, y, w, h, r, Theme.SHADOW);
-            c.fillRoundRect(x, y, w, h, r, Theme.RAISED);
-            c.strokeRoundRect(x, y, w, h, r, Theme.HAIRLINE);
+            c.shadow(x, y, w, h, r, theme.color(Theme.SHADOW));
+            c.fillRoundRect(x, y, w, h, r, theme.color(Theme.RAISED));
+            c.strokeRoundRect(x, y, w, h, r, theme.color(Theme.HAIRLINE));
             int rowH = theme.px(Theme.ROW_H);
             int pad = theme.px(4);
             int is = theme.px(Theme.ICON);
@@ -174,13 +174,13 @@ public class Dropdown extends Control implements FocusOnClick {
                 int idx = first + i;
                 float ry = y + pad + i * rowH;
                 if (idx == hot) {
-                    c.fillRoundRect(x + pad, ry, w - 2 * pad, rowH, theme.pxf(Theme.ROW_RADIUS), Theme.HOVER);
+                    c.fillRoundRect(x + pad, ry, w - 2 * pad, rowH, theme.pxf(Theme.ROW_RADIUS), theme.color(Theme.HOVER));
                 }
                 float tw = w - 2 * pad - theme.px(20) - is;
                 String s = theme.measurer.ellipsize(options.get(idx), theme.body, Math.max(0f, tw));
-                c.text(s, x + pad + theme.px(10), baseline(c, theme.body, ry, rowH), theme.body, Theme.TEXT);
+                c.text(s, x + pad + theme.px(10), baseline(c, theme.body, ry, rowH), theme.body, theme.color(Theme.TEXT));
                 if (idx == selected) {
-                    c.icon(Icon.CHECK, x + w - pad - theme.px(10) - is, ry + (rowH - is) / 2f, is, Theme.TEXT_2);
+                    c.icon(Icon.CHECK, x + w - pad - theme.px(10) - is, ry + (rowH - is) / 2f, is, theme.color(Theme.TEXT_2));
                 }
             }
             c.popClip();

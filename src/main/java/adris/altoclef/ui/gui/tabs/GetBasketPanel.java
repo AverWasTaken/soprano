@@ -224,13 +224,13 @@ final class GetBasketPanel extends Widget {
     public void draw(Canvas c, Frame f) {
         now = f.nowNanos();
         float r = theme.pxf(Theme.CONTROL_RADIUS);
-        c.fillRoundRect(x, y, w, h, r, Theme.RAISED);
-        c.strokeRoundRect(x, y, w, h, r, Theme.HAIRLINE);
+        c.fillRoundRect(x, y, w, h, r, theme.color(Theme.RAISED));
+        c.strokeRoundRect(x, y, w, h, r, theme.color(Theme.HAIRLINE));
 
         int pad = theme.px(12);
         float tb = y + titleH() / 2f + (c.ascent(theme.label) - c.descent(theme.label)) / 2f;
-        c.text("Basket", x + pad + theme.px(2), tb, theme.label, Theme.TEXT);
-        c.fillRect(x + 1, y + titleH(), w - 2, 1, Theme.HAIRLINE);
+        c.text("Basket", x + pad + theme.px(2), tb, theme.label, theme.color(Theme.TEXT));
+        c.fillRect(x + 1, y + titleH(), w - 2, 1, theme.color(Theme.HAIRLINE));
         list.draw(c, f);
         if (basket.isEmpty()) {
             drawHint(c);
@@ -240,19 +240,19 @@ final class GetBasketPanel extends Widget {
         }
 
         int footTop = y + h - footerH();
-        c.fillRect(x + 1, footTop, w - 2, 1, Theme.HAIRLINE);
+        c.fillRect(x + 1, footTop, w - 2, 1, theme.color(Theme.HAIRLINE));
         TextStyle small = theme.small;
         float summaryTop = footTop + theme.px(14);
         if (mine) {
             float lb = limitField.y() + limitField.h() / 2f + (c.ascent(theme.body) - c.descent(theme.body)) / 2f;
-            c.text("Stop after", x + pad, lb, theme.body, Theme.TEXT_2);
+            c.text("Stop after", x + pad, lb, theme.body, theme.color(Theme.TEXT_2));
             limitMinus.draw(c, f);
             limitField.draw(c, f);
             limitPlus.draw(c, f);
             summaryTop += theme.px(40);
         }
         String shown = c.ellipsize(summary, small, w - 2 * pad);
-        c.text(shown, x + pad, summaryTop + c.ascent(small), small, Theme.TEXT_2);
+        c.text(shown, x + pad, summaryTop + c.ascent(small), small, theme.color(Theme.TEXT_2));
         go.draw(c, f);
     }
 
@@ -265,7 +265,7 @@ final class GetBasketPanel extends Widget {
         float step = (float) Math.ceil(c.lineHeight(small)) + theme.px(3);
         float base = list.y() + theme.px(14) + c.ascent(small);
         for (String line : wrap(c, msg, small, maxW)) {
-            c.text(line, list.x() + theme.px(14), base, small, Theme.TEXT_2);
+            c.text(line, list.x() + theme.px(14), base, small, theme.color(Theme.TEXT_2));
             base += step;
         }
     }

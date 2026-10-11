@@ -305,6 +305,11 @@ public final class WaypointsTab implements Tab {
             case WaypointRows.GO -> goTo(e);
             case WaypointRows.COPY -> copy(e);
             case WaypointRows.DELETE -> ask(e);
+            case WaypointRows.PIN -> {
+                boolean now = WaypointRules.togglePin(e);
+                ctx.toast(now ? "Pinned " + e.name() : "Unpinned " + e.name(), null);
+                refresh();
+            }
             default -> {
             }
         }
@@ -368,10 +373,10 @@ public final class WaypointsTab implements Tab {
             }
             int pad = theme.px(Theme.PAD);
             if (addError != null) {
-                c.text(addError, x + pad + theme.px(2), mid(c, theme.small, errorTop, theme.px(16)), theme.small, Theme.DANGER);
+                c.text(addError, x + pad + theme.px(2), mid(c, theme.small, errorTop, theme.px(16)), theme.small, theme.color(Theme.DANGER));
             }
             String line = c.ellipsize(info, theme.small, Math.max(0, sort.x() - theme.px(Theme.GAP) - (x + pad)));
-            c.text(line, x + pad + theme.px(2), mid(c, theme.small, infoTop, theme.px(Theme.CONTROL_H)), theme.small, Theme.TEXT_2);
+            c.text(line, x + pad + theme.px(2), mid(c, theme.small, infoTop, theme.px(Theme.CONTROL_H)), theme.small, theme.color(Theme.TEXT_2));
         }
 
         private float mid(Canvas c, adris.altoclef.ui.gui.kit.TextStyle s, float top, float height) {

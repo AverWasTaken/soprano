@@ -23,9 +23,9 @@ public class Divider extends Widget {
     @Override
     public void draw(Canvas c, Frame f) {
         if (horizontal) {
-            c.fillRect(x, y + h / 2f, w, 1, Theme.HAIRLINE);
+            c.fillRect(x, y + h / 2f, w, 1, theme.color(Theme.HAIRLINE));
         } else {
-            c.fillRect(x + w / 2f, y, 1, h, Theme.HAIRLINE);
+            c.fillRect(x + w / 2f, y, 1, h, theme.color(Theme.HAIRLINE));
         }
     }
 

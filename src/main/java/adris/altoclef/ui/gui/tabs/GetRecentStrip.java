@@ -65,7 +65,7 @@ final class GetRecentStrip extends Widget {
     @Override
     public void draw(Canvas c, Frame f) {
         float base = y + theme.px(4) + c.ascent(theme.small) + theme.px(2);
-        c.text("Recent", x + theme.px(6), base, theme.smallLabel, Theme.TEXT_2);
+        c.text("Recent", x + theme.px(6), base, theme.smallLabel, theme.color(Theme.TEXT_2));
         int cw = tiles.cellWidth(w);
         int hover = hovered ? indexAt(f.mouseX(), f.mouseY()) : -1;
         int n = shown();

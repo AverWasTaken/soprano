@@ -46,8 +46,10 @@ public class GlyphAtlasTest {
             assertEquals("digit " + d, one, atlas.measure(String.valueOf(d), tab), 0.001f);
         }
         assertEquals(atlas.measure("0000", tab), atlas.measure("1111", tab), 0.001f);
-        // and the proportional ones really do differ, or the test above proves nothing
-        assertTrue(atlas.measure("1111", BODY) != atlas.measure("0000", BODY));
+        // some faces already have equal digit advances; either way tabular layout must preserve the widest one
+        for (char d = '0'; d <= '9'; d++) {
+            assertTrue(one >= atlas.measure(String.valueOf(d), BODY));
+        }
     }
 
     @Test

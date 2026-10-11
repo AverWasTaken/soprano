@@ -19,6 +19,7 @@ import adris.altoclef.ui.gui.kit.Theme;
 import adris.altoclef.ui.gui.kit.Toggle;
 import adris.altoclef.ui.gui.kit.Widget;
 import adris.altoclef.ui.gui.model.NumberRules;
+import adris.altoclef.ui.gui.model.Pinned;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -41,6 +42,7 @@ final class SettingRow extends RowWidgets.Row<SettingView> {
     private final Dropdown dropdown;
     private final KeyCapture key;
     private final SettingChannel[] rgb = new SettingChannel[3];
+    private final IconButton pin;
     private final IconButton reset;
     private final List<Widget> kids = new ArrayList<>();
     private final boolean[] wasFocused = new boolean[3];
@@ -56,6 +58,8 @@ final class SettingRow extends RowWidgets.Row<SettingView> {
     private String attempted;
     private String desc = "";
     private String error;
+    private boolean confirmingReset;
+    private long confirmingAtNanos;
     private int textLeft;
     private int textRight;
     private int swatchX;
@@ -98,6 +102,8 @@ final class SettingRow extends RowWidgets.Row<SettingView> {
                 readColour();
             });
         }
+        pin = new IconButton(theme, Icon.PIN, "Pin this setting", this::pinClicked);
+        pin.setFocusable(false);
         reset = new IconButton(theme, Icon.RESET, "Reset to default", this::resetClicked);
     }
 
@@ -125,6 +131,7 @@ final class SettingRow extends RowWidgets.Row<SettingView> {
         item = v;
         desc = host.description(v.name());
         error = null;
+        confirmingReset = false;
         Arrays.fill(wasFocused, false);
         nameShownFor = -1;
         lineKey = null;
@@ -199,6 +206,7 @@ final class SettingRow extends RowWidgets.Row<SettingView> {
             case KEY -> kids.add(key);
             default -> kids.add(other);
         }
+        kids.add(pin);
         kids.add(reset);
         if (number != null) {
             boxes = new TextField[] {number.field()};
@@ -339,10 +347,25 @@ final class SettingRow extends RowWidgets.Row<SettingView> {
         liveRgb = v;
     }
 
+    private void pinClicked() {
+        if (item == null) {
+            return;
+        }
+        Pinned.toggleSetting(item.name());
+    }
+
+    // a reset throws away whatever was there, so it gets a second click to be sure. the first arms it, anything that
+    // would rebind the row disarms it, and a stale arm lapses on its own in draw
     private void resetClicked() {
         if (item == null) {
             return;
         }
+        if (!confirmingReset) {
+            confirmingReset = true;
+            confirmingAtNanos = System.nanoTime();
+            return;
+        }
+        confirmingReset = false;
         error = null;
         Result r = host.reset(item.name());
         if (!r.ok()) {
@@ -438,7 +461,8 @@ final class SettingRow extends RowWidgets.Row<SettingView> {
         int rs = theme.px(28);
         int rightEdge = x + w - theme.px(16);
         reset.setBounds(rightEdge - rs, y + (h - rs) / 2, rs, rs);
-        int right = rightEdge - rs - theme.px(8);
+        pin.setBounds(rightEdge - rs - theme.px(2) - rs, y + (h - rs) / 2, rs, rs);
+        int right = pin.x() - theme.px(8);
         int ch = theme.px(Theme.CONTROL_H);
         int ey = y + (h - ch) / 2;
         int ew = Math.min(editorWidth(item.kind()), Math.round(w * 0.5f));
@@ -494,9 +518,15 @@ final class SettingRow extends RowWidgets.Row<SettingView> {
         blurCommits();
         if (hovered) {
             c.fillRoundRect(x + theme.px(6), y + theme.px(2), w - theme.px(12), h - theme.px(4), theme.pxf(Theme.ROW_RADIUS) + 2,
-                    Theme.fade(Theme.HOVER, 0.7f));
+                    Theme.fade(theme.color(Theme.HOVER), 0.7f));
         }
         reset.setVisible(item.modified() || active);
+        pin.setVisible(active || Pinned.isSetting(item.name()));
+        // armed: the reset button turns into a "confirm" check, and the arm lapses if nothing happens soon
+        if (confirmingReset && f.nowNanos() - confirmingAtNanos > 4_000_000_000L) {
+            confirmingReset = false;
+        }
+        reset.setIcon(confirmingReset ? Icon.CHECK : Icon.RESET);
 
         float avail = Math.max(0, textRight - textLeft);
         float lh1 = c.ascent(theme.label) + c.descent(theme.label);
@@ -506,26 +536,32 @@ final class SettingRow extends RowWidgets.Row<SettingView> {
         float base1 = top + c.ascent(theme.label);
         float base2 = top + lh1 + gap + c.ascent(theme.small);
 
-        if (item.modified()) {
+        if (Pinned.isSetting(item.name())) {
+            int is = theme.px(Theme.ICON);
+            c.icon(Icon.PIN, x + theme.px(12), y + (h - is) / 2f, is, theme.color(Theme.ACCENT));
+        } else if (item.modified()) {
             float d = theme.px(4);
-            c.fillRoundRect(x + theme.px(16), top + lh1 / 2f - d / 2f, d, d, d / 2f, Theme.ACCENT);
+            c.fillRoundRect(x + theme.px(16), top + lh1 / 2f - d / 2f, d, d, d / 2f, theme.color(Theme.ACCENT));
         }
         if (nameShownFor != avail) {
             nameShownFor = avail;
             nameShown = theme.measurer.ellipsize(item.name(), theme.label, avail);
         }
-        c.text(nameShown, textLeft, base1, theme.label, Theme.TEXT);
+        c.text(nameShown, textLeft, base1, theme.label, theme.color(Theme.TEXT));
 
         String err = errorText();
-        String line = err != null ? err : (desc.isEmpty() ? "No description." : desc);
+        String line = confirmingReset
+                ? "Reset to its default? Click the check to confirm."
+                : (err != null ? err : (desc.isEmpty() ? "No description." : desc));
+        int lineCol = confirmingReset ? theme.color(Theme.TEXT) : (err != null ? theme.color(Theme.DANGER) : (desc.isEmpty() ? theme.color(Theme.TEXT_3) : theme.color(Theme.TEXT_2)));
         if (!line.equals(lineKey) || lineShownFor != avail) {
             lineKey = line;
             lineShownFor = avail;
             lineShown = theme.measurer.ellipsize(line, theme.small, avail);
         }
-        c.text(lineShown, textLeft, base2, theme.small, err != null ? Theme.DANGER : (desc.isEmpty() ? Theme.TEXT_3 : Theme.TEXT_2));
+        c.text(lineShown, textLeft, base2, theme.small, lineCol);
 
-        c.fillRect(x + theme.px(16), y + h - 1, w - theme.px(32), 1, Theme.fade(Theme.HAIRLINE, 0.7f));
+        c.fillRect(x + theme.px(16), y + h - 1, w - theme.px(32), 1, Theme.fade(theme.color(Theme.HAIRLINE), 0.7f));
 
         if (item.kind() == Kind.COLOR) {
             drawSwatch(c);
@@ -543,7 +579,7 @@ final class SettingRow extends RowWidgets.Row<SettingView> {
         if (col != null) {
             c.fillRoundRect(swatchX, swatchY, swatchS, swatchS, r, 0xFF000000 | (col[0] << 16) | (col[1] << 8) | col[2]);
         }
-        c.strokeRoundRect(swatchX, swatchY, swatchS, swatchS, r, Theme.HAIRLINE_STRONG);
+        c.strokeRoundRect(swatchX, swatchY, swatchS, swatchS, r, theme.color(Theme.HAIRLINE_STRONG));
     }
 
     private boolean anyFocus() {

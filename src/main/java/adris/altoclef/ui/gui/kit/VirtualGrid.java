@@ -8,8 +8,9 @@ public class VirtualGrid<T> extends VirtualView<T> {
         void draw(Canvas c, Frame f, T item, int index, int x, int y, int w, int h, boolean hovered);
     }
 
+    // the click position and the cell's rect go along, so a cell can have a hot zone inside it (the pin button)
     public interface CellClick<T> {
-        void click(T item, int index, int mods);
+        void click(T item, int index, int mods, float mx, float my, int cellX, int cellY, int cellW, int cellH);
     }
 
     private final int cellW;
@@ -111,7 +112,13 @@ public class VirtualGrid<T> extends VirtualView<T> {
         pressedIndex = -1;
         if (hit && onClick != null) {
             T item = items.get(under);
-            Safe.run("grid click", () -> onClick.click(item, under, mods));
+            int cols = columns();
+            int cw = cellWidth();
+            int cx = x + (under % cols) * cw;
+            int cy = Math.round(y + (under / cols) * (float) cellH - scroller.offset(now));
+            int finalCx = cx;
+            int finalCy = cy;
+            Safe.run("grid click", () -> onClick.click(item, under, mods, mx, my, finalCx, finalCy, cw, cellH));
             return true;
         }
         return false;

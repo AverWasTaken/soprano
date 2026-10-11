@@ -7,6 +7,7 @@ import adris.altoclef.ui.gui.kit.Label;
 import adris.altoclef.ui.gui.kit.Tab;
 import adris.altoclef.ui.gui.kit.Theme;
 import adris.altoclef.ui.gui.kit.Widget;
+import adris.altoclef.ui.gui.model.SettingCategories;
 import adris.altoclef.ui.gui.preview.FakeFacade;
 import adris.altoclef.ui.gui.preview.Preview;
 import org.junit.Before;
@@ -34,6 +35,9 @@ public class SettingsTabTest {
             tab = new SettingsTab(pv.theme, pv.facade, pv.ctx);
             return List.of(tab);
         });
+        p.settle();
+        // these tests poke settings of every kind, so keep the advanced ones in sight
+        tab.setAdvanced(true);
         p.settle();
     }
 
@@ -278,6 +282,9 @@ public class SettingsTabTest {
         p.hover(r.x() + 20, r.y() + r.h() / 2f);
         p.settle();
         clickCentre(r.resetButton());
+        // the first click only arms the reset, the second one commits it
+        assertEquals("70", view("altoFoodMinimum").value());
+        clickCentre(r.resetButton());
         assertEquals("24", view("altoFoodMinimum").value());
         assertTrue(f.actions.contains("set reset altoFoodMinimum"));
         assertFalse(view("altoFoodMinimum").modified());
@@ -407,8 +414,8 @@ public class SettingsTabTest {
     public void categoryAndModifiedOnlyNarrow() {
         int all = tab.list().items().size();
         var col = tab.column();
-        // second entry is the first category, Tasks
-        p.click(col.x() + col.w() / 2f, col.y() + p.theme.px(12) + (int) (p.theme.px(30) * 1.5f));
+        // the first category in the column, Tasks
+        p.click(col.x() + col.w() / 2f, col.centreYOf(SettingCategories.ALTO));
         p.settle();
         assertTrue(tab.list().items().size() < all);
         assertTrue(tab.list().items().stream().allMatch(v -> v.name().startsWith("alto")));

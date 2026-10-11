@@ -157,7 +157,7 @@ public abstract class VirtualView<T> extends Control implements FocusOnClick {
             return;
         }
         float tw = c.measure(emptyText, theme.body);
-        c.text(emptyText, x + (w - tw) / 2f, baseline(c, theme.body, y, h), theme.body, Theme.TEXT_3);
+        c.text(emptyText, x + (w - tw) / 2f, baseline(c, theme.body, y, h), theme.body, theme.color(Theme.TEXT_3));
     }
 
     protected final void drawScrollbar(Canvas c) {
@@ -169,7 +169,7 @@ public abstract class VirtualView<T> extends Control implements FocusOnClick {
         float tt = scroller.thumbTop(trackH(), minThumb(), now);
         float bw = theme.px(Theme.SCROLLBAR_W);
         float bx = x + w - bw - theme.px(3);
-        int col = Theme.lerp(Theme.TEXT_3, Theme.TEXT_2, draggingThumb ? 1f : 0f);
+        int col = Theme.lerp(theme.color(Theme.TEXT_3), theme.color(Theme.TEXT_2), draggingThumb ? 1f : 0f);
         c.fillRoundRect(bx, trackY() + tt, bw, th, bw / 2f, Theme.fade(col, vis));
     }
 

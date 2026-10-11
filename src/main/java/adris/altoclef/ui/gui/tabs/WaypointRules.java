@@ -2,6 +2,7 @@ package adris.altoclef.ui.gui.tabs;
 
 import adris.altoclef.ui.gui.facade.WorldAccess;
 import adris.altoclef.ui.gui.facade.WorldAccess.WaypointEntry;
+import adris.altoclef.ui.gui.model.Pinned;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -29,6 +30,19 @@ final class WaypointRules {
         return s == null ? "" : s.toLowerCase(Locale.ROOT);
     }
 
+    // two waypoints can share a name, so the tag and the millis are part of what identifies one to a pin
+    static String pinKey(WaypointEntry w) {
+        return w.name() + "\u0000" + w.tag() + "\u0000" + w.createdMillis();
+    }
+
+    static boolean isPinned(WaypointEntry w) {
+        return Pinned.isWaypoint(pinKey(w));
+    }
+
+    static boolean togglePin(WaypointEntry w) {
+        return Pinned.toggleWaypoint(pinKey(w));
+    }
+
     static boolean matches(WaypointEntry w, String query) {
         String q = query == null ? "" : query.trim().toLowerCase(Locale.ROOT);
         return q.isEmpty() || lower(w.name()).contains(q) || lower(w.tag()).contains(q);
@@ -48,7 +62,14 @@ final class WaypointRules {
         } else {
             out.sort(Comparator.comparingDouble((WaypointEntry w) -> distance(w, p)).thenComparing(name));
         }
-        return out;
+        // pinned waypoints float to the top, still in their own order under them
+        List<WaypointEntry> pinned = new ArrayList<>();
+        List<WaypointEntry> rest = new ArrayList<>();
+        for (WaypointEntry w : out) {
+            (isPinned(w) ? pinned : rest).add(w);
+        }
+        pinned.addAll(rest);
+        return pinned;
     }
 
     static String coords(WaypointEntry w) {

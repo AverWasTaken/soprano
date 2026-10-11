@@ -128,7 +128,7 @@ public class WidgetsTest {
     @Test
     public void buttonPreferredWidthIsTextPlusPadding() {
         Button b = new Button(theme, "Go", () -> { });
-        assertEquals((int) Math.ceil(0.6f * 14 * 2) + 24, b.preferredWidth());
+        assertEquals((int) Math.ceil(0.6f * theme.label.sizePx() * 2) + 24, b.preferredWidth());
         Button withIcon = new Button(theme, "Go", Button.Kind.GHOST, Icon.PLUS, () -> { });
         assertEquals(b.preferredWidth() + 16 + 6, withIcon.preferredWidth());
         assertEquals(30, b.preferredHeight());
@@ -206,7 +206,7 @@ public class WidgetsTest {
         assertTrue(knob.x() > startKnob);
         assertEquals(17f + 0f, knob.x() - 0f, 3f);
         assertEquals(14f, knob.w(), 0f);
-        assertEquals(Theme.ON_ACCENT, knob.argb());
+        assertEquals(0xFFFFFFFF, knob.argb());
     }
 
     @Test
@@ -442,10 +442,10 @@ public class WidgetsTest {
         assertTrue(canvas.texts().contains("First"));
         assertTrue(canvas.texts().contains("#get oak_log 64"));
         assertFalse(canvas.texts().contains("Second"));
-        draw(t, 1000 + 3400);
+        draw(t, 1000 + 3000 + 2 * Theme.ANIM);
         assertEquals(1, t.pending());
         canvas.calls.clear();
-        draw(t, 1000 + 3500);
+        draw(t, 1000 + 3100 + 2 * Theme.ANIM);
         assertTrue(canvas.texts().contains("Second"));
     }
 
@@ -540,7 +540,7 @@ public class WidgetsTest {
         Label r = new Label(theme, "hi", theme.body, Theme.TEXT).setAlign(Label.Align.RIGHT);
         r.setBounds(0, 0, 100, 20);
         draw(r, 0);
-        assertEquals(100f - 0.6f * 14 * 2, canvas.textCall("hi").x(), 0.01f);
+        assertEquals(100f - 0.6f * theme.body.sizePx() * 2, canvas.textCall("hi").x(), 0.01f);
     }
 
     @Test

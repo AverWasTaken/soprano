@@ -18,4 +18,9 @@ public interface BotFacade {
     KeyNames keyNames();
 
     Clipboard clipboard();
+
+    // the stats tab's numbers. the default keeps older fakes compiling until they bother
+    default StatsAccess stats() {
+        return StatsAccess.NONE;
+    }
 }

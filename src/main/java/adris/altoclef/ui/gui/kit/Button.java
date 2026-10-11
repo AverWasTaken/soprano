@@ -119,28 +119,28 @@ public class Button extends Control {
         int textCol;
         switch (kind) {
             case PRIMARY -> {
-                base = Theme.ACCENT;
-                hover = 0xFFE4E4E7;
-                pressed = 0xFFC8C8CD;
-                textCol = Theme.ON_ACCENT;
+                base = theme.color(Theme.ACCENT);
+                hover = theme.color(Theme.ACCENT_HOVER);
+                pressed = theme.color(Theme.ACCENT_PRESSED);
+                textCol = theme.color(Theme.ON_ACCENT);
             }
             case GHOST -> {
-                base = Theme.alpha(Theme.HOVER, 0f);
-                hover = Theme.HOVER;
-                pressed = Theme.PRESSED;
-                textCol = Theme.lerp(Theme.TEXT_2, Theme.TEXT, hv);
+                base = Theme.alpha(theme.color(Theme.HOVER), 0f);
+                hover = theme.color(Theme.HOVER);
+                pressed = theme.color(Theme.PRESSED);
+                textCol = Theme.lerp(theme.color(Theme.TEXT_2), theme.color(Theme.TEXT), hv);
             }
             case DANGER -> {
-                base = Theme.RAISED;
-                hover = Theme.DANGER_FILL;
-                pressed = 0xFF4A2626;
-                textCol = Theme.DANGER;
+                base = theme.color(Theme.RAISED);
+                hover = theme.color(Theme.DANGER_FILL);
+                pressed = theme.color(Theme.DANGER_PRESSED);
+                textCol = theme.color(Theme.DANGER);
             }
             default -> {
-                base = Theme.RAISED;
-                hover = Theme.HOVER;
-                pressed = Theme.PRESSED;
-                textCol = Theme.TEXT;
+                base = theme.color(Theme.RAISED);
+                hover = theme.color(Theme.HOVER);
+                pressed = theme.color(Theme.PRESSED);
+                textCol = theme.color(Theme.TEXT);
             }
         }
         int fill = Theme.lerp(Theme.lerp(base, hover, hv), pressed, pv);
@@ -182,6 +182,7 @@ public class Button extends Control {
             return false;
         }
         held = true;
+        pressA.snap(1f);
         lastMods = mods;
         return true;
     }

@@ -6,6 +6,13 @@ package adris.altoclef.ui.gui.kit;
 // backend only has to copy tinted pixels and clip. no minecraft imports in here, ever
 public interface Canvas extends TextMeasurer {
 
+    default void setTheme(Theme theme) {
+    }
+
+    default int color(int token) {
+        return token;
+    }
+
     int width();
 
     int height();
@@ -32,8 +39,8 @@ public interface Canvas extends TextMeasurer {
 
     // the player's skin face (the game asks PlayerFaceRenderer, the preview draws the player glyph in a tile)
     default void playerFace(String playerName, float x, float y, float size) {
-        fillRoundRect(x, y, size, size, size / 6f, Theme.RAISED);
-        icon(Icon.PLAYER, x + size * 0.15f, y + size * 0.15f, size * 0.7f, Theme.TEXT_2);
+        fillRoundRect(x, y, size, size, size / 6f, color(Theme.RAISED));
+        icon(Icon.PLAYER, x + size * 0.15f, y + size * 0.15f, size * 0.7f, color(Theme.TEXT_2));
     }
 
     void pushClip(float x, float y, float w, float h);

@@ -109,7 +109,7 @@ public class ScrollerTest {
         long t = 1000 * MS;
         s.scrollBy(10, t);
         s.visibility(t, false);
-        assertEquals(1f, s.visibility(t + 200 * MS, false), 0.001f);
+        assertEquals(1f, s.visibility(t + Theme.ANIM * MS, false), 0.001f);
         assertEquals(1f, s.visibility(t + 599 * MS, false), 0.001f);
         s.visibility(t + 700 * MS, false);
         assertEquals(0f, s.visibility(t + 700 * MS + Theme.ANIM * MS, false), 0.001f);

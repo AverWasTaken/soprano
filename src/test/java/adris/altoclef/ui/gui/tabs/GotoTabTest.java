@@ -365,7 +365,9 @@ public class GotoTabTest {
         assertSame(tab.hereButton(), p.shell.focusedWidget());
         p.key(Keys.TAB);
         assertSame(tab.clearButton(), p.shell.focusedWidget());
-        // nothing recent yet, so the next stop is the shell's stop button, not an invisible list
+        // nothing recent yet, so focus goes straight to the shell's footer controls
+        p.key(Keys.TAB);
+        assertSame(p.shell.appearance(), p.shell.focusedWidget());
         p.key(Keys.TAB);
         assertSame(p.shell.stopButton(), p.shell.focusedWidget());
     }

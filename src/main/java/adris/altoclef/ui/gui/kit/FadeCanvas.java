@@ -20,6 +20,11 @@ public final class FadeCanvas implements Canvas {
     }
 
     @Override
+    public int color(int token) {
+        return base.color(token);
+    }
+
+    @Override
     public int width() {
         return base.width();
     }
@@ -64,6 +69,13 @@ public final class FadeCanvas implements Canvas {
     public void itemIcon(String itemId, float x, float y, float size) {
         if (alpha >= 0.5f) {
             base.itemIcon(itemId, x, y + dy, size);
+        }
+    }
+
+    @Override
+    public void playerFace(String playerName, float x, float y, float size) {
+        if (alpha >= 0.5f) {
+            base.playerFace(playerName, x, y + dy, size);
         }
     }
 

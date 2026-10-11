@@ -8,8 +8,7 @@ import java.util.ArrayList;
 import java.util.List;
 import org.junit.Test;
 
-// StubCanvas measures 7.8 px per body char and the field has a 10 px left inset, so glyph boundaries sit at 10, 17.8,
-// 25.6, 33.4 ...
+// StubCanvas measures 0.6 em per char; use that advance so a font size change does not move our test clicks
 public class TextFieldTest {
 
     private static final long MS = 1_000_000L;
@@ -34,8 +33,8 @@ public class TextFieldTest {
         f.draw(canvas, new Frame(ms * MS, 0.016f, -1, -1));
     }
 
-    private static float boundary(int chars) {
-        return 10f + 7.8f * chars;
+    private float boundary(int chars) {
+        return 10f + 0.6f * theme.body.sizePx() * chars;
     }
 
     private long clock = 5000;
@@ -55,7 +54,7 @@ public class TextFieldTest {
         assertEquals(2, f.edit().caret());
         click(f, boundary(3) - 1f);
         assertEquals(3, f.edit().caret());
-        click(f, boundary(2) + 3.8f);
+        click(f, boundary(2) + 0.3f * theme.body.sizePx() - 0.1f);
         assertEquals(2, f.edit().caret());
     }
 

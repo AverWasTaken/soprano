@@ -1,7 +1,7 @@
 package adris.altoclef.ui.gui.kit;
 
 // a font face at a pixel size. tabular lays every digit out at the widest digit's advance, which is as close to
-// inter's tnum as awt lets us get, and it is what keeps columns of coordinates from wobbling
+// a font's tnum as awt lets us get, and it is what keeps columns of coordinates from wobbling
 public record TextStyle(Weight weight, int sizePx, boolean tabular) {
 
     public TextStyle(Weight weight, int sizePx) {

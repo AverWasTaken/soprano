@@ -1871,6 +1871,16 @@ public final class Settings {
      */
     public final Setting<Integer> guiKey = new Setting<>(344);
 
+    /**
+     * Use the dark appearance in the click gui. The sidebar's Light and Dark buttons save this preference.
+     */
+    public final Setting<Boolean> guiDarkMode = new Setting<>(true);
+
+    /**
+     * Animate click gui transitions and scrolling. Disable to reduce motion and make changes immediate.
+     */
+    public final Setting<Boolean> guiAnimations = new Setting<>(true);
+
     // everything below belongs to the built in AltoClef, see adris.altoclef. all of it is prefixed alto so that
     // #set alto<tab> finds it (same trick as the elytra settings). it only does anything while AltoClef has a task
 
