@@ -84,8 +84,8 @@ public class CollectBucketLiquidTask extends ResourceTask {
     private static final double LID_NEAR_SQ = 8 * 8;
     // whether any source we can scoop as it is is known. asked every so often, not every tick: it is a walk over every known
     // source and the answer changes when a scan lands or something gets banned
-    private boolean _openKnown;
-    private int _openKnownAt = Integer.MIN_VALUE / 2;
+    private boolean _openOutranks;
+    private int _openLookAt = Integer.MIN_VALUE / 2;
     private static final int OPEN_LOOK_TICKS = 20;
 
     public CollectBucketLiquidTask(String liquidName, Item filledBucket, int targetCount, Block toCollect) {
@@ -227,21 +227,25 @@ public class CollectBucketLiquidTask extends ResourceTask {
         // open sources first, a lid only when there is no open one to be had, and never one that can't be got at (see
         // BucketSourceRules)
         Runnable lookForOpen = () -> {
-            _openKnownAt = WorldHelper.getTicks();
-            _openKnown = mod.getBlockTracker().getNearestTracking(
+            _openLookAt = WorldHelper.getTicks();
+            Optional<BlockPos> open = mod.getBlockTracker().getNearestTracking(
                     p -> isSource.test(p) && BucketSourceRules.classify(cells, p.getX(), p.getY(), p.getZ()) == BucketSourceRules.Kind.OPEN,
-                    _toCollect).isPresent();
+                    _toCollect);
+            Optional<BlockPos> lid = mod.getBlockTracker().getNearestTracking(
+                    p -> isSource.test(p) && BucketSourceRules.classify(cells, p.getX(), p.getY(), p.getZ()) == BucketSourceRules.Kind.LID,
+                    _toCollect);
+            _openOutranks = BucketSourceRules.openOutranksLids(away(mod, open), away(mod, lid));
         };
-        if (WorldHelper.getTicks() - _openKnownAt >= OPEN_LOOK_TICKS) {
+        if (WorldHelper.getTicks() - _openLookAt >= OPEN_LOOK_TICKS) {
             lookForOpen.run();
         }
         Predicate<BlockPos> isSourceLiquid = blockPos -> isSource.test(blockPos)
-                && BucketSourceRules.worthGoingTo(BucketSourceRules.classify(cells, blockPos.getX(), blockPos.getY(), blockPos.getZ()), _openKnown);
+                && BucketSourceRules.worthGoingTo(BucketSourceRules.classify(cells, blockPos.getX(), blockPos.getY(), blockPos.getZ()), _openOutranks);
 
         // Find nearest water and right click it
         if (mod.getBlockTracker().isTracking(_toCollect)) {
             Optional<BlockPos> nearestSource = mod.getBlockTracker().getNearestTracking(isSourceLiquid, _toCollect);
-            if (nearestSource.isEmpty() && _openKnown) {
+            if (nearestSource.isEmpty() && _openOutranks) {
                 // the open one we were counting on just got banned or went away. don't wander off for a second on a stale yes
                 lookForOpen.run();
                 nearestSource = mod.getBlockTracker().getNearestTracking(isSourceLiquid, _toCollect);
@@ -270,7 +274,7 @@ public class CollectBucketLiquidTask extends ResourceTask {
                             _progressChecker.reset();
                             // and the ban runs out some day, the next go at this lid gets a clock of its own
                             _lidClocks.remove(blockPos);
-                            _openKnownAt = Integer.MIN_VALUE / 2;
+                            _openLookAt = Integer.MIN_VALUE / 2;
                         }
                         return new DestroyBlockTask(blockPos.above());
                     }
@@ -343,6 +347,11 @@ public class CollectBucketLiquidTask extends ResourceTask {
         }
         Debug.logInternal("bucket: " + LID_GIVE_UP_SECONDS + " s on the block over the " + _liquidName + " at " + source.toShortString() + " and it is still there, giving up on it");
         return true;
+    }
+
+    // straight line from us to a source, NaN when there isn't one
+    private static double away(AltoClef mod, Optional<BlockPos> source) {
+        return source.map(p -> Math.sqrt(mod.getPlayer().distanceToSqr(p.getX() + 0.5, p.getY() + 0.5, p.getZ() + 0.5))).orElse(Double.NaN);
     }
 
     // the same ban the "couldn't break the block over this source" path hands out, just without the wait

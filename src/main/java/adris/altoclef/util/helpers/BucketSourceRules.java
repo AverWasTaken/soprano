@@ -56,9 +56,26 @@ public final class BucketSourceRules {
         return false;
     }
 
-    // a lid source only counts while no open one is known: digging for lava is the slow way, and a pool we can just scoop
-    // from the edge beats a nearer lidded source every time
-    public static boolean worthGoingTo(Kind kind, boolean openSourceKnown) {
-        return kind == Kind.OPEN || kind == Kind.LID && !openSourceKnown;
+    // an open source outranks the lids when it is this close to us (straight line) ...
+    public static final double OPEN_NEAR_BLOCKS = 32;
+    // ... or no further than this past the nearest lid source we could dig. past both, a pool across the map does not shut
+    // out a lid three blocks from our feet
+    public static final double OPEN_EXTRA_BLOCKS = 16;
+
+    // distances from the bot to the nearest open source and to the nearest lid source worth digging, NaN for "none known"
+    public static boolean openOutranksLids(double nearestOpen, double nearestLid) {
+        if (Double.isNaN(nearestOpen)) {
+            return false;
+        }
+        if (Double.isNaN(nearestLid)) {
+            return true;
+        }
+        return nearestOpen <= OPEN_NEAR_BLOCKS || nearestOpen - nearestLid <= OPEN_EXTRA_BLOCKS;
+    }
+
+    // a lid source only counts while an open one does not outrank it: digging for lava is the slow way, and a pool we can
+    // just scoop from the edge beats a lidded source unless it is a long way off for no good reason
+    public static boolean worthGoingTo(Kind kind, boolean openOutranksLids) {
+        return kind == Kind.OPEN || kind == Kind.LID && !openOutranksLids;
     }
 }

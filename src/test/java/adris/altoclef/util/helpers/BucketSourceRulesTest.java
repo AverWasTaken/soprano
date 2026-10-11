@@ -129,6 +129,29 @@ public class BucketSourceRulesTest {
     }
 
     @Test
+    public void aFarPoolDoesNotShutOutACloseLid() {
+        double none = Double.NaN;
+        assertFalse(BucketSourceRules.openOutranksLids(200, 3));
+        assertTrue(BucketSourceRules.openOutranksLids(20, 3));
+        // past 32 but within 16 of the lid
+        assertTrue(BucketSourceRules.openOutranksLids(40, 30));
+        assertFalse(BucketSourceRules.openOutranksLids(60, 10));
+        // no lid to prefer, any distance will do. no open one, nothing outranks
+        assertTrue(BucketSourceRules.openOutranksLids(200, none));
+        assertFalse(BucketSourceRules.openOutranksLids(none, 3));
+        assertFalse(BucketSourceRules.openOutranksLids(none, none));
+    }
+
+    @Test
+    public void theRankingPicksTheLidWhenTheOpenOneDoesNotOutrankIt() {
+        // open at 200 + lid at 3: the lid is worth going to; open at 20 + lid at 3: it is not
+        assertTrue(BucketSourceRules.worthGoingTo(Kind.LID, BucketSourceRules.openOutranksLids(200, 3)));
+        assertFalse(BucketSourceRules.worthGoingTo(Kind.LID, BucketSourceRules.openOutranksLids(20, 3)));
+        // no open sources at all: the nearest acceptable lid
+        assertTrue(BucketSourceRules.worthGoingTo(Kind.LID, BucketSourceRules.openOutranksLids(Double.NaN, 3)));
+    }
+
+    @Test
     public void anOpenPoolBeatsALidAndALidIsTheFallback() {
         assertTrue(BucketSourceRules.worthGoingTo(Kind.OPEN, true));
         assertTrue(BucketSourceRules.worthGoingTo(Kind.OPEN, false));
