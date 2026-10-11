@@ -138,9 +138,10 @@ public class InteractWithBlockTask extends Task {
     }
 
     // a bucket on a liquid source. differs from a plain click in two ways:
-    // - it never sneaks. the sneak was there so a click can't open whatever is behind the target, but the click only goes
-    //   out once the crosshair is on the source itself, so there is nothing to open, and the crouch moves the eyes from 1.62
-    //   to 1.27: a reach that was fine standing is not crouched, the next tick lets go and walks, and it flips forever
+    // - it never sneaks. the sneak was there so a click can't open whatever is behind the target. that is a risk we take on
+    //   (vanilla's crosshair ignores fluid, so a chest right behind the source could eat the click), because the crouch
+    //   moves the eyes from 1.62 to 1.27: a reach that was fine standing may not be crouched, the next tick lets go and
+    //   walks, stands up, and it flips forever
     // - a click that stays unanswered for a whole click timeout bans the source, so the collector moves on to the next one
     //   instead of wandering off and coming back to the same one for good
     public static InteractWithBlockTask scoop(ItemTarget bucket, BlockPos source, boolean walkInto) {

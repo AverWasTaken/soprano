@@ -18,6 +18,11 @@ public final class BucketSourceRules {
 
         // nothing in the way of a ray or a body: air, fluid, plants
         boolean open(int x, int y, int z);
+
+        // open and dry, somewhere a body can stand or swing from. a lava or water cell is open to a ray, not to us
+        default boolean free(int x, int y, int z) {
+            return open(x, y, z);
+        }
     }
 
     private static final int[][] SIDES = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
@@ -30,7 +35,7 @@ public final class BucketSourceRules {
         // touches the lid across a corner is how a source ends up "visible" and unreachable: the path search never has
         // anywhere to take us, so those don't count
         for (int[] side : SIDES) {
-            if (cells.open(x + side[0], y + 1, z + side[1])) {
+            if (cells.free(x + side[0], y + 1, z + side[1])) {
                 return Kind.LID;
             }
         }

@@ -81,7 +81,7 @@ public class CollectBucketLiquidTask extends ResourceTask {
     // it and not already cracking it, so a long walk or a slow honest break is not billed
     private final HashMap<BlockPos, TaskClock> _lidClocks = new HashMap<>();
     private static final double LID_GIVE_UP_SECONDS = 15;
-    private static final double LID_NEAR_SQ = 12 * 12;
+    private static final double LID_NEAR_SQ = 8 * 8;
     // whether any source we can scoop as it is is known. asked every so often, not every tick: it is a walk over every known
     // source and the answer changes when a scan lands or something gets banned
     private boolean _openKnown;
@@ -216,15 +216,24 @@ public class CollectBucketLiquidTask extends ResourceTask {
                 BlockPos at = new BlockPos(x, y, z);
                 return mod.getWorld().getBlockState(at).getCollisionShape(mod.getWorld(), at).isEmpty();
             }
+
+            @Override
+            public boolean free(int x, int y, int z) {
+                // somewhere to stand or swing from: open, and not a pool of something
+                BlockPos at = new BlockPos(x, y, z);
+                return open(x, y, z) && mod.getWorld().getBlockState(at).getFluidState().isEmpty();
+            }
         };
         // open sources first, a lid only when there is no open one to be had, and never one that can't be got at (see
         // BucketSourceRules)
-        int tickNow = WorldHelper.getTicks();
-        if (tickNow - _openKnownAt >= OPEN_LOOK_TICKS) {
-            _openKnownAt = tickNow;
+        Runnable lookForOpen = () -> {
+            _openKnownAt = WorldHelper.getTicks();
             _openKnown = mod.getBlockTracker().getNearestTracking(
                     p -> isSource.test(p) && BucketSourceRules.classify(cells, p.getX(), p.getY(), p.getZ()) == BucketSourceRules.Kind.OPEN,
                     _toCollect).isPresent();
+        };
+        if (WorldHelper.getTicks() - _openKnownAt >= OPEN_LOOK_TICKS) {
+            lookForOpen.run();
         }
         Predicate<BlockPos> isSourceLiquid = blockPos -> isSource.test(blockPos)
                 && BucketSourceRules.worthGoingTo(BucketSourceRules.classify(cells, blockPos.getX(), blockPos.getY(), blockPos.getZ()), _openKnown);
@@ -232,6 +241,11 @@ public class CollectBucketLiquidTask extends ResourceTask {
         // Find nearest water and right click it
         if (mod.getBlockTracker().isTracking(_toCollect)) {
             Optional<BlockPos> nearestSource = mod.getBlockTracker().getNearestTracking(isSourceLiquid, _toCollect);
+            if (nearestSource.isEmpty() && _openKnown) {
+                // the open one we were counting on just got banned or went away. don't wander off for a second on a stale yes
+                lookForOpen.run();
+                nearestSource = mod.getBlockTracker().getNearestTracking(isSourceLiquid, _toCollect);
+            }
             if (nearestSource.isPresent()) {
                 _loggedWander = false;
                 Block nearestSourceBlock = mod.getWorld().getBlockState(nearestSource.get()).getBlock();
@@ -254,6 +268,9 @@ public class CollectBucketLiquidTask extends ResourceTask {
                             BanPolicy.bucketLidStuck(mod.getBans(), WorldHelper.getCurrentDimension(), blockPos.getX(), blockPos.getY(), blockPos.getZ());
                             // a failed checker stays failed, so without this the next source got banned on its first tick
                             _progressChecker.reset();
+                            // and the ban runs out some day, the next go at this lid gets a clock of its own
+                            _lidClocks.remove(blockPos);
+                            _openKnownAt = Integer.MIN_VALUE / 2;
                         }
                         return new DestroyBlockTask(blockPos.above());
                     }
@@ -315,7 +332,10 @@ public class CollectBucketLiquidTask extends ResourceTask {
         BlockPos lid = source.above();
         TaskClock clock = _lidClocks.computeIfAbsent(source.immutable(), k -> new TaskClock());
         boolean cracking = mod.getControllerExtras().isBreakingBlock() && lid.equals(mod.getControllerExtras().getBreakingBlockPos());
-        if (!cracking && mod.getPlayer().distanceToSqr(lid.getX() + 0.5, lid.getY() + 0.5, lid.getZ() + 0.5) <= LID_NEAR_SQ) {
+        // a live path this close is the walk (or the dig) to it, that is progress and DestroyBlockTask has its own clocks for
+        // standing around
+        boolean walking = mod.getClientBaritone().getPathingBehavior().isPathing();
+        if (!cracking && !walking && mod.getPlayer().distanceToSqr(lid.getX() + 0.5, lid.getY() + 0.5, lid.getZ() + 0.5) <= LID_NEAR_SQ) {
             clock.tick();
         }
         if (!clock.over(LID_GIVE_UP_SECONDS)) {

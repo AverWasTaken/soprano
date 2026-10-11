@@ -135,8 +135,9 @@ final class StandReport {
         return sb.length() == 0 ? null : sb.toString();
     }
 
-    // the vanilla key mappings that are actually down, whoever pressed them. baritone's forced inputs and altoclef's own
-    // holds both end up here, which is the only place a crouch with no obvious owner shows up
+    // the vanilla key mappings that are actually down: altoclef's own holds and the real keyboard. baritone's forced inputs
+    // never touch these (they feed the movement input directly), so a crouch of baritone's reads keys=SNEAK held=none
+    // sneak=true, and a crouch with nobody in keys= is one of ours
     private static String held(Options options) {
         StringBuilder sb = new StringBuilder();
         held(sb, "SNEAK", options.keyShift);

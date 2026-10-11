@@ -17,8 +17,8 @@ public final class FromSideRules {
     // seconds in the branch whatever the path is doing. a walk to a side cell far away is allowed to be long, but a path
     // that keeps ending somewhere useless and getting replanned is not allowed to be forever
     public static final double TOTAL_GIVE_UP_SECONDS = 45;
-    // a back-up is a nudge to get a ray, not a grind against the wall behind us. ten ticks is about two thirds of a block
-    // of crouch walking
+    // a back-up is a nudge to get a ray, not a grind against the wall behind us. ten ticks in all (until the block really
+    // cracks) is about two thirds of a block of crouch walking
     public static final int BACK_UP_MAX_TICKS = 10;
 
     private FromSideRules() {
@@ -26,7 +26,7 @@ public final class FromSideRules {
 
     // idleSeconds / totalSeconds: the branch clocks. pathing: baritone has a live path. searchFailed: a search came back
     // empty a moment ago (so "not pathing" means "nowhere to go", not "between two paths"). cracking: the break of this
-    // block is under way. backedUpTicks: consecutive ticks the keys have been held from the cell we are standing in
+    // block is under way. backedUpTicks: ticks the keys have been held since the last real crack
     public static Verdict decide(double idleSeconds, double totalSeconds, boolean pathing, boolean searchFailed,
                                  boolean cracking, int backedUpTicks) {
         if (cracking) {

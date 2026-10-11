@@ -91,6 +91,27 @@ public class BucketSourceRulesTest {
     }
 
     @Test
+    public void aLidWhoseOnlySideCellIsAPoolIsRejected() {
+        Cells wet = new Cells() {
+            @Override
+            public boolean solid(int x, int y, int z) {
+                return !(x == 1 && y == 1 && z == 0);
+            }
+
+            @Override
+            public boolean open(int x, int y, int z) {
+                return x == 1 && y == 1 && z == 0;
+            }
+
+            @Override
+            public boolean free(int x, int y, int z) {
+                return false;
+            }
+        };
+        assertEquals(Kind.NONE, BucketSourceRules.classify(wet, 0, 0, 0));
+    }
+
+    @Test
     public void glassOverTheSourceIsNotAnOpening() {
         // solid() is false for it (it isn't a lid) but it isn't open either, so with the sides stone there is no way in
         Cells glass = new Cells() {
