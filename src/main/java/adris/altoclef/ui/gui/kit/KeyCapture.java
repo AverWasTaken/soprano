@@ -48,6 +48,28 @@ public class KeyCapture extends Control implements FocusOnClick {
         return theme.px(96);
     }
 
+    // how wide the box has to be to show the whole key name (same 12 the ellipsis in draw keeps clear), so a sidebar
+    // can decide what to drop first
+    public int neededWidth() {
+        return (int) Math.ceil(theme.measurer.measure(shown(), theme.label)) + theme.px(12);
+    }
+
+    private String shown() {
+        if (bind.capturing) {
+            return "Press a key";
+        }
+        if (bind.key < 0) {
+            return "Unbound";
+        }
+        String n = null;
+        try {
+            n = names == null ? null : names.name(bind.key);
+        } catch (Throwable e) {
+            Safe.report("key name", e);
+        }
+        return n == null || n.isEmpty() ? "Key " + bind.key : n;
+    }
+
     @Override
     public int preferredHeight() {
         return theme.px(Theme.CONTROL_H);
@@ -79,24 +101,8 @@ public class KeyCapture extends Control implements FocusOnClick {
         if (ring > 0.01f || focused) {
             focusRing(c, r, Math.max(ring, focused ? 1f : 0f));
         }
-        String text;
-        int col;
-        if (bind.capturing) {
-            text = "Press a key";
-            col = theme.color(Theme.TEXT);
-        } else if (bind.key < 0) {
-            text = "Unbound";
-            col = theme.color(Theme.TEXT_3);
-        } else {
-            String n = null;
-            try {
-                n = names == null ? null : names.name(bind.key);
-            } catch (Throwable e) {
-                Safe.report("key name", e);
-            }
-            text = n == null || n.isEmpty() ? "Key " + bind.key : n;
-            col = theme.color(Theme.TEXT);
-        }
+        String text = shown();
+        int col = theme.color(bind.capturing || bind.key >= 0 ? Theme.TEXT : Theme.TEXT_3);
         text = theme.measurer.ellipsize(text, theme.label, Math.max(0, w - theme.px(12)));
         float tw = c.measure(text, theme.label);
         c.text(text, x + (w - tw) / 2f, baseline(c, theme.label, y, h), theme.label, col);

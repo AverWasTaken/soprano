@@ -157,6 +157,16 @@ public class Button extends Control {
                 textCol = theme.color(Theme.TEXT);
             }
         }
+        // a disabled primary is not a faded blue (white on 40% blue is unreadable in light), it is a plain grey
+        // button that says the action is not available yet
+        if (!enabled && kind == Kind.PRIMARY) {
+            base = theme.color(Theme.RAISED);
+            hover = base;
+            pressed = base;
+            textCol = theme.color(Theme.TEXT_3);
+            edged = true;
+            dim = 1f;
+        }
         int fill = Theme.lerp(Theme.lerp(base, hover, hv), pressed, pv);
         if ((fill >>> 24) != 0) {
             c.fillRoundRect(x, y, w, h, r, Theme.fade(fill, dim));

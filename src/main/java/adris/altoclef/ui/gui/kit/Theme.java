@@ -7,7 +7,9 @@ package adris.altoclef.ui.gui.kit;
 public final class Theme {
 
     // these are also the default dark palette. resolve a token through color() before blending or fading it. every
-    // dark value has to be unique, color() switches on it
+    // dark value has to be unique, color() switches on it. the greys were picked with a contrast calculator: TEXT_3
+    // clears 4.5:1 on a card and on a hovered row, white clears it on ACCENT and on ACCENT_HOVER (which is why hover
+    // goes a step darker, not lighter), DANGER clears it on a raised button
     // lighter than it used to be because the world behind it is blurred now, the scrim only has to settle it down
     public static final int SCRIM = 0x52000000;
     public static final int SIDEBAR = 0xFF1B1B1D;
@@ -22,14 +24,14 @@ public final class Theme {
     public static final int HAIRLINE_STRONG = 0xFF6B6B70;
     public static final int TEXT = 0xFFF5F5F7;
     public static final int TEXT_2 = 0xFFAEAEB4;
-    public static final int TEXT_3 = 0xFF8E8E93;
+    public static final int TEXT_3 = 0xFFA0A0A5;
     public static final int ACCENT = 0xFF0A73E8;
-    public static final int ACCENT_HOVER = 0xFF2D86EE;
+    public static final int ACCENT_HOVER = 0xFF0B6BD6;
     public static final int ACCENT_PRESSED = 0xFF0A64CC;
     public static final int ACCENT_SOFT = 0xFF22354D;
     public static final int ACCENT_TEXT = 0xFF5AA9FF;
     public static final int ON_ACCENT = 0xFFFFFFFF;
-    public static final int DANGER = 0xFFFF6B6B;
+    public static final int DANGER = 0xFFFF8080;
     public static final int DANGER_FILL = 0xFF3A2A2C;
     public static final int DANGER_PRESSED = 0xFF4A3134;
     public static final int SHADOW = 0x80000000;
@@ -138,7 +140,7 @@ public final class Theme {
             case ACCENT_SOFT -> 0xFFDCEBFC;
             case ACCENT_TEXT -> 0xFF0066CC;
             case ON_ACCENT -> 0xFFFFFFFF;
-            case DANGER -> 0xFFD70015;
+            case DANGER -> 0xFFC20012;
             case DANGER_FILL -> 0xFFFBE5E7;
             case DANGER_PRESSED -> 0xFFF5CDD1;
             case SHADOW -> 0x2E000000;

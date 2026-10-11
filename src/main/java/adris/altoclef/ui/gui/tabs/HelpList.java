@@ -271,8 +271,9 @@ final class HelpList extends VirtualView<CommandInfo> {
         if (row < 0 || row >= items.size() || relInRow < headH()) {
             return -1;
         }
-        float cx = x + padX() + cardPad();
-        if (mx < cx || mx >= cx + textW()) {
+        // the hover fill hangs a SPACE_2 out past the text on each side, so the click area does too
+        float cx = x + padX() + cardPad() - theme.px(Theme.SPACE_2);
+        if (mx < cx || mx >= cx + textW() + 2 * theme.px(Theme.SPACE_2)) {
             return -1;
         }
         Detail d = detailFor(items.get(row));

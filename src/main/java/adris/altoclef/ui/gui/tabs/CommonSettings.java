@@ -192,7 +192,7 @@ final class CommonSettings extends Widget {
             float d = depth.value(now);
             int glyph = Theme.lerp(theme.color(Theme.TEXT_2), theme.color(Theme.ON_ACCENT), d);
             int name = Theme.lerp(theme.color(Theme.TEXT), theme.color(Theme.ON_ACCENT), d);
-            int state = Theme.lerp(theme.color(Theme.TEXT_3), Theme.fade(theme.color(Theme.ON_ACCENT), 0.75f), d);
+            int state = Theme.lerp(theme.color(Theme.TEXT_3), theme.color(Theme.ON_ACCENT), d);
             int is = theme.px(Theme.ICON_LG);
             c.icon(spec.icon(), x + (w - is) / 2f, y + theme.px(10), is, glyph);
             String label = c.ellipsize(spec.label(), theme.label, Math.max(0, w - theme.px(12)));

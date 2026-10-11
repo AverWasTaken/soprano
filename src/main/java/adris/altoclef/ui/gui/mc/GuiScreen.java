@@ -239,10 +239,9 @@ public class GuiScreen extends Screen {
             g.flush();
             RenderSystem.clear(256);
             // the frosted glass: vanilla's own menu blur over the world, which is a no-op when the player has
-            // turned menu blur off. it only touches the main target, the pose below does not know it happened
-            if (!shell.closing()) {
-                renderBlurredBackground();
-            }
+            // turned menu blur off. it only touches the main target, the pose below does not know it happened.
+            // every frame until the screen goes, so the world does not snap sharp while the scrim is still fading
+            renderBlurredBackground();
             float inv = (float) (1.0 / win.getGuiScale());
             g.pose().pushPose();
             posed = true;

@@ -50,6 +50,7 @@ public class Shell extends Widget implements ShellContext {
     private Consumer<Boolean> onAppearanceChanged;
     private int winW;
     private int winH;
+    private boolean keyCaption = true;
 
     private StatusAccess.Activity activity = new StatusAccess.Activity(false, "Idle", "", null);
     private float lineW;
@@ -230,7 +231,9 @@ public class Shell extends Widget implements ShellContext {
     }
 
     public int tabRowY(int i) {
-        int top = y + headerH - theme.px(Theme.SPACE_2);
+        // with group labels the first section's room above its label is partly the header's own bottom margin;
+        // without them the rows start under the header strip, not inside it
+        int top = y + headerH + (groupStart(0) ? -theme.px(Theme.SPACE_2) : theme.px(Theme.SPACE_1));
         for (int n = 0; n <= i; n++) {
             if (groupStart(n)) {
                 top += groupH();
@@ -401,8 +404,14 @@ public class Shell extends Widget implements ShellContext {
         int ch = theme.px(Theme.CONTROL_H);
         search.setBounds(x + w - theme.px(Theme.PAD) - sw, y + (headerH - ch) / 2, sw, ch);
 
+        // the key name is the useful half of the footer row: when the caption and the name cannot both fit (0.75
+        // scale, "Right Shift"), the caption goes and the keycap takes the row
         int footerLabelW = Math.round(theme.measurer.measure("Open key", theme.small));
-        int capW = Math.max(theme.px(64), sideW - 2 * theme.px(Theme.PAD) - footerLabelW - theme.px(8));
+        int capW = sideW - 2 * theme.px(Theme.PAD) - footerLabelW - theme.px(Theme.GAP);
+        keyCaption = capW >= keyCapture.neededWidth();
+        if (!keyCaption) {
+            capW = sideW - 2 * theme.px(Theme.PAD);
+        }
         keyCapture.setBounds(x + sideW - theme.px(Theme.PAD) - capW, y + h - statusH - theme.px(Theme.PAD) - ch, capW, ch);
         appearance.setBounds(x + theme.px(Theme.PAD), keyCapture.y() - theme.px(Theme.GAP) - ch,
                 sideW - 2 * theme.px(Theme.PAD), ch);
@@ -713,7 +722,9 @@ public class Shell extends Widget implements ShellContext {
         }
 
         appearance.draw(g, f);
-        g.text("Open key", x + pad, baselineIn(g, theme.small, keyCapture.y(), keyCapture.h()), theme.small, theme.color(Theme.TEXT_3));
+        if (keyCaption) {
+            g.text("Open key", x + pad, baselineIn(g, theme.small, keyCapture.y(), keyCapture.h()), theme.small, theme.color(Theme.TEXT_3));
+        }
         keyCapture.draw(g, f);
     }
 
