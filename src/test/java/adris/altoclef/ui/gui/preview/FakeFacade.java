@@ -89,7 +89,7 @@ public final class FakeFacade implements BotFacade {
             num("maxFallHeightNoWater", Kind.INTEGER, "Integer", "3", "3", "Fall height Baritone will take without water.");
             num("pathingMaxChunkBorderFetch", Kind.INTEGER, "Integer", "50", "50", "How many chunks past the border it will fetch.");
             text("prefix", "#", "#", "The command prefix.");
-            text("altoIdleCommand", "", "follow Jacob", "Command run when AltoClef goes idle.");
+            text("altoIdleCommand", "", "follow Jacob", "Command run when the bot goes idle.");
             color("colorCurrentPath", "255,0,0", "255,0,0", "Colour of the path being executed.");
             color("colorNextPath", "0,255,0", "0,255,0", "Colour of the next planned path segment.");
             enumv("mirror", "NONE", "NONE", List.of("NONE", "LEFT_RIGHT", "FRONT_BACK"), "Mirror schematics.");
@@ -229,7 +229,7 @@ public final class FakeFacade implements BotFacade {
                     List.of("The mine command allows you to tell Baritone to search for and mine individual blocks.", "", "Usage:", "> mine diamond_ore", "> mine 64 oak_log", "> mine iron_ore coal_ore")));
             list.add(new CommandInfo(List.of("follow", "f"), "Follow entity things",
                     List.of("Follow players, entities, or entity types.", "", "Usage:", "> follow entities", "> follow entity zombie", "> follow players", "> follow player <name>")));
-            list.add(new CommandInfo(List.of("get"), "Get items, altoclef style",
+            list.add(new CommandInfo(List.of("get"), "Get items the long way round",
                     List.of("Crafts, smelts, mines or collects its way to the items.", "", "Usage:", "> get oak_log 64", "> get iron_ingot 3 stick 4")));
             list.add(new CommandInfo(List.of("stop", "cancel", "s"), "Stop everything",
                     List.of("Cancels the current task and path.", "", "Usage:", "> stop")));
