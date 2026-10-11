@@ -56,6 +56,25 @@ public class TexturedCanvasTest {
         centredText(c, s, theme.label, x + 14, y, 30, textColor);
     }
 
+    // the whole family at every size the gui draws it, zoomed, so a heavy 12px or a drifting dot is visible at a
+    // glance. one row per size, every icon in enum order
+    private void iconSheet() throws IOException {
+        Icon[] all = Icon.values();
+        int[] sizes = {12, 16, 22, 24, 32};
+        int cell = 40;
+        int rows = sizes.length;
+        Java2dCanvas c = canvas(cell * all.length + 20, cell * rows + 20);
+        for (int r = 0; r < rows; r++) {
+            int s = sizes[r];
+            for (int i = 0; i < all.length; i++) {
+                c.icon(all[i], 10 + i * cell + (cell - s) / 2f, 10 + r * cell + (cell - s) / 2f, s, Theme.TEXT);
+            }
+        }
+        c.save(Paths.get("build", "gui-preview", "_smoke_icon_sheet.png"));
+        zoom(c.image(), 0, 0, c.width() / 2, c.height(), 3, Paths.get("build", "gui-preview", "_smoke_icon_sheet_a.png"));
+        zoom(c.image(), c.width() / 2, 0, c.width() - c.width() / 2, c.height(), 3, Paths.get("build", "gui-preview", "_smoke_icon_sheet_b.png"));
+    }
+
     @Test
     public void smoke() throws IOException {
         Java2dCanvas c = canvas(900, 560);
@@ -162,6 +181,7 @@ public class TexturedCanvasTest {
 
         Path out = Paths.get("build", "gui-preview", "_smoke.png");
         c.save(out);
+        iconSheet();
         zoom(c.image(), 36, 36, 250, 200, 4, Paths.get("build", "gui-preview", "_smoke_text_zoom.png"));
         zoom(c.image(), 40, 352, 330, 78, 4, Paths.get("build", "gui-preview", "_smoke_icons_zoom.png"));
         zoom(c.image(), 370, 352, 340, 78, 4, Paths.get("build", "gui-preview", "_smoke_icons2_zoom.png"));

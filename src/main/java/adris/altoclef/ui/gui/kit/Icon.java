@@ -2,9 +2,9 @@ package adris.altoclef.ui.gui.kit;
 
 // every glyph the gui needs. drawn as vector strokes by Icons into the atlas at the pixel size asked for, so no pngs
 public enum Icon {
-    GET,            // open box
-    GOTO,           // arrow pointing up right out of a corner
-    FOLLOW,         // two footprints / a person
+    GET,            // a parcel: cube with a tape stripe
+    GOTO,           // a path from a green dot to a red one
+    FOLLOW,         // a person with an arrow leading off to the right
     WAYPOINTS,      // flag
     HELP,           // question mark in a ring
     SETTINGS,       // two sliders
@@ -18,7 +18,7 @@ public enum Icon {
     CHECK,
     COPY,           // two overlapping squares
     RESET,          // counter clockwise arrow
-    STOP,           // square
+    STOP,           // filled square
     KEY,            // keyboard key outline
     DOT,            // filled circle (busy)
     RING,           // hollow circle (idle)

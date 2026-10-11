@@ -698,7 +698,7 @@ public class Shell extends Widget implements ShellContext {
             float rx = x + rowInset;
             float rw = sideW - 2 * rowInset;
             if (hv > 0.01f && av < 0.99f) {
-                g.fillRoundRect(rx, ry, rw, rowH, theme.pxf(Theme.ROW_RADIUS), Theme.fade(theme.color(Theme.HOVER), hv * (1f - av)));
+                g.fillRoundRect(rx, ry, rw, rowH, theme.pxf(Theme.ROW_RADIUS), Theme.fade(theme.color(Theme.HOVER), hv * 0.7f * (1f - av)));
             }
             int col = Theme.lerp(Theme.lerp(theme.color(Theme.TEXT_2), theme.color(Theme.TEXT), hv * 0.7f), theme.color(Theme.ON_ACCENT), av);
             int is = theme.px(Theme.ICON);

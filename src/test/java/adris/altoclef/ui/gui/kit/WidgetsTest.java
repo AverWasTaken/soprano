@@ -154,7 +154,8 @@ public class WidgetsTest {
         Button d = new Button(theme, "Stop", Button.Kind.DANGER, null, () -> { });
         d.setBounds(0, 0, 100, 30);
         draw(d, 0);
-        assertEquals(Theme.SURFACE, fill().argb());
+        // secondary and danger sit a step up from the surface they are on
+        assertEquals(Theme.RAISED, fill().argb());
         assertEquals(Theme.DANGER, canvas.textCall("Stop").argb());
     }
 
@@ -180,10 +181,10 @@ public class WidgetsTest {
         canvas.calls.clear();
         draw(b, 1);
         int first = fill().argb();
-        assertTrue(first != Theme.SURFACE);
+        assertTrue(first != Theme.RAISED);
         canvas.calls.clear();
         draw(b, 500);
-        assertEquals(Theme.SURFACE, fill().argb());
+        assertEquals(Theme.RAISED, fill().argb());
     }
 
     @Test

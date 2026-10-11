@@ -240,15 +240,16 @@ public abstract class TexturedCanvas implements Canvas {
 
     // the one coloured thing in the sidebar: the start and end of the go to path. the dots follow the tint's
     // brightness and alpha so an inactive tab dims them a little and a fade-out takes them along, but they never
-    // turn grey. positions match the path in Icons (5,19) and (19,5) on its 24 grid
+    // turn grey. they go through the same grid transform as the stroke, so they land on the path ends (5,19) and
+    // (19,5) at every size instead of drifting off as the icon grows
     private void pathDots(float dx, float dy, int px, int tint) {
         float lum = ((tint >> 16 & 255) * 0.299f + (tint >> 8 & 255) * 0.587f + (tint & 255) * 0.114f) / 255f;
         float a = (tint >>> 24) / 255f * (0.6f + 0.4f * lum);
-        float d = Math.max(3f, Math.round(px * 0.22f));
-        float sx = dx + px * (5f / 24f) - d / 2f;
-        float sy = dy + px * (19f / 24f) - d / 2f;
-        float ex = dx + px * (19f / 24f) - d / 2f;
-        float ey = dy + px * (5f / 24f) - d / 2f;
+        float d = Math.max(3f, Math.round(Icons.strokePx(px) * 2.5f));
+        float sx = dx + Icons.toPx(px, 5) - d / 2f;
+        float sy = dy + Icons.toPx(px, 19) - d / 2f;
+        float ex = dx + Icons.toPx(px, 19) - d / 2f;
+        float ey = dy + Icons.toPx(px, 5) - d / 2f;
         fillRoundRect(sx, sy, d, d, d / 2f, Theme.alpha(color(Theme.PATH_START), a));
         fillRoundRect(ex, ey, d, d, d / 2f, Theme.alpha(color(Theme.PATH_END), a));
     }
