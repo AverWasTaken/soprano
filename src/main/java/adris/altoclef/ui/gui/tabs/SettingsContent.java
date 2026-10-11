@@ -11,7 +11,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.BiConsumer;
 
-// categories live in a popover so the setting and its editor can share the whole row. the strip below keeps
+// categories live in a popover so the setting and its editor can share the whole row. the text under the list keeps
 // descriptions readable without making every row tall
 final class SettingsContent extends Widget {
 
@@ -27,7 +27,7 @@ final class SettingsContent extends Widget {
     private int detailY;
     private int detailH;
     private int detailLines;
-    private int detailPad;
+    private int detailTop;
     private int countY;
     private SettingView shownFor;
     private float shownRoom = -1;
@@ -71,8 +71,17 @@ final class SettingsContent extends Widget {
         return super.scroll(mx, my, dy);
     }
 
+    // the line only exists when it says something the dropdown does not. it takes its row back when it goes away
     void setCountLine(String s) {
-        countLine = s;
+        boolean hadRow = !countLine.isEmpty();
+        countLine = s == null ? "" : s;
+        if (hadRow != !countLine.isEmpty() && w > 0) {
+            layout();
+        }
+    }
+
+    String countLine() {
+        return countLine;
     }
 
     SettingView detail() {
@@ -100,20 +109,21 @@ final class SettingsContent extends Widget {
         // the sidebar already has the open key; a short window needs room for an actual settings tile
         keyCard.setVisible(!compact);
         keyCard.setBounds(x + pad, cardY, inner, cardH);
-        int navY = compact ? cardY : cardY + cardH + theme.px(12);
+        int navY = compact ? cardY : cardY + cardH + theme.px(Theme.SPACE_3);
         int navH = toolbar.heightFor(inner);
         toolbar.setBounds(x + pad, navY, inner, navH);
-        countY = navY + navH + theme.px(6);
-        detailLines = compact ? 1 : 2;
-        detailPad = theme.px(compact ? 6 : 10);
+        countY = navY + navH + theme.px(Theme.GAP);
         float titleH = theme.measurer.ascent(theme.label) + theme.measurer.descent(theme.label);
         float lineH = theme.measurer.ascent(theme.small) + theme.measurer.descent(theme.small);
-        // font metrics round independently at each scale. a fixed 56px box cannot promise two lines fit
-        detailH = (int) Math.ceil(2 * detailPad + titleH + theme.px(3)
-                + detailLines * lineH + (detailLines - 1) * theme.px(1));
-        detailY = y + h - detailH - pad;
-        int listY = countY + theme.px(22);
-        browser.setBounds(x + pad, listY, inner, Math.max(0, detailY - theme.px(8) - listY));
+        int listY = countLine.isEmpty() ? countY : countY + (int) Math.ceil(lineH) + theme.px(Theme.GAP);
+        detailLines = compact ? 1 : 2;
+        detailTop = theme.px(compact ? Theme.SPACE_2 : Theme.SPACE_3);
+        int detailBottom = theme.px(compact ? Theme.SPACE_2 : Theme.PAD);
+        // font metrics round independently at each scale. a fixed box cannot promise two lines fit
+        detailH = (int) Math.ceil(1 + detailTop + titleH + theme.px(Theme.SPACE_1)
+                + detailLines * lineH + (detailLines - 1) * theme.px(1) + detailBottom);
+        detailY = y + h - detailH;
+        browser.setBounds(x + pad, listY, inner + browser.gutterWidth(), Math.max(0, detailY - theme.px(Theme.GAP) - listY));
     }
 
     @Override
@@ -128,48 +138,50 @@ final class SettingsContent extends Widget {
             keyCard.draw(c, f);
         }
 
-        int mx = x;
         int pad = theme.px(Theme.PAD);
-        c.text(countLine, mx + pad, countY + theme.px(14), theme.small, theme.color(Theme.TEXT_3));
+        if (!countLine.isEmpty()) {
+            c.text(countLine, x + pad, countY + c.ascent(theme.small), theme.small, theme.color(Theme.TEXT_3));
+        }
 
         browser.draw(c, f);
-        drawDetail(c, mx, pad);
+        drawDetail(c, pad);
     }
 
-    private void drawDetail(Canvas c, int mx, int pad) {
-        int dw = w;
-        theme.field(c, mx + pad, detailY, dw - 2 * pad, detailH, theme.pxf(10));
-        c.pushClip(mx + pad, detailY, Math.max(0, dw - 2 * pad), detailH);
+    // no box: a hairline, then text on the panel. the space is reserved whether or not anything is hovered, so the
+    // list never has to move out of the way of a description that shows up late
+    private void drawDetail(Canvas c, int pad) {
+        c.fillRect(x, detailY, w, 1, theme.color(Theme.HAIRLINE));
+        c.pushClip(x, detailY, w, detailH);
         try {
-            drawDetailText(c, mx, pad);
+            drawDetailText(c, pad);
         } finally {
             c.popClip();
         }
     }
 
-    private void drawDetailText(Canvas c, int mx, int pad) {
-        int dw = w;
-        float tx = mx + pad + theme.px(12);
-        float room = dw - 2 * pad - theme.px(24);
+    private void drawDetailText(Canvas c, int pad) {
+        float tx = x + pad;
+        float room = w - 2 * pad;
         float lh1 = c.ascent(theme.label) + c.descent(theme.label);
         float lh2 = c.ascent(theme.small) + c.descent(theme.small);
-        float top = detailY + detailPad;
+        float top = detailY + 1 + detailTop;
         // the strings below change when the mouse moves to another row or the panel is resized, not every frame
         if (shownFor != detail || shownRoom != room) {
             shownFor = detail;
             shownRoom = room;
-            hintShown = theme.measurer.ellipsize("Hover a setting to read all of its description here.", theme.small, room);
+            hintShown = theme.measurer.ellipsize("Hover a setting to read its full description.", theme.small, room);
             if (detail != null) {
                 String def = "Default " + (detail.defaultValue() == null || detail.defaultValue().isEmpty() ? "empty" : detail.defaultValue());
                 defShown = theme.measurer.ellipsize(def, theme.small, room * 0.4f);
                 defW = c.measure(defShown, theme.small);
-                nameShown = theme.measurer.ellipsize(detail.name(), theme.label, room - defW - theme.px(12));
+                nameShown = theme.measurer.ellipsize(detail.name(), theme.label, room - defW - theme.px(Theme.SPACE_3));
             }
         }
         if (detail == null) {
-            c.text(hintShown, tx, detailY + detailH / 2f + (c.ascent(theme.small) - c.descent(theme.small)) / 2f, theme.small, theme.color(Theme.TEXT_3));
+            c.text(hintShown, tx, top + c.ascent(theme.small), theme.small, theme.color(Theme.TEXT_3));
             return;
         }
+        // the default shares the name's baseline, not its top, so the two read as one line
         c.text(defShown, tx + room - defW, top + c.ascent(theme.label), theme.small, theme.color(Theme.TEXT_3));
         c.text(nameShown, tx, top + c.ascent(theme.label), theme.label, theme.color(Theme.TEXT));
         String text = detailText.isEmpty() ? "No description." : detailText;
@@ -181,7 +193,7 @@ final class SettingsContent extends Widget {
         }
         List<String> lines = wrapped;
         for (int i = 0; i < lines.size(); i++) {
-            c.text(lines.get(i), tx, top + lh1 + theme.px(3) + c.ascent(theme.small) + i * (lh2 + theme.px(1)), theme.small,
+            c.text(lines.get(i), tx, top + lh1 + theme.px(Theme.SPACE_1) + c.ascent(theme.small) + i * (lh2 + theme.px(1)), theme.small,
                     detailText.isEmpty() ? theme.color(Theme.TEXT_3) : theme.color(Theme.TEXT_2));
         }
     }

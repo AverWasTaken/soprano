@@ -17,6 +17,9 @@ import java.util.function.Consumer;
 // categories are a submenu now. the two common filters stay beside it instead of claiming a second sidebar
 final class SettingsToolbar extends Widget {
 
+    private static final String ADVANCED = "Advanced";
+    private static final String MODIFIED = "Modified";
+
     private final List<String> labels = new ArrayList<>();
     private final Consumer<String> onCategory;
     private final Dropdown categories;
@@ -24,6 +27,8 @@ final class SettingsToolbar extends Widget {
     private final Toggle advancedToggle;
     private final List<Widget> kids;
     private int selected;
+    private int advancedLabelX;
+    private int modifiedLabelX;
 
     SettingsToolbar(Theme theme, ShellContext ctx, Consumer<String> onCategory,
                     Consumer<Boolean> onModifiedOnly, Consumer<Boolean> onAdvanced) {
@@ -42,6 +47,11 @@ final class SettingsToolbar extends Widget {
 
     Dropdown categories() {
         return categories;
+    }
+
+    // the leftmost thing on the right-hand side, for anyone checking the dropdown does not run into it
+    int togglesLeft() {
+        return advancedLabelX;
     }
 
     Toggle modifiedToggle() {
@@ -65,7 +75,7 @@ final class SettingsToolbar extends Widget {
     }
 
     int heightFor(int width) {
-        return theme.px(width < theme.px(340) ? 66 : Theme.CONTROL_H);
+        return width < theme.px(340) ? theme.px(2 * Theme.CONTROL_H + Theme.GAP) : theme.px(Theme.CONTROL_H);
     }
 
     private void choose(int i) {
@@ -78,13 +88,17 @@ final class SettingsToolbar extends Widget {
         int ch = theme.px(Theme.CONTROL_H);
         boolean narrow = w < theme.px(340);
         categories.setBounds(x, y, narrow ? w : Math.min(theme.px(260), w - theme.px(240)), ch);
-        int fy = narrow ? y + ch + theme.px(6) : y;
+        int fy = narrow ? y + ch + theme.px(Theme.GAP) : y;
         int th = modifiedToggle.preferredHeight();
         int tw = modifiedToggle.preferredWidth();
-        int mw = (int) Math.ceil(theme.measurer.measure("Modified", theme.small));
-        int aw = (int) Math.ceil(theme.measurer.measure("Advanced", theme.small));
-        modifiedToggle.setBounds(x + w - mw - theme.px(8) - tw, fy + (ch - th) / 2, tw, th);
-        advancedToggle.setBounds(modifiedToggle.x() - theme.px(20) - aw - theme.px(8) - tw, fy + (ch - th) / 2, tw, th);
+        int mw = (int) Math.ceil(theme.measurer.measure(MODIFIED, theme.small));
+        int aw = (int) Math.ceil(theme.measurer.measure(ADVANCED, theme.small));
+        int gap = theme.px(Theme.GAP);
+        // label then switch, same order as the open key card. the two pairs hug the right edge
+        modifiedToggle.setBounds(x + w - tw, fy + (ch - th) / 2, tw, th);
+        modifiedLabelX = modifiedToggle.x() - gap - mw;
+        advancedToggle.setBounds(modifiedLabelX - theme.px(Theme.SPACE_3 + Theme.GAP) - tw, fy + (ch - th) / 2, tw, th);
+        advancedLabelX = advancedToggle.x() - gap - aw;
     }
 
     @Override
@@ -95,11 +109,14 @@ final class SettingsToolbar extends Widget {
     @Override
     public void draw(Canvas c, Frame f) {
         categories.draw(c, f);
-        for (Toggle toggle : List.of(advancedToggle, modifiedToggle)) {
-            toggle.draw(c, f);
-            String label = toggle == advancedToggle ? "Advanced" : "Modified";
-            float base = toggle.y() + toggle.h() / 2f + (c.ascent(theme.small) - c.descent(theme.small)) / 2f;
-            c.text(label, toggle.x() + toggle.w() + theme.px(8), base, theme.small, theme.color(Theme.TEXT_2));
-        }
+        label(c, advancedToggle, ADVANCED, advancedLabelX);
+        label(c, modifiedToggle, MODIFIED, modifiedLabelX);
+        advancedToggle.draw(c, f);
+        modifiedToggle.draw(c, f);
+    }
+
+    private void label(Canvas c, Toggle toggle, String text, int lx) {
+        float base = toggle.y() + toggle.h() / 2f + (c.ascent(theme.small) - c.descent(theme.small)) / 2f;
+        c.text(text, lx, base, theme.small, theme.color(Theme.TEXT_2));
     }
 }

@@ -141,21 +141,17 @@ public final class SettingsTab implements Tab, SettingHost {
         toolbar.setData(SettingsFilter.counts(all, advanced), category, modifiedOnly, advanced);
     }
 
+    // the dropdown already says how many settings there are. this line only turns up when a search or the modified
+    // filter has narrowed things down, and an empty result says so in the list itself
     private String countLine(int n) {
-        StringBuilder sb = new StringBuilder().append(n).append(n == 1 ? " setting" : " settings");
-        if (!query.isBlank()) {
-            sb.append(" matching \"").append(query.trim()).append('"');
+        boolean searching = !query.isBlank();
+        if (n == 0 || !(searching || modifiedOnly)) {
+            return "";
         }
-        if (!category.equals(SettingsFilter.ALL)) {
-            sb.append(" in ").append(category);
+        if (searching) {
+            return n + (modifiedOnly ? " matching, modified only" : " matching");
         }
-        if (modifiedOnly) {
-            sb.append(" \u00b7 modified only");
-        }
-        if (!advanced && SettingsFilter.advancedCount(all) > 0) {
-            sb.append(" \u00b7 advanced hidden");
-        }
-        return sb.toString();
+        return n + " modified";
     }
 
     private String emptyText() {

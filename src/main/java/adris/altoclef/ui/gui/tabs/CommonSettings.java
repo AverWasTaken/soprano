@@ -36,6 +36,8 @@ final class CommonSettings extends Widget {
             new Spec("renderPath", "Show path", Icon.GOTO)
     );
 
+    private static final int TILE_H = 76;
+
     private final ShellContext ctx;
     private final SettingHost host;
     private final List<Tile> tiles = new ArrayList<>();
@@ -88,18 +90,34 @@ final class CommonSettings extends Widget {
         return Math.max(1, Math.min(6, width / theme.px(112)));
     }
 
-    int heightFor(int width) {
-        return tiles.isEmpty() ? 0 : theme.px(24) + (tiles.size() + columns(width) - 1) / columns(width) * theme.px(88);
+    // a section heading's own line: the label and the breathing room under it. the advanced heading in the browser
+    // uses the same numbers so the two read as one family
+    static int headingHeight(Theme theme) {
+        return (int) Math.ceil(theme.measurer.ascent(theme.label) + theme.measurer.descent(theme.label)) + theme.px(Theme.SECTION_BELOW);
     }
 
+    // room for the glyph, the name and On/Off with a little air under them
+    private int tileH() {
+        return theme.px(TILE_H);
+    }
+
+    int heightFor(int width) {
+        int rows = (tiles.size() + columns(width) - 1) / columns(width);
+        return tiles.isEmpty() ? 0 : headingHeight(theme) + rows * tileH() + (rows - 1) * theme.px(Theme.GAP);
+    }
+
+    // tiles run edge to edge so the grid lines up with the card below it. the leftover pixels from the division are
+    // shared out per column instead of piling up on the right
     @Override
     protected void layout() {
         int cols = columns(w);
-        int cw = w / cols;
-        int gap = theme.px(6);
+        int gap = theme.px(Theme.GAP);
+        int top = y + headingHeight(theme);
         for (int i = 0; i < tiles.size(); i++) {
-            tiles.get(i).setBounds(x + (i % cols) * cw + gap, y + theme.px(24) + (i / cols) * theme.px(88) + gap,
-                    Math.max(0, cw - 2 * gap), theme.px(88) - 2 * gap);
+            int col = i % cols;
+            int x0 = Math.round(col * (w + gap) / (float) cols);
+            int x1 = Math.round((col + 1) * (w + gap) / (float) cols) - gap;
+            tiles.get(i).setBounds(x + x0, top + (i / cols) * (tileH() + gap), Math.max(0, x1 - x0), tileH());
         }
     }
 
@@ -110,7 +128,7 @@ final class CommonSettings extends Widget {
 
     @Override
     public void draw(Canvas c, Frame f) {
-        c.text("Common settings", x + theme.px(6), y + theme.px(16), theme.label, theme.color(Theme.TEXT));
+        c.text("Common settings", x, y + c.ascent(theme.label), theme.label, theme.color(Theme.TEXT));
         for (Tile tile : tiles) {
             tile.draw(c, f);
         }

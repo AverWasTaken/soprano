@@ -144,9 +144,49 @@ public class SettingsTabPreviewTest {
         p.shell.setBounds(p.shell.x(), p.shell.y(), p.theme.px(560), p.theme.px(360));
         assertTrue(tab.settingsContent().browser().h() >= p.theme.px(48));
         assertTrue(tab.toolbar().categories().x() + tab.toolbar().categories().w()
-                < tab.toolbar().modifiedToggle().x());
+                < tab.toolbar().togglesLeft());
         p.settle();
         p.savePanel("settings_minimum_size");
+    }
+
+    // the hover fill follows the card: rounded at the top on the first row, at the bottom on the last, square between
+    @Test
+    public void rowHoverFollowsTheCardCorners() throws Exception {
+        Preview p = open(1600, 900);
+        tab.onSearch("allow");
+        p.settle();
+        p.advance(400);
+        p.settle();
+        List<SettingRow> rows = tab.rows().stream().filter(SettingRow::visible).sorted(java.util.Comparator.comparingInt(SettingRow::y)).toList();
+        assertTrue(rows.size() >= 3);
+        SettingRow first = rows.get(0);
+        SettingRow middle = rows.get(1);
+        for (SettingRow r : List.of(first, middle)) {
+            p.hover(r.x() + 60, r.y() + r.h() / 2f);
+            p.settle();
+            p.savePanel("settings_row_hover_" + (r == first ? "first" : "middle"));
+        }
+        // the last row is only on screen once the list is scrolled to the end
+        p.shell.focus(tab.settingsContent().browser());
+        p.key(Keys.END);
+        p.advance(600);
+        p.settle();
+        SettingRow last = tab.rows().stream().filter(SettingRow::visible)
+                .filter(r -> r.y() + r.h() <= tab.settingsContent().browser().y() + tab.settingsContent().browser().h())
+                .max(java.util.Comparator.comparingInt(SettingRow::y)).orElseThrow();
+        p.hover(last.x() + 60, last.y() + last.h() / 2f);
+        p.settle();
+        p.savePanel("settings_row_hover_last");
+        // a pinned row makes room for the pin instead of sitting on the name
+        String pinned = first.name();
+        adris.altoclef.ui.gui.model.Pinned.toggleSetting(pinned);
+        try {
+            p.settle();
+            p.advance(300);
+            p.savePanel("settings_row_pinned");
+        } finally {
+            adris.altoclef.ui.gui.model.Pinned.toggleSetting(pinned);
+        }
     }
 
     @Test

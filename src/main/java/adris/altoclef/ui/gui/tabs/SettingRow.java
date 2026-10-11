@@ -50,6 +50,8 @@ final class SettingRow extends RowWidgets.Row<SettingView> {
     private TextField[] boxes = NO_BOXES;
 
     private SettingView item;
+    private int index;
+    private int count;
     private NumberField number;
     // what the three colour boxes say right now, or null when they do not parse. the swatch follows typing
     private int[] liveRgb;
@@ -123,12 +125,13 @@ final class SettingRow extends RowWidgets.Row<SettingView> {
     // ----- data
 
     @Override
-    public void bind(SettingView v, int index) {
+    public void bind(SettingView v, int index0) {
         // a popup opened for the last setting would pick into this one
         if (dropdown.isOpen()) {
             ctx.closeOverlay();
         }
         item = v;
+        index = index0;
         desc = host.description(v.name());
         error = null;
         confirmingReset = false;
@@ -152,6 +155,11 @@ final class SettingRow extends RowWidgets.Row<SettingView> {
 
     String name() {
         return item == null ? null : item.name();
+    }
+
+    // the browser says how long the list is, so the first and last row can follow the corners of the card
+    void setCount(int n) {
+        count = n;
     }
 
     // the sentence replacing the description right now, or null
@@ -459,10 +467,10 @@ final class SettingRow extends RowWidgets.Row<SettingView> {
             return;
         }
         int rs = theme.px(28);
-        int rightEdge = x + w - theme.px(16);
+        int rightEdge = x + w - theme.px(Theme.PAD);
         reset.setBounds(rightEdge - rs, y + (h - rs) / 2, rs, rs);
         pin.setBounds(rightEdge - rs - theme.px(2) - rs, y + (h - rs) / 2, rs, rs);
-        int right = pin.x() - theme.px(8);
+        int right = pin.x() - theme.px(Theme.GAP);
         int ch = theme.px(Theme.CONTROL_H);
         int ey = y + (h - ch) / 2;
         int ew = Math.min(editorWidth(item.kind()), Math.round(w * 0.5f));
@@ -478,8 +486,8 @@ final class SettingRow extends RowWidgets.Row<SettingView> {
                 swatchS = theme.px(22);
                 swatchX = left;
                 swatchY = y + (h - swatchS) / 2;
-                int gap = theme.px(4);
-                int boxX = left + swatchS + theme.px(8);
+                int gap = theme.px(Theme.SPACE_1);
+                int boxX = left + swatchS + theme.px(Theme.GAP);
                 int bw = (right - boxX - 2 * gap) / 3;
                 for (int i = 0; i < 3; i++) {
                     rgb[i].setBounds(boxX + i * (bw + gap), ey, bw, ch);
@@ -491,8 +499,9 @@ final class SettingRow extends RowWidgets.Row<SettingView> {
             case KEY -> key.setBounds(left, ey, ew, ch);
             default -> other.setBounds(left, ey, ew, ch);
         }
-        textLeft = x + theme.px(16) + theme.px(10);
-        textRight = left - theme.px(16);
+        // room for the pin (16 wide, 12 in) before the name starts
+        textLeft = x + theme.px(Theme.PAD + Theme.ICON);
+        textRight = left - theme.px(Theme.PAD);
         nameShownFor = -1;
         lineKey = null;
     }
@@ -517,8 +526,11 @@ final class SettingRow extends RowWidgets.Row<SettingView> {
         }
         blurCommits();
         if (hovered) {
-            c.fillRoundRect(x + theme.px(6), y + theme.px(2), w - theme.px(12), h - theme.px(4), theme.pxf(Theme.ROW_RADIUS) + 2,
-                    Theme.fade(theme.color(Theme.HOVER), 0.7f));
+            drawHover(c);
+        }
+        // the hairline between two rows starts at the dot column and runs out to the card edge, like a grouped list
+        if (index > 0) {
+            c.fillRect(x + theme.px(Theme.PAD), y, w - theme.px(Theme.PAD) - 1, 1, theme.color(Theme.HAIRLINE));
         }
         reset.setVisible(item.modified() || active);
         pin.setVisible(active || Pinned.isSetting(item.name()));
@@ -531,17 +543,17 @@ final class SettingRow extends RowWidgets.Row<SettingView> {
         float avail = Math.max(0, textRight - textLeft);
         float lh1 = c.ascent(theme.label) + c.descent(theme.label);
         float lh2 = c.ascent(theme.small) + c.descent(theme.small);
-        float gap = theme.px(3);
+        float gap = theme.px(Theme.SPACE_1);
         float top = y + (h - (lh1 + gap + lh2)) / 2f;
         float base1 = top + c.ascent(theme.label);
         float base2 = top + lh1 + gap + c.ascent(theme.small);
 
         if (Pinned.isSetting(item.name())) {
             int is = theme.px(Theme.ICON);
-            c.icon(Icon.PIN, x + theme.px(12), y + (h - is) / 2f, is, theme.color(Theme.ACCENT));
+            c.icon(Icon.PIN, x + theme.px(Theme.SPACE_3), y + (h - is) / 2f, is, theme.color(Theme.ACCENT));
         } else if (item.modified()) {
-            float d = theme.px(4);
-            c.fillRoundRect(x + theme.px(16), top + lh1 / 2f - d / 2f, d, d, d / 2f, theme.color(Theme.ACCENT));
+            float d = theme.px(Theme.SPACE_1);
+            c.fillRoundRect(x + theme.px(Theme.PAD), top + lh1 / 2f - d / 2f, d, d, d / 2f, theme.color(Theme.ACCENT));
         }
         if (nameShownFor != avail) {
             nameShownFor = avail;
@@ -561,8 +573,6 @@ final class SettingRow extends RowWidgets.Row<SettingView> {
         }
         c.text(lineShown, textLeft, base2, theme.small, lineCol);
 
-        c.fillRect(x + theme.px(16), y + h - 1, w - theme.px(32), 1, Theme.fade(theme.color(Theme.HAIRLINE), 0.7f));
-
         if (item.kind() == Kind.COLOR) {
             drawSwatch(c);
         }
@@ -570,6 +580,29 @@ final class SettingRow extends RowWidgets.Row<SettingView> {
             if (k.visible()) {
                 k.draw(c, f);
             }
+        }
+    }
+
+    // the fill stays inside the card's stroke, and the first and last row take the card's corners. a round rect taller
+    // than the row, clipped to the row, gives rounded corners on one side and square on the other
+    private void drawHover(Canvas c) {
+        int col = theme.color(Theme.HOVER);
+        boolean first = index == 0;
+        boolean last = index == count - 1;
+        float left = x + 1;
+        float width = w - 2;
+        if (!first && !last) {
+            c.fillRect(left, y, width, h, col);
+            return;
+        }
+        float top = first ? y + 1 : y;
+        float bottom = last ? y + h - 1 : y + h;
+        c.pushClip(left, top, width, bottom - top);
+        try {
+            c.fillRoundRect(left, first ? top : y - h, width, (last ? bottom : y + 2 * h) - (first ? top : y - h),
+                    theme.pxf(Theme.CARD_RADIUS) - 1, col);
+        } finally {
+            c.popClip();
         }
     }
 

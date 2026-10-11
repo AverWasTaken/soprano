@@ -63,17 +63,17 @@ final class SettingKeyCard extends Widget {
     @Override
     protected void layout() {
         compact = compactFor(theme, w);
-        int pad = theme.px(16);
+        int pad = theme.px(Theme.PAD);
         int ch = theme.px(Theme.CONTROL_H);
         int kw = theme.px(112);
         int tw = enabled.preferredWidth();
         int th = enabled.preferredHeight();
-        int cy = compact ? y + h - theme.px(12) - ch : y + (h - ch) / 2;
+        int cy = compact ? y + h - theme.px(Theme.SPACE_3) - ch : y + (h - ch) / 2;
         int right = x + w - pad;
         enabled.setBounds(right - tw, cy + (ch - th) / 2, tw, th);
         // the label sits between the key box and the switch, measured so it never touches either
         labelW = Math.round(theme.measurer.measure(ENABLED, theme.small));
-        capture.setBounds(right - tw - theme.px(8) - labelW - theme.px(14) - kw, cy, kw, ch);
+        capture.setBounds(right - tw - theme.px(Theme.GAP) - labelW - theme.px(Theme.SPACE_3) - kw, cy, kw, ch);
         bodyShown = null;
     }
 
@@ -84,16 +84,16 @@ final class SettingKeyCard extends Widget {
 
     @Override
     public void draw(Canvas c, Frame f) {
-        theme.card(c, x, y, w, h, theme.pxf(12), true);
-        int pad = theme.px(16);
+        theme.card(c, x, y, w, h, theme.pxf(Theme.CARD_RADIUS), false);
+        int pad = theme.px(Theme.PAD);
         int is = theme.px(Theme.ICON);
-        float textX = x + pad + is + theme.px(12);
+        float textX = x + pad + is + theme.px(Theme.SPACE_3);
         float lh1 = c.ascent(theme.label) + c.descent(theme.label);
         float lh2 = c.ascent(theme.small) + c.descent(theme.small);
-        float gap = theme.px(3);
+        float gap = theme.px(Theme.SPACE_1);
         float block = lh1 + gap + lh2;
-        float top = compact ? y + theme.px(14) : y + (h - block) / 2f;
-        float room = (compact ? x + w - pad : capture.x() - theme.px(16)) - textX;
+        float top = compact ? y + theme.px(Theme.SPACE_3) : y + (h - block) / 2f;
+        float room = (compact ? x + w - pad : capture.x() - theme.px(Theme.PAD)) - textX;
         c.icon(Icon.KEY, x + pad, top + (block - is) / 2f, is, theme.color(Theme.TEXT_2));
         c.text(TITLE, textX, top + c.ascent(theme.label), theme.label, theme.color(Theme.TEXT));
         if (bodyShown == null) {
@@ -102,7 +102,7 @@ final class SettingKeyCard extends Widget {
         c.text(bodyShown, textX, top + lh1 + gap + c.ascent(theme.small), theme.small, theme.color(Theme.TEXT_2));
 
         capture.draw(c, f);
-        c.text(ENABLED, enabled.x() - theme.px(8) - labelW, enabled.y() + enabled.h() / 2f + (c.ascent(theme.small) - c.descent(theme.small)) / 2f,
+        c.text(ENABLED, enabled.x() - theme.px(Theme.GAP) - labelW, enabled.y() + enabled.h() / 2f + (c.ascent(theme.small) - c.descent(theme.small)) / 2f,
                 theme.small, theme.color(Theme.TEXT_2));
         enabled.draw(c, f);
     }

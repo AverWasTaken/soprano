@@ -99,6 +99,24 @@ public class SettingsTabTest {
     }
 
     @Test
+    public void countLineOnlyShowsUpWhenSomethingNarrowedTheList() {
+        SettingsContent content = tab.settingsContent();
+        assertEquals("", content.countLine());
+        int listTop = content.browser().y();
+        tab.onSearch("parkour");
+        p.settle();
+        assertEquals(tab.list().items().size() + " matching", content.countLine());
+        assertTrue("the list gives way to the line", content.browser().y() > listTop);
+        tab.onSearch("");
+        p.settle();
+        assertEquals("", content.countLine());
+        assertEquals(listTop, content.browser().y());
+        tab.onSearch("zzzzzz");
+        p.settle();
+        assertEquals("", content.countLine());
+    }
+
+    @Test
     public void toggleCallsSetAndShowsTheModifiedDot() {
         SettingRow r = show("allowParkour");
         assertFalse(view("allowParkour").modified());

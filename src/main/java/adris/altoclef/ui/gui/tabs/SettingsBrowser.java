@@ -21,11 +21,35 @@ final class SettingsBrowser extends VirtualView<SettingView> {
         this.common = common;
         this.list = list;
         list.setScrollbarVisible(false);
-        common.setReveal((top, bottom) -> scroller.ensureVisible(top, bottom, now));
+        // tile coordinates are relative to the tile block, the scroller counts from the top of everything
+        common.setReveal((top, bottom) -> scroller.ensureVisible(top + lead(), bottom + lead(), now));
+    }
+
+    // the scrollbar lives in this strip. the owner widens the browser by it so the cards still line up with the toolbar
+    int gutterWidth() {
+        return gutter();
+    }
+
+    private boolean showCommon() {
+        return common.visible() && common.size() > 0;
+    }
+
+    // with nothing under it a heading would just be a label for a blank. the tiles carry the page on their own then
+    private boolean showAdvancedHeading() {
+        return showCommon() && !list.items().isEmpty();
+    }
+
+    // the content already leaves a GAP under the toolbar, so the first heading tops up to a full SECTION of air
+    private int lead() {
+        return showCommon() ? theme.px(Theme.SECTION - Theme.GAP) : 0;
     }
 
     private int headerHeight() {
-        return common.visible() && common.size() > 0 ? common.heightFor(Math.max(0, w - gutter())) + theme.px(30) : 0;
+        if (!showCommon()) {
+            return 0;
+        }
+        int head = lead() + common.heightFor(Math.max(0, w - gutter()));
+        return showAdvancedHeading() ? head + theme.px(Theme.SECTION) + CommonSettings.headingHeight(theme) : head;
     }
 
     @Override
@@ -48,9 +72,10 @@ final class SettingsBrowser extends VirtualView<SettingView> {
         int off = Math.round(scroller.offset(now));
         int header = headerHeight();
         int width = Math.max(0, w - gutter());
-        common.setBounds(x, y - off, width, common.heightFor(width));
+        common.setBounds(x, y - off + lead(), width, common.heightFor(width));
         int top = Math.min(h, Math.max(0, header - off));
-        list.setBounds(x, y + top, width, Math.max(0, h - top));
+        // the list takes its own gutter off its rows, so it gets ours back and the rows end up exactly as wide as the tiles
+        list.setBounds(x, y + top, w, Math.max(0, h - top));
         list.scroller().snapTo(Math.max(0, off - header));
     }
 
@@ -122,15 +147,40 @@ final class SettingsBrowser extends VirtualView<SettingView> {
         sync();
         c.pushClip(x, y, w, h);
         try {
-            if (common.visible() && common.size() > 0) {
+            if (showCommon()) {
                 common.draw(c, f);
-                c.text("Advanced settings", x + theme.px(6), common.y() + common.h() + theme.px(20), theme.label, theme.color(Theme.TEXT));
+                if (showAdvancedHeading()) {
+                    float top = common.y() + common.h() + theme.px(Theme.SECTION);
+                    c.text("Advanced settings", x, top + c.ascent(theme.label), theme.label, theme.color(Theme.TEXT));
+                }
             }
-            theme.card(c, list.x(), list.y(), list.w(), list.h(), theme.pxf(12), false);
-            list.draw(c, f);
+            drawList(c, f);
         } finally {
             c.popClip();
         }
         drawScrollbar(c);
+    }
+
+    // one card around the rows, as tall as the rows are. it scrolls with them, so the top and bottom edge are only
+    // there when you can see the first and last row
+    private void drawList(Canvas c, Frame f) {
+        int n = list.items().size();
+        if (n == 0) {
+            // an empty list still says why, but under tiles it would be a stray sentence
+            if (!showCommon()) {
+                list.draw(c, f);
+            }
+            return;
+        }
+        int rowH = list.rowHeight();
+        int top = list.y() - Math.round(list.scroller().offset(now));
+        theme.card(c, list.x(), top, list.w() - gutter(), n * rowH, theme.pxf(Theme.CARD_RADIUS), false);
+        // rows are pooled and do not know how many there are, the corners of the hover fill need to
+        for (Widget k : list.children()) {
+            if (k instanceof SettingRow row) {
+                row.setCount(n);
+            }
+        }
+        list.draw(c, f);
     }
 }
