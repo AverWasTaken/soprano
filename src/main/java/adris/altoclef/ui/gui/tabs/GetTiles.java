@@ -1,0 +1,115 @@
+package adris.altoclef.ui.gui.tabs;
+
+import adris.altoclef.ui.gui.facade.ItemsAccess.ItemEntry;
+import adris.altoclef.ui.gui.kit.Canvas;
+import adris.altoclef.ui.gui.kit.TextMeasurer;
+import adris.altoclef.ui.gui.kit.TextStyle;
+import adris.altoclef.ui.gui.kit.Theme;
+
+import java.util.HashMap;
+import java.util.Map;
+
+// one item tile, shared by the grid and the recent strip so a tile looks the same wherever it shows up. everything is
+// drawn inside the cell it is given: the grid clips, but the game's item renderer is the thing that likes to wander
+final class GetTiles {
+
+    private final Theme theme;
+    private final Map<String, String[]> lineCache = new HashMap<>();
+    private float cachedW = -1f;
+
+    GetTiles(Theme theme) {
+        this.theme = theme;
+    }
+
+    int cellW() {
+        return theme.px(96);
+    }
+
+    int cellH() {
+        return theme.px(88);
+    }
+
+    // same maths as VirtualGrid, so the recent strip lines up with the columns under it
+    int columns(int w) {
+        return Math.max(1, (w - theme.px(10)) / cellW());
+    }
+
+    int cellWidth(int w) {
+        return Math.max(1, (w - theme.px(10)) / columns(w));
+    }
+
+    // a name that does not fit wraps after a space or underscore ("Diamond" / "Pickaxe") instead of being cut mid word
+    String[] nameLines(TextMeasurer m, String name, TextStyle style, float maxW) {
+        if (maxW != cachedW) {
+            lineCache.clear();
+            cachedW = maxW;
+        }
+        String[] hit = lineCache.get(name);
+        if (hit != null) {
+            return hit;
+        }
+        String[] out;
+        if (m.measure(name, style) <= maxW) {
+            out = new String[] {name};
+        } else {
+            int best = -1;
+            for (int i = 0; i < name.length() - 1; i++) {
+                char ch = name.charAt(i);
+                if ((ch == '_' || ch == ' ') && m.measure(name.substring(0, i + 1).stripTrailing(), style) <= maxW) {
+                    best = i;
+                }
+            }
+            out = best < 0
+                    ? new String[] {m.ellipsize(name, style, maxW)}
+                    : new String[] {name.substring(0, best + 1).stripTrailing(),
+                            m.ellipsize(name.substring(best + 1), style, maxW)};
+        }
+        if (lineCache.size() > 512) {
+            lineCache.clear();
+        }
+        lineCache.put(name, out);
+        return out;
+    }
+
+    // count < 0 means not in the basket. count 0 is in the basket with nothing to show (a mine block has no count)
+    void draw(Canvas c, ItemEntry e, int count, int x, int y, int w, int h, boolean hovered) {
+        int inset = theme.px(2);
+        float rx = x + inset;
+        float ry = y + inset;
+        float rw = w - 2 * inset;
+        float rh = h - 2 * inset;
+        float radius = theme.pxf(Theme.ROW_RADIUS);
+        if (hovered) {
+            c.fillRoundRect(rx, ry, rw, rh, radius, Theme.HOVER);
+        }
+        if (count >= 0) {
+            c.strokeRoundRect(rx, ry, rw, rh, radius, Theme.ACCENT);
+        }
+        // the item is the star of the tile: two whole icon sizes, still a multiple of 16
+        int s = theme.itemIconPx() * 2;
+        int iy = y + theme.px(10);
+        c.itemIcon(e.iconItemId(), x + (w - s) / 2, iy, s);
+
+        TextStyle small = theme.small;
+        float maxW = rw - 2 * theme.px(4);
+        String[] lines = nameLines(c, e.displayName(), small, maxW);
+        float base = iy + s + theme.px(6) + c.ascent(small);
+        float step = (float) Math.ceil(c.lineHeight(small));
+        for (int i = 0; i < lines.length; i++) {
+            float tw = c.measure(lines[i], small);
+            c.text(lines[i], x + (w - tw) / 2f, base + i * step, small, hovered || count >= 0 ? Theme.TEXT : Theme.TEXT_2);
+        }
+
+        if (count > 0) {
+            TextStyle bs = theme.smallLabel.asTabular();
+            String t = count > 999 ? "999+" : String.valueOf(count);
+            float ph = theme.px(16);
+            float pw = Math.max(ph, c.measure(t, bs) + theme.px(10));
+            float px = rx + rw - pw - theme.px(5);
+            float py = ry + theme.px(5);
+            c.fillRoundRect(px, py, pw, ph, ph / 2f, Theme.ACCENT);
+            float tb = py + ph / 2f + (c.ascent(bs) - c.descent(bs)) / 2f;
+            c.text(t, px + (pw - c.measure(t, bs)) / 2f, tb, bs, Theme.ON_ACCENT);
+        }
+    }
+}
