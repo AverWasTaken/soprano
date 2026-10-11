@@ -3,6 +3,7 @@ package adris.altoclef.ui.gui.preview;
 import adris.altoclef.ui.gui.facade.BotFacade;
 import adris.altoclef.ui.gui.kit.Anim;
 import adris.altoclef.ui.gui.kit.AwtFonts;
+import adris.altoclef.ui.gui.kit.DeferredContext;
 import adris.altoclef.ui.gui.kit.Frame;
 import adris.altoclef.ui.gui.kit.GlyphAtlas;
 import adris.altoclef.ui.gui.kit.ShapeAtlas;
@@ -33,6 +34,8 @@ public final class Preview {
     public final GlyphAtlas glyphs;
     public final ShapeAtlas shapes;
     public final FakeFacade facade;
+    // hand this to a tab's constructor; it points at the shell once the shell exists
+    public final DeferredContext ctx;
     public final Shell shell;
     public float mouseX = -100;
     public float mouseY = -100;
@@ -45,9 +48,11 @@ public final class Preview {
         glyphs = new GlyphAtlas(AwtFonts.load());
         shapes = new ShapeAtlas();
         theme = new Theme(Theme.scaleFor(winH), glyphs);
-        // the tabs need the theme, the shell needs the tabs
+        ctx = new DeferredContext(theme, facade.clipboard());
+        // the tabs need the theme and a context, the shell needs the tabs
         shell = new Shell(theme, tabs.apply(this), facade.status(), facade.keyNames(), 344, k -> facade.actions.add("rebind " + k),
                 facade.clipboard(), () -> facade.actions.add("close"));
+        ctx.attach(shell);
         shell.setViewport(winW, winH);
         // land on the fully open state unless a test asks for a mid-animation frame
         shell.open(now);
@@ -97,6 +102,30 @@ public final class Preview {
 
     public void tick() {
         shell.tick();
+    }
+
+    // draws a throwaway frame so things that start their clock on first draw (toasts, row fades) get going
+    public void settle() {
+        render();
+        advance(16);
+    }
+
+    // a mouse down without the up, for pressed states and drags
+    public void press(float x, float y) {
+        hover(x, y);
+        shell.mouseDown(x, y, 0, 0);
+        advance(16);
+    }
+
+    public void release(float x, float y) {
+        shell.mouseUp(x, y, 0, 0);
+        advance(16);
+    }
+
+    public void scroll(float x, float y, float notches) {
+        hover(x, y);
+        shell.scroll(x, y, notches);
+        advance(16);
     }
 
     public Java2dCanvas render() {

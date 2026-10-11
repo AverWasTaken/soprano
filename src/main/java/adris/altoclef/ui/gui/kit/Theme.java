@@ -13,8 +13,10 @@ public final class Theme {
     public static final int HAIRLINE = 0xFF27272B;
     public static final int HAIRLINE_STRONG = 0xFF3A3A40;
     public static final int TEXT = 0xFFF2F2F3;
-    public static final int TEXT_2 = 0xFFA2A2A9;
-    public static final int TEXT_3 = 0xFF6C6C74;
+    // text_2 is about 9:1 on the panel, text_3 about 4.6:1: the dimmest thing that still carries information
+    // must survive a squint on a near-black surface. placeholders may sit on text_3, nothing informative lower
+    public static final int TEXT_2 = 0xFFB0B0B7;
+    public static final int TEXT_3 = 0xFF85858E;
     public static final int ACCENT = 0xFFFFFFFF;
     public static final int ON_ACCENT = 0xFF0E0E10;
     public static final int DANGER = 0xFFC96B6B;
@@ -22,7 +24,7 @@ public final class Theme {
     public static final int SHADOW = 0x66000000;
 
     // design sizes at scale 1
-    public static final int SIDEBAR_W = 176;
+    public static final int SIDEBAR_W = 196;
     public static final int HEADER_H = 52;
     public static final int STATUS_H = 40;
     public static final int PANEL_RADIUS = 10;
@@ -53,11 +55,17 @@ public final class Theme {
     public Theme(float scale, TextMeasurer measurer) {
         this.scale = scale;
         this.measurer = measurer;
-        this.title = new TextStyle(Weight.SEMIBOLD, px(18));
-        this.label = new TextStyle(Weight.MEDIUM, px(13));
-        this.body = new TextStyle(Weight.REGULAR, px(13));
-        this.small = new TextStyle(Weight.REGULAR, px(11));
-        this.smallLabel = new TextStyle(Weight.MEDIUM, px(11));
+        this.title = new TextStyle(Weight.SEMIBOLD, px(20));
+        this.label = new TextStyle(Weight.MEDIUM, px(14));
+        this.body = new TextStyle(Weight.REGULAR, px(14));
+        this.small = new TextStyle(Weight.REGULAR, px(12));
+        this.smallLabel = new TextStyle(Weight.MEDIUM, px(12));
+    }
+
+    // a minecraft item icon is 16 px of texture: draw it at a whole multiple so the pixels stay crisp, and lay
+    // out with this size in the preview too so the real icons do not shift anything
+    public int itemIconPx() {
+        return 16 * Math.max(1, Math.round(scale));
     }
 
     public int px(int design) {

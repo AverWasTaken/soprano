@@ -111,6 +111,7 @@ public class ShellPreviewTest {
         f.status.activity = new StatusAccess.Activity(true, "Mining iron_ore", "goal 120 64 -30", null);
         p.tick();
         p.shell.toast("Getting 64 oak_log, 3 iron_ingot", "get oak_log 64 iron_ingot 3");
+        p.settle();
         p.advance(400);
         p.save("shell_busy_toast");
 
@@ -118,7 +119,9 @@ public class ShellPreviewTest {
         f.status.activity = new StatusAccess.Activity(true, "Smelting 37 iron", "furnace at 118 63 -29", "IRON");
         p.tick();
         p.advance(4000);
+        p.settle();
         p.shell.toast(adris.altoclef.ui.gui.facade.Result.fail("Unknown command \"gett\"", "gett oak_log"));
+        p.settle();
         p.advance(400);
         p.savePanel("shell_gamer_fail");
 

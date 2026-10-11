@@ -168,8 +168,8 @@ public class ShellTest {
 
     @Test
     public void panelIsCentredAndSizedFromTheWindow() {
-        assertEquals(Math.round(1920 * 0.62f), shell.w());
-        assertEquals(Math.round(1080 * 0.70f), shell.h());
+        assertEquals(Math.round(1920 * 0.68f), shell.w());
+        assertEquals(Math.round(1080 * 0.76f), shell.h());
         assertEquals((1920 - shell.w()) / 2, shell.x());
         assertEquals((1080 - shell.h()) / 2, shell.y());
     }
@@ -613,8 +613,10 @@ public class ShellTest {
         drawAfter(200);
         canvas.calls.clear();
         drawAfter(16);
+        // a hovered row that is not the active one gets a half strength pill
         boolean hoverFill = canvas.calls.stream().anyMatch(c -> c.kind().equals("fillRoundRect")
-                && c.argb() == Theme.HOVER && Math.abs(c.y() - shell.tabRowY(1)) < 1f);
+                && (c.argb() & 0x00FFFFFF) == (Theme.HOVER & 0x00FFFFFF) && (c.argb() >>> 24) < 255
+                && Math.abs(c.y() - shell.tabRowY(1)) < 1f);
         assertTrue(hoverFill);
     }
 

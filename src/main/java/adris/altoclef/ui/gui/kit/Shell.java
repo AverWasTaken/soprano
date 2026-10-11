@@ -228,8 +228,8 @@ public class Shell extends Widget implements ShellContext {
         }
         winW = windowW;
         winH = windowH;
-        int pw = Math.round(windowW * 0.62f);
-        int ph = Math.round(windowH * 0.70f);
+        int pw = Math.round(windowW * 0.68f);
+        int ph = Math.round(windowH * 0.76f);
         pw = Math.max(theme.px(760), Math.min(theme.px(1400), pw));
         ph = Math.max(theme.px(480), Math.min(theme.px(900), ph));
         int margin = theme.px(8);
@@ -520,6 +520,11 @@ public class Shell extends Widget implements ShellContext {
         g.text("soprano", x + pad + theme.px(8), baselineIn(g, theme.label, y, headerH), theme.label, Theme.TEXT_2);
 
         int rowH = tabRowH();
+        // the active pill slides between rows (same anim as the accent bar), hovered rows get a fainter one
+        if (!tabs.isEmpty()) {
+            float py = barY.value(now) - rowH / 2f;
+            g.fillRoundRect(x + theme.px(8), py, sideW - theme.px(16), rowH, theme.pxf(Theme.ROW_RADIUS), Theme.HOVER);
+        }
         for (int i = 0; i < tabs.size(); i++) {
             Tab t = tabs.get(i);
             tabHover[i].set(i == hoverTab ? 1f : 0f, now, Theme.ANIM_FAST);
@@ -529,8 +534,8 @@ public class Shell extends Widget implements ShellContext {
             float ry = tabRowY(i);
             float rx = x + theme.px(8);
             float rw = sideW - theme.px(16);
-            if (hv > 0.01f) {
-                g.fillRoundRect(rx, ry, rw, rowH, theme.pxf(Theme.ROW_RADIUS), Theme.fade(Theme.HOVER, hv));
+            if (hv > 0.01f && av < 0.99f) {
+                g.fillRoundRect(rx, ry, rw, rowH, theme.pxf(Theme.ROW_RADIUS), Theme.fade(Theme.HOVER, hv * 0.5f * (1f - av)));
             }
             int col = Theme.lerp(Theme.lerp(Theme.TEXT_2, Theme.TEXT, hv * 0.7f), Theme.TEXT, av);
             int is = theme.px(Theme.ICON);

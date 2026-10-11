@@ -128,7 +128,7 @@ public class WidgetsTest {
     @Test
     public void buttonPreferredWidthIsTextPlusPadding() {
         Button b = new Button(theme, "Go", () -> { });
-        assertEquals(Math.round(0.6f * 13 * 2) + 24, b.preferredWidth());
+        assertEquals((int) Math.ceil(0.6f * 14 * 2) + 24, b.preferredWidth());
         Button withIcon = new Button(theme, "Go", Button.Kind.GHOST, Icon.PLUS, () -> { });
         assertEquals(b.preferredWidth() + 16 + 6, withIcon.preferredWidth());
         assertEquals(30, b.preferredHeight());
@@ -540,7 +540,7 @@ public class WidgetsTest {
         Label r = new Label(theme, "hi", theme.body, Theme.TEXT).setAlign(Label.Align.RIGHT);
         r.setBounds(0, 0, 100, 20);
         draw(r, 0);
-        assertEquals(100f - 0.6f * 13 * 2, canvas.textCall("hi").x(), 0.01f);
+        assertEquals(100f - 0.6f * 14 * 2, canvas.textCall("hi").x(), 0.01f);
     }
 
     @Test
