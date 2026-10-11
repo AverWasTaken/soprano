@@ -34,7 +34,8 @@ import java.util.function.Supplier;
 // facade every 10 ticks, keyed by name and type so expansion, scroll and hover survive the refresh
 final class FollowContent extends Widget {
 
-    private static final int ROW_H = 40;
+    // a heading is one label line, SECTION_BELOW then separates it from its list
+    private static final int HEAD_LINE = 20;
     private static final int REFRESH_TICKS = 10;
 
     private final BotFacade facade;
@@ -49,6 +50,8 @@ final class FollowContent extends Widget {
     private final Set<String> memberOnly = new HashSet<>();
     private final Map<String, Anim> chevrons = new HashMap<>();
     private String pressedType;
+    // the press landed on a Stop for this player ("p:name") or member ("e:id"), the release decides
+    private String pressedStopKey;
     private int laidPlayerRows;
 
     private List<PlayerEntry> rawPlayers = List.of();
@@ -67,20 +70,18 @@ final class FollowContent extends Widget {
     private int stripH;
     private int pHdrX;
     private int pHdrY;
-    private int pHdrW;
     private int eHdrX;
     private int eHdrY;
-    private int eHdrW;
 
     FollowContent(Theme theme, BotFacade facade, ShellContext ctx) {
         super(theme);
         this.facade = facade;
         this.ctx = ctx;
-        stopBtn = new Button(theme, "Stop", Button.Kind.GHOST, null, () -> act(() -> facade.world().stopFollowing()));
+        stopBtn = new Button(theme, "Stop", Button.Kind.DANGER, null, () -> act(() -> facade.world().stopFollowing()));
         allPlayersBtn = new Button(theme, "Follow all players", Button.Kind.SECONDARY, null, () -> act(() -> facade.world().followAllPlayers()));
         allEntitiesBtn = new Button(theme, "Follow all entities", Button.Kind.SECONDARY, null, () -> act(() -> facade.world().followAllEntities()));
 
-        playerList = new VirtualList<>(theme, theme.px(ROW_H), this::drawPlayer);
+        playerList = new VirtualList<>(theme, theme.px(Theme.ROW_H), this::drawPlayer);
         playerList.setKeyFunction(PlayerEntry::name);
         // not selectable: the selection is an index, and both lists re-sort under it every refresh
         playerList.onClick((p, i) -> {
@@ -88,13 +89,30 @@ final class FollowContent extends Widget {
                 act(() -> facade.world().followPlayer(p.name()));
             }
         });
+        // the red Stop on the row you are following is ours too, same press and release rule as Follow all
+        playerList.onRowMouseDown((p, i, mx, my, button, mods) -> {
+            if (button == 0 && !p.self() && p.distance() >= 0 && EntityGroups.followsPlayer(following, p.name())
+                    && inButton(playerList, mx, my, i)) {
+                pressedStopKey = "p:" + p.name();
+                pressedType = null;
+                return true;
+            }
+            return false;
+        });
 
-        entityList = new VirtualList<>(theme, theme.px(ROW_H), this::drawEntityRow);
+        entityList = new VirtualList<>(theme, theme.px(Theme.ROW_H), this::drawEntityRow);
         entityList.setKeyFunction(Row::key);
         // the "Follow all" press is ours, the release decides (same button, same row, whatever the list did meanwhile)
         entityList.onRowMouseDown((row, i, mx, my, button, mods) -> {
-            if (button == 0 && row instanceof GroupRow gr && !gr.group().memberOnly() && inButton(mx, my, i)) {
+            if (button == 0 && row instanceof GroupRow gr && !gr.group().memberOnly() && inButton(entityList, mx, my, i)) {
                 pressedType = gr.group().typeId();
+                pressedStopKey = null;
+                return true;
+            }
+            if (button == 0 && row instanceof EntityRow er && EntityGroups.followsEntity(following, er.entry())
+                    && inButton(entityList, mx, my, i)) {
+                pressedStopKey = "e:" + er.entry().id();
+                pressedType = null;
                 return true;
             }
             return false;
@@ -154,24 +172,47 @@ final class FollowContent extends Widget {
     @Override
     public boolean mouseUp(float mx, float my, int button, int mods) {
         String type = button == 0 ? pressedType : null;
+        String stopKey = button == 0 ? pressedStopKey : null;
         if (button == 0) {
             pressedType = null;
+            pressedStopKey = null;
         }
         // always forward: a press that never gets its release must not leave a button held
         boolean kids = super.mouseUp(mx, my, button, mods);
         if (type != null) {
             int i = entityList.indexAt(mx, my);
-            if (i >= 0 && entityList.items().get(i) instanceof GroupRow gr && gr.group().typeId().equals(type) && inButton(mx, my, i)) {
-                act(() -> facade.world().followType(type));
+            if (i >= 0 && entityList.items().get(i) instanceof GroupRow gr && gr.group().typeId().equals(type) && inButton(entityList, mx, my, i)) {
+                // whatever the button says now is what it does: a refresh between press and release may have flipped it
+                boolean stop = EntityGroups.followsGroup(following, gr.group());
+                act(() -> stop ? facade.world().stopFollowing() : facade.world().followType(type));
+            }
+            return true;
+        }
+        if (stopKey != null) {
+            if (stopHit(stopKey, mx, my)) {
+                act(() -> facade.world().stopFollowing());
             }
             return true;
         }
         return kids;
     }
 
+    // released on the same row's button, and that row is still the one being followed
+    private boolean stopHit(String key, float mx, float my) {
+        if (key.startsWith("p:")) {
+            int i = playerList.indexAt(mx, my);
+            return i >= 0 && playerList.items().get(i).name().equals(key.substring(2)) && inButton(playerList, mx, my, i)
+                    && EntityGroups.followsPlayer(following, playerList.items().get(i).name());
+        }
+        int i = entityList.indexAt(mx, my);
+        return i >= 0 && entityList.items().get(i) instanceof EntityRow er && ("e:" + er.entry().id()).equals(key)
+                && inButton(entityList, mx, my, i) && EntityGroups.followsEntity(following, er.entry());
+    }
+
     void shown() {
         ticks = 0;
         pressedType = null;
+        pressedStopKey = null;
         refresh();
     }
 
@@ -270,6 +311,10 @@ final class FollowContent extends Widget {
 
     // ----- layout
 
+    private int headH() {
+        return theme.px(HEAD_LINE) + theme.px(Theme.SECTION_BELOW);
+    }
+
     @Override
     protected void layout() {
         int pad = theme.px(Theme.PAD);
@@ -284,10 +329,10 @@ final class FollowContent extends Widget {
             stripX = cx;
             stripY = cy;
             stripW = cw;
-            stripH = theme.px(44);
-            int bh = theme.px(28);
+            stripH = theme.px(Theme.ROW_H + Theme.SPACE_2);
+            int bh = theme.px(Theme.CONTROL_H);
             int bw = stopBtn.preferredWidth();
-            stopBtn.setBounds(cx + cw - theme.px(8) - bw, cy + (stripH - bh) / 2, bw, bh);
+            stopBtn.setBounds(cx + cw - theme.px(Theme.SPACE_2) - bw, cy + (stripH - bh) / 2, bw, bh);
             cy += stripH + gap;
         }
 
@@ -303,13 +348,13 @@ final class FollowContent extends Widget {
         }
         allPlayersBtn.setBounds(cx, cy, b1, ch);
         allEntitiesBtn.setBounds(cx + b1 + gap, cy, b2, ch);
-        cy += ch + theme.px(20);
+        cy += ch + theme.px(Theme.SECTION);
 
         int bottom = y + h - pad;
-        int hdr = theme.px(28);
-        int sectionGap = theme.px(Theme.PAD);
+        int hdr = headH();
+        int sectionGap = theme.px(Theme.SECTION);
         if (w >= theme.px(900)) {
-            int colGap = theme.px(24);
+            int colGap = theme.px(Theme.SECTION);
             int pw = Math.round((cw - colGap) * 0.42f);
             int ew = cw - colGap - pw;
             place(cx, cy, pw, bottom - cy, hdr, true);
@@ -317,7 +362,7 @@ final class FollowContent extends Widget {
         } else {
             int avail = Math.max(0, bottom - cy - sectionGap);
             // whole rows only, a sliver of a third row looks like a bug
-            int rowH = theme.px(ROW_H);
+            int rowH = theme.px(Theme.ROW_H);
             int fit = (int) ((avail * 0.5f - hdr) / rowH);
             int rows = Math.max(2, Math.min(Math.min(4, shownPlayers.size()), fit));
             int ph = hdr + rows * rowH;
@@ -332,11 +377,9 @@ final class FollowContent extends Widget {
         if (players) {
             pHdrX = sx;
             pHdrY = sy;
-            pHdrW = sw;
         } else {
             eHdrX = sx;
             eHdrY = sy;
-            eHdrW = sw;
         }
     }
 
@@ -359,8 +402,8 @@ final class FollowContent extends Widget {
         }
         allPlayersBtn.draw(c, f);
         allEntitiesBtn.draw(c, f);
-        drawHeader(c, "Players", EntityGroups.nearbyPlayers(shownPlayers), pHdrX, pHdrY, pHdrW);
-        drawHeader(c, "Entities", shownEntityCount, eHdrX, eHdrY, eHdrW);
+        drawHeader(c, "Players", EntityGroups.nearbyPlayers(shownPlayers), pHdrX, pHdrY);
+        drawHeader(c, "Entities", shownEntityCount, eHdrX, eHdrY);
         playerList.draw(c, f);
         entityList.draw(c, f);
         if (playerList.items().isEmpty()) {
@@ -376,23 +419,23 @@ final class FollowContent extends Widget {
         }
     }
 
+    // one card, not a tinted bar: it is the only thing on this page that is not a row or a button
     private void drawStrip(Canvas c) {
-        c.fillRoundRect(stripX, stripY, stripW, stripH, theme.pxf(Theme.CONTROL_RADIUS), theme.color(Theme.RAISED));
-        float is = theme.px(14);
-        c.icon(Icon.DOT, stripX + theme.px(12), stripY + (stripH - is) / 2f, is, theme.color(Theme.ACCENT));
-        float tx = stripX + theme.px(12) + is + theme.px(8);
+        theme.card(c, stripX, stripY, stripW, stripH, theme.pxf(Theme.CARD_RADIUS), false);
+        float is = theme.px(Theme.ICON);
+        float lead = stripX + theme.px(Theme.SPACE_3);
+        c.icon(Icon.DOT, lead, stripY + (stripH - is) / 2f, is, theme.color(Theme.ACCENT));
+        float tx = lead + is + theme.px(Theme.SPACE_2);
         float by = base(c, theme.label, stripY, stripH);
         tx += c.text("Following ", tx, by, theme.label, theme.color(Theme.TEXT_2));
-        float room = stopBtn.x() - theme.px(12) - tx;
+        float room = stopBtn.x() - theme.px(Theme.SPACE_3) - tx;
         c.text(c.ellipsize(following, theme.label, Math.max(0, room)), tx, by, theme.label, theme.color(Theme.TEXT));
     }
 
-    private void drawHeader(Canvas c, String title, int count, int hx, int hy, int hw) {
-        int hdr = theme.px(28);
-        float by = base(c, theme.label, hy, hdr - theme.px(4));
+    private void drawHeader(Canvas c, String title, int count, int hx, int hy) {
+        float by = base(c, theme.label, hy, theme.px(HEAD_LINE));
         float adv = c.text(title, hx, by, theme.label, theme.color(Theme.TEXT));
-        c.text(" · " + count + " nearby", hx + adv, by, theme.label, theme.color(Theme.TEXT_2));
-        c.fillRect(hx, hy + hdr - 1, hw, 1, theme.color(Theme.HAIRLINE));
+        c.text(" · " + count + " nearby", hx + adv, by, theme.label, theme.color(Theme.TEXT_3));
     }
 
     private void drawEmpty(Canvas c, VirtualList<?> list, String line, String hint) {
@@ -406,97 +449,129 @@ final class FollowContent extends Widget {
         c.text(hint, list.x() + (list.w() - w2) / 2f, cy + theme.px(18), theme.small, theme.color(Theme.TEXT_3));
     }
 
-    // the hover button lives in a fixed slot at the right edge so the distance next to it never jumps
+    // the row button lives in a fixed slot at the right edge and covers the distance while it is there, so nothing
+    // in the row ever shifts when the mouse comes by
     private int buttonW() {
         // sized for the longer label so "Follow" and "Follow all" share one slot
-        return (int) Math.ceil(theme.measurer.measure("Follow all", theme.label)) + theme.px(20);
+        return (int) Math.ceil(theme.measurer.measure("Follow all", theme.label)) + theme.px(Theme.PAD + Theme.SPACE_1);
     }
 
     private int buttonH() {
-        return theme.px(26);
+        return theme.px(Theme.CONTROL_H - Theme.SPACE_1);
     }
 
     private int rowW(VirtualList<?> list) {
         return list.w() - theme.px(10);
     }
 
-    // same rectangle drawGhost paints, for the row at this index of the entity list
-    private boolean inButton(float mx, float my, int index) {
-        float right = entityList.x() + rowW(entityList) - theme.px(8);
-        float rowTop = entityList.y() + index * (float) entityList.rowHeight() - entityList.scroller().offset(lastNow);
-        float top = rowTop + (entityList.rowHeight() - buttonH()) / 2f;
+    private float buttonLeft(int rx, int rw) {
+        return rx + rw - theme.px(Theme.SPACE_2) - buttonW();
+    }
+
+    // same rectangle drawAction paints, for the row at this index of that list
+    private boolean inButton(VirtualList<?> list, float mx, float my, int index) {
+        float right = list.x() + rowW(list) - theme.px(Theme.SPACE_2);
+        float rowTop = list.y() + index * (float) list.rowHeight() - list.scroller().offset(lastNow);
+        float top = rowTop + (list.rowHeight() - buttonH()) / 2f;
         return mx >= right - buttonW() && mx < right && my >= top && my < top + buttonH();
     }
 
-    private void drawGhost(Canvas c, Frame f, String label, int rx, int ry, int rw, int rh) {
-        float bx = rx + rw - theme.px(8) - buttonW();
+    // the one action a row can offer: blue when it would start following, red when it would stop
+    private void drawAction(Canvas c, Frame f, String label, boolean stop, int rx, int ry, int rw, int rh) {
+        float bx = rx + rw - theme.px(Theme.SPACE_2) - buttonW();
         float by = ry + (rh - buttonH()) / 2f;
         boolean over = f.mouseX() >= bx && f.mouseX() < bx + buttonW() && f.mouseY() >= by && f.mouseY() < by + buttonH();
-        if (over) {
-            c.fillRoundRect(bx, by, buttonW(), buttonH(), theme.pxf(Theme.CONTROL_RADIUS), theme.color(Theme.PRESSED));
+        float r = theme.pxf(Theme.CONTROL_RADIUS);
+        int fill;
+        int text;
+        if (stop) {
+            fill = over ? theme.color(Theme.DANGER_FILL) : theme.color(Theme.RAISED);
+            text = theme.color(Theme.DANGER);
+        } else {
+            fill = over ? theme.color(Theme.ACCENT_HOVER) : theme.color(Theme.ACCENT);
+            text = theme.color(Theme.ON_ACCENT);
+        }
+        c.fillRoundRect(bx, by, buttonW(), buttonH(), r, fill);
+        if (stop) {
+            c.strokeRoundRect(bx, by, buttonW(), buttonH(), r, Theme.fade(theme.color(Theme.HAIRLINE_STRONG), 0.6f));
         }
         float tw = c.measure(label, theme.label);
-        c.text(label, bx + (buttonW() - tw) / 2f, base(c, theme.label, by, buttonH()), theme.label, over ? theme.color(Theme.TEXT) : theme.color(Theme.TEXT_2));
+        c.text(label, bx + (buttonW() - tw) / 2f, base(c, theme.label, by, buttonH()), theme.label, text);
     }
 
+    // where the distance ends, flush with the row's padding
     private float distanceRight(int rx, int rw) {
-        return rx + rw - theme.px(8) - buttonW() - theme.px(8);
+        return rx + rw - theme.px(Theme.PAD);
     }
 
-    private void dot(Canvas c, int rx, int ry, int rh) {
-        float s = theme.px(14);
-        c.icon(Icon.DOT, rx + theme.px(2), ry + (rh - s) / 2f, s, theme.color(Theme.ACCENT));
+    // hover is the usual step, the row you are following is the one tinted blue
+    private void rowBg(Canvas c, int rx, int ry, int rw, int rh, boolean followed, boolean hot) {
+        if (followed) {
+            c.fillRoundRect(rx, ry, rw, rh, theme.pxf(Theme.ROW_RADIUS), theme.color(Theme.ACCENT_SOFT));
+        } else if (hot) {
+            c.fillRoundRect(rx, ry, rw, rh, theme.pxf(Theme.ROW_RADIUS), theme.color(Theme.HOVER));
+        }
     }
 
-    private void rowBg(Canvas c, int rx, int ry, int rw, int rh) {
-        c.fillRoundRect(rx, ry + theme.px(2), rw, rh - theme.px(4), theme.pxf(Theme.ROW_RADIUS), theme.color(Theme.HOVER));
+    // hairline between rows, inset on the left like every grouped list, gone under a lit row and after the last one
+    private void separator(Canvas c, int rx, int ry, int rw, int rh, boolean lit, boolean last) {
+        if (!lit && !last) {
+            c.fillRect(rx + theme.px(Theme.PAD), ry + rh - 1, rw - theme.px(Theme.PAD), 1, theme.color(Theme.HAIRLINE));
+        }
     }
 
-    private void pill(Canvas c, String text, float px, int ry, int rh, int fill, int col) {
-        float tw = c.measure(text, theme.smallLabel.asTabular());
+    private void chip(Canvas c, String text, float px, int ry, int rh, boolean lit) {
+        TextStyle s = theme.smallLabel.asTabular();
+        float tw = c.measure(text, s);
         float ph = theme.px(18);
-        c.fillRoundRect(px, ry + (rh - ph) / 2f, tw + theme.px(12), ph, ph / 2f, fill);
-        c.text(text, px + theme.px(6), base(c, theme.smallLabel, ry, rh), theme.smallLabel.asTabular(), col);
+        float cw = tw + 2 * theme.px(Theme.SPACE_2);
+        c.fillRoundRect(px, ry + (rh - ph) / 2f, cw, ph, ph / 2f, theme.color(Theme.RAISED));
+        // RAISED is a hair off PANEL in light and off HOVER in dark, the outline is what keeps a chip from vanishing
+        c.strokeRoundRect(px, ry + (rh - ph) / 2f, cw, ph, ph / 2f, theme.color(lit ? Theme.HAIRLINE_STRONG : Theme.HAIRLINE));
+        c.text(text, px + theme.px(Theme.SPACE_2), base(c, s, ry, rh), s, theme.color(Theme.TEXT_2));
     }
 
-    private float pillW(Canvas c, String text) {
-        return c.measure(text, theme.smallLabel.asTabular()) + theme.px(12);
+    private float chipW(Canvas c, String text) {
+        return c.measure(text, theme.smallLabel.asTabular()) + 2 * theme.px(Theme.SPACE_2);
     }
 
     private void drawPlayer(Canvas c, Frame f, PlayerEntry p, int idx, int rx, int ry, int rw, int rh, boolean hot) {
         boolean near = p.distance() >= 0;
-        if (hot && !p.self()) {
-            rowBg(c, rx, ry, rw, rh);
-        }
-        if (EntityGroups.followsPlayer(following, p.name())) {
-            dot(c, rx, ry, rh);
-        }
-        float face = theme.px(24);
-        float fx = rx + theme.px(20);
+        boolean followed = EntityGroups.followsPlayer(following, p.name());
+        boolean lit = (hot && !p.self()) || followed;
+        rowBg(c, rx, ry, rw, rh, followed, hot && !p.self());
+        separator(c, rx, ry, rw, rh, lit, idx == playerList.items().size() - 1);
+        float face = theme.px(Theme.ICON_LG);
+        float fx = rx + theme.px(Theme.PAD);
         float fy = ry + (rh - face) / 2f;
         c.playerFace(p.name(), fx, fy, face);
         if (!near && !p.self()) {
             c.fillRoundRect(fx, fy, face, face, face / 6f, Theme.alpha(theme.color(Theme.PANEL), 0.6f));
         }
-        float tx = fx + face + theme.px(10);
+        float tx = fx + face + theme.px(Theme.SPACE_3);
+        boolean button = over(f, rx, ry, rw, rh) && !p.self() && near;
         float right = distanceRight(rx, rw);
         float limit = right;
         if (!p.self()) {
             String d = near ? EntityGroups.meters(p.distance()) : "not nearby";
             TextStyle ds = near ? theme.body.asTabular() : theme.small;
             float dw = c.measure(d, ds);
-            c.text(d, right - dw, base(c, ds, ry, rh), ds, near ? theme.color(Theme.TEXT_2) : theme.color(Theme.TEXT_3));
-            limit = right - dw - theme.px(12);
+            if (!button) {
+                c.text(d, right - dw, base(c, ds, ry, rh), ds, near ? theme.color(Theme.TEXT_2) : theme.color(Theme.TEXT_3));
+            }
+            // the hover button is wider than any distance, so the name stops short of it either way
+            limit = near ? Math.min(right - dw - theme.px(Theme.SPACE_3), buttonLeft(rx, rw) - theme.px(Theme.SPACE_2))
+                    : right - dw - theme.px(Theme.SPACE_3);
         }
         int nameCol = near || p.self() ? theme.color(Theme.TEXT) : theme.color(Theme.TEXT_3);
-        float pillRoom = p.self() ? pillW(c, "you") + theme.px(8) : 0f;
-        String name = c.ellipsize(p.name(), theme.body, Math.max(0, limit - tx - pillRoom));
-        c.text(name, tx, base(c, theme.body, ry, rh), theme.body, nameCol);
+        float chipRoom = p.self() ? chipW(c, "you") + theme.px(Theme.SPACE_2) : 0f;
+        String name = c.ellipsize(p.name(), theme.label, Math.max(0, limit - tx - chipRoom));
+        c.text(name, tx, base(c, theme.label, ry, rh), theme.label, nameCol);
         if (p.self()) {
-            pill(c, "you", tx + c.measure(name, theme.body) + theme.px(8), ry, rh, theme.color(Theme.RAISED), theme.color(Theme.TEXT_2));
+            chip(c, "you", tx + c.measure(name, theme.label) + theme.px(Theme.SPACE_2), ry, rh, lit);
         }
-        if (over(f, rx, ry, rw, rh) && !p.self() && near) {
-            drawGhost(c, f, "Follow", rx, ry, rw, rh);
+        if (button) {
+            drawAction(c, f, followed ? "Stop" : "Follow", followed, rx, ry, rw, rh);
         }
     }
 
@@ -505,79 +580,86 @@ final class FollowContent extends Widget {
     }
 
     private void drawEntityRow(Canvas c, Frame f, Row row, int idx, int rx, int ry, int rw, int rh, boolean hot) {
-        if (hot) {
-            rowBg(c, rx, ry, rw, rh);
-        }
+        boolean followed = false;
         if (row instanceof GroupRow gr) {
-            drawGroup(c, f, gr.group(), rx, ry, rw, rh, hot);
+            followed = EntityGroups.followsGroup(following, gr.group()) || EntityGroups.followsOneOf(following, gr.group());
         } else if (row instanceof EntityRow er) {
-            drawMember(c, f, er.entry(), rx, ry, rw, rh, hot);
+            followed = EntityGroups.followsEntity(following, er.entry());
+        }
+        rowBg(c, rx, ry, rw, rh, followed, hot);
+        separator(c, rx, ry, rw, rh, hot || followed, idx == entityList.items().size() - 1);
+        if (row instanceof GroupRow gr) {
+            drawGroup(c, f, gr.group(), rx, ry, rw, rh, hot || followed);
+        } else if (row instanceof EntityRow er) {
+            drawMember(c, f, er.entry(), rx, ry, rw, rh);
         }
     }
 
-    private void drawGroup(Canvas c, Frame f, Group g, int rx, int ry, int rw, int rh, boolean hot) {
-        if (EntityGroups.followsGroup(following, g) || EntityGroups.followsOneOf(following, g)) {
-            dot(c, rx, ry, rh);
-        }
-        float cs = theme.px(16);
-        float cx = rx + theme.px(18);
+    private void drawGroup(Canvas c, Frame f, Group g, int rx, int ry, int rw, int rh, boolean lit) {
+        float cs = theme.px(Theme.ICON);
+        float cx = rx + theme.px(Theme.PAD);
         float cy = ry + (rh - cs) / 2f;
         float open = chevronValue(g, f.nowNanos());
-        c.icon(Icon.CHEVRON_RIGHT, cx, cy, cs, Theme.fade(theme.color(Theme.TEXT_2), 1f - open));
-        c.icon(Icon.CHEVRON_DOWN, cx, cy, cs, Theme.fade(theme.color(Theme.TEXT_2), open));
+        c.icon(Icon.CHEVRON_RIGHT, cx, cy, cs, Theme.fade(theme.color(Theme.TEXT_3), 1f - open));
+        c.icon(Icon.CHEVRON_DOWN, cx, cy, cs, Theme.fade(theme.color(Theme.TEXT_3), open));
 
-        float tile = theme.px(24);
-        float tx = rx + theme.px(42);
+        float tile = theme.px(Theme.ICON_LG);
+        float tx = cx + cs + theme.px(Theme.SPACE_2);
         float ty = ry + (rh - tile) / 2f;
         c.fillRoundRect(tx, ty, tile, tile, theme.pxf(Theme.ROW_RADIUS), theme.color(Theme.RAISED));
         if (g.iconItemId() != null) {
             float is = theme.itemIconPx();
             c.itemIcon(g.iconItemId(), tx + (tile - is) / 2f, ty + (tile - is) / 2f, is);
         } else {
-            float is = theme.px(16);
+            float is = theme.px(Theme.ICON);
             c.icon(Icon.ENTITY, tx + (tile - is) / 2f, ty + (tile - is) / 2f, is, theme.color(Theme.TEXT_2));
         }
 
-        float nx = tx + tile + theme.px(10);
+        // a group that is only here for one named member would follow the whole type, which is not what the search said
+        boolean button = over(f, rx, ry, rw, rh) && !g.memberOnly();
+        float nx = tx + tile + theme.px(Theme.SPACE_3);
         String d = EntityGroups.meters(g.nearest());
         float dw = c.measure(d, theme.body.asTabular());
         float right = distanceRight(rx, rw);
-        c.text(d, right - dw, base(c, theme.body, ry, rh), theme.body.asTabular(), theme.color(Theme.TEXT_2));
+        if (!button) {
+            c.text(d, right - dw, base(c, theme.body, ry, rh), theme.body.asTabular(), theme.color(Theme.TEXT_2));
+        }
         String count = "x" + g.count();
-        float pw = pillW(c, count);
-        float room = right - dw - theme.px(12) - nx - pw - theme.px(8);
+        float pw = chipW(c, count);
+        float textLimit = g.memberOnly() ? right - dw - theme.px(Theme.SPACE_3) : Math.min(right - dw - theme.px(Theme.SPACE_3), buttonLeft(rx, rw) - theme.px(Theme.SPACE_2));
+        float room = textLimit - nx - pw - theme.px(Theme.SPACE_2);
         String name = c.ellipsize(g.typeName(), theme.label, Math.max(0, room));
         c.text(name, nx, base(c, theme.label, ry, rh), theme.label, theme.color(Theme.TEXT));
-        pill(c, count, nx + c.measure(name, theme.label) + theme.px(8), ry, rh, hot ? theme.color(Theme.PANEL) : theme.color(Theme.RAISED), theme.color(Theme.TEXT_2));
-        // a group that is only here for one named member would follow the whole type, which is not what the search said
-        if (over(f, rx, ry, rw, rh) && !g.memberOnly()) {
-            drawGhost(c, f, "Follow all", rx, ry, rw, rh);
+        chip(c, count, nx + c.measure(name, theme.label) + theme.px(Theme.SPACE_2), ry, rh, lit);
+        if (button) {
+            boolean stop = EntityGroups.followsGroup(following, g);
+            drawAction(c, f, stop ? "Stop" : "Follow all", stop, rx, ry, rw, rh);
         }
     }
 
-    private void drawMember(Canvas c, Frame f, EntityEntry e, int rx, int ry, int rw, int rh, boolean hot) {
-        c.fillRect(rx + theme.px(26), ry, 1, rh, theme.color(Theme.HAIRLINE));
-        if (EntityGroups.followsEntity(following, e)) {
-            dot(c, rx, ry, rh);
-        }
-        // one step in from the group's name so the tree reads without squinting at the guide line
-        float nx = rx + theme.px(42) + theme.px(24) + theme.px(10) + theme.px(16);
+    private void drawMember(Canvas c, Frame f, EntityEntry e, int rx, int ry, int rw, int rh) {
+        boolean followed = EntityGroups.followsEntity(following, e);
+        boolean button = over(f, rx, ry, rw, rh);
+        // a child starts under its group's icon tile: the row padding, a chevron and the gap after it
+        float nx = rx + theme.px(Theme.PAD) + theme.px(Theme.ICON) + theme.px(Theme.SPACE_2);
         float right = distanceRight(rx, rw);
         String d = EntityGroups.meters(e.distance());
         float dw = c.measure(d, theme.body.asTabular());
-        c.text(d, right - dw, base(c, theme.body, ry, rh), theme.body.asTabular(), theme.color(Theme.TEXT_2));
-        float room = right - dw - theme.px(12) - nx;
+        if (!button) {
+            c.text(d, right - dw, base(c, theme.body, ry, rh), theme.body.asTabular(), theme.color(Theme.TEXT_2));
+        }
+        float room = Math.min(right - dw - theme.px(Theme.SPACE_3), buttonLeft(rx, rw) - theme.px(Theme.SPACE_2)) - nx;
         String label = EntityGroups.label(e);
         boolean named = EntityGroups.named(e);
-        float typeW = named ? c.measure(e.typeName(), theme.small) + theme.px(8) : 0f;
+        float typeW = named ? c.measure(e.typeName(), theme.small) + theme.px(Theme.SPACE_2) : 0f;
         String shown = c.ellipsize(label, theme.body, Math.max(0, room - typeW));
         c.text(shown, nx, base(c, theme.body, ry, rh), theme.body, theme.color(Theme.TEXT));
         if (named) {
-            float tx = nx + c.measure(shown, theme.body) + theme.px(8);
+            float tx = nx + c.measure(shown, theme.body) + theme.px(Theme.SPACE_2);
             c.text(e.typeName(), tx, base(c, theme.small, ry, rh), theme.small, theme.color(Theme.TEXT_2));
         }
-        if (over(f, rx, ry, rw, rh)) {
-            drawGhost(c, f, "Follow", rx, ry, rw, rh);
+        if (button) {
+            drawAction(c, f, followed ? "Stop" : "Follow", followed, rx, ry, rw, rh);
         }
     }
 }

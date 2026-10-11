@@ -19,7 +19,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 
-// the command list. rows are 44 px until you click one, then it grows in place to show the long description and the
+// the command list. rows are one ROW_H until you click one, then it grows in place to show the long description and the
 // usage lines. VirtualList is fixed height so this is its own thing on top of VirtualView (scrollbar, wheel and the
 // row fade come for free). only one row is open at a time. rows cost nothing off screen except the O(n) walk to find
 // where they are, and n is the number of commands
@@ -78,11 +78,11 @@ final class HelpList extends VirtualView<CommandInfo> {
     }
 
     private int cardPad() {
-        return theme.px(12);
+        return theme.px(Theme.PAD);
     }
 
     private int headH() {
-        return theme.px(44);
+        return theme.px(Theme.ROW_H);
     }
 
     private int lineH() {
@@ -153,8 +153,8 @@ final class HelpList extends VirtualView<CommandInfo> {
         }
         TextMeasurer m = theme.measurer;
         List<Piece> pieces = new ArrayList<>();
-        int yy = theme.px(4);
-        int gap = theme.px(4);
+        int yy = theme.px(Theme.SPACE_2);
+        int gap = theme.px(Theme.SPACE_1);
         for (HelpIndex.Line l : lines) {
             switch (l.kind()) {
                 case TEXT -> {
@@ -240,7 +240,7 @@ final class HelpList extends VirtualView<CommandInfo> {
 
     @Override
     protected int contentHeight() {
-        int total = theme.px(8);
+        int total = theme.px(Theme.SPACE_2);
         for (int i = 0; i < items.size(); i++) {
             total += heightOf(i);
         }
@@ -444,21 +444,26 @@ final class HelpList extends VirtualView<CommandInfo> {
         int x0 = x + padX();
         int w0 = w - 2 * padX();
         int pad = cardPad();
-        float r = theme.pxf(Theme.CONTROL_RADIUS);
+        float r = theme.pxf(Theme.ROW_RADIUS);
         int head = headH();
 
+        // an open row turns into one SURFACE block with a hairline under its header, a closed one is a row on the
+        // panel with a hairline under it, and the two trade places as it opens
         if (open > 0.01f) {
-            g.strokeRoundRect(x0, ry, w0, rh, r, Theme.fade(theme.color(Theme.HAIRLINE_STRONG), Math.min(1f, open * 2f)));
+            float cr = theme.pxf(Theme.CARD_RADIUS);
+            g.fillRoundRect(x0, ry, w0, rh, cr, Theme.fade(theme.color(Theme.SURFACE), open));
+            g.strokeRoundRect(x0, ry, w0, rh, cr, Theme.fade(theme.color(Theme.HAIRLINE), open));
+            g.fillRect(x0 + 1, ry + head, w0 - 2, 1, Theme.fade(theme.color(Theme.HAIRLINE), open));
         }
-        float sep = 1f - open;
-        if (sep > 0.01f) {
-            g.fillRect(x0 + pad, ry + rh - 1, w0 - 2 * pad, 1, Theme.fade(theme.color(Theme.HAIRLINE), sep));
+        float sep = (1f - open) * (1f - hv);
+        if (sep > 0.01f && !isLast(cmd)) {
+            g.fillRect(x0 + pad, ry + rh - 1, w0 - pad, 1, Theme.fade(theme.color(Theme.HAIRLINE), sep));
         }
         if (hv > 0.01f) {
-            g.fillRoundRect(x0, ry + 1, w0, head - 2, r, Theme.fade(theme.color(Theme.HOVER), hv * (1f - open * 0.6f)));
+            g.fillRoundRect(x0, ry, w0, head, r, Theme.fade(theme.color(Theme.HOVER), hv * (1f - open * 0.6f)));
         }
 
-        // name, then its aliases in a dimmer smaller voice, then the one line description in its own column
+        // name, then each alias as a chip, then the one line description in its own column
         float colW = Math.min(theme.px(260), w0 * 0.4f);
         float nameX = x0 + pad;
         float baseL = baseline(g, theme.label, ry, head);
@@ -466,22 +471,34 @@ final class HelpList extends VirtualView<CommandInfo> {
         String name = theme.measurer.ellipsize(cmd.name(), theme.label, nameRoom);
         float nameW = g.text(name, nameX, baseL, theme.label, theme.color(Theme.TEXT));
         List<String> names = cmd.names();
-        if (names.size() > 1) {
-            float aliasX = nameX + nameW + theme.px(8);
-            float aliasRoom = nameX + nameRoom - aliasX;
-            if (aliasRoom > theme.px(24)) {
-                String al = theme.measurer.ellipsize(String.join(", ", names.subList(1, names.size())), theme.small, aliasRoom);
-                g.text(al, aliasX, baseline(g, theme.small, ry, head), theme.small, theme.color(Theme.TEXT_3));
+        float chipX = nameX + nameW + theme.px(Theme.SPACE_2);
+        float chipEnd = nameX + nameRoom;
+        float chipH = theme.px(18);
+        int rim = theme.color(hv > 0.5f ? Theme.HAIRLINE_STRONG : Theme.HAIRLINE);
+        for (int i = 1; i < names.size(); i++) {
+            String chip = names.get(i);
+            float cw = g.measure(chip, theme.smallLabel) + 2 * theme.px(Theme.SPACE_2);
+            // a chip that does not fit whole is not drawn, a clipped one reads as a bug. a "+2" stands in for the rest
+            if (chipX + cw > chipEnd) {
+                chip = "+" + (names.size() - i);
+                cw = g.measure(chip, theme.smallLabel) + 2 * theme.px(Theme.SPACE_2);
+                if (chipX + cw > chipEnd) {
+                    break;
+                }
+                i = names.size();
             }
+            g.fillRoundRect(chipX, ry + (head - chipH) / 2f, cw, chipH, chipH / 2f, theme.color(Theme.RAISED));
+            g.strokeRoundRect(chipX, ry + (head - chipH) / 2f, cw, chipH, chipH / 2f, rim);
+            g.text(chip, chipX + theme.px(Theme.SPACE_2), baseline(g, theme.smallLabel, ry, head), theme.smallLabel, theme.color(Theme.TEXT_2));
+            chipX += cw + theme.px(Theme.SPACE_1);
         }
 
         int chev = theme.px(Theme.ICON);
         float chevX = x0 + w0 - pad - chev;
-        int chevCol = Theme.lerp(theme.color(Theme.TEXT_3), theme.color(Theme.TEXT_2), Math.max(hv, open));
-        g.icon(open > 0.5f ? Icon.CHEVRON_DOWN : Icon.CHEVRON_RIGHT, chevX, ry + (head - chev) / 2f, chev, chevCol);
+        g.icon(open > 0.5f ? Icon.CHEVRON_DOWN : Icon.CHEVRON_RIGHT, chevX, ry + (head - chev) / 2f, chev, theme.color(Theme.TEXT_3));
 
         float descX = x0 + colW;
-        float descRoom = chevX - theme.px(12) - descX;
+        float descRoom = chevX - theme.px(Theme.SPACE_3) - descX;
         if (descRoom > theme.px(24) && cmd.shortDesc() != null) {
             g.text(theme.measurer.ellipsize(cmd.shortDesc(), theme.body, descRoom), descX, baseline(g, theme.body, ry, head), theme.body, theme.color(Theme.TEXT_2));
         }
@@ -497,8 +514,14 @@ final class HelpList extends VirtualView<CommandInfo> {
         }
     }
 
+    // the last row has nothing under it to separate from
+    private boolean isLast(CommandInfo cmd) {
+        return !items.isEmpty() && items.get(items.size() - 1) == cmd;
+    }
+
     private void drawDetail(Canvas g, Detail d, float dx, float dy, float dw, float open, int hotPiece) {
-        float r = theme.pxf(Theme.CONTROL_RADIUS);
+        float r = theme.pxf(Theme.ROW_RADIUS);
+        TextStyle code = theme.small.asTabular();
         for (int p = 0; p < d.pieces.size(); p++) {
             Piece pc = d.pieces.get(p);
             float py = dy + pc.y();
@@ -514,20 +537,23 @@ final class HelpList extends VirtualView<CommandInfo> {
                 case USAGE -> {
                     d.hover[p].set(p == hotPiece ? 1f : 0f, now, Theme.ANIM_FAST);
                     float hv = d.hover[p].value(now);
-                    g.fillRoundRect(dx, py, dw, pc.h(), r, Theme.fade(Theme.lerp(theme.color(Theme.RAISED), theme.color(Theme.HOVER), hv), open));
-                    float tx = dx + theme.px(10);
+                    // flat lines on the block, the only chrome is a hover fill: they are rows, not buttons
+                    if (hv > 0.01f) {
+                        g.fillRoundRect(dx - theme.px(Theme.SPACE_2), py, dw + 2 * theme.px(Theme.SPACE_2), pc.h(), r,
+                                Theme.fade(theme.color(Theme.HOVER), open * hv));
+                    }
                     float hintW = g.measure("Use", theme.small);
-                    float right = dx + dw - theme.px(10) - hintW - theme.px(12);
-                    String line = theme.measurer.ellipsize(pc.text().get(0), theme.body, right - tx);
-                    float lineW = g.text(line, tx, baseline(g, theme.body, py, pc.h()), theme.body, Theme.fade(theme.color(Theme.TEXT), open));
+                    float right = dx + dw - hintW - theme.px(Theme.SPACE_3);
+                    String line = theme.measurer.ellipsize(pc.text().get(0), code, right - dx);
+                    float lineW = g.text(line, dx, baseline(g, code, py, pc.h()), code, Theme.fade(theme.color(Theme.TEXT), open));
                     // what the command does, in the quiet voice, only if there is room left for it
-                    float noteX = tx + lineW + theme.px(12);
+                    float noteX = dx + lineW + theme.px(Theme.SPACE_3);
                     if (!pc.note().isEmpty() && right - noteX > theme.px(32)) {
                         g.text(theme.measurer.ellipsize(pc.note(), theme.small, right - noteX), noteX,
                                 baseline(g, theme.small, py, pc.h()), theme.small, Theme.fade(theme.color(Theme.TEXT_3), open));
                     }
                     if (hv > 0.01f) {
-                        g.text("Use", dx + dw - theme.px(10) - hintW, baseline(g, theme.small, py, pc.h()), theme.small,
+                        g.text("Use", dx + dw - hintW, baseline(g, theme.small, py, pc.h()), theme.small,
                                 Theme.fade(theme.color(Theme.TEXT_2), open * hv));
                     }
                 }

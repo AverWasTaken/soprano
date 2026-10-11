@@ -410,11 +410,11 @@ public class HelpTabTest {
         float[] get = tab.headerCenter("get");
         float[] gotoAt = tab.headerCenter("goto");
         // goto is back at normal height: its neighbours are one row apart
-        assertEquals(44f, tab.headerCenter("gui")[1] - gotoAt[1], 0.5f);
+        assertEquals(theme.px(Theme.ROW_H), tab.headerCenter("gui")[1] - gotoAt[1], 0.5f);
         click(mine);
         advance(400);
         assertEquals("mine", tab.expandedCommand());
-        assertEquals(44f, tab.headerCenter("gui")[1] - tab.headerCenter("goto")[1], 0.5f);
+        assertEquals(theme.px(Theme.ROW_H), tab.headerCenter("gui")[1] - tab.headerCenter("goto")[1], 0.5f);
         assertNotNull(get);
     }
 
@@ -427,7 +427,7 @@ public class HelpTabTest {
         assertTrue(tab.headerCenter("c00")[1] < tab.list().y());
         tab.onSearch("c");
         advance(50);
-        assertEquals(tab.list().y() + 22f, tab.headerCenter("c00")[1], 1f);
+        assertEquals(tab.list().y() + theme.px(Theme.ROW_H) / 2f, tab.headerCenter("c00")[1], 1f);
     }
 
     @Test

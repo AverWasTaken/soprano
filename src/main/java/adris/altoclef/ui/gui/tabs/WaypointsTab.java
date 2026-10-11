@@ -46,6 +46,9 @@ public final class WaypointsTab implements Tab {
     private WorldAccess.Position lastPos;
     private String dimension = "";
     private String info = "";
+    // the heading is info split in two: the dimension (or the count when there is none) and the count after it
+    private String infoLead = "";
+    private String infoTail = "";
     private int shown;
     private int total;
     private int ticks;
@@ -65,7 +68,7 @@ public final class WaypointsTab implements Tab {
         tagDrop = new Dropdown(theme, tagNames, 0, i -> { }, ctx);
         addBtn = new Button(theme, "Add here", Button.Kind.PRIMARY, null, this::add);
         sort = new Segmented(theme, List.of("Distance", "Name"), 0, i -> refresh());
-        rows = new WaypointRows(theme, () -> lastPos, () -> confirming);
+        rows = new WaypointRows(theme, () -> lastPos, () -> confirming, () -> shown);
         list = new WaypointList();
         view = new View();
     }
@@ -150,7 +153,10 @@ public final class WaypointsTab implements Tab {
             shown = arranged.size();
             total = all.size();
             String dim = Coords.dimensionName(dimension);
-            info = (dim.isEmpty() ? "" : dim + " · ") + WaypointRules.count(shown, total);
+            String counted = WaypointRules.count(shown, total);
+            info = (dim.isEmpty() ? "" : dim + " · ") + counted;
+            infoLead = dim.isEmpty() ? counted : dim;
+            infoTail = dim.isEmpty() ? "" : counted;
             String keep = tagDrop.selected() >= 0 && tagDrop.selected() < tagNames.size() ? tagNames.get(tagDrop.selected()) : null;
             List<String> now = tags();
             int at = keep == null ? 0 : Math.max(0, now.indexOf(keep));
@@ -225,7 +231,7 @@ public final class WaypointsTab implements Tab {
     private final class WaypointList extends VirtualList<WaypointEntry> {
 
         WaypointList() {
-            super(WaypointsTab.this.theme, WaypointsTab.this.theme.px(44), WaypointsTab.this.rows);
+            super(WaypointsTab.this.theme, WaypointsTab.this.theme.px(Theme.ROW_H + Theme.SPACE_2), WaypointsTab.this.rows);
             setSelectable(true);
             setKeyFunction(e -> e);
             onClick((e, i) -> goTo(e));
@@ -341,12 +347,13 @@ public final class WaypointsTab implements Tab {
             int dropW = theme.px(132);
             tagDrop.setBounds(addBtn.x() - gap - dropW, top, dropW, ch);
             nameField.setBounds(x + pad, top, Math.max(theme.px(80), tagDrop.x() - gap - (x + pad)), ch);
-            errorTop = top + ch + theme.px(4);
-            infoTop = errorTop + theme.px(16) + theme.px(4);
+            // the add error lives in the gap above the heading, so it never pushes anything
+            errorTop = top + ch + theme.px(Theme.SPACE_1);
+            infoTop = top + ch + theme.px(Theme.SECTION);
             int sw = sort.preferredWidth();
             sort.setBounds(right - sw, infoTop, sw, ch);
-            int lt = infoTop + ch + theme.px(8);
-            list.setBounds(x + pad, lt, w - 2 * pad, Math.max(0, y + h - lt - theme.px(8)));
+            int lt = infoTop + ch + theme.px(Theme.SECTION_BELOW);
+            list.setBounds(x + pad, lt, w - 2 * pad, Math.max(0, y + h - lt - theme.px(Theme.PAD)));
         }
 
         @Override
@@ -373,10 +380,15 @@ public final class WaypointsTab implements Tab {
             }
             int pad = theme.px(Theme.PAD);
             if (addError != null) {
-                c.text(addError, x + pad + theme.px(2), mid(c, theme.small, errorTop, theme.px(16)), theme.small, theme.color(Theme.DANGER));
+                c.text(addError, x + pad, mid(c, theme.small, errorTop, theme.px(16)), theme.small, theme.color(Theme.DANGER));
             }
-            String line = c.ellipsize(info, theme.small, Math.max(0, sort.x() - theme.px(Theme.GAP) - (x + pad)));
-            c.text(line, x + pad + theme.px(2), mid(c, theme.small, infoTop, theme.px(Theme.CONTROL_H)), theme.small, theme.color(Theme.TEXT_2));
+            float room = Math.max(0, sort.x() - theme.px(Theme.GAP) - (x + pad));
+            float hy = mid(c, theme.label, infoTop, theme.px(Theme.CONTROL_H));
+            String lead = c.ellipsize(infoLead, theme.label, room);
+            float adv = c.text(lead, x + pad, hy, theme.label, theme.color(Theme.TEXT));
+            if (!infoTail.isEmpty() && room - adv > 0) {
+                c.text(c.ellipsize(" · " + infoTail, theme.label, room - adv), x + pad + adv, hy, theme.label, theme.color(Theme.TEXT_3));
+            }
         }
 
         private float mid(Canvas c, adris.altoclef.ui.gui.kit.TextStyle s, float top, float height) {

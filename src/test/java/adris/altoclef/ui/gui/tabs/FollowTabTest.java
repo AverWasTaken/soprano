@@ -219,6 +219,65 @@ public class FollowTabTest {
     }
 
     @Test
+    public void theButtonOnTheRowYouFollowStopsInsteadOfFollowing() {
+        p.click(rowX(c.playerList()), rowY(c.playerList(), 1));
+        assertEquals("Steve", f.world.following);
+        f.actions.clear();
+        VirtualList<?> l = c.playerList();
+        float bx = l.x() + l.w() - p.theme.px(10) - p.theme.px(8) - p.theme.px(32);
+        p.hover(rowX(l), rowY(l, 1));
+        p.click(bx, rowY(l, 1));
+        assertTrue(f.actions.contains("stop"));
+        assertFalse(f.actions.contains("follow player Steve"));
+        assertEquals(null, f.world.following);
+    }
+
+    @Test
+    public void aFollowedGroupOffersStopNotFollowAll() {
+        int i = groupIndex("minecraft:zombie");
+        VirtualList<Row> l = c.entityList();
+        float bx = l.x() + l.w() - p.theme.px(10) - p.theme.px(8) - p.theme.px(32);
+        p.hover(rowX(l), rowY(l, i));
+        p.click(bx, rowY(l, i));
+        assertEquals("every zombie", f.world.following);
+        f.actions.clear();
+        p.hover(rowX(l), rowY(l, i));
+        p.click(bx, rowY(l, i));
+        assertTrue(f.actions.contains("stop"));
+        assertFalse(f.actions.contains("follow entity zombie"));
+        assertEquals(null, f.world.following);
+    }
+
+    @Test
+    public void theButtonOnAFollowedMemberStops() {
+        int i = groupIndex("minecraft:zombie");
+        VirtualList<Row> l = c.entityList();
+        p.click(rowX(l), rowY(l, i));
+        p.click(rowX(l), rowY(l, i + 1));
+        assertTrue(f.actions.contains("follow entity 100"));
+        f.actions.clear();
+        float bx = l.x() + l.w() - p.theme.px(10) - p.theme.px(8) - p.theme.px(32);
+        p.hover(rowX(l), rowY(l, i + 1));
+        p.click(bx, rowY(l, i + 1));
+        assertTrue(f.actions.contains("stop"));
+        assertFalse(f.actions.contains("follow entity 100"));
+        assertEquals(null, f.world.following);
+    }
+
+    @Test
+    public void stopReleasedOffTheButtonDoesNothing() {
+        p.click(rowX(c.playerList()), rowY(c.playerList(), 1));
+        f.actions.clear();
+        VirtualList<?> l = c.playerList();
+        float bx = l.x() + l.w() - p.theme.px(10) - p.theme.px(8) - p.theme.px(32);
+        p.hover(rowX(l), rowY(l, 1));
+        p.press(bx, rowY(l, 1));
+        p.release(rowX(l), rowY(l, 1));
+        assertTrue(f.actions.isEmpty());
+        assertEquals("Steve", f.world.following);
+    }
+
+    @Test
     public void searchFiltersBothLists() {
         tab.onSearch("zom");
         assertEquals(1, c.entityList().items().size());

@@ -47,7 +47,7 @@ public final class HelpTab implements Tab {
 
         @Override
         protected void drawAdornments(Canvas c, Frame f) {
-            c.text("#", x + theme.px(10), baseline(c, theme.body, y, h), theme.body, focused ? theme.color(Theme.TEXT_2) : theme.color(Theme.TEXT_3));
+            c.text("#", x + theme.px(10), baseline(c, theme.body, y, h), theme.body, theme.color(Theme.TEXT_3));
         }
 
         @Override
@@ -108,12 +108,12 @@ public final class HelpTab implements Tab {
             int runW = Math.max(runButton.preferredWidth(), theme.px(64));
             field.setBounds(x + pad, y + pad, w - 2 * pad - runW - gap, ch);
             runButton.setBounds(x + w - pad - runW, y + pad, runW, ch);
-            int top = resultTop() + theme.px(18) + theme.px(4);
+            int top = resultTop() + theme.px(18) + theme.px(Theme.SPACE_2);
             list.setBounds(x, top, w, Math.max(0, y + h - top));
         }
 
         int resultTop() {
-            return y + theme.px(Theme.PAD) + theme.px(Theme.CONTROL_H) + theme.px(6);
+            return y + theme.px(Theme.PAD) + theme.px(Theme.CONTROL_H) + theme.px(Theme.SPACE_1);
         }
 
         @Override
@@ -132,7 +132,7 @@ public final class HelpTab implements Tab {
 
         private void drawResult(Canvas c) {
             String text = inlineText();
-            int col = last == null ? theme.color(Theme.TEXT_3) : last.ok() ? theme.color(Theme.TEXT_2) : theme.color(Theme.DANGER);
+            int col = last == null ? theme.color(Theme.TEXT_3) : last.ok() ? theme.color(Theme.ACCENT_TEXT) : theme.color(Theme.DANGER);
             int pad = theme.px(Theme.PAD);
             float room = w - 2 * pad;
             String shown = theme.measurer.ellipsize(text, theme.small, room);
