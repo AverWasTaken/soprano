@@ -1,0 +1,52 @@
+/* get tab layout (tabs/GetTab.java, GetBasketPanel.java, GetBasketRow.java). content box is 863 x 587 */
+
+.get { position: absolute; inset: 0; padding: 16px; display: flex; flex-direction: column; }
+
+.get-top { display: flex; align-items: center; gap: 4px; height: var(--control-h); flex: none; }
+.get-top .cat-tabs { margin-left: 4px; }
+.get-count { margin-left: auto; }
+
+/* grid: 88px cells stretched to fill, the 10px gutter is the scrollbar. scrolls under the dock */
+.get-grid {
+  flex: 1; min-height: 0; margin-top: 8px; margin-bottom: 8px;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); grid-auto-rows: 88px; align-content: start;
+}
+
+/* basket dock: raised card, empty = 48 tall hint + disabled button, filled = 36 title + rows + 54 footer */
+.dock { flex: none; display: flex; flex-direction: column; }
+.dock-head { position: relative; height: 36px; display: flex; align-items: center; justify-content: space-between; padding: 0 8px 0 16px; flex: none; }
+.dock-rule, .dock-foot::before { position: absolute; left: var(--hl); right: var(--hl); height: var(--hl); background: var(--hairline); z-index: 1; }
+.dock-rule { top: 36px; }
+.dock-rows { padding: 0 18px 0 8px; max-height: 132px; overflow-y: auto; overflow-x: hidden; flex: none; }
+.dock-foot { position: relative; height: 54px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; }
+.dock-foot::before { content: ""; top: 0; }
+.dock-foot .btn { width: 200px; }
+
+.dock.empty .dock-head, .dock.empty .dock-rule, .dock.empty .dock-rows { display: none; }
+.dock.empty .dock-foot { height: 48px; }
+.dock.empty .dock-foot::before { display: none; }
+.dock.empty .dock-foot .btn { height: var(--control-h); }
+
+/* basket row: 44 tall, icon 32, text pair centred, stepper fades in on hover */
+.brow { position: relative; display: flex; align-items: center; height: 44px; padding-left: 8px; }
+.brow::before {
+  content: ""; position: absolute; left: 0; right: 0; top: 1px; bottom: 1px; border-radius: var(--row-radius);
+  background: var(--hover); opacity: 0; transition: opacity var(--anim-fast) var(--ease);
+}
+.brow:hover::before, .brow:focus-within::before { opacity: 1; }
+.brow::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: 0; height: var(--hl); background: var(--hairline); }
+.brow:last-child::after { display: none; }
+.brow > * { position: relative; z-index: 1; }
+.brow .b-icon { width: 32px; height: 32px; image-rendering: pixelated; flex: none; margin-right: 12px; }
+.brow .b-text { flex: 1; min-width: 0; }
+.brow .b-name { font-size: 14px; line-height: 17px; color: var(--text); }
+.brow .b-id { font-size: 12px; line-height: 15px; color: var(--text-3); }
+.b-ctl { display: flex; align-items: center; margin-right: 8px; }
+.b-ctl .btn.sq { width: 28px; height: 28px; padding: 0; }
+.b-ctl .step { opacity: 0; transition: opacity var(--anim-fast) var(--ease); }
+.brow:hover .step, .brow:focus-within .step { opacity: 1; }
+.b-ctl .count { width: 56px; text-align: center; }
+.b-ctl .count input { text-align: center; padding: 0; }
+.b-ctl .plus { margin-left: 4px; }
+.b-ctl .bin { color: var(--text-3); margin-left: 4px; }
+.b-ctl .bin:hover { color: var(--danger); }

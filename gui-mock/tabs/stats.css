@@ -1,0 +1,14 @@
+/* stats tab layout (tabs/StatsTab.java, kit/VirtualGrid.java). content box is 863 x 587 */
+
+.st { position: absolute; inset: 0; }
+.st-head { position: absolute; left: 16px; top: 16px; height: 20px; }
+.st-sub { position: absolute; left: 16px; top: 39.5px; height: 16px; line-height: 16px; white-space: nowrap; }
+/* two 414.5 cells from x 12 (863 - 24 - the 10 gutter, halved, measured off the png), the card is inset 4 in each, so cards sit at 16 and 430 and end 11 short of the header */
+.st-grid { position: absolute; left: 12px; top: 60px; width: 829px; display: grid; grid-template-columns: 414.5px 414.5px; grid-auto-rows: 52px; }
+.st-cell { padding: 4px; }
+.st-card { height: 44px; padding: 0 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.st-card .label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.st-card .val { color: var(--text-2); font-variant-numeric: tabular-nums; white-space: nowrap; flex: none; }
+.st-empty { position: absolute; left: 16px; top: 60px; display: none; }
+.st.empty .st-grid { display: none; }
+.st.empty .st-empty { display: block; }

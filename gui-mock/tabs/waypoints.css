@@ -1,0 +1,61 @@
+/* waypoints tab layout (tabs/WaypointsTab.java, WaypointRows.java). content box is 863 x 587 */
+
+.wp { position: absolute; inset: 0; }
+
+.wp-add { position: absolute; left: 16px; right: 16px; top: 16px; height: 30px; display: flex; gap: 8px; }
+.wp-add .text-field { flex: 1; min-width: 80px; }
+.wp-add .tag-drop { width: 132px; flex: none; }
+/* Dropdown.java puts the chevron at w - 10 - 16 + 2, so 8 from the edge, not 10. kit.css has it at 10 */
+.wp-err { position: absolute; left: 16px; top: 50px; height: 16px; line-height: 16px; color: var(--danger); display: none; }
+.wp-err.show { display: block; }
+
+.wp-info { position: absolute; left: 16px; right: 16px; top: 70px; height: 30px; display: flex; align-items: center; justify-content: space-between; }
+.wp-info .lead { white-space: pre; }
+
+/* list: 841 wide scroll box (831 card + the 10 gutter), 108 down, 16 off the bottom */
+.wp-list { position: absolute; left: 16px; width: 841px; top: 108px; bottom: 16px; }
+.wp-card { overflow: hidden; }
+.wp-card .row { height: 44px; padding: 0 16px; cursor: default; }
+.wp-card .row .wic { position: absolute; left: 16px; top: 14px; color: var(--text-3); }
+.wp-card .row .txt { position: absolute; left: 44px; top: 5px; right: 150px; transform: translateY(0.5px); will-change: transform; }   /* without will-change chrome paints this block with lcd fringes, the java is greyscale */
+.wp-card .row .top { display: flex; align-items: center; gap: 8px; height: 17px; }
+.wp-card .row .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mn { font-variant-numeric: normal; }   /* java gives the minus sign no tabular width */
+.wp-card .row .sub { margin-top: 2px; height: 15px; font-size: 12px; line-height: 15px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.wp-card .row .dist { position: absolute; right: 15.5px; top: 0; bottom: 0; display: flex; align-items: center; gap: 8px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.wp-card .row .pinned { color: var(--accent); display: none; }
+.wp-card .row.pin .pinned { display: block; }
+
+/* tag chip: 18 tall, 8 padding, round ends. promote to kit.css */
+.tag-chip {
+  display: inline-flex; align-items: center; height: 18px; padding: 0 8px; border-radius: 9px; flex: none;
+  background: var(--raised); color: var(--text-2); box-shadow: inset 0 0 0 var(--hl) var(--hairline);
+  font-size: 12px; line-height: 15px; font-weight: 500; font-variant-numeric: tabular-nums;
+}
+.wp-card .row:hover .tag-chip, .wp-card .row.confirm .tag-chip { box-shadow: inset 0 0 0 var(--hl) var(--hairline-strong); }
+
+/* hover actions sit left of the 64 wide distance slot, nothing is drawn until the row is hovered */
+.wp-card .acts, .wp-card .sure { position: absolute; right: 88px; top: 7px; height: 30px; display: none; align-items: center; gap: 4px; }
+.wp-card .row:hover .acts { display: flex; }
+.wp-card .row.confirm .acts { display: none; }
+.wp-card .row.confirm .sure { display: flex; }
+.wp-card .row.confirm .dist .pinned { display: none; }
+.wp-card .act { height: 30px; min-width: 30px; padding: 0; border-radius: var(--control-radius); color: var(--text-2); display: flex; align-items: center; justify-content: center; font-size: 14px; line-height: 17px; font-weight: 500; transition: background-color var(--anim-fast) var(--ease), color var(--anim-fast) var(--ease); }
+.wp-card .act:hover { background: var(--pressed); color: var(--text); }
+.wp-card .act.go { width: 36px; }
+.wp-card .act.del { color: var(--danger); }
+.wp-card .act.del:hover { background: var(--danger-fill); color: var(--danger); }
+
+/* delete confirm: the row goes a faint red, Yes is a fuller red, No is the plain secondary look */
+.wp-card .row.confirm { background: color-mix(in srgb, var(--danger-fill) 55%, transparent); }
+.wp-card .sure .q { margin-right: 4px; color: var(--text); white-space: nowrap; }
+.wp-card .sure .yes, .wp-card .sure .no { height: 30px; border-radius: var(--control-radius); font-size: 14px; line-height: 17px; font-weight: 500; display: flex; align-items: center; justify-content: center; transition: background-color var(--anim-fast) var(--ease); }
+.wp-card .sure .yes { width: 48px; background: var(--danger-fill); color: var(--danger); box-shadow: inset 0 0 0 var(--hl) color-mix(in srgb, var(--danger) 50%, transparent); }
+.wp-card .sure .yes:hover { background: var(--danger-pressed); }
+.wp-card .sure .no { width: 44px; background: var(--raised); color: var(--text); box-shadow: inset 0 0 0 var(--hl) var(--edge); }
+.wp-card .sure .no:hover { background: var(--pressed); }
+
+/* empty list: no card, one line centred on the 831 card */
+.wp-empty { position: absolute; left: 16px; width: 831px; top: 108px; bottom: 16px; display: none; align-items: center; justify-content: center; color: var(--text-3); }
+.wp.empty .wp-list { display: none; }
+.wp.empty .wp-empty { display: flex; }

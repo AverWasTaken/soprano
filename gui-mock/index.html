@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>soprano gui mock</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script>/* theme first, so the first paint is already the right one */ (function(){var q=new URLSearchParams(location.search);document.documentElement.dataset.theme=q.get("theme")==="light"?"light":"dark";document.documentElement.classList.add("boot");})();</script>
+<link rel="stylesheet" href="theme.css">
+<link rel="stylesheet" href="shell.css">
+<link rel="stylesheet" href="kit.css">
+<link rel="stylesheet" href="devbar.css">
+<link rel="stylesheet" href="tabs/get.css">
+<link rel="stylesheet" href="tabs/settings.css">
+<link rel="stylesheet" href="tabs/goto.css">
+<link rel="stylesheet" href="tabs/waypoints.css">
+<link rel="stylesheet" href="tabs/stats.css">
+<link rel="stylesheet" href="tabs/follow.css">
+<link rel="stylesheet" href="tabs/help.css">
+</head>
+<body>
+
+<!-- dev bar: lives outside the panel, press h to hide -->
+<div class="devbar" id="devbar">
+  <label>tab <select id="dv-tab"></select></label>
+  <label>theme <select id="dv-theme"><option>dark</option><option>light</option></select></label>
+  <label>scale <select id="dv-scale"><option>0.75</option><option selected>1</option><option>2</option></select></label>
+  <label><input type="checkbox" id="dv-busy" checked> busy</label>
+  <span class="sep"></span>
+  <label><input type="checkbox" id="dv-ov"> overlay</label>
+  <label>opacity <input type="range" id="dv-op" min="0" max="1" step="0.01" value="0.5"></label>
+  <label><input type="checkbox" id="dv-diff"> difference</label>
+  <label>amp <select id="dv-amp"><option>1</option><option>2</option><option selected>4</option><option>8</option></select></label>
+  <span class="sep"></span>
+  <span id="dv-size" class="readout">1040 x 680</span>
+  <span class="hint">h hides this</span>
+</div>
+
+<div class="stage" id="stage">
+  <div class="panel-wrap" id="wrap">
+    <div class="panel" id="panel">
+
+      <!-- sidebar doubles as the tab switcher -->
+      <aside class="sidebar">
+        <div class="wordmark">soprano</div>
+        <nav class="nav" id="nav">
+          <div class="nav-pill" id="nav-pill"></div>
+          <div class="nav-group">
+            <div class="nav-label">Actions</div>
+            <div class="nav-row" data-go="get"><i data-icon="get"></i><span>Get</span></div>
+            <div class="nav-row" data-go="goto"><i data-icon="goto"></i><span>Go to</span></div>
+            <div class="nav-row" data-go="follow"><i data-icon="follow"></i><span>Follow</span></div>
+          </div>
+          <div class="nav-group">
+            <div class="nav-label">Library</div>
+            <div class="nav-row" data-go="waypoints"><i data-icon="waypoints"></i><span>Waypoints</span></div>
+            <div class="nav-row" data-go="stats"><i data-icon="stats"></i><span>Stats</span></div>
+          </div>
+          <div class="nav-group">
+            <div class="nav-label">Preferences</div>
+            <div class="nav-row" data-go="help"><i data-icon="help"></i><span>Help</span></div>
+            <div class="nav-row" data-go="settings"><i data-icon="settings"></i><span>Settings</span></div>
+          </div>
+        </nav>
+        <div class="sidebar-foot">
+          <div class="segmented" id="theme-seg">
+            <div class="thumb"></div>
+            <button class="seg" data-theme-set="light">Light</button>
+            <button class="seg on" data-theme-set="dark">Dark</button>
+          </div>
+          <div class="keyrow">
+            <span class="caption">Open key</span>
+            <button class="keycap">Right Shift</button>
+          </div>
+        </div>
+      </aside>
+
+      <!-- header: title + search; mock.js fills them from the active section's data-title / data-search -->
+      <header class="header">
+        <div class="header-title" id="hdr-title">Get</div>
+        <label class="search" id="hdr-search"><i data-icon="search"></i><input type="text" id="hdr-input" placeholder="Search items" spellcheck="false"></label>
+      </header>
+
+      <main class="content" id="content">
+
+        <!-- ================= GET ================= -->
+        <section data-tab="get" data-title="Get" data-search="Search items">
+          <div class="get">
+            <div class="get-top">
+              <div class="segmented" id="mode-seg"><div class="thumb"></div><button class="seg on">Get</button><button class="seg">Mine</button></div>
+              <div class="cat-tabs" id="cat-tabs"><div class="cat-pill on">All</div><div class="cat-pill">Other</div></div>
+              <div class="get-count t-small c-3" id="get-count">66 items</div>
+            </div>
+            <div class="get-grid scroll" id="get-grid"></div>
+            <div class="dock card raised">
+              <div class="dock-head">
+                <span class="t-label">Basket</span>
+                <button class="btn ghost" id="basket-clear">Clear</button>
+              </div>
+              <div class="dock-rule"></div>
+              <div class="dock-rows scroll" id="basket-rows"></div>
+              <div class="dock-foot">
+                <span class="t-small c-2" id="basket-summary">3 items · 150 total</span>
+                <button class="btn primary" id="basket-go">Get 150 items</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ================= GO TO ================= -->
+        <section data-tab="goto" data-title="Go to">
+          <div class="gt" id="gt">
+            <div class="gt-card card">
+              <div class="gt-labels"><span>X</span><span>Y</span><span>Z</span></div>
+              <div class="gt-fields">
+                <label class="text-field num-field"><input data-i="0" placeholder="number or ~" value="120" spellcheck="false" autocomplete="off"><span class="nudges"><button class="btn ghost icon-only nudge" data-dir="-1" tabindex="-1" aria-label="Less"><i data-icon="minus"></i></button><button class="btn ghost icon-only nudge" data-dir="1" tabindex="-1" aria-label="More"><i data-icon="plus"></i></button></span></label>
+                <label class="text-field num-field"><input data-i="1" placeholder="optional" value="" spellcheck="false" autocomplete="off"><span class="nudges"><button class="btn ghost icon-only nudge" data-dir="-1" tabindex="-1" aria-label="Less"><i data-icon="minus"></i></button><button class="btn ghost icon-only nudge" data-dir="1" tabindex="-1" aria-label="More"><i data-icon="plus"></i></button></span></label>
+                <label class="text-field num-field"><input data-i="2" placeholder="number or ~" value="-30" spellcheck="false" autocomplete="off"><span class="nudges"><button class="btn ghost icon-only nudge" data-dir="-1" tabindex="-1" aria-label="Less"><i data-icon="minus"></i></button><button class="btn ghost icon-only nudge" data-dir="1" tabindex="-1" aria-label="More"><i data-icon="plus"></i></button></span></label>
+              </div>
+              <div class="gt-status t-small tnum" id="gt-status"></div>
+              <div class="gt-btns">
+                <button class="btn primary go" id="gt-go">Go</button>
+                <button class="btn secondary" id="gt-goal">Set goal only</button>
+                <button class="btn ghost" id="gt-here"><i data-icon="pin"></i><span>My position</span></button>
+                <button class="btn ghost" id="gt-clear">Clear</button>
+              </div>
+            </div>
+            <div class="gt-head t-label" id="gt-head"></div>
+            <div class="gt-recent card list-card" id="gt-recent"></div>
+            <div class="gt-motif t-body" id="gt-motif">
+              <svg viewBox="0 0 220 88" aria-hidden="true"><path class="trail" id="gt-trail" pathLength="1"></path><g class="start"></g><g class="end"></g></svg>
+              <div class="cap">Nowhere yet. Pick a spot and press Go.</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ================= FOLLOW ================= -->
+        <section data-tab="follow" data-title="Follow" data-search="Search players and entities">
+          <div class="follow" id="follow">
+            <div class="fl-strip card" id="fl-strip">
+              <i data-icon="dot" class="fl-dot"></i>
+              <span class="t-label"><span class="c-2">Following </span><span id="fl-name">Steve</span></span>
+              <button class="btn danger" id="fl-stop">Stop</button>
+            </div>
+            <div class="fl-btns">
+              <button class="btn secondary" id="fl-all-p">Follow all players</button>
+              <button class="btn secondary" id="fl-all-e">Follow all entities</button>
+            </div>
+            <div class="fl-sec" id="fl-psec">
+              <div class="fl-head t-label" id="fl-phead"></div>
+              <div class="fl-list" id="fl-plist"><div class="fl-scroll scroll"><div class="fl-card card list-card"></div></div></div>
+            </div>
+            <div class="fl-sec fl-grow" id="fl-esec">
+              <div class="fl-head t-label" id="fl-ehead"></div>
+              <div class="fl-list" id="fl-elist"><div class="fl-scroll scroll"><div class="fl-card card list-card"></div></div></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ================= WAYPOINTS ================= -->
+        <section data-tab="waypoints" data-title="Waypoints" data-search="Search waypoints">
+          <div class="wp" id="wp">
+            <div class="wp-add">
+              <label class="text-field" id="wp-name"><input placeholder="Name" spellcheck="false" autocomplete="off"></label>
+              <button class="dropdown tag-drop" id="wp-tag"><span>user</span><i data-icon="chevron_down"></i></button>
+              <button class="btn primary" id="wp-add">Add here</button>
+            </div>
+            <div class="wp-err t-small" id="wp-err"></div>
+            <div class="wp-info t-label">
+              <span class="lead" id="wp-info"></span>
+              <div class="segmented" id="wp-sort"><div class="thumb"></div><button class="seg on">Distance</button><button class="seg">Name</button></div>
+            </div>
+            <div class="wp-list scroll" id="wp-list"><div class="wp-card card list-card" id="wp-rows"></div></div>
+            <div class="wp-empty t-body" id="wp-empty">No waypoints yet. Add one here.</div>
+          </div>
+        </section>
+
+        <!-- ================= STATS ================= -->
+        <section data-tab="stats" data-title="Stats">
+          <div class="st" id="st">
+            <div class="st-head t-label">Your numbers</div>
+            <div class="st-sub t-small c-2">What the game has seen you do. Distances count every kind of travel.</div>
+            <div class="st-grid" id="st-grid"></div>
+            <div class="st-empty t-small c-3">No numbers yet. Join a world and move around a bit.</div>
+          </div>
+        </section>
+
+        <!-- ================= HELP ================= -->
+        <section data-tab="help" data-title="Help" data-search="Search commands">
+          <div class="help" id="help">
+            <label class="hp-line text-field"><span class="hp-hash">#</span><input id="hp-input" placeholder="Run a command, like goto 100 64 -30" spellcheck="false" autocomplete="off"></label>
+            <button class="btn primary" id="hp-run" disabled>Run</button>
+            <div class="hp-result t-small" id="hp-result">Enter runs it. Up arrow brings back earlier commands.</div>
+            <div class="hp-list" id="hp-list"><div class="hp-scroll scroll" id="hp-scroll"><div class="hp-card card list-card"></div></div></div>
+          </div>
+        </section>
+
+        <!-- ================= SETTINGS ================= -->
+        <section data-tab="settings" data-title="Settings" data-search="Search settings">
+          <div class="settings">
+            <div class="set-main scroll" id="set-main">
+              <div class="key-card card">
+                <i data-icon="key" class="key-icon c-2"></i>
+                <div class="key-text">
+                  <div class="t-label">Open key</div>
+                  <div class="t-small c-2">Opens this panel. Press a key to rebind, Backspace to unbind.</div>
+                </div>
+                <button class="keycap key-box">Right Shift</button>
+                <span class="t-small c-2 key-enabled">Enabled</span>
+                <button class="toggle on" aria-label="Enabled"></button>
+              </div>
+
+              <div class="set-nav">
+                <button class="dropdown set-cat"><span>All settings  ·  41</span><i data-icon="chevron_down" class="c-2"></i></button>
+                <div class="set-toggles">
+                  <span class="t-small c-2">Advanced</span><button class="toggle on" aria-label="Advanced"></button>
+                  <span class="t-small c-2 gap-l">Modified</span><button class="toggle" aria-label="Modified"></button>
+                </div>
+              </div>
+
+              <div class="set-heading t-label">Common settings</div>
+              <div class="tiles" id="tiles"></div>
+
+              <div class="set-heading adv t-label">Advanced settings</div>
+              <div class="set-card card">
+                <div class="srow">
+                  <i class="mod-dot"></i>
+                  <div class="stext">
+                    <div class="t-label">allowParkourPlace</div>
+                    <div class="t-small c-2">Allow parkour placing blocks mid air. Needs allowParkour.</div>
+                  </div>
+                  <button class="toggle"></button>
+                  <span class="pin-slot"></span>
+                  <button class="btn ghost icon-only mini"><i data-icon="reset" class="c-2"></i></button>
+                </div>
+                <div class="srow">
+                  <div class="stext">
+                    <div class="t-label">altoAsyncSmelting</div>
+                    <div class="t-small c-2">Walk away from a loaded furnace and come back.</div>
+                  </div>
+                  <button class="toggle"></button>
+                  <span class="pin-slot"></span>
+                  <span class="reset-slot"></span>
+                </div>
+                <div class="srow">
+                  <div class="stext">
+                    <div class="t-label">altoCommitCombat</div>
+                    <div class="t-small c-2">Commit to fights the way the combat machine wants.</div>
+                  </div>
+                  <button class="toggle on"></button>
+                  <span class="pin-slot"></span>
+                  <span class="reset-slot"></span>
+                </div>
+              </div>
+            </div>
+            <div class="set-detail">
+              <div class="t-small c-3 detail-idle">Hover a setting to read its full description.</div>
+            </div>
+          </div>
+        </section>
+
+      </main>
+
+      <footer class="status">
+        <i data-icon="dot" data-size="12" class="status-icon busy" id="status-icon"></i>
+        <span class="status-line" id="status-line">Mining iron_ore</span>
+        <span class="status-sep">·</span>
+        <span class="status-detail" id="status-detail">goal 120 64 -30</span>
+        <button class="btn danger" id="stop-btn"><i data-icon="stop"></i><span>Stop</span></button>
+      </footer>
+
+      <div class="panel-edge"></div>
+      <i class="grip"></i>
+    </div>
+    <img class="overlay" id="overlay" alt="">
+  </div>
+</div>
+
+<script src="icons.js"></script>
+<script src="mock.js"></script>
+<script src="tabs/stats.js"></script>
+<script src="tabs/waypoints.js"></script>
+<script src="tabs/goto.js"></script>
+<script src="tabs/follow.js"></script>
+<script src="tabs/help.js"></script>
+</body>
+</html>

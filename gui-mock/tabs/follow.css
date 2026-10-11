@@ -1,0 +1,76 @@
+/* follow tab (tabs/FollowContent.java). content box is 863 x 587, stacked layout (under 900 wide) */
+
+.follow { position: absolute; inset: 0; padding: 16px; display: flex; flex-direction: column; }
+.follow > * { flex: none; }
+
+/* the strip is one card, not a tinted bar. stop sits 8 in from its right edge */
+.fl-strip { display: flex; align-items: center; height: 44px; margin-bottom: 8px; padding: 0 12px; }
+.fl-strip .fl-dot { color: var(--accent); margin-right: 8px; }
+.fl-strip .btn { position: absolute; right: 8px; top: 7px; }
+.follow.idle .fl-strip { display: none; }
+
+.fl-btns { display: flex; gap: 8px; margin-bottom: 24px; }
+
+.fl-sec + .fl-sec { margin-top: 24px; }
+.fl-grow { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.fl-head { height: 20px; line-height: 20px; margin-bottom: 8px; white-space: pre; }
+
+/* the list is the card plus the 10px scrollbar gutter, so it is 841 wide and the card 831. the thumb lives in the gutter */
+.fl-list { position: relative; width: calc(100% + var(--gutter)); flex: 1; min-height: 0; }
+.fl-scroll { position: absolute; inset: 0; }
+.fl-card { height: auto; }
+.fl-list.empty .fl-card { display: none; }
+
+/* the card is in scroll space and clips to the viewport, the base .list-card gives the rounded ends. separator ends 1px short of the edge (ListCard.separator), kit.css has 17 */
+.fl-card .row { cursor: default; }
+.fl-card .row.followed, .fl-card .row.followed:hover { background: var(--accent-soft); }
+.fl-card .row.self:hover { background: transparent; }
+
+.fl-face { position: relative; flex: none; width: 24px; height: 24px; margin-right: 12px; border-radius: 4px; background: var(--raised); color: var(--text-2); display: flex; align-items: center; justify-content: center; }
+.fl-face.far::after { content: ""; position: absolute; inset: 0; border-radius: 4px; background: color-mix(in srgb, var(--panel) 60%, transparent); }
+.fl-name { font-size: 14px; line-height: 17px; font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.row.far .fl-name { color: var(--text-3); }
+
+/* the 18px chip, same one help uses for aliases. RAISED is a hair off the card, the stroke keeps it from vanishing */
+.fl-chip {
+  flex: none; display: inline-flex; align-items: center; height: 18px; margin-left: 8px; padding: 0 8px; border-radius: 9px;
+  background: var(--raised); color: var(--text-2); font-size: 12px; line-height: 15px; font-weight: 500; font-variant-numeric: tabular-nums;
+  box-shadow: inset 0 0 0 var(--hl) var(--hairline); transition: box-shadow var(--anim-fast) var(--ease);
+}
+.fl-card .row:hover:not(.self) .fl-chip, .fl-card .row.followed .fl-chip { box-shadow: inset 0 0 0 var(--hl) var(--hairline-strong); }
+
+.fl-dist { margin-left: auto; padding-left: 12px; font-size: 14px; line-height: 17px; color: var(--text-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.fl-dist.far { font-size: 12px; line-height: 15px; color: var(--text-3); font-variant-numeric: normal; }
+
+/* the row button owns a fixed slot at the right edge and covers the distance, nothing shifts. width is set from the measured "Follow all" */
+.fl-act {
+  display: none; position: absolute; right: 8px; top: 5px; width: var(--fl-bw, 86px); height: 26px; border-radius: var(--control-radius);
+  align-items: center; justify-content: center; font-size: 14px; line-height: 17px; font-weight: 500; white-space: nowrap;
+}
+.fl-act.go { background: var(--accent); color: var(--on-accent); }
+.fl-act.go:hover { background: var(--accent-hover); }
+.fl-act.stop { background: var(--raised); color: var(--danger); box-shadow: inset 0 0 0 var(--hl) var(--edge); }
+.fl-act.stop:hover { background: var(--danger-fill); }
+.fl-card .row:hover:not(.far):not(.self):not(.nobtn) .fl-act { display: flex; }
+/* the distance only gives way while a button is there: not for you, not for someone who is not nearby, not for a member-only group */
+.fl-card .row:hover:not(.far):not(.self):not(.nobtn) .fl-dist { visibility: hidden; }
+
+/* group row: chevron 16, tile 24 at +8, name 12 after. the two chevrons cross fade over 150ms */
+.fl-chev { position: relative; flex: none; width: 16px; height: 16px; margin-right: 8px; color: var(--text-3); }
+.fl-chev .icon { position: absolute; inset: 0; transition: opacity var(--anim-fast) var(--ease); }
+.fl-chev .c-down { opacity: 0; }
+.fl-chev.open .c-down { opacity: 1; }
+.fl-chev.open .c-right { opacity: 0; }
+.fl-tile { flex: none; width: 24px; height: 24px; margin-right: 12px; border-radius: var(--row-radius); background: var(--raised); display: flex; align-items: center; justify-content: center; color: var(--text-2); }
+.fl-tile img { width: 16px; height: 16px; image-rendering: pixelated; display: block; }
+
+/* member row starts under the group's tile: padding 16 + chevron 16 + 8 */
+.fl-card .row.member { padding-left: 40px; }
+.fl-card .row.member .fl-name { font-weight: 400; }
+.fl-type { flex: none; margin-left: 8px; font-size: 12px; line-height: 15px; color: var(--text-2); }
+
+/* empty and no-match, centred in the list box at min(h/2, 60). baselines come from the java (cy-2 and cy+18) */
+.fl-empty { position: absolute; left: 0; width: calc(100% - var(--gutter)); top: min(50%, 60px); height: 0; text-align: center; pointer-events: none; }
+.fl-empty div { position: absolute; left: 0; right: 0; white-space: nowrap; }
+.fl-empty .l1 { top: -15.6px; font-size: 14px; line-height: 17px; color: var(--text-2); }
+.fl-empty .l2 { top: 6.1px; font-size: 12px; line-height: 15px; color: var(--text-3); }

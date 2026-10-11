@@ -1,0 +1,105 @@
+/* design tokens, 1:1 with kit/Theme.java (names too). tweak here, then port back.
+   dark: Theme.java:14-39, light: Theme.java:123-148 */
+
+:root[data-theme="dark"] {
+  --scrim: rgba(0, 0, 0, 0.32);          /* dim behind the panel */
+  --stage: #4a4a4e;                      /* mock only: stands in for the blurred world */
+  --sidebar: #1B1B1D;                    /* sidebar fill */
+  --panel: #232325;                      /* panel + header + content fill */
+  --surface: #2C2C2E;                    /* cards, floating things */
+  --raised: #3A3A3C;                     /* secondary/danger button rest, dropdown rest, category pill, phase chip */
+  --field: #1C1C1E;                      /* text field, segmented track */
+  --hover: #353537;                      /* ghost + row hover */
+  --pressed: #424244;                    /* ghost + secondary press */
+  --selected: #5C5C60;                   /* segmented thumb */
+  --hairline: #37373A;                   /* card/field edge, dividers, header rule */
+  --hairline-strong: #6B6B70;            /* button edge (60%), panel edge (50%), dropdown border, grip */
+  --text: #F5F5F7;                       /* primary text */
+  --text-2: #AEAEB4;                     /* secondary text, idle icons */
+  --text-3: #A0A0A5;                     /* placeholder, captions, group labels, scrollbar thumb */
+  --accent: #0A73E8;                     /* primary button, selected row, focus, toggle on */
+  --accent-hover: #0B6BD6;               /* primary hover, toggle-on hover */
+  --accent-pressed: #0A64CC;             /* primary press */
+  --accent-soft: #22354D;                /* text selection, dropdown selected row, in-basket tile, followed row */
+  --accent-text: #5AA9FF;                /* successful result line */
+  --on-accent: #FFFFFF;                  /* text on accent, toggle knob */
+  --danger: #FF8080;                     /* danger text, invalid border, stop when busy */
+  --danger-fill: #3A2A2C;                /* danger hover fill */
+  --danger-pressed: #4A3134;             /* danger press fill */
+  --shadow: rgba(0, 0, 0, 0.50);         /* every shadow, scaled per use below */
+  --path-start: #30D158;                 /* go to path start dot */
+  --path-end: #FF453A;                   /* go to path end dot */
+}
+
+:root[data-theme="light"] {
+  --scrim: rgba(0, 0, 0, 0.20);
+  --stage: #8d8d92;
+  --sidebar: #E6E6EB;
+  --panel: #F2F2F7;
+  --surface: #FFFFFF;
+  --raised: #E3E3E8;
+  --field: #EAEAEF;
+  --hover: #E9E9EE;
+  --pressed: #DCDCE1;
+  --selected: #FFFFFF;
+  --hairline: #D9D9DE;
+  --hairline-strong: #A9A9AE;
+  --text: #1D1D1F;
+  --text-2: #5C5C62;
+  --text-3: #66666B;
+  --accent: #0071E3;
+  --accent-hover: #0062C8;
+  --accent-pressed: #0053AD;
+  --accent-soft: #DCEBFC;
+  --accent-text: #0066CC;
+  --on-accent: #FFFFFF;
+  --danger: #C20012;
+  --danger-fill: #FBE5E7;
+  --danger-pressed: #F5CDD1;
+  --shadow: rgba(0, 0, 0, 0.18);
+  --path-start: #248A3D;
+  --path-end: #D70015;
+}
+
+/* derived from the tokens above, same for both themes */
+:root {
+  --edge: color-mix(in srgb, var(--hairline-strong) 60%, transparent);        /* secondary/danger button edge */
+  --panel-edge: color-mix(in srgb, var(--hairline-strong) 50%, transparent);  /* panel outline */
+  --shadow-half: color-mix(in srgb, var(--shadow) 50%, transparent);          /* raised card, toggle knob */
+  --shadow-40: color-mix(in srgb, var(--shadow) 40%, transparent);            /* segmented thumb */
+
+  /* sizes, design px at scale 1.0 (Theme.java:42-68) */
+  --sidebar-w: 176px;
+  --header-h: 56px;
+  --status-h: 36px;
+  --panel-radius: 16px;
+  --card-radius: 12px;
+  --row-radius: 8px;
+  --control-radius: 7px;
+  --row-h: 36px;
+  --control-h: 30px;
+  --icon: 16px;
+  --icon-lg: 24px;
+  --scrollbar-w: 4px;
+  --gutter: 10px;                        /* room a scrollable list reserves on the right */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --pad: 16px;
+  --gap: 8px;
+  --section: 24px;
+  --section-below: 8px;
+
+  /* motion (Theme.java ANIM_*), ease-out cubic */
+  --ease: cubic-bezier(0.33, 1, 0.68, 1);
+  --anim-fast: 150ms;
+  --anim: 240ms;
+  --anim-slow: 320ms;
+
+  --font: "Inter", system-ui, sans-serif;
+
+  /* hairlines are always 1 device px in the game, so they shrink/grow against the dev bar zoom */
+  --zoom: 1;
+  --dpr: 1;  /* mock.js sets this from devicePixelRatio */
+  --hl: calc(1px / (var(--zoom) * var(--dpr)));
+}

@@ -1,0 +1,65 @@
+/* help tab (tabs/HelpTab.java, HelpList.java). content box is 863 x 587 */
+
+.help { position: absolute; inset: 0; }
+
+/* command line: field fill, quiet # in front so it reads as chat. text starts 10 + width of # + 6 in */
+.hp-line { position: absolute; left: 16px; top: 16px; right: calc(16px + 64px + 8px); }
+.hp-line .hp-hash { flex: none; margin: 0 6px 0 10px; font-size: 14px; line-height: 17px; color: var(--text-3); }
+.hp-line input { width: auto; flex: 1; min-width: 0; padding: 0 10px 0 0; }
+#hp-run { position: absolute; right: 16px; top: 16px; width: 64px; }
+
+/* one line under the field, idle hint in text-3, ok in accent text, failure in danger */
+.hp-result { position: absolute; left: 16px; right: 16px; top: 50px; height: 18px; line-height: 18px; font-size: 12px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hp-result.ok { color: var(--accent-text); }
+.hp-result.bad { color: var(--danger); }
+
+/* list is the full 863 wide, the card sits 16 in and the thumb floats in the right margin */
+.hp-list { position: absolute; left: 0; right: 0; top: 76px; bottom: 0; }
+.hp-scroll { position: absolute; inset: 0; }
+.hp-scroll.scroll { padding: 0 16px 8px; }   /* the 8 under the card is the list's trailing SPACE_2 */
+.hp-card { height: auto; }
+
+.hrow { position: relative; }
+.hrow + .hrow::before { content: ""; position: absolute; left: 16px; right: var(--hl); top: 0; height: var(--hl); background: var(--hairline); z-index: 1; }
+
+.hh { position: relative; display: flex; align-items: center; height: 36px; padding: 0 16px; cursor: default; user-select: none; transition: background-color var(--anim-fast) var(--ease); }
+.hh:hover { background: var(--hover); }
+.hrow.open .hh:hover { background: color-mix(in srgb, var(--hover) 40%, transparent); }   /* only the header lights up, and less so while open */
+
+/* name column is 244 wide, alias chips stop there. the description column starts right after it at 260 */
+.hn { flex: none; width: 244px; display: flex; align-items: center; overflow: hidden; }
+.hn .nm { font-size: 14px; line-height: 17px; font-weight: 500; color: var(--text); white-space: nowrap; }
+.hp-chip {
+  flex: none; display: inline-flex; align-items: center; height: 18px; margin-left: 4px; padding: 0 8px; border-radius: 9px;
+  background: var(--raised); color: var(--text-2); font-size: 12px; line-height: 15px; font-weight: 500; font-variant-numeric: tabular-nums;
+  box-shadow: inset 0 0 0 var(--hl) var(--hairline); transition: box-shadow var(--anim-fast) var(--ease);
+}
+.hn .nm + .hp-chip { margin-left: 8px; }
+.hh:hover .hp-chip { box-shadow: inset 0 0 0 var(--hl) var(--hairline-strong); }
+.hd { flex: 1; min-width: 0; margin-right: 12px; font-size: 14px; line-height: 17px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hc { flex: none; width: 16px; height: 16px; position: relative; color: var(--text-3); }
+.hc .icon { position: absolute; inset: 0; }
+.hc .c-down { display: none; }
+.hrow.open .hc .c-down { display: block; }
+.hrow.open .hc .c-right { display: none; }
+
+/* detail: grows in under a hairline. 8 top, 16 bottom, 4 between pieces, 6 for a blank line */
+.hdet { position: relative; height: 0; overflow: hidden; transition: height var(--anim) var(--ease); }
+.hdet::before { content: ""; position: absolute; left: var(--hl); right: var(--hl); top: 0; height: var(--hl); background: var(--hairline); opacity: 0; transition: opacity var(--anim) var(--ease); z-index: 1; }
+.hrow.open .hdet::before { opacity: 1; }
+.hdi { padding: 8px 16px 16px; opacity: 0; transition: opacity var(--anim) var(--ease); }
+.hrow.open .hdi { opacity: 1; }
+.hdi > :last-child { margin-bottom: 0; }
+.hp-text { font-size: 14px; line-height: 20px; color: var(--text-2); margin-bottom: 4px; }
+.hp-gap { height: 6px; }
+.hp-head { height: 18px; margin-bottom: 4px; font-size: 12px; line-height: 18px; font-weight: 500; color: var(--text-3); }
+/* usage lines are rows, not buttons: flat text, a hover fill 8 wider each side, a "Use" hint on the right */
+.hp-use { display: flex; align-items: center; height: 28px; margin: 0 -8px 4px; padding: 0 8px; border-radius: var(--row-radius); font-size: 12px; line-height: 15px; font-variant-numeric: tabular-nums; color: var(--text); cursor: default; transition: background-color var(--anim-fast) var(--ease); }
+.hp-use:hover { background: var(--hover); }
+.hp-use .code { flex: none; white-space: pre; }
+.hp-use .note { flex: 1; min-width: 0; margin: 0 12px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: normal; }
+.hp-use .hint { margin-left: auto; color: var(--text-2); font-variant-numeric: normal; opacity: 0; transition: opacity var(--anim-fast) var(--ease); }
+.hp-use .code + .hint { margin-left: auto; }
+.hp-use:hover .hint { opacity: 1; }
+
+.hp-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 14px; line-height: 17px; color: var(--text-3); pointer-events: none; }
