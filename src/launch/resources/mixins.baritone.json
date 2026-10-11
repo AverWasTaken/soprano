@@ -32,6 +32,7 @@
     "MixinEntityRenderManager",
     "MixinFireworkRocketEntity",
     "MixinItemStack",
+    "MixinKeyboardHandler",
     "MixinLivingEntity",
     "MixinLootContextBuilder",
     "MixinLootTable",

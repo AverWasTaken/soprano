@@ -1860,6 +1860,17 @@ public final class Settings {
      */
     public final Setting<Boolean> keepFpsWhileBotting = new Setting<>(true);
 
+    /**
+     * Whether the gui key opens the click gui. The {@code #gui} command always works.
+     */
+    public final Setting<Boolean> guiKeyEnabled = new Setting<>(true);
+
+    /**
+     * GLFW key code that opens the click gui. Defaults to right shift (344). Set to -1 to unbind so only {@code #gui}
+     * opens it. The gui's own Settings tab has a key capture control for this.
+     */
+    public final Setting<Integer> guiKey = new Setting<>(344);
+
     // everything below belongs to the built in AltoClef, see adris.altoclef. all of it is prefixed alto so that
     // #set alto<tab> finds it (same trick as the elytra settings). it only does anything while AltoClef has a task
 
