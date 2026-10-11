@@ -8,6 +8,9 @@ public final class Keys {
 
     public static final int NONE = -1;
     public static final int SPACE = 32;
+    public static final int ONE = 49;
+    public static final int F2 = 291;
+    public static final int F11 = 300;
     public static final int A = 65;
     public static final int C = 67;
     public static final int V = 86;

@@ -74,6 +74,10 @@ public class McSettingsKindTest {
         SettingsAccess access = new McSettings();
         List<SettingView> all = access.all();
         assertFalse(all.isEmpty());
+        // every setting that is not java only must be in the list: a type the text parser cannot handle would
+        // otherwise vanish from the gui without a sound
+        long expected = Baritone.settings().allSettings.stream().filter(s -> !s.isJavaOnly()).count();
+        assertEquals(expected, all.size());
 
         SettingView key = access.get("guiKey");
         assertNotNull(key);

@@ -58,7 +58,7 @@ public final class McItems implements ItemsAccess {
             out = new ArrayList<>(names.size());
             for (String name : names) {
                 out.add(new ItemEntry(name, Wording.soprano(displayOf(name)),
-                        iconOrUnknown(IconResolver.forResource(name)), stackOf(name)));
+                        iconOrUnknown(IconResolver.forResource(name), name), stackOf(name)));
             }
             gettable = List.copyOf(out);
             return gettable;
@@ -82,7 +82,7 @@ public final class McItems implements ItemsAccess {
                 }
                 String path = BuiltInRegistries.BLOCK.getKey(block).getPath();
                 built.add(new ItemEntry(path, Wording.soprano(nameOf(block.asItem(), path)),
-                        iconOrUnknown(IconResolver.forBlock(block)),
+                        iconOrUnknown(IconResolver.forBlock(block), path),
                         Math.max(1, block.asItem().getDefaultMaxStackSize())));
             }
             built.sort(Comparator.comparing(ItemEntry::name));
@@ -132,9 +132,10 @@ public final class McItems implements ItemsAccess {
         return matches.length == 0 ? 64 : Math.max(1, matches[0].getDefaultMaxStackSize());
     }
 
-    // the canvas needs something to draw, a barrier is the game's own "no such thing"
-    private static String iconOrUnknown(String id) {
-        return id == null ? "minecraft:barrier" : id;
+    // an id nothing is registered under: the canvas draws a tile with the name's first letter for it, which beats
+    // a barrier (the game's own "no such thing") because at least it says which thing
+    private static String iconOrUnknown(String id, String name) {
+        return id == null ? "soprano:" + name : id;
     }
 
     @Override

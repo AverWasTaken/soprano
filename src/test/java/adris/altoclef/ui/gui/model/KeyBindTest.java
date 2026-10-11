@@ -113,4 +113,16 @@ public class KeyBindTest {
         assertEquals(KeyBind.Outcome.IGNORED, b.press(G));
         assertEquals(RSHIFT, b.key);
     }
+
+    @Test
+    public void fullscreenAndScreenshotKeysAreRefusedAsBinds() {
+        KeyBind b = new KeyBind(344);
+        b.startCapture();
+        assertEquals(KeyBind.Outcome.IGNORED, b.press(291));
+        assertEquals(KeyBind.Outcome.IGNORED, b.press(300));
+        assertTrue(b.capturing);
+        assertEquals(344, b.key);
+        assertEquals(KeyBind.Outcome.BOUND, b.press(345));
+        assertEquals(345, b.key);
+    }
 }

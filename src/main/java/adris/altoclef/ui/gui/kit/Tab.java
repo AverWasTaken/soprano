@@ -23,6 +23,10 @@ public interface Tab {
     default void onSearch(String query) {
     }
 
+    // enter pressed in the search field
+    default void onSearchSubmit(String query) {
+    }
+
     default void onShown() {
     }
 

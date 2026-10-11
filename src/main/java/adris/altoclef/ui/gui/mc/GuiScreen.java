@@ -259,11 +259,17 @@ public class GuiScreen extends Screen {
                 closeNow = true;
             }
         } finally {
-            if (began) {
-                end();
-            }
-            if (posed) {
-                g.pose().popPose();
+            try {
+                if (began) {
+                    end();
+                }
+            } catch (Throwable t) {
+                Safe.report("gui render end", t);
+            } finally {
+                // the pose must come back whatever end() did, or the rest of the hud draws at 1/guiScale
+                if (posed) {
+                    g.pose().popPose();
+                }
             }
         }
 

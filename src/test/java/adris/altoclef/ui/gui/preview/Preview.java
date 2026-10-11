@@ -55,8 +55,10 @@ public final class Preview {
                 facade.clipboard(), () -> facade.actions.add("close"));
         ctx.attach(shell);
         shell.setViewport(winW, winH);
-        // land on the fully open state unless a test asks for a mid-animation frame
+        // land on the fully open state unless a test asks for a mid-animation frame. the game sends the key up
+        // of the opening key right after; without it the shell keeps swallowing that key and its char
         shell.open(now);
+        shell.keyUp(344);
         now += Anim.ms(Theme.ANIM_SLOW + 50);
     }
 

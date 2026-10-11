@@ -9,6 +9,8 @@ public final class KeyBind {
     private static final int ESCAPE = 256;
     private static final int BACKSPACE = 259;
     private static final int DELETE = 261;
+    private static final int F2 = 291;
+    private static final int F11 = 300;
 
     public int key;
     public boolean enabled = true;
@@ -30,6 +32,11 @@ public final class KeyBind {
     // keys are not special here
     public Outcome press(int pressed) {
         if (!capturing || pressed < 0) {
+            return Outcome.IGNORED;
+        }
+        // the game acts on these before any screen sees them (fullscreen, screenshot), so they could open the
+        // panel but never close it. stay in capture and wait for a key that works both ways
+        if (pressed == F2 || pressed == F11) {
             return Outcome.IGNORED;
         }
         capturing = false;

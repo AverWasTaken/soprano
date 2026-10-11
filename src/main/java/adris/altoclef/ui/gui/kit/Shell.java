@@ -288,6 +288,9 @@ public class Shell extends Widget implements ShellContext {
         openAnim.snap(0f);
         openAnim.set(1f, nowNanos, Theme.ANIM_SLOW);
         lastNow = nowNanos;
+        // the key that opened us is still down: its repeats must not close us again, and the char that rides
+        // along with a letter bind must not land in the search box
+        suppressedKey = openKey.key;
     }
 
     public void close(long nowNanos) {
@@ -851,6 +854,18 @@ public class Shell extends Widget implements ShellContext {
             cycleFocus(Keys.shift(mods));
             return true;
         }
+        // ctrl 1..6 jumps to a tab, like a browser
+        if (Keys.ctrl(mods) && key >= Keys.ONE && key < Keys.ONE + Math.min(9, tabs.size())) {
+            switchTab(key - Keys.ONE);
+            return true;
+        }
+        // enter in the search is the tab's to act on (the get tab adds the first match)
+        if (focused == search && Keys.isEnter(key) && !tabs.isEmpty()) {
+            Tab t = tabs.get(active);
+            String q = search.text();
+            Safe.run("search submit", () -> t.onSearchSubmit(q));
+            return true;
+        }
         if (key == Keys.ESCAPE) {
             if (focused != null) {
                 if (Safe.test("esc focused", () -> focused.keyDown(key, mods))) {
@@ -892,6 +907,10 @@ public class Shell extends Widget implements ShellContext {
                 return true;
             }
             validateFocus();
+            // the char of the key that opened us (a letter bind), or anything typed during the close fade
+            if (suppressedKey != -2 || closing) {
+                return true;
+            }
             if (focused != null) {
                 Widget f = focused;
                 // the char that comes with a rebind keypress is not search text

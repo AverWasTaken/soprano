@@ -17,6 +17,14 @@ public class WordingTest {
     }
 
     @Test
+    public void leavesPathsAlone() {
+        assertEquals("lists live in baritone/altoclef/configs/butler.json and altoclef_butler_whitelist.txt, soprano reads them",
+                Wording.soprano("lists live in baritone/altoclef/configs/butler.json and altoclef_butler_whitelist.txt, altoclef reads them"));
+        assertEquals("(soprano)", Wording.soprano("(altoclef)"));
+        assertEquals("soprano.", Wording.soprano("altoclef."));
+    }
+
+    @Test
     public void leavesSettingNamesAndPlainTextAlone() {
         String same = "altoIdleCommand runs when idle";
         assertSame(same, Wording.soprano(same));
