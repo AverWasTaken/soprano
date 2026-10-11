@@ -3,7 +3,7 @@ package adris.altoclef.ui.gui.kit;
 import java.util.List;
 import java.util.function.IntConsumer;
 
-// a pill group: one recessed track, the chosen option a lighter pill that slides to wherever you click. segment widths
+// a pill group: one quiet track, the chosen option a lighter pill that slides to wherever you click. segment widths
 // follow the text, so "Get" and "Mine" do not pretend to be the same size
 public class Segmented extends Control {
 
@@ -45,7 +45,7 @@ public class Segmented extends Control {
     }
 
     private float inset() {
-        return theme.px(3);
+        return theme.px(2);
     }
 
     private float baseSum() {
@@ -92,7 +92,7 @@ public class Segmented extends Control {
             return;
         }
         float r = theme.pxf(Theme.CONTROL_RADIUS);
-        theme.recess(c, x, y, w, h, r);
+        theme.field(c, x, y, w, h, r);
         float pos = slide.value(now);
         int i0 = Math.max(0, Math.min(n - 1, (int) Math.floor(pos)));
         int i1 = Math.min(n - 1, i0 + 1);
@@ -100,10 +100,12 @@ public class Segmented extends Control {
         float px = segX[i0] + (segX[i1] - segX[i0]) * fr;
         float pw = segW[i0] + (segW[i1] - segW[i0]) * fr;
         float in = inset();
-        theme.lift(c, x + in + px, y + in, pw, h - 2 * in, Math.max(0f, r - in), 0.55f);
-        c.fillRoundRect(x + in + px, y + in, pw, h - 2 * in, Math.max(0f, r - in), theme.color(Theme.SELECTED));
+        // the thumb is the one thing here that floats, so it is the one thing with a shadow
+        float tr = Math.max(0f, r - in);
+        c.shadow(x + in + px, y + in, pw, h - 2 * in, tr, Theme.fade(theme.color(Theme.SHADOW), 0.4f));
+        c.fillRoundRect(x + in + px, y + in, pw, h - 2 * in, tr, theme.color(Theme.SELECTED));
         if (focused) {
-            c.strokeRoundRect(x - 1, y - 1, w + 2, h + 2, r + 1, theme.color(Theme.HAIRLINE_STRONG));
+            focusRing(c, r, 1f);
         }
         for (int i = 0; i < n; i++) {
             float near = 1f - Math.min(1f, Math.abs(pos - i));

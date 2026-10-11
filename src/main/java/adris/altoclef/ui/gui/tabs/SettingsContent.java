@@ -138,7 +138,7 @@ final class SettingsContent extends Widget {
 
     private void drawDetail(Canvas c, int mx, int pad) {
         int dw = w;
-        theme.recess(c, mx + pad, detailY, dw - 2 * pad, detailH, theme.pxf(10));
+        theme.field(c, mx + pad, detailY, dw - 2 * pad, detailH, theme.pxf(10));
         c.pushClip(mx + pad, detailY, Math.max(0, dw - 2 * pad), detailH);
         try {
             drawDetailText(c, mx, pad);

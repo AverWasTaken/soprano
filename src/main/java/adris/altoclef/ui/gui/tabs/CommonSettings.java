@@ -149,32 +149,38 @@ final class CommonSettings extends Widget {
             }
         }
 
+        // control centre rules: on is a lit blue tile with a white glyph, off is a quiet card. the spring only
+        // blends the two, nothing sinks or rises
         @Override
         public void draw(Canvas c, Frame f) {
             stamp(f);
             if (hovered || (focused && !host.mouseOverRows(f.mouseX(), f.mouseY()))) {
                 host.hover(view);
             }
+            hoverTo(hoverA, hovered);
             float d = depth.value(now);
-            float r = theme.pxf(14);
-            theme.lift(c, x, y, w, h, r, 1f - d);
-            c.fillRoundRect(x, y, w, h, r, Theme.lerp(theme.color(Theme.SURFACE), theme.color(Theme.INSET), d));
-            theme.well(c, x, y, w, h, r, d);
-            c.strokeRoundRect(x, y, w, h, r, Theme.lerp(theme.color(Theme.EDGE), theme.color(Theme.ACCENT_SOFT), d));
+            float hv = hoverA.value(now);
+            float r = theme.pxf(Theme.CARD_RADIUS);
+            int off = Theme.lerp(theme.color(Theme.SURFACE), theme.color(Theme.HOVER), hv);
+            int lit = Theme.lerp(theme.color(Theme.ACCENT), theme.color(Theme.ACCENT_HOVER), hv);
+            c.fillRoundRect(x, y, w, h, r, Theme.lerp(off, lit, d));
+            c.strokeRoundRect(x, y, w, h, r, Theme.fade(theme.color(Theme.HAIRLINE), 1f - d));
             super.draw(c, f);
         }
 
         @Override
         protected void drawContent(Canvas c, int col, float hv) {
             boolean on = Boolean.parseBoolean(view.value());
-            float d = depth.value(now) * theme.px(1);
-            int color = theme.color(on ? Theme.ACCENT : Theme.TEXT_2);
-            int is = theme.px(24);
-            c.icon(spec.icon(), x + (w - is) / 2f, y + theme.px(9) + d, is, color);
+            float d = depth.value(now);
+            int glyph = Theme.lerp(theme.color(Theme.TEXT_2), theme.color(Theme.ON_ACCENT), d);
+            int name = Theme.lerp(theme.color(Theme.TEXT), theme.color(Theme.ON_ACCENT), d);
+            int state = Theme.lerp(theme.color(Theme.TEXT_3), Theme.fade(theme.color(Theme.ON_ACCENT), 0.75f), d);
+            int is = theme.px(Theme.ICON_LG);
+            c.icon(spec.icon(), x + (w - is) / 2f, y + theme.px(10), is, glyph);
             String label = c.ellipsize(spec.label(), theme.label, Math.max(0, w - theme.px(12)));
-            c.text(label, x + (w - c.measure(label, theme.label)) / 2f, y + theme.px(51) + d, theme.label, theme.color(Theme.TEXT));
-            String state = on ? "On" : "Off";
-            c.text(state, x + (w - c.measure(state, theme.small)) / 2f, y + theme.px(67) + d, theme.small, color);
+            c.text(label, x + (w - c.measure(label, theme.label)) / 2f, y + theme.px(52), theme.label, name);
+            String word = on ? "On" : "Off";
+            c.text(word, x + (w - c.measure(word, theme.small)) / 2f, y + theme.px(68), theme.small, state);
         }
     }
 }

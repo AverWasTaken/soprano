@@ -70,10 +70,10 @@ public class Dropdown extends Control implements FocusOnClick {
         hoverTo(hoverA, hovered);
         float r = theme.pxf(Theme.CONTROL_RADIUS);
         boolean open = isOpen();
-        int fill = Theme.lerp(theme.color(Theme.SURFACE), theme.color(Theme.HOVER), hoverA.value(now));
-        theme.lift(c, x, y, w, h, r, 0.6f);
+        // dressed like a secondary button, since that is what it is until you open it
+        int fill = Theme.lerp(theme.color(Theme.RAISED), theme.color(Theme.HOVER), hoverA.value(now));
         c.fillRoundRect(x, y, w, h, r, fill);
-        c.strokeRoundRect(x, y, w, h, r, focused || open ? theme.color(Theme.HAIRLINE_STRONG) : theme.color(Theme.EDGE));
+        c.strokeRoundRect(x, y, w, h, r, focused || open ? theme.color(Theme.ACCENT) : Theme.fade(theme.color(Theme.HAIRLINE_STRONG), 0.6f));
         int is = theme.px(Theme.ICON);
         int pad = theme.px(10);
         float room = w - pad * 2 - is - theme.px(6);
@@ -173,9 +173,8 @@ public class Dropdown extends Control implements FocusOnClick {
             }
             float a = reveal.value(now);
             c = fade.reset(c, a, (1f - a) * theme.px(6) * (down ? -1 : 1));
-            float r = theme.pxf(12);
-            c.shadow(x, y, w, h, r, theme.color(Theme.SHADOW));
-            theme.card(c, x, y, w, h, r, false);
+            float r = theme.pxf(Theme.CARD_RADIUS);
+            theme.floating(c, x, y, w, h, r);
             int rowH = theme.px(Theme.ROW_H);
             int pad = theme.px(4);
             int is = theme.px(Theme.ICON);

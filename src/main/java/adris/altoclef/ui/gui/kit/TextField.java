@@ -210,8 +210,8 @@ public class TextField extends Control implements FocusOnClick {
         followCaret();
         focusA.set(focused ? 1f : 0f, now, Theme.ANIM_FAST);
         float r = theme.pxf(Theme.CONTROL_RADIUS);
-        int border = invalid ? theme.color(Theme.DANGER) : Theme.lerp(theme.color(Theme.EDGE), theme.color(Theme.ACCENT), focusA.value(now));
-        theme.recess(c, x, y, w, h, r);
+        int border = invalid ? theme.color(Theme.DANGER) : Theme.lerp(theme.color(Theme.HAIRLINE), theme.color(Theme.ACCENT), focusA.value(now));
+        c.fillRoundRect(x, y, w, h, r, theme.color(Theme.FIELD));
         c.strokeRoundRect(x, y, w, h, r, border);
 
         float tx = x + leftInset();

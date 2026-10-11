@@ -57,29 +57,6 @@ public class TexturedCanvasTest {
     }
 
     @Test
-    public void insetShadowStaysInsideAndReversesItsLightDirection() {
-        for (boolean reverse : new boolean[]{false, true}) {
-            Java2dCanvas c = canvas(160, 100);
-            c.insetShadow(20, 20, 120, 60, 10, 0xFFFFFFFF, reverse);
-            for (int y = 0; y < 100; y++) {
-                for (int x = 0; x < 160; x++) {
-                    if (x < 20 || x >= 140 || y < 20 || y >= 80) {
-                        assertEquals("inset shadow leaked outside its box", BG, px(c, x, y));
-                    }
-                }
-            }
-            assertEquals("the well stays clear in its centre", BG, px(c, 80, 50));
-            assertEquals("the rounded corner stays clear", BG, px(c, 20, 20));
-            int top = px(c, 80, 21) & 255;
-            int bottom = px(c, 80, 78) & 255;
-            int left = px(c, 21, 50) & 255;
-            int right = px(c, 138, 50) & 255;
-            assertTrue(reverse ? bottom > top : top > bottom);
-            assertTrue(reverse ? right > left : left > right);
-        }
-    }
-
-    @Test
     public void smoke() throws IOException {
         Java2dCanvas c = canvas(900, 560);
 

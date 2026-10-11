@@ -80,11 +80,12 @@ final class GetTiles {
         float ry = y + inset;
         float rw = w - 2 * inset;
         float rh = h - 2 * inset;
-        float radius = theme.pxf(Theme.ROW_RADIUS);
-        theme.lift(c, rx, ry, rw, rh, radius, hovered ? 0.85f : 0.45f);
-        c.fillRoundRect(rx, ry, rw, rh, radius, theme.color(count >= 0 ? Theme.ACCENT_SOFT : hovered ? Theme.HOVER : Theme.SURFACE));
+        // no box until there is a reason for one: hover is a quiet fill, in the basket is the tinted fill
+        float radius = theme.pxf(Theme.CARD_RADIUS);
         if (count >= 0) {
-            c.strokeRoundRect(rx, ry, rw, rh, radius, theme.color(Theme.ACCENT));
+            c.fillRoundRect(rx, ry, rw, rh, radius, theme.color(Theme.ACCENT_SOFT));
+        } else if (hovered) {
+            c.fillRoundRect(rx, ry, rw, rh, radius, theme.color(Theme.HOVER));
         }
         // the item is the star of the tile: two whole icon sizes, still a multiple of 16
         int s = theme.itemIconPx() * 2;

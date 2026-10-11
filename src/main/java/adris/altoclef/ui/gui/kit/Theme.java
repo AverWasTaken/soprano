@@ -1,55 +1,63 @@
 package adris.altoclef.ui.gui.kit;
 
 // the whole look in one place. colours are argb, sizes are design pixels at 1080p and go through px() so the panel is
-// the same thing at every window size and minecraft gui scale. cyan marks a selection, red means danger
+// the same thing at every window size and minecraft gui scale. three surfaces (sidebar, panel, card), one blue for
+// anything selected or on, red only for danger and the end of a path. depth is a surface step and a hairline, not a
+// shadow: the only shadows are under the panel itself and under things that really float (menus, toasts, a thumb)
 public final class Theme {
 
-    // these are also the default dark palette. resolve a token through color() before blending or fading it
-    public static final int SCRIM = 0x66070C14;
-    public static final int SIDEBAR = 0xFF1C2027;
-    public static final int PANEL = 0xFF222730;
-    public static final int RAISED = 0xFF2C333E;
-    public static final int HOVER = 0xFF343E4B;
-    public static final int PRESSED = 0xFF414D5D;
-    public static final int SELECTED = 0xFF465160;
-    public static final int HAIRLINE = 0xFF343C48;
-    public static final int HAIRLINE_STRONG = 0xFF667281;
-    public static final int TEXT = 0xFFF0F3F7;
-    public static final int TEXT_2 = 0xFFBEC7D2;
-    public static final int TEXT_3 = 0xFF98A5B5;
-    public static final int ACCENT = 0xFF62C6FA;
-    public static final int ACCENT_HOVER = 0xFF8AD6FF;
-    public static final int ACCENT_PRESSED = 0xFF43ADE5;
-    public static final int ACCENT_SOFT = 0xFF213E50;
-    public static final int ON_ACCENT = 0xFF092536;
-    public static final int DANGER = 0xFFFF9696;
-    public static final int DANGER_FILL = 0xFF4B2E35;
-    public static final int DANGER_PRESSED = 0xFF613740;
-    public static final int SHADOW = 0x66000000;
-    public static final int PATH_START = 0xFF72C688;
-    public static final int PATH_END = 0xFFEB817B;
-
-    public static final int SURFACE = 0xFF2B3039;
-    public static final int SOFT_SHADE = 0x800A0D13;
-    public static final int SOFT_LIGHT = 0x40546175;
-    public static final int INSET = 0xFF1C2129;
-    public static final int EDGE = 0x167D8A9C;
-    public static final int GLEAM = 0x22FFFFFF;
+    // these are also the default dark palette. resolve a token through color() before blending or fading it. every
+    // dark value has to be unique, color() switches on it
+    public static final int SCRIM = 0x66000000;
+    public static final int SIDEBAR = 0xFF1B1B1D;
+    public static final int PANEL = 0xFF232325;
+    public static final int SURFACE = 0xFF2C2C2E;
+    public static final int RAISED = 0xFF3A3A3C;
+    public static final int FIELD = 0xFF1C1C1E;
+    public static final int HOVER = 0xFF353537;
+    public static final int PRESSED = 0xFF424244;
+    public static final int SELECTED = 0xFF5C5C60;
+    public static final int HAIRLINE = 0xFF37373A;
+    public static final int HAIRLINE_STRONG = 0xFF6B6B70;
+    public static final int TEXT = 0xFFF5F5F7;
+    public static final int TEXT_2 = 0xFFAEAEB4;
+    public static final int TEXT_3 = 0xFF8E8E93;
+    public static final int ACCENT = 0xFF0A73E8;
+    public static final int ACCENT_HOVER = 0xFF2D86EE;
+    public static final int ACCENT_PRESSED = 0xFF0A64CC;
+    public static final int ACCENT_SOFT = 0xFF22354D;
+    public static final int ACCENT_TEXT = 0xFF5AA9FF;
+    public static final int ON_ACCENT = 0xFFFFFFFF;
+    public static final int DANGER = 0xFFFF6B6B;
+    public static final int DANGER_FILL = 0xFF3A2A2C;
+    public static final int DANGER_PRESSED = 0xFF4A3134;
+    public static final int SHADOW = 0x80000000;
+    public static final int PATH_START = 0xFF30D158;
+    public static final int PATH_END = 0xFFFF453A;
 
     // design sizes at scale 1
     public static final int SIDEBAR_W = 176;
-    public static final int HEADER_H = 58;
+    public static final int HEADER_H = 56;
     public static final int STATUS_H = 36;
-    public static final int PANEL_RADIUS = 20;
-    public static final int CONTROL_RADIUS = 9;
-    public static final int ROW_RADIUS = 10;
-    public static final int ROW_H = 34;
+    public static final int PANEL_RADIUS = 16;
+    public static final int CARD_RADIUS = 12;
+    public static final int ROW_RADIUS = 8;
+    public static final int CONTROL_RADIUS = 7;
+    public static final int ROW_H = 36;
     public static final int CONTROL_H = 30;
+    public static final int ICON = 16;
+    public static final int ICON_LG = 24;
+    public static final int SCROLLBAR_W = 4;
+
+    // spacing on a 4 grid. PAD is the margin inside the panel and inside a card, GAP sits between controls, SECTION
+    // goes above a section label (it gets more room above than below, that is what makes it a heading)
+    public static final int SPACE_1 = 4;
+    public static final int SPACE_2 = 8;
+    public static final int SPACE_3 = 12;
     public static final int PAD = 16;
     public static final int GAP = 8;
-    public static final int ICON = 16;
-    public static final int TAB_BAR_W = 2;
-    public static final int SCROLLBAR_W = 4;
+    public static final int SECTION = 24;
+    public static final int SECTION_BELOW = 8;
 
     // animation lengths in ms. nothing bounces, nothing spins
     public static final int ANIM_FAST = 150;
@@ -59,6 +67,8 @@ public final class Theme {
     public final float scale;
     public final TextMeasurer measurer;
 
+    // title is the panel header, label is anything that names a control or a row, body is content and what you type,
+    // small is the secondary line, smallLabel is a small thing that has to hold its own (chips, counts, section heads)
     public final TextStyle title;
     public final TextStyle label;
     public final TextStyle body;
@@ -72,11 +82,11 @@ public final class Theme {
     public Theme(float scale, TextMeasurer measurer) {
         this.scale = scale;
         this.measurer = measurer;
-        this.title = new TextStyle(Weight.MEDIUM, px(22));
+        this.title = new TextStyle(Weight.SEMIBOLD, px(20));
         this.label = new TextStyle(Weight.MEDIUM, px(14));
-        this.body = new TextStyle(Weight.REGULAR, px(15));
+        this.body = new TextStyle(Weight.REGULAR, px(14));
         this.small = new TextStyle(Weight.REGULAR, px(12));
-        this.smallLabel = new TextStyle(Weight.REGULAR, px(12));
+        this.smallLabel = new TextStyle(Weight.MEDIUM, px(12));
     }
 
     public boolean dark() {
@@ -100,70 +110,65 @@ public final class Theme {
         lightMix = appearance.value(nowNanos);
     }
 
-    // every widget shares the same frame's blend; switching themes never rebuilds controls or loses an edit
+    // every widget shares the same frame's blend; switching themes never rebuilds controls or loses an edit. light is
+    // white cards on a grouped grey, the sidebar a step darker again, so the three surfaces separate without shadows
     public int color(int token) {
         if (lightMix <= 0f) {
             return token;
         }
         int light = switch (token) {
-            case SURFACE -> 0xFFF0F2F5;
-            case SOFT_SHADE -> 0x557C8798;
-            case SOFT_LIGHT -> 0xDFFFFFFF;
-            case INSET -> 0xFFE8ECF1;
-            case EDGE -> 0x14758294;
-            case GLEAM -> 0xCCFFFFFF;
-            case SCRIM -> 0x350D1420;
-            case SIDEBAR -> 0xFFE7EBF0;
-            case PANEL -> 0xFFECEFF3;
-            case RAISED -> 0xFFECEFF3;
-            case HOVER -> 0xFFE2E8EE;
-            case PRESSED -> 0xFFD4DEE8;
+            case SCRIM -> 0x40000000;
+            case SIDEBAR -> 0xFFE6E6EB;
+            case PANEL -> 0xFFF2F2F7;
+            case SURFACE -> 0xFFFFFFFF;
+            case RAISED -> 0xFFEEEEF3;
+            case FIELD -> 0xFFEAEAEF;
+            case HOVER -> 0xFFE9E9EE;
+            case PRESSED -> 0xFFDCDCE1;
             case SELECTED -> 0xFFFFFFFF;
-            case HAIRLINE -> 0xFFDDE3E9;
-            case HAIRLINE_STRONG -> 0xFF9DAAB8;
-            case TEXT -> 0xFF242B33;
-            case TEXT_2 -> 0xFF515E6B;
-            case TEXT_3 -> 0xFF667582;
-            case ACCENT -> 0xFF007EAF;
-            case ACCENT_HOVER -> 0xFF006F9F;
-            case ACCENT_PRESSED -> 0xFF005E89;
-            case ACCENT_SOFT -> 0xFFDCEFF9;
+            case HAIRLINE -> 0xFFD9D9DE;
+            case HAIRLINE_STRONG -> 0xFFA9A9AE;
+            case TEXT -> 0xFF1D1D1F;
+            case TEXT_2 -> 0xFF5C5C62;
+            case TEXT_3 -> 0xFF66666B;
+            case ACCENT -> 0xFF0071E3;
+            case ACCENT_HOVER -> 0xFF0062C8;
+            case ACCENT_PRESSED -> 0xFF0053AD;
+            case ACCENT_SOFT -> 0xFFDCEBFC;
+            case ACCENT_TEXT -> 0xFF0066CC;
             case ON_ACCENT -> 0xFFFFFFFF;
-            case DANGER -> 0xFFB43B42;
-            case DANGER_FILL -> 0xFFF8E3E5;
-            case DANGER_PRESSED -> 0xFFF0CBCF;
-            case SHADOW -> 0x38000000;
-            case PATH_START -> 0xFF388449;
-            case PATH_END -> 0xFFBD4E47;
+            case DANGER -> 0xFFD70015;
+            case DANGER_FILL -> 0xFFFBE5E7;
+            case DANGER_PRESSED -> 0xFFF5CDD1;
+            case SHADOW -> 0x2E000000;
+            case PATH_START -> 0xFF248A3D;
+            case PATH_END -> 0xFFD70015;
             default -> token;
         };
         return lightMix >= 1f ? light : lerp(token, light, lightMix);
     }
 
-    // light comes from the upper left throughout the shell, including controls pressed into a card
+    // a grouped surface one step up from the panel with a hairline around it. raised is for the few that sit over
+    // other content (the basket dock), and gets the one soft shadow
     public void card(Canvas c, float x, float y, float w, float h, float radius, boolean raised) {
         if (raised) {
-            lift(c, x, y, w, h, radius, 1f);
+            c.shadow(x, y, w, h, radius, fade(color(SHADOW), 0.5f));
         }
         c.fillRoundRect(x, y, w, h, radius, color(SURFACE));
-        c.strokeRoundRect(x, y, w, h, radius, color(EDGE));
+        c.strokeRoundRect(x, y, w, h, radius, color(HAIRLINE));
     }
 
-    public void lift(Canvas c, float x, float y, float w, float h, float radius, float amount) {
-        float offset = px(3);
-        // shadow() has its own downward offset; cancel that before positioning the paired lights
-        c.shadow(x + offset, y + offset - radius / 2f, w, h, radius, fade(color(SOFT_SHADE), amount));
-        c.shadow(x - offset, y - offset - radius / 2f, w, h, radius, fade(color(SOFT_LIGHT), amount));
+    // an input or a track: a quiet tinted fill, the opposite direction from a card. whoever draws it adds the focus ring
+    public void field(Canvas c, float x, float y, float w, float h, float radius) {
+        c.fillRoundRect(x, y, w, h, radius, color(FIELD));
+        c.strokeRoundRect(x, y, w, h, radius, color(HAIRLINE));
     }
 
-    public void recess(Canvas c, float x, float y, float w, float h, float radius) {
-        c.fillRoundRect(x, y, w, h, radius, color(INSET));
-        well(c, x, y, w, h, radius, 1f);
-    }
-
-    public void well(Canvas c, float x, float y, float w, float h, float radius, float amount) {
-        c.insetShadow(x, y, w, h, radius, fade(color(SOFT_SHADE), amount), false);
-        c.insetShadow(x, y, w, h, radius, fade(color(SOFT_LIGHT), amount), true);
+    // menus and toasts: a card that is really off the surface, so it gets the full shadow
+    public void floating(Canvas c, float x, float y, float w, float h, float radius) {
+        c.shadow(x, y, w, h, radius, color(SHADOW));
+        c.fillRoundRect(x, y, w, h, radius, color(SURFACE));
+        c.strokeRoundRect(x, y, w, h, radius, color(HAIRLINE_STRONG));
     }
 
     // a minecraft item icon is 16 px of texture: draw it at a whole multiple so the pixels stay crisp, and lay
@@ -181,8 +186,8 @@ public final class Theme {
     }
 
     // quarter steps so the glyph atlases stay cached while the window is dragged around, clamped so a tiny window
-    // still gets readable text and a 4k one does not get a billboard. the 1234 (was 1080) is the "a bit smaller"
-    // ask: a 1080p window lands on 0.875 instead of a full 1.0, and the panel shrinks with everything else
+    // still gets readable text and a 4k one does not get a billboard. 1234 instead of 1080 is the "a bit smaller"
+    // ask: 1080p rounds to 1.0 anyway, but 900p lands on 0.75 instead of 0.875 and 1440p on 1.25 instead of 1.5
     public static float scaleFor(int windowHeightPx) {
         float raw = windowHeightPx / 1234f;
         float stepped = Math.round(raw * 4f) / 4f;

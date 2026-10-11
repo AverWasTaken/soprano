@@ -73,11 +73,11 @@ public class KeyCapture extends Control implements FocusOnClick {
         ringA.set(bind.capturing ? 1f : 0f, now, Theme.ANIM_FAST);
         float r = theme.pxf(Theme.CONTROL_RADIUS);
         float ring = ringA.value(now);
+        // a secondary button that happens to show a key name. waiting for a key is the accent ring, same as focus
         c.fillRoundRect(x, y, w, h, r, Theme.lerp(theme.color(Theme.RAISED), theme.color(Theme.HOVER), hoverA.value(now) * 0.8f));
-        int border = Theme.lerp(theme.color(Theme.HAIRLINE), theme.color(Theme.HAIRLINE_STRONG), Math.max(ring, focused ? 1f : 0f));
-        c.strokeRoundRect(x, y, w, h, r, border);
-        if (ring > 0.01f) {
-            focusRing(c, r, ring);
+        c.strokeRoundRect(x, y, w, h, r, Theme.fade(theme.color(Theme.HAIRLINE_STRONG), 0.6f));
+        if (ring > 0.01f || focused) {
+            focusRing(c, r, Math.max(ring, focused ? 1f : 0f));
         }
         String text;
         int col;

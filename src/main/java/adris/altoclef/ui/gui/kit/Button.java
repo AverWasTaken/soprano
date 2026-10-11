@@ -6,7 +6,7 @@ public class Button extends Control {
 
     public enum Kind { PRIMARY, SECONDARY, GHOST, DANGER }
 
-    protected final Kind kind;
+    protected Kind kind;
     protected String text;
     protected Icon icon;
     protected final Runnable onClick;
@@ -46,6 +46,15 @@ public class Button extends Control {
     public void setIcon(Icon i) {
         icon = i;
         layout();
+    }
+
+    // the stop button is a ghost while nothing runs and goes red once there is something to stop
+    public void setKind(Kind k) {
+        kind = k;
+    }
+
+    public Kind kind() {
+        return kind;
     }
 
     public void setEnabled(boolean e) {
@@ -113,46 +122,47 @@ public class Button extends Control {
         float dim = enabled ? 1f : 0.4f;
         float r = theme.pxf(Theme.CONTROL_RADIUS);
 
+        // flat fills. primary is the one blue thing, secondary and danger are a quiet bump with a hairline, ghost is
+        // nothing until hovered. pressed just goes a step darker, no emboss
         int base;
         int hover;
         int pressed;
         int textCol;
+        boolean edged = true;
         switch (kind) {
             case PRIMARY -> {
                 base = theme.color(Theme.ACCENT);
                 hover = theme.color(Theme.ACCENT_HOVER);
                 pressed = theme.color(Theme.ACCENT_PRESSED);
                 textCol = theme.color(Theme.ON_ACCENT);
+                edged = false;
             }
             case GHOST -> {
                 base = Theme.alpha(theme.color(Theme.HOVER), 0f);
                 hover = theme.color(Theme.HOVER);
                 pressed = theme.color(Theme.PRESSED);
                 textCol = Theme.lerp(theme.color(Theme.TEXT_2), theme.color(Theme.TEXT), hv);
+                edged = false;
             }
             case DANGER -> {
-                base = theme.color(Theme.SURFACE);
+                base = theme.color(Theme.RAISED);
                 hover = theme.color(Theme.DANGER_FILL);
                 pressed = theme.color(Theme.DANGER_PRESSED);
                 textCol = theme.color(Theme.DANGER);
             }
             default -> {
-                base = theme.color(Theme.SURFACE);
+                base = theme.color(Theme.RAISED);
                 hover = theme.color(Theme.HOVER);
                 pressed = theme.color(Theme.PRESSED);
                 textCol = theme.color(Theme.TEXT);
             }
         }
         int fill = Theme.lerp(Theme.lerp(base, hover, hv), pressed, pv);
-        if (kind != Kind.GHOST) {
-            theme.lift(c, x, y, w, h, r, dim * (1f - pv) * 0.7f);
-        }
         if ((fill >>> 24) != 0) {
             c.fillRoundRect(x, y, w, h, r, Theme.fade(fill, dim));
-            if (kind != Kind.GHOST) {
-                c.strokeRoundRect(x, y, w, h, r, Theme.fade(theme.color(Theme.EDGE), dim));
-                theme.well(c, x, y, w, h, r, dim * pv);
-            }
+        }
+        if (edged) {
+            c.strokeRoundRect(x, y, w, h, r, Theme.fade(theme.color(Theme.HAIRLINE_STRONG), dim * 0.6f));
         }
         if (focused) {
             focusRing(c, r, dim);

@@ -105,14 +105,14 @@ public final class CategoryTabs extends Control {
             float tx = x + arrow + left[i] - offset.value(now);
             int ty = y;
             int tw = widths[i];
-            theme.lift(c, tx, ty, tw, rowH, r, a * 0.55f);
-            c.fillRoundRect(tx, ty, tw, rowH, r, Theme.fade(theme.color(Theme.HOVER), hv));
-            c.fillRoundRect(tx, ty, tw, rowH, r, Theme.fade(theme.color(Theme.SELECTED), a));
+            // the chosen category is a quiet pill, the rest are plain words until hovered
+            c.fillRoundRect(tx, ty, tw, rowH, r, Theme.fade(theme.color(Theme.HOVER), hv * (1f - a)));
+            c.fillRoundRect(tx, ty, tw, rowH, r, Theme.fade(theme.color(Theme.RAISED), a));
             if (focused && i == selected) {
                 c.strokeRoundRect(tx - 1, ty - 1, tw + 2, rowH + 2, r + 1, theme.color(Theme.ACCENT));
             }
             String label = c.ellipsize(options.get(i), theme.label, Math.max(0, tw - theme.px(16)));
-            int col = i == selected ? theme.color(Theme.ACCENT) : Theme.lerp(theme.color(Theme.TEXT_2), theme.color(Theme.TEXT), hv);
+            int col = Theme.lerp(Theme.lerp(theme.color(Theme.TEXT_2), theme.color(Theme.TEXT), hv), theme.color(Theme.TEXT), a);
             c.text(label, tx + (tw - c.measure(label, theme.label)) / 2f,
                     baseline(c, theme.label, ty, rowH), theme.label, col);
         }

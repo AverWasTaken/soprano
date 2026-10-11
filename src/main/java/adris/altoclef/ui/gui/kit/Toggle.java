@@ -62,18 +62,19 @@ public class Toggle extends Control {
         float ty = y + (h - th) / 2f;
         float s = slide.value(now);
         float hv = hoverA.value(now);
+        // off is a grey track, on is the blue. the knob is the one thing in the kit that is always white, in both
+        // appearances, because that is what a switch knob is
         int track = Theme.lerp(theme.color(Theme.HAIRLINE_STRONG), theme.color(Theme.ACCENT), s);
         track = Theme.lerp(track, on ? theme.color(Theme.ACCENT_HOVER) : theme.color(Theme.TEXT_3), hv * 0.6f);
         c.fillRoundRect(tx, ty, tw, th, th / 2f, track);
-        theme.well(c, tx, ty, tw, th, th / 2f, 0.5f);
         if (focused) {
-            c.strokeRoundRect(tx - 1, ty - 1, tw + 2, th + 2, th / 2f + 1, theme.color(Theme.HAIRLINE_STRONG));
+            c.strokeRoundRect(tx - 2, ty - 2, tw + 4, th + 4, th / 2f + 2, theme.color(Theme.ACCENT));
         }
         float knob = theme.px(14);
         float pad = (th - knob) / 2f;
         float kx = tx + pad + (tw - knob - 2 * pad) * s;
-        c.shadow(kx, ty + pad - knob / 4f, knob, knob, knob / 2f, Theme.fade(theme.color(Theme.SHADOW), 0.6f));
-        c.fillRoundRect(kx, ty + pad, knob, knob, knob / 2f, 0xFFFFFFFF);
+        c.shadow(kx, ty + pad - knob / 4f, knob, knob, knob / 2f, Theme.fade(theme.color(Theme.SHADOW), 0.5f));
+        c.fillRoundRect(kx, ty + pad, knob, knob, knob / 2f, theme.color(Theme.ON_ACCENT));
     }
 
     // a release only counts if the press started here, or dragging a text selection across a toggle would flip it

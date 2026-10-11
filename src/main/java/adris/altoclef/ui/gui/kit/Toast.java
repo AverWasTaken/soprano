@@ -125,12 +125,10 @@ public class Toast extends Control {
         float bh = 2 * theme.px(12) + lh + (e.command != null ? theme.px(4) + sh : 0f);
         float bx = x + (w - bw) / 2f;
         float by = y + h - pad - bh;
-        float r = theme.pxf(Theme.CONTROL_RADIUS);
+        float r = theme.pxf(Theme.CARD_RADIUS);
 
         Canvas g = fade.reset(c, a, rise);
-        g.shadow(bx, by, bw, bh, r, theme.color(Theme.SHADOW));
-        g.fillRoundRect(bx, by, bw, bh, r, theme.color(Theme.RAISED));
-        g.strokeRoundRect(bx, by, bw, bh, r, theme.color(Theme.HAIRLINE));
+        theme.floating(g, bx, by, bw, bh, r);
         float room = bw - 2 * pad;
         float ty = by + theme.px(12);
         String line = e.lineW <= room ? e.line : m.ellipsize(e.line, theme.body, room);

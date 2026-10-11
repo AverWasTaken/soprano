@@ -133,7 +133,7 @@ public class Shell extends Widget implements ShellContext {
                 Safe.run("appearance", () -> onAppearanceChanged.accept(theme.dark()));
             }
         });
-        stop = new Button(theme, "Stop", Button.Kind.DANGER, Icon.STOP, this::stopClicked);
+        stop = new Button(theme, "Stop", Button.Kind.GHOST, Icon.STOP, this::stopClicked);
         toast = new Toast(theme);
 
         kids.add(contents.length > 0 ? contents[0] : new Blank(theme));
@@ -223,11 +223,17 @@ public class Shell extends Widget implements ShellContext {
         return contentH;
     }
 
+    // a group label takes a section's worth of room above it and a little under, so it reads as a heading and not
+    // as a row that lost its icon
+    private int groupH() {
+        return theme.px(Theme.SECTION + Theme.SECTION_BELOW);
+    }
+
     public int tabRowY(int i) {
-        int top = y + headerH + theme.px(4);
+        int top = y + headerH - theme.px(Theme.SPACE_2);
         for (int n = 0; n <= i; n++) {
             if (groupStart(n)) {
-                top += theme.px(20);
+                top += groupH();
             }
             if (n < i) {
                 top += tabRowH() + theme.px(2);
@@ -243,7 +249,7 @@ public class Shell extends Widget implements ShellContext {
                 groups++;
             }
         }
-        int room = h - statusH - headerH - theme.px(120 + groups * 20 + tabs.size() * 2);
+        int room = h - statusH - headerH - theme.px(120 + tabs.size() * 2) - groups * groupH();
         return Math.max(theme.px(18), Math.min(theme.px(Theme.ROW_H), room / Math.max(1, tabs.size())));
     }
 
@@ -399,9 +405,10 @@ public class Shell extends Widget implements ShellContext {
         appearance.setBounds(x + theme.px(Theme.PAD), keyCapture.y() - theme.px(Theme.GAP) - ch,
                 sideW - 2 * theme.px(Theme.PAD), ch);
 
+        // the resize grip lives in the corner, so the stop button stops short of it
         int sh = theme.px(28);
         int sbw = stop.preferredWidth();
-        stop.setBounds(x + w - theme.px(Theme.PAD) - sbw, y + h - statusH + (statusH - sh) / 2, sbw, sh);
+        stop.setBounds(x + w - theme.px(Theme.PAD + Theme.SPACE_3) - sbw, y + h - statusH + (statusH - sh) / 2, sbw, sh);
         barY.snap(tabRowY(active) + tabRowH() / 2f);
     }
 
@@ -520,6 +527,8 @@ public class Shell extends Widget implements ShellContext {
             return;
         }
         activity = a;
+        // red only means something when there is something to stop
+        stop.setKind(a.busy() ? Button.Kind.DANGER : Button.Kind.GHOST);
         TextMeasurer m = theme.measurer;
         lineW = a.line() == null || a.line().isEmpty() ? 0f : m.measure(a.line(), theme.body);
         detailW = a.detail() == null || a.detail().isEmpty() ? 0f : m.measure(a.detail(), theme.small);
@@ -639,8 +648,7 @@ public class Shell extends Widget implements ShellContext {
 
         drawStatus(g, f, now);
         toast.draw(g, f);
-        g.strokeRoundRect(x, y, w, h, r, theme.color(Theme.EDGE));
-        g.fillRect(x + r, y + 1, w - 2 * r, 1, theme.color(Theme.GLEAM));
+        g.strokeRoundRect(x, y, w, h, r, Theme.fade(theme.color(Theme.HAIRLINE_STRONG), 0.5f));
         drawResizeGrip(g);
 
         Widget o = overlay;
@@ -664,16 +672,18 @@ public class Shell extends Widget implements ShellContext {
         g.fillRect(x, y + (h - statusH) / 2f, sideW / 2f, (h - statusH) / 2f, theme.color(Theme.SIDEBAR));
         g.fillRect(x + sideW, y, 1, h - statusH, theme.color(Theme.HAIRLINE));
 
+        // one left edge for everything in here: the wordmark, the group labels, the row icons and the footer all
+        // start at pad. rows are inset by half of it so the selection pill has a margin
         int pad = theme.px(Theme.PAD);
-        g.text("soprano", x + pad + theme.px(8), baselineIn(g, theme.title, y, headerH), theme.title, theme.color(Theme.TEXT_2));
+        int rowInset = theme.px(Theme.SPACE_2);
+        g.text("soprano", x + pad, baselineIn(g, theme.title, y, headerH), theme.title, theme.color(Theme.TEXT));
 
         int rowH = tabRowH();
-        // the rounded selection follows the same spring as the segment and switch controls
+        // the selected row is the one lit thing in the sidebar, and it follows the same spring as the segment and
+        // switch controls
         if (!tabs.isEmpty()) {
             float py = barY.value(now) - rowH / 2f;
-            g.shadow(x + theme.px(8), py, sideW - theme.px(16), rowH, theme.pxf(Theme.ROW_RADIUS), Theme.fade(theme.color(Theme.SHADOW), 0.2f));
-            g.fillRoundRect(x + theme.px(8), py, sideW - theme.px(16), rowH,
-                    theme.pxf(Theme.ROW_RADIUS), theme.color(Theme.ACCENT_SOFT));
+            g.fillRoundRect(x + rowInset, py, sideW - 2 * rowInset, rowH, theme.pxf(Theme.ROW_RADIUS), theme.color(Theme.ACCENT));
         }
         for (int i = 0; i < tabs.size(); i++) {
             Tab t = tabs.get(i);
@@ -683,27 +693,26 @@ public class Shell extends Widget implements ShellContext {
             float av = tabActive[i].value(now);
             float ry = tabRowY(i);
             if (groupStart(i)) {
-                g.text(group(i), x + theme.px(18), ry - theme.px(7), theme.small, theme.color(Theme.TEXT_3));
+                g.text(group(i), x + pad, ry - theme.px(Theme.SECTION_BELOW) - g.descent(theme.smallLabel), theme.smallLabel, theme.color(Theme.TEXT_3));
             }
-            float rx = x + theme.px(8);
-            float rw = sideW - theme.px(16);
+            float rx = x + rowInset;
+            float rw = sideW - 2 * rowInset;
             if (hv > 0.01f && av < 0.99f) {
-                g.fillRoundRect(rx, ry, rw, rowH, theme.pxf(Theme.ROW_RADIUS), Theme.fade(theme.color(Theme.HOVER), hv * 0.5f * (1f - av)));
+                g.fillRoundRect(rx, ry, rw, rowH, theme.pxf(Theme.ROW_RADIUS), Theme.fade(theme.color(Theme.HOVER), hv * (1f - av)));
             }
-            int col = Theme.lerp(Theme.lerp(theme.color(Theme.TEXT_2), theme.color(Theme.TEXT), hv * 0.7f), theme.color(Theme.ACCENT), av);
+            int col = Theme.lerp(Theme.lerp(theme.color(Theme.TEXT_2), theme.color(Theme.TEXT), hv * 0.7f), theme.color(Theme.ON_ACCENT), av);
             int is = theme.px(Theme.ICON);
             Icon icon = tabIcon(t);
             if (icon != null) {
-                g.icon(icon, rx + theme.px(10), ry + (rowH - is) / 2f, is, col);
+                g.icon(icon, x + pad, ry + (rowH - is) / 2f, is, col);
             }
             String title = tabTitle(t);
-            g.text(title, rx + theme.px(10) + is + theme.px(10), baselineIn(g, theme.label, ry, rowH), theme.label, col);
+            g.text(title, x + pad + is + theme.px(Theme.SPACE_3), baselineIn(g, theme.label, ry, rowH), theme.label, col);
         }
 
+        appearance.draw(g, f);
         g.text("Open key", x + pad, baselineIn(g, theme.small, keyCapture.y(), keyCapture.h()), theme.small, theme.color(Theme.TEXT_3));
         keyCapture.draw(g, f);
-        g.text("Appearance", x + pad, appearance.y() - theme.px(8), theme.small, theme.color(Theme.TEXT_3));
-        appearance.draw(g, f);
     }
 
     private static Icon tabIcon(Tab t) {
@@ -735,11 +744,9 @@ public class Shell extends Widget implements ShellContext {
         }
     }
 
+    // the header is the same surface as the content, like a unified toolbar: only the hairline under it says where
+    // the scrolling starts
     private void drawHeader(Canvas g, Frame f, long now) {
-        float radius = theme.pxf(Theme.PANEL_RADIUS);
-        g.fillRoundRect(contentX, y, contentW, headerH, radius, theme.color(Theme.SIDEBAR));
-        g.fillRect(contentX, y, radius, headerH, theme.color(Theme.SIDEBAR));
-        g.fillRect(contentX, y + headerH / 2f, contentW, headerH / 2f, theme.color(Theme.SIDEBAR));
         g.fillRect(contentX, y + headerH, contentW, 1, theme.color(Theme.HAIRLINE));
         if (tabs.isEmpty()) {
             return;
@@ -772,7 +779,7 @@ public class Shell extends Widget implements ShellContext {
             float pw = phaseW + theme.px(16);
             float ph = theme.px(22);
             float px = right - pw;
-            g.fillRoundRect(px, top + 1 + (statusH - 1 - ph) / 2f, pw, ph, theme.pxf(Theme.CONTROL_RADIUS), theme.color(Theme.RAISED));
+            g.fillRoundRect(px, top + 1 + (statusH - 1 - ph) / 2f, pw, ph, ph / 2f, theme.color(Theme.RAISED));
             g.text(phase, px + theme.px(8), baselineIn(g, theme.smallLabel, top + 1, statusH - 1), theme.smallLabel, theme.color(Theme.TEXT_2));
             right = px - theme.px(Theme.GAP);
         }
