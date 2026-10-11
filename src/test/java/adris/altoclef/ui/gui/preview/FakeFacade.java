@@ -286,13 +286,13 @@ public final class FakeFacade implements BotFacade {
                         || s.contains("chestplate") || s.contains("leggings") || s.contains("boots") || s.equals("bow")
                         || s.equals("shield") || s.equals("bed") || s.equals("fishing_rod") || s.equals("flint_and_steel") ? 1
                         : s.equals("ender_pearl") ? 16 : 64;
-                gettable.add(new ItemEntry(s, "minecraft:" + s, max));
+                gettable.add(new ItemEntry(s, ItemEntry.titleCase(s), "minecraft:" + s, max));
             }
             String[] m = {"stone", "cobblestone", "coal_ore", "iron_ore", "deepslate_iron_ore", "gold_ore", "diamond_ore",
                     "deepslate_diamond_ore", "redstone_ore", "lapis_ore", "emerald_ore", "ancient_debris", "oak_log", "birch_log",
                     "spruce_log", "dirt", "sand", "gravel", "clay", "obsidian", "netherrack", "nether_quartz_ore", "glowstone"};
             for (String s : m) {
-                mineable.add(new ItemEntry(s, "minecraft:" + s, 64));
+                mineable.add(new ItemEntry(s, ItemEntry.titleCase(s), "minecraft:" + s, 64));
             }
         }
 

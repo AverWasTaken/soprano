@@ -6,6 +6,7 @@ import adris.altoclef.ui.gui.kit.AwtFonts;
 import adris.altoclef.ui.gui.kit.DeferredContext;
 import adris.altoclef.ui.gui.kit.Frame;
 import adris.altoclef.ui.gui.kit.GlyphAtlas;
+import adris.altoclef.ui.gui.kit.Safe;
 import adris.altoclef.ui.gui.kit.ShapeAtlas;
 import adris.altoclef.ui.gui.kit.Shell;
 import adris.altoclef.ui.gui.kit.Tab;
@@ -136,8 +137,14 @@ public final class Preview {
             c.fillRect(i, 0, 32, winH, WORLD_2);
         }
         c.fillRect(0, 0, winW, winH, Theme.SCRIM);
+        int before = Safe.reports();
         shell.mouseMove(mouseX, mouseY);
         shell.draw(c, frame());
+        // the shell swallows draw exceptions so the game never crashes; a preview must not swallow them too,
+        // or a broken tab saves a quietly wrong png
+        if (Safe.reports() != before) {
+            throw new AssertionError("a draw or input handler threw during the preview: " + Safe.lastReport());
+        }
         return c;
     }
 

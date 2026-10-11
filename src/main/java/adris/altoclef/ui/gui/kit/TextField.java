@@ -50,6 +50,19 @@ public class TextField extends Control implements FocusOnClick {
         edit.setText(s);
         scrollX = 0f;
         editFlag = true;
+        committedText = edit.text();
+    }
+
+    // what escape goes back to: the last text that was committed or set by code
+    private String committedText = "";
+
+    protected String revertText() {
+        return committedText;
+    }
+
+    // true when the box holds an edit nobody has committed yet
+    public boolean dirty() {
+        return !edit.text().equals(revertText());
     }
 
     public void setPlaceholder(String p) {
@@ -97,8 +110,9 @@ public class TextField extends Control implements FocusOnClick {
     }
 
     public void commit() {
+        String t = edit.text();
+        committedText = t;
         if (onCommit != null) {
-            String t = edit.text();
             Safe.run("text field commit", () -> onCommit.accept(t));
         }
     }
@@ -249,6 +263,18 @@ public class TextField extends Control implements FocusOnClick {
             case Keys.ENTER, Keys.KP_ENTER -> {
                 editFlag = true;
                 commit();
+                return true;
+            }
+            // escape on a half typed value puts the last good one back; on a clean box it is not ours and the
+            // shell goes on to blur or close
+            case Keys.ESCAPE -> {
+                if (!dirty()) {
+                    return false;
+                }
+                edit.setText(revertText());
+                scrollX = 0f;
+                editFlag = true;
+                onTextChanged();
                 return true;
             }
             case Keys.BACKSPACE -> {

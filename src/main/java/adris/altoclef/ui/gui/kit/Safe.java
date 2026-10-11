@@ -9,8 +9,20 @@ import java.util.function.BooleanSupplier;
 public final class Safe {
 
     private static final Set<String> seen = ConcurrentHashMap.newKeySet();
+    // every report, duplicates included, so a preview can fail on a swallowed draw exception instead of
+    // quietly saving a wrong picture
+    private static final java.util.concurrent.atomic.AtomicInteger count = new java.util.concurrent.atomic.AtomicInteger();
+    private static volatile String last = "";
 
     private Safe() {
+    }
+
+    public static int reports() {
+        return count.get();
+    }
+
+    public static String lastReport() {
+        return last;
     }
 
     public static void run(String where, Runnable r) {
@@ -32,6 +44,8 @@ public final class Safe {
 
     public static void report(String where, Throwable t) {
         String key = where + ": " + t;
+        count.incrementAndGet();
+        last = key;
         // a message that changes every time would otherwise log every time and grow this forever
         if (seen.size() > 200) {
             seen.clear();

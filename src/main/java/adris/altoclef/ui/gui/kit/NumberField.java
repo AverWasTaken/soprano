@@ -40,6 +40,12 @@ public class NumberField extends Widget {
                 setInvalid(false);
                 super.onTextChanged();
             }
+
+            // escape goes back to the last value that parsed, not to the last thing enter was pressed on
+            @Override
+            protected String revertText() {
+                return committed;
+            }
         };
         field.edit().setCharFilter(this::allowed);
         minus = new IconButton(theme, Icon.MINUS, "Less", () -> nudgeButton(-1));
