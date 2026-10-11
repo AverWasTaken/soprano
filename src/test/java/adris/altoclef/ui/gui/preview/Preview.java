@@ -135,15 +135,25 @@ public final class Preview {
     }
 
     public Java2dCanvas render() {
+        return render(true);
+    }
+
+    // world false leaves everything outside the panel transparent: no stripes, no scrim, just the panel and its
+    // shadow on alpha, for dropping onto a page
+    public Java2dCanvas render(boolean world) {
         Java2dCanvas c = new Java2dCanvas(winW, winH, glyphs, shapes);
         c.setTheme(theme);
         theme.update(now);
-        // a dim green world behind the scrim so the panel edge and shadow are judged against something
-        c.clear(WORLD);
-        for (int i = 0; i < winW; i += 64) {
-            c.fillRect(i, 0, 32, winH, WORLD_2);
+        if (world) {
+            // a dim green world behind the scrim so the panel edge and shadow are judged against something
+            c.clear(WORLD);
+            for (int i = 0; i < winW; i += 64) {
+                c.fillRect(i, 0, 32, winH, WORLD_2);
+            }
+            c.fillRect(0, 0, winW, winH, theme.color(Theme.SCRIM));
+        } else {
+            c.clear(0);
         }
-        c.fillRect(0, 0, winW, winH, theme.color(Theme.SCRIM));
         int before = Safe.reports();
         shell.mouseMove(mouseX, mouseY);
         shell.draw(c, frame());
@@ -164,9 +174,18 @@ public final class Preview {
 
     // crops the panel out at 1:1 so the png is the panel and not a screenful of scrim
     public Path savePanel(String name) throws IOException {
+        return savePanel(name, true);
+    }
+
+    // the same crop with a transparent surround instead of the painted world
+    public Path savePanelCutout(String name) throws IOException {
+        return savePanel(name, false);
+    }
+
+    private Path savePanel(String name, boolean world) throws IOException {
         Files.createDirectories(OUT);
         Path p = OUT.resolve(name + ".png");
-        Java2dCanvas c = render();
+        Java2dCanvas c = render(world);
         int pad = 24;
         int x = Math.max(0, shell.x() - pad);
         int y = Math.max(0, shell.y() - pad);

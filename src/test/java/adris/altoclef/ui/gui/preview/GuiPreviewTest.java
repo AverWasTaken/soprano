@@ -38,6 +38,8 @@ public class GuiPreviewTest {
         p.settle();
         p.advance(300);
         p.save("gui_get");
+        p.savePanel("gui_get_panel");
+        p.savePanelCutout("gui_get_cutout");
 
         f.world.following = "Steve";
         for (int i = 1; i < tabs.size(); i++) {
@@ -47,7 +49,25 @@ public class GuiPreviewTest {
             p.advance(500);
             p.save("gui_" + tabs.get(i).id());
             p.savePanel("gui_" + tabs.get(i).id() + "_panel");
+            p.savePanelCutout("gui_" + tabs.get(i).id() + "_cutout");
         }
+
+        // the same tabs in light, with the same basket and the same follow, so the two sets are twins
+        p.shell.setDarkMode(false);
+        p.settle();
+        p.advance(400);
+        for (int i = 0; i < tabs.size(); i++) {
+            p.shell.switchTab(i);
+            p.tick();
+            p.settle();
+            p.advance(500);
+            p.save("gui_" + tabs.get(i).id() + "_light");
+            p.savePanel("gui_" + tabs.get(i).id() + "_light_panel");
+            p.savePanelCutout("gui_" + tabs.get(i).id() + "_light_cutout");
+        }
+        p.shell.setDarkMode(true);
+        p.settle();
+        p.advance(400);
 
         // the opening frames, for the feel of the fade
         p.shell.switchTab(0);
