@@ -41,8 +41,9 @@ final class GetRecentStrip extends Widget {
         return entries;
     }
 
+    // the heading's own line plus the room under it that makes it a heading
     int labelH() {
-        return theme.px(24);
+        return (int) Math.ceil(theme.measurer.lineHeight(theme.smallLabel)) + theme.px(Theme.SECTION_BELOW);
     }
 
     int stripHeight() {
@@ -64,8 +65,8 @@ final class GetRecentStrip extends Widget {
 
     @Override
     public void draw(Canvas c, Frame f) {
-        float base = y + theme.px(4) + c.ascent(theme.small) + theme.px(2);
-        c.text("Recent", x + theme.px(6), base, theme.smallLabel, theme.color(Theme.TEXT_2));
+        // lines up with the left edge of the tile fill under it, not the cell
+        c.text("Recent", x + theme.px(Theme.SPACE_1), y + c.ascent(theme.smallLabel), theme.smallLabel, theme.color(Theme.TEXT_3));
         int cw = tiles.cellWidth(w);
         int hover = hovered ? indexAt(f.mouseX(), f.mouseY()) : -1;
         int n = shown();

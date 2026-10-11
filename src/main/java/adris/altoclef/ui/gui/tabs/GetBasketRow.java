@@ -15,10 +15,25 @@ import adris.altoclef.ui.gui.model.Basket;
 
 import java.util.List;
 
-// one line of the basket: icon, name, and in a get basket [-] count [+] x on the right. a mine row is just icon, name and
-// x, the mine limit lives under the list. at rest only the count shows, the buttons fade in when the row is hovered or
-// you are typing in it, so a long basket is a quiet list and not a wall of buttons
+// one line of the basket: icon, the name with its id under it, and in a get basket [-] count [+] bin on the right. a mine
+// row is just icon, name and bin, the mine limit lives under the list. the count box and the bin are always there, the
+// [-] [+] fade in when the row is hovered or you are typing in it, so a long basket stays a quiet list
 final class GetBasketRow extends RowWidgets.Row<GetBasketRow.Item> {
+
+    // the bin sits in TEXT_3 and only goes red when you are actually on it
+    private static final class BinButton extends IconButton {
+
+        BinButton(Theme theme, Runnable onClick) {
+            super(theme, Icon.TRASH, "Remove", onClick);
+        }
+
+        @Override
+        protected void drawContent(Canvas c, int col, float hv) {
+            float is = iconSize();
+            int tint = Theme.lerp(theme.color(Theme.TEXT_3), theme.color(Theme.DANGER), hv);
+            c.icon(icon, x + (w - is) / 2f, y + (h - is) / 2f, is, tint);
+        }
+    }
 
     record Item(ItemEntry entry, int count, boolean mine) {
     }
@@ -52,14 +67,16 @@ final class GetBasketRow extends RowWidgets.Row<GetBasketRow.Item> {
     private final FadeCanvas fade = new FadeCanvas();
     private Item item;
     private String shownName = "";
+    private String shownId = "";
     private int iconX;
+    private int index;
 
     GetBasketRow(Theme theme, Actions actions) {
         super(theme);
         this.actions = actions;
         minus = new IconButton(theme, Icon.MINUS, "Less", () -> nudge(-1));
         plus = new IconButton(theme, Icon.PLUS, "More", () -> nudge(1));
-        remove = new IconButton(theme, Icon.CLOSE, "Remove", () -> {
+        remove = new BinButton(theme, () -> {
             if (item != null) {
                 actions.remove(item.entry().name());
             }
@@ -138,53 +155,59 @@ final class GetBasketRow extends RowWidgets.Row<GetBasketRow.Item> {
     }
 
     @Override
-    public void bind(Item next, int index) {
+    public void bind(Item next, int idx) {
         item = next;
+        index = idx;
         count.bind(next.mine() ? 0 : next.count(), "0");
         hotA.snap(hot() ? 1f : 0f);
         setControlsVisible(hot());
         refreshName();
     }
 
-    // a narrow basket gives the name the room instead of the bigger icon
+    // a narrow basket gives the name the room instead of the bigger icon, and a squashed window does not get a
+    // two size icon that is taller than its own row
     private int iconPx() {
-        return w >= theme.px(270) ? theme.itemIconPx() * 2 : theme.itemIconPx();
+        int big = theme.itemIconPx() * 2;
+        return w >= theme.px(270) && big + 2 * theme.px(Theme.SPACE_1) <= h ? big : theme.itemIconPx();
     }
 
     private int btn() {
-        return theme.px(22);
+        return GetCountField.stepperPx(theme);
     }
 
     @Override
     protected void layout() {
         int b = btn();
-        int gap = theme.px(2);
-        int cw = theme.px(48);
+        int gap = theme.px(Theme.SPACE_1);
+        int cw = GetCountField.boxW(theme);
+        int ch = theme.px(Theme.CONTROL_H);
         int by = y + (h - b) / 2;
-        int right = x + w - theme.px(6);
+        // the list gives rows a SPACE_2 margin, this one makes the content line up with the card's PAD
+        int right = x + w - theme.px(Theme.SPACE_2);
         remove.setBounds(right - b, by, b, b);
-        plus.setBounds(right - b - gap - b, by, b, b);
-        count.setBounds(plus.x() - gap - cw, y + (h - theme.px(28)) / 2, cw, theme.px(28));
+        plus.setBounds(remove.x() - gap - b, by, b, b);
+        count.setBounds(plus.x() - gap - cw, y + (h - ch) / 2, cw, ch);
         minus.setBounds(count.x() - gap - b, by, b, b);
-        iconX = x + theme.px(10);
+        iconX = x + theme.px(Theme.SPACE_2);
         refreshName();
     }
 
     private void refreshName() {
         if (item == null || w <= 0) {
             shownName = "";
+            shownId = "";
             return;
         }
-        // a mine row only has the x on the right
+        // a mine row only has the bin on the right
         int stop = mine() ? remove.x() : minus.x();
-        float room = stop - theme.px(8) - (iconX + iconPx() + theme.px(10));
-        shownName = theme.measurer.ellipsize(item.entry().displayName(), theme.body, Math.max(0, room));
+        float room = Math.max(0, stop - theme.px(Theme.GAP) - (iconX + iconPx() + theme.px(Theme.SPACE_3)));
+        shownName = theme.measurer.ellipsize(item.entry().displayName(), theme.body, room);
+        shownId = theme.measurer.ellipsize(item.entry().name(), theme.small, room);
     }
 
     private void setControlsVisible(boolean on) {
         minus.setVisible(on && !mine());
         plus.setVisible(on && !mine());
-        remove.setVisible(on);
     }
 
     private boolean hot() {
@@ -195,7 +218,7 @@ final class GetBasketRow extends RowWidgets.Row<GetBasketRow.Item> {
     public Widget mouseMove(float mx, float my) {
         Widget d = super.mouseMove(mx, my);
         boolean on = hot();
-        if (remove.visible() != on) {
+        if (plus.visible() != (on && !mine())) {
             setControlsVisible(on);
             d = super.mouseMove(mx, my);
         }
@@ -214,40 +237,36 @@ final class GetBasketRow extends RowWidgets.Row<GetBasketRow.Item> {
         }
         long now = f.nowNanos();
         boolean hot = hot();
-        if (remove.visible() != hot) {
+        if (plus.visible() != (hot && !mine())) {
             setControlsVisible(hot);
         }
         hotA.set(hot ? 1f : 0f, now, Theme.ANIM_FAST);
         float v = hotA.value(now);
+        // a hairline between rows and no boxes, the hover fill is the only thing that ever sits behind one
+        if (index > 0) {
+            c.fillRect(x + theme.px(Theme.SPACE_2), y, w - 2 * theme.px(Theme.SPACE_2), 1, theme.color(Theme.HAIRLINE));
+        }
         if (v > 0.01f) {
             c.fillRoundRect(x, y + theme.px(1), w, h - theme.px(2), theme.pxf(Theme.ROW_RADIUS), Theme.fade(theme.color(Theme.HOVER), v));
         }
         int s = iconPx();
         c.itemIcon(item.entry().iconItemId(), iconX, y + (h - s) / 2, s);
-        float tx = iconX + s + theme.px(10);
-        c.text(shownName, tx, y + h / 2f + (c.ascent(theme.body) - c.descent(theme.body)) / 2f, theme.body, theme.color(Theme.TEXT));
+        float tx = iconX + s + theme.px(Theme.SPACE_3);
+        // human name first, the id under it as the quiet second line, the pair centred on the row as one block
+        float nameH = c.ascent(theme.body) + c.descent(theme.body);
+        float idH = c.ascent(theme.small) + c.descent(theme.small);
+        float top = y + (h - nameH - idH) / 2f;
+        c.text(shownName, tx, top + c.ascent(theme.body), theme.body, theme.color(Theme.TEXT));
+        c.text(shownId, tx, top + nameH + c.ascent(theme.small), theme.small, theme.color(Theme.TEXT_3));
 
-        if (v > 0.02f) {
+        if (v > 0.02f && !mine()) {
             Canvas g = fade.reset(c, v, 0f);
-            if (!mine()) {
-                minus.draw(g, f);
-                plus.draw(g, f);
-            }
-            remove.draw(g, f);
+            minus.draw(g, f);
+            plus.draw(g, f);
         }
-        if (mine()) {
-            return;
-        }
-        // at rest the number hugs the right edge, on hover it slides left to make room for the buttons
-        if (count.isFocused() || v >= 0.99f) {
+        remove.draw(c, f);
+        if (!mine()) {
             count.draw(c, f);
-        } else {
-            String t = count.text();
-            float tw = c.measure(t, theme.body);
-            float restX = x + w - theme.px(10) - tw;
-            float boxX = count.x() + Math.max(theme.px(4), (count.w() - tw) / 2f);
-            float base = count.y() + count.h() / 2f + (c.ascent(theme.body) - c.descent(theme.body)) / 2f;
-            c.text(t, restX + (boxX - restX) * v, base, theme.body, theme.color(Theme.TEXT_2));
         }
     }
 }

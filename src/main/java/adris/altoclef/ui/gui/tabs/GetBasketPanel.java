@@ -7,7 +7,6 @@ import adris.altoclef.ui.gui.kit.Frame;
 import adris.altoclef.ui.gui.kit.Icon;
 import adris.altoclef.ui.gui.kit.IconButton;
 import adris.altoclef.ui.gui.kit.RowWidgets;
-import adris.altoclef.ui.gui.kit.TextMeasurer;
 import adris.altoclef.ui.gui.kit.TextStyle;
 import adris.altoclef.ui.gui.kit.Theme;
 import adris.altoclef.ui.gui.kit.Widget;
@@ -17,9 +16,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
 
-// the basket tray: title, the lines, a one line total and the big button. in mine mode there is also the one
-// shared "stop after" box above the total. it only shows what the basket says, the tab owns the basket and tells this
-// to refresh() after it changes it
+// the basket dock. empty it is one slim row (the hint on the left, the dead button on the right) so the grid keeps the
+// room; with items it grows into title, the lines, a hairline and a footer with the total and the big button. in mine
+// mode the footer also has the one shared "stop after" box. it only shows what the basket says, the tab owns the
+// basket and tells this to refresh() after it changes it
 final class GetBasketPanel extends Widget {
 
     private final GetBasketRow.Actions actions;
@@ -39,7 +39,7 @@ final class GetBasketPanel extends Widget {
     GetBasketPanel(Theme theme, GetBasketRow.Actions actions, Runnable onGo, Runnable onClear) {
         super(theme);
         this.actions = actions;
-        list = new RowWidgets<>(theme, theme.px(44), () -> new GetBasketRow(theme, actions));
+        list = new RowWidgets<>(theme, rowH(), () -> new GetBasketRow(theme, actions));
         list.setKeyFunction(it -> it.entry().name());
         clear = new Button(theme, "Clear", Button.Kind.GHOST, null, onClear);
         clear.setFocusable(false);
@@ -86,8 +86,6 @@ final class GetBasketPanel extends Widget {
         basket = b;
         mine = mineMode;
         resolve = resolver;
-        setLimitVisible(mine);
-        layout();
         refresh();
     }
 
@@ -101,6 +99,8 @@ final class GetBasketPanel extends Widget {
         go.setText(basket.buttonLabel());
         go.setEnabled(!basket.isEmpty());
         clear.setVisible(!basket.isEmpty());
+        // a limit on nothing is a question nobody asked yet, it shows up with the first line
+        setLimitVisible(mine && !basket.isEmpty());
         layout();
         // a box you are typing in keeps its text, everyone else follows the basket
         if (mine && !limitField.isFocused()) {
@@ -164,45 +164,62 @@ final class GetBasketPanel extends Widget {
         }
     }
 
-    int dockHeight() {
-        int rows = basket.isEmpty() ? theme.px(48) : theme.px(44) * Math.min(3, basket.size());
-        return theme.px(36) + rows + theme.px(mine ? 94 : 54);
+    // an empty dock is the hint and the button on one row, nothing else
+    private int emptyH() {
+        return theme.px(Theme.ROW_H + Theme.SPACE_3);
     }
 
-    int minimumDockHeight() {
-        return theme.px(mine ? 174 : 134);
+    private int rowH() {
+        return theme.px(Theme.ROW_H + Theme.SPACE_2);
     }
 
     private int titleH() {
-        return theme.px(36);
+        return theme.px(Theme.ROW_H);
     }
 
+    // total and button, and in mine mode the limit row on top of them
     private int footerH() {
-        return theme.px(mine ? 94 : 54);
+        int one = theme.px(Theme.SPACE_3 * 2 + Theme.CONTROL_H);
+        return mine ? one + theme.px(Theme.CONTROL_H + Theme.SPACE_2) : one;
+    }
+
+    int dockHeight() {
+        if (basket.isEmpty()) {
+            return emptyH();
+        }
+        return titleH() + 1 + rowH() * Math.min(3, basket.size()) + footerH();
+    }
+
+    // one row is the least a basket with something in it can get by on
+    int minimumDockHeight() {
+        return basket.isEmpty() ? emptyH() : titleH() + 1 + rowH() + footerH();
     }
 
     @Override
     protected void layout() {
-        int pad = theme.px(12);
-        int cw = clear.preferredWidth();
-        int ch = theme.px(28);
-        clear.setBounds(x + w - theme.px(8) - cw, y + (titleH() - ch) / 2, cw, ch);
-        int side = theme.px(6);
-        list.setBounds(x + side, y + titleH() + 1, w - 2 * side, Math.max(0, h - titleH() - 1 - footerH()));
-        int bh = theme.px(32);
+        int pad = theme.px(Theme.PAD);
+        int bh = theme.px(Theme.CONTROL_H);
         int goW = Math.min(theme.px(200), w * 38 / 100);
-        go.setBounds(x + w - pad - goW, y + h - pad - bh, goW, bh);
+        boolean empty = basket.isEmpty();
+        if (empty) {
+            list.setBounds(x, y, 0, 0);
+            go.setBounds(x + w - pad - goW, y + (h - bh) / 2, goW, bh);
+            return;
+        }
+        int cw = clear.preferredWidth();
+        clear.setBounds(x + w - theme.px(Theme.SPACE_2) - cw, y + (titleH() - bh) / 2, cw, bh);
+        int side = theme.px(Theme.SPACE_2);
+        list.setBounds(x + side, y + titleH() + 1, w - 2 * side, Math.max(0, h - titleH() - 1 - footerH()));
+        go.setBounds(x + w - pad - goW, y + h - theme.px(Theme.SPACE_3) - bh, goW, bh);
         // limit row: label on the left, [-] box [+] on the right
-        int b = theme.px(22);
-        int gap = theme.px(2);
-        int boxW = theme.px(48);
-        int footTop = y + h - footerH();
-        int ly = footTop + theme.px(8);
-        int rowH = theme.px(28);
+        int b = GetCountField.stepperPx(theme);
+        int gap = theme.px(Theme.SPACE_1);
+        int boxW = GetCountField.boxW(theme);
+        int ly = y + h - footerH() + theme.px(Theme.SPACE_3);
         int right = x + w - pad;
-        limitPlus.setBounds(right - b, ly + (rowH - b) / 2, b, b);
-        limitField.setBounds(limitPlus.x() - gap - boxW, ly, boxW, rowH);
-        limitMinus.setBounds(limitField.x() - gap - b, ly + (rowH - b) / 2, b, b);
+        limitPlus.setBounds(right - b, ly + (bh - b) / 2, b, b);
+        limitField.setBounds(limitPlus.x() - gap - boxW, ly, boxW, bh);
+        limitMinus.setBounds(limitField.x() - gap - b, ly + (bh - b) / 2, b, b);
     }
 
     @Override
@@ -210,47 +227,26 @@ final class GetBasketPanel extends Widget {
         return kids;
     }
 
-    // greedy word wrap, one long word is left to the ellipsis of whoever draws it
-    static List<String> wrap(TextMeasurer m, String text, TextStyle style, float maxW) {
-        List<String> out = new ArrayList<>();
-        StringBuilder line = new StringBuilder();
-        for (String word : text.split(" ")) {
-            String tryLine = line.length() == 0 ? word : line + " " + word;
-            if (line.length() > 0 && m.measure(tryLine, style) > maxW) {
-                out.add(line.toString());
-                line.setLength(0);
-                line.append(word);
-            } else {
-                line.setLength(0);
-                line.append(tryLine);
-            }
-        }
-        if (line.length() > 0) {
-            out.add(line.toString());
-        }
-        return out;
-    }
-
     @Override
     public void draw(Canvas c, Frame f) {
         now = f.nowNanos();
-        theme.card(c, x, y, w, h, theme.px(14), true);
+        // the dock sits over the grid, so it is the one card here that gets the lift
+        theme.card(c, x, y, w, h, theme.pxf(Theme.CARD_RADIUS), true);
+        int pad = theme.px(Theme.PAD);
+        if (basket.isEmpty()) {
+            drawHint(c, pad);
+            go.draw(c, f);
+            return;
+        }
 
-        int pad = theme.px(12);
         float tb = y + titleH() / 2f + (c.ascent(theme.label) - c.descent(theme.label)) / 2f;
-        c.text("Basket", x + pad + theme.px(2), tb, theme.label, theme.color(Theme.TEXT));
+        c.text("Basket", x + pad, tb, theme.label, theme.color(Theme.TEXT));
         c.fillRect(x + 1, y + titleH(), w - 2, 1, theme.color(Theme.HAIRLINE));
         list.draw(c, f);
-        if (basket.isEmpty()) {
-            drawHint(c);
-        }
-        if (clear.visible()) {
-            clear.draw(c, f);
-        }
+        clear.draw(c, f);
 
         int footTop = y + h - footerH();
         c.fillRect(x + 1, footTop, w - 2, 1, theme.color(Theme.HAIRLINE));
-        TextStyle small = theme.small;
         if (mine) {
             float lb = limitField.y() + limitField.h() / 2f + (c.ascent(theme.body) - c.descent(theme.body)) / 2f;
             c.text("Stop after", x + pad, lb, theme.body, theme.color(Theme.TEXT_2));
@@ -258,24 +254,36 @@ final class GetBasketPanel extends Widget {
             limitField.draw(c, f);
             limitPlus.draw(c, f);
         }
-        float summaryW = go.x() - x - 2 * pad;
+        TextStyle small = theme.small;
+        float summaryW = go.x() - x - pad - theme.px(Theme.GAP);
         String shown = c.ellipsize(summary, small, summaryW);
         float summaryBase = go.y() + go.h() / 2f + (c.ascent(small) - c.descent(small)) / 2f;
         c.text(shown, x + pad, summaryBase, small, theme.color(Theme.TEXT_2));
         go.draw(c, f);
     }
 
-    private void drawHint(Canvas c) {
-        String msg = mine
-                ? "Choose blocks. Set a limit, or leave it empty to keep mining."
-                : "Click an item to add it. Shift-click adds a stack, Ctrl-click adds 10.";
+    // one line, and the actionable part is the last thing to go: the whole hint, then without the key tips, then just
+    // the instruction, then an ellipsis for a window that is really not trying
+    private void drawHint(Canvas c, int pad) {
+        String act = mine ? "Click a block to add it." : "Click an item to add it.";
+        String[] tiers = {
+                mine ? "Nothing added yet. " + act + " Set a limit once one is in, or leave it empty to keep mining."
+                        : "Nothing added yet. Click an item to add it; Shift-click adds a stack, Ctrl-click adds 10.",
+                "Nothing added yet. " + act,
+                act};
         TextStyle small = theme.small;
-        float maxW = list.w() - 2 * theme.px(14);
-        float step = (float) Math.ceil(c.lineHeight(small)) + theme.px(3);
-        float base = list.y() + theme.px(14) + c.ascent(small);
-        for (String line : wrap(c, msg, small, maxW)) {
-            c.text(line, list.x() + theme.px(14), base, small, theme.color(Theme.TEXT_2));
-            base += step;
+        float room = go.x() - x - pad - theme.px(Theme.GAP);
+        String msg = null;
+        for (String t : tiers) {
+            if (c.measure(t, small) <= room) {
+                msg = t;
+                break;
+            }
         }
+        if (msg == null) {
+            msg = c.ellipsize(act, small, room);
+        }
+        float base = y + h / 2f + (c.ascent(small) - c.descent(small)) / 2f;
+        c.text(msg, x + pad, base, small, theme.color(Theme.TEXT_2));
     }
 }

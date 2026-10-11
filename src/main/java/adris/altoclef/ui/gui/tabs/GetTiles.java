@@ -16,7 +16,7 @@ import java.util.Map;
 final class GetTiles {
 
     private final Theme theme;
-    private final Map<String, String[]> lineCache = new HashMap<>();
+    private final Map<String, String> nameCache = new HashMap<>();
     private float cachedW = -1f;
 
     GetTiles(Theme theme) {
@@ -40,75 +40,58 @@ final class GetTiles {
         return Math.max(1, (w - theme.px(10)) / columns(w));
     }
 
-    // a name that does not fit wraps after a space or underscore ("Diamond" / "Pickaxe") instead of being cut mid word
-    String[] nameLines(TextMeasurer m, String name, TextStyle style, float maxW) {
+    // one line, always: a wrapped name made every baseline in a row depend on its neighbours. ellipsized names are
+    // cached per width, the measure was showing up when a screenful of tiles redraws every frame
+    private String fit(TextMeasurer m, String name, TextStyle style, float maxW) {
         if (maxW != cachedW) {
-            lineCache.clear();
+            nameCache.clear();
             cachedW = maxW;
         }
-        String[] hit = lineCache.get(name);
-        if (hit != null) {
-            return hit;
-        }
-        String[] out;
-        if (m.measure(name, style) <= maxW) {
-            out = new String[] {name};
-        } else {
-            int best = -1;
-            for (int i = 0; i < name.length() - 1; i++) {
-                char ch = name.charAt(i);
-                if ((ch == '_' || ch == ' ') && m.measure(name.substring(0, i + 1).stripTrailing(), style) <= maxW) {
-                    best = i;
-                }
+        String hit = nameCache.get(name);
+        if (hit == null) {
+            if (nameCache.size() > 512) {
+                nameCache.clear();
             }
-            out = best < 0
-                    ? new String[] {m.ellipsize(name, style, maxW)}
-                    : new String[] {name.substring(0, best + 1).stripTrailing(),
-                            m.ellipsize(name.substring(best + 1), style, maxW)};
+            hit = m.ellipsize(name, style, maxW);
+            nameCache.put(name, hit);
         }
-        if (lineCache.size() > 512) {
-            lineCache.clear();
-        }
-        lineCache.put(name, out);
-        return out;
+        return hit;
     }
 
     // count < 0 means not in the basket. count 0 is in the basket with nothing to show (a mine block has no count)
     void draw(Canvas c, ItemEntry e, int count, int x, int y, int w, int h, boolean hovered) {
-        int inset = theme.px(5);
+        int inset = theme.px(Theme.SPACE_1);
         float rx = x + inset;
         float ry = y + inset;
         float rw = w - 2 * inset;
         float rh = h - 2 * inset;
-        // no box until there is a reason for one: hover is a quiet fill, in the basket is the tinted fill
+        // no box until there is a reason for one: hover is a quiet fill, in the basket is the tinted fill and a
+        // soft blue edge
         float radius = theme.pxf(Theme.CARD_RADIUS);
         if (count >= 0) {
             c.fillRoundRect(rx, ry, rw, rh, radius, theme.color(Theme.ACCENT_SOFT));
+            c.strokeRoundRect(rx, ry, rw, rh, radius, Theme.fade(theme.color(Theme.ACCENT), 0.6f));
         } else if (hovered) {
             c.fillRoundRect(rx, ry, rw, rh, radius, theme.color(Theme.HOVER));
         }
         // the item is the star of the tile: two whole icon sizes, still a multiple of 16
         int s = theme.itemIconPx() * 2;
-        int iy = y + theme.px(10);
+        int iy = y + theme.px(Theme.SPACE_3 + Theme.SPACE_1);
         c.itemIcon(e.iconItemId(), x + (w - s) / 2, iy, s);
 
         TextStyle small = theme.small;
-        float maxW = rw - 2 * theme.px(4);
-        String[] lines = nameLines(c, e.displayName(), small, maxW);
-        float base = iy + s + theme.px(6) + c.ascent(small);
-        float step = (float) Math.ceil(c.lineHeight(small));
-        for (int i = 0; i < lines.length; i++) {
-            float tw = c.measure(lines[i], small);
-            c.text(lines[i], x + (w - tw) / 2f, base + i * step, small, hovered || count >= 0 ? theme.color(Theme.TEXT) : theme.color(Theme.TEXT_2));
-        }
+        String name = fit(c, e.displayName(), small, rw - 2 * theme.px(Theme.SPACE_1));
+        float base = iy + s + theme.px(Theme.SPACE_2) + c.ascent(small);
+        float tw = c.measure(name, small);
+        c.text(name, x + (w - tw) / 2f, base, small, hovered || count >= 0 ? theme.color(Theme.TEXT) : theme.color(Theme.TEXT_2));
 
         if (count > 0) {
             TextStyle bs = theme.smallLabel.asTabular();
             String t = count > 999 ? "999+" : String.valueOf(count);
             float ph = theme.px(16);
-            float pw = Math.max(ph, c.measure(t, bs) + theme.px(10));
-            float px = rx + rw - pw - theme.px(5);
-            float py = ry + theme.px(5);
+            float pw = Math.max(ph, c.measure(t, bs) + theme.px(Theme.SPACE_2));
+            float px = rx + rw - pw - theme.px(Theme.SPACE_1);
+            float py = ry + theme.px(Theme.SPACE_1);
             c.fillRoundRect(px, py, pw, ph, ph / 2f, theme.color(Theme.ACCENT));
             float tb = py + ph / 2f + (c.ascent(bs) - c.descent(bs)) / 2f;
             c.text(t, px + (pw - c.measure(t, bs)) / 2f, tb, bs, theme.color(Theme.ON_ACCENT));
@@ -129,15 +112,17 @@ final class GetTiles {
             c.fillRoundRect(z[0], z[1], z[2], z[3], radius, theme.color(Theme.ACCENT));
             c.icon(Icon.PIN, z[0] + (z[2] - is) / 2f, z[1] + (z[3] - is) / 2f, is, theme.color(Theme.ON_ACCENT));
         } else {
-            c.fillRoundRect(z[0], z[1], z[2], z[3], radius, Theme.fade(theme.color(Theme.HOVER), 0.9f));
+            c.fillRoundRect(z[0], z[1], z[2], z[3], radius, theme.color(Theme.RAISED));
             c.strokeRoundRect(z[0], z[1], z[2], z[3], radius, theme.color(Theme.HAIRLINE));
             c.icon(Icon.PIN, z[0] + (z[2] - is) / 2f, z[1] + (z[3] - is) / 2f, is, theme.color(Theme.TEXT_2));
         }
     }
 
-    // the pin button's rect within a cell, for hit testing a click against it
+    // the pin button's rect within a cell, for hit testing a click against it. sits inside the tile's rounded corner
+    // so the pin never pokes out past the tile fill
     int[] pinZone(int x, int y, int w, int h) {
-        int s = theme.px(22);
-        return new int[] {x + theme.px(4), y + theme.px(4), s, s};
+        int s = theme.px(Theme.ICON + Theme.SPACE_1);
+        int off = theme.px(Theme.SPACE_2);
+        return new int[] {x + off, y + off, s, s};
     }
 }

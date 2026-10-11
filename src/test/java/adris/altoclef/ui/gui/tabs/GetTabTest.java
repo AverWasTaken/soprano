@@ -358,6 +358,46 @@ public class GetTabTest {
     }
 
     @Test
+    public void anEmptyDockIsOneSlimRowAndGrowsWithTheFirstItem() {
+        assertEquals(theme.px(48), tab.panel().dockHeight());
+        assertEquals(theme.px(48), tab.panel().minimumDockHeight());
+        assertEquals(theme.px(48), tab.panel().h());
+        clickTile(0, 0);
+        assertTrue(tab.panel().dockHeight() > theme.px(48));
+        assertTrue(tab.panel().minimumDockHeight() > theme.px(48));
+        assertTrue(tab.panel().minimumDockHeight() <= tab.panel().dockHeight());
+        clickWidget(tab.panel().clearButton(), 0);
+        assertEquals(theme.px(48), tab.panel().h());
+    }
+
+    @Test
+    public void aNarrowEmptyDockDropsTheKeyTipsButKeepsTheInstruction() {
+        root.setBounds(0, 0, 700, 400);
+        StubCanvas c = draw();
+        assertTrue(c.texts().toString(), c.texts().stream().anyMatch(s -> s.contains("Click an item to add it")));
+        assertTrue(c.texts().toString(), c.texts().stream().noneMatch(s -> s.contains("Shift-click")));
+    }
+
+    @Test
+    public void theMineLimitGoesAwayWithTheLastBlock() {
+        switchToMine();
+        clickTile(0, 0);
+        assertTrue(tab.panel().limitField().visible());
+        clickWidget(tab.panel().clearButton(), 0);
+        assertFalse(tab.panel().limitField().visible());
+        assertFalse(tab.panel().limitPlus().visible());
+    }
+
+    @Test
+    public void theBinIsAlwaysThereButTheStepButtonsWaitForTheMouse() {
+        clickTile(0, 0);
+        draw();
+        assertTrue(row(0).removeButton().visible());
+        assertFalse(row(0).plus().visible());
+        assertFalse(row(0).minus().visible());
+    }
+
+    @Test
     public void plainClickAddsOne() {
         clickTile(0, 0);
         assertEquals(1, gb().count(shown(0).name()));
@@ -769,8 +809,12 @@ public class GetTabTest {
 
     @Test
     public void theLimitBoxOnlyExistsInMineMode() {
+        clickTile(0, 0);
         assertFalse(tab.panel().limitField().visible());
         switchToMine();
+        // an empty basket is one slim row, the limit shows up with the first block
+        assertFalse(tab.panel().limitField().visible());
+        clickTile(0, 0);
         assertTrue(tab.panel().limitField().visible());
     }
 
@@ -799,7 +843,7 @@ public class GetTabTest {
     @Test
     public void emptyBasketShowsTheHint() {
         StubCanvas c = draw();
-        boolean found = c.texts().stream().anyMatch(s -> s.startsWith("Click an item to add it."));
+        boolean found = c.texts().stream().anyMatch(s -> s.startsWith("Nothing added yet. Click an item to add it"));
         assertTrue(c.texts().toString(), found);
     }
 

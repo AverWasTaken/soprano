@@ -18,6 +18,15 @@ final class GetCountField extends TextField {
         void done();
     }
 
+    // every count box in the basket (a row's and the mine limit) is this wide, with [-] [+] buttons this big beside it
+    static int boxW(Theme theme) {
+        return theme.px(56);
+    }
+
+    static int stepperPx(Theme theme) {
+        return theme.px(Theme.CONTROL_H - 2);
+    }
+
     private final Host host;
     private String boundText = "";
     private String hint = "0";

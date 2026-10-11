@@ -491,7 +491,7 @@ public final class GetTab implements Tab {
             if (strip.visible()) {
                 strip.draw(c, f);
                 float ly = grid.y() - theme.px(Theme.GAP) / 2f;
-                c.fillRect(grid.x() + theme.px(6), ly, grid.w() - theme.px(12), 1, theme.color(Theme.HAIRLINE));
+                c.fillRect(grid.x() + theme.px(Theme.SPACE_1), ly, grid.w() - theme.px(Theme.SPACE_2), 1, theme.color(Theme.HAIRLINE));
             }
             grid.draw(c, f);
             drawEmpty(c);
@@ -505,7 +505,8 @@ public final class GetTab implements Tab {
                     : shown.size() + " of " + categorySource().size();
             float tw = c.measure(t, theme.small);
             float base = seg.y() + seg.h() / 2f + (c.ascent(theme.small) - c.descent(theme.small)) / 2f;
-            float right = grid.x() + grid.w() - theme.px(6);
+            // the same PAD from the edge as the controls on the left
+            float right = x + w - theme.px(Theme.PAD);
             // keep the mode control readable even at the smallest resize
             if (right - tw >= categories.x() + categories.w() + theme.px(Theme.GAP)) {
                 c.text(t, right - tw, base, theme.small, theme.color(Theme.TEXT_3));
