@@ -78,4 +78,11 @@ public final class DeferredContext implements ShellContext {
             real.requestClose();
         }
     }
+
+    @Override
+    public void openKeyRebound(int key) {
+        if (real != null) {
+            real.openKeyRebound(key);
+        }
+    }
 }

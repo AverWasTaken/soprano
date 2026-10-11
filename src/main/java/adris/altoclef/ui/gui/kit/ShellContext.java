@@ -24,4 +24,9 @@ public interface ShellContext {
     void closeOverlay();
 
     void requestClose();
+
+    // a tab's own key capture changed the open key: the shell must treat it as the close key from now on and
+    // swallow the press that is still held down so it does not close the panel through key repeat
+    default void openKeyRebound(int key) {
+    }
 }
