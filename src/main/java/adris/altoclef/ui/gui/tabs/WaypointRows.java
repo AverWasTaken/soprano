@@ -29,7 +29,7 @@ final class WaypointRows implements VirtualList.RowRenderer<WaypointEntry> {
     private final Theme theme;
     private final Supplier<WorldAccess.Position> pos;
     private final Supplier<WaypointEntry> confirming;
-    // how many rows the list has, so the last one skips its separator
+    // how many rows the list has, so the first and last can follow the corners of the card
     private final IntSupplier count;
     // where each visible row was last painted: x, y, w, h
     private final Map<Integer, int[]> painted = new HashMap<>();
@@ -97,16 +97,15 @@ final class WaypointRows implements VirtualList.RowRenderer<WaypointEntry> {
     public void draw(Canvas c, Frame f, WaypointEntry e, int index, int rx, int ry, int rw, int rh, boolean hot) {
         painted.put(index, new int[]{rx, ry, rw, rh});
         boolean confirm = e.equals(confirming.get());
-        float rr = theme.pxf(Theme.ROW_RADIUS);
         int pad = theme.px(Theme.PAD);
+        boolean first = index == 0;
+        boolean last = index == count.getAsInt() - 1;
         if (confirm) {
-            c.fillRoundRect(rx, ry, rw, rh, rr, Theme.fade(theme.color(Theme.DANGER_FILL), 0.55f));
+            ListCard.fill(theme, c, rx, ry, rw, rh, first, last, Theme.fade(theme.color(Theme.DANGER_FILL), 0.55f));
         } else if (hot) {
-            c.fillRoundRect(rx, ry, rw, rh, rr, theme.color(Theme.HOVER));
-        } else if (index < count.getAsInt() - 1) {
-            // inset on the left only, same as every other grouped list
-            c.fillRect(rx + pad, ry + rh - 1, rw - pad, 1, theme.color(Theme.HAIRLINE));
+            ListCard.fill(theme, c, rx, ry, rw, rh, first, last, theme.color(Theme.HOVER));
         }
+        ListCard.separator(theme, c, rx, ry, rw, index);
 
         int is = theme.px(Theme.ICON);
         c.icon(Icon.WAYPOINTS, rx + pad, ry + (rh - is) / 2f, is, theme.color(Theme.TEXT_3));

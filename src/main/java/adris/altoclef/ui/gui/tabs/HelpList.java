@@ -414,6 +414,12 @@ final class HelpList extends VirtualView<CommandInfo> {
         }
 
         c.pushClip(x, y, w, h);
+        if (n > 0) {
+            // one card around every row, as tall as they are (the contentHeight's trailing SPACE_2 stays as air under
+            // it). it scrolls with them, so its edges are only there while the first and last row are
+            theme.card(c, x + padX(), Math.round(y - off), w - 2 * padX(), contentHeight() - theme.px(Theme.SPACE_2),
+                    theme.pxf(Theme.CARD_RADIUS), false);
+        }
         if (first >= 0) {
             float cursor = firstTop;
             for (int i = first; i < last; i++) {
@@ -425,7 +431,7 @@ final class HelpList extends VirtualView<CommandInfo> {
                 boolean kb = focused && item.name().equals(kbName);
                 int hotPiece = i == hoverIdx ? pieceAt(i, f.mouseX(), hoverRel) : -1;
                 try {
-                    drawRow(g, item, ry, rh, inHead || kb, hotPiece);
+                    drawRow(g, item, i, ry, rh, inHead || kb, hotPiece);
                 } catch (Throwable t) {
                     Safe.report("help row", t);
                 }
@@ -437,7 +443,7 @@ final class HelpList extends VirtualView<CommandInfo> {
         drawScrollbar(c);
     }
 
-    private void drawRow(Canvas g, CommandInfo cmd, int ry, int rh, boolean hot, int hotPiece) {
+    private void drawRow(Canvas g, CommandInfo cmd, int idx, int ry, int rh, boolean hot, int hotPiece) {
         RowState s = state(cmd);
         float open = s.open.value(now);
         s.hover.set(hot ? 1f : 0f, now, Theme.ANIM_FAST);
@@ -445,23 +451,17 @@ final class HelpList extends VirtualView<CommandInfo> {
         int x0 = x + padX();
         int w0 = w - 2 * padX();
         int pad = cardPad();
-        float r = theme.pxf(Theme.ROW_RADIUS);
         int head = headH();
 
-        // an open row turns into one SURFACE block with a hairline under its header, a closed one is a row on the
-        // panel with a hairline under it, and the two trade places as it opens
-        if (open > 0.01f) {
-            float cr = theme.pxf(Theme.CARD_RADIUS);
-            g.fillRoundRect(x0, ry, w0, rh, cr, Theme.fade(theme.color(Theme.SURFACE), open));
-            g.strokeRoundRect(x0, ry, w0, rh, cr, Theme.fade(theme.color(Theme.HAIRLINE), open));
-            g.fillRect(x0 + 1, ry + head, w0 - 2, 1, Theme.fade(theme.color(Theme.HAIRLINE), open));
-        }
-        float sep = (1f - open) * (1f - hv);
-        if (sep > 0.01f && !isLast(cmd)) {
-            g.fillRect(x0 + pad, ry + rh - 1, w0 - pad, 1, Theme.fade(theme.color(Theme.HAIRLINE), sep));
-        }
+        // inside the list's card an open row is just taller, with a hairline under its header. the hover fill takes the
+        // card's corners, and only the header of an open row lights up, so only a closed last row reaches the bottom
         if (hv > 0.01f) {
-            g.fillRoundRect(x0, ry, w0, head, r, Theme.fade(theme.color(Theme.HOVER), hv * (1f - open * 0.6f)));
+            ListCard.fill(theme, g, x0, ry, w0, head, idx == 0, idx == items.size() - 1 && rh == head,
+                    Theme.fade(theme.color(Theme.HOVER), hv * (1f - open * 0.6f)));
+        }
+        ListCard.separator(theme, g, x0, ry, w0, idx);
+        if (open > 0.01f) {
+            g.fillRect(x0 + 1, ry + head, w0 - 2, 1, Theme.fade(theme.color(Theme.HAIRLINE), open));
         }
 
         // name, then each alias as a chip, then the one line description in its own column
@@ -513,11 +513,6 @@ final class HelpList extends VirtualView<CommandInfo> {
                 g.popClip();
             }
         }
-    }
-
-    // the last row has nothing under it to separate from
-    private boolean isLast(CommandInfo cmd) {
-        return !items.isEmpty() && items.get(items.size() - 1) == cmd;
     }
 
     private void drawDetail(Canvas g, Detail d, float dx, float dy, float dw, float open, int hotPiece) {

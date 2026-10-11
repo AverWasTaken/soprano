@@ -373,7 +373,8 @@ final class FollowContent extends Widget {
 
     private void place(int sx, int sy, int sw, int sh, int hdr, boolean players) {
         VirtualList<?> list = players ? playerList : entityList;
-        list.setBounds(sx, sy + hdr, sw, Math.max(0, sh - hdr));
+        // the list keeps its scrollbar strip, so it is widened by it and the card ends up as wide as the buttons above
+        list.setBounds(sx, sy + hdr, sw + ListCard.gutter(theme), Math.max(0, sh - hdr));
         if (players) {
             pHdrX = sx;
             pHdrY = sy;
@@ -404,7 +405,9 @@ final class FollowContent extends Widget {
         allEntitiesBtn.draw(c, f);
         drawHeader(c, "Players", EntityGroups.nearbyPlayers(shownPlayers), pHdrX, pHdrY);
         drawHeader(c, "Entities", shownEntityCount, eHdrX, eHdrY);
+        ListCard.card(theme, c, playerList, f.nowNanos(), playerList.items().size() * playerList.rowHeight());
         playerList.draw(c, f);
+        ListCard.card(theme, c, entityList, f.nowNanos(), entityList.items().size() * entityList.rowHeight());
         entityList.draw(c, f);
         if (playerList.items().isEmpty()) {
             drawEmpty(c, playerList, query.isEmpty() ? "No players nearby" : "No players match",
@@ -443,10 +446,11 @@ final class FollowContent extends Widget {
             return;
         }
         float cy = list.y() + Math.min(list.h() / 2f, theme.px(60));
+        float cw = list.w() - ListCard.gutter(theme);
         float w1 = c.measure(line, theme.body);
-        c.text(line, list.x() + (list.w() - w1) / 2f, cy - theme.px(2), theme.body, theme.color(Theme.TEXT_2));
+        c.text(line, list.x() + (cw - w1) / 2f, cy - theme.px(2), theme.body, theme.color(Theme.TEXT_2));
         float w2 = c.measure(hint, theme.small);
-        c.text(hint, list.x() + (list.w() - w2) / 2f, cy + theme.px(18), theme.small, theme.color(Theme.TEXT_3));
+        c.text(hint, list.x() + (cw - w2) / 2f, cy + theme.px(18), theme.small, theme.color(Theme.TEXT_3));
     }
 
     // the row button lives in a fixed slot at the right edge and covers the distance while it is there, so nothing
@@ -461,7 +465,7 @@ final class FollowContent extends Widget {
     }
 
     private int rowW(VirtualList<?> list) {
-        return list.w() - theme.px(10);
+        return list.w() - ListCard.gutter(theme);
     }
 
     private float buttonLeft(int rx, int rw) {
@@ -504,19 +508,12 @@ final class FollowContent extends Widget {
         return rx + rw - theme.px(Theme.PAD);
     }
 
-    // hover is the usual step, the row you are following is the one tinted blue
-    private void rowBg(Canvas c, int rx, int ry, int rw, int rh, boolean followed, boolean hot) {
+    // hover is the usual step, the row you are following is the one tinted blue. both follow the card's corners
+    private void rowBg(Canvas c, int rx, int ry, int rw, int rh, boolean followed, boolean hot, int idx, int count) {
         if (followed) {
-            c.fillRoundRect(rx, ry, rw, rh, theme.pxf(Theme.ROW_RADIUS), theme.color(Theme.ACCENT_SOFT));
+            ListCard.fill(theme, c, rx, ry, rw, rh, idx == 0, idx == count - 1, theme.color(Theme.ACCENT_SOFT));
         } else if (hot) {
-            c.fillRoundRect(rx, ry, rw, rh, theme.pxf(Theme.ROW_RADIUS), theme.color(Theme.HOVER));
-        }
-    }
-
-    // hairline between rows, inset on the left like every grouped list, gone under a lit row and after the last one
-    private void separator(Canvas c, int rx, int ry, int rw, int rh, boolean lit, boolean last) {
-        if (!lit && !last) {
-            c.fillRect(rx + theme.px(Theme.PAD), ry + rh - 1, rw - theme.px(Theme.PAD), 1, theme.color(Theme.HAIRLINE));
+            ListCard.fill(theme, c, rx, ry, rw, rh, idx == 0, idx == count - 1, theme.color(Theme.HOVER));
         }
     }
 
@@ -539,8 +536,8 @@ final class FollowContent extends Widget {
         boolean near = p.distance() >= 0;
         boolean followed = EntityGroups.followsPlayer(following, p.name());
         boolean lit = (hot && !p.self()) || followed;
-        rowBg(c, rx, ry, rw, rh, followed, hot && !p.self());
-        separator(c, rx, ry, rw, rh, lit, idx == playerList.items().size() - 1);
+        rowBg(c, rx, ry, rw, rh, followed, hot && !p.self(), idx, playerList.items().size());
+        ListCard.separator(theme, c, rx, ry, rw, idx);
         float face = theme.px(Theme.ICON_LG);
         float fx = rx + theme.px(Theme.PAD);
         float fy = ry + (rh - face) / 2f;
@@ -586,8 +583,8 @@ final class FollowContent extends Widget {
         } else if (row instanceof EntityRow er) {
             followed = EntityGroups.followsEntity(following, er.entry());
         }
-        rowBg(c, rx, ry, rw, rh, followed, hot);
-        separator(c, rx, ry, rw, rh, hot || followed, idx == entityList.items().size() - 1);
+        rowBg(c, rx, ry, rw, rh, followed, hot, idx, entityList.items().size());
+        ListCard.separator(theme, c, rx, ry, rw, idx);
         if (row instanceof GroupRow gr) {
             drawGroup(c, f, gr.group(), rx, ry, rw, rh, hot || followed);
         } else if (row instanceof EntityRow er) {

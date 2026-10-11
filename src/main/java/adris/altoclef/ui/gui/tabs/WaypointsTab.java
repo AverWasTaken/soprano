@@ -146,7 +146,7 @@ public final class WaypointsTab implements Tab {
             if (!arranged.equals(list.items())) {
                 list.setItems(arranged);
             }
-            list.setEmptyText(all.isEmpty() ? "No waypoints yet. Add one here." : "No waypoints match");
+            list.setEmptyLine(all.isEmpty() ? "No waypoints yet. Add one here." : "No waypoints match");
             if (confirming != null && !arranged.contains(confirming)) {
                 confirming = null;
             }
@@ -281,6 +281,23 @@ public final class WaypointsTab implements Tab {
             return super.scroll(mx, my, dy);
         }
 
+        private String emptyLine = "";
+
+        // the kit centres its empty text on the whole list, which now includes the scrollbar strip, so we say it ourselves
+        void setEmptyLine(String s) {
+            emptyLine = s;
+        }
+
+        @Override
+        public void draw(Canvas c, Frame f) {
+            ListCard.card(theme, c, this, f.nowNanos(), items.size() * rowHeight());
+            super.draw(c, f);
+            if (items.isEmpty() && !emptyLine.isEmpty()) {
+                float tw = c.measure(emptyLine, theme.body);
+                c.text(emptyLine, x + (w - ListCard.gutter(theme) - tw) / 2f, baseline(c, theme.body, y, h), theme.body, theme.color(Theme.TEXT_3));
+            }
+        }
+
         // clicking away, tabbing off, the search box taking focus: all of them mean no
         @Override
         public void setFocused(boolean f) {
@@ -353,7 +370,8 @@ public final class WaypointsTab implements Tab {
             int sw = sort.preferredWidth();
             sort.setBounds(right - sw, infoTop, sw, ch);
             int lt = infoTop + ch + theme.px(Theme.SECTION_BELOW);
-            list.setBounds(x + pad, lt, w - 2 * pad, Math.max(0, y + h - lt - theme.px(Theme.PAD)));
+            // widened by the scrollbar strip so the card ends where the add button does
+            list.setBounds(x + pad, lt, w - 2 * pad + ListCard.gutter(theme), Math.max(0, y + h - lt - theme.px(Theme.PAD)));
         }
 
         @Override

@@ -330,11 +330,9 @@ public final class GotoTab implements Tab {
 
     private void drawRecent(Canvas c, Frame f, GotoRecent.Entry e, int index, int rx, int ry, int rw, int rh, boolean hot) {
         if (hot) {
-            c.fillRoundRect(rx, ry, rw, rh, theme.pxf(Theme.ROW_RADIUS), theme.color(Theme.HOVER));
-        } else if (index < shownRecent.size() - 1) {
-            // inset on the left only, same as every other grouped list
-            c.fillRect(rx + theme.px(Theme.PAD), ry + rh - 1, rw - theme.px(Theme.PAD), 1, theme.color(Theme.HAIRLINE));
+            ListCard.fill(theme, c, rx, ry, rw, rh, index == 0, index == shownRecent.size() - 1, theme.color(Theme.HOVER));
         }
+        ListCard.separator(theme, c, rx, ry, rw, index);
         TextStyle body = theme.body.asTabular();
         TextStyle small = theme.small.asTabular();
         float tx = rx + theme.px(Theme.PAD);
@@ -406,7 +404,8 @@ public final class GotoTab implements Tab {
             cardBottom = by + ch + cardPad;
             headerTop = cardBottom + theme.px(Theme.SECTION);
             int lt = headerTop + theme.px(HEADER_H) + theme.px(Theme.SECTION_BELOW);
-            recent.setBounds(x + pad, lt, w - 2 * pad, Math.max(0, y + h - lt - theme.px(Theme.PAD)));
+            // widened by the scrollbar strip so the card is as wide as the one above it
+            recent.setBounds(x + pad, lt, w - 2 * pad + ListCard.gutter(theme), Math.max(0, y + h - lt - theme.px(Theme.PAD)));
         }
 
         @Override
@@ -442,6 +441,7 @@ public final class GotoTab implements Tab {
             float hy = mid(c, theme.label, headerTop, theme.px(HEADER_H));
             float adv = c.text("Recent", x + pad, hy, theme.label, theme.color(Theme.TEXT));
             c.text(" · " + shownRecent.size(), x + pad + adv, hy, theme.label, theme.color(Theme.TEXT_3));
+            ListCard.card(theme, c, recent, f.nowNanos(), shownRecent.size() * recent.rowHeight());
             recent.draw(c, f);
         }
 
