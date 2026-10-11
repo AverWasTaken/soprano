@@ -3,39 +3,25 @@ package adris.altoclef.ui.gui.model;
 import java.util.List;
 import java.util.Locale;
 
-// the creative inventory's tab order, so the get tab can group items the way the game itself does. the names are
-// the english tab titles; a localised install that does not match one still sorts its categories together, just
-// alphabetically after the ones that do. good enough, and nobody browses for "Spawn Eggs" in japanese anyway
+// short browsing groups, shared by the creative inventory adapter and the get tab
 public final class CreativeCategories {
-
-    public static final List<String> ORDER = List.of(
-            "Building Blocks",
-            "Colored Blocks",
-            "Natural Blocks",
-            "Functional Blocks",
-            "Redstone Blocks",
-            "Tools & Utilities",
-            "Combat",
-            "Food & Drinks",
-            "Ingredients",
-            "Spawn Eggs",
-            "Op Blocks"
-    );
 
     private CreativeCategories() {
     }
 
-    // where a category sits in the creative tab bar, a large number for one nobody expected
-    public static int order(String category) {
-        if (category == null) {
-            return Integer.MAX_VALUE;
-        }
-        String c = category.toLowerCase(Locale.ROOT);
-        for (int i = 0; i < ORDER.size(); i++) {
-            if (ORDER.get(i).toLowerCase(Locale.ROOT).equals(c)) {
-                return i;
-            }
-        }
-        return Integer.MAX_VALUE;
+    public static final List<String> GROUPS = List.of("Blocks", "Tools", "Combat", "Food", "Materials", "Redstone", "Other");
+
+    public static String group(String category) {
+        String key = category == null ? "" : category.toLowerCase(Locale.ROOT).replace(' ', '_');
+        return switch (key) {
+            case "blocks", "building_blocks", "colored_blocks", "natural_blocks", "functional_blocks" -> "Blocks";
+            case "tools", "tools_and_utilities", "tools_&_utilities" -> "Tools";
+            case "combat" -> "Combat";
+            case "food", "food_and_drinks", "food_&_drinks" -> "Food";
+            case "materials", "ingredients" -> "Materials";
+            case "redstone", "redstone_blocks" -> "Redstone";
+            default -> "Other";
+        };
     }
+
 }

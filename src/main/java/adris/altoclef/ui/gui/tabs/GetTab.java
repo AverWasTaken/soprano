@@ -5,7 +5,7 @@ import adris.altoclef.ui.gui.facade.ItemsAccess.BasketLine;
 import adris.altoclef.ui.gui.facade.ItemsAccess.ItemEntry;
 import adris.altoclef.ui.gui.facade.Result;
 import adris.altoclef.ui.gui.kit.Canvas;
-import adris.altoclef.ui.gui.kit.Dropdown;
+import adris.altoclef.ui.gui.kit.CategoryTabs;
 import adris.altoclef.ui.gui.kit.Frame;
 import adris.altoclef.ui.gui.kit.Icon;
 import adris.altoclef.ui.gui.kit.Safe;
@@ -38,7 +38,7 @@ public final class GetTab implements Tab {
     private final Map<String, ItemEntry> mineByName = new HashMap<>();
     private final GetTiles tiles;
     private final Segmented seg;
-    private final Dropdown catDrop;
+    private final CategoryTabs categories;
     private final VirtualGrid<ItemEntry> grid;
     private final GetRecentStrip strip;
     private final GetBasketPanel panel;
@@ -58,7 +58,7 @@ public final class GetTab implements Tab {
         tiles = new GetTiles(theme);
 
         seg = new Segmented(theme, List.of("Get", "Mine"), 0, i -> setMine(i == 1));
-        catDrop = new Dropdown(theme, List.of("All"), 0, i -> pickCategory(i), ctx);
+        categories = new CategoryTabs(theme, this::pickCategory);
         grid = new VirtualGrid<>(theme, tiles.cellW(), tiles.cellH(),
                 (c, f, e, i, x, y, w, h, hot) -> {
                     tiles.draw(c, e, countOf(e.name()), x, y, w, h, hot);
@@ -161,7 +161,7 @@ public final class GetTab implements Tab {
 
     // enter in the search box: the first match goes in the basket, so typing "iron" and enter is one hand
     public void onSearchSubmit(String q) {
-        ItemEntry first = ItemSearch.first(source(), q);
+        ItemEntry first = ItemSearch.first(categorySource(), q);
         if (first != null) {
             addEntry(first, 0, false);
         }
@@ -249,24 +249,25 @@ public final class GetTab implements Tab {
         applyFilter(true);
     }
 
-    // "All" plus every creative category the current list actually has, in the game's own tab order
+    private List<ItemEntry> categorySource() {
+        if (category.isEmpty()) {
+            return source();
+        }
+        return source().stream().filter(e -> category.equals(CreativeCategories.group(e.category()))).toList();
+    }
+
     private List<String> categoryOptions() {
         List<String> out = new ArrayList<>();
         out.add("All");
-        List<String> cats = new ArrayList<>();
-        for (ItemEntry e : source()) {
-            String c = e.category();
-            if (c != null && !c.isEmpty() && !cats.contains(c)) {
-                cats.add(c);
+        for (String group : CreativeCategories.GROUPS) {
+            if (source().stream().anyMatch(e -> group.equals(CreativeCategories.group(e.category())))) {
+                out.add(group);
             }
         }
-        cats.sort(Comparator.comparingInt(CreativeCategories::order));
-        out.addAll(cats);
         return out;
     }
 
     private void pickCategory(int i) {
-        // the dropdown already updated its selection; a category that no longer exists falls back to All
         List<String> opts = categoryOptions();
         String chosen = i >= 0 && i < opts.size() ? opts.get(i) : "All";
         category = "All".equals(chosen) ? "" : chosen;
@@ -280,20 +281,19 @@ public final class GetTab implements Tab {
     }
 
     private void applyFilter(boolean toTop) {
-        List<ItemEntry> filtered = ItemSearch.filter(source(), query);
-        if (!category.isEmpty()) {
-            filtered = new ArrayList<>(filtered);
-            filtered.removeIf(e -> !category.equals(e.category()));
+        List<String> opts = categoryOptions();
+        if (!category.isEmpty() && !opts.contains(category)) {
+            category = "";
         }
-        // a search keeps its ranking; an empty box shows the items the way the creative inventory would: by category,
-        // then by name, with whatever you pinned floated to the top. a facade that gave no categories (the fake in
-        // tests) keeps its own order, there is nothing to group by
+        List<ItemEntry> filtered = ItemSearch.filter(categorySource(), query);
+        // searches keep their ranking; browsing groups by category, then name, with pins first. sources with
+        // no category information keep their own order
         if (query.trim().isEmpty()) {
             filtered = new ArrayList<>(filtered);
             boolean anyCategory = filtered.stream().anyMatch(e -> e.category() != null && !e.category().isEmpty());
             if (anyCategory) {
                 Comparator<ItemEntry> byCategory = Comparator
-                        .comparingInt((ItemEntry e) -> CreativeCategories.order(e.category()))
+                        .comparingInt((ItemEntry e) -> category.isEmpty() ? CreativeCategories.GROUPS.indexOf(CreativeCategories.group(e.category())) : 0)
                         .thenComparing((ItemEntry e) -> e.displayName() == null || e.displayName().isBlank() ? e.name() : e.displayName(),
                                 String.CASE_INSENSITIVE_ORDER);
                 filtered.sort(byCategory);
@@ -315,15 +315,14 @@ public final class GetTab implements Tab {
         Map<String, ItemEntry> by = mine ? mineByName : getByName;
         for (String name : GetRecent.recent(mine)) {
             ItemEntry e = by.get(name);
-            if (e != null && recent.size() < GetRecentStrip.MAX) {
+            if (e != null && (category.isEmpty() || category.equals(CreativeCategories.group(e.category())))
+                    && recent.size() < GetRecentStrip.MAX) {
                 recent.add(e);
             }
         }
         strip.setEntries(recent);
-        // the category menu tracks the list, so a tab switch or a reload does not leave it pointing at nothing
-        List<String> opts = categoryOptions();
         int at = category.isEmpty() ? 0 : Math.max(0, opts.indexOf(category));
-        catDrop.setOptions(opts, at);
+        categories.setOptions(opts, at);
         content.relayout();
     }
 
@@ -424,7 +423,7 @@ public final class GetTab implements Tab {
 
         Content(Theme theme) {
             super(theme);
-            kids = List.of(seg, catDrop, strip, grid, panel);
+            kids = List.of(seg, categories, strip, grid, panel);
         }
 
         // applyFilter runs once from the constructor, before the shell has given us a size
@@ -444,8 +443,9 @@ public final class GetTab implements Tab {
             int lw = w - 2 * pad;
             int topH = theme.px(Theme.CONTROL_H);
             seg.setBounds(lx, y + pad, seg.preferredWidth(), topH);
-            int catW = Math.max(theme.px(140), Math.min(theme.px(220), lw - seg.preferredWidth() - gap - theme.px(40)));
-            catDrop.setBounds(seg.x() + seg.preferredWidth() + gap, y + pad, catW, topH);
+            int catX = seg.x() + seg.w() + gap;
+            int catW = Math.max(0, lw - seg.w() - gap);
+            categories.setBounds(catX, y + pad, Math.min(categories.preferredWidth(), catW), topH);
             int cy = y + pad + topH + gap;
             int bottom = panel.y() - gap;
             // the strip only earns its space when the grid under it still has a couple of rows left
@@ -486,7 +486,7 @@ public final class GetTab implements Tab {
         public void draw(Canvas c, Frame f) {
             flush();
             seg.draw(c, f);
-            catDrop.draw(c, f);
+            categories.draw(c, f);
             drawCountText(c);
             if (strip.visible()) {
                 strip.draw(c, f);
@@ -501,13 +501,13 @@ public final class GetTab implements Tab {
         private void drawCountText(Canvas c) {
             String noun = mine ? "blocks" : "items";
             String t = query.trim().isEmpty()
-                    ? source().size() + " " + noun
-                    : shown.size() + " of " + source().size();
+                    ? shown.size() + " " + noun
+                    : shown.size() + " of " + categorySource().size();
             float tw = c.measure(t, theme.small);
             float base = seg.y() + seg.h() / 2f + (c.ascent(theme.small) - c.descent(theme.small)) / 2f;
             float right = grid.x() + grid.w() - theme.px(6);
-            // a narrow window needs the category picker more than an item count
-            if (right - tw >= catDrop.x() + catDrop.w() + theme.px(Theme.GAP)) {
+            // keep the mode control readable even at the smallest resize
+            if (right - tw >= categories.x() + categories.w() + theme.px(Theme.GAP)) {
                 c.text(t, right - tw, base, theme.small, theme.color(Theme.TEXT_3));
             }
         }

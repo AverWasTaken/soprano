@@ -6,7 +6,10 @@ import adris.altoclef.ui.gui.facade.ItemsAccess;
 import adris.altoclef.ui.gui.facade.Result;
 import adris.altoclef.ui.gui.kit.Safe;
 import adris.altoclef.ui.gui.model.Wording;
+import adris.altoclef.ui.gui.model.CreativeCategories;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -41,8 +44,7 @@ public final class McItems implements ItemsAccess {
     private volatile List<ItemEntry> gettable;
     private volatile List<ItemEntry> mineable;
 
-    // item path -> creative tab label, so the get tab can sort like the creative inventory does. the search tab is
-    // skipped: everything is in some category already and the search tab is just "all of it again"
+    // registry keys stay the same when the player changes their language
     private static volatile Map<String, String> categories;
 
     private static Map<String, String> categories() {
@@ -53,7 +55,11 @@ public final class McItems implements ItemsAccess {
         out = new HashMap<>();
         try {
             for (CreativeModeTab tab : BuiltInRegistries.CREATIVE_MODE_TAB) {
-                String label = tab.getDisplayName().getString();
+                String key = BuiltInRegistries.CREATIVE_MODE_TAB.getKey(tab).getPath();
+                if (Set.of("search", "hotbar", "inventory").contains(key)) {
+                    continue;
+                }
+                String label = CreativeCategories.group(key);
                 for (ItemStack stack : tab.getDisplayItems()) {
                     String path = BuiltInRegistries.ITEM.getKey(stack.getItem()).getPath();
                     out.putIfAbsent(path, label);
@@ -66,10 +72,51 @@ public final class McItems implements ItemsAccess {
         return out;
     }
 
-    // the creative tab an item lives in, or "" for the catalogue names no tab owns ("planks", say)
+    // creative contents can be empty before the inventory opens. item components still work then, including
+    // catalogue groups like "planks" that have no registry entry of their own
     static String categoryOf(String name) {
         String hit = categories().get(name);
-        return hit == null ? "" : hit;
+        if (hit != null) {
+            return hit;
+        }
+        Item[] matches = TaskCatalogue.getItemMatches(name);
+        if (matches.length == 0) {
+            Item item = BuiltInRegistries.ITEM.getValue(net.minecraft.resources.ResourceLocation.withDefaultNamespace(name));
+            return item == Items.AIR ? "Other" : fallbackCategory(item);
+        }
+        String group = null;
+        for (Item item : matches) {
+            String next = categories().getOrDefault(BuiltInRegistries.ITEM.getKey(item).getPath(), fallbackCategory(item));
+            if (group != null && !group.equals(next)) {
+                return "Other";
+            }
+            group = next;
+        }
+        return group;
+    }
+
+    private static String fallbackCategory(Item item) {
+        ItemStack stack = item.getDefaultInstance();
+        String name = BuiltInRegistries.ITEM.getKey(item).getPath();
+        if (stack.has(DataComponents.FOOD)) {
+            return "Food";
+        }
+        if (name.endsWith("_sword") || stack.has(DataComponents.EQUIPPABLE)
+                || Set.of("bow", "crossbow", "arrow", "spectral_arrow", "tipped_arrow", "shield", "trident", "mace").contains(name)) {
+            return "Combat";
+        }
+        if (stack.has(DataComponents.TOOL) || name.endsWith("bucket")
+                || Set.of("compass", "recovery_compass", "clock", "fishing_rod", "flint_and_steel", "shears", "spyglass", "brush").contains(name)) {
+            return "Tools";
+        }
+        if (Set.of("redstone", "repeater", "comparator", "lever", "observer", "piston", "sticky_piston", "dispenser", "dropper", "hopper", "target", "redstone_torch", "redstone_block").contains(name)
+                || name.endsWith("_button") || name.endsWith("_pressure_plate")) {
+            return "Redstone";
+        }
+        if (item instanceof BlockItem) {
+            return "Blocks";
+        }
+        return name.endsWith("_spawn_egg") ? "Other" : "Materials";
     }
 
     public McItems() {

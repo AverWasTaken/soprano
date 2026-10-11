@@ -11,6 +11,7 @@ import adris.altoclef.ui.gui.facade.SettingsAccess;
 import adris.altoclef.ui.gui.facade.StatusAccess;
 import adris.altoclef.ui.gui.facade.WorldAccess;
 import adris.altoclef.ui.gui.kit.Clipboard;
+import adris.altoclef.ui.gui.kit.CategoryTabs;
 import adris.altoclef.ui.gui.kit.Frame;
 import adris.altoclef.ui.gui.kit.Keys;
 import adris.altoclef.ui.gui.kit.ShellContext;
@@ -174,6 +175,97 @@ public class GetTabTest {
     private GetTab tab;
     private Widget root;
     private long t;
+
+    private CategoryTabs categories() {
+        return (CategoryTabs) root.children().get(1);
+    }
+
+    private void categorizedItems() {
+        facade.fake.items.gettable.clear();
+        String[][] items = {
+                {"stone", "Building Blocks"}, {"oak_log", "Natural Blocks"},
+                {"iron_pickaxe", "Tools & Utilities"}, {"iron_sword", "Combat"},
+                {"bread", "Food & Drinks"}, {"iron_ingot", "Ingredients"},
+                {"repeater", "Redstone Blocks"}, {"mystery", ""}
+        };
+        for (String[] item : items) {
+            facade.fake.items.gettable.add(new ItemEntry(item[0], ItemEntry.titleCase(item[0]), "minecraft:" + item[0], 64, item[1]));
+        }
+        tab.onShown();
+        draw();
+    }
+
+    private void category(String name) {
+        CategoryTabs tabs = categories();
+        ctx.focus(tabs);
+        tabs.keyDown(Keys.HOME, 0);
+        int index = tabs.options().indexOf(name);
+        assertTrue(index >= 0);
+        for (int i = 0; i < index; i++) {
+            tabs.keyDown(Keys.RIGHT, 0);
+        }
+        draw();
+    }
+
+    @Test
+    public void categoriesCombineCreativeGroupsAndKeepTheBasket() {
+        categorizedItems();
+        assertEquals(List.of("All", "Blocks", "Tools", "Combat", "Food", "Materials", "Redstone", "Other"), categories().options());
+        category("Blocks");
+        assertEquals(List.of("oak_log", "stone"), tab.shown().stream().map(ItemEntry::name).toList());
+        clickTile(0, 0);
+        category("Food");
+        assertEquals(List.of("bread"), tab.shown().stream().map(ItemEntry::name).toList());
+        assertEquals(1, tab.basketFor(false).count("oak_log"));
+        category("Other");
+        assertEquals("mystery", shown(0).name());
+    }
+
+    @Test
+    public void searchAndEnterStayInsideTheSelectedCategory() {
+        categorizedItems();
+        category("Tools");
+        tab.onSearch("iron");
+        assertEquals(List.of("iron_pickaxe"), tab.shown().stream().map(ItemEntry::name).toList());
+        tab.onSearchSubmit("iron");
+        assertTrue(tab.basketFor(false).contains("iron_pickaxe"));
+        assertFalse(tab.basketFor(false).contains("iron_ingot"));
+        tab.onSearch("bread");
+        assertTrue(tab.shown().isEmpty());
+        tab.onSearchSubmit("bread");
+        assertFalse(tab.basketFor(false).contains("bread"));
+        category("Food");
+        assertEquals("bread", shown(0).name());
+    }
+
+    @Test
+    public void aRemovedCategoryFallsBackToAllOnReload() {
+        categorizedItems();
+        category("Tools");
+        facade.fake.items.gettable.removeIf(e -> e.name().equals("iron_pickaxe"));
+        tab.onShown();
+        assertEquals(0, categories().selected());
+        assertEquals(7, tab.shown().size());
+        assertFalse(categories().options().contains("Tools"));
+    }
+
+    @Test
+    public void narrowCategoryArrowsReachEveryGroupWithoutOverlappingTheGrid() {
+        categorizedItems();
+        root.setBounds(0, 0, 360, 300);
+        draw();
+        CategoryTabs tabs = categories();
+        assertTrue(tabs.preferredWidth() > tabs.w());
+        for (int i = 1; i < tabs.options().size(); i++) {
+            click(tabs.x() + tabs.w() - theme.px(10), tabs.y() + tabs.h() / 2f, 0);
+            assertEquals(i, tabs.selected());
+            assertFalse(tab.shown().isEmpty());
+        }
+        assertTrue(tabs.x() + tabs.w() <= root.x() + root.w());
+        assertTrue(tabs.y() + tabs.h() <= tab.grid().y());
+        assertTrue(tab.grid().h() > 0);
+        assertTrue(tab.grid().y() + tab.grid().h() <= tab.panel().y());
+    }
 
     @Before
     public void setUp() {

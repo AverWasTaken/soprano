@@ -51,6 +51,20 @@ public class McItemsTest {
     }
 
     @Test
+    public void browsingCategoriesWorkBeforeOpeningCreativeInventory() {
+        assertEquals("Blocks", McItems.categoryOf("stone"));
+        assertEquals("Blocks", McItems.categoryOf("planks"));
+        assertEquals("Tools", McItems.categoryOf("iron_pickaxe"));
+        assertEquals("Tools", McItems.categoryOf("water_bucket"));
+        assertEquals("Combat", McItems.categoryOf("iron_sword"));
+        assertEquals("Combat", McItems.categoryOf("iron_chestplate"));
+        assertEquals("Food", McItems.categoryOf("bread"));
+        assertEquals("Materials", McItems.categoryOf("iron_ingot"));
+        assertEquals("Redstone", McItems.categoryOf("repeater"));
+        assertEquals("Other", McItems.categoryOf("soprano_unknown_item"));
+    }
+
+    @Test
     public void getLineIsTheChatSyntax() {
         assertEquals("get oak_log 64 iron_ingot 3", McItems.getLine(basket("oak_log", 64, "iron_ingot", 3)));
         assertEquals("get log 1", McItems.getLine(basket(" Log ", 1)));
