@@ -63,6 +63,68 @@ public final class Icons {
     // w is the stroke width in grid units, for the things that are just a dot
     private static void art(Icon icon, Graphics2D g, float w) {
         switch (icon) {
+            case BOAT -> {
+                poly(g, false, 3, 14, 6, 20, 18, 20, 21, 14, 3, 14);
+                line(g, 12, 3, 12, 14);
+                poly(g, true, 12, 3, 19, 11, 12, 11);
+                line(g, 3, 22, 21, 22);
+            }
+            case PARKOUR -> {
+                g.draw(new Arc2D.Float(5, 4, 14, 18, 0, 170, Arc2D.OPEN));
+                poly(g, false, 15, 10, 19, 14, 22, 9);
+                poly(g, false, 2, 21, 2, 16, 7, 16);
+                poly(g, false, 16, 21, 16, 18, 22, 18);
+            }
+            case BOLT -> poly(g, true, 13, 2, 4, 14, 11, 14, 10, 22, 20, 9, 13, 9);
+            case RUN -> {
+                g.draw(new Ellipse2D.Float(13, 2, 4, 4));
+                poly(g, false, 5, 11, 9, 7, 14, 8, 18, 12, 22, 12);
+                poly(g, false, 14, 8, 10, 15, 15, 17, 17, 22);
+                poly(g, false, 10, 15, 6, 20, 2, 20);
+            }
+            case PICKAXE -> {
+                line(g, 5, 21, 17, 7);
+                poly(g, false, 3, 5, 9, 3, 16, 5, 20, 10, 21, 16);
+            }
+            case BLOCK -> {
+                poly(g, true, 3, 7, 12, 3, 21, 7, 21, 18, 12, 22, 3, 18);
+                poly(g, false, 3, 7, 12, 11, 21, 7);
+                line(g, 12, 11, 12, 22);
+            }
+            case WRENCH -> {
+                poly(g, true, 15, 3, 13, 8, 16, 11, 21, 9, 20, 14, 15, 16, 7, 22, 3, 18, 10, 10, 10, 5);
+            }
+            case BACKPACK -> {
+                g.draw(new RoundRectangle2D.Float(5, 6, 14, 16, 6, 6));
+                g.draw(new Arc2D.Float(8, 2, 8, 8, 0, 180, Arc2D.OPEN));
+                g.draw(new RoundRectangle2D.Float(8, 13, 8, 6, 2, 2));
+                line(g, 3, 10, 3, 18);
+                line(g, 21, 10, 21, 18);
+            }
+            case WATER -> {
+                Path2D.Float drop = new Path2D.Float();
+                drop.moveTo(12, 2);
+                drop.curveTo(8, 8, 5, 11, 5, 15);
+                drop.curveTo(5, 24, 19, 24, 19, 15);
+                drop.curveTo(19, 11, 16, 8, 12, 2);
+                g.draw(drop);
+                g.draw(new Arc2D.Float(8, 12, 8, 7, 180, 90, Arc2D.OPEN));
+            }
+            case LADDER -> {
+                line(g, 6, 2, 6, 22);
+                line(g, 18, 2, 18, 22);
+                for (int yy = 5; yy <= 20; yy += 5) {
+                    line(g, 6, yy, 18, yy);
+                }
+            }
+            case EYE -> {
+                Path2D.Float eye = new Path2D.Float();
+                eye.moveTo(2, 12);
+                eye.quadTo(12, -1, 22, 12);
+                eye.quadTo(12, 25, 2, 12);
+                g.draw(eye);
+                g.draw(new Ellipse2D.Float(8, 8, 8, 8));
+            }
             case GET -> {
                 // a box seen from a corner, with the tape stripe on the lid
                 poly(g, true, 3, 7.5f, 12, 3, 21, 7.5f, 21, 16.5f, 12, 21, 3, 16.5f);

@@ -25,6 +25,11 @@ public abstract class VirtualView<T> extends Control implements FocusOnClick {
     private boolean stampPending;
     private boolean draggingThumb;
     private String emptyText;
+    private boolean scrollbarVisible = true;
+
+    public void setScrollbarVisible(boolean visible) {
+        scrollbarVisible = visible;
+    }
 
     protected VirtualView(Theme theme) {
         super(theme);
@@ -161,6 +166,9 @@ public abstract class VirtualView<T> extends Control implements FocusOnClick {
     }
 
     protected final void drawScrollbar(Canvas c) {
+        if (!scrollbarVisible) {
+            return;
+        }
         float vis = scroller.visibility(now, hovered);
         if (vis < 0.01f || !scroller.scrollable()) {
             return;
@@ -174,7 +182,7 @@ public abstract class VirtualView<T> extends Control implements FocusOnClick {
     }
 
     private boolean inBar(float mx) {
-        return scroller.scrollable() && mx >= x + w - theme.px(14);
+        return scrollbarVisible && scroller.scrollable() && mx >= x + w - theme.px(14);
     }
 
     @Override

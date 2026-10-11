@@ -78,13 +78,17 @@ public class SettingsTabTest {
 
     @Test
     public void listsEverySettingButOnlyBuildsAFewRows() {
-        assertEquals(f.settings.all().size(), tab.list().items().size());
+        assertEquals(f.settings.all().size(), tab.list().items().size() + tab.common().size());
         assertTrue("rows are pooled, got " + tab.rows().size(), tab.rows().size() <= 20);
+        tab.settingsContent().browser().scroller().snapTo(tab.common().heightFor(tab.common().w()) + p.theme.px(30));
+        p.settle();
         assertTrue(tab.list().liveRows() > 3);
     }
 
     @Test
     public void rowsAreBuiltOnceNoMatterHowFarYouScroll() {
+        tab.settingsContent().browser().scroller().snapTo(tab.common().heightFor(tab.common().w()) + p.theme.px(30));
+        p.settle();
         int before = tab.rows().size();
         for (int i = 0; i < 30; i++) {
             p.scroll(p.shell.contentX() + p.shell.contentW() / 2f, p.shell.contentY() + p.shell.contentH() / 2f, -3);
@@ -262,14 +266,8 @@ public class SettingsTabTest {
         p.settle();
         p.advance(300);
         p.settle();
-        SettingRow other = null;
-        for (SettingRow r : tab.rows()) {
-            if (r.visible() && r.name() != null && r.name().equals("allowSprint")) {
-                other = r;
-            }
-        }
-        assertNotNull(other);
-        p.hover(other.x() + 40, other.y() + other.h() / 2f);
+        Widget other = tab.common().children().get(3);
+        p.hover(other.x() + other.w() / 2f, other.y() + other.h() / 2f);
         p.settle();
         assertEquals("allowSprint", tab.settingsContent().detail().name());
     }
@@ -414,7 +412,7 @@ public class SettingsTabTest {
         p.settle();
         assertTrue(tab.list().items().isEmpty());
         tab.onSearch("");
-        assertEquals(f.settings.all().size(), tab.list().items().size());
+        assertEquals(f.settings.all().size(), tab.list().items().size() + tab.common().size());
     }
 
     @Test

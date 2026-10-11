@@ -68,7 +68,7 @@ public class SettingsTabPreviewTest {
         assertTrue(p.savePanel("settings_default").toFile().length() > 0);
 
         // hovering a row fills the detail strip
-        SettingRow first = tab.rows().get(2);
+        Widget first = tab.common().children().get(1);
         p.hover(first.x() + 40, first.y() + first.h() / 2f);
         p.settle();
         p.savePanel("settings_hover");
@@ -139,10 +139,10 @@ public class SettingsTabPreviewTest {
     }
 
     @Test
-    public void minimumResizeKeepsAnEditorVisible() throws Exception {
+    public void minimumResizeKeepsTheSettingsBrowserVisible() throws Exception {
         Preview p = open(1920, 1080);
         p.shell.setBounds(p.shell.x(), p.shell.y(), p.theme.px(560), p.theme.px(360));
-        assertTrue(tab.list().h() >= p.theme.px(48));
+        assertTrue(tab.settingsContent().browser().h() >= p.theme.px(48));
         assertTrue(tab.toolbar().categories().x() + tab.toolbar().categories().w()
                 < tab.toolbar().modifiedToggle().x());
         p.settle();

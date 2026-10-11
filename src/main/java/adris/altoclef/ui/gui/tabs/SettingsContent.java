@@ -17,7 +17,7 @@ final class SettingsContent extends Widget {
 
     private final SettingsToolbar toolbar;
     private final SettingKeyCard keyCard;
-    private final RowWidgets<SettingView> list;
+    private final SettingsBrowser browser;
     private final List<Widget> kids;
     private final BiConsumer<Float, Float> beforeInput;
 
@@ -26,6 +26,8 @@ final class SettingsContent extends Widget {
     private String detailText = "";
     private int detailY;
     private int detailH;
+    private int detailLines;
+    private int detailPad;
     private int countY;
     private SettingView shownFor;
     private float shownRoom = -1;
@@ -37,14 +39,18 @@ final class SettingsContent extends Widget {
     private String wrappedText;
     private float wrappedW;
 
-    SettingsContent(Theme theme, SettingsToolbar toolbar, SettingKeyCard keyCard, RowWidgets<SettingView> list,
+    SettingsContent(Theme theme, SettingsToolbar toolbar, SettingKeyCard keyCard, RowWidgets<SettingView> list, CommonSettings common,
                     BiConsumer<Float, Float> beforeInput) {
         super(theme);
         this.toolbar = toolbar;
         this.keyCard = keyCard;
-        this.list = list;
+        browser = new SettingsBrowser(theme, common, list);
         this.beforeInput = beforeInput;
-        kids = List.of(toolbar, keyCard, list);
+        kids = List.of(toolbar, keyCard, browser);
+    }
+
+    SettingsBrowser browser() {
+        return browser;
     }
 
     // a click or a scroll may re-filter or move rows, so a pending edit lands first. the click position goes along so
@@ -88,17 +94,26 @@ final class SettingsContent extends Widget {
         wrapped = null;
         int pad = theme.px(Theme.PAD);
         int inner = Math.max(0, w - 2 * pad);
+        boolean compact = h < theme.px(340);
         int cardH = SettingKeyCard.heightFor(theme, inner);
         int cardY = y + pad;
+        // the sidebar already has the open key; a short window needs room for an actual settings tile
+        keyCard.setVisible(!compact);
         keyCard.setBounds(x + pad, cardY, inner, cardH);
-        int navY = cardY + cardH + theme.px(12);
+        int navY = compact ? cardY : cardY + cardH + theme.px(12);
         int navH = toolbar.heightFor(inner);
         toolbar.setBounds(x + pad, navY, inner, navH);
         countY = navY + navH + theme.px(6);
-        detailH = theme.px(h < theme.px(340) ? 44 : 56);
+        detailLines = compact ? 1 : 2;
+        detailPad = theme.px(compact ? 6 : 10);
+        float titleH = theme.measurer.ascent(theme.label) + theme.measurer.descent(theme.label);
+        float lineH = theme.measurer.ascent(theme.small) + theme.measurer.descent(theme.small);
+        // font metrics round independently at each scale. a fixed 56px box cannot promise two lines fit
+        detailH = (int) Math.ceil(2 * detailPad + titleH + theme.px(3)
+                + detailLines * lineH + (detailLines - 1) * theme.px(1));
         detailY = y + h - detailH - pad;
         int listY = countY + theme.px(22);
-        list.setBounds(x + pad, listY, inner, Math.max(0, detailY - theme.px(8) - listY));
+        browser.setBounds(x + pad, listY, inner, Math.max(0, detailY - theme.px(8) - listY));
     }
 
     @Override
@@ -109,25 +124,36 @@ final class SettingsContent extends Widget {
     @Override
     public void draw(Canvas c, Frame f) {
         toolbar.draw(c, f);
-        keyCard.draw(c, f);
+        if (keyCard.visible()) {
+            keyCard.draw(c, f);
+        }
 
         int mx = x;
         int pad = theme.px(Theme.PAD);
         c.text(countLine, mx + pad, countY + theme.px(14), theme.small, theme.color(Theme.TEXT_3));
 
-        theme.card(c, list.x(), list.y(), list.w(), list.h(), theme.pxf(12), false);
-        list.draw(c, f);
+        browser.draw(c, f);
         drawDetail(c, mx, pad);
     }
 
     private void drawDetail(Canvas c, int mx, int pad) {
         int dw = w;
         theme.recess(c, mx + pad, detailY, dw - 2 * pad, detailH, theme.pxf(10));
+        c.pushClip(mx + pad, detailY, Math.max(0, dw - 2 * pad), detailH);
+        try {
+            drawDetailText(c, mx, pad);
+        } finally {
+            c.popClip();
+        }
+    }
+
+    private void drawDetailText(Canvas c, int mx, int pad) {
+        int dw = w;
         float tx = mx + pad + theme.px(12);
         float room = dw - 2 * pad - theme.px(24);
         float lh1 = c.ascent(theme.label) + c.descent(theme.label);
         float lh2 = c.ascent(theme.small) + c.descent(theme.small);
-        float top = detailY + theme.px(10);
+        float top = detailY + detailPad;
         // the strings below change when the mouse moves to another row or the panel is resized, not every frame
         if (shownFor != detail || shownRoom != room) {
             shownFor = detail;
@@ -149,7 +175,7 @@ final class SettingsContent extends Widget {
         String text = detailText.isEmpty() ? "No description." : detailText;
         // wrapping measures a lot, and the text only changes when the mouse moves to another row
         if (wrapped == null || !text.equals(wrappedText) || wrappedW != room) {
-            wrapped = wrap(c, text, room, detailH < theme.px(56) ? 1 : 2);
+            wrapped = wrap(c, text, room, detailLines);
             wrappedText = text;
             wrappedW = room;
         }

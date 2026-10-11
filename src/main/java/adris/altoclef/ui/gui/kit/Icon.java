@@ -25,5 +25,6 @@ public enum Icon {
     TRASH,
     PIN,            // my position
     PLAYER,         // head and shoulders
-    ENTITY          // paw
+    ENTITY,         // paw
+    BOAT, PARKOUR, BOLT, RUN, PICKAXE, BLOCK, WRENCH, BACKPACK, WATER, LADDER, EYE
 }

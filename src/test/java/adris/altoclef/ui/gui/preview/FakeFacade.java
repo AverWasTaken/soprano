@@ -88,6 +88,13 @@ public final class FakeFacade implements BotFacade {
             bool("allowPlace", true, true, "Allow Baritone to place blocks.");
             bool("allowSprint", true, true, "Allow Baritone to sprint.");
             bool("allowParkour", false, false, "Allow descending diagonally and parkour jumps over gaps.");
+            bool("allowBoats", false, false, "Use boats to cross water. Picks the boat up after landing.");
+            bool("fastMode", false, false, "Favor speed when planning and moving along a path.");
+            bool("autoTool", true, true, "Choose the best available tool for the block being mined.");
+            bool("allowInventory", false, false, "Move useful items from inventory into the hotbar.");
+            bool("allowWaterBucketFall", true, true, "Use a water bucket to catch a long fall.");
+            bool("allowLadderClutch", false, false, "Place a ladder to catch a fall against a wall.");
+            bool("smoothLook", false, false, "Smooth camera movement while following the path.");
             bool("allowParkourPlace", false, true, "Allow parkour placing blocks mid air. Needs allowParkour.");
             num("blockPlacementPenalty", Kind.DOUBLE, "Double", "20.0", "20.0", "Extra cost for placing a block, in ticks.");
             num("blockBreakAdditionalPenalty", Kind.DOUBLE, "Double", "2.0", "2.0", "Extra cost for breaking a block.");

@@ -34,12 +34,13 @@ public final class SettingsTab implements Tab, SettingHost {
     private final RowWidgets<SettingView> list;
     private final SettingsToolbar toolbar;
     private final SettingKeyCard keyCard;
+    private final CommonSettings common;
     private final SettingsContent content;
 
     private List<SettingView> all = List.of();
     private String category = SettingsFilter.ALL;
     private boolean modifiedOnly;
-    private boolean advanced;
+    private boolean advanced = true;
     private String query = "";
 
     public SettingsTab(Theme theme, BotFacade facade, ShellContext ctx) {
@@ -53,7 +54,8 @@ public final class SettingsTab implements Tab, SettingHost {
         list.setKeyFunction(SettingView::name);
         toolbar = new SettingsToolbar(theme, ctx, this::pickCategory, this::pickModifiedOnly, this::pickAdvanced);
         keyCard = new SettingKeyCard(theme, ctx, facade.keyNames(), currentKey(), currentKeyEnabled(), this::keyCaptured, this::keyToggled);
-        content = new SettingsContent(theme, toolbar, keyCard, list, this::flushEdits);
+        common = new CommonSettings(theme, ctx, this);
+        content = new SettingsContent(theme, toolbar, keyCard, list, common, this::flushEdits);
         reload();
     }
 
@@ -122,8 +124,11 @@ public final class SettingsTab implements Tab, SettingHost {
 
     private void refilter() {
         List<SettingView> shown = SettingsFilter.apply(all, category, modifiedOnly, advanced, query, this::description);
-        list.setItems(shown);
-        list.scroller().snapTo(0f);
+        boolean overview = query.isBlank() && category.equals(SettingsFilter.ALL) && !modifiedOnly;
+        common.setItems(shown);
+        common.setVisible(overview);
+        list.setItems(overview ? shown.stream().filter(v -> !common.containsSetting(v.name())).toList() : shown);
+        content.browser().refresh(true);
         if (content.detail() != null && shown.stream().noneMatch(v -> v.name().equals(content.detail().name()))) {
             content.clearDetail();
         }
@@ -204,7 +209,7 @@ public final class SettingsTab implements Tab, SettingHost {
 
     @Override
     public boolean mouseOverRows(float x, float y) {
-        return list.contains(x, y);
+        return content.browser().contains(x, y);
     }
 
     // ----- host
@@ -293,6 +298,7 @@ public final class SettingsTab implements Tab, SettingHost {
         for (SettingRow row : rows) {
             row.update(v);
         }
+        common.update(v);
         SettingView d = content.detail();
         if (d != null && d.name().equals(name)) {
             content.showDetail(v, description(name));
@@ -362,6 +368,10 @@ public final class SettingsTab implements Tab, SettingHost {
 
     RowWidgets<SettingView> list() {
         return list;
+    }
+
+    CommonSettings common() {
+        return common;
     }
 
     SettingsToolbar toolbar() {
