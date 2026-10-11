@@ -11,19 +11,25 @@ import adris.altoclef.tasks.movement.PickupDroppedItemTask;
 import adris.altoclef.tasks.movement.TimeoutWanderTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.ItemTarget;
+import adris.altoclef.util.helpers.BreakRules;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
 import adris.altoclef.util.time.TimerGame;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.function.Predicate;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Vec3i;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.LiquidBlock;
 import net.minecraft.world.level.block.state.BlockState;
 
 /**
@@ -165,10 +171,15 @@ public class ConstructNetherPortalBucketTask extends Task {
         }
 
         if (_currentDestroyTarget != null) {
-            if (!WorldHelper.isSolid(mod, _currentDestroyTarget)) {
+            // same test the picker below uses, or a fluid/fire/plant in the interior gets picked and dropped every tick
+            BlockState targetState = mod.getWorld().getBlockState(_currentDestroyTarget);
+            if (targetState.isAir()) {
                 _currentDestroyTarget = null;
+            } else if (!isLiquid(targetState) && WorldHelper.tooSlowToBreak(mod, _currentDestroyTarget)) {
+                moveFrame(mod, _currentDestroyTarget, "portal interior");
+                return null;
             } else {
-                return new DestroyBlockTask(_currentDestroyTarget);
+                return clearInteriorCell(targetState, _currentDestroyTarget);
             }
         }
         // Get flint & steel if we don't have one
@@ -253,17 +264,25 @@ public class ConstructNetherPortalBucketTask extends Task {
             }
 
             // We need to place obsidian here.
+            // the cells before this one may still have their cast water on top, that is our water bucket. asked before the
+            // origin can go null just below
+            List<BlockPos> cells = frameCells();
             if (mod.getBlockTracker().unreachable(framePos)) {
                 _portalOrigin = null;
             }
-            return new PlaceObsidianBucketTask(framePos);
+            return new PlaceObsidianBucketTask(framePos, cells);
         }
 
         // Now, clear the inside.
         for (Vec3i offs : PORTAL_INTERIOR) {
             BlockPos p = _portalOrigin.offset(offs);
             assert Minecraft.getInstance().level != null;
-            if (!Minecraft.getInstance().level.getBlockState(p).isAir()) {
+            BlockState inside = Minecraft.getInstance().level.getBlockState(p);
+            if (!inside.isAir()) {
+                if (!isLiquid(inside) && WorldHelper.tooSlowToBreak(mod, p)) {
+                    moveFrame(mod, p, "portal interior");
+                    return null;
+                }
                 setDebugState("Clearing inside of portal");
                 _currentDestroyTarget = p;
                 return null;
@@ -295,6 +314,74 @@ public class ConstructNetherPortalBucketTask extends Task {
     @Override
     protected String toDebugString() {
         return "Construct Nether Portal";
+    }
+
+    // fluids come out with a bucket, everything else gets broken. the obsidian variant asks too
+    static boolean isLiquid(BlockState state) {
+        return state.getBlock() instanceof LiquidBlock;
+    }
+
+    static Task clearInteriorCell(BlockState state, BlockPos pos) {
+        return isLiquid(state) ? new ClearLiquidTask(pos) : new DestroyBlockTask(pos);
+    }
+
+    // a cell the build actually has to clear: the frame cells (the cast breaks what is in them), the air over each (lava and
+    // water cells get two cleared above), and the interior. the buffer round the box and the mould blocks are never broken
+    static boolean clearedCell(BlockPos origin, BlockPos cell) {
+        for (Vec3i frame : PORTAL_FRAME) {
+            BlockPos f = origin.offset(frame);
+            if (cell.equals(f) || cell.equals(f.above()) || cell.equals(f.above(2))) {
+                return true;
+            }
+        }
+        for (Vec3i inside : PORTAL_INTERIOR) {
+            if (cell.equals(origin.offset(inside))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // a block in a cell the build clears that takes too long to break, and is not one of our own finished frame cells
+    // (those are obsidian by design, the frame loop skips them)
+    static boolean strayBlock(BlockPos origin, BlockPos cell, boolean tooSlow, boolean obsidian) {
+        if (!tooSlow || !clearedCell(origin, cell)) {
+            return false;
+        }
+        if (obsidian) {
+            for (Vec3i frame : PORTAL_FRAME) {
+                if (cell.equals(origin.offset(frame))) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    static boolean anyBanned(BlockPos origin, Predicate<BlockPos> banned) {
+        for (Vec3i frame : PORTAL_FRAME) {
+            if (banned.test(origin.offset(frame))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // the frame moves: nothing here is worth another look
+    private void moveFrame(AltoClef mod, BlockPos stray, String role) {
+        Debug.logMessage("cast ruined: " + BuiltInRegistries.BLOCK.getKey(mod.getWorld().getBlockState(stray).getBlock()).getPath()
+                + " at " + stray.toShortString() + " where the " + role + " cell goes, moving the frame");
+        mod.getClientBaritone().getPathingBehavior().forceCancel();
+        _portalOrigin = null;
+        _currentDestroyTarget = null;
+    }
+
+    private List<BlockPos> frameCells() {
+        List<BlockPos> out = new ArrayList<>();
+        for (Vec3i framePosRelative : PORTAL_FRAME) {
+            out.add(_portalOrigin.offset(framePosRelative));
+        }
+        return out;
     }
 
     private BlockPos findLavaLake(AltoClef mod, BlockPos playerPos) {
@@ -358,6 +445,7 @@ public class ConstructNetherPortalBucketTask extends Task {
 
         double minDistanceToPlayer = Double.POSITIVE_INFINITY;
         BlockPos bestPos = null;
+        List<ItemStack> bag = WorldHelper.bagOf(mod);
 
         for (Vec3i direction : directions) {
 
@@ -368,6 +456,7 @@ public class ConstructNetherPortalBucketTask extends Task {
 
                 boolean found = true;
                 boolean solidFound = false;
+                BlockPos origin = lava.offset(offset).offset(sizeOffset).offset(PORTAL_ORIGIN_RELATIVE_TO_REGION);
                 // check for collision with lava in box
                 // We have an extra buffer to make sure we never break a block NEXT to lava.
                 moveAlongLine:
@@ -381,6 +470,12 @@ public class ConstructNetherPortalBucketTask extends Task {
                                 found = false;
                                 break moveAlongLine;
                             }
+                            // a block we could never get out of the way in time (obsidian from some old lava and water) ruins
+                            // the spot: the cast has to clear it, and the frame would just move again once it found out
+                            if (strayBlock(origin, toCheck, BreakRules.tooSlow(bag, state), state.is(Blocks.OBSIDIAN))) {
+                                found = false;
+                                break moveAlongLine;
+                            }
                             // Also check for at least 1 solid block for us to place on...
                             if (dy <= 1 && !solidFound && WorldHelper.isSolid(mod, toCheck)) {
                                 solidFound = true;
@@ -391,6 +486,11 @@ public class ConstructNetherPortalBucketTask extends Task {
                 // Check for solid ground at least somewhere
                 if (!solidFound) {
                     break;
+                }
+
+                // a frame cell we were already told is a lost cause (the cast bans it when something in it is too slow to break)
+                if (found && anyBanned(origin, mod.getBlockTracker()::unreachable)) {
+                    found = false;
                 }
 
                 if (found) {

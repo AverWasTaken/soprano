@@ -8,7 +8,7 @@ Each branch is one Minecraft version, named after it (`1.21.4`, `26.3`). The new
 
 ## Building and testing
 
-You need JDK 21, same as [the CI workflow](.github/workflows/gradle_build.yml).
+You need the JDK in `java_version` in `gradle.properties` (21 on `1.21.4`, 25 on `26.3`), same as [the CI workflow](.github/workflows/gradle_build.yml).
 
 ```
 ./gradlew build            # everything, jars end up in dist/

@@ -84,6 +84,16 @@ public class MovementMomentum extends Movement implements CurvedMovement {
         this.after = after;
     }
 
+    // the executor rewinds and replays movements it already ran, all of this is per run. runway/after are refreshed by
+    // calculateCost so they stay
+    @Override
+    public void reset() {
+        super.reset();
+        jumped = hopping = running = false;
+        hopAir = runTicks = failedRuns = stuckTicks = 0;
+        flight = null;
+    }
+
     // where the table of run ups is kept between launches, see MomentumJump.TABLE_VERSION. MomentumJump doesn't know what a
     // game directory is, so whoever does hands it over
     public static void setTableFile(Path file) {
@@ -120,7 +130,7 @@ public class MovementMomentum extends Movement implements CurvedMovement {
         double back = Math.abs(st.u());
         double ticks = back * WALK_ONE_BLOCK_COST + Math.min(back, SNEAK_STRETCH) * SNEAK_EXTRA + SETTLE_TICKS + st.ticks();
         int jumps = 1 + (st.hop() ? 1 : 0) + (pad > 0 ? 1 : 0);
-        // jumpBias is 1 unless experimentalMovement is on, same as neos. calculateCost reads this too so they can't drift
+        // jumpBias is 1 unless fastMode is on, same as neos. calculateCost reads this too so they can't drift
         return context.biasJump(ticks + jumps * context.jumpPenalty);
     }
 
@@ -520,7 +530,9 @@ public class MovementMomentum extends Movement implements CurvedMovement {
     private boolean hanging(BetterBlockPos feet) {
         int along = (feet.x - dest.x) * direction.getStepX() + (feet.z - dest.z) * direction.getStepZ();
         int across = (feet.x - dest.x) * side.getStepX() + (feet.z - dest.z) * side.getStepZ();
-        return feet.y == dest.y && (along == 0 || along == 1) && across == 0 && !feet.equals(dest);
+        // -1 is the other way to hang: the box is on dest (the sim takes a sliver of overlap) but the feet cell rounds to
+        // the block before it. it's standing on the landing block, so shuffling on is right
+        return feet.y == dest.y && along >= -1 && along <= 1 && across == 0 && !feet.equals(dest);
     }
 
     // same bail outs as MovementNeo. the sim is vanilla or nothing

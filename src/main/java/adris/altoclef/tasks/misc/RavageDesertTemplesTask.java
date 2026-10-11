@@ -59,7 +59,7 @@ public class RavageDesertTemplesTask extends Task {
             setDebugState("Looting found temple");
             return _lootTask;
         }
-        if (StorageHelper.miningRequirementMetInventory(mod, MiningRequirement.WOOD)) {
+        if (!StorageHelper.miningRequirementMetInventory(mod, MiningRequirement.WOOD)) {
             setDebugState("Need to get pickaxes first");
             _pickaxeTask = new CataloguedResourceTask(new ItemTarget(Items.WOODEN_PICKAXE, 2));
             return _pickaxeTask;

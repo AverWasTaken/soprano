@@ -39,6 +39,7 @@ import net.minecraft.world.level.chunk.PalettedContainer;
 import net.minecraft.world.level.chunk.SingleValuePalette;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -47,6 +48,12 @@ public enum FasterWorldScanner implements IWorldScanner {
     INSTANCE;
 
     private static final BlockState[] PALETTE_REGISTRY_SENTINEL = new BlockState[0];
+
+    // throws a hit out before it counts toward any budget. the palette only knows block states, so anything that needs
+    // the neighbours (is there water on top of this water) has to be asked down here, at the hit, not after the cap
+    public interface HitFilter {
+        boolean accept(LevelChunk chunk, int x, int y, int z);
+    }
 
     @Override
     public List<BlockPos> scanChunkRadius(IPlayerContext ctx, BlockOptionalMetaLookup filter, int max, int yLevelThreshold, int maxSearchRadius) {
@@ -57,9 +64,41 @@ public enum FasterWorldScanner implements IWorldScanner {
         return scanChunksInternal(ctx, filter, getChunkRange(ctx.playerFeet().x >> 4, ctx.playerFeet().z >> 4, maxSearchRadius), max);
     }
 
+    // the nearest max hits that pass hitFilter. chunks go ring by ring, nearest first, and every ring is scanned whole:
+    // scanChunkRadius cuts at the first max raw hits in chunk order, and when most raw hits are not the ones you want (a
+    // lake is mostly submerged water) that cut lands on the wrong ones. rings stop one past the one that got us to max,
+    // because a hit in the next ring can still be nearer than a far corner of this one. fewer than max back means the
+    // whole radius was swept
+    public List<BlockPos> scanNearest(IPlayerContext ctx, BlockOptionalMetaLookup filter, int max, int maxSearchRadius, HitFilter hitFilter) {
+        assert ctx.world() != null;
+        BetterBlockPos feet = ctx.playerFeet();
+        int centerX = feet.x >> 4;
+        int centerZ = feet.z >> 4;
+        List<BlockPos> hits = new ArrayList<>();
+        int enoughAtRing = -1;
+        for (int ring = 0; ring < maxSearchRadius && (enoughAtRing < 0 || ring <= enoughAtRing + 1); ring++) {
+            List<ChunkPos> chunks = new ArrayList<>();
+            for (int dx = -ring; dx <= ring; dx++) {
+                for (int dz = -ring; dz <= ring; dz++) {
+                    if (Math.max(Math.abs(dx), Math.abs(dz)) == ring) {
+                        chunks.add(new ChunkPos(centerX + dx, centerZ + dz));
+                    }
+                }
+            }
+            hits.addAll(chunks.parallelStream()
+                    .flatMap(p -> scanChunkInternal(ctx, filter, p, max, hitFilter))
+                    .collect(Collectors.toList()));
+            if (enoughAtRing < 0 && hits.size() >= max) {
+                enoughAtRing = ring;
+            }
+        }
+        hits.sort(Comparator.comparingDouble(feet::distSqr));
+        return hits.size() > max ? new ArrayList<>(hits.subList(0, max)) : hits;
+    }
+
     @Override
     public List<BlockPos> scanChunk(IPlayerContext ctx, BlockOptionalMetaLookup filter, ChunkPos pos, int max, int yLevelThreshold) {
-        Stream<BlockPos> stream = scanChunkInternal(ctx, filter, pos, max);
+        Stream<BlockPos> stream = scanChunkInternal(ctx, filter, pos, max, null);
         if (max >= 0) {
             stream = stream.limit(max);
         }
@@ -131,7 +170,7 @@ public enum FasterWorldScanner implements IWorldScanner {
         assert ctx.world() != null;
         try {
             // p -> scanChunkInternal(ctx, lookup, p)
-            Stream<BlockPos> posStream = chunkPositions.parallelStream().flatMap(p -> scanChunkInternal(ctx, lookup, p, maxBlocks));
+            Stream<BlockPos> posStream = chunkPositions.parallelStream().flatMap(p -> scanChunkInternal(ctx, lookup, p, maxBlocks, null));
             if (maxBlocks >= 0) {
                 // WARNING: this can be expensive if maxBlocks is large...
                 // see limit's javadoc
@@ -145,7 +184,7 @@ public enum FasterWorldScanner implements IWorldScanner {
     }
 
     // max < 0 means no limit
-    private Stream<BlockPos> scanChunkInternal(IPlayerContext ctx, BlockOptionalMetaLookup lookup, ChunkPos pos, int max) {
+    private Stream<BlockPos> scanChunkInternal(IPlayerContext ctx, BlockOptionalMetaLookup lookup, ChunkPos pos, int max, HitFilter hitFilter) {
         ChunkSource chunkProvider = ctx.world().getChunkSource();
         // if chunk is not loaded, return empty stream
         if (!chunkProvider.hasChunk(pos.x, pos.z)) {
@@ -161,11 +200,11 @@ public enum FasterWorldScanner implements IWorldScanner {
         if (chunk == null) { // unloaded between hasChunk and here, we're not on the main thread
             return Stream.empty();
         }
-        return collectChunkSections(lookup, chunk, chunkX, chunkZ, playerSectionY, max < 0 ? Integer.MAX_VALUE : max).stream();
+        return collectChunkSections(lookup, chunk, chunkX, chunkZ, playerSectionY, max < 0 ? Integer.MAX_VALUE : max, hitFilter).stream();
     }
 
 
-    private List<BlockPos> collectChunkSections(BlockOptionalMetaLookup lookup, LevelChunk chunk, long chunkX, long chunkZ, int playerSection, int max) {
+    private List<BlockPos> collectChunkSections(BlockOptionalMetaLookup lookup, LevelChunk chunk, long chunkX, long chunkZ, int playerSection, int max, HitFilter hitFilter) {
         // iterate over sections relative to player
         // the caller only keeps the first max hits overall, in order, so no one chunk can ever contribute more than max
         // stop there. #mine stone used to build ~12k BlockPos per chunk, in every chunk, and throw nearly all of them out
@@ -177,16 +216,16 @@ public enum FasterWorldScanner implements IWorldScanner {
         int j = playerSection;
         for (; (i >= 0 || j < l) && blocks.size() < max; ++j, --i) {
             if (j < l) {
-                visitSection(lookup, sections[j], blocks, chunkX, chunkY + j * 16, chunkZ, max);
+                visitSection(lookup, chunk, sections[j], blocks, chunkX, chunkY + j * 16, chunkZ, max, hitFilter);
             }
             if (i >= 0 && blocks.size() < max) {
-                visitSection(lookup, sections[i], blocks, chunkX, chunkY + i * 16, chunkZ, max);
+                visitSection(lookup, chunk, sections[i], blocks, chunkX, chunkY + i * 16, chunkZ, max, hitFilter);
             }
         }
         return blocks;
     }
 
-    private void visitSection(BlockOptionalMetaLookup lookup, LevelChunkSection section, List<BlockPos> blocks, long chunkX, int sectionY, long chunkZ, int max) {
+    private void visitSection(BlockOptionalMetaLookup lookup, LevelChunk chunk, LevelChunkSection section, List<BlockPos> blocks, long chunkX, int sectionY, long chunkZ, int max, HitFilter hitFilter) {
         if (section == null || section.hasOnlyAir()) {
             return;
         }
@@ -206,6 +245,9 @@ public enum FasterWorldScanner implements IWorldScanner {
                 for (int x = 0; x < 16; ++x) {
                     for (int y = 0; y < 16; ++y) {
                         for (int z = 0; z < 16 && blocks.size() < max; ++z) {
+                            if (hitFilter != null && !hitFilter.accept(chunk, (int) chunkX + x, sectionY + y, (int) chunkZ + z)) {
+                                continue;
+                            }
                             blocks.add(new BlockPos(
                                 (int) chunkX + x,
                                 sectionY + y,
@@ -239,12 +281,13 @@ public enum FasterWorldScanner implements IWorldScanner {
                     if (blocks.size() >= max) {
                         return;
                     }
-                    //noinspection DuplicateExpressions
-                    blocks.add(new BlockPos(
-                        (int) chunkX + ((idx & 255) & 15),
-                        sectionY + (idx >> 8),
-                        (int) chunkZ + ((idx & 255) >> 4)
-                    ));
+                    int hitX = (int) chunkX + ((idx & 255) & 15);
+                    int hitY = sectionY + (idx >> 8);
+                    int hitZ = (int) chunkZ + ((idx & 255) >> 4);
+                    if (hitFilter != null && !hitFilter.accept(chunk, hitX, hitY, hitZ)) {
+                        continue;
+                    }
+                    blocks.add(new BlockPos(hitX, hitY, hitZ));
                 }
             }
         }

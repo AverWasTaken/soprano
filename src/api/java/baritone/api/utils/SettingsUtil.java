@@ -43,8 +43,10 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.regex.Matcher;
@@ -57,6 +59,21 @@ public class SettingsUtil {
     public static final String SETTINGS_DEFAULT_NAME = "settings.txt";
     // key and value split by the first space. the value may be empty, "altoIdleCommand " is what an emptied string setting saves as
     private static final Pattern SETTING_PATTERN = Pattern.compile("^(?<setting>[^ ]+) +(?<value>.*)");
+    // settings that are gone. a settings file from before still names them, and "Unable to parse line" with a stack trace for a
+    // line that is just old is noise: they are skipped without a word (lowercase, like the lookup)
+    private static final Set<String> RETIRED = Set.of("altohostileengagerange", "altohostileengageheight", "altopassbygraceticks",
+            "altoswarmthreshold");
+
+    /**
+     * Whether a setting name (any case) belonged to a setting that has since been removed, so reading an old settings file
+     * can skip its line quietly.
+     *
+     * @param settingName the name from the settings file
+     * @return true if the setting is retired
+     */
+    public static boolean isRetired(String settingName) {
+        return RETIRED.contains(settingName.toLowerCase(Locale.ROOT));
+    }
 
 
     private static boolean isComment(String line) {
@@ -75,28 +92,39 @@ public class SettingsUtil {
         }
     }
 
+    /**
+     * Applies one line of a settings file. A line for a retired setting is skipped without a word.
+     *
+     * @param settings the settings to change
+     * @param line     one non-empty, non-comment line of the file
+     */
+    public static void applyLine(Settings settings, String line) {
+        Matcher matcher = SETTING_PATTERN.matcher(line);
+        if (!matcher.matches()) {
+            Helper.HELPER.logDirect("Invalid syntax in setting file: " + line);
+            return;
+        }
+
+        String settingName = matcher.group("setting").toLowerCase(Locale.ROOT);
+        String settingValue = matcher.group("value");
+        // TODO remove soonish
+        if ("allowjumpat256".equals(settingName)) {
+            settingName = "allowjumpatbuildlimit";
+        }
+        if (isRetired(settingName)) {
+            return;
+        }
+        try {
+            parseAndApply(settings, settingName, settingValue);
+        } catch (Exception ex) {
+            Helper.HELPER.logDirect("Unable to parse line " + line);
+            ex.printStackTrace();
+        }
+    }
+
     public static void readAndApply(Settings settings, String settingsName) {
         try {
-            forEachLine(settingsByName(settingsName), line -> {
-                Matcher matcher = SETTING_PATTERN.matcher(line);
-                if (!matcher.matches()) {
-                    Helper.HELPER.logDirect("Invalid syntax in setting file: " + line);
-                    return;
-                }
-
-                String settingName = matcher.group("setting").toLowerCase();
-                String settingValue = matcher.group("value");
-                // TODO remove soonish
-                if ("allowjumpat256".equals(settingName)) {
-                    settingName = "allowjumpatbuildlimit";
-                }
-                try {
-                    parseAndApply(settings, settingName, settingValue);
-                } catch (Exception ex) {
-                    Helper.HELPER.logDirect("Unable to parse line " + line);
-                    ex.printStackTrace();
-                }
-            });
+            forEachLine(settingsByName(settingsName), line -> applyLine(settings, line));
         } catch (NoSuchFileException ignored) {
             Helper.HELPER.logDirect("Baritone settings file not found, resetting.");
         } catch (Exception ex) {
@@ -200,7 +228,7 @@ public class SettingsUtil {
     }
 
     public static void parseAndApply(Settings settings, String settingName, String settingValue) throws IllegalStateException, NumberFormatException {
-        Settings.Setting setting = settings.byLowerName.get(settingName);
+        Settings.Setting setting = settings.findByLowerName(settingName);
         if (setting == null) {
             throw new IllegalStateException("No setting by that name");
         }

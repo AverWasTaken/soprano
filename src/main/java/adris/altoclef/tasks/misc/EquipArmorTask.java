@@ -45,7 +45,11 @@ public class EquipArmorTask extends Task {
 
     @Override
     protected Task onTick(AltoClef mod) {
-        ItemTarget[] armorsNotEquipped = Arrays.stream(_toEquip).filter(target -> !StorageHelper.itemTargetsMetInventory(mod, target) && !StorageHelper.isArmorEquipped(mod, target.getMatches())).toArray(ItemTarget[]::new);
+        // a piece riding the cursor (craft output with no room in the bag) is held too: the inventory count does not see it, and
+        // asking the catalogue for "another" diamond piece is a trip to mine the diamonds for it
+        ItemStack cursor = StorageHelper.getItemStackInCursorSlot();
+        ItemTarget[] armorsNotEquipped = Arrays.stream(_toEquip).filter(target -> !StorageHelper.itemTargetsMetInventory(mod, target)
+                && !cursorHolds(cursor, target) && !StorageHelper.isArmorEquipped(mod, target.getMatches())).toArray(ItemTarget[]::new);
         boolean armorMet = armorsNotEquipped.length == 0;
         if (!armorMet) {
             setDebugState("Obtaining armor");
@@ -132,12 +136,33 @@ public class EquipArmorTask extends Task {
             }
         }
 
+        // putting a better piece over one we already wear swaps them, and the old one comes up on the cursor. the slot click is
+        // done the moment the new piece sits there, so park the old one in the bag before calling it a day
+        Optional<Slot> park = cursorArmorSpot(mod);
+        if (park.isPresent()) {
+            setDebugState("Parking the swapped piece");
+            mod.getSlotHandler().clickSlot(park.get(), 0, ClickType.PICKUP);
+        }
         return null;
+    }
+
+    static boolean cursorHolds(ItemStack cursor, ItemTarget target) {
+        return !cursor.isEmpty() && target.matches(cursor.getItem()) && cursor.getCount() >= target.getTargetCount();
+    }
+
+    // where the armor piece riding the cursor can go, empty when the cursor holds nothing of the sort (or there is no room, in
+    // which case it stays put and we do not wait on it for ever)
+    private static Optional<Slot> cursorArmorSpot(AltoClef mod) {
+        ItemStack cursor = StorageHelper.getItemStackInCursorSlot();
+        if (cursor.isEmpty() || !(cursor.getItem() instanceof ArmorItem)) {
+            return Optional.empty();
+        }
+        return mod.getItemStorage().getSlotThatCanFitInPlayerInventory(cursor, false);
     }
 
     @Override
     public boolean isFinished(AltoClef mod) {
-        return armorEquipped(mod);
+        return armorEquipped(mod) && cursorArmorSpot(mod).isEmpty();
     }
 
     @Override

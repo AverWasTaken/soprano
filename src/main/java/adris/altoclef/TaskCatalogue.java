@@ -51,6 +51,8 @@ public class TaskCatalogue {
     private static final HashMap<String, CataloguedResource> _nameToResourceTask = new HashMap<>();
     private static final HashMap<Item, CataloguedResource> _itemToResourceTask = new HashMap<>();
     private static final HashSet<Item> _resourcesObtainable = new HashSet<>();
+    // every recipe the shaped helpers register, by name. building the task needs a running client, so the recipe parity test reads these instead
+    private static final TreeMap<String, RecipeTarget> _craftedRecipes = new TreeMap<>();
 
     static {
         /// DEFINE RESOURCE TASKS HERE
@@ -60,7 +62,7 @@ public class TaskCatalogue {
             String o = null;
 
             /// RAW RESOURCES
-            mine("log", MiningRequirement.HAND, ItemHelper.LOG, ItemHelper.LOG).anyDimension();
+            simple("log", ItemHelper.LOG, MineLogsTask::new).anyDimension();
             woodTasks("log", wood -> wood.log, (wood, count) -> new MineAndCollectTask(wood.log, count, new Block[]{Block.byItem(wood.log)}, MiningRequirement.HAND), true);
             mine("dirt", MiningRequirement.HAND, new Block[]{Blocks.DIRT, Blocks.GRASS_BLOCK, Blocks.DIRT_PATH}, Items.DIRT);
             simple("cobblestone", Items.COBBLESTONE, CollectCobblestoneTask::new).dontMineIfPresent();
@@ -102,6 +104,7 @@ public class TaskCatalogue {
             mine("dark_oak_sapling", Blocks.DARK_OAK_LEAVES, Items.DARK_OAK_SAPLING);
             mine("mangrove_propagule", Blocks.MANGROVE_PROPAGULE, Items.MANGROVE_PROPAGULE);
             mine("cherry_sapling", Blocks.CHERRY_LEAVES, Items.CHERRY_SAPLING);
+mine("pale_oak_sapling", Blocks.PALE_OAK_LEAVES, Items.PALE_OAK_SAPLING);
             simple("sapling", ItemHelper.SAPLINGS, CollectSaplingsTask::new);
             simple("sandstone", Items.SANDSTONE, CollectSandstoneTask::new).dontMineIfPresent();
             simple("red_sandstone", Items.RED_SANDSTONE, CollectRedSandstoneTask::new).dontMineIfPresent();
@@ -176,6 +179,8 @@ public class TaskCatalogue {
             shear("glow_lichen", Blocks.GLOW_LICHEN, Items.GLOW_LICHEN).dontMineIfPresent();
             // Flowers
             simple("flower", ItemHelper.FLOWER, CollectFlowerTask::new);
+            // a recipe slot with several items has to be a catalogue name, or the recipe collector skips it and never fetches anything
+            mine("suspicious_stew_flower", MiningRequirement.HAND, ItemHelper.SUSPICIOUS_STEW_FLOWERS, ItemHelper.SUSPICIOUS_STEW_FLOWERS);
             mine("allium", Items.ALLIUM);
             mine("azure_bluet", Items.AZURE_BLUET);
             mine("blue_orchid", Items.BLUE_ORCHID);
@@ -265,8 +270,9 @@ public class TaskCatalogue {
             shapedRecipe2x2("sugar", Items.SUGAR, 1, "sugar_cane", o, o, o);
             shapedRecipe2x2("bone_meal", Items.BONE_MEAL, 3, "bone", o, o, o);
             shapedRecipe2x2("melon_seeds", Items.MELON_SEEDS, 1, "melon_slice", o, o, o);
-            shapedRecipe2x2("bamboo_planks", Items.BAMBOO_PLANKS, 2, "bamboo_block", o, o, o);
+            // the block goes first: a slot name that isn't registered yet quietly matches nothing, and the planks recipe had no ingredient at all
             shapedRecipe3x3Block("bamboo_block", Items.BAMBOO_BLOCK, "bamboo");
+            shapedRecipe2x2("bamboo_planks", Items.BAMBOO_PLANKS, 2, "bamboo_block", o, o, o);
             simple("hay_block", Items.HAY_BLOCK, CollectHayBlockTask::new).dontMineIfPresent();
             shapedRecipe2x2Block("polished_andesite", Items.POLISHED_ANDESITE, 4, "andesite");
             shapedRecipe2x2Block("polished_diorite", Items.POLISHED_DIORITE, 4, "diorite");
@@ -282,12 +288,12 @@ public class TaskCatalogue {
             shapedRecipe2x2Block("cut_sandstone", Items.CUT_SANDSTONE, 4, "sandstone");
             shapedRecipe2x2Block("cut_red_sandstone", Items.CUT_RED_SANDSTONE, 4, "red_sandstone");
             shapedRecipe2x2Block("quartz_bricks", Items.QUARTZ_BRICKS, 4, "quartz_block");
-            shapedRecipe2x2("quartz_pillar", Items.QUARTZ_PILLAR, 4, "quartz_block", o, "quartz_block", o);
+            shapedRecipe2x2("quartz_pillar", Items.QUARTZ_PILLAR, 2, "quartz_block", o, "quartz_block", o);
             shapedRecipe2x2Block("stone_bricks", Items.STONE_BRICKS, 4, "stone");
             shapedRecipe2x2("mossy_stone_bricks", Items.MOSSY_STONE_BRICKS, 1, "stone_bricks", "vine", o, o);
             shapedRecipe2x2("mossy_cobblestone", Items.MOSSY_COBBLESTONE, 1, "cobblestone", "vine", o, o);
             simple("nether_bricks", Items.NETHER_BRICKS, CollectNetherBricksTask::new).dontMineIfPresent();
-            shapedRecipe2x2Block("red_nether_bricks", Items.RED_NETHER_BRICKS, 4, "nether_wart");
+            shapedRecipe2x2("red_nether_bricks", Items.RED_NETHER_BRICKS, 1, "nether_brick", "nether_wart", "nether_wart", "nether_brick");
             smelt("cracked_stone_bricks", Items.CRACKED_STONE_BRICKS, "stone_bricks");
             smelt("cracked_nether_bricks", Items.CRACKED_NETHER_BRICKS, "nether_bricks");
             smelt("cracked_polished_blackstone_bricks", Items.CRACKED_POLISHED_BLACKSTONE_BRICKS, "polished_blackstone_bricks");
@@ -434,8 +440,8 @@ public class TaskCatalogue {
                 shapedRecipe3x3("map", Items.MAP, 1, a, a, a, a, "compass", a, a, a, a);
             }
             shapedRecipe3x3("fishing_rod", Items.FISHING_ROD, 1, o, o, s, o, s, "string", s, o, "string");
-            shapedRecipe2x2("carrot_on_a_stick", Items.CARROT_ON_A_STICK, 1, "fishing_rod", "carrot", o, o);
-            shapedRecipe2x2("warped_fungus_on_a_stick", Items.WARPED_FUNGUS_ON_A_STICK, 1, "fishing_rod", "warped_fungus", o, o);
+            shapedRecipe2x2("carrot_on_a_stick", Items.CARROT_ON_A_STICK, 1, "fishing_rod", o, o, "carrot");
+            shapedRecipe2x2("warped_fungus_on_a_stick", Items.WARPED_FUNGUS_ON_A_STICK, 1, "fishing_rod", o, o, "warped_fungus");
             shapedRecipe3x3("spyglass", Items.SPYGLASS, 1, o, "amethyst_shard", o, o, "copper_ingot", o, o, "copper_ingot", o);
             shapedRecipe3x3("glass_bottle", Items.GLASS_BOTTLE, 3, "glass", o, "glass", o, "glass", o, o, o, o);
             {
@@ -450,7 +456,7 @@ public class TaskCatalogue {
             alias("netherite_pick", "netherite_pickaxe");
             simple("boat", ItemHelper.WOOD_BOAT, CollectBoatTask::new);
             woodTasks("boat", woodItems -> woodItems.boat, (woodItems, count) -> new CollectBoatTask(woodItems.boat, woodItems.prefix + "_planks", count));
-            shapedRecipe3x3("lead", Items.LEAD, 1, "string", "string", o, "string", "slime_ball", o, o, o, "string");
+            shapedRecipe3x3("lead", Items.LEAD, 2, "string", "string", o, "string", "slime_ball", o, o, o, "string");
 
             simple("honeycomb", Items.HONEYCOMB, CollectHoneycombTask::new);
             {
@@ -467,7 +473,7 @@ public class TaskCatalogue {
             simple("wooden_pressure_plate", ItemHelper.WOOD_PRESSURE_PLATE, CollectWoodenPressurePlateTask::new);
             woodTasks("pressure_plate", woodItems -> woodItems.pressurePlate, (woodItems, count) -> new CollectWoodenPressurePlateTask(woodItems.pressurePlate, woodItems.prefix + "_planks", count));
             simple("wooden_button", ItemHelper.WOOD_BUTTON, CollectWoodenButtonTask::new);
-            woodTasks("button", woodItems -> woodItems.button, (woodItems, count) -> new CraftInInventoryTask(new RecipeTarget(woodItems.button, 1, CraftingRecipe.newShapedRecipe(woodItems.prefix + "_button", new ItemTarget[]{new ItemTarget(woodItems.planks, 1), null, null, null}, 1))));
+            woodButtons();
             shapedRecipe2x2("stone_pressure_plate", Items.STONE_PRESSURE_PLATE, 1, o, o, "stone", "stone");
             shapedRecipe2x2("stone_button", Items.STONE_BUTTON, 1, "stone", o, o, o);
             shapedRecipe2x2("polished_blackstone_pressure_plate", Items.POLISHED_BLACKSTONE_PRESSURE_PLATE, 1, o, o, "polished_blackstone", "polished_blackstone");
@@ -513,9 +519,9 @@ public class TaskCatalogue {
                 shapedRecipe3x3("decorated_pot", Items.DECORATED_POT, 1, o, b, o, b, o, b, o, b, o);
                 shapedRecipe3x3("flower_pot", Items.FLOWER_POT, 1, b, o, b, o, b, o, o, o, o);
                 shapedRecipe2x2Block("bricks", Items.BRICKS, b);
-                shapedRecipeSlab("brick_slab", Items.BRICK_SLAB, b);
-                shapedRecipeStairs("brick_stairs", Items.BRICK_STAIRS, b);
-                shapedRecipeStairs("brick_wall", Items.BRICK_WALL, "brick");
+                shapedRecipeSlab("brick_slab", Items.BRICK_SLAB, "bricks");
+                shapedRecipeStairs("brick_stairs", Items.BRICK_STAIRS, "bricks");
+                shapedRecipeWall("brick_wall", Items.BRICK_WALL, "bricks");
             }
             shapedRecipe3x3("ladder", Items.LADDER, 3, s, o, s, s, s, s, s, o, s);
             shapedRecipe3x3("jukebox", Items.JUKEBOX, 1, p, p, p, p, "diamond", p, p, p, p);
@@ -628,7 +634,7 @@ public class TaskCatalogue {
             mine("apple", Blocks.OAK_LEAVES, Items.APPLE);
             smelt("baked_potato", Items.BAKED_POTATO, "potato");
             shapedRecipe2x2("mushroom_stew", Items.MUSHROOM_STEW, 1, "red_mushroom", "brown_mushroom", "bowl", o);
-            shapedRecipe2x2("suspicious_stew", Items.SUSPICIOUS_STEW, 1, "red_mushroom", "brown_mushroom", "bowl", "flower");
+            shapedRecipe2x2("suspicious_stew", Items.SUSPICIOUS_STEW, 1, "red_mushroom", "brown_mushroom", "bowl", "suspicious_stew_flower");
             shapedRecipe3x3("bread", Items.BREAD, 1, "wheat", "wheat", "wheat", o, o, o, o, o, o);
             shapedRecipe3x3("cookie", Items.COOKIE, 8, "wheat", "cocoa_beans", "wheat", o, o, o, o, o, o);
             shapedRecipe2x2("pumpkin_pie", Items.PUMPKIN_PIE, 1, "pumpkin", "sugar", o, "egg");
@@ -732,6 +738,18 @@ public class TaskCatalogue {
         return _itemToResourceTask.containsKey(item);
     }
 
+    // name -> single craft target for every recipe the shaped helpers (and the wood buttons) registered.
+    // the recipe parity test needs these, and it can't just ask for the tasks: building any Task wants the live player, which a headless test doesn't have
+    static Map<String, RecipeTarget> craftedRecipes() {
+        return Collections.unmodifiableMap(_craftedRecipes);
+    }
+
+    // the recipe a shaped catalogue item is crafted with (null for anything else), for a caller that has to craft from the bag
+    // and must not go through the catalogue's tasks, which collect whatever the bag is short of
+    public static RecipeTarget recipeOf(String name) {
+        return _craftedRecipes.get(name);
+    }
+
     public static Collection<String> resourceNames() {
         return _nameToResourceTask.keySet();
     }
@@ -781,11 +799,13 @@ public class TaskCatalogue {
 
     private static CataloguedResource shapedRecipe2x2(String name, Item match, int outputCount, String s0, String s1, String s2, String s3) {
         CraftingRecipe recipe = CraftingRecipe.newShapedRecipe(name, new ItemTarget[]{t(s0), t(s1), t(s2), t(s3)}, outputCount);
+        _craftedRecipes.put(name, new RecipeTarget(match, 1, recipe));
         return put(name, new Item[]{match}, count -> new CraftInInventoryTask(new RecipeTarget(match, count, recipe)));
     }
 
     private static CataloguedResource shapedRecipe3x3(String name, Item match, int outputCount, String s0, String s1, String s2, String s3, String s4, String s5, String s6, String s7, String s8) {
         CraftingRecipe recipe = CraftingRecipe.newShapedRecipe(name, new ItemTarget[]{t(s0), t(s1), t(s2), t(s3), t(s4), t(s5), t(s6), t(s7), t(s8)}, outputCount);
+        _craftedRecipes.put(name, new RecipeTarget(match, 1, recipe));
         return put(name, new Item[]{match}, count -> new CraftInTableTask(new RecipeTarget(match, count, recipe)));
     }
 
@@ -886,6 +906,19 @@ public class TaskCatalogue {
 
     private static CataloguedResource[] woodTasks(String baseName, Function<ItemHelper.WoodItems, Item> getMatch, BiFunction<ItemHelper.WoodItems, Integer, ResourceTask> getTask) {
         return woodTasks(baseName, getMatch, getTask, false);
+    }
+
+    // woodTasks, but eager, so the recipe is in _craftedRecipes without anyone asking for a task.
+    // the planks come from the catalogue name because bamboo has no planks field in WoodItems (it can't, bamboo_planks is registered by hand)
+    private static void woodButtons() {
+        for (WoodType woodType : WoodType.values()) {
+            ItemHelper.WoodItems woodItems = ItemHelper.getWoodItems(woodType);
+            if (woodItems.button == null) continue;
+            String name = woodItems.prefix + "_button";
+            CraftingRecipe recipe = CraftingRecipe.newShapedRecipe(name, new ItemTarget[]{t(woodItems.prefix + "_planks"), null, null, null}, 1);
+            _craftedRecipes.put(name, new RecipeTarget(woodItems.button, 1, recipe));
+            put(name, new Item[]{woodItems.button}, count -> new CraftInInventoryTask(new RecipeTarget(woodItems.button, count, recipe)));
+        }
     }
 
     private static void tools(String toolMaterialName, String material, Item pickaxeItem, Item shovelItem, Item swordItem, Item axeItem, Item hoeItem) {

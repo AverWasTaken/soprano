@@ -3,22 +3,39 @@ package adris.altoclef.tasks.entity;
 import baritone.Baritone;
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
+import adris.altoclef.control.CritTiming;
+import adris.altoclef.tasks.construction.DestroyBlockTask;
 import adris.altoclef.tasks.movement.GetToEntityTask;
 import adris.altoclef.tasks.movement.TimeoutWanderTask;
 import adris.altoclef.tasksystem.ITaskRequiresGrounded;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.util.helpers.ApproachRules;
+import adris.altoclef.util.helpers.BackOffRules;
+import adris.altoclef.util.helpers.EntityBlockerRules;
 import adris.altoclef.util.helpers.ItemHelper;
+import adris.altoclef.util.helpers.StandCap;
 import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.StorageHelper;
+import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
 import adris.altoclef.util.slots.Slot;
 import baritone.api.pathing.goals.GoalRunAway;
 import java.util.Optional;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.tags.FluidTags;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.HitResult;
+import net.minecraft.world.phys.Vec3;
 
 /**
  * Interacts with an entity while maintaining distance.
@@ -30,6 +47,31 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
     private final double _maintainDistance;
     private final double _combatGuardLowerRange;
     private final double _combatGuardLowerFieldRadius;
+
+    // ten seconds to chew through one block. a dig that takes longer than this is not going to get better
+    private static final int BLOCKER_TICKS = 200;
+
+    // kept while the target and distance stay the same, so its own stuck handling gets to accumulate across ticks
+    private GetToEntityTask _approach;
+    private Entity _approachEntity;
+    private double _approachDistance;
+    // the block we are digging out of the way (fence, wall, whatever won the raycast), and how many digs this target has cost
+    private DestroyBlockTask _blocker;
+    private int _blockerTicks;
+    private Entity _blockerTarget;
+    private int _blockerDigs;
+    private GoalRunAway _backOffGoal;
+    // the approach child was in the tree last tick (it is walking, a stop now would cut the path), see ApproachRules
+    private boolean _approachLive;
+    // ticks in a row spent standing in reach with the swing gated, see ApproachRules.WAIT_TICKS. the kill tasks use _standCap
+    // instead, which counts ticks since the last swing that really went out whatever the plan flickered through
+    private int _waitTicks;
+    private final StandCap _standCap = new StandCap();
+    private Entity _waitEntity;
+    private long _swingsSeen;
+    // the back-off we started has to be getting somewhere, and a stuck one is not started again for a while
+    private final BackOffRules.Watch _backOffWatch = new BackOffRules.Watch();
+    private long _backOffMutedUntil = Long.MIN_VALUE;
 
     public AbstractDoToEntityTask(double maintainDistance, double combatGuardLowerRange, double combatGuardLowerFieldRadius) {
         _maintainDistance = maintainDistance;
@@ -48,6 +90,18 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
     @Override
     protected void onStart(AltoClef mod) {
         _progress.reset();
+        _approach = null;
+        _approachLive = false;
+        _waitTicks = 0;
+        _standCap.reset();
+        _waitEntity = null;
+        _swingsSeen = mod.getControllerExtras().swings();
+        _backOffWatch.clear();
+        _backOffMutedUntil = Long.MIN_VALUE;
+        _blocker = null;
+        _blockerTarget = null;
+        _blockerDigs = 0;
+        _backOffGoal = null;
         ItemStack cursorStack = StorageHelper.getItemStackInCursorSlot();
         if (!cursorStack.isEmpty()) {
             Optional<Slot> moveTo = mod.getItemStorage().getSlotThatCanFitInPlayerInventory(cursorStack, false);
@@ -69,16 +123,15 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
         if (mod.getClientBaritone().getPathingBehavior().isPathing()) {
             _progress.reset();
         }
+        boolean wasWalking = _approachLive;
+        _approachLive = false;
 
         Optional<Entity> checkEntity = getEntityTarget(mod);
-
+        if (checkEntity.isEmpty()) _blocker = null;
 
         // Oof
         if (checkEntity.isEmpty()) {
-            mod.getMobDefenseChain().resetTargetEntity();
             mod.getMobDefenseChain().resetForceField();
-        } else {
-            mod.getMobDefenseChain().setTargetEntity(checkEntity.get());
         }
         if (checkEntity.isPresent()) {
             Entity entity = checkEntity.get();
@@ -99,39 +152,238 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
             // If we don't specify a maintain distance, default to within 1 block of our reach.
             double maintainDistance = _maintainDistance >= 0 ? _maintainDistance : playerReach - 1;
 
-            boolean tooClose = sqDist < maintainDistance * maintainDistance;
+            long now = mod.getWorld().getGameTime();
+            // a kill task with nowhere to step back to (a shaft, a low tunnel), or whose last step back went nowhere, stands
+            // and hits: the run-away would only own the keys, and "too close" is not a problem we can fix there
+            boolean backOffOk = !isKillTask() || (now >= _backOffMutedUntil && mod.getControllerExtras().roomToBackOff());
+            boolean tooClose = backOffOk && sqDist < maintainDistance * maintainDistance;
+            if (isKillTask()) {
+                watchBackOff(mod, now);
+            }
 
-            // Step away if we're too close
-            if (tooClose) {
+            // Step away if we're too close, unless a crit hop is on (or about to be): backing off mid hop is exactly what
+            // leaves the mob out of reach when we come down
+            // (the run-away keeps walking a bit past the line too, and that stretch would veto the hop just the same)
+            boolean hopOn = wantsCritHops() && (tooClose || _backOffGoal != null) && mod.getControllerExtras().hopWantsToStayClose(entity);
+            if (hopOn) {
+                dropBackOff(mod);
+            } else if (CritTiming.shouldBackOff(tooClose, false)) {
                 //setDebugState("Maintaining distance");
                 if (!mod.getClientBaritone().getCustomGoalProcess().isActive()) {
-                    mod.getClientBaritone().getCustomGoalProcess().setGoalAndPath(new GoalRunAway(maintainDistance, entity.blockPosition()));
+                    _backOffGoal = new GoalRunAway(maintainDistance, entity.blockPosition());
+                    mod.getClientBaritone().getCustomGoalProcess().setGoalAndPath(_backOffGoal);
                 }
             }
 
-            if (mod.getControllerExtras().inRange(entity) && result != null &&
-                    result.getType() == HitResult.Type.ENTITY && !mod.getFoodChain().needsToEat() &&
+            boolean ready = !mod.getFoodChain().needsToEat() &&
                     !mod.getMLGBucketChain().isFallingOhNo(mod) && mod.getMLGBucketChain().doneMLG() &&
                     !mod.getMLGBucketChain().isChorusFruiting() &&
-                    mod.getClientBaritone().getPathingBehavior().isSafeToCancel() &&
-                    mod.getPlayer().onGround()) {
-                _progress.reset();
-                return onEntityInteract(mod, entity);
-            } else if (!tooClose) {
-                setDebugState("Approaching target");
-                if (!_progress.check(mod)) {
+                    (mod.getPlayer().onGround() || mod.getControllerExtras().critInFlight());
+            // a child that was walking to some other mob is not the one to keep
+            boolean inReach = inReach(mod, entity);
+            boolean shot = result != null && result.getType() == HitResult.Type.ENTITY;
+            if (isKillTask()) {
+                countStandingTicks(mod, entity, inReach && shot);
+            }
+            boolean gatesOpen = !mod.getFoodChain().needsToEat() && !mod.getMLGBucketChain().isFallingOhNo(mod)
+                    && mod.getMLGBucketChain().doneMLG() && !mod.getMLGBucketChain().isChorusFruiting();
+            ApproachRules.Policy policy = !isKillTask() ? ApproachRules.Policy.OTHER
+                    : gatesOpen ? ApproachRules.Policy.KILL : ApproachRules.Policy.KILL_GATED;
+            ApproachRules.Plan plan = ApproachRules.plan(wasWalking && _approachEntity == entity, inReach, shot, ready,
+                    mod.getClientBaritone().getPathingBehavior().isSafeToCancel(), tooClose,
+                    isKillTask() ? _standCap.waitedLong() : _waitTicks >= ApproachRules.WAIT_TICKS, policy);
+            if (!isKillTask()) {
+                _waitTicks = plan == ApproachRules.Plan.WAIT ? _waitTicks + 1 : 0;
+            }
+            switch (plan) {
+                case INTERACT:
                     _progress.reset();
-                    Debug.logMessage("Failed to get to target, blacklisting.");
-                    mod.getEntityTracker().requestEntityUnreachable(entity);
-                }
-                // Move to target
-                return new GetToEntityTask(entity, maintainDistance);
+                    _blocker = null;
+                    return onEntityInteract(mod, entity);
+                case APPROACH:
+                    return approach(mod, entity, maintainDistance);
+                case KEEP_CHILD:
+                    // halfway through a step: let it land, the swing goes next tick that is safe. stopping the child here
+                    // cut the path mid stride and the next tick started it again
+                    _progress.reset();
+                    _blocker = null;
+                    setDebugState("Finishing the step before the swing");
+                    _approachLive = true;
+                    return _approach;
+                case SWING_NOW:
+                    // stood in reach this long with no swing: whatever path is in the way goes, the hit is what is owed
+                    _progress.reset();
+                    _blocker = null;
+                    _standCap.forced();
+                    dropBackOff(mod);
+                    mod.getClientBaritone().getPathingBehavior().cancelEverything();
+                    setDebugState("In reach, swinging through the stall");
+                    return onStalledSwing(mod, entity);
+                case WAIT:
+                    _progress.reset();
+                    _blocker = null;
+                    setDebugState("In reach, waiting for the swing");
+                    return null;
+                default:
+                    break;
             }
         }
+        _blocker = null;
         if (!mod.getClientBaritone().getPathingBehavior().isSafeToCancel()) {
             return null;
         }
         return new TimeoutWanderTask();
+    }
+
+    // close enough to interact. the feet line for everyone (trading, shearing, frames), the kill tasks also count the eye to box
+    // gap (ReachRules.killReach)
+    protected boolean inReach(AltoClef mod, Entity entity) {
+        return mod.getControllerExtras().inRange(entity);
+    }
+
+    // the kill tasks are committed to the mob in front of them: they stand and hit what is in reach and do not shuffle off it
+    protected boolean isKillTask() {
+        return false;
+    }
+
+    // the swing for a stall the plan gave up waiting out (kill tasks only)
+    protected Task onStalledSwing(AltoClef mod, Entity entity) {
+        return null;
+    }
+
+    // feeds the stand cap: a swing, a new target or the mob leaving reach starts it over
+    private void countStandingTicks(AltoClef mod, Entity entity, boolean standingInReach) {
+        long swings = mod.getControllerExtras().swings();
+        boolean swung = swings != _swingsSeen;
+        _swingsSeen = swings;
+        if (_waitEntity != entity) {
+            _waitEntity = entity;
+            _standCap.reset();
+        }
+        _standCap.tick(standingInReach, swung);
+    }
+
+    // the run-away we started has to be moving us, or it is dropped and left alone for a bit
+    private void watchBackOff(AltoClef mod, long now) {
+        var goalProcess = mod.getClientBaritone().getCustomGoalProcess();
+        if (_backOffGoal == null || goalProcess.getGoal() != _backOffGoal || !goalProcess.isActive()) {
+            _backOffWatch.clear();
+            return;
+        }
+        if (_backOffWatch.stuck(now, mod.getPlayer().getX(), mod.getPlayer().getZ())) {
+            dropBackOff(mod);
+            _backOffMutedUntil = now + BackOffRules.MUTE_TICKS;
+        }
+    }
+
+    // only the kill tasks swing, so only they have a hop for the back-off to get out of the way of. shearing a sheep right
+    // after equipping shears also has a recharging cooldown, and that is no reason to skip its back-off
+    protected boolean wantsCritHops() {
+        return false;
+    }
+
+    // the run-away we started, so the hop can stop exactly that and nobody else's path. a hop only works while baritone is
+    // not walking (the jump press is ignored under its movement input), and the back-off is the walking that was always
+    // there. cancel the path too, not just the goal, or isPathing() still says yes for the tick we wanted to jump in
+    private void dropBackOff(AltoClef mod) {
+        if (_backOffGoal == null) {
+            return;
+        }
+        var goalProcess = mod.getClientBaritone().getCustomGoalProcess();
+        if (goalProcess.getGoal() == _backOffGoal) {
+            goalProcess.onLostControl();
+            mod.getClientBaritone().getPathingBehavior().cancelSegmentIfSafe();
+        }
+        _backOffGoal = null;
+    }
+
+    private Task approach(AltoClef mod, Entity entity, double maintainDistance) {
+        if (_blockerTarget != entity) {
+            _blockerTarget = entity;
+            _blockerDigs = 0;
+            _blocker = null;
+        }
+        if (_blocker != null) {
+            if (!_blocker.isFinished(mod) && ++_blockerTicks <= BLOCKER_TICKS) {
+                setDebugState("Breaking what is in the way");
+                _progress.reset();
+                return _blocker;
+            }
+            _blocker = null;
+            _progress.reset();
+        }
+        setDebugState("Approaching target");
+        if (!_progress.check(mod)) {
+            _progress.reset();
+            BlockPos blocker = findBlocker(mod, entity);
+            if (blocker != null) {
+                Debug.logMessage("Something is in the way of the target, breaking it.");
+                _blockerDigs++;
+                _blockerTicks = 0;
+                _blocker = new DestroyBlockTask(blocker);
+                return _blocker;
+            }
+            Debug.logMessage("Failed to get to target, blacklisting.");
+            mod.getEntityTracker().requestEntityUnreachable(entity);
+        }
+        // Move to target
+        return approachTask(entity, maintainDistance);
+    }
+
+    // a fresh GetToEntityTask every tick never let its stuck checks build up anything, same target means same task
+    private GetToEntityTask approachTask(Entity entity, double maintainDistance) {
+        boolean same = _approach != null && _approachEntity == entity && Math.abs(_approachDistance - maintainDistance) < 0.1;
+        if (!same) {
+            _approach = new GetToEntityTask(entity, maintainDistance);
+            _approachEntity = entity;
+            _approachDistance = maintainDistance;
+        }
+        _approachLive = true;
+        return _approach;
+    }
+
+    // the first solid thing between our eye and the middle of the target, if digging it is allowed. collision shapes, because
+    // that is what stops a swing: a fence is see through and still wins the raycast
+    private BlockPos findBlocker(AltoClef mod, Entity entity) {
+        LocalPlayer player = mod.getPlayer();
+        Level level = mod.getWorld();
+        Vec3 eye = player.getEyePosition();
+        BlockHitResult hit = level.clip(new ClipContext(eye, entity.getBoundingBox().getCenter(), ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, player));
+        if (hit.getType() != HitResult.Type.BLOCK) return null;
+        BlockPos pos = hit.getBlockPos();
+        double distance = eye.distanceTo(hit.getLocation());
+        boolean ok = EntityBlockerRules.shouldMine(isBreakable(mod, pos), _blockerDigs, distance, holdsUsUp(player, pos), opensLavaNextToUs(level, player, pos));
+        return ok ? pos : null;
+    }
+
+    // canBreak covers bedrock and the avoid lists. block entities are out because that is chests and furnaces and, worst of
+    // all, the blaze spawner we are standing here for
+    private static boolean isBreakable(AltoClef mod, BlockPos pos) {
+        BlockState state = mod.getWorld().getBlockState(pos);
+        if (state.isAir() || state.hasBlockEntity() || state.is(Blocks.SPAWNER) || state.is(Blocks.BEDROCK)) return false;
+        if (mod.getClientBaritoneSettings().blocksToAvoidBreaking.value.contains(state.getBlock())) return false;
+        return WorldHelper.canBreak(mod, pos);
+    }
+
+    // any cell under the footprint of our feet
+    private static boolean holdsUsUp(LocalPlayer player, BlockPos pos) {
+        var box = player.getBoundingBox();
+        int y = (int) Math.floor(box.minY - 0.001);
+        if (pos.getY() != y) return false;
+        return pos.getX() >= (int) Math.floor(box.minX) && pos.getX() <= (int) Math.floor(box.maxX)
+                && pos.getZ() >= (int) Math.floor(box.minZ) && pos.getZ() <= (int) Math.floor(box.maxZ);
+    }
+
+    // lava touching the hole we would make, close enough to our feet that it would come to us
+    private static boolean opensLavaNextToUs(Level level, LocalPlayer player, BlockPos pos) {
+        BlockPos feet = player.blockPosition();
+        if (Math.abs(pos.getX() - feet.getX()) > 2 || Math.abs(pos.getZ() - feet.getZ()) > 2) return false;
+        int dy = pos.getY() - feet.getY();
+        if (dy < -2 || dy > 1) return false;
+        for (Direction side : Direction.values()) {
+            if (level.getFluidState(pos.relative(side)).is(FluidTags.LAVA)) return true;
+        }
+        return false;
     }
 
     @Override
@@ -147,7 +399,7 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
 
     @SuppressWarnings("BooleanMethodIsAlwaysInverted")
     private boolean doubleCheck(double a, double b) {
-        if (Double.isInfinite(a) == Double.isInfinite(b)) return true;
+        if (Double.isInfinite(a) || Double.isInfinite(b)) return Double.isInfinite(a) == Double.isInfinite(b);
         return Math.abs(a - b) < 0.1;
     }
 
@@ -157,7 +409,6 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
 
     @Override
     protected void onStop(AltoClef mod, Task interruptTask) {
-        mod.getMobDefenseChain().setTargetEntity(null);
         mod.getMobDefenseChain().resetForceField();
     }
 

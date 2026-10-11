@@ -3,9 +3,14 @@ package adris.altoclef.tasks;
 import adris.altoclef.AltoClef;
 import adris.altoclef.tasks.movement.TimeoutWanderTask;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.util.helpers.DropExpect;
+import adris.altoclef.util.helpers.MineStick;
+import adris.altoclef.util.helpers.PursuitProgress;
+import adris.altoclef.util.helpers.ScanWait;
 import adris.altoclef.util.helpers.WorldHelper;
 import java.util.HashMap;
 import java.util.Optional;
+import net.minecraft.core.BlockPos;
 import net.minecraft.world.phys.Vec3;
 
 /**
@@ -18,7 +23,15 @@ public abstract class AbstractDoToClosestObjectTask<T> extends Task {
     private final HashMap<T, CachedHeuristic> _heuristicMap = new HashMap<>();
     private T _currentlyPursuing = null;
     private boolean _wasWandering;
+    private final ScanWait _scanWait = new ScanWait();
+    // is the current pursuit getting anywhere, see PursuitProgress
+    private final PursuitProgress _progress = new PursuitProgress();
+    // the block the controller was last seen breaking, so a break on the way to the pursuit counts as progress
+    private BlockPos _lastBreaking;
     private Task _goalTask = null;
+    // the break we just made, see DropExpect. subclasses arm it from onPursuitGone and say what they see in dropSeen
+    private final DropExpect _expect = new DropExpect();
+    private Vec3 _expectSpot;
 
     protected abstract Vec3 getPos(AltoClef mod, T obj);
 
@@ -30,15 +43,64 @@ public abstract class AbstractDoToClosestObjectTask<T> extends Task {
 
     protected abstract boolean isValid(AltoClef mod, T obj);
 
+    // virtual. true to take the candidate over the current pursuit even though it is not much closer (the thing we are
+    // halfway through breaking, say)
+    protected boolean mustSwitchTo(AltoClef mod, T current, T candidate) {
+        return false;
+    }
+
+    // virtual. false keeps a pursuit that got nowhere for 7 s anyway (see PursuitProgress)
+    protected boolean repicksWhenStalled() {
+        return true;
+    }
+
+    // virtual. the thing we were after stopped being valid (broken, picked up, dead) and we are about to pick another
+    protected void onPursuitGone(AltoClef mod, T gone) {
+    }
+
+    // virtual. whether the drop we are waiting on is in sight yet, around the spot passed to expectDrop
+    protected boolean dropSeen(AltoClef mod, Vec3 spot) {
+        return false;
+    }
+
+    // stand still for the drop that is about to exist at spot, before the next thing gets picked
+    protected final void expectDrop(boolean kill, Vec3 spot) {
+        _expectSpot = spot;
+        if (kill) {
+            _expect.expectKill(WorldHelper.getTicks());
+        } else {
+            _expect.expectBreak(WorldHelper.getTicks());
+        }
+    }
+
+    // true once the wait ended because a drop showed up that needs fetching (not because it timed out)
+    protected final boolean dropReady() {
+        return _expect.takeNow();
+    }
+
+    protected final void forgetDropExpect() {
+        _expect.clear();
+    }
+
     // Virtual
     protected Task getWanderTask(AltoClef mod) {
         return new TimeoutWanderTask(true);
     }
 
+    // virtual. true while the thing we search through hasn't had its first look yet (a block tracker scan that's still
+    // on its way), so "nothing found" means "haven't looked" and wandering off would be walking away from the answer
+    protected boolean stillLooking(AltoClef mod) {
+        return false;
+    }
+
     public void resetSearch() {
+        _scanWait.clear();
+        _progress.clear();
+        _lastBreaking = null;
         _currentlyPursuing = null;
         _heuristicMap.clear();
         _goalTask = null;
+        _expect.clear();
     }
 
     public boolean wasWandering() {
@@ -48,6 +110,27 @@ public abstract class AbstractDoToClosestObjectTask<T> extends Task {
     private double getCurrentCalculatedHeuristic(AltoClef mod) {
         Optional<Double> ticksRemainingOp = mod.getClientBaritone().getPathingBehavior().ticksRemainingInSegment();
         return ticksRemainingOp.orElse(Double.POSITIVE_INFINITY);
+    }
+
+    // the controller is breaking the very block we are pursuing right now
+    private boolean breakingPursuit(AltoClef mod) {
+        return _currentlyPursuing instanceof BlockPos at && mod.getControllerExtras().isBreakingBlock()
+                && at.equals(mod.getControllerExtras().getBreakingBlockPos());
+    }
+
+    // a block we were breaking is gone now (or we are on the pursuit itself, which is the opposite of getting nowhere)
+    private boolean brokeSomething(AltoClef mod) {
+        if (breakingPursuit(mod)) {
+            return true;
+        }
+        boolean broke = _lastBreaking != null && mod.getWorld().getBlockState(_lastBreaking).isAir();
+        if (broke) {
+            _lastBreaking = null;
+        }
+        if (mod.getControllerExtras().isBreakingBlock()) {
+            _lastBreaking = mod.getControllerExtras().getBreakingBlockPos();
+        }
+        return broke;
     }
 
     private boolean isMovingToClosestPos(AltoClef mod) {
@@ -63,14 +146,29 @@ public abstract class AbstractDoToClosestObjectTask<T> extends Task {
         if (_currentlyPursuing != null && !isValid(mod, _currentlyPursuing)) {
             // This is probably a good idea, no?
             _heuristicMap.remove(_currentlyPursuing);
+            T gone = _currentlyPursuing;
             _currentlyPursuing = null;
+            onPursuitGone(mod, gone);
+        }
+
+        // the drop of what we just broke or killed is a few ticks from existing. picking the next one now is how the
+        // drop got left behind, so we stand here until it shows (or the wait is up) and the pickup gets its turn
+        if (_expect.isLive() && _expect.hold(WorldHelper.getTicks(), dropSeen(mod, _expectSpot))) {
+            setDebugState("Waiting for the drop to show up");
+            _goalTask = null;
+            return null;
+        }
+
+        if (_currentlyPursuing != null) {
+            _progress.tick(_currentlyPursuing, getPos(mod, _currentlyPursuing).distanceTo(mod.getPlayer().position()), brokeSomething(mod), WorldHelper.getTicks());
         }
 
         // Get closest object
         Optional<T> checkNewClosest = getClosestTo(mod, getOriginPos(mod));
 
-        // Receive closest object and position
-        if (checkNewClosest.isPresent() && !checkNewClosest.get().equals(_currentlyPursuing)) {
+        // Receive closest object and position. mid-break on the block we picked nothing takes over (MineStick's idea, for every
+        // closest-block task): two hay bales side by side traded "closest" as we stepped and every trade threw the crack away
+        if (checkNewClosest.isPresent() && !checkNewClosest.get().equals(_currentlyPursuing) && !breakingPursuit(mod)) {
             T newClosest = checkNewClosest.get();
             // Different closest object
             if (_currentlyPursuing == null) {
@@ -90,7 +188,12 @@ public abstract class AbstractDoToClosestObjectTask<T> extends Task {
                     h.updateHeuristic(currentHeuristic);
                     h.updateDistance(closestDistanceSqr);
                     h.setTickAttempted(lastTick);
-                    if (_heuristicMap.containsKey(newClosest)) {
+                    if (PursuitProgress.repick(repicksWhenStalled(), _progress.stalled(), _currentlyPursuing, newClosest)) {
+                        // 7 s and not a step closer: the 2x rule below would keep us on it forever, whatever the pick
+                        // says is nearest now gets a go instead
+                        setDebugState("Current pursuit got nowhere, trying the nearest");
+                        _currentlyPursuing = newClosest;
+                    } else if (_heuristicMap.containsKey(newClosest)) {
                         // Our new object has a past potential heuristic calculated, if it's better try it out.
                         CachedHeuristic maybeReAttempt = _heuristicMap.get(newClosest);
                         double maybeClosestDistance = getPos(mod, newClosest).distanceToSqr(mod.getPlayer().position());
@@ -103,10 +206,15 @@ public abstract class AbstractDoToClosestObjectTask<T> extends Task {
                             // but it's CRITICAL to making this work for some reason
                             maybeReAttempt.updateDistance(maybeClosestDistance);
                         }
-                    } else {
+                    } else if (mustSwitchTo(mod, _currentlyPursuing, newClosest)
+                            || MineStick.clearlyCloser(getPos(mod, newClosest).distanceToSqr(mod.getPlayer().position()), closestDistanceSqr)) {
                         setDebugState("Trying out NEW pursuit");
-                        // Our new object does not have a heuristic, TRY IT OUT!
+                        // Our new object does not have a heuristic, TRY IT OUT! but only when it is clearly better: the
+                        // two nearest things trading places as we step (a block and the drop next to it) switched the
+                        // task every few ticks, and every switch lets go of the mouse button and resets the crack
                         _currentlyPursuing = newClosest;
+                    } else {
+                        setDebugState("Staying with the current pursuit");
                     }
                 } else {
                     setDebugState("Waiting for move task to kick in...");
@@ -116,6 +224,7 @@ public abstract class AbstractDoToClosestObjectTask<T> extends Task {
         }
 
         if (_currentlyPursuing != null) {
+            _scanWait.clear();
             _goalTask = getGoalTask(_currentlyPursuing);
             return _goalTask;
         } else {
@@ -124,6 +233,10 @@ public abstract class AbstractDoToClosestObjectTask<T> extends Task {
 
         //noinspection ConstantConditions
         if (checkNewClosest.isEmpty() && _currentlyPursuing == null) {
+            if (waitingOnFirstLook(mod)) {
+                setDebugState("Waiting for the first scan before wandering");
+                return null;
+            }
             setDebugState("Waiting for calculations I think (wandering)");
             _wasWandering = true;
             return getWanderTask(mod);
@@ -131,6 +244,11 @@ public abstract class AbstractDoToClosestObjectTask<T> extends Task {
 
         setDebugState("Waiting for calculations I think (NOT wandering)");
         return null;
+    }
+
+    // a scan is well under a second. the cap (ScanWait) is for the day one gets stuck behind a slow one
+    private boolean waitingOnFirstLook(AltoClef mod) {
+        return _scanWait.waiting(WorldHelper.getTicks(), stillLooking(mod));
     }
 
     private static class CachedHeuristic {

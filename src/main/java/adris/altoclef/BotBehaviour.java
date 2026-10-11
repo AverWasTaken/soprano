@@ -96,6 +96,19 @@ public class BotBehaviour {
         // current.applyState();
     }
 
+    // stronger than the forcefield one: mob defense will not run away from it or send a kill task after it either.
+    // for tasks that fight one specific mob on their own terms (the golem on its pillar, nothing else walks off it)
+    public boolean shouldExcludeFromMobDefense(Entity entity) {
+        for (Predicate<Entity> pred : current().excludeFromMobDefense) {
+            if (pred.test(entity)) return true;
+        }
+        return false;
+    }
+
+    public void addMobDefenseExclusion(Predicate<Entity> pred) {
+        current().excludeFromMobDefense.add(pred);
+    }
+
     public List<Tuple<Slot, Predicate<ItemStack>>> getConversionSlots() {
         return current().conversionSlots;
     }
@@ -106,7 +119,10 @@ public class BotBehaviour {
     }
 
     public void avoidBlockBreaking(BlockPos pos) {
-        current().blocksToAvoidBreaking.add(pos);
+        // tasks call this every tick with the same furnace. a set that already has it is not news
+        if (!current().blocksToAvoidBreaking.add(pos.immutable())) {
+            return;
+        }
         current().applyState();
     }
 
@@ -137,12 +153,20 @@ public class BotBehaviour {
     }
 
     public void setRayTracingFluidHandling(ClipContext.Fluid fluidHandling) {
+        // ClearLiquidTask says this every tick. the static gets reset behind our back sometimes, so check it too
+        if (current().rayFluidHandling == fluidHandling && RayTraceUtils.fluidHandling == fluidHandling) {
+            return;
+        }
         current().rayFluidHandling = fluidHandling;
         //Debug.logMessage("OOF: " + fluidHandling);
         current().applyState();
     }
 
     public void setAllowWalkThroughFlowingWater(boolean value) {
+        // the portal speedrun says this every tick. only the settings object can disagree with us (a reset), so ask it too
+        if (current()._allowWalkThroughFlowingWater == value && _mod.getExtraBaritoneSettings().isFlowingWaterPassAllowed() == value) {
+            return;
+        }
         current()._allowWalkThroughFlowingWater = value;
         current().applyState();
     }
@@ -153,13 +177,141 @@ public class BotBehaviour {
     }
 
     public void addProtectedItems(Item... items) {
-        Collections.addAll(current().protectedItems, items);
-        current().applyState();
+        // ResourceTask and friends do this every tick. it used to be a list with no dedupe, so it grew forever and
+        // every tick rebuilt the pathing snapshot from it. now it only goes through when something is actually new
+        // no number given, so the movements get none of it (see reserveProtectedItems for the polite kind)
+        boolean changed = false;
+        for (Item item : items) {
+            changed |= current().protectedItems.add(item);
+            changed |= current().wholeProtected.add(item);
+        }
+        if (changed) {
+            current().applyState();
+        }
+    }
+
+    // protected, but only the first `count` of each. for a task that is collecting N of something for a target: the movements
+    // may still build with whatever is held above N, they just can't eat into the N itself (a recipe that needs 6 cobble was
+    // getting its own cobble pillared into the ground, then mining more, then pillaring it again). levels add up, and an
+    // item any level protected without a number (addProtectedItems) stays whole. it only ever adds or overwrites keys: a
+    // caller whose map shrinks has to zero the keys it drops, or removeProtectedItems them, or the old count sticks till pop
+    //
+    // this form writes into whatever level is on top right now, which is only the caller's own if nobody pushed on top of it.
+    // a task that has children should keep the State its push() handed back and use the form below
+    public void reserveProtectedItems(Map<Item, Integer> counts) {
+        reserveProtectedItems(null, counts);
+    }
+
+    // same, into the level the caller pushed. a parent writes every tick, and once a child pushed its own level the plain
+    // form was putting the parent's numbers in the child's level while the parent's own copy sat there stale. the sum then
+    // read double for as long as the child lived (19, 36, 19, 36, and every flip was an applyState). null means the top
+    // level, and a level that has been popped already is ignored: its numbers went with it
+    public void reserveProtectedItems(State level, Map<Item, Integer> counts) {
+        State target = level == null ? current() : level;
+        List<State> from = levelsFrom(_states, target);
+        if (from.isEmpty()) {
+            return;
+        }
+        boolean changed = false;
+        for (Map.Entry<Item, Integer> entry : counts.entrySet()) {
+            // a child pushed after this level copied its protected set, so the ones above have to hear about it too
+            for (State s : from) {
+                changed |= s.protectedItems.add(entry.getKey());
+            }
+            Integer old = target.reserve.put(entry.getKey(), entry.getValue());
+            changed |= !entry.getValue().equals(old);
+        }
+        if (changed) {
+            current().applyState();
+        }
+    }
+
+    // a floor for a level: at least this many of each item stay spoken for for as long as the level lives, however the task
+    // levels above come and go. the task reserves are slices of one outstanding need (6 of the 18 cobble the stone kit wants),
+    // so they do not add to a floor, the biggest of the two wins (see sumReserves). unlike a reserve the whole map is
+    // replaced: an item that is gone from it (or at 0) stops being protected, unless somebody else reserved it too
+    public void setReserveFloor(State level, Map<Item, Integer> floor) {
+        if (level == null) {
+            return;
+        }
+        List<State> from = levelsFrom(_states, level);
+        if (from.isEmpty()) {
+            return;
+        }
+        boolean changed = false;
+        for (Map.Entry<Item, Integer> entry : floor.entrySet()) {
+            if (entry.getValue() > 0) {
+                changed |= claimFloor(from, entry.getKey());
+            }
+        }
+        Map<Item, Integer> next = new HashMap<>();
+        for (Map.Entry<Item, Integer> entry : floor.entrySet()) {
+            next.put(entry.getKey(), Math.max(0, entry.getValue()));
+        }
+        for (Item gone : level.floor.keySet()) {
+            // stays in the map at 0 so a child level that copied the protection reads "nothing spoken for" and not "all of it"
+            if (next.getOrDefault(gone, 0) <= 0) {
+                next.put(gone, 0);
+                changed |= releaseFloor(from, gone);
+            }
+        }
+        if (!next.equals(level.floor)) {
+            level.floor.clear();
+            level.floor.putAll(next);
+            changed = true;
+        }
+        if (changed) {
+            current().applyState();
+        }
+    }
+
+    private static boolean claimFloor(List<State> from, Item item) {
+        boolean changed = false;
+        for (State s : from) {
+            if (s.protectedItems.add(item)) {
+                s.floorAdded.add(item);
+                changed = true;
+            }
+        }
+        return changed;
+    }
+
+    // only takes the protection back where the floor was what put it, and nobody else has since asked for the same item
+    private static boolean releaseFloor(List<State> from, Item item) {
+        boolean changed = false;
+        for (State s : from) {
+            if (s.floorAdded.remove(item) && !s.reserve.containsKey(item) && !s.wholeProtected.contains(item)) {
+                changed |= s.protectedItems.remove(item);
+            }
+        }
+        return changed;
+    }
+
+    // the levels from the top of the stack down to and including `level`, which are the ones that have it underneath them
+    // (and so inherited a copy of what it protects). empty when it is not in the stack, i.e. it was popped. pure so it can
+    // be tested without a game
+    static <S> List<S> levelsFrom(Deque<S> stack, S level) {
+        List<S> out = new ArrayList<>(4);
+        for (S s : stack) {
+            out.add(s);
+            if (s == level) {
+                return out;
+            }
+        }
+        return List.of();
     }
 
     public void removeProtectedItems(Item... items) {
-        current().protectedItems.removeAll(Arrays.asList(items));
-        current().applyState();
+        boolean changed = false;
+        for (Item item : items) {
+            changed |= current().protectedItems.remove(item);
+            // the numbers go with it, or the next protect of the same item would inherit last task's count
+            changed |= current().wholeProtected.remove(item);
+            changed |= current().reserve.remove(item) != null;
+        }
+        if (changed) {
+            current().applyState();
+        }
     }
 
     public boolean isProtected(Item item) {
@@ -244,13 +396,16 @@ public class BotBehaviour {
         push();
     }
 
-    public void push() {
+    // hands back the new level, for a task that wants to keep writing into its own (see reserveProtectedItems). the callers
+    // that do not care just ignore it
+    public State push() {
         if (_states.isEmpty()) {
             _states.push(new State());
         } else {
             // Make copy and push that
             _states.push(new State(current()));
         }
+        return _states.peek();
     }
 
     public void push(State customState) {
@@ -273,6 +428,66 @@ public class BotBehaviour {
         return popped;
     }
 
+    // what the pathing side gets to see: every level's saving added up, then no lower than the biggest floor, minus any item
+    // some level protected without a number (that one is spoken for in full, and absent from the map means exactly that).
+    // the floor is max'd in and not added because the task reserves under it are pieces of the same need. pure so it can be
+    // tested without a game. sums stop at MAX_VALUE, which is "all of it" anyway
+    static <T> Map<T, Integer> sumReserves(Collection<Map<T, Integer>> levels, Collection<Map<T, Integer>> floors, Collection<Set<T>> wholeLevels) {
+        Map<T, Integer> out = new HashMap<>();
+        for (Map<T, Integer> level : levels) {
+            for (Map.Entry<T, Integer> entry : level.entrySet()) {
+                out.merge(entry.getKey(), entry.getValue(), (a, b) -> (int) Math.min((long) a + b, Integer.MAX_VALUE));
+            }
+        }
+        for (Map<T, Integer> floor : floors) {
+            for (Map.Entry<T, Integer> entry : floor.entrySet()) {
+                out.merge(entry.getKey(), entry.getValue(), Math::max);
+            }
+        }
+        for (Set<T> whole : wholeLevels) {
+            out.keySet().removeAll(whole);
+        }
+        return out;
+    }
+
+    static <T> Map<T, Integer> sumReserves(Collection<Map<T, Integer>> levels, Collection<Set<T>> wholeLevels) {
+        return sumReserves(levels, List.of(), wholeLevels);
+    }
+
+    private Map<Item, Integer> effectiveReserve() {
+        List<Map<Item, Integer>> levels = new ArrayList<>();
+        List<Map<Item, Integer>> floors = new ArrayList<>();
+        List<Set<Item>> wholeLevels = new ArrayList<>();
+        for (State state : _states) {
+            levels.add(state.reserve);
+            floors.add(state.floor);
+            wholeLevels.add(state.wholeProtected);
+        }
+        return sumReserves(levels, floors, wholeLevels);
+    }
+
+    // every clear() or addAll() on a watched collection throws the pathing snapshot away, so one that already says the
+    // right thing gets left alone. lists compare in order, sets don't care about order
+    static <T> void sync(Collection<T> target, Collection<T> want) {
+        if (target.size() == want.size()) {
+            boolean same = true;
+            if (target instanceof Set) {
+                same = target.containsAll(want);
+            } else {
+                Iterator<T> a = target.iterator();
+                Iterator<T> b = want.iterator();
+                while (same && a.hasNext()) {
+                    same = Objects.equals(a.next(), b.next());
+                }
+            }
+            if (same) {
+                return;
+            }
+        }
+        target.clear();
+        target.addAll(want);
+    }
+
     private State current() {
         if (_states.isEmpty()) {
             Debug.logError("STATE EMPTY, UNEMPTIED!");
@@ -281,10 +496,20 @@ public class BotBehaviour {
         return _states.peek();
     }
 
-    class State {
+    public class State {
         /// Baritone Params
         public double followOffsetDistance;
-        public List<Item> protectedItems = new ArrayList<>();
+        // insertion order, no repeats. isProtected is a contains and the pathing side asks a lot
+        public Set<Item> protectedItems = new LinkedHashSet<>();
+        // this level's own say about protectedItems, which a pushed state inherits whole from the one under it. these two
+        // are not inherited (the levels get added up instead, see effectiveReserve): the items this level protected with
+        // a count, and the ones it protected without
+        public Map<Item, Integer> reserve = new HashMap<>();
+        public Set<Item> wholeProtected = new HashSet<>();
+        // the least this level keeps spoken for whatever the levels above it reserve (max'd, not added), and the items the
+        // floor itself put in protectedItems, so letting go of it can tell them from the ones somebody else asked for
+        public Map<Item, Integer> floor = new HashMap<>();
+        public Set<Item> floorAdded = new HashSet<>();
         public boolean mineScanDroppedItems;
         public boolean swimThroughLava;
         public boolean allowDiagonalAscend;
@@ -297,6 +522,7 @@ public class BotBehaviour {
         public boolean forceFieldPlayers;
         public List<Predicate<Entity>> avoidDodgingProjectile = new ArrayList<>();
         public List<Predicate<Entity>> excludeFromForceField = new ArrayList<>();
+        public List<Predicate<Entity>> excludeFromMobDefense = new ArrayList<>();
         public List<Tuple<Slot, Predicate<ItemStack>>> conversionSlots = new ArrayList<>();
 
         // Extra Baritone Settings
@@ -335,6 +561,7 @@ public class BotBehaviour {
                 exclusivelyMineLogs = toCopy.exclusivelyMineLogs;
                 avoidDodgingProjectile.addAll(toCopy.avoidDodgingProjectile);
                 excludeFromForceField.addAll(toCopy.excludeFromForceField);
+                excludeFromMobDefense.addAll(toCopy.excludeFromMobDefense);
                 conversionSlots.addAll(toCopy.conversionSlots);
                 forceFieldPlayers = toCopy.forceFieldPlayers;
                 escapeLava = toCopy.escapeLava;
@@ -366,7 +593,7 @@ public class BotBehaviour {
                     blocksToAvoidBreaking = new HashSet<>(settings.getBlocksToAvoidBreaking());
                     toAvoidBreaking = new ArrayList<>(settings.getBreakAvoiders());
                     toAvoidPlacing = new ArrayList<>(settings.getPlaceAvoiders());
-                    protectedItems = new ArrayList<>(settings.getProtectedItems());
+                    protectedItems = new LinkedHashSet<>(settings.getProtectedItems());
                     synchronized (settings.getPropertiesMutex()) {
                         allowWalking = new ArrayList<>(settings.getForceWalkOnPredicates());
                         avoidWalkingThrough = new ArrayList<>(settings.getForceAvoidWalkThroughPredicates());
@@ -411,27 +638,20 @@ public class BotBehaviour {
             // Kinda jank but it works.
             synchronized (sa.getBreakMutex()) {
                 synchronized (sa.getPlaceMutex()) {
-                    sa.getBreakAvoiders().clear();
-                    sa.getBreakAvoiders().addAll(toAvoidBreaking);
-                    sa.getBlocksToAvoidBreaking().clear();
-                    sa.getBlocksToAvoidBreaking().addAll(blocksToAvoidBreaking);
-                    sa.getPlaceAvoiders().clear();
-                    sa.getPlaceAvoiders().addAll(toAvoidPlacing);
-                    sa.getProtectedItems().clear();
-                    sa.getProtectedItems().addAll(protectedItems);
+                    sync(sa.getBreakAvoiders(), toAvoidBreaking);
+                    sync(sa.getBlocksToAvoidBreaking(), blocksToAvoidBreaking);
+                    sync(sa.getPlaceAvoiders(), toAvoidPlacing);
+                    sync(sa.getProtectedItems(), protectedItems);
+                    sa.setProtectedReserve(effectiveReserve());
                     synchronized (sa.getPropertiesMutex()) {
-                        sa.getForceWalkOnPredicates().clear();
-                        sa.getForceWalkOnPredicates().addAll(allowWalking);
-                        sa.getForceAvoidWalkThroughPredicates().clear();
-                        sa.getForceAvoidWalkThroughPredicates().addAll(avoidWalkingThrough);
-                        sa.getForceUseToolPredicates().clear();
-                        sa.getForceUseToolPredicates().addAll(forceUseTools);
+                        sync(sa.getForceWalkOnPredicates(), allowWalking);
+                        sync(sa.getForceAvoidWalkThroughPredicates(), avoidWalkingThrough);
+                        sync(sa.getForceUseToolPredicates(), forceUseTools);
                     }
                 }
             }
             synchronized (sa.getGlobalHeuristicMutex()) {
-                sa.getGlobalHeuristics().clear();
-                sa.getGlobalHeuristics().addAll(globalHeuristics);
+                sync(sa.getGlobalHeuristics(), globalHeuristics);
             }
 
 

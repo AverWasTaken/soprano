@@ -1,6 +1,7 @@
 package adris.altoclef.tasks.speedrun.gamer.phases;
 
 import adris.altoclef.AltoClef;
+import adris.altoclef.tasks.speedrun.gamer.FoodFloor;
 import adris.altoclef.tasks.speedrun.gamer.GamerContext;
 import adris.altoclef.tasks.speedrun.gamer.GamerFacts;
 import adris.altoclef.tasks.speedrun.gamer.GamerPhase;
@@ -16,6 +17,8 @@ import java.util.Optional;
 // the rays live in RunState so a relog keeps them
 public class LocatePhase implements PhaseHandler {
     private LocateStrongholdTask task;
+    // the walk to the stronghold is the longest stretch with no food need of its own, the floor sends us hunting when the bag runs low
+    private final FoodFloor food = new FoodFloor();
 
     @Override
     public GamerPhase phase() {
@@ -29,6 +32,9 @@ public class LocatePhase implements PhaseHandler {
 
     @Override
     public String hudState() {
+        if (food.active()) {
+            return food.hud();
+        }
         return task == null ? null : task.step();
     }
 
@@ -45,10 +51,15 @@ public class LocatePhase implements PhaseHandler {
     @Override
     public void onEnter(AltoClef mod, GamerContext ctx) {
         task = null;
+        food.reset();
     }
 
     @Override
     public Task tick(AltoClef mod, GamerContext ctx) {
+        Task hunt = food.tick(ctx);
+        if (hunt != null) {
+            return hunt;
+        }
         if (task == null) {
             task = new LocateStrongholdTask(ctx);
         }

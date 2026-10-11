@@ -119,7 +119,7 @@ public class PickupFromContainerTask extends AbstractDoToStorageContainerTask {
 
     @Override
     public boolean isFinished(AltoClef mod) {
-        return Arrays.stream(_targets).allMatch(target -> mod.getItemStorage().getItemCountInventoryOnly(target.getMatches()) >= target.getTargetCount());
+        return StorageHelper.itemTargetsMetInventoryNoCursor(mod, _targets);
     }
 
     @Override
@@ -151,6 +151,9 @@ public class PickupFromContainerTask extends AbstractDoToStorageContainerTask {
                         mod.getSlotHandler().clickSlot(toPlace.get(), 0, ClickType.PICKUP);
                         return null;
                     }
+                    // a full bag and a held stack: grabbing from the chest now would just swap the cursor with it every tick
+                    setDebugState("Freeing inventory.");
+                    return _freeInventoryTask;
                 }
                 if (bestPotential.isPresent()) {
                     // Just pick it up, it's now ours.

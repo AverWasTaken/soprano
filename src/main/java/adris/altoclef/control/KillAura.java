@@ -3,6 +3,8 @@ package adris.altoclef.control;
 import baritone.Baritone;
 import adris.altoclef.AltoClef;
 import adris.altoclef.tasks.entity.AbstractKillEntityTask;
+import adris.altoclef.util.helpers.CombatRules;
+import adris.altoclef.util.helpers.EntityHelper;
 import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.StlHelper;
 import adris.altoclef.util.helpers.StorageHelper;
@@ -12,6 +14,7 @@ import adris.altoclef.util.time.TimerGame;
 import baritone.api.utils.input.Input;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.boss.wither.WitherBoss;
 import net.minecraft.world.entity.monster.Blaze;
 import net.minecraft.world.entity.monster.Creeper;
@@ -43,6 +46,9 @@ public class KillAura {
     boolean _shielding = false;
     private double _forceFieldRange = Double.POSITIVE_INFINITY;
     private Entity _forceHit = null;
+    // the combat policy's say, set every tick before tickEnd. defaults are the old behavior: shield whenever it fits
+    private boolean _kiting = false;
+    private boolean _shieldAllowed = true;
 
     public static void equipWeapon(AltoClef mod) {
         // same pick as the kill tasks use. this loop used to equip a sword per inventory sword, every call
@@ -64,9 +70,24 @@ public class KillAura {
         _forceFieldRange = range;
     }
 
+    // kiting is all feet and no hands: a swing turns our head and the path goes where the head points. the shield is
+    // for standing our ground, which is the only time it earns its sneak speed and its paused pathing
+    public void setPolicy(boolean kiting, boolean shieldAllowed) {
+        _kiting = kiting;
+        _shieldAllowed = shieldAllowed;
+    }
+
     public void tickEnd(AltoClef mod) {
+        if (_kiting) {
+            stopShielding(mod);
+            // ghast balls are still worth the turn
+            if (_forceHit != null) {
+                attack(mod, _forceHit, true);
+            }
+            return;
+        }
         Optional<Entity> entities = _targets.stream().min(StlHelper.compareValues(entity -> entity.distanceToSqr(mod.getPlayer())));
-        if (entities.isPresent() && mod.getPlayer().getHealth() >= 10 &&
+        if (entities.isPresent() && CombatRules.aboveFleeLine(mod.getPlayer().getHealth()) &&
                 !mod.getEntityTracker().entityFound(ThrownPotion.class) && !mod.getFoodChain().needsToEat() &&
                 (Double.isInfinite(_forceFieldRange) || entities.get().distanceToSqr(mod.getPlayer()) < _forceFieldRange * _forceFieldRange ||
                         entities.get().distanceToSqr(mod.getPlayer()) < 40) &&
@@ -74,7 +95,10 @@ public class KillAura {
                 !mod.getMLGBucketChain().isChorusFruiting()) {
             PlayerSlot offhandSlot = PlayerSlot.OFFHAND_SLOT;
             Item offhandItem = StorageHelper.getItemStackInSlot(offhandSlot).getItem();
-            if (entities.get().getClass() != Creeper.class && entities.get().getClass() != Hoglin.class &&
+            // (one zombie does not need the shield, and the shield stops us walking)
+            if (!_shieldAllowed) {
+                stopShielding(mod);
+            } else if (entities.get().getClass() != Creeper.class && entities.get().getClass() != Hoglin.class &&
                     entities.get().getClass() != Zoglin.class && entities.get().getClass() != Warden.class &&
                     entities.get().getClass() != WitherBoss.class
                     && (mod.getItemStorage().hasItem(Items.SHIELD) || mod.getItemStorage().hasItemInOffhand(Items.SHIELD))
@@ -143,12 +167,34 @@ public class KillAura {
 
             Optional<Entity> toHit = _targets.stream().min(StlHelper.compareValues(entity -> entity.distanceToSqr(mod.getPlayer())));
 
-            if (mod.getPlayer() == null || mod.getPlayer().getAttackStrengthScale(0) < 1) {
+            if (mod.getPlayer() == null) {
+                return;
+            }
+            // the weapon goes in hand before the gate asks about the cooldown. a swap resets it, so judging the gate on one item
+            // and swinging another was how a charge that was nearly full turned back into a fresh one
+            toHit.ifPresent(entity -> readyTheWeapon(mod, entity));
+            // a not yet full swing is a quiet tick, unless a crit hop is about to start or is in the air (never while
+            // baritone is walking, so travelling past a mob still doesn't turn our head every tick)
+            if (!mod.getControllerExtras().attackReady() && !mod.getControllerExtras().wantsCritTick()) {
                 return;
             }
 
-            toHit.ifPresent(entity -> attack(mod, entity, true));
+            toHit.ifPresent(entity -> attack(mod, entity, true, true));
         }
+    }
+
+    // the same guards attack() has before it equips, so a mob we would not swing at does not get a weapon swap either
+    private void readyTheWeapon(AltoClef mod, Entity entity) {
+        if (entity == null || entity instanceof LargeFireball) return;
+        if (entity instanceof Mob mob && EntityHelper.isCalmNeutral(mod, mob)) return;
+        if (inFieldRange(mod, entity)) {
+            equipWeapon(mod);
+        }
+    }
+
+    private boolean inFieldRange(AltoClef mod, Entity entity) {
+        return Double.isInfinite(_forceFieldRange) || entity.distanceToSqr(mod.getPlayer()) < _forceFieldRange * _forceFieldRange ||
+                entity.distanceToSqr(mod.getPlayer()) < 40;
     }
 
     private void performFastestAttack(AltoClef mod) {
@@ -166,14 +212,22 @@ public class KillAura {
     }
 
     private void attack(AltoClef mod, Entity entity, boolean equipSword) {
+        attack(mod, entity, equipSword, false);
+    }
+
+    // crit is only for the paced swings of the delayed aura. the crowd mode swings every 0.2 s whether the cooldown is back
+    // or not, and a machine that gets asked every fourth tick can't steer a jump
+    private void attack(AltoClef mod, Entity entity, boolean equipSword, boolean crit) {
         if (entity == null) return;
+        // second guard: a wolf nobody poked is not our enemy, whatever put it in the target list
+        if (entity instanceof Mob mob && EntityHelper.isCalmNeutral(mod, mob)) return;
         if (!(entity instanceof LargeFireball)) {
             LookHelper.lookAt(mod, entity.getEyePosition());
         }
-        if (Double.isInfinite(_forceFieldRange) || entity.distanceToSqr(mod.getPlayer()) < _forceFieldRange * _forceFieldRange ||
-                entity.distanceToSqr(mod.getPlayer()) < 40) {
+        if (inFieldRange(mod, entity)) {
             if (entity instanceof LargeFireball) {
                 mod.getControllerExtras().attack(entity);
+                return;
             }
             boolean canAttack;
             if (equipSword) {
@@ -184,7 +238,10 @@ public class KillAura {
                 canAttack = mod.getSlotHandler().forceDeequipHitTool();
             }
             if (canAttack) {
-                if (mod.getPlayer().onGround() || mod.getPlayer().getDeltaMovement().y() < 0 || mod.getPlayer().isInWater()) {
+                if (crit && !(entity instanceof LargeFireball)) {
+                    mod.getControllerExtras().melee(entity);
+                } else if (mod.getPlayer().onGround() || mod.getPlayer().getDeltaMovement().y() < 0 || mod.getPlayer().isInWater()
+                        || !mod.getControllerExtras().critInFlight()) {
                     mod.getControllerExtras().attack(entity);
                 }
             }

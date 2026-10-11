@@ -29,6 +29,7 @@ import baritone.api.utils.input.Input;
 import baritone.pathing.movement.MovementState.MovementTarget;
 import baritone.pathing.precompute.Ternary;
 import baritone.utils.BlockStateInterface;
+import baritone.utils.FallingColumn;
 import baritone.utils.ToolSet;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -55,6 +56,7 @@ import net.minecraft.world.level.pathfinder.PathComputationType;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.shapes.Shapes;
 
 import java.util.*;
 import java.util.stream.Stream;
@@ -157,7 +159,7 @@ public interface MovementHelper extends ActionCosts, Helper {
     // that block so its box clears the bank, and we're off it a tick later
     static boolean canFloatBoat(BlockStateInterface bsi, int x, int y, int z, int landDx, int landDz) {
         BlockState here = bsi.get0(x, y, z);
-        if (!isWater(here) || isWater(bsi.get0(x, y + 1, z))) {
+        if (!isRealWater(here) || isRealWater(bsi.get0(x, y + 1, z))) {
             return false;
         }
         if (isBlockNormalCube(bsi.get0(x, y + 2, z))) {
@@ -190,7 +192,13 @@ public interface MovementHelper extends ActionCosts, Helper {
 
     // nothing the boat's box would bump: water, air, and the flowers-and-grass kind of block
     static boolean boatCanOverlap(BlockState state) {
-        return isWater(state) || fullyPassableBlockState(state) == YES;
+        return isRealWater(state) || fullyPassableBlockState(state) == YES;
+    }
+
+    // isWater says yes to lava while altoclef's swim through lava is on, and a boat on lava is a burning boat
+    static boolean isRealWater(BlockState state) {
+        Fluid f = state.getFluidState().getType();
+        return f == Fluids.WATER || f == Fluids.FLOWING_WATER;
     }
 
     static boolean canWalkThrough(BlockStateInterface bsi, int x, int y, int z) {
@@ -724,6 +732,37 @@ public interface MovementHelper extends ActionCosts, Helper {
             || block == Blocks.TWISTING_VINES_PLANT;
     }
 
+    // vanilla digs 5x slower with your eyes in water and another 5x slower off the ground. getMiningDurationTicks is
+    // cached per block and has no idea where we stand, so this is applied per movement on top of it, at the square
+    // the player is in while breaking. only ever inflates, so it can't strand the planner
+    static double waterBreakMultiplier(CalculationContext context, int srcX, int srcY, int srcZ) {
+        double setting = context.waterBreakCostMultiplier;
+        if (setting <= 1) {
+            return 1;
+        }
+        // it's the eyes (the block above our feet) that have to be under for the 5x, not the feet. a dry square with water
+        // over our head is just as slow. two lookups and out, which is every move that isn't in or under water
+        boolean feetWet = isWater(context.get(srcX, srcY, srcZ));
+        boolean eyesWet = isWater(context.get(srcX, srcY + 1, srcZ));
+        if (!feetWet && !eyesWet) {
+            return 1;
+        }
+        // wading with your head dry is not slowed down, floating is
+        // canWalkOn says yes to water with more water on top (baritone calls that wading), but vanilla isn't on the ground there
+        BlockState below = context.get(srcX, srcY - 1, srcZ);
+        boolean floating = isWater(below) || !canWalkOn(context, srcX, srcY - 1, srcZ, below);
+        double mult = eyesWet ? setting : 1;
+        return floating ? mult * 5 : mult;
+    }
+
+    // hardness is the break part of a movement's cost. zero (nothing to break) and COST_INF are left alone
+    static double waterBreakCost(CalculationContext context, int srcX, int srcY, int srcZ, double hardness) {
+        if (hardness <= 0 || hardness >= COST_INF) {
+            return hardness;
+        }
+        return hardness * waterBreakMultiplier(context, srcX, srcY, srcZ);
+    }
+
     static double getMiningDurationTicks(CalculationContext context, int x, int y, int z, boolean includeFalling) {
         return getMiningDurationTicks(context, x, y, z, context.get(x, y, z), includeFalling);
     }
@@ -768,8 +807,11 @@ public interface MovementHelper extends ActionCosts, Helper {
             result *= mult;
             if (includeFalling) {
                 BlockState above = context.get(x, y + 1, z);
-                if (above.getBlock() instanceof FallingBlock) {
-                    result += getMiningDurationTicks(context, x, y + 1, z, above, true);
+                if (FallingColumn.isFalling(above)) {
+                    // the whole stack comes down the hole we just made, so it gets mined too, one block at a time. and
+                    // nobody swings at a block that is still on its way down, so every block waits its turn to land
+                    double stack = getMiningDurationTicks(context, x, y + 1, z, above, true);
+                    result += stack > 0 && stack < COST_INF ? stack + FallingColumn.LAND_WAIT_TICKS : stack;
                 }
             }
             return result;
@@ -804,7 +846,8 @@ public interface MovementHelper extends ActionCosts, Helper {
             return; // paused means hands off the hotbar
         }
         if (Baritone.settings().autoTool.value && !Baritone.settings().assumeExternalAutoTool.value) {
-            ctx.player().getInventory().selected = ts.getBestSlot(b.getBlock(), preferSilkTouch);
+            // the state, not the block: the Block overload rebuilds a default state and loses what a forced tool predicate looks at
+            ctx.player().getInventory().selected = ts.getBestSlot(b, preferSilkTouch, false);
         }
     }
 
@@ -958,7 +1001,60 @@ public interface MovementHelper extends ActionCosts, Helper {
         return true;
     }
 
+    // every movement wants this one: the block is for the path in front of us, so protected throwaways are fair game
     static PlaceResult attemptToPlaceABlock(MovementState state, IBaritone baritone, BlockPos placeAt, boolean preferDown, boolean wouldSneak) {
+        return attemptToPlaceABlock(state, baritone, placeAt, preferDown, wouldSneak, true);
+    }
+
+    // once per 5 seconds (NoThrowawayLogGate), at normal log level: the next run's logs say why we had nothing to place
+    // instead of a silent no-op. the guard used to live on the movement, and every replan makes fresh movements
+    static void logNoThrowaway(MovementState state, IBaritone baritone, BlockPos placeAt) {
+        if (!NoThrowawayLogGate.due(System.currentTimeMillis())) {
+            return;
+        }
+        String why = ((Baritone) baritone).getInventoryBehavior().whyNoThrowaway(true, placeAt.getX(), placeAt.getY(), placeAt.getZ());
+        Helper.HELPER.logDirect("can't place a block at " + placeAt.getX() + " " + placeAt.getY() + " " + placeAt.getZ() + " mid movement: " + why);
+    }
+
+    // nothing in the bag we're allowed to put there: the movement can't finish, and must not say it's about to place
+    private static PlaceResult noThrowaway(MovementState state, IBaritone baritone, BlockPos placeAt, boolean allowProtected) {
+        Helper.HELPER.logDebug("bb pls get me some blocks. dirt, netherrack, cobble");
+        if (allowProtected) { // backfill shrugging at an empty bag isn't news
+            logNoThrowaway(state, baritone, placeAt);
+        }
+        state.setStatus(MovementStatus.UNREACHABLE);
+        return PlaceResult.NO_OPTION;
+    }
+
+    // would the server say no because somebody is standing in the cell. our own body is left out (the movements already
+    // back off for that, see ascend), it's the zombie that wandered into the bridge we're after
+    static boolean entityInTheWay(IPlayerContext ctx, BlockPos pos) {
+        return !ctx.world().isUnobstructed(ctx.player(), Shapes.block().move(pos.getX(), pos.getY(), pos.getZ()));
+    }
+
+    // the real one. a mob in the cell means the click goes out and nothing happens, forever, so a ready or attempting
+    // answer turns into BLOCKED (hold still, no click) for a while and then into UNREACHABLE so the planner goes around
+    static PlaceResult attemptToPlaceABlock(MovementState state, IBaritone baritone, BlockPos placeAt, boolean preferDown, boolean wouldSneak, boolean allowProtected) {
+        PlaceResult result = findPlace(state, baritone, placeAt, preferDown, wouldSneak, allowProtected);
+        if (result != PlaceResult.READY_TO_PLACE && result != PlaceResult.ATTEMPTING) {
+            return result;
+        }
+        switch (state.placeBlocked(entityInTheWay(baritone.getPlayerContext(), placeAt))) {
+            case CLEAR:
+                return result;
+            case WAIT:
+                if (wouldSneak) {
+                    state.setInput(Input.SNEAK, true);
+                }
+                return PlaceResult.BLOCKED;
+            default:
+                Helper.HELPER.logDebug("something stood in the way of the block at " + placeAt.getX() + " " + placeAt.getY() + " " + placeAt.getZ() + " for " + PlaceWait.MOVEMENT_PATIENCE + " ticks, giving up on this one");
+                state.setStatus(MovementStatus.UNREACHABLE);
+                return PlaceResult.NO_OPTION;
+        }
+    }
+
+    private static PlaceResult findPlace(MovementState state, IBaritone baritone, BlockPos placeAt, boolean preferDown, boolean wouldSneak, boolean allowProtected) {
         IPlayerContext ctx = baritone.getPlayerContext();
         Optional<Rotation> direct = RotationUtils.reachable(ctx, placeAt, wouldSneak); // we assume that if there is a block there, it must be replacable
         boolean found = false;
@@ -969,10 +1065,8 @@ public interface MovementHelper extends ActionCosts, Helper {
         for (int i = 0; i < 5; i++) {
             BlockPos against1 = placeAt.relative(HORIZONTALS_BUT_ALSO_DOWN_____SO_EVERY_DIRECTION_EXCEPT_UP[i]);
             if (MovementHelper.canPlaceAgainst(ctx, against1)) {
-                if (!((Baritone) baritone).getInventoryBehavior().selectThrowawayForLocation(false, placeAt.getX(), placeAt.getY(), placeAt.getZ())) { // get ready to place a throwaway block
-                    Helper.HELPER.logDebug("bb pls get me some blocks. dirt, netherrack, cobble");
-                    state.setStatus(MovementStatus.UNREACHABLE);
-                    return PlaceResult.NO_OPTION;
+                if (!((Baritone) baritone).getInventoryBehavior().selectThrowawayForLocation(false, placeAt.getX(), placeAt.getY(), placeAt.getZ(), allowProtected)) { // get ready to place a throwaway block
+                    return noThrowaway(state, baritone, placeAt, allowProtected);
                 }
                 double faceX = (placeAt.getX() + against1.getX() + 1.0D) * 0.5D;
                 double faceY = (placeAt.getY() + against1.getY() + 0.5D) * 0.5D;
@@ -997,25 +1091,32 @@ public interface MovementHelper extends ActionCosts, Helper {
             Direction side = ((BlockHitResult) ctx.objectMouseOver()).getDirection();
             // only way for selectedBlock.equals(placeAt) to be true is if it's replaceable
             if (selectedBlock.equals(placeAt) || (MovementHelper.canPlaceAgainst(ctx, selectedBlock) && selectedBlock.relative(side).equals(placeAt))) {
+                // the answer used to be dropped on the floor, so a bag with nothing to spare still said ready and the click went
+                // out with whatever was in hand (the cobble the recipe was saving, or a pickaxe)
+                if (!((Baritone) baritone).getInventoryBehavior().selectThrowawayForLocation(true, placeAt.getX(), placeAt.getY(), placeAt.getZ(), allowProtected)) {
+                    return noThrowaway(state, baritone, placeAt, allowProtected);
+                }
                 if (wouldSneak) {
                     state.setInput(Input.SNEAK, true);
                 }
-                ((Baritone) baritone).getInventoryBehavior().selectThrowawayForLocation(true, placeAt.getX(), placeAt.getY(), placeAt.getZ());
                 return PlaceResult.READY_TO_PLACE;
             }
         }
         if (found) {
+            if (!((Baritone) baritone).getInventoryBehavior().selectThrowawayForLocation(true, placeAt.getX(), placeAt.getY(), placeAt.getZ(), allowProtected)) {
+                return noThrowaway(state, baritone, placeAt, allowProtected);
+            }
             if (wouldSneak) {
                 state.setInput(Input.SNEAK, true);
             }
-            ((Baritone) baritone).getInventoryBehavior().selectThrowawayForLocation(true, placeAt.getX(), placeAt.getY(), placeAt.getZ());
             return PlaceResult.ATTEMPTING;
         }
         return PlaceResult.NO_OPTION;
     }
 
     enum PlaceResult {
-        READY_TO_PLACE, ATTEMPTING, NO_OPTION;
+        // BLOCKED: a mob is in the cell, hold still and do not click
+        READY_TO_PLACE, ATTEMPTING, NO_OPTION, BLOCKED;
     }
 
     static boolean isTransparent(Block b) {

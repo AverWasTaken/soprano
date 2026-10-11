@@ -59,7 +59,8 @@ public class UserTaskChain extends SingleTaskChain {
     }
 
     public void cancel(AltoClef mod) {
-        if (_mainTask != null && _mainTask.isActive()) {
+        // installed but not ticked yet is not active, and that one has to be cancellable too
+        if (_mainTask != null) {
             stop(mod);
             onTaskFinish(mod);
         }
@@ -114,6 +115,11 @@ public class UserTaskChain extends SingleTaskChain {
         }
         double seconds = _taskStopwatch.time();
         Task oldTask = _mainTask;
+        // same as the finished branch in SingleTaskChain. cancel and the runner shutdown stop the task first, so there
+        // it has nothing left to do, it is cheap insurance for the paths that drop the root without a stop
+        if (oldTask != null) {
+            oldTask.letGoOfKeys(mod);
+        }
         _mainTask = null;
         if (_currentOnFinish != null) {
             //noinspection unchecked

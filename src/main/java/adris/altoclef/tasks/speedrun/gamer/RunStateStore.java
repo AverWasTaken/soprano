@@ -58,6 +58,11 @@ public final class RunStateStore {
             return fresh(fingerprint);
         }
         if (!fingerprint.equals(parsed.fingerprint)) {
+            if (isSharedFallback(file)) {
+                // every world without a cache folder writes here, so the next autosave would eat that world's run
+                moveAside(file, "it belongs to another world (\"" + parsed.fingerprint + "\" vs \"" + fingerprint + "\")");
+                return fresh(fingerprint);
+            }
             Debug.logInternal("gamer: " + file + " belongs to another world (\"" + parsed.fingerprint + "\" vs \"" + fingerprint + "\"), ignoring it");
             return fresh(fingerprint);
         }
@@ -131,6 +136,36 @@ public final class RunStateStore {
         // a file from before the table list existed: nothing placed, so nothing to pick back up
         if (s.placedTables == null) {
             s.placedTables = new ArrayList<>();
+        }
+        if (s.placedFurnaces == null) {
+            s.placedFurnaces = new ArrayList<>();
+        }
+        // same for smokers: absent key is a fresh list from the field initializer, an explicit null is a hand edit
+        if (s.placedSmokers == null) {
+            s.placedSmokers = new ArrayList<>();
+        }
+        // a save from before stations remembered their dimension: all overworld (absent key keeps the field's empty map)
+        if (s.placedDimension == null) {
+            s.placedDimension = new java.util.HashMap<>();
+        }
+        // files from before the village loot: nothing visited yet, nothing of ours to tell apart
+        if (s.villageChestsTried == null) {
+            s.villageChestsTried = new ArrayList<>();
+        }
+        if (s.placedJobBlocks == null) {
+            s.placedJobBlocks = new ArrayList<>();
+        }
+        if (s.villageBedsTried == null) {
+            s.villageBedsTried = new ArrayList<>();
+        }
+        // a file from before smelting ran in the background: nothing cooking
+        if (s.furnaceJobs == null) {
+            s.furnaceJobs = new ArrayList<>();
+        }
+        s.furnaceJobs.removeIf(job -> job == null || job.pos == null);
+        // a trip with no pile to go to (a hand edit) is not a trip
+        if (s.netherTrip != null && s.netherTrip.pile == null) {
+            s.netherTrip = null;
         }
         return s;
     }

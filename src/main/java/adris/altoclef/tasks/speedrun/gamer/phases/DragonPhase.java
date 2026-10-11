@@ -200,6 +200,11 @@ public class DragonPhase implements PhaseHandler {
         _drops.load(state.endDrops);
         _drops.restartWait(seconds(ctx));
         _strat = null;
+        // children are cached per item and remember how the last visit ended (a finished pickup stays finished), a death
+        // and a second trip would otherwise reuse the corpses
+        _pickups.clear();
+        _equip.clear();
+        _runAway = null;
         _onIsland = false;
         _pickupSeconds = 0;
         _blockSeconds = 0;
@@ -268,6 +273,9 @@ public class DragonPhase implements PhaseHandler {
                 return _runAway;
             }
         }
+        // out of the cloud: drop the task, its goal is frozen on the first cloud (CustomBaritoneGoalTask caches it), so the next
+        // cloud needs a fresh one or we would "run away" from a spot that is long gone
+        _runAway = null;
         return null;
     }
 
@@ -392,7 +400,7 @@ public class DragonPhase implements PhaseHandler {
         boolean perched = dragonPerched(mod);
         double pool = mod.getPlayer().getHealth() + mod.getPlayer().getAbsorptionAmount();
         DragonStrat next = DragonStrat.choose(_strat, facts.count(ItemHelper.BED), facts.armorPoints(), perched,
-                EndRules.endDeaths(ctx.state()), ctx.cfg().end, pool);
+                EndRules.endDeaths(ctx.state()), ctx.cfg().end, pool, _bedTask.healStalled());
         if (next != _strat) {
             ctx.log(next == DragonStrat.BEDS ? "fighting the dragon with beds" : "fighting the dragon with the sword");
             ctx.progress("strat " + next);

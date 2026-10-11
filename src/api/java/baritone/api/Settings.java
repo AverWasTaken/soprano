@@ -136,6 +136,17 @@ public final class Settings {
     public final Setting<Double> blockBreakAdditionalPenalty = new Setting<>(2D);
 
     /**
+     * How much slower breaking blocks is while standing in water, as far as the path cost is concerned.
+     * Vanilla mines 5x slower with your eyes in water (no aqua affinity) and another 5x slower when you are
+     * not on the ground, so treading water is up to 25x. Movements that break something while the player
+     * stands in water pay this much (times 5 again if there is nothing solid under the feet) for the break
+     * part of their cost, so the pathfinder would rather get out of the water first and mine on land.
+     * <p>
+     * It only ever makes things more expensive, it never makes a move impossible. Set it to 1 to turn it off.
+     */
+    public final Setting<Double> waterBreakCostMultiplier = new Setting<>(5D);
+
+    /**
      * Additional penalty for hitting the space bar (ascend, pillar, or parkour) because it uses hunger
      */
     public final Setting<Double> jumpPenalty = new Setting<>(2D);
@@ -491,7 +502,7 @@ public final class Settings {
      * Look ahead along clear, supported straight runs instead of steering at each block center.
      * Diagonals that require edging around an obstacle receive an extra cost; open diagonals keep
      * their normal cost. Turns, terrain changes, and block interactions retain precise steering.
-     * Part of {@link #experimentalMovement}.
+     * Part of {@link #fastMode}.
      */
     public final Setting<Boolean> preferFasterPathing = new Setting<>(false);
 
@@ -502,12 +513,12 @@ public final class Settings {
      * Jumps, climbs, block interactions, and hazardous or slippery terrain retain their normal movements,
      * and an eligible sprint jump runway wins over a shortcut.
      * Rechecks the route each tick and replans if it becomes obstructed.
-     * Part of {@link #experimentalMovement}.
+     * Part of {@link #fastMode}.
      */
     public final Setting<Boolean> allowGroundShortcuts = new Setting<>(false);
 
     /**
-     * Move like a speedrunner instead of a robot: take the line a fast player would, accept some risk, use the flashy movement.
+     * Fast mode. Move like a speedrunner instead of a robot: take the line a fast player would, accept some risk, use the flashy movement.
      * <p>
      * While this is on, these settings behave as if they were on, whatever their own value (the settings themselves
      * are left alone, so turning this off gives you your old choices back):
@@ -518,33 +529,33 @@ public final class Settings {
      * <p>
      * It also scales the cost of parkour, neo, climb and momentum jumps by {@link #experimentalJumpBias}, caps the cost of
      * placing a block at {@link #experimentalBlockPlacementPenalty} (so a quick pillar or short bridge can beat a
-     * long walk around), and allows falls that hurt, see {@link #experimentalMinHealth} and {@link #fallDamageCost}.
+     * long walk around), and allows falls that hurt, see {@link #fastModeMinHealth} and {@link #fallDamageCost}.
      */
-    public final Setting<Boolean> experimentalMovement = new Setting<>(false);
+    public final Setting<Boolean> fastMode = new Setting<>(false);
 
     /**
-     * Multiplier on the cost of parkour, neo, climb and momentum jumps while {@link #experimentalMovement} is on.
+     * Multiplier on the cost of parkour, neo, climb and momentum jumps while {@link #fastMode} is on.
      * Below 1 makes the jumpy route look a bit cheaper than the equivalent walk, which is the whole fun of it.
      */
     public final Setting<Double> experimentalJumpBias = new Setting<>(0.9D);
 
     /**
-     * While {@link #experimentalMovement} is on, the block placement penalty is the lower of
+     * While {@link #fastMode} is on, the block placement penalty is the lower of
      * {@link #blockPlacementPenalty} and this. Placing a block really takes about a tick, so this is still pessimistic,
      * just not so much that a two block bridge loses to a twenty block walk.
      */
     public final Setting<Double> experimentalBlockPlacementPenalty = new Setting<>(5D);
 
     /**
-     * While {@link #experimentalMovement} is on, Baritone may take a fall that hurts when there is no water bucket or
+     * While {@link #fastMode} is on, Baritone may take a fall that hurts when there is no water bucket or
      * clutch to make it free, but never one that would leave you with less health (plus absorption) than this.
      * Measured in half hearts, so 12 is six hearts. Damage is estimated as vanilla fall damage before armor
      * and feather falling, which is conservative.
      */
-    public final Setting<Double> experimentalMinHealth = new Setting<>(12D);
+    public final Setting<Double> fastModeMinHealth = new Setting<>(12D);
 
     /**
-     * Cost, in ticks, of every half heart a damaging fall takes off you, while {@link #experimentalMovement} is on.
+     * Cost, in ticks, of every half heart a damaging fall takes off you, while {@link #fastMode} is on.
      * Higher makes Baritone walk around a drop more often, lower makes it jump off things.
      */
     public final Setting<Double> fallDamageCost = new Setting<>(20D);
@@ -887,7 +898,7 @@ public final class Settings {
      * <p>
      * Only does anything when {@link #renderPathRibbon} is on.
      */
-    public final Setting<Boolean> renderSearchSmooth = new Setting<>(false);
+    public final Setting<Boolean> renderSearchSmooth = new Setting<>(true);
 
     /**
      * Let a faint shimmer drift down the path, in the direction of travel.
@@ -1420,6 +1431,15 @@ public final class Settings {
     public final Setting<Boolean> cancelOnGoalInvalidation = new Setting<>(true);
 
     /**
+     * When a task hands over to another one that asks for the same goal within half a second, keep walking the path that
+     * was just cancelled instead of standing still while a new one is calculated.
+     * <p>
+     * Only cancels from movement tasks starting and stopping are kept. A user cancel, a dimension change, a death or the
+     * player ending up off the path always throw it away.
+     */
+    public final Setting<Boolean> keepPathOnSameGoal = new Setting<>(true);
+
+    /**
      * The "axis" command (aka GoalAxis) will go to a axis, or diagonal axis, at this Y level.
      */
     public final Setting<Integer> axisHeight = new Setting<>(120);
@@ -1830,6 +1850,37 @@ public final class Settings {
      */
     public final Setting<Boolean> allowWalkOnMagmaBlocks = new Setting<>(false);
 
+    /**
+     * Count the bot's work as player activity for vanilla's AFK frame limiter. Since 1.21.2 the game drops to 30 fps
+     * after a minute without keyboard or mouse input (and 10 fps after ten minutes) when the inactivity limit option
+     * is on AFK, and the bot never touches the real keyboard or mouse, so the frame rate would tank while you watch it
+     * work. With this on, any tick where baritone is pathing, a process is in control, or AltoClef is running a task
+     * counts as input. Does nothing while the bot is idle, so the AFK limiter still kicks in then, and your options
+     * are never changed. Takes effect right away.
+     */
+    public final Setting<Boolean> keepFpsWhileBotting = new Setting<>(true);
+
+    /**
+     * Whether the gui key opens the click gui. The {@code #gui} command always works.
+     */
+    public final Setting<Boolean> guiKeyEnabled = new Setting<>(true);
+
+    /**
+     * GLFW key code that opens the click gui. Defaults to right shift (344). Set to -1 to unbind so only {@code #gui}
+     * opens it. The gui's own Settings tab has a key capture control for this.
+     */
+    public final Setting<Integer> guiKey = new Setting<>(344);
+
+    /**
+     * Use the dark appearance in the click gui. The sidebar's Light and Dark buttons save this preference.
+     */
+    public final Setting<Boolean> guiDarkMode = new Setting<>(true);
+
+    /**
+     * Animate click gui transitions and scrolling. Disable to reduce motion and make changes immediate.
+     */
+    public final Setting<Boolean> guiAnimations = new Setting<>(true);
+
     // everything below belongs to the built in AltoClef, see adris.altoclef. all of it is prefixed alto so that
     // #set alto<tab> finds it (same trick as the elytra settings). it only does anything while AltoClef has a task
 
@@ -1872,6 +1923,13 @@ public final class Settings {
      * a bug report. Needs {@link #altoShowTaskChains}.
      */
     public final Setting<Boolean> altoHudDetailed = new Setting<>(false);
+
+    /**
+     * The #gamer card on the right of the screen while a run is going: the phase and its clock against the budget,
+     * what the bot is doing, the kit it is collecting with the game's own item icons, the furnace batches, and hp and
+     * food. Sized by {@link #altoHudScale} like the task list. The task list keeps the phase as its one line.
+     */
+    public final Setting<Boolean> altoGamerHud = new Setting<>(true);
 
     /**
      * Hide all of AltoClef's warning logs. Not recommended, it makes debugging harder, but if you know what you are
@@ -1969,10 +2027,36 @@ public final class Settings {
     public final Setting<Boolean> altoDodgeProjectiles = new Setting<>(true);
 
     /**
-     * Skeletons and big groups of mobs are a pain. With this on the bot may kill or run away from mobs that stay too
-     * close for too long. Needs {@link #altoMobDefense}.
+     * Skeletons and big groups of mobs are a pain. With this on the bot may fight or run from mobs that really need
+     * dealing with, see {@link #altoCommitCombat} for what that means. Off, the bot never commits to a fight or a run,
+     * mobs are scenery (the safety stays: fire, falls, the arrow shield and the force field swinging at what is hitting
+     * it). Needs {@link #altoMobDefense}.
      */
     public final Setting<Boolean> altoKillOrAvoidAnnoyingHostiles = new Setting<>(true);
+
+    /**
+     * Mobs are ignored by default, in every dimension: the bot keeps walking its path past a crowd of zombies, a lit
+     * creeper, or a skeleton shooting at it from across the field (walking spoils the aim). It only does something about
+     * a mob that hit it while in contact (a fight), or real danger: 8 hp or less with an angry mob within 8 blocks, 10 hp
+     * or less with a heavy hitter like a wither skeleton, hoglin or vindicator that hit it or is in contact (one just
+     * standing around is walked past), or the warden or the wither within 8 (or a sonic boom from up to 15) (a run). A fight
+     * holds until its target is dead or has been more than 6 blocks away and quiet for three seconds, and turns into a
+     * run on the danger rules. A run holds until the bot is 24 blocks from where it started with nothing hostile within
+     * 12, or 25 seconds, whichever comes first. A run that gets nowhere (three seconds with a mob on top of the bot, six
+     * with one within eight blocks) becomes a fight, and one that gets nowhere with nothing near is over after five. A few
+     * things are left to the tasks that own them: ghasts, the dragon, blazes while the rod task is working them, a golem
+     * being fought from its pillar. Off, the bot never commits to anything, which is the same as turning off
+     * {@link #altoKillOrAvoidAnnoyingHostiles}. Needs {@link #altoKillOrAvoidAnnoyingHostiles}.
+     */
+    public final Setting<Boolean> altoCommitCombat = new Setting<>(true);
+
+    /**
+     * {@code #gamer} only, the IRON phase. One chooser decides what the bot is doing (a furnace trip, a station pickup, a
+     * village chest, a coal detour, the climb out of the mine, the kit) and an activity that started holds until it is
+     * done, instead of the side jobs and the furnace trips each cutting in on every tick. Turn it off to get the older
+     * fixed order back for comparison. Every change of activity goes to the log as an {@code activity:} line.
+     */
+    public final Setting<Boolean> altoIronArbiter = new Setting<>(true);
 
     /**
      * Avoid going underwater when pathing is not giving the bot movement instructions. Turn it off if you want the bot
@@ -2094,9 +2178,48 @@ public final class Settings {
     ));
 
     /**
-     * Use a blast furnace for smelting when the item can go in one.
+     * Craft or place a blast furnace of our own for smelting ores when that is worth it (five or more to smelt, plus the
+     * five iron and the smooth stone it costs). This is only about making one: a blast furnace that is already standing
+     * nearby is {@link #altoUseNearbyBlastFurnace}'s business, and that works with this off. #gamer turns this off for
+     * the run because the five iron is better spent on armor.
      */
     public final Setting<Boolean> altoUseBlastFurnace = new Setting<>(true);
+
+    /**
+     * Smelt raw iron and gold in a blast furnace that is already standing nearby (a village armorer has one) instead of
+     * a plain furnace, since a blast furnace smelts ores twice as fast. It never crafts or places one, that is
+     * {@link #altoUseBlastFurnace}. Nearby means within {@link #altoNearbyBlastFurnaceRange} blocks of us when we start
+     * smelting a batch, and it sticks with whatever it picked until that batch is done.
+     */
+    public final Setting<Boolean> altoUseNearbyBlastFurnace = new Setting<>(true);
+
+    /**
+     * How far away, in blocks, a blast furnace can be and still count as nearby for
+     * {@link #altoUseNearbyBlastFurnace}.
+     */
+    public final Setting<Double> altoNearbyBlastFurnaceRange = new Setting<>(48.0);
+
+    /**
+     * When smelting iron ingots, put everything in the furnace, close it and finish instead of standing there for the
+     * whole cook. The smelt is then recorded as a furnace job that something else has to come back for, so this is off
+     * for a plain {@code @get iron_ingot} (nobody would collect) and #gamer turns it on only while its iron phase can.
+     */
+    public final Setting<Boolean> altoAsyncSmelting = new Setting<>(false);
+
+    /**
+     * Same as {@link #altoAsyncSmelting} but for cooking food in a smoker or furnace. Only does anything while
+     * {@link #altoAsyncSmelting} is on as well (#gamer turns that on for the phases that can come back for the food), so
+     * this is the switch for "iron cooks in the background but I want the bot to stand there for the meat".
+     */
+    public final Setting<Boolean> altoAsyncCooking = new Setting<>(true);
+
+    /**
+     * #gamer's iron phase makes its iron pickaxe as soon as it holds three raw iron instead of mining the whole kit's
+     * worth with a stone one: those three are smelted where the bot stands, it keeps mining nearby while they cook, then
+     * comes back and crafts the pickaxe. needs {@link #altoAsyncSmelting} for the "mine while it cooks" part, without it
+     * the three are smelted standing at the furnace and the pickaxe is crafted right after.
+     */
+    public final Setting<Boolean> altoEarlyIronPick = new Setting<>(true);
 
     /**
      * Only use the items in {@link #altoSupportedFuels} as smelting fuel. Careful with turning this off: every burnable
@@ -2124,6 +2247,23 @@ public final class Settings {
     public final Setting<List<BlockRange>> altoAreasToProtect = new Setting<>(List.of());
 
     /**
+     * Build the #gamer nether portal on a lava pool with a throwaway mold instead of casting obsidian one block at a
+     * time. Needs a lava row at least four wide with a shore along it and room to scoop from. When it cannot find one,
+     * or anything goes wrong with it, the gamer falls back to the old per block cast, so this only ever makes the portal
+     * faster. Turn it off to always cast.
+     */
+    public final Setting<Boolean> altoLavaPoolPortal = new Setting<>(true);
+
+    /**
+     * Jump for critical hits in melee. When a mob is in reach and the weapon is a few ticks from full strength the bot
+     * hops in place, drops sprint, and swings once it is coming down, which is a crit for 1.5x damage. It never hops
+     * with a shield up (kiting and standing your ground), while eating, in water or lava, on a ladder, with a ceiling
+     * right over its head, next to a ledge or lava, while baritone is walking a path, or when a plain hit already kills.
+     * Off means every swing is a plain one the moment the cooldown is full.
+     */
+    public final Setting<Boolean> altoJumpCrits = new Setting<>(true);
+
+    /**
      * A map of lowercase setting field names to their respective setting
      */
     public final Map<String, Setting<?>> byLowerName;
@@ -2132,6 +2272,29 @@ public final class Settings {
      * A list of all settings
      */
     public final List<Setting<?>> allSettings;
+
+    // old lowercase name -> the lowercase name it became. only findByLowerName reads this, so the old names stay out of
+    // byLowerName and allSettings, which means tab complete, #set list and the settings file never show them
+    private static final Map<String, String> RENAMED = Map.of(
+            "experimentalmovement", "fastmode",
+            "experimentalminhealth", "fastmodeminhealth"
+    );
+
+    /**
+     * Looks a setting up by its lowercase name. Unlike {@link #byLowerName} this also accepts the old name of a setting
+     * that was renamed, so settings files and commands from before the rename keep working.
+     *
+     * @param lowerName the lowercase name of a setting, current or old
+     * @return the setting, or {@code null} if there is no setting by that name
+     */
+    public Setting<?> findByLowerName(String lowerName) {
+        Setting<?> setting = byLowerName.get(lowerName);
+        if (setting == null) {
+            String renamed = RENAMED.get(lowerName);
+            setting = renamed == null ? null : byLowerName.get(renamed);
+        }
+        return setting;
+    }
 
     public final Map<Setting<?>, Type> settingTypes;
 
@@ -2221,7 +2384,8 @@ public final class Settings {
                     String name = field.getName();
                     setting.name = name;
                     setting.javaOnly = field.isAnnotationPresent(JavaOnly.class);
-                    name = name.toLowerCase();
+                    // not the default locale, turkish makes a dotless i out of the I in buildIgnoreBlocks and nothing finds it
+                    name = name.toLowerCase(Locale.ROOT);
                     if (tmpByName.containsKey(name)) {
                         throw new IllegalStateException("Duplicate setting name");
                     }

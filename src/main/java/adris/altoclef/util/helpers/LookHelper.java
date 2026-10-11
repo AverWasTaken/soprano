@@ -159,11 +159,19 @@ public interface LookHelper {
      * @return true if there is a clear line of sight, false otherwise.
      */
     static boolean cleanLineOfSight(Entity entity, Vec3 start, Vec3 end, double maxRange) {
+        // the ray gets clipped to maxRange, so a far target with open air in front of it would read as a miss
+        if (beyondRange(start, end, maxRange)) return false;
         // Perform a raycast between the start and end points with the given max range
         HitResult result = raycast(entity, start, end, maxRange);
 
         // Check the type of the hit result to determine if there is a clear line of sight
         return result.getType() == HitResult.Type.MISS;
+    }
+
+    // the epsilon is for callers that aim exactly maxRange away (end = start + dir * maxRange), float noise must not flip them
+    static boolean beyondRange(Vec3 start, Vec3 end, double maxRange) {
+        double limit = maxRange + 1.0E-4;
+        return start.distanceToSqr(end) > limit * limit;
     }
 
     /**
@@ -460,11 +468,9 @@ public interface LookHelper {
         }
 
         // Check if the crosshair target is a block
-        if (result.getType() == HitResult.Type.BLOCK) {
-            // Get the block position from the crosshair target
-            Vec3i resultGetPosOrigin = new Vec3i((int) result.getLocation().x(), (int) result.getLocation().y(), (int) result.getLocation().z());
-            // Check if the block is an interactable block
-            return WorldHelper.isInteractableBlock(mod, new BlockPos(resultGetPosOrigin));
+        if (result.getType() == HitResult.Type.BLOCK && result instanceof BlockHitResult blockHit) {
+            // the hit location sits on the struck face, which is the neighbour cell for the top/east/south faces
+            return WorldHelper.isInteractableBlock(mod, blockHit.getBlockPos());
         }
         // Check if the crosshair target is an entity
         else if (result.getType() == HitResult.Type.ENTITY && result instanceof EntityHitResult) {

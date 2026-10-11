@@ -4,11 +4,13 @@ import baritone.Baritone;
 import adris.altoclef.AltoClef;
 import adris.altoclef.tasks.DoToClosestBlockTask;
 import adris.altoclef.tasks.InteractWithBlockTask;
+import adris.altoclef.tasks.construction.DestroyBlockTask;
 import adris.altoclef.tasks.construction.PutOutFireTask;
 import adris.altoclef.tasks.movement.EnterNetherPortalTask;
 import adris.altoclef.tasks.movement.EscapeFromLavaTask;
 import adris.altoclef.tasks.movement.GetToBlockTask;
 import adris.altoclef.tasks.movement.SafeRandomShimmyTask;
+import adris.altoclef.tasksystem.Task;
 import adris.altoclef.tasksystem.TaskRunner;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.LookHelper;
@@ -58,6 +60,17 @@ public class WorldSurvivalChain extends SingleTaskChain {
         // Fire escape
         if (isInFire(mod)) {
             setTask(new DoToClosestBlockTask(PutOutFireTask::new, Blocks.FIRE, Blocks.SOUL_FIRE));
+            return 100;
+        }
+
+        // Sand or gravel landed on us. it is 1 damage every half second for as long as our eyes are in it, so it goes
+        // before anything polite. the task knows to dig rather than step aside when the block is the one we stand in
+        // not canBreak: that one says no for anything ever marked unreachable, and being unreachable is not a thing for
+        // the block our head is in. only the hard nos (bedrock-hard, the never-break list) stop this
+        BlockPos buried = WorldHelper.buriedInFallenBlock(mod);
+        if (buried != null && mod.getWorld().getBlockState(buried).getDestroySpeed(mod.getWorld(), buried) >= 0
+                && !mod.getExtraBaritoneSettings().shouldAvoidBreaking(buried)) {
+            setTask(new DestroyBlockTask(buried));
             return 100;
         }
 
@@ -155,7 +168,10 @@ public class WorldSurvivalChain extends SingleTaskChain {
     }
 
     private boolean isStuckInNetherPortal(AltoClef mod) {
-        return WorldHelper.isInNetherPortal(mod) && !mod.getUserTaskChain().getCurrentTask().thisOrChildSatisfies(task -> task instanceof EnterNetherPortalTask);
+        if (!WorldHelper.isInNetherPortal(mod)) return false;
+        // nothing running means nobody asked us to be anywhere, so a player standing in a portal gets left alone
+        Task userTask = mod.getUserTaskChain().getCurrentTask();
+        return userTask != null && !userTask.thisOrChildSatisfies(task -> task instanceof EnterNetherPortalTask);
     }
 
     @Override

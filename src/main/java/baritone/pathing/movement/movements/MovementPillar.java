@@ -105,6 +105,8 @@ public class MovementPillar extends Movement {
         if (hardness >= COST_INF) {
             return COST_INF;
         }
+        // the block over our head still takes forever to break when we're swimming while we do it
+        hardness = MovementHelper.waterBreakCost(context, x, y, z, hardness);
         if (hardness != 0) {
             if (MovementHelper.isClimbable(toBreakBlock)) {
                 hardness = 0; // we won't actually need to break the ladder / vine because we're going to use it
@@ -179,7 +181,8 @@ public class MovementPillar extends Movement {
             return state;
         } else {
             // Get ready to place a throwaway block
-            if (!((Baritone) baritone).getInventoryBehavior().selectThrowawayForLocation(true, src.x, src.y, src.z)) {
+            if (!((Baritone) baritone).getInventoryBehavior().selectThrowawayForLocation(true, src.x, src.y, src.z, true)) {
+                MovementHelper.logNoThrowaway(state, baritone, src);
                 return state.setStatus(MovementStatus.UNREACHABLE);
             }
 
@@ -217,7 +220,18 @@ public class MovementPillar extends Movement {
                     state.setInput(Input.CLICK_LEFT, true);
                     blockIsThere = false;
                 } else if (ctx.player().isCrouching() && (ctx.isLookingAt(src.below()) || ctx.isLookingAt(src)) && ctx.player().position().y > dest.getY() + 0.1) {
-                    state.setInput(Input.CLICK_RIGHT, true);
+                    // a mob standing in the cell eats the click, so no click until it moves. it gets PlaceWait's patience
+                    // and then the planner gets to find a way around
+                    switch (state.placeBlocked(MovementHelper.entityInTheWay(ctx, src))) {
+                        case CLEAR:
+                            state.setInput(Input.CLICK_RIGHT, true);
+                            break;
+                        case WAIT:
+                            break;
+                        default:
+                            logDebug("something stood in the way of the pillar block at " + src.x + " " + src.y + " " + src.z + ", giving up");
+                            return state.setStatus(MovementStatus.UNREACHABLE);
+                    }
                 }
             }
         }

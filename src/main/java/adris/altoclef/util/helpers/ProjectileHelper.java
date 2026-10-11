@@ -40,7 +40,7 @@ public class ProjectileHelper {
 
     private static double getArrowHitHeight(double gravity, double horizontalVel, double verticalVel, double initialHeight, double distanceTraveled) {
         double time = distanceTraveled / horizontalVel;
-        return initialHeight - (verticalVel * time) - 0.5 * (gravity * time * time);
+        return initialHeight + (verticalVel * time) - 0.5 * (gravity * time * time);
     }
 
     /**
@@ -92,7 +92,7 @@ public class ProjectileHelper {
 
     public static Vec3 getThrowOrigin(Entity entity) {
         // Minecraft Magic Number
-        return entity.position().subtract(0, 0.1, 0);
+        return entity.getEyePosition().subtract(0, 0.1, 0);
     }
 
     // Unable to figure out how to extract multiple roots, this is too complicated for engineering major like me.

@@ -18,6 +18,8 @@ public class CollectPlanksTask extends ResourceTask {
     private final Item[] _logs;
     private final int _targetCount;
     private boolean _logsInNether;
+    // we already fell through to mining logs for this target (see craftHeldLogsNow)
+    private boolean _chopping;
 
     public CollectPlanksTask(Item[] planks, Item[] logs, int count, boolean logsInNether) {
         super(new ItemTarget(planks, count));
@@ -55,9 +57,22 @@ public class CollectPlanksTask extends ResourceTask {
         return false;
     }
 
+    // logs in the bag turn into planks before any tree is touched, even when they do not reach the target on their own (it
+    // used to be all or nothing: 3 logs for 16 planks meant walking off to chop with 12 planks sitting in the bag). once we
+    // have gone chopping, the logs that come in are only crafted when they finish the job, one inventory open per log is
+    // slow and nobody wants that
+    static boolean craftHeldLogsNow(int heldLogs, int potentialPlanks, int target, boolean chopping) {
+        return heldLogs > 0 && (potentialPlanks >= target || !chopping);
+    }
+
+    @Override
+    protected boolean craftableFromHeld(AltoClef mod) {
+        return mod.getItemStorage().getItemCount(_logs) > 0;
+    }
+
     @Override
     protected void onResourceStart(AltoClef mod) {
-
+        _chopping = false;
     }
 
     @Override
@@ -65,8 +80,9 @@ public class CollectPlanksTask extends ResourceTask {
 
         // Craft when we can
         int totalInventoryPlankCount = mod.getItemStorage().getItemCount(_planks);
-        int potentialPlanks = totalInventoryPlankCount + mod.getItemStorage().getItemCount(_logs) * 4;
-        if (potentialPlanks >= _targetCount) {
+        int heldLogs = mod.getItemStorage().getItemCount(_logs);
+        int potentialPlanks = totalInventoryPlankCount + heldLogs * 4;
+        if (craftHeldLogsNow(heldLogs, potentialPlanks, _targetCount, _chopping)) {
             for (Item logCheck : _logs) {
                 int count = mod.getItemStorage().getItemCount(logCheck);
                 if (count > 0) {
@@ -83,6 +99,8 @@ public class CollectPlanksTask extends ResourceTask {
             }
         }
 
+        // nothing left to craft from, the rest of the target is trees
+        _chopping = true;
         // Collect planks and logs
         ArrayList<ItemTarget> blocksTomine = new ArrayList<>(2);
         blocksTomine.add(new ItemTarget(_logs));

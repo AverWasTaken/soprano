@@ -38,6 +38,37 @@ public final class FoodHelper {
     private FoodHelper() {
     }
 
+    // what the furnace turns this into, the item itself for everything that is not raw meat or fish
+    public static Item cookedForm(Item item) {
+        if (item == Items.PORKCHOP) return Items.COOKED_PORKCHOP;
+        if (item == Items.BEEF) return Items.COOKED_BEEF;
+        if (item == Items.CHICKEN) return Items.COOKED_CHICKEN;
+        if (item == Items.MUTTON) return Items.COOKED_MUTTON;
+        if (item == Items.RABBIT) return Items.COOKED_RABBIT;
+        if (item == Items.COD) return Items.COOKED_COD;
+        if (item == Items.SALMON) return Items.COOKED_SALMON;
+        return item;
+    }
+
+    // raw meat or fish: anything with a cooked form. potatoes are not in here, a raw one is just a poor lunch
+    public static boolean isRawMeat(Item item) {
+        return cookedForm(item) != item;
+    }
+
+    // nutrition the planner books for one of these: raw meat at its cooked value, because a gamer run always has a furnace and
+    // CollectFoodTask counts it that way (6 raw mutton is 36, not the 12 it is raw, or the kit asked for food while the bag
+    // was full of dinner). 0 for anything with no food component
+    public static int plannedNutrition(Item item) {
+        var food = cookedForm(item).components().get(DataComponents.FOOD);
+        return food == null ? 0 : food.nutrition();
+    }
+
+    // what one of these gives when it is eaten as it is, so raw meat at its raw value. 0 for anything with no food component
+    public static int ownNutrition(Item item) {
+        var food = item.components().get(DataComponents.FOOD);
+        return food == null ? 0 : food.nutrition();
+    }
+
     public static Kind kindOf(Item item) {
         if (!item.components().has(DataComponents.FOOD)) {
             return Kind.NOT_FOOD;

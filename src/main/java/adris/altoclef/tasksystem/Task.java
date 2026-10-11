@@ -2,16 +2,38 @@ package adris.altoclef.tasksystem;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
+import adris.altoclef.Monitors;
 import adris.altoclef.tasks.movement.TimeoutWanderTask;
+import adris.altoclef.trace.CutRing;
+import adris.altoclef.trace.Lines;
+import adris.altoclef.trace.RepeatCounter;
+import adris.altoclef.trace.StartStormWatch;
+import adris.altoclef.trace.StormGate;
+import adris.altoclef.trace.Trace;
 import adris.altoclef.ui.HudText;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.function.Predicate;
 
 public abstract class Task {
 
+    // debug state only logs on change, so a retry loop looks like a few unrelated lines. these count the flips and the
+    // starts across every task, the main thread is the only one that ticks them
+    private static final RepeatCounter REPEATS = new RepeatCounter();
+    private static final StartStormWatch STARTS = new StartStormWatch();
+    // who stopped whom, to name the other side of a storm. and the outermost-only rule for flagging one
+    private static final CutRing CUTS = new CutRing();
+    private static final StormGate STORM_GATE = new StormGate();
+
+    // whoever ticked this task last, only read when a storm is flagged
+    private Task _parent;
+
     private String _oldDebugState = "";
     private String _debugState = "";
     private String _hudState = "";
+
+    private final TaskClock _clock = new TaskClock();
 
     private Task _sub = null;
 
@@ -32,19 +54,24 @@ public abstract class Task {
         parentChain.addTaskToChain(this);
         if (_first) {
             Debug.logInternal("Task START: " + this);
+            watchStart();
             _paused = false;
             _active = true;
-            onStart(mod);
+            startAs(mod);
             _first = false;
             _stopped = false;
         }
         if (_stopped) return;
 
-        Task newSub = onTick(mod);
+        // ticks only when the task really runs, so an interrupt is never billed. note a parent's clock keeps running
+        // while its child does the work, that is on purpose: the parent's give up covers everything it asked for
+        _clock.tick();
+        Task newSub = tickAs(mod);
         // Debug state print
         if (!_oldDebugState.equals(_debugState)) {
             Debug.logInternal(toString());
             _oldDebugState = _debugState;
+            watchRepeat();
         }
         // We have a sub task
         if (newSub != null) {
@@ -61,15 +88,160 @@ public abstract class Task {
             }
 
             // Run our child
+            _sub._parent = this;
             _sub.tick(mod, parentChain);
         } else {
             // We are null
             if (_sub != null && canBeInterrupted(mod, _sub, null)) {
                 // Our previous sub must be interrupted.
+                if (_sub.isActive()) {
+                    noteCut(_sub.getClass(), getClass(), true);
+                }
                 _sub.stop(mod);
                 _sub = null;
             }
         }
+    }
+
+    // the task whose onStart/onTick is running right now, so InputControls knows whose hand is on a key. only those two
+    // are claimed: a hold made in onStop (or by a chain's getPriority) has no owner and stays down like it always did.
+    // restoring the old one instead of nulling means a child that is driven from inside its parent's onTick gives the
+    // key back to the parent when it is done
+    private static Task _holdOwner = null;
+
+    public static Task currentOwner() {
+        return _holdOwner;
+    }
+
+    private void startAs(AltoClef mod) {
+        Task before = _holdOwner;
+        _holdOwner = this;
+        try {
+            onStart(mod);
+        } finally {
+            _holdOwner = before;
+        }
+    }
+
+    private Task tickAs(AltoClef mod) {
+        Task before = _holdOwner;
+        _holdOwner = this;
+        try {
+            return onTick(mod);
+        } finally {
+            _holdOwner = before;
+        }
+    }
+
+    // onStop is where a task lets go on purpose, so nothing it presses in there belongs to it (or to whoever is
+    // calling stop on it from inside their own onTick)
+    private void stopAs(AltoClef mod, Task interruptTask) {
+        Task before = _holdOwner;
+        _holdOwner = null;
+        try {
+            onStop(mod, interruptTask);
+        } finally {
+            _holdOwner = before;
+        }
+    }
+
+    private void pausedStopAs(AltoClef mod) {
+        Task before = _holdOwner;
+        _holdOwner = null;
+        try {
+            onStopWhilePaused(mod);
+        } finally {
+            _holdOwner = before;
+        }
+    }
+
+    // lets go of every key this task is holding, after its own onStop had its say. the other owners of a key keep it down
+    private void letGo(AltoClef mod) {
+        if (mod == null || mod.getInputControls() == null) {
+            return;
+        }
+        mod.getInputControls().releaseOwnedBy(this);
+    }
+
+    // for a root that is done without anybody calling stop on it (stop would run onStop, and that is not the plan here):
+    // the whole tree of children lets go of its keys
+    public final void letGoOfKeys(AltoClef mod) {
+        for (Task t = this; t != null; t = t._sub) {
+            t.letGo(mod);
+        }
+    }
+
+    // a flag and never an action: 21 starts of one class in a minute is a loop, say so and keep the lead up
+    private void watchStart() {
+        try {
+            long now = System.currentTimeMillis();
+            if (STARTS.start(getClass(), now)) {
+                flagStorm(now);
+            }
+        } catch (RuntimeException e) {
+            // a monitor must never keep a task from starting, but a broken one should say so once
+            Monitors.broke("start storm", e);
+        }
+    }
+
+    // the storm is real, now only the line and who gets it. a class under one that is already flagged (or about to be) stays quiet
+    private void flagStorm(long now) {
+        List<Class<?>> ancestors = new ArrayList<>();
+        for (Task up = _parent; up != null && ancestors.size() < 8; up = up._parent) {
+            ancestors.add(up.getClass());
+        }
+        boolean quiet = STORM_GATE.shadowed(getClass(), ancestors, now, up -> STARTS.recent(up, now));
+        STORM_GATE.seen(getClass(), now);
+        if (quiet) {
+            return;
+        }
+        CutRing.Culprit by = CUTS.mostCommon(getClass(), now, StartStormWatch.WINDOW_MS);
+        Debug.logInternal(by == null ? Lines.startStorm(className()) : Lines.startStorm(className(), nameOf(by.by()), by.parent()));
+        Trace.dump("monitor:storm");
+    }
+
+    private static String nameOf(Class<?> type) {
+        String name = type.getSimpleName();
+        return name.isEmpty() ? type.getName() : name;
+    }
+
+    // one task stopped another (or a parent let go of it): kept for the storm line
+    private void noteCut(Class<?> victim, Class<?> cutter, boolean byParent) {
+        try {
+            CUTS.record(victim, cutter, byParent, System.currentTimeMillis());
+        } catch (RuntimeException e) {
+            Monitors.broke("cut ring", e);
+        }
+    }
+
+    // the state flipped into something new. the same (class, state) coming round again and again is a retry loop
+    private void watchRepeat() {
+        if (_debugState.isEmpty()) {
+            return;
+        }
+        try {
+            int times = REPEATS.hit(className() + "|" + _debugState, System.currentTimeMillis());
+            if (times > 0) {
+                Debug.logInternal(Lines.repeat(className(), _debugState, times));
+            }
+        } catch (RuntimeException e) {
+            Monitors.broke("repeat", e);
+        }
+    }
+
+    private String className() {
+        String name = getClass().getSimpleName();
+        return name.isEmpty() ? getClass().getName() : name;
+    }
+
+    // how long this task has really run. nothing in here ever clears it, reset() included: SingleTaskChain calls reset()
+    // on every resume after an interrupt, so clearing there would give every interrupt a fresh budget again
+    protected final double timeOnTaskSeconds() {
+        return _clock.spentSeconds();
+    }
+
+    protected final boolean overTimeOnTask(double limitSeconds) {
+        return _clock.over(limitSeconds);
     }
 
     public void reset() {
@@ -103,11 +275,18 @@ public abstract class Task {
     public void stop(AltoClef mod, Task interruptTask) {
         if (!_active) return;
         Debug.logInternal("Task STOP: " + this + ", interrupted by " + interruptTask);
-        if (!_first) {
-            onStop(mod, interruptTask);
-        } else if (_paused) {
-            _paused = false;
-            onStopWhilePaused(mod);
+        if (interruptTask != null) {
+            noteCut(getClass(), interruptTask.getClass(), false);
+        }
+        try {
+            if (!_first) {
+                stopAs(mod, interruptTask);
+            } else if (_paused) {
+                _paused = false;
+                pausedStopAs(mod);
+            }
+        } finally {
+            letGo(mod);
         }
 
         if (_sub != null && !_sub.stopped()) {
@@ -132,14 +311,21 @@ public abstract class Task {
      */
     public void interrupt(AltoClef mod, Task interruptTask) {
         if (!_active) return;
+        if (interruptTask != null) {
+            noteCut(getClass(), interruptTask.getClass(), false);
+        }
         if (!_first) {
             _interrupting = true;
             try {
-                onStop(mod, interruptTask);
+                stopAs(mod, interruptTask);
             } finally {
                 _interrupting = false;
+                letGo(mod);
             }
             _paused = true;
+        } else {
+            // onStart can hold and then throw, which leaves _first set with a key down
+            letGo(mod);
         }
 
         if (_sub != null && !_sub.stopped()) {
@@ -251,6 +437,14 @@ public abstract class Task {
         return false;
     }
 
+    // equals is whatever the subclass's isEqual says, and some of those accept a whole family (a plain pickup equals
+    // the recover pickup subclass), so not even the class is safe to hash. a constant is the only hash that always
+    // agrees with equals. nothing keys a map on a task, so the buckets being one long list does not matter
+    @Override
+    public int hashCode() {
+        return 31;
+    }
+
     public boolean thisOrChildSatisfies(Predicate<Task> pred) {
         Task t = this;
         while (t != null) {
@@ -262,6 +456,12 @@ public abstract class Task {
 
     public boolean thisOrChildAreTimedOut() {
         return thisOrChildSatisfies(task -> task instanceof TimeoutWanderTask);
+    }
+
+    // a wander in the chain below that has run a long time without getting anywhere. a plain thisOrChildAreTimedOut
+    // is true the whole time a wander is active, this one only once it is stuck
+    public boolean thisOrChildWanderFailing() {
+        return thisOrChildSatisfies(task -> task instanceof TimeoutWanderTask w && w.failing());
     }
 
     // a force held longer than this is assumed to be stuck, so it can't deadlock the whole tree

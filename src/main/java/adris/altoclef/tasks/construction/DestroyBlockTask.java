@@ -2,14 +2,21 @@ package adris.altoclef.tasks.construction;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.util.helpers.AnnoyingBlocks;
+import adris.altoclef.util.helpers.BreakRules;
 import adris.altoclef.Debug;
 import adris.altoclef.tasks.movement.RunAwayFromPositionTask;
 import adris.altoclef.tasks.movement.SafeRandomShimmyTask;
 import adris.altoclef.tasksystem.ITaskRequiresGrounded;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.tasksystem.TaskClock;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.LookHelper;
+import adris.altoclef.util.helpers.MineStick;
+import adris.altoclef.util.helpers.ReachHold;
 import adris.altoclef.util.helpers.StorageHelper;
+import adris.altoclef.util.helpers.ToolPick;
+import adris.altoclef.util.helpers.ToolSwap;
+import baritone.utils.ToolSet;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
 import adris.altoclef.util.slots.PlayerSlot;
@@ -20,8 +27,10 @@ import net.minecraft.client.Minecraft;
 import adris.altoclef.util.baritone.GoalReachBlock;
 import baritone.api.pathing.goals.Goal;
 import baritone.api.pathing.goals.GoalBlock;
+import baritone.api.pathing.goals.GoalComposite;
 import baritone.api.pathing.goals.GoalNear;
 import net.minecraft.core.Direction;
+import net.minecraft.tags.FluidTags;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.phys.BlockHitResult;
@@ -29,13 +38,16 @@ import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import baritone.api.utils.Rotation;
+import baritone.api.utils.RotationUtils;
 import baritone.api.utils.input.Input;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.monster.Pillager;
 import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.DoorBlock;
@@ -43,8 +55,13 @@ import net.minecraft.world.level.block.FenceBlock;
 import net.minecraft.world.level.block.FenceGateBlock;
 import net.minecraft.world.level.block.FlowerBlock;
 import net.minecraft.world.level.block.state.BlockState;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Objects;
+import java.util.HashSet;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Destroy a block at a position.
@@ -64,12 +81,94 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
     private boolean _pushedBehaviour;
     // step off -> baritone walks right back on -> step off... more than this and we give the block up
     private final StepOffGuard _stepOffs = new StepOffGuard(3);
+    private final ToolSwap _toolSwap = new ToolSwap();
+    // ticks the swap was held off for pathing / eating. a stuck isPathing() is the same never-swings stall
+    private int _swapBlockedTicks;
+    private static final int SWAP_BLOCKED_CAP = 20;
+    private boolean _swapGiveUpLogged;
+    // what is in the cell, for the debug line and the log. kept from the last tick it was still there, an air cell is a bad name
+    private String _what = "block";
+    // said once that we are swinging with something that is not a tool
+    private boolean _handSaid;
+    // said once that this block is not worth the time, and banned it
+    private boolean _slowSaid;
+    // when it was refused and when we last complained about still being asked, for the warning in refuseSlowBreak
+    private int _refusedAt;
+    private int _stillAskedAt = Integer.MIN_VALUE;
+    private static final int STILL_ASKED_TICKS = 100;
+    private static final int STILL_ASKED_REPEAT_TICKS = 600;
     // the swinging distance goal didn't work out here, stand next to it
     private boolean closeIn;
+    // cells we stood in beside the block without a ray to it, so closing in tries somewhere else each time
+    private final Set<BlockPos> _triedFeet = new HashSet<>();
+    // ticks we've been soaked with the block in reach. see WaterBreakGuard
+    private int _wetTicks;
+    // the dry spots to get to first, looked up every so often instead of every tick. null = none (or not looked yet)
+    private Goal _landGoal;
+    private int _landLookAge;
+    private boolean _landGoalSet;
+    private int _landPathAt;
+
+    // a column hangs on the block, so the shaft under it is as bad a place to stand as the top
+    private boolean _sidesOnly;
+    // ticks spent waiting for a column to come down into the block, so a stack that never lands (held up by something we
+    // can't see, somebody's sand cannon) doesn't park us here for good
+    private int _fallWaited;
+    private int _dropPending;
+    private static final int FALL_WAIT_MAX = 60;
+    private static final int DROP_PENDING_MAX = 10;
+
+    // the from-side approach's own give-up clocks. idle only runs with no live path, total runs whatever the path is doing.
+    // nothing but a swing that really cracks the block clears them, unlike the movement checkers, which a path (or a
+    // search that just landed) keeps clearing
+    private final TaskClock _sideIdle = new TaskClock();
+    private final TaskClock _sideTotal = new TaskClock();
+    private boolean _sideGaveUp;
+    private boolean _stillAskedSaid;
+    // ticks the back-up keys were held since the last real crack, in all and not per cell: a shuttle between two cells
+    // would re-arm a per cell count forever
+    private int _backedUp;
+    // searches that came back empty, as of the last look. stays set until a path really starts, a window of ticks would
+    // lapse between two failed searches and let the keys back down for a few ticks
+    private int _calcFailuresSeen = -1;
+    private boolean _searchFailed;
+    // when we gave up, so a parent that never reads the ban gets a warning and, after a while, another go
+    private int _gaveUpAt;
+    private static final int SIDE_STILL_ASKED_TICKS = 100;
+    private static final int SIDE_RETRY_TICKS = 600;
+
+    // the reach ray flickers on a corner, this keeps us swinging (or walking) through the flicker. see ReachHold
+    private final ReachHold _reachHold = new ReachHold();
+    // where we last had a clean ray, and at what (the vine counts). the hold keeps looking there
+    private Rotation _lastReach;
+    private BlockPos _lastSwingAt;
+    private int _reachHoldTick = Integer.MIN_VALUE / 2;
 
     public DestroyBlockTask(BlockPos pos) {
         _pos = pos;
         _above = pos.above();
+    }
+
+    // true while something is falling into the block's cell, or is about to. the second half is the two ticks between the
+    // block under a stack going and the stack turning into entities: the cell is open, nothing is falling yet, and a
+    // task that checked "is it air" in there would call itself done with the sand still in the sky
+    private boolean fallingStillComing(AltoClef mod) {
+        boolean inFlight = WorldHelper.fallingInFlightOver(mod.getWorld(), _pos);
+        boolean pending = !inFlight && WorldHelper.fallingAboutToDrop(mod.getWorld(), _pos);
+        _fallWaited = inFlight ? _fallWaited + 1 : 0;
+        _dropPending = pending ? _dropPending + 1 : 0;
+        return inFlight && _fallWaited <= FALL_WAIT_MAX || pending && _dropPending <= DROP_PENDING_MAX;
+    }
+
+    private Set<BlockPos> triedFeet(BlockPos feet) {
+        _triedFeet.add(feet.immutable());
+        return _triedFeet;
+    }
+
+    // the back-up-sneaking below holds keys across ticks, so a tick that returns early has to let go of them itself
+    private static void stopBackingUp(AltoClef mod) {
+        mod.getInputControls().release(Input.MOVE_BACK);
+        mod.getInputControls().release(Input.SNEAK);
     }
 
     // decides (once, and only when the chunks around it are really loaded) if this block has to be
@@ -88,10 +187,19 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
         return _fromSide;
     }
 
+    // air cells straight under the block, so GoalMineFromSide knows how far down the column we can stand and still swing up
+    private static int openBelow(AltoClef mod, BlockPos pos) {
+        int open = 0;
+        while (open < GoalMineFromSide.MAX_UNDER && mod.getWorld().getBlockState(pos.below(open + 1)).isAir()) {
+            open++;
+        }
+        return open;
+    }
+
     private void markFromSide(AltoClef mod) {
         if (!_fromSide) {
             _fromSide = true;
-            Debug.logInternal("Destroy block at " + _pos.toShortString() + " is dangerous from above, mining it from the side");
+            Debug.logInternal("Destroy " + _what + " at " + _pos.toShortString() + " is dangerous from above, mining it from the side");
             // whatever plain goal is running would happily stand on top of it
             mod.getClientBaritone().getCustomGoalProcess().onLostControl();
         }
@@ -101,10 +209,38 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
     // those off the ground means climbing (or hopping, the planner finds them cheap) for a log we could swing at from
     // the bottom. closeIn is for when swinging distance didn't turn out to see the block
     public static Goal pickGoal(BlockGetter world, BlockPos pos, boolean closeIn) {
+        return pickGoal(world, pos, closeIn, null);
+    }
+
+    // standingIn is the cells we stood in beside the block and still couldn't hit it: GoalNear counts the one we're in as
+    // arrived, so we'd stand there until the progress checker gave the block up, and leaving only the latest one would
+    // just shuffle between two. null = nothing to step off of
+    public static Goal pickGoal(BlockGetter world, BlockPos pos, boolean closeIn, Set<BlockPos> standingIn) {
+        return pickGoal(world, pos, closeIn, standingIn, false);
+    }
+
+    // sidesOnly is a block we won't break from on top of (or under, with a column hanging on it)
+    static Goal pickGoal(BlockGetter world, BlockPos pos, boolean closeIn, Set<BlockPos> standingIn, boolean sidesOnly) {
         if (world.getBlockState(pos.above()).getBlock() == Blocks.SNOW) {
             return new GoalBlock(pos);
         }
-        return !closeIn && vineNextTo(world, pos) ? new GoalReachBlock(pos) : new GoalNear(pos, 1);
+        if (!closeIn && vineNextTo(world, pos)) {
+            return new GoalReachBlock(pos);
+        }
+        return closeIn && standingIn != null && !standingIn.isEmpty() ? touchingElsewhere(world, pos, standingIn, sidesOnly) : new GoalNear(pos, 1);
+    }
+
+    // the cells touching the block that we could stand in, minus the ones we've been in. nothing under it, that's our head
+    // in the block. once none are left it's the plain goal again and the progress checker takes it from there
+    private static Goal touchingElsewhere(BlockGetter world, BlockPos pos, Set<BlockPos> standingIn, boolean sidesOnly) {
+        List<Goal> spots = new ArrayList<>();
+        for (Direction side : Direction.values()) {
+            BlockPos spot = pos.relative(side);
+            if (side != Direction.DOWN && !(sidesOnly && side == Direction.UP) && !standingIn.contains(spot) && world.getBlockState(spot).getCollisionShape(world, spot).isEmpty()) {
+                spots.add(new GoalBlock(spot));
+            }
+        }
+        return spots.isEmpty() ? new GoalNear(pos, 1) : new GoalComposite(spots.toArray(new Goal[0]));
     }
 
     private static boolean vineNextTo(BlockGetter world, BlockPos pos) {
@@ -114,6 +250,102 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
             }
         }
         return false;
+    }
+
+    // how far around the block we look for somewhere dry, and how many we hand the pathfinder. a composite goal's
+    // heuristic asks every one of them for every node, so a whole beach of them is for people who want slow code
+    private static final int LAND_RADIUS = 4;
+    private static final int LAND_SPOTS_MAX = 24;
+    private static final int LAND_LOOK_TICKS = 20;
+    private static final double EYE_HEIGHT = 1.62;
+
+    // squares to stand on instead of swimming: solid dry ground under, two dry clear squares for us, and the block in
+    // reach and in plain sight from the eyes there. closest to `from` first, so the cap drops the far ones
+    public static List<BlockPos> landSpots(BlockGetter world, BlockPos target, double reach, BlockPos from) {
+        List<BlockPos> spots = new ArrayList<>();
+        BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+        double reachSq = reach * reach;
+        Vec3 center = Vec3.atCenterOf(target);
+        for (int dx = -LAND_RADIUS; dx <= LAND_RADIUS; dx++) {
+            for (int dy = -LAND_RADIUS; dy <= LAND_RADIUS; dy++) {
+                for (int dz = -LAND_RADIUS; dz <= LAND_RADIUS; dz++) {
+                    int x = target.getX() + dx;
+                    int y = target.getY() + dy;
+                    int z = target.getZ() + dz;
+                    // most of the cube is air or water and dies on the floor check
+                    pos.set(x, y - 1, z);
+                    if (!dryFloor(world, pos)) {
+                        continue;
+                    }
+                    if (pos.equals(target) || (x == target.getX() && z == target.getZ() && y > target.getY())) {
+                        continue; // on top of it is the one square we'd rather not be on
+                    }
+                    pos.set(x, y, z);
+                    if (!dryAndClear(world, pos)) {
+                        continue;
+                    }
+                    pos.set(x, y + 1, z);
+                    if (!dryAndClear(world, pos)) {
+                        continue;
+                    }
+                    Vec3 eye = new Vec3(x + 0.5, y + EYE_HEIGHT, z + 0.5);
+                    if (eye.distanceToSqr(center) > reachSq) {
+                        continue;
+                    }
+                    BlockHitResult hit = world.clip(new ClipContext(eye, center, ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, CollisionContext.empty()));
+                    if (hit.getType() == HitResult.Type.BLOCK && !hit.getBlockPos().equals(target)) {
+                        continue; // something is in the way, a wall isn't a place to mine from
+                    }
+                    spots.add(new BlockPos(x, y, z));
+                }
+            }
+        }
+        spots.sort(Comparator.comparingDouble(p -> p.distSqr(from)));
+        return spots.size() > LAND_SPOTS_MAX ? new ArrayList<>(spots.subList(0, LAND_SPOTS_MAX)) : spots;
+    }
+
+    private static boolean dryFloor(BlockGetter world, BlockPos pos) {
+        BlockState state = world.getBlockState(pos);
+        return state.getFluidState().isEmpty() && state.isFaceSturdy(world, pos, Direction.UP);
+    }
+
+    private static boolean dryAndClear(BlockGetter world, BlockPos pos) {
+        BlockState state = world.getBlockState(pos);
+        return state.getFluidState().isEmpty() && state.getCollisionShape(world, pos).isEmpty();
+    }
+
+    // the dry spots as one goal for baritone, or null when there aren't any
+    private static Goal landGoal(BlockGetter world, BlockPos target, double reach, BlockPos from) {
+        List<BlockPos> spots = landSpots(world, target, reach, from);
+        if (spots.isEmpty()) {
+            return null;
+        }
+        Goal[] goals = new Goal[spots.size()];
+        for (int i = 0; i < goals.length; i++) {
+            goals[i] = new GoalBlock(spots.get(i));
+        }
+        return new GoalComposite(goals);
+    }
+
+    // soaked as in vanilla's mining speed is cut: feet in water and then eyes under it or no ground to stand on.
+    // wading with your head up isn't slowed, so that isn't waited out
+    private static boolean slowedByWater(AltoClef mod) {
+        return mod.getPlayer().isInWater() && (!mod.getPlayer().onGround() || mod.getPlayer().isEyeInFluid(FluidTags.WATER));
+    }
+
+    // vanilla's getDestroyProgress already has the water and air penalties in it, so 1 or more is one tick no matter what
+    private static boolean breaksInstantly(AltoClef mod, BlockPos pos) {
+        BlockState state = mod.getWorld().getBlockState(pos);
+        return state.getDestroyProgress(mod.getPlayer(), mod.getWorld(), pos) >= 1f;
+    }
+
+    private Goal landGoalNow(AltoClef mod) {
+        if (_landLookAge-- <= 0) {
+            _landLookAge = LAND_LOOK_TICKS;
+            double reach = mod.getClientBaritone().getPlayerContext().playerController().getBlockReachDistance() - 0.5;
+            _landGoal = landGoal(mod.getWorld(), _pos, reach, mod.getPlayer().blockPosition());
+        }
+        return _landGoal;
     }
 
     // the vine the first thing in line between the eyes and the middle of the block, if there is one and it's in reach.
@@ -239,6 +471,10 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
         _moveChecker.reset();
         stuckCheck.reset();
         _stepOffs.reset();
+        _reachHold.reset();
+        _lastReach = null;
+        _lastSwingAt = null;
+        _triedFeet.clear();
 
         // never scaffold onto the square above the block we're here to break. only bites once
         // _fromSide is set, so ordinary blocks path exactly like before
@@ -283,10 +519,100 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
         mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ClickType.PICKUP);
     }
 
+    // the clocks and the call for one tick spent trying to get beside a block we won't mine from on top of
+    // a block that is in reach but not being swung at yet (eating, not on the ground) is not a failure to get beside it,
+    // so those ticks are not billed
+    private FromSideRules.Verdict sideVerdict(AltoClef mod, boolean cracking, boolean inRange) {
+        var pathing = mod.getClientBaritone().getPathingBehavior();
+        if (!inRange) {
+            _sideTotal.tick();
+            if (!pathing.isPathing()) {
+                _sideIdle.tick();
+            }
+        }
+        int failures = pathing.calcFailures();
+        if (_calcFailuresSeen >= 0 && failures > _calcFailuresSeen) {
+            _searchFailed = true;
+        }
+        _calcFailuresSeen = failures;
+        if (pathing.isPathing()) {
+            _searchFailed = false;
+        }
+        return FromSideRules.decide(_sideIdle.spentSeconds(), _sideTotal.spentSeconds(), pathing.isPathing(),
+                _searchFailed, cracking, _backedUp);
+    }
+
+    private boolean crackingThis(AltoClef mod) {
+        return mod.getControllerExtras().isBreakingBlock() && _pos.equals(mod.getControllerExtras().getBreakingBlockPos());
+    }
+
+    // fails the way a failed break does: the ban is what the parent reads (a source whose lid is banned drops out of
+    // CollectBucketLiquidTask's pick), and then we stand down instead of swinging at the wall
+    private Task giveUpOnSide(AltoClef mod) {
+        int now = WorldHelper.getTicks();
+        if (_sideGaveUp && now - _gaveUpAt >= SIDE_RETRY_TICKS) {
+            // somebody keeps asking for this block (a parent with a fixed target never reads the ban). it is a different
+            // world by now, try again from scratch
+            _sideGaveUp = false;
+            _sideIdle.reset();
+            _sideTotal.reset();
+            _backedUp = 0;
+            _searchFailed = false;
+            return null;
+        }
+        if (!_sideGaveUp) {
+            _sideGaveUp = true;
+            _gaveUpAt = now;
+            _stillAskedSaid = false;
+            long spent = Math.round(Math.max(_sideIdle.spentSeconds(), _sideTotal.spentSeconds()) * 20);
+            Debug.logInternal("destroy: could not get beside " + _what + " at " + _pos.toShortString() + " to mine it from the side, giving up after "
+                    + spent + "t");
+            mod.getClientBaritone().getPathingBehavior().forceCancel();
+            mod.getClientBaritone().getCustomGoalProcess().onLostControl();
+            mod.getBlockTracker().requestBlockUnreachable(_pos, 0, "couldn't get beside it to mine it from the side");
+        }
+        if (!_stillAskedSaid && now - _gaveUpAt >= SIDE_STILL_ASKED_TICKS) {
+            _stillAskedSaid = true;
+            Debug.logWarning("destroy: still asked for " + _what + " at " + _pos.toShortString() + " " + (now - _gaveUpAt) + "t after giving up on getting beside it");
+        }
+        setDebugState("Giving up on " + _what + " at " + _pos.toShortString() + ", can't get beside it", "Couldn't get beside it");
+        isMining = false;
+        mod.getClientBaritone().getInputOverrideHandler().setInputForceState(Input.CLICK_LEFT, false);
+        stopBackingUp(mod);
+        return null;
+    }
+
+    private Task refuseSlowBreak(AltoClef mod, BlockState there) {
+        String time = BreakRules.describe(WorldHelper.bagOf(mod), there);
+        int now = WorldHelper.getTicks();
+        if (!_slowSaid) {
+            _slowSaid = true;
+            _refusedAt = now;
+            Debug.logMessage("not breaking " + _what + " at " + _pos.toShortString() + ", " + time);
+            mod.getClientBaritone().getPathingBehavior().forceCancel();
+            mod.getBlockTracker().requestBlockUnreachable(_pos, 0, "takes " + time + " to break");
+        }
+        // idling after the ban is a way to stand still, so a parent that never reads the ban gets told about once in a
+        // while. (Task keeps its parent private, so the line can't name it)
+        if (now - _refusedAt >= STILL_ASKED_TICKS && (_stillAskedAt == Integer.MIN_VALUE || now - _stillAskedAt >= STILL_ASKED_REPEAT_TICKS)) {
+            _stillAskedAt = now;
+            Debug.logWarning("destroy: still asked for " + _what + " at " + _pos.toShortString() + " " + (now - _refusedAt) + "t after refusing it");
+        }
+        setDebugState("Refusing " + _what + " at " + _pos.toShortString() + ", too slow (" + time + ")", "Skipping a block that takes too long");
+        isMining = false;
+        mod.getClientBaritone().getInputOverrideHandler().setInputForceState(Input.CLICK_LEFT, false);
+        stopBackingUp(mod);
+        return null;
+    }
+
     @Override
     protected Task onTick(AltoClef mod) {
+        BlockState there = mod.getWorld().getBlockState(_pos);
+        if (!there.isAir()) {
+            _what = BuiltInRegistries.BLOCK.getKey(there.getBlock()).getPath();
+        }
         // Check if there is white wool at the specified position
-        if (mod.getWorld().getBlockState(_pos).getBlock() == Blocks.WHITE_WOOL) {
+        if (there.getBlock() == Blocks.WHITE_WOOL) {
             // Iterate over all entities in the world
             Iterable<Entity> entities = mod.getWorld().entitiesForRendering();
             for (Entity entity : entities) {
@@ -332,6 +658,19 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
             return _unstuckTask;
         }
 
+        // a break that takes minutes is not a break. the ban is what a failed break ends in anyway (the progress checker
+        // below does the same after its timeout), this just doesn't make us swing at it until then. after the portal exit
+        // and the wiggle above, those are still ours to do. the block our head is buried in is the one exception: digging
+        // slowly beats standing in it
+        if (!there.isAir() && !_pos.equals(WorldHelper.buriedInFallenBlock(mod))
+                && BreakRules.tooSlow(WorldHelper.bagOf(mod), there)) {
+            return refuseSlowBreak(mod, there);
+        }
+
+        if (_sideGaveUp) {
+            return giveUpOnSide(mod);
+        }
+
         // Check if the move checker or the stuck check failed
         if (!_moveChecker.check(mod) || !stuckCheck.check(mod)) {
             BlockPos blockStuck = stuckInBlock(mod);
@@ -360,7 +699,7 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
         }
         if (_stepOffs.tick(steppingOff)) {
             // we keep ending up on top of it. a different ore is a better idea than a tenth lap
-            Debug.logInternal("Destroy block at " + _pos.toShortString() + ": stepped off it too many times, giving it up");
+            Debug.logInternal("Destroy " + _what + " at " + _pos.toShortString() + ": stepped off it too many times, giving it up");
             mod.getBlockTracker().requestBlockUnreachable(_pos, 0);
         }
         if (steppingOff) {
@@ -368,7 +707,28 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
             return new RunAwayFromPositionTask(3, _pos.getY(), _pos);
         }
 
+        // sand, gravel and the like on top of it (or a stalactite under it) come down the hole when it goes. we never
+        // swing from where that lands on us, and we never swing at a block while the stack is still falling into it
+        boolean looseColumn = WorldHelper.letsFallingLoose(mod.getWorld(), _pos);
+        // already buried in it is the one case where the answer is to dig, there is no better place to be
+        boolean buried = _pos.equals(WorldHelper.buriedInFallenBlock(mod));
+        boolean dropsOnUs = looseColumn && !buried && WorldHelper.breakingDropsOnUs(mod, _pos);
+        // buried, waiting is just suffocating with extra steps. dig now, the rest lands in the hole we make
+        if (!buried && fallingStillComing(mod)) {
+            setDebugState("Waiting for the falling blocks to land.", "Letting the sand settle");
+            stuckCheck.reset();
+            _moveChecker.reset();
+            mod.getClientBaritone().getInputOverrideHandler().setInputForceState(Input.CLICK_LEFT, false);
+            stopBackingUp(mod);
+            return null;
+        }
         Optional<Rotation> reach = LookHelper.getReach(_pos);
+        if (reach.isEmpty() && buried) {
+            // the ray from an eye inside the block can come back empty, and the "get to block" branch would then walk us off
+            // toward a side goal with our head still in the sand. we're in it, it's in reach, just look at it
+            reach = Optional.of(RotationUtils.calcRotationFromVec3d(mod.getPlayer().getEyePosition(), Vec3.atCenterOf(_pos),
+                    mod.getClientBaritone().getPlayerContext().playerRotations()));
+        }
         BlockPos swingAt = _pos;
         if (reach.isEmpty()) {
             // vines count as a hit for the ray even though you walk through them, so a log behind a curtain of them is
@@ -380,60 +740,202 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
                 swingAt = vine;
             }
         }
-        if (reach.isPresent() && (mod.getPlayer().isInWater() || mod.getPlayer().onGround())
-                && !mod.getFoodChain().needsToEat() && !WorldHelper.isInNetherPortal(mod)
+        // the ray is checked against face points but the distance against the center, so a ray that hit counts as close
+        // enough on its own, or a block right at the edge of reach would never get swung at
+        double reachDist = mod.getClientBaritone().getPlayerContext().playerController().getBlockReachDistance();
+        boolean inDistance = reach.isPresent() || mod.getPlayer().getEyePosition().distanceToSqr(Vec3.atCenterOf(_pos)) <= reachDist * reachDist;
+        // a tick that returned early (stepping off, waiting on sand, unsticking) didn't feed the hold, and the look it
+        // remembers is from wherever we stood before all that. start over instead of holding on to it
+        int now = WorldHelper.getTicks();
+        if (now - _reachHoldTick > 1) {
+            _reachHold.reset();
+            _lastReach = null;
+        }
+        _reachHoldTick = now;
+        // buried can't wait for three rays in a row, that's three ticks of suffocating
+        boolean inRange = _reachHold.step(reach.isPresent(), mod.getClientBaritone().getPathingBehavior().isPathing() && !buried, inDistance);
+        if (reach.isPresent()) {
+            _lastReach = reach.get();
+            _lastSwingAt = swingAt;
+        }
+        // no ray this tick but the hold says we're still in: keep the last look and swing at what it was on
+        // (unless what it was on is gone, a vine we already cut down is nothing to stare at)
+        boolean holding = inRange && reach.isEmpty() && _lastReach != null && !mod.getWorld().getBlockState(_lastSwingAt).isAir();
+        if (holding) {
+            swingAt = _lastSwingAt;
+        }
+        inRange = inRange && (reach.isPresent() || holding);
+        // breaking while soaked is up to 25x slower, so we get somewhere dry first unless that's the worse deal
+        boolean slowed = slowedByWater(mod);
+        if (!slowed) {
+            // out of the water, or only wading in it. the clock starts over and the spots get looked up fresh next time
+            _wetTicks = 0;
+            _landLookAge = 0;
+            _landGoal = null;
+        }
+        boolean waitForLand = false;
+        boolean mayBreak = false;
+        if (inRange) {
+            if (slowed) {
+                _wetTicks++;
+                double air = mod.getPlayer().getAirSupply() / (double) Math.max(1, mod.getPlayer().getMaxAirSupply());
+                mayBreak = WaterBreakGuard.mayBreak(mod.getPlayer().onGround(), true, breaksInstantly(mod, swingAt), _wetTicks, air, landGoalNow(mod) != null);
+                waitForLand = !mayBreak;
+            } else {
+                mayBreak = WaterBreakGuard.mayBreak(mod.getPlayer().onGround(), false, false, 0, 1, false);
+            }
+        }
+        if (!waitForLand) {
+            _landGoalSet = false;
+        }
+        if (looseColumn && !_sidesOnly) {
+            // whatever plain goal is running would happily stand under it
+            _sidesOnly = true;
+            mod.getClientBaritone().getCustomGoalProcess().onLostControl();
+        }
+        // buried skips the ground and water patience too: in the air, on a ladder or wet, the head still has to come out
+        if (inRange && (mayBreak || buried) && !dropsOnUs
+                && (buried || !mod.getFoodChain().needsToEat()) && !WorldHelper.isInNetherPortal(mod)
                 && mod.getClientBaritone().getPathingBehavior().isSafeToCancel()) {
             setDebugState("Block in range, mining...");
+            // swinging for real, not a glimpse of a ray on the way past: the spots we gave up on can be tried again
+            _triedFeet.clear();
             stuckCheck.reset();
             _stepOffs.reset();
+            if (crackingThis(mod)) {
+                _sideIdle.reset();
+                _sideTotal.reset();
+                _backedUp = 0;
+            }
             isMining = true;
             mod.getInputControls().release(Input.SNEAK);
             mod.getInputControls().release(Input.MOVE_BACK);
             mod.getInputControls().release(Input.MOVE_FORWARD);
             mod.getClientBaritone().getCustomGoalProcess().onLostControl();
             mod.getClientBaritone().getBuilderProcess().onLostControl();
-            if (!LookHelper.isLookingAt(mod, reach.get())) {
-                LookHelper.lookAt(mod, reach.get());
+            Rotation look = reach.orElse(_lastReach);
+            if (!LookHelper.isLookingAt(mod, look)) {
+                LookHelper.lookAt(mod, look);
             }
             BlockState state = mod.getWorld().getBlockState(swingAt);
             Optional<Slot> bestToolSlot = StorageHelper.getBestToolSlot(mod, state);
             Slot currentEquipped = PlayerSlot.getEquipSlot();
             // if baritone is running, only accept tools OUTSIDE OF HOTBAR!
             // Baritone will take care of tools inside the hotbar.
-            if (bestToolSlot.isPresent() && bestToolSlot.get() != currentEquipped) {
-                // ONLY equip if the item class is STRICTLY different (otherwise we swap around a lot)
-                if (StorageHelper.getItemStackInSlot(currentEquipped).getItem() != StorageHelper.getItemStackInSlot(bestToolSlot.get()).getItem()) {
+            // (and not with a crack on the block: a different item in hand starts the break over)
+            boolean crackedAlready = MineStick.toolSwapWouldReset(mod.getControllerExtras().isBreakingBlock(),
+                    mod.getControllerExtras().getBreakingBlockPos(), mod.getControllerExtras().getBreakingBlockProgress(), swingAt);
+            ItemStack held = StorageHelper.getItemStackInSlot(currentEquipped);
+            boolean handIsATool = ItemHelper.isTool(held.getItem()) || held.getItem() == Items.SHEARS;
+            // the two quiet ways to end up swinging a bucket at a wall: nothing in the bag does better, or a crack is in progress
+            // (an empty hand isn't news, that is every block at the start of a run)
+            if (!_handSaid && (bestToolSlot.isEmpty() || crackedAlready) && !handIsATool && !held.isEmpty() && !breaksInstantly(mod, swingAt)) {
+                _handSaid = true;
+                String why = crackedAlready ? "a swap would reset the crack" : "nothing in the bag does better";
+                Debug.logInternal("mining " + _what + " at " + _pos.toShortString() + " with " + ToolPick.nameOf(held) + " in hand (" + why + ")");
+            }
+            if (_handSaid && !handIsATool && !held.isEmpty()) {
+                setDebugState("Block in range, mining... (swinging " + ToolPick.nameOf(held) + ")");
+            }
+            // a block that goes in one swing doesn't care what is in the hand
+            if (bestToolSlot.isPresent() && !crackedAlready && !breaksInstantly(mod, swingAt)) {
+                ItemStack best = StorageHelper.getItemStackInSlot(bestToolSlot.get());
+                double heldSpeed = ToolSet.calculateSpeedVsBlock(held, state);
+                double bestSpeed = ToolSet.calculateSpeedVsBlock(best, state);
+                // by item and by speed, not by slot: the slot object is new every tick, and two tools that are equally
+                // fast would trade places forever (see ToolSwap). a best that is only the fastest wrong tool (iron on
+                // obsidian) has to be strictly faster than the hand, "the hand is wrong too" is not a reason to swap
+                if (ToolSwap.worthSwapping(false, held.getItem(), held.isCorrectToolForDrops(state), heldSpeed, best.getItem(), bestSpeed)
+                        && (best.isCorrectToolForDrops(state) || bestSpeed > heldSpeed)) {
                     boolean isAllowedToManage = !mod.getClientBaritone().getPathingBehavior().isPathing()
                             && !mod.getFoodChain().isTryingToEat();
-                    if (isAllowedToManage) {
-                        Debug.logMessage("Found better tool in inventory, equipping.");
-                        ItemStack bestToolItemStack = StorageHelper.getItemStackInSlot(bestToolSlot.get());
-                        Item bestToolItem = bestToolItemStack.getItem();
-                        mod.getSlotHandler().forceEquipItem(bestToolItem);
+                    if (!isAllowedToManage && _swapBlockedTicks++ < SWAP_BLOCKED_CAP) {
+                        return null;
                     }
-                    return null;
+                    Item bestToolItem = best.getItem();
+                    // three misses and we swing with what we hold, a hand we can't change is no reason to never swing
+                    if (isAllowedToManage && _toolSwap.mayTry(bestToolItem)) {
+                        // the log file only: mining swaps pick and shovel every other block and chat drowned in it
+                        Debug.logInternal("Found better tool in inventory, equipping " + bestToolItem.getDescriptionId() + ".");
+                        if (mod.getSlotHandler().forceEquipItem(bestToolItem)) {
+                            _toolSwap.landed();
+                        } else {
+                            _toolSwap.missed(bestToolItem);
+                        }
+                        return null;
+                    }
+                    // the log the next stall needs: what we mined with, what we wanted, where it was
+                    if (!_swapGiveUpLogged) {
+                        _swapGiveUpLogged = true;
+                        Debug.logInternal("tool swap given up on " + state.getBlock().getDescriptionId() + ": holding " + held.getItem().getDescriptionId()
+                            + ", wanted " + bestToolItem.getDescriptionId() + " from slot " + bestToolSlot.get().getWindowSlot());
+                    }
+                } else {
+                    _toolSwap.landed();
                 }
             }
-            mod.getClientBaritone().getInputOverrideHandler().setInputForceState(Input.CLICK_LEFT, true);
+            // holding on an old look: the crosshair might be on the dirt in front now, and cracking that is the exact thing
+            // this is here to stop. no click until it's back on the block
+            boolean click = !holding || LookHelper.isLookingAt(mod, swingAt);
+            mod.getClientBaritone().getInputOverrideHandler().setInputForceState(Input.CLICK_LEFT, click);
         } else {
             boolean fromSide = mustMineFromSide(mod);
-            if (fromSide) {
+            if (dropsOnUs) {
+                setDebugState("Breaking it from here would bring the column down on us, stepping aside.", "Mining it from the side");
+            } else if (waitForLand) {
+                setDebugState("Getting out of the water before mining", "Getting out of the water first");
+            } else if (fromSide) {
                 setDebugState("Getting to block...", "Mining it from the side");
             } else {
                 setDebugState("Getting to block...", "Walking to " + HudText.pos(_pos));
             }
-            if (isMining && mod.getPlayer().isInWater()) {
+            // we were swinging in the water (that only happens when WaterBreakGuard ran out of patience) and the current
+            // took the block out of reach: it isn't worth chasing across a lake, let someone pick another. when it's
+            // still in reach and we just stopped for dry land that's not a reason to give up on it
+            if (isMining && !inRange && mod.getPlayer().isInWater()) {
                 isMining = false;
                 mod.getBlockTracker().requestBlockUnreachable(_pos);
             } else {
                 isMining = false;
             }
+            if (waitForLand) {
+                // we're doing what we meant to, the progress checkers don't get a say. the clock in WaterBreakGuard is the way out
+                _moveChecker.reset();
+                stuckCheck.reset();
+                // swimming around with the button held down is the exact thing we're not doing
+                mod.getClientBaritone().getInputOverrideHandler().setInputForceState(Input.CLICK_LEFT, false);
+                stopBackingUp(mod);
+                // the block is in reach, so whatever goal we had is probably satisfied right where we float and wouldn't budge
+                if (!_landGoalSet) {
+                    _landGoalSet = true;
+                    _landPathAt = _wetTicks;
+                    mod.getClientBaritone().getBuilderProcess().onLostControl();
+                    mod.getClientBaritone().getCustomGoalProcess().onLostControl();
+                    mod.getClientBaritone().getCustomGoalProcess().setGoalAndPath(_landGoal);
+                } else if (!mod.getClientBaritone().getCustomGoalProcess().isActive() && _wetTicks - _landPathAt >= LAND_LOOK_TICKS) {
+                    // that path ended and we're still wet (no route, or the current won). try again, but not every tick
+                    _landPathAt = _wetTicks;
+                    mod.getClientBaritone().getCustomGoalProcess().setGoalAndPath(_landGoal);
+                }
+                return null;
+            }
+            // the from-side approach has its own way out. a search that finds nothing is not "not pathing, so back up", and
+            // ten seconds without a swing or a path is not a reason to keep trying
+            FromSideRules.Verdict side = fromSide ? sideVerdict(mod, crackingThis(mod), inRange) : FromSideRules.Verdict.KEEP_TRYING;
+            if (side == FromSideRules.Verdict.GIVE_UP) {
+                return giveUpOnSide(mod);
+            }
             boolean isCloseToMoveBack = _pos.closerToCenterThan(mod.getPlayer().position(), 2);
-            if (isCloseToMoveBack) {
-                if (!mod.getClientBaritone().getPathingBehavior().isPathing() && !mod.getPlayer().isInWater() &&
+            if (side == FromSideRules.Verdict.RELEASE_KEYS) {
+                // the hold can start while the first search is still running and carry us out past two blocks, so letting go
+                // can't wait for the distance check below
+                stopBackingUp(mod);
+            } else if (isCloseToMoveBack) {
+                if (side == FromSideRules.Verdict.KEEP_TRYING && !mod.getClientBaritone().getPathingBehavior().isPathing() && !mod.getPlayer().isInWater() &&
                         !mod.getFoodChain().needsToEat()) {
                     mod.getInputControls().hold(Input.MOVE_BACK);
                     mod.getInputControls().hold(Input.SNEAK);
+                    _backedUp++;
                 } else {
                     mod.getInputControls().release(Input.MOVE_BACK);
                     mod.getInputControls().release(Input.SNEAK);
@@ -444,14 +946,27 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
                 // GoalNear and GoalBlock both count standing on top of the block as arrived, which is the
                 // one place we refuse to break it from (and the step-off task shoves us off of)
                 Goal goal;
-                if (fromSide) {
-                    goal = new GoalMineFromSide(_pos);
+                BlockPos feet = mod.getClientBaritone().getPlayerContext().playerFeet();
+                if (fromSide || looseColumn) {
+                    // with a stack hanging on it the shaft two below is out as well, it comes down that shaft
+                    goal = new GoalMineFromSide(_pos, !looseColumn, openBelow(mod, _pos));
+                    if (goal.isInGoal(feet) && reach.isEmpty()) {
+                        // "from the side" only looks at offsets, so a spot by the trunk with leaves in the way (or a cell
+                        // across a wall's corner) counts as arrived and the goal finishes instantly, every tick. same way out
+                        // as the branch below: walk up and touch it
+                        closeIn = true;
+                        // never the top or the shaft here, and when every side has been tried the side goal stays
+                        Goal touching = pickGoal(mod.getWorld(), _pos, true, triedFeet(feet), true);
+                        if (!(touching instanceof GoalNear)) {
+                            goal = touching;
+                        }
+                    }
                 } else {
-                    goal = pickGoal(mod.getWorld(), _pos, closeIn);
-                    if (goal instanceof GoalReachBlock && goal.isInGoal(mod.getClientBaritone().getPlayerContext().playerFeet()) && reach.isEmpty()) {
+                    goal = pickGoal(mod.getWorld(), _pos, closeIn, closeIn && reach.isEmpty() ? triedFeet(feet) : null);
+                    if (goal instanceof GoalReachBlock && goal.isInGoal(feet) && reach.isEmpty()) {
                         // already there and it still can't be hit (leaves, other logs, a wall), so touch it like before
                         closeIn = true;
-                        goal = pickGoal(mod.getWorld(), _pos, true);
+                        goal = pickGoal(mod.getWorld(), _pos, true, triedFeet(feet));
                     }
                 }
                 mod.getClientBaritone().getCustomGoalProcess().setGoalAndPath(goal);
@@ -505,7 +1020,14 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
         }
         // Get the block state at the specified position and check if it's air
         BlockState blockState = mod.getWorld().getBlockState(_pos);
-        return blockState.isAir();
+        if (!blockState.isAir()) {
+            return false;
+        }
+        // air with a stack about to land in it is not a cleared block, it's a block that is about to have sand in it.
+        // onTick owns the counters, so a column that never lands runs out of patience there
+        boolean inFlight = WorldHelper.fallingInFlightOver(mod.getWorld(), _pos);
+        boolean pending = !inFlight && WorldHelper.fallingAboutToDrop(mod.getWorld(), _pos);
+        return !(inFlight && _fallWaited <= FALL_WAIT_MAX || pending && _dropPending <= DROP_PENDING_MAX);
     }
 
     /**
@@ -529,7 +1051,7 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
     @Override
     protected String toDebugString() {
         if (_pos != null) {
-            return "Destroy block at " + _pos.toShortString();
+            return "Destroy " + _what + " at " + _pos.toShortString();
         } else {
             return "Destroy block at unknown position";
         }

@@ -20,8 +20,37 @@ public interface PhaseHandler {
         return null;
     }
 
+    // the kit runner this phase drives, for the card's rows. null = the phase has no kit (the card shows no rows)
+    default KitRunner kitRunner() {
+        return null;
+    }
+
+    // the side jobs this phase runs. null = none
+    default PrepSupport support() {
+        return null;
+    }
+
+    // the diamond, coal or gravel detour that is going, for the card's detour row. null = none. PORTAL and NETHER have a gravel detour of
+    // their own and no PrepSupport, they say so themselves
+    default ResourceDetour detour() {
+        PrepSupport s = support();
+        return s == null ? null : s.activeDetour();
+    }
+
+    // true for the phases that run the station pickup themselves (Workbenches.tick with their plan: GATHER, IRON, PORTAL). for every
+    // other phase the engine sweeps instead, so a table placed by a craft anywhere in the run does not stay behind
+    default boolean ownsBenches() {
+        return false;
+    }
+
     // pure and cheap, the engine asks every tick. true = move on to the next phase
     boolean isDone(GamerFacts facts, RunState state, GamerConfig cfg);
+
+    // the same with the tick's context, which is how the engine asks: a phase whose answer hangs on the food plan or the wood budget
+    // reads the tick's (ctx.food(), ctx.wood()) so it cannot call itself done while the plan it just walked still wants something
+    default boolean isDone(GamerContext ctx) {
+        return isDone(ctx.facts(), ctx.state(), ctx.cfg());
+    }
 
     // pure. a rule that says "the stuff this phase needs is gone, an earlier phase has to run again"
     default Optional<GamerPhase> regressTo(GamerFacts facts, RunState state, GamerConfig cfg) {

@@ -4,25 +4,29 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.eventbus.EventBus;
 import adris.altoclef.eventbus.events.BlockPlaceEvent;
-import adris.altoclef.trackers.blacklisting.WorldLocateBlacklist;
+import adris.altoclef.eventbus.events.ChunkLoadEvent;
+import adris.altoclef.eventbus.events.ChunkUnloadEvent;
 import baritone.api.utils.Dimension;
 import adris.altoclef.util.helpers.BaritoneHelper;
 import adris.altoclef.util.helpers.ConfigHelper;
-import adris.altoclef.util.helpers.StlHelper;
+import adris.altoclef.util.helpers.FluidSources;
+import adris.altoclef.util.helpers.PlacedByUs;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.time.TimerGame;
 import baritone.Baritone;
 import baritone.api.utils.BlockOptionalMetaLookup;
+import baritone.cache.FasterWorldScanner;
 import baritone.pathing.movement.CalculationContext;
 import baritone.process.MineProcess;
 import java.util.*;
 import java.util.concurrent.Semaphore;
+import java.util.function.Function;
 import java.util.function.Predicate;
-import java.util.stream.Collectors;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 
@@ -32,7 +36,7 @@ import net.minecraft.world.phys.Vec3;
  * Gives you a "Check and don't care" interface where you can check for blocks and their locations over and over again
  * without scanning the world over and over again.
  * <p>
- * Also keeps track of blacklists for unreachable blocks
+ * Banned blocks (see Bans) are never offered
  */
 public class BlockTracker extends Tracker {
 
@@ -40,6 +44,10 @@ public class BlockTracker extends Tracker {
     // but if set to true, block scanning will happen
     // asynchronously to spread out the expensive cost of scanning.
     private static final boolean ASYNC_SCANNING = true;
+    // seconds. the first scan after a task tracks something new is the one it will wander off without, so it can't wait 7
+    private static final double FIRST_LOOK_GAP = 0.5;
+    // same reach as MineProcess.searchWorld's scan
+    private static final int FLUID_SCAN_CHUNK_RADIUS = 32;
     private static BlockTrackerConfig _config = new BlockTrackerConfig();
 
     static {
@@ -52,7 +60,9 @@ public class BlockTracker extends Tracker {
 
     private final TimerGame _timer = new TimerGame(_config.scanInterval);
 
-    private final TimerGame _forceElapseTimer = new TimerGame(_config.scanIntervalWhenNewBlocksFound);
+    // a block type nobody has scanned for yet doesn't wait for the lazy timer above, but this keeps a task that
+    // tracks and untracks a new type every few ticks from turning that into a scan every few ticks
+    private final TimerGame _firstLookGap = new TimerGame(FIRST_LOOK_GAP);
 
     // A scan can last no more than 15 seconds
     private final TimerGame _asyncForceResetScanFlag = new TimerGame(15);
@@ -64,17 +74,45 @@ public class BlockTracker extends Tracker {
     private final Semaphore _endOfFrameMutex = new Semaphore(1);
     //private Block _currentlyTracking = null;
     private final AltoClef _mod;
-    private boolean _scanning = false;
+    // the scan thread flips it and the main thread reads it
+    private volatile boolean _scanning = false;
 
     public BlockTracker(AltoClef mod, TrackerManager manager) {
         super(manager);
         _mod = mod;
         // First time, track immediately
         _timer.forceElapse();
-        _forceElapseTimer.forceElapse();
+        _firstLookGap.forceElapse();
 
         // Listen for block placement
-        EventBus.subscribe(BlockPlaceEvent.class, evt -> addBlock(evt.blockState.getBlock(), evt.blockPos));
+        EventBus.subscribe(BlockPlaceEvent.class, evt -> {
+            addBlock(evt.blockState.getBlock(), evt.blockPos);
+            rememberOurPlacement(evt.blockPos);
+        });
+        // "until the chunk reloads" bans (the n-failures rule) end here. both halves, a load on its own is also what a furnace
+        // going lit looks like (Bans.chunkLoaded)
+        EventBus.subscribe(ChunkUnloadEvent.class, evt -> {
+            if (Minecraft.getInstance().level != null) {
+                _mod.getBans().chunkUnloaded(evt.chunkPos.x, evt.chunkPos.z);
+            }
+        });
+        EventBus.subscribe(ChunkLoadEvent.class, evt -> {
+            if (Minecraft.getInstance().level != null) {
+                _mod.getBans().chunkLoaded(WorldHelper.getCurrentDimension(), evt.chunkPos.x, evt.chunkPos.z);
+            }
+        });
+    }
+
+    // the hook publishes every conducting block that shows up on the client level, so "within placing reach" is our only
+    // evidence it was us. the gather skips these (see PlacedByUs) so it stops eating the scaffold it just built
+    private static void rememberOurPlacement(BlockPos pos) {
+        Minecraft client = Minecraft.getInstance();
+        if (client.player == null || client.level == null) {
+            return;
+        }
+        if (PlacedByUs.withinReach(client.player.getX(), client.player.getEyeY(), client.player.getZ(), pos.getX(), pos.getY(), pos.getZ())) {
+            PlacedByUs.GLOBAL.record(pos.getX(), pos.getY(), pos.getZ(), client.level.getGameTime());
+        }
     }
 
     @Override
@@ -124,14 +162,11 @@ public class BlockTracker extends Tracker {
             for (Block block : blocks) {
                 if (!_trackingBlocks.containsKey(block)) {
                     // We're tracking a new block, so we're not updated.
+                    // no rescan is forced from here anymore: updateState sees the block isn't covered by any scan and
+                    // goes right away. (this used to wait on a 2 second timer, which is how a bot with logs 5 blocks
+                    // away decided to go exploring)
                     setDirty();
                     _trackingBlocks.put(block, 0);
-                    // Force a rescan if these are new blocks and we aren't doing this like every frame.
-                    if (_forceElapseTimer.elapsed()) {
-                        _timer.forceElapse();
-                        _forceElapseTimer.reset();
-                        _forceElapseTimer.setInterval(_config.scanIntervalWhenNewBlocksFound);
-                    }
                 }
                 _trackingBlocks.put(block, _trackingBlocks.get(block) + 1);
             }
@@ -144,6 +179,7 @@ public class BlockTracker extends Tracker {
      * Only call this once for every {@link #trackBlock(Block...) trackBlock}.
      */
     public void stopTracking(Block... blocks) {
+        List<Block> dropped = null;
         synchronized (_trackingBlocks) {
             for (Block block : blocks) {
                 if (_trackingBlocks.containsKey(block)) {
@@ -154,10 +190,50 @@ public class BlockTracker extends Tracker {
                         _trackingBlocks.put(block, current - 1);
                         if (_trackingBlocks.get(block) <= 0) {
                             _trackingBlocks.remove(block);
+                            if (dropped == null) dropped = new ArrayList<>();
+                            dropped.add(block);
                         }
                     }
                 }
             }
+        }
+        if (dropped != null) {
+            // once nobody tracks it the cache for it rots, so the next trackBlock is a first look all over again.
+            // after the _trackingBlocks lock is gone: the scan merge takes these two in the other order
+            synchronized (_scanMutex) {
+                for (PosCache cache : _caches.values()) {
+                    for (Block block : dropped) {
+                        cache.coverage.forget(block);
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Whether a finished scan has looked for every one of these blocks since they were tracked. An empty answer from
+     * the tracker only means "there are none" once this is true; before that it means "haven't looked yet".
+     */
+    public boolean hasBeenScanned(Block... blocks) {
+        synchronized (_scanMutex) {
+            return currentCache().coverage.coversAll(blocks);
+        }
+    }
+
+    /**
+     * True if any of these blocks is tracked but no scan has covered it yet, so one is on its way.
+     */
+    public boolean scanPending(Block... blocks) {
+        synchronized (_scanMutex) {
+            ScanCoverage<Block> coverage = currentCache().coverage;
+            synchronized (_trackingBlocks) {
+                for (Block block : blocks) {
+                    if (_trackingBlocks.containsKey(block) && !coverage.covers(block)) {
+                        return true;
+                    }
+                }
+            }
+            return false;
         }
     }
 
@@ -231,6 +307,29 @@ public class BlockTracker extends Tracker {
         }
     }
 
+    // how a caller ranks the tracked blocks when plain distance is the wrong question (MineAndCollectTask on stone: the
+    // default heuristic is baritone's, which thinks down is cheap, which is how we dug shafts). lowest score wins,
+    // infinite never does. positions are the block's center
+    public interface Scorer {
+        double score(double fromX, double fromY, double fromZ, double toX, double toY, double toZ);
+    }
+
+    // getNearestTracking with the caller's idea of near
+    public Optional<BlockPos> getNearestTracking(Vec3 pos, Predicate<BlockPos> isValidTest, Scorer scorer, Block... blocks) {
+        synchronized (_trackingBlocks) {
+            for (Block block : blocks) {
+                if (!_trackingBlocks.containsKey(block)) {
+                    Debug.logWarning("BlockTracker: Not tracking block " + block + " right now.");
+                    return Optional.empty();
+                }
+            }
+        }
+        updateState();
+        synchronized (_scanMutex) {
+            return currentCache().getNearest(pos, isValidTest, p -> blockIsValid(p, blocks), scorer::score, blocks);
+        }
+    }
+
     /**
      * Returns the locations of all tracked blocks of a given type
      */
@@ -261,16 +360,15 @@ public class BlockTracker extends Tracker {
                 maxZ = (int) Math.floor(pos.z + range);
         double closestDistance = Float.POSITIVE_INFINITY;
         BlockPos nearest = null;
+        ClientLevel level = Minecraft.getInstance().level;
+        assert level != null;
+        // one pos for the whole cube. this used to be a new BlockPos and a mutex per cell, and a radius of 10 is 9261 cells
+        BlockPos.MutableBlockPos check = new BlockPos.MutableBlockPos();
         for (int x = minX; x <= maxX; ++x) {
             for (int y = minY; y <= maxY; ++y) {
                 for (int z = minZ; z <= maxZ; ++z) {
-                    BlockPos check = new BlockPos(x, y, z);
-                    synchronized (_scanMutex) {
-                        if (currentCache().blockUnreachable(check)) continue;
-                    }
-
-                    assert Minecraft.getInstance().level != null;
-                    Block b = Minecraft.getInstance().level.getBlockState(check).getBlock();
+                    check.set(x, y, z);
+                    Block b = level.getBlockState(check).getBlock();
                     boolean valid = false;
                     for (Block type : blocks) {
                         if (type == b) {
@@ -279,11 +377,15 @@ public class BlockTracker extends Tracker {
                         }
                     }
                     if (!valid) continue;
+                    // nearly every cell is air, so the lock only gets taken for the handful that are actually the thing
+                    synchronized (_scanMutex) {
+                        if (currentCache().blockUnreachable(check)) continue;
+                    }
                     if (check.closerToCenterThan(pos, range)) {
                         double sq = check.distToCenterSqr(pos);
                         if (sq < closestDistance) {
                             closestDistance = sq;
-                            nearest = check;
+                            nearest = check.immutable();
                         }
                     }
                 }
@@ -293,34 +395,60 @@ public class BlockTracker extends Tracker {
     }
 
     private boolean shouldUpdate() {
-        return _timer.elapsed();
+        if (_timer.elapsed()) return true;
+        // something tracked that no scan has covered. a scan already running was snapshotted before it was tracked,
+        // so wait it out (when it ends this is still true and the next one goes)
+        return !_scanning && _firstLookGap.elapsed() && needsFirstLook();
+    }
+
+    // a couple of hash lookups under the mutex every query matters less than a bot wandering off from a tree
+    private boolean needsFirstLook() {
+        synchronized (_scanMutex) {
+            ScanCoverage<Block> coverage = currentCache().coverage;
+            synchronized (_trackingBlocks) {
+                return coverage.anyUncovered(_trackingBlocks.keySet());
+            }
+        }
     }
 
     private void update() {
         // Perform a baritone scan
         _timer.reset();
         _timer.setInterval(_config.scanInterval);
-        CalculationContext ctx = new CalculationContext(_mod.getClientBaritone(), _config.scanAsynchronously);
+        Dimension scanDimension = WorldHelper.getCurrentDimension();
         if (_config.scanAsynchronously) {
             if (_scanning && _asyncForceResetScanFlag.elapsed()) {
                 Debug.logMessage("SCANNING TOOK TOO LONG! Will assume it ended mid way. Hopefully this won't break anything...");
                 _scanning = false;
             }
             if (!_scanning) {
+                // the thread safe context copies the whole client chunk cache, so only make one if a scan is really going
+                // to use it. it used to be built first and thrown away whenever the last scan was still running
+                CalculationContext ctx = new CalculationContext(_mod.getClientBaritone(), true);
+                // claimed here and not in the task so a second update before the thread wakes up can't start a second scan
+                _scanning = true;
+                _asyncForceResetScanFlag.reset();
+                _firstLookGap.reset();
                 Baritone.getExecutor().execute(() -> {
-                    _scanning = true;
-                    _asyncForceResetScanFlag.reset();
-                    rescanWorld(ctx, true);
-                    _scanning = false;
+                    try {
+                        rescanWorld(ctx, true, scanDimension);
+                    } finally {
+                        _scanning = false;
+                    }
                 });
             }
         } else {
             // Synchronous scanning.
-            rescanWorld(ctx, false);
+            _firstLookGap.reset();
+            rescanWorld(new CalculationContext(_mod.getClientBaritone(), false), false, scanDimension);
         }
     }
 
-    private void rescanWorld(CalculationContext ctx, boolean async) {
+    private static boolean isScannedAsFluid(Block block) {
+        return block == Blocks.WATER || block == Blocks.LAVA;
+    }
+
+    private void rescanWorld(CalculationContext ctx, boolean async, Dimension scanDimension) {
         Block[] blocksToScan;
         if (async) {
             // Wait for end of frame
@@ -362,19 +490,48 @@ public class BlockTracker extends Tracker {
             return;
         }
         // one scan has one budget for everything it's looking for, so each type gets its own share. see PerTypeScan
+        Function<BlockPos, Block> blockAt = pos -> {
+            ClientLevel level = Minecraft.getInstance().level;
+            return level == null ? null : level.getBlockState(pos).getBlock();
+        };
+        List<Block> fluids = new ArrayList<>();
+        List<Block> solids = new ArrayList<>();
+        for (Block block : blocksToScan) {
+            (isScannedAsFluid(block) ? fluids : solids).add(block);
+        }
         Map<Block, List<BlockPos>> found = PerTypeScan.run(
-                blocksToScan,
+                solids.toArray(new Block[0]),
                 _config.maxCacheSizePerBlockType,
-                (types, max) -> MineProcess.searchWorld(ctx, new BlockOptionalMetaLookup(types), max, Collections.emptyList(), Collections.emptyList(), Collections.emptyList()),
-                pos -> {
-                    ClientLevel level = Minecraft.getInstance().level;
-                    return level == null ? null : level.getBlockState(pos).getBlock();
-                }
+                (types, max) -> {
+                    int[] raw = {0};
+                    List<BlockPos> hits = MineProcess.searchWorld(ctx, new BlockOptionalMetaLookup(types), max, Collections.emptyList(), Collections.emptyList(), Collections.emptyList(), n -> raw[0] = n);
+                    return new PerTypeScan.Scanned(hits, raw[0]);
+                },
+                blockAt
         );
+        if (!fluids.isEmpty()) {
+            // water and lava are mostly flowing or buried, and the plain scan spends its whole budget on those before it
+            // ever reaches a surface you could bucket (a lake 10 blocks away came back as "no water"). the filter runs
+            // at the hit, so the junk never counts
+            found.putAll(PerTypeScan.run(
+                    fluids.toArray(new Block[0]),
+                    _config.maxCacheSizePerBlockType,
+                    (types, max) -> PerTypeScan.Scanned.of(FasterWorldScanner.INSTANCE.scanNearest(
+                            ctx.getBaritone().getPlayerContext(),
+                            new BlockOptionalMetaLookup(types),
+                            max,
+                            FLUID_SCAN_CHUNK_RADIUS,
+                            (chunk, x, y, z) -> FluidSources.exposedSource(chunk.getFluidState(x, y, z), chunk.getFluidState(x, y + 1, z)))),
+                    blockAt
+            ));
+        }
 
         synchronized (_scanMutex) {
             if (Minecraft.getInstance().level != null) {
+                // hits were found in scanDimension, so they don't go into whatever cache is current now
+                boolean sameDimension = WorldHelper.getCurrentDimension() == scanDimension;
                 for (Map.Entry<Block, List<BlockPos>> entry : found.entrySet()) {
+                    if (!sameDimension) break;
                     synchronized (_trackingBlocks) {
                         if (!_trackingBlocks.containsKey(entry.getKey())) continue;
                     }
@@ -385,6 +542,18 @@ public class BlockTracker extends Tracker {
 
                 // Purge if we have too many blocks tracked at once.
                 currentCache().smartPurge(_mod, _mod.getPlayer().position());
+
+                // what we looked for counts as looked at, found or not. skipped if we changed dimension on the way,
+                // because then it's the other dimension's cache that would get told it was scanned
+                if (WorldHelper.getCurrentDimension() == scanDimension) {
+                    List<Block> stillTracked = new ArrayList<>(blocksToScan.length);
+                    synchronized (_trackingBlocks) {
+                        for (Block block : blocksToScan) {
+                            if (_trackingBlocks.containsKey(block)) stillTracked.add(block);
+                        }
+                    }
+                    currentCache().coverage.scanned(stillTracked);
+                }
             }
         }
     }
@@ -444,9 +613,13 @@ public class BlockTracker extends Tracker {
      * @param allowedFailures how many times we can try reaching before we finally declare this block "unreachable"
      */
     public void requestBlockUnreachable(BlockPos pos, int allowedFailures) {
-        synchronized (_scanMutex) {
-            currentCache().blacklistBlockUnreachable(_mod, pos, allowedFailures);
-        }
+        requestBlockUnreachable(pos, allowedFailures, "couldn't reach it");
+    }
+
+    // the n-failures rule lives in the ban book now (BanPolicy.blockStrike), the reason is what its log line says
+    public void requestBlockUnreachable(BlockPos pos, int allowedFailures, String reason) {
+        double distSq = WorldHelper.toVec3d(pos).distanceToSqr(_mod.getPlayer().position());
+        BanPolicy.blockStrike(_mod.getBans(), WorldHelper.getCurrentDimension(), pos.getX(), pos.getY(), pos.getZ(), allowedFailures, distSq, reason);
     }
 
     public void requestBlockUnreachable(BlockPos pos) {
@@ -456,7 +629,7 @@ public class BlockTracker extends Tracker {
     private PosCache currentCache() {
         Dimension dimension = WorldHelper.getCurrentDimension();
         if (!_caches.containsKey(dimension)) {
-            _caches.put(dimension, new PosCache());
+            _caches.put(dimension, new PosCache(_mod.getBans(), dimension));
         }
         return _caches.get(dimension);
     }
@@ -467,7 +640,22 @@ public class BlockTracker extends Tracker {
 
         private final HashMap<BlockPos, Block> _cachedByPosition = new HashMap<>();
 
-        private final WorldLocateBlacklist _blacklist = new WorldLocateBlacklist();
+        // the ban book and which dimension of it we are. the cache used to keep its own blacklist, now everybody's bans count
+        private final Bans _bans;
+        private final Dimension _dimension;
+
+        final ScanCoverage<Block> coverage = new ScanCoverage<>();
+
+        PosCache(Bans bans, Dimension dimension) {
+            _bans = bans;
+            _dimension = dimension;
+        }
+
+        // for tests: an empty book of its own
+        PosCache() {
+            this(new Bans(line -> {
+            }), Dimension.OVERWORLD);
+        }
 
         public boolean anyFound(Block... blocks) {
             for (Block block : blocks) {
@@ -520,7 +708,7 @@ public class BlockTracker extends Tracker {
                     return;
                 } else {
                     // We're tracked incorrectly, fix
-                    removeBlock(pos, block);
+                    removeBlock(pos, _cachedByPosition.get(pos));
                 }
             }
             if (!anyFound(block)) {
@@ -535,7 +723,7 @@ public class BlockTracker extends Tracker {
             Debug.logInternal("CLEARED BLOCK CACHE");
             _cachedBlocks.clear();
             _cachedByPosition.clear();
-            _blacklist.clear();
+            coverage.clear();
         }
 
         public int getBlockTrackCount() {
@@ -548,86 +736,73 @@ public class BlockTracker extends Tracker {
             return count;
         }
 
-        public void blacklistBlockUnreachable(AltoClef mod, BlockPos pos, int allowedFailures) {
-            _blacklist.blackListItem(mod, pos, allowedFailures);
-        }
-
         public boolean blockUnreachable(BlockPos pos) {
-            return _blacklist.unreachable(pos);
+            return _bans.blockBanned(_dimension, pos.getX(), pos.getY(), pos.getZ());
         }
 
         // Gets nearest block. For now does linear search. In the future might optimize this a bit
         public Optional<BlockPos> getNearest(AltoClef mod, Vec3 position, Predicate<BlockPos> isValid, Block... blocks) {
+            return getNearest(position, isValid, pos -> mod.getBlockTracker().blockIsValid(pos, blocks), BaritoneHelper::calculateGenericHeuristic, blocks);
+        }
+
+        interface Scorer {
+            double score(double fromX, double fromY, double fromZ, double toX, double toY, double toZ);
+        }
+
+        // blockIsValid and the scorer are parameters so a test can drive this without a client (the heuristic wants
+        // baritone's settings and those want a whole game). the real validity check takes a mutex, allocs a ChunkPos
+        // and reads the world, so it only gets asked about entries that are actually in the running
+        Optional<BlockPos> getNearest(Vec3 position, Predicate<BlockPos> isValid, Predicate<BlockPos> blockIsValid, Scorer scorer, Block... blocks) {
             if (!anyFound(blocks)) {
                 //Debug.logInternal("(failed cataloguecheck for " + block.getTranslationKey() + ")");
                 return Optional.empty();
             }
 
-            BlockPos closest = null;
-            double minScore = Double.POSITIVE_INFINITY;
-
             List<BlockPos> blockList = getKnownLocations(blocks);
+            int n = blockList.size();
 
-            int toPurge = blockList.size() - _config.maxCacheSizePerBlockType;
-
-            boolean closestPurged = false;
-            if (!blockList.isEmpty()) {
-                for (BlockPos pos : blockList) {
-                    // If our current block isn't valid, fix it up. This cleans while we're iterating.
-                    if (!mod.getBlockTracker().blockIsValid(pos, blocks)) {
-                        removeBlock(pos, blocks);
-                        continue;
-                    }
-                    if (!isValid.test(pos)) continue;
-
-                    double score = BaritoneHelper.calculateGenericHeuristic(position, WorldHelper.toVec3d(pos));
-
-                    boolean currentlyClosest = false;
-                    boolean purged = false;
-
-                    if (score < minScore) {
-                        minScore = score;
-                        closest = pos;
-                        currentlyClosest = true;
-                    }
-
-                    if (toPurge > 0) {
-                        double sqDist = position.distanceToSqr(WorldHelper.toVec3d(pos));
-                        if (sqDist > _config.cutoffDistance * _config.cutoffDistance) {
-                            // cut this one off.
-                            for (Block block : blocks) {
-                                if (_cachedBlocks.containsKey(block)) {
-                                    removeBlock(pos, block);
-                                }
-                            }
-                            toPurge--;
-                            purged = true;
-                        }
-                    }
-
-                    if (currentlyClosest) {
-                        closestPurged = purged;
-                    }
-                }
+            // scores first, with raw doubles. this used to alloc a Vec3 per position per tick and then ask the world
+            // and the predicate about every single one even though only the nearest valid one matters
+            double[] scores = new double[n];
+            for (int i = 0; i < n; i++) {
+                BlockPos pos = blockList.get(i);
+                scores[i] = scorer.score(position.x, position.y, position.z, pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5);
             }
 
-            while (toPurge > 0) {
-                if (blockList.size() == 0) {
-                    //noinspection UnusedAssignment
-                    toPurge = 0;
+            // then hand out candidates nearest first and stop at the first one that survives. n is like 25 so picking the
+            // min over and over beats sorting, and strict < keeps the earliest in list order on ties like the old loop did.
+            // infinite scores never won the old loop either, so they never win here
+            for (int round = 0; round < n; round++) {
+                int best = -1;
+                double bestScore = Double.POSITIVE_INFINITY;
+                for (int i = 0; i < n; i++) {
+                    if (scores[i] < bestScore) {
+                        bestScore = scores[i];
+                        best = i;
+                    }
+                }
+                if (best == -1) {
                     break;
                 }
-                blockList.remove(blockList.size() - 1);
-                toPurge--;
+                scores[best] = Double.NaN; // NaN < anything is false, so it's out of the running
+                BlockPos pos = blockList.get(best);
+                // banned is skipped, not removed: it comes back as the answer the moment the ban runs out
+                if (blockUnreachable(pos)) {
+                    continue;
+                }
+                // If our current block isn't valid, fix it up. This cleans while we're iterating.
+                // anything we never get to stays put, which is fine: every rescan walks the whole cache and does the same cleanup
+                if (!blockIsValid.test(pos)) {
+                    removeBlock(pos, blocks);
+                    continue;
+                }
+                if (isValid.test(pos)) {
+                    // the old "purge far away blocks while we're here" bit is gone. smartPurge already keeps the nearest
+                    // maxCacheSizePerBlockType per scan, and this one could delete the answer it was about to return
+                    return Optional.of(pos);
+                }
             }
-
-            // Special case: Our closest was purged. Add us back.
-            if (closestPurged) {
-                Debug.logInternal("Rare edge case: Closest block was purged cause it was real far away, it will now be added back.");
-                blockList.add(closest);
-            }
-
-            return Optional.ofNullable(closest);
+            return Optional.empty();
         }
 
         /**
@@ -668,16 +843,35 @@ public class BlockTracker extends Tracker {
                     // Clear blacklisted blocks
                     try {
                         // Untrack the blocks further away
-                        tracking = tracking.stream()
-                                .filter(pos -> !_blacklist.unreachable(pos))
-                                // This is invalid, because some blocks we may want to GO TO not BREAK.
-                                //.filter(pos -> !mod.getExtraBaritoneSettings().shouldAvoidBreaking(pos))
-                                .distinct()
-                                .sorted(StlHelper.compareValues((BlockPos blockpos) -> blockpos.distToCenterSqr(playerPos)))
-                                .collect(Collectors.toList());
-                        tracking = tracking.stream()
-                                .limit(_config.maxCacheSizePerBlockType)
-                                .collect(Collectors.toList());
+                        // the old version was three streams and a comparator that worked out two distances per compare, all
+                        // while holding the mutex the main thread's block queries wait on. now it's distances once, into an array
+                        // (blacklisted ones and dupes still go; This is invalid, because some blocks we may want to GO TO not BREAK,
+                        // so no shouldAvoidBreaking filter here either)
+                        int size = tracking.size();
+                        BlockPos[] kept = new BlockPos[size];
+                        double[] dist = new double[size];
+                        Set<BlockPos> seen = new HashSet<>(size * 2);
+                        int count = 0;
+                        for (BlockPos pos : tracking) {
+                            if (blockUnreachable(pos) || !seen.add(pos)) continue;
+                            kept[count] = pos;
+                            dist[count] = pos.distToCenterSqr(playerPos.x, playerPos.y, playerPos.z);
+                            count++;
+                        }
+                        // boxed indices are cached below 128 so this doesn't even allocate for a normal list. object sorts are
+                        // stable, which is what the old sorted() gave us for equal distances
+                        Integer[] order = new Integer[count];
+                        for (int i = 0; i < count; i++) order[i] = i;
+                        Arrays.sort(order, (l, r) -> Double.compare(dist[l], dist[r]));
+                        int keep = Math.min(count, _config.maxCacheSizePerBlockType);
+                        List<BlockPos> trimmed = new ArrayList<>(keep);
+                        for (int i = 0; i < keep; i++) trimmed.add(kept[order[i]]);
+                        // addBlock bails on a byPosition hit, so anything dropped here has to leave that map too or it's never seen again
+                        Set<BlockPos> keptSet = new HashSet<>(trimmed);
+                        for (BlockPos pos : tracking) {
+                            if (!keptSet.contains(pos)) _cachedByPosition.remove(pos, block);
+                        }
+                        tracking = trimmed;
                         // This won't update otherwise.
                         _cachedBlocks.put(block, tracking);
                     } catch (IllegalArgumentException e) {
@@ -692,7 +886,6 @@ public class BlockTracker extends Tracker {
 
     static class BlockTrackerConfig {
         public double scanInterval = 7;
-        public double scanIntervalWhenNewBlocksFound = 2;
         public boolean scanAsynchronously = true;
         public int maxTotalCacheSize = 2500;
         public int maxCacheSizePerBlockType = 25;

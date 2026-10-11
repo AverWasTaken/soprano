@@ -45,9 +45,10 @@ public class ClearRegionTask extends Task implements ITaskRequiresGrounded {
         int x = _from.getX() - _to.getX();
         int y = _from.getY() - _to.getY();
         int z = _from.getZ() - _to.getZ();
-        for (int xx = 0; xx < Math.abs(x); ++xx) {
-            for (int yy = 0; yy < Math.abs(y); ++yy) {
-                for (int zz = 0; zz < Math.abs(z); ++zz) {
+        // both corners are part of the area (clearArea takes them inclusive), so the far plane counts too
+        for (int xx = 0; xx <= Math.abs(x); ++xx) {
+            for (int yy = 0; yy <= Math.abs(y); ++yy) {
+                for (int zz = 0; zz <= Math.abs(z); ++zz) {
                     BlockPos toCheck = new BlockPos(_from).offset(xx * -Integer.signum(x), yy * -Integer.signum(y), zz * -Integer.signum(z));
                     assert Minecraft.getInstance().level != null;
                     if (!Minecraft.getInstance().level.isEmptyBlock(toCheck)) {

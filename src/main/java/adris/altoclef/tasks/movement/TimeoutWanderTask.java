@@ -3,6 +3,7 @@ package adris.altoclef.tasks.movement;
 import adris.altoclef.AltoClef;
 import adris.altoclef.util.helpers.AnnoyingBlocks;
 import adris.altoclef.Debug;
+import adris.altoclef.trace.Trace;
 import adris.altoclef.tasks.entity.KillEntitiesTask;
 import adris.altoclef.tasksystem.ITaskRequiresGrounded;
 import adris.altoclef.tasksystem.Task;
@@ -31,9 +32,9 @@ import java.util.function.Predicate;
  * Call this when the place you're currently at is bad for some reason and you just wanna get away.
  */
 public class TimeoutWanderTask extends Task implements ITaskRequiresGrounded {
-    private final MovementProgressChecker stuckCheck = new MovementProgressChecker();
+    private MovementProgressChecker stuckCheck;
     private final float _distanceToWander;
-    private final MovementProgressChecker _progressChecker = new MovementProgressChecker();
+    private MovementProgressChecker _progressChecker;
     private final boolean _increaseRange;
     private Vec3 _origin;
     //private DistanceProgressChecker _distanceProgressChecker = new DistanceProgressChecker(10, 0.1f);
@@ -41,6 +42,11 @@ public class TimeoutWanderTask extends Task implements ITaskRequiresGrounded {
     private Task _unstuckTask = null;
     private int _failCounter;
     private double _wanderDistanceExtension;
+
+    // unlike _origin these survive onStart: the parent keeps this same instance across interrupts, and a fresh anchor
+    // after every interrupt would make a wander that is going nowhere look like it just got somewhere
+    private final WanderGiveUp.Excursion _excursion = new WanderGiveUp.Excursion();
+    private boolean _failingLogged;
 
     public TimeoutWanderTask(float distanceToWander, boolean increaseRange) {
         _distanceToWander = distanceToWander;
@@ -106,12 +112,43 @@ public class TimeoutWanderTask extends Task implements ITaskRequiresGrounded {
         return new SafeRandomShimmyTask();
     }
 
+    // true once the wander has run a good while without ever getting out of its spot. it keeps wandering, this is
+    // only for whoever asked for it to read
+    public boolean failing() {
+        return failing(timeOnTaskSeconds(), _excursion.max());
+    }
+
+    // numbers in so a test can ask without a world
+    static boolean failing(double secondsOnTask, double maxExcursionBlocks) {
+        return WanderGiveUp.decide(secondsOnTask, maxExcursionBlocks) == WanderGiveUp.Stage.FAILING;
+    }
+
+    void noteAt(double x, double y, double z) {
+        _excursion.note(x, y, z);
+    }
+
+    private boolean checkFailing(AltoClef mod) {
+        Vec3 pos = mod.getPlayer().position();
+        noteAt(pos.x(), pos.y(), pos.z());
+        boolean failing = failing();
+        if (failing && !_failingLogged) {
+            _failingLogged = true;
+            Debug.logWarning(String.format("wander failing: %.0f s on task, never more than %.1f blocks from where it started",
+                    timeOnTaskSeconds(), _excursion.max()));
+            // rate limited by its reason prefix, so a pile of stuck wanders is one dump
+            Trace.dump("monitor:wander");
+        }
+        return failing;
+    }
+
     @Override
     protected void onStart(AltoClef mod) {
         mod.getClientBaritone().getPathingBehavior().forceCancel();
         _origin = mod.getPlayer().position();
-        _progressChecker.reset();
-        stuckCheck.reset();
+        // built here and not in the field initializers because the checkers read the game clock, and a wander has to be
+        // constructible without a game so a test can hang one in a task tree
+        _progressChecker = new MovementProgressChecker();
+        stuckCheck = new MovementProgressChecker();
         _failCounter = 0;
         ItemStack cursorStack = StorageHelper.getItemStackInCursorSlot();
         if (!cursorStack.isEmpty()) {
@@ -131,6 +168,7 @@ public class TimeoutWanderTask extends Task implements ITaskRequiresGrounded {
 
     @Override
     protected Task onTick(AltoClef mod) {
+        boolean failing = checkFailing(mod);
         if (mod.getClientBaritone().getPathingBehavior().isPathing()) {
             _progressChecker.reset();
         }
@@ -152,7 +190,9 @@ public class TimeoutWanderTask extends Task implements ITaskRequiresGrounded {
                 mod.getInputControls().release(Input.MOVE_FORWARD);
             }
         }
-        if (_unstuckTask != null && _unstuckTask.isActive() && !_unstuckTask.isFinished(mod) && stuckInBlock(mod) != null) {
+        // shimmy holds sneak+forward+click, in a meadow of tall grass it never runs out of grass to be stuck in. a
+        // failing wander drops it and goes back to exploring
+        if (!failing && _unstuckTask != null && _unstuckTask.isActive() && !_unstuckTask.isFinished(mod) && stuckInBlock(mod) != null) {
             setDebugState("Getting unstuck from block.");
             stuckCheck.reset();
             // Stop other tasks, we are JUST shimmying
@@ -168,7 +208,7 @@ public class TimeoutWanderTask extends Task implements ITaskRequiresGrounded {
                 return new KillEntitiesTask(valid, mob.get().getClass());
             }
             BlockPos blockStuck = stuckInBlock(mod);
-            if (blockStuck != null) {
+            if (blockStuck != null && !failing) {
                 _failCounter++;
                 _unstuckTask = getFenceUnstuckTask();
                 return _unstuckTask;

@@ -15,6 +15,7 @@ import adris.altoclef.tasks.entity.KillEntitiesTask;
 import adris.altoclef.tasks.movement.DefaultGoToDimensionTask;
 import adris.altoclef.tasks.movement.GetToBlockTask;
 import adris.altoclef.tasks.movement.TimeoutWanderTask;
+import adris.altoclef.tasks.movement.WanderGiveUp;
 import adris.altoclef.tasksystem.Task;
 import baritone.api.utils.Dimension;
 import adris.altoclef.util.ItemTarget;
@@ -93,6 +94,9 @@ public class PlaceBedAndSetSpawnTask extends Task {
     private final MovementProgressChecker _progressChecker = new MovementProgressChecker();
     private boolean _stayInBed;
     private BlockPos _currentBedRegion;
+    // spots dropped for a slow block in the clear box. the search only asks canBreak about part of that box, so without
+    // this it would hand the same spot straight back
+    private final java.util.Set<BlockPos> _slowRegions = new java.util.HashSet<>();
     private BlockPos _currentStructure, _currentBreak;
     private boolean _spawnSet;
     private Subscription<ChatMessageEvent> _respawnPointSetMessageCheck;
@@ -100,6 +104,12 @@ public class PlaceBedAndSetSpawnTask extends Task {
     private boolean _sleepAttemptMade;
     private boolean _wasSleeping;
     private BlockPos _bedForSpawnPoint;
+    // the search for a spot ended because the wander looking for one was stuck, not because a spawn got set. sticky
+    // until resetSleep: onStart runs again after every interrupt and the wander (same instance) is still the stuck one
+    private boolean _noBedSpot;
+    // ticks spent in the search branch and how far we got from where it started, see the branch
+    private int _searchTicks;
+    private WanderGiveUp.Excursion _searchExcursion = new WanderGiveUp.Excursion();
 
     public PlaceBedAndSetSpawnTask() {
 
@@ -198,6 +208,9 @@ public class PlaceBedAndSetSpawnTask extends Task {
     }
 
     public void resetSleep() {
+        _noBedSpot = false;
+        _searchTicks = 0;
+        _searchExcursion = new WanderGiveUp.Excursion();
         _spawnSet = false;
         _sleepAttemptMade = false;
         _wasSleeping = false;
@@ -340,8 +353,24 @@ public class PlaceBedAndSetSpawnTask extends Task {
                 _currentBedRegion = this.locateBedRegion(mod, mod.getPlayer().blockPosition());
             }
         }
-        if (_currentBedRegion == null) {
+        if (_currentBedRegion != null) {
+            // found one, the next search starts over
+            if (_searchTicks != 0) {
+                _searchTicks = 0;
+                _searchExcursion = new WanderGiveUp.Excursion();
+            }
+        } else {
             setDebugState("Searching for spot to place bed, wandering...");
+            // nowhere to put a bed and the search can't even leave its spot. setting a spawn is optional, so this ends
+            // the task and gaveUp tells the reader it was not a spawn. the clock is ours and not the wander's: the two
+            // escape wanders above (water, portal) are the same instance as this one (infinite wanders are equal), and
+            // time spent stuck in a pond must not count against the search. same decision as the wander uses
+            Vec3 pos = mod.getPlayer().position();
+            _searchExcursion.note(pos.x(), pos.y(), pos.z());
+            _searchTicks++;
+            if (WanderGiveUp.decide(_searchTicks / 20.0, _searchExcursion.max()) == WanderGiveUp.Stage.FAILING) {
+                _noBedSpot = true;
+            }
             return new TimeoutWanderTask();
         }
 
@@ -361,6 +390,14 @@ public class PlaceBedAndSetSpawnTask extends Task {
                 for (int dy = 0; dy < BED_CLEAR_SIZE.getY(); ++dy) {
                     BlockPos toClear = _currentBedRegion.offset(dx, dy, dz);
                     if (WorldHelper.isSolid(mod, toClear)) {
+                        // the destroy task would refuse it and idle, so the spot goes and the search starts over
+                        if (WorldHelper.tooSlowToBreak(mod, toClear)) {
+                            _slowRegions.add(_currentBedRegion.immutable());
+                            _currentBedRegion = null;
+                            _currentBreak = null;
+                            _currentStructure = null;
+                            return null;
+                        }
                         _currentBreak = toClear;
                         break outer;
                     }
@@ -497,6 +534,10 @@ public class PlaceBedAndSetSpawnTask extends Task {
             return true; // If not in the overworld, the player is considered finished
         }
 
+        if (_noBedSpot) {
+            return true;
+        }
+
         // Check if player is sleeping
         boolean isSleeping = mod.getPlayer() != null && mod.getPlayer().isSleeping();
 
@@ -507,6 +548,11 @@ public class PlaceBedAndSetSpawnTask extends Task {
         boolean isFinished = _spawnSet && !isSleeping && timerElapsed;
 
         return isFinished;
+    }
+
+    // finished, but only because there was nowhere to put a bed. a caller that reads finished as "spawn is set" has to ask
+    public boolean gaveUp() {
+        return _noBedSpot;
     }
 
     /**
@@ -553,7 +599,7 @@ public class PlaceBedAndSetSpawnTask extends Task {
                         continue; // Skip if the distance is greater than the closest distance found so far
                     }
 
-                    if (isGoodPosition(mod, attemptPos)) {
+                    if (!_slowRegions.contains(attemptPos) && isGoodPosition(mod, attemptPos)) {
                         closestGood = attemptPos;
                         closestDist = distance;
                     }

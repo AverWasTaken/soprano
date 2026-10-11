@@ -144,10 +144,7 @@ public class SetCommand extends Command {
             args.requireMin(1);
         }
         String settingName = doingSomething ? args.getString() : arg;
-        Settings.Setting<?> setting = Baritone.settings().allSettings.stream()
-                .filter(s -> s.getName().equalsIgnoreCase(settingName))
-                .findFirst()
-                .orElse(null);
+        Settings.Setting<?> setting = Baritone.settings().findByLowerName(settingName.toLowerCase(Locale.US));
         if (setting == null) {
             throw new CommandInvalidTypeException(args.consumed(), "a valid setting");
         }

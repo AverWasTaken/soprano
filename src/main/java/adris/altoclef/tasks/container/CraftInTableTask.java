@@ -2,6 +2,7 @@ package adris.altoclef.tasks.container;
 
 import baritone.Baritone;
 import adris.altoclef.AltoClef;
+import adris.altoclef.BotBehaviour;
 import adris.altoclef.tasks.CraftGenericManuallyTask;
 import adris.altoclef.tasks.CraftInInventoryTask;
 import adris.altoclef.tasks.ResourceTask;
@@ -14,6 +15,7 @@ import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.RecipeTarget;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.StorageHelper;
+import adris.altoclef.util.slots.CraftingTableSlot;
 import adris.altoclef.util.slots.PlayerSlot;
 import adris.altoclef.util.slots.Slot;
 import adris.altoclef.util.time.TimerGame;
@@ -80,6 +82,11 @@ public class CraftInTableTask extends ResourceTask {
     @Override
     protected boolean shouldAvoidPickingUp(AltoClef mod) {
         return false;
+    }
+
+    @Override
+    protected boolean craftableFromHeld(AltoClef mod) {
+        return StorageHelper.hasRecipeMaterialsOrTarget(mod, _targets);
     }
 
     @Override
@@ -208,6 +215,9 @@ class DoCraftInTableTask extends DoStuffInContainerTask {
     private final CollectRecipeCataloguedResourcesTask _collectTask;
     private final TimerGame _craftResetTimer = new TimerGame(CRAFT_RESET_TIMER_BONUS_SECONDS);
     private int _craftCount;
+    private int _lastCraftProgress = -1;
+    // our own behaviour level, the recipe's reserve goes in it and not in a child's (see ResourceTask)
+    private BotBehaviour.State _level;
 
     public DoCraftInTableTask(RecipeTarget[] targets, boolean collect, boolean ignoreUncataloguedSlots) {
         super(Blocks.CRAFTING_TABLE, new ItemTarget("crafting_table"));
@@ -232,7 +242,7 @@ class DoCraftInTableTask extends DoStuffInContainerTask {
         super.onStart(mod);
 
         // Save the current behaviour and craft count
-        mod.getBehaviour().push();
+        _level = mod.getBehaviour().push();
         _craftCount = 0;
 
         // Check if there is an item in the cursor slot
@@ -305,6 +315,7 @@ class DoCraftInTableTask extends DoStuffInContainerTask {
 
         // Pop the behaviour from the stack
         mod.getBehaviour().pop();
+        _level = null;
     }
 
     /**
@@ -316,7 +327,7 @@ class DoCraftInTableTask extends DoStuffInContainerTask {
     @Override
     protected Task onTick(AltoClef mod) {
         // Add protected items to the behaviour
-        mod.getBehaviour().addProtectedItems(getMaterialsArray());
+        mod.getBehaviour().reserveProtectedItems(_level, materialNeeds(mod));
 
         // Avoid breaking crafting tables
         if (mod.getBlockTracker().isTracking(Blocks.CRAFTING_TABLE)) {
@@ -401,6 +412,22 @@ class DoCraftInTableTask extends DoStuffInContainerTask {
         float interval = Baritone.settings().altoContainerItemMoveDelay.value * 10 + CRAFT_RESET_TIMER_BONUS_SECONDS;
         _craftResetTimer.setInterval(interval);
 
+        // this timer used to run flat from the moment the table opened. filling 3 slots with 20 wheat each, one
+        // right click per item at 0.2s, takes 12s, which is exactly the 12s here, so it wandered off mid craft every
+        // time. moving items around the grid is progress, so the clock restarts whenever the grid, the cursor or
+        // the output count changes. a craft that really is stuck still runs it out
+        int progress = StorageHelper.getItemStackInCursorSlot().getCount();
+        for (Slot gridSlot : CraftingTableSlot.INPUT_SLOTS) {
+            progress += StorageHelper.getItemStackInSlot(gridSlot).getCount();
+        }
+        for (RecipeTarget target : _targets) {
+            progress += mod.getItemStorage().getItemCount(target.getOutputItem());
+        }
+        if (progress != _lastCraftProgress) {
+            _lastCraftProgress = progress;
+            _craftResetTimer.reset();
+        }
+
         // If the craft reset timer has elapsed, return a TimeoutWanderTask
         if (_craftResetTimer.elapsed()) {
             return new TimeoutWanderTask(5);
@@ -433,54 +460,27 @@ class DoCraftInTableTask extends DoStuffInContainerTask {
         return _craftCount >= _targets.length;
     }
 
-    /**
-     * Returns the cost to make a new AltoClef mod.
-     *
-     * @param mod The AltoClef mod instance.
-     * @return The cost to make a new AltoClef mod.
-     */
-    @Override
-    protected double getCostToMakeNew(AltoClef mod) {
-        // Get the nearest crafting table.
-        Optional<BlockPos> closestCraftingTable = mod.getBlockTracker().getNearestTracking(Blocks.CRAFTING_TABLE);
-
-        // If a crafting table is within 40 blocks of the player, return positive infinity.
-        if (closestCraftingTable.isPresent() && closestCraftingTable.get().closerToCenterThan(mod.getPlayer().position(), 40)) {
-            return Double.POSITIVE_INFINITY;
-        }
-
-        // If the mod has logs or enough planks, return a cost of 10.
-        if (mod.getItemStorage().hasItem(ItemHelper.LOG) || mod.getItemStorage().getItemCount(ItemHelper.PLANKS) >= 4) {
-            return 10;
-        }
-
-        // Otherwise, return a cost of 100.
-        return 100;
-    }
-
-    /**
-     * Returns an array of materials.
-     *
-     * @return the array of materials
-     */
-    private Item[] getMaterialsArray() {
-        List<Item> result = new ArrayList<>();
-
-        // Iterate over each target
+    // every item the recipes use, and how many of it the crafts still to do will eat. an item with nothing left to craft
+    // stays in the map at 0: still not something to throw out, but nothing in the bag is spoken for anymore. the movements
+    // read the counts, so the walk to the table can build with the cobble above the recipe's but never with the recipe's
+    private Map<Item, Integer> materialNeeds(AltoClef mod) {
+        Map<Item, Integer> result = new HashMap<>();
         for (RecipeTarget target : _targets) {
-            // Iterate over each slot in the recipe
+            int weNeed = target.getTargetCount() - mod.getItemStorage().getItemCount(target.getOutputItem());
+            int outputs = Math.max(1, target.getRecipe().outputCount());
+            int crafts = weNeed > 0 ? (weNeed + outputs - 1) / outputs : 0;
             for (int i = 0; i < target.getRecipe().getSlotCount(); ++i) {
-                ItemTarget materialTarget = target.getRecipe().getSlot(i);
-                // Check if the material target is not null and has matches
-                if (materialTarget != null && materialTarget.getMatches() != null) {
-                    // Add all the matches to the result list
-                    Collections.addAll(result, materialTarget.getMatches());
+                ItemTarget material = target.getRecipe().getSlot(i);
+                if (material == null || material.getMatches() == null) {
+                    continue;
+                }
+                // a slot that takes any of several items reserves the count for each of them. over-saving is the safe way
+                for (Item match : material.getMatches()) {
+                    result.merge(match, crafts, (a, b) -> (int) Math.min((long) a + b, 1L << 30));
                 }
             }
         }
-
-        // Convert the result list to an array and return it
-        return result.toArray(new Item[0]);
+        return result;
     }
 
     @Override

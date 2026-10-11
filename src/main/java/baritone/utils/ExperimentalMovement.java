@@ -19,7 +19,7 @@ package baritone.utils;
 
 import baritone.Baritone;
 
-// experimentalMovement is a preset, not a setting rewrite: the real settings never change, so switching it off hands the
+// fastMode is a preset, not a setting rewrite: the real settings never change, so switching it off hands the
 // user their own choices back. everything that has an opinion about one of these reads it through here and nowhere else
 // (the planner snapshots them into CalculationContext, the executor asks directly), so there's exactly one list to keep honest
 public final class ExperimentalMovement {
@@ -31,7 +31,7 @@ public final class ExperimentalMovement {
     private ExperimentalMovement() {}
 
     public static boolean on() {
-        return Baritone.settings().experimentalMovement.value;
+        return Baritone.settings().fastMode.value;
     }
 
     public static boolean allowParkour() {
@@ -97,5 +97,11 @@ public final class ExperimentalMovement {
     // the gate every damage fall goes through, in the planner and again when the movement starts
     public static boolean canAffordFall(double health, double damage, double minHealth) {
         return health - damage >= minHealth;
+    }
+
+    // a ladder clutch is a fall that only doesn't hurt if the timing works out. below the same floor a miss is the whole fall
+    // at once, usually a funeral, so it's not offered at all there. the water bucket is not a gamble and has no gate
+    public static boolean canAffordClutch(double health, double minHealth) {
+        return canAffordFall(health, 0, minHealth);
     }
 }

@@ -1,5 +1,6 @@
 package adris.altoclef.tasks.speedrun.gamer;
 
+import adris.altoclef.Debug;
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
 
 // what a phase handler gets from the engine each tick
@@ -10,6 +11,27 @@ public interface GamerContext {
     RunState state();
 
     GamerFacts facts();
+
+    // how much food we hold and what every gate makes of it, as of this tick. the engine builds it once per tick, the default
+    // (a test's stub) builds it on every ask. every food gate reads this and nothing else, see FoodPlan. the phase it is built for
+    // is the state's: that is what decides whether raw meat in the bag can become dinner. the refill latch moves on every ask,
+    // same answer for the same bag
+    default FoodPlan food() {
+        return FoodPlan.latched(facts(), cfg(), state(), Debug::logInternal, wood());
+    }
+
+    // how much wood we hold, owe and may burn, as of this tick: the one answer every wood question reads (see WoodBudget). the engine
+    // builds it once per tick and hands the same object to the furnaces' reserve, the default (a test's stub) builds it on every ask.
+    // it is the state's phase's view of the wood, and has no food plan in it, so asking never moves the refill latch
+    default WoodBudget wood() {
+        return WoodBudget.of(facts(), cfg().overworld, cfg().end.beds, state().phase);
+    }
+
+    // what the planner holds of the stations as of this tick (StationVerdict). the engine
+    // hands out the one the facts built in refresh() and drops its copy when the next tick starts, the default (a test's stub) asks the facts
+    default StationVerdict stations() {
+        return facts().stations();
+    }
 
     // 1 on the first try of this phase, 2 after a retry...
     int attempt();

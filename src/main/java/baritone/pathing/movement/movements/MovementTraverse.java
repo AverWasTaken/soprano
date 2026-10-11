@@ -109,6 +109,9 @@ public class MovementTraverse extends Movement {
                 return COST_INF;
             }
             double hardness2 = MovementHelper.getMiningDurationTicks(context, destX, y + 1, destZ, pb0, true); // only include falling on the upper block to break
+            // we break from src, and swinging a pickaxe underwater is a bad time
+            hardness1 = MovementHelper.waterBreakCost(context, x, y, z, hardness1);
+            hardness2 = MovementHelper.waterBreakCost(context, x, y, z, hardness2);
             if (hardness1 == 0 && hardness2 == 0) {
                 if (!water && !sneaking && context.canSprint) {
                     // If there's nothing in the way, and this isn't water, and we aren't sneak placing
@@ -142,6 +145,8 @@ public class MovementTraverse extends Movement {
                     return COST_INF;
                 }
                 double hardness2 = MovementHelper.getMiningDurationTicks(context, destX, y + 1, destZ, pb0, true); // only include falling on the upper block to break
+                hardness1 = MovementHelper.waterBreakCost(context, x, y, z, hardness1);
+                hardness2 = MovementHelper.waterBreakCost(context, x, y, z, hardness2);
                 double WC = throughWater ? context.waterWalkSpeed : WALK_ONE_BLOCK_COST;
                 for (int i = 0; i < 5; i++) {
                     int againstX = destX + HORIZONTALS_BUT_ALSO_DOWN_____SO_EVERY_DIRECTION_EXCEPT_UP[i].getStepX();
@@ -184,6 +189,10 @@ public class MovementTraverse extends Movement {
             }
             // and if we're prepping (aka mining the block in front)
             if (state.getStatus() != MovementStatus.PREPPING) {
+                return state;
+            }
+            // and nothing is about to land in them. the column drops into the cell we are strolling toward
+            if (waitingOnFall) {
                 return state;
             }
             // and if it's fine to walk into the blocks in front
@@ -315,6 +324,11 @@ public class MovementTraverse extends Movement {
                         // well i guess theres something in the way
                         return state.setInput(Input.CLICK_LEFT, true);
                     }
+                    return state;
+                }
+                case BLOCKED: {
+                    // something is standing in the cell: no click, no walking forward into the gap. it moves or we give up
+                    // on this movement (that's PlaceWait, 20 ticks)
                     return state;
                 }
                 default:

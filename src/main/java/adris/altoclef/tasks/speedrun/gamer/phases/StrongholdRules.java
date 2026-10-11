@@ -59,6 +59,13 @@ public final class StrongholdRules {
                 && facts.gameTime() - state.openNoEyesSince >= STARVED_GRACE_TICKS;
     }
 
+    // ROOM budget ran out: a window that really reached new chunks (standing near them, not just the 90 s per chunk timer
+    // running out) is a slow spiral, not a stuck one, and its retry gets a fresh budget. only the budget verdict counts (a
+    // stall means the last 180 s did nothing, whatever came before it), not the handler's fails ("searched every chunk", "not in the overworld") and a spent spiral are real endings
+    public static boolean roomStillMoving(int chunksReachedThisWindow, boolean exhausted, String reason) {
+        boolean watchdog = reason != null && reason.startsWith("took longer than");
+        return watchdog && !exhausted && chunksReachedThisWindow > 0;
+    }
     private StrongholdRules() {
     }
 }

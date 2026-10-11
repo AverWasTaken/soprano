@@ -146,6 +146,33 @@ public class NetherPhasesTest {
     }
 
     @Test
+    public void aNetherTripBackFromOpenOnlyNeedsTheEmptyFrames() {
+        // OPEN filled 5 of 12 and ran dry: 7 empty frames + the 2 spare, not another 14
+        state.framesFilled = 5;
+        state.netherRevisits = 1;
+        assertTrue(nether.isDone(bag(5, 0, 9, 0), state, cfg));
+        assertFalse(nether.isDone(bag(4, 0, 9, 0), state, cfg));
+        // the floor (7) when the budget or the rods run out
+        FakeFacts seven = bag(4, 0, 7, 0);
+        assertFalse(nether.isDone(seven, state, cfg));
+        state.netherRodsGaveUp = true;
+        assertTrue(nether.isDone(seven, state, cfg));
+        assertEquals(Timeout.SKIP, nether.onTimeout(ctx(bag(4, 0, 7, 0)), 1, "slow"));
+        assertEquals(Timeout.RETRY, nether.onTimeout(ctx(bag(3, 0, 6, 0)), 1, "slow"));
+    }
+
+    @Test
+    public void eyesPhaseAgreesAboutTheEmptyFrames() {
+        state.framesFilled = 5;
+        assertTrue(eyes.isDone(bag(0, 0, 0, 9), state, cfg));
+        assertTrue(eyes.isDone(bag(0, 0, 2, 7), state, cfg));
+        assertFalse(eyes.isDone(bag(0, 0, 0, 6), state, cfg));
+        // 7 eyes' worth in the bag is enough to stay, 6 sends us back (once)
+        assertTrue(eyes.regressTo(bag(4, 0, 7, 0), state, cfg).isEmpty());
+        assertEquals(java.util.Optional.of(GamerPhase.NETHER), eyes.regressTo(bag(3, 0, 6, 0), state, cfg));
+    }
+
+    @Test
     public void eyesDoneAtTargetOrFloorWithNothingLeft() {
         assertTrue(eyes.isDone(bag(0, 0, 0, 14), state, cfg));
         assertFalse(eyes.isDone(bag(7, 0, 14, 0), state, cfg));

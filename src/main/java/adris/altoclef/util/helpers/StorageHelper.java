@@ -152,36 +152,34 @@ public class StorageHelper {
         //      PREFER (Always use silk touch if we have)
         //      AVOID  (Don't use silk touch if we can)
         //  }
-        Slot bestToolSlot = null;
-        double highestSpeed = Double.NEGATIVE_INFINITY;
-        if (Slot.getCurrentScreenSlots() != null) {
-            for (Slot slot : Slot.getCurrentScreenSlots()) {
-                if (!slot.isSlotInPlayerInventory())
-                    continue;
-                ItemStack stack = getItemStackInSlot(slot);
-                if (ItemHelper.isTool(stack.getItem())) {
-                    if (stack.isCorrectToolForDrops(state)) {
-                        double speed = ToolSet.calculateSpeedVsBlock(stack, state);
-                        if (speed > highestSpeed) {
-                            highestSpeed = speed;
-                            bestToolSlot = slot;
-                        }
-                    }
-                }
-                if (stack.getItem() == Items.SHEARS) {
-                    // Shears take priority over leaf blocks.
-                    if (ItemHelper.areShearsEffective(state.getBlock())) {
-                        bestToolSlot = slot;
-                        break;
-                    }
-                }
-            }
+        if (Slot.getCurrentScreenSlots() == null) {
+            return Optional.empty();
         }
-        return Optional.ofNullable(bestToolSlot);
+        // the choosing is ToolPick's (pure, tested), this is only the slot bookkeeping
+        List<Slot> slots = new ArrayList<>();
+        List<ItemStack> stacks = new ArrayList<>();
+        for (Slot slot : Slot.getCurrentScreenSlots()) {
+            if (!slot.isSlotInPlayerInventory())
+                continue;
+            slots.add(slot);
+            stacks.add(getItemStackInSlot(slot));
+        }
+        int best = ToolPick.best(stacks, state);
+        return best < 0 ? Optional.empty() : Optional.of(slots.get(best));
     }
 
     // Gets a slot with an item we can throw away
     public static Optional<Slot> getGarbageSlot(AltoClef mod) {
+        Optional<Slot> junk = getJunkSlot(mod);
+        if (junk.isPresent()) {
+            return junk;
+        }
+        return getGarbageSlotPastJunk(mod);
+    }
+
+    // the cheap half of getGarbageSlot: throwaway items (dirt, cobble past the building reserve, rotten flesh). what comes after is
+    // worse tools and, with altoThrowAwayUnusedItems, anything the task is not using, which is not room anybody should plan on
+    public static Optional<Slot> getJunkSlot(AltoClef mod) {
         // Throwaway items, but keep a few for building.
         final List<Slot> throwawayBlockItems = new ArrayList<>();
         int totalBlockThrowaways = 0;
@@ -207,7 +205,10 @@ public class StorageHelper {
                 return Optional.ofNullable(throwawayBlockItem);
             }
         }
+        return Optional.empty();
+    }
 
+    private static Optional<Slot> getGarbageSlotPastJunk(AltoClef mod) {
         // Try throwing away lower tier tools
         final HashMap<Class, Integer> bestMaterials = new HashMap<>();
         final HashMap<Class, Slot> bestTool = new HashMap<>();
@@ -413,15 +414,9 @@ public class StorageHelper {
     }
 
     public static double calculateInventoryFuelCount(AltoClef mod) {
-        double result = 0;
-        if (!mod.getItemStorage().getItemStacksPlayerInventory(true).isEmpty()) {
-            for (ItemStack stack : mod.getItemStorage().getItemStacksPlayerInventory(true)) {
-                if (AltoSettings.isSupportedFuel(stack.getItem())) {
-                    result += ItemHelper.getFuelAmount(stack.getItem()) * stack.getCount();
-                }
-            }
-        }
-        return result;
+        // FuelPolicy leaves out wood somebody has plans for, so "do we have the fuel" and "what goes in the slot" agree
+        return FuelPolicy.usableFuel(mod.getItemStorage().getItemStacksPlayerInventory(true), AltoSettings::isSupportedFuel,
+                ItemHelper::getFuelAmount);
     }
 
     /**
@@ -605,19 +600,29 @@ public class StorageHelper {
         return handler.getFuel();
     }
 
+    private static final int FURNACE_COOK_TICKS = 200;
+    private static final int FAST_COOK_TICKS = 100;
+
+    // lit time left comes in ticks, and the unit everywhere else is items. an item takes 200 ticks in a furnace but 100 in a
+    // smoker or blast furnace. a coal is 8 items in all three (the fast ones burn it twice as fast, 800 ticks), so only the lit
+    // part of the reading was off: /200 gave half the items a lit smoker could still cook, and it looked nearly dry
+    public static double litItems(int litTicks, int ticksPerItem) {
+        return (double) litTicks / ticksPerItem;
+    }
+
     public static double getFurnaceFuel(AbstractFurnaceMenu handler) {
         ContainerData d = ((IAbstractFurnaceMenu) handler).getPropertyDelegate();
-        return (double) d.get(0) / 200.0;
+        return litItems(d.get(0), FURNACE_COOK_TICKS);
     }
 
     public static double getSmokerFuel(AbstractFurnaceMenu handler) {
         ContainerData d = ((IAbstractFurnaceMenu) handler).getPropertyDelegate();
-        return (double) d.get(0) / 200.0;
+        return litItems(d.get(0), FAST_COOK_TICKS);
     }
 
     public static double getBlastFurnaceFuel(AbstractFurnaceMenu handler) {
         ContainerData d = ((IAbstractFurnaceMenu) handler).getPropertyDelegate();
-        return (double) d.get(0) / 200.0;
+        return litItems(d.get(0), FAST_COOK_TICKS);
     }
 
     public static double getFurnaceFuel() {

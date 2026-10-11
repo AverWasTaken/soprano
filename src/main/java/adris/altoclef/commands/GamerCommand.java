@@ -7,6 +7,7 @@ import adris.altoclef.tasks.speedrun.gamer.GamerTask;
 import adris.altoclef.tasks.speedrun.gamer.RunState;
 import adris.altoclef.tasks.speedrun.gamer.RunStateStore;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.trace.Trace;
 import baritone.api.IBaritone;
 import baritone.api.command.argument.IArgConsumer;
 import baritone.api.command.exception.CommandException;
@@ -22,7 +23,7 @@ import java.util.stream.Stream;
 // #gamer: beat the game. no argument starts it (or carries on from the saved run of this world), the words after it look at
 // the run or poke it
 public class GamerCommand extends AltoClefCommand {
-    private static final List<String> SUBCOMMANDS = List.of("status", "reset", "phase");
+    private static final List<String> SUBCOMMANDS = List.of("status", "reset", "phase", "trace");
 
     public GamerCommand(IBaritone baritone) {
         super(baritone, "gamer");
@@ -32,6 +33,12 @@ public class GamerCommand extends AltoClefCommand {
     protected void run(AltoClef mod, String label, IArgConsumer args) throws CommandException {
         args.requireMax(2);
         if (!args.hasAny()) {
+            // same story as the phase jump: a second #gamer is thrown away as the same task, it must not cost the bans
+            if (running(mod) != null) {
+                throw new CommandInvalidStateException("The gamer is already running.");
+            }
+            // a new gamer task is a new run, the bans of the last one (and of whatever ran before it) go with it
+            mod.getBans().clearRun("new #gamer");
             startTask(mod, new GamerTask());
             return;
         }
@@ -47,9 +54,24 @@ public class GamerCommand extends AltoClefCommand {
                 reset(mod);
                 done();
             }
+            case "trace" -> {
+                args.requireMax(0);
+                // the last few hundred log lines, to the log file and not the chat
+                Trace.dump("command");
+                Debug.logMessage("Dumped the last " + Trace.snapshot().size() + " log lines to the log.");
+                done();
+            }
             case "phase" -> {
                 args.requireExactly(1);
-                startTask(mod, new GamerTask(parsePhase(args.getString())));
+                GamerPhase phase = parsePhase(args.getString());
+                // a running gamer counts as the same task whatever phase we ask for, so the jump would be dropped on the
+                // floor after wiping the run's bans. say so instead of pretending
+                if (running(mod) != null) {
+                    throw new CommandInvalidStateException("The gamer is running right now, stop it first and then jump.");
+                }
+                GamerTask task = new GamerTask(phase);
+                mod.getBans().clearRun("new #gamer");
+                startTask(mod, task);
             }
             default -> throw new CommandInvalidStateException("\"" + sub + "\" is not a gamer command, try one of: " + String.join(", ", SUBCOMMANDS));
         }
@@ -136,6 +158,7 @@ public class GamerCommand extends AltoClefCommand {
                 "> gamer status - Show the phase and what has been found so far.",
                 "> gamer reset - Forget the saved run (not while it is running).",
                 "> gamer phase <name> - Start in that phase, for testing one part of the run.",
+                "> gamer trace - Write the last 300 log lines to the log file.",
                 "",
                 "Examples:",
                 "> gamer phase locate"

@@ -208,7 +208,9 @@ public final class CachedChunk {
             return overview[internalPos];
         }
         if (special != null) {
-            String str = special.get(index);
+            // the special map is keyed by the real world y (that's what the packer and the file loader hand us), but y here
+            // is relative to the bottom of the dimension. identical in the nether and end, off by 64 in the overworld
+            String str = special.get(getPositionIndex(x, y + dimension.minY(), z));
             if (str != null) {
                 return BlockUtils.stringToBlockRequired(str).defaultBlockState();
             }
@@ -219,7 +221,8 @@ public final class CachedChunk {
                 // nether roof is always unbreakable
                 return Blocks.BEDROCK.defaultBlockState();
             }
-            if (y < -59 && dimension.natural()) {
+            // y is relative to the dimension floor here, so "below 5" is just y < 5 (this used to compare against -59 and never fired)
+            if (y < 5 && dimension.natural()) {
                 // solid blocks below 5 are commonly bedrock
                 // however, returning bedrock always would be a little yikes
                 // discourage paths that include breaking blocks below 5 a little more heavily just so that it takes paths breaking what's known to be stone (at 5 or above) instead of what could maybe be bedrock (below 5)

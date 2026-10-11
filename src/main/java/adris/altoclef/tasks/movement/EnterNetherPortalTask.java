@@ -107,7 +107,7 @@ public class EnterNetherPortalTask extends Task {
             if (WorldHelper.getCurrentDimension() == Dimension.OVERWORLD) {
                 return new ConstructNetherPortalBucketTask();
             } else {
-                return new ConstructNetherPortalObsidianTask();
+                return _getPortalTask != null ? _getPortalTask : new ConstructNetherPortalObsidianTask();
             }
         }
         setDebugState("Getting our portal");

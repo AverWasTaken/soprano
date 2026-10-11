@@ -49,6 +49,11 @@ public abstract class TaskChain {
         _cachedTaskChain.add(task);
     }
 
+    // what the chain thinks it is holding, for the log when it wins the wheel and runs nothing
+    public String getHeldTaskDebug() {
+        return "unknown";
+    }
+
     public String toString() {
         return getName();
     }

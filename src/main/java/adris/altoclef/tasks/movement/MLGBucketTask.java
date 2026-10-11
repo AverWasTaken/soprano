@@ -277,7 +277,7 @@ public class MLGBucketTask extends Task {
             mod.getInputControls().release(Input.JUMP);
     }
 
-    private Optional<BlockPos> getBlockWeWillLandOn(AltoClef mod) {
+    private static Optional<BlockPos> getBlockWeWillLandOn(AltoClef mod) {
         Vec3 velCheck = mod.getPlayer().getDeltaMovement();
         AABB b = mod.getPlayer().getBoundingBox().move(velCheck);
         Vec3 c = b.getCenter();
@@ -380,7 +380,7 @@ public class MLGBucketTask extends Task {
         return Optional.ofNullable(cctx.bestBlock);
     }
 
-    private ClipContext castDown(Vec3 origin) {
+    private static ClipContext castDown(Vec3 origin) {
         Entity player = Minecraft.getInstance().player;
         assert player != null;
         return new ClipContext(origin, origin.add(0, -1 * _config.castDownDistance, 0), ClipContext.Block.COLLIDER, ClipContext.Fluid.ANY, player);
@@ -410,7 +410,14 @@ public class MLGBucketTask extends Task {
         mod.getInputControls().release(Input.JUMP);
     }
 
-    private boolean hasClutchItem(AltoClef mod) {
+    // would the block under us kill us, by the same check the landing picker uses when it has nothing to place. the chain
+    // asks so an off-plan deadly fall still gets the steering toward lava or water, even with an empty hand
+    public static boolean fallIsDeadly(AltoClef mod) {
+        return getBlockWeWillLandOn(mod).map(MLGBucketTask::isFallDeadly).orElse(false);
+    }
+
+    // static so the chain can ask before it commits to taking over the fall
+    public static boolean hasClutchItem(AltoClef mod) {
         if (!mod.getWorld().dimensionType().ultraWarm() && mod.getItemStorage().hasItem(Items.WATER_BUCKET)) {
             return true;
         }
@@ -458,6 +465,13 @@ public class MLGBucketTask extends Task {
         public List<Item> clutchItems = List.of(Items.HAY_BLOCK, Items.TWISTING_VINES);
     }
 
+    // if it's not lava and is not deadly, land on it if it's higher than before OR if our best alternative is lava or a
+    // fall that kills us (only ever set without a clutch item, so the clutch item case is untouched)
+    static boolean replacesBest(boolean lava, boolean isDeadlyFall, boolean hasClutchItem, boolean closestSoFar,
+                                boolean highestSoFar, boolean bestIsLava, boolean bestIsDeadlyFall) {
+        return !lava && !isDeadlyFall && ((closestSoFar && hasClutchItem) && highestSoFar || bestIsLava || bestIsDeadlyFall);
+    }
+
     class ConeClutchContext {
         private final boolean hasClutchItem;
         public BlockPos bestBlock = null;
@@ -495,7 +509,7 @@ public class MLGBucketTask extends Task {
                     bestBlock == null || // No target was found.
                             (water && !bestBlockIsSafe) || // We ALWAYS land in water if we can
                             (lava && lavaWillProtect && bestBlockIsDeadlyFall && !hasClutchItem) || // Land in lava if our best alternative is death by fall damage
-                            (!lava && !isDeadlyFall && ((closestSoFar && hasClutchItem) && highestSoFar || bestBlockIsLava)) // If it's not lava and is not deadly, land on it if it's higher than before OR if our best alternative is lava
+                            replacesBest(lava, isDeadlyFall, hasClutchItem, closestSoFar, highestSoFar, bestBlockIsLava, bestBlockIsDeadlyFall)
             ) {
                 if (canTravelToInAir((lava || water) ? check.below() : check)) {
                     if (highestSoFar) {

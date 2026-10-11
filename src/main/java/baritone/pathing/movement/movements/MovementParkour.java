@@ -283,13 +283,18 @@ public class MovementParkour extends Movement {
         } else if (!ctx.playerFeet().equals(src)) {
             if (ctx.playerFeet().equals(src.relative(direction)) || ctx.player().position().y - src.y > 0.0001) {
                 if (Baritone.settings().allowPlace.value // see PR #3775
-                        && ((Baritone) baritone).getInventoryBehavior().hasGenericThrowaway()
                         && !MovementHelper.canWalkOn(ctx, dest.below())
-                        && !ctx.player().onGround()
-                        && MovementHelper.attemptToPlaceABlock(state, baritone, dest.below(), true, false) == PlaceResult.READY_TO_PLACE
-                ) {
-                    // go in the opposite order to check DOWN before all horizontals -- down is preferable because you don't have to look to the side while in midair, which could mess up the trajectory
-                    state.setInput(Input.CLICK_RIGHT, true);
+                        && !ctx.player().onGround()) {
+                    // this runs every tick we're in the air, so the retry is built in: ATTEMPTING keeps aiming (the rotation
+                    // is forced) and the click goes out on the first tick the crosshair is actually on the face.
+                    // clicking before that would put the block against whatever we happen to be looking at
+                    if (!((Baritone) baritone).getInventoryBehavior().hasGenericThrowaway()) {
+                        // just the log, not UNREACHABLE: we're already mid jump and might still make it
+                        MovementHelper.logNoThrowaway(state, baritone, dest.below());
+                    } else if (MovementHelper.attemptToPlaceABlock(state, baritone, dest.below(), true, false) == PlaceResult.READY_TO_PLACE) {
+                        // go in the opposite order to check DOWN before all horizontals -- down is preferable because you don't have to look to the side while in midair, which could mess up the trajectory
+                        state.setInput(Input.CLICK_RIGHT, true);
+                    }
                 }
                 // prevent jumping too late by checking for ascend
                 if (dist == 3 && !ascend) { // this is a 2 block gap, dest = src + direction * 3

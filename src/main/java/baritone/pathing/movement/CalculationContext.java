@@ -70,10 +70,10 @@ public class CalculationContext {
     public final boolean hasClutchItem;
     // hp plus absorption right now, for falls that hurt. same snapshot rule as hasWaterBucket
     public final double health;
-    public final boolean experimental;
-    public final double experimentalMinHealth;
+    public final boolean fastMode;
+    public final double fastModeMinHealth;
     public final double fallDamageCost;
-    // 1 unless experimentalMovement wants the jumpy movements to look a bit cheaper, see biasJump
+    // 1 unless fastMode wants the jumpy movements to look a bit cheaper, see biasJump
     public final double jumpBias;
     public final boolean preferFasterPathing;
     // the clutch item is a ladder (vines win if both are there) and pickupLadders is on, so a clutch also costs the pickup
@@ -108,6 +108,8 @@ public class CalculationContext {
     // rowing, when there's a boat to row. equal to waterWalkSpeed when there isn't so the min is a no-op
     public final double boatWaterSpeed;
     public final double breakBlockAdditionalCost;
+    // snapshotted like the rest, so one search can't price some breaks with the old value and some with the new
+    public final double waterBreakCostMultiplier;
     public double backtrackCostFavoringCoefficient;
     public double jumpPenalty;
     public final double walkOnWaterOnePenalty;
@@ -196,8 +198,8 @@ public class CalculationContext {
         this.hasClutchItem = clutchItem != null;
         this.clutchPicksUp = clutchItem == Items.LADDER && Baritone.settings().pickupLadders.value;
         this.health = health;
-        this.experimental = ExperimentalMovement.on();
-        this.experimentalMinHealth = Baritone.settings().experimentalMinHealth.value;
+        this.fastMode = ExperimentalMovement.on();
+        this.fastModeMinHealth = Baritone.settings().fastModeMinHealth.value;
         this.fallDamageCost = Baritone.settings().fallDamageCost.value;
         this.jumpBias = ExperimentalMovement.jumpBias();
         this.preferFasterPathing = ExperimentalMovement.preferFasterPathing();
@@ -241,6 +243,7 @@ public class CalculationContext {
         double boatSpeed = Math.max(ActionCosts.BOAT_ONE_BLOCK_COST, Baritone.settings().costHeuristic.value);
         this.boatWaterSpeed = Baritone.settings().allowBoats.value && hasBoat ? Math.min(waterSpeed, boatSpeed) : waterSpeed;
         this.breakBlockAdditionalCost = Baritone.settings().blockBreakAdditionalPenalty.value;
+        this.waterBreakCostMultiplier = Baritone.settings().waterBreakCostMultiplier.value;
         this.backtrackCostFavoringCoefficient = Baritone.settings().backtrackCostFavoringCoefficient.value;
         this.jumpPenalty = Baritone.settings().jumpPenalty.value;
         this.walkOnWaterOnePenalty = Baritone.settings().walkOnWaterOnePenalty.value;

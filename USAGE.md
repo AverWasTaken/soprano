@@ -63,6 +63,7 @@ For death, `#wp list death` will list waypoints under the "death" tag (remember 
 - `eta` to get the estimated time until the next segment and the goal. Be aware that the ETA to your goal is really imprecise
 - `proc` to view miscellaneous information about the process currently controlling Soprano
 - `version` to get the version of Soprano you're running
+- `gui` (or `clickgui`) to open the click gui, same as pressing right shift in a world
 
 ## Maintenance
 
@@ -82,7 +83,7 @@ To toggle a boolean setting, just say its name in chat (for example, saying `all
 
 All the settings and their documentation are [here](src/api/java/baritone/api/Settings.java). The settings Soprano added aren't in the HTML javadocs at baritone.leijurv.com, which only covers upstream Soprano.
 
-There are a couple hundred settings. Soprano keeps using the `baritone` folder in your Minecraft folder, so your existing `settings.txt` carries over from Baritone.
+There are about 330 settings. Soprano keeps using the `baritone` folder in your Minecraft folder, so your existing `settings.txt` carries over from Baritone.
 
 ## Soprano settings
 
@@ -93,8 +94,8 @@ All off by default unless it says otherwise.
 - `allowClimbJumps` (jump onto ladders and vines across a gap, and off of them again, needs `allowParkour`)
 - `allowLadderClutch` (survive long falls by placing a ladder or vine on a wall beside the landing, needs one on the hotbar)
 - `pickupLadders` (on by default, picks the clutch ladder back up after landing)
-- `experimentalMovement` (speedrunner style movement, see below) and `experimentalMinHealth` (the health it won't drop below)
-- `fallDamageCost` (what a half heart of fall damage costs the planner, in ticks, while `experimentalMovement` is on), `experimentalJumpBias` (how much cheaper jumps look than walking, 0.9 by default) and `experimentalBlockPlacementPenalty` (the most a block placement is allowed to cost)
+- `fastMode` (speedrunner style movement, see below) and `fastModeMinHealth` (the health it won't drop below)
+- `fallDamageCost` (what a half heart of fall damage costs the planner, in ticks, while `fastMode` is on), `experimentalJumpBias` (how much cheaper jumps look than walking, 0.9 by default) and `experimentalBlockPlacementPenalty` (the most a block placement is allowed to cost)
 - `allowGroundShortcuts` (take direct lines across bends in flat walking paths, with full-width clearance and floor checks every tick)
 - `preferFasterPathing` (smoother steering along clear straight runs and fewer awkward corner-edging diagonals)
 - `allowBoats` (place a boat from the inventory, row it across the water, and take it with you on the other side. `boatMinWaterLength` says how much water is worth it, `colorBoatPath` paints those stretches of the path)
@@ -105,9 +106,13 @@ All off by default unless it says otherwise.
 - `sprintJumpingDiagonals` (on by default, allows diagonal sprint jumps when `sprintJumping` is enabled)
 - `sprintThroughDescends` (on by default, keeps sprinting off a ledge or step when the path carries on roughly the same way and the cells you coast over after landing are safe: no lava, fire, magma, powder snow, cactus, berry bushes, water or void, and no drop deeper than the planned one)
 - `sprintThroughCorners` (on by default, keeps sprinting through turns of 60 degrees or less and starts turning a fraction of a block early so the corner gets cut instead of clipped. Both of these stay off in the nether, near lava, at 6 health or less and next to anything placing or breaking blocks)
+- `keepFpsWhileBotting` (on by default, counts the bot working as keyboard and mouse input for the game's AFK frame limiter, so the frame rate does not drop to 30 while you watch it. Does nothing while the bot is idle)
+- `guiKey` (344, right shift: the GLFW key code that opens the click gui, which does everything a chat command does with buttons. -1 unbinds it and `#gui` still works. The gui's Settings tab has a key capture control for it) and `guiKeyEnabled` (on by default, turns the key off without unbinding it)
+- `guiDarkMode` (on by default, uses the dark appearance. The sidebar's Light and Dark buttons save your choice) and `guiAnimations` (on by default, animates transitions and scrolling. Turn off for reduced motion)
+- `keepPathOnSameGoal` (on by default, when one AltoClef task hands over to another that wants the same goal, keeps walking the path instead of standing still while a new one is calculated)
 - `shortBaritonePrefix` (use `[S]` instead of `[Soprano]` in chat messages)
 
-`experimentalMovement` is the "just go fast" switch. It turns on all the parkour (neos, climb jumps and momentum jumps too), diagonal ascends and descends, sprint jumping, head hitters, ground shortcuts and faster pathing, takes falls that cost some health when that saves time, cuts corners, smooths straight runs, places blocks more freely and leans toward jumps. If you'd rather pick features one by one, leave it off and use the settings above.
+`fastMode` is the "just go fast" switch. It turns on all the parkour (neos, climb jumps and momentum jumps too), diagonal ascends and descends, sprint jumping, head hitters, ground shortcuts and faster pathing, takes falls that cost some health when that saves time, cuts corners, smooths straight runs, places blocks more freely and leans toward jumps. If you'd rather pick features one by one, leave it off and use the settings above.
 
 ## Settings from Baritone
 
@@ -148,7 +153,7 @@ AltoClef is a task bot (survival, crafting, combat, beating the game) that's bui
 - `punk <player>` to kill a player
 - `hero` to kill all the hostile mobs it can find, `idle` to stand still with its survival chains running, `selfcare` (unfinished upstream)
 - `coverwithblocks` and `coverwithsand` to cover nether lava
-- `gamer` to beat the game: gear up, nether, stronghold, dragon. It takes a long while and eats, fights and respawns on its own, and it saves its progress per world, so after a relog, a stop or a crash it carries on from the phase it was in. `gamer status` shows the phase and what has been found, `gamer reset` forgets the saved run (not while it is running), and `gamer phase <name>` starts in that phase (`gather`, `iron`, `portal`, `nether`, `eyes`, `return`, `locate`, `room`, `open`, `end_prep` or `dragon`), for testing one part of the run
+- `gamer` to beat the game: gear up, nether, stronghold, dragon. It takes a long while and eats, fights and respawns on its own, and it saves its progress per world, so after a relog, a stop or a crash it carries on from the phase it was in. `gamer status` shows the phase and what has been found, `gamer reset` forgets the saved run (not while it is running), `gamer trace` writes the last 300 log lines to the log file, and `gamer phase <name>` starts in that phase (`gather`, `iron`, `portal`, `nether`, `eyes`, `return`, `locate`, `room`, `open`, `end_prep` or `dragon`), for testing one part of the run
 - `locate_structure <structure>` to find a structure, like `desert_temple` or `stronghold`
 - `custom <name>` to run a task list from `CustomTasks.json`
 - `status` to see what the running task is doing, `inventory [item]` to list or count, `coords` to get the bot's coordinates, `gamma [value]` to set the brightness
@@ -163,21 +168,31 @@ They're normal Soprano settings that all start with `alto`, so `#set alto<tab>` 
 | Setting | Default | What it does |
 |---|---|---|
 | `altoRunsWhenIdle` | false | keep the survival chains (eating, mob defense, MLG) running even with no task. Off means AltoClef does nothing until you start a task |
-| `altoButler` | false | let whitelisted players whisper commands to your bot. Only names in `baritone/altoclef/altoclef_butler_whitelist.txt` can (one per line, not case sensitive), an empty whitelist means nobody, and `altoclef_butler_blacklist.txt` next to it wins over it. Whispers can run AltoClef's commands only, never `punk` or `gamma` |
+| `altoButler` | false | let whitelisted players whisper commands to your bot. Only names in `baritone/altoclef/altoclef_butler_whitelist.txt` can (one per line, not case sensitive), an empty whitelist means nobody, and `altoclef_butler_blacklist.txt` next to it wins over it. Whispers can run AltoClef's commands plus `goto`, `follow`, `stop` and `cancel`, never `punk`, `gamma` or `setgamma` |
 | `altoShowTaskChains` | true | the task HUD in the top left. `altoHudScale` (1.0, between 0.5 and 2) resizes it, `altoShowTimer` (false) adds a timer, `altoHudDetailed` (false) swaps the plain words for the developer strings from the log, for bug reports |
+| `altoGamerHud` | true | the `#gamer` card on the right of the screen while a run is going: the phase and its clock against the budget, the eleven phase dots, what the bot is doing, the kit it is after with item icons and have/want counts, the furnace batches with time left, the coal detour, hp and food, and a red strip while it is fighting or running. Sized by `altoHudScale`. Hidden with the rest of the HUD (F1) and under F3. With it on the task list in the top left only names the phase |
 | `altoMobDefense` | true | fight off or avoid mobs. `altoForceFieldStrategy` (`SMART`, or `OFF`, `FASTEST`, `DELAY`) is how the force field picks its targets |
+| `altoKillOrAvoidAnnoyingHostiles` | true | whether it deals with angry mobs at all. Off, mobs are scenery: it never commits to a fight or a run (fire, falls, the arrow shield and the force field swinging at what is hitting you stay on). Same meaning as turning off `altoCommitCombat` |
+| `altoCommitCombat` | true | the combat brain, in the overworld, the nether and the end. The task keeps walking past mobs: a crowd around you, a lit creeper, a skeleton shooting from range (walking spoils its aim) are all scenery. It fights a mob that hit you and is in contact, and runs on real danger: 8 hp or less with an angry mob within 8, 10 hp or less with a heavy hitter (wither skeleton, hoglin, vindicator...) that hit you or is in contact (one just standing around is walked past), or the warden or the wither within 8 (or a sonic boom from up to 15). A fight holds until the target is dead or has been more than 6 blocks away and quiet for 3 s (it turns into a run on the danger rules), a run holds until you are 24 blocks from where it started with nothing hostile within 12 (25 s cap, or over after 5 s of getting nowhere with nothing near). Boxed in on a run it fights whatever is on top of it, but never the warden. Ghasts, the dragon, blazes while the rod task works them, and a golem fought from its pillar are left to the tasks that own them. Off, it never commits to anything (the same as `altoKillOrAvoidAnnoyingHostiles` off). `altoHostileEngageRange`, `altoHostileEngageHeight`, `altoPassByGraceTicks` and `altoSwarmThreshold` are gone, an old settings file that still has them is skipped without a word |
+| `altoIronArbiter` | true | `#gamer` IRON phase only: one chooser picks what the bot is doing (furnace trip, station pickup, loot, coal detour, the climb out, the kit) and whatever started holds until it is done. Off brings back the older fixed order. Changes show up in the log as `activity:` lines |
 | `altoAutoEat`, `altoAutoRespawn`, `altoAutoReconnect` | true | what they say |
 | `altoIdleCommand` | empty | a `#` command line to run when idle, only used with `altoRunsWhenIdle` |
 | `altoDeathCommand` | empty | what to send after respawning. `{deathmessage}` is replaced with the death message, and several can be separated with ` & `. A `#` line runs as a command, a `/` line goes to the server, anything else is chat |
 | `altoThrowawayItems`, `altoImportantItems` | | items it can throw away, and items it won't |
 | `altoHomeBasePosition` | | the position AltoClef treats as its home base |
 | `altoAreasToProtect` | | areas it won't break or build in, as `x1/y1/z1->x2/y2/z2` with an optional `@nether` or `@end` on the end, separated by commas: `-10/0/-10->10/255/10,1000/50/2000->1200/255/2100@nether` |
-| `altoPickupItemsInWater` | false | go after dropped items that are lying in water. Off, it skips them unless it can grab them from dry land, so it doesn't drown itself chasing a drop in a lake |
-| `altoResourceMineRange`, `altoEntityReachRange`, `altoContainerItemMoveDelay` | | how far it looks for ores, how far it reaches for entities, and the delay between container clicks |
+| `altoLavaPoolPortal` | true | `#gamer` builds its nether portal on a lava row at least four wide with a throwaway 2x4 slab (8 blocks) and lava and water buckets cycled with an empty one, lit with flint and steel or a fire charge, instead of casting every obsidian block separately. No pool or any trouble and it goes back to the cast, so off just means always cast |
+| `altoJumpCrits` | true | hop in place for critical hits in melee: with a mob in reach and the weapon a few ticks from full strength it jumps, drops sprint and swings on the way down for 1.5x damage. No hop with a shield up (kiting, standing), eating, in water or lava, on a ladder, under a low ceiling, next to a ledge or lava, while baritone is walking a path, or when a plain hit already kills. The weapon pick is swords and axes by damage per swing, so an axe beats a sword of the same tier, and a tool past 85% worn loses to any healthy one. Off swings the moment the cooldown is full |
+| `altoPickupItemsInWater` | false | go after dropped items that are lying in water. Off, it skips them unless it can grab them from dry land or from a puddle one block deep, so it doesn't drown itself chasing a drop in a lake |
+| `altoAsyncSmelting`, `altoUseBlastFurnace`, `altoUseNearbyBlastFurnace`, `altoNearbyBlastFurnaceRange` | false, true, true, 48 | smelting. Async loads the furnace and walks away instead of waiting out the cook, which only makes sense when something comes back for it. `#gamer` turns it on by itself for its iron phase, leave it off for a plain `#get`. `altoUseBlastFurnace` is whether it crafts a blast furnace of its own (`#gamer` turns it off for the run so the iron goes into armor). The nearby ones are about using a blast furnace that is already standing within that many blocks, like a village armorer has |
+| `altoMinimumFoodAllowed`, `altoFoodUnitsToCollect` | 0, 0 | keep at least this much food on you and collect this much when it runs short. 0 means it never goes looking for food on its own |
+| `altoResourceMineRange`, `altoEntityReachRange`, `altoContainerItemMoveDelay` | | how far away a normally crafted block (a crafting table) may be mined instead of made, how far it reaches for entities, and the delay between container clicks |
 
 AltoClef uses Soprano's own `replantCrops` setting instead of having one of its own.
 
-The rest of its config (`beat_minecraft.json`, the food chain, block tracker and MLG configs, `butler.json`, `CustomTasks.json`) is still json under `baritone/altoclef/`, and `altoreload` re-reads it. Settings aren't in there any more, they live in `#set`. If you have an old `baritone/altoclef/altoclef_settings.json`, its values are imported once on first start (only into settings you have not changed yourself) and the file is renamed to `altoclef_settings.json.migrated`. A file that is not valid json is not imported and gets renamed to `altoclef_settings.json.failed`.
+The rest of its config (`beat_minecraft.json`, the food chain, block tracker and MLG configs, `butler.json`, `CustomTasks.json`) is still json under `baritone/altoclef/configs/`, and `altoreload` re-reads it. Settings aren't in there any more, they live in `#set`. If you have an old `baritone/altoclef/altoclef_settings.json`, its values are imported once on first start (only into settings you have not changed yourself) and the file is renamed to `altoclef_settings.json.migrated`. A file that is not valid json is not imported and gets renamed to `altoclef_settings.json.failed`.
+
+`#gamer` keeps its run in `<world>/altoclef/gamer.json`, which is why a relog or a crash carries on where it was, and `#gamer reset` deletes it. `configs/beat_minecraft.json` is versioned: a file from an older version keeps your numbers but gets the new default kit lists (the old one is kept as `beat_minecraft.json.bak`), and anything older than that is replaced by the defaults.
 
 # Troubleshooting / common issues
 

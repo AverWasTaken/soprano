@@ -23,7 +23,15 @@ final class PerTypeScan {
 
     interface Scan {
         // nearest first, at most max results across all of types, like MineProcess.searchWorld
-        List<BlockPos> scan(Block[] types, int max);
+        Scanned scan(Block[] types, int max);
+    }
+
+    // raw is how many hits the scan saw before anything got thrown out of hits (pruned, filtered). a scan that comes
+    // back short of its budget has only run out of world if raw is short too
+    record Scanned(List<BlockPos> hits, int raw) {
+        static Scanned of(List<BlockPos> hits) {
+            return new Scanned(hits, hits.size());
+        }
     }
 
     // blockAt may return null for "can't tell", those positions are dropped
@@ -37,11 +45,11 @@ final class PerTypeScan {
         for (int round = 0; round < types.length && !remaining.isEmpty(); round++) {
             Block[] asking = remaining.toArray(Block[]::new);
             int budget = perType * asking.length;
-            List<BlockPos> found = scan.scan(asking, budget);
+            Scanned scanned = scan.scan(asking, budget);
             for (Block block : asking) {
                 result.get(block).clear();
             }
-            for (BlockPos pos : found) {
+            for (BlockPos pos : scanned.hits()) {
                 Block block = blockAt.apply(pos);
                 if (block == null || !remaining.contains(block)) continue;
                 List<BlockPos> list = result.get(block);
@@ -49,8 +57,10 @@ final class PerTypeScan {
                     list.add(pos);
                 }
             }
-            // under budget means the scan ran out of world, nothing more to find for anyone still asking
-            if (found.size() < budget) {
+            // under budget means the scan ran out of world, nothing more to find for anyone still asking. judged on what
+            // the scan saw, not on what survived prune: counting survivors called every type with pruned hits (flowing
+            // water, ores in bedrock) empty and covered after one scan, the lake was right there
+            if (scanned.raw() < budget) {
                 break;
             }
             boolean retired = remaining.removeIf(block -> result.get(block).size() >= perType);

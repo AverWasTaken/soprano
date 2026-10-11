@@ -53,18 +53,19 @@ public interface Helper {
     /**
      * The tag to assign to chat messages when {@link Settings#useMessageTag} is {@code true}.
      */
-    GuiMessageTag MESSAGE_TAG = new GuiMessageTag(0xFF55FF, null, Component.literal("Soprano message."), "Soprano");
+    GuiMessageTag MESSAGE_TAG = new GuiMessageTag(0xFFAA00, null, Component.literal("Soprano message."), "Soprano");
 
     static Component getPrefix() {
         // Inner text component
         final Calendar now = Calendar.getInstance();
         final boolean xd = now.get(Calendar.MONTH) == Calendar.APRIL && now.get(Calendar.DAY_OF_MONTH) <= 3;
         MutableComponent baritone = Component.literal(xd ? "Sopranoe" : BaritoneAPI.getSettings().shortBaritonePrefix.value ? "S" : "Soprano");
-        baritone.setStyle(baritone.getStyle().withColor(ChatFormatting.LIGHT_PURPLE));
+        // gold name, darker gold brackets. vanilla has no darker gold, so the brackets go by hex and the name matches them
+        baritone.setStyle(baritone.getStyle().withColor(0xFFAA00));
 
         // Outer brackets
         MutableComponent prefix = Component.literal("");
-        prefix.setStyle(baritone.getStyle().withColor(ChatFormatting.DARK_PURPLE));
+        prefix.setStyle(baritone.getStyle().withColor(0xB07400));
         prefix.append("[");
         prefix.append(baritone);
         prefix.append("]");
@@ -144,11 +145,12 @@ public interface Helper {
     }
 
     /**
-     * Send a message to chat only if chatDebug is on
+     * Send a message to chat only if chatDebug is on. It always goes to the {@link DebugTap}, if there is one
      *
      * @param message The message to display in chat
      */
     default void logDebug(String message) {
+        DebugTap.accept(message);
         if (!BaritoneAPI.getSettings().chatDebug.value) {
             //System.out.println("Suppressed debug message:");
             //System.out.println(message);

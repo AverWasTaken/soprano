@@ -108,6 +108,35 @@ public class LadderClutchTest {
     }
 
     @Test
+    public void unplannedFallPicksFromTheStateWeAreIn() {
+        // knocked off something and the chain notices at vy -0.7, 40 blocks of nothing under us. nobody walked off an edge
+        // here, so the picker gets the live y / vy / fall distance and the floor, same as a planned fall's clutch tick
+        double y = 40, v = -0.7, fall = 3.4;
+        // a wall at the landing cell is enough, the move onto the floor does the work
+        LadderClutch.Plan p = LadderClutch.pick(y, v, fall, 0, 0b1, 0, 4.5);
+        assertNotNull(p);
+        assertEquals(0, p.cell());
+        assertTrue(p.fall() <= LadderClutch.SAFE_FALL);
+        // and it clicks as late as it can: the near ticks are too far for the eye to reach the wall
+        assertTrue(p.place() > 10);
+        // a wall only up high is no use however early we are, the rest of the fall is still ours
+        assertNull(LadderClutch.pick(y, v, fall, 0, 0b10000, 0, 4.5));
+        // no wall near the column, nothing to hang it on, so the chain does nothing (same as having no water)
+        assertNull(LadderClutch.pick(y, v, fall, 0, 0, 0, 4.5));
+    }
+
+    @Test
+    public void unplannedFallAlreadyAtTerminalVelocity() {
+        // 150 blocks in and going 3.9 a tick, which is what happens when the thing that knocked us off was a long way up
+        LadderClutch.Plan p = LadderClutch.pick(30, -3.9, 140, 0, 0b1, 0, 4.5);
+        assertNotNull(p);
+        assertEquals(0, p.cell());
+        // too close to the floor to do anything about it: the cell has to be at or below our feet and in reach, and by the
+        // time the eye is that close the next tick lands us
+        assertNull(LadderClutch.pick(0.3, -3.9, 140, 0, 0b10, 0, 4.5));
+    }
+
+    @Test
     public void slidingStartsFromWhereItGrabbed() {
         // slow fall, a ladder 7 up: you grab it at once and ride it down, but then it's 7 more blocks and that kills you
         double fall = LadderClutch.play(10, LadderClutch.WALK_OFF_VY, 0, 0, 7, 0, LadderClutch.SLOP).fall();

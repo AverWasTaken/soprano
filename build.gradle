@@ -15,6 +15,20 @@
  * along with Baritone.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+// git's line-ending warnings can fill stderr while we read stdout, leaving both processes waiting forever
+def gitOutput = { List<String> arguments ->
+    def process = new ProcessBuilder(['git'] + arguments)
+            .directory(rootProject.projectDir)
+            .redirectError(ProcessBuilder.Redirect.DISCARD)
+            .start()
+    def output = process.inputStream.getText('UTF-8')
+    def exitCode = process.waitFor()
+    if (exitCode != 0) {
+        throw new GradleException("git ${arguments.join(' ')} exited with ${exitCode}")
+    }
+    output
+}
+
 allprojects {
     apply plugin: 'java'
     apply plugin: "xyz.wagyourtail.unimined"
@@ -26,7 +40,7 @@ allprojects {
 
     def vers = ""
     try {
-        vers = 'git describe --always --tags --first-parent --dirty'.execute().text.trim()
+        vers = gitOutput(['describe', '--always', '--tags', '--first-parent', '--dirty']).trim()
     } catch (Exception e) {
         println "Version detection failed: " + e
     }
@@ -157,4 +171,30 @@ javadoc {
     options.encoding "UTF-8" // allow emoji in comments :^)
     source = sourceSets.api.allJava
     classpath += sourceSets.api.compileClasspath
+}
+
+// the build id is for matching a log to the jar that wrote it. separate from the version logic up top,
+// which falls back to a constant when the tag doesn't start with v
+def buildId = "unknown"
+try {
+    def described = gitOutput(['describe', '--always', '--dirty']).trim()
+    if (!described.isEmpty()) buildId = described
+    if (buildId.endsWith("-dirty")) {
+        // two edits on the same commit are two different jars, a short hash of the diff tells them apart (and only
+        // changes when the diff does, so the resources stay up to date between builds of the same edit)
+        def diff = gitOutput(['diff', 'HEAD'])
+        buildId += "." + Integer.toHexString(diff.hashCode())
+    }
+} catch (Exception e) {
+    println "Build id detection failed: " + e
+}
+def buildTime = new Date().format("yyyy-MM-dd HH:mm:ss")
+
+processResources {
+    // the id is the input, the time is not: a time that changes every configure would redo the resources (and so
+    // the tests and the jar) on every single build
+    inputs.property "buildId", buildId
+    filesMatching("adris/altoclef/build-id.properties") {
+        expand "buildId": buildId, "buildTime": buildTime
+    }
 }

@@ -12,9 +12,9 @@ import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
+import adris.altoclef.util.time.TimerGame;
 import baritone.api.schematic.AbstractSchematic;
 import baritone.api.schematic.ISchematic;
-import baritone.api.utils.BlockOptionalMeta;
 import baritone.api.utils.input.Input;
 import org.apache.commons.lang3.ArrayUtils;
 
@@ -22,9 +22,9 @@ import java.util.Arrays;
 import java.util.List;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
-import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 
 /**
@@ -33,7 +33,8 @@ import net.minecraft.world.level.block.state.BlockState;
 public class PlaceBlockTask extends Task implements ITaskRequiresGrounded {
 
     private static final int MIN_MATERIALS = 1;
-    private static final int PREFERRED_MATERIALS = 32;
+    // the obsidian portal and block replacing callers still ask for scaffolding. 32 of everything was a lot of dirt to dig for a few steps up
+    private static final int PREFERRED_MATERIALS = 8;
     private final BlockPos _target;
     private final Block[] _toPlace;
     private final boolean _useThrowaways;
@@ -42,6 +43,10 @@ public class PlaceBlockTask extends Task implements ITaskRequiresGrounded {
     private final TimeoutWanderTask _wanderTask = new TimeoutWanderTask(5); // This can get stuck forever, so we increase the range.
     private Task _materialTask;
     private int _failCount = 0;
+    // the builder (or our own look at the bag) found nothing to place with. set from the pathing thread too
+    private volatile boolean _starved;
+    // a starved task sits still this long before it asks again, so a missing table isn't one "Done building" in chat per tick
+    private final TimerGame _starvedRetry = new TimerGame(1.0);
 
     public PlaceBlockTask(BlockPos target, Block[] toPlace, boolean useThrowaways, boolean autoCollectStructureBlocks) {
         _target = target;
@@ -72,8 +77,46 @@ public class PlaceBlockTask extends Task implements ITaskRequiresGrounded {
         //_wanderTask.resetWander();
     }
 
+    // nothing in the bag to place with (or the builder said so). PlaceBlockNearbyTask reads this to give the spot a strike and
+    // move on, where this used to place dirt over it and sit there
+    public boolean isStarved() {
+        return _starved;
+    }
+
+    private boolean haveMaterial(AltoClef mod) {
+        if (mod.getItemStorage().hasItem(ItemHelper.blocksToItems(_toPlace))) {
+            return true;
+        }
+        if (_useThrowaways) {
+            for (Item throwaway : mod.getClientBaritoneSettings().acceptableThrowawayItems.value) {
+                if (mod.getItemStorage().hasItem(throwaway)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private void starve() {
+        _starved = true;
+        _starvedRetry.reset();
+        Debug.logInternal("Nothing to place " + Arrays.toString(_toPlace) + " with at " + _target.toShortString());
+    }
+
     @Override
     protected Task onTick(AltoClef mod) {
+        if (_starved) {
+            // sit still for a second and then look again, the bag might have changed
+            if (!_starvedRetry.elapsed()) {
+                setDebugState("Nothing to place with.");
+                _progressChecker.reset();
+                if (mod.getClientBaritone().getBuilderProcess().isActive()) {
+                    mod.getClientBaritone().getBuilderProcess().onLostControl();
+                }
+                return null;
+            }
+            _starved = false;
+        }
         if (WorldHelper.isInNetherPortal(mod)) {
             if (!mod.getClientBaritone().getPathingBehavior().isPathing()) {
                 setDebugState("Getting out from nether portal");
@@ -138,6 +181,11 @@ public class PlaceBlockTask extends Task implements ITaskRequiresGrounded {
             setDebugState("Letting baritone place a block.");
             // Perform baritone placement
             if (!mod.getClientBaritone().getBuilderProcess().isActive()) {
+                // no point waking the builder to tell us it has nothing (it says "Done building" in chat, every time)
+                if (!haveMaterial(mod)) {
+                    starve();
+                    return null;
+                }
                 Debug.logInternal("Run Structure Build");
                 ISchematic schematic = new PlaceStructureSchematic(mod);
                 mod.getClientBaritone().getBuilderProcess().build("structure", schematic, _target);
@@ -195,6 +243,7 @@ public class PlaceBlockTask extends Task implements ITaskRequiresGrounded {
     private class PlaceStructureSchematic extends AbstractSchematic {
 
         private final AltoClef _mod;
+        private volatile boolean _loggedNoThrowaway;
 
         public PlaceStructureSchematic(AltoClef mod) {
             super(1, 1, 1);
@@ -204,6 +253,12 @@ public class PlaceBlockTask extends Task implements ITaskRequiresGrounded {
         @Override
         public BlockState desiredState(int x, int y, int z, BlockState blockState, List<BlockState> available) {
             if (x == 0 && y == 0 && z == 0) {
+                // already there is the answer. the builder asks again for the whole second between the block landing and
+                // this task stopping, and with our only table gone from the bag the loop below found nothing and asked for
+                // dirt over the table we just placed
+                if (ArrayUtils.contains(_toPlace, blockState.getBlock())) {
+                    return blockState;
+                }
                 // Place!!
                 if (!available.isEmpty()) {
                     for (BlockState possible : available) {
@@ -216,9 +271,21 @@ public class PlaceBlockTask extends Task implements ITaskRequiresGrounded {
                         }
                     }
                 }
-                Debug.logInternal("Failed to find throwaway block");
-                // No throwaways available!!
-                return new BlockOptionalMeta(Blocks.DIRT).getAnyBlockState();
+                // the builder asks with an empty list when it is only checking its mask, that is not a verdict. answer with
+                // the block we want so the position stays in the schematic
+                if (available.isEmpty()) {
+                    return _toPlace.length > 0 ? _toPlace[0].defaultBlockState() : blockState;
+                }
+                // the pathing thread asks this per node, 490 lines of it in one run. once per task is plenty
+                if (!_loggedNoThrowaway) {
+                    _loggedNoThrowaway = true;
+                    Debug.logInternal("Failed to find throwaway block");
+                }
+                // we used to ask for dirt here, which put dirt where the table should go or sent the builder off to build
+                // scaffolding for a block it was never going to have. no change wanted, and the task reports it's starved
+                _starved = true;
+                _starvedRetry.reset();
+                return blockState;
             }
             // Don't care.
             return blockState;

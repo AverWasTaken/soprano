@@ -1,6 +1,7 @@
 package adris.altoclef.tasks.movement;
 
 import adris.altoclef.AltoClef;
+import adris.altoclef.util.baritone.SnapshotGoal;
 import adris.altoclef.util.helpers.AnnoyingBlocks;
 import adris.altoclef.Debug;
 import adris.altoclef.tasksystem.ITaskRequiresGrounded;
@@ -80,13 +81,17 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
 
     @Override
     protected void onStart(AltoClef mod) {
-        mod.getClientBaritone().getPathingBehavior().forceCancel();
+        cancelPath(mod);
         _checker.reset();
         stuckCheck.reset();
     }
 
     @Override
     protected Task onTick(AltoClef mod) {
+        // goals that snapshot entities get their once-a-tick refresh here, on the main thread
+        if (_cachedGoal instanceof SnapshotGoal snapshot) {
+            snapshot.refresh();
+        }
         if (mod.getClientBaritone().getPathingBehavior().isPathing()) {
             _checker.reset();
         }
@@ -123,7 +128,7 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
             stuckCheck.reset();
         }
         if (_cachedGoal == null) {
-            _cachedGoal = newGoal(mod);
+            _cachedGoal = makeGoal(mod);
         }
 
         if (_wander) {
@@ -144,24 +149,50 @@ public abstract class CustomBaritoneGoalTask extends Task implements ITaskRequir
             }
         }
         if (!mod.getClientBaritone().getCustomGoalProcess().isActive()
-                && mod.getClientBaritone().getPathingBehavior().isSafeToCancel()) {
+                && mod.getClientBaritone().getPathingBehavior().isSafeToCancel() && mayIssueGoal(mod)) {
             mod.getClientBaritone().getCustomGoalProcess().setGoalAndPath(_cachedGoal);
         }
         setDebugState("Completing goal.");
         return null;
     }
 
+    // asked on the ticks the goal is about to be handed to baritone again (it is not active: it was reached, or the search
+    // came back empty and baritone dropped it). yes is the default, a task whose goal can be out of reach says no for a bit
+    protected boolean mayIssueGoal(AltoClef mod) {
+        return true;
+    }
+
     @Override
     public boolean isFinished(AltoClef mod) {
         if (_cachedGoal == null) {
-            _cachedGoal = newGoal(mod);
+            _cachedGoal = makeGoal(mod);
         }
         return _cachedGoal != null && _cachedGoal.isInGoal(mod.getPlayer().blockPosition());
     }
 
     @Override
     protected void onStop(AltoClef mod, Task interruptTask) {
-        mod.getClientBaritone().getPathingBehavior().forceCancel();
+        cancelPath(mod);
+    }
+
+    // how the path gets dropped when this task starts and stops. another chain taking over (a fight, a fall, food) is a real
+    // stop and the path is not ours to keep. anything else is a handover: if the next task walks to the same goal,
+    // PathingBehavior keeps the path (keepPathOnSameGoal). CommittedRunTask overrides this to stay soft in the air
+    protected void cancelPath(AltoClef mod) {
+        if (isInterrupting()) {
+            mod.getClientBaritone().getPathingBehavior().forceCancel();
+        } else {
+            mod.getClientBaritone().getPathingBehavior().handoverCancel();
+        }
+    }
+
+    // fresh goals have never seen the world, so give them their first look right away
+    private Goal makeGoal(AltoClef mod) {
+        Goal goal = newGoal(mod);
+        if (goal instanceof SnapshotGoal snapshot) {
+            snapshot.refresh();
+        }
+        return goal;
     }
 
     protected abstract Goal newGoal(AltoClef mod);

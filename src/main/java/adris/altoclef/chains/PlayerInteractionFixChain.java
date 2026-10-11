@@ -18,15 +18,21 @@ import net.minecraft.client.gui.screens.ChatScreen;
 import net.minecraft.client.gui.screens.DeathScreen;
 import net.minecraft.client.gui.screens.PauseScreen;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.item.ItemStack;
 
 public class PlayerInteractionFixChain extends TaskChain {
-    private final TimerGame _stackHeldTimeout = new TimerGame(1);
+    // a slot task holds the cursor on purpose (crafting, container shuffles, drag splits) and a laggy server or a busy
+    // cooldown easily makes that 1s+. at 1s this yanked the stack out from under whatever was working with it. raising
+    // the number is the simple fix, skipping while a slot task is active would need a list of every task that holds it
+    private static final double STACK_HELD_SECONDS = 3;
+    private final TimerGame _stackHeldTimeout = new TimerGame(STACK_HELD_SECONDS);
     private final TimerGame _generalDuctTapeSwapTimeout = new TimerGame(30);
     private final TimerGame _shiftDepressTimeout = new TimerGame(10);
     private final TimerGame _betterToolTimer = new TimerGame(0);
     private final TimerGame _mouseMovingButScreenOpenTimeout = new TimerGame(1);
+    private final KeptStackWatch _keptStackWatch = new KeptStackWatch();
     private ItemStack _lastHandStack = null;
 
     private Screen _lastScreen;
@@ -92,7 +98,13 @@ public class PlayerInteractionFixChain extends TaskChain {
 
         // Refresh inventory
         if (_generalDuctTapeSwapTimeout.elapsed()) {
-            if (!mod.getControllerExtras().isBreakingBlock()) {
+            // not with a container open: a screen Slot doesn't know (hopper, brewing stand, a villager) maps our slots as if it
+            // were the inventory and the 72 clicks land in the container, and on the ones it does know they reset the slot
+            // cooldown under whatever task is working the screen. the timer stays elapsed, it goes the tick the screen shuts
+            // the clicks go to containerMenu, so a menu still open behind a closed screen counts too
+            boolean containerOpen = Minecraft.getInstance().screen instanceof AbstractContainerScreen<?>
+                    || mod.getPlayer().containerMenu != mod.getPlayer().inventoryMenu;
+            if (!mod.getControllerExtras().isBreakingBlock() && !containerOpen) {
                 // this fires every 30s for as long as altoclef runs, chat is no place for it
                 Debug.logInternal("Refreshed inventory...");
                 mod.getSlotHandler().refreshInventory();
@@ -108,10 +120,12 @@ public class PlayerInteractionFixChain extends TaskChain {
             if (_lastHandStack == null || !ItemStack.matches(currentStack, _lastHandStack)) {
                 // We're holding a new item in our stack!
                 _stackHeldTimeout.reset();
+                _keptStackWatch.reset();
                 _lastHandStack = currentStack.copy();
             }
         } else {
             _stackHeldTimeout.reset();
+            _keptStackWatch.reset();
             _lastHandStack = null;
         }
 
@@ -132,7 +146,18 @@ public class PlayerInteractionFixChain extends TaskChain {
                 mod.getSlotHandler().clickSlot(garbage.get(), 0, ClickType.PICKUP);
                 return Float.NEGATIVE_INFINITY;
             }
-            mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ClickType.PICKUP);
+            // a kept stack with a full bag and nothing to swap it with stays in hand for a while. throwing it was the old
+            // last resort and it threw iron and food away. whoever is working with it can deal, or the bag frees up.
+            // but a screen that never closes freezes the bot, so after 10s vanilla gets to drop it
+            if (_keptStackWatch.tick()) {
+                ItemStack kept = StorageHelper.getItemStackInCursorSlot();
+                Debug.logMessage("Bag is full and nothing to swap, dropping the held " + kept.getCount() + "x " + kept.getItem().getDescriptionId());
+                if (Minecraft.getInstance().screen != null) {
+                    StorageHelper.closeScreen();
+                } else {
+                    mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ClickType.PICKUP);
+                }
+            }
             return Float.NEGATIVE_INFINITY;
         }
 

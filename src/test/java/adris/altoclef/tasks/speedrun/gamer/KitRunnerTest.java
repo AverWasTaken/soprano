@@ -10,6 +10,8 @@ import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -93,6 +95,64 @@ public class KitRunnerTest {
     }
 
     @Test
+    public void aFreshTaskSurvivesTheHeadSwappingUnderItForAFewSeconds() {
+        KitNeed iron = new KitNeed("iron_ingot", 39);
+        KitNeed food = new KitNeed(KitNeed.FOOD, 70);
+        ctx.facts.give(Items.STONE_PICKAXE, 1);
+        Task first = runner.run(ctx, List.of(iron));
+        // the planner puts food first from here on: held for the dwell, then it takes over
+        assertSame(first, runner.run(ctx, List.of(food, iron)));
+        ctx.facts.seconds(2);
+        assertSame(first, runner.run(ctx, List.of(food, iron)));
+        assertEquals(1, built);
+        ctx.facts.seconds(4);
+        assertNotSame(first, runner.run(ctx, List.of(food, iron)));
+        assertEquals(2, built);
+        // and that one is the fresh one now, the order flipping back does not rip it out again
+        Task second = runner.run(ctx, List.of(iron, food));
+        assertSame(second, runner.run(ctx, List.of(iron, food)));
+        assertEquals("Getting food", runner.hud());
+    }
+
+    @Test
+    public void aNeedThatBlinksOutOfThePlanKeepsItsTask() {
+        KitNeed logs = new KitNeed("log", 29);
+        KitNeed cobble = new KitNeed("cobblestone", 19);
+        ctx.facts.give(Items.STONE_PICKAXE, 1).give(Items.OAK_LOG, 3);
+        Task first = runner.run(ctx, List.of(logs, cobble));
+        ctx.facts.seconds(30);
+        // gone for a tick and back: same task, nothing rebuilt
+        assertSame(first, runner.run(ctx, List.of(cobble)));
+        ctx.facts.seconds(0.05);
+        assertSame(first, runner.run(ctx, List.of(logs, cobble)));
+        assertEquals(1, built);
+        // gone for good: kept through the dwell, then the cobble takes over
+        ctx.facts.seconds(1);
+        assertSame(first, runner.run(ctx, List.of(cobble)));
+        ctx.facts.seconds(4.95);
+        assertSame(first, runner.run(ctx, List.of(cobble)));
+        ctx.facts.seconds(0.05);
+        assertNotSame(first, runner.run(ctx, List.of(cobble)));
+        assertEquals(2, built);
+    }
+
+    @Test
+    public void aNeedWeHoldNowHandsOverAtOnce() {
+        KitNeed logs = new KitNeed("log", 29);
+        KitNeed cobble = new KitNeed("cobblestone", 19);
+        ctx.facts.give(Items.STONE_PICKAXE, 1);
+        Task first = runner.run(ctx, List.of(logs, cobble));
+        ctx.facts.give(Items.OAK_LOG, 29);
+        assertNotSame(first, runner.run(ctx, List.of(cobble)));
+    }
+
+    @Test
+    public void aMissingPickaxeIsNotMadeToWait() {
+        Task first = runner.run(ctx, List.of(new KitNeed("iron_ingot", 39)));
+        assertNotSame(first, runner.run(ctx, List.of(new KitNeed("stone_pickaxe", 1), new KitNeed("iron_ingot", 39))));
+    }
+
+    @Test
     public void onlyTheFirstNeedRuns() {
         runner.run(ctx, List.of(new KitNeed("iron_ingot", 39), new KitNeed("iron_pickaxe", 1)));
         assertEquals(1, built);
@@ -137,16 +197,38 @@ public class KitRunnerTest {
     }
 
     @Test
+    public void twoNeedsTradingTheHeadAreNotProgress() {
+        List<KitNeed> a = List.of(new KitNeed("iron_ingot", 39));
+        List<KitNeed> b = List.of(new KitNeed("cobblestone", 20));
+        for (int i = 0; i < 10; i++) {
+            runner.run(ctx, a);
+            runner.run(ctx, b);
+        }
+        assertTrue(ctx.progress.isEmpty());
+        // the iron is kept through a blink (HeadLatch), so the cobble only takes over once the iron has been gone a dwell
+        ctx.facts.seconds(6);
+        runner.run(ctx, b);
+        assertEquals("Mining stone", runner.hud());
+        // a real gain on one of them still counts
+        ctx.facts.give(Items.COBBLESTONE, 3);
+        runner.run(ctx, b);
+        assertEquals(List.of("cobblestone"), ctx.progress);
+        // and the other one turning up again is not a gain either
+        runner.run(ctx, a);
+        assertEquals(1, ctx.progress.size());
+    }
+
+    @Test
     public void aBagOfRottenFleshDoesNotSatisfyTheFoodNeed() {
         // 20 rotten flesh is 80 nutrition for CollectFoodTask, and 0 for what we would actually eat
         ctx.facts.give(Items.ROTTEN_FLESH, 20);
         ctx.facts.junkFoodUnits = 80;
-        List<KitNeed> plan = KitPlanner.gather(ctx.facts, ctx.cfg.overworld);
+        List<KitNeed> plan = KitPlanner.gather(ctx.facts, ctx.cfg.overworld, 8);
         KitNeed food = plan.stream().filter(n -> n.catalogueName().equals(KitNeed.FOOD)).findFirst().orElseThrow();
-        assertEquals(70, food.count());
-        assertEquals(150, KitRunner.foodTarget(food, ctx.facts));
+        assertEquals(130, food.count());
+        assertEquals(210, KitRunner.foodTarget(food, ctx.food()));
         runner.run(ctx, List.of(food));
-        assertEquals(List.of(150), foodTargets);
+        assertEquals(List.of(210), foodTargets);
     }
 
     @Test
@@ -160,9 +242,60 @@ public class KitRunnerTest {
     }
 
     @Test
+    public void theFoodNeedComingAndGoingIsLoggedOncePerChange() {
+        PrintStream real = System.out;
+        ByteArrayOutputStream captured = new ByteArrayOutputStream();
+        System.setOut(new PrintStream(captured, true));
+        try {
+            ctx.facts.foodUnits = 60;
+            KitNeed iron = new KitNeed("iron_ingot", 39);
+            runner.run(ctx, List.of(new KitNeed(KitNeed.FOOD, 70), iron));
+            runner.run(ctx, List.of(new KitNeed(KitNeed.FOOD, 70), iron));
+            // the minimum becoming the target is the same need still being owed
+            runner.run(ctx, List.of(new KitNeed(KitNeed.FOOD, 100), iron));
+            runner.run(ctx, List.of(iron));
+            runner.run(ctx, List.of(iron));
+            runner.run(ctx, List.of());
+            runner.run(ctx, List.of(new KitNeed(KitNeed.FOOD, 70)));
+        } finally {
+            System.setOut(real);
+        }
+        List<String> lines = captured.toString().lines().filter(l -> l.contains("food: need")).toList();
+        assertEquals(lines.toString(), 3, lines.size());
+        assertTrue(lines.get(0), lines.get(0).endsWith("food: need on, held 60 of 70 (station 0, pending 0, raw left out 0), running food"));
+        assertTrue(lines.get(1), lines.get(1).endsWith("food: need off, held 60 of 70 (station 0, pending 0, raw left out 0), running iron_ingot"));
+        assertTrue(lines.get(2), lines.get(2).endsWith("food: need on, held 60 of 70 (station 0, pending 0, raw left out 0), running food"));
+    }
+
+    @Test
+    public void theDiamondCraftsComingAndGoingAreLoggedOncePerChange() {
+        PrintStream real = System.out;
+        ByteArrayOutputStream captured = new ByteArrayOutputStream();
+        System.setOut(new PrintStream(captured, true));
+        try {
+            KitNeed iron = new KitNeed("iron_ingot", 39);
+            ctx.facts.give(Items.DIAMOND, 3);
+            runner.run(ctx, List.of(iron));
+            runner.run(ctx, List.of(new KitNeed("diamond_pickaxe", 1), iron));
+            runner.run(ctx, List.of(new KitNeed("diamond_pickaxe", 1), iron));
+            ctx.facts.give(Items.DIAMOND, 4);
+            runner.run(ctx, List.of(new KitNeed("diamond_pickaxe", 1), new KitNeed("diamond_boots", 1), iron));
+            runner.run(ctx, List.of(iron));
+            runner.run(ctx, List.of(iron));
+        } finally {
+            System.setOut(real);
+        }
+        List<String> lines = captured.toString().lines().filter(l -> l.contains("diamonds:")).toList();
+        assertEquals(lines.toString(), 3, lines.size());
+        assertTrue(lines.get(0), lines.get(0).endsWith("diamonds: 3 held -> [diamond_pickaxe]"));
+        assertTrue(lines.get(1), lines.get(1).endsWith("diamonds: 7 held -> [diamond_pickaxe, diamond_boots]"));
+        assertTrue(lines.get(2), lines.get(2).endsWith("diamonds: 7 held -> []"));
+    }
+
+    @Test
     public void nonFoodNeedsIgnoreJunk() {
         ctx.facts.junkFoodUnits = 80;
-        assertEquals(32, KitRunner.foodTarget(new KitNeed(KitNeed.BUILD_BLOCKS, 32), ctx.facts));
+        assertEquals(32, KitRunner.foodTarget(new KitNeed(KitNeed.BUILD_BLOCKS, 32), ctx.food()));
     }
 
     @Test
@@ -175,5 +308,21 @@ public class KitRunnerTest {
         });
         r.run(ctx, List.of(new KitNeed(KitNeed.EQUIP_ARMOR, 1)));
         assertEquals(List.of(List.of(Items.IRON_HELMET)), seen);
+    }
+
+    @Test
+    public void theHeadLineNamesOldNewAndTheFirstFourNeeds() {
+        List<KitNeed> plan = List.of(new KitNeed("iron_ingot", 4), new KitNeed("food", 12), new KitNeed("log", 3),
+                new KitNeed("coal", 2), new KitNeed("flint", 1));
+        assertEquals("switch kit head from=none to=iron_ingot x4 plan=[iron_ingot x4, food x12, log x3, coal x2]",
+                KitRunner.headLine(null, plan.get(0), plan));
+        assertEquals("switch kit head from=food x12 to=log x3 plan=[iron_ingot x4, food x12, log x3, coal x2]",
+                KitRunner.headLine(plan.get(1), plan.get(2), plan));
+    }
+
+    @Test
+    public void aShortPlanIsListedWhole() {
+        List<KitNeed> plan = List.of(new KitNeed("flint", 1));
+        assertEquals("switch kit head from=none to=flint x1 plan=[flint x1]", KitRunner.headLine(null, plan.get(0), plan));
     }
 }

@@ -24,10 +24,20 @@ public enum DragonStrat {
     // when it is critical. a dent from the dragon is not a reason to swap, the bed task waits and the food chain heals us
     public static DragonStrat choose(DragonStrat current, int beds, int armorPoints, boolean perched, int endDeaths, EndConfig cfg,
                                      double healthPool) {
+        return choose(current, beds, armorPoints, perched, endDeaths, cfg, healthPool, false);
+    }
+
+    // healStalled = the bed task stood too hurt to click and nothing healed us (HealStall). that beats the perched latch below: waiting
+    // between CRITICAL_POOL and the click line with no food would be forever, and the sword needs no safe pool
+    public static DragonStrat choose(DragonStrat current, int beds, int armorPoints, boolean perched, int endDeaths, EndConfig cfg,
+                                     double healthPool, boolean healStalled) {
         int line = cfg.bedMinArmor + cfg.bedArmorPerAttempt * Math.max(0, endDeaths);
         boolean healthy = healthPool >= BedSafety.safePool(armorPoints);
         if (current == null) {
             return beds > 0 && armorPoints >= line && healthy ? BEDS : SWORD;
+        }
+        if (current == BEDS && healStalled) {
+            return SWORD;
         }
         // a perched dragon with a bed already placed: the bed is not in the inventory any more, do not walk away from it
         if (perched) {

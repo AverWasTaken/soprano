@@ -21,8 +21,10 @@ import org.junit.Test;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
@@ -106,7 +108,81 @@ public class DestroyBlockVinesTest {
     public void closingInFallsBackToTouching() {
         MapGetter w = trunk();
         w.set(LOG.east(), vineOn(Direction.WEST));
+        // nothing to step off of (no feet given) is the plain touching goal
         assertTrue(DestroyBlockTask.pickGoal(w, LOG, true) instanceof GoalNear);
+        // far from the log: any cell touching it will do
+        Goal far = DestroyBlockTask.pickGoal(w, LOG, true, Set.of(new BlockPos(9, 64, 9)));
+        assertTrue(far.isInGoal(LOG.west()));
+        assertTrue(far.isInGoal(LOG.east()));
+    }
+
+    @Test
+    public void closingInFromBesideItMeansAnotherCell() {
+        MapGetter w = trunk();
+        w.set(LOG.east(), vineOn(Direction.WEST));
+        BlockPos feet = LOG.west();
+        Goal goal = DestroyBlockTask.pickGoal(w, LOG, true, Set.of(feet));
+        // the cell we're already in must not count as arrived, that's the whole stall
+        assertFalse(goal.isInGoal(feet));
+        assertTrue(goal.isInGoal(LOG.north()));
+        assertTrue(goal.isInGoal(LOG.south()));
+        assertTrue(goal.isInGoal(LOG.east()));
+    }
+
+    @Test
+    public void closingInSkipsCellsYouCantStandIn() {
+        MapGetter w = trunk();
+        w.set(LOG.north(), Blocks.STONE.defaultBlockState());
+        Goal goal = DestroyBlockTask.pickGoal(w, LOG, true, Set.of(LOG.west()));
+        assertFalse(goal.isInGoal(LOG.north()));
+        assertTrue(goal.isInGoal(LOG.south()));
+    }
+
+    @Test
+    public void closingInNeverWantsTheCellUnderIt() {
+        // our head would be in the block
+        MapGetter w = new MapGetter();
+        w.set(LOG, Blocks.JUNGLE_LOG.defaultBlockState());
+        Goal goal = DestroyBlockTask.pickGoal(w, LOG, true, Set.of(LOG.west()));
+        assertFalse(goal.isInGoal(LOG.below()));
+        assertTrue(goal.isInGoal(LOG.above()));
+    }
+
+    @Test
+    public void aBlockMinedFromTheSideIsNeverClosedInOnFromOnTop() {
+        MapGetter w = new MapGetter();
+        w.set(LOG, Blocks.JUNGLE_LOG.defaultBlockState());
+        Goal goal = DestroyBlockTask.pickGoal(w, LOG, true, Set.of(LOG.west()), true);
+        assertFalse(goal.isInGoal(LOG.above()));
+        assertFalse(goal.isInGoal(LOG.below()));
+        assertTrue(goal.isInGoal(LOG.east()));
+    }
+
+    @Test
+    public void boxedInFallsBackToTheOldGoal() {
+        MapGetter w = trunk();
+        for (Direction side : Direction.values()) {
+            if (side != Direction.WEST) {
+                w.set(LOG.relative(side), Blocks.STONE.defaultBlockState());
+            }
+        }
+        assertTrue(DestroyBlockTask.pickGoal(w, LOG, true, Set.of(LOG.west())) instanceof GoalNear);
+    }
+
+    @Test
+    public void everyCellTriedMeansTheOldGoalNotAShuffle() {
+        MapGetter w = trunk();
+        w.set(LOG.north(), Blocks.STONE.defaultBlockState());
+        w.set(LOG.south(), Blocks.STONE.defaultBlockState());
+        // west and east are all that's left, and we've stood in both
+        assertTrue(DestroyBlockTask.pickGoal(w, LOG, true, Set.of(LOG.west())).isInGoal(LOG.east()));
+        assertTrue(DestroyBlockTask.pickGoal(w, LOG, true, Set.of(LOG.west(), LOG.east())) instanceof GoalNear);
+    }
+
+    @Test
+    public void feetOnlyMattersWhenClosingIn() {
+        MapGetter w = trunk();
+        assertTrue(DestroyBlockTask.pickGoal(w, LOG, false, Set.of(LOG.west())) instanceof GoalNear);
     }
 
     @Test

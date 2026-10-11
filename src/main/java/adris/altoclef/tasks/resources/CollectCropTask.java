@@ -10,6 +10,7 @@ import adris.altoclef.tasks.movement.PickupDroppedItemTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.ui.HudText;
 import adris.altoclef.util.ItemTarget;
+import adris.altoclef.util.helpers.CropRules;
 import adris.altoclef.util.helpers.StlHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import java.util.Arrays;
@@ -112,15 +113,9 @@ public class CollectCropTask extends ResourceTask {
                     Blocks.FARMLAND); // Blocks.FARMLAND is useless to be put here
         }
 
-        Predicate<BlockPos> validCrop = blockPos -> {
-            if (!_canBreak.test(blockPos)) return false;
-            // Breaking immature crops will only yield one output! This is a bad move.
-            if (Baritone.settings().replantCrops.value && !isMature(mod, blockPos)) return false;
-            // Wheat must be mature always.
-            if (mod.getWorld().getBlockState(blockPos).getBlock() == Blocks.WHEAT)
-                return isMature(mod, blockPos);
-            return true;
-        };
+        // grown ones only, whatever the crop and whether or not we replant. a young one yields the one item we planted,
+        // and the carrot branch of this used to take them (only wheat was asked), so a field of seedlings kept us busy
+        Predicate<BlockPos> validCrop = blockPos -> _canBreak.test(blockPos) && isMature(mod, blockPos);
 
         // Dimension
         if (isInWrongDimension(mod) && !mod.getBlockTracker().anyFound(validCrop, _cropBlock)) {
@@ -136,7 +131,7 @@ public class CollectCropTask extends ResourceTask {
                 },
                 validCrop,
                 _cropBlock
-        );
+        ).expectDrops();
     }
 
     @Override
@@ -153,8 +148,18 @@ public class CollectCropTask extends ResourceTask {
         return super.isFinished(mod);
     }
 
+    // only the holes we are standing in: replanting is a favour to the field, not worth a walk back across the farm
+    private static final double REPLANT_RANGE_SQ = 10 * 10;
+
     private boolean shouldReplantNow(AltoClef mod) {
-        return Baritone.settings().replantCrops.value && hasEmptyCrops(mod) && mod.getItemStorage().hasItem(_cropSeed);
+        return Baritone.settings().replantCrops.value && hasEmptyCropsNear(mod) && mod.getItemStorage().hasItem(_cropSeed);
+    }
+
+    private boolean hasEmptyCropsNear(AltoClef mod) {
+        for (BlockPos pos : _emptyCropland) {
+            if (isEmptyCrop(mod, pos) && pos.distToCenterSqr(mod.getPlayer().position()) <= REPLANT_RANGE_SQ) return true;
+        }
+        return false;
     }
 
     private boolean hasEmptyCrops(AltoClef mod) {
@@ -164,8 +169,9 @@ public class CollectCropTask extends ResourceTask {
         return false;
     }
 
+    // air over farmland. a trampled spot (dirt now) can't take a seed, and trying every few seconds forever was the stall
     private boolean isEmptyCrop(AltoClef mod, BlockPos pos) {
-        return WorldHelper.isAir(mod, pos);
+        return WorldHelper.isAir(mod, pos) && mod.getWorld().getBlockState(pos.below()).is(Blocks.FARMLAND);
     }
 
     @Override
@@ -194,8 +200,8 @@ public class CollectCropTask extends ResourceTask {
         }
         // Prune if we're not mature/fully grown wheat.
         BlockState s = mod.getWorld().getBlockState(blockPos);
-        if (s.getBlock() instanceof CropBlock crop) {
-            boolean mature = crop.isMaxAge(s);
+        if (s.getBlock() instanceof CropBlock) {
+            boolean mature = CropRules.ripe(s);
             if (_wasFullyGrown.contains(blockPos)) {
                 if (!mature) _wasFullyGrown.remove(blockPos);
             } else {

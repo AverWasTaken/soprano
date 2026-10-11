@@ -1,5 +1,6 @@
 package adris.altoclef.tasks.speedrun.gamer.end;
 
+import adris.altoclef.tasks.speedrun.gamer.FoodPlan;
 import adris.altoclef.tasks.speedrun.gamer.GamerFacts;
 import adris.altoclef.tasks.speedrun.gamer.RunState;
 import adris.altoclef.tasks.speedrun.gamer.config.EndConfig;
@@ -21,30 +22,39 @@ public final class EndGear {
             {Items.NETHERITE_LEGGINGS, Items.DIAMOND_LEGGINGS, Items.IRON_LEGGINGS},
             {Items.NETHERITE_BOOTS, Items.DIAMOND_BOOTS, Items.IRON_BOOTS}
     };
-    private static final Item[] SWORDS = {Items.NETHERITE_SWORD, Items.DIAMOND_SWORD, Items.IRON_SWORD};
+    // iron is the floor here too. axes count, the kit makes an axe and not a sword (it hits harder, see WeaponPick)
+    private static final Item[] WEAPONS = {Items.NETHERITE_SWORD, Items.DIAMOND_SWORD, Items.IRON_SWORD,
+            Items.NETHERITE_AXE, Items.DIAMOND_AXE, Items.IRON_AXE};
     private static final Item[] PICKAXES = {Items.NETHERITE_PICKAXE, Items.DIAMOND_PICKAXE, Items.IRON_PICKAXE};
 
     private EndGear() {
     }
 
     // beds = how many short of bedsRequired, buildBlocks = how many to collect (target, not the gap) or 0 when fine,
-    // armorToWear = pieces we hold of a slot where nothing iron or better is worn
-    public record Gap(int beds, boolean sword, boolean waterBucket, boolean pickaxe, int buildBlocks, boolean food,
+    // armorToWear = pieces we hold that are better than what is worn on their slot (or the slot is bare)
+    public record Gap(int beds, boolean weapon, boolean waterBucket, boolean pickaxe, int buildBlocks, boolean food,
                       List<Item> armorToWear) {
         public boolean none() {
-            return beds == 0 && !sword && !waterBucket && !pickaxe && buildBlocks == 0 && !food && armorToWear.isEmpty();
+            return beds == 0 && !weapon && !waterBucket && !pickaxe && buildBlocks == 0 && !food && armorToWear.isEmpty();
         }
     }
 
+    // a second try goes with what it has: a stall retry bumps the attempt, but dying in the End regresses DRAGON to END_PREP
+    // and PhaseMachine resets the attempt to 1 on every move, so the deaths are what says "we already tried this"
+    public static boolean relaxed(int attempt, int endDeaths) {
+        return attempt >= 2 || endDeaths >= 1;
+    }
+
     // bedsRequired is a parameter because a second attempt goes with what it has (the sword strat needs no wool at all)
-    public static Gap missing(GamerFacts facts, RunState state, EndConfig cfg, int bedsRequired) {
+    // (weapon is a sword or an axe, whichever the bot made). food is the same count every other gate goes by (FoodPlan: raw meat
+    // nobody can cook is worth its raw value, a smoker's pending batch counts), against the End's own floor
+    public static Gap missing(GamerFacts facts, RunState state, EndConfig cfg, int bedsRequired, FoodPlan food) {
         int bedGap = bedShortfall(facts, state, cfg, bedsRequired, false);
-        boolean sword = !ownedOrDropped(facts, state, cfg, SWORDS);
+        boolean weapon = !ownedOrDropped(facts, state, cfg, WEAPONS);
         boolean bucket = !ownedOrDropped(facts, state, cfg, Items.WATER_BUCKET);
         boolean pickaxe = !ownedOrDropped(facts, state, cfg, PICKAXES);
         int blocks = facts.buildBlocks() < cfg.minBuildBlocks ? cfg.buildBlocks : 0;
-        return new Gap(Math.max(0, bedGap), sword, bucket, pickaxe, blocks, facts.foodUnits() < cfg.minFoodUnits,
-                armorToWear(facts));
+        return new Gap(Math.max(0, bedGap), weapon, bucket, pickaxe, blocks, food.shortOfEndFloor(), armorToWear(facts));
     }
 
     // beds still to get: required (+1 for the spawn bed) minus what we hold and what lies in the End. <= 0 means a spare
@@ -58,29 +68,33 @@ public final class EndGear {
         return facts.count(items) + EndRules.dropped(state, facts.gameTime(), cfg, items) > 0;
     }
 
+    // the slots are best first, so the first piece we hold is the best one and the first one worn is what is on. a piece goes on
+    // when it ranks strictly above what is worn (a diamond helmet over the iron one, the iron one then sits in the bag below it and
+    // asks for nothing), or when the slot is bare. the same rule as KitPlanner.toEquip
     public static List<Item> armorToWear(GamerFacts facts) {
         List<Item> wear = new ArrayList<>();
         for (Item[] slot : ARMOR_SLOTS) {
-            if (anyEquipped(facts, slot)) {
-                continue;
-            }
-            for (Item piece : slot) {
-                if (facts.has(piece)) {
-                    wear.add(piece);
-                    break;
-                }
+            int worn = rank(slot, facts::armorEquipped);
+            int held = rank(slot, facts::has);
+            if (held >= 0 && (worn < 0 || held < worn)) {
+                wear.add(slot[held]);
             }
         }
         return wear;
     }
 
-    private static boolean anyEquipped(GamerFacts facts, Item[] slot) {
-        for (Item piece : slot) {
-            if (facts.armorEquipped(piece)) {
-                return true;
+    // index of the best piece of the slot the test says yes to, -1 when none
+    private static int rank(Item[] slot, Predicate<Item> test) {
+        for (int i = 0; i < slot.length; i++) {
+            if (test.test(slot[i])) {
+                return i;
             }
         }
-        return false;
+        return -1;
+    }
+
+    private static boolean anyEquipped(GamerFacts facts, Item[] slot) {
+        return rank(slot, facts::armorEquipped) >= 0;
     }
 
     // what to walk to first while we are in the End and something of ours is lying around (dropped = the item entity is
@@ -92,7 +106,7 @@ public final class EndGear {
                 return bed;
             }
         }
-        Item tool = missingTool(facts, SWORDS, dropped);
+        Item tool = missingTool(facts, WEAPONS, dropped);
         if (tool == null) {
             tool = missingTool(facts, PICKAXES, dropped);
         }

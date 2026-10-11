@@ -18,10 +18,12 @@
 package baritone.altoclef;
 
 import adris.altoclef.AltoClef;
+import adris.altoclef.Debug;
 import adris.altoclef.commands.AltoClefCommands;
 import adris.altoclef.eventbus.EventBus;
 import adris.altoclef.eventbus.events.ChunkLoadEvent;
 import adris.altoclef.eventbus.events.ChunkUnloadEvent;
+import adris.altoclef.util.helpers.DeathStash;
 import baritone.Baritone;
 import baritone.api.Settings;
 import baritone.api.command.exception.CommandException;
@@ -36,6 +38,7 @@ import baritone.event.GameEventHandler;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.TitleScreen;
+import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.ClipContext;
 
@@ -253,6 +256,27 @@ public final class AltoClefBridge implements AbstractGameEventListener {
             } else if (event.getState() == EventState.POST && event.getType() == ChunkEvent.Type.UNLOAD) {
                 publish(new ChunkUnloadEvent(new ChunkPos(event.getX(), event.getZ())));
             }
+        } catch (Throwable t) {
+            onHookError(t);
+        }
+    }
+
+    // the death packet, while the dying player is still the player. the stash has to be written here and not by a task: a
+    // chain that holds the wheel through the fight, the death and the death screen never lets the user task tick, and the
+    // task that wants to go back for the pile is a user task. (the same packet is what saves baritone's death waypoint)
+    @Override
+    public void onPlayerDeath() {
+        if (!isAlive()) {
+            return;
+        }
+        try {
+            LocalPlayer player = Minecraft.getInstance().player;
+            if (player == null) {
+                return;
+            }
+            DeathStash.Death death = DeathStash.snapshot(player);
+            DeathStash.put(death);
+            Debug.logInternal("death: recorded at " + death.where() + " in " + death.dimension() + " (" + death.cause() + ")");
         } catch (Throwable t) {
             onHookError(t);
         }

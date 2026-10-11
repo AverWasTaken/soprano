@@ -20,10 +20,9 @@ public class SearchChunkForBlockTask extends SearchChunksExploreTask {
 
     @Override
     protected boolean isChunkWithinSearchSpace(AltoClef mod, ChunkPos pos) {
-        return mod.getChunkTracker().scanChunk(pos, block -> {
-                    return _toSearchFor.contains(mod.getWorld().getBlockState(block).getBlock());
-                }
-        );
+        // state predicate so the tracker can skip whole sections by palette. this ran on every chunk load and was
+        // walking ~90k blocks each time
+        return mod.getChunkTracker().chunkHas(pos, state -> _toSearchFor.contains(state.getBlock()));
     }
 
     @Override

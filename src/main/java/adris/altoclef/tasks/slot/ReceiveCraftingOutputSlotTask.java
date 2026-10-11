@@ -3,11 +3,12 @@ package adris.altoclef.tasks.slot;
 import adris.altoclef.AltoClef;
 import adris.altoclef.tasksystem.ITaskUsesCraftingGrid;
 import adris.altoclef.tasksystem.Task;
-import adris.altoclef.util.helpers.ItemHelper;
+import adris.altoclef.util.helpers.CraftMath;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.slots.CraftingTableSlot;
 import adris.altoclef.util.slots.PlayerSlot;
 import adris.altoclef.util.slots.Slot;
+import adris.altoclef.util.time.TimerGame;
 import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.item.ItemStack;
 
@@ -46,24 +47,90 @@ public class ReceiveCraftingOutputSlotTask extends Task implements ITaskUsesCraf
 
     }
 
+    // how many more of this stack the main inventory and hotbar can swallow. armor and the offhand don't count, a
+    // quick move out of the output never goes there. this is what a quick move actually needs: it crafts the whole
+    // multiple in one go, and the old "can ONE stack partially fit somewhere" check said yes with a single free
+    // slot of room left, then vanilla ran out of space halfway and left ingredients stranded in the grid
+    private static int inventoryRoomFor(AltoClef mod, ItemStack stack) {
+        int max = stack.getMaxStackSize();
+        int room = 0;
+        for (ItemStack inSlot : mod.getPlayer().getInventory().items) {
+            if (inSlot.isEmpty()) {
+                room += max;
+            } else if (ItemStack.isSameItemSameComponents(inSlot, stack)) {
+                room += Math.max(0, max - inSlot.getCount());
+            }
+        }
+        return room;
+    }
+
+    // the cursor and the output can share a stack, as long as they are the same thing and it fits. ItemHelper's
+    // canStackTogether says no to a stack that lands exactly on the max (strict <), which broke the cursor for nothing
+    private static boolean cursorTakesOutput(ItemStack cursor, ItemStack output) {
+        if (cursor.isEmpty() || output.isEmpty()) return true;
+        return ItemStack.isSameItemSameComponents(cursor, output) && cursor.getCount() + output.getCount() <= cursor.getMaxStackSize();
+    }
+
+    // a click on the output takes a server round trip to show up. until it does, the output slot still holds the old
+    // result, and the parents (CraftGenericManuallyTask and CraftInInventoryTask both hand us a fresh task for it) happily click it
+    // again. a second quick move on a refilled grid crafts MORE than we asked for and eats ingredients other things
+    // were saving. so after a click that went out we sit still until the output or the cursor changes, or this many seconds pass.
+    // static because it is a different instance of us doing the second click
+    private static final TimerGame CLICK_GUARD = new TimerGame(0.4);
+    private static boolean _guardArmed = false;
+    private static int _guardContainer = -1;
+    private static ItemStack _guardOutput = ItemStack.EMPTY;
+    private static ItemStack _guardCursor = ItemStack.EMPTY;
+
+    private static boolean clickStillInFlight(AltoClef mod, ItemStack output, ItemStack cursor) {
+        if (!_guardArmed) return false;
+        if (CLICK_GUARD.elapsed() || _guardContainer != mod.getPlayer().containerMenu.containerId
+                || !ItemStack.matches(_guardOutput, output) || !ItemStack.matches(_guardCursor, cursor)) {
+            _guardArmed = false;
+            return false;
+        }
+        return true;
+    }
+
+    // only arms when the slot handler says the click really went out, a click eaten by its cooldown is retried next tick
+    private void click(AltoClef mod, ItemStack output, ItemStack cursor, ClickType type) {
+        if (mod.getSlotHandler().clickSlot(_slot, 0, type)) {
+            _guardArmed = true;
+            _guardContainer = mod.getPlayer().containerMenu.containerId;
+            _guardOutput = output.copy();
+            _guardCursor = cursor.copy();
+            CLICK_GUARD.reset();
+        }
+    }
+
     @Override
     protected Task onTick(AltoClef mod) {
         ItemStack inOutput = StorageHelper.getItemStackInSlot(_slot);
         ItemStack cursor = StorageHelper.getItemStackInCursorSlot();
-        boolean cursorSlotFree = cursor.isEmpty();
-        if (!cursorSlotFree && !ItemHelper.canStackTogether(inOutput, cursor)) {
+        if (!cursorTakesOutput(cursor, inOutput)) {
             return new EnsureFreeCursorSlotTask();
         }
-        int craftCount = inOutput.getCount() * getCraftMultipleCount(mod);
+        if (inOutput.isEmpty()) {
+            // nothing to take (or the stale one just got taken), clicking air does nothing but spam the server
+            setDebugState("Waiting for the output");
+            return null;
+        }
+        if (clickStillInFlight(mod, inOutput, cursor)) {
+            setDebugState("Waiting for the click to land");
+            return null;
+        }
+        int multiples = getCraftMultipleCount(mod);
+        int craftCount = inOutput.getCount() * multiples;
         int weWantToAddToInventory = _toTake - mod.getItemStorage().getItemCountInventoryOnly(inOutput.getItem());
-        boolean takeAll = weWantToAddToInventory >= craftCount;
-        if (takeAll && mod.getItemStorage().getSlotThatCanFitInPlayerInventory(inOutput, true).isPresent()) {
+        boolean takeAll = CraftMath.quickMoveCraftsNoExtra(weWantToAddToInventory, craftCount, multiples);
+        // no room for the whole multiple means the quick move would stop halfway, so go through the cursor instead
+        if (takeAll && inventoryRoomFor(mod, inOutput) >= craftCount) {
             setDebugState("Quick moving output");
-            mod.getSlotHandler().clickSlot(_slot, 0, ClickType.QUICK_MOVE);
+            click(mod, inOutput, cursor, ClickType.QUICK_MOVE);
             return null;
         }
         setDebugState("Picking up output");
-        mod.getSlotHandler().clickSlot(_slot, 0, ClickType.PICKUP);
+        click(mod, inOutput, cursor, ClickType.PICKUP);
         return null;
     }
 

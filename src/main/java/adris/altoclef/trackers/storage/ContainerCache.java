@@ -66,6 +66,45 @@ public class ContainerCache {
         return false;
     }
 
+    // anything at all in the last look we had (a furnace's input, fuel or output counts)
+    public boolean holdsAnything() {
+        return !_itemCounts.isEmpty();
+    }
+
+    // something in the last look that is not just fuel: ore, meat, anything cooked. a station with only spare fuel in it is not
+    // holding anything worth keeping it standing for (a visit takes the spare fuel out anyway), and nothing ever visits a station
+    // that has no job, so counting it would leave it behind for good
+    public boolean holdsMoreThanFuel() {
+        return sumOver((item, count) -> adris.altoclef.util.helpers.ItemHelper.isFuel(item) ? 0.0 : count) > 0;
+    }
+
+    // how much of the last look is not fuel, and the item there is most of (null for none). an interrupted load is adopted as a job
+    // from these (Workbenches.adoptLoad)
+    public int nonFuelCount() {
+        return (int) sumOver((item, count) -> adris.altoclef.util.helpers.ItemHelper.isFuel(item) ? 0.0 : count);
+    }
+
+    public Item mostOfNonFuel() {
+        Item best = null;
+        int most = 0;
+        for (var entry : _itemCounts.entrySet()) {
+            if (!adris.altoclef.util.helpers.ItemHelper.isFuel(entry.getKey()) && entry.getValue() > most) {
+                best = entry.getKey();
+                most = entry.getValue();
+            }
+        }
+        return best;
+    }
+
+    // adds up f(item, count) over what the last look saw
+    public double sumOver(java.util.function.ToDoubleBiFunction<Item, Integer> f) {
+        double total = 0;
+        for (var entry : _itemCounts.entrySet()) {
+            total += f.applyAsDouble(entry.getKey(), entry.getValue());
+        }
+        return total;
+    }
+
     public int getEmptySlotCount() {
         return _emptySlots;
     }

@@ -15,10 +15,12 @@ import net.minecraft.world.entity.EquipmentSlot;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.MiningRequirement;
+import adris.altoclef.util.helpers.FoeRules;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.time.TimerGame;
+import baritone.altoclef.SettingsOverrides;
 import baritone.api.pathing.goals.GoalGetToBlock;
 import baritone.api.utils.Rotation;
 import baritone.api.utils.RotationUtils;
@@ -26,6 +28,7 @@ import baritone.api.utils.input.Input;
 import java.util.*;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.boss.EnderDragonPart;
 import net.minecraft.world.entity.boss.enderdragon.EndCrystal;
@@ -86,7 +89,14 @@ public class KillEnderDragonTask extends Task {
         mod.getBlockTracker().trackBlock(Blocks.END_PORTAL);
         // Don't forcefield endermen.
         mod.getBehaviour().addForceFieldExclusion(entity -> entity instanceof EnderMan || entity instanceof EnderDragon || entity instanceof EnderDragonPart);
+        // and mob defense keeps out too: an enderman mid-crystal is not worth a fight or a run
+        mod.getBehaviour().addMobDefenseExclusion(KillEnderDragonTask::ownedByTheDragonFight);
         mod.getBehaviour().setPreferredStairs(true);
+    }
+
+    // the mobs the dragon tasks deal with on their own terms while they are live (shared by the sword and the bed task)
+    public static boolean ownedByTheDragonFight(Entity entity) {
+        return FoeRules.dragonFightOwns(BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType()).getPath());
     }
 
     @Override
@@ -125,6 +135,12 @@ public class KillEnderDragonTask extends Task {
         for (Item armor : ItemHelper.DIAMOND_ARMORS) {
             // the pumpkin sits where the helmet goes, do not swap them back and forth
             if (armor == Items.DIAMOND_HELMET && pumpkinWorn(mod)) {
+                continue;
+            }
+            // worn netherite is better than the diamond piece in the bag (EndGear.armorToWear's rule), swapping would only make the
+            // two of them trade places every time the dragon phase hands us back
+            Item netherite = ItemHelper.NETHERITE_ARMORS[java.util.Arrays.asList(ItemHelper.DIAMOND_ARMORS).indexOf(armor)];
+            if (StorageHelper.isArmorEquipped(mod, netherite)) {
                 continue;
             }
             try {
@@ -202,7 +218,8 @@ public class KillEnderDragonTask extends Task {
 
     @Override
     protected boolean isEqual(Task other) {
-        return other instanceof KillEnderDragonTask;
+        // the outer islands trip must not be mistaken for the plain fight, it never walks into the exit portal
+        return other instanceof KillEnderDragonTask task && task._enterExitPortal == _enterExitPortal;
     }
 
     @Override
@@ -245,6 +262,9 @@ public class KillEnderDragonTask extends Task {
         private BlockPos _randomWanderPos;
         private boolean _wasHitting;
         private boolean _wasReleased;
+        // what the user had for auto jump, null when we did not touch it
+        private Boolean _userAutoJump;
+        private static final String AUTO_JUMP = "options.autoJump";
 
         private PunkEnderDragonTask() {
         }
@@ -329,7 +349,7 @@ public class KillEnderDragonTask extends Task {
                             Rotation targetRotation = RotationUtils.calcRotationFromVec3d(mod.getClientBaritone().getPlayerContext().playerHead(), targetLookPos, mod.getClientBaritone().getPlayerContext().playerRotations());
                             mod.getClientBaritone().getLookBehavior().updateTarget(targetRotation, true);
                             // Also look towards da dragon
-                            Minecraft.getInstance().options.autoJump().set(false);
+                            forceAutoJumpOff();
                             mod.getClientBaritone().getInputOverrideHandler().setInputForceState(Input.MOVE_FORWARD, true);
                             hit(mod);
                         } else {
@@ -401,8 +421,28 @@ public class KillEnderDragonTask extends Task {
             return null;
         }
 
+        // through SettingsOverrides so options.txt never sees the false and the user's value comes back
+        private void forceAutoJumpOff() {
+            var autoJump = Minecraft.getInstance().options.autoJump();
+            // a hold the user changed behind our back is not ours any more, what is in there is theirs
+            if (_userAutoJump == null || !SettingsOverrides.isHeld(AUTO_JUMP)) {
+                _userAutoJump = autoJump.get();
+            }
+            SettingsOverrides.put(AUTO_JUMP, autoJump::get, autoJump::set, false);
+        }
+
+        // only while the hold is still ours, a change the user made in the meantime is theirs
+        private void releaseAutoJump() {
+            var autoJump = Minecraft.getInstance().options.autoJump();
+            if (_userAutoJump != null && SettingsOverrides.isHeld(AUTO_JUMP) && !autoJump.get()) {
+                SettingsOverrides.put(AUTO_JUMP, autoJump::get, autoJump::set, _userAutoJump);
+            }
+            _userAutoJump = null;
+        }
+
         @Override
         protected void onStop(AltoClef mod, Task interruptTask) {
+            releaseAutoJump();
             mod.getClientBaritone().getCustomGoalProcess().onLostControl();
             mod.getClientBaritone().getInputOverrideHandler().setInputForceState(Input.MOVE_FORWARD, false);
             //mod.getControllerExtras().mouseClickOverride(0, false);

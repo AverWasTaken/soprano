@@ -84,6 +84,25 @@ public class NetherRegressTest {
         assertTrue(nether.regressTo(f, state, cfg).isEmpty());
     }
 
+    @Test
+    public void portalPhaseOnlyRegressesWhenThePickaxeIsGone() {
+        PortalPhase portal = new PortalPhase();
+        FakeFacts f = new FakeFacts();
+        f.dimension = Dimension.OVERWORLD;
+        assertEquals(Optional.of(GamerPhase.GATHER), portal.regressTo(f, state, cfg));
+        f.give(Items.STONE_PICKAXE, 1);
+        assertEquals(Optional.of(GamerPhase.IRON), portal.regressTo(f, state, cfg));
+        // the rest of the kit is the gate's job: armor short and no flint left (used up lighting it) is not a regress
+        FakeFacts ready = new FakeFacts();
+        ready.dimension = Dimension.OVERWORLD;
+        ready.give(Items.IRON_PICKAXE, 1);
+        ready.armorPoints = 0;
+        assertTrue(portal.regressTo(ready, state, cfg).isEmpty());
+        FakeFacts below = new FakeFacts();
+        below.dimension = Dimension.NETHER;
+        assertTrue(portal.regressTo(below, state, cfg).isEmpty());
+    }
+
     // the gear rule comes before the "not enough eyes" rule: kit first, then the trip
     @Test
     public void eyesPhaseAtHomeWithoutKitAndWithoutEyesPlansTheKitFirst() {

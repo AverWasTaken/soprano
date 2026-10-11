@@ -9,6 +9,7 @@ import adris.altoclef.tasks.resources.CollectFuelTask;
 import adris.altoclef.tasks.slot.MoveInaccessibleItemToInventoryTask;
 import adris.altoclef.tasks.slot.MoveItemToSlotFromInventoryTask;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.trackers.storage.ContainerCache;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.MiningRequirement;
 import adris.altoclef.util.SmeltTarget;
@@ -37,7 +38,7 @@ import net.minecraft.world.level.block.Blocks;
 /**
  * Smelt in a smoker, placing a smoker and collecting fuel as needed.
  */
-public class SmeltInSmokerTask extends ResourceTask {
+public class SmeltInSmokerTask extends ResourceTask implements AsyncSmelting.Handoff {
 
     private final SmeltTarget[] _targets;
 
@@ -115,6 +116,16 @@ public class SmeltInSmokerTask extends ResourceTask {
     }
 
     @Override
+    public boolean handedOff() {
+        return _doTask._loaded;
+    }
+
+    @Override
+    public boolean recordLeftBehind(AltoClef mod) {
+        return _doTask.recordStranded(mod);
+    }
+
+    @Override
     protected boolean isEqualResource(ResourceTask other) {
         if (other instanceof SmeltInSmokerTask task) {
             return task._doTask.isEqual(_doTask);
@@ -143,6 +154,13 @@ public class SmeltInSmokerTask extends ResourceTask {
         private final SmokerCache _smokerCache = new SmokerCache();
         private final ItemTarget _allMaterials;
         private boolean _ignoreMaterials;
+        // async cooking: everything is in the smoker and we walked away, this task is done and must not walk back to it
+        private boolean _loaded;
+        // the outer check (bag short of what the smoker still needs) and the one inside the open screen, see FuelShortage
+        private final FuelShortage _fuelShort = new FuelShortage();
+        private final FuelShortage _dryInside = new FuelShortage();
+        // the slot is full of one fuel, the bag has only another, see stuckShort
+        private final FuelShortage _cannotAdd = new FuelShortage();
 
         public DoSmeltInSmokerTask(SmeltTarget target, boolean ignoreMaterials) {
             super(Blocks.SMOKER, new ItemTarget(Items.SMOKER));
@@ -169,7 +187,15 @@ public class SmeltInSmokerTask extends ResourceTask {
         }
 
         @Override
+        public boolean isFinished(AltoClef mod) {
+            return _loaded;
+        }
+
+        @Override
         protected Task onTick(AltoClef mod) {
+            if (_loaded) {
+                return null;
+            }
             mod.getBehaviour().addProtectedItems(ItemHelper.PLANKS);
             mod.getBehaviour().addProtectedItems(Items.COAL);
             mod.getBehaviour().addProtectedItems(_allMaterials.getMatches());
@@ -183,28 +209,50 @@ public class SmeltInSmokerTask extends ResourceTask {
             int materialsNeeded = materialTarget.getTargetCount()
                     /*- mod.getItemStorage().getItemCountInventoryOnly(materialTarget.getMatches())*/ // See comment above
                     - mod.getItemStorage().getItemCountInventoryOnly(outputTarget.getMatches())
-                    - (materialTarget.matches(_smokerCache.materialSlot.getItem()) ? _smokerCache.materialSlot.getCount() : 0)
+                    - materialsKnownInSmoker(mod)
                     - (outputTarget.matches(_smokerCache.outputSlot.getItem()) ? _smokerCache.outputSlot.getCount() : 0);
-            double totalFuelInSmoker = ItemHelper.getFuelAmount(_smokerCache.fuelSlot) + _smokerCache.burningFuelCount + _smokerCache.burnPercentage;
+            double totalFuelInSmoker = ItemHelper.getFuelAmount(_smokerCache.fuelSlot) + _smokerCache.burningFuelCount + _smokerCache.burnPercentage
+                    + fuelKnownInSmoker(mod);
             // Fuel needed = (mat_target - out_in_inventory - out_in_furnace - totalFuelInFurnace)
-            double fuelNeeded = _ignoreMaterials
-                    ? Math.min(materialTarget.matches(_smokerCache.materialSlot.getItem()) ? _smokerCache.materialSlot.getCount() : 0, materialTarget.getTargetCount())
-                    : materialTarget.getTargetCount()
-                    /* - mod.getItemStorage().getItemCountInventoryOnly(materialTarget.getMatches()) */
-                    - mod.getItemStorage().getItemCountInventoryOnly(outputTarget.getMatches())
-                    - (outputTarget.matches(_smokerCache.outputSlot.getItem()) ? _smokerCache.outputSlot.getCount() : 0)
-                    - totalFuelInSmoker;
+            // the fuel already in the smoker comes off in both modes. the cook mode (ignoreMaterials) used to skip it, so the coal
+            // that had just moved into the slot (not lit yet, bag empty) still read as the whole batch short: "Getting Fuel" the
+            // tick after "Filling fuel", twice in the live log, and a full batch of coal asked for with the slot already covering it
+            // the cook mode fuels what is in the slot, and before the first load the slot is empty: the meat still in the bag counts
+            // too, or the fuel was only missed after the walk and the load (and the coal trip ran with the meat already in)
+            int meatToLoad = _ignoreMaterials ? mod.getItemStorage().getItemCountInventoryOnly(materialTarget.getMatches()) : 0;
+            double fuelNeeded = FuelShortage.needed(_ignoreMaterials,
+                    (materialTarget.matches(_smokerCache.materialSlot.getItem()) ? _smokerCache.materialSlot.getCount() : 0) + meatToLoad,
+                    materialTarget.getTargetCount(), mod.getItemStorage().getItemCountInventoryOnly(outputTarget.getMatches()),
+                    outputTarget.matches(_smokerCache.outputSlot.getItem()) ? _smokerCache.outputSlot.getCount() : 0, totalFuelInSmoker);
 
             // We don't have enough materials...
             if (mod.getItemStorage().getItemCountInventoryOnly(materialTarget.getMatches()) < materialsNeeded) {
                 setDebugState("Getting Materials");
-                return getMaterialTask(_target.getMaterial());
+                // the shortfall, not the whole target, same as the furnace
+                return getMaterialTask(new ItemTarget(_target.getMaterial(), materialsNeeded));
             }
 
             // We don't have enough fuel...
-            if (_smokerCache.burningFuelCount <= 0 && StorageHelper.calculateInventoryFuelCount(mod) < fuelNeeded) {
-                setDebugState("Getting Fuel");
-                return new CollectFuelTask(fuelNeeded + 1);
+            // not asked while our own smoker is being made: a smoker is a furnace and four logs, and logs are fuel. with them out of
+            // the bag for the craft it reads short, the fuel trip cancels the craft, the logs come back, and round it goes for ever.
+            // the question waits for the smoker to land in the bag
+            if (!makingContainer()) {
+                double bagFuel = StorageHelper.calculateInventoryFuelCount(mod);
+                double trip = _dryInside.fetchTarget(bagFuel);
+                if (trip > 0) {
+                    setDebugState("Getting Fuel");
+                    return new CollectFuelTask(trip);
+                }
+                boolean lacking = _smokerCache.burningFuelCount <= 0 && bagFuel < fuelNeeded;
+                if (_fuelShort.confirmed(lacking, mod.getWorld().getGameTime())) {
+                    setDebugState("Getting Fuel");
+                    // the exact shortfall, no + 1: the go-back test above and CollectFuelTask's finish test are the same number now, so
+                    // there is nothing to round up for. 8 items is one coal, not two
+                    return new CollectFuelTask(fuelNeeded);
+                }
+            } else {
+                // and it starts from zero afterwards, a clock started on a half crafted bag is not worth keeping
+                _fuelShort.reset();
             }
 
             // Make sure our materials are accessible in our inventory
@@ -216,6 +264,41 @@ public class SmeltInSmokerTask extends ResourceTask {
             return super.onTick(mod);
         }
 
+        // dropped with the meat in the smoker and no job (the coal trip outlasted the cook's patience): leave the job for the
+        // gamer so somebody goes back and takes it out. the cache is the last look at the slots, the visit reads the real ones
+        boolean recordStranded(AltoClef mod) {
+            BlockPos at = getTargetContainerPosition();
+            ItemStack material = _smokerCache.materialSlot;
+            if (_loaded || at == null || material.isEmpty() || !AsyncSmelting.wants(_target.getItem())) {
+                return false;
+            }
+            // lit with enough in it for all of it is a cook, anything less is meat sitting cold (the 5 beef that were never lit and
+            // still got a "~25 s" timer, and a stand-by that walked up and took them back out)
+            boolean lit = AsyncSmelting.fuelCovers(_smokerCache.fuelSlot, _smokerCache.burningFuelCount, material.getCount());
+            Debug.logInternal("smoker at " + at.toShortString() + " still holds " + material.getCount() + " of our meat and the cook is leaving, "
+                    + "recording it so it gets picked up (" + (lit ? "lit" : "not lit") + ")");
+            AsyncSmelting.leftBehind(mod, at, Blocks.SMOKER, material, _target.getItem(), lit);
+            return true;
+        }
+
+        // what the screen showed, or when this task never had it open (an interrupt restarts us with empty caches) what the
+        // container tracker saw last time. same story as the furnace, see StationMemory
+        private int materialsKnownInSmoker(AltoClef mod) {
+            int shown = _allMaterials.matches(_smokerCache.materialSlot.getItem()) ? _smokerCache.materialSlot.getCount() : 0;
+            if (shown > 0 || isContainerOpen(mod)) {
+                return shown;
+            }
+            return (int) StationMemory.known(false, shown, StationMemory.materialsRemembered(mod, stationInUse(mod), _allMaterials));
+        }
+
+        private double fuelKnownInSmoker(AltoClef mod) {
+            boolean seen = !_smokerCache.fuelSlot.isEmpty() || _smokerCache.burningFuelCount > 0;
+            if (seen || isContainerOpen(mod)) {
+                return 0;
+            }
+            return StationMemory.fuelRemembered(mod, stationInUse(mod), _allMaterials);
+        }
+
         // Override this if our materials must be acquired in a special way.
         // virtual
         protected Task getMaterialTask(ItemTarget target) {
@@ -224,6 +307,8 @@ public class SmeltInSmokerTask extends ResourceTask {
 
         @Override
         protected Task containerSubTask(AltoClef mod) {
+            // the station pickup reads this, it must not break a table under a half done load
+            AsyncSmelting.working(mod.getWorld().getGameTime());
             // We have appropriate materials/fuel.
             /*
              * - If output slot has something, receive it.
@@ -304,61 +389,76 @@ public class SmeltInSmokerTask extends ResourceTask {
                     - (outputTarget.matches(_furnaceCache.outputSlot.getItem()) ? _furnaceCache.outputSlot.getCount() : 0)
                     - totalFuelInFurnace;
              */
-            // Fill in fuel if needed
-            if (fuel.isEmpty() || ItemHelper.isFuel(fuel.getItem())) {
-                double currentlyCached = StorageHelper.getSmokerFuel() + StorageHelper.getSmokerCookPercent();
-                double needs = material.getCount() - currentlyCached;
-                if (needs > 0) {
-                    // Get best fuel to fill
-                    double closestDelta = Double.NEGATIVE_INFINITY;
-                    ItemStack bestStack = null;
-                    for (ItemStack stack : mod.getItemStorage().getItemStacksPlayerInventory(true)) {
-                        if (AltoSettings.isSupportedFuel(stack.getItem())) {
-                            double fuelAmount = ItemHelper.getFuelAmount(stack.getItem()) * stack.getCount();
-                            double delta = needs - fuelAmount;
-                            if (
-                                    (bestStack == null) ||
-                                            // If our best is above, prioritize lower values
-                                            (closestDelta > 0 && delta < closestDelta) ||
-                                            // If our best is below, prioritize higher below values
-                                            (closestDelta < 0 && delta < 0 && delta > closestDelta)
-                            ) {
-                                bestStack = stack;
-                                closestDelta = delta;
-                            }
-                        }
-                    }
-                    if (bestStack != null) {
-                        setDebugState("Filling fuel");
-                        return new MoveItemToSlotFromInventoryTask(new ItemTarget(bestStack.getItem(), bestStack.getCount()), SmokerSlot.INPUT_SLOT_FUEL);
-                    }
-                }
+            // Fill in fuel if needed. the slot counts toward the job and what is in it stays (FuelPolicy.chooseFor), FuelPolicy also
+            // keeps the wood the run still has plans for. the smoker's lit reading is /100 (StorageHelper.litItems), so a coal is 8
+            // here like it is in the furnace
+            double lit = StorageHelper.getSmokerFuel();
+            double progress = StorageHelper.getSmokerCookPercent();
+            double slotFuel = fuel.isEmpty() ? 0 : ItemHelper.getFuelAmount(fuel);
+            var bag = mod.getItemStorage().getItemStacksPlayerInventory(true);
+            var pick = FuelShortage.fill(bag, fuel, material.getCount(), lit, progress, AltoSettings::isSupportedFuel, ItemHelper::getFuelAmount);
+            if (pick != null) {
+                setDebugState("Filling fuel");
+                return new MoveItemToSlotFromInventoryTask(new ItemTarget(pick.stack().getItem(), pick.count()), SmokerSlot.INPUT_SLOT_FUEL);
             }
 
+            // nothing in the bag may burn and the smoker is short: standing here saying "Waiting..." never ends (the burning check
+            // out in onTick only fires with nothing lit, and a smoker with a bit of fire left is lit). shut the screen and go get
+            // it, and the trip is not talked out of by a lit reading from the last look (FuelShortage.fetchUntil)
+            double bagFuel = StorageHelper.calculateInventoryFuelCount(mod);
+            long now = mod.getWorld().getGameTime();
+            if (_dryInside.confirmed(FuelShortage.dry(material.getCount(), lit, progress, slotFuel, bagFuel), now)) {
+                setDebugState("Out of fuel, going to get some");
+                _dryInside.fetchUntil(FuelShortage.missing(material.getCount(), lit, progress, slotFuel));
+                _dryInside.reset();
+                StorageHelper.closeScreen();
+                return null;
+            }
+
+            // a slot full of one fuel with only another in the bag: swap it out when that covers the whole job alone, otherwise leave
+            // short (the story is in the furnace task)
+            BlockPos at = getTargetContainerPosition();
+            boolean covered = AsyncSmelting.fuelCovers(slotFuel, lit, progress, material.getCount());
+            boolean stuck = _cannotAdd.confirmed(FuelShortage.stuckShort(material.getCount(), lit, progress, slotFuel, bagFuel), now);
+            var swap = stuck ? FuelShortage.swap(bag, fuel, material.getCount(), lit, progress, AltoSettings::isSupportedFuel, ItemHelper::getFuelAmount) : null;
+            if (swap != null && AsyncSmelting.emptyFuelSlot(mod, SmokerSlot.INPUT_SLOT_FUEL)) {
+                // the slot comes empty first, the fill above puts the covering fuel in next tick (AsyncSmelting.emptyFuelSlot)
+                setDebugState("Taking the slot's fuel out for one that covers the job");
+                return null;
+            }
+            // what came out of the slot goes back in the bag first
+            if (AsyncSmelting.clearCursor(mod)) {
+                return null;
+            }
+
+            // loaded: 35 seconds of mutton does not need us staring at the gui. the screen closes and the gamer comes back for it (the
+            // same trick as the furnace, AsyncSmelting has the story, and so does the slot that is as full as it gets)
+            if (at != null && !material.isEmpty() && AsyncSmelting.wants(_target.getItem()) && (covered || stuck)) {
+                setDebugState(covered ? "Loaded, leaving it to cook" : "Slot is as full as it gets, leaving it to cook");
+                AsyncSmelting.loaded(mod, at, Blocks.SMOKER, material, _target.getItem(),
+                        AsyncSmelting.cookable(slotFuel, lit, progress, material.getCount()));
+                _loaded = true;
+                return null;
+            }
             setDebugState("Waiting...");
             return null;
         }
 
-        @Override
-        protected double getCostToMakeNew(AltoClef mod) {
-            if (_smokerCache.burnPercentage > 0 || _smokerCache.burningFuelCount > 0 ||
-                    _smokerCache.fuelSlot != null || _smokerCache.materialSlot != null ||
-                    _smokerCache.outputSlot != null) {
-                return 9999999.0;
-            }
-            if (mod.getItemStorage().getItemCount(Items.COBBLESTONE) > 8 &&
-                    mod.getItemStorage().getItemCount(ItemHelper.LOG) > 4) {
-                double cost = 100.0 - 90.0 * (((double) mod.getItemStorage().getItemCount(new Item[]{Items.COBBLESTONE})
-                        / 8.0) + ((double) mod.getItemStorage().getItemCount(ItemHelper.LOG) / 4.0));
-                return Math.max(cost, 10.0);
-            }
-            return StorageHelper.miningRequirementMetInventory(mod, MiningRequirement.WOOD) ? 50.0 : 100.0;
+        // the caches start as EMPTY stacks and only change while the screen is open, so anything in them means we really did
+        // put stuff in (or take stuff out of) a smoker
+        public boolean hasStartedSmelting() {
+            return !_smokerCache.materialSlot.isEmpty() || !_smokerCache.fuelSlot.isEmpty()
+                    || !_smokerCache.outputSlot.isEmpty() || _smokerCache.burningFuelCount > 0;
         }
 
+        // same as the furnace: our meat in it pins it, from any distance, and a new smoker never goes down over it
         @Override
-        protected BlockPos overrideContainerPosition(AltoClef mod) {
-            // If we have a valid container position, KEEP it.
-            return getTargetContainerPosition();
+        protected BlockPos pinnedStation(AltoClef mod) {
+            BlockPos kept = getTargetContainerPosition();
+            if (kept != null && (hasStartedSmelting() || _smokerCache.burnPercentage > 0 || StationMemory.holdsOurStuff(mod, kept))) {
+                return kept;
+            }
+            return StationMemory.ourLoaded(mod, Blocks.SMOKER);
         }
 
         private void tryUpdateOpenSmoker(AltoClef mod) {

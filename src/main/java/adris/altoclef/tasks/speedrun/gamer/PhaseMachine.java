@@ -4,6 +4,7 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
 import adris.altoclef.tasksystem.Task;
+import adris.altoclef.trace.Trace;
 import baritone.api.utils.Dimension;
 
 import java.util.List;
@@ -39,6 +40,9 @@ public final class PhaseMachine implements GamerContext {
     // the same regress (LOCATE>NETHER) may happen this many times in one run, then it is a loop and not a recovery
     static final int MAX_REGRESS_PER_PAIR = 2;
 
+    // a resumed attempt may be this far past its budget (a late autosave) before the saved start is not believed
+    static final double RESUME_SLACK_SECONDS = 60;
+
     private final Host host;
     private final PhaseRules rules;
     private final Watchdog watchdog = new Watchdog();
@@ -49,7 +53,18 @@ public final class PhaseMachine implements GamerContext {
     private PhaseHandler entered;
     // the level's game time can read 0 for a few ticks after a dimension change, the machine's clock never goes back
     private double lastNow;
+    // when the death recovery last held the clocks, -1 when it is not running
+    private double heldAt = -1;
 
+    // the tick's FoodPlan, see food(), and the phase it was built for (a move inside the tick must not keep the old phase's cook)
+    private FoodPlan food;
+    private GamerPhase foodPhase;
+    // the tick's WoodBudget, see wood(). the engine may have built it a moment before the tick (GamerTask feeds the furnaces from it),
+    // `woodGiven` keeps tick() from throwing that one away
+    private WoodBudget wood;
+    private boolean woodGiven;
+    // the tick's StationVerdict, see stations()
+    private StationVerdict stations;
     private int lastFingerprint;
     private int anchorX;
     private int anchorY;
@@ -88,19 +103,56 @@ public final class PhaseMachine implements GamerContext {
 
     // ---- life cycle
 
-    // the run starts (or resumes) in whatever phase the state says
+    // the run starts in whatever phase the state says, with fresh clocks
     public void begin(AltoClef mod) {
+        begin(mod, false);
+    }
+
+    // resumed = the saved run carries on where it was (a relog, a #gamer after a restart). the attempt keeps its real
+    // start then, or a relog 35 minutes into the nether would get a brand new 40
+    public void begin(AltoClef mod, boolean resumed) {
         this.mod = mod;
-        restartClocks();
+        heldAt = -1;
+        if (resumed && attemptClockSurvives()) {
+            resumeClocks();
+        } else {
+            restartClocks();
+        }
         if (!ended()) {
             safeEnter(current());
         }
     }
 
+    // the saved start has to be a real one: unset, or older than the budget plus a minute, means the world ran on without
+    // us (a server) and the elapsed time says nothing about how this attempt went. game time only counts while the world
+    // is loaded, so a single player relog costs nothing
+    private boolean attemptClockSurvives() {
+        RunState s = host.state();
+        if (s.phaseEnteredGameTime <= 0) {
+            return false;
+        }
+        double minutes = host.cfg().budgets.minutes(s.phase);
+        double elapsed = (host.facts().gameTime() - s.phaseEnteredGameTime) / 20.0;
+        return minutes <= 0 || elapsed <= minutes * 60 + RESUME_SLACK_SECONDS;
+    }
+
+    // the budget clock goes back to the saved start, the stall timer and the position anchors start now
+    private void resumeClocks() {
+        GamerFacts f = host.facts();
+        long entered = Math.min(host.state().phaseEnteredGameTime, f.gameTime());
+        host.state().phaseEnteredGameTime = entered;
+        resetWatch();
+        watchdog.backdate(entered / 20.0);
+    }
+
     // the clocks of the current attempt start over
     public void restartClocks() {
+        host.state().phaseEnteredGameTime = host.facts().gameTime();
+        resetWatch();
+    }
+
+    private void resetWatch() {
         GamerFacts f = host.facts();
-        host.state().phaseEnteredGameTime = f.gameTime();
         watchdog.reset(now());
         lastFingerprint = f.inventoryFingerprint();
         anchorX = f.x();
@@ -119,6 +171,35 @@ public final class PhaseMachine implements GamerContext {
 
     public void progress() {
         watchdog.progress(now());
+    }
+
+    // a death recovery has the wheel and never reaches tick(): the attempt did not get any older meanwhile. called every tick
+    // the recovery runs, the time since the previous call is handed back to both clocks (the saved phase start too, the
+    // nether budget reads that one)
+    public void holdClocks() {
+        double now = now();
+        giveBackHeldTime(now);
+        heldAt = now;
+    }
+
+    // the recovery lost the wheel for a while: what it held so far is given back, the rest is the caller's to excuse
+    public void releaseHold() {
+        giveBackHeldTime(now());
+    }
+
+    private void giveBackHeldTime(double now) {
+        if (heldAt >= 0 && now > heldAt) {
+            long ticks = Math.round((now - heldAt) * 20);
+            host.state().phaseEnteredGameTime += ticks;
+            watchdog.pause(ticks / 20.0);
+        }
+        heldAt = -1;
+    }
+
+    // the stall timer forgives the time another chain had the wheel (mob defense, eating): coming back from an interrupt is
+    // not progress, or two chains trading the wheel every few seconds would keep a stuck phase alive forever
+    public void excuseStall(double seconds) {
+        watchdog.excuse(now(), seconds);
     }
 
     // inventory changed, dimension changed, or we got about six blocks away from where we last made progress. not "changed
@@ -151,6 +232,13 @@ public final class PhaseMachine implements GamerContext {
     // run ended)
     public Task tick(AltoClef mod) {
         this.mod = mod;
+        food = null;
+        stations = null;
+        if (!woodGiven) {
+            wood = null;
+        }
+        woodGiven = false;
+        giveBackHeldTime(now());
         if (ended()) {
             return null;
         }
@@ -162,6 +250,11 @@ public final class PhaseMachine implements GamerContext {
         applyDecision();
         if (ended()) {
             return null;
+        }
+        // the refill latch moves when the plan is built, so build it every tick in the phases that have the food need, even one
+        // that happens not to ask. a stale latch would start a trip at 60 the next time somebody does
+        if (host.state().phase.cooks()) {
+            food();
         }
         PhaseHandler h = current();
         try {
@@ -229,7 +322,7 @@ public final class PhaseMachine implements GamerContext {
         RunState s = host.state();
         PhaseRules.Decision d;
         try {
-            d = rules.decide(s.phase, host.facts(), s, host.cfg(), now());
+            d = rules.decide(s.phase, this, now());
         } catch (RuntimeException e) {
             handlerThrew(current(), e);
             return;
@@ -303,8 +396,10 @@ public final class PhaseMachine implements GamerContext {
         s.stuck = true;
         s.stuckReason = reason;
         host.save();
-        host.say("Gave up at " + s.phase.hud().toLowerCase() + ": " + reason + ". State saved, #gamer resumes."
+        host.say("Gave up at " + s.phase.hud().toLowerCase() + ": " + reason + ". State saved, type #gamer to pick it back up."
                 + restartHint(s.phase));
+        // after the message so the dump has the line that says why it gave up
+        Trace.dump("stuck: " + reason);
     }
 
     // a run that died its way to STUCK in the End comes back to the End with the same deaths on the books, the gear check is
@@ -370,6 +465,51 @@ public final class PhaseMachine implements GamerContext {
     @Override
     public GamerFacts facts() {
         return host.facts();
+    }
+
+    // built on the first ask of a tick and dropped when the next one starts: every gate in a tick reads the same food count
+    @Override
+    public FoodPlan food() {
+        GamerPhase phase = host.state().phase;
+        if (food == null || foodPhase != phase) {
+            food = FoodPlan.latched(host.facts(), host.cfg(), host.state(), Debug::logInternal, wood());
+            foodPhase = phase;
+        }
+        return food;
+    }
+
+    // a tick the machine does not run (a recovery has the wheel) still draws the card, and the plan cached from the last real tick
+    // is out of date by then (the bag changed). this one is built now from the engine's wood budget, and does NOT move the refill
+    // latch: the bag is empty after a death, and a latch moved on it would buy a hunt the moment the pile is back
+    public FoodPlan foodForCard() {
+        return FoodPlan.of(host.facts(), host.cfg(), host.state().phase, host.state().foodRefilling, wood());
+    }
+
+    // built on the first ask of a tick and dropped when the next one starts, same as the food plan, and for the state's phase (a
+    // move inside the tick must not keep the old phase's view of the wood)
+    @Override
+    public WoodBudget wood() {
+        GamerPhase phase = host.state().phase;
+        if (wood == null || wood.phase() != phase) {
+            wood = WoodBudget.of(host.facts(), host.cfg().overworld, host.cfg().end.beds, phase);
+        }
+        return wood;
+    }
+
+    // the facts built the verdict in refresh(), before the tick: this keeps the first one asked for and drops it when the next tick
+    // starts, so every reader in a tick holds the same object
+    @Override
+    public StationVerdict stations() {
+        if (stations == null) {
+            stations = host.facts().stations();
+        }
+        return stations;
+    }
+
+    // the engine built this tick's budget before the tick (to feed the furnaces), the handlers read that one
+    public void giveWood(WoodBudget budget) {
+        wood = budget;
+        woodGiven = true;
     }
 
     @Override

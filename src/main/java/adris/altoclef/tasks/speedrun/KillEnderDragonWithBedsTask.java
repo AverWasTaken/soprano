@@ -7,6 +7,7 @@ import adris.altoclef.tasks.movement.GetToBlockTask;
 import adris.altoclef.tasks.movement.GetToXZTask;
 import adris.altoclef.tasks.speedrun.gamer.end.BedSafety;
 import adris.altoclef.tasks.speedrun.gamer.end.DragonDeadLatch;
+import adris.altoclef.tasks.speedrun.gamer.end.HealStall;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.LookHelper;
@@ -16,15 +17,18 @@ import java.util.Optional;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.boss.EnderDragonPart;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
 import net.minecraft.world.entity.boss.enderdragon.phases.DragonPhaseInstance;
 import net.minecraft.world.entity.boss.enderdragon.phases.EnderDragonPhase;
+import net.minecraft.world.entity.monster.EnderMan;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.Vec3;
 
 public class KillEnderDragonWithBedsTask extends Task {
     public static final double DEFAULT_CLICK_RANGE = 5.3;
     private static final double DRAGON_GONE_SECONDS = 5;
+    private static final double HEAL_STALL_SECONDS = 20;
     // the exit portal is a 3x3 ring around the fountain at (0,0), a tracked END_PORTAL block this close to it is the real one
     private static final int EXIT_PORTAL_RADIUS = 8;
 
@@ -32,6 +36,9 @@ public class KillEnderDragonWithBedsTask extends Task {
     private final double _clickRange;
     // instance state: this used to be two statics shared by every instance (and Playground), reset only in onStart
     private final DragonDeadLatch _deadLatch = new DragonDeadLatch(DRAGON_GONE_SECONDS);
+
+    // 20 s of no healing between "too hurt to click" and "critical" is a bed fight that is going nowhere
+    private final HealStall _healStall = new HealStall(HEAL_STALL_SECONDS);
 
     private BlockPos _endPortalTop;
     private Task _positionTask;
@@ -62,8 +69,16 @@ public class KillEnderDragonWithBedsTask extends Task {
     @Override
     protected void onStart(AltoClef mod) {
         _deadLatch.reset();
+        _healStall.reset();
         _perching = false;
         mod.getBlockTracker().trackBlock(Blocks.END_PORTAL);
+        // the sword task keeps mob defense out of the dragon fight and so does this one: endermen and the dragon are not a
+        // fight or a run while the beds go off
+        mod.getBehaviour().push();
+        mod.getBehaviour().addMobDefenseExclusion(KillEnderDragonTask::ownedByTheDragonFight);
+        // and off the aura too, like the sword task: an excluded mob is the aura's otherwise, and a swing turns the head in the
+        // middle of aiming a bed
+        mod.getBehaviour().addForceFieldExclusion(entity -> entity instanceof EnderMan || entity instanceof EnderDragon || entity instanceof EnderDragonPart);
     }
 
     // no beds left in the inventory and none placed and waiting to be clicked. the caller swaps to the sword when this
@@ -73,6 +88,11 @@ public class KillEnderDragonWithBedsTask extends Task {
             return false;
         }
         return _endPortalTop == null || !mod.getBlockTracker().blockIsValid(_endPortalTop.above(), ItemHelper.itemsToBlocks(ItemHelper.BED));
+    }
+
+    // stood too hurt to click for a while and nothing is healing us (see HealStall): the phase swaps to the sword
+    public boolean healStalled() {
+        return _healStall.stalled();
     }
 
     public boolean isDragonDead() {
@@ -210,7 +230,10 @@ public class KillEnderDragonWithBedsTask extends Task {
         if (dist < _clickRange) {
             // our own explosion is the likeliest thing to kill us here: with too little health for it, do not click, let
             // the food chain heal (it was told to stop for the perch) and wait for the next lap
-            if (!BedSafety.canClick(mod.getPlayer().getHealth(), mod.getPlayer().getAbsorptionAmount(), mod.getPlayer().getArmorValue())) {
+            double pool = mod.getPlayer().getHealth() + mod.getPlayer().getAbsorptionAmount();
+            boolean tooHurt = !BedSafety.canClick(mod.getPlayer().getHealth(), mod.getPlayer().getAbsorptionAmount(), mod.getPlayer().getArmorValue());
+            _healStall.update(tooHurt, pool, mod.getWorld().getGameTime() / 20.0);
+            if (tooHurt) {
                 mod.getFoodChain().shouldStop(false);
                 setDebugState("Too hurt for a bed explosion, healing first", "Healing before the next bed");
                 return null;
@@ -226,6 +249,7 @@ public class KillEnderDragonWithBedsTask extends Task {
     protected void onStop(AltoClef mod, Task interruptTask) {
         mod.getFoodChain().shouldStop(false);
         mod.getBlockTracker().stopTracking(Blocks.END_PORTAL);
+        mod.getBehaviour().pop();
     }
 
     // finished = out of beds and the dragon is not perched, the phase swaps to KillEnderDragonTask then. while perched we

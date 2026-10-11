@@ -1,7 +1,12 @@
 package adris.altoclef.tasks.speedrun.gamer.end;
 
+import adris.altoclef.tasks.speedrun.gamer.FoodPlan;
+import adris.altoclef.tasks.speedrun.gamer.GamerPhase;
 import adris.altoclef.tasks.speedrun.gamer.RunState;
 import adris.altoclef.tasks.speedrun.gamer.config.EndConfig;
+import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
+import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig;
+import adris.altoclef.util.helpers.FoodHelper;
 import net.minecraft.SharedConstants;
 import net.minecraft.server.Bootstrap;
 import net.minecraft.world.item.Item;
@@ -25,6 +30,13 @@ public class EndGearTest {
         Bootstrap.bootStrap();
     }
 
+    // the gap as END_PREP asks for it: the engine builds the tick's FoodPlan from the same facts, for that phase, and hands it in
+    private EndGear.Gap missing(FakeFacts f, RunState s, int beds) {
+        GamerConfig all = new GamerConfig();
+        all.end = cfg;
+        return EndGear.missing(f, s, cfg, beds, FoodPlan.of(f, all, GamerPhase.END_PREP, false));
+    }
+
     private FakeFacts ready() {
         FakeFacts f = new FakeFacts().with(Items.WHITE_BED, 8).with(Items.IRON_SWORD, 1).with(Items.WATER_BUCKET, 1)
                 .with(Items.IRON_PICKAXE, 1);
@@ -43,8 +55,17 @@ public class EndGearTest {
     }
 
     @Test
+    public void anEndDeathRelaxesTheBedsEvenOnAFreshAttemptCount() {
+        // PhaseMachine.regress puts the attempt back to 1 on the way from DRAGON to END_PREP
+        assertFalse(EndGear.relaxed(1, 0));
+        assertTrue(EndGear.relaxed(2, 0));
+        assertTrue(EndGear.relaxed(1, 1));
+        assertTrue(EndGear.relaxed(1, EndRules.endDeaths(diedInEndAt(100))));
+    }
+
+    @Test
     public void fullKitMissesNothing() {
-        assertTrue(EndGear.missing(ready(), new RunState(), cfg, cfg.beds).none());
+        assertTrue(missing(ready(), new RunState(), cfg.beds).none());
     }
 
     @Test
@@ -52,9 +73,9 @@ public class EndGearTest {
         FakeFacts f = new FakeFacts();
         f.blocks = 0;
         f.food = 0;
-        EndGear.Gap gap = EndGear.missing(f, new RunState(), cfg, cfg.beds);
+        EndGear.Gap gap = missing(f, new RunState(), cfg.beds);
         assertEquals(8, gap.beds());
-        assertTrue(gap.sword());
+        assertTrue(gap.weapon());
         assertTrue(gap.waterBucket());
         assertTrue(gap.pickaxe());
         assertEquals(cfg.buildBlocks, gap.buildBlocks());
@@ -63,24 +84,91 @@ public class EndGearTest {
     }
 
     @Test
+    public void foodGateIsTheEndsOwnFloorNotTheOverworldMinimum() {
+        FakeFacts f = ready();
+        // 24 is the End's line and 70 the overworld's: a bag in between is fine to walk in with
+        f.food = cfg.minFoodUnits;
+        assertFalse(missing(f, new RunState(), cfg.beds).food());
+        f.food = cfg.minFoodUnits - 1;
+        assertTrue(missing(f, new RunState(), cfg.beds).food());
+        assertTrue(new OverworldConfig().minFoodUnits > cfg.minFoodUnits);
+    }
+
+    @Test
+    public void rawMeatNothingCanCookIsWorthItsRawValueAtTheGate() {
+        // three raw porkchop book as 24 and the food chain eats them at 3 apiece
+        FakeFacts f = ready().with(Items.PORKCHOP, 3);
+        f.food = 3 * FoodHelper.plannedNutrition(Items.PORKCHOP);
+        // the bare bag figure the gate used to read: exactly on the line, so it never fired
+        assertEquals(cfg.minFoodUnits, f.food);
+        // what there is to eat is 9, and nothing standing here cooks it
+        assertTrue(missing(f, new RunState(), cfg.beds).food());
+        // real cooked food on top of it is another matter
+        f.with(Items.COOKED_BEEF, 3);
+        f.food += 3 * FoodHelper.plannedNutrition(Items.COOKED_BEEF);
+        assertFalse(missing(f, new RunState(), cfg.beds).food());
+    }
+
+    @Test
+    public void aSmokerStandingNextToRawMeatDoesNotMakeItDinnerAtTheGate() {
+        // three raw porkchop with a smoker and coal at hand: the kit would cook them, END_PREP never walks back to the smoker
+        FakeFacts f = ready().with(Items.PORKCHOP, 3).with(Items.COAL, 2);
+        f.smokerPlaced = true;
+        f.food = 3 * FoodHelper.plannedNutrition(Items.PORKCHOP);
+        assertEquals(cfg.minFoodUnits, f.food);
+        assertTrue(missing(f, new RunState(), cfg.beds).food());
+    }
+
+    @Test
+    public void foodStillCookingDoesNotCountAtTheGate() {
+        // 4 porkchop in a smoker we left behind: it is held for the kit and the portal, and for the End it is not there yet
+        FakeFacts f = ready();
+        f.food = 0;
+        f.cookingFood("cooked_porkchop", 4, 8);
+        assertEquals(32, FoodPlan.of(f, new OverworldConfig(), cfg, true).held());
+        assertTrue(missing(f, new RunState(), cfg.beds).food());
+        assertFalse(missing(f, new RunState(), cfg.beds).none());
+        // the bag has to carry the floor by itself, the batch is on top and moves nothing
+        f.food = cfg.minFoodUnits;
+        assertFalse(missing(f, new RunState(), cfg.beds).food());
+        f.food = cfg.minFoodUnits - 1;
+        assertTrue(missing(f, new RunState(), cfg.beds).food());
+    }
+
+    @Test
+    public void rawMeatBehindAStaleBatchIsStillWorthItsRawValueAtTheGate() {
+        // three raw beef (24 on paper, 9 to eat) and a batch cooking in a smoker that END_PREP will never go back to: the gate has
+        // the 9, not the 24 the old read gave, and not the batch either
+        FakeFacts f = ready().with(Items.BEEF, 3);
+        f.food = 3 * FoodHelper.plannedNutrition(Items.BEEF);
+        f.cookingFood("cooked_porkchop", 4, 8);
+        assertEquals(cfg.minFoodUnits, f.food);
+        assertTrue(missing(f, new RunState(), cfg.beds).food());
+        // real cooked food on top clears it, the batch still does not count
+        f.with(Items.COOKED_BEEF, 2);
+        f.food += 2 * FoodHelper.plannedNutrition(Items.COOKED_BEEF);
+        assertFalse(missing(f, new RunState(), cfg.beds).food());
+    }
+
+    @Test
     public void bedsAreCountedAcrossColours() {
         FakeFacts f = ready().with(Items.WHITE_BED, 5).with(Items.RED_BED, 2);
-        assertEquals(1, EndGear.missing(f, new RunState(), cfg, cfg.beds).beds());
+        assertEquals(1, missing(f, new RunState(), cfg.beds).beds());
     }
 
     @Test
     public void secondAttemptCanGoWithNoBeds() {
         FakeFacts f = ready().with(Items.WHITE_BED, 0);
-        assertTrue(EndGear.missing(f, new RunState(), cfg, 0).none());
+        assertTrue(missing(f, new RunState(), 0).none());
     }
 
     @Test
     public void buildBlocksGateIsTheMinimumButTheTargetIsTheFullStack() {
         FakeFacts f = ready();
         f.blocks = cfg.minBuildBlocks;
-        assertEquals(0, EndGear.missing(f, new RunState(), cfg, cfg.beds).buildBlocks());
+        assertEquals(0, missing(f, new RunState(), cfg.beds).buildBlocks());
         f.blocks = cfg.minBuildBlocks - 1;
-        assertEquals(cfg.buildBlocks, EndGear.missing(f, new RunState(), cfg, cfg.beds).buildBlocks());
+        assertEquals(cfg.buildBlocks, missing(f, new RunState(), cfg.beds).buildBlocks());
     }
 
     @Test
@@ -91,7 +179,7 @@ public class EndGearTest {
         s.endDrops.put("white_bed", 3);
         s.endDrops.put("iron_pickaxe", 1);
         f.gameTime = 92_000;
-        EndGear.Gap gap = EndGear.missing(f, s, cfg, cfg.beds);
+        EndGear.Gap gap = missing(f, s, cfg.beds);
         assertFalse(gap.waterBucket());
         assertFalse(gap.pickaxe());
         assertEquals(5, gap.beds());
@@ -104,29 +192,29 @@ public class EndGearTest {
         s.endDrops.put("water_bucket", 1);
         // 6000 ticks is the despawn, margin makes it 5400
         f.gameTime = 90_000 + cfg.dropLifetimeTicks;
-        assertTrue(EndGear.missing(f, s, cfg, cfg.beds).waterBucket());
+        assertTrue(missing(f, s, cfg.beds).waterBucket());
         f.gameTime = 90_000 + cfg.dropLifetimeTicks - 1;
-        assertFalse(EndGear.missing(f, s, cfg, cfg.beds).waterBucket());
+        assertFalse(missing(f, s, cfg.beds).waterBucket());
     }
 
     @Test
     public void dropsWithoutADeathInTheEndAreStaleCache() {
         RunState s = new RunState();
         s.endDrops.put("water_bucket", 1);
-        assertTrue(EndGear.missing(new FakeFacts(), s, cfg, cfg.beds).waterBucket());
+        assertTrue(missing(new FakeFacts(), s, cfg.beds).waterBucket());
         RunState diedElsewhere = new RunState();
         RunState.Death d = new RunState.Death();
         d.dimension = "NETHER";
         d.gameTime = 99_999;
         diedElsewhere.deaths.add(d);
         diedElsewhere.endDrops.put("water_bucket", 1);
-        assertTrue(EndGear.missing(new FakeFacts(), diedElsewhere, cfg, cfg.beds).waterBucket());
+        assertTrue(missing(new FakeFacts(), diedElsewhere, cfg.beds).waterBucket());
     }
 
     @Test
     public void diamondToolsSatisfyTheGate() {
         FakeFacts f = ready().with(Items.IRON_SWORD, 0).with(Items.IRON_PICKAXE, 0).with(Items.DIAMOND_SWORD, 1).with(Items.DIAMOND_PICKAXE, 1);
-        assertTrue(EndGear.missing(f, new RunState(), cfg, cfg.beds).none());
+        assertTrue(missing(f, new RunState(), cfg.beds).none());
     }
 
     @Test
@@ -139,9 +227,29 @@ public class EndGearTest {
     }
 
     @Test
-    public void wornIronBeatsASpareDiamondPieceInTheSameSlot() {
+    public void aSpareDiamondPieceGoesOverWornIronInTheSameSlot() {
+        // skip unless what we hold is strictly better than what is on: a diamond helmet is, so it swaps
         FakeFacts f = ready().with(Items.DIAMOND_HELMET, 1);
+        assertEquals(List.of(Items.DIAMOND_HELMET), EndGear.armorToWear(f));
+    }
+
+    @Test
+    public void theSwappedOutIronPieceIsNotWornBack() {
+        FakeFacts f = ready().with(Items.DIAMOND_HELMET, 1);
+        f.worn.remove(Items.IRON_HELMET);
+        f.worn.add(Items.DIAMOND_HELMET);
+        // the iron helmet is still in the bag (with(..) counts it), and it ranks below what is on
         assertTrue(EndGear.armorToWear(f).isEmpty());
+    }
+
+    @Test
+    public void wornDiamondBeatsABagOfIronAndNetheriteBeatsWornDiamond() {
+        FakeFacts f = ready().with(Items.DIAMOND_CHESTPLATE, 1);
+        f.worn.remove(Items.IRON_CHESTPLATE);
+        f.worn.add(Items.DIAMOND_CHESTPLATE);
+        assertTrue(EndGear.armorToWear(f).isEmpty());
+        f.with(Items.NETHERITE_CHESTPLATE, 1);
+        assertEquals(List.of(Items.NETHERITE_CHESTPLATE), EndGear.armorToWear(f));
     }
 
     @Test
@@ -157,7 +265,7 @@ public class EndGearTest {
         FakeFacts f = ready();
         f.armorPoints = 4;
         assertTrue(EndGear.armorLow(f, cfg));
-        assertTrue(EndGear.missing(f, new RunState(), cfg, cfg.beds).none());
+        assertTrue(missing(f, new RunState(), cfg.beds).none());
     }
 
     @Test

@@ -2,6 +2,7 @@ package adris.altoclef.tasks;
 
 import baritone.Baritone;
 import adris.altoclef.AltoClef;
+import adris.altoclef.BotBehaviour;
 import adris.altoclef.tasks.container.PickupFromContainerTask;
 import adris.altoclef.tasks.movement.DefaultGoToDimensionTask;
 import adris.altoclef.tasks.movement.PickupDroppedItemTask;
@@ -18,21 +19,24 @@ import adris.altoclef.util.MiningRequirement;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.StlHelper;
 import adris.altoclef.util.helpers.StorageHelper;
+import adris.altoclef.util.helpers.WalkCost;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.slots.PlayerSlot;
 import adris.altoclef.util.slots.Slot;
 import adris.altoclef.ui.HudText;
-import org.apache.commons.lang3.ArrayUtils;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.phys.Vec3;
 
 /**
  * The parent for all "collect an item" tasks.
@@ -51,6 +55,16 @@ public abstract class ResourceTask extends Task implements ITaskCanForce {
     private boolean _forceDimension = false;
     private Dimension _targetDimension;
     private BlockPos _mineLastClosest = null;
+    // every item any target matches, built once. onTick used to rebuild this (twice, in two different ways) per tick
+    // (lazy, a subclass is allowed to fill its targets in after super())
+    private Item[] _allMatches;
+    // and how many of each we're collecting, so the pathing side knows how much of it is ours to keep. same laziness
+    private Map<Item, Integer> _reserve;
+    // our own behaviour level. the reserve goes in here and not in whatever is on top, a child task pushes its own on every
+    // tick of ours and the numbers used to land in it (and count twice)
+    private BotBehaviour.State _level;
+    private static final int CONTAINER_LOOKUP_TICKS = 20;
+    private int _containerLookupCooldown = 0;
 
     public ResourceTask(ItemTarget[] itemTargets) {
         _itemTargets = itemTargets;
@@ -63,6 +77,18 @@ public abstract class ResourceTask extends Task implements ITaskCanForce {
 
     public ResourceTask(Item item, int targetCount) {
         this(new ItemTarget(item, targetCount));
+    }
+
+    // a target that matches several items (any planks) saves its count for each of them, over-saving is the safe way. the
+    // infinite ones are 99999999 and the sum stops there, which is as good as all of it
+    private static Map<Item, Integer> reserveFor(ItemTarget[] targets) {
+        Map<Item, Integer> out = new HashMap<>();
+        for (ItemTarget target : targets) {
+            for (Item match : target.getMatches()) {
+                out.merge(match, target.getTargetCount(), (a, b) -> (int) Math.min((long) a + b, 1L << 30));
+            }
+        }
+        return out;
     }
 
     @Override
@@ -80,7 +106,8 @@ public abstract class ResourceTask extends Task implements ITaskCanForce {
 
     @Override
     protected void onStart(AltoClef mod) {
-        mod.getBehaviour().push();
+        _level = mod.getBehaviour().push();
+        _containerLookupCooldown = 0;
         //removeThrowawayItems(_itemTargets);
         if (_mineIfPresent != null) {
             mod.getBlockTracker().trackBlock(_mineIfPresent);
@@ -90,7 +117,12 @@ public abstract class ResourceTask extends Task implements ITaskCanForce {
 
     @Override
     protected Task onTick(AltoClef mod) {
-        mod.getBehaviour().addProtectedItems(ItemTarget.getMatches(_itemTargets));
+        if (_allMatches == null) {
+            _allMatches = ItemTarget.getMatches(_itemTargets);
+            _reserve = reserveFor(_itemTargets);
+        }
+        // protected, but only up to the count we're after: the walk out of the hole may build with cobble above it
+        mod.getBehaviour().reserveProtectedItems(_level, _reserve);
         // If we have an item in an INACCESSIBLE inventory slot
         if (!ITaskUsesCraftingGrid.isUsingGrid(this) || _ensureFreeCraftingGridTask.isActive()) {
             for (ItemTarget target : _itemTargets) {
@@ -141,8 +173,14 @@ public abstract class ResourceTask extends Task implements ITaskCanForce {
                 }
 
                 double range = Baritone.settings().altoResourcePickupDropRange.value;
-                Optional<ItemEntity> closest = mod.getEntityTracker().getClosestItemDrop(mod.getPlayer().position(), _itemTargets);
-                if (range < 0 || (closest.isPresent() && closest.get().closerThan(mod.getPlayer(), range)) || (_pickupTask.isActive() && !_pickupTask.isFinished(mod))) {
+                // the tracker remembers drops from anywhere, only the ones worth the walk count (a far drop of something
+                // we can craft right now is not worth leaving the hole for). asking for the closest of the OK ones also
+                // means the pickup task stops chasing once the near drops are gone
+                Vec3 me = mod.getPlayer().position();
+                boolean craftable = craftableFromHeld(mod);
+                Optional<ItemEntity> closest = mod.getEntityTracker().getClosestItemDrop(me,
+                        drop -> WalkCost.dropWorthWalking(drop.getX() - me.x, drop.getY() - me.y, drop.getZ() - me.z, craftable), _itemTargets);
+                if (closest.isPresent() && (range < 0 || closest.get().closerThan(mod.getPlayer(), range) || (_pickupTask.isActive() && !_pickupTask.isFinished(mod)))) {
                     setDebugState("Picking up");
                     return _pickupTask;
                 }
@@ -150,8 +188,11 @@ public abstract class ResourceTask extends Task implements ITaskCanForce {
         }
 
         // Check for chests and grab resources from them.
-        if (_currentContainer == null) {
-            List<ContainerCache> containersWithItem = mod.getItemStorage().getContainersWithItem(Arrays.stream(_itemTargets).reduce(new Item[0], (items, target) -> ArrayUtils.addAll(items, target.getMatches()), ArrayUtils::addAll));
+        // no containers known is the common case, and the lookup walks every cached one, so ask once a second at most
+        if (_currentContainer == null && --_containerLookupCooldown <= 0 && mod.getItemStorage().hasAnyContainers()) {
+            _containerLookupCooldown = CONTAINER_LOOKUP_TICKS;
+            List<ContainerCache> containersWithItem = mod.getItemStorage().getContainersWithItem(_allMatches).stream()
+                    .filter(cache -> cache.getContainerType().lootable()).toList();
             if (!containersWithItem.isEmpty()) {
                 ContainerCache closest = containersWithItem.stream().min(StlHelper.compareValues(container -> container.getBlockPos().distToCenterSqr(mod.getPlayer().position()))).get();
                 if (closest.getBlockPos().closerToCenterThan(mod.getPlayer().position(), Baritone.settings().altoResourceChestLocateRange.value)) {
@@ -180,12 +221,17 @@ public abstract class ResourceTask extends Task implements ITaskCanForce {
             satisfiedReqs.removeIf(block -> !StorageHelper.miningRequirementMet(mod, MiningRequirement.getMinimumRequirementForBlock(block)));
             if (!satisfiedReqs.isEmpty()) {
                 if (mod.getBlockTracker().anyFound(satisfiedReqs.toArray(Block[]::new))) {
-                    Optional<BlockPos> closest = mod.getBlockTracker().getNearestTracking(mod.getPlayer().position(), _mineIfPresent);
-                    if (closest.isPresent() && closest.get().closerToCenterThan(mod.getPlayer().position(), Baritone.settings().altoResourceMineRange.value)) {
+                    // only one we may break: a furnace with our iron cooking in it is on the "do not mine" list, MineAndCollectTask
+                    // refuses it, and picking it here anyway flipped between that refusal and the craft every tick
+                    Optional<BlockPos> closest = mod.getBlockTracker().getNearestTracking(mod.getPlayer().position(),
+                            p -> WorldHelper.canBreak(mod, p), _mineIfPresent);
+                    // -1 means always mine, and closerToCenterThan would call that "nothing is close enough"
+                    double mineRange = Baritone.settings().altoResourceMineRange.value;
+                    if (closest.isPresent() && (mineRange < 0 || closest.get().closerToCenterThan(mod.getPlayer().position(), mineRange))) {
                         _mineLastClosest = closest.get();
                     }
                     if (_mineLastClosest != null) {
-                        if (_mineLastClosest.closerToCenterThan(mod.getPlayer().position(), Baritone.settings().altoResourceMineRange.value * 1.5 + 20)) {
+                        if (mineRange < 0 || _mineLastClosest.closerToCenterThan(mod.getPlayer().position(), mineRange * 1.5 + 20)) {
                             return new MineAndCollectTask(_itemTargets, _mineIfPresent, MiningRequirement.HAND);
                         }
                     }
@@ -212,6 +258,7 @@ public abstract class ResourceTask extends Task implements ITaskCanForce {
     @Override
     protected void onStop(AltoClef mod, Task interruptTask) {
         mod.getBehaviour().pop();
+        _level = null;
         if (_mineIfPresent != null) {
             mod.getBlockTracker().stopTracking(_mineIfPresent);
         }
@@ -271,6 +318,12 @@ public abstract class ResourceTask extends Task implements ITaskCanForce {
         _forceDimension = true;
         _targetDimension = dimension;
         return this;
+    }
+
+    // we could make the thing we are after right now from what is in the bag, so a drop of it is only worth a short walk
+    // (WalkCost.dropWorthWalking). crafting tasks say yes when the materials are held
+    protected boolean craftableFromHeld(AltoClef mod) {
+        return false;
     }
 
     protected abstract boolean shouldAvoidPickingUp(AltoClef mod);

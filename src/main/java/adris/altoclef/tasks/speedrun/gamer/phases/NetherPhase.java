@@ -1,17 +1,21 @@
 package adris.altoclef.tasks.speedrun.gamer.phases;
 
 import adris.altoclef.AltoClef;
+import adris.altoclef.Debug;
 import adris.altoclef.tasks.misc.EquipArmorTask;
-import adris.altoclef.tasks.movement.DefaultGoToDimensionTask;
-import adris.altoclef.tasks.movement.GetToBlockTask;
+import adris.altoclef.tasks.movement.GetToXZTask;
 import adris.altoclef.tasks.movement.RunAwayFromPositionTask;
 import adris.altoclef.tasks.resources.CollectBlazeRodsTask;
 import adris.altoclef.tasks.resources.TradeWithPiglinsTask;
+import adris.altoclef.tasks.speedrun.gamer.DetourSpec;
 import adris.altoclef.tasks.speedrun.gamer.EyeMath;
 import adris.altoclef.tasks.speedrun.gamer.GamerContext;
 import adris.altoclef.tasks.speedrun.gamer.GamerFacts;
 import adris.altoclef.tasks.speedrun.gamer.GamerPhase;
+import adris.altoclef.tasks.speedrun.gamer.NetherPick;
 import adris.altoclef.tasks.speedrun.gamer.PhaseHandler;
+import adris.altoclef.tasks.speedrun.gamer.PiglinGold;
+import adris.altoclef.tasks.speedrun.gamer.ResourceDetour;
 import adris.altoclef.tasks.speedrun.gamer.RunState;
 import adris.altoclef.tasks.speedrun.gamer.Timeout;
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
@@ -19,6 +23,10 @@ import adris.altoclef.tasks.speedrun.gamer.config.NetherConfig;
 import adris.altoclef.tasks.speedrun.gamer.tasks.CampPinger;
 import adris.altoclef.tasks.speedrun.gamer.tasks.FindNetherStructureTask;
 import adris.altoclef.tasks.speedrun.gamer.tasks.GhastWatch;
+import adris.altoclef.tasks.speedrun.gamer.tasks.HoldLatch;
+import adris.altoclef.tasks.speedrun.gamer.tasks.HomePortalWalk;
+import adris.altoclef.tasks.speedrun.gamer.tasks.NetherGround;
+import adris.altoclef.tasks.speedrun.gamer.tasks.NetherPickTask;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NetherSweepPlanner;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NetherSweepPlanner.Goal;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NetherSweepPlanner.Sight;
@@ -32,6 +40,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.monster.EnderMan;
+import net.minecraft.world.entity.monster.Blaze;
 import net.minecraft.world.entity.monster.Ghast;
 import net.minecraft.world.entity.monster.piglin.Piglin;
 import net.minecraft.world.entity.player.Player;
@@ -60,8 +69,11 @@ public class NetherPhase implements PhaseHandler {
     // the nearest this many tracked blocks of a kind get asked about, the tracker can hold thousands of bricks
     private static final int SCAN_CANDIDATES = 40;
     private static final double CAMP_PING_SECONDS = 30;
-    // close enough to the remembered overworld portal that the tracker can see it and the default task takes over
-    private static final double PORTAL_NEAR_BLOCKS = 8;
+    // an enderman that ducked out of view still counts for this long, so the pearl step does not flip every other tick
+    private static final double ENDERMAN_HOLD_SECONDS = 6;
+    // a known fortress further than this from us is worth a walk before the rods task starts wandering for bricks
+    private static final double FORTRESS_NEAR_BLOCKS = 48;
+    private static final double FORTRESS_WALK_SECONDS = 150;
     private static final double FLEE_SECONDS = 10;
     private static final int FLEE_BLOCKS = 48;
 
@@ -69,16 +81,31 @@ public class NetherPhase implements PhaseHandler {
     private RodsWatch rodsWatch;
     private CampPinger campPinger;
     private GhastWatch ghastWatch;
+    private HoldLatch endermanLatch;
+    private GetToXZTask walkToFortress;
+    private RunState.Pos fortressWalkTo;
+    private double fortressWalkSince;
+    private RunState.Pos fortressWalkGivenUp;
     private FindNetherStructureTask findFortress;
     private FindNetherStructureTask findWarped;
     private CollectBlazeRodsTask rodsTask;
     private int rodsTaskTarget;
     private PearlHuntTask hunt;
     private int huntTarget;
-    private Task goNether;
-    private GetToBlockTask walkToPortal;
-    private RunState.Pos walkingTo;
+    private final HomePortalWalk homeWalk = new HomePortalWalk();
+    // flint from soul sand valley gravel, only while it is still owed (no flint and steel, fire charge or flint on us)
+    private final ResourceDetour gravel = ResourceDetour.gravel();
+    // a barter ticked this recently is still going (see gravelSide)
+    private static final double TRADE_FRESH_SECONDS = 1;
+    // a pick craft that fell over (an input went missing, or it hung) is not tried again for this long
+    private static final double PICK_RETRY_SECONDS = 60;
+    private static final int PICK_TRIES = 3;
     private Task boots;
+    // the pick we are making from the bag (see pickSide) and whether we already said there is nothing to make one from
+    private NetherPickTask pickTask;
+    private double pickRetryAt;
+    private int pickFails;
+    private boolean noPickSaid;
     private TradeWithPiglinsTask trade;
     private int tradeTarget;
 
@@ -115,8 +142,13 @@ public class NetherPhase implements PhaseHandler {
 
     // pure: what we hold decides, plus "the budget is nearly over" which only needs the game clock
     @Override
+    public ResourceDetour detour() {
+        return gravel;
+    }
+
+    @Override
     public boolean isDone(GamerFacts facts, RunState state, GamerConfig cfg) {
-        return EyeMath.canLeaveNether(facts, cfg, budgetOver(facts, state, cfg) || state.netherRodsGaveUp);
+        return EyeMath.canLeaveNether(facts, cfg, state.framesFilled, budgetOver(facts, state, cfg) || state.netherRodsGaveUp);
     }
 
     static boolean budgetOver(GamerFacts facts, RunState state, GamerConfig cfg) {
@@ -137,7 +169,7 @@ public class NetherPhase implements PhaseHandler {
     // the budget or the stall timer fired: leave with the floor if we have it, else try again, else give up
     @Override
     public Timeout onTimeout(GamerContext ctx, int attempt, String reason) {
-        if (EyeMath.canLeaveNether(ctx.facts(), ctx.cfg(), true)) {
+        if (EyeMath.canLeaveNether(ctx.facts(), ctx.cfg(), ctx.state().framesFilled, true)) {
             return Timeout.SKIP;
         }
         return attempt < ctx.cfg().maxAttempts ? Timeout.RETRY : Timeout.STUCK;
@@ -149,18 +181,26 @@ public class NetherPhase implements PhaseHandler {
         NetherConfig n = ctx.cfg().nether;
         s.netherRodsGaveUp = false;
         planner = new NetherSweepPlanner(s, n);
+        planner.setGround(new NetherGround(mod, () -> n.waypointShiftBlocks));
+        planner.setLog(Debug::logInternal);
         rodsWatch = new RodsWatch(n.spawnerCampMinutes * 60, n.rodsBudgetMinutes * 60);
         campPinger = new CampPinger(CAMP_PING_SECONDS);
         ghastWatch = new GhastWatch(2, n.ghastWindowSeconds);
+        endermanLatch = new HoldLatch(ENDERMAN_HOLD_SECONDS);
+        walkToFortress = null;
+        fortressWalkTo = null;
+        fortressWalkGivenUp = null;
         findFortress = new FindNetherStructureTask(planner, Goal.FORTRESS, ctx::secondsInPhase);
         findWarped = new FindNetherStructureTask(planner, Goal.WARPED, ctx::secondsInPhase);
-        goNether = new DefaultGoToDimensionTask(Dimension.NETHER);
-        walkToPortal = null;
-        walkingTo = null;
+        homeWalk.reset();
         rodsTask = null;
         hunt = null;
         trade = null;
         boots = null;
+        pickTask = null;
+        pickRetryAt = 0;
+        pickFails = 0;
+        noPickSaid = false;
         flee = null;
         fleeUntil = 0;
         lastHurt = 0;
@@ -174,11 +214,14 @@ public class NetherPhase implements PhaseHandler {
         lastFortressCells = 0;
         lastWarpedCells = 0;
         hudState = null;
+        gravel.reset();
         ensureTracking(mod);
     }
 
     @Override
     public void onExit(AltoClef mod, GamerContext ctx) {
+        homeWalk.stopTracking(mod);
+        gravel.reset();
         if (tracking) {
             mod.getBlockTracker().stopTracking(TRACKED);
             tracking = false;
@@ -191,43 +234,128 @@ public class NetherPhase implements PhaseHandler {
             onEnter(mod, ctx);
         }
         if (ctx.facts().dimension() != Dimension.NETHER) {
-            return toTheNether(mod, ctx.state());
+            return toTheNether(mod, ctx);
         }
+        homeWalk.stopTracking(mod);
         ensureTracking(mod);
         ReturnPhase.recordPortal(mod, ctx.state());
+        rememberOverworldPortal(mod, ctx);
         double now = ctx.secondsInPhase();
         Task cover = ghastCover(mod, now);
         if (cover != null) {
+            gravel.preempted(ctx.facts().gameTime());
             return cover;
         }
         if (tickCounter++ % SCAN_EVERY_TICKS == 0) {
             scanSights(mod, ctx);
         }
+        Task flint = gravelSide(mod, ctx, now);
+        if (flint != null) {
+            return flint;
+        }
+        Task pick = pickSide(mod, ctx, now);
+        if (pick != null) {
+            return pick;
+        }
         return nextStep(mod, ctx, now);
+    }
+
+    // no pick that works and the bag can make one right now: make it, here, before the next netherrack is dug by hand. only from
+    // what the bag holds (NetherPick checks every input, the task is dropped the tick one is short), so this never turns into a
+    // collection trip in a dimension with no cobble and no oaks. not at a spawner, not with a blaze or a ghast in sight, not while a
+    // trade or a pearl hunt is going: the same reasons the gravel detour stays out. a fight is the combat chain's and never asks us
+    private Task pickSide(AltoClef mod, GamerContext ctx, double now) {
+        GamerFacts f = ctx.facts();
+        if (NetherPick.hasUsablePick(f)) {
+            pickTask = null;
+            noPickSaid = false;
+            return null;
+        }
+        if (pickTask != null && pickTask.failed()) {
+            // stuck or an input went missing under us: leave it alone for a while, the sweep goes on with what it has
+            pickTask = null;
+            pickRetryAt = now + PICK_RETRY_SECONDS;
+            if (++pickFails >= PICK_TRIES) {
+                ctx.log("nether: the pickaxe craft keeps failing, giving up on it");
+            }
+        }
+        if (pickFails >= PICK_TRIES) {
+            return null;
+        }
+        if (pickTask != null) {
+            // under way: the task reads the bag itself every tick (and the bag reads odd for a moment when the table goes down)
+            if (pickBusy(mod, ctx, now)) {
+                return null;
+            }
+            hudState = "Making a pickaxe";
+            return pickTask;
+        }
+        NetherPick.Bag bag = NetherPick.bagOf(f);
+        NetherPick.Tier tier = NetherPick.choose(bag);
+        if (tier == NetherPick.Tier.NONE) {
+            if (!noPickSaid) {
+                noPickSaid = true;
+                ctx.log(NetherPick.shortLine(bag));
+            }
+            return null;
+        }
+        noPickSaid = false;
+        if (pickBusy(mod, ctx, now) || now < pickRetryAt) {
+            return null;
+        }
+        pickTask = new NetherPickTask(tier, () -> NetherPick.bagOf(ctx.facts()), () -> NetherPick.hasUsablePick(ctx.facts()));
+        ctx.log(NetherPick.craftLine(tier));
+        hudState = "Making a pickaxe";
+        return pickTask;
+    }
+
+    private boolean pickBusy(AltoClef mod, GamerContext ctx, double now) {
+        boolean atSpawner = rodsTask != null && (rodsTask.currentSpawner() != null || rodsTask.isCampingSpawner());
+        boolean trading = barterTickAt >= 0 && now - barterTickAt < TRADE_FRESH_SECONDS;
+        boolean hunting = pearlsNext(ctx) && mod.getEntityTracker().entityFound(EnderMan.class);
+        return atSpawner || trading || hunting || mod.getEntityTracker().entityFound(Blaze.class, Ghast.class);
+    }
+
+    // the gravel detour, between the ghast cover and the next step. a spawner we are on or a trade that is going wins outright
+    private Task gravelSide(AltoClef mod, GamerContext ctx, double now) {
+        boolean atSpawner = rodsTask != null && rodsTask.currentSpawner() != null;
+        // barterTickAt is only put back when barterStep says no, and once the pearls are in nobody asks barterStep again. so a
+        // trade is "going" only while it was ticked a moment ago, or one finished barter would keep gravel off for the phase
+        boolean trading = barterTickAt >= 0 && now - barterTickAt < TRADE_FRESH_SECONDS;
+        // the pearl hunt like a picked spawner: pearls are what nextStep is on and an enderman is in sight (angry or not, it is
+        // what we walk at). asked fresh every tick and not off a hunt tick, so one that shows up halfway through a detour ends it.
+        // the wander with no enderman around is a walk, gravel on the way is fair there
+        boolean hunting = pearlsNext(ctx) && mod.getEntityTracker().entityFound(EnderMan.class);
+        if (!DetourSpec.netherMayDetour(ctx.facts().dimension() == Dimension.NETHER, atSpawner, trading, hunting)) {
+            gravel.preempted(ctx.facts().gameTime());
+            return null;
+        }
+        Task flint = gravel.tick(mod, ctx, null);
+        if (flint != null) {
+            hudState = gravel.hud();
+        }
+        return flint;
     }
 
     // back in the overworld (a regress from the stronghold, a death): walk to the portal we built first. the default task
     // only knows portals the block tracker has loaded and otherwise builds a brand new one, a thousand blocks from here
-    private Task toTheNether(AltoClef mod, RunState state) {
-        RunState.Pos home = state.overworldPortal;
-        if (home != null && !portalInView(mod)) {
-            BlockPos at = new BlockPos(home.x, home.y, home.z);
-            if (!at.closerToCenterThan(mod.getPlayer().position(), PORTAL_NEAR_BLOCKS)) {
-                if (!home.equals(walkingTo)) {
-                    walkingTo = home;
-                    walkToPortal = new GetToBlockTask(at);
-                }
-                hudState = "Walking back to the portal";
-                return walkToPortal;
-            }
+    // the portal we just came through is the way home, also when the one we remembered was gone and the default task built a
+    // new one (PortalPhase only fills this in the first time)
+    private static void rememberOverworldPortal(AltoClef mod, GamerContext ctx) {
+        if (ctx.state().overworldPortal != null) {
+            return;
         }
-        hudState = "Heading to the Nether";
-        return goNether;
+        mod.getMiscBlockTracker().getLastUsedNetherPortal(Dimension.OVERWORLD)
+                .ifPresent(p -> {
+                    ctx.state().overworldPortal = new RunState.Pos(p.getX(), p.getY(), p.getZ());
+                    ctx.save();
+                });
     }
 
-    private static boolean portalInView(AltoClef mod) {
-        return mod.getMiscBlockTracker().getLastUsedNetherPortal(Dimension.OVERWORLD).isPresent()
-                || mod.getBlockTracker().anyFound(Blocks.NETHER_PORTAL);
+    private Task toTheNether(AltoClef mod, GamerContext ctx) {
+        Task task = homeWalk.toTheNether(mod, ctx.state(), ctx::save);
+        hudState = homeWalk.hud();
+        return task;
     }
 
     private void ensureTracking(AltoClef mod) {
@@ -275,17 +403,27 @@ public class NetherPhase implements PhaseHandler {
         return false;
     }
 
+    // nextStep would go for pearls: the rods are in (or given up) and pearls are still short. same sums nextStep makes
+    private static boolean pearlsNext(GamerContext ctx) {
+        GamerFacts f = ctx.facts();
+        int eyes = EyeMath.eyes(f);
+        int goal = EyeMath.targetGoal(ctx.cfg(), ctx.state().framesFilled);
+        boolean rodsDone = f.count(Items.BLAZE_ROD) >= EyeMath.rodsNeeded(goal, eyes, f.count(Items.BLAZE_POWDER)) || ctx.state().netherRodsGaveUp;
+        return rodsDone && f.count(Items.ENDER_PEARL) < EyeMath.pearlsNeeded(goal, eyes);
+    }
+
     private Task nextStep(AltoClef mod, GamerContext ctx, double now) {
         GamerFacts f = ctx.facts();
         RunState s = ctx.state();
         GamerConfig cfg = ctx.cfg();
         int eyes = EyeMath.eyes(f);
-        int rodsNeed = EyeMath.rodsNeeded(cfg.targetEyes, eyes, f.count(Items.BLAZE_POWDER));
+        int goal = EyeMath.targetGoal(cfg, s.framesFilled);
+        int rodsNeed = EyeMath.rodsNeeded(goal, eyes, f.count(Items.BLAZE_POWDER));
         int rods = f.count(Items.BLAZE_ROD);
         if (rods < rodsNeed && !s.netherRodsGaveUp) {
             return rodsStep(mod, ctx, now, rods, rodsNeed);
         }
-        int pearlsNeed = EyeMath.pearlsNeeded(cfg.targetEyes, eyes);
+        int pearlsNeed = EyeMath.pearlsNeeded(goal, eyes);
         int pearls = f.count(Items.ENDER_PEARL);
         if (pearls < pearlsNeed) {
             return pearlStep(mod, ctx, now, pearls, pearlsNeed);
@@ -309,9 +447,14 @@ public class NetherPhase implements PhaseHandler {
             rodsTaskTarget = rodsNeed;
         }
         boolean camping = rodsTask.isCampingSpawner();
-        if (camping && s.spawner == null) {
-            mod.getBlockTracker().getNearestTracking(Blocks.SPAWNER)
-                    .ifPresent(p -> s.spawner = new RunState.Pos(p.getX(), p.getY(), p.getZ()));
+        BlockPos camped = rodsTask.currentSpawner();
+        if (camping && camped != null) {
+            // the one the task picked, not whatever the tracker calls nearest: they are not always the same spawner
+            RunState.Pos mine = new RunState.Pos(camped.getX(), camped.getY(), camped.getZ());
+            if (!mine.equals(s.spawner)) {
+                s.spawner = mine;
+                ctx.save();
+            }
         }
         RodsWatch.Verdict verdict = rodsWatch.update(now, rods, camping);
         if (verdict == RodsWatch.Verdict.GIVE_UP_RODS) {
@@ -326,8 +469,40 @@ public class NetherPhase implements PhaseHandler {
         if (campPinger.ping(now, camping)) {
             ctx.progress("waiting at the blaze spawner");
         }
-        hudState = "Collecting Blaze Rods";
+        Task toFortress = walkToKnownFortress(mod, s, now);
+        if (toFortress != null) {
+            hudState = "Walking to the fortress";
+            return toFortress;
+        }
+        // standing still at a spawner looks exactly like a frozen bot, so say what we're doing
+        hudState = (camping ? "Waiting for blazes to spawn" : "Collecting blaze rods") + " (" + rods + "/" + rodsNeed + ")";
         return rodsTask;
+    }
+
+    // a fortress we saw (an earlier visit, a relog, the next one after a dud spawner) and are nowhere near: the rods task
+    // only wanders to whatever bricks are closest, so go to the one we know first. bounded, a fortress behind a lava sea
+    // gets the wander instead of this walk for ever
+    private Task walkToKnownFortress(AltoClef mod, RunState s, double now) {
+        if (rodsTask.currentSpawner() != null || s.fortress.isEmpty()) {
+            return null;
+        }
+        RunState.Pos spot = s.fortress.get(0);
+        if (spot.equals(fortressWalkGivenUp)) {
+            return null;
+        }
+        if (!spot.equals(fortressWalkTo)) {
+            fortressWalkTo = spot;
+            fortressWalkSince = now;
+            walkToFortress = new GetToXZTask(spot.x, spot.z);
+        }
+        double dx = mod.getPlayer().getX() - spot.x;
+        double dz = mod.getPlayer().getZ() - spot.z;
+        boolean there = dx * dx + dz * dz <= FORTRESS_NEAR_BLOCKS * FORTRESS_NEAR_BLOCKS;
+        if (there || now - fortressWalkSince > FORTRESS_WALK_SECONDS) {
+            fortressWalkGivenUp = spot;
+            return null;
+        }
+        return walkToFortress;
     }
 
     // the rods task remembers its spawner and would walk straight back to it, so the dud gets blacklisted in the block
@@ -335,12 +510,19 @@ public class NetherPhase implements PhaseHandler {
     private Task giveUpSpawner(AltoClef mod, GamerContext ctx, double now) {
         RunState s = ctx.state();
         ctx.log("no rods from this spawner, looking for another fortress");
-        BlockPos dud = s.spawner != null ? new BlockPos(s.spawner.x, s.spawner.y, s.spawner.z)
-                : mod.getBlockTracker().getNearestTracking(Blocks.SPAWNER).orElse(null);
+        // the spawner the task was really camping first, the saved one can be a stale pick from before it re-searched
+        BlockPos dud = rodsTask != null ? rodsTask.currentSpawner() : null;
+        if (dud == null) {
+            dud = s.spawner != null ? new BlockPos(s.spawner.x, s.spawner.y, s.spawner.z)
+                    : mod.getBlockTracker().getNearestTracking(Blocks.SPAWNER).orElse(null);
+        }
         if (dud != null) {
             mod.getBlockTracker().requestBlockUnreachable(dud, 0);
         }
-        planner.giveUpFortress();
+        // only the fortress this spawner is in, a second one we saw is the next place to try
+        planner.giveUpFortress(dud == null ? null : new RunState.Pos(dud.getX(), dud.getY(), dud.getZ()));
+        fortressWalkGivenUp = null;
+        fortressWalkTo = null;
         rodsTask = null;
         rodsWatch.spawnerGivenUp(now);
         ctx.save();
@@ -355,7 +537,7 @@ public class NetherPhase implements PhaseHandler {
             return barter;
         }
         RunState s = ctx.state();
-        boolean endermanHere = mod.getEntityTracker().entityFound(EnderMan.class);
+        boolean endermanHere = endermanLatch.update(mod.getEntityTracker().entityFound(EnderMan.class), now);
         if (s.warpedForest == null && !endermanHere && !warpedSearchOver) {
             if (findWarped.failure() != null) {
                 // swept what we are allowed to sweep, hunt whatever wanders by
@@ -398,7 +580,7 @@ public class NetherPhase implements PhaseHandler {
         // iron boots in the bag where nothing puts them back
         boolean goodToGo = n.pearlSource == NetherConfig.PearlSource.BARTER
                 && barterSpent < n.barterMinutes * 60
-                && f.count(Items.GOLD_INGOT) >= goldWanted + (f.count(Items.GOLDEN_BOOTS) > 0 ? 0 : 4)
+                && f.count(Items.GOLD_INGOT) >= goldWanted + (PiglinGold.worn(f) || f.count(Items.GOLDEN_BOOTS) > 0 ? 0 : 4)
                 && mod.getEntityTracker().entityFound(Piglin.class);
         if (!goodToGo) {
             barterTickAt = -1;
@@ -408,8 +590,8 @@ public class NetherPhase implements PhaseHandler {
             barterSpent += Math.min(now - barterTickAt, 1.0);
         }
         barterTickAt = now;
-        // piglins ignore us only while the boots are on
-        if (!f.armorEquipped(Items.GOLDEN_BOOTS)) {
+        // piglins ignore us while ANY gold piece is on, the helmet from the kit counts as much as boots do
+        if (!PiglinGold.worn(f)) {
             if (boots == null) {
                 boots = new EquipArmorTask(Items.GOLDEN_BOOTS);
             }

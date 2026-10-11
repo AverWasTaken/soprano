@@ -41,21 +41,31 @@ public final class PhaseRules {
     // advance first, because a phase that is done has nothing to regress from. REGRESS records its time here, so
     // asking again inside the cooldown says STAY (the caller does not have to remember anything)
     public Decision decide(GamerPhase current, GamerFacts facts, RunState state, GamerConfig cfg, double nowSeconds) {
+        return decide(current, facts, state, cfg, null, nowSeconds);
+    }
+
+    // the engine's way: the phases are asked isDone with the tick's context, so they read the tick's food plan and wood budget
+    // and not ones of their own
+    public Decision decide(GamerPhase current, GamerContext ctx, double nowSeconds) {
+        return decide(current, ctx.facts(), ctx.state(), ctx.cfg(), ctx, nowSeconds);
+    }
+
+    private Decision decide(GamerPhase current, GamerFacts facts, RunState state, GamerConfig cfg, GamerContext ctx, double nowSeconds) {
         if (current.isTerminal()) {
             return Decision.STAY;
         }
-        GamerPhase furthest = cascade(current, facts, state, cfg);
+        GamerPhase furthest = cascade(current, facts, state, cfg, ctx);
         if (furthest != current) {
             return new Decision(Kind.ADVANCE, furthest, "");
         }
         return regress(current, facts, state, cfg, nowSeconds);
     }
 
-    private GamerPhase cascade(GamerPhase current, GamerFacts facts, RunState state, GamerConfig cfg) {
+    private GamerPhase cascade(GamerPhase current, GamerFacts facts, RunState state, GamerConfig cfg, GamerContext ctx) {
         GamerPhase p = current;
         for (int steps = 0; steps < MAX_CASCADE && !p.isTerminal(); steps++) {
             PhaseHandler h = byPhase.get(p);
-            if (h == null || !h.isDone(facts, state, cfg)) {
+            if (h == null || !(ctx == null ? h.isDone(facts, state, cfg) : h.isDone(ctx))) {
                 break;
             }
             // DONE is the last ordinal before STUCK, so the only way onto it is the DRAGON handler saying it is done

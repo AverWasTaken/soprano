@@ -3,41 +3,36 @@ package adris.altoclef.chains;
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.control.KillAura;
-import adris.altoclef.tasks.entity.KillEntitiesTask;
-import adris.altoclef.tasks.movement.CustomBaritoneGoalTask;
-import adris.altoclef.tasks.movement.DodgeProjectilesTask;
-import adris.altoclef.tasks.movement.RunAwayFromCreepersTask;
-import adris.altoclef.tasks.movement.RunAwayFromHostilesTask;
-import adris.altoclef.tasks.speedrun.DragonBreathTracker;
+import adris.altoclef.tasks.movement.CreeperStepTask;
+import adris.altoclef.tasksystem.Task;
 import adris.altoclef.tasksystem.TaskRunner;
 import adris.altoclef.util.baritone.CachedProjectile;
-import adris.altoclef.util.helpers.*;
+import adris.altoclef.util.helpers.CombatCommit;
+import adris.altoclef.util.helpers.CombatLog;
+import adris.altoclef.util.helpers.CombatRules;
+import adris.altoclef.util.helpers.CreeperStep;
+import adris.altoclef.util.helpers.EntityHelper;
+import adris.altoclef.util.helpers.FoeRules;
+import adris.altoclef.util.helpers.LookHelper;
+import adris.altoclef.util.helpers.ProjectileHelper;
+import adris.altoclef.util.helpers.StorageHelper;
+import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.slots.PlayerSlot;
 import adris.altoclef.util.slots.Slot;
 import baritone.Baritone;
+import baritone.api.pathing.calc.IPath;
+import baritone.api.pathing.path.IPathExecutor;
+import baritone.api.utils.BetterBlockPos;
+import baritone.api.utils.Dimension;
 import baritone.api.utils.Rotation;
 import baritone.api.utils.input.Input;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.component.DataComponents;
-import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.Mob;
-import net.minecraft.world.entity.boss.wither.WitherBoss;
 import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.entity.monster.Ghast;
-import net.minecraft.world.entity.monster.Pillager;
-import net.minecraft.world.entity.monster.Skeleton;
-import net.minecraft.world.entity.monster.Slime;
-import net.minecraft.world.entity.monster.Stray;
-import net.minecraft.world.entity.monster.Vindicator;
-import net.minecraft.world.entity.monster.Witch;
-import net.minecraft.world.entity.monster.WitherSkeleton;
-import net.minecraft.world.entity.monster.Zoglin;
-import net.minecraft.world.entity.monster.hoglin.Hoglin;
-import net.minecraft.world.entity.monster.piglin.Piglin;
-import net.minecraft.world.entity.monster.piglin.PiglinBrute;
-import net.minecraft.world.entity.monster.warden.Warden;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.projectile.Arrow;
 import net.minecraft.world.entity.projectile.DragonFireball;
@@ -53,51 +48,81 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.BaseFireBlock;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.phys.Vec3;
+
 import java.util.ArrayList;
 import java.util.ConcurrentModificationException;
 import java.util.List;
 import java.util.Optional;
-import java.util.function.Predicate;
 
 import static java.lang.Math.abs;
 
+// the mob defense chain. mobs are scenery until the commitment machine (CombatBrain, CombatCommit) says one really needs
+// dealing with, in every dimension, and then the chain holds the wheel with a fight or a run until the machine lets go.
+// nothing else here takes the wheel for a mob except a lit creeper within a few blocks (CreeperStep, a couple of steps and
+// straight back). an unlit one is walked past like everything else. fire, falls and the arrow shield were never about the wheel
 public class MobDefenseChain extends SingleTaskChain {
-    private static final double DANGER_KEEP_DISTANCE = 30;
-    private static final double CREEPER_KEEP_DISTANCE = 10;
-    private static final double ARROW_KEEP_DISTANCE_HORIZONTAL = 2;//4;
-    private static final double ARROW_KEEP_DISTANCE_VERTICAL = 10;//15;
-    private static final double SAFE_KEEP_DISTANCE = 8;
-    private static final Item[] SWORDS = new Item[]{Items.NETHERITE_SWORD, Items.DIAMOND_SWORD, Items.IRON_SWORD, Items.GOLDEN_SWORD,
-            Items.STONE_SWORD, Items.WOODEN_SWORD};
+    private static final double ARROW_KEEP_DISTANCE_HORIZONTAL = 2;
+    private static final double ARROW_KEEP_DISTANCE_VERTICAL = 10;
     private static boolean _shielding = false;
-    private final DragonBreathTracker _dragonBreathTracker = new DragonBreathTracker();
     private final KillAura _killAura = new KillAura();
-    private Entity _targetEntity;
-    private boolean _doingFunkyStuff = false;
     private boolean _wasPuttingOutFire = false;
-    private CustomBaritoneGoalTask _runAwayTask;
+    // above a fight (65) and the food chain (55), under a run (80, which keeps its own number while it steps), lava and fire
+    private static final float CREEPER_STEP_PRIORITY = 70;
+    private final CreeperStep _creeperStep = new CreeperStep();
+    // a new player or dimension is a new world, creeper ids from the old one mean nothing (same reset as CombatBrain's)
+    private LocalPlayer _creeperPlayer;
+    private Dimension _creeperDimension;
 
-    private float _cachedLastPriority;
+    // everything below is worked out once per game tick by snapshot(), no matter how many things ask
+    private long _snapshotTick = Long.MIN_VALUE;
+    private CombatRules.Stance _stance = CombatRules.Stance.CALM;
+    // the crit timing and the weapon pick want how many melee mobs are on us / around us
+    private int _meleeNear;
+    private int _meleeAround;
+
+    private final CombatBrain _brain = new CombatBrain();
+
+    // ---- for the gamer card: the commitment as it stands, plain field reads, nothing here moves the machine
+
+    public CombatCommit.Mode combatMode() {
+        return _brain.mode();
+    }
+
+    public String combatFightName() {
+        return _brain.fightName();
+    }
+
+    public double combatRunOriginX() {
+        return _brain.commit().originX();
+    }
+
+    public double combatRunOriginZ() {
+        return _brain.commit().originZ();
+    }
 
     public MobDefenseChain(TaskRunner runner) {
         super(runner);
     }
 
-    public static double getCreeperSafety(Vec3 pos, Creeper creeper) {
-        double distance = creeper.distanceToSqr(pos);
-        float fuse = creeper.getSwelling(1);
-
-        // Not fusing.
-        if (fuse <= 0.001f) return distance;
-        return distance * 0.2; // less is WORSE
+    // squared distance, a lit one counts as five times closer. less is WORSE
+    private static double getCreeperSafety(Vec3 pos, Creeper creeper) {
+        double distance = creeper.position().distanceToSqr(pos);
+        if (creeper.getSwelling(1) <= 0.001f) return distance;
+        return distance * 0.2;
     }
 
-    private static void startShielding(AltoClef mod) {
+    // standing still is the default. a fight raises the shield on the move: no sneak (it is walking at a third of the
+    // speed), no pause, and the caller lowers it the moment the arrow is gone
+    private static void startShielding(AltoClef mod, boolean standStill) {
         _shielding = true;
-        mod.getInputControls().hold(Input.SNEAK);
+        if (standStill) {
+            mod.getInputControls().hold(Input.SNEAK);
+        }
         mod.getInputControls().hold(Input.CLICK_RIGHT);
-        mod.getClientBaritone().getPathingBehavior().requestPause();
-        mod.getExtraBaritoneSettings().setInteractionPaused(true);
+        if (standStill) {
+            mod.getClientBaritone().getPathingBehavior().requestPause();
+            mod.getExtraBaritoneSettings().setInteractionPaused(true);
+        }
         if (!mod.getPlayer().isBlocking()) {
             ItemStack handItem = StorageHelper.getItemStackInSlot(PlayerSlot.getEquipSlot());
             if (handItem.getItem().components().has(DataComponents.FOOD)) {
@@ -118,8 +143,7 @@ public class MobDefenseChain extends SingleTaskChain {
 
     @Override
     public float getPriority(AltoClef mod) {
-        _cachedLastPriority = getPriorityInner(mod);
-        return _cachedLastPriority;
+        return getPriorityInner(mod);
     }
 
     private void stopShielding(AltoClef mod) {
@@ -139,17 +163,19 @@ public class MobDefenseChain extends SingleTaskChain {
         }
     }
 
-    private boolean escapeDragonBreath(AltoClef mod) {
-        _dragonBreathTracker.updateBreath(mod);
-        for (BlockPos playerIn : WorldHelper.getBlocksTouchingPlayer(mod)) {
-            if (_dragonBreathTracker.isTouchingDragonBreath(playerIn)) {
-                return true;
-            }
-        }
-        return false;
+    public float getPriorityInner(AltoClef mod) {
+        float priority = computePriority(mod);
+        if (priority <= 0) return priority;
+        Task held = getCurrentTask();
+        if (CombatRules.wheelPriority(priority, held != null, held != null && held.isFinished(mod)) > 0) return priority;
+        // every branch that asks for the wheel just installed something to hold it with. if that something is gone or was
+        // born finished (a run we are already outside of), the wheel is not ours. (shielding and the force field act without
+        // a task, and never needed the wheel to do it)
+        if (held != null) onTaskFinish(mod);
+        return 0;
     }
 
-    public float getPriorityInner(AltoClef mod) {
+    private float computePriority(AltoClef mod) {
         if (!AltoClef.inGame()) {
             return Float.NEGATIVE_INFINITY;
         }
@@ -158,13 +184,9 @@ public class MobDefenseChain extends SingleTaskChain {
             return Float.NEGATIVE_INFINITY;
         }
 
-        // Apply avoidance if we're vulnerable, avoiding mobs if at all possible.
-        // mod.getClientBaritoneSettings().avoidance.value = isVulnurable(mod);
-        // Doing you a favor by disabling avoidance
-
-
-        // Pause if we're not loaded into a world.
-        if (!AltoClef.inGame()) return Float.NEGATIVE_INFINITY;
+        // before anything can stand down below: the commitment moves once per tick whether or not we get to hold the wheel,
+        // otherwise a stretch of eating would be a stretch of the machine not knowing what happened
+        snapshot(mod);
 
         // Put out fire if we're standing on one like an idiot
         BlockPos fireBlock = isInsideFireAndOnFire(mod);
@@ -177,7 +199,13 @@ public class MobDefenseChain extends SingleTaskChain {
             _wasPuttingOutFire = false;
         }
 
-        if (mod.getFoodChain().needsToEat() || mod.getMLGBucketChain().isFallingOhNo(mod) ||
+        // a commitment does not stand down for a meal. eating is async (the food chain holds the use key and picks the food,
+        // it never needed the wheel), so the run walks on at chewing speed and the fight just stops swinging while it
+        // chews. handing the wheel to the user task for the bite is a cycle at every crossing of the 8 block line, and the
+        // user task walks its own route, often straight back at what we ran from
+        // (a creeper step does not stand down for a meal either: the line says we stepped, so we step)
+        boolean committed = _brain.mode() != CombatCommit.Mode.NONE || _creeperStep.active();
+        if ((!committed && mod.getFoodChain().needsToEat()) || mod.getMLGBucketChain().isFallingOhNo(mod) ||
                 !mod.getMLGBucketChain().doneMLG() || mod.getMLGBucketChain().isChorusFruiting()) {
             _killAura.stopShielding(mod);
             stopShielding(mod);
@@ -187,180 +215,66 @@ public class MobDefenseChain extends SingleTaskChain {
         // Force field
         doForceField(mod);
 
+        return commitPriority(mod);
+    }
 
-        // Tell baritone to avoid mobs if we're vulnurable.
-        // Costly.
-        //mod.getClientBaritoneSettings().avoidance.value = isVulnurable(mod);
+    // the wheel. mobs are scenery until the commitment says otherwise, so what takes it is whatever the machine is holding,
+    // and a lit creeper close enough to hurt. the old step away fired for any lit creeper within 7 and the bot spent half its
+    // life backing off from creepers it could have walked past, this one is 4 and lit only. fire, lava and falls were
+    // settled before we got here
+    private float commitPriority(AltoClef mod) {
+        LocalPlayer player = mod.getPlayer();
+        CombatCommit.Mode mode = _brain.mode();
+        float hold = _brain.holdPriority();
+        Item offhandItem = StorageHelper.getItemStackInSlot(PlayerSlot.OFFHAND_SLOT).getItem();
 
-        // Run away if a weird mob is close by.
-        Optional<Entity> universallyDangerous = getUniversallyDangerousMob(mod);
-        if (universallyDangerous.isPresent() && mod.getPlayer().getHealth() <= 10) {
-            _runAwayTask = new RunAwayFromHostilesTask(DANGER_KEEP_DISTANCE, true);
-            setTask(_runAwayTask);
-            return 70;
-        }
-
-        _doingFunkyStuff = false;
-        PlayerSlot offhandSlot = PlayerSlot.OFFHAND_SLOT;
-        Item offhandItem = StorageHelper.getItemStackInSlot(offhandSlot).getItem();
-        // Run away from creepers
-        Creeper blowingUp = getClosestFusingCreeper(mod);
-        if (blowingUp != null) {
-            if (!mod.getFoodChain().needsToEat() && (mod.getItemStorage().hasItem(Items.SHIELD) ||
-                    mod.getItemStorage().hasItemInOffhand(Items.SHIELD)) &&
-                    !mod.getEntityTracker().entityFound(ThrownPotion.class) && _runAwayTask == null
-                    && !mod.getPlayer().getCooldowns().isOnCooldown(new ItemStack(offhandItem))
-                    && mod.getClientBaritone().getPathingBehavior().isSafeToCancel()) {
-                _doingFunkyStuff = true;
-                LookHelper.lookAt(mod, blowingUp.getEyePosition());
-                ItemStack shieldSlot = StorageHelper.getItemStackInSlot(PlayerSlot.OFFHAND_SLOT);
-                if (shieldSlot.getItem() != Items.SHIELD) {
+        // a lit creeper right next to us: a couple of steps out of the blast, or the shield when boxed in. not a commitment,
+        // the machine never hears of it, and whatever it was holding (a fight, a run) gets the wheel back after the bang
+        boolean creeperShield = false;
+        float stepPriority = Float.NaN;
+        if (_creeperStep.active()) {
+            Entity creeper = mod.getWorld().getEntity(_creeperStep.creeperId());
+            if (_creeperStep.cornered()) {
+                if (creeper != null) LookHelper.lookAt(mod, creeper.getEyePosition());
+                if (StorageHelper.getItemStackInSlot(PlayerSlot.OFFHAND_SLOT).getItem() != Items.SHIELD) {
                     mod.getSlotHandler().forceEquipItemToOffhand(Items.SHIELD);
                 } else {
-                    startShielding(mod);
+                    startShielding(mod, true);
                 }
+                creeperShield = true;
             } else {
-                _doingFunkyStuff = true;
-                //Debug.logMessage("RUNNING AWAY!");
-                _runAwayTask = new RunAwayFromCreepersTask(CREEPER_KEEP_DISTANCE);
-                setTask(_runAwayTask);
-                return 50 + blowingUp.getSwelling(1) * 50;
-            }
-        } else {
-            if (!isProjectileClose(mod)) {
-                stopShielding(mod);
+                setTask(new CreeperStepTask(_creeperStep.creeperId()));
+                stepPriority = Math.max(CREEPER_STEP_PRIORITY, hold);
             }
         }
-        // Block projectiles with shield
-        if (!mod.getFoodChain().needsToEat() && Baritone.settings().altoDodgeProjectiles.value && isProjectileClose(mod) &&
-                (mod.getItemStorage().hasItem(Items.SHIELD) || mod.getItemStorage().hasItemInOffhand(Items.SHIELD)) &&
-                !mod.getEntityTracker().entityFound(ThrownPotion.class) && _runAwayTask == null
-                && !mod.getPlayer().getCooldowns().isOnCooldown(new ItemStack(offhandItem))
-                && mod.getClientBaritone().getPathingBehavior().isSafeToCancel()) {
-            ItemStack shieldSlot = StorageHelper.getItemStackInSlot(PlayerSlot.OFFHAND_SLOT);
-            if (shieldSlot.getItem() != Items.SHIELD) {
+
+        // arrows: a shield that does not take the wheel. a fight walks on with it up, nothing else stops for an arrow, and a
+        // run is feet's job. (not mid creeper step either, the arrow shield pauses the path and that is the step gone)
+        boolean fighting = mode == CombatCommit.Mode.FIGHT;
+        if (creeperShield) {
+            // the creeper's shield is up, leave it be
+        } else if (!_creeperStep.active() && mode != CombatCommit.Mode.RUN && !mod.getFoodChain().needsToEat() && Baritone.settings().altoDodgeProjectiles.value && hasShield(mod)
+                && isProjectileClose(mod) && !mod.getEntityTracker().entityFound(ThrownPotion.class)
+                && !player.getCooldowns().isOnCooldown(new ItemStack(offhandItem))
+                && (fighting || mod.getClientBaritone().getPathingBehavior().isSafeToCancel())) {
+            if (StorageHelper.getItemStackInSlot(PlayerSlot.OFFHAND_SLOT).getItem() != Items.SHIELD) {
                 mod.getSlotHandler().forceEquipItemToOffhand(Items.SHIELD);
             } else {
-                startShielding(mod);
+                startShielding(mod, !fighting);
             }
         } else {
-            if (blowingUp == null) {
-                stopShielding(mod);
-            }
+            stopShielding(mod);
         }
-        // Dodge projectiles
-        if (mod.getPlayer().getHealth() <= 10 || _runAwayTask != null || mod.getEntityTracker().entityFound(ThrownPotion.class) ||
-                (!mod.getItemStorage().hasItem(Items.SHIELD) && !mod.getItemStorage().hasItemInOffhand(Items.SHIELD))) {
-            if (!mod.getFoodChain().needsToEat() && Baritone.settings().altoDodgeProjectiles.value && isProjectileClose(mod)) {
-                _doingFunkyStuff = true;
-                //Debug.logMessage("DODGING");
-                _runAwayTask = new DodgeProjectilesTask(ARROW_KEEP_DISTANCE_HORIZONTAL, ARROW_KEEP_DISTANCE_VERTICAL);
-                setTask(_runAwayTask);
-                return 65;
-            }
+        if (!Float.isNaN(stepPriority)) return stepPriority;
+
+        Task wheel = mode == CombatCommit.Mode.NONE ? null : _brain.wheelTask(mod);
+        if (wheel == null) {
+            // nothing committed: whatever we were holding belonged to the commitment that just ended
+            if (_mainTask != null) onTaskFinish(mod);
+            return 0;
         }
-        // Dodge all mobs cause we boutta die son
-        if (isInDanger(mod) && !escapeDragonBreath(mod) && !mod.getFoodChain().isShouldStop()) {
-            if (_targetEntity == null) {
-                _runAwayTask = new RunAwayFromHostilesTask(DANGER_KEEP_DISTANCE, true);
-                setTask(_runAwayTask);
-                return 70;
-            }
-        }
-
-        if (Baritone.settings().altoKillOrAvoidAnnoyingHostiles.value) {
-            // Deal with hostiles because they are annoying.
-            List<Entity> hostiles = mod.getEntityTracker().getHostiles();
-            // TODO: I don't think this lock is necessary at all.
-
-            // pick by real attack damage, not by list order (the old loop kept overwriting and ended on the worst sword owned)
-            List<Item> ownedSwords = new ArrayList<>();
-            for (Item item : SWORDS) {
-                if (mod.getItemStorage().hasItem(item)) {
-                    ownedSwords.add(item);
-                }
-            }
-            Item bestSword = ItemHelper.getBestSword(ownedSwords);
-
-            List<Entity> toDealWith = new ArrayList<>();
-            // TODO: I don't think this lock is necessary at all.
-            if (!hostiles.isEmpty()) {
-                for (Entity entity : hostiles) {
-                    if (entity instanceof Mob mob) {
-                        boolean isAttackingPlayer = EntityHelper.isAngryAtPlayer(mod, mob);
-                        if (isAttackingPlayer) {
-                            toDealWith.add(mob);
-                        }
-                    }
-                }
-            }
-            int numberOfProblematicEntities = toDealWith.size();
-            if (!toDealWith.isEmpty()) {
-                for (Entity ToDealWith : toDealWith) {
-                    if (ToDealWith instanceof Slime) {
-                        numberOfProblematicEntities = 1;
-                        break;
-                    }
-                }
-            }
-            if (numberOfProblematicEntities > 0) {
-
-                // Depending on our weapons/armor, we may chose to straight up kill hostiles if we're not dodging their arrows.
-
-                // wood 0 : 1 skeleton
-                // stone 1 : 1 skeleton
-                // iron 2 : 2 hostiles
-                // diamond 3 : 3 hostiles
-                // netherite 4 : 4 hostiles
-
-                // Armor: (do the math I'm not boutta calculate this)
-                // leather: ?1 skeleton
-                // iron: ?2 hostiles
-                // diamond: ?3 hostiles
-
-                // 7 is full set of leather
-                // 15 is full set of iron.
-                // 20 is full set of diamond.
-                // Diamond+netherite have bonus "toughness" parameter (we can simply add them I think, for now.)
-                // full diamond has 8 bonus toughness
-                // full netherite has 12 bonus toughness
-                int armor = mod.getPlayer().getArmorValue();
-                // the formula below was tuned on "1 + tier bonus" (wood 1 ... netherite 5), real damage is 3 higher than that
-                float damage = bestSword == null ? 0 : (ItemHelper.getAttackDamage(bestSword) - 3);
-                boolean hasShield = mod.getItemStorage().hasItem(Items.SHIELD) ||
-                        mod.getItemStorage().hasItemInOffhand(Items.SHIELD);
-                int shield = hasShield ? 20 : 0;
-                int canDealWith = (int) Math.ceil((armor * 3.6 / 20.0) + (damage * 0.8) + (shield));
-                canDealWith += 1;
-                if (canDealWith > numberOfProblematicEntities) {
-                    // We can deal with it.
-                    _runAwayTask = null;
-                    for (Entity ToDealWith : toDealWith) {
-                        Predicate<Entity> valid = entity -> EntityHelper.isAngryAtPlayer(mod, entity);
-                        // Prioritize ranged enemies first.
-                        if (ToDealWith instanceof Skeleton || ToDealWith instanceof Witch ||
-                                ToDealWith instanceof Pillager || ToDealWith instanceof Piglin ||
-                                ToDealWith instanceof Stray) {
-                            setTask(new KillEntitiesTask(valid, ToDealWith.getClass()));
-                            return 65;
-                        }
-                        setTask(new KillEntitiesTask(valid, ToDealWith.getClass()));
-                        return 65;
-                    }
-                }
-                // We can't deal with it
-                _runAwayTask = new RunAwayFromHostilesTask(DANGER_KEEP_DISTANCE, true);
-                setTask(_runAwayTask);
-                return 80;
-            }
-        }
-        // By default if we aren't "immediately" in danger but were running away, keep running away until we're good.
-        if (_runAwayTask != null && !_runAwayTask.isFinished(mod)) {
-            setTask(_runAwayTask);
-            return _cachedLastPriority;
-        }
-        _runAwayTask = null;
-        return 0;
+        setTask(wheel);
+        return hold;
     }
 
     private BlockPos isInsideFireAndOnFire(AltoClef mod) {
@@ -402,9 +316,13 @@ public class MobDefenseChain extends SingleTaskChain {
 
     private void doForceField(AltoClef mod) {
 
+        snapshot(mod);
         _killAura.tickStart();
+        // all feet and no hands on a run, the shield only when boxed in. the shield is for standing in a pile, not for the
+        // first zombie that wanders up
+        _killAura.setPolicy(_brain.auraKiting(), _brain.auraShield());
 
-        // Hit all hostiles close to us.
+        // hit what is on us.
         List<Entity> entities = mod.getEntityTracker().getCloseEntities();
         try {
             if (!entities.isEmpty()) {
@@ -413,7 +331,11 @@ public class MobDefenseChain extends SingleTaskChain {
                     if (mod.getBehaviour().shouldExcludeFromForcefield(entity)) continue;
                     if (entity instanceof Mob) {
                         if (EntityHelper.isGenerallyHostileToPlayer(mod, entity)) {
-                            if (LookHelper.seesPlayer(entity, mod.getPlayer(), 10)) {
+                            // the aura swings at the fight target and at what is hitting us in contact, nothing else. and at
+                            // what a task kept out of mob defense without taking it off the aura (a blaze beside us in
+                            // the rod task), that one is the aura's by the task's own say
+                            if (LookHelper.seesPlayer(entity, mod.getPlayer(), 10)
+                                    && FoeRules.auraMaySwingAt(_brain.swingsAt(entity.getId()), mod.getBehaviour().shouldExcludeFromMobDefense(entity))) {
                                 shouldForce = true;
                             }
                         }
@@ -467,8 +389,13 @@ public class MobDefenseChain extends SingleTaskChain {
         return target;
     }
 
+    // also stops the path and turns to face the shooter when one is about to land, so only ask with a shield to put up.
+    // without one that is the user task standing still for no reason
     private boolean isProjectileClose(AltoClef mod) {
         List<CachedProjectile> projectiles = mod.getEntityTracker().getProjectiles();
+        // a run keeps walking: stopping to turn round for a fireball is how the ghast gets a free volley on a bot that was
+        // leaving. a fight keeps swinging at its target for the same reason, only an idle chain stops to face the shooter
+        boolean committed = _brain.mode() != CombatCommit.Mode.NONE;
         try {
             if (!projectiles.isEmpty()) {
                 for (CachedProjectile projectile : projectiles) {
@@ -477,7 +404,7 @@ public class MobDefenseChain extends SingleTaskChain {
                         if (isGhastBall) {
                             Optional<Entity> ghastBall = mod.getEntityTracker().getClosestEntity(LargeFireball.class);
                             Optional<Entity> ghast = mod.getEntityTracker().getClosestEntity(Ghast.class);
-                            if (ghastBall.isPresent() && ghast.isPresent() && _runAwayTask == null
+                            if (ghastBall.isPresent() && ghast.isPresent() && !committed
                                     && mod.getClientBaritone().getPathingBehavior().isSafeToCancel()) {
                                 mod.getClientBaritone().getPathingBehavior().requestPause();
                                 LookHelper.lookAt(mod, ghast.get().getEyePosition());
@@ -506,12 +433,12 @@ public class MobDefenseChain extends SingleTaskChain {
 
                         Vec3 delta = mod.getPlayer().position().subtract(expectedHit);
 
-                        //Debug.logMessage("EXPECTED HIT OFFSET: " + delta + " ( " + projectile.gravity + ")");
-
                         double horizontalDistanceSq = delta.x * delta.x + delta.z * delta.z;
                         double verticalDistance = abs(delta.y);
                         if (horizontalDistanceSq < ARROW_KEEP_DISTANCE_HORIZONTAL * ARROW_KEEP_DISTANCE_HORIZONTAL && verticalDistance < ARROW_KEEP_DISTANCE_VERTICAL) {
-                            if (_runAwayTask == null && mod.getClientBaritone().getPathingBehavior().isSafeToCancel()) {
+                            // (a fight keeps walking at its target: no pause, no turning round to face the shooter)
+                            if (!committed
+                                    && mod.getClientBaritone().getPathingBehavior().isSafeToCancel()) {
                                 mod.getClientBaritone().getPathingBehavior().requestPause();
                                 if (projectile.projectileType instanceof Projectile projectileEntity) {
                                     Entity owner = projectileEntity.getOwner();
@@ -535,109 +462,109 @@ public class MobDefenseChain extends SingleTaskChain {
         return false;
     }
 
-    private Optional<Entity> getUniversallyDangerousMob(AltoClef mod) {
-        // Wither skeletons are dangerous because of the wither effect. Oof kinda obvious.
-        // If we merely force field them, we will run into them and get the wither effect which will kill us.
-        Optional<Entity> warden = mod.getEntityTracker().getClosestEntity(Warden.class);
-        if (warden.isPresent()) {
-            double range = SAFE_KEEP_DISTANCE - 2;
-            if (warden.get().distanceToSqr(mod.getPlayer()) < range * range && EntityHelper.isAngryAtPlayer(mod, warden.get())) {
-                return warden;
-            }
-        }
-        Optional<Entity> wither = mod.getEntityTracker().getClosestEntity(WitherBoss.class);
-        if (wither.isPresent()) {
-            double range = SAFE_KEEP_DISTANCE - 2;
-            if (wither.get().distanceToSqr(mod.getPlayer()) < range * range && EntityHelper.isAngryAtPlayer(mod, wither.get())) {
-                return wither;
-            }
-        }
-        Optional<Entity> witherSkeleton = mod.getEntityTracker().getClosestEntity(WitherSkeleton.class);
-        if (witherSkeleton.isPresent()) {
-            double range = SAFE_KEEP_DISTANCE - 2;
-            if (witherSkeleton.get().distanceToSqr(mod.getPlayer()) < range * range && EntityHelper.isAngryAtPlayer(mod, witherSkeleton.get())) {
-                return witherSkeleton;
-            }
-        }
-        // Hoglins are dangerous because we can't push them with the force field.
-        // If we merely force field them and stand still our health will slowly be chipped away until we die
-        Optional<Entity> hoglin = mod.getEntityTracker().getClosestEntity(Hoglin.class);
-        if (hoglin.isPresent()) {
-            double range = SAFE_KEEP_DISTANCE - 2;
-            if (hoglin.get().distanceToSqr(mod.getPlayer()) < range * range && EntityHelper.isAngryAtPlayer(mod, hoglin.get())) {
-                return hoglin;
-            }
-        }
-        Optional<Entity> zoglin = mod.getEntityTracker().getClosestEntity(Zoglin.class);
-        if (zoglin.isPresent()) {
-            double range = SAFE_KEEP_DISTANCE - 2;
-            if (zoglin.get().distanceToSqr(mod.getPlayer()) < range * range && EntityHelper.isAngryAtPlayer(mod, zoglin.get())) {
-                return zoglin;
-            }
-        }
-        Optional<Entity> piglinBrute = mod.getEntityTracker().getClosestEntity(PiglinBrute.class);
-        if (piglinBrute.isPresent()) {
-            double range = SAFE_KEEP_DISTANCE - 2;
-            if (piglinBrute.get().distanceToSqr(mod.getPlayer()) < range * range && EntityHelper.isAngryAtPlayer(mod, piglinBrute.get())) {
-                return piglinBrute;
-            }
-        }
-        Optional<Entity> vindicator = mod.getEntityTracker().getClosestEntity(Vindicator.class);
-        if (vindicator.isPresent()) {
-            double range = SAFE_KEEP_DISTANCE - 2;
-            if (vindicator.get().distanceToSqr(mod.getPlayer()) < range * range && EntityHelper.isAngryAtPlayer(mod, vindicator.get())) {
-                return vindicator;
-            }
-        }
-        return Optional.empty();
+    private static boolean hasShield(AltoClef mod) {
+        return mod.getItemStorage().hasItem(Items.SHIELD) || mod.getItemStorage().hasItemInOffhand(Items.SHIELD);
     }
 
-    private boolean isInDanger(AltoClef mod) {
-        Optional<Entity> witch = mod.getEntityTracker().getClosestEntity(Witch.class);
-        boolean hasFood = mod.getFoodChain().hasFood();
-        float health = mod.getPlayer().getHealth();
-        if (health <= 10 && hasFood && witch.isEmpty()) {
-            return true;
+    // fight / flee / eat, worked out once per tick no matter how many things ask (the food chain asks a lot, needsToEat
+    // is everywhere). the answer lives here because the hostile list and the reach rules do
+    public CombatRules.Stance getCombatStance(AltoClef mod) {
+        if (!AltoClef.inGame()) return CombatRules.Stance.CALM;
+        snapshot(mod);
+        return _stance;
+    }
+
+    // the whole picture, built once per game tick: the machine moves, and the stance and the crit counts follow from it
+    private void snapshot(AltoClef mod) {
+        long now = mod.getWorld().getGameTime();
+        if (now == _snapshotTick) return;
+        _snapshotTick = now;
+
+        LocalPlayer player = mod.getPlayer();
+        Creeper fusing = getClosestFusingCreeper(mod);
+        double fuseDistance = fusing == null ? Double.POSITIVE_INFINITY : fusing.distanceTo(player);
+        // the off switch: no commitments, mobs are scenery. the safety stays (fire, falls, the arrow shield, the aura at what
+        // is on us), and the foes are still counted for the stance and the crits
+        boolean enabled = Baritone.settings().altoMobDefense.value && Baritone.settings().altoKillOrAvoidAnnoyingHostiles.value
+                && Baritone.settings().altoCommitCombat.value;
+        _brain.tick(mod, now, fuseDistance <= CombatRules.CREEPER_RANGE, enabled);
+        stepCreepers(mod, now);
+        _stance = _brain.stance();
+        _meleeNear = _brain.meleeNear();
+        _meleeAround = _brain.meleeAround();
+    }
+
+    // the creeper preempt moves once per tick too, wheel or not, so its 2.5 s clock is a real 2.5 s
+    private void stepCreepers(AltoClef mod, long now) {
+        LocalPlayer player = mod.getPlayer();
+        Dimension dimension = WorldHelper.getCurrentDimension();
+        if (player != _creeperPlayer || dimension != _creeperDimension) {
+            _creeperStep.reset();
+            _creeperPlayer = player;
+            _creeperDimension = dimension;
         }
-        if (mod.getPlayer().hasEffect(MobEffects.WITHER) ||
-                (mod.getPlayer().hasEffect(MobEffects.POISON) && witch.isEmpty())) {
-            return true;
-        }
-        if (isVulnurable(mod)) {
-            // If hostile mobs are nearby...
-            try {
-                LocalPlayer player = mod.getPlayer();
-                List<Entity> hostiles = mod.getEntityTracker().getHostiles();
-                if (!hostiles.isEmpty()) {
-                    synchronized (BaritoneHelper.MINECRAFT_LOCK) {
-                        for (Entity entity : hostiles) {
-                            if (entity.closerThan(player, SAFE_KEEP_DISTANCE) && !mod.getBehaviour().shouldExcludeFromForcefield(entity) && EntityHelper.isAngryAtPlayer(mod, entity)) {
-                                return true;
-                            }
-                        }
-                    }
+        List<CreeperStep.Seen> seen = new ArrayList<>();
+        List<int[]> ahead = null;
+        try {
+            for (Creeper creeper : mod.getEntityTracker().getTrackedEntities(Creeper.class)) {
+                if (!creeper.isAlive()) continue;
+                double distance = creeper.distanceTo(player);
+                if (distance > CreeperStep.PATH_RANGE) continue;
+                // swell dir and ignited are both synced to the client, so the fuse counts from its very first tick
+                boolean lit = creeper.getSwellDir() > 0 || creeper.isIgnited();
+                boolean pathNear = false;
+                if (lit && distance > CreeperStep.TRIGGER) {
+                    if (ahead == null) ahead = pathAhead(mod);
+                    pathNear = CreeperStep.pathPassesNear(creeper.getX(), creeper.getY(), creeper.getZ(), ahead);
                 }
-            } catch (Exception e) {
-                Debug.logWarning("Weird multithread exception. Will fix later.");
+                // swell progress above zero = the fuse still has charge, even when it is deflating (swell dir -1)
+                seen.add(new CreeperStep.Seen(creeper.getId(), lit, distance, pathNear, lit || creeper.getSwelling(1) > 0.001f));
             }
+        } catch (ConcurrentModificationException | ArrayIndexOutOfBoundsException | NullPointerException e) {
+            // same weirdness as getClosestFusingCreeper. a tick with no creepers ends a step, the next tick starts it again
+            seen.clear();
         }
-        return false;
+        boolean shieldReady = hasShield(mod) && !mod.getEntityTracker().entityFound(ThrownPotion.class)
+                && !player.getCooldowns().isOnCooldown(new ItemStack(StorageHelper.getItemStackInSlot(PlayerSlot.OFFHAND_SLOT).getItem()));
+        CreeperStep.Event event = _creeperStep.step(now, seen, shieldReady);
+        if (event == CreeperStep.Event.START && _creeperStep.shouldLog()) {
+            Debug.logInternal(CombatLog.creeperStep(dimension, _creeperStep.startedAt()));
+        }
     }
 
-    private boolean isVulnurable(AltoClef mod) {
-        int armor = mod.getPlayer().getArmorValue();
-        float health = mod.getPlayer().getHealth();
-        if (armor <= 15 && health < 3) return true;
-        if (armor < 10 && health < 10) return true;
-        return armor < 5 && health < 18;
+    // the next few nodes of the path we are walking, as block corners. empty when nothing is pathing
+    private static List<int[]> pathAhead(AltoClef mod) {
+        List<int[]> nodes = new ArrayList<>();
+        IPathExecutor current = mod.getClientBaritone().getPathingBehavior().getCurrent();
+        if (current == null) return nodes;
+        IPath path = current.getPath();
+        List<BetterBlockPos> positions = path.positions();
+        int from = Math.max(0, current.getPosition());
+        for (int i = from; i < positions.size() && i <= from + CreeperStep.PATH_LOOKAHEAD; i++) {
+            BetterBlockPos p = positions.get(i);
+            nodes.add(new int[]{p.x, p.y, p.z});
+        }
+        return nodes;
     }
 
-    public void setTargetEntity(Entity entity) {
-        _targetEntity = entity;
+    // a shooter has a line on us right now (the heal meal does not sit down in front of one)
+    public boolean isShotAt(AltoClef mod) {
+        if (!AltoClef.inGame()) return false;
+        snapshot(mod);
+        return _brain.shotAt();
     }
 
-    public void resetTargetEntity() {
-        _targetEntity = null;
+    // melee mobs we are dealing with within contact range, and within the swarm range
+    public int meleeNear(AltoClef mod) {
+        if (!AltoClef.inGame()) return 0;
+        snapshot(mod);
+        return _meleeNear;
+    }
+
+    public int meleeAround(AltoClef mod) {
+        if (!AltoClef.inGame()) return 0;
+        snapshot(mod);
+        return _meleeAround;
     }
 
     public void setForceFieldRange(double range) {
@@ -646,10 +573,6 @@ public class MobDefenseChain extends SingleTaskChain {
 
     public void resetForceField() {
         _killAura.setRange(Double.POSITIVE_INFINITY);
-    }
-
-    public boolean isDoingAcrobatics() {
-        return _doingFunkyStuff;
     }
 
     public boolean isPuttingOutFire() {
@@ -664,7 +587,11 @@ public class MobDefenseChain extends SingleTaskChain {
 
     @Override
     protected void onTaskFinish(AltoClef mod) {
-        // Task is done, so I guess we move on?
+        // this used to be "i guess we move on?" which is the whole bug: the finished task stayed installed, never ticked,
+        // and the priority it was started with kept the wheel for over a minute. let go of it properly
+        Task done = _mainTask;
+        _mainTask = null;
+        if (done != null) done.stop(mod);
     }
 
     @Override

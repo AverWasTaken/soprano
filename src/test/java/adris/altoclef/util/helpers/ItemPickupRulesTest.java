@@ -1,5 +1,6 @@
 package adris.altoclef.util.helpers;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
@@ -145,5 +146,54 @@ public class ItemPickupRulesTest {
         Grid g = lake();
         g.set(5, 0, 3, Cell.STONE);
         assertTrue(ItemPickupRules.isPickupSafe(6.4, 0.6, 3.5, true, g));
+    }
+
+    @Test
+    public void aDropThatVanishedUnderOurFeetWasPickedUp() {
+        assertTrue(ItemPickupRules.collected(true, 0.5));
+        assertTrue(ItemPickupRules.collected(true, 3.9));
+    }
+
+    @Test
+    public void aDropThatVanishedFarAwayWasNotUs() {
+        // despawned, or a villager got it: still the search's problem
+        assertFalse(ItemPickupRules.collected(true, 12));
+    }
+
+    @Test
+    public void aDropThatIsStillThereIsNotCollected() {
+        assertFalse(ItemPickupRules.collected(false, 0.5));
+    }
+
+    @Test
+    public void aPartlyFullStackOfTheSameThingHasRoom() {
+        // full bag, cobble at 60, a drop of 10 more: 4 fit and vanilla takes them
+        assertTrue(ItemPickupRules.hasRoom(new int[]{64, 60, 64}, new boolean[]{false, true, false}, 64));
+    }
+
+    @Test
+    public void aFullBagOfOtherThingsHasNoRoom() {
+        assertFalse(ItemPickupRules.hasRoom(new int[]{64, 64, 12}, new boolean[]{true, false, false}, 64));
+    }
+
+    @Test
+    public void anEmptySlotIsRoom() {
+        assertTrue(ItemPickupRules.hasRoom(new int[]{64, 0}, new boolean[]{false, false}, 64));
+    }
+
+    @Test
+    public void aDropThatFitsEvenPartlyIsJustPickedUp() {
+        assertEquals(ItemPickupRules.Room.FITS, ItemPickupRules.room(true, true));
+        assertEquals(ItemPickupRules.Room.FITS, ItemPickupRules.room(true, false));
+    }
+
+    @Test
+    public void aDropWithNoRoomMakesRoomWhenSomethingCanGo() {
+        assertEquals(ItemPickupRules.Room.MAKE_ROOM, ItemPickupRules.room(false, true));
+    }
+
+    @Test
+    public void aDropWithNoRoomAndNothingToThrowIsGivenUp() {
+        assertEquals(ItemPickupRules.Room.GIVE_UP, ItemPickupRules.room(false, false));
     }
 }

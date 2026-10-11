@@ -1,6 +1,7 @@
 package adris.altoclef.tasks.speedrun.gamer.tasks;
 
 import adris.altoclef.AltoClef;
+import adris.altoclef.tasks.entity.AbstractKillEntityTask;
 import adris.altoclef.util.helpers.SeenFilter;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.world.FrameGeometry;
@@ -86,11 +87,11 @@ public final class StrongholdScan {
                 Blocks.SPAWNER);
     }
 
-    // marvion's trick: after fiddling with eyes the hand is full of eye, put a sword back so a zombie does not get a free hit
+    // marvion's trick: after fiddling with eyes the hand is full of eye, put a weapon back so a zombie does not get a free
+    // hit. the best one we carry (an axe if that is the kit, the kill tasks make the same pick), not a fixed list of swords
     public static void swordAfterEye(AltoClef mod) {
         if (mod.getPlayer().getMainHandItem().is(Items.ENDER_EYE)) {
-            mod.getSlotHandler().forceEquipItem(Items.NETHERITE_SWORD, Items.DIAMOND_SWORD, Items.IRON_SWORD,
-                    Items.STONE_SWORD, Items.WOODEN_SWORD);
+            AbstractKillEntityTask.equipWeapon(mod);
         }
     }
 

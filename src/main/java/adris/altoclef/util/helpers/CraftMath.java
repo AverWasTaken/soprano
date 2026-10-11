@@ -21,6 +21,13 @@ public final class CraftMath {
         return (int) Math.ceil((double) wanted / Math.max(1, outputCount));
     }
 
+    // can a quick move take the output, or would it craft more than we wanted. one craft in the grid is one craft either way,
+    // so wanting 2 planks out of a log's 4 is no reason to go through the cursor: the pickup left 4 planks in hand that nothing
+    // put away until the cursor watchdog did, 3 s later, on every plank and stick of the opening crafts
+    public static boolean quickMoveCraftsNoExtra(int wanted, int craftCount, int multiples) {
+        return wanted >= craftCount || (multiples == 1 && wanted > 0);
+    }
+
     // slots: one entry per non-empty recipe slot, holding every item that can go in that slot (planks of any wood,
     // one hay block, three wheat slots...). have: how many of an item we own, grid contents included. cap stops the
     // search early, 99999999 wanted means we never care about more than what the inventory can give anyway.

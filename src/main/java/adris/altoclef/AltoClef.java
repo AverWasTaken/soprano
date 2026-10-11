@@ -12,10 +12,14 @@ import adris.altoclef.trackers.*;
 import adris.altoclef.trackers.storage.ContainerSubTracker;
 import adris.altoclef.trackers.storage.ItemStorageTracker;
 import adris.altoclef.ui.CommandStatusOverlay;
+import adris.altoclef.ui.GamerHudOverlay;
 import adris.altoclef.ui.MessagePriority;
 import adris.altoclef.ui.MessageSender;
 import adris.altoclef.util.helpers.InputHelper;
 import adris.altoclef.util.helpers.SeenFilter;
+import adris.altoclef.util.helpers.StorageHelper;
+import adris.altoclef.util.helpers.WorldHelper;
+import baritone.api.utils.Dimension;
 import baritone.altoclef.BaritoneSettingsScope;
 import baritone.Baritone;
 import baritone.altoclef.AltoClefSettings;
@@ -67,9 +71,16 @@ public class AltoClef {
     private EntityTracker _entityTracker;
     private BlockTracker _blockTracker;
     private SimpleChunkTracker _chunkTracker;
+    // every "leave that alone" anybody decided, the trackers ask it before they offer a thing (see Bans)
+    private final Bans _bans = new Bans(Debug::logInternal);
+    private int _banToolTicks;
+    // the vitals line, the stuck cursor flag, the stand watch and the baritone debug tap, see Monitors
+    private final Monitors _monitors = new Monitors();
+    private Dimension _banDimension;
     private MiscBlockTracker _miscBlockTracker;
     // Renderers
     private CommandStatusOverlay _commandStatusOverlay;
+    private GamerHudOverlay _gamerHudOverlay;
     // Misc managers/input
     private MessageSender _messageSender;
     private InputControls _inputControls;
@@ -100,6 +111,8 @@ public class AltoClef {
         // This code should be run after Minecraft loads everything else in.
         // Soprano calls it from the first title screen tick (it used to be a TitleScreen mixin).
         _instance = this;
+        // baritone's quiet debug lines go to the log from here on
+        Monitors.tapBaritone();
 
         // Central Managers
         _taskRunner = new TaskRunner(this);
@@ -125,6 +138,7 @@ public class AltoClef {
 
         // Renderers
         _commandStatusOverlay = new CommandStatusOverlay();
+        _gamerHudOverlay = new GamerHudOverlay();
 
         // Misc managers
         _messageSender = new MessageSender();
@@ -144,6 +158,8 @@ public class AltoClef {
 
         // External mod initialization
         runEnqueuedPostInits();
+
+        Debug.logInternal(BuildInfo.line());
     }
 
     // Client tick. Soprano calls this at the top of its own tick (ahead of baritone's behaviors and processes), the
@@ -185,17 +201,41 @@ public class AltoClef {
             _storageTracker.setDirty();
             _containerSubTracker.onServerTick();
             _miscBlockTracker.tick();
+            tickBans();
 
             _trackerManager.tick();
             _blockTracker.preTickTask();
-            _taskRunner.tick();
-            _blockTracker.postTickTask();
+            try {
+                _taskRunner.tick();
+            } finally {
+                _blockTracker.postTickTask();
+            }
+            _monitors.onActiveTick(this);
         }
 
+        _monitors.onTick(this);
         _butler.tick();
         _messageSender.tick();
 
         _inputControls.onTickPost();
+    }
+
+    // the clock, and every second the pick tier (a few inventory looks, not worth doing 20 times a second)
+    private void tickBans() {
+        ClientLevel level = Minecraft.getInstance().level;
+        if (level == null || getPlayer() == null) {
+            return;
+        }
+        _bans.tick(level.getGameTime());
+        Dimension dim = WorldHelper.getCurrentDimension();
+        if (_banDimension != null && dim != _banDimension) {
+            _bans.dimensionLeft(_banDimension);
+        }
+        _banDimension = dim;
+        // our own count and not game time % 20, a server time correction can jump right over the 20
+        if (++_banToolTicks % 20 == 0) {
+            _bans.toolTier(StorageHelper.getCurrentMiningRequirement(this).ordinal());
+        }
     }
 
     /// GETTERS AND SETTERS
@@ -206,6 +246,13 @@ public class AltoClef {
         if (_taskRunner.isActive()) {
             _commandStatusOverlay.render(this, graphics);
         }
+        // not behind the check: after a win the runner is idle and the card is still up for a while. it works out for itself when
+        // there is nothing to draw
+        _gamerHudOverlay.render(this, graphics);
+    }
+
+    public GamerHudOverlay getGamerHudOverlay() {
+        return _gamerHudOverlay;
     }
 
     // Soprano: TaskRunner calls these as it switches on and off. Everything altoclef changes about baritone happens
@@ -262,6 +309,8 @@ public class AltoClef {
             }
             // what the gamer has seen belongs to a world that is gone too
             SeenFilter.reset();
+            // and so does what the placer told plain alto's station book
+            adris.altoclef.util.helpers.StationHook.clearPlain();
         }
     }
 
@@ -335,6 +384,10 @@ public class AltoClef {
      */
     public BlockTracker getBlockTracker() {
         return _blockTracker;
+    }
+
+    public Bans getBans() {
+        return _bans;
     }
 
     /**
@@ -451,6 +504,8 @@ public class AltoClef {
      */
     public void cancelUserTask() {
         _userTaskChain.cancel(this);
+        // the movement task's stop parked its path for a handover (keepPathOnSameGoal), a user stop is not one
+        getClientBaritone().getPathingBehavior().dropPark();
     }
 
     /**

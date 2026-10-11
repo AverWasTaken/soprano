@@ -1,6 +1,7 @@
 package adris.altoclef.tasks.construction;
 
 import adris.altoclef.AltoClef;
+import adris.altoclef.Debug;
 import adris.altoclef.TaskCatalogue;
 import adris.altoclef.tasks.InteractWithBlockTask;
 import adris.altoclef.tasks.movement.GetToBlockTask;
@@ -15,8 +16,11 @@ import baritone.api.utils.input.Input;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Vec3i;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
+
+import java.util.List;
 
 /**
  * Places obsidian at a position using buckets and a cast.
@@ -37,12 +41,21 @@ public class PlaceObsidianBucketTask extends Task {
     };
     private final MovementProgressChecker _progressChecker = new MovementProgressChecker();
     private final BlockPos _pos;
+    // cells cast before this one, whose water may still be sitting on top of them
+    private final List<BlockPos> _earlierCells;
 
     private BlockPos _currentCastTarget;
     private BlockPos _currentDestroyTarget;
+    // said once, and the ban handed out once
+    private boolean _ruinSaid;
 
     public PlaceObsidianBucketTask(BlockPos pos) {
+        this(pos, List.of());
+    }
+
+    public PlaceObsidianBucketTask(BlockPos pos, List<BlockPos> earlierCells) {
         _pos = pos;
+        _earlierCells = earlierCells;
     }
 
     @Override
@@ -86,8 +99,24 @@ public class PlaceObsidianBucketTask extends Task {
             return new ClearLiquidTask(_pos.above());
         }
 
+        // a block in the way that no tool we hold gets through in time (obsidian, under anything short of a diamond pick)
+        // ruins this origin before we have fetched a single bucket for it. the parent moves the frame when it sees the ban
+        if (ruined(mod)) {
+            setDebugState("Cast ruined, waiting for the frame to move");
+            return null;
+        }
+
         // Make sure we have a water bucket
-        if (!mod.getItemStorage().hasItem(Items.WATER_BUCKET)) {
+        // the cast in flight (lava down, water on top, bucket empty) is supposed to have no water bucket, the obsidian
+        // is a tick away. asking for one here sent us wandering for a lake with the water sitting right above us
+        boolean castInFlight = isWater(mod, _pos.above()) && mod.getWorld().getBlockState(_pos).getBlock() == Blocks.LAVA;
+        if (!mod.getItemStorage().hasItem(Items.WATER_BUCKET) && !castInFlight) {
+            // the water we left on the cells before this one is a bucket we already own
+            BlockPos leftover = leftoverWater(mod);
+            if (leftover != null) {
+                _progressChecker.reset();
+                return new ClearLiquidTask(leftover);
+            }
             _progressChecker.reset();
             return TaskCatalogue.getItemTask(Items.WATER_BUCKET, 1);
         }
@@ -189,6 +218,52 @@ public class PlaceObsidianBucketTask extends Task {
                 return null;
             }
             return new InteractWithBlockTask(new ItemTarget(Items.WATER_BUCKET, 1), Direction.WEST, _pos.offset(1, 1, 0), true);
+        }
+        return null;
+    }
+
+    // the cells the cast clears before it can put anything down: the lava cell, the water cell and the air over that. the
+    // same three cells the destroy steps below go for, so a cell that only has water or lava in it is not a question
+    private boolean ruined(AltoClef mod) {
+        BlockPos[] cells = {_pos, _pos.above(), _pos.above(2)};
+        String[] roles = {"lava", "water", "air over the water"};
+        for (int i = 0; i < cells.length; i++) {
+            if (!WorldHelper.isSolid(mod, cells[i]) || !WorldHelper.tooSlowToBreak(mod, cells[i])) {
+                continue;
+            }
+            // the lava cell turning to obsidian is the cast working, the tracker just hasn't caught up with it yet
+            if (i == 0 && mod.getWorld().getBlockState(cells[i]).getBlock() == Blocks.OBSIDIAN) {
+                continue;
+            }
+            if (!_ruinSaid) {
+                _ruinSaid = true;
+                Debug.logMessage("cast ruined: " + BuiltInRegistries.BLOCK.getKey(mod.getWorld().getBlockState(cells[i]).getBlock()).getPath()
+                        + " at " + cells[i].toShortString() + " where the " + roles[i] + " cell goes, moving the frame");
+                mod.getClientBaritone().getPathingBehavior().forceCancel();
+                // the parent drops its origin when the frame cell is unreachable, and the pool task gives up on it the same way
+                mod.getBlockTracker().requestBlockUnreachable(_pos, 0, "something in the cast takes too long to break");
+            }
+            return true;
+        }
+        return false;
+    }
+
+    private static boolean isWater(AltoClef mod, BlockPos pos) {
+        return mod.getWorld().getBlockState(pos).getBlock() == Blocks.WATER;
+    }
+
+    // the world, not the tracker: the tracker is a few ticks behind a cast and this runs right after one
+    private BlockPos leftoverWater(AltoClef mod) {
+        if (mod.getWorld().getBlockState(_pos).getBlock() == Blocks.OBSIDIAN && WorldHelper.isSourceBlock(mod, _pos.above(), true)) {
+            return _pos.above();
+        }
+        for (BlockPos cell : _earlierCells) {
+            if (cell.equals(_pos) || mod.getWorld().getBlockState(cell).getBlock() != Blocks.OBSIDIAN) {
+                continue;
+            }
+            if (WorldHelper.isSourceBlock(mod, cell.above(), true)) {
+                return cell.above();
+            }
         }
         return null;
     }

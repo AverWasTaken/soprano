@@ -8,6 +8,7 @@ import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WorldHelper;
+import java.util.Objects;
 import java.util.Optional;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.Entity;
@@ -17,14 +18,17 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.Vec3;
 
 public class ConstructIronGolemTask extends Task {
+    // _position gets filled in by onTick when nobody asked for one, so identity is what the caller passed in
+    private final BlockPos _requestedPosition;
     private BlockPos _position;
     private boolean _canBeFinished = false;
 
     public ConstructIronGolemTask() {
-
+        _requestedPosition = null;
     }
 
     public ConstructIronGolemTask(BlockPos pos) {
+        _requestedPosition = pos;
         _position = pos;
     }
 
@@ -112,14 +116,14 @@ public class ConstructIronGolemTask extends Task {
 
     @Override
     protected boolean isEqual(Task other) {
-        return other instanceof ConstructIronGolemTask;
+        return other instanceof ConstructIronGolemTask task && Objects.equals(task._requestedPosition, _requestedPosition);
     }
 
     @Override
     public boolean isFinished(AltoClef mod) {
         if (_position == null) return false;
         Optional<Entity> closestIronGolem = mod.getEntityTracker().getClosestEntity(new Vec3(_position.getX(), _position.getY(), _position.getZ()), IronGolem.class);
-        return closestIronGolem.isPresent() && closestIronGolem.get().blockPosition().closerThan(_position, 2) && _canBeFinished;
+        return closestIronGolem.isPresent() && closestIronGolem.get().blockPosition().closerThan(_position, 3) && _canBeFinished;
     }
 
     @Override

@@ -51,7 +51,7 @@ public class PerTypeScanTest {
     }
 
     private Map<Block, List<BlockPos>> run(Block... types) {
-        return PerTypeScan.run(types, MAX, this::fakeSearch, world::get);
+        return PerTypeScan.run(types, MAX, (asked, max) -> PerTypeScan.Scanned.of(fakeSearch(asked, max)), world::get);
     }
 
     @Test
@@ -126,9 +126,26 @@ public class PerTypeScanTest {
         // the scan is saturated by something that isn't ours (block changed under it), must still stop
         put(Blocks.COAL_ORE, 100, 0);
         Map<Block, List<BlockPos>> found = PerTypeScan.run(new Block[]{Blocks.IRON_ORE, Blocks.EMERALD_ORE}, MAX,
-                (types, max) -> fakeSearch(new Block[]{Blocks.COAL_ORE}, max), world::get);
+                (types, max) -> PerTypeScan.Scanned.of(fakeSearch(new Block[]{Blocks.COAL_ORE}, max)), world::get);
         assertTrue(found.get(Blocks.IRON_ORE).isEmpty());
         assertEquals(1, scans);
+    }
+
+    @Test
+    public void prunedHitsAreNotTheWorldRunningOut() {
+        // a scan whose budget got eaten by hits that prune threw away comes back short, but it saw a full budget of
+        // them. that used to read as "swept everything": iron went home empty and got marked as covered
+        put(Blocks.COAL_ORE, 100, 0);
+        put(Blocks.IRON_ORE, 3, 500);
+        Map<Block, List<BlockPos>> found = PerTypeScan.run(new Block[]{Blocks.COAL_ORE, Blocks.IRON_ORE}, MAX, (types, max) -> {
+            List<BlockPos> hits = fakeSearch(types, max);
+            // half the coal gets pruned: survivors are short of max, raw still saw a full budget
+            int kept = hits.size() > MAX ? MAX : hits.size();
+            return new PerTypeScan.Scanned(new ArrayList<>(hits.subList(0, kept)), hits.size());
+        }, world::get);
+        assertEquals(MAX, found.get(Blocks.COAL_ORE).size());
+        assertEquals(3, found.get(Blocks.IRON_ORE).size());
+        assertEquals(2, scans);
     }
 
     @Test

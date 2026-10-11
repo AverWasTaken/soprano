@@ -20,6 +20,7 @@ import adris.altoclef.ui.HudText;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Stream;
 import net.minecraft.core.BlockPos;
@@ -44,14 +45,28 @@ public class SmeltInBlastFurnaceTask extends ResourceTask {
     private final DoSmeltInBlastFurnaceTask _doTask;
 
     public SmeltInBlastFurnaceTask(SmeltTarget[] targets) {
+        this(targets, null);
+    }
+
+    // existing != null means use that blast furnace and never craft or place one, see canMakeNew below
+    public SmeltInBlastFurnaceTask(SmeltTarget[] targets, BlockPos existing) {
         super(extractItemTargets(targets));
         _targets = targets;
         // TODO: Do them in order.
-        _doTask = new DoSmeltInBlastFurnaceTask(targets[0]);
+        _doTask = new DoSmeltInBlastFurnaceTask(targets[0], existing);
     }
 
     public SmeltInBlastFurnaceTask(SmeltTarget target) {
         this(new SmeltTarget[]{target});
+    }
+
+    public SmeltInBlastFurnaceTask(SmeltTarget target, BlockPos existing) {
+        this(new SmeltTarget[]{target}, existing);
+    }
+
+    // has anything gone in the blast furnace (as far as the last open screen showed us)
+    public boolean hasStartedSmelting() {
+        return _doTask.hasStartedSmelting();
     }
 
     private static ItemTarget[] extractItemTargets(SmeltTarget[] recipeTargets) {
@@ -142,9 +157,16 @@ public class SmeltInBlastFurnaceTask extends ResourceTask {
         private final BlastFurnaceCache _blastFurnaceCache = new BlastFurnaceCache();
         private final ItemTarget _allMaterials;
         private boolean _ignoreMaterials;
+        // non null: the one blast furnace we were sent to, and we never make our own
+        private final BlockPos _existing;
+        // async smelting: everything is in the blast furnace and we walked away, this task is done and must not walk back
+        private boolean _loaded;
+        // the slot is full of one fuel, the bag has only another, see stuckShort
+        private final FuelShortage _cannotAdd = new FuelShortage();
 
-        public DoSmeltInBlastFurnaceTask(SmeltTarget target) {
+        public DoSmeltInBlastFurnaceTask(SmeltTarget target, BlockPos existing) {
             super(Blocks.BLAST_FURNACE, new ItemTarget(Items.BLAST_FURNACE));
+            _existing = existing;
             _target = target;
             _allMaterials = new ItemTarget(Stream.concat(Arrays.stream(_target.getMaterial().getMatches()), Arrays.stream(_target.getOptionalMaterials())).toArray(Item[]::new), _target.getMaterial().getTargetCount());
         }
@@ -156,7 +178,7 @@ public class SmeltInBlastFurnaceTask extends ResourceTask {
         @Override
         protected boolean isSubTaskEqual(DoStuffInContainerTask other) {
             if (other instanceof DoSmeltInBlastFurnaceTask task) {
-                return task._target.equals(_target) && task._ignoreMaterials == _ignoreMaterials;
+                return task._target.equals(_target) && task._ignoreMaterials == _ignoreMaterials && Objects.equals(task._existing, _existing);
             }
             return false;
         }
@@ -167,7 +189,15 @@ public class SmeltInBlastFurnaceTask extends ResourceTask {
         }
 
         @Override
+        public boolean isFinished(AltoClef mod) {
+            return _loaded;
+        }
+
+        @Override
         protected Task onTick(AltoClef mod) {
+            if (_loaded) {
+                return null;
+            }
             mod.getBehaviour().addProtectedItems(ItemHelper.PLANKS);
             mod.getBehaviour().addProtectedItems(Items.COAL);
             mod.getBehaviour().addProtectedItems(_allMaterials.getMatches());
@@ -185,24 +215,23 @@ public class SmeltInBlastFurnaceTask extends ResourceTask {
                     - (outputTarget.matches(_blastFurnaceCache.outputSlot.getItem()) ? _blastFurnaceCache.outputSlot.getCount() : 0);
             double totalFuelInBlastFurnace = ItemHelper.getFuelAmount(_blastFurnaceCache.fuelSlot) + _blastFurnaceCache.burningFuelCount + _blastFurnaceCache.burnPercentage;
             // Fuel needed = (mat_target - out_in_inventory - out_in_furnace - totalFuelInFurnace)
-            double fuelNeeded = _ignoreMaterials
-                    ? Math.min(materialTarget.matches(_blastFurnaceCache.materialSlot.getItem()) ? _blastFurnaceCache.materialSlot.getCount() : 0, materialTarget.getTargetCount())
-                    : materialTarget.getTargetCount()
-                    /* - mod.getItemStorage().getItemCountInventoryOnly(materialTarget.getMatches()) */
-                    - mod.getItemStorage().getItemCountInventoryOnly(outputTarget.getMatches())
-                    - (outputTarget.matches(_blastFurnaceCache.outputSlot.getItem()) ? _blastFurnaceCache.outputSlot.getCount() : 0)
-                    - totalFuelInBlastFurnace;
+            // the fuel already in the blast furnace comes off in both modes, same fix as the smoker
+            double fuelNeeded = FuelShortage.needed(_ignoreMaterials,
+                    materialTarget.matches(_blastFurnaceCache.materialSlot.getItem()) ? _blastFurnaceCache.materialSlot.getCount() : 0,
+                    materialTarget.getTargetCount(), mod.getItemStorage().getItemCountInventoryOnly(outputTarget.getMatches()),
+                    outputTarget.matches(_blastFurnaceCache.outputSlot.getItem()) ? _blastFurnaceCache.outputSlot.getCount() : 0, totalFuelInBlastFurnace);
 
             // We don't have enough materials...
             if (mod.getItemStorage().getItemCountInventoryOnly(materialTarget.getMatches()) < materialsNeeded) {
                 setDebugState("Getting Materials");
-                return getMaterialTask(_target.getMaterial());
+                // the shortfall, not the whole target, same as the furnace
+                return getMaterialTask(new ItemTarget(_target.getMaterial(), materialsNeeded));
             }
 
             // We don't have enough fuel...
             if (_blastFurnaceCache.burningFuelCount <= 0 && StorageHelper.calculateInventoryFuelCount(mod) < fuelNeeded) {
                 setDebugState("Getting Fuel");
-                return new CollectFuelTask(fuelNeeded + 1);
+                return new CollectFuelTask(fuelNeeded);
             }
 
             // Make sure our materials are accessible in our inventory
@@ -222,6 +251,8 @@ public class SmeltInBlastFurnaceTask extends ResourceTask {
 
         @Override
         protected Task containerSubTask(AltoClef mod) {
+            // the station pickup reads this, it must not break a table under a half done load
+            AsyncSmelting.working(mod.getWorld().getGameTime());
             // We have appropriate materials/fuel.
             /*
              * - If output slot has something, receive it.
@@ -302,61 +333,72 @@ public class SmeltInBlastFurnaceTask extends ResourceTask {
                     - (outputTarget.matches(_furnaceCache.outputSlot.getItem()) ? _furnaceCache.outputSlot.getCount() : 0)
                     - totalFuelInFurnace;
              */
-            // Fill in fuel if needed
-            if (fuel.isEmpty() || ItemHelper.isFuel(fuel.getItem())) {
-                double currentlyCached = StorageHelper.getBlastFurnaceFuel() + StorageHelper.getBlastFurnaceCookPercent();
-                double needs = material.getCount() - currentlyCached;
-                if (needs > 0) {
-                    // Get best fuel to fill
-                    double closestDelta = Double.NEGATIVE_INFINITY;
-                    ItemStack bestStack = null;
-                    for (ItemStack stack : mod.getItemStorage().getItemStacksPlayerInventory(true)) {
-                        if (AltoSettings.isSupportedFuel(stack.getItem())) {
-                            double fuelAmount = ItemHelper.getFuelAmount(stack.getItem()) * stack.getCount();
-                            double delta = needs - fuelAmount;
-                            if (
-                                    (bestStack == null) ||
-                                            // If our best is above, prioritize lower values
-                                            (closestDelta > 0 && delta < closestDelta) ||
-                                            // If our best is below, prioritize higher below values
-                                            (closestDelta < 0 && delta < 0 && delta > closestDelta)
-                            ) {
-                                bestStack = stack;
-                                closestDelta = delta;
-                            }
-                        }
-                    }
-                    if (bestStack != null) {
-                        setDebugState("Filling fuel");
-                        return new MoveItemToSlotFromInventoryTask(new ItemTarget(bestStack.getItem(), bestStack.getCount()), BlastFurnaceSlot.INPUT_SLOT_FUEL);
-                    }
-                }
+            // Fill in fuel if needed. the slot counts toward the job and what is in it stays (FuelPolicy.chooseFor), FuelPolicy also
+            // keeps the wood the run still has plans for. lit is /100 like the smoker's (StorageHelper.litItems)
+            double lit = StorageHelper.getBlastFurnaceFuel();
+            double progress = StorageHelper.getBlastFurnaceCookPercent();
+            var bag = mod.getItemStorage().getItemStacksPlayerInventory(true);
+            var pick = FuelShortage.fill(bag, fuel, material.getCount(), lit, progress, AltoSettings::isSupportedFuel, ItemHelper::getFuelAmount);
+            if (pick != null) {
+                setDebugState("Filling fuel");
+                return new MoveItemToSlotFromInventoryTask(new ItemTarget(pick.stack().getItem(), pick.count()), BlastFurnaceSlot.INPUT_SLOT_FUEL);
             }
 
+            // a slot full of one fuel with only another in the bag: swap it out when that covers the whole job alone, otherwise leave
+            // short and the job is due when the fuel is (the story is in the furnace task, AsyncSmelting.cookable)
+            BlockPos at = getTargetContainerPosition();
+            double slotFuel = fuel.isEmpty() ? 0 : ItemHelper.getFuelAmount(fuel);
+            boolean covered = AsyncSmelting.fuelCovers(slotFuel, lit, progress, material.getCount());
+            boolean stuck = _cannotAdd.confirmed(FuelShortage.stuckShort(material.getCount(), lit, progress, slotFuel,
+                    StorageHelper.calculateInventoryFuelCount(mod)), mod.getWorld().getGameTime());
+            var swap = stuck ? FuelShortage.swap(bag, fuel, material.getCount(), lit, progress, AltoSettings::isSupportedFuel, ItemHelper::getFuelAmount) : null;
+            if (swap != null && AsyncSmelting.emptyFuelSlot(mod, BlastFurnaceSlot.INPUT_SLOT_FUEL)) {
+                // the slot comes empty first, the fill above puts the covering fuel in next tick (AsyncSmelting.emptyFuelSlot)
+                setDebugState("Taking the slot's fuel out for one that covers the job");
+                return null;
+            }
+            // what came out of the slot goes back in the bag first
+            if (AsyncSmelting.clearCursor(mod)) {
+                return null;
+            }
+
+            // loaded: the cook does not need us. the screen closes and whoever asked comes back later
+            if (at != null && !material.isEmpty() && AsyncSmelting.wants(_target.getItem()) && (covered || stuck)) {
+                setDebugState(covered ? "Loaded, leaving it to cook" : "Slot is as full as it gets, leaving it to cook");
+                AsyncSmelting.loaded(mod, at, Blocks.BLAST_FURNACE, material, _target.getItem(),
+                        AsyncSmelting.cookable(slotFuel, lit, progress, material.getCount()));
+                _loaded = true;
+                return null;
+            }
             setDebugState("Waiting...");
             return null;
         }
 
+        // stay on the one we are walking to. before we have one, go to the one we were sent to instead of whichever is nearest
+        // (they're the same unless two are close, but the router picked THIS one)
         @Override
-        protected double getCostToMakeNew(AltoClef mod) {
-            if (_blastFurnaceCache.burnPercentage > 0 || _blastFurnaceCache.burningFuelCount > 0 ||
-                    _blastFurnaceCache.fuelSlot != null || _blastFurnaceCache.materialSlot != null ||
-                    _blastFurnaceCache.outputSlot != null) {
-                return 9999999.0;
-            }
-            if (mod.getItemStorage().getItemCount(Items.COBBLESTONE) > 11 &&
-                    mod.getItemStorage().getItemCount(Items.RAW_IRON) > 5) {
-                double cost = 100.0 - 90.0 * (((double) mod.getItemStorage().getItemCount(new Item[]{Items.COBBLESTONE})
-                        / 8.0) + ((double) mod.getItemStorage().getItemCount(Items.RAW_IRON) / 5.0));
-                return Math.max(cost, 10.0);
-            }
-            return StorageHelper.miningRequirementMetInventory(mod, MiningRequirement.WOOD) ? 50.0 : 100.0;
+        protected BlockPos pinnedStation(AltoClef mod) {
+            BlockPos kept = getTargetContainerPosition();
+            return kept != null ? kept : _existing;
+        }
+
+        // a blast furnace is 5 iron, a furnace and three smooth stone, so a tracked one is worth the walk from anywhere. the old
+        // cost function said so by accident (it compared the cache slots to null, which they never are) and plain alto leans on it
+        @Override
+        protected double worldReach() {
+            return Double.POSITIVE_INFINITY;
         }
 
         @Override
-        protected BlockPos overrideContainerPosition(AltoClef mod) {
-            // If we have a valid container position, KEEP it.
-            return getTargetContainerPosition();
+        protected boolean canMakeNew(AltoClef mod) {
+            return _existing == null;
+        }
+
+        // the caches start as EMPTY stacks and only change while the screen is open, so anything in them means we
+        // really did put stuff in (or take stuff out of) a blast furnace
+        public boolean hasStartedSmelting() {
+            return !_blastFurnaceCache.materialSlot.isEmpty() || !_blastFurnaceCache.fuelSlot.isEmpty()
+                    || !_blastFurnaceCache.outputSlot.isEmpty() || _blastFurnaceCache.burningFuelCount > 0;
         }
 
         private void tryUpdateOpenBlastFurnace(AltoClef mod) {

@@ -52,6 +52,11 @@ public class CraftInInventoryTask extends ResourceTask {
     }
 
     @Override
+    protected boolean craftableFromHeld(AltoClef mod) {
+        return StorageHelper.hasRecipeMaterialsOrTarget(mod, _target);
+    }
+
+    @Override
     protected void onResourceStart(AltoClef mod) {
         _fullCheckFailed = false;
         ItemStack cursorStack = StorageHelper.getItemStackInCursorSlot();

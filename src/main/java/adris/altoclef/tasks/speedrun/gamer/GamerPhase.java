@@ -29,4 +29,10 @@ public enum GamerPhase {
     public boolean isTerminal() {
         return this == DONE || this == STUCK;
     }
+
+    // the phases that run the cook (the kit's COOK need, the furnace watch). from the nether on nothing loads a smoker or comes
+    // back to empty one, so meat in the bag is eaten raw whatever stands in the overworld
+    public boolean cooks() {
+        return this == GATHER || this == IRON || this == PORTAL;
+    }
 }

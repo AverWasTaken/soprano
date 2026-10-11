@@ -1,5 +1,6 @@
 package adris.altoclef;
 
+import adris.altoclef.trace.Trace;
 import adris.altoclef.util.ChatThrottle;
 import baritone.Baritone;
 import baritone.api.utils.Helper;
@@ -19,7 +20,9 @@ public class Debug {
     private static final ChatThrottle CHAT_THROTTLE = new ChatThrottle(10_000, 6);
 
     public static void logInternal(String message) {
-        System.out.println("ALTO CLEF: " + message);
+        String line = "ALTO CLEF: " + message;
+        System.out.println(line);
+        Trace.record(line);
     }
 
     public static void logInternal(String format, Object... args) {
@@ -33,6 +36,7 @@ public class Debug {
 
     public static void logMessage(String message) {
         if (canChat()) {
+            Trace.record("chat: " + message);
             Helper.HELPER.logDirect(message);
         } else {
             logInternal(message);
@@ -62,6 +66,7 @@ public class Debug {
         // swallowed repeats don't print a stack either, 520 copies of the same trace is how the log got unreadable
         if (line == null) return;
         String stacktrace = getStack(2);
+        Trace.record("ERROR: " + message);
         // the trace goes to the log file only (stderr lands there), chat gets the one line
         System.err.println(message);
         System.err.println("at:");

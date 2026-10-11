@@ -37,6 +37,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -110,7 +112,7 @@ public class VineLogPathTest {
         parkour = settings.allowParkour.value;
         climb = settings.allowClimbJumps.value;
         neos = settings.allowNeos.value;
-        experimental = settings.experimentalMovement.value;
+        experimental = settings.fastMode.value;
         sprintJumping = settings.sprintJumping.value;
         headHitters = settings.headHitters.value;
         potions = settings.considerPotionEffects.value;
@@ -119,7 +121,7 @@ public class VineLogPathTest {
         settings.allowParkour.value = true;
         settings.allowClimbJumps.value = true;
         settings.allowNeos.value = true;
-        settings.experimentalMovement.value = true;
+        settings.fastMode.value = true;
         settings.sprintJumping.value = true;
         settings.headHitters.value = true;
         settings.considerPotionEffects.value = false;
@@ -134,7 +136,7 @@ public class VineLogPathTest {
         settings.allowParkour.value = parkour;
         settings.allowClimbJumps.value = climb;
         settings.allowNeos.value = neos;
-        settings.experimentalMovement.value = experimental;
+        settings.fastMode.value = experimental;
         settings.sprintJumping.value = sprintJumping;
         settings.headHitters.value = headHitters;
         settings.considerPotionEffects.value = potions;
@@ -293,7 +295,7 @@ public class VineLogPathTest {
     }
 
     @Test
-    public void aClimbJumpIsStillThereWhenItIsTheOnlyWay() throws InterruptedException {
+    public void aClimbJumpIsStillThereWhenItIsTheOnlyWay() {
         // the trunk is across a three block gap from the ledge, the vines hang down the side facing us. the log is out of
         // arm's reach from the ledge, so getting onto the vines is the way there. nothing else crosses
         MapWorld w = pit(5);
@@ -302,13 +304,16 @@ public class VineLogPathTest {
         assertTrue(goal instanceof GoalReachBlock);
         assertFalse(goal.isInGoal(5, 64, 0));
         Result r = null;
-        // the climb sim table fills in on a background thread the first time it sees a shape, the next search gets it
-        for (int i = 0; i < 12; i++) {
+        // the climb sim table fills in on the common pool the first time a search sees a shape, the next search gets it.
+        // counting sleeps for that was a coin flip on a busy machine (every shape sat waiting for a worker and then took a
+        // few seconds to solve), so wait for the pool to actually go idle instead. a round per layer of shapes: the ones
+        // past the first grab only get asked about once the search can get that far
+        for (int round = 0; round < 6; round++) {
             r = path(w, new BetterBlockPos(8, 64, 0), goal);
             if (r.found && r.inGoal) {
                 break;
             }
-            Thread.sleep(500);
+            assertTrue("the climb sim fills never finished", ForkJoinPool.commonPool().awaitQuiescence(120, TimeUnit.SECONDS));
         }
         assertTrue(r.found && r.inGoal);
         boolean grabbed = false;

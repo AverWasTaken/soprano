@@ -136,4 +136,47 @@ public class FoodSelectorTest {
         assertFalse(FoodHelper.isSafeFood(Items.SPIDER_EYE));
         assertTrue(FoodHelper.isSafeFood(Items.GOLDEN_APPLE));
     }
+
+    @Test
+    public void cookedBeatsRawEvenOnANearlyFullStomach() {
+        // raw mutton gives 2 and wastes less at 18 hunger, which is how it used to win. cooked first, always
+        for (float hunger : new float[]{4, 12, 18}) {
+            assertEquals(Optional.of(Items.COOKED_MUTTON), pick(inv(Items.MUTTON, 9, Items.COOKED_MUTTON, 1), hunger).best());
+            assertEquals(Optional.of(Items.APPLE), pick(inv(Items.BEEF, 9, Items.APPLE, 1), hunger).best());
+        }
+    }
+
+    // the heal meal (hurt, hunger under 18) asks the selector for its food like every other meal
+    @Test
+    public void aHealingMealTakesRealFoodAndLeavesGapplesAndProtectedFoodAlone() {
+        List<ItemStack> bag = inv(Items.GOLDEN_APPLE, 3, Items.ENCHANTED_GOLDEN_APPLE, 1, Items.COOKED_PORKCHOP, 4, Items.BREAD, 2);
+        // hurt 14, hunger 15: the cooked meat or the bread, never a gapple
+        FoodSelector.Result result = FoodSelector.select(bag, stack -> true, 14, 15, 2, CONFIG);
+        assertTrue(result.best().isPresent());
+        assertNotEquals(Items.GOLDEN_APPLE, result.best().get());
+        assertNotEquals(Items.ENCHANTED_GOLDEN_APPLE, result.best().get());
+        // the gamer protects some of its food: that is not ours to eat
+        result = FoodSelector.select(bag, stack -> stack.getItem() != Items.COOKED_PORKCHOP && stack.getItem() != Items.BREAD, 14, 15, 2, CONFIG);
+        assertTrue(result.best().isEmpty());
+        // a bag with nothing but gapples heals nothing
+        assertTrue(FoodSelector.select(inv(Items.GOLDEN_APPLE, 3), stack -> true, 14, 15, 2, CONFIG).best().isEmpty());
+    }
+
+    @Test
+    public void theFoodChainConfigDefaultsLiveInCombatRules() {
+        assertEquals(adris.altoclef.util.helpers.CombatRules.HUNGRY_AT, CONFIG.alwaysEatWhenBelowHunger);
+        assertEquals(adris.altoclef.util.helpers.CombatRules.BRUISED_HEALTH, CONFIG.alwaysEatWhenBelowHealth);
+        assertEquals(10, CONFIG.alwaysEatWhenBelowHunger);
+        assertEquals(14, CONFIG.alwaysEatWhenBelowHealth);
+    }
+
+    @Test
+    public void rawChickenIsTheLastThingBeforeRottenFlesh() {
+        assertEquals(Optional.of(Items.MUTTON), pick(inv(Items.CHICKEN, 9, Items.MUTTON, 1), 10).best());
+        assertEquals(Optional.of(Items.CHICKEN), pick(inv(Items.CHICKEN, 9, Items.ROTTEN_FLESH, 4), 4).best());
+        // and the raw stuff still counts as food we hold, it is only the order that changed
+        FoodSelector.Result result = pick(inv(Items.CHICKEN, 2), 10);
+        assertEquals(Optional.of(Items.CHICKEN), result.best());
+        assertEquals(2 * Items.CHICKEN.components().get(net.minecraft.core.component.DataComponents.FOOD).nutrition(), result.foodTotal());
+    }
 }

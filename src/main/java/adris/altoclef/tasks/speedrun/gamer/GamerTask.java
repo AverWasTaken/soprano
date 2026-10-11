@@ -1,10 +1,14 @@
 package adris.altoclef.tasks.speedrun.gamer;
 
 import adris.altoclef.AltoClef;
+import adris.altoclef.BotBehaviour;
+import adris.altoclef.BuildInfo;
 import adris.altoclef.Debug;
 import adris.altoclef.eventbus.EventBus;
 import adris.altoclef.eventbus.Subscription;
 import adris.altoclef.eventbus.events.BlockPlaceEvent;
+import adris.altoclef.tasks.construction.StationBox;
+import adris.altoclef.tasks.container.AsyncSmelting;
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfigs;
 import adris.altoclef.tasks.speedrun.gamer.phases.DragonPhase;
@@ -14,18 +18,28 @@ import adris.altoclef.tasks.speedrun.gamer.phases.GatherPhase;
 import adris.altoclef.tasks.speedrun.gamer.phases.IronPhase;
 import adris.altoclef.tasks.speedrun.gamer.phases.LocatePhase;
 import adris.altoclef.tasks.speedrun.gamer.phases.NetherPhase;
+import adris.altoclef.tasks.speedrun.gamer.phases.NetherRegress;
 import adris.altoclef.tasks.speedrun.gamer.phases.OpenPhase;
 import adris.altoclef.tasks.speedrun.gamer.phases.PortalPhase;
 import adris.altoclef.tasks.speedrun.gamer.phases.ReturnPhase;
 import adris.altoclef.tasks.speedrun.gamer.phases.RoomPhase;
+import adris.altoclef.tasks.speedrun.gamer.tasks.NetherRecoverTask;
+import adris.altoclef.tasks.speedrun.gamer.tasks.NetherTripRules;
 import adris.altoclef.tasks.speedrun.gamer.tasks.RecoverItemsTask;
+import adris.altoclef.tasks.speedrun.gamer.tasks.RecoverRules;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.tasksystem.TaskChain;
+import adris.altoclef.trace.Trace;
+import adris.altoclef.trace.Vitals;
+import adris.altoclef.util.helpers.DeathStash;
 import adris.altoclef.util.helpers.ItemHelper;
+import adris.altoclef.util.helpers.StationHook;
 import baritone.Baritone;
 import baritone.altoclef.SettingsOverrides;
 import baritone.api.Settings;
 import baritone.api.utils.Dimension;
+import it.unimi.dsi.fastutil.longs.LongSet;
+import it.unimi.dsi.fastutil.longs.LongSets;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.DeathScreen;
 import net.minecraft.client.gui.screens.WinScreen;
@@ -35,11 +49,16 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
 import org.apache.commons.lang3.ArrayUtils;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 
 // beats the game: a phase state machine over PhaseHandlers with its memory in RunState (see gamer-design.md). this class is
 // the part that touches the game: facts, deaths, saving, the hud and the settings for the run. which phase we are in and
@@ -64,6 +83,8 @@ public class GamerTask extends Task {
     private final PhaseMachine machine;
     private final GamerPhase startAt;
     private final Host host = new Host();
+    // the pickup for phases that do not run their own (sweepBenches)
+    private final Workbenches benches = new Workbenches();
 
     private AltoClef mod;
     private MinecraftFacts facts;
@@ -73,8 +94,17 @@ public class GamerTask extends Task {
     // false until the first tick with a player loaded the run state. onStart runs again after every interrupt (eating, mob
     // defense) and that is only the task coming back, never a new run
     private boolean begun;
+    // machine.now() when another chain took the wheel, -1 while we have it
+    private double interruptedAt = -1;
+    // set by loadState when the saved run carries on as it was, so the attempt clocks keep their real start
+    private boolean resumedAsIs;
+    // the saved run was already won when this task began (#gamer on a finished world): no win card for a run we did not just play
+    private boolean startedOver;
+    // the win card went to the overlay, it goes once
+    private boolean winShown;
     private boolean pushed;
-    // watches for crafting tables we place, so PrepSupport only ever takes back its own (OwnTables)
+    private BotBehaviour.State level;
+    // watches for crafting tables, furnaces and smokers we place, so the registry (Workbenches) only ever takes back its own
     private Subscription<BlockPlaceEvent> placeWatch;
     // the engine owns the end portal walk flag: whatever a handler asked for last is put back on every (re)start
     private boolean wantWalkOnPortal;
@@ -89,14 +119,26 @@ public class GamerTask extends Task {
     private Dimension deathDimension;
     private BlockPos deathPos;
     private long deathGameTime;
+    private NetherTripRules.Cause deathCause = NetherTripRules.Cause.OTHER;
     private RecoverItemsTask recover;
+    // the pile's age clock (starts when it can be loaded, not at the death) and what the bag held the last tick we were alive
+    private RecoverRules.Allowance allowance;
+    // which pile the recovery is for, deathPos is already the next death's by the time we need it
+    private BlockPos recoverPos;
+    private Dimension recoverDimension;
+    private DeathRules.Worth worth;
+    // the walk back into the nether for a pile we left there, alive for as long as state.netherTrip is set
+    private NetherRecoverTask netherTrip;
     // deaths on the books when this run was (re)started by hand, so the run wide cap only counts the new ones
     private int deathsAtStart;
 
     // what the user had before we changed it for the run, to hand back on stop
     private Boolean userBlastFurnace;
     private Boolean userThrowUnused;
+    private Boolean userLadderClutch;
     private List<Item> userThrowaway;
+    private List<Item> userFuels;
+    private Boolean userReplant;
 
     // hud text is only rebuilt when something in it changed
     private PhaseHandler hudHandler;
@@ -104,6 +146,10 @@ public class GamerTask extends Task {
     private int hudAttempt;
     private String hudDebug = "";
     private String hudText = "";
+    private boolean hudCardOn;
+    // the card on the right (GamerHudOverlay reads the snapshot, the builder keeps the rows that just finished)
+    private final GamerHud hudCard = new GamerHud();
+    private GamerHudState hudSnapshot;
 
     public GamerTask() {
         this(null);
@@ -122,11 +168,14 @@ public class GamerTask extends Task {
         Item[] own = {
                 Items.ENDER_EYE, Items.ENDER_PEARL, Items.BLAZE_ROD, Items.BLAZE_POWDER, Items.BUCKET, Items.WATER_BUCKET,
                 Items.LAVA_BUCKET, Items.FLINT_AND_STEEL, Items.CRAFTING_TABLE, Items.OBSIDIAN, Items.SHIELD,
-                Items.IRON_PICKAXE, Items.DIAMOND_PICKAXE, Items.IRON_SWORD, Items.DIAMOND_SWORD,
+                Items.IRON_PICKAXE, Items.DIAMOND_PICKAXE, Items.IRON_SWORD, Items.DIAMOND_SWORD, Items.IRON_AXE, Items.DIAMOND_AXE,
                 Items.IRON_INGOT, Items.RAW_IRON, Items.GOLD_INGOT, Items.DIAMOND, Items.COAL, Items.CHARCOAL, Items.FLINT,
-                Items.SHEARS, Items.CARVED_PUMPKIN, Items.GOLDEN_BOOTS};
+                Items.SHEARS, Items.CARVED_PUMPKIN, Items.GOLDEN_BOOTS, Items.GOLDEN_HELMET, Items.GOLD_BLOCK, Items.GOLD_NUGGET,
+                Items.RAW_GOLD, Items.LADDER,
+                // the nether digs a lot of netherrack and the spares are all that stands between that and bare hands
+                Items.STONE_PICKAXE, Items.WOODEN_PICKAXE};
         Item[] all = own;
-        for (Item[] more : new Item[][]{ItemHelper.BED, ItemHelper.WOOL, ItemHelper.IRON_ARMORS, ItemHelper.DIAMOND_ARMORS}) {
+        for (Item[] more : new Item[][]{ItemHelper.BED, ItemHelper.WOOL, ItemHelper.IRON_ARMORS, ItemHelper.DIAMOND_ARMORS, ItemHelper.GOLDEN_ARMORS}) {
             all = ArrayUtils.addAll(all, more);
         }
         return all;
@@ -145,10 +194,8 @@ public class GamerTask extends Task {
             applyBehaviour(mod);
         }
         mod.getExtraBaritoneSettings().canWalkOnEndPortal(wantWalkOnPortal);
-        if (begun) {
-            // back from an interrupt: same run, same phase, the clocks should not blame the chain that had the wheel
-            machine.progress();
-        }
+        // back from an interrupt: same run, same phase, the stall timer should not blame the chain that had the wheel. the
+        // facts are stale in here (only engineTick refreshes them), so the forgiving happens on the first real tick
     }
 
     // a pause (another chain has the wheel for a moment) keeps the item protection, the tracked blocks and the settings, it
@@ -156,6 +203,11 @@ public class GamerTask extends Task {
     @Override
     protected void onStop(AltoClef mod, Task interruptTask) {
         if (isInterrupting()) {
+            if (begun && interruptedAt < 0) {
+                interruptedAt = machine.now();
+                // a recovery that got interrupted stops giving time back, the excuse below covers the stall
+                machine.releaseHold();
+            }
             softSave();
             return;
         }
@@ -173,11 +225,17 @@ public class GamerTask extends Task {
             if (state != null && begun) {
                 host.save();
                 machine.exitCurrent(mod);
+                showWin(mod);
             }
         } catch (RuntimeException e) {
             Debug.logInternal("gamer: onStop " + e);
         } finally {
             begun = false;
+            interruptedAt = -1;
+            // the food task must stop seeing our jobs once we are gone
+            AsyncSmelting.clear();
+            CookTrip.unbind();
+            StationHook.clear();
             stopWatchingPlacements();
             releaseBehaviour(mod);
         }
@@ -192,6 +250,17 @@ public class GamerTask extends Task {
         } catch (RuntimeException e) {
             if (!begun || machine.current() == null) {
                 throw e;
+            }
+            if (state.netherTrip != null) {
+                // the trip's own child threw, not the phase. the phase machine is not ticking while the trip has the wheel,
+                // so a trip left standing would throw again every tick until its six minutes ran out
+                host.say("gave up: the trip hit an error (" + e.getClass().getSimpleName() + ")"
+                        + (NetherRegress.kitShort(facts, cfg) ? ", rebuilding" : ", carrying on"));
+                state.netherTrip = null;
+                netherTrip = null;
+                host.save();
+                dropChild(mod);
+                return;
             }
             machine.failFromChild(e);
             dropChild(mod);
@@ -223,20 +292,55 @@ public class GamerTask extends Task {
         if (begun && !machine.ended() && Minecraft.getInstance().screen instanceof WinScreen) {
             machine.finish(true);
         }
+        // the win card is handed over here and not only on stop: with altoRunsWhenIdle the runner stays up and a finished task is
+        // dropped without ever being stopped
+        if (begun && machine.ended()) {
+            showWin(mod);
+        }
         return machine.ended();
     }
 
     // ---- behaviour and settings for the run
 
     private void applyBehaviour(AltoClef mod) {
-        mod.getBehaviour().push();
+        // kept so the cobble floor lands in our level and not in whichever child is on top this tick
+        level = mod.getBehaviour().push();
         pushed = true;
         mod.getBehaviour().addProtectedItems(PROTECTED);
+        // a furnace or smoker with a job of ours in it is not ours to dig through. one predicate in our own level, reading a snapshot
+        // (baritone asks from its own thread), so a station stops being protected the moment its job is done
+        mod.getBehaviour().avoidBlockBreaking(p -> jobSpots.contains(p));
+        // and nothing builds on or beside a standing station: the cell over it and the four around it. breaking stays free, a box
+        // there would refuse the ore and the logs next to the table
+        mod.getBehaviour().avoidBlockPlacing(p -> StationBox.avoids(stationBox, p));
         mod.getBlockTracker().trackBlock(TRACKED);
         applyRunSettings();
     }
 
+    // the cobble the stone kit still eats stays spoken for in our own level, whatever task level is on top. a craft only
+    // reserves its own recipe, so the sword and the furnace got built into the staircase and mined again. the task reserves
+    // are slices of this need, BotBehaviour takes the bigger of the two and does not add them. only GATHER and IRON have
+    // a stone kit, and only plain cobble: the build blocks the later phases place on purpose are not ours to hold back
+    private void updateStoneFloor(AltoClef mod) {
+        if (level == null || state == null) {
+            return;
+        }
+        boolean kitPhase = state.phase == GamerPhase.GATHER || state.phase == GamerPhase.IRON;
+        int cobble = kitPhase ? KitPlanner.stoneFloor(facts, cfg.overworld) : 0;
+        mod.getBehaviour().setReserveFloor(level, cobble > 0 ? Map.of(Items.COBBLESTONE, cobble) : Map.of());
+    }
+
+    // the same phases as the stone floor above. the furnace's own 8 are left out (KitPlanner.toolCobble), they are what a new one
+    // would be made of
+    private int toolCobbleOwed() {
+        if (state == null || (state.phase != GamerPhase.GATHER && state.phase != GamerPhase.IRON)) {
+            return 0;
+        }
+        return KitPlanner.toolCobble(facts, cfg.overworld);
+    }
+
     private void releaseBehaviour(AltoClef mod) {
+        adris.altoclef.util.helpers.FuelPolicy.clear();
         try {
             mod.getBlockTracker().stopTracking(TRACKED);
         } catch (RuntimeException e) {
@@ -248,6 +352,11 @@ public class GamerTask extends Task {
             releaseRunSettings();
         } catch (RuntimeException e) {
             Debug.logInternal("gamer: releasing settings " + e);
+        }
+        if (level != null) {
+            // empty floor first: if the pop below lands on a different level the cobble must not stay spoken for
+            mod.getBehaviour().setReserveFloor(level, Map.of());
+            level = null;
         }
         if (pushed) {
             pushed = false;
@@ -268,8 +377,24 @@ public class GamerTask extends Task {
         if (!SettingsOverrides.isHeld(s.altoThrowawayItems)) {
             userThrowaway = s.altoThrowawayItems.value;
         }
+        if (!SettingsOverrides.isHeld(s.allowLadderClutch)) {
+            userLadderClutch = s.allowLadderClutch.value;
+        }
+        if (!SettingsOverrides.isHeld(s.altoSupportedFuels)) {
+            userFuels = s.altoSupportedFuels.value;
+        }
+        if (!SettingsOverrides.isHeld(s.replantCrops)) {
+            userReplant = s.replantCrops.value;
+        }
+        // a replant is a carrot and a click for a field we never come back to
+        SettingsOverrides.put(s.replantCrops, false);
+        // the kit chops spare logs for the cook (cookFuelLogs) and WoodReserve decides which ones may burn, but the default list is
+        // coal and charcoal only: the cook gate counted the logs and the smoker refused them with the meat already in it
+        SettingsOverrides.put(s.altoSupportedFuels, withWoodFuel(userFuels != null ? userFuels : s.altoSupportedFuels.value));
         SettingsOverrides.put(s.altoUseBlastFurnace, false);
         SettingsOverrides.put(s.altoThrowAwayUnusedItems, true);
+        // the iron kit has ladders in it for a reason, a long fall in the nether is what they are for
+        SettingsOverrides.put(s.allowLadderClutch, true);
         SettingsOverrides.put(s.altoThrowawayItems, withBuildBlocks(userThrowaway != null ? userThrowaway : s.altoThrowawayItems.value));
     }
 
@@ -283,13 +408,36 @@ public class GamerTask extends Task {
         return out;
     }
 
+    // logs and planks on top of the user's fuels. FuelPolicy keeps the wood the kit still wants out of the furnace, so this only
+    // lets the spare burn. the crimson stems in the log list burn nothing and stay out
+    static List<Item> withWoodFuel(List<Item> list) {
+        List<Item> out = new ArrayList<>(list);
+        for (Item[] group : new Item[][]{ItemHelper.LOG, ItemHelper.PLANKS}) {
+            for (Item item : group) {
+                if (ItemHelper.isFuel(item) && !out.contains(item)) {
+                    out.add(item);
+                }
+            }
+        }
+        return out;
+    }
+
     private void releaseRunSettings() {
         Settings s = Baritone.settings();
+        if (userFuels != null) {
+            SettingsOverrides.put(s.altoSupportedFuels, userFuels);
+        }
+        if (userReplant != null) {
+            SettingsOverrides.put(s.replantCrops, userReplant);
+        }
         if (userBlastFurnace != null) {
             SettingsOverrides.put(s.altoUseBlastFurnace, userBlastFurnace);
         }
         if (userThrowUnused != null) {
             SettingsOverrides.put(s.altoThrowAwayUnusedItems, userThrowUnused);
+        }
+        if (userLadderClutch != null) {
+            SettingsOverrides.put(s.allowLadderClutch, userLadderClutch);
         }
         if (userThrowaway != null) {
             SettingsOverrides.put(s.altoThrowawayItems, userThrowaway);
@@ -301,12 +449,39 @@ public class GamerTask extends Task {
     // first tick with a player: the facts are real now, so the clocks and the saved run can be compared with the world
     private void beginRun(AltoClef mod) {
         cfg = GamerConfigs.get();
+        // a job from a run before this one is not ours to collect
+        AsyncSmelting.clear();
+        // and neither is a death from before the run started (the stash outlives the task that read it last)
+        DeathStash.clear();
+        startedOver = false;
+        winShown = false;
         loadState(mod);
+        facts.useState(state);
+        // the cook's backoff and station live in the run's state now, so a fresh state is a fresh cook
+        CookTrip.bind(state.cook);
+        // so CollectFoodTask can count the meat that is cooking without knowing what a RunState is
+        AsyncSmelting.watchJobs(facts::furnaceJobs);
+        // and so the smelt task knows a furnace in the tracker is the one we put down (and not a reason to place another)
+        // (smokers too, the smoker task asks the same question)
+        AsyncSmelting.watchFurnaces(p -> {
+            RunState.Pos at = new RunState.Pos(p.getX(), p.getY(), p.getZ());
+            return state.placedFurnaces.contains(at) || state.placedSmokers.contains(at);
+        });
+        // and so the container tasks know where our stations stand (never craft a second one within reach) and which one is coming
+        // down (nothing may place or walk to it). rebuilt from the saved lists, so a relog keeps what we put down
+        Workbenches.sync(state, facts.gameTime());
+        // (a station the placer reports goes into the book the way a heard one does, with the save a crash must not lose)
+        StationHook.install(Workbenches.source(state, facts, this::toolCobbleOwed, host::save));
+        // the first read had no state to look in, so station flags and furnace jobs came out empty and the phase's first plan
+        // would have been made on that. after the hook: the held flags ask it what is owed and what is coming down
+        facts.refresh();
         deathsAtStart = state.deaths.size();
         lastSaveSeconds = machine.now();
         begun = true;
+        // so a log of a run says which jar played it
+        Debug.logInternal(BuildInfo.line());
         watchPlacements();
-        machine.begin(mod);
+        machine.begin(mod, resumedAsIs);
     }
 
     private void watchPlacements() {
@@ -315,17 +490,34 @@ public class GamerTask extends Task {
         }
         placeWatch = EventBus.subscribe(BlockPlaceEvent.class, evt -> {
             // the hook publishes every conducting block that appears on the client level, so this is a guess about who put
-            // it there: a crafting table, in the overworld, inside our own placing reach
+            // it there: a crafting table, furnace or smoker, in whatever dimension we are in, inside our own placing reach
             LocalPlayer player = Minecraft.getInstance().player;
-            if (state == null || !begun || player == null || facts == null || facts.dimension() != Dimension.OVERWORLD
-                    || !evt.blockState.is(Blocks.CRAFTING_TABLE)) {
+            if (state == null || !begun || player == null || facts == null
+                    || !(evt.blockState.is(Blocks.CRAFTING_TABLE) || evt.blockState.is(Blocks.FURNACE) || evt.blockState.is(Blocks.SMOKER)
+                    || isJobBlock(evt.blockState))) {
                 return;
             }
             RunState.Pos pos = new RunState.Pos(evt.blockPos.getX(), evt.blockPos.getY(), evt.blockPos.getZ());
-            if (OwnTables.placedByUs(player.getX(), player.getEyeY(), player.getZ(), pos)) {
-                OwnTables.record(state.placedTables, pos);
+            if (!WorkbenchRules.placedByUs(player.getX(), player.getEyeY(), player.getZ(), pos)) {
+                return;
+            }
+            if (isJobBlock(evt.blockState)) {
+                // VillageLoot must not take a blast furnace we crafted for a village
+                Workbenches.addOnce(state.placedJobBlocks, pos);
+                return;
+            }
+            // the registry takes it from here (a village's smoker never gets this far: it was not placed within reach of us)
+            StationHook.Kind kind = evt.blockState.is(Blocks.CRAFTING_TABLE) ? StationHook.Kind.TABLE
+                    : evt.blockState.is(Blocks.FURNACE) ? StationHook.Kind.FURNACE : StationHook.Kind.SMOKER;
+            if (Workbenches.record(state, kind, pos, facts.dimension().name(), facts.gameTime())) {
+                // a crash or a disconnect inside the autosave window must not lose the only record of a station we stood next to
+                host.save();
             }
         });
+    }
+
+    private static boolean isJobBlock(BlockState block) {
+        return block.is(Blocks.BLAST_FURNACE) || block.is(Blocks.GRINDSTONE) || block.is(Blocks.SMITHING_TABLE);
     }
 
     private void stopWatchingPlacements() {
@@ -343,6 +535,7 @@ public class GamerTask extends Task {
         RunStateStore.Loaded loaded = RunStateStore.load(statePath, RunStateStore.fingerprint());
         state = loaded.state();
         boolean resumed = loaded.resumed();
+        resumedAsIs = false;
         if (resumed && state.phaseEnteredGameTime > facts.gameTime() + CLOCK_SLACK_TICKS) {
             // game time only ever goes forward inside one world, so this file was written in another one (or the same one
             // before it was reset). not ours to resume
@@ -354,6 +547,7 @@ public class GamerTask extends Task {
         }
         if (state.startedEpochMs == 0) {
             state.startedEpochMs = System.currentTimeMillis();
+            state.startedGameTime = facts.gameTime();
         }
         if (state.phase == GamerPhase.STUCK) {
             // never written by us, but a hand edit could, and there is no handler for it
@@ -368,9 +562,14 @@ public class GamerTask extends Task {
 
     private void jumpTo(GamerPhase phase) {
         state.phase = phase;
+        // a jump starts a new run as far as the win card's total goes, or a jump to the dragon would show the hours since GATHER
+        state.startedGameTime = facts.gameTime();
         state.stuck = false;
         state.stuckReason = "";
         state.finished = false;
+        // a dev jump is the user taking the wheel, a half done trip from before it is not theirs
+        state.netherTrip = null;
+        netherTrip = null;
         state.phaseAttempts.put(phase.name(), 1);
         state.deathsThisPhase = 0;
         state.regressCounts.clear();
@@ -379,6 +578,7 @@ public class GamerTask extends Task {
 
     private void resumeSaved() {
         if (state.finished || state.phase == GamerPhase.DONE) {
+            startedOver = true;
             state.phase = GamerPhase.DONE;
             state.finished = true;
             host.say("This world's run is already finished. #gamer reset starts a new one.");
@@ -393,6 +593,7 @@ public class GamerTask extends Task {
             state.phaseAttempts.put(state.phase.name(), 1);
         } else {
             host.say("Resuming at: " + state.phase.hud());
+            resumedAsIs = true;
         }
         if (state.attemptsOf(state.phase) < 1) {
             state.phaseAttempts.put(state.phase.name(), 1);
@@ -432,6 +633,48 @@ public class GamerTask extends Task {
         }
     }
 
+    // the blocks of this dimension's furnace jobs, a fresh immutable set each tick
+    private volatile Set<BlockPos> jobSpots = Set.of();
+    // the cells around the standing stations of this dimension (StationBox), rebuilt only when the stations change
+    private volatile LongSet stationBox = LongSets.EMPTY_SET;
+    private List<BlockPos> boxedStations = List.of();
+
+    // the stations of ours that stand in this dimension, from the registry (RunState.benches). one being picked up is not in it:
+    // the pickup may need to build its way to it
+    static List<BlockPos> standingStations(RunState state, String dimension) {
+        if (state == null || state.benches.isEmpty()) {
+            return List.of();
+        }
+        List<BlockPos> out = new ArrayList<>();
+        for (Bench b : state.benches) {
+            if (b.dimension.equals(dimension) && b.state != Bench.State.PICKING_UP && b.state != Bench.State.IN_BAG) {
+                out.add(new BlockPos(b.pos.x, b.pos.y, b.pos.z));
+            }
+        }
+        return out;
+    }
+
+    private void refreshStationBox(String dimension) {
+        List<BlockPos> stations = standingStations(state, dimension);
+        if (!stations.equals(boxedStations)) {
+            boxedStations = stations;
+            stationBox = StationBox.offLimits(stations);
+        }
+    }
+
+    static Set<BlockPos> spotsOf(RunState state, String dimension) {
+        if (state == null || state.furnaceJobs.isEmpty()) {
+            return Set.of();
+        }
+        Set<BlockPos> out = new HashSet<>();
+        for (RunState.FurnaceJob job : state.furnaceJobs) {
+            if (dimension.equals(job.dimension)) {
+                out.add(new BlockPos(job.pos.x, job.pos.y, job.pos.z));
+            }
+        }
+        return Set.copyOf(out);
+    }
+
     private Task engineTick(AltoClef mod) {
         if (!facts.refresh()) {
             // no player yet (an idle command on join): the clocks must not start from zero
@@ -444,8 +687,22 @@ public class GamerTask extends Task {
             return null;
         }
         cfg = GamerConfigs.get();
+        jobSpots = spotsOf(state, facts.dimension().name());
+        refreshStationBox(facts.dimension().name());
         double now = machine.now();
+        if (interruptedAt >= 0) {
+            // first fresh tick after another chain had the wheel. forgiven, not reset: a reset made two chains trading the
+            // wheel every few seconds look like progress forever
+            machine.excuseStall(now - interruptedAt);
+            interruptedAt = -1;
+        }
         state.runTicks++;
+        takeLoadedFurnaces();
+        // the furnaces read this: wood the kit still wants is not fuel. the handlers get the same budget (machine.wood)
+        WoodBudget wood = WoodBudget.of(facts, cfg.overworld, cfg.end.beds, state.phase);
+        WoodReserve.apply(wood);
+        machine.giveWood(wood);
+        updateStoneFloor(mod);
         if (facts.creditsShown()) {
             machine.finish(true);
             return null;
@@ -454,59 +711,224 @@ public class GamerTask extends Task {
         if (machine.ended()) {
             return null;
         }
-        if (recoverStillWanted(now)) {
+        if (state.netherTrip != null) {
+            // same deal as the recovery below: the trip is not the phase's time and not its fault. the task clears the
+            // state when it is over, and the machine has the next tick
+            if (netherTrip == null) {
+                netherTrip = new NetherRecoverTask(state, facts, () -> cfg, host::say, host::save);
+            }
             machine.observe();
-            machine.progress();
+            machine.holdClocks();
+            setDebugState("Going back to the nether for our stuff.", "Getting our stuff back");
+            updateRecoveryHud(tripWords());
+            autosave(now);
+            return netherTrip;
+        }
+        netherTrip = null;
+        if (recoverStillWanted(now)) {
+            // the recovery is not the phase's time and not its fault: both clocks wait for it (a stall is forgiven the same way)
+            machine.observe();
+            machine.holdClocks();
             setDebugState("Recovering items after a death.", "Getting our stuff back");
+            updateRecoveryHud(HudRules.recoveryWords(blocksTo(recoverPos)));
             autosave(now);
             return recover;
         }
         Task child = machine.tick(mod);
         if (!machine.ended()) {
+            child = sweepBenches(mod, child);
             updateHud(machine.current());
         }
         autosave(now);
         return child;
     }
 
+    // GATHER, IRON and PORTAL run the station pickup with their own plan (PhaseHandler.ownsBenches). any other phase can still
+    // put a table down (a craft is a craft), and nobody would ever come back for it: the same rules with no plan take it back
+    // once its screen has been shut for a second. not in the End, nothing there is worth stopping a fight for
+    private Task sweepBenches(AltoClef mod, Task child) {
+        PhaseHandler h = machine.current();
+        if (h == null || h.ownsBenches() || facts.dimension() == Dimension.END) {
+            return child;
+        }
+        Task pickup = benches.sweep(mod, machine);
+        return pickup != null ? pickup : child;
+    }
+
+    // the smelt tasks cannot see our state, a furnace they loaded and walked away from is waiting in a queue for us
+    private void takeLoadedFurnaces() {
+        List<RunState.FurnaceJob> loaded = AsyncSmelting.drain();
+        for (RunState.FurnaceJob job : loaded) {
+            FurnaceJobs.record(state.furnaceJobs, job);
+            if (job.stranded) {
+                host.say("Left " + job.count + " " + job.input.replace('_', ' ') + " in the " + job.kind + ", not lit, going back for it");
+                continue;
+            }
+            host.say((job.unitsEach > 0 ? "Cooking in the background (" : "Smelting in the background (") + job.count + " "
+                    + job.output.replace('_', ' ') + ", ~" + (job.doneTick - job.startTick) / 20 + "s)");
+        }
+        if (!loaded.isEmpty()) {
+            // lit and cooking: the job is the memory now, the early load is no longer in flight. only if it was the iron
+            if (EarlyIronPick.endsLoad(loaded)) {
+                state.earlyLoadTick = -1;
+            }
+            host.save();
+        }
+    }
+
     private void updateHud(PhaseHandler h) {
         String sub = h.hudState();
         int attempt = machine.attempt();
-        if (h != hudHandler || attempt != hudAttempt || (sub == null ? hudState != null : !sub.equals(hudState))) {
+        // with the card on, the tree's line is just the phase: the step, the kit and the clocks are on the card
+        boolean card = Baritone.settings().altoGamerHud.value;
+        if (h != hudHandler || attempt != hudAttempt || card != hudCardOn || (sub == null ? hudState != null : !sub.equals(hudState))) {
             hudHandler = h;
             hudState = sub;
             hudAttempt = attempt;
+            hudCardOn = card;
             hudDebug = "Phase " + state.phase + ", attempt " + attempt;
-            hudText = sub == null ? h.hud() : h.hud() + ": " + sub;
+            hudText = sub == null || card ? h.hud() : h.hud() + ": " + sub;
         }
         setDebugState(hudDebug, hudText);
+        hudSnapshot = card ? hudCard.build(mod, machine, state, facts, cfg, h) : null;
+    }
+
+    // a recovery (the walk back for a death pile, or the trip into the nether for one) never reaches updateHud, so the card is
+    // told what it is doing here instead. the kit rows are gone while it lasts, see GamerHud.recovering
+    private void updateRecoveryHud(String action) {
+        hudSnapshot = Baritone.settings().altoGamerHud.value
+                ? hudCard.recovering(state, facts, cfg, machine.foodForCard(), machine.secondsInPhase(), machine.attempt(), action) : null;
+    }
+
+    // the nether trip's stage in words. the pile is only a distance worth showing once we are in the nether with it (the portal
+    // and the dirt stages are in the overworld, where the pile's x and z mean nothing)
+    private String tripWords() {
+        RunState.NetherTrip trip = state.netherTrip;
+        NetherTripRules.Stage stage = NetherTripRules.Stage.parse(trip.stage);
+        boolean there = stage == NetherTripRules.Stage.WALK || stage == NetherTripRules.Stage.RECOVER;
+        return HudRules.tripWords(stage, there ? blocksTo(trip.pile.x, trip.pile.y, trip.pile.z) : -1);
+    }
+
+    private int blocksTo(BlockPos at) {
+        return blocksTo(at.getX(), at.getY(), at.getZ());
+    }
+
+    private int blocksTo(int x, int y, int z) {
+        return HudRules.blocksAway(facts.x() - x, facts.y() - y, facts.z() - z);
+    }
+
+    // the run ended DONE: the task goes away with the runner and nothing of ours draws once it is idle, so the last card is
+    // handed to the overlay, which keeps it up for a while (HudRules.WIN_LINGER_MILLIS). STUCK hides at once as it always did, and
+    // so does a run that was already over when this one started: there is nothing in that to show off
+    private void showWin(AltoClef mod) {
+        if (winShown || !state.finished || state.phase != GamerPhase.DONE || startedOver || !Baritone.settings().altoGamerHud.value) {
+            return;
+        }
+        winShown = true;
+        double total = HudRules.runSeconds(state.startedGameTime, facts.gameTime(), state.runTicks);
+        mod.getGamerHudOverlay().win(GamerHud.won(hudSnapshot, cfg, total));
+    }
+
+    // the card's numbers as of the last engine tick, null while there is no run on the screen worth a card
+    public GamerHudState hudSnapshot() {
+        return begun && !machine.ended() ? hudSnapshot : null;
+    }
+
+    // the gamer group of the vitals line. the card's numbers when there is a card, else just the phase and attempt (the
+    // card setting being off is no reason for the log to go blind). null before the run has begun
+    public Vitals.Gamer vitals() {
+        if (!begun || state == null) {
+            return null;
+        }
+        GamerHudState s = hudSnapshot();
+        if (s == null) {
+            return new Vitals.Gamer(state.phase.name(), machine.attempt(), null, 0, -1, -1);
+        }
+        String head = null;
+        int want = 0;
+        for (GamerHudState.KitRow row : s.rows()) {
+            if (row.working()) {
+                head = row.catalogueName();
+                want = row.want();
+                break;
+            }
+        }
+        return new Vitals.Gamer(s.phase().name(), s.attempt(), head, want, s.foodUnits(), s.foodTarget());
     }
 
     // ---- deaths
 
-    // respawning swaps the LocalPlayer (and so does changing dimension), so a new instance only means a death when the old
-    // one was seen dead. the death screen counts as dead too, the player can be gone before we ever see the zero health
+    // respawning swaps the LocalPlayer (and so does changing dimension), so a new instance only means a death when something
+    // saw one. our own tick is the weakest witness: mob defense holds the wheel through a fight, the death and the death
+    // screen, and we never get a tick. the death packet writes the stash whoever holds the wheel, and the old instance is
+    // the last resort (a respawn only reads it, so it keeps its zero health)
     private void trackDeaths(AltoClef mod) {
         LocalPlayer player = mod.getPlayer();
         if (player == null) {
             return;
         }
         if (player != lastPlayer) {
-            if (lastPlayer != null && deadSeen) {
-                onRespawn();
+            if (lastPlayer != null) {
+                swapped(lastPlayer);
             }
             lastPlayer = player;
             deadSeen = false;
         }
-        if (!deadSeen && (player.isDeadOrDying() || Minecraft.getInstance().screen instanceof DeathScreen)) {
+        boolean dying = player.isDeadOrDying() || Minecraft.getInstance().screen instanceof DeathScreen;
+        if (!deadSeen && dying) {
             deadSeen = true;
-            deathDimension = facts.dimension();
-            deathPos = player.blockPosition();
-            deathGameTime = facts.gameTime();
+            adopt(DeathStash.snapshot(player));
+        }
+        if (!dying) {
+            // after the swap above on purpose: the respawn already read the last living bag, this one is the new body's
+            worth = DeathRules.worth(facts);
         }
     }
 
-    private void onRespawn() {
+    private void swapped(LocalPlayer old) {
+        // taken whatever happens next, a stash left lying around would be the next portal's death
+        DeathStash.Death stashed = DeathStash.take();
+        DeathRules.Source source = DeathRules.source(deadSeen, stashed != null, old.isDeadOrDying());
+        switch (source) {
+            case STASH -> adopt(stashed);
+            case OLD_INSTANCE -> adopt(DeathStash.snapshot(old));
+            case TICK -> {
+            }
+            default -> {
+                // a dimension change swaps the instance too, with the old one alive and nothing in the stash
+                Debug.logInternal("new player instance with no death seen (a portal or a reconnect), the old one had " + Math.round(old.getHealth())
+                        + " hp, now in " + facts.dimension() + ", no death counted");
+                return;
+            }
+        }
+        onRespawn(source);
+    }
+
+    // where it happened comes from the record and never from where we are now, a nether death respawns in the overworld
+    private void adopt(DeathStash.Death death) {
+        deathDimension = death.dimension();
+        deathPos = new BlockPos(death.x(), death.y(), death.z());
+        deathGameTime = death.gameTime();
+        // lava eats the pile and the void takes it, so those are the two we write down
+        deathCause = NetherTripRules.cause(death.inLava(), death.outOfWorld());
+    }
+
+    private void onRespawn(DeathRules.Source seenBy) {
+        // first thing, before this method logs and the lead up scrolls off the end of the buffer
+        Trace.dump("respawn");
+        // the same number the recovery decides on, and who told us about it
+        double blocks = flatBlocksTo(deathPos);
+        Debug.logInternal("respawned after dying in " + deathDimension + " at " + deathPos.toShortString() + ", now in " + facts.dimension()
+                + " " + Math.round(blocks) + " blocks away (recovery goes up to " + cfg.death.recoverReach
+                + ", seen by " + seenBy.name().toLowerCase(Locale.ROOT).replace('_', ' ') + ")");
+        // all read before this death goes in the book and before the old recovery is dropped. only this run's deaths count
+        // for a spot, a hand restart is a clean slate
+        int killedBefore = DeathRules.killedHere(state.deaths.subList(Math.min(deathsAtStart, state.deaths.size()), state.deaths.size()),
+                deathDimension, deathPos.getX(), deathPos.getZ());
+        // a recovery that finished is only dropped on a tick of ours, and we may not have had one since
+        boolean wasRecovering = recover != null && !recover.isFinished(mod);
+        boolean diedAtThePile = wasRecovering && recoverPos != null && deathDimension == recoverDimension
+                && DeathRules.sameSpot(deathPos.getX(), deathPos.getZ(), recoverPos.getX(), recoverPos.getZ());
         RunState.Death death = new RunState.Death();
         death.dimension = deathDimension.name();
         death.x = deathPos.getX();
@@ -514,39 +936,96 @@ public class GamerTask extends Task {
         death.z = deathPos.getZ();
         death.gameTime = deathGameTime;
         death.phase = state.phase.name();
+        death.cause = deathCause.name().toLowerCase(Locale.ROOT);
         state.deaths.add(death);
         state.deathsThisPhase++;
+        // dying on the way to a pile is the end of that trip: the second pile is not worth a third life
+        boolean wasOnTrip = state.netherTrip != null;
+        if (wasOnTrip) {
+            host.say("gave up: died on the way, rebuilding");
+            state.netherTrip = null;
+            netherTrip = null;
+        }
         host.save();
         recover = null;
         if (state.deathsThisPhase >= cfg.death.maxPerPhase) {
+            host.say(DeathRules.leaving("died " + state.deathsThisPhase + " times in this phase, the run is stuck"));
             machine.stuck("died " + state.deathsThisPhase + " times in this phase");
             return;
         }
         if (state.deaths.size() - deathsAtStart >= cfg.death.maxTotal) {
+            host.say(DeathRules.leaving("died " + (state.deaths.size() - deathsAtStart) + " times since the run was started, the run is stuck"));
             machine.stuck("died " + (state.deaths.size() - deathsAtStart) + " times since the run was started");
             return;
         }
-        if (shouldRecover()) {
-            host.say("Died, going back for our stuff");
-            recover = new RecoverItemsTask(deathPos, RECOVER_BUDGET_SECONDS);
+        if (wasRecovering) {
+            // the older pile is not worth another life either, and the new one is judged below on its own
+            host.say("death: died on the way to the last pile, giving that one up");
+        }
+        String why = DeathRules.refuse(facts.dimension() == deathDimension, blocks, cfg.death.recoverReach, worth,
+                cfg.overworld.refillStartFoodUnits, killedBefore, diedAtThePile);
+        if (why == null) {
+            host.say(DeathRules.going(blocks, worth));
+            recover = new RecoverItemsTask(deathPos, RecoverRules.budget(RECOVER_BUDGET_SECONDS, blocks));
+            recoverPos = deathPos;
+            recoverDimension = deathDimension;
+            allowance = new RecoverRules.Allowance(deathGameTime / 20.0, cfg.death.recoverSeconds);
+        } else if (NetherTripRules.applies(deathDimension, facts.dimension())) {
+            // the nether has its own trip and its own words
+            if (!wasOnTrip) {
+                maybeGoBackToTheNether();
+            }
+        } else {
+            host.say(DeathRules.leaving(why));
         }
     }
 
-    private boolean shouldRecover() {
-        if (facts.dimension() != deathDimension) {
-            return false;
+    // a nether death respawns us at home, so the dimension test above says no and the whole kit used to be rebuilt. the pile
+    // down there does not age while nobody is around to load it though, so it is worth a trip when the rules say so
+    private void maybeGoBackToTheNether() {
+        if (!NetherTripRules.applies(deathDimension, facts.dimension())) {
+            return;
         }
-        double dx = facts.x() - deathPos.getX();
-        double dz = facts.z() - deathPos.getZ();
-        return dx * dx + dz * dz <= (double) cfg.death.recoverBlocks * cfg.death.recoverBlocks;
+        String where = deathPos.getX() + " " + deathPos.getY() + " " + deathPos.getZ();
+        String why = NetherTripRules.refuse(deathCause, state.overworldPortal != null,
+                cfg.death.netherRecover && cfg.death.netherTripSeconds > 0, false,
+                NetherTripRules.tried(state.lastTripPile, deathPos.getX(), deathPos.getZ()),
+                !NetherRegress.kitShort(facts, cfg));
+        if (why != null) {
+            host.say("nether death at " + where + ", not going back: " + why + ", rebuilding");
+            return;
+        }
+        RunState.Pos pile = new RunState.Pos(deathPos.getX(), deathPos.getY(), deathPos.getZ());
+        state.netherTrip = new RunState.NetherTrip(pile, NetherTripRules.Stage.BLOCKS.name(), facts.gameTime());
+        state.lastTripPile = pile;
+        host.save();
+        host.say("nether death at " + where + ", going back for it");
+    }
+
+    // flat, height does not make a walk longer
+    private double flatBlocksTo(BlockPos at) {
+        double dx = facts.x() - at.getX();
+        double dz = facts.z() - at.getZ();
+        return Math.sqrt(dx * dx + dz * dz);
     }
 
     private boolean recoverStillWanted(double now) {
         if (recover == null) {
             return false;
         }
-        boolean tooOld = now - deathGameTime / 20.0 > cfg.death.recoverSeconds;
-        if (tooOld || facts.dimension() != deathDimension || recover.isFinished(mod)) {
+        // every way out says so once. a task that finished itself already said why (all four of its ways out log), so that one
+        // is quiet here. recoverPos and not deathPos: a death on the way has already written the next pile over deathPos
+        String over = null;
+        if (recover.isFinished(mod)) {
+            recover = null;
+            return false;
+        } else if (facts.dimension() != recoverDimension) {
+            over = "we left the dimension";
+        } else if (allowance == null || allowance.expired(now, flatBlocksTo(recoverPos))) {
+            over = "it has been lying there too long";
+        }
+        if (over != null) {
+            host.say("death: no longer going for the pile, " + over);
             recover = null;
             return false;
         }

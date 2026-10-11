@@ -47,17 +47,28 @@ public class MixinClientChunkProvider implements IClientChunkProvider {
         return result;
     }
 
+    // getDeclaredFields copies every Field object each time it's called, and this runs once per context. found it once, keep it
+    private static Field referenceArrayField;
+
     @Override
     public IChunkArray extractReferenceArray() {
-        for (Field f : ClientChunkCache.class.getDeclaredFields()) {
-            if (IChunkArray.class.isAssignableFrom(f.getType())) {
-                try {
-                    return (IChunkArray) f.get(this);
-                } catch (IllegalAccessException e) {
-                    throw new RuntimeException(e);
+        Field cached = referenceArrayField;
+        if (cached == null) {
+            for (Field f : ClientChunkCache.class.getDeclaredFields()) {
+                if (IChunkArray.class.isAssignableFrom(f.getType())) {
+                    cached = f;
+                    referenceArrayField = f;
+                    break;
                 }
             }
+            if (cached == null) {
+                throw new RuntimeException(Arrays.toString(ClientChunkCache.class.getDeclaredFields()));
+            }
         }
-        throw new RuntimeException(Arrays.toString(ClientChunkCache.class.getDeclaredFields()));
+        try {
+            return (IChunkArray) cached.get(this);
+        } catch (IllegalAccessException e) {
+            throw new RuntimeException(e);
+        }
     }
 }
