@@ -282,6 +282,28 @@ public class FollowTabTest {
     }
 
     @Test
+    public void aPressThatNeverGetsItsReleaseDoesNotEatTheNextClick() {
+        int i = groupIndex("minecraft:zombie");
+        VirtualList<Row> l = c.entityList();
+        float bx = l.x() + l.w() - p.theme.px(10) - p.theme.px(8) - p.theme.px(32);
+        p.press(bx, rowY(l, i));
+        p.click(c.allPlayersButton().x() + 5, c.allPlayersButton().y() + p.theme.px(10));
+        assertTrue(f.actions.contains("follow players"));
+        assertFalse(f.actions.contains("follow entity zombie"));
+    }
+
+    @Test
+    public void aGroupFoundByANamedMemberHasNoFollowAll() {
+        tab.onSearch("biscu");
+        VirtualList<Row> l = c.entityList();
+        float bx = l.x() + l.w() - p.theme.px(10) - p.theme.px(8) - p.theme.px(32);
+        p.click(bx, rowY(l, 0));
+        assertTrue(f.actions.isEmpty());
+        // the click was a plain row click, so it closed the group
+        assertEquals(1, c.entityList().items().size());
+    }
+
+    @Test
     public void followAllIgnoresTheBandAboveAndBelowTheButton() {
         int i = groupIndex("minecraft:zombie");
         VirtualList<Row> l = c.entityList();
