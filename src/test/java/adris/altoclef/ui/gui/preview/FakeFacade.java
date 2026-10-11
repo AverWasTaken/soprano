@@ -355,7 +355,7 @@ public final class FakeFacade implements BotFacade {
                     {"minecraft:chicken", "Chicken", "", "11.0"}, {"minecraft:pig", "Pig", "", "17.5"}, {"minecraft:bat", "Bat", "", "60.0"},
             };
             for (String[] row : e) {
-                entities.add(new EntityEntry(id++, row[0], row[1], row[2], Double.parseDouble(row[3])));
+                entities.add(new EntityEntry(id++, row[0], row[1], row[2], Double.parseDouble(row[3]), row[0].equals("minecraft:item") ? "minecraft:oak_log" : row[0] + "_spawn_egg"));
             }
             waypoints.add(new WaypointEntry("home", "home", 118, 64, -32, 1_700_000_000_000L));
             waypoints.add(new WaypointEntry("iron cave", "user", 402, 23, 1190, 1_700_000_100_000L));

@@ -22,6 +22,10 @@ public final class Theme {
     public static final int DANGER = 0xFFC96B6B;
     public static final int DANGER_FILL = 0xFF3A1E1E;
     public static final int SHADOW = 0x66000000;
+    // the go to path glyph: where you are and where you are going. muted so they sit on near black, but still
+    // clearly green and red at four pixels wide
+    public static final int PATH_START = 0xFF5FB36A;
+    public static final int PATH_END = 0xFFD1605A;
 
     // design sizes at scale 1
     public static final int SIDEBAR_W = 196;

@@ -13,8 +13,9 @@ public interface WorldAccess {
     record PlayerEntry(String name, double distance, boolean self) {
     }
 
-    // typeId "minecraft:zombie", typeName "Zombie", displayName the entity's own name (a named pet, a player)
-    record EntityEntry(int id, String typeId, String typeName, String displayName, double distance) {
+    // typeId "minecraft:zombie", typeName "Zombie", displayName the entity's own name (a named pet, a player),
+    // iconItemId the spawn egg (or another stand-in item) for the icon, null when there is none
+    record EntityEntry(int id, String typeId, String typeName, String displayName, double distance, String iconItemId) {
     }
 
     record WaypointEntry(String name, String tag, int x, int y, int z, long createdMillis) {

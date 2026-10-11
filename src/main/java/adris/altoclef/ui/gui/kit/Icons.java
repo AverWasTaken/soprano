@@ -71,10 +71,17 @@ public final class Icons {
                 line(g, 7.5f, 5.25f, 16.5f, 9.75f);
             }
             case GOTO -> {
-                // the l is the corner you are leaving, the arrow is where it is going
-                poly(g, false, 4, 8, 4, 20, 16, 20);
-                line(g, 9, 15, 20, 4);
-                poly(g, false, 12, 4, 20, 4, 20, 12);
+                // a baritone path seen from above: two straight runs with rounded corners, from where you stand
+                // (lower left) to the goal (upper right). the green and red dots are not in the mask, the canvas
+                // paints them on top in their own colours (see TexturedCanvas.icon, PATH_START / PATH_END)
+                Path2D.Float path = new Path2D.Float();
+                path.moveTo(5, 19);
+                path.lineTo(9.5f, 19);
+                path.quadTo(12.5f, 19, 12.5f, 16);
+                path.lineTo(12.5f, 8);
+                path.quadTo(12.5f, 5, 15.5f, 5);
+                path.lineTo(19, 5);
+                g.draw(path);
             }
             case FOLLOW -> {
                 g.draw(new Ellipse2D.Float(5.5f, 4, 7, 7));

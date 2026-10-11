@@ -151,10 +151,62 @@ public final class Java2dCanvas extends TexturedCanvas {
     // a flat tile with a hairline and a lighter square inside, enough that a slot reads as a slot in a preview
     @Override
     public void itemIcon(String itemId, float x, float y, float size) {
-        fillRoundRect(x, y, size, size, size * 0.18f, 0xFF2A2A2F);
-        strokeRoundRect(x, y, size, size, size * 0.18f, 0xFF3A3A40);
-        float inset = size * 0.28f;
-        fillRoundRect(x + inset, y + inset, size - 2 * inset, size - 2 * inset, size * 0.08f, 0xFF4A4A52);
+        int px = Math.max(1, Math.round(size));
+        int dx = Math.round(x);
+        int dy = Math.round(y);
+        BufferedImage tex = ItemTextures.get(itemId);
+        if (tex != null) {
+            blitNearest(tex, dx, dy, px);
+            return;
+        }
+        // same thing the game canvas does for an id nothing resolves: a tile with the first letter of the name
+        String path = itemId == null ? "" : itemId.substring(itemId.indexOf(':') + 1);
+        String letter = path.isEmpty() ? "?" : path.substring(0, 1).toUpperCase(java.util.Locale.ROOT);
+        fillRoundRect(dx, dy, px, px, px * 0.18f, 0xFF2A2A2F);
+        strokeRoundRect(dx, dy, px, px, px * 0.18f, 0xFF3A3A40);
+        TextStyle st = new TextStyle(adris.altoclef.ui.gui.kit.Weight.MEDIUM, Math.max(8, Math.round(px * 0.5f)));
+        float tw = measure(letter, st);
+        float base = dy + (px - (ascent(st) + descent(st))) * 0.5f + ascent(st);
+        text(letter, dx + (px - tw) * 0.5f, base, st, 0xFFB0B0B7);
+    }
+
+    // nearest neighbour so 16 px pixel art stays pixel art at 32 and 48
+    private void blitNearest(BufferedImage tex, int dx, int dy, int px) {
+        int tw = tex.getWidth();
+        int th = tex.getHeight();
+        for (int yy = 0; yy < px; yy++) {
+            int oy = dy + yy;
+            if (oy < cy0 || oy >= cy1) {
+                continue;
+            }
+            int sy = yy * th / px;
+            for (int xx = 0; xx < px; xx++) {
+                int ox = dx + xx;
+                if (ox < cx0 || ox >= cx1) {
+                    continue;
+                }
+                int src = tex.getRGB(xx * tw / px, sy);
+                int sa = src >>> 24;
+                if (sa == 0) {
+                    continue;
+                }
+                int i = oy * width + ox;
+                pixels[i] = sa == 255 ? src : over(pixels[i], src);
+            }
+        }
+    }
+
+    private static int over(int dst, int src) {
+        int sa = src >>> 24;
+        int da = dst >>> 24;
+        int oa = sa + da * (255 - sa) / 255;
+        if (oa == 0) {
+            return 0;
+        }
+        int r = ((src >> 16 & 255) * sa + (dst >> 16 & 255) * da * (255 - sa) / 255) / oa;
+        int g = ((src >> 8 & 255) * sa + (dst >> 8 & 255) * da * (255 - sa) / 255) / oa;
+        int b = ((src & 255) * sa + (dst & 255) * da * (255 - sa) / 255) / oa;
+        return (oa << 24) | (r << 16) | (g << 8) | b;
     }
 
     @Override

@@ -142,11 +142,22 @@ public class TexturedCanvasTest {
         c.icon(Icon.SEARCH, rx + 10, 323, 16, Theme.TEXT_3);
         centredText(c, "Search items", theme.body, rx + 34, 316, 30, Theme.TEXT_3);
 
-        // slots, and a clipped line that must not leak
+        // slots (real textures when the game jar is on the classpath, a letter tile when nothing resolves),
+        // and a clipped line that must not leak
         c.itemIcon("minecraft:diamond", rx, 452, 32);
         c.itemIcon("minecraft:diamond", rx + 44, 452, 48);
-        c.pushClip(rx + 110, 450, 120, 24);
-        c.text("this text is clipped at the right edge of the clip box", rx + 110, 466, theme.body, Theme.TEXT);
+        c.itemIcon("minecraft:dirt", rx + 100, 452, 16);
+        c.itemIcon("minecraft:iron_sword", rx + 124, 452, 16);
+        c.itemIcon("minecraft:chest", rx + 148, 452, 16);
+        c.itemIcon("minecraft:zombie_spawn_egg", rx + 172, 452, 16);
+        c.itemIcon("soprano:nothing_here", rx + 196, 452, 16);
+        // the go to glyph on both surfaces and both tints, plus big for the zoom
+        c.icon(Icon.GOTO, rx + 230, 452, 16, Theme.TEXT);
+        c.icon(Icon.GOTO, rx + 254, 452, 16, Theme.TEXT_2);
+        c.icon(Icon.GOTO, rx + 278, 448, 24, Theme.TEXT);
+        c.icon(Icon.GOTO, rx + 306, 444, 32, Theme.TEXT);
+        c.pushClip(rx + 110, 500, 120, 24);
+        c.text("this text is clipped at the right edge of the clip box", rx + 110, 516, theme.body, Theme.TEXT);
         c.popClip();
 
         Path out = Paths.get("build", "gui-preview", "_smoke.png");
@@ -156,6 +167,7 @@ public class TexturedCanvasTest {
         zoom(c.image(), 370, 352, 340, 78, 4, Paths.get("build", "gui-preview", "_smoke_icons2_zoom.png"));
         zoom(c.image(), 500, 40, 380, 120, 3, Paths.get("build", "gui-preview", "_smoke_card_zoom.png"));
         zoom(c.image(), 36, 440, 480, 70, 3, Paths.get("build", "gui-preview", "_smoke_buttons_zoom.png"));
+        zoom(c.image(), 516, 440, 350, 50, 4, Paths.get("build", "gui-preview", "_smoke_items_goto_zoom.png"));
 
         // panel centre is panel, the rounded corner is not, the far corner of the image is untouched background
         assertEquals(Theme.PANEL, px(c, 450, 300));

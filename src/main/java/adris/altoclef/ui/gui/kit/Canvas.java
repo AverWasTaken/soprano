@@ -25,8 +25,16 @@ public interface Canvas extends TextMeasurer {
 
     void icon(Icon icon, float x, float y, float size, int argb);
 
-    // registry id like "minecraft:oak_log". the preview draws a neutral tile, the game draws the real item
+    // registry id like "minecraft:oak_log". the game draws the real item through its own item renderer, the
+    // preview reads the flat texture out of the game jar. an id nothing resolves draws a tile with the name's
+    // first letter: never a blank square, never the purple missing texture. size is a whole multiple of 16
     void itemIcon(String itemId, float x, float y, float size);
+
+    // the player's skin face (the game asks PlayerFaceRenderer, the preview draws the player glyph in a tile)
+    default void playerFace(String playerName, float x, float y, float size) {
+        fillRoundRect(x, y, size, size, size / 6f, Theme.RAISED);
+        icon(Icon.PLAYER, x + size * 0.15f, y + size * 0.15f, size * 0.7f, Theme.TEXT_2);
+    }
 
     void pushClip(float x, float y, float w, float h);
 
