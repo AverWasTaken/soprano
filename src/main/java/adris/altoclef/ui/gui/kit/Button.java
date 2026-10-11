@@ -75,7 +75,8 @@ public class Button extends Control {
 
     @Override
     public int preferredWidth() {
-        int w = theme.px(24) + Math.round(textW);
+        // ceil, not round: a 62.4 wide label rounded to 62 would ellipsize itself in layout()
+        int w = theme.px(24) + (int) Math.ceil(textW);
         if (icon != null) {
             w += iconSize() + (text.isEmpty() ? 0 : theme.px(6));
         }
