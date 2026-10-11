@@ -6,7 +6,8 @@ public final class FreeSlotPlan {
     public enum Action {
         // click the garbage stack: empty cursor picks it up (next tick throws it), held stack swaps with it
         CLICK_GARBAGE,
-        // the held stack is throwaway, yeet it
+        // the held stack is throwaway, yeet it. food we cannot spare is not throwaway (ItemHelper.canDropStack), so it takes the
+        // CLICK_GARBAGE road below: the click swaps it into the garbage's slot and the garbage is what gets thrown next tick
         THROW_CURSOR,
         // the held stack is worth keeping and nothing is garbage, so it goes back in the open container
         PUT_BACK,

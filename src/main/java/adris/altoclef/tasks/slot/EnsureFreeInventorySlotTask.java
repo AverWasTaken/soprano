@@ -29,7 +29,7 @@ public class EnsureFreeInventorySlotTask extends Task {
         boolean storageOpen = ContainerType.screenHandlerMatches(ContainerType.CHEST) || ContainerType.screenHandlerMatches(ContainerType.SHULKER);
         Optional<Slot> containerSlot = cursorStack.isEmpty() || !storageOpen ? Optional.empty()
                 : mod.getItemStorage().getSlotThatCanFitInOpenContainer(cursorStack, false);
-        FreeSlotPlan.Action action = FreeSlotPlan.plan(cursorStack.isEmpty(), ItemHelper.canThrowAwayStack(mod, cursorStack),
+        FreeSlotPlan.Action action = FreeSlotPlan.plan(cursorStack.isEmpty(), ItemHelper.canDropStack(mod, cursorStack),
                 garbage.isPresent(), containerSlot.isPresent());
         _stuck = action == FreeSlotPlan.Action.STUCK;
         switch (action) {

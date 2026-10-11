@@ -143,7 +143,7 @@ public class PickupFromContainerTask extends AbstractDoToStorageContainerTask {
                         mod.getSlotHandler().clickSlot(toPlace.get(), 0, ClickType.PICKUP);
                         return null;
                     }
-                    if (ItemHelper.canThrowAwayStack(mod, cursorStack)) {
+                    if (ItemHelper.canDropStack(mod, cursorStack)) {
                         mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ClickType.PICKUP);
                         return null;
                     }

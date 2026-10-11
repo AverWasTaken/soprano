@@ -168,6 +168,20 @@ public class StorageHelper {
         return best < 0 ? Optional.empty() : Optional.of(slots.get(best));
     }
 
+    // food we hold, counted the way the gamer counts it (GarbageRules.keepUnits): the bag, the offhand and the cursor. a held stack
+    // is not in the bag, so it has to be added or the stack on the cursor would never count toward its own floor
+    public static int bagFoodUnits(AltoClef mod) {
+        if (mod.getPlayer() == null) {
+            return 0;
+        }
+        Inventory inv = mod.getPlayer().getInventory();
+        int sum = GarbageRules.keepUnits(getItemStackInCursorSlot());
+        for (int i = 0; i < inv.getContainerSize(); i++) {
+            sum += GarbageRules.keepUnits(inv.getItem(i));
+        }
+        return sum;
+    }
+
     // Gets a slot with an item we can throw away
     public static Optional<Slot> getGarbageSlot(AltoClef mod) {
         Optional<Slot> junk = getJunkSlot(mod);
@@ -189,7 +203,7 @@ public class StorageHelper {
                 if (Slot.isCursor(slot))
                     continue;
                 ItemStack stack = StorageHelper.getItemStackInSlot(slot);
-                if (!ItemHelper.canThrowAwayStack(mod, stack))
+                if (!ItemHelper.canDropStack(mod, stack))
                     continue;
                 if (stack.getItem() instanceof BlockItem) {
                     totalBlockThrowaways += stack.getCount();
@@ -215,7 +229,7 @@ public class StorageHelper {
         if (PlayerSlot.getCurrentScreenSlots() != null) {
             for (Slot slot : PlayerSlot.getCurrentScreenSlots()) {
                 ItemStack stack = StorageHelper.getItemStackInSlot(slot);
-                if (!ItemHelper.canThrowAwayStack(mod, stack))
+                if (!ItemHelper.canDropStack(mod, stack))
                     continue;
                 Item item = stack.getItem();
                 if (ItemHelper.isTool(item)) {
@@ -240,11 +254,9 @@ public class StorageHelper {
         // Now we're getting desparate
         if (Baritone.settings().altoThrowAwayUnusedItems.value) {
 
-            // Also uh calculate how much food we have.
-            int calcTotalFoodScore = 0;
-
             // Get all non-important items. For now there is no measure of value.
             final List<Slot> possibleSlots = new ArrayList<>();
+            final List<GarbageRules.Cand> cands = new ArrayList<>();
             if (PlayerSlot.getCurrentScreenSlots() != null) {
                 for (Slot slot : PlayerSlot.getCurrentScreenSlots()) {
                     ItemStack stack = StorageHelper.getItemStackInSlot(slot);
@@ -256,63 +268,17 @@ public class StorageHelper {
                         }
                     }
                     // Throw away-able slots are good!
-                    if (ItemHelper.canThrowAwayStack(mod, stack)) {
+                    if (ItemHelper.canDropStack(mod, stack)) {
                         possibleSlots.add(slot);
-                    }
-                    if (FoodHelper.isSafeFood(stack.getItem())) {
-                        calcTotalFoodScore += Objects.requireNonNull(stack.getItem().components().get(DataComponents.FOOD)).nutrition();
+                        cands.add(GarbageRules.cand(stack));
                     }
                 }
             }
 
-            final int totalFoodScore = calcTotalFoodScore;
-
-            if (!possibleSlots.isEmpty()) {
-                return possibleSlots.stream().min((leftSlot, rightSlot) -> {
-                    ItemStack left = StorageHelper.getItemStackInSlot(leftSlot),
-                            right = StorageHelper.getItemStackInSlot(rightSlot);
-                    boolean leftIsTool = ItemHelper.isTool(left.getItem());
-                    boolean rightIsTool = ItemHelper.isTool(right.getItem());
-                    // Prioritize tools over materials.
-                    if (rightIsTool && !leftIsTool) {
-                        return -1;
-                    } else if (leftIsTool && !rightIsTool) {
-                        return 1;
-                    }
-                    if (rightIsTool && leftIsTool) {
-                        // Prioritize material type, then durability.
-                        int leftUses = ItemHelper.getToolDurability(left.getItem());
-                        int rightUses = ItemHelper.getToolDurability(right.getItem());
-                        if (leftUses != rightUses) {
-                            return leftUses - rightUses;
-                        }
-                        // We want less damage.
-                        return left.getDamageValue() - right.getDamageValue();
-                    }
-
-                    // Prioritize food over other things if we lack food.
-                    boolean lacksFood = totalFoodScore < 8;
-                    boolean leftIsFood = FoodHelper.isSafeFood(left.getItem());
-                    boolean rightIsFood = FoodHelper.isSafeFood(right.getItem());
-                    if (lacksFood) {
-                        if (rightIsFood && !leftIsFood) {
-                            return -1;
-                        } else if (leftIsFood && !rightIsFood) {
-                            return 1;
-                        }
-                    }
-                    // If both are food, pick the better cost.
-                    if (leftIsFood && rightIsFood) {
-                        assert left.getItem().components().get(DataComponents.FOOD) != null;
-                        assert right.getItem().components().get(DataComponents.FOOD) != null;
-                        int leftCost = left.getItem().components().get(DataComponents.FOOD).nutrition() * left.getCount(),
-                                rightCost = right.getItem().components().get(DataComponents.FOOD).nutrition() * right.getCount();
-                        return leftCost - rightCost;
-                    }
-
-                    // Just discard the one with the smallest quantity, but this doesn't really matter.
-                    return left.getCount() - right.getCount();
-                });
+            // the ranking (and the food floor, once more) lives in GarbageRules so a test can lean on it
+            int pick = GarbageRules.pick(cands, bagFoodUnits(mod), Baritone.settings().altoFoodKeepUnits.value);
+            if (pick >= 0) {
+                return Optional.of(possibleSlots.get(pick));
             }
         }
         return Optional.empty();

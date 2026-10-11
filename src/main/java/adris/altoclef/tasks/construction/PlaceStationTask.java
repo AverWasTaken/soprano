@@ -429,7 +429,7 @@ public class PlaceStationTask extends Task {
         Optional<Slot> moveTo = mod.getItemStorage().getSlotThatCanFitInPlayerInventory(cursor, false);
         if (moveTo.isPresent()) {
             mod.getSlotHandler().clickSlot(moveTo.get(), 0, ClickType.PICKUP);
-        } else if (ItemHelper.canThrowAwayStack(mod, cursor)) {
+        } else if (ItemHelper.canDropStack(mod, cursor)) {
             mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ClickType.PICKUP);
         } else {
             Optional<Slot> garbage = StorageHelper.getGarbageSlot(mod);

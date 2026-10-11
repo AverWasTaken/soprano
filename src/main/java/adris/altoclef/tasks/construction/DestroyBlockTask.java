@@ -507,7 +507,7 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
                 .ifPresent(slot -> mod.getSlotHandler().clickSlot(slot, 0, ClickType.PICKUP));
 
         // If the cursor stack can be thrown away, click an undefined slot to pick up the item.
-        if (ItemHelper.canThrowAwayStack(mod, cursorStack)) {
+        if (ItemHelper.canDropStack(mod, cursorStack)) {
             mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ClickType.PICKUP);
         }
 

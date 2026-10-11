@@ -40,4 +40,16 @@ public class FreeSlotPlanTest {
         // putting it back just gets looted again next tick
         assertEquals(CLICK_GARBAGE, FreeSlotPlan.plan(false, false, true, true));
     }
+
+    @Test
+    public void foodWeCannotSpareOnTheCursorSwapsWithGarbageInsteadOfBeingThrown() {
+        // canDropStack says no to food under the floor, so the cursor is not throwable and the cobble in the bag is the way out
+        assertEquals(CLICK_GARBAGE, FreeSlotPlan.plan(false, false, true, false));
+        assertEquals(CLICK_GARBAGE, FreeSlotPlan.plan(false, false, true, true));
+    }
+
+    @Test
+    public void foodWeCannotSpareWithNoGarbageGoesBackInTheChestNotOnTheFloor() {
+        assertEquals(PUT_BACK, FreeSlotPlan.plan(false, false, false, true));
+    }
 }

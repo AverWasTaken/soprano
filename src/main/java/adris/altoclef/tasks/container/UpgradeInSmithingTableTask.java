@@ -89,7 +89,7 @@ public class UpgradeInSmithingTableTask extends ResourceTask {
                         mod.getSlotHandler().clickSlot(moveTo.get(), 0, ClickType.PICKUP);
                         return null;
                     }
-                    if (ItemHelper.canThrowAwayStack(mod, cursorStack)) {
+                    if (ItemHelper.canDropStack(mod, cursorStack)) {
                         mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ClickType.PICKUP);
                         return null;
                     }

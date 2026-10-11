@@ -143,7 +143,7 @@ public class CraftInTableTask extends ResourceTask {
             moveToSlot.ifPresent(slot -> mod.getSlotHandler().clickSlot(slot, 0, ClickType.PICKUP));
 
             // If the item can be thrown away, pick up the item from the cursor slot and throw it away.
-            if (ItemHelper.canThrowAwayStack(mod, cursorStack)) {
+            if (ItemHelper.canDropStack(mod, cursorStack)) {
                 mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ClickType.PICKUP);
             }
 
@@ -254,7 +254,7 @@ class DoCraftInTableTask extends DoStuffInContainerTask {
             moveTo.ifPresent(slot -> mod.getSlotHandler().clickSlot(slot, 0, ClickType.PICKUP));
 
             // Check if the item can be thrown away
-            if (ItemHelper.canThrowAwayStack(mod, cursorStack)) {
+            if (ItemHelper.canDropStack(mod, cursorStack)) {
                 // Throw away the item
                 mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ClickType.PICKUP);
             }
@@ -296,7 +296,7 @@ class DoCraftInTableTask extends DoStuffInContainerTask {
             moveToSlot.ifPresent(slot -> mod.getSlotHandler().clickSlot(slot, 0, ClickType.PICKUP));
 
             // If the cursor stack can be thrown away, throw it away
-            if (ItemHelper.canThrowAwayStack(mod, cursorStack)) {
+            if (ItemHelper.canDropStack(mod, cursorStack)) {
                 mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ClickType.PICKUP);
             }
 

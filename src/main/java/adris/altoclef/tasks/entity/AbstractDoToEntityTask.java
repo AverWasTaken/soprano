@@ -106,7 +106,7 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
         if (!cursorStack.isEmpty()) {
             Optional<Slot> moveTo = mod.getItemStorage().getSlotThatCanFitInPlayerInventory(cursorStack, false);
             moveTo.ifPresent(slot -> mod.getSlotHandler().clickSlot(slot, 0, ClickType.PICKUP));
-            if (ItemHelper.canThrowAwayStack(mod, cursorStack)) {
+            if (ItemHelper.canDropStack(mod, cursorStack)) {
                 mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ClickType.PICKUP);
             }
             Optional<Slot> garbage = StorageHelper.getGarbageSlot(mod);

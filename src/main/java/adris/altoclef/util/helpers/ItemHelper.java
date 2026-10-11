@@ -432,6 +432,15 @@ public class ItemHelper {
         return AltoSettings.isThrowaway(stack.getItem()) || Baritone.settings().altoThrowAwayUnusedItems.value;
     }
 
+    // canThrowAwayStack plus the food floor: food we cannot spare is not a stack to throw. this is the question every
+    // "make room" path asks. canThrowAwayStack alone stays for the ones that only mean "may we touch this" (FoodChain eats by it)
+    public static boolean canDropStack(AltoClef mod, ItemStack stack) {
+        if (!canThrowAwayStack(mod, stack))
+            return false;
+        int units = GarbageRules.keepUnits(stack);
+        return units == 0 || !GarbageRules.keepsFood(StorageHelper.bagFoodUnits(mod), units, Baritone.settings().altoFoodKeepUnits.value);
+    }
+
     @SuppressWarnings("BooleanMethodIsAlwaysInverted")
     public static boolean canStackTogether(ItemStack from, ItemStack to) {
         if (to.isEmpty() && from.getCount() <= from.getMaxStackSize())

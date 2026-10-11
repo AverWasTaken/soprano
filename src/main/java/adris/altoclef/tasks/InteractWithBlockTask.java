@@ -434,7 +434,7 @@ public class InteractWithBlockTask extends Task {
                     mod.getSlotHandler().clickSlot(moveTo.get(), 0, ClickType.PICKUP);
                     return ClickResponse.WAIT_FOR_CLICK;
                 }
-                if (ItemHelper.canThrowAwayStack(mod, cursorStack)) {
+                if (ItemHelper.canDropStack(mod, cursorStack)) {
                     mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ClickType.PICKUP);
                     return ClickResponse.WAIT_FOR_CLICK;
                 }

@@ -140,7 +140,7 @@ public abstract class ResourceTask extends Task implements ITaskCanForce {
                 mod.getSlotHandler().clickSlot(moveTo.get(), 0, ClickType.PICKUP);
                 return null;
             }
-            if (ItemHelper.canThrowAwayStack(mod, StorageHelper.getItemStackInCursorSlot())) {
+            if (ItemHelper.canDropStack(mod, StorageHelper.getItemStackInCursorSlot())) {
                 mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ClickType.PICKUP);
                 return null;
             }

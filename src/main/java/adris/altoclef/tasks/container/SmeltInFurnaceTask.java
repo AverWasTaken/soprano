@@ -119,7 +119,7 @@ public class SmeltInFurnaceTask extends ResourceTask implements AsyncSmelting.Ha
         if (!cursorStack.isEmpty()) {
             Optional<Slot> moveTo = mod.getItemStorage().getSlotThatCanFitInPlayerInventory(cursorStack, false);
             moveTo.ifPresent(slot -> mod.getSlotHandler().clickSlot(slot, 0, ClickType.PICKUP));
-            if (ItemHelper.canThrowAwayStack(mod, cursorStack)) {
+            if (ItemHelper.canDropStack(mod, cursorStack)) {
                 mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ClickType.PICKUP);
             }
             Optional<Slot> garbage = StorageHelper.getGarbageSlot(mod);
@@ -374,7 +374,7 @@ public class SmeltInFurnaceTask extends ResourceTask implements AsyncSmelting.Ha
                             return null;
                         } else {
                             // Eh screw it
-                            if (ItemHelper.canThrowAwayStack(mod, cursor)) {
+                            if (ItemHelper.canDropStack(mod, cursor)) {
                                 mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ClickType.PICKUP);
                                 return null;
                             }
@@ -395,7 +395,7 @@ public class SmeltInFurnaceTask extends ResourceTask implements AsyncSmelting.Ha
                         return null;
                     } else {
                         // Eh screw it
-                        if (ItemHelper.canThrowAwayStack(mod, cursor)) {
+                        if (ItemHelper.canDropStack(mod, cursor)) {
                             mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ClickType.PICKUP);
                             return null;
                         }

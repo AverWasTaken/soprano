@@ -179,6 +179,7 @@ They're normal Soprano settings that all start with `alto`, so `#set alto<tab>` 
 | `altoIdleCommand` | empty | a `#` command line to run when idle, only used with `altoRunsWhenIdle` |
 | `altoDeathCommand` | empty | what to send after respawning. `{deathmessage}` is replaced with the death message, and several can be separated with ` & `. A `#` line runs as a command, a `/` line goes to the server, anything else is chat |
 | `altoThrowawayItems`, `altoImportantItems` | | items it can throw away, and items it won't |
+| `altoFoodKeepUnits` | 40 | how much food (hunger points times count, raw meat at its cooked value) a full bag holds on to. Food is only thrown to make room when the rest still covers this, and only after everything else that can go. `#gamer` raises it to its own food floor while it runs. 0 turns it off |
 | `altoHomeBasePosition` | | the position AltoClef treats as its home base |
 | `altoAreasToProtect` | | areas it won't break or build in, as `x1/y1/z1->x2/y2/z2` with an optional `@nether` or `@end` on the end, separated by commas: `-10/0/-10->10/255/10,1000/50/2000->1200/255/2100@nether` |
 | `altoLavaPoolPortal` | true | `#gamer` builds its nether portal on a lava row at least four wide with a throwaway 2x4 slab (8 blocks) and lava and water buckets cycled with an empty one, lit with flint and steel or a fire charge, instead of casting every obsidian block separately. No pool or any trouble and it goes back to the cast, so off just means always cast |
