@@ -250,6 +250,13 @@ public abstract class TexturedCanvas implements Canvas {
         float sy = dy + Icons.toPx(px, 19) - d / 2f;
         float ex = dx + Icons.toPx(px, 19) - d / 2f;
         float ey = dy + Icons.toPx(px, 5) - d / 2f;
+        // on a blue fill (the selected sidebar row, a lit tile) the green dot would sink into the blue, so there each
+        // dot gets a ring in the glyph's own white. the tint is the tell: nothing else draws icons in ON_ACCENT
+        if ((tint & 0x00FFFFFF) == (color(Theme.ON_ACCENT) & 0x00FFFFFF)) {
+            float ring = Math.max(1f, Math.round(Icons.strokePx(px) * 0.75f));
+            fillRoundRect(sx - ring, sy - ring, d + 2 * ring, d + 2 * ring, d / 2f + ring, tint);
+            fillRoundRect(ex - ring, ey - ring, d + 2 * ring, d + 2 * ring, d / 2f + ring, tint);
+        }
         fillRoundRect(sx, sy, d, d, d / 2f, Theme.alpha(color(Theme.PATH_START), a));
         fillRoundRect(ex, ey, d, d, d / 2f, Theme.alpha(color(Theme.PATH_END), a));
     }

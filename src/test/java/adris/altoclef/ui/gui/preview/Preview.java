@@ -43,12 +43,18 @@ public final class Preview {
     public long now = T0;
 
     public Preview(int winW, int winH, FakeFacade facade, Function<Preview, List<Tab>> tabs) throws IOException, FontFormatException {
+        this(winW, winH, Theme.scaleFor(winH), facade, tabs);
+    }
+
+    // an explicit scale, for renders at a pixel density the window height would not pick on its own (2x product
+    // shots: 2160 tall lands on 1.75 through scaleFor)
+    public Preview(int winW, int winH, float scale, FakeFacade facade, Function<Preview, List<Tab>> tabs) throws IOException, FontFormatException {
         this.winW = winW;
         this.winH = winH;
         this.facade = facade;
         glyphs = new GlyphAtlas(AwtFonts.load());
         shapes = new ShapeAtlas();
-        theme = new Theme(Theme.scaleFor(winH), glyphs);
+        theme = new Theme(scale, glyphs);
         ctx = new DeferredContext(theme, facade.clipboard());
         // the tabs need the theme and a context, the shell needs the tabs
         shell = new Shell(theme, tabs.apply(this), facade.status(), facade.keyNames(), 344, k -> facade.actions.add("rebind " + k),
@@ -179,14 +185,23 @@ public final class Preview {
 
     // the same crop with a transparent surround instead of the painted world
     public Path savePanelCutout(String name) throws IOException {
-        return savePanel(name, false);
+        return savePanel(name, false, 24);
+    }
+
+    // a cutout with a margin wide enough for the whole shadow (it reaches about 40 design px below the panel), for
+    // shots that go on a page. name may have a subdirectory in it
+    public Path savePanelCutout(String name, int padDesign) throws IOException {
+        return savePanel(name, false, theme.px(padDesign));
     }
 
     private Path savePanel(String name, boolean world) throws IOException {
-        Files.createDirectories(OUT);
+        return savePanel(name, world, 24);
+    }
+
+    private Path savePanel(String name, boolean world, int pad) throws IOException {
         Path p = OUT.resolve(name + ".png");
+        Files.createDirectories(p.getParent());
         Java2dCanvas c = render(world);
-        int pad = 24;
         int x = Math.max(0, shell.x() - pad);
         int y = Math.max(0, shell.y() - pad);
         int w = Math.min(winW - x, shell.w() + 2 * pad);

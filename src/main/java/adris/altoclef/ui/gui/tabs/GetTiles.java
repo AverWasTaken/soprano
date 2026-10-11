@@ -16,7 +16,7 @@ import java.util.Map;
 final class GetTiles {
 
     private final Theme theme;
-    private final Map<String, String> nameCache = new HashMap<>();
+    private final Map<String, String[]> nameCache = new HashMap<>();
     private float cachedW = -1f;
 
     GetTiles(Theme theme) {
@@ -40,22 +40,38 @@ final class GetTiles {
         return Math.max(1, (w - theme.px(10)) / columns(w));
     }
 
-    // one line, always: a wrapped name made every baseline in a row depend on its neighbours. ellipsized names are
-    // cached per width, the measure was showing up when a screenful of tiles redraws every frame
-    private String fit(TextMeasurer m, String name, TextStyle style, float maxW) {
+    // up to two lines, broken at a space, only the second one ellipsized. the label block is always two lines tall
+    // whether the name needs them or not, so every row of tiles keeps the same baselines and "Diamond Pickaxe" is
+    // still a diamond pickaxe and not "Diamond Pi...". cached per width, the measure was showing up when a screenful
+    // of tiles redraws every frame
+    private String[] fit(TextMeasurer m, String name, TextStyle style, float maxW) {
         if (maxW != cachedW) {
             nameCache.clear();
             cachedW = maxW;
         }
-        String hit = nameCache.get(name);
-        if (hit == null) {
-            if (nameCache.size() > 512) {
-                nameCache.clear();
-            }
-            hit = m.ellipsize(name, style, maxW);
-            nameCache.put(name, hit);
+        String[] hit = nameCache.get(name);
+        if (hit != null) {
+            return hit;
         }
-        return hit;
+        String[] out;
+        if (m.measure(name, style) <= maxW) {
+            out = new String[] {name};
+        } else {
+            int best = -1;
+            for (int i = 0; i < name.length() - 1; i++) {
+                if (name.charAt(i) == ' ' && m.measure(name.substring(0, i), style) <= maxW) {
+                    best = i;
+                }
+            }
+            out = best < 0
+                    ? new String[] {m.ellipsize(name, style, maxW)}
+                    : new String[] {name.substring(0, best), m.ellipsize(name.substring(best + 1), style, maxW)};
+        }
+        if (nameCache.size() > 512) {
+            nameCache.clear();
+        }
+        nameCache.put(name, out);
+        return out;
     }
 
     // count < 0 means not in the basket. count 0 is in the basket with nothing to show (a mine block has no count)
@@ -76,14 +92,18 @@ final class GetTiles {
         }
         // the item is the star of the tile: two whole icon sizes, still a multiple of 16
         int s = theme.itemIconPx() * 2;
-        int iy = y + theme.px(Theme.SPACE_3 + Theme.SPACE_1);
+        int iy = y + theme.px(Theme.SPACE_2 + Theme.SPACE_1);
         c.itemIcon(e.iconItemId(), x + (w - s) / 2, iy, s);
 
         TextStyle small = theme.small;
-        String name = fit(c, e.displayName(), small, rw - 2 * theme.px(Theme.SPACE_1));
-        float base = iy + s + theme.px(Theme.SPACE_2) + c.ascent(small);
-        float tw = c.measure(name, small);
-        c.text(name, x + (w - tw) / 2f, base, small, hovered || count >= 0 ? theme.color(Theme.TEXT) : theme.color(Theme.TEXT_2));
+        String[] lines = fit(c, e.displayName(), small, rw - 2 * theme.px(Theme.SPACE_1));
+        float base = iy + s + theme.px(Theme.SPACE_1) + c.ascent(small);
+        float step = (float) Math.ceil(c.lineHeight(small));
+        int col = hovered || count >= 0 ? theme.color(Theme.TEXT) : theme.color(Theme.TEXT_2);
+        for (int i = 0; i < lines.length; i++) {
+            float tw = c.measure(lines[i], small);
+            c.text(lines[i], x + (w - tw) / 2f, base + i * step, small, col);
+        }
 
         if (count > 0) {
             TextStyle bs = theme.smallLabel.asTabular();
