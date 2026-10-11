@@ -378,15 +378,11 @@ public final class BoatTrip implements Helper {
         return Math.max(start, Math.min(end, waypoint));
     }
 
-    // the executor got rebuilt on a new path: a splice keeps our indices and tacks more path on the end,
-    // cutting the executed history off the front shifts them all by delta. either way the run might now
-    // carry on past where it used to end, and if we didn't notice we'd scuttle the boat in the middle of
-    // the lake and swim the rest
-    public void rebase(IPath newPath, int delta) {
+    // the executor got spliced onto a new path: our indices all still hold, there's just more path on the end.
+    // the run might now carry on past where it used to end, and if we didn't notice we'd scuttle the boat in
+    // the middle of the lake and swim the rest. (history cuts wait for the trip to finish, see cutIfTooLong)
+    public void rebase(IPath newPath) {
         path = newPath;
-        start -= delta;
-        end -= delta;
-        waypoint -= delta;
         if (phase == Phase.PLACE || phase == Phase.BOARD || phase == Phase.RIDE) {
             // end - 1 rather than end so the level water check covers the hop onto positions[end + 1]
             end = Math.max(end, runEnd(new BlockStateInterface(ctx), path, end - 1));

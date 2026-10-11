@@ -1101,7 +1101,7 @@ public class PathExecutor implements IPathExecutor, Helper {
             // a splice keeps every index of the first path, so the trip carries straight over. losing it
             // mid placement would have the new executor place a second boat
             if (boat != null) {
-                boat.rebase(path, 0);
+                boat.rebase(path);
                 ret.boat = boat;
             }
             ret.boatRefusedUntil = boatRefusedUntil;
@@ -1147,6 +1147,11 @@ public class PathExecutor implements IPathExecutor, Helper {
     }
 
     private PathExecutor cutIfTooLong() {
+        // not while boating. a long crossing walks pathPosition past the limit, the cut shifts the trip's
+        // start to like -30 and the lane goes looking for positions[-30]. the history can wait for dry land
+        if (boat != null) {
+            return this;
+        }
         if (pathPosition > Baritone.settings().maxPathHistoryLength.value) {
             int cutoffAmt = Baritone.settings().pathHistoryCutoffAmount.value;
             CutoffPath newPath = new CutoffPath(path, cutoffAmt, path.length() - 1);
@@ -1164,10 +1169,6 @@ public class PathExecutor implements IPathExecutor, Helper {
             }
             ret.ticksOnCurrent = ticksOnCurrent;
             ret.flight = flight;
-            if (boat != null) {
-                boat.rebase(newPath, cutoffAmt);
-                ret.boat = boat;
-            }
             ret.boatRefusedUntil = boatRefusedUntil < 0 ? -1 : boatRefusedUntil - cutoffAmt;
             return ret;
         }
