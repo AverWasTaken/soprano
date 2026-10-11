@@ -65,12 +65,14 @@ public class Toggle extends Control {
         int track = Theme.lerp(theme.color(Theme.HAIRLINE_STRONG), theme.color(Theme.ACCENT), s);
         track = Theme.lerp(track, on ? theme.color(Theme.ACCENT_HOVER) : theme.color(Theme.TEXT_3), hv * 0.6f);
         c.fillRoundRect(tx, ty, tw, th, th / 2f, track);
+        theme.well(c, tx, ty, tw, th, th / 2f, 0.5f);
         if (focused) {
             c.strokeRoundRect(tx - 1, ty - 1, tw + 2, th + 2, th / 2f + 1, theme.color(Theme.HAIRLINE_STRONG));
         }
         float knob = theme.px(14);
         float pad = (th - knob) / 2f;
         float kx = tx + pad + (tw - knob - 2 * pad) * s;
+        c.shadow(kx, ty + pad - knob / 4f, knob, knob, knob / 2f, Theme.fade(theme.color(Theme.SHADOW), 0.6f));
         c.fillRoundRect(kx, ty + pad, knob, knob, knob / 2f, 0xFFFFFFFF);
     }
 

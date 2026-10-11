@@ -27,6 +27,11 @@ public interface Canvas extends TextMeasurer {
     // soft shadow under a rounded box: blur about 1.5x the radius, pushed down by half the radius
     void shadow(float x, float y, float w, float h, float radius, int argb);
 
+    // directional shadow contained inside the rounded box; reverse lights its lower right edge
+    default void insetShadow(float x, float y, float w, float h, float radius, int argb, boolean reverse) {
+        strokeRoundRect(x, y, w, h, radius, argb);
+    }
+
     // draws at the baseline, returns the advance
     float text(String s, float x, float baseline, TextStyle style, int argb);
 

@@ -148,12 +148,32 @@ public abstract class TexturedCanvas implements Canvas {
         int r = Math.max(0, Math.min(Math.round(radius), Math.min(iw, ih) / 2));
         int blur = Math.max(2, Math.round(r * 1.5f));
         ShapeAtlas.Slice[] s = shapes.shadow(r, blur);
-        int cs = s[ShapeAtlas.SH_TL].sw();
         int reach = ShapeAtlas.shadowReach(blur);
         int bx = x0 - reach;
         int by = y0 - reach + r / 2;
         int bw = iw + 2 * reach;
         int bh = ih + 2 * reach;
+        nineSlice(s, bx, by, bw, bh, argb);
+    }
+
+    @Override
+    public void insetShadow(float x, float y, float w, float h, float radius, int argb, boolean reverse) {
+        if ((argb >>> 24) == 0) {
+            return;
+        }
+        int x0 = Math.round(x);
+        int y0 = Math.round(y);
+        int iw = Math.round(x + w) - x0;
+        int ih = Math.round(y + h) - y0;
+        if (iw <= 0 || ih <= 0) {
+            return;
+        }
+        int r = Math.max(1, Math.min(Math.round(radius), Math.min(iw, ih) / 2));
+        nineSlice(shapes.inset(r, reverse), x0, y0, iw, ih, argb);
+    }
+
+    private void nineSlice(ShapeAtlas.Slice[] s, int bx, int by, int bw, int bh, int argb) {
+        int cs = s[ShapeAtlas.SH_TL].sw();
         // a box too small for two whole corners shares what it has between them, so the shadow never double darkens
         int lw = Math.min(cs, bw / 2);
         int rw = Math.min(cs, bw - lw);

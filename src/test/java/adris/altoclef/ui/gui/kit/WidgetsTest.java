@@ -86,6 +86,15 @@ public class WidgetsTest {
         }
     }
 
+    private StubCanvas.Call fill() {
+        return canvas.calls.stream().filter(c -> c.kind().equals("fillRoundRect")).findFirst().orElseThrow();
+    }
+
+    private StubCanvas.Call pill() {
+        return canvas.calls.stream().filter(c -> c.kind().equals("fillRoundRect") && c.argb() == Theme.SELECTED)
+                .findFirst().orElseThrow();
+    }
+
     @Test
     public void buttonClicksOnReleaseInsideOnly() {
         int[] n = {0};
@@ -139,13 +148,13 @@ public class WidgetsTest {
         Button p = new Button(theme, "Go", Button.Kind.PRIMARY, null, () -> { });
         p.setBounds(0, 0, 100, 30);
         draw(p, 0);
-        assertEquals(Theme.ACCENT, canvas.calls.get(0).argb());
+        assertEquals(Theme.ACCENT, fill().argb());
         assertEquals(Theme.ON_ACCENT, canvas.textCall("Go").argb());
         canvas.calls.clear();
         Button d = new Button(theme, "Stop", Button.Kind.DANGER, null, () -> { });
         d.setBounds(0, 0, 100, 30);
         draw(d, 0);
-        assertEquals(Theme.RAISED, canvas.calls.get(0).argb());
+        assertEquals(Theme.SURFACE, fill().argb());
         assertEquals(Theme.DANGER, canvas.textCall("Stop").argb());
     }
 
@@ -158,7 +167,7 @@ public class WidgetsTest {
         draw(b, 1);
         canvas.calls.clear();
         draw(b, 500);
-        assertEquals(Theme.HOVER, canvas.calls.get(0).argb());
+        assertEquals(Theme.HOVER, fill().argb());
     }
 
     @Test
@@ -170,11 +179,11 @@ public class WidgetsTest {
         b.keyDown(Keys.ENTER, 0);
         canvas.calls.clear();
         draw(b, 1);
-        int first = canvas.calls.get(0).argb();
-        assertTrue(first != Theme.RAISED);
+        int first = fill().argb();
+        assertTrue(first != Theme.SURFACE);
         canvas.calls.clear();
         draw(b, 500);
-        assertEquals(Theme.RAISED, canvas.calls.get(0).argb());
+        assertEquals(Theme.SURFACE, fill().argb());
     }
 
     @Test
@@ -218,7 +227,7 @@ public class WidgetsTest {
         assertTrue(t.on());
         assertTrue(seen.isEmpty());
         draw(t, 0);
-        assertEquals(Theme.ACCENT, canvas.calls.get(0).argb());
+        assertEquals(Theme.ACCENT, fill().argb());
     }
 
     @Test
@@ -258,14 +267,14 @@ public class WidgetsTest {
         Segmented s = new Segmented(theme, List.of("Get", "Mine"), 0, i -> { });
         s.setBounds(0, 0, s.preferredWidth(), 30);
         draw(s, 0);
-        float at0 = canvas.calls.get(2).x();
+        float at0 = pill().x();
         s.mouseDown(s.w() - 5, 10, 0, 0);
         canvas.calls.clear();
         draw(s, 40);
-        float mid = canvas.calls.get(2).x();
+        float mid = pill().x();
         canvas.calls.clear();
         draw(s, 500);
-        float at1 = canvas.calls.get(2).x();
+        float at1 = pill().x();
         assertTrue(at0 < mid && mid < at1);
     }
 
@@ -282,10 +291,10 @@ public class WidgetsTest {
         assertTrue(d.isOpen());
         assertEquals(100, menu.x());
         assertEquals(134, menu.y());
-        assertEquals(3 * 36 + 8, menu.h());
+        assertEquals(3 * Theme.ROW_H + 8, menu.h());
         draw(menu, 10);
         assertTrue(canvas.texts().containsAll(List.of("Normal", "Hard", "Peaceful")));
-        float rowY = menu.y() + 4 + 36 + 10;
+        float rowY = menu.y() + 4 + Theme.ROW_H + 10;
         menu.mouseDown(120, rowY, 0, 0);
         assertEquals(List.of(1), seen);
         assertEquals(1, d.selected());
@@ -371,7 +380,7 @@ public class WidgetsTest {
         draw(d, 0);
         d.mouseDown(110, 110, 0, 0);
         Widget menu = ctx.overlay;
-        assertEquals(7 * 36 + 8, menu.h());
+        assertEquals(7 * Theme.ROW_H + 8, menu.h());
         for (int i = 0; i < 10; i++) {
             menu.keyDown(Keys.DOWN, 0);
         }
@@ -565,7 +574,7 @@ public class WidgetsTest {
             t.mouseUp(5, 5, 0, 0);
             canvas.calls.clear();
             draw(t, 1);
-            assertEquals(Theme.ACCENT, canvas.calls.get(0).argb());
+            assertEquals(Theme.ACCENT, fill().argb());
         } finally {
             Anim.enabled = true;
         }

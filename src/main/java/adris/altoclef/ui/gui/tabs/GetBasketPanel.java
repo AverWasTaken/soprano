@@ -17,7 +17,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
 
-// the right hand card: title, the lines, a one line total and the big button. in mine mode there is also the one
+// the basket tray: title, the lines, a one line total and the big button. in mine mode there is also the one
 // shared "stop after" box above the total. it only shows what the basket says, the tab owns the basket and tells this
 // to refresh() after it changes it
 final class GetBasketPanel extends Widget {
@@ -101,6 +101,7 @@ final class GetBasketPanel extends Widget {
         go.setText(basket.buttonLabel());
         go.setEnabled(!basket.isEmpty());
         clear.setVisible(!basket.isEmpty());
+        layout();
         // a box you are typing in keeps its text, everyone else follows the basket
         if (mine && !limitField.isFocused()) {
             limitField.bind(basket.limit(), "any");
@@ -163,12 +164,21 @@ final class GetBasketPanel extends Widget {
         }
     }
 
+    int dockHeight() {
+        int rows = basket.isEmpty() ? theme.px(48) : theme.px(44) * Math.min(3, basket.size());
+        return theme.px(36) + rows + theme.px(mine ? 94 : 54);
+    }
+
+    int minimumDockHeight() {
+        return theme.px(mine ? 174 : 134);
+    }
+
     private int titleH() {
-        return theme.px(44);
+        return theme.px(36);
     }
 
     private int footerH() {
-        return mine ? theme.px(120) : theme.px(80);
+        return theme.px(mine ? 94 : 54);
     }
 
     @Override
@@ -178,9 +188,10 @@ final class GetBasketPanel extends Widget {
         int ch = theme.px(28);
         clear.setBounds(x + w - theme.px(8) - cw, y + (titleH() - ch) / 2, cw, ch);
         int side = theme.px(6);
-        list.setBounds(x + side, y + titleH() + 1, w - 2 * side, h - titleH() - 1 - footerH());
+        list.setBounds(x + side, y + titleH() + 1, w - 2 * side, Math.max(0, h - titleH() - 1 - footerH()));
         int bh = theme.px(32);
-        go.setBounds(x + pad, y + h - pad - bh, w - 2 * pad, bh);
+        int goW = Math.min(theme.px(200), w * 38 / 100);
+        go.setBounds(x + w - pad - goW, y + h - pad - bh, goW, bh);
         // limit row: label on the left, [-] box [+] on the right
         int b = theme.px(22);
         int gap = theme.px(2);
@@ -223,9 +234,7 @@ final class GetBasketPanel extends Widget {
     @Override
     public void draw(Canvas c, Frame f) {
         now = f.nowNanos();
-        float r = theme.pxf(Theme.CONTROL_RADIUS);
-        c.fillRoundRect(x, y, w, h, r, theme.color(Theme.RAISED));
-        c.strokeRoundRect(x, y, w, h, r, theme.color(Theme.HAIRLINE));
+        theme.card(c, x, y, w, h, theme.px(14), true);
 
         int pad = theme.px(12);
         float tb = y + titleH() / 2f + (c.ascent(theme.label) - c.descent(theme.label)) / 2f;
@@ -242,23 +251,23 @@ final class GetBasketPanel extends Widget {
         int footTop = y + h - footerH();
         c.fillRect(x + 1, footTop, w - 2, 1, theme.color(Theme.HAIRLINE));
         TextStyle small = theme.small;
-        float summaryTop = footTop + theme.px(14);
         if (mine) {
             float lb = limitField.y() + limitField.h() / 2f + (c.ascent(theme.body) - c.descent(theme.body)) / 2f;
             c.text("Stop after", x + pad, lb, theme.body, theme.color(Theme.TEXT_2));
             limitMinus.draw(c, f);
             limitField.draw(c, f);
             limitPlus.draw(c, f);
-            summaryTop += theme.px(40);
         }
-        String shown = c.ellipsize(summary, small, w - 2 * pad);
-        c.text(shown, x + pad, summaryTop + c.ascent(small), small, theme.color(Theme.TEXT_2));
+        float summaryW = go.x() - x - 2 * pad;
+        String shown = c.ellipsize(summary, small, summaryW);
+        float summaryBase = go.y() + go.h() / 2f + (c.ascent(small) - c.descent(small)) / 2f;
+        c.text(shown, x + pad, summaryBase, small, theme.color(Theme.TEXT_2));
         go.draw(c, f);
     }
 
     private void drawHint(Canvas c) {
         String msg = mine
-                ? "Click a block to add it, click it again to take it out. Leave the limit empty to keep mining."
+                ? "Choose blocks. Set a limit, or leave it empty to keep mining."
                 : "Click an item to add it. Shift-click adds a stack, Ctrl-click adds 10.";
         TextStyle small = theme.small;
         float maxW = list.w() - 2 * theme.px(14);

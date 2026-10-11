@@ -53,11 +53,11 @@ final class SettingKeyCard extends Widget {
     }
 
     static boolean compactFor(Theme theme, int width) {
-        return width < theme.px(520);
+        return width < theme.px(340);
     }
 
     static int heightFor(Theme theme, int width) {
-        return theme.px(compactFor(theme, width) ? 96 : 68);
+        return theme.px(compactFor(theme, width) ? 88 : 60);
     }
 
     @Override
@@ -84,9 +84,7 @@ final class SettingKeyCard extends Widget {
 
     @Override
     public void draw(Canvas c, Frame f) {
-        float r = theme.pxf(8);
-        c.fillRoundRect(x, y, w, h, r, theme.color(Theme.RAISED));
-        c.strokeRoundRect(x, y, w, h, r, theme.color(Theme.HAIRLINE));
+        theme.card(c, x, y, w, h, theme.pxf(12), true);
         int pad = theme.px(16);
         int is = theme.px(Theme.ICON);
         float textX = x + pad + is + theme.px(12);

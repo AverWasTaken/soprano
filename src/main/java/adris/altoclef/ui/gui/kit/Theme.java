@@ -29,14 +29,21 @@ public final class Theme {
     public static final int PATH_START = 0xFF72C688;
     public static final int PATH_END = 0xFFEB817B;
 
+    public static final int SURFACE = 0xFF2B3039;
+    public static final int SOFT_SHADE = 0x800A0D13;
+    public static final int SOFT_LIGHT = 0x40546175;
+    public static final int INSET = 0xFF1C2129;
+    public static final int EDGE = 0x167D8A9C;
+    public static final int GLEAM = 0x22FFFFFF;
+
     // design sizes at scale 1
-    public static final int SIDEBAR_W = 196;
-    public static final int HEADER_H = 64;
-    public static final int STATUS_H = 40;
-    public static final int PANEL_RADIUS = 18;
-    public static final int CONTROL_RADIUS = 8;
-    public static final int ROW_RADIUS = 8;
-    public static final int ROW_H = 36;
+    public static final int SIDEBAR_W = 176;
+    public static final int HEADER_H = 58;
+    public static final int STATUS_H = 36;
+    public static final int PANEL_RADIUS = 20;
+    public static final int CONTROL_RADIUS = 9;
+    public static final int ROW_RADIUS = 10;
+    public static final int ROW_H = 34;
     public static final int CONTROL_H = 30;
     public static final int PAD = 16;
     public static final int GAP = 8;
@@ -65,9 +72,9 @@ public final class Theme {
     public Theme(float scale, TextMeasurer measurer) {
         this.scale = scale;
         this.measurer = measurer;
-        this.title = new TextStyle(Weight.LIGHT, px(26));
-        this.label = new TextStyle(Weight.REGULAR, px(15));
-        this.body = new TextStyle(Weight.LIGHT, px(16));
+        this.title = new TextStyle(Weight.MEDIUM, px(22));
+        this.label = new TextStyle(Weight.MEDIUM, px(14));
+        this.body = new TextStyle(Weight.REGULAR, px(15));
         this.small = new TextStyle(Weight.REGULAR, px(12));
         this.smallLabel = new TextStyle(Weight.REGULAR, px(12));
     }
@@ -99,9 +106,15 @@ public final class Theme {
             return token;
         }
         int light = switch (token) {
+            case SURFACE -> 0xFFF0F2F5;
+            case SOFT_SHADE -> 0x557C8798;
+            case SOFT_LIGHT -> 0xDFFFFFFF;
+            case INSET -> 0xFFE8ECF1;
+            case EDGE -> 0x14758294;
+            case GLEAM -> 0xCCFFFFFF;
             case SCRIM -> 0x350D1420;
-            case SIDEBAR -> 0xFFF0F2F5;
-            case PANEL -> 0xFFFAFBFC;
+            case SIDEBAR -> 0xFFE7EBF0;
+            case PANEL -> 0xFFECEFF3;
             case RAISED -> 0xFFECEFF3;
             case HOVER -> 0xFFE2E8EE;
             case PRESSED -> 0xFFD4DEE8;
@@ -125,6 +138,32 @@ public final class Theme {
             default -> token;
         };
         return lightMix >= 1f ? light : lerp(token, light, lightMix);
+    }
+
+    // light comes from the upper left throughout the shell, including controls pressed into a card
+    public void card(Canvas c, float x, float y, float w, float h, float radius, boolean raised) {
+        if (raised) {
+            lift(c, x, y, w, h, radius, 1f);
+        }
+        c.fillRoundRect(x, y, w, h, radius, color(SURFACE));
+        c.strokeRoundRect(x, y, w, h, radius, color(EDGE));
+    }
+
+    public void lift(Canvas c, float x, float y, float w, float h, float radius, float amount) {
+        float offset = px(3);
+        // shadow() has its own downward offset; cancel that before positioning the paired lights
+        c.shadow(x + offset, y + offset - radius / 2f, w, h, radius, fade(color(SOFT_SHADE), amount));
+        c.shadow(x - offset, y - offset - radius / 2f, w, h, radius, fade(color(SOFT_LIGHT), amount));
+    }
+
+    public void recess(Canvas c, float x, float y, float w, float h, float radius) {
+        c.fillRoundRect(x, y, w, h, radius, color(INSET));
+        well(c, x, y, w, h, radius, 1f);
+    }
+
+    public void well(Canvas c, float x, float y, float w, float h, float radius, float amount) {
+        c.insetShadow(x, y, w, h, radius, fade(color(SOFT_SHADE), amount), false);
+        c.insetShadow(x, y, w, h, radius, fade(color(SOFT_LIGHT), amount), true);
     }
 
     // a minecraft item icon is 16 px of texture: draw it at a whole multiple so the pixels stay crisp, and lay

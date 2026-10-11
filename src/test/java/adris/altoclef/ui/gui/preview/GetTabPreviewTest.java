@@ -3,6 +3,8 @@ package adris.altoclef.ui.gui.preview;
 import adris.altoclef.ui.gui.kit.Keys;
 import adris.altoclef.ui.gui.kit.Tab;
 import adris.altoclef.ui.gui.kit.Widget;
+import adris.altoclef.ui.gui.kit.VirtualGrid;
+import adris.altoclef.ui.gui.kit.RowWidgets;
 import adris.altoclef.ui.gui.tabs.GetTab;
 
 import java.util.List;
@@ -63,8 +65,7 @@ public class GetTabPreviewTest {
 
         void tile(int i, int mods) {
             Widget g = grid();
-            int cw = p.theme.px(96);
-            int cols = Math.max(1, (g.w() - p.theme.px(10)) / cw);
+            int cols = ((VirtualGrid<?>) g).columns();
             int cwReal = (g.w() - p.theme.px(10)) / cols;
             int ch = p.theme.px(88);
             p.click(g.x() + (i % cols) * cwReal + cwReal / 2f, g.y() + (i / cols) * ch + ch / 2f, mods);
@@ -128,7 +129,7 @@ public class GetTabPreviewTest {
         r.p.advance(300);
         r.hoverRow(1);
         r.p.savePanel("get_basket_hover");
-        assertEquals(4, r.list().children().size());
+        assertEquals(4, ((RowWidgets<?>) r.list()).items().size());
     }
 
     @Test
@@ -210,7 +211,7 @@ public class GetTabPreviewTest {
         Widget list = r.list();
         r.p.scroll(list.x() + 40, list.y() + 40, -6);
         r.p.advance(300);
-        r.hoverRow(5);
+        r.hoverRow(1);
         r.p.savePanel("get_long_basket_scrolled");
     }
 

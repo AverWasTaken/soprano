@@ -36,7 +36,7 @@ public final class Icons {
         g.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE);
         g.setColor(Color.WHITE);
 
-        float sw = Math.max(1.3f, size / 12f);
+        float sw = Math.max(1.3f, size / 14f);
         // the stroke's outer edge sits half a pixel inside the box, so nothing gets sliced by the atlas edge
         float lo = 0.5f + sw * 0.5f;
         float scale = (size - 2f * lo) / GRID_SPAN;

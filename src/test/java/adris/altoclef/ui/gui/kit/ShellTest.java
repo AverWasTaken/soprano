@@ -168,8 +168,8 @@ public class ShellTest {
 
     @Test
     public void panelIsCentredAndSizedFromTheWindow() {
-        assertEquals(Math.round(1920 * 0.62f), shell.w());
-        assertEquals(Math.round(1080 * 0.72f), shell.h());
+        assertEquals(1040, shell.w());
+        assertEquals(680, shell.h());
         assertEquals((1920 - shell.w()) / 2, shell.x());
         assertEquals((1080 - shell.h()) / 2, shell.y());
     }
@@ -180,8 +180,8 @@ public class ShellTest {
         assertEquals(640, shell.w());
         assertEquals(440, shell.h());
         shell.setViewport(4000, 3000);
-        assertEquals(1500, shell.w());
-        assertEquals(1000, shell.h());
+        assertEquals(1040, shell.w());
+        assertEquals(680, shell.h());
         shell.setViewport(700, 400);
         assertTrue(shell.w() <= 700 && shell.h() <= 400);
     }

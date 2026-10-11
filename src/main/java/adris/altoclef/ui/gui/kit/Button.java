@@ -131,21 +131,28 @@ public class Button extends Control {
                 textCol = Theme.lerp(theme.color(Theme.TEXT_2), theme.color(Theme.TEXT), hv);
             }
             case DANGER -> {
-                base = theme.color(Theme.RAISED);
+                base = theme.color(Theme.SURFACE);
                 hover = theme.color(Theme.DANGER_FILL);
                 pressed = theme.color(Theme.DANGER_PRESSED);
                 textCol = theme.color(Theme.DANGER);
             }
             default -> {
-                base = theme.color(Theme.RAISED);
+                base = theme.color(Theme.SURFACE);
                 hover = theme.color(Theme.HOVER);
                 pressed = theme.color(Theme.PRESSED);
                 textCol = theme.color(Theme.TEXT);
             }
         }
         int fill = Theme.lerp(Theme.lerp(base, hover, hv), pressed, pv);
+        if (kind != Kind.GHOST) {
+            theme.lift(c, x, y, w, h, r, dim * (1f - pv) * 0.7f);
+        }
         if ((fill >>> 24) != 0) {
             c.fillRoundRect(x, y, w, h, r, Theme.fade(fill, dim));
+            if (kind != Kind.GHOST) {
+                c.strokeRoundRect(x, y, w, h, r, Theme.fade(theme.color(Theme.EDGE), dim));
+                theme.well(c, x, y, w, h, r, dim * pv);
+            }
         }
         if (focused) {
             focusRing(c, r, dim);

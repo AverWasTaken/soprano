@@ -252,6 +252,20 @@ public class GetTabTest {
     // ----- tiles
 
     @Test
+    public void basketTrayUsesOnlyTheSpaceItsRowsNeed() {
+        assertEquals(tab.grid().w(), tab.panel().w());
+        assertTrue(tab.panel().h() < root.h() / 3);
+        int emptyHeight = tab.panel().h();
+        for (int i = 0; i < 5; i++) {
+            clickTile(i, 0);
+        }
+        assertTrue(tab.panel().h() > emptyHeight);
+        assertTrue(tab.grid().y() + tab.grid().h() < tab.panel().y());
+        assertTrue(tab.panel().list().scroller().scrollable());
+        assertTrue(tab.panel().goButton().y() + tab.panel().goButton().h() < root.y() + root.h());
+    }
+
+    @Test
     public void plainClickAddsOne() {
         clickTile(0, 0);
         assertEquals(1, gb().count(shown(0).name()));

@@ -24,7 +24,7 @@ final class GetTiles {
     }
 
     int cellW() {
-        return theme.px(96);
+        return theme.px(88);
     }
 
     int cellH() {
@@ -75,15 +75,14 @@ final class GetTiles {
 
     // count < 0 means not in the basket. count 0 is in the basket with nothing to show (a mine block has no count)
     void draw(Canvas c, ItemEntry e, int count, int x, int y, int w, int h, boolean hovered) {
-        int inset = theme.px(2);
+        int inset = theme.px(5);
         float rx = x + inset;
         float ry = y + inset;
         float rw = w - 2 * inset;
         float rh = h - 2 * inset;
         float radius = theme.pxf(Theme.ROW_RADIUS);
-        if (hovered) {
-            c.fillRoundRect(rx, ry, rw, rh, radius, theme.color(Theme.HOVER));
-        }
+        theme.lift(c, rx, ry, rw, rh, radius, hovered ? 0.85f : 0.45f);
+        c.fillRoundRect(rx, ry, rw, rh, radius, theme.color(count >= 0 ? Theme.ACCENT_SOFT : hovered ? Theme.HOVER : Theme.SURFACE));
         if (count >= 0) {
             c.strokeRoundRect(rx, ry, rw, rh, radius, theme.color(Theme.ACCENT));
         }

@@ -32,7 +32,7 @@ public final class SettingsTab implements Tab, SettingHost {
     private final List<SettingRow> rows = new ArrayList<>();
     private final Map<String, String> descriptions = new HashMap<>();
     private final RowWidgets<SettingView> list;
-    private final SettingCategoryColumn column;
+    private final SettingsToolbar toolbar;
     private final SettingKeyCard keyCard;
     private final SettingsContent content;
 
@@ -51,9 +51,9 @@ public final class SettingsTab implements Tab, SettingHost {
             return row;
         });
         list.setKeyFunction(SettingView::name);
-        column = new SettingCategoryColumn(theme, this::pickCategory, this::pickModifiedOnly, this::pickAdvanced);
+        toolbar = new SettingsToolbar(theme, ctx, this::pickCategory, this::pickModifiedOnly, this::pickAdvanced);
         keyCard = new SettingKeyCard(theme, ctx, facade.keyNames(), currentKey(), currentKeyEnabled(), this::keyCaptured, this::keyToggled);
-        content = new SettingsContent(theme, column, keyCard, list, this::flushEdits);
+        content = new SettingsContent(theme, toolbar, keyCard, list, this::flushEdits);
         reload();
     }
 
@@ -129,12 +129,11 @@ public final class SettingsTab implements Tab, SettingHost {
         }
         list.setEmptyText(emptyText());
         content.setCountLine(countLine(shown.size()));
-        pushColumn();
+        pushToolbar();
     }
 
-    private void pushColumn() {
-        column.setData(SettingsFilter.counts(all, advanced), all.size(), category, SettingsFilter.modifiedCount(all),
-                modifiedOnly, SettingsFilter.advancedCount(all), advanced);
+    private void pushToolbar() {
+        toolbar.setData(SettingsFilter.counts(all, advanced), category, modifiedOnly, advanced);
     }
 
     private String countLine(int n) {
@@ -146,10 +145,10 @@ public final class SettingsTab implements Tab, SettingHost {
             sb.append(" in ").append(category);
         }
         if (modifiedOnly) {
-            sb.append(" · modified only");
+            sb.append(" \u00b7 modified only");
         }
         if (!advanced && SettingsFilter.advancedCount(all) > 0) {
-            sb.append(" · advanced hidden");
+            sb.append(" \u00b7 advanced hidden");
         }
         return sb.toString();
     }
@@ -185,7 +184,7 @@ public final class SettingsTab implements Tab, SettingHost {
         refilter();
     }
 
-    // test hook: the column's toggle is a widget, tests flip the flag directly
+    // test hook: the toolbar's toggle is a widget, tests flip the flag directly
     void setAdvanced(boolean on) {
         advanced = on;
         refilter();
@@ -298,7 +297,7 @@ public final class SettingsTab implements Tab, SettingHost {
         if (d != null && d.name().equals(name)) {
             content.showDetail(v, description(name));
         }
-        pushColumn();
+        pushToolbar();
         if (name.equals(KEY) || name.equals(KEY_ENABLED)) {
             syncKeyCard();
         }
@@ -365,8 +364,8 @@ public final class SettingsTab implements Tab, SettingHost {
         return list;
     }
 
-    SettingCategoryColumn column() {
-        return column;
+    SettingsToolbar toolbar() {
+        return toolbar;
     }
 
     SettingKeyCard keyCard() {

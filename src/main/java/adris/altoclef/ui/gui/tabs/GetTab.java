@@ -331,6 +331,7 @@ public final class GetTab implements Tab {
         if (dirty) {
             dirty = false;
             panel.refresh();
+            content.relayout();
         }
     }
 
@@ -347,6 +348,7 @@ public final class GetTab implements Tab {
             b.add(e.name(), Basket.stepFor(mods, stack), stack);
         }
         panel.refresh();
+        content.relayout();
         panel.reveal(e.name());
     }
 
@@ -436,16 +438,16 @@ public final class GetTab implements Tab {
         protected void layout() {
             int pad = theme.px(Theme.PAD);
             int gap = theme.px(Theme.GAP);
-            int bw = Math.max(theme.px(220), Math.min(theme.px(300), (w - 2 * pad - gap) * 45 / 100));
-            panel.setBounds(x + w - pad - bw, y + pad, bw, h - 2 * pad);
+            int trayH = Math.min(panel.dockHeight(), Math.max(panel.minimumDockHeight(), (h - 2 * pad) / 2));
+            panel.setBounds(x + pad, y + h - pad - trayH, w - 2 * pad, trayH);
             int lx = x + pad;
-            int lw = w - 2 * pad - bw - gap;
+            int lw = w - 2 * pad;
             int topH = theme.px(Theme.CONTROL_H);
             seg.setBounds(lx, y + pad, seg.preferredWidth(), topH);
             int catW = Math.max(theme.px(140), Math.min(theme.px(220), lw - seg.preferredWidth() - gap - theme.px(40)));
             catDrop.setBounds(seg.x() + seg.preferredWidth() + gap, y + pad, catW, topH);
             int cy = y + pad + topH + gap;
-            int bottom = y + h - pad;
+            int bottom = panel.y() - gap;
             // the strip only earns its space when the grid under it still has a couple of rows left
             boolean showStrip = !strip.entries().isEmpty() && query.trim().isEmpty()
                     && bottom - cy - strip.stripHeight() - gap >= 2 * tiles.cellH();

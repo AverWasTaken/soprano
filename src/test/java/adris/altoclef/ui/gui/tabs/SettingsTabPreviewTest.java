@@ -55,6 +55,13 @@ public class SettingsTabPreviewTest {
         p.settle();
     }
 
+    private void category(Preview p, String label) {
+        clickCentre(p, tab.toolbar().categories());
+        p.type(label);
+        p.key(Keys.ENTER);
+        p.settle();
+    }
+
     @Test
     public void states() throws Exception {
         Preview p = open(1600, 900);
@@ -66,16 +73,20 @@ public class SettingsTabPreviewTest {
         p.settle();
         p.savePanel("settings_hover");
 
-        // a category
-        var col = tab.column();
-        p.click(col.x() + col.w() / 2f, col.centreYOf(SettingCategories.MOVEMENT));
+        // categories unfold from their own control and keep keyboard navigation
+        clickCentre(p, tab.toolbar().categories());
+        p.advance(300);
+        p.savePanel("settings_category_menu");
+        p.key(Keys.ESCAPE);
+        var col = tab.toolbar();
+        category(p, SettingCategories.MOVEMENT);
         p.settle();
         p.savePanel("settings_category_movement");
 
         // back to all, then the search
-        p.click(col.x() + col.w() / 2f, col.centreYOf("All"));
+        category(p, "All");
         p.settle();
-        p.type("parkour");
+        search(p, "parkour");
         p.settle();
         p.savePanel("settings_search_parkour");
         p.shell.search().clearAndNotify();
@@ -128,6 +139,17 @@ public class SettingsTabPreviewTest {
     }
 
     @Test
+    public void minimumResizeKeepsAnEditorVisible() throws Exception {
+        Preview p = open(1920, 1080);
+        p.shell.setBounds(p.shell.x(), p.shell.y(), p.theme.px(560), p.theme.px(360));
+        assertTrue(tab.list().h() >= p.theme.px(48));
+        assertTrue(tab.toolbar().categories().x() + tab.toolbar().categories().w()
+                < tab.toolbar().modifiedToggle().x());
+        p.settle();
+        p.savePanel("settings_minimum_size");
+    }
+
+    @Test
     public void smallWindow() throws Exception {
         Preview p = open(960, 540);
         p.savePanel("settings_960x540");
@@ -137,8 +159,8 @@ public class SettingsTabPreviewTest {
         p.savePanel("settings_960x540_colour");
         p.shell.search().clearAndNotify();
         p.settle();
-        var col = tab.column();
-        p.click(col.x() + col.w() / 2f, col.centreYOf(SettingCategories.PATHING));
+        var col = tab.toolbar();
+        category(p, SettingCategories.PATHING);
         p.settle();
         p.savePanel("settings_960x540_category");
     }

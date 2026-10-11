@@ -11,11 +11,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.BiConsumer;
 
-// the settings tab's page: category column on the left, then the pinned key card, a count line, the list, and a strip
-// at the bottom that spells out the description of whatever row you are on in full (the rows cut it off to one line)
+// categories live in a popover so the setting and its editor can share the whole row. the strip below keeps
+// descriptions readable without making every row tall
 final class SettingsContent extends Widget {
 
-    private final SettingCategoryColumn column;
+    private final SettingsToolbar toolbar;
     private final SettingKeyCard keyCard;
     private final RowWidgets<SettingView> list;
     private final List<Widget> kids;
@@ -37,14 +37,14 @@ final class SettingsContent extends Widget {
     private String wrappedText;
     private float wrappedW;
 
-    SettingsContent(Theme theme, SettingCategoryColumn column, SettingKeyCard keyCard, RowWidgets<SettingView> list,
+    SettingsContent(Theme theme, SettingsToolbar toolbar, SettingKeyCard keyCard, RowWidgets<SettingView> list,
                     BiConsumer<Float, Float> beforeInput) {
         super(theme);
-        this.column = column;
+        this.toolbar = toolbar;
         this.keyCard = keyCard;
         this.list = list;
         this.beforeInput = beforeInput;
-        kids = List.of(column, keyCard, list);
+        kids = List.of(toolbar, keyCard, list);
     }
 
     // a click or a scroll may re-filter or move rows, so a pending edit lands first. the click position goes along so
@@ -85,22 +85,20 @@ final class SettingsContent extends Widget {
 
     @Override
     protected void layout() {
-        // 190 fits "Pathing and processes" and its count at full size. a small window gets less and the long names get cut
-        int colW = Math.round(Math.max(theme.px(120), Math.min(theme.px(190), w * 0.24f)));
-        column.setBounds(x, y, colW, h);
-        int mx = x + colW + 1;
-        int mw = w - colW - 1;
+        wrapped = null;
         int pad = theme.px(Theme.PAD);
-        int cardW = mw - 2 * pad;
-        int cardH = SettingKeyCard.heightFor(theme, cardW);
-        int cardY = y + theme.px(12);
-        keyCard.setBounds(mx + pad, cardY, cardW, cardH);
-        countY = cardY + cardH + theme.px(8);
-        int countH = theme.px(24);
-        detailH = theme.px(64);
-        detailY = y + h - detailH;
-        int listY = countY + countH;
-        list.setBounds(mx, listY, mw, Math.max(0, detailY - listY));
+        int inner = Math.max(0, w - 2 * pad);
+        int cardH = SettingKeyCard.heightFor(theme, inner);
+        int cardY = y + pad;
+        keyCard.setBounds(x + pad, cardY, inner, cardH);
+        int navY = cardY + cardH + theme.px(12);
+        int navH = toolbar.heightFor(inner);
+        toolbar.setBounds(x + pad, navY, inner, navH);
+        countY = navY + navH + theme.px(6);
+        detailH = theme.px(h < theme.px(340) ? 44 : 56);
+        detailY = y + h - detailH - pad;
+        int listY = countY + theme.px(22);
+        list.setBounds(x + pad, listY, inner, Math.max(0, detailY - theme.px(8) - listY));
     }
 
     @Override
@@ -110,24 +108,23 @@ final class SettingsContent extends Widget {
 
     @Override
     public void draw(Canvas c, Frame f) {
-        column.draw(c, f);
-        c.fillRect(column.x() + column.w(), y, 1, h, theme.color(Theme.HAIRLINE));
+        toolbar.draw(c, f);
         keyCard.draw(c, f);
 
-        int mx = column.x() + column.w() + 1;
+        int mx = x;
         int pad = theme.px(Theme.PAD);
         c.text(countLine, mx + pad, countY + theme.px(14), theme.small, theme.color(Theme.TEXT_3));
 
+        theme.card(c, list.x(), list.y(), list.w(), list.h(), theme.pxf(12), false);
         list.draw(c, f);
         drawDetail(c, mx, pad);
     }
 
     private void drawDetail(Canvas c, int mx, int pad) {
-        int dw = x + w - mx;
-        c.fillRect(mx, detailY, dw, detailH, theme.color(Theme.SIDEBAR));
-        c.fillRect(mx, detailY, dw, 1, theme.color(Theme.HAIRLINE));
-        float tx = mx + pad;
-        float room = dw - 2 * pad;
+        int dw = w;
+        theme.recess(c, mx + pad, detailY, dw - 2 * pad, detailH, theme.pxf(10));
+        float tx = mx + pad + theme.px(12);
+        float room = dw - 2 * pad - theme.px(24);
         float lh1 = c.ascent(theme.label) + c.descent(theme.label);
         float lh2 = c.ascent(theme.small) + c.descent(theme.small);
         float top = detailY + theme.px(10);
@@ -152,7 +149,7 @@ final class SettingsContent extends Widget {
         String text = detailText.isEmpty() ? "No description." : detailText;
         // wrapping measures a lot, and the text only changes when the mouse moves to another row
         if (wrapped == null || !text.equals(wrappedText) || wrappedW != room) {
-            wrapped = wrap(c, text, room, 2);
+            wrapped = wrap(c, text, room, detailH < theme.px(56) ? 1 : 2);
             wrappedText = text;
             wrappedW = room;
         }

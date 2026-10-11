@@ -384,11 +384,11 @@ public final class GotoTab implements Tab {
             int pad = theme.px(Theme.PAD);
             int gap = theme.px(Theme.GAP);
             int ch = theme.px(Theme.CONTROL_H);
-            int inner = w - 2 * pad;
+            int inner = w - 2 * pad - theme.px(24);
+            pad += theme.px(12);
             labelTop = y + pad;
             int fy = labelTop + theme.px(20);
-            // six digits never need more than this, and the boxes stay put when the window gets wide
-            int fw = Math.min(theme.px(160), (inner - 2 * gap) / 3);
+            int fw = Math.max(1, (inner - 2 * gap) / 3);
             for (int i = 0; i < 3; i++) {
                 fields[i].setBounds(x + pad + i * (fw + gap), fy, fw, ch);
             }
@@ -418,6 +418,8 @@ public final class GotoTab implements Tab {
 
         @Override
         public void draw(Canvas c, Frame f) {
+            int inset = theme.px(Theme.PAD);
+            theme.card(c, x + inset, y + inset, w - 2 * inset, ruleY - y - inset - theme.px(10), theme.px(14), true);
             String[] names = {"X", "Y", "Z"};
             for (int i = 0; i < 3; i++) {
                 c.text(names[i], fields[i].x() + theme.px(2), mid(c, theme.smallLabel, labelTop, theme.px(16)),
@@ -442,7 +444,7 @@ public final class GotoTab implements Tab {
         private void drawStatus(Canvas c) {
             String line = statusLine();
             int col = statusIsError() ? theme.color(Theme.DANGER) : theme.color(Theme.TEXT_2);
-            int pad = theme.px(Theme.PAD);
+            int pad = theme.px(Theme.PAD) + theme.px(12);
             String shown = c.ellipsize(line, theme.small.asTabular(), w - 2 * pad);
             c.text(shown, x + pad + theme.px(2), mid(c, theme.small, statusTop, theme.px(16)), theme.small.asTabular(), col);
         }

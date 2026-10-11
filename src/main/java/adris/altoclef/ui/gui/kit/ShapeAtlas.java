@@ -130,6 +130,53 @@ public final class ShapeAtlas {
         return s;
     }
 
+    public Slice[] inset(int r, boolean reverse) {
+        r = Math.max(1, r);
+        long k = key(reverse ? 4 : 3, r, 0);
+        Slice[] cached = rare.get(k);
+        if (cached != null) {
+            return cached;
+        }
+        int blur = Math.max(2, r / 2);
+        int reach = shadowReach(blur);
+        int offset = Math.max(1, r / 4);
+        int cs = r + reach + offset;
+        int side = 2 * cs + 1;
+        // keep the outside mask beyond the blur's reach, then clip the result with the unshifted rounded box
+        int pad = reach + offset;
+        int full = side + 2 * pad;
+        BufferedImage mask = new BufferedImage(full, full, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = begin(mask);
+        g.fill(new RoundRectangle2D.Double(pad, pad, side, side, 2 * r, 2 * r));
+        g.dispose();
+        int[] inside = ((DataBufferInt) mask.getRaster().getDataBuffer()).getData();
+        float[] a = new float[full * full];
+        for (int i = 0; i < a.length; i++) {
+            a[i] = 1f - (inside[i] >>> 24) / 255f;
+        }
+        float[] tmp = new float[full];
+        for (int pass = 0; pass < 3; pass++) {
+            for (int y = 0; y < full; y++) {
+                boxLine(a, y * full, 1, full, reach / 3, tmp);
+            }
+            for (int x = 0; x < full; x++) {
+                boxLine(a, x, full, full, reach / 3, tmp);
+            }
+        }
+        int shift = reverse ? -offset : offset;
+        int[] px = new int[side * side];
+        for (int y = 0; y < side; y++) {
+            for (int x = 0; x < side; x++) {
+                float coverage = (inside[(y + pad) * full + x + pad] >>> 24) / 255f;
+                float shade = a[(y + pad - shift) * full + x + pad - shift];
+                px[y * side + x] = Math.round(coverage * shade * 255f) << 24 | 0x00FFFFFF;
+            }
+        }
+        Slice[] result = grid(px, side, cs);
+        rare.put(k, result);
+        return result;
+    }
+
     private Slice[] buildShadow(int r, int blur) {
         // box side is picked so the middle column is further than the blur reaches from both edges, which is what
         // makes it safe to stretch one texel of it across any real box
@@ -167,6 +214,10 @@ public final class ShapeAtlas {
             whiten(px);
         }
 
+        return grid(px, side, cs);
+    }
+
+    private Slice[] grid(int[] px, int side, int cs) {
         AtlasPage page = AtlasPage.place(pages, side, side, placeOut);
         page.write(placeOut[0], placeOut[1], side, side, px);
         int ox = placeOut[0];

@@ -69,6 +69,13 @@ public class SettingsTabTest {
         return f.settings.get(name);
     }
 
+    private void category(String label) {
+        clickCentre(tab.toolbar().categories());
+        p.type(label);
+        p.key(Keys.ENTER);
+        p.settle();
+    }
+
     @Test
     public void listsEverySettingButOnlyBuildsAFewRows() {
         assertEquals(f.settings.all().size(), tab.list().items().size());
@@ -145,8 +152,8 @@ public class SettingsTabTest {
         clickCentre(r.number().field());
         p.shell.keyDown(Keys.A, 2);
         p.type("7");
-        var col = tab.column();
-        p.click(col.x() + col.w() / 2f, col.centreYOf("Tasks"));
+        var col = tab.toolbar();
+        category("Tasks");
         p.settle();
         assertEquals("7", view("followRadius").value());
     }
@@ -413,9 +420,9 @@ public class SettingsTabTest {
     @Test
     public void categoryAndModifiedOnlyNarrow() {
         int all = tab.list().items().size();
-        var col = tab.column();
-        // the first category in the column, Tasks
-        p.click(col.x() + col.w() / 2f, col.centreYOf(SettingCategories.ALTO));
+        var col = tab.toolbar();
+        // the first category in the toolbar, Tasks
+        category(SettingCategories.ALTO);
         p.settle();
         assertTrue(tab.list().items().size() < all);
         assertTrue(tab.list().items().stream().allMatch(v -> v.name().startsWith("alto")));

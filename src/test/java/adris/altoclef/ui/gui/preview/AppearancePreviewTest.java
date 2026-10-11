@@ -69,6 +69,16 @@ public class AppearancePreviewTest {
     }
 
     @Test
+    public void minimumResizeKeepsNavigationClearOfAppearance() throws Exception {
+        Preview p = new Preview(1920, 1080, new FakeFacade(), pv -> Tabs.create(pv.facade, pv.theme, pv.ctx));
+        p.shell.setBounds(p.shell.x(), p.shell.y(), p.theme.px(560), p.theme.px(360));
+        int bottom = p.shell.tabRowY(6) + p.shell.tabRowH();
+        assertTrue(bottom < p.shell.appearance().y() - p.theme.px(20));
+        p.settle();
+        p.savePanel("gui_minimum_size");
+    }
+
+    @Test
     public void appearanceAndTabMotionFrames() throws Exception {
         Preview p = new Preview(new FakeFacade(), pv -> Tabs.create(pv.facade, pv.theme, pv.ctx));
         p.shell.switchTab(6);

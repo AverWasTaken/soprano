@@ -70,9 +70,10 @@ public class Dropdown extends Control implements FocusOnClick {
         hoverTo(hoverA, hovered);
         float r = theme.pxf(Theme.CONTROL_RADIUS);
         boolean open = isOpen();
-        int fill = Theme.lerp(theme.color(Theme.RAISED), theme.color(Theme.HOVER), hoverA.value(now));
+        int fill = Theme.lerp(theme.color(Theme.SURFACE), theme.color(Theme.HOVER), hoverA.value(now));
+        theme.lift(c, x, y, w, h, r, 0.6f);
         c.fillRoundRect(x, y, w, h, r, fill);
-        c.strokeRoundRect(x, y, w, h, r, focused || open ? theme.color(Theme.HAIRLINE_STRONG) : theme.color(Theme.HAIRLINE));
+        c.strokeRoundRect(x, y, w, h, r, focused || open ? theme.color(Theme.HAIRLINE_STRONG) : theme.color(Theme.EDGE));
         int is = theme.px(Theme.ICON);
         int pad = theme.px(10);
         float room = w - pad * 2 - is - theme.px(6);
@@ -124,6 +125,10 @@ public class Dropdown extends Control implements FocusOnClick {
     // the popup list. it is its own widget so the shell can route keys and clicks to it first
     private final class Menu extends Control {
 
+        private final Spring reveal = new Spring(0f);
+        private final FadeCanvas fade = new FadeCanvas();
+        private boolean down;
+        private boolean started;
         private int hot;
         private int first;
         private final int rows;
@@ -138,7 +143,7 @@ public class Dropdown extends Control implements FocusOnClick {
             int want = Math.min(options.size(), MAX_ROWS);
             int below = (viewH == Integer.MAX_VALUE ? Integer.MAX_VALUE : viewH - (Dropdown.this.y + Dropdown.this.h) - theme.px(12));
             int above = Dropdown.this.y - theme.px(12);
-            boolean down = below >= want * rowH + 2 * pad || below >= above;
+            down = below >= want * rowH + 2 * pad || below >= above;
             int room = (down ? below : above) - 2 * pad;
             rows = Math.max(1, Math.min(want, room == Integer.MAX_VALUE ? want : room / rowH));
             int mh = rows * rowH + 2 * pad;
@@ -162,10 +167,15 @@ public class Dropdown extends Control implements FocusOnClick {
         @Override
         public void draw(Canvas c, Frame f) {
             stamp(f);
-            float r = theme.pxf(Theme.CONTROL_RADIUS);
+            if (!started) {
+                started = true;
+                reveal.set(1f, now, Theme.ANIM);
+            }
+            float a = reveal.value(now);
+            c = fade.reset(c, a, (1f - a) * theme.px(6) * (down ? -1 : 1));
+            float r = theme.pxf(12);
             c.shadow(x, y, w, h, r, theme.color(Theme.SHADOW));
-            c.fillRoundRect(x, y, w, h, r, theme.color(Theme.RAISED));
-            c.strokeRoundRect(x, y, w, h, r, theme.color(Theme.HAIRLINE));
+            theme.card(c, x, y, w, h, r, false);
             int rowH = theme.px(Theme.ROW_H);
             int pad = theme.px(4);
             int is = theme.px(Theme.ICON);
@@ -174,7 +184,7 @@ public class Dropdown extends Control implements FocusOnClick {
                 int idx = first + i;
                 float ry = y + pad + i * rowH;
                 if (idx == hot) {
-                    c.fillRoundRect(x + pad, ry, w - 2 * pad, rowH, theme.pxf(Theme.ROW_RADIUS), theme.color(Theme.HOVER));
+                    c.fillRoundRect(x + pad, ry, w - 2 * pad, rowH, theme.pxf(Theme.ROW_RADIUS), theme.color(Theme.ACCENT_SOFT));
                 }
                 float tw = w - 2 * pad - theme.px(20) - is;
                 String s = theme.measurer.ellipsize(options.get(idx), theme.body, Math.max(0f, tw));
@@ -184,6 +194,13 @@ public class Dropdown extends Control implements FocusOnClick {
                 }
             }
             c.popClip();
+            if (options.size() > rows) {
+                float track = h - 2 * pad;
+                float thumb = Math.max(theme.px(18), track * rows / options.size());
+                float top = y + pad + (track - thumb) * first / (options.size() - rows);
+                int width = theme.px(3);
+                c.fillRoundRect(x + w - pad - width, top, width, thumb, width / 2f, theme.color(Theme.HAIRLINE_STRONG));
+            }
         }
 
         private int rowAt(float mx, float my) {

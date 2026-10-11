@@ -224,12 +224,40 @@ public class Shell extends Widget implements ShellContext {
     }
 
     public int tabRowY(int i) {
-        return y + headerH + i * tabRowH();
+        int top = y + headerH + theme.px(4);
+        for (int n = 0; n <= i; n++) {
+            if (groupStart(n)) {
+                top += theme.px(20);
+            }
+            if (n < i) {
+                top += tabRowH() + theme.px(2);
+            }
+        }
+        return top;
     }
 
     public int tabRowH() {
-        int room = h - statusH - headerH - theme.px(112);
+        int groups = 0;
+        for (int i = 0; i < tabs.size(); i++) {
+            if (groupStart(i)) {
+                groups++;
+            }
+        }
+        int room = h - statusH - headerH - theme.px(120 + groups * 20 + tabs.size() * 2);
         return Math.max(theme.px(18), Math.min(theme.px(Theme.ROW_H), room / Math.max(1, tabs.size())));
+    }
+
+    private String group(int i) {
+        return switch (tabs.get(i).id()) {
+            case "get", "goto", "follow" -> "Actions";
+            case "waypoints", "stats" -> "Library";
+            case "help", "settings" -> "Preferences";
+            default -> "";
+        };
+    }
+
+    private boolean groupStart(int i) {
+        return h >= theme.px(430) && !group(i).isEmpty() && (i == 0 || !group(i).equals(group(i - 1)));
     }
 
     public int sidebarW() {
@@ -277,10 +305,10 @@ public class Shell extends Widget implements ShellContext {
         }
         winW = windowW;
         winH = windowH;
-        int pw = manualW > 0 ? manualW : Math.round(windowW * 0.62f);
-        int ph = manualH > 0 ? manualH : Math.round(windowH * 0.72f);
-        pw = Math.max(theme.px(640), Math.min(theme.px(1500), pw));
-        ph = Math.max(theme.px(440), Math.min(theme.px(1000), ph));
+        int pw = manualW > 0 ? manualW : Math.round(windowW * 0.58f);
+        int ph = manualH > 0 ? manualH : Math.round(windowH * 0.66f);
+        pw = Math.max(theme.px(640), Math.min(theme.px(manualW > 0 ? 1500 : 1040), pw));
+        ph = Math.max(theme.px(440), Math.min(theme.px(manualH > 0 ? 1000 : 680), ph));
         int margin = theme.px(8);
         pw = Math.min(pw, Math.max(1, windowW - 2 * margin));
         ph = Math.min(ph, Math.max(1, windowH - 2 * margin));
@@ -611,7 +639,8 @@ public class Shell extends Widget implements ShellContext {
 
         drawStatus(g, f, now);
         toast.draw(g, f);
-        g.strokeRoundRect(x, y, w, h, r, theme.color(Theme.HAIRLINE));
+        g.strokeRoundRect(x, y, w, h, r, theme.color(Theme.EDGE));
+        g.fillRect(x + r, y + 1, w - 2 * r, 1, theme.color(Theme.GLEAM));
         drawResizeGrip(g);
 
         Widget o = overlay;
@@ -642,6 +671,7 @@ public class Shell extends Widget implements ShellContext {
         // the rounded selection follows the same spring as the segment and switch controls
         if (!tabs.isEmpty()) {
             float py = barY.value(now) - rowH / 2f;
+            g.shadow(x + theme.px(8), py, sideW - theme.px(16), rowH, theme.pxf(Theme.ROW_RADIUS), Theme.fade(theme.color(Theme.SHADOW), 0.2f));
             g.fillRoundRect(x + theme.px(8), py, sideW - theme.px(16), rowH,
                     theme.pxf(Theme.ROW_RADIUS), theme.color(Theme.ACCENT_SOFT));
         }
@@ -652,6 +682,9 @@ public class Shell extends Widget implements ShellContext {
             float hv = tabHover[i].value(now);
             float av = tabActive[i].value(now);
             float ry = tabRowY(i);
+            if (groupStart(i)) {
+                g.text(group(i), x + theme.px(18), ry - theme.px(7), theme.small, theme.color(Theme.TEXT_3));
+            }
             float rx = x + theme.px(8);
             float rw = sideW - theme.px(16);
             if (hv > 0.01f && av < 0.99f) {
@@ -753,7 +786,7 @@ public class Shell extends Widget implements ShellContext {
         String detail = activity.detail();
         if (detail != null && !detail.isEmpty() && lineW < room) {
             float dx = tx + lineW + theme.px(6);
-            String dot = "·";
+            String dot = "\u00b7";
             float dotW = g.measure(dot, theme.body);
             float dRoom = right - dx - dotW - theme.px(6);
             if (dRoom > theme.px(24)) {

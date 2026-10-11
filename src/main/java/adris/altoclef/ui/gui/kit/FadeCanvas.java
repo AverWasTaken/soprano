@@ -55,6 +55,11 @@ public final class FadeCanvas implements Canvas {
     }
 
     @Override
+    public void insetShadow(float x, float y, float w, float h, float radius, int argb, boolean reverse) {
+        base.insetShadow(x, y + dy, w, h, radius, f(argb), reverse);
+    }
+
+    @Override
     public float text(String s, float x, float baseline, TextStyle style, int argb) {
         return base.text(s, x, baseline + dy, style, f(argb));
     }

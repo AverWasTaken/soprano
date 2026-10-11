@@ -7,6 +7,7 @@ import adris.altoclef.ui.gui.facade.KeyNames;
 import adris.altoclef.ui.gui.facade.Result;
 import adris.altoclef.ui.gui.facade.SettingsAccess;
 import adris.altoclef.ui.gui.facade.StatusAccess;
+import adris.altoclef.ui.gui.facade.StatsAccess;
 import adris.altoclef.ui.gui.facade.WorldAccess;
 import adris.altoclef.ui.gui.kit.Clipboard;
 
@@ -26,6 +27,7 @@ public final class FakeFacade implements BotFacade {
     public final FakeItems items = new FakeItems();
     public final FakeWorld world = new FakeWorld();
     public final FakeStatus status = new FakeStatus();
+    public StatsAccess stats = StatsAccess.NONE;
     public final Clipboard clipboard = Clipboard.inMemory();
 
     @Override
@@ -51,6 +53,11 @@ public final class FakeFacade implements BotFacade {
     @Override
     public StatusAccess status() {
         return status;
+    }
+
+    @Override
+    public StatsAccess stats() {
+        return stats;
     }
 
     @Override
