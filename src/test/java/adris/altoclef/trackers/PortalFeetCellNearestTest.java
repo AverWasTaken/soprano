@@ -16,7 +16,8 @@ import net.minecraft.world.phys.Vec3;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
-// the real portal pick is the tracker's nearest with the feet cell filter on top, so that is what runs here
+// the real portal pick is the tracker's nearest with the feet cell filter on top, so that is what runs here. the scorer
+// is plain distance instead of baritone's heuristic (that one wants a whole game), so this covers the filter, not the ranking
 public class PortalFeetCellNearestTest {
 
     @BeforeClass
