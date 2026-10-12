@@ -1108,7 +1108,14 @@ public class GamerTask extends Task {
             nightBudget.began();
         }
         nightPlayer = mod.getPlayer();
-        nightTrip = new NightSleepTask(state, () -> cfg.overworld, nightBudget, facts::buildBlocks, host::say, host::save, source, found);
+        nightTrip = new NightSleepTask(state, () -> cfg.overworld, nightBudget, this::nightBlocks, host::say, host::save, source, found);
+    }
+
+    // blocks the pillar may really spend: the cobble the stone kit still eats is spoken for (updateStoneFloor) and placing never
+    // touches it, so counting it here would start a pillar that runs dry halfway up
+    private int nightBlocks() {
+        boolean kitPhase = state.phase == GamerPhase.GATHER || state.phase == GamerPhase.IRON;
+        return Math.max(0, facts.buildBlocks() - (kitPhase ? KitPlanner.stoneFloor(facts, cfg.overworld) : 0));
     }
 
     // phases that must not be interrupted for a night: the portal (a pool of lava being cast), the nether, and the ones that
