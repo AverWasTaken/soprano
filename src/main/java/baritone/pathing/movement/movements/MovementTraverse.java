@@ -27,12 +27,16 @@ import baritone.api.utils.RotationUtils;
 import baritone.api.utils.VecUtils;
 import baritone.api.utils.input.Input;
 import baritone.pathing.movement.CalculationContext;
+import baritone.pathing.movement.GodBridge;
 import baritone.pathing.movement.Movement;
 import baritone.pathing.movement.MovementHelper;
 import baritone.pathing.movement.MovementState;
 import baritone.utils.BlockStateInterface;
 import com.google.common.collect.ImmutableSet;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.world.entity.Pose;
+import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.level.block.AirBlock;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
@@ -42,6 +46,8 @@ import net.minecraft.world.level.block.LadderBlock;
 import net.minecraft.world.level.block.SlabBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.SlabType;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.Optional;
@@ -54,6 +60,13 @@ public class MovementTraverse extends Movement {
      */
     private boolean wasTheBridgeBlockAlwaysThere = true;
 
+    // god bridging (see GodBridge): undecided until the first tick that needs a block, then riding it or done with it for
+    // this movement. a clicked block that never showed up is a miss, godClicked remembers we just clicked
+    private enum God { UNDECIDED, RIDING, DONE }
+
+    private God god = God.UNDECIDED;
+    private boolean godClicked;
+
     public MovementTraverse(IBaritone baritone, BetterBlockPos from, BetterBlockPos to) {
         super(baritone, from, to, new BetterBlockPos[]{to.above(), to}, to.below());
     }
@@ -62,6 +75,8 @@ public class MovementTraverse extends Movement {
     public void reset() {
         super.reset();
         wasTheBridgeBlockAlwaysThere = true;
+        god = God.UNDECIDED;
+        godClicked = false;
     }
 
     @Override
@@ -169,6 +184,10 @@ public class MovementTraverse extends Movement {
                 Block blockSrc = context.getBlock(x, y, z);
                 if ((blockSrc == Blocks.LILY_PAD || blockSrc instanceof CarpetBlock) && !srcDown.getFluidState().isEmpty()) {
                     return COST_INF; // we can stand on these but can't place against them
+                }
+                if (context.allowGodBridge && !throughWater && context.get(x, y, z).getFluidState().isEmpty()
+                        && godFooting(srcDown, context.allowWalkOnMagmaBlocks) && MovementHelper.canPlaceAgainst(context, x, y - 1, z, srcDown)) {
+                    return WC + placeCost + hardness1 + hardness2; // walking backwards across, no sneak (see GodBridge)
                 }
                 WC = WC * (SNEAK_ONE_BLOCK_COST / WALK_ONE_BLOCK_COST);//since we are sneak backplacing, we are sneaking lol
                 return WC + placeCost + hardness1 + hardness2;
@@ -291,6 +310,9 @@ public class MovementTraverse extends Movement {
             return state;
         } else {
             wasTheBridgeBlockAlwaysThere = false;
+            if (godBridge(state)) {
+                return state;
+            }
             Block standingOn = BlockStateInterface.get(ctx, feet.below()).getBlock();
             if (standingOn.equals(Blocks.SOUL_SAND) || standingOn instanceof SlabBlock) { // see issue #118
                 double dist = Math.max(Math.abs(dest.getX() + 0.5 - ctx.player().position().x), Math.abs(dest.getZ() + 0.5 - ctx.player().position().z));
@@ -365,6 +387,106 @@ public class MovementTraverse extends Movement {
             MovementHelper.moveTowardsWithSlightRotation(ctx, state, dest);
             return state;
         }
+    }
+
+    // plain footing for the god bridge: the speed model leans on 0.6 friction and no speed factor, and magma wants the
+    // sneak held (see the top of updateState). the cost and the executor both ask this so they agree
+    public static boolean godFooting(BlockState srcDown, boolean allowMagma) {
+        Block block = srcDown.getBlock();
+        return block.getFriction() == 0.6F && block.getSpeedFactor() == 1.0F && !(allowMagma && block == Blocks.MAGMA_BLOCK);
+    }
+
+    // is this the back place the sneaking code would have done: nothing but src.below() to place against. same loop as cost
+    private boolean noSidePlace() {
+        BlockStateInterface bsi = ((Baritone) baritone).bsi;
+        BlockPos below = dest.below();
+        for (Direction direction : HORIZONTALS_BUT_ALSO_DOWN_____SO_EVERY_DIRECTION_EXCEPT_UP) {
+            BlockPos against = below.relative(direction);
+            if (against.getX() == src.x && against.getZ() == src.z) {
+                continue;
+            }
+            if (MovementHelper.canPlaceAgainst(bsi, against.getX(), against.getY(), against.getZ())) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    // decided once per movement, on the first tick that needs a block. the cost says walk speed for exactly these
+    private boolean godEligible() {
+        BlockState srcDown = BlockStateInterface.get(ctx, src.below());
+        if (!Baritone.settings().allowGodBridge.value || !godFooting(srcDown, Baritone.settings().allowWalkOnMagmaBlocks.value)
+                || !MovementHelper.canPlaceAgainst(((Baritone) baritone).bsi, src.x, src.y - 1, src.z)
+                || !noSidePlace()) {
+            return false;
+        }
+        Vec3 pos = ctx.player().position();
+        Vec3 vel = ctx.player().getDeltaMovement();
+        int dx = dest.x - src.x;
+        int dz = dest.z - src.z;
+        // the geometry is for a standing player on the ground with the usual box. no water, ladders or riding. a crouch
+        // left over from a sneaking block is fine, it's gone a tick after the sneak is, long before the next face is in reach
+        if (!ctx.player().onGround() || ctx.player().isPassenger() || ctx.player().onClimbable() || ctx.player().isInWater()
+                || MovementHelper.isLiquid(ctx, ctx.playerFeet()) || ctx.player().getBbWidth() > 0.6F
+                || Math.abs(ctx.player().getEyeHeight(Pose.STANDING) - GodBridge.EYE) > 0.01
+                || AltoClefSettings.getInstance().isInteractionPaused()) {
+            return false;
+        }
+        return Math.abs(GodBridge.lateral(pos.x, pos.z, src.x, src.z, dx, dz)) <= GodBridge.ENTRY_LATERAL
+                && Math.abs(GodBridge.lateralSpeed(vel.x, vel.z, dx, dz)) <= GodBridge.ENTRY_LATERAL_SPEED;
+    }
+
+    private void godAbandon(MovementState state) {
+        god = God.DONE;
+        state.setInput(Input.SNEAK, true); // the sneaking back place picks it up from here, this very tick
+    }
+
+    // walk backwards over the gap and place against the far face of src.below() when it can be hit, see GodBridge. returns
+    // false to let the sneaking back place have the tick. once it has had one, it keeps the rest of this movement
+    private boolean godBridge(MovementState state) {
+        if (god == God.UNDECIDED) {
+            god = godEligible() ? God.RIDING : God.DONE;
+        }
+        if (god != God.RIDING) {
+            return false;
+        }
+        if (godClicked) {
+            godAbandon(state); // we clicked last tick and still no block. the click didn't take, so don't try it again
+            return false;
+        }
+        Vec3 pos = ctx.player().position();
+        Vec3 vel = ctx.player().getDeltaMovement();
+        int dx = dest.x - src.x;
+        int dz = dest.z - src.z;
+        if (!ctx.player().onGround() || ctx.player().isInWater() || Math.abs(GodBridge.lateral(pos.x, pos.z, src.x, src.z, dx, dz)) > GodBridge.BAIL_LATERAL
+                || MovementHelper.entityInTheWay(ctx, positionToPlace) || AltoClefSettings.getInstance().isInteractionPaused()
+                || !((Baritone) baritone).getInventoryBehavior().selectThrowawayForLocation(true, positionToPlace.x, positionToPlace.y, positionToPlace.z, true)) {
+            godAbandon(state);
+            return false;
+        }
+        // sprint is only off after the executor gets its turn, and the speed attribute still has the bonus until then
+        ctx.player().setSprinting(false);
+        double accel = GodBridge.accel(ctx.player().getAttributeValue(Attributes.MOVEMENT_SPEED));
+        double e = GodBridge.pastEdge(pos.x, pos.z, src.x, src.z, dx, dz);
+        HitResult hit = ctx.objectMouseOver();
+        boolean onFace = hit != null && hit.getType() == HitResult.Type.BLOCK && ((BlockHitResult) hit).getBlockPos().equals(src.below())
+                && ((BlockHitResult) hit).getDirection() == Direction.getNearest(dx, 0, dz, Direction.UP);
+        boolean ready = ((Baritone) baritone).getInputOverrideHandler().getBlockPlaceHelper().ready();
+        GodBridge.Plan plan = GodBridge.decide(e, GodBridge.along(vel.x, vel.z, dx, dz), accel, onFace, ready);
+        if (plan.abandon) {
+            godAbandon(state);
+            return false;
+        }
+        state.setTarget(new MovementState.MovementTarget(new Rotation(GodBridge.facingYaw(dx, dz), (float) plan.pitch), true));
+        state.setInput(Input.MOVE_BACK, true);
+        if (plan.sneak) {
+            state.setInput(Input.SNEAK, true);
+        }
+        if (plan.click) {
+            state.setInput(Input.CLICK_RIGHT, true);
+            godClicked = true;
+        }
+        return true;
     }
 
     @Override
