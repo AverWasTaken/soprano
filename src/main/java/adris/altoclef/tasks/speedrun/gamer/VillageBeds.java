@@ -156,7 +156,8 @@ public final class VillageBeds {
         }
         // beds placed by us never fire the place hook (they are not full blocks), but the only one we place is the spawn
         // bed and we write down where
-        List<RunState.Pos> own = state.spawnBed == null ? List.of() : List.of(state.spawnBed);
+        // (the night bed is ours too, while it stands. a village bed is somebody else's and the tried set is a one shot)
+        List<RunState.Pos> own = BedRules.ownBeds(state.spawnBed, state.nightBed);
         var eye = mod.getPlayer().position();
         RunState.Pos best = BedRules.pick(beds, evidence, own, state.placedJobBlocks, state.villageBedsTried,
                 p -> usable(mod, tracker, p), eye.x, eye.y, eye.z, cfg.villageBedRadius, cfg.villageBedEvidenceRadius);

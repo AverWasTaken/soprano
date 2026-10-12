@@ -15,6 +15,18 @@ public final class BedRules {
     private BedRules() {
     }
 
+    // the beds that are ours and not the world's: the spawn bed and the one put down for the night, whichever exist
+    public static List<RunState.Pos> ownBeds(RunState.Pos spawn, RunState.Pos night) {
+        List<RunState.Pos> out = new ArrayList<>();
+        if (spawn != null) {
+            out.add(spawn);
+        }
+        if (night != null) {
+            out.add(night);
+        }
+        return out;
+    }
+
     // per run and it survives a relog (RunState). the per bed timeout is the caller's, this is the whole allowance
     public static boolean withinBudget(long ticksSpent, double maxSeconds) {
         return ticksSpent < maxSeconds * 20;

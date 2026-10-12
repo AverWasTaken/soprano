@@ -2059,6 +2059,15 @@ public final class Settings {
     public final Setting<Boolean> altoIronArbiter = new Setting<>(true);
 
     /**
+     * {@code #gamer} only. When night falls and the bot has a bed to use (one in the bag, the wool and planks to craft one, or
+     * one standing close by) it sleeps through the night instead of working on and fighting mobs until morning. Minecraft
+     * refuses to let anyone sleep with monsters near the bed, so when there are some the bot does not fight them: it
+     * pillars up out of their range, puts the bed on top and sleeps there. A bed the bot placed itself is picked up again
+     * afterwards. With no bed available nothing changes. Never used in the Nether or the End.
+     */
+    public final Setting<Boolean> altoSleepAtNight = new Setting<>(true);
+
+    /**
      * Avoid going underwater when pathing is not giving the bot movement instructions. Turn it off if you want the bot
      * to be able to sink.
      */
