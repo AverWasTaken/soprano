@@ -159,6 +159,11 @@ public class GodBridgeCostTest {
         // ice is a different friction, the executor would not walk it backwards so the planner must not count on it
         MapWorld ice = gap(Blocks.ICE.defaultBlockState());
         assertEquals(cost(ice, false), cost(ice, true), 0);
+        // a crafting table opens when clicked, only the sneaking back place can place against it
+        MapWorld table = gap(Blocks.CRAFTING_TABLE.defaultBlockState());
+        assertEquals(cost(table, false), cost(table, true), 0);
+        MapWorld furnace = gap(Blocks.FURNACE.defaultBlockState());
+        assertEquals(cost(furnace, false), cost(furnace, true), 0);
         // and magma, which wants the sneak held anyway
         settings.allowWalkOnMagmaBlocks.value = true;
         MapWorld magmaWorld = gap(Blocks.MAGMA_BLOCK.defaultBlockState());

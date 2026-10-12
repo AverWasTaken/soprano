@@ -36,6 +36,7 @@ import com.google.common.collect.ImmutableSet;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.entity.Pose;
+import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.level.block.AirBlock;
 import net.minecraft.world.level.block.Block;
@@ -188,7 +189,8 @@ public class MovementTraverse extends Movement {
                 if (context.allowGodBridge && !throughWater && context.get(x, y, z).getFluidState().isEmpty()
                         && godFooting(srcDown, context.allowWalkOnMagmaBlocks)
                         // air under src is the block the traverse before this one places, it'll be there by the time we are
-                        && (srcDown.getBlock() instanceof AirBlock || MovementHelper.canPlaceAgainst(context, x, y - 1, z, srcDown))) {
+                        // (a stone stand-in so the border and place protection still get asked)
+                        && MovementHelper.canPlaceAgainst(context, x, y - 1, z, srcDown.getBlock() instanceof AirBlock ? Blocks.STONE.defaultBlockState() : srcDown)) {
                     return WC + placeCost + hardness1 + hardness2; // walking backwards across, no sneak (see GodBridge)
                 }
                 WC = WC * (SNEAK_ONE_BLOCK_COST / WALK_ONE_BLOCK_COST);//since we are sneak backplacing, we are sneaking lol
@@ -395,7 +397,16 @@ public class MovementTraverse extends Movement {
     // sneak held (see the top of updateState). the cost and the executor both ask this so they agree
     public static boolean godFooting(BlockState srcDown, boolean allowMagma) {
         Block block = srcDown.getBlock();
-        return block.getFriction() == 0.6F && block.getSpeedFactor() == 1.0F && !(allowMagma && block == Blocks.MAGMA_BLOCK);
+        return block.getFriction() == 0.6F && block.getSpeedFactor() == 1.0F && !(allowMagma && block == Blocks.MAGMA_BLOCK)
+                && !opensWhenClicked(srcDown);
+    }
+
+    // the sneaking back place gets away with these because sneak turns the click into a placement. an unsneaked click
+    // would open the thing and walk us off the edge. block entities cover chests, furnaces, barrels and friends
+    private static boolean opensWhenClicked(BlockState state) {
+        Block block = state.getBlock();
+        return state.hasBlockEntity() || block == Blocks.CRAFTING_TABLE || block == Blocks.CARTOGRAPHY_TABLE
+                || block == Blocks.SMITHING_TABLE || block == Blocks.LOOM || block == Blocks.NOTE_BLOCK || block == Blocks.RESPAWN_ANCHOR;
     }
 
     // is this the back place the sneaking code would have done: nothing but src.below() to place against. same loop as cost
@@ -476,7 +487,10 @@ public class MovementTraverse extends Movement {
         HitResult hit = ctx.objectMouseOver();
         boolean onFace = hit != null && hit.getType() == HitResult.Type.BLOCK && ((BlockHitResult) hit).getBlockPos().equals(src.below())
                 && ((BlockHitResult) hit).getDirection() == Direction.getNearest(dx, 0, dz, Direction.UP);
-        boolean ready = ((Baritone) baritone).getInputOverrideHandler().getBlockPlaceHelper().ready();
+        // a swap from the main inventory isn't done the tick we ask for it, and a click with the wrong thing in hand is a
+        // click that places nothing with no sneak to catch us. so not ready until the block is really in hand
+        boolean ready = ((Baritone) baritone).getInputOverrideHandler().getBlockPlaceHelper().ready()
+                && ctx.player().getMainHandItem().getItem() instanceof BlockItem;
         GodBridge.Plan plan = GodBridge.decide(e, GodBridge.along(vel.x, vel.z, dx, dz), accel, onFace, ready);
         if (plan.abandon) {
             godAbandon(state);
