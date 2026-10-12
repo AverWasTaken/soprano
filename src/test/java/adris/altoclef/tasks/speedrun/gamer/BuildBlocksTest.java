@@ -153,8 +153,8 @@ public class BuildBlocksTest {
 
     @Test
     public void portalGateIgnoresAHalfBagAndFinishesWhatItStarted() {
-        ctx.facts.buildBlocks = 20;
-        assertTrue("20 is over the low mark, the old gate went mining", gate().isEmpty());
+        ctx.facts.buildBlocks = cfg.portalBuildBlocksLow + 2;
+        assertTrue("a bag over the low mark is a half bag, the old gate went mining", gate().isEmpty());
         ctx.facts.buildBlocks = cfg.portalBuildBlocksLow - 1;
         assertEquals(List.of(BASE), gate());
         // the runner picks it up, and from then on the gate keeps asking until the bag is full
@@ -243,7 +243,7 @@ public class BuildBlocksTest {
     @Test
     public void thePoolMarkCoversTheSlabAndBothPads() {
         // 8 slab cells and the two top row pads are what the mold places, 4 on top
-        assertEquals(8 + 2 + 4, cfg.portalBuildBlocksLow);
+        assertEquals(8 + 2 + 12, cfg.portalBuildBlocksLow);
     }
 
     // the loop itself: the iron phase while a furnace cooks, the schedule and the runner, bag eaten down after every fill

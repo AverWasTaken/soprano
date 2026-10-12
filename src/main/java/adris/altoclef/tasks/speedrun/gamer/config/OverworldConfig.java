@@ -120,10 +120,11 @@ public class OverworldConfig {
     public int portalBuildBlocks = 32;
     // the refill only starts under these marks (BuildBlocks), then runs to the target. a pillar or two, or a bridge, takes a
     // bag from 32 to 20 and that is not a reason to go mining. while a furnace cooks the base is 8: enough for a few pillars.
-    // at the portal it is what the lava pool still places (the slab and the two top row pads) with a margin of 4, so walking back into the
-    // phase with a half bag does not start another round
+    // at the portal it is what the lava pool still places (the slab and the two top row pads) plus what the nether walk should
+    // have in hand: nothing on the other side asks for blocks, so the bag we take through is the bag we bridge lava with. walking
+    // back into the phase with more than that does not start another round
     public int ironBuildBlocksLow = 8;
-    public int portalBuildBlocksLow = PortalMold.SLAB.length + (int) PortalMold.CASTS.stream().filter(c -> c.pad != null).count() + 4;
+    public int portalBuildBlocksLow = PortalMold.SLAB.length + (int) PortalMold.CASTS.stream().filter(c -> c.pad != null).count() + 12;
     // the stock-up on top of a full base (smeltExtras build_blocks) only starts under this, and gets one trip per phase entry
     public int stockUpBuildBlocksLow = 16;
     // (old saved files may still carry tableRecoverRadius, tablePickupSeconds, tableUseCooldownSeconds and
