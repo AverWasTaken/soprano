@@ -448,21 +448,73 @@ public class FurnacePlanTest {
         assertEquals(Why.TOO_LONG, slow.why());
     }
 
-    // a stack of 64 is five minutes: worked like a furnace, until it is down to the last 40 s like any small batch
+    // a lot of food is just back to work, like it was before the limit went up: it comes back for the last 20 s, not the last 40.
+    // a batch that is small from the start gets the longer wait straight away
     @Test
-    public void aBigBatchIsLeftUntilItIsDownToFortySecondsThenStoodBy() {
-        RunState.FurnaceJob big = smoker(6400);
+    public void aBigBatchIsLeftUntilTwentySecondsAreLeftButASmallOneIsStoodAtFromTheLoad() {
+        // eight items, 40 s: stood at the moment it is loaded
+        assertEquals(Why.QUICK, one(plan(smoker(800), MID_NEED, 0)).why());
+        // sixteen items, 80 s: left, and still left at 40 s to go (the limit it was judged by is gone, the comeback one is not)
+        RunState.FurnaceJob big = smoker(1600);
         Verdict first = one(plan(big, MID_NEED, 0));
         assertEquals(Call.LEAVE, first.call());
         assertEquals(Why.TOO_LONG, first.why());
-        long mark = 6400 - FurnacePlan.STAND_BY_MAX_TICKS;
-        assertEquals(Why.TOO_LONG, one(plan(big, MID_NEED, mark - 1)).why());
+        long mark = 1600 - FurnacePlan.STAND_BY_COMEBACK_TICKS;
+        // looked at every half second down the clock: no stand-by until the comeback mark, and no flicker on the way
+        for (long tick = 0; tick < mark; tick += 10) {
+            assertEquals("tick " + tick, Why.TOO_LONG, one(plan(big, MID_NEED, tick)).why());
+        }
+        assertEquals(Why.TOO_LONG, one(plan(big, MID_NEED, 1600 - FurnacePlan.STAND_BY_MAX_TICKS)).why());
         assertEquals(Why.QUICK, one(plan(big, MID_NEED, mark)).why());
-        // the budget runs to done plus the slack
-        assertEquals(Why.QUICK, one(plan(big, MID_NEED, 6400 + FurnacePlan.STAND_BY_SLACK_TICKS)).why());
-        assertNotEquals(Why.QUICK, one(plan(big, MID_NEED, 6400 + FurnacePlan.STAND_BY_SLACK_TICKS + 1)).why());
-        // and once it ended, the time still being short does not start another one
-        assertNotEquals(Why.QUICK, one(plan(big, MID_NEED, 6400 + FurnacePlan.STAND_BY_SLACK_TICKS + 2)).why());
+        // and it stands to done plus the slack, like any other
+        assertEquals(Why.QUICK, one(plan(big, MID_NEED, 1600 + FurnacePlan.STAND_BY_SLACK_TICKS)).why());
+        assertNotEquals(Why.QUICK, one(plan(big, MID_NEED, 1600 + FurnacePlan.STAND_BY_SLACK_TICKS + 1)).why());
+        // once it ended, the time still being short does not start another one
+        assertNotEquals(Why.QUICK, one(plan(big, MID_NEED, 1600 + FurnacePlan.STAND_BY_SLACK_TICKS + 2)).why());
+    }
+
+    // the comeback window is for a job that was seen big. one first looked at with 40 s to go was never big
+    @Test
+    public void aBatchFirstSeenWithinTheLimitIsNeverHeldToTheComebackWindow() {
+        RunState.FurnaceJob job = smoker(5000);
+        assertEquals(Why.QUICK, one(plan(job, MID_NEED, 5000 - FurnacePlan.STAND_BY_MAX_TICKS + 1)).why());
+    }
+
+    // the size is the batch's, not the first look at the stand-by rules: seen from far off or with the stand-by switched off (GATHER)
+    // it is still a stack when we get close
+    @Test
+    public void aStackSeenFromFarOffOrWithoutStandByIsStillALotWhenWeGetClose() {
+        Moment farOff = new Moment(true, false, false, NOBODY, false, true, away(100), "wool", false);
+        Moment close = new Moment(true, false, false, NOBODY, false, true, away(5), "wool", false);
+        Moment gather = new Moment(true, false, false, NOBODY, false, false, away(5), "wool", false);
+        for (Moment first : new Moment[]{farOff, gather}) {
+            RunState.FurnaceJob stack = smoker(6400);
+            FurnacePlan.plan(List.of(stack), first, 0, null);
+            // 35 s left at the first stand-by look: a small batch would be stood at, this one was seen at 6400
+            assertEquals(Why.TOO_LONG, one(plan(stack, close, 6400 - 700)).why());
+            assertEquals(Why.QUICK, one(plan(stack, close, 6400 - FurnacePlan.STAND_BY_COMEBACK_TICKS)).why());
+        }
+    }
+
+    // a visit that leaves a stack cooking re-stamps the job in place: still a lot, still back at the comeback mark
+    @Test
+    public void aRestampedStackIsStillALot() {
+        RunState.FurnaceJob stack = smoker(6400);
+        assertEquals(Why.TOO_LONG, one(plan(stack, MID_NEED, 0)).why());
+        FurnaceJobs.afterVisit(new ArrayList<>(List.of(stack)), stack, 5, 500, 3000);
+        assertEquals(Why.TOO_LONG, one(plan(stack, MID_NEED, 3000)).why());
+        assertEquals(Why.QUICK, one(plan(stack, MID_NEED, 3500 - FurnacePlan.STAND_BY_COMEBACK_TICKS)).why());
+    }
+
+    // a job not yet stood at that turns out to have more in it than thought is a lot from then on
+    @Test
+    public void aJobThatGrowsPastTheLimitBeforeTheStandStaysALot() {
+        RunState.FurnaceJob job = smoker(700);
+        assertEquals(Why.QUICK, one(FurnacePlan.plan(List.of(job), MID_NEED, 0, null)).why());
+        job.doneTick = 1500;
+        assertEquals(Why.TOO_LONG, one(FurnacePlan.plan(List.of(job), MID_NEED, 0, null)).why());
+        job.doneTick = 700;
+        assertEquals(Why.TOO_LONG, one(FurnacePlan.plan(List.of(job), MID_NEED, 0, null)).why());
     }
 
     // quick while another job's trip is going: the budget waits for its own trip, it doesn't run out while we are elsewhere
@@ -669,7 +721,7 @@ public class FurnacePlanTest {
                 last = now;
             }
         }
-        // under 20 s to go it stands by, the budget runs out at the cap and it is due, and that is all
+        // 15 s to go is small from the first tick, so it stands by, the budget runs out at the cap and it is due, and that is all
         assertEquals(2, changes);
         assertEquals(Call.COLLECT_NOW, last);
     }
@@ -1075,6 +1127,7 @@ public class FurnacePlanTest {
         assertEquals(10 * 20, FurnacePlan.NEARLY_TICKS);
         assertEquals(30 * 20, FurnacePlan.PATIENCE_TICKS);
         assertEquals(40 * 20, FurnacePlan.STAND_BY_MAX_TICKS);
+        assertEquals(20 * 20, FurnacePlan.STAND_BY_COMEBACK_TICKS);
         assertEquals(10 * 20, FurnacePlan.STAND_BY_SLACK_TICKS);
         assertEquals(50 * 20, FurnacePlan.STAND_BY_HARD_CAP_TICKS);
         assertEquals(30 * 20, FurnacePlan.STAND_BY_CAP_TICKS);
