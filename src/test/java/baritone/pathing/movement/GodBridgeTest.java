@@ -104,15 +104,14 @@ public class GodBridgeTest {
     }
 
     @Test
-    public void aClickThatWouldLeaveUsHangingSneaksAsInsurance() {
-        double walk = GodBridge.step(0.118, ACCEL);
-        GodBridge.Plan early = GodBridge.decide(0.05, 0.118, ACCEL, true, true);
-        assertTrue(early.click);
-        assertEquals(0.05 + walk > GodBridge.SAFE_END, early.sneak);
-        GodBridge.Plan late = GodBridge.decide(0.2, 0.118, ACCEL, true, true);
-        assertTrue(late.click);
-        assertTrue(late.sneak);
-        assertFalse(late.abandon);
+    public void aClickNeverSneaksEvenWhenTheMoveWouldEndPastTheLimit() {
+        // the block is in before the move, so the common case is sneak free
+        for (double e = 0.01; e <= 0.29; e += 0.01) {
+            GodBridge.Plan plan = GodBridge.decide(e, 0.118, ACCEL, true, true);
+            assertTrue(plan.click);
+            assertFalse("sneak at e=" + e, plan.sneak);
+            assertFalse(plan.abandon);
+        }
     }
 
     @Test
@@ -172,6 +171,18 @@ public class GodBridgeTest {
         }
         // in the model the click lands whenever the lead is right, which is every phase
         assertEquals("caught " + caught + " of " + total, total, placed);
+    }
+
+    @Test
+    public void evenStartsHangingOverTheEdgeOrAtSpeedNeverFall() {
+        // wider than the above on purpose: already past the edge, and carrying a lot more than a sprint does. these are
+        // allowed to be caught, they are not allowed to fall
+        for (double u0 = 0; u0 <= 0.35; u0 += 0.01) {
+            for (double e0 = -1.0; e0 <= 0.25; e0 += 0.002) {
+                String result = runOneBlock(e0, u0);
+                assertTrue("e0=" + e0 + " u0=" + u0 + " ended " + result, result.equals("placed") || result.equals("caught"));
+            }
+        }
     }
 
     @Test

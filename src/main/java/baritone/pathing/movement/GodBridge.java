@@ -89,10 +89,10 @@ public final class GodBridge {
         // the rotation we set now is what the click sees one tick from now, from where we will be standing then
         double pitch = aimPitch(next);
         if (onFace && clickReady && e > 0) {
-            // the block goes in before the player moves, but if the click is somehow wasted the move still happens. so a
-            // click that would leave us hanging past the limit sneaks as well, it clamps the move and costs nothing if the
-            // block did appear
-            return new Plan(true, next > SAFE_END, false, pitch);
+            // the block goes in before the player moves, so no sneak here. a sneak tap on every placement would be the
+            // thing we are trying not to do (and it drags the next tick to 0.3 speed). the checks that got us to a click
+            // are the same ones the click helper makes, a click that still goes nowhere is caught by godClicked next tick
+            return new Plan(true, false, false, pitch);
         }
         if (next > SAFE_END) {
             // no click this tick and the move would take us off. sneak now, it clamps this very tick's move

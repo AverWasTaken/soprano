@@ -186,7 +186,9 @@ public class MovementTraverse extends Movement {
                     return COST_INF; // we can stand on these but can't place against them
                 }
                 if (context.allowGodBridge && !throughWater && context.get(x, y, z).getFluidState().isEmpty()
-                        && godFooting(srcDown, context.allowWalkOnMagmaBlocks) && MovementHelper.canPlaceAgainst(context, x, y - 1, z, srcDown)) {
+                        && godFooting(srcDown, context.allowWalkOnMagmaBlocks)
+                        // air under src is the block the traverse before this one places, it'll be there by the time we are
+                        && (srcDown.getBlock() instanceof AirBlock || MovementHelper.canPlaceAgainst(context, x, y - 1, z, srcDown))) {
                     return WC + placeCost + hardness1 + hardness2; // walking backwards across, no sneak (see GodBridge)
                 }
                 WC = WC * (SNEAK_ONE_BLOCK_COST / WALK_ONE_BLOCK_COST);//since we are sneak backplacing, we are sneaking lol
@@ -414,8 +416,11 @@ public class MovementTraverse extends Movement {
 
     // decided once per movement, on the first tick that needs a block. the cost says walk speed for exactly these
     private boolean godEligible() {
+        if (!Baritone.settings().allowGodBridge.value) {
+            return false; // the flag off path asks nothing else
+        }
         BlockState srcDown = BlockStateInterface.get(ctx, src.below());
-        if (!Baritone.settings().allowGodBridge.value || !godFooting(srcDown, Baritone.settings().allowWalkOnMagmaBlocks.value)
+        if (!godFooting(srcDown, Baritone.settings().allowWalkOnMagmaBlocks.value)
                 || !MovementHelper.canPlaceAgainst(((Baritone) baritone).bsi, src.x, src.y - 1, src.z)
                 || !noSidePlace()) {
             return false;

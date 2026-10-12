@@ -169,6 +169,18 @@ public class GodBridgeCostTest {
     }
 
     @Test
+    public void aChainOfBridgesIsWalkSpeedAllTheWayAlong() {
+        // the second traverse starts over the block the first one places, which is still air when the planner asks
+        MapWorld w = gap(Blocks.STONE.defaultBlockState());
+        settings.allowGodBridge.value = false;
+        double offSecond = MovementTraverse.cost(new Ctx(w), 1, 64, 0, 2, 0);
+        settings.allowGodBridge.value = true;
+        double onSecond = MovementTraverse.cost(new Ctx(w), 1, 64, 0, 2, 0);
+        assertEquals(ActionCosts.SNEAK_ONE_BLOCK_COST + place(), offSecond, 1e-9);
+        assertEquals(ActionCosts.WALK_ONE_BLOCK_COST + place(), onSecond, 1e-9);
+    }
+
+    @Test
     public void aBridgeThroughWaterIsNotWalkedBackwards() {
         MapWorld w = gap(Blocks.STONE.defaultBlockState());
         w.set(1, 64, 0, Blocks.WATER.defaultBlockState());
