@@ -135,6 +135,9 @@ public class GamerTask extends Task {
     // what the user had before we changed it for the run, to hand back on stop
     private Boolean userBlastFurnace;
     private Boolean userThrowUnused;
+    private Integer userFoodKeep;
+    // the floor we last put, so a #set from the user mid-run is not stomped on the next tick
+    private Integer foodKeepPut;
     private Boolean userLadderClutch;
     private List<Item> userThrowaway;
     private List<Item> userFuels;
@@ -377,6 +380,10 @@ public class GamerTask extends Task {
         if (!SettingsOverrides.isHeld(s.altoThrowawayItems)) {
             userThrowaway = s.altoThrowawayItems.value;
         }
+        if (!SettingsOverrides.isHeld(s.altoFoodKeepUnits)) {
+            userFoodKeep = s.altoFoodKeepUnits.value;
+        }
+        foodKeepPut = null;
         if (!SettingsOverrides.isHeld(s.allowLadderClutch)) {
             userLadderClutch = s.allowLadderClutch.value;
         }
@@ -396,6 +403,19 @@ public class GamerTask extends Task {
         // the iron kit has ladders in it for a reason, a long fall in the nether is what they are for
         SettingsOverrides.put(s.allowLadderClutch, true);
         SettingsOverrides.put(s.altoThrowawayItems, withBuildBlocks(userThrowaway != null ? userThrowaway : s.altoThrowawayItems.value));
+    }
+
+    // a full bag throws cobble and junk before any food, and food only when the bag is over the same floor the planner refills to
+    // (minFoodUnits, the end has its own). per tick because the dimension changes under us and cfg is only read once the run begins
+    private void updateFoodKeep() {
+        if (cfg == null) {
+            return;
+        }
+        int floor = facts.dimension() == Dimension.END ? cfg.end.minFoodUnits : cfg.overworld.minFoodUnits;
+        if (foodKeepPut == null || foodKeepPut != floor) {
+            foodKeepPut = floor;
+            SettingsOverrides.put(Baritone.settings().altoFoodKeepUnits, floor);
+        }
     }
 
     private static List<Item> withBuildBlocks(List<Item> list) {
@@ -441,6 +461,9 @@ public class GamerTask extends Task {
         }
         if (userThrowaway != null) {
             SettingsOverrides.put(s.altoThrowawayItems, userThrowaway);
+        }
+        if (userFoodKeep != null) {
+            SettingsOverrides.put(s.altoFoodKeepUnits, userFoodKeep);
         }
     }
 
@@ -703,6 +726,7 @@ public class GamerTask extends Task {
         WoodReserve.apply(wood);
         machine.giveWood(wood);
         updateStoneFloor(mod);
+        updateFoodKeep();
         if (facts.creditsShown()) {
             machine.finish(true);
             return null;

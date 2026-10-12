@@ -441,7 +441,7 @@ public interface LookHelper {
                 moveTo.ifPresent(slot -> mod.getSlotHandler().clickSlot(slot, 0, ClickType.PICKUP));
 
                 // Check if the cursor stack can be thrown away
-                if (ItemHelper.canThrowAwayStack(mod, cursorStack)) {
+                if (ItemHelper.canDropStack(mod, cursorStack)) {
                     mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ClickType.PICKUP);
                 }
 

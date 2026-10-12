@@ -30,7 +30,7 @@ public class EnsureFreeCursorSlotTask extends Task {
                 mod.getSlotHandler().clickSlot(moveTo.get(), 0, ClickType.PICKUP);
                 return null;
             }
-            if (ItemHelper.canThrowAwayStack(mod, cursor)) {
+            if (ItemHelper.canDropStack(mod, cursor)) {
                 // name it: when a throw does not take, the log should at least say what is stuck on the cursor
                 setDebugState("Incompatible cursor stack, throwing " + cursor.getCount() + " " + cursor.getItem());
                 mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ClickType.PICKUP);

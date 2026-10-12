@@ -228,7 +228,7 @@ public abstract class DoStuffInContainerTask extends Task {
             if (toMoveTo.isEmpty()) {
                 return new EnsureFreeInventorySlotTask();
             }
-            if (ItemHelper.canThrowAwayStack(mod, StorageHelper.getItemStackInCursorSlot())) {
+            if (ItemHelper.canDropStack(mod, StorageHelper.getItemStackInCursorSlot())) {
                 mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ClickType.PICKUP);
                 return null;
             }

@@ -331,7 +331,7 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
     // same question EnsureFreeInventorySlotTask asks, no container because we are standing in the open
     private static boolean canMakeRoom(AltoClef mod) {
         ItemStack cursor = StorageHelper.getItemStackInCursorSlot();
-        return FreeSlotPlan.plan(cursor.isEmpty(), ItemHelper.canThrowAwayStack(mod, cursor),
+        return FreeSlotPlan.plan(cursor.isEmpty(), ItemHelper.canDropStack(mod, cursor),
                 StorageHelper.getGarbageSlot(mod).isPresent(), false) != FreeSlotPlan.Action.STUCK;
     }
 

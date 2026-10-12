@@ -2159,6 +2159,14 @@ public final class Settings {
     public final Setting<Boolean> altoThrowAwayUnusedItems = new Setting<>(true);
 
     /**
+     * How much food to hold on to when making room. Counted in hunger points times how many you carry, with raw meat at its
+     * cooked value, so a stack of 8 steak is 64. Food is only ever thrown away when the rest of the bag still covers this,
+     * and then only the smallest stack that is pure surplus, after everything else that can go. Under it, food is never
+     * thrown away to make room. 0 turns this off. The gamer raises it while it runs.
+     */
+    public final Setting<Integer> altoFoodKeepUnits = new Setting<>(40);
+
+    /**
      * Items that are never thrown away, even when {@link #altoThrowAwayUnusedItems} is on and the task does not use
      * them.
      */

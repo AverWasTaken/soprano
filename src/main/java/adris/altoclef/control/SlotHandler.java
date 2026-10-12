@@ -251,7 +251,7 @@ public class SlotHandler {
                         return false;
                     }
                 }
-                if (ItemHelper.canThrowAwayStack(_mod, cursor)) {
+                if (ItemHelper.canDropStack(_mod, cursor)) {
                     clickSlotForce(PlayerSlot.UNDEFINED, 0, ClickType.PICKUP);
                     return true;
                 }
