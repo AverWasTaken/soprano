@@ -126,7 +126,7 @@ public class GarbageRulesTest {
 
     @Test
     public void rawBeforeCookedWhenTheCountsMatch() {
-        // both are 8 units at the gamer's measure, the raw one gives 3 a piece as it is and goes first
+        // both are 64 units at the gamer's measure, the raw one gives 3 a piece as it is and goes first
         ItemStack cooked = new ItemStack(Items.COOKED_BEEF, 8);
         ItemStack raw = new ItemStack(Items.BEEF, 8);
         ItemStack steak = new ItemStack(Items.COOKED_PORKCHOP, 16);
