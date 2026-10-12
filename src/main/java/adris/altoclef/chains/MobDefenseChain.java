@@ -14,6 +14,7 @@ import adris.altoclef.util.helpers.CreeperStep;
 import adris.altoclef.util.helpers.EntityHelper;
 import adris.altoclef.util.helpers.FoeRules;
 import adris.altoclef.util.helpers.LookHelper;
+import adris.altoclef.util.helpers.NightSleepHook;
 import adris.altoclef.util.helpers.ProjectileHelper;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WorldHelper;
@@ -207,6 +208,15 @@ public class MobDefenseChain extends SingleTaskChain {
         boolean committed = _brain.mode() != CombatCommit.Mode.NONE || _creeperStep.active();
         if ((!committed && mod.getFoodChain().needsToEat()) || mod.getMLGBucketChain().isFallingOhNo(mod) ||
                 !mod.getMLGBucketChain().doneMLG() || mod.getMLGBucketChain().isChorusFruiting()) {
+            _killAura.stopShielding(mod);
+            stopShielding(mod);
+            return Float.NEGATIVE_INFINITY;
+        }
+
+        // up on a pillar with a bed (NightSleep): a zombie at the foot of it is the reason we are up here, not a fight, and a run
+        // would walk us off the top. same stand down as a meal, minus the lit creeper (it can still blow the pillar up) and minus
+        // low health, which hands the wheel back inside standsDown
+        if (!_creeperStep.active() && NightSleepHook.standsDown(mod.getPlayer().getHealth())) {
             _killAura.stopShielding(mod);
             stopShielding(mod);
             return Float.NEGATIVE_INFINITY;
@@ -486,7 +496,9 @@ public class MobDefenseChain extends SingleTaskChain {
         // the off switch: no commitments, mobs are scenery. the safety stays (fire, falls, the arrow shield, the aura at what
         // is on us), and the foes are still counted for the stance and the crits
         boolean enabled = Baritone.settings().altoMobDefense.value && Baritone.settings().altoKillOrAvoidAnnoyingHostiles.value
-                && Baritone.settings().altoCommitCombat.value;
+                && Baritone.settings().altoCommitCombat.value
+                // (the night trip's stand down: nothing gets committed to up there, and one already held is let go of)
+                && !NightSleepHook.standsDown(player.getHealth());
         _brain.tick(mod, now, fuseDistance <= CombatRules.CREEPER_RANGE, enabled);
         stepCreepers(mod, now);
         _stance = _brain.stance();
