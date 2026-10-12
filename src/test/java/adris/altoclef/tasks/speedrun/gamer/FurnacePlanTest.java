@@ -425,7 +425,7 @@ public class FurnacePlanTest {
     // ---- standing by a quick smoker
 
     @Test
-    public void aSmokerThatIsOutInUnderTwentySecondsIsStoodByAndAFurnaceIsNot() {
+    public void aSmokerThatIsOutSoonIsStoodByAndAFurnaceIsNot() {
         Verdict s = one(plan(smoker(300), MID_NEED, 0));
         assertEquals(Call.STAND_BY, s.call());
         assertEquals(Why.QUICK, s.why());
@@ -440,7 +440,7 @@ public class FurnacePlanTest {
     }
 
     @Test
-    public void aBatchWithTwentySecondsOrLessLeftIsQuickAndOneTickMoreIsNot() {
+    public void aBatchWithFortySecondsOrLessLeftIsQuickAndOneTickMoreIsNot() {
         assertEquals(Why.QUICK, one(plan(smoker(FurnacePlan.STAND_BY_MAX_TICKS), MID_NEED, 0)).why());
         Verdict slow = one(plan(smoker(FurnacePlan.STAND_BY_MAX_TICKS + 1), MID_NEED, 0));
         assertEquals(Call.LEAVE, slow.call());
@@ -448,9 +448,9 @@ public class FurnacePlanTest {
         assertEquals(Why.TOO_LONG, slow.why());
     }
 
-    // a stack of 64 is five minutes: worked like a furnace, until it is down to the last 20 s like any small batch
+    // a stack of 64 is five minutes: worked like a furnace, until it is down to the last 40 s like any small batch
     @Test
-    public void aBigBatchIsLeftUntilItIsDownToTwentySecondsThenStoodBy() {
+    public void aBigBatchIsLeftUntilItIsDownToFortySecondsThenStoodBy() {
         RunState.FurnaceJob big = smoker(6400);
         Verdict first = one(plan(big, MID_NEED, 0));
         assertEquals(Call.LEAVE, first.call());
@@ -458,11 +458,11 @@ public class FurnacePlanTest {
         long mark = 6400 - FurnacePlan.STAND_BY_MAX_TICKS;
         assertEquals(Why.TOO_LONG, one(plan(big, MID_NEED, mark - 1)).why());
         assertEquals(Why.QUICK, one(plan(big, MID_NEED, mark)).why());
-        // the budget is from the look that started it: 20 s to done and 10 s of the patience
-        assertEquals(Why.QUICK, one(plan(big, MID_NEED, mark + FurnacePlan.STAND_BY_CAP_TICKS)).why());
-        assertNotEquals(Why.QUICK, one(plan(big, MID_NEED, mark + FurnacePlan.STAND_BY_CAP_TICKS + 1)).why());
+        // the budget runs to done plus the slack
+        assertEquals(Why.QUICK, one(plan(big, MID_NEED, 6400 + FurnacePlan.STAND_BY_SLACK_TICKS)).why());
+        assertNotEquals(Why.QUICK, one(plan(big, MID_NEED, 6400 + FurnacePlan.STAND_BY_SLACK_TICKS + 1)).why());
         // and once it ended, the time still being short does not start another one
-        assertNotEquals(Why.QUICK, one(plan(big, MID_NEED, mark + FurnacePlan.STAND_BY_CAP_TICKS + 2)).why());
+        assertNotEquals(Why.QUICK, one(plan(big, MID_NEED, 6400 + FurnacePlan.STAND_BY_SLACK_TICKS + 2)).why());
     }
 
     // quick while another job's trip is going: the budget waits for its own trip, it doesn't run out while we are elsewhere
@@ -482,12 +482,12 @@ public class FurnacePlanTest {
         assertTrue(free.standingBy());
         // picked, but the wheel is somewhere else (a golem fight, the climb out) for longer than the whole budget: the pick
         // alone starts nothing
-        long freeAt = 1500 + FurnacePlan.STAND_BY_CAP_TICKS + 1;
+        long freeAt = 1500 + FurnacePlan.STAND_BY_HARD_CAP_TICKS + 1;
         assertEquals(Why.QUICK, one(FurnacePlan.plan(List.of(meat), BOUNDARY, freeAt, null)).why());
         // the trip starts when the wheel is free, and it gets the whole budget from there
         FurnacePlan.startStandBy(meat, freeAt);
-        assertEquals(Why.QUICK, one(FurnacePlan.plan(List.of(meat), BOUNDARY, freeAt + FurnacePlan.STAND_BY_CAP_TICKS, meat)).why());
-        assertNotEquals(Why.QUICK, one(FurnacePlan.plan(List.of(meat), BOUNDARY, freeAt + FurnacePlan.STAND_BY_CAP_TICKS + 1, meat)).why());
+        assertEquals(Why.QUICK, one(FurnacePlan.plan(List.of(meat), BOUNDARY, freeAt + FurnacePlan.STAND_BY_SLACK_TICKS, meat)).why());
+        assertNotEquals(Why.QUICK, one(FurnacePlan.plan(List.of(meat), BOUNDARY, freeAt + FurnacePlan.STAND_BY_SLACK_TICKS + 1, meat)).why());
     }
 
     // a look that skipped the stand-by rules (GATHER, mayStandBy off) does not use up the chance of one later
@@ -502,8 +502,8 @@ public class FurnacePlanTest {
     public void aSmokerThatWasQuickAtFirstSightStaysQuickUntilItsBudgetEnds() {
         RunState.FurnaceJob job = smoker(300);
         assertEquals(Why.QUICK, one(plan(job, MID_NEED, 0)).why());
-        // done at 300, and the patience past that is cut off by the cap: 30 s from first sight, not 45
-        long until = FurnacePlan.STAND_BY_CAP_TICKS;
+        // done at 300, and the slack past that is all the grace it gets
+        long until = 300 + FurnacePlan.STAND_BY_SLACK_TICKS;
         assertTrue(until < 300 + FurnacePlan.PATIENCE_TICKS);
         assertEquals(Why.QUICK, one(plan(job, MID_NEED, 300)).why());
         assertEquals(Why.QUICK, one(plan(job, MID_NEED, until)).why());
@@ -515,9 +515,9 @@ public class FurnacePlanTest {
     public void theBudgetIsNotRestartedByARestampOrByTheTimeComingBack() {
         RunState.FurnaceJob job = smoker(FurnacePlan.STAND_BY_MAX_TICKS);
         plan(job, MID_NEED, 0);
-        long past = FurnacePlan.STAND_BY_CAP_TICKS + 1;
+        long past = FurnacePlan.STAND_BY_HARD_CAP_TICKS + 1;
         assertNotEquals(Why.QUICK, one(plan(job, MID_NEED, past)).why());
-        // a visit re-stamped it (the job object is the same one) and it is again under 20 s from done
+        // a visit re-stamped it (the job object is the same one) and it is again under 40 s from done
         job.doneTick = past + 300;
         job.visited = true;
         assertNotEquals("a smoker that keeps coming up short cannot restart the clock", Why.QUICK, one(plan(job, MID_NEED, past + 1)).why());
@@ -529,10 +529,10 @@ public class FurnacePlanTest {
     @Test
     public void aJobAlreadyPastDueGetsItsPatienceFromNowNotFromThen() {
         RunState.FurnaceJob job = smoker(1000);
-        // first seen 500 ticks late: the patience runs from here
+        // first seen 500 ticks late: the slack runs from here
         assertEquals(Why.QUICK, one(plan(job, MID_NEED, 1500)).why());
-        assertEquals(Why.QUICK, one(plan(job, MID_NEED, 1500 + FurnacePlan.PATIENCE_TICKS)).why());
-        assertNotEquals(Why.QUICK, one(plan(job, MID_NEED, 1500 + FurnacePlan.PATIENCE_TICKS + 1)).why());
+        assertEquals(Why.QUICK, one(plan(job, MID_NEED, 1500 + FurnacePlan.STAND_BY_SLACK_TICKS)).why());
+        assertNotEquals(Why.QUICK, one(plan(job, MID_NEED, 1500 + FurnacePlan.STAND_BY_SLACK_TICKS + 1)).why());
     }
 
     // meat left cold in a station is a pickup, not a cook: standing by it was a wait for "0 s" that took the raw meat back out
@@ -639,7 +639,7 @@ public class FurnacePlanTest {
         RunState.FurnaceJob job = smoker(FurnacePlan.STAND_BY_MAX_TICKS);
         List<String> lines = new ArrayList<>();
         RunState.FurnaceJob active = null;
-        for (long tick = 0; tick <= FurnacePlan.STAND_BY_CAP_TICKS; tick += 10) {
+        for (long tick = 0; tick <= FurnacePlan.STAND_BY_HARD_CAP_TICKS; tick += 10) {
             Moment m = new Moment(tick % 20 == 0, tick % 30 == 0, tick % 40 == 0, false, true);
             Plan p = started(FurnacePlan.plan(List.of(job), m, tick, active), tick);
             lines.addAll(p.changes());
@@ -650,7 +650,7 @@ public class FurnacePlanTest {
         }
         assertEquals(lines.toString(), 1, lines.size());
         // past the budget the trip under way is no longer a stand-by, it logs the change once
-        Plan over = FurnacePlan.plan(List.of(job), MID_NEED, FurnacePlan.STAND_BY_CAP_TICKS + 1, active);
+        Plan over = FurnacePlan.plan(List.of(job), MID_NEED, FurnacePlan.STAND_BY_HARD_CAP_TICKS + 1, active);
         assertFalse(over.standingBy());
         assertEquals(1, over.changes().size());
     }
@@ -877,16 +877,76 @@ public class FurnacePlanTest {
         assertEquals(FurnacePlan.PATIENCE_TICKS, FurnacePlan.waitCap(job, 5000));
     }
 
+    // a smoker does 100 ticks an item: eight is the biggest batch that gets a wait, nine walks off to work
+    @Test
+    public void aBatchOfEightSmokerItemsIsStoodAtAndNineLeavesAsTooLong() {
+        long perItem = FurnaceJobs.ticksPerItem("smoker");
+        assertEquals(100, perItem);
+        Verdict eight = one(plan(smoker(8 * perItem), MID_NEED, 0));
+        assertEquals(Call.STAND_BY, eight.call());
+        assertEquals(Why.QUICK, eight.why());
+        Verdict nine = one(plan(smoker(9 * perItem), MID_NEED, 0));
+        assertEquals(Call.LEAVE, nine.call());
+        assertEquals(Why.TOO_LONG, nine.why());
+    }
+
+    // the stand covers the whole batch: it used to be a flat 30 s from the start, so a 40 s batch got walked away from at 30 s
+    @Test
+    public void theStandLastsUntilTheBatchIsActuallyDone() {
+        long done = FurnacePlan.STAND_BY_MAX_TICKS;
+        RunState.FurnaceJob job = smoker(done);
+        plan(job, MID_NEED, 0);
+        // the old flat budget would have ended here with 10 s of cooking left
+        long oldBudget = 600;
+        assertTrue(oldBudget < done);
+        assertEquals(Why.QUICK, one(FurnacePlan.plan(List.of(job), MID_NEED, oldBudget + 1, job)).why());
+        assertEquals(Why.QUICK, one(FurnacePlan.plan(List.of(job), MID_NEED, done, job)).why());
+        // and a little past done for a cook that runs late, then it ends
+        assertEquals(Why.QUICK, one(FurnacePlan.plan(List.of(job), MID_NEED, done + FurnacePlan.STAND_BY_SLACK_TICKS, job)).why());
+        assertNotEquals(Why.QUICK, one(FurnacePlan.plan(List.of(job), MID_NEED, done + FurnacePlan.STAND_BY_SLACK_TICKS + 1, job)).why());
+    }
+
+    @Test
+    public void theVisitCapOutlastsTheStandByAndTheStandByHasAHardCeiling() {
+        RunState.FurnaceJob job = smoker(FurnacePlan.STAND_BY_MAX_TICKS);
+        plan(job, MID_NEED, 0);
+        // the visit stands as long as the budget, which is never shorter than the batch
+        assertEquals(FurnacePlan.STAND_BY_MAX_TICKS + FurnacePlan.STAND_BY_SLACK_TICKS, FurnacePlan.waitCap(job, 0, true));
+        assertTrue(FurnacePlan.waitCap(job, 0, true) > FurnacePlan.STAND_BY_MAX_TICKS);
+        // a doneTick that lies (way out in the future) cannot pin the bot past the ceiling
+        RunState.FurnaceJob liar = smoker(100_000);
+        FurnacePlan.startStandBy(liar, 50);
+        assertEquals(50 + FurnacePlan.STAND_BY_HARD_CAP_TICKS, liar.track.standUntil);
+    }
+
+    // a smoker that stalls mid stand (the visit stood to its cap, nothing came out) still ends up stuck: two waits and the input comes back
+    @Test
+    public void aStalledSmokerStillGetsTakenBackAfterTheLongerStand() {
+        RunState.FurnaceJob job = smoker(FurnacePlan.STAND_BY_MAX_TICKS);
+        plan(job, MID_NEED, 0);
+        long end = FurnacePlan.STAND_BY_HARD_CAP_TICKS + 1;
+        FurnaceJobs.afterVisit(new ArrayList<>(List.of(job)), job, job.count, FurnacePlan.PATIENCE_TICKS, end, true);
+        assertEquals(1, job.stalls);
+        // the budget is spent for good, so the second wait is an ordinary one, and its stall makes it stuck
+        job.doneTick = end + 100;
+        FurnaceJobs.afterVisit(new ArrayList<>(List.of(job)), job, job.count, FurnacePlan.PATIENCE_TICKS, end + 800, true);
+        assertTrue(FurnacePlan.stuck(job));
+        Verdict v = one(FurnacePlan.plan(List.of(job), BOUNDARY, end + 1600, null));
+        assertEquals(Call.TAKE_ALL, v.call());
+        assertEquals(Why.STUCK, v.why());
+    }
+
     @Test
     public void aQuickVisitNeverStandsPastTheStandByBudget() {
         RunState.FurnaceJob job = smoker(300);
         assertEquals(Why.QUICK, one(plan(job, MID_NEED, 0)).why());
-        // the estimate plus the patience would be 45 s, the budget is 30 s from first sight
+        // the estimate plus the patience would be 45 s, the budget is the estimate plus the slack
+        long budget = 300 + FurnacePlan.STAND_BY_SLACK_TICKS;
         assertEquals(300 + FurnacePlan.PATIENCE_TICKS, FurnacePlan.waitCap(job, 0));
-        assertEquals(FurnacePlan.STAND_BY_CAP_TICKS, FurnacePlan.waitCap(job, 0, true));
+        assertEquals(budget, FurnacePlan.waitCap(job, 0, true));
         // a trip that starts later gets what is left of it, and none once it is gone
-        assertEquals(FurnacePlan.STAND_BY_CAP_TICKS - 100, FurnacePlan.waitCap(job, 100, true));
-        assertEquals(0, FurnacePlan.waitCap(job, FurnacePlan.STAND_BY_CAP_TICKS + 50, true));
+        assertEquals(budget - 100, FurnacePlan.waitCap(job, 100, true));
+        assertEquals(0, FurnacePlan.waitCap(job, budget + 50, true));
         // anything that is not a quick stand-by keeps the old cap
         assertEquals(FurnacePlan.waitCap(job, 100), FurnacePlan.waitCap(job, 100, false));
         RunState.FurnaceJob unseen = furnace(1000);
@@ -1014,7 +1074,9 @@ public class FurnacePlanTest {
     public void theClockIsInHumanNumbers() {
         assertEquals(10 * 20, FurnacePlan.NEARLY_TICKS);
         assertEquals(30 * 20, FurnacePlan.PATIENCE_TICKS);
-        assertEquals(20 * 20, FurnacePlan.STAND_BY_MAX_TICKS);
+        assertEquals(40 * 20, FurnacePlan.STAND_BY_MAX_TICKS);
+        assertEquals(10 * 20, FurnacePlan.STAND_BY_SLACK_TICKS);
+        assertEquals(50 * 20, FurnacePlan.STAND_BY_HARD_CAP_TICKS);
         assertEquals(30 * 20, FurnacePlan.STAND_BY_CAP_TICKS);
         assertEquals(30 * 60 * 20, FurnacePlan.STALE_TICKS);
         assertEquals(2, FurnacePlan.STALL_LIMIT);

@@ -552,7 +552,7 @@ public class IronPhase implements PhaseHandler {
     // the furnace's view of this tick, both paths. the early pick only waits on ingots (it used to send us to a due smoker as well),
     // a hungry food need at the head waits on the food jobs (FurnacePlan.feeds),
     // and where we stand decides whether a due job may cut in at all (FurnacePlan.COLLECT_CUT_IN). a smoker cooks 5 s an item:
-    // standing at a batch with 20 s left (30 s at most, see FurnacePlan) beats walking off to mine and back (mayStandBy)
+    // standing at a batch with 40 s left (50 s at most, see FurnacePlan) beats walking off to mine and back (mayStandBy)
     private FurnacePlan.Moment moment(AltoClef mod, GamerContext ctx, List<KitNeed> needs, KitNeed head, boolean boundary, Schedule schedule) {
         GamerFacts f = ctx.facts();
         boolean pick = EarlyIronPick.collectNow(f, ctx.cfg().overworld) && f.cookStation() == null;
