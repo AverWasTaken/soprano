@@ -64,6 +64,18 @@ public class GarbageRulesTest {
     }
 
     @Test
+    public void gappleIsNeverTheStackThatGoes() {
+        ItemStack gapple = new ItemStack(Items.GOLDEN_APPLE, 1);
+        ItemStack cobble = new ItemStack(Items.COBBLESTONE, 3);
+        ItemStack pick = new ItemStack(Items.WOODEN_PICKAXE, 1);
+        // under the floor it used to rank after junk and tools and still go once those were gone
+        assertEquals(1, pick(FLOOR, gapple, cobble));
+        assertEquals(1, pick(FLOOR, gapple, pick));
+        assertEquals(-1, pick(FLOOR, gapple));
+        assertEquals(-1, pick(0, gapple, new ItemStack(Items.ENCHANTED_GOLDEN_APPLE, 1)));
+    }
+
+    @Test
     public void fullBagUnderTheFloorThrowsCobbleNeverTheSteak() {
         ItemStack cobble = new ItemStack(Items.COBBLESTONE, 16);
         ItemStack steak = new ItemStack(Items.COOKED_BEEF, 2);

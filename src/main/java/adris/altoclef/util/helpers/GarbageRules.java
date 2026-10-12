@@ -9,8 +9,9 @@ public final class GarbageRules {
 
     // one throwable stack. keepUnits is what it counts for toward the food floor (0 for anything that is not plain food),
     // ownUnits is what it gives as it is, so raw meat goes before the cooked stack worth the same. spared is food we would
-    // rather not throw (plain food, gapples, chorus fruit) even when it does not count toward the floor: rotten flesh is not
-    public record Cand(boolean tool, int toolUses, int damage, int keepUnits, int ownUnits, int count, boolean spared) {
+    // rather not throw (plain food, gapples, chorus fruit) even when it does not count toward the floor: rotten flesh is not.
+    // reserved is the gapple: it is the thing that saves a run, so it never goes, floor or no floor
+    public record Cand(boolean tool, int toolUses, int damage, int keepUnits, int ownUnits, int count, boolean spared, boolean reserved) {
     }
 
     private GarbageRules() {
@@ -22,7 +23,7 @@ public final class GarbageRules {
         FoodHelper.Kind kind = FoodHelper.kindOf(item);
         boolean spared = kind == FoodHelper.Kind.NORMAL || kind == FoodHelper.Kind.RESERVED || kind == FoodHelper.Kind.CHORUS_FRUIT;
         return new Cand(tool, tool ? ItemHelper.getToolDurability(item) : 0, stack.getDamageValue(), keepUnits(stack),
-                FoodHelper.ownNutrition(item) * stack.getCount(), stack.getCount(), spared);
+                FoodHelper.ownNutrition(item) * stack.getCount(), stack.getCount(), spared, kind == FoodHelper.Kind.RESERVED);
     }
 
     // same measure as GamerFacts.foodUnits: normal food only, raw meat at its cooked value, nutrition times count. the old sum
@@ -46,7 +47,7 @@ public final class GarbageRules {
         int best = -1;
         for (int i = 0; i < cands.size(); i++) {
             Cand c = cands.get(i);
-            if (keepsFood(bagUnits, c.keepUnits(), floor)) {
+            if (c.reserved() || keepsFood(bagUnits, c.keepUnits(), floor)) {
                 continue;
             }
             if (best < 0 || compare(c, cands.get(best)) < 0) {

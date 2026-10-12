@@ -437,6 +437,9 @@ public class ItemHelper {
     public static boolean canDropStack(AltoClef mod, ItemStack stack) {
         if (!canThrowAwayStack(mod, stack))
             return false;
+        // the gapple is the run saver, it is never the stack that goes
+        if (FoodHelper.kindOf(stack.getItem()) == FoodHelper.Kind.RESERVED)
+            return false;
         int units = GarbageRules.keepUnits(stack);
         return units == 0 || !GarbageRules.keepsFood(StorageHelper.bagFoodUnits(mod), units, Baritone.settings().altoFoodKeepUnits.value);
     }
