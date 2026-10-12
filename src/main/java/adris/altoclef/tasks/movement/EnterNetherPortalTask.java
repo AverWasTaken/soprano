@@ -45,6 +45,13 @@ public class EnterNetherPortalTask extends Task {
         this(null, targetDimension);
     }
 
+    // a portal interior is two cells tall and feet only ever fit in the bottom one. aiming a GoalBlock at the top cell is
+    // impossible, so baritone settled for the closest node it could reach, and the top of the frame is exactly as close
+    // as the bottom cell is. the bot then stood on the obsidian and looked at the portal like it owed it money
+    public static boolean isFeetCell(BlockPos cell, Predicate<BlockPos> isPortal) {
+        return !isPortal.test(cell.below());
+    }
+
     @Override
     protected void onStart(AltoClef mod) {
         mod.getBlockTracker().trackBlock(Blocks.NETHER_PORTAL);
@@ -84,9 +91,10 @@ public class EnterNetherPortalTask extends Task {
             _portalTimeout.reset();
         }
 
+        Predicate<BlockPos> portalAt = blockPos -> mod.getWorld().getBlockState(blockPos).getBlock() == Blocks.NETHER_PORTAL;
         Predicate<BlockPos> standablePortal = blockPos -> {
-            if (mod.getWorld().getBlockState(blockPos).getBlock() == Blocks.NETHER_PORTAL) {
-                return true;
+            if (portalAt.test(blockPos)) {
+                return isFeetCell(blockPos, portalAt);
             }
             // REQUIRE that there be solid ground beneath us, not more portal.
             if (!mod.getChunkTracker().isChunkLoaded(blockPos)) {
