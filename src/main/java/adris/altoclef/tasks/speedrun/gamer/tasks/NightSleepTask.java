@@ -84,6 +84,10 @@ public class NightSleepTask extends Task {
     // the bed this try: the foot block is the one we write down as ours, the facing is the way the head points from it
     private Direction facing;
     private BlockPos foot;
+    // the cell the bed is built beside, kept from the tick the direction was picked
+    private BlockPos standCell;
+    // set while we are getting out of the bed, the try ends when the game says we are up
+    private String leaving;
     private long clickedAt = -1;
     private boolean wasAsleep;
     private long asleepTicks;
@@ -161,6 +165,10 @@ public class NightSleepTask extends Task {
     private void enter(Stage next, long now, String line) {
         stage = next;
         stageSince = now;
+        if (next == Stage.SLEEP) {
+            // a line from before the click is not the bed's answer
+            overlay = null;
+        }
         Debug.logInternal("night: " + next + (line.isEmpty() ? "" : ", " + line));
     }
 
@@ -198,7 +206,7 @@ public class NightSleepTask extends Task {
             return null;
         }
         if (!cleanup && budget.seconds() >= cfg.get().nightSeconds
-                && stage != Stage.PICKUP && stage != Stage.DESCEND && stage != Stage.SLEEP) {
+                && stage != Stage.PICKUP && stage != Stage.RETURN && stage != Stage.DESCEND && stage != Stage.SLEEP) {
             fail("out of time for tonight", now);
             return null;
         }
@@ -209,6 +217,7 @@ public class NightSleepTask extends Task {
             case BUILD -> build(mod, now);
             case SLEEP -> sleep(mod, now);
             case PICKUP -> pickup(mod, now);
+            case RETURN -> returnToBed(mod, now);
             case DESCEND -> descend(mod, now);
         };
     }
@@ -390,8 +399,12 @@ public class NightSleepTask extends Task {
             fail("out of blocks on the way up", now);
             return null;
         }
-        // mid jump the count can read zero for a tick before the block is down, keep going where we were going
-        BlockPos top = raise == 0 && lastTop != null ? lastTop : feet.above(Math.max(raise, 1));
+        // mid jump the count can read zero for a tick before the block is down, and a monster hopping about moves the line by one
+        // now and then: the target only ever goes up, a new one is a new goal for baritone
+        BlockPos top = feet.above(Math.max(raise, 1));
+        if (lastTop != null && lastTop.getY() >= top.getY()) {
+            top = lastTop;
+        }
         lastTop = top;
         setDebugState("Pillaring up to get away from the monsters.", "Getting above the monsters");
         return new PillarHereTask(top);
@@ -402,7 +415,9 @@ public class NightSleepTask extends Task {
     private Task build(AltoClef mod, long now) {
         LocalPlayer player = mod.getPlayer();
         ClientLevel world = mod.getWorld();
-        BlockPos stand = player.blockPosition();
+        // the cell the bed is built beside stays the one it was chosen from: placing the supports walks us about, and a foot cell
+        // that follows us around never gets a bed
+        BlockPos stand = facing != null && standCell != null ? standCell : player.blockPosition();
         if (NightSleep.timedOut(Stage.BUILD, 0, secondsIn(now))) {
             fail("the bed would not go down", now);
             return null;
@@ -425,6 +440,7 @@ public class NightSleepTask extends Task {
                 fail("no room for a bed here", now);
                 return null;
             }
+            standCell = stand;
         }
         BlockPos footCell = stand.relative(facing);
         BlockPos headCell = footCell.relative(facing);
@@ -442,16 +458,19 @@ public class NightSleepTask extends Task {
                 return new DestroyBlockTask(cell);
             }
         }
-        // the game has no support rule for a bed (the head can hang in the air), we only need something to click the foot onto
-        BlockPos support = footCell.below();
-        if (!world.getBlockState(support).isFaceSturdy(world, support, Direction.UP)) {
-            if (buildBlocks.getAsInt() < 1) {
-                fail("no blocks left to hold the bed up", now);
-                return null;
+        // the game has no support rule for a bed, but the foot needs something to be clicked onto and the item of a bed taken
+        // down later drops at the head: over nothing it falls off the pillar
+        for (BlockPos support : new BlockPos[]{footCell.below(), headCell.below()}) {
+            if (!world.getBlockState(support).isFaceSturdy(world, support, Direction.UP)) {
+                if (buildBlocks.getAsInt() < 1) {
+                    fail("no blocks left to hold the bed up", now);
+                    return null;
+                }
+                setDebugState("Putting something under the bed.");
+                return new PlaceBlockTask(support, new Block[]{}, true, false);
             }
-            setDebugState("Putting something under the bed.");
-            return new PlaceBlockTask(support, new Block[]{}, true, false);
         }
+        BlockPos support = footCell.below();
         setDebugState("Putting the bed down.", "Putting the bed down");
         return new InteractWithBlockTask(new ItemTarget("bed", 1), Direction.UP, support, false);
     }
@@ -488,14 +507,16 @@ public class NightSleepTask extends Task {
                 cost += 2;
             }
         }
-        BlockPos support = footCell.below();
-        if (!world.getBlockState(support).isFaceSturdy(world, support, Direction.UP)) {
-            if (buildBlocks.getAsInt() < 1) {
-                return INF;
+        int missing = 0;
+        for (BlockPos support : new BlockPos[]{footCell.below(), headCell.below()}) {
+            if (!world.getBlockState(support).isFaceSturdy(world, support, Direction.UP)) {
+                missing++;
             }
-            cost += 3;
         }
-        return cost;
+        if (missing > buildBlocks.getAsInt()) {
+            return INF;
+        }
+        return cost + 3 * missing;
     }
 
     // ---- sleeping
@@ -508,11 +529,15 @@ public class NightSleepTask extends Task {
             wasAsleep = true;
             asleepTicks++;
             setDebugState("Sleeping.", "Sleeping");
-            if (asleepTicks > cfg.get().nightSleepSeconds * 20) {
-                // the night is not passing (somebody else is awake), no point lying here
+            if (leaving == null && asleepTicks > cfg.get().nightSleepSeconds * 20) {
+                // the night is not passing (somebody else is awake), no point lying here. the try ends once we are out of it
                 getUp(player);
-                fail("the night did not pass", now);
+                leaving = "the night did not pass";
             }
+            return null;
+        }
+        if (leaving != null) {
+            fail(leaving, now);
             return null;
         }
         if (wasAsleep) {
@@ -604,15 +629,9 @@ public class NightSleepTask extends Task {
         }
         if (standing) {
             if (!bed.closerToCenterThan(mod.getPlayer().position(), 4)) {
-                if (!bed.closerToCenterThan(mod.getPlayer().position(), cfg.get().nightBedRadius)) {
-                    // too far to walk back for, and not ours to keep a claim on any more
-                    state.nightBed = null;
-                    save.run();
-                    afterPickup(mod, now);
-                    return null;
-                }
-                setDebugState("Going back for the bed.");
-                return new GetToBlockTask(bed);
+                // an old bed of ours across the landscape: that is a walk, with mob defense on
+                enter(Stage.RETURN, now, "walking back to the bed");
+                return null;
             }
             setDebugState("Taking the bed back.", "Taking the bed back");
             return new DestroyBlockTask(bed);
@@ -626,6 +645,27 @@ public class NightSleepTask extends Task {
         // broken, the item is lying where it stood
         setDebugState("Picking the bed up.");
         return new PickupDroppedItemTask(new ItemTarget(ItemHelper.BED, bedsBeforePickup + 1), false);
+    }
+
+    private Task returnToBed(AltoClef mod, long now) {
+        RunState.Pos at = state.nightBed;
+        BlockPos bed = at == null ? null : new BlockPos(at.x, at.y, at.z);
+        boolean standing = bed != null && mod.getWorld().getBlockState(bed).getBlock() instanceof BedBlock;
+        if (!standing || bed.closerToCenterThan(mod.getPlayer().position(), 4)) {
+            enter(Stage.PICKUP, now, "at the bed");
+            return null;
+        }
+        if (NightSleep.timedOut(Stage.RETURN, 0, secondsIn(now))
+                || !bed.closerToCenterThan(mod.getPlayer().position(), cfg.get().nightBedRadius + 8)) {
+            // too far or too slow to walk back for, and not ours to keep a claim on any more
+            state.nightBed = null;
+            save.run();
+            Debug.logInternal("night: gave up walking back to the bed at " + bed.toShortString());
+            finish(now);
+            return null;
+        }
+        setDebugState("Going back for the bed.", "Going back for the bed");
+        return new GetToBlockTask(bed);
     }
 
     private void afterPickup(AltoClef mod, long now) {
@@ -676,10 +716,9 @@ public class NightSleepTask extends Task {
     private void fail(String reason, long now) {
         why = reason;
         outcome = Outcome.GAVE_UP;
-        if (!cleanup) {
-            budget.failed(now * TICK_SECONDS, cfg.get().nightCooldownSeconds);
-            Debug.logInternal("night: gave up this try, " + reason);
-        }
+        // (a failed cleanup cools down too, or the next tick starts it again)
+        budget.failed(now * TICK_SECONDS, cfg.get().nightCooldownSeconds);
+        Debug.logInternal("night: gave up this try, " + reason);
         if (mod == null || mod.getPlayer() == null) {
             finish(now);
             return;

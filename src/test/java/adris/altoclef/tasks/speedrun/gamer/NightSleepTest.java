@@ -27,7 +27,11 @@ public class NightSleepTest {
 
     private static Inputs inputs(boolean enabled, boolean overworld, boolean dark, boolean busy, boolean fighting, boolean spent,
                                  boolean cooling, BedSource bed, boolean leftover) {
-        return new Inputs(enabled, overworld, dark, busy, fighting, spent, cooling, bed, leftover);
+        return new Inputs(enabled, overworld, dark, busy, fighting, false, spent, cooling, bed, leftover);
+    }
+
+    private static Inputs hurt(BedSource bed, boolean leftover) {
+        return new Inputs(true, true, true, false, false, true, false, false, bed, leftover);
     }
 
     private static Inputs night(BedSource bed) {
@@ -74,6 +78,13 @@ public class NightSleepTest {
     public void aSpentNightAndACooldownAreQuiet() {
         assertEquals(Why.QUIET, NightSleep.decide(inputs(true, true, true, false, false, true, false, BedSource.BAG, false)));
         assertEquals(Why.QUIET, NightSleep.decide(inputs(true, true, true, false, false, false, true, BedSource.BAG, false)));
+    }
+
+    @Test
+    public void lowHealthKeepsEveryTripOutNotJustTheNightOnes() {
+        // a trip would give up on its first tick and start again on the next, with the phase never getting a turn
+        assertEquals(Why.LOW_HEALTH, NightSleep.decide(hurt(BedSource.BAG, false)));
+        assertEquals(Why.LOW_HEALTH, NightSleep.decide(hurt(BedSource.NONE, true)));
     }
 
     @Test
@@ -193,8 +204,9 @@ public class NightSleepTest {
         // the pillar's own cells, ours, and one to jump into
         assertFalse(NightSleep.roofAt(8, 10));
         assertTrue(NightSleep.roofAt(8, 9));
-        assertEquals(10, NightSleep.blocksNeeded(8));
-        assertEquals(2, NightSleep.blocksNeeded(0));
+        // the pillar, a block under the foot and one under the head, and a spare
+        assertEquals(11, NightSleep.blocksNeeded(8));
+        assertEquals(3, NightSleep.blocksNeeded(0));
     }
 
     // ---- what a night may cost
@@ -267,8 +279,8 @@ public class NightSleepTest {
         for (Stage s : new Stage[]{Stage.LIFT, Stage.BUILD, Stage.SLEEP, Stage.PICKUP}) {
             assertTrue(s.name(), NightSleep.standsDown(s, 20));
         }
-        // the walk to a bed, the craft and the way down are ordinary travel
-        for (Stage s : new Stage[]{Stage.CRAFT, Stage.WALK, Stage.DESCEND}) {
+        // the walk to a bed (also the walk back to an old one), the craft and the way down are ordinary travel
+        for (Stage s : new Stage[]{Stage.CRAFT, Stage.WALK, Stage.RETURN, Stage.DESCEND}) {
             assertFalse(s.name(), NightSleep.standsDown(s, 20));
         }
     }
@@ -311,6 +323,9 @@ public class NightSleepTest {
     public void anUnknownBedLineIsAFailureAndAnUnrelatedOneIsNothing() {
         assertEquals(Refusal.OTHER, NightSleep.refusal("You may not rest now; something new"));
         assertEquals(Refusal.NONE, NightSleep.refusal("Respawn point set"));
+        // the server's own sleep status lines are not the bed saying no
+        assertEquals(Refusal.NONE, NightSleep.refusal("1/2 players sleeping"));
+        assertEquals(Refusal.NONE, NightSleep.refusal("Sleeping through this night"));
         assertEquals(Refusal.NONE, NightSleep.refusal("Now playing: C418 - 13"));
         assertEquals(Refusal.NONE, NightSleep.refusal(null));
     }
@@ -327,10 +342,12 @@ public class NightSleepTest {
     }
 
     @Test
-    public void sleptThroughMeansTheMorningOrAHundredTicks() {
-        assertTrue(NightSleep.sleptThrough(100, false));
+    public void sleptThroughMeansWokenByTheMorning() {
         assertTrue(NightSleep.sleptThrough(3, true));
-        // woken by a zombie after a few seconds in the dark
+        // woken by a zombie after a few seconds in the dark, or after a long time with other players awake
         assertFalse(NightSleep.sleptThrough(60, false));
+        assertFalse(NightSleep.sleptThrough(900, false));
+        // never lay down at all
+        assertFalse(NightSleep.sleptThrough(0, true));
     }
 }

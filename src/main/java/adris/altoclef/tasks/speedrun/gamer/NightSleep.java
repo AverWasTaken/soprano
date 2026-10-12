@@ -33,14 +33,14 @@ public final class NightSleep {
     }
 
     public enum Why {
-        GO, OFF, WRONG_PLACE, NOT_NIGHT, BUSY, FIGHTING, QUIET, NO_BED, LEFTOVER
+        GO, OFF, WRONG_PLACE, NOT_NIGHT, BUSY, FIGHTING, LOW_HEALTH, QUIET, NO_BED, LEFTOVER
     }
 
     // everything the branch can see before it starts. busy is the engine's side (a nether trip, a recovery, a station being
     // picked up, a phase that must not be interrupted), fighting is a commitment the combat machine already holds, spent is
     // "this night is used up" (tries or seconds) and cooling is "a try just failed, wait a bit"
-    public record Inputs(boolean enabled, boolean overworld, boolean windowOpen, boolean busy, boolean fighting, boolean spent,
-                         boolean cooling, BedSource bed, boolean leftoverBed) {
+    public record Inputs(boolean enabled, boolean overworld, boolean windowOpen, boolean busy, boolean fighting, boolean lowHealth,
+                         boolean spent, boolean cooling, BedSource bed, boolean leftoverBed) {
     }
 
     // a bed of ours still standing from an earlier trip is picked up whatever the clock says, as long as nothing else has the
@@ -58,6 +58,10 @@ public final class NightSleep {
         }
         if (in.fighting()) {
             return Why.FIGHTING;
+        }
+        // (a trip would give up on its first tick, and starting one every tick keeps the phase from ever running)
+        if (in.lowHealth()) {
+            return Why.LOW_HEALTH;
         }
         if (in.leftoverBed()) {
             return in.cooling() ? Why.QUIET : Why.LEFTOVER;
@@ -80,13 +84,10 @@ public final class NightSleep {
         };
     }
 
-    // woken by the morning, or after the 100 ticks the game counts as slept through. anything less was a hit or a hand
+    // woken by the morning. a hit that wakes us at night is not, however long we lay there first (others awake on a server)
     public static boolean sleptThrough(long asleepTicks, boolean day) {
-        return asleepTicks >= SLEPT_THROUGH_TICKS || day;
+        return asleepTicks > 0 && day;
     }
-
-    // Player.isSleepingLongEnough
-    public static final long SLEPT_THROUGH_TICKS = 100;
 
     // where the bed comes from. a bed already standing close beats carrying one (nothing to place, nothing to pick up), then the
     // bag, then crafting. a craft needs three wool of one colour and three planks, no hunting for either
@@ -162,10 +163,11 @@ public final class NightSleep {
         return openAbove < blocksToRaise + 2;
     }
 
-    // blocks the whole job eats: the pillar, the block the bed's foot is clicked onto, and a spare for the one that lands wrong
-    // (the head can hang in the air, the game has no support rule for a bed)
+    // blocks the whole job eats: the pillar, a block under the foot (to click the bed onto) and one under the head, and a spare
+    // for the one that lands wrong. the game has no support rule for a bed, but the item of a broken one drops at the head, and
+    // without a block there it falls off the pillar
     public static int blocksNeeded(int blocksToRaise) {
-        return Math.max(blocksToRaise, 0) + 2;
+        return Math.max(blocksToRaise, 0) + 3;
     }
 
     // ---- the budget of a night
@@ -229,12 +231,13 @@ public final class NightSleep {
 
     // ---- the stages and what mob defense does in each
 
+    // RETURN is the walk back to an old bed of ours before the pick up
     public enum Stage {
-        CRAFT, WALK, LIFT, BUILD, SLEEP, PICKUP, DESCEND
+        CRAFT, WALK, LIFT, BUILD, SLEEP, PICKUP, RETURN, DESCEND
     }
 
     // from the first block of the pillar to the bed being back in the bag, mobs are not ours to fight: a zombie that hits the
-    // pillar must not turn into a fight or a 24 block run off the top of it. the walk to a bed and the way down are ordinary
+    // pillar must not turn into a fight or a 24 block run off the top of it. the walks to a bed and the way down are ordinary
     // travel, and low health always hands the wheel back (same line as the combat machine's bail)
     public static boolean standsDown(Stage stage, float health) {
         boolean up = stage == Stage.LIFT || stage == Stage.BUILD || stage == Stage.SLEEP || stage == Stage.PICKUP;
@@ -254,8 +257,9 @@ public final class NightSleep {
     // the overlay line the game puts up when a bed says no (block.minecraft.bed.*: "You may not rest now; there are monsters
     // nearby", "You can sleep only at night or during thunderstorms", "...the bed is too far away", "This bed is obstructed",
     // "This bed is occupied"). anything else bed-ish is OTHER, which is a failed try and not a reason to click again. a line
-    // about something else is NONE: the overlay carries every action bar message there is
-
+    // about something else is NONE: the overlay carries every action bar message there is, the server's "1/2 players sleeping"
+    // included. English only, the overlay hands us the translated text (a client in another language falls back on the
+    // monster check before the click and the click patience)
     public static Refusal refusal(String message) {
         if (message == null) {
             return Refusal.NONE;
@@ -277,7 +281,7 @@ public final class NightSleep {
             return Refusal.OCCUPIED;
         }
         // ("no amount of rest can pass this night" is the other players' percentage, also not a reason to click again)
-        if (m.contains("you may not rest") || m.contains("this bed") || m.contains("the bed") || m.contains("sleep")) {
+        if (m.contains("you may not rest") || m.contains("this bed") || m.contains("the bed")) {
             return Refusal.OTHER;
         }
         return Refusal.NONE;
@@ -309,6 +313,7 @@ public final class NightSleep {
             case BUILD -> 30;
             case SLEEP -> 0;
             case PICKUP -> 25;
+            case RETURN -> 45;
             case DESCEND -> 10 + 3.0 * blocks;
         };
     }

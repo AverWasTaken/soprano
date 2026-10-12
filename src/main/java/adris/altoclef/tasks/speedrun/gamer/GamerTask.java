@@ -727,7 +727,13 @@ public class GamerTask extends Task {
         if (machine.ended()) {
             return null;
         }
+        // a new player is a death: the night trip died with the old one, and its stand down must not outlive it into the walk back
+        // for our things (the recovery branches below return before the night branch is asked)
+        if (nightTrip != null && mod.getPlayer() != nightPlayer) {
+            dropNightTrip();
+        }
         if (state.netherTrip != null) {
+            dropNightTrip();
             // same deal as the recovery below: the trip is not the phase's time and not its fault. the task clears the
             // state when it is over, and the machine has the next tick
             if (netherTrip == null) {
@@ -742,6 +748,7 @@ public class GamerTask extends Task {
         }
         netherTrip = null;
         if (recoverStillWanted(now)) {
+            dropNightTrip();
             // the recovery is not the phase's time and not its fault: both clocks wait for it (a stall is forgiven the same way)
             machine.observe();
             machine.holdClocks();
@@ -1066,10 +1073,9 @@ public class GamerTask extends Task {
         double seconds = facts.gameTime() * 0.05;
         nightBudget.roll(NightSleep.nightOf(mod.getWorld().getDayTime()));
         if (nightTrip != null) {
-            if (nightTrip.isFinished(mod) || mod.getPlayer() != nightPlayer || facts.dimension() != Dimension.OVERWORLD) {
-                // (a new player is a death, the trip died with the old one. the bed it left is picked up by a cleanup trip)
-                nightTrip = null;
-                NightSleepHook.clear();
+            if (nightTrip.isFinished(mod) || facts.dimension() != Dimension.OVERWORLD) {
+                // (the bed a dead or dropped trip left is picked up by a cleanup trip)
+                dropNightTrip();
                 machine.releaseHold();
                 return null;
             }
@@ -1082,7 +1088,7 @@ public class GamerTask extends Task {
         }
         boolean leftover = leftoverNightBed(mod);
         NightSleep.Inputs cheap = new NightSleep.Inputs(true, true, !mod.getWorld().isDay(), nightBusy(), nightFighting(mod),
-                nightBudget.spent(cfg.overworld.nightAttempts, cfg.overworld.nightSeconds), nightBudget.cooling(seconds),
+                NightSleep.shouldAbandon(mod.getPlayer().getHealth()), nightBudget.spent(cfg.overworld.nightAttempts, cfg.overworld.nightSeconds), nightBudget.cooling(seconds),
                 NightSleep.BedSource.BAG, leftover);
         NightSleep.Why why = NightSleep.decide(cheap);
         BlockPos found = null;
@@ -1101,6 +1107,11 @@ public class GamerTask extends Task {
             return nightTrip;
         }
         return null;
+    }
+
+    private void dropNightTrip() {
+        nightTrip = null;
+        NightSleepHook.clear();
     }
 
     private void startNightTrip(AltoClef mod, NightSleep.BedSource source, BlockPos found) {
@@ -1159,8 +1170,8 @@ public class GamerTask extends Task {
         return pos.closerToCenterThan(mod.getPlayer().position(), cfg.overworld.nightBedRadius + 8);
     }
 
-    // a bed that is already standing close by and that we can sleep in right now: not ours, not a spawn bed we should leave
-    // alone, not on copper (a trial chamber's), nothing nasty within the game's box around it
+    // a bed that is already standing close by and that we can sleep in right now: not on copper (a trial chamber's), nothing
+    // nasty within the game's box around it. our own night bed never gets here, a trip that left one is a cleanup trip first
     private BlockPos findNightBed(AltoClef mod) {
         var tracker = mod.getBlockTracker();
         BlockPos best = null;
