@@ -281,21 +281,14 @@ public class ToolSet {
             speed *= 1 + (player.getEffect(MobEffects.HASTE).getAmplifier() + 1) * 0.2;
         }
         if (player.hasEffect(MobEffects.MINING_FATIGUE)) {
-            switch (player.getEffect(MobEffects.MINING_FATIGUE).getAmplifier()) {
-                case 0:
-                    speed *= 0.3;
-                    break;
-                case 1:
-                    speed *= 0.09;
-                    break;
-                case 2:
-                    speed *= 0.0027; // you might think that 0.09*0.3 = 0.027 so that should be next, that would make too much sense. it's 0.0027.
-                    break;
-                default:
-                    speed *= 0.00081;
-                    break;
-            }
+            // 1.21.4 had a switch with 0.3, 0.09, 0.0027, 0.00081 (the 0.0027 was a typo-looking truth). 26.3 made it a real power,
+            // so fatigue 3 and 4 are 10x less crippling than that table says
+            speed *= fatigueFactor(player.getEffect(MobEffects.MINING_FATIGUE).getAmplifier());
         }
         return speed;
+    }
+
+    static double fatigueFactor(int amplifier) {
+        return Math.pow(0.3, amplifier + 1);
     }
 }
