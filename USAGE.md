@@ -152,6 +152,7 @@ AltoClef is a task bot (survival, crafting, combat, beating the game) that's bui
 - `deposit [item ...]` to store items in a container, `stash x1 y1 z1 x2 y2 z2 [item ...]` to put them in a chest stash
 - `food <amount>` and `meat <amount>` to collect that much food or meat
 - `punk <player>` to kill a player
+- `hunt` to chase and kill the closest other player, then the next one, until you stop it
 - `hero` to kill all the hostile mobs it can find, `idle` to stand still with its survival chains running, `selfcare` (unfinished upstream)
 - `coverwithblocks` and `coverwithsand` to cover nether lava
 - `gamer` to beat the game: gear up, nether, stronghold, dragon. It takes a long while and eats, fights and respawns on its own, and it saves its progress per world, so after a relog, a stop or a crash it carries on from the phase it was in. `gamer status` shows the phase and what has been found, `gamer reset` forgets the saved run (not while it is running), `gamer trace` writes the last 300 log lines to the log file, and `gamer phase <name>` starts in that phase (`gather`, `iron`, `portal`, `nether`, `eyes`, `return`, `locate`, `room`, `open`, `end_prep` or `dragon`), for testing one part of the run

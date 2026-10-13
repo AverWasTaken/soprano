@@ -85,6 +85,7 @@ public final class AltoClefCommands {
                 new FoodCommand(baritone),
                 new MeatCommand(baritone),
                 new PunkCommand(baritone),
+                new HuntCommand(baritone),
                 new CoordsCommand(baritone),
                 new InventoryCommand(baritone),
                 new ListCommand(baritone),
