@@ -456,7 +456,7 @@ mine("pale_oak_sapling", Blocks.PALE_OAK_LEAVES, Items.PALE_OAK_SAPLING);
             alias("netherite_pick", "netherite_pickaxe");
             simple("boat", ItemHelper.WOOD_BOAT, CollectBoatTask::new);
             woodTasks("boat", woodItems -> woodItems.boat, (woodItems, count) -> new CollectBoatTask(woodItems.boat, woodItems.prefix + "_planks", count));
-            shapedRecipe3x3("lead", Items.LEAD, 2, "string", "string", o, "string", "slime_ball", o, o, o, "string");
+            shapedRecipe3x3("lead", Items.LEAD, 2, "string", "string", o, "string", "string", o, o, o, "string");
 
             simple("honeycomb", Items.HONEYCOMB, CollectHoneycombTask::new);
             {
@@ -547,11 +547,13 @@ mine("pale_oak_sapling", Blocks.PALE_OAK_LEAVES, Items.PALE_OAK_SAPLING);
                 String i = "iron_nugget";
                 shapedRecipe3x3("lantern", Items.LANTERN, 1, i, i, i, i, "torch", i, i, i, i);
                 shapedRecipe3x3("soul_lantern", Items.SOUL_LANTERN, 1, i, i, i, i, "soul_torch", i, i, i, i);
-                shapedRecipe3x3("chain", Items.IRON_CHAIN, 1, o, i, o, o, "iron_ingot", o, o, i, o);
+                shapedRecipe3x3("iron_chain", Items.IRON_CHAIN, 1, o, i, o, o, "iron_ingot", o, o, i, o);
+                // vanilla renamed chain to iron_chain on 26.3 (copper has its own now), old name still typed by people
+                alias("chain", "iron_chain");
             }
             {
                 String c = "chiseled_stone_bricks";
-                shapedRecipe3x3("lodestone", Items.LODESTONE, 1, c, c, c, c, "netherite_ingot", c, c, c, c);
+                shapedRecipe3x3("lodestone", Items.LODESTONE, 1, c, c, c, c, "iron_ingot", c, c, c, c);
             }
             shapedRecipe3x3("lightning_rod", Items.LIGHTNING_ROD.weathering().unaffected(), 1, o, "copper_ingot", o, o, "copper_ingot", o, o, "copper_ingot", o);
             shapedRecipe3x3("tinted_glass", Items.TINTED_GLASS, 2, o, "amethyst_shard", o, "amethyst_shard", "glass", "amethyst_shard", o, "amethyst_shard", o);
