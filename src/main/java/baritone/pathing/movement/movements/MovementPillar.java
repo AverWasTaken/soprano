@@ -106,6 +106,7 @@ public class MovementPillar extends Movement {
             return COST_INF;
         }
         // the block over our head still takes forever to break when we're swimming while we do it
+        double waitCredit = MovementHelper.breakWaitCredit(context, hardness, JUMP_ONE_BLOCK_COST); // the jump happens during the wait
         hardness = MovementHelper.waterBreakCost(context, x, y, z, hardness);
         if (hardness != 0) {
             if (MovementHelper.isClimbable(toBreakBlock)) {
@@ -133,7 +134,7 @@ public class MovementPillar extends Movement {
         if (ladder) {
             return LADDER_UP_ONE_COST + hardness * 5;
         } else {
-            return JUMP_ONE_BLOCK_COST + placeCost + context.jumpPenalty + hardness;
+            return JUMP_ONE_BLOCK_COST + placeCost + context.jumpPenalty + hardness - waitCredit;
         }
     }
 

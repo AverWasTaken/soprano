@@ -25,6 +25,7 @@ import baritone.pathing.movement.CalculationContext;
 import baritone.pathing.movement.movements.MovementAscend;
 import baritone.pathing.movement.movements.MovementDescend;
 import baritone.pathing.movement.movements.MovementDiagonal;
+import baritone.pathing.movement.movements.MovementDownward;
 import baritone.pathing.movement.movements.MovementTraverse;
 import baritone.utils.BlockStateInterface;
 import baritone.utils.ToolSet;
@@ -529,5 +530,33 @@ public class MoveCostTest {
         // the planner's FALL_N[1] counts a lead tick that does no falling, and that is the grid at work: ticks are whole,
         // so a continuous 4.6 is a 5 and the edge is crossed somewhere inside a tick. 9.3 against 9
         assertEquals(onTheGrid, res.cost, 0.5);
+    }
+
+    @Test
+    public void diggingDownFallsDuringTheWaitAfterTheBreak() {
+        // break (8 + 1), the block goes, and the 5 idle ticks pass during the 5.6 of falling a block
+        MapWorld w = floor();
+        w.set(0, 63, 0, Blocks.AIR.defaultBlockState());
+        w.set(0, 64, 0, Blocks.STONE.defaultBlockState());
+        w.set(0, 63, 0, Blocks.STONE.defaultBlockState());
+        w.set(0, 62, 0, Blocks.STONE.defaultBlockState());
+        double penalty = settings.blockBreakAdditionalPenalty.value;
+        double cost = MovementDownward.cost(new PickCtx(w), 0, 64, 0);
+        assertEquals(8 + 1 + penalty + FALL_N_BLOCKS_COST[1], cost, 1e-9);
+    }
+
+    @Test
+    public void anAscendThatBreaksLetsTheJumpHappenInTheWait() {
+        // a stone ceiling to break over the step: 8 + 1 + 5 idle, minus the 4.6 of walk the wait covers, plus the jump
+        MapWorld w = floor();
+        w.set(1, 64, 0, Blocks.STONE.defaultBlockState());
+        w.set(0, 66, 0, Blocks.STONE.defaultBlockState());
+        double penalty = settings.blockBreakAdditionalPenalty.value;
+        double idle = settings.blockBreakSpeed.value - 1;
+        double with = MovementAscend.cost(new PickCtx(w), 0, 64, 0, 1, 0);
+        MapWorld clear = floor();
+        clear.set(1, 64, 0, Blocks.STONE.defaultBlockState());
+        double without = MovementAscend.cost(new PickCtx(clear), 0, 64, 0, 1, 0);
+        assertEquals(8 + 1 + penalty + idle - WALK_ONE_BLOCK_COST, with - without, 1e-9);
     }
 }

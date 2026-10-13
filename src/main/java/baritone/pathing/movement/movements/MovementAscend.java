@@ -149,15 +149,24 @@ public class MovementAscend extends Movement {
         // start with srcUp2 since we already have its state
         // includeFalling isn't needed because of the falling check above -- if srcUp3 is falling we will have already exited with COST_INF if we'd actually have to break it
         // all three are broken from src, so all three pay for the water we're standing in
-        totalCost += MovementHelper.waterBreakCost(context, x, y, z, MovementHelper.getMiningDurationTicks(context, x, y + 2, z, srcUp2, false));
+        double raw1 = MovementHelper.getMiningDurationTicks(context, x, y + 2, z, srcUp2, false);
+        totalCost += MovementHelper.waterBreakCost(context, x, y, z, raw1);
         if (totalCost >= COST_INF) {
             return COST_INF;
         }
-        totalCost += MovementHelper.waterBreakCost(context, x, y, z, MovementHelper.getMiningDurationTicks(context, destX, y + 1, destZ, false));
+        double raw2 = MovementHelper.getMiningDurationTicks(context, destX, y + 1, destZ, false);
+        totalCost += MovementHelper.waterBreakCost(context, x, y, z, raw2);
         if (totalCost >= COST_INF) {
             return COST_INF;
         }
-        totalCost += MovementHelper.waterBreakCost(context, x, y, z, MovementHelper.getMiningDurationTicks(context, destX, y + 2, destZ, true));
+        double raw3 = MovementHelper.getMiningDurationTicks(context, destX, y + 2, destZ, true);
+        totalCost += MovementHelper.waterBreakCost(context, x, y, z, raw3);
+        // the jump and the walk happen inside the last break's wait, same as MovementTraverse
+        if (totalCost < COST_INF && (raw1 <= 0 || MovementHelper.isMultiTickBreak(context, raw1))
+                && (raw2 <= 0 || MovementHelper.isMultiTickBreak(context, raw2))
+                && (raw3 <= 0 || MovementHelper.isMultiTickBreak(context, raw3))) {
+            totalCost -= MovementHelper.breakWaitCredit(context, Math.max(raw1, Math.max(raw2, raw3)), Math.max(JUMP_ONE_BLOCK_COST, WALK_ONE_BLOCK_COST));
+        }
         return totalCost;
     }
 

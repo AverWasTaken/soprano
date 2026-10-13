@@ -132,10 +132,12 @@ public class WaterBreakCostTest {
         return with - without;
     }
 
-    // the swinging is what water slows down. the idle ticks the bot waits after a break are the same wherever it stands
+    // the swinging is what water slows down. the idle ticks the bot waits after a break are the same wherever it stands, and
+    // so is the part of the last one that the jump covers (the ascend takes that off, see breakWaitCredit)
     private double slowedBy(double factor, double dry) {
         double idle = settings.blockBreakSpeed.value - 1;
-        return (dry - idle) * factor + idle;
+        double credit = Math.min(idle, Math.max(ActionCosts.JUMP_ONE_BLOCK_COST, ActionCosts.WALK_ONE_BLOCK_COST));
+        return (dry - idle + credit) * factor + idle - credit;
     }
 
     @Test

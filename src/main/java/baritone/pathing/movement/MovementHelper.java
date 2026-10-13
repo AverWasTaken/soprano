@@ -766,6 +766,12 @@ public interface MovementHelper extends ActionCosts, Helper {
         return hardness * waterBreakMultiplier(context, srcX, srcY, srcZ) + idle;
     }
 
+    // the wait after the last break of a movement is spent doing the next thing (walking, falling, jumping), so that much
+    // of it is not paid for twice. rawHardness is what getMiningDurationTicks said, before waterBreakCost put the wait on
+    static double breakWaitCredit(CalculationContext context, double rawHardness, double overlapTicks) {
+        return rawHardness > 0 && isMultiTickBreak(context, rawHardness) ? Math.min(context.breakIdleTicks, overlapTicks) : 0;
+    }
+
     // getMiningDurationTicks is one tick for a break that is over on the first click and more than that for anything
     // else, so if what's left after the penalty is more than that one tick it was a break that has to be waited out
     static boolean isMultiTickBreak(CalculationContext context, double hardness) {
