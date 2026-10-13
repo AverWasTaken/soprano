@@ -17,12 +17,14 @@
 
 package baritone.cache;
 
-import net.minecraft.SharedConstants;
+import adris.altoclef.util.helpers.ItemFixture;
 import net.minecraft.core.BlockPos;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.core.HolderSet;
 import net.minecraft.server.Bootstrap;
-import net.minecraft.tags.BlockTags;
 import net.minecraft.util.valueproviders.ConstantInt;
+import net.minecraft.world.attribute.EnvironmentAttributeMap;
+import net.minecraft.world.level.CardinalLighting;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.dimension.DimensionType;
@@ -41,7 +43,7 @@ import java.util.BitSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.OptionalLong;
+import java.util.Optional;
 import java.util.zip.GZIPOutputStream;
 
 import static org.junit.Assert.assertEquals;
@@ -55,14 +57,15 @@ public class CachedSpecialBlocksTest {
 
     @BeforeClass
     public static void bootstrap() {
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
+        ItemFixture.boot();
     }
 
-    private static DimensionType dim(int minY, int height, boolean natural) {
-        return new DimensionType(OptionalLong.empty(), true, false, false, natural, 1.0, true, false, minY, height, height,
-            BlockTags.INFINIBURN_OVERWORLD, ResourceLocation.withDefaultNamespace("overworld"), 0.0f,
-            new DimensionType.MonsterSettings(false, true, ConstantInt.of(0), 0));
+    // the type only carries the shape now; which dimension it is lives in the ResourceKey the cache is handed
+    private static DimensionType dim(int minY, int height) {
+        return new DimensionType(false, true, false, false, 1.0, minY, height, height,
+            HolderSet.empty(), 0.0f, new DimensionType.MonsterSettings(ConstantInt.of(0), 0),
+            DimensionType.Skybox.OVERWORLD, CardinalLighting.Type.DEFAULT, EnvironmentAttributeMap.EMPTY,
+            HolderSet.empty(), Optional.empty());
     }
 
     private static BlockState[] stoneOverview() {
@@ -95,43 +98,43 @@ public class CachedSpecialBlocksTest {
 
     @Test
     public void overworldSpecialsAreFoundAtTheirRealY() {
-        DimensionType dim = dim(-64, 384, true);
+        DimensionType dim = dim(-64, 384);
         // surface well above both chests so neither is the overview block
         CachedChunk chunk = new CachedChunk(0, 0, 384, solidColumn(384, 3, 5, 200), stoneOverview(), specials(3, 5, 70, -24), 0L);
-        assertEquals(Blocks.CHEST, chunk.getBlock(3, 70 + 64, 5, dim).getBlock());
-        assertEquals(Blocks.CHEST, chunk.getBlock(3, -24 + 64, 5, dim).getBlock());
+        assertEquals(Blocks.CHEST, chunk.getBlock(3, 70 + 64, 5, dim, Level.OVERWORLD).getBlock());
+        assertEquals(Blocks.CHEST, chunk.getBlock(3, -24 + 64, 5, dim, Level.OVERWORLD).getBlock());
         // and a plain solid block next to them is still just stone
-        assertEquals(Blocks.STONE, chunk.getBlock(3, 71 + 64, 5, dim).getBlock());
-        assertEquals(Blocks.STONE, chunk.getBlock(3, 69 + 64, 5, dim).getBlock());
+        assertEquals(Blocks.STONE, chunk.getBlock(3, 71 + 64, 5, dim, Level.OVERWORLD).getBlock());
+        assertEquals(Blocks.STONE, chunk.getBlock(3, 69 + 64, 5, dim, Level.OVERWORLD).getBlock());
     }
 
     @Test
     public void netherSpecialsStillWork() {
-        DimensionType dim = dim(0, 256, true);
+        DimensionType dim = dim(0, 256);
         CachedChunk chunk = new CachedChunk(0, 0, 256, solidColumn(256, 3, 5, 200), stoneOverview(), specials(3, 5, 70), 0L);
-        assertEquals(Blocks.CHEST, chunk.getBlock(3, 70, 5, dim).getBlock());
+        assertEquals(Blocks.CHEST, chunk.getBlock(3, 70, 5, dim, Level.NETHER).getBlock());
     }
 
     @Test
     public void bedrockBandUsesRelativeY() {
-        DimensionType dim = dim(-64, 384, true);
+        DimensionType dim = dim(-64, 384);
         CachedChunk chunk = new CachedChunk(0, 0, 384, solidColumn(384, 3, 5, 200), stoneOverview(), new HashMap<>(), 0L);
         // real y -64 to -60 is the bedrock band, so cached solids there are discouraged
-        assertEquals(Blocks.OBSIDIAN, chunk.getBlock(3, 0, 5, dim).getBlock());
-        assertEquals(Blocks.OBSIDIAN, chunk.getBlock(3, 4, 5, dim).getBlock());
-        assertEquals(Blocks.STONE, chunk.getBlock(3, 5, 5, dim).getBlock());
+        assertEquals(Blocks.OBSIDIAN, chunk.getBlock(3, 0, 5, dim, Level.OVERWORLD).getBlock());
+        assertEquals(Blocks.OBSIDIAN, chunk.getBlock(3, 4, 5, dim, Level.OVERWORLD).getBlock());
+        assertEquals(Blocks.STONE, chunk.getBlock(3, 5, 5, dim, Level.OVERWORLD).getBlock());
     }
 
     @Test
     public void specialsSurviveARegionSaveAndLoad() {
-        DimensionType dim = dim(-64, 384, true);
+        DimensionType dim = dim(-64, 384);
         CachedChunk chunk = new CachedChunk(0, 0, 384, solidColumn(384, 3, 5, 200), stoneOverview(), specials(3, 5, 70, -24), System.currentTimeMillis());
-        CachedRegion region = new CachedRegion(0, 0, dim);
+        CachedRegion region = new CachedRegion(0, 0, dim, Level.OVERWORLD);
         region.updateCachedChunk(0, 0, chunk);
         String dir = folder.getRoot().toString();
         region.save(dir);
 
-        CachedRegion loaded = new CachedRegion(0, 0, dim);
+        CachedRegion loaded = new CachedRegion(0, 0, dim, Level.OVERWORLD);
         loaded.load(dir);
         assertEquals(Blocks.CHEST, loaded.getBlock(3, 70, 5).getBlock());
         assertEquals(Blocks.CHEST, loaded.getBlock(3, -24, 5).getBlock());
@@ -141,7 +144,7 @@ public class CachedSpecialBlocksTest {
 
     @Test
     public void unknownBlockNamesDontWipeTheRegion() throws Exception {
-        DimensionType dim = dim(-64, 384, true);
+        DimensionType dim = dim(-64, 384);
         Path file = folder.getRoot().toPath().resolve("r.0.0.bcr");
         BitSet data = solidColumn(384, 3, 5, 200);
         byte[] raw = new byte[CachedChunk.sizeInBytes(CachedChunk.size(384))];
@@ -174,7 +177,7 @@ public class CachedSpecialBlocksTest {
             out.writeLong(System.currentTimeMillis());
         }
 
-        CachedRegion loaded = new CachedRegion(0, 0, dim);
+        CachedRegion loaded = new CachedRegion(0, 0, dim, Level.OVERWORLD);
         loaded.load(folder.getRoot().toString());
         assertEquals(true, loaded.isCached(0, 0));
         // the unknown overview entry turns into stone instead of killing the load
@@ -188,7 +191,7 @@ public class CachedSpecialBlocksTest {
 
     @Test
     public void outOfWorldRegionsDontShadowTheOrigin() {
-        CachedWorld world = new CachedWorld(folder.getRoot().toPath(), dim(0, 256, true));
+        CachedWorld world = new CachedWorld(folder.getRoot().toPath(), dim(0, 256), Level.NETHER);
         world.tryLoadFromDisk(0, 0);
         assertNotNull(world.getRegion(0, 0));
         assertNull(world.getRegion(1_000_000, 0));

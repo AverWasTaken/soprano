@@ -2,9 +2,8 @@ package adris.altoclef.tasks.speedrun.gamer;
 
 import adris.altoclef.tasks.speedrun.gamer.NetherPick.Bag;
 import adris.altoclef.tasks.speedrun.gamer.NetherPick.Tier;
+import adris.altoclef.util.helpers.ItemFixture;
 import baritone.api.utils.Dimension;
-import net.minecraft.SharedConstants;
-import net.minecraft.server.Bootstrap;
 import net.minecraft.world.item.Items;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -16,8 +15,7 @@ import static org.junit.Assert.assertTrue;
 public class NetherPickTest {
     @BeforeClass
     public static void boot() {
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
+        ItemFixture.boot();
     }
 
     private static FakeFacts nether() {

@@ -1,9 +1,8 @@
 package adris.altoclef.trackers;
 
+import adris.altoclef.util.helpers.ItemFixture;
 import baritone.api.utils.BlockOptionalMetaLookup;
-import net.minecraft.SharedConstants;
 import net.minecraft.core.BlockPos;
-import net.minecraft.server.Bootstrap;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import org.junit.BeforeClass;
@@ -26,8 +25,7 @@ public class PerTypeScanTest {
 
     @BeforeClass
     public static void boot() {
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
+        ItemFixture.boot();
     }
 
     private final Map<BlockPos, Block> world = new HashMap<>();

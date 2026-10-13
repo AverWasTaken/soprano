@@ -4,11 +4,10 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
+import adris.altoclef.util.helpers.ItemFixture;
 import adris.altoclef.util.helpers.StationChoice;
 import adris.altoclef.util.helpers.StationHook.Kind;
 import java.util.Map;
-import net.minecraft.SharedConstants;
-import net.minecraft.server.Bootstrap;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 import org.junit.Test;
@@ -17,8 +16,7 @@ import org.junit.Test;
 // recipe takes plain cobblestone, and so do the stone tools whose cobble is owed. cobbled deepslate and blackstone are neither
 public class SpareCobbleTest {
     static {
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
+        ItemFixture.boot();
     }
 
     private static int spare(Map<Item, Integer> bag, int owed) {

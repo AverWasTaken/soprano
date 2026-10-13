@@ -2,8 +2,7 @@ package adris.altoclef.tasks.speedrun.gamer;
 
 import adris.altoclef.tasks.speedrun.gamer.SmeltFiller.Schedule;
 import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig;
-import net.minecraft.SharedConstants;
-import net.minecraft.server.Bootstrap;
+import adris.altoclef.util.helpers.ItemFixture;
 import net.minecraft.world.item.Items;
 import org.junit.Before;
 import org.junit.BeforeClass;
@@ -23,8 +22,7 @@ public class SmeltFillerTest {
 
     @BeforeClass
     public static void boot() {
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
+        ItemFixture.boot();
     }
 
     @Before
@@ -208,7 +206,7 @@ public class SmeltFillerTest {
         FakeFacts f = atTheFurnace().cooking("iron_ingot", 40, 400);
         f.foodUnits = 130;
         f.buildBlocks = 64;
-        f.give(Items.WHITE_WOOL, 33).give(Items.OAK_LOG, 8).give(Items.OAK_PLANKS, 20).give(Items.FLINT, 1);
+        f.give(Items.WOOL.white(), 33).give(Items.OAK_LOG, 8).give(Items.OAK_PLANKS, 20).give(Items.FLINT, 1);
         Schedule s = SmeltFiller.schedule(f, cfg, BEDS);
         assertTrue(names(s.runnable()).toString(), s.runnable().isEmpty());
         assertFalse(s.blocked().isEmpty());
@@ -316,9 +314,9 @@ public class SmeltFillerTest {
 
     @Test
     public void bedPlanksAreCappedAndShrinkWithBedsHeld() {
-        assertEquals(0, SmeltFiller.planksWanted(List.of(), new FakeFacts().give(Items.WHITE_BED, 8), cfg, BEDS));
+        assertEquals(0, SmeltFiller.planksWanted(List.of(), new FakeFacts().give(Items.BED.white(), 8), cfg, BEDS));
         assertEquals(12, SmeltFiller.planksWanted(List.of(), new FakeFacts(), cfg, BEDS));
-        assertEquals(3, SmeltFiller.planksWanted(List.of(), new FakeFacts().give(Items.WHITE_BED, 7), cfg, BEDS));
+        assertEquals(3, SmeltFiller.planksWanted(List.of(), new FakeFacts().give(Items.BED.white(), 7), cfg, BEDS));
     }
 
     // (standing by a smoker is FurnacePlanTest now)

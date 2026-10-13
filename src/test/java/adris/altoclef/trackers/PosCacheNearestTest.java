@@ -1,9 +1,8 @@
 package adris.altoclef.trackers;
 
+import adris.altoclef.util.helpers.ItemFixture;
 import baritone.api.utils.Dimension;
-import net.minecraft.SharedConstants;
 import net.minecraft.core.BlockPos;
-import net.minecraft.server.Bootstrap;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.Vec3;
@@ -25,8 +24,7 @@ public class PosCacheNearestTest {
 
     @BeforeClass
     public static void boot() {
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
+        ItemFixture.boot();
     }
 
     // chebyshev-ish on purpose: lots of exact ties, which is where the order could go wrong. the real heuristic needs a game

@@ -4,10 +4,10 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
+import adris.altoclef.util.helpers.ItemFixture;
 import baritone.altoclef.SettingsOverrides;
 import baritone.api.Settings;
 import java.lang.reflect.Constructor;
-import net.minecraft.SharedConstants;
 import net.minecraft.server.Bootstrap;
 import org.junit.After;
 import org.junit.Before;
@@ -21,8 +21,7 @@ public class AsyncReleaseTest {
 
     @BeforeClass
     public static void bootstrap() {
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
+        ItemFixture.boot();
     }
 
     @Before

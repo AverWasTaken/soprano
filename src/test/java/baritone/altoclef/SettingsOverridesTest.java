@@ -17,8 +17,8 @@
 
 package baritone.altoclef;
 
+import adris.altoclef.util.helpers.ItemFixture;
 import baritone.api.Settings;
-import net.minecraft.SharedConstants;
 import net.minecraft.server.Bootstrap;
 import org.junit.After;
 import org.junit.Before;
@@ -38,8 +38,7 @@ public class SettingsOverridesTest {
 
     @BeforeClass
     public static void bootstrap() {
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
+        ItemFixture.boot();
     }
 
     @Before

@@ -17,10 +17,9 @@
 
 package baritone.utils;
 
+import adris.altoclef.util.helpers.ItemFixture;
 import baritone.api.BaritoneAPI;
 import baritone.api.Settings;
-import net.minecraft.SharedConstants;
-import net.minecraft.server.Bootstrap;
 import org.junit.Assume;
 import org.junit.Test;
 
@@ -74,8 +73,7 @@ public class ExperimentalMovementTest {
     }
 
     private static Settings settingsOrSkip() {
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
+        ItemFixture.boot();
         try {
             return BaritoneAPI.getSettings();
         } catch (Throwable t) {

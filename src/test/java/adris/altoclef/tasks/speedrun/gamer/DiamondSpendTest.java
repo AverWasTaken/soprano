@@ -4,8 +4,7 @@ import adris.altoclef.TaskCatalogue;
 import adris.altoclef.tasks.speedrun.gamer.DiamondSpend.Open;
 import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig;
 import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig.ArmorPlan;
-import net.minecraft.SharedConstants;
-import net.minecraft.server.Bootstrap;
+import adris.altoclef.util.helpers.ItemFixture;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 import org.junit.Before;
@@ -31,8 +30,7 @@ public class DiamondSpendTest {
 
     @BeforeClass
     public static void boot() {
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
+        ItemFixture.boot();
     }
 
     @Before

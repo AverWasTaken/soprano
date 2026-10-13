@@ -3,11 +3,10 @@ package adris.altoclef.tasks.speedrun.gamer;
 import adris.altoclef.tasks.speedrun.gamer.config.EndConfig;
 import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig;
 import adris.altoclef.util.helpers.FuelPolicy;
+import adris.altoclef.util.helpers.ItemFixture;
 import adris.altoclef.util.helpers.StationChoice;
 import adris.altoclef.util.helpers.StationHook.Kind;
 import baritone.api.utils.Dimension;
-import net.minecraft.SharedConstants;
-import net.minecraft.server.Bootstrap;
 import net.minecraft.world.item.Items;
 import org.junit.After;
 import org.junit.Rule;
@@ -56,8 +55,7 @@ public class StationVerdictEquivalenceTest {
     private static final String RESOURCES = "/adris/altoclef/tasks/speedrun/gamer/";
 
     static {
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
+        ItemFixture.boot();
     }
 
     // where the distances sit: the thresholds are 15.75 (table return), 20 / 21 (NEAR), 48 / 50 (walk back, + HOLD), 128 (forget)

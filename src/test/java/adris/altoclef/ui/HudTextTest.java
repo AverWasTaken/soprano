@@ -1,13 +1,12 @@
 package adris.altoclef.ui;
 
 import adris.altoclef.util.ItemTarget;
+import adris.altoclef.util.helpers.ItemFixture;
 import adris.altoclef.util.helpers.ItemHelper;
-import net.minecraft.SharedConstants;
 import net.minecraft.core.BlockPos;
-import net.minecraft.server.Bootstrap;
 import net.minecraft.world.entity.EntityTypes;
-import net.minecraft.world.entity.monster.Zombie;
-import net.minecraft.world.entity.monster.AbstractSkeleton;
+import net.minecraft.world.entity.monster.skeleton.AbstractSkeleton;
+import net.minecraft.world.entity.monster.zombie.Zombie;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
@@ -25,9 +24,7 @@ public class HudTextTest {
 
     @BeforeClass
     public static void boot() {
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
-        adris.altoclef.util.helpers.ItemFixture.load();
+        ItemFixture.boot();
     }
 
     @Test

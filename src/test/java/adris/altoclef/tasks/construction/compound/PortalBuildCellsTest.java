@@ -1,8 +1,7 @@
 package adris.altoclef.tasks.construction.compound;
 
-import net.minecraft.SharedConstants;
+import adris.altoclef.util.helpers.ItemFixture;
 import net.minecraft.core.Vec3i;
-import net.minecraft.server.Bootstrap;
 import net.minecraft.world.level.block.Blocks;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -15,8 +14,7 @@ public class PortalBuildCellsTest {
 
     @BeforeClass
     public static void boot() {
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
+        ItemFixture.boot();
     }
 
     private static boolean inside(Vec3i cell, Vec3i min, Vec3i max) {

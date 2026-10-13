@@ -4,8 +4,7 @@ import static org.junit.Assert.assertEquals;
 
 import adris.altoclef.tasks.speedrun.gamer.WoodReserve.Keep;
 import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig;
-import net.minecraft.SharedConstants;
-import net.minecraft.server.Bootstrap;
+import adris.altoclef.util.helpers.ItemFixture;
 import net.minecraft.world.item.Items;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -17,8 +16,7 @@ public class WoodReserveTest {
 
     @BeforeClass
     public static void boot() {
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
+        ItemFixture.boot();
     }
 
     @Test

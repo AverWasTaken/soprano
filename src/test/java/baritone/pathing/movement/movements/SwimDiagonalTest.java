@@ -17,6 +17,7 @@
 
 package baritone.pathing.movement.movements;
 
+import adris.altoclef.util.helpers.ItemFixture;
 import baritone.api.BaritoneAPI;
 import baritone.api.Settings;
 import baritone.pathing.movement.CalculationContext;
@@ -24,13 +25,7 @@ import baritone.utils.BlockStateInterface;
 import baritone.utils.ToolSet;
 import baritone.utils.pathing.BetterWorldBorder;
 import baritone.utils.pathing.MutableMoveResult;
-import net.minecraft.SharedConstants;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.component.DataComponentInitializers;
-import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.data.registries.VanillaRegistries;
-import net.minecraft.server.Bootstrap;
-import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.border.WorldBorder;
@@ -109,9 +104,7 @@ public class SwimDiagonalTest {
 
     @Before
     public void setUp() {
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
-        bindItemComponents();
+        ItemFixture.boot();
         try {
             settings = BaritoneAPI.getSettings();
         } catch (Throwable t) {
@@ -129,13 +122,6 @@ public class SwimDiagonalTest {
             settings.allowSwimming.value = swimming;
             settings.considerPotionEffects.value = potions;
         }
-    }
-
-    private static void bindItemComponents() {
-        if (Items.WATER_BUCKET.builtInRegistryHolder().areComponentsBound()) {
-            return;
-        }
-        BuiltInRegistries.DATA_COMPONENT_INITIALIZERS.build(VanillaRegistries.createWorldLookup()).forEach(DataComponentInitializers.PendingComponents::apply);
     }
 
     private static MapWorld lake() {

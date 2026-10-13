@@ -6,8 +6,8 @@ import adris.altoclef.tasks.speedrun.gamer.RunState;
 import adris.altoclef.tasks.speedrun.gamer.StubContext;
 import adris.altoclef.tasks.speedrun.gamer.Timeout;
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
+import adris.altoclef.util.helpers.ItemFixture;
 import baritone.api.utils.Dimension;
-import net.minecraft.SharedConstants;
 import net.minecraft.server.Bootstrap;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
@@ -31,8 +31,7 @@ public class StrongholdPhasesTest {
 
     @BeforeClass
     public static void boot() {
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
+        ItemFixture.boot();
     }
 
     private static class Facts implements GamerFacts {

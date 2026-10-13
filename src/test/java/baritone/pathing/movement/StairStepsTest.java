@@ -17,7 +17,7 @@
 
 package baritone.pathing.movement;
 
-import net.minecraft.SharedConstants;
+import adris.altoclef.util.helpers.ItemFixture;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.Bootstrap;
@@ -44,8 +44,7 @@ public class StairStepsTest {
 
     @BeforeClass
     public static void bootstrap() {
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
+        ItemFixture.boot();
     }
 
     private static BlockState stair(Direction facing, Half half, StairsShape shape) {

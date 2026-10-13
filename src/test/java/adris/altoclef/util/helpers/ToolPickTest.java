@@ -1,7 +1,6 @@
 package adris.altoclef.util.helpers;
 
 import adris.altoclef.util.helpers.ToolPick.Option;
-import net.minecraft.SharedConstants;
 import net.minecraft.server.Bootstrap;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -19,8 +18,7 @@ public class ToolPickTest {
 
     @BeforeClass
     public static void bootstrap() {
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
+        ItemFixture.boot();
     }
 
     private static double progress(double hardness, double toolSpeed, boolean correct) {

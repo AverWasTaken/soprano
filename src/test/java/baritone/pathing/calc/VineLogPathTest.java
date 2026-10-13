@@ -2,6 +2,7 @@ package baritone.pathing.calc;
 
 import adris.altoclef.tasks.construction.DestroyBlockTask;
 import adris.altoclef.util.baritone.GoalReachBlock;
+import adris.altoclef.util.helpers.ItemFixture;
 import baritone.api.BaritoneAPI;
 import baritone.api.Settings;
 import baritone.api.pathing.calc.IPath;
@@ -15,10 +16,8 @@ import baritone.utils.ToolSet;
 import baritone.utils.pathing.BetterWorldBorder;
 import baritone.utils.pathing.Favoring;
 import baritone.utils.pathing.MutableMoveResult;
-import net.minecraft.SharedConstants;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.server.Bootstrap;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -102,8 +101,7 @@ public class VineLogPathTest {
     @Before
     public void setUp() {
         // Settings builds its options out of registry things, so the game's registries have to be up first
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
+        ItemFixture.boot();
         try {
             settings = BaritoneAPI.getSettings();
         } catch (Throwable t) {

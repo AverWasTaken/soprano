@@ -2,11 +2,10 @@ package adris.altoclef.tasks.speedrun.gamer;
 
 import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig;
 import adris.altoclef.util.helpers.FuelPolicy;
+import adris.altoclef.util.helpers.ItemFixture;
 import adris.altoclef.util.helpers.StationChoice;
 import adris.altoclef.util.helpers.StationHook;
 import baritone.api.utils.Dimension;
-import net.minecraft.SharedConstants;
-import net.minecraft.server.Bootstrap;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import org.junit.Before;
@@ -30,8 +29,7 @@ public class CookGateTest {
 
     @BeforeClass
     public static void boot() {
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
+        ItemFixture.boot();
     }
 
     @Before

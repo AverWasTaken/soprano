@@ -7,7 +7,6 @@ import static org.junit.Assert.assertTrue;
 import adris.altoclef.util.helpers.GarbageRules.Cand;
 import java.util.ArrayList;
 import java.util.List;
-import net.minecraft.SharedConstants;
 import net.minecraft.server.Bootstrap;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -21,9 +20,7 @@ public class GarbageRulesTest {
 
     @BeforeClass
     public static void bootstrap() {
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
-        ItemFixture.load();
+        ItemFixture.boot();
     }
 
     private static int bag(ItemStack... stacks) {

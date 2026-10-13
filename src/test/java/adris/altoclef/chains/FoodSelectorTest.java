@@ -18,7 +18,7 @@
 package adris.altoclef.chains;
 
 import adris.altoclef.util.helpers.FoodHelper;
-import net.minecraft.SharedConstants;
+import adris.altoclef.util.helpers.ItemFixture;
 import net.minecraft.server.Bootstrap;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -37,8 +37,7 @@ public class FoodSelectorTest {
 
     @BeforeClass
     public static void bootstrap() {
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
+        ItemFixture.boot();
     }
 
     private static List<ItemStack> inv(Object... itemsAndCounts) {

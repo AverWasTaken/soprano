@@ -1,7 +1,6 @@
 package adris.altoclef.util.helpers;
 
 import adris.altoclef.util.helpers.WeaponPick.Candidate;
-import net.minecraft.SharedConstants;
 import net.minecraft.server.Bootstrap;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
@@ -17,9 +16,7 @@ public class WeaponPickTest {
     @BeforeClass
     public static void bootstrap() {
         // damage and swing speed come off the item's attribute components, which need the registries
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
-        ItemFixture.load();
+        ItemFixture.boot();
     }
 
     private static Candidate fresh(Item item) {

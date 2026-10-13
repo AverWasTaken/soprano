@@ -2,7 +2,6 @@ package adris.altoclef.util.helpers;
 
 import adris.altoclef.tasks.speedrun.gamer.KitPlanner;
 import adris.altoclef.util.helpers.WeaponPick.Candidate;
-import net.minecraft.SharedConstants;
 import net.minecraft.server.Bootstrap;
 import net.minecraft.world.item.Items;
 import org.junit.BeforeClass;
@@ -19,9 +18,7 @@ import static org.junit.Assert.assertTrue;
 public class ToolWearTest {
     @BeforeClass
     public static void bootstrap() {
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
-        ItemFixture.load();
+        ItemFixture.boot();
     }
 
     @Test

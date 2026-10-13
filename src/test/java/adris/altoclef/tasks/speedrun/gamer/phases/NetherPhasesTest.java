@@ -7,9 +7,8 @@ import adris.altoclef.tasks.speedrun.gamer.GamerPhase;
 import adris.altoclef.tasks.speedrun.gamer.RunState;
 import adris.altoclef.tasks.speedrun.gamer.Timeout;
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
+import adris.altoclef.util.helpers.ItemFixture;
 import baritone.api.utils.Dimension;
-import net.minecraft.SharedConstants;
-import net.minecraft.server.Bootstrap;
 import net.minecraft.world.item.Items;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -28,8 +27,7 @@ public class NetherPhasesTest {
 
     @BeforeClass
     public static void boot() {
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
+        ItemFixture.boot();
     }
 
     private static FakeFacts bag(int rods, int powder, int pearls, int eyes) {

@@ -3,8 +3,7 @@ package adris.altoclef.tasks.speedrun.gamer;
 import adris.altoclef.tasks.container.SmeltSplit;
 import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig;
 import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig.ArmorPlan;
-import net.minecraft.SharedConstants;
-import net.minecraft.server.Bootstrap;
+import adris.altoclef.util.helpers.ItemFixture;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 import org.junit.Before;
@@ -25,8 +24,7 @@ public class KitPlannerTest {
 
     @BeforeClass
     public static void boot() {
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
+        ItemFixture.boot();
     }
 
     @Before
@@ -80,7 +78,7 @@ public class KitPlannerTest {
         }
         // the axe, and enough logs that the gather has nothing left to chop (beds are 24 planks of it)
         full.give(Items.WOODEN_AXE, 1).give(Items.OAK_LOG, 20);
-        full.give(Items.BUCKET, 2).give(Items.LADDER, 3).give(Items.WHITE_WOOL, 24);
+        full.give(Items.BUCKET, 2).give(Items.LADDER, 3).give(Items.WOOL.white(), 24);
         full.worn.addAll(List.of(Items.IRON_CHESTPLATE, Items.IRON_HELMET, Items.IRON_LEGGINGS, Items.IRON_BOOTS));
         full.foodUnits = 100;
         return full;
@@ -234,13 +232,13 @@ public class KitPlannerTest {
 
     @Test
     public void woolIsSizedByBedsAndWoolWeHold() {
-        f.give(Items.RED_WOOL, 10);
+        f.give(Items.WOOL.red(), 10);
         // only 9 of the 10 make beds, so the task (which counts every wool) must hold 10 + 15 more
         assertEquals(25, find(KitPlanner.plan(f, cfg, 8), "wool").count());
-        FakeFacts beds = new FakeFacts().give(Items.WHITE_BED, 2);
+        FakeFacts beds = new FakeFacts().give(Items.BED.white(), 2);
         // two beds are six wool already, so 18 more, held as 18 wool
         assertEquals(18, find(KitPlanner.plan(beds, cfg, 8), "wool").count());
-        assertEquals(null, find(KitPlanner.plan(new FakeFacts().give(Items.WHITE_BED, 8), cfg, 8), "wool"));
+        assertEquals(null, find(KitPlanner.plan(new FakeFacts().give(Items.BED.white(), 8), cfg, 8), "wool"));
         assertEquals(null, find(KitPlanner.plan(f, cfg, 0), "wool"));
     }
 
@@ -249,26 +247,26 @@ public class KitPlannerTest {
         assertEquals(24, KitPlanner.woolShortfall(f, 8));
         assertEquals(8, KitPlanner.bedsShort(f, 8));
         // a held bed is three wool, whatever colour
-        FakeFacts beds = new FakeFacts().give(Items.RED_BED, 2).give(Items.WHITE_BED, 1);
+        FakeFacts beds = new FakeFacts().give(Items.BED.red(), 2).give(Items.BED.white(), 1);
         assertEquals(15, KitPlanner.woolShortfall(beds, 8));
         assertEquals(5, KitPlanner.bedsShort(beds, 8));
         // wool in sets of three counts like beds do, scraps do not
-        FakeFacts wool = new FakeFacts().give(Items.RED_WOOL, 5).give(Items.WHITE_WOOL, 2);
+        FakeFacts wool = new FakeFacts().give(Items.WOOL.red(), 5).give(Items.WOOL.white(), 2);
         assertEquals(21, KitPlanner.woolShortfall(wool, 8));
         assertEquals(7, KitPlanner.bedsShort(wool, 8));
         // a spare is a ninth bed, and nothing is owed once we hold enough
-        assertEquals(1, KitPlanner.bedsShort(new FakeFacts().give(Items.WHITE_BED, 8), 9));
-        assertEquals(0, KitPlanner.bedsShort(new FakeFacts().give(Items.WHITE_BED, 9), 9));
+        assertEquals(1, KitPlanner.bedsShort(new FakeFacts().give(Items.BED.white(), 8), 9));
+        assertEquals(0, KitPlanner.bedsShort(new FakeFacts().give(Items.BED.white(), 9), 9));
         assertEquals(0, KitPlanner.bedsShort(f, 0));
         // and the planner asks for exactly the wool this says is missing
-        assertEquals(wool.count(Items.RED_WOOL) + wool.count(Items.WHITE_WOOL) + KitPlanner.woolShortfall(wool, 8),
+        assertEquals(wool.count(Items.WOOL.red()) + wool.count(Items.WOOL.white()) + KitPlanner.woolShortfall(wool, 8),
                 find(KitPlanner.plan(wool, cfg, 8), "wool").count());
     }
 
     @Test
     public void woolCountsPerColourInSetsOfThree() {
         // a bed needs three of ONE colour: 5 red + 4 white is 3 + 3
-        f.give(Items.RED_WOOL, 5).give(Items.WHITE_WOOL, 4);
+        f.give(Items.WOOL.red(), 5).give(Items.WOOL.white(), 4);
         assertEquals(6, KitPlanner.usableWool(f));
         assertEquals(9 + 24 - 6, find(KitPlanner.plan(f, cfg, 8), "wool").count());
         // 24 wool in odd leftovers is no beds at all
@@ -279,8 +277,8 @@ public class KitPlannerTest {
         assertEquals(0, KitPlanner.usableWool(scraps));
         assertEquals(32 + 24, find(KitPlanner.plan(scraps, cfg, 8), "wool").count());
         // a full set in one colour is done
-        assertEquals(null, find(KitPlanner.plan(new FakeFacts().give(Items.WHITE_WOOL, 24), cfg, 8), "wool"));
-        assertEquals(null, find(KitPlanner.plan(new FakeFacts().give(Items.WHITE_WOOL, 12).give(Items.RED_WOOL, 12), cfg, 8), "wool"));
+        assertEquals(null, find(KitPlanner.plan(new FakeFacts().give(Items.WOOL.white(), 24), cfg, 8), "wool"));
+        assertEquals(null, find(KitPlanner.plan(new FakeFacts().give(Items.WOOL.white(), 12).give(Items.WOOL.red(), 12), cfg, 8), "wool"));
     }
 
     @Test
@@ -643,7 +641,7 @@ public class KitPlannerTest {
         assertEquals(9, KitPlanner.woodNeed(f, cfg, 0));
         assertEquals(15, KitPlanner.woodNeed(f, cfg, 8));
         // a bed in the bag is its three planks already spent
-        assertEquals(9, KitPlanner.woodNeed(new FakeFacts().give(Items.WHITE_BED, 8), cfg, 8));
+        assertEquals(9, KitPlanner.woodNeed(new FakeFacts().give(Items.BED.white(), 8), cfg, 8));
     }
 
     @Test

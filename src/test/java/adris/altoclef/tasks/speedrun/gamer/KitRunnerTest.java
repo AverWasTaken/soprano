@@ -2,8 +2,7 @@ package adris.altoclef.tasks.speedrun.gamer;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.tasksystem.Task;
-import net.minecraft.SharedConstants;
-import net.minecraft.server.Bootstrap;
+import adris.altoclef.util.helpers.ItemFixture;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 import org.junit.Before;
@@ -55,8 +54,7 @@ public class KitRunnerTest {
 
     @BeforeClass
     public static void boot() {
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
+        ItemFixture.boot();
     }
 
     @Before

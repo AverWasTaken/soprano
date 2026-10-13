@@ -5,9 +5,8 @@ import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
 import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig;
 import adris.altoclef.tasks.speedrun.gamer.end.EndGear;
 import adris.altoclef.util.helpers.FoodHelper;
-import net.minecraft.SharedConstants;
+import adris.altoclef.util.helpers.ItemFixture;
 import net.minecraft.core.component.DataComponents;
-import net.minecraft.server.Bootstrap;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 import org.junit.Before;
@@ -28,8 +27,7 @@ public class FoodPlanTest {
 
     @BeforeClass
     public static void boot() {
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
+        ItemFixture.boot();
     }
 
     @Before

@@ -1,6 +1,6 @@
 package adris.altoclef.tasks.construction;
 
-import net.minecraft.SharedConstants;
+import adris.altoclef.util.helpers.ItemFixture;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.Bootstrap;
 import org.junit.BeforeClass;
@@ -17,8 +17,7 @@ public class GoalMineFromSideTest {
 
     @BeforeClass
     public static void bootstrap() {
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
+        ItemFixture.boot();
     }
 
     private static boolean in(GoalMineFromSide goal, int dx, int dy, int dz) {

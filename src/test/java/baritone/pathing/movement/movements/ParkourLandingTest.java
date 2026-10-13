@@ -17,6 +17,7 @@
 
 package baritone.pathing.movement.movements;
 
+import adris.altoclef.util.helpers.ItemFixture;
 import baritone.api.BaritoneAPI;
 import baritone.api.Settings;
 import baritone.pathing.movement.CalculationContext;
@@ -24,10 +25,8 @@ import baritone.utils.BlockStateInterface;
 import baritone.utils.ToolSet;
 import baritone.utils.pathing.BetterWorldBorder;
 import baritone.utils.pathing.MutableMoveResult;
-import net.minecraft.SharedConstants;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.server.Bootstrap;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.SlabBlock;
 import net.minecraft.world.level.block.state.BlockState;
@@ -106,8 +105,7 @@ public class ParkourLandingTest {
 
     @Before
     public void setUp() {
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
+        ItemFixture.boot();
         try {
             settings = BaritoneAPI.getSettings();
         } catch (Throwable t) {

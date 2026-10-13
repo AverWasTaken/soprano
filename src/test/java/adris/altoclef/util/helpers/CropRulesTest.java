@@ -1,6 +1,5 @@
 package adris.altoclef.util.helpers;
 
-import net.minecraft.SharedConstants;
 import net.minecraft.server.Bootstrap;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
@@ -16,8 +15,7 @@ import static org.junit.Assert.assertTrue;
 public class CropRulesTest {
     @BeforeClass
     public static void bootstrap() {
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
+        ItemFixture.boot();
     }
 
     // wheat, carrots and potatoes grow to 7, beetroots only to 3

@@ -2,12 +2,14 @@ package adris.altoclef.util.helpers;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
+import net.minecraft.SharedConstants;
 import net.minecraft.core.Holder;
 import net.minecraft.core.component.DataComponentInitializers;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.data.registries.VanillaRegistries;
 import net.minecraft.resources.Identifier;
+import net.minecraft.server.Bootstrap;
 import net.minecraft.tags.ItemTags;
 import net.minecraft.tags.TagKey;
 import net.minecraft.tags.TagLoader;
@@ -30,6 +32,13 @@ public final class ItemFixture {
     private static boolean loaded;
 
     private ItemFixture() {
+    }
+
+    // the one place tests boot the game from: version, bootstrap, then the components and tags above
+    public static void boot() {
+        SharedConstants.tryDetectVersion();
+        Bootstrap.bootStrap();
+        load();
     }
 
     public static synchronized void load() {

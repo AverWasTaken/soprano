@@ -17,13 +17,13 @@
 
 package adris.altoclef;
 
+import adris.altoclef.util.helpers.ItemFixture;
 import baritone.api.Settings;
 import baritone.api.utils.BlockRange;
 import baritone.api.utils.Dimension;
 import baritone.api.utils.ForceFieldStrategy;
 import baritone.api.utils.OverworldToNetherBehaviour;
 import baritone.api.utils.SettingsUtil;
-import net.minecraft.SharedConstants;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.Bootstrap;
 import net.minecraft.world.item.Items;
@@ -51,8 +51,7 @@ public class AltoSettingsTest {
     @BeforeClass
     public static void bootstrap() {
         // the default lists are full of Items
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
+        ItemFixture.boot();
     }
 
     private static Settings fresh() throws Exception {

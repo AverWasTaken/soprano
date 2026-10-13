@@ -17,6 +17,7 @@
 
 package baritone.pathing.calc;
 
+import adris.altoclef.util.helpers.ItemFixture;
 import baritone.api.BaritoneAPI;
 import baritone.api.Settings;
 import baritone.api.pathing.goals.GoalBlock;
@@ -31,10 +32,8 @@ import baritone.utils.BlockStateInterface;
 import baritone.utils.ToolSet;
 import baritone.utils.pathing.MutableMoveResult;
 import baritone.utils.pathing.BetterWorldBorder;
-import net.minecraft.SharedConstants;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.server.Bootstrap;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.StairBlock;
 import net.minecraft.world.level.block.state.BlockState;
@@ -120,8 +119,7 @@ public class MoveCostTest {
 
     @Before
     public void setUp() {
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
+        ItemFixture.boot();
         try {
             settings = BaritoneAPI.getSettings();
         } catch (Throwable t) {

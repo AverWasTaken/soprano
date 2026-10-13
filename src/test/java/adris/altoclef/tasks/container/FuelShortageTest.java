@@ -13,9 +13,8 @@ import adris.altoclef.tasks.speedrun.gamer.FurnaceJobs;
 import adris.altoclef.tasks.speedrun.gamer.FurnacePlan;
 import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig;
 import adris.altoclef.util.helpers.FuelPolicy;
+import adris.altoclef.util.helpers.ItemFixture;
 import adris.altoclef.util.helpers.StorageHelper;
-import net.minecraft.SharedConstants;
-import net.minecraft.server.Bootstrap;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -29,8 +28,7 @@ import java.util.List;
 public class FuelShortageTest {
     @BeforeClass
     public static void boot() {
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
+        ItemFixture.boot();
     }
 
     @After

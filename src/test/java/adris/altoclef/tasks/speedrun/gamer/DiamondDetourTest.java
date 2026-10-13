@@ -8,11 +8,11 @@ import adris.altoclef.tasks.speedrun.gamer.DetourRules.Inputs;
 import adris.altoclef.tasks.speedrun.gamer.DetourRules.Limits;
 import adris.altoclef.tasks.speedrun.gamer.DetourRules.Step;
 import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig;
+import adris.altoclef.util.helpers.ItemFixture;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.function.UnaryOperator;
-import net.minecraft.server.Bootstrap;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 import org.junit.Test;
@@ -83,7 +83,7 @@ public class DiamondDetourTest {
 
     @Test
     public void onlyIronDiamondAndNetheritePicksCountAsTheTool() {
-        Bootstrap.bootStrap();
+        ItemFixture.boot();
         assertFalse(ResourceDetour.hasIronPickaxe(new FakeFacts()));
         // stone gets coal going, a golden or wooden pick would not mine a diamond at all
         for (Item weak : List.of(Items.WOODEN_PICKAXE, Items.STONE_PICKAXE, Items.GOLDEN_PICKAXE, Items.IRON_SHOVEL, Items.DIAMOND)) {

@@ -4,13 +4,12 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 import adris.altoclef.tasks.movement.EnterNetherPortalTask;
+import adris.altoclef.util.helpers.ItemFixture;
 import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Predicate;
-import net.minecraft.SharedConstants;
 import net.minecraft.core.BlockPos;
-import net.minecraft.server.Bootstrap;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.Vec3;
 import org.junit.BeforeClass;
@@ -22,8 +21,7 @@ public class PortalFeetCellNearestTest {
 
     @BeforeClass
     public static void boot() {
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
+        ItemFixture.boot();
     }
 
     private static final BlockTracker.PosCache.Scorer EUCLID = (fx, fy, fz, tx, ty, tz) ->

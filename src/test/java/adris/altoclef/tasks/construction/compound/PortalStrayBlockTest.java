@@ -1,8 +1,7 @@
 package adris.altoclef.tasks.construction.compound;
 
-import net.minecraft.SharedConstants;
+import adris.altoclef.util.helpers.ItemFixture;
 import net.minecraft.core.BlockPos;
-import net.minecraft.server.Bootstrap;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
@@ -16,8 +15,7 @@ public class PortalStrayBlockTest {
 
     @BeforeClass
     public static void boot() {
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
+        ItemFixture.boot();
     }
 
     @Test

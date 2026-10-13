@@ -17,7 +17,7 @@
 
 package baritone.cache;
 
-import net.minecraft.SharedConstants;
+import adris.altoclef.util.helpers.ItemFixture;
 import net.minecraft.server.Bootstrap;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -32,8 +32,7 @@ public class CachedChunkHeightMapTest {
     @BeforeClass
     public static void bootstrap() {
         // CachedChunk has a set of Blocks in it, so the registries have to exist
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
+        ItemFixture.boot();
     }
 
     // the old bit at a time version, kept as the reference

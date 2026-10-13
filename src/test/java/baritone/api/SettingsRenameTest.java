@@ -17,8 +17,8 @@
 
 package baritone.api;
 
+import adris.altoclef.util.helpers.ItemFixture;
 import baritone.api.utils.SettingsUtil;
-import net.minecraft.SharedConstants;
 import net.minecraft.server.Bootstrap;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -36,8 +36,7 @@ public class SettingsRenameTest {
     @BeforeClass
     public static void bootstrap() {
         // the default item lists in Settings need the registries
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
+        ItemFixture.boot();
     }
 
     @Test

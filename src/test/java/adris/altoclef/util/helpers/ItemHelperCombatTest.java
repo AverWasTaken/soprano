@@ -17,7 +17,6 @@
 
 package adris.altoclef.util.helpers;
 
-import net.minecraft.SharedConstants;
 import net.minecraft.server.Bootstrap;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
@@ -33,9 +32,7 @@ public class ItemHelperCombatTest {
     @BeforeClass
     public static void bootstrap() {
         // items carry their attribute modifiers as components, which need the registries
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
-        ItemFixture.load();
+        ItemFixture.boot();
     }
 
     @Test

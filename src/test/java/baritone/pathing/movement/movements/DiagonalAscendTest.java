@@ -17,6 +17,7 @@
 
 package baritone.pathing.movement.movements;
 
+import adris.altoclef.util.helpers.ItemFixture;
 import baritone.api.BaritoneAPI;
 import baritone.api.Settings;
 import baritone.pathing.movement.CalculationContext;
@@ -24,13 +25,7 @@ import baritone.utils.BlockStateInterface;
 import baritone.utils.ToolSet;
 import baritone.utils.pathing.BetterWorldBorder;
 import baritone.utils.pathing.MutableMoveResult;
-import net.minecraft.SharedConstants;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.component.DataComponentInitializers;
-import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.data.registries.VanillaRegistries;
-import net.minecraft.server.Bootstrap;
-import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.border.WorldBorder;
@@ -112,9 +107,7 @@ public class DiagonalAscendTest {
     @Before
     public void setUp() {
         // Settings builds its options out of registry things, so the game's registries have to be up first
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
-        bindItemComponents();
+        ItemFixture.boot();
         try {
             settings = BaritoneAPI.getSettings();
         } catch (Throwable t) {
@@ -133,15 +126,6 @@ public class DiagonalAscendTest {
             settings.allowDiagonalAscend.value = diagonalAscend;
             settings.considerPotionEffects.value = potions;
         }
-    }
-
-    // bootstrap leaves every item's components unbound until a world (or a data run) loads them, and CalculationContext
-    // makes a bucket stack in its static init, which throws until they are. same thing the server does after it loads registries
-    private static void bindItemComponents() {
-        if (Items.WATER_BUCKET.builtInRegistryHolder().areComponentsBound()) {
-            return;
-        }
-        BuiltInRegistries.DATA_COMPONENT_INITIALIZERS.build(VanillaRegistries.createWorldLookup()).forEach(DataComponentInitializers.PendingComponents::apply);
     }
 
     // a stone floor around the origin, and a stone block one up on the (dx, dz) diagonal from the start at 0,FEET,0

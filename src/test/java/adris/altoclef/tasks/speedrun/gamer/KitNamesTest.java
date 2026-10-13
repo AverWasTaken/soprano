@@ -3,8 +3,7 @@ package adris.altoclef.tasks.speedrun.gamer;
 import adris.altoclef.TaskCatalogue;
 import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig;
 import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig.ArmorPlan;
-import net.minecraft.SharedConstants;
-import net.minecraft.server.Bootstrap;
+import adris.altoclef.util.helpers.ItemFixture;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
@@ -17,8 +16,7 @@ import static org.junit.Assert.assertTrue;
 public class KitNamesTest {
     @BeforeClass
     public static void boot() {
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
+        ItemFixture.boot();
     }
 
     private static Set<String> everyNameTheOverworldCanAskFor(OverworldConfig cfg) {

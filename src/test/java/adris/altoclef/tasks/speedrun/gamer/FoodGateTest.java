@@ -2,8 +2,7 @@ package adris.altoclef.tasks.speedrun.gamer;
 
 import adris.altoclef.tasks.speedrun.gamer.config.EndConfig;
 import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig;
-import net.minecraft.SharedConstants;
-import net.minecraft.server.Bootstrap;
+import adris.altoclef.util.helpers.ItemFixture;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -26,8 +25,7 @@ public class FoodGateTest {
 
     @BeforeClass
     public static void boot() {
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
+        ItemFixture.boot();
     }
 
     @Before

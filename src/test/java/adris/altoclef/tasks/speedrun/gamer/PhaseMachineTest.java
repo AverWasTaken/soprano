@@ -9,11 +9,11 @@ import static org.junit.Assert.assertTrue;
 
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
 import adris.altoclef.trace.Trace;
+import adris.altoclef.util.helpers.ItemFixture;
 import baritone.api.utils.Dimension;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import net.minecraft.SharedConstants;
 import net.minecraft.server.Bootstrap;
 import net.minecraft.world.item.Items;
 import org.junit.Before;
@@ -129,8 +129,7 @@ public class PhaseMachineTest {
     @Test
     public void everyGateInATickReadsTheSameFoodPlanAndTheNextTickBuildsANewOne() {
         // the plan reads the item tables (raw meat), the only test in here that does
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
+        ItemFixture.boot();
         start();
         host.facts.foodUnits = 40;
         machine.tick(null);
@@ -149,8 +148,7 @@ public class PhaseMachineTest {
 
     @Test
     public void theTicksFoodPlanFollowsThePhaseItIsAskedIn() {
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
+        ItemFixture.boot();
         start();
         // three raw porkchop, a smoker standing and coal: the kit's phases cook them (24), the rest eat them raw (9)
         host.facts.give(Items.PORKCHOP, 3).give(Items.COAL, 2);

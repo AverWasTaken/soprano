@@ -6,9 +6,8 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import adris.altoclef.tasks.speedrun.gamer.DeathRules.Source;
+import adris.altoclef.util.helpers.ItemFixture;
 import baritone.api.utils.Dimension;
-import net.minecraft.SharedConstants;
-import net.minecraft.server.Bootstrap;
 import net.minecraft.world.item.Items;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -20,8 +19,7 @@ public class DeathRulesTest {
 
     @BeforeClass
     public static void boot() {
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
+        ItemFixture.boot();
     }
 
     @Test
@@ -186,7 +184,7 @@ public class DeathRulesTest {
         // eyes, pearls, rods, obsidian, a bed or a bucket are the run itself
         for (net.minecraft.world.item.Item item : new net.minecraft.world.item.Item[] {Items.ENDER_EYE, Items.ENDER_PEARL, Items.BLAZE_ROD,
                 Items.BLAZE_POWDER, Items.OBSIDIAN, Items.DIAMOND, Items.BUCKET, Items.WATER_BUCKET, Items.LAVA_BUCKET,
-                Items.FLINT_AND_STEEL, Items.RED_BED, Items.WHITE_BED}) {
+                Items.FLINT_AND_STEEL, Items.BED.red(), Items.BED.white()}) {
             assertTrue(item.toString(), DeathRules.worth(new FakeFacts().give(item, 1)).run());
         }
     }

@@ -3,9 +3,8 @@ package adris.altoclef.tasks.speedrun.gamer;
 import adris.altoclef.tasks.speedrun.gamer.config.EndConfig;
 import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig;
 import adris.altoclef.util.helpers.FuelPolicy;
+import adris.altoclef.util.helpers.ItemFixture;
 import baritone.api.utils.Dimension;
-import net.minecraft.SharedConstants;
-import net.minecraft.server.Bootstrap;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -45,8 +44,7 @@ public class WoodBudgetEquivalenceTest {
 
     // the item tables below need the registries up before the class even finishes loading
     static {
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
+        ItemFixture.boot();
     }
 
     private static final Item[] LOGS = {Items.OAK_LOG, Items.BIRCH_LOG, Items.SPRUCE_LOG, Items.DARK_OAK_LOG, Items.CRIMSON_STEM};
@@ -337,8 +335,8 @@ public class WoodBudgetEquivalenceTest {
                 f.spent.put(Items.STONE_PICKAXE, 1);
             }
             int bedCount = r.nextInt(3) == 0 ? r.nextInt(9) : 0;
-            f.give(Items.WHITE_BED, bedCount);
-            f.give(Items.WHITE_WOOL, r.nextInt(3) == 0 ? r.nextInt(25) : 0);
+            f.give(Items.BED.white(), bedCount);
+            f.give(Items.WOOL.white(), r.nextInt(3) == 0 ? r.nextInt(25) : 0);
 
             f.give(Items.COBBLESTONE, r.nextInt(3) == 0 ? 0 : r.nextInt(31));
             f.give(Items.COAL, r.nextInt(5));

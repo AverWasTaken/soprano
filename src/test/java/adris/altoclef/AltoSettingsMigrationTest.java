@@ -4,6 +4,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
+import adris.altoclef.util.helpers.ItemFixture;
 import baritone.api.Settings;
 import baritone.api.utils.SettingsUtil;
 import java.lang.reflect.Constructor;
@@ -11,7 +12,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.atomic.AtomicInteger;
-import net.minecraft.SharedConstants;
 import net.minecraft.server.Bootstrap;
 import org.junit.BeforeClass;
 import org.junit.Rule;
@@ -28,8 +28,7 @@ public class AltoSettingsMigrationTest {
     @BeforeClass
     public static void bootstrap() {
         // the default lists are full of Items
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
+        ItemFixture.boot();
     }
 
     private static Settings fresh() throws Exception {

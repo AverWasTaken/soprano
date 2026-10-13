@@ -9,11 +9,10 @@ import static org.junit.Assert.assertTrue;
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
 import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig;
 import adris.altoclef.util.helpers.FuelPolicy;
+import adris.altoclef.util.helpers.ItemFixture;
 import baritone.api.utils.Dimension;
 import java.util.ArrayList;
 import java.util.List;
-import net.minecraft.SharedConstants;
-import net.minecraft.server.Bootstrap;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import org.junit.After;
@@ -27,8 +26,7 @@ public class WoodBudgetTest {
 
     @BeforeClass
     public static void boot() {
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
+        ItemFixture.boot();
     }
 
     @After

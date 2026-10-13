@@ -1,13 +1,12 @@
 package adris.altoclef.tasks.construction;
 
 import adris.altoclef.util.baritone.GoalReachBlock;
+import adris.altoclef.util.helpers.ItemFixture;
 import baritone.api.pathing.goals.Goal;
 import baritone.api.pathing.goals.GoalBlock;
 import baritone.api.pathing.goals.GoalNear;
-import net.minecraft.SharedConstants;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.server.Bootstrap;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.VineBlock;
@@ -68,8 +67,7 @@ public class DestroyBlockVinesTest {
 
     @BeforeClass
     public static void boot() {
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
+        ItemFixture.boot();
     }
 
     private static BlockState vineOn(Direction attached) {

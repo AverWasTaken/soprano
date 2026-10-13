@@ -17,12 +17,11 @@
 
 package baritone.pathing.movement;
 
+import adris.altoclef.util.helpers.ItemFixture;
 import baritone.altoclef.AltoClefSettings;
 import baritone.utils.BlockStateInterface;
 import baritone.utils.pathing.BetterWorldBorder;
-import net.minecraft.SharedConstants;
 import net.minecraft.core.BlockPos;
-import net.minecraft.server.Bootstrap;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.border.WorldBorder;
@@ -80,8 +79,7 @@ public class BoatLavaTest {
 
     @Before
     public void setUp() {
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
+        ItemFixture.boot();
         AltoClefSettings.getInstance().allowSwimThroughLava(true);
     }
 

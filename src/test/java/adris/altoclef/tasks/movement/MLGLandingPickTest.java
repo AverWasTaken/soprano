@@ -1,6 +1,6 @@
 package adris.altoclef.tasks.movement;
 
-import net.minecraft.SharedConstants;
+import adris.altoclef.util.helpers.ItemFixture;
 import net.minecraft.server.Bootstrap;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -12,8 +12,7 @@ public class MLGLandingPickTest {
     @BeforeClass
     public static void bootstrap() {
         // the task class has static registry lookups
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
+        ItemFixture.boot();
     }
 
     // args: lava, isDeadlyFall, hasClutchItem, closestSoFar, highestSoFar, bestIsLava, bestIsDeadlyFall

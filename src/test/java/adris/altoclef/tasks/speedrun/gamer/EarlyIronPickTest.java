@@ -1,8 +1,7 @@
 package adris.altoclef.tasks.speedrun.gamer;
 
 import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig;
-import net.minecraft.SharedConstants;
-import net.minecraft.server.Bootstrap;
+import adris.altoclef.util.helpers.ItemFixture;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 import org.junit.Before;
@@ -24,8 +23,7 @@ public class EarlyIronPickTest {
 
     @BeforeClass
     public static void boot() {
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
+        ItemFixture.boot();
     }
 
     @Before
@@ -164,7 +162,7 @@ public class EarlyIronPickTest {
                 Items.IRON_CHESTPLATE, Items.IRON_HELMET, Items.IRON_LEGGINGS, Items.IRON_BOOTS}) {
             full.give(i, 1);
         }
-        full.give(Items.BUCKET, 2).give(Items.WHITE_WOOL, 24);
+        full.give(Items.BUCKET, 2).give(Items.WOOL.white(), 24);
         full.worn.addAll(List.of(Items.IRON_CHESTPLATE, Items.IRON_HELMET, Items.IRON_LEGGINGS, Items.IRON_BOOTS));
         return full;
     }

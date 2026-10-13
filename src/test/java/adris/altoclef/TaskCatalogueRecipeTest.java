@@ -20,11 +20,11 @@ package adris.altoclef;
 import adris.altoclef.util.CraftingRecipe;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.RecipeTarget;
+import adris.altoclef.util.helpers.ItemFixture;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import net.minecraft.SharedConstants;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.Bootstrap;
 import net.minecraft.world.item.Item;
@@ -72,8 +72,7 @@ public class TaskCatalogueRecipeTest {
     @BeforeClass
     public static void bootstrap() {
         // the catalogue is full of Items
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
+        ItemFixture.boot();
     }
 
     // a recipe as a grid of item id sets. shapeless ones are one row, order means nothing

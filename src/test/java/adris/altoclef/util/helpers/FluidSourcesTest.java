@@ -1,8 +1,6 @@
 package adris.altoclef.util.helpers;
 
-import net.minecraft.SharedConstants;
 import net.minecraft.core.BlockPos;
-import net.minecraft.server.Bootstrap;
 import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.level.material.Fluids;
 import org.junit.BeforeClass;
@@ -19,8 +17,7 @@ public class FluidSourcesTest {
 
     @BeforeClass
     public static void boot() {
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
+        ItemFixture.boot();
     }
 
     private final Map<BlockPos, FluidState> world = new HashMap<>();

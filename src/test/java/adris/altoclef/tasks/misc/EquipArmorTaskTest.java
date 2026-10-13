@@ -1,8 +1,7 @@
 package adris.altoclef.tasks.misc;
 
 import adris.altoclef.util.ItemTarget;
-import net.minecraft.SharedConstants;
-import net.minecraft.server.Bootstrap;
+import adris.altoclef.util.helpers.ItemFixture;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import org.junit.BeforeClass;
@@ -14,9 +13,7 @@ import static org.junit.Assert.assertTrue;
 public class EquipArmorTaskTest {
     @BeforeClass
     public static void boot() {
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
-        adris.altoclef.util.helpers.ItemFixture.load();
+        ItemFixture.boot();
     }
 
     // only the cursor test can run without a world, the rest of the task needs the mod. this is the one that keeps a diamond

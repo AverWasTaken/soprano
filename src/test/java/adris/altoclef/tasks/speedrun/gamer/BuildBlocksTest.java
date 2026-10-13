@@ -4,8 +4,7 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.tasks.speedrun.gamer.SmeltFiller.Schedule;
 import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig;
 import adris.altoclef.tasksystem.Task;
-import net.minecraft.SharedConstants;
-import net.minecraft.server.Bootstrap;
+import adris.altoclef.util.helpers.ItemFixture;
 import net.minecraft.world.item.Items;
 import org.junit.Before;
 import org.junit.BeforeClass;
@@ -52,8 +51,7 @@ public class BuildBlocksTest {
 
     @BeforeClass
     public static void boot() {
-        SharedConstants.tryDetectVersion();
-        Bootstrap.bootStrap();
+        ItemFixture.boot();
     }
 
     @Before
