@@ -86,6 +86,8 @@ public class CalculationContext {
     public final List<Block> allowBreakAnyway;
     public final boolean allowParkour;
     public final boolean allowParkourPlace;
+    // back place bridging at walk speed instead of the sneak crawl, see GodBridge
+    public final boolean allowGodBridge;
     public final boolean allowJumpAtBuildLimit;
     public final boolean allowParkourAscend;
     public final boolean allowNeos;
@@ -213,6 +215,7 @@ public class CalculationContext {
         this.allowBreakAnyway = paused ? new ArrayList<>() : new ArrayList<>(Baritone.settings().allowBreakAnyway.value);
         this.allowParkour = ExperimentalMovement.allowParkour();
         this.allowParkourPlace = Baritone.settings().allowParkourPlace.value;
+        this.allowGodBridge = Baritone.settings().allowGodBridge.value;
         this.allowJumpAtBuildLimit = Baritone.settings().allowJumpAtBuildLimit.value;
         this.allowParkourAscend = ExperimentalMovement.allowParkourAscend();
         this.allowNeos = ExperimentalMovement.allowNeos();

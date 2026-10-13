@@ -94,6 +94,7 @@ All off by default unless it says otherwise.
 - `allowClimbJumps` (jump onto ladders and vines across a gap, and off of them again, needs `allowParkour`)
 - `allowLadderClutch` (survive long falls by placing a ladder or vine on a wall beside the landing, needs one on the hotbar)
 - `pickupLadders` (on by default, picks the clutch ladder back up after landing)
+- `allowGodBridge` (bridge backwards at walking speed with no sneaking and no stopping when the only thing to place against is the block you stand on. It sneaks as a last moment catch when a placement misses, so it is riskier than the sneaking bridge on laggy servers and under strict anticheats)
 - `fastMode` (speedrunner style movement, see below) and `fastModeMinHealth` (the health it won't drop below)
 - `fallDamageCost` (what a half heart of fall damage costs the planner, in ticks, while `fastMode` is on), `experimentalJumpBias` (how much cheaper jumps look than walking, 0.9 by default) and `experimentalBlockPlacementPenalty` (the most a block placement is allowed to cost)
 - `allowGroundShortcuts` (take direct lines across bends in flat walking paths, with full-width clearance and floor checks every tick)
