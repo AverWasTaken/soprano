@@ -166,7 +166,12 @@ public class MovementDescend extends Movement {
             boolean reachedMinimum = fallHeight >= context.minFallHeight;
             BlockState ontoBlock = context.get(destX, newY, destZ);
             int unprotectedFallHeight = fallHeight - (y - effectiveStartHeight); // equal to fallHeight - y + effectiveFallHeight, which is equal to -newY + effectiveFallHeight, which is equal to effectiveFallHeight - newY
-            double tentativeCost = WALK_OFF_BLOCK_COST + FALL_N_BLOCKS_COST[unprotectedFallHeight] + frontBreak + costSoFar;
+            // water and lava are landed in, so feet end up at newY and the drop is the whole fallHeight. everything else
+            // is landed on, feet end at newY + 1, one block less. this used to charge the deeper one for both and every
+            // fall onto ground was 1 to 2 ticks too slow on paper
+            double offAndBreak = WALK_OFF_BLOCK_COST + frontBreak + costSoFar;
+            double splashCost = offAndBreak + FALL_N_BLOCKS_COST[unprotectedFallHeight];
+            double tentativeCost = offAndBreak + FALL_N_BLOCKS_COST[unprotectedFallHeight - 1];
             if (reachedMinimum && MovementHelper.isWater(ontoBlock)) {
                 if (!MovementHelper.canWalkThrough(context, destX, newY, destZ, ontoBlock)) {
                     return false;
@@ -185,7 +190,7 @@ public class MovementDescend extends Movement {
                 res.x = destX;
                 res.y = newY;
                 res.z = destZ;
-                res.cost = tentativeCost;// TODO incorporate water swim up cost?
+                res.cost = splashCost;// TODO incorporate water swim up cost?
                 return false;
             }
             if (reachedMinimum && context.allowFallIntoLava && MovementHelper.isLava(ontoBlock)) {
@@ -193,7 +198,7 @@ public class MovementDescend extends Movement {
                 res.x = destX;
                 res.y = newY;
                 res.z = destZ;
-                res.cost = tentativeCost;
+                res.cost = splashCost;
                 return false;
             }
             if (MovementHelper.isClimbable(ontoBlock.getBlock()) && LadderClutch.grabs(effectiveStartHeight, newY)) {

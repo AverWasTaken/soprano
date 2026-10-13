@@ -62,8 +62,8 @@ public class ExperimentalMovementTest {
     public void sevenBlockDropCost() {
         // same arithmetic as MovementDescend.hurtingFall, written out so a change to either one trips this
         int blocks = 7;
-        double cost = WALK_OFF_BLOCK_COST + FALL_N_BLOCKS_COST[blocks + 1] + ExperimentalMovement.fallDamage(blocks) * 20;
-        // 3.7 to step off + 15.4 of falling + 4 hp at 20 ticks each is ~99 ticks, which is what ~21 blocks of walking costs
+        double cost = WALK_OFF_BLOCK_COST + FALL_N_BLOCKS_COST[blocks] + ExperimentalMovement.fallDamage(blocks) * 20;
+        // 3.7 to step off + ~14 of falling + 4 hp at 20 ticks each is ~99 ticks, which is what ~21 blocks of walking costs
         assertEquals(4, ExperimentalMovement.fallDamage(blocks));
         assertTrue(cost > 95 && cost < 105);
     }
