@@ -1064,7 +1064,8 @@ public final class Settings {
      * baritone places the boat from the shore, climbs in, rows along the path, and at the far side breaks the
      * boat and picks it back up (see {@link #boatPickup}) before carrying on on foot. Water traversal is costed
      * at rowing speed while a boat is in the inventory, so the planner will prefer going across a lake instead
-     * of around it.
+     * of around it. Only water with a straight row of at least {@link #boatMinWaterLength} boatable blocks through it
+     * is priced that way, a smaller pond costs what wading does, because that is what happens there.
      * <p>
      * A boat is wider than a block, so it only counts water with open water or air on every side at water
      * level; the planner routes a block off the banks for the same reason. Bubble columns (water over magma

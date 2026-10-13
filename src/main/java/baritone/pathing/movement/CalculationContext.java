@@ -109,6 +109,8 @@ public class CalculationContext {
     public final SwimStalls.Snapshot swimStalls;
     // rowing, when there's a boat to row. equal to waterWalkSpeed when there isn't so the min is a no-op
     public final double boatWaterSpeed;
+    // BoatTrip won't get the boat out for a shorter row of water than this, so the planner doesn't price one either
+    private final int boatMinWater;
     public final double breakBlockAdditionalCost;
     // snapshotted like the rest, so one search can't price some breaks with the old value and some with the new
     public final double waterBreakCostMultiplier;
@@ -246,6 +248,7 @@ public class CalculationContext {
         // costs what the heuristic thinks a block costs and not a tick less. still way under swimming
         double boatSpeed = Math.max(ActionCosts.BOAT_ONE_BLOCK_COST, Baritone.settings().costHeuristic.value);
         this.boatWaterSpeed = Baritone.settings().allowBoats.value && hasBoat ? Math.min(waterSpeed, boatSpeed) : waterSpeed;
+        this.boatMinWater = Baritone.settings().boatMinWaterLength.value;
         this.breakBlockAdditionalCost = Baritone.settings().blockBreakAdditionalPenalty.value;
         this.waterBreakCostMultiplier = Baritone.settings().waterBreakCostMultiplier.value;
         this.backtrackCostFavoringCoefficient = Baritone.settings().backtrackCostFavoringCoefficient.value;
@@ -267,7 +270,26 @@ public class CalculationContext {
         if (boatWaterSpeed >= waterWalkSpeed) {
             return waterWalkSpeed; // no boat, don't go reading nine blocks for nothing
         }
-        return MovementHelper.canFloatBoat(bsi, x, y, z) ? boatWaterSpeed : waterWalkSpeed;
+        return MovementHelper.canFloatBoat(bsi, x, y, z) && boatRowLongEnough(x, y, z) ? boatWaterSpeed : waterWalkSpeed;
+    }
+
+    // BoatTrip.plan wades a run shorter than boatMinWaterLength instead of getting the boat out, so a pond must not be priced
+    // as a boat ride. the planner has no idea what path it's on, so it asks about the straight rows through this block along
+    // BOTH axes: a river 4 wide and 100 long has a long row one way and a short one the other, and a crossing is the short one.
+    // the cost is the other direction, a path along the river gets rowed at runtime for less than it was priced (underpriced boat,
+    // never an overpriced one). the lookups stop the second a row is long enough: a lake pays for a few, a puddle for even fewer
+    private boolean boatRowLongEnough(int x, int y, int z) {
+        return boatRow(x, y, z, 1, 0) >= boatMinWater && boatRow(x, y, z, 0, 1) >= boatMinWater;
+    }
+
+    private int boatRow(int x, int y, int z, int dx, int dz) {
+        int run = 1;
+        for (int dir = -1; dir <= 1; dir += 2) {
+            for (int i = 1; run < boatMinWater && MovementHelper.canFloatBoat(bsi, x + dx * i * dir, y, z + dz * i * dir); i++) {
+                run++;
+            }
+        }
+        return run;
     }
 
     private static boolean hasBoat(LocalPlayer player) {
