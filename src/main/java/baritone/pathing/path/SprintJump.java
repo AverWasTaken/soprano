@@ -24,13 +24,12 @@ import baritone.api.utils.IPlayerContext;
 import baritone.api.utils.Rotation;
 import baritone.pathing.movement.Movement;
 import baritone.pathing.movement.MovementHelper;
+import baritone.pathing.movement.SolidFloor;
 import baritone.pathing.movement.movements.*;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.Arrays;
@@ -50,12 +49,17 @@ final class SprintJump {
     private static final double[] MARGINS = {0.85, 1, 1.15}; // we're exact about vanilla, not about what the server does with our yaw
     private static final double BRAKE_THEN_PUSH = Double.NEGATIVE_INFINITY; // not a spot on the line, a throttle policy
 
+    // the floor of a cell a parkour hop flies over. far enough down that nothing lands on it inside MAX_TICKS
+    static final double NO_FLOOR = -1000;
+
     record Landing(double s, double y, double apex, double v, int ticks) {}
 
     final double[] floors; // relative to the takeoff floor, cell 0 is the one we take off from
     private final double spacing, halfWidth, groundAccel;
     private double originX, originZ, takeoffY, ux, uz, target, apex;
     private boolean pushing;
+    // a parkour hop has to cross its gap, so a hop that lands short of "walk pace" is still the whole point
+    boolean hop;
     int ticks;
 
     SprintJump(double[] floors, double spacing, double groundAccel) {
@@ -68,7 +72,10 @@ final class SprintJump {
     static SprintJump plan(IPlayerContext ctx, IPath path, int pathPosition) {
         Player player = ctx.player();
         BetterBlockPos start = path.positions().get(pathPosition);
-        BlockPos dir = path.movements().get(pathPosition).getDirection();
+        Movement lead = (Movement) path.movements().get(pathPosition);
+        boolean hop = isHop(lead);
+        // a parkour moves 2 or 3 cells at once, the run is measured in cells and heads along the sign of that
+        BlockPos dir = new BlockPos(Integer.signum(lead.getDirection().getX()), lead.getDirection().getY(), Integer.signum(lead.getDirection().getZ()));
         boolean diagonal = dir.getX() != 0 && dir.getZ() != 0;
         // the sim knows nothing about potions or modded physics, and jump boost off a hill is how you break your legs.
         // the head tops out at y + 3.05, so y + 3 has to be clear. a ceiling at y + 2 is a head hitter, not ours
@@ -83,26 +90,39 @@ final class SprintJump {
         }
         double[] floors = new double[MAX_RUNWAY + 1];
         int n = 1;
-        for (int i = pathPosition; i < path.movements().size() && n <= MAX_RUNWAY; i++, n++) {
+        for (int i = pathPosition; i < path.movements().size() && n <= MAX_RUNWAY; i++) {
             Movement m = (Movement) path.movements().get(i);
             BetterBlockPos src = m.getSrc();
             BetterBlockPos dest = m.getDest();
             int top = Math.max(dest.y + 2, start.y + 3); // we fly over lower cells at takeoff height
+            int cells = Math.max(Math.abs(dest.x - src.x), Math.abs(dest.z - src.z));
             boolean walking = diagonal ? m instanceof MovementDiagonal && dest.y == src.y
-                    : m instanceof MovementTraverse || m instanceof MovementAscend || m instanceof MovementDescend;
+                    : m instanceof MovementTraverse || m instanceof MovementAscend || m instanceof MovementDescend || i == pathPosition && hop;
             // breaking is like 5x slower when you're jumping, and momentum doesn't wait for a block to be placed.
             // on a diagonal the hitbox corners sweep through both side cells, and drift can land us in one
-            if (!walking || dest.x - src.x != dir.getX() || dest.z - src.z != dir.getZ()
+            if (!walking || n + cells - 1 > MAX_RUNWAY || dest.x - src.x != dir.getX() * cells || dest.z - src.z != dir.getZ() * cells
                     || m.toBreakCached == null || !m.toBreakCached.isEmpty() || m.toPlaceCached == null || !m.toPlaceCached.isEmpty()
                     || !solidFloor(ctx, dest.below()) || !clear(ctx, dest.x, dest.y, dest.z, top)
                     || diagonal && !(side(ctx, src.x + dir.getX(), src.y, src.z, top) && side(ctx, src.x, src.y, src.z + dir.getZ(), top))) {
                 break;
             }
-            floors[n] = dest.y - start.y;
+            // the cells a hop flies over have no floor to speak of, which is the point. they only need air up to the head
+            boolean airy = true;
+            for (int c = 1; c < cells; c++) {
+                airy &= clear(ctx, src.x + dir.getX() * c, src.y, src.z + dir.getZ() * c, top);
+            }
+            if (!airy) {
+                break;
+            }
+            for (int c = 1; c < cells; c++) {
+                floors[n++] = NO_FLOOR;
+            }
+            floors[n++] = dest.y - start.y;
         }
         double spacing = diagonal ? Math.sqrt(2) : 1;
         // solidFloor pins friction to 0.6, so the 0.216 / f^3 in the ground acceleration is 1
         SprintJump jump = new SprintJump(Arrays.copyOf(floors, n), spacing, player.getSpeed() * 0.98);
+        jump.hop = hop;
         jump.originX = start.x + 0.5;
         jump.originZ = start.z + 0.5;
         jump.takeoffY = start.y;
@@ -122,11 +142,20 @@ final class SprintJump {
         return jump;
     }
 
+    // a flat parkour over a 1 or 2 block gap: the two the walking approach used to take at walk speed. 4 gaps already sprint
+    // and the ascends do too, and one that has to place a block mid air has nothing to do with a sim
+    static boolean isHop(Movement m) {
+        if (!(m instanceof MovementParkour)) {
+            return false;
+        }
+        int dx = m.getDest().x - m.getSrc().x;
+        int dz = m.getDest().z - m.getSrc().z;
+        int cells = Math.abs(dx) + Math.abs(dz);
+        return m.getDest().y == m.getSrc().y && (dx == 0 || dz == 0) && (cells == 2 || cells == 3);
+    }
+
     private static boolean solidFloor(IPlayerContext ctx, BlockPos pos) {
-        BlockState state = ctx.world().getBlockState(pos);
-        // ice/slime change friction, soul sand/honey/farmland aren't full height, and hopping on magma without sneaking hurts
-        return state.getBlock().getFriction() == 0.6F && state.getBlock().getSpeedFactor() == 1.0F && state.getBlock().getJumpFactor() == 1.0F
-                && !state.is(Blocks.MAGMA_BLOCK) && state.isCollisionShapeFullBlock(ctx.world(), pos);
+        return SolidFloor.plain(ctx.world().getBlockState(pos), ctx.world(), pos);
     }
 
     private static boolean side(IPlayerContext ctx, int x, int y, int z, int top) {
@@ -180,7 +209,7 @@ final class SprintJump {
     private boolean works(double s, double v, double[] margins, double target, boolean chain) {
         for (double margin : margins) {
             Landing l = jump(s, v * margin, target);
-            if (!safe(l) || !Double.isNaN(target) && l.s() - s < (l.y() < -EPS || chain ? SLOW_PACE : FLAT_PACE) * l.ticks()) {
+            if (!safe(l) || !hop && !Double.isNaN(target) && l.s() - s < (l.y() < -EPS || chain ? SLOW_PACE : FLAT_PACE) * l.ticks()) {
                 return false;
             }
         }

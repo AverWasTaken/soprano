@@ -42,6 +42,8 @@ import java.util.HashMap;
 import java.util.Map;
 
 import static baritone.api.pathing.movement.ActionCosts.COST_INF;
+import static baritone.api.pathing.movement.ActionCosts.SPRINT_ONE_BLOCK_COST;
+import static baritone.api.pathing.movement.ActionCosts.WALK_ONE_BLOCK_COST;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
@@ -177,6 +179,40 @@ public class ParkourLandingTest {
             MutableMoveResult bad = east(slabStep);
             assertTrue("ascend over gap " + gap + " onto a bottom slab, got cost " + bad.cost, bad.cost >= COST_INF);
         }
+    }
+
+    // the price of the flat jump over `gap` blocks with sprint jumping on or off. 20 hunger and an open sky, as in the real thing
+    private double flatCost(int gap, boolean sprintJumping, BlockState landing) {
+        boolean was = settings.sprintJumping.value;
+        settings.sprintJumping.value = sprintJumping;
+        try {
+            MutableMoveResult res = east(gap(gap, landing));
+            assertEquals(gap + 1, res.x);
+            return res.cost;
+        } finally {
+            settings.sprintJumping.value = was;
+        }
+    }
+
+    @Test
+    public void aSprintHopIsPricedAsTheFlightItIs() {
+        double penalty = settings.jumpPenalty.value;
+        // the 2 block gap lands at sprint pace, so it is the sprint price (and cheaper than the walk it used to be)
+        assertEquals(3 * SPRINT_ONE_BLOCK_COST + penalty, flatCost(2, true, stone()), 1e-9);
+        assertEquals(3 * WALK_ONE_BLOCK_COST + penalty, flatCost(2, false, stone()), 1e-9);
+        // the 1 block gap is 12 ticks of air to cover 2 blocks, so it can't be the 7 ticks sprint pace says, and it isn't
+        // cheaper than the walk either
+        assertEquals(12 - 0.5 * SPRINT_ONE_BLOCK_COST + penalty, flatCost(1, true, stone()), 1e-9);
+        assertEquals(2 * WALK_ONE_BLOCK_COST + penalty, flatCost(1, false, stone()), 1e-9);
+    }
+
+    @Test
+    public void aLandingTheSimCantUseStaysAWalkPrice() {
+        // soul sand is slow and magma hurts, SprintJump won't plan from or onto either, so the planner mustn't count on a hop
+        BlockState soulSand = Blocks.SOUL_SAND.defaultBlockState();
+        assertEquals(flatCost(2, false, soulSand), flatCost(2, true, soulSand), 1e-9);
+        BlockState dirtPath = Blocks.DIRT_PATH.defaultBlockState(); // not a full block
+        assertEquals(flatCost(2, false, dirtPath), flatCost(2, true, dirtPath), 1e-9);
     }
 
     @Test

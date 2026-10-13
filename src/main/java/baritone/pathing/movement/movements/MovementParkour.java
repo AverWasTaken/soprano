@@ -26,7 +26,9 @@ import baritone.pathing.movement.CalculationContext;
 import baritone.pathing.movement.Movement;
 import baritone.pathing.movement.MovementHelper;
 import baritone.pathing.movement.MovementState;
+import baritone.pathing.movement.SolidFloor;
 import baritone.utils.BlockStateInterface;
+import baritone.utils.ExperimentalMovement;
 import baritone.utils.pathing.MutableMoveResult;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -156,7 +158,8 @@ public class MovementParkour extends Movement {
                     res.x = destX;
                     res.y = y;
                     res.z = destZ;
-                    res.cost = context.biasJump(costFromJumpDistance(i) + context.jumpPenalty);
+                    res.cost = context.biasJump((sprintsHop(context, x, y, z, xDiff, zDiff, i, standingOn, landingOn)
+                            ? hopCost(i) : costFromJumpDistance(i)) + context.jumpPenalty);
                     return;
                 }
                 break;
@@ -224,6 +227,26 @@ public class MovementParkour extends Movement {
         }
         return 0;
     }
+
+    // whether the executor will sprint this flat jump over a 1 or 2 block gap (SprintJump, which wants the same plain floors at
+    // both ends and the head room to fly) instead of walking it up to the edge. it only does that on the way in already
+    // sprinting, which the planner can't know, so this is the usual case and not a promise
+    private static boolean sprintsHop(CalculationContext context, int x, int y, int z, int xDiff, int zDiff, int dist, BlockState standingOn, BlockState landingOn) {
+        return dist <= 3 && context.canSprint && ExperimentalMovement.sprintJumping()
+                && SolidFloor.plain(standingOn, context.bsi.access, new BlockPos(x, y - 1, z))
+                && SolidFloor.plain(landingOn, context.bsi.access, new BlockPos(x + xDiff * dist, y - 1, z + zDiff * dist))
+                && MovementHelper.fullyPassable(context, x, y + 3, z) && MovementHelper.fullyPassable(context, x + xDiff, y + 3, z + zDiff)
+                && MovementHelper.fullyPassable(context, x + xDiff * dist, y + 3, z + zDiff * dist);
+    }
+
+    // the air time is what a sprint hop costs, 12 ticks whatever the gap, less the half block of run up we'd have covered
+    // at sprint speed on the way to the middle of the block. a 2 block gap lands at 3 blocks in that time, so the sprint
+    // price is the floor there, and a 1 block gap is flight limited (it brakes to land short), which is dearer than a walk
+    private static double hopCost(int dist) {
+        return Math.max(dist * SPRINT_ONE_BLOCK_COST, HOP_AIR_TICKS - 0.5 * SPRINT_ONE_BLOCK_COST);
+    }
+
+    private static final double HOP_AIR_TICKS = 12;
 
     private static double costFromJumpDistance(int dist) {
         switch (dist) {
