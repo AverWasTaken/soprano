@@ -261,11 +261,8 @@ public class CalculationContext {
         this.worldBorder = bsi.worldBorder;
     }
 
-    /**
-     * The cost of one block of water at this node. Rowing if a boat could float here, otherwise whatever
-     * wading or swimming costs. Same answer the executor gives when it decides where to actually use the
-     * boat, so the estimate and the execution agree about which water counts
-     */
+    // the cost of one block of water at this node: rowing if a boat could float here and the water is big enough, otherwise
+    // whatever wading or swimming costs. close to what BoatTrip does, not identical, see boatRowLongEnough
     public double waterCost(int x, int y, int z) {
         if (boatWaterSpeed >= waterWalkSpeed) {
             return waterWalkSpeed; // no boat, don't go reading nine blocks for nothing
@@ -276,8 +273,8 @@ public class CalculationContext {
     // BoatTrip.plan wades a run shorter than boatMinWaterLength instead of getting the boat out, so a pond must not be priced
     // as a boat ride. the planner has no idea what path it's on, so it asks about the straight rows through this block along
     // BOTH axes: a river 4 wide and 100 long has a long row one way and a short one the other, and a crossing is the short one.
-    // the cost is the other direction, a path along the river gets rowed at runtime for less than it was priced (underpriced boat,
-    // never an overpriced one). the lookups stop the second a row is long enough: a lake pays for a few, a puddle for even fewer
+    // it can still be off either way: a run down a river is priced as a swim and rowed anyway, and a short clip across the corner of
+    // big water is priced as a row and waded. both are small errors. the lookups stop the second a row is long enough: a lake pays for a few, a puddle for even fewer
     private boolean boatRowLongEnough(int x, int y, int z) {
         return boatRow(x, y, z, 1, 0) >= boatMinWater && boatRow(x, y, z, 0, 1) >= boatMinWater;
     }

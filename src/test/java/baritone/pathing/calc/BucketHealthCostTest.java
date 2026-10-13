@@ -156,6 +156,16 @@ public class BucketHealthCostTest {
     }
 
     @Test
+    public void aClutchDoesNotGetAroundARefusedBucketDrop() {
+        double clutch = 40;
+        // 20 blocks at 17 hp: a miss kills, so no clutch either
+        assertEquals(ActionCosts.COST_INF, MovementDescend.clutchAtMissHealth(clutch, true, 17, 20), 0);
+        assertEquals(clutch, MovementDescend.clutchAtMissHealth(clutch, true, 18, 20), 0);
+        // mid air nothing is taken away
+        assertEquals(clutch, MovementDescend.clutchAtMissHealth(clutch, false, 4, 20), 0);
+    }
+
+    @Test
     public void thePureGateAgreesWithTheFallDamageRule() {
         assertTrue(ExperimentalMovement.canAffordBucketMiss(20, 20));
         assertTrue(ExperimentalMovement.canAffordBucketMiss(18, 20));

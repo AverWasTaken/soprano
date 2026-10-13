@@ -164,9 +164,8 @@ public final class Settings {
     public final Setting<Boolean> strictLiquidCheck = new Setting<>(false);
 
     /**
-     * Allow Baritone to fall arbitrary distances and place a water bucket beneath it.
-     * Reliability: questionable, and a miss is the whole fall, so the planner only offers a drop while you would survive that
-     * (see {@link #maxFallHeightBucket}).
+     * Allow Baritone to fall up to {@link #maxFallHeightBucket} blocks and place a water bucket beneath it.
+     * Reliability: questionable, and a miss is the whole fall, so the planner only offers a drop while you would survive that.
      */
     public final Setting<Boolean> allowWaterBucketFall = new Setting<>(true);
 
@@ -176,7 +175,8 @@ public final class Settings {
      * <p>
      * Needs a ladder or vine on the hotbar and a wall beside the last few blocks of the fall. The water bucket is still
      * preferred when you have one. Reliability: also questionable, it's all about the timing, and a clutch that misses is
-     * just the whole fall. The planner won't offer one below {@link #fastModeMinHealth} for that reason.
+     * just the whole fall. The planner won't offer one below {@link #fastModeMinHealth} for that reason, or for a drop a miss
+     * would kill you in.
      * <p>
      * Part of {@link #fastMode}.
      */
@@ -232,7 +232,7 @@ public final class Settings {
      * <p>
      * Only bridges with no side placement option are affected, and only from plain footing. Anything slippery or slow
      * under your feet (ice, slime, honey) keeps the sneaking bridge, and so does footing that opens when you click it
-     * (chests, furnaces, crafting tables and the like), water, and standing on anything climbable (ladders, vines, scaffolding). Magma counts as plain
+     * (chests, furnaces, crafting tables and the like), water, and standing in anything climbable (ladders, vines, scaffolding and the like). Magma counts as plain
      * unless {@link #allowWalkOnMagmaBlocks} is on. Soul sand and half slabs can't be placed against from behind at
      * all, sneaking or not, so they never get this far.
      */

@@ -236,9 +236,7 @@ public class MovementDescend extends Movement {
             if (clutchHealthGate) {
                 clutch = clutchAtHealth(clutch, context.health, context.fastModeMinHealth);
             }
-            if (bucketHealthGate && !bucketAtHealth(context.health, unprotectedFallHeight - 1)) {
-                clutch = COST_INF; // the clutch misses more than the bucket does, so it can't be the way round a drop the bucket was refused
-            }
+            clutch = clutchAtMissHealth(clutch, bucketHealthGate, context.health, unprotectedFallHeight - 1);
             if (clutch < COST_INF) {
                 clutch += WALK_OFF_BLOCK_COST + frontBreak + costSoFar;
             }
@@ -294,6 +292,12 @@ public class MovementDescend extends Movement {
     // once, see ExperimentalMovement.canAffordBucketMiss). a 20 block bucket at 17 hp or less is a coin flip with a funeral
     static boolean bucketAtHealth(double health, int blocksFallen) {
         return ExperimentalMovement.canAffordBucketMiss(health, blocksFallen);
+    }
+
+    // the clutch misses more than the bucket does, so it can't be the way round a drop the bucket was refused. planning only,
+    // same as the bucket gate, and not inside the clutchHealthGate block because that one is off when hp is fine
+    public static double clutchAtMissHealth(double clutch, boolean gate, double health, int blocksFallen) {
+        return gate && !bucketAtHealth(health, blocksFallen) ? COST_INF : clutch;
     }
 
     // the bucket wins ties, and any time the clutch is priced out

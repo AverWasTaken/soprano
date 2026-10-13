@@ -402,8 +402,9 @@ public class MovementTraverse extends Movement {
                 && !opensWhenClicked(srcDown);
     }
 
-    // the planner's half of the executor's isInWater / onClimbable check: standing in a ladder or in water is not a stance the
-    // backwards walk works from, and the cost has to say so or it prices a god bridge the executor turns down
+    // the planner's half of the executor's isInWater / onClimbable check, close but not all of it (an open trapdoor over a
+    // ladder, a body in water with dry feet): standing in a ladder or in water is not a stance the backwards walk works from,
+    // and the cost should say so or it prices a god bridge the executor turns down
     static boolean godStance(BlockState feet) {
         Block block = feet.getBlock();
         return feet.getFluidState().isEmpty()
