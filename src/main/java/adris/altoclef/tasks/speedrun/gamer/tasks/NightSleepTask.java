@@ -2,7 +2,6 @@ package adris.altoclef.tasks.speedrun.gamer.tasks;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
-import adris.altoclef.TaskCatalogue;
 import adris.altoclef.eventbus.EventBus;
 import adris.altoclef.eventbus.Subscription;
 import adris.altoclef.eventbus.events.GameOverlayEvent;
@@ -21,6 +20,7 @@ import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.EntityHelper;
 import adris.altoclef.util.helpers.ItemHelper;
+import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.InBedChatScreen;
@@ -31,7 +31,6 @@ import net.minecraft.core.Direction;
 import net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket;
 import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.entity.monster.ZombifiedPiglin;
-import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.BedBlock;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
@@ -56,6 +55,8 @@ public class NightSleepTask extends Task {
     // a bed we keep clicking that does not put us to sleep in this long said no in a way we did not hear
     private static final int CLICK_PATIENCE_TICKS = 100;
     private static final double TICK_SECONDS = 0.05;
+    // how long the wool and the planks have to look gone, with nothing lying about to put back, before the craft is given up on
+    private static final int SETTLE_TICKS = 10;
 
     private final RunState state;
     private final Supplier<OverworldConfig> cfg;
@@ -92,10 +93,15 @@ public class NightSleepTask extends Task {
     private long clickedAt = -1;
     private boolean wasAsleep;
     private long asleepTicks;
+    // the day time when we lay down, and the tick the sleeping flag first read clear (for the wake grace)
+    private long asleepDayTime;
+    private long upSince = -1;
     // where PICKUP goes next when the refusal said to go higher
     private boolean liftAfterPickup;
     private int bedsBeforePickup;
     private boolean pickupArmed;
+    private final BedCraft bedCraft = new BedCraft();
+    private long shortSince = -1;
 
     private AltoClef mod;
     private volatile String overlay;
@@ -197,7 +203,8 @@ public class NightSleepTask extends Task {
         }
         LocalPlayer player = mod.getPlayer();
         long now = mod.getWorld().getGameTime();
-        if (!cleanup) {
+        // (once we slept, the morning's pickup and the way down are not tonight's, the budget has rolled on to the next night)
+        if (!cleanup && outcome != Outcome.SLEPT) {
             budget.spend(TICK_SECONDS);
         }
         if (!begun) {
@@ -235,6 +242,9 @@ public class NightSleepTask extends Task {
 
     private void begin(AltoClef mod, long now) {
         stageSince = now;
+        // (a container screen that sat open past the patience of the busy gate is stuck, and a bed click or a block break behind it
+        // goes nowhere)
+        StorageHelper.closeScreen();
         if (cleanup) {
             enter(Stage.PICKUP, now, "an old bed of ours is still standing");
             return;
@@ -256,30 +266,42 @@ public class NightSleepTask extends Task {
         return mod.getItemStorage().getItemCount(ItemHelper.BED);
     }
 
-    public static int bestWoolStack(AltoClef mod) {
-        int best = 0;
-        for (Item wool : ItemHelper.WOOL) {
-            best = Math.max(best, mod.getItemStorage().getItemCount(wool));
-        }
-        return best;
-    }
-
     private Task craft(AltoClef mod, long now) {
         if (bedsInBag(mod) > 0) {
             afterBed(mod, now);
-            return null;
-        }
-        // the catalogue would hunt a sheep for missing wool, and this round it does not get to
-        if (NightSleep.bedSource(false, 0, bestWoolStack(mod), mod.getItemStorage().getItemCount(ItemHelper.PLANKS)) != BedSource.CRAFT) {
-            fail("the wool or the planks are gone", now);
             return null;
         }
         if (NightSleep.timedOut(Stage.CRAFT, 0, secondsIn(now))) {
             fail("the bed took too long to craft", now);
             return null;
         }
+        // only what is in the bag: the catalogue's bed task mines the nearest bed it knows of and hunts sheep for missing wool.
+        // logs become planks first (the same as the evening prep does), the bed craft itself will not
+        Task planks = bedCraft.planksFirst(mod);
+        if (planks != null) {
+            setDebugState("Making planks for the bed.");
+            return planks;
+        }
+        Task make = bedCraft.next(mod);
+        if (make == null) {
+            // a craft that got interrupted (ours or the phase's) can have left the wool or the planks in a grid or on the cursor,
+            // where they do not count. put them back and look again before calling them gone
+            if (shortSince < 0) {
+                shortSince = now;
+            }
+            Task stray = BedCraft.stray(mod);
+            if (stray != null) {
+                setDebugState("Putting the crafting leftovers back.");
+                return stray;
+            }
+            if (now - shortSince > SETTLE_TICKS) {
+                fail("the wool or the planks are gone", now);
+            }
+            return null;
+        }
+        shortSince = -1;
         setDebugState("Crafting a bed.");
-        return TaskCatalogue.getItemTask("bed", 1);
+        return make;
     }
 
     private Task walk(AltoClef mod, long now) {
@@ -537,8 +559,12 @@ public class NightSleepTask extends Task {
         ClientLevel world = mod.getWorld();
         boolean asleep = player.isSleeping() || Minecraft.getInstance().screen instanceof InBedChatScreen;
         if (asleep) {
+            if (!wasAsleep) {
+                asleepDayTime = world.getDayTime();
+            }
             wasAsleep = true;
             asleepTicks++;
+            upSince = -1;
             setDebugState("Sleeping.", "Sleeping");
             if (leaving == null && asleepTicks > cfg.get().nightSleepSeconds * 20) {
                 // the night is not passing (somebody else is awake), no point lying here. the try ends once we are out of it
@@ -550,20 +576,27 @@ public class NightSleepTask extends Task {
             }
             return null;
         }
-        // (if the morning got there first it was a night slept through after all)
-        if (leaving != null && !world.isDay()) {
-            fail(leaving, now);
-            return null;
-        }
         if (wasAsleep) {
             // woken: by the morning, or by something that hit us
-            if (NightSleep.sleptThrough(asleepTicks, world.isDay())) {
-                budget.sleptOk();
+            if (upSince < 0) {
+                upSince = now;
+            }
+            NightSleep.Wake wake = NightSleep.wake(asleepTicks, world.isDay(), asleepDayTime, world.getDayTime(), now - upSince,
+                    cfg.get().nightWakeGraceTicks);
+            if (wake == NightSleep.Wake.WAIT) {
+                // (still reads night, the time packet may be on its way)
+                return null;
+            }
+            if (wake == NightSleep.Wake.SLEPT) {
+                // the night we lay down in: the skip has already rolled the day count, and the budget with it
+                budget.sleptOk(NightSleep.nightOf(asleepDayTime));
                 outcome = Outcome.SLEPT;
                 say.accept("Slept through the night");
                 wrapUp(mod, now);
             } else {
-                fail("woken before the night passed", now);
+                // (if we got up ourselves because the night would not pass, that is the reason, the morning getting there first
+                // was the SLEPT case above)
+                fail(leaving != null ? leaving : "woken before the night passed", now);
             }
             return null;
         }

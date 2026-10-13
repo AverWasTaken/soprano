@@ -9,6 +9,7 @@ import adris.altoclef.tasks.speedrun.gamer.NightSleep.BedSource;
 import adris.altoclef.tasks.speedrun.gamer.NightSleep.Inputs;
 import adris.altoclef.tasks.speedrun.gamer.NightSleep.Mob;
 import adris.altoclef.tasks.speedrun.gamer.NightSleep.Next;
+import adris.altoclef.tasks.speedrun.gamer.NightSleep.Prep;
 import adris.altoclef.tasks.speedrun.gamer.NightSleep.Refusal;
 import adris.altoclef.tasks.speedrun.gamer.NightSleep.Stage;
 import adris.altoclef.tasks.speedrun.gamer.NightSleep.Why;
@@ -257,7 +258,7 @@ public class NightSleepTest {
         NightSleep.Budget b = new NightSleep.Budget();
         b.roll(7);
         b.began();
-        b.sleptOk();
+        b.sleptOk(7);
         assertTrue(b.spent(3, 150));
     }
 
@@ -341,13 +342,210 @@ public class NightSleepTest {
         }
     }
 
+    // ---- a bed ready before dusk
+
+    private static final long CRAFT_LEAD = 2400;
+    private static final long WOOL_LEAD = 4800;
+
+    private static NightSleep.PrepInputs prepAt(long timeOfDay, int wool, int wood, boolean sheep) {
+        return new NightSleep.PrepInputs(true, true, true, false, false, false, false, false, timeOfDay, false, wool, wood, 3, sheep, false, false);
+    }
+
+    private static NightSleep.PrepInputs withBed(NightSleep.PrepInputs in) {
+        return new NightSleep.PrepInputs(in.enabled(), in.overworld(), in.phaseOk(), in.busy(), in.fighting(), in.lowHealth(), in.nightSpent(),
+                in.windowOpen(), in.timeOfDay(), true, in.bestWoolStack(), in.wood(), in.woodNeeded(), in.sheepNear(), in.woolGaveUp(), in.craftGaveUp());
+    }
+
+    private static NightSleep.PrepInputs with(NightSleep.PrepInputs in, boolean enabled, boolean overworld, boolean phaseOk, boolean busy,
+                                              boolean fighting, boolean lowHealth, boolean spent, boolean windowOpen) {
+        return new NightSleep.PrepInputs(enabled, overworld, phaseOk, busy, fighting, lowHealth, spent, windowOpen, in.timeOfDay(), in.bedReady(),
+                in.bestWoolStack(), in.wood(), in.woodNeeded(), in.sheepNear(), in.woolGaveUp(), in.craftGaveUp());
+    }
+
+    private static NightSleep.Prep prep(NightSleep.PrepInputs in) {
+        return NightSleep.prep(in, CRAFT_LEAD, WOOL_LEAD);
+    }
+
     @Test
-    public void sleptThroughMeansWokenByTheMorning() {
-        assertTrue(NightSleep.sleptThrough(3, true));
-        // woken by a zombie after a few seconds in the dark, or after a long time with other players awake
-        assertFalse(NightSleep.sleptThrough(60, false));
-        assertFalse(NightSleep.sleptThrough(900, false));
+    public void withTheMaterialsTheBedIsCraftedInTheLeadBeforeDusk() {
+        // the earliest window is 12010: a craft lead of 2400 opens at 9610
+        assertEquals(Prep.TOO_EARLY, prep(prepAt(9609, 3, 6, false)));
+        assertEquals(Prep.CRAFT, prep(prepAt(9610, 3, 6, false)));
+        assertEquals(Prep.CRAFT, prep(prepAt(12400, 5, 3, false)));
+        // the prep is over at 13000 whatever the sky did
+        assertEquals(Prep.TOO_LATE, prep(prepAt(13000, 3, 6, false)));
+    }
+
+    @Test
+    public void withoutWoolItGoesForSheepFromTheEarlierLeadOnlyWhenSomeAreKnown() {
+        assertEquals(Prep.TOO_EARLY, prep(prepAt(7209, 0, 6, true)));
+        assertEquals(Prep.WOOL, prep(prepAt(7210, 0, 6, true)));
+        assertEquals(Prep.WOOL, prep(prepAt(7210, 2, 6, true)));
+        assertEquals(Prep.NO_SHEEP, prep(prepAt(7210, 0, 6, false)));
+        // wool already in the bag needs no sheep, and nothing is early about it once the craft lead is there
+        assertEquals(Prep.TOO_EARLY, prep(prepAt(7210, 3, 6, false)));
+    }
+
+    @Test
+    public void aBedAlreadyThereOrNoWoodIsNothingToDo() {
+        assertEquals(Prep.BED_READY, prep(withBed(prepAt(11000, 3, 6, true))));
+        assertEquals(Prep.BED_READY, prep(withBed(prepAt(8000, 0, 0, false))));
+        // a bed needs three planks (or a log's four) and a table's four more when there is none
+        assertEquals(Prep.NO_WOOD, prep(prepAt(11000, 3, 2, true)));
+        assertEquals(Prep.NO_WOOD, prep(new NightSleep.PrepInputs(true, true, true, false, false, false, false, false, 11000, false, 3, 6, 7, true, false, false)));
+        assertEquals(Prep.CRAFT, prep(new NightSleep.PrepInputs(true, true, true, false, false, false, false, false, 11000, false, 3, 7, 7, true, false, false)));
+    }
+
+    @Test
+    public void thePrepGatesAreTheTripsGates() {
+        NightSleep.PrepInputs base = prepAt(11000, 3, 6, true);
+        assertEquals(Prep.OFF, prep(with(base, false, true, true, false, false, false, false, false)));
+        assertEquals(Prep.WRONG_PLACE, prep(with(base, true, false, true, false, false, false, false, false)));
+        assertEquals(Prep.WRONG_PHASE, prep(with(base, true, true, false, false, false, false, false, false)));
+        assertEquals(Prep.BUSY, prep(with(base, true, true, true, true, false, false, false, false)));
+        assertEquals(Prep.FIGHTING, prep(with(base, true, true, true, false, true, false, false, false)));
+        assertEquals(Prep.LOW_HEALTH, prep(with(base, true, true, true, false, false, true, false, false)));
+        assertEquals(Prep.SPENT, prep(with(base, true, true, true, false, false, false, true, false)));
+        // once the window is open the trip has it
+        assertEquals(Prep.TOO_LATE, prep(with(base, true, true, true, false, false, false, false, true)));
+    }
+
+    @Test
+    public void aWholeEveningGaveUpStaysQuiet() {
+        NightSleep.PrepInputs woolOut = new NightSleep.PrepInputs(true, true, true, false, false, false, false, false, 10000, false, 0, 6, 3, true, true, false);
+        assertEquals(Prep.GAVE_UP, prep(woolOut));
+        NightSleep.PrepInputs craftOut = new NightSleep.PrepInputs(true, true, true, false, false, false, false, false, 11000, false, 3, 6, 3, true, false, true);
+        assertEquals(Prep.GAVE_UP, prep(craftOut));
+    }
+
+    @Test
+    public void theWoolColourIsTheOneWeHoldMostOfThatTheSheepCanFinish() {
+        int[] held = new int[16];
+        int[] near = new int[16];
+        // nothing held, four white sheep and two black: white
+        near[0] = 4;
+        near[1] = 2;
+        assertEquals(0, NightSleep.woolColour(held, near));
+        // two black wool in the bag and a black sheep makes black the shorter trip
+        held[1] = 2;
+        near[1] = 1;
+        assertEquals(1, NightSleep.woolColour(held, near));
+        // not enough of anything: two sheep and nothing held
+        assertEquals(-1, NightSleep.woolColour(new int[16], one(0, 2)));
+        // a stack of three needs no sheep at all
+        assertEquals(5, NightSleep.woolColour(one(5, 3), new int[16]));
+    }
+
+    private static int[] one(int slot, int n) {
+        int[] a = new int[16];
+        a[slot] = n;
+        return a;
+    }
+
+    @Test
+    public void aDayClockRunsOutAndStartsOverTheNextDay() {
+        NightSleep.DayClock c = new NightSleep.DayClock();
+        c.roll(2);
+        assertFalse(c.over(150));
+        c.spend(149.9);
+        assertFalse(c.over(150));
+        c.spend(0.2);
+        assertTrue(c.over(150));
+        c.roll(2);
+        assertTrue(c.over(150));
+        c.roll(3);
+        assertFalse(c.over(150));
+        c.giveUp();
+        assertTrue(c.over(150));
+    }
+
+    @Test
+    public void withABedInTheBagTheTripStartsOnTheFirstTickTheWindowOpens() {
+        // the tick before the window the answer is not night, the tick it opens (with nothing in the way) it is a go
+        assertEquals(Why.NOT_NIGHT, NightSleep.decide(inputs(true, true, false, false, false, false, false, BedSource.BAG, false)));
+        assertEquals(Why.GO, NightSleep.decide(inputs(true, true, true, false, false, false, false, BedSource.BAG, false)));
+    }
+
+    @Test
+    public void onlyWhatIsReallyHappeningHoldsTheTripBack() {
+        assertEquals(NightSleep.Busy.NONE, NightSleep.busy(true, false, false, false, false));
+        assertEquals(NightSleep.Busy.PHASE, NightSleep.busy(false, false, false, false, false));
+        assertEquals(NightSleep.Busy.PICKUP, NightSleep.busy(true, true, false, false, false));
+        assertEquals(NightSleep.Busy.LOAD, NightSleep.busy(true, false, true, false, false));
+        assertEquals(NightSleep.Busy.EARLY_LOAD, NightSleep.busy(true, false, false, true, false));
+        assertEquals(NightSleep.Busy.SCREEN, NightSleep.busy(true, false, false, false, true));
+        // the phase comes first, and a batch that merely exists (not loading) is not in the list at all
+        assertEquals(NightSleep.Busy.PHASE, NightSleep.busy(false, true, true, true, true));
+    }
+
+    @Test
+    public void aScreenThatStaysUpForGoodStopsHoldingTheNight() {
+        assertTrue(NightSleep.screenHolds(0));
+        assertTrue(NightSleep.screenHolds(NightSleep.SCREEN_PATIENCE_TICKS - 1));
+        assertFalse(NightSleep.screenHolds(NightSleep.SCREEN_PATIENCE_TICKS));
+        // and a load that never finishes does not hold it either
+        assertTrue(NightSleep.loadHolds(NightSleep.LOAD_PATIENCE_TICKS - 1));
+        assertFalse(NightSleep.loadHolds(NightSleep.LOAD_PATIENCE_TICKS));
+    }
+
+    @Test
+    public void theReasonIsSaidOnceAndAgainWhenItChanges() {
+        NightSleep.Said said = new NightSleep.Said();
+        assertTrue(said.worthSaying("a", 100, 20));
+        // the same answer every tick is not news
+        assertFalse(said.worthSaying("a", 101, 20));
+        assertFalse(said.worthSaying("a", 5000, 20));
+        // a change is, but a flapping gate does not print every other tick: the held back one comes out when the gap is up
+        assertFalse(said.worthSaying("b", 110, 20));
+        assertTrue(said.worthSaying("b", 120, 20));
+        assertFalse(said.worthSaying("b", 121, 20));
+        assertTrue(said.worthSaying("a", 140, 20));
+    }
+
+    // ---- the wake grace
+
+    @Test
+    public void aNightTheServerSkippedIsSleptThroughEvenIfTheClientStillReadsNight() {
+        // lay down at 13000, the flag clears the tick the server sets 24000 but our copy of the time is a packet behind...
+        assertEquals(NightSleep.Wake.WAIT, NightSleep.wake(110, false, 13000, 13110, 0, 30));
+        assertEquals(NightSleep.Wake.WAIT, NightSleep.wake(110, false, 13000, 13110, 29, 30));
+        // ...and then it catches up, by the day flag or by the day count rolling over
+        assertEquals(NightSleep.Wake.SLEPT, NightSleep.wake(110, true, 13000, 13110, 5, 30));
+        assertEquals(NightSleep.Wake.SLEPT, NightSleep.wake(110, false, 13000, 24000, 5, 30));
+        // the very first tick can already be the morning
+        assertEquals(NightSleep.Wake.SLEPT, NightSleep.wake(110, false, 13000, 24000, 0, 30));
+    }
+
+    @Test
+    public void aHitThatWokeUsStillCountsAsAFailedTryOnceTheGraceIsUp() {
+        assertEquals(NightSleep.Wake.WOKEN, NightSleep.wake(110, false, 13000, 13150, 30, 30));
+        assertEquals(NightSleep.Wake.WOKEN, NightSleep.wake(900, false, 13000, 13900, 400, 30));
         // never lay down at all
-        assertFalse(NightSleep.sleptThrough(0, true));
+        assertEquals(NightSleep.Wake.WOKEN, NightSleep.wake(0, true, 13000, 24000, 50, 30));
+    }
+
+    @Test
+    public void aRainyNightThatEndsAtDawnRollsTheDayCountToo() {
+        // laid down at 12100 in the rain, the skip lands on the next multiple of 24000
+        assertEquals(NightSleep.Wake.SLEPT, NightSleep.wake(40, false, 12100, 24000, 0, 30));
+        // woken at 23999 by a zombie is still the same night
+        assertEquals(NightSleep.Wake.WAIT, NightSleep.wake(40, false, 12100, 23999, 0, 30));
+        assertEquals(NightSleep.Wake.WOKEN, NightSleep.wake(40, false, 12100, 23999, 31, 30));
+    }
+
+    @Test
+    public void aSleptNightDoesNotUseUpTheNextOne() {
+        NightSleep.Budget b = new NightSleep.Budget();
+        b.roll(7);
+        b.began();
+        // the skip rolls the day count before the trip gets to say it worked...
+        b.roll(8);
+        b.sleptOk(NightSleep.nightOf(13000 + 7 * 24000));
+        // ...and the night that just began still has all its tries
+        assertFalse(b.spent(3, 150));
+        assertEquals(0, b.attempts());
+        // while waking in the same night (the day flag before the count rolls) does close it
+        b.sleptOk(8);
+        assertTrue(b.spent(3, 150));
     }
 }

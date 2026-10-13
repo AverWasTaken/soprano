@@ -84,9 +84,23 @@ public final class NightSleep {
         };
     }
 
-    // woken by the morning. a hit that wakes us at night is not, however long we lay there first (others awake on a server)
-    public static boolean sleptThrough(long asleepTicks, boolean day) {
-        return asleepTicks > 0 && day;
+    public enum Wake {
+        SLEPT, WOKEN, WAIT
+    }
+
+    // the sleeping flag clears the tick the server skips the night, but the client learns the new time from a time packet that
+    // goes out every 20 ticks, so for a moment it can still read night. reading it on the first tick called a night we slept
+    // through "woken early" and burned a try. so: the morning is either the day flag or the day count having rolled over since
+    // we lay down (the skip lands exactly on a multiple of 24000), and anything else gets `graceTicks` to turn into one of
+    // those before it counts as a hit that woke us
+    public static Wake wake(long asleepTicks, boolean day, long dayTimeThen, long dayTimeNow, long ticksSinceUp, int graceTicks) {
+        if (asleepTicks <= 0) {
+            return Wake.WOKEN;
+        }
+        if (day || nightOf(dayTimeNow) > nightOf(dayTimeThen)) {
+            return Wake.SLEPT;
+        }
+        return ticksSinceUp < graceTicks ? Wake.WAIT : Wake.WOKEN;
     }
 
     // where the bed comes from. a bed already standing close beats carrying one (nothing to place, nothing to pick up), then the
@@ -99,6 +113,187 @@ public final class NightSleep {
             return BedSource.BAG;
         }
         return bestWoolStack >= 3 && planks >= 3 ? BedSource.CRAFT : BedSource.NONE;
+    }
+
+    // ---- a bed in the bag before dusk
+
+    // the earliest the game lets anybody sleep: full rain opens it at 12010, clear weather at 12542 (the branch asks the level, not
+    // this). the prep window is counted back from here so it is over for either
+    public static final long EARLIEST_WINDOW = 12010;
+    // the evening's prep stops here whatever the weather did (after it the trip itself has the craft stage)
+    public static final long PREP_END = 13000;
+
+    // what to do about a bed while it is still day, or why not. the bag is empty of beds at dusk on most evenings, and a trip can
+    // only start once there is something to put down
+    public enum Prep {
+        CRAFT, WOOL,
+        OFF, WRONG_PLACE, WRONG_PHASE, TOO_EARLY, TOO_LATE, BUSY, FIGHTING, LOW_HEALTH, BED_READY, SPENT, NO_WOOD, NO_SHEEP, GAVE_UP
+    }
+
+    // everything prep looks at. timeOfDay is the day time modulo a day. bedReady is a bed in the bag, one standing close that we
+    // could use, or one of ours left standing. wood is planks plus four a log. sheepNear is a sheep we know of within the wool
+    // radius. woodNeeded is the bed's three planks, and four more for a table when none is close or in the bag. the two gaveUps are
+    // "this evening's wool trip / craft ran out of time"
+    public record PrepInputs(boolean enabled, boolean overworld, boolean phaseOk, boolean busy, boolean fighting, boolean lowHealth,
+                             boolean nightSpent, boolean windowOpen, long timeOfDay, boolean bedReady, int bestWoolStack, int wood,
+                             int woodNeeded, boolean sheepNear, boolean woolGaveUp, boolean craftGaveUp) {
+    }
+
+    // craftLead and woolLead are ticks before EARLIEST_WINDOW. a craft is seconds, a wool trip is a walk and a chase, so it starts
+    // earlier. the craft step also finishes a bed once the wool trip got the wool (it is the same rule, the materials are there)
+    public static Prep prep(PrepInputs in, long craftLead, long woolLead) {
+        if (!in.enabled()) {
+            return Prep.OFF;
+        }
+        if (!in.overworld()) {
+            return Prep.WRONG_PLACE;
+        }
+        if (!in.phaseOk()) {
+            return Prep.WRONG_PHASE;
+        }
+        if (in.windowOpen() || in.timeOfDay() >= PREP_END) {
+            return Prep.TOO_LATE;
+        }
+        if (in.timeOfDay() < EARLIEST_WINDOW - Math.max(craftLead, woolLead)) {
+            return Prep.TOO_EARLY;
+        }
+        if (in.bedReady()) {
+            return Prep.BED_READY;
+        }
+        if (in.nightSpent()) {
+            return Prep.SPENT;
+        }
+        if (in.busy()) {
+            return Prep.BUSY;
+        }
+        if (in.fighting()) {
+            return Prep.FIGHTING;
+        }
+        if (in.lowHealth()) {
+            return Prep.LOW_HEALTH;
+        }
+        if (in.wood() < in.woodNeeded()) {
+            return Prep.NO_WOOD;
+        }
+        if (in.bestWoolStack() >= 3) {
+            if (in.timeOfDay() < EARLIEST_WINDOW - craftLead) {
+                return Prep.TOO_EARLY;
+            }
+            return in.craftGaveUp() ? Prep.GAVE_UP : Prep.CRAFT;
+        }
+        if (in.timeOfDay() < EARLIEST_WINDOW - woolLead) {
+            return Prep.TOO_EARLY;
+        }
+        if (in.woolGaveUp()) {
+            return Prep.GAVE_UP;
+        }
+        return in.sheepNear() ? Prep.WOOL : Prep.NO_SHEEP;
+    }
+
+    // which colour to hunt: the one we hold the most of that the sheep around could still make three of (a kill is one wool, a
+    // shearing is one to three, so one a sheep is the safe count). held and near are indexed the same way, one slot a colour.
+    // ties go to the colour with more sheep. -1 when no colour can get there
+    public static int woolColour(int[] held, int[] near) {
+        int best = -1;
+        for (int i = 0; i < held.length; i++) {
+            if (held[i] + near[i] < 3) {
+                continue;
+            }
+            if (best < 0 || held[i] > held[best] || (held[i] == held[best] && near[i] > near[best])) {
+                best = i;
+            }
+        }
+        return best;
+    }
+
+    // ---- what may not be interrupted
+
+    public enum Busy {
+        NONE, PHASE, PICKUP, LOAD, EARLY_LOAD, SCREEN
+    }
+
+    // the things a night trip waits for, in the order they are asked. each is a thing that is physically happening right now
+    // and would be left half done: a station coming down that somebody is driving (a stale pickup does not count, it goes back
+    // to standing on its own), ore going into a furnace that is not lit yet, the first iron going into one before the job is
+    // recorded, a screen that is up. a smelt batch merely existing is not one of them: between loads the bot is only walking
+    // or fetching fuel, and a load that gets interrupted is finished by a fresh task
+    public static Busy busy(boolean phaseOk, boolean pickupInFlight, boolean smeltLoading, boolean earlyLoad, boolean screenUp) {
+        if (!phaseOk) {
+            return Busy.PHASE;
+        }
+        if (pickupInFlight) {
+            return Busy.PICKUP;
+        }
+        if (smeltLoading) {
+            return Busy.LOAD;
+        }
+        if (earlyLoad) {
+            return Busy.EARLY_LOAD;
+        }
+        return screenUp ? Busy.SCREEN : Busy.NONE;
+    }
+
+    // a container screen (the inventory, a table, a furnace, a chest) is up for a few seconds while items move. one that has been up
+    // longer than this is stuck open, and a night should not wait for it: the trip shuts it when it begins
+    public static final long SCREEN_PATIENCE_TICKS = 400;
+    // a furnace load that has been "in progress" this long is a batch whose iron need went away under it, not ore going in
+    public static final long LOAD_PATIENCE_TICKS = 1200;
+
+    public static boolean screenHolds(long upTicks) {
+        return upTicks < SCREEN_PATIENCE_TICKS;
+    }
+
+    public static boolean loadHolds(long loadingTicks) {
+        return loadingTicks < LOAD_PATIENCE_TICKS;
+    }
+
+    // a clock for one day's prep: it gets `maxSeconds` and then it is over, quietly, until the next day
+    public static final class DayClock {
+        private long day = Long.MIN_VALUE;
+        private double seconds;
+        private boolean gaveUp;
+
+        public void roll(long dayId) {
+            if (dayId != day) {
+                day = dayId;
+                seconds = 0;
+                gaveUp = false;
+            }
+        }
+
+        public void spend(double dt) {
+            seconds += dt;
+        }
+
+        public double seconds() {
+            return seconds;
+        }
+
+        public void giveUp() {
+            gaveUp = true;
+        }
+
+        public boolean over(double maxSeconds) {
+            return gaveUp || seconds >= maxSeconds;
+        }
+    }
+
+    // ---- when the branch says why it is not running
+
+    // a line in the log when the answer changes and not before, and no faster than every `gap` ticks (a gate that flaps would
+    // print every other tick). a key that was held back is still different next time, so it comes out then
+    public static final class Said {
+        private String last;
+        private long lastTick = Long.MIN_VALUE / 2;
+
+        public boolean worthSaying(String key, long tick, long gap) {
+            if (key.equals(last) || tick - lastTick < gap) {
+                return false;
+            }
+            last = key;
+            lastTick = tick;
+            return true;
+        }
     }
 
     // ---- monsters
@@ -202,8 +397,12 @@ public final class NightSleep {
             coolUntil = now + cooldownSeconds;
         }
 
-        public void sleptOk() {
-            slept = true;
+        // the night we slept in. the skip lands on the next day count, so by the time the trip says so the budget has rolled on to
+        // the next night, and marking that one would skip tomorrow's sleep
+        public void sleptOk(long nightId) {
+            if (nightId == night) {
+                slept = true;
+            }
         }
 
         public int attempts() {

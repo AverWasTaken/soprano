@@ -9,6 +9,7 @@ import adris.altoclef.eventbus.Subscription;
 import adris.altoclef.eventbus.events.BlockPlaceEvent;
 import adris.altoclef.tasks.construction.StationBox;
 import adris.altoclef.tasks.container.AsyncSmelting;
+import adris.altoclef.tasks.container.SmeltSplit;
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfig;
 import adris.altoclef.tasks.speedrun.gamer.config.GamerConfigs;
 import adris.altoclef.tasks.speedrun.gamer.phases.DragonPhase;
@@ -25,6 +26,7 @@ import adris.altoclef.tasks.speedrun.gamer.phases.ReturnPhase;
 import adris.altoclef.tasks.speedrun.gamer.phases.RoomPhase;
 import adris.altoclef.tasks.resources.CollectBedTask;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NetherRecoverTask;
+import adris.altoclef.tasks.speedrun.gamer.tasks.BedCraft;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NetherTripRules;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NightSleepTask;
 import adris.altoclef.tasks.speedrun.gamer.tasks.RecoverItemsTask;
@@ -47,8 +49,7 @@ import it.unimi.dsi.fastutil.longs.LongSet;
 import it.unimi.dsi.fastutil.longs.LongSets;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.DeathScreen;
-import net.minecraft.client.gui.screens.InBedChatScreen;
-import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.gui.screens.WinScreen;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
@@ -144,6 +145,14 @@ public class GamerTask extends Task {
     private final NightSleep.Budget nightBudget = new NightSleep.Budget();
     private NightSleepTask nightTrip;
     private LocalPlayer nightPlayer;
+    // the evening before it: a bed in the bag by dusk (NightPrep), whether it has the wheel this tick, and the one log line
+    private final NightPrep nightPrep = new NightPrep(() -> cfg.overworld);
+    private boolean nightPrepHolding;
+    private LocalPlayer nightPrepPlayer;
+    // the tick a container screen came up, for how long it has held a night back (-1 when none is up)
+    private long screenSince = -1;
+    private long loadSince = -1;
+    private final NightSleep.Said nightSaid = new NightSleep.Said();
 
     // what the user had before we changed it for the run, to hand back on stop
     private Boolean userBlastFurnace;
@@ -748,6 +757,7 @@ public class GamerTask extends Task {
             return null;
         }
         trackDeaths(mod);
+        trackNightGates();
         if (machine.ended()) {
             return null;
         }
@@ -755,6 +765,11 @@ public class GamerTask extends Task {
         // for our things (the recovery branches below return before the night branch is asked)
         if (nightTrip != null && mod.getPlayer() != nightPlayer) {
             dropNightTrip();
+        }
+        if (nightPrepPlayer != mod.getPlayer()) {
+            // a new player is a death: whatever the evening's prep was doing went with the old one
+            nightPrepPlayer = mod.getPlayer();
+            nightPrep.drop();
         }
         if (state.netherTrip != null) {
             dropNightTrip();
@@ -786,8 +801,9 @@ public class GamerTask extends Task {
             // same deal again: a night in bed is not the phase's time and not its fault
             machine.observe();
             machine.holdClocks();
-            setDebugState("Sleeping through the night.", "Sleeping through the night");
-            updateRecoveryHud("Sleeping through the night");
+            String words = nightPrepHolding ? "Getting a bed ready for the night" : "Sleeping through the night";
+            setDebugState(words + ".", words);
+            updateRecoveryHud(words);
             autosave(now);
             return night;
         }
@@ -1108,29 +1124,74 @@ public class GamerTask extends Task {
         }
         NightSleepHook.clear();
         if (!Baritone.settings().altoSleepAtNight.value || facts.dimension() != Dimension.OVERWORLD) {
+            nightPrep.drop();
             return null;
         }
         boolean leftover = leftoverNightBed(mod);
-        NightSleep.Inputs cheap = new NightSleep.Inputs(true, true, !mod.getWorld().isDay(), nightBusy(), nightFighting(mod),
-                NightSleep.shouldAbandon(mod.getPlayer().getHealth()), nightBudget.spent(cfg.overworld.nightAttempts, cfg.overworld.nightSeconds), nightBudget.cooling(seconds),
-                NightSleep.BedSource.BAG, leftover);
+        boolean windowOpen = !mod.getWorld().isDay();
+        // the evening's own tasks open screens (a table, the inventory), which are not a reason to stop them halfway
+        NightSleep.Busy busy = nightBusy(nightPrep.running());
+        boolean fighting = nightFighting(mod);
+        boolean hurt = NightSleep.shouldAbandon(mod.getPlayer().getHealth());
+        boolean spent = nightBudget.spent(cfg.overworld.nightAttempts, cfg.overworld.nightSeconds);
+        NightSleep.Inputs cheap = new NightSleep.Inputs(true, true, windowOpen, busy != NightSleep.Busy.NONE, fighting, hurt, spent,
+                nightBudget.cooling(seconds), NightSleep.BedSource.BAG, leftover);
         NightSleep.Why why = NightSleep.decide(cheap);
-        BlockPos found = null;
         if (why == NightSleep.Why.GO) {
-            found = findNightBed(mod);
+            nightPrepDone(mod);
+            BlockPos found = findNightBed(mod);
             NightSleep.BedSource source = NightSleep.bedSource(found != null, facts.count(ItemHelper.BED),
-                    NightSleepTask.bestWoolStack(mod), mod.getItemStorage().getItemCount(ItemHelper.PLANKS));
+                    BedCraft.bestWoolStack(mod), BedCraft.usableWood(mod));
+            sayNight(mod, source == NightSleep.BedSource.NONE ? NightSleep.Why.NO_BED : why, busy, source);
             if (source == NightSleep.BedSource.NONE) {
+                // (a prep that was still going when the window opened is over, it does not get to keep its screens all night)
+                nightPrep.drop();
                 return null;
             }
             startNightTrip(mod, source, found);
             return nightTrip;
         }
         if (why == NightSleep.Why.LEFTOVER) {
+            nightPrepDone(mod);
+            sayNight(mod, why, busy, NightSleep.BedSource.NONE);
             startNightTrip(mod, NightSleep.BedSource.NONE, null);
             return nightTrip;
         }
-        return null;
+        // not time yet, or not allowed to go: the bed gets made ready for when it is
+        NightPrep.Gate gate = new NightPrep.Gate(busy != NightSleep.Busy.PHASE, busy != NightSleep.Busy.NONE && busy != NightSleep.Busy.PHASE,
+                fighting, hurt, spent, windowOpen);
+        Task prep = nightPrep.tick(mod, gate, () -> leftover || facts.count(ItemHelper.BED) > 0 || findNightBed(mod) != null);
+        sayNight(mod, why, busy, null);
+        if (prep == null) {
+            nightPrepDone(mod);
+        }
+        nightPrepHolding = prep != null;
+        return prep;
+    }
+
+    // the prep had the wheel and does not any more: the phase gets its clocks back, same as when a trip ends
+    private void nightPrepDone(AltoClef mod) {
+        if (nightPrepHolding) {
+            nightPrepHolding = false;
+            machine.releaseHold();
+        }
+    }
+
+    // one line when the answer to "why is it not in bed" changes, and only through the evening and the night (a screen opening
+    // in the middle of the day is nobody's business). the key is what changed, the rest rides along
+    private void sayNight(AltoClef mod, NightSleep.Why why, NightSleep.Busy busy, NightSleep.BedSource source) {
+        long timeOfDay = Math.floorMod(mod.getWorld().getDayTime(), NightSleep.DAY_LENGTH);
+        long lead = Math.max(cfg.overworld.nightCraftLeadTicks, cfg.overworld.nightWoolLeadTicks);
+        boolean evening = timeOfDay >= NightSleep.EARLIEST_WINDOW - lead && timeOfDay < NightSleep.PREP_END;
+        if (!evening && mod.getWorld().isDay()) {
+            return;
+        }
+        NightSleep.Prep prep = nightPrep.last();
+        String key = why + "/" + busy + "/" + source + "/" + prep;
+        if (nightSaid.worthSaying(key, facts.gameTime(), 20)) {
+            Debug.logInternal("night: " + why + (busy == NightSleep.Busy.NONE ? "" : ", held by " + busy) + (source == null ? "" : ", bed " + source)
+                    + ", prep " + prep + ", day time " + timeOfDay);
+        }
     }
 
     private void dropNightTrip() {
@@ -1143,6 +1204,7 @@ public class GamerTask extends Task {
             nightBudget.began();
         }
         nightPlayer = mod.getPlayer();
+        nightPrep.drop();
         nightTrip = new NightSleepTask(state, () -> cfg.overworld, nightBudget, this::nightBlocks, host::say, host::save, source, found);
     }
 
@@ -1153,22 +1215,38 @@ public class GamerTask extends Task {
         return Math.max(0, facts.buildBlocks() - (kitPhase ? KitPlanner.stoneFloor(facts, cfg.overworld) : 0));
     }
 
-    // phases that must not be interrupted for a night: the portal (a pool of lava being cast), the nether, and the ones that
-    // care where the spawn bed is. plus anything with a station being picked up, a furnace load half done or a screen open
-    private boolean nightBusy() {
-        if (!NightSleep.phaseAllowed(state.phase)) {
-            return true;
-        }
+    // what may not be interrupted for a night (NightSleep.busy has the reasoning): phases that must not be cut into, a station
+    // coming down that is being driven, ore going into a furnace, the first iron's load, a screen that is up. the evening's own
+    // tasks open screens, so while one runs a screen does not count
+    private NightSleep.Busy nightBusy(boolean ownScreens) {
+        boolean pickup = false;
         for (Bench b : state.benches) {
-            if (b.state == Bench.State.PICKING_UP) {
-                return true;
+            pickup |= WorkbenchRules.inFlight(b, facts.gameTime());
+        }
+        boolean screenUp = !ownScreens && screenSince >= 0 && NightSleep.screenHolds(facts.gameTime() - screenSince);
+        boolean loading = loadSince >= 0 && NightSleep.loadHolds(facts.gameTime() - loadSince);
+        return NightSleep.busy(NightSleep.phaseAllowed(state.phase), pickup, loading, facts.earlyLoadInFlight(), screenUp);
+    }
+
+    // since when a container screen has been up and a furnace load has been going. every engine tick, not only the ones the night
+    // branch runs on, or a screen that closed and opened again during a trip would look like it had been up the whole time
+    private void trackNightGates() {
+        // (a chat box, the pause menu or the bed screen is not items moving, only a container is)
+        if (Minecraft.getInstance().screen instanceof AbstractContainerScreen<?>) {
+            if (screenSince < 0) {
+                screenSince = facts.gameTime();
             }
+        } else {
+            screenSince = -1;
         }
-        if (facts.smeltBatch() != null || facts.earlyLoadInFlight()) {
-            return true;
+        SmeltSplit.Batch batch = facts.smeltBatch();
+        if (batch != null && batch.loadingAt() != null) {
+            if (loadSince < 0) {
+                loadSince = facts.gameTime();
+            }
+        } else {
+            loadSince = -1;
         }
-        Screen screen = Minecraft.getInstance().screen;
-        return screen != null && !(screen instanceof InBedChatScreen);
     }
 
     private boolean nightFighting(AltoClef mod) {
