@@ -1,17 +1,19 @@
 package adris.altoclef.util;
 
 import adris.altoclef.Debug;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
 
 public enum MiningRequirement implements Comparable<MiningRequirement> {
-    HAND(Items.AIR.getDefaultInstance()), WOOD(Items.WOODEN_PICKAXE.getDefaultInstance()), STONE(Items.STONE_PICKAXE.getDefaultInstance()), IRON(Items.IRON_PICKAXE.getDefaultInstance()), DIAMOND(Items.DIAMOND_PICKAXE.getDefaultInstance()), NETHERITE(Items.NETHERITE_PICKAXE.getDefaultInstance());
+    HAND(Items.AIR), WOOD(Items.WOODEN_PICKAXE), STONE(Items.STONE_PICKAXE), IRON(Items.IRON_PICKAXE), DIAMOND(Items.DIAMOND_PICKAXE), NETHERITE(Items.NETHERITE_PICKAXE);
 
-    private final ItemStack _minPickaxe;
+    private final Item _minPickaxeItem;
+    private ItemStack _minPickaxe;
 
-    MiningRequirement(ItemStack minPickaxe) {
-        _minPickaxe = minPickaxe;
+    MiningRequirement(Item minPickaxe) {
+        _minPickaxeItem = minPickaxe;
     }
 
     public static MiningRequirement getMinimumRequirementForBlock(Block block) {
@@ -30,6 +32,11 @@ public enum MiningRequirement implements Comparable<MiningRequirement> {
     }
 
     public ItemStack getMinimumPickaxe() {
+        // a stack needs the item's components, and on 26.3 those only get bound once a world's registries load. TaskCatalogue
+        // touches this enum in its static init, which can run before that, so build the stack on first use instead
+        if (_minPickaxe == null) {
+            _minPickaxe = _minPickaxeItem.getDefaultInstance();
+        }
         return _minPickaxe;
     }
 
