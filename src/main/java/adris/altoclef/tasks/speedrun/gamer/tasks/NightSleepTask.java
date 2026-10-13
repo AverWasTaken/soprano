@@ -203,7 +203,8 @@ public class NightSleepTask extends Task {
         }
         LocalPlayer player = mod.getPlayer();
         long now = mod.getWorld().getGameTime();
-        if (!cleanup) {
+        // (once we slept, the morning's pickup and the way down are not tonight's, the budget has rolled on to the next night)
+        if (!cleanup && outcome != Outcome.SLEPT) {
             budget.spend(TICK_SECONDS);
         }
         if (!begun) {
@@ -241,12 +242,13 @@ public class NightSleepTask extends Task {
 
     private void begin(AltoClef mod, long now) {
         stageSince = now;
+        // (a container screen that sat open past the patience of the busy gate is stuck, and a bed click or a block break behind it
+        // goes nowhere)
+        StorageHelper.closeScreen();
         if (cleanup) {
             enter(Stage.PICKUP, now, "an old bed of ours is still standing");
             return;
         }
-        // (a container screen that sat open past the patience of the busy gate is stuck, and a bed click behind it goes nowhere)
-        StorageHelper.closeScreen();
         say.accept("Night is here, going to bed");
         switch (source) {
             case FOUND -> enter(Stage.WALK, now, "a bed at " + found.toShortString());
@@ -267,6 +269,10 @@ public class NightSleepTask extends Task {
     private Task craft(AltoClef mod, long now) {
         if (bedsInBag(mod) > 0) {
             afterBed(mod, now);
+            return null;
+        }
+        if (NightSleep.timedOut(Stage.CRAFT, 0, secondsIn(now))) {
+            fail("the bed took too long to craft", now);
             return null;
         }
         // only what is in the bag: the catalogue's bed task mines the nearest bed it knows of and hunts sheep for missing wool.
@@ -294,10 +300,6 @@ public class NightSleepTask extends Task {
             return null;
         }
         shortSince = -1;
-        if (NightSleep.timedOut(Stage.CRAFT, 0, secondsIn(now))) {
-            fail("the bed took too long to craft", now);
-            return null;
-        }
         setDebugState("Crafting a bed.");
         return make;
     }
