@@ -3,7 +3,9 @@ package adris.altoclef.ui.gui.mc;
 import adris.altoclef.ui.gui.model.KeyBind;
 import baritone.api.BaritoneAPI;
 import baritone.api.Settings;
+import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.SharedConstants;
+import net.minecraft.client.input.KeyEvent;
 import net.minecraft.server.Bootstrap;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -69,8 +71,10 @@ public class GuiKeySettingsTest {
     @Test
     public void onlyAPressOpensIt() {
         // no game in a unit test: anything that is not a press never gets as far as asking for one
-        assertFalse(GuiHotkey.onKey(344, 0));
-        assertFalse(GuiHotkey.onKey(344, 2));
-        assertFalse(GuiHotkey.onKey(-1, 1));
+        KeyEvent shift = new KeyEvent(InputConstants.KEY_RSHIFT, 0, 0);
+        assertFalse(GuiHotkey.onKey(shift, InputConstants.RELEASE));
+        assertFalse(GuiHotkey.onKey(shift, InputConstants.REPEAT));
+        // a press of nothing at all
+        assertFalse(GuiHotkey.onKey(new KeyEvent(0, 0, 0), InputConstants.PRESS));
     }
 }
