@@ -17,6 +17,7 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.WinScreen;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -84,14 +85,14 @@ public class GamerHudOverlay {
     private record Rect(int x, int y, int w, int h, int color) implements Op {
         @Override
         public void draw(GuiGraphicsExtractor g, Font font) {
-            // todo 26.3: g.fill(x, y, x + w, y + h, color) has the same shape, held back with the rest of the card
+            g.fill(x, y, x + w, y + h, color);
         }
     }
 
     private record Text(String s, int x, int y, int color) implements Op {
         @Override
         public void draw(GuiGraphicsExtractor g, Font font) {
-            // todo 26.3: g.text(font, s, x, y, color, true), drawString is gone
+            g.text(font, s, x, y, color, true);
         }
     }
 
@@ -99,8 +100,13 @@ public class GamerHudOverlay {
     private record BigText(String[] glyphs, int[] xs, int y, int color) implements Op {
         @Override
         public void draw(GuiGraphicsExtractor g, Font font) {
-            // todo 26.3: per glyph, g.pose() pushMatrix/translate(xs[i], y)/scale(2F, 2F), g.text(font, glyphs[i], 0, 0,
-            // color, true), popMatrix. the pose is a 2d Matrix3x2fStack now, pushPose/popPose/translate(x,y,z) are gone
+            for (int i = 0; i < glyphs.length; i++) {
+                g.pose().pushMatrix();
+                g.pose().translate(xs[i], y);
+                g.pose().scale(2F, 2F);
+                g.text(font, glyphs[i], 0, 0, color, true);
+                g.pose().popMatrix();
+            }
         }
     }
 
@@ -108,16 +114,18 @@ public class GamerHudOverlay {
     private record Icon(ItemStack stack, int x, int y) implements Op {
         @Override
         public void draw(GuiGraphicsExtractor g, Font font) {
-            // todo 26.3: g.pose() pushMatrix/translate(x, y)/scale(0.5F, 0.5F), g.item(stack, 0, 0), popMatrix. renderItem is
-            // gone, item(ItemStack, int, int) is the extractor's (fakeItem skips the entity/level lookups)
+            g.pose().pushMatrix();
+            g.pose().translate(x, y);
+            g.pose().scale(0.5F, 0.5F);
+            g.item(stack, 0, 0);
+            g.pose().popMatrix();
         }
     }
 
     private record Sprite(Identifier id, int x, int y, int w, int h) implements Op {
         @Override
         public void draw(GuiGraphicsExtractor g, Font font) {
-            // todo 26.3: g.blitSprite(RenderPipelines.GUI_TEXTURED, id, x, y, w, h). RenderType::guiTextured is gone, the
-            // extractor wants a RenderPipeline (first argument)
+            g.blitSprite(RenderPipelines.GUI_TEXTURED, id, x, y, w, h);
         }
     }
 
@@ -177,10 +185,15 @@ public class GamerHudOverlay {
         // gui there is room for both, at a tiny window they overlap and that is the window's problem
         int x0 = (int) (graphics.guiWidth() / scale) - MARGIN - WIDTH;
         int y0 = ((int) (graphics.guiHeight() / scale) - height) / 2;
-        // todo 26.3: nothing is drawn yet. the old body was pose pushPose/scale(scale, scale, 1F)/translate(x0, y0, 0), the
-        // backdrop graphics.fill(0, 0, WIDTH, height, mc.options.getBackgroundColor(0.5F)) (the chat's, so the text
-        // background option applies), every op.draw(graphics, mc.font), popPose. the pose is a 2d Matrix3x2fStack now
-        // (pushMatrix/scale(x, y)/translate(x, y)/popMatrix), and the ops' draw() bodies are todos too
+        graphics.pose().pushMatrix();
+        graphics.pose().scale(scale, scale);
+        graphics.pose().translate(x0, y0);
+        // the chat's backdrop, so the accessibility text background option applies here too
+        graphics.fill(0, 0, WIDTH, height, mc.options.getBackgroundColor(0.5F));
+        for (Op op : ops) {
+            op.draw(graphics, mc.font);
+        }
+        graphics.pose().popMatrix();
     }
 
     // the win card while its thirty seconds last. they start with the first frame it can be seen: the credits cover the whole
