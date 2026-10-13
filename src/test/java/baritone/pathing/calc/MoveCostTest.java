@@ -22,6 +22,7 @@ import baritone.api.Settings;
 import baritone.api.pathing.goals.GoalBlock;
 import baritone.api.pathing.goals.GoalYLevel;
 import baritone.pathing.movement.CalculationContext;
+import baritone.pathing.movement.movements.MovementAscend;
 import baritone.pathing.movement.movements.MovementDescend;
 import baritone.pathing.movement.movements.MovementDiagonal;
 import baritone.pathing.movement.movements.MovementTraverse;
@@ -31,9 +32,13 @@ import baritone.utils.pathing.MutableMoveResult;
 import baritone.utils.pathing.BetterWorldBorder;
 import net.minecraft.SharedConstants;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.server.Bootstrap;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.StairBlock;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.Half;
+import net.minecraft.world.level.block.state.properties.StairsShape;
 import net.minecraft.world.level.border.WorldBorder;
 import org.junit.After;
 import org.junit.Assume;
@@ -332,5 +337,56 @@ public class MoveCostTest {
         assertEquals((WALK_ONE_BLOCK_COST + (WALK_ONE_BLOCK_COST / 1.405 - WALK_ONE_BLOCK_COST) / 2) * SPRINT_MULTIPLIER, one, 1e-9);
         assertTrue(three < flat);
         assertEquals(WALK_ONE_BLOCK_COST / 1.615, CalculationContext.soulSandWalkCost(3), 1e-9);
+    }
+
+    // ---- stairs ----
+
+    private static BlockState stair(Direction facing, Half half, StairsShape shape) {
+        return Blocks.OAK_STAIRS.defaultBlockState().setValue(StairBlock.FACING, facing).setValue(StairBlock.HALF, half).setValue(StairBlock.SHAPE, shape);
+    }
+
+    // walking +x onto a stair at (1,64,0), off the usual stone floor
+    private static double ascendOnto(BlockState onto) {
+        MapWorld w = floor();
+        w.set(1, 64, 0, onto);
+        return MovementAscend.cost(new Ctx(w), 0, 64, 0, 1, 0);
+    }
+
+    private static final double JUMP_UP = Math.max(JUMP_ONE_BLOCK_COST, WALK_ONE_BLOCK_COST) + 2;
+
+    @Test
+    public void aStairWalkedUpTheWayItFacesIsAWalk() {
+        // facing is the tall side, so we meet the 0.5 low step first and vanilla steps over anything up to 0.6
+        assertEquals(WALK_ONE_BLOCK_COST, ascendOnto(stair(Direction.EAST, Half.BOTTOM, StairsShape.STRAIGHT)), 1e-9);
+    }
+
+    @Test
+    public void stairsFromAnyOtherSideOrShapeStayJumps() {
+        assertEquals(JUMP_UP, ascendOnto(stair(Direction.WEST, Half.BOTTOM, StairsShape.STRAIGHT)), 1e-9); // the tall back
+        assertEquals(JUMP_UP, ascendOnto(stair(Direction.NORTH, Half.BOTTOM, StairsShape.STRAIGHT)), 1e-9); // the side
+        assertEquals(JUMP_UP, ascendOnto(stair(Direction.EAST, Half.TOP, StairsShape.STRAIGHT)), 1e-9); // upside down
+        for (StairsShape corner : new StairsShape[]{StairsShape.INNER_LEFT, StairsShape.INNER_RIGHT, StairsShape.OUTER_LEFT, StairsShape.OUTER_RIGHT}) {
+            assertEquals("corner " + corner, JUMP_UP, ascendOnto(stair(Direction.EAST, Half.BOTTOM, corner)), 1e-9);
+        }
+    }
+
+    @Test
+    public void aStaircaseKeepsWalkingAndSoulSandUnderneathDoesNot() {
+        BlockState up = stair(Direction.EAST, Half.BOTTOM, StairsShape.STRAIGHT);
+        // standing on a stair that goes the same way means we are up on its tall half
+        MapWorld climbing = floor();
+        climbing.set(0, 63, 0, up);
+        climbing.set(1, 64, 0, up);
+        assertEquals(WALK_ONE_BLOCK_COST, MovementAscend.cost(new Ctx(climbing), 0, 64, 0, 1, 0), 1e-9);
+        // a stair going the other way, who knows which half we are on
+        MapWorld turned = floor();
+        turned.set(0, 63, 0, stair(Direction.NORTH, Half.BOTTOM, StairsShape.STRAIGHT));
+        turned.set(1, 64, 0, up);
+        assertEquals(JUMP_UP, MovementAscend.cost(new Ctx(turned), 0, 64, 0, 1, 0), 1e-9);
+        // soul sand is 0.875 tall so the lip is 0.625
+        MapWorld sand = floor();
+        sand.set(0, 63, 0, Blocks.SOUL_SAND.defaultBlockState());
+        sand.set(1, 64, 0, up);
+        assertEquals(JUMP_UP, MovementAscend.cost(new Ctx(sand), 0, 64, 0, 1, 0), 1e-9);
     }
 }

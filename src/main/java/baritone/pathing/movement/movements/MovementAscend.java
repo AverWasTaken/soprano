@@ -32,6 +32,7 @@ import java.util.Set;
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.FallingBlock;
+import net.minecraft.world.level.block.StairBlock;
 import net.minecraft.world.level.block.state.BlockState;
 
 public class MovementAscend extends Movement {
@@ -129,6 +130,8 @@ public class MovementAscend extends Movement {
             } else {
                 walk = WALK_ONE_BLOCK_COST; // we don't hit space we just walk into the slab
             }
+        } else if (MovementHelper.isWalkUpStair(toPlace, destX - x, destZ - z) && stairsStayWithinStepHeight(srcDown, destX - x, destZ - z)) {
+            walk = WALK_ONE_BLOCK_COST; // stairs go up by themselves, no space bar and nothing to pay for it
         } else {
             // jumpingFromBottomSlab must be false
             if (toPlace.is(Blocks.SOUL_SAND)) {
@@ -155,6 +158,16 @@ public class MovementAscend extends Movement {
         }
         totalCost += MovementHelper.waterBreakCost(context, x, y, z, MovementHelper.getMiningDurationTicks(context, destX, y + 2, destZ, true));
         return totalCost;
+    }
+
+    // the low step is 0.5 above the top of the block we stand on, and the step height is 0.6. that holds for anything
+    // full height, and for a stair we are climbing along (we are up on its tall half). soul sand and mud are 14/16 tall so
+    // the lip is 0.625 and that is a jump, and a stair going some other way has us on who knows which half
+    private static boolean stairsStayWithinStepHeight(BlockState srcDown, int dx, int dz) {
+        if (srcDown.is(Blocks.SOUL_SAND) || srcDown.is(Blocks.MUD)) {
+            return false;
+        }
+        return !(srcDown.getBlock() instanceof StairBlock) || MovementHelper.isWalkUpStair(srcDown, dx, dz);
     }
 
     @Override
