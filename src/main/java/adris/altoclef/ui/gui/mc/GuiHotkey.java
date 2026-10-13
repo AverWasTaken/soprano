@@ -11,27 +11,25 @@ import net.minecraft.client.input.KeyEvent;
 // the front door: the keyboard mixin asks onKey for every press, #gui calls open
 public final class GuiHotkey {
 
-    // todo 26.3: these are glfw numbers and the game speaks SDL now (REPEAT is -1, KEY_B is the scancode 5, see
-    // MixinKeyboardHandler), so the ctrl+b guard and the open key never match until the keys are remapped
-    private static final int GLFW_PRESS = 1;
-    private static final int GLFW_REPEAT = 2;
-    private static final int GLFW_KEY_B = 66;
-
     private GuiHotkey() {
     }
 
-    // true means the press was ours and the game should not see it
-    public static boolean onKey(int key, int action) {
+    // true means the press was ours and the game should not see it. the event is the game's (sdl scancode, repeat is -1),
+    // the bind is the setting's (glfw number), McKeys is the bridge
+    public static boolean onKey(KeyEvent event, int action) {
         try {
             Minecraft mc = Minecraft.getInstance();
             // the game looks at ctrl+b (narrator) before it asks the screen, and a text field of ours is not an edit box
             // it knows about, so typing it in the search field would flip the narrator. hand it to the screen ourselves
-            if (key == GLFW_KEY_B && (action == GLFW_PRESS || action == GLFW_REPEAT) && mc.hasControlDown()
-                    && mc.gui.screen() instanceof GuiScreen gui) {
-                gui.keyPressed(new KeyEvent(key, 0, InputConstants.MOD_CONTROL));
+            // same test vanilla runs: the layout's b (shortcutKey is the keycode, not the physical key) and the platform's
+            // shortcut modifier, so it also holds on azerty and with cmd on a mac
+            if (event.shortcutKey() == InputConstants.KEYCODE_B && (action == InputConstants.PRESS || action == InputConstants.REPEAT)
+                    && event.hasControlDownWithQuirk() && mc.gui.screen() instanceof GuiScreen gui) {
+                gui.keyPressed(event);
                 return true;
             }
-            if (action != GLFW_PRESS || key < 0) {
+            int key = McKeys.toKit(event.key());
+            if (action != InputConstants.PRESS || key < 0) {
                 return false;
             }
             Settings s = Baritone.settings();
@@ -52,10 +50,6 @@ public final class GuiHotkey {
     // and the chat screen closes itself right after the command, which would take a screen opened now down with it. so
     // open on the next tick, when chat is gone
     public static String open() {
-        // todo 26.3: refuse until the screen draws and takes keys, it would open invisible and nothing could close it
-        if (true) {
-            return "The gui is not ported to 26.3 yet.";
-        }
         Minecraft mc = Minecraft.getInstance();
         if (mc.gui.screen() instanceof GuiScreen) {
             return null;
@@ -79,10 +73,6 @@ public final class GuiHotkey {
     }
 
     private static boolean canOpen(Minecraft mc) {
-        // todo 26.3: false for now, a hotkey match on a stray scancode must not open an invisible screen (see open())
-        if (true) {
-            return false;
-        }
         return mc.gui.screen() == null && mc.player != null && mc.level != null && mc.gui.overlay() == null;
     }
 

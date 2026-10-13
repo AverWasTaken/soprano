@@ -21,11 +21,9 @@ public class MixinKeyboardHandler {
     )
     private void soprano$openGui(final long window, final int action, final KeyEvent event, final CallbackInfo ci) {
         try {
-            // todo 26.3: keys come off SDL now. event.key() is an SDL scancode (InputConstants.KEY_B == 5, not glfw's 66)
-            // and keycode() is the SDL keycode ('b' == 98), action is PRESS 1 / RELEASE 0 / REPEAT -1 (glfw repeat was 2).
-            // GuiHotkey and KeyBind still compare glfw numbers, so they need remapping before the hotkey works again.
-            // until then the default (344) never matches and a custom glfw bind fires on the wrong key
-            if (window == Minecraft.getInstance().getWindow().handle() && GuiHotkey.onKey(event.key(), action)) {
+            // the event is sdl's: event.key() is a scancode and action is PRESS 1 / RELEASE 0 / REPEAT -1. GuiHotkey does
+            // the translation to the glfw numbers the setting holds
+            if (window == Minecraft.getInstance().getWindow().handle() && GuiHotkey.onKey(event, action)) {
                 ci.cancel();
             }
         } catch (Throwable t) {

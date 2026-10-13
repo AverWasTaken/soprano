@@ -204,12 +204,30 @@ public class CommandStatusOverlay {
     }
 
     private void draw(Minecraft mc, GuiGraphicsExtractor graphics, float scale, float alpha) {
-        // todo 26.3: nothing is drawn yet. the old body: pose pushPose/scale(scale, scale, 1F), the backdrop fill (MARGIN,
-        // MARGIN) to (x0 + _width + PAD, y0 + height + PAD) in fade(mc.options.getBackgroundColor(0.5F), alpha) (x0 = y0 =
-        // MARGIN + PAD, height = lines * LINE - 1), then per line drawString(font, name, x0 + depth * INDENT, y, fade(nameColor))
-        // and the state at the x drawString handed back (end of the name plus the shadow pixel, minus 1, plus GAP), then
-        // the timer at (_timerX, y0) in fade(DIM). all of it through graphics.fill, graphics.text(font, s, x, y, color, true)
-        // (returns void, so the end x is x + font.width(name) + 1) and a 2d Matrix3x2fStack pushMatrix/scale(s, s)/popMatrix
+        Font font = mc.font;
+        int height = _lines.size() * LINE - 1;
+        int x0 = MARGIN + PAD;
+        int y0 = MARGIN + PAD;
+        graphics.pose().pushMatrix();
+        graphics.pose().scale(scale, scale);
+        // the chat's backdrop, so the accessibility text background option applies here too
+        graphics.fill(MARGIN, MARGIN, x0 + _width + PAD, y0 + height + PAD, fade(mc.options.getBackgroundColor(0.5F), alpha));
+        int y = y0;
+        for (Line line : _lines) {
+            int x = x0 + line.depth * INDENT;
+            graphics.text(font, line.name, x, y, fade(line.nameColor, alpha), true);
+            if (!line.state.isEmpty()) {
+                // the state starts where the name ends, minus the shadow pixel the old drawString counted into its return
+                graphics.text(font, line.state, x + font.width(line.name) + GAP, y, fade(line.stateColor, alpha), true);
+            }
+            y += LINE;
+        }
+        if (_timer != null) {
+            // right after the chain name, not flush right: a long task line can make the box 300px wide and
+            // a clock floating off on its own over there reads as somebody else's
+            graphics.text(font, _timer, _timerX, y0, fade(DIM, alpha), true);
+        }
+        graphics.pose().popMatrix();
     }
 
     // Font treats alpha under 4 as "no alpha given" and draws opaque, so the fade never goes all the way down

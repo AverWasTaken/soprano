@@ -1,6 +1,7 @@
 package adris.altoclef.ui.gui.mc;
 
 import adris.altoclef.ui.gui.kit.AtlasPage;
+import adris.altoclef.ui.gui.kit.Safe;
 import adris.altoclef.ui.gui.kit.TextStyle;
 import adris.altoclef.ui.gui.kit.TexturedCanvas;
 import adris.altoclef.ui.gui.kit.Theme;
@@ -63,9 +64,13 @@ final class McCanvas extends TexturedCanvas {
         if (w <= 0 || h <= 0) {
             return;
         }
-        // todo 26.3: draw.g.blit(RenderPipelines.GUI_TEXTURED, atlases.texture(page), x0, y0, (float) sx, (float) sy, w, h,
-        // sw, sh, page.width(), page.height(), argb) is the shape (RenderType::guiTextured is gone, it takes a
-        // RenderPipeline now). keep the try/catch that sets broken, atlases.texture can throw on upload
+        try {
+            draw.blit(atlases.setup(page), page.width(), page.height(), sx, sy, sw, sh, x0, y0, w, h, argb);
+        } catch (Throwable t) {
+            // the page would not upload, the screen swaps to the plain canvas
+            Safe.report("gui atlas blit", t);
+            broken = true;
+        }
     }
 
     @Override
