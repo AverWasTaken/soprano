@@ -25,6 +25,7 @@ import adris.altoclef.tasks.speedrun.gamer.phases.ReturnPhase;
 import adris.altoclef.tasks.speedrun.gamer.phases.RoomPhase;
 import adris.altoclef.tasks.resources.CollectBedTask;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NetherRecoverTask;
+import adris.altoclef.tasks.speedrun.gamer.tasks.BedCraft;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NetherTripRules;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NightSleepTask;
 import adris.altoclef.tasks.speedrun.gamer.tasks.RecoverItemsTask;
@@ -1119,7 +1120,7 @@ public class GamerTask extends Task {
         if (why == NightSleep.Why.GO) {
             found = findNightBed(mod);
             NightSleep.BedSource source = NightSleep.bedSource(found != null, facts.count(ItemHelper.BED),
-                    NightSleepTask.bestWoolStack(mod), mod.getItemStorage().getItemCount(ItemHelper.PLANKS));
+                    BedCraft.bestWoolStack(mod), BedCraft.usablePlanks(mod));
             if (source == NightSleep.BedSource.NONE) {
                 return null;
             }

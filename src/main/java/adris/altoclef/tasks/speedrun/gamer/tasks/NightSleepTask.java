@@ -2,7 +2,6 @@ package adris.altoclef.tasks.speedrun.gamer.tasks;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
-import adris.altoclef.TaskCatalogue;
 import adris.altoclef.eventbus.EventBus;
 import adris.altoclef.eventbus.Subscription;
 import adris.altoclef.eventbus.events.GameOverlayEvent;
@@ -31,7 +30,6 @@ import net.minecraft.core.Direction;
 import net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket;
 import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.entity.monster.ZombifiedPiglin;
-import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.BedBlock;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
@@ -56,6 +54,8 @@ public class NightSleepTask extends Task {
     // a bed we keep clicking that does not put us to sleep in this long said no in a way we did not hear
     private static final int CLICK_PATIENCE_TICKS = 100;
     private static final double TICK_SECONDS = 0.05;
+    // how long the wool and the planks have to look gone, with nothing lying about to put back, before the craft is given up on
+    private static final int SETTLE_TICKS = 10;
 
     private final RunState state;
     private final Supplier<OverworldConfig> cfg;
@@ -99,6 +99,8 @@ public class NightSleepTask extends Task {
     private boolean liftAfterPickup;
     private int bedsBeforePickup;
     private boolean pickupArmed;
+    private final BedCraft bedCraft = new BedCraft();
+    private long shortSince = -1;
 
     private AltoClef mod;
     private volatile String overlay;
@@ -259,30 +261,36 @@ public class NightSleepTask extends Task {
         return mod.getItemStorage().getItemCount(ItemHelper.BED);
     }
 
-    public static int bestWoolStack(AltoClef mod) {
-        int best = 0;
-        for (Item wool : ItemHelper.WOOL) {
-            best = Math.max(best, mod.getItemStorage().getItemCount(wool));
-        }
-        return best;
-    }
-
     private Task craft(AltoClef mod, long now) {
         if (bedsInBag(mod) > 0) {
             afterBed(mod, now);
             return null;
         }
-        // the catalogue would hunt a sheep for missing wool, and this round it does not get to
-        if (NightSleep.bedSource(false, 0, bestWoolStack(mod), mod.getItemStorage().getItemCount(ItemHelper.PLANKS)) != BedSource.CRAFT) {
-            fail("the wool or the planks are gone", now);
+        // only what is in the bag: the catalogue's bed task mines the nearest bed it knows of and hunts sheep for missing wool
+        Task make = bedCraft.next(mod);
+        if (make == null) {
+            // a craft that got interrupted (ours or the phase's) can have left the wool or the planks in a grid or on the cursor,
+            // where they do not count. put them back and look again before calling them gone
+            if (shortSince < 0) {
+                shortSince = now;
+            }
+            Task stray = BedCraft.stray(mod);
+            if (stray != null) {
+                setDebugState("Putting the crafting leftovers back.");
+                return stray;
+            }
+            if (now - shortSince > SETTLE_TICKS) {
+                fail("the wool or the planks are gone", now);
+            }
             return null;
         }
+        shortSince = -1;
         if (NightSleep.timedOut(Stage.CRAFT, 0, secondsIn(now))) {
             fail("the bed took too long to craft", now);
             return null;
         }
         setDebugState("Crafting a bed.");
-        return TaskCatalogue.getItemTask("bed", 1);
+        return make;
     }
 
     private Task walk(AltoClef mod, long now) {
