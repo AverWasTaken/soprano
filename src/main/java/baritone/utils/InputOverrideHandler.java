@@ -93,6 +93,11 @@ public final class InputOverrideHandler extends Behavior implements IInputOverri
             setInputForceState(Input.CLICK_LEFT, false);
             setInputForceState(Input.CLICK_RIGHT, false);
         }
+        if (isInputForcedDown(Input.CLICK_RIGHT) && baritone.getInventoryBehavior().handWaitingOnSwap()) {
+            // the block we selected is still on its way to the hotbar and the click would hit the fallback in BlockPlaceHelper
+            // (useItem), so whatever is in that slot gets used instead. the movement asks again next tick, the swap has landed by then
+            setInputForceState(Input.CLICK_RIGHT, false);
+        }
         if (isInputForcedDown(Input.CLICK_LEFT)) {
             setInputForceState(Input.CLICK_RIGHT, false);
         }
