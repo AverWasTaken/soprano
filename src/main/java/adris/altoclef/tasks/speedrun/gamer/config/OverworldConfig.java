@@ -91,6 +91,21 @@ public class OverworldConfig {
     public double villageBedSeconds = 120;
     public double villageBedEachSeconds = 20;
 
+    // sleeping through the night (altoSleepAtNight, NightSleep). numbers only, so an old saved config just gets these. each night
+    // gets this many tries and this many seconds in all, after that the bot works the night like it always did
+    public int nightAttempts = 3;
+    public double nightSeconds = 150;
+    // no more than this many blocks of pillar to get a bed out of the monsters' reach, and this much air between the highest monster
+    // and the bottom of the box the game looks in (the box is 5 down, the extra is for the ones that walk up a slope)
+    public int nightMaxPillar = 16;
+    public double nightClearMargin = 1;
+    // after a try that went nowhere (no blocks for the pillar, a roof, water) look again no sooner than this
+    public double nightCooldownSeconds = 20;
+    // in the bed without the night passing (other players are not asleep) for this long, we get up and call it a failed try
+    public double nightSleepSeconds = 30;
+    // a bed standing this close counts as one we can use (the old bed task's number)
+    public int nightBedRadius = 40;
+
     // coal on the way (see DetourRules, DetourSpec.COAL): while GATHER and IRON mine, coal ore this close is worth a short detour,
     // because a smelt that runs short of fuel sends us out for coal anyway. the reach is WalkCost, blocks across plus 4 per block
     // of height, so about 12 flat or 3 up or down. it stops at what the plan still burns (DetourSpec.coalNeed, never past 16) or

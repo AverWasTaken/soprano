@@ -67,6 +67,8 @@ public class RunState {
     public boolean endPortalOpened;
     public Pos spawnBed;
     public boolean spawnBedSet;
+    // the bed we put down for the night (NightSleep) and have not picked up yet. not the spawn bed, and never a village's
+    public Pos nightBed;
 
     // gear we left lying in the End (item registry name -> count), replaces BM2's cache so a death there does not re-craft it
     public Map<String, Integer> endDrops = new HashMap<>();

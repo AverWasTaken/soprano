@@ -23,8 +23,10 @@ import adris.altoclef.tasks.speedrun.gamer.phases.OpenPhase;
 import adris.altoclef.tasks.speedrun.gamer.phases.PortalPhase;
 import adris.altoclef.tasks.speedrun.gamer.phases.ReturnPhase;
 import adris.altoclef.tasks.speedrun.gamer.phases.RoomPhase;
+import adris.altoclef.tasks.resources.CollectBedTask;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NetherRecoverTask;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NetherTripRules;
+import adris.altoclef.tasks.speedrun.gamer.tasks.NightSleepTask;
 import adris.altoclef.tasks.speedrun.gamer.tasks.RecoverItemsTask;
 import adris.altoclef.tasks.speedrun.gamer.tasks.RecoverRules;
 import adris.altoclef.tasksystem.Task;
@@ -32,8 +34,11 @@ import adris.altoclef.tasksystem.TaskChain;
 import adris.altoclef.trace.Trace;
 import adris.altoclef.trace.Vitals;
 import adris.altoclef.util.helpers.DeathStash;
+import adris.altoclef.util.helpers.CombatCommit;
 import adris.altoclef.util.helpers.ItemHelper;
+import adris.altoclef.util.helpers.NightSleepHook;
 import adris.altoclef.util.helpers.StationHook;
+import adris.altoclef.util.helpers.WorldHelper;
 import baritone.Baritone;
 import baritone.altoclef.SettingsOverrides;
 import baritone.api.Settings;
@@ -42,11 +47,14 @@ import it.unimi.dsi.fastutil.longs.LongSet;
 import it.unimi.dsi.fastutil.longs.LongSets;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.DeathScreen;
+import net.minecraft.client.gui.screens.InBedChatScreen;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.WinScreen;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.level.block.BedBlock;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
@@ -131,6 +139,11 @@ public class GamerTask extends Task {
     private NetherRecoverTask netherTrip;
     // deaths on the books when this run was (re)started by hand, so the run wide cap only counts the new ones
     private int deathsAtStart;
+
+    // the night in bed (NightSleep): what tonight has used up, the trip while there is one, and who we were when it began
+    private final NightSleep.Budget nightBudget = new NightSleep.Budget();
+    private NightSleepTask nightTrip;
+    private LocalPlayer nightPlayer;
 
     // what the user had before we changed it for the run, to hand back on stop
     private Boolean userBlastFurnace;
@@ -235,6 +248,9 @@ public class GamerTask extends Task {
         } finally {
             begun = false;
             interruptedAt = -1;
+            // mob defense must not stay stood down for a trip nobody is running
+            nightTrip = null;
+            NightSleepHook.clear();
             // the food task must stop seeing our jobs once we are gone
             AsyncSmelting.clear();
             CookTrip.unbind();
@@ -735,7 +751,13 @@ public class GamerTask extends Task {
         if (machine.ended()) {
             return null;
         }
+        // a new player is a death: the night trip died with the old one, and its stand down must not outlive it into the walk back
+        // for our things (the recovery branches below return before the night branch is asked)
+        if (nightTrip != null && mod.getPlayer() != nightPlayer) {
+            dropNightTrip();
+        }
         if (state.netherTrip != null) {
+            dropNightTrip();
             // same deal as the recovery below: the trip is not the phase's time and not its fault. the task clears the
             // state when it is over, and the machine has the next tick
             if (netherTrip == null) {
@@ -750,6 +772,7 @@ public class GamerTask extends Task {
         }
         netherTrip = null;
         if (recoverStillWanted(now)) {
+            dropNightTrip();
             // the recovery is not the phase's time and not its fault: both clocks wait for it (a stall is forgiven the same way)
             machine.observe();
             machine.holdClocks();
@@ -757,6 +780,16 @@ public class GamerTask extends Task {
             updateRecoveryHud(HudRules.recoveryWords(blocksTo(recoverPos)));
             autosave(now);
             return recover;
+        }
+        Task night = nightSleepTick(mod);
+        if (night != null) {
+            // same deal again: a night in bed is not the phase's time and not its fault
+            machine.observe();
+            machine.holdClocks();
+            setDebugState("Sleeping through the night.", "Sleeping through the night");
+            updateRecoveryHud("Sleeping through the night");
+            autosave(now);
+            return night;
         }
         Task child = machine.tick(mod);
         if (!machine.ended()) {
@@ -1054,6 +1087,144 @@ public class GamerTask extends Task {
             return false;
         }
         return true;
+    }
+
+    // ---- the night (altoSleepAtNight, NightSleep)
+
+    // the task to run instead of the phase, or null. a trip that is running keeps the wheel until it says it is over, a new one
+    // starts when NightSleep.decide says so. mob defense hears about the stage through the hook, every tick
+    private Task nightSleepTick(AltoClef mod) {
+        double seconds = facts.gameTime() * 0.05;
+        nightBudget.roll(NightSleep.nightOf(mod.getWorld().getDayTime()));
+        if (nightTrip != null) {
+            if (nightTrip.isFinished(mod) || facts.dimension() != Dimension.OVERWORLD) {
+                // (the bed a dead or dropped trip left is picked up by a cleanup trip)
+                dropNightTrip();
+                machine.releaseHold();
+                return null;
+            }
+            NightSleepHook.set(nightTrip.stage());
+            return nightTrip;
+        }
+        NightSleepHook.clear();
+        if (!Baritone.settings().altoSleepAtNight.value || facts.dimension() != Dimension.OVERWORLD) {
+            return null;
+        }
+        boolean leftover = leftoverNightBed(mod);
+        NightSleep.Inputs cheap = new NightSleep.Inputs(true, true, !mod.getWorld().isDay(), nightBusy(), nightFighting(mod),
+                NightSleep.shouldAbandon(mod.getPlayer().getHealth()), nightBudget.spent(cfg.overworld.nightAttempts, cfg.overworld.nightSeconds), nightBudget.cooling(seconds),
+                NightSleep.BedSource.BAG, leftover);
+        NightSleep.Why why = NightSleep.decide(cheap);
+        BlockPos found = null;
+        if (why == NightSleep.Why.GO) {
+            found = findNightBed(mod);
+            NightSleep.BedSource source = NightSleep.bedSource(found != null, facts.count(ItemHelper.BED),
+                    NightSleepTask.bestWoolStack(mod), mod.getItemStorage().getItemCount(ItemHelper.PLANKS));
+            if (source == NightSleep.BedSource.NONE) {
+                return null;
+            }
+            startNightTrip(mod, source, found);
+            return nightTrip;
+        }
+        if (why == NightSleep.Why.LEFTOVER) {
+            startNightTrip(mod, NightSleep.BedSource.NONE, null);
+            return nightTrip;
+        }
+        return null;
+    }
+
+    private void dropNightTrip() {
+        nightTrip = null;
+        NightSleepHook.clear();
+    }
+
+    private void startNightTrip(AltoClef mod, NightSleep.BedSource source, BlockPos found) {
+        if (state.nightBed == null) {
+            nightBudget.began();
+        }
+        nightPlayer = mod.getPlayer();
+        nightTrip = new NightSleepTask(state, () -> cfg.overworld, nightBudget, this::nightBlocks, host::say, host::save, source, found);
+    }
+
+    // blocks the pillar may really spend: the cobble the stone kit still eats is spoken for (updateStoneFloor) and placing never
+    // touches it, so counting it here would start a pillar that runs dry halfway up
+    private int nightBlocks() {
+        boolean kitPhase = state.phase == GamerPhase.GATHER || state.phase == GamerPhase.IRON;
+        return Math.max(0, facts.buildBlocks() - (kitPhase ? KitPlanner.stoneFloor(facts, cfg.overworld) : 0));
+    }
+
+    // phases that must not be interrupted for a night: the portal (a pool of lava being cast), the nether, and the ones that
+    // care where the spawn bed is. plus anything with a station being picked up, a furnace load half done or a screen open
+    private boolean nightBusy() {
+        if (!NightSleep.phaseAllowed(state.phase)) {
+            return true;
+        }
+        for (Bench b : state.benches) {
+            if (b.state == Bench.State.PICKING_UP) {
+                return true;
+            }
+        }
+        if (facts.smeltBatch() != null || facts.earlyLoadInFlight()) {
+            return true;
+        }
+        Screen screen = Minecraft.getInstance().screen;
+        return screen != null && !(screen instanceof InBedChatScreen);
+    }
+
+    private boolean nightFighting(AltoClef mod) {
+        return mod.getMobDefenseChain().combatMode() != CombatCommit.Mode.NONE;
+    }
+
+    // one of our own beds from an earlier trip, still standing close enough to walk back for. one that is gone is forgotten
+    private boolean leftoverNightBed(AltoClef mod) {
+        RunState.Pos at = state.nightBed;
+        if (at == null) {
+            return false;
+        }
+        BlockPos pos = new BlockPos(at.x, at.y, at.z);
+        boolean standing = mod.getWorld().hasChunkAt(pos) && mod.getWorld().getBlockState(pos).getBlock() instanceof BedBlock;
+        if (standing && pos.closerToCenterThan(mod.getPlayer().position(), cfg.overworld.nightBedRadius + 8)) {
+            return true;
+        }
+        // taken or broken by somebody, or too far or unloaded to walk back for: not ours to keep a claim on. a claim left standing
+        // here would start a trip that reads an unloaded bed as air and goes looking for its item
+        state.nightBed = null;
+        host.save();
+        return false;
+    }
+
+    // a bed that is already standing close by and that we can sleep in right now: not on copper (a trial chamber's), nothing
+    // nasty within the game's box around it. our own night bed never gets here, a trip that left one is a cleanup trip first
+    private BlockPos findNightBed(AltoClef mod) {
+        var tracker = mod.getBlockTracker();
+        BlockPos best = null;
+        double bestDist = Double.POSITIVE_INFINITY;
+        for (BlockPos pos : tracker.getKnownLocations(CollectBedTask.BEDS)) {
+            double dist = pos.distToCenterSqr(mod.getPlayer().position());
+            if (dist >= bestDist || dist > (double) cfg.overworld.nightBedRadius * cfg.overworld.nightBedRadius) {
+                continue;
+            }
+            if (!(mod.getWorld().getBlockState(pos).getBlock() instanceof BedBlock) || tracker.unreachable(pos)) {
+                continue;
+            }
+            BlockPos head = WorldHelper.getBedHead(mod, pos);
+            if (head == null || NightSleepTask.monstersBlock(mod, head) || onCopper(mod, head)) {
+                continue;
+            }
+            best = pos;
+            bestDist = dist;
+        }
+        return best;
+    }
+
+    private static boolean onCopper(AltoClef mod, BlockPos pos) {
+        Block below = mod.getWorld().getBlockState(pos.below()).getBlock();
+        for (Block copper : ItemHelper.itemsToBlocks(ItemHelper.COPPER_BLOCKS)) {
+            if (copper == below) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // ---- what the command shows

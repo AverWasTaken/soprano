@@ -525,15 +525,10 @@ public interface WorldHelper {
     }
 
     static boolean canSleep() {
-        int time = 0;
         ClientLevel world = Minecraft.getInstance().level;
-        if (world != null) {
-            // You can sleep during thunderstorms
-            if (world.isThundering() && world.isRaining())
-                return true;
-            time = (int) (world.getDayTime() % 24000);
-        }
-        // https://minecraft.fandom.com/wiki/Daylight_cycle
-        return 12542 <= time && time <= 23992;
+        // the game's own rule (ServerPlayer.startSleepInBed refuses while Level.isDay()): dusk to dawn, 12542 to 23459 in clear
+        // weather, and any time in a thunderstorm. the hand copied window this had ended at 23992, which is the end of a rainy
+        // night. a nether or end bed explodes, so only a dimension where beds work counts
+        return world != null && world.dimensionType().bedWorks() && !world.isDay();
     }
 }

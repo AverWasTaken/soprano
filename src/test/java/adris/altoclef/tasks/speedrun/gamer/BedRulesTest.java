@@ -102,6 +102,27 @@ public class BedRulesTest {
     }
 
     @Test
+    public void theNightBedIsOursWhileItStandsAndNeverAVillageBed() {
+        // a night bed up on a pillar in a village, a job block next to it: without the own list it is a village's and the
+        // bed shortfall would break it and pocket it as a free bed. with it, both halves are left alone
+        List<RunState.Pos> bed = List.of(pos(5, 64, 5), pos(5, 64, 6));
+        List<RunState.Pos> evidence = List.of(pos(8, 64, 5));
+        assertEquals(pos(5, 64, 5), pick(bed, evidence, NONE, NONE, NONE, ANY));
+        List<RunState.Pos> own = BedRules.ownBeds(null, pos(5, 64, 5));
+        assertEquals(List.of(pos(5, 64, 5)), own);
+        assertNull(pick(bed, evidence, own, NONE, NONE, ANY));
+        // and it does not vouch for a lone bed beside it any more than the spawn bed does
+        assertNull(pick(List.of(pos(5, 64, 5), pos(5, 64, 6), pos(9, 64, 5), pos(10, 64, 5)), NONE, own, NONE, NONE, ANY));
+    }
+
+    @Test
+    public void ownBedsAreWhicheverOfTheTwoExist() {
+        assertTrue(BedRules.ownBeds(null, null).isEmpty());
+        assertEquals(List.of(pos(1, 2, 3)), BedRules.ownBeds(pos(1, 2, 3), null));
+        assertEquals(List.of(pos(1, 2, 3), pos(4, 5, 6)), BedRules.ownBeds(pos(1, 2, 3), pos(4, 5, 6)));
+    }
+
+    @Test
     public void theBudgetIsTicksAndSurvivesARelog() {
         assertTrue(BedRules.withinBudget(0, 120));
         assertTrue(BedRules.withinBudget(2399, 120));
