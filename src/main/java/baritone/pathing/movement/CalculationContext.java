@@ -196,7 +196,8 @@ public class CalculationContext {
         this.hasThrowaway = hasThrowaway && !paused; // paused means no placing, whatever's in the hotbar
         this.hasWaterBucket = hasWaterBucket;
         // same idea as the bucket, except it isn't banned in the nether. the setting goes first so nobody scans the hotbar for nothing
-        Item clutchItem = Baritone.settings().allowLadderClutch.value ? ((Baritone) baritone).getInventoryBehavior().pickClutchItem(false) : null;
+        // (no baritone means a test building one by hand, with fastMode on it would otherwise go looking for a hotbar)
+        Item clutchItem = baritone != null && ExperimentalMovement.allowLadderClutch() ? ((Baritone) baritone).getInventoryBehavior().pickClutchItem(false) : null;
         this.hasClutchItem = clutchItem != null;
         this.clutchPicksUp = clutchItem == Items.LADDER && Baritone.settings().pickupLadders.value;
         this.health = health;

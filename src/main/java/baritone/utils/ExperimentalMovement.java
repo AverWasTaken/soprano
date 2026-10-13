@@ -46,6 +46,12 @@ public final class ExperimentalMovement {
         return on() || Baritone.settings().allowParkourPlace.value;
     }
 
+    // the planner (CalculationContext), the hotbar keeper (InventoryBehavior) and the mid air probe (LadderClutchFallTask)
+    // all have to agree on this or fast mode plans a clutch that nobody keeps a ladder on the hotbar for
+    public static boolean allowLadderClutch() {
+        return on() || Baritone.settings().allowLadderClutch.value;
+    }
+
     public static boolean allowNeos() {
         return on() || Baritone.settings().allowNeos.value;
     }

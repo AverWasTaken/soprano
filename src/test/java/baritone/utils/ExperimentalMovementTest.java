@@ -85,6 +85,27 @@ public class ExperimentalMovementTest {
     }
 
     @Test
+    public void ladderClutchFollowsThePreset() {
+        Settings settings = settingsOrSkip();
+        boolean fast = settings.fastMode.value;
+        boolean clutch = settings.allowLadderClutch.value;
+        try {
+            settings.fastMode.value = false;
+            settings.allowLadderClutch.value = false;
+            assertFalse(ExperimentalMovement.allowLadderClutch());
+            settings.allowLadderClutch.value = true;
+            assertTrue(ExperimentalMovement.allowLadderClutch()); // gamer forces the setting, that has to keep working
+            settings.allowLadderClutch.value = false;
+            settings.fastMode.value = true;
+            assertTrue(ExperimentalMovement.allowLadderClutch());
+            assertFalse(settings.allowLadderClutch.value);
+        } finally {
+            settings.fastMode.value = fast;
+            settings.allowLadderClutch.value = clutch;
+        }
+    }
+
+    @Test
     public void parkourPlaceFollowsThePreset() {
         Settings settings = settingsOrSkip();
         boolean fast = settings.fastMode.value;

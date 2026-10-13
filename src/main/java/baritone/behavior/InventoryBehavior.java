@@ -21,6 +21,7 @@ import baritone.Baritone;
 import baritone.altoclef.AltoClefSettings;
 import baritone.api.event.events.TickEvent;
 import baritone.api.utils.Helper;
+import baritone.utils.ExperimentalMovement;
 import baritone.utils.ToolSet;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.Direction;
@@ -59,7 +60,7 @@ public final class InventoryBehavior extends Behavior implements Helper {
         boolean shuffle = Baritone.settings().allowInventory.value;
         // the clutch item only works from the hotbar (nobody shuffles the inventory mid fall), so that one move is allowed
         // even when the user keeps allowInventory off
-        boolean clutch = Baritone.settings().allowLadderClutch.value;
+        boolean clutch = ExperimentalMovement.allowLadderClutch();
         if (!(shuffle || clutch) || AltoClefSettings.getInstance().isInteractionPaused()) {
             return; // paused means the hotbar is somebody else's problem right now
         }

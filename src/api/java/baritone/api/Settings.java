@@ -174,7 +174,10 @@ public final class Settings {
      * a water bucket clutch but with a block you can carry in the nether.
      * <p>
      * Needs a ladder or vine on the hotbar and a wall beside the last few blocks of the fall. The water bucket is still
-     * preferred when you have one. Reliability: also questionable, it's all about the timing.
+     * preferred when you have one. Reliability: also questionable, it's all about the timing, and a clutch that misses is
+     * just the whole fall. The planner won't offer one below {@link #fastModeMinHealth} for that reason.
+     * <p>
+     * Part of {@link #fastMode}.
      */
     public final Setting<Boolean> allowLadderClutch = new Setting<>(false);
 
@@ -538,7 +541,7 @@ public final class Settings {
      * <p>
      * While this is on, these settings behave as if they were on, whatever their own value (the settings themselves
      * are left alone, so turning this off gives you your old choices back):
-     * {@link #allowParkour}, {@link #allowParkourAscend}, {@link #allowParkourPlace}, {@link #allowNeos}, {@link #allowClimbJumps},
+     * {@link #allowParkour}, {@link #allowParkourAscend}, {@link #allowParkourPlace}, {@link #allowLadderClutch}, {@link #allowNeos}, {@link #allowClimbJumps},
      * {@link #allowMomentumJumps},
      * {@link #allowDiagonalAscend}, {@link #allowDiagonalDescend}, {@link #sprintJumping}, {@link #headHitters},
      * {@link #allowGroundShortcuts}, {@link #allowGodBridge} and {@link #preferFasterPathing}.
