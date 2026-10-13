@@ -132,23 +132,29 @@ public class WaterBreakCostTest {
         return with - without;
     }
 
+    // the swinging is what water slows down. the idle ticks the bot waits after a break are the same wherever it stands
+    private double slowedBy(double factor, double dry) {
+        double idle = settings.blockBreakSpeed.value - 1;
+        return (dry - idle) * factor + idle;
+    }
+
     @Test
     public void headUnderwaterOnTheBottomIsFiveTimes() {
         double dry = breakPart(false, false, true);
         assertTrue("stone should cost something, got " + dry, dry > 1);
-        assertEquals(dry * 5, breakPart(true, true, true), 1e-6);
+        assertEquals(slowedBy(5, dry), breakPart(true, true, true), 1e-6);
     }
 
     @Test
     public void eyesUnderWaterOverADryBlockStillCount() {
         double dry = breakPart(false, false, true);
-        assertEquals(dry * 5, breakPart(false, true, true), 1e-6);
+        assertEquals(slowedBy(5, dry), breakPart(false, true, true), 1e-6);
     }
 
     @Test
     public void floatingOnTopOfThatIsTwentyFive() {
         double dry = breakPart(false, false, true);
-        assertEquals(dry * 25, breakPart(true, true, false), 1e-6);
+        assertEquals(slowedBy(25, dry), breakPart(true, true, false), 1e-6);
     }
 
     @Test

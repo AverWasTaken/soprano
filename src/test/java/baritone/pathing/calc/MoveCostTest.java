@@ -389,4 +389,57 @@ public class MoveCostTest {
         sand.set(1, 64, 0, up);
         assertEquals(JUMP_UP, MovementAscend.cost(new Ctx(sand), 0, 64, 0, 1, 0), 1e-9);
     }
+
+    // ---- breaking ----
+
+    // iron pickaxe on stone: 1.5 hardness, 6 speed, /30 is 0.1333 progress a tick, so 7.5 ticks of swinging
+    private static final double IRON_ON_STONE = 6.0 / (1.5 * 30);
+
+    private static final class PickCtx extends CalculationContext {
+        PickCtx(BlockStateInterface bsi) {
+            this(bsi, IRON_ON_STONE);
+        }
+
+        PickCtx(BlockStateInterface bsi, double progressPerTick) {
+            super(null, true, null, null, bsi, new ToolSet(null) {
+                @Override
+                public double getStrVsBlock(BlockState state) {
+                    return progressPerTick;
+                }
+            }, false, false, true, 0, 0.0f, 20.0, false);
+        }
+    }
+
+    // the same wall at the destination, in front of the head and at the feet. blocks=1 leaves the head clear
+    private static MapWorld tunnel(int blocks) {
+        MapWorld w = floor();
+        w.set(1, 64, 0, Blocks.STONE.defaultBlockState());
+        if (blocks == 2) {
+            w.set(1, 65, 0, Blocks.STONE.defaultBlockState());
+        }
+        return w;
+    }
+
+    @Test
+    public void breakingRoundsUpToWholeTicksAndWaitsOutTheCooldown() {
+        // BlockBreakHelper: a start tick that does nothing, ceil(T) ticks of progress, then blockBreakSpeed - 1 idle.
+        // T = 1 / 0.1333 = 7.5 so 8, which is 8 + 1 + 5 = 14 a block. the walk happens in the last idle
+        double penalty = settings.blockBreakAdditionalPenalty.value;
+        double idle = settings.blockBreakSpeed.value - 1;
+        double one = MovementTraverse.cost(new PickCtx(tunnel(1)), 0, 64, 0, 1, 0);
+        assertEquals(8 + 1 + idle + penalty, one, 1e-9);
+        double two = MovementTraverse.cost(new PickCtx(tunnel(2)), 0, 64, 0, 1, 0);
+        // 2 * 14 = 28 and a real run of it is 27.6 (the vanilla timeline: start, break at +8, start at +14, break at +22, then walk)
+        assertEquals(2 * (8 + 1 + idle + penalty), two, 1e-9);
+        double realTwo = 8 + 6 + 8 + 1 + WALK_ONE_BLOCK_COST;
+        assertEquals(realTwo + 2 * penalty, two, 0.5);
+    }
+
+    @Test
+    public void anInstantBreakIsOneTickAndNeverWaits() {
+        // progress of 1 or more a tick is over on the click, BlockBreakHelper sets no delay after one
+        double penalty = settings.blockBreakAdditionalPenalty.value;
+        double cost = MovementTraverse.cost(new PickCtx(tunnel(1), 1.5), 0, 64, 0, 1, 0);
+        assertEquals(WALK_ONE_BLOCK_COST + 1 + penalty, cost, 1e-9);
+    }
 }
