@@ -543,7 +543,8 @@ public interface WorldHelper {
         return world != null && overworldType(world) && !world.isBrightOutside();
     }
 
-    // ultraWarm used to be the nether-only flag, water_evaporates is the synced attribute that took its job
+    // ultraWarm used to be the nether-only flag, water_evaporates is the synced attribute that took its job. vanilla's bucket
+    // asks it per position, but nothing in the vanilla data layers it by biome, so the dimension wide value is the same answer
     static boolean waterEvaporates(Level world) {
         return world.environmentAttributes().getDimensionValue(EnvironmentAttributes.WATER_EVAPORATES);
     }
