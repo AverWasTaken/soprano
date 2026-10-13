@@ -97,9 +97,9 @@ public class MLGBucketTask extends Task {
         Player player = Minecraft.getInstance().player;
         assert player != null;
         double totalFallDistance = player.fallDistance + (player.getY() - pos.getY() - 1);
-        // Copied from living entity I think, somewhere idk you get the picture.
-        double baseFallDamage = Mth.ceil(totalFallDistance - 3.0F);
-        // Be a bit conservative, assume MORE damage
+        // 26.3 calculateFallDamage: floor(fall + 1e-6 - safe). the landing move counts toward the fall there, and our total
+        // already runs to the top of the block, so this is the real number (it used to be a ceil that over-guessed on purpose)
+        double baseFallDamage = Math.max(0, Mth.floor(totalFallDistance + 1e-6 - 3.0));
         assert world != null;
         return EntityHelper.calculateResultingPlayerDamage(player, world.damageSources().fall(), baseFallDamage);
     }
