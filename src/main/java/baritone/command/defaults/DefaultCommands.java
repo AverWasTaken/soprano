@@ -48,6 +48,7 @@ public final class DefaultCommands {
                 new AxisCommand(baritone),
                 new ForceCancelCommand(baritone),
                 new GcCommand(baritone),
+                new TimingsCommand(baritone),
                 new InvertCommand(baritone),
                 new TunnelCommand(baritone),
                 new RenderCommand(baritone),

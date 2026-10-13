@@ -911,6 +911,26 @@ public final class Settings {
     public final Setting<Boolean> chatControlAnyway = new Setting<>(false);
 
     /**
+     * Measure how long every movement really takes against what the planner said it would, and keep the numbers.
+     * <p>
+     * For each movement the executor runs from its first tick to success without a pause, a cancel, a resync or a
+     * jump ahead in the path, it writes one line to {@code movement-timings.csv} in the baritone folder of your
+     * minecraft folder (next to {@code settings.txt}): the movement kind and offset, the planned ticks, the real
+     * ticks, and a few flags (blocks broken and placed, sprinting, in water, standing still at the start, the floor
+     * under the start, {@link #fastMode}). Lines are batched and written by a background thread a few seconds after
+     * they happen, never on the game thread. The file is capped at 4 MiB: when it is full it is renamed to
+     * {@code movement-timings.csv.old} (replacing the older one) and a fresh one starts, so at most about 8 MiB is
+     * ever used.
+     * <p>
+     * Use the {@code timings} command to print which movements are off the most, and {@code timings clear} to throw
+     * the data away.
+     * <p>
+     * This only measures. Nothing reads the numbers back to change a cost, and with this off the executor only reads
+     * this setting once per movement and does nothing else.
+     */
+    public final Setting<Boolean> recordMovementTimings = new Setting<>(true);
+
+    /**
      * Render the path
      */
     public final Setting<Boolean> renderPath = new Setting<>(true);

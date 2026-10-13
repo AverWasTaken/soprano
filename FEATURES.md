@@ -12,6 +12,7 @@ These are on top of the Baritone features below, and all are off by default unle
 - **AltoClef** (`#get`, `#gamer` and friends). [AltoClef](https://github.com/gaucho-matrero/altoclef) runs on top of the pathfinder: ask for an item and it mines, crafts, smelts, fights and eats its way there, with its current task tree shown in the top left. It does nothing until you start a task. Its settings all start with `alto`, see the [AltoClef section of USAGE.md](USAGE.md#altoclef).
 - **Rendering.** The path is a smooth antialiased ribbon with rounded corners, and the search visual is softer.
 - **Performance.** The pathfinder considers more movements per second and reuses its cache buffers.
+- **Movement timings** (`recordMovementTimings`, on by default). Records planned versus real ticks for every movement it finishes cleanly, in a capped csv in the `baritone` folder, and `#timings` ranks the movements the planner gets most wrong. Measuring only.
 
 # Pathing features
 
