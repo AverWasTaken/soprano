@@ -11,7 +11,7 @@ import java.util.List;
 //    question is "is our hitbox bottom below the golem's head", nothing about horizontal distance saves us
 //  - MeleeAttackGoal.canUse is true with a partial path or in range, so a golem under a pillar keeps coming and
 //    stands against it, it just can never get its box up to our feet
-//  - Player.canInteractWithEntity is the distance from our EYE to the nearest point of the golem's box against the
+//  - Player.isWithinEntityInteractionRange (canInteractWithEntity before 26.3) is the distance from our EYE to the nearest point of the golem's box against the
 //    entity interaction range, 3.0 in survival. the server is looser (it asks with a 3.0 buffer) but we play fair
 public final class GolemRules {
     public static final double GOLEM_HEIGHT = 2.7;

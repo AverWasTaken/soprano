@@ -3,7 +3,7 @@ package adris.altoclef.tasks.speedrun.gamer.config;
 // owner: nether worker (NETHER, EYES, RETURN)
 public class NetherConfig {
     public enum PearlSource {
-        // endermen. v1 never barters on its own: 1.21.4 barter is 2.18% per ingot and the gold for it rarely exists
+        // endermen. v1 never barters on its own: 26.3 barter is 2.13% per ingot (10 in 469) and the gold for it rarely exists
         AUTO,
         ENDERMEN,
         BARTER
