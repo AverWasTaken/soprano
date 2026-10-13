@@ -144,6 +144,42 @@ public class ParkourLandingTest {
     }
 
     @Test
+    public void flatGapsStillLandOnStone() {
+        for (int gap = 1; gap <= 3; gap++) {
+            MutableMoveResult res = east(gap(gap, stone()));
+            assertTrue("gap " + gap + " cost " + res.cost, res.cost < COST_INF);
+            assertEquals(gap + 1, res.x);
+            assertEquals(FEET, res.y);
+        }
+    }
+
+    @Test
+    public void bottomSlabIsNotALanding() {
+        for (int gap = 1; gap <= 3; gap++) {
+            MutableMoveResult res = east(gap(gap, bottomSlab()));
+            assertTrue("gap " + gap + " onto a bottom slab should be turned down, got cost " + res.cost, res.cost >= COST_INF);
+        }
+    }
+
+    @Test
+    public void bottomSlabAtFeetLevelIsNotAnAscendLanding() {
+        for (int gap = 1; gap <= 2; gap++) {
+            MapWorld stoneStep = new MapWorld();
+            stoneStep.set(0, FLOOR, 0, stone());
+            stoneStep.set(gap + 1, FEET, 0, stone());
+            MutableMoveResult ok = east(stoneStep);
+            assertTrue("ascend over gap " + gap + " cost " + ok.cost, ok.cost < COST_INF);
+            assertEquals(FEET + 1, ok.y);
+
+            MapWorld slabStep = new MapWorld();
+            slabStep.set(0, FLOOR, 0, stone());
+            slabStep.set(gap + 1, FEET, 0, bottomSlab());
+            MutableMoveResult bad = east(slabStep);
+            assertTrue("ascend over gap " + gap + " onto a bottom slab, got cost " + bad.cost, bad.cost >= COST_INF);
+        }
+    }
+
+    @Test
     public void overshotBySaysHowFarPastDest() {
         BlockPos dest = new BlockPos(10, 64, 5);
         assertEquals(0, MovementParkour.overshotBy(dest, Direction.EAST, dest));
