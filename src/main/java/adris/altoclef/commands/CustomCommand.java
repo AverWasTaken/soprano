@@ -51,9 +51,11 @@ public class CustomCommand extends AltoClefCommand {
             }
             lines.add(line.toString());
         }
-        // the lines are the user's own config, so they run with everything, and when the last one ends so does this
-        // command (which is what a butler is waiting on)
-        AltoClefCommands.execute(String.join(";", lines), AltoClefCommands.takeFinish(), Debug::logWarning, false);
+        // the lines are the owner's own config, so they run with everything, unless a whisper asked for them: then they
+        // stay on the same leash as the whisper (a task list with a punk in it must not be a way around the deny list).
+        // when the last one ends so does this command, which is what a butler is waiting on
+        boolean butler = AltoClefCommands.currentIsButler();
+        AltoClefCommands.execute(String.join(";", lines), AltoClefCommands.takeFinish(), Debug::logWarning, butler);
     }
 
     @Override

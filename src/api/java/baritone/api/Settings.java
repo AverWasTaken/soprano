@@ -1906,14 +1906,16 @@ public final class Settings {
     public final Setting<Boolean> altoRunsWhenIdle = new Setting<>(false);
 
     /**
-     * Let other players whisper AltoClef commands to your player. Only players in the whitelist file
-     * baritone/altoclef/altoclef_butler_whitelist.txt (one name per line, case does not matter) may, and an empty or
-     * missing whitelist means nobody can. The blacklist file next to it is applied on top and wins. Whispers can only
-     * run AltoClef's commands, not Baritone's own, and never punk or gamma. Off by default.
+     * Let other players whisper AltoClef commands to your player (<code>/msg yourbot get cobblestone 4</code>). Only
+     * players in the whitelist file baritone/altoclef/altoclef_butler_whitelist.txt (one name per line, case does not
+     * matter) may, and an empty or missing whitelist means nobody can, so this does nothing until you add someone with
+     * the whitelist command. The blacklist file next to it is applied on top and wins. Whispers can only run
+     * AltoClef's commands, not Baritone's own, and never punk, gamma or whitelist. A whispered come walks to the player
+     * who sent it. Strangers get no answer unless replyToUnauthorized is on in butler.json. On by default.
      * <p>
      * Whisper parsing is set up in baritone/altoclef/configs/butler.json.
      */
-    public final Setting<Boolean> altoButler = new Setting<>(false);
+    public final Setting<Boolean> altoButler = new Setting<>(true);
 
     /**
      * Show the task list of AltoClef in the top left corner while it is running.

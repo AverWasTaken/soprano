@@ -23,6 +23,7 @@ import adris.altoclef.tasks.construction.CoverWithBlocksTask;
 import adris.altoclef.tasks.construction.CoverWithSandTask;
 import adris.altoclef.tasks.entity.HeroTask;
 import adris.altoclef.tasks.entity.SelfCareTask;
+import adris.altoclef.tasks.movement.ComeToPlayerTask;
 import adris.altoclef.tasks.movement.FollowPlayerTask;
 import adris.altoclef.tasks.movement.IdleTask;
 import adris.altoclef.tasksystem.Task;
@@ -47,11 +48,13 @@ public final class AltoClefCommands {
 
     // every name and alias we registered, for the butler allow-list
     private static final Set<String> OWNED = new HashSet<>();
-    // butler lines that altoclef answers itself instead of asking the manager, see runOne
-    private static final Set<String> BUTLER_INTERNAL = Set.of("goto", "follow", "stop", "cancel");
-    // ours, but not something a whisper gets to run. punk kills a player and gamma is the owner's own screen. subtracted
-    // from everything else, so a new alias of these has to be added here too
-    private static final Set<String> BUTLER_DENIED = Set.of("punk", "gamma", "setgamma", "set_gamma");
+    // butler lines that altoclef answers itself instead of asking the manager, see runOne. come is one of these because
+    // soprano's own come walks to the camera, and a whisper wants the player who asked
+    private static final Set<String> BUTLER_INTERNAL = Set.of("goto", "follow", "stop", "cancel", "come");
+    // ours, but not something a whisper gets to run. punk kills a player, gamma is the owner's own screen and whitelist
+    // is who gets to whisper at all (a trusted player must not be able to trust anyone else). subtracted from everything
+    // else, so a new alias of these has to be added here too
+    private static final Set<String> BUTLER_DENIED = Set.of("punk", "gamma", "setgamma", "set_gamma", "whitelist");
 
     private static final Runnable NOOP = () -> {
     };
@@ -67,16 +70,20 @@ public final class AltoClefCommands {
 
     private static final class Dispatch {
         final Runnable onFinish;
+        // true when the line came from a whisper, so a command that runs more lines (custom) keeps them on the leash
+        final boolean butler;
         boolean taken;
         Exception failure;
 
-        Dispatch(Runnable onFinish) {
+        Dispatch(Runnable onFinish, boolean butler) {
             this.onFinish = onFinish;
+            this.butler = butler;
         }
     }
 
     public static List<ICommand> createAll(IBaritone baritone) {
         return List.of(
+                new WhitelistCommand(baritone),
                 new GetCommand(baritone),
                 new GiveCommand(baritone),
                 new EquipCommand(baritone),
@@ -203,7 +210,7 @@ public final class AltoClefCommands {
             onError.accept("command " + label + " does not exist");
             return;
         }
-        Dispatch d = new Dispatch(next);
+        Dispatch d = new Dispatch(next, butler);
         Dispatch previous = current;
         current = d;
         try {
@@ -261,6 +268,13 @@ public final class AltoClefCommands {
                 startTask(new FollowPlayerTask(user), next, onError);
                 return true;
             }
+            case "come": {
+                if (!butler) {
+                    return false;
+                }
+                comeToWhisperer(words, next, onError);
+                return true;
+            }
             case "stop":
             case "cancel": {
                 if (!butler) {
@@ -273,6 +287,32 @@ public final class AltoClefCommands {
             default:
                 return false;
         }
+    }
+
+    // the player who whispered, not the camera. they have to be somewhere we can see, otherwise we have nothing to walk to
+    private static void comeToWhisperer(List<String> words, Runnable next, Consumer<String> onError) {
+        if (!words.isEmpty()) {
+            onError.accept("come takes no name, it comes to whoever asks");
+            return;
+        }
+        try {
+            AltoClef mod = AltoClefBridge.require();
+            String user = mod.getButler().hasCurrentUser() ? mod.getButler().getCurrentUser() : null;
+            if (user == null) {
+                onError.accept("come needs somebody to come to");
+            } else if (mod.getEntityTracker().getPlayerEntity(user).isEmpty()) {
+                onError.accept("I can't see you, get closer to me (inside my render distance) and ask again");
+            } else {
+                startTask(new ComeToPlayerTask(user), next, onError);
+            }
+        } catch (CommandException e) {
+            onError.accept(e.getMessage());
+        }
+    }
+
+    // whether the command running right now came from a whisper, for the ones that run other command lines
+    static boolean currentIsButler() {
+        return current != null && current.butler;
     }
 
     private static void startTask(Task task, Runnable next, Consumer<String> onError) {

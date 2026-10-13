@@ -8,6 +8,8 @@ import adris.altoclef.eventbus.events.ChatMessageEvent;
 import adris.altoclef.eventbus.events.TaskFinishedEvent;
 import adris.altoclef.ui.MessagePriority;
 import baritone.Baritone;
+import java.io.IOException;
+import java.util.List;
 import java.util.Objects;
 import net.minecraft.network.chat.ChatType;
 
@@ -19,7 +21,7 @@ import net.minecraft.network.chat.ChatType;
  * Authorization is defined in "altoclef_butler_whitelist.txt" and "altoclef_butler_blacklist.txt".
  * The whitelist is required (empty means nobody can command the bot), the blacklist is applied on top of it
  * and wins, unless "useButlerBlacklist" in "configs/butler.json" is off. Names are case-insensitive.
- * The whole thing is switched by the altoButler setting (#set altoButler true).
+ * The whole thing is switched by the altoButler setting (on by default, and inert until somebody is on the whitelist).
  */
 public class Butler {
 
@@ -31,11 +33,17 @@ public class Butler {
 
     private final UserAuth _userAuth;
 
+    // a stranger gets one "not authorized" every half minute at most, and only when replyToUnauthorized is on
+    private final ReplyCooldown _strangerCooldown = new ReplyCooldown(30_000, 64);
+
     private String _currentUser = null;
 
     // Utility variables for command logic
     private boolean _commandInstantRan = false;
     private boolean _commandFinished = false;
+    // a task ended while a whisper was being run (a "stop" from somebody else does that), so whoever had the bot before
+    // does not have it anymore and must not get it handed back
+    private boolean _taskEnded = false;
 
     public Butler(AltoClef mod) {
         _mod = mod;
@@ -46,6 +54,7 @@ public class Butler {
             if (_currentUser != null) {
                 _currentUser = null;
             }
+            _taskEnded = true;
         });
 
         // Receive system events
@@ -96,7 +105,8 @@ public class Butler {
             if (debug) {
                 Debug.logMessage("    Rejecting: User \"" + username + "\" is not authorized.");
             }
-            if (ButlerConfig.getInstance().sendAuthorizationResponse) {
+            // silent by default: on a public server every stranger who whispers us would get an answer otherwise
+            if (ButlerConfig.getInstance().replyToUnauthorized && _strangerCooldown.tryReply(username, System.currentTimeMillis())) {
                 sendWhisper(username, ButlerConfig.getInstance().failedAuthorizationResposne.replace("{from}", username), MessagePriority.UNAUTHORIZED);
             }
         }
@@ -110,6 +120,15 @@ public class Butler {
     // the force field and the terminator ask this one, see UserAuth#isUserSpared
     public boolean isUserSpared(String username) {
         return _userAuth.isUserSpared(username);
+    }
+
+    // whitelist command: edits the file and the loaded list together, see UserAuth#editWhitelist
+    public WhitelistEditor.Outcome editWhitelist(String name, boolean adding) throws IOException {
+        return _userAuth.editWhitelist(name, adding);
+    }
+
+    public List<String> whitelistNames() throws IOException {
+        return UserAuth.whitelistNames();
     }
 
     public void onLog(String message, MessagePriority priority) {
@@ -145,25 +164,36 @@ public class Butler {
         String prevUser = _currentUser;
         _commandInstantRan = true;
         _commandFinished = false;
+        _taskEnded = false;
+        boolean[] failed = {false};
         _currentUser = username;
-        sendWhisper("Command Executing: " + message, MessagePriority.TIMELY);
         // the last flag is the allow-list: a whisper can run altoclef's commands and nothing else of soprano's
         AltoClefCommands.execute(message, () -> {
-            // On finish
-            sendWhisper("Command Finished: " + message, MessagePriority.TIMELY);
+            // On finish. goes to whoever asked, _currentUser can be somebody else by the time a long task ends
+            sendWhisper(username, "Command Finished: " + message, MessagePriority.TIMELY);
             if (!_commandInstantRan) {
                 _currentUser = null;
             }
             _commandFinished = true;
         }, error -> {
-            sendWhisper("TASK FAILED: " + error, MessagePriority.ASAP);
-            _currentUser = null;
+            sendWhisper(username, "TASK FAILED: " + error, MessagePriority.ASAP);
+            failed[0] = true;
+            // an error that comes back while we are still inside execute never started anything, so whoever had the bot
+            // before still has it. one that shows up later (a;b where b is bad) means the task chain moved on
+            _currentUser = _commandInstantRan && !_taskEnded ? prevUser : null;
             _commandInstantRan = false;
         }, true);
         _commandInstantRan = false;
         // Only set the current user if we're still running.
         if (_commandFinished) {
-            _currentUser = prevUser;
+            _currentUser = _taskEnded ? null : prevUser;
+        } else if (!failed[0]) {
+            // told after the fact so a line that finishes on the spot only says "finished", one line instead of two
+            sendWhisper(username, "Command Executing: " + message, MessagePriority.TIMELY);
+            // somebody else's task just got dropped for this one and its finish message is never coming
+            if (prevUser != null && !prevUser.equalsIgnoreCase(username)) {
+                sendWhisper(prevUser, "Your command was replaced by one from " + username + ".", MessagePriority.TIMELY);
+            }
         }
     }
 

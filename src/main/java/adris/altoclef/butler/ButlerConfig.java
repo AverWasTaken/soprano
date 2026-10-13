@@ -48,11 +48,14 @@ public class ButlerConfig {
      */
     public boolean whisperFormatDebug = true;
     /**
-     * Determines if failure messages should be sent to a non-authorized entity attempting to use butler
+     * Determines if failure messages should be sent to a non-authorized entity attempting to use butler.
+     * Off by default so the bot stays quiet to strangers, and when it is on a name gets at most one answer
+     * every half minute.
      * <p>
-     * Disable this if you need to stay undercover.
+     * This replaces sendAuthorizationResponse, which defaulted to true and got saved into every butler.json that
+     * ever loaded, so an old file that still has it loads fine and the value is ignored.
      */
-    public boolean sendAuthorizationResponse = true;
+    public boolean replyToUnauthorized = false;
     /**
      * The response sent in a failed execution due to non-authorization
      * {from}: the username of the player who triggered the failed authorization response

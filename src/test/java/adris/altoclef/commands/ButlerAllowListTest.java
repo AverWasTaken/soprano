@@ -46,7 +46,26 @@ public class ButlerAllowListTest {
         return names;
     }
 
-    private static final List<String> DENIED_OURS = List.of("punk", "gamma", "setgamma", "set_gamma");
+    private static final List<String> DENIED_OURS = List.of("punk", "gamma", "setgamma", "set_gamma", "whitelist");
+
+    @Test
+    public void whitelistIsOursAndNoWhisperCanRunIt() {
+        Set<String> owned = owned();
+        assertTrue(owned.contains("whitelist"));
+        // every spelling a whisper could try: case, padding, the prefix, a chained line
+        for (String name : new String[]{"whitelist", "WHITELIST", "Whitelist", "#whitelist", " whitelist", "whitelist;get", "whitelist add", "white list"}) {
+            assertFalse(name, AltoClefCommands.isButlerAllowed(name, owned));
+        }
+    }
+
+    @Test
+    public void comeIsAWhisperCommandEvenThoughItIsNotOurs() {
+        Set<String> owned = owned();
+        // soprano's own come (the camera one) is not in the owned set, the butler answers it itself
+        assertFalse(owned.contains("come"));
+        assertTrue(AltoClefCommands.isButlerAllowed("come", owned));
+        assertTrue(AltoClefCommands.isButlerAllowed("COME", owned));
+    }
 
     @Test
     public void everyAliasOfPunkAndGammaIsDenied() {

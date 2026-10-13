@@ -2,6 +2,9 @@ package adris.altoclef.butler;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.util.helpers.ConfigHelper;
+import java.io.IOException;
+import java.nio.file.Path;
+import java.util.List;
 
 public class UserAuth {
     private static final String BLACKLIST_PATH = "altoclef_butler_blacklist.txt";
@@ -20,10 +23,32 @@ public class UserAuth {
         ConfigHelper.ensureCommentedListFileExists(WHITELIST_PATH, """
                 Add butler whitelisted players here, one name per line (case does not matter).
                 Only these players can whisper commands to the bot. An empty list means nobody can.
+                The whitelist command in game edits this file for you (whitelist <name>, whitelist remove <name>, whitelist list).
                 Anything after a pound sign (#) will be ignored.""");
 
         UserListFile.load(BLACKLIST_PATH, newList -> _blacklist = newList);
         UserListFile.load(WHITELIST_PATH, newList -> _whitelist = newList);
+    }
+
+    private static Path whitelistFile() {
+        return ConfigHelper.getConfigFolder().resolve(WHITELIST_PATH);
+    }
+
+    // edits the file and reads it again right away, so the answer is live without an altoreload. if the write fails we
+    // throw before touching the loaded list, which keeps saying what the file said last
+    public WhitelistEditor.Outcome editWhitelist(String name, boolean adding) throws IOException {
+        WhitelistEditor.Outcome outcome = WhitelistEditor.apply(whitelistFile(), name, adding);
+        reloadWhitelist();
+        return outcome;
+    }
+
+    public void reloadWhitelist() {
+        UserListFile.load(WHITELIST_PATH, newList -> _whitelist = newList);
+    }
+
+    // straight from the file, so tab completion works before there is a bot
+    public static List<String> whitelistNames() throws IOException {
+        return WhitelistEditor.names(WhitelistEditor.read(whitelistFile()));
     }
 
     public boolean isUserAuthorized(String username) {

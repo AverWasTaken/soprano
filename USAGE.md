@@ -160,8 +160,15 @@ AltoClef is a task bot (survival, crafting, combat, beating the game) that's bui
 - `custom <name>` to run a task list from `CustomTasks.json`
 - `status` to see what the running task is doing, `inventory [item]` to list or count, `coords` to get the bot's coordinates, `gamma [value]` to set the brightness
 - `altoreload` to re-read its json configs
+- `whitelist <player>` to let a player whisper commands to the bot, `whitelist remove <player>` to take them off and `whitelist list` to see who is on it. It edits `altoclef_butler_whitelist.txt` for you (comments stay) and works right away, no `altoreload`. Owner only, a whisper can never run it. See the whisper section below
 
 Everything has `#help` and tab completion like any other command. Commands can be chained with `;` (`get log 16 ; get iron_ingot 3`, each one waits for the one before it) in butler whispers, `custom` lists and the idle and death commands. Typing a `;` line in normal chat doesn't do it.
+
+### Whispering the bot
+
+With `altoButler` on (it is by default) a player on the whitelist can send the bot commands with a normal whisper: `/msg <bot> get cobblestone 4`. The whitelist starts empty, so nobody can until you run `#whitelist <name>`. The bot whispers back a line when it starts a command, one when it finishes, and `TASK FAILED: ...` when it can't do it (plus whatever the command itself says, like the answer to `coords`). If a second player's command takes over the bot, the first one is told theirs was replaced. Players who aren't on the list get no answer at all, unless you turn on `replyToUnauthorized` in `configs/butler.json` (and then at most one answer every half minute per name).
+
+A whisper can run every AltoClef command except `punk`, `gamma`/`setgamma` and `whitelist`, plus `goto`, `follow`, `stop`, `cancel` and `come`, and nothing else of Soprano's (no `set`, `build`, `mine`...). `custom` task lists run under the same rules as the whisper that asked for them. `come` is different from the `#come` you type yourself, which goes to the camera: a whispered `come` walks to the player who sent it and finishes when it is within 3 blocks. If the bot can't see them (outside its render distance) it says so and does nothing. `follow` keeps following them until told to stop.
 
 ## AltoClef settings
 
@@ -170,7 +177,7 @@ They're normal Soprano settings that all start with `alto`, so `#set alto<tab>` 
 | Setting | Default | What it does |
 |---|---|---|
 | `altoRunsWhenIdle` | false | keep the survival chains (eating, mob defense, MLG) running even with no task. Off means AltoClef does nothing until you start a task |
-| `altoButler` | false | let whitelisted players whisper commands to your bot. Only names in `baritone/altoclef/altoclef_butler_whitelist.txt` can (one per line, not case sensitive), an empty whitelist means nobody, and `altoclef_butler_blacklist.txt` next to it wins over it. Whispers can run AltoClef's commands plus `goto`, `follow`, `stop` and `cancel`, never `punk`, `gamma` or `setgamma` |
+| `altoButler` | true | let whitelisted players whisper commands to your bot. Only names in `baritone/altoclef/altoclef_butler_whitelist.txt` can (one per line, not case sensitive, `#whitelist <name>` edits it), an empty whitelist means nobody so it does nothing until you add someone, and `altoclef_butler_blacklist.txt` next to it wins over it. Whispers can run AltoClef's commands plus `goto`, `follow`, `stop`, `cancel` and `come` (which comes to the player who whispered), never `punk`, `gamma`, `setgamma` or `whitelist`. Strangers get no answer unless `replyToUnauthorized` is on in `butler.json` |
 | `altoShowTaskChains` | true | the task HUD in the top left. `altoHudScale` (1.0, between 0.5 and 2) resizes it, `altoShowTimer` (false) adds a timer, `altoHudDetailed` (false) swaps the plain words for the developer strings from the log, for bug reports |
 | `altoGamerHud` | true | the `#gamer` card on the right of the screen while a run is going: the phase and its clock against the budget, the eleven phase dots, what the bot is doing, the kit it is after with item icons and have/want counts, the furnace batches with time left, the coal detour, hp and food, and a red strip while it is fighting or running. Sized by `altoHudScale`. Hidden with the rest of the HUD (F1) and under F3. With it on the task list in the top left only names the phase |
 | `altoMobDefense` | true | fight off or avoid mobs. `altoForceFieldStrategy` (`SMART`, or `OFF`, `FASTEST`, `DELAY`) is how the force field picks its targets |
