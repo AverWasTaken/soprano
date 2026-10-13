@@ -23,6 +23,11 @@ public interface ActionCosts {
      * These costs are measured roughly in ticks btw
      */
     double WALK_ONE_BLOCK_COST = 20 / 4.317; // 4.633
+    /**
+     * Wading with no Depth Strider. Vanilla gives 1.96 blocks a second for a walker (0.02 push, 0.8 drag) and 3.92 for
+     * a sprinter, but sprint only survives while the eyes are under the surface, and a surface route has them out of it.
+     * So this is walking speed with a bit of credit for the dunks that let sprint through
+     */
     double WALK_ONE_IN_WATER_COST = 20 / 2.2; // 9.091
     /**
      * Sprint swimming, roughly wading speed times the 1.3 sprint multiplier. Estimated, since it depends on

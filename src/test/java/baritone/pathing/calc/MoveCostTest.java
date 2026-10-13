@@ -24,6 +24,7 @@ import baritone.api.pathing.goals.GoalYLevel;
 import baritone.pathing.movement.CalculationContext;
 import baritone.pathing.movement.movements.MovementDescend;
 import baritone.pathing.movement.movements.MovementDiagonal;
+import baritone.pathing.movement.movements.MovementTraverse;
 import baritone.utils.BlockStateInterface;
 import baritone.utils.ToolSet;
 import baritone.utils.pathing.MutableMoveResult;
@@ -80,13 +81,18 @@ public class MoveCostTest {
 
     private static final class Ctx extends CalculationContext {
         Ctx(BlockStateInterface bsi) {
+            this(bsi, 0.0f);
+        }
+
+        // waterEfficiency is what Depth Strider adds up to, 0 for none and 1 for level three
+        Ctx(BlockStateInterface bsi, float waterEfficiency) {
             super(null, true, null, null, bsi, new ToolSet(null) {
                 @Override
                 public double getStrVsBlock(BlockState state) {
                     float hardness = state.getBlock().defaultDestroyTime();
                     return hardness < 0 ? -1 : hardness == 0 ? 1 : 8.0 / (hardness * 30);
                 }
-            }, false, false, true, 0, 1.0f, 20.0, false);
+            }, false, false, true, 0, waterEfficiency, 20.0, false);
         }
     }
 
@@ -250,5 +256,30 @@ public class MoveCostTest {
     public void climbingStillLooksAtLeastAsHardAsItIs() {
         // going up isn't changed, one block of it is the jump itself
         assertEquals(JUMP_ONE_BLOCK_COST * 3, GoalYLevel.calculate(8, 5), 1e-9);
+    }
+
+    // ---- water ----
+
+    // one block of still water over the floor next door. the planner only walks through the top layer of water, deeper
+    // water isn't walkable through, so this is the shape every lake crossing has
+    private static MapWorld lake() {
+        MapWorld w = floor();
+        w.set(1, 64, 0, Blocks.WATER.defaultBlockState());
+        return w;
+    }
+
+    @Test
+    public void wadingIsPricedAtWaterSpeedAndNotLandSpeed() {
+        // vanilla: 0.02 push and 0.8 drag walking is 1.96 blocks/s, and the head is out of the water on a surface route so
+        // sprint gets cancelled. the old default priced a lake at 4.63 a block, a speed nothing in water can reach
+        double cost = MovementTraverse.cost(new Ctx(lake()), 0, 64, 0, 1, 0);
+        assertEquals(WALK_ONE_IN_WATER_COST, cost, 1e-9);
+        assertTrue(cost > 1.5 * WALK_ONE_BLOCK_COST);
+    }
+
+    @Test
+    public void depthStriderBlendsBackTowardsLandSpeed() {
+        assertEquals(WALK_ONE_BLOCK_COST, MovementTraverse.cost(new Ctx(lake(), 1.0f), 0, 64, 0, 1, 0), 1e-9);
+        assertEquals((WALK_ONE_IN_WATER_COST + WALK_ONE_BLOCK_COST) / 2, MovementTraverse.cost(new Ctx(lake(), 0.5f), 0, 64, 0, 1, 0), 1e-9);
     }
 }

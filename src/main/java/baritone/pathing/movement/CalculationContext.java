@@ -304,7 +304,10 @@ public class CalculationContext {
                 }
             }
         }
-        return 1.0f;
+        // no depth strider is a 0 here, which prices water at the slow end of the blend. it used to return 1 for "none",
+        // which is the full efficiency value, so every lake was planned at the speed of dry land. vanilla with no
+        // efficiency drags a walker at 0.8 with a 0.02 push, which is 1.96 blocks a second
+        return 0.0f;
     }
 
     // the memo and the bsi's block cache used to be allocated in the constructor. that's 2.8mb, and PathingBehavior
