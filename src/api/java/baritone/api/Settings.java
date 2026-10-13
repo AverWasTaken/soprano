@@ -2077,7 +2077,12 @@ public final class Settings {
      * one standing close by) it sleeps through the night instead of working on and fighting mobs until morning. Minecraft
      * refuses to let anyone sleep with monsters near the bed, so when there are some the bot does not fight them: it
      * pillars up out of their range, puts the bed on top and sleeps there. A bed the bot placed itself is picked up again
-     * afterwards. With no bed available nothing changes. Never used in the Nether or the End.
+     * afterwards. Never used in the Nether or the End.
+     * <p>
+     * It tries to have the bed ready before dusk: in the last couple of minutes of the day it crafts one from wool and
+     * planks it already holds, and in the last four minutes, with sheep close by and no wool, it hunts three wool of one
+     * colour first (150 seconds at most, then it leaves it for the evening). With no bed and no wool it works the night as
+     * before.
      */
     public final Setting<Boolean> altoSleepAtNight = new Setting<>(true);
 
