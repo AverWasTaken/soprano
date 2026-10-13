@@ -116,6 +116,10 @@ public class MovementFall extends Movement {
     // (canAffordClutch). asked only on the ledge: once we're off it a hit must not take away the save we're in
     private boolean lowAtLedge;
 
+    // same idea for the bucket: a miss from here would kill us at the hp we had on the ledge (canAffordBucketMiss). only acted
+    // on while standing on the ledge, a fall that starts in the air has already been agreed to
+    private boolean bucketRiskyAtLedge;
+
     // the ladder we right-clicked onto the wall, and whether the world agreed that it's there. vines drop nothing without
     // shears so they're never recorded, and a ladder somebody else put up never is either, it's theirs
     private BlockPos ladder;
@@ -136,6 +140,7 @@ public class MovementFall extends Movement {
         super.reset();
         clutchGaveUp = false;
         lowAtLedge = false;
+        bucketRiskyAtLedge = false;
         hurt = false;
         plannedDamage = -1;
         ladder = null;
@@ -200,6 +205,7 @@ public class MovementFall extends Movement {
         if (atLedge || ticks == 1) {
             double health = ctx.player().getHealth() + ctx.player().getAbsorptionAmount();
             lowAtLedge = !ExperimentalMovement.canAffordClutch(health, Baritone.settings().fastModeMinHealth.value);
+            bucketRiskyAtLedge = !ExperimentalMovement.canAffordBucketMiss(health, src.y - dest.y);
         }
         snapshotDamage();
         confirmLadder();
@@ -214,10 +220,10 @@ public class MovementFall extends Movement {
         }
 
         boolean isWater = destState.getFluidState().getType() instanceof WaterFluid;
-        if ((hurt || lowAtLedge) && !isWater && atLedge && !stillPossible()) {
+        if ((hurt || lowAtLedge || bucketRiskyAtLedge) && !isWater && atLedge && !stillPossible()) {
             // we got hurt (or something else dropped our health) since the plan was made, and this fall would now cost us
-            // more than we agreed to, or it was a clutch and a clutch is off at this hp. nothing has happened yet, so the
-            // executor can just replan
+            // more than we agreed to, or it was a clutch and a clutch is off at this hp, or a missed bucket would kill us now.
+            // nothing has happened yet, so the executor can just replan
             return state.setStatus(MovementStatus.UNREACHABLE);
         }
         FallMode mode = isWater ? FallMode.NONE : fallMode();

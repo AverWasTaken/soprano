@@ -763,6 +763,9 @@ public final class Settings {
     /**
      * How far are you allowed to fall onto solid ground (with a water bucket)?
      * It's not that reliable, so I've set it below what would kill an unarmored player (23)
+     * <p>
+     * The bucket can still miss, and a miss is the whole fall, so a drop is only planned while you would survive that
+     * miss with at least half a heart left. At low health a tall drop is left out even with a bucket in hand.
      */
     public final Setting<Integer> maxFallHeightBucket = new Setting<>(20);
 
