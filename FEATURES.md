@@ -22,7 +22,7 @@ These are on top of the Baritone features below, and all are off by default unle
 - **Falling.** Soprano will fall up to 3 blocks onto solid ground (configurable, if you have Feather Falling and/or don't mind taking a little damage). If you have a water bucket on your hotbar, it will fall up to 20 blocks and place the bucket beneath it. It will fall an unlimited distance into existing still water.
 - **Vines and ladders.** Soprano climbs and descends vines and ladders. There is experimental support for strafing to a different ladder / vine column in midair (off by default, setting named `allowVines`). It can break its fall by grabbing ladders / vines midair, and understands when that is and isn't possible.
 - **Opening fence gates and doors.**
-- **Slabs and stairs.**
+- **Slabs and stairs.** Bottom slabs, and bottom stairs walked towards their tall side, are stepped up onto like vanilla does, with no jump and no jump penalty. Every other way onto a stair is a jump.
 - **Falling blocks.** Soprano understands the costs of breaking blocks with falling blocks on top, and includes all of their break costs. Additionally, since it avoids breaking any blocks touching a liquid, it won't break the bottom of a gravel stack below a lava lake (anymore).
 - **Avoiding dangerous blocks.** Obviously, it knows not to walk through fire or on magma, not to corner over lava (that deals some damage), not to break any blocks touching a liquid (it might drown), etc.
 - **Parkour.** Sprint jumping over 1, 2, or 3 block gaps.
