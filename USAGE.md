@@ -71,6 +71,7 @@ For death, `#wp list death` will list waypoints under the "death" tag (remember 
 - `reloadall` to reload Soprano's world cache, `saveall` to save it
 - `render` to fix glitched chunk rendering without having to reload all of them
 - `gc` to call `System.gc()`, which may free up some memory
+- `timings` to print which movements take longer (or shorter) than the planner thinks, from what `recordMovementTimings` has collected. `timings 20` hides groups with fewer than 20 samples (8 by default), `timings clear` deletes the data
 - `damn` daniel
 
 # Settings
@@ -111,6 +112,7 @@ All off by default unless it says otherwise.
 - `guiKey` (344, right shift: the GLFW key code that opens the click gui, which does everything a chat command does with buttons. -1 unbinds it and `#gui` still works. The gui's Settings tab has a key capture control for it) and `guiKeyEnabled` (on by default, turns the key off without unbinding it)
 - `guiDarkMode` (on by default, uses the dark appearance. The sidebar's Light and Dark buttons save your choice) and `guiAnimations` (on by default, animates transitions and scrolling. Turn off for reduced motion)
 - `keepPathOnSameGoal` (on by default, when one AltoClef task hands over to another that wants the same goal, keeps walking the path instead of standing still while a new one is calculated)
+- `recordMovementTimings` (on by default, writes how many ticks each movement really took next to how many the planner said, one line per movement, to `baritone/movement-timings.csv` in your Minecraft folder. It's batched and written off the game thread, capped at 4 MiB (then it's renamed to `.old` and starts over, so 8 MiB at most), and it only measures: nothing changes a path or a cost. `#timings` reads it back)
 - `shortBaritonePrefix` (use `[S]` instead of `[Soprano]` in chat messages)
 
 `fastMode` is the "just go fast" switch. It turns on all the parkour (neos, climb jumps and momentum jumps too), diagonal ascends and descends, sprint jumping, head hitters, ground shortcuts, god bridging and faster pathing, takes falls that cost some health when that saves time, cuts corners, smooths straight runs, places blocks more freely and leans toward jumps. If you'd rather pick features one by one, leave it off and use the settings above.

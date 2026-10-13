@@ -74,6 +74,8 @@ public class PathExecutor implements IPathExecutor, Helper {
     private int ticksOnCurrent;
     private Double currentMovementOriginalCostEstimate;
     private Integer costEstimateIndex;
+    // planned versus real ticks per movement, handed on with the rest when a splice or a cut makes a new executor
+    private MovementTimer timer = new MovementTimer();
     private boolean failed;
     private boolean recalcBP = true;
     private HashSet<BlockPos> toBreak = new HashSet<>();
@@ -287,6 +289,9 @@ public class PathExecutor implements IPathExecutor, Helper {
             clearKeys();
             return true;
         }
+        if (ticksOnCurrent == 0) {
+            timer.begin(behavior, movement, bsi, currentMovementOriginalCostEstimate, currentCost);
+        }
         MovementStatus movementStatus = movement.update();
         if (movementStatus == UNREACHABLE || movementStatus == FAILED) {
             logDebug("Movement returns status " + movementStatus);
@@ -295,6 +300,7 @@ public class PathExecutor implements IPathExecutor, Helper {
         }
         if (movementStatus == SUCCESS) {
             //System.out.println("Movement done, next path");
+            timer.finish(behavior, movement, ticksOnCurrent);
             pathPosition++;
             onChangeInPathPosition();
             onTick();
@@ -1097,6 +1103,7 @@ public class PathExecutor implements IPathExecutor, Helper {
             ret.currentMovementOriginalCostEstimate = currentMovementOriginalCostEstimate;
             ret.costEstimateIndex = costEstimateIndex;
             ret.ticksOnCurrent = ticksOnCurrent;
+            ret.timer = timer;
             ret.flight = flight; // a new path showing up doesn't make us any less airborne
             // a splice keeps every index of the first path, so the trip carries straight over. losing it
             // mid placement would have the new executor place a second boat
@@ -1168,6 +1175,7 @@ public class PathExecutor implements IPathExecutor, Helper {
                 ret.costEstimateIndex = costEstimateIndex - cutoffAmt;
             }
             ret.ticksOnCurrent = ticksOnCurrent;
+            ret.timer = timer;
             ret.flight = flight;
             ret.boatRefusedUntil = boatRefusedUntil < 0 ? -1 : boatRefusedUntil - cutoffAmt;
             return ret;

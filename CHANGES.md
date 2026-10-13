@@ -12,6 +12,7 @@ Everything below is off by default unless it says otherwise. Turn things on in g
 - **AltoClef built in.** Ask for an item and it works out how to get it: mining, crafting, smelting, fighting and eating along the way. `#get iron_pickaxe`, `#food 20`, or `#gamer` to try and beat the game. It does nothing until you give it a task.
 - **Path rendering.** The path is a smooth antialiased ribbon with rounded corners, and the search visual is softer.
 - **Pathfinder performance.** More movements per second, and the cache buffers get reused instead of reallocated.
+- **Movement timings** (`recordMovementTimings`, on by default). Measures how many ticks every movement really takes against what the planner said, and keeps a small capped file of it. `#timings` shows which movements are mispriced the most. It only measures, nothing changes how paths are planned.
 - **Chat prefix.** Messages say `[Soprano]`.
 
 The new stuff is new, so expect rough edges. [USAGE.md](USAGE.md) lists the settings that go with these. [FEATURES.md](FEATURES.md) has the full list of what the pathfinder can do. Bug reports and feedback are welcome.
