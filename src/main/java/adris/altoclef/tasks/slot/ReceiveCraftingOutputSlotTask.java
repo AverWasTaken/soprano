@@ -9,7 +9,7 @@ import adris.altoclef.util.slots.CraftingTableSlot;
 import adris.altoclef.util.slots.PlayerSlot;
 import adris.altoclef.util.slots.Slot;
 import adris.altoclef.util.time.TimerGame;
-import net.minecraft.world.inventory.ClickType;
+import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.item.ItemStack;
 
 public class ReceiveCraftingOutputSlotTask extends Task implements ITaskUsesCraftingGrid {
@@ -54,7 +54,7 @@ public class ReceiveCraftingOutputSlotTask extends Task implements ITaskUsesCraf
     private static int inventoryRoomFor(AltoClef mod, ItemStack stack) {
         int max = stack.getMaxStackSize();
         int room = 0;
-        for (ItemStack inSlot : mod.getPlayer().getInventory().items) {
+        for (ItemStack inSlot : mod.getPlayer().getInventory().getNonEquipmentItems()) {
             if (inSlot.isEmpty()) {
                 room += max;
             } else if (ItemStack.isSameItemSameComponents(inSlot, stack)) {
@@ -93,7 +93,7 @@ public class ReceiveCraftingOutputSlotTask extends Task implements ITaskUsesCraf
     }
 
     // only arms when the slot handler says the click really went out, a click eaten by its cooldown is retried next tick
-    private void click(AltoClef mod, ItemStack output, ItemStack cursor, ClickType type) {
+    private void click(AltoClef mod, ItemStack output, ItemStack cursor, ContainerInput type) {
         if (mod.getSlotHandler().clickSlot(_slot, 0, type)) {
             _guardArmed = true;
             _guardContainer = mod.getPlayer().containerMenu.containerId;
@@ -126,11 +126,11 @@ public class ReceiveCraftingOutputSlotTask extends Task implements ITaskUsesCraf
         // no room for the whole multiple means the quick move would stop halfway, so go through the cursor instead
         if (takeAll && inventoryRoomFor(mod, inOutput) >= craftCount) {
             setDebugState("Quick moving output");
-            click(mod, inOutput, cursor, ClickType.QUICK_MOVE);
+            click(mod, inOutput, cursor, ContainerInput.QUICK_MOVE);
             return null;
         }
         setDebugState("Picking up output");
-        click(mod, inOutput, cursor, ClickType.PICKUP);
+        click(mod, inOutput, cursor, ContainerInput.PICKUP);
         return null;
     }
 

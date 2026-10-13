@@ -5,7 +5,7 @@ import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.slots.PlayerSlot;
 import adris.altoclef.util.slots.Slot;
-import net.minecraft.world.inventory.ClickType;
+import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.item.ItemStack;
 
 public class EnsureFreePlayerCraftingGridTask extends Task {
@@ -33,7 +33,7 @@ public class EnsureFreePlayerCraftingGridTask extends Task {
                 return new EnsureFreeCursorSlotTask();
             }
             if (!items.isEmpty()) {
-                mod.getSlotHandler().clickSlot(slot, 0, ClickType.PICKUP);
+                mod.getSlotHandler().clickSlot(slot, 0, ContainerInput.PICKUP);
                 return null;
             }
         }

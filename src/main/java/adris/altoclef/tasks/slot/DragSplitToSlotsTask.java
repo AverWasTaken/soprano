@@ -10,7 +10,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
-import net.minecraft.world.inventory.ClickType;
+import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 
@@ -147,7 +147,7 @@ public class DragSplitToSlotsTask extends Task {
                 // chooseItem should never let us get here. if it does, don't pick the same stack up again
                 lastBailMs = System.currentTimeMillis();
                 if (returnSlot == null) return new EnsureFreeCursorSlotTask();
-                mod.getSlotHandler().clickSlot(returnSlot, 0, ClickType.PICKUP);
+                mod.getSlotHandler().clickSlot(returnSlot, 0, ContainerInput.PICKUP);
             }
             case DRAG -> {
                 List<Slot> covered = new ArrayList<>();
@@ -173,7 +173,7 @@ public class DragSplitToSlotsTask extends Task {
         int best = CraftDragPlan.pickSource(counts, need);
         if (best == -1) return;
         setDebugState("Picking up " + counts[best] + " " + chosen.getDescriptionId() + " to drag");
-        mod.getSlotHandler().clickSlot(sources.get(best), 0, ClickType.PICKUP);
+        mod.getSlotHandler().clickSlot(sources.get(best), 0, ContainerInput.PICKUP);
     }
 
     // the inventory slot with the most room for the cursor item, surplus and leftovers go back there

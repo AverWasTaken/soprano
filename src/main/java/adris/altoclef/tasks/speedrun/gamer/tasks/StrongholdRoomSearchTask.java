@@ -368,7 +368,7 @@ public class StrongholdRoomSearchTask extends Task {
             rearmChunkTimer = false;
             chunkSince = seconds(mod);
         }
-        boolean arrived = chunkTarget != null && here.x == chunkTarget.cx() && here.z == chunkTarget.cz();
+        boolean arrived = chunkTarget != null && here.x() == chunkTarget.cx() && here.z() == chunkTarget.cz();
         if (chunkTarget != null && (arrived || seconds(mod) - chunkSince >= cfg.perChunkSeconds)) {
             // giving up on a chunk after the timer is not reaching it: only arrivals count as the spiral moving
             if (state.roomChunksVisited.add(chunkTarget.key()) && arrived) {
@@ -393,8 +393,8 @@ public class StrongholdRoomSearchTask extends Task {
         double pz = mod.getPlayer().getZ();
         for (int dx = -1; dx <= 1; dx++) {
             for (int dz = -1; dz <= 1; dz++) {
-                int cx = here.x + dx;
-                int cz = here.z + dz;
+                int cx = here.x() + dx;
+                int cz = here.z() + dz;
                 if (RoomCoverage.covers(px, py, pz, cx, cz, workY) && state.roomChunksVisited.add(cx + "," + cz)) {
                     chunksReached++;
                     maybeSave(mod);
@@ -412,7 +412,7 @@ public class StrongholdRoomSearchTask extends Task {
             step = "Following the stronghold corridors";
         } else {
             next = StrongholdRoomPlan.next(startChunk, cfg.spiralRadiusChunks,
-                    ctx.state().roomChunksVisited, new StrongholdRoomPlan.Chunk(here.x, here.z));
+                    ctx.state().roomChunksVisited, new StrongholdRoomPlan.Chunk(here.x(), here.z()));
         }
         if (next.isEmpty()) {
             Debug.logMessage("stronghold spiral exhausted after " + ctx.state().roomChunksVisited.size() + " chunks");

@@ -6,7 +6,7 @@ import adris.altoclef.tasksystem.Task;
 import java.util.Optional;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.animal.Sheep;
+import net.minecraft.world.entity.animal.sheep.Sheep;
 import net.minecraft.world.item.Items;
 
 public class ShearSheepTask extends AbstractDoToEntityTask {

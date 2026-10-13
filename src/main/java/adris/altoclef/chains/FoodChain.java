@@ -17,7 +17,7 @@ import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.util.Tuple;
+import baritone.api.utils.Pair;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.inventory.InventoryMenu;
@@ -186,7 +186,7 @@ public class FoodChain extends SingleTaskChain {
         // a committed run or fight, or a stance that is not calm (the quick bite and the gapple live there)
         boolean combat = defense != null && (defense.combatMode() != CombatCommit.Mode.NONE || stance(mod) != CombatRules.Stance.CALM);
         // (an escape in progress rides the same road as a fight's meal until it is done: no pause, no standing)
-        return new BiteRules.Scene(combat || _onTheMove, _biting, Minecraft.getInstance().screen != null, player.onGround(), player.isInWater(),
+        return new BiteRules.Scene(combat || _onTheMove, _biting, Minecraft.getInstance().gui.screen() != null, player.onGround(), player.isInWater(),
                 player.onClimbable(), player.isPassenger(), player.getDeltaMovement().horizontalDistance(), pathLive,
                 hasCurrent && !baritone.getPathingBehavior().isPathing(), baritone.getPathingBehavior().isSafeToCancel(), hitAge(mod));
     }
@@ -227,7 +227,7 @@ public class FoodChain extends SingleTaskChain {
                 // once per stuck bite is plenty
                 if (!_stuckLogged) {
                     _stuckLogged = true;
-                    Screen screen = Minecraft.getInstance().screen;
+                    Screen screen = Minecraft.getInstance().gui.screen();
                     Debug.logInternal(String.format("food: use did not start (held=%s using=false key=%s screen=%s), pressing again",
                             BuiltInRegistries.ITEM.getKey(player.getMainHandItem().getItem()).getPath(),
                             mod.getInputControls().isHeldDown(Input.CLICK_RIGHT) ? "down" : "up",
@@ -348,9 +348,9 @@ public class FoodChain extends SingleTaskChain {
         - We're kind of hungry and have food that fits perfectly
          */
         if (shouldRecalculateFood(mod)) {
-            Tuple<Integer, Optional<Item>> calculation = calculateFood(mod);
-            _cachedFoodScore = calculation.getA();
-            _cachedPerfectFood = calculation.getB();
+            Pair<Integer, Optional<Item>> calculation = calculateFood(mod);
+            _cachedFoodScore = calculation.first();
+            _cachedPerfectFood = calculation.second();
             // a last resort food (rotten flesh while starving) counts as having food but adds no score
             _hasFood = _cachedPerfectFood.isPresent();
             _foodCalcAge = 0;
@@ -524,14 +524,14 @@ public class FoodChain extends SingleTaskChain {
         return false;
     }
 
-    private Tuple<Integer, Optional<Item>> calculateFood(AltoClef mod) {
+    private Pair<Integer, Optional<Item>> calculateFood(AltoClef mod) {
         LocalPlayer player = mod.getPlayer();
         float health = player != null ? player.getHealth() : 20;
         float hunger = player != null ? player.getFoodData().getFoodLevel() : 20;
         float saturation = player != null ? player.getFoodData().getSaturationLevel() : 20;
         FoodSelector.Result result = FoodSelector.select(mod.getItemStorage().getItemStacksPlayerInventory(true),
                 stack -> ItemHelper.canThrowAwayStack(mod, stack), health, hunger, saturation, _config);
-        return new Tuple<>(result.foodTotal(), result.best());
+        return new Pair<>(result.foodTotal(), result.best());
     }
 
     // walking the whole inventory and scoring every stack 20 times a second is a lot of work for an answer

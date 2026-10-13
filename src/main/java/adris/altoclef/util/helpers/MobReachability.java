@@ -13,20 +13,20 @@ import net.minecraft.world.entity.FlyingMob;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
 import net.minecraft.world.entity.boss.wither.WitherBoss;
-import net.minecraft.world.entity.animal.Bee;
+import net.minecraft.world.entity.animal.bee.Bee;
 import net.minecraft.world.entity.monster.Blaze;
 import net.minecraft.world.entity.monster.Creeper;
-import net.minecraft.world.entity.monster.EnderMan;
+import net.minecraft.world.entity.monster.Enderman;
 import net.minecraft.world.entity.monster.Guardian;
 import net.minecraft.world.entity.monster.Shulker;
-import net.minecraft.world.entity.monster.Spider;
+import net.minecraft.world.entity.monster.spider.Spider;
 import net.minecraft.world.entity.monster.Vex;
 import net.minecraft.world.entity.monster.Witch;
 import net.minecraft.world.entity.monster.breeze.Breeze;
-import net.minecraft.world.entity.monster.Drowned;
+import net.minecraft.world.entity.monster.zombie.Drowned;
 import net.minecraft.world.entity.monster.RangedAttackMob;
 import net.minecraft.world.entity.monster.CrossbowAttackMob;
-import net.minecraft.world.entity.monster.SpellcasterIllager;
+import net.minecraft.world.entity.monster.illager.SpellcasterIllager;
 import net.minecraft.world.entity.monster.piglin.Piglin;
 import net.minecraft.world.entity.monster.warden.Warden;
 import net.minecraft.world.item.Items;
@@ -172,7 +172,7 @@ public class MobReachability {
 
     // things that fly, teleport, burrow or are already on our face. the gate would only ever be wrong about them
     public static boolean isUngated(Mob mob) {
-        if (mob instanceof FlyingMob || mob instanceof Blaze || mob instanceof Vex || mob instanceof EnderMan
+        if (mob instanceof FlyingMob || mob instanceof Blaze || mob instanceof Vex || mob instanceof Enderman
                 || mob instanceof EnderDragon || mob instanceof WitherBoss || mob instanceof Warden
                 || mob instanceof Shulker || mob instanceof Guardian || mob instanceof Bee) {
             return true;

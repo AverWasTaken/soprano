@@ -8,7 +8,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Vec3i;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.item.ItemEntity;
@@ -441,7 +441,7 @@ public final class HudText {
             if (b == null) continue;
             String path = BuiltInRegistries.BLOCK.getKey(b).getPath();
             if (path.startsWith("deepslate_")) {
-                Block plain = BuiltInRegistries.BLOCK.getValue(ResourceLocation.withDefaultNamespace(path.substring("deepslate_".length())));
+                Block plain = BuiltInRegistries.BLOCK.getValue(Identifier.withDefaultNamespace(path.substring("deepslate_".length())));
                 if (plain != b && all.contains(plain)) continue;
             }
             out.add(b);

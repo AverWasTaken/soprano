@@ -17,7 +17,7 @@ import net.minecraft.client.gui.screens.inventory.HopperScreen;
 import net.minecraft.client.gui.screens.inventory.ShulkerBoxScreen;
 import net.minecraft.client.gui.screens.inventory.SmokerScreen;
 import net.minecraft.core.BlockPos;
-import net.minecraft.util.Tuple;
+import baritone.api.utils.Pair;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.AbstractFurnaceBlock;
@@ -179,20 +179,20 @@ public class ContainerSubTracker extends Tracker {
 
     public List<ContainerCache> getCachedContainers(Predicate<ContainerCache> accept) {
         List<ContainerCache> result = new ArrayList<>();
-        List<Tuple<Dimension, BlockPos>> toRemove = new ArrayList<>();
+        List<Pair<Dimension, BlockPos>> toRemove = new ArrayList<>();
         for (Dimension dim : _containerCaches.keySet()) {
             HashMap<BlockPos, ContainerCache> map = _containerCaches.get(dim);
             for (ContainerCache cache : map.values()) {
                 if (!isContainerCacheValid(dim, cache)) {
-                    toRemove.add(new Tuple<>(dim, cache.getBlockPos()));
+                    toRemove.add(new Pair<>(dim, cache.getBlockPos()));
                     continue;
                 }
                 if (accept.test(cache))
                     result.add(cache);
             }
         }
-        for (Tuple<Dimension, BlockPos> remove : toRemove) {
-            _containerCaches.get(remove.getA()).remove(remove.getB());
+        for (Pair<Dimension, BlockPos> remove : toRemove) {
+            _containerCaches.get(remove.first()).remove(remove.second());
         }
         return result;
     }

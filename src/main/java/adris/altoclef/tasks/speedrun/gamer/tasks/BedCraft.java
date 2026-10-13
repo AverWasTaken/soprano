@@ -127,7 +127,7 @@ public final class BedCraft {
         if (inventory && gridHolds()) {
             return new EnsureFreePlayerCraftingGridTask();
         }
-        var screen = Minecraft.getInstance().screen;
+        var screen = Minecraft.getInstance().gui.screen();
         if (screen != null && !(screen instanceof InBedChatScreen) && !(menu instanceof InventoryMenu)) {
             // a table, a chest or a furnace somebody left up. shutting it gives its grid back to the bag
             StorageHelper.closeScreen();

@@ -12,7 +12,7 @@ import java.util.function.Predicate;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Options;
 import net.minecraft.core.BlockPos;
-import net.minecraft.util.Tuple;
+import baritone.api.utils.Pair;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -109,12 +109,12 @@ public class BotBehaviour {
         current().excludeFromMobDefense.add(pred);
     }
 
-    public List<Tuple<Slot, Predicate<ItemStack>>> getConversionSlots() {
+    public List<Pair<Slot, Predicate<ItemStack>>> getConversionSlots() {
         return current().conversionSlots;
     }
 
     public void markSlotAsConversionSlot(Slot slot, Predicate<ItemStack> itemBelongsHere) {
-        current().conversionSlots.add(new Tuple<>(slot, itemBelongsHere));
+        current().conversionSlots.add(new Pair<>(slot, itemBelongsHere));
         // apply not needed
     }
 
@@ -523,7 +523,7 @@ public class BotBehaviour {
         public List<Predicate<Entity>> avoidDodgingProjectile = new ArrayList<>();
         public List<Predicate<Entity>> excludeFromForceField = new ArrayList<>();
         public List<Predicate<Entity>> excludeFromMobDefense = new ArrayList<>();
-        public List<Tuple<Slot, Predicate<ItemStack>>> conversionSlots = new ArrayList<>();
+        public List<Pair<Slot, Predicate<ItemStack>>> conversionSlots = new ArrayList<>();
 
         // Extra Baritone Settings
         public HashSet<BlockPos> blocksToAvoidBreaking = new HashSet<>();

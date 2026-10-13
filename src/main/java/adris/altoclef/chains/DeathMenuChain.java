@@ -101,7 +101,7 @@ public class DeathMenuChain extends TaskChain {
     public float getPriority(AltoClef mod) {
         //MinecraftClient.getInstance().getCurrentServerEntry().address;
 //        MinecraftClient.getInstance().
-        Screen screen = Minecraft.getInstance().screen;
+        Screen screen = Minecraft.getInstance().gui.screen();
         tickDeathCommands(mod);
         // This might fix Weird fail to respawn that happened only once
         if (_prevScreen == DeathScreen.class) {
@@ -139,7 +139,7 @@ public class DeathMenuChain extends TaskChain {
                     _deadPlayer = Minecraft.getInstance().player;
                     _respawnWait = new RespawnWait();
                     Minecraft.getInstance().player.respawn();
-                    Minecraft.getInstance().setScreen(null);
+                    Minecraft.getInstance().gui.setScreen(null);
                 } else {
                     // Cancel if we die and are not auto-respawning.
                     mod.cancelUserTask();
@@ -153,7 +153,7 @@ public class DeathMenuChain extends TaskChain {
                 if (shouldAutoReconnect(mod)) {
                     Debug.logMessage("RECONNECTING: Going to Multiplayer Screen");
                     _reconnecting = true;
-                    Minecraft.getInstance().setScreen(new JoinMultiplayerScreen(new TitleScreen()));
+                    Minecraft.getInstance().gui.setScreen(new JoinMultiplayerScreen(new TitleScreen()));
                 } else {
                     // Cancel if we disconnect and are not auto-reconnecting.
                     mod.cancelUserTask();

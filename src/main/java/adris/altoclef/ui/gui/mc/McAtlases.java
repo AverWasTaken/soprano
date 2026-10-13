@@ -10,7 +10,7 @@ import adris.altoclef.ui.gui.kit.Theme;
 import com.mojang.blaze3d.platform.NativeImage;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.DynamicTexture;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 
 import java.awt.image.DataBufferInt;
 import java.util.HashMap;
@@ -25,10 +25,10 @@ final class McAtlases {
 
     private static final class Slot {
         final DynamicTexture texture;
-        final ResourceLocation location;
+        final Identifier location;
         int version = -1;
 
-        Slot(DynamicTexture texture, ResourceLocation location) {
+        Slot(DynamicTexture texture, Identifier location) {
             this.texture = texture;
             this.location = location;
         }
@@ -91,7 +91,7 @@ final class McAtlases {
     }
 
     // the texture to bind for this page, with the latest pixels in it
-    ResourceLocation texture(AtlasPage page) {
+    Identifier texture(AtlasPage page) {
         return ensureUploaded(page).location;
     }
 
@@ -103,7 +103,7 @@ final class McAtlases {
         Slot slot = slots.get(page.id());
         if (slot == null) {
             Minecraft mc = Minecraft.getInstance();
-            ResourceLocation rl = ResourceLocation.fromNamespaceAndPath("soprano", "gui/atlas_" + page.id());
+            Identifier rl = Identifier.fromNamespaceAndPath("soprano", "gui/atlas_" + page.id());
             DynamicTexture tex = new DynamicTexture(new NativeImage(page.width(), page.height(), true));
             mc.getTextureManager().register(rl, tex);
             // nearest, the atlas is pixel exact and a linear sample would smear glyphs into their neighbours

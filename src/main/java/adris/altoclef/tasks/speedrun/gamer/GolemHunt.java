@@ -8,7 +8,7 @@ import adris.altoclef.tasks.speedrun.gamer.tasks.GolemFightTask;
 import adris.altoclef.tasksystem.Task;
 import baritone.api.utils.Dimension;
 import net.minecraft.client.player.LocalPlayer;
-import net.minecraft.world.entity.animal.IronGolem;
+import net.minecraft.world.entity.animal.golem.IronGolem;
 import net.minecraft.world.item.Item;
 
 import java.util.HashMap;

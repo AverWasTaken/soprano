@@ -178,8 +178,8 @@ public class GuiScreen extends Screen {
             if (shell.closed(System.nanoTime())) {
                 closeNow = true;
             }
-            if (closeNow && mc.screen == this) {
-                mc.setScreen(null);
+            if (closeNow && mc.gui.screen() == this) {
+                mc.gui.setScreen(null);
             }
         } catch (Throwable t) {
             Safe.report("gui tick", t);
@@ -296,8 +296,8 @@ public class GuiScreen extends Screen {
             plainOnly = true;
             rebuild = true;
         }
-        if (closeNow && mc.screen == this) {
-            mc.setScreen(null);
+        if (closeNow && mc.gui.screen() == this) {
+            mc.gui.setScreen(null);
         }
     }
 

@@ -11,7 +11,7 @@ import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.List;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.Item;
 
 // reads an item from a registry id ("minecraft:iron_pickaxe", "iron_pickaxe", old translation keys) or an ancient raw int id.
@@ -32,7 +32,7 @@ public class ItemDeserializer implements JsonDeserializer<Item> {
         }
         // Translation key (the proper way)
         String itemKey = ItemHelper.trimItemName(json.getAsString());
-        ResourceLocation identifier = ResourceLocation.tryParse(itemKey);
+        Identifier identifier = Identifier.tryParse(itemKey);
         // ITEM is a defaulted registry, getValue would hand us air for a typo instead of failing
         if (identifier != null && BuiltInRegistries.ITEM.containsKey(identifier)) {
             return BuiltInRegistries.ITEM.getValue(identifier);

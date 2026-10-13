@@ -8,7 +8,7 @@ import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.helpers.StationHook.Kind;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
 
@@ -326,7 +326,7 @@ public final class FurnaceWatch {
     private Task start(AltoClef mod, GamerContext ctx, FurnacePlan.Verdict v) {
         RunState.FurnaceJob job = v.job();
         long now = ctx.facts().gameTime();
-        Block block = BuiltInRegistries.BLOCK.getValue(ResourceLocation.withDefaultNamespace(job.kind));
+        Block block = BuiltInRegistries.BLOCK.getValue(Identifier.withDefaultNamespace(job.kind));
         target = job;
         quick = v.call() == FurnacePlan.Call.STAND_BY && v.why() == FurnacePlan.Why.QUICK;
         if (quick) {

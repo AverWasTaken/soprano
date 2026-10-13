@@ -54,9 +54,9 @@ public final class McStats implements StatsAccess {
         return out;
     }
 
-    private void distance(List<Stat> out, String label, StatsCounter s, net.minecraft.resources.ResourceLocation... keys) {
+    private void distance(List<Stat> out, String label, StatsCounter s, net.minecraft.resources.Identifier... keys) {
         long cm = 0;
-        for (net.minecraft.resources.ResourceLocation k : keys) {
+        for (net.minecraft.resources.Identifier k : keys) {
             cm += s.getValue(Stats.CUSTOM, k);
         }
         out.add(new Stat(label, formatDistance(cm)));

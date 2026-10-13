@@ -81,7 +81,7 @@ public final class McItems implements ItemsAccess {
         }
         Item[] matches = TaskCatalogue.getItemMatches(name);
         if (matches.length == 0) {
-            Item item = BuiltInRegistries.ITEM.getValue(net.minecraft.resources.ResourceLocation.withDefaultNamespace(name));
+            Item item = BuiltInRegistries.ITEM.getValue(net.minecraft.resources.Identifier.withDefaultNamespace(name));
             return item == Items.AIR ? "Other" : fallbackCategory(item);
         }
         String group = null;

@@ -18,7 +18,7 @@ import adris.altoclef.util.slots.FurnaceSlot;
 import adris.altoclef.util.slots.Slot;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.inventory.AbstractFurnaceMenu;
-import net.minecraft.world.inventory.ClickType;
+import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Block;
 
@@ -138,7 +138,7 @@ public class CollectFromFurnaceTask extends Task {
             if (fit.isEmpty()) {
                 return new EnsureFreeInventorySlotTask();
             }
-            mod.getSlotHandler().clickSlot(fit.get(), 0, ClickType.PICKUP);
+            mod.getSlotHandler().clickSlot(fit.get(), 0, ContainerInput.PICKUP);
             return null;
         }
         setDebugState("Walking to the furnace");
@@ -243,7 +243,7 @@ public class CollectFromFurnaceTask extends Task {
             return new EnsureFreeInventorySlotTask();
         }
         setDebugState(why);
-        mod.getSlotHandler().clickSlot(slot, 0, ClickType.QUICK_MOVE);
+        mod.getSlotHandler().clickSlot(slot, 0, ContainerInput.QUICK_MOVE);
         return null;
     }
 

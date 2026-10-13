@@ -11,7 +11,7 @@ import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.time.TimerGame;
 import java.util.Optional;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.monster.EnderMan;
+import net.minecraft.world.entity.monster.Enderman;
 import net.minecraft.world.item.Items;
 
 public class KillEndermanTask extends ResourceTask {
@@ -38,7 +38,7 @@ public class KillEndermanTask extends ResourceTask {
     @Override
     protected Task onResourceTick(AltoClef mod) {
         // Dimension
-        if (!mod.getEntityTracker().entityFound(EnderMan.class)) {
+        if (!mod.getEntityTracker().entityFound(Enderman.class)) {
             // the target dimension is null unless somebody forced one, and a null dimension is an NPE in the switch
             // of DefaultGoToDimensionTask. nothing forced = hunt right here, like KillAndLootTask does
             if (isInWrongDimension(mod)) {
@@ -48,16 +48,16 @@ public class KillEndermanTask extends ResourceTask {
         }
 
         // Kill the angry one
-        Optional<Entity> enderman = mod.getEntityTracker().getClosestEntity(EnderMan.class);
+        Optional<Entity> enderman = mod.getEntityTracker().getClosestEntity(Enderman.class);
         if (enderman.isPresent()) {
-            EnderMan endermanEntity = (EnderMan) enderman.get();
+            Enderman endermanEntity = (Enderman) enderman.get();
             final int TOO_FAR_AWAY = 256;
             if (endermanEntity.isCreepy() && endermanEntity.position().closerThan(mod.getPlayer().position(), TOO_FAR_AWAY)) {
                 return new KillEntityTask(endermanEntity);
             }
         }
         // Attack the closest one
-        return new KillEntitiesTask(EnderMan.class);
+        return new KillEntitiesTask(Enderman.class);
     }
 
     @Override

@@ -317,7 +317,7 @@ public class GamerTask extends Task {
         }
         // credits can show up between two of our ticks (the dragon dies, the screen opens), record it now so a task that
         // is finished but never stopped (altoRunsWhenIdle) still leaves a saved DONE behind
-        if (begun && !machine.ended() && Minecraft.getInstance().screen instanceof WinScreen) {
+        if (begun && !machine.ended() && Minecraft.getInstance().gui.screen() instanceof WinScreen) {
             machine.finish(true);
         }
         // the win card is handed over here and not only on stop: with altoRunsWhenIdle the runner stays up and a finished task is
@@ -947,7 +947,7 @@ public class GamerTask extends Task {
             lastPlayer = player;
             deadSeen = false;
         }
-        boolean dying = player.isDeadOrDying() || Minecraft.getInstance().screen instanceof DeathScreen;
+        boolean dying = player.isDeadOrDying() || Minecraft.getInstance().gui.screen() instanceof DeathScreen;
         if (!deadSeen && dying) {
             deadSeen = true;
             adopt(DeathStash.snapshot(player));
@@ -1232,7 +1232,7 @@ public class GamerTask extends Task {
     // branch runs on, or a screen that closed and opened again during a trip would look like it had been up the whole time
     private void trackNightGates() {
         // (a chat box, the pause menu or the bed screen is not items moving, only a container is)
-        if (Minecraft.getInstance().screen instanceof AbstractContainerScreen<?>) {
+        if (Minecraft.getInstance().gui.screen() instanceof AbstractContainerScreen<?>) {
             if (screenSince < 0) {
                 screenSince = facts.gameTime();
             }

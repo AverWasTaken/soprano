@@ -77,7 +77,7 @@ public class FastTravelTask extends Task {
         boolean canLightPortal = mod.getItemStorage().hasItem(Items.FLINT_AND_STEEL, Items.FIRE_CHARGE);
 
         // EDGE CASE: We die in the nether, stop force walking, we want to start over.
-        if (Minecraft.getInstance().screen instanceof DeathScreen) {
+        if (Minecraft.getInstance().gui.screen() instanceof DeathScreen) {
             _forceOverworldWalking = false;
         }
 

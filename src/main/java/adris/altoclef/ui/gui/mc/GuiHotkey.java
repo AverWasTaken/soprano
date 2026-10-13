@@ -25,7 +25,7 @@ public final class GuiHotkey {
             // the game looks at ctrl+b (narrator) before it asks the screen, and a text field of ours is not an edit box
             // it knows about, so typing it in the search field would flip the narrator. hand it to the screen ourselves
             if (key == GLFW_KEY_B && (action == GLFW_PRESS || action == GLFW_REPEAT) && Screen.hasControlDown()
-                    && mc.screen instanceof GuiScreen gui) {
+                    && mc.gui.screen() instanceof GuiScreen gui) {
                 gui.keyPressed(key, 0, Keys.MOD_CTRL);
                 return true;
             }
@@ -35,7 +35,7 @@ public final class GuiHotkey {
             Settings s = Baritone.settings();
             KeyBind bind = new KeyBind(s.guiKey.value);
             bind.enabled = s.guiKeyEnabled.value;
-            if (!bind.opens(key, mc.screen != null) || !canOpen(mc)) {
+            if (!bind.opens(key, mc.gui.screen() != null) || !canOpen(mc)) {
                 return false;
             }
             show(mc);
@@ -51,7 +51,7 @@ public final class GuiHotkey {
     // open on the next tick, when chat is gone
     public static String open() {
         Minecraft mc = Minecraft.getInstance();
-        if (mc.screen instanceof GuiScreen) {
+        if (mc.gui.screen() instanceof GuiScreen) {
             return null;
         }
         if (mc.player == null || mc.level == null) {
@@ -73,13 +73,13 @@ public final class GuiHotkey {
     }
 
     private static boolean canOpen(Minecraft mc) {
-        return mc.screen == null && mc.player != null && mc.level != null && mc.getOverlay() == null;
+        return mc.gui.screen() == null && mc.player != null && mc.level != null && mc.getOverlay() == null;
     }
 
     private static void show(Minecraft mc) {
-        if (mc.screen instanceof GuiScreen) {
+        if (mc.gui.screen() instanceof GuiScreen) {
             return;
         }
-        mc.setScreen(new GuiScreen());
+        mc.gui.setScreen(new GuiScreen());
     }
 }

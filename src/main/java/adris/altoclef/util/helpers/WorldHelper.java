@@ -249,8 +249,8 @@ public interface WorldHelper {
     // what a break could be done with: the bag and the offhand (the tool gates count a pick over there too)
     static java.util.List<net.minecraft.world.item.ItemStack> bagOf(AltoClef mod) {
         net.minecraft.world.entity.player.Inventory inv = mod.getPlayer().getInventory();
-        java.util.List<net.minecraft.world.item.ItemStack> bag = new java.util.ArrayList<>(inv.items.size() + inv.offhand.size());
-        bag.addAll(inv.items);
+        java.util.List<net.minecraft.world.item.ItemStack> bag = new java.util.ArrayList<>(inv.getNonEquipmentItems().size() + inv.offhand.size());
+        bag.addAll(inv.getNonEquipmentItems());
         bag.addAll(inv.offhand);
         return bag;
     }

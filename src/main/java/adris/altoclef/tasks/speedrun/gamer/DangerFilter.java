@@ -9,7 +9,7 @@ import adris.altoclef.util.helpers.WorldHelper;
 import baritone.api.utils.Dimension;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.monster.Pillager;
+import net.minecraft.world.entity.monster.illager.Pillager;
 import net.minecraft.world.entity.monster.Witch;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;

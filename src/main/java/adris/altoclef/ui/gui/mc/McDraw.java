@@ -7,7 +7,7 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.PlayerFaceRenderer;
 import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -161,7 +161,7 @@ final class McDraw {
             return cached;
         }
         ItemStack stack = ItemStack.EMPTY;
-        ResourceLocation rl = id == null ? null : ResourceLocation.tryParse(id);
+        Identifier rl = id == null ? null : Identifier.tryParse(id);
         if (rl != null) {
             Item item = BuiltInRegistries.ITEM.getOptional(rl).orElse(Items.AIR);
             if (item != Items.AIR) {

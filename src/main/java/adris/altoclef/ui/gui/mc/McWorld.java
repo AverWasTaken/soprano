@@ -16,7 +16,7 @@ import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.client.player.AbstractClientPlayer;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
@@ -142,7 +142,7 @@ public final class McWorld implements WorldAccess {
                     continue;
                 }
                 EntityType<?> type = e.getType();
-                ResourceLocation key = BuiltInRegistries.ENTITY_TYPE.getKey(type);
+                Identifier key = BuiltInRegistries.ENTITY_TYPE.getKey(type);
                 String custom = e.hasCustomName() ? e.getCustomName().getString() : "";
                 out.add(new EntityEntry(e.getId(), key.toString(), type.getDescription().getString(), custom,
                         e.distanceTo(me), IconResolver.forEntityType(type)));
@@ -203,7 +203,7 @@ public final class McWorld implements WorldAccess {
     @Override
     public Result followType(String typeId) {
         try {
-            ResourceLocation rl = typeId == null ? null : ResourceLocation.tryParse(typeId);
+            Identifier rl = typeId == null ? null : Identifier.tryParse(typeId);
             EntityType<?> type = rl == null ? null : BuiltInRegistries.ENTITY_TYPE.getOptional(rl).orElse(null);
             if (type == null) {
                 return Result.fail("No mob called " + typeId + ".");

@@ -24,7 +24,7 @@ import adris.altoclef.util.helpers.PlacedByUs;
 import adris.altoclef.util.helpers.StoneDigRank;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
-import net.minecraft.world.inventory.ClickType;
+import net.minecraft.world.inventory.ContainerInput;
 import adris.altoclef.util.slots.PlayerSlot;
 import adris.altoclef.util.time.TimerGame;
 import adris.altoclef.ui.HudText;
@@ -152,7 +152,7 @@ public class MineAndCollectTask extends ResourceTask {
     // the cursor slot is window index -1, which forceEquipSlot turned into a click outside the window: the better pick went on the
     // floor. a pickup click on the hand slot trades the cursor for what we hold, the old tool goes back to the bag from the cursor
     private static void equipFromCursor(AltoClef mod) {
-        mod.getSlotHandler().clickSlot(PlayerSlot.getEquipSlot(), 0, ClickType.PICKUP);
+        mod.getSlotHandler().clickSlot(PlayerSlot.getEquipSlot(), 0, ContainerInput.PICKUP);
     }
 
     private void makeSureToolIsEquipped(AltoClef mod) {

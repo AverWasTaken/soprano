@@ -22,7 +22,7 @@ import adris.altoclef.eventbus.events.SlotClickChangedEvent;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
-import net.minecraft.world.inventory.ClickType;
+import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import org.spongepowered.asm.mixin.Mixin;
@@ -45,7 +45,7 @@ public class MixinAltoClefContainerMenu {
             method = "clicked",
             at = @At("HEAD")
     )
-    private void altoclef$snapshotSlots(final int slotIndex, final int button, final ClickType clickType, final Player player, final CallbackInfo ci) {
+    private void altoclef$snapshotSlots(final int slotIndex, final int button, final ContainerInput clickType, final Player player, final CallbackInfo ci) {
         // a click that throws never reaches RETURN, so never trust a leftover snapshot
         altoclef$beforeClick = null;
         // the integrated server clicks on its own thread too
@@ -69,7 +69,7 @@ public class MixinAltoClefContainerMenu {
             method = "clicked",
             at = @At("RETURN")
     )
-    private void altoclef$publishChanges(final int slotIndex, final int button, final ClickType clickType, final Player player, final CallbackInfo ci) {
+    private void altoclef$publishChanges(final int slotIndex, final int button, final ContainerInput clickType, final Player player, final CallbackInfo ci) {
         List<ItemStack> before = altoclef$beforeClick;
         altoclef$beforeClick = null;
         if (before == null) {

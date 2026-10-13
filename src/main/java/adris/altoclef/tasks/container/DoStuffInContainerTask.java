@@ -26,7 +26,7 @@ import java.util.Optional;
 import java.util.function.Function;
 import baritone.api.pathing.goals.Goal;
 import net.minecraft.core.BlockPos;
-import net.minecraft.world.inventory.ClickType;
+import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.phys.Vec3;
@@ -229,10 +229,10 @@ public abstract class DoStuffInContainerTask extends Task {
                 return new EnsureFreeInventorySlotTask();
             }
             if (ItemHelper.canDropStack(mod, StorageHelper.getItemStackInCursorSlot())) {
-                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ClickType.PICKUP);
+                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
                 return null;
             }
-            mod.getSlotHandler().clickSlot(toMoveTo.get(), 0, ClickType.PICKUP);
+            mod.getSlotHandler().clickSlot(toMoveTo.get(), 0, ContainerInput.PICKUP);
             return null;
         }
         // a station of the gamer's own gets walked to from beside it, not from on top of it: the top is a climb and, in a low

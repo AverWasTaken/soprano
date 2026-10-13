@@ -2,7 +2,7 @@ package adris.altoclef.ui.gui.mc;
 
 import adris.altoclef.TaskCatalogue;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
@@ -94,7 +94,7 @@ public final class IconResolver {
         if (id == null) {
             return null;
         }
-        ResourceLocation rl = ResourceLocation.tryParse(id.contains(":") ? id : "minecraft:" + id);
+        Identifier rl = Identifier.tryParse(id.contains(":") ? id : "minecraft:" + id);
         if (rl == null) {
             return null;
         }

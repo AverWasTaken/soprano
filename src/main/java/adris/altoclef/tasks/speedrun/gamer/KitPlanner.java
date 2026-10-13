@@ -7,7 +7,7 @@ import adris.altoclef.tasks.speedrun.gamer.config.OverworldConfig.KitItem;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.ToolWear;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 
@@ -617,7 +617,7 @@ public final class KitPlanner {
     }
 
     private static Item[] lookup(String id) {
-        return BuiltInRegistries.ITEM.getOptional(ResourceLocation.withDefaultNamespace(id))
+        return BuiltInRegistries.ITEM.getOptional(Identifier.withDefaultNamespace(id))
                 .map(item -> new Item[]{item}).orElse(new Item[0]);
     }
 }

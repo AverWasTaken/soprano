@@ -47,7 +47,7 @@ public class SimpleChunkTracker {
     }
 
     public boolean isChunkLoaded(ChunkPos pos) {
-        return !(_mod.getWorld().getChunk(pos.x, pos.z) instanceof EmptyLevelChunk);
+        return !(_mod.getWorld().getChunk(pos.x(), pos.z()) instanceof EmptyLevelChunk);
     }
 
     public boolean isChunkLoaded(BlockPos pos) {
@@ -69,7 +69,7 @@ public class SimpleChunkTracker {
     // did ~90k getBlockStates plus a BlockPos each per chunk, on the client thread. get rekt
     // returns the first match or null. the BlockPos is only built for the actual hit
     public BlockPos findInChunk(ChunkPos chunk, Predicate<BlockState> state) {
-        LevelChunk levelChunk = _mod.getWorld().getChunk(chunk.x, chunk.z);
+        LevelChunk levelChunk = _mod.getWorld().getChunk(chunk.x(), chunk.z());
         // not loaded hands back an EmptyLevelChunk, which is a LevelChunk, so it has to be asked about by name
         if (levelChunk instanceof EmptyLevelChunk) {
             return null;

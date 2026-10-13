@@ -17,8 +17,8 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.WinScreen;
 import net.minecraft.client.player.LocalPlayer;
-import net.minecraft.client.renderer.RenderType;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.client.renderer.rendertype.RenderType;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 
@@ -75,8 +75,8 @@ public class GamerHudOverlay {
     private static final int STRIP_BG = 0xBFAA1414;
     private static final int RULE = 0x2EFFFFFF;
 
-    private static final ResourceLocation HEART = ResourceLocation.withDefaultNamespace("hud/heart/full");
-    private static final ResourceLocation FOOD = ResourceLocation.withDefaultNamespace("hud/food_full");
+    private static final Identifier HEART = Identifier.withDefaultNamespace("hud/heart/full");
+    private static final Identifier FOOD = Identifier.withDefaultNamespace("hud/food_full");
 
     private interface Op {
         void draw(GuiGraphics g, Font font);
@@ -122,7 +122,7 @@ public class GamerHudOverlay {
         }
     }
 
-    private record Sprite(ResourceLocation id, int x, int y, int w, int h) implements Op {
+    private record Sprite(Identifier id, int x, int y, int w, int h) implements Op {
         @Override
         public void draw(GuiGraphics g, Font font) {
             g.blitSprite(RenderType::guiTextured, id, x, y, w, h);
@@ -207,7 +207,7 @@ public class GamerHudOverlay {
             return null;
         }
         long now = System.currentTimeMillis();
-        boolean show = linger.visible(now, mc.screen instanceof WinScreen);
+        boolean show = linger.visible(now, mc.gui.screen() instanceof WinScreen);
         if (linger.over(now)) {
             won = null;
             return null;

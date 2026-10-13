@@ -17,11 +17,11 @@ import java.util.Optional;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.boss.EnderDragonPart;
+import net.minecraft.world.entity.boss.enderdragon.EnderDragonPart;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
 import net.minecraft.world.entity.boss.enderdragon.phases.DragonPhaseInstance;
 import net.minecraft.world.entity.boss.enderdragon.phases.EnderDragonPhase;
-import net.minecraft.world.entity.monster.EnderMan;
+import net.minecraft.world.entity.monster.Enderman;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.Vec3;
 
@@ -78,7 +78,7 @@ public class KillEnderDragonWithBedsTask extends Task {
         mod.getBehaviour().addMobDefenseExclusion(KillEnderDragonTask::ownedByTheDragonFight);
         // and off the aura too, like the sword task: an excluded mob is the aura's otherwise, and a swing turns the head in the
         // middle of aiming a bed
-        mod.getBehaviour().addForceFieldExclusion(entity -> entity instanceof EnderMan || entity instanceof EnderDragon || entity instanceof EnderDragonPart);
+        mod.getBehaviour().addForceFieldExclusion(entity -> entity instanceof Enderman || entity instanceof EnderDragon || entity instanceof EnderDragonPart);
     }
 
     // no beds left in the inventory and none placed and waiting to be clicked. the caller swaps to the sword when this

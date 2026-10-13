@@ -368,7 +368,7 @@ public class CollectBucketLiquidTask extends ResourceTask {
 
     // what the next fill should do about the slot the full bucket needs (see BucketFillRules)
     private BucketFillRules.Fill fillPlan(AltoClef mod) {
-        NonNullList<ItemStack> slots = mod.getPlayer().getInventory().items;
+        NonNullList<ItemStack> slots = mod.getPlayer().getInventory().getNonEquipmentItems();
         int[] bucketStacks = new int[slots.size()];
         boolean freeSlot = false;
         for (int i = 0; i < bucketStacks.length; i++) {

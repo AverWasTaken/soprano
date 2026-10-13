@@ -10,7 +10,7 @@ import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.helpers.ItemHelper;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
-import net.minecraft.world.entity.animal.Sheep;
+import net.minecraft.world.entity.animal.sheep.Sheep;
 import net.minecraft.world.item.DyeColor;
 
 // the evening before a night: a bed in the bag by the time the window opens, so the trip has something to put down. the rules

@@ -30,7 +30,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket;
 import net.minecraft.world.entity.monster.Monster;
-import net.minecraft.world.entity.monster.ZombifiedPiglin;
+import net.minecraft.world.entity.monster.zombie.ZombifiedPiglin;
 import net.minecraft.world.level.block.BedBlock;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
@@ -557,7 +557,7 @@ public class NightSleepTask extends Task {
     private Task sleep(AltoClef mod, long now) {
         LocalPlayer player = mod.getPlayer();
         ClientLevel world = mod.getWorld();
-        boolean asleep = player.isSleeping() || Minecraft.getInstance().screen instanceof InBedChatScreen;
+        boolean asleep = player.isSleeping() || Minecraft.getInstance().gui.screen() instanceof InBedChatScreen;
         if (asleep) {
             if (!wasAsleep) {
                 asleepDayTime = world.getDayTime();

@@ -109,7 +109,7 @@ public class InventorySubTracker extends Tracker {
         if (includeCursor) {
             result.add(StorageHelper.getItemStackInCursorSlot());
         }
-        result.addAll(inv.items);
+        result.addAll(inv.getNonEquipmentItems());
         result.addAll(inv.armor);
         result.addAll(inv.offhand);
         return result;

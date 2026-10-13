@@ -107,7 +107,7 @@ public final class MinecraftFacts implements GamerFacts {
         // the same test IronPhase's food gate and the smelt site use, the nether's roof is not a sky
         nearSurface = dimension == Dimension.OVERWORLD && SmeltSurface.shallow(SmeltSurface.depthBelowSky(mod));
         armorPoints = player.getArmorValue();
-        if (Minecraft.getInstance().screen instanceof WinScreen) {
+        if (Minecraft.getInstance().gui.screen() instanceof WinScreen) {
             credits = true;
         }
         countItems(player);
@@ -336,7 +336,7 @@ public final class MinecraftFacts implements GamerFacts {
                 }
             }
         }
-        String screen = mc.screen == null ? "none" : mc.screen.getClass().getSimpleName();
+        String screen = mc.gui.screen() == null ? "none" : mc.gui.screen().getClass().getSimpleName();
         return PickDiag.scan(seen, open, screen, menuName);
     }
 

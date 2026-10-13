@@ -19,7 +19,7 @@ import net.minecraft.client.gui.screens.DeathScreen;
 import net.minecraft.client.gui.screens.PauseScreen;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
-import net.minecraft.world.inventory.ClickType;
+import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.item.ItemStack;
 
 public class PlayerInteractionFixChain extends TaskChain {
@@ -102,7 +102,7 @@ public class PlayerInteractionFixChain extends TaskChain {
             // were the inventory and the 72 clicks land in the container, and on the ones it does know they reset the slot
             // cooldown under whatever task is working the screen. the timer stays elapsed, it goes the tick the screen shuts
             // the clicks go to containerMenu, so a menu still open behind a closed screen counts too
-            boolean containerOpen = Minecraft.getInstance().screen instanceof AbstractContainerScreen<?>
+            boolean containerOpen = Minecraft.getInstance().gui.screen() instanceof AbstractContainerScreen<?>
                     || mod.getPlayer().containerMenu != mod.getPlayer().inventoryMenu;
             if (!mod.getControllerExtras().isBreakingBlock() && !containerOpen) {
                 // this fires every 30s for as long as altoclef runs, chat is no place for it
@@ -133,17 +133,17 @@ public class PlayerInteractionFixChain extends TaskChain {
         if (_lastHandStack != null && _stackHeldTimeout.elapsed()) {
             Optional<Slot> moveTo = mod.getItemStorage().getSlotThatCanFitInPlayerInventory(_lastHandStack, false);
             if (moveTo.isPresent()) {
-                mod.getSlotHandler().clickSlot(moveTo.get(), 0, ClickType.PICKUP);
+                mod.getSlotHandler().clickSlot(moveTo.get(), 0, ContainerInput.PICKUP);
                 return Float.NEGATIVE_INFINITY;
             }
             if (ItemHelper.canDropStack(mod, StorageHelper.getItemStackInCursorSlot())) {
-                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ClickType.PICKUP);
+                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
                 return Float.NEGATIVE_INFINITY;
             }
             Optional<Slot> garbage = StorageHelper.getGarbageSlot(mod);
             // Try throwing away cursor slot if it's garbage
             if (garbage.isPresent()) {
-                mod.getSlotHandler().clickSlot(garbage.get(), 0, ClickType.PICKUP);
+                mod.getSlotHandler().clickSlot(garbage.get(), 0, ContainerInput.PICKUP);
                 return Float.NEGATIVE_INFINITY;
             }
             // a kept stack with a full bag and nothing to swap it with stays in hand for a while. throwing it was the old
@@ -152,10 +152,10 @@ public class PlayerInteractionFixChain extends TaskChain {
             if (_keptStackWatch.tick()) {
                 ItemStack kept = StorageHelper.getItemStackInCursorSlot();
                 Debug.logMessage("Bag is full and nothing to swap, dropping the held " + kept.getCount() + "x " + kept.getItem().getDescriptionId());
-                if (Minecraft.getInstance().screen != null) {
+                if (Minecraft.getInstance().gui.screen() != null) {
                     StorageHelper.closeScreen();
                 } else {
-                    mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ClickType.PICKUP);
+                    mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
                 }
             }
             return Float.NEGATIVE_INFINITY;
@@ -167,20 +167,20 @@ public class PlayerInteractionFixChain extends TaskChain {
             if (!cursorStack.isEmpty()) {
                 Optional<Slot> moveTo = mod.getItemStorage().getSlotThatCanFitInPlayerInventory(cursorStack, false);
                 if (moveTo.isPresent()) {
-                    mod.getSlotHandler().clickSlot(moveTo.get(), 0, ClickType.PICKUP);
+                    mod.getSlotHandler().clickSlot(moveTo.get(), 0, ContainerInput.PICKUP);
                     return Float.NEGATIVE_INFINITY;
                 }
                 if (ItemHelper.canDropStack(mod, cursorStack)) {
-                    mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ClickType.PICKUP);
+                    mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
                     return Float.NEGATIVE_INFINITY;
                 }
                 Optional<Slot> garbage = StorageHelper.getGarbageSlot(mod);
                 // Try throwing away cursor slot if it's garbage
                 if (garbage.isPresent()) {
-                    mod.getSlotHandler().clickSlot(garbage.get(), 0, ClickType.PICKUP);
+                    mod.getSlotHandler().clickSlot(garbage.get(), 0, ContainerInput.PICKUP);
                     return Float.NEGATIVE_INFINITY;
                 }
-                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ClickType.PICKUP);
+                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
             } else {
                 StorageHelper.closeScreen();
             }
@@ -194,7 +194,7 @@ public class PlayerInteractionFixChain extends TaskChain {
         if (!Baritone.settings().altoAutoCloseScreenWhenLookingOrMining.value)
             return false;
         // Only check look if we've had the same screen open for a while
-        Screen openScreen = Minecraft.getInstance().screen;
+        Screen openScreen = Minecraft.getInstance().gui.screen();
         if (openScreen != _lastScreen) {
             _mouseMovingButScreenOpenTimeout.reset();
         }

@@ -105,7 +105,7 @@ public final class InventoryBehavior extends Behavior implements Helper {
         if (pickClutchItem(false) != null) {
             return;
         }
-        NonNullList<ItemStack> inv = ctx.player().getInventory().items;
+        NonNullList<ItemStack> inv = ctx.player().getInventory().getNonEquipmentItems();
         for (int i = 9; i < 36; i++) {
             if (inv.get(i).is(Items.VINE) || inv.get(i).is(Items.LADDER)) {
                 attemptToPutOnHotbar(i, slot -> false);
@@ -123,14 +123,14 @@ public final class InventoryBehavior extends Behavior implements Helper {
         if (pickClutchItem(false) != null) {
             return true; // already there
         }
-        NonNullList<ItemStack> inv = ctx.player().getInventory().items;
+        NonNullList<ItemStack> inv = ctx.player().getInventory().getNonEquipmentItems();
         for (int i = 9; i < 36; i++) {
             if (inv.get(i).is(Items.VINE) || inv.get(i).is(Items.LADDER)) {
                 OptionalInt slot = getTempHotbarSlot(s -> false);
                 if (slot.isEmpty()) {
                     return false;
                 }
-                ctx.playerController().windowClick(ctx.player().inventoryMenu.containerId, i, slot.getAsInt(), ClickType.SWAP, ctx.player());
+                ctx.playerController().windowClick(ctx.player().inventoryMenu.containerId, i, slot.getAsInt(), ContainerInput.SWAP, ctx.player());
                 ticksSinceLastInventoryMove = 0;
                 return true;
             }
@@ -158,14 +158,14 @@ public final class InventoryBehavior extends Behavior implements Helper {
             return false;
         }
         LocalPlayer p = ctx.player();
-        return ThrowawayPicks.handWaiting(awaitedItem, p.getInventory().items.get(THROWAWAY_SLOT).getItem(), THROWAWAY_SLOT,
-                p.getInventory().selected, awaitedAt, tickCount);
+        return ThrowawayPicks.handWaiting(awaitedItem, p.getInventory().getNonEquipmentItems().get(THROWAWAY_SLOT).getItem(), THROWAWAY_SLOT,
+                p.getInventory().getSelectedSlot(), awaitedAt, tickCount);
     }
 
     public OptionalInt getTempHotbarSlot(Predicate<Integer> disallowedHotbar) {
         // we're using 0 and 8 for pickaxe and throwaway. the rest goes through ThrowawayPicks so a temp swap can't stomp
         // the slot in hand or the one the next placement is about to pull from (that one was a fun afternoon)
-        NonNullList<ItemStack> inv = ctx.player().getInventory().items;
+        NonNullList<ItemStack> inv = ctx.player().getInventory().getNonEquipmentItems();
         boolean[] empty = new boolean[9];
         int throwawaySlot = -1;
         for (int i = 0; i < 9; i++) {
@@ -176,7 +176,7 @@ public final class InventoryBehavior extends Behavior implements Helper {
         }
         int pending = lastTickRequestedMove == null ? -1 : lastTickRequestedMove[1];
         Random rng = new Random();
-        return ThrowawayPicks.tempHotbarSlot(empty, disallowedHotbar::test, ctx.player().getInventory().selected, throwawaySlot, pending, rng::nextInt);
+        return ThrowawayPicks.tempHotbarSlot(empty, disallowedHotbar::test, ctx.player().getInventory().getSelectedSlot(), throwawaySlot, pending, rng::nextInt);
     }
 
     private boolean requestSwapWithHotBar(int inInventory, int inHotbar) {
@@ -199,7 +199,7 @@ public final class InventoryBehavior extends Behavior implements Helper {
     }
 
     private int firstValidThrowaway() { // TODO offhand idk
-        NonNullList<ItemStack> invy = ctx.player().getInventory().items;
+        NonNullList<ItemStack> invy = ctx.player().getInventory().getNonEquipmentItems();
         // same list the movements place from, so the hotbar never gets a stack that has nothing above its reserve
         List<Item> usable = movementThrowaways(true);
         for (int i = 0; i < invy.size(); i++) {
@@ -264,7 +264,7 @@ public final class InventoryBehavior extends Behavior implements Helper {
     // the stack, and the next ask has to see that or we'd spend the reserve one block at a time
     private int heldCount(Item item) {
         int total = 0;
-        for (ItemStack stack : ctx.player().getInventory().items) {
+        for (ItemStack stack : ctx.player().getInventory().getNonEquipmentItems()) {
             if (stack.is(item)) {
                 total += stack.getCount();
             }
@@ -281,7 +281,7 @@ public final class InventoryBehavior extends Behavior implements Helper {
         boolean haveAny = false;
         boolean haveUsable = false;
         boolean usableOnHotbar = false;
-        NonNullList<ItemStack> inv = ctx.player().getInventory().items;
+        NonNullList<ItemStack> inv = ctx.player().getInventory().getNonEquipmentItems();
         for (int i = 0; i <= inv.size(); i++) {
             boolean offhand = i == inv.size();
             Item item = (offhand ? ctx.player().getInventory().offhand.get(0) : inv.get(i)).getItem();
@@ -337,7 +337,7 @@ public final class InventoryBehavior extends Behavior implements Helper {
             return false; // no selecting, no swapping, and nothing counts as being in the hotbar
         }
         LocalPlayer p = ctx.player();
-        NonNullList<ItemStack> inv = p.getInventory().items;
+        NonNullList<ItemStack> inv = p.getInventory().getNonEquipmentItems();
         if (select) {
             awaitedItem = null; // whatever we pick now is picked fresh, an old wait is not about it
         }
@@ -379,7 +379,7 @@ public final class InventoryBehavior extends Behavior implements Helper {
                         // a throttled swap stays pending and lands on a later tick, slot 7 is selected so it lands in hand.
                         // until then nothing may click, see handWaitingOnSwap
                         boolean landed = requestSwapWithHotBar(i, THROWAWAY_SLOT);
-                        p.getInventory().selected = THROWAWAY_SLOT;
+                        p.getInventory().setSelectedSlot(THROWAWAY_SLOT);
                         awaitedItem = landed ? null : inv.get(i).getItem();
                         awaitedAt = tickCount;
                     }

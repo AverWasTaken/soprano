@@ -286,7 +286,7 @@ public final class AltoClefBridge implements AbstractGameEventListener {
     // then), or the first tick with a world for people who skip the title screen
     private void init() {
         Minecraft mc = Minecraft.getInstance();
-        if (!(mc.screen instanceof TitleScreen) && mc.level == null) {
+        if (!(mc.gui.screen() instanceof TitleScreen) && mc.level == null) {
             return;
         }
         initTried = true;

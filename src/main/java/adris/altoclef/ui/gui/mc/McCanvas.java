@@ -7,8 +7,8 @@ import adris.altoclef.ui.gui.kit.TexturedCanvas;
 import adris.altoclef.ui.gui.kit.Theme;
 import adris.altoclef.ui.gui.kit.Weight;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.renderer.RenderType;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.client.renderer.rendertype.RenderType;
+import net.minecraft.resources.Identifier;
 
 // the two primitives TexturedCanvas wants, on top of GuiGraphics. no layout and no decisions in here. one of these
 // lives as long as its screen (making a TexturedCanvas wipes the atlas caches) and gets the frame's graphics via begin
@@ -67,7 +67,7 @@ final class McCanvas extends TexturedCanvas {
             return;
         }
         try {
-            ResourceLocation tex = atlases.texture(page);
+            Identifier tex = atlases.texture(page);
             draw.g.blit(RenderType::guiTextured, tex, x0, y0, (float) sx, (float) sy, w, h, sw, sh,
                     page.width(), page.height(), argb);
         } catch (Throwable t) {

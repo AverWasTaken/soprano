@@ -27,7 +27,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.stream.Stream;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.ArmorItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
@@ -95,7 +95,7 @@ public enum AltoItem implements IDatatypeFor<String> {
             }
         }
         if (this == ANY_ITEM) {
-            for (ResourceLocation id : BuiltInRegistries.ITEM.keySet()) {
+            for (Identifier id : BuiltInRegistries.ITEM.keySet()) {
                 String n = id.getNamespace().equals("minecraft") ? id.getPath() : id.toString();
                 if (registryItem(n) != null && !TaskCatalogue.taskExists(n)) {
                     out.add(n);
@@ -123,7 +123,7 @@ public enum AltoItem implements IDatatypeFor<String> {
     }
 
     private static Item registryItem(String name) {
-        ResourceLocation id = ResourceLocation.tryParse(name);
+        Identifier id = Identifier.tryParse(name);
         // a bare name is a minecraft one, tryParse already does that
         Item item = id == null ? null : BuiltInRegistries.ITEM.getOptional(id).orElse(null);
         // "air" is in the registry as an item. it is not one you can put in a chest

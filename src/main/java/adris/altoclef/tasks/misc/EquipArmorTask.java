@@ -12,7 +12,7 @@ import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.slots.PlayerSlot;
 import adris.altoclef.util.slots.Slot;
 import net.minecraft.world.entity.EquipmentSlot;
-import net.minecraft.world.inventory.ClickType;
+import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.inventory.InventoryMenu;
 import net.minecraft.world.item.ArmorItem;
 import net.minecraft.world.item.Item;
@@ -72,20 +72,20 @@ public class EquipArmorTask extends Task {
                             if (!cursorStack.isEmpty()) {
                                 Optional<Slot> moveTo = mod.getItemStorage().getSlotThatCanFitInPlayerInventory(cursorStack, false);
                                 if (moveTo.isPresent()) {
-                                    mod.getSlotHandler().clickSlot(moveTo.get(), 0, ClickType.PICKUP);
+                                    mod.getSlotHandler().clickSlot(moveTo.get(), 0, ContainerInput.PICKUP);
                                     return null;
                                 }
                                 if (ItemHelper.canDropStack(mod, cursorStack)) {
-                                    mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ClickType.PICKUP);
+                                    mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
                                     return null;
                                 }
                                 Optional<Slot> garbage = StorageHelper.getGarbageSlot(mod);
                                 // Try throwing away cursor slot if it's garbage
                                 if (garbage.isPresent()) {
-                                    mod.getSlotHandler().clickSlot(garbage.get(), 0, ClickType.PICKUP);
+                                    mod.getSlotHandler().clickSlot(garbage.get(), 0, ContainerInput.PICKUP);
                                     return null;
                                 }
-                                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ClickType.PICKUP);
+                                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
                             } else {
                                 StorageHelper.closeScreen();
                             }
@@ -108,20 +108,20 @@ public class EquipArmorTask extends Task {
                             if (!cursorStack.isEmpty()) {
                                 Optional<Slot> moveTo = mod.getItemStorage().getSlotThatCanFitInPlayerInventory(cursorStack, false);
                                 if (moveTo.isPresent()) {
-                                    mod.getSlotHandler().clickSlot(moveTo.get(), 0, ClickType.PICKUP);
+                                    mod.getSlotHandler().clickSlot(moveTo.get(), 0, ContainerInput.PICKUP);
                                     return null;
                                 }
                                 if (ItemHelper.canDropStack(mod, cursorStack)) {
-                                    mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ClickType.PICKUP);
+                                    mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
                                     return null;
                                 }
                                 Optional<Slot> garbage = StorageHelper.getGarbageSlot(mod);
                                 // Try throwing away cursor slot if it's garbage
                                 if (garbage.isPresent()) {
-                                    mod.getSlotHandler().clickSlot(garbage.get(), 0, ClickType.PICKUP);
+                                    mod.getSlotHandler().clickSlot(garbage.get(), 0, ContainerInput.PICKUP);
                                     return null;
                                 }
-                                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ClickType.PICKUP);
+                                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
                             } else {
                                 StorageHelper.closeScreen();
                             }
@@ -141,7 +141,7 @@ public class EquipArmorTask extends Task {
         Optional<Slot> park = cursorArmorSpot(mod);
         if (park.isPresent()) {
             setDebugState("Parking the swapped piece");
-            mod.getSlotHandler().clickSlot(park.get(), 0, ClickType.PICKUP);
+            mod.getSlotHandler().clickSlot(park.get(), 0, ContainerInput.PICKUP);
         }
         return null;
     }

@@ -9,7 +9,7 @@ import adris.altoclef.tasksystem.Task;
 import java.util.Optional;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.animal.Cow;
+import net.minecraft.world.entity.animal.cow.Cow;
 import net.minecraft.world.item.Items;
 
 public class CollectMilkTask extends ResourceTask {

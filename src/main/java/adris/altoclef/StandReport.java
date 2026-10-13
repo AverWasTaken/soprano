@@ -66,7 +66,7 @@ final class StandReport {
         return Lines.standing(new Lines.Stand(ticks, player.getX(), player.getY(), player.getZ(), move(exec, path, index),
                 index, path == null ? 0 : path.length(), String.valueOf(pb.getGoal()), exec != null && !pb.isPathing(),
                 command.map(c -> c.commandType.name()).orElse(null), by, mod.getExtraBaritoneSettings().isInteractionPaused(),
-                keys(baritone, player), held(mc.options), player.isCrouching(), mc.screen == null ? null : mc.screen.getClass().getSimpleName(), using(player),
+                keys(baritone, player), held(mc.options), player.isCrouching(), mc.gui.screen() == null ? null : mc.gui.screen().getClass().getSimpleName(), using(player),
                 player.onGround(), player.isInWater(), calc(pb), chain(taskChain), taskChain == null ? null : leaf(taskChain.getTasks()),
                 Lines.lastDebug(lastDebug, lastDebugAgo)));
     }
