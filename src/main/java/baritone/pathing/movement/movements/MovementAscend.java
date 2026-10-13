@@ -34,6 +34,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.FallingBlock;
+import net.minecraft.world.level.block.StairBlock;
 import net.minecraft.world.level.block.state.BlockState;
 
 public class MovementAscend extends Movement {
@@ -131,12 +132,12 @@ public class MovementAscend extends Movement {
             } else {
                 walk = WALK_ONE_BLOCK_COST; // we don't hit space we just walk into the slab
             }
-        } else if (StairSteps.walkUp(toPlace, new BlockPos(x, y, z), new BlockPos(destX, y + 1, destZ), srcDown, context.bsi.access)) {
+        } else if (toPlace.getBlock() instanceof StairBlock && StairSteps.walkUp(toPlace, new BlockPos(x, y, z), new BlockPos(destX, y + 1, destZ), srcDown, context.bsi.access)) {
             walk = WALK_ONE_BLOCK_COST; // stairs go up by themselves, no space bar and nothing to pay for it
         } else {
             // jumpingFromBottomSlab must be false
             if (toPlace.is(Blocks.SOUL_SAND)) {
-                walk = context.soulSandWalkCost;
+                walk = Math.max(JUMP_ONE_BLOCK_COST, context.soulSandWalkCost);
             } else if (toPlace.is(Blocks.MAGMA_BLOCK)) {
                 walk = SNEAK_ONE_BLOCK_COST;
             } else {

@@ -112,8 +112,6 @@ public class CalculationContext {
     public final SwimStalls.Snapshot swimStalls;
     // rowing, when there's a boat to row. equal to waterWalkSpeed when there isn't so the min is a no-op
     public final double boatWaterSpeed;
-    // the cheapest a block of descent can be with what we are carrying, for GoalYLevel's lower bound. see descentFloor
-    public final double descentTicksPerBlock;
     public final double breakBlockAdditionalCost;
     // ticks the bot sits idle after a block that took more than one tick to break, see BlockBreakHelper
     public final double breakIdleTicks;
@@ -237,7 +235,9 @@ public class CalculationContext {
         this.assumeWalkOnWater = Baritone.settings().assumeWalkOnWater.value;
         this.allowFallIntoLava = false; // Super secret internal setting for ElytraBehavior
         this.frostWalker = frostWalker;
-        this.soulSandWalkCost = soulSandWalkCost(soulSpeed);
+        // soul speed boots can make sprinting over the stuff cheaper than costHeuristic, and a move priced under the
+        // heuristic stops A* being A* (same reason boats are clamped below), so it bottoms out at plain walking
+        this.soulSandWalkCost = Math.max(soulSandWalkCost(soulSpeed), Baritone.settings().costHeuristic.value / ActionCosts.SPRINT_MULTIPLIER);
         this.allowDiagonalDescend = ExperimentalMovement.allowDiagonalDescend();
         this.allowDiagonalAscend = ExperimentalMovement.allowDiagonalAscend();
         this.allowDownward = Baritone.settings().allowDownward.value;
@@ -259,7 +259,6 @@ public class CalculationContext {
         // costs what the heuristic thinks a block costs and not a tick less. still way under swimming
         double boatSpeed = Math.max(ActionCosts.BOAT_ONE_BLOCK_COST, Baritone.settings().costHeuristic.value);
         this.boatWaterSpeed = Baritone.settings().allowBoats.value && hasBoat ? Math.min(waterSpeed, boatSpeed) : waterSpeed;
-        this.descentTicksPerBlock = descentFloor(this.maxFallHeightNoWater, this.maxFallHeightBucket, hasWaterBucket, this.hasClutchItem, this.fastMode);
         this.breakBlockAdditionalCost = Baritone.settings().blockBreakAdditionalPenalty.value;
         this.breakIdleTicks = Math.max(0, Baritone.settings().blockBreakSpeed.value - 1);
         this.waterBreakCostMultiplier = Baritone.settings().waterBreakCostMultiplier.value;
@@ -273,9 +272,16 @@ public class CalculationContext {
         this.worldBorder = bsi.worldBorder;
     }
 
+    // the cheapest a block of descent can be with what we are carrying, for GoalYLevel's lower bound. read when a search
+    // starts and not in the constructor, because the elytra walk off context raises the fall limits after super() returns
+    public double descentTicksPerBlock() {
+        return descentFloor(maxFallHeightNoWater, maxFallHeightBucket, hasWaterBucket, hasClutchItem, fastMode);
+    }
+
     // the longest fall this context will plan, and what that costs per block. a plain fall is maxFallHeightNoWater, the
     // bucket takes it to maxFallHeightBucket, a hurting fall in fast mode to 23 (ExperimentalMovement.MAX_HURT_FALL),
-    // and a ladder clutch to LadderClutch.MAX_DROP (256). falls into water have no cap at all but need the landing
+    // and a ladder clutch to LadderClutch.MAX_DROP (256). falls into water have no cap at all but need the landing, and
+    // so does a fall that an existing ladder or vine catches (Descend resets the speed on the cell), so those can undercut
     public static double descentFloor(int noWater, int bucket, boolean hasWaterBucket, boolean hasClutchItem, boolean fastMode) {
         int longest = Math.max(1, noWater);
         if (hasWaterBucket) {
@@ -318,12 +324,17 @@ public class CalculationContext {
     }
 
     private static int soulSpeedLevel(LocalPlayer player) {
-        return enchantLevel(player, Enchantments.SOUL_SPEED);
+        // boots only, it does nothing from a hand
+        return enchantLevel(player, Enchantments.SOUL_SPEED, EquipmentSlot.FEET);
     }
 
     private static int enchantLevel(LocalPlayer player, ResourceKey<Enchantment> wanted) {
+        return enchantLevel(player, wanted, EquipmentSlot.values());
+    }
+
+    private static int enchantLevel(LocalPlayer player, ResourceKey<Enchantment> wanted, EquipmentSlot... slots) {
         int level = 0;
-        for (EquipmentSlot slot : EquipmentSlot.values()) {
+        for (EquipmentSlot slot : slots) {
             ItemEnchantments itemEnchantments = player.getItemBySlot(slot).getEnchantments();
             for (Holder<Enchantment> enchant : itemEnchantments.keySet()) {
                 if (enchant.is(wanted)) {

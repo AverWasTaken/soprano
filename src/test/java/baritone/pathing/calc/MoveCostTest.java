@@ -248,7 +248,7 @@ public class MoveCostTest {
     // what the search thread would have the heuristic use, then back to the default for the next test
     private static double descentWith(boolean bucket, int blocks) {
         Ctx ctx = new Ctx(floor(), bucket);
-        GoalYLevel.setDescentTicksPerBlock(ctx.descentTicksPerBlock);
+        GoalYLevel.setDescentTicksPerBlock(ctx.descentTicksPerBlock());
         try {
             return GoalYLevel.calculate(0, blocks);
         } finally {
@@ -279,8 +279,8 @@ public class MoveCostTest {
 
     @Test
     public void whatEachKindOfContextCanFallDecidesTheFloor() {
-        double plain = new Ctx(floor(), false).descentTicksPerBlock;
-        double bucket = new Ctx(floor(), true).descentTicksPerBlock;
+        double plain = new Ctx(floor(), false).descentTicksPerBlock();
+        double bucket = new Ctx(floor(), true).descentTicksPerBlock();
         assertEquals(FALL_N_BLOCKS_COST[3] / 3, plain, 1e-9);
         assertEquals(FALL_N_BLOCKS_COST[20] / 20, bucket, 1e-9);
         assertEquals(FALL_N_BLOCKS_COST[256] / 256, CalculationContext.descentFloor(3, 20, true, true, false), 1e-9);
@@ -362,17 +362,27 @@ public class MoveCostTest {
     }
 
     @Test
-    public void soulSpeedBootsMakeSoulSandFasterThanDirt() {
-        // the data file turns the slowdown off and adds 0.0405 / 0.051 / 0.0615 of walking speed on top of 0.1
+    public void soulSpeedBootsTakeTheSlowdownOffButNeverUndercutTheHeuristic() {
+        // the data file turns the slowdown off and adds 0.0405 / 0.051 / 0.0615 of walking speed on top of 0.1, which on paper
+        // is 1.4 to 1.6x walking. a sprinted step cheaper than costHeuristic would make A* stop being A*, so it bottoms out at walking
         double plain = MovementTraverse.cost(new Ctx(soulSandAhead()), 0, 64, 0, 1, 0);
         double one = MovementTraverse.cost(new Ctx(soulSandAhead(), 0f, 1), 0, 64, 0, 1, 0);
         double three = MovementTraverse.cost(new Ctx(soulSandAhead(), 0f, 3), 0, 64, 0, 1, 0);
         double flat = MovementTraverse.cost(new Ctx(floor()), 0, 64, 0, 1, 0);
-        assertTrue(one < plain && three < one);
-        // half the step is on the stuff, so half of the 1.405x
-        assertEquals((WALK_ONE_BLOCK_COST + (WALK_ONE_BLOCK_COST / 1.405 - WALK_ONE_BLOCK_COST) / 2) * SPRINT_MULTIPLIER, one, 1e-9);
-        assertTrue(three < flat);
+        assertTrue(one < plain);
+        assertEquals(flat, one, 1e-3);
+        assertEquals(flat, three, 1e-3);
         assertEquals(WALK_ONE_BLOCK_COST / 1.615, CalculationContext.soulSandWalkCost(3), 1e-9);
+        assertEquals(WALK_ONE_BLOCK_COST / 1.405, CalculationContext.soulSandWalkCost(1), 1e-9);
+    }
+
+    @Test
+    public void aContextThatRaisesTheFallLimitAfterwardsGetsTheLowerFloor() {
+        // the elytra walk off context sets maxFallHeightNoWater to 10000 after the constructor has run
+        Ctx ctx = new Ctx(floor(), false);
+        assertEquals(FALL_N_BLOCKS_COST[3] / 3, ctx.descentTicksPerBlock(), 1e-9);
+        ctx.maxFallHeightNoWater = 10000;
+        assertEquals(FALL_N_BLOCKS_COST[4096] / 4096, ctx.descentTicksPerBlock(), 1e-9);
     }
 
     // ---- stairs ----

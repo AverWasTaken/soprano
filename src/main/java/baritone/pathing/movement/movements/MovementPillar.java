@@ -111,6 +111,7 @@ public class MovementPillar extends Movement {
         if (hardness != 0) {
             if (MovementHelper.isClimbable(toBreakBlock)) {
                 hardness = 0; // we won't actually need to break the ladder / vine because we're going to use it
+                waitCredit = 0;
             } else {
                 BlockState check = context.get(x, y + 3, z); // the block on top of the one we're going to break, could it fall on us?
                 if (check.getBlock() instanceof FallingBlock) {

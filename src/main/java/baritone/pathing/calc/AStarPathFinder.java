@@ -57,7 +57,7 @@ public final class AStarPathFinder extends AbstractNodeCostSearch {
     protected Optional<IPath> calculate0(long primaryTimeout, long failureTimeout) {
         // the vertical part of the heuristic is a lower bound on what a descent costs, and that depends on whether we can
         // actually fall far (a bucket, a clutch item). goals don't get to see the context so the thread carries it
-        GoalYLevel.setDescentTicksPerBlock(calcContext.descentTicksPerBlock);
+        GoalYLevel.setDescentTicksPerBlock(calcContext.descentTicksPerBlock());
         try {
             return search(primaryTimeout, failureTimeout);
         } finally {
