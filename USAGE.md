@@ -92,14 +92,14 @@ All off by default unless it says otherwise.
 - `allowNeos` (jump around the end of a wall 1 or 2 blocks thick, needs `allowParkour`)
 - `allowMomentumJumps` (run up and bunny hop into jumps a standing start can't make: a 4 block gap on the flat or one up across a gap of 3, both with 3 or more blocks of run up behind you, drops of 1 to 3 blocks that reach 5 or 6 blocks out, and a few pairs of jumps through a one block pad. Needs `allowParkour`)
 - `allowClimbJumps` (jump onto ladders and vines across a gap, and off of them again, needs `allowParkour`)
-- `allowLadderClutch` (survive long falls by placing a ladder or vine on a wall beside the landing, needs one on the hotbar)
+- `allowLadderClutch` (survive long falls by placing a ladder or vine on a wall beside the landing, needs one on the hotbar. `fastMode` turns it on, and a clutch isn't offered below `fastModeMinHealth` because a miss is the whole fall)
 - `pickupLadders` (on by default, picks the clutch ladder back up after landing)
-- `allowGodBridge` (bridge backwards at walking speed with no sneaking and no stopping when the only thing to place against is the block you stand on. It turns around, walks back, and clicks the moment the far face of the block underfoot is under the crosshair, so a long bridge is one continuous walk. If it can't click in time it sneaks that tick and finishes the block the old way. The planner prices those blocks at walk speed plus placing, so bridges get picked more readily. It stays off ice, honey, water, ladders and footing that opens when clicked (chests, furnaces, crafting tables), which are bridged the old way or not at all, as before. Side placement is unchanged. Risks: a click that lands but places nothing (a laggy server, a rejected placement) is a fall, stopping the bot mid block can coast it off the edge, strict anticheats and laggy servers won't like it, and the camera faces backwards while it bridges)
+- `allowGodBridge` (bridge backwards at walking speed with no sneaking and no stopping when the only thing to place against is the block you stand on. It turns around, walks back, and clicks the moment the far face of the block underfoot is under the crosshair, so a long bridge is one continuous walk. If it can't click in time it sneaks that tick and finishes the block the old way. The planner prices those blocks at walk speed plus placing, so bridges get picked more readily. It stays off ice, slime, honey, water, ladders, vines and footing that opens when clicked (chests, furnaces, crafting tables), which are bridged the old way or not at all, as before. Side placement is unchanged. Risks: a click that lands but places nothing (a laggy server, a rejected placement) is a fall, stopping the bot mid block can coast it off the edge, strict anticheats and laggy servers won't like it, and the camera faces backwards while it bridges)
 - `fastMode` (speedrunner style movement, see below) and `fastModeMinHealth` (the health it won't drop below)
 - `fallDamageCost` (what a half heart of fall damage costs the planner, in ticks, while `fastMode` is on), `experimentalJumpBias` (how much cheaper jumps look than walking, 0.9 by default) and `experimentalBlockPlacementPenalty` (the most a block placement is allowed to cost)
 - `allowGroundShortcuts` (take direct lines across bends in flat walking paths, with full-width clearance and floor checks every tick)
 - `preferFasterPathing` (smoother steering along clear straight runs and fewer awkward corner-edging diagonals)
-- `allowBoats` (place a boat from the inventory, row it across the water, and take it with you on the other side. `boatMinWaterLength` says how much water is worth it, `colorBoatPath` paints those stretches of the path)
+- `allowBoats` (place a boat from the inventory, row it across the water, and take it with you on the other side. `boatMinWaterLength` says how much water is worth it, and the planner only prices a lake as a boat ride when it has a row that long, `colorBoatPath` paints those stretches of the path)
 - `allowSwimming` (sprint swim along the waterline, head out and body in, instead of bobbing through water)
 - `headHitters` (sprint jump head bonks in 1x2 tunnels, slightly faster than plain sprinting)
 - `headHittersDiagonal` (on by default, allows diagonal head bonks when `headHitters` is enabled)
@@ -113,7 +113,7 @@ All off by default unless it says otherwise.
 - `keepPathOnSameGoal` (on by default, when one AltoClef task hands over to another that wants the same goal, keeps walking the path instead of standing still while a new one is calculated)
 - `shortBaritonePrefix` (use `[S]` instead of `[Soprano]` in chat messages)
 
-`fastMode` is the "just go fast" switch. It turns on all the parkour (neos, climb jumps and momentum jumps too), diagonal ascends and descends, sprint jumping, head hitters, ground shortcuts, god bridging and faster pathing, takes falls that cost some health when that saves time, cuts corners, smooths straight runs, places blocks more freely and leans toward jumps. If you'd rather pick features one by one, leave it off and use the settings above.
+`fastMode` is the "just go fast" switch. It turns on all the parkour (neos, climb jumps, momentum jumps and placing a block mid jump too), diagonal ascends and descends, sprint jumping, head hitters, ground shortcuts, god bridging, ladder clutches, swimming, boats, elytra takeoff from the ground and faster pathing, takes falls that cost some health when that saves time, cuts corners, smooths straight runs, places blocks more freely and leans toward jumps. If you'd rather pick features one by one, leave it off and use the settings above.
 
 ## Settings from Baritone
 
@@ -123,7 +123,7 @@ A few that are worth knowing about:
 - `allowSprint`
 - `allowPlace`
 - `allowParkour`
-- `allowParkourPlace`
+- `allowParkourPlace` (place the block to land on in mid air during a parkour jump, needs `allowParkour`. If the placement misses after the jump is committed you fall)
 - `allowDiagonalAscend`
 - `blockPlacementPenalty`
 - `acceptableThrowawayItems`

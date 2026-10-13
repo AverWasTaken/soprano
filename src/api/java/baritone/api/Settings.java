@@ -164,8 +164,8 @@ public final class Settings {
     public final Setting<Boolean> strictLiquidCheck = new Setting<>(false);
 
     /**
-     * Allow Baritone to fall arbitrary distances and place a water bucket beneath it.
-     * Reliability: questionable.
+     * Allow Baritone to fall up to {@link #maxFallHeightBucket} blocks and place a water bucket beneath it.
+     * Reliability: questionable, and a miss is the whole fall, so the planner only offers a drop while you would survive that.
      */
     public final Setting<Boolean> allowWaterBucketFall = new Setting<>(true);
 
@@ -174,7 +174,11 @@ public final class Settings {
      * a water bucket clutch but with a block you can carry in the nether.
      * <p>
      * Needs a ladder or vine on the hotbar and a wall beside the last few blocks of the fall. The water bucket is still
-     * preferred when you have one. Reliability: also questionable, it's all about the timing.
+     * preferred when you have one. Reliability: also questionable, it's all about the timing, and a clutch that misses is
+     * just the whole fall. The planner won't offer one below {@link #fastModeMinHealth} for that reason, or for a drop a miss
+     * would kill you in.
+     * <p>
+     * Part of {@link #fastMode}.
      */
     public final Setting<Boolean> allowLadderClutch = new Setting<>(false);
 
@@ -224,8 +228,13 @@ public final class Settings {
      * This is riskier than the sneaking bridge. For a stretch of each block the bot hangs over the edge with no
      * sneak clamp holding it, so a missed placement depends on it catching itself by sneaking at the last moment.
      * Laggy servers and strict anticheats will not like it, and stopping the bot (or anything else that lets go of the
-     * keys) in the middle of a block can drop it off the edge, because it is still moving when that happens. Only bridges with no side placement option, on plain
-     * ground (no ice, soul sand, slabs, water, magma), are affected.
+     * keys) in the middle of a block can drop it off the edge, because it is still moving when that happens.
+     * <p>
+     * Only bridges with no side placement option are affected, and only from plain footing. Anything slippery or slow
+     * under your feet (ice, slime, honey) keeps the sneaking bridge, and so does footing that opens when you click it
+     * (chests, furnaces, crafting tables and the like), water, and standing in anything climbable (ladders, vines, scaffolding and the like). Magma counts as plain
+     * unless {@link #allowWalkOnMagmaBlocks} is on. Soul sand and half slabs can't be placed against from behind at
+     * all, sneaking or not, so they never get this far.
      */
     public final Setting<Boolean> allowGodBridge = new Setting<>(false);
 
@@ -443,9 +452,11 @@ public final class Settings {
     public final Setting<Boolean> allowParkour = new Setting<>(false);
 
     /**
-     * Actually pretty reliable.
+     * Place the block to land on in mid air, while doing a parkour jump, for gaps that are too wide to clear without it.
      * <p>
-     * Doesn't make it any more dangerous compared to just normal allowParkour th
+     * Actually pretty reliable, but there is no taking it back: once the jump is committed, a placement that misses in the
+     * air leaves nothing to land on, and that is a fall. Only actually takes effect if {@link #allowParkour} is also
+     * true. Part of {@link #fastMode}.
      */
     public final Setting<Boolean> allowParkourPlace = new Setting<>(false);
 
@@ -536,10 +547,11 @@ public final class Settings {
      * <p>
      * While this is on, these settings behave as if they were on, whatever their own value (the settings themselves
      * are left alone, so turning this off gives you your old choices back):
-     * {@link #allowParkour}, {@link #allowParkourAscend}, {@link #allowNeos}, {@link #allowClimbJumps},
+     * {@link #allowParkour}, {@link #allowParkourAscend}, {@link #allowParkourPlace}, {@link #allowLadderClutch}, {@link #allowNeos}, {@link #allowClimbJumps},
      * {@link #allowMomentumJumps},
      * {@link #allowDiagonalAscend}, {@link #allowDiagonalDescend}, {@link #sprintJumping}, {@link #headHitters},
-     * {@link #allowGroundShortcuts}, {@link #allowGodBridge} and {@link #preferFasterPathing}.
+     * {@link #allowGroundShortcuts}, {@link #allowGodBridge}, {@link #allowSwimming}, {@link #allowBoats},
+     * {@link #elytraAutoJump} and {@link #preferFasterPathing}.
      * <p>
      * It also scales the cost of parkour, neo, climb and momentum jumps by {@link #experimentalJumpBias}, caps the cost of
      * placing a block at {@link #experimentalBlockPlacementPenalty} (so a quick pillar or short bridge can beat a
@@ -758,6 +770,9 @@ public final class Settings {
     /**
      * How far are you allowed to fall onto solid ground (with a water bucket)?
      * It's not that reliable, so I've set it below what would kill an unarmored player (23)
+     * <p>
+     * The bucket can still miss, and a miss is the whole fall, so a drop is only planned while you would survive that
+     * miss with at least half a heart left. At low health a tall drop is left out even with a bucket in hand.
      */
     public final Setting<Integer> maxFallHeightBucket = new Setting<>(20);
 
@@ -1056,7 +1071,8 @@ public final class Settings {
      * baritone places the boat from the shore, climbs in, rows along the path, and at the far side breaks the
      * boat and picks it back up (see {@link #boatPickup}) before carrying on on foot. Water traversal is costed
      * at rowing speed while a boat is in the inventory, so the planner will prefer going across a lake instead
-     * of around it.
+     * of around it. Only water with a straight row of at least {@link #boatMinWaterLength} boatable blocks through it
+     * in both directions is priced that way, so a pond or a narrow river costs what wading does.
      * <p>
      * A boat is wider than a block, so it only counts water with open water or air on every side at water
      * level; the planner routes a block off the banks for the same reason. Bubble columns (water over magma

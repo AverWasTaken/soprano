@@ -182,6 +182,25 @@ public class ThrowawayPicksTest {
     }
 
     @Test
+    public void theHandWaitsUntilTheAwaitedItemIsInTheSelectedSlot() {
+        assertFalse(ThrowawayPicks.handWaiting(null, "bucket", 7, 7, 10, 10));
+        // selected the slot, the cobble hasn't arrived, a bucket is in there instead
+        assertTrue(ThrowawayPicks.handWaiting("cobble", "bucket", 7, 7, 10, 10));
+        assertTrue(ThrowawayPicks.handWaiting("cobble", null, 7, 7, 10, 10));
+        // it landed
+        assertFalse(ThrowawayPicks.handWaiting("cobble", "cobble", 7, 7, 10, 11));
+        // somebody else's slot, say the bucket in slot 3 for a mlg
+        assertFalse(ThrowawayPicks.handWaiting("cobble", "bucket", 7, 3, 10, 10));
+    }
+
+    @Test
+    public void aWaitNobodyRefreshedExpires() {
+        // the movement asks every tick, so a stamp from several ticks ago is a movement that stopped
+        assertTrue(ThrowawayPicks.handWaiting("cobble", "bucket", 7, 7, 10, 12));
+        assertFalse(ThrowawayPicks.handWaiting("cobble", "bucket", 7, 7, 10, 13));
+    }
+
+    @Test
     public void failureReasonsComeOutInOrder() {
         assertEquals(ThrowawayPicks.Failure.PAUSED, ThrowawayPicks.classify(true, true, true, true, true));
         assertEquals(ThrowawayPicks.Failure.AVOIDED, ThrowawayPicks.classify(false, true, false, false, false));

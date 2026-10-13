@@ -48,6 +48,13 @@ final class ThrowawayPicks {
         }
     }
 
+    // throwaway() selects the hotbar slot before the item is in it when the swap into it was throttled (or waits for us to
+    // stand still), and whatever sits there meanwhile is not what we picked. the wait is only believed for a couple of ticks:
+    // the movement that picked asks again every tick, so a stamp nobody refreshed is a movement that moved on
+    static <T> boolean handWaiting(T awaited, T inSlot, int awaitedSlot, int selectedSlot, long stampedAt, long now) {
+        return awaited != null && selectedSlot == awaitedSlot && !awaited.equals(inSlot) && now - stampedAt <= 2;
+    }
+
     // what a movement may burn of a protected stack: whatever is held above the reserve. a recipe waiting on 6 cobble
     // doesn't care about the 7th, but it very much cares about the 6th (building a staircase out of the recipe is how the
     // bot spent a whole minute mining the same cobble over and over). long math because "all of it" is MAX_VALUE

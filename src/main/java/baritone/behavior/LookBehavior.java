@@ -31,6 +31,7 @@ import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.Optional;
+import baritone.utils.ExperimentalMovement;
 
 public final class LookBehavior extends Behavior implements ILookBehavior {
 
@@ -341,7 +342,7 @@ public final class LookBehavior extends Behavior implements ILookBehavior {
                 if (ctx.player().isFallFlying()) {
                     // always need to set angles while flying
                     return settings.elytraFreeLook.value ? SERVER : CLIENT;
-                } else if (settings.allowSwimming.value && ctx.player().isSwimming()) {
+                } else if (ExperimentalMovement.allowSwimming() && ctx.player().isSwimming()) {
                     // same idea as fall flying: pitch is what actually steers you up and down while
                     // swimming, so the angles always need to be set. SERVER restores the free look camera
                     // afterwards, so the user's view stays put either way.

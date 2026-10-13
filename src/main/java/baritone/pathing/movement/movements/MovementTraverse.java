@@ -187,7 +187,7 @@ public class MovementTraverse extends Movement {
                 if ((blockSrc == Blocks.LILY_PAD || blockSrc instanceof CarpetBlock) && !srcDown.getFluidState().isEmpty()) {
                     return COST_INF; // we can stand on these but can't place against them
                 }
-                if (context.allowGodBridge && !throughWater && context.get(x, y, z).getFluidState().isEmpty()
+                if (context.allowGodBridge && !throughWater && godStance(context.get(x, y, z))
                         && godFooting(srcDown, context.allowWalkOnMagmaBlocks)
                         // air under src is the block the traverse before this one places, it'll be there by the time we are
                         // (a stone stand-in so the border and place protection still get asked)
@@ -400,6 +400,15 @@ public class MovementTraverse extends Movement {
         Block block = srcDown.getBlock();
         return block.getFriction() == 0.6F && block.getSpeedFactor() == 1.0F && !(allowMagma && block == Blocks.MAGMA_BLOCK)
                 && !opensWhenClicked(srcDown);
+    }
+
+    // the planner's half of the executor's isInWater / onClimbable check, close but not all of it (an open trapdoor over a
+    // ladder, a body in water with dry feet): standing in a ladder or in water is not a stance the backwards walk works from,
+    // and the cost should say so or it prices a god bridge the executor turns down
+    static boolean godStance(BlockState feet) {
+        Block block = feet.getBlock();
+        return feet.getFluidState().isEmpty()
+                && !MovementHelper.isClimbable(block) && block != Blocks.SCAFFOLDING && block != Blocks.CAVE_VINES && block != Blocks.CAVE_VINES_PLANT;
     }
 
     // the sneaking back place gets away with these because sneak turns the click into a placement. an unsneaked click

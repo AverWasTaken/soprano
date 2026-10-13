@@ -174,6 +174,18 @@ public class GodBridgeCostTest {
     }
 
     @Test
+    public void startingFromAClimbableKeepsTheSneakPrice() {
+        // the executor turns a god bridge down when the player is on a ladder, so the planner can't price one
+        for (BlockState climbable : new BlockState[]{Blocks.LADDER.defaultBlockState(), Blocks.VINE.defaultBlockState(), Blocks.SCAFFOLDING.defaultBlockState()}) {
+            MapWorld w = gap(Blocks.STONE.defaultBlockState());
+            w.set(0, 64, 0, climbable);
+            double off = cost(w, false);
+            assertTrue(climbable + " should still be a bridge, got " + off, off < ActionCosts.COST_INF);
+            assertEquals(climbable.toString(), off, cost(w, true), 0);
+        }
+    }
+
+    @Test
     public void aChainOfBridgesIsWalkSpeedAllTheWayAlong() {
         // the second traverse starts over the block the first one places, which is still air when the planner asks
         MapWorld w = gap(Blocks.STONE.defaultBlockState());

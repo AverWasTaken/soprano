@@ -64,6 +64,7 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 
 import static baritone.api.pathing.movement.ActionCosts.COST_INF;
+import baritone.utils.ExperimentalMovement;
 
 public class ElytraProcess extends BaritoneProcessHelper implements IBaritoneProcess, IElytraProcess, AbstractGameEventListener {
     public State state;
@@ -258,7 +259,7 @@ public class ElytraProcess extends BaritoneProcessHelper implements IBaritonePro
         }
 
         if (this.state == State.FLYING || this.state == State.START_FLYING) {
-            this.state = ctx.player().onGround() && Baritone.settings().elytraAutoJump.value
+            this.state = ctx.player().onGround() && ExperimentalMovement.elytraAutoJump()
                     ? State.LOCATE_JUMP
                     : State.START_FLYING;
         }

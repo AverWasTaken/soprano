@@ -139,12 +139,18 @@ public class MovementDescend extends Movement {
     }
 
     public static boolean dynamicFallCost(CalculationContext context, int x, int y, int z, int destX, int destZ, double frontBreak, BlockState below, MutableMoveResult res) {
-        return dynamicFallCost(context, x, y, z, destX, destZ, frontBreak, below, res, true);
+        return dynamicFallCost(context, x, y, z, destX, destZ, frontBreak, below, res, true, true);
+    }
+
+    // a fall that's already been agreed to (mid air) wants the bucket no matter what, see bucketAtHealth
+    public static boolean dynamicFallCost(CalculationContext context, int x, int y, int z, int destX, int destZ, double frontBreak, BlockState below, MutableMoveResult res, boolean clutchHealthGate) {
+        return dynamicFallCost(context, x, y, z, destX, destZ, frontBreak, below, res, clutchHealthGate, false);
     }
 
     // clutchHealthGate false is for a fall that's already been agreed to (MovementFall mid air): hp dropping on the way down
-    // must not take away the save we're in the middle of
-    public static boolean dynamicFallCost(CalculationContext context, int x, int y, int z, int destX, int destZ, double frontBreak, BlockState below, MutableMoveResult res, boolean clutchHealthGate) {
+    // must not take away the save we're in the middle of. same for bucketHealthGate, which is only ever on when planning
+    // (or checking the plan on the ledge): once we're off the edge the bucket is the only thing left to try
+    public static boolean dynamicFallCost(CalculationContext context, int x, int y, int z, int destX, int destZ, double frontBreak, BlockState below, MutableMoveResult res, boolean clutchHealthGate, boolean bucketHealthGate) {
         if (frontBreak != 0 && context.get(destX, y + 2, destZ).getBlock() instanceof FallingBlock) {
             // if frontBreak is 0 we can actually get through this without updating the falling block and making it actually fall
             // but if frontBreak is nonzero, we're breaking blocks in front, so don't let anything fall through this column,
@@ -223,10 +229,14 @@ public class MovementDescend extends Movement {
                 return false;
             }
             boolean bucketOk = reachedMinimum && context.hasWaterBucket && unprotectedFallHeight <= context.maxFallHeightBucket + 1;
+            if (bucketOk && bucketHealthGate) {
+                bucketOk = bucketAtHealth(context.health, unprotectedFallHeight - 1);
+            }
             double clutch = reachedMinimum ? clutchCost(context, destX, destZ, effectiveStartHeight, newY + 1) : COST_INF;
             if (clutchHealthGate) {
                 clutch = clutchAtHealth(clutch, context.health, context.fastModeMinHealth);
             }
+            clutch = clutchAtMissHealth(clutch, bucketHealthGate, context.health, unprotectedFallHeight - 1);
             if (clutch < COST_INF) {
                 clutch += WALK_OFF_BLOCK_COST + frontBreak + costSoFar;
             }
@@ -276,6 +286,18 @@ public class MovementDescend extends Movement {
     // only the clutch: the bucket and the plain falls don't care
     static double clutchAtHealth(double clutch, double health, double minHealth) {
         return ExperimentalMovement.canAffordClutch(health, minHealth) ? clutch : COST_INF;
+    }
+
+    // the bucket is a lot more reliable than the clutch so it only gets pulled when a miss would kill us (the whole fall at
+    // once, see ExperimentalMovement.canAffordBucketMiss). a 20 block bucket at 17 hp or less is a coin flip with a funeral
+    static boolean bucketAtHealth(double health, int blocksFallen) {
+        return ExperimentalMovement.canAffordBucketMiss(health, blocksFallen);
+    }
+
+    // the clutch misses more than the bucket does, so it can't be the way round a drop the bucket was refused. planning only,
+    // same as the bucket gate, and not inside the clutchHealthGate block because that one is off when hp is fine
+    public static double clutchAtMissHealth(double clutch, boolean gate, double health, int blocksFallen) {
+        return gate && !bucketAtHealth(health, blocksFallen) ? COST_INF : clutch;
     }
 
     // the bucket wins ties, and any time the clutch is priced out

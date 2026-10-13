@@ -21,6 +21,7 @@ import baritone.Baritone;
 import baritone.altoclef.AltoClefSettings;
 import baritone.api.event.events.TickEvent;
 import baritone.api.utils.Helper;
+import baritone.utils.ExperimentalMovement;
 import baritone.utils.ToolSet;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.Direction;
@@ -47,8 +48,15 @@ import java.util.function.Predicate;
 
 public final class InventoryBehavior extends Behavior implements Helper {
 
+    private static final int THROWAWAY_SLOT = 7;
+
     int ticksSinceLastInventoryMove;
     int[] lastTickRequestedMove; // not everything asks every tick, so remember the request while coming to a halt
+    // the item throwaway() selected slot 7 for while its swap was throttled, and when. lastTickRequestedMove can't answer
+    // this: the pick and the throwaway refill overwrite it every tick before the click is looked at
+    private Item awaitedItem;
+    private long awaitedAt;
+    private long tickCount;
 
     public InventoryBehavior(Baritone baritone) {
         super(baritone);
@@ -56,10 +64,13 @@ public final class InventoryBehavior extends Behavior implements Helper {
 
     @Override
     public void onTick(TickEvent event) {
+        if (event.getType() != TickEvent.Type.OUT) {
+            tickCount++;
+        }
         boolean shuffle = Baritone.settings().allowInventory.value;
         // the clutch item only works from the hotbar (nobody shuffles the inventory mid fall), so that one move is allowed
         // even when the user keeps allowInventory off
-        boolean clutch = Baritone.settings().allowLadderClutch.value;
+        boolean clutch = ExperimentalMovement.allowLadderClutch();
         if (!(shuffle || clutch) || AltoClefSettings.getInstance().isInteractionPaused()) {
             return; // paused means the hotbar is somebody else's problem right now
         }
@@ -138,6 +149,17 @@ public final class InventoryBehavior extends Behavior implements Helper {
             }
         }
         return true;
+    }
+
+    // the one place a placement click is vetted (see InputOverrideHandler): throwaway() selects slot 7 even when the swap into
+    // it was throttled, and a right click with a bucket or a steak in hand empties the bucket or eats the steak
+    public boolean handWaitingOnSwap() {
+        if (awaitedItem == null) {
+            return false;
+        }
+        LocalPlayer p = ctx.player();
+        return ThrowawayPicks.handWaiting(awaitedItem, p.getInventory().items.get(THROWAWAY_SLOT).getItem(), THROWAWAY_SLOT,
+                p.getInventory().selected, awaitedAt, tickCount);
     }
 
     public OptionalInt getTempHotbarSlot(Predicate<Integer> disallowedHotbar) {
@@ -316,6 +338,9 @@ public final class InventoryBehavior extends Behavior implements Helper {
         }
         LocalPlayer p = ctx.player();
         NonNullList<ItemStack> inv = p.getInventory().items;
+        if (select) {
+            awaitedItem = null; // whatever we pick now is picked fresh, an old wait is not about it
+        }
         for (int i = 0; i < 9; i++) {
             ItemStack item = inv.get(i);
             // this usage of settings() is okay because it's only called once during pathing
@@ -351,8 +376,12 @@ public final class InventoryBehavior extends Behavior implements Helper {
             for (int i = 9; i < 36; i++) {
                 if (desired.test(inv.get(i))) {
                     if (select) {
-                        requestSwapWithHotBar(i, 7);
-                        p.getInventory().selected = 7;
+                        // a throttled swap stays pending and lands on a later tick, slot 7 is selected so it lands in hand.
+                        // until then nothing may click, see handWaitingOnSwap
+                        boolean landed = requestSwapWithHotBar(i, THROWAWAY_SLOT);
+                        p.getInventory().selected = THROWAWAY_SLOT;
+                        awaitedItem = landed ? null : inv.get(i).getItem();
+                        awaitedAt = tickCount;
                     }
                     return true;
                 }

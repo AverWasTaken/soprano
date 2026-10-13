@@ -27,6 +27,8 @@ public final class ExperimentalMovement {
     // vanilla safe fall distance, and a sanity bound so nobody plans a leap off the nether roof (23 is exactly 20 hp of it)
     public static final int SAFE_FALL = 3;
     public static final int MAX_HURT_FALL = 23;
+    // hp we must still have after a missed bucket, so only the misses that would kill us are refused
+    public static final double BUCKET_MISS_FLOOR = 1;
 
     private ExperimentalMovement() {}
 
@@ -40,6 +42,16 @@ public final class ExperimentalMovement {
 
     public static boolean allowParkourAscend() {
         return on() || Baritone.settings().allowParkourAscend.value;
+    }
+
+    public static boolean allowParkourPlace() {
+        return on() || Baritone.settings().allowParkourPlace.value;
+    }
+
+    // the planner (CalculationContext), the hotbar keeper (InventoryBehavior) and the mid air probe (LadderClutchFallTask)
+    // all have to agree on this or fast mode plans a clutch that nobody keeps a ladder on the hotbar for
+    public static boolean allowLadderClutch() {
+        return on() || Baritone.settings().allowLadderClutch.value;
     }
 
     public static boolean allowNeos() {
@@ -74,6 +86,18 @@ public final class ExperimentalMovement {
         return on() || Baritone.settings().allowGroundShortcuts.value;
     }
 
+    public static boolean allowSwimming() {
+        return on() || Baritone.settings().allowSwimming.value;
+    }
+
+    public static boolean allowBoats() {
+        return on() || Baritone.settings().allowBoats.value;
+    }
+
+    public static boolean elytraAutoJump() {
+        return on() || Baritone.settings().elytraAutoJump.value;
+    }
+
     public static boolean allowGodBridge() {
         return on() || Baritone.settings().allowGodBridge.value;
     }
@@ -103,8 +127,16 @@ public final class ExperimentalMovement {
         return health - damage >= minHealth;
     }
 
+    // the water bucket is not a gamble, but it can still miss (a bad aim, a block in the way, lag). if it does the fall is the
+    // whole fall, so a drop is only offered while surviving a miss still leaves us alive. much looser than the clutch gate
+    public static boolean canAffordBucketMiss(double health, int blocksFallen) {
+        int damage = fallDamage(blocksFallen);
+        // a drop that can't hurt has nothing to miss, even at half a heart
+        return damage == 0 || canAffordFall(health, damage, BUCKET_MISS_FLOOR);
+    }
+
     // a ladder clutch is a fall that only doesn't hurt if the timing works out. below the same floor a miss is the whole fall
-    // at once, usually a funeral, so it's not offered at all there. the water bucket is not a gamble and has no gate
+    // at once, usually a funeral, so it's not offered at all there
     public static boolean canAffordClutch(double health, double minHealth) {
         return canAffordFall(health, 0, minHealth);
     }

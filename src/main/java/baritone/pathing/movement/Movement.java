@@ -36,6 +36,7 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.entity.item.FallingBlockEntity;
 import net.minecraft.world.phys.AABB;
+import baritone.utils.ExperimentalMovement;
 
 public abstract class Movement implements IMovement, MovementHelper {
 
@@ -162,7 +163,7 @@ public abstract class Movement implements IMovement, MovementHelper {
                 }
             } else {
                 swimStall.reset();
-                if (Baritone.settings().allowSwimming.value && ctx.player().isSwimming()) {
+                if (ExperimentalMovement.allowSwimming() && ctx.player().isSwimming()) {
                     // standing up to breathe (see shouldSwim). sprintInWater is on by default and traverse
                     // requests sprint every tick, which would keep us crawling along the bottom with our
                     // head under, so drop it explicitly
@@ -257,7 +258,7 @@ public abstract class Movement implements IMovement, MovementHelper {
      * we're actually in water, sprinting is allowed, and we have the hunger to sprint
      */
     private boolean shouldSwim() {
-        if (!Baritone.settings().allowSwimming.value
+        if (!ExperimentalMovement.allowSwimming()
                 || !ctx.player().isInWater()
                 || !Baritone.settings().allowSprint.value
                 || ctx.player().getFoodData().getFoodLevel() <= 6) {

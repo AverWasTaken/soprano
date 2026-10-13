@@ -17,6 +17,11 @@
 
 package baritone.utils;
 
+import baritone.api.BaritoneAPI;
+import baritone.api.Settings;
+import net.minecraft.SharedConstants;
+import net.minecraft.server.Bootstrap;
+import org.junit.Assume;
 import org.junit.Test;
 
 import static baritone.api.pathing.movement.ActionCosts.FALL_N_BLOCKS_COST;
@@ -66,5 +71,58 @@ public class ExperimentalMovementTest {
         // 3.7 to step off + 15.4 of falling + 4 hp at 20 ticks each is ~99 ticks, which is what ~21 blocks of walking costs
         assertEquals(4, ExperimentalMovement.fallDamage(blocks));
         assertTrue(cost > 95 && cost < 105);
+    }
+
+    private static Settings settingsOrSkip() {
+        SharedConstants.tryDetectVersion();
+        Bootstrap.bootStrap();
+        try {
+            return BaritoneAPI.getSettings();
+        } catch (Throwable t) {
+            Assume.assumeNoException("needs the shadow BaritoneAPI from the bench harness", t);
+            return null;
+        }
+    }
+
+    @Test
+    public void ladderClutchFollowsThePreset() {
+        Settings settings = settingsOrSkip();
+        boolean fast = settings.fastMode.value;
+        boolean clutch = settings.allowLadderClutch.value;
+        try {
+            settings.fastMode.value = false;
+            settings.allowLadderClutch.value = false;
+            assertFalse(ExperimentalMovement.allowLadderClutch());
+            settings.allowLadderClutch.value = true;
+            assertTrue(ExperimentalMovement.allowLadderClutch()); // gamer forces the setting, that has to keep working
+            settings.allowLadderClutch.value = false;
+            settings.fastMode.value = true;
+            assertTrue(ExperimentalMovement.allowLadderClutch());
+            assertFalse(settings.allowLadderClutch.value);
+        } finally {
+            settings.fastMode.value = fast;
+            settings.allowLadderClutch.value = clutch;
+        }
+    }
+
+    @Test
+    public void parkourPlaceFollowsThePreset() {
+        Settings settings = settingsOrSkip();
+        boolean fast = settings.fastMode.value;
+        boolean place = settings.allowParkourPlace.value;
+        try {
+            settings.fastMode.value = false;
+            settings.allowParkourPlace.value = false;
+            assertFalse(ExperimentalMovement.allowParkourPlace());
+            settings.allowParkourPlace.value = true;
+            assertTrue(ExperimentalMovement.allowParkourPlace()); // the user's own choice still counts with the preset off
+            settings.allowParkourPlace.value = false;
+            settings.fastMode.value = true;
+            assertTrue(ExperimentalMovement.allowParkourPlace());
+            assertFalse(settings.allowParkourPlace.value); // the preset never rewrites the setting
+        } finally {
+            settings.fastMode.value = fast;
+            settings.allowParkourPlace.value = place;
+        }
     }
 }

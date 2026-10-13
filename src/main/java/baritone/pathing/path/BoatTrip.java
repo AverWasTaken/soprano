@@ -49,6 +49,7 @@ import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
 import java.util.List;
+import baritone.utils.ExperimentalMovement;
 
 // one crossing of open water in a boat, owned by the PathExecutor. from the last block of land it
 // places the boat, climbs in, rows the path's water positions, and at the last one breaks the boat so the
@@ -165,7 +166,7 @@ public final class BoatTrip implements Helper {
     // shore with enough open water ahead and a boat in the bag, or we're already sitting in a boat (a new
     // segment or a splice replaced the executor mid crossing) and just need to keep rowing
     public static BoatTrip plan(Baritone baritone, IPath path, int pos, int refusedUntil) {
-        if (!Baritone.settings().allowBoats.value) {
+        if (!ExperimentalMovement.allowBoats()) {
             return null;
         }
         IPlayerContext ctx = baritone.getPlayerContext();
@@ -235,7 +236,7 @@ public final class BoatTrip implements Helper {
     // the renderer. Same rules as plan minus the "are we standing there right now" ones
     public static List<int[]> runs(Baritone baritone, IPath path) {
         List<int[]> runs = new ArrayList<>();
-        if (!Baritone.settings().allowBoats.value || path == null) {
+        if (!ExperimentalMovement.allowBoats() || path == null) {
             return runs;
         }
         IPlayerContext ctx = baritone.getPlayerContext();
