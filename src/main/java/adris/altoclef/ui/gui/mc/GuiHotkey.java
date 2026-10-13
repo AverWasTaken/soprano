@@ -21,8 +21,10 @@ public final class GuiHotkey {
             Minecraft mc = Minecraft.getInstance();
             // the game looks at ctrl+b (narrator) before it asks the screen, and a text field of ours is not an edit box
             // it knows about, so typing it in the search field would flip the narrator. hand it to the screen ourselves
-            if (event.key() == InputConstants.KEY_B && (action == InputConstants.PRESS || action == InputConstants.REPEAT)
-                    && event.hasControlDown() && mc.gui.screen() instanceof GuiScreen gui) {
+            // same test vanilla runs: the layout's b (shortcutKey is the keycode, not the physical key) and the platform's
+            // shortcut modifier, so it also holds on azerty and with cmd on a mac
+            if (event.shortcutKey() == InputConstants.KEYCODE_B && (action == InputConstants.PRESS || action == InputConstants.REPEAT)
+                    && event.hasControlDownWithQuirk() && mc.gui.screen() instanceof GuiScreen gui) {
                 gui.keyPressed(event);
                 return true;
             }

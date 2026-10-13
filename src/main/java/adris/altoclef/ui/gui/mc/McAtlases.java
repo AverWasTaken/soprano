@@ -144,7 +144,8 @@ final class McAtlases {
     }
 
     // the frame that closes the screen has already queued blits against these views, and they only draw after extraction is
-    // done. closing now would hand the renderer a dead texture, so it waits two ticks
+    // done. closing now would hand the renderer a dead texture. scheduled tasks run at the top of the next tick, before that
+    // tick extracts, so by then this frame has drawn. the second hop is belt and braces in case a drain loops
     private void release() {
         Minecraft mc = Minecraft.getInstance();
         List<DynamicTexture> dead = new ArrayList<>();

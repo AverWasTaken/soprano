@@ -129,8 +129,8 @@ public final class McKeys {
         if (e.hasShiftDown()) {
             m |= Keys.MOD_SHIFT;
         }
-        // the quirk one is cmd on a mac, which is the shortcut key there
-        if (e.hasControlDown() || e.hasControlDownWithQuirk()) {
+        // the shortcut modifier: ctrl, or cmd on a mac, same as 1.21.4's Screen.hasControlDown
+        if (e.hasControlDownWithQuirk()) {
             m |= Keys.MOD_CTRL;
         }
         if (e.hasAltDown()) {

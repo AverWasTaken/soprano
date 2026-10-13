@@ -57,6 +57,11 @@ final class McDraw {
     }
 
     void end() {
+        // whatever the game extracts after the screen (toasts, the debug overlay) is filed by bounds and never looks at our
+        // glyph list, so it must not land in the layer our last quads are in or it would draw under them
+        if (g != null) {
+            g.nextStratum();
+        }
         clips.clear();
         g = null;
         state = null;
