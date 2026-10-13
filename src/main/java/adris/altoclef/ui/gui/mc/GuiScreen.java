@@ -6,7 +6,6 @@ import adris.altoclef.ui.gui.kit.Anim;
 import adris.altoclef.ui.gui.kit.Canvas;
 import adris.altoclef.ui.gui.kit.DeferredContext;
 import adris.altoclef.ui.gui.kit.Frame;
-import adris.altoclef.ui.gui.kit.Keys;
 import adris.altoclef.ui.gui.kit.Safe;
 import adris.altoclef.ui.gui.kit.Shell;
 import adris.altoclef.ui.gui.kit.Tab;
@@ -19,7 +18,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.CharacterEvent;
-import net.minecraft.client.input.InputWithModifiers;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
@@ -169,6 +167,9 @@ public class GuiScreen extends Screen {
             scrim.snap(0f);
             scrim.set(1f, now, Theme.ANIM_SLOW);
             shell.open(now);
+            // sdl only sends characters while text input is on, and vanilla turns it on per edit box. ours are not edit
+            // boxes it knows about, so it stays on for as long as the screen is up (setScreen turns it off again)
+            mc.textInputManager().startTextInput(this);
         }
     }
 
@@ -200,12 +201,14 @@ public class GuiScreen extends Screen {
         McAtlases.releaseAll();
     }
 
-    // vanilla's renderBackground would blur the world and then paint its dim texture on top. we want the blur and
-    // not the texture, so render calls the blur itself and the scrim is ours. on 26.3 the game does call this (from
-    // extractRenderStateWithTooltipAndSubtitles, right before extractRenderState), so the empty body is what keeps
-    // vanilla's dim and blur off
+    // vanilla's background would blur the world and then paint its dim texture on top. we want the blur and not the
+    // texture, so this asks for the blur alone and the scrim is ours. the game calls this from
+    // extractRenderStateWithTooltipAndSubtitles on a fresh stratum right before extractRenderState: the blur covers
+    // everything in the strata before it (the world and the hud) and leaves the ones after it sharp, and it quietly does
+    // nothing when the menu blur option is at 0
     @Override
     public void extractBackground(GuiGraphicsExtractor g, int mouseX, int mouseY, float partial) {
+        extractBlurredBackground(g);
     }
 
     @Override
@@ -237,13 +240,11 @@ public class GuiScreen extends Screen {
         lastNanos = now;
 
         boolean began = false;
+        // the kit works in real pixels, so the whole screen draws under 1/guiScale
+        float inv = 1f / Math.max(1, win.getGuiScale());
+        g.pose().pushMatrix();
+        g.pose().scale(inv, inv);
         try {
-            // todo 26.3: three things went missing here. the depth wipe (g.flush + RenderSystem.clear(256)) is probably
-            // moot now. the frosted glass was renderBlurredBackground(), now extractBlurredBackground(g) (protected,
-            // maybe g.blurBeforeThisStratum() + nextStratum() so the scrim lands over it). and the 1/guiScale pose was
-            // g.pose().pushPose() + scale(inv, inv, 1f), now a 2d Matrix3x2fStack pushMatrix()/scale(inv, inv)/popMatrix()
-            // around everything below, popped in the finally. nothing reaches the screen until those are back
-
             float wanted = Theme.scaleFor(winH);
             if (rebuild || (wanted != theme.scale && wanted != failedScale)) {
                 rebuild = false;
@@ -281,7 +282,7 @@ public class GuiScreen extends Screen {
             } catch (Throwable t) {
                 Safe.report("gui render end", t);
             }
-            // todo 26.3: the pose pop goes in a finally here, it must come back whatever end() did
+            g.pose().popMatrix();
         }
 
         if (atlasCanvas != null && atlasCanvas.broken) {
@@ -341,38 +342,24 @@ public class GuiScreen extends Screen {
         return mc.getWindow().getGuiScale();
     }
 
-    // the events carry the modifiers that were held for that very input, so no asking the keyboard
-    private static int mods(InputWithModifiers e) {
-        int m = 0;
-        if (e.hasShiftDown()) {
-            m |= Keys.MOD_SHIFT;
-        }
-        if (e.hasControlDown()) {
-            m |= Keys.MOD_CTRL;
-        }
-        if (e.hasAltDown()) {
-            m |= Keys.MOD_ALT;
-        }
-        return m;
-    }
-
-    // todo 26.3: event.button() is 1/2/3 now and the kit wants glfw's 0/1/2, same remap as the keys further down
+    // the game counts buttons from 1 (left, middle, right), the kit from 0. McKeys does the remap
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
-        guarded("mouse down", () -> shell.mouseDown(pointerX(), pointerY(), event.button(), mods(event)));
+        guarded("mouse down", () -> shell.mouseDown(pointerX(), pointerY(), McKeys.buttonToKit(event.button()), McKeys.mods(event)));
         return true;
     }
 
     @Override
     public boolean mouseReleased(MouseButtonEvent event) {
-        guarded("mouse up", () -> shell.mouseUp(pointerX(), pointerY(), event.button(), mods(event)));
+        guarded("mouse up", () -> shell.mouseUp(pointerX(), pointerY(), McKeys.buttonToKit(event.button()), McKeys.mods(event)));
         return true;
     }
 
     @Override
     public boolean mouseDragged(MouseButtonEvent event, double dx, double dy) {
         double s = scale();
-        guarded("mouse drag", () -> shell.mouseDrag(pointerX(), pointerY(), event.button(), (float) (dx * s), (float) (dy * s)));
+        guarded("mouse drag", () -> shell.mouseDrag(pointerX(), pointerY(), McKeys.buttonToKit(event.button()),
+                (float) (dx * s), (float) (dy * s)));
         return true;
     }
 
@@ -389,18 +376,17 @@ public class GuiScreen extends Screen {
     }
 
     // always true: a key the shell did not want still must not reach the game or the default screen handling
-    // todo 26.3: input is SDL now. event.key() is a scancode (InputConstants.KEY_ESCAPE == 41) and event.button() is
-    // 1/2/3 for left/middle/right, but the kit still speaks glfw (Keys.ESCAPE == 256, button 0 is left), so every key
-    // and button below needs remapping before the shell sees it. the modifiers already go through mods()
+    // event.key() is an sdl scancode (escape is 41), the kit wants glfw's numbers (escape is 256). the modifiers come in
+    // the event, McKeys turns them into the kit's bits
     @Override
     public boolean keyPressed(KeyEvent event) {
-        guarded("key down", () -> shell.keyDown(event.key(), mods(event)));
+        guarded("key down", () -> shell.keyDown(McKeys.toKit(event.key()), McKeys.mods(event)));
         return true;
     }
 
     @Override
     public boolean keyReleased(KeyEvent event) {
-        guarded("key up", () -> shell.keyUp(event.key()));
+        guarded("key up", () -> shell.keyUp(McKeys.toKit(event.key())));
         return true;
     }
 
