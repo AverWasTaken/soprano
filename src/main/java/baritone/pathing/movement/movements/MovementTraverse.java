@@ -108,14 +108,14 @@ public class MovementTraverse extends Movement {
                 water = true;
             } else {
                 if (destOn.getBlock() == Blocks.SOUL_SAND) {
-                    WC += (WALK_ONE_OVER_SOUL_SAND_COST - WALK_ONE_BLOCK_COST) / 2;
+                    WC += (context.soulSandWalkCost - WALK_ONE_BLOCK_COST) / 2;
                 } else if (frostWalker) {
                     // with frostwalker we can walk on water without the penalty, if we are sure we won't be using jesus
                 } else if (destOn.getBlock() == Blocks.WATER) {
                     WC += context.walkOnWaterOnePenalty;
                 }
                 if (srcDownBlock == Blocks.SOUL_SAND) {
-                    WC += (WALK_ONE_OVER_SOUL_SAND_COST - WALK_ONE_BLOCK_COST) / 2;
+                    WC += (context.soulSandWalkCost - WALK_ONE_BLOCK_COST) / 2;
                 } else if (context.allowWalkOnMagmaBlocks && srcDownBlock.equals(Blocks.MAGMA_BLOCK)) {
                     sneaking = true;
                     WC += (SNEAK_ONE_BLOCK_COST - WALK_ONE_BLOCK_COST) / 2;
@@ -126,6 +126,9 @@ public class MovementTraverse extends Movement {
                 return COST_INF;
             }
             double hardness2 = MovementHelper.getMiningDurationTicks(context, destX, y + 1, destZ, pb0, true); // only include falling on the upper block to break
+            // the last break's wait is spent walking, so it is not paid for twice
+            boolean walkCoversTheWait = (hardness1 <= 0 || MovementHelper.isMultiTickBreak(context, hardness1))
+                    && (hardness2 <= 0 || MovementHelper.isMultiTickBreak(context, hardness2));
             // we break from src, and swinging a pickaxe underwater is a bad time
             hardness1 = MovementHelper.waterBreakCost(context, x, y, z, hardness1);
             hardness2 = MovementHelper.waterBreakCost(context, x, y, z, hardness2);
@@ -142,7 +145,9 @@ public class MovementTraverse extends Movement {
                 hardness1 *= 5;
                 hardness2 *= 5;
             }
-            return WC + hardness1 + hardness2;
+            // two blocks of stone with an iron pick: 2 * (8 swings + the click + 5 idle) = 28 before the penalty, and the real
+            // thing is 27.6 because the walk fits inside the last idle. a tunnel pays the same since the idle carries over
+            return WC + hardness1 + hardness2 - (walkCoversTheWait ? Math.min(WC, context.breakIdleTicks) : 0);
         } else {//this is a bridge, so we need to place a block
             if (MovementHelper.isClimbable(srcDownBlock)) {
                 return COST_INF;

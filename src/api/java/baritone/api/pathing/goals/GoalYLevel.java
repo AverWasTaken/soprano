@@ -32,6 +32,35 @@ public class GoalYLevel implements Goal, ActionCosts {
      */
     public final int level;
 
+    // the cheapest a block of descent ever comes is the longest fall we can plan divided by its length: falling gets
+    // cheaper per block the further you go, so every shorter fall costs more per block and the estimate is a lower bound
+    // for all of them. what the longest fall is depends on who is asking. with no bucket and no ladder it is
+    // maxFallHeightNoWater (3), which is 3.2 a block, with a bucket 20 (1.2), and a ladder clutch goes much further. the
+    // path finder tells us for the search it is running, see CalculationContext.descentTicksPerBlock. it used to be half
+    // of a two block fall, 3.9 a block, which is what a staircase costs and not what a drop costs, so a ten block drop
+    // looked like 39 ticks when it takes 17 and A* tried every staircase it could find before it would consider jumping.
+    // the exception is a fall into deep water past the longest fall, which has no cap and gets down toward 0.3 a block
+    private static final double DEFAULT_DESCENT_TICKS_PER_BLOCK = FALL_N_BLOCKS_COST[3] / 3;
+    private static final ThreadLocal<double[]> DESCENT_TICKS_PER_BLOCK = ThreadLocal.withInitial(() -> new double[]{DEFAULT_DESCENT_TICKS_PER_BLOCK});
+
+    /**
+     * Sets what the heuristic charges per block of descent on this thread, a lower bound for the fall the search is
+     * allowed to plan. Path finders call this around a search, everything else gets the default of a fall that needs
+     * neither a bucket nor a ladder.
+     *
+     * @param ticksPerBlock the cheapest a block of descent can be, in ticks
+     */
+    public static void setDescentTicksPerBlock(double ticksPerBlock) {
+        DESCENT_TICKS_PER_BLOCK.get()[0] = ticksPerBlock;
+    }
+
+    /**
+     * Puts the descent estimate back to its default on this thread
+     */
+    public static void resetDescentTicksPerBlock() {
+        DESCENT_TICKS_PER_BLOCK.get()[0] = DEFAULT_DESCENT_TICKS_PER_BLOCK;
+    }
+
     public GoalYLevel(int level) {
         this.level = level;
     }
@@ -49,7 +78,7 @@ public class GoalYLevel implements Goal, ActionCosts {
     public static double calculate(int goalY, int currentY) {
         if (currentY > goalY) {
             // need to descend
-            return FALL_N_BLOCKS_COST[2] / 2 * (currentY - goalY);
+            return DESCENT_TICKS_PER_BLOCK.get()[0] * (currentY - goalY);
         }
         if (currentY < goalY) {
             // need to ascend

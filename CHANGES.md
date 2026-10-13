@@ -11,6 +11,7 @@ Everything below is off by default unless it says otherwise. Turn things on in g
 - **Boats** (`allowBoats`) and better swimming (`allowSwimming`).
 - **AltoClef built in.** Ask for an item and it works out how to get it: mining, crafting, smelting, fighting and eating along the way. `#get iron_pickaxe`, `#food 20`, or `#gamer` to try and beat the game. It does nothing until you give it a task.
 - **Path rendering.** The path is a smooth antialiased ribbon with rounded corners, and the search visual is softer.
+- **Costs that match the game.** The planner prices moves in ticks, and a few of those prices were off, so it picked slower routes. Water is priced at wading speed (about twice the old price, so lakes are detoured round more), soul sand at the 58% speed it gives and not 50%, with Soul Speed boots taking the slowdown off (priced as plain walking, and not yet when stepping off it down a block), falls onto ground at the drop they really are, corners edged round at a walk, stairs walked up the way they face with no jump, and a block that takes several ticks to break at whole ticks plus the wait before the next one (`blockBreakAdditionalPenalty` is still just the tiebreaker on top). Drops are estimated at what a fall costs and not what a staircase does, using the longest fall you can plan (3 blocks, 20 with a water bucket, 23 in fast mode, 256 with a ladder to clutch with).
 - **Pathfinder performance.** More movements per second, and the cache buffers get reused instead of reallocated.
 - **Chat prefix.** Messages say `[Soprano]`.
 

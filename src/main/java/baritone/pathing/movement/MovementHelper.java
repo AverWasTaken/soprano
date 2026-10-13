@@ -756,11 +756,26 @@ public interface MovementHelper extends ActionCosts, Helper {
     }
 
     // hardness is the break part of a movement's cost. zero (nothing to break) and COST_INF are left alone
+    // the water slowdown is a slowdown of the swinging, the wait after a break is the same wait wherever you stand, so
+    // that one goes on after the multiplier
     static double waterBreakCost(CalculationContext context, int srcX, int srcY, int srcZ, double hardness) {
         if (hardness <= 0 || hardness >= COST_INF) {
             return hardness;
         }
-        return hardness * waterBreakMultiplier(context, srcX, srcY, srcZ);
+        double idle = isMultiTickBreak(context, hardness) ? context.breakIdleTicks : 0;
+        return hardness * waterBreakMultiplier(context, srcX, srcY, srcZ) + idle;
+    }
+
+    // the wait after the last break of a movement is spent doing the next thing (walking, falling, jumping), so that much
+    // of it is not paid for twice. rawHardness is what getMiningDurationTicks said, before waterBreakCost put the wait on
+    static double breakWaitCredit(CalculationContext context, double rawHardness, double overlapTicks) {
+        return rawHardness > 0 && isMultiTickBreak(context, rawHardness) ? Math.min(context.breakIdleTicks, overlapTicks) : 0;
+    }
+
+    // getMiningDurationTicks is one tick for a break that is over on the first click and more than that for anything
+    // else, so if what's left after the penalty is more than that one tick it was a break that has to be waited out
+    static boolean isMultiTickBreak(CalculationContext context, double hardness) {
+        return hardness - context.breakBlockAdditionalCost > 1.5;
     }
 
     static double getMiningDurationTicks(CalculationContext context, int x, int y, int z, boolean includeFalling) {
@@ -802,7 +817,11 @@ public interface MovementHelper extends ActionCosts, Helper {
             if (strVsBlock <= 0) {
                 return COST_INF;
             }
-            double result = 1 / strVsBlock;
+            // vanilla adds the per tick progress until it reaches 1, so the break lands on a whole tick and 7.5 ticks of
+            // swinging is 8. the click that starts a break does no damage and takes a tick of its own. a break that is
+            // done on that first click (progress of 1 or more a tick) is just the one tick
+            double swing = 1 / strVsBlock;
+            double result = swing <= 1 ? 1 : Math.ceil(swing - 1e-9) + 1;
             result += context.breakBlockAdditionalCost;
             result *= mult;
             if (includeFalling) {
