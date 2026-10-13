@@ -442,4 +442,57 @@ public class MoveCostTest {
         double cost = MovementTraverse.cost(new PickCtx(tunnel(1), 1.5), 0, 64, 0, 1, 0);
         assertEquals(WALK_ONE_BLOCK_COST + 1 + penalty, cost, 1e-9);
     }
+
+    // ---- jump and fall timing the one block costs are built on ----
+    // vanilla tick: move with the velocity we have, then gravity 0.08 and drag 0.98 on y. the jump sets 0.42 before the move
+
+    @Test
+    public void aJumpGetsTheFeetOverTheLedgeInThreeTicksAndOnlyLandsInNine() {
+        double y = 0;
+        double vy = 0.42;
+        int over = -1;
+        double landed = -1;
+        for (int tick = 1; tick <= 12 && landed < 0; tick++) {
+            double before = y;
+            y += vy;
+            vy = (vy - 0.08) * 0.98;
+            if (over < 0 && y > 1.0) {
+                over = tick;
+            }
+            if (over > 0 && y <= 1.0) {
+                // the fraction of this tick it took to come back down to the ledge
+                landed = tick - 1 + (before - 1.0) / (before - y);
+            }
+        }
+        assertEquals(3, over);
+        assertEquals(8.1, landed, 0.05);
+        // MovementAscend is done when the feet are over the ledge and inside the dest square, which is the 3 ticks (the
+        // 3.16 is that time on the up leg of the parabola) and not the 8.1 of the whole hop. the rest of the hop is
+        // spent already moving on to the next square, so a run with one step in it loses nothing, and only back to back
+        // jumps (stairs of full blocks, which wait for the landing) pay the 8.1 each. the 6.63 sits between the two
+        assertEquals(over, JUMP_ONE_BLOCK_COST, 0.5);
+        assertTrue(Math.max(JUMP_ONE_BLOCK_COST, WALK_ONE_BLOCK_COST) + 2 < landed);
+    }
+
+    @Test
+    public void aOneBlockDescendIsWhatTheTickGridGives() {
+        // the box clears the edge somewhere in tick N (so ceil of WALK_OFF), then the first airborne tick moves 0.0784, and
+        // it lands in the tick the total passes a block
+        double fallen = 0;
+        double vy = 0.0784;
+        int airborne = 0;
+        while (fallen < 1.0) {
+            fallen += vy;
+            vy = (vy + 0.08) * 0.98;
+            airborne++;
+        }
+        assertEquals(5, airborne);
+        double onTheGrid = Math.ceil(WALK_OFF_BLOCK_COST) + airborne;
+        MutableMoveResult res = new MutableMoveResult();
+        MovementDescend.cost(new Ctx(ledge(1)), 0, 64, 0, 1, 0, res);
+        assertEquals(63, res.y);
+        // the planner's FALL_N[1] counts a lead tick that does no falling, and that is the grid at work: ticks are whole,
+        // so a continuous 4.6 is a 5 and the edge is crossed somewhere inside a tick. 9.3 against 9
+        assertEquals(onTheGrid, res.cost, 0.5);
+    }
 }
