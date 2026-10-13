@@ -41,6 +41,7 @@ public class FuelTableTest {
     @Test
     public void everyFuelItemMatchesTheVanillaData() throws Exception {
         List<String> wrong = new ArrayList<>();
+        java.util.Set<String> fuelNames = new java.util.HashSet<>();
         int fuels = 0;
         for (Item item : BuiltInRegistries.ITEM) {
             CookingFuel fuel = item.components().get(DataComponents.COOKING_FUEL);
@@ -55,10 +56,18 @@ public class FuelTableTest {
                 expected = plainFurnaceTicks(reference);
             }
             String name = BuiltInRegistries.ITEM.getKey(item).getPath();
+            fuelNames.add(name);
             if (expected == null || !ItemHelper.isFuel(item)) {
                 wrong.add(name + " is not in the table");
             } else if (Math.round(ItemHelper.getFuelAmount(item) * 200) != expected) {
                 wrong.add(name + " burns " + Math.round(ItemHelper.getFuelAmount(item) * 200) + " in the table, " + expected + " in the data");
+            }
+        }
+        // and the other way: nothing the table calls fuel that the data stopped calling fuel
+        for (Item item : BuiltInRegistries.ITEM) {
+            String name = BuiltInRegistries.ITEM.getKey(item).getPath();
+            if (ItemHelper.isFuel(item) && !fuelNames.contains(name)) {
+                wrong.add(name + " is in the table but not fuel in the data");
             }
         }
         assertTrue("fuel table disagrees with vanilla: " + wrong, wrong.isEmpty());

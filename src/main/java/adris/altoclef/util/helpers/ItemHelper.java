@@ -461,7 +461,7 @@ public class ItemHelper {
     // burn ticks in a plain furnace, by the path of the context_int_provider an item's cooking fuel component points at.
     // those providers are div(ticks, 1 or 2) behind a "is this a smoker" condition, they need a server level and a
     // loot context to evaluate, and the client never gets the registry. so this is the left side of the div from the
-    // vanilla data (the plain furnace divides by 1)
+    // vanilla data (the plain furnace divides by 1). staying a table for good, FuelTableTest holds it against the jar's data
     private static final Map<String, Integer> FURNACE_BURN_TICKS = Map.ofEntries(
             Map.entry("cooking/time_bamboo", 50),
             Map.entry("cooking/time_blaze_rod", 2400),

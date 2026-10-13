@@ -113,6 +113,8 @@ public class CachedSpecialBlocksTest {
         DimensionType dim = dim(0, 256);
         CachedChunk chunk = new CachedChunk(0, 0, 256, solidColumn(256, 3, 5, 200), stoneOverview(), specials(3, 5, 70), 0L);
         assertEquals(Blocks.CHEST, chunk.getBlock(3, 70, 5, dim, Level.NETHER).getBlock());
+        // the low-solid obsidian guess is an overworld thing, the nether keeps netherrack down there like 1.21.4 did
+        assertEquals(Blocks.NETHERRACK, chunk.getBlock(3, 2, 5, dim, Level.NETHER).getBlock());
     }
 
     @Test
