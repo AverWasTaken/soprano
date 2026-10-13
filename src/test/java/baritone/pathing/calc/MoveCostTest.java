@@ -95,13 +95,21 @@ public class MoveCostTest {
         }
 
         Ctx(BlockStateInterface bsi, float waterEfficiency, int soulSpeed) {
+            this(bsi, waterEfficiency, soulSpeed, false);
+        }
+
+        Ctx(BlockStateInterface bsi, boolean waterBucket) {
+            this(bsi, 0.0f, 0, waterBucket);
+        }
+
+        Ctx(BlockStateInterface bsi, float waterEfficiency, int soulSpeed, boolean waterBucket) {
             super(null, true, null, null, bsi, new ToolSet(null) {
                 @Override
                 public double getStrVsBlock(BlockState state) {
                     float hardness = state.getBlock().defaultDestroyTime();
                     return hardness < 0 ? -1 : hardness == 0 ? 1 : 8.0 / (hardness * 30);
                 }
-            }, false, false, true, 0, soulSpeed, waterEfficiency, 20.0, false);
+            }, false, waterBucket, true, 0, soulSpeed, waterEfficiency, 20.0, false);
         }
     }
 
@@ -236,27 +244,54 @@ public class MoveCostTest {
 
     // ---- the drop heuristic ----
 
-    @Test
-    public void theDescentEstimateNeverBeatsAFreeFall() {
-        // nobody gets down faster than gravity, so for any fall we plan on this is a lower bound
-        for (int n = 1; n <= 24; n++) {
-            assertTrue("a " + n + " block drop", GoalYLevel.calculate(0, n) <= FALL_N_BLOCKS_COST[n] + 1e-9);
+    // what the search thread would have the heuristic use, then back to the default for the next test
+    private static double descentWith(boolean bucket, int blocks) {
+        Ctx ctx = new Ctx(floor(), bucket);
+        GoalYLevel.setDescentTicksPerBlock(ctx.descentTicksPerBlock);
+        try {
+            return GoalYLevel.calculate(0, blocks);
+        } finally {
+            GoalYLevel.resetDescentTicksPerBlock();
         }
     }
 
     @Test
-    public void aCliffLooksLikeACliffAndNotAStaircase() {
+    public void theDescentEstimateNeverBeatsAFreeFallOfTheLongestFallWeCanPlan() {
+        // nobody gets down faster than gravity, so for any fall we plan on this is a lower bound. no bucket is 3 blocks, a bucket 20
+        for (int n = 1; n <= 3; n++) {
+            assertTrue("a " + n + " block drop", descentWith(false, n) <= FALL_N_BLOCKS_COST[n] + 1e-9);
+        }
+        for (int n = 1; n <= 20; n++) {
+            assertTrue("a " + n + " block drop", descentWith(true, n) <= FALL_N_BLOCKS_COST[n] + 1e-9);
+        }
+        assertEquals(FALL_N_BLOCKS_COST[3] / 3, GoalYLevel.calculate(0, 1), 1e-9);
+    }
+
+    @Test
+    public void aBucketMakesACliffLookLikeACliffAndNothingElseDoes() {
         // 10 blocks of falling is 17 ticks. the old estimate said 39, which is 4.7 blocks of staircase worth of sprinting
-        assertTrue(GoalYLevel.calculate(0, 10) < 14);
+        assertTrue(descentWith(true, 10) < 14);
+        // without a bucket there is no ten block fall to plan, so digging down isn't made to look any cheaper than it must
+        assertTrue(descentWith(false, 10) > 30);
         assertEquals(GoalYLevel.calculate(0, 10), GoalBlock.calculate(0, 10, 0), 1e-9);
+    }
+
+    @Test
+    public void whatEachKindOfContextCanFallDecidesTheFloor() {
+        double plain = new Ctx(floor(), false).descentTicksPerBlock;
+        double bucket = new Ctx(floor(), true).descentTicksPerBlock;
+        assertEquals(FALL_N_BLOCKS_COST[3] / 3, plain, 1e-9);
+        assertEquals(FALL_N_BLOCKS_COST[20] / 20, bucket, 1e-9);
+        assertEquals(FALL_N_BLOCKS_COST[256] / 256, CalculationContext.descentFloor(3, 20, true, true, false), 1e-9);
+        assertEquals(FALL_N_BLOCKS_COST[23] / 23, CalculationContext.descentFloor(3, 20, false, false, true), 1e-9);
     }
 
     @Test
     public void aFallMoveNeverCostsLessThanTheEstimateSaysItShould() {
         // the estimate is added to the flat distance, so it only stays admissible if a fall (1 block out, n down) is
         // worth at least that much on the heuristic. WALK_OFF 3.7 is a hair over the 3.56 a block of flat
-        for (int n = 1; n <= 24; n++) {
-            double saved = GoalBlock.calculate(1, n, 0) - GoalBlock.calculate(0, 0, 0);
+        for (int n = 1; n <= 20; n++) {
+            double saved = GoalBlock.calculate(1, 0, 0) + descentWith(true, n);
             assertTrue("fall of " + n, saved <= WALK_OFF_BLOCK_COST + FALL_N_BLOCKS_COST[n] + 1e-9);
         }
     }

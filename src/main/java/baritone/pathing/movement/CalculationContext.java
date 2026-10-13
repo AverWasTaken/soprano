@@ -112,6 +112,8 @@ public class CalculationContext {
     public final SwimStalls.Snapshot swimStalls;
     // rowing, when there's a boat to row. equal to waterWalkSpeed when there isn't so the min is a no-op
     public final double boatWaterSpeed;
+    // the cheapest a block of descent can be with what we are carrying, for GoalYLevel's lower bound. see descentFloor
+    public final double descentTicksPerBlock;
     public final double breakBlockAdditionalCost;
     // ticks the bot sits idle after a block that took more than one tick to break, see BlockBreakHelper
     public final double breakIdleTicks;
@@ -257,6 +259,7 @@ public class CalculationContext {
         // costs what the heuristic thinks a block costs and not a tick less. still way under swimming
         double boatSpeed = Math.max(ActionCosts.BOAT_ONE_BLOCK_COST, Baritone.settings().costHeuristic.value);
         this.boatWaterSpeed = Baritone.settings().allowBoats.value && hasBoat ? Math.min(waterSpeed, boatSpeed) : waterSpeed;
+        this.descentTicksPerBlock = descentFloor(this.maxFallHeightNoWater, this.maxFallHeightBucket, hasWaterBucket, this.hasClutchItem, this.fastMode);
         this.breakBlockAdditionalCost = Baritone.settings().blockBreakAdditionalPenalty.value;
         this.breakIdleTicks = Math.max(0, Baritone.settings().blockBreakSpeed.value - 1);
         this.waterBreakCostMultiplier = Baritone.settings().waterBreakCostMultiplier.value;
@@ -268,6 +271,24 @@ public class CalculationContext {
         // because if some movements are calculated one way and others are calculated another way,
         // then you get a wildly inconsistent path that isn't optimal for either scenario.
         this.worldBorder = bsi.worldBorder;
+    }
+
+    // the longest fall this context will plan, and what that costs per block. a plain fall is maxFallHeightNoWater, the
+    // bucket takes it to maxFallHeightBucket, a hurting fall in fast mode to 23 (ExperimentalMovement.MAX_HURT_FALL),
+    // and a ladder clutch to LadderClutch.MAX_DROP (256). falls into water have no cap at all but need the landing
+    public static double descentFloor(int noWater, int bucket, boolean hasWaterBucket, boolean hasClutchItem, boolean fastMode) {
+        int longest = Math.max(1, noWater);
+        if (hasWaterBucket) {
+            longest = Math.max(longest, bucket);
+        }
+        if (fastMode) {
+            longest = Math.max(longest, ExperimentalMovement.MAX_HURT_FALL);
+        }
+        if (hasClutchItem) {
+            longest = Math.max(longest, 256);
+        }
+        longest = Math.min(longest, ActionCosts.FALL_N_BLOCKS_COST.length - 1);
+        return ActionCosts.FALL_N_BLOCKS_COST[longest] / longest;
     }
 
     /**

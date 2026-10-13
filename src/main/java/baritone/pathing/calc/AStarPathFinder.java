@@ -20,6 +20,7 @@ package baritone.pathing.calc;
 import baritone.Baritone;
 import baritone.api.pathing.calc.IPath;
 import baritone.api.pathing.goals.Goal;
+import baritone.api.pathing.goals.GoalYLevel;
 import baritone.api.pathing.movement.ActionCosts;
 import baritone.api.utils.BetterBlockPos;
 import baritone.api.utils.SettingsUtil;
@@ -54,6 +55,17 @@ public final class AStarPathFinder extends AbstractNodeCostSearch {
 
     @Override
     protected Optional<IPath> calculate0(long primaryTimeout, long failureTimeout) {
+        // the vertical part of the heuristic is a lower bound on what a descent costs, and that depends on whether we can
+        // actually fall far (a bucket, a clutch item). goals don't get to see the context so the thread carries it
+        GoalYLevel.setDescentTicksPerBlock(calcContext.descentTicksPerBlock);
+        try {
+            return search(primaryTimeout, failureTimeout);
+        } finally {
+            GoalYLevel.resetDescentTicksPerBlock();
+        }
+    }
+
+    private Optional<IPath> search(long primaryTimeout, long failureTimeout) {
         int minY = calcContext.minY;
         int maxY = calcContext.maxY;
         startNode = getNodeAtPosition(startX, startY, startZ, BetterBlockPos.longHash(startX, startY, startZ));
