@@ -1,16 +1,18 @@
 package adris.altoclef.ui.gui.mc;
 
-import adris.altoclef.ui.gui.kit.Keys;
 import adris.altoclef.ui.gui.kit.Safe;
 import adris.altoclef.ui.gui.model.KeyBind;
 import baritone.Baritone;
 import baritone.api.Settings;
+import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.input.KeyEvent;
 
 // the front door: the keyboard mixin asks onKey for every press, #gui calls open
 public final class GuiHotkey {
 
+    // todo 26.3: these are glfw numbers and the game speaks SDL now (REPEAT is -1, KEY_B is the scancode 5, see
+    // MixinKeyboardHandler), so the ctrl+b guard and the open key never match until the keys are remapped
     private static final int GLFW_PRESS = 1;
     private static final int GLFW_REPEAT = 2;
     private static final int GLFW_KEY_B = 66;
@@ -24,9 +26,9 @@ public final class GuiHotkey {
             Minecraft mc = Minecraft.getInstance();
             // the game looks at ctrl+b (narrator) before it asks the screen, and a text field of ours is not an edit box
             // it knows about, so typing it in the search field would flip the narrator. hand it to the screen ourselves
-            if (key == GLFW_KEY_B && (action == GLFW_PRESS || action == GLFW_REPEAT) && Screen.hasControlDown()
+            if (key == GLFW_KEY_B && (action == GLFW_PRESS || action == GLFW_REPEAT) && mc.hasControlDown()
                     && mc.gui.screen() instanceof GuiScreen gui) {
-                gui.keyPressed(key, 0, Keys.MOD_CTRL);
+                gui.keyPressed(new KeyEvent(key, 0, InputConstants.MOD_CONTROL));
                 return true;
             }
             if (action != GLFW_PRESS || key < 0) {
@@ -50,6 +52,10 @@ public final class GuiHotkey {
     // and the chat screen closes itself right after the command, which would take a screen opened now down with it. so
     // open on the next tick, when chat is gone
     public static String open() {
+        // todo 26.3: refuse until the screen draws and takes keys, it would open invisible and nothing could close it
+        if (true) {
+            return "The gui is not ported to 26.3 yet.";
+        }
         Minecraft mc = Minecraft.getInstance();
         if (mc.gui.screen() instanceof GuiScreen) {
             return null;
@@ -57,7 +63,7 @@ public final class GuiHotkey {
         if (mc.player == null || mc.level == null) {
             return "Join a world first, the gui needs one behind it.";
         }
-        if (mc.getOverlay() != null) {
+        if (mc.gui.overlay() != null) {
             return "The game is still loading. Try again in a second.";
         }
         mc.schedule(() -> {
@@ -73,7 +79,11 @@ public final class GuiHotkey {
     }
 
     private static boolean canOpen(Minecraft mc) {
-        return mc.gui.screen() == null && mc.player != null && mc.level != null && mc.getOverlay() == null;
+        // todo 26.3: false for now, a hotkey match on a stray scancode must not open an invisible screen (see open())
+        if (true) {
+            return false;
+        }
+        return mc.gui.screen() == null && mc.player != null && mc.level != null && mc.gui.overlay() == null;
     }
 
     private static void show(Minecraft mc) {

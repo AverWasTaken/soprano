@@ -14,10 +14,9 @@ import adris.altoclef.util.helpers.CombatCommit;
 import baritone.Baritone;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.WinScreen;
 import net.minecraft.client.player.LocalPlayer;
-import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -79,53 +78,46 @@ public class GamerHudOverlay {
     private static final Identifier FOOD = Identifier.withDefaultNamespace("hud/food_full");
 
     private interface Op {
-        void draw(GuiGraphics g, Font font);
+        void draw(GuiGraphicsExtractor g, Font font);
     }
 
     private record Rect(int x, int y, int w, int h, int color) implements Op {
         @Override
-        public void draw(GuiGraphics g, Font font) {
-            g.fill(x, y, x + w, y + h, color);
+        public void draw(GuiGraphicsExtractor g, Font font) {
+            // todo 26.3: g.fill(x, y, x + w, y + h, color) has the same shape, held back with the rest of the card
         }
     }
 
     private record Text(String s, int x, int y, int color) implements Op {
         @Override
-        public void draw(GuiGraphics g, Font font) {
-            g.drawString(font, s, x, y, color, true);
+        public void draw(GuiGraphicsExtractor g, Font font) {
+            // todo 26.3: g.text(font, s, x, y, color, true), drawString is gone
         }
     }
 
     // the font at 2x, one glyph at a time with a unit between them: the plain scale-up has the letters touching
     private record BigText(String[] glyphs, int[] xs, int y, int color) implements Op {
         @Override
-        public void draw(GuiGraphics g, Font font) {
-            for (int i = 0; i < glyphs.length; i++) {
-                g.pose().pushPose();
-                g.pose().translate(xs[i], y, 0);
-                g.pose().scale(2F, 2F, 1F);
-                g.drawString(font, glyphs[i], 0, 0, color, true);
-                g.pose().popPose();
-            }
+        public void draw(GuiGraphicsExtractor g, Font font) {
+            // todo 26.3: per glyph, g.pose() pushMatrix/translate(xs[i], y)/scale(2F, 2F), g.text(font, glyphs[i], 0, 0,
+            // color, true), popMatrix. the pose is a 2d Matrix3x2fStack now, pushPose/popPose/translate(x,y,z) are gone
         }
     }
 
     // an item at half size: 16 gui units is a hotbar slot, a list line is 8
     private record Icon(ItemStack stack, int x, int y) implements Op {
         @Override
-        public void draw(GuiGraphics g, Font font) {
-            g.pose().pushPose();
-            g.pose().translate(x, y, 0);
-            g.pose().scale(0.5F, 0.5F, 1F);
-            g.renderItem(stack, 0, 0);
-            g.pose().popPose();
+        public void draw(GuiGraphicsExtractor g, Font font) {
+            // todo 26.3: g.pose() pushMatrix/translate(x, y)/scale(0.5F, 0.5F), g.item(stack, 0, 0), popMatrix. renderItem is
+            // gone, item(ItemStack, int, int) is the extractor's (fakeItem skips the entity/level lookups)
         }
     }
 
     private record Sprite(Identifier id, int x, int y, int w, int h) implements Op {
         @Override
-        public void draw(GuiGraphics g, Font font) {
-            g.blitSprite(RenderType::guiTextured, id, x, y, w, h);
+        public void draw(GuiGraphicsExtractor g, Font font) {
+            // todo 26.3: g.blitSprite(RenderPipelines.GUI_TEXTURED, id, x, y, w, h). RenderType::guiTextured is gone, the
+            // extractor wants a RenderPipeline (first argument)
         }
     }
 
@@ -151,10 +143,10 @@ public class GamerHudOverlay {
         layoutTick = -1;
     }
 
-    public void render(AltoClef mod, GuiGraphics graphics) {
+    public void render(AltoClef mod, GuiGraphicsExtractor graphics) {
         Minecraft mc = Minecraft.getInstance();
         // f1 hides the hud, f3 is busy enough
-        if (mc.level == null || mc.player == null || mc.options.hideGui || mc.getDebugOverlay().showDebugScreen()) {
+        if (mc.level == null || mc.player == null || mc.gui.hud.isHidden() || mc.getDebugOverlay().showDebugScreen()) {
             return;
         }
         if (!Baritone.settings().altoGamerHud.value) {
@@ -185,15 +177,10 @@ public class GamerHudOverlay {
         // gui there is room for both, at a tiny window they overlap and that is the window's problem
         int x0 = (int) (graphics.guiWidth() / scale) - MARGIN - WIDTH;
         int y0 = ((int) (graphics.guiHeight() / scale) - height) / 2;
-        graphics.pose().pushPose();
-        graphics.pose().scale(scale, scale, 1F);
-        graphics.pose().translate(x0, y0, 0);
-        // the chat's backdrop, so the accessibility text background option applies here too
-        graphics.fill(0, 0, WIDTH, height, mc.options.getBackgroundColor(0.5F));
-        for (Op op : ops) {
-            op.draw(graphics, mc.font);
-        }
-        graphics.pose().popPose();
+        // todo 26.3: nothing is drawn yet. the old body was pose pushPose/scale(scale, scale, 1F)/translate(x0, y0, 0), the
+        // backdrop graphics.fill(0, 0, WIDTH, height, mc.options.getBackgroundColor(0.5F)) (the chat's, so the text
+        // background option applies), every op.draw(graphics, mc.font), popPose. the pose is a 2d Matrix3x2fStack now
+        // (pushMatrix/scale(x, y)/translate(x, y)/popMatrix), and the ops' draw() bodies are todos too
     }
 
     // the win card while its thirty seconds last. they start with the first frame it can be seen: the credits cover the whole

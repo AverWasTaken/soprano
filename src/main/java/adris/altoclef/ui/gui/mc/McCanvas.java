@@ -1,16 +1,13 @@
 package adris.altoclef.ui.gui.mc;
 
 import adris.altoclef.ui.gui.kit.AtlasPage;
-import adris.altoclef.ui.gui.kit.Safe;
 import adris.altoclef.ui.gui.kit.TextStyle;
 import adris.altoclef.ui.gui.kit.TexturedCanvas;
 import adris.altoclef.ui.gui.kit.Theme;
 import adris.altoclef.ui.gui.kit.Weight;
-import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.renderer.rendertype.RenderType;
-import net.minecraft.resources.Identifier;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 
-// the two primitives TexturedCanvas wants, on top of GuiGraphics. no layout and no decisions in here. one of these
+// the two primitives TexturedCanvas wants, on top of GuiGraphicsExtractor. no layout and no decisions in here. one of these
 // lives as long as its screen (making a TexturedCanvas wipes the atlas caches) and gets the frame's graphics via begin
 final class McCanvas extends TexturedCanvas {
 
@@ -28,7 +25,7 @@ final class McCanvas extends TexturedCanvas {
         this.draw = draw;
     }
 
-    void begin(GuiGraphics g, int widthPx, int heightPx) {
+    void begin(GuiGraphicsExtractor g, int widthPx, int heightPx) {
         draw.begin(g);
         this.width = widthPx;
         this.height = heightPx;
@@ -66,14 +63,9 @@ final class McCanvas extends TexturedCanvas {
         if (w <= 0 || h <= 0) {
             return;
         }
-        try {
-            Identifier tex = atlases.texture(page);
-            draw.g.blit(RenderType::guiTextured, tex, x0, y0, (float) sx, (float) sy, w, h, sw, sh,
-                    page.width(), page.height(), argb);
-        } catch (Throwable t) {
-            Safe.report("gui atlas blit", t);
-            broken = true;
-        }
+        // todo 26.3: draw.g.blit(RenderPipelines.GUI_TEXTURED, atlases.texture(page), x0, y0, (float) sx, (float) sy, w, h,
+        // sw, sh, page.width(), page.height(), argb) is the shape (RenderType::guiTextured is gone, it takes a
+        // RenderPipeline now). keep the try/catch that sets broken, atlases.texture can throw on upload
     }
 
     @Override

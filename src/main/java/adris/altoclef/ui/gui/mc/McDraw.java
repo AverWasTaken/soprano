@@ -1,11 +1,8 @@
 package adris.altoclef.ui.gui.mc;
 
 import adris.altoclef.ui.gui.kit.Safe;
-import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.components.PlayerFaceRenderer;
-import net.minecraft.client.multiplayer.PlayerInfo;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.Item;
@@ -16,7 +13,8 @@ import java.util.ArrayDeque;
 import java.util.HashMap;
 import java.util.Map;
 
-// the few things both canvases need from GuiGraphics, so McCanvas and FallbackCanvas stay one liners. the pose is
+// todo 26.3: nothing in here draws yet, every drawing body is a stub (see the todos), the logic around them is kept.
+// the few things both canvases need from GuiGraphicsExtractor, so McCanvas and FallbackCanvas stay one liners. the pose is
 // scaled by 1/guiScale for the whole screen, so every number in here is a framebuffer pixel
 final class McDraw {
 
@@ -29,9 +27,9 @@ final class McDraw {
     // x0, y0, x1, y1 of each active clip, already intersected with its parent
     private final ArrayDeque<int[]> clips = new ArrayDeque<>();
 
-    GuiGraphics g;
+    GuiGraphicsExtractor g;
 
-    void begin(GuiGraphics graphics) {
+    void begin(GuiGraphicsExtractor graphics) {
         this.g = graphics;
         clips.clear();
     }
@@ -40,8 +38,7 @@ final class McDraw {
     void end() {
         if (!clips.isEmpty()) {
             clips.clear();
-            g.flush();
-            RenderSystem.disableScissor();
+            // todo 26.3: g.disableScissor() here, GuiGraphics.flush and RenderSystem.disableScissor are gone
         }
         g = null;
     }
@@ -61,7 +58,7 @@ final class McDraw {
         if (y1 <= y0) {
             y1 = y0 + 1;
         }
-        g.fill(x0, y0, x1, y1, argb);
+        // todo 26.3: g.fill(x0, y0, x1, y1, argb) has the same shape, held back until GuiScreen sets the 1/guiScale pose
     }
 
     // not GuiGraphics.enableScissor: it runs the rect through the pose into whole gui units, and our pose is 1/guiScale,
@@ -91,15 +88,8 @@ final class McDraw {
     }
 
     private void apply() {
-        // whatever is batched was meant for the old clip
-        g.flush();
-        int[] c = clips.peek();
-        if (c == null) {
-            RenderSystem.disableScissor();
-            return;
-        }
-        int winH = mc.getWindow().getHeight();
-        RenderSystem.enableScissor(c[0], winH - c[3], c[2] - c[0], c[3] - c[1]);
+        // todo 26.3: RenderSystem.enableScissor/disableScissor and GuiGraphics.flush are gone. the extractor has
+        // enableScissor/disableScissor(int...) but in gui units through the pose, so a pixel exact clip needs a plan
     }
 
     // false when the id is not a registered item, the caller draws its own stand-in tile. renderItem flushes before
@@ -113,18 +103,8 @@ final class McDraw {
         if (size <= 0f) {
             return true;
         }
-        g.pose().pushPose();
-        g.pose().translate(Math.round(x), Math.round(y), 0f);
-        g.pose().scale(size / 16f, size / 16f, 1f);
-        try {
-            g.renderItem(stack, 0, 0);
-        } finally {
-            g.pose().popPose();
-        }
-        // items draw at z 150 with the depth test on, so anything drawn after them (a dropdown, the toast) would sit
-        // behind their little cubes. nothing in this screen uses depth, so wipe it
-        g.flush();
-        RenderSystem.clear(256);
+        // todo 26.3: g.item(stack, x, y) under a Matrix3x2fStack pushMatrix/translate/scale. renderItem, the 3d pose and
+        // RenderSystem.clear(256) are gone, the depth wipe after it is probably moot now
         return true;
     }
 
@@ -134,12 +114,9 @@ final class McDraw {
             if (mc.getConnection() == null || name == null) {
                 return false;
             }
-            PlayerInfo info = mc.getConnection().getPlayerInfo(name);
-            if (info == null) {
-                return false;
-            }
-            PlayerFaceRenderer.draw(g, info.getSkin(), Math.round(x), Math.round(y), Math.max(1, Math.round(size)));
-            return true;
+            // todo 26.3: PlayerFaceRenderer is PlayerFaceExtractor now, draw mc.getConnection().getPlayerInfo(name).getSkin()
+            // through it. false makes the canvas draw its stand-in
+            return false;
         } catch (Throwable t) {
             Safe.report("gui player face", t);
             return false;
@@ -177,15 +154,8 @@ final class McDraw {
         if ((argb >>> 24) < 4 || s.isEmpty()) {
             return;
         }
-        float scale = size / VANILLA_H;
-        g.pose().pushPose();
-        g.pose().translate(x, baseline - VANILLA_BASE * scale, 0f);
-        g.pose().scale(scale, scale, 1f);
-        try {
-            g.drawString(mc.font, s, 0, 0, argb, false);
-        } finally {
-            g.pose().popPose();
-        }
+        // todo 26.3: g.text(mc.font, s, 0, 0, argb, false) under a Matrix3x2fStack translate(x, baseline - VANILLA_BASE *
+        // scale) and scale(size / VANILLA_H). drawString and the 3d pose are gone
     }
 
     float vanillaWidth(String s, float size) {

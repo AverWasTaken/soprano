@@ -15,10 +15,13 @@ import adris.altoclef.ui.gui.tabs.Tabs;
 import baritone.Baritone;
 import baritone.api.Settings;
 import com.mojang.blaze3d.platform.Window;
-import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.input.CharacterEvent;
+import net.minecraft.client.input.InputWithModifiers;
+import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 
 import java.util.List;
@@ -198,10 +201,11 @@ public class GuiScreen extends Screen {
     }
 
     // vanilla's renderBackground would blur the world and then paint its dim texture on top. we want the blur and
-    // not the texture, so render calls the blur itself and the scrim is ours. this never runs anyway, render does
-    // not go through super
+    // not the texture, so render calls the blur itself and the scrim is ours. on 26.3 the game does call this (from
+    // extractRenderStateWithTooltipAndSubtitles, right before extractRenderState), so the empty body is what keeps
+    // vanilla's dim and blur off
     @Override
-    public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float partial) {
+    public void extractBackground(GuiGraphicsExtractor g, int mouseX, int mouseY, float partial) {
     }
 
     @Override
@@ -216,7 +220,7 @@ public class GuiScreen extends Screen {
 
     // the viewport is read from the window every frame, so all a resize has to do is not rebuild the screen
     @Override
-    public void resize(Minecraft minecraft, int w, int h) {
+    public void resize(int w, int h) {
         this.width = w;
         this.height = h;
     }
@@ -224,7 +228,7 @@ public class GuiScreen extends Screen {
     // ----- drawing
 
     @Override
-    public void render(GuiGraphics g, int mouseX, int mouseY, float partial) {
+    public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float partial) {
         Window win = mc.getWindow();
         int winW = win.getWidth();
         int winH = win.getHeight();
@@ -232,20 +236,13 @@ public class GuiScreen extends Screen {
         float dt = Math.min(0.1f, (now - lastNanos) / 1_000_000_000f);
         lastNanos = now;
 
-        boolean posed = false;
         boolean began = false;
         try {
-            // the hud's items leave depth behind at z 150 and nothing of ours uses depth, so start clean
-            g.flush();
-            RenderSystem.clear(256);
-            // the frosted glass: vanilla's own menu blur over the world, which is a no-op when the player has
-            // turned menu blur off. it only touches the main target, the pose below does not know it happened.
-            // every frame until the screen goes, so the world does not snap sharp while the scrim is still fading
-            renderBlurredBackground();
-            float inv = (float) (1.0 / win.getGuiScale());
-            g.pose().pushPose();
-            posed = true;
-            g.pose().scale(inv, inv, 1f);
+            // todo 26.3: three things went missing here. the depth wipe (g.flush + RenderSystem.clear(256)) is probably
+            // moot now. the frosted glass was renderBlurredBackground(), now extractBlurredBackground(g) (protected,
+            // maybe g.blurBeforeThisStratum() + nextStratum() so the scrim lands over it). and the 1/guiScale pose was
+            // g.pose().pushPose() + scale(inv, inv, 1f), now a 2d Matrix3x2fStack pushMatrix()/scale(inv, inv)/popMatrix()
+            // around everything below, popped in the finally. nothing reaches the screen until those are back
 
             float wanted = Theme.scaleFor(winH);
             if (rebuild || (wanted != theme.scale && wanted != failedScale)) {
@@ -283,12 +280,8 @@ public class GuiScreen extends Screen {
                 }
             } catch (Throwable t) {
                 Safe.report("gui render end", t);
-            } finally {
-                // the pose must come back whatever end() did, or the rest of the hud draws at 1/guiScale
-                if (posed) {
-                    g.pose().popPose();
-                }
             }
+            // todo 26.3: the pose pop goes in a finally here, it must come back whatever end() did
         }
 
         if (atlasCanvas != null && atlasCanvas.broken) {
@@ -301,7 +294,7 @@ public class GuiScreen extends Screen {
         }
     }
 
-    private void begin(GuiGraphics g, int w, int h) {
+    private void begin(GuiGraphicsExtractor g, int w, int h) {
         if (atlasCanvas != null) {
             atlasCanvas.begin(g, w, h);
         } else {
@@ -348,36 +341,37 @@ public class GuiScreen extends Screen {
         return mc.getWindow().getGuiScale();
     }
 
-    private static int mods() {
+    // the events carry the modifiers that were held for that very input, so no asking the keyboard
+    private static int mods(InputWithModifiers e) {
         int m = 0;
-        if (hasShiftDown()) {
+        if (e.hasShiftDown()) {
             m |= Keys.MOD_SHIFT;
         }
-        if (hasControlDown()) {
+        if (e.hasControlDown()) {
             m |= Keys.MOD_CTRL;
         }
-        if (hasAltDown()) {
+        if (e.hasAltDown()) {
             m |= Keys.MOD_ALT;
         }
         return m;
     }
 
     @Override
-    public boolean mouseClicked(double x, double y, int button) {
-        guarded("mouse down", () -> shell.mouseDown(pointerX(), pointerY(), button, mods()));
+    public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        guarded("mouse down", () -> shell.mouseDown(pointerX(), pointerY(), event.button(), mods(event)));
         return true;
     }
 
     @Override
-    public boolean mouseReleased(double x, double y, int button) {
-        guarded("mouse up", () -> shell.mouseUp(pointerX(), pointerY(), button, mods()));
+    public boolean mouseReleased(MouseButtonEvent event) {
+        guarded("mouse up", () -> shell.mouseUp(pointerX(), pointerY(), event.button(), mods(event)));
         return true;
     }
 
     @Override
-    public boolean mouseDragged(double x, double y, int button, double dx, double dy) {
+    public boolean mouseDragged(MouseButtonEvent event, double dx, double dy) {
         double s = scale();
-        guarded("mouse drag", () -> shell.mouseDrag(pointerX(), pointerY(), button, (float) (dx * s), (float) (dy * s)));
+        guarded("mouse drag", () -> shell.mouseDrag(pointerX(), pointerY(), event.button(), (float) (dx * s), (float) (dy * s)));
         return true;
     }
 
@@ -394,21 +388,29 @@ public class GuiScreen extends Screen {
     }
 
     // always true: a key the shell did not want still must not reach the game or the default screen handling
+    // todo 26.3: input is SDL now. event.key() is a scancode (InputConstants.KEY_ESCAPE == 41) and event.button() is
+    // 1/2/3 for left/middle/right, but the kit still speaks glfw (Keys.ESCAPE == 256, button 0 is left), so every key
+    // and button below needs remapping before the shell sees it. the modifiers already go through mods()
     @Override
-    public boolean keyPressed(int key, int scancode, int mods) {
-        guarded("key down", () -> shell.keyDown(key, mods & 15));
+    public boolean keyPressed(KeyEvent event) {
+        guarded("key down", () -> shell.keyDown(event.key(), mods(event)));
         return true;
     }
 
     @Override
-    public boolean keyReleased(int key, int scancode, int mods) {
-        guarded("key up", () -> shell.keyUp(key));
+    public boolean keyReleased(KeyEvent event) {
+        guarded("key up", () -> shell.keyUp(event.key()));
         return true;
     }
 
+    // the game hands over a code point now, the shell still takes the utf-16 chars it always got
     @Override
-    public boolean charTyped(char c, int mods) {
-        guarded("char", () -> shell.charTyped(c));
+    public boolean charTyped(CharacterEvent event) {
+        guarded("char", () -> {
+            for (char c : Character.toChars(event.codepoint())) {
+                shell.charTyped(c);
+            }
+        });
         return true;
     }
 

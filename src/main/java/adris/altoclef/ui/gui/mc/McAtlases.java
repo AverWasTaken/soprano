@@ -104,10 +104,12 @@ final class McAtlases {
         if (slot == null) {
             Minecraft mc = Minecraft.getInstance();
             Identifier rl = Identifier.fromNamespaceAndPath("soprano", "gui/atlas_" + page.id());
-            DynamicTexture tex = new DynamicTexture(new NativeImage(page.width(), page.height(), true));
+            DynamicTexture tex = new DynamicTexture(() -> "soprano gui atlas " + page.id(),
+                    new NativeImage(page.width(), page.height(), true));
             mc.getTextureManager().register(rl, tex);
-            // nearest, the atlas is pixel exact and a linear sample would smear glyphs into their neighbours
-            tex.setFilter(false, false);
+            // todo 26.3: tex.setFilter(false, false) is gone. the atlas is pixel exact and a linear sample smears glyphs
+            // into their neighbours, so it wants a nearest GpuSampler (AbstractTexture.sampler is protected, there is a
+            // getSampler()) or a blit overload that takes a GpuTextureView plus its own GpuSampler
             slot = new Slot(tex, rl);
             slots.put(page.id(), slot);
         }
