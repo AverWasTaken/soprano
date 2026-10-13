@@ -23,6 +23,7 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.options.OptionsSubScreen;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.component.DataComponents;
+import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.AbstractFurnaceMenu;
@@ -33,7 +34,6 @@ import net.minecraft.world.inventory.CraftingMenu;
 import net.minecraft.world.inventory.FurnaceMenu;
 import net.minecraft.world.inventory.InventoryMenu;
 import net.minecraft.world.inventory.SmokerMenu;
-import net.minecraft.world.item.ArmorItem;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -80,15 +80,15 @@ public class StorageHelper {
         Inventory inv = player.getInventory();
         if (inv != null) {
             if (slot.equals(PlayerSlot.OFFHAND_SLOT))
-                return inv.offhand.stream().findFirst().orElse(ItemStack.EMPTY);
+                return player.getItemBySlot(EquipmentSlot.OFFHAND);
             if (slot.equals(PlayerSlot.ARMOR_HELMET_SLOT))
-                return inv.getArmor(3);
+                return player.getItemBySlot(EquipmentSlot.HEAD);
             if (slot.equals(PlayerSlot.ARMOR_CHESTPLATE_SLOT))
-                return inv.getArmor(2);
+                return player.getItemBySlot(EquipmentSlot.CHEST);
             if (slot.equals(PlayerSlot.ARMOR_LEGGINGS_SLOT))
-                return inv.getArmor(1);
+                return player.getItemBySlot(EquipmentSlot.LEGS);
             if (slot.equals(PlayerSlot.ARMOR_BOOTS_SLOT))
-                return inv.getArmor(0);
+                return player.getItemBySlot(EquipmentSlot.FEET);
         }
         try {
             // We might have messed up and opened the wrong slot.
@@ -315,8 +315,8 @@ public class StorageHelper {
 
     public static boolean isArmorEquipped(AltoClef mod, Item... any) {
         for (Item item : any) {
-            if (item instanceof ArmorItem armor) {
-                ItemStack equippedStack = mod.getPlayer().getInventory().getArmor(ItemHelper.getEquipSlot(armor).getIndex());
+            if (ItemHelper.isArmor(item)) {
+                ItemStack equippedStack = mod.getPlayer().getItemBySlot(ItemHelper.getEquipSlot(item));
                 if (equippedStack.getItem().equals(item))
                     return true;
             }

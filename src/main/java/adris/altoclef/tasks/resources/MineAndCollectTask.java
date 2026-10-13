@@ -34,7 +34,6 @@ import java.util.function.Predicate;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.entity.item.ItemEntity;
-import net.minecraft.world.item.DiggerItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -164,10 +163,10 @@ public class MineAndCollectTask extends ResourceTask {
                 if (cursorStack.isCorrectToolForDrops(mod.getWorld().getBlockState(_subtask.miningPos()))) {
                     // Our cursor stack would help us mine our current block
                     Item currentlyEquipped = StorageHelper.getItemStackInSlot(PlayerSlot.getEquipSlot()).getItem();
-                    if (cursorStack.getItem() instanceof DiggerItem) {
-                        if (currentlyEquipped instanceof DiggerItem currentPick) {
-                            DiggerItem swapPick = (DiggerItem) cursorStack.getItem();
-                            if (ItemHelper.getMiningSpeed(swapPick) > ItemHelper.getMiningSpeed(currentPick)) {
+                    if (ItemHelper.isDigger(cursorStack.getItem())) {
+                        if (ItemHelper.isDigger(currentlyEquipped)) {
+                            Item swapPick = cursorStack.getItem();
+                            if (ItemHelper.getMiningSpeed(swapPick) > ItemHelper.getMiningSpeed(currentlyEquipped)) {
                                 // We can equip a better pickaxe.
                                 equipFromCursor(mod);
                             }

@@ -34,7 +34,7 @@ public class SearchWithinBiomeTask extends SearchChunksExploreTask {
 
     @Override
     protected String toHudString() {
-        return "Searching for a " + _toSearch.location().getPath().replace('_', ' ');
+        return "Searching for a " + _toSearch.identifier().getPath().replace('_', ' ');
     }
 
     @Override

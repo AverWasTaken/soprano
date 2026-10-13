@@ -36,7 +36,7 @@ import baritone.api.utils.RayTraceUtils;
 import baritone.api.utils.SettingsUtil;
 import baritone.event.GameEventHandler;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.level.ChunkPos;
@@ -172,8 +172,8 @@ public final class AltoClefBridge implements AbstractGameEventListener {
         return false;
     }
 
-    // called from MixinAltoClefGui at the end of Gui#render, every frame
-    public static void renderHud(GuiGraphics graphics) {
+    // called from MixinAltoClefGui at the end of the hud extract, every frame
+    public static void renderHud(GuiGraphicsExtractor graphics) {
         if (hudBroken || !isRunning()) {
             return;
         }

@@ -386,7 +386,7 @@ public class EntityTracker extends Tracker {
     // all. without a name the "it hit us" memory never hears about the witch, and a fight that stalled on it stays given up on
     // for as long as the poison runs. the nearest witch with a line to us inside FoeRules.WITCH_HIT_RANGE gets the blame
     private void noteWitch(LocalPlayer player, DamageSource source) {
-        boolean harmfulNow = player.hasEffect(MobEffects.POISON) || player.hasEffect(MobEffects.WEAKNESS) || player.hasEffect(MobEffects.MOVEMENT_SLOWDOWN);
+        boolean harmfulNow = player.hasEffect(MobEffects.POISON) || player.hasEffect(MobEffects.WEAKNESS) || player.hasEffect(MobEffects.SLOWNESS);
         boolean gained = harmfulNow && !_hadHarmfulEffect;
         _hadHarmfulEffect = harmfulNow;
         boolean magic = source != null && source != _lastMagicSource && FoeRules.unattributedMagic(source.getMsgId(), source.getEntity() != null);

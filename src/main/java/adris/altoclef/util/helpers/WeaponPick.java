@@ -1,9 +1,7 @@
 package adris.altoclef.util.helpers;
 
-import net.minecraft.world.item.AxeItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.SwordItem;
 
 // which melee weapon to hold. one on one the kill tasks wait for a full cooldown before every swing, so what matters is
 // damage per swing and not damage per second, and an axe hits harder per swing than a sword of the same tier (wood 7 vs 4,
@@ -27,7 +25,7 @@ public final class WeaponPick {
     }
 
     public static boolean isWeapon(Item item) {
-        return item instanceof SwordItem || item instanceof AxeItem;
+        return ItemHelper.isSword(item) || ItemHelper.isAxe(item);
     }
 
     // the weapon to hold, or null if there is no sword or axe in the list. a healthy weapon always beats a worn one, then
@@ -98,8 +96,8 @@ public final class WeaponPick {
             return bWorn;
         }
         if (shieldedTarget) {
-            boolean aAxe = a.item() instanceof AxeItem;
-            if (aAxe != (b.item() instanceof AxeItem)) {
+            boolean aAxe = ItemHelper.isAxe(a.item());
+            if (aAxe != ItemHelper.isAxe(b.item())) {
                 return aAxe;
             }
         } else if (crowd) {

@@ -81,7 +81,7 @@ public final class McWorld implements WorldAccess {
     public String dimension() {
         try {
             ClientLevel level = mc().level;
-            return level == null ? "overworld" : level.dimension().location().getPath();
+            return level == null ? "overworld" : level.dimension().identifier().getPath();
         } catch (Throwable t) {
             Safe.report("gui dimension", t);
             return "overworld";
@@ -103,7 +103,7 @@ public final class McWorld implements WorldAccess {
             for (AbstractClientPlayer p : level.players()) {
                 seen.add(p.getUUID());
                 boolean self = p.getUUID().equals(me.getUUID());
-                loaded.add(new PlayerEntry(p.getGameProfile().getName(), self ? 0 : p.distanceTo(me), self));
+                loaded.add(new PlayerEntry(p.getGameProfile().name(), self ? 0 : p.distanceTo(me), self));
             }
             loaded.sort(Comparator.comparingDouble(PlayerEntry::distance));
             out.addAll(loaded);
@@ -111,8 +111,8 @@ public final class McWorld implements WorldAccess {
             if (mc.getConnection() != null) {
                 List<PlayerEntry> far = new ArrayList<>();
                 for (PlayerInfo info : mc.getConnection().getOnlinePlayers()) {
-                    if (seen.add(info.getProfile().getId())) {
-                        far.add(new PlayerEntry(info.getProfile().getName(), -1, false));
+                    if (seen.add(info.getProfile().id())) {
+                        far.add(new PlayerEntry(info.getProfile().name(), -1, false));
                     }
                 }
                 far.sort(Comparator.comparing(e -> e.name().toLowerCase(Locale.ROOT)));
@@ -165,11 +165,11 @@ public final class McWorld implements WorldAccess {
         try {
             Minecraft mc = mc();
             if (mc.level != null && mc.player != null) {
-                if (name.equalsIgnoreCase(mc.player.getGameProfile().getName())) {
+                if (name.equalsIgnoreCase(mc.player.getGameProfile().name())) {
                     return Result.fail("That is you. Pick someone else.");
                 }
                 // follow swaps in an empty filter before it finds out nobody is there, so a far name must not get that far
-                boolean near = mc.level.players().stream().anyMatch(p -> p.getGameProfile().getName().equalsIgnoreCase(name));
+                boolean near = mc.level.players().stream().anyMatch(p -> p.getGameProfile().name().equalsIgnoreCase(name));
                 if (!near) {
                     return Result.fail(name + " is too far away to follow.");
                 }

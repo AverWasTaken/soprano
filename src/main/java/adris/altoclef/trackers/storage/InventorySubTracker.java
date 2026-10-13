@@ -14,6 +14,7 @@ import java.util.HashMap;
 import java.util.List;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.item.Item;
@@ -110,8 +111,12 @@ public class InventorySubTracker extends Tracker {
             result.add(StorageHelper.getItemStackInCursorSlot());
         }
         result.addAll(inv.getNonEquipmentItems());
-        result.addAll(inv.armor);
-        result.addAll(inv.offhand);
+        // feet first, same order the armor list used to have
+        result.add(player.getItemBySlot(EquipmentSlot.FEET));
+        result.add(player.getItemBySlot(EquipmentSlot.LEGS));
+        result.add(player.getItemBySlot(EquipmentSlot.CHEST));
+        result.add(player.getItemBySlot(EquipmentSlot.HEAD));
+        result.add(player.getItemBySlot(EquipmentSlot.OFFHAND));
         return result;
     }
 

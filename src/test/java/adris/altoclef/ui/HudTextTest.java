@@ -5,7 +5,7 @@ import adris.altoclef.util.helpers.ItemHelper;
 import net.minecraft.SharedConstants;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.Bootstrap;
-import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.monster.Zombie;
 import net.minecraft.world.entity.monster.AbstractSkeleton;
 import net.minecraft.world.item.Item;
@@ -27,6 +27,7 @@ public class HudTextTest {
     public static void boot() {
         SharedConstants.tryDetectVersion();
         Bootstrap.bootStrap();
+        adris.altoclef.util.helpers.ItemFixture.load();
     }
 
     @Test
@@ -49,7 +50,7 @@ public class HudTextTest {
         assertEquals("Oak Log", HudText.item(Items.OAK_LOG));
         assertEquals("Crafting Table", HudText.item(Items.CRAFTING_TABLE));
         assertEquals("Oak Log", HudText.block(Blocks.OAK_LOG));
-        assertEquals("Zombie", HudText.entityType(EntityType.ZOMBIE));
+        assertEquals("Zombie", HudText.entityType(EntityTypes.ZOMBIE));
         assertEquals("Zombie", HudText.entityClass(Zombie.class));
         assertEquals("Skeleton", HudText.entityClass(AbstractSkeleton.class));
     }

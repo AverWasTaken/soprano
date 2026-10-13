@@ -19,6 +19,7 @@ package adris.altoclef.commands;
 
 import adris.altoclef.TaskCatalogue;
 import adris.altoclef.util.ItemTarget;
+import adris.altoclef.util.helpers.ItemHelper;
 import baritone.api.command.datatypes.IDatatypeContext;
 import baritone.api.command.datatypes.IDatatypeFor;
 import baritone.api.command.exception.CommandException;
@@ -28,7 +29,6 @@ import java.util.List;
 import java.util.stream.Stream;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
-import net.minecraft.world.item.ArmorItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 
@@ -115,7 +115,7 @@ public enum AltoItem implements IDatatypeFor<String> {
             return false;
         }
         for (Item i : matches) {
-            if (!(i instanceof ArmorItem)) {
+            if (!ItemHelper.isArmor(i)) {
                 return false;
             }
         }

@@ -21,6 +21,7 @@ public class ToolWearTest {
     public static void bootstrap() {
         SharedConstants.tryDetectVersion();
         Bootstrap.bootStrap();
+        ItemFixture.load();
     }
 
     @Test

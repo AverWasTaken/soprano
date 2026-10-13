@@ -16,6 +16,7 @@ public class EquipArmorTaskTest {
     public static void boot() {
         SharedConstants.tryDetectVersion();
         Bootstrap.bootStrap();
+        adris.altoclef.util.helpers.ItemFixture.load();
     }
 
     // only the cursor test can run without a world, the rest of the task needs the mod. this is the one that keeps a diamond

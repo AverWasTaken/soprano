@@ -15,6 +15,7 @@ import adris.altoclef.util.slots.PlayerSlot;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.InteractionHand;
+import net.minecraft.world.item.component.SwingAnimation;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.animal.golem.IronGolem;
 import net.minecraft.world.entity.monster.Monster;
@@ -429,7 +430,7 @@ public final class GolemFightTask extends Task {
         // not through PlayerExtraController, so the grudge book hears about it here
         mod.getEntityTracker().noteProvoked(g);
         mod.getController().attack(player, g);
-        player.swing(InteractionHand.MAIN_HAND);
+        player.swing(InteractionHand.MAIN_HAND, SwingAnimation.DEFAULT, false);
         lastHitTick = now;
         hits++;
         progress(now, "hit an iron golem (" + hits + ")");

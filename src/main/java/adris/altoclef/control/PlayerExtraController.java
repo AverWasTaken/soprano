@@ -16,6 +16,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.tags.FluidTags;
 import net.minecraft.world.InteractionHand;
+import net.minecraft.world.item.component.SwingAnimation;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
@@ -86,7 +87,7 @@ public class PlayerExtraController {
             // every deliberate swing comes through here: the one we hit is angry at us now, neutral or not
             _mod.getEntityTracker().noteProvoked(entity);
             _mod.getController().attack(_mod.getPlayer(), entity);
-            _mod.getPlayer().swing(InteractionHand.MAIN_HAND);
+            _mod.getPlayer().swing(InteractionHand.MAIN_HAND, SwingAnimation.DEFAULT, false);
             _swings++;
             return true;
         }

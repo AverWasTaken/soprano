@@ -19,6 +19,7 @@ import net.minecraft.world.entity.monster.hoglin.Hoglin;
 import net.minecraft.world.entity.monster.piglin.Piglin;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.phys.EntityHitResult;
 
 public class TradeWithPiglinsTask extends ResourceTask {
 
@@ -186,7 +187,7 @@ public class TradeWithPiglinsTask extends ResourceTask {
             setDebugState("Trading with piglin");
 
             if (mod.getSlotHandler().forceEquipItem(Items.GOLD_INGOT)) {
-                mod.getController().interact(mod.getPlayer(), entity, InteractionHand.MAIN_HAND);
+                mod.getController().interact(mod.getPlayer(), entity, new EntityHitResult(entity), InteractionHand.MAIN_HAND);
                 _intervalTimeout.reset();
             }
             return null;

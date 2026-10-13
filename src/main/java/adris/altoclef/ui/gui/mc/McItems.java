@@ -200,7 +200,8 @@ public final class McItems implements ItemsAccess {
 
     private static String nameOf(Item item, String fallbackId) {
         try {
-            String name = item.getName().getString();
+            // Item#getName wants a stack now, the default instance carries the plain item name
+            String name = item.getDefaultInstance().getItemName().getString();
             return name.isEmpty() ? ItemEntry.titleCase(fallbackId) : name;
         } catch (Throwable t) {
             Safe.report("gui item name", t);

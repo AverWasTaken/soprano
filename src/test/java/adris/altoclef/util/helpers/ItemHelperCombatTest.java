@@ -35,6 +35,7 @@ public class ItemHelperCombatTest {
         // items carry their attribute modifiers as components, which need the registries
         SharedConstants.tryDetectVersion();
         Bootstrap.bootStrap();
+        ItemFixture.load();
     }
 
     @Test

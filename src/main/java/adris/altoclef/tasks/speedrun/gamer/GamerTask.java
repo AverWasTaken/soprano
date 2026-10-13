@@ -1111,7 +1111,7 @@ public class GamerTask extends Task {
     // starts when NightSleep.decide says so. mob defense hears about the stage through the hook, every tick
     private Task nightSleepTick(AltoClef mod) {
         double seconds = facts.gameTime() * 0.05;
-        nightBudget.roll(NightSleep.nightOf(mod.getWorld().getDayTime()));
+        nightBudget.roll(NightSleep.nightOf(mod.getWorld().getOverworldClockTime()));
         if (nightTrip != null) {
             if (nightTrip.isFinished(mod) || facts.dimension() != Dimension.OVERWORLD) {
                 // (the bed a dead or dropped trip left is picked up by a cleanup trip)
@@ -1128,7 +1128,7 @@ public class GamerTask extends Task {
             return null;
         }
         boolean leftover = leftoverNightBed(mod);
-        boolean windowOpen = !mod.getWorld().isDay();
+        boolean windowOpen = !mod.getWorld().isBrightOutside();
         // the evening's own tasks open screens (a table, the inventory), which are not a reason to stop them halfway
         NightSleep.Busy busy = nightBusy(nightPrep.running());
         boolean fighting = nightFighting(mod);
@@ -1180,10 +1180,10 @@ public class GamerTask extends Task {
     // one line when the answer to "why is it not in bed" changes, and only through the evening and the night (a screen opening
     // in the middle of the day is nobody's business). the key is what changed, the rest rides along
     private void sayNight(AltoClef mod, NightSleep.Why why, NightSleep.Busy busy, NightSleep.BedSource source) {
-        long timeOfDay = Math.floorMod(mod.getWorld().getDayTime(), NightSleep.DAY_LENGTH);
+        long timeOfDay = Math.floorMod(mod.getWorld().getOverworldClockTime(), NightSleep.DAY_LENGTH);
         long lead = Math.max(cfg.overworld.nightCraftLeadTicks, cfg.overworld.nightWoolLeadTicks);
         boolean evening = timeOfDay >= NightSleep.EARLIEST_WINDOW - lead && timeOfDay < NightSleep.PREP_END;
-        if (!evening && mod.getWorld().isDay()) {
+        if (!evening && mod.getWorld().isBrightOutside()) {
             return;
         }
         NightSleep.Prep prep = nightPrep.last();

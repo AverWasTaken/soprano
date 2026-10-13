@@ -58,7 +58,7 @@ public final class NightPrep {
     // the task to run instead of the phase this tick, or null
     public Task tick(AltoClef mod, Gate gate, BooleanSupplier bedReady) {
         OverworldConfig c = cfg.get();
-        long dayTime = mod.getWorld().getDayTime();
+        long dayTime = mod.getWorld().getOverworldClockTime();
         long timeOfDay = Math.floorMod(dayTime, NightSleep.DAY_LENGTH);
         long dayId = NightSleep.nightOf(dayTime);
         woolClock.roll(dayId);

@@ -269,7 +269,7 @@ public final class InventoryBehavior extends Behavior implements Helper {
                 total += stack.getCount();
             }
         }
-        ItemStack offhand = ctx.player().getInventory().offhand.get(0);
+        ItemStack offhand = ctx.player().getItemBySlot(EquipmentSlot.OFFHAND);
         return offhand.is(item) ? total + offhand.getCount() : total;
     }
 
@@ -284,7 +284,7 @@ public final class InventoryBehavior extends Behavior implements Helper {
         NonNullList<ItemStack> inv = ctx.player().getInventory().getNonEquipmentItems();
         for (int i = 0; i <= inv.size(); i++) {
             boolean offhand = i == inv.size();
-            Item item = (offhand ? ctx.player().getInventory().offhand.get(0) : inv.get(i)).getItem();
+            Item item = (offhand ? ctx.player().getItemBySlot(EquipmentSlot.OFFHAND) : inv.get(i)).getItem();
             haveAny |= acceptable.contains(item);
             if (usable.contains(item)) {
                 haveUsable = true;

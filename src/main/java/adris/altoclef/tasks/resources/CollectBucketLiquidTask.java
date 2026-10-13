@@ -434,7 +434,7 @@ public class CollectBucketLiquidTask extends ResourceTask {
             if (now - _aimedSince >= 2) {
                 _aimedSince = -1;
                 for (int i = BucketFillRules.spares(held); i > 0; i--) {
-                    mod.getPlayer().drop(false);
+                    mod.getController().dropItem(mod.getPlayer(), false);
                 }
                 Debug.logInternal("bucket: held " + BucketFillRules.HOLD_DROP_TICKS / 20 + " s with no free slot, dropped "
                         + BucketFillRules.spares(held) + " spare buckets, filling the last one in place");

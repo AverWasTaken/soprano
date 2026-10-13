@@ -9,6 +9,7 @@ import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.damagesource.DamageTypes;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.OwnableEntity;
 import net.minecraft.world.entity.ai.attributes.Attributes;
@@ -37,14 +38,16 @@ public class EntityHelper {
     public static final double ENTITY_GRAVITY = 0.08; // per second
     // the spider target goal gives up at this light level or brighter (Spider.SpiderTargetGoal.canUse)
     private static final float SPIDER_BRIGHT = 0.5f;
+    // getArmorSlots is gone, these are the four it walked
+    private static final EquipmentSlot[] ARMOR_SLOTS = {EquipmentSlot.FEET, EquipmentSlot.LEGS, EquipmentSlot.CHEST, EquipmentSlot.HEAD};
 
     public static boolean isAngryAtPlayer(AltoClef mod, Entity entity) {
         return isGenerallyHostileToPlayer(mod, entity);
     }
 
     public static boolean isGenerallyHostileToPlayer(AltoClef mod, Entity entity) {
-        if (entity instanceof OwnableEntity tameable && tameable.getOwnerUUID() != null
-                && tameable.getOwnerUUID().equals(mod.getPlayer().getUUID())) return false;
+        if (entity instanceof OwnableEntity tameable && tameable.getOwnerReference() != null
+                && tameable.getOwnerReference().getUUID().equals(mod.getPlayer().getUUID())) return false;
         if (entity instanceof Slime slime && mod.getPlayer().closerThan(slime, 3)) return true;
         if (entity instanceof Raider raider && mod.getPlayer().closerThan(raider, 16)) return true;
         if (entity instanceof Warden warden && mod.getPlayer().closerThan(warden, 16)) return true;
@@ -103,12 +106,11 @@ public class EntityHelper {
 
     public static boolean isTradingPiglin(Entity entity) {
         if (entity instanceof Piglin pig) {
-            if (pig.getHandSlots() != null) {
-                for (ItemStack stack : pig.getHandSlots()) {
-                    if (stack.getItem().equals(Items.GOLD_INGOT)) {
-                        // We're trading with this one, ignore it.
-                        return true;
-                    }
+            // getHandSlots is gone, it was main hand then offhand
+            for (ItemStack stack : new ItemStack[]{pig.getMainHandItem(), pig.getOffhandItem()}) {
+                if (stack.getItem().equals(Items.GOLD_INGOT)) {
+                    // We're trading with this one, ignore it.
+                    return true;
                 }
             }
         }
@@ -134,9 +136,9 @@ public class EntityHelper {
         // Enchantments & Potions
         if (!source.is(DamageTypeTags.BYPASSES_SHIELD)) {
             float k;
-            if (player.hasEffect(MobEffects.DAMAGE_RESISTANCE) && source.is(DamageTypes.FELL_OUT_OF_WORLD)) {
+            if (player.hasEffect(MobEffects.RESISTANCE) && source.is(DamageTypes.FELL_OUT_OF_WORLD)) {
                 //noinspection ConstantConditions
-                k = (player.getEffect(MobEffects.DAMAGE_RESISTANCE).getAmplifier() + 1) * 5;
+                k = (player.getEffect(MobEffects.RESISTANCE).getAmplifier() + 1) * 5;
                 float j = 25 - k;
                 double f = damageAmount * (double) j;
                 double g = damageAmount;
@@ -163,7 +165,7 @@ public class EntityHelper {
      */
     private static float getEnchantmentProtection(Player player, DamageSource source) {
         // 1.21.2 evaluates enchantment effects on a ServerLevel. singleplayer has one, a remote server leaves us nothing
-        var server = player.getServer();
+        var server = player.level().getServer();
         if (server != null) {
             var level = server.getLevel(player.level().dimension());
             if (level != null) {
@@ -171,7 +173,8 @@ public class EntityHelper {
             }
         }
         float total = 0;
-        for (ItemStack stack : player.getArmorSlots()) {
+        for (EquipmentSlot slot : ARMOR_SLOTS) {
+            ItemStack stack = player.getItemBySlot(slot);
             ItemEnchantments enchantments = stack.getEnchantments();
             for (var entry : enchantments.entrySet()) {
                 Holder<Enchantment> enchantment = entry.getKey();

@@ -23,6 +23,7 @@ public class GarbageRulesTest {
     public static void bootstrap() {
         SharedConstants.tryDetectVersion();
         Bootstrap.bootStrap();
+        ItemFixture.load();
     }
 
     private static int bag(ItemStack... stacks) {

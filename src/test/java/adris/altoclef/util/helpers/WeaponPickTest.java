@@ -19,6 +19,7 @@ public class WeaponPickTest {
         // damage and swing speed come off the item's attribute components, which need the registries
         SharedConstants.tryDetectVersion();
         Bootstrap.bootStrap();
+        ItemFixture.load();
     }
 
     private static Candidate fresh(Item item) {

@@ -91,7 +91,7 @@ public final class HudText {
     public static String item(Item item) {
         if (item == null) return "something";
         try {
-            return item.getName().getString();
+            return item.getDefaultInstance().getItemName().getString();
         } catch (Throwable t) {
             return ItemHelper.stripItemName(item).replace('_', ' ');
         }

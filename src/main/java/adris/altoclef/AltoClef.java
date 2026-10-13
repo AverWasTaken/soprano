@@ -27,7 +27,7 @@ import baritone.api.BaritoneAPI;
 import baritone.api.Settings;
 import baritone.api.utils.RayTraceUtils;
 import baritone.altoclef.SettingsOverrides;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.multiplayer.MultiPlayerGameMode;
@@ -36,7 +36,7 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
-import org.lwjgl.glfw.GLFW;
+import com.mojang.blaze3d.platform.InputConstants;
 
 import java.util.ArrayDeque;
 import java.util.Arrays;
@@ -190,7 +190,7 @@ public class AltoClef {
             _baritoneScope.refreshThrowaway();
 
             // Cancel shortcut
-            if (InputHelper.isKeyPressed(GLFW.GLFW_KEY_LEFT_CONTROL) && InputHelper.isKeyPressed(GLFW.GLFW_KEY_K)) {
+            if (InputHelper.isKeyPressed(InputConstants.KEY_LCONTROL) && InputHelper.isKeyPressed(InputConstants.KEY_K)) {
                 _userTaskChain.cancel(this);
                 if (_taskRunner.getCurrentTaskChain() != null) {
                     _taskRunner.getCurrentTaskChain().stop(this);
@@ -240,8 +240,8 @@ public class AltoClef {
 
     /// GETTERS AND SETTERS
 
-    // Called from Soprano's Gui#render mixin at the end of every frame
-    public void onClientRenderOverlay(GuiGraphics graphics) {
+    // Called from Soprano's hud extract mixin at the end of every frame
+    public void onClientRenderOverlay(GuiGraphicsExtractor graphics) {
         // nothing of ours on screen unless we are the ones driving
         if (_taskRunner.isActive()) {
             _commandStatusOverlay.render(this, graphics);

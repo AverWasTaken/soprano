@@ -8,6 +8,7 @@ import adris.altoclef.tasks.movement.MLGBucketTask;
 import adris.altoclef.tasksystem.ITaskOverridesGrounded;
 import adris.altoclef.tasksystem.TaskRunner;
 import adris.altoclef.util.helpers.LookHelper;
+import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.time.TimerGame;
 import baritone.api.pathing.movement.IMovement;
 import baritone.api.utils.Rotation;
@@ -170,7 +171,7 @@ public class MLGBucketFallChain extends SingleTaskChain implements ITaskOverride
         if (going != null) {
             return going;
         }
-        boolean water = !mod.getWorld().dimensionType().ultraWarm() && mod.getItemStorage().hasItem(Items.WATER_BUCKET);
+        boolean water = !WorldHelper.waterEvaporates(mod.getWorld()) && mod.getItemStorage().hasItem(Items.WATER_BUCKET);
         return water ? null : LadderClutchFallTask.probe(mod);
     }
 

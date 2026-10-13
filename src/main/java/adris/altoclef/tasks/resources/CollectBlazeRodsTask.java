@@ -17,6 +17,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.monster.Blaze;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.phys.Vec3;
 
 public class CollectBlazeRodsTask extends ResourceTask {
 
@@ -91,7 +92,7 @@ public class CollectBlazeRodsTask extends ResourceTask {
         if (_foundBlazeSpawner != null) {
             // wherever we last hid from them near here beats standing in the open next to the spawner
             BlockPos hide = _fight.campSpot();
-            if (hide != null && hide.closerToCenterThan(_foundBlazeSpawner.getCenter(), COVER_HOLD_RADIUS)) {
+            if (hide != null && hide.closerToCenterThan(Vec3.atCenterOf(_foundBlazeSpawner), COVER_HOLD_RADIUS)) {
                 if (!hide.closerToCenterThan(mod.getPlayer().position(), 1.5)) {
                     setDebugState("Going back to cover");
                     return new GetToBlockTask(hide, false);

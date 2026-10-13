@@ -193,7 +193,7 @@ public class LocateStrongholdCoordinatesTask extends Task {
         if (_strongholdEstimatePos == null) {
             return Optional.empty();
         }
-        return Optional.of(new BlockPos(_strongholdEstimatePos));
+        return Optional.of(new BlockPos(_strongholdEstimatePos.getX(), _strongholdEstimatePos.getY(), _strongholdEstimatePos.getZ()));
     }
 
     @Override

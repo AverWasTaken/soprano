@@ -560,7 +560,7 @@ public class NightSleepTask extends Task {
         boolean asleep = player.isSleeping() || Minecraft.getInstance().gui.screen() instanceof InBedChatScreen;
         if (asleep) {
             if (!wasAsleep) {
-                asleepDayTime = world.getDayTime();
+                asleepDayTime = world.getOverworldClockTime();
             }
             wasAsleep = true;
             asleepTicks++;
@@ -581,7 +581,7 @@ public class NightSleepTask extends Task {
             if (upSince < 0) {
                 upSince = now;
             }
-            NightSleep.Wake wake = NightSleep.wake(asleepTicks, world.isDay(), asleepDayTime, world.getDayTime(), now - upSince,
+            NightSleep.Wake wake = NightSleep.wake(asleepTicks, world.isBrightOutside(), asleepDayTime, world.getOverworldClockTime(), now - upSince,
                     cfg.get().nightWakeGraceTicks);
             if (wake == NightSleep.Wake.WAIT) {
                 // (still reads night, the time packet may be on its way)

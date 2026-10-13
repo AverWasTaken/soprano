@@ -14,7 +14,6 @@ import adris.altoclef.util.slots.Slot;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.inventory.InventoryMenu;
-import net.minecraft.world.item.ArmorItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -98,7 +97,7 @@ public class EquipArmorTask extends Task {
                     }
                 }
             } else {
-                ArmorItem item = (ArmorItem) Objects.requireNonNull(targetArmor.getMatches())[0];
+                Item item = Objects.requireNonNull(targetArmor.getMatches())[0];
                 if (item == null) {
                     Debug.logWarning("Item " + targetArmor + " is not armor! Will not equip.");
                 } else {
@@ -154,7 +153,7 @@ public class EquipArmorTask extends Task {
     // which case it stays put and we do not wait on it for ever)
     private static Optional<Slot> cursorArmorSpot(AltoClef mod) {
         ItemStack cursor = StorageHelper.getItemStackInCursorSlot();
-        if (cursor.isEmpty() || !(cursor.getItem() instanceof ArmorItem)) {
+        if (cursor.isEmpty() || !ItemHelper.isArmor(cursor.getItem())) {
             return Optional.empty();
         }
         return mod.getItemStorage().getSlotThatCanFitInPlayerInventory(cursor, false);

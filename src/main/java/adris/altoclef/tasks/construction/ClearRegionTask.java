@@ -49,7 +49,7 @@ public class ClearRegionTask extends Task implements ITaskRequiresGrounded {
         for (int xx = 0; xx <= Math.abs(x); ++xx) {
             for (int yy = 0; yy <= Math.abs(y); ++yy) {
                 for (int zz = 0; zz <= Math.abs(z); ++zz) {
-                    BlockPos toCheck = new BlockPos(_from).offset(xx * -Integer.signum(x), yy * -Integer.signum(y), zz * -Integer.signum(z));
+                    BlockPos toCheck = _from.offset(xx * -Integer.signum(x), yy * -Integer.signum(y), zz * -Integer.signum(z));
                     assert Minecraft.getInstance().level != null;
                     if (!Minecraft.getInstance().level.isEmptyBlock(toCheck)) {
                         return false;

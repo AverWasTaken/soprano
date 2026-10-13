@@ -59,6 +59,6 @@ public enum TabListPlayer implements IDatatypeFor<String> {
         if (connection == null) {
             return List.of();
         }
-        return connection.getOnlinePlayers().stream().map(PlayerInfo::getProfile).map(p -> p.getName()).toList();
+        return connection.getOnlinePlayers().stream().map(PlayerInfo::getProfile).map(p -> p.name()).toList();
     }
 }

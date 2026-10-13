@@ -90,11 +90,11 @@ public class SlotHandler {
     }
 
     // the packet part of a click with no cooldown bookkeeping, so a burst can send a few under one slot action.
-    // handleInventoryMouseClick runs the click on our own menu first (the client predicts it) and then sends it, so
+    // handleContainerInput runs the click on our own menu first (the client predicts it) and then sends it, so
     // back to back clicks see each other and the server replays the same thing
     private boolean sendClick(LocalPlayer player, int syncId, int windowSlot, int mouseButton, ContainerInput type) {
         try {
-            _mod.getController().handleInventoryMouseClick(syncId, windowSlot, mouseButton, type, player);
+            _mod.getController().handleContainerInput(syncId, windowSlot, mouseButton, type, player);
         } catch (Exception e) {
             Debug.logWarning("Slot Click Error (ignored)");
             e.printStackTrace();

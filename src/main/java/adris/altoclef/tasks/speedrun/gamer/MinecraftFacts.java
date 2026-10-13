@@ -19,6 +19,7 @@ import net.minecraft.client.gui.screens.WinScreen;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
@@ -224,9 +225,11 @@ public final class MinecraftFacts implements GamerFacts {
             // which block the screen is, so only that station's own job hides its food (FoodPlan.inStation)
             stationAt = mod.getItemStorage().getLastBlockPosInteraction().map(p -> new RunState.Pos(p.getX(), p.getY(), p.getZ())).orElse(null);
         }
-        for (int i = 0; i < 4; i++) {
-            worn[i] = inv.getArmor(i);
-        }
+        // feet, legs, chest, head: the order the armor list had
+        worn[0] = player.getItemBySlot(EquipmentSlot.FEET);
+        worn[1] = player.getItemBySlot(EquipmentSlot.LEGS);
+        worn[2] = player.getItemBySlot(EquipmentSlot.CHEST);
+        worn[3] = player.getItemBySlot(EquipmentSlot.HEAD);
         worn[4] = inv.getItem(Inventory.SLOT_OFFHAND);
         ironWornLogged = ironWornNow;
         summarize();

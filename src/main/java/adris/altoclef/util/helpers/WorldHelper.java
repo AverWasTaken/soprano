@@ -43,6 +43,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BedPart;
 import net.minecraft.world.level.block.state.properties.ChestType;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.attribute.EnvironmentAttributes;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.CollisionContext;
@@ -133,8 +134,9 @@ public interface WorldHelper {
 
     // for a level that is not the current one: a dead player keeps the level it died in after the respawn swapped ours
     static Dimension dimensionOf(Level world) {
-        if (world.dimensionType().ultraWarm()) return Dimension.NETHER;
-        if (world.dimensionType().natural()) return Dimension.OVERWORLD;
+        if (waterEvaporates(world)) return Dimension.NETHER;
+        // no "natural" flag anymore, and the piglins_zombify attribute would call the end natural too
+        if (world.dimension() == Level.OVERWORLD) return Dimension.OVERWORLD;
         return Dimension.END;
     }
 
@@ -249,9 +251,9 @@ public interface WorldHelper {
     // what a break could be done with: the bag and the offhand (the tool gates count a pick over there too)
     static java.util.List<net.minecraft.world.item.ItemStack> bagOf(AltoClef mod) {
         net.minecraft.world.entity.player.Inventory inv = mod.getPlayer().getInventory();
-        java.util.List<net.minecraft.world.item.ItemStack> bag = new java.util.ArrayList<>(inv.getNonEquipmentItems().size() + inv.offhand.size());
+        java.util.List<net.minecraft.world.item.ItemStack> bag = new java.util.ArrayList<>(inv.getNonEquipmentItems().size() + 1);
         bag.addAll(inv.getNonEquipmentItems());
-        bag.addAll(inv.offhand);
+        bag.add(mod.getPlayer().getItemBySlot(net.minecraft.world.entity.EquipmentSlot.OFFHAND));
         return bag;
     }
 
@@ -526,9 +528,15 @@ public interface WorldHelper {
 
     static boolean canSleep() {
         ClientLevel world = Minecraft.getInstance().level;
-        // the game's own rule (ServerPlayer.startSleepInBed refuses while Level.isDay()): dusk to dawn, 12542 to 23459 in clear
+        // the game's own rule (ServerPlayer.startSleepInBed refuses while Level.isBrightOutside()): dusk to dawn, 12542 to 23459 in clear
         // weather, and any time in a thunderstorm. the hand copied window this had ended at 23992, which is the end of a rainy
         // night. a nether or end bed explodes, so only a dimension where beds work counts
-        return world != null && world.dimensionType().bedWorks() && !world.isDay();
+        // BED_RULE is not synced to the client (every dimension reads as overworld rules), so it's the dimension key
+        return world != null && world.dimension() == Level.OVERWORLD && !world.isBrightOutside();
+    }
+
+    // ultraWarm used to be the nether-only flag, water_evaporates is the synced attribute that took its job
+    static boolean waterEvaporates(Level world) {
+        return world.environmentAttributes().getDimensionValue(EnvironmentAttributes.WATER_EVAPORATES);
     }
 }
