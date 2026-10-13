@@ -85,6 +85,13 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
 
     private final SwimStalls swimStalls = new SwimStalls();
 
+    // the cancel-and-ask-again-every-tick guard (SearchHold). everything that touches it holds pathCalcLock
+    private final SearchHold hold = new SearchHold();
+
+    // what makes two searches the same one for SearchHold
+    private record SearchKey(BetterBlockPos start, Goal goal) {
+    }
+
     public PathingBehavior(Baritone baritone) {
         super(baritone);
     }
@@ -112,6 +119,8 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
         dispatchEvents();
         if (event.getType() == TickEvent.Type.OUT) {
             secretInternalSegmentCancel();
+            // left the world: nothing is coming to ask for that search again, and no tickPath is going to settle it
+            cancelSearchNow();
             baritone.getPathingControlManager().cancelEverything();
             return;
         }
@@ -131,6 +140,8 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
     }
 
     private void tickPath() {
+        // before the pause return below, or a stop during a pause would leave the held search running until the pause ends
+        settleHeldCancel();
         pausedThisTick = false;
         if (pauseRequestedLastTick && safeToCancel) {
             pauseRequestedLastTick = false;
@@ -160,6 +171,7 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
                     ) {
                         // when it was *just* started, currentBest will be empty so we need to also check calcFrom since that's always present
                         inProgress.cancel(); // cancellation doesn't dispatch any events
+                        hold.dropped(); // we moved, nobody gets to hold on to this one
                     }
                 }
             }
@@ -292,7 +304,17 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
             }
             synchronized (pathCalcLock) {
                 if (inProgress != null) {
-                    return false;
+                    if (!hold.isPending()) {
+                        return false;
+                    }
+                    // a cancel was held back (SearchHold). asked for the very same thing again, that search just carries on.
+                    // an ask with its own calc context wants its own search, that is a change
+                    if (!(command instanceof PathingCommandContext) && hold.resume(new SearchKey(expectedSegmentStart, goal))) {
+                        return true;
+                    }
+                    inProgress.cancel();
+                    inProgress = null;
+                    hold.dropped();
                 }
                 if (unpark()) {
                     return true;
@@ -341,7 +363,42 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
 
     @Override
     public Optional<AbstractNodeCostSearch> getInProgress() {
-        return Optional.ofNullable(inProgress);
+        // a search whose cancel is being held (SearchHold) is cancelled as far as everybody else can tell
+        synchronized (pathCalcLock) {
+            return hold.isPending() ? Optional.empty() : Optional.ofNullable(inProgress);
+        }
+    }
+
+    // cancel with no holding back, for when nobody can be coming to ask for it again
+    private void cancelSearchNow() {
+        synchronized (pathPlanLock) {
+            synchronized (pathCalcLock) {
+                if (inProgress != null) {
+                    inProgress.cancel();
+                }
+                hold.dropped();
+            }
+        }
+    }
+
+    // a cancel that got held back for a tick and nobody asked for the same thing again goes through now
+    private void settleHeldCancel() {
+        synchronized (pathCalcLock) {
+            if (inProgress != null && hold.expired(tickCount)) {
+                inProgress.cancel();
+                hold.dropped();
+            }
+        }
+    }
+
+    // the one place the search in the slot gets cancelled from the outside. caller holds pathPlanLock. a cancel that
+    // SearchHold holds back leaves it running (and in the slot) for the next ask to pick up
+    private void cancelSearch() {
+        synchronized (pathCalcLock) {
+            if (inProgress != null && hold.cancel(tickCount) == SearchHold.Verdict.CANCEL) {
+                inProgress.cancel();
+            }
+        }
     }
 
     public boolean isSafeToCancel() {
@@ -387,7 +444,7 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
     public void softCancelIfSafe() {
         synchronized (pathPlanLock) {
             keep.drop();
-            getInProgress().ifPresent(AbstractNodeCostSearch::cancel); // only cancel ours
+            cancelSearch(); // only cancel ours
             if (!isSafeToCancel()) {
                 return;
             }
@@ -403,7 +460,7 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
         queuePathEvent(PathEvent.CANCELED);
         synchronized (pathPlanLock) {
             keep.drop();
-            getInProgress().ifPresent(AbstractNodeCostSearch::cancel);
+            cancelSearch();
             if (current != null) {
                 current = null;
                 next = null;
@@ -418,7 +475,10 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
         cancelEverything();
         secretInternalSegmentCancel();
         synchronized (pathCalcLock) {
-            inProgress = null;
+            // a search that was held back stays in the slot, the next ask or the next tickPath settles it
+            if (!hold.isPending()) {
+                inProgress = null;
+            }
         }
     }
 
@@ -566,6 +626,7 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
             logDebug("Simplifying " + goal.getClass() + " to GoalXZ due to distance");
         }
         inProgress = pathfinder;
+        hold.started(new SearchKey(new BetterBlockPos(start), goal), tickCount);
         Baritone.getExecutor().execute(() -> {
             try {
                 runSearch(pathfinder, start, goal, talkAboutIt, primaryTimeout, failureTimeout);
@@ -575,6 +636,7 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
                 synchronized (pathCalcLock) {
                     if (inProgress == pathfinder) {
                         inProgress = null;
+                        hold.ended();
                     }
                 }
             }
@@ -591,6 +653,15 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
             if (inProgress != pathfinder) {
                 // forceCancel nulled us (and maybe a newer search took the slot), so this result is stale
                 return;
+            }
+            synchronized (pathCalcLock) {
+                if (hold.isPending() && calcResult.getPath().isPresent()) {
+                    // finished inside the tick its cancel was held back for, and nobody has asked for it again yet. a path
+                    // nobody wants is not one to walk. (an empty result is still true, so that one gets reported below)
+                    inProgress = null;
+                    hold.ended();
+                    return;
+                }
             }
             Optional<PathExecutor> executor = calcResult.getPath().map(p -> new PathExecutor(PathingBehavior.this, p));
             if (current == null) {
@@ -638,6 +709,7 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
             synchronized (pathCalcLock) {
                 if (inProgress == pathfinder) {
                     inProgress = null;
+                    hold.ended();
                 }
             }
         }

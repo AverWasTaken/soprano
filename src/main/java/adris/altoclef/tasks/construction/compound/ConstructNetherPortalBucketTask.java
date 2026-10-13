@@ -148,6 +148,9 @@ public class ConstructNetherPortalBucketTask extends Task {
 
         if (!_progressChecker.check(mod)) {
             mod.getClientBaritone().getPathingBehavior().forceCancel();
+            // a checker that failed stays failed until somebody resets it, and with nothing moving nobody does. without this
+            // the cancel above runs every tick and kills every search the child starts (it never gets to finish or fail)
+            _progressChecker.reset();
             if (_portalOrigin != null && _currentDestroyTarget != null) {
                 mod.getBlockTracker().requestBlockUnreachable(_portalOrigin);
                 mod.getBlockTracker().requestBlockUnreachable(_currentDestroyTarget);

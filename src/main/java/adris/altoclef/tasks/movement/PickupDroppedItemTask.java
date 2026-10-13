@@ -210,8 +210,12 @@ public class PickupDroppedItemTask extends AbstractDoToClosestObjectTask<ItemEnt
                 // the strike stays too, the fourth one is the longer ban
                 gaveUpOnDrop(mod, _currentDrop);
                 mod.getEntityTracker().requestEntityUnreachable(_currentDrop);
+                _progressChecker.reset();
                 return _wanderTask;
             }
+            // no drop to blame. a failed checker stays failed until somebody resets it, and the cancel above would run on
+            // every tick from here on, killing the search the goal task below starts each time
+            _progressChecker.reset();
         }
 
         return super.onTick(mod);
