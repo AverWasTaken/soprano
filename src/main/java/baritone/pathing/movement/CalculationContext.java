@@ -214,7 +214,7 @@ public class CalculationContext {
         // allowBreakAnyway would sneak past a pause otherwise
         this.allowBreakAnyway = paused ? new ArrayList<>() : new ArrayList<>(Baritone.settings().allowBreakAnyway.value);
         this.allowParkour = ExperimentalMovement.allowParkour();
-        this.allowParkourPlace = Baritone.settings().allowParkourPlace.value;
+        this.allowParkourPlace = ExperimentalMovement.allowParkourPlace();
         this.allowGodBridge = ExperimentalMovement.allowGodBridge();
         this.allowJumpAtBuildLimit = Baritone.settings().allowJumpAtBuildLimit.value;
         this.allowParkourAscend = ExperimentalMovement.allowParkourAscend();

@@ -7,7 +7,7 @@ These are on top of the Baritone features below, and all are off by default unle
 - **Ladder and vine jumps** (`allowClimbJumps`). Catch a ladder or vine mid air across a gap of 1 to 3 blocks, and leap off one onto a ledge or another ladder.
 - **Ladder clutches** (`allowLadderClutch`). Place a vine or ladder next to the landing spot to survive a long fall, like a water bucket clutch. Needs a ladder or vine on the hotbar. `pickupLadders` (on by default) picks the ladder back up afterwards.
 - **God bridging** (`allowGodBridge`). Bridges backwards at walking speed with no sneaking and no stopping when the only thing to place against is the block underfoot, clicking the moment the far face of that block is under the crosshair. If it can't click in time it sneaks and finishes the block the old way. Not used on ice, honey, in water, on ladders, or on blocks that open when clicked. The planner prices these bridges at walk speed, so it picks them more readily. Riskier than the sneaking bridge: a placement that doesn't register is a fall, and laggy servers and strict anticheats won't like it.
-- **Fast mode** (`fastMode`). Turns on all the parkour, sprint jumping, head hitters and god bridging, takes falls that cost some health when it saves time (stays above `fastModeMinHealth`), cuts corners, smooths straight runs, places blocks more freely and leans toward jumps.
+- **Fast mode** (`fastMode`). Turns on all the parkour (placing a block mid jump too), sprint jumping, head hitters and god bridging, takes falls that cost some health when it saves time (stays above `fastModeMinHealth`), cuts corners, smooths straight runs, places blocks more freely and leans toward jumps.
 - **Boats** (`allowBoats`) and **better swimming** (`allowSwimming`).
 - **AltoClef** (`#get`, `#gamer` and friends). [AltoClef](https://github.com/gaucho-matrero/altoclef) runs on top of the pathfinder: ask for an item and it mines, crafts, smelts, fights and eats its way there, with its current task tree shown in the top left. It does nothing until you start a task. Its settings all start with `alto`, see the [AltoClef section of USAGE.md](USAGE.md#altoclef).
 - **Rendering.** The path is a smooth antialiased ribbon with rounded corners, and the search visual is softer.
@@ -26,7 +26,7 @@ These are on top of the Baritone features below, and all are off by default unle
 - **Falling blocks.** Soprano understands the costs of breaking blocks with falling blocks on top, and includes all of their break costs. Additionally, since it avoids breaking any blocks touching a liquid, it won't break the bottom of a gravel stack below a lava lake (anymore).
 - **Avoiding dangerous blocks.** Obviously, it knows not to walk through fire or on magma, not to corner over lava (that deals some damage), not to break any blocks touching a liquid (it might drown), etc.
 - **Parkour.** Sprint jumping over 1, 2, or 3 block gaps.
-- **Parkour place.** Sprint jumping over a 3 block gap and placing the block to land on while executing the jump. It's really cool.
+- **Parkour place.** Sprint jumping over a 3 block gap and placing the block to land on while executing the jump. It's really cool. Part of `fastMode`.
 - **Elytra.** Flying with fireworks, see `#elytra`.
 - **Pigs.** It can sort of control pigs. Don't rely on it.
 

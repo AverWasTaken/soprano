@@ -443,9 +443,11 @@ public final class Settings {
     public final Setting<Boolean> allowParkour = new Setting<>(false);
 
     /**
-     * Actually pretty reliable.
+     * Place the block to land on in mid air, while doing a parkour jump, for gaps that are too wide to clear without it.
      * <p>
-     * Doesn't make it any more dangerous compared to just normal allowParkour th
+     * Actually pretty reliable, but there is no taking it back: once the jump is committed, a placement that misses in the
+     * air leaves nothing to land on, and that is a fall. Only actually takes effect if {@link #allowParkour} is also
+     * true. Part of {@link #fastMode}.
      */
     public final Setting<Boolean> allowParkourPlace = new Setting<>(false);
 
@@ -536,7 +538,7 @@ public final class Settings {
      * <p>
      * While this is on, these settings behave as if they were on, whatever their own value (the settings themselves
      * are left alone, so turning this off gives you your old choices back):
-     * {@link #allowParkour}, {@link #allowParkourAscend}, {@link #allowNeos}, {@link #allowClimbJumps},
+     * {@link #allowParkour}, {@link #allowParkourAscend}, {@link #allowParkourPlace}, {@link #allowNeos}, {@link #allowClimbJumps},
      * {@link #allowMomentumJumps},
      * {@link #allowDiagonalAscend}, {@link #allowDiagonalDescend}, {@link #sprintJumping}, {@link #headHitters},
      * {@link #allowGroundShortcuts}, {@link #allowGodBridge} and {@link #preferFasterPathing}.

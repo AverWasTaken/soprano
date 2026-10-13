@@ -42,6 +42,10 @@ public final class ExperimentalMovement {
         return on() || Baritone.settings().allowParkourAscend.value;
     }
 
+    public static boolean allowParkourPlace() {
+        return on() || Baritone.settings().allowParkourPlace.value;
+    }
+
     public static boolean allowNeos() {
         return on() || Baritone.settings().allowNeos.value;
     }
