@@ -40,7 +40,7 @@ public final class TimingSample {
     // game ticks from the first tick of the movement to the tick it said SUCCESS
     public final int actual;
     // the cost the executor's recheck came up with on the first tick, -1 if it was infinite. differs from planned when
-    // the world changed between planning and arriving
+    // the world changed between planning and arriving, or the path was favored (reusing an older path discounts its cost)
     public final float recost;
     public final int breaks, places;
     public final boolean sprint, water, still, fast;

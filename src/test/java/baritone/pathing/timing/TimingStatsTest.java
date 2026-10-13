@@ -167,6 +167,8 @@ public class TimingStatsTest {
         TimingStats.Row row = stats.top(1, 5).get(0);
         assertEquals(9, row.count);
         assertEquals(3, row.rechecked);
+        // the start price stands in for the plan: 6 at 4.6, two at 8.6, one impossible (falls back to 4.6)
+        assertEquals((6 * 4.6 + 2 * 8.6 + 4.6) / 9, row.meanPlanned, 1e-4);
         assertTrue(TimingStats.format(stats, 1, 5).get(2).endsWith("rechecked 3"));
     }
 

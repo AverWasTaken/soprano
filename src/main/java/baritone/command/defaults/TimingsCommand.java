@@ -93,8 +93,8 @@ public class TimingsCommand extends Command {
     public List<String> getLongDesc() {
         return Arrays.asList(
                 "Reads the movement timings that recordMovementTimings collects and prints the movements whose planned time is furthest off.",
-                "Each row is one kind of movement and offset, split by whether it broke blocks, was in water, or was sprinting: how many times it ran, the mean planned and real ticks, real over planned, the 10th to 90th percentile of the real ticks, and how many ticks off it is in total.",
-                "The worst 15 are shown, and groups with fewer than 8 samples are left out unless you give a different minimum. 'rechecked n' means n of the samples had the world change since the path was planned.",
+                "Each row is one kind of movement and offset, split by whether it broke blocks, was in water, or was already sprinting when it started: how many times it ran, the mean planned and real ticks, real over planned, the 10th to 90th percentile of the real ticks, and how many ticks off it is in total.",
+                "The worst 15 are shown, and groups with fewer than 8 samples are left out unless you give a different minimum. 'rechecked n' means n of the samples cost something else when they started than when they were planned (the world changed, or the plan reused an older path), and those are measured against the price at the start.",
                 "Only movements that ran from start to finish without a pause are counted, so the ones the sprint logic skips over (a descend flowing straight into the next movement, say) are missing and the fast cases of those kinds are under-represented.",
                 "This only measures, nothing changes how paths are planned.",
                 "",

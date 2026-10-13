@@ -38,8 +38,9 @@ public final class TimingStats {
         public final int dx, dy, dz;
         public final boolean broke, water, sprint;
         public int count;
-        // how many of them had the executor's recheck disagree with the plan on the first tick, meaning the world
-        // changed since it was planned and some of the "planned" mean isn't what the planner priced
+        // how many of them were priced differently when they started than when the path was planned (the world changed,
+        // or the plan reused part of an older path and the favoring discount is baked into its cost). the plan column
+        // uses the start price for those, or a discounted movement would look twice as slow as it is
         public int rechecked;
         public double meanPlanned, meanActual;
         // 10th and 90th percentile of the actual ticks
@@ -75,7 +76,7 @@ public final class TimingStats {
             if (s.recost < 0 || Math.abs(s.recost - s.planned) > 0.05) {
                 rechecked++;
             }
-            plannedSum += s.planned;
+            plannedSum += s.recost >= 0 ? s.recost : s.planned;
             actualSum += s.actual;
         }
 
