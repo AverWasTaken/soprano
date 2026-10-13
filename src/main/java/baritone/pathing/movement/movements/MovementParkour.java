@@ -325,9 +325,11 @@ public class MovementParkour extends Movement {
             }
         } else if (overshotBy(dest, direction, ctx.playerFeet()) > 0 && ctx.player().onGround()
                 && ctx.player().position().y - ctx.playerFeet().getY() < 0.094
+                && MovementHelper.canWalkOn(ctx, ctx.playerFeet().below())
                 && checkOvershootSafety(((Baritone) baritone).bsi, ctx.playerFeet().getX(), ctx.playerFeet().getY(), ctx.playerFeet().getZ())) {
             // came down past dest. without this the "walk back toward the source" branch below took over and the bot
-            // went back for the cell it had already jumped over. same idea as overshootTraverse
+            // went back for the cell it had already jumped over. same idea as overshootTraverse. a cell with no floor of
+            // its own (we're hanging on to the edge of dest) still walks back, that one isn't a place to start the next move from
             return state.setStatus(MovementStatus.SUCCESS);
         } else if (!ctx.playerFeet().equals(src)) {
             if (ctx.playerFeet().equals(src.relative(direction)) || ctx.player().position().y - src.y > 0.0001) {
