@@ -80,7 +80,7 @@ final class SearchHold {
         return false;
     }
 
-    // nobody asked for it by the end of the tick after the cancel, so the cancel goes through now
+    // nobody asked for it by the time the tick after the cancel gets to tickPath, so the cancel goes through now
     boolean expired(long tick) {
         return live && pending && tick > pendingAt;
     }

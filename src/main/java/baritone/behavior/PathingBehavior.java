@@ -475,7 +475,7 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
         cancelEverything();
         secretInternalSegmentCancel();
         synchronized (pathCalcLock) {
-            // a search that was held back stays in the slot, the next ask or the end of the tick settles it
+            // a search that was held back stays in the slot, the next ask or the next tickPath settles it
             if (!hold.isPending()) {
                 inProgress = null;
             }

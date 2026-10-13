@@ -206,6 +206,22 @@ public class SearchHoldTest {
     }
 
     @Test
+    public void oneSearchThatGotSomewhereBreaksTheStreak() {
+        SearchHold hold = new SearchHold();
+        long t = 1;
+        // young, young, old, young: the old one starts the count over, so there is no hold yet
+        long[] ages = {1, 1, 10, 1};
+        for (long age : ages) {
+            hold.started("goal block", t);
+            t += age;
+            assertEquals(SearchHold.Verdict.CANCEL, hold.cancel(t));
+            t++;
+        }
+        hold.started("goal block", t);
+        assertEquals(SearchHold.Verdict.CANCEL, hold.cancel(t + 1));
+    }
+
+    @Test
     public void nothingInTheSlotNothingToHold() {
         SearchHold hold = new SearchHold();
         assertEquals(SearchHold.Verdict.CANCEL, hold.cancel(5));
