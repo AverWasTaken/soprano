@@ -1,0 +1,158 @@
+/*
+ * This file is part of Baritone.
+ *
+ * Baritone is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * Baritone is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with Baritone.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+package baritone.pathing.movement.movements;
+
+import baritone.api.BaritoneAPI;
+import baritone.api.Settings;
+import baritone.pathing.movement.CalculationContext;
+import baritone.utils.BlockStateInterface;
+import baritone.utils.ToolSet;
+import baritone.utils.pathing.BetterWorldBorder;
+import baritone.utils.pathing.MutableMoveResult;
+import net.minecraft.SharedConstants;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.server.Bootstrap;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.SlabBlock;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.SlabType;
+import net.minecraft.world.level.border.WorldBorder;
+import org.junit.After;
+import org.junit.Assume;
+import org.junit.Before;
+import org.junit.Test;
+
+import java.util.HashMap;
+import java.util.Map;
+
+import static baritone.api.pathing.movement.ActionCosts.COST_INF;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
+
+// parkour landings and where a jump is allowed to end. needs the shadow BaritoneAPI like DiagonalAscendTest, so it skips
+// itself on a clean checkout
+public class ParkourLandingTest {
+
+    private static final int FLOOR = 63;
+    private static final int FEET = FLOOR + 1;
+
+    private static BlockState stone() {
+        return Blocks.STONE.defaultBlockState();
+    }
+
+    private static BlockState bottomSlab() {
+        return Blocks.STONE_SLAB.defaultBlockState().setValue(SlabBlock.TYPE, SlabType.BOTTOM);
+    }
+
+    private static final class MapWorld extends BlockStateInterface {
+        final Map<Long, BlockState> blocks = new HashMap<>();
+
+        MapWorld() {
+            super(new BetterWorldBorder(new WorldBorder()), -64, 384);
+        }
+
+        void set(int x, int y, int z, BlockState s) {
+            blocks.put(BlockPos.asLong(x, y, z), s);
+        }
+
+        @Override
+        protected BlockState getUncached(int x, int y, int z) {
+            // y comes in shifted by -minY
+            return blocks.getOrDefault(BlockPos.asLong(x, y - 64, z), Blocks.AIR.defaultBlockState());
+        }
+
+        @Override
+        public boolean isLoaded(int x, int z) {
+            return true;
+        }
+
+        @Override
+        public boolean worldContainsLoadedChunk(int x, int z) {
+            return true;
+        }
+    }
+
+    private static final class Ctx extends CalculationContext {
+        Ctx(BlockStateInterface bsi) {
+            super(null, true, null, null, bsi, new ToolSet(null) {
+                @Override
+                public double getStrVsBlock(BlockState state) {
+                    return 1;
+                }
+            }, false, false, true, 0, 1.0f, 20.0, false);
+        }
+    }
+
+    private Settings settings;
+    private boolean parkour, parkourAscend, potions;
+
+    @Before
+    public void setUp() {
+        SharedConstants.tryDetectVersion();
+        Bootstrap.bootStrap();
+        try {
+            settings = BaritoneAPI.getSettings();
+        } catch (Throwable t) {
+            Assume.assumeNoException("needs the shadow BaritoneAPI from the bench harness", t);
+        }
+        parkour = settings.allowParkour.value;
+        parkourAscend = settings.allowParkourAscend.value;
+        potions = settings.considerPotionEffects.value;
+        settings.allowParkour.value = true;
+        settings.allowParkourAscend.value = true;
+        settings.considerPotionEffects.value = false;
+    }
+
+    @After
+    public void tearDown() {
+        if (settings != null) {
+            settings.allowParkour.value = parkour;
+            settings.allowParkourAscend.value = parkourAscend;
+            settings.considerPotionEffects.value = potions;
+        }
+    }
+
+    // a stone pad under the start at 0,FEET,0 and a floor block (gap blocks of nothing between) heading east at the same height
+    private static MapWorld gap(int gap, BlockState landing) {
+        MapWorld w = new MapWorld();
+        w.set(0, FLOOR, 0, stone());
+        w.set(gap + 1, FLOOR, 0, landing);
+        // somewhere to be after the landing, the overshoot check wants the cell past it to not be a hazard
+        return w;
+    }
+
+    private static MutableMoveResult east(MapWorld w) {
+        MutableMoveResult res = new MutableMoveResult();
+        MovementParkour.cost(new Ctx(w), 0, FEET, 0, Direction.EAST, res);
+        return res;
+    }
+
+    @Test
+    public void overshotBySaysHowFarPastDest() {
+        BlockPos dest = new BlockPos(10, 64, 5);
+        assertEquals(0, MovementParkour.overshotBy(dest, Direction.EAST, dest));
+        assertEquals(1, MovementParkour.overshotBy(dest, Direction.EAST, dest.east()));
+        assertEquals(2, MovementParkour.overshotBy(dest, Direction.EAST, dest.east(2)));
+        assertEquals(0, MovementParkour.overshotBy(dest, Direction.EAST, dest.east(3)));
+        assertEquals(0, MovementParkour.overshotBy(dest, Direction.EAST, dest.west())); // short is not over
+        assertEquals(1, MovementParkour.overshotBy(dest, Direction.NORTH, dest.north()));
+        assertEquals(0, MovementParkour.overshotBy(dest, Direction.EAST, dest.east().above())); // wrong height
+        assertEquals(0, MovementParkour.overshotBy(dest, Direction.EAST, dest.east().south())); // off to the side
+    }
+}

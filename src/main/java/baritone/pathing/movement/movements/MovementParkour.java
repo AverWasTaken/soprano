@@ -28,6 +28,7 @@ import baritone.pathing.movement.MovementHelper;
 import baritone.pathing.movement.MovementState;
 import baritone.utils.BlockStateInterface;
 import baritone.utils.pathing.MutableMoveResult;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
@@ -205,6 +206,20 @@ public class MovementParkour extends Movement {
         return !MovementHelper.avoidWalkingInto(bsi.get0(x, y, z)) && !MovementHelper.avoidWalkingInto(bsi.get0(x, y + 1, z));
     }
 
+    // 1 or 2 when feet are that many cells past dest along the jump, 0 for anywhere else. a sprint jump flies a block or two
+    // further than a landing was planned for if we were quick off the edge
+    static int overshotBy(BlockPos dest, Direction dir, BlockPos feet) {
+        if (feet.getY() != dest.getY()) {
+            return 0;
+        }
+        for (int k = 1; k <= 2; k++) {
+            if (feet.getX() == dest.getX() + dir.getStepX() * k && feet.getZ() == dest.getZ() + dir.getStepZ() * k) {
+                return k;
+            }
+        }
+        return 0;
+    }
+
     private static double costFromJumpDistance(int dist) {
         switch (dist) {
             case 2:
@@ -280,6 +295,12 @@ public class MovementParkour extends Movement {
             if (ctx.player().position().y - ctx.playerFeet().getY() < 0.094) { // lilypads
                 state.setStatus(MovementStatus.SUCCESS);
             }
+        } else if (overshotBy(dest, direction, ctx.playerFeet()) > 0 && ctx.player().onGround()
+                && ctx.player().position().y - ctx.playerFeet().getY() < 0.094
+                && checkOvershootSafety(((Baritone) baritone).bsi, ctx.playerFeet().getX(), ctx.playerFeet().getY(), ctx.playerFeet().getZ())) {
+            // came down past dest. without this the "walk back toward the source" branch below took over and the bot
+            // went back for the cell it had already jumped over. same idea as overshootTraverse
+            return state.setStatus(MovementStatus.SUCCESS);
         } else if (!ctx.playerFeet().equals(src)) {
             if (ctx.playerFeet().equals(src.relative(direction)) || ctx.player().position().y - src.y > 0.0001) {
                 if (Baritone.settings().allowPlace.value // see PR #3775
