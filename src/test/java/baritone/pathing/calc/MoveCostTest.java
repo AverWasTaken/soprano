@@ -19,6 +19,8 @@ package baritone.pathing.calc;
 
 import baritone.api.BaritoneAPI;
 import baritone.api.Settings;
+import baritone.api.pathing.goals.GoalBlock;
+import baritone.api.pathing.goals.GoalYLevel;
 import baritone.pathing.movement.CalculationContext;
 import baritone.pathing.movement.movements.MovementDescend;
 import baritone.pathing.movement.movements.MovementDiagonal;
@@ -215,5 +217,38 @@ public class MoveCostTest {
         MutableMoveResult res = new MutableMoveResult();
         MovementDiagonal.cost(new Ctx(w), 0, 64, 0, 1, 1, res);
         assertEquals(COST_INF, res.cost, 0);
+    }
+
+    // ---- the drop heuristic ----
+
+    @Test
+    public void theDescentEstimateNeverBeatsAFreeFall() {
+        // nobody gets down faster than gravity, so for any fall we plan on this is a lower bound
+        for (int n = 1; n <= 24; n++) {
+            assertTrue("a " + n + " block drop", GoalYLevel.calculate(0, n) <= FALL_N_BLOCKS_COST[n] + 1e-9);
+        }
+    }
+
+    @Test
+    public void aCliffLooksLikeACliffAndNotAStaircase() {
+        // 10 blocks of falling is 17 ticks. the old estimate said 39, which is 4.7 blocks of staircase worth of sprinting
+        assertTrue(GoalYLevel.calculate(0, 10) < 14);
+        assertEquals(GoalYLevel.calculate(0, 10), GoalBlock.calculate(0, 10, 0), 1e-9);
+    }
+
+    @Test
+    public void aFallMoveNeverCostsLessThanTheEstimateSaysItShould() {
+        // the estimate is added to the flat distance, so it only stays admissible if a fall (1 block out, n down) is
+        // worth at least that much on the heuristic. WALK_OFF 3.7 is a hair over the 3.56 a block of flat
+        for (int n = 1; n <= 24; n++) {
+            double saved = GoalBlock.calculate(1, n, 0) - GoalBlock.calculate(0, 0, 0);
+            assertTrue("fall of " + n, saved <= WALK_OFF_BLOCK_COST + FALL_N_BLOCKS_COST[n] + 1e-9);
+        }
+    }
+
+    @Test
+    public void climbingStillLooksAtLeastAsHardAsItIs() {
+        // going up isn't changed, one block of it is the jump itself
+        assertEquals(JUMP_ONE_BLOCK_COST * 3, GoalYLevel.calculate(8, 5), 1e-9);
     }
 }

@@ -32,6 +32,15 @@ public class GoalYLevel implements Goal, ActionCosts {
      */
     public final int level;
 
+    // the cheapest a block of descent ever comes: the longest fall we plan on (the bucket cap is 20, a fast mode
+    // fall that hurts goes to 23) divided by its length. falling gets cheaper per block the further you go, so every
+    // shorter fall costs more per block than this and the estimate is a lower bound for all of them. it used to be half
+    // of a two block fall, 3.9 a block, which is what a staircase costs and not what a drop costs, so a ten block
+    // cliff looked like 39 ticks when it takes 17 and A* tried every staircase it could find before it would jump.
+    // the exception is a fall into deep water, which has no cap and gets down toward 0.3 a block
+    private static final int LONGEST_FALL = 24;
+    private static final double DESCENT_TICKS_PER_BLOCK = FALL_N_BLOCKS_COST[LONGEST_FALL] / LONGEST_FALL;
+
     public GoalYLevel(int level) {
         this.level = level;
     }
@@ -49,7 +58,7 @@ public class GoalYLevel implements Goal, ActionCosts {
     public static double calculate(int goalY, int currentY) {
         if (currentY > goalY) {
             // need to descend
-            return FALL_N_BLOCKS_COST[2] / 2 * (currentY - goalY);
+            return DESCENT_TICKS_PER_BLOCK * (currentY - goalY);
         }
         if (currentY < goalY) {
             // need to ascend
