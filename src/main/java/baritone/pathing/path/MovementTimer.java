@@ -18,6 +18,7 @@
 package baritone.pathing.path;
 
 import baritone.Baritone;
+import baritone.api.pathing.movement.ActionCosts;
 import baritone.behavior.PathingBehavior;
 import baritone.pathing.movement.Movement;
 import baritone.pathing.timing.TimingSample;
@@ -52,6 +53,9 @@ final class MovementTimer {
     private static final double STILL_SPEED_SQ = 0.03 * 0.03;
 
     private Movement pending;
+    // the last few movements begun, by identity, see begin()
+    private final Movement[] seen = new Movement[16];
+    private int seenAt;
     private int startTick;
     private float planned;
     private float recost;
@@ -71,16 +75,31 @@ final class MovementTimer {
         if (!Baritone.settings().recordMovementTimings.value) {
             return;
         }
+        // a movement we've started before (a resync back, a flight or a boat landing in its src again) has half its work
+        // done and its cached cost has been overwritten by the executor's rechecks, so it isn't what the planner charged
+        boolean again = false;
+        for (Movement seenBefore : seen) {
+            again |= seenBefore == movement;
+        }
+        seen[seenAt] = movement;
+        seenAt = (seenAt + 1) % seen.length;
+        if (again) {
+            return;
+        }
         // a movement that wasn't started from its own src (a skip ahead, a resync, the sprint tricks that hop a position)
         // would time a part of it and look fast
         if (!behavior.ctx.playerFeet().equals(movement.getSrc())) {
             return;
         }
+        var player = behavior.ctx.player();
+        // eating or drawing a bow slows the walk, and that isn't the movement's doing
+        if (player.isUsingItem()) {
+            return;
+        }
         planned = (float) plannedCost;
-        recost = recheckedCost < Double.POSITIVE_INFINITY ? (float) recheckedCost : -1;
+        recost = recheckedCost < ActionCosts.COST_INF ? (float) recheckedCost : -1;
         breaks = movement.toBreak(bsi).size();
         places = movement.toPlace(bsi).size();
-        var player = behavior.ctx.player();
         sprint = player.isSprinting();
         water = player.isInWater();
         Vec3 velocity = player.getDeltaMovement();
@@ -89,6 +108,15 @@ final class MovementTimer {
         floor = floorUnder(bsi, movement);
         startTick = player.tickCount;
         pending = movement;
+    }
+
+    // shouldSprintNextTick can skip ahead and tick the next movement from inside it, and then the outer frame bumps
+    // ticksOnCurrent a second time for that movement. its count is one ahead of the clock from then on, which a one tick
+    // pause would cancel out, so a pending movement that isn't the one this frame just ran is forgotten
+    void afterSprint(Movement ran) {
+        if (pending != ran) {
+            pending = null;
+        }
     }
 
     // the movement just reported SUCCESS. ticks is the executor's count of updates it needed before this one
@@ -102,8 +130,9 @@ final class MovementTimer {
         if (behavior.ctx.player().tickCount - startTick != ticks) {
             return;
         }
-        // succeeding on the very tick it started means we were already standing where it ends, nothing was timed
-        if (ticks == 0) {
+        // succeeding on the very tick it started means we were already standing where it ends, nothing was timed.
+        // the falling block hold does call update() every tick (it comes back PREPPING), so the clock can't see it
+        if (ticks == 0 || movement.wasHeldForFall() || behavior.ctx.player().isUsingItem()) {
             return;
         }
         if (sink == null) {

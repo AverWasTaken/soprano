@@ -480,6 +480,12 @@ public abstract class Movement implements IMovement, MovementHelper {
     private int fallPending;
     // set by prepared() while it is waiting on a column, so a movement that walks while breaking doesn't walk into where it lands
     protected boolean waitingOnFall;
+    // sticks once the hold above has stalled this movement, the timing recorder doesn't want those ticks in a sample
+    private boolean heldForFall;
+
+    public boolean wasHeldForFall() {
+        return heldForFall;
+    }
 
     private FallingColumn.Cells fallCells() {
         BlockPos.MutableBlockPos at = new BlockPos.MutableBlockPos();
@@ -526,6 +532,7 @@ public abstract class Movement implements IMovement, MovementHelper {
         boolean somethingInTheWay = false;
         waitingOnFall = holdForFalling();
         if (waitingOnFall) {
+            heldForFall = true;
             return false;
         }
         for (BetterBlockPos blockPos : positionsToBreak) {
@@ -600,6 +607,7 @@ public abstract class Movement implements IMovement, MovementHelper {
         fallWaited = 0;
         fallPending = 0;
         waitingOnFall = false;
+        heldForFall = false;
         swimStall.reset();
     }
 

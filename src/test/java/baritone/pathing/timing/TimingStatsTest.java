@@ -150,11 +150,24 @@ public class TimingStatsTest {
         spread(stats, 40, "Traverse", 1, 0, 0, 9f, 11, 6, 1, false, false);
         add(stats, 3, "Fall", 0, -9, 0, 20f, 40, 0, false, false);
         List<String> lines = TimingStats.format(stats, TimingStats.DEFAULT_MIN_SAMPLES, TimingStats.DEFAULT_TOP);
-        lines.forEach(System.out::println);
         assertEquals(6, lines.size());
         assertTrue(lines.get(0), lines.get(0).contains("405 movements in 5 groups, showing the 4 worst"));
         assertTrue(lines.get(2), lines.get(2).startsWith("Parkour (3,0,0) [sprint]: n=90"));
         assertTrue(lines.get(4), lines.get(4).startsWith("Traverse (1,0,0) [break]: n=40"));
+    }
+
+    @Test
+    public void rowsCountSamplesWhereTheRecheckDisagreed() {
+        TimingStats stats = new TimingStats();
+        add(stats, 6, "Traverse", 1, 0, 0, 4.6f, 5, 0, false, false);
+        for (int i = 0; i < 3; i++) {
+            // the world changed: dearer on arrival, and one that came back impossible
+            stats.add(new TimingSample("Traverse", 1, 0, 0, 4.6f, 9, i == 2 ? -1f : 8.6f, 0, 0, false, false, false, TimingSample.Floor.PLAIN, false));
+        }
+        TimingStats.Row row = stats.top(1, 5).get(0);
+        assertEquals(9, row.count);
+        assertEquals(3, row.rechecked);
+        assertTrue(TimingStats.format(stats, 1, 5).get(2).endsWith("rechecked 3"));
     }
 
     @Test

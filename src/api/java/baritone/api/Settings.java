@@ -903,8 +903,8 @@ public final class Settings {
      * Use the {@code timings} command to print which movements are off the most, and {@code timings clear} to throw
      * the data away.
      * <p>
-     * This only measures. Nothing reads the numbers back to change a cost, and with this off the executor does no
-     * extra work at all.
+     * This only measures. Nothing reads the numbers back to change a cost, and with this off the executor only reads
+     * this setting once per movement and does nothing else.
      */
     public final Setting<Boolean> recordMovementTimings = new Setting<>(true);
 

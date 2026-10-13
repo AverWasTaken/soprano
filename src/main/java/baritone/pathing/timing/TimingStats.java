@@ -38,6 +38,9 @@ public final class TimingStats {
         public final int dx, dy, dz;
         public final boolean broke, water, sprint;
         public int count;
+        // how many of them had the executor's recheck disagree with the plan on the first tick, meaning the world
+        // changed since it was planned and some of the "planned" mean isn't what the planner priced
+        public int rechecked;
         public double meanPlanned, meanActual;
         // 10th and 90th percentile of the actual ticks
         public int p10, p90;
@@ -69,6 +72,9 @@ public final class TimingStats {
                 actuals = Arrays.copyOf(actuals, count * 2);
             }
             actuals[count++] = s.actual;
+            if (s.recost < 0 || Math.abs(s.recost - s.planned) > 0.05) {
+                rechecked++;
+            }
             plannedSum += s.planned;
             actualSum += s.actual;
         }
@@ -144,8 +150,9 @@ public final class TimingStats {
         }
         lines.add("movement offset [flags]: n, mean planned, mean real, real/planned, spread = 10th-90th percentile of real, ticks off in total");
         for (Row r : rows) {
-            lines.add(String.format(Locale.ROOT, "%s (%d,%d,%d)%s: n=%d plan %.1f real %.1f x%.2f spread %d-%d off %.0f",
-                    r.kind, r.dx, r.dy, r.dz, flags(r), r.count, r.meanPlanned, r.meanActual, r.ratio(), r.p10, r.p90, r.totalError));
+            lines.add(String.format(Locale.ROOT, "%s (%d,%d,%d)%s: n=%d plan %.1f real %.1f x%.2f spread %d-%d off %.0f%s",
+                    r.kind, r.dx, r.dy, r.dz, flags(r), r.count, r.meanPlanned, r.meanActual, r.ratio(), r.p10, r.p90, r.totalError,
+                    r.rechecked > 0 ? " rechecked " + r.rechecked : ""));
         }
         return lines;
     }

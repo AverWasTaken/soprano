@@ -314,6 +314,7 @@ public class PathExecutor implements IPathExecutor, Helper {
                 cornerSteering(movement, bsi);
             }
             sprintNextTick = shouldSprintNextTick();
+            timer.afterSprint(movement);
             if (!sprintNextTick) {
                 ctx.player().setSprinting(false); // letting go of control doesn't make you stop sprinting actually
             }

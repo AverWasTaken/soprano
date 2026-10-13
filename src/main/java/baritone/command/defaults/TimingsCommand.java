@@ -54,14 +54,16 @@ public class TimingsCommand extends Command {
             }
         }
         TimingSink sink = TimingSink.shared(((Baritone) baritone).getDirectory());
-        if (clear) {
-            sink.clear();
-            logDirect("movement timings cleared");
-            return;
-        }
+        final boolean wipe = clear;
         final int min = minSamples;
-        // the file can be a few megabytes, so the game thread doesn't wait for it. logDirect hops back by itself
+        // the file can be a few megabytes and the sink may be mid write, so the game thread doesn't wait for either
+        // (clear included). logDirect hops back by itself
         Thread reader = new Thread(() -> {
+            if (wipe) {
+                sink.clear();
+                logDirect("movement timings cleared");
+                return;
+            }
             sink.flush();
             TimingStats stats = new TimingStats();
             sink.file().read(stats::add);
@@ -92,7 +94,8 @@ public class TimingsCommand extends Command {
         return Arrays.asList(
                 "Reads the movement timings that recordMovementTimings collects and prints the movements whose planned time is furthest off.",
                 "Each row is one kind of movement and offset, split by whether it broke blocks, was in water, or was sprinting: how many times it ran, the mean planned and real ticks, real over planned, the 10th to 90th percentile of the real ticks, and how many ticks off it is in total.",
-                "The worst 15 are shown, and groups with fewer than 8 samples are left out unless you give a different minimum.",
+                "The worst 15 are shown, and groups with fewer than 8 samples are left out unless you give a different minimum. 'rechecked n' means n of the samples had the world change since the path was planned.",
+                "Only movements that ran from start to finish without a pause are counted, so the ones the sprint logic skips over (a descend flowing straight into the next movement, say) are missing and the fast cases of those kinds are under-represented.",
                 "This only measures, nothing changes how paths are planned.",
                 "",
                 "Usage:",
