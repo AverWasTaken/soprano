@@ -97,9 +97,9 @@ public class MLGBucketTask extends Task {
         Player player = Minecraft.getInstance().player;
         assert player != null;
         double totalFallDistance = player.fallDistance + (player.getY() - pos.getY() - 1);
-        // 26.3 calculateFallDamage: floor(fall + 1e-6 - safe). the landing move counts toward the fall there, and our total
-        // already runs to the top of the block, so this is the real number (it used to be a ceil that over-guessed on purpose)
-        double baseFallDamage = Math.max(0, Mth.floor(totalFallDistance + 1e-6 - 3.0));
+        // 26.3 does floor(fall + 1e-6 - safe), but our total stops at the top of a full block and a slab or farmland lands
+        // lower than that, so the ceil stays as the deliberate "assume MORE damage" margin (it's still an upper bound)
+        double baseFallDamage = Mth.ceil(totalFallDistance - 3.0F);
         assert world != null;
         return EntityHelper.calculateResultingPlayerDamage(player, world.damageSources().fall(), baseFallDamage);
     }
