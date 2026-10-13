@@ -11,6 +11,7 @@ import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.RecipeTarget;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.StorageHelper;
+import adris.altoclef.util.helpers.WalkCost;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.InBedChatScreen;
 import net.minecraft.world.inventory.AbstractContainerMenu;
@@ -26,7 +27,6 @@ import net.minecraft.world.level.block.Blocks;
 public final class BedCraft {
     // a table costs four planks, and the bag's table or one standing close saves them
     private static final int TABLE_PLANKS = 4;
-    private static final double TABLE_RADIUS = 32;
 
     private ItemHelper.ColorfulItems colour;
     private CraftInTableTask craft;
@@ -49,17 +49,39 @@ public final class BedCraft {
         return planks(mod) + 4 * mod.getItemStorage().getItemCount(ItemHelper.LOG);
     }
 
+    // the table task only walks to a world table this close (StationChoice's near line) and one the tracker gave up on does not
+    // count, past that it makes its own and the four planks that costs come out of the bed's
     public static boolean tableReady(AltoClef mod) {
         if (mod.getItemStorage().hasItem(Items.CRAFTING_TABLE)) {
             return true;
         }
-        return mod.getBlockTracker().getNearestTracking(Blocks.CRAFTING_TABLE)
-                .map(p -> p.closerToCenterThan(mod.getPlayer().position(), TABLE_RADIUS)).orElse(false);
+        var tracker = mod.getBlockTracker();
+        return tracker.getNearestTracking(p -> !tracker.unreachable(p), Blocks.CRAFTING_TABLE)
+                .map(p -> p.closerToCenterThan(mod.getPlayer().position(), WalkCost.STATION_NEAR)).orElse(false);
     }
 
-    // planks the bed itself may count on: if there is no table, making one eats four of them first
-    public static int usablePlanks(AltoClef mod) {
-        return planks(mod) - (tableReady(mod) ? 0 : TABLE_PLANKS);
+    // wood the bed itself may count on: if there is no table, making one eats four planks first
+    public static int usableWood(AltoClef mod) {
+        return wood(mod) - (tableReady(mod) ? 0 : TABLE_PLANKS);
+    }
+
+    private Task planksTask;
+    private int planksFor = -1;
+
+    // the planks for the bed (and the table) crafted out of logs when the bag holds the wood but not as planks, or null when
+    // there is nothing to do. the bed craft itself does not turn logs into planks
+    public Task planksFirst(AltoClef mod) {
+        int need = woodNeeded(mod);
+        if (planks(mod) >= need || wood(mod) < need) {
+            planksTask = null;
+            planksFor = -1;
+            return null;
+        }
+        if (planksTask == null || planksFor != need) {
+            planksFor = need;
+            planksTask = TaskCatalogue.getItemTask("planks", need);
+        }
+        return planksTask;
     }
 
     // the planks wood has to be worth, table or not (the prep rule's number)

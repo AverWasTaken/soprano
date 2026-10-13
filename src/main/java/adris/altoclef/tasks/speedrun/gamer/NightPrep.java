@@ -33,8 +33,6 @@ public final class NightPrep {
     private Prep last = Prep.TOO_EARLY;
     private int colour = -1;
     private Task woolTask;
-    private int planksFor = -1;
-    private Task planksTask;
 
     public NightPrep(Supplier<OverworldConfig> cfg) {
         this.cfg = cfg;
@@ -54,8 +52,6 @@ public final class NightPrep {
     public void drop() {
         running = null;
         woolTask = null;
-        planksTask = null;
-        planksFor = -1;
         colour = -1;
     }
 
@@ -78,13 +74,13 @@ public final class NightPrep {
         }
         int wool = BedCraft.bestWoolStack(mod);
         // (the expensive questions wait for the evening: sheep, a bed standing close, the table)
-        boolean ready = !early && !gate.windowOpen() && bedReady.getAsBoolean();
+        boolean ready = bedReady.getAsBoolean();
         boolean sheep = false;
-        if (!early && !ready && wool < 3 && timeOfDay >= NightSleep.EARLIEST_WINDOW - woolLead) {
+        if (!ready && wool < 3 && timeOfDay >= NightSleep.EARLIEST_WINDOW - woolLead) {
             sheep = pickColour(mod, c) >= 0;
         }
         NightSleep.PrepInputs in = new NightSleep.PrepInputs(true, true, gate.phaseOk(), gate.busy(), gate.fighting(), gate.lowHealth(),
-                gate.nightSpent(), gate.windowOpen(), timeOfDay, ready, wool, BedCraft.wood(mod), woodNeeded(mod, early || ready),
+                gate.nightSpent(), false, timeOfDay, ready, wool, BedCraft.wood(mod), ready ? 3 : BedCraft.woodNeeded(mod),
                 sheep, woolClock.over(c.nightWoolSeconds), craftClock.over(c.nightCraftSeconds));
         Prep p = NightSleep.prep(in, craftLead, woolLead);
         last = p;
@@ -98,11 +94,6 @@ public final class NightPrep {
             stopped(p);
         }
         return task;
-    }
-
-    // (the table question looks at the tracker, nothing worth asking in the morning)
-    private static int woodNeeded(AltoClef mod, boolean skip) {
-        return skip ? 3 : BedCraft.woodNeeded(mod);
     }
 
     private void stopped(Prep why) {
@@ -174,16 +165,10 @@ public final class NightPrep {
         }
         started(Prep.CRAFT, "making a bed ahead of dusk");
         // wood in logs first: the bed craft does not turn logs into planks (and the table it may have to make eats four)
-        int need = BedCraft.woodNeeded(mod);
-        if (BedCraft.planks(mod) < need) {
-            if (planksTask == null || planksFor != need) {
-                planksFor = need;
-                planksTask = TaskCatalogue.getItemTask("planks", need);
-            }
-            return planksTask;
+        Task planks = bedCraft.planksFirst(mod);
+        if (planks != null) {
+            return planks;
         }
-        planksTask = null;
-        planksFor = -1;
         Task make = bedCraft.next(mod);
         if (make != null) {
             return make;

@@ -1141,9 +1141,11 @@ public class GamerTask extends Task {
             nightPrepDone(mod);
             BlockPos found = findNightBed(mod);
             NightSleep.BedSource source = NightSleep.bedSource(found != null, facts.count(ItemHelper.BED),
-                    BedCraft.bestWoolStack(mod), BedCraft.usablePlanks(mod));
+                    BedCraft.bestWoolStack(mod), BedCraft.usableWood(mod));
             sayNight(mod, source == NightSleep.BedSource.NONE ? NightSleep.Why.NO_BED : why, busy, source);
             if (source == NightSleep.BedSource.NONE) {
+                // (a prep that was still going when the window opened is over, it does not get to keep its screens all night)
+                nightPrep.drop();
                 return null;
             }
             startNightTrip(mod, source, found);

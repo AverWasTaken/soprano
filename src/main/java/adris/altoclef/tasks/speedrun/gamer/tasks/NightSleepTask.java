@@ -269,7 +269,13 @@ public class NightSleepTask extends Task {
             afterBed(mod, now);
             return null;
         }
-        // only what is in the bag: the catalogue's bed task mines the nearest bed it knows of and hunts sheep for missing wool
+        // only what is in the bag: the catalogue's bed task mines the nearest bed it knows of and hunts sheep for missing wool.
+        // logs become planks first (the same as the evening prep does), the bed craft itself will not
+        Task planks = bedCraft.planksFirst(mod);
+        if (planks != null) {
+            setDebugState("Making planks for the bed.");
+            return planks;
+        }
         Task make = bedCraft.next(mod);
         if (make == null) {
             // a craft that got interrupted (ours or the phase's) can have left the wool or the planks in a grid or on the cursor,
@@ -568,11 +574,6 @@ public class NightSleepTask extends Task {
             }
             return null;
         }
-        // (if the morning got there first it was a night slept through after all)
-        if (leaving != null && !world.isDay()) {
-            fail(leaving, now);
-            return null;
-        }
         if (wasAsleep) {
             // woken: by the morning, or by something that hit us
             if (upSince < 0) {
@@ -585,12 +586,15 @@ public class NightSleepTask extends Task {
                 return null;
             }
             if (wake == NightSleep.Wake.SLEPT) {
-                budget.sleptOk();
+                // the night we lay down in: the skip has already rolled the day count, and the budget with it
+                budget.sleptOk(NightSleep.nightOf(asleepDayTime));
                 outcome = Outcome.SLEPT;
                 say.accept("Slept through the night");
                 wrapUp(mod, now);
             } else {
-                fail("woken before the night passed", now);
+                // (if we got up ourselves because the night would not pass, that is the reason, the morning getting there first
+                // was the SLEPT case above)
+                fail(leaving != null ? leaving : "woken before the night passed", now);
             }
             return null;
         }

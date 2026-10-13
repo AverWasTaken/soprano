@@ -84,11 +84,6 @@ public final class NightSleep {
         };
     }
 
-    // woken by the morning. a hit that wakes us at night is not, however long we lay there first (others awake on a server)
-    public static boolean sleptThrough(long asleepTicks, boolean day) {
-        return asleepTicks > 0 && day;
-    }
-
     public enum Wake {
         SLEPT, WOKEN, WAIT
     }
@@ -402,8 +397,12 @@ public final class NightSleep {
             coolUntil = now + cooldownSeconds;
         }
 
-        public void sleptOk() {
-            slept = true;
+        // the night we slept in. the skip lands on the next day count, so by the time the trip says so the budget has rolled on to
+        // the next night, and marking that one would skip tomorrow's sleep
+        public void sleptOk(long nightId) {
+            if (nightId == night) {
+                slept = true;
+            }
         }
 
         public int attempts() {

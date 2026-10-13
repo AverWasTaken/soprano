@@ -258,7 +258,7 @@ public class NightSleepTest {
         NightSleep.Budget b = new NightSleep.Budget();
         b.roll(7);
         b.began();
-        b.sleptOk();
+        b.sleptOk(7);
         assertTrue(b.spent(3, 150));
     }
 
@@ -534,12 +534,18 @@ public class NightSleepTest {
     }
 
     @Test
-    public void sleptThroughMeansWokenByTheMorning() {
-        assertTrue(NightSleep.sleptThrough(3, true));
-        // woken by a zombie after a few seconds in the dark, or after a long time with other players awake
-        assertFalse(NightSleep.sleptThrough(60, false));
-        assertFalse(NightSleep.sleptThrough(900, false));
-        // never lay down at all
-        assertFalse(NightSleep.sleptThrough(0, true));
+    public void aSleptNightDoesNotUseUpTheNextOne() {
+        NightSleep.Budget b = new NightSleep.Budget();
+        b.roll(7);
+        b.began();
+        // the skip rolls the day count before the trip gets to say it worked...
+        b.roll(8);
+        b.sleptOk(NightSleep.nightOf(13000 + 7 * 24000));
+        // ...and the night that just began still has all its tries
+        assertFalse(b.spent(3, 150));
+        assertEquals(0, b.attempts());
+        // while waking in the same night (the day flag before the count rolls) does close it
+        b.sleptOk(8);
+        assertTrue(b.spent(3, 150));
     }
 }
