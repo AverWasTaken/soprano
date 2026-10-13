@@ -241,9 +241,11 @@ public final class Icons {
                 g.draw(pad);
             }
             case BOAT -> {
-                poly(g, true, 3, 13.5f, 6, 20, 18, 20, 21, 13.5f);
-                line(g, 12, 3, 12, 13.5f);
-                poly(g, true, 12, 3, 19, 11, 12, 11);
+                // sail bottom and hull top are 3.5 apart so there is a visible strip of air between them at 24px,
+                // any closer and the two strokes melt into one smudge
+                poly(g, true, 3, 14, 6, 20, 18, 20, 21, 14);
+                line(g, 12, 3, 12, 14);
+                poly(g, true, 12, 3, 19, 10.5f, 12, 10.5f);
             }
             case PARKOUR -> {
                 // a jump from a low ledge up to a high one
@@ -263,20 +265,24 @@ public final class Icons {
                 poly(g, false, 10, 15, 6.5f, 19.5f, 3, 19.5f);
             }
             case PICKAXE -> {
-                Path2D.Float headArc = new Path2D.Float();
-                headArc.moveTo(4, 9);
-                headArc.quadTo(11, 1.5f, 20, 10);
-                g.draw(headArc);
-                line(g, 4.5f, 20.5f, 12.5f, 6);
+                // the inventory pose: handle up and to the right, crescent head across the top right corner. the
+                // head is two curves off the same tips so it has some mass, and the handle stops at the inner curve
+                // instead of poking through it. a lone arc with a stick reads as an umbrella
+                Path2D.Float head = new Path2D.Float();
+                head.moveTo(6, 4);
+                head.quadTo(20, 4, 20, 18);
+                head.quadTo(15, 9, 6, 4);
+                g.draw(head);
+                line(g, 4, 20, 14, 10);
             }
             case BLOCK -> cube(g);
             case WRENCH -> poly(g, true, 15, 3.5f, 13, 8, 16, 11, 20.5f, 9, 19.5f, 13.5f, 15, 15.5f, 7.5f, 21, 3.5f, 17.5f, 10, 10.5f, 10, 5);
             case BACKPACK -> {
+                // body, grab handle, front pocket. no shoulder straps: beside the body they merge with its sides
+                // into one fat smear, pushed out far enough to clear it they float like ears
                 g.draw(new RoundRectangle2D.Float(5, 6, 14, 15, 6, 6));
                 g.draw(new Arc2D.Float(8.5f, 3.5f, 7, 6, 0, 180, Arc2D.OPEN));
                 g.draw(new RoundRectangle2D.Float(8.5f, 13, 7, 5, 2, 2));
-                line(g, 3, 10, 3, 17);
-                line(g, 21, 10, 21, 17);
             }
             case WATER -> {
                 Path2D.Float drop = new Path2D.Float();
