@@ -203,7 +203,7 @@ public class MovementAscend extends Movement {
             return state; // don't jump while walking from a non double slab into a bottom slab
         }
 
-        if (StairSteps.walkUp(jumpingOnto, src, dest)) {
+        if (StairSteps.walkUp(jumpingOnto, src, dest, BlockStateInterface.get(ctx, src.below()), ctx.world())) {
             return state; // vanilla steps up the half block lip by itself, a jump here only costs the sprint
         }
 

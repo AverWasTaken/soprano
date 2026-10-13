@@ -82,8 +82,9 @@ final class SprintPolicy {
     }
 
     // destroy progress per tick of 1 or more is a block that is gone the tick the click lands (that is vanilla's own rule for
-    // instant mining), so there is nothing to wait for and nothing to stop sprinting over. BlockBreakHelper sits out
-    // blockBreakSpeed - 1 ticks after every break though, so a handful of them in a row is a tunnel, not a trivial break
+    // instant mining), so there is nothing to wait for and nothing to stop sprinting over. an instant break goes through
+    // clickBlock with no delay (BlockBreakHelper only sits out blockBreakSpeed - 1 ticks after a multi tick one), but every
+    // one still costs a tick of aiming at the block, so a handful of them in a row is a tunnel, not a trivial break
     static final double INSTANT_BREAK = 1.0;
     static final int MAX_INSTANT_BREAKS = 2;
 

@@ -19,10 +19,12 @@ package baritone.pathing.movement;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.block.StairBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.Half;
 import net.minecraft.world.level.block.state.properties.StairsShape;
+import net.minecraft.world.phys.shapes.VoxelShape;
 
 // the one answer to "is this a stair you just walk up". the planner prices it as a walk and the executor doesn't press
 // space for it, so both have to ask here or they will disagree about what the same block is
@@ -51,8 +53,15 @@ public final class StairSteps {
         return false;
     }
 
-    // the movement-shaped version: the stair is the block we climb onto, at dest.below()
-    public static boolean walkUp(BlockState state, BlockPos src, BlockPos dest) {
-        return walkUp(state, dest.getX() - src.getX(), dest.getZ() - src.getZ());
+    // the movement-shaped version: the stair is the block we climb onto, at dest.below(), and we come from src. the 0.5 lip is
+    // only 0.5 when we stand at full height: from soul sand or mud (0.875 tall) the low half is a 0.625 step, over what
+    // vanilla steps up, so the floor under src has to be a block whose top is the top of the cell
+    public static boolean walkUp(BlockState stair, BlockPos src, BlockPos dest, BlockState srcFloor, BlockGetter level) {
+        return walkUp(stair, dest.getX() - src.getX(), dest.getZ() - src.getZ()) && fullHeight(srcFloor, level, src.below());
+    }
+
+    public static boolean fullHeight(BlockState floor, BlockGetter level, BlockPos pos) {
+        VoxelShape shape = floor.getCollisionShape(level, pos);
+        return !shape.isEmpty() && shape.max(Direction.Axis.Y) >= 1.0 - 1e-9;
     }
 }

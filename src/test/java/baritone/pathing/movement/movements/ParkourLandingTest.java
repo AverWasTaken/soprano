@@ -181,12 +181,17 @@ public class ParkourLandingTest {
         }
     }
 
-    // the price of the flat jump over `gap` blocks with sprint jumping on or off. 20 hunger and an open sky, as in the real thing
-    private double flatCost(int gap, boolean sprintJumping, BlockState landing) {
+    // the price of the flat jump over `gap` blocks with `after` cells of stone floor past the landing, sprint jumping on or off.
+    // 20 hunger and an open sky, as in the real thing
+    private double flatCost(int gap, boolean sprintJumping, BlockState landing, int after) {
         boolean was = settings.sprintJumping.value;
         settings.sprintJumping.value = sprintJumping;
         try {
-            MutableMoveResult res = east(gap(gap, landing));
+            MapWorld w = gap(gap, landing);
+            for (int k = 1; k <= after; k++) {
+                w.set(gap + 1 + k, FLOOR, 0, stone());
+            }
+            MutableMoveResult res = east(w);
             assertEquals(gap + 1, res.x);
             return res.cost;
         } finally {
@@ -197,22 +202,39 @@ public class ParkourLandingTest {
     @Test
     public void aSprintHopIsPricedAsTheFlightItIs() {
         double penalty = settings.jumpPenalty.value;
-        // the 2 block gap lands at sprint pace, so it is the sprint price (and cheaper than the walk it used to be)
-        assertEquals(3 * SPRINT_ONE_BLOCK_COST + penalty, flatCost(2, true, stone()), 1e-9);
-        assertEquals(3 * WALK_ONE_BLOCK_COST + penalty, flatCost(2, false, stone()), 1e-9);
-        // the 1 block gap is 12 ticks of air to cover 2 blocks, so it can't be the 7 ticks sprint pace says, and it isn't
-        // cheaper than the walk either
-        assertEquals(12 - 0.5 * SPRINT_ONE_BLOCK_COST + penalty, flatCost(1, true, stone()), 1e-9);
-        assertEquals(2 * WALK_ONE_BLOCK_COST + penalty, flatCost(1, false, stone()), 1e-9);
+        double braked = 12 - 0.5 * SPRINT_ONE_BLOCK_COST;
+        // with room to fly on the hop covers 3 blocks or more in its 12 ticks, which is sprint pace (cheaper than the walk it was)
+        assertEquals(3 * SPRINT_ONE_BLOCK_COST + penalty, flatCost(2, true, stone(), 2), 1e-9);
+        assertEquals(2 * SPRINT_ONE_BLOCK_COST + penalty, flatCost(1, true, stone(), 2), 1e-9);
+        assertEquals(3 * WALK_ONE_BLOCK_COST + penalty, flatCost(2, false, stone(), 2), 1e-9);
+        assertEquals(2 * WALK_ONE_BLOCK_COST + penalty, flatCost(1, false, stone(), 2), 1e-9);
+        // one cell of floor past the landing means braking to stop on it, and then the air time is the price
+        assertEquals(braked + penalty, flatCost(1, true, stone(), 1), 1e-9);
+        assertEquals(3 * SPRINT_ONE_BLOCK_COST + penalty, flatCost(2, true, stone(), 1), 1e-9); // the air time is less than that
+        // nothing past it and the sim says no, so it is walked and priced as walked
+        assertEquals(3 * WALK_ONE_BLOCK_COST + penalty, flatCost(2, true, stone(), 0), 1e-9);
+        assertEquals(2 * WALK_ONE_BLOCK_COST + penalty, flatCost(1, true, stone(), 0), 1e-9);
     }
 
     @Test
     public void aLandingTheSimCantUseStaysAWalkPrice() {
         // soul sand is slow and magma hurts, SprintJump won't plan from or onto either, so the planner mustn't count on a hop
         BlockState soulSand = Blocks.SOUL_SAND.defaultBlockState();
-        assertEquals(flatCost(2, false, soulSand), flatCost(2, true, soulSand), 1e-9);
+        assertEquals(flatCost(2, false, soulSand, 3), flatCost(2, true, soulSand, 3), 1e-9);
         BlockState dirtPath = Blocks.DIRT_PATH.defaultBlockState(); // not a full block
-        assertEquals(flatCost(2, false, dirtPath), flatCost(2, true, dirtPath), 1e-9);
+        assertEquals(flatCost(2, false, dirtPath, 3), flatCost(2, true, dirtPath, 3), 1e-9);
+    }
+
+    @Test
+    public void aBottomSlabInTheGapIsFlownOver() {
+        // the slab is no landing, but its top is under the jump so the next cell still is
+        MapWorld w = new MapWorld();
+        w.set(0, FLOOR, 0, stone());
+        w.set(2, FLOOR, 0, bottomSlab());
+        w.set(3, FLOOR, 0, stone());
+        MutableMoveResult res = east(w);
+        assertTrue("cost " + res.cost, res.cost < COST_INF);
+        assertEquals(3, res.x);
     }
 
     @Test

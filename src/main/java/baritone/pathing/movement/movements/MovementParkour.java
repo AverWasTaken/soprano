@@ -146,20 +146,18 @@ public class MovementParkour extends Movement {
 
             // check for flat landing position
             BlockState landingOn = context.bsi.get0(destX, y - 1, destZ);
-            if (MovementHelper.isBottomSlab(landingOn)) {
-                break; // half a block down, see the ascend landing above
-            }
+            // a bottom slab comes down half a block low (see the ascend landing above). not a landing, but the jump can still go over it
             // farmland needs to be canWalkOn otherwise farm can never work at all, but we want to specifically disallow ending a jump on farmland haha
             // frostwalker works here because we can't jump from possibly unfrozen water
-            if ((landingOn.getBlock() != Blocks.FARMLAND && MovementHelper.canWalkOn(context, destX, y - 1, destZ, landingOn))
+            if ((landingOn.getBlock() != Blocks.FARMLAND && !MovementHelper.isBottomSlab(landingOn) && MovementHelper.canWalkOn(context, destX, y - 1, destZ, landingOn))
                     || (Math.min(16, context.frostWalker + 2) >= i && MovementHelper.canUseFrostWalker(context, landingOn))
             ) {
                 if (checkOvershootSafety(context.bsi, destX + xDiff, y, destZ + zDiff)) {
                     res.x = destX;
                     res.y = y;
                     res.z = destZ;
-                    res.cost = context.biasJump((sprintsHop(context, x, y, z, xDiff, zDiff, i, standingOn, landingOn)
-                            ? hopCost(i) : costFromJumpDistance(i)) + context.jumpPenalty);
+                    double hop = hopPrice(context, x, y, z, xDiff, zDiff, i, standingOn, landingOn);
+                    res.cost = context.biasJump((hop >= 0 ? hop : costFromJumpDistance(i)) + context.jumpPenalty);
                     return;
                 }
                 break;
@@ -228,22 +226,40 @@ public class MovementParkour extends Movement {
         return 0;
     }
 
-    // whether the executor will sprint this flat jump over a 1 or 2 block gap (SprintJump, which wants the same plain floors at
-    // both ends and the head room to fly) instead of walking it up to the edge. it only does that on the way in already
-    // sprinting, which the planner can't know, so this is the usual case and not a promise
-    private static boolean sprintsHop(CalculationContext context, int x, int y, int z, int xDiff, int zDiff, int dist, BlockState standingOn, BlockState landingOn) {
-        return dist <= 3 && context.canSprint && ExperimentalMovement.sprintJumping()
-                && SolidFloor.plain(standingOn, context.bsi.access, new BlockPos(x, y - 1, z))
-                && SolidFloor.plain(landingOn, context.bsi.access, new BlockPos(x + xDiff * dist, y - 1, z + zDiff * dist))
-                && MovementHelper.fullyPassable(context, x, y + 3, z) && MovementHelper.fullyPassable(context, x + xDiff, y + 3, z + zDiff)
-                && MovementHelper.fullyPassable(context, x + xDiff * dist, y + 3, z + zDiff * dist);
-    }
-
-    // the air time is what a sprint hop costs, 12 ticks whatever the gap, less the half block of run up we'd have covered
-    // at sprint speed on the way to the middle of the block. a 2 block gap lands at 3 blocks in that time, so the sprint
-    // price is the floor there, and a 1 block gap is flight limited (it brakes to land short), which is dearer than a walk
-    private static double hopCost(int dist) {
-        return Math.max(dist * SPRINT_ONE_BLOCK_COST, HOP_AIR_TICKS - 0.5 * SPRINT_ONE_BLOCK_COST);
+    // what the executor's sprint hop (SprintJump, which wants the same plain floors at both ends, the head room to fly and some
+    // straight floor past the landing to slide out on) costs over a 1 or 2 block gap, or a negative number for "it'll be walked".
+    // it only hops on the way in already sprinting, and the path has to actually go straight on past the landing, which the
+    // planner can't know, so this is the usual case and not a promise
+    private static double hopPrice(CalculationContext context, int x, int y, int z, int xDiff, int zDiff, int dist, BlockState standingOn, BlockState landingOn) {
+        if (dist > 3 || !context.canSprint || !ExperimentalMovement.sprintJumping()
+                || !SolidFloor.plain(standingOn, context.bsi.access, new BlockPos(x, y - 1, z))
+                || !SolidFloor.plain(landingOn, context.bsi.access, new BlockPos(x + xDiff * dist, y - 1, z + zDiff * dist))
+                || !MovementHelper.fullyPassable(context, x, y + 3, z) || !MovementHelper.fullyPassable(context, x + xDiff, y + 3, z + zDiff)) {
+            return -1;
+        }
+        // the cells past the landing: none and the sim says no (a wall as far as it knows), one and it has to brake to stop
+        // on it, two and it can fly on
+        int runway = 0;
+        for (int k = 0; k <= 2; k++) {
+            int cx = x + xDiff * (dist + k);
+            int cz = z + zDiff * (dist + k);
+            if (k > 0 && !SolidFloor.plain(context.get(cx, y - 1, cz), context.bsi.access, new BlockPos(cx, y - 1, cz))) {
+                break;
+            }
+            if (!MovementHelper.fullyPassable(context, cx, y, cz) || !MovementHelper.fullyPassable(context, cx, y + 1, cz)
+                    || !MovementHelper.fullyPassable(context, cx, y + 2, cz) || !MovementHelper.fullyPassable(context, cx, y + 3, cz)) {
+                break;
+            }
+            runway = k;
+        }
+        if (runway == 0) {
+            return -1;
+        }
+        // the air time is what a hop costs, 12 ticks whatever the gap, less the half block of run up we'd have covered at
+        // sprint speed on the way to the middle of the block. with room to fly on it covers 3 or more blocks in that time, so
+        // the sprint price is the floor. with one cell of floor it brakes to land short, and the air time is the price
+        double sprint = dist * SPRINT_ONE_BLOCK_COST;
+        return runway >= 2 ? sprint : Math.max(sprint, HOP_AIR_TICKS - 0.5 * SPRINT_ONE_BLOCK_COST);
     }
 
     private static final double HOP_AIR_TICKS = 12;

@@ -723,7 +723,8 @@ public class PathExecutor implements IPathExecutor, Helper {
     // movement is the goal and we don't sprint past that, and it can't bend more than a descend's worth at the top
     private boolean sprintsUpStairs(MovementAscend ascend) {
         if (!Baritone.settings().sprintAscends.value || pathPosition >= path.length() - 2
-                || !StairSteps.walkUp(ctx.world().getBlockState(ascend.getDest().below()), ascend.getSrc(), ascend.getDest())) {
+                || !StairSteps.walkUp(ctx.world().getBlockState(ascend.getDest().below()), ascend.getSrc(), ascend.getDest(),
+                ctx.world().getBlockState(ascend.getSrc().below()), ctx.world())) {
             return false;
         }
         BlockPos dir = ascend.getDirection();
@@ -784,6 +785,9 @@ public class PathExecutor implements IPathExecutor, Helper {
         double[] progress = new double[SprintPolicy.MAX_INSTANT_BREAKS];
         int breaks = 0;
         ToolSet tools = null;
+        // breaking is like 5x slower in water and in the air, and the click can land while we're still coming down a descend
+        boolean slowSwing = ctx.player().isInWater() || !ctx.player().onGround()
+                || pathPosition < path.movements().size() && (path.movements().get(pathPosition) instanceof MovementDescend || path.movements().get(pathPosition) instanceof MovementFall);
         for (int i = pathPosition; i <= pathPosition + 2 && i < path.movements().size(); i++) {
             Movement movement = (Movement) path.movements().get(i);
             if (movement instanceof MovementPillar || !movement.toPlace(bsi).isEmpty()) {
@@ -796,8 +800,7 @@ public class PathExecutor implements IPathExecutor, Helper {
                 if (tools == null) {
                     tools = new ToolSet(ctx.player());
                 }
-                // breaking is like 5x slower in water. we're asking about when we get there, so being in the air right now doesn't count
-                progress[breaks++] = tools.getStrVsBlock(bsi.get0(pos)) * (ctx.player().isInWater() ? 0.2 : 1);
+                progress[breaks++] = tools.getStrVsBlock(bsi.get0(pos)) * (slowSwing ? 0.2 : 1);
             }
         }
         return !SprintPolicy.trivialBreaks(progress, breaks);
@@ -1040,7 +1043,8 @@ public class PathExecutor implements IPathExecutor, Helper {
         if (!Baritone.settings().sprintAscends.value) {
             return false;
         }
-        if (StairSteps.walkUp(ctx.world().getBlockState(next.getDest().below()), next.getSrc(), next.getDest())) {
+        if (StairSteps.walkUp(ctx.world().getBlockState(next.getDest().below()), next.getSrc(), next.getDest(),
+                ctx.world().getBlockState(next.getSrc().below()), ctx.world())) {
             return false; // no hop to time for this one, sprintsUpStairs walks it
         }
         if (!current.getDirection().equals(next.getDirection().below())) {

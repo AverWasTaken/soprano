@@ -130,7 +130,23 @@ public class StairStepsTest {
         assertTrue(StairSteps.walkUp(east, 1, 0));
         assertFalse(StairSteps.walkUp(east, 1, 1)); // a diagonal is not a way onto a stair
         assertFalse(StairSteps.walkUp(east, 0, 0));
-        assertTrue(StairSteps.walkUp(east, new BlockPos(3, 64, 3), new BlockPos(4, 65, 3)));
-        assertFalse(StairSteps.walkUp(east, new BlockPos(3, 64, 3), new BlockPos(2, 65, 3)));
+        BlockPos src = new BlockPos(3, 64, 3);
+        BlockState stone = Blocks.STONE.defaultBlockState();
+        assertTrue(StairSteps.walkUp(east, src, new BlockPos(4, 64, 3), stone, EmptyBlockGetter.INSTANCE));
+        assertFalse(StairSteps.walkUp(east, src, new BlockPos(2, 64, 3), stone, EmptyBlockGetter.INSTANCE));
+    }
+
+    @Test
+    public void aFloorShorterThanTheCellMakesTheLipTooHigh() {
+        BlockState east = stair(Direction.EAST, Half.BOTTOM, StairsShape.STRAIGHT);
+        BlockPos src = new BlockPos(3, 64, 3);
+        BlockPos dest = new BlockPos(4, 64, 3);
+        // soul sand and mud are 0.875 tall, so the 0.5 lip is a 0.625 step. slabs are worse, a path is 0.9375
+        for (BlockState low : new BlockState[]{Blocks.SOUL_SAND.defaultBlockState(), Blocks.MUD.defaultBlockState(),
+                Blocks.OAK_SLAB.defaultBlockState(), Blocks.DIRT_PATH.defaultBlockState(), Blocks.AIR.defaultBlockState()}) {
+            assertFalse(low.toString(), StairSteps.walkUp(east, src, dest, low, EmptyBlockGetter.INSTANCE));
+        }
+        // the high half of the stair before this one is full height, so a flight stays a flight
+        assertTrue(StairSteps.walkUp(east, src, dest, stair(Direction.EAST, Half.BOTTOM, StairsShape.STRAIGHT), EmptyBlockGetter.INSTANCE));
     }
 }
