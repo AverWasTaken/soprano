@@ -455,7 +455,8 @@ public final class Settings {
     public final Setting<Boolean> considerPotionEffects = new Setting<>(true);
 
     /**
-     * Sprint and jump a block early on ascends wherever possible
+     * Sprint and jump a block early on ascends wherever possible. Straight stairs that you climb from the low side
+     * (bottom half, no corner shape) are walked instead of jumped, and the sprint carries on up a whole flight of them.
      */
     public final Setting<Boolean> sprintAscends = new Setting<>(true);
 
@@ -465,7 +466,8 @@ public final class Settings {
      * berry bushes, water or void, and no drop deeper than the one the path already planned.
      * <p>
      * Does nothing in the nether, within 3 blocks of lava, at 6 health or less, or while a nearby movement is
-     * placing or breaking blocks. Those keep the old stop-sprinting-on-every-descend behavior.
+     * placing blocks or breaking anything that is not gone the moment it is clicked (leaves with shears, netherrack with a
+     * fast pick; two such breaks at most). Those keep the old stop-sprinting-on-every-descend behavior.
      */
     public final Setting<Boolean> sprintThroughDescends = new Setting<>(true);
 
@@ -475,7 +477,7 @@ public final class Settings {
      * 1 wide corridors where cutting would clip a wall, keep their normal steering.
      * <p>
      * Does nothing in the nether, within 3 blocks of lava, at 6 health or less, or while a nearby movement is
-     * placing or breaking blocks.
+     * placing blocks or breaking anything that is not gone the moment it is clicked.
      */
     public final Setting<Boolean> sprintThroughCorners = new Setting<>(true);
 
@@ -495,6 +497,10 @@ public final class Settings {
     /**
      * Sprint jump along straight stretches of path, up single block steps and down small hills. Every jump is simulated
      * first and only happens if it lands back on the path without fall damage.
+     * <p>
+     * Also sprints over 1 and 2 block parkour gaps, when you reach them already sprinting and the path carries on
+     * straight for a block or two past the landing. The jump brakes in the air if it would fly past, and the planner
+     * prices those jumps as the sprint hops they are. Anywhere that does not hold, they are walked up to the edge like before.
      */
     public final Setting<Boolean> sprintJumping = new Setting<>(false);
 
