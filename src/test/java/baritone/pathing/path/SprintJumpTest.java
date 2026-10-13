@@ -118,6 +118,17 @@ public class SprintJumpTest {
     }
 
     @Test
+    public void oneCellOfFloorPastTheLandingIsEnoughForASprintingEntry() {
+        // hopPrice charges a braked hop for exactly this much runway, so the sim has to agree it works from anywhere in the cell
+        for (int dist = 2; dist <= 3; dist++) {
+            SprintJump jump = hop(dist, 1);
+            for (double s = -0.5; s <= 0.5; s += 0.05) {
+                assertNotNull("dist " + dist + " s " + s, jump.plan(s, SPRINT));
+            }
+        }
+    }
+
+    @Test
     public void aHopWithNothingToStopOnAfterTheLandingStaysAWalk() {
         // the slide after landing would end up past the last cell we know about, and that is a wall as far as the sim goes
         for (int dist = 2; dist <= 3; dist++) {

@@ -26,8 +26,9 @@ import net.minecraft.world.level.block.state.properties.Half;
 import net.minecraft.world.level.block.state.properties.StairsShape;
 import net.minecraft.world.phys.shapes.VoxelShape;
 
-// the one answer to "is this a stair you just walk up". the planner prices it as a walk and the executor doesn't press
-// space for it, so both have to ask here or they will disagree about what the same block is
+// the one answer to "is this a stair you just walk up". the executor doesn't press space for it, and the planner is meant to
+// price it as a walk (MovementAscend.cost isn't ours, it still charges a jump), so both have to ask here or they will
+// disagree about what the same block is
 public final class StairSteps {
 
     private StairSteps() {}
