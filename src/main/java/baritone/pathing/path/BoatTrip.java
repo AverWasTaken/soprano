@@ -200,9 +200,8 @@ public final class BoatTrip implements Helper {
         // in the debug chat, because "it just swam" with no explanation is a pain to chase
         boolean shore = fromWater || MovementHelper.isWater(ctx, path.positions().get(pos + 1));
         if (boatSlot(ctx.player().getInventory()) < 0) {
-            if (shore) {
-                explain(pos, "no boat in the inventory, swimming this one");
-            }
+            // no reason given for this one. not owning a boat is the normal state (fastMode turns boats on for everyone),
+            // and saying so at every bit of water is a wall of chat
             return null;
         }
         IMovement first = path.movements().get(pos);
