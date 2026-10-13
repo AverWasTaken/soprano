@@ -105,6 +105,8 @@ public class TaskCatalogue {
             mine("mangrove_propagule", Blocks.MANGROVE_PROPAGULE, Items.MANGROVE_PROPAGULE);
             mine("cherry_sapling", Blocks.CHERRY_LEAVES, Items.CHERRY_SAPLING);
 mine("pale_oak_sapling", Blocks.PALE_OAK_LEAVES, Items.PALE_OAK_SAPLING);
+            // poplar has no plain leaves, the three autumn colours all drop its sapling
+            mine("poplar_sapling", MiningRequirement.HAND, new Block[]{Blocks.ORANGE_POPLAR_LEAVES, Blocks.RED_POPLAR_LEAVES, Blocks.YELLOW_POPLAR_LEAVES}, Items.POPLAR_SAPLING);
             simple("sapling", ItemHelper.SAPLINGS, CollectSaplingsTask::new);
             simple("sandstone", Items.SANDSTONE, CollectSandstoneTask::new).dontMineIfPresent();
             simple("red_sandstone", Items.RED_SANDSTONE, CollectRedSandstoneTask::new).dontMineIfPresent();
