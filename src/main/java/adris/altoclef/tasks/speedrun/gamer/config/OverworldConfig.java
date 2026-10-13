@@ -103,6 +103,9 @@ public class OverworldConfig {
     public double nightCooldownSeconds = 20;
     // in the bed without the night passing (other players are not asleep) for this long, we get up and call it a failed try
     public double nightSleepSeconds = 30;
+    // waking up at night only counts as a hit that woke us after this many ticks of still reading night. the client learns the
+    // morning from a time packet that goes out every 20 ticks
+    public int nightWakeGraceTicks = 30;
     // a bed standing this close counts as one we can use (the old bed task's number)
     public int nightBedRadius = 40;
 

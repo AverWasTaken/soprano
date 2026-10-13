@@ -92,6 +92,9 @@ public class NightSleepTask extends Task {
     private long clickedAt = -1;
     private boolean wasAsleep;
     private long asleepTicks;
+    // the day time when we lay down, and the tick the sleeping flag first read clear (for the wake grace)
+    private long asleepDayTime;
+    private long upSince = -1;
     // where PICKUP goes next when the refusal said to go higher
     private boolean liftAfterPickup;
     private int bedsBeforePickup;
@@ -537,8 +540,12 @@ public class NightSleepTask extends Task {
         ClientLevel world = mod.getWorld();
         boolean asleep = player.isSleeping() || Minecraft.getInstance().screen instanceof InBedChatScreen;
         if (asleep) {
+            if (!wasAsleep) {
+                asleepDayTime = world.getDayTime();
+            }
             wasAsleep = true;
             asleepTicks++;
+            upSince = -1;
             setDebugState("Sleeping.", "Sleeping");
             if (leaving == null && asleepTicks > cfg.get().nightSleepSeconds * 20) {
                 // the night is not passing (somebody else is awake), no point lying here. the try ends once we are out of it
@@ -557,7 +564,16 @@ public class NightSleepTask extends Task {
         }
         if (wasAsleep) {
             // woken: by the morning, or by something that hit us
-            if (NightSleep.sleptThrough(asleepTicks, world.isDay())) {
+            if (upSince < 0) {
+                upSince = now;
+            }
+            NightSleep.Wake wake = NightSleep.wake(asleepTicks, world.isDay(), asleepDayTime, world.getDayTime(), now - upSince,
+                    cfg.get().nightWakeGraceTicks);
+            if (wake == NightSleep.Wake.WAIT) {
+                // (still reads night, the time packet may be on its way)
+                return null;
+            }
+            if (wake == NightSleep.Wake.SLEPT) {
                 budget.sleptOk();
                 outcome = Outcome.SLEPT;
                 say.accept("Slept through the night");

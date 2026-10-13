@@ -89,6 +89,25 @@ public final class NightSleep {
         return asleepTicks > 0 && day;
     }
 
+    public enum Wake {
+        SLEPT, WOKEN, WAIT
+    }
+
+    // the sleeping flag clears the tick the server skips the night, but the client learns the new time from a time packet that
+    // goes out every 20 ticks, so for a moment it can still read night. reading it on the first tick called a night we slept
+    // through "woken early" and burned a try. so: the morning is either the day flag or the day count having rolled over since
+    // we lay down (the skip lands exactly on a multiple of 24000), and anything else gets `graceTicks` to turn into one of
+    // those before it counts as a hit that woke us
+    public static Wake wake(long asleepTicks, boolean day, long dayTimeThen, long dayTimeNow, long ticksSinceUp, int graceTicks) {
+        if (asleepTicks <= 0) {
+            return Wake.WOKEN;
+        }
+        if (day || nightOf(dayTimeNow) > nightOf(dayTimeThen)) {
+            return Wake.SLEPT;
+        }
+        return ticksSinceUp < graceTicks ? Wake.WAIT : Wake.WOKEN;
+    }
+
     // where the bed comes from. a bed already standing close beats carrying one (nothing to place, nothing to pick up), then the
     // bag, then crafting. a craft needs three wool of one colour and three planks, no hunting for either
     public static BedSource bedSource(boolean foundUsable, int bedsInBag, int bestWoolStack, int planks) {

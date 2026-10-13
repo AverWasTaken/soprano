@@ -341,6 +341,37 @@ public class NightSleepTest {
         }
     }
 
+    // ---- the wake grace
+
+    @Test
+    public void aNightTheServerSkippedIsSleptThroughEvenIfTheClientStillReadsNight() {
+        // lay down at 13000, the flag clears the tick the server sets 24000 but our copy of the time is a packet behind...
+        assertEquals(NightSleep.Wake.WAIT, NightSleep.wake(110, false, 13000, 13110, 0, 30));
+        assertEquals(NightSleep.Wake.WAIT, NightSleep.wake(110, false, 13000, 13110, 29, 30));
+        // ...and then it catches up, by the day flag or by the day count rolling over
+        assertEquals(NightSleep.Wake.SLEPT, NightSleep.wake(110, true, 13000, 13110, 5, 30));
+        assertEquals(NightSleep.Wake.SLEPT, NightSleep.wake(110, false, 13000, 24000, 5, 30));
+        // the very first tick can already be the morning
+        assertEquals(NightSleep.Wake.SLEPT, NightSleep.wake(110, false, 13000, 24000, 0, 30));
+    }
+
+    @Test
+    public void aHitThatWokeUsStillCountsAsAFailedTryOnceTheGraceIsUp() {
+        assertEquals(NightSleep.Wake.WOKEN, NightSleep.wake(110, false, 13000, 13150, 30, 30));
+        assertEquals(NightSleep.Wake.WOKEN, NightSleep.wake(900, false, 13000, 13900, 400, 30));
+        // never lay down at all
+        assertEquals(NightSleep.Wake.WOKEN, NightSleep.wake(0, true, 13000, 24000, 50, 30));
+    }
+
+    @Test
+    public void aRainyNightThatEndsAtDawnRollsTheDayCountToo() {
+        // laid down at 12100 in the rain, the skip lands on the next multiple of 24000
+        assertEquals(NightSleep.Wake.SLEPT, NightSleep.wake(40, false, 12100, 24000, 0, 30));
+        // woken at 23999 by a zombie is still the same night
+        assertEquals(NightSleep.Wake.WAIT, NightSleep.wake(40, false, 12100, 23999, 0, 30));
+        assertEquals(NightSleep.Wake.WOKEN, NightSleep.wake(40, false, 12100, 23999, 31, 30));
+    }
+
     @Test
     public void sleptThroughMeansWokenByTheMorning() {
         assertTrue(NightSleep.sleptThrough(3, true));
