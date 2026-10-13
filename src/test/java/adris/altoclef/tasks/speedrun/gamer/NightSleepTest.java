@@ -483,6 +483,9 @@ public class NightSleepTest {
         assertTrue(NightSleep.screenHolds(0));
         assertTrue(NightSleep.screenHolds(NightSleep.SCREEN_PATIENCE_TICKS - 1));
         assertFalse(NightSleep.screenHolds(NightSleep.SCREEN_PATIENCE_TICKS));
+        // and a load that never finishes does not hold it either
+        assertTrue(NightSleep.loadHolds(NightSleep.LOAD_PATIENCE_TICKS - 1));
+        assertFalse(NightSleep.loadHolds(NightSleep.LOAD_PATIENCE_TICKS));
     }
 
     @Test

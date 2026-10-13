@@ -151,6 +151,7 @@ public class GamerTask extends Task {
     private LocalPlayer nightPrepPlayer;
     // the tick a container screen came up, for how long it has held a night back (-1 when none is up)
     private long screenSince = -1;
+    private long loadSince = -1;
     private final NightSleep.Said nightSaid = new NightSleep.Said();
 
     // what the user had before we changed it for the run, to hand back on stop
@@ -756,6 +757,7 @@ public class GamerTask extends Task {
             return null;
         }
         trackDeaths(mod);
+        trackNightGates();
         if (machine.ended()) {
             return null;
         }
@@ -1219,7 +1221,14 @@ public class GamerTask extends Task {
         for (Bench b : state.benches) {
             pickup |= WorkbenchRules.inFlight(b, facts.gameTime());
         }
-        SmeltSplit.Batch batch = facts.smeltBatch();
+        boolean screenUp = !ownScreens && screenSince >= 0 && NightSleep.screenHolds(facts.gameTime() - screenSince);
+        boolean loading = loadSince >= 0 && NightSleep.loadHolds(facts.gameTime() - loadSince);
+        return NightSleep.busy(NightSleep.phaseAllowed(state.phase), pickup, loading, facts.earlyLoadInFlight(), screenUp);
+    }
+
+    // since when a container screen has been up and a furnace load has been going. every engine tick, not only the ones the night
+    // branch runs on, or a screen that closed and opened again during a trip would look like it had been up the whole time
+    private void trackNightGates() {
         // (a chat box, the pause menu or the bed screen is not items moving, only a container is)
         if (Minecraft.getInstance().screen instanceof AbstractContainerScreen<?>) {
             if (screenSince < 0) {
@@ -1228,9 +1237,14 @@ public class GamerTask extends Task {
         } else {
             screenSince = -1;
         }
-        boolean screenUp = !ownScreens && screenSince >= 0 && NightSleep.screenHolds(facts.gameTime() - screenSince);
-        return NightSleep.busy(NightSleep.phaseAllowed(state.phase), pickup, batch != null && batch.loadingAt() != null,
-                facts.earlyLoadInFlight(), screenUp);
+        SmeltSplit.Batch batch = facts.smeltBatch();
+        if (batch != null && batch.loadingAt() != null) {
+            if (loadSince < 0) {
+                loadSince = facts.gameTime();
+            }
+        } else {
+            loadSince = -1;
+        }
     }
 
     private boolean nightFighting(AltoClef mod) {

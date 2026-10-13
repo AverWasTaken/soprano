@@ -20,6 +20,7 @@ import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.EntityHelper;
 import adris.altoclef.util.helpers.ItemHelper;
+import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.InBedChatScreen;
@@ -244,6 +245,8 @@ public class NightSleepTask extends Task {
             enter(Stage.PICKUP, now, "an old bed of ours is still standing");
             return;
         }
+        // (a container screen that sat open past the patience of the busy gate is stuck, and a bed click behind it goes nowhere)
+        StorageHelper.closeScreen();
         say.accept("Night is here, going to bed");
         switch (source) {
             case FOUND -> enter(Stage.WALK, now, "a bed at " + found.toShortString());

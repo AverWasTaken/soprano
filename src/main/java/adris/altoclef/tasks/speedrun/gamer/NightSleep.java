@@ -239,11 +239,17 @@ public final class NightSleep {
     }
 
     // a container screen (the inventory, a table, a furnace, a chest) is up for a few seconds while items move. one that has been up
-    // longer than this is stuck open, and a night should not wait for it: the trip's first task shuts it
+    // longer than this is stuck open, and a night should not wait for it: the trip shuts it when it begins
     public static final long SCREEN_PATIENCE_TICKS = 400;
+    // a furnace load that has been "in progress" this long is a batch whose iron need went away under it, not ore going in
+    public static final long LOAD_PATIENCE_TICKS = 1200;
 
     public static boolean screenHolds(long upTicks) {
         return upTicks < SCREEN_PATIENCE_TICKS;
+    }
+
+    public static boolean loadHolds(long loadingTicks) {
+        return loadingTicks < LOAD_PATIENCE_TICKS;
     }
 
     // a clock for one day's prep: it gets `maxSeconds` and then it is over, quietly, until the next day
