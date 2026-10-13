@@ -86,6 +86,7 @@ public class NightSleepTask extends Task {
     private BlockPos foot;
     // the cell the bed is built beside, kept from the tick the direction was picked
     private BlockPos standCell;
+    private long retrievalSince;
     // set while we are getting out of the bed, the try ends when the game says we are up
     private String leaving;
     private long clickedAt = -1;
@@ -163,6 +164,11 @@ public class NightSleepTask extends Task {
     }
 
     private void enter(Stage next, long now, String line) {
+        if (next == Stage.PICKUP || next == Stage.RETURN) {
+            if (stage != Stage.PICKUP && stage != Stage.RETURN) {
+                retrievalSince = now;
+            }
+        }
         stage = next;
         stageSince = now;
         if (next == Stage.SLEEP) {
@@ -174,6 +180,11 @@ public class NightSleepTask extends Task {
 
     private double secondsIn(long now) {
         return (now - stageSince) * TICK_SECONDS;
+    }
+
+    // getting the bed back is PICKUP and RETURN trading places, one clock for both or each bounce would start it over
+    private double retrievalSeconds(long now) {
+        return (now - retrievalSince) * TICK_SECONDS;
     }
 
     // ---- the tick
@@ -531,12 +542,16 @@ public class NightSleepTask extends Task {
             setDebugState("Sleeping.", "Sleeping");
             if (leaving == null && asleepTicks > cfg.get().nightSleepSeconds * 20) {
                 // the night is not passing (somebody else is awake), no point lying here. the try ends once we are out of it
-                getUp(player);
                 leaving = "the night did not pass";
+                getUp(player);
+            } else if (leaving != null && asleepTicks % 40 == 0) {
+                // the first ask can get lost
+                getUp(player);
             }
             return null;
         }
-        if (leaving != null) {
+        // (if the morning got there first it was a night slept through after all)
+        if (leaving != null && !world.isDay()) {
             fail(leaving, now);
             return null;
         }
@@ -617,7 +632,7 @@ public class NightSleepTask extends Task {
             pickupArmed = true;
             bedsBeforePickup = bedsInBag(mod);
         }
-        if (NightSleep.timedOut(Stage.PICKUP, 0, secondsIn(now))) {
+        if (NightSleep.timedOut(Stage.PICKUP, 0, retrievalSeconds(now))) {
             // our own try gets one more go on a later trip (nightBed stays set), a second time round it is not worth chasing
             Debug.logInternal("night: could not take the bed back, leaving it at " + bed.toShortString());
             if (cleanup) {
@@ -655,13 +670,17 @@ public class NightSleepTask extends Task {
             enter(Stage.PICKUP, now, "at the bed");
             return null;
         }
-        if (NightSleep.timedOut(Stage.RETURN, 0, secondsIn(now))
+        if (NightSleep.timedOut(Stage.RETURN, 0, retrievalSeconds(now))
                 || !bed.closerToCenterThan(mod.getPlayer().position(), cfg.get().nightBedRadius + 8)) {
             // too far or too slow to walk back for, and not ours to keep a claim on any more
             state.nightBed = null;
             save.run();
             Debug.logInternal("night: gave up walking back to the bed at " + bed.toShortString());
-            finish(now);
+            if (cleanup) {
+                finish(now);
+            } else {
+                fail("could not walk back to the bed", now);
+            }
             return null;
         }
         setDebugState("Going back for the bed.", "Going back for the bed");

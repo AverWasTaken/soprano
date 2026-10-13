@@ -1158,16 +1158,15 @@ public class GamerTask extends Task {
             return false;
         }
         BlockPos pos = new BlockPos(at.x, at.y, at.z);
-        if (!mod.getWorld().hasChunkAt(pos)) {
-            return false;
+        boolean standing = mod.getWorld().hasChunkAt(pos) && mod.getWorld().getBlockState(pos).getBlock() instanceof BedBlock;
+        if (standing && pos.closerToCenterThan(mod.getPlayer().position(), cfg.overworld.nightBedRadius + 8)) {
+            return true;
         }
-        if (!(mod.getWorld().getBlockState(pos).getBlock() instanceof BedBlock)) {
-            // taken or broken by somebody (us, in another life)
-            state.nightBed = null;
-            host.save();
-            return false;
-        }
-        return pos.closerToCenterThan(mod.getPlayer().position(), cfg.overworld.nightBedRadius + 8);
+        // taken or broken by somebody, or too far or unloaded to walk back for: not ours to keep a claim on. a claim left standing
+        // here would start a trip that reads an unloaded bed as air and goes looking for its item
+        state.nightBed = null;
+        host.save();
+        return false;
     }
 
     // a bed that is already standing close by and that we can sleep in right now: not on copper (a trial chamber's), nothing
