@@ -155,7 +155,7 @@ public class MovementDiagonal extends Movement {
         double multiplier = WALK_ONE_BLOCK_COST;
         // For either possible soul sand, that affects half of our walking
         if (destWalkOn.is(Blocks.SOUL_SAND)) {
-            multiplier += (WALK_ONE_OVER_SOUL_SAND_COST - WALK_ONE_BLOCK_COST) / 2;
+            multiplier += (context.soulSandWalkCost - WALK_ONE_BLOCK_COST) / 2;
         } else if (context.allowWalkOnMagmaBlocks && destWalkOn.is(Blocks.MAGMA_BLOCK)) {
             multiplier += (SNEAK_ONE_BLOCK_COST - WALK_ONE_BLOCK_COST) / 2;
             sneaking = true;
@@ -169,7 +169,7 @@ public class MovementDiagonal extends Movement {
             return;
         }
         if (fromDownBlock == Blocks.SOUL_SAND) {
-            multiplier += (WALK_ONE_OVER_SOUL_SAND_COST - WALK_ONE_BLOCK_COST) / 2;
+            multiplier += (context.soulSandWalkCost - WALK_ONE_BLOCK_COST) / 2;
         } else if (context.allowWalkOnMagmaBlocks && fromDownBlock.equals(Blocks.MAGMA_BLOCK)) {
             multiplier += (SNEAK_ONE_BLOCK_COST - WALK_ONE_BLOCK_COST) / 2;
             sneaking = true;

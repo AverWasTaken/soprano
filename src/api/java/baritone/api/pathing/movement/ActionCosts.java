@@ -40,7 +40,12 @@ public interface ActionCosts {
      * {@code boatMinWaterLength} is for
      */
     double BOAT_ONE_BLOCK_COST = 20 / 7.0; // 2.857
-    double WALK_ONE_OVER_SOUL_SAND_COST = WALK_ONE_BLOCK_COST * 2; // 0.4 in BlockSoulSand but effectively about half
+    /**
+     * Soul sand's 0.4 speed factor scales your velocity every tick and doesn't scale your speed, so the walker settles
+     * at (1 - 0.546) / (1 - 0.4 * 0.546) of normal speed, 58%. Soul Speed boots take this away entirely, see
+     * {@code CalculationContext.soulSandWalkCost}
+     */
+    double WALK_ONE_OVER_SOUL_SAND_COST = WALK_ONE_BLOCK_COST / ((1 - 0.6 * 0.91) / (1 - 0.4 * 0.6 * 0.91)); // 7.976
     double LADDER_UP_ONE_COST = 20 / 2.35; // 8.511
     double LADDER_DOWN_ONE_COST = 20 / 3.0; // 6.667
     double SNEAK_ONE_BLOCK_COST = 20 / 1.3; // 15.385

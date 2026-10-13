@@ -108,14 +108,14 @@ public class MovementTraverse extends Movement {
                 water = true;
             } else {
                 if (destOn.getBlock() == Blocks.SOUL_SAND) {
-                    WC += (WALK_ONE_OVER_SOUL_SAND_COST - WALK_ONE_BLOCK_COST) / 2;
+                    WC += (context.soulSandWalkCost - WALK_ONE_BLOCK_COST) / 2;
                 } else if (frostWalker) {
                     // with frostwalker we can walk on water without the penalty, if we are sure we won't be using jesus
                 } else if (destOn.getBlock() == Blocks.WATER) {
                     WC += context.walkOnWaterOnePenalty;
                 }
                 if (srcDownBlock == Blocks.SOUL_SAND) {
-                    WC += (WALK_ONE_OVER_SOUL_SAND_COST - WALK_ONE_BLOCK_COST) / 2;
+                    WC += (context.soulSandWalkCost - WALK_ONE_BLOCK_COST) / 2;
                 } else if (context.allowWalkOnMagmaBlocks && srcDownBlock.equals(Blocks.MAGMA_BLOCK)) {
                     sneaking = true;
                     WC += (SNEAK_ONE_BLOCK_COST - WALK_ONE_BLOCK_COST) / 2;

@@ -132,7 +132,7 @@ public class MovementAscend extends Movement {
         } else {
             // jumpingFromBottomSlab must be false
             if (toPlace.is(Blocks.SOUL_SAND)) {
-                walk = WALK_ONE_OVER_SOUL_SAND_COST;
+                walk = context.soulSandWalkCost;
             } else if (toPlace.is(Blocks.MAGMA_BLOCK)) {
                 walk = SNEAK_ONE_BLOCK_COST;
             } else {

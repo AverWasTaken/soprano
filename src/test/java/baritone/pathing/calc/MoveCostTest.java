@@ -86,13 +86,17 @@ public class MoveCostTest {
 
         // waterEfficiency is what Depth Strider adds up to, 0 for none and 1 for level three
         Ctx(BlockStateInterface bsi, float waterEfficiency) {
+            this(bsi, waterEfficiency, 0);
+        }
+
+        Ctx(BlockStateInterface bsi, float waterEfficiency, int soulSpeed) {
             super(null, true, null, null, bsi, new ToolSet(null) {
                 @Override
                 public double getStrVsBlock(BlockState state) {
                     float hardness = state.getBlock().defaultDestroyTime();
                     return hardness < 0 ? -1 : hardness == 0 ? 1 : 8.0 / (hardness * 30);
                 }
-            }, false, false, true, 0, waterEfficiency, 20.0, false);
+            }, false, false, true, 0, soulSpeed, waterEfficiency, 20.0, false);
         }
     }
 
@@ -281,5 +285,52 @@ public class MoveCostTest {
     public void depthStriderBlendsBackTowardsLandSpeed() {
         assertEquals(WALK_ONE_BLOCK_COST, MovementTraverse.cost(new Ctx(lake(), 1.0f), 0, 64, 0, 1, 0), 1e-9);
         assertEquals((WALK_ONE_IN_WATER_COST + WALK_ONE_BLOCK_COST) / 2, MovementTraverse.cost(new Ctx(lake(), 0.5f), 0, 64, 0, 1, 0), 1e-9);
+    }
+
+    // ---- soul sand ----
+
+    // the vanilla tick, run by hand: push, move, soul sand scales the velocity, then ground drag
+    private static double terminalSpeed(double speedFactor) {
+        double v = 0;
+        double moved = 0;
+        for (int i = 0; i < 200; i++) {
+            moved = v + 0.98 * 0.1;
+            v = moved * speedFactor * 0.6 * 0.91;
+        }
+        return moved;
+    }
+
+    @Test
+    public void soulSandIsFiftyEightPercentSpeedAndNotHalf() {
+        double ratio = terminalSpeed(0.4) / terminalSpeed(1.0);
+        assertEquals(0.5809, ratio, 1e-4);
+        assertEquals(WALK_ONE_BLOCK_COST / ratio, WALK_ONE_OVER_SOUL_SAND_COST, 1e-3);
+    }
+
+    // soul sand under the destination square only
+    private static MapWorld soulSandAhead() {
+        MapWorld w = floor();
+        w.set(1, 63, 0, Blocks.SOUL_SAND.defaultBlockState());
+        return w;
+    }
+
+    @Test
+    public void aStepOntoSoulSandPaysHalfTheExtraAndSprintScalesIt() {
+        double expected = (WALK_ONE_BLOCK_COST + (WALK_ONE_OVER_SOUL_SAND_COST - WALK_ONE_BLOCK_COST) / 2) * SPRINT_MULTIPLIER;
+        assertEquals(expected, MovementTraverse.cost(new Ctx(soulSandAhead()), 0, 64, 0, 1, 0), 1e-9);
+    }
+
+    @Test
+    public void soulSpeedBootsMakeSoulSandFasterThanDirt() {
+        // the data file turns the slowdown off and adds 0.0405 / 0.051 / 0.0615 of walking speed on top of 0.1
+        double plain = MovementTraverse.cost(new Ctx(soulSandAhead()), 0, 64, 0, 1, 0);
+        double one = MovementTraverse.cost(new Ctx(soulSandAhead(), 0f, 1), 0, 64, 0, 1, 0);
+        double three = MovementTraverse.cost(new Ctx(soulSandAhead(), 0f, 3), 0, 64, 0, 1, 0);
+        double flat = MovementTraverse.cost(new Ctx(floor()), 0, 64, 0, 1, 0);
+        assertTrue(one < plain && three < one);
+        // half the step is on the stuff, so half of the 1.405x
+        assertEquals((WALK_ONE_BLOCK_COST + (WALK_ONE_BLOCK_COST / 1.405 - WALK_ONE_BLOCK_COST) / 2) * SPRINT_MULTIPLIER, one, 1e-9);
+        assertTrue(three < flat);
+        assertEquals(WALK_ONE_BLOCK_COST / 1.615, CalculationContext.soulSandWalkCost(3), 1e-9);
     }
 }

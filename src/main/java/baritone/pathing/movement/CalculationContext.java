@@ -32,6 +32,7 @@ import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.player.Inventory;
@@ -96,6 +97,8 @@ public class CalculationContext {
     public final boolean assumeWalkOnWater;
     public boolean allowFallIntoLava;
     public final int frostWalker;
+    // what a block of walking costs over soul sand, which soul speed boots change from slow to fast
+    public final double soulSandWalkCost;
     public final boolean allowDiagonalDescend;
     public final boolean allowDiagonalAscend;
     public final boolean allowDownward;
@@ -165,16 +168,22 @@ public class CalculationContext {
                 Baritone.settings().allowWaterBucketFall.value && Inventory.isHotbarSlot(baritone.getPlayerContext().player().getInventory().findSlotMatchingItem(STACK_BUCKET_WATER)) && baritone.getPlayerContext().world().dimension() != Level.NETHER,
                 Baritone.settings().allowSprint.value && baritone.getPlayerContext().player().getFoodData().getFoodLevel() > 6,
                 frostWalkerLevel(baritone.getPlayerContext().player()),
+                soulSpeedLevel(baritone.getPlayerContext().player()),
                 waterSpeedMultiplier(baritone.getPlayerContext().player()),
                 baritone.getPlayerContext().player().getHealth() + baritone.getPlayerContext().player().getAbsorptionAmount(),
                 hasBoat(baritone.getPlayerContext().player())
         );
     }
 
+    // no soul speed boots, which is every test and bench that was written before they existed
+    protected CalculationContext(IBaritone baritone, boolean forUseOnAnotherThread, Level world, WorldData worldData, BlockStateInterface bsi, ToolSet toolSet, boolean hasThrowaway, boolean hasWaterBucket, boolean canSprint, int frostWalker, float waterSpeedMultiplier, double health, boolean hasBoat) {
+        this(baritone, forUseOnAnotherThread, world, worldData, bsi, toolSet, hasThrowaway, hasWaterBucket, canSprint, frostWalker, 0, waterSpeedMultiplier, health, hasBoat);
+    }
+
     // everything that needs a player or a world comes in as a parameter so you can build one of these with no game running
     // all the settings get snapshotted in here so nobody can accidentally read them differently
     @SuppressWarnings("unchecked")
-    protected CalculationContext(IBaritone baritone, boolean forUseOnAnotherThread, Level world, WorldData worldData, BlockStateInterface bsi, ToolSet toolSet, boolean hasThrowaway, boolean hasWaterBucket, boolean canSprint, int frostWalker, float waterSpeedMultiplier, double health, boolean hasBoat) {
+    protected CalculationContext(IBaritone baritone, boolean forUseOnAnotherThread, Level world, WorldData worldData, BlockStateInterface bsi, ToolSet toolSet, boolean hasThrowaway, boolean hasWaterBucket, boolean canSprint, int frostWalker, int soulSpeed, float waterSpeedMultiplier, double health, boolean hasBoat) {
         AltoClefSettings alto = AltoClefSettings.getInstance();
         AltoClefSettings.Snapshot altoRules = alto.snapshot();
         boolean paused = alto.isInteractionPaused();
@@ -224,6 +233,7 @@ public class CalculationContext {
         this.assumeWalkOnWater = Baritone.settings().assumeWalkOnWater.value;
         this.allowFallIntoLava = false; // Super secret internal setting for ElytraBehavior
         this.frostWalker = frostWalker;
+        this.soulSandWalkCost = soulSandWalkCost(soulSpeed);
         this.allowDiagonalDescend = ExperimentalMovement.allowDiagonalDescend();
         this.allowDiagonalAscend = ExperimentalMovement.allowDiagonalAscend();
         this.allowDownward = Baritone.settings().allowDownward.value;
@@ -280,16 +290,35 @@ public class CalculationContext {
 
     private static int frostWalkerLevel(LocalPlayer player) {
         // todo: technically there can now be datapack enchants that replace blocks with any other at any range
-        int frostWalkerLevel = 0;
+        return enchantLevel(player, Enchantments.FROST_WALKER);
+    }
+
+    private static int soulSpeedLevel(LocalPlayer player) {
+        return enchantLevel(player, Enchantments.SOUL_SPEED);
+    }
+
+    private static int enchantLevel(LocalPlayer player, ResourceKey<Enchantment> wanted) {
+        int level = 0;
         for (EquipmentSlot slot : EquipmentSlot.values()) {
             ItemEnchantments itemEnchantments = player.getItemBySlot(slot).getEnchantments();
             for (Holder<Enchantment> enchant : itemEnchantments.keySet()) {
-                if (enchant.is(Enchantments.FROST_WALKER)) {
-                    frostWalkerLevel = itemEnchantments.getLevel(enchant);
+                if (enchant.is(wanted)) {
+                    level = itemEnchantments.getLevel(enchant);
                 }
             }
         }
-        return frostWalkerLevel;
+        return level;
+    }
+
+    // soul sand multiplies your velocity by 0.4 every tick, and the ground drag on top is 0.6 * 0.91, so a walker settles
+    // at (1 - 0.546) / (1 - 0.4 * 0.546) = 58% of normal speed, sprint or not (2.5 blocks a second against 4.3).
+    // soul speed of any level turns the slowdown off completely (movement_efficiency 1 in its data file) and adds walking
+    // speed on top while you are on the stuff, 0.0405 for the first level and 0.0105 for each after that, against a base of 0.1
+    public static double soulSandWalkCost(int soulSpeedLevel) {
+        if (soulSpeedLevel <= 0) {
+            return ActionCosts.WALK_ONE_OVER_SOUL_SAND_COST;
+        }
+        return ActionCosts.WALK_ONE_BLOCK_COST / (1 + (0.0405 + 0.0105 * (soulSpeedLevel - 1)) / 0.1);
     }
 
     private static float waterSpeedMultiplier(LocalPlayer player) {
