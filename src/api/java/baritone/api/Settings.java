@@ -928,7 +928,7 @@ public final class Settings {
      * This only measures. Nothing reads the numbers back to change a cost, and with this off the executor only reads
      * this setting once per movement and does nothing else.
      */
-    public final Setting<Boolean> recordMovementTimings = new Setting<>(true);
+    public final Setting<Boolean> recordMovementTimings = new Setting<>(false);
 
     /**
      * Render the path
