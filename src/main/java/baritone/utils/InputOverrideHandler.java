@@ -18,6 +18,7 @@
 package baritone.utils;
 
 import baritone.Baritone;
+import baritone.altoclef.AltoClefSettings;
 import baritone.api.BaritoneAPI;
 import baritone.api.event.events.TickEvent;
 import baritone.api.utils.IInputOverrideHandler;
@@ -87,6 +88,16 @@ public final class InputOverrideHandler extends Behavior implements IInputOverri
         if (event.getType() == TickEvent.Type.OUT) {
             return;
         }
+        if (AltoClefSettings.getInstance().isInteractionPaused()) {
+            // this is the only place a click turns into a real one, so every process and movement gets muzzled at once
+            setInputForceState(Input.CLICK_LEFT, false);
+            setInputForceState(Input.CLICK_RIGHT, false);
+        }
+        if (isInputForcedDown(Input.CLICK_RIGHT) && baritone.getInventoryBehavior().handWaitingOnSwap()) {
+            // the block we selected is still on its way to the hotbar and the click would hit the fallback in BlockPlaceHelper
+            // (useItem), so whatever is in that slot gets used instead. the movement asks again next tick, the swap has landed by then
+            setInputForceState(Input.CLICK_RIGHT, false);
+        }
         if (isInputForcedDown(Input.CLICK_LEFT)) {
             setInputForceState(Input.CLICK_RIGHT, false);
         }
@@ -118,5 +129,9 @@ public final class InputOverrideHandler extends Behavior implements IInputOverri
 
     public BlockBreakHelper getBlockBreakHelper() {
         return blockBreakHelper;
+    }
+
+    public BlockPlaceHelper getBlockPlaceHelper() {
+        return blockPlaceHelper;
     }
 }

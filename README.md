@@ -1,6 +1,6 @@
 # Soprano
 
-A fork of [Baritone](https://github.com/cabaletta/baritone), the Minecraft pathfinding bot, with a lot of extra movement tech.
+A fork of [Baritone](https://github.com/cabaletta/baritone), the Minecraft pathfinding bot, with extra movement tech and [AltoClef](https://github.com/gaucho-matrero/altoclef) built in.
 
 [![Release](https://img.shields.io/github/v/release/AverWasTaken/soprano)](https://github.com/AverWasTaken/soprano/releases)
 [![Build](https://github.com/AverWasTaken/soprano/actions/workflows/gradle_build.yml/badge.svg)](https://github.com/AverWasTaken/soprano/actions/workflows/gradle_build.yml)
@@ -8,11 +8,7 @@ A fork of [Baritone](https://github.com/cabaletta/baritone), the Minecraft pathf
 
 [Install](#install) · [What's new](CHANGES.md) · [Usage](USAGE.md) · [Features](FEATURES.md) · [Building](SETUP.md) · [Contributing](CONTRIBUTING.md)
 
-Soprano keeps everything Baritone does: `#goto`, `#mine`, `#build`, `#farm`, `#elytra`, the lot. On top of that it adds jumps and movement Baritone doesn't have, like neo jumps, ladder and vine jumps, and long fall clutches.
-
-The `baritone.api` packages are unchanged, so mods built on Baritone's API keep working. Soprano is a drop-in replacement. Don't install both.
-
-The new features are new, so expect rough edges. Bug reports and feedback are welcome.
+Soprano keeps everything Baritone does: `#goto`, `#mine`, `#build`, `#farm`, `#elytra`, the lot. The `baritone.api` packages are unchanged, so mods built on Baritone's API keep working. Soprano is a drop-in replacement. Don't install both.
 
 [CHANGES.md](CHANGES.md) has everything Soprano adds on top of Baritone.
 
@@ -22,7 +18,7 @@ The new features are new, so expect rough edges. Bug reports and feedback are we
 2. Drop it in your `mods` folder, replacing Baritone if you had it.
 3. In game, try `#goto 1000 500`, then `#stop`.
 
-Each branch of this repo is one Minecraft version. `main` is the newest one (26.3 right now), and the `1.21.4` branch is the 1.21.4 version.
+Each branch of this repo is one Minecraft version, named after it (`1.21.4`, `26.3`). The newest Minecraft version lives on `26.3`, which is the default branch. This branch is 26.3.
 
 Releases come in three flavors. Most people want the `api` jar.
 
@@ -41,6 +37,7 @@ Commands start with `#`.
 ```
 #goto 1000 500
 #mine diamond_ore
+#get iron_pickaxe
 #set allowNeos true
 #stop
 ```
@@ -68,6 +65,8 @@ If you want to change code, read [CONTRIBUTING.md](CONTRIBUTING.md). Some of the
 ## Credits
 
 Soprano is Baritone, made by [cabaletta](https://github.com/cabaletta), [leijurv](https://github.com/leijurv), Brady and all of [Baritone's contributors](https://github.com/cabaletta/baritone/graphs/contributors). Without their years of work there's nothing to fork. The pathfinder, the API, the commands and most of the movement code are theirs.
+
+The built-in AltoClef is [AltoClef](https://github.com/gaucho-matrero/altoclef) by gaucho-matrero and Adris Jautakas, using MarvionKirito's 1.21 fork. It's MIT licensed, see [LICENSE-AltoClef](LICENSE-AltoClef).
 
 Soprano is licensed under the LGPL-3.0, same as Baritone. See [LICENSE](LICENSE).
 

@@ -26,12 +26,15 @@ import baritone.pathing.movement.CalculationContext;
 import baritone.pathing.movement.Movement;
 import baritone.pathing.movement.MovementHelper;
 import baritone.pathing.movement.MovementState;
+import baritone.pathing.movement.StairSteps;
 import baritone.utils.BlockStateInterface;
 import com.google.common.collect.ImmutableSet;
 import java.util.Set;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.FallingBlock;
+import net.minecraft.world.level.block.StairBlock;
 import net.minecraft.world.level.block.state.BlockState;
 
 public class MovementAscend extends Movement {
@@ -129,10 +132,12 @@ public class MovementAscend extends Movement {
             } else {
                 walk = WALK_ONE_BLOCK_COST; // we don't hit space we just walk into the slab
             }
+        } else if (toPlace.getBlock() instanceof StairBlock && StairSteps.walkUp(toPlace, new BlockPos(x, y, z), new BlockPos(destX, y + 1, destZ), srcDown, context.bsi.access)) {
+            walk = WALK_ONE_BLOCK_COST; // stairs go up by themselves, no space bar and nothing to pay for it
         } else {
             // jumpingFromBottomSlab must be false
             if (toPlace.is(Blocks.SOUL_SAND)) {
-                walk = WALK_ONE_OVER_SOUL_SAND_COST;
+                walk = Math.max(JUMP_ONE_BLOCK_COST, context.soulSandWalkCost);
             } else if (toPlace.is(Blocks.MAGMA_BLOCK)) {
                 walk = SNEAK_ONE_BLOCK_COST;
             } else {
@@ -144,15 +149,25 @@ public class MovementAscend extends Movement {
         double totalCost = walk + additionalPlacementCost;
         // start with srcUp2 since we already have its state
         // includeFalling isn't needed because of the falling check above -- if srcUp3 is falling we will have already exited with COST_INF if we'd actually have to break it
-        totalCost += MovementHelper.getMiningDurationTicks(context, x, y + 2, z, srcUp2, false);
+        // all three are broken from src, so all three pay for the water we're standing in
+        double raw1 = MovementHelper.getMiningDurationTicks(context, x, y + 2, z, srcUp2, false);
+        totalCost += MovementHelper.waterBreakCost(context, x, y, z, raw1);
         if (totalCost >= COST_INF) {
             return COST_INF;
         }
-        totalCost += MovementHelper.getMiningDurationTicks(context, destX, y + 1, destZ, false);
+        double raw2 = MovementHelper.getMiningDurationTicks(context, destX, y + 1, destZ, false);
+        totalCost += MovementHelper.waterBreakCost(context, x, y, z, raw2);
         if (totalCost >= COST_INF) {
             return COST_INF;
         }
-        totalCost += MovementHelper.getMiningDurationTicks(context, destX, y + 2, destZ, true);
+        double raw3 = MovementHelper.getMiningDurationTicks(context, destX, y + 2, destZ, true);
+        totalCost += MovementHelper.waterBreakCost(context, x, y, z, raw3);
+        // the jump and the walk happen inside the last break's wait, same as MovementTraverse
+        if (totalCost < COST_INF && (raw1 <= 0 || MovementHelper.isMultiTickBreak(context, raw1))
+                && (raw2 <= 0 || MovementHelper.isMultiTickBreak(context, raw2))
+                && (raw3 <= 0 || MovementHelper.isMultiTickBreak(context, raw3))) {
+            totalCost -= MovementHelper.breakWaitCredit(context, Math.max(raw1, Math.max(raw2, raw3)), Math.max(JUMP_ONE_BLOCK_COST, WALK_ONE_BLOCK_COST));
+        }
         return totalCost;
     }
 
@@ -199,6 +214,10 @@ public class MovementAscend extends Movement {
 
         if (MovementHelper.isBottomSlab(jumpingOnto) && !MovementHelper.isBottomSlab(BlockStateInterface.get(ctx, src.below()))) {
             return state; // don't jump while walking from a non double slab into a bottom slab
+        }
+
+        if (StairSteps.walkUp(jumpingOnto, src, dest, BlockStateInterface.get(ctx, src.below()), ctx.world())) {
+            return state; // vanilla steps up the half block lip by itself, a jump here only costs the sprint
         }
 
         if (Baritone.settings().assumeStep.value || ctx.playerFeet().equals(src.above())) {

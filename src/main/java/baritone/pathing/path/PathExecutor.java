@@ -18,6 +18,7 @@
 package baritone.pathing.path;
 
 import baritone.Baritone;
+import baritone.altoclef.AltoClefSettings;
 import baritone.api.pathing.calc.IPath;
 import baritone.api.pathing.movement.ActionCosts;
 import baritone.api.pathing.movement.IMovement;
@@ -30,11 +31,14 @@ import baritone.pathing.calc.AbstractNodeCostSearch;
 import baritone.pathing.movement.Movement;
 import baritone.pathing.movement.MovementHelper;
 import baritone.pathing.movement.MovementState;
+import baritone.pathing.movement.StairSteps;
 import baritone.pathing.movement.movements.*;
 import baritone.utils.BlockStateInterface;
 import baritone.utils.ExperimentalMovement;
+import baritone.utils.ToolSet;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Vec3i;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
@@ -71,6 +75,8 @@ public class PathExecutor implements IPathExecutor, Helper {
     private int ticksOnCurrent;
     private Double currentMovementOriginalCostEstimate;
     private Integer costEstimateIndex;
+    // planned versus real ticks per movement, handed on with the rest when a splice or a cut makes a new executor
+    private MovementTimer timer = new MovementTimer();
     private boolean failed;
     private boolean recalcBP = true;
     private HashSet<BlockPos> toBreak = new HashSet<>();
@@ -81,6 +87,9 @@ public class PathExecutor implements IPathExecutor, Helper {
     private final IPlayerContext ctx;
 
     private boolean sprintNextTick;
+    // see carefulSprint
+    private int carefulAt = -1;
+    private boolean carefulLava;
     private SprintJump flight;
     private GroundShortcut groundShortcut;
     private int ticksOnShortcut;
@@ -281,6 +290,9 @@ public class PathExecutor implements IPathExecutor, Helper {
             clearKeys();
             return true;
         }
+        if (ticksOnCurrent == 0) {
+            timer.begin(behavior, movement, bsi, currentMovementOriginalCostEstimate, currentCost);
+        }
         MovementStatus movementStatus = movement.update();
         if (movementStatus == UNREACHABLE || movementStatus == FAILED) {
             logDebug("Movement returns status " + movementStatus);
@@ -289,6 +301,7 @@ public class PathExecutor implements IPathExecutor, Helper {
         }
         if (movementStatus == SUCCESS) {
             //System.out.println("Movement done, next path");
+            timer.finish(behavior, movement, ticksOnCurrent);
             pathPosition++;
             onChangeInPathPosition();
             onTick();
@@ -299,8 +312,10 @@ public class PathExecutor implements IPathExecutor, Helper {
                     return tickGroundShortcut();
                 }
                 smoothSteering(movement, bsi);
+                cornerSteering(movement, bsi);
             }
             sprintNextTick = shouldSprintNextTick();
+            timer.afterSprint(movement);
             if (!sprintNextTick) {
                 ctx.player().setSprinting(false); // letting go of control doesn't make you stop sprinting actually
             }
@@ -632,7 +647,7 @@ public class PathExecutor implements IPathExecutor, Helper {
                     logDebug("Skipping descend to straight ascend");
                     return true;
                 }
-                if (canSprintFromDescendInto(ctx, current, next)) {
+                if (canSprintFromDescendInto(ctx, current, next) || sprintsPastLanding(current, next, 1)) {
 
                     if (next instanceof MovementDescend && pathPosition < path.length() - 3) {
                         IMovement next_next = path.movements().get(pathPosition + 2);
@@ -651,6 +666,9 @@ public class PathExecutor implements IPathExecutor, Helper {
                 }
                 //logDebug("Turning off sprinting " + movement + " " + next + " " + movement.getDirection() + " " + next.getDirection().down() + " " + next.getDirection().down().equals(movement.getDirection()));
             }
+        }
+        if (current instanceof MovementAscend && sprintsUpStairs((MovementAscend) current)) {
+            return true;
         }
         if (current instanceof MovementAscend && pathPosition != 0) {
             IMovement prev = path.movements().get(pathPosition - 1);
@@ -700,8 +718,170 @@ public class PathExecutor implements IPathExecutor, Helper {
                 behavior.baritone.getInputOverrideHandler().setInputForceState(Input.MOVE_FORWARD, true);
                 return true;
             }
+            // overrideFall only knows straight traverses, this is every other way the path can carry on from the landing
+            return sprintsThroughFall((MovementFall) current);
         }
         return false;
+    }
+
+    // a stair we just walk up (MovementAscend doesn't jump for it either) takes no jump to sprint through, so a whole flight
+    // of them can be one sprint instead of a stop and a hop at every step. the path has to go on, since the last
+    // movement is the goal and we don't sprint past that, and it can't bend more than a descend's worth at the top
+    private boolean sprintsUpStairs(MovementAscend ascend) {
+        if (!Baritone.settings().sprintAscends.value || pathPosition >= path.length() - 2
+                || !StairSteps.walkUp(ctx.world().getBlockState(ascend.getDest().below()), ascend.getSrc(), ascend.getDest(),
+                ctx.world().getBlockState(ascend.getSrc().below()), ctx.world())) {
+            return false;
+        }
+        BlockPos dir = ascend.getDirection();
+        BlockPos nextDir = path.movements().get(pathPosition + 1).getDirection();
+        BlockStateInterface bsi = behavior.baritone.bsi;
+        return SprintPolicy.turnDegrees(dir.getX(), dir.getZ(), nextDir.getX(), nextDir.getZ()) <= SprintPolicy.DESCEND_MAX_TURN
+                && ascend.toBreak(bsi).isEmpty() && ascend.toPlace(bsi).isEmpty() && !carefulSprint();
+    }
+
+    // a small drop, no bucket and no clutch in sight, and the path goes on roughly the way we were going
+    private boolean sprintsThroughFall(MovementFall fall) {
+        int drop = -fall.getDirection().getY();
+        if (!Baritone.settings().sprintThroughDescends.value || drop < 2 || drop > ExperimentalMovement.SAFE_FALL
+                || drop > Baritone.settings().maxFallHeightNoWater.value || pathPosition >= path.length() - 3) {
+            return false; // anything that is not a plain safe fall lands somewhere it wants a say in (it centers on the landing)
+        }
+        return sprintsPastLanding(fall, path.movements().get(pathPosition + 1), drop);
+    }
+
+    // the descend rules above only know "straight on". this one asks what the cells we would coast over actually are
+    private boolean sprintsPastLanding(IMovement current, IMovement next, int plannedDrop) {
+        if (!Baritone.settings().sprintThroughDescends.value || pathPosition >= path.length() - 3) {
+            return false; // the last movement is the goal, and nobody wants to be sprinting past that
+        }
+        if (current instanceof MovementDescend && ((MovementDescend) current).skipToAscend()) {
+            return false; // the weird overshoot glitch has its own handling
+        }
+        boolean walksOn = next instanceof MovementTraverse || next instanceof MovementDescend
+                || next instanceof MovementDiagonal && Baritone.settings().allowOvershootDiagonalDescend.value;
+        BlockPos dir = current.getDirection();
+        BlockPos nextDir = next.getDirection();
+        if (!walksOn || nextDir.getY() > 0 || Math.abs(dir.getX()) + Math.abs(dir.getZ()) != 1 || carefulSprint()) {
+            return false;
+        }
+        BlockPos land = current.getDest();
+        double turn = SprintPolicy.turnDegrees(dir.getX(), dir.getZ(), nextDir.getX(), nextDir.getZ());
+        return SprintPolicy.descendKeepsSprint(false, turn,
+                SprintPolicy.overshootSafe(new WorldTerrain(behavior.baritone.bsi), land.getX(), land.getY(), land.getZ(), dir.getX(), dir.getZ(), plannedDrop));
+    }
+
+    // one answer to "should we do this the old careful way" for every rule that sprints where it used to stop: the nether,
+    // lava near where we are going, low health, or something close by placing / breaking (bridging, pillaring, parkour places)
+    private boolean carefulSprint() {
+        if (carefulAt != pathPosition) {
+            carefulAt = pathPosition; // 4 lava scans are a lot to do every tick, the path only changes under us once per movement
+            List<BlockPos> centers = new ArrayList<>();
+            centers.add(ctx.playerFeet());
+            for (int i = pathPosition; i <= pathPosition + 2 && i < path.movements().size(); i++) {
+                centers.add(path.movements().get(i).getDest());
+            }
+            carefulLava = SprintPolicy.lavaNear(new WorldTerrain(behavior.baritone.bsi), centers);
+        }
+        return SprintPolicy.careful(ctx.world().dimension() == Level.NETHER, carefulLava, ctx.player().getHealth(), placingNearby());
+    }
+
+    private boolean placingNearby() {
+        BlockStateInterface bsi = behavior.baritone.bsi;
+        double[] progress = new double[SprintPolicy.MAX_INSTANT_BREAKS];
+        int breaks = 0;
+        ToolSet tools = null;
+        // breaking is like 5x slower in water and in the air, and the click can land while we're still coming down a descend
+        boolean slowSwing = ctx.player().isInWater() || !ctx.player().onGround()
+                || pathPosition < path.movements().size() && (path.movements().get(pathPosition) instanceof MovementDescend || path.movements().get(pathPosition) instanceof MovementFall);
+        for (int i = pathPosition; i <= pathPosition + 2 && i < path.movements().size(); i++) {
+            Movement movement = (Movement) path.movements().get(i);
+            if (movement instanceof MovementPillar || !movement.toPlace(bsi).isEmpty()) {
+                return true;
+            }
+            for (BlockPos pos : movement.toBreak(bsi)) {
+                if (breaks == progress.length) {
+                    return true; // a tunnel, however fast the pick is
+                }
+                if (tools == null) {
+                    tools = new ToolSet(ctx.player());
+                }
+                progress[breaks++] = tools.getStrVsBlock(bsi.get0(pos)) * (slowSwing ? 0.2 : 1);
+            }
+        }
+        return !SprintPolicy.trivialBreaks(progress, breaks);
+    }
+
+    // turn a little before the corner instead of at it. a movement is done the moment we step into its dest block, and at
+    // sprint speed the old heading carries a third of a block past that, so the hitbox leans on the wall on the inside of
+    // the bend, vanilla calls that a collision, and a collision ends the sprint
+    private void cornerSteering(Movement movement, BlockStateInterface bsi) {
+        if (!Baritone.settings().sprintThroughCorners.value || pathPosition >= path.movements().size() - 1
+                || !behavior.baritone.getInputOverrideHandler().isInputForcedDown(Input.SPRINT) || !canSteerOnGround(movement)) {
+            return; // not sprinting into it means there is no momentum to steer, and the movement knows best
+        }
+        IMovement next = path.movements().get(pathPosition + 1);
+        if (!flatWalk(movement, bsi) || !flatWalk(next, bsi)) {
+            return;
+        }
+        BlockPos dir = movement.getDirection();
+        BlockPos nextDir = next.getDirection();
+        double turn = SprintPolicy.turnDegrees(dir.getX(), dir.getZ(), nextDir.getX(), nextDir.getZ());
+        if (!SprintPolicy.preTurnable(turn)) {
+            return;
+        }
+        Vec3 position = ctx.player().position();
+        double[] aim = SprintPolicy.cornerAim(position.x, position.z, movement.getSrc(), movement.getDest(), next.getDest());
+        if (aim == null || carefulSprint()) {
+            return;
+        }
+        boolean tight = !SprintPolicy.cornerBoxClear(movement.getSrc(), movement.getDest(), next.getDest(), pos -> clearSmoothingColumn(bsi, pos));
+        boolean hazards = SprintPolicy.hazardAround(new WorldTerrain(bsi), movement.getDest());
+        if (!SprintPolicy.cornerKeepsSprint(false, turn, hazards, tight)) {
+            return;
+        }
+        behavior.baritone.getLookBehavior().updateTarget(
+                RotationUtils.calcRotationFromVec3d(ctx.playerHead(), new Vec3(aim[0], movement.getDest().y, aim[1]), ctx.playerRotations())
+                        .withPitch(ctx.playerRotations().getPitch()), false);
+    }
+
+    // flat walking with nothing to break or place on the way
+    private boolean flatWalk(IMovement movement, BlockStateInterface bsi) {
+        return (movement instanceof MovementTraverse || movement instanceof MovementDiagonal)
+                && movement.getSrc().y == movement.getDest().y
+                && ((Movement) movement).toPlace(bsi).isEmpty() && ((Movement) movement).toBreak(bsi).isEmpty();
+    }
+
+    // what the sprint rules want to know about blocks, answered from the live world
+    private static final class WorldTerrain implements SprintPolicy.Terrain {
+
+        private final BlockStateInterface bsi;
+
+        private WorldTerrain(BlockStateInterface bsi) {
+            this.bsi = bsi;
+        }
+
+        @Override
+        public boolean hazard(int x, int y, int z) {
+            BlockState state = bsi.get0(x, y, z);
+            return MovementHelper.avoidWalkingInto(state) || MovementHelper.isLava(state) || state.is(Blocks.MAGMA_BLOCK)
+                    || state.is(Blocks.POWDER_SNOW) || state.is(Blocks.WITHER_ROSE);
+        }
+
+        @Override
+        public boolean lava(int x, int y, int z) {
+            return MovementHelper.isLava(bsi.get0(x, y, z));
+        }
+
+        @Override
+        public boolean passable(int x, int y, int z) {
+            return MovementHelper.canWalkThrough(bsi, x, y, z);
+        }
+
+        @Override
+        public boolean standable(int x, int y, int z) {
+            return MovementHelper.canWalkOn(bsi, x, y, z);
+        }
     }
 
     /**
@@ -869,6 +1049,10 @@ public class PathExecutor implements IPathExecutor, Helper {
         if (!Baritone.settings().sprintAscends.value) {
             return false;
         }
+        if (StairSteps.walkUp(ctx.world().getBlockState(next.getDest().below()), next.getSrc(), next.getDest(),
+                ctx.world().getBlockState(next.getSrc().below()), ctx.world())) {
+            return false; // no hop to time for this one, sprintsUpStairs walks it
+        }
         if (!current.getDirection().equals(next.getDirection().below())) {
             return false;
         }
@@ -897,6 +1081,9 @@ public class PathExecutor implements IPathExecutor, Helper {
         }
         if (MovementHelper.avoidWalkingInto(ctx.world().getBlockState(current.getSrc().above(3)))) {
             return false;
+        }
+        if (AltoClefSettings.getInstance().shouldAvoidWalkThroughForce(current.getSrc().above(3)) || AltoClefSettings.getInstance().shouldAvoidWalkThroughForce(current.getSrc().above(2))) {
+            return false; // sprinting would carry us into somewhere altoclef wants us to stay out of
         }
         return !MovementHelper.avoidWalkingInto(ctx.world().getBlockState(next.getDest().above(2))); // codacy smh my head
     }
@@ -956,11 +1143,12 @@ public class PathExecutor implements IPathExecutor, Helper {
             ret.currentMovementOriginalCostEstimate = currentMovementOriginalCostEstimate;
             ret.costEstimateIndex = costEstimateIndex;
             ret.ticksOnCurrent = ticksOnCurrent;
+            ret.timer = timer;
             ret.flight = flight; // a new path showing up doesn't make us any less airborne
             // a splice keeps every index of the first path, so the trip carries straight over. losing it
             // mid placement would have the new executor place a second boat
             if (boat != null) {
-                boat.rebase(path, 0);
+                boat.rebase(path);
                 ret.boat = boat;
             }
             ret.boatRefusedUntil = boatRefusedUntil;
@@ -1006,6 +1194,11 @@ public class PathExecutor implements IPathExecutor, Helper {
     }
 
     private PathExecutor cutIfTooLong() {
+        // not while boating. a long crossing walks pathPosition past the limit, the cut shifts the trip's
+        // start to like -30 and the lane goes looking for positions[-30]. the history can wait for dry land
+        if (boat != null) {
+            return this;
+        }
         if (pathPosition > Baritone.settings().maxPathHistoryLength.value) {
             int cutoffAmt = Baritone.settings().pathHistoryCutoffAmount.value;
             CutoffPath newPath = new CutoffPath(path, cutoffAmt, path.length() - 1);
@@ -1022,11 +1215,8 @@ public class PathExecutor implements IPathExecutor, Helper {
                 ret.costEstimateIndex = costEstimateIndex - cutoffAmt;
             }
             ret.ticksOnCurrent = ticksOnCurrent;
+            ret.timer = timer;
             ret.flight = flight;
-            if (boat != null) {
-                boat.rebase(newPath, cutoffAmt);
-                ret.boat = boat;
-            }
             ret.boatRefusedUntil = boatRefusedUntil < 0 ? -1 : boatRefusedUntil - cutoffAmt;
             return ret;
         }

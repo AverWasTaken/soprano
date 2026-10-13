@@ -20,6 +20,8 @@ package baritone.api.utils;
 import baritone.api.BaritoneAPI;
 import baritone.api.Settings;
 import net.minecraft.client.Minecraft;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.core.Holder;
 import net.minecraft.core.Vec3i;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -43,6 +45,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.regex.Matcher;
@@ -53,7 +56,23 @@ import java.util.stream.Stream;
 public class SettingsUtil {
 
     public static final String SETTINGS_DEFAULT_NAME = "settings.txt";
-    private static final Pattern SETTING_PATTERN = Pattern.compile("^(?<setting>[^ ]+) +(?<value>.+)"); // key and value split by the first space
+    // key and value split by the first space. the value may be empty, "altoIdleCommand " is what an emptied string setting saves as
+    private static final Pattern SETTING_PATTERN = Pattern.compile("^(?<setting>[^ ]+) +(?<value>.*)");
+    // settings that are gone. a settings file from before still names them, and "Unable to parse line" with a stack trace for a
+    // line that is just old is noise: they are skipped without a word (lowercase, like the lookup)
+    private static final Set<String> RETIRED = Set.of("altohostileengagerange", "altohostileengageheight", "altopassbygraceticks",
+            "altoswarmthreshold");
+
+    /**
+     * Whether a setting name (any case) belonged to a setting that has since been removed, so reading an old settings file
+     * can skip its line quietly.
+     *
+     * @param settingName the name from the settings file
+     * @return true if the setting is retired
+     */
+    public static boolean isRetired(String settingName) {
+        return RETIRED.contains(settingName.toLowerCase(Locale.ROOT));
+    }
 
 
     private static boolean isComment(String line) {
@@ -72,28 +91,39 @@ public class SettingsUtil {
         }
     }
 
+    /**
+     * Applies one line of a settings file. A line for a retired setting is skipped without a word.
+     *
+     * @param settings the settings to change
+     * @param line     one non-empty, non-comment line of the file
+     */
+    public static void applyLine(Settings settings, String line) {
+        Matcher matcher = SETTING_PATTERN.matcher(line);
+        if (!matcher.matches()) {
+            Helper.HELPER.logDirect("Invalid syntax in setting file: " + line);
+            return;
+        }
+
+        String settingName = matcher.group("setting").toLowerCase(Locale.ROOT);
+        String settingValue = matcher.group("value");
+        // TODO remove soonish
+        if ("allowjumpat256".equals(settingName)) {
+            settingName = "allowjumpatbuildlimit";
+        }
+        if (isRetired(settingName)) {
+            return;
+        }
+        try {
+            parseAndApply(settings, settingName, settingValue);
+        } catch (Exception ex) {
+            Helper.HELPER.logDirect("Unable to parse line " + line);
+            ex.printStackTrace();
+        }
+    }
+
     public static void readAndApply(Settings settings, String settingsName) {
         try {
-            forEachLine(settingsByName(settingsName), line -> {
-                Matcher matcher = SETTING_PATTERN.matcher(line);
-                if (!matcher.matches()) {
-                    Helper.HELPER.logDirect("Invalid syntax in setting file: " + line);
-                    return;
-                }
-
-                String settingName = matcher.group("setting").toLowerCase(Locale.ROOT);
-                String settingValue = matcher.group("value");
-                // TODO remove soonish
-                if ("allowjumpat256".equals(settingName)) {
-                    settingName = "allowjumpatbuildlimit";
-                }
-                try {
-                    parseAndApply(settings, settingName, settingValue);
-                } catch (Exception ex) {
-                    Helper.HELPER.logDirect("Unable to parse line " + line);
-                    ex.printStackTrace();
-                }
-            });
+            forEachLine(settingsByName(settingsName), line -> applyLine(settings, line));
         } catch (NoSuchFileException ignored) {
             Helper.HELPER.logDirect("Baritone settings file not found, resetting.");
         } catch (Exception ex) {
@@ -234,6 +264,13 @@ public class SettingsUtil {
                 str -> new Color(Integer.parseInt(str.split(",")[0]), Integer.parseInt(str.split(",")[1]), Integer.parseInt(str.split(",")[2])),
                 color -> color.getRed() + "," + color.getGreen() + "," + color.getBlue()
         ),
+        // before VEC3I: a BlockPos is a Vec3i, and VEC3I would claim it and then hand back a plain Vec3i
+        BLOCKPOS(
+                BlockPos.class,
+                str -> new BlockPos(Integer.parseInt(str.split(",")[0].trim()), Integer.parseInt(str.split(",")[1].trim()), Integer.parseInt(str.split(",")[2].trim())),
+                pos -> pos.getX() + "," + pos.getY() + "," + pos.getZ()
+        ),
+        BLOCKRANGE(BlockRange.class, BlockRange::parse, BlockRange::format),
         VEC3I(
                 Vec3i.class,
                 str -> new Vec3i(Integer.parseInt(str.split(",")[0]), Integer.parseInt(str.split(",")[1]), Integer.parseInt(str.split(",")[2])),
@@ -249,11 +286,38 @@ public class SettingsUtil {
                 str -> BuiltInRegistries.ITEM.get(Identifier.parse(str.trim())).map(Holder.Reference::value).orElse(null),
                 item -> BuiltInRegistries.ITEM.getKey(item).toString()
         ),
+        // any enum, matched on its constant names without caring about case. after MIRROR and ROTATION, which got here first
+        ENUM() {
+            @Override
+            public Object parse(Type type, String raw) {
+                Object[] constants = ((Class<?>) type).getEnumConstants();
+                for (Object constant : constants) {
+                    if (((Enum<?>) constant).name().equalsIgnoreCase(raw.trim())) {
+                        return constant;
+                    }
+                }
+                throw new IllegalArgumentException("unknown value " + raw.trim() + ", expected one of " + enumNames((Class<?>) type));
+            }
+
+            @Override
+            public String toString(Type type, Object value) {
+                return ((Enum<?>) value).name();
+            }
+
+            @Override
+            public boolean accepts(Type type) {
+                return type instanceof Class && ((Class<?>) type).isEnum();
+            }
+        },
         LIST() {
             @Override
             public Object parse(Type type, String raw) {
                 Type elementType = ((ParameterizedType) type).getActualTypeArguments()[0];
                 Parser parser = Parser.getParser(elementType);
+                // an empty list saves as nothing at all, "".split(",") would be one empty element
+                if (raw.isBlank()) {
+                    return new ArrayList<>();
+                }
                 return Stream.of(raw.split(","))
                         .map(s -> parser.parse(elementType, s))
                         .collect(Collectors.toList());
@@ -340,6 +404,10 @@ public class SettingsUtil {
         @Override
         public boolean accepts(Type type) {
             return type instanceof Class && this.cla$$.isAssignableFrom((Class) type);
+        }
+
+        public static String enumNames(Class<?> type) {
+            return Stream.of(type.getEnumConstants()).map(c -> ((Enum<?>) c).name()).collect(Collectors.joining(", "));
         }
 
         public static Parser getParser(Type type) {

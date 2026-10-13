@@ -26,6 +26,7 @@ import baritone.api.utils.*;
 import baritone.api.utils.input.Input;
 import baritone.behavior.PathingBehavior;
 import baritone.utils.BlockStateInterface;
+import baritone.utils.FallingColumn;
 import java.util.*;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -35,6 +36,7 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.entity.item.FallingBlockEntity;
 import net.minecraft.world.phys.AABB;
+import baritone.utils.ExperimentalMovement;
 
 public abstract class Movement implements IMovement, MovementHelper {
 
@@ -161,7 +163,7 @@ public abstract class Movement implements IMovement, MovementHelper {
                 }
             } else {
                 swimStall.reset();
-                if (Baritone.settings().allowSwimming.value && ctx.player().isSwimming()) {
+                if (ExperimentalMovement.allowSwimming() && ctx.player().isSwimming()) {
                     // standing up to breathe (see shouldSwim). sprintInWater is on by default and traverse
                     // requests sprint every tick, which would keep us crawling along the bottom with our
                     // head under, so drop it explicitly
@@ -256,7 +258,7 @@ public abstract class Movement implements IMovement, MovementHelper {
      * we're actually in water, sprinting is allowed, and we have the hunger to sprint
      */
     private boolean shouldSwim() {
-        if (!Baritone.settings().allowSwimming.value
+        if (!ExperimentalMovement.allowSwimming()
                 || !ctx.player().isInWater()
                 || !Baritone.settings().allowSprint.value
                 || ctx.player().getFoodData().getFoodLevel() <= 6) {
@@ -468,14 +470,85 @@ public abstract class Movement implements IMovement, MovementHelper {
         return (velocity * (1 - carry) - carry * SWIM_JUMP_BOOST) / (WATER_DRAG_Y * pull);
     }
 
+    // how far above a cell we still count a falling block as "on its way down into it". a stack drops all at once, so
+    // the top of a tall one is still way up there when the bottom one has landed
+    private static final double FALL_LOOKAHEAD = 6;
+    // ticks we'll stand around for a column to land before deciding it was floating gravel that is never going to move
+    private static final int FALL_WAIT_MAX = 60;
+    private static final int FALL_PENDING_MAX = 10;
+
+    private int fallWaited;
+    private int fallPending;
+    // set by prepared() while it is waiting on a column, so a movement that walks while breaking doesn't walk into where it lands
+    protected boolean waitingOnFall;
+    // sticks once the hold above has stalled this movement, the timing recorder doesn't want those ticks in a sample
+    private boolean heldForFall;
+
+    public boolean wasHeldForFall() {
+        return heldForFall;
+    }
+
+    private FallingColumn.Cells fallCells() {
+        BlockPos.MutableBlockPos at = new BlockPos.MutableBlockPos();
+        return FallingColumn.over((x, y, z) -> ctx.world().getBlockState(at.set(x, y, z)));
+    }
+
+    // the stack over this cell would end up in the cells we are standing in
+    private boolean fallsOnUs(BlockPos pos) {
+        AABB box = ctx.player().getBoundingBox();
+        return FallingColumn.landsOnBox(fallCells(), pos.getX(), pos.getY(), pos.getZ(), box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ);
+    }
+
+    // the cell is open and a falling block sits on it with nothing under that one. it lets go in two ticks, and until
+    // then there is no entity for the check above to see, which is the exact gap we'd walk into
+    private boolean aboutToDrop(BlockPos pos) {
+        FallingColumn.Cells w = fallCells();
+        return !w.stops(pos.getX(), pos.getY(), pos.getZ()) && w.falls(pos.getX(), pos.getY() + 1, pos.getZ());
+    }
+
+    // true while a column is coming down into one of the cells we break, or is about to. the counters give up on a column
+    // that never lands (sand held up by something we can't see, a dupe machine) because it isn't worth standing here for
+    private boolean holdForFalling() {
+        if (!Baritone.settings().pauseMiningForFallingBlocks.value) {
+            return false;
+        }
+        boolean inFlight = false;
+        boolean pending = false;
+        for (BetterBlockPos blockPos : positionsToBreak) {
+            if (!ctx.world().getEntitiesOfClass(FallingBlockEntity.class, new AABB(0, 0, 0, 1, 1.1 + FALL_LOOKAHEAD, 1).move(blockPos)).isEmpty()) {
+                inFlight = true;
+            } else if (aboutToDrop(blockPos)) {
+                pending = true;
+            }
+        }
+        fallWaited = inFlight ? fallWaited + 1 : 0;
+        fallPending = pending ? fallPending + 1 : 0;
+        return inFlight && fallWaited <= FALL_WAIT_MAX || pending && fallPending <= FALL_PENDING_MAX;
+    }
+
     protected boolean prepared(MovementState state) {
         if (state.getStatus() == MovementStatus.WAITING) {
             return true;
         }
         boolean somethingInTheWay = false;
+        waitingOnFall = holdForFalling();
+        if (waitingOnFall) {
+            heldForFall = true;
+            return false;
+        }
         for (BetterBlockPos blockPos : positionsToBreak) {
-            if (!ctx.world().getEntitiesOfClass(FallingBlockEntity.class, new AABB(0, 0, 0, 1, 1.1, 1).move(blockPos)).isEmpty() && Baritone.settings().pauseMiningForFallingBlocks.value) {
-                return false;
+            if (!MovementHelper.canWalkThrough(ctx, blockPos) && fallsOnUs(blockPos)) {
+                BetterBlockPos feet = ctx.playerFeet();
+                if (feet.x != blockPos.x || feet.z != blockPos.z) {
+                    // only an edge of us hangs into that column (walkWhileBreaking momentum, mostly). failing the movement
+                    // here would just get the same movement planned again, so back off into src and break it from there
+                    MovementHelper.moveTowards(ctx, state, src);
+                    return false;
+                }
+                // we really are under it. the plan was made before whatever is stacked up there got there (the planner
+                // refuses this for ascend and pillar), and the alternative is to dig it out from under the column
+                state.setStatus(MovementStatus.UNREACHABLE);
+                return true;
             }
             if (!MovementHelper.canWalkThrough(ctx, blockPos)) { // can't break air, so don't try
                 somethingInTheWay = true;
@@ -532,6 +605,10 @@ public abstract class Movement implements IMovement, MovementHelper {
     @Override
     public void reset() {
         currentState = new MovementState().setStatus(MovementStatus.PREPPING);
+        fallWaited = 0;
+        fallPending = 0;
+        waitingOnFall = false;
+        heldForFall = false;
         swimStall.reset();
     }
 

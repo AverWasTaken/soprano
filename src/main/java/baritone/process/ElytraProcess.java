@@ -66,6 +66,7 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 
 import static baritone.api.pathing.movement.ActionCosts.COST_INF;
+import baritone.utils.ExperimentalMovement;
 
 public class ElytraProcess extends BaritoneProcessHelper implements IBaritoneProcess, IElytraProcess, AbstractGameEventListener {
     public State state;
@@ -262,7 +263,7 @@ public class ElytraProcess extends BaritoneProcessHelper implements IBaritonePro
         }
 
         if (this.state == State.FLYING || this.state == State.START_FLYING) {
-            this.state = ctx.player().onGround() && Baritone.settings().elytraAutoJump.value
+            this.state = ctx.player().onGround() && ExperimentalMovement.elytraAutoJump()
                     ? State.LOCATE_JUMP
                     : State.START_FLYING;
         }
@@ -525,9 +526,11 @@ public class ElytraProcess extends BaritoneProcessHelper implements IBaritonePro
 
     @Override
     public void onWorldEvent(WorldEvent event) {
-        if (event.getWorld() != null && event.getState() == EventState.POST) {
-            // Exiting the world, just destroy
+        if (event.getState() == EventState.POST) {
+            // POST fires both when we join a world (or change dimension) and when we leave one (world is null).
+            // either way the context was built for the old dimension, so it goes too, not just the behavior
             destroyBehaviorAsync();
+            destroyNpfContextAsync();
         }
     }
 
@@ -769,13 +772,23 @@ public class ElytraProcess extends BaritoneProcessHelper implements IBaritonePro
     }
 
     private NetherPathfinderContext getNpfContext() {
+        if (this.npfContext != null && ctx.world() != null && this.npfContext.getDimension() != ctx.world().dimension()) {
+            // built for another dimension (wrong minY, height and cache folder), the semaphore below waits for its teardown
+            destroyNpfContextAsync();
+        }
         if(this.npfContext == null) {
             npfSema.acquireUninterruptibly();
-            this.npfContext = new NetherPathfinderContext(
-                    Baritone.settings().elytraNetherSeed.value,
-                    Baritone.settings().elytraUseCache.value ? baritone.getWorldProvider().getCurrentWorld().directory.resolve("cache") : null,
-                    ctx.world()
-            );
+            try {
+                this.npfContext = new NetherPathfinderContext(
+                        Baritone.settings().elytraNetherSeed.value,
+                        Baritone.settings().elytraUseCache.value ? baritone.getWorldProvider().getCurrentWorld().directory.resolve("cache") : null,
+                        ctx.world()
+                );
+            } catch (Throwable t) {
+                // no context means nobody will ever release this permit, and the next call would hang on it forever
+                npfSema.release();
+                throw t;
+            }
         }
         return this.npfContext;
     }
@@ -785,8 +798,11 @@ public class ElytraProcess extends BaritoneProcessHelper implements IBaritonePro
         if (npf != null) {
             this.npfContext = null;
             Baritone.getExecutor().execute(() -> {
-                npf.destroy();
-                npfSema.release();
+                try {
+                    npf.destroy();
+                } finally {
+                    npfSema.release(); // a throwing destroy shouldn't strand the permit either
+                }
             });
         }
     }

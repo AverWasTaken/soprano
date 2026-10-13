@@ -18,6 +18,7 @@
 package baritone.pathing.movement.movements;
 
 import baritone.Baritone;
+import baritone.altoclef.AltoClefSettings;
 import baritone.api.IBaritone;
 import baritone.api.pathing.movement.MovementStatus;
 import baritone.api.utils.BetterBlockPos;
@@ -32,6 +33,7 @@ import baritone.pathing.movement.MovementHelper;
 import baritone.pathing.movement.MovementState;
 import baritone.pathing.movement.MovementState.MovementTarget;
 import baritone.utils.BlockStateInterface;
+import baritone.utils.ExperimentalMovement;
 import baritone.utils.pathing.MutableMoveResult;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -91,7 +93,7 @@ public class MovementFall extends Movement {
         return set;
     }
 
-    private enum FallMode {
+    enum FallMode {
         NONE, BUCKET, CLUTCH, HURT
     }
 
@@ -99,8 +101,24 @@ public class MovementFall extends Movement {
     // changing under us at the edge (health went down) is the one thing we check for, see updateState
     private boolean hurt;
 
+    // what the fall costs in hearts, priced once when the movement starts and never again. fallMode() builds a fresh
+    // context every tick, so the damage it sees moves with our health: one hit mid air and the fall gets priced out into
+    // NONE, which would hand it to nobody. -1 is not priced yet
+    private double plannedDamage = -1;
+
+    // built by unplanned(), see updateUnplanned
+    private boolean unplanned;
+
     // the clutch ran out of things to try (nothing in reach in time, nothing to hang on), so it's the bucket or nothing
     private boolean clutchGaveUp;
+
+    // hp was under fastModeMinHealth the last tick we stood on the ledge, so this fall gets no clutch start to finish
+    // (canAffordClutch). asked only on the ledge: once we're off it a hit must not take away the save we're in
+    private boolean lowAtLedge;
+
+    // same idea for the bucket: a miss from here would kill us at the hp we had on the ledge (canAffordBucketMiss). only acted
+    // on while standing on the ledge, a fall that starts in the air has already been agreed to
+    private boolean bucketRiskyAtLedge;
 
     // the ladder we right-clicked onto the wall, and whether the world agreed that it's there. vines drop nothing without
     // shears so they're never recorded, and a ladder somebody else put up never is either, it's theirs
@@ -121,7 +139,10 @@ public class MovementFall extends Movement {
     public void reset() {
         super.reset();
         clutchGaveUp = false;
+        lowAtLedge = false;
+        bucketRiskyAtLedge = false;
         hurt = false;
+        plannedDamage = -1;
         ladder = null;
         ladderIn = false;
         ticks = clickedAt = pickupMisses = 0;
@@ -131,7 +152,8 @@ public class MovementFall extends Movement {
     private FallMode fallMode() {
         CalculationContext context = new CalculationContext(baritone);
         MutableMoveResult result = new MutableMoveResult();
-        if (MovementDescend.dynamicFallCost(context, src.x, src.y, src.z, dest.x, dest.z, 0, context.get(dest.x, src.y - 2, dest.z), result)) {
+        // the clutch health gate is whatever the ledge said, not this tick's hp (see lowAtLedge)
+        if (MovementDescend.dynamicFallCost(context, src.x, src.y, src.z, dest.x, dest.z, 0, context.get(dest.x, src.y - 2, dest.z), result, lowAtLedge)) {
             return FallMode.BUCKET;
         }
         if (result.damage > 0) {
@@ -147,6 +169,17 @@ public class MovementFall extends Movement {
         return FallMode.CLUTCH;
     }
 
+    // price the fall once, see plannedDamage. a bucket fall is free, so zero hearts however far it is
+    private void snapshotDamage() {
+        if (plannedDamage >= 0) {
+            return;
+        }
+        CalculationContext context = new CalculationContext(baritone);
+        MutableMoveResult result = new MutableMoveResult();
+        boolean bucket = MovementDescend.dynamicFallCost(context, src.x, src.y, src.z, dest.x, dest.z, 0, context.get(dest.x, src.y - 2, dest.z), result, lowAtLedge);
+        plannedDamage = bucket ? 0 : result.damage;
+    }
+
     // the same question the planner asked, with the health we have right now
     private boolean stillPossible() {
         CalculationContext context = new CalculationContext(baritone);
@@ -157,14 +190,26 @@ public class MovementFall extends Movement {
 
     @Override
     public MovementState updateState(MovementState state) {
+        if (unplanned) {
+            return updateUnplanned(state);
+        }
         super.updateState(state);
         if (state.getStatus() != MovementStatus.RUNNING) {
             return state;
         }
         ticks++;
+        BlockPos playerFeet = ctx.playerFeet();
+        boolean atLedge = playerFeet.equals(src) && ctx.player().onGround();
+        // the first tick counts as the ledge too: a fall that starts with us already in the air never stands on src, and
+        // it should still get the gate for the hp we started it with
+        if (atLedge || ticks == 1) {
+            double health = ctx.player().getHealth() + ctx.player().getAbsorptionAmount();
+            lowAtLedge = !ExperimentalMovement.canAffordClutch(health, Baritone.settings().fastModeMinHealth.value);
+            bucketRiskyAtLedge = !ExperimentalMovement.canAffordBucketMiss(health, src.y - dest.y);
+        }
+        snapshotDamage();
         confirmLadder();
 
-        BlockPos playerFeet = ctx.playerFeet();
         Rotation toDest = RotationUtils.calcRotationFromVec3d(ctx.playerHead(), VecUtils.getBlockPosCenter(dest), ctx.playerRotations());
         Rotation targetRotation = null;
         BlockState destState = ctx.world().getBlockState(dest);
@@ -175,18 +220,26 @@ public class MovementFall extends Movement {
         }
 
         boolean isWater = destState.getFluidState().getType() instanceof WaterFluid;
-        if (hurt && !isWater && playerFeet.equals(src) && ctx.player().onGround() && !stillPossible()) {
+        if ((hurt || lowAtLedge || bucketRiskyAtLedge) && !isWater && atLedge && !stillPossible()) {
             // we got hurt (or something else dropped our health) since the plan was made, and this fall would now cost us
-            // more than we agreed to. nothing has happened yet, so the executor can just replan
+            // more than we agreed to, or it was a clutch and a clutch is off at this hp, or a missed bucket would kill us now.
+            // nothing has happened yet, so the executor can just replan
             return state.setStatus(MovementStatus.UNREACHABLE);
         }
         FallMode mode = isWater ? FallMode.NONE : fallMode();
+        AltoClefSettings alto = AltoClefSettings.getInstance();
+        if (mode == FallMode.BUCKET && alto.shouldNotPlaceBucketButStillFall() && !bucketOnHotbar()) {
+            // altoclef does its own water bucket mlg for a bucket it keeps off the hotbar, we just fall and don't insist on
+            // having one. a hotbar bucket is ours: the chain stands down for it (see ownsFall) so nobody cancels the path
+            mode = FallMode.NONE;
+        }
+        boolean paused = alto.isInteractionPaused(); // no hotbar swaps while paused, and the click gets eaten by the input handler
         if (mode == FallMode.BUCKET && !playerFeet.equals(dest)) {
             if (!Inventory.isHotbarSlot(ctx.player().getInventory().findSlotMatchingItem(STACK_BUCKET_WATER)) || ctx.world().dimension() == Level.NETHER) {
                 return state.setStatus(MovementStatus.UNREACHABLE);
             }
 
-            if (ctx.player().position().y - dest.getY() < ctx.playerController().getBlockReachDistance() && !ctx.player().onGround()) {
+            if (!paused && ctx.player().position().y - dest.getY() < ctx.playerController().getBlockReachDistance() && !ctx.player().onGround()) {
                 ctx.player().getInventory().setSelectedSlot(ctx.player().getInventory().findSlotMatchingItem(STACK_BUCKET_WATER));
 
                 targetRotation = new Rotation(toDest.getYaw(), 90.0F);
@@ -208,7 +261,7 @@ public class MovementFall extends Movement {
         }
         if (playerFeet.equals(dest) && (ctx.player().position().y - playerFeet.getY() < 0.094 || isWater)) { // 0.094 because lilypads
             if (isWater) { // only match water, not flowing water (which we cannot pick up with a bucket)
-                if (Inventory.isHotbarSlot(ctx.player().getInventory().findSlotMatchingItem(STACK_BUCKET_EMPTY))) {
+                if (!paused && Inventory.isHotbarSlot(ctx.player().getInventory().findSlotMatchingItem(STACK_BUCKET_EMPTY))) {
                     ctx.player().getInventory().setSelectedSlot(ctx.player().getInventory().findSlotMatchingItem(STACK_BUCKET_EMPTY));
                     if (ctx.player().getDeltaMovement().y >= 0) {
                         return state.setInput(Input.CLICK_RIGHT, true);
@@ -335,6 +388,22 @@ public class MovementFall extends Movement {
         return MovementHelper.canWalkOn(ctx, ahead.below()) && MovementHelper.canWalkOn(ctx, there.below());
     }
 
+    // the cells above the landing that are air with something next to them to hang a climbable on, as LadderClutch's mask.
+    // -1 if one is already there
+    private int clutchMask(BlockStateInterface bsi, Vec3 pos) {
+        int mask = 0;
+        for (int k = 0; k < LadderClutch.CELLS && dest.y + k < src.y; k++) {
+            BlockState there = bsi.get0(dest.above(k));
+            if (MovementHelper.isClimbable(there.getBlock())) {
+                return -1;
+            }
+            if (there.isAir() && !AltoClefSettings.getInstance().shouldAvoidPlacingAt(dest.getX(), dest.getY() + k, dest.getZ()) && !walls(bsi, dest.above(k), pos, false).isEmpty()) {
+                mask |= 1 << k;
+            }
+        }
+        return mask;
+    }
+
     // ladder clutch, one tick of it. the whole idea: a vine or ladder in one of the last few cells before the floor wipes the
     // fall distance (see LadderClutch for how, there's two ways and one of them works at terminal velocity). minecraft picks
     // what's under the crosshair at the start of a tick, before our onTick, and then does handleKeybinds (the click, so
@@ -354,15 +423,9 @@ public class MovementFall extends Movement {
         BlockStateInterface bsi = new BlockStateInterface(ctx);
         Vec3 pos = player.position();
         Vec3 mot = player.getDeltaMovement();
-        int mask = 0;
-        for (int k = 0; k < LadderClutch.CELLS && dest.y + k < src.y; k++) {
-            BlockState there = bsi.get0(dest.above(k));
-            if (MovementHelper.isClimbable(there.getBlock())) {
-                return false; // already one in here (us, a tick ago), physics takes it from here
-            }
-            if (there.isAir() && !walls(bsi, dest.above(k), pos, false).isEmpty()) {
-                mask |= 1 << k;
-            }
+        int mask = clutchMask(bsi, pos);
+        if (mask < 0) {
+            return false; // already one in here (us, a tick ago), physics takes it from here
         }
         double reach = ctx.playerController().getBlockReachDistance();
         // what's under the crosshair right now is exactly what a click will hit
@@ -491,6 +554,79 @@ public class MovementFall extends Movement {
             }
         }
         return null;
+    }
+
+    private boolean bucketOnHotbar() {
+        return Inventory.isHotbarSlot(ctx.player().getInventory().findSlotMatchingItem(STACK_BUCKET_WATER));
+    }
+
+    // altoclef's mlg chain asks this before jumping in on a fall. true if this is the fall we planned, we're in it, and we
+    // are doing something about it (or it's safe), so a second brain stealing the rotation and cancelling the path is the
+    // one thing that can only make it worse. a knockback out of the column or a shove too hard to be ours says no
+    public boolean ownsFall(Vec3 pos, Vec3 mot) {
+        if (unplanned || !FallCover.inColumn(src.x, src.y, src.z, dest.x, dest.y, dest.z, pos.x, pos.y, pos.z, mot.x, mot.z)) {
+            return false;
+        }
+        boolean water = ctx.world().getBlockState(dest).getFluidState().getType() instanceof WaterFluid;
+        snapshotDamage();
+        // a fall we planned to eat stays HURT for as long as it's in the air, whatever our health does to a fresh context.
+        // it's still ours while the hearts leave us at or above the floor we agreed to (the planner's gate, absorption
+        // counted the same way). once a hit since then breaks that, it's an emergency again and alto can clutch it
+        boolean planned = !water && plannedDamage > 0;
+        FallMode mode = water ? FallMode.NONE : planned ? FallMode.HURT : fallMode();
+        double health = ctx.player().getHealth() + ctx.player().getAbsorptionAmount();
+        boolean affordable = planned && ExperimentalMovement.canAffordFall(health, plannedDamage, Baritone.settings().fastModeMinHealth.value);
+        return FallCover.handles(mode, clutchGaveUp, bucketOnHotbar(), AltoClefSettings.getInstance().shouldNotPlaceBucketButStillFall(), affordable);
+    }
+
+    // the water this chain placed is ours to fetch, unless this movement is about to (the isWater branch of updateState).
+    // two clicks on one bucket is how you place it again
+    public boolean picksUpWaterAt(BlockPos placed) {
+        if (unplanned) {
+            return false;
+        }
+        boolean at = placed.getX() == dest.x && placed.getY() == dest.y && placed.getZ() == dest.z;
+        boolean water = ctx.world().getBlockState(dest).getFluidState().getType() instanceof WaterFluid;
+        return FallCover.pickupIsBaritones(at, water, Inventory.isHotbarSlot(ctx.player().getInventory().findSlotMatchingItem(STACK_BUCKET_EMPTY)));
+    }
+
+    // a fall nobody planned (knockback, a slip, a mob) for altoclef to clutch with a ladder or vine. landing is the cell
+    // above the floor we're about to hit. the movement is only ever asked for the clutch and the pickup, never for a path
+    public static MovementFall unplanned(IBaritone baritone, BetterBlockPos landing, int above) {
+        // the clutch only ever looks at the bottom few cells, so a short fake column keeps buildPositionsToBreak small
+        MovementFall fall = new MovementFall(baritone, landing.above(Math.max(LadderClutch.CELLS + 1, Math.min(above, 8))), landing);
+        fall.unplanned = true;
+        return fall;
+    }
+
+    // could a ladder or vine save this fall from where we are right now: something to hang it on near the floor, and
+    // LadderClutch says there's a tick that gets it there in time
+    public boolean canClutch() {
+        LocalPlayer player = ctx.player();
+        if (player.onGround() || player.getDeltaMovement().y >= 0) {
+            return false;
+        }
+        BlockStateInterface bsi = new BlockStateInterface(ctx);
+        Vec3 pos = player.position();
+        int mask = clutchMask(bsi, pos);
+        if (mask <= 0) {
+            return false;
+        }
+        return LadderClutch.pick(pos.y, player.getDeltaMovement().y, player.fallDistance, dest.y, mask, 0, ctx.playerController().getBlockReachDistance()) != null;
+    }
+
+    // all there is to an unplanned fall: clutch on the way down, fetch the ladder once we're standing. no centering, no
+    // bucket, nothing that wants a dest, the floor is where it is
+    private MovementState updateUnplanned(MovementState state) {
+        state.setStatus(MovementStatus.RUNNING);
+        ticks++;
+        confirmLadder();
+        LocalPlayer player = ctx.player();
+        if (player.onGround() || player.isInWater() || player.isInLava()) {
+            return pickUpLadder(state) ? state.setStatus(MovementStatus.SUCCESS) : state;
+        }
+        clutch(state);
+        return state;
     }
 
     @Override

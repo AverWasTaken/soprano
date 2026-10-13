@@ -44,6 +44,25 @@
     public <fields>;
 }
 
+# altoclef: gson reads and writes its config classes by field name (and drops fields proguard thinks nobody reads),
+# and the task hud / logs print class names, so none of adris.altoclef gets renamed or have its fields trimmed
+# the stand line reads a few private executor fields by name (and prints the movement class names)
+-keepclassmembers class baritone.pathing.path.PathExecutor {
+    *** ticksOnCurrent;
+    *** currentMovementOriginalCostEstimate;
+    *** boat;
+    *** groundShortcut;
+    *** flight;
+}
+-keepclassmembers class baritone.pathing.movement.Movement {
+    *** currentState;
+}
+-keepnames class baritone.pathing.movement.movements.**
+-keepnames class adris.altoclef.**
+-keepclassmembers class adris.altoclef.** {
+    <fields>;
+}
+
 # need to keep mixin names
 -keep class baritone.launch.** { *; }
 

@@ -1,0 +1,49 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>icons test</title>
+<style>
+    :root { --path-start: #30D158; --path-end: #FF453A; }
+    body { margin: 0; padding: 12px; background: #0a0a0a; color: #d8d8d8; font: 11px/1.2 system-ui, sans-serif; }
+    /* same layout as the java sheet: one row per size, whole set across */
+    .sheet { display: flex; flex-direction: column; gap: 14px; margin-bottom: 18px; }
+    .row { display: flex; align-items: center; }
+    .row .ic { margin: 0 8px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, 112px); gap: 8px; }
+    .cell { background: #151515; border-radius: 6px; padding: 6px; text-align: center; }
+    .cell .sizes { display: flex; align-items: center; justify-content: center; gap: 10px; height: 28px; }
+    .cell small { display: block; margin-top: 4px; color: #888; }
+    .pills { display: flex; gap: 12px; margin-top: 14px; align-items: center; }
+    .pill { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 8px; background: #0A73E8; color: #fff; }
+    .plain { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 8px; background: #1c1c1e; }
+</style>
+</head>
+<body>
+<div class="sheet" id="sheet"></div>
+<div class="grid" id="grid"></div>
+<div class="pills">
+    <span class="plain"><i data-icon="goto" data-size="16"></i> goto plain 16</span>
+    <span class="pill on-accent"><i data-icon="goto" data-size="16"></i> goto on accent 16</span>
+    <span class="pill on-accent"><i data-icon="goto" data-size="24"></i> 24</span>
+    <span class="pill"><i data-icon="goto" data-size="12" class="on-accent"></i> 12 (class on icon)</span>
+    <span class="pill on-accent"><span class="icon" data-icon="pin" data-size="16"></span> span.icon pin</span>
+</div>
+<script src="icons.js"></script>
+<script>
+    var sheet = document.getElementById('sheet');
+    [12, 16, 24, 32].forEach(function (s) {
+        var row = document.createElement('div');
+        row.className = 'row';
+        row.innerHTML = Icons.names.map(function (n) { return '<i data-icon="' + n + '" data-size="' + s + '"></i>'; }).join('');
+        sheet.appendChild(row);
+    });
+    document.getElementById('grid').innerHTML = Icons.names.map(function (n) {
+        return '<div class="cell"><div class="sizes"><i data-icon="' + n + '" data-size="12"></i><i data-icon="' + n
+            + '" data-size="16"></i><i data-icon="' + n + '" data-size="24"></i></div><small>' + n + '</small></div>';
+    }).join('');
+    Icons.hydrate();
+    Icons.hydrate(); // twice on purpose, must be a no-op
+</script>
+</body>
+</html>

@@ -21,6 +21,7 @@ import baritone.api.BaritoneAPI;
 import baritone.api.IBaritone;
 import baritone.api.Settings;
 import baritone.api.event.events.RotationMoveEvent;
+import baritone.utils.ExperimentalMovement;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.entity.Entity;
 import org.spongepowered.asm.mixin.Mixin;
@@ -84,7 +85,7 @@ public class MixinEntity {
         // latches immediately and the pitch steering dives right away
         if (LocalPlayer.class.isInstance(self)) {
             IBaritone baritone = BaritoneAPI.getProvider().getBaritoneForPlayer((LocalPlayer) self);
-            if (baritone != null && BaritoneAPI.getSettings().allowSwimming.value
+            if (baritone != null && ExperimentalMovement.allowSwimming()
                     && baritone.getPathingBehavior().isPathing()
                     && self.isInWater() && self.isSprinting()) {
                 return true;

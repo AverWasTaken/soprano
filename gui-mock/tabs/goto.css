@@ -1,0 +1,52 @@
+/* go to tab layout (tabs/GotoTab.java). content box is 863 x 587, card 16..847 */
+
+.gt { position: absolute; inset: 0; }
+
+.gt-card { position: absolute; left: 16px; right: 16px; top: 16px; height: 148px; padding: 16px 16px 0; }
+.gt-labels, .gt-fields { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.gt-labels { height: 16px; margin-bottom: 4px; }
+.gt-labels span { position: relative; top: 0.5px; font-size: 12px; line-height: 16px; font-weight: 500; color: var(--text-3); }   /* baselines round half a px apart, same trick as the kit */
+.gt-status { position: relative; top: 0.5px; height: 16px; line-height: 16px; margin-top: 8px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gt-status.err { color: var(--danger); }
+.gt-btns { display: flex; gap: 8px; margin-top: 12px; }
+.gt-btns .go { min-width: 72px; }
+/* java measures the label in whole device px, so this one comes out a design px narrower than css text width */
+#gt-here { padding: 0 12.5px; }
+
+/* number field: the kit text field plus the minus/plus nudges, 24 square, 3 in from the right, 2 apart (NumberField.java:240-249).
+   promote to kit.css */
+.num-field input { padding-right: 56px; }
+.num-field .nudges { position: absolute; right: 3px; top: 3px; display: flex; gap: 2px; z-index: 1; }
+.num-field .nudge { width: 24px; height: 24px; padding: 0; }
+
+/* recent: heading 20 tall at 24 under the card, list 8 under that */
+.gt-head { position: absolute; left: 16px; top: 188px; height: 20px; line-height: 20px; white-space: pre; }
+.gt-recent { position: absolute; left: 16px; right: 16px; top: 216px; }
+.gt-recent .row { display: block; padding: 0 56px 0 16px; line-height: 36px; white-space: pre; overflow: hidden; text-overflow: ellipsis; cursor: default; }
+/* coords and tail share one baseline (drawRecent), so they are inline in one 36 high line and not two centred boxes */
+.gt-recent .coords { font-variant-numeric: tabular-nums; color: var(--text); }
+.gt-recent .tail { font-size: 12px; line-height: 15px; font-variant-numeric: tabular-nums; color: var(--text-2); }
+/* the java does not give the minus sign a tabular width, css tnum does */
+.mn { font-variant-numeric: normal; }
+/* go pill: 40 x 26, 8 in from the card edge, 5 down the row */
+.go-pill {
+  position: absolute; right: 8px; top: 5px; width: 40px; height: 26px; border-radius: var(--control-radius);
+  font-size: 14px; line-height: 17px; font-weight: 500; color: var(--text-2);
+  display: flex; align-items: center; justify-content: center;
+  transition: background-color var(--anim-fast) var(--ease), color var(--anim-fast) var(--ease);
+}
+.go-pill:hover { background: var(--pressed); color: var(--text); }
+/* other dimension: the pill cannot go there, so it is dim and does nothing */
+.go-pill.off, .go-pill.off:hover { color: var(--text-3); background: none; pointer-events: none; }
+
+/* empty state, drawn in its finished state so ref shots (animations off) show it whole. path drawn once, 400ms ease-out cubic (GotoTab.java drawMotif). 220 x 88 box centred under the card */
+.gt-motif { position: absolute; left: 16px; right: 16px; top: 164px; bottom: 16px; display: none; }
+.gt.empty .gt-motif { display: block; }
+.gt.empty .gt-head, .gt.empty .gt-recent { display: none; }
+.gt-motif svg { position: absolute; left: 50%; top: 24px; width: 220px; height: 88px; margin-left: -110px; overflow: visible; }
+.gt-motif .cap { position: absolute; left: 0; right: 0; top: 128px; height: 20px; line-height: 20px; text-align: center; color: var(--text-3); }
+.gt-motif .trail { fill: none; stroke: var(--hairline-strong); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1; }
+.gt.empty.draw .trail { animation: gt-trail 400ms var(--ease) backwards; }
+.gt.empty.draw .end { animation: gt-end 400ms var(--ease) backwards; }
+@keyframes gt-trail { from { stroke-dashoffset: 1; } }
+@keyframes gt-end { 0%, 90% { opacity: 0; } }

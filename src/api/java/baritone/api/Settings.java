@@ -17,16 +17,21 @@
 
 package baritone.api;
 
+import baritone.api.utils.BlockRange;
+import baritone.api.utils.ForceFieldStrategy;
 import baritone.api.utils.Helper;
 import baritone.api.utils.NotificationHelper;
+import baritone.api.utils.OverworldToNetherBehaviour;
 import baritone.api.utils.SettingsUtil;
 import baritone.api.utils.TypeUtils;
 import baritone.api.utils.gui.BaritoneToast;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.chat.GuiMessageTag;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.Vec3i;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.Mirror;
@@ -131,6 +136,17 @@ public final class Settings {
     public final Setting<Double> blockBreakAdditionalPenalty = new Setting<>(2D);
 
     /**
+     * How much slower breaking blocks is while standing in water, as far as the path cost is concerned.
+     * Vanilla mines 5x slower with your eyes in water (no aqua affinity) and another 5x slower when you are
+     * not on the ground, so treading water is up to 25x. Movements that break something while the player
+     * stands in water pay this much (times 5 again if there is nothing solid under the feet) for the break
+     * part of their cost, so the pathfinder would rather get out of the water first and mine on land.
+     * <p>
+     * It only ever makes things more expensive, it never makes a move impossible. Set it to 1 to turn it off.
+     */
+    public final Setting<Double> waterBreakCostMultiplier = new Setting<>(5D);
+
+    /**
      * Additional penalty for hitting the space bar (ascend, pillar, or parkour) because it uses hunger
      */
     public final Setting<Double> jumpPenalty = new Setting<>(2D);
@@ -148,8 +164,8 @@ public final class Settings {
     public final Setting<Boolean> strictLiquidCheck = new Setting<>(false);
 
     /**
-     * Allow Baritone to fall arbitrary distances and place a water bucket beneath it.
-     * Reliability: questionable.
+     * Allow Baritone to fall up to {@link #maxFallHeightBucket} blocks and place a water bucket beneath it.
+     * Reliability: questionable, and a miss is the whole fall, so the planner only offers a drop while you would survive that.
      */
     public final Setting<Boolean> allowWaterBucketFall = new Setting<>(true);
 
@@ -158,7 +174,11 @@ public final class Settings {
      * a water bucket clutch but with a block you can carry in the nether.
      * <p>
      * Needs a ladder or vine on the hotbar and a wall beside the last few blocks of the fall. The water bucket is still
-     * preferred when you have one. Reliability: also questionable, it's all about the timing.
+     * preferred when you have one. Reliability: also questionable, it's all about the timing, and a clutch that misses is
+     * just the whole fall. The planner won't offer one below {@link #fastModeMinHealth} for that reason, or for a drop a miss
+     * would kill you in.
+     * <p>
+     * Part of {@link #fastMode}.
      */
     public final Setting<Boolean> allowLadderClutch = new Setting<>(false);
 
@@ -198,6 +218,25 @@ public final class Settings {
      * against it. That's why this defaults to off.
      */
     public final Setting<Boolean> assumeSafeWalk = new Setting<>(false);
+
+    /**
+     * Bridge backwards at walking speed without sneaking or stopping. When a bridge has nothing to place against
+     * except the block you are standing on, the bot turns around, walks backwards across the gap and places each
+     * block against the far face of the block underfoot the moment that face can be hit. The normal way is to
+     * crouch at the edge, aim, wait, click and shuffle on.
+     * <p>
+     * This is riskier than the sneaking bridge. For a stretch of each block the bot hangs over the edge with no
+     * sneak clamp holding it, so a missed placement depends on it catching itself by sneaking at the last moment.
+     * Laggy servers and strict anticheats will not like it, and stopping the bot (or anything else that lets go of the
+     * keys) in the middle of a block can drop it off the edge, because it is still moving when that happens.
+     * <p>
+     * Only bridges with no side placement option are affected, and only from plain footing. Anything slippery or slow
+     * under your feet (ice, slime, honey) keeps the sneaking bridge, and so does footing that opens when you click it
+     * (chests, furnaces, crafting tables and the like), water, and standing in anything climbable (ladders, vines, scaffolding and the like). Magma counts as plain
+     * unless {@link #allowWalkOnMagmaBlocks} is on. Soul sand and half slabs can't be placed against from behind at
+     * all, sneaking or not, so they never get this far.
+     */
+    public final Setting<Boolean> allowGodBridge = new Setting<>(false);
 
     /**
      * If true, parkour is allowed to make jumps when standing on blocks at the maximum height, so player feet is y=256
@@ -413,9 +452,11 @@ public final class Settings {
     public final Setting<Boolean> allowParkour = new Setting<>(false);
 
     /**
-     * Actually pretty reliable.
+     * Place the block to land on in mid air, while doing a parkour jump, for gaps that are too wide to clear without it.
      * <p>
-     * Doesn't make it any more dangerous compared to just normal allowParkour th
+     * Actually pretty reliable, but there is no taking it back: once the jump is committed, a placement that misses in the
+     * air leaves nothing to land on, and that is a fall. Only actually takes effect if {@link #allowParkour} is also
+     * true. Part of {@link #fastMode}.
      */
     public final Setting<Boolean> allowParkourPlace = new Setting<>(false);
 
@@ -425,9 +466,32 @@ public final class Settings {
     public final Setting<Boolean> considerPotionEffects = new Setting<>(true);
 
     /**
-     * Sprint and jump a block early on ascends wherever possible
+     * Sprint and jump a block early on ascends wherever possible. The sprint also carries on up a whole flight of
+     * straight stairs climbed from the low side (bottom half, no corner shape, from a full height floor). Those are walked
+     * and not jumped whatever this is set to, the way vanilla steps up a half block.
      */
     public final Setting<Boolean> sprintAscends = new Setting<>(true);
+
+    /**
+     * Keep sprinting down a ledge, step or small fall (3 blocks at most) when the path carries on in roughly the same direction (within 45 degrees)
+     * and the blocks you would coast over after landing are safe: no lava, fire, magma, powder snow, cactus,
+     * berry bushes, water or void, and no drop deeper than the one the path already planned.
+     * <p>
+     * Does nothing in the nether, within 3 blocks of lava, at 6 health or less, or while a nearby movement is
+     * placing blocks or breaking anything that is not gone the moment it is clicked (leaves with shears, netherrack with a
+     * fast pick; two such breaks at most). Those keep the old stop-sprinting-on-every-descend behavior.
+     */
+    public final Setting<Boolean> sprintThroughDescends = new Setting<>(true);
+
+    /**
+     * Keep sprinting through corners that need 60 degrees of turning or less, and start rotating a fraction of a block
+     * early so the corner is cut instead of clipped. Sharp turns (90 degrees and up) next to hazards, and corners in
+     * 1 wide corridors where cutting would clip a wall, keep their normal steering.
+     * <p>
+     * Does nothing in the nether, within 3 blocks of lava, at 6 health or less, or while a nearby movement is
+     * placing blocks or breaking anything that is not gone the moment it is clicked.
+     */
+    public final Setting<Boolean> sprintThroughCorners = new Setting<>(true);
 
     /**
      * Sprint jump in 1x2 corridors and whenever walking under a low ceiling, bonking our head on it.
@@ -445,6 +509,10 @@ public final class Settings {
     /**
      * Sprint jump along straight stretches of path, up single block steps and down small hills. Every jump is simulated
      * first and only happens if it lands back on the path without fall damage.
+     * <p>
+     * Also sprints over 1 and 2 block parkour gaps, when you reach them already sprinting and the path carries on
+     * straight for a block or two past the landing. The jump brakes in the air if it would fly past, and the planner
+     * prices those jumps as the sprint hops they are. Anywhere that does not hold, they are walked up to the edge like before.
      */
     public final Setting<Boolean> sprintJumping = new Setting<>(false);
 
@@ -486,10 +554,11 @@ public final class Settings {
      * <p>
      * While this is on, these settings behave as if they were on, whatever their own value (the settings themselves
      * are left alone, so turning this off gives you your old choices back):
-     * {@link #allowParkour}, {@link #allowParkourAscend}, {@link #allowNeos}, {@link #allowClimbJumps},
+     * {@link #allowParkour}, {@link #allowParkourAscend}, {@link #allowParkourPlace}, {@link #allowLadderClutch}, {@link #allowNeos}, {@link #allowClimbJumps},
      * {@link #allowMomentumJumps},
      * {@link #allowDiagonalAscend}, {@link #allowDiagonalDescend}, {@link #sprintJumping}, {@link #headHitters},
-     * {@link #allowGroundShortcuts} and {@link #preferFasterPathing}.
+     * {@link #allowGroundShortcuts}, {@link #allowGodBridge}, {@link #allowSwimming}, {@link #allowBoats},
+     * {@link #elytraAutoJump} and {@link #preferFasterPathing}.
      * <p>
      * It also scales the cost of parkour, neo, climb and momentum jumps by {@link #experimentalJumpBias}, caps the cost of
      * placing a block at {@link #experimentalBlockPlacementPenalty} (so a quick pillar or short bridge can beat a
@@ -708,6 +777,9 @@ public final class Settings {
     /**
      * How far are you allowed to fall onto solid ground (with a water bucket)?
      * It's not that reliable, so I've set it below what would kill an unarmored player (23)
+     * <p>
+     * The bucket can still miss, and a miss is the whole fall, so a drop is only planned while you would survive that
+     * miss with at least half a heart left. At low health a tall drop is left out even with a bucket in hand.
      */
     public final Setting<Integer> maxFallHeightBucket = new Setting<>(20);
 
@@ -837,6 +909,26 @@ public final class Settings {
      * Some clients like Impact try to force chatControl to off, so here's a second setting to do it anyway
      */
     public final Setting<Boolean> chatControlAnyway = new Setting<>(false);
+
+    /**
+     * Measure how long every movement really takes against what the planner said it would, and keep the numbers.
+     * <p>
+     * For each movement the executor runs from its first tick to success without a pause, a cancel, a resync or a
+     * jump ahead in the path, it writes one line to {@code movement-timings.csv} in the baritone folder of your
+     * minecraft folder (next to {@code settings.txt}): the movement kind and offset, the planned ticks, the real
+     * ticks, and a few flags (blocks broken and placed, sprinting, in water, standing still at the start, the floor
+     * under the start, {@link #fastMode}). Lines are batched and written by a background thread a few seconds after
+     * they happen, never on the game thread. The file is capped at 4 MiB: when it is full it is renamed to
+     * {@code movement-timings.csv.old} (replacing the older one) and a fresh one starts, so at most about 8 MiB is
+     * ever used.
+     * <p>
+     * Use the {@code timings} command to print which movements are off the most, and {@code timings clear} to throw
+     * the data away.
+     * <p>
+     * This only measures. Nothing reads the numbers back to change a cost, and with this off the executor only reads
+     * this setting once per movement and does nothing else.
+     */
+    public final Setting<Boolean> recordMovementTimings = new Setting<>(false);
 
     /**
      * Render the path
@@ -1005,7 +1097,8 @@ public final class Settings {
      * baritone places the boat from the shore, climbs in, rows along the path, and at the far side breaks the
      * boat and picks it back up (see {@link #boatPickup}) before carrying on on foot. Water traversal is costed
      * at rowing speed while a boat is in the inventory, so the planner will prefer going across a lake instead
-     * of around it.
+     * of around it. Only water with a straight row of at least {@link #boatMinWaterLength} boatable blocks through it
+     * in both directions is priced that way, so a pond or a narrow river costs what wading does.
      * <p>
      * A boat is wider than a block, so it only counts water with open water or air on every side at water
      * level; the planner routes a block off the banks for the same reason. Bubble columns (water over magma
@@ -1397,6 +1490,15 @@ public final class Settings {
      * Also on cosmic prisons this should be set to true since you don't actually mine the ore it just gets replaced with stone.
      */
     public final Setting<Boolean> cancelOnGoalInvalidation = new Setting<>(true);
+
+    /**
+     * When a task hands over to another one that asks for the same goal within half a second, keep walking the path that
+     * was just cancelled instead of standing still while a new one is calculated.
+     * <p>
+     * Only cancels from movement tasks starting and stopping are kept. A user cancel, a dimension change, a death or the
+     * player ending up off the path always throw it away.
+     */
+    public final Setting<Boolean> keepPathOnSameGoal = new Setting<>(true);
 
     /**
      * The "axis" command (aka GoalAxis) will go to a axis, or diagonal axis, at this Y level.
@@ -1808,6 +1910,443 @@ public final class Settings {
      * Sneak when magma blocks are under feet
      */
     public final Setting<Boolean> allowWalkOnMagmaBlocks = new Setting<>(false);
+
+    /**
+     * Count the bot's work as player activity for vanilla's AFK frame limiter. Since 1.21.2 the game drops to 30 fps
+     * after a minute without keyboard or mouse input (and 10 fps after ten minutes) when the inactivity limit option
+     * is on AFK, and the bot never touches the real keyboard or mouse, so the frame rate would tank while you watch it
+     * work. With this on, any tick where baritone is pathing, a process is in control, or AltoClef is running a task
+     * counts as input. Does nothing while the bot is idle, so the AFK limiter still kicks in then, and your options
+     * are never changed. Takes effect right away.
+     */
+    public final Setting<Boolean> keepFpsWhileBotting = new Setting<>(true);
+
+    /**
+     * Whether the gui key opens the click gui. The {@code #gui} command always works.
+     */
+    public final Setting<Boolean> guiKeyEnabled = new Setting<>(true);
+
+    /**
+     * GLFW key code that opens the click gui. Defaults to right shift (344). Set to -1 to unbind so only {@code #gui}
+     * opens it. The gui's own Settings tab has a key capture control for this.
+     */
+    public final Setting<Integer> guiKey = new Setting<>(344);
+
+    /**
+     * Use the dark appearance in the click gui. The sidebar's Light and Dark buttons save this preference.
+     */
+    public final Setting<Boolean> guiDarkMode = new Setting<>(true);
+
+    /**
+     * Animate click gui transitions and scrolling. Disable to reduce motion and make changes immediate.
+     */
+    public final Setting<Boolean> guiAnimations = new Setting<>(true);
+
+    // everything below belongs to the built in AltoClef, see adris.altoclef. all of it is prefixed alto so that
+    // #set alto<tab> finds it (same trick as the elytra settings). it only does anything while AltoClef has a task
+
+    /**
+     * Keep AltoClef's survival chains (eating, mob defense, bucket saves...) running even when no task was started,
+     * and run {@link #altoIdleCommand} when it has nothing to do. With this off AltoClef does nothing at all until you
+     * start a task, and goes back to doing nothing when the task ends. Takes effect right away.
+     */
+    public final Setting<Boolean> altoRunsWhenIdle = new Setting<>(false);
+
+    /**
+     * Let other players whisper AltoClef commands to your player (<code>/msg yourbot get cobblestone 4</code>). Only
+     * players in the whitelist file baritone/altoclef/altoclef_butler_whitelist.txt (one name per line, case does not
+     * matter) may, and an empty or missing whitelist means nobody can, so this does nothing until you add someone with
+     * the whitelist command. The blacklist file next to it is applied on top and wins. Whispers can only run
+     * AltoClef's commands, not Baritone's own, and never punk, gamma or whitelist. A whispered come walks to the player
+     * who sent it. Strangers get no answer unless replyToUnauthorized is on in butler.json. On by default.
+     * <p>
+     * Whisper parsing is set up in baritone/altoclef/configs/butler.json.
+     */
+    public final Setting<Boolean> altoButler = new Setting<>(true);
+
+    /**
+     * Show the task list of AltoClef in the top left corner while it is running.
+     */
+    public final Setting<Boolean> altoShowTaskChains = new Setting<>(true);
+
+    /**
+     * Size of the task list on top of the game's gui scale. 1 is the normal size, 0.75 is a nice small one. Values
+     * outside 0.5 to 2 are clamped. Needs {@link #altoShowTaskChains}.
+     */
+    public final Setting<Float> altoHudScale = new Setting<>(1.0f);
+
+    /**
+     * Show how long the current task has been running in the task list. Needs {@link #altoShowTaskChains}.
+     */
+    public final Setting<Boolean> altoShowTimer = new Setting<>(false);
+
+    /**
+     * Show the task list the way the developers see it: class names, item id lists and the raw task states, the same
+     * text that goes into the log. Off, the list is written in plain words. Turn it on when you are putting together
+     * a bug report. Needs {@link #altoShowTaskChains}.
+     */
+    public final Setting<Boolean> altoHudDetailed = new Setting<>(false);
+
+    /**
+     * The #gamer card on the right of the screen while a run is going: the phase and its clock against the budget,
+     * what the bot is doing, the kit it is collecting with the game's own item icons, the furnace batches, and hp and
+     * food. Sized by {@link #altoHudScale} like the task list. The task list keeps the phase as its one line.
+     */
+    public final Setting<Boolean> altoGamerHud = new Setting<>(true);
+
+    /**
+     * Hide all of AltoClef's warning logs. Not recommended, it makes debugging harder, but if you know what you are
+     * doing go nuts.
+     */
+    public final Setting<Boolean> altoHideAllWarningLogs = new Setting<>(false);
+
+    /**
+     * The delay in seconds between moving items for crafting, furnaces and any other kind of inventory movement.
+     */
+    public final Setting<Float> altoContainerItemMoveDelay = new Setting<>(0.2f);
+
+    /**
+     * If a dropped resource item is further than this from the player, don't pick it up. Less than 0 disables the
+     * limit.
+     */
+    public final Setting<Float> altoResourcePickupDropRange = new Setting<>(-1f);
+
+    /**
+     * Go after dropped items that are lying in water. Off by default: the bot ignores items that are in water unless
+     * it can grab them from dry land (or from a puddle one block deep), because swimming down after a drop is a good
+     * way to spend a whole run bobbing in a lake. Turn this on for the old behaviour. The watchdog that gives up on a
+     * drop when the bot is in water and not getting any closer stays on either way.
+     */
+    public final Setting<Boolean> altoPickupItemsInWater = new Setting<>(false);
+
+    /**
+     * Minimum amount of food (in food points) to keep in the inventory. Below this the bot goes and gets more, up to
+     * {@link #altoFoodUnitsToCollect}. 0 means it never goes looking for food on its own.
+     */
+    public final Setting<Integer> altoMinimumFoodAllowed = new Setting<>(0);
+
+    /**
+     * How much food (in food points) to collect when there is less than {@link #altoMinimumFoodAllowed} in the
+     * inventory.
+     */
+    public final Setting<Integer> altoFoodUnitsToCollect = new Setting<>(0);
+
+    /**
+     * Chests are remembered along with what is in them. If the bot is collecting a resource and there is a chest with
+     * it within this many blocks, it takes it from the chest. 0 disables chest pickups. Don't set this too high, the
+     * bot will go for a chest even when the resource is lying right there.
+     */
+    public final Setting<Float> altoResourceChestLocateRange = new Setting<>(500f);
+
+    /**
+     * Some block resources are normally made rather than mined (a crafting table comes from planks), but if one is
+     * found within this many blocks the bot may mine it instead. 0 disables that, -1 always mines a catalogued block
+     * (not recommended: it will walk 10000 blocks to a crafting table it saw once, with a forest next to it).
+     */
+    public final Setting<Float> altoResourceMineRange = new Setting<>(100f);
+
+    /**
+     * When going to the nearest chest to store items the bot would dig up dungeons all day. With this on it searches
+     * around each chest first to make sure it is not in one.
+     */
+    public final Setting<Boolean> altoAvoidSearchingDungeonChests = new Setting<>(true);
+
+    /**
+     * Ignore mining and interacting with blocks below an ocean (in an ocean biome and below y 64). AltoClef does not
+     * know what to do with oceans.
+     */
+    public final Setting<Boolean> altoAvoidOceanBlocks = new Setting<>(true);
+
+    /**
+     * How close we must be to attack or interact with an entity. 6 works in singleplayer, 4 works better on servers
+     * that are picky about it. See {@link #blockReachDistance} for blocks.
+     */
+    public final Setting<Float> altoEntityReachRange = new Setting<>(4f);
+
+    /**
+     * Before grabbing anything, get a pickaxe. Helps with navigation because dropped items are sometimes underground,
+     * but it only makes sense in regular worlds.
+     */
+    public final Setting<Boolean> altoCollectPickaxeFirst = new Setting<>(true);
+
+    /**
+     * Run away from hostile mobs when health is low, from creepers that are about to blow up and from very dangerous
+     * mobs like wither skeletons, and use the force field ({@link #altoForceFieldStrategy}) to push mobs away.
+     */
+    public final Setting<Boolean> altoMobDefense = new Setting<>(true);
+
+    /**
+     * How the force field behaves while {@link #altoMobDefense} is on. It is there to push mobs away, not to kill
+     * them.
+     * <p>
+     * FASTEST attacks every hostile at every possible moment, DELAY attacks the closest one when the attack is charged
+     * up, SMART attacks the closest one at most every 0.2 seconds, OFF does nothing.
+     */
+    public final Setting<ForceFieldStrategy> altoForceFieldStrategy = new Setting<>(ForceFieldStrategy.SMART);
+
+    /**
+     * Dodge incoming projectiles. Needs {@link #altoMobDefense}.
+     */
+    public final Setting<Boolean> altoDodgeProjectiles = new Setting<>(true);
+
+    /**
+     * Skeletons and big groups of mobs are a pain. With this on the bot may fight or run from mobs that really need
+     * dealing with, see {@link #altoCommitCombat} for what that means. Off, the bot never commits to a fight or a run,
+     * mobs are scenery (the safety stays: fire, falls, the arrow shield and the force field swinging at what is hitting
+     * it). Needs {@link #altoMobDefense}.
+     */
+    public final Setting<Boolean> altoKillOrAvoidAnnoyingHostiles = new Setting<>(true);
+
+    /**
+     * Mobs are ignored by default, in every dimension: the bot keeps walking its path past a crowd of zombies, a lit
+     * creeper, or a skeleton shooting at it from across the field (walking spoils the aim). It only does something about
+     * a mob that hit it while in contact (a fight), or real danger: 8 hp or less with an angry mob within 8 blocks, 10 hp
+     * or less with a heavy hitter like a wither skeleton, hoglin or vindicator that hit it or is in contact (one just
+     * standing around is walked past), or the warden or the wither within 8 (or a sonic boom from up to 15) (a run). A fight
+     * holds until its target is dead or has been more than 6 blocks away and quiet for three seconds, and turns into a
+     * run on the danger rules. A run holds until the bot is 24 blocks from where it started with nothing hostile within
+     * 12, or 25 seconds, whichever comes first. A run that gets nowhere (three seconds with a mob on top of the bot, six
+     * with one within eight blocks) becomes a fight, and one that gets nowhere with nothing near is over after five. A few
+     * things are left to the tasks that own them: ghasts, the dragon, blazes while the rod task is working them, a golem
+     * being fought from its pillar. Off, the bot never commits to anything, which is the same as turning off
+     * {@link #altoKillOrAvoidAnnoyingHostiles}. Needs {@link #altoKillOrAvoidAnnoyingHostiles}.
+     */
+    public final Setting<Boolean> altoCommitCombat = new Setting<>(true);
+
+    /**
+     * {@code #gamer} only, the IRON phase. One chooser decides what the bot is doing (a furnace trip, a station pickup, a
+     * village chest, a coal detour, the climb out of the mine, the kit) and an activity that started holds until it is
+     * done, instead of the side jobs and the furnace trips each cutting in on every tick. Turn it off to get the older
+     * fixed order back for comparison. Every change of activity goes to the log as an {@code activity:} line.
+     */
+    public final Setting<Boolean> altoIronArbiter = new Setting<>(true);
+
+    /**
+     * {@code #gamer} only. When night falls and the bot has a bed to use (one in the bag, the wool and planks to craft one, or
+     * one standing close by) it sleeps through the night instead of working on and fighting mobs until morning. Minecraft
+     * refuses to let anyone sleep with monsters near the bed, so when there are some the bot does not fight them: it
+     * pillars up out of their range, puts the bed on top and sleeps there. A bed the bot placed itself is picked up again
+     * afterwards. Never used in the Nether or the End.
+     * <p>
+     * It tries to have the bed ready before dusk: in the last couple of minutes of the day it crafts one from wool and
+     * planks it already holds, and in the last four minutes, with sheep close by and no wool, it hunts three wool of one
+     * colour first (150 seconds at most, then it leaves it for the evening). With no bed and no wool it works the night as
+     * before.
+     */
+    public final Setting<Boolean> altoSleepAtNight = new Setting<>(true);
+
+    /**
+     * Avoid going underwater when pathing is not giving the bot movement instructions. Turn it off if you want the bot
+     * to be able to sink.
+     */
+    public final Setting<Boolean> altoAvoidDrowning = new Setting<>(true);
+
+    /**
+     * Close the open screen (furnace, crafting table, chest...) when the look direction changes or the bot is mining
+     * something. Stops the bot from getting stuck in a container screen.
+     */
+    public final Setting<Boolean> altoAutoCloseScreenWhenLookingOrMining = new Setting<>(true);
+
+    /**
+     * Put ourselves out with water when we are on fire (and not immune to it).
+     */
+    public final Setting<Boolean> altoExtinguishSelfWithWater = new Setting<>(true);
+
+    /**
+     * Eat when hungry or in danger.
+     */
+    public final Setting<Boolean> altoAutoEat = new Setting<>(true);
+
+    /**
+     * Do a no fall bucket (MLG) when knocked off course and falling.
+     */
+    public final Setting<Boolean> altoAutoMLGBucket = new Setting<>(true);
+
+    /**
+     * Reconnect to the last server automatically when disconnected. Off, and the bot stops running when you get
+     * disconnected.
+     */
+    public final Setting<Boolean> altoAutoReconnect = new Setting<>(true);
+
+    /**
+     * Respawn right away when you die. Off, and the bot stops running when you die.
+     */
+    public final Setting<Boolean> altoAutoRespawn = new Setting<>(true);
+
+    /**
+     * What to do when it needs the nether but there is no portal in sight. BUILD_PORTAL_VANILLA builds one,
+     * GO_TO_HOME_BASE walks to {@link #altoHomeBasePosition} and assumes there is a portal there.
+     */
+    public final Setting<OverworldToNetherBehaviour> altoOverworldToNetherBehaviour = new Setting<>(OverworldToNetherBehaviour.BUILD_PORTAL_VANILLA);
+
+    /**
+     * When fast traveling through the nether, walk to the destination if we somehow end up closer than this many blocks
+     * in the overworld. Normal travel gets well within this (to about 100 blocks), so keep it decently large.
+     */
+    public final Setting<Integer> altoNetherFastTravelWalkingRange = new Setting<>(600);
+
+    /**
+     * A command to run when nothing else is going on, for example {@code idle} to keep surviving, {@code follow
+     * <your name>} or {@code goto <home base coordinates>}. Only used with {@link #altoRunsWhenIdle}. Empty does
+     * nothing.
+     */
+    public final Setting<String> altoIdleCommand = new Setting<>("");
+
+    /**
+     * What to do after dying, once we are back. {@code {deathmessage}} is replaced by the death message. Starting with
+     * {@code #} (or the prefix) it is a command, starting with {@code /} it goes to the server as a command, anything
+     * else is sent as chat. Several can be chained with {@code " & "}, for example
+     * {@code /home & i died with message: {deathmessage} & #get diamond}. Empty does nothing.
+     */
+    public final Setting<String> altoDeathCommand = new Setting<>("");
+
+    /**
+     * If we need to throw something away, throw these first. It is also what the bot may place as building blocks, and
+     * it is added to {@link #acceptableThrowawayItems} while a task runs.
+     */
+    public final Setting<List<Item>> altoThrowawayItems = new Setting<>(List.of(
+            // overworld junk
+            Items.DRIPSTONE_BLOCK, Items.ROOTED_DIRT, Items.GRAVEL, Items.SAND, Items.DIORITE, Items.ANDESITE,
+            Items.GRANITE, Items.TUFF, Items.COBBLESTONE, Items.DIRT, Items.COBBLED_DEEPSLATE,
+            Items.ACACIA_LEAVES, Items.BIRCH_LEAVES, Items.DARK_OAK_LEAVES, Items.OAK_LEAVES, Items.JUNGLE_LEAVES, Items.SPRUCE_LEAVES,
+            // nether junk, mostly tuned for the beat the game task
+            Items.NETHERRACK, Items.MAGMA_BLOCK, Items.SOUL_SOIL, Items.SOUL_SAND, Items.NETHER_BRICKS, Items.NETHER_BRICK,
+            Items.BASALT, Items.BLACKSTONE, Items.END_STONE, Items.SANDSTONE, Items.STONE_BRICKS
+    ));
+
+    /**
+     * How many throwaway blocks to keep around as building blocks.
+     */
+    public final Setting<Integer> altoReservedBuildingBlockCount = new Setting<>(64);
+
+    /**
+     * Never throw away items that have a custom name.
+     */
+    public final Setting<Boolean> altoDontThrowAwayCustomNameItems = new Setting<>(true);
+
+    /**
+     * Never throw away enchanted items.
+     */
+    public final Setting<Boolean> altoDontThrowAwayEnchantedItems = new Setting<>(true);
+
+    /**
+     * If we need to throw something away and have no {@link #altoThrowawayItems}, throw away any item that is not
+     * needed by the current task. Careful: with this on anything not in {@link #altoImportantItems} can go.
+     */
+    public final Setting<Boolean> altoThrowAwayUnusedItems = new Setting<>(true);
+
+    /**
+     * How much food to hold on to when making room. Counted in hunger points times how many you carry, with raw meat at its
+     * cooked value, so a stack of 8 steak is 64. Food is only ever thrown away when the rest of the bag still covers this,
+     * and then only the smallest stack that is pure surplus, after everything else that can go. Under it, food is never
+     * thrown away to make room. 0 turns this off. The gamer raises it while it runs.
+     */
+    public final Setting<Integer> altoFoodKeepUnits = new Setting<>(40);
+
+    /**
+     * Items that are never thrown away, even when {@link #altoThrowAwayUnusedItems} is on and the task does not use
+     * them.
+     */
+    public final Setting<List<Item>> altoImportantItems = new Setting<>(List.of(
+            Items.TOTEM_OF_UNDYING, Items.ENCHANTED_GOLDEN_APPLE, Items.ENDER_EYE, Items.TRIDENT, Items.DIAMOND,
+            Items.DIAMOND_BLOCK, Items.NETHERITE_SCRAP, Items.NETHERITE_INGOT, Items.NETHERITE_BLOCK,
+            Items.DIAMOND_CHESTPLATE, Items.DIAMOND_LEGGINGS, Items.DIAMOND_HELMET, Items.DIAMOND_BOOTS,
+            Items.NETHERITE_CHESTPLATE, Items.NETHERITE_LEGGINGS, Items.NETHERITE_HELMET, Items.NETHERITE_BOOTS,
+            Items.DIAMOND_PICKAXE, Items.DIAMOND_SHOVEL, Items.DIAMOND_SWORD, Items.DIAMOND_AXE, Items.DIAMOND_HOE,
+            Items.NETHERITE_PICKAXE, Items.NETHERITE_SHOVEL, Items.NETHERITE_SWORD, Items.NETHERITE_AXE, Items.NETHERITE_HOE,
+            // losing a shulker box with its stuff in it would be pretty bad lol (the undyed one is missing, it always was)
+            Items.WHITE_SHULKER_BOX, Items.BLACK_SHULKER_BOX, Items.BLUE_SHULKER_BOX,
+            Items.BROWN_SHULKER_BOX, Items.CYAN_SHULKER_BOX, Items.GRAY_SHULKER_BOX, Items.GREEN_SHULKER_BOX,
+            Items.LIGHT_BLUE_SHULKER_BOX, Items.LIGHT_GRAY_SHULKER_BOX, Items.LIME_SHULKER_BOX,
+            Items.MAGENTA_SHULKER_BOX, Items.ORANGE_SHULKER_BOX, Items.PINK_SHULKER_BOX, Items.PURPLE_SHULKER_BOX,
+            Items.RED_SHULKER_BOX, Items.YELLOW_SHULKER_BOX
+    ));
+
+    /**
+     * Craft or place a blast furnace of our own for smelting ores when that is worth it (five or more to smelt, plus the
+     * five iron and the smooth stone it costs). This is only about making one: a blast furnace that is already standing
+     * nearby is {@link #altoUseNearbyBlastFurnace}'s business, and that works with this off. #gamer turns this off for
+     * the run because the five iron is better spent on armor.
+     */
+    public final Setting<Boolean> altoUseBlastFurnace = new Setting<>(true);
+
+    /**
+     * Smelt raw iron and gold in a blast furnace that is already standing nearby (a village armorer has one) instead of
+     * a plain furnace, since a blast furnace smelts ores twice as fast. It never crafts or places one, that is
+     * {@link #altoUseBlastFurnace}. Nearby means within {@link #altoNearbyBlastFurnaceRange} blocks of us when we start
+     * smelting a batch, and it sticks with whatever it picked until that batch is done.
+     */
+    public final Setting<Boolean> altoUseNearbyBlastFurnace = new Setting<>(true);
+
+    /**
+     * How far away, in blocks, a blast furnace can be and still count as nearby for
+     * {@link #altoUseNearbyBlastFurnace}.
+     */
+    public final Setting<Double> altoNearbyBlastFurnaceRange = new Setting<>(48.0);
+
+    /**
+     * When smelting iron ingots, put everything in the furnace, close it and finish instead of standing there for the
+     * whole cook. The smelt is then recorded as a furnace job that something else has to come back for, so this is off
+     * for a plain {@code @get iron_ingot} (nobody would collect) and #gamer turns it on only while its iron phase can.
+     */
+    public final Setting<Boolean> altoAsyncSmelting = new Setting<>(false);
+
+    /**
+     * Same as {@link #altoAsyncSmelting} but for cooking food in a smoker or furnace. Only does anything while
+     * {@link #altoAsyncSmelting} is on as well (#gamer turns that on for the phases that can come back for the food), so
+     * this is the switch for "iron cooks in the background but I want the bot to stand there for the meat".
+     */
+    public final Setting<Boolean> altoAsyncCooking = new Setting<>(true);
+
+    /**
+     * #gamer's iron phase makes its iron pickaxe as soon as it holds three raw iron instead of mining the whole kit's
+     * worth with a stone one: those three are smelted where the bot stands, it keeps mining nearby while they cook, then
+     * comes back and crafts the pickaxe. needs {@link #altoAsyncSmelting} for the "mine while it cooks" part, without it
+     * the three are smelted standing at the furnace and the pickaxe is crafted right after.
+     */
+    public final Setting<Boolean> altoEarlyIronPick = new Setting<>(true);
+
+    /**
+     * Only use the items in {@link #altoSupportedFuels} as smelting fuel. Careful with turning this off: every burnable
+     * item that is not protected (blaze rods, beds, wooden tools, crafting tables...) can get burned.
+     */
+    public final Setting<Boolean> altoLimitFuelsToSupportedFuels = new Setting<>(true);
+
+    /**
+     * The only things used as smelting fuel while {@link #altoLimitFuelsToSupportedFuels} is on.
+     */
+    public final Setting<List<Item>> altoSupportedFuels = new Setting<>(List.of(Items.COAL, Items.CHARCOAL));
+
+    /**
+     * Where the "home base" is. Some tasks (like {@link #altoOverworldToNetherBehaviour}) use it when told to, don't
+     * bother with it unless you need it.
+     */
+    public final Setting<BlockPos> altoHomeBasePosition = new Setting<>(new BlockPos(0, 64, 0));
+
+    /**
+     * Areas AltoClef will not break or place blocks in, for spawn protection or against griefing. Each one is
+     * {@code x1/y1/z1->x2/y2/z2} (corners in any order, both inclusive) with {@code @nether} or {@code @end} on the end
+     * for other dimensions, and they are separated by commas, for example
+     * {@code -10/0/-10->10/255/10,1000/50/2000->1200/255/2100@nether}.
+     */
+    public final Setting<List<BlockRange>> altoAreasToProtect = new Setting<>(List.of());
+
+    /**
+     * Build the #gamer nether portal on a lava pool with a throwaway mold instead of casting obsidian one block at a
+     * time. Needs a lava row at least four wide with a shore along it and room to scoop from. When it cannot find one,
+     * or anything goes wrong with it, the gamer falls back to the old per block cast, so this only ever makes the portal
+     * faster. Turn it off to always cast.
+     */
+    public final Setting<Boolean> altoLavaPoolPortal = new Setting<>(true);
+
+    /**
+     * Jump for critical hits in melee. When a mob is in reach and the weapon is a few ticks from full strength the bot
+     * hops in place, drops sprint, and swings once it is coming down, which is a crit for 1.5x damage. It never hops
+     * with a shield up (kiting and standing your ground), while eating, in water or lava, on a ladder, with a ceiling
+     * right over its head, next to a ledge or lava, while baritone is walking a path, or when a plain hit already kills.
+     * Off means every swing is a plain one the moment the cooldown is full.
+     */
+    public final Setting<Boolean> altoJumpCrits = new Setting<>(true);
 
     /**
      * A map of lowercase setting field names to their respective setting

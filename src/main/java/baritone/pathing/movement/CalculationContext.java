@@ -18,6 +18,7 @@
 package baritone.pathing.movement;
 
 import baritone.Baritone;
+import baritone.altoclef.AltoClefSettings;
 import baritone.api.IBaritone;
 import baritone.api.pathing.movement.ActionCosts;
 import baritone.cache.WorldData;
@@ -27,9 +28,11 @@ import baritone.utils.BlockStateInterface;
 import baritone.utils.ToolSet;
 import baritone.utils.pathing.BetterWorldBorder;
 import baritone.utils.pathing.SearchCache;
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.player.Inventory;
@@ -45,6 +48,7 @@ import net.minecraft.world.level.block.state.BlockState;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Predicate;
 
 import static baritone.api.pathing.movement.ActionCosts.COST_INF;
 
@@ -83,6 +87,8 @@ public class CalculationContext {
     public final List<Block> allowBreakAnyway;
     public final boolean allowParkour;
     public final boolean allowParkourPlace;
+    // back place bridging at walk speed instead of the sneak crawl, see GodBridge
+    public final boolean allowGodBridge;
     public final boolean allowJumpAtBuildLimit;
     public final boolean allowParkourAscend;
     public final boolean allowNeos;
@@ -91,6 +97,8 @@ public class CalculationContext {
     public final boolean assumeWalkOnWater;
     public boolean allowFallIntoLava;
     public final int frostWalker;
+    // what a block of walking costs over soul sand, which soul speed boots change from slow to fast
+    public final double soulSandWalkCost;
     public final boolean allowDiagonalDescend;
     public final boolean allowDiagonalAscend;
     public final boolean allowDownward;
@@ -104,7 +112,13 @@ public class CalculationContext {
     public final SwimStalls.Snapshot swimStalls;
     // rowing, when there's a boat to row. equal to waterWalkSpeed when there isn't so the min is a no-op
     public final double boatWaterSpeed;
+    // BoatTrip won't get the boat out for a shorter row of water than this, so the planner doesn't price one either
+    private final int boatMinWater;
     public final double breakBlockAdditionalCost;
+    // ticks the bot sits idle after a block that took more than one tick to break, see BlockBreakHelper
+    public final double breakIdleTicks;
+    // snapshotted like the rest, so one search can't price some breaks with the old value and some with the new
+    public final double waterBreakCostMultiplier;
     public double backtrackCostFavoringCoefficient;
     public double jumpPenalty;
     public final double walkOnWaterOnePenalty;
@@ -115,6 +129,18 @@ public class CalculationContext {
     public final int maxY;
 
     public final PrecomputedData precomputedData;
+
+    // altoclef's position rules, frozen here so a search sees one answer all the way through and never takes a lock.
+    // the arrays are null when altoclef isn't holding any of that kind and altoActive is false when none of them are, so
+    // idle costs a field check per question. (it used to be a mutex, a new BlockPos and a stream. per call. in A*)
+    public final boolean altoActive;
+    private final LongOpenHashSet altoBreakPositions;
+    private final Predicate<BlockPos>[] altoBreakAvoiders;
+    private final Predicate<BlockPos>[] altoPlaceAvoiders;
+    private final Predicate<BlockPos>[] altoWalkOn;
+    private final Predicate<BlockPos>[] altoAvoidWalkThrough;
+    // one pos for the searching thread to reuse. predicates must not keep it, it's about to become somewhere else
+    private final BlockPos.MutableBlockPos altoPos;
 
     // memo for getMiningDurationTicks by position
     // the block under you gets its break cost worked out by four descends, a downward, and then all your neighbours' descends
@@ -146,15 +172,32 @@ public class CalculationContext {
                 Baritone.settings().allowWaterBucketFall.value && Inventory.isHotbarSlot(baritone.getPlayerContext().player().getInventory().findSlotMatchingItem(STACK_BUCKET_WATER)) && baritone.getPlayerContext().world().dimension() != Level.NETHER,
                 Baritone.settings().allowSprint.value && baritone.getPlayerContext().player().getFoodData().getFoodLevel() > 6,
                 frostWalkerLevel(baritone.getPlayerContext().player()),
+                soulSpeedLevel(baritone.getPlayerContext().player()),
                 waterSpeedMultiplier(baritone.getPlayerContext().player()),
                 baritone.getPlayerContext().player().getHealth() + baritone.getPlayerContext().player().getAbsorptionAmount(),
                 hasBoat(baritone.getPlayerContext().player())
         );
     }
 
+    // no soul speed boots, which is every test and bench that was written before they existed
+    protected CalculationContext(IBaritone baritone, boolean forUseOnAnotherThread, Level world, WorldData worldData, BlockStateInterface bsi, ToolSet toolSet, boolean hasThrowaway, boolean hasWaterBucket, boolean canSprint, int frostWalker, float waterSpeedMultiplier, double health, boolean hasBoat) {
+        this(baritone, forUseOnAnotherThread, world, worldData, bsi, toolSet, hasThrowaway, hasWaterBucket, canSprint, frostWalker, 0, waterSpeedMultiplier, health, hasBoat);
+    }
+
     // everything that needs a player or a world comes in as a parameter so you can build one of these with no game running
     // all the settings get snapshotted in here so nobody can accidentally read them differently
-    protected CalculationContext(IBaritone baritone, boolean forUseOnAnotherThread, Level world, WorldData worldData, BlockStateInterface bsi, ToolSet toolSet, boolean hasThrowaway, boolean hasWaterBucket, boolean canSprint, int frostWalker, float waterSpeedMultiplier, double health, boolean hasBoat) {
+    @SuppressWarnings("unchecked")
+    protected CalculationContext(IBaritone baritone, boolean forUseOnAnotherThread, Level world, WorldData worldData, BlockStateInterface bsi, ToolSet toolSet, boolean hasThrowaway, boolean hasWaterBucket, boolean canSprint, int frostWalker, int soulSpeed, float waterSpeedMultiplier, double health, boolean hasBoat) {
+        AltoClefSettings alto = AltoClefSettings.getInstance();
+        AltoClefSettings.Snapshot altoRules = alto.snapshot();
+        boolean paused = alto.isInteractionPaused();
+        this.altoBreakPositions = altoRules.breakPositions;
+        this.altoBreakAvoiders = altoRules.breakAvoiders;
+        this.altoPlaceAvoiders = altoRules.placeAvoiders;
+        this.altoWalkOn = altoRules.forceWalkOn;
+        this.altoAvoidWalkThrough = altoRules.avoidWalkThrough;
+        this.altoActive = altoRules.hasPathingRules();
+        this.altoPos = altoActive ? new BlockPos.MutableBlockPos() : null;
         this.precomputedData = PrecomputedData.forCurrentSettings();
         this.miningCacheBits = SearchCache.bitsForSize(Baritone.settings().pathingCacheSize.value);
         this.safeForThreadedUse = forUseOnAnotherThread;
@@ -163,10 +206,11 @@ public class CalculationContext {
         this.worldData = worldData;
         this.bsi = bsi;
         this.toolSet = toolSet;
-        this.hasThrowaway = hasThrowaway;
+        this.hasThrowaway = hasThrowaway && !paused; // paused means no placing, whatever's in the hotbar
         this.hasWaterBucket = hasWaterBucket;
         // same idea as the bucket, except it isn't banned in the nether. the setting goes first so nobody scans the hotbar for nothing
-        Item clutchItem = Baritone.settings().allowLadderClutch.value ? ((Baritone) baritone).getInventoryBehavior().pickClutchItem(false) : null;
+        // (no baritone means a test building one by hand, with fastMode on it would otherwise go looking for a hotbar)
+        Item clutchItem = baritone != null && ExperimentalMovement.allowLadderClutch() ? ((Baritone) baritone).getInventoryBehavior().pickClutchItem(false) : null;
         this.hasClutchItem = clutchItem != null;
         this.clutchPicksUp = clutchItem == Items.LADDER && Baritone.settings().pickupLadders.value;
         this.health = health;
@@ -180,10 +224,12 @@ public class CalculationContext {
         this.minY = bsi.minY;
         this.maxY = bsi.maxY;
         this.placeBlockCost = ExperimentalMovement.blockPlacementPenalty();
-        this.allowBreak = Baritone.settings().allowBreak.value;
-        this.allowBreakAnyway = new ArrayList<>(Baritone.settings().allowBreakAnyway.value);
+        this.allowBreak = !paused && Baritone.settings().allowBreak.value;
+        // allowBreakAnyway would sneak past a pause otherwise
+        this.allowBreakAnyway = paused ? new ArrayList<>() : new ArrayList<>(Baritone.settings().allowBreakAnyway.value);
         this.allowParkour = ExperimentalMovement.allowParkour();
-        this.allowParkourPlace = Baritone.settings().allowParkourPlace.value;
+        this.allowParkourPlace = ExperimentalMovement.allowParkourPlace();
+        this.allowGodBridge = ExperimentalMovement.allowGodBridge();
         this.allowJumpAtBuildLimit = Baritone.settings().allowJumpAtBuildLimit.value;
         this.allowParkourAscend = ExperimentalMovement.allowParkourAscend();
         this.allowNeos = ExperimentalMovement.allowNeos();
@@ -192,6 +238,9 @@ public class CalculationContext {
         this.assumeWalkOnWater = Baritone.settings().assumeWalkOnWater.value;
         this.allowFallIntoLava = false; // Super secret internal setting for ElytraBehavior
         this.frostWalker = frostWalker;
+        // soul speed boots can make sprinting over the stuff cheaper than costHeuristic, and a move priced under the
+        // heuristic stops A* being A* (same reason boats are clamped below), so it bottoms out at plain walking
+        this.soulSandWalkCost = Math.max(soulSandWalkCost(soulSpeed), Baritone.settings().costHeuristic.value / ActionCosts.SPRINT_MULTIPLIER);
         this.allowDiagonalDescend = ExperimentalMovement.allowDiagonalDescend();
         this.allowDiagonalAscend = ExperimentalMovement.allowDiagonalAscend();
         this.allowDownward = Baritone.settings().allowDownward.value;
@@ -199,7 +248,7 @@ public class CalculationContext {
         this.maxFallHeightNoWater = Baritone.settings().maxFallHeightNoWater.value;
         this.maxFallHeightBucket = Baritone.settings().maxFallHeightBucket.value;
         double waterSpeed = ActionCosts.WALK_ONE_IN_WATER_COST * (1 - waterSpeedMultiplier) + ActionCosts.WALK_ONE_BLOCK_COST * waterSpeedMultiplier;
-        this.allowSwimming = Baritone.settings().allowSwimming.value && this.canSprint;
+        this.allowSwimming = ExperimentalMovement.allowSwimming() && this.canSprint;
         // no baritone means a test building one by hand, nobody has been swimming
         this.swimStalls = baritone == null ? SwimStalls.Snapshot.NONE
                 : ((Baritone) baritone).getPathingBehavior().swimStalls().snapshot(world, System.currentTimeMillis());
@@ -212,8 +261,11 @@ public class CalculationContext {
         // costHeuristic and A* stops being A* and wanders off on scenic detours across the lake. so rowing
         // costs what the heuristic thinks a block costs and not a tick less. still way under swimming
         double boatSpeed = Math.max(ActionCosts.BOAT_ONE_BLOCK_COST, Baritone.settings().costHeuristic.value);
-        this.boatWaterSpeed = Baritone.settings().allowBoats.value && hasBoat ? Math.min(waterSpeed, boatSpeed) : waterSpeed;
+        this.boatWaterSpeed = ExperimentalMovement.allowBoats() && hasBoat ? Math.min(waterSpeed, boatSpeed) : waterSpeed;
+        this.boatMinWater = Baritone.settings().boatMinWaterLength.value;
         this.breakBlockAdditionalCost = Baritone.settings().blockBreakAdditionalPenalty.value;
+        this.breakIdleTicks = Math.max(0, Baritone.settings().blockBreakSpeed.value - 1);
+        this.waterBreakCostMultiplier = Baritone.settings().waterBreakCostMultiplier.value;
         this.backtrackCostFavoringCoefficient = Baritone.settings().backtrackCostFavoringCoefficient.value;
         this.jumpPenalty = Baritone.settings().jumpPenalty.value;
         this.walkOnWaterOnePenalty = Baritone.settings().walkOnWaterOnePenalty.value;
@@ -224,16 +276,57 @@ public class CalculationContext {
         this.worldBorder = bsi.worldBorder;
     }
 
-    /**
-     * The cost of one block of water at this node. Rowing if a boat could float here, otherwise whatever
-     * wading or swimming costs. Same answer the executor gives when it decides where to actually use the
-     * boat, so the estimate and the execution agree about which water counts
-     */
+    // the cheapest a block of descent can be with what we are carrying, for GoalYLevel's lower bound. read when a search
+    // starts and not in the constructor, because the elytra walk off context raises the fall limits after super() returns
+    public double descentTicksPerBlock() {
+        return descentFloor(maxFallHeightNoWater, maxFallHeightBucket, hasWaterBucket, hasClutchItem, fastMode);
+    }
+
+    // the longest fall this context will plan, and what that costs per block. a plain fall is maxFallHeightNoWater, the
+    // bucket takes it to maxFallHeightBucket, a hurting fall in fast mode to 23 (ExperimentalMovement.MAX_HURT_FALL),
+    // and a ladder clutch to LadderClutch.MAX_DROP (256). falls into water have no cap at all but need the landing, and
+    // so does a fall that an existing ladder or vine catches (Descend resets the speed on the cell), so those can undercut
+    public static double descentFloor(int noWater, int bucket, boolean hasWaterBucket, boolean hasClutchItem, boolean fastMode) {
+        int longest = Math.max(1, noWater);
+        if (hasWaterBucket) {
+            longest = Math.max(longest, bucket);
+        }
+        if (fastMode) {
+            longest = Math.max(longest, ExperimentalMovement.MAX_HURT_FALL);
+        }
+        if (hasClutchItem) {
+            longest = Math.max(longest, 256);
+        }
+        longest = Math.min(longest, ActionCosts.FALL_N_BLOCKS_COST.length - 1);
+        return ActionCosts.FALL_N_BLOCKS_COST[longest] / longest;
+    }
+
+    // the cost of one block of water at this node: rowing if a boat could float here and the water is big enough, otherwise
+    // whatever wading or swimming costs. close to what BoatTrip does, not identical, see boatRowLongEnough
     public double waterCost(int x, int y, int z) {
         if (boatWaterSpeed >= waterWalkSpeed) {
             return waterWalkSpeed; // no boat, don't go reading nine blocks for nothing
         }
-        return MovementHelper.canFloatBoat(bsi, x, y, z) ? boatWaterSpeed : waterWalkSpeed;
+        return MovementHelper.canFloatBoat(bsi, x, y, z) && boatRowLongEnough(x, y, z) ? boatWaterSpeed : waterWalkSpeed;
+    }
+
+    // BoatTrip.plan wades a run shorter than boatMinWaterLength instead of getting the boat out, so a pond must not be priced
+    // as a boat ride. the planner has no idea what path it's on, so it asks about the straight rows through this block along
+    // BOTH axes: a river 4 wide and 100 long has a long row one way and a short one the other, and a crossing is the short one.
+    // it can still be off either way: a run down a river is priced as a swim and rowed anyway, and a short clip across the corner of
+    // big water is priced as a row and waded. both are small errors. the lookups stop the second a row is long enough: a lake pays for a few, a puddle for even fewer
+    private boolean boatRowLongEnough(int x, int y, int z) {
+        return boatRow(x, y, z, 1, 0) >= boatMinWater && boatRow(x, y, z, 0, 1) >= boatMinWater;
+    }
+
+    private int boatRow(int x, int y, int z, int dx, int dz) {
+        int run = 1;
+        for (int dir = -1; dir <= 1; dir += 2) {
+            for (int i = 1; run < boatMinWater && MovementHelper.canFloatBoat(bsi, x + dx * i * dir, y, z + dz * i * dir); i++) {
+                run++;
+            }
+        }
+        return run;
     }
 
     private static boolean hasBoat(LocalPlayer player) {
@@ -247,16 +340,40 @@ public class CalculationContext {
 
     private static int frostWalkerLevel(LocalPlayer player) {
         // todo: technically there can now be datapack enchants that replace blocks with any other at any range
-        int frostWalkerLevel = 0;
-        for (EquipmentSlot slot : EquipmentSlot.values()) {
+        return enchantLevel(player, Enchantments.FROST_WALKER);
+    }
+
+    private static int soulSpeedLevel(LocalPlayer player) {
+        // boots only, it does nothing from a hand
+        return enchantLevel(player, Enchantments.SOUL_SPEED, EquipmentSlot.FEET);
+    }
+
+    private static int enchantLevel(LocalPlayer player, ResourceKey<Enchantment> wanted) {
+        return enchantLevel(player, wanted, EquipmentSlot.values());
+    }
+
+    private static int enchantLevel(LocalPlayer player, ResourceKey<Enchantment> wanted, EquipmentSlot... slots) {
+        int level = 0;
+        for (EquipmentSlot slot : slots) {
             ItemEnchantments itemEnchantments = player.getItemBySlot(slot).getEnchantments();
             for (Holder<Enchantment> enchant : itemEnchantments.keySet()) {
-                if (enchant.is(Enchantments.FROST_WALKER)) {
-                    frostWalkerLevel = itemEnchantments.getLevel(enchant);
+                if (enchant.is(wanted)) {
+                    level = itemEnchantments.getLevel(enchant);
                 }
             }
         }
-        return frostWalkerLevel;
+        return level;
+    }
+
+    // soul sand multiplies your velocity by 0.4 every tick, and the ground drag on top is 0.6 * 0.91, so a walker settles
+    // at (1 - 0.546) / (1 - 0.4 * 0.546) = 58% of normal speed, sprint or not (2.5 blocks a second against 4.3).
+    // soul speed of any level turns the slowdown off completely (movement_efficiency 1 in its data file) and adds walking
+    // speed on top while you are on the stuff, 0.0405 for the first level and 0.0105 for each after that, against a base of 0.1
+    public static double soulSandWalkCost(int soulSpeedLevel) {
+        if (soulSpeedLevel <= 0) {
+            return ActionCosts.WALK_ONE_OVER_SOUL_SAND_COST;
+        }
+        return ActionCosts.WALK_ONE_BLOCK_COST / (1 + (0.0405 + 0.0105 * (soulSpeedLevel - 1)) / 0.1);
     }
 
     private static float waterSpeedMultiplier(LocalPlayer player) {
@@ -271,7 +388,10 @@ public class CalculationContext {
                 }
             }
         }
-        return 1.0f;
+        // no depth strider is a 0 here, which prices water at the slow end of the blend. it used to return 1 for "none",
+        // which is the full efficiency value, so every lake was planned at the speed of dry land. vanilla with no
+        // efficiency drags a walker at 0.8 with a 0.02 push, which is 1.96 blocks a second
+        return 0.0f;
     }
 
     // the memo and the bsi's block cache used to be allocated in the constructor. that's 2.8mb, and PathingBehavior
@@ -330,7 +450,7 @@ public class CalculationContext {
         if (!hasThrowaway) { // only true if allowPlace is true, see constructor
             return COST_INF;
         }
-        if (isPossiblyProtected(x, y, z)) {
+        if (isPlaceProtected(x, y, z)) {
             return COST_INF;
         }
         if (!worldBorder.canPlaceAt(x, z)) {
@@ -349,7 +469,7 @@ public class CalculationContext {
         if (!allowBreak && !allowBreakAnyway.contains(current.getBlock())) {
             return COST_INF;
         }
-        if (isPossiblyProtected(x, y, z)) {
+        if (isBreakProtected(x, y, z)) {
             return COST_INF;
         }
         return 1;
@@ -364,8 +484,32 @@ public class CalculationContext {
         return placeBlockCost; // shrug
     }
 
-    public boolean isPossiblyProtected(int x, int y, int z) {
-        // TODO more protection logic here; see #220
-        return false;
+    // the two halves of what used to be one isPossiblyProtected stub. altoclef is the only thing that fills them in so far
+    // (see #220 for anyone who wants to add their own)
+    public boolean isBreakProtected(int x, int y, int z) {
+        if (altoBreakPositions != null && altoBreakPositions.contains(BlockPos.asLong(x, y, z))) {
+            return true;
+        }
+        return altoBreakAvoiders != null && altoAnyMatch(altoBreakAvoiders, x, y, z);
+    }
+
+    public boolean isPlaceProtected(int x, int y, int z) {
+        return altoPlaceAvoiders != null && altoAnyMatch(altoPlaceAvoiders, x, y, z);
+    }
+
+    // callers check altoActive first so the idle case doesn't even get here
+    public boolean altoForcesWalkOn(int x, int y, int z) {
+        return altoWalkOn != null && altoAnyMatch(altoWalkOn, x, y, z);
+    }
+
+    public boolean altoAvoidsWalkThrough(int x, int y, int z) {
+        return altoAvoidWalkThrough != null && altoAnyMatch(altoAvoidWalkThrough, x, y, z);
+    }
+
+    private boolean altoAnyMatch(Predicate<BlockPos>[] predicates, int x, int y, int z) {
+        // the executor checks costs with the same context while a search is running, so the shared pos only goes to the
+        // thread that claimed the search caches. anybody else pays for a fresh one
+        BlockPos pos = Thread.currentThread() == miningOwner ? altoPos.set(x, y, z) : new BlockPos(x, y, z);
+        return AltoClefSettings.Snapshot.anyMatch(predicates, pos);
     }
 }

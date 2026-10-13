@@ -18,6 +18,7 @@
 package baritone.pathing.movement.movements;
 
 import baritone.Baritone;
+import baritone.altoclef.AltoClefSettings;
 import baritone.api.IBaritone;
 import baritone.api.pathing.movement.MovementStatus;
 import baritone.api.utils.BetterBlockPos;
@@ -83,15 +84,15 @@ public class MovementDescend extends Movement {
     public static void cost(CalculationContext context, int x, int y, int z, int destX, int destZ, MutableMoveResult res) {
         double totalCost = 0;
         BlockState destDown = context.get(destX, y - 1, destZ);
-        totalCost += MovementHelper.getMiningDurationTicks(context, destX, y - 1, destZ, destDown, false);
+        totalCost += MovementHelper.waterBreakCost(context, x, y, z, MovementHelper.getMiningDurationTicks(context, destX, y - 1, destZ, destDown, false));
         if (totalCost >= COST_INF) {
             return;
         }
-        totalCost += MovementHelper.getMiningDurationTicks(context, destX, y, destZ, false);
+        totalCost += MovementHelper.waterBreakCost(context, x, y, z, MovementHelper.getMiningDurationTicks(context, destX, y, destZ, false));
         if (totalCost >= COST_INF) {
             return;
         }
-        totalCost += MovementHelper.getMiningDurationTicks(context, destX, y + 1, destZ, true); // only the top block in the 3 we need to mine needs to consider the falling blocks above
+        totalCost += MovementHelper.waterBreakCost(context, x, y, z, MovementHelper.getMiningDurationTicks(context, destX, y + 1, destZ, true)); // only the top block in the 3 we need to mine needs to consider the falling blocks above
         if (totalCost >= COST_INF) {
             return;
         }
@@ -138,6 +139,18 @@ public class MovementDescend extends Movement {
     }
 
     public static boolean dynamicFallCost(CalculationContext context, int x, int y, int z, int destX, int destZ, double frontBreak, BlockState below, MutableMoveResult res) {
+        return dynamicFallCost(context, x, y, z, destX, destZ, frontBreak, below, res, true, true);
+    }
+
+    // a fall that's already been agreed to (mid air) wants the bucket no matter what, see bucketAtHealth
+    public static boolean dynamicFallCost(CalculationContext context, int x, int y, int z, int destX, int destZ, double frontBreak, BlockState below, MutableMoveResult res, boolean clutchHealthGate) {
+        return dynamicFallCost(context, x, y, z, destX, destZ, frontBreak, below, res, clutchHealthGate, false);
+    }
+
+    // clutchHealthGate false is for a fall that's already been agreed to (MovementFall mid air): hp dropping on the way down
+    // must not take away the save we're in the middle of. same for bucketHealthGate, which is only ever on when planning
+    // (or checking the plan on the ledge): once we're off the edge the bucket is the only thing left to try
+    public static boolean dynamicFallCost(CalculationContext context, int x, int y, int z, int destX, int destZ, double frontBreak, BlockState below, MutableMoveResult res, boolean clutchHealthGate, boolean bucketHealthGate) {
         if (frontBreak != 0 && context.get(destX, y + 2, destZ).getBlock() instanceof FallingBlock) {
             // if frontBreak is 0 we can actually get through this without updating the falling block and making it actually fall
             // but if frontBreak is nonzero, we're breaking blocks in front, so don't let anything fall through this column,
@@ -159,7 +172,12 @@ public class MovementDescend extends Movement {
             boolean reachedMinimum = fallHeight >= context.minFallHeight;
             BlockState ontoBlock = context.get(destX, newY, destZ);
             int unprotectedFallHeight = fallHeight - (y - effectiveStartHeight); // equal to fallHeight - y + effectiveFallHeight, which is equal to -newY + effectiveFallHeight, which is equal to effectiveFallHeight - newY
-            double tentativeCost = WALK_OFF_BLOCK_COST + FALL_N_BLOCKS_COST[unprotectedFallHeight] + frontBreak + costSoFar;
+            // water and lava are landed in, so feet end up at newY and the drop is the whole fallHeight. everything else
+            // is landed on, feet end at newY + 1, one block less. this used to charge the deeper one for both and every
+            // fall onto ground was 1 to 2 ticks too slow on paper
+            double offAndBreak = WALK_OFF_BLOCK_COST + frontBreak + costSoFar;
+            double splashCost = offAndBreak + FALL_N_BLOCKS_COST[unprotectedFallHeight];
+            double tentativeCost = offAndBreak + FALL_N_BLOCKS_COST[unprotectedFallHeight - 1];
             if (reachedMinimum && MovementHelper.isWater(ontoBlock)) {
                 if (!MovementHelper.canWalkThrough(context, destX, newY, destZ, ontoBlock)) {
                     return false;
@@ -178,7 +196,7 @@ public class MovementDescend extends Movement {
                 res.x = destX;
                 res.y = newY;
                 res.z = destZ;
-                res.cost = tentativeCost;// TODO incorporate water swim up cost?
+                res.cost = splashCost;// TODO incorporate water swim up cost?
                 return false;
             }
             if (reachedMinimum && context.allowFallIntoLava && MovementHelper.isLava(ontoBlock)) {
@@ -186,7 +204,7 @@ public class MovementDescend extends Movement {
                 res.x = destX;
                 res.y = newY;
                 res.z = destZ;
-                res.cost = tentativeCost;
+                res.cost = splashCost;
                 return false;
             }
             if (MovementHelper.isClimbable(ontoBlock.getBlock()) && LadderClutch.grabs(effectiveStartHeight, newY)) {
@@ -216,11 +234,18 @@ public class MovementDescend extends Movement {
                 return false;
             }
             boolean bucketOk = reachedMinimum && context.hasWaterBucket && unprotectedFallHeight <= context.maxFallHeightBucket + 1;
+            if (bucketOk && bucketHealthGate) {
+                bucketOk = bucketAtHealth(context.health, unprotectedFallHeight - 1);
+            }
             double clutch = reachedMinimum ? clutchCost(context, destX, destZ, effectiveStartHeight, newY + 1) : COST_INF;
+            if (clutchHealthGate) {
+                clutch = clutchAtHealth(clutch, context.health, context.fastModeMinHealth);
+            }
+            clutch = clutchAtMissHealth(clutch, bucketHealthGate, context.health, unprotectedFallHeight - 1);
             if (clutch < COST_INF) {
                 clutch += WALK_OFF_BLOCK_COST + frontBreak + costSoFar;
             }
-            if (clutch < COST_INF && !(bucketOk && tentativeCost + context.placeBucketCost() <= clutch)) {
+            if (clutchBeatsBucket(clutch, bucketOk, tentativeCost + context.placeBucketCost())) {
                 // the bucket wins ties, it doesn't care about timing
                 res.x = destX;
                 res.y = newY + 1;
@@ -262,6 +287,29 @@ public class MovementDescend extends Movement {
         res.damage = damage;
     }
 
+    // a clutch that misses at low hp is lethal, so below fastModeMinHealth it's not on the menu (see canAffordClutch).
+    // only the clutch: the bucket and the plain falls don't care
+    static double clutchAtHealth(double clutch, double health, double minHealth) {
+        return ExperimentalMovement.canAffordClutch(health, minHealth) ? clutch : COST_INF;
+    }
+
+    // the bucket is a lot more reliable than the clutch so it only gets pulled when a miss would kill us (the whole fall at
+    // once, see ExperimentalMovement.canAffordBucketMiss). a 20 block bucket at 17 hp or less is a coin flip with a funeral
+    static boolean bucketAtHealth(double health, int blocksFallen) {
+        return ExperimentalMovement.canAffordBucketMiss(health, blocksFallen);
+    }
+
+    // the clutch misses more than the bucket does, so it can't be the way round a drop the bucket was refused. planning only,
+    // same as the bucket gate, and not inside the clutchHealthGate block because that one is off when hp is fine
+    public static double clutchAtMissHealth(double clutch, boolean gate, double health, int blocksFallen) {
+        return gate && !bucketAtHealth(health, blocksFallen) ? COST_INF : clutch;
+    }
+
+    // the bucket wins ties, and any time the clutch is priced out
+    static boolean clutchBeatsBucket(double clutch, boolean bucketOk, double bucketCost) {
+        return clutch < COST_INF && !(bucketOk && bucketCost <= clutch);
+    }
+
     // a ladder or vine in one of the last few cells before the floor, placed against whatever wall is beside the column.
     // all the timing is in LadderClutch, we just say which cells have a wall. COST_INF if it can't be done
     private static double clutchCost(CalculationContext context, int destX, int destZ, int startY, int landY) {
@@ -270,7 +318,8 @@ public class MovementDescend extends Movement {
         }
         int mask = 0;
         for (int k = 0; k < LadderClutch.CELLS && landY + k < startY; k++) {
-            if (!context.get(destX, landY + k, destZ).isAir()) {
+            // the clutch item goes in this cell, so it has to be somewhere altoclef lets us place
+            if (!context.get(destX, landY + k, destZ).isAir() || context.isPlaceProtected(destX, landY + k, destZ)) {
                 continue;
             }
             for (Direction side : Direction.Plane.HORIZONTAL) {
@@ -360,7 +409,8 @@ public class MovementDescend extends Movement {
             return true;
         }
         for (int y = 0; y <= 2; y++) { // we could hit any of the three blocks
-            if (MovementHelper.avoidWalkingInto(BlockStateInterface.get(ctx, into.above(y)))) {
+            if (MovementHelper.avoidWalkingInto(BlockStateInterface.get(ctx, into.above(y)))
+                    || AltoClefSettings.getInstance().shouldAvoidWalkThroughForce(into.above(y))) {
                 return true;
             }
         }

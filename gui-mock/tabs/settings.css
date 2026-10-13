@@ -1,0 +1,41 @@
+/* settings tab layout (tabs/SettingsTab.java, SettingsContent.java, CommonSettings.java, SettingRow.java) */
+
+.settings { position: absolute; inset: 0; }
+
+/* the list view is widened by the 10px gutter: 16 left, 6 right, 10 of that is the scrollbar */
+.set-main { position: absolute; left: 0; right: 0; top: 0; bottom: 89px; padding: 16px calc(6px + var(--gutter)) 0 16px; }
+.set-main > * { flex: none; }
+
+.key-card { display: flex; align-items: center; height: 60px; padding: 0 16px; }
+.key-icon { margin-right: 12px; }
+.key-text { padding-top: 2px; flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.key-box { width: 112px; margin-left: auto; }
+.key-enabled { margin: 0 8px 0 12px; }
+
+.set-nav { display: flex; align-items: center; height: var(--control-h); margin-top: 12px; }
+.set-cat { width: 260px; }
+.set-toggles { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.set-toggles .gap-l { margin-left: 12px; }
+
+/* heading box is line height + 8, the 24 above it is the section gap */
+.set-heading { height: 25px; margin-top: 24px; }
+
+/* 6 columns max, 112 min, gap 8 */
+.tiles { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(max(112px, calc((100% - 40px) / 6)), 1fr)); }
+
+/* one card, rows 56 */
+.set-card { overflow: hidden; margin-bottom: 16px; }
+.srow { position: relative; display: flex; align-items: center; height: 56px; padding: 0 16px 0 32px; transition: background-color var(--anim-fast) var(--ease); }
+.srow:hover { background: var(--hover); }
+.srow:first-child { border-radius: var(--card-radius) var(--card-radius) 0 0; }
+.srow::after { content: ""; position: absolute; left: 16px; right: var(--hl); bottom: calc(-1 * var(--hl)); height: var(--hl); background: var(--hairline); }
+.srow .mod-dot { position: absolute; left: 16px; top: 17.5px; width: 4px; height: 4px; border-radius: 2px; background: var(--accent); }
+.srow .stext { flex: 1; min-width: 0; margin-right: 16px; display: flex; flex-direction: column; gap: 4px; }
+.srow .stext > * { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.srow .pin-slot { width: 28px; height: 28px; margin: 0 2px 0 8px; flex: none; }
+.srow .reset-slot, .srow .btn.mini { width: 28px; height: 28px; flex: none; }
+.srow .btn.mini { padding: 0; }
+
+/* description strip: hairline, 12 top, title, 4 gap, two lines, 16 bottom */
+.set-detail { position: absolute; left: 0; right: 0; bottom: 0; height: 81px; border-top: var(--hl) solid var(--hairline); padding: 12px 16px 16px; }
+.set-detail .detail-idle { line-height: 20px; }

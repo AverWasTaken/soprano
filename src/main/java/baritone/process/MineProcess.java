@@ -18,6 +18,7 @@
 package baritone.process;
 
 import baritone.Baritone;
+import baritone.altoclef.AltoClefSettings;
 import baritone.api.BaritoneAPI;
 import baritone.api.pathing.goals.*;
 import baritone.api.process.IMineProcess;
@@ -30,6 +31,7 @@ import baritone.pathing.movement.CalculationContext;
 import baritone.pathing.movement.MovementHelper;
 import baritone.utils.BaritoneProcessHelper;
 import baritone.utils.BlockStateInterface;
+import baritone.utils.FallingColumn;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
@@ -39,10 +41,13 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.AirBlock;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.EndPortalBlock;
+import net.minecraft.world.level.block.EndPortalFrameBlock;
 import net.minecraft.world.level.block.FallingBlock;
 import net.minecraft.world.level.block.state.BlockState;
 
 import java.util.*;
+import java.util.function.IntConsumer;
 import java.util.stream.Collectors;
 
 import static baritone.api.pathing.movement.ActionCosts.COST_INF;
@@ -57,6 +62,9 @@ public final class MineProcess extends BaritoneProcessHelper implements IMinePro
     private BlockOptionalMetaLookup filter;
     private List<BlockPos> knownOreLocations;
     private List<BlockPos> blacklist; // inaccessible
+    // ore in our own column with a stack of sand or gravel on it: swinging up at it from below puts the stack on our head.
+    // the shaft shortcut leaves these alone and the planner gets them as a goal to path into, which costs the stack properly
+    private Set<BlockPos> fallsOnShaft = new HashSet<>();
     private Map<BlockPos, Long> anticipatedDrops;
     private BlockPos branchPoint;
     private GoalRunAway branchPointRunaway;
@@ -101,6 +109,9 @@ public final class MineProcess extends BaritoneProcessHelper implements IMinePro
                 return null;
             }
         }
+        if (AltoClefSettings.getInstance().isInteractionPaused()) {
+            return new PathingCommand(null, PathingCommandType.REQUEST_PAUSE); // not breaking anything, and not walking up to things to break either
+        }
 
         updateLoucaSystem();
         int mineGoalUpdateInterval = Baritone.settings().mineGoalUpdateInterval.value;
@@ -120,6 +131,7 @@ public final class MineProcess extends BaritoneProcessHelper implements IMinePro
                 .filter(pos -> pos.getX() == ctx.playerFeet().getX() && pos.getZ() == ctx.playerFeet().getZ())
                 .filter(pos -> pos.getY() >= ctx.playerFeet().getY())
                 .filter(pos -> !(BlockStateInterface.get(ctx, pos).getBlock() instanceof AirBlock)) // after breaking a block, it takes mineGoalUpdateInterval ticks for it to actually update this list =(
+                .filter(this::safeToMineFromBelow)
                 .min(Comparator.comparingDouble(ctx.playerFeet().above()::distSqr));
         baritone.getInputOverrideHandler().clearAllKeys();
         if (shaft.isPresent() && ctx.player().onGround()) {
@@ -147,6 +159,18 @@ public final class MineProcess extends BaritoneProcessHelper implements IMinePro
         return command;
     }
 
+
+    // the shaft shortcut breaks whatever ore is in our column, and avoidBreaking is fine with sand on top of it (the planner
+    // charges for that). from directly under it the stack has nowhere to go but through us, so no
+    private boolean safeToMineFromBelow(BlockPos pos) {
+        BlockPos feet = ctx.playerFeet();
+        FallingColumn.Cells w = FallingColumn.over((x, y, z) -> BlockStateInterface.get(ctx, new BlockPos(x, y, z)));
+        if (!FallingColumn.landsOn(w, pos.getX(), pos.getY(), pos.getZ(), feet.getY(), feet.getY() + 1)) {
+            return true;
+        }
+        fallsOnShaft.add(pos);
+        return false;
+    }
 
     private void updateLoucaSystem() {
         Map<BlockPos, Long> copy = new HashMap<>(anticipatedDrops);
@@ -261,6 +285,10 @@ public final class MineProcess extends BaritoneProcessHelper implements IMinePro
 
     private Goal coalesce(BlockPos loc, List<BlockPos> locs, CalculationContext context) {
         boolean assumeVerticalShaftMine = !(baritone.bsi.get0(loc.above()).getBlock() instanceof FallingBlock);
+        if (fallsOnShaft.contains(loc)) {
+            // we are under it and its stack would land on us. get into the ore from the side instead, the path charges for the stack
+            return new GoalBlock(loc);
+        }
         if (!Baritone.settings().forceInternalMining.value) {
             if (assumeVerticalShaftMine) {
                 // we can get directly below the block
@@ -359,6 +387,12 @@ public final class MineProcess extends BaritoneProcessHelper implements IMinePro
     }
 
     public static List<BlockPos> searchWorld(CalculationContext ctx, BlockOptionalMetaLookup filter, int max, List<BlockPos> alreadyKnown, List<BlockPos> blacklist, List<BlockPos> dropped) {
+        return searchWorld(ctx, filter, max, alreadyKnown, blacklist, dropped, null);
+    }
+
+    // rawHits hears how many hits there were before prune threw any out. a result shorter than max only means the world
+    // ran out if the raw count is short too, prune eats things (flowing water, encased ores) and that looks the same
+    public static List<BlockPos> searchWorld(CalculationContext ctx, BlockOptionalMetaLookup filter, int max, List<BlockPos> alreadyKnown, List<BlockPos> blacklist, List<BlockPos> dropped, IntConsumer rawHits) {
         List<BlockPos> locs = new ArrayList<>();
         List<Block> untracked = new ArrayList<>();
         for (BlockOptionalMeta bom : filter.blocks()) {
@@ -379,16 +413,22 @@ public final class MineProcess extends BaritoneProcessHelper implements IMinePro
             }
         }
 
+        int raw = locs.size();
         locs = prune(ctx, locs, filter, max, blacklist, dropped);
 
         if (!untracked.isEmpty() || (Baritone.settings().extendCacheOnThreshold.value && locs.size() < max)) {
-            locs.addAll(BaritoneAPI.getProvider().getWorldScanner().scanChunkRadius(
+            List<BlockPos> scanned = BaritoneAPI.getProvider().getWorldScanner().scanChunkRadius(
                     ctx.getBaritone().getPlayerContext(),
                     filter,
                     max,
                     10,
                     32
-            )); // maxSearchRadius is NOT sq
+            ); // maxSearchRadius is NOT sq
+            raw += scanned.size();
+            locs.addAll(scanned);
+        }
+        if (rawHits != null) {
+            rawHits.accept(raw);
         }
 
         locs.addAll(alreadyKnown);
@@ -494,6 +534,14 @@ public final class MineProcess extends BaritoneProcessHelper implements IMinePro
 
     public static boolean plausibleToBreak(CalculationContext ctx, BlockPos pos) {
         BlockState state = ctx.bsi.get0(pos);
+        if (ctx.altoActive) {
+            // altoclef asks "could this be broken" about things it deals with by hand (portals, lava, bucket stuff), so these
+            // pass. only when it's actually in the room though, #mine lava should stay a silly thing to ask
+            Block block = state.getBlock();
+            if (block instanceof EndPortalFrameBlock || block instanceof EndPortalBlock || block == Blocks.LAVA) {
+                return true;
+            }
+        }
         if (MovementHelper.getMiningDurationTicks(ctx, pos.getX(), pos.getY(), pos.getZ(), state, true) >= COST_INF) {
             return false;
         }
@@ -519,6 +567,7 @@ public final class MineProcess extends BaritoneProcessHelper implements IMinePro
         this.desiredQuantity = quantity;
         this.knownOreLocations = new ArrayList<>();
         this.blacklist = new ArrayList<>();
+        this.fallsOnShaft = new HashSet<>();
         this.branchPoint = null;
         this.branchPointRunaway = null;
         this.anticipatedDrops = new HashMap<>();

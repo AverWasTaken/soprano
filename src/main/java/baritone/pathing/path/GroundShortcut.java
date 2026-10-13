@@ -31,7 +31,11 @@ final class GroundShortcut {
     // standing player half-width plus a little room for look quantization and sideways drift
     private static final double HALF_WIDTH = 0.35;
     private static final double MAX_PATH_DEVIATION = 1.0;
+    // the safety margin for "where could momentum put us", a little more than the real slide on purpose
     private static final double COAST_TICKS = 2.5;
+    // the real slide once W is let go: v + v * f + v * f^2 ... = v / (1 - f), f being 0.6 * 0.91. letting go at 2.5 v out
+    // left us 0.3 v short of the node every time
+    private static final double SLIDE_TICKS = 1 / (1 - SprintJump.GROUND_FRICTION);
 
     final int endIndex;
     final Vec3 start;
@@ -109,7 +113,7 @@ final class GroundShortcut {
         Vec3 remaining = target.subtract(player);
         // releasing W early lets ground friction catch us before a turn, goal, or precise movement.
         return remaining.lengthSqr() > 0.04
-                && remaining.dot(velocity.scale(COAST_TICKS)) < remaining.lengthSqr();
+                && remaining.dot(velocity.scale(SLIDE_TICKS)) < remaining.lengthSqr();
     }
 
     private static Vec3 coastPosition(Vec3 player, Vec3 velocity) {

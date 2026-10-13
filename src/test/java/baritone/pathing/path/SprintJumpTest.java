@@ -65,4 +65,96 @@ public class SprintJumpTest {
         SprintJump next = new SprintJump(new double[]{0, 0, 1, 1, 1, 1, 1, 1}, 1, ACCEL);
         assertTrue(next.safe(next.jump(landing.s() - 2, landing.v(), Double.NaN)));
     }
+
+    // a flat parkour over a gap: the takeoff cell, dist - 1 cells of nothing, the landing and `after` more cells of floor
+    private static SprintJump hop(int dist, int after) {
+        double[] floors = new double[dist + 1 + after];
+        for (int k = 1; k < dist; k++) {
+            floors[k] = SprintJump.NO_FLOOR;
+        }
+        SprintJump jump = new SprintJump(floors, 1, ACCEL);
+        jump.hop = true;
+        return jump;
+    }
+
+    // every start the executor could hand over: anywhere in the takeoff cell, at the speeds a sprinter enters it with and
+    // the slower ones (the sprint was only just dropped, a walking pace, standing). for each one the plan either says no or
+    // it lands on the floor on the far side with the speed off by 15% either way, which is the margin the real thing gets
+    @Test
+    public void aHopEitherSaysNoOrLandsOnTheFarSide() {
+        for (int dist = 2; dist <= 3; dist++) {
+            for (int after = 0; after <= 4; after++) {
+                SprintJump jump = hop(dist, after);
+                for (double v : new double[]{0, 0.07, 0.118, 0.137, SPRINT}) {
+                    for (double s = -0.5; s <= 0.5; s += 0.05) {
+                        Double target = jump.plan(s, v);
+                        if (target == null) {
+                            continue;
+                        }
+                        for (double margin : new double[]{0.85, 1, 1.15}) {
+                            SprintJump.Landing l = jump.jump(s, v * margin, target);
+                            String at = "dist " + dist + " after " + after + " s " + s + " v " + v + " x" + margin;
+                            assertNotNull(at, l);
+                            assertTrue(at + " landed in the gap or short, s " + l.s(), Math.round(l.s()) >= dist);
+                            assertTrue(at + " came down off the runway, s " + l.s(), Math.round(l.s()) < jump.floors.length);
+                            assertEquals(at, 0, l.y(), 1e-9);
+                            assertEquals(at + " 12 ticks is how long a flat hop is up", 12, l.ticks());
+                            assertTrue(at, jump.safe(l));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    public void aSprintingEntryGetsItsHopWheneverTheRunwayContinues() {
+        for (int dist = 2; dist <= 3; dist++) {
+            SprintJump jump = hop(dist, 2);
+            for (double s = -0.5; s <= 0.5; s += 0.05) {
+                assertNotNull("dist " + dist + " s " + s, jump.plan(s, SPRINT));
+            }
+        }
+    }
+
+    @Test
+    public void oneCellOfFloorPastTheLandingIsEnoughForASprintingEntry() {
+        // hopPrice charges a braked hop for exactly this much runway, so the sim has to agree it works from anywhere in the cell
+        for (int dist = 2; dist <= 3; dist++) {
+            SprintJump jump = hop(dist, 1);
+            for (double s = -0.5; s <= 0.5; s += 0.05) {
+                assertNotNull("dist " + dist + " s " + s, jump.plan(s, SPRINT));
+            }
+        }
+    }
+
+    @Test
+    public void aHopWithNothingToStopOnAfterTheLandingStaysAWalk() {
+        // the slide after landing would end up past the last cell we know about, and that is a wall as far as the sim goes
+        for (int dist = 2; dist <= 3; dist++) {
+            for (double s = -0.5; s <= 0.5; s += 0.05) {
+                assertNull("dist " + dist + " s " + s, hop(dist, 0).plan(s, SPRINT));
+            }
+        }
+    }
+
+    @Test
+    public void aShortGapBrakesInsteadOfFlyingPastTheLanding() {
+        // dist 2 over one block with a single cell of floor after it: full send lands at 3, past the end of the world
+        SprintJump jump = hop(2, 1);
+        assertTrue(Double.isNaN(hop(2, 3).plan(0, SPRINT))); // with room it just goes
+        Double target = jump.plan(0, SPRINT);
+        assertNotNull(target);
+        assertFalse(Double.isNaN(target));
+        SprintJump.Landing l = jump.jump(0, SPRINT, target);
+        assertEquals(2, l.s(), 0.5);
+    }
+
+    @Test
+    public void aHopFliesTwelveTicksLikeTheGameDoes() {
+        SprintJump.Landing l = hop(3, 4).jump(0, SPRINT, Double.NaN);
+        assertEquals(12, l.ticks());
+        assertEquals(0, l.y(), 1e-9);
+        assertEquals(1.25, l.apex(), 0.01); // the 0.42 jump tops out at 1.2522
+    }
 }

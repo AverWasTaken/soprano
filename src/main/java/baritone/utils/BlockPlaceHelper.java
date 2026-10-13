@@ -36,6 +36,11 @@ public class BlockPlaceHelper {
         this.ctx = playerContext;
     }
 
+    // would a click requested right now go out. same two checks as tick, so a movement can plan around the throttle
+    public boolean ready() {
+        return rightClickTimer <= 0 && !ctx.player().isHandsBusy();
+    }
+
     public void tick(boolean rightClickRequested) {
         if (rightClickTimer > 0) {
             rightClickTimer--;

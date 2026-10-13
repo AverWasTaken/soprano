@@ -172,6 +172,9 @@ public final class CachedWorld implements ICachedWorld, Helper {
 
     private void updateCachedChunk(CachedChunk chunk) {
         CachedRegion region = getOrCreateRegion(chunk.x >> 5, chunk.z >> 5);
+        if (region == null) {
+            return; // outside the world border, nothing to file it under
+        }
         region.updateCachedChunk(chunk.x & 31, chunk.z & 31, chunk);
     }
 
@@ -267,6 +270,9 @@ public final class CachedWorld implements ICachedWorld, Helper {
 
     @Override
     public final synchronized CachedRegion getRegion(int regionX, int regionZ) {
+        if (!isRegionInWorld(regionX, regionZ)) {
+            return null; // getRegionID folds these onto 0, which is region (0,0)'s key
+        }
         return cachedRegions.get(getRegionID(regionX, regionZ));
     }
 
@@ -279,6 +285,9 @@ public final class CachedWorld implements ICachedWorld, Helper {
      * @return The region located at the specified coordinates
      */
     private CachedRegion getOrCreateRegion(int regionX, int regionZ) {
+        if (!isRegionInWorld(regionX, regionZ)) {
+            return null;
+        }
         CachedRegion region = getRegion(regionX, regionZ);
         if (region != null) {
             return region;
@@ -307,6 +316,9 @@ public final class CachedWorld implements ICachedWorld, Helper {
     // ExploreProcess asks about every chunk it's considering every tick, and each one in a region that isn't loaded
     // yet used to get its own executor task (and its own thread, the executor doesn't queue). one per region is plenty
     public void tryLoadFromDiskAsync(int regionX, int regionZ) {
+        if (!isRegionInWorld(regionX, regionZ)) {
+            return;
+        }
         long id = getRegionID(regionX, regionZ);
         if (!pendingLoads.add(id)) {
             return;
@@ -322,7 +334,8 @@ public final class CachedWorld implements ICachedWorld, Helper {
 
     /**
      * Returns the region ID based on the region coordinates. 0 will be
-     * returned if the specified region coordinates are out of bounds.
+     * returned if the specified region coordinates are out of bounds, so
+     * callers have to check {@link #isRegionInWorld} first.
      *
      * @param regionX The region X coordinate
      * @param regionZ The region Z coordinate

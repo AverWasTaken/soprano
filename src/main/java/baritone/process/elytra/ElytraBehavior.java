@@ -67,6 +67,7 @@ import java.util.function.UnaryOperator;
 
 import static baritone.utils.BaritoneMath.fastCeil;
 import static baritone.utils.BaritoneMath.fastFloor;
+import baritone.utils.ExperimentalMovement;
 
 public final class ElytraBehavior implements Helper {
     private final Baritone baritone;
@@ -494,7 +495,7 @@ public final class ElytraBehavior implements Helper {
     }
 
     public void pathTo() {
-        if (!Baritone.settings().elytraAutoJump.value || ctx.player().isFallFlying()) {
+        if (!ExperimentalMovement.elytraAutoJump() || ctx.player().isFallFlying()) {
             this.pathManager.pathToDestination();
         }
     }
@@ -790,8 +791,10 @@ public final class ElytraBehavior implements Helper {
                 return;
             }
             logVerbose("attempting to use firework" + (forceUseFirework ? " (forced)" : ""));
+            // read the flight duration before the click, using the last rocket in a stack leaves air in the hand
+            final int flightDuration = getFireworkBoost(ctx.player().getItemInHand(InteractionHand.MAIN_HAND)).orElse(0);
             ctx.playerController().processRightClick(ctx.player(), ctx.world(), InteractionHand.MAIN_HAND);
-            this.minimumBoostTicks = 10 * (1 + getFireworkBoost(ctx.player().getItemInHand(InteractionHand.MAIN_HAND)).orElse(0));
+            this.minimumBoostTicks = 10 * (1 + flightDuration);
             this.remainingFireworkTicks = 10;
             this.deployedFireworkLastTick = true;
         }

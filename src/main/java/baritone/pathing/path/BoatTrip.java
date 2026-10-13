@@ -18,6 +18,7 @@
 package baritone.pathing.path;
 
 import baritone.Baritone;
+import baritone.altoclef.AltoClefSettings;
 import baritone.api.pathing.calc.IPath;
 import baritone.api.pathing.movement.IMovement;
 import baritone.api.utils.BetterBlockPos;
@@ -49,6 +50,7 @@ import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
 import java.util.List;
+import baritone.utils.ExperimentalMovement;
 
 // one crossing of open water in a boat, owned by the PathExecutor. from the last block of land it
 // places the boat, climbs in, rows the path's water positions, and at the last one breaks the boat so the
@@ -165,7 +167,7 @@ public final class BoatTrip implements Helper {
     // shore with enough open water ahead and a boat in the bag, or we're already sitting in a boat (a new
     // segment or a splice replaced the executor mid crossing) and just need to keep rowing
     public static BoatTrip plan(Baritone baritone, IPath path, int pos, int refusedUntil) {
-        if (!Baritone.settings().allowBoats.value) {
+        if (!ExperimentalMovement.allowBoats()) {
             return null;
         }
         IPlayerContext ctx = baritone.getPlayerContext();
@@ -199,9 +201,8 @@ public final class BoatTrip implements Helper {
         // in the debug chat, because "it just swam" with no explanation is a pain to chase
         boolean shore = fromWater || MovementHelper.isWater(ctx, path.positions().get(pos + 1));
         if (boatSlot(ctx.player().getInventory()) < 0) {
-            if (shore) {
-                explain(pos, "no boat in the inventory, swimming this one");
-            }
+            // no reason given for this one. not owning a boat is the normal state (fastMode turns boats on for everyone),
+            // and saying so at every bit of water is a wall of chat
             return null;
         }
         IMovement first = path.movements().get(pos);
@@ -235,7 +236,7 @@ public final class BoatTrip implements Helper {
     // the renderer. Same rules as plan minus the "are we standing there right now" ones
     public static List<int[]> runs(Baritone baritone, IPath path) {
         List<int[]> runs = new ArrayList<>();
-        if (!Baritone.settings().allowBoats.value || path == null) {
+        if (!ExperimentalMovement.allowBoats() || path == null) {
             return runs;
         }
         IPlayerContext ctx = baritone.getPlayerContext();
@@ -378,15 +379,11 @@ public final class BoatTrip implements Helper {
         return Math.max(start, Math.min(end, waypoint));
     }
 
-    // the executor got rebuilt on a new path: a splice keeps our indices and tacks more path on the end,
-    // cutting the executed history off the front shifts them all by delta. either way the run might now
-    // carry on past where it used to end, and if we didn't notice we'd scuttle the boat in the middle of
-    // the lake and swim the rest
-    public void rebase(IPath newPath, int delta) {
+    // the executor got spliced onto a new path: our indices all still hold, there's just more path on the end.
+    // the run might now carry on past where it used to end, and if we didn't notice we'd scuttle the boat in
+    // the middle of the lake and swim the rest. (history cuts wait for the trip to finish, see cutIfTooLong)
+    public void rebase(IPath newPath) {
         path = newPath;
-        start -= delta;
-        end -= delta;
-        waypoint -= delta;
         if (phase == Phase.PLACE || phase == Phase.BOARD || phase == Phase.RIDE) {
             // end - 1 rather than end so the level water check covers the hop onto positions[end + 1]
             end = Math.max(end, runEnd(new BlockStateInterface(ctx), path, end - 1));
@@ -508,6 +505,9 @@ public final class BoatTrip implements Helper {
         if (!Inventory.isHotbarSlot(slot)) {
             baritone.getInventoryBehavior().attemptToPutOnHotbar(slot, i -> false);
             return Result.CONTINUE;
+        }
+        if (AltoClefSettings.getInstance().isInteractionPaused()) {
+            return Result.CONTINUE; // no hotbar swaps while altoclef has the hands
         }
         inv.setSelectedSlot(slot);
         Rotation rot = RotationUtils.calcRotationFromVec3d(ctx.playerHead(), placeAt, ctx.playerRotations());

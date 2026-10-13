@@ -19,6 +19,9 @@ package baritone.pathing.movement.movements;
 
 import org.junit.Test;
 
+import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.TimeUnit;
+
 import static baritone.pathing.movement.movements.ClimbJump.*;
 import static org.junit.Assert.*;
 
@@ -191,8 +194,9 @@ public class ClimbJumpTest {
         // the A* side of the table: ask about something nobody has worked out and get told no, and then yes
         Shape shape = new Shape(true, 2, 1, 0, KIND_VINE, BELOW_AIR, 1, false, 0, false, 2, false);
         ClimbJump.Result first = ClimbJump.lookupIfKnown(shape);
-        for (int i = 0; i < 400 && first == null; i++) {
-            Thread.sleep(25);
+        if (first == null) {
+            // the fill runs on the common pool, so wait for that to go idle instead of guessing how long a busy machine takes
+            assertTrue("the fill never finished", ForkJoinPool.commonPool().awaitQuiescence(120, TimeUnit.SECONDS));
             first = ClimbJump.lookupIfKnown(shape);
         }
         assertNotNull(first);
