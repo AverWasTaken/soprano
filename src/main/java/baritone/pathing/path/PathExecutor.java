@@ -34,6 +34,7 @@ import baritone.pathing.movement.MovementState;
 import baritone.pathing.movement.movements.*;
 import baritone.utils.BlockStateInterface;
 import baritone.utils.ExperimentalMovement;
+import baritone.utils.ToolSet;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Vec3i;
 import net.minecraft.util.Tuple;
@@ -761,13 +762,26 @@ public class PathExecutor implements IPathExecutor, Helper {
 
     private boolean placingNearby() {
         BlockStateInterface bsi = behavior.baritone.bsi;
+        double[] progress = new double[SprintPolicy.MAX_INSTANT_BREAKS];
+        int breaks = 0;
+        ToolSet tools = null;
         for (int i = pathPosition; i <= pathPosition + 2 && i < path.movements().size(); i++) {
             Movement movement = (Movement) path.movements().get(i);
-            if (movement instanceof MovementPillar || !movement.toPlace(bsi).isEmpty() || !movement.toBreak(bsi).isEmpty()) {
+            if (movement instanceof MovementPillar || !movement.toPlace(bsi).isEmpty()) {
                 return true;
             }
+            for (BlockPos pos : movement.toBreak(bsi)) {
+                if (breaks == progress.length) {
+                    return true; // a tunnel, however fast the pick is
+                }
+                if (tools == null) {
+                    tools = new ToolSet(ctx.player());
+                }
+                // breaking is like 5x slower in water. we're asking about when we get there, so being in the air right now doesn't count
+                progress[breaks++] = tools.getStrVsBlock(bsi.get0(pos)) * (ctx.player().isInWater() ? 0.2 : 1);
+            }
         }
-        return false;
+        return !SprintPolicy.trivialBreaks(progress, breaks);
     }
 
     // turn a little before the corner instead of at it. a movement is done the moment we step into its dest block, and at
