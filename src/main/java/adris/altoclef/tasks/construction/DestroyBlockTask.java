@@ -612,7 +612,7 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
             _what = BuiltInRegistries.BLOCK.getKey(there.getBlock()).getPath();
         }
         // Check if there is white wool at the specified position
-        if (there.getBlock() == Blocks.WHITE_WOOL) {
+        if (there.getBlock() == Blocks.WOOL.white()) {
             // Iterate over all entities in the world
             Iterable<Entity> entities = mod.getWorld().entitiesForRendering();
             for (Entity entity : entities) {

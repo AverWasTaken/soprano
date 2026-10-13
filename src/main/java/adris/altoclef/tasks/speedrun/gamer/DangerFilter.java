@@ -87,7 +87,7 @@ public final class DangerFilter {
                 continue;
             }
             // outposts put white wool two above their tables
-            boolean outpost = mod.getWorld().getBlockState(pos.above(2)).getBlock() == Blocks.WHITE_WOOL;
+            boolean outpost = mod.getWorld().getBlockState(pos.above(2)).getBlock() == Blocks.WOOL.white();
             if (outpost || nearAny(pos, witches, WITCH_RADIUS)) {
                 BanPolicy.trap(bans, dim, pos.getX(), pos.getY(), pos.getZ(), outpost ? "outpost table" : "witch hut table");
             }
