@@ -27,8 +27,19 @@ public class ComeToPlayerTask extends Task {
 
     @Override
     protected void onStart(AltoClef mod) {
-        _giveUp.reset();
+        // the clock runs from when the command was given, onStart comes again after every eat or fight that took the wheel
         _gaveUp = false;
+    }
+
+    // straight from the world: the entity tracker only refreshes while a task is running, and this is asked on the very
+    // first tick of one
+    private Optional<Player> find(AltoClef mod) {
+        for (Player p : mod.getWorld().players()) {
+            if (p.getName().getString().equals(_playerName)) {
+                return Optional.of(p);
+            }
+        }
+        return Optional.empty();
     }
 
     @Override
@@ -38,7 +49,7 @@ public class ComeToPlayerTask extends Task {
             _gaveUp = true;
             return null;
         }
-        Optional<Player> player = mod.getEntityTracker().getPlayerEntity(_playerName);
+        Optional<Player> player = find(mod);
         if (player.isPresent()) {
             return new GetToEntityTask(player.get(), 2);
         }
@@ -63,7 +74,7 @@ public class ComeToPlayerTask extends Task {
         if (_gaveUp) {
             return true;
         }
-        Optional<Player> player = mod.getEntityTracker().getPlayerEntity(_playerName);
+        Optional<Player> player = find(mod);
         return player.isPresent() && mod.getPlayer().closerThan(player.get(), ARRIVED_DISTANCE);
     }
 

@@ -85,6 +85,10 @@ public abstract class AltoClefCommand extends Command {
 
     // runs a user task, and when it ends a butler or "a;b" line gets told so it can carry on
     protected final void startTask(AltoClef mod, Task task) {
+        // a task the owner types in takes the bot away from whoever whispered the last one
+        if (!AltoClefCommands.currentIsButler()) {
+            mod.getButler().onOwnerTask();
+        }
         mod.runUserTask(task, AltoClefCommands.takeFinish());
     }
 

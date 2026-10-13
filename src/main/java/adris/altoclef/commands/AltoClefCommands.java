@@ -161,6 +161,16 @@ public final class AltoClefCommands {
         generation++;
     }
 
+    // how many stops there have been, so a whisper can tell "finished" from "somebody stopped it"
+    public static int generation() {
+        return generation;
+    }
+
+    // forgets the saved #gamer run, which a whisper has no business doing to the owner's world. the rest of gamer is fine
+    static boolean isGamerReset(String label, String rest) {
+        return label.equalsIgnoreCase("gamer") && rest.trim().toLowerCase(Locale.ROOT).startsWith("reset");
+    }
+
     /**
      * Runs a command line the way the old altoclef executor did: "a ; b" runs b once a's task is done.
      *
@@ -200,6 +210,10 @@ public final class AltoClefCommands {
         String rest = split.length > 1 ? split[1].trim() : "";
         if (butler && !isButlerAllowed(label)) {
             onError.accept("\"" + label + "\" is not something the butler is allowed to run");
+            return;
+        }
+        if (butler && isGamerReset(label, rest)) {
+            onError.accept("gamer reset is not something the butler is allowed to run");
             return;
         }
         if (runAltoClefVersion(label, rest, butler, next, onError)) {
@@ -300,7 +314,9 @@ public final class AltoClefCommands {
             String user = mod.getButler().hasCurrentUser() ? mod.getButler().getCurrentUser() : null;
             if (user == null) {
                 onError.accept("come needs somebody to come to");
-            } else if (mod.getEntityTracker().getPlayerEntity(user).isEmpty()) {
+            } else if (mod.getWorld().players().stream().noneMatch(p -> p.getName().getString().equals(user))) {
+                // the world and not the entity tracker: the tracker only refreshes while a task runs, so with the bot idle
+                // it would call a friend standing right next to us invisible
                 onError.accept("I can't see you, get closer to me (inside my render distance) and ask again");
             } else {
                 startTask(new ComeToPlayerTask(user), next, onError);

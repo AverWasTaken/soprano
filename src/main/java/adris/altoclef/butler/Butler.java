@@ -40,7 +40,6 @@ public class Butler {
 
     // Utility variables for command logic
     private boolean _commandInstantRan = false;
-    private boolean _commandFinished = false;
     // a task ended while a whisper was being run (a "stop" from somebody else does that), so whoever had the bot before
     // does not have it anymore and must not get it handed back
     private boolean _taskEnded = false;
@@ -62,7 +61,7 @@ public class Butler {
             if (!Baritone.settings().altoButler.value) {
                 return;
             }
-            boolean debug = ButlerConfig.getInstance().whisperFormatDebug;
+            boolean debug = ButlerConfig.getInstance().debugWhispers;
             String message = evt.messageContent();
             String sender = evt.senderName();
             ChatType messageType = evt.messageType();
@@ -83,14 +82,14 @@ public class Butler {
         WhisperChecker.MessageResult result = this._whisperChecker.receiveMessage(sender, receiver, msg);
         if (result != null) {
             this.receiveWhisper(result.from, result.message);
-        } else if (ButlerConfig.getInstance().whisperFormatDebug) {
+        } else if (ButlerConfig.getInstance().debugWhispers) {
             Debug.logMessage("    Not Parsing: MSG format not found.");
         }
     }
 
     private void receiveWhisper(String username, String message) {
 
-        boolean debug = ButlerConfig.getInstance().whisperFormatDebug;
+        boolean debug = ButlerConfig.getInstance().debugWhispers;
         // Ignore messages from other bots.
         if (message.startsWith(BUTLER_MESSAGE_START)) {
             if (debug) {
@@ -131,14 +130,24 @@ public class Butler {
         return UserAuth.whitelistNames();
     }
 
-    public void onLog(String message, MessagePriority priority) {
+    // the owner started a task of their own, which drops the whisperer's one without a word: tell them and stop copying
+    // the new task's log lines to them
+    public void onOwnerTask() {
         if (_currentUser != null) {
+            sendWhisper(_currentUser, "Your command was replaced by the owner's.", MessagePriority.TIMELY);
+            _currentUser = null;
+        }
+    }
+
+    // switching the butler off in the middle of a task must also stop the running commentary
+    public void onLog(String message, MessagePriority priority) {
+        if (_currentUser != null && Baritone.settings().altoButler.value) {
             sendWhisper(message, priority);
         }
     }
 
     public void onLogWarning(String message, MessagePriority priority) {
-        if (_currentUser != null) {
+        if (_currentUser != null && Baritone.settings().altoButler.value) {
             sendWhisper("[WARNING:] " + message, priority);
         }
     }
@@ -163,18 +172,23 @@ public class Butler {
         }
         String prevUser = _currentUser;
         _commandInstantRan = true;
-        _commandFinished = false;
         _taskEnded = false;
+        // per call and not fields: a finish callback of the task we are replacing runs inside this very call (stop does
+        // that) and must not look like ours finishing
+        boolean[] finished = {false};
         boolean[] failed = {false};
+        int startedAt = AltoClefCommands.generation();
         _currentUser = username;
         // the last flag is the allow-list: a whisper can run altoclef's commands and nothing else of soprano's
         AltoClefCommands.execute(message, () -> {
-            // On finish. goes to whoever asked, _currentUser can be somebody else by the time a long task ends
-            sendWhisper(username, "Command Finished: " + message, MessagePriority.TIMELY);
+            // On finish. goes to whoever asked, _currentUser can be somebody else by the time a long task ends. a stop
+            // (anybody's) bumps the generation, and "finished" would be a lie
+            boolean stopped = AltoClefCommands.generation() != startedAt;
+            sendWhisper(username, (stopped ? "Command Stopped: " : "Command Finished: ") + message, MessagePriority.TIMELY);
             if (!_commandInstantRan) {
                 _currentUser = null;
             }
-            _commandFinished = true;
+            finished[0] = true;
         }, error -> {
             sendWhisper(username, "TASK FAILED: " + error, MessagePriority.ASAP);
             failed[0] = true;
@@ -185,7 +199,7 @@ public class Butler {
         }, true);
         _commandInstantRan = false;
         // Only set the current user if we're still running.
-        if (_commandFinished) {
+        if (finished[0]) {
             _currentUser = _taskEnded ? null : prevUser;
         } else if (!failed[0]) {
             // told after the fact so a line that finishes on the spot only says "finished", one line instead of two

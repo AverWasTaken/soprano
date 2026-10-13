@@ -52,7 +52,8 @@ public class WhitelistCommand extends AltoClefCommand {
     }
 
     private static void edit(AltoClef mod, String name, boolean adding) throws IOException, CommandInvalidStateException {
-        if (!WhitelistEditor.isValidName(name)) {
+        // only adding is checked: an odd entry typed into the file by hand has to be removable by name
+        if (adding && !WhitelistEditor.isValidName(name)) {
             throw new CommandInvalidStateException("\"" + name + "\" doesn't look like a minecraft name (letters, digits, _ and ., 16 at most)");
         }
         // Debug and not mod.log: mod.log is copied to whoever has the bot on a whisper, and this is not theirs to read

@@ -59,6 +59,15 @@ public class ButlerAllowListTest {
     }
 
     @Test
+    public void gamerResetIsRefusedButTheRestOfGamerIsNot() {
+        assertTrue(AltoClefCommands.isGamerReset("gamer", "reset"));
+        assertTrue(AltoClefCommands.isGamerReset("GAMER", " Reset "));
+        assertFalse(AltoClefCommands.isGamerReset("gamer", ""));
+        assertFalse(AltoClefCommands.isGamerReset("gamer", "status"));
+        assertFalse(AltoClefCommands.isGamerReset("get", "reset"));
+    }
+
+    @Test
     public void comeIsAWhisperCommandEvenThoughItIsNotOurs() {
         Set<String> owned = owned();
         // soprano's own come (the camera one) is not in the owned set, the butler answers it itself

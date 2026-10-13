@@ -62,6 +62,7 @@ public class GotoCommand extends Command {
                 args.get();
             }
             logDirect(String.format("Going to: %s", String.join(" ", words)));
+            altoClef.getButler().onOwnerTask();
             altoClef.runUserTask(task);
             return;
         }
