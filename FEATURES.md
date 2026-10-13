@@ -19,14 +19,14 @@ These are on top of the Baritone features below, and all are off by default unle
 - **Chunk caching.** Soprano simplifies chunks to a compact internal 2-bit representation (AIR, SOLID, WATER, AVOID) and stores them in RAM for better very-long-distance pathing. There is also an option to save these cached chunks to disk. [Example](https://www.youtube.com/watch?v=dyfYKSubhdc)
 - **Block breaking.** Soprano considers breaking blocks as part of its path. It also takes into account your current tool set and hotbar. For example, if you have an Eff V diamond pick, it may choose to mine through a stone barrier, while if you only had a wood pick it might be faster to climb over it.
 - **Block placing.** Soprano considers placing blocks as part of its path. This includes sneak-back-placing, pillaring, etc. It has a configurable penalty for placing a block (1 second by default) to conserve its resources. The list of acceptable throwaway blocks is also configurable, and is cobble, dirt, or netherrack by default. [Example](https://www.youtube.com/watch?v=F6FbI1L9UmU)
-- **Falling.** Soprano will fall up to 3 blocks onto solid ground (configurable, if you have Feather Falling and/or don't mind taking a little damage). If you have a water bucket on your hotbar, it will fall up to 20 blocks and place the bucket beneath it. It will fall an unlimited distance into existing still water.
+- **Falling.** Soprano will fall up to 3 blocks onto solid ground (configurable, if you have Feather Falling and/or don't mind taking a little damage). If you have a water bucket on your hotbar, it will fall up to 20 blocks and place the bucket beneath it, as long as a miss (the whole fall) wouldn't kill you at your current health. It will fall an unlimited distance into existing still water.
 - **Vines and ladders.** Soprano climbs and descends vines and ladders. There is experimental support for strafing to a different ladder / vine column in midair (off by default, setting named `allowVines`). It can break its fall by grabbing ladders / vines midair, and understands when that is and isn't possible.
 - **Opening fence gates and doors.**
 - **Slabs and stairs.**
 - **Falling blocks.** Soprano understands the costs of breaking blocks with falling blocks on top, and includes all of their break costs. Additionally, since it avoids breaking any blocks touching a liquid, it won't break the bottom of a gravel stack below a lava lake (anymore).
 - **Avoiding dangerous blocks.** Obviously, it knows not to walk through fire or on magma, not to corner over lava (that deals some damage), not to break any blocks touching a liquid (it might drown), etc.
 - **Parkour.** Sprint jumping over 1, 2, or 3 block gaps.
-- **Parkour place.** Sprint jumping over a 3 block gap and placing the block to land on while executing the jump. It's really cool. Part of `fastMode`.
+- **Parkour place.** Sprint jumping over a 3 block gap and placing the block to land on while executing the jump. It's really cool. Part of `fastMode`, where a missed placement after the jump is committed is a fall.
 - **Elytra.** Flying with fireworks, see `#elytra`.
 - **Pigs.** It can sort of control pigs. Don't rely on it.
 
