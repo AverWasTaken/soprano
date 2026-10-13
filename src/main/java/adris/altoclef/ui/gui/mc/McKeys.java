@@ -44,7 +44,7 @@ public final class McKeys {
         pair(47, 91);
         pair(48, 93);
         pair(49, 92);
-        pair(50, 162);
+        pair(50, 161);
         pair(51, 59);
         pair(52, 39);
         pair(53, 96);
@@ -80,7 +80,8 @@ public final class McKeys {
         }
         pair(98, 320);
         pair(99, 330);
-        pair(100, 161);
+        // the iso "<>" key next to left shift is world 2 in glfw's windows table
+        pair(100, 162);
         pair(101, 348);
         pair(103, 336);
         for (int i = 0; i < 12; i++) {

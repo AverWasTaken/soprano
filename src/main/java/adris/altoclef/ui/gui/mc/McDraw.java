@@ -28,7 +28,8 @@ import java.util.Map;
 // fill/blit would work, but it files every element by bounds into layers, and walking that for the thousands of glyph
 // quads a panel is made of is slow, and its bounds round to whole gui units so touching quads can swap order. so fills
 // and blits go straight into the current layer's glyph list instead: that list is never sorted or searched, it draws in
-// exactly the order it was filled, which is the painter's order the kit assumes. the extractor's own things (items,
+// exactly the order it was filled, which is the painter's order the kit assumes (end() closes the stratum so nothing
+// the game extracts afterwards gets filed into that same layer). the extractor's own things (items,
 // faces, vanilla text) each get a stratum to themselves on both sides. strata draw in order, so they land over
 // everything submitted before them and under everything after
 final class McDraw {
