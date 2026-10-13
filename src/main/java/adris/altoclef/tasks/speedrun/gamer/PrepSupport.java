@@ -87,8 +87,8 @@ public final class PrepSupport {
         gravel.reset();
     }
 
-    // the bot is standing by a smoker on purpose (FurnacePlan STAND_BY): a few seconds of waiting is the plan, so the side jobs that
-    // walk off (village chests and beds, ruined portals, a fresh golem, a new station pickup) can all wait the 40 s. only a golem
+    // the bot is standing by a smoker on purpose (FurnacePlan STAND_BY): under a minute of waiting is the plan, so the side jobs that
+    // walk off (village chests and beds, ruined portals, a fresh golem, a new station pickup) can all wait it out. only a golem
     // fight already going outranks it, same as it outranks everything. a pickup that already started is not a side job, it runs
     // to the end (a half taken furnace is how stations got left behind)
     public Task tickStandBy(AltoClef mod, GamerContext ctx, List<KitNeed> needs) {

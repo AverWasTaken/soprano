@@ -19,18 +19,28 @@ public final class FurnacePlan {
     // stand and wait instead of walking off and coming straight back. also how far ahead of its guess an unvisited job is due
     public static final long NEARLY_TICKS = 200;
     // how long past the estimate we keep standing there: a furnace that never finishes (no fuel, a chunk that stopped ticking) must
-    // not hold the run. the stand-by budget, the progress credit of a wait and the cap of one visit all use it, and so does the
-    // revisit delay of a visit that gave up, so a capped job is not due again before it had its half minute
+    // not hold the run. the progress credit of a wait and the cap of one visit use it (a quick smoker's stand-by has its own, shorter
+    // budget), and so does the revisit delay of a visit that gave up, so a capped job is not due again before it had its half minute
     public static final long PATIENCE_TICKS = 600;
     // waits to the end of the estimate with nothing coming out before the job is called stuck and its input is taken back
     public static final int STALL_LIMIT = 2;
     // a smoker does 5 s an item, so a batch with more than this left (a stack of 64 is five minutes) is not worth standing at, it is
-    // worked like a furnace until it gets down to this. asked again every look until the stand-by starts: judging it once at first
-    // sight meant anything over four items was never stood by at all. a minute was a minute of a bot doing nothing, plus the
-    // patience on top: 20 s is four items, about what the walk off and back costs anyway
-    public static final long STAND_BY_MAX_TICKS = 400;
-    // the whole stand-by, from the moment its trip starts, done or not. the patience is still the grace past done, it just can't stretch a
-    // 20 s batch into 50 s of standing
+    // worked like a furnace until it gets down to the comeback limit. asked again every look until the stand-by starts: judging it once at first
+    // sight meant anything over a handful of items was never stood by at all. 40 s is eight items: a small batch is cheaper to wait
+    // out than to walk off from and back to, a big one is a bot doing nothing for minutes. a batch seen over this comes back at the
+    // (shorter) comeback limit below instead
+    public static final long STAND_BY_MAX_TICKS = 800;
+    // a batch that was over the limit when we first looked is a lot of food: we went off to work and only come back to stand for the
+    // last bit of it, same as before the limit went up
+    public static final long STAND_BY_COMEBACK_TICKS = 400;
+    // the stand-by of a quick smoker lasts until the batch is done plus this, so a cook that runs a little late (or a job that got
+    // re-stamped a few ticks out) does not cut the wait short with the last item still in there
+    public static final long STAND_BY_SLACK_TICKS = 200;
+    // ...and never longer than this from the moment its trip starts, whatever the job says: a smoker that stalled (no fuel, the food
+    // taken) must not pin the bot. a full small batch plus its slack
+    public static final long STAND_BY_HARD_CAP_TICKS = STAND_BY_MAX_TICKS + STAND_BY_SLACK_TICKS;
+    // the far-trip wait: a batch that finishes within this is waited for before setting off on a long trip. not the quick stand-by,
+    // that one has its own numbers above
     public static final long STAND_BY_CAP_TICKS = 600;
     // a job from a world that ran on without us (a relog days later) is not worth a walk: the contents are probably gone, or the
     // furnace is. half an hour of game time since it was loaded or last visited
@@ -175,6 +185,10 @@ public final class FurnacePlan {
         boolean standSeen;
         // the last look said the batch has too long to go to stand at (the log says TOO_LONG instead of "not due yet")
         boolean standTooLong;
+        // some look said it was over STAND_BY_MAX_TICKS and never cleared, unlike standTooLong which follows the clock down. a batch
+        // that big is back to work, and only comes back for the shorter window. transient with the rest of the track, a relog judges
+        // a stack afresh (with 40 s or less left it is stood at like a small one)
+        boolean standBig;
         long standUntil = -1;
         // the "too far, collecting after" line went out for this wait. back to false once a trip (or any call but LEAVE) happens,
         // so walking in and out of the cut-in range is not a line every time
@@ -301,7 +315,7 @@ public final class FurnacePlan {
     // over, so a plan that flickers (the filler list emptying for a tick) cannot flip a trip that already walked there. the one
     // thing that still ends it is a quick smoker's stand-by budget.
     // `pick` = the trip to start now, null when there is none or one is already running. a quick smoker's stand-by outranks every
-    // other collect (it is out in under 20 s, the furnace can wait that long), then the one that is ready first
+    // other collect (it is out in under 50 s, the furnace can wait that long), then the one that is ready first
     public static Plan plan(List<RunState.FurnaceJob> jobs, Moment m, long now, RunState.FurnaceJob active) {
         List<Verdict> out = new ArrayList<>();
         List<String> changes = new ArrayList<>();
@@ -384,8 +398,14 @@ public final class FurnacePlan {
     }
 
     private static Verdict decide(RunState.FurnaceJob job, Moment m, long now) {
+        // judged by the batch, wherever we were and whatever the phase let us do with it: a stack seen from far off (or from GATHER)
+        // is still a stack when we get close. kept apart from standTooLong, which clears as the clock runs down, or the limit would
+        // climb back to 800 with it and the comeback threshold would flip-flop
+        if (!job.track.standSeen && job.doneTick - now > STAND_BY_MAX_TICKS) {
+            job.track.standBig = true;
+        }
         boolean close = close(job, m.me());
-        // a quick stand-by from far off is 20 s of smoker behind a walk longer than its whole budget, and it cuts in on the side
+        // a quick stand-by from far off is up to 40 s of smoker behind a walk longer than its whole budget, and it cuts in on the side
         // jobs (IronActivity.preempts). it gets its chance again once we are back in range
         if (close && quickCandidate(job, m) && standByOn(job, now)) {
             return stuckOr(job, verdict(job, Call.STAND_BY, Why.QUICK));
@@ -447,7 +467,7 @@ public final class FurnacePlan {
         Track t = job.track;
         if (!t.standSeen) {
             // not started yet: quick is only a question of what is left, asked again every look
-            t.standTooLong = job.doneTick - now > STAND_BY_MAX_TICKS;
+            t.standTooLong = job.doneTick - now > (t.standBig ? STAND_BY_COMEBACK_TICKS : STAND_BY_MAX_TICKS);
             return !t.standTooLong;
         }
         return now <= t.standUntil;
@@ -461,8 +481,9 @@ public final class FurnacePlan {
             return;
         }
         t.standSeen = true;
-        // a job already past due gets its patience from now, not from then
-        t.standUntil = Math.min(Math.max(now, job.doneTick) + PATIENCE_TICKS, now + STAND_BY_CAP_TICKS);
+        // stands until the batch is done plus the slack, a job already past due gets the slack from now, not from then. the hard cap
+        // is the backstop for a doneTick that lies
+        t.standUntil = Math.min(Math.max(now, job.doneTick) + STAND_BY_SLACK_TICKS, now + STAND_BY_HARD_CAP_TICKS);
     }
 
     private static boolean tooLong(RunState.FurnaceJob job) {
