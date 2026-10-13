@@ -832,20 +832,6 @@ public interface MovementHelper extends ActionCosts, Helper {
         return 0; // we won't actually mine it, so don't check fallings above
     }
 
-    // a stair that is walked up with no jump: right way up, no corner, and we are walking the way it faces (towards its
-    // tall side). the first thing the box meets is the 0.5 high low step, vanilla's step height is 0.6, so it just walks
-    // up it, and then up the 0.5 from the low step to the tall one. from any other side the box meets the 1.0 tall half
-    // or a mix of both, and the inner and outer corner shapes (and upside down ones) are left as jumps on purpose
-    public static boolean isWalkUpStair(BlockState state, int dx, int dz) {
-        if (!(state.getBlock() instanceof StairBlock)
-                || state.getValue(StairBlock.HALF) != Half.BOTTOM
-                || state.getValue(StairBlock.SHAPE) != StairsShape.STRAIGHT) {
-            return false;
-        }
-        Direction facing = state.getValue(StairBlock.FACING);
-        return facing.getStepX() == dx && facing.getStepZ() == dz;
-    }
-
     static boolean isBottomSlab(BlockState state) {
         return state.getBlock() instanceof SlabBlock
                 && state.getValue(SlabBlock.TYPE) == SlabType.BOTTOM;

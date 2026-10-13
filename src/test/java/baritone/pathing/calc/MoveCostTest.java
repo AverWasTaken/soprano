@@ -413,11 +413,11 @@ public class MoveCostTest {
         climbing.set(0, 63, 0, up);
         climbing.set(1, 64, 0, up);
         assertEquals(WALK_ONE_BLOCK_COST, MovementAscend.cost(new Ctx(climbing), 0, 64, 0, 1, 0), 1e-9);
-        // a stair going the other way, who knows which half we are on
+        // StairSteps (shared with the executor) only looks at how tall the floor under us is, and a stair is full height
         MapWorld turned = floor();
         turned.set(0, 63, 0, stair(Direction.NORTH, Half.BOTTOM, StairsShape.STRAIGHT));
         turned.set(1, 64, 0, up);
-        assertEquals(JUMP_UP, MovementAscend.cost(new Ctx(turned), 0, 64, 0, 1, 0), 1e-9);
+        assertEquals(WALK_ONE_BLOCK_COST, MovementAscend.cost(new Ctx(turned), 0, 64, 0, 1, 0), 1e-9);
         // soul sand is 0.875 tall so the lip is 0.625
         MapWorld sand = floor();
         sand.set(0, 63, 0, Blocks.SOUL_SAND.defaultBlockState());
