@@ -22,7 +22,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-// Bootstrap leaves two things empty that items need now: the default components (new ItemStack, getDefaultInstance,
+// bootstrap leaves two things empty that items need now: the default components (new ItemStack, getDefaultInstance,
 // item.components() all throw until they are bound) and every item tag (the data pack fills those), and the
 // sword/axe/armor checks are tags. this binds the components the way the server does after it loads registries, then
 // reads the vanilla tag files out of the jar and hands them to the registry, the way a world load does

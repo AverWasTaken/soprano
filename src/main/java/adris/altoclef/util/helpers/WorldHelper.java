@@ -42,6 +42,7 @@ import net.minecraft.world.level.block.entity.SpawnerBlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BedPart;
 import net.minecraft.world.level.block.state.properties.ChestType;
+import net.minecraft.world.level.dimension.BuiltinDimensionTypes;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.attribute.EnvironmentAttributes;
 import net.minecraft.world.phys.AABB;
@@ -135,9 +136,16 @@ public interface WorldHelper {
     // for a level that is not the current one: a dead player keeps the level it died in after the respawn swapped ours
     static Dimension dimensionOf(Level world) {
         if (waterEvaporates(world)) return Dimension.NETHER;
-        // no "natural" flag anymore, and the piglins_zombify attribute would call the end natural too
-        if (world.dimension() == Level.OVERWORLD) return Dimension.OVERWORLD;
+        // no "natural" flag anymore, and the piglins_zombify attribute would call the end natural too, so ask the type
+        if (overworldType(world)) return Dimension.OVERWORLD;
         return Dimension.END;
+    }
+
+    // natural and bedWorks were flags on the dimension type, only the two overworld types had them. the type, not the level
+    // key, so a second overworld style world on a server still counts
+    static boolean overworldType(Level world) {
+        return world.dimensionTypeRegistration().is(BuiltinDimensionTypes.OVERWORLD)
+                || world.dimensionTypeRegistration().is(BuiltinDimensionTypes.OVERWORLD_CAVES);
     }
 
 
@@ -531,8 +539,8 @@ public interface WorldHelper {
         // the game's own rule (ServerPlayer.startSleepInBed refuses while Level.isBrightOutside()): dusk to dawn, 12542 to 23459 in clear
         // weather, and any time in a thunderstorm. the hand copied window this had ended at 23992, which is the end of a rainy
         // night. a nether or end bed explodes, so only a dimension where beds work counts
-        // BED_RULE is not synced to the client (every dimension reads as overworld rules), so it's the dimension key
-        return world != null && world.dimension() == Level.OVERWORLD && !world.isBrightOutside();
+        // the dimension type, see overworldType
+        return world != null && overworldType(world) && !world.isBrightOutside();
     }
 
     // ultraWarm used to be the nether-only flag, water_evaporates is the synced attribute that took its job

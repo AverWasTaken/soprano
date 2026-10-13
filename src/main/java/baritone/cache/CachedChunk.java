@@ -195,7 +195,8 @@ public final class CachedChunk {
                 return Blocks.BEDROCK.defaultBlockState();
             }
             // y is relative to the dimension floor here, so "below 5" is just y < 5 (this used to compare against -59 and never fired)
-            // (natural is gone from the dimension type, it was only ever the overworld)
+            // (natural is gone from the dimension type, it was only ever the overworld, so the nether stays out like it did on
+            // 1.21.4. the old 26.3 check did fire there by accident of the same bad arithmetic)
             if (y < 5 && dimensionId == Level.OVERWORLD) {
                 // solid blocks below 5 are commonly bedrock
                 // however, returning bedrock always would be a little yikes

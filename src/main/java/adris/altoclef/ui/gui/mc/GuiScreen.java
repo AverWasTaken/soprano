@@ -356,6 +356,7 @@ public class GuiScreen extends Screen {
         return m;
     }
 
+    // todo 26.3: event.button() is 1/2/3 now and the kit wants glfw's 0/1/2, same remap as the keys further down
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
         guarded("mouse down", () -> shell.mouseDown(pointerX(), pointerY(), event.button(), mods(event)));

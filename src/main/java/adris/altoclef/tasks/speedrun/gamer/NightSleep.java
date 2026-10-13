@@ -7,7 +7,7 @@ import java.util.List;
 // when the trip applies, where the bed has to be to be out of the monsters' reach, the budget of a night, when mob defense
 // stands down. NightSleepTask does the walking and the placing, GamerTask runs the trip between the phases
 public final class NightSleep {
-    // when a bed works is the game's own Level.isDay(), which is false from dusk to dawn and all through a thunderstorm: ticks
+    // when a bed works is the game's own isBrightOutside (isDay back on 1.21.4), which is false from dusk to dawn and all through a thunderstorm: ticks
     // 12542 to 23459 in clear weather, 12010 to 23991 in full rain (so the old 23992 end of WorldHelper.canSleep was the rainy
     // one). nothing here keeps a copy of that line, the branch asks the level
     public static final long DAY_LENGTH = 24000;

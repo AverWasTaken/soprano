@@ -98,7 +98,7 @@ public class EquipArmorTask extends Task {
                 }
             } else {
                 Item item = Objects.requireNonNull(targetArmor.getMatches())[0];
-                if (item == null) {
+                if (item == null || !ItemHelper.isArmor(item)) {
                     Debug.logWarning("Item " + targetArmor + " is not armor! Will not equip.");
                 } else {
                     if (!StorageHelper.isArmorEquipped(mod, item)) {
