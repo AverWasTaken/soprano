@@ -68,6 +68,7 @@ import java.util.function.UnaryOperator;
 
 import static baritone.utils.BaritoneMath.fastCeil;
 import static baritone.utils.BaritoneMath.fastFloor;
+import baritone.utils.ExperimentalMovement;
 
 public final class ElytraBehavior implements Helper {
     private final Baritone baritone;
@@ -495,7 +496,7 @@ public final class ElytraBehavior implements Helper {
     }
 
     public void pathTo() {
-        if (!Baritone.settings().elytraAutoJump.value || ctx.player().isFallFlying()) {
+        if (!ExperimentalMovement.elytraAutoJump() || ctx.player().isFallFlying()) {
             this.pathManager.pathToDestination();
         }
     }

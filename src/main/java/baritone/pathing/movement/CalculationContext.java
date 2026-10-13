@@ -234,7 +234,7 @@ public class CalculationContext {
         this.maxFallHeightNoWater = Baritone.settings().maxFallHeightNoWater.value;
         this.maxFallHeightBucket = Baritone.settings().maxFallHeightBucket.value;
         double waterSpeed = ActionCosts.WALK_ONE_IN_WATER_COST * (1 - waterSpeedMultiplier) + ActionCosts.WALK_ONE_BLOCK_COST * waterSpeedMultiplier;
-        this.allowSwimming = Baritone.settings().allowSwimming.value && this.canSprint;
+        this.allowSwimming = ExperimentalMovement.allowSwimming() && this.canSprint;
         // no baritone means a test building one by hand, nobody has been swimming
         this.swimStalls = baritone == null ? SwimStalls.Snapshot.NONE
                 : ((Baritone) baritone).getPathingBehavior().swimStalls().snapshot(world, System.currentTimeMillis());
@@ -247,7 +247,7 @@ public class CalculationContext {
         // costHeuristic and A* stops being A* and wanders off on scenic detours across the lake. so rowing
         // costs what the heuristic thinks a block costs and not a tick less. still way under swimming
         double boatSpeed = Math.max(ActionCosts.BOAT_ONE_BLOCK_COST, Baritone.settings().costHeuristic.value);
-        this.boatWaterSpeed = Baritone.settings().allowBoats.value && hasBoat ? Math.min(waterSpeed, boatSpeed) : waterSpeed;
+        this.boatWaterSpeed = ExperimentalMovement.allowBoats() && hasBoat ? Math.min(waterSpeed, boatSpeed) : waterSpeed;
         this.boatMinWater = Baritone.settings().boatMinWaterLength.value;
         this.breakBlockAdditionalCost = Baritone.settings().blockBreakAdditionalPenalty.value;
         this.waterBreakCostMultiplier = Baritone.settings().waterBreakCostMultiplier.value;
