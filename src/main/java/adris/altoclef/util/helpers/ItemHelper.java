@@ -44,10 +44,10 @@ public class ItemHelper {
             Items.CUT_COPPER.waxed().weathered(), Items.CUT_COPPER.waxed().oxidized()};
     public static final Item[] SAPLINGS = new Item[]{Items.OAK_SAPLING, Items.SPRUCE_SAPLING, Items.BIRCH_SAPLING,
             Items.JUNGLE_SAPLING, Items.ACACIA_SAPLING, Items.DARK_OAK_SAPLING, Items.MANGROVE_PROPAGULE,
-            Items.CHERRY_SAPLING, Items.PALE_OAK_SAPLING};
+            Items.CHERRY_SAPLING, Items.PALE_OAK_SAPLING, Items.POPLAR_SAPLING};
     public static final Block[] SAPLING_SOURCES = new Block[]{Blocks.OAK_LEAVES, Blocks.SPRUCE_LEAVES,
             Blocks.BIRCH_LEAVES, Blocks.JUNGLE_LEAVES, Blocks.ACACIA_LEAVES, Blocks.DARK_OAK_LEAVES,
-            Blocks.MANGROVE_PROPAGULE, Blocks.CHERRY_LEAVES, Blocks.PALE_OAK_LEAVES};
+            Blocks.MANGROVE_PROPAGULE, Blocks.CHERRY_LEAVES, Blocks.PALE_OAK_LEAVES, Blocks.ORANGE_POPLAR_LEAVES, Blocks.RED_POPLAR_LEAVES, Blocks.YELLOW_POPLAR_LEAVES};
     public static final Item[] HOSTILE_MOB_DROPS = new Item[]{Items.BLAZE_ROD, Items.FEATHER, Items.CHICKEN,
             Items.COOKED_CHICKEN, Items.ROTTEN_FLESH, Items.ZOMBIE_HEAD, Items.GUNPOWDER, Items.CREEPER_HEAD,
             Items.TOTEM_OF_UNDYING, Items.EMERALD, Items.PORKCHOP, Items.COOKED_PORKCHOP, Items.LEATHER,
@@ -59,48 +59,48 @@ public class ItemHelper {
     public static final Item[] DIRTS = new Item[]{Items.DIRT, Items.DIRT_PATH, Items.COARSE_DIRT, Items.ROOTED_DIRT};
     public static final Item[] PLANKS = new Item[]{Items.ACACIA_PLANKS, Items.BIRCH_PLANKS, Items.CRIMSON_PLANKS,
             Items.DARK_OAK_PLANKS, Items.OAK_PLANKS, Items.JUNGLE_PLANKS, Items.SPRUCE_PLANKS, Items.WARPED_PLANKS,
-            Items.MANGROVE_PLANKS, Items.CHERRY_PLANKS, Items.PALE_OAK_PLANKS, Items.BAMBOO_PLANKS};
+            Items.MANGROVE_PLANKS, Items.CHERRY_PLANKS, Items.PALE_OAK_PLANKS, Items.POPLAR_PLANKS, Items.BAMBOO_PLANKS};
     public static final Item[] LEAVES = new Item[]{Items.ACACIA_LEAVES, Items.BIRCH_LEAVES, Items.DARK_OAK_LEAVES,
-            Items.OAK_LEAVES, Items.JUNGLE_LEAVES, Items.SPRUCE_LEAVES, Items.MANGROVE_LEAVES, Items.CHERRY_LEAVES, Items.PALE_OAK_LEAVES};
+            Items.OAK_LEAVES, Items.JUNGLE_LEAVES, Items.SPRUCE_LEAVES, Items.MANGROVE_LEAVES, Items.CHERRY_LEAVES, Items.PALE_OAK_LEAVES, Items.ORANGE_POPLAR_LEAVES, Items.RED_POPLAR_LEAVES, Items.YELLOW_POPLAR_LEAVES};
     public static final Item[] WOOD = new Item[]{Items.ACACIA_WOOD, Items.BIRCH_WOOD, Items.CRIMSON_HYPHAE,
             Items.DARK_OAK_WOOD, Items.OAK_WOOD, Items.JUNGLE_WOOD, Items.SPRUCE_WOOD, Items.WARPED_HYPHAE,
             Items.MANGROVE_WOOD};
     public static final Item[] WOOD_BUTTON = new Item[]{Items.ACACIA_BUTTON, Items.BIRCH_BUTTON, Items.CRIMSON_BUTTON,
             Items.DARK_OAK_BUTTON, Items.OAK_BUTTON, Items.JUNGLE_BUTTON, Items.SPRUCE_BUTTON, Items.WARPED_BUTTON,
-            Items.MANGROVE_BUTTON, Items.BAMBOO_BUTTON, Items.CHERRY_BUTTON, Items.PALE_OAK_BUTTON};
+            Items.MANGROVE_BUTTON, Items.BAMBOO_BUTTON, Items.CHERRY_BUTTON, Items.PALE_OAK_BUTTON, Items.POPLAR_BUTTON};
     public static final Item[] WOOD_SIGN = new Item[]{Items.ACACIA_SIGN, Items.BIRCH_SIGN, Items.CRIMSON_SIGN,
             Items.DARK_OAK_SIGN, Items.OAK_SIGN, Items.JUNGLE_SIGN, Items.SPRUCE_SIGN, Items.WARPED_SIGN,
-            Items.MANGROVE_SIGN, Items.BAMBOO_SIGN, Items.CHERRY_SIGN, Items.PALE_OAK_SIGN};
+            Items.MANGROVE_SIGN, Items.BAMBOO_SIGN, Items.CHERRY_SIGN, Items.PALE_OAK_SIGN, Items.POPLAR_SIGN};
     public static final Item[] WOOD_HANGING_SIGN = new Item[]{Items.ACACIA_HANGING_SIGN, Items.BIRCH_HANGING_SIGN,
             Items.CRIMSON_HANGING_SIGN, Items.DARK_OAK_HANGING_SIGN, Items.OAK_HANGING_SIGN, Items.JUNGLE_HANGING_SIGN,
             Items.SPRUCE_HANGING_SIGN, Items.WARPED_HANGING_SIGN, Items.MANGROVE_HANGING_SIGN, Items.BAMBOO_HANGING_SIGN,
-            Items.CHERRY_HANGING_SIGN, Items.PALE_OAK_HANGING_SIGN};
+            Items.CHERRY_HANGING_SIGN, Items.PALE_OAK_HANGING_SIGN, Items.POPLAR_HANGING_SIGN};
     public static final Item[] WOOD_PRESSURE_PLATE = new Item[]{Items.ACACIA_PRESSURE_PLATE, Items.BIRCH_PRESSURE_PLATE,
             Items.CRIMSON_PRESSURE_PLATE, Items.DARK_OAK_PRESSURE_PLATE, Items.OAK_PRESSURE_PLATE,
             Items.JUNGLE_PRESSURE_PLATE, Items.SPRUCE_PRESSURE_PLATE, Items.WARPED_PRESSURE_PLATE,
-            Items.MANGROVE_PRESSURE_PLATE, Items.BAMBOO_PRESSURE_PLATE, Items.CHERRY_PRESSURE_PLATE, Items.PALE_OAK_PRESSURE_PLATE};
+            Items.MANGROVE_PRESSURE_PLATE, Items.BAMBOO_PRESSURE_PLATE, Items.CHERRY_PRESSURE_PLATE, Items.PALE_OAK_PRESSURE_PLATE, Items.POPLAR_PRESSURE_PLATE};
     public static final Item[] WOOD_FENCE = new Item[]{Items.ACACIA_FENCE, Items.BIRCH_FENCE, Items.DARK_OAK_FENCE,
             Items.OAK_FENCE, Items.JUNGLE_FENCE, Items.SPRUCE_FENCE, Items.CRIMSON_FENCE, Items.WARPED_FENCE,
-            Items.MANGROVE_FENCE, Items.BAMBOO_FENCE, Items.CHERRY_FENCE, Items.PALE_OAK_FENCE};
+            Items.MANGROVE_FENCE, Items.BAMBOO_FENCE, Items.CHERRY_FENCE, Items.PALE_OAK_FENCE, Items.POPLAR_FENCE};
     public static final Item[] WOOD_FENCE_GATE = new Item[]{Items.ACACIA_FENCE_GATE, Items.BIRCH_FENCE_GATE,
             Items.DARK_OAK_FENCE_GATE, Items.OAK_FENCE_GATE, Items.JUNGLE_FENCE_GATE, Items.SPRUCE_FENCE_GATE,
             Items.CRIMSON_FENCE_GATE, Items.WARPED_FENCE_GATE, Items.MANGROVE_FENCE_GATE, Items.BAMBOO_FENCE_GATE,
-            Items.CHERRY_FENCE_GATE, Items.PALE_OAK_FENCE_GATE};
+            Items.CHERRY_FENCE_GATE, Items.PALE_OAK_FENCE_GATE, Items.POPLAR_FENCE_GATE};
     public static final Item[] WOOD_BOAT = new Item[]{Items.ACACIA_BOAT, Items.BIRCH_BOAT, Items.DARK_OAK_BOAT,
-            Items.OAK_BOAT, Items.JUNGLE_BOAT, Items.SPRUCE_BOAT, Items.MANGROVE_BOAT, Items.CHERRY_BOAT, Items.PALE_OAK_BOAT};
+            Items.OAK_BOAT, Items.JUNGLE_BOAT, Items.SPRUCE_BOAT, Items.MANGROVE_BOAT, Items.CHERRY_BOAT, Items.PALE_OAK_BOAT, Items.POPLAR_BOAT};
     public static final Item[] WOOD_DOOR = new Item[]{Items.ACACIA_DOOR, Items.BIRCH_DOOR, Items.CRIMSON_DOOR,
             Items.DARK_OAK_DOOR, Items.OAK_DOOR, Items.JUNGLE_DOOR, Items.SPRUCE_DOOR, Items.WARPED_DOOR,
-            Items.MANGROVE_DOOR, Items.BAMBOO_DOOR, Items.CHERRY_DOOR, Items.PALE_OAK_DOOR};
+            Items.MANGROVE_DOOR, Items.BAMBOO_DOOR, Items.CHERRY_DOOR, Items.PALE_OAK_DOOR, Items.POPLAR_DOOR};
     public static final Item[] WOOD_SLAB = new Item[]{Items.ACACIA_SLAB, Items.BIRCH_SLAB, Items.CRIMSON_SLAB,
             Items.DARK_OAK_SLAB, Items.OAK_SLAB, Items.JUNGLE_SLAB, Items.SPRUCE_SLAB, Items.WARPED_SLAB,
-            Items.MANGROVE_SLAB, Items.BAMBOO_SLAB, Items.CHERRY_SLAB, Items.PALE_OAK_SLAB};
+            Items.MANGROVE_SLAB, Items.BAMBOO_SLAB, Items.CHERRY_SLAB, Items.PALE_OAK_SLAB, Items.POPLAR_SLAB};
     public static final Item[] WOOD_STAIRS = new Item[]{Items.ACACIA_STAIRS, Items.BIRCH_STAIRS, Items.CRIMSON_STAIRS,
             Items.DARK_OAK_STAIRS, Items.OAK_STAIRS, Items.JUNGLE_STAIRS, Items.SPRUCE_STAIRS, Items.WARPED_STAIRS,
-            Items.MANGROVE_STAIRS, Items.BAMBOO_STAIRS, Items.CHERRY_STAIRS, Items.PALE_OAK_STAIRS};
+            Items.MANGROVE_STAIRS, Items.BAMBOO_STAIRS, Items.CHERRY_STAIRS, Items.PALE_OAK_STAIRS, Items.POPLAR_STAIRS};
     public static final Item[] WOOD_TRAPDOOR = new Item[]{Items.ACACIA_TRAPDOOR, Items.BIRCH_TRAPDOOR,
             Items.CRIMSON_TRAPDOOR, Items.DARK_OAK_TRAPDOOR, Items.OAK_TRAPDOOR, Items.JUNGLE_TRAPDOOR,
             Items.SPRUCE_TRAPDOOR, Items.WARPED_TRAPDOOR, Items.MANGROVE_TRAPDOOR, Items.BAMBOO_TRAPDOOR,
-            Items.CHERRY_TRAPDOOR, Items.PALE_OAK_TRAPDOOR};
+            Items.CHERRY_TRAPDOOR, Items.PALE_OAK_TRAPDOOR, Items.POPLAR_TRAPDOOR};
     public static final Item[] LOG = new Item[]{Items.ACACIA_LOG, Items.BIRCH_LOG, Items.DARK_OAK_LOG, Items.OAK_LOG, Items.JUNGLE_LOG, Items.SPRUCE_LOG,
             Items.ACACIA_WOOD, Items.BIRCH_WOOD, Items.DARK_OAK_WOOD, Items.OAK_WOOD, Items.JUNGLE_WOOD, Items.SPRUCE_WOOD,
             Items.STRIPPED_ACACIA_LOG, Items.STRIPPED_BIRCH_LOG, Items.STRIPPED_DARK_OAK_LOG, Items.STRIPPED_OAK_LOG, Items.STRIPPED_JUNGLE_LOG, Items.STRIPPED_SPRUCE_LOG,
@@ -108,15 +108,15 @@ public class ItemHelper {
             Items.CRIMSON_STEM, Items.WARPED_STEM, Items.CRIMSON_HYPHAE, Items.WARPED_HYPHAE,
             Items.STRIPPED_CRIMSON_STEM, Items.STRIPPED_WARPED_STEM, Items.STRIPPED_CRIMSON_HYPHAE,
             Items.STRIPPED_WARPED_HYPHAE, Items.MANGROVE_LOG, Items.MANGROVE_WOOD, Items.STRIPPED_MANGROVE_LOG,
-            Items.STRIPPED_MANGROVE_WOOD, Items.CHERRY_LOG, Items.PALE_OAK_LOG, Items.CHERRY_WOOD, Items.PALE_OAK_WOOD, Items.STRIPPED_CHERRY_LOG, Items.STRIPPED_PALE_OAK_LOG,
-            Items.STRIPPED_CHERRY_WOOD, Items.STRIPPED_PALE_OAK_WOOD};
+            Items.STRIPPED_MANGROVE_WOOD, Items.CHERRY_LOG, Items.PALE_OAK_LOG, Items.POPLAR_LOG, Items.CHERRY_WOOD, Items.PALE_OAK_WOOD, Items.POPLAR_WOOD, Items.STRIPPED_CHERRY_LOG, Items.STRIPPED_PALE_OAK_LOG, Items.STRIPPED_POPLAR_LOG,
+            Items.STRIPPED_CHERRY_WOOD, Items.STRIPPED_PALE_OAK_WOOD, Items.STRIPPED_POPLAR_WOOD};
     public static final Item[] STRIPPED_LOGS = new Item[]{Items.STRIPPED_ACACIA_LOG, Items.STRIPPED_BIRCH_LOG,
             Items.STRIPPED_DARK_OAK_LOG, Items.STRIPPED_OAK_LOG, Items.STRIPPED_JUNGLE_LOG, Items.STRIPPED_SPRUCE_LOG,
             Items.STRIPPED_CRIMSON_STEM, Items.STRIPPED_WARPED_STEM, Items.STRIPPED_MANGROVE_LOG,
-            Items.STRIPPED_CHERRY_LOG, Items.STRIPPED_PALE_OAK_LOG};
+            Items.STRIPPED_CHERRY_LOG, Items.STRIPPED_PALE_OAK_LOG, Items.STRIPPED_POPLAR_LOG};
     public static final Item[] STRIPPABLE_LOGS = new Item[]{Items.ACACIA_LOG, Items.BIRCH_LOG, Items.DARK_OAK_LOG,
             Items.OAK_LOG, Items.JUNGLE_LOG, Items.SPRUCE_LOG, Items.CRIMSON_STEM, Items.WARPED_STEM, Items.MANGROVE_LOG,
-            Items.CHERRY_LOG, Items.PALE_OAK_LOG};
+            Items.CHERRY_LOG, Items.PALE_OAK_LOG, Items.POPLAR_LOG};
     public static final Item[] DYE = new Item[]{Items.DYE.white(), Items.DYE.black(), Items.DYE.blue(), Items.DYE.brown(), Items.DYE.cyan(), Items.DYE.gray(), Items.DYE.green(), Items.DYE.lightBlue(), Items.DYE.lightGray(), Items.DYE.lime(), Items.DYE.magenta(), Items.DYE.orange(), Items.DYE.pink(), Items.DYE.purple(), Items.DYE.red(), Items.DYE.yellow()};
     public static final Item[] WOOL = new Item[]{Items.WOOL.white(), Items.WOOL.black(), Items.WOOL.blue(), Items.WOOL.brown(), Items.WOOL.cyan(), Items.WOOL.gray(), Items.WOOL.green(), Items.WOOL.lightBlue(), Items.WOOL.lightGray(), Items.WOOL.lime(), Items.WOOL.magenta(), Items.WOOL.orange(), Items.WOOL.pink(), Items.WOOL.purple(), Items.WOOL.red(), Items.WOOL.yellow()};
     public static final Item[] BED = new Item[]{Items.BED.white(), Items.BED.black(), Items.BED.blue(), Items.BED.brown(), Items.BED.cyan(), Items.BED.gray(), Items.BED.green(), Items.BED.lightBlue(), Items.BED.lightGray(), Items.BED.lime(), Items.BED.magenta(), Items.BED.orange(), Items.BED.pink(), Items.BED.purple(), Items.BED.red(), Items.BED.yellow()};
@@ -142,7 +142,7 @@ public class ItemHelper {
             Blocks.OAK_SIGN, Blocks.JUNGLE_SIGN, Blocks.SPRUCE_SIGN, Blocks.ACACIA_WALL_SIGN, Blocks.BIRCH_WALL_SIGN,
             Blocks.DARK_OAK_WALL_SIGN, Blocks.OAK_WALL_SIGN, Blocks.JUNGLE_WALL_SIGN, Blocks.SPRUCE_WALL_SIGN,
             Blocks.MANGROVE_SIGN, Blocks.MANGROVE_WALL_SIGN, Blocks.BAMBOO_SIGN, Blocks.BAMBOO_WALL_SIGN,
-            Blocks.CHERRY_SIGN, Blocks.PALE_OAK_SIGN, Blocks.CHERRY_WALL_SIGN, Blocks.PALE_OAK_WALL_SIGN,
+            Blocks.CHERRY_SIGN, Blocks.PALE_OAK_SIGN, Blocks.POPLAR_SIGN, Blocks.CHERRY_WALL_SIGN, Blocks.PALE_OAK_WALL_SIGN, Blocks.POPLAR_WALL_SIGN,
             Blocks.CRIMSON_SIGN, Blocks.CRIMSON_WALL_SIGN, Blocks.WARPED_SIGN, Blocks.WARPED_WALL_SIGN};
     public static final Block[] WOOD_HANGING_SIGNS_ALL = new Block[]{Blocks.ACACIA_HANGING_SIGN,
             Blocks.ACACIA_WALL_HANGING_SIGN, Blocks.BIRCH_HANGING_SIGN, Blocks.BIRCH_WALL_HANGING_SIGN,
@@ -150,18 +150,22 @@ public class ItemHelper {
             Blocks.OAK_WALL_HANGING_SIGN, Blocks.JUNGLE_HANGING_SIGN, Blocks.JUNGLE_WALL_HANGING_SIGN,
             Blocks.SPRUCE_HANGING_SIGN, Blocks.SPRUCE_WALL_HANGING_SIGN, Blocks.MANGROVE_HANGING_SIGN,
             Blocks.MANGROVE_WALL_HANGING_SIGN, Blocks.BAMBOO_HANGING_SIGN, Blocks.BAMBOO_WALL_HANGING_SIGN,
-            Blocks.CHERRY_HANGING_SIGN, Blocks.PALE_OAK_HANGING_SIGN, Blocks.CHERRY_WALL_HANGING_SIGN, Blocks.PALE_OAK_WALL_HANGING_SIGN,
+            Blocks.CHERRY_HANGING_SIGN, Blocks.PALE_OAK_HANGING_SIGN, Blocks.POPLAR_HANGING_SIGN, Blocks.CHERRY_WALL_HANGING_SIGN, Blocks.PALE_OAK_WALL_HANGING_SIGN, Blocks.POPLAR_WALL_HANGING_SIGN,
             Blocks.CRIMSON_HANGING_SIGN, Blocks.CRIMSON_WALL_HANGING_SIGN, Blocks.WARPED_HANGING_SIGN, Blocks.WARPED_WALL_HANGING_SIGN};
     private static final Map<Item, Item> _logToPlanks = new HashMap<>() {
         {
             put(Items.CHERRY_LOG, Items.CHERRY_PLANKS);
             put(Items.PALE_OAK_LOG, Items.PALE_OAK_PLANKS);
+            put(Items.POPLAR_LOG, Items.POPLAR_PLANKS);
             put(Items.CHERRY_WOOD, Items.CHERRY_PLANKS);
             put(Items.PALE_OAK_WOOD, Items.PALE_OAK_PLANKS);
+            put(Items.POPLAR_WOOD, Items.POPLAR_PLANKS);
             put(Items.STRIPPED_CHERRY_LOG, Items.CHERRY_PLANKS);
             put(Items.STRIPPED_PALE_OAK_LOG, Items.PALE_OAK_PLANKS);
+            put(Items.STRIPPED_POPLAR_LOG, Items.POPLAR_PLANKS);
             put(Items.STRIPPED_CHERRY_WOOD, Items.CHERRY_PLANKS);
             put(Items.STRIPPED_PALE_OAK_WOOD, Items.PALE_OAK_PLANKS);
+            put(Items.STRIPPED_POPLAR_WOOD, Items.POPLAR_PLANKS);
             put(Items.MANGROVE_LOG, Items.MANGROVE_PLANKS);
             put(Items.MANGROVE_WOOD, Items.MANGROVE_PLANKS);
             put(Items.STRIPPED_MANGROVE_LOG, Items.MANGROVE_PLANKS);
@@ -204,6 +208,7 @@ public class ItemHelper {
         {
             put(Items.CHERRY_PLANKS, Items.CHERRY_LOG);
             put(Items.PALE_OAK_PLANKS, Items.PALE_OAK_LOG);
+            put(Items.POPLAR_PLANKS, Items.POPLAR_LOG);
             put(Items.MANGROVE_PLANKS, Items.MANGROVE_LOG);
             put(Items.ACACIA_PLANKS, Items.ACACIA_LOG);
             put(Items.BIRCH_PLANKS, Items.BIRCH_LOG);
@@ -219,6 +224,7 @@ public class ItemHelper {
         {
             put(Items.STRIPPED_CHERRY_LOG, Items.CHERRY_LOG);
             put(Items.STRIPPED_PALE_OAK_LOG, Items.PALE_OAK_LOG);
+            put(Items.STRIPPED_POPLAR_LOG, Items.POPLAR_LOG);
             put(Items.STRIPPED_MANGROVE_LOG, Items.MANGROVE_LOG);
             put(Items.STRIPPED_ACACIA_LOG, Items.ACACIA_LOG);
             put(Items.STRIPPED_BIRCH_LOG, Items.BIRCH_LOG);
@@ -260,6 +266,7 @@ public class ItemHelper {
         {
             p(WoodType.CHERRY, "cherry", Items.CHERRY_PLANKS, Items.CHERRY_LOG, Items.STRIPPED_CHERRY_LOG, Items.STRIPPED_CHERRY_WOOD, Items.CHERRY_WOOD, Items.CHERRY_SIGN, Items.CHERRY_HANGING_SIGN, Items.CHERRY_DOOR, Items.CHERRY_BUTTON, Items.CHERRY_STAIRS, Items.CHERRY_SLAB, Items.CHERRY_FENCE, Items.CHERRY_FENCE_GATE, Items.CHERRY_BOAT, Items.CHERRY_SAPLING, Items.CHERRY_LEAVES, Items.CHERRY_PRESSURE_PLATE, Items.CHERRY_TRAPDOOR);
             p(WoodType.PALE_OAK, "pale_oak", Items.PALE_OAK_PLANKS, Items.PALE_OAK_LOG, Items.STRIPPED_PALE_OAK_LOG, Items.STRIPPED_PALE_OAK_WOOD, Items.PALE_OAK_WOOD, Items.PALE_OAK_SIGN, Items.PALE_OAK_HANGING_SIGN, Items.PALE_OAK_DOOR, Items.PALE_OAK_BUTTON, Items.PALE_OAK_STAIRS, Items.PALE_OAK_SLAB, Items.PALE_OAK_FENCE, Items.PALE_OAK_FENCE_GATE, Items.PALE_OAK_BOAT, Items.PALE_OAK_SAPLING, Items.PALE_OAK_LEAVES, Items.PALE_OAK_PRESSURE_PLATE, Items.PALE_OAK_TRAPDOOR);
+            p(WoodType.POPLAR, "poplar", Items.POPLAR_PLANKS, Items.POPLAR_LOG, Items.STRIPPED_POPLAR_LOG, Items.STRIPPED_POPLAR_WOOD, Items.POPLAR_WOOD, Items.POPLAR_SIGN, Items.POPLAR_HANGING_SIGN, Items.POPLAR_DOOR, Items.POPLAR_BUTTON, Items.POPLAR_STAIRS, Items.POPLAR_SLAB, Items.POPLAR_FENCE, Items.POPLAR_FENCE_GATE, Items.POPLAR_BOAT, Items.POPLAR_SAPLING, null, Items.POPLAR_PRESSURE_PLATE, Items.POPLAR_TRAPDOOR);
             p(WoodType.BAMBOO, "bamboo", null, null, Items.STRIPPED_BAMBOO_BLOCK, null, null, Items.BAMBOO_SIGN, Items.BAMBOO_HANGING_SIGN, Items.BAMBOO_DOOR, Items.BAMBOO_BUTTON, Items.BAMBOO_STAIRS, Items.BAMBOO_SLAB, Items.BAMBOO_FENCE, Items.BAMBOO_FENCE_GATE, Items.BAMBOO_RAFT, Items.BAMBOO, null, Items.BAMBOO_PRESSURE_PLATE, Items.BAMBOO_TRAPDOOR);
             p(WoodType.MANGROVE, "mangrove", Items.MANGROVE_PLANKS, Items.MANGROVE_LOG, Items.STRIPPED_MANGROVE_LOG, Items.STRIPPED_MANGROVE_WOOD, Items.MANGROVE_WOOD, Items.MANGROVE_SIGN, Items.MANGROVE_HANGING_SIGN, Items.MANGROVE_DOOR, Items.MANGROVE_BUTTON, Items.MANGROVE_STAIRS, Items.MANGROVE_SLAB, Items.MANGROVE_FENCE, Items.MANGROVE_FENCE_GATE, Items.MANGROVE_BOAT, Items.MANGROVE_PROPAGULE, Items.MANGROVE_LEAVES, Items.MANGROVE_PRESSURE_PLATE, Items.MANGROVE_TRAPDOOR);
             p(WoodType.ACACIA, "acacia", Items.ACACIA_PLANKS, Items.ACACIA_LOG, Items.STRIPPED_ACACIA_LOG, Items.STRIPPED_ACACIA_WOOD, Items.ACACIA_WOOD, Items.ACACIA_SIGN, Items.ACACIA_HANGING_SIGN, Items.ACACIA_DOOR, Items.ACACIA_BUTTON, Items.ACACIA_STAIRS, Items.ACACIA_SLAB, Items.ACACIA_FENCE, Items.ACACIA_FENCE_GATE, Items.ACACIA_BOAT, Items.ACACIA_SAPLING, Items.ACACIA_LEAVES, Items.ACACIA_PRESSURE_PLATE, Items.ACACIA_TRAPDOOR);
