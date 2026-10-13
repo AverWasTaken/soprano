@@ -221,7 +221,17 @@ public class MovementDiagonal extends Movement {
                     || (BTop && BMid && MovementHelper.canWalkOn(context, destX, y, z, pb2))) { // we could just ascend
                 return;
             }
-            res.cost = multiplier * SQRT_2 + JUMP_ONE_BLOCK_COST;
+            // same slab rules as MovementAscend: a bottom slab is a half block lip that vanilla steps up by itself, so no
+            // jump and no jump penalty going onto one, and nothing but another slab can be climbed from one
+            boolean fromSlab = MovementHelper.isBottomSlab(fromDown);
+            boolean toSlab = MovementHelper.isBottomSlab(destWalkOn);
+            if (fromSlab && !toSlab) {
+                return;
+            }
+            res.cost = multiplier * SQRT_2;
+            if (!toSlab || fromSlab) {
+                res.cost += JUMP_ONE_BLOCK_COST + context.jumpPenalty;
+            }
             res.x = destX;
             res.z = destZ;
             res.y = y + 1;
@@ -257,7 +267,9 @@ public class MovementDiagonal extends Movement {
             return;
         }
         if (optionA != 0 || optionB != 0) {
-            multiplier *= SQRT_2 - 0.001; // TODO tune
+            // the corner makes us edge round it at a walk, so this is just walk speed over the diagonal. the cost used
+            // to scale the multiplier by root 2 here and then scale it by root 2 again below, which priced an edge at
+            // 9.3 against 7.1 for two sprinted straights and had the planner walking L shapes round every corner
             if (context.preferFasterPathing) {
                 multiplier *= CORNER_EDGING_PENALTY;
             }

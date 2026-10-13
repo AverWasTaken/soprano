@@ -21,6 +21,7 @@ import baritone.api.BaritoneAPI;
 import baritone.api.Settings;
 import baritone.pathing.movement.CalculationContext;
 import baritone.pathing.movement.movements.MovementDescend;
+import baritone.pathing.movement.movements.MovementDiagonal;
 import baritone.utils.BlockStateInterface;
 import baritone.utils.ToolSet;
 import baritone.utils.pathing.MutableMoveResult;
@@ -89,6 +90,7 @@ public class MoveCostTest {
 
     private Settings settings;
     private boolean potions;
+    private boolean diagonalAscend;
 
     @Before
     public void setUp() {
@@ -102,12 +104,15 @@ public class MoveCostTest {
         potions = settings.considerPotionEffects.value;
         // the fake tool set would go ask a player for haste, and there is no player
         settings.considerPotionEffects.value = false;
+        diagonalAscend = settings.allowDiagonalAscend.value;
+        settings.allowDiagonalAscend.value = true;
     }
 
     @After
     public void tearDown() {
         if (settings != null) {
             settings.considerPotionEffects.value = potions;
+            settings.allowDiagonalAscend.value = diagonalAscend;
         }
     }
 
@@ -152,5 +157,63 @@ public class MoveCostTest {
         MovementDescend.cost(new Ctx(w), 0, 64, 0, 1, 0, res);
         assertEquals(61, res.y);
         assertEquals(WALK_OFF_BLOCK_COST + FALL_N_BLOCKS_COST[3], res.cost, 1e-9);
+    }
+
+    // ---- diagonals ----
+
+    private static final double ROOT_2 = Math.sqrt(2);
+
+    private static double diagonal(MapWorld w) {
+        MutableMoveResult res = new MutableMoveResult();
+        MovementDiagonal.cost(new Ctx(w), 0, 64, 0, 1, 1, res);
+        return res.cost;
+    }
+
+    @Test
+    public void edgingAroundACornerIsWalkSpeedOverTheDiagonal() {
+        // a block on one corner means the executor walks (Diagonal.sprint refuses when a corner is blocked), so one
+        // walked root 2 and not root 2 squared. two sprinted straights are 7.13, the edge has to beat that or we L-walk
+        MapWorld w = floor();
+        w.set(0, 64, 1, Blocks.STONE.defaultBlockState());
+        w.set(0, 65, 1, Blocks.STONE.defaultBlockState());
+        double cost = diagonal(w);
+        assertEquals(WALK_ONE_BLOCK_COST * ROOT_2, cost, 1e-9);
+        assertTrue(cost < 2 * SPRINT_ONE_BLOCK_COST);
+    }
+
+    @Test
+    public void anOpenDiagonalStillSprints() {
+        assertEquals(SPRINT_ONE_BLOCK_COST * ROOT_2, diagonal(floor()), 1e-9);
+    }
+
+    @Test
+    public void diagonalAscendPaysTheJumpPenalty() {
+        MapWorld w = floor();
+        w.set(1, 64, 1, Blocks.STONE.defaultBlockState());
+        MutableMoveResult res = new MutableMoveResult();
+        MovementDiagonal.cost(new Ctx(w), 0, 64, 0, 1, 1, res);
+        assertEquals(65, res.y);
+        assertEquals(WALK_ONE_BLOCK_COST * ROOT_2 + JUMP_ONE_BLOCK_COST + settings.jumpPenalty.value, res.cost, 1e-9);
+    }
+
+    @Test
+    public void diagonalAscendOntoABottomSlabIsAWalk() {
+        // vanilla steps up half a block by itself, same as MovementAscend. no jump, no penalty
+        MapWorld w = floor();
+        w.set(1, 64, 1, Blocks.STONE_SLAB.defaultBlockState());
+        MutableMoveResult res = new MutableMoveResult();
+        MovementDiagonal.cost(new Ctx(w), 0, 64, 0, 1, 1, res);
+        assertEquals(65, res.y);
+        assertEquals(WALK_ONE_BLOCK_COST * ROOT_2, res.cost, 1e-9);
+    }
+
+    @Test
+    public void youCantDiagonalAscendOffASlabOntoAFullBlock() {
+        MapWorld w = floor();
+        w.set(0, 63, 0, Blocks.STONE_SLAB.defaultBlockState());
+        w.set(1, 64, 1, Blocks.STONE.defaultBlockState());
+        MutableMoveResult res = new MutableMoveResult();
+        MovementDiagonal.cost(new Ctx(w), 0, 64, 0, 1, 1, res);
+        assertEquals(COST_INF, res.cost, 0);
     }
 }
