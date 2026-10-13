@@ -64,6 +64,8 @@ public final class AltoClefCommands {
     private static int generation;
     // the line being run right now, null outside of execute. main thread only, like everything that runs commands
     private static Dispatch current;
+    // true while the idle or death command is being run, see noteOwnerTask
+    private static boolean systemRun;
 
     private AltoClefCommands() {
     }
@@ -193,7 +195,13 @@ public final class AltoClefCommands {
 
     // idle/death/custom lines come from the user's own config, so they get everything, and a bad one is a warning
     public static void executeTrusted(String line) {
-        execute(line, NOOP, Debug::logWarning, false);
+        boolean before = systemRun;
+        systemRun = true;
+        try {
+            execute(line, NOOP, Debug::logWarning, false);
+        } finally {
+            systemRun = before;
+        }
     }
 
     private static void runParts(List<String> parts, int index, int gen, Runnable onFinish, Consumer<String> onError, boolean butler) {
@@ -323,6 +331,14 @@ public final class AltoClefCommands {
             }
         } catch (CommandException e) {
             onError.accept(e.getMessage());
+        }
+    }
+
+    // a task that somebody typed (not a whisper, not the idle or death command, which are the bot's own business) is about
+    // to take the bot, so the whisperer who had it is told. customs call this too, since their first line may not get here
+    static void noteOwnerTask(AltoClef mod) {
+        if (!currentIsButler() && !systemRun) {
+            mod.getButler().onOwnerTask();
         }
     }
 

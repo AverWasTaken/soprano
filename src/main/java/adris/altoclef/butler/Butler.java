@@ -183,7 +183,8 @@ public class Butler {
         AltoClefCommands.execute(message, () -> {
             // On finish. goes to whoever asked, _currentUser can be somebody else by the time a long task ends. a stop
             // (anybody's) bumps the generation, and "finished" would be a lie
-            boolean stopped = AltoClefCommands.generation() != startedAt;
+            // (a whisper that is itself the stop did what it was asked, that one is finished)
+            boolean stopped = AltoClefCommands.generation() != startedAt && !isStopLine(message);
             sendWhisper(username, (stopped ? "Command Stopped: " : "Command Finished: ") + message, MessagePriority.TIMELY);
             if (!_commandInstantRan) {
                 _currentUser = null;
@@ -209,6 +210,11 @@ public class Butler {
                 sendWhisper(prevUser, "Your command was replaced by one from " + username + ".", MessagePriority.TIMELY);
             }
         }
+    }
+
+    static boolean isStopLine(String message) {
+        String first = message.trim().split("\\s+", 2)[0].toLowerCase(java.util.Locale.ROOT);
+        return first.equals("stop") || first.equals("cancel");
     }
 
     private void sendWhisper(String message, MessagePriority priority) {

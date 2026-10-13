@@ -59,18 +59,28 @@ public class CustomCommand extends AltoClefCommand {
             // refuse the whole list up front, half of a list that then dies on a denied line is worse than none
             for (String line : lines) {
                 String first = line.trim().split("\\s+", 2)[0];
-                if (!AltoClefCommands.isButlerAllowed(first)) {
+                // execute skips empty lines too
+                if (!first.isEmpty() && !AltoClefCommands.isButlerAllowed(first)) {
                     throw new CommandInvalidStateException("custom " + name + " has \"" + first + "\" in it, which a whisper is not allowed to run");
                 }
             }
             // a line that fails later has to end the command, or the whisperer waits on a task that never comes
-            Runnable finish = AltoClefCommands.takeFinish();
+            Runnable taken = AltoClefCommands.takeFinish();
+            // once only, whatever order the list's own finish and an error turn up in
+            boolean[] ended = {false};
+            Runnable finish = () -> {
+                if (!ended[0]) {
+                    ended[0] = true;
+                    taken.run();
+                }
+            };
             AltoClefCommands.execute(String.join(";", lines), finish, error -> {
                 mod.logWarning("custom " + name + ": " + error);
                 finish.run();
             }, true);
             return;
         }
+        AltoClefCommands.noteOwnerTask(mod);
         AltoClefCommands.execute(String.join(";", lines), AltoClefCommands.takeFinish(), Debug::logWarning, false);
     }
 

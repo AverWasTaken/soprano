@@ -23,6 +23,9 @@ public class ComeToPlayerTask extends Task {
 
     public ComeToPlayerTask(String playerName) {
         _playerName = playerName;
+        // a timer starts at zero, which is "elapsed" for anyone connected longer than the interval. the clock runs from
+        // the command, and onStart comes again after every eat or fight that took the wheel, so it can't live there
+        _giveUp.reset();
     }
 
     @Override
