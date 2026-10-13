@@ -180,7 +180,7 @@
             return fillEll(3, 8, 4, 4) + fillEll(7.5, 3, 4, 4) + fillEll(12.5, 3, 4, 4) + fillEll(17, 8, 4, 4) + path(pad);
         },
         boat: function () {
-            return poly(true, [3, 13.5, 6, 20, 18, 20, 21, 13.5]) + line(12, 3, 12, 13.5) + poly(true, [12, 3, 19, 11, 12, 11]);
+            return poly(true, [3, 14, 6, 20, 18, 20, 21, 14]) + line(12, 3, 12, 14) + poly(true, [12, 3, 19, 10.5, 12, 10.5]);
         },
         parkour: function () {
             var arc = P().moveTo(5.5, 12).quadTo(12, 1, 18.5, 10);
@@ -197,7 +197,8 @@
                 + poly(false, [10, 15, 6.5, 19.5, 3, 19.5]);
         },
         pickaxe: function () {
-            return path(P().moveTo(4, 9).quadTo(11, 1.5, 20, 10)) + line(4.5, 20.5, 12.5, 6);
+            // crescent head off shared tips, handle stops at the inner curve
+            return path(P().moveTo(6, 4).quadTo(20, 4, 20, 18).quadTo(15, 9, 6, 4)) + line(4, 20, 14, 10);
         },
         block: function () {
             return cube();
@@ -206,9 +207,8 @@
             return poly(true, [15, 3.5, 13, 8, 16, 11, 20.5, 9, 19.5, 13.5, 15, 15.5, 7.5, 21, 3.5, 17.5, 10, 10.5, 10, 5]);
         },
         backpack: function () {
-            // Arc2D(8.5, 3.5, 7, 6, 0, 180): the flap handle over the top
-            return rrect(5, 6, 14, 15, 6, 6) + path(P().arc(8.5, 3.5, 7, 6, 0, 180, false))
-                + rrect(8.5, 13, 7, 5, 2, 2) + line(3, 10, 3, 17) + line(21, 10, 21, 17);
+            // Arc2D(8.5, 3.5, 7, 6, 0, 180): the grab handle over the top. no straps, see Icons.java
+            return rrect(5, 6, 14, 15, 6, 6) + path(P().arc(8.5, 3.5, 7, 6, 0, 180, false)) + rrect(8.5, 13, 7, 5, 2, 2);
         },
         water: function () {
             var drop = P().moveTo(12, 3).curveTo(8, 8.5, 5, 11.5, 5, 15.5).curveTo(5, 22.5, 19, 22.5, 19, 15.5)
