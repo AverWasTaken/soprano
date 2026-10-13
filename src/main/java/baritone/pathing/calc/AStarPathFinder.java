@@ -180,6 +180,9 @@ public final class AStarPathFinder extends AbstractNodeCostSearch {
                     }
                     actionCost *= neighbor.favor;
                 }
+                // and don't plan to stand in a nether portal unless that's the goal, see PortalAvoidance. after the favoring so
+                // a backtracking discount doesn't shrink it, it's a flat 80 ticks of standing there
+                actionCost += PortalAvoidance.penalty(goal, calcContext, res.x, res.y, res.z);
                 double tentativeCost = currentNode.cost + actionCost;
                 if (neighbor.cost - tentativeCost > minimumImprovement) {
                     neighbor.previous = currentNode;
