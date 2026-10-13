@@ -139,7 +139,8 @@ public class AltoSettingsTest {
     public void changedValuesSurviveSaveAndLoad() throws Exception {
         Settings a = fresh();
         a.altoRunsWhenIdle.value = true;
-        a.altoButler.value = true;
+        // on is the default now, so off is the value that has to survive the file
+        a.altoButler.value = false;
         a.altoHudScale.value = 0.75f;
         a.altoMinimumFoodAllowed.value = 12;
         a.altoForceFieldStrategy.value = ForceFieldStrategy.DELAY;
@@ -156,7 +157,7 @@ public class AltoSettingsTest {
         saveAndLoad(a, b);
 
         assertTrue(b.altoRunsWhenIdle.value);
-        assertTrue(b.altoButler.value);
+        assertFalse(b.altoButler.value);
         assertEquals(0.75f, b.altoHudScale.value, 0f);
         assertEquals(12, (int) b.altoMinimumFoodAllowed.value);
         assertEquals(ForceFieldStrategy.DELAY, b.altoForceFieldStrategy.value);
