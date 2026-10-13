@@ -227,8 +227,13 @@ public final class Settings {
      * This is riskier than the sneaking bridge. For a stretch of each block the bot hangs over the edge with no
      * sneak clamp holding it, so a missed placement depends on it catching itself by sneaking at the last moment.
      * Laggy servers and strict anticheats will not like it, and stopping the bot (or anything else that lets go of the
-     * keys) in the middle of a block can drop it off the edge, because it is still moving when that happens. Only bridges with no side placement option, on plain
-     * ground (no ice, soul sand, slabs, water, magma), are affected.
+     * keys) in the middle of a block can drop it off the edge, because it is still moving when that happens.
+     * <p>
+     * Only bridges with no side placement option are affected, and only from plain footing. Anything slippery or slow
+     * under your feet (ice, slime, honey) keeps the sneaking bridge, and so does footing that opens when you click it
+     * (chests, furnaces, crafting tables and the like), water, and standing on a ladder or vine. Magma counts as plain
+     * unless {@link #allowWalkOnMagmaBlocks} is on. Soul sand and half slabs can't be placed against from behind at
+     * all, sneaking or not, so they never get this far.
      */
     public final Setting<Boolean> allowGodBridge = new Setting<>(false);
 
