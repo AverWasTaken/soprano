@@ -239,4 +239,15 @@ public class SprintPolicyTest {
         assertFalse(SprintPolicy.preTurnable(5));
         assertFalse(SprintPolicy.preTurnable(135));
     }
+
+    @Test
+    public void onlyInstantBreaksAreTrivialAndOnlyAFewOfThem() {
+        assertTrue(SprintPolicy.trivialBreaks(new double[2], 0));
+        assertTrue(SprintPolicy.trivialBreaks(new double[]{1.0, 2.5}, 2));
+        assertFalse(SprintPolicy.trivialBreaks(new double[]{1.0, 0.99}, 2)); // two ticks is still a wait
+        assertFalse(SprintPolicy.trivialBreaks(new double[]{0, 5}, 2)); // can't be mined at all
+        assertFalse(SprintPolicy.trivialBreaks(new double[]{-1}, 1));
+        assertFalse(SprintPolicy.trivialBreaks(new double[]{Double.NaN}, 1));
+        assertFalse(SprintPolicy.trivialBreaks(new double[]{1, 1, 1}, 3)); // a tunnel
+    }
 }

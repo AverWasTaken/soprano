@@ -81,6 +81,27 @@ final class SprintPolicy {
         return nether || lavaNear || health <= CAREFUL_HEALTH || busy;
     }
 
+    // destroy progress per tick of 1 or more is a block that is gone the tick the click lands (that is vanilla's own rule for
+    // instant mining), so there is nothing to wait for and nothing to stop sprinting over. an instant break goes through
+    // clickBlock with no delay (BlockBreakHelper only sits out blockBreakSpeed - 1 ticks after a multi tick one), but every
+    // one still costs a tick of aiming at the block, so a handful of them in a row is a tunnel, not a trivial break
+    static final double INSTANT_BREAK = 1.0;
+    static final int MAX_INSTANT_BREAKS = 2;
+
+    // progress is each block's destroy progress per tick with the tool we'd use. no breaks at all is trivially trivial, and
+    // anything slow, unbreakable (zero or negative) or unknown (NaN) is not
+    static boolean trivialBreaks(double[] progress, int count) {
+        if (count > MAX_INSTANT_BREAKS) {
+            return false;
+        }
+        for (int i = 0; i < count; i++) {
+            if (!(progress[i] >= INSTANT_BREAK)) { // NaN fails this too, which is what we want
+                return false;
+            }
+        }
+        return true;
+    }
+
     static boolean lavaNear(Terrain terrain, List<BlockPos> centers) {
         for (BlockPos center : centers) {
             for (int x = -LAVA_RADIUS; x <= LAVA_RADIUS; x++) {

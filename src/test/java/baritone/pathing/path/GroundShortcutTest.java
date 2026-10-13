@@ -165,6 +165,18 @@ public class GroundShortcutTest {
     }
 
     @Test
+    public void lettingGoSlidesToTheNodeNotShortOfIt() {
+        GroundShortcut shortcut = find(staircase(1, 1, false, 8));
+        // sprint speed on the ground, and the slide that follows is v / (1 - 0.546) = 2.2 v, not 2.5
+        double v = 0.153;
+        double slide = v / (1 - SprintJump.GROUND_FRICTION);
+        Vec3 velocity = shortcut.target.subtract(shortcut.start).normalize().scale(v);
+        Vec3 dir = velocity.normalize();
+        assertTrue(shortcut.shouldMoveForward(shortcut.target.subtract(dir.scale(slide + 0.02)), velocity));
+        assertFalse(shortcut.shouldMoveForward(shortcut.target.subtract(dir.scale(slide - 0.02)), velocity));
+    }
+
+    @Test
     public void controllerReachesEndpointWithGroundInertiaAndSmallSteeringError() {
         for (int sx : new int[]{-1, 1}) {
             for (int sz : new int[]{-1, 1}) {

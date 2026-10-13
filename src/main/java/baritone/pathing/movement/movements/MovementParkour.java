@@ -26,8 +26,11 @@ import baritone.pathing.movement.CalculationContext;
 import baritone.pathing.movement.Movement;
 import baritone.pathing.movement.MovementHelper;
 import baritone.pathing.movement.MovementState;
+import baritone.pathing.movement.SolidFloor;
 import baritone.utils.BlockStateInterface;
+import baritone.utils.ExperimentalMovement;
 import baritone.utils.pathing.MutableMoveResult;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
@@ -129,7 +132,9 @@ public class MovementParkour extends Movement {
             // check for ascend landing position
             BlockState destInto = context.bsi.get0(destX, y, destZ);
             if (!MovementHelper.fullyPassable(context, destX, y, destZ, destInto)) {
-                if (i <= 3 && context.allowParkourAscend && context.canSprint && MovementHelper.canWalkOn(context, destX, y, destZ, destInto) && checkOvershootSafety(context.bsi, destX + xDiff, y + 1, destZ + zDiff)) {
+                // a bottom slab is a half block step: we'd come down at y + 0.5, the feet read as cell y, and the executor takes
+                // that for a fall. same reason neos and momentum jumps won't land on one
+                if (i <= 3 && context.allowParkourAscend && context.canSprint && MovementHelper.canWalkOn(context, destX, y, destZ, destInto) && !MovementHelper.isBottomSlab(destInto) && checkOvershootSafety(context.bsi, destX + xDiff, y + 1, destZ + zDiff)) {
                     res.x = destX;
                     res.y = y + 1;
                     res.z = destZ;
@@ -141,16 +146,18 @@ public class MovementParkour extends Movement {
 
             // check for flat landing position
             BlockState landingOn = context.bsi.get0(destX, y - 1, destZ);
+            // a bottom slab comes down half a block low (see the ascend landing above). not a landing, but the jump can still go over it
             // farmland needs to be canWalkOn otherwise farm can never work at all, but we want to specifically disallow ending a jump on farmland haha
             // frostwalker works here because we can't jump from possibly unfrozen water
-            if ((landingOn.getBlock() != Blocks.FARMLAND && MovementHelper.canWalkOn(context, destX, y - 1, destZ, landingOn))
+            if ((landingOn.getBlock() != Blocks.FARMLAND && !MovementHelper.isBottomSlab(landingOn) && MovementHelper.canWalkOn(context, destX, y - 1, destZ, landingOn))
                     || (Math.min(16, context.frostWalker + 2) >= i && MovementHelper.canUseFrostWalker(context, landingOn))
             ) {
                 if (checkOvershootSafety(context.bsi, destX + xDiff, y, destZ + zDiff)) {
                     res.x = destX;
                     res.y = y;
                     res.z = destZ;
-                    res.cost = context.biasJump(costFromJumpDistance(i) + context.jumpPenalty);
+                    double hop = hopPrice(context, x, y, z, xDiff, zDiff, i, standingOn, landingOn);
+                    res.cost = context.biasJump((hop >= 0 ? hop : costFromJumpDistance(i)) + context.jumpPenalty);
                     return;
                 }
                 break;
@@ -204,6 +211,58 @@ public class MovementParkour extends Movement {
         // we're going to walk into these two blocks after the landing of the parkour anyway, so make sure they aren't avoidWalkingInto
         return !MovementHelper.avoidWalkingInto(bsi.get0(x, y, z)) && !MovementHelper.avoidWalkingInto(bsi.get0(x, y + 1, z));
     }
+
+    // 1 or 2 when feet are that many cells past dest along the jump, 0 for anywhere else. a sprint jump flies a block or two
+    // further than a landing was planned for if we were quick off the edge
+    static int overshotBy(BlockPos dest, Direction dir, BlockPos feet) {
+        if (feet.getY() != dest.getY()) {
+            return 0;
+        }
+        for (int k = 1; k <= 2; k++) {
+            if (feet.getX() == dest.getX() + dir.getStepX() * k && feet.getZ() == dest.getZ() + dir.getStepZ() * k) {
+                return k;
+            }
+        }
+        return 0;
+    }
+
+    // what the executor's sprint hop (SprintJump, which wants the same plain floors at both ends, the head room to fly and some
+    // straight floor past the landing to slide out on) costs over a 1 or 2 block gap, or a negative number for "it'll be walked".
+    // it only hops on the way in already sprinting, and the path has to actually go straight on past the landing, which the
+    // planner can't know, so this is the usual case and not a promise
+    private static double hopPrice(CalculationContext context, int x, int y, int z, int xDiff, int zDiff, int dist, BlockState standingOn, BlockState landingOn) {
+        if (dist > 3 || !context.canSprint || !ExperimentalMovement.sprintJumping()
+                || !SolidFloor.plain(standingOn, context.bsi.access, new BlockPos(x, y - 1, z))
+                || !SolidFloor.plain(landingOn, context.bsi.access, new BlockPos(x + xDiff * dist, y - 1, z + zDiff * dist))
+                || !MovementHelper.fullyPassable(context, x, y + 3, z) || !MovementHelper.fullyPassable(context, x + xDiff, y + 3, z + zDiff)) {
+            return -1;
+        }
+        // the cells past the landing: none and the sim says no (a wall as far as it knows), one and it has to brake to stop
+        // on it, two and it can fly on
+        int runway = 0;
+        for (int k = 0; k <= 2; k++) {
+            int cx = x + xDiff * (dist + k);
+            int cz = z + zDiff * (dist + k);
+            if (k > 0 && !SolidFloor.plain(context.get(cx, y - 1, cz), context.bsi.access, new BlockPos(cx, y - 1, cz))) {
+                break;
+            }
+            if (!MovementHelper.fullyPassable(context, cx, y, cz) || !MovementHelper.fullyPassable(context, cx, y + 1, cz)
+                    || !MovementHelper.fullyPassable(context, cx, y + 2, cz) || !MovementHelper.fullyPassable(context, cx, y + 3, cz)) {
+                break;
+            }
+            runway = k;
+        }
+        if (runway == 0) {
+            return -1;
+        }
+        // the air time is what a hop costs, 12 ticks whatever the gap, less the half block of run up we'd have covered at
+        // sprint speed on the way to the middle of the block. with room to fly on it covers 3 or more blocks in that time, so
+        // the sprint price is the floor. with one cell of floor it brakes to land short, and the air time is the price
+        double sprint = dist * SPRINT_ONE_BLOCK_COST;
+        return runway >= 2 ? sprint : Math.max(sprint, HOP_AIR_TICKS - 0.5 * SPRINT_ONE_BLOCK_COST);
+    }
+
+    private static final double HOP_AIR_TICKS = 12;
 
     private static double costFromJumpDistance(int dist) {
         switch (dist) {
@@ -280,6 +339,14 @@ public class MovementParkour extends Movement {
             if (ctx.player().position().y - ctx.playerFeet().getY() < 0.094) { // lilypads
                 state.setStatus(MovementStatus.SUCCESS);
             }
+        } else if (overshotBy(dest, direction, ctx.playerFeet()) > 0 && ctx.player().onGround()
+                && ctx.player().position().y - ctx.playerFeet().getY() < 0.094
+                && MovementHelper.canWalkOn(ctx, ctx.playerFeet().below())
+                && checkOvershootSafety(((Baritone) baritone).bsi, ctx.playerFeet().getX(), ctx.playerFeet().getY(), ctx.playerFeet().getZ())) {
+            // came down past dest. without this the "walk back toward the source" branch below took over and the bot
+            // went back for the cell it had already jumped over. same idea as overshootTraverse. a cell with no floor of
+            // its own (we're hanging on to the edge of dest) still walks back, that one isn't a place to start the next move from
+            return state.setStatus(MovementStatus.SUCCESS);
         } else if (!ctx.playerFeet().equals(src)) {
             if (ctx.playerFeet().equals(src.relative(direction)) || ctx.player().position().y - src.y > 0.0001) {
                 if (Baritone.settings().allowPlace.value // see PR #3775

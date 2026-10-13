@@ -26,6 +26,7 @@ import baritone.pathing.movement.CalculationContext;
 import baritone.pathing.movement.Movement;
 import baritone.pathing.movement.MovementHelper;
 import baritone.pathing.movement.MovementState;
+import baritone.pathing.movement.StairSteps;
 import baritone.utils.BlockStateInterface;
 import com.google.common.collect.ImmutableSet;
 import java.util.Set;
@@ -200,6 +201,10 @@ public class MovementAscend extends Movement {
 
         if (MovementHelper.isBottomSlab(jumpingOnto) && !MovementHelper.isBottomSlab(BlockStateInterface.get(ctx, src.below()))) {
             return state; // don't jump while walking from a non double slab into a bottom slab
+        }
+
+        if (StairSteps.walkUp(jumpingOnto, src, dest, BlockStateInterface.get(ctx, src.below()), ctx.world())) {
+            return state; // vanilla steps up the half block lip by itself, a jump here only costs the sprint
         }
 
         if (Baritone.settings().assumeStep.value || ctx.playerFeet().equals(src.above())) {

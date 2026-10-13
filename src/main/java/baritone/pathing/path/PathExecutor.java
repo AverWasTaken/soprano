@@ -31,9 +31,11 @@ import baritone.pathing.calc.AbstractNodeCostSearch;
 import baritone.pathing.movement.Movement;
 import baritone.pathing.movement.MovementHelper;
 import baritone.pathing.movement.MovementState;
+import baritone.pathing.movement.StairSteps;
 import baritone.pathing.movement.movements.*;
 import baritone.utils.BlockStateInterface;
 import baritone.utils.ExperimentalMovement;
+import baritone.utils.ToolSet;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Vec3i;
 import net.minecraft.util.Tuple;
@@ -659,6 +661,9 @@ public class PathExecutor implements IPathExecutor, Helper {
                 //logDebug("Turning off sprinting " + movement + " " + next + " " + movement.getDirection() + " " + next.getDirection().down() + " " + next.getDirection().down().equals(movement.getDirection()));
             }
         }
+        if (current instanceof MovementAscend && sprintsUpStairs((MovementAscend) current)) {
+            return true;
+        }
         if (current instanceof MovementAscend && pathPosition != 0) {
             IMovement prev = path.movements().get(pathPosition - 1);
             if (prev instanceof MovementDescend && prev.getDirection().above().equals(current.getDirection().below())) {
@@ -713,6 +718,22 @@ public class PathExecutor implements IPathExecutor, Helper {
         return false;
     }
 
+    // a stair we just walk up (MovementAscend doesn't jump for it either) takes no jump to sprint through, so a whole flight
+    // of them can be one sprint instead of a stop and a hop at every step. the path has to go on, since the last
+    // movement is the goal and we don't sprint past that, and it can't bend more than a descend's worth at the top
+    private boolean sprintsUpStairs(MovementAscend ascend) {
+        if (!Baritone.settings().sprintAscends.value || pathPosition >= path.length() - 2
+                || !StairSteps.walkUp(ctx.world().getBlockState(ascend.getDest().below()), ascend.getSrc(), ascend.getDest(),
+                ctx.world().getBlockState(ascend.getSrc().below()), ctx.world())) {
+            return false;
+        }
+        BlockPos dir = ascend.getDirection();
+        BlockPos nextDir = path.movements().get(pathPosition + 1).getDirection();
+        BlockStateInterface bsi = behavior.baritone.bsi;
+        return SprintPolicy.turnDegrees(dir.getX(), dir.getZ(), nextDir.getX(), nextDir.getZ()) <= SprintPolicy.DESCEND_MAX_TURN
+                && ascend.toBreak(bsi).isEmpty() && ascend.toPlace(bsi).isEmpty() && !carefulSprint();
+    }
+
     // a small drop, no bucket and no clutch in sight, and the path goes on roughly the way we were going
     private boolean sprintsThroughFall(MovementFall fall) {
         int drop = -fall.getDirection().getY();
@@ -761,13 +782,28 @@ public class PathExecutor implements IPathExecutor, Helper {
 
     private boolean placingNearby() {
         BlockStateInterface bsi = behavior.baritone.bsi;
+        double[] progress = new double[SprintPolicy.MAX_INSTANT_BREAKS];
+        int breaks = 0;
+        ToolSet tools = null;
+        // breaking is like 5x slower in water and in the air, and the click can land while we're still coming down a descend
+        boolean slowSwing = ctx.player().isInWater() || !ctx.player().onGround()
+                || pathPosition < path.movements().size() && (path.movements().get(pathPosition) instanceof MovementDescend || path.movements().get(pathPosition) instanceof MovementFall);
         for (int i = pathPosition; i <= pathPosition + 2 && i < path.movements().size(); i++) {
             Movement movement = (Movement) path.movements().get(i);
-            if (movement instanceof MovementPillar || !movement.toPlace(bsi).isEmpty() || !movement.toBreak(bsi).isEmpty()) {
+            if (movement instanceof MovementPillar || !movement.toPlace(bsi).isEmpty()) {
                 return true;
             }
+            for (BlockPos pos : movement.toBreak(bsi)) {
+                if (breaks == progress.length) {
+                    return true; // a tunnel, however fast the pick is
+                }
+                if (tools == null) {
+                    tools = new ToolSet(ctx.player());
+                }
+                progress[breaks++] = tools.getStrVsBlock(bsi.get0(pos)) * (slowSwing ? 0.2 : 1);
+            }
         }
-        return false;
+        return !SprintPolicy.trivialBreaks(progress, breaks);
     }
 
     // turn a little before the corner instead of at it. a movement is done the moment we step into its dest block, and at
@@ -1006,6 +1042,10 @@ public class PathExecutor implements IPathExecutor, Helper {
     private static boolean sprintableAscend(IPlayerContext ctx, MovementTraverse current, MovementAscend next, IMovement nextnext) {
         if (!Baritone.settings().sprintAscends.value) {
             return false;
+        }
+        if (StairSteps.walkUp(ctx.world().getBlockState(next.getDest().below()), next.getSrc(), next.getDest(),
+                ctx.world().getBlockState(next.getSrc().below()), ctx.world())) {
+            return false; // no hop to time for this one, sprintsUpStairs walks it
         }
         if (!current.getDirection().equals(next.getDirection().below())) {
             return false;
