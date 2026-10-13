@@ -32,6 +32,7 @@ import baritone.pathing.movement.Movement;
 import baritone.pathing.movement.MovementHelper;
 import baritone.pathing.movement.MovementState;
 import baritone.utils.BlockStateInterface;
+import baritone.utils.ExperimentalMovement;
 import com.google.common.collect.ImmutableSet;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -427,7 +428,7 @@ public class MovementTraverse extends Movement {
 
     // decided once per movement, on the first tick that needs a block. the cost says walk speed for exactly these
     private boolean godEligible() {
-        if (!Baritone.settings().allowGodBridge.value) {
+        if (!ExperimentalMovement.allowGodBridge()) {
             return false; // the flag off path asks nothing else
         }
         BlockState srcDown = BlockStateInterface.get(ctx, src.below());

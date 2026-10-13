@@ -113,7 +113,7 @@ All off by default unless it says otherwise.
 - `keepPathOnSameGoal` (on by default, when one AltoClef task hands over to another that wants the same goal, keeps walking the path instead of standing still while a new one is calculated)
 - `shortBaritonePrefix` (use `[S]` instead of `[Soprano]` in chat messages)
 
-`fastMode` is the "just go fast" switch. It turns on all the parkour (neos, climb jumps and momentum jumps too), diagonal ascends and descends, sprint jumping, head hitters, ground shortcuts and faster pathing, takes falls that cost some health when that saves time, cuts corners, smooths straight runs, places blocks more freely and leans toward jumps. If you'd rather pick features one by one, leave it off and use the settings above.
+`fastMode` is the "just go fast" switch. It turns on all the parkour (neos, climb jumps and momentum jumps too), diagonal ascends and descends, sprint jumping, head hitters, ground shortcuts, god bridging and faster pathing, takes falls that cost some health when that saves time, cuts corners, smooths straight runs, places blocks more freely and leans toward jumps. If you'd rather pick features one by one, leave it off and use the settings above.
 
 ## Settings from Baritone
 

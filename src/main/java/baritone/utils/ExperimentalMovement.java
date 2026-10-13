@@ -74,6 +74,10 @@ public final class ExperimentalMovement {
         return on() || Baritone.settings().allowGroundShortcuts.value;
     }
 
+    public static boolean allowGodBridge() {
+        return on() || Baritone.settings().allowGodBridge.value;
+    }
+
     public static boolean preferFasterPathing() {
         return on() || Baritone.settings().preferFasterPathing.value;
     }

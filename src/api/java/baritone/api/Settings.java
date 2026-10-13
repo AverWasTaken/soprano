@@ -539,7 +539,7 @@ public final class Settings {
      * {@link #allowParkour}, {@link #allowParkourAscend}, {@link #allowNeos}, {@link #allowClimbJumps},
      * {@link #allowMomentumJumps},
      * {@link #allowDiagonalAscend}, {@link #allowDiagonalDescend}, {@link #sprintJumping}, {@link #headHitters},
-     * {@link #allowGroundShortcuts} and {@link #preferFasterPathing}.
+     * {@link #allowGroundShortcuts}, {@link #allowGodBridge} and {@link #preferFasterPathing}.
      * <p>
      * It also scales the cost of parkour, neo, climb and momentum jumps by {@link #experimentalJumpBias}, caps the cost of
      * placing a block at {@link #experimentalBlockPlacementPenalty} (so a quick pillar or short bridge can beat a
