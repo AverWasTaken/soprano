@@ -19,25 +19,25 @@ package baritone.launch.mixins;
 
 import baritone.altoclef.AltoClefBridge;
 import adris.altoclef.eventbus.events.GameOverlayEvent;
-import baritone.altoclef.AltoClefBridge;
 import net.minecraft.client.DeltaTracker;
-import net.minecraft.client.gui.Gui;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.Hud;
 import net.minecraft.network.chat.Component;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-@Mixin(Gui.class)
+// the hud half of Gui.render became its own class (Hud) in 26.3, and rendering is extract-then-draw now
+@Mixin(Hud.class)
 public class MixinAltoClefGui {
 
     // RETURN so the hud lands on top of everything vanilla drew
     @Inject(
-            method = "render",
+            method = "extractRenderState(Lnet/minecraft/client/gui/GuiGraphicsExtractor;Lnet/minecraft/client/DeltaTracker;)V",
             at = @At("RETURN")
     )
-    private void altoclef$onRenderHud(final GuiGraphics graphics, final DeltaTracker deltaTracker, final CallbackInfo ci) {
+    private void altoclef$onRenderHud(final GuiGraphicsExtractor graphics, final DeltaTracker deltaTracker, final CallbackInfo ci) {
         AltoClefBridge.renderHud(graphics);
     }
 

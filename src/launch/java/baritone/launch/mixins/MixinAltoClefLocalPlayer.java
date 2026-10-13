@@ -30,18 +30,9 @@ public class MixinAltoClefLocalPlayer {
 
     // vanilla hands the camera the raw rotation so mouse look never lags. altoclef rotates once a tick, so while it runs we lerp
     // between ticks instead. only while it runs, otherwise normal mouse look would trail by up to a tick
-    @Inject(
-            method = "getViewXRot",
-            at = @At("HEAD"),
-            cancellable = true
-    )
-    private void altoclef$smoothPitch(final float partialTick, final CallbackInfoReturnable<Float> cir) {
-        if (!AltoClefBridge.isRunning()) {
-            return;
-        }
-        cir.setReturnValue(((Entity) (Object) this).getXRot(partialTick));
-    }
-
+    // todo 26.3: LocalPlayer no longer overrides getViewXRot (Entity's already lerps via getXRot(partial)), so there is
+    // nothing to inject for pitch. getViewYRot is still overridden but now returns getYRot(partial) itself, which is
+    // exactly what this does, so the whole mixin is probably dead weight. left it for a decision
     @Inject(
             method = "getViewYRot",
             at = @At("HEAD"),
