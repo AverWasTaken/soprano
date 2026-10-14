@@ -17,27 +17,27 @@
 
 package baritone.pathing.sim;
 
-// a few blocks in a box, everything outside it is air. no minecraft registries needed, which is the point
-final class ArrayWorld implements CollisionProvider {
+// a few blocks in a box (public so the executor-side tests in other packages can stand on it), everything outside it is air. no minecraft registries needed, which is the point
+public final class ArrayWorld implements CollisionProvider {
 
-    static final byte AIR = 0, STONE = 1, SLAB = 2, ICE = 3;
+    public static final byte AIR = 0, STONE = 1, SLAB = 2, ICE = 3;
 
     private final byte[] blocks;
     private final int sx, sy, sz;
 
-    ArrayWorld(int sx, int sy, int sz) {
+    public ArrayWorld(int sx, int sy, int sz) {
         this.sx = sx;
         this.sy = sy;
         this.sz = sz;
         this.blocks = new byte[sx * sy * sz];
     }
 
-    void set(int x, int y, int z, byte type) {
+    public void set(int x, int y, int z, byte type) {
         blocks[(x * sy + y) * sz + z] = type;
     }
 
     // fills a cuboid, corners inclusive
-    void fill(int x0, int y0, int z0, int x1, int y1, int z1, byte type) {
+    public void fill(int x0, int y0, int z0, int x1, int y1, int z1, byte type) {
         for (int x = x0; x <= x1; x++) {
             for (int y = y0; y <= y1; y++) {
                 for (int z = z0; z <= z1; z++) {

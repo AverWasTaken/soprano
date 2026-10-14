@@ -112,6 +112,7 @@ public class PathExecutor implements IPathExecutor, Helper {
     private int steerMask;
     private double shortcutDist = Double.NaN;
     private Vec3 shortcutAim;
+    private int shortcutEnd = -1;
     // see carefulSprint
     private int carefulAt = -1;
     private boolean carefulLava;
@@ -148,6 +149,7 @@ public class PathExecutor implements IPathExecutor, Helper {
             steerMask = 0;
             shortcutDist = Double.NaN;
             shortcutAim = null;
+            shortcutEnd = -1;
         }
         try {
             boolean done = tick();
@@ -560,10 +562,13 @@ public class PathExecutor implements IPathExecutor, Helper {
         steerMask |= STEER_SHORTCUT;
         shortcutDist = player.distanceTo(groundShortcut.target);
         shortcutAim = groundShortcut.target;
-        sprintNextTick = forward && shortcutDist > 1.5
-                && Baritone.settings().allowSprint.value && ctx.player().getFoodData().getFoodLevel() > 6;
+        shortcutEnd = groundShortcut.endIndex;
+        // sprint whenever W is held. shouldMoveForward lets go early enough for the slide to carry us onto the node (it uses the
+        // real speed), and vanilla drops the sprint the tick W comes up, so a distance cutoff only cost the sprint over the last
+        // stretch where we are still pushing
+        sprintNextTick = forward && Baritone.settings().allowSprint.value && ctx.player().getFoodData().getFoodLevel() > 6;
         if (!sprintNextTick) {
-            sprintWhy = !forward ? "ground shortcut, no forward" : shortcutDist <= 1.5 ? "ground shortcut, near its target" : "allowSprint off or food";
+            sprintWhy = !forward ? "ground shortcut braking at its target" : "allowSprint off or food";
             ctx.player().setSprinting(false);
         }
         return true; // all ground under our footprint was verified this tick, so pausing is safe
@@ -1511,5 +1516,10 @@ public class PathExecutor implements IPathExecutor, Helper {
     // null likewise
     Vec3 shortcutTarget() {
         return shortcutAim;
+    }
+
+    // the path node the shortcut aims for, -1 likewise
+    int shortcutEndIndex() {
+        return shortcutEnd;
     }
 }

@@ -189,7 +189,8 @@ public class GroundShortcutTest {
                 while (!shortcut.arrived(player, velocity) && ticks++ < 100) {
                     assertTrue(shortcut.canContinue(player, velocity, p -> true));
                     if (shortcut.shouldMoveForward(player, velocity)) {
-                        double accel = player.distanceTo(shortcut.target) > 1.5 ? 0.1274 : 0.098;
+                        // sprint is on whenever W is held, so the push is the sprint one all the way in
+                        double accel = GroundShortcut.PUSH;
                         Vec3 thrust = shortcut.target.subtract(player).normalize().yRot((float) Math.toRadians(ticks % 2 == 0 ? 2 : -2));
                         velocity = velocity.add(thrust.scale(accel));
                     }
