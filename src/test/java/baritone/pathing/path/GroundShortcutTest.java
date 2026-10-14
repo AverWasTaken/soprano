@@ -358,18 +358,22 @@ public class GroundShortcutTest {
             valid.add(new HashSet<>(Arrays.asList(node[i], node[i + 1])));
         }
         // the shortcut ran from movement 1 to node 4: the feet on the start node, a middle node, and the end node
-        assertEquals(1, GroundShortcut.resumeIndex(valid::get, 1, 4, valid.size(), node[1]));
-        assertEquals(2, GroundShortcut.resumeIndex(valid::get, 1, 4, valid.size(), node[2]));
+        assertEquals(1, GroundShortcut.resumeIndex(valid::get, 1, 4, valid.size(), node[1], node[4]));
+        assertEquals(2, GroundShortcut.resumeIndex(valid::get, 1, 4, valid.size(), node[2], node[4]));
         // the node between two movements is the start of the later one
-        assertEquals(3, GroundShortcut.resumeIndex(valid::get, 1, 4, valid.size(), node[3]));
-        assertEquals(4, GroundShortcut.resumeIndex(valid::get, 1, 4, valid.size(), node[4]));
+        assertEquals(3, GroundShortcut.resumeIndex(valid::get, 1, 4, valid.size(), node[3], node[4]));
+        assertEquals(4, GroundShortcut.resumeIndex(valid::get, 1, 4, valid.size(), node[4], node[4]));
         // behind the range, ahead of it, off the line altogether: replan
-        assertEquals(0, GroundShortcut.resumeIndex(valid::get, 0, 1, valid.size(), node[0]));
-        assertEquals(-1, GroundShortcut.resumeIndex(valid::get, 1, 4, valid.size(), node[0]));
-        assertEquals(-1, GroundShortcut.resumeIndex(valid::get, 1, 2, valid.size(), node[4]));
-        assertEquals(-1, GroundShortcut.resumeIndex(valid::get, 1, 4, valid.size(), new BetterBlockPos(2, 64, 1)));
+        assertEquals(0, GroundShortcut.resumeIndex(valid::get, 0, 1, valid.size(), node[0], node[1]));
+        assertEquals(-1, GroundShortcut.resumeIndex(valid::get, 1, 4, valid.size(), node[0], node[4]));
+        assertEquals(-1, GroundShortcut.resumeIndex(valid::get, 1, 2, valid.size(), node[4], node[2]));
+        assertEquals(-1, GroundShortcut.resumeIndex(valid::get, 1, 4, valid.size(), new BetterBlockPos(2, 64, 1), node[4]));
+        // the end movement's runway cell is not where it starts, so it is not a place to carry on from
+        BetterBlockPos runway = new BetterBlockPos(4, 64, 1);
+        valid.get(4).add(runway);
+        assertEquals(-1, GroundShortcut.resumeIndex(valid::get, 1, 4, valid.size(), runway, node[4]));
         // a shortcut that ends at the last node has no movement of its own there, the end of the last one is where it ends
-        assertEquals(4, GroundShortcut.resumeIndex(valid::get, 1, 5, valid.size(), node[5]));
+        assertEquals(4, GroundShortcut.resumeIndex(valid::get, 1, 5, valid.size(), node[5], node[5]));
     }
 
     private static GroundShortcut find(List<BetterBlockPos> path) {
