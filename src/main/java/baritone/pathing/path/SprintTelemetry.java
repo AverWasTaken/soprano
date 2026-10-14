@@ -96,7 +96,7 @@ public final class SprintTelemetry implements Helper {
     // the drop sprint has not come back from yet, and for how long the ones that did come back were gone
     private int openDropTick = -1;
     private String openDropCause = "", openDropMovement = "";
-    private boolean openDropLogged;
+    private boolean openDropLogged, openDropCarried;
     private final int[] resumeHist = new int[BUCKETS.length];
     private int stillOff;
     // {drops, how many came back, ticks they were gone for}
@@ -313,6 +313,7 @@ public final class SprintTelemetry implements Helper {
         openDropTick = tick;
         openDropCause = cause;
         openDropMovement = lastMovement;
+        openDropCarried = false;
         openDropLogged = dropsLogged++ < LINES_PER_REPORT;
         if (openDropLogged) {
             emit(describeDrop(player, cause));
@@ -322,10 +323,12 @@ public final class SprintTelemetry implements Helper {
     // sprint is back after being off since openDropTick
     private void resumed(int tick) {
         int gone = tick - openDropTick;
-        int bucket = gone <= 2 ? Math.max(gone, 1) - 1 : gone <= 5 ? 2 : gone <= 10 ? 3 : gone <= 20 ? 4 : 5;
-        resumeHist[bucket]++;
-        tally(byCause, openDropCause, gone);
-        tally(byMovement, openDropMovement, gone);
+        if (!openDropCarried) { // a drop from before the last report was counted there, its numbers are gone
+            int bucket = gone <= 2 ? Math.max(gone, 1) - 1 : gone <= 5 ? 2 : gone <= 10 ? 3 : gone <= 20 ? 4 : 5;
+            resumeHist[bucket]++;
+            tally(byCause, openDropCause, gone);
+            tally(byMovement, openDropMovement, gone);
+        }
         if (openDropLogged) {
             emit(String.format(Locale.ROOT, "sprint back after %d ticks (drop at tick %d, %s)", gone, openDropTick - 1, openDropCause));
         }
@@ -437,6 +440,9 @@ public final class SprintTelemetry implements Helper {
     private void report(boolean ending) {
         totalDrops += drops;
         totalPathTicks += pathTicks;
+        if (!ending && openDropTick >= 0) {
+            openDropCarried = true;
+        }
         if (ending && openDropTick >= 0) {
             stillOff++; // the path ended before sprint came back
             openDropTick = -1;
