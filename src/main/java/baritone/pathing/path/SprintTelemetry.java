@@ -105,6 +105,14 @@ public final class SprintTelemetry implements Helper {
     // {drops, how many came back, ticks they were gone for}
     private final Map<String, int[]> byCause = new TreeMap<>(), byMovement = new TreeMap<>();
 
+    // ground shortcuts that stood still or gave up, since the last report: W held back by a check (and which), then how each one
+    // ended. row[0] is the count
+    public enum ShortcutEnd {HANDOFF, RESUMED, REPLAN}
+
+    private int shortcutHolds, shortcutLines;
+    private final int[] shortcutEnds = new int[ShortcutEnd.values().length];
+    private final Map<String, int[]> shortcutHoldsBy = new TreeMap<>(), shortcutEndsBy = new TreeMap<>();
+
     // the replay. the sim stands where the player did when the keys were set, the rest is the keys and the yaw they were set with
     private PlayerSim pending;
     private int pendingForward, pendingLeft, pendingMoveCount;
@@ -283,6 +291,35 @@ public final class SprintTelemetry implements Helper {
             lastTakeoffTick = -1000;
             takeoffs--;
             emit("takeoff withdrawn, the ascend guard stood still (" + src.x + "," + src.y + "," + src.z + ")->(" + dest.x + "," + dest.y + "," + dest.z + ")");
+        }
+    }
+
+    // a ground shortcut let go of W because a check said the way ahead is blocked (called on the tick that starts the hold, not
+    // every tick of it). `where` is the cell and what is in it, speed is blocks a tick
+    public void shortcutHold(String check, String where, double speed, double distToTarget) {
+        if (!ExperimentalMovement.sprintTelemetry()) {
+            return;
+        }
+        shortcutHolds++;
+        count(shortcutHoldsBy, check);
+        shortcutLine(String.format(Locale.ROOT, "shortcut holding W back: %s says no at %s, speed=%.3f toTarget=%.2f", check, where, speed, distToTarget));
+    }
+
+    // a ground shortcut is over without arriving: an early handoff to its end node, a stop that carried on with the movements it
+    // skipped, or one that had to replan. `detail` says where the feet were
+    public void shortcutEnded(ShortcutEnd how, String reason, String detail) {
+        if (!ExperimentalMovement.sprintTelemetry()) {
+            return;
+        }
+        shortcutEnds[how.ordinal()]++;
+        // the numbers in a reason ("0.63 blocks off its line") would make a row each
+        count(shortcutEndsBy, how.name().toLowerCase(Locale.ROOT) + ": " + reason.replaceAll("\\d+\\.\\d+", "N"));
+        shortcutLine("shortcut " + how.name().toLowerCase(Locale.ROOT) + " (" + reason + ") " + detail);
+    }
+
+    private void shortcutLine(String line) {
+        if (shortcutLines++ < LINES_PER_REPORT) {
+            emit(line + (shortcutLines == LINES_PER_REPORT ? " (no more shortcut lines until the next report)" : ""));
         }
     }
 
@@ -511,6 +548,11 @@ public final class SprintTelemetry implements Helper {
         if (brakePlans > 0 || brakeTicks > 0) {
             emit(brakePlans + " brake plans picked, " + brakeTicks + " ticks of braking");
         }
+        if (shortcutHolds > 0 || shortcutEnds[0] + shortcutEnds[1] + shortcutEnds[2] > 0) {
+            emit(String.format(Locale.ROOT, "ground shortcuts: %d holds of W (%s), %d early handoffs, %d abandons that carried on, %d abandons that replanned. by reason: %s",
+                    shortcutHolds, table(shortcutHoldsBy), shortcutEnds[ShortcutEnd.HANDOFF.ordinal()], shortcutEnds[ShortcutEnd.RESUMED.ordinal()],
+                    shortcutEnds[ShortcutEnd.REPLAN.ordinal()], table(shortcutEndsBy)));
+        }
         if (AscendHop.decides > 0) {
             emit(String.format(Locale.ROOT, "ascend sim: %d asks, %.1f sim ticks per ask on average, %d at worst", AscendHop.decides,
                     AscendHop.simTicks / (double) AscendHop.decides, AscendHop.worstDecideTicks));
@@ -534,6 +576,11 @@ public final class SprintTelemetry implements Helper {
         brakePlans = 0;
         brakeTicks = 0;
         stillOff = 0;
+        shortcutHolds = 0;
+        shortcutLines = 0;
+        Arrays.fill(shortcutEnds, 0);
+        shortcutHoldsBy.clear();
+        shortcutEndsBy.clear();
         Arrays.fill(resumeHist, 0);
         byCause.clear();
         byMovement.clear();

@@ -121,6 +121,14 @@ public class PathExecutor implements IPathExecutor, Helper {
     private SprintJump flight;
     private GroundShortcut groundShortcut;
     private int ticksOnShortcut;
+    // a shortcut that was let go of mid way keeps the next one off until the path is at the node it was heading for
+    private int shortcutCooldownEnd = -1;
+    // consecutive ticks of horizontalCollision on this shortcut, and whether W is being held back by a check right now (that is
+    // what the telemetry logs the start of)
+    private int shortcutContactTicks;
+    private boolean shortcutHolding;
+    // below this the player is as good as standing: walking is 0.2 a tick, the same bar MovementTimer calls still
+    private static final double STANDING_SPEED = 0.03;
 
     // the boat crossing we're in the middle of, if any. it owns the tick while it's alive
     private BoatTrip boat;
@@ -481,7 +489,7 @@ public class PathExecutor implements IPathExecutor, Helper {
     }
 
     private boolean startGroundShortcut(Movement movement, BlockStateInterface bsi) {
-        if (!ExperimentalMovement.allowGroundShortcuts() || !canSteerOnGround(movement)
+        if (!ExperimentalMovement.allowGroundShortcuts() || pathPosition < shortcutCooldownEnd || !canSteerOnGround(movement)
                 || !movement.safeToCancel() || ctx.player().getBbWidth() > 0.6F
                 || ctx.player().getBbHeight() > 1.8F) {
             return false;
@@ -500,6 +508,8 @@ public class PathExecutor implements IPathExecutor, Helper {
             groundShortcut = null; // asked last on purpose, planning a jump is the expensive question
         }
         ticksOnShortcut = 0;
+        shortcutContactTicks = 0;
+        shortcutHolding = false;
         return groundShortcut != null;
     }
 
@@ -511,18 +521,97 @@ public class PathExecutor implements IPathExecutor, Helper {
                 && SprintJump.plan(ctx, path, pathPosition) != null;
     }
 
-    // null while the shortcut can go on, else why it can't
-    private String shortcutStopReason(Vec3 player, Vec3 velocity, Predicate<BlockPos> clearColumn) {
+    // null while the shortcut can go on, else why it can't because we are not walking on the ground any more. nothing to
+    // carry on with from there, that one is a replan
+    private String shortcutHardStop() {
         if (!ExperimentalMovement.allowGroundShortcuts()) {
             return "ground shortcuts switched off";
         }
         if (!ctx.player().onGround() || ctx.player().isInWater() || ctx.player().onClimbable()) {
             return "off the ground";
         }
+        return null;
+    }
+
+    // null while the shortcut can go on, else why it can't. the player is still on the ground here, so the movements it skipped
+    // can take over from where the feet are (leaveShortcut)
+    private String shortcutSoftStop(Vec3 player, Vec3 velocity, Predicate<BlockPos> clearColumn) {
         if (ctx.player().horizontalCollision) {
-            return "hit something";
+            // brushing a corner for a tick while on the line is not a reason to give up, leaning on it is
+            if (++shortcutContactTicks >= 2 || Math.hypot(velocity.x, velocity.z) < STANDING_SPEED) {
+                return "hit something";
+            }
+        } else {
+            shortcutContactTicks = 0;
         }
         return groundShortcut.stopReason(player, velocity, clearColumn);
+    }
+
+    // the shortcut ends here without arriving. the feet are on some node of the movements it covers (pathPosition up to its end,
+    // both included) most of the time, and then the path carries on with that movement as if the shortcut had never been: the
+    // skipped ones are not reset, same as when it arrives. feet on none of them is a replan, as it was for every stop before
+    private boolean leaveShortcut(String reason, String detail) {
+        int end = groundShortcut.endIndex;
+        BetterBlockPos feet = ctx.playerFeet();
+        List<? extends IMovement> movements = path.movements();
+        int at = GroundShortcut.resumeIndex(i -> ((Movement) movements.get(i)).getValidPositions(), pathPosition, end, movements.size(), feet);
+        if (at < 0) {
+            logDebug("Ground shortcut interrupted (" + reason + "); recalculating from current position");
+            behavior.sprintTelemetry().shortcutEnded(SprintTelemetry.ShortcutEnd.REPLAN, reason,
+                    detail + " feet=" + feet + " on no node of movements " + pathPosition + ".." + end);
+            cancel();
+            return true;
+        }
+        logDebug("Ground shortcut interrupted (" + reason + "); carrying on with movement " + at);
+        behavior.sprintTelemetry().shortcutEnded(SprintTelemetry.ShortcutEnd.RESUMED, reason,
+                detail + " feet=" + feet + " resumed at movement " + at + " of " + pathPosition + ".." + end);
+        shortcutCooldownEnd = end;
+        groundShortcut = null;
+        pathPosition = at;
+        recalcBP = true;
+        onChangeInPathPosition();
+        return onTick();
+    }
+
+    // W is held back by a check and there is no speed to carry us anywhere, so waiting is standing there until the timeout.
+    // right at the end node it is as good as arrived, otherwise let go of the shortcut
+    private boolean unstickShortcut(GroundShortcut.Blocked blocked, Vec3 player, BlockStateInterface bsi) {
+        int end = groundShortcut.endIndex;
+        Vec3 target = groundShortcut.target;
+        String reason = "stood still, blocked ahead (" + blocked.check() + ")";
+        String detail = ExperimentalMovement.sprintTelemetry() ? "at " + describeCell(bsi, blocked.cell()) : "";
+        List<? extends IMovement> movements = path.movements();
+        if (player.distanceTo(target) <= 0.6 && Math.abs(player.y - target.y) <= 0.05
+                && ((Movement) movements.get(Math.min(end, movements.size() - 1))).getValidPositions().contains(ctx.playerFeet())) {
+            behavior.sprintTelemetry().shortcutEnded(SprintTelemetry.ShortcutEnd.HANDOFF, reason, detail
+                    + String.format(Locale.ROOT, " toTarget=%.2f", player.distanceTo(target)));
+            pathPosition = end;
+            groundShortcut = null;
+            recalcBP = true;
+            onChangeInPathPosition();
+            onTick();
+            return true;
+        }
+        return leaveShortcut(reason, detail);
+    }
+
+    // what the telemetry says about a cell the shortcut was stopped by: where, and which test of clearSmoothingColumn it failed
+    private String describeCell(BlockStateInterface bsi, BlockPos cell) {
+        String why = smoothingColumnFailure(bsi, cell);
+        if (why == null) {
+            return cell.toShortString() + " (the column is fine, the segment itself was too long or not level)";
+        }
+        BlockPos looked = why.startsWith("floor") ? cell.below() : why.startsWith("head") ? cell.above() : cell;
+        return cell.toShortString() + " " + why + (why.startsWith("chunk") ? "" : ": " + bsi.get0(looked));
+    }
+
+    // the same, for a stop that is not a hold: the cell is whichever stopReason tripped on
+    private String describeStop(String stop, Vec3 player, Vec3 velocity, Predicate<BlockPos> clearColumn, BlockStateInterface bsi) {
+        if (!ExperimentalMovement.sprintTelemetry() || !stop.contains("blocked")) {
+            return "";
+        }
+        BlockPos cell = groundShortcut.stopCell(player, velocity, clearColumn);
+        return cell == null ? "" : "at " + describeCell(bsi, cell);
     }
 
     private boolean tickGroundShortcut() {
@@ -530,13 +619,18 @@ public class PathExecutor implements IPathExecutor, Helper {
         Vec3 velocity = ctx.player().getDeltaMovement();
         BlockStateInterface bsi = behavior.baritone.bsi;
         Map<BlockPos, Boolean> clearance = new HashMap<>();
-        String stop = shortcutStopReason(player, velocity, pos -> clearance.computeIfAbsent(pos, p -> clearSmoothingColumn(bsi, p)));
-        if (stop != null) {
-            // we're between the original waypoints. replan from here instead of backtracking toward
-            // a skipped node or handing a diagonal movement a position it cannot execute from.
-            logDebug("Ground shortcut interrupted (" + stop + "); recalculating from current position");
+        Predicate<BlockPos> clear = pos -> clearance.computeIfAbsent(pos, p -> clearSmoothingColumn(bsi, p));
+        String hard = shortcutHardStop();
+        if (hard != null) {
+            logDebug("Ground shortcut interrupted (" + hard + "); recalculating from current position");
+            behavior.sprintTelemetry().shortcutEnded(SprintTelemetry.ShortcutEnd.REPLAN, hard, "");
             cancel();
             return true;
+        }
+        String stop = shortcutSoftStop(player, velocity, clear);
+        if (stop != null) {
+            // we're between the original waypoints, and the movements it skipped take over from the node we are on
+            return leaveShortcut(stop, describeStop(stop, player, velocity, clear, bsi));
         }
         if (groundShortcut.arrived(player, velocity)) {
             pathPosition = groundShortcut.endIndex;
@@ -548,9 +642,7 @@ public class PathExecutor implements IPathExecutor, Helper {
         }
         if (++ticksOnShortcut > groundShortcut.start.distanceTo(groundShortcut.target)
                 * ActionCosts.WALK_ONE_BLOCK_COST + Baritone.settings().movementTimeoutTicks.value) {
-            logDebug("Ground shortcut took too long");
-            cancel();
-            return true;
+            return leaveShortcut("took too long", "");
         }
         clearKeys();
         Rotation desired = RotationUtils.calcRotationFromVec3d(ctx.playerHead(), groundShortcut.target,
@@ -560,16 +652,29 @@ public class PathExecutor implements IPathExecutor, Helper {
         boolean turning = yawError >= 10;
         boolean braking = !turning && !groundShortcut.shouldMoveForward(player, velocity);
         boolean forward = !turning && !braking;
-        boolean blocked = false;
+        GroundShortcut.Blocked blocked = null;
         if (forward) {
-            double yaw = Math.toRadians(actual.getYaw());
-            Vec3 projected = player.add(velocity.x * 2.5 - Math.sin(yaw) * 0.5, 0,
-                    velocity.z * 2.5 + Math.cos(yaw) * 0.5);
-            // the line to the far end, and the curve the momentum really takes there (it bulges on a bend)
-            forward = GroundShortcut.clearSegment(player, projected, pos -> clearance.computeIfAbsent(pos, p -> clearSmoothingColumn(bsi, p)))
-                    && GroundShortcut.clearAhead(player, velocity, new Vec3(-Math.sin(yaw), 0, Math.cos(yaw)),
-                    pos -> clearance.computeIfAbsent(pos, p -> clearSmoothingColumn(bsi, p)));
-            blocked = !forward;
+            // the line to the far end, and the curve the momentum really takes there (it bulges on a bend). both stop at the target
+            blocked = GroundShortcut.blockedAhead(groundShortcut.start, groundShortcut.target, player, velocity,
+                    Math.toRadians(actual.getYaw()), clear);
+            forward = blocked == null;
+        }
+        if (blocked == null) {
+            shortcutHolding = false;
+        } else {
+            // a hold that is waiting on a turn or the momentum clears itself in a few ticks. one with nothing left to wait on
+            // (no speed, so the same trajectory gets asked again and says the same) never does
+            double speed = Math.hypot(velocity.x, velocity.z);
+            if (speed < STANDING_SPEED) {
+                return unstickShortcut(blocked, player, bsi);
+            }
+            if (!shortcutHolding) {
+                shortcutHolding = true;
+                if (ExperimentalMovement.sprintTelemetry()) {
+                    behavior.sprintTelemetry().shortcutHold(blocked.check(), describeCell(bsi, blocked.cell()), speed,
+                            player.distanceTo(groundShortcut.target));
+                }
+            }
         }
         behavior.baritone.getLookBehavior().updateTarget(desired, false);
         behavior.baritone.getInputOverrideHandler().setInputForceState(Input.MOVE_FORWARD, forward);
@@ -585,36 +690,59 @@ public class PathExecutor implements IPathExecutor, Helper {
         if (!sprintNextTick) {
             // only the first one is the shortcut letting go of W to slide onto its node, the other two are the aim and the floor
             sprintWhy = braking ? "ground shortcut braking at its target" : turning ? "ground shortcut turning to its target"
-                    : blocked ? "ground shortcut blocked ahead" : "allowSprint off or food";
+                    : blocked != null ? "ground shortcut blocked ahead" : "allowSprint off or food";
             ctx.player().setSprinting(false);
         }
         return true; // all ground under our footprint was verified this tick, so pausing is safe
     }
 
     private boolean clearSmoothingColumn(BlockStateInterface bsi, BlockPos pos) {
+        return smoothingColumnFailure(bsi, pos) == null;
+    }
+
+    // the labels for the second cell up are "head ...", the first is "feet ...", see describeCell
+    private static final String[] BODY_AVOIDED = {"feet cell is to be avoided", "head cell is to be avoided"};
+    private static final String[] BODY_FLUID = {"feet cell has fluid", "head cell has fluid"};
+    private static final String[] BODY_SOLID = {"feet cell is solid", "head cell is solid"};
+
+    // null when the column is fine to walk through, else which test it failed (a constant, this runs for every cell of every
+    // projection and most of them fail something)
+    private String smoothingColumnFailure(BlockStateInterface bsi, BlockPos pos) {
         if (Baritone.settings().pathThroughCachedOnly.value || !bsi.worldContainsLoadedChunk(pos.getX(), pos.getZ())) {
-            return false;
+            return "chunk not loaded";
         }
         BlockPos floor = pos.below();
         BlockState support = bsi.get0(floor);
         Block block = support.getBlock();
-        if (!support.getFluidState().isEmpty() || !support.isCollisionShapeFullBlock(bsi.access, floor)
-                || !MovementHelper.canWalkOn(bsi, floor.getX(), floor.getY(), floor.getZ(), support)
-                || block == Blocks.MAGMA_BLOCK || block == Blocks.ICE || block == Blocks.PACKED_ICE
+        if (!support.getFluidState().isEmpty()) {
+            return "floor has fluid";
+        }
+        if (!support.isCollisionShapeFullBlock(bsi.access, floor)) {
+            return "floor is not a full block";
+        }
+        if (!MovementHelper.canWalkOn(bsi, floor.getX(), floor.getY(), floor.getZ(), support)) {
+            return "floor is not walkable";
+        }
+        if (block == Blocks.MAGMA_BLOCK || block == Blocks.ICE || block == Blocks.PACKED_ICE
                 || block == Blocks.BLUE_ICE || block == Blocks.FROSTED_ICE
                 || block == Blocks.SLIME_BLOCK || block == Blocks.HONEY_BLOCK) {
-            return false;
+            return "floor is magma, ice, slime or honey";
         }
         for (int y = 0; y < 2; y++) {
             BlockPos body = pos.above(y);
             BlockState state = bsi.get0(body);
             if (MovementHelper.avoidWalkingInto(state) || state.is(Blocks.WITHER_ROSE)
-                    || state.is(Blocks.POWDER_SNOW) || MovementHelper.isClimbable(state.getBlock()) || !state.getFluidState().isEmpty()
-                    || !state.getCollisionShape(bsi.access, body).isEmpty()) {
-                return false;
+                    || state.is(Blocks.POWDER_SNOW) || MovementHelper.isClimbable(state.getBlock())) {
+                return BODY_AVOIDED[y];
+            }
+            if (!state.getFluidState().isEmpty()) {
+                return BODY_FLUID[y];
+            }
+            if (!state.getCollisionShape(bsi.access, body).isEmpty()) {
+                return BODY_SOLID[y];
             }
         }
-        return true;
+        return null;
     }
 
     private Tuple<Double, BlockPos> closestPathPos(IPath path) {
