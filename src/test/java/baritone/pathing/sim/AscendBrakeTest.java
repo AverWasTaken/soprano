@@ -200,6 +200,7 @@ public class AscendBrakeTest {
             before = AscendHop.simTicks;
             AscendHop.Decision d = AscendHop.decide(sim, 0, 1, DEST, 0F, 0F, true, brakes, false);
             assertEquals(0, AscendHop.simTicks - before);
+            assertTrue("every tick of a plan says so", d.planned());
             last = d.verdict();
             float yaw = last == BRAKE ? d.yaw() : 0F;
             sim.tick(new PlayerSim.Controls(1, 0, last == JUMP, true, yaw, 0F));

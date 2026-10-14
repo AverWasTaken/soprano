@@ -738,7 +738,7 @@ public class PathExecutor implements IPathExecutor, Helper {
                         : AscendHop.Decision.of(AscendHop.Verdict.UNKNOWN);
                 AscendHop.Verdict hop = decision.verdict();
                 // (a few ticks of waiting at most, in case the window never shows up)
-                boolean waiting = hop == AscendHop.Verdict.WAIT && hopWaits++ < MAX_HOP_WAITS;
+                boolean waiting = hop == AscendHop.Verdict.WAIT && (decision.planned() || hopWaits++ < MAX_HOP_WAITS);
                 behavior.sprintTelemetry().verdict(decision, next.getSrc(), next.getDest());
                 if (hop == AscendHop.Verdict.BRAKE) {
                     // too close to the face for any jump from here: W held facing away from the step, over the traverse's own aim.
