@@ -83,6 +83,7 @@ public final class SprintTelemetry implements Helper {
     private int lastIndex, lastLength;
     private String lastMovement = "", lastWhy = "", lastReleased = "", lastSteering = "none";
     private double lastShortcutDist = Double.NaN;
+    private int lastShortcutEnd = -1;
     private Vec3 lastShortcutTarget, lastPos = Vec3.ZERO, lastVel = Vec3.ZERO;
     private List<? extends IMovement> lastMovements;
 
@@ -189,6 +190,7 @@ public final class SprintTelemetry implements Helper {
         lastSteering = executor.steering();
         lastShortcutDist = executor.shortcutDistance();
         lastShortcutTarget = executor.shortcutTarget();
+        lastShortcutEnd = executor.shortcutEndIndex();
         lastPos = player.position();
         lastVel = player.getDeltaMovement();
         lastJump = keys.isInputForcedDown(Input.JUMP);
@@ -379,6 +381,7 @@ public final class SprintTelemetry implements Helper {
                 moveName(lastIndex - 1), moveName(lastIndex), moveName(lastIndex + 1), lastSteering));
         if (!Double.isNaN(lastShortcutDist) && lastShortcutTarget != null) {
             line.append(String.format(Locale.ROOT, " shortcutDist=%.2f shortcutTarget=(%.2f,%.2f)", lastShortcutDist, lastShortcutTarget.x, lastShortcutTarget.z));
+            line.append(shortcutEndNote());
         }
         if (player.horizontalCollision || lastHc) {
             // where the tick started and how fast it was going, so the swing into the wall can be replayed by hand
@@ -392,6 +395,22 @@ public final class SprintTelemetry implements Helper {
             line.append(String.format(Locale.ROOT, " lastSimVerdict=%s %dt ago", lastVerdict, player.tickCount - 1 - lastVerdictTick));
         }
         return line.toString();
+    }
+
+    // what the shortcut is walking into and how sharp the bend there is: the movement that starts at its end node, against the way
+    // the player was heading for it. only built when a drop line is written, which is the one place it is looked at
+    private String shortcutEndNote() {
+        if (lastShortcutEnd < 0 || lastMovements == null || lastShortcutEnd >= lastMovements.size()) {
+            return " shortcutEnd=" + moveName(lastShortcutEnd);
+        }
+        BlockPos out = lastMovements.get(lastShortcutEnd).getDirection();
+        double ax = lastShortcutTarget.x - lastPos.x, az = lastShortcutTarget.z - lastPos.z;
+        double la = Math.hypot(ax, az), lb = Math.hypot(out.getX(), out.getZ());
+        if (la < 1.0E-6 || lb == 0) {
+            return " shortcutEnd=" + moveName(lastShortcutEnd) + " endTurn=n/a";
+        }
+        double cos = (ax * out.getX() + az * out.getZ()) / (la * lb);
+        return String.format(Locale.ROOT, " shortcutEnd=%s endTurn=%.0f", moveName(lastShortcutEnd), Math.toDegrees(Math.acos(Math.max(-1, Math.min(1, cos)))));
     }
 
     private String moveName(int index) {
