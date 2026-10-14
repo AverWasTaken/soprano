@@ -17,6 +17,7 @@
 
 package baritone.pathing.sim;
 
+import baritone.utils.accessor.ILivingEntity;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.ai.attributes.Attributes;
@@ -58,7 +59,9 @@ public final class LiveSim {
         sim.horizontalCollision = player.horizontalCollision;
         sim.minorHorizontalCollision = player.minorHorizontalCollision;
         sim.verticalCollision = player.verticalCollision;
-        sim.speed = player.getSpeed();
+        if (player instanceof ILivingEntity living) {
+            sim.noJumpDelay = living.getNoJumpDelay();
+        }
         return sim;
     }
 }

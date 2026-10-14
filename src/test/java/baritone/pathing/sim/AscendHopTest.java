@@ -47,7 +47,6 @@ public class AscendHopTest {
         sim.vz = 0.1532; // sprint pace, 0.28 a tick
         sim.onGround = true;
         sim.sprinting = true;
-        sim.speed = (float) (0.1F * (1.0 + PlayerSim.SPRINT_MODIFIER));
         return sim;
     }
 
@@ -97,7 +96,6 @@ public class AscendHopTest {
         PlayerSim sim = sprintingAt(z);
         sim.sprinting = false;
         sim.vz = 0.098 / 0.454 * 0.546;
-        sim.speed = 0.1F;
         return AscendHop.decide(sim, 0, 1, DEST, 0F, 0F, false);
     }
 

@@ -25,7 +25,8 @@ import java.util.Arrays;
 // was ported from (LocalPlayer.aiStep, LivingEntity.aiStep / travelInAir / jumpFromGround, Entity.move / collide), floats where
 // vanilla has floats since the last digit of a sprint jump decides whether a step is cleared.
 // not modelled and bailed on: fluids, climbables, ice / slime / honey / soul sand / webs / powder snow, potions that touch
-// jump or gravity, sneaking, passengers, elytra, other entities. block collisions only. no unreachable promises
+// jump or gravity, sneaking, passengers, elytra. blocks only: other entities (boats, minecarts, shulkers) and the world border
+// are walked straight through. a tick() that returns false because it ended somewhere odd has still moved the player
 public final class PlayerSim {
 
     // LivingEntity.SPEED_MODIFIER_SPRINTING, 0.3F as an ADD_MULTIPLIED_TOTAL. the amount is a double so the float widens
@@ -44,8 +45,9 @@ public final class PlayerSim {
     }
 
     /**
-     * One tick of keys. forward and left are -1, 0 or 1 (left is A). moveYaw is the yaw moveRelative sees, which on Baritone is
-     * the spoofed one, viewYaw is the real one that jumpFromGround and the minor collision test read
+     * One tick of keys. forward and left are -1, 0 or 1 (left is A). moveYaw is the yaw moveRelative and jumpFromGround see, which
+     * on Baritone is the spoofed one (MixinEntity, MixinLivingEntity). viewYaw is the real getYRot() that the minor collision
+     * test reads, because PlayerUpdate PRE only turns the head after aiStep
      */
     public record Controls(int forward, int left, boolean jump, boolean sprint, float moveYaw, float viewYaw) {
         public Controls(int forward, int left, boolean jump, boolean sprint, float yaw) {
@@ -63,9 +65,7 @@ public final class PlayerSim {
 
     public double x, y, z, vx, vy, vz;
     public boolean onGround, sprinting, horizontalCollision, minorHorizontalCollision, verticalCollision;
-    // Entity.speed. assigned at the END of Player.aiStep, so the tick that starts sprinting still moves at walking speed
-    // and the tick that stops still moves at sprinting speed
-    public float speed;
+    // LivingEntity.noJumpDelay, the ticks left before holding space jumps again
     public int noJumpDelay;
     // set by the last tick(): did it leave the ground, and why it gave up if it did
     public boolean jumped;
@@ -82,7 +82,6 @@ public final class PlayerSim {
         this.params = params;
         this.world = world;
         this.halfWidth = params.width() / 2.0F;
-        this.speed = (float) walkSpeedAttribute(false);
     }
 
     public PlayerSim copy() {
@@ -98,7 +97,6 @@ public final class PlayerSim {
         c.horizontalCollision = horizontalCollision;
         c.minorHorizontalCollision = minorHorizontalCollision;
         c.verticalCollision = verticalCollision;
-        c.speed = speed;
         c.noJumpDelay = noJumpDelay;
         return c;
     }
@@ -118,7 +116,8 @@ public final class PlayerSim {
     }
 
     /**
-     * Run one tick. False (and nothing changed) if the player is somewhere the sim does not do the maths for
+     * Run one tick. False if the player is somewhere the sim does not do the maths for, with nothing changed when that is where
+     * the tick started, and the tick done anyway when it ended there
      */
     public boolean tick(Controls c) {
         jumped = false;
@@ -185,8 +184,8 @@ public final class PlayerSim {
                 float power = (float) params.jumpStrength() * 1.0F * 1.0F + 0.0F; // LivingEntity.getJumpPower, plain block and no potion
                 if (!(power <= 1.0E-5F)) {
                     dy = Math.max((double) power, dy);
-                    if (sprinting) { // jumpFromGround, the sprint boost goes where the REAL yaw points
-                        float angle = c.viewYaw() * DEG_TO_RAD;
+                    if (sprinting) { // jumpFromGround, and MixinLivingEntity hands it the same yaw moveRelative gets
+                        float angle = c.moveYaw() * DEG_TO_RAD;
                         dx += -Mth.sin(angle) * 0.2;
                         dz += Mth.cos(angle) * 0.2;
                     }
@@ -201,7 +200,8 @@ public final class PlayerSim {
         // LivingEntity.travelInAir
         float blockFriction = onGround ? modifiedFriction(0.6F) : 1.0F;
         float accel;
-        if (onGround) { // getFrictionInfluencedSpeed
+        if (onGround) { // getFrictionInfluencedSpeed. Player.getSpeed() is the attribute, so the sprint flag counts the tick it flips
+            float speed = (float) walkSpeedAttribute(sprinting);
             accel = blockFriction > 0.6 ? speed * (0.21600002F / (blockFriction * blockFriction * blockFriction)) : speed;
         } else { // Player.getFlyingSpeed
             accel = sprinting ? 0.025999999F : 0.02F;
@@ -236,8 +236,13 @@ public final class PlayerSim {
         vy = movementY * verticalFriction;
         vz = vz * friction;
 
-        // Player.aiStep, after the whole move: speed catches up with the sprint flag
-        speed = (float) walkSpeedAttribute(sprinting);
+        // Entity.move multiplies x and z by the speed factor of the block we ended in or on. we only know the start, so
+        // a tick that ends on soul sand or honey is not ours to answer for
+        String ended = endedSomewhereOdd();
+        if (ended != null) {
+            failure = ended;
+            return false;
+        }
         return true;
     }
 
@@ -263,6 +268,15 @@ public final class PlayerSim {
                     }
                 }
             }
+        }
+        return null;
+    }
+
+    // getBlockSpeedFactor looks at the cell we are in and the one getOnPos(0.500001F) gives
+    private String endedSomewhereOdd() {
+        int bx = Mth.floor(x), bz = Mth.floor(z);
+        if (!world.plain(bx, Mth.floor(y), bz) || !world.plain(bx, Mth.floor(y - 0.500001), bz)) {
+            return "ended on something not plain";
         }
         return null;
     }
