@@ -79,7 +79,7 @@ public final class SprintTelemetry implements Helper {
     private boolean lastSprint, lastHc, lastMinor;
 
     // end() of the tick that just ended: what the executor wanted and did
-    private boolean lastPathing, lastWant, lastJump;
+    private boolean lastPathing, lastWant, lastJump, lastFinished;
     private int lastIndex, lastLength;
     private String lastMovement = "", lastWhy = "", lastReleased = "", lastSteering = "none";
     private double lastShortcutDist = Double.NaN;
@@ -119,8 +119,11 @@ public final class SprintTelemetry implements Helper {
         lastTick = -1;
         lastPathing = false;
         pending = null;
+        // tickCount starts over in a new world, and "N ticks ago" from before that would be nonsense
+        lastTakeoffTick = -1000;
+        lastVerdictTick = -1000;
         if (pathTicks > 0) {
-            report();
+            report(true);
         }
     }
 
@@ -151,10 +154,10 @@ public final class SprintTelemetry implements Helper {
                 sprintTicks++;
             }
             if (pathTicks >= REPORT_EVERY) {
-                report();
+                report(false);
             }
         } else if (pathTicks > 0) {
-            report(); // the path ended, was cancelled or stopped since last tick
+            report(true); // the path ended, was cancelled or stopped since last tick
         }
         lastTick = tick;
         lastSprint = player.isSprinting();
@@ -178,6 +181,8 @@ public final class SprintTelemetry implements Helper {
         lastIndex = executor.getPosition();
         lastLength = movements.size();
         lastMovement = lastIndex >= 0 && lastIndex < lastLength ? movements.get(lastIndex).getClass().getSimpleName() : PAST_THE_END;
+        // a cancel also puts the position past the end, only a path that was walked to its last node is "the end"
+        lastFinished = executor.finished() && !executor.failed();
         lastWant = executor.isSprinting();
         lastWhy = executor.sprintWhy();
         lastReleased = paused ? "behavior pause" : executor.releasedWhy();
@@ -204,9 +209,7 @@ public final class SprintTelemetry implements Helper {
         pendingMoveCount = baritone.getLookBehavior().moveCount();
     }
 
-    /**
-     * What the sim said about a hop up a step, asked from the traverse before it or from the ascend itself
-     */
+    // what the sim said about a hop up a step, asked from the traverse before it or from the ascend itself
     public void verdict(AscendHop.Verdict verdict) {
         LocalPlayer player = ctx.player();
         if (player != null && ExperimentalMovement.sprintTelemetry()) {
@@ -215,9 +218,7 @@ public final class SprintTelemetry implements Helper {
         }
     }
 
-    /**
-     * Space goes down for a hop up a step: which rule pressed it, what the sim had said (null when it was not asked) and where we stood
-     */
+    // space goes down for a hop up a step: which rule pressed it, what the sim had said (null when it was not asked) and where we stood
     public void takeoff(String branch, AscendHop.Verdict verdict, BetterBlockPos src, BetterBlockPos dest) {
         LocalPlayer player = ctx.player();
         // space stays down for a couple of ticks in the air, only the one on the ground is a takeoff
@@ -240,16 +241,21 @@ public final class SprintTelemetry implements Helper {
                 player.tickCount, src.x, src.y, src.z, dest.x, dest.y, dest.z, branch, verdict == null ? "not asked" : verdict, player.isSprinting(), where));
     }
 
-    /**
-     * AscendGuard took keys away from a hop this tick
-     */
-    public void guarded(AscendGuard.Move move) {
-        if (ExperimentalMovement.sprintTelemetry()) {
-            if (move == AscendGuard.Move.NO_FORWARD) {
-                guardedForward++;
-            } else {
-                guardedStill++;
-            }
+    // AscendGuard took keys away from a hop this tick. if that was space the takeoff logged this very tick never happened
+    public void guarded(AscendGuard.Move move, BetterBlockPos src, BetterBlockPos dest) {
+        LocalPlayer player = ctx.player();
+        if (player == null || !ExperimentalMovement.sprintTelemetry()) {
+            return;
+        }
+        if (move == AscendGuard.Move.NO_FORWARD) {
+            guardedForward++;
+            return;
+        }
+        guardedStill++;
+        if (lastTakeoffTick == player.tickCount) {
+            lastTakeoffTick = -1000;
+            takeoffs--;
+            emit("takeoff withdrawn, the ascend guard stood still (" + src.x + "," + src.y + "," + src.z + ")->(" + dest.x + "," + dest.y + "," + dest.z + ")");
         }
     }
 
@@ -293,7 +299,7 @@ public final class SprintTelemetry implements Helper {
     // the goal), it gets its own count and its own line and stays out of the real drops
     private void dropped(LocalPlayer player, int tick) {
         String cause = causeOf(player);
-        if (PAST_THE_END.equals(lastMovement)) {
+        if (PAST_THE_END.equals(lastMovement) && lastFinished) {
             endDrops++;
             emit("end of path, " + describeDrop(player, cause));
             return;
@@ -427,10 +433,11 @@ public final class SprintTelemetry implements Helper {
         return out.append("]").toString();
     }
 
-    private void report() {
+    // ending: the path is over, so a drop sprint has not come back from is not going to. the every-1000-ticks report keeps it open
+    private void report(boolean ending) {
         totalDrops += drops;
         totalPathTicks += pathTicks;
-        if (openDropTick >= 0) {
+        if (ending && openDropTick >= 0) {
             stillOff++; // the path ended before sprint came back
             openDropTick = -1;
         }
@@ -474,6 +481,9 @@ public final class SprintTelemetry implements Helper {
         StringBuilder out = new StringBuilder();
         for (Map.Entry<String, int[]> row : rows.entrySet()) {
             int[] v = row.getValue();
+            if (v[0] == 0) {
+                continue; // came back after the report that counted it
+            }
             out.append(out.length() > 0 ? ", " : "").append(row.getKey()).append(' ').append(v[0]);
             if (v[1] > 0) {
                 out.append(String.format(Locale.ROOT, " (avg %.1f)", v[2] / (double) v[1]));
