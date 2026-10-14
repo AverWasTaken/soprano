@@ -287,7 +287,8 @@ public class MovementAscend extends Movement {
                     return jump(state, "sim JUMP", hop);
                 case WAIT:
                     // a few ticks at most, if the window never shows up (stuck on something the sim can't see) the old rules take over
-                    if (simWaits++ < MAX_SIM_WAITS) {
+                    // (a brake plan's own push ticks are not part of that budget, jumping early out of one is the clip it avoids)
+                    if (decision.planned() || simWaits++ < MAX_SIM_WAITS) {
                         return state;
                     }
                     break;

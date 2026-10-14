@@ -50,10 +50,11 @@ public final class AscendHop {
         UNKNOWN // the sim cannot say (or no tick in reach is any good), do what the movement always did
     }
 
-    // yaw only means something for a BRAKE. fresh is the plan on the one tick it was picked, for the telemetry
-    public record Decision(Verdict verdict, float yaw, BrakePlan fresh) {
+    // yaw only means something for a BRAKE. fresh is the plan on the one tick it was picked, for the telemetry. planned: the
+    // verdict is a tick of a brake plan, so a WAIT in it is not one of the few waits the callers allow themselves
+    public record Decision(Verdict verdict, float yaw, BrakePlan fresh, boolean planned) {
         public static Decision of(Verdict verdict) {
-            return new Decision(verdict, 0F, null);
+            return new Decision(verdict, 0F, null, false);
         }
     }
 
@@ -101,7 +102,9 @@ public final class AscendHop {
         }
         Vec3 target = new Vec3(dest.x + 0.5, dest.y, dest.z + 0.5);
         float yaw = RotationUtils.calcRotationFromVec3d(ctx.playerHead(), target, ctx.playerRotations()).getYaw();
-        boolean braking = brakes != null && Baritone.settings().brakeAscends.value;
+        // smoothLook with the camera following the aim averages the last few aims into the head, a half turn in that average is not
+        // something the view yaw model has an answer for
+        boolean braking = brakes != null && Baritone.settings().brakeAscends.value && (Baritone.settings().freeLook.value || !Baritone.settings().smoothLook.value);
         if (brakes != null && !braking) {
             brakes.forget();
         }
@@ -167,7 +170,7 @@ public final class AscendHop {
             return Decision.of(Verdict.UNKNOWN);
         }
         brakes.adopt(plan, dx, dz, dest);
-        return new Decision(plan.verdictAt(0), plan.yaw, plan);
+        return new Decision(plan.verdictAt(0), plan.yaw, plan, true);
     }
 
     // -1 the sim gave up, 0 clips or misses, 1 clean, 2 clean with a tenth of a block to spare either way
@@ -481,7 +484,7 @@ public final class AscendHop {
                 return null;
             }
             cursor = at;
-            return new Decision(plan.verdictAt(at), plan.yaw, null);
+            return new Decision(plan.verdictAt(at), plan.yaw, null, true);
         }
     }
 }
