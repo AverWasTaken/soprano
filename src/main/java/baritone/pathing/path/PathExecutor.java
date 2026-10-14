@@ -920,11 +920,13 @@ public class PathExecutor implements IPathExecutor, Helper {
         }
         Movement next = (Movement) path.movements().get(pathPosition + 1);
         // no parkour: the hop can fire from a block or more back and flies a couple of cells at sprint speed, which is fine over
-        // floor and not over the gap. descends only when the descend itself would let us sprint (its safeMode is the hazard past the landing)
+        // floor and not over the gap. descends only when the descend itself would let us sprint (its safeMode is the hazard past the landing).
+        // a flat diagonal sprints on its own corner check, and the corners it asks about are the columns beside the landing block
         boolean sprintsNext = next instanceof MovementTraverse || next instanceof MovementAscend
                 || next instanceof MovementDescend && Baritone.settings().sprintThroughDescends.value && !((MovementDescend) next).safeMode();
+        boolean diagonal = next instanceof MovementDiagonal && next.getDirection().getY() == 0;
         BlockStateInterface bsi = behavior.baritone.bsi;
-        if (!sprintsNext || !ascend.toBreak(bsi).isEmpty() || !ascend.toPlace(bsi).isEmpty()
+        if (!(sprintsNext || diagonal) || !ascend.toBreak(bsi).isEmpty() || !ascend.toPlace(bsi).isEmpty()
                 || !next.toBreak(bsi).isEmpty() || !next.toPlace(bsi).isEmpty()) {
             return false;
         }
@@ -938,7 +940,8 @@ public class PathExecutor implements IPathExecutor, Helper {
             }
         }
         BlockPos nextDir = next.getDirection();
-        return SprintPolicy.ascendKeepsSprint(carefulSprint(), SprintPolicy.turnDegrees(dir.getX(), dir.getZ(), nextDir.getX(), nextDir.getZ()))
+        return SprintPolicy.ascendSprintsInto(sprintsNext, diagonal && ((MovementDiagonal) next).cornersOpen(bsi), carefulSprint(),
+                SprintPolicy.turnDegrees(dir.getX(), dir.getZ(), nextDir.getX(), nextDir.getZ()))
                 && MovementHelper.canWalkOn(ctx, ascend.getDest().below()) && hopRoomClear(ctx, ascend);
     }
 

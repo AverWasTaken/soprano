@@ -346,8 +346,14 @@ public class MovementDiagonal extends Movement {
         if (MovementHelper.isLiquid(ctx, ctx.playerFeet()) && !Baritone.settings().sprintInWater.value) {
             return false;
         }
+        return cornersOpen(new BlockStateInterface(ctx));
+    }
+
+    // the two corner columns, feet and head. a sprint round the corner would clip any of them, so the sprint is only on when all
+    // four are open, and the executor asks the same thing to carry a hop's sprint into this diagonal
+    public boolean cornersOpen(BlockStateInterface bsi) {
         for (int i = 0; i < 4; i++) {
-            if (!MovementHelper.canWalkThrough(ctx, positionsToBreak[i])) {
+            if (!MovementHelper.canWalkThrough(bsi, positionsToBreak[i].x, positionsToBreak[i].y, positionsToBreak[i].z)) {
                 return false;
             }
         }

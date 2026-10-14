@@ -160,6 +160,22 @@ public class SprintPolicyTest {
     }
 
     @Test
+    public void aHopSprintsIntoADiagonalWhenItsCornersAreOpen() {
+        double fortyFive = SprintPolicy.turnDegrees(1, 0, 1, 1);
+        // the diagonal with open corners is a movement that sprints, and the 45 off the hop is a descend's worth of bend
+        assertTrue(SprintPolicy.ascendSprintsInto(false, true, false, fortyFive));
+        // a corner column in the way and the diagonal does not sprint itself, so there is nothing to carry the hop's sprint into
+        assertFalse(SprintPolicy.ascendSprintsInto(false, false, false, fortyFive));
+        // the hop into a diagonal that heads off at a right angle or back is a bend like any other
+        assertFalse(SprintPolicy.ascendSprintsInto(false, true, false, SprintPolicy.turnDegrees(1, 0, 0, 1)));
+        assertFalse(SprintPolicy.ascendSprintsInto(false, true, false, SprintPolicy.turnDegrees(1, 0, -1, 1)));
+        assertFalse(SprintPolicy.ascendSprintsInto(false, true, true, fortyFive)); // careful beats everything
+        // the movements that already sprinted still do, with no corners to ask about
+        assertTrue(SprintPolicy.ascendSprintsInto(true, false, false, 0));
+        assertFalse(SprintPolicy.ascendSprintsInto(true, false, false, SprintPolicy.turnDegrees(1, 0, 0, 1)));
+    }
+
+    @Test
     public void aHopStartsFromWithinTheLaneAndSkipNowAgreesWithSprintJump() {
         assertTrue(SprintPolicy.centered(0.15, true)); // skipNow used to say no past 0.1, SprintJump.plan said yes up to 0.2
         assertTrue(SprintPolicy.centered(0.2, true));
