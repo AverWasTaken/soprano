@@ -940,9 +940,12 @@ public final class Settings {
      * Debug logging for sprint that drops when it should not have, and for how well the movement sim predicts the player.
      * <p>
      * Every tick the player was sprinting at the start of the last tick and is not now, while a path is being walked, one
-     * line says which movement it was, where the feet were, the collision flags the drop was decided from, the forward
-     * input, the food, what the executor wanted and why it said no, and whether a pause let go of the keys. About every
-     * 1000 path ticks one more line gives the number of drops in that stretch, so two runs can be compared.
+     * line says which movement it was and the ones around it, who was steering, where the feet were, the collision flags the
+     * drop was decided from (and which blocks the hitbox was leaning on), the forward input, the food, what the executor
+     * wanted and why it said no, which ascend rule pressed space last and what the sim had said about it, and whether a
+     * pause let go of the keys. A line follows when sprint comes back. Every ascend takeoff gets a line too. The report
+     * comes when the path ends or is stopped and every 1000 path ticks: drops (the ones at the very end of a path counted
+     * apart), how long sprint stayed off, by cause and by movement, so two runs can be compared.
      * <p>
      * Every tick the sim of the player's own movement is run from the state the tick started in with the inputs that were
      * really sent, the result is held against what really happened next, and a line is logged when the position is off by more
@@ -952,6 +955,17 @@ public final class Settings {
      * prefix. It is a lot of text, so it is off by default, and {@link #fastMode} does not turn it on.
      */
     public final Setting<Boolean> sprintTelemetry = new Setting<>(false);
+
+    /**
+     * Check the keys of a hop up a block against the movement sim, every tick, and let go of W (or of W and space) when
+     * holding them would run the hitbox into the face of the step.
+     * <p>
+     * Up a staircase of full blocks every landing is a fraction of a block from the next face, so W and space clip it on
+     * every step, a wall hit that stops the sprint. The sim looks about a dozen ticks ahead and, when the keys as the
+     * movement pressed them would clip, tries W released and then nothing at all. It is a safety net under the jump timing
+     * the ascend already asks the sim for. At most 16 ticks per movement, after that the movement gets its keys back.
+     */
+    public final Setting<Boolean> guardAscends = new Setting<>(true);
 
     /**
      * Render the path
