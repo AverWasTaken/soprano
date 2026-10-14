@@ -6,6 +6,10 @@ A fork of [Baritone](https://github.com/cabaletta/baritone), the Minecraft pathf
 [![Build](https://github.com/AverWasTaken/soprano/actions/workflows/gradle_build.yml/badge.svg)](https://github.com/AverWasTaken/soprano/actions/workflows/gradle_build.yml)
 [![License](https://img.shields.io/badge/license-LGPL--3.0-green.svg)](LICENSE)
 
+<p align="center">
+  <a href="https://github.com/AverWasTaken/soprano/releases/latest"><img alt="Download the latest release" src="https://img.shields.io/badge/Download-latest%20release-2ea44f?style=for-the-badge&logo=github&logoColor=white"></a>
+</p>
+
 [Install](#install) · [What's new](CHANGES.md) · [Usage](USAGE.md) · [Features](FEATURES.md) · [Building](SETUP.md) · [Contributing](CONTRIBUTING.md)
 
 Soprano keeps everything Baritone does: `#goto`, `#mine`, `#build`, `#farm`, `#elytra`, the lot. The `baritone.api` packages are unchanged, so mods built on Baritone's API keep working. Soprano is a drop-in replacement. Don't install both.
@@ -14,7 +18,7 @@ Soprano keeps everything Baritone does: `#goto`, `#mine`, `#build`, `#farm`, `#e
 
 ## Install
 
-1. Go to [Releases](https://github.com/AverWasTaken/soprano/releases) and download the jar for your Minecraft version and loader (Fabric, Forge or NeoForge).
+1. Go to the [latest release](https://github.com/AverWasTaken/soprano/releases/latest) and download the jar for your Minecraft version and loader (Fabric, Forge or NeoForge).
 2. Drop it in your `mods` folder, replacing Baritone if you had it.
 3. In game, try `#goto 1000 500`, then `#stop`.
 
