@@ -320,14 +320,40 @@ public class BoatRunCostTest {
         }
     }
 
-    @Test
-    public void aHugeDetourIsStillNotWorthTheBoat() {
-        // an island this wide costs more to row round than getting the boat out and back is worth
-        MapWorld w = lake(30, 50);
-        island(w, 12, 16, 45);
-        BetterBlockPos goal = new BetterBlockPos(32, 63, 0);
-        List<BetterBlockPos> path = search(w, START, goal, new Ctx(w, true));
+    // the crossover for a 5 long island sits between a half width of 14 and 16 with the default 20 and 30. these two straddle it
+    private static boolean crossesIslandOfHalfWidth(int half) {
+        MapWorld w = lake(30, half + 12);
+        island(w, 12, 16, half);
+        List<BetterBlockPos> path = search(w, START, new BetterBlockPos(32, 63, 0), new Ctx(w, true));
         assertTrue(path != null);
-        assertTrue("went round a 91 wide island", onTheIsland(path, 12, 16));
+        return onTheIsland(path, 12, 16);
+    }
+
+    @Test
+    public void aDetourJustUnderTheCostOfTheEndsIsRowed() {
+        assertFalse(crossesIslandOfHalfWidth(10));
+    }
+
+    @Test
+    public void aDetourPastTheCostOfTheEndsIsWalked() {
+        assertTrue(crossesIslandOfHalfWidth(20));
+        assertTrue(crossesIslandOfHalfWidth(45));
+    }
+
+    @Test
+    public void diveOutFromUnderTheBoatPaysTheExitToo() {
+        // two deep: the surface cell is a row, the one under it has water over it so it isn't, and a dive is a way off the row
+        MapWorld w = lake(20, 10);
+        for (int x = 0; x <= 20; x++) {
+            for (int z = -10; z <= 10; z++) {
+                w.set(x, 62, z, Blocks.WATER.defaultBlockState());
+                w.set(x, 61, z, Blocks.STONE.defaultBlockState());
+            }
+        }
+        Ctx boat = new Ctx(w, true);
+        Ctx none = new Ctx(w, false);
+        assertTrue(boat.boatCell(5, 63, 0));
+        double dive = baritone.pathing.movement.movements.MovementDownward.cost(boat, 5, 63, 0);
+        assertEquals(settings.boatExitCost.value, dive - baritone.pathing.movement.movements.MovementDownward.cost(none, 5, 63, 0), 1e-9);
     }
 }

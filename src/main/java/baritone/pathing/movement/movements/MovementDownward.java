@@ -69,7 +69,8 @@ public class MovementDownward extends Movement {
             // we're standing on it, while it might be block falling, it'll be air by the time we get here in the movement
             // we fall the moment the block goes, and the wait after the break is spent falling
             double hardness = MovementHelper.getMiningDurationTicks(context, x, y - 1, z, down, false);
-            return FALL_N_BLOCKS_COST[1] + MovementHelper.waterBreakCost(context, x, y, z, hardness) - MovementHelper.breakWaitCredit(context, hardness, FALL_N_BLOCKS_COST[1]);
+            // diving out from under a boat is leaving it, same as climbing out. the cell below has water over it so it is never a row
+            return FALL_N_BLOCKS_COST[1] + context.boatHandoff(x, y, z, x, y - 1, z) + MovementHelper.waterBreakCost(context, x, y, z, hardness) - MovementHelper.breakWaitCredit(context, hardness, FALL_N_BLOCKS_COST[1]);
         }
     }
 
