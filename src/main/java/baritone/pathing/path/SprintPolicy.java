@@ -32,7 +32,7 @@ public final class SprintPolicy {
     static final int LAVA_RADIUS = 3;
     static final double DESCEND_MAX_TURN = 45;
     // how far off the lane a hop can start and still go straight. SprintJump.plan, skipNow and MovementAscend's side check
-    // all want this one number, when they disagreed the bot sprinted up to a hop and then dropped it for being 0.15 off
+    // all go through centered() so they agree, when they didn't the bot sprinted up to a hop and then dropped it for being 0.15 off
     public static final double MAX_SIDE_OFFSET = 0.2;
     // two headings that are the same one, give or take acos
     static final double STRAIGHT_ON = 1;
@@ -167,6 +167,14 @@ public final class SprintPolicy {
     // 0.2 off the middle puts the side of the box (0.3 out from its centre) exactly on the cell edge, which with a wall on that
     // side is zero clearance, and a hair more is a graze that costs the sprint. with a wall there we want a little room
     public static final double MAX_SIDE_OFFSET_BESIDE_WALL = 0.15;
+
+    // which column beside a straight lane the player is leaning towards, as {dx, dz}. {0, 0} when dead centre or on a diagonal
+    public static int[] sideStep(int dirX, int dirZ, double leanX, double leanZ) {
+        if (dirX != 0 && dirZ != 0) {
+            return new int[]{0, 0};
+        }
+        return dirX != 0 ? new int[]{0, (int) Math.signum(leanZ)} : new int[]{(int) Math.signum(leanX), 0};
+    }
 
     // sideOpen: nothing solid in the column next to the lane, on the side we are leaning to, at feet and head height
     public static boolean centered(double sideOffset, boolean sideOpen) {

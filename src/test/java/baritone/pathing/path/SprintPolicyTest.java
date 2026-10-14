@@ -273,6 +273,16 @@ public class SprintPolicyTest {
     }
 
     @Test
+    public void theColumnBesideTheLaneIsOnTheSideWeLeanTo() {
+        assertArrayEquals(new int[]{0, 1}, SprintPolicy.sideStep(1, 0, 0.05, 0.2));
+        assertArrayEquals(new int[]{0, -1}, SprintPolicy.sideStep(-1, 0, 0.3, -0.1));
+        assertArrayEquals(new int[]{-1, 0}, SprintPolicy.sideStep(0, 1, -0.2, 0.4));
+        assertArrayEquals(new int[]{1, 0}, SprintPolicy.sideStep(0, -1, 0.2, -0.4));
+        assertArrayEquals(new int[]{0, 0}, SprintPolicy.sideStep(1, 0, 0.3, 0.0)); // dead centre across the lane
+        assertArrayEquals(new int[]{0, 0}, SprintPolicy.sideStep(1, 1, 0.3, 0.3)); // a diagonal has no side
+    }
+
+    @Test
     public void openSideKeepsTheOldLaneWidth() {
         assertTrue(SprintPolicy.centered(0.2, true));
         assertFalse(SprintPolicy.centered(0.213, true));
