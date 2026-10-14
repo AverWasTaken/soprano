@@ -96,7 +96,7 @@ public class ClimbJumpTest {
     @Test
     public void sprintOnlyStartsOnTheGround() {
         ClimbJump sim = new ClimbJump(grab(2, 0, KIND_VINE, true), WALK_SPEED);
-        // held down in the air, the key does nothing: 0.02, not 0.026
+        // the model ignores the key in the air (vanilla 26.3 would not): 0.02, not 0.026
         sim.put(-1, 5, 0, 0, false);
         sim.tick(PUSH, false, true);
         assertEquals(0.02 * 0.98, sim.state()[0] + 1, 1e-12);

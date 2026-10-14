@@ -114,8 +114,7 @@ final class GroundShortcut {
         if (!clearSegment(player, target, clearColumn)) {
             return "the way to its target is blocked";
         }
-        if (!clearSegment(player, coastPosition(player, velocity), clearColumn)
-                || !clearPath(trajectory(player, velocity, Vec3.ZERO, 0), clearColumn)) {
+        if (!clearSegment(player, coastPosition(player, velocity), clearColumn)) {
             return "the slide from here is blocked";
         }
         return null;

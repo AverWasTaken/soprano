@@ -176,6 +176,11 @@ public class PathExecutor implements IPathExecutor, Helper {
         if (!forward && !jump) {
             return; // nothing to take away
         }
+        // a walking hop has no sprint to save, and a walker leaning on the face is the movement sliding to the middle of the lane
+        // at an angle: holding W off there is how it never gets to jump
+        if (!sprintNextTick && !ctx.player().isSprinting()) {
+            return;
+        }
         for (Input precise : PRECISE_STEERING_INPUTS) {
             if (precise != Input.JUMP && keys.isInputForcedDown(precise)) {
                 return; // somebody is breaking, placing, sneaking or strafing: not our kind of hop
@@ -202,7 +207,7 @@ public class PathExecutor implements IPathExecutor, Helper {
         if (move == AscendGuard.Move.STAND_STILL) {
             keys.setInputForceState(Input.JUMP, false);
         }
-        behavior.sprintTelemetry().guarded(move);
+        behavior.sprintTelemetry().guarded(move, src, dest);
     }
 
     private boolean tick() {
