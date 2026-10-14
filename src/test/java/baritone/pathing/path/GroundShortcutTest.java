@@ -230,7 +230,9 @@ public class GroundShortcutTest {
                         BlockPos cell = new BlockPos(x, 64, z);
                         if (GroundShortcut.clearSegment(player, end, p -> !p.equals(cell)) && !GroundShortcut.clearPath(curve, p -> !p.equals(cell))) {
                             found++;
-                            assertFalse(GroundShortcut.clearAhead(player, velocity, look, p -> !p.equals(cell)));
+                            // what the executor's forward gate asks: the line AND the curve
+                            assertFalse(GroundShortcut.clearSegment(player, end, p -> !p.equals(cell))
+                                    && GroundShortcut.clearAhead(player, velocity, look, p -> !p.equals(cell)));
                         }
                     }
                 }
@@ -240,12 +242,13 @@ public class GroundShortcutTest {
     }
 
     @Test
-    public void theSlideFromHereMustBeClearEvenWithoutW() {
+    public void theInterruptSaysWhatStoppedTheShortcut() {
         GroundShortcut shortcut = find(staircase(1, 1, false, 8));
         Vec3 player = new Vec3(2.5, 64, 1.5);
-        Vec3 velocity = new Vec3(0.28, 0, 0);
         assertNull(shortcut.stopReason(player, Vec3.ZERO, p -> true));
-        assertNotNull(shortcut.stopReason(player, velocity, p -> p.getX() < 4));
+        assertTrue(shortcut.stopReason(player.add(0, 1, 0), Vec3.ZERO, p -> true).contains("height"));
+        assertTrue(shortcut.stopReason(player, Vec3.ZERO, p -> p.getX() != 6).contains("target"));
+        assertTrue(shortcut.stopReason(player, new Vec3(0, 0, -1), p -> p.getZ() >= 0).contains("slide"));
     }
 
     private static GroundShortcut find(List<BetterBlockPos> path) {

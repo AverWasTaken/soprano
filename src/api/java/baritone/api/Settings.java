@@ -961,9 +961,10 @@ public final class Settings {
      * holding them would run the hitbox into the face of the step.
      * <p>
      * Up a staircase of full blocks every landing is a fraction of a block from the next face, so W and space clip it on
-     * every step, a wall hit that stops the sprint. The sim looks about a dozen ticks ahead and, when the keys as the
-     * movement pressed them would clip, tries W released and then nothing at all. It is a safety net under the jump timing
-     * the ascend already asks the sim for. At most 16 ticks per movement, after that the movement gets its keys back.
+     * every step. The sim looks about a dozen ticks ahead and, when the keys as the movement pressed them would clip, tries
+     * W released and then nothing at all. It is a safety net under the jump timing the ascend already asks the sim for, and
+     * only while sprinting. It saves the dead stop against the face, not the sprint: letting go of W costs that for a tick
+     * too. At most 16 ticks per movement, after that the movement gets its keys back.
      */
     public final Setting<Boolean> guardAscends = new Setting<>(true);
 

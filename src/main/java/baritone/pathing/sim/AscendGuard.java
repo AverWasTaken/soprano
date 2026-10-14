@@ -21,8 +21,9 @@ package baritone.pathing.sim;
 // fraction of a block from the next face every time, so "W and space" clips it on every single step (a wall hit that vanilla
 // does not call minor, which ends the sprint). the sim says when that is the case and what to press instead: let go of W for
 // a tick, or stand still until the next hop is a clean one. in the sim sweep of a 6 step staircase this was zero wall hits
-// from every start in exactly as many ticks as holding W and clipping, which was about one clip a step. the sprint is off for
-// about a tick a step either way (letting go of W costs it as much as the wall did), the staircase is just like that.
+// from every start in about as many ticks on average as holding W and clipping, which was about one clip a step. the sprint
+// is off for about a tick a step either way (letting go of W costs it as much as the wall did), the staircase is just like
+// that, so what this saves is the dead stop against the face and not sprint drops.
 // AscendHop picks the moment on the ground, this is the safety net under it for whatever it does not know (chains of steps,
 // a landing that is too close)
 public final class AscendGuard {
