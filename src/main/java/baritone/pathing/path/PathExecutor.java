@@ -553,7 +553,8 @@ public class PathExecutor implements IPathExecutor, Helper {
         int end = groundShortcut.endIndex;
         BetterBlockPos feet = ctx.playerFeet();
         List<? extends IMovement> movements = path.movements();
-        int at = GroundShortcut.resumeIndex(i -> ((Movement) movements.get(i)).getValidPositions(), pathPosition, end, movements.size(), feet);
+        int at = GroundShortcut.resumeIndex(i -> ((Movement) movements.get(i)).getValidPositions(), pathPosition, end, movements.size(), feet,
+                path.positions().get(end));
         if (at < 0) {
             logDebug("Ground shortcut interrupted (" + reason + "); recalculating from current position");
             behavior.sprintTelemetry().shortcutEnded(SprintTelemetry.ShortcutEnd.REPLAN, reason,
@@ -566,6 +567,10 @@ public class PathExecutor implements IPathExecutor, Helper {
                 detail + " feet=" + feet + " resumed at movement " + at + " of " + pathPosition + ".." + end);
         shortcutCooldownEnd = end;
         groundShortcut = null;
+        // the one that was mid way when the shortcut took over has state from before it, same as a resync back
+        for (int j = pathPosition; j <= at && j < movements.size(); j++) {
+            movements.get(j).reset();
+        }
         pathPosition = at;
         recalcBP = true;
         onChangeInPathPosition();
@@ -581,7 +586,7 @@ public class PathExecutor implements IPathExecutor, Helper {
         String detail = ExperimentalMovement.sprintTelemetry() ? "at " + describeCell(bsi, blocked.cell()) : "";
         List<? extends IMovement> movements = path.movements();
         if (player.distanceTo(target) <= 0.6 && Math.abs(player.y - target.y) <= 0.05
-                && ((Movement) movements.get(Math.min(end, movements.size() - 1))).getValidPositions().contains(ctx.playerFeet())) {
+                && ctx.playerFeet().equals(path.positions().get(end))) {
             behavior.sprintTelemetry().shortcutEnded(SprintTelemetry.ShortcutEnd.HANDOFF, reason, detail
                     + String.format(Locale.ROOT, " toTarget=%.2f", player.distanceTo(target)));
             pathPosition = end;
@@ -1622,6 +1627,7 @@ public class PathExecutor implements IPathExecutor, Helper {
                 ret.boat = boat;
             }
             ret.boatRefusedUntil = boatRefusedUntil;
+            ret.shortcutCooldownEnd = shortcutCooldownEnd;
             return ret;
         }).orElseGet(this::cutIfTooLong); // dont actually call cutIfTooLong every tick if we won't actually use it, use a method reference
     }
@@ -1688,6 +1694,7 @@ public class PathExecutor implements IPathExecutor, Helper {
             ret.timer = timer;
             ret.flight = flight;
             ret.boatRefusedUntil = boatRefusedUntil < 0 ? -1 : boatRefusedUntil - cutoffAmt;
+            ret.shortcutCooldownEnd = shortcutCooldownEnd < 0 ? -1 : shortcutCooldownEnd - cutoffAmt;
             return ret;
         }
         return this;

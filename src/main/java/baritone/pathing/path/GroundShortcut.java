@@ -255,11 +255,16 @@ final class GroundShortcut {
         return kept;
     }
 
-    // the movement a shortcut that lets go can carry on with: the last of movements from..to (to is held to the `count` that exist)
-    // whose valid positions hold the feet, or -1 when the feet are on none of them. the last, because the node between two
-    // movements is the end of one and the start of the next, and the next is the one still to do
-    static <T> int resumeIndex(IntFunction<? extends Collection<? extends T>> validAt, int from, int to, int count, T feet) {
-        for (int i = Math.min(to, count - 1); i >= from; i--) {
+    // the movement a shortcut that lets go can carry on with, or -1 when the feet are on none of them. standing on the end node
+    // is the end movement itself (the last one when there is none, it finishes on the spot). the end movement's other valid
+    // positions (a runway, a diagonal's corners) don't count, it has not started and would be handed a player off its start.
+    // before it, the last of the movements from..to-1 whose valid positions hold the feet: the node between two movements is
+    // the end of one and the start of the next, and the next is the one still to do
+    static <T> int resumeIndex(IntFunction<? extends Collection<? extends T>> validAt, int from, int to, int count, T feet, T endNode) {
+        if (feet.equals(endNode)) {
+            return Math.min(to, count - 1);
+        }
+        for (int i = Math.min(to - 1, count - 1); i >= from; i--) {
             if (validAt.apply(i).contains(feet)) {
                 return i;
             }
