@@ -35,20 +35,16 @@ public final class PlayerSim {
     // Direction.axisStepOrder, as indexes into x y z
     private static final int[] Y_X_Z = {1, 0, 2}, Y_Z_X = {1, 2, 0};
 
-    /**
-     * What the player is made of: attribute values, minus the sprint modifier, which the sim applies itself the way setSprinting does
-     */
+    // what the player is made of: attribute values, minus the sprint modifier, which the sim applies itself the way setSprinting does
     public record Params(float width, float height, float stepHeight, double gravity, double jumpStrength, double walkSpeed, boolean sprintAllowed) {
         public static Params vanilla() {
             return new Params(0.6F, 1.8F, 0.6F, 0.08, 0.42F, 0.1F, true);
         }
     }
 
-    /**
-     * One tick of keys. forward and left are -1, 0 or 1 (left is A). moveYaw is the yaw moveRelative and jumpFromGround see, which
-     * on Baritone is the spoofed one (MixinEntity, MixinLivingEntity). viewYaw is the real getYRot() that the minor collision
-     * test reads, because PlayerUpdate PRE only turns the head after aiStep
-     */
+    // one tick of keys. forward and left are -1, 0 or 1 (left is A). moveYaw is the yaw moveRelative and jumpFromGround see, which
+    // on Baritone is the spoofed one (MixinEntity, MixinLivingEntity). viewYaw is the real getYRot() that the minor collision
+    // test reads, because PlayerUpdate PRE only turns the head after aiStep
     public record Controls(int forward, int left, boolean jump, boolean sprint, float moveYaw, float viewYaw) {
         public Controls(int forward, int left, boolean jump, boolean sprint, float yaw) {
             this(forward, left, jump, sprint, yaw, yaw);
@@ -115,10 +111,8 @@ public final class PlayerSim {
         return sprinting ? params.walkSpeed() * (1.0 + SPRINT_MODIFIER) : params.walkSpeed();
     }
 
-    /**
-     * Run one tick. False if the player is somewhere the sim does not do the maths for, with nothing changed when that is where
-     * the tick started, and the tick done anyway when it ended there
-     */
+    // run one tick. false if the player is somewhere the sim does not do the maths for, with nothing changed when that is where
+    // the tick started, and the tick done anyway when it ended there
     public boolean tick(Controls c) {
         jumped = false;
         String bad = unsupported();

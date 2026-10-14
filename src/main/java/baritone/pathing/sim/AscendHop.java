@@ -63,10 +63,8 @@ public final class AscendHop {
         return decide(sim, dx, dz, dest, yaw, player.getYRot(), player.isSprinting());
     }
 
-    /**
-     * @param sim the player right now, at the start of the tick the jump key would go down in
-     * @param dx  which way the step is, one of these is 0 and the other 1 or -1
-     */
+    // sim is the player right now, at the start of the tick the jump key would go down in. dx and dz say which way the step
+    // is, one of them is 0 and the other 1 or -1
     public static Verdict decide(PlayerSim sim, int dx, int dz, BetterBlockPos dest, float moveYaw, float viewYaw, boolean sprint) {
         int first = -1;
         for (int wait = 0; wait <= MAX_WAIT; wait++) {

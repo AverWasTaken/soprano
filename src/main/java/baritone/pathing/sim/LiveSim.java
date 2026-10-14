@@ -28,9 +28,7 @@ public final class LiveSim {
 
     private LiveSim() {}
 
-    /**
-     * @return null when the player is in some state the sim does not model (a boat, water, a potion that touches jumping)
-     */
+    // null when the player is in some state the sim does not model (a boat, water, a potion that touches jumping)
     public static PlayerSim of(LocalPlayer player, CollisionProvider world) {
         if (player.isPassenger() || player.isInWater() || player.isInLava() || player.onClimbable() || player.isFallFlying()
                 || player.isSwimming() || player.getAbilities().flying || player.isCrouching() || player.isUsingItem() || player.noPhysics
