@@ -131,7 +131,7 @@ final class SprintJump {
         Vec3 pos = player.position().subtract(jump.originX, 0, jump.originZ);
         Vec3 vel = player.getDeltaMovement();
         // drifting sideways is how you clip a corner
-        if (n < 3 || Math.abs(jump.across(pos)) > 0.2 || Math.abs(jump.across(vel)) > 0.08) {
+        if (n < 3 || !SprintPolicy.centered(Math.abs(jump.across(pos))) || Math.abs(jump.across(vel)) > 0.08) {
             return null;
         }
         Double target = jump.plan(jump.along(pos), jump.along(vel));

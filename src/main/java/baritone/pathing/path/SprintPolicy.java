@@ -31,6 +31,11 @@ final class SprintPolicy {
     static final float CAREFUL_HEALTH = 6;
     static final int LAVA_RADIUS = 3;
     static final double DESCEND_MAX_TURN = 45;
+    // how far off the lane a hop can start and still go straight. SprintJump.plan, skipNow and MovementAscend's side check
+    // all want this one number, when they disagreed the bot sprinted up to a hop and then dropped it for being 0.15 off
+    static final double MAX_SIDE_OFFSET = 0.2;
+    // two headings that are the same one, give or take acos
+    static final double STRAIGHT_ON = 1;
     static final double CORNER_SHARP_TURN = 90;
     static final double CORNER_HAIRPIN_TURN = 135;
     // below this it is a straight line with a wobble, smoothSteering's problem and not ours
@@ -151,6 +156,16 @@ final class SprintPolicy {
 
     static boolean descendKeepsSprint(boolean careful, double turn, boolean overshootSafe) {
         return !careful && overshootSafe && within(turn, DESCEND_MAX_TURN);
+    }
+
+    // a hop up a block has nothing to coast over on the far side, the landing is a floor the path already checked. so it is
+    // only the bend that matters, and a descend's worth of bend is the most we put up with
+    static boolean ascendKeepsSprint(boolean careful, double turn) {
+        return descendKeepsSprint(careful, turn, true);
+    }
+
+    static boolean centered(double sideOffset) {
+        return sideOffset <= MAX_SIDE_OFFSET;
     }
 
     // true means we keep sprint and steer the corner early. false just means nothing clever happens here, the movements

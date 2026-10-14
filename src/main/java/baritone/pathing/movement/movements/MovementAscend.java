@@ -39,6 +39,9 @@ import net.minecraft.world.level.block.state.BlockState;
 
 public class MovementAscend extends Movement {
 
+    // same lane width as PathExecutor's skipNow and SprintJump (SprintPolicy.MAX_SIDE_OFFSET lives in another package)
+    private static final double SPRINT_DRIFT_SIDE_DIST = 0.2, SPRINT_DRIFT_LATERAL = 0.15;
+
     private int ticksWithoutPlacement = 0;
 
     public MovementAscend(IBaritone baritone, BetterBlockPos src, BetterBlockPos dest) {
@@ -231,7 +234,10 @@ public class MovementAscend extends Movement {
         double sideDist = zAxis * Math.abs((dest.getX() + 0.5D) - ctx.player().position().x) + xAxis * Math.abs((dest.getZ() + 0.5D) - ctx.player().position().z);
 
         double lateralMotion = xAxis * ctx.player().getDeltaMovement().z + zAxis * ctx.player().getDeltaMovement().x;
-        if (Math.abs(lateralMotion) > 0.1) {
+        // the stall is for getting going again after a lateral move. a sprint jump landing drifts a little sideways on its own,
+        // and waiting that out is a standing start at the foot of the next step. sideDist still has to say we're on the lane
+        boolean sprintDrift = ctx.player().isSprinting() && sideDist <= SPRINT_DRIFT_SIDE_DIST;
+        if (Math.abs(lateralMotion) > (sprintDrift ? SPRINT_DRIFT_LATERAL : 0.1)) {
             return state;
         }
 
