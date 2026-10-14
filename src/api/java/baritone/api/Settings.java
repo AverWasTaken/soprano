@@ -969,6 +969,21 @@ public final class Settings {
     public final Setting<Boolean> guardAscends = new Setting<>(true);
 
     /**
+     * Back up before a hop up a block when the sim says the player is too close to the face to jump from where it stands.
+     * <p>
+     * A sprint hop clips the face of the step if it starts too close, and standing flush against it nothing but backing up
+     * helps. The sim looks for a few ticks of W held while facing away from the step (backwards, so the player slows down and
+     * rolls back), then forward again and the usual jump, and takes it only when that gets over the step cleanly and no later
+     * than jumping on the spot would. Vanilla only ends a sprint when forward is let go of, and W held is forward whatever the
+     * yaw says, so the sprint survives the whole thing. The plan is followed without searching again for as long as the player
+     * does what the sim said it would.
+     * <p>
+     * This turns the player's facing a half circle away from where it is going for a tick or three, which an anticheat that
+     * checks the sprint direction against the movement direction can look at funny. Turn it off on servers like that.
+     */
+    public final Setting<Boolean> brakeAscends = new Setting<>(true);
+
+    /**
      * Render the path
      */
     public final Setting<Boolean> renderPath = new Setting<>(true);

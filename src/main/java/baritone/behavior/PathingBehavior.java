@@ -36,6 +36,7 @@ import baritone.pathing.movement.SwimStalls;
 import baritone.pathing.path.PathExecutor;
 import baritone.process.ElytraProcess;
 import baritone.pathing.path.SprintTelemetry;
+import baritone.pathing.sim.AscendHop;
 import baritone.utils.ExperimentalMovement;
 import baritone.utils.PathRenderer;
 import baritone.utils.PathingCommandContext;
@@ -106,6 +107,13 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
     // the movements and the executor report what they decided to it, it does nothing with the setting off
     public SprintTelemetry sprintTelemetry() {
         return sprintTelemetry;
+    }
+
+    // the brake plan a hop up a step is following, shared by the ascend and the traverse that skips into it (see AscendHop.Brakes)
+    private final AscendHop.Brakes ascendBrakes = new AscendHop.Brakes();
+
+    public AscendHop.Brakes ascendBrakes() {
+        return ascendBrakes;
     }
 
     public SwimStalls swimStalls() {

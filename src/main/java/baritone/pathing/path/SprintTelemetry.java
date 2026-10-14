@@ -93,6 +93,8 @@ public final class SprintTelemetry implements Helper {
     private String lastBranch = "";
     private AscendHop.Verdict lastBranchVerdict;
     private int lastTakeoffTick = -1000, takeoffs, clipped, guardedForward, guardedStill;
+    // brake plans picked and ticks spent braking since the last report, and the last tick a brake was counted on (two executors can tick in one)
+    private int brakePlans, brakeTicks, lastBrakeTick = -1000;
 
     // the drop sprint has not come back from yet, and for how long the ones that did come back were gone
     private int openDropTick = -1;
@@ -218,6 +220,28 @@ public final class SprintTelemetry implements Helper {
         if (player != null && ExperimentalMovement.sprintTelemetry()) {
             lastVerdict = verdict;
             lastVerdictTick = player.tickCount;
+        }
+    }
+
+    // the same, with the brake in it: counts the brake ticks, and a line for every plan the sim picks
+    public void verdict(AscendHop.Decision decision, BetterBlockPos src, BetterBlockPos dest) {
+        LocalPlayer player = ctx.player();
+        verdict(decision.verdict());
+        if (player == null || !ExperimentalMovement.sprintTelemetry()) {
+            return;
+        }
+        if (decision.verdict() == AscendHop.Verdict.BRAKE && player.tickCount != lastBrakeTick) {
+            lastBrakeTick = player.tickCount;
+            brakeTicks++;
+        }
+        AscendHop.BrakePlan plan = decision.fresh();
+        if (plan != null) {
+            brakePlans++;
+            Vec3 pos = player.position(), vel = player.getDeltaMovement();
+            emit(String.format(Locale.ROOT, "brake plan tick=%d (%d,%d,%d)->(%d,%d,%d) brake=%d push=%d yaw=%.1f, over the step in %d ticks, jumping now would take %d%s"
+                            + " feet=(%.3f,%.3f) vel=(%.3f,%.3f) hc=%s minor=%s",
+                    player.tickCount, src.x, src.y, src.z, dest.x, dest.y, dest.z, plan.brakeTicks, plan.pushTicks, plan.yaw, plan.finish,
+                    plan.baselineFinish, plan.baselineClean ? "" : " and clips", pos.x, pos.z, vel.x, vel.z, player.horizontalCollision, player.minorHorizontalCollision));
         }
     }
 
@@ -484,6 +508,16 @@ public final class SprintTelemetry implements Helper {
             emit(takeoffs + " ascend takeoffs, " + clipped + " of them clipped the step (a wall drop within " + CLIP_WINDOW + " ticks). ascend guard took W away on "
                     + guardedForward + " ticks and W and space on " + guardedStill);
         }
+        if (brakePlans > 0 || brakeTicks > 0) {
+            emit(brakePlans + " brake plans picked, " + brakeTicks + " ticks of braking");
+        }
+        if (AscendHop.decides > 0) {
+            emit(String.format(Locale.ROOT, "ascend sim: %d asks, %.1f sim ticks per ask on average, %d at worst", AscendHop.decides,
+                    AscendHop.simTicks / (double) AscendHop.decides, AscendHop.worstDecideTicks));
+            AscendHop.decides = 0;
+            AscendHop.simTicks = 0;
+            AscendHop.worstDecideTicks = 0;
+        }
         pathTicks = 0;
         sprintTicks = 0;
         drops = 0;
@@ -497,6 +531,8 @@ public final class SprintTelemetry implements Helper {
         clipped = 0;
         guardedForward = 0;
         guardedStill = 0;
+        brakePlans = 0;
+        brakeTicks = 0;
         stillOff = 0;
         Arrays.fill(resumeHist, 0);
         byCause.clear();

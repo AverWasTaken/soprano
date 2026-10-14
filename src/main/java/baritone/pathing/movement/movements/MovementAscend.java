@@ -21,6 +21,8 @@ import baritone.Baritone;
 import baritone.api.IBaritone;
 import baritone.api.pathing.movement.MovementStatus;
 import baritone.api.utils.BetterBlockPos;
+import baritone.api.utils.Rotation;
+import baritone.behavior.PathingBehavior;
 import baritone.api.utils.input.Input;
 import baritone.pathing.movement.CalculationContext;
 import baritone.pathing.movement.Movement;
@@ -49,6 +51,10 @@ public class MovementAscend extends Movement {
 
     private int ticksWithoutPlacement = 0;
     private int simWaits = 0;
+    // set by the executor before every update: does the sprint carry on through this hop. a brake is only worth it if it does
+    private boolean keepsSprint;
+    // this tick's keys are a brake, so nothing downstream gets to "fix" W (the ascend guard would see a run at the face)
+    private boolean braked;
 
     public MovementAscend(IBaritone baritone, BetterBlockPos src, BetterBlockPos dest) {
         super(baritone, src, dest, new BetterBlockPos[]{dest, src.above(2), dest.above()}, dest.below());
@@ -59,6 +65,16 @@ public class MovementAscend extends Movement {
         super.reset();
         ticksWithoutPlacement = 0;
         simWaits = 0;
+        keepsSprint = false;
+        braked = false;
+    }
+
+    public void setKeepsSprint(boolean keepsSprint) {
+        this.keepsSprint = keepsSprint;
+    }
+
+    public boolean braked() {
+        return braked;
     }
 
     @Override
@@ -183,6 +199,7 @@ public class MovementAscend extends Movement {
 
     @Override
     public MovementState updateState(MovementState state) {
+        braked = false;
         if (ctx.playerFeet().y < src.y) {
             // this check should run even when in preparing state (breaking blocks)
             return state.setStatus(MovementStatus.UNREACHABLE);
@@ -253,9 +270,19 @@ public class MovementAscend extends Movement {
         // don't know that. the sim does, for either pace, so when it has an answer it gets the say
         AscendHop.Verdict hop = null; // stays null when the sim was not asked
         if (baritone instanceof Baritone) {
-            hop = AscendHop.decide(ctx, ((Baritone) baritone).bsi, src, dest);
-            ((Baritone) baritone).getPathingBehavior().sprintTelemetry().verdict(hop);
+            PathingBehavior behavior = ((Baritone) baritone).getPathingBehavior();
+            AscendHop.Decision decision = AscendHop.ask(ctx, ((Baritone) baritone).bsi, src, dest, keepsSprint ? behavior.ascendBrakes() : null);
+            hop = decision.verdict();
+            behavior.sprintTelemetry().verdict(decision, src, dest);
             switch (hop) {
+                case BRAKE:
+                    // W held facing away, no space, and nothing below (headBonkClear, the distance rule) gets a say this tick. the
+                    // lateral stall above returns before the sim is asked, so a plan that picks up that much sideways speed is
+                    // left, not clobbered, and the next ask searches again
+                    braked = true;
+                    state.setTarget(new MovementState.MovementTarget(new Rotation(decision.yaw(), ctx.playerRotations().getPitch()), false));
+                    state.setInput(Input.MOVE_FORWARD, true);
+                    return state;
                 case JUMP:
                     return jump(state, "sim JUMP", hop);
                 case WAIT:
