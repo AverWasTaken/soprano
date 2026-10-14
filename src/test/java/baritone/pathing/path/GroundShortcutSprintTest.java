@@ -155,6 +155,8 @@ public class GroundShortcutSprintTest {
                 int[] ticks = new int[1];
                 End end = run(startAt(world, shortcut, speed), shortcut, error, 200, ticks);
                 assertTrue("error " + error + " speed " + speed + ": " + end + " after " + ticks[0], end != End.STALLED);
+                // a few degrees of aim error is nothing to give up over
+                assertTrue("error " + error + " speed " + speed + ": " + end, Math.abs(error) > 4 || end == End.ARRIVED);
             }
         }
     }
@@ -176,6 +178,7 @@ public class GroundShortcutSprintTest {
                 int[] ticks = new int[1];
                 End end = run(sim, shortcut, error, 120, ticks);
                 assertTrue("behind " + behind + " error " + error + ": " + end + " after " + ticks[0], end != End.STALLED);
+                assertTrue("behind " + behind + ": " + end, error != 0 || end == End.ARRIVED);
             }
         }
     }

@@ -84,7 +84,7 @@ public final class SprintTelemetry implements Helper {
     private String lastMovement = "", lastWhy = "", lastReleased = "", lastSteering = "none";
     private double lastShortcutDist = Double.NaN;
     private int lastShortcutEnd = -1;
-    private Vec3 lastShortcutTarget, lastPos = Vec3.ZERO, lastVel = Vec3.ZERO;
+    private Vec3 lastShortcutTarget, lastShortcutStart, lastPos = Vec3.ZERO, lastVel = Vec3.ZERO;
     private List<? extends IMovement> lastMovements;
 
     // the ascend hop's side of the story, told by whoever asked the sim and whoever pressed space
@@ -191,6 +191,7 @@ public final class SprintTelemetry implements Helper {
         lastShortcutDist = executor.shortcutDistance();
         lastShortcutTarget = executor.shortcutTarget();
         lastShortcutEnd = executor.shortcutEndIndex();
+        lastShortcutStart = executor.shortcutStart();
         lastPos = player.position();
         lastVel = player.getDeltaMovement();
         lastJump = keys.isInputForcedDown(Input.JUMP);
@@ -397,14 +398,15 @@ public final class SprintTelemetry implements Helper {
         return line.toString();
     }
 
-    // what the shortcut is walking into and how sharp the bend there is: the movement that starts at its end node, against the way
-    // the player was heading for it. only built when a drop line is written, which is the one place it is looked at
+    // what the shortcut is walking into and how sharp the bend there is: the movement that starts at its end node, against the
+    // shortcut's own line (the player is a few tenths from the node when it brakes, and from there the heading to it is noise). only built when a drop line is written, which is the one place it is looked at
     private String shortcutEndNote() {
         if (lastShortcutEnd < 0 || lastMovements == null || lastShortcutEnd >= lastMovements.size()) {
             return " shortcutEnd=" + moveName(lastShortcutEnd);
         }
         BlockPos out = lastMovements.get(lastShortcutEnd).getDirection();
-        double ax = lastShortcutTarget.x - lastPos.x, az = lastShortcutTarget.z - lastPos.z;
+        Vec3 from = lastShortcutStart == null ? lastPos : lastShortcutStart;
+        double ax = lastShortcutTarget.x - from.x, az = lastShortcutTarget.z - from.z;
         double la = Math.hypot(ax, az), lb = Math.hypot(out.getX(), out.getZ());
         if (la < 1.0E-6 || lb == 0) {
             return " shortcutEnd=" + moveName(lastShortcutEnd) + " endTurn=n/a";
