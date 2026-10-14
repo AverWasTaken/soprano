@@ -35,8 +35,8 @@ import static org.junit.Assert.assertTrue;
 public class AscendChainTest {
 
     // the top of the first step is at y = 65, its face at z = 12, step k covers z = 12 + k
-    private static final int FACE = 12;
-    private static final int FLOOR = 64;
+    static final int FACE = 12;
+    static final int FLOOR = 64;
 
     static ArrayWorld staircase(int steps) {
         ArrayWorld world = new ArrayWorld(16, 100, 64);

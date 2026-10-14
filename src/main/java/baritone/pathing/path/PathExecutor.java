@@ -44,6 +44,7 @@ import baritone.utils.ExperimentalMovement;
 import baritone.utils.ToolSet;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Vec3i;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
@@ -108,7 +109,7 @@ public class PathExecutor implements IPathExecutor, Helper {
     private String sprintWhy = "";
     private String releasedWhy = "";
     // ...and who had a hand on the steering (STEER_*), and how far a ground shortcut was from its target
-    private static final int STEER_SMOOTH = 1, STEER_CORNER = 2, STEER_JUMP = 4, STEER_SHORTCUT = 8;
+    private static final int STEER_SMOOTH = 1, STEER_CORNER = 2, STEER_JUMP = 4, STEER_SHORTCUT = 8, STEER_BRAKE = 16;
     private int steerMask;
     private double shortcutDist = Double.NaN;
     private Vec3 shortcutAim, shortcutFrom;
@@ -173,6 +174,9 @@ public class PathExecutor implements IPathExecutor, Helper {
         IMovement current = path.movements().get(pathPosition);
         if (!(current instanceof MovementAscend)) {
             return;
+        }
+        if (((MovementAscend) current).braked()) {
+            return; // W is held on purpose, facing away. the guard would see it running at the face and let go of the very key that keeps sprint
         }
         InputOverrideHandler keys = behavior.baritone.getInputOverrideHandler();
         boolean forward = keys.isInputForcedDown(Input.MOVE_FORWARD), jump = keys.isInputForcedDown(Input.JUMP);
@@ -390,6 +394,10 @@ public class PathExecutor implements IPathExecutor, Helper {
         }
         if (ticksOnCurrent == 0) {
             timer.begin(behavior, movement, bsi, currentMovementOriginalCostEstimate, currentCost);
+        }
+        if (movement instanceof MovementAscend) {
+            // the ascend decides on a brake before shouldSprintNextTick has spoken, and a brake is a waste if sprint isn't kept anyway
+            ((MovementAscend) movement).setKeepsSprint(ascendBlocker((MovementAscend) movement, false) == null);
         }
         MovementStatus movementStatus = movement.update();
         if (movementStatus == UNREACHABLE || movementStatus == FAILED) {
@@ -724,11 +732,24 @@ public class PathExecutor implements IPathExecutor, Helper {
             if (next instanceof MovementAscend && sprintableAscend(ctx, (MovementTraverse) current, (MovementAscend) next, path.movements().get(pathPosition + 2))) {
                 // skipNow guesses when the hop is safe from how far away the step is. the sim has the real answer, at this
                 // speed, from this spot: not yet (wait, the traverse carries on and we ask again next tick), now, or no idea
-                AscendHop.Verdict hop = ctx.player().isSprinting()
-                        ? AscendHop.decide(ctx, behavior.baritone.bsi, next.getSrc(), next.getDest()) : AscendHop.Verdict.UNKNOWN;
+                AscendHop.Decision decision = ctx.player().isSprinting()
+                        ? AscendHop.ask(ctx, behavior.baritone.bsi, next.getSrc(), next.getDest(), behavior.ascendBrakes())
+                        : AscendHop.Decision.of(AscendHop.Verdict.UNKNOWN);
+                AscendHop.Verdict hop = decision.verdict();
                 // (a few ticks of waiting at most, in case the window never shows up)
                 boolean waiting = hop == AscendHop.Verdict.WAIT && hopWaits++ < MAX_HOP_WAITS;
-                behavior.sprintTelemetry().verdict(hop);
+                behavior.sprintTelemetry().verdict(decision, next.getSrc(), next.getDest());
+                if (hop == AscendHop.Verdict.BRAKE) {
+                    // too close to the face for any jump from here: W held facing away from the step, over the traverse's own aim.
+                    // sprint stays on (sprintableAscend said the hop sprints), and the jump the skip below would force is what
+                    // this must not do
+                    steerMask |= STEER_BRAKE;
+                    InputOverrideHandler keys = behavior.baritone.getInputOverrideHandler();
+                    behavior.baritone.getLookBehavior().updateTarget(new Rotation(decision.yaw(), ctx.playerRotations().getPitch()), false);
+                    keys.setInputForceState(Input.MOVE_FORWARD, true);
+                    keys.setInputForceState(Input.JUMP, false);
+                    return true;
+                }
                 if (!waiting) {
                     if (hop == AscendHop.Verdict.JUMP ? onLane(ctx, current, next) : skipNow(ctx, current, next)) {
                         logDebug("Skipping traverse to straight ascend");
@@ -737,7 +758,11 @@ public class PathExecutor implements IPathExecutor, Helper {
                         pathPosition++;
                         onChangeInPathPosition();
                         boolean sprint = handOff();
-                        behavior.baritone.getInputOverrideHandler().setInputForceState(Input.JUMP, true);
+                        // the ascend's own frame has had its say about space by now: a brake it picked (the sim can change its mind
+                        // from the other side of the hand off) stays a brake
+                        if (!((MovementAscend) next).braked()) {
+                            behavior.baritone.getInputOverrideHandler().setInputForceState(Input.JUMP, true);
+                        }
                         return sprint;
                     } else {
                         logDebug("Too far to the side to safely sprint ascend");
@@ -870,6 +895,11 @@ public class PathExecutor implements IPathExecutor, Helper {
             // overrideFall only knows straight traverses, this is every other way the path can carry on from the landing
             return sprintsThroughFall((MovementFall) current) || no("fall does not sprint on");
         }
+        if (current instanceof MovementAscend && ExperimentalMovement.sprintTelemetry()) {
+            // the ascend branches above all said no, and the telemetry wants to know which of their checks it was
+            String why = ascendBlocker((MovementAscend) current, true);
+            return no("movement does not sprint MovementAscend: " + (why == null ? "no check failed" : why));
+        }
         return no("movement does not sprint " + current.getClass().getSimpleName());
     }
 
@@ -918,12 +948,18 @@ public class PathExecutor implements IPathExecutor, Helper {
     // forward is held, it was our own "no" keeping the key off. this is the same question asked from the ascend itself: does
     // whatever comes next sprint, and is it roughly the way we are going. the jump is the movement's, sprint doesn't replace it
     private boolean sprintsThroughAscend(MovementAscend ascend) {
+        return throughAscendBlocker(ascend, false) == null;
+    }
+
+    // null when sprintsThroughAscend says yes, else which check said no. detail builds the text that names the cell or the angle,
+    // which is only worth the string work when the sprint telemetry is going to quote it
+    private String throughAscendBlocker(MovementAscend ascend, boolean detail) {
         if (!Baritone.settings().sprintAscends.value || pathPosition >= path.length() - 2) {
-            return false; // the last movement is the goal and we don't sprint past that
+            return "sprintAscends off or last movement"; // the last movement is the goal and we don't sprint past that
         }
         if (StairSteps.walkUp(ctx.world().getBlockState(ascend.getDest().below()), ascend.getSrc(), ascend.getDest(),
                 ctx.world().getBlockState(ascend.getSrc().below()), ctx.world())) {
-            return false; // sprintsUpStairs already had its say
+            return "walk-up stair"; // sprintsUpStairs already had its say
         }
         Movement next = (Movement) path.movements().get(pathPosition + 1);
         // no parkour: the hop can fire from a block or more back and flies a couple of cells at sprint speed, which is fine over
@@ -933,23 +969,62 @@ public class PathExecutor implements IPathExecutor, Helper {
                 || next instanceof MovementDescend && Baritone.settings().sprintThroughDescends.value && !((MovementDescend) next).safeMode();
         boolean diagonal = next instanceof MovementDiagonal && next.getDirection().getY() == 0;
         BlockStateInterface bsi = behavior.baritone.bsi;
-        if (!(sprintsNext || diagonal) || !ascend.toBreak(bsi).isEmpty() || !ascend.toPlace(bsi).isEmpty()
-                || !next.toBreak(bsi).isEmpty() || !next.toPlace(bsi).isEmpty()) {
-            return false;
+        if (!(sprintsNext || diagonal)) {
+            return detail ? "next movement is " + next.getClass().getSimpleName() : "next movement";
+        }
+        if (!ascend.toBreak(bsi).isEmpty() || !ascend.toPlace(bsi).isEmpty() || !next.toBreak(bsi).isEmpty() || !next.toPlace(bsi).isEmpty()) {
+            return "break or place";
         }
         BlockPos dir = ascend.getDirection();
         if (pathPosition > 0) {
             // sprintableAscend wants the traverse before the hop to be in line, and so do we. a corner into a hop still has the
             // old heading's momentum in it, and that is what the lateral stall in MovementAscend is for
             BlockPos prevDir = path.movements().get(pathPosition - 1).getDirection();
-            if (SprintPolicy.turnDegrees(prevDir.getX(), prevDir.getZ(), dir.getX(), dir.getZ()) > SprintPolicy.STRAIGHT_ON) {
-                return false;
+            double turn = SprintPolicy.turnDegrees(prevDir.getX(), prevDir.getZ(), dir.getX(), dir.getZ());
+            if (turn > SprintPolicy.STRAIGHT_ON) {
+                return detail ? String.format(Locale.ROOT, "prev turn %.0f deg > %.0f", turn, SprintPolicy.STRAIGHT_ON) : "prev turn";
             }
         }
         BlockPos nextDir = next.getDirection();
-        return SprintPolicy.ascendSprintsInto(sprintsNext, diagonal && ((MovementDiagonal) next).cornersOpen(bsi), carefulSprint(),
-                SprintPolicy.turnDegrees(dir.getX(), dir.getZ(), nextDir.getX(), nextDir.getZ()))
-                && MovementHelper.canWalkOn(ctx, ascend.getDest().below()) && hopRoomClear(ctx, ascend);
+        boolean careful = carefulSprint();
+        double nextTurn = SprintPolicy.turnDegrees(dir.getX(), dir.getZ(), nextDir.getX(), nextDir.getZ());
+        if (!SprintPolicy.ascendSprintsInto(sprintsNext, diagonal && ((MovementDiagonal) next).cornersOpen(bsi), careful, nextTurn)) {
+            return detail ? String.format(Locale.ROOT, "next turn %.0f deg%s%s", nextTurn, careful ? ", careful" : "", diagonal ? ", diagonal corners" : "") : "next turn";
+        }
+        if (!MovementHelper.canWalkOn(ctx, ascend.getDest().below())) {
+            return "step floor not walkable";
+        }
+        String room = hopRoomBlocker(ctx, ascend, detail);
+        return room == null ? null : "hop room: " + room;
+    }
+
+    // null when an ascend keeps the sprint on, else why not. the same chain shouldSprintNextTick walks for an ascend (its stair
+    // and descend branches, a traverse before it, then sprintsThroughAscend), asked from outside so the movement can know
+    // before it picks its keys. the descend branch's side effect (letting go of space) stays in shouldSprintNextTick
+    private String ascendBlocker(MovementAscend current, boolean detail) {
+        if (!Baritone.settings().allowSprint.value || ctx.player().getFoodData().getFoodLevel() <= 6) {
+            return "allowSprint off or food";
+        }
+        if (sprintsUpStairs(current)) {
+            return null;
+        }
+        String after = "";
+        if (pathPosition != 0) {
+            IMovement prev = path.movements().get(pathPosition - 1);
+            if (prev instanceof MovementDescend && prev.getDirection().above().equals(current.getDirection().below())
+                    && ctx.player().position().y >= current.getSrc().above().getY() - 0.07) {
+                return null;
+            }
+            if (pathPosition < path.length() - 2 && prev instanceof MovementTraverse) {
+                String why = sprintableAscendBlocker(ctx, (MovementTraverse) prev, current, path.movements().get(pathPosition + 1), detail);
+                if (why == null) {
+                    return null;
+                }
+                after = detail ? "after traverse: " + why + "; " : "after traverse; ";
+            }
+        }
+        String through = throughAscendBlocker(current, detail);
+        return through == null ? null : after + through;
     }
 
     // a small drop, no bucket and no clutch in sight, and the path goes on roughly the way we were going
@@ -1270,27 +1345,32 @@ public class PathExecutor implements IPathExecutor, Helper {
     }
 
     private static boolean sprintableAscend(IPlayerContext ctx, MovementTraverse current, MovementAscend next, IMovement nextnext) {
+        return sprintableAscendBlocker(ctx, current, next, nextnext, false) == null;
+    }
+
+    // null when the traverse -> ascend -> straight on shape sprints, else which check said no (detail: with the cell or block in it)
+    private static String sprintableAscendBlocker(IPlayerContext ctx, MovementTraverse current, MovementAscend next, IMovement nextnext, boolean detail) {
         if (!Baritone.settings().sprintAscends.value) {
-            return false;
+            return "sprintAscends off";
         }
         if (StairSteps.walkUp(ctx.world().getBlockState(next.getDest().below()), next.getSrc(), next.getDest(),
                 ctx.world().getBlockState(next.getSrc().below()), ctx.world())) {
-            return false; // no hop to time for this one, sprintsUpStairs walks it
+            return "walk-up stair"; // no hop to time for this one, sprintsUpStairs walks it
         }
         if (!current.getDirection().equals(next.getDirection().below())) {
-            return false;
+            return "traverse not in line with the hop";
         }
         if (nextnext.getDirection().getX() != next.getDirection().getX() || nextnext.getDirection().getZ() != next.getDirection().getZ()) {
-            return false;
+            return detail ? "movement after the hop turns (" + nextnext.getClass().getSimpleName() + ")" : "movement after the hop turns";
         }
         if (!MovementHelper.canWalkOn(ctx, current.getDest().below())) {
-            return false;
+            return "traverse floor not walkable";
         }
         if (!MovementHelper.canWalkOn(ctx, next.getDest().below())) {
-            return false;
+            return "step floor not walkable";
         }
         if (!next.toBreakCached.isEmpty()) {
-            return false; // it's breaking
+            return "hop is breaking"; // it's breaking
         }
         for (int x = 0; x < 2; x++) {
             for (int y = 0; y < 3; y++) {
@@ -1299,32 +1379,50 @@ public class PathExecutor implements IPathExecutor, Helper {
                     chk = chk.offset(current.getDirection());
                 }
                 if (!MovementHelper.fullyPassable(ctx, chk)) {
-                    return false;
+                    return detail ? "column " + cellNote(ctx, current.getSrc(), chk) : "column";
                 }
             }
         }
         if (MovementHelper.avoidWalkingInto(ctx.world().getBlockState(current.getSrc().above(3)))) {
-            return false;
+            return detail ? "avoidWalkingInto " + cellNote(ctx, current.getSrc(), current.getSrc().above(3)) : "avoidWalkingInto";
         }
         if (AltoClefSettings.getInstance().shouldAvoidWalkThroughForce(current.getSrc().above(3)) || AltoClefSettings.getInstance().shouldAvoidWalkThroughForce(current.getSrc().above(2))) {
-            return false; // sprinting would carry us into somewhere altoclef wants us to stay out of
+            return "altoclef avoid"; // sprinting would carry us into somewhere altoclef wants us to stay out of
         }
-        return !MovementHelper.avoidWalkingInto(ctx.world().getBlockState(next.getDest().above(2))); // codacy smh my head
+        if (MovementHelper.avoidWalkingInto(ctx.world().getBlockState(next.getDest().above(2)))) { // codacy smh my head
+            return detail ? "avoidWalkingInto " + cellNote(ctx, current.getSrc(), next.getDest().above(2)) : "avoidWalkingInto";
+        }
+        return null;
     }
 
     // the jump goes up through the ascend's own column, so it has to be open head high and not somewhere altoclef or the
     // terrain wants us kept out of. sprintableAscend asks the same things of the traverse's column
-    private static boolean hopRoomClear(IPlayerContext ctx, MovementAscend ascend) {
+    private static String hopRoomBlocker(IPlayerContext ctx, MovementAscend ascend, boolean detail) {
         BlockPos src = ascend.getSrc();
         for (int y = 0; y < 3; y++) {
-            if (!MovementHelper.fullyPassable(ctx, src.above(y)) || y < 2 && !MovementHelper.fullyPassable(ctx, ascend.getDest().above(y))) {
-                return false;
+            if (!MovementHelper.fullyPassable(ctx, src.above(y))) {
+                return detail ? cellNote(ctx, src, src.above(y)) : "column";
+            }
+            if (y < 2 && !MovementHelper.fullyPassable(ctx, ascend.getDest().above(y))) {
+                return detail ? cellNote(ctx, src, ascend.getDest().above(y)) : "column";
             }
         }
-        return !MovementHelper.avoidWalkingInto(ctx.world().getBlockState(src.above(3)))
-                && !MovementHelper.avoidWalkingInto(ctx.world().getBlockState(ascend.getDest().above(2)))
-                && !AltoClefSettings.getInstance().shouldAvoidWalkThroughForce(src.above(3))
-                && !AltoClefSettings.getInstance().shouldAvoidWalkThroughForce(src.above(2));
+        if (MovementHelper.avoidWalkingInto(ctx.world().getBlockState(src.above(3)))) {
+            return detail ? "avoidWalkingInto " + cellNote(ctx, src, src.above(3)) : "avoidWalkingInto";
+        }
+        if (MovementHelper.avoidWalkingInto(ctx.world().getBlockState(ascend.getDest().above(2)))) {
+            return detail ? "avoidWalkingInto " + cellNote(ctx, src, ascend.getDest().above(2)) : "avoidWalkingInto";
+        }
+        if (AltoClefSettings.getInstance().shouldAvoidWalkThroughForce(src.above(3)) || AltoClefSettings.getInstance().shouldAvoidWalkThroughForce(src.above(2))) {
+            return "altoclef avoid";
+        }
+        return null;
+    }
+
+    // "(+1,+2,+0)stone", the cell relative to the hop's start. only built when the telemetry is going to print it
+    private static String cellNote(IPlayerContext ctx, BlockPos origin, BlockPos at) {
+        return String.format(Locale.ROOT, "(%+d,%+d,%+d)%s", at.getX() - origin.getX(), at.getY() - origin.getY(), at.getZ() - origin.getZ(),
+                BuiltInRegistries.BLOCK.getKey(ctx.world().getBlockState(at).getBlock()).getPath());
     }
 
     private static boolean canSprintFromDescendInto(IPlayerContext ctx, IMovement current, IMovement next) {
@@ -1510,7 +1608,7 @@ public class PathExecutor implements IPathExecutor, Helper {
             return "none";
         }
         StringBuilder out = new StringBuilder();
-        String[] names = {"smooth", "corner", "sprintjump", "shortcut"};
+        String[] names = {"smooth", "corner", "sprintjump", "shortcut", "brake"};
         for (int i = 0; i < names.length; i++) {
             if ((steerMask & 1 << i) != 0) {
                 out.append(out.length() == 0 ? "" : "+").append(names[i]);

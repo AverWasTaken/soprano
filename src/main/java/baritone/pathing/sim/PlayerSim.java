@@ -59,6 +59,9 @@ public final class PlayerSim {
     private final CollisionProvider world;
     private final float halfWidth;
 
+    // every tick() ever run, so whoever asks the sim a question can say what it cost (AscendHop's telemetry). the client thread only
+    public static long ticksRun;
+
     public double x, y, z, vx, vy, vz;
     public boolean onGround, sprinting, horizontalCollision, minorHorizontalCollision, verticalCollision;
     // LivingEntity.noJumpDelay, the ticks left before holding space jumps again
@@ -114,6 +117,7 @@ public final class PlayerSim {
     // run one tick. false if the player is somewhere the sim does not do the maths for, with nothing changed when that is where
     // the tick started, and the tick done anyway when it ended there
     public boolean tick(Controls c) {
+        ticksRun++;
         jumped = false;
         String bad = unsupported();
         if (bad != null) {
