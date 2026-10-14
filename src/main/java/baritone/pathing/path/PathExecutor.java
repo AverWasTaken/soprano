@@ -112,7 +112,7 @@ public class PathExecutor implements IPathExecutor, Helper {
     private static final int STEER_SMOOTH = 1, STEER_CORNER = 2, STEER_JUMP = 4, STEER_SHORTCUT = 8;
     private int steerMask;
     private double shortcutDist = Double.NaN;
-    private Vec3 shortcutAim;
+    private Vec3 shortcutAim, shortcutFrom;
     private int shortcutEnd = -1;
     // see carefulSprint
     private int carefulAt = -1;
@@ -150,6 +150,7 @@ public class PathExecutor implements IPathExecutor, Helper {
             steerMask = 0;
             shortcutDist = Double.NaN;
             shortcutAim = null;
+            shortcutFrom = null;
             shortcutEnd = -1;
         }
         try {
@@ -548,7 +549,10 @@ public class PathExecutor implements IPathExecutor, Helper {
                 ctx.playerRotations()).withPitch(ctx.playerRotations().getPitch());
         Rotation actual = behavior.baritone.getLookBehavior().getAimProcessor().peekRotation(desired);
         double yawError = Math.abs(Rotation.normalizeYaw(actual.getYaw() - desired.getYaw()));
-        boolean forward = yawError < 10 && groundShortcut.shouldMoveForward(player, velocity);
+        boolean turning = yawError >= 10;
+        boolean braking = !turning && !groundShortcut.shouldMoveForward(player, velocity);
+        boolean forward = !turning && !braking;
+        boolean blocked = false;
         if (forward) {
             double yaw = Math.toRadians(actual.getYaw());
             Vec3 projected = player.add(velocity.x * 2.5 - Math.sin(yaw) * 0.5, 0,
@@ -557,19 +561,23 @@ public class PathExecutor implements IPathExecutor, Helper {
             forward = GroundShortcut.clearSegment(player, projected, pos -> clearance.computeIfAbsent(pos, p -> clearSmoothingColumn(bsi, p)))
                     && GroundShortcut.clearAhead(player, velocity, new Vec3(-Math.sin(yaw), 0, Math.cos(yaw)),
                     pos -> clearance.computeIfAbsent(pos, p -> clearSmoothingColumn(bsi, p)));
+            blocked = !forward;
         }
         behavior.baritone.getLookBehavior().updateTarget(desired, false);
         behavior.baritone.getInputOverrideHandler().setInputForceState(Input.MOVE_FORWARD, forward);
         steerMask |= STEER_SHORTCUT;
         shortcutDist = player.distanceTo(groundShortcut.target);
         shortcutAim = groundShortcut.target;
+        shortcutFrom = groundShortcut.start;
         shortcutEnd = groundShortcut.endIndex;
         // sprint whenever W is held. shouldMoveForward lets go early enough for the slide to carry us onto the node (it uses the
         // real speed), and vanilla drops the sprint the tick W comes up, so a distance cutoff only cost the sprint over the last
         // stretch where we are still pushing
         sprintNextTick = forward && Baritone.settings().allowSprint.value && ctx.player().getFoodData().getFoodLevel() > 6;
         if (!sprintNextTick) {
-            sprintWhy = !forward ? "ground shortcut braking at its target" : "allowSprint off or food";
+            // only the first one is the shortcut letting go of W to slide onto its node, the other two are the aim and the floor
+            sprintWhy = braking ? "ground shortcut braking at its target" : turning ? "ground shortcut turning to its target"
+                    : blocked ? "ground shortcut blocked ahead" : "allowSprint off or food";
             ctx.player().setSprinting(false);
         }
         return true; // all ground under our footprint was verified this tick, so pausing is safe
@@ -1520,6 +1528,11 @@ public class PathExecutor implements IPathExecutor, Helper {
     // null likewise
     Vec3 shortcutTarget() {
         return shortcutAim;
+    }
+
+    // where the shortcut set off from, null likewise
+    Vec3 shortcutStart() {
+        return shortcutFrom;
     }
 
     // the path node the shortcut aims for, -1 likewise
