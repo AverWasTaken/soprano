@@ -164,6 +164,12 @@ public final class SprintPolicy {
         return descendKeepsSprint(careful, turn, true);
     }
 
+    // the hop's sprint goes on into the next movement when that one sprints itself and the bend is a gentle one. a diagonal is the
+    // second kind: it has no say unless its corner columns are open, which is its own rule for sprinting and ours to borrow
+    static boolean ascendSprintsInto(boolean nextSprints, boolean diagonalCornersOpen, boolean careful, double turn) {
+        return (nextSprints || diagonalCornersOpen) && ascendKeepsSprint(careful, turn);
+    }
+
     // 0.2 off the middle puts the side of the box (0.3 out from its centre) exactly on the cell edge, which with a wall on that
     // side is zero clearance, and a hair more is a graze that costs the sprint. with a wall there we want a little room
     public static final double MAX_SIDE_OFFSET_BESIDE_WALL = 0.15;
