@@ -248,10 +248,11 @@ public class MovementAscend extends Movement {
             return state;
         }
 
-        // at sprint speed the hop clips the face if it starts too close and comes down against it if it starts too far back, and
-        // the two rules below don't know that. the sim does, so when it has an answer it gets the say
+        // a hop clips the face if it starts too close and comes down against it if it starts too far back (at sprint speed the window
+        // is about two blocks wide, walking it is a block or so and sits where the 1.2 rule below puts it), and the two rules below
+        // don't know that. the sim does, for either pace, so when it has an answer it gets the say
         AscendHop.Verdict hop = null; // stays null when the sim was not asked
-        if (ctx.player().isSprinting() && baritone instanceof Baritone) {
+        if (baritone instanceof Baritone) {
             hop = AscendHop.decide(ctx, ((Baritone) baritone).bsi, src, dest);
             ((Baritone) baritone).getPathingBehavior().sprintTelemetry().verdict(hop);
             switch (hop) {
