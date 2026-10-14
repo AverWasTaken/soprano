@@ -168,7 +168,7 @@ public class ClimbJumpTest {
 
     @Test
     public void leapsAreShort() {
-        // 0.15 a tick is the most we're allowed on the ladder and we can't sprint without the ground, so that's it
+        // 0.15 a tick is the most we're allowed on the ladder and the model only sprints from the ground, so that's it
         assertFalse(ok(leap(3, 0, KIND_LADDER, KIND_FLOOR)));
         assertFalse(ok(leap(3, -2, KIND_LADDER, KIND_FLOOR)));
         assertFalse(ok(leap(4, -3, KIND_LADDER, KIND_FLOOR)));

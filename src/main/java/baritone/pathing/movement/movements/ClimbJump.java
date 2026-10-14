@@ -303,8 +303,8 @@ final class ClimbJump {
     // one tick of LivingEntity.travel plus the bits of LocalPlayer.aiStep that decide whether we're sprinting. input is
     // which way W points (along the jump, against it, or not held at all), space is the jump key
     private void step(int input, boolean space, boolean wantSprint) {
-        // sprint only starts from the ground, W has to be held, and a bump stops it. letting go of W stops it too, and
-        // nothing starts it again until we're back on the ground
+        // 26.3 would start a sprint in the air too, this model only starts one from the ground, so a leap is planned a bit
+        // slower than it can really go. W has to be held, a bump stops it, and letting go of W stops it too
         boolean sprint = input != COAST && (pSprint || wantSprint && pGround) && !pBump;
         boolean ground = pGround;
         double vu = pvu, vy = pvy;
