@@ -638,7 +638,7 @@ public class PathExecutor implements IPathExecutor, Helper {
                 boolean waiting = hop == AscendHop.Verdict.WAIT && hopWaits++ < MAX_HOP_WAITS;
                 behavior.sprintTelemetry().verdict(hop);
                 if (!waiting) {
-                    if (hop == AscendHop.Verdict.JUMP ? onLane(ctx, current) : skipNow(ctx, current)) {
+                    if (hop == AscendHop.Verdict.JUMP ? onLane(ctx, current, next) : skipNow(ctx, current, next)) {
                         logDebug("Skipping traverse to straight ascend");
                         behavior.sprintTelemetry().takeoff(hop == AscendHop.Verdict.JUMP ? "skip, sim JUMP" : "skip, skipNow", hop,
                                 next.getSrc(), next.getDest());
@@ -1149,13 +1149,19 @@ public class PathExecutor implements IPathExecutor, Helper {
     }
 
     // same number SprintJump.plan and the ascend's own side check use, they used to disagree
-    private static boolean onLane(IPlayerContext ctx, IMovement current) {
-        double offTarget = Math.abs(current.getDirection().getX() * (current.getSrc().z + 0.5D - ctx.player().position().z)) + Math.abs(current.getDirection().getZ() * (current.getSrc().x + 0.5D - ctx.player().position().x));
-        return SprintPolicy.centered(offTarget);
+    // (a wall beside the cells we are about to cross makes the lane narrower, see SprintPolicy.centered)
+    private static boolean onLane(IPlayerContext ctx, IMovement current, IMovement hop) {
+        double leanX = ctx.player().position().x - (current.getSrc().x + 0.5D), leanZ = ctx.player().position().z - (current.getSrc().z + 0.5D);
+        double offTarget = Math.abs(current.getDirection().getX() * leanZ) + Math.abs(current.getDirection().getZ() * leanX);
+        int dirX = current.getDirection().getX(), dirZ = current.getDirection().getZ();
+        boolean open = MovementHelper.sideOpen(ctx, current.getSrc().x, current.getSrc().y, current.getSrc().z, dirX, dirZ, leanX, leanZ)
+                && MovementHelper.sideOpen(ctx, current.getDest().x, current.getDest().y, current.getDest().z, dirX, dirZ, leanX, leanZ)
+                && MovementHelper.sideOpen(ctx, hop.getDest().x, hop.getDest().y, hop.getDest().z, dirX, dirZ, leanX, leanZ);
+        return SprintPolicy.centered(offTarget, open);
     }
 
-    private static boolean skipNow(IPlayerContext ctx, IMovement current) {
-        if (!onLane(ctx, current)) {
+    private static boolean skipNow(IPlayerContext ctx, IMovement current, IMovement hop) {
+        if (!onLane(ctx, current, hop)) {
             return false;
         }
         // we are centered

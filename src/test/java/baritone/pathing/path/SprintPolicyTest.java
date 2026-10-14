@@ -161,9 +161,9 @@ public class SprintPolicyTest {
 
     @Test
     public void aHopStartsFromWithinTheLaneAndSkipNowAgreesWithSprintJump() {
-        assertTrue(SprintPolicy.centered(0.15)); // skipNow used to say no past 0.1, SprintJump.plan said yes up to 0.2
-        assertTrue(SprintPolicy.centered(0.2));
-        assertFalse(SprintPolicy.centered(0.21));
+        assertTrue(SprintPolicy.centered(0.15, true)); // skipNow used to say no past 0.1, SprintJump.plan said yes up to 0.2
+        assertTrue(SprintPolicy.centered(0.2, true));
+        assertFalse(SprintPolicy.centered(0.21, true));
     }
 
     @Test
@@ -270,5 +270,20 @@ public class SprintPolicyTest {
         assertFalse(SprintPolicy.trivialBreaks(new double[]{-1}, 1));
         assertFalse(SprintPolicy.trivialBreaks(new double[]{Double.NaN}, 1));
         assertFalse(SprintPolicy.trivialBreaks(new double[]{1, 1, 1}, 3)); // a tunnel
+    }
+
+    @Test
+    public void openSideKeepsTheOldLaneWidth() {
+        assertTrue(SprintPolicy.centered(0.2, true));
+        assertFalse(SprintPolicy.centered(0.213, true));
+    }
+
+    @Test
+    public void aWallBesideTheLaneTakesTheClearanceBack() {
+        // 0.2 off plus the 0.3 half width is flush with the wall, which is the graze that cost the sprint
+        assertFalse(SprintPolicy.centered(0.2, false));
+        assertFalse(SprintPolicy.centered(0.213, false));
+        assertTrue(SprintPolicy.centered(0.15, false));
+        assertTrue(SprintPolicy.centered(0.0, false));
     }
 }

@@ -131,7 +131,7 @@ final class SprintJump {
         Vec3 pos = player.position().subtract(jump.originX, 0, jump.originZ);
         Vec3 vel = player.getDeltaMovement();
         // drifting sideways is how you clip a corner
-        if (n < 3 || !SprintPolicy.centered(Math.abs(jump.across(pos))) || Math.abs(jump.across(vel)) > 0.08) {
+        if (n < 3 || !SprintPolicy.centered(Math.abs(jump.across(pos)), sideOpen(ctx, start, dir, floors, pos)) || Math.abs(jump.across(vel)) > 0.08) {
             return null;
         }
         Double target = jump.plan(jump.along(pos), jump.along(vel));
@@ -151,6 +151,18 @@ final class SprintJump {
         return Baritone.settings().allowSprint.value && player.getFoodData().getFoodLevel() > 6
                 && !(player.horizontalCollision && !player.minorHorizontalCollision)
                 && !player.hasEffect(MobEffects.BLINDNESS) && !player.isCrouching() && !player.isUsingItem() && !player.isFallFlying();
+    }
+
+    // is the column beside the first cells of the run, on the side we lean to, free of anything solid. the lane is narrower
+    // with a wall there (SprintPolicy.centered). lean is relative to the middle of the takeoff cell
+    private static boolean sideOpen(IPlayerContext ctx, BlockPos start, BlockPos dir, double[] floors, Vec3 lean) {
+        for (int i = 0; i < 3; i++) {
+            int y = start.getY() + (floors[i] <= NO_FLOOR / 2 ? 0 : (int) floors[i]);
+            if (!MovementHelper.sideOpen(ctx, start.getX() + dir.getX() * i, y, start.getZ() + dir.getZ() * i, dir.getX(), dir.getZ(), lean.x, lean.z)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     // a flat parkour over a 1 or 2 block gap: the two the walking approach used to take at walk speed. 4 gaps already sprint

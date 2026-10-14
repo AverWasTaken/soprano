@@ -392,6 +392,26 @@ public interface MovementHelper extends ActionCosts, Helper {
         return state.isPathfindable(PathComputationType.LAND);
     }
 
+    // is the column beside a straight lane, on the side the player leans to, free of anything solid at feet and head height.
+    // x y z is the lane cell, lean is where the player stands relative to its centre. a diagonal has no side to speak of
+    static boolean sideOpen(IPlayerContext ctx, int x, int y, int z, int dirX, int dirZ, double leanX, double leanZ) {
+        if (dirX != 0 && dirZ != 0) {
+            return true;
+        }
+        int sideX = dirX != 0 ? 0 : (int) Math.signum(leanX);
+        int sideZ = dirX != 0 ? (int) Math.signum(leanZ) : 0;
+        if (sideX == 0 && sideZ == 0) {
+            return true;
+        }
+        for (int up = 0; up < 2; up++) {
+            BlockPos pos = new BlockPos(x + sideX, y + up, z + sideZ);
+            if (!ctx.world().getBlockState(pos).getCollisionShape(ctx.world(), pos).isEmpty()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     /**
      * params retained for backwards compatibility
      */
