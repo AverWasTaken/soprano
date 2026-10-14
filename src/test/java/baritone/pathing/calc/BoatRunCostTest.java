@@ -18,10 +18,18 @@ import org.junit.Assume;
 import org.junit.Before;
 import org.junit.Test;
 
+import baritone.api.pathing.calc.IPath;
+import baritone.api.pathing.goals.GoalBlock;
+import baritone.api.utils.BetterBlockPos;
+import baritone.utils.pathing.Favoring;
+
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 // a pond is not priced as a boat ride: BoatTrip wades anything under boatMinWaterLength. same fake world as GodBridgeCostTest,
@@ -58,13 +66,17 @@ public class BoatRunCostTest {
 
     private static final class Ctx extends CalculationContext {
         Ctx(BlockStateInterface bsi) {
+            this(bsi, true);
+        }
+
+        Ctx(BlockStateInterface bsi, boolean hasBoat) {
             super(null, true, null, null, bsi, new ToolSet(null) {
                 @Override
                 public double getStrVsBlock(BlockState state) {
                     float hardness = state.getBlock().defaultDestroyTime();
                     return hardness < 0 ? -1 : hardness == 0 ? 1 : 8.0 / (hardness * 30);
                 }
-            }, false, false, true, 0, 1.0f, 20.0, true);
+            }, false, false, true, 0, 1.0f, 20.0, hasBoat);
         }
     }
 
@@ -72,6 +84,8 @@ public class BoatRunCostTest {
     private boolean potions;
     private boolean boats;
     private int minLength;
+    private double boardCost;
+    private double exitCost;
 
     @Before
     public void setUp() {
@@ -85,6 +99,8 @@ public class BoatRunCostTest {
         potions = settings.considerPotionEffects.value;
         boats = settings.allowBoats.value;
         minLength = settings.boatMinWaterLength.value;
+        boardCost = settings.boatBoardCost.value;
+        exitCost = settings.boatExitCost.value;
         settings.considerPotionEffects.value = false;
         settings.allowBoats.value = true;
         settings.boatMinWaterLength.value = 8;
@@ -96,6 +112,8 @@ public class BoatRunCostTest {
             settings.considerPotionEffects.value = potions;
             settings.allowBoats.value = boats;
             settings.boatMinWaterLength.value = minLength;
+            settings.boatBoardCost.value = boardCost;
+            settings.boatExitCost.value = exitCost;
         }
     }
 
@@ -157,5 +175,161 @@ public class BoatRunCostTest {
         Ctx probe = new Ctx(basin(20, 20));
         assertEquals(probe.waterWalkSpeed, probe.waterCost(10, 63, -1), 0);
         assertEquals(probe.boatWaterSpeed, probe.waterCost(10, 63, 10), 0);
+    }
+
+    // open ground at feet level 63 with a lake in the middle: water at x 0..length, z -half..half over a stone floor at 62.
+    // the shore is just air at water level, which a boat is fine next to
+    private static MapWorld lake(int length, int half) {
+        MapWorld w = new MapWorld();
+        for (int x = -8; x <= length + 8; x++) {
+            for (int z = -half - 3; z <= half + 3; z++) {
+                w.set(x, 62, z, Blocks.STONE.defaultBlockState());
+                if (x >= 0 && x <= length && z >= -half && z <= half) {
+                    w.set(x, 63, z, Blocks.WATER.defaultBlockState());
+                }
+            }
+        }
+        return w;
+    }
+
+    // dry land standing a block proud of the water, with a full block of water all round it (the ring cells are what a boat
+    // goes through). its top is feet level 64
+    private static void island(MapWorld w, int x0, int x1, int half) {
+        for (int x = x0; x <= x1; x++) {
+            for (int z = -half; z <= half; z++) {
+                w.set(x, 63, z, Blocks.STONE.defaultBlockState());
+            }
+        }
+    }
+
+    private static double traverse(Ctx ctx, int x, int z, int destX) {
+        return baritone.pathing.movement.movements.MovementTraverse.cost(ctx, x, 63, z, destX, z);
+    }
+
+    private static double diagonal(Ctx ctx, int x, int z, int destX, int destZ) {
+        baritone.utils.pathing.MutableMoveResult res = new baritone.utils.pathing.MutableMoveResult();
+        baritone.pathing.movement.movements.MovementDiagonal.cost(ctx, x, 63, z, destX, destZ, res);
+        return res.cost;
+    }
+
+    @Test
+    public void steppingOntoARowPaysToGetTheBoatOut() {
+        MapWorld w = lake(20, 10);
+        Ctx boat = new Ctx(w, true);
+        Ctx none = new Ctx(w, false);
+        assertEquals(none.waterWalkSpeed, traverse(none, -1, 0, 0), 1e-9);
+        assertEquals(boat.boatWaterSpeed + settings.boatBoardCost.value, traverse(boat, -1, 0, 0), 1e-9);
+        // and it's a setting, not a constant
+        settings.boatBoardCost.value = 7.0;
+        assertEquals(boat.boatWaterSpeed + 7.0, traverse(new Ctx(w, true), -1, 0, 0), 1e-9);
+    }
+
+    @Test
+    public void steppingOffARowPaysToGetTheBoatBack() {
+        MapWorld w = lake(20, 10);
+        Ctx boat = new Ctx(w, true);
+        Ctx none = new Ctx(w, false);
+        // the walk onto the bank is the same either way, the difference is the pickup
+        assertEquals(settings.boatExitCost.value, traverse(boat, 0, 0, -1) - traverse(none, 0, 0, -1), 1e-9);
+        settings.boatExitCost.value = 11.0;
+        assertEquals(11.0, traverse(new Ctx(w, true), 0, 0, -1) - traverse(none, 0, 0, -1), 1e-9);
+    }
+
+    @Test
+    public void stayingInARowIsFree() {
+        MapWorld w = lake(20, 10);
+        Ctx boat = new Ctx(w, true);
+        assertEquals(boat.boatWaterSpeed, traverse(boat, 5, 0, 6), 1e-9);
+        assertEquals(boat.boatWaterSpeed * Math.sqrt(2), diagonal(boat, 5, 0, 6, 1), 1e-9);
+    }
+
+    @Test
+    public void diagonalsPayTheSameBoardAndExit() {
+        MapWorld w = lake(20, 10);
+        Ctx boat = new Ctx(w, true);
+        Ctx none = new Ctx(w, false);
+        double sqrt2 = Math.sqrt(2);
+        assertEquals((boat.boatWaterSpeed - none.waterWalkSpeed) * sqrt2 + settings.boatBoardCost.value,
+                diagonal(boat, -1, -1, 0, 0) - diagonal(none, -1, -1, 0, 0), 1e-9);
+        assertEquals(settings.boatExitCost.value, diagonal(boat, 0, 0, -1, -1) - diagonal(none, 0, 0, -1, -1), 1e-9);
+    }
+
+    @Test
+    public void aPondNobodyRowsHasNoEndsToPayFor() {
+        // 7 wide, one short of boatMinWaterLength, so it's priced as a swim and the boat never comes out
+        MapWorld w = lake(6, 3);
+        Ctx boat = new Ctx(w, true);
+        Ctx none = new Ctx(w, false);
+        assertEquals(traverse(none, -1, 0, 0), traverse(boat, -1, 0, 0), 1e-9);
+        assertEquals(traverse(none, 0, 0, -1), traverse(boat, 0, 0, -1), 1e-9);
+    }
+
+    @Test
+    public void withNoBoatTheHandoffIsNothing() {
+        MapWorld w = lake(20, 10);
+        Ctx none = new Ctx(w, false);
+        assertEquals(0, none.boatHandoff(-1, 63, 0, 0, 63, 0), 0);
+        assertEquals(0, none.boatHandoff(0, 63, 0, -1, 63, 0), 0);
+    }
+
+    // the cells of a found path, or null
+    private static List<BetterBlockPos> search(MapWorld w, BetterBlockPos start, BetterBlockPos goal, Ctx ctx) {
+        AStarPathFinder pf = new AStarPathFinder(start, start.x, start.y, start.z, new GoalBlock(goal), new Favoring(null, ctx), ctx);
+        Optional<IPath> p;
+        try {
+            ctx.claimSearchCaches();
+            p = pf.calculate0(10000, 10000);
+        } finally {
+            ctx.releaseSearchCaches();
+        }
+        return p.isPresent() && p.get().getDest().equals(goal) ? p.get().positions() : null;
+    }
+
+    private static boolean onTheIsland(List<BetterBlockPos> path, int x0, int x1) {
+        for (BetterBlockPos p : path) {
+            if (p.y == 64 && p.x >= x0 && p.x <= x1) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static final BetterBlockPos START = new BetterBlockPos(-2, 63, 0);
+
+    @Test
+    public void aBoatGoesRoundAnIslandInsteadOfHoppingOutToWalkOverIt() {
+        // 5 blocks of island across the way and 15 wide. before the ends cost anything a crossing was the shorter walk
+        MapWorld w = lake(30, 20);
+        island(w, 12, 16, 7);
+        BetterBlockPos goal = new BetterBlockPos(32, 63, 0);
+
+        settings.boatBoardCost.value = 0.0;
+        settings.boatExitCost.value = 0.0;
+        List<BetterBlockPos> free = search(w, START, goal, new Ctx(w, true));
+        assertTrue(free != null);
+        assertTrue("with free ends the island is the way", onTheIsland(free, 12, 16));
+
+        settings.boatBoardCost.value = 20.0;
+        settings.boatExitCost.value = 30.0;
+        Ctx ctx = new Ctx(w, true);
+        List<BetterBlockPos> around = search(w, START, goal, ctx);
+        assertTrue(around != null);
+        assertFalse("hopped out onto the island: " + around, onTheIsland(around, 12, 16));
+        for (BetterBlockPos p : around) {
+            if (p.x >= 0 && p.x <= 30) {
+                assertTrue("left the boat water at " + p, ctx.boatCell(p.x, p.y, p.z));
+            }
+        }
+    }
+
+    @Test
+    public void aHugeDetourIsStillNotWorthTheBoat() {
+        // an island this wide costs more to row round than getting the boat out and back is worth
+        MapWorld w = lake(30, 50);
+        island(w, 12, 16, 45);
+        BetterBlockPos goal = new BetterBlockPos(32, 63, 0);
+        List<BetterBlockPos> path = search(w, START, goal, new Ctx(w, true));
+        assertTrue(path != null);
+        assertTrue("went round a 91 wide island", onTheIsland(path, 12, 16));
     }
 }

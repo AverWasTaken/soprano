@@ -111,6 +111,11 @@ public class PathExecutor implements IPathExecutor, Helper {
         this.pathPosition = 0;
     }
 
+    // for the planner: a crossing is under way, so the boat is spoken for even though it's not in the bag
+    public boolean boatTripActive() {
+        return boat != null;
+    }
+
     /**
      * Tick this executor
      *

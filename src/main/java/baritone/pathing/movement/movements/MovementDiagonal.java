@@ -287,6 +287,7 @@ public class MovementDiagonal extends Movement {
             }
         }
         res.cost = multiplier * SQRT_2;
+        res.cost += context.boatHandoff(x, y, z, destX, descend ? y - 1 : y, destZ);
         if (descend) {
             res.cost += Math.max(FALL_N_BLOCKS_COST[1], CENTER_AFTER_FALL_COST);
             res.y = y - 1;

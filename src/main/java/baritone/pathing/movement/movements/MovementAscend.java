@@ -171,7 +171,7 @@ public class MovementAscend extends Movement {
                 && (raw3 <= 0 || MovementHelper.isMultiTickBreak(context, raw3))) {
             totalCost -= MovementHelper.breakWaitCredit(context, Math.max(raw1, Math.max(raw2, raw3)), Math.max(JUMP_ONE_BLOCK_COST, WALK_ONE_BLOCK_COST));
         }
-        return totalCost;
+        return totalCost + context.boatHandoff(x, y, z, destX, y + 1, destZ);
     }
 
     @Override
