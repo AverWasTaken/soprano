@@ -57,6 +57,11 @@ jobs:
         ls dist/soprano-api-fabric-*.jar >/dev/null 2>&1 && NOTES="${NOTES} Fabric is supported."
         ls dist/soprano-api-neoforge-*.jar >/dev/null 2>&1 && NOTES="${NOTES} NeoForge is supported."
         echo "$NOTES" > release-notes.md
+        # the what's fixed list lives in release-notes/<version>.md, tack it on when there is one
+        if [ -f "release-notes/${VERSION}.md" ]; then
+          echo "" >> release-notes.md
+          cat "release-notes/${VERSION}.md" >> release-notes.md
+        fi
         cat release-notes.md
 
     - name: Create the release
