@@ -49,7 +49,7 @@ import static org.junit.Assert.assertTrue;
 // (the real one starts a Minecraft client in its static init), so this skips itself when that isn't on the test classpath
 public class VineLogPathTest {
 
-    private static final class MapWorld extends BlockStateInterface {
+    static final class MapWorld extends BlockStateInterface {
         final Map<Long, BlockState> blocks = new HashMap<>();
 
         MapWorld() {
@@ -77,20 +77,24 @@ public class VineLogPathTest {
         }
     }
 
-    private static final class Ctx extends CalculationContext {
+    static final class Ctx extends CalculationContext {
         Ctx(BlockStateInterface bsi) {
-            // no throwaway blocks, so bridging and pillaring aren't answers. a pickaxe-ish tool for everything
+            this(bsi, false);
+        }
+
+        // throwaway false: bridging and pillaring aren't answers. a pickaxe-ish tool for everything
+        Ctx(BlockStateInterface bsi, boolean throwaway) {
             super(null, true, null, null, bsi, new ToolSet(null) {
                 @Override
                 public double getStrVsBlock(BlockState state) {
                     float hardness = state.getBlock().defaultDestroyTime();
                     return hardness < 0 ? -1 : hardness == 0 ? 1 : 8.0 / (hardness * 30);
                 }
-            }, false, false, true, 0, 1.0f, 20.0, false);
+            }, throwaway, false, true, 0, 1.0f, 20.0, false);
         }
     }
 
-    private static final class Result {
+    static final class Result {
         final List<BetterBlockPos> positions = new ArrayList<>();
         final List<String> moves = new ArrayList<>();
         boolean found, inGoal;
@@ -213,7 +217,11 @@ public class VineLogPathTest {
     }
 
     private static Result path(MapWorld w, BetterBlockPos start, Goal goal) {
-        CalculationContext ctx = new Ctx(w);
+        return path(w, start, goal, false);
+    }
+
+    static Result path(MapWorld w, BetterBlockPos start, Goal goal, boolean throwaway) {
+        CalculationContext ctx = new Ctx(w, throwaway);
         AStarPathFinder pf = new AStarPathFinder(start, start.x, start.y, start.z, goal, new Favoring(null, ctx), ctx);
         Optional<IPath> p;
         try {
