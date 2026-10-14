@@ -686,6 +686,11 @@ public class PathExecutor implements IPathExecutor, Helper {
                 return true;
             }
         }
+        // below the prev descend branch on purpose: that one returns for itself (and lets go of the jump) once we're up at the
+        // ascend's height, and down in the dip of a descend -> ascend the sprint now carries on through instead of dropping
+        if (current instanceof MovementAscend && sprintsThroughAscend((MovementAscend) current)) {
+            return true;
+        }
         if (current instanceof MovementFall) {
             Pair<Vec3, BlockPos> data = overrideFall((MovementFall) current);
             if (data != null) {
@@ -738,6 +743,42 @@ public class PathExecutor implements IPathExecutor, Helper {
         BlockStateInterface bsi = behavior.baritone.bsi;
         return SprintPolicy.turnDegrees(dir.getX(), dir.getZ(), nextDir.getX(), nextDir.getZ()) <= SprintPolicy.DESCEND_MAX_TURN
                 && ascend.toBreak(bsi).isEmpty() && ascend.toPlace(bsi).isEmpty() && !carefulSprint();
+    }
+
+    // sprintableAscend knows traverse -> ascend -> straight on and nothing else, so an ascend into another ascend, a parkour or
+    // a bend let go of the sprint in mid air (vanilla only re-arms it on the ground) and landed at walk speed. this is the same
+    // question asked from the ascend itself: does whatever comes next sprint, and is it roughly the way we are going. the jump
+    // is the movement's, sprint doesn't replace it
+    private boolean sprintsThroughAscend(MovementAscend ascend) {
+        if (!Baritone.settings().sprintAscends.value || pathPosition >= path.length() - 2) {
+            return false; // the last movement is the goal and we don't sprint past that
+        }
+        if (StairSteps.walkUp(ctx.world().getBlockState(ascend.getDest().below()), ascend.getSrc(), ascend.getDest(),
+                ctx.world().getBlockState(ascend.getSrc().below()), ctx.world())) {
+            return false; // sprintsUpStairs already had its say
+        }
+        Movement next = (Movement) path.movements().get(pathPosition + 1);
+        // no parkour: the hop can fire from a block or more back and flies a couple of cells at sprint speed, which is fine over
+        // floor and not over the gap. descends only when the descend itself would let us sprint (its safeMode is the hazard past the landing)
+        boolean sprintsNext = next instanceof MovementTraverse || next instanceof MovementAscend
+                || next instanceof MovementDescend && Baritone.settings().sprintThroughDescends.value && !((MovementDescend) next).safeMode();
+        BlockStateInterface bsi = behavior.baritone.bsi;
+        if (!sprintsNext || !ascend.toBreak(bsi).isEmpty() || !ascend.toPlace(bsi).isEmpty()
+                || !next.toBreak(bsi).isEmpty() || !next.toPlace(bsi).isEmpty()) {
+            return false;
+        }
+        BlockPos dir = ascend.getDirection();
+        if (pathPosition > 0) {
+            // sprintableAscend wants the traverse before the hop to be in line, and so do we. a corner into a hop still has the
+            // old heading's momentum in it, and that is what the lateral stall in MovementAscend is for
+            BlockPos prevDir = path.movements().get(pathPosition - 1).getDirection();
+            if (SprintPolicy.turnDegrees(prevDir.getX(), prevDir.getZ(), dir.getX(), dir.getZ()) > SprintPolicy.STRAIGHT_ON) {
+                return false;
+            }
+        }
+        BlockPos nextDir = next.getDirection();
+        return SprintPolicy.ascendKeepsSprint(carefulSprint(), SprintPolicy.turnDegrees(dir.getX(), dir.getZ(), nextDir.getX(), nextDir.getZ()))
+                && MovementHelper.canWalkOn(ctx, ascend.getDest().below()) && hopRoomClear(ctx, ascend);
     }
 
     // a small drop, no bucket and no clutch in sight, and the path goes on roughly the way we were going
@@ -1032,8 +1073,8 @@ public class PathExecutor implements IPathExecutor, Helper {
 
     private static boolean skipNow(IPlayerContext ctx, IMovement current) {
         double offTarget = Math.abs(current.getDirection().getX() * (current.getSrc().z + 0.5D - ctx.player().position().z)) + Math.abs(current.getDirection().getZ() * (current.getSrc().x + 0.5D - ctx.player().position().x));
-        if (offTarget > 0.1) {
-            return false;
+        if (!SprintPolicy.centered(offTarget)) {
+            return false; // same number SprintJump.plan and the ascend's own side check use, they used to disagree
         }
         // we are centered
         BlockPos headBonk = current.getSrc().subtract(current.getDirection()).above(2);
@@ -1086,6 +1127,21 @@ public class PathExecutor implements IPathExecutor, Helper {
             return false; // sprinting would carry us into somewhere altoclef wants us to stay out of
         }
         return !MovementHelper.avoidWalkingInto(ctx.world().getBlockState(next.getDest().above(2))); // codacy smh my head
+    }
+
+    // the jump goes up through the ascend's own column, so it has to be open head high and not somewhere altoclef or the
+    // terrain wants us kept out of. sprintableAscend asks the same things of the traverse's column
+    private static boolean hopRoomClear(IPlayerContext ctx, MovementAscend ascend) {
+        BlockPos src = ascend.getSrc();
+        for (int y = 0; y < 3; y++) {
+            if (!MovementHelper.fullyPassable(ctx, src.above(y)) || y < 2 && !MovementHelper.fullyPassable(ctx, ascend.getDest().above(y))) {
+                return false;
+            }
+        }
+        return !MovementHelper.avoidWalkingInto(ctx.world().getBlockState(src.above(3)))
+                && !MovementHelper.avoidWalkingInto(ctx.world().getBlockState(ascend.getDest().above(2)))
+                && !AltoClefSettings.getInstance().shouldAvoidWalkThroughForce(src.above(3))
+                && !AltoClefSettings.getInstance().shouldAvoidWalkThroughForce(src.above(2));
     }
 
     private static boolean canSprintFromDescendInto(IPlayerContext ctx, IMovement current, IMovement next) {

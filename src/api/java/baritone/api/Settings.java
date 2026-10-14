@@ -466,7 +466,9 @@ public final class Settings {
     public final Setting<Boolean> considerPotionEffects = new Setting<>(true);
 
     /**
-     * Sprint and jump a block early on ascends wherever possible. The sprint also carries on up a whole flight of
+     * Sprint and jump a block early on ascends wherever possible. The sprint also carries through a hop into the next
+     * traverse, ascend or descend when the path goes straight on, instead of dropping in mid air and landing at walk
+     * speed. It also carries on up a whole flight of
      * straight stairs climbed from the low side (bottom half, no corner shape, from a full height floor). Those are walked
      * and not jumped whatever this is set to, the way vanilla steps up a half block.
      */

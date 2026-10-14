@@ -146,6 +146,27 @@ public class SprintPolicyTest {
     }
 
     @Test
+    public void ascendKeepsSprintGoingStraightOnAndDropsItOnABend() {
+        assertTrue(SprintPolicy.ascendKeepsSprint(false, SprintPolicy.turnDegrees(1, 0, 1, 0))); // ascend into ascend
+        assertTrue(SprintPolicy.ascendKeepsSprint(false, SprintPolicy.turnDegrees(1, 0, 1, 1))); // 45 is still a descend's worth
+        // the hop has to be entered in line too: a corner into it keeps the old heading's momentum
+        assertTrue(SprintPolicy.turnDegrees(1, 0, 1, 0) <= SprintPolicy.STRAIGHT_ON);
+        assertTrue(SprintPolicy.turnDegrees(1, 0, 3, 0) <= SprintPolicy.STRAIGHT_ON);
+        assertFalse(SprintPolicy.turnDegrees(1, 0, 0, 1) <= SprintPolicy.STRAIGHT_ON);
+        assertFalse(SprintPolicy.turnDegrees(1, 0, 1, 1) <= SprintPolicy.STRAIGHT_ON);
+        assertFalse(SprintPolicy.ascendKeepsSprint(false, SprintPolicy.turnDegrees(1, 0, 0, 1)));
+        assertFalse(SprintPolicy.ascendKeepsSprint(false, SprintPolicy.turnDegrees(1, 0, -1, 0)));
+        assertFalse(SprintPolicy.ascendKeepsSprint(true, 0)); // careful beats straight
+    }
+
+    @Test
+    public void aHopStartsFromWithinTheLaneAndSkipNowAgreesWithSprintJump() {
+        assertTrue(SprintPolicy.centered(0.15)); // skipNow used to say no past 0.1, SprintJump.plan said yes up to 0.2
+        assertTrue(SprintPolicy.centered(0.2));
+        assertFalse(SprintPolicy.centered(0.21));
+    }
+
+    @Test
     public void aFortyFiveDegreeCornerKeepsSprint() {
         double turn = SprintPolicy.turnDegrees(1, 0, 1, 1);
         assertEquals(45, turn, 0.001);
