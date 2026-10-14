@@ -22,8 +22,10 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
+import java.util.function.IntFunction;
 import java.util.function.IntPredicate;
 import java.util.function.Predicate;
 
@@ -114,10 +116,17 @@ final class GroundShortcut {
         if (!clearSegment(player, target, clearColumn)) {
             return "the way to its target is blocked";
         }
-        if (!clearSegment(player, coastPosition(player, velocity), clearColumn)) {
+        if (!clearSegment(player, clipAtTarget(player, coastPosition(player, velocity)), clearColumn)) {
             return "the slide from here is blocked";
         }
         return null;
+    }
+
+    // the cell that made stopReason say a way is blocked, for the telemetry: the same two checks in the same order, so it is the one
+    // stopReason tripped on. null when neither is
+    BlockPos stopCell(Vec3 player, Vec3 velocity, Predicate<BlockPos> clearColumn) {
+        BlockPos cell = firstBlocked(player, target, HALF_WIDTH, clearColumn);
+        return cell != null ? cell : firstBlocked(player, clipAtTarget(player, coastPosition(player, velocity)), HALF_WIDTH, clearColumn);
     }
 
     boolean arrived(Vec3 player, Vec3 velocity) {
@@ -164,19 +173,98 @@ final class GroundShortcut {
 
     // true if the player's footprint can go along the whole line of points
     static boolean clearPath(List<Vec3> points, Predicate<BlockPos> clearColumn) {
+        return firstBlockedOnPath(points, clearColumn) == null;
+    }
+
+    private static BlockPos firstBlockedOnPath(List<Vec3> points, Predicate<BlockPos> clearColumn) {
         for (int i = 1; i < points.size(); i++) {
-            if (!clearSegment(points.get(i - 1), points.get(i), HALF_WIDTH, clearColumn)) {
-                return false;
+            BlockPos cell = firstBlocked(points.get(i - 1), points.get(i), HALF_WIDTH, clearColumn);
+            if (cell != null) {
+                return cell;
             }
         }
-        return true;
+        return null;
     }
 
     // holding W towards `look` (a direction, any length) from here: is the way clear for the next ticks and the slide after them
     static boolean clearAhead(Vec3 player, Vec3 velocity, Vec3 look, Predicate<BlockPos> clearColumn) {
+        return clearPath(ahead(player, velocity, look), clearColumn);
+    }
+
+    private static List<Vec3> ahead(Vec3 player, Vec3 velocity, Vec3 look) {
         Vec3 flat = new Vec3(look.x, 0, look.z);
         Vec3 push = flat.lengthSqr() == 0 ? Vec3.ZERO : flat.normalize().scale(PUSH);
-        return clearPath(trajectory(player, velocity, push, HELD_TICKS), clearColumn);
+        return trajectory(player, velocity, push, HELD_TICKS);
+    }
+
+    // which check said no to holding W, and on which cell
+    record Blocked(String check, BlockPos cell) {
+    }
+
+    // holding W with the camera at `yaw` (radians) from here, on a shortcut from `start` to `target`: null when the line to the far
+    // end of the push and the curve the momentum really takes there (both clipped at the target) are clear, else the first thing in the way
+    static Blocked blockedAhead(Vec3 start, Vec3 target, Vec3 player, Vec3 velocity, double yaw, Predicate<BlockPos> clearColumn) {
+        Vec3 look = new Vec3(-Math.sin(yaw), 0, Math.cos(yaw));
+        Vec3 projected = player.add(velocity.x * 2.5 + look.x * 0.5, 0, velocity.z * 2.5 + look.z * 0.5);
+        BlockPos cell = firstBlocked(player, clipAtTarget(start, target, player, projected), HALF_WIDTH, clearColumn);
+        if (cell != null) {
+            return new Blocked("forward projection", cell);
+        }
+        cell = firstBlockedOnPath(clipAtTarget(start, target, ahead(player, velocity, look)), clearColumn);
+        return cell == null ? null : new Blocked("trajectory", cell);
+    }
+
+    private Vec3 clipAtTarget(Vec3 player, Vec3 end) {
+        return clipAtTarget(start, target, player, end);
+    }
+
+    // how far along start -> target a point is: 0 at the start, 1 at the target, only looking at the floor plane
+    private static double progress(Vec3 start, Vec3 target, Vec3 point) {
+        double dx = target.x - start.x, dz = target.z - start.z;
+        double length = dx * dx + dz * dz;
+        return length == 0 ? 0 : ((point.x - start.x) * dx + (point.z - start.z) * dz) / length;
+    }
+
+    // the projections all run on past the node (momentum, half a block of push, the slide) and what is past the node is not ours to
+    // judge: the wall on the outside of the bend, the step block of an ascend that starts there. so a segment from `from` to `end`
+    // stops where it crosses the plane through the target, square to the way the shortcut is going. one that starts past the
+    // plane and heads further out has nothing left to test. W is let go of early enough for the slide to land on the node, and a
+    // player who overshoots anyway runs into "hit something"
+    static Vec3 clipAtTarget(Vec3 start, Vec3 target, Vec3 from, Vec3 end) {
+        double a = progress(start, target, from), b = progress(start, target, end);
+        if (b <= 1 || b <= a) {
+            return end;
+        }
+        return a >= 1 ? from : from.add(end.subtract(from).scale((1 - a) / (b - a)));
+    }
+
+    // same for a whole trajectory: it ends at the first point that crosses that plane, at the plane
+    static List<Vec3> clipAtTarget(Vec3 start, Vec3 target, List<Vec3> points) {
+        List<Vec3> kept = new ArrayList<>(points.size());
+        kept.add(points.get(0));
+        for (int i = 1; i < points.size(); i++) {
+            Vec3 clipped = clipAtTarget(start, target, points.get(i - 1), points.get(i));
+            if (clipped != points.get(i)) {
+                if (!clipped.equals(points.get(i - 1))) {
+                    kept.add(clipped);
+                }
+                break;
+            }
+            kept.add(points.get(i));
+        }
+        return kept;
+    }
+
+    // the movement a shortcut that lets go can carry on with: the last of movements from..to (to is held to the `count` that exist)
+    // whose valid positions hold the feet, or -1 when the feet are on none of them. the last, because the node between two
+    // movements is the end of one and the start of the next, and the next is the one still to do
+    static <T> int resumeIndex(IntFunction<? extends Collection<? extends T>> validAt, int from, int to, int count, T feet) {
+        for (int i = Math.min(to, count - 1); i >= from; i--) {
+            if (validAt.apply(i).contains(feet)) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     // exact segment-versus-expanded-cell intersections, not a ray or samples that can miss a corner.
@@ -186,8 +274,14 @@ final class GroundShortcut {
     }
 
     static boolean clearSegment(Vec3 from, Vec3 to, double halfWidth, Predicate<BlockPos> clearColumn) {
+        return firstBlocked(from, to, halfWidth, clearColumn) == null;
+    }
+
+    // the first cell the footprint touches that is no good, null when they all are. a segment too long or not level has no cell
+    // to blame, so it blames the one the player is in
+    static BlockPos firstBlocked(Vec3 from, Vec3 to, double halfWidth, Predicate<BlockPos> clearColumn) {
         if (Math.abs(from.y - to.y) > 0.05 || from.distanceToSqr(to) > 256) {
-            return false;
+            return BlockPos.containing(from);
         }
         int y = (int) Math.floor(from.y + 0.05);
         for (int x = (int) Math.floor(Math.min(from.x, to.x) - halfWidth);
@@ -195,11 +289,11 @@ final class GroundShortcut {
             for (int z = (int) Math.floor(Math.min(from.z, to.z) - halfWidth);
                  z <= (int) Math.floor(Math.max(from.z, to.z) + halfWidth); z++) {
                 if (intersectsCell(from, to, x, z, halfWidth) && !clearColumn.test(new BlockPos(x, y, z))) {
-                    return false;
+                    return new BlockPos(x, y, z);
                 }
             }
         }
-        return true;
+        return null;
     }
 
     private static boolean intersectsCell(Vec3 from, Vec3 to, int x, int z, double halfWidth) {
