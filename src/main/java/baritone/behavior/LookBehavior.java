@@ -177,8 +177,10 @@ public final class LookBehavior extends Behavior implements ILookBehavior {
             event.setYaw(actual.getYaw());
             event.setPitch(actual.getPitch());
         }
-        this.moveYaw = event.getYaw();
-        this.moveCount++;
+        if (event.getType() == RotationMoveEvent.Type.MOTION_UPDATE) { // jumpFromGround fires one too, same yaw, not a second move
+            this.moveYaw = event.getYaw();
+            this.moveCount++;
+        }
     }
 
     // the yaw moveRelative really used last time, and how many times it has run. SprintTelemetry replays the tick with them

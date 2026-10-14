@@ -28,6 +28,7 @@ import baritone.pathing.sim.WorldCollision;
 import baritone.utils.InputOverrideHandler;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.List;
@@ -37,24 +38,25 @@ import java.util.Locale;
 // predict what the game really did. all of it is read-only and none of it runs with the setting off.
 //
 // the order inside one game tick, which is what decides what "before" and "after" mean here:
-//   Minecraft.tick head -> PathingBehavior.onTick -> begin() -> the executor sets keys, sprint flag and look target -> end()
-//   -> LocalPlayer.aiStep (input.tick reads those keys, vanilla starts or stops the sprint, jump, travel) -> end of tick
-//   -> next game tick -> begin()
-// so begin() of tick N+1 sees the player exactly as aiStep N left it, nothing of tick N+1 has run yet, and end() of tick N sees
-// the exact state aiStep N starts from together with the inputs it will be given. the drift check takes the snapshot in end(),
+//   Minecraft.tick, early (MixinMinecraft.runTick) -> behaviors' onTick in registration order, PathingBehavior's among them:
+//   begin() -> the executor sets keys, sprint flag and look target -> end() -> LocalPlayer.aiStep (input.tick reads those keys,
+//   vanilla starts or stops the sprint, jump, travel) -> end of tick -> next game tick -> begin()
+// so begin() of tick N+1 sees the player as aiStep N left it plus whatever other behaviors that tick ran before us (altoclef's
+// listener goes first), and end() of tick N sees the state aiStep N starts from together with the inputs it will be given, unless
+// a behavior registered after PathingBehavior changes keys later in the same event. the drift check takes the snapshot in end(),
 // replays aiStep N on it with the yaw moveRelative really used (LookBehavior.lastMoveYaw), and compares in begin()
 public final class SprintTelemetry implements Helper {
 
     private static final int REPORT_EVERY = 1000;
-    // a systematically wrong sim would otherwise write a line per tick
-    private static final int DRIFT_LINES_PER_REPORT = 25;
+    // a systematically wrong sim, or a flag that flips every other tick, would otherwise write a line per tick
+    private static final int LINES_PER_REPORT = 25;
     private static final double DRIFT = 0.01;
 
     private final Baritone baritone;
     private final IPlayerContext ctx;
 
     private int pathTicks, sprintTicks, drops, totalDrops, totalPathTicks;
-    private int checks, mismatches, driftLogged, unsupported;
+    private int checks, mismatches, driftLogged, dropsLogged, unsupported;
 
     // begin() of the tick that just ended: the sprint flag and the collision flags aiStep of the next one decides from
     private int lastTick = -1;
@@ -70,8 +72,6 @@ public final class SprintTelemetry implements Helper {
     private int pendingForward, pendingLeft, pendingMoveCount;
     private boolean pendingJump, pendingSprint;
     private float pendingViewYaw;
-    // the sim cannot see LivingEntity.noJumpDelay, so it counts it for itself across ticks
-    private int jumpDelay;
 
     public SprintTelemetry(Baritone baritone) {
         this.baritone = baritone;
@@ -99,7 +99,9 @@ public final class SprintTelemetry implements Helper {
             replay(player);
             if (lastSprint && !player.isSprinting()) {
                 drops++;
-                emit(describeDrop(player));
+                if (dropsLogged++ < LINES_PER_REPORT) {
+                    emit(describeDrop(player));
+                }
             }
         } else {
             pending = null;
@@ -146,7 +148,6 @@ public final class SprintTelemetry implements Helper {
             unsupported++;
             return;
         }
-        sim.noJumpDelay = jumpDelay;
         pending = sim;
         pendingForward = (keys.isInputForcedDown(Input.MOVE_FORWARD) ? 1 : 0) - (keys.isInputForcedDown(Input.MOVE_BACK) ? 1 : 0);
         pendingLeft = (keys.isInputForcedDown(Input.MOVE_LEFT) ? 1 : 0) - (keys.isInputForcedDown(Input.MOVE_RIGHT) ? 1 : 0);
@@ -172,7 +173,6 @@ public final class SprintTelemetry implements Helper {
             unsupported++;
             return;
         }
-        jumpDelay = sim.noJumpDelay;
         checks++;
         double ex = player.getX() - sim.x, ey = player.getY() - sim.y, ez = player.getZ() - sim.z;
         double err = Math.sqrt(ex * ex + ey * ey + ez * ez);
@@ -182,7 +182,7 @@ public final class SprintTelemetry implements Helper {
             return;
         }
         mismatches++;
-        if (driftLogged++ < DRIFT_LINES_PER_REPORT) {
+        if (driftLogged++ < LINES_PER_REPORT) {
             emit(String.format(Locale.ROOT, "drift tick=%d %s err=%.4f (%.4f,%.4f,%.4f) predicted ground=%s sprint=%s hc=%s minor=%s, actual ground=%s sprint=%s hc=%s minor=%s"
                             + " keys fwd=%d left=%d jump=%s sprintKey=%s moveYaw=%.2f viewYaw=%.2f vel=(%.4f,%.4f,%.4f)",
                     player.tickCount - 1, lastMovement, err, ex, ey, ez,
@@ -210,6 +210,8 @@ public final class SprintTelemetry implements Helper {
             cause = "horizontal collision";
         } else if (food <= 6) {
             cause = "food";
+        } else if (player.hasEffect(MobEffects.BLINDNESS)) {
+            cause = "blindness";
         } else {
             cause = "something else in aiStep";
         }
@@ -224,12 +226,15 @@ public final class SprintTelemetry implements Helper {
     private void report() {
         totalDrops += drops;
         totalPathTicks += pathTicks;
-        emit(String.format(Locale.ROOT, "%d sprint drops in %d path ticks (%d sprinting), %.2f per 1000, %d over %d so far. sim: %d ticks checked, %d off, %d unsupported%s",
-                drops, pathTicks, sprintTicks, drops * 1000.0 / pathTicks, totalDrops, totalPathTicks,
-                checks, mismatches, unsupported, driftLogged > DRIFT_LINES_PER_REPORT ? " (" + (driftLogged - DRIFT_LINES_PER_REPORT) + " drift lines not shown)" : ""));
+        emit(String.format(Locale.ROOT, "%d sprint drops in %d path ticks (%d of them sprinting), %.2f per 1000 path ticks, %.2f per 1000 sprinting ticks, %d over %d path ticks so far. sim: %d ticks checked, %d off, %d unsupported%s%s",
+                drops, pathTicks, sprintTicks, drops * 1000.0 / pathTicks, drops * 1000.0 / Math.max(1, sprintTicks), totalDrops, totalPathTicks,
+                checks, mismatches, unsupported,
+                driftLogged > LINES_PER_REPORT ? " (" + (driftLogged - LINES_PER_REPORT) + " drift lines not shown)" : "",
+                dropsLogged > LINES_PER_REPORT ? " (" + (dropsLogged - LINES_PER_REPORT) + " drop lines not shown)" : ""));
         pathTicks = 0;
         sprintTicks = 0;
         drops = 0;
+        dropsLogged = 0;
         checks = 0;
         mismatches = 0;
         driftLogged = 0;

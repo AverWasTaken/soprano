@@ -57,7 +57,6 @@ public class PlayerSimTest {
     private static PlayerSim sprinting(ArrayWorld world, double z) {
         PlayerSim sim = standing(world, z);
         sim.sprinting = true;
-        sim.speed = (float) (0.1F * (1.0 + PlayerSim.SPRINT_MODIFIER));
         return sim;
     }
 
@@ -99,16 +98,27 @@ public class PlayerSimTest {
         assertFalse(sim.sprinting);
     }
 
-    // the speed field is written after the move, so the tick that starts a sprint is still a walking tick
+    // Player.getSpeed() is the attribute itself, so the sprint modifier counts on the very tick the flag flips
     @Test
-    public void sprintStartsAWalkingTickEarly() {
+    public void sprintSpeedAppliesTheTickItStarts() {
         PlayerSim sim = standing(flat(), 2);
         assertTrue(sim.tick(SPRINT));
         assertTrue(sim.sprinting);
-        assertEquals(0.1F * 0.98F, sim.z - 2, 1e-6);
-        double before = sim.z;
-        assertTrue(sim.tick(SPRINT));
-        assertEquals((0.1F * 0.98F) * 0.546 + (0.1F * 1.3) * 0.98F, sim.z - before, 1e-5);
+        assertEquals((0.1F * 1.3) * 0.98F, sim.z - 2, 1e-5);
+        double before = sim.z, v = sim.vz;
+        assertTrue(sim.tick(new PlayerSim.Controls(0, 0, false, true, 0F)));
+        assertFalse(sim.sprinting);
+        assertEquals(v, sim.z - before, 1e-9); // no forward, so nothing is added to the velocity it carried
+    }
+
+    // jumpFromGround and moveRelative both get the yaw Baritone aims with, the head can be pointing anywhere
+    @Test
+    public void sprintJumpBoostFollowsTheMoveYawNotTheViewYaw() {
+        PlayerSim sim = sprinting(flat(), 2);
+        assertTrue(sim.tick(new PlayerSim.Controls(1, 0, true, true, 0F, 90F)));
+        assertTrue(sim.jumped);
+        assertEquals(0, sim.vx, 1e-9);
+        assertTrue(sim.vz > 0.15); // (0.2 boost + 0.1274 of walking) * 0.546
     }
 
     @Test

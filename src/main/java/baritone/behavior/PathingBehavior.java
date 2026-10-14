@@ -140,9 +140,11 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
             sprintTelemetry.off();
         }
         baritone.getPathingControlManager().preTick();
+        PathExecutor ticked = current;
         tickPath();
         if (telemetry) {
-            sprintTelemetry.end(current, pausedThisTick);
+            // an executor that finished or cancelled this tick is gone from `current`, its last word on sprint still counts
+            sprintTelemetry.end(current != null ? current : ticked, pausedThisTick);
         }
         ticksElapsedSoFar++;
         dispatchEvents();
