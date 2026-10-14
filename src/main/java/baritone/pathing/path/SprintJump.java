@@ -157,9 +157,12 @@ final class SprintJump {
     // with a wall there (SprintPolicy.centered). lean is relative to the middle of the takeoff cell
     private static boolean sideOpen(IPlayerContext ctx, BlockPos start, BlockPos dir, double[] floors, Vec3 lean) {
         for (int i = 0; i < 3; i++) {
-            int y = start.getY() + (floors[i] <= NO_FLOOR / 2 ? 0 : (int) floors[i]);
-            if (!MovementHelper.sideOpen(ctx, start.getX() + dir.getX() * i, y, start.getZ() + dir.getZ() * i, dir.getX(), dir.getZ(), lean.x, lean.z)) {
-                return false;
+            // at the takeoff level (the hitbox is that high over a lower floor too) and at the cell's own floor
+            int own = start.getY() + (floors[i] <= NO_FLOOR / 2 ? 0 : (int) Math.floor(floors[i]));
+            for (int y : new int[]{start.getY(), own}) {
+                if (!MovementHelper.sideOpen(ctx, start.getX() + dir.getX() * i, y, start.getZ() + dir.getZ() * i, dir.getX(), dir.getZ(), lean.x, lean.z)) {
+                    return false;
+                }
             }
         }
         return true;

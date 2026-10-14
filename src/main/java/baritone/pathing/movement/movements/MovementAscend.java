@@ -273,7 +273,7 @@ public class MovementAscend extends Movement {
             return jump(state, "headBonkClear", hop);
         }
 
-        if (flatDistToNext > 1.2 || sideDist > 0.2) {
+        if (flatDistToNext > 1.2 || !SprintPolicy.centered(sideDist, sideOpen())) {
             return state;
         }
 

@@ -27,6 +27,7 @@ import baritone.api.utils.*;
 import baritone.api.utils.Rotation;
 import baritone.api.utils.input.Input;
 import baritone.pathing.movement.MovementState.MovementTarget;
+import baritone.pathing.path.SprintPolicy;
 import baritone.pathing.precompute.Ternary;
 import baritone.utils.BlockStateInterface;
 import baritone.utils.FallingColumn;
@@ -395,17 +396,15 @@ public interface MovementHelper extends ActionCosts, Helper {
     // is the column beside a straight lane, on the side the player leans to, free of anything solid at feet and head height.
     // x y z is the lane cell, lean is where the player stands relative to its centre. a diagonal has no side to speak of
     static boolean sideOpen(IPlayerContext ctx, int x, int y, int z, int dirX, int dirZ, double leanX, double leanZ) {
-        if (dirX != 0 && dirZ != 0) {
-            return true;
-        }
-        int sideX = dirX != 0 ? 0 : (int) Math.signum(leanX);
-        int sideZ = dirX != 0 ? (int) Math.signum(leanZ) : 0;
-        if (sideX == 0 && sideZ == 0) {
+        int[] side = SprintPolicy.sideStep(dirX, dirZ, leanX, leanZ);
+        if (side[0] == 0 && side[1] == 0) {
             return true;
         }
         for (int up = 0; up < 2; up++) {
-            BlockPos pos = new BlockPos(x + sideX, y + up, z + sideZ);
-            if (!ctx.world().getBlockState(pos).getCollisionShape(ctx.world(), pos).isEmpty()) {
+            BlockPos pos = new BlockPos(x + side[0], y + up, z + side[1]);
+            BlockState state = ctx.world().getBlockState(pos);
+            // lava, fire and a cobweb have no collision either, but nobody wants a hitbox in them
+            if (!state.getCollisionShape(ctx.world(), pos).isEmpty() || avoidWalkingInto(state) || !state.getFluidState().isEmpty()) {
                 return false;
             }
         }
