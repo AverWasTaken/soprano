@@ -45,6 +45,7 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 import java.util.*;
+import java.util.function.Predicate;
 
 import static baritone.api.pathing.movement.MovementStatus.*;
 
@@ -102,6 +103,7 @@ public class PathExecutor implements IPathExecutor, Helper {
     private static final int STEER_SMOOTH = 1, STEER_CORNER = 2, STEER_JUMP = 4, STEER_SHORTCUT = 8;
     private int steerMask;
     private double shortcutDist = Double.NaN;
+    private Vec3 shortcutAim;
     // see carefulSprint
     private int carefulAt = -1;
     private boolean carefulLava;
@@ -137,6 +139,7 @@ public class PathExecutor implements IPathExecutor, Helper {
             releasedWhy = "";
             steerMask = 0;
             shortcutDist = Double.NaN;
+            shortcutAim = null;
         }
         try {
             return tick();
@@ -434,18 +437,30 @@ public class PathExecutor implements IPathExecutor, Helper {
                 && SprintJump.plan(ctx, path, pathPosition) != null;
     }
 
+    // null while the shortcut can go on, else why it can't
+    private String shortcutStopReason(Vec3 player, Vec3 velocity, Predicate<BlockPos> clearColumn) {
+        if (!ExperimentalMovement.allowGroundShortcuts()) {
+            return "ground shortcuts switched off";
+        }
+        if (!ctx.player().onGround() || ctx.player().isInWater() || ctx.player().onClimbable()) {
+            return "off the ground";
+        }
+        if (ctx.player().horizontalCollision) {
+            return "hit something";
+        }
+        return groundShortcut.stopReason(player, velocity, clearColumn);
+    }
+
     private boolean tickGroundShortcut() {
         Vec3 player = ctx.player().position();
         Vec3 velocity = ctx.player().getDeltaMovement();
         BlockStateInterface bsi = behavior.baritone.bsi;
         Map<BlockPos, Boolean> clearance = new HashMap<>();
-        if (!ExperimentalMovement.allowGroundShortcuts() || !ctx.player().onGround()
-                || ctx.player().isInWater() || ctx.player().onClimbable() || ctx.player().horizontalCollision
-                || !groundShortcut.canContinue(player, velocity,
-                pos -> clearance.computeIfAbsent(pos, p -> clearSmoothingColumn(bsi, p)))) {
+        String stop = shortcutStopReason(player, velocity, pos -> clearance.computeIfAbsent(pos, p -> clearSmoothingColumn(bsi, p)));
+        if (stop != null) {
             // we're between the original waypoints. replan from here instead of backtracking toward
             // a skipped node or handing a diagonal movement a position it cannot execute from.
-            logDebug("Ground shortcut interrupted; recalculating from current position");
+            logDebug("Ground shortcut interrupted (" + stop + "); recalculating from current position");
             cancel();
             return true;
         }
@@ -473,13 +488,16 @@ public class PathExecutor implements IPathExecutor, Helper {
             double yaw = Math.toRadians(actual.getYaw());
             Vec3 projected = player.add(velocity.x * 2.5 - Math.sin(yaw) * 0.5, 0,
                     velocity.z * 2.5 + Math.cos(yaw) * 0.5);
-            forward = GroundShortcut.clearSegment(player, projected,
+            // the line to the far end, and the curve the momentum really takes there (it bulges on a bend)
+            forward = GroundShortcut.clearSegment(player, projected, pos -> clearance.computeIfAbsent(pos, p -> clearSmoothingColumn(bsi, p)))
+                    && GroundShortcut.clearAhead(player, velocity, new Vec3(-Math.sin(yaw), 0, Math.cos(yaw)),
                     pos -> clearance.computeIfAbsent(pos, p -> clearSmoothingColumn(bsi, p)));
         }
         behavior.baritone.getLookBehavior().updateTarget(desired, false);
         behavior.baritone.getInputOverrideHandler().setInputForceState(Input.MOVE_FORWARD, forward);
         steerMask |= STEER_SHORTCUT;
         shortcutDist = player.distanceTo(groundShortcut.target);
+        shortcutAim = groundShortcut.target;
         sprintNextTick = forward && shortcutDist > 1.5
                 && Baritone.settings().allowSprint.value && ctx.player().getFoodData().getFoodLevel() > 6;
         if (!sprintNextTick) {
@@ -1425,5 +1443,10 @@ public class PathExecutor implements IPathExecutor, Helper {
     // NaN when no ground shortcut ticked
     double shortcutDistance() {
         return shortcutDist;
+    }
+
+    // null likewise
+    Vec3 shortcutTarget() {
+        return shortcutAim;
     }
 }

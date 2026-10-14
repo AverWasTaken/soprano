@@ -214,6 +214,40 @@ public class GroundShortcutTest {
         assertFalse(GroundShortcut.clearSegment(from, from, p -> !p.equals(new BlockPos(-2, 64, 0))));
     }
 
+    @Test
+    public void aBendBulgesAwayFromTheStraightLineAndTheCurveSeesWhatTheLineMisses() {
+        // sprinting along +x and turning to +z. the line from here to the far end of the push cuts the inside of the turn
+        Vec3 velocity = new Vec3(0.28, 0, 0);
+        Vec3 look = new Vec3(0, 0, 1);
+        int found = 0;
+        for (double ox = 0.3; ox <= 0.7; ox += 0.05) {
+            for (double oz = 0.3; oz <= 0.7; oz += 0.05) {
+                Vec3 player = new Vec3(10 + ox, 64, 10 + oz);
+                Vec3 end = player.add(velocity.x * 2.5, 0, velocity.z * 2.5 + 0.5);
+                List<Vec3> curve = GroundShortcut.trajectory(player, velocity, look.scale(GroundShortcut.PUSH), 2);
+                for (int x = 8; x <= 14; x++) {
+                    for (int z = 8; z <= 14; z++) {
+                        BlockPos cell = new BlockPos(x, 64, z);
+                        if (GroundShortcut.clearSegment(player, end, p -> !p.equals(cell)) && !GroundShortcut.clearPath(curve, p -> !p.equals(cell))) {
+                            found++;
+                            assertFalse(GroundShortcut.clearAhead(player, velocity, look, p -> !p.equals(cell)));
+                        }
+                    }
+                }
+            }
+        }
+        assertTrue("starts where a cell is touched by the curve and not by the line", found > 0);
+    }
+
+    @Test
+    public void theSlideFromHereMustBeClearEvenWithoutW() {
+        GroundShortcut shortcut = find(staircase(1, 1, false, 8));
+        Vec3 player = new Vec3(2.5, 64, 1.5);
+        Vec3 velocity = new Vec3(0.28, 0, 0);
+        assertNull(shortcut.stopReason(player, Vec3.ZERO, p -> true));
+        assertNotNull(shortcut.stopReason(player, velocity, p -> p.getX() < 4));
+    }
+
     private static GroundShortcut find(List<BetterBlockPos> path) {
         return GroundShortcut.find(path, 0, center(path.get(0)), i -> true, p -> true);
     }

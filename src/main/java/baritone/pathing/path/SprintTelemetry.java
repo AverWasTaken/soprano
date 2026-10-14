@@ -82,6 +82,7 @@ public final class SprintTelemetry implements Helper {
     private int lastIndex, lastLength;
     private String lastMovement = "", lastWhy = "", lastReleased = "", lastSteering = "none";
     private double lastShortcutDist = Double.NaN;
+    private Vec3 lastShortcutTarget, lastPos = Vec3.ZERO, lastVel = Vec3.ZERO;
     private List<? extends IMovement> lastMovements;
 
     // the ascend hop's side of the story, told by whoever asked the sim and whoever pressed space
@@ -181,6 +182,9 @@ public final class SprintTelemetry implements Helper {
         lastReleased = paused ? "behavior pause" : executor.releasedWhy();
         lastSteering = executor.steering();
         lastShortcutDist = executor.shortcutDistance();
+        lastShortcutTarget = executor.shortcutTarget();
+        lastPos = player.position();
+        lastVel = player.getDeltaMovement();
         lastJump = keys.isInputForcedDown(Input.JUMP);
         if (paused || baritone.bsi == null || keys.isInputForcedDown(Input.SNEAK)) {
             return; // nothing of ours is moving the player, or it is a kind of moving the sim does not do
@@ -350,11 +354,12 @@ public final class SprintTelemetry implements Helper {
                 player.input.getMoveVector().y, player.getFoodData().getFoodLevel(),
                 lastWant, lastWhy, lastReleased, lastJump,
                 moveName(lastIndex - 1), moveName(lastIndex), moveName(lastIndex + 1), lastSteering));
-        if (!Double.isNaN(lastShortcutDist)) {
-            line.append(String.format(Locale.ROOT, " shortcutDist=%.2f", lastShortcutDist));
+        if (!Double.isNaN(lastShortcutDist) && lastShortcutTarget != null) {
+            line.append(String.format(Locale.ROOT, " shortcutDist=%.2f shortcutTarget=(%.2f,%.2f)", lastShortcutDist, lastShortcutTarget.x, lastShortcutTarget.z));
         }
         if (player.horizontalCollision || lastHc) {
-            line.append(" collided=").append(collidedWith(player));
+            // where the tick started and how fast it was going, so the swing into the wall can be replayed by hand
+            line.append(String.format(Locale.ROOT, " from=(%.3f,%.3f) vel=(%.3f,%.3f) collided=%s", lastPos.x, lastPos.z, lastVel.x, lastVel.z, collidedWith(player)));
         }
         if (player.tickCount - lastTakeoffTick <= 40) {
             line.append(String.format(Locale.ROOT, " lastTakeoff=%dt ago via=%s sim=%s", player.tickCount - 1 - lastTakeoffTick, lastBranch,

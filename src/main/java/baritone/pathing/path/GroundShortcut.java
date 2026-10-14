@@ -21,7 +21,9 @@ import baritone.api.utils.BetterBlockPos;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.phys.Vec3;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.function.IntPredicate;
 import java.util.function.Predicate;
 
@@ -97,10 +99,26 @@ final class GroundShortcut {
     }
 
     boolean canContinue(Vec3 player, Vec3 velocity, Predicate<BlockPos> clearColumn) {
-        return Math.abs(player.y - target.y) <= 0.05
-                && distanceToSegment(player, start, target) <= 0.6
-                && clearSegment(player, target, clearColumn)
-                && clearSegment(player, coastPosition(player, velocity), clearColumn);
+        return stopReason(player, velocity, clearColumn) == null;
+    }
+
+    // null when the shortcut can go on, else the first thing wrong with it
+    String stopReason(Vec3 player, Vec3 velocity, Predicate<BlockPos> clearColumn) {
+        if (Math.abs(player.y - target.y) > 0.05) {
+            return "not at the height of its target";
+        }
+        double off = distanceToSegment(player, start, target);
+        if (off > 0.6) {
+            return String.format(Locale.ROOT, "%.2f blocks off its line", off);
+        }
+        if (!clearSegment(player, target, clearColumn)) {
+            return "the way to its target is blocked";
+        }
+        if (!clearSegment(player, coastPosition(player, velocity), clearColumn)
+                || !clearPath(trajectory(player, velocity, Vec3.ZERO, 0), clearColumn)) {
+            return "the slide from here is blocked";
+        }
+        return null;
     }
 
     boolean arrived(Vec3 player, Vec3 velocity) {
@@ -118,6 +136,48 @@ final class GroundShortcut {
 
     private static Vec3 coastPosition(Vec3 player, Vec3 velocity) {
         return player.add(velocity.x * COAST_TICKS, 0, velocity.z * COAST_TICKS);
+    }
+
+    // what W is worth on the ground at sprint pace, a tick of acceleration along the look before the move
+    static final double PUSH = 0.1274;
+    // W held for this many more ticks (it is looked at again every tick, so the next one can always let go) and then the slide
+    private static final int HELD_TICKS = 2, TRAJECTORY_TICKS = 12;
+
+    // where the next ticks take the player: `push` is added to the velocity before each of the first `held` moves, the way W does,
+    // and friction takes it down afterward. one point per tick. the old check was one straight line to the far end of this, and
+    // on a bend the real path bulges away from that line (old heading first, new heading after), which is exactly where the
+    // wall corner on the outside of the turn sits
+    static List<Vec3> trajectory(Vec3 from, Vec3 velocity, Vec3 push, int held) {
+        List<Vec3> points = new ArrayList<>(TRAJECTORY_TICKS + 1);
+        points.add(from);
+        Vec3 position = from;
+        Vec3 v = velocity;
+        for (int tick = 0; tick < TRAJECTORY_TICKS; tick++) {
+            if (tick < held) {
+                v = v.add(push);
+            }
+            position = position.add(v.x, 0, v.z);
+            v = v.scale(SprintJump.GROUND_FRICTION);
+            points.add(position);
+        }
+        return points;
+    }
+
+    // true if the player's footprint can go along the whole line of points
+    static boolean clearPath(List<Vec3> points, Predicate<BlockPos> clearColumn) {
+        for (int i = 1; i < points.size(); i++) {
+            if (!clearSegment(points.get(i - 1), points.get(i), HALF_WIDTH, clearColumn)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    // holding W towards `look` (a direction, any length) from here: is the way clear for the next ticks and the slide after them
+    static boolean clearAhead(Vec3 player, Vec3 velocity, Vec3 look, Predicate<BlockPos> clearColumn) {
+        Vec3 flat = new Vec3(look.x, 0, look.z);
+        Vec3 push = flat.lengthSqr() == 0 ? Vec3.ZERO : flat.normalize().scale(PUSH);
+        return clearPath(trajectory(player, velocity, push, HELD_TICKS), clearColumn);
     }
 
     // exact segment-versus-expanded-cell intersections, not a ray or samples that can miss a corner.
