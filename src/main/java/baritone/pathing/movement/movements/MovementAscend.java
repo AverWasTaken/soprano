@@ -27,6 +27,7 @@ import baritone.pathing.movement.Movement;
 import baritone.pathing.movement.MovementHelper;
 import baritone.pathing.movement.MovementState;
 import baritone.pathing.movement.StairSteps;
+import baritone.pathing.path.SprintPolicy;
 import baritone.pathing.sim.AscendHop;
 import baritone.utils.BlockStateInterface;
 import com.google.common.collect.ImmutableSet;
@@ -37,11 +38,12 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.FallingBlock;
 import net.minecraft.world.level.block.StairBlock;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.Vec3;
 
 public class MovementAscend extends Movement {
 
-    // same lane width as PathExecutor's skipNow and SprintJump (SprintPolicy.MAX_SIDE_OFFSET lives in another package)
-    private static final double SPRINT_DRIFT_SIDE_DIST = 0.2, SPRINT_DRIFT_LATERAL = 0.15;
+    // the lateral stall waits out sideways drift, a sprint jump landing has a little of it by itself
+    private static final double SPRINT_DRIFT_LATERAL = 0.15;
 
     private static final int MAX_SIM_WAITS = 8;
 
@@ -241,7 +243,7 @@ public class MovementAscend extends Movement {
         double lateralMotion = xAxis * ctx.player().getDeltaMovement().z + zAxis * ctx.player().getDeltaMovement().x;
         // the stall is for getting going again after a lateral move. a sprint jump landing drifts a little sideways on its own,
         // and waiting that out is a standing start at the foot of the next step. sideDist still has to say we're on the lane
-        boolean sprintDrift = ctx.player().isSprinting() && sideDist <= SPRINT_DRIFT_SIDE_DIST;
+        boolean sprintDrift = ctx.player().isSprinting() && SprintPolicy.centered(sideDist, sideOpen());
         if (Math.abs(lateralMotion) > (sprintDrift ? SPRINT_DRIFT_LATERAL : 0.1)) {
             return state;
         }
@@ -278,6 +280,15 @@ public class MovementAscend extends Movement {
         // This is slightly more efficient because otherwise we might start jumping before moving, and fall down without moving onto the block we want to jump onto
         // Also wait until we are close enough, because we might jump and hit our head on an adjacent block
         return jump(state, "distance rule", hop);
+    }
+
+    // nothing solid in the columns beside the hop on the side we are leaning to, see SprintPolicy.centered
+    private boolean sideOpen() {
+        Vec3 pos = ctx.player().position();
+        double leanX = pos.x - (src.x + 0.5), leanZ = pos.z - (src.z + 0.5);
+        int dirX = Integer.signum(dest.x - src.x), dirZ = Integer.signum(dest.z - src.z);
+        return MovementHelper.sideOpen(ctx, src.x, src.y, src.z, dirX, dirZ, leanX, leanZ)
+                && MovementHelper.sideOpen(ctx, dest.x, dest.y, dest.z, dirX, dirZ, leanX, leanZ);
     }
 
     // space, and a line for the sprint telemetry saying which of the rules above pressed it

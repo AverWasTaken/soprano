@@ -24,7 +24,7 @@ import java.util.function.Predicate;
 
 // every "should we keep sprinting here" answer that is more than straight on, with no world in sight so it can be tested.
 // PathExecutor asks the world questions through Terrain and hands the answers to these
-final class SprintPolicy {
+public final class SprintPolicy {
 
     // vanilla baritone stops sprinting for every descend because the landing is the one place sprint momentum can carry
     // you somewhere you did not plan to be. these are the numbers for "how far, how sideways, how scared"
@@ -33,7 +33,7 @@ final class SprintPolicy {
     static final double DESCEND_MAX_TURN = 45;
     // how far off the lane a hop can start and still go straight. SprintJump.plan, skipNow and MovementAscend's side check
     // all want this one number, when they disagreed the bot sprinted up to a hop and then dropped it for being 0.15 off
-    static final double MAX_SIDE_OFFSET = 0.2;
+    public static final double MAX_SIDE_OFFSET = 0.2;
     // two headings that are the same one, give or take acos
     static final double STRAIGHT_ON = 1;
     static final double CORNER_SHARP_TURN = 90;
@@ -164,8 +164,13 @@ final class SprintPolicy {
         return descendKeepsSprint(careful, turn, true);
     }
 
-    static boolean centered(double sideOffset) {
-        return sideOffset <= MAX_SIDE_OFFSET;
+    // 0.2 off the middle puts the side of the box (0.3 out from its centre) exactly on the cell edge, which with a wall on that
+    // side is zero clearance, and a hair more is a graze that costs the sprint. with a wall there we want a little room
+    public static final double MAX_SIDE_OFFSET_BESIDE_WALL = 0.15;
+
+    // sideOpen: nothing solid in the column next to the lane, on the side we are leaning to, at feet and head height
+    public static boolean centered(double sideOffset, boolean sideOpen) {
+        return sideOffset <= (sideOpen ? MAX_SIDE_OFFSET : MAX_SIDE_OFFSET_BESIDE_WALL);
     }
 
     // true means we keep sprint and steer the corner early. false just means nothing clever happens here, the movements
