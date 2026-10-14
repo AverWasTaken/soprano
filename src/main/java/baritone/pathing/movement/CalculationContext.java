@@ -123,9 +123,11 @@ public class CalculationContext {
     // the two ends of a row: getting the boat out and climbing in, and breaking it and picking it up. see boatHandoff
     private final double boatBoardCost;
     private final double boatExitCost;
-    // boatCell is asked about the same src for every move out of a node, so the last answer is kept
-    private long lastBoatCell = Long.MIN_VALUE;
-    private boolean lastBoatCellAnswer;
+    // boatCell is a few dozen block reads and every move out of a node asks about the same src and a dest that three other
+    // nodes asked about too. direct mapped, and the searching thread's alone like the mining tables (see claimSearchCaches)
+    private static final int BOAT_CACHE_SIZE = 128;
+    private long[] boatKeys;
+    private boolean[] boatAnswers;
     public final double breakBlockAdditionalCost;
     // ticks the bot sits idle after a block that took more than one tick to break, see BlockBreakHelper
     public final double breakIdleTicks;
@@ -344,12 +346,16 @@ public class CalculationContext {
         if (boatWaterSpeed >= waterWalkSpeed) {
             return false;
         }
-        long key = BlockPos.asLong(x, y, z);
-        if (key != lastBoatCell) {
-            lastBoatCell = key;
-            lastBoatCellAnswer = MovementHelper.canFloatBoat(bsi, x, y, z) && boatRowLongEnough(x, y, z);
+        if (Thread.currentThread() != miningOwner || boatKeys == null) {
+            return MovementHelper.canFloatBoat(bsi, x, y, z) && boatRowLongEnough(x, y, z);
         }
-        return lastBoatCellAnswer;
+        long key = BlockPos.asLong(x, y, z);
+        int slot = (int) ((key * 0x9E3779B97F4A7C15L) >>> 57);
+        if (boatKeys[slot] != key) {
+            boatKeys[slot] = key;
+            boatAnswers[slot] = MovementHelper.canFloatBoat(bsi, x, y, z) && boatRowLongEnough(x, y, z);
+        }
+        return boatAnswers[slot];
     }
 
     // what a move pays for stepping onto or off of a row. the rate per block says nothing about the place and mount at one end
@@ -474,6 +480,9 @@ public class CalculationContext {
         miningKeysFalling = miningBuffers.fallingKeys;
         miningVals = miningBuffers.values;
         miningValsFalling = miningBuffers.fallingValues;
+        boatKeys = new long[BOAT_CACHE_SIZE];
+        java.util.Arrays.fill(boatKeys, Long.MIN_VALUE);
+        boatAnswers = new boolean[BOAT_CACHE_SIZE];
         miningOwner = Thread.currentThread();
         bsi.claimCache();
     }
@@ -483,6 +492,8 @@ public class CalculationContext {
             return;
         }
         miningOwner = null;
+        boatKeys = null;
+        boatAnswers = null;
         miningKeys = null;
         miningKeysFalling = null;
         miningVals = null;

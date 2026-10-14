@@ -1138,7 +1138,8 @@ public final class Settings {
     /**
      * Same idea as {@link #boatBoardCost} for the other end of a row: breaking the boat and waiting for the item to
      * come back to us, in ticks. Slower than boarding because the boat takes five hits to break and the dropped item
-     * can't be picked up right away.
+     * can't be picked up right away. Charged with {@link #boatPickup} off too: leaving the boat behind for good is no
+     * cheaper a thing to plan on.
      */
     public final Setting<Double> boatExitCost = new Setting<>(30D);
 
