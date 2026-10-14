@@ -34,6 +34,8 @@ import baritone.pathing.movement.CalculationContext;
 import baritone.pathing.movement.MovementHelper;
 import baritone.pathing.movement.SwimStalls;
 import baritone.pathing.path.PathExecutor;
+import baritone.pathing.path.SprintTelemetry;
+import baritone.utils.ExperimentalMovement;
 import baritone.utils.PathRenderer;
 import baritone.utils.PathingCommandContext;
 import baritone.utils.pathing.Favoring;
@@ -94,8 +96,11 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
     private record SearchKey(BetterBlockPos start, Goal goal) {
     }
 
+    private final SprintTelemetry sprintTelemetry;
+
     public PathingBehavior(Baritone baritone) {
         super(baritone);
+        this.sprintTelemetry = new SprintTelemetry(baritone);
     }
 
     public SwimStalls swimStalls() {
@@ -128,8 +133,17 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
         }
 
         expectedSegmentStart = pathStart();
+        boolean telemetry = ExperimentalMovement.sprintTelemetry();
+        if (telemetry) {
+            sprintTelemetry.begin(current != null);
+        } else {
+            sprintTelemetry.off();
+        }
         baritone.getPathingControlManager().preTick();
         tickPath();
+        if (telemetry) {
+            sprintTelemetry.end(current, pausedThisTick);
+        }
         ticksElapsedSoFar++;
         dispatchEvents();
     }

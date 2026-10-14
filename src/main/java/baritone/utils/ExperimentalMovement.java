@@ -78,6 +78,11 @@ public final class ExperimentalMovement {
         return on() || Baritone.settings().sprintJumping.value;
     }
 
+    // a log, not a movement: the fast preset is for moving like a speedrunner, it should not also spam the console
+    public static boolean sprintTelemetry() {
+        return Baritone.settings().sprintTelemetry.value;
+    }
+
     public static boolean headHitters() {
         return on() || Baritone.settings().headHitters.value;
     }
