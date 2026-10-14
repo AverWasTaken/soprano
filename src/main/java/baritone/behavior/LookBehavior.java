@@ -54,6 +54,9 @@ public final class LookBehavior extends Behavior implements ILookBehavior {
 
     private final AimProcessor processor;
 
+    private float moveYaw;
+    private int moveCount;
+
     private final Deque<Float> smoothYawBuffer;
     private final Deque<Float> smoothPitchBuffer;
 
@@ -174,6 +177,17 @@ public final class LookBehavior extends Behavior implements ILookBehavior {
             event.setYaw(actual.getYaw());
             event.setPitch(actual.getPitch());
         }
+        this.moveYaw = event.getYaw();
+        this.moveCount++;
+    }
+
+    // the yaw moveRelative really used last time, and how many times it has run. SprintTelemetry replays the tick with them
+    public float lastMoveYaw() {
+        return moveYaw;
+    }
+
+    public int moveCount() {
+        return moveCount;
     }
 
     private static final class AimProcessor extends AbstractAimProcessor {

@@ -88,6 +88,13 @@ public class PathExecutor implements IPathExecutor, Helper {
     private final IPlayerContext ctx;
 
     private boolean sprintNextTick;
+    // a skip hands the tick to the next movement's frame, which settles sprint for it. see handOff
+    private int depth;
+    private boolean handedOff;
+    private boolean handedOffResult;
+    // only the sprint telemetry reads these: why shouldSprintNextTick said no this tick, and what let go of the keys
+    private String sprintWhy = "";
+    private String releasedWhy = "";
     // see carefulSprint
     private int carefulAt = -1;
     private boolean carefulLava;
@@ -118,6 +125,18 @@ public class PathExecutor implements IPathExecutor, Helper {
      * not sneaking out over lava), false otherwise
      */
     public boolean onTick() {
+        if (depth++ == 0) {
+            sprintWhy = "";
+            releasedWhy = "";
+        }
+        try {
+            return tick();
+        } finally {
+            depth--;
+        }
+    }
+
+    private boolean tick() {
         if (flight != null && fly()) {
             return false; // mid air is not a stable state, no matter what the movement we left behind thinks
         }
@@ -256,7 +275,7 @@ public class PathExecutor implements IPathExecutor, Helper {
             IMovement next = path.movements().get(pathPosition + 1);
             if (!behavior.baritone.bsi.worldContainsLoadedChunk(next.getDest().x, next.getDest().z)) {
                 logDebug("Pausing since destination is at edge of loaded chunks");
-                clearKeys();
+                pauseKeys("chunk edge");
                 return true;
             }
         }
@@ -288,7 +307,7 @@ public class PathExecutor implements IPathExecutor, Helper {
         }
         if (shouldPause()) {
             logDebug("Pausing since current best path is a backtrack");
-            clearKeys();
+            pauseKeys("best path is a backtrack");
             return true;
         }
         if (ticksOnCurrent == 0) {
@@ -315,7 +334,14 @@ public class PathExecutor implements IPathExecutor, Helper {
                 smoothSteering(movement, bsi);
                 cornerSteering(movement, bsi);
             }
-            sprintNextTick = shouldSprintNextTick();
+            handedOff = false;
+            boolean sprint = shouldSprintNextTick();
+            if (handedOff) {
+                // a skip gave the tick to the next movement's frame. that frame set sprint for the tick, ran the movement timer
+                // and counted the tick on its own, and when we wrote our answer over its answer vanilla and the flag disagreed
+                return handedOffResult;
+            }
+            sprintNextTick = sprint;
             timer.afterSprint(movement);
             if (!sprintNextTick) {
                 ctx.player().setSprinting(false); // letting go of control doesn't make you stop sprinting actually
@@ -574,7 +600,7 @@ public class PathExecutor implements IPathExecutor, Helper {
         // same thing CalculationContext.canSprint works out. this used to build a whole context every tick to read it,
         // which means a chunk provider, a ToolSet, an inventory scan and two enchantment scans for one boolean
         if (!Baritone.settings().allowSprint.value || ctx.player().getFoodData().getFoodLevel() <= 6) {
-            return false;
+            return no("allowSprint off or food");
         }
         IMovement current = path.movements().get(pathPosition);
 
@@ -592,9 +618,9 @@ public class PathExecutor implements IPathExecutor, Helper {
                     logDebug("Skipping traverse to straight ascend");
                     pathPosition++;
                     onChangeInPathPosition();
-                    onTick();
+                    boolean sprint = handOff();
                     behavior.baritone.getInputOverrideHandler().setInputForceState(Input.JUMP, true);
-                    return true;
+                    return sprint;
                 } else {
                     logDebug("Too far to the side to safely sprint ascend");
                 }
@@ -634,7 +660,7 @@ public class PathExecutor implements IPathExecutor, Helper {
             }
             if (((MovementDescend) current).safeMode() && !((MovementDescend) current).skipToAscend()) {
                 logDebug("Sprinting would be unsafe");
-                return false;
+                return no("descend safe mode");
             }
 
             if (pathPosition < path.length() - 2) {
@@ -643,24 +669,23 @@ public class PathExecutor implements IPathExecutor, Helper {
                     // a descend then an ascend in the same direction
                     pathPosition++;
                     onChangeInPathPosition();
-                    onTick();
                     // okay to skip clearKeys and / or onChangeInPathPosition here since this isn't possible to repeat, since it's asymmetric
                     logDebug("Skipping descend to straight ascend");
-                    return true;
+                    return handOff();
                 }
                 if (canSprintFromDescendInto(ctx, current, next) || sprintsPastLanding(current, next, 1)) {
 
                     if (next instanceof MovementDescend && pathPosition < path.length() - 3) {
                         IMovement next_next = path.movements().get(pathPosition + 2);
                         if (next_next instanceof MovementDescend && !canSprintFromDescendInto(ctx, next, next_next)) {
-                            return false;
+                            return no("descend chain ends unsafe");
                         }
 
                     }
                     if (ctx.playerFeet().equals(current.getDest())) {
                         pathPosition++;
                         onChangeInPathPosition();
-                        onTick();
+                        return handOff();
                     }
 
                     return true;
@@ -704,8 +729,7 @@ public class PathExecutor implements IPathExecutor, Helper {
                 if (ctx.playerFeet().equals(fallDest)) {
                     pathPosition = path.positions().indexOf(fallDest);
                     onChangeInPathPosition();
-                    onTick();
-                    return true;
+                    return handOff();
                 }
                 clearKeys();
                 // we are not ticking the movement, so we gotta do this ourselves
@@ -725,9 +749,33 @@ public class PathExecutor implements IPathExecutor, Helper {
                 return true;
             }
             // overrideFall only knows straight traverses, this is every other way the path can carry on from the landing
-            return sprintsThroughFall((MovementFall) current);
+            return sprintsThroughFall((MovementFall) current) || no("fall does not sprint on");
         }
+        return no("movement does not sprint " + current.getClass().getSimpleName());
+    }
+
+    // shouldSprintNextTick's answer when it is no, with the reason for the sprint telemetry to quote
+    private boolean no(String why) {
+        sprintWhy = why;
         return false;
+    }
+
+    // a skip hands the tick to the next movement: its frame runs update() and settles sprint, so what it left in sprintNextTick
+    // is the answer and the frame that skipped has to keep its hands off. before this the outer frame wrote its own answer over
+    // it, and the nested one had already let go of the sprint flag (ticksOnCurrent was counted twice for the same reason)
+    private boolean handOff() {
+        handedOffResult = onTick();
+        handedOff = true; // after the call, the frame we just ran resets this for its own sake
+        return sprintNextTick;
+    }
+
+    // a pause is every key let go of at once. with no forward impulse vanilla drops the sprint in aiStep anyway, so don't leave
+    // the flag claiming it is still going to be sprinting
+    private void pauseKeys(String why) {
+        clearKeys();
+        releasedWhy = why;
+        sprintNextTick = false;
+        ctx.player().setSprinting(false);
     }
 
     // a stair we just walk up (MovementAscend doesn't jump for it either) takes no jump to sprint through, so a whole flight
@@ -1307,5 +1355,14 @@ public class PathExecutor implements IPathExecutor, Helper {
 
     public boolean isSprinting() {
         return sprintNextTick;
+    }
+
+    // for SprintTelemetry. empty unless this tick had a reason
+    String sprintWhy() {
+        return sprintWhy;
+    }
+
+    String releasedWhy() {
+        return releasedWhy;
     }
 }
