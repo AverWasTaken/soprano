@@ -33,8 +33,13 @@ import baritone.pathing.movement.MovementHelper;
 import baritone.pathing.movement.MovementState;
 import baritone.pathing.movement.StairSteps;
 import baritone.pathing.movement.movements.*;
+import baritone.pathing.sim.AscendGuard;
 import baritone.pathing.sim.AscendHop;
+import baritone.pathing.sim.LiveSim;
+import baritone.pathing.sim.PlayerSim;
+import baritone.pathing.sim.WorldCollision;
 import baritone.utils.BlockStateInterface;
+import baritone.utils.InputOverrideHandler;
 import baritone.utils.ExperimentalMovement;
 import baritone.utils.ToolSet;
 import net.minecraft.core.BlockPos;
@@ -96,6 +101,9 @@ public class PathExecutor implements IPathExecutor, Helper {
     // ticks the traverse before an ascend has held off the hop for the sim, see AscendHop
     private static final int MAX_HOP_WAITS = 8;
     private int hopWaits;
+    // ticks AscendGuard has taken keys away on this movement. if the sim keeps saying no the movement gets its keys back
+    private static final int MAX_GUARD_TICKS = 16;
+    private int guardTicks;
     // only the sprint telemetry reads these: why shouldSprintNextTick said no this tick, and what let go of the keys
     private String sprintWhy = "";
     private String releasedWhy = "";
@@ -142,10 +150,59 @@ public class PathExecutor implements IPathExecutor, Helper {
             shortcutAim = null;
         }
         try {
-            return tick();
+            boolean done = tick();
+            if (depth == 1) {
+                guardAscend(); // after every skip and hand off has had its say, the keys that go out are the ones to check
+            }
+            return done;
         } finally {
             depth--;
         }
+    }
+
+    // a hop up a step is checked against the sim one more time, with the keys exactly as they are about to be sent: if holding
+    // them would run into the face of the step, W (and space) are let go of for this tick. see AscendGuard
+    private void guardAscend() {
+        if (!Baritone.settings().guardAscends.value || flight != null || groundShortcut != null || boat != null
+                || pathPosition >= path.movements().size() || guardTicks >= MAX_GUARD_TICKS || behavior.baritone.bsi == null) {
+            return;
+        }
+        IMovement current = path.movements().get(pathPosition);
+        if (!(current instanceof MovementAscend)) {
+            return;
+        }
+        InputOverrideHandler keys = behavior.baritone.getInputOverrideHandler();
+        boolean forward = keys.isInputForcedDown(Input.MOVE_FORWARD), jump = keys.isInputForcedDown(Input.JUMP);
+        if (!forward && !jump) {
+            return; // nothing to take away
+        }
+        for (Input precise : PRECISE_STEERING_INPUTS) {
+            if (precise != Input.JUMP && keys.isInputForcedDown(precise)) {
+                return; // somebody is breaking, placing, sneaking or strafing: not our kind of hop
+            }
+        }
+        BetterBlockPos src = current.getSrc(), dest = current.getDest();
+        if (StairSteps.walkUp(ctx.world().getBlockState(dest.below()), src, dest, ctx.world().getBlockState(src.below()), ctx.world())
+                || MovementHelper.isBottomSlab(ctx.world().getBlockState(dest.below())) || MovementHelper.isBottomSlab(ctx.world().getBlockState(src.below()))) {
+            return; // no jump to guard, the lip is stepped up
+        }
+        PlayerSim sim = LiveSim.of(ctx.player(), new WorldCollision(behavior.baritone.bsi));
+        if (sim == null) {
+            return;
+        }
+        float yaw = RotationUtils.calcRotationFromVec3d(ctx.playerHead(), new Vec3(dest.x + 0.5, dest.y, dest.z + 0.5), ctx.playerRotations()).getYaw();
+        PlayerSim.Controls wanted = new PlayerSim.Controls(forward ? 1 : 0, 0, jump, sprintNextTick, yaw, ctx.player().getYRot());
+        AscendGuard.Move move = AscendGuard.decide(sim, wanted, dest.y);
+        if (move == AscendGuard.Move.AS_WANTED) {
+            return;
+        }
+        guardTicks++;
+        releasedWhy = "ascend guard";
+        keys.setInputForceState(Input.MOVE_FORWARD, false);
+        if (move == AscendGuard.Move.STAND_STILL) {
+            keys.setInputForceState(Input.JUMP, false);
+        }
+        behavior.sprintTelemetry().guarded(move);
     }
 
     private boolean tick() {
@@ -1266,6 +1323,7 @@ public class PathExecutor implements IPathExecutor, Helper {
         clearKeys();
         ticksOnCurrent = 0;
         hopWaits = 0;
+        guardTicks = 0;
     }
 
     private void clearKeys() {

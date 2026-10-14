@@ -24,6 +24,7 @@ import baritone.api.utils.Helper;
 import baritone.api.utils.IPlayerContext;
 import baritone.api.utils.input.Input;
 import baritone.behavior.LookBehavior;
+import baritone.pathing.sim.AscendGuard;
 import baritone.pathing.sim.AscendHop;
 import baritone.pathing.sim.LiveSim;
 import baritone.pathing.sim.PlayerSim;
@@ -90,7 +91,7 @@ public final class SprintTelemetry implements Helper {
     private int lastVerdictTick = -1000;
     private String lastBranch = "";
     private AscendHop.Verdict lastBranchVerdict;
-    private int lastTakeoffTick = -1000, takeoffs, clipped;
+    private int lastTakeoffTick = -1000, takeoffs, clipped, guardedForward, guardedStill;
 
     // the drop sprint has not come back from yet, and for how long the ones that did come back were gone
     private int openDropTick = -1;
@@ -237,6 +238,19 @@ public final class SprintTelemetry implements Helper {
         }
         emit(String.format(Locale.ROOT, "takeoff tick=%d (%d,%d,%d)->(%d,%d,%d) via=%s sim=%s sprinting=%s %s",
                 player.tickCount, src.x, src.y, src.z, dest.x, dest.y, dest.z, branch, verdict == null ? "not asked" : verdict, player.isSprinting(), where));
+    }
+
+    /**
+     * AscendGuard took keys away from a hop this tick
+     */
+    public void guarded(AscendGuard.Move move) {
+        if (ExperimentalMovement.sprintTelemetry()) {
+            if (move == AscendGuard.Move.NO_FORWARD) {
+                guardedForward++;
+            } else {
+                guardedStill++;
+            }
+        }
     }
 
     // run aiStep of the tick that just finished on the snapshot and hold the result against the player
@@ -432,8 +446,9 @@ public final class SprintTelemetry implements Helper {
             }
             emit(hist + ", not back before the path ended: " + stillOff + ". by cause: " + table(byCause) + ". by movement: " + table(byMovement));
         }
-        if (takeoffs > 0) {
-            emit(takeoffs + " ascend takeoffs, " + clipped + " of them clipped the step (a wall drop within " + CLIP_WINDOW + " ticks)");
+        if (takeoffs > 0 || guardedForward + guardedStill > 0) {
+            emit(takeoffs + " ascend takeoffs, " + clipped + " of them clipped the step (a wall drop within " + CLIP_WINDOW + " ticks). ascend guard took W away on "
+                    + guardedForward + " ticks and W and space on " + guardedStill);
         }
         pathTicks = 0;
         sprintTicks = 0;
@@ -446,6 +461,8 @@ public final class SprintTelemetry implements Helper {
         unsupported = 0;
         takeoffs = 0;
         clipped = 0;
+        guardedForward = 0;
+        guardedStill = 0;
         stillOff = 0;
         Arrays.fill(resumeHist, 0);
         byCause.clear();
