@@ -272,7 +272,9 @@ public final class PlayerSim {
         return null;
     }
 
-    // getBlockSpeedFactor looks at the cell we are in and the one getOnPos(0.500001F) gives
+    // getBlockSpeedFactor looks at the cell we are in and the one getOnPos(0.500001F) gives. that one is the supporting block
+    // when grounded, which can be under a corner of the box instead of the middle, so this only checks the middle and a tick
+    // that lands on the edge of soul sand is caught by the next tick's unsupported() instead
     private String endedSomewhereOdd() {
         int bx = Mth.floor(x), bz = Mth.floor(z);
         if (!world.plain(bx, Mth.floor(y), bz) || !world.plain(bx, Mth.floor(y - 0.500001), bz)) {
