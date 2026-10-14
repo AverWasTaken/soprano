@@ -22,6 +22,7 @@ import baritone.altoclef.AltoClefSettings;
 import baritone.api.IBaritone;
 import baritone.api.pathing.movement.ActionCosts;
 import baritone.cache.WorldData;
+import baritone.pathing.path.PathExecutor;
 import baritone.pathing.precompute.PrecomputedData;
 import baritone.utils.ExperimentalMovement;
 import baritone.utils.BlockStateInterface;
@@ -36,6 +37,7 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.entity.vehicle.boat.AbstractBoat;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.BoatItem;
 import net.minecraft.world.item.ItemStack;
@@ -114,6 +116,12 @@ public class CalculationContext {
     public final double boatWaterSpeed;
     // BoatTrip won't get the boat out for a shorter row of water than this, so the planner doesn't price one either
     private final int boatMinWater;
+    // the two ends of a row: getting the boat out and climbing in, and breaking it and picking it up. see boatHandoff
+    private final double boatBoardCost;
+    private final double boatExitCost;
+    // boatCell is asked about the same src for every move out of a node, so the last answer is kept
+    private long lastBoatCell = Long.MIN_VALUE;
+    private boolean lastBoatCellAnswer;
     public final double breakBlockAdditionalCost;
     // ticks the bot sits idle after a block that took more than one tick to break, see BlockBreakHelper
     public final double breakIdleTicks;
@@ -175,7 +183,7 @@ public class CalculationContext {
                 soulSpeedLevel(baritone.getPlayerContext().player()),
                 waterSpeedMultiplier(baritone.getPlayerContext().player()),
                 baritone.getPlayerContext().player().getHealth() + baritone.getPlayerContext().player().getAbsorptionAmount(),
-                hasBoat(baritone.getPlayerContext().player())
+                hasBoat(baritone, baritone.getPlayerContext().player())
         );
     }
 
@@ -263,6 +271,8 @@ public class CalculationContext {
         double boatSpeed = Math.max(ActionCosts.BOAT_ONE_BLOCK_COST, Baritone.settings().costHeuristic.value);
         this.boatWaterSpeed = ExperimentalMovement.allowBoats() && hasBoat ? Math.min(waterSpeed, boatSpeed) : waterSpeed;
         this.boatMinWater = Baritone.settings().boatMinWaterLength.value;
+        this.boatBoardCost = Baritone.settings().boatBoardCost.value;
+        this.boatExitCost = Baritone.settings().boatExitCost.value;
         this.breakBlockAdditionalCost = Baritone.settings().blockBreakAdditionalPenalty.value;
         this.breakIdleTicks = Math.max(0, Baritone.settings().blockBreakSpeed.value - 1);
         this.waterBreakCostMultiplier = Baritone.settings().waterBreakCostMultiplier.value;
@@ -307,7 +317,35 @@ public class CalculationContext {
         if (boatWaterSpeed >= waterWalkSpeed) {
             return waterWalkSpeed; // no boat, don't go reading nine blocks for nothing
         }
-        return MovementHelper.canFloatBoat(bsi, x, y, z) && boatRowLongEnough(x, y, z) ? boatWaterSpeed : waterWalkSpeed;
+        return boatCell(x, y, z) ? boatWaterSpeed : waterWalkSpeed;
+    }
+
+    // whether waterCost prices this cell as a row. only ever true when there's a boat to row
+    public boolean boatCell(int x, int y, int z) {
+        if (boatWaterSpeed >= waterWalkSpeed) {
+            return false;
+        }
+        long key = BlockPos.asLong(x, y, z);
+        if (key != lastBoatCell) {
+            lastBoatCell = key;
+            lastBoatCellAnswer = MovementHelper.canFloatBoat(bsi, x, y, z) && boatRowLongEnough(x, y, z);
+        }
+        return lastBoatCellAnswer;
+    }
+
+    // what a move pays for stepping onto or off of a row. the rate per block says nothing about the place and mount at one end
+    // and the scuttle and pickup at the other, which A* otherwise gets for free: a 5 block island to walk over was cheaper than
+    // any lap round it past about 6 blocks of water. landing in the row is a board, leaving it is an exit, row to row is free
+    public double boatHandoff(int x, int y, int z, int destX, int destY, int destZ) {
+        if (boatWaterSpeed >= waterWalkSpeed) {
+            return 0; // no boat, and no reading nine blocks for nothing
+        }
+        boolean from = boatCell(x, y, z);
+        boolean to = boatCell(destX, destY, destZ);
+        if (from == to) {
+            return 0;
+        }
+        return to ? boatBoardCost : boatExitCost;
     }
 
     // BoatTrip.plan wades a run shorter than boatMinWaterLength instead of getting the boat out, so a pond must not be priced
@@ -329,7 +367,16 @@ public class CalculationContext {
         return run;
     }
 
-    private static boolean hasBoat(LocalPlayer player) {
+    // a boat in the bag, or one we're sitting in, or a trip between placing one and boarding it. without the last two a
+    // replan from the middle of a crossing priced the lake as wading and the shore looked great
+    private static boolean hasBoat(IBaritone baritone, LocalPlayer player) {
+        if (player.getVehicle() instanceof AbstractBoat) {
+            return true;
+        }
+        PathExecutor current = ((Baritone) baritone).getPathingBehavior().getCurrent();
+        if (current != null && current.boatTripActive()) {
+            return true;
+        }
         for (ItemStack stack : player.getInventory().getNonEquipmentItems()) {
             if (stack.getItem() instanceof BoatItem) {
                 return true;

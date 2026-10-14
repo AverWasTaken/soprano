@@ -100,7 +100,7 @@ All off by default unless it says otherwise.
 - `fallDamageCost` (what a half heart of fall damage costs the planner, in ticks, while `fastMode` is on), `experimentalJumpBias` (how much cheaper jumps look than walking, 0.9 by default) and `experimentalBlockPlacementPenalty` (the most a block placement is allowed to cost)
 - `allowGroundShortcuts` (take direct lines across bends in flat walking paths, with full-width clearance and floor checks every tick)
 - `preferFasterPathing` (smoother steering along clear straight runs and fewer awkward corner-edging diagonals)
-- `allowBoats` (place a boat from the inventory, row it across the water, and take it with you on the other side. `boatMinWaterLength` says how much water is worth it, and the planner only prices a lake as a boat ride when it has a row that long, `colorBoatPath` paints those stretches of the path)
+- `allowBoats` (place a boat from the inventory, row it across the water, and take it with you on the other side. `boatMinWaterLength` says how much water is worth it, and the planner only prices a lake as a boat ride when it has a row that long, `colorBoatPath` paints those stretches of the path. `boatBoardCost` and `boatExitCost` are what getting in and out of the boat cost the planner in ticks, raise them to row round islands instead of hopping out to walk over them)
 - `allowSwimming` (sprint swim along the waterline, head out and body in, instead of bobbing through water)
 - `headHitters` (sprint jump head bonks in 1x2 tunnels, slightly faster than plain sprinting)
 - `headHittersDiagonal` (on by default, allows diagonal head bonks when `headHitters` is enabled)

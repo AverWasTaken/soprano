@@ -135,7 +135,7 @@ public class MovementDescend extends Movement {
         res.x = destX;
         res.y = y - 1;
         res.z = destZ;
-        res.cost = totalCost;
+        res.cost = totalCost + context.boatHandoff(x, y, z, destX, y - 1, destZ);
     }
 
     public static boolean dynamicFallCost(CalculationContext context, int x, int y, int z, int destX, int destZ, double frontBreak, BlockState below, MutableMoveResult res) {
@@ -197,6 +197,7 @@ public class MovementDescend extends Movement {
                 res.y = newY;
                 res.z = destZ;
                 res.cost = splashCost;// TODO incorporate water swim up cost?
+                res.cost += context.boatHandoff(x, y, z, destX, newY, destZ);
                 return false;
             }
             if (reachedMinimum && context.allowFallIntoLava && MovementHelper.isLava(ontoBlock)) {
