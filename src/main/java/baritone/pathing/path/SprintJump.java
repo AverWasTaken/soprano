@@ -79,7 +79,7 @@ final class SprintJump {
         boolean diagonal = dir.getX() != 0 && dir.getZ() != 0;
         // the sim knows nothing about potions or modded physics, and jump boost off a hill is how you break your legs.
         // the head tops out at y + 3.05, so y + 3 has to be clear. a ceiling at y + 2 is a head hitter, not ours
-        if (!player.onGround() || !player.isSprinting() || player.isInWater() || player.isInLava() || player.onClimbable()
+        if (!player.onGround() || !sprintsOnJumpTick(player) || player.isInWater() || player.isInLava() || player.onClimbable()
                 || !ctx.playerFeet().equals(start) || Math.abs(player.getY() - start.y) > 1e-3
                 || diagonal && !Baritone.settings().sprintJumpingDiagonals.value
                 || player.hasEffect(MobEffects.JUMP) || player.hasEffect(MobEffects.SLOW_FALLING) || player.hasEffect(MobEffects.LEVITATION)
@@ -140,6 +140,17 @@ final class SprintJump {
         }
         jump.target = target;
         return jump;
+    }
+
+    // asking "is the player sprinting" was the wrong question. 26.3 starts a sprint inside aiStep whenever the key is down and forward
+    // is held, on the ground or off it, and all a sprint jump wants is the flag up on the tick jumpFromGround runs. so a plan
+    // that said no one tick ago (and made the executor let go of the key) could never say yes again until some other movement
+    // re-armed the flag. this asks what aiStep will make of it this tick instead (LocalPlayer.canStartSprinting and
+    // shouldStopRunSprinting), and not at all with the food or the setting off
+    static boolean sprintsOnJumpTick(Player player) {
+        return Baritone.settings().allowSprint.value && player.getFoodData().getFoodLevel() > 6
+                && !(player.horizontalCollision && !player.minorHorizontalCollision)
+                && !player.hasEffect(MobEffects.BLINDNESS) && !player.isCrouching() && !player.isUsingItem() && !player.isFallFlying();
     }
 
     // a flat parkour over a 1 or 2 block gap: the two the walking approach used to take at walk speed. 4 gaps already sprint
