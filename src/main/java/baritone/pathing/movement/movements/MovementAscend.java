@@ -27,6 +27,7 @@ import baritone.pathing.movement.Movement;
 import baritone.pathing.movement.MovementHelper;
 import baritone.pathing.movement.MovementState;
 import baritone.pathing.movement.StairSteps;
+import baritone.pathing.sim.AscendHop;
 import baritone.utils.BlockStateInterface;
 import com.google.common.collect.ImmutableSet;
 import java.util.Set;
@@ -42,7 +43,10 @@ public class MovementAscend extends Movement {
     // same lane width as PathExecutor's skipNow and SprintJump (SprintPolicy.MAX_SIDE_OFFSET lives in another package)
     private static final double SPRINT_DRIFT_SIDE_DIST = 0.2, SPRINT_DRIFT_LATERAL = 0.15;
 
+    private static final int MAX_SIM_WAITS = 8;
+
     private int ticksWithoutPlacement = 0;
+    private int simWaits = 0;
 
     public MovementAscend(IBaritone baritone, BetterBlockPos src, BetterBlockPos dest) {
         super(baritone, src, dest, new BetterBlockPos[]{dest, src.above(2), dest.above()}, dest.below());
@@ -52,6 +56,7 @@ public class MovementAscend extends Movement {
     public void reset() {
         super.reset();
         ticksWithoutPlacement = 0;
+        simWaits = 0;
     }
 
     @Override
@@ -239,6 +244,23 @@ public class MovementAscend extends Movement {
         boolean sprintDrift = ctx.player().isSprinting() && sideDist <= SPRINT_DRIFT_SIDE_DIST;
         if (Math.abs(lateralMotion) > (sprintDrift ? SPRINT_DRIFT_LATERAL : 0.1)) {
             return state;
+        }
+
+        // at sprint speed the hop clips the face if it starts too close and comes down against it if it starts too far back, and
+        // the two rules below don't know that. the sim does, so when it has an answer it gets the say
+        if (ctx.player().isSprinting() && baritone instanceof Baritone) {
+            switch (AscendHop.decide(ctx, ((Baritone) baritone).bsi, src, dest)) {
+                case JUMP:
+                    return state.setInput(Input.JUMP, true);
+                case WAIT:
+                    // a few ticks at most, if the window never shows up (stuck on something the sim can't see) the old rules take over
+                    if (simWaits++ < MAX_SIM_WAITS) {
+                        return state;
+                    }
+                    break;
+                default:
+                    break;
+            }
         }
 
         if (headBonkClear()) {
