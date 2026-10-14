@@ -98,6 +98,10 @@ public class PathExecutor implements IPathExecutor, Helper {
     // only the sprint telemetry reads these: why shouldSprintNextTick said no this tick, and what let go of the keys
     private String sprintWhy = "";
     private String releasedWhy = "";
+    // ...and who had a hand on the steering (STEER_*), and how far a ground shortcut was from its target
+    private static final int STEER_SMOOTH = 1, STEER_CORNER = 2, STEER_JUMP = 4, STEER_SHORTCUT = 8;
+    private int steerMask;
+    private double shortcutDist = Double.NaN;
     // see carefulSprint
     private int carefulAt = -1;
     private boolean carefulLava;
@@ -131,6 +135,8 @@ public class PathExecutor implements IPathExecutor, Helper {
         if (depth++ == 0) {
             sprintWhy = "";
             releasedWhy = "";
+            steerMask = 0;
+            shortcutDist = Double.NaN;
         }
         try {
             return tick();
@@ -141,6 +147,7 @@ public class PathExecutor implements IPathExecutor, Helper {
 
     private boolean tick() {
         if (flight != null && fly()) {
+            steerMask |= STEER_JUMP;
             return false; // mid air is not a stable state, no matter what the movement we left behind thinks
         }
         if (pathPosition == path.length() - 1) {
@@ -372,6 +379,7 @@ public class PathExecutor implements IPathExecutor, Helper {
             return next instanceof MovementTraverse || next instanceof MovementDiagonal;
         }, pos -> clearSmoothingColumn(bsi, pos));
         if (target != null) {
+            steerMask |= STEER_SMOOTH;
             behavior.baritone.getLookBehavior().updateTarget(
                     RotationUtils.calcRotationFromVec3d(ctx.playerHead(), target, ctx.playerRotations())
                             .withPitch(ctx.playerRotations().getPitch()), false);
@@ -470,9 +478,12 @@ public class PathExecutor implements IPathExecutor, Helper {
         }
         behavior.baritone.getLookBehavior().updateTarget(desired, false);
         behavior.baritone.getInputOverrideHandler().setInputForceState(Input.MOVE_FORWARD, forward);
-        sprintNextTick = forward && player.distanceTo(groundShortcut.target) > 1.5
+        steerMask |= STEER_SHORTCUT;
+        shortcutDist = player.distanceTo(groundShortcut.target);
+        sprintNextTick = forward && shortcutDist > 1.5
                 && Baritone.settings().allowSprint.value && ctx.player().getFoodData().getFoodLevel() > 6;
         if (!sprintNextTick) {
+            sprintWhy = !forward ? "ground shortcut, no forward" : shortcutDist <= 1.5 ? "ground shortcut, near its target" : "allowSprint off or food";
             ctx.player().setSprinting(false);
         }
         return true; // all ground under our footprint was verified this tick, so pausing is safe
@@ -609,6 +620,7 @@ public class PathExecutor implements IPathExecutor, Helper {
 
         if (ExperimentalMovement.sprintJumping() && !behavior.baritone.getInputOverrideHandler().isInputForcedDown(Input.SNEAK)
                 && (flight = SprintJump.plan(ctx, path, pathPosition)) != null) {
+            steerMask |= STEER_JUMP;
             steer(true);
             return true;
         }
@@ -623,9 +635,12 @@ public class PathExecutor implements IPathExecutor, Helper {
                         ? AscendHop.decide(ctx, behavior.baritone.bsi, next.getSrc(), next.getDest()) : AscendHop.Verdict.UNKNOWN;
                 // (a few ticks of waiting at most, in case the window never shows up)
                 boolean waiting = hop == AscendHop.Verdict.WAIT && hopWaits++ < MAX_HOP_WAITS;
+                behavior.sprintTelemetry().verdict(hop);
                 if (!waiting) {
                     if (hop == AscendHop.Verdict.JUMP ? onLane(ctx, current) : skipNow(ctx, current)) {
                         logDebug("Skipping traverse to straight ascend");
+                        behavior.sprintTelemetry().takeoff(hop == AscendHop.Verdict.JUMP ? "skip, sim JUMP" : "skip, skipNow", hop,
+                                next.getSrc(), next.getDest());
                         pathPosition++;
                         onChangeInPathPosition();
                         boolean sprint = handOff();
@@ -806,9 +821,9 @@ public class PathExecutor implements IPathExecutor, Helper {
     }
 
     // sprintableAscend knows traverse -> ascend -> straight on and nothing else, so an ascend into another ascend, a parkour or
-    // a bend let go of the sprint in mid air (vanilla only re-arms it on the ground) and landed at walk speed. this is the same
-    // question asked from the ascend itself: does whatever comes next sprint, and is it roughly the way we are going. the jump
-    // is the movement's, sprint doesn't replace it
+    // a bend let go of the sprint in mid air and landed at walk speed. not vanilla's doing, 26.3 re-arms sprint on any tick
+    // forward is held, it was our own "no" keeping the key off. this is the same question asked from the ascend itself: does
+    // whatever comes next sprint, and is it roughly the way we are going. the jump is the movement's, sprint doesn't replace it
     private boolean sprintsThroughAscend(MovementAscend ascend) {
         if (!Baritone.settings().sprintAscends.value || pathPosition >= path.length() - 2) {
             return false; // the last movement is the goal and we don't sprint past that
@@ -941,6 +956,7 @@ public class PathExecutor implements IPathExecutor, Helper {
         if (!SprintPolicy.cornerKeepsSprint(false, turn, hazards, tight)) {
             return;
         }
+        steerMask |= STEER_CORNER;
         behavior.baritone.getLookBehavior().updateTarget(
                 RotationUtils.calcRotationFromVec3d(ctx.playerHead(), new Vec3(aim[0], movement.getDest().y, aim[1]), ctx.playerRotations())
                         .withPitch(ctx.playerRotations().getPitch()), false);
@@ -1234,6 +1250,9 @@ public class PathExecutor implements IPathExecutor, Helper {
     }
 
     private void cancel() {
+        if (releasedWhy.isEmpty()) {
+            releasedWhy = "path cancelled";
+        }
         groundShortcut = null;
         sprintNextTick = false;
         clearKeys();
@@ -1381,5 +1400,24 @@ public class PathExecutor implements IPathExecutor, Helper {
 
     String releasedWhy() {
         return releasedWhy;
+    }
+
+    String steering() {
+        if (steerMask == 0) {
+            return "none";
+        }
+        StringBuilder out = new StringBuilder();
+        String[] names = {"smooth", "corner", "sprintjump", "shortcut"};
+        for (int i = 0; i < names.length; i++) {
+            if ((steerMask & 1 << i) != 0) {
+                out.append(out.length() == 0 ? "" : "+").append(names[i]);
+            }
+        }
+        return out.toString();
+    }
+
+    // NaN when no ground shortcut ticked
+    double shortcutDistance() {
+        return shortcutDist;
     }
 }
