@@ -103,6 +103,11 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
         this.sprintTelemetry = new SprintTelemetry(baritone);
     }
 
+    // the movements and the executor report what they decided to it, it does nothing with the setting off
+    public SprintTelemetry sprintTelemetry() {
+        return sprintTelemetry;
+    }
+
     public SwimStalls swimStalls() {
         return swimStalls;
     }

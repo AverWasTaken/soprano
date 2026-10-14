@@ -248,10 +248,13 @@ public class MovementAscend extends Movement {
 
         // at sprint speed the hop clips the face if it starts too close and comes down against it if it starts too far back, and
         // the two rules below don't know that. the sim does, so when it has an answer it gets the say
+        AscendHop.Verdict hop = null; // stays null when the sim was not asked
         if (ctx.player().isSprinting() && baritone instanceof Baritone) {
-            switch (AscendHop.decide(ctx, ((Baritone) baritone).bsi, src, dest)) {
+            hop = AscendHop.decide(ctx, ((Baritone) baritone).bsi, src, dest);
+            ((Baritone) baritone).getPathingBehavior().sprintTelemetry().verdict(hop);
+            switch (hop) {
                 case JUMP:
-                    return state.setInput(Input.JUMP, true);
+                    return jump(state, "sim JUMP", hop);
                 case WAIT:
                     // a few ticks at most, if the window never shows up (stuck on something the sim can't see) the old rules take over
                     if (simWaits++ < MAX_SIM_WAITS) {
@@ -264,7 +267,7 @@ public class MovementAscend extends Movement {
         }
 
         if (headBonkClear()) {
-            return state.setInput(Input.JUMP, true);
+            return jump(state, "headBonkClear", hop);
         }
 
         if (flatDistToNext > 1.2 || sideDist > 0.2) {
@@ -274,6 +277,14 @@ public class MovementAscend extends Movement {
         // Once we are pointing the right way and moving, start jumping
         // This is slightly more efficient because otherwise we might start jumping before moving, and fall down without moving onto the block we want to jump onto
         // Also wait until we are close enough, because we might jump and hit our head on an adjacent block
+        return jump(state, "distance rule", hop);
+    }
+
+    // space, and a line for the sprint telemetry saying which of the rules above pressed it
+    private MovementState jump(MovementState state, String branch, AscendHop.Verdict hop) {
+        if (baritone instanceof Baritone) {
+            ((Baritone) baritone).getPathingBehavior().sprintTelemetry().takeoff(branch, hop, src, dest);
+        }
         return state.setInput(Input.JUMP, true);
     }
 

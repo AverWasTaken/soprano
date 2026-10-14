@@ -18,21 +18,32 @@
 package baritone.pathing.path;
 
 import baritone.Baritone;
+import baritone.api.pathing.movement.IMovement;
+import baritone.api.utils.BetterBlockPos;
 import baritone.api.utils.Helper;
 import baritone.api.utils.IPlayerContext;
 import baritone.api.utils.input.Input;
 import baritone.behavior.LookBehavior;
+import baritone.pathing.sim.AscendHop;
 import baritone.pathing.sim.LiveSim;
 import baritone.pathing.sim.PlayerSim;
 import baritone.pathing.sim.WorldCollision;
+import baritone.utils.ExperimentalMovement;
 import baritone.utils.InputOverrideHandler;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.effect.MobEffects;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.TreeMap;
 
 // two questions about sprint, answered with lines of text (sprintTelemetry): when did it drop and who did it, and does PlayerSim
 // predict what the game really did. all of it is read-only and none of it runs with the setting off.
@@ -51,11 +62,15 @@ public final class SprintTelemetry implements Helper {
     // a systematically wrong sim, or a flag that flips every other tick, would otherwise write a line per tick
     private static final int LINES_PER_REPORT = 25;
     private static final double DRIFT = 0.01;
+    // a wall drop this soon after a hop took off is the hop clipping the step
+    private static final int CLIP_WINDOW = 20;
+    private static final String[] BUCKETS = {"1", "2", "3-5", "6-10", "11-20", "21+"};
+    private static final String PAST_THE_END = "past the end";
 
     private final Baritone baritone;
     private final IPlayerContext ctx;
 
-    private int pathTicks, sprintTicks, drops, totalDrops, totalPathTicks;
+    private int pathTicks, sprintTicks, drops, totalDrops, totalPathTicks, endDrops;
     private int checks, mismatches, driftLogged, dropsLogged, unsupported;
 
     // begin() of the tick that just ended: the sprint flag and the collision flags aiStep of the next one decides from
@@ -65,7 +80,25 @@ public final class SprintTelemetry implements Helper {
     // end() of the tick that just ended: what the executor wanted and did
     private boolean lastPathing, lastWant, lastJump;
     private int lastIndex, lastLength;
-    private String lastMovement = "", lastWhy = "", lastReleased = "";
+    private String lastMovement = "", lastWhy = "", lastReleased = "", lastSteering = "none";
+    private double lastShortcutDist = Double.NaN;
+    private List<? extends IMovement> lastMovements;
+
+    // the ascend hop's side of the story, told by whoever asked the sim and whoever pressed space
+    private AscendHop.Verdict lastVerdict;
+    private int lastVerdictTick = -1000;
+    private String lastBranch = "";
+    private AscendHop.Verdict lastBranchVerdict;
+    private int lastTakeoffTick = -1000, takeoffs, clipped;
+
+    // the drop sprint has not come back from yet, and for how long the ones that did come back were gone
+    private int openDropTick = -1;
+    private String openDropCause = "", openDropMovement = "";
+    private boolean openDropLogged;
+    private final int[] resumeHist = new int[BUCKETS.length];
+    private int stillOff;
+    // {drops, how many came back, ticks they were gone for}
+    private final Map<String, int[]> byCause = new TreeMap<>(), byMovement = new TreeMap<>();
 
     // the replay. the sim stands where the player did when the keys were set, the rest is the keys and the yaw they were set with
     private PlayerSim pending;
@@ -78,11 +111,15 @@ public final class SprintTelemetry implements Helper {
         this.ctx = baritone.getPlayerContext();
     }
 
-    // setting is off: forget everything so turning it on later does not compare against a tick from a minute ago
+    // setting is off (or there is no player): forget everything so turning it on later does not compare against a tick from a
+    // minute ago, and say what the walk so far came to
     public void off() {
         lastTick = -1;
         lastPathing = false;
         pending = null;
+        if (pathTicks > 0) {
+            report();
+        }
     }
 
     /**
@@ -95,13 +132,13 @@ public final class SprintTelemetry implements Helper {
             return;
         }
         int tick = player.tickCount;
+        if (openDropTick >= 0 && player.isSprinting()) {
+            resumed(tick);
+        }
         if (lastTick >= 0 && tick == lastTick + 1 && lastPathing) {
             replay(player);
             if (lastSprint && !player.isSprinting()) {
-                drops++;
-                if (dropsLogged++ < LINES_PER_REPORT) {
-                    emit(describeDrop(player));
-                }
+                dropped(player, tick);
             }
         } else {
             pending = null;
@@ -114,6 +151,8 @@ public final class SprintTelemetry implements Helper {
             if (pathTicks >= REPORT_EVERY) {
                 report();
             }
+        } else if (pathTicks > 0) {
+            report(); // the path ended, was cancelled or stopped since last tick
         }
         lastTick = tick;
         lastSprint = player.isSprinting();
@@ -132,13 +171,16 @@ public final class SprintTelemetry implements Helper {
             return;
         }
         InputOverrideHandler keys = baritone.getInputOverrideHandler();
-        List<?> movements = executor.getPath().movements();
+        List<? extends IMovement> movements = executor.getPath().movements();
+        lastMovements = movements;
         lastIndex = executor.getPosition();
         lastLength = movements.size();
-        lastMovement = lastIndex >= 0 && lastIndex < lastLength ? movements.get(lastIndex).getClass().getSimpleName() : "past the end";
+        lastMovement = lastIndex >= 0 && lastIndex < lastLength ? movements.get(lastIndex).getClass().getSimpleName() : PAST_THE_END;
         lastWant = executor.isSprinting();
         lastWhy = executor.sprintWhy();
         lastReleased = paused ? "behavior pause" : executor.releasedWhy();
+        lastSteering = executor.steering();
+        lastShortcutDist = executor.shortcutDistance();
         lastJump = keys.isInputForcedDown(Input.JUMP);
         if (paused || baritone.bsi == null || keys.isInputForcedDown(Input.SNEAK)) {
             return; // nothing of ours is moving the player, or it is a kind of moving the sim does not do
@@ -155,6 +197,42 @@ public final class SprintTelemetry implements Helper {
         pendingSprint = lastWant; // PathingBehavior.onPlayerSprintState hands this to vanilla as the sprint key
         pendingViewYaw = player.getYRot();
         pendingMoveCount = baritone.getLookBehavior().moveCount();
+    }
+
+    /**
+     * What the sim said about a hop up a step, asked from the traverse before it or from the ascend itself
+     */
+    public void verdict(AscendHop.Verdict verdict) {
+        LocalPlayer player = ctx.player();
+        if (player != null && ExperimentalMovement.sprintTelemetry()) {
+            lastVerdict = verdict;
+            lastVerdictTick = player.tickCount;
+        }
+    }
+
+    /**
+     * Space goes down for a hop up a step: which rule pressed it, what the sim had said (null when it was not asked) and where we stood
+     */
+    public void takeoff(String branch, AscendHop.Verdict verdict, BetterBlockPos src, BetterBlockPos dest) {
+        LocalPlayer player = ctx.player();
+        // space stays down for a couple of ticks in the air, only the one on the ground is a takeoff
+        if (player == null || !ExperimentalMovement.sprintTelemetry() || !player.onGround() || player.tickCount == lastTakeoffTick) {
+            return;
+        }
+        lastTakeoffTick = player.tickCount;
+        lastBranch = branch;
+        lastBranchVerdict = verdict;
+        takeoffs++;
+        int dx = Integer.signum(dest.x - src.x), dz = Integer.signum(dest.z - src.z);
+        String where = "face=diagonal";
+        if ((dx != 0) != (dz != 0)) {
+            Vec3 pos = player.position(), vel = player.getDeltaMovement();
+            double toX = dest.x + 0.5 - pos.x, toZ = dest.z + 0.5 - pos.z;
+            where = String.format(Locale.ROOT, "face=%.2f side=%.3f v=%.3f", toX * dx + toZ * dz - 0.5 - player.getBbWidth() / 2.0,
+                    Math.abs(toX * dz) + Math.abs(toZ * dx), vel.x * dx + vel.z * dz);
+        }
+        emit(String.format(Locale.ROOT, "takeoff tick=%d (%d,%d,%d)->(%d,%d,%d) via=%s sim=%s sprinting=%s %s",
+                player.tickCount, src.x, src.y, src.z, dest.x, dest.y, dest.z, branch, verdict == null ? "not asked" : verdict, player.isSprinting(), where));
     }
 
     // run aiStep of the tick that just finished on the snapshot and hold the result against the player
@@ -193,52 +271,193 @@ public final class SprintTelemetry implements Helper {
         }
     }
 
+    // sprint was on at the start of the last tick and is off now. the one at the end of a path is expected (nobody sprints past
+    // the goal), it gets its own count and its own line and stays out of the real drops
+    private void dropped(LocalPlayer player, int tick) {
+        String cause = causeOf(player);
+        if (PAST_THE_END.equals(lastMovement)) {
+            endDrops++;
+            emit("end of path, " + describeDrop(player, cause));
+            return;
+        }
+        drops++;
+        count(byCause, cause);
+        count(byMovement, lastMovement);
+        if (cause.equals("horizontal collision") && tick - lastTakeoffTick <= CLIP_WINDOW) {
+            clipped++;
+        }
+        openDropTick = tick;
+        openDropCause = cause;
+        openDropMovement = lastMovement;
+        openDropLogged = dropsLogged++ < LINES_PER_REPORT;
+        if (openDropLogged) {
+            emit(describeDrop(player, cause));
+        }
+    }
+
+    // sprint is back after being off since openDropTick
+    private void resumed(int tick) {
+        int gone = tick - openDropTick;
+        int bucket = gone <= 2 ? Math.max(gone, 1) - 1 : gone <= 5 ? 2 : gone <= 10 ? 3 : gone <= 20 ? 4 : 5;
+        resumeHist[bucket]++;
+        tally(byCause, openDropCause, gone);
+        tally(byMovement, openDropMovement, gone);
+        if (openDropLogged) {
+            emit(String.format(Locale.ROOT, "sprint back after %d ticks (drop at tick %d, %s)", gone, openDropTick - 1, openDropCause));
+        }
+        openDropTick = -1;
+    }
+
+    private static void count(Map<String, int[]> into, String key) {
+        into.computeIfAbsent(key, k -> new int[3])[0]++;
+    }
+
+    private static void tally(Map<String, int[]> into, String key, int gone) {
+        int[] row = into.computeIfAbsent(key, k -> new int[3]);
+        row[1]++;
+        row[2] += gone;
+    }
+
     // the player was sprinting at the start of the last tick and is not now: the executor let go, or aiStep dropped it
-    private String describeDrop(LocalPlayer player) {
+    private String causeOf(LocalPlayer player) {
+        float forward = player.input.getMoveVector().y;
+        if (!lastReleased.isEmpty()) {
+            return "keys released (" + lastReleased + ")";
+        } else if (!lastWant) {
+            return "executor said no (" + (lastWhy.isEmpty() ? "no reason given" : lastWhy) + ")";
+        } else if (!(forward > 1.0E-5F)) {
+            return "no forward impulse";
+        } else if (lastHc && !lastMinor) {
+            return "horizontal collision";
+        } else if (player.getFoodData().getFoodLevel() <= 6) {
+            return "food";
+        } else if (player.hasEffect(MobEffects.BLINDNESS)) {
+            return "blindness";
+        }
+        return "something else in aiStep";
+    }
+
+    private String describeDrop(LocalPlayer player, String cause) {
         Vec3 pos = player.position();
         BlockPos cell = player.blockPosition();
-        float forward = player.input.getMoveVector().y;
-        int food = player.getFoodData().getFoodLevel();
-        String cause;
-        if (!lastReleased.isEmpty()) {
-            cause = "keys released (" + lastReleased + ")";
-        } else if (!lastWant) {
-            cause = "executor said no (" + (lastWhy.isEmpty() ? "no reason given" : lastWhy) + ")";
-        } else if (!(forward > 1.0E-5F)) {
-            cause = "no forward impulse";
-        } else if (lastHc && !lastMinor) {
-            cause = "horizontal collision";
-        } else if (food <= 6) {
-            cause = "food";
-        } else if (player.hasEffect(MobEffects.BLINDNESS)) {
-            cause = "blindness";
-        } else {
-            cause = "something else in aiStep";
-        }
-        return String.format(Locale.ROOT, "drop tick=%d path=%d/%d %s cause=%s feet=(%.3f,%.3f,%.3f) cell+off=(%d,%d,%d)+(%.3f,%.3f)"
-                        + " ground=%s hc=%s minor=%s prevHc=%s prevMinor=%s forward=%.2f food=%d wantSprint=%s why=\"%s\" released=\"%s\" jump=%s",
+        StringBuilder line = new StringBuilder(String.format(Locale.ROOT,
+                "drop tick=%d path=%d/%d %s cause=%s feet=(%.3f,%.3f,%.3f) cell+off=(%d,%d,%d)+(%.3f,%.3f)"
+                        + " ground=%s hc=%s minor=%s prevHc=%s prevMinor=%s forward=%.2f food=%d wantSprint=%s why=\"%s\" released=\"%s\" jump=%s"
+                        + " prev=%s cur=%s next=%s steer=%s",
                 player.tickCount - 1, lastIndex, lastLength, lastMovement, cause, pos.x, pos.y, pos.z,
                 cell.getX(), cell.getY(), cell.getZ(), pos.x - cell.getX(), pos.z - cell.getZ(),
-                player.onGround(), player.horizontalCollision, player.minorHorizontalCollision, lastHc, lastMinor, forward, food,
-                lastWant, lastWhy, lastReleased, lastJump);
+                player.onGround(), player.horizontalCollision, player.minorHorizontalCollision, lastHc, lastMinor,
+                player.input.getMoveVector().y, player.getFoodData().getFoodLevel(),
+                lastWant, lastWhy, lastReleased, lastJump,
+                moveName(lastIndex - 1), moveName(lastIndex), moveName(lastIndex + 1), lastSteering));
+        if (!Double.isNaN(lastShortcutDist)) {
+            line.append(String.format(Locale.ROOT, " shortcutDist=%.2f", lastShortcutDist));
+        }
+        if (player.horizontalCollision || lastHc) {
+            line.append(" collided=").append(collidedWith(player));
+        }
+        if (player.tickCount - lastTakeoffTick <= 40) {
+            line.append(String.format(Locale.ROOT, " lastTakeoff=%dt ago via=%s sim=%s", player.tickCount - 1 - lastTakeoffTick, lastBranch,
+                    lastBranchVerdict == null ? "not asked" : lastBranchVerdict));
+        }
+        if (lastVerdict != null && player.tickCount - lastVerdictTick <= 40) {
+            line.append(String.format(Locale.ROOT, " lastSimVerdict=%s %dt ago", lastVerdict, player.tickCount - 1 - lastVerdictTick));
+        }
+        return line.toString();
+    }
+
+    private String moveName(int index) {
+        if (lastMovements == null || index < 0 || index >= lastMovements.size()) {
+            return "-";
+        }
+        IMovement m = lastMovements.get(index);
+        BlockPos d = m.getDirection();
+        return m.getClass().getSimpleName().replace("Movement", "") + "(" + d.getX() + "," + d.getY() + "," + d.getZ() + ")";
+    }
+
+    // every block whose collision shape touches the box widened by a hair, which at a wall is the wall. relative to the feet cell
+    private String collidedWith(LocalPlayer player) {
+        Level world = ctx.world();
+        AABB box = player.getBoundingBox();
+        double hair = 0.02;
+        // the floor starts at minY, so lift the bottom a hair or the block we stand on is in every list
+        double minX = box.minX - hair, maxX = box.maxX + hair, minY = box.minY + 0.01, maxY = box.maxY, minZ = box.minZ - hair, maxZ = box.maxZ + hair;
+        BlockPos feet = player.blockPosition();
+        StringBuilder out = new StringBuilder("[");
+        BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+        for (int x = (int) Math.floor(minX); x <= (int) Math.floor(maxX); x++) {
+            for (int y = (int) Math.floor(minY); y <= (int) Math.floor(maxY); y++) {
+                for (int z = (int) Math.floor(minZ); z <= (int) Math.floor(maxZ); z++) {
+                    BlockState state = world.getBlockState(pos.set(x, y, z));
+                    if (state.isAir() || state.getCollisionShape(world, pos).isEmpty()) {
+                        continue;
+                    }
+                    final int ox = x, oy = y, oz = z;
+                    boolean[] touches = {false};
+                    state.getCollisionShape(world, pos).forAllBoxes((x1, y1, z1, x2, y2, z2) ->
+                            touches[0] |= x2 + ox > minX && x1 + ox < maxX && y2 + oy > minY && y1 + oy < maxY && z2 + oz > minZ && z1 + oz < maxZ);
+                    if (touches[0]) {
+                        String full = state.toString();
+                        int props = full.indexOf('[');
+                        out.append(out.length() > 1 ? " " : "").append(String.format(Locale.ROOT, "(%+d,%+d,%+d)%s%s", x - feet.getX(), y - feet.getY(), z - feet.getZ(),
+                                BuiltInRegistries.BLOCK.getKey(state.getBlock()).getPath(), props >= 0 ? full.substring(props) : ""));
+                    }
+                }
+            }
+        }
+        return out.append("]").toString();
     }
 
     private void report() {
         totalDrops += drops;
         totalPathTicks += pathTicks;
-        emit(String.format(Locale.ROOT, "%d sprint drops in %d path ticks (%d of them sprinting), %.2f per 1000 path ticks, %.2f per 1000 sprinting ticks, %d over %d path ticks so far. sim: %d ticks checked, %d off, %d unsupported%s%s",
-                drops, pathTicks, sprintTicks, drops * 1000.0 / pathTicks, drops * 1000.0 / Math.max(1, sprintTicks), totalDrops, totalPathTicks,
+        if (openDropTick >= 0) {
+            stillOff++; // the path ended before sprint came back
+            openDropTick = -1;
+        }
+        emit(String.format(Locale.ROOT, "%d sprint drops (and %d at the end of a path) in %d path ticks (%d of them sprinting), %.2f per 1000 path ticks, %.2f per 1000 sprinting ticks, %d over %d path ticks so far. sim: %d ticks checked, %d off, %d unsupported%s%s",
+                drops, endDrops, pathTicks, sprintTicks, drops * 1000.0 / pathTicks, drops * 1000.0 / Math.max(1, sprintTicks), totalDrops, totalPathTicks,
                 checks, mismatches, unsupported,
                 driftLogged > LINES_PER_REPORT ? " (" + (driftLogged - LINES_PER_REPORT) + " drift lines not shown)" : "",
                 dropsLogged > LINES_PER_REPORT ? " (" + (dropsLogged - LINES_PER_REPORT) + " drop lines not shown)" : ""));
+        if (drops > 0) {
+            StringBuilder hist = new StringBuilder("sprint was off for (ticks):");
+            for (int i = 0; i < BUCKETS.length; i++) {
+                hist.append(' ').append(BUCKETS[i]).append('=').append(resumeHist[i]);
+            }
+            emit(hist + ", not back before the path ended: " + stillOff + ". by cause: " + table(byCause) + ". by movement: " + table(byMovement));
+        }
+        if (takeoffs > 0) {
+            emit(takeoffs + " ascend takeoffs, " + clipped + " of them clipped the step (a wall drop within " + CLIP_WINDOW + " ticks)");
+        }
         pathTicks = 0;
         sprintTicks = 0;
         drops = 0;
+        endDrops = 0;
         dropsLogged = 0;
         checks = 0;
         mismatches = 0;
         driftLogged = 0;
         unsupported = 0;
+        takeoffs = 0;
+        clipped = 0;
+        stillOff = 0;
+        Arrays.fill(resumeHist, 0);
+        byCause.clear();
+        byMovement.clear();
+    }
+
+    // "name count (avg n ticks gone)" for each row
+    private static String table(Map<String, int[]> rows) {
+        StringBuilder out = new StringBuilder();
+        for (Map.Entry<String, int[]> row : rows.entrySet()) {
+            int[] v = row.getValue();
+            out.append(out.length() > 0 ? ", " : "").append(row.getKey()).append(' ').append(v[0]);
+            if (v[1] > 0) {
+                out.append(String.format(Locale.ROOT, " (avg %.1f)", v[2] / (double) v[1]));
+            }
+        }
+        return out.toString();
     }
 
     // chat when chatDebug is on, and the game log either way so a whole walk can be grepped afterwards
