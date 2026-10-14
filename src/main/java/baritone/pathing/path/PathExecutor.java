@@ -33,6 +33,7 @@ import baritone.pathing.movement.MovementHelper;
 import baritone.pathing.movement.MovementState;
 import baritone.pathing.movement.StairSteps;
 import baritone.pathing.movement.movements.*;
+import baritone.pathing.sim.AscendHop;
 import baritone.utils.BlockStateInterface;
 import baritone.utils.ExperimentalMovement;
 import baritone.utils.ToolSet;
@@ -92,6 +93,9 @@ public class PathExecutor implements IPathExecutor, Helper {
     private int depth;
     private boolean handedOff;
     private boolean handedOffResult;
+    // ticks the traverse before an ascend has held off the hop for the sim, see AscendHop
+    private static final int MAX_HOP_WAITS = 8;
+    private int hopWaits;
     // only the sprint telemetry reads these: why shouldSprintNextTick said no this tick, and what let go of the keys
     private String sprintWhy = "";
     private String releasedWhy = "";
@@ -614,15 +618,23 @@ public class PathExecutor implements IPathExecutor, Helper {
         if (current instanceof MovementTraverse && pathPosition < path.length() - 3) {
             IMovement next = path.movements().get(pathPosition + 1);
             if (next instanceof MovementAscend && sprintableAscend(ctx, (MovementTraverse) current, (MovementAscend) next, path.movements().get(pathPosition + 2))) {
-                if (skipNow(ctx, current)) {
-                    logDebug("Skipping traverse to straight ascend");
-                    pathPosition++;
-                    onChangeInPathPosition();
-                    boolean sprint = handOff();
-                    behavior.baritone.getInputOverrideHandler().setInputForceState(Input.JUMP, true);
-                    return sprint;
-                } else {
-                    logDebug("Too far to the side to safely sprint ascend");
+                // skipNow guesses when the hop is safe from how far away the step is. the sim has the real answer, at this
+                // speed, from this spot: not yet (wait, the traverse carries on and we ask again next tick), now, or no idea
+                AscendHop.Verdict hop = ctx.player().isSprinting()
+                        ? AscendHop.decide(ctx, behavior.baritone.bsi, next.getSrc(), next.getDest()) : AscendHop.Verdict.UNKNOWN;
+                // (a few ticks of waiting at most, in case the window never shows up)
+                boolean waiting = hop == AscendHop.Verdict.WAIT && hopWaits++ < MAX_HOP_WAITS;
+                if (!waiting) {
+                    if (hop == AscendHop.Verdict.JUMP ? onLane(ctx, current) : skipNow(ctx, current)) {
+                        logDebug("Skipping traverse to straight ascend");
+                        pathPosition++;
+                        onChangeInPathPosition();
+                        boolean sprint = handOff();
+                        behavior.baritone.getInputOverrideHandler().setInputForceState(Input.JUMP, true);
+                        return sprint;
+                    } else {
+                        logDebug("Too far to the side to safely sprint ascend");
+                    }
                 }
             }
         }
@@ -1120,10 +1132,15 @@ public class PathExecutor implements IPathExecutor, Helper {
                 movement.getDest().offset(flatDir.getX() * (i - pathPosition), 0, flatDir.getZ() * (i - pathPosition)));
     }
 
-    private static boolean skipNow(IPlayerContext ctx, IMovement current) {
+    // same number SprintJump.plan and the ascend's own side check use, they used to disagree
+    private static boolean onLane(IPlayerContext ctx, IMovement current) {
         double offTarget = Math.abs(current.getDirection().getX() * (current.getSrc().z + 0.5D - ctx.player().position().z)) + Math.abs(current.getDirection().getZ() * (current.getSrc().x + 0.5D - ctx.player().position().x));
-        if (!SprintPolicy.centered(offTarget)) {
-            return false; // same number SprintJump.plan and the ascend's own side check use, they used to disagree
+        return SprintPolicy.centered(offTarget);
+    }
+
+    private static boolean skipNow(IPlayerContext ctx, IMovement current) {
+        if (!onLane(ctx, current)) {
+            return false;
         }
         // we are centered
         BlockPos headBonk = current.getSrc().subtract(current.getDirection()).above(2);
@@ -1209,6 +1226,7 @@ public class PathExecutor implements IPathExecutor, Helper {
     private void onChangeInPathPosition() {
         clearKeys();
         ticksOnCurrent = 0;
+        hopWaits = 0;
     }
 
     private void clearKeys() {
