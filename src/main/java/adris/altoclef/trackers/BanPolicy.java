@@ -17,6 +17,9 @@ public final class BanPolicy {
     // the books tasks used to keep for themselves (mining got nowhere, a pickup got nowhere, a bucket's lid would not
     // break). those lived as long as the task object, which is whenever its parent rebuilt it. a minute is about that
     public static final long TASK_GAVE_UP = 1200;
+    // a tree we stalled on twice (MineAndCollectTask). five minutes like the block strikes, so the canopy is not back before
+    // the trees around it are used up
+    public static final long TREE_GAVE_UP = 6000;
     // a drop we waited on and never got (DropPatience, a death pile, one stuck in water). items despawn at 5 minutes,
     // so this is "for as long as it exists" without keeping dead ids forever
     public static final long DROP_GAVE_UP = 6000;
@@ -99,6 +102,12 @@ public final class BanPolicy {
     // MineAndCollectTask's progress checker ran out mid-break or on the way
     public static boolean miningStalled(Bans bans, Dimension dim, int x, int y, int z) {
         return bans.ban(Key.block(dim, x, y, z), "mining got nowhere", TASK_GAVE_UP);
+    }
+
+    // MineAndCollectTask stalled twice on one tree: all its logs are out for five minutes, not the one minute a single log gets.
+    // the same canopy came back every minute otherwise. one line for the lot like the outpost does
+    public static int treeGaveUp(Bans bans, Iterable<Key> logs, int x, int y, int z) {
+        return bans.banAll(logs, "tree stalled twice", TREE_GAVE_UP, "logs of the tree near " + x + " " + y + " " + z);
     }
 
     // CollectBucketLiquidTask could not break the block over a source
