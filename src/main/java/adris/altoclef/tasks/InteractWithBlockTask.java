@@ -61,6 +61,8 @@ public class InteractWithBlockTask extends Task {
     private final TimeoutWanderTask _wanderTask = new TimeoutWanderTask(5, true);
     private Task _unstuckTask = null;
     private ClickResponse _cachedClickStatus = ClickResponse.CANT_REACH;
+    private static final int EQUIP_PATIENCE = 20;
+    private int _equipMisses;
 
     public InteractWithBlockTask(ItemTarget toUse, Direction direction, BlockPos target, Input interactInput, boolean walkInto, Vec3i interactOffset, boolean shiftClick) {
         _toUse = toUse;
@@ -251,6 +253,7 @@ public class InteractWithBlockTask extends Task {
         stuckCheck.reset();
         _wanderTask.resetWander();
         _clickTimer.reset();
+        _equipMisses = 0;
     }
 
     @Override
@@ -455,7 +458,14 @@ public class InteractWithBlockTask extends Task {
         if (reachable.isPresent() && mod.getClientBaritone().getPathingBehavior().isSafeToCancel()) {
             if (LookHelper.isLookingAt(mod, _target)) {
                 if (_toUse != null) {
-                    mod.getSlotHandler().forceEquipItem(_toUse, false);
+                    boolean equipped = mod.getSlotHandler().forceEquipItem(_toUse, false);
+                    if (ItemTarget.nullOrEmpty(_toUse) || equipped) {
+                        _equipMisses = 0;
+                    } else if (_equipMisses++ < EQUIP_PATIENCE) {
+                        // a seed click with an empty hand is a click that plants nothing and still counts as an attempt.
+                        // wait for the swap to show, but not forever: the old behaviour (click anyway) is the fallback
+                        return ClickResponse.WAIT_FOR_CLICK;
+                    }
                 } else {
                     mod.getSlotHandler().forceDeequipRightClickableItem();
                 }
