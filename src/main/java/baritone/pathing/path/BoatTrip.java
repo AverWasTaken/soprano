@@ -339,7 +339,8 @@ public final class BoatTrip implements Helper {
         return lateral > REPULL_OFF && ticksSincePull > REPULL_COOLDOWN;
     }
 
-    // the lane plus, for every point, the path index of the node it is nearest to
+    // the lane plus, for every point, roughly which path index it is at (interpolated along the pulled leg, so on a long
+    // leg over a crooked path it can be a few nodes off the truly nearest one)
     public static final class Lane {
         public final List<Vec3> points;
         final int[] node;
@@ -372,7 +373,7 @@ public final class BoatTrip implements Helper {
     // the lane over the nodes from..to. with an origin the lane starts there instead (the boat, when it is
     // already out on the water) and the nodes used are the ones after firstIdx
     static Lane buildLane(Cells cells, List<BetterBlockPos> positions, int from, int to, Vec3 origin, int firstIdx) {
-        int first = origin == null ? from : Math.min(to, firstIdx);
+        int first = origin == null ? from : Math.max(from, Math.min(to, firstIdx));
         List<double[]> list = new ArrayList<>();
         if (origin == null) {
             for (int idx = from; idx <= to; idx++) {
@@ -388,7 +389,7 @@ public final class BoatTrip implements Helper {
             }
             // from an A* node to the next one is a move A* made, from the boat it is just a guess. if the boat
             // can't see the next node (it swung wide round a corner, or is still in the shallows) go through the
-            // node it is nearest to first, the way the old lane always did
+            // node it is nearest to first (if it sees something further on that wins anyway, the greedy below skips it)
             if (first < to && !segmentClear(cells, origin.x, origin.z, list.get(1)[0], list.get(1)[1])) {
                 list.add(1, new double[]{positions.get(first).x + 0.5, positions.get(first).z + 0.5, positions.get(first).y, first});
             }
@@ -767,7 +768,7 @@ public final class BoatTrip implements Helper {
         double bestT = proj[1];
         double lateral = proj[2];
         laneSeg = bestSeg;
-        // every lane point knows which path node it is nearest to
+        // every lane point knows roughly which path node it is at
         waypoint = Math.max(start, Math.min(end, lane.node[Math.min(bestSeg + 1, lane.node.length - 1)]));
         double progress = bestSeg + bestT;
 
