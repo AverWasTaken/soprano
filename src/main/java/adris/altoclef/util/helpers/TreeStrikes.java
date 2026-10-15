@@ -73,10 +73,6 @@ public final class TreeStrikes {
         return false;
     }
 
-    public void clear() {
-        entries.clear();
-    }
-
     // strikes standing against trees, for the tests
     int open() {
         return entries.size();

@@ -37,6 +37,7 @@ public class TreeStrikesTest {
         BlockPos far = A.east(TreeStrikes.RADIUS + 1);
         assertTrue(s.strike(OW, far, 130).isEmpty());
         assertEquals(2, s.open());
+        assertFalse(TreeStrikes.sameTree(A, far));
     }
 
     @Test

@@ -1,6 +1,10 @@
 package adris.altoclef.util.helpers;
 
+import adris.altoclef.util.helpers.TreeReach.Cell;
+import adris.altoclef.util.helpers.TreeReach.Column;
 import org.junit.Test;
+
+import java.util.function.IntFunction;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -9,28 +13,65 @@ import static org.junit.Assert.assertTrue;
 public class TreeReachTest {
     private static final int FLOOR = 63;
 
+    // flat ground at FLOOR, optionally with a layer of grass on it
+    private static IntFunction<Cell> ground(boolean cover) {
+        return y -> y <= FLOOR ? Cell.SOLID : (cover && y == FLOOR + 1 ? Cell.PASSABLE : Cell.AIR);
+    }
+
     @Test
-    public void gapIsTheAirBetweenTheLogAndTheFloor() {
-        assertEquals(0, TreeReach.gap(FLOOR + 1, FLOOR));
-        assertEquals(6, TreeReach.gap(FLOOR + 7, FLOOR));
-        assertEquals(Integer.MAX_VALUE, TreeReach.gap(70, TreeReach.NO_FLOOR));
+    public void theColumnStopsOnTheFirstThingThatIsNotAir() {
+        Column bare = TreeReach.column(FLOOR + 8, ground(false));
+        assertEquals(FLOOR + 1, bare.feetY());
+        assertEquals(7, bare.airCells());
+        // grass is stood in, and it is not open air for the shaft
+        Column grass = TreeReach.column(FLOOR + 8, ground(true));
+        assertEquals(FLOOR + 1, grass.feetY());
+        assertEquals(6, grass.airCells());
+    }
+
+    @Test
+    public void waterIsStoodInAndLavaIsNoPlace() {
+        assertEquals(60, TreeReach.column(70, y -> y <= 60 ? Cell.WATER : Cell.AIR).feetY());
+        assertEquals(TreeReach.NO_FEET, TreeReach.column(70, y -> y <= 60 ? Cell.LAVA : Cell.AIR).feetY());
+        assertEquals(TreeReach.NO_FEET, TreeReach.column(70, y -> Cell.AIR).feetY());
     }
 
     @Test
     public void theShaftReachesFiveAirCellsUp() {
-        assertTrue(TreeReach.fromGround(FLOOR + 1 + TreeReach.MAX_UNDER, FLOOR, false));
-        assertFalse(TreeReach.fromGround(FLOOR + 2 + TreeReach.MAX_UNDER, FLOOR, false));
+        assertTrue(TreeReach.fromGround(FLOOR + 1 + TreeReach.MAX_UNDER, TreeReach.column(FLOOR + 1 + TreeReach.MAX_UNDER, ground(false)), false));
+        int past = FLOOR + 2 + TreeReach.MAX_UNDER;
+        assertFalse(TreeReach.fromGround(past, TreeReach.column(past, ground(false)), false));
+    }
+
+    @Test
+    public void groundCoverCostsTheShaftACell() {
+        // the goal counts only air, so with grass on the floor the same log is one cell further away than it looks
+        int log = FLOOR + 1 + TreeReach.MAX_UNDER;
+        assertTrue(TreeReach.fromGround(log, TreeReach.column(log, ground(false)), false));
+        assertFalse(TreeReach.fromGround(log, TreeReach.column(log, ground(true)), false));
+        // and the clamp at two keeps the short ones working
+        int low = FLOOR + 3;
+        assertTrue(TreeReach.fromGround(low, TreeReach.column(low, ground(true)), false));
     }
 
     @Test
     public void aSideToStandOnIsAlwaysReach() {
-        assertTrue(TreeReach.fromGround(FLOOR + 20, FLOOR, true));
-        assertTrue(TreeReach.fromGround(FLOOR + 20, TreeReach.NO_FLOOR, true));
+        Column none = new Column(TreeReach.NO_FEET, 3);
+        assertTrue(TreeReach.fromGround(FLOOR + 20, none, true));
+        assertFalse(TreeReach.fromGround(FLOOR + 20, none, false));
     }
 
     @Test
-    public void noFloorAndNoSideIsOutOfReach() {
-        assertFalse(TreeReach.fromGround(FLOOR + 2, TreeReach.NO_FLOOR, false));
+    public void aLogWithinAStepOfTheFeetIsASideCase() {
+        // feet at the log's height or one under it: the side cells, nothing to tower whatever the air count says
+        assertTrue(TreeReach.fromGround(70, new Column(70, 0), false));
+        assertTrue(TreeReach.fromGround(70, new Column(69, 0), false));
+    }
+
+    @Test
+    public void gapIsFeetToLogAndUnknownIsAsFarAsItGets() {
+        assertEquals(7, TreeReach.gap(FLOOR + 8, TreeReach.column(FLOOR + 8, ground(false))));
+        assertEquals(Integer.MAX_VALUE, TreeReach.gap(70, new Column(TreeReach.NO_FEET, 0)));
     }
 
     @Test
@@ -47,20 +88,12 @@ public class TreeReachTest {
     }
 
     @Test
-    public void dirtFirstIsTheCaseWhereOnlyTheDirtIsMissing() {
-        assertTrue(TreeReach.needsDirtFirst(true, false, false, true));
-        assertFalse(TreeReach.needsDirtFirst(true, false, true, true));
-        assertFalse(TreeReach.needsDirtFirst(true, false, false, false));
-        assertFalse(TreeReach.needsDirtFirst(true, true, false, true));
-        assertFalse(TreeReach.needsDirtFirst(false, false, false, true));
-    }
-
-    @Test
-    public void skipAndDirtFirstNeverBothSayYes() {
-        for (int bits = 0; bits < 16; bits++) {
-            boolean flagged = (bits & 1) != 0, ground = (bits & 2) != 0, throwaway = (bits & 4) != 0, dirt = (bits & 8) != 0;
-            assertFalse(TreeReach.skip(flagged, ground, throwaway, dirt) && TreeReach.needsDirtFirst(flagged, ground, throwaway, dirt));
-        }
+    public void oneBlockInTheBagStillOwesTheRestOfTheTower() {
+        int gap = 8;
+        assertEquals(TreeReach.dirtWanted(gap), TreeReach.dirtShortfall(gap, 0));
+        assertEquals(TreeReach.dirtWanted(gap) - 1, TreeReach.dirtShortfall(gap, 1));
+        assertEquals(0, TreeReach.dirtShortfall(gap, TreeReach.dirtWanted(gap)));
+        assertEquals(0, TreeReach.dirtShortfall(gap, 64));
     }
 
     @Test

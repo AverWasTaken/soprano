@@ -3,6 +3,7 @@ package adris.altoclef.util.helpers;
 import adris.altoclef.AltoClef;
 import baritone.pathing.movement.MovementHelper;
 import net.minecraft.core.BlockPos;
+import net.minecraft.tags.BlockTags;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 
@@ -12,18 +13,21 @@ import java.util.Map;
 // the world half of TreeReach: reads the column under a log and the cells around it, and remembers the answer for a couple of
 // seconds. the log pick asks about the nearest few logs every tick, and the floor scan is a column of world reads
 public final class TreeReachScan {
-    // how far under the log we look for the floor. past this it is not coming back
-    private static final int SCAN_DOWN = 24;
     private static final int CACHE_TICKS = 40;
+    // a trunk with its bottom cut away floats, and what counts is how far its lowest log is from the ground
+    private static final int CHAIN_MAX = 24;
     // a dirt block that is lying around, in the box around us. one look per few seconds, it is a few thousand reads
     private static final int DIRT_RADIUS = 8;
     private static final int DIRT_UP = 2;
     private static final int DIRT_DOWN = 4;
     private static final int DIRT_LOOK_TICKS = 100;
 
-    // flagged: WorldHelper.dangerousToBreakIfRightAbove. fromGround and gap are only worth reading when it is
+    // flagged: WorldHelper.dangerousToBreakIfRightAbove on the lowest log of the column. fromGround and gap are only worth
+    // reading when it is
     public record Look(boolean flagged, boolean fromGround, int gap) {
     }
+
+    private static final Look FINE = new Look(false, true, 0);
 
     private final Map<BlockPos, Look> looks = new HashMap<>();
     private int looksAt = Integer.MIN_VALUE;
@@ -41,14 +45,20 @@ public final class TreeReachScan {
     private static Look read(AltoClef mod, BlockPos log) {
         // an unloaded chunk reads as air all the way down, which is a "no floor" for a log that has one. not knowing is not a reason to skip
         if (!loadedAround(mod, log)) {
-            return new Look(false, true, 0);
+            return FINE;
         }
-        boolean flagged = WorldHelper.dangerousToBreakIfRightAbove(mod, log);
-        if (!flagged) {
-            return new Look(false, true, 0);
+        // a log with logs under it is only as reachable as the lowest one: it is the one we cut first. a trunk with its
+        // bottom cut away has only its lowest log flagged, the ones above look intact from where they sit
+        BlockPos low = log;
+        for (int i = 0; i < CHAIN_MAX && mod.getWorld().getBlockState(low.below()).is(BlockTags.LOGS); i++) {
+            low = low.below();
         }
-        int floor = floorUnder(mod, log);
-        return new Look(true, TreeReach.fromGround(log.getY(), floor, sideStandable(mod, log)), TreeReach.gap(log.getY(), floor));
+        BlockPos bottom = low;
+        if (!WorldHelper.dangerousToBreakIfRightAbove(mod, bottom)) {
+            return FINE;
+        }
+        TreeReach.Column column = TreeReach.column(bottom.getY(), y -> cellAt(mod, bottom.getX(), y, bottom.getZ()));
+        return new Look(true, TreeReach.fromGround(bottom.getY(), column, sideStandable(mod, bottom)), TreeReach.gap(bottom.getY(), column));
     }
 
     private static boolean loadedAround(AltoClef mod, BlockPos log) {
@@ -62,24 +72,23 @@ public final class TreeReachScan {
         return mod.getWorld().isLoaded(log);
     }
 
-    // the top of the first thing we can stand on under the log (water counts, we can swim in it and mine from there).
-    // lava and a column with nothing in it have no floor
-    private static int floorUnder(AltoClef mod, BlockPos log) {
-        BlockPos.MutableBlockPos at = new BlockPos.MutableBlockPos();
-        for (int dy = 1; dy <= SCAN_DOWN; dy++) {
-            at.set(log.getX(), log.getY() - dy, log.getZ());
-            BlockState state = mod.getWorld().getBlockState(at);
-            if (MovementHelper.isLava(state)) {
-                return TreeReach.NO_FLOOR;
-            }
-            if (MovementHelper.isWater(state) || WorldHelper.isSolid(mod, at)) {
-                return at.getY();
-            }
+    private static TreeReach.Cell cellAt(AltoClef mod, int x, int y, int z) {
+        BlockPos at = new BlockPos(x, y, z);
+        BlockState state = mod.getWorld().getBlockState(at);
+        if (state.isAir()) {
+            return TreeReach.Cell.AIR;
         }
-        return TreeReach.NO_FLOOR;
+        if (MovementHelper.isLava(state)) {
+            return TreeReach.Cell.LAVA;
+        }
+        if (MovementHelper.isWater(state)) {
+            return TreeReach.Cell.WATER;
+        }
+        return state.getCollisionShape(mod.getWorld(), at).isEmpty() ? TreeReach.Cell.PASSABLE : TreeReach.Cell.SOLID;
     }
 
-    // a neighbouring column with a floor at the log's height or within two under it: the sides GoalMineFromSide takes
+    // a neighbouring column with ground at the log's height or within two under it: the sides GoalMineFromSide takes. other
+    // logs are not ground (a branch beside the trunk is part of the problem, not a way up), and water is, we can swim in it
     private static boolean sideStandable(AltoClef mod, BlockPos log) {
         BlockPos.MutableBlockPos at = new BlockPos.MutableBlockPos();
         for (int dx = -1; dx <= 1; dx++) {
@@ -89,7 +98,8 @@ public final class TreeReachScan {
                 }
                 for (int dy = 0; dy >= -2; dy--) {
                     at.set(log.getX() + dx, log.getY() + dy, log.getZ() + dz);
-                    if (WorldHelper.isSolid(mod, at) || MovementHelper.isWater(mod.getWorld().getBlockState(at))) {
+                    BlockState state = mod.getWorld().getBlockState(at);
+                    if (MovementHelper.isWater(state) || WorldHelper.isSolid(mod, at) && !state.is(BlockTags.LOGS)) {
                         return true;
                     }
                 }
@@ -123,11 +133,5 @@ public final class TreeReachScan {
             }
         }
         return false;
-    }
-
-    public void forget() {
-        looks.clear();
-        looksAt = Integer.MIN_VALUE;
-        dirtAt = Integer.MIN_VALUE;
     }
 }
