@@ -123,7 +123,8 @@ public class CollectWoolTask extends ResourceTask {
         return new KillAndLootTask(Sheep.class, entity -> {
             if (entity instanceof Sheep sheep) {
                 // Hunt sheep of the same color.
-                return _colors.contains(sheep.getColor()) && !sheep.isSheared();
+                // lambs drop nothing, and with shears in hand they are all that is left once the shear task has no sheep
+                return _colors.contains(sheep.getColor()) && !sheep.isSheared() && !sheep.isBaby();
             }
             return false;
         }, new ItemTarget(_wools, _count));
