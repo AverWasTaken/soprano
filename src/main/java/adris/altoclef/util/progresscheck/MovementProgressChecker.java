@@ -1,6 +1,7 @@
 package adris.altoclef.util.progresscheck;
 
 import adris.altoclef.AltoClef;
+import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.phys.Vec3;
@@ -11,6 +12,7 @@ public class MovementProgressChecker {
     private final IProgressChecker<Double> _mineChecker;
 
     private BlockPos _lastBreakingBlock = null;
+    private final AimGate _aim = new AimGate();
 
     public MovementProgressChecker(double distanceTimeout, double minDistance, double mineTimeout, double minMineProgress, int attempts) {
         _distanceChecker = new ProgressCheckerRetry<>(new DistanceProgressChecker(distanceTimeout, minDistance), attempts);
@@ -30,6 +32,12 @@ public class MovementProgressChecker {
     }
 
     public boolean check(AltoClef mod) {
+        return check(mod, null);
+    }
+
+    // `target` is the block we are here to break: the mine clock waits until the crosshair is on it (or on whatever we are
+    // cracking instead, that progress is real), see AimGate
+    public boolean check(AltoClef mod, BlockPos target) {
 
         // Allow pause on eat
         if (mod.getFoodChain().needsToEat()) {
@@ -45,8 +53,14 @@ public class MovementProgressChecker {
             if (_lastBreakingBlock != null && WorldHelper.isAir(mod, _lastBreakingBlock)) {
                 _distanceChecker.reset();
                 _mineChecker.reset();
+                _aim.reset();
             }
             _lastBreakingBlock = breakBlock;
+            if (target != null && !_aim.judging(aimed(mod, target, breakBlock))) {
+                // not on it yet, so the half second hasn't started
+                _mineChecker.reset();
+                return true;
+            }
             _mineChecker.setProgress(mod.getControllerExtras().getBreakingBlockProgress());
             return !_mineChecker.failed();
         } else {
@@ -56,9 +70,20 @@ public class MovementProgressChecker {
         }
     }
 
+    private static boolean aimed(AltoClef mod, BlockPos target, BlockPos breaking) {
+        return LookHelper.isLookingAt(mod, target) || breaking != null && LookHelper.isLookingAt(mod, breaking);
+    }
+
     public void reset() {
         _distanceChecker.reset();
         _mineChecker.reset();
+    }
+
+    // a different block now (or a fresh task): the aim wait starts over too. reset() alone keeps it, a path in between two
+    // swings at the same block must not hand it a new three seconds every time
+    public void newTarget() {
+        reset();
+        _aim.reset();
     }
 
 }
