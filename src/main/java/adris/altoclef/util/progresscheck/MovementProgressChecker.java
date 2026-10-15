@@ -55,9 +55,10 @@ public class MovementProgressChecker {
                 _mineChecker.reset();
                 _aim.reset();
             }
-            if (target != null && _lastBreakingBlock != null && !_lastBreakingBlock.equals(breakBlock)) {
+            if (target != null && !_aim.spent() && _lastBreakingBlock != null && !_lastBreakingBlock.equals(breakBlock)) {
                 // a different block started cracking (the crosshair crossed the one in front on its way to the target): it starts
-                // from zero, that is not a stall
+                // from zero, that is not a stall. not once the aim allowance is spent, or a crosshair that keeps swapping
+                // between two blocks would restart the clock forever
                 _mineChecker.reset();
             }
             _lastBreakingBlock = breakBlock;
