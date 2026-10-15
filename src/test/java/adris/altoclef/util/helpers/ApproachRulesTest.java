@@ -4,6 +4,8 @@ import adris.altoclef.util.helpers.ApproachRules.Plan;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
 public class ApproachRulesTest {
     private static final double REACH = 4;
@@ -186,5 +188,34 @@ public class ApproachRulesTest {
             sinceSwing++;
         }
         throw new AssertionError("never forced a swing, last plan " + last);
+    }
+
+    // the explore path the wander starts is what makes baritone unsafe to cancel on the very next tick. the old rule
+    // stopped the wander there and started a new one the tick after, forever
+    @Test
+    public void aLiveWanderIsNotStoppedByItsOwnPath() {
+        boolean wandering = false;
+        int starts = 0;
+        int stops = 0;
+        for (int tick = 0; tick < 200; tick++) {
+            // safe on the first tick, then the wander's own path is live and never lets go
+            boolean safe = tick == 0;
+            boolean next = ApproachRules.wanderWhenNoTarget(wandering, safe);
+            if (next && !wandering) starts++;
+            if (!next && wandering) stops++;
+            wandering = next;
+        }
+        assertEquals(1, starts);
+        assertEquals(0, stops);
+    }
+
+    // nothing mid-stride and nothing running: start one. a path that belongs to someone else (a lost approach child) is
+    // still left alone
+    @Test
+    public void aFreshWanderOnlyStartsWhenSafe() {
+        assertTrue(ApproachRules.wanderWhenNoTarget(false, true));
+        assertFalse(ApproachRules.wanderWhenNoTarget(false, false));
+        assertTrue(ApproachRules.wanderWhenNoTarget(true, false));
+        assertTrue(ApproachRules.wanderWhenNoTarget(true, true));
     }
 }

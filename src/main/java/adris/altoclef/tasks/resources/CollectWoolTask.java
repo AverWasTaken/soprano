@@ -112,7 +112,9 @@ public class CollectWoolTask extends ResourceTask {
             return getToCorrectDimensionTask(mod);
         }
 
-        if (mod.getItemStorage().hasItem(Items.SHEARS)) {
+        // (shears and no sheep ready to shear used to park us in a shear task that can only wander, so the kill task below
+        // never got its turn)
+        if (mod.getItemStorage().hasItem(Items.SHEARS) && mod.getEntityTracker().entityFound(ShearSheepTask::readyToShear, Sheep.class)) {
             // Shear sheep.
             return new ShearSheepTask();
         }

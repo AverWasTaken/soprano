@@ -78,4 +78,11 @@ public final class ApproachRules {
         }
         return Plan.WANDER;
     }
+
+    // nothing to interact with this tick. a wander we already have as our child keeps going even when baritone says it is not
+    // safe to cancel (its own explore path is what says that): returning null there stopped it, the next safe tick started a
+    // new one, and it re-explored from scratch about twice a second. a wander is only started fresh when nothing is mid-stride
+    public static boolean wanderWhenNoTarget(boolean wasWandering, boolean safeToCancel) {
+        return wasWandering || safeToCancel;
+    }
 }
