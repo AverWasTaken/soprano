@@ -70,7 +70,8 @@ public class CalculationContext {
     public final ToolSet toolSet;
     public final boolean hasWaterBucket;
     // a ladder or vine on the hotbar and allowLadderClutch on, see MovementDescend.dynamicFallCost
-    public final boolean hasClutchItem;
+    // (not final so a test can hand one over without a hotbar)
+    public boolean hasClutchItem;
     // hp plus absorption right now, for falls that hurt. same snapshot rule as hasWaterBucket
     public final double health;
     public final boolean fastMode;
@@ -80,7 +81,7 @@ public class CalculationContext {
     public final double jumpBias;
     public final boolean preferFasterPathing;
     // the clutch item is a ladder (vines win if both are there) and pickupLadders is on, so a clutch also costs the pickup
-    public final boolean clutchPicksUp;
+    public boolean clutchPicksUp;
     public final float blockReach;
     public final boolean hasThrowaway;
     public final boolean canSprint;
@@ -106,6 +107,9 @@ public class CalculationContext {
     public final boolean allowDownward;
     public int minFallHeight;
     public int maxFallHeightNoWater;
+    // a context that raises maxFallHeightNoWater because it wants the fall (the elytra walk off) doesn't want it priced as
+    // damage or swapped for a ladder either, see MovementDescend.dynamicFallCost
+    public boolean plainFallsAreFree;
     public final int maxFallHeightBucket;
     public final double waterWalkSpeed;
     // the executor will sprint swim through water, same conditions as Movement.shouldSwim minus the live ones

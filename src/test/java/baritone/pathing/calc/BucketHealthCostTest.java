@@ -74,6 +74,7 @@ public class BucketHealthCostTest {
     private Settings settings;
     private boolean potions;
     private boolean fast;
+    private double fallDamageCost;
 
     @Before
     public void setUp() {
@@ -85,6 +86,7 @@ public class BucketHealthCostTest {
         }
         potions = settings.considerPotionEffects.value;
         fast = settings.fastMode.value;
+        fallDamageCost = settings.fallDamageCost.value;
         settings.considerPotionEffects.value = false;
         settings.fastMode.value = false;
     }
@@ -94,6 +96,7 @@ public class BucketHealthCostTest {
         if (settings != null) {
             settings.considerPotionEffects.value = potions;
             settings.fastMode.value = fast;
+            settings.fallDamageCost.value = fallDamageCost;
         }
     }
 
@@ -170,5 +173,101 @@ public class BucketHealthCostTest {
         assertFalse(ExperimentalMovement.canAffordBucketMiss(17, 20));
         assertTrue(ExperimentalMovement.canAffordBucketMiss(0.5, 3)); // nothing to miss under the safe distance
         assertTrue(ExperimentalMovement.canAffordBucketMiss(5.5, 7)); // absorption makes for fractional hp
+    }
+
+    // ---- maxFallHeightNoWater is only free while the fall doesn't hurt ----
+
+    private static MutableMoveResult plainWindow(int blocksFallen, boolean ladder, boolean wall, double health, boolean plainFree) {
+        // the cliff face at x=0 is the wall the ladder hangs on, no wall is a ledge on its own with air under it
+        MapWorld w = cliff(blocksFallen);
+        if (!wall) {
+            for (int y = 64; y < 63 + blocksFallen; y++) {
+                w.set(0, y, 0, Blocks.AIR.defaultBlockState());
+            }
+        }
+        Ctx ctx = new Ctx(w, false, health);
+        ctx.maxFallHeightNoWater = 9;
+        ctx.hasClutchItem = ladder;
+        ctx.plainFallsAreFree = plainFree;
+        MutableMoveResult res = new MutableMoveResult();
+        MovementDescend.cost(ctx, 0, 64 + blocksFallen, 0, 1, 0, res);
+        return res;
+    }
+
+    @Test
+    public void aDropThatHurtsTakesTheLadderEvenWhenTheLimitAllowsIt() {
+        MutableMoveResult res = plainWindow(6, true, true, 20, false);
+        assertEquals(64, res.y);
+        assertTrue(res.clutch);
+        assertEquals(0, res.damage, 0);
+        assertTrue(res.cost < ActionCosts.COST_INF);
+    }
+
+    @Test
+    public void theLadderWinsNoMatterWhatItCosts() {
+        // hearts for free, so the plain fall is as cheap as it can get and the clutch (a ladder to place and fetch) is dearer
+        settings.fallDamageCost.value = 0D;
+        MutableMoveResult hurt = plainWindow(6, false, false, 20, false);
+        MutableMoveResult clutch = plainWindow(6, true, true, 20, false);
+        assertEquals(3, hurt.damage, 0);
+        assertTrue(clutch.cost > hurt.cost);
+        assertTrue(clutch.clutch);
+    }
+
+    @Test
+    public void aDropThatHurtsWithNoWallIsPricedAsDamage() {
+        MutableMoveResult free = plainWindow(6, false, false, 20, true);
+        MutableMoveResult res = plainWindow(6, true, false, 20, false);
+        assertFalse(res.clutch);
+        assertEquals(3, res.damage, 0);
+        assertEquals(64, res.y);
+        assertEquals(free.cost + 3 * settings.fallDamageCost.value, res.cost, 1e-6);
+    }
+
+    @Test
+    public void aDropThatHurtsWithNoLadderIsPricedAsDamageToo() {
+        MutableMoveResult res = plainWindow(6, false, true, 20, false);
+        assertFalse(res.clutch);
+        assertEquals(3, res.damage, 0);
+    }
+
+    @Test
+    public void aDropThatDoesNotHurtStaysFree() {
+        // 3 blocks is the safe fall, ladder and wall in reach or not
+        for (boolean ladder : new boolean[]{false, true}) {
+            MutableMoveResult res = plainWindow(3, ladder, true, 20, false);
+            assertEquals(64, res.y);
+            assertFalse(res.clutch);
+            assertEquals(0, res.damage, 0);
+            assertTrue(res.cost < ActionCosts.COST_INF);
+        }
+        assertEquals(plainWindow(3, false, false, 20, true).cost, plainWindow(3, true, true, 20, false).cost, 1e-9);
+    }
+
+    @Test
+    public void aHurtingDropThatWouldKillIsRefusedAndTheLadderIsStillOffered() {
+        // 9 blocks is 6 damage. without fastMode the floor is 1 hp: 6 hp dies, 7 hp lives
+        assertEquals(ActionCosts.COST_INF, plainWindow(9, false, false, 6, false).cost, 0);
+        assertEquals(6, plainWindow(9, false, false, 7, false).damage, 0);
+        // and a clutch is off the menu below fastModeMinHealth like anywhere else, so at 7 hp it is the priced fall
+        MutableMoveResult low = plainWindow(9, true, true, 7, false);
+        assertFalse(low.clutch);
+        assertEquals(6, low.damage, 0);
+    }
+
+    @Test
+    public void fastModeHoldsTheHurtingDropToItsOwnFloor() {
+        settings.fastMode.value = true;
+        // 3 damage at 14 hp leaves 11, under the 12 floor
+        assertEquals(ActionCosts.COST_INF, plainWindow(6, false, false, 14, false).cost, 0);
+        assertEquals(3, plainWindow(6, false, false, 15, false).damage, 0);
+    }
+
+    @Test
+    public void aContextThatWantsTheFallItselfKeepsItFree() {
+        MutableMoveResult res = plainWindow(9, true, true, 20, true);
+        assertFalse(res.clutch);
+        assertEquals(0, res.damage, 0);
+        assertEquals(64, res.y);
     }
 }

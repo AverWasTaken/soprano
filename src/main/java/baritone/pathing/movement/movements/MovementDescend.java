@@ -226,7 +226,13 @@ public class MovementDescend extends Movement {
             if (MovementHelper.isBottomSlab(ontoBlock)) {
                 return false; // falling onto a half slab is really glitchy, and can cause more fall damage than we'd expect
             }
-            if (reachedMinimum && unprotectedFallHeight <= context.maxFallHeightNoWater + 1) {
+            // maxFallHeightNoWater used to wave through every fall up to it, ladder in the bag or not. now a fall is free only
+            // while it deals no damage (3 blocks), anything past that inside the limit goes through the same menu as a longer
+            // drop: the clutch or the bucket, whichever is cheaper, and only when neither works the hearts get priced
+            // (hurtingFall). so a clutch that works beats taking the damage however much it costs, that is on purpose.
+            // plainFallsAreFree is for contexts that raised the limit to get the fall itself
+            boolean inPlainLimit = reachedMinimum && unprotectedFallHeight <= context.maxFallHeightNoWater + 1;
+            if (inPlainLimit && (context.plainFallsAreFree || ExperimentalMovement.fallDamage(unprotectedFallHeight - 1) == 0)) {
                 // fallHeight = 4 means onto.up() is 3 blocks down, which is the max
                 res.x = destX;
                 res.y = newY + 1;
@@ -262,19 +268,20 @@ public class MovementDescend extends Movement {
                 res.cost = tentativeCost + context.placeBucketCost();
                 return true;
             }
-            hurtingFall(context, destX, destZ, newY, unprotectedFallHeight - 1, tentativeCost, ontoBlock, res);
+            hurtingFall(context, destX, destZ, newY, unprotectedFallHeight - 1, tentativeCost, ontoBlock, res, inPlainLimit);
             return false;
         }
     }
 
-    // the last resort under fastMode: no bucket, no clutch, so just eat it if we can afford the hearts.
+    // the last resort: no bucket, no clutch, so just eat it if we can afford the hearts. fastMode takes any fall up to
+    // MAX_HURT_FALL, otherwise it's only the ones inside maxFallHeightNoWater (the user said they were fine with those).
     // the water bucket and the clutch both got their say before we got here, a fall that hurts never beats one that doesn't
-    private static void hurtingFall(CalculationContext context, int destX, int destZ, int newY, int blocks, double tentativeCost, BlockState onto, MutableMoveResult res) {
-        if (!context.fastMode || blocks > ExperimentalMovement.MAX_HURT_FALL) {
+    private static void hurtingFall(CalculationContext context, int destX, int destZ, int newY, int blocks, double tentativeCost, BlockState onto, MutableMoveResult res, boolean inPlainLimit) {
+        if (!(context.fastMode || inPlainLimit) || blocks > ExperimentalMovement.MAX_HURT_FALL) {
             return;
         }
         int damage = ExperimentalMovement.fallDamage(blocks);
-        if (!ExperimentalMovement.canAffordFall(context.health, damage, context.fastModeMinHealth)) {
+        if (!ExperimentalMovement.canAffordFall(context.health, damage, ExperimentalMovement.hurtFloor(context.fastMode, context.fastModeMinHealth))) {
             return;
         }
         // magma and friends. canWalkOn lets some of them through (we can sneak on magma, that is not the same as landing on it)
