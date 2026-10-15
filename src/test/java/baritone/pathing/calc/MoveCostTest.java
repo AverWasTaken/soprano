@@ -28,6 +28,7 @@ import baritone.pathing.movement.movements.MovementDiagonal;
 import baritone.pathing.movement.movements.MovementDownward;
 import baritone.pathing.movement.movements.MovementTraverse;
 import baritone.utils.BlockStateInterface;
+import baritone.utils.ExperimentalMovement;
 import baritone.utils.ToolSet;
 import baritone.utils.pathing.MutableMoveResult;
 import baritone.utils.pathing.BetterWorldBorder;
@@ -85,7 +86,7 @@ public class MoveCostTest {
         }
     }
 
-    private static final class Ctx extends CalculationContext {
+    private static class Ctx extends CalculationContext {
         Ctx(BlockStateInterface bsi) {
             this(bsi, 0.0f);
         }
@@ -257,43 +258,119 @@ public class MoveCostTest {
     }
 
     @Test
-    public void theDescentEstimateNeverBeatsAFreeFallOfTheLongestFallWeCanPlan() {
-        // nobody gets down faster than gravity, so for any fall we plan on this is a lower bound. no bucket is 3 blocks, a bucket 20
+    public void theDescentEstimateNeverBeatsWhatTheCheapestPlainFallCosts() {
+        // for any plain fall this is a lower bound, the only free ones are 3 blocks and under
         for (int n = 1; n <= 3; n++) {
             assertTrue("a " + n + " block drop", descentWith(false, n) <= FALL_N_BLOCKS_COST[n] + 1e-9);
-        }
-        for (int n = 1; n <= 20; n++) {
-            assertTrue("a " + n + " block drop", descentWith(true, n) <= FALL_N_BLOCKS_COST[n] + 1e-9);
         }
         assertEquals(FALL_N_BLOCKS_COST[3] / 3, GoalYLevel.calculate(0, 1), 1e-9);
     }
 
     @Test
-    public void aBucketMakesACliffLookLikeACliffAndNothingElseDoes() {
-        // 10 blocks of falling is 17 ticks. the old estimate said 39, which is 4.7 blocks of staircase worth of sprinting
-        assertTrue(descentWith(true, 10) < 14);
-        // without a bucket there is no ten block fall to plan, so digging down isn't made to look any cheaper than it must
-        assertTrue(descentWith(false, 10) > 30);
+    public void aBucketDoesNotMakeDiggingDownLookWorthless() {
+        // a bucket fall is cheaper than this, but pricing it in made the floor 1.49 in fastMode and a bucket carrier could
+        // never make a downward partial worth taking again. so the bucket gets the same floor as everyone
+        for (int n = 1; n <= 20; n++) {
+            assertEquals("a " + n + " block drop", descentWith(false, n), descentWith(true, n), 1e-9);
+        }
+        assertTrue(descentWith(true, 10) > 30);
         assertEquals(GoalYLevel.calculate(0, 10), GoalBlock.calculate(0, 10, 0), 1e-9);
+        // and the bucket floor goes through GoalBlock the same way, not just the default one
+        // (descentWith resets the thread on the way out, so it goes first)
+        double bucketFloor = descentWith(true, 10);
+        GoalYLevel.setDescentTicksPerBlock(new Ctx(floor(), true).descentTicksPerBlock());
+        try {
+            assertEquals(GoalYLevel.calculate(0, 10), GoalBlock.calculate(0, 10, 0), 1e-9);
+            assertEquals(bucketFloor, GoalBlock.calculate(0, 10, 0), 1e-9);
+        } finally {
+            GoalYLevel.resetDescentTicksPerBlock();
+        }
     }
 
     @Test
-    public void whatEachKindOfContextCanFallDecidesTheFloor() {
-        double plain = new Ctx(floor(), false).descentTicksPerBlock();
-        double bucket = new Ctx(floor(), true).descentTicksPerBlock();
-        assertEquals(FALL_N_BLOCKS_COST[3] / 3, plain, 1e-9);
-        assertEquals(FALL_N_BLOCKS_COST[20] / 20, bucket, 1e-9);
-        assertEquals(FALL_N_BLOCKS_COST[256] / 256, CalculationContext.descentFloor(3, 20, true, true, false), 1e-9);
-        assertEquals(FALL_N_BLOCKS_COST[23] / 23, CalculationContext.descentFloor(3, 20, false, false, true), 1e-9);
+    public void aPlainFallIsFreeOnlyWhileItDealsNoDamage() {
+        // 3 blocks is the last free one. past that every block of fall costs a half heart, and a half heart is fallDamageCost
+        Ctx ctx = new Ctx(floor(), false);
+        assertEquals(FALL_N_BLOCKS_COST[3] / 3, ctx.descentTicksPerBlock(), 1e-9);
+        ctx.maxFallHeightNoWater = 9;
+        double best = FALL_N_BLOCKS_COST[3] / 3;
+        for (int n = 4; n <= 9; n++) {
+            best = Math.min(best, (FALL_N_BLOCKS_COST[n] + (n - 3) * ctx.fallDamageCost) / n);
+        }
+        assertEquals(best, ctx.descentTicksPerBlock(), 1e-9);
+        // at the default price of a heart none of the 4 to 9 block falls gets near the 3 block one, so it reduces to that
+        assertEquals(FALL_N_BLOCKS_COST[3] / 3, best, 1e-9);
+    }
+
+    @Test
+    public void fastModeDoesNotBringTheFloorDownToTheFreeFallTimeOfTwentyThreeBlocks() {
+        boolean fast = settings.fastMode.value;
+        double cost = settings.fallDamageCost.value;
+        settings.fastMode.value = true;
+        try {
+            // the old floor was 23 blocks of free fall, about 1.16 a block, and nothing downhill could beat a dig step's share
+            // with that. a 23 block fall takes 20 hp, it is nowhere near that cheap
+            assertTrue(FALL_N_BLOCKS_COST[23] / 23 < 1.2);
+            Ctx ctx = new Ctx(floor(), false);
+            assertEquals(FALL_N_BLOCKS_COST[3] / 3, ctx.descentTicksPerBlock(), 1e-9);
+            ctx.maxFallHeightNoWater = 9;
+            assertEquals(FALL_N_BLOCKS_COST[3] / 3, ctx.descentTicksPerBlock(), 1e-9);
+            // hearts that cost nothing are the long fall's free fall time, and a cheap one is the per n minimum
+            settings.fallDamageCost.value = 0.0;
+            assertEquals(FALL_N_BLOCKS_COST[23] / 23, new Ctx(floor(), false).descentTicksPerBlock(), 1e-9);
+            settings.fallDamageCost.value = 1.0;
+            double best = FALL_N_BLOCKS_COST[3] / 3;
+            for (int n = 4; n <= 23; n++) {
+                best = Math.min(best, (FALL_N_BLOCKS_COST[n] + (n - 3)) / n);
+            }
+            assertTrue(best < FALL_N_BLOCKS_COST[3] / 3);
+            assertEquals(best, new Ctx(floor(), false).descentTicksPerBlock(), 1e-9);
+        } finally {
+            settings.fastMode.value = fast;
+            settings.fallDamageCost.value = cost;
+        }
+    }
+
+    @Test
+    public void carryingABucketOrAClutchItemLeavesTheFloorAlone() {
+        // same as aBucketDoesNotMakeDiggingDownLookWorthless, a clutch would have been under 0.6 a block
+        boolean fast = settings.fastMode.value;
+        try {
+            for (boolean fastMode : new boolean[]{false, true}) {
+                settings.fastMode.value = fastMode;
+                double plain = new Ctx(floor(), false).descentTicksPerBlock();
+                assertEquals(FALL_N_BLOCKS_COST[3] / 3, plain, 1e-9);
+                assertEquals(plain, new Ctx(floor(), true).descentTicksPerBlock(), 1e-9);
+                for (boolean pickup : new boolean[]{false, true}) {
+                    Ctx clutch = new Ctx(floor(), true);
+                    clutch.hasClutchItem = true;
+                    clutch.clutchPicksUp = pickup;
+                    assertEquals(plain, clutch.descentTicksPerBlock(), 1e-9);
+                }
+                // and a placement that pays you changes nothing either
+                Ctx paid = new Ctx(floor(), true) {
+                    @Override
+                    public double placeBucketCost() {
+                        return -5;
+                    }
+                };
+                paid.hasClutchItem = true;
+                assertEquals(plain, paid.descentTicksPerBlock(), 1e-9);
+            }
+        } finally {
+            settings.fastMode.value = fast;
+        }
     }
 
     @Test
     public void aFallMoveNeverCostsLessThanTheEstimateSaysItShould() {
         // the estimate is added to the flat distance, so it only stays admissible if a fall (1 block out, n down) is
-        // worth at least that much on the heuristic. WALK_OFF 3.7 is a hair over the 3.56 a block of flat
-        for (int n = 1; n <= 20; n++) {
-            double saved = GoalBlock.calculate(1, 0, 0) + descentWith(true, n);
-            assertTrue("fall of " + n, saved <= WALK_OFF_BLOCK_COST + FALL_N_BLOCKS_COST[n] + 1e-9);
+        // worth at least that much on the heuristic. WALK_OFF 3.7 is a hair over the 3.56 a block of flat. past 3 blocks the
+        // fall hurts and the hearts are in its price. bucket falls are not covered, on purpose
+        double hurt = new Ctx(floor(), false).fallDamageCost;
+        for (int n = 1; n <= 23; n++) {
+            double saved = GoalBlock.calculate(1, 0, 0) + descentWith(false, n);
+            assertTrue("fall of " + n, saved <= WALK_OFF_BLOCK_COST + FALL_N_BLOCKS_COST[n] + ExperimentalMovement.fallDamage(n) * hurt + 1e-9);
         }
     }
 
@@ -377,11 +454,15 @@ public class MoveCostTest {
     }
 
     @Test
-    public void aContextThatRaisesTheFallLimitAfterwardsGetsTheLowerFloor() {
+    public void aContextThatRaisesTheFallLimitAfterwardsAndMakesFallsFreeGetsTheLowerFloor() {
         // the elytra walk off context sets maxFallHeightNoWater to 10000 after the constructor has run
         Ctx ctx = new Ctx(floor(), false);
         assertEquals(FALL_N_BLOCKS_COST[3] / 3, ctx.descentTicksPerBlock(), 1e-9);
+        // raising the limit alone prices the hearts, so it is no cheaper to go down
         ctx.maxFallHeightNoWater = 10000;
+        assertEquals(FALL_N_BLOCKS_COST[3] / 3, ctx.descentTicksPerBlock(), 1e-9);
+        // plainFallsAreFree is the other half, there the fall is the point and nothing inside the limit is charged
+        ctx.plainFallsAreFree = true;
         assertEquals(FALL_N_BLOCKS_COST[4096] / 4096, ctx.descentTicksPerBlock(), 1e-9);
     }
 
