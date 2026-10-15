@@ -227,6 +227,13 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
                 case WAIT:
                     _progress.reset();
                     _blocker = null;
+                    // the shuffle we started (plan WANDER) puts a path up that makes the next plan WAIT, and null cut it every
+                    // other tick. same rule as with no target: a wander that is already our child finishes its step
+                    if (wasWandering && !mod.getClientBaritone().getPathingBehavior().isSafeToCancel()) {
+                        setDebugState("Finishing the shuffle");
+                        _wanderLive = true;
+                        return new TimeoutWanderTask();
+                    }
                     setDebugState("In reach, waiting for the swing");
                     return null;
                 default:
