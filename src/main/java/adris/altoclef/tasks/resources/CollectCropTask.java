@@ -2,6 +2,7 @@ package adris.altoclef.tasks.resources;
 
 import baritone.Baritone;
 import adris.altoclef.AltoClef;
+import adris.altoclef.Debug;
 import adris.altoclef.tasks.DoToClosestBlockTask;
 import adris.altoclef.tasks.InteractWithBlockTask;
 import adris.altoclef.tasks.ResourceTask;
@@ -11,13 +12,13 @@ import adris.altoclef.tasksystem.Task;
 import adris.altoclef.ui.HudText;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.CropRules;
-import adris.altoclef.util.helpers.StlHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Predicate;
+import java.util.function.ToDoubleFunction;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.entity.item.ItemEntity;
@@ -26,6 +27,7 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.CropBlock;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.Vec3;
 
 public class CollectCropTask extends ResourceTask {
 
@@ -34,7 +36,14 @@ public class CollectCropTask extends ResourceTask {
     private final Predicate<BlockPos> _canBreak;
     private final Block[] _cropBlock;
 
-    private final Set<BlockPos> _emptyCropland = new HashSet<>();
+    // 200 ticks on one cell and it is somebody else's problem
+    private final ReplantBook<BlockPos> _holes = new ReplantBook<>(200);
+    // crops we have started on. a hole only counts once the cell is really air, the swing starting is not the crop leaving
+    private final Set<BlockPos> _started = new HashSet<>();
+    private CropPhase _phase = CropPhase.BREAK;
+    // same task every tick while we stay on a cell, the click needs a few ticks of looking before it lands
+    private InteractWithBlockTask _replantTask;
+    private BlockPos _replantAt;
 
     private final Task _collectSeedTask;
 
@@ -74,19 +83,16 @@ public class CollectCropTask extends ResourceTask {
 
     @Override
     protected Task onResourceTick(AltoClef mod) {
-        /*
-         *   Filter the empty crop list to remove non-empty areas
-         *   If _currentCropBreaking != null && _currentCropBreaking is EMPTY:
-         *      Add _currentCropBreaking to empty cropland
-         * - If empty cropland list not empty && mod.getSettings().shouldReplaceCrops() && we have crop seed in inventory:
-         *      do to closest block task: interact with seed
-         *   Do to closest block task:
-         *      set _currentCropBreaking = block
-         *      break the block
-         */
+        sweepStarted(mod);
+        BlockPos dud = _holes.refresh(WorldHelper.getTicks(), pos -> isEmptyCrop(mod, pos));
+        if (dud != null) {
+            Debug.logInternal("replant: gave up on " + dud.toShortString() + " after a whole budget of clicks, it never took a seed");
+        }
+        boolean haveSeed = mod.getItemStorage().hasItem(_cropSeed);
+        boolean replantOn = Baritone.settings().replantCrops.value;
 
         // Collect seeds if we need to.
-        if (hasEmptyCrops(mod) && Baritone.settings().replantCrops.value && !mod.getItemStorage().hasItem(_cropSeed)) {
+        if (_holes.any() && replantOn && !haveSeed) {
             if (_collectSeedTask.isActive() && !_collectSeedTask.isFinished(mod)) {
                 setDebugState("Picking up dropped seeds");
                 return _collectSeedTask;
@@ -100,18 +106,29 @@ public class CollectCropTask extends ResourceTask {
             }
         }
 
-        // Replant if we need to!
-        if (shouldReplantNow(mod)) {
-            setDebugState("Replanting...");
-            // We guarantee that empty cropland list has valid empty blocks. We can purge at this stage.
-            _emptyCropland.removeIf(blockPos -> !isEmptyCrop(mod, blockPos));
-            assert !_emptyCropland.isEmpty();
-            return new DoToClosestBlockTask(
-                    blockPos -> new InteractWithBlockTask(new ItemTarget(_cropSeed, 1), Direction.UP, blockPos.below(), true),
-                    pos -> _emptyCropland.stream().min(StlHelper.compareValues(block -> block.distToCenterSqr(pos))),
-                    _emptyCropland::contains,
-                    Blocks.FARMLAND); // Blocks.FARMLAND is useless to be put here
+        // one phase at a time: replant until the holes in reach are full, break until the next one opens. the old replant
+        // went through DoToClosestBlockTask, whose validity check asked the block tracker about an air cell over farmland
+        // (never valid), so the pursuit was dropped every single tick and no click ever got a second one
+        if (!haveSeed) {
+            _holes.release();
         }
+        Vec3 at = mod.getPlayer().position();
+        ToDoubleFunction<BlockPos> dist = pos -> pos.distToCenterSqr(at);
+        _phase = CropPhase.next(_phase, replantOn, haveSeed, _holes.near(dist, REPLANT_RANGE_SQ), _holes.committed());
+        if (_phase == CropPhase.REPLANT) {
+            BlockPos cell = _holes.pick(WorldHelper.getTicks(), dist, REPLANT_RANGE_SQ);
+            if (cell != null) {
+                setDebugState("Replanting...");
+                if (!cell.equals(_replantAt)) {
+                    _replantAt = cell;
+                    _replantTask = new InteractWithBlockTask(new ItemTarget(_cropSeed, 1), Direction.UP, cell.below(), true);
+                }
+                return _replantTask;
+            }
+            _phase = CropPhase.BREAK;
+        }
+        _replantAt = null;
+        _replantTask = null;
 
         // grown ones only, whatever the crop and whether or not we replant. a young one yields the one item we planted,
         // and the carrot branch of this used to take them (only wheat was asked), so a field of seedlings kept us busy
@@ -126,12 +143,23 @@ public class CollectCropTask extends ResourceTask {
         setDebugState("Breaking crops.");
         return new DoToClosestBlockTask(
                 blockPos -> {
-                    _emptyCropland.add(blockPos);
+                    _started.add(blockPos);
                     return new DestroyBlockTask(blockPos);
                 },
                 validCrop,
                 _cropBlock
         ).expectDrops();
+    }
+
+    // crops we swung at become holes when they are gone, and are forgotten when something else took the spot
+    private void sweepStarted(AltoClef mod) {
+        _started.removeIf(pos -> {
+            if (isEmptyCrop(mod, pos)) {
+                _holes.add(pos);
+                return true;
+            }
+            return !Arrays.asList(_cropBlock).contains(mod.getWorld().getBlockState(pos).getBlock());
+        });
     }
 
     @Override
@@ -142,7 +170,7 @@ public class CollectCropTask extends ResourceTask {
     @Override
     public boolean isFinished(AltoClef mod) {
         // Don't stop while we're replanting crops.
-        if (shouldReplantNow(mod)) {
+        if (replantPending(mod)) {
             return false;
         }
         return super.isFinished(mod);
@@ -151,22 +179,15 @@ public class CollectCropTask extends ResourceTask {
     // only the holes we are standing in: replanting is a favour to the field, not worth a walk back across the farm
     private static final double REPLANT_RANGE_SQ = 10 * 10;
 
-    private boolean shouldReplantNow(AltoClef mod) {
-        return Baritone.settings().replantCrops.value && hasEmptyCropsNear(mod) && mod.getItemStorage().hasItem(_cropSeed);
-    }
-
-    private boolean hasEmptyCropsNear(AltoClef mod) {
-        for (BlockPos pos : _emptyCropland) {
-            if (isEmptyCrop(mod, pos) && pos.distToCenterSqr(mod.getPlayer().position()) <= REPLANT_RANGE_SQ) return true;
+    // a hole we already set off for counts at any distance, or walking away mid-replant would read as done
+    private boolean replantPending(AltoClef mod) {
+        if (!Baritone.settings().replantCrops.value || !mod.getItemStorage().hasItem(_cropSeed)) {
+            return false;
         }
-        return false;
-    }
-
-    private boolean hasEmptyCrops(AltoClef mod) {
-        for (BlockPos pos : _emptyCropland) {
-            if (isEmptyCrop(mod, pos)) return true;
-        }
-        return false;
+        sweepStarted(mod);
+        _holes.refresh(WorldHelper.getTicks(), pos -> isEmptyCrop(mod, pos));
+        Vec3 at = mod.getPlayer().position();
+        return _holes.committed() || _holes.near(pos -> pos.distToCenterSqr(at), REPLANT_RANGE_SQ) > 0;
     }
 
     // air over farmland. a trampled spot (dirt now) can't take a seed, and trying every few seconds forever was the stall
