@@ -773,6 +773,11 @@ public final class Settings {
      * How far are you allowed to fall onto solid ground (without a water bucket)?
      * 3 won't deal any damage. But if you just want to get down the mountain quickly and you have
      * Feather Falling IV, you might set it a bit higher, like 4 or 5.
+     * <p>
+     * Only the first 3 blocks are planned as a free fall. Anything past that up to this limit is a fall that hurts, so
+     * a ladder or vine clutch (see {@link #allowLadderClutch}) or a water bucket is used when one works, and otherwise
+     * the damage is priced in with {@link #fallDamageCost} and the fall only happens if it leaves you alive
+     * (or above {@link #fastModeMinHealth} in fast mode).
      */
     public final Setting<Integer> maxFallHeightNoWater = new Setting<>(3);
 

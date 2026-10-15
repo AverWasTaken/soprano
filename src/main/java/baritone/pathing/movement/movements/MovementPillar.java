@@ -139,8 +139,27 @@ public class MovementPillar extends Movement {
         }
     }
 
+    // set on the ticks we're crouching to place a block, see swimAllowed
+    private boolean placing;
+
+    @Override
+    public void reset() {
+        super.reset();
+        placing = false;
+    }
+
+    // the click only goes out once isCrouching(), and the swim pose beats the crouch pose (Player.getDesiredPose), so while
+    // sprint holds the swim state in the water we stand there with SNEAK down and never crouch. so no swimming while we
+    // place: sprint stays off (Movement.update lets go of it), and the waterline hold, which takes over the pitch we aim
+    // the block with and forces jump, never runs. the swim up a water column below is not placing and swims as before
+    @Override
+    protected boolean swimAllowed() {
+        return !placing;
+    }
+
     @Override
     public MovementState updateState(MovementState state) {
+        placing = false;
         super.updateState(state);
         if (state.getStatus() != MovementStatus.RUNNING) {
             return state;
@@ -188,7 +207,11 @@ public class MovementPillar extends Movement {
                 return state.setStatus(MovementStatus.UNREACHABLE);
             }
 
-            state.setInput(Input.SNEAK, true);
+            placing = true;
+            // in water sneak pulls down exactly as hard as jump pushes up (goDownInWater and jumpInLiquid are 0.04 each), so
+            // holding both is a bot that treads water. rise first, crouch the tick we're out of the water: the crouch lands
+            // a tick after the key (see the comment below) which is about when the apex is above the new floor
+            state.setInput(Input.SNEAK, !ctx.player().isInWater());
             // since (lower down) we only right click once player.isSneaking, and that happens the tick after we request to sneak
 
             double diffX = ctx.player().position().x - (dest.getX() + 0.5);

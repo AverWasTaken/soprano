@@ -253,12 +253,19 @@ public abstract class Movement implements IMovement, MovementHelper {
     // half the swim box plus a hair, so a block the box is pressed flat against counts as in the way
     private static final double SWIM_HALF_WIDTH = 0.31;
 
+    // a movement that needs the player upright in water (crouching to place a block) says no here: the swim pose beats the
+    // crouch pose, and sprint is what holds the swim pose. only MovementPillar says no, see its placingInWater
+    protected boolean swimAllowed() {
+        return true;
+    }
+
     /**
      * Holding sprint is what keeps the vanilla swim state alive, so swimming is only on the table when
      * we're actually in water, sprinting is allowed, and we have the hunger to sprint
      */
     private boolean shouldSwim() {
-        if (!ExperimentalMovement.allowSwimming()
+        if (!swimAllowed()
+                || !ExperimentalMovement.allowSwimming()
                 || !ctx.player().isInWater()
                 || !Baritone.settings().allowSprint.value
                 || ctx.player().getFoodData().getFoodLevel() <= 6) {
