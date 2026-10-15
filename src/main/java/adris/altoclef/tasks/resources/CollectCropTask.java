@@ -37,7 +37,8 @@ public class CollectCropTask extends ResourceTask {
     private final Block[] _cropBlock;
 
     // 200 ticks on one cell and it is somebody else's problem
-    private final ReplantBook<BlockPos> _holes = new ReplantBook<>(200);
+    private final ReplantBook<BlockPos> _holes = new ReplantBook<>(200,
+            dud -> Debug.logInternal("replant: gave up on " + dud.toShortString() + ", it never kept a seed"));
     // crops we have started on. a hole only counts once the cell is really air, the swing starting is not the crop leaving
     private final Set<BlockPos> _started = new HashSet<>();
     private CropPhase _phase = CropPhase.BREAK;
@@ -84,10 +85,7 @@ public class CollectCropTask extends ResourceTask {
     @Override
     protected Task onResourceTick(AltoClef mod) {
         sweepStarted(mod);
-        BlockPos dud = _holes.refresh(WorldHelper.getTicks(), pos -> isEmptyCrop(mod, pos));
-        if (dud != null) {
-            Debug.logInternal("replant: gave up on " + dud.toShortString() + " after a whole budget of clicks, it never took a seed");
-        }
+        _holes.refresh(WorldHelper.getTicks(), pos -> isEmptyCrop(mod, pos));
         boolean haveSeed = mod.getItemStorage().hasItem(_cropSeed);
         boolean replantOn = Baritone.settings().replantCrops.value;
 
@@ -106,9 +104,11 @@ public class CollectCropTask extends ResourceTask {
             }
         }
 
-        // one phase at a time: replant until the holes in reach are full, break until the next one opens. the old replant
-        // went through DoToClosestBlockTask, whose validity check asked the block tracker about an air cell over farmland
-        // (never valid), so the pursuit was dropped every single tick and no click ever got a second one
+        // one phase at a time: replant until the holes in reach are full, break until the next one opens. the old code asked
+        // "is there a hole and a seed" fresh every tick, and a click changes both answers at once (the predicted plant eats
+        // the seed and fills the cell), so every click flipped us to breaking and a server revert flipped us back. the old
+        // replant also went through DoToClosestBlockTask, whose validity check asked the block tracker about an air cell
+        // over farmland (never valid), so its pursuit was thrown away and rebuilt every tick
         if (!haveSeed) {
             _holes.release();
         }
