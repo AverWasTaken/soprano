@@ -315,5 +315,9 @@ public class McSchematicsTest {
         FilePicker.Choice c = FilePicker.parse(new ArrayList<>(List.of("C:\\a\\one.schem", "", "  C:\\b\\two.litematic  ")));
         assertEquals(2, c.files().size());
         assertTrue(FilePicker.parse(List.of("", " ")).wasCancelled());
+        // powershell's byte order mark on the first line, and a line that isn't a path at all
+        FilePicker.Choice bom = FilePicker.parse(List.of("﻿C:\\a\\one.schem", "bad\0line"));
+        assertEquals(1, bom.files().size());
+        assertEquals("one.schem", bom.files().get(0).getFileName().toString());
     }
 }

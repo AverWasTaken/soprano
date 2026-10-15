@@ -26,10 +26,24 @@ public final class SchematicImporter {
         }
     }
 
+    private static final int MAX_DEPTH = 8;
+    private static final int MAX_FILES = 500;
+
     private final Path directory;
+    // the same folder with symlinks resolved, for telling "already in the library" through a junction
+    private final Path realDirectory;
 
     public SchematicImporter(Path directory) {
         this.directory = directory.toAbsolutePath().normalize();
+        this.realDirectory = real(this.directory);
+    }
+
+    private static Path real(Path path) {
+        try {
+            return path.toRealPath();
+        } catch (IOException | RuntimeException e) {
+            return path;
+        }
     }
 
     public Report importAll(List<Path> sources) {
@@ -61,9 +75,27 @@ public final class SchematicImporter {
     }
 
     private void folder(Path root, String prefix, List<String> imported, List<String> skipped, List<String> errors) throws IOException {
-        List<Path> files;
-        try (Stream<Path> walk = Files.walk(root)) {
-            files = walk.filter(Files::isRegularFile).sorted().toList();
+        List<Path> files = new ArrayList<>();
+        // somebody will drop their whole .minecraft on it. bounded in depth and count, and a folder we can't read is
+        // skipped like the library scan does instead of aborting the lot
+        Files.walkFileTree(root, java.util.EnumSet.noneOf(java.nio.file.FileVisitOption.class), MAX_DEPTH,
+            new java.nio.file.SimpleFileVisitor<>() {
+                @Override
+                public java.nio.file.FileVisitResult visitFile(Path path, java.nio.file.attribute.BasicFileAttributes attrs) {
+                    if (attrs.isRegularFile() && isSchematic(path)) {
+                        files.add(path);
+                    }
+                    return files.size() >= MAX_FILES ? java.nio.file.FileVisitResult.TERMINATE : java.nio.file.FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public java.nio.file.FileVisitResult visitFileFailed(Path path, IOException e) {
+                    return java.nio.file.FileVisitResult.CONTINUE;
+                }
+            });
+        files.sort(null);
+        if (files.size() >= MAX_FILES) {
+            skipped.add(label(root) + ": only the first " + MAX_FILES + " schematics were imported");
         }
         for (Path file : files) {
             try {
@@ -93,7 +125,7 @@ public final class SchematicImporter {
             errors.add(name + ": file not found");
             return;
         }
-        if (source.toAbsolutePath().normalize().startsWith(directory)) {
+        if (source.toAbsolutePath().normalize().startsWith(directory) || real(source).startsWith(realDirectory)) {
             skipped.add(name + ": already in the library");
             return;
         }

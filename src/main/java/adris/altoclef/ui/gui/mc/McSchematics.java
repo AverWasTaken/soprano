@@ -343,8 +343,14 @@ public final class McSchematics implements SchematicsAccess {
     }
 
     private static boolean catalogueKnows(String itemId) {
-        Item item = itemOf(itemId);
-        return item != Items.AIR && TaskCatalogue.isObtainable(item);
+        try {
+            Item item = itemOf(itemId);
+            return item != Items.AIR && TaskCatalogue.isObtainable(item);
+        } catch (Throwable t) {
+            // the catalogue builds itself on first touch, and a tab that throws every frame is worse than no flag
+            Safe.report("gui schematics catalogue", t);
+            return false;
+        }
     }
 
     @Override
@@ -381,7 +387,7 @@ public final class McSchematics implements SchematicsAccess {
         if (info != null) {
             return info.file();
         }
-        Path root = library.directory().toPath();
+        Path root = library.directory().toPath().toAbsolutePath().normalize();
         Path resolved = root.resolve(relativePath).normalize();
         return resolved.startsWith(root) && Files.isRegularFile(resolved) ? resolved.toFile() : null;
     }

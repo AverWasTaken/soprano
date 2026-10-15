@@ -868,6 +868,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         List<BetterBlockPos> sourceLiquids = new ArrayList<>();
         List<BetterBlockPos> flowingLiquids = new ArrayList<>();
         Map<BlockState, Integer> missing = new HashMap<>();
+        Map<BlockState, Integer> wrongWayRound = new HashMap<>();
         List<BetterBlockPos> outOfBounds = new ArrayList<>();
         incorrectPositions.forEach(pos -> {
             BlockState state = bcc.bsi.get0(pos);
@@ -878,7 +879,8 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                 } else if (containsBlockState(approxPlaceable, desired)) {
                     placeable.add(pos);
                 } else {
-                    missing.put(desired, 1 + missing.getOrDefault(desired, 0));
+                    // holding the item but not in the state the schematic wants isn't "missing materials"
+                    (containsItem(approxPlaceable, desired) ? wrongWayRound : missing).merge(desired, 1, Integer::sum);
                 }
             } else {
                 if (state.getBlock() instanceof LiquidBlock) {
@@ -918,6 +920,12 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             if (logMissing && !missing.isEmpty()) {
                 logDirect("Missing materials for at least:");
                 logDirect(missing.entrySet().stream()
+                        .map(e -> String.format("%sx %s", e.getValue(), e.getKey()))
+                        .collect(Collectors.joining("\n")));
+            }
+            if (logMissing && !wrongWayRound.isEmpty()) {
+                logDirect("Have the items but can't place them the way the schematic wants for at least:");
+                logDirect(wrongWayRound.entrySet().stream()
                         .map(e -> String.format("%sx %s", e.getValue(), e.getKey()))
                         .collect(Collectors.joining("\n")));
             }
@@ -1511,20 +1519,31 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     // the states in approxPlaceable are what each stack would place *right now*, with the player facing wherever they
     // face. stairs, doors, logs and friends come out rotated, so an exact state match called a stack of stairs missing
     // whenever the schematic wanted them the other way round. the real placement (hasAnyItemThatWouldPlace) turns to
-    // face the block it places against and still checks the exact state, so for "do i own this" the item is what counts
+    // face the block it places against and still checks the exact state, so for "do i own this" the item is what counts.
+    // this only feeds the hotbar swap and the log, NOT the placeable check: a placement goal for a state we can't
+    // actually aim into is satisfied from any neighbouring tile and the builder would stand there forever, silently
     static boolean sameItem(BlockState have, BlockState desired) {
         Item item = have.getBlock().asItem();
         return item != Items.AIR && item == desired.getBlock().asItem();
     }
 
-    // valid() was the old answer for the slot picking, sameBlockstate for the placeable check below
+    // valid() was the old answer for the slot picking
     static boolean canSupply(BlockState have, BlockState desired) {
         return valid(have, desired, true) || sameItem(have, desired);
     }
 
+    static boolean containsItem(Collection<BlockState> states, BlockState state) {
+        for (BlockState testee : states) {
+            if (sameItem(testee, state)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     static boolean containsBlockState(Collection<BlockState> states, BlockState state) {
         for (BlockState testee : states) {
-            if (sameBlockstate(testee, state) || sameItem(testee, state)) {
+            if (sameBlockstate(testee, state)) {
                 return true;
             }
         }

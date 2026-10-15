@@ -29,7 +29,10 @@ public class BuilderSupplyTest {
     @Test
     public void stairsFacingTheOtherWayStillCount() {
         List<BlockState> inventory = List.of(Blocks.AIR.defaultBlockState(), stairs(Direction.NORTH));
-        assertTrue(BuilderProcess.containsBlockState(inventory, stairs(Direction.SOUTH)));
+        // owning them is not the same as being able to place them that way, so the placeable check stays exact
+        assertFalse(BuilderProcess.containsBlockState(inventory, stairs(Direction.SOUTH)));
+        assertTrue(BuilderProcess.containsBlockState(inventory, stairs(Direction.NORTH)));
+        assertTrue(BuilderProcess.containsItem(inventory, stairs(Direction.SOUTH)));
         assertTrue(BuilderProcess.canSupply(stairs(Direction.NORTH), stairs(Direction.WEST)));
     }
 
@@ -48,7 +51,7 @@ public class BuilderSupplyTest {
     @Test
     public void aDifferentItemDoesNotCount() {
         List<BlockState> inventory = List.of(stairs(Direction.NORTH), Blocks.STONE.defaultBlockState());
-        assertFalse(BuilderProcess.containsBlockState(inventory, Blocks.SPRUCE_STAIRS.defaultBlockState()));
+        assertFalse(BuilderProcess.containsItem(inventory, Blocks.SPRUCE_STAIRS.defaultBlockState()));
         assertFalse(BuilderProcess.canSupply(Blocks.STONE.defaultBlockState(), stairs(Direction.NORTH)));
     }
 

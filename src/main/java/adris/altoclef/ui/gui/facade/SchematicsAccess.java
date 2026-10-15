@@ -137,7 +137,7 @@ public interface SchematicsAccess {
     // a picker that can't open gets an ImportReport with an error saying to use drag and drop or Open folder instead
     void importFiles(Consumer<ImportReport> done);
 
-    // files dropped on the window (the gui screen forwards GLFW's drop here). copies synchronously, schematics are small
+    // files dropped on the window (the gui screen forwards Screen#onFilesDrop here). copies synchronously, schematics are small
     ImportReport importDropped(List<Path> files);
 
     // opens <gameDir>/schematics in the file manager, creating it first when it doesn't exist

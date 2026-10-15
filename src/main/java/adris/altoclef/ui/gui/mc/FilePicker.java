@@ -84,15 +84,15 @@ final class FilePicker {
         // -EncodedCommand is utf-16le base64, which dodges every quoting rule there is
         String encoded = Base64.getEncoder().encodeToString(windowsScript(extensions, title).getBytes(StandardCharsets.UTF_16LE));
         // hidden, because a game started with javaw has no console and powershell would open one next to the dialog
-        return run(List.of("powershell.exe", "-NoProfile", "-NonInteractive", "-STA", "-WindowStyle", "Hidden",
+        return run(NEVER, List.of("powershell.exe", "-NoProfile", "-NonInteractive", "-STA", "-WindowStyle", "Hidden",
             "-ExecutionPolicy", "Bypass", "-EncodedCommand", encoded));
     }
 
     // ----- mac
 
     private static Choice mac(String title) throws IOException, InterruptedException {
-        return run(List.of("osascript",
-            "-e", "set theFiles to choose file with prompt \"" + title.replace("\"", "") + "\" with multiple selections allowed",
+        return run(1, List.of("osascript",
+            "-e", "set theFiles to choose file with prompt \"" + title.replace("\"", "") + "\" of type {\"litematic\", \"schem\", \"schematic\"} with multiple selections allowed",
             "-e", "set out to \"\"",
             "-e", "repeat with f in theFiles",
             "-e", "set out to out & POSIX path of f & linefeed",
@@ -104,12 +104,12 @@ final class FilePicker {
 
     private static Choice linux(List<String> extensions, String title) throws IOException, InterruptedException {
         String patterns = String.join(" ", extensions.stream().map(e -> "*." + e).toList());
-        Choice zenity = run(List.of("zenity", "--file-selection", "--multiple", "--separator=\n",
+        Choice zenity = run(1, List.of("zenity", "--file-selection", "--multiple", "--separator=\n",
             "--title=" + title, "--file-filter=Schematics | " + patterns, "--file-filter=All files | *"));
         if (zenity.error == null || !zenity.error.startsWith(MISSING)) {
             return zenity;
         }
-        Choice kdialog = run(List.of("kdialog", "--getopenfilename", ".", patterns + "|Schematics", "--multiple",
+        Choice kdialog = run(1, List.of("kdialog", "--getopenfilename", ".", patterns + "|Schematics", "--multiple",
             "--separate-output", "--title", title));
         if (kdialog.error != null && kdialog.error.startsWith(MISSING)) {
             return Choice.failed("No file picker found. Install zenity or kdialog, or use drag and drop.");
@@ -120,8 +120,10 @@ final class FilePicker {
     // ----- the child process
 
     private static final String MISSING = "missing:";
+    // no exit code means cancel (windows)
+    private static final int NEVER = Integer.MIN_VALUE;
 
-    private static Choice run(List<String> command) throws IOException, InterruptedException {
+    private static Choice run(int cancelCode, List<String> command) throws IOException, InterruptedException {
         Process process;
         try {
             process = new ProcessBuilder(command).redirectError(ProcessBuilder.Redirect.DISCARD).start();
@@ -134,9 +136,13 @@ final class FilePicker {
             // thread, which only ends when the process closes it
             List<String> lines = readLines(process.getInputStream());
             int code = process.waitFor();
-            if (code != 0 && lines.isEmpty()) {
-                // osascript says -128 for cancel, zenity and kdialog use 1. nobody prints anything else useful
+            if (code == cancelCode && lines.isEmpty()) {
                 return Choice.cancelled();
+            }
+            if (code != 0 && lines.isEmpty()) {
+                // powershell exits 0 when the dialog is closed, so a non zero there (or anything but 1 elsewhere) means
+                // the script itself broke. saying "nothing chosen" would leave the player with no idea why
+                return Choice.failed("The file picker failed (exit " + code + "). Use drag and drop or Open folder.");
             }
             return parse(lines);
         } finally {
@@ -151,9 +157,15 @@ final class FilePicker {
     static Choice parse(List<String> lines) {
         List<Path> files = new ArrayList<>();
         for (String line : lines) {
-            String trimmed = line.strip();
-            if (!trimmed.isEmpty()) {
+            // windows powershell likes to put a byte order mark in front of the first line
+            String trimmed = line.replace("﻿", "").strip();
+            if (trimmed.isEmpty()) {
+                continue;
+            }
+            try {
                 files.add(Path.of(trimmed));
+            } catch (java.nio.file.InvalidPathException e) {
+                // one line we can't read shouldn't throw the others away
             }
         }
         return files.isEmpty() ? Choice.cancelled() : new Choice(List.copyOf(files), null);
