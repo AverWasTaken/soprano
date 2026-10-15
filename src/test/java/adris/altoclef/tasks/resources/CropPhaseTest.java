@@ -42,7 +42,7 @@ public class CropPhaseTest {
     @Test
     public void harvestReplantNextCropDoesNotFlipFlop() {
         Set<Integer> crops = new TreeSet<>(List.of(1, 2, 3));
-        ReplantBook<Integer> book = new ReplantBook<>(200);
+        ReplantBook<Integer> book = new ReplantBook<>(200, c -> { });
         CropPhase phase = BREAK;
         List<String> trace = new ArrayList<>();
         Integer breaking = null;

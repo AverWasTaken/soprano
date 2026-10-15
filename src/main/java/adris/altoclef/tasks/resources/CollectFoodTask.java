@@ -248,7 +248,10 @@ public class CollectFoodTask extends Task {
             // Try a new resource task
             _checkNewOptionsTimer.reset();
             // the timer used to wipe a half dead pig off the list the moment a hay bale came into view
-            if (!(_huntTask != null && _currentResourceTask == _huntTask && (huntCommitted(mod) || lootComing(mod)))) {
+            // same for a field in progress: a fresh CollectCropTask has a new wheat count, loses its list of holes, and nothing
+            // it broke before the swap ever gets replanted
+            boolean fieldInProgress = _currentResourceTask instanceof CollectCropTask && _currentResourceTask.isActive();
+            if (!fieldInProgress && !(_huntTask != null && _currentResourceTask == _huntTask && (huntCommitted(mod) || lootComing(mod)))) {
                 _currentResourceTask = null;
             }
         }
