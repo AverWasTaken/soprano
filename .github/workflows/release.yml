@@ -76,3 +76,46 @@ jobs:
           [ -f "$f" ] && FILES="$FILES $f"
         done
         gh release create "$GITHUB_REF_NAME" --title "Soprano v${VERSION}" --notes-file release-notes.md $FILES
+
+    # same jars on modrinth, one version per loader so launchers pick the right one by themselves
+    - name: Publish fabric to Modrinth
+      if: hashFiles(format('dist/soprano-api-fabric-{0}.jar', env.VERSION)) != ''
+      uses: Kir-Antipov/mc-publish@v3.3
+      with:
+        modrinth-id: incJj4LT
+        modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
+        files: dist/soprano-api-fabric-${{ env.VERSION }}.jar
+        name: Soprano ${{ env.VERSION }} (Fabric)
+        version: ${{ env.VERSION }}+fabric
+        version-type: release
+        loaders: fabric
+        game-versions: ${{ env.MC_VERSION }}
+        changelog-file: release-notes.md
+
+    - name: Publish forge to Modrinth
+      if: hashFiles(format('dist/soprano-api-forge-{0}.jar', env.VERSION)) != ''
+      uses: Kir-Antipov/mc-publish@v3.3
+      with:
+        modrinth-id: incJj4LT
+        modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
+        files: dist/soprano-api-forge-${{ env.VERSION }}.jar
+        name: Soprano ${{ env.VERSION }} (Forge)
+        version: ${{ env.VERSION }}+forge
+        version-type: release
+        loaders: forge
+        game-versions: ${{ env.MC_VERSION }}
+        changelog-file: release-notes.md
+
+    - name: Publish neoforge to Modrinth
+      if: hashFiles(format('dist/soprano-api-neoforge-{0}.jar', env.VERSION)) != ''
+      uses: Kir-Antipov/mc-publish@v3.3
+      with:
+        modrinth-id: incJj4LT
+        modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
+        files: dist/soprano-api-neoforge-${{ env.VERSION }}.jar
+        name: Soprano ${{ env.VERSION }} (NeoForge)
+        version: ${{ env.VERSION }}+neoforge
+        version-type: release
+        loaders: neoforge
+        game-versions: ${{ env.MC_VERSION }}
+        changelog-file: release-notes.md
