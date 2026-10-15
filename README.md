@@ -1,4 +1,10 @@
-# Soprano
+<div align="center">
+  <h1>Soprano</h1>
+  <img width="180" height="180" alt="Soprano" src="https://github.com/user-attachments/assets/38c4de7c-deb9-4d52-8d5e-261255312d73" />
+</div>
+
+
+<div align="center">
 
 A fork of [Baritone](https://github.com/cabaletta/baritone), the Minecraft pathfinding bot, with extra movement tech and [AltoClef](https://github.com/gaucho-matrero/altoclef) built in.
 
@@ -6,15 +12,26 @@ A fork of [Baritone](https://github.com/cabaletta/baritone), the Minecraft pathf
 [![Build](https://github.com/AverWasTaken/soprano/actions/workflows/gradle_build.yml/badge.svg)](https://github.com/AverWasTaken/soprano/actions/workflows/gradle_build.yml)
 [![License](https://img.shields.io/badge/license-LGPL--3.0-green.svg)](LICENSE)
 
+</div>
+
 <p align="center">
   <a href="https://github.com/AverWasTaken/soprano/releases/latest"><img alt="Download the latest release" src="https://img.shields.io/badge/Download-latest%20release-2ea44f?style=for-the-badge&logo=github&logoColor=white"></a>
 </p>
 
+<div align="center">
+
 [Install](#install) · [What's new](CHANGES.md) · [Usage](USAGE.md) · [Features](FEATURES.md) · [Building](SETUP.md) · [Contributing](CONTRIBUTING.md)
 
-Soprano keeps everything Baritone does: `#goto`, `#mine`, `#build`, `#farm`, `#elytra`, the lot. The `baritone.api` packages are unchanged, so mods built on Baritone's API keep working. Soprano is a drop-in replacement. Don't install both.
+</div>
+<div align="center">
+Soprano keeps everything Baritone does.  <br> The `baritone.api` packages are unchanged, so mods built on Baritone's API keep working. Soprano is a drop-in replacement. Don't install both.
+</div>
+
+<div align="center">
 
 [CHANGES.md](CHANGES.md) has everything Soprano adds on top of Baritone.
+
+</div>
 
 ## Install
 
