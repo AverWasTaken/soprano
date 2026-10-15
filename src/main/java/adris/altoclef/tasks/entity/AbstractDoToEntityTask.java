@@ -63,6 +63,8 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
     private GoalRunAway _backOffGoal;
     // the approach child was in the tree last tick (it is walking, a stop now would cut the path), see ApproachRules
     private boolean _approachLive;
+    // the wander we handed back with nothing to target was the child last tick, see ApproachRules.wanderWhenNoTarget
+    private boolean _wanderLive;
     // ticks in a row spent standing in reach with the swing gated, see ApproachRules.WAIT_TICKS. the kill tasks use _standCap
     // instead, which counts ticks since the last swing that really went out whatever the plan flickered through
     private int _waitTicks;
@@ -92,6 +94,7 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
         _progress.reset();
         _approach = null;
         _approachLive = false;
+        _wanderLive = false;
         _waitTicks = 0;
         _standCap.reset();
         _waitEntity = null;
@@ -125,6 +128,8 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
         }
         boolean wasWalking = _approachLive;
         _approachLive = false;
+        boolean wasWandering = _wanderLive;
+        _wanderLive = false;
 
         Optional<Entity> checkEntity = getEntityTarget(mod);
         if (checkEntity.isEmpty()) _blocker = null;
@@ -229,9 +234,11 @@ public abstract class AbstractDoToEntityTask extends Task implements ITaskRequir
             }
         }
         _blocker = null;
-        if (!mod.getClientBaritone().getPathingBehavior().isSafeToCancel()) {
+        if (!ApproachRules.wanderWhenNoTarget(wasWandering, mod.getClientBaritone().getPathingBehavior().isSafeToCancel())) {
             return null;
         }
+        // a fresh one is isEqual to the running one, so the running one stays
+        _wanderLive = true;
         return new TimeoutWanderTask();
     }
 

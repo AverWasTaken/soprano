@@ -37,14 +37,12 @@ public class ShearSheepTask extends AbstractDoToEntityTask {
 
     @Override
     protected Optional<Entity> getEntityTarget(AltoClef mod) {
-        return mod.getEntityTracker().getClosestEntity(mod.getPlayer().position(),
-                entity -> {
-                    if (entity instanceof Sheep sheep) {
-                        return sheep.readyForShearing() && !sheep.isSheared();
-                    }
-                    return false;
-                }, Sheep.class
-        );
+        return mod.getEntityTracker().getClosestEntity(mod.getPlayer().position(), ShearSheepTask::readyToShear, Sheep.class);
+    }
+
+    // shared with CollectWoolTask, so it never picks us for a flock with nothing to shear and the two cannot drift apart
+    public static boolean readyToShear(Entity entity) {
+        return entity instanceof Sheep sheep && sheep.readyForShearing() && !sheep.isSheared();
     }
 
     @Override
