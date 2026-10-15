@@ -259,7 +259,7 @@ public class Shell extends Widget implements ShellContext {
     private String group(int i) {
         return switch (tabs.get(i).id()) {
             case "get", "goto", "follow" -> "Actions";
-            case "waypoints", "stats" -> "Library";
+            case "waypoints", "schematics", "stats" -> "Library";
             case "help", "settings" -> "Preferences";
             default -> "";
         };

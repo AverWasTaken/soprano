@@ -20,6 +20,7 @@ public final class Tabs {
                 new GotoTab(theme, facade, ctx),
                 new FollowTab(theme, facade, ctx),
                 new WaypointsTab(theme, facade, ctx),
+                new SchematicsTab(theme, facade, ctx),
                 new StatsTab(theme, facade, ctx),
                 new HelpTab(theme, facade, ctx),
                 new SettingsTab(theme, facade, ctx));

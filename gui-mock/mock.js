@@ -8,7 +8,7 @@
   const root = document.documentElement;
   const wrap = $('#wrap');
 
-  const TABS = ['get', 'goto', 'follow', 'waypoints', 'stats', 'help', 'settings'];
+  const TABS = ['get', 'goto', 'follow', 'waypoints', 'schematics', 'stats', 'help', 'settings'];
   const state = { tab: TABS.includes(q.get('tab')) ? q.get('tab') : 'get', theme: q.get('theme') === 'light' ? 'light' : 'dark' };
 
   // ---- items (FakeFacade.java:290-304) ----
@@ -289,7 +289,7 @@
   window.addEventListener('resize', setDpr);
 
   // later tabs: build your dom, then call Mock.hydrate(el) / Mock.thumbFor(scrollEl) / Mock.layoutSeg(segEl)
-  window.Mock = { hydrate: el => Icons.hydrate(el), thumbFor, layoutSeg, itemImg, title, showTab, setTheme };
+  window.Mock = { hydrate: el => Icons.hydrate(el), thumbFor, layoutSeg, itemImg, title, showTab, setTheme, placeThumbs };
 
   // ---- boot ----
   setDpr();

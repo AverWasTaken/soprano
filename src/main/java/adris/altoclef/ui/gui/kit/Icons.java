@@ -142,6 +142,19 @@ public final class Icons {
                 line(g, 12, 20, 12, 9);
                 line(g, 19, 20, 19, 4);
             }
+            case SCHEMATICS -> {
+                // two courses of bricks with the joints offset, so it is a wall and not a window
+                g.draw(new RoundRectangle2D.Float(3, 6, 18, 12, 2, 2));
+                line(g, 3, 12, 21, 12);
+                line(g, 12, 6, 12, 12);
+                line(g, 7.5f, 12, 7.5f, 18);
+                line(g, 16.5f, 12, 16.5f, 18);
+            }
+            case WARNING -> {
+                poly(g, true, 12, 3.5f, 21, 19.5f, 3, 19.5f);
+                line(g, 12, 9, 12, 13.5f);
+                dot(g, 12, 16.5f, w);
+            }
             case SEARCH -> {
                 g.draw(new Ellipse2D.Float(3.5f, 3.5f, 14, 14));
                 line(g, 15.5f, 15.5f, 20.5f, 20.5f);

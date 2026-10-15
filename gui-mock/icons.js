@@ -110,6 +110,13 @@
         stats: function () {
             return line(5, 20, 5, 15) + line(12, 20, 12, 9) + line(19, 20, 19, 4);
         },
+        schematics: function () {
+            // a wall of bricks: two courses, the joints offset. the thing a schematic turns into
+            return rrect(3, 6, 18, 12, 2, 2) + line(3, 12, 21, 12) + line(12, 6, 12, 12) + line(7.5, 12, 7.5, 18) + line(16.5, 12, 16.5, 18);
+        },
+        warning: function (w) {
+            return poly(true, [12, 3.5, 21, 19.5, 3, 19.5]) + line(12, 9, 12, 13.5) + dot(12, 16.5, w);
+        },
         search: function () {
             return ell(3.5, 3.5, 14, 14) + line(15.5, 15.5, 20.5, 20.5);
         },
@@ -227,7 +234,7 @@
     var NAMES = ['get', 'goto', 'follow', 'waypoints', 'help', 'settings', 'stats', 'search', 'close', 'plus', 'minus',
         'chevron_down', 'chevron_right', 'check', 'copy', 'reset', 'stop', 'key', 'dot', 'ring', 'trash', 'pin',
         'player', 'entity', 'boat', 'parkour', 'bolt', 'run', 'pickaxe', 'block', 'wrench', 'backpack', 'water',
-        'ladder', 'eye'];
+        'ladder', 'eye', 'schematics', 'warning'];
 
     // css: the ring behind the goto dots only shows when the glyph sits on the accent (TexturedCanvas.pathDots checks
     // the tint is ON_ACCENT). .on-accent on the icon or any ancestor turns it on
