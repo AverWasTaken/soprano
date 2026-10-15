@@ -585,7 +585,7 @@ public final class Settings {
      * While {@link #fastMode} is on, Baritone may take a fall that hurts when there is no water bucket or
      * clutch to make it free, but never one that would leave you with less health (plus absorption) than this.
      * Measured in half hearts, so 12 is six hearts. Damage is estimated as vanilla fall damage before armor
-     * and feather falling, which is conservative.
+     * and feather falling, which is conservative. Falls inside {@link #maxFallHeightNoWater} only have to leave you alive.
      */
     public final Setting<Double> fastModeMinHealth = new Setting<>(12D);
 
@@ -773,6 +773,10 @@ public final class Settings {
      * How far are you allowed to fall onto solid ground (without a water bucket)?
      * 3 won't deal any damage. But if you just want to get down the mountain quickly and you have
      * Feather Falling IV, you might set it a bit higher, like 4 or 5.
+     * <p>
+     * Only the first 3 blocks are planned as a free fall. Anything past that up to this limit is a fall that hurts, so
+     * a ladder or vine clutch (see {@link #allowLadderClutch}) or a water bucket is used when one works, and otherwise
+     * the damage is priced in with {@link #fallDamageCost} and the fall only happens if it leaves you alive.
      */
     public final Setting<Integer> maxFallHeightNoWater = new Setting<>(3);
 

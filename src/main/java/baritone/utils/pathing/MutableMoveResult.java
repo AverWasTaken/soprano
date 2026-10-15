@@ -34,6 +34,9 @@ public final class MutableMoveResult {
     public boolean clutch;
     // hp this fall takes off us on purpose (fastMode), 0 for everything that is free or protected
     public double damage;
+    // the hp the planner agreed to leave us with when it priced that damage, so the runtime asks the same question
+    // instead of working out "inside the limit" again (a ladder grab on the way down changes the answer)
+    public double hurtFloor;
 
     public MutableMoveResult() {
         reset();
@@ -46,5 +49,6 @@ public final class MutableMoveResult {
         cost = ActionCosts.COST_INF;
         clutch = false;
         damage = 0;
+        hurtFloor = 0;
     }
 }
