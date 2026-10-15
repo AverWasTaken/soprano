@@ -62,6 +62,7 @@ public class MineAndCollectTask extends ResourceTask {
     // how long the dirt trip gets, and how long a trip that got us nothing to place with keeps the high logs off the menu
     private static final int DIRT_PATIENCE_TICKS = 1200;
     private static final int DIRT_OFF_TICKS = 6000;
+    private static final int DIRT_DONE_TICKS = 1200;
 
     public MineAndCollectTask(ItemTarget[] itemTargets, Block[] blocksToMine, MiningRequirement requirement) {
         super(itemTargets);
@@ -148,16 +149,18 @@ public class MineAndCollectTask extends ResourceTask {
     private Task dirtFirst(AltoClef mod) {
         int now = WorldHelper.getTicks();
         if (_dirtTask != null) {
-            boolean done = _dirtTask.isFinished(mod) || _subtask.hasThrowaway(mod);
+            // the task's own count, not "anything to place": one dirt in the bag is a tower one block high
+            boolean done = _dirtTask.isFinished(mod);
             boolean late = now - _dirtSince > DIRT_PATIENCE_TICKS || now < _dirtSince;
             if (!done && !late) {
                 return _dirtTask;
             }
             _dirtTask = null;
-            if (!_subtask.hasThrowaway(mod)) {
-                // dug for a minute and still nothing to place with: the logs that need it are off the menu for a bit
-                Debug.logMessage("no blocks to tower with after digging, leaving the high logs alone");
-                _subtask.dirtOff(now + DIRT_OFF_TICKS);
+            // either way no second trip for a while. one that fell short (bag full, no dirt where we looked) is not worth another
+            // go, and one that worked must not start again the moment the tower eats the first blocks of it
+            MineOrCollectTask.dirtOff(now, done ? DIRT_DONE_TICKS : DIRT_OFF_TICKS);
+            if (!done) {
+                Debug.logMessage("could not dig enough dirt to tower with, leaving the high logs alone for a while");
             }
             return null;
         }
@@ -165,7 +168,7 @@ public class MineAndCollectTask extends ResourceTask {
         if (want <= 0) {
             return null;
         }
-        Debug.logMessage("that log is too high to reach from the ground, digging " + want + " dirt to tower up");
+        Debug.logMessage("that log is too high to reach from the ground, digging " + want + " more dirt to tower up");
         _dirtSince = now;
         _dirtTask = TaskCatalogue.getItemTask(Items.DIRT, mod.getItemStorage().getItemCount(Items.DIRT) + want);
         return _dirtTask;
@@ -249,8 +252,8 @@ public class MineAndCollectTask extends ResourceTask {
         // failed breaks per tree. static because the parent rebuilds this task whenever it likes and the count has to outlive that
         private static final TreeStrikes STRIKES = new TreeStrikes();
         private final TreeReachScan _scan = new TreeReachScan();
-        // no digging for dirt before this tick, a trip that got us nothing to place with
-        private int _dirtOffUntil = Integer.MIN_VALUE;
+        // no digging for dirt before this tick. static for the same reason as the strikes, a rebuilt task would start another trip
+        private static int dirtOffUntil = Integer.MIN_VALUE;
 
         public MineOrCollectTask(Block[] blocks, ItemTarget[] targets) {
             _blocks = blocks;
@@ -603,8 +606,11 @@ public class MineAndCollectTask extends ResourceTask {
             return mod.getClientBaritoneSettings().allowPlace.value && mod.getClientBaritone().getInventoryBehavior().hasGenericThrowaway();
         }
 
+        // with placing off nothing we dig could be used, so there is no point in the trip
         private boolean dirtPossible(AltoClef mod, int now) {
-            return now >= _dirtOffUntil && _scan.dirtAround(mod, now);
+            // a lockout further off than any we set is from a world whose clock was not ours
+            boolean locked = now < dirtOffUntil && dirtOffUntil - now <= DIRT_OFF_TICKS;
+            return !locked && mod.getClientBaritoneSettings().allowPlace.value && _scan.dirtAround(mod, now);
         }
 
         // false for a log high over the ground (canopy, or a trunk with its bottom cut away) when we have nothing to tower
@@ -619,8 +625,8 @@ public class MineAndCollectTask extends ResourceTask {
             return !TreeReach.skip(true, false, hasThrowaway(mod), dirtPossible(mod, now));
         }
 
-        // how much dirt to dig before the log we are on. 0 when that one needs no tower, or we have the blocks already, or
-        // we are mid swing at it, or there is no dirt about
+        // how much more dirt to dig before the log we are on. 0 when that one needs no tower, or we hold enough blocks for the
+        // climb, or we are mid swing at it, or there is no dirt about
         private int dirtWanted(AltoClef mod) {
             BlockPos at = _miningPos;
             if (!_logsOnly || at == null || mod.getControllerExtras().isBreakingBlock()) {
@@ -628,17 +634,16 @@ public class MineAndCollectTask extends ResourceTask {
             }
             int now = WorldHelper.getTicks();
             TreeReachScan.Look look = _scan.look(mod, at, now);
-            if (!look.flagged() || look.fromGround()) {
+            if (!look.flagged() || look.fromGround() || !dirtPossible(mod, now)) {
                 return 0;
             }
-            if (!TreeReach.needsDirtFirst(true, false, hasThrowaway(mod), dirtPossible(mod, now))) {
-                return 0;
-            }
-            return TreeReach.dirtWanted(look.gap());
+            // what the planner places from by default, the same four blocks
+            int held = mod.getItemStorage().getItemCount(Items.DIRT, Items.COBBLESTONE, Items.NETHERRACK, Items.STONE);
+            return TreeReach.dirtShortfall(look.gap(), held);
         }
 
-        private void dirtOff(int until) {
-            _dirtOffUntil = until;
+        private static void dirtOff(int now, int ticks) {
+            dirtOffUntil = now + ticks;
         }
 
         // one of the blocks we are after, still standing, not given up on, and close enough to keep swinging at
@@ -719,7 +724,11 @@ public class MineAndCollectTask extends ResourceTask {
             if (spots.isEmpty()) {
                 return;
             }
-            List<Bans.Key> logs = new ArrayList<>();
+            // the spots that stalled go in themselves, the tracker may not know a log we were standing at
+            Set<Bans.Key> logs = new LinkedHashSet<>();
+            for (BlockPos spot : spots) {
+                logs.add(Bans.Key.block(dim, spot.getX(), spot.getY(), spot.getZ()));
+            }
             for (BlockPos log : mod.getBlockTracker().getKnownLocations(_blocks)) {
                 for (BlockPos spot : spots) {
                     if (TreeStrikes.sameTree(spot, log)) {

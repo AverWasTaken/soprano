@@ -8,6 +8,7 @@ import baritone.api.Settings;
 import baritone.api.utils.BetterBlockPos;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
 import org.junit.After;
 import org.junit.Assume;
 import org.junit.Before;
@@ -67,13 +68,16 @@ public class CanopyTowerPathTest {
         settings.chatDebug.value = chat;
     }
 
-    // flat grass, one log hanging at logY with nothing under it. leaves: a ring of them around the log, a layer under
-    // and a layer over, like the middle of a canopy
-    private static VineLogPathTest.MapWorld canopy(int logY, boolean leaves) {
+    // flat grass, one log hanging at logY with nothing under it. cover: a layer of short grass on the ground. leaves: a ring of
+    // them around the log, a layer under and a layer over, like the middle of a canopy
+    private static VineLogPathTest.MapWorld canopy(int logY, boolean leaves, boolean cover) {
         VineLogPathTest.MapWorld w = new VineLogPathTest.MapWorld();
         for (int x = -12; x <= 12; x++) {
             for (int z = -12; z <= 12; z++) {
                 w.set(x, FLOOR, z, Blocks.GRASS_BLOCK.defaultBlockState());
+                if (cover) {
+                    w.set(x, FLOOR + 1, z, Blocks.SHORT_GRASS.defaultBlockState());
+                }
             }
         }
         w.set(0, logY, 0, Blocks.OAK_LOG.defaultBlockState());
@@ -91,34 +95,54 @@ public class CanopyTowerPathTest {
         return w;
     }
 
-    // the goal DestroyBlockTask builds for it: openBelow is the air under the log, capped
-    private static GoalMineFromSide goalFor(BlockPos log) {
-        return new GoalMineFromSide(log, true, Math.min(GoalMineFromSide.MAX_UNDER, log.getY() - FLOOR - 1));
+    // DestroyBlockTask.openBelow: air cells straight under the log, capped
+    private static int openBelow(VineLogPathTest.MapWorld w, BlockPos log) {
+        int open = 0;
+        while (open < GoalMineFromSide.MAX_UNDER && w.get0(log.getX(), log.getY() - open - 1, log.getZ()).isAir()) {
+            open++;
+        }
+        return open;
+    }
+
+    // the goal DestroyBlockTask builds for it
+    private static GoalMineFromSide goalFor(VineLogPathTest.MapWorld w, BlockPos log) {
+        return new GoalMineFromSide(log, true, openBelow(w, log));
     }
 
     private static boolean got(VineLogPathTest.Result r) {
         return r.found && r.inGoal;
     }
 
-    @Test
-    public void theReachRuleMatchesTheShaftTheGoalAllows() {
-        // the predicate stands in for the goal, so they have to agree on where the line is
-        // from gap 2: a log closer than that is a side swing, not the shaft
-        for (int logY = FLOOR + 3; logY <= FLOOR + 10; logY++) {
-            int gap = TreeReach.gap(logY, FLOOR);
-            assertEquals("log at " + logY, gap <= GoalMineFromSide.MAX_UNDER, TreeReach.fromGround(logY, FLOOR, false));
-            // feet on the floor are FLOOR + 1, and the shaft goal takes them while the log is at most MAX_UNDER over them
-            GoalMineFromSide goal = goalFor(new BlockPos(0, logY, 0));
-            assertEquals("log at " + logY, TreeReach.fromGround(logY, FLOOR, false), goal.isInGoal(0, FLOOR + 1, 0));
+    private static TreeReach.Cell cell(BlockState s) {
+        if (s.isAir()) {
+            return TreeReach.Cell.AIR;
         }
-        assertEquals(GoalMineFromSide.MAX_UNDER, TreeReach.MAX_UNDER);
+        return s.getBlock() == Blocks.SHORT_GRASS ? TreeReach.Cell.PASSABLE : TreeReach.Cell.SOLID;
+    }
+
+    private static final BetterBlockPos START = new BetterBlockPos(4, FLOOR + 1, 0);
+
+    @Test
+    public void theReachRuleSaysWhatThePlannerFindsWithNothingToPlace() {
+        // the predicate stands in for the goal, so they have to agree on where the line is: bare ground and grass cover,
+        // from a log that is only a shaft away to well past it. (a log closer than gap 2 is a side swing, not this question)
+        for (boolean cover : new boolean[]{false, true}) {
+            for (int logY = FLOOR + 3; logY <= FLOOR + 10; logY++) {
+                VineLogPathTest.MapWorld w = canopy(logY, false, cover);
+                BlockPos log = new BlockPos(0, logY, 0);
+                TreeReach.Column column = TreeReach.column(logY, y -> cell(w.get0(0, y, 0)));
+                boolean rule = TreeReach.fromGround(logY, column, false);
+                boolean planner = got(VineLogPathTest.path(w, START, goalFor(w, log), false));
+                assertEquals("log at " + logY + (cover ? " with grass cover" : ""), planner, rule);
+            }
+        }
     }
 
     @Test
     public void aLogJustInsideTheShaftIsAWalkAndNoTower() {
         BlockPos log = new BlockPos(0, FLOOR + 1 + GoalMineFromSide.MAX_UNDER, 0);
-        VineLogPathTest.MapWorld w = canopy(log.getY(), false);
-        VineLogPathTest.Result r = VineLogPathTest.path(w, new BetterBlockPos(4, FLOOR + 1, 0), goalFor(log), false);
+        VineLogPathTest.MapWorld w = canopy(log.getY(), false, false);
+        VineLogPathTest.Result r = VineLogPathTest.path(w, START, goalFor(w, log), false);
         assertTrue("moves " + r.moves, got(r));
         assertFalse("moves " + r.moves, r.moves.contains("PILLAR"));
     }
@@ -126,22 +150,24 @@ public class CanopyTowerPathTest {
     @Test
     public void aLogOneHigherIsOutOfReachWithNothingToPlace() {
         BlockPos log = new BlockPos(0, FLOOR + 2 + GoalMineFromSide.MAX_UNDER, 0);
-        VineLogPathTest.MapWorld w = canopy(log.getY(), false);
-        assertFalse(got(VineLogPathTest.path(w, new BetterBlockPos(4, FLOOR + 1, 0), goalFor(log), false)));
-        VineLogPathTest.MapWorld leafy = canopy(log.getY(), true);
-        assertFalse(got(VineLogPathTest.path(leafy, new BetterBlockPos(4, FLOOR + 1, 0), goalFor(log), false)));
+        VineLogPathTest.MapWorld w = canopy(log.getY(), false, false);
+        assertFalse(got(VineLogPathTest.path(w, START, goalFor(w, log), false)));
+        VineLogPathTest.MapWorld leafy = canopy(log.getY(), true, false);
+        assertFalse(got(VineLogPathTest.path(leafy, START, goalFor(leafy, log), false)));
     }
 
     @Test
     public void withBlocksToPlaceTheSamePlannerGetsToIt() {
-        for (int up = 2; up <= 4; up++) {
-            BlockPos log = new BlockPos(0, FLOOR + up + GoalMineFromSide.MAX_UNDER, 0);
-            VineLogPathTest.MapWorld w = canopy(log.getY(), false);
-            VineLogPathTest.Result r = VineLogPathTest.path(w, new BetterBlockPos(4, FLOOR + 1, 0), goalFor(log), true);
-            assertTrue("log at " + log.getY() + " moves " + r.moves, got(r));
-            // one block to step up on is all the shaft needs when the log is a single cell too high. past that it is a tower
-            if (up >= 3) {
-                assertTrue("log at " + log.getY() + " moves " + r.moves, r.moves.contains("PILLAR"));
+        for (boolean cover : new boolean[]{false, true}) {
+            for (int up = 2; up <= 4; up++) {
+                BlockPos log = new BlockPos(0, FLOOR + up + GoalMineFromSide.MAX_UNDER, 0);
+                VineLogPathTest.MapWorld w = canopy(log.getY(), false, cover);
+                VineLogPathTest.Result r = VineLogPathTest.path(w, START, goalFor(w, log), true);
+                assertTrue("log at " + log.getY() + " moves " + r.moves, got(r));
+                // one block to step up on is all the shaft needs when the log is a single cell too high. past that it is a tower
+                if (up >= 3) {
+                    assertTrue("log at " + log.getY() + " moves " + r.moves, r.moves.contains("PILLAR"));
+                }
             }
         }
     }
@@ -149,8 +175,8 @@ public class CanopyTowerPathTest {
     @Test
     public void aTowerThroughTheLeavesIsStillAWay() {
         BlockPos log = new BlockPos(0, FLOOR + 3 + GoalMineFromSide.MAX_UNDER, 0);
-        VineLogPathTest.MapWorld w = canopy(log.getY(), true);
-        VineLogPathTest.Result r = VineLogPathTest.path(w, new BetterBlockPos(4, FLOOR + 1, 0), goalFor(log), true);
+        VineLogPathTest.MapWorld w = canopy(log.getY(), true, false);
+        VineLogPathTest.Result r = VineLogPathTest.path(w, START, goalFor(w, log), true);
         assertTrue("moves " + r.moves, got(r));
         assertTrue("moves " + r.moves, r.moves.contains("PILLAR"));
     }
