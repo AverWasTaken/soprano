@@ -181,8 +181,9 @@ public class SchematicsTabTest {
         clickBuild();
         assertFalse(tab.armed());
         assertEquals("Build at my feet", tab.buildButton().text());
-        assertEquals(List.of("schematics build Small Castle.litematic"), facade.actions);
-        assertEquals("Building Small Castle.litematic at your feet", p.shell.toast().currentLine());
+        // back to the feet first, so "Build at my feet" stays true after an earlier build pinned the placement
+        assertEquals(List.of("schematics feet Small Castle.litematic", "schematics build Small Castle.litematic"), facade.actions);
+        assertEquals("Building Small Castle.litematic at 100, 64, -40", p.shell.toast().currentLine());
         assertTrue(p.shell.toast().currentOk());
     }
 

@@ -29,6 +29,19 @@ public final class FakeSchematics implements SchematicsAccess {
     public String buildError;
     // what the next importFiles() call hands back. null means "pick the sample file and import it"
     public ImportReport nextPick;
+    // the pretend world: no world = every placement / footprint / terrain is null and build fails
+    public boolean inWorld = true;
+    public String dimension = "minecraft:overworld";
+    public int feetX = 100;
+    public int feetY = 64;
+    public int feetZ = -40;
+    // how many building() calls stay PARSING after a build, and what it turns into after that (null = STARTED)
+    public int parsePolls = 1;
+    public String buildFailsLater;
+
+    private final Map<String, Placement> placements = new LinkedHashMap<>();
+    private Building building = Building.IDLE;
+    private int parsing;
 
     private int pending;
 
@@ -124,17 +137,174 @@ public final class FakeSchematics implements SchematicsAccess {
             stored.notes(), null);
     }
 
+    // ----- placements, the same rules as SchematicPlacement with plain ints so the fake stays minecraft free
+
+    private Row okRow(String relativePath) {
+        return rows.stream().filter(r -> r.relativePath().equals(relativePath) && r.ok()).findFirst().orElse(null);
+    }
+
+    @Override
+    public Placement placement(String relativePath) {
+        if (!inWorld || okRow(relativePath) == null) {
+            return null;
+        }
+        Placement p = placements.get(relativePath);
+        if (p == null) {
+            // the real one doesn't save this default, the fake doesn't care
+            p = new Placement(feetX, feetY, feetZ, 0, false, dimension, true);
+            placements.put(relativePath, p);
+        }
+        return new Placement(p.x(), p.y(), p.z(), p.turns(), p.mirrored(), p.dimension(), p.dimension().equals(dimension));
+    }
+
+    private Placement put(String relativePath, Placement p) {
+        placements.put(relativePath, p);
+        return placement(relativePath);
+    }
+
+    @Override
+    public Placement move(String relativePath, int dx, int dy, int dz) {
+        Placement p = placement(relativePath);
+        if (p == null) {
+            return null;
+        }
+        actions.add("schematics move " + relativePath + " " + dx + " " + dy + " " + dz);
+        return put(relativePath, new Placement(p.x() + dx, p.y() + dy, p.z() + dz, p.turns(), p.mirrored(), p.dimension(), true));
+    }
+
+    @Override
+    public Placement rotate(String relativePath, boolean clockwise) {
+        Placement p = placement(relativePath);
+        if (p == null) {
+            return null;
+        }
+        actions.add("schematics rotate " + relativePath + (clockwise ? " cw" : " ccw"));
+        Row row = okRow(relativePath);
+        int turns = Math.floorMod(p.turns() + (clockwise ? 1 : -1), 4);
+        int beforeX = p.turns() % 2 == 0 ? row.sizeX() : row.sizeZ();
+        int beforeZ = p.turns() % 2 == 0 ? row.sizeZ() : row.sizeX();
+        // a quarter turn swaps the sizes, the corner moves half the difference so the middle stays put
+        int dx = (beforeX - beforeZ) / 2;
+        int dz = (beforeZ - beforeX) / 2;
+        return put(relativePath, new Placement(p.x() + dx, p.y(), p.z() + dz, turns, p.mirrored(), p.dimension(), true));
+    }
+
+    @Override
+    public Placement mirror(String relativePath) {
+        Placement p = placement(relativePath);
+        if (p == null) {
+            return null;
+        }
+        actions.add("schematics mirror " + relativePath);
+        return put(relativePath, new Placement(p.x(), p.y(), p.z(), (4 - p.turns()) % 4, !p.mirrored(), p.dimension(), true));
+    }
+
+    @Override
+    public Placement placeAtFeet(String relativePath) {
+        Placement p = placement(relativePath);
+        if (p == null) {
+            return null;
+        }
+        actions.add("schematics feet " + relativePath);
+        return put(relativePath, new Placement(feetX, feetY, feetZ, p.turns(), p.mirrored(), dimension, true));
+    }
+
+    @Override
+    public Footprint footprint(String relativePath) {
+        Placement p = placement(relativePath);
+        if (p == null) {
+            return null;
+        }
+        Row row = okRow(relativePath);
+        boolean swap = p.turns() % 2 == 1;
+        return new Footprint(p.x(), p.y(), p.z(), swap ? row.sizeZ() : row.sizeX(), row.sizeY(), swap ? row.sizeX() : row.sizeZ());
+    }
+
     @Override
     public Result build(String relativePath) {
         if (buildError != null) {
             return Result.fail(buildError);
         }
+        if (!inWorld) {
+            return Result.fail("Join a world first");
+        }
         if (rows.stream().noneMatch(r -> r.relativePath().equals(relativePath))) {
             return Result.fail("Can't find that schematic, refresh the list");
         }
+        Placement p = placement(relativePath);
+        if (p == null) {
+            return Result.fail("That schematic didn't load");
+        }
+        if (!p.inThisDimension()) {
+            return Result.fail("It's placed in another dimension, move it here first");
+        }
         actions.add("schematics build " + relativePath);
-        String command = relativePath.indexOf(' ') < 0 ? "build " + relativePath : null;
-        return new Result(true, "Building " + relativePath + " at your feet", command);
+        building = new Building(BuildState.PARSING, relativePath, "Reading " + relativePath);
+        parsing = parsePolls;
+        return Result.ok("Building " + relativePath + " at " + p.x() + ", " + p.y() + ", " + p.z());
+    }
+
+    @Override
+    public Building building() {
+        if (building.state() == BuildState.PARSING) {
+            if (parsing > 0) {
+                parsing--;
+            } else {
+                building = buildFailsLater != null
+                    ? new Building(BuildState.ERROR, building.relativePath(), buildFailsLater)
+                    : new Building(BuildState.STARTED, building.relativePath(), "Building " + building.relativePath());
+            }
+        }
+        return building;
+    }
+
+    // a made-up landscape: grass, a river running north to south with sand banks, a stone hill, a few trees. the two
+    // east chunk columns of the three north rows are "not loaded", so a preview shows the edge too
+    @Override
+    public Terrain terrain(int centerX, int centerZ, int radiusChunks) {
+        if (!inWorld) {
+            return null;
+        }
+        int r = Math.max(1, Math.min(Terrain.MAX_RADIUS_CHUNKS, radiusChunks));
+        int minX = (((centerX + 8) >> 4) - r) << 4;
+        int minZ = (((centerZ + 8) >> 4) - r) << 4;
+        int span = 2 * r;
+        int size = span << 4;
+        int[] argb = new int[size * size];
+        int loaded = 0;
+        for (int cz = 0; cz < span; cz++) {
+            for (int cx = 0; cx < span; cx++) {
+                if (cx >= span - 2 && cz < 3) {
+                    continue;
+                }
+                loaded++;
+                for (int z = 0; z < 16; z++) {
+                    for (int x = 0; x < 16; x++) {
+                        argb[((cz << 4) + z) * size + (cx << 4) + x] = fakeColumn(minX + (cx << 4) + x, minZ + (cz << 4) + z);
+                    }
+                }
+            }
+        }
+        return new Terrain(minX, minZ, size, argb, loaded, span * span, 1);
+    }
+
+    private static int fakeColumn(int x, int z) {
+        int river = Math.abs(x - 60 - (int) (Math.sin(z / 23.0) * 18));
+        if (river < 5) {
+            return ((x + z) & 1) == 0 ? 0xFF3F76E4 : 0xFF3A6CD2;
+        }
+        if (river < 7) {
+            return 0xFFF7E9A3;
+        }
+        int hx = x - 150;
+        int hz = z + 10;
+        if (hx * hx + hz * hz < 30 * 30) {
+            return Math.floorMod(hx + hz, 7) == 0 ? 0xFF8A8A8A : 0xFF707070;
+        }
+        if (Math.floorMod(x * 31 + z * 17, 97) == 0) {
+            return 0xFF007C00;
+        }
+        return ((x ^ z) & 3) == 0 ? 0xFF7FB238 : 0xFF6E9A30;
     }
 
     @Override
@@ -193,6 +363,7 @@ public final class FakeSchematics implements SchematicsAccess {
     public void remove(String relativePath) {
         rows.removeIf(r -> r.relativePath().equals(relativePath));
         materials.remove(relativePath);
+        placements.remove(relativePath);
     }
 
     // the row stays, the count goes: materials() then answers with the unreadable file error
@@ -203,6 +374,7 @@ public final class FakeSchematics implements SchematicsAccess {
     public void clear() {
         rows.clear();
         materials.clear();
+        placements.clear();
     }
 
     @Override

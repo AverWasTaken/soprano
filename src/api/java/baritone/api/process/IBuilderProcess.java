@@ -18,9 +18,12 @@
 package baritone.api.process;
 
 import baritone.api.schematic.ISchematic;
+import baritone.api.schematic.IStaticSchematic;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Vec3i;
+import net.minecraft.world.level.block.Mirror;
+import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.block.state.BlockState;
 import java.io.File;
 import java.util.List;
@@ -50,6 +53,23 @@ public interface IBuilderProcess extends IBaritoneProcess {
      * @return Whether or not the schematic was able to load from file
      */
     boolean build(String name, File schematic, Vec3i origin);
+
+    /**
+     * Requests a build of an already parsed schematic in an explicit orientation. Map art, selection, substitutes and
+     * skip blocks apply the same way they do for {@link #build(String, File, Vec3i)}, but the global
+     * {@code buildSchematicRotation} / {@code buildSchematicMirror} settings and the {@code schematicOrientation*}
+     * offsets are ignored, and the settings are never written.
+     * <p>
+     * The schematic is transformed with {@link baritone.api.schematic.SchematicTransforms#apply}, so mirror first and
+     * rotation second, and {@code origin} is the minimum corner of the transformed footprint.
+     *
+     * @param name      A user-friendly name for the schematic
+     * @param schematic The parsed schematic, untransformed
+     * @param origin    The minimum corner of the transformed footprint
+     * @param rotation  The rotation to build with
+     * @param mirror    The mirror to build with
+     */
+    void build(String name, IStaticSchematic schematic, Vec3i origin, Rotation rotation, Mirror mirror);
 
     @Deprecated
     default boolean build(String schematicFile, BlockPos origin) {
