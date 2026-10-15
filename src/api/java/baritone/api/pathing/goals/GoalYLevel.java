@@ -32,21 +32,19 @@ public class GoalYLevel implements Goal, ActionCosts {
      */
     public final int level;
 
-    // the cheapest a block of descent ever comes is the longest fall we can plan divided by its length: falling gets
-    // cheaper per block the further you go, so every shorter fall costs more per block and the estimate is a lower bound
-    // for all of them. what the longest fall is depends on who is asking. with no bucket and no ladder it is
-    // maxFallHeightNoWater (3), which is 3.2 a block, with a bucket 20 (1.2), and a ladder clutch goes much further. the
-    // path finder tells us for the search it is running, see CalculationContext.descentTicksPerBlock. it used to be half
-    // of a two block fall, 3.9 a block, which is what a staircase costs and not what a drop costs, so a ten block drop
-    // looked like 39 ticks when it takes 17 and A* tried every staircase it could find before it would consider jumping.
-    // the exception is a fall into deep water past the longest fall, which has no cap and gets down toward 0.3 a block
+    // what a block of descent costs at the cheapest, ticks and the hearts a fall past 3 blocks takes. by default that's the
+    // free 3 block fall, 3.2 a block. the path finder tells us for the search it is running, see
+    // CalculationContext.descentTicksPerBlock (the bucket and the ladder clutch are left out of it on purpose, see there).
+    // it used to be half of a two block fall, 3.9 a block, which is what a staircase costs and not what a drop costs, so a
+    // ten block drop looked like 39 ticks when it takes 17 and A* tried every staircase it could find before it would
+    // consider jumping. the exception is a fall into deep water, which has no cap and gets down toward 0.3 a block
     private static final double DEFAULT_DESCENT_TICKS_PER_BLOCK = FALL_N_BLOCKS_COST[3] / 3;
     private static final ThreadLocal<double[]> DESCENT_TICKS_PER_BLOCK = ThreadLocal.withInitial(() -> new double[]{DEFAULT_DESCENT_TICKS_PER_BLOCK});
 
     /**
-     * Sets what the heuristic charges per block of descent on this thread, a lower bound for the fall the search is
-     * allowed to plan. Path finders call this around a search, everything else gets the default of a fall that needs
-     * neither a bucket nor a ladder.
+     * Sets what the heuristic charges per block of descent on this thread, the cheapest plain fall the search can plan,
+     * with the bucket and the ladder clutch left out. Path finders call this around a search, everything else gets the
+     * default of a free 3 block fall.
      *
      * @param ticksPerBlock the cheapest a block of descent can be, in ticks
      */

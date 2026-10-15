@@ -292,29 +292,33 @@ public class CalculationContext {
         this.worldBorder = bsi.worldBorder;
     }
 
-    // the cheapest a block of descent can be with what we are carrying, for GoalYLevel's lower bound. read when a search
-    // starts and not in the constructor, because the elytra walk off context raises the fall limits after super() returns
+    // the cheapest a block of descent can be, for GoalYLevel's lower bound. read when a search starts and not in the
+    // constructor, because the elytra walk off context raises the fall limits after super() returns.
+    // this is what a block of going down really costs, not how fast gravity is. the old floor was the free fall time of the
+    // longest fall we could plan (1.16 a block in fastMode), but a fall past 3 blocks hurts and the hearts are in the price
+    // (hurtingFall). a floor under what descending costs makes bestSoFar read digging down as the cheapest way to lose
+    // height, and a dig step is ~20 ticks, so a downward partial never beat standing still and a deep target was never pathed
     public double descentTicksPerBlock() {
-        return descentFloor(maxFallHeightNoWater, maxFallHeightBucket, hasWaterBucket, hasClutchItem, fastMode);
-    }
-
-    // the longest fall this context will plan, and what that costs per block. a plain fall is maxFallHeightNoWater, the
-    // bucket takes it to maxFallHeightBucket, a hurting fall in fast mode to 23 (ExperimentalMovement.MAX_HURT_FALL),
-    // and a ladder clutch to LadderClutch.MAX_DROP (256). falls into water have no cap at all but need the landing, and
-    // so does a fall that an existing ladder or vine catches (Descend resets the speed on the cell), so those can undercut
-    public static double descentFloor(int noWater, int bucket, boolean hasWaterBucket, boolean hasClutchItem, boolean fastMode) {
-        int longest = Math.max(1, noWater);
-        if (hasWaterBucket) {
-            longest = Math.max(longest, bucket);
+        // the one block descend is always there, and it is the free fall rate with the walk off on top
+        double best = ActionCosts.FALL_N_BLOCKS_COST[1];
+        int cap = ActionCosts.FALL_N_BLOCKS_COST.length - 1;
+        // plain falls are free while they deal no damage (3), past that they cost the same hearts hurtingFall charges.
+        // plainFallsAreFree contexts (the elytra walk off) skip the damage for everything inside the limit, and they are
+        // the only ones that plan a plain fall past MAX_HURT_FALL. fastMode takes hurting falls on top of the limit
+        int plainTop = plainFallsAreFree ? maxFallHeightNoWater : Math.min(maxFallHeightNoWater, ExperimentalMovement.MAX_HURT_FALL);
+        int top = Math.min(cap, Math.max(plainTop, fastMode ? ExperimentalMovement.MAX_HURT_FALL : 0));
+        for (int n = 2; n <= top; n++) {
+            boolean free = plainFallsAreFree && n <= maxFallHeightNoWater;
+            double damage = free ? 0 : ExperimentalMovement.fallDamage(n) * fallDamageCost;
+            best = Math.min(best, (ActionCosts.FALL_N_BLOCKS_COST[n] + damage) / n);
         }
-        if (fastMode) {
-            longest = Math.max(longest, ExperimentalMovement.MAX_HURT_FALL);
-        }
-        if (hasClutchItem) {
-            longest = Math.max(longest, 256);
-        }
-        longest = Math.min(longest, ActionCosts.FALL_N_BLOCKS_COST.length - 1);
-        return ActionCosts.FALL_N_BLOCKS_COST[longest] / longest;
+        // the bucket and the clutch are left out on purpose, so this isn't a true lower bound for someone carrying them.
+        // pricing the bucket in made the floor 1.49 and a bucket carrier could never path down again (a clutch was worse,
+        // under 0.6). those falls only exist where there's a big drop anyway, so the cost of an estimate that's too high
+        // is a slightly worse route near cliffs. anyone who raises costHeuristic past its 3.563 default already lives with that
+        // falls into deep water or a lava splash have no cap at all, and so does a fall that an existing ladder or vine
+        // catches (Descend resets the speed on the cell), so those undercut too. nothing to do about them without the terrain
+        return best;
     }
 
     // the cost of one block of water at this node: rowing if a boat could float here and the water is big enough, otherwise
