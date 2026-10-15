@@ -672,7 +672,9 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
         }
 
         // Check if the move checker or the stuck check failed
-        if (!_moveChecker.check(mod, _pos) || !stuckCheck.check(mod, _pos)) {
+        // asked once a tick: the aim allowance counts calls
+        boolean moveOk = _moveChecker.check(mod, _pos);
+        if (!moveOk || !stuckCheck.check(mod, _pos)) {
             BlockPos blockStuck = stuckInBlock(mod);
             if (blockStuck != null) {
                 _unstuckTask = getFenceUnstuckTask();
@@ -682,7 +684,7 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
         }
 
         // Check if the move checker failed
-        if (!_moveChecker.check(mod, _pos)) {
+        if (!moveOk) {
             _moveChecker.reset();
             // Request the block at the position to be marked as unreachable
             mod.getBlockTracker().requestBlockUnreachable(_pos);

@@ -746,7 +746,9 @@ public class MineAndCollectTask extends ResourceTask {
             int now = WorldHelper.getTicks();
             boolean away = now - _lastTickAt > 2;
             _lastTickAt = now;
-            if (_miningPos == null) {
+            // a block that is gone or already given up on is not what a search is for anymore (the wander that takes over from
+            // a pursuit that ended would get blamed on it)
+            if (_miningPos == null || mod.getBlockTracker().unreachable(_miningPos) || !mod.getBlockTracker().blockIsValid(_miningPos, _blocks)) {
                 _noPath.disarm();
                 return NoPathScope.Verdict.NONE;
             }
@@ -781,9 +783,11 @@ public class MineAndCollectTask extends ResourceTask {
             if (!vein.isEmpty()) {
                 BanPolicy.noPathVein(mod.getBans(), vein, stuck.getX(), stuck.getY(), stuck.getZ());
             }
-            if (verdict == NoPathScope.Verdict.EXHAUSTED) {
-                // a search that looked everywhere is a real strike. one that ran out of time is just the short ban
-                mod.getBlockTracker().requestBlockUnreachable(stuck, 2, "no path to it");
+            // a strike either way, like the stall this replaces: a block that times out every time has to reach the long ban
+            mod.getBlockTracker().requestBlockUnreachable(stuck, 2, "no path to it");
+            if (_logsOnly) {
+                // the stall used to be what counted a tree's strikes, and the pick relies on them to leave a canopy
+                giveUpTree(mod, stuck);
             }
             Debug.logMessage("No way to the block at " + stuck.getX() + " " + stuck.getY() + " " + stuck.getZ()
                     + (verdict == NoPathScope.Verdict.EXHAUSTED ? " (searched it all)" : " (search timed out)")
