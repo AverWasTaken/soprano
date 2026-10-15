@@ -132,6 +132,11 @@ final class ReplantBook<T> {
         return target != null;
     }
 
+    // cells that just stopped being holes and might come back
+    boolean settling() {
+        return !recent.isEmpty();
+    }
+
     boolean any() {
         return !holes.isEmpty();
     }

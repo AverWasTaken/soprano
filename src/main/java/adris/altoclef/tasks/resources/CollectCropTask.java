@@ -181,13 +181,25 @@ public class CollectCropTask extends ResourceTask {
 
     // a hole we already set off for counts at any distance, or walking away mid-replant would read as done
     private boolean replantPending(AltoClef mod) {
-        if (!Baritone.settings().replantCrops.value || !mod.getItemStorage().hasItem(_cropSeed)) {
+        if (!Baritone.settings().replantCrops.value) {
             return false;
         }
         sweepStarted(mod);
         _holes.refresh(WorldHelper.getTicks(), pos -> isEmptyCrop(mod, pos));
+        // the last seed in a predicted plant: it looks planted and seedless until the server answers, don't finish on that
+        if (_holes.settling()) {
+            return true;
+        }
+        if (!mod.getItemStorage().hasItem(_cropSeed)) {
+            return false;
+        }
         Vec3 at = mod.getPlayer().position();
         return _holes.committed() || _holes.near(pos -> pos.distToCenterSqr(at), REPLANT_RANGE_SQ) > 0;
+    }
+
+    // for CollectFoodTask: is there still a field to tend, or is this just harvesting
+    public boolean hasReplantWork() {
+        return Baritone.settings().replantCrops.value && (_holes.any() || _holes.settling());
     }
 
     // air over farmland. a trampled spot (dirt now) can't take a seed, and trying every few seconds forever was the stall
