@@ -776,8 +776,7 @@ public final class Settings {
      * <p>
      * Only the first 3 blocks are planned as a free fall. Anything past that up to this limit is a fall that hurts, so
      * a ladder or vine clutch (see {@link #allowLadderClutch}) or a water bucket is used when one works, and otherwise
-     * the damage is priced in with {@link #fallDamageCost} and the fall only happens if it leaves you alive
-     * (or above {@link #fastModeMinHealth} in fast mode).
+     * the damage is priced in with {@link #fallDamageCost} and the fall only happens if it leaves you alive.
      */
     public final Setting<Integer> maxFallHeightNoWater = new Setting<>(3);
 

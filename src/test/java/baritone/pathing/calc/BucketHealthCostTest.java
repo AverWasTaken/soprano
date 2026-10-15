@@ -256,11 +256,28 @@ public class BucketHealthCostTest {
     }
 
     @Test
-    public void fastModeHoldsTheHurtingDropToItsOwnFloor() {
+    public void fastModeStillOnlyAsksNotToDieInsideTheLimit() {
         settings.fastMode.value = true;
-        // 3 damage at 14 hp leaves 11, under the 12 floor
-        assertEquals(ActionCosts.COST_INF, plainWindow(6, false, false, 14, false).cost, 0);
-        assertEquals(3, plainWindow(6, false, false, 15, false).damage, 0);
+        // 3 damage at 14 hp leaves 11, under fastModeMinHealth, but the user raised the limit and it used to be free
+        assertEquals(3, plainWindow(6, false, false, 14, false).damage, 0);
+        // the clutch is a different gate (fastModeMinHealth), and it's off at 11 hp, so this one is the priced fall
+        MutableMoveResult low = plainWindow(6, true, true, 11, false);
+        assertFalse(low.clutch);
+        assertEquals(3, low.damage, 0);
+    }
+
+    @Test
+    public void fastModesLongerHurtingDropsKeepItsOwnFloor() {
+        settings.fastMode.value = true;
+        // limit is the default 3, so a 6 block drop is one fastMode adds: 3 damage at 14 hp leaves 11, under the 12 floor
+        Ctx low = new Ctx(cliff(6), false, 14);
+        MutableMoveResult res = new MutableMoveResult();
+        MovementDescend.cost(low, 0, 70, 0, 1, 0, res);
+        assertEquals(ActionCosts.COST_INF, res.cost, 0);
+        Ctx ok = new Ctx(cliff(6), false, 15);
+        res = new MutableMoveResult();
+        MovementDescend.cost(ok, 0, 70, 0, 1, 0, res);
+        assertEquals(3, res.damage, 0);
     }
 
     @Test

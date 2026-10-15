@@ -163,7 +163,9 @@ public abstract class Movement implements IMovement, MovementHelper {
                 }
             } else {
                 swimStall.reset();
-                if (ExperimentalMovement.allowSwimming() && ctx.player().isSwimming()) {
+                // (a movement that shut the swim gate lets go of sprint even before the swim state latches, or the mixin
+                // would latch it this very tick)
+                if (ExperimentalMovement.allowSwimming() && (ctx.player().isSwimming() || !swimAllowed())) {
                     // standing up to breathe (see shouldSwim). sprintInWater is on by default and traverse
                     // requests sprint every tick, which would keep us crawling along the bottom with our
                     // head under, so drop it explicitly
@@ -254,7 +256,7 @@ public abstract class Movement implements IMovement, MovementHelper {
     private static final double SWIM_HALF_WIDTH = 0.31;
 
     // a movement that needs the player upright in water (crouching to place a block) says no here: the swim pose beats the
-    // crouch pose, and sprint is what holds the swim pose. only MovementPillar says no, see its placingInWater
+    // crouch pose, and sprint is what holds the swim pose. only MovementPillar says no, see its placing
     protected boolean swimAllowed() {
         return true;
     }

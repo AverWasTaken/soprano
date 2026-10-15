@@ -66,10 +66,11 @@ public class ClutchHealthTest {
     }
 
     @Test
-    public void aHurtingFallOnlyKeepsFastModesFloorInFastMode() {
-        assertEquals(MIN, ExperimentalMovement.hurtFloor(true, MIN), 0);
-        // outside it the only falls that hurt are ones the user raised the limit for, they just must not kill
-        assertEquals(ExperimentalMovement.BUCKET_MISS_FLOOR, ExperimentalMovement.hurtFloor(false, MIN), 0);
+    public void aHurtingFallInsideTheLimitOnlyHasToNotKill() {
+        // the user raised maxFallHeightNoWater for these, they used to be free
+        assertEquals(ExperimentalMovement.BUCKET_MISS_FLOOR, ExperimentalMovement.hurtFloor(true, MIN), 0);
+        // the longer ones fastMode adds keep its floor
+        assertEquals(MIN, ExperimentalMovement.hurtFloor(false, MIN), 0);
     }
 
     @Test
