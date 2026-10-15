@@ -4,6 +4,9 @@ import baritone.api.BaritoneAPI;
 import baritone.api.Settings;
 import baritone.api.pathing.movement.ActionCosts;
 import baritone.pathing.movement.CalculationContext;
+import baritone.pathing.path.BoatLaneTest;
+import baritone.pathing.path.BoatTrip;
+import net.minecraft.world.phys.Vec3;
 import baritone.utils.BlockStateInterface;
 import baritone.utils.ToolSet;
 import baritone.utils.pathing.BetterWorldBorder;
@@ -340,6 +343,56 @@ public class BoatRunCostTest {
     public void aDetourPastTheCostOfTheEndsIsWalked() {
         assertTrue(crossesIslandOfHalfWidth(20));
         assertTrue(crossesIslandOfHalfWidth(45));
+    }
+
+    private static double offChord(Vec3 a, Vec3 b, double x, double z) {
+        double dx = b.x - a.x;
+        double dz = b.z - a.z;
+        return Math.abs(dx * (z - a.z) - dz * (x - a.x)) / Math.sqrt(dx * dx + dz * dz);
+    }
+
+    // octile ties: straights and diagonals cost the same as long as the count of each is right, so which order A* lays
+    // them in is arbitrary. whatever it picked, the rowed lane across open water is one straight line
+    private void tiedPathAcross(int length, int half, BetterBlockPos start, BetterBlockPos goal) {
+        MapWorld w = lake(length, half);
+        List<BetterBlockPos> path = search(w, start, goal, new Ctx(w, true));
+        assertTrue(path != null);
+        int from = 0;
+        while (path.get(from).x < 0) {
+            from++;
+        }
+        int to = path.size() - 1;
+        while (path.get(to).x > length) {
+            to--;
+        }
+        List<Vec3> lane = BoatTrip.smoothLane(w, path, from, to);
+        List<Vec3> old = BoatLaneTest.oldLane(path, from, to);
+        Vec3 a = lane.get(0);
+        Vec3 b = lane.get(lane.size() - 1);
+        double nodes = 0;
+        for (int i = from; i <= to; i++) {
+            nodes = Math.max(nodes, offChord(a, b, path.get(i).x + 0.5, path.get(i).z + 0.5));
+        }
+        double pulled = 0;
+        for (Vec3 p : lane) {
+            pulled = Math.max(pulled, offChord(a, b, p.x, p.z));
+        }
+        double relaxed = 0;
+        for (Vec3 p : old) {
+            relaxed = Math.max(relaxed, offChord(a, b, p.x, p.z));
+        }
+        System.out.println("BOATLANE " + length + "x" + (half * 2) + " lake: A* nodes up to " + nodes + " off the straight line, old lane " + relaxed
+                + ", pulled lane " + pulled);
+        assertTrue("the test path should be crooked, was " + nodes, nodes > 1.0);
+        assertTrue("pulled " + pulled, pulled < 1e-6);
+        assertTrue("old " + relaxed + " pulled " + pulled, relaxed >= pulled);
+    }
+
+    @Test
+    public void aTiedPathAcrossOpenWaterRowsAsOneStraightLane() {
+        tiedPathAcross(70, 30, new BetterBlockPos(-2, 63, -20), new BetterBlockPos(72, 63, 18));
+        tiedPathAcross(100, 40, new BetterBlockPos(-2, 63, -30), new BetterBlockPos(102, 63, 29));
+        tiedPathAcross(60, 25, new BetterBlockPos(-2, 63, -10), new BetterBlockPos(62, 63, 12));
     }
 
     @Test
