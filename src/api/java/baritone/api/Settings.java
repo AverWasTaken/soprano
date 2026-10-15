@@ -585,7 +585,7 @@ public final class Settings {
      * While {@link #fastMode} is on, Baritone may take a fall that hurts when there is no water bucket or
      * clutch to make it free, but never one that would leave you with less health (plus absorption) than this.
      * Measured in half hearts, so 12 is six hearts. Damage is estimated as vanilla fall damage before armor
-     * and feather falling, which is conservative.
+     * and feather falling, which is conservative. Falls inside {@link #maxFallHeightNoWater} only have to leave you alive.
      */
     public final Setting<Double> fastModeMinHealth = new Setting<>(12D);
 

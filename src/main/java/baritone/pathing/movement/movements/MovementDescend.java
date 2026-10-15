@@ -281,7 +281,8 @@ public class MovementDescend extends Movement {
             return;
         }
         int damage = ExperimentalMovement.fallDamage(blocks);
-        if (!ExperimentalMovement.canAffordFall(context.health, damage, ExperimentalMovement.hurtFloor(inPlainLimit, context.fastModeMinHealth))) {
+        double floor = ExperimentalMovement.hurtFloor(inPlainLimit, context.fastModeMinHealth);
+        if (!ExperimentalMovement.canAffordFall(context.health, damage, floor)) {
             return;
         }
         // magma and friends. canWalkOn lets some of them through (we can sneak on magma, that is not the same as landing on it)
@@ -293,6 +294,7 @@ public class MovementDescend extends Movement {
         res.z = destZ;
         res.cost = tentativeCost + damage * context.fallDamageCost;
         res.damage = damage;
+        res.hurtFloor = floor;
     }
 
     // a clutch that misses at low hp is lethal, so below fastModeMinHealth it's not on the menu (see canAffordClutch).
