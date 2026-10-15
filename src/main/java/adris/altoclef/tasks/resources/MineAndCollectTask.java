@@ -2,12 +2,14 @@ package adris.altoclef.tasks.resources;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
+import adris.altoclef.TaskCatalogue;
 import adris.altoclef.tasks.AbstractDoToClosestObjectTask;
 import adris.altoclef.tasks.ResourceTask;
 import adris.altoclef.tasks.construction.DestroyBlockTask;
 import adris.altoclef.tasks.movement.PickupDroppedItemTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.trackers.BanPolicy;
+import adris.altoclef.trackers.Bans;
 import adris.altoclef.trackers.EntityTracker;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.MiningRequirement;
@@ -22,6 +24,9 @@ import adris.altoclef.util.helpers.MineAnchor;
 import adris.altoclef.util.helpers.MineStick;
 import adris.altoclef.util.helpers.PlacedByUs;
 import adris.altoclef.util.helpers.StoneDigRank;
+import adris.altoclef.util.helpers.TreeReach;
+import adris.altoclef.util.helpers.TreeReachScan;
+import adris.altoclef.util.helpers.TreeStrikes;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
 import net.minecraft.world.inventory.ContainerInput;
@@ -49,6 +54,16 @@ public class MineAndCollectTask extends ResourceTask {
     private final TimerGame _cursorStackTimer = new TimerGame(3);
 
     private final MineOrCollectTask _subtask;
+
+    // blocks to build a tower with, dug by hand before the log that needs one (see dirtFirst)
+    private Task _dirtTask;
+    private int _dirtSince;
+    private BlockPos _dirtLog;
+    // how long the dirt trip gets, and how long a trip that got us nothing to place with keeps the high logs off the menu
+    private static final int DIRT_PATIENCE_TICKS = 1200;
+    private static final int DIRT_OFF_TICKS = 6000;
+    // a tree we already dug for is not dug for again for this long
+    private static final int DIRT_TREE_TICKS = 3600;
 
     public MineAndCollectTask(ItemTarget[] itemTargets, Block[] blocksToMine, MiningRequirement requirement) {
         super(itemTargets);
@@ -112,6 +127,12 @@ public class MineAndCollectTask extends ResourceTask {
             return new SatisfyMiningRequirementTask(_requirement);
         }
 
+        Task dirt = dirtFirst(mod);
+        if (dirt != null) {
+            setDebugState("Digging blocks to tower up to a log");
+            return dirt;
+        }
+
         if (_subtask.isMining()) {
             makeSureToolIsEquipped(mod);
         }
@@ -124,8 +145,43 @@ public class MineAndCollectTask extends ResourceTask {
         return _subtask;
     }
 
+    // a canopy log past the shaft needs a tower, and a tower needs something to place. dirt is the one block that comes out of
+    // the ground by hand (same reasoning as NetherRecoverTask), so the trip happens once, before the walk to the log
+    private Task dirtFirst(AltoClef mod) {
+        int now = WorldHelper.getTicks();
+        if (_dirtTask != null) {
+            // the task's own count, not "anything to place": one dirt in the bag is a tower one block high
+            boolean done = _dirtTask.isFinished(mod);
+            boolean late = now - _dirtSince > DIRT_PATIENCE_TICKS || now < _dirtSince;
+            if (!done && !late) {
+                return _dirtTask;
+            }
+            _dirtTask = null;
+            if (done) {
+                // one trip per tree: the tower eats the blocks as it goes up, and a trip for "the shortfall" every time they
+                // dip would drag us off a half built tower
+                MineOrCollectTask.dirtTrip(_dirtLog, now);
+            } else {
+                // fell short (bag full, no dirt where we looked): not worth another go any time soon, for any tree
+                MineOrCollectTask.dirtOff(now, DIRT_OFF_TICKS);
+                Debug.logMessage("could not dig enough dirt to tower with, leaving the high logs alone for a while");
+            }
+            return null;
+        }
+        int want = _subtask.dirtWanted(mod);
+        if (want <= 0) {
+            return null;
+        }
+        Debug.logMessage("that log is too high to reach from the ground, digging " + want + " more dirt to tower up");
+        _dirtSince = now;
+        _dirtLog = _subtask.miningPos();
+        _dirtTask = TaskCatalogue.getItemTask(Items.DIRT, mod.getItemStorage().getItemCount(Items.DIRT) + want);
+        return _dirtTask;
+    }
+
     @Override
     protected void onResourceStop(AltoClef mod, Task interruptTask) {
+        _dirtTask = null;
         mod.getBlockTracker().stopTracking(_blocksToMine);
         mod.getBehaviour().pop();
     }
@@ -198,6 +254,14 @@ public class MineAndCollectTask extends ResourceTask {
         private ItemEntity _lockedDrop;
         // a caller's extra say on which blocks may be picked (see onlyWhere). last in the test, it may be the costly one
         private Predicate<BlockPos> _only = check -> true;
+        // failed breaks per tree. static because the parent rebuilds this task whenever it likes and the count has to outlive that
+        private static final TreeStrikes STRIKES = new TreeStrikes();
+        private final TreeReachScan _scan = new TreeReachScan();
+        // no digging for dirt before this tick. static for the same reason as the strikes, a rebuilt task would start another trip
+        private static int dirtOffUntil = Integer.MIN_VALUE;
+        // the last tree we dug dirt for, and when
+        private static BlockPos dirtTreeAt;
+        private static int dirtTreeTick = Integer.MIN_VALUE;
 
         public MineOrCollectTask(Block[] blocks, ItemTarget[] targets) {
             _blocks = blocks;
@@ -340,9 +404,20 @@ public class MineAndCollectTask extends ResourceTask {
 
         // the next block to break. around the one we just broke while there is anything there, otherwise the nearest
         private Optional<BlockPos> pickBlock(AltoClef mod, Vec3 pos) {
+            Optional<BlockPos> pick = pickBlock(mod, pos, _logsOnly);
+            if (pick.isEmpty() && _logsOnly) {
+                // every log left is one we can't get at and can't tower to. a log we might fail on beats standing still, and
+                // the strikes (see giveUpTree) are what move us on from the tree
+                pick = pickBlock(mod, pos, false);
+            }
+            return pick;
+        }
+
+        // sparing leaves out the logs we have no way up to (TreeReach.skip)
+        private Optional<BlockPos> pickBlock(AltoClef mod, Vec3 pos, boolean sparing) {
             Predicate<BlockPos> usable = check -> {
                 if (mod.getBlockTracker().unreachable(check)) return false;
-                return WorldHelper.canBreak(mod, check) && _only.test(check);
+                return WorldHelper.canBreak(mod, check) && _only.test(check) && (!sparing || worthTheTrip(mod, check));
             };
             // what we put down ourselves is scaffolding, not a resource. it is the best looking stone there is (exposed, at
             // our feet) and eating it is how the table placement looped. only when nothing else is close do we take it
@@ -534,6 +609,59 @@ public class MineAndCollectTask extends ResourceTask {
             return mod.getBlockTracker().getNearestTracking(pos, usable, _blocks);
         }
 
+        // something to place with, asked the way the planner asks, so a tower we count on is one it will plan
+        private static boolean hasThrowaway(AltoClef mod) {
+            return mod.getClientBaritoneSettings().allowPlace.value && mod.getClientBaritone().getInventoryBehavior().hasGenericThrowaway();
+        }
+
+        // with placing off nothing we dig could be used, so there is no point in the trip
+        private boolean dirtPossible(AltoClef mod, int now) {
+            // a lockout further off than any we set is from a world whose clock was not ours
+            boolean locked = now < dirtOffUntil && dirtOffUntil - now <= DIRT_OFF_TICKS;
+            return !locked && mod.getClientBaritoneSettings().allowPlace.value && _scan.dirtAround(mod, now);
+        }
+
+        // false for a log high over the ground (canopy, or a trunk with its bottom cut away) when we have nothing to tower
+        // with and no dirt to get it from. an intact trunk is never flagged, it opens up as it is cut
+        private boolean worthTheTrip(AltoClef mod, BlockPos log) {
+            int now = WorldHelper.getTicks();
+            TreeReachScan.Look look = _scan.look(mod, log, now);
+            // most logs are not even flagged, and the bag and the dirt look are not free
+            if (!look.flagged() || look.fromGround()) {
+                return true;
+            }
+            return !TreeReach.skip(true, false, hasThrowaway(mod), dirtPossible(mod, now));
+        }
+
+        // how much more dirt to dig before the log we are on. 0 when that one needs no tower, or we hold enough blocks for the
+        // climb, or we are mid swing at it, or there is no dirt about
+        private int dirtWanted(AltoClef mod) {
+            BlockPos at = _miningPos;
+            if (!_logsOnly || at == null || mod.getControllerExtras().isBreakingBlock()) {
+                return 0;
+            }
+            int now = WorldHelper.getTicks();
+            TreeReachScan.Look look = _scan.look(mod, at, now);
+            if (!look.flagged() || look.fromGround() || !dirtPossible(mod, now)) {
+                return 0;
+            }
+            if (dirtTreeAt != null && now >= dirtTreeTick && now - dirtTreeTick < DIRT_TREE_TICKS && TreeStrikes.sameTree(dirtTreeAt, at)) {
+                return 0;
+            }
+            // what the planner places from by default, the same four blocks
+            int held = mod.getItemStorage().getItemCount(Items.DIRT, Items.COBBLESTONE, Items.NETHERRACK, Items.STONE);
+            return TreeReach.dirtShortfall(look.gap(), held);
+        }
+
+        private static void dirtOff(int now, int ticks) {
+            dirtOffUntil = now + ticks;
+        }
+
+        private static void dirtTrip(BlockPos log, int now) {
+            dirtTreeAt = log;
+            dirtTreeTick = now;
+        }
+
         // one of the blocks we are after, still standing, not given up on, and close enough to keep swinging at
         private boolean stillOurs(AltoClef mod, BlockPos pos) {
             if (mod.getBlockTracker().unreachable(pos)) return false;
@@ -594,10 +722,41 @@ public class MineAndCollectTask extends ResourceTask {
                 // is the long one. the short one used to be a set of this task's own that no other task could see
                 BanPolicy.miningStalled(mod.getBans(), WorldHelper.getCurrentDimension(), _miningPos.getX(), _miningPos.getY(), _miningPos.getZ());
                 mod.getBlockTracker().requestBlockUnreachable(_miningPos, 2, "mining got nowhere");
+                if (_logsOnly) {
+                    giveUpTree(mod, _miningPos);
+                }
                 _miningPos = null;
                 _progressChecker.reset();
             }
             return super.onTick(mod);
+        }
+
+        // the per block ban is over in a minute and the same canopy came right back. the second stall on one tree gives up on
+        // all of it for five minutes (it goes in the shared ban book, so any other task honours it too), and the anchor goes so
+        // the next pick can't walk back into the tree it was just banned from
+        private void giveUpTree(AltoClef mod, BlockPos stalled) {
+            var dim = WorldHelper.getCurrentDimension();
+            List<BlockPos> spots = STRIKES.strike(dim, stalled, WorldHelper.getTicks());
+            if (spots.isEmpty()) {
+                return;
+            }
+            // the spots that stalled go in themselves, the tracker may not know a log we were standing at
+            Set<Bans.Key> logs = new LinkedHashSet<>();
+            for (BlockPos spot : spots) {
+                logs.add(Bans.Key.block(dim, spot.getX(), spot.getY(), spot.getZ()));
+            }
+            for (BlockPos log : mod.getBlockTracker().getKnownLocations(_blocks)) {
+                for (BlockPos spot : spots) {
+                    if (TreeStrikes.sameTree(spot, log)) {
+                        logs.add(Bans.Key.block(dim, log.getX(), log.getY(), log.getZ()));
+                        break;
+                    }
+                }
+            }
+            BanPolicy.treeGaveUp(mod.getBans(), logs, stalled.getX(), stalled.getY(), stalled.getZ());
+            _anchor = null;
+            _anchorAnnounced = false;
+            Debug.logMessage("Giving up on the tree at " + stalled.getX() + " " + stalled.getY() + " " + stalled.getZ() + ", on to another one.");
         }
 
         @Override

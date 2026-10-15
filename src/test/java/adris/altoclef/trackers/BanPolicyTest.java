@@ -43,6 +43,21 @@ public class BanPolicyTest {
     }
 
     @Test
+    public void aTreeWeStalledOnOutlastsTheMinuteASingleLogGets() {
+        bans.tick(0);
+        List<Key> logs = List.of(Key.block(Dimension.OVERWORLD, 1, 70, 3), Key.block(Dimension.OVERWORLD, 2, 71, 3));
+        BanPolicy.miningStalled(bans, Dimension.OVERWORLD, 1, 70, 3);
+        assertEquals(2, BanPolicy.treeGaveUp(bans, logs, 1, 70, 3));
+        bans.tick(BanPolicy.TASK_GAVE_UP);
+        assertTrue("the stalled log's own minute is over but the tree is still out",bans.blockBanned(Dimension.OVERWORLD, 1, 70, 3));
+        assertTrue(bans.blockBanned(Dimension.OVERWORLD, 2, 71, 3));
+        bans.tick(BanPolicy.TREE_GAVE_UP);
+        assertFalse(bans.blockBanned(Dimension.OVERWORLD, 1, 70, 3));
+        assertFalse(bans.blockBanned(Dimension.OVERWORLD, 2, 71, 3));
+        assertTrue(BanPolicy.TREE_GAVE_UP > BanPolicy.TASK_GAVE_UP);
+    }
+
+    @Test
     public void theEntityRuleTakesFourMissesAndAHitEndsIt() {
         for (int i = 0; i < 3; i++) {
             assertFalse(BanPolicy.entityStrike(bans, 9, 3, 25, "couldn't reach cow"));
