@@ -9,6 +9,8 @@ public enum Icon {
     HELP,           // question mark in a ring
     SETTINGS,       // two sliders
     STATS,          // three bars, ascending
+    SCHEMATICS,     // a wall of bricks, what a schematic turns into
+    WARNING,        // triangle with a bang
     SEARCH,         // magnifier
     CLOSE,          // x
     PLUS,

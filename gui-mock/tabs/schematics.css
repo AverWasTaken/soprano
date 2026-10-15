@@ -1,0 +1,89 @@
+/* schematics tab layout (tabs/SchematicsTab.java, SchematicRows.java, MaterialRows.java). content box is 863 x 587 */
+
+.sc { position: absolute; inset: 0; --sc-list: clamp(200px, calc((var(--panel-w, 1040px) - 177px) * 0.37), 320px); }  /* the list takes 37% of the content, 200 to 320 */
+
+/* toolbar: the three file actions on the left, the count line on the right */
+.sc-bar { position: absolute; left: 16px; right: 16px; top: 16px; height: 30px; display: flex; align-items: center; gap: 8px; }
+.sc-bar .btn.icon-only { margin-left: -4px; }
+.sc-count { margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-3); }
+.sc-count.loading { color: var(--text-3); }
+
+/* list: a 330 scroll box (320 card + the 10 gutter) from 70 down, 16 off the bottom */
+.sc-list { position: absolute; left: 16px; width: calc(var(--sc-list) + 10px); top: 70px; bottom: 16px; }
+.sc-card { overflow: hidden; }
+.sc-card .row { height: 44px; padding: 0 16px; cursor: default; }
+.sc-card .row .sic { position: absolute; left: 16px; top: 14px; color: var(--text-3); }
+.sc-card .row .txt { position: absolute; left: 44px; top: 5px; right: 16px; transform: translateY(0.5px); will-change: transform; }
+.sc-card .row.warn .txt { right: 40px; }
+.sc-card .row .name { height: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sc-card .row .sub { margin-top: 2px; height: 15px; font-size: 12px; line-height: 15px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.sc-card .row.err .sub { color: var(--danger); }
+.sc-card .row .mark { position: absolute; right: 16px; top: 14px; color: var(--text-2); display: none; }
+.sc-card .row.warn .mark { display: block; }
+/* the selected file: the same soft blue a followed row gets */
+.sc-card .row.sel, .sc-card .row.sel:hover { background: var(--accent-soft); }
+.sc-card .row.sel .sic { color: var(--accent-text); }
+
+/* empty and first-load states take the list's place, centred on the 320 card */
+.sc-list-state { position: absolute; left: 16px; width: var(--sc-list); top: 70px; bottom: 16px; display: none; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 0 24px; gap: 4px; color: var(--text-3); }
+.sc-list-state .lead { color: var(--text-2); }
+.sc.empty .sc-list, .sc.first-load .sc-list { display: none; }
+.sc.empty .sc-list-state, .sc.first-load .sc-list-state { display: flex; }
+
+/* detail card: 6 clear of the list's gutter, the rest of the width */
+.sc-detail { position: absolute; left: calc(16px + var(--sc-list) + 26px); right: 16px; top: 70px; bottom: 16px; display: flex; flex-direction: column; }
+.sc-head { flex: none; padding: 12px 16px 12px; }
+.sc-head .name { font-size: 20px; line-height: 24px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sc-head .meta { margin-top: 2px; height: 15px; font-size: 12px; line-height: 15px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.sc-head .sum { margin-top: 8px; height: 17px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.sc-head .sum .short { color: var(--danger); }
+.sc-head .unknown { margin-top: 2px; height: 15px; font-size: 12px; line-height: 15px; color: var(--danger); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sc-rule { flex: none; height: var(--hl); background: var(--hairline); margin: 0 var(--hl); }
+
+/* the material list fills whatever is left. no separators: the bar tracks already rule the rows. a future placement map takes its room from here, nothing reserves it now */
+.sc-rows { flex: 1; min-height: 0; position: relative; }
+.sc-rows .scroll { position: absolute; inset: 0; padding: 4px 8px 4px 8px; }
+.mrow { position: relative; display: flex; align-items: center; height: 40px; padding: 0 8px; border-radius: var(--row-radius); }
+.mrow:hover { background: var(--hover); }
+.mrow .m-icon { width: 16px; height: 16px; image-rendering: pixelated; flex: none; margin-right: 12px; }
+.mrow .m-text { flex: 1; min-width: 0; }
+.mrow .m-name { height: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
+.mrow .m-name .note { color: var(--text-3); font-size: 12px; margin-left: 6px; }
+/* the coverage bar: have over needed, accent on a hairline track. full when the stack is covered, empty when you hold none */
+.mrow .m-bar { position: relative; height: 2px; margin-top: 3px; border-radius: 1px; background: var(--hairline); overflow: hidden; }
+.mrow .m-bar i { position: absolute; left: 0; top: 0; bottom: 0; width: var(--p, 0%); background: var(--accent); border-radius: 1px; }
+.mrow .m-num { flex: none; margin-left: 12px; font-size: 12px; line-height: 15px; color: var(--text-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mrow.short .m-num { color: var(--danger); }
+.mrow.plain .m-bar { display: none; }
+.mrow.plain .m-num { color: var(--text-3); }
+
+/* the two folded sections: one 36 row each with a chevron, their rows only exist when open */
+.msec { display: flex; align-items: center; height: 36px; padding: 0 8px; border-radius: var(--row-radius); color: var(--text-2); font-size: 14px; line-height: 17px; font-weight: 500; cursor: default; user-select: none; }
+.msec:hover { background: var(--hover); color: var(--text); }
+.msec .icon { margin-right: 8px; transition: transform var(--anim-fast) var(--ease); }
+.msec.open .icon { transform: rotate(90deg); }
+.msec .cnt { color: var(--text-3); font-weight: 400; margin-left: 6px; font-variant-numeric: tabular-nums; }
+.mnote { padding: 8px 8px 4px; font-size: 12px; line-height: 15px; color: var(--text-3); }
+
+/* loading, error and nothing-selected take the rows' place */
+.sc-rows-state { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 0 32px; gap: 4px; color: var(--text-3); }
+.sc-rows-state .lead { color: var(--text-2); }
+.sc-rows-state.error .lead { color: var(--danger); }
+.sc-detail.state .sc-rows .scroll { display: none; }
+.sc-detail.state .sc-rows-state { display: flex; }
+.sc-detail.nothing .sc-head { display: none; }
+
+/* build bar: 54 like the basket footer. the warning line gives way to the button, never the other way round */
+.sc-foot { flex: none; height: 54px; display: flex; align-items: center; gap: 12px; padding: 0 16px; }
+.sc-foot .warn { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; font-size: 12px; line-height: 15px; color: var(--text-2); }
+.sc-foot .warn .icon { color: var(--danger); flex: none; }
+.sc-foot .warn span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sc-foot .warn:empty, .sc-foot .warn.off { visibility: hidden; }
+.sc-foot .btn { flex: none; }
+/* armed: the second click builds, so the button says so in the danger look for about three seconds */
+.sc-foot .btn.armed { background: var(--raised); color: var(--danger); box-shadow: inset 0 0 0 var(--hl) var(--edge); }
+.sc-foot .btn.armed:hover { background: var(--danger-fill); }
+
+/* tooltip for an ellipsized name or an error line: a small floating card by the pointer, shown after a short rest */
+.sc-tip { position: absolute; z-index: 4; max-width: 360px; padding: 6px 10px; font-size: 12px; line-height: 15px; color: var(--text); pointer-events: none; display: none; white-space: normal; word-break: break-word; }
+.sc-tip.show { display: block; }

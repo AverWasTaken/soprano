@@ -13,6 +13,7 @@
 <link rel="stylesheet" href="tabs/settings.css">
 <link rel="stylesheet" href="tabs/goto.css">
 <link rel="stylesheet" href="tabs/waypoints.css">
+<link rel="stylesheet" href="tabs/schematics.css">
 <link rel="stylesheet" href="tabs/stats.css">
 <link rel="stylesheet" href="tabs/follow.css">
 <link rel="stylesheet" href="tabs/help.css">
@@ -53,6 +54,7 @@
           <div class="nav-group">
             <div class="nav-label">Library</div>
             <div class="nav-row" data-go="waypoints"><i data-icon="waypoints"></i><span>Waypoints</span></div>
+            <div class="nav-row" data-go="schematics"><i data-icon="schematics"></i><span>Schematics</span></div>
             <div class="nav-row" data-go="stats"><i data-icon="stats"></i><span>Stats</span></div>
           </div>
           <div class="nav-group">
@@ -174,6 +176,39 @@
           </div>
         </section>
 
+        <!-- ================= SCHEMATICS ================= -->
+        <section data-tab="schematics" data-title="Schematics" data-search="Search schematics">
+          <div class="sc" id="sc">
+            <div class="sc-bar">
+              <button class="btn secondary" id="sc-import">Import</button>
+              <button class="btn ghost" id="sc-folder">Open folder</button>
+              <button class="btn ghost icon-only" id="sc-refresh" aria-label="Refresh"><i data-icon="reset"></i></button>
+              <div class="sc-count t-small" id="sc-count"></div>
+            </div>
+            <div class="sc-list scroll" id="sc-list"><div class="sc-card card list-card" id="sc-rows"></div></div>
+            <div class="sc-list-state t-small" id="sc-list-state"></div>
+            <div class="sc-detail card" id="sc-detail">
+              <div class="sc-head">
+                <div class="name"></div>
+                <div class="meta"></div>
+                <div class="sum t-body"></div>
+                <div class="unknown"></div>
+              </div>
+              <div class="sc-rule"></div>
+              <div class="sc-rows">
+                <div class="scroll" id="sc-mats"></div>
+                <div class="sc-rows-state t-small" id="sc-rows-state"></div>
+              </div>
+              <div class="sc-rule"></div>
+              <div class="sc-foot">
+                <div class="warn off" id="sc-warn"><i data-icon="warning"></i><span></span></div>
+                <button class="btn primary" id="sc-build">Build at my feet</button>
+              </div>
+            </div>
+            <div class="sc-tip floating" id="sc-tip"></div>
+          </div>
+        </section>
+
         <!-- ================= STATS ================= -->
         <section data-tab="stats" data-title="Stats">
           <div class="st" id="st">
@@ -279,6 +314,7 @@
 <script src="mock.js"></script>
 <script src="tabs/stats.js"></script>
 <script src="tabs/waypoints.js"></script>
+<script src="tabs/schematics.js"></script>
 <script src="tabs/goto.js"></script>
 <script src="tabs/follow.js"></script>
 <script src="tabs/help.js"></script>

@@ -81,7 +81,8 @@ public class AppearancePreviewTest {
     @Test
     public void appearanceAndTabMotionFrames() throws Exception {
         Preview p = new Preview(new FakeFacade(), pv -> Tabs.create(pv.facade, pv.theme, pv.ctx));
-        p.shell.switchTab(6);
+        // settings, the last tab
+        p.shell.switchTab(7);
         p.settle();
         p.advance(500);
         p.settle();

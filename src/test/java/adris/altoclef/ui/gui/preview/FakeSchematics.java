@@ -189,6 +189,22 @@ public final class FakeSchematics implements SchematicsAccess {
         materials.put(path, simple(path));
     }
 
+    // a file deleted behind the gui's back, and a folder with nothing in it, for the tab tests
+    public void remove(String relativePath) {
+        rows.removeIf(r -> r.relativePath().equals(relativePath));
+        materials.remove(relativePath);
+    }
+
+    // the row stays, the count goes: materials() then answers with the unreadable file error
+    public void forgetMaterials(String relativePath) {
+        materials.remove(relativePath);
+    }
+
+    public void clear() {
+        rows.clear();
+        materials.clear();
+    }
+
     @Override
     public Result openFolder() {
         actions.add("schematics folder");

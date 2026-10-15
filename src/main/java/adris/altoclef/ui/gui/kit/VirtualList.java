@@ -48,6 +48,12 @@ public class VirtualList<T> extends VirtualView<T> {
         return selected;
     }
 
+    // the cursor is an index, so an owner that keys its selection by something stabler points it back at the right
+    // row after a refresh or a search moved things. out of range means no cursor
+    public void setSelected(int index) {
+        selected = selectable && index >= 0 && index < items.size() ? index : -1;
+    }
+
     public int rowHeight() {
         return rowH;
     }
