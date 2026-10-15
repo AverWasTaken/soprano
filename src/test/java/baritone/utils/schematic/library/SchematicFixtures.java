@@ -11,9 +11,14 @@ import java.nio.file.Path;
 
 // tiny schematic files built out of nbt, so no binary fixtures get checked in. palette specs are "namespace:name" or
 // "namespace:name[key=value,key=value]", which is also exactly how a sponge palette writes them
-final class SchematicFixtures {
+public final class SchematicFixtures {
 
     private SchematicFixtures() {
+    }
+
+    // for tests in other packages (the gui facade): a sponge v3 file with the given palette and block ids
+    public static Path writeSponge(Path file, int w, int h, int l, String[] palette, int[] ids) throws IOException {
+        return write(file, spongeV3(w, h, l, palette, ids));
     }
 
     static byte[] gzip(CompoundTag root) {

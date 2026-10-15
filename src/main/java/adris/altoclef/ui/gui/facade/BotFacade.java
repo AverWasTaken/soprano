@@ -23,4 +23,9 @@ public interface BotFacade {
     default StatsAccess stats() {
         return StatsAccess.NONE;
     }
+
+    // the schematics tab's folder, costs and import buttons. same deal as stats: the default keeps older fakes compiling
+    default SchematicsAccess schematics() {
+        return SchematicsAccess.NONE;
+    }
 }
