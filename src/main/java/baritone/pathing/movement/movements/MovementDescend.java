@@ -280,7 +280,7 @@ public class MovementDescend extends Movement {
             return;
         }
         int damage = ExperimentalMovement.fallDamage(blocks);
-        if (!ExperimentalMovement.canAffordFall(context.health, damage, ExperimentalMovement.hurtFloor(context.fastMode, context.fastModeMinHealth))) {
+        if (!ExperimentalMovement.canAffordFall(context.health, damage, ExperimentalMovement.hurtFloor(inPlainLimit, context.fastModeMinHealth))) {
             return;
         }
         // magma and friends. canWalkOn lets some of them through (we can sneak on magma, that is not the same as landing on it)
