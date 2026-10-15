@@ -1645,7 +1645,7 @@ public class PathExecutor implements IPathExecutor, Helper {
                 return boatLanes.get(i);
             }
         }
-        return BoatTrip.smoothLane(path.positions(), run[0], run[1]);
+        return BoatTrip.smoothLane(new BlockStateInterface(behavior.baritone.getPlayerContext()), path.positions(), run[0], run[1]);
     }
 
     // the stretches of this path that will be crossed by boat, as [first land index, last water index] pairs.
@@ -1656,8 +1656,9 @@ public class PathExecutor implements IPathExecutor, Helper {
             boatRuns = BoatTrip.runs(behavior.baritone, path);
             // the drawn lanes too, the renderer was rebuilding them every frame
             boatLanes = new ArrayList<>();
+            BlockStateInterface bsi = boatRuns.isEmpty() ? null : new BlockStateInterface(behavior.baritone.getPlayerContext());
             for (int[] run : boatRuns) {
-                boatLanes.add(BoatTrip.smoothLane(path.positions(), run[0], run[1]));
+                boatLanes.add(BoatTrip.smoothLane(bsi, path.positions(), run[0], run[1]));
             }
             boatRunsComputedAt = now;
         }

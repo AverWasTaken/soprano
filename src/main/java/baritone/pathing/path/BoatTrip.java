@@ -49,7 +49,9 @@ import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import baritone.utils.ExperimentalMovement;
 
 // one crossing of open water in a boat, owned by the PathExecutor. from the last block of land it
@@ -77,7 +79,7 @@ public final class BoatTrip implements Helper {
     // the spin, forward adds 0.04 a tick of speed, and both decay by 0.9 a tick on water. so top speed is
     // 0.4 a tick, and after you let go, whatever spin or speed you have carries nine times over
     private static final double WATER_COAST = 9;
-    // the boat tracks the middle of the drawn lane (smoothLane). a boat's velocity lags its heading badly,
+    // the boat tracks the middle of the drawn lane (buildLane). a boat's velocity lags its heading badly,
     // nine tenths of it carries over every tick, so anything that steers on the heading error alone
     // overcorrects and hunts. instead the driver rolls the vanilla physics forward HORIZON ticks for each
     // thing it could do (a tap of each length in TAP_LENGTHS either way, or nothing, with and without
@@ -134,8 +136,15 @@ public final class BoatTrip implements Helper {
     private int ticksInPhase;
     private int waypoint;
     private double bestWaypointDist;
-    private List<Vec3> lane;
+    private Lane lane;
+    private List<Vec3> laneLine; // lane.points, the controller only wants the points
     private int laneSeg = -1; // last lane segment we were on, -1 means search the whole thing
+    private int lastPullTick;
+    // per trip numbers for the sprintTelemetry line
+    private int rideTicks, keySwitches, fwdSwitches, pulls;
+    private double travelled, maxOff, firstLaneLen;
+    private Vec3 lastAt, rideStart;
+    private boolean reported;
     private int reverseTicks;
     private int lastKey;
     private boolean lastFwd;
@@ -292,58 +301,217 @@ public final class BoatTrip implements Helper {
             Helper.HELPER.logDebug(msg);
         }
     }
-
-    // half the width of the lane drawn around a boat run. only a picture: the steering aims at whatever
-    // node it can see, this just shows where the boat's going to be
+    // half the width of the lane drawn around a boat run. the steering doesn't care, but a boat this far off the
+    // lane gets a new one drawn through it (needsNewLane)
     public static final double LANE_HALF = 1.75;
 
-    // the centerline the boat follows and the lane is drawn around. baritone's water paths are staircases
-    // of straight and diagonal hops, and a boat following those literally weaves. so: pull the line taut
-    // by relaxing every point toward the middle of its neighbours, forty rounds, but never let a point
-    // stray more than LANE_SLACK from its own node. staircase wobble is smaller than that and vanishes,
-    // a real bend is bigger and stays a rounded bend through the middle of the water. then two rounds of
-    // chaikin corner cutting for density. ends stay put. offline: presses on a wavy lane 31 -> 10
-    private static final double LANE_SLACK = 0.6;
+    // whether the boat's middle can sit in the cell (x, z) at the run's water level: BoatTrip.cellsAt
+    // answers with canFloatBoat, the same rule A* priced the water with
+    public interface Cells {
+        boolean floats(int x, int z);
+    }
 
-    public static List<Vec3> smoothLane(List<BetterBlockPos> positions, int from, int to) {
-        int n = to - from + 1;
-        Vec3[] center = new Vec3[n];
-        Vec3[] pts = new Vec3[n];
-        for (int i = 0; i < n; i++) {
-            BetterBlockPos p = positions.get(from + i);
-            center[i] = new Vec3(p.x + 0.5, p.y, p.z + 0.5);
-            pts[i] = center[i];
+    // the centerline the boat follows and the lane is drawn around. A* water paths are octile-optimal, and
+    // a straight, a diagonal and any mix of the two cost the same, so on open water the ties come out as
+    // staircases and L shapes bending a good few blocks off the straight line. a boat following those
+    // weaves, and relaxing the points toward each other (what this used to do) only ever removed the
+    // wobble, never the bend. so: string pull. from each point, jump to the furthest later node whose
+    // straight line stays on boat cells, and the lane is those jumps with the corners rounded off
+    //
+    // the test is on the middle of the boat only: canFloatBoat already wants all eight neighbours of a cell
+    // open at water level and above (the hull is 1.375 wide, so its box reaches 0.19 into every one of them),
+    // so a middle that never leaves boat cells has a hull that never touches a bank, diagonal corners
+    // included. no sampling along the line either, every cell the line touches is asked, corner touches too
+    // corners get cut off this far from the corner at most, and never more than a third of the leg
+    private static final double CORNER_CUT = 1.5;
+    private static final double CORNER_FRACTION = 0.3;
+    // points this far apart along the lane. the projection and rollout code looks a fixed number of
+    // points around the boat, so this sets how far that is. the old chaikin lane had a point every quarter
+    // block on straights and the windows were tuned on that
+    private static final double LANE_STEP = 0.25;
+    // the boat got this far off the lane (a bump, a corner it swung wide on, a bad splice): pull a fresh lane from
+    // where it is. the driver only fights lateral error past CENTER_BAND and a boat that is off and exactly
+    // parallel never turns back (it rows beside the lane to the end), so a lane drawn through the boat is the fix.
+    // as far out as the picture of the lane goes
+    private static final double REPULL_OFF = LANE_HALF;
+    private static final int REPULL_COOLDOWN = 20;
+
+    static boolean needsNewLane(double lateral, int ticksSincePull) {
+        return lateral > REPULL_OFF && ticksSincePull > REPULL_COOLDOWN;
+    }
+
+    // the lane plus, for every point, the path index of the node it is nearest to
+    public static final class Lane {
+        public final List<Vec3> points;
+        final int[] node;
+
+        Lane(List<Vec3> points, int[] node) {
+            this.points = points;
+            this.node = node;
         }
-        for (int round = 0; round < 40; round++) {
-            for (int i = 1; i < n - 1; i++) {
-                Vec3 mid = pts[i - 1].add(pts[i + 1]).scale(0.5);
-                Vec3 pulled = pts[i].add(mid.subtract(pts[i]).scale(0.5));
-                double dx = pulled.x - center[i].x;
-                double dz = pulled.z - center[i].z;
-                double d = Math.sqrt(dx * dx + dz * dz);
-                if (d > LANE_SLACK) {
-                    pulled = new Vec3(center[i].x + dx / d * LANE_SLACK, center[i].y, center[i].z + dz / d * LANE_SLACK);
+
+        double length() {
+            double len = 0;
+            for (int i = 0; i + 1 < points.size(); i++) {
+                len += flat(points.get(i), points.get(i + 1));
+            }
+            return len;
+        }
+    }
+
+    // for the renderer: the lane over positions[from..to]
+    public static List<Vec3> smoothLane(BlockStateInterface bsi, List<BetterBlockPos> positions, int from, int to) {
+        return buildLane(cellsAt(bsi, positions.get(to).y), positions, from, to, null, from).points;
+    }
+
+    // boat cells at one water level, asked a lot by the pull so each answer is kept
+    public static Cells cellsAt(BlockStateInterface bsi, int y) {
+        Map<Long, Boolean> memo = new HashMap<>();
+        return (x, z) -> memo.computeIfAbsent(((long) x << 32) ^ (z & 0xffffffffL), k -> MovementHelper.canFloatBoat(bsi, x, y, z));
+    }
+
+    // the lane over the nodes from..to. with an origin the lane starts there instead (the boat, when it is
+    // already out on the water) and the nodes used are the ones after firstIdx
+    static Lane buildLane(Cells cells, List<BetterBlockPos> positions, int from, int to, Vec3 origin, int firstIdx) {
+        int first = origin == null ? from : Math.min(to, firstIdx);
+        List<double[]> list = new ArrayList<>();
+        if (origin == null) {
+            for (int idx = from; idx <= to; idx++) {
+                list.add(new double[]{positions.get(idx).x + 0.5, positions.get(idx).z + 0.5, positions.get(idx).y, idx});
+            }
+        } else {
+            list.add(new double[]{origin.x, origin.z, positions.get(first).y, first});
+            for (int idx = first + 1; idx <= to; idx++) {
+                list.add(new double[]{positions.get(idx).x + 0.5, positions.get(idx).z + 0.5, positions.get(idx).y, idx});
+            }
+            if (first == to) {
+                list.add(new double[]{positions.get(to).x + 0.5, positions.get(to).z + 0.5, positions.get(to).y, to});
+            }
+            // from an A* node to the next one is a move A* made, from the boat it is just a guess. if the boat
+            // can't see the next node (it swung wide round a corner, or is still in the shallows) go through the
+            // node it is nearest to first, the way the old lane always did
+            if (first < to && !segmentClear(cells, origin.x, origin.z, list.get(1)[0], list.get(1)[1])) {
+                list.add(1, new double[]{positions.get(first).x + 0.5, positions.get(first).z + 0.5, positions.get(first).y, first});
+            }
+        }
+        int count = list.size();
+        double[][] pts = list.toArray(new double[0][]);
+        // greedy: furthest node we can see, or the next one if we can see nothing (the shore, mostly)
+        List<double[]> poly = new ArrayList<>();
+        poly.add(pts[0]);
+        int i = 0;
+        while (i < count - 1) {
+            int pick = i + 1;
+            for (int j = count - 1; j > i + 1; j--) {
+                if (segmentClear(cells, pts[i][0], pts[i][1], pts[j][0], pts[j][1])) {
+                    pick = j;
+                    break;
                 }
-                pts[i] = pulled;
+            }
+            poly.add(pts[pick]);
+            i = pick;
+        }
+        poly = roundCorners(poly, cells);
+        poly = roundCorners(poly, cells);
+        // fill in so the points are LANE_STEP apart
+        List<Vec3> out = new ArrayList<>();
+        List<Integer> nodes = new ArrayList<>();
+        for (int k = 0; k + 1 < poly.size(); k++) {
+            double[] a = poly.get(k);
+            double[] b = poly.get(k + 1);
+            double len = Math.sqrt((b[0] - a[0]) * (b[0] - a[0]) + (b[1] - a[1]) * (b[1] - a[1]));
+            int steps = Math.max(1, (int) Math.ceil(len / LANE_STEP));
+            for (int s = 0; s < steps; s++) {
+                double f = (double) s / steps;
+                out.add(new Vec3(a[0] + (b[0] - a[0]) * f, a[2] + (b[2] - a[2]) * f, a[1] + (b[1] - a[1]) * f));
+                nodes.add((int) Math.round(a[3] + (b[3] - a[3]) * f));
             }
         }
-        List<Vec3> out = new ArrayList<>(n);
-        for (Vec3 p : pts) {
-            out.add(p);
+        double[] last = poly.get(poly.size() - 1);
+        out.add(new Vec3(last[0], last[2], last[1]));
+        nodes.add((int) Math.round(last[3]));
+        if (out.size() < 2) {
+            out.add(out.get(0)); // a lane has a segment, even a zero long one
+            nodes.add(nodes.get(0));
         }
-        for (int round = 0; round < 2 && out.size() > 2; round++) {
-            List<Vec3> cut = new ArrayList<>(out.size() * 2);
-            cut.add(out.get(0));
-            for (int i = 0; i + 1 < out.size(); i++) {
-                Vec3 a = out.get(i);
-                Vec3 b = out.get(i + 1);
-                cut.add(a.scale(0.75).add(b.scale(0.25)));
-                cut.add(a.scale(0.25).add(b.scale(0.75)));
+        int[] node = new int[nodes.size()];
+        for (int k = 0; k < node.length; k++) {
+            node[k] = nodes.get(k);
+        }
+        return new Lane(out, node);
+    }
+
+    // chaikin with a leash: every corner is swapped for the two points a bit down each leg, unless the line
+    // between those would leave the boat cells, then the corner stays. legs that are 1 block long behave
+    // like plain corner cutting, legs that are 50 long only round off their ends
+    private static List<double[]> roundCorners(List<double[]> poly, Cells cells) {
+        if (poly.size() < 3) {
+            return poly;
+        }
+        List<double[]> out = new ArrayList<>();
+        out.add(poly.get(0));
+        for (int i = 1; i + 1 < poly.size(); i++) {
+            double[] u = poly.get(i - 1);
+            double[] v = poly.get(i);
+            double[] w = poly.get(i + 1);
+            double a = Math.sqrt((u[0] - v[0]) * (u[0] - v[0]) + (u[1] - v[1]) * (u[1] - v[1]));
+            double b = Math.sqrt((w[0] - v[0]) * (w[0] - v[0]) + (w[1] - v[1]) * (w[1] - v[1]));
+            if (a < 1e-9 || b < 1e-9) {
+                out.add(v);
+                continue;
             }
-            cut.add(out.get(out.size() - 1));
-            out = cut;
+            double ta = Math.min(CORNER_CUT, CORNER_FRACTION * a) / a;
+            double tb = Math.min(CORNER_CUT, CORNER_FRACTION * b) / b;
+            double[] p1 = lerp(v, u, ta);
+            double[] p2 = lerp(v, w, tb);
+            if (segmentClear(cells, p1[0], p1[1], p2[0], p2[1])) {
+                out.add(p1);
+                out.add(p2);
+            } else {
+                out.add(v);
+            }
         }
+        out.add(poly.get(poly.size() - 1));
         return out;
+    }
+
+    private static double[] lerp(double[] from, double[] to, double t) {
+        return new double[]{from[0] + (to[0] - from[0]) * t, from[1] + (to[1] - from[1]) * t, from[2] + (to[2] - from[2]) * t, from[3] + (to[3] - from[3]) * t};
+    }
+
+    // is every cell the segment touches a boat cell. walks it column by column and asks the rows the
+    // segment spans inside that column, widened by a hair so a line along a cell edge or through a
+    // corner asks everyone it brushes
+    static boolean segmentClear(Cells cells, double ax, double az, double bx, double bz) {
+        final double eps = 1e-6;
+        double dx = bx - ax;
+        int x0 = (int) Math.floor(Math.min(ax, bx) - eps);
+        int x1 = (int) Math.floor(Math.max(ax, bx) + eps);
+        for (int cx = x0; cx <= x1; cx++) {
+            double zlo;
+            double zhi;
+            if (Math.abs(dx) < 1e-12) {
+                zlo = Math.min(az, bz);
+                zhi = Math.max(az, bz);
+            } else {
+                double t0 = Math.max(0, Math.min(1, (cx - eps - ax) / dx));
+                double t1 = Math.max(0, Math.min(1, (cx + 1 + eps - ax) / dx));
+                double z0 = az + (bz - az) * t0;
+                double z1 = az + (bz - az) * t1;
+                zlo = Math.min(z0, z1);
+                zhi = Math.max(z0, z1);
+            }
+            for (int cz = (int) Math.floor(zlo - eps); cz <= (int) Math.floor(zhi + eps); cz++) {
+                if (!cells.floats(cx, cz)) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    private static double flat(Vec3 a, Vec3 b) {
+        return Math.sqrt((a.x - b.x) * (a.x - b.x) + (a.z - b.z) * (a.z - b.z));
     }
 
     private static int boatSlot(Inventory inv) {
@@ -388,6 +556,7 @@ public final class BoatTrip implements Helper {
             // end - 1 rather than end so the level water check covers the hop onto positions[end + 1]
             end = Math.max(end, runEnd(new BlockStateInterface(ctx), path, end - 1));
         }
+        // a longer run is a different line to pull, so the next tick draws the lane again from the boat
         lane = null;
         laneSeg = -1;
     }
@@ -425,6 +594,7 @@ public final class BoatTrip implements Helper {
 
     private Result abort(String why) {
         logDebug(why);
+        report("aborted");
         if (ctx.player().getVehicle() instanceof AbstractBoat) {
             // get out first, the movements can't do anything from inside a boat
             aborting = true;
@@ -585,42 +755,36 @@ public final class BoatTrip implements Helper {
         if (ticksInPhase > (end - start) * 15 + 200) {
             return abort("this crossing is taking forever, abandon ship");
         }
+        BlockStateInterface bsi = new BlockStateInterface(ctx);
+        int waterY = positions.get(end).y;
         if (lane == null) {
-            lane = smoothLane(positions, start, end);
-            laneSeg = -1;
+            pullLane(bsi, positions, at, waterY);
         }
         // where are we on the lane: project onto the segments around the last one (boats don't teleport),
         // all of them the first time. closest one gives how far along and how far off the middle we are
-        int lo = laneSeg < 0 ? 0 : Math.max(0, laneSeg - 4);
-        int hi = laneSeg < 0 ? lane.size() - 1 : Math.min(lane.size() - 1, laneSeg + 12);
-        int bestSeg = lo;
-        double bestT = 0;
-        double lateral = Double.MAX_VALUE;
-        for (int seg = lo; seg < hi; seg++) {
-            Vec3 a = lane.get(seg);
-            Vec3 b = lane.get(seg + 1);
-            double abx = b.x - a.x;
-            double abz = b.z - a.z;
-            double len2 = abx * abx + abz * abz;
-            double t = len2 == 0 ? 0 : Math.max(0, Math.min(1, ((at.x - a.x) * abx + (at.z - a.z) * abz) / len2));
-            double px = a.x + abx * t;
-            double pz = a.z + abz * t;
-            double d = Math.sqrt((at.x - px) * (at.x - px) + (at.z - pz) * (at.z - pz));
-            if (d < lateral) {
-                lateral = d;
-                bestSeg = seg;
-                bestT = t;
-            }
-        }
+        double[] proj = project(laneLine, laneSeg, at.x, at.z);
+        int bestSeg = (int) proj[0];
+        double bestT = proj[1];
+        double lateral = proj[2];
         laneSeg = bestSeg;
-        // the lane has four points per node after the corner cutting, so this is roughly the node we're at
-        waypoint = Math.min(end, start + (bestSeg + 1) / 4);
+        // every lane point knows which path node it is nearest to
+        waypoint = Math.max(start, Math.min(end, lane.node[Math.min(bestSeg + 1, lane.node.length - 1)]));
         double progress = bestSeg + bestT;
+
+        rideTicks++;
+        if (lastAt != null) {
+            travelled += flat(lastAt, at);
+        }
+        lastAt = at;
+        maxOff = Math.max(maxOff, lateral);
+        if (needsNewLane(lateral, ticksInPhase - lastPullTick)) {
+            lane = null; // the next tick draws a new lane from where we are
+        }
 
         Vec3 motion = boat.getDeltaMovement();
         double speed = Math.sqrt(motion.x * motion.x + motion.z * motion.z);
         double coast = WATER_COAST * speed;
-        Vec3 last = lane.get(lane.size() - 1);
+        Vec3 last = laneLine.get(laneLine.size() - 1);
         double endDist = Math.sqrt((last.x - at.x) * (last.x - at.x) + (last.z - at.z) * (last.z - at.z));
 
         // ran into something (a bank we clipped, a lily pad, whoever knows): back off the thing for a
@@ -638,57 +802,29 @@ public final class BoatTrip implements Helper {
             ticksStuck = 0;
             return Result.CONTINUE;
         }
-        if (bestWaypointDist == Double.MAX_VALUE || progress > bestWaypointDist + 0.05) {
+        if (bestWaypointDist == Double.MAX_VALUE) {
+            // the first look at a fresh lane has nothing to compare to. the stuck count carries over, so
+            // drawing a new lane every so often can't hide a boat that isn't going anywhere
+            bestWaypointDist = progress;
+        } else if (progress > bestWaypointDist + 0.05) {
             bestWaypointDist = progress;
             ticksStuck = 0;
         } else if (++ticksStuck > STUCK_TICKS) {
             return abort("we've run aground. abandon ship");
         }
 
-        // where we'd like to be after the horizon: down the lane by about what we'll travel, and then
-        // try everything we could hold and see which one gets closest without leaving the lane
-        double ahead = Math.max(AHEAD_MIN, speed * HORIZON * 0.8 + 1.0);
-        Vec3 goal = pointAlong(bestSeg, bestT, ahead);
-        int bestKey = 0;
-        boolean bestFwd = false;
-        double bestScore = Double.MAX_VALUE;
-        float goalHeading = headingAlong(bestSeg, bestT, ahead);
-        BlockStateInterface bsi = new BlockStateInterface(ctx);
-        int waterY = positions.get(end).y;
-        for (int dir = -1; dir <= 1; dir++) {
-            for (int taps : dir == 0 ? new int[]{0} : TAP_LENGTHS) {
-                for (int fwd = 0; fwd <= 1; fwd++) {
-                    double[] state = {at.x, at.z, boat.getYRot(), Mth.wrapDegrees(boat.getYRot() - boat.yRotO), motion.x, motion.z};
-                    double worstLateral = 0;
-                    int clips = 0;
-                    // the boat ticks before its passenger, so what we press now reaches it next tick. the
-                    // first step of every rollout is last tick's choice, which is already on its way
-                    stepBoat(state, lastKey, lastFwd);
-                    for (int k = 0; k < HORIZON; k++) {
-                        stepBoat(state, k < taps ? dir : 0, fwd == 1);
-                        worstLateral = Math.max(worstLateral, lateralAt(state[0], state[1], bestSeg));
-                        if ((k & 1) == 1 && hullClips(bsi, state[0], state[1], waterY)) {
-                            clips++;
-                        }
-                    }
-                    double score = Math.sqrt((state[0] - goal.x) * (state[0] - goal.x) + (state[1] - goal.z) * (state[1] - goal.z))
-                            + LANE_PENALTY * Math.max(0, worstLateral - CENTER_BAND)
-                            + CLIP_PENALTY * clips
-                            + (fwd == 1 ? 0 : COAST_PENALTY)
-                            + (dir != 0 ? TURN_PENALTY : 0)
-                            + (dir != lastKey ? SWITCH_PENALTY : 0)
-                            + HEADING_PENALTY * Math.abs(Mth.wrapDegrees((float) state[2] - goalHeading)) / 30
-                            + SPIN_PENALTY * Math.abs(state[3]);
-                    if (score < bestScore) {
-                        bestScore = score;
-                        bestKey = dir;
-                        bestFwd = fwd == 1;
-                    }
-                }
-            }
-        }
+        double[] state = {at.x, at.z, boat.getYRot(), Mth.wrapDegrees(boat.getYRot() - boat.yRotO), motion.x, motion.z};
+        Pick pick = pick(laneLine, bestSeg, bestT, state, lastKey, lastFwd, (x, z) -> hullClips(bsi, x, z, waterY));
+        int bestKey = pick.key;
+        boolean bestFwd = pick.fwd;
         if (endDist < coast + 0.4) {
             bestFwd = false; // we'd slide right past the last node and into the shore
+        }
+        if (bestKey != lastKey) {
+            keySwitches++;
+        }
+        if (bestFwd != lastFwd) {
+            fwdSwitches++;
         }
         lastKey = bestKey;
         lastFwd = bestFwd;
@@ -711,8 +847,152 @@ public final class BoatTrip implements Helper {
         return Result.CONTINUE;
     }
 
+    // the node nearest (x, z) among the ones around the last waypoint, which is the one the lane picks up from.
+    // anything behind it is history
+    static int nearestNode(List<BetterBlockPos> positions, int start, int end, int waypoint, double x, double z) {
+        int nearest = Math.max(start, Math.min(end, waypoint));
+        double nearestDist = Double.MAX_VALUE;
+        for (int i = Math.max(start, waypoint - 5); i <= Math.min(end, waypoint + 10); i++) {
+            double dx = positions.get(i).x + 0.5 - x;
+            double dz = positions.get(i).z + 0.5 - z;
+            double d = dx * dx + dz * dz;
+            if (d <= nearestDist) {
+                nearestDist = d;
+                nearest = i;
+            }
+        }
+        return nearest;
+    }
+
+    // draw the lane from where the boat is now to the end of the run
+    private void pullLane(BlockStateInterface bsi, List<BetterBlockPos> positions, Vec3 at, int waterY) {
+        lane = buildLane(cellsAt(bsi, waterY), positions, start, end, at, nearestNode(positions, start, end, waypoint, at.x, at.z));
+        laneLine = lane.points;
+        laneSeg = -1;
+        bestWaypointDist = Double.MAX_VALUE; // progress is counted in lane segments and these are new ones
+        lastPullTick = ticksInPhase;
+        if (++pulls == 1) {
+            firstLaneLen = lane.length();
+            rideStart = at;
+        }
+    }
+
+    // one line per crossing: how it went, and how crooked the A* path was against the lane we rowed and the
+    // straight line. rows of numbers to diff between runs, so it is the same shape every time. the path
+    // is measured as it is now (a splice may have made it longer than it was), lane is the first one drawn
+    private void report(String how) {
+        if (reported || rideTicks == 0) {
+            return;
+        }
+        reported = true;
+        if (!ExperimentalMovement.sprintTelemetry()) {
+            return;
+        }
+        List<BetterBlockPos> positions = path.positions();
+        double pathLen = 0;
+        for (int i = start; i < end; i++) {
+            pathLen += Math.sqrt(Math.pow(positions.get(i + 1).x - positions.get(i).x, 2) + Math.pow(positions.get(i + 1).z - positions.get(i).z, 2));
+        }
+        double straight = flat(rideStart, laneLine.get(laneLine.size() - 1));
+        String text = String.format(java.util.Locale.ROOT,
+                "[sprintTelemetry] boat %s: %d nodes of water, %d ticks, %.3f blocks/tick (0.40 is the cap), path %.1f, first lane %.1f, straight %.1f, rowed %.1f, "
+                        + "turn key switches %d (%.1f per 100 ticks), throttle switches %d, worst off the lane %.2f, lanes drawn %d",
+                how, end - start, rideTicks, travelled / rideTicks, pathLen, firstLaneLen, straight, travelled,
+                keySwitches, keySwitches * 100.0 / rideTicks, fwdSwitches, maxOff, pulls);
+        logDebug(text);
+        System.out.println(text);
+    }
+    // what the driver wants held for the next tick
+    static final class Pick {
+        final int key;
+        final boolean fwd;
+
+        Pick(int key, boolean fwd) {
+            this.key = key;
+            this.fwd = fwd;
+        }
+    }
+
+    // would the hull, middle at (x, z), hit something
+    interface Clip {
+        boolean clips(double x, double z);
+    }
+
+    // the nearest point of the lane to (x, z), looking at the segments around lastSeg (all of them when it is
+    // -1): {segment, how far along it, distance}
+    static double[] project(List<Vec3> lane, int lastSeg, double x, double z) {
+        int lo = lastSeg < 0 ? 0 : Math.max(0, lastSeg - 4);
+        int hi = lastSeg < 0 ? lane.size() - 1 : Math.min(lane.size() - 1, lastSeg + 12);
+        int bestSeg = lo;
+        double bestT = 0;
+        double lateral = Double.MAX_VALUE;
+        for (int seg = lo; seg < hi; seg++) {
+            Vec3 a = lane.get(seg);
+            Vec3 b = lane.get(seg + 1);
+            double abx = b.x - a.x;
+            double abz = b.z - a.z;
+            double len2 = abx * abx + abz * abz;
+            double t = len2 == 0 ? 0 : Math.max(0, Math.min(1, ((x - a.x) * abx + (z - a.z) * abz) / len2));
+            double px = a.x + abx * t;
+            double pz = a.z + abz * t;
+            double d = Math.sqrt((x - px) * (x - px) + (z - pz) * (z - pz));
+            if (d < lateral) {
+                lateral = d;
+                bestSeg = seg;
+                bestT = t;
+            }
+        }
+        return new double[]{bestSeg, bestT, lateral};
+    }
+
+    // try everything we could hold and see which one ends up closest to where we'd like to be after the
+    // horizon (down the lane by about what we'll travel) without leaving the lane. boat is x, z, yaw, spin,
+    // vx, vz as the boat is right now, lastKey / lastFwd what we chose last tick
+    static Pick pick(List<Vec3> lane, int seg, double t, double[] boat, int lastKey, boolean lastFwd, Clip clip) {
+        double speed = Math.sqrt(boat[4] * boat[4] + boat[5] * boat[5]);
+        double ahead = Math.max(AHEAD_MIN, speed * HORIZON * 0.8 + 1.0);
+        Vec3 goal = pointAlong(lane, seg, t, ahead);
+        float goalHeading = headingAlong(lane, seg, t, ahead);
+        int bestKey = 0;
+        boolean bestFwd = false;
+        double bestScore = Double.MAX_VALUE;
+        for (int dir = -1; dir <= 1; dir++) {
+            for (int taps : dir == 0 ? new int[]{0} : TAP_LENGTHS) {
+                for (int fwd = 0; fwd <= 1; fwd++) {
+                    double[] state = boat.clone();
+                    double worstLateral = 0;
+                    int clips = 0;
+                    // the boat ticks before its passenger, so what we press now reaches it next tick. the
+                    // first step of every rollout is last tick's choice, which is already on its way
+                    stepBoat(state, lastKey, lastFwd);
+                    for (int k = 0; k < HORIZON; k++) {
+                        stepBoat(state, k < taps ? dir : 0, fwd == 1);
+                        worstLateral = Math.max(worstLateral, lateralAt(lane, state[0], state[1], seg));
+                        if ((k & 1) == 1 && clip.clips(state[0], state[1])) {
+                            clips++;
+                        }
+                    }
+                    double score = Math.sqrt((state[0] - goal.x) * (state[0] - goal.x) + (state[1] - goal.z) * (state[1] - goal.z))
+                            + LANE_PENALTY * Math.max(0, worstLateral - CENTER_BAND)
+                            + CLIP_PENALTY * clips
+                            + (fwd == 1 ? 0 : COAST_PENALTY)
+                            + (dir != 0 ? TURN_PENALTY : 0)
+                            + (dir != lastKey ? SWITCH_PENALTY : 0)
+                            + HEADING_PENALTY * Math.abs(Mth.wrapDegrees((float) state[2] - goalHeading)) / 30
+                            + SPIN_PENALTY * Math.abs(state[3]);
+                    if (score < bestScore) {
+                        bestScore = score;
+                        bestKey = dir;
+                        bestFwd = fwd == 1;
+                    }
+                }
+            }
+        }
+        return new Pick(bestKey, bestFwd);
+    }
+
     // the point dist blocks further along the lane from the projection (seg, t), clamped to the last point
-    private Vec3 pointAlong(int seg, double t, double dist) {
+    private static Vec3 pointAlong(List<Vec3> lane, int seg, double t, double dist) {
         Vec3 a = lane.get(seg);
         Vec3 b = lane.get(seg + 1);
         Vec3 p = a.add(b.subtract(a).scale(t));
@@ -733,7 +1013,7 @@ public final class BoatTrip implements Helper {
     }
 
     // the direction the lane runs at the point dist blocks along it from (seg, t), as a yaw
-    private float headingAlong(int seg, double t, double dist) {
+    private static float headingAlong(List<Vec3> lane, int seg, double t, double dist) {
         Vec3 a = lane.get(seg);
         Vec3 b = lane.get(seg + 1);
         Vec3 p = a.add(b.subtract(a).scale(t));
@@ -770,7 +1050,7 @@ public final class BoatTrip implements Helper {
 
     // one tick of vanilla boat physics on water, driven by us: floatBoat's friction, then controlBoat's
     // input, then the move. state is x, z, yaw, spin, vx, vz. key is -1 left, 0, 1 right
-    private static void stepBoat(double[] s, int key, boolean forward) {
+    static void stepBoat(double[] s, int key, boolean forward) {
         s[3] = s[3] * 0.9 + key;
         s[2] += s[3];
         double thrust = (forward ? BOAT_ACCEL : 0) + (key != 0 && !forward ? TURN_ACCEL : 0);
@@ -782,7 +1062,7 @@ public final class BoatTrip implements Helper {
     }
 
     // how far a point is from the lane's centerline, looking at the segments around the one we're on
-    private double lateralAt(double x, double z, int nearSeg) {
+    private static double lateralAt(List<Vec3> lane, double x, double z, int nearSeg) {
         double best = Double.MAX_VALUE;
         for (int seg = Math.max(0, nearSeg - 2); seg < Math.min(lane.size() - 1, nearSeg + 20); seg++) {
             Vec3 a = lane.get(seg);
@@ -799,6 +1079,7 @@ public final class BoatTrip implements Helper {
     }
 
     private Result arrive() {
+        report("arrived");
         if (end == path.length() - 1) {
             // the path ends on the water, not the shore. either the goal's out here or the next segment
             // hasn't been spliced on yet. stay in the boat, the next executor will find us in it and row on
