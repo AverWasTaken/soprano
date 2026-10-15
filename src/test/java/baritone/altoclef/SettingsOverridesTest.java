@@ -64,6 +64,20 @@ public class SettingsOverridesTest {
         assertEquals(0, SettingsOverrides.heldCount());
     }
 
+    // the scope turns allowDownward on for a task: the user's off is what a save writes and what comes back afterwards
+    @Test
+    public void allowDownwardIsOursWhileATaskRunsAndTheUsersAfter() {
+        s.allowDownward.value = false;
+        SettingsOverrides.put(s.allowDownward, true);
+        assertTrue(s.allowDownward.value);
+        List<Boolean> seen = new java.util.ArrayList<>();
+        SettingsOverrides.saveWithoutOverrides(() -> seen.add(s.allowDownward.value));
+        assertEquals(List.of(false), seen);
+        assertTrue(s.allowDownward.value);
+        SettingsOverrides.restoreAll();
+        assertFalse(s.allowDownward.value);
+    }
+
     @Test
     public void aSecondPutKeepsTheFirstUsersValue() {
         s.blockPlacementPenalty.value = 7.0;
