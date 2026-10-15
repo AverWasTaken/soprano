@@ -34,8 +34,10 @@ import net.minecraft.world.level.block.state.properties.Property;
 import org.apache.commons.lang3.Validate;
 
 import javax.annotation.Nullable;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -107,9 +109,15 @@ public final class LitematicaSchematic extends CompositeSchematic implements ISt
                 unknownNames[i] = name.isEmpty() ? "(no name)" : name;
             }
             Block block = found == null ? Blocks.AIR : found;
+            List<String> badProperties = new ArrayList<>();
             CompoundTag properties = tag.getCompound("Properties").orElse(new CompoundTag());
 
-            blockList[i] = getBlockState(block, properties);
+            blockList[i] = getBlockState(block, properties, badProperties);
+            if (found != null && !badProperties.isEmpty()) {
+                // the block is real but a property value isn't (walls went from east=true to east=low in 1.16).
+                // it keeps the default for that property and gets reported like an unknown id
+                unknownNames[i] = name + "[" + String.join(",", badProperties) + "]";
+            }
         }
         return blockList;
     }
@@ -119,14 +127,19 @@ public final class LitematicaSchematic extends CompositeSchematic implements ISt
      * @param properties List of Properties the block has.
      * @return A blockState.
      */
-    private static BlockState getBlockState(Block block, CompoundTag properties) {
+    private static BlockState getBlockState(Block block, CompoundTag properties, List<String> badProperties) {
         BlockState blockState = block.defaultBlockState();
 
         for (String key : properties.keySet()) {
             Property<?> property = block.getStateDefinition().getProperty(key);
             String propertyValue = properties.getString(key).orElse(null);
             if (property != null) {
-                blockState = setPropertyValue(blockState, property, propertyValue);
+                BlockState next = setPropertyValue(blockState, property, propertyValue);
+                if (next == null) {
+                    badProperties.add(key + "=" + propertyValue);
+                } else {
+                    blockState = next;
+                }
             }
         }
         return blockState;
@@ -140,7 +153,8 @@ public final class LitematicaSchematic extends CompositeSchematic implements ISt
         if (parsed.isPresent()) {
             return state.setValue(property, parsed.get());
         } else {
-            throw new IllegalArgumentException("Invalid value for property " + property);
+            // null means the value doesn't exist (anymore), the caller keeps the default
+            return null;
         }
     }
 
@@ -161,7 +175,8 @@ public final class LitematicaSchematic extends CompositeSchematic implements ISt
      */
     private static long getVolume(CompoundTag subReg) {
         CompoundTag size = subReg.getCompound("Size").orElse(new CompoundTag());
-        return Math.abs(size.getInt("x").orElse(0) * size.getInt("y").orElse(0) * size.getInt("z").orElse(0));
+        // long, a 1500^3 region wraps an int and the bit array comes out the wrong size
+        return Math.abs((long) size.getInt("x").orElse(0) * size.getInt("y").orElse(0) * size.getInt("z").orElse(0));
     }
 
     /**

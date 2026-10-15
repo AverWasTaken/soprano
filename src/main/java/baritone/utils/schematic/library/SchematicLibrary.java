@@ -13,8 +13,11 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.ref.SoftReference;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -25,7 +28,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.stream.Stream;
 
 // everything in <gameDir>/schematics, parsed once per (path, mtime, size). parsing is slow for big files, so call
 // list() off the render thread. the parsed schematic itself is only softly held, a 200^3 build is a lot of references
@@ -112,14 +114,28 @@ public final class SchematicLibrary {
         if (!directory.isDirectory()) {
             return Collections.emptyList();
         }
-        try (Stream<Path> walk = Files.walk(directory.toPath())) {
-            return walk.filter(Files::isRegularFile)
-                .map(Path::toFile)
-                .filter(f -> SchematicSystem.INSTANCE.getByFile(f).isPresent())
-                .toList();
+        List<File> found = new ArrayList<>();
+        try {
+            Files.walkFileTree(directory.toPath(), new SimpleFileVisitor<>() {
+                @Override
+                public FileVisitResult visitFile(Path path, BasicFileAttributes attrs) {
+                    File file = path.toFile();
+                    if (attrs.isRegularFile() && SchematicSystem.INSTANCE.getByFile(file).isPresent()) {
+                        found.add(file);
+                    }
+                    return FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult visitFileFailed(Path path, IOException e) {
+                    // one folder we can't read shouldn't hide all the others
+                    return FileVisitResult.CONTINUE;
+                }
+            });
         } catch (IOException | RuntimeException e) {
-            return Collections.emptyList();
+            // whatever was found before it went wrong is still good
         }
+        return found;
     }
 
     private Entry read(File file) {
@@ -134,7 +150,8 @@ public final class SchematicLibrary {
         try (InputStream in = Files.newInputStream(file.toPath())) {
             parsed = format.orElseThrow(() -> new IOException("no format for this file")).parse(in);
             info = summarize(file, name, relative, size, modified, formatName, parsed);
-        } catch (Exception e) {
+        } catch (Exception | OutOfMemoryError | StackOverflowError e) {
+            // a huge file can run the heap dry, that's this row's problem and not the whole tab's
             info = new SchematicInfo(file, name, relative, size, modified, formatName, -1, 0, 0, 0, 0,
                 List.of(), describe(e));
             parsed = null;
@@ -187,10 +204,13 @@ public final class SchematicLibrary {
         return format.getClass().getSimpleName();
     }
 
-    private static String describe(Exception e) {
+    private static String describe(Throwable e) {
         String message = e.getMessage();
         // our own "unsupported version" messages read fine alone, everything else gets the exception name so a
         // NoSuchElementException doesn't show up as just "No value present"
+        if (e instanceof OutOfMemoryError) {
+            return "too big to load (out of memory)";
+        }
         if (e instanceof UnsupportedOperationException && message != null) {
             return message;
         }
