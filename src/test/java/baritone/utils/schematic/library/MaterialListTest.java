@@ -248,6 +248,32 @@ public class MaterialListTest {
     }
 
     @Test
+    public void multifaceBlocksCountTheirFaces() {
+        BlockState vine = Blocks.VINE.defaultBlockState()
+            .setValue(BlockStateProperties.NORTH, true).setValue(BlockStateProperties.EAST, true);
+        assertEquals(one("vine", 2), items(of(vine)));
+        // a vine with no faces set still has to be placed once
+        assertEquals(one("vine", 1), items(of(Blocks.VINE.defaultBlockState())));
+        BlockState lichen = Blocks.GLOW_LICHEN.defaultBlockState()
+            .setValue(BlockStateProperties.DOWN, true).setValue(BlockStateProperties.UP, true).setValue(BlockStateProperties.WEST, true);
+        assertEquals(one("glow_lichen", 3), items(of(lichen)));
+        BlockState sculk = Blocks.SCULK_VEIN.defaultBlockState().setValue(BlockStateProperties.SOUTH, true);
+        assertEquals(one("sculk_vein", 1), items(of(sculk)));
+        // fences have the same properties and must not be multiplied
+        BlockState fence = Blocks.OAK_FENCE.defaultBlockState().setValue(BlockStateProperties.NORTH, true).setValue(BlockStateProperties.SOUTH, true);
+        assertEquals(one("oak_fence", 1), items(of(fence)));
+    }
+
+    @Test
+    public void creativeOnlyItemsCarryANote() {
+        for (Block block : List.of(Blocks.BEDROCK, Blocks.SPAWNER, Blocks.CHORUS_PLANT, Blocks.INFESTED_STONE, Blocks.FARMLAND)) {
+            MaterialList list = of(block.defaultBlockState());
+            assertTrue(MaterialList.blockId(block), list.cantPlace().isEmpty());
+            assertTrue(MaterialList.blockId(block), list.items().get(0).note().contains("no survival item"));
+        }
+    }
+
+    @Test
     public void waterloggedCountsTheBlockOnly() {
         BlockState wet = Blocks.OAK_STAIRS.defaultBlockState().setValue(BlockStateProperties.WATERLOGGED, true);
         MaterialList list = of(wet, Blocks.OAK_STAIRS.defaultBlockState());

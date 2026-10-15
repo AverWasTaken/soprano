@@ -80,8 +80,9 @@ public enum DefaultSchematicFormats implements ISchematicFormat {
         public IStaticSchematic parse(InputStream input) throws IOException {
             CompoundTag nbt = NbtIo.readCompressed(input, NbtAccounter.unlimitedHeap());
             int version = nbt.getInt("Version").orElse(-1);
-            // 5 and 6 (1.13 to 1.20) pack the palette and the long array exactly like 7, the only thing that moves is
-            // block ids that got renamed since, and those show up as unknown ids instead of failing the load
+            // 5 and 6 (1.13 to 1.20) pack the palette and the long array exactly like 7. what moved is the content:
+            // block ids that got renamed and property values that changed, both of which get reported instead of
+            // failing the load
             if (version >= 5 && version <= 7) {
                 return new LitematicaSchematic(nbt);
             }

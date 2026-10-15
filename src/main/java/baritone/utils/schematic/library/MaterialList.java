@@ -10,9 +10,12 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.FlowerPotBlock;
 import net.minecraft.world.level.block.LiquidBlock;
+import net.minecraft.world.level.block.MultifaceBlock;
+import net.minecraft.world.level.block.VineBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BedPart;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+import net.minecraft.world.level.block.state.properties.BooleanProperty;
 import net.minecraft.world.level.block.state.properties.DoubleBlockHalf;
 import net.minecraft.world.level.block.state.properties.IntegerProperty;
 import net.minecraft.world.level.block.state.properties.SlabType;
@@ -46,18 +49,28 @@ public record MaterialList(List<MaterialLine> items, List<MaterialLine> cantPlac
 
     // for the blocks that really can't be placed, what the player can do about it
     private static final Map<String, String> CANT_PLACE_HINT = Map.of(
-        "farmland", "till dirt with a hoe",
-        "dirt_path", "right click grass or dirt with a shovel",
         "frosted_ice", "walk over water with frost walker boots",
         "fire", "light it with flint and steel",
-        "soul_fire", "light soul soil with flint and steel",
-        "chorus_plant", "grows from chorus flowers"
+        "soul_fire", "light soul soil with flint and steel"
     );
 
     // these do have an item, but it only exists in creative, so a survival build has to make them another way
     private static final Map<String, String> CREATIVE_ONLY_HINT = Map.of(
         "farmland", "no survival item, till dirt with a hoe",
-        "dirt_path", "no survival item, right click grass or dirt with a shovel"
+        "dirt_path", "no survival item, right click grass or dirt with a shovel",
+        "chorus_plant", "no survival item, grows from chorus flowers"
+    );
+
+    // creative inventory only, a survival build can't get these at all (silk touch doesn't count)
+    private static final Set<String> CREATIVE_ONLY = Set.of(
+        "bedrock", "barrier", "light", "command_block", "chain_command_block", "repeating_command_block",
+        "structure_block", "structure_void", "jigsaw", "spawner", "trial_spawner", "vault", "budding_amethyst",
+        "reinforced_deepslate", "end_portal_frame", "petrified_oak_slab", "test_block", "test_instance_block"
+    );
+
+    private static final List<BooleanProperty> FACES = List.of(
+        BlockStateProperties.NORTH, BlockStateProperties.EAST, BlockStateProperties.SOUTH,
+        BlockStateProperties.WEST, BlockStateProperties.UP, BlockStateProperties.DOWN
     );
 
     private static final List<IntegerProperty> STACKED = List.of(
@@ -139,7 +152,11 @@ public record MaterialList(List<MaterialLine> items, List<MaterialLine> cantPlac
             String id = blockId(block);
             String path = id.substring(id.indexOf(':') + 1);
             if (item != Items.AIR) {
-                addItem(item, count, CREATIVE_ONLY_HINT.get(path));
+                String hint = CREATIVE_ONLY_HINT.get(path);
+                if (hint == null && (CREATIVE_ONLY.contains(path) || path.startsWith("infested_"))) {
+                    hint = "no survival item";
+                }
+                addItem(item, count, hint);
                 return;
             }
             String viaTable = NO_ITEM.get(path);
@@ -207,8 +224,22 @@ public record MaterialList(List<MaterialLine> items, List<MaterialLine> cantPlac
         return block instanceof BedBlock && state.getValue(BedBlock.PART) == BedPart.FOOT;
     }
 
+    // vines, glow lichen, sculk veins and resin clumps are one item per face
+    private static int faces(BlockState state) {
+        int faces = 0;
+        for (BooleanProperty face : FACES) {
+            if (state.hasProperty(face) && state.getValue(face)) {
+                faces++;
+            }
+        }
+        return Math.max(1, faces);
+    }
+
     // double slab is two slabs, snow layers / candles / pickles / eggs are one item per step of the property
     private static int stackedCount(BlockState state) {
+        if (state.getBlock() instanceof VineBlock || state.getBlock() instanceof MultifaceBlock) {
+            return faces(state);
+        }
         if (state.hasProperty(BlockStateProperties.SLAB_TYPE)
             && state.getValue(BlockStateProperties.SLAB_TYPE) == SlabType.DOUBLE) {
             return 2;

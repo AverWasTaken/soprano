@@ -30,9 +30,11 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.Property;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Matcher;
@@ -58,10 +60,6 @@ public final class SpongeSchematic extends StaticSchematic implements ParseRepor
     private final int version;
 
     // v3 moved everything under a root "Schematic" compound, so that's the tell
-    public static boolean isV3(CompoundTag root) {
-        return root.getCompound("Schematic").isPresent();
-    }
-
     public static int versionOf(CompoundTag root) {
         CompoundTag inner = root.getCompound("Schematic").orElse(null);
         return (inner != null ? inner : root).getInt("Version").orElse(inner != null ? 3 : -1);
@@ -96,8 +94,9 @@ public final class SpongeSchematic extends StaticSchematic implements ParseRepor
             }
 
             palette.put(index, state);
-            if (serializedState.unknownBlock) {
-                unknownNames.put(index, serializedState.identifier.toString());
+            String label = serializedState.unknownLabel();
+            if (label != null) {
+                unknownNames.put(index, label);
             }
         }
 
@@ -153,6 +152,8 @@ public final class SpongeSchematic extends StaticSchematic implements ParseRepor
         private BlockState blockState;
         // not in the registry, so it came out as air
         private boolean unknownBlock;
+        // property values the block doesn't have (anymore), left at their default
+        private final List<String> badProperties = new ArrayList<>();
 
         private SerializedBlockState(ResourceLocation resourceLocation, Map<String, String> properties) {
             this.resourceLocation = resourceLocation;
@@ -171,11 +172,24 @@ public final class SpongeSchematic extends StaticSchematic implements ParseRepor
                 this.properties.keySet().stream().sorted(String::compareTo).forEachOrdered(key -> {
                     Property<?> property = block.getStateDefinition().getProperty(key);
                     if (property != null) {
-                        this.blockState = setPropertyValue(this.blockState, property, this.properties.get(key));
+                        BlockState next = setPropertyValue(this.blockState, property, this.properties.get(key));
+                        if (next == null) {
+                            this.badProperties.add(key + "=" + this.properties.get(key));
+                        } else {
+                            this.blockState = next;
+                        }
                     }
                 });
             }
             return this.blockState;
+        }
+
+        // what to call this palette entry in the unknown list, null when it resolved cleanly
+        private String unknownLabel() {
+            if (this.unknownBlock) {
+                return this.identifier.toString();
+            }
+            return this.badProperties.isEmpty() ? null : this.identifier + "[" + String.join(",", this.badProperties) + "]";
         }
 
         private static SerializedBlockState getFromString(String s) {
@@ -209,7 +223,7 @@ public final class SpongeSchematic extends StaticSchematic implements ParseRepor
             if (parsed.isPresent()) {
                 return state.setValue(property, parsed.get());
             } else {
-                throw new IllegalArgumentException("Invalid value for property " + property);
+                return null;
             }
         }
     }

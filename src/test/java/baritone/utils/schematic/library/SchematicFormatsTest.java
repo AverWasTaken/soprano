@@ -206,6 +206,23 @@ public class SchematicFormatsTest {
     }
 
     @Test
+    public void oldPropertyValuesKeepTheBlockAndAreReported() throws Exception {
+        // 1.13 walls said east=true, now it's none/low/tall. that used to throw and lose the whole file
+        String[] palette = {"minecraft:air", "minecraft:cobblestone_wall[east=true,up=true]"};
+        for (CompoundTag root : List.of(
+            SchematicFixtures.litematic(5, 1, 1, 1, palette, new int[]{1}),
+            SchematicFixtures.spongeV2(1, 1, 1, palette, new int[]{1}))) {
+            DefaultSchematicFormats format = root.contains("Regions") ? DefaultSchematicFormats.LITEMATICA : DefaultSchematicFormats.SPONGE;
+            IStaticSchematic s = parse(format, root);
+            BlockState wall = s.getDirect(0, 0, 0);
+            assertSame(Blocks.COBBLESTONE_WALL, wall.getBlock());
+            // the good property still applied
+            assertTrue(wall.getValue(net.minecraft.world.level.block.WallBlock.UP));
+            assertEquals(Map.of("minecraft:cobblestone_wall[east=true]", 1), ((ParseReport) s).unknownBlocks());
+        }
+    }
+
+    @Test
     public void litematicaMultiRegionCountsUnknownsAcrossRegions() throws Exception {
         CompoundTag root = new CompoundTag();
         root.putInt("Version", 6);
