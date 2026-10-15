@@ -263,8 +263,9 @@ public final class SchematicsTab implements Tab {
         }
         Result r;
         try {
-            // build() parses the file on this thread, same as the chat command does. fine for now, a big file is
-            // a short hitch, and the facade is where that would move off the render thread
+            // the button still says "at my feet" and build() goes wherever the placement is, which sticks after the
+            // first build. so move it here first until the placement widget takes over this button
+            schematics().placeAtFeet(sel.relativePath());
             r = schematics().build(sel.relativePath());
         } catch (Throwable t) {
             Safe.report("schematics build", t);

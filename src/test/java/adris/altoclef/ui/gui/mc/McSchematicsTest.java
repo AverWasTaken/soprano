@@ -45,6 +45,7 @@ public class McSchematicsTest {
     private final Queue<Runnable> queue = new ArrayDeque<>();
     private final Map<String, Integer> inventory = new HashMap<>();
     private FilePicker.Choice choice = FilePicker.Choice.cancelled();
+    private final FakeGame game = new FakeGame();
 
     @BeforeClass
     public static void boot() {
@@ -58,12 +59,12 @@ public class McSchematicsTest {
 
     private McSchematics manual() {
         return new McSchematics(new SchematicLibrary(dir.toFile()), queue::add, () -> new HashMap<>(inventory),
-            id -> id.equals("minecraft:stone"), Runnable::run, (ext, title) -> choice);
+            id -> id.equals("minecraft:stone"), Runnable::run, (ext, title) -> choice, game);
     }
 
     private McSchematics direct() {
         return new McSchematics(new SchematicLibrary(dir.toFile()), Runnable::run, () -> new HashMap<>(inventory),
-            id -> id.equals("minecraft:stone"), Runnable::run, (ext, title) -> choice);
+            id -> id.equals("minecraft:stone"), Runnable::run, (ext, title) -> choice, game);
     }
 
     private void drain() {
@@ -134,7 +135,7 @@ public class McSchematicsTest {
     @Test
     public void aFolderThatDoesNotExistIsAnEmptyReadyList() {
         McSchematics s = new McSchematics(new SchematicLibrary(dir.resolve("nope").toFile()), Runnable::run, HashMap::new,
-            id -> false, Runnable::run, (ext, title) -> choice);
+            id -> false, Runnable::run, (ext, title) -> choice, game);
         Listing listing = s.list();
         assertEquals(State.READY, listing.state());
         assertTrue(listing.rows().isEmpty());
@@ -268,7 +269,7 @@ public class McSchematicsTest {
                     Thread.currentThread().interrupt();
                 }
                 return FilePicker.Choice.cancelled();
-            });
+            }, game);
         AtomicReference<ImportReport> first = new AtomicReference<>();
         CountDownLatch firstDone = new CountDownLatch(1);
         s.importFiles(r -> {

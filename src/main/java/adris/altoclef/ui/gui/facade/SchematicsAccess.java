@@ -117,6 +117,128 @@ public interface SchematicsAccess {
         }
     }
 
+    // where a schematic sits in this world. x y z is the min corner of the footprint as built (after the turn), turns is
+    // quarter turns clockwise 0..3, mirrored = flipped east to west. the build is turn(mirror(file)), so the turn is
+    // applied to the already flipped file. inThisDimension is false when it was placed in another dimension than the
+    // player is in now: draw it as "placed in the nether", don't draw it here, and build() refuses
+    record Placement(int x, int y, int z, int turns, boolean mirrored, String dimension, boolean inThisDimension) {
+    }
+
+    // the box a placement covers, min corner plus the turned size. maxX/maxZ are inclusive
+    record Footprint(int x, int y, int z, int sizeX, int sizeY, int sizeZ) {
+
+        public int maxX() {
+            return x + sizeX - 1;
+        }
+
+        public int maxY() {
+            return y + sizeY - 1;
+        }
+
+        public int maxZ() {
+            return z + sizeZ - 1;
+        }
+    }
+
+    enum BuildState {
+        // nothing asked for since the game started
+        IDLE,
+        // build() was clicked, the file is being read in the background
+        PARSING,
+        // handed to the builder, which says the rest itself
+        STARTED,
+        // didn't start, message says why (also said in chat, since the tab may be closed by then)
+        ERROR
+    }
+
+    // the last build() and how far it got. relativePath is "" while IDLE
+    record Building(BuildState state, String relativePath, String message) {
+
+        public static final Building IDLE = new Building(BuildState.IDLE, "", "");
+    }
+
+    // a top down colour map, one ARGB per block column, vanilla map colours with vanilla's slope shading. covers
+    // [minX, minX + size) x [minZ, minZ + size), chunk aligned. 0 = a chunk nobody has seen loaded in this level yet,
+    // anything else is opaque. like a paper map it remembers: a chunk that unloads keeps its last colours, so "known"
+    // below means "has data", not "loaded right now". immutable: the render thread can keep one as long as it likes, and stamp
+    // changes whenever a new one has different pixels, so a texture only needs re-uploading when the stamp moved
+    final class Terrain {
+
+        // 8 chunks each way = 16 x 16 chunks = 256 x 256 blocks, the size the placement widget is drawn around
+        public static final int RADIUS_CHUNKS = 8;
+        public static final int MAX_RADIUS_CHUNKS = 16;
+
+        private final int minX;
+        private final int minZ;
+        private final int size;
+        private final int[] argb;
+        private final int knownChunks;
+        private final int totalChunks;
+        private final long stamp;
+
+        // argb is kept, not copied: whoever builds one hands it over and never touches it again
+        public Terrain(int minX, int minZ, int size, int[] argb, int knownChunks, int totalChunks, long stamp) {
+            if (argb.length != size * size) {
+                throw new IllegalArgumentException("argb is " + argb.length + " for a " + size + " square");
+            }
+            this.minX = minX;
+            this.minZ = minZ;
+            this.size = size;
+            this.argb = argb;
+            this.knownChunks = knownChunks;
+            this.totalChunks = totalChunks;
+            this.stamp = stamp;
+        }
+
+        public int minX() {
+            return minX;
+        }
+
+        public int minZ() {
+            return minZ;
+        }
+
+        public int size() {
+            return size;
+        }
+
+        public long stamp() {
+            return stamp;
+        }
+
+        public int knownChunks() {
+            return knownChunks;
+        }
+
+        public int totalChunks() {
+            return totalChunks;
+        }
+
+        // every chunk in the window has been sampled
+        public boolean complete() {
+            return knownChunks == totalChunks;
+        }
+
+        // world coordinates. 0 outside the window or where the chunk was never sampled
+        public int colorAt(int x, int z) {
+            int lx = x - minX;
+            int lz = z - minZ;
+            if (lx < 0 || lz < 0 || lx >= size || lz >= size) {
+                return 0;
+            }
+            return argb[lz * size + lx];
+        }
+
+        public boolean knownAt(int x, int z) {
+            return colorAt(x, z) != 0;
+        }
+
+        // row major, z rows of x, size * size ints. for uploading as a texture without a copy per pixel call
+        public void copyPixels(int[] into) {
+            System.arraycopy(argb, 0, into, 0, argb.length);
+        }
+    }
+
     // the library as of now, starting the first load when nobody has asked yet. never blocks
     Listing list();
 
@@ -128,9 +250,37 @@ public interface SchematicsAccess {
     // player picks up. an unknown path comes back READY with an error
     Materials materials(String relativePath);
 
-    // builds the file with its corner at the player's feet, the same call as the build command. the file is parsed on
-    // the calling thread, like the command does. slice 2 puts a placement step in front of this
+    // where relativePath goes in this world, made at the player's feet (no turn, no flip) the first time anyone asks.
+    // a made-up default isn't saved until something changes it or it gets built, so browsing the list writes nothing.
+    // null when there's no world, or the path isn't a row that parsed (the turn needs its size)
+    Placement placement(String relativePath);
+
+    // edits of the placement, saved straight away. each hands back the new placement, null in the same cases as
+    // placement(). move is in world blocks. rotate is a quarter turn about the middle of the footprint. mirror flips
+    // what's in the world now east to west in place (so mirror after a turn still flips east to west on screen).
+    // placeAtFeet moves the corner to the player's feet in the player's dimension, keeping the turn and flip
+    Placement move(String relativePath, int dx, int dy, int dz);
+
+    Placement rotate(String relativePath, boolean clockwise);
+
+    Placement mirror(String relativePath);
+
+    Placement placeAtFeet(String relativePath);
+
+    // the box the placement covers, null when placement() is
+    Footprint footprint(String relativePath);
+
+    // starts building at the placement as it is at the time of the click. the file is read in the background and the
+    // build starts on the game thread a moment later, watch building() for how it went. ok = the request was taken
     Result build(String relativePath);
+
+    // the last build request and how far it got. never null, cheap, safe per frame
+    Building building();
+
+    // the colour map around a block position, radiusChunks clamped to 1..Terrain.MAX_RADIUS_CHUNKS. samples a few more
+    // chunks on every call, so call it at most once a tick (the tab's poll), never per frame; the frame draws the last
+    // snapshot. null when there's no world, and leaving the world forgets the whole map
+    Terrain terrain(int centerX, int centerZ, int radiusChunks);
 
     // opens the native multi select picker (.litematic / .schem / .schematic) on a helper thread so the game keeps
     // drawing, copies the choice into the library and then calls done on the game thread. the library refreshes itself.
@@ -164,8 +314,48 @@ public interface SchematicsAccess {
         }
 
         @Override
+        public Placement placement(String relativePath) {
+            return null;
+        }
+
+        @Override
+        public Placement move(String relativePath, int dx, int dy, int dz) {
+            return null;
+        }
+
+        @Override
+        public Placement rotate(String relativePath, boolean clockwise) {
+            return null;
+        }
+
+        @Override
+        public Placement mirror(String relativePath) {
+            return null;
+        }
+
+        @Override
+        public Placement placeAtFeet(String relativePath) {
+            return null;
+        }
+
+        @Override
+        public Footprint footprint(String relativePath) {
+            return null;
+        }
+
+        @Override
         public Result build(String relativePath) {
             return nope;
+        }
+
+        @Override
+        public Building building() {
+            return Building.IDLE;
+        }
+
+        @Override
+        public Terrain terrain(int centerX, int centerZ, int radiusChunks) {
+            return null;
         }
 
         @Override

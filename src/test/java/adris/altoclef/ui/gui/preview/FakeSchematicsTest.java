@@ -2,7 +2,12 @@ package adris.altoclef.ui.gui.preview;
 
 import adris.altoclef.ui.gui.facade.Result;
 import adris.altoclef.ui.gui.facade.SchematicsAccess;
+import adris.altoclef.ui.gui.facade.SchematicsAccess.BuildState;
+import adris.altoclef.ui.gui.facade.SchematicsAccess.Building;
+import adris.altoclef.ui.gui.facade.SchematicsAccess.Footprint;
 import adris.altoclef.ui.gui.facade.SchematicsAccess.ImportReport;
+import adris.altoclef.ui.gui.facade.SchematicsAccess.Placement;
+import adris.altoclef.ui.gui.facade.SchematicsAccess.Terrain;
 import adris.altoclef.ui.gui.facade.SchematicsAccess.Kind;
 import adris.altoclef.ui.gui.facade.SchematicsAccess.Line;
 import adris.altoclef.ui.gui.facade.SchematicsAccess.Listing;
@@ -131,10 +136,10 @@ public class FakeSchematicsTest {
     public void buildRecordsAndFailsOnUnknownOrWhenToldTo() {
         Result ok = fake.build("tower.schem");
         assertTrue(ok.ok());
-        assertEquals("build tower.schem", ok.command());
+        assertEquals("Building tower.schem at 100, 64, -40", ok.message());
+        // a turned placement has no chat command that does the same thing, so nothing goes under the toast
+        assertNull(ok.command());
         assertTrue(facade.actions.contains("schematics build tower.schem"));
-        // spaces can't go through the command line, so there's nothing honest to show under the toast
-        assertNull(fake.build("Small Castle.litematic").command());
 
         assertFalse(fake.build("missing.schem").ok());
         fake.buildError = "Join a world first";
@@ -208,6 +213,90 @@ public class FakeSchematicsTest {
         none.importFiles(got::add);
         assertEquals(1, got.size());
         none.refresh();
+    }
+
+    @Test
+    public void placementsStartAtTheFeetAndFollowTheSameRulesAsTheRealOne() {
+        Placement p = fake.placement("Small Castle.litematic");
+        assertEquals(new Placement(100, 64, -40, 0, false, "minecraft:overworld", true), p);
+        assertNull(fake.placement("broken.litematic"));
+        assertNull(fake.placement("nope.schem"));
+        // 15 x 12 farm: a quarter turn moves the corner by (15-12)/2 one way and back the other
+        Placement turned = fake.rotate("villages/farm.schematic", true);
+        assertEquals(1, turned.turns());
+        assertEquals(101, turned.x());
+        assertEquals(-41, turned.z());
+        Footprint f = fake.footprint("villages/farm.schematic");
+        assertEquals(12, f.sizeX());
+        assertEquals(15, f.sizeZ());
+        Placement back = fake.rotate("villages/farm.schematic", false);
+        assertEquals(100, back.x());
+        assertEquals(-40, back.z());
+        // a flip after a turn inverts the turn
+        fake.rotate("tower.schem", true);
+        Placement flipped = fake.mirror("tower.schem");
+        assertTrue(flipped.mirrored());
+        assertEquals(3, flipped.turns());
+        Placement moved = fake.move("tower.schem", 1, 2, 3);
+        assertEquals(101, moved.x());
+        assertEquals(66, moved.y());
+        assertTrue(facade.actions.contains("schematics mirror tower.schem"));
+    }
+
+    @Test
+    public void anotherDimensionIsShownAndCannotBeBuilt() {
+        fake.placement("tower.schem");
+        fake.dimension = "minecraft:the_nether";
+        Placement p = fake.placement("tower.schem");
+        assertFalse(p.inThisDimension());
+        assertFalse(fake.build("tower.schem").ok());
+        Placement here = fake.placeAtFeet("tower.schem");
+        assertTrue(here.inThisDimension());
+        assertTrue(fake.build("tower.schem").ok());
+    }
+
+    @Test
+    public void buildGoesThroughParsingToStartedOrAnError() {
+        assertEquals(BuildState.IDLE, fake.building().state());
+        assertTrue(fake.build("tower.schem").ok());
+        assertEquals(BuildState.PARSING, fake.building().state());
+        assertEquals(BuildState.STARTED, fake.building().state());
+        fake.buildFailsLater = "Couldn't read tower";
+        fake.parsePolls = 0;
+        fake.build("tower.schem");
+        Building b = fake.building();
+        assertEquals(BuildState.ERROR, b.state());
+        assertEquals("Couldn't read tower", b.message());
+    }
+
+    @Test
+    public void noWorldMeansNoPlacementNoMapNoBuild() {
+        fake.inWorld = false;
+        assertNull(fake.placement("tower.schem"));
+        assertNull(fake.footprint("tower.schem"));
+        assertNull(fake.terrain(0, 0, 8));
+        assertNull(fake.rotate("tower.schem", true));
+        assertEquals("Join a world first", fake.build("tower.schem").message());
+    }
+
+    @Test
+    public void theFakeMapIsAFullWindowWithAnUnloadedCorner() {
+        Terrain t = fake.terrain(100, -40, Terrain.RADIUS_CHUNKS);
+        assertEquals(256, t.size());
+        assertFalse(t.complete());
+        assertTrue(t.knownAt(100, -40));
+        assertFalse(t.knownAt(t.minX() + t.size() - 1, t.minZ()));
+        assertEquals(t.totalChunks() - 6, t.knownChunks());
+    }
+
+    @Test
+    public void theNoneFacadeHasNoPlacements() {
+        SchematicsAccess none = SchematicsAccess.NONE;
+        assertNull(none.placement("x"));
+        assertNull(none.move("x", 1, 0, 0));
+        assertNull(none.footprint("x"));
+        assertNull(none.terrain(0, 0, 8));
+        assertEquals(Building.IDLE, none.building());
     }
 
     private static Line line(Materials materials, String itemId) {

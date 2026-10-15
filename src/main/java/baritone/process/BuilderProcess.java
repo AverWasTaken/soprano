@@ -136,6 +136,25 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
 
     @Override
     public void build(String name, ISchematic schematic, Vec3i origin) {
+        start(name, schematic, origin, Baritone.settings().buildSchematicRotation.value,
+                Baritone.settings().buildSchematicMirror.value, true);
+    }
+
+    @Override
+    public void build(String name, IStaticSchematic schematic, Vec3i origin, net.minecraft.world.level.block.Rotation rotation,
+                      net.minecraft.world.level.block.Mirror mirror) {
+        // map art reads the raw columns, so it goes under the transform. the selection is in world space, and origin is
+        // already the corner of the turned footprint, so it goes over it (the global setting path does it the other way
+        // round, which only lines up when nothing is rotated)
+        ISchematic placed = SchematicTransforms.apply(mapArt(schematic), rotation, mirror);
+        start(name, onlySelection(placed, origin), origin, net.minecraft.world.level.block.Rotation.NONE,
+                net.minecraft.world.level.block.Mirror.NONE, false);
+    }
+
+    // the old entry point with the orientation pulled out. useOrientation = add the schematicOrientation offsets, which
+    // only the global setting path wants: they use the unturned size and would push a placed origin off its corner
+    private void start(String name, ISchematic schematic, Vec3i origin, net.minecraft.world.level.block.Rotation rotation,
+                       net.minecraft.world.level.block.Mirror mirror, boolean useOrientation) {
         this.name = name;
         this.schematic = schematic;
         this.realSchematic = null;
@@ -143,12 +162,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         if (!Baritone.settings().buildSubstitutes.value.isEmpty()) {
             this.schematic = new SubstituteSchematic(this.schematic, Baritone.settings().buildSubstitutes.value);
         }
-        if (Baritone.settings().buildSchematicMirror.value != net.minecraft.world.level.block.Mirror.NONE) {
-            this.schematic = new MirroredSchematic(this.schematic, Baritone.settings().buildSchematicMirror.value);
-        }
-        if (Baritone.settings().buildSchematicRotation.value != net.minecraft.world.level.block.Rotation.NONE) {
-            this.schematic = new RotatedSchematic(this.schematic, Baritone.settings().buildSchematicRotation.value);
-        }
+        this.schematic = SchematicTransforms.apply(this.schematic, rotation, mirror);
         // TODO this preserves the old behavior, but maybe we should bake the setting value right here
         this.schematic = new MaskSchematic(this.schematic) {
             @Override
@@ -160,13 +174,13 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         int x = origin.getX();
         int y = origin.getY();
         int z = origin.getZ();
-        if (Baritone.settings().schematicOrientationX.value) {
+        if (useOrientation && Baritone.settings().schematicOrientationX.value) {
             x += schematic.widthX();
         }
-        if (Baritone.settings().schematicOrientationY.value) {
+        if (useOrientation && Baritone.settings().schematicOrientationY.value) {
             y += schematic.heightY();
         }
-        if (Baritone.settings().schematicOrientationZ.value) {
+        if (useOrientation && Baritone.settings().schematicOrientationZ.value) {
             z += schematic.lengthZ();
         }
         this.origin = new Vec3i(x, y, z);
@@ -231,12 +245,16 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     }
 
     private ISchematic applyMapArtAndSelection(Vec3i origin, IStaticSchematic parsed) {
-        ISchematic schematic = parsed;
-        if (Baritone.settings().mapArtMode.value) {
-            schematic = new MapArtSchematic(parsed);
-        }
+        return onlySelection(mapArt(parsed), origin);
+    }
+
+    private static ISchematic mapArt(IStaticSchematic parsed) {
+        return Baritone.settings().mapArtMode.value ? new MapArtSchematic(parsed) : parsed;
+    }
+
+    private ISchematic onlySelection(ISchematic schematic, Vec3i origin) {
         if (Baritone.settings().buildOnlySelection.value) {
-            schematic = new SelectionSchematic(schematic, origin, baritone.getSelectionManager().getSelections());
+            return new SelectionSchematic(schematic, origin, baritone.getSelectionManager().getSelections());
         }
         return schematic;
     }
