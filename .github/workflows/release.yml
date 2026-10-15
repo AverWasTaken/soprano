@@ -68,4 +68,11 @@ jobs:
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        gh release create "$GITHUB_REF_NAME"           --title "Soprano v${VERSION}"           --notes-file release-notes.md           dist/*.jar dist/checksums.txt
+        # only the jars people download: api per loader, plus unoptimized fabric for readable crash logs.
+        # standalone and the loader-less jars sat at 0 downloads, so they don't ship
+        FILES=""
+        for f in "dist/soprano-api-fabric-${VERSION}.jar" "dist/soprano-api-forge-${VERSION}.jar" \
+                 "dist/soprano-api-neoforge-${VERSION}.jar" "dist/soprano-unoptimized-fabric-${VERSION}.jar"; do
+          [ -f "$f" ] && FILES="$FILES $f"
+        done
+        gh release create "$GITHUB_REF_NAME" --title "Soprano v${VERSION}" --notes-file release-notes.md $FILES
