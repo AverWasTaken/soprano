@@ -47,6 +47,19 @@ public class AimGateTest {
     }
 
     @Test
+    public void spentOnceTheAllowanceIsUsed() {
+        AimGate gate = new AimGate(2);
+        assertFalse(gate.spent());
+        gate.judging(false);
+        gate.judging(true);
+        assertFalse(gate.spent());
+        gate.judging(false);
+        assertTrue(gate.spent());
+        gate.reset();
+        assertFalse(gate.spent());
+    }
+
+    @Test
     public void resetStartsTheWaitOver() {
         AimGate gate = new AimGate(2);
         gate.judging(false);

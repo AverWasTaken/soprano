@@ -32,6 +32,11 @@ public final class AimGate {
         return true;
     }
 
+    // the allowance is spent: from here on a break that goes nowhere is a stall, whatever the crosshair is doing
+    public boolean spent() {
+        return unaimed >= cap;
+    }
+
     public void reset() {
         unaimed = 0;
     }
