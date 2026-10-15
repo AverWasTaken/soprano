@@ -125,6 +125,14 @@ public class SchematicImporterTest {
     }
 
     @Test
+    public void aDroppedFolderIsOnlyWalkedSoDeep() throws Exception {
+        file("deep/ok.schem", "x");
+        file("deep/1/2/3/4/5/6/7/8/9/too-far.schem", "x");
+        SchematicImporter.Report report = run(elsewhere.resolve("deep"));
+        assertEquals(List.of("deep/ok.schem"), report.imported());
+    }
+
+    @Test
     public void aFolderWithNothingInItSaysSo() throws Exception {
         file("empty/readme.txt", "x");
         SchematicImporter.Report report = run(elsewhere.resolve("empty"));
