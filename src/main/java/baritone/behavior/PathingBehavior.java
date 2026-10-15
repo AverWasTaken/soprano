@@ -70,6 +70,8 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
     private boolean calcFailedLastTick;
     // calcFailedLastTick is one tick wide and which thread sees it first is luck. this just goes up (written under pathPlanLock)
     private volatile int calcFailures;
+    // the ones of those that ran out of nodes to look at (a timed out search is a failure too, it just proves nothing)
+    private volatile int calcExhausted;
 
     private volatile AbstractNodeCostSearch inProgress;
     private final Object pathCalcLock = new Object();
@@ -474,6 +476,12 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
         return calcFailures;
     }
 
+    // how many of calcFailures searched everything there was to search before giving up. read calcFailures first, then this.
+    // NOT exposed on public api
+    public int calcExhausted() {
+        return calcExhausted;
+    }
+
     public void softCancelIfSafe() {
         synchronized (pathPlanLock) {
             keep.drop();
@@ -709,6 +717,10 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
                 } else {
                     if (calcResult.getType() != PathCalculationResult.Type.CANCELLATION && calcResult.getType() != PathCalculationResult.Type.EXCEPTION) {
                         // don't dispatch CALC_FAILED on cancellation
+                        // exhausted first: a reader that sees the failure count go up (it reads that one first) has to see this too
+                        if (pathfinder.exhausted()) {
+                            calcExhausted++;
+                        }
                         calcFailures++;
                         queuePathEvent(PathEvent.CALC_FAILED);
                     }

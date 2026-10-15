@@ -22,6 +22,7 @@ import adris.altoclef.util.helpers.DropPatience;
 import adris.altoclef.util.helpers.DropWatch;
 import adris.altoclef.util.helpers.MineAnchor;
 import adris.altoclef.util.helpers.MineStick;
+import adris.altoclef.util.helpers.NoPathScope;
 import adris.altoclef.util.helpers.PlacedByUs;
 import adris.altoclef.util.helpers.StoneDigRank;
 import adris.altoclef.util.helpers.TreeReach;
@@ -243,6 +244,9 @@ public class MineAndCollectTask extends ResourceTask {
         private final boolean _stoneOnly;
         private final ItemTarget[] _targets;
         private final MovementProgressChecker _progressChecker = new MovementProgressChecker();
+        // empty searches since we handed baritone this block, and the tick we were last driving (see noPathVerdict)
+        private final NoPathScope.Watch _noPath = new NoPathScope.Watch();
+        private int _lastTickAt = Integer.MIN_VALUE / 2;
         private final Task _pickupTask;
         private final MineStick _stick = new MineStick();
         private final DropPatience _patience = new DropPatience();
@@ -715,7 +719,11 @@ public class MineAndCollectTask extends ResourceTask {
             if (mod.getClientBaritone().getPathingBehavior().isPathing()) {
                 _progressChecker.reset();
             }
-            if (_miningPos != null && !_progressChecker.check(mod)) {
+            NoPathScope.Verdict noPath = noPathVerdict(mod);
+            if (noPath != NoPathScope.Verdict.NONE) {
+                giveUpNoPath(mod, noPath);
+            }
+            if (_miningPos != null && !_progressChecker.check(mod, _miningPos)) {
                 mod.getClientBaritone().getPathingBehavior().forceCancel();
                 Debug.logMessage("Failed to mine block. Suggesting it may be unreachable.");
                 // a short ban right away (the tracker honours it, so the next pick is somewhere else) and a strike, three of which
@@ -726,9 +734,63 @@ public class MineAndCollectTask extends ResourceTask {
                     giveUpTree(mod, _miningPos);
                 }
                 _miningPos = null;
-                _progressChecker.reset();
+                _progressChecker.newTarget();
             }
             return super.onTick(mod);
+        }
+
+        // baritone's search for the block came back empty. the six second progress checker would get to the same ban, 6 s
+        // (and a failed search or three) later, standing still the whole time. NONE when we aren't after a block, were away
+        // from the wheel (the failures counted then were somebody else's asks), or can swing at it from here anyway
+        private NoPathScope.Verdict noPathVerdict(AltoClef mod) {
+            int now = WorldHelper.getTicks();
+            boolean away = now - _lastTickAt > 2;
+            _lastTickAt = now;
+            if (_miningPos == null) {
+                _noPath.disarm();
+                return NoPathScope.Verdict.NONE;
+            }
+            var pathing = mod.getClientBaritone().getPathingBehavior();
+            // failures first, then exhausted: the pathing thread writes them the other way round
+            int failures = pathing.calcFailures();
+            int exhausted = pathing.calcExhausted();
+            boolean inReach = mod.getPlayer().getEyePosition().distanceToSqr(Vec3.atCenterOf(_miningPos)) <= HOLD_REACH_SQ
+                    || mod.getControllerExtras().isBreakingBlock();
+            if (away || inReach || !_noPath.armed()) {
+                _noPath.arm(failures, exhausted);
+                return NoPathScope.Verdict.NONE;
+            }
+            return _noPath.poll(failures, exhausted, pathing.isPathing());
+        }
+
+        // the block, and when the search looked at everything, the rest of its vein for a short while. a timed out search says
+        // nothing about the neighbours, they may be a short walk from where it gave up
+        private void giveUpNoPath(AltoClef mod, NoPathScope.Verdict verdict) {
+            BlockPos stuck = _miningPos;
+            var dim = WorldHelper.getCurrentDimension();
+            mod.getClientBaritone().getPathingBehavior().forceCancel();
+            // stone and logs have no veins to speak of (a hillside, a tree with its own rules)
+            boolean veins = verdict == NoPathScope.Verdict.EXHAUSTED && !_stoneOnly && !_logsOnly;
+            List<BlockPos> cells = NoPathScope.cells(stuck, veins ? mod.getBlockTracker().getKnownLocations(_blocks) : List.of(), verdict, veins);
+            BanPolicy.noPathBlock(mod.getBans(), dim, stuck.getX(), stuck.getY(), stuck.getZ());
+            Set<Bans.Key> vein = new LinkedHashSet<>();
+            for (int i = 1; i < cells.size(); i++) {
+                BlockPos cell = cells.get(i);
+                vein.add(Bans.Key.block(dim, cell.getX(), cell.getY(), cell.getZ()));
+            }
+            if (!vein.isEmpty()) {
+                BanPolicy.noPathVein(mod.getBans(), vein, stuck.getX(), stuck.getY(), stuck.getZ());
+            }
+            if (verdict == NoPathScope.Verdict.EXHAUSTED) {
+                // a search that looked everywhere is a real strike. one that ran out of time is just the short ban
+                mod.getBlockTracker().requestBlockUnreachable(stuck, 2, "no path to it");
+            }
+            Debug.logMessage("No way to the block at " + stuck.getX() + " " + stuck.getY() + " " + stuck.getZ()
+                    + (verdict == NoPathScope.Verdict.EXHAUSTED ? " (searched it all)" : " (search timed out)")
+                    + (vein.isEmpty() ? "" : ", skipping its vein too") + ".");
+            _miningPos = null;
+            _progressChecker.newTarget();
+            _noPath.disarm();
         }
 
         // the per block ban is over in a minute and the same canopy came right back. the second stall on one tree gives up on
@@ -763,7 +825,8 @@ public class MineAndCollectTask extends ResourceTask {
         protected Task getGoalTask(Object obj) {
             if (obj instanceof BlockPos newPos) {
                 if (_miningPos == null || !_miningPos.equals(newPos)) {
-                    _progressChecker.reset();
+                    _progressChecker.newTarget();
+                    _noPath.disarm();
                 }
                 _miningPos = newPos;
                 return new DestroyBlockTask(_miningPos);
@@ -803,7 +866,8 @@ public class MineAndCollectTask extends ResourceTask {
 
         @Override
         protected void onStart(AltoClef mod) {
-            _progressChecker.reset();
+            _progressChecker.newTarget();
+            _noPath.disarm();
             _miningPos = null;
             _stick.clear();
             forgetFocus();

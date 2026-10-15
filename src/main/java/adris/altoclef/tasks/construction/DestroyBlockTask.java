@@ -468,8 +468,8 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
         mod.getClientBaritone().getPathingBehavior().forceCancel();
 
         // Reset move checker and stuck check.
-        _moveChecker.reset();
-        stuckCheck.reset();
+        _moveChecker.newTarget();
+        stuckCheck.newTarget();
         _stepOffs.reset();
         _reachHold.reset();
         _lastReach = null;
@@ -672,7 +672,7 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
         }
 
         // Check if the move checker or the stuck check failed
-        if (!_moveChecker.check(mod) || !stuckCheck.check(mod)) {
+        if (!_moveChecker.check(mod, _pos) || !stuckCheck.check(mod, _pos)) {
             BlockPos blockStuck = stuckInBlock(mod);
             if (blockStuck != null) {
                 _unstuckTask = getFenceUnstuckTask();
@@ -682,7 +682,7 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
         }
 
         // Check if the move checker failed
-        if (!_moveChecker.check(mod)) {
+        if (!_moveChecker.check(mod, _pos)) {
             _moveChecker.reset();
             // Request the block at the position to be marked as unreachable
             mod.getBlockTracker().requestBlockUnreachable(_pos);

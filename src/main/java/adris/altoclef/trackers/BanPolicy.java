@@ -27,6 +27,8 @@ public final class BanPolicy {
     public static final long NO_ROOM = 1200;
     // two path searches for a mob came back empty (CalcFailureWatch). it ends early when the mob hits us
     public static final long NO_PATH = 2400;
+    // the neighbours of a block a search proved unreachable (MineAndCollectTask)
+    public static final long NO_PATH_VEIN = 600;
     // a coal detour that ran out of time or wandered off. 5 minutes, then the cluster gets one more 30 s try
     public static final long COAL = 6000;
 
@@ -102,6 +104,17 @@ public final class BanPolicy {
     // MineAndCollectTask's progress checker ran out mid-break or on the way
     public static boolean miningStalled(Bans bans, Dimension dim, int x, int y, int z) {
         return bans.ban(Key.block(dim, x, y, z), "mining got nowhere", TASK_GAVE_UP);
+    }
+
+    // MineAndCollectTask: baritone's search for the block came back empty (a minute, same as stalling on it)
+    public static boolean noPathBlock(Bans bans, Dimension dim, int x, int y, int z) {
+        return bans.ban(Key.block(dim, x, y, z), "no path to it", TASK_GAVE_UP);
+    }
+
+    // and the search had looked at everything, so the rest of its vein goes too, but only for half a minute: a door opening or
+    // a block placed somewhere is a different world and the vein deserves another look
+    public static int noPathVein(Bans bans, Iterable<Key> vein, int x, int y, int z) {
+        return bans.banAll(vein, "no path to the vein", NO_PATH_VEIN, "ores of the vein near " + x + " " + y + " " + z);
     }
 
     // MineAndCollectTask stalled twice on one tree: all its logs are out for five minutes, not the one minute a single log gets.

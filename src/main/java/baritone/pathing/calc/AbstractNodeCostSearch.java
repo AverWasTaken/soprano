@@ -72,6 +72,9 @@ public abstract class AbstractNodeCostSearch implements IPathFinder, Helper {
 
     protected boolean cancelRequested;
 
+    // the search ended because there was nothing left to expand, not because of a timeout or a cancel. only A* sets it
+    protected volatile boolean exhausted;
+
     private volatile boolean waitedOn;
 
     /**
@@ -281,6 +284,12 @@ public abstract class AbstractNodeCostSearch implements IPathFinder, Helper {
             logNotification("No path found =(", true);
         }
         return Optional.empty();
+    }
+
+    // an empty result from a search that ran out of nodes is a real "can't get there", from a timed out one it is only "not
+    // yet". NOT exposed on public api
+    public final boolean exhausted() {
+        return exhausted;
     }
 
     @Override

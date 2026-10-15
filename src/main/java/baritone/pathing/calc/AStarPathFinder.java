@@ -220,6 +220,9 @@ public final class AStarPathFinder extends AbstractNodeCostSearch {
         }
         this.numNodesConsidered = numNodes;
         this.numMovementsConsidered = numMovementsConsidered;
+        // the open set running dry is the only way out of this loop that proves anything. a timeout, a cancel, or a peek past
+        // the loaded chunks all leave world we never looked at
+        this.exhausted = openSet.isEmpty() && numEmptyChunk == 0 && !cancelRequested;
         if (cancelRequested) {
             return Optional.empty();
         }
