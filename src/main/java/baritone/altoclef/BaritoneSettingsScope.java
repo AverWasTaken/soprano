@@ -71,6 +71,9 @@ public final class BaritoneSettingsScope {
             set(s.allowParkourPlace, false);
             set(s.allowDiagonalDescend, false);
             set(s.allowDiagonalAscend, false);
+            // digging the block under our feet is the only move that goes down through rock. with it off an ore far below is a
+            // search that eats the whole failure timeout, and the mining task then bans ore after ore of the same vein for it
+            set(s.allowDownward, true);
             set(s.blocksToAvoid, List.of(Blocks.FLOWERING_AZALEA, Blocks.AZALEA,
                     Blocks.POWDER_SNOW, Blocks.BIG_DRIPLEAF, Blocks.BIG_DRIPLEAF_STEM, Blocks.CAVE_VINES,
                     Blocks.CAVE_VINES_PLANT, Blocks.TWISTING_VINES, Blocks.TWISTING_VINES_PLANT, Blocks.SWEET_BERRY_BUSH,
