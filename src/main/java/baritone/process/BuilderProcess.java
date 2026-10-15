@@ -56,7 +56,9 @@ import net.minecraft.core.Vec3i;
 import net.minecraft.util.Tuple;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.block.AirBlock;
@@ -711,7 +713,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             outer:
             for (BlockState desired : desirableOnHotbar) {
                 for (int i = 0; i < 9; i++) {
-                    if (valid(approxPlaceable.get(i), desired, true)) {
+                    if (canSupply(approxPlaceable.get(i), desired)) {
                         usefulSlots.add(i);
                         continue outer;
                     }
@@ -722,13 +724,10 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             outer:
             for (int i = 9; i < 36; i++) {
                 for (BlockState desired : noValidHotbarOption) {
-                    if (valid(approxPlaceable.get(i), desired, true)) {
-                        // a throttled fetch used to pause until it went through. one move a tick means that was a pause
-                        // every other tick, every pause lets go of the keys and the dig with them, and a dig down never
-                        // finished before its movement timed out. so walk on, the move is remembered and goes next tick
-                        OptionalInt into = baritone.getInventoryBehavior().fetchToHotbar(i, hotbarHold.tiers(usefulSlots::contains, builderTicks), "builder");
-                        if (into.isPresent()) {
-                            hotbarHold.fetched(into.getAsInt(), builderTicks);
+                    if (canSupply(approxPlaceable.get(i), desired)) {
+                        if (!baritone.getInventoryBehavior().attemptToPutOnHotbar(i, usefulSlots::contains)) {
+                            // awaiting inventory move, so pause
+                            return new PathingCommand(null, PathingCommandType.REQUEST_PAUSE);
                         }
                         break outer;
                     }
@@ -1509,9 +1508,23 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         return true;
     }
 
-    private static boolean containsBlockState(Collection<BlockState> states, BlockState state) {
+    // the states in approxPlaceable are what each stack would place *right now*, with the player facing wherever they
+    // face. stairs, doors, logs and friends come out rotated, so an exact state match called a stack of stairs missing
+    // whenever the schematic wanted them the other way round. the real placement (hasAnyItemThatWouldPlace) turns to
+    // face the block it places against and still checks the exact state, so for "do i own this" the item is what counts
+    static boolean sameItem(BlockState have, BlockState desired) {
+        Item item = have.getBlock().asItem();
+        return item != Items.AIR && item == desired.getBlock().asItem();
+    }
+
+    // valid() was the old answer for the slot picking, sameBlockstate for the placeable check below
+    static boolean canSupply(BlockState have, BlockState desired) {
+        return valid(have, desired, true) || sameItem(have, desired);
+    }
+
+    static boolean containsBlockState(Collection<BlockState> states, BlockState state) {
         for (BlockState testee : states) {
-            if (sameBlockstate(testee, state)) {
+            if (sameBlockstate(testee, state) || sameItem(testee, state)) {
                 return true;
             }
         }
