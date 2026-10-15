@@ -575,7 +575,7 @@ public class MovementFall extends Movement {
         boolean planned = !water && plannedDamage > 0;
         FallMode mode = water ? FallMode.NONE : planned ? FallMode.HURT : fallMode();
         double health = ctx.player().getHealth() + ctx.player().getAbsorptionAmount();
-        boolean affordable = planned && ExperimentalMovement.canAffordFall(health, plannedDamage, Baritone.settings().fastModeMinHealth.value);
+        boolean affordable = planned && ExperimentalMovement.canAffordFall(health, plannedDamage, ExperimentalMovement.hurtFloor(ExperimentalMovement.on(), Baritone.settings().fastModeMinHealth.value));
         return FallCover.handles(mode, clutchGaveUp, bucketOnHotbar(), AltoClefSettings.getInstance().shouldNotPlaceBucketButStillFall(), affordable);
     }
 

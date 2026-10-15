@@ -66,6 +66,13 @@ public class ClutchHealthTest {
     }
 
     @Test
+    public void aHurtingFallOnlyKeepsFastModesFloorInFastMode() {
+        assertEquals(MIN, ExperimentalMovement.hurtFloor(true, MIN), 0);
+        // outside it the only falls that hurt are ones the user raised the limit for, they just must not kill
+        assertEquals(ExperimentalMovement.BUCKET_MISS_FLOOR, ExperimentalMovement.hurtFloor(false, MIN), 0);
+    }
+
+    @Test
     public void canAffordClutchIsTheSameFloorAsTheHurtGate() {
         assertTrue(ExperimentalMovement.canAffordClutch(20, MIN));
         assertTrue(ExperimentalMovement.canAffordClutch(MIN, MIN));

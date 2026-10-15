@@ -127,6 +127,13 @@ public final class ExperimentalMovement {
         return health - damage >= minHealth;
     }
 
+    // how low a fall that hurts may leave us. fastMode has its own floor (fastModeMinHealth). without it the only falls that
+    // hurt are the ones maxFallHeightNoWater was raised for on purpose, and those just shouldn't kill. the planner and
+    // MovementFall.ownsFall both ask, so they can't disagree about who owns a fall that was planned
+    public static double hurtFloor(boolean fastMode, double fastModeMinHealth) {
+        return fastMode ? fastModeMinHealth : BUCKET_MISS_FLOOR;
+    }
+
     // the water bucket is not a gamble, but it can still miss (a bad aim, a block in the way, lag). if it does the fall is the
     // whole fall, so a drop is only offered while surviving a miss still leaves us alive. much looser than the clutch gate
     public static boolean canAffordBucketMiss(double health, int blocksFallen) {
