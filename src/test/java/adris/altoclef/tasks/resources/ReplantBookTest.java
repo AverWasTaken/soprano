@@ -160,6 +160,18 @@ public class ReplantBookTest {
     }
 
     @Test
+    public void aFreshPlantIsSettlingUntilItHasStuck() {
+        ReplantBook<Integer> book = book(100);
+        book.add(1);
+        book.pick(0, ReplantBookTest::dist, 100);
+        assertFalse(book.settling());
+        book.refresh(1, c -> false);
+        assertTrue(book.settling());
+        book.refresh(100, c -> false);
+        assertFalse(book.settling());
+    }
+
+    @Test
     public void releaseDropsTheWalkButKeepsTheHoles() {
         ReplantBook<Integer> book = book(100);
         book.add(3);
