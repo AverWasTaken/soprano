@@ -84,7 +84,7 @@ public final class TreeReachScan {
         if (MovementHelper.isWater(state)) {
             return TreeReach.Cell.WATER;
         }
-        return state.getCollisionShape(mod.getWorld(), at).isEmpty() ? TreeReach.Cell.PASSABLE : TreeReach.Cell.SOLID;
+        return WorldHelper.isSolid(mod, at) ? TreeReach.Cell.SOLID : TreeReach.Cell.BLOCKING;
     }
 
     // a neighbouring column with ground at the log's height or within two under it: the sides GoalMineFromSide takes. other

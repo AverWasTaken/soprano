@@ -27,10 +27,12 @@ public final class TreeReach {
     public enum Cell {
         // isAir: the only thing DestroyBlockTask.openBelow counts as open
         AIR,
-        // something to stand on top of (stone, leaves, slabs...)
+        // a block we can stand on top of (what WorldHelper.isSolid says, the same test the "flagged" part uses)
         SOLID,
-        // not air and not in the way: grass, ferns, snow layers. we stand in it, and it is not open for the shaft count
-        PASSABLE,
+        // not air, in the way of the shaft, and not ground: grass, vines, leaves. it ends the air count, and the ground is
+        // whatever is under it (leaves are collidable but not what dangerousToBreakIfRightAbove calls a floor, so a leaf
+        // right under a canopy log is not a place to stand, it is something to cut)
+        BLOCKING,
         WATER,
         LAVA
     }
@@ -39,23 +41,28 @@ public final class TreeReach {
     public record Column(int feetY, int airCells) {
     }
 
-    // walks down from the log. cellAt gets the y of the cell. same count as DestroyBlockTask.openBelow, and the cell it stops
-    // on is where the feet go: on top of a solid one, in a passable one (grass), in the top of a pond. lava is no place
+    // walks down from the log. cellAt gets the y of the cell. the air count is the same as DestroyBlockTask.openBelow (it stops at
+    // the first thing that is not air), and the feet go on the first ground under that: on top of a solid block, in the top of a
+    // pond. lava is no place
     public static Column column(int logY, IntFunction<Cell> cellAt) {
         int air = 0;
+        boolean counting = true;
         for (int y = logY - 1; y >= logY - 1 - SCAN_DOWN; y--) {
-            Cell cell = cellAt.apply(y);
-            if (cell == Cell.AIR) {
-                air++;
-                continue;
-            }
-            switch (cell) {
+            switch (cellAt.apply(y)) {
+                case AIR:
+                    if (counting) {
+                        air++;
+                    }
+                    break;
                 case SOLID:
                     return new Column(y + 1, air);
+                case WATER:
+                    return new Column(y, air);
                 case LAVA:
                     return new Column(NO_FEET, air);
                 default:
-                    return new Column(y, air);
+                    counting = false;
+                    break;
             }
         }
         return new Column(NO_FEET, air);

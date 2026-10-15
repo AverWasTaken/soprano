@@ -117,7 +117,9 @@ public class CanopyTowerPathTest {
         if (s.isAir()) {
             return TreeReach.Cell.AIR;
         }
-        return s.getBlock() == Blocks.SHORT_GRASS ? TreeReach.Cell.PASSABLE : TreeReach.Cell.SOLID;
+        // grass and leaves are in the way of the shaft and are not ground, the same split TreeReachScan makes
+        boolean blocking = s.getBlock() == Blocks.SHORT_GRASS || s.getBlock() == Blocks.OAK_LEAVES;
+        return blocking ? TreeReach.Cell.BLOCKING : TreeReach.Cell.SOLID;
     }
 
     private static final BetterBlockPos START = new BetterBlockPos(4, FLOOR + 1, 0);
@@ -135,6 +137,19 @@ public class CanopyTowerPathTest {
                 boolean planner = got(VineLogPathTest.path(w, START, goalFor(w, log), false));
                 assertEquals("log at " + logY + (cover ? " with grass cover" : ""), planner, rule);
             }
+        }
+    }
+
+    @Test
+    public void aCanopyAroundTheLogDoesNotMakeItAnyEasierToReach() {
+        // the leaf right under the log is in the shaft, and the leaf ring is not a floor from the ground
+        for (int logY = FLOOR + 3; logY <= FLOOR + 10; logY++) {
+            VineLogPathTest.MapWorld w = canopy(logY, true, false);
+            BlockPos log = new BlockPos(0, logY, 0);
+            TreeReach.Column column = TreeReach.column(logY, y -> cell(w.get0(0, y, 0)));
+            boolean rule = TreeReach.fromGround(logY, column, false);
+            boolean planner = got(VineLogPathTest.path(w, START, goalFor(w, log), false));
+            assertEquals("log at " + logY + " in leaves", planner, rule);
         }
     }
 

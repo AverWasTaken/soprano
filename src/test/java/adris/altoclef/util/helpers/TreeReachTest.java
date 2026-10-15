@@ -15,7 +15,20 @@ public class TreeReachTest {
 
     // flat ground at FLOOR, optionally with a layer of grass on it
     private static IntFunction<Cell> ground(boolean cover) {
-        return y -> y <= FLOOR ? Cell.SOLID : (cover && y == FLOOR + 1 ? Cell.PASSABLE : Cell.AIR);
+        return y -> y <= FLOOR ? Cell.SOLID : (cover && y == FLOOR + 1 ? Cell.BLOCKING : Cell.AIR);
+    }
+
+    @Test
+    public void aLeafUnderTheLogEndsTheAirCountAndTheGroundIsStillTheGround() {
+        // leaves right under a canopy log: not a place to stand, so the log is as far from the feet as the ground says
+        int log = FLOOR + 8;
+        Column c = TreeReach.column(log, y -> y == log - 1 ? Cell.BLOCKING : ground(false).apply(y));
+        assertEquals(0, c.airCells());
+        assertEquals(FLOOR + 1, c.feetY());
+        assertFalse(TreeReach.fromGround(log, c, false));
+        // but a leaf in a shaft that is otherwise short is just something to cut on the way
+        int low = FLOOR + 3;
+        assertTrue(TreeReach.fromGround(low, TreeReach.column(low, y -> y == low - 1 ? Cell.BLOCKING : ground(false).apply(y)), false));
     }
 
     @Test

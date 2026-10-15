@@ -59,10 +59,12 @@ public class MineAndCollectTask extends ResourceTask {
     // blocks to build a tower with, dug by hand before the log that needs one (see dirtFirst)
     private Task _dirtTask;
     private int _dirtSince;
+    private BlockPos _dirtLog;
     // how long the dirt trip gets, and how long a trip that got us nothing to place with keeps the high logs off the menu
     private static final int DIRT_PATIENCE_TICKS = 1200;
     private static final int DIRT_OFF_TICKS = 6000;
-    private static final int DIRT_DONE_TICKS = 1200;
+    // a tree we already dug for is not dug for again for this long
+    private static final int DIRT_TREE_TICKS = 3600;
 
     public MineAndCollectTask(ItemTarget[] itemTargets, Block[] blocksToMine, MiningRequirement requirement) {
         super(itemTargets);
@@ -156,10 +158,13 @@ public class MineAndCollectTask extends ResourceTask {
                 return _dirtTask;
             }
             _dirtTask = null;
-            // either way no second trip for a while. one that fell short (bag full, no dirt where we looked) is not worth another
-            // go, and one that worked must not start again the moment the tower eats the first blocks of it
-            MineOrCollectTask.dirtOff(now, done ? DIRT_DONE_TICKS : DIRT_OFF_TICKS);
-            if (!done) {
+            if (done) {
+                // one trip per tree: the tower eats the blocks as it goes up, and a trip for "the shortfall" every time they
+                // dip would drag us off a half built tower
+                MineOrCollectTask.dirtTrip(_dirtLog, now);
+            } else {
+                // fell short (bag full, no dirt where we looked): not worth another go any time soon, for any tree
+                MineOrCollectTask.dirtOff(now, DIRT_OFF_TICKS);
                 Debug.logMessage("could not dig enough dirt to tower with, leaving the high logs alone for a while");
             }
             return null;
@@ -170,6 +175,7 @@ public class MineAndCollectTask extends ResourceTask {
         }
         Debug.logMessage("that log is too high to reach from the ground, digging " + want + " more dirt to tower up");
         _dirtSince = now;
+        _dirtLog = _subtask.miningPos();
         _dirtTask = TaskCatalogue.getItemTask(Items.DIRT, mod.getItemStorage().getItemCount(Items.DIRT) + want);
         return _dirtTask;
     }
@@ -254,6 +260,9 @@ public class MineAndCollectTask extends ResourceTask {
         private final TreeReachScan _scan = new TreeReachScan();
         // no digging for dirt before this tick. static for the same reason as the strikes, a rebuilt task would start another trip
         private static int dirtOffUntil = Integer.MIN_VALUE;
+        // the last tree we dug dirt for, and when
+        private static BlockPos dirtTreeAt;
+        private static int dirtTreeTick = Integer.MIN_VALUE;
 
         public MineOrCollectTask(Block[] blocks, ItemTarget[] targets) {
             _blocks = blocks;
@@ -637,6 +646,9 @@ public class MineAndCollectTask extends ResourceTask {
             if (!look.flagged() || look.fromGround() || !dirtPossible(mod, now)) {
                 return 0;
             }
+            if (dirtTreeAt != null && now >= dirtTreeTick && now - dirtTreeTick < DIRT_TREE_TICKS && TreeStrikes.sameTree(dirtTreeAt, at)) {
+                return 0;
+            }
             // what the planner places from by default, the same four blocks
             int held = mod.getItemStorage().getItemCount(Items.DIRT, Items.COBBLESTONE, Items.NETHERRACK, Items.STONE);
             return TreeReach.dirtShortfall(look.gap(), held);
@@ -644,6 +656,11 @@ public class MineAndCollectTask extends ResourceTask {
 
         private static void dirtOff(int now, int ticks) {
             dirtOffUntil = now + ticks;
+        }
+
+        private static void dirtTrip(BlockPos log, int now) {
+            dirtTreeAt = log;
+            dirtTreeTick = now;
         }
 
         // one of the blocks we are after, still standing, not given up on, and close enough to keep swinging at
