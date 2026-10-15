@@ -35,8 +35,8 @@ public class MovementProgressChecker {
         return check(mod, null);
     }
 
-    // `target` is the block we are here to break: the mine clock waits until the crosshair is on it (or on whatever we are
-    // cracking instead, that progress is real), see AimGate
+    // `target` is the block we are here to break: the mine clock waits until the crosshair is on it, see AimGate. (the
+    // block being cracked is whatever the crosshair is on, so it can't say whether we are on the target)
     public boolean check(AltoClef mod, BlockPos target) {
 
         // Allow pause on eat
@@ -55,8 +55,13 @@ public class MovementProgressChecker {
                 _mineChecker.reset();
                 _aim.reset();
             }
+            if (target != null && _lastBreakingBlock != null && !_lastBreakingBlock.equals(breakBlock)) {
+                // a different block started cracking (the crosshair crossed the one in front on its way to the target): it starts
+                // from zero, that is not a stall
+                _mineChecker.reset();
+            }
             _lastBreakingBlock = breakBlock;
-            if (target != null && !_aim.judging(aimed(mod, target, breakBlock))) {
+            if (target != null && !_aim.judging(LookHelper.isLookingAt(mod, target))) {
                 // not on it yet, so the half second hasn't started
                 _mineChecker.reset();
                 return true;
@@ -68,10 +73,6 @@ public class MovementProgressChecker {
             _distanceChecker.setProgress(mod.getPlayer().position());
             return !_distanceChecker.failed();
         }
-    }
-
-    private static boolean aimed(AltoClef mod, BlockPos target, BlockPos breaking) {
-        return LookHelper.isLookingAt(mod, target) || breaking != null && LookHelper.isLookingAt(mod, breaking);
     }
 
     public void reset() {
