@@ -106,6 +106,9 @@ public class MovementFall extends Movement {
     // NONE, which would hand it to nobody. -1 is not priced yet
     private double plannedDamage = -1;
 
+    // the hp floor the planner priced that damage against, snapshotted with it (see MutableMoveResult.hurtFloor)
+    private double plannedFloor;
+
     // built by unplanned(), see updateUnplanned
     private boolean unplanned;
 
@@ -178,6 +181,7 @@ public class MovementFall extends Movement {
         MutableMoveResult result = new MutableMoveResult();
         boolean bucket = MovementDescend.dynamicFallCost(context, src.x, src.y, src.z, dest.x, dest.z, 0, context.get(dest.x, src.y - 2, dest.z), result, lowAtLedge);
         plannedDamage = bucket ? 0 : result.damage;
+        plannedFloor = result.hurtFloor;
     }
 
     // the same question the planner asked, with the health we have right now
@@ -575,7 +579,7 @@ public class MovementFall extends Movement {
         boolean planned = !water && plannedDamage > 0;
         FallMode mode = water ? FallMode.NONE : planned ? FallMode.HURT : fallMode();
         double health = ctx.player().getHealth() + ctx.player().getAbsorptionAmount();
-        boolean affordable = planned && ExperimentalMovement.canAffordFall(health, plannedDamage, ExperimentalMovement.hurtFloor(src.y - dest.y <= Baritone.settings().maxFallHeightNoWater.value, Baritone.settings().fastModeMinHealth.value));
+        boolean affordable = planned && ExperimentalMovement.canAffordFall(health, plannedDamage, plannedFloor);
         return FallCover.handles(mode, clutchGaveUp, bucketOnHotbar(), AltoClefSettings.getInstance().shouldNotPlaceBucketButStillFall(), affordable);
     }
 

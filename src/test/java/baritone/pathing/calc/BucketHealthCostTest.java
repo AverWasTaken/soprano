@@ -231,6 +231,8 @@ public class BucketHealthCostTest {
         MutableMoveResult res = plainWindow(6, false, true, 20, false);
         assertFalse(res.clutch);
         assertEquals(3, res.damage, 0);
+        // and the floor it was priced against rides along, the runtime asks the same question with it
+        assertEquals(ExperimentalMovement.BUCKET_MISS_FLOOR, res.hurtFloor, 0);
     }
 
     @Test
@@ -280,6 +282,7 @@ public class BucketHealthCostTest {
         res = new MutableMoveResult();
         MovementDescend.cost(ok, 0, 70, 0, 1, 0, res);
         assertEquals(3, res.damage, 0);
+        assertEquals(12, res.hurtFloor, 0);
     }
 
     @Test
