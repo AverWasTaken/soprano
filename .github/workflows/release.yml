@@ -76,3 +76,10 @@ jobs:
           [ -f "$f" ] && FILES="$FILES $f"
         done
         gh release create "$GITHUB_REF_NAME" --title "Soprano v${VERSION}" --notes-file release-notes.md $FILES
+
+    # a release made with this token never fires the release event, so discord.yml wouldn't see it
+    - name: Post the release to discord
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+      run: python3 .github/scripts/discord_release.py "$GITHUB_REF_NAME" "${{ github.repository }}"
