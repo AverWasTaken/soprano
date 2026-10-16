@@ -34,6 +34,7 @@ import baritone.api.event.events.type.EventState;
 import baritone.api.event.listener.AbstractGameEventListener;
 import baritone.api.utils.RayTraceUtils;
 import baritone.api.utils.SettingsUtil;
+import baritone.behavior.trip.TripGatherer;
 import baritone.event.GameEventHandler;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -54,6 +55,7 @@ public final class AltoClefBridge implements AbstractGameEventListener {
     private static AltoClef altoClef;
     private static AltoClefBridge instance;
     private static boolean hudBroken;
+    private static TripGatherBridge tripGatherer;
     // set the moment the error limit is hit, from any thread (a predicate on the pathing thread can be the one that
     // tips it). everything that asks "is altoclef alive" looks at this, the cleanup itself waits for the next tick
     private static volatile boolean gaveUp;
@@ -129,6 +131,28 @@ public final class AltoClefBridge implements AbstractGameEventListener {
     // true while an altoclef task (or the idle gate) has the bot. mixins that change vanilla behaviour check this
     public static boolean isRunning() {
         return altoClef != null && !gaveUp && AltoClef.isRunning();
+    }
+
+    // the instance if it's up and hasn't given up, never creates it
+    static AltoClef instanceOrNull() {
+        return isAlive() ? altoClef : null;
+    }
+
+    // a real user task (#get, #gamer...) is running, not just the idle gate. the trip ask counts that as the user moving on
+    public static boolean userTaskActive() {
+        AltoClef ac = instanceOrNull();
+        return ac != null && ac.getUserTaskChain().isActive() && !ac.getUserTaskChain().isRunningIdleTask();
+    }
+
+    // who collects blocks for a trip (TripBehavior). null while altoclef is off, the trip just says it can't
+    public static TripGatherer tripGatherer() {
+        if (instance == null || gaveUp) {
+            return null;
+        }
+        if (tripGatherer == null) {
+            tripGatherer = new TripGatherBridge();
+        }
+        return tripGatherer;
     }
 
     // true when altoclef exists and has not given up. for the hooks that have to keep listening while it is idle

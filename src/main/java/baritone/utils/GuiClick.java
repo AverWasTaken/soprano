@@ -92,6 +92,13 @@ public class GuiClick extends Screen implements Helper {
         // Prevent default background rendering
     }
 
+    // click to go is a user trip, same as #goto (TripBehavior)
+    private static void goTo(GoalBlock goal) {
+        Baritone primary = (Baritone) BaritoneAPI.getProvider().getPrimaryBaritone();
+        primary.getTripBehavior().userTrip(goal);
+        primary.getCustomGoalProcess().setGoalAndPath(goal);
+    }
+
     @Override
     public boolean mouseReleased(MouseButtonEvent event) {
         if (currentMouseOver != null) { //Catch this, or else a click into void will result in a crash
@@ -108,10 +115,10 @@ public class GuiClick extends Screen implements Helper {
                     Helper.HELPER.logDirect(component);
                     clickStart = null;
                 } else {
-                    BaritoneAPI.getProvider().getPrimaryBaritone().getCustomGoalProcess().setGoalAndPath(new GoalBlock(currentMouseOver));
+                    goTo(new GoalBlock(currentMouseOver));
                 }
             } else if (event.button() == InputConstants.MOUSE_BUTTON_RIGHT) {
-                BaritoneAPI.getProvider().getPrimaryBaritone().getCustomGoalProcess().setGoalAndPath(new GoalBlock(currentMouseOver.above()));
+                goTo(new GoalBlock(currentMouseOver.above()));
             }
         }
         clickStart = null;

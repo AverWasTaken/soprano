@@ -26,6 +26,7 @@ import baritone.api.process.IBaritoneProcess;
 import baritone.api.process.IElytraProcess;
 import baritone.api.utils.IPlayerContext;
 import baritone.behavior.*;
+import baritone.behavior.trip.TripBehavior;
 import baritone.cache.WorldProvider;
 import baritone.command.manager.CommandManager;
 import baritone.event.GameEventHandler;
@@ -88,6 +89,7 @@ public class Baritone implements IBaritone {
     private final LookBehavior lookBehavior;
     private final InventoryBehavior inventoryBehavior;
     private final InputOverrideHandler inputOverrideHandler;
+    private final TripBehavior tripBehavior;
 
     private final FollowProcess followProcess;
     private final MineProcess mineProcess;
@@ -132,6 +134,7 @@ public class Baritone implements IBaritone {
             this.inputOverrideHandler = this.registerBehavior(InputOverrideHandler::new);
             this.registerBehavior(WaypointBehavior::new);
             this.registerBehavior(ActivityBehavior::new);
+            this.tripBehavior         = this.registerBehavior(TripBehavior::new);
         }
 
         this.pathingControlManager = new PathingControlManager(this);
@@ -206,6 +209,10 @@ public class Baritone implements IBaritone {
 
     public InventoryBehavior getInventoryBehavior() {
         return this.inventoryBehavior;
+    }
+
+    public TripBehavior getTripBehavior() {
+        return this.tripBehavior;
     }
 
     @Override
