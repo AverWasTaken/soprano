@@ -178,11 +178,22 @@ public class CalculationContext {
         this(
                 baritone,
                 forUseOnAnotherThread,
+                new ToolSet(baritone.getPlayerContext().player()),
+                Baritone.settings().allowPlace.value && ((Baritone) baritone).getInventoryBehavior().hasGenericThrowaway()
+        );
+    }
+
+    // the real player with a different bag: the what-if search (trip asks) hands in pretend blocks and a pretend pickaxe,
+    // everything else is read off the player exactly like the real context so the two paths are comparable
+    protected CalculationContext(IBaritone baritone, boolean forUseOnAnotherThread, ToolSet toolSet, boolean hasThrowaway) {
+        this(
+                baritone,
+                forUseOnAnotherThread,
                 baritone.getPlayerContext().world(),
                 (WorldData) baritone.getPlayerContext().worldData(),
                 new BlockStateInterface(baritone.getPlayerContext(), forUseOnAnotherThread),
-                new ToolSet(baritone.getPlayerContext().player()),
-                Baritone.settings().allowPlace.value && ((Baritone) baritone).getInventoryBehavior().hasGenericThrowaway(),
+                toolSet,
+                hasThrowaway,
                 Baritone.settings().allowWaterBucketFall.value && Inventory.isHotbarSlot(baritone.getPlayerContext().player().getInventory().findSlotMatchingItem(STACK_BUCKET_WATER)) && baritone.getPlayerContext().world().dimension() != Level.NETHER,
                 Baritone.settings().allowSprint.value && baritone.getPlayerContext().player().getFoodData().getFoodLevel() > 6,
                 frostWalkerLevel(baritone.getPlayerContext().player()),
