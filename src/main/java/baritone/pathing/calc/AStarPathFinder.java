@@ -118,7 +118,9 @@ public final class AStarPathFinder extends AbstractNodeCostSearch {
             if (goal.isInGoal(currentNode.x, currentNode.y, currentNode.z)) {
                 this.numNodesConsidered = numNodes;
                 this.numMovementsConsidered = numMovementsConsidered;
-                logDebug("Took " + (System.currentTimeMillis() - startTime) + "ms, " + numMovementsConsidered + " movements considered");
+                if (!quiet) {
+                    logDebug("Took " + (System.currentTimeMillis() - startTime) + "ms, " + numMovementsConsidered + " movements considered");
+                }
                 return Optional.of(new Path(realStart, startNode, currentNode, numNodes, goal, calcContext));
             }
             for (Moves moves : allMoves) {
@@ -226,12 +228,14 @@ public final class AStarPathFinder extends AbstractNodeCostSearch {
         if (cancelRequested) {
             return Optional.empty();
         }
-        System.out.println(numMovementsConsidered + " movements considered");
-        System.out.println("Open set size: " + openSet.size());
-        System.out.println("PathNode map size: " + mapSize());
-        System.out.println((int) (numNodes * 1.0 / ((System.currentTimeMillis() - startTime) / 1000F)) + " nodes per second");
-        Optional<IPath> result = bestSoFar(true, numNodes);
-        if (result.isPresent()) {
+        if (!quiet) {
+            System.out.println(numMovementsConsidered + " movements considered");
+            System.out.println("Open set size: " + openSet.size());
+            System.out.println("PathNode map size: " + mapSize());
+            System.out.println((int) (numNodes * 1.0 / ((System.currentTimeMillis() - startTime) / 1000F)) + " nodes per second");
+        }
+        Optional<IPath> result = bestSoFar(!quiet, numNodes);
+        if (result.isPresent() && !quiet) {
             logDebug("Took " + (System.currentTimeMillis() - startTime) + "ms, " + numMovementsConsidered + " movements considered");
         }
         return result;
