@@ -44,7 +44,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.monster.illager.Pillager;
-import net.minecraft.world.inventory.ContainerInput;
+import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -504,19 +504,19 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
     private void handleNonEmptyCursorStack(AltoClef mod, ItemStack cursorStack) {
         // Get the slot that can fit the cursor stack in the player inventory and click it to pick up the item.
         mod.getItemStorage().getSlotThatCanFitInPlayerInventory(cursorStack, false)
-                .ifPresent(slot -> mod.getSlotHandler().clickSlot(slot, 0, ContainerInput.PICKUP));
+                .ifPresent(slot -> mod.getSlotHandler().clickSlot(slot, 0, ClickType.PICKUP));
 
         // If the cursor stack can be thrown away, click an undefined slot to pick up the item.
         if (ItemHelper.canDropStack(mod, cursorStack)) {
-            mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
+            mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ClickType.PICKUP);
         }
 
         // Get the garbage slot and click it to pick up the item.
         StorageHelper.getGarbageSlot(mod)
-                .ifPresent(slot -> mod.getSlotHandler().clickSlot(slot, 0, ContainerInput.PICKUP));
+                .ifPresent(slot -> mod.getSlotHandler().clickSlot(slot, 0, ClickType.PICKUP));
 
         // Click an undefined slot to pick up the item.
-        mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
+        mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ClickType.PICKUP);
     }
 
     // the clocks and the call for one tick spent trying to get beside a block we won't mine from on top of
@@ -612,7 +612,7 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
             _what = BuiltInRegistries.BLOCK.getKey(there.getBlock()).getPath();
         }
         // Check if there is white wool at the specified position
-        if (there.getBlock() == Blocks.WOOL.white()) {
+        if (there.getBlock() == Blocks.WHITE_WOOL) {
             // Iterate over all entities in the world
             Iterable<Entity> entities = mod.getWorld().entitiesForRendering();
             for (Entity entity : entities) {

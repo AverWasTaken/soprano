@@ -86,7 +86,7 @@ public class OverworldPhasesTest {
         f.give(Items.BUCKET, 2).give(Items.LADDER, 3);
         f.foodUnits = 100;
         assertFalse("no wool", iron.isDone(f, state, cfg));
-        f.give(Items.WOOL.green(), 24);
+        f.give(Items.GREEN_WOOL, 24);
         assertTrue(iron.isDone(f, state, cfg));
         f.foodUnits = 99;
         assertFalse("food under the target", iron.isDone(f, state, cfg));
@@ -97,7 +97,7 @@ public class OverworldPhasesTest {
         IronPhase iron = new IronPhase();
         cfg.end.beds = 2;
         cfg.overworld.armorPlan = OverworldConfig.ArmorPlan.NONE;
-        FakeFacts f = new FakeFacts().give(Items.WOOL.white(), 6);
+        FakeFacts f = new FakeFacts().give(Items.WHITE_WOOL, 6);
         for (var i : List.of(Items.STONE_PICKAXE, Items.STONE_AXE, Items.IRON_PICKAXE, Items.IRON_AXE, Items.FLINT_AND_STEEL,
                 Items.SHIELD, Items.SHEARS)) {
             f.give(i, 1);
@@ -121,7 +121,7 @@ public class OverworldPhasesTest {
     private FakeFacts ironDone() {
         cfg.end.beds = 2;
         cfg.overworld.armorPlan = OverworldConfig.ArmorPlan.NONE;
-        FakeFacts f = new FakeFacts().give(Items.WOOL.white(), 6);
+        FakeFacts f = new FakeFacts().give(Items.WHITE_WOOL, 6);
         for (var i : List.of(Items.STONE_PICKAXE, Items.STONE_AXE, Items.IRON_PICKAXE, Items.IRON_AXE, Items.FLINT_AND_STEEL,
                 Items.SHIELD, Items.SHEARS)) {
             f.give(i, 1);
@@ -199,7 +199,7 @@ public class OverworldPhasesTest {
     public void ironWantsWoolForTheConfiguredBedCount() {
         IronPhase iron = new IronPhase();
         cfg.end.beds = 2;
-        FakeFacts f = new FakeFacts().give(Items.WOOL.white(), 6);
+        FakeFacts f = new FakeFacts().give(Items.WHITE_WOOL, 6);
         for (var i : List.of(Items.STONE_PICKAXE, Items.STONE_AXE, Items.IRON_PICKAXE, Items.IRON_AXE, Items.FLINT_AND_STEEL,
                 Items.SHIELD, Items.SHEARS)) {
             f.give(i, 1);

@@ -13,7 +13,7 @@ import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.WorldHelper;
 import baritone.api.utils.Dimension;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.monster.Enderman;
+import net.minecraft.world.entity.monster.EnderMan;
 import net.minecraft.world.item.Items;
 
 import java.util.Collections;
@@ -60,7 +60,7 @@ public class PearlHuntTask extends Task {
         this.pearlsTotal = pearlsTotal;
         this.dimension = dimension;
         this.hotspot = hotspot;
-        loot = new KillAndLootTask(Enderman.class, new ItemTarget(Items.ENDER_PEARL, pearlsTotal));
+        loot = new KillAndLootTask(EnderMan.class, new ItemTarget(Items.ENDER_PEARL, pearlsTotal));
         loot.forceDimension(dimension);
         goToDimension = new DefaultGoToDimensionTask(dimension);
     }
@@ -89,7 +89,7 @@ public class PearlHuntTask extends Task {
         if (walk != null) {
             return say("Heading for the warped forest", walk);
         }
-        return say(mod.getEntityTracker().entityFound(Enderman.class) ? "Collecting Ender Pearls" : "Looking for endermen", loot);
+        return say(mod.getEntityTracker().entityFound(EnderMan.class) ? "Collecting Ender Pearls" : "Looking for endermen", loot);
     }
 
     private Task say(String hud, Task child) {
@@ -101,7 +101,7 @@ public class PearlHuntTask extends Task {
     // an enderman that is already after us dies first: it is coming anyway and it hits like a truck when ignored.
     // but only for a while per target, one we cannot reach (lava, a ledge) does not get to stall the whole hunt
     private Task fightAngry(AltoClef mod) {
-        for (Enderman man : mod.getEntityTracker().getTrackedEntities(Enderman.class)) {
+        for (EnderMan man : mod.getEntityTracker().getTrackedEntities(EnderMan.class)) {
             if (!man.isAlive() || !man.isCreepy() || angryGivenUp.contains(man)
                     || !man.position().closerThan(mod.getPlayer().position(), ANGRY_RANGE)) {
                 continue;
@@ -124,7 +124,7 @@ public class PearlHuntTask extends Task {
     // null = not walking (no hotspot, there already, no endermen needed from there, or the walk took too long)
     private Task walkToHotspot(AltoClef mod) {
         RunState.Pos spot = hotspot.get();
-        boolean endermanHere = endermanLatch.update(mod.getEntityTracker().entityFound(Enderman.class), System.currentTimeMillis() / 1000.0);
+        boolean endermanHere = endermanLatch.update(mod.getEntityTracker().entityFound(EnderMan.class), System.currentTimeMillis() / 1000.0);
         if (spot == null) {
             return null;
         }

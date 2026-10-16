@@ -20,7 +20,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
-import net.minecraft.world.inventory.ContainerInput;
+import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 
@@ -56,20 +56,20 @@ public class CraftGenericManuallyTask extends Task implements ITaskUsesCraftingG
             if (!cursorStack.isEmpty()) {
                 Optional<Slot> moveTo = mod.getItemStorage().getSlotThatCanFitInPlayerInventory(cursorStack, false);
                 if (moveTo.isPresent()) {
-                    mod.getSlotHandler().clickSlot(moveTo.get(), 0, ContainerInput.PICKUP);
+                    mod.getSlotHandler().clickSlot(moveTo.get(), 0, ClickType.PICKUP);
                     return null;
                 }
                 if (ItemHelper.canDropStack(mod, cursorStack)) {
-                    mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
+                    mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ClickType.PICKUP);
                     return null;
                 }
                 Optional<Slot> garbage = StorageHelper.getGarbageSlot(mod);
                 // Try throwing away cursor slot if it's garbage
                 if (garbage.isPresent()) {
-                    mod.getSlotHandler().clickSlot(garbage.get(), 0, ContainerInput.PICKUP);
+                    mod.getSlotHandler().clickSlot(garbage.get(), 0, ClickType.PICKUP);
                     return null;
                 }
-                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
+                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ClickType.PICKUP);
             } else {
                 StorageHelper.closeScreen();
             }
@@ -122,7 +122,7 @@ public class CraftGenericManuallyTask extends Task implements ITaskUsesCraftingG
                 if (present.getItem() != Items.AIR) {
                     // Move this item OUT if it should be empty
                     setDebugState("Found INVALID slot");
-                    mod.getSlotHandler().clickSlot(currentCraftSlot, 0, ContainerInput.PICKUP);
+                    mod.getSlotHandler().clickSlot(currentCraftSlot, 0, ClickType.PICKUP);
                 }
             } else {
                 boolean correctItem = toFill.matches(present.getItem());
@@ -149,7 +149,7 @@ public class CraftGenericManuallyTask extends Task implements ITaskUsesCraftingG
                 boolean oversatisfies = present.getCount() > requiredPerSlot;
                 if (oversatisfies) {
                     setDebugState("OVER SATISFIED slot! Right clicking slot to extract half and spread it out more.");
-                    mod.getSlotHandler().clickSlot(currentCraftSlot, 1, ContainerInput.PICKUP);
+                    mod.getSlotHandler().clickSlot(currentCraftSlot, 1, ClickType.PICKUP);
                 }
             }
         }
@@ -159,10 +159,10 @@ public class CraftGenericManuallyTask extends Task implements ITaskUsesCraftingG
         if (!ItemHelper.canStackTogether(StorageHelper.getItemStackInSlot(outputSlot), cursor)) {
             Optional<Slot> toFit = mod.getItemStorage().getSlotThatCanFitInPlayerInventory(cursor, false).or(() -> StorageHelper.getGarbageSlot(mod));
             if (toFit.isPresent()) {
-                mod.getSlotHandler().clickSlot(toFit.get(), 0, ContainerInput.PICKUP);
+                mod.getSlotHandler().clickSlot(toFit.get(), 0, ClickType.PICKUP);
             } else {
                 // Eh screw it
-                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
+                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ClickType.PICKUP);
             }
         }
 

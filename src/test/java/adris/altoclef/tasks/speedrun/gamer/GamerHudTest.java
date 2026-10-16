@@ -84,7 +84,7 @@ public class GamerHudTest {
         facts.foodUnits = 55;
         facts.cooking("iron_ingot", 3, 10);
         GamerHudState last = new GamerHudState(GamerPhase.DRAGON, 300, 25, 2, "Fighting the dragon",
-                List.of(new GamerHudState.KitRow("bed", "Beds", Items.BED.white(), 8, 8, true, false)),
+                List.of(new GamerHudState.KitRow("bed", "Beds", Items.WHITE_BED, 8, 8, true, false)),
                 List.of(new GamerHudState.FurnaceRow("Smelting 3 iron", Items.FURNACE, 0, 200)),
                 GamerHudState.DetourRow.coal(12, 0, 30), 55, 70);
         GamerHudState card = GamerHud.won(last, cfg, 41 * 60 + 12);

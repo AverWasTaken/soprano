@@ -26,7 +26,7 @@ import net.minecraft.world.item.component.SwingAnimation;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.Pose;
-import net.minecraft.world.inventory.ContainerInput;
+import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.ClipContext;
@@ -429,12 +429,12 @@ public class PlaceStationTask extends Task {
         }
         Optional<Slot> moveTo = mod.getItemStorage().getSlotThatCanFitInPlayerInventory(cursor, false);
         if (moveTo.isPresent()) {
-            mod.getSlotHandler().clickSlot(moveTo.get(), 0, ContainerInput.PICKUP);
+            mod.getSlotHandler().clickSlot(moveTo.get(), 0, ClickType.PICKUP);
         } else if (ItemHelper.canDropStack(mod, cursor)) {
-            mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
+            mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ClickType.PICKUP);
         } else {
             Optional<Slot> garbage = StorageHelper.getGarbageSlot(mod);
-            mod.getSlotHandler().clickSlot(garbage.orElse(Slot.UNDEFINED), 0, ContainerInput.PICKUP);
+            mod.getSlotHandler().clickSlot(garbage.orElse(Slot.UNDEFINED), 0, ClickType.PICKUP);
         }
         return false;
     }

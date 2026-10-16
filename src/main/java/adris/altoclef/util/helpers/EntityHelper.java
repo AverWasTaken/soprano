@@ -14,8 +14,8 @@ import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.OwnableEntity;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.monster.Blaze;
-import net.minecraft.world.entity.monster.Enderman;
-import net.minecraft.world.entity.monster.cubemob.Slime;
+import net.minecraft.world.entity.monster.EnderMan;
+import net.minecraft.world.entity.monster.Slime;
 import net.minecraft.world.entity.monster.spider.Spider;
 import net.minecraft.world.entity.monster.piglin.Piglin;
 import net.minecraft.world.entity.monster.piglin.PiglinAi;
@@ -51,11 +51,11 @@ public class EntityHelper {
         if (entity instanceof Slime slime && mod.getPlayer().closerThan(slime, 3)) return true;
         if (entity instanceof Raider raider && mod.getPlayer().closerThan(raider, 16)) return true;
         if (entity instanceof Warden warden && mod.getPlayer().closerThan(warden, 16)) return true;
-        if (entity instanceof Enderman enderman && enderman.hasLineOfSight(mod.getPlayer()) && enderman.isAggressive())
+        if (entity instanceof EnderMan enderman && enderman.hasLineOfSight(mod.getPlayer()) && enderman.isAggressive())
             return true;
         if (entity instanceof Blaze blaze && isBlazeThreat(mod, blaze)) return true;
         if (entity instanceof Slime || entity instanceof Raider || entity instanceof Warden
-                || entity instanceof Enderman || entity instanceof Blaze) return false;
+                || entity instanceof EnderMan || entity instanceof Blaze) return false;
         if (entity instanceof Mob mob && !isAfterUs(mod, mob)) return false;
         return !isTradingPiglin(entity);
     }

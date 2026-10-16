@@ -12,6 +12,5 @@ public enum WoodType {
     MANGROVE,
     BAMBOO,
     CHERRY,
-    PALE_OAK,
-    POPLAR
+    PALE_OAK
 }

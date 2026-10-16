@@ -39,7 +39,7 @@ import baritone.api.utils.Dimension;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.monster.Enderman;
+import net.minecraft.world.entity.monster.EnderMan;
 import net.minecraft.world.entity.monster.Blaze;
 import net.minecraft.world.entity.monster.Ghast;
 import net.minecraft.world.entity.monster.piglin.Piglin;
@@ -312,7 +312,7 @@ public class NetherPhase implements PhaseHandler {
     private boolean pickBusy(AltoClef mod, GamerContext ctx, double now) {
         boolean atSpawner = rodsTask != null && (rodsTask.currentSpawner() != null || rodsTask.isCampingSpawner());
         boolean trading = barterTickAt >= 0 && now - barterTickAt < TRADE_FRESH_SECONDS;
-        boolean hunting = pearlsNext(ctx) && mod.getEntityTracker().entityFound(Enderman.class);
+        boolean hunting = pearlsNext(ctx) && mod.getEntityTracker().entityFound(EnderMan.class);
         return atSpawner || trading || hunting || mod.getEntityTracker().entityFound(Blaze.class, Ghast.class);
     }
 
@@ -325,7 +325,7 @@ public class NetherPhase implements PhaseHandler {
         // the pearl hunt like a picked spawner: pearls are what nextStep is on and an enderman is in sight (angry or not, it is
         // what we walk at). asked fresh every tick and not off a hunt tick, so one that shows up halfway through a detour ends it.
         // the wander with no enderman around is a walk, gravel on the way is fair there
-        boolean hunting = pearlsNext(ctx) && mod.getEntityTracker().entityFound(Enderman.class);
+        boolean hunting = pearlsNext(ctx) && mod.getEntityTracker().entityFound(EnderMan.class);
         if (!DetourSpec.netherMayDetour(ctx.facts().dimension() == Dimension.NETHER, atSpawner, trading, hunting)) {
             gravel.preempted(ctx.facts().gameTime());
             return null;
@@ -537,7 +537,7 @@ public class NetherPhase implements PhaseHandler {
             return barter;
         }
         RunState s = ctx.state();
-        boolean endermanHere = endermanLatch.update(mod.getEntityTracker().entityFound(Enderman.class), now);
+        boolean endermanHere = endermanLatch.update(mod.getEntityTracker().entityFound(EnderMan.class), now);
         if (s.warpedForest == null && !endermanHere && !warpedSearchOver) {
             if (findWarped.failure() != null) {
                 // swept what we are allowed to sweep, hunt whatever wanders by

@@ -26,7 +26,7 @@ import java.util.*;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
-import net.minecraft.world.inventory.ContainerInput;
+import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.inventory.CraftingMenu;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -140,23 +140,23 @@ public class CraftInTableTask extends ResourceTask {
             Optional<Slot> moveToSlot = mod.getItemStorage().getSlotThatCanFitInPlayerInventory(cursorStack, false);
 
             // If a slot is found, pick up the item from the cursor slot and move it to the found slot.
-            moveToSlot.ifPresent(slot -> mod.getSlotHandler().clickSlot(slot, 0, ContainerInput.PICKUP));
+            moveToSlot.ifPresent(slot -> mod.getSlotHandler().clickSlot(slot, 0, ClickType.PICKUP));
 
             // If the item can be thrown away, pick up the item from the cursor slot and throw it away.
             if (ItemHelper.canDropStack(mod, cursorStack)) {
-                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
+                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ClickType.PICKUP);
             }
 
             // Find the garbage slot and move the item from the cursor slot to the garbage slot.
             Optional<Slot> garbageSlot = StorageHelper.getGarbageSlot(mod);
-            garbageSlot.ifPresent(slot -> mod.getSlotHandler().clickSlot(slot, 0, ContainerInput.PICKUP));
+            garbageSlot.ifPresent(slot -> mod.getSlotHandler().clickSlot(slot, 0, ClickType.PICKUP));
         } else {
             // If the cursor stack is empty, close the screen.
             StorageHelper.closeScreen();
         }
 
         // Pick up an undefined slot.
-        mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
+        mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ClickType.PICKUP);
     }
 
     /**
@@ -251,19 +251,19 @@ class DoCraftInTableTask extends DoStuffInContainerTask {
         if (!cursorStack.isEmpty()) {
             // Move the item to a slot in the player's inventory that can fit it
             Optional<Slot> moveTo = mod.getItemStorage().getSlotThatCanFitInPlayerInventory(cursorStack, false);
-            moveTo.ifPresent(slot -> mod.getSlotHandler().clickSlot(slot, 0, ContainerInput.PICKUP));
+            moveTo.ifPresent(slot -> mod.getSlotHandler().clickSlot(slot, 0, ClickType.PICKUP));
 
             // Check if the item can be thrown away
             if (ItemHelper.canDropStack(mod, cursorStack)) {
                 // Throw away the item
-                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
+                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ClickType.PICKUP);
             }
 
             // Move the item to the garbage slot
-            StorageHelper.getGarbageSlot(mod).ifPresent(slot -> mod.getSlotHandler().clickSlot(slot, 0, ContainerInput.PICKUP));
+            StorageHelper.getGarbageSlot(mod).ifPresent(slot -> mod.getSlotHandler().clickSlot(slot, 0, ClickType.PICKUP));
 
             // Clear the cursor slot
-            mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
+            mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ClickType.PICKUP);
         } else {
             // Close the screen if there is no item in the cursor slot
             StorageHelper.closeScreen();
@@ -293,21 +293,21 @@ class DoCraftInTableTask extends DoStuffInContainerTask {
             Optional<Slot> moveToSlot = mod.getItemStorage().getSlotThatCanFitInPlayerInventory(cursorStack, false);
 
             // If a slot is found, move the cursor stack to that slot
-            moveToSlot.ifPresent(slot -> mod.getSlotHandler().clickSlot(slot, 0, ContainerInput.PICKUP));
+            moveToSlot.ifPresent(slot -> mod.getSlotHandler().clickSlot(slot, 0, ClickType.PICKUP));
 
             // If the cursor stack can be thrown away, throw it away
             if (ItemHelper.canDropStack(mod, cursorStack)) {
-                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
+                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ClickType.PICKUP);
             }
 
             // Get the garbage slot
             Optional<Slot> garbageSlot = StorageHelper.getGarbageSlot(mod);
 
             // If a garbage slot is found, move the cursor stack to that slot
-            garbageSlot.ifPresent(slot -> mod.getSlotHandler().clickSlot(slot, 0, ContainerInput.PICKUP));
+            garbageSlot.ifPresent(slot -> mod.getSlotHandler().clickSlot(slot, 0, ClickType.PICKUP));
 
             // Move the cursor stack to an undefined slot
-            mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
+            mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ClickType.PICKUP);
         }
 
         // Call the onStop method of the super class

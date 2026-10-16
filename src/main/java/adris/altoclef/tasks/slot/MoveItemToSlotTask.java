@@ -13,7 +13,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Function;
-import net.minecraft.world.inventory.ContainerInput;
+import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 
@@ -83,7 +83,7 @@ public class MoveItemToSlotTask extends Task {
                 }
                 _nothingToMove.reset();
                 _gaveUp = false;
-                mod.getSlotHandler().clickSlot(toPlace.get(), 0, ContainerInput.PICKUP);
+                mod.getSlotHandler().clickSlot(toPlace.get(), 0, ClickType.PICKUP);
                 return null;
             }
 
@@ -93,7 +93,7 @@ public class MoveItemToSlotTask extends Task {
             int currentlyPlaced =Arrays.asList(validItems).contains(atTarget.getItem()) ? atTarget.getCount() : 0;
             if (currentHeld.getCount() + currentlyPlaced <= _toMove.getTargetCount()) {
                 // Just place all of 'em
-                mod.getSlotHandler().clickSlot(_destination, 0, ContainerInput.PICKUP);
+                mod.getSlotHandler().clickSlot(_destination, 0, ClickType.PICKUP);
             } else {
                 // Place one at a time.
                 int needed = _toMove.getTargetCount() - currentlyPlaced;
@@ -102,9 +102,9 @@ public class MoveItemToSlotTask extends Task {
                 // watchdog to call it stuck. they all go out in one slot action now. only onto an empty or same
                 // item slot though, a right click onto a different stack swaps and the next one would swap back
                 if (needed > 2 && destTakesOurItem) {
-                    mod.getSlotHandler().clickSlotBurst(_destination, 1, ContainerInput.PICKUP, Math.min(needed, MAX_PLACE_BURST));
+                    mod.getSlotHandler().clickSlotBurst(_destination, 1, ClickType.PICKUP, Math.min(needed, MAX_PLACE_BURST));
                 } else {
-                    mod.getSlotHandler().clickSlot(_destination, 1, ContainerInput.PICKUP);
+                    mod.getSlotHandler().clickSlot(_destination, 1, ClickType.PICKUP);
                 }
             }
             return null;

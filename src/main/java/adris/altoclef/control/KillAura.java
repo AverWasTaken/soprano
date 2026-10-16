@@ -29,7 +29,7 @@ import net.minecraft.world.entity.monster.warden.Warden;
 import net.minecraft.world.entity.projectile.hurtingprojectile.LargeFireball;
 import net.minecraft.world.entity.projectile.throwableitemprojectile.ThrownLingeringPotion;
 import net.minecraft.world.entity.projectile.throwableitemprojectile.ThrownSplashPotion;
-import net.minecraft.world.inventory.ContainerInput;
+import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -262,7 +262,7 @@ public class KillAura {
                 if (!spaceSlots.isEmpty()) {
                     for (ItemStack spaceSlot : spaceSlots) {
                         if (spaceSlot.isEmpty()) {
-                            mod.getSlotHandler().clickSlot(PlayerSlot.getEquipSlot(), 0, ContainerInput.QUICK_MOVE);
+                            mod.getSlotHandler().clickSlot(PlayerSlot.getEquipSlot(), 0, ClickType.QUICK_MOVE);
                             return;
                         }
                     }
@@ -280,7 +280,7 @@ public class KillAura {
                 Optional<Slot> toMoveTo = mod.getItemStorage().getSlotThatCanFitInPlayerInventory(cursor, false).or(() -> StorageHelper.getGarbageSlot(mod));
                 if (toMoveTo.isPresent()) {
                     Slot garbageSlot = toMoveTo.get();
-                    mod.getSlotHandler().clickSlot(garbageSlot, 0, ContainerInput.PICKUP);
+                    mod.getSlotHandler().clickSlot(garbageSlot, 0, ClickType.PICKUP);
                 }
             }
             mod.getInputControls().release(Input.SNEAK);

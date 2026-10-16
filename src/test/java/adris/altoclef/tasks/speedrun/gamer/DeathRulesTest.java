@@ -184,7 +184,7 @@ public class DeathRulesTest {
         // eyes, pearls, rods, obsidian, a bed or a bucket are the run itself
         for (net.minecraft.world.item.Item item : new net.minecraft.world.item.Item[] {Items.ENDER_EYE, Items.ENDER_PEARL, Items.BLAZE_ROD,
                 Items.BLAZE_POWDER, Items.OBSIDIAN, Items.DIAMOND, Items.BUCKET, Items.WATER_BUCKET, Items.LAVA_BUCKET,
-                Items.FLINT_AND_STEEL, Items.BED.red(), Items.BED.white()}) {
+                Items.FLINT_AND_STEEL, Items.RED_BED, Items.WHITE_BED}) {
             assertTrue(item.toString(), DeathRules.worth(new FakeFacts().give(item, 1)).run());
         }
     }

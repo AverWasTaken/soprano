@@ -8,7 +8,7 @@ import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.slots.Slot;
 import java.util.Optional;
-import net.minecraft.world.inventory.ContainerInput;
+import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.item.ItemStack;
 
 public class EnsureFreeInventorySlotTask extends Task {
@@ -35,16 +35,16 @@ public class EnsureFreeInventorySlotTask extends Task {
         switch (action) {
             case CLICK_GARBAGE -> {
                 setDebugState("Picking up garbage");
-                mod.getSlotHandler().clickSlot(garbage.get(), 0, ContainerInput.PICKUP);
+                mod.getSlotHandler().clickSlot(garbage.get(), 0, ClickType.PICKUP);
             }
             case THROW_CURSOR -> {
                 setDebugState("Throwing the held stack");
                 LookHelper.randomOrientation(mod);
-                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
+                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ClickType.PICKUP);
             }
             case PUT_BACK -> {
                 setDebugState("Putting the held stack back");
-                mod.getSlotHandler().clickSlot(containerSlot.get(), 0, ContainerInput.PICKUP);
+                mod.getSlotHandler().clickSlot(containerSlot.get(), 0, ClickType.PICKUP);
             }
             default -> setDebugState("All items are protected.");
         }

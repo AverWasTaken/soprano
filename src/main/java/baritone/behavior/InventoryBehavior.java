@@ -130,7 +130,7 @@ public final class InventoryBehavior extends Behavior implements Helper {
                 if (slot.isEmpty()) {
                     return false;
                 }
-                ctx.playerController().windowClick(ctx.player().inventoryMenu.containerId, i, slot.getAsInt(), ContainerInput.SWAP, ctx.player());
+                ctx.playerController().windowClick(ctx.player().inventoryMenu.containerId, i, slot.getAsInt(), ClickType.SWAP, ctx.player());
                 ticksSinceLastInventoryMove = 0;
                 return true;
             }

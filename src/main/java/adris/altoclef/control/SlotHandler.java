@@ -13,7 +13,7 @@ import adris.altoclef.util.time.TimerGame;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.inventory.AbstractContainerMenu;
-import net.minecraft.world.inventory.ContainerInput;
+import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.item.BucketItem;
 import net.minecraft.world.item.EmptyMapItem;
 import net.minecraft.world.item.EnderEyeItem;
@@ -63,11 +63,11 @@ public class SlotHandler {
 
     // true when a click really went out. the cooldown eats clicks silently, and a caller that wants to know whether
     // its click landed (ReceiveCraftingOutputSlotTask) has to be told
-    public boolean clickSlot(Slot slot, int mouseButton, ContainerInput type) {
+    public boolean clickSlot(Slot slot, int mouseButton, ClickType type) {
         if (!canDoSlotAction()) return false;
 
         if (slot.getWindowSlot() == -1) {
-            return clickSlot(PlayerSlot.UNDEFINED, 0, ContainerInput.PICKUP);
+            return clickSlot(PlayerSlot.UNDEFINED, 0, ClickType.PICKUP);
         }
         // NOT THE CASE! We may have something in the cursor slot to place.
         //if (getItemStackInSlot(slot).isEmpty()) return getItemStackInSlot(slot);
@@ -75,12 +75,12 @@ public class SlotHandler {
         return clickWindowSlot(slot.getWindowSlot(), mouseButton, type);
     }
 
-    private void clickSlotForce(Slot slot, int mouseButton, ContainerInput type) {
+    private void clickSlotForce(Slot slot, int mouseButton, ClickType type) {
         forceAllowNextSlotAction();
         clickSlot(slot, mouseButton, type);
     }
 
-    private boolean clickWindowSlot(int windowSlot, int mouseButton, ContainerInput type) {
+    private boolean clickWindowSlot(int windowSlot, int mouseButton, ClickType type) {
         LocalPlayer player = Minecraft.getInstance().player;
         if (player == null) {
             return false;
@@ -92,7 +92,7 @@ public class SlotHandler {
     // the packet part of a click with no cooldown bookkeeping, so a burst can send a few under one slot action.
     // handleContainerInput runs the click on our own menu first (the client predicts it) and then sends it, so
     // back to back clicks see each other and the server replays the same thing
-    private boolean sendClick(LocalPlayer player, int syncId, int windowSlot, int mouseButton, ContainerInput type) {
+    private boolean sendClick(LocalPlayer player, int syncId, int windowSlot, int mouseButton, ClickType type) {
         try {
             _mod.getController().handleContainerInput(syncId, windowSlot, mouseButton, type, player);
         } catch (Exception e) {
@@ -105,7 +105,7 @@ public class SlotHandler {
 
     // the same click a few times in one slot action (one cooldown). right clicking a held stack into a slot puts one
     // down per click, this is how "place 12" costs one action instead of twelve
-    public boolean clickSlotBurst(Slot slot, int mouseButton, ContainerInput type, int times) {
+    public boolean clickSlotBurst(Slot slot, int mouseButton, ClickType type, int times) {
         if (!canDoSlotAction()) return false;
         LocalPlayer player = Minecraft.getInstance().player;
         if (player == null || slot.getWindowSlot() == -1) return false;
@@ -132,18 +132,18 @@ public class SlotHandler {
         int outside = AbstractContainerMenu.SLOT_CLICKED_OUTSIDE;
         if (returnTo != null) {
             for (int i = 0; i < returnFirst; ++i) {
-                if (!sendClick(player, syncId, returnTo.getWindowSlot(), 1, ContainerInput.PICKUP)) return false;
+                if (!sendClick(player, syncId, returnTo.getWindowSlot(), 1, ClickType.PICKUP)) return false;
             }
         }
         int start = AbstractContainerMenu.getQuickcraftMask(AbstractContainerMenu.QUICKCRAFT_HEADER_START, type);
         int add = AbstractContainerMenu.getQuickcraftMask(AbstractContainerMenu.QUICKCRAFT_HEADER_CONTINUE, type);
         int end = AbstractContainerMenu.getQuickcraftMask(AbstractContainerMenu.QUICKCRAFT_HEADER_END, type);
         for (int round = 0; round < rounds; ++round) {
-            if (!sendClick(player, syncId, outside, start, ContainerInput.QUICK_CRAFT)) return false;
+            if (!sendClick(player, syncId, outside, start, ClickType.QUICK_CRAFT)) return false;
             for (Slot slot : slots) {
-                if (!sendClick(player, syncId, slot.getWindowSlot(), add, ContainerInput.QUICK_CRAFT)) return false;
+                if (!sendClick(player, syncId, slot.getWindowSlot(), add, ClickType.QUICK_CRAFT)) return false;
             }
-            if (!sendClick(player, syncId, outside, end, ContainerInput.QUICK_CRAFT)) return false;
+            if (!sendClick(player, syncId, outside, end, ClickType.QUICK_CRAFT)) return false;
         }
         return true;
     }
@@ -156,9 +156,9 @@ public class SlotHandler {
                 toEquip);
         for (Slot CurrentItemSlot : currentItemSlot) {
             if (!Slot.isCursor(CurrentItemSlot)) {
-                _mod.getSlotHandler().clickSlot(CurrentItemSlot, 0, ContainerInput.PICKUP);
+                _mod.getSlotHandler().clickSlot(CurrentItemSlot, 0, ClickType.PICKUP);
             } else {
-                _mod.getSlotHandler().clickSlot(PlayerSlot.OFFHAND_SLOT, 0, ContainerInput.PICKUP);
+                _mod.getSlotHandler().clickSlot(PlayerSlot.OFFHAND_SLOT, 0, ClickType.PICKUP);
             }
         }
     }
@@ -178,7 +178,7 @@ public class SlotHandler {
             // the cursor is listed first in the slot list and its window index is -1, which clicks as "outside the
             // window". that threw the stack on the floor instead of equipping it. drop it onto the hotbar slot
             // like the offhand version does
-            clickSlotForce(PlayerSlot.getEquipSlot(), 0, ContainerInput.PICKUP);
+            clickSlotForce(PlayerSlot.getEquipSlot(), 0, ClickType.PICKUP);
             return holds(toEquip);
         }
 
@@ -187,7 +187,7 @@ public class SlotHandler {
             // one swap is the whole job. this used to swap EVERY stack of the item into the hotbar slot, so with
             // two stacks the second swap just undid the first and the item bounced in and out forever
             int hotbar = 1;
-            clickSlotForce(Objects.requireNonNull(itemSlots.get(0)), hotbar, ContainerInput.SWAP);
+            clickSlotForce(Objects.requireNonNull(itemSlots.get(0)), hotbar, ClickType.SWAP);
             return holds(toEquip);
         }
         return false;
@@ -247,28 +247,28 @@ public class SlotHandler {
                 // Try to swap items with the first non-bad slot.
                 for (Slot slot : Slot.getCurrentScreenSlots()) {
                     if (!isBad.test(StorageHelper.getItemStackInSlot(slot))) {
-                        clickSlotForce(slot, 0, ContainerInput.PICKUP);
+                        clickSlotForce(slot, 0, ClickType.PICKUP);
                         return false;
                     }
                 }
                 if (ItemHelper.canDropStack(_mod, cursor)) {
-                    clickSlotForce(PlayerSlot.UNDEFINED, 0, ContainerInput.PICKUP);
+                    clickSlotForce(PlayerSlot.UNDEFINED, 0, ClickType.PICKUP);
                     return true;
                 }
                 // Can't throw :(
                 return false;
             } else {
                 // Put in the empty/available slot.
-                clickSlotForce(fittableSlots.get(), 0, ContainerInput.PICKUP);
+                clickSlotForce(fittableSlots.get(), 0, ClickType.PICKUP);
                 return true;
             }
         } else if (isBad.test(equip)) {
             // Pick up the item
-            clickSlotForce(PlayerSlot.getEquipSlot(), 0, ContainerInput.PICKUP);
+            clickSlotForce(PlayerSlot.getEquipSlot(), 0, ClickType.PICKUP);
             return false;
         } else if (equip.isEmpty() && !cursor.isEmpty()) {
             // cursor is good and equip is empty, so finish filling it in.
-            clickSlotForce(PlayerSlot.getEquipSlot(), 0, ContainerInput.PICKUP);
+            clickSlotForce(PlayerSlot.getEquipSlot(), 0, ClickType.PICKUP);
             return true;
         }
         // We're already de-equipped
@@ -277,7 +277,7 @@ public class SlotHandler {
 
     public void forceEquipSlot(Slot slot) {
         Slot target = PlayerSlot.getEquipSlot();
-        clickSlotForce(slot, target.getInventorySlot(), ContainerInput.SWAP);
+        clickSlotForce(slot, target.getInventorySlot(), ClickType.SWAP);
     }
 
     public boolean forceEquipItem(Item[] matches, boolean unInterruptable) {
@@ -314,8 +314,8 @@ public class SlotHandler {
             return;
         for (int i = 0; i < Minecraft.getInstance().player.getInventory().getNonEquipmentItems().size(); ++i) {
             Slot slot = Slot.getFromCurrentScreenInventory(i);
-            clickSlotForce(slot, 0, ContainerInput.PICKUP);
-            clickSlotForce(slot, 0, ContainerInput.PICKUP);
+            clickSlotForce(slot, 0, ClickType.PICKUP);
+            clickSlotForce(slot, 0, ClickType.PICKUP);
         }
     }
 }

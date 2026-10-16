@@ -162,7 +162,7 @@ public class EarlyIronPickTest {
                 Items.IRON_CHESTPLATE, Items.IRON_HELMET, Items.IRON_LEGGINGS, Items.IRON_BOOTS}) {
             full.give(i, 1);
         }
-        full.give(Items.BUCKET, 2).give(Items.WOOL.white(), 24);
+        full.give(Items.BUCKET, 2).give(Items.WHITE_WOOL, 24);
         full.worn.addAll(List.of(Items.IRON_CHESTPLATE, Items.IRON_HELMET, Items.IRON_LEGGINGS, Items.IRON_BOOTS));
         return full;
     }

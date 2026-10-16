@@ -251,7 +251,7 @@ public class WoodBudgetContradictionsTest {
     // CookGate.woodSmeltsAfterClaims now
     @Test
     public void theCoalDetourDoesNotSubtractTheSmokersLogs() {
-        FakeFacts f = madeEverything().give(Items.OAK_LOG, 12).give(Items.BEEF, 5).give(Items.COBBLESTONE, 30).give(Items.BED.white(), 8);
+        FakeFacts f = madeEverything().give(Items.OAK_LOG, 12).give(Items.BEEF, 5).give(Items.COBBLESTONE, 30).give(Items.WHITE_BED, 8);
         WoodBudget w = WoodBudget.of(f, cfg, BEDS);
         assertTrue(w.smokerOwed());
         assertEquals(18, w.burnableWoodSmelts(0));
@@ -282,7 +282,7 @@ public class WoodBudgetContradictionsTest {
     @Test
     public void theLogStockUpChopsForLogsTheFurnaceMayNotBurn() {
         // coal for every smelt ahead, so the logs are not fuel
-        FakeFacts f = madeEverything().give(Items.OAK_LOG, 3).give(Items.BED.white(), 8).give(Items.COAL, 8);
+        FakeFacts f = madeEverything().give(Items.OAK_LOG, 3).give(Items.WHITE_BED, 8).give(Items.COAL, 8);
         WoodBudget gather = WoodBudget.of(f, cfg, BEDS);
         assertEquals(0, gather.gatherLogsOwed());
         // the gather has no stock-up, its view is what it was
@@ -302,7 +302,7 @@ public class WoodBudgetContradictionsTest {
         assertEquals(0, WoodBudget.of(f, cfg, BEDS, GamerPhase.IRON).stockUpLogs(8, true));
         assertEquals(0, WoodBudget.of(f, cfg, BEDS, GamerPhase.IRON).stockClaim());
         // the cook outranks it: raw meat waiting and the claim is the cook's, the logs are fuel and a smoker again
-        FakeFacts meat = madeEverything().give(Items.OAK_LOG, 3).give(Items.BED.white(), 8).give(Items.BEEF, 5).give(Items.COBBLESTONE, 30)
+        FakeFacts meat = madeEverything().give(Items.OAK_LOG, 3).give(Items.WHITE_BED, 8).give(Items.BEEF, 5).give(Items.COBBLESTONE, 30)
                 .give(Items.COAL, 8);
         WoodBudget cooking = WoodBudget.of(meat, cfg, BEDS, GamerPhase.IRON);
         assertEquals(0, cooking.stockClaim());
@@ -312,7 +312,7 @@ public class WoodBudgetContradictionsTest {
     // and the fuel in hand outranks the stock: no coal, a batch of iron ahead, and the logs stay burnable
     @Test
     public void theLogStockUpNeverLocksUpTheFuelTheSmeltsAheadNeed() {
-        FakeFacts f = madeEverything().give(Items.OAK_LOG, 3).give(Items.BED.white(), 8);
+        FakeFacts f = madeEverything().give(Items.OAK_LOG, 3).give(Items.WHITE_BED, 8);
         int ahead = Math.max(0, KitPlanner.ingotsNeeded(f, cfg) - f.count(Items.IRON_INGOT));
         assertTrue("iron is still to be smelted", ahead > 4);
         WoodBudget w = WoodBudget.of(f, cfg, BEDS, GamerPhase.IRON);
@@ -333,7 +333,7 @@ public class WoodBudgetContradictionsTest {
     // the tick's: a chop still in the plan keeps the phase going
     @Test
     public void isDoneReadsTheTicksPlanForTheChopsAndStopsAtTheMinimumForTheFood() {
-        FakeFacts f = madeEverything().give(Items.OAK_LOG, 3).give(Items.BED.white(), 8).give(Items.COBBLESTONE, 30);
+        FakeFacts f = madeEverything().give(Items.OAK_LOG, 3).give(Items.WHITE_BED, 8).give(Items.COBBLESTONE, 30);
         f.foodUnits = 100;
         StubContext ctx = new StubContext() {
             @Override
@@ -357,7 +357,7 @@ public class WoodBudgetContradictionsTest {
 
         // IRON: the cook's chop is in the tick's plan, and the phase is not done while it is
         FakeFacts raw = new FakeFacts().give(Items.OAK_LOG, 5).give(Items.BEEF, 5).give(Items.COBBLESTONE, 30).give(Items.CRAFTING_TABLE, 1)
-                .give(Items.BED.white(), 8);
+                .give(Items.WHITE_BED, 8);
         raw.foodUnits = 100;
         raw.nearSurface = true;
         StubContext iron = new StubContext() {

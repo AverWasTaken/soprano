@@ -335,8 +335,8 @@ public class WoodBudgetEquivalenceTest {
                 f.spent.put(Items.STONE_PICKAXE, 1);
             }
             int bedCount = r.nextInt(3) == 0 ? r.nextInt(9) : 0;
-            f.give(Items.BED.white(), bedCount);
-            f.give(Items.WOOL.white(), r.nextInt(3) == 0 ? r.nextInt(25) : 0);
+            f.give(Items.WHITE_BED, bedCount);
+            f.give(Items.WHITE_WOOL, r.nextInt(3) == 0 ? r.nextInt(25) : 0);
 
             f.give(Items.COBBLESTONE, r.nextInt(3) == 0 ? 0 : r.nextInt(31));
             f.give(Items.COAL, r.nextInt(5));

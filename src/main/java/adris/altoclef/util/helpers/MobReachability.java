@@ -16,7 +16,7 @@ import net.minecraft.world.entity.boss.wither.WitherBoss;
 import net.minecraft.world.entity.animal.bee.Bee;
 import net.minecraft.world.entity.monster.Blaze;
 import net.minecraft.world.entity.monster.Creeper;
-import net.minecraft.world.entity.monster.Enderman;
+import net.minecraft.world.entity.monster.EnderMan;
 import net.minecraft.world.entity.monster.Guardian;
 import net.minecraft.world.entity.monster.Phantom;
 import net.minecraft.world.entity.monster.Shulker;
@@ -173,7 +173,7 @@ public class MobReachability {
 
     // things that fly, teleport, burrow or are already on our face. the gate would only ever be wrong about them
     public static boolean isUngated(Mob mob) {
-        if (mob instanceof Ghast || mob instanceof Phantom || mob instanceof Blaze || mob instanceof Vex || mob instanceof Enderman
+        if (mob instanceof Ghast || mob instanceof Phantom || mob instanceof Blaze || mob instanceof Vex || mob instanceof EnderMan
                 || mob instanceof EnderDragon || mob instanceof WitherBoss || mob instanceof Warden
                 || mob instanceof Shulker || mob instanceof Guardian || mob instanceof Bee) {
             return true;

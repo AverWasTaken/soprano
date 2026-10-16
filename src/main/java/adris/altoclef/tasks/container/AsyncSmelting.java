@@ -13,7 +13,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.food.FoodProperties;
-import net.minecraft.world.inventory.ContainerInput;
+import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Block;
@@ -184,7 +184,7 @@ public final class AsyncSmelting {
         if (fit.isEmpty()) {
             return false;
         }
-        mod.getSlotHandler().clickSlot(fit.get(), 0, ContainerInput.PICKUP);
+        mod.getSlotHandler().clickSlot(fit.get(), 0, ClickType.PICKUP);
         return true;
     }
 
@@ -198,7 +198,7 @@ public final class AsyncSmelting {
         if (!StorageHelper.getItemStackInCursorSlot().isEmpty()) {
             return clearCursor(mod);
         }
-        mod.getSlotHandler().clickSlot(fuelSlot, 0, ContainerInput.PICKUP);
+        mod.getSlotHandler().clickSlot(fuelSlot, 0, ClickType.PICKUP);
         return true;
     }
 

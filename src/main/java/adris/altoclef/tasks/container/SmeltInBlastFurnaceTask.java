@@ -25,7 +25,7 @@ import java.util.Optional;
 import java.util.stream.Stream;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.inventory.BlastFurnaceMenu;
-import net.minecraft.world.inventory.ContainerInput;
+import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -110,14 +110,14 @@ public class SmeltInBlastFurnaceTask extends ResourceTask {
         ItemStack cursorStack = StorageHelper.getItemStackInCursorSlot();
         if (!cursorStack.isEmpty()) {
             Optional<Slot> moveTo = mod.getItemStorage().getSlotThatCanFitInPlayerInventory(cursorStack, false);
-            moveTo.ifPresent(slot -> mod.getSlotHandler().clickSlot(slot, 0, ContainerInput.PICKUP));
+            moveTo.ifPresent(slot -> mod.getSlotHandler().clickSlot(slot, 0, ClickType.PICKUP));
             if (ItemHelper.canDropStack(mod, cursorStack)) {
-                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
+                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ClickType.PICKUP);
             }
             Optional<Slot> garbage = StorageHelper.getGarbageSlot(mod);
             // Try throwing away cursor slot if it's garbage
-            garbage.ifPresent(slot -> mod.getSlotHandler().clickSlot(slot, 0, ContainerInput.PICKUP));
-            mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
+            garbage.ifPresent(slot -> mod.getSlotHandler().clickSlot(slot, 0, ClickType.PICKUP));
+            mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ClickType.PICKUP);
         } else {
             StorageHelper.closeScreen();
         }
@@ -273,17 +273,17 @@ public class SmeltInBlastFurnaceTask extends ResourceTask {
                     if (!ItemHelper.canStackTogether(fuel, cursor)) {
                         Optional<Slot> toFit = mod.getItemStorage().getSlotThatCanFitInPlayerInventory(cursor, false);
                         if (toFit.isPresent()) {
-                            mod.getSlotHandler().clickSlot(toFit.get(), 0, ContainerInput.PICKUP);
+                            mod.getSlotHandler().clickSlot(toFit.get(), 0, ClickType.PICKUP);
                             return null;
                         } else {
                             // Eh screw it
                             if (ItemHelper.canDropStack(mod, cursor)) {
-                                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
+                                mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ClickType.PICKUP);
                                 return null;
                             }
                         }
                     }
-                    mod.getSlotHandler().clickSlot(BlastFurnaceSlot.INPUT_SLOT_FUEL, 0, ContainerInput.PICKUP);
+                    mod.getSlotHandler().clickSlot(BlastFurnaceSlot.INPUT_SLOT_FUEL, 0, ClickType.PICKUP);
                     return null;
                 }
             }
@@ -294,18 +294,18 @@ public class SmeltInBlastFurnaceTask extends ResourceTask {
                 if (!ItemHelper.canStackTogether(output, cursor)) {
                     Optional<Slot> toFit = mod.getItemStorage().getSlotThatCanFitInPlayerInventory(cursor, false);
                     if (toFit.isPresent()) {
-                        mod.getSlotHandler().clickSlot(toFit.get(), 0, ContainerInput.PICKUP);
+                        mod.getSlotHandler().clickSlot(toFit.get(), 0, ClickType.PICKUP);
                         return null;
                     } else {
                         // Eh screw it
                         if (ItemHelper.canDropStack(mod, cursor)) {
-                            mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ContainerInput.PICKUP);
+                            mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ClickType.PICKUP);
                             return null;
                         }
                     }
                 }
                 // Pick up
-                mod.getSlotHandler().clickSlot(BlastFurnaceSlot.OUTPUT_SLOT, 0, ContainerInput.PICKUP);
+                mod.getSlotHandler().clickSlot(BlastFurnaceSlot.OUTPUT_SLOT, 0, ClickType.PICKUP);
                 return null;
                 // return new MoveItemToSlotTask(new ItemTarget(output.getItem(), output.getCount()), toMoveTo.get(), mod -> FurnaceSlot.OUTPUT_SLOT);
             }
