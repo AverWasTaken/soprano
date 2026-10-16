@@ -188,6 +188,24 @@ public class McItemsTest {
     }
 
     @Test
+    public void aliasesNeverGetTheirOwnTile() {
+        List<ItemEntry> list = new McItems(new Recorder()).gettable();
+        List<String> names = list.stream().map(ItemEntry::name).toList();
+        java.util.Map<String, String> aliases = adris.altoclef.TaskCatalogue.aliases();
+        assertTrue(aliases.containsKey("netherite_pick"));
+        for (java.util.Map.Entry<String, String> a : aliases.entrySet()) {
+            assertFalse(a.getKey() + " is an alias", names.contains(a.getKey()));
+            // the thing it stands for still has to be clickable
+            assertTrue(a.getKey() + " -> " + a.getValue(), names.contains(a.getValue()));
+        }
+        java.util.Map<String, String> seen = new java.util.HashMap<>();
+        for (ItemEntry e : list) {
+            String before = seen.put(e.displayName(), e.name());
+            assertNull(e.displayName() + " is on both " + before + " and " + e.name(), before);
+        }
+    }
+
+    @Test
     public void gettableIsBuiltOnce() {
         McItems items = new McItems(new Recorder());
         assertTrue(items.gettable() == items.gettable());

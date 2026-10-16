@@ -51,6 +51,9 @@ public class TaskCatalogue {
     private static final HashMap<String, CataloguedResource> _nameToResourceTask = new HashMap<>();
     private static final HashMap<Item, CataloguedResource> _itemToResourceTask = new HashMap<>();
     private static final HashSet<Item> _resourcesObtainable = new HashSet<>();
+    // second names for the same entry ("door", "netherite_pick"). they resolve when typed, but anything listing the
+    // catalogue for people to look at should skip them or every pickaxe shows up twice
+    private static final HashMap<String, String> _aliases = new HashMap<>();
     // every recipe the shaped helpers register, by name. building the task needs a running client, so the recipe parity test reads these instead
     private static final TreeMap<String, RecipeTarget> _craftedRecipes = new TreeMap<>();
 
@@ -756,6 +759,15 @@ mine("pale_oak_sapling", Blocks.PALE_OAK_LEAVES, Items.PALE_OAK_SAPLING);
         return _nameToResourceTask.keySet();
     }
 
+    public static boolean isAlias(String name) {
+        return _aliases.containsKey(name);
+    }
+
+    // alias -> the name it stands for
+    public static Map<String, String> aliases() {
+        return Collections.unmodifiableMap(_aliases);
+    }
+
     private static CataloguedResource simple(String name, Item[] matches, Function<Integer, ResourceTask> getTask) {
         return put(name, matches, getTask);
     }
@@ -951,6 +963,7 @@ mine("pale_oak_sapling", Blocks.PALE_OAK_LEAVES, Items.PALE_OAK_SAPLING);
         } else {
             _nameToResourceTask.put(newName, _nameToResourceTask.get(original));
             _nameToItemMatches.put(newName, _nameToItemMatches.get(original));
+            _aliases.put(newName, original);
         }
     }
 

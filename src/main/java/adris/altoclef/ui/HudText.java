@@ -306,6 +306,8 @@ public final class HudText {
         // then every catalogue entry that is a group, with its key turned into words
         try {
             for (String name : TaskCatalogue.resourceNames()) {
+                // "door" and "wooden_door" are the same group, and hash order picked which one won. the real name always does now
+                if (TaskCatalogue.isAlias(name)) continue;
                 Item[] matches = TaskCatalogue.getItemMatches(name);
                 if (matches == null || matches.length < 2) continue;
                 String words = name.replace('_', ' ');
