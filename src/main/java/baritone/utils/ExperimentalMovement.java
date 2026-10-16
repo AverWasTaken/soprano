@@ -121,7 +121,7 @@ public final class ExperimentalMovement {
         return on() ? Baritone.settings().experimentalJumpBias.value : 1;
     }
 
-    // LivingEntity.calculateFallDamage is floor(fallDistance + 1e-6 - safeFallDistance) on 26.3 (ceil, minus the landing move,
+    // LivingEntity.calculateFallDamage is floor(fallDistance + 1e-6 - safeFallDistance) on 1.21.11 and 26.3 (ceil, minus the landing move,
     // on 1.21.4), and a drop of n whole blocks is exactly n of fallDistance now, so it comes out to n - 3 either way. before
     // armor and feather falling, which only ever make it smaller. so the number is a ceiling on what we'll lose and that's the
     // right direction to be wrong in

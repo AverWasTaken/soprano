@@ -21,7 +21,7 @@ import net.minecraft.util.Mth;
 
 import java.util.Arrays;
 
-// one player on foot, one game tick at a time, the way 26.3 does it. the method names in the comments are the vanilla ones this
+// one player on foot, one game tick at a time, the way 1.21.11 does it (26.3 is the same apart from friction modifiers). the method names in the comments are the vanilla ones this
 // was ported from (LocalPlayer.aiStep, LivingEntity.aiStep / travelInAir / jumpFromGround, Entity.move / collide), floats where
 // vanilla has floats since the last digit of a sprint jump decides whether a step is cleared.
 // not modelled and bailed on: fluids, climbables, ice / slime / honey / soul sand / webs / powder snow, potions that touch

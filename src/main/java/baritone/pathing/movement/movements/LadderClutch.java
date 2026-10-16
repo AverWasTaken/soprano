@@ -22,7 +22,7 @@ import java.util.concurrent.ConcurrentHashMap;
 // a long fall, played out tick by tick, with a ladder or vine showing up in one cell of the column. pure math (no mc classes)
 // so A* can ask it things off thread, same idea as NeoJump.
 //
-// vanilla 26.3 gives us two ways for a climbable to wipe the fall distance:
+// vanilla 1.21.11 (and 26.3) gives us two ways for a climbable to wipe the fall distance:
 //   A. LivingEntity.handleOnClimbable: if the cell our feet START the tick in is climbable, vy is clamped to -0.15 and
 //      fallDistance is zeroed, all before move. so the ladder has to exist by the time the tick starts, and a 1 tall cell
 //      is skipped completely if no tick start lands inside it (this is why we "don't actually grab" ladders at high speed)
@@ -35,7 +35,7 @@ import java.util.concurrent.ConcurrentHashMap;
 // skipped the move that ended on the ground). damage is floor(fall + 1e-6 - 3) now, so anything under 4 is free
 final class LadderClutch {
 
-    // straight out of 26.3 LivingEntity.travelInAir: y += vy, then vy = (vy - 0.08) * 0.98f (same as 1.21.4)
+    // straight out of 1.21.11 LivingEntity.travelInAir: y += vy, then vy = (vy - 0.08) * 0.98f (same as 1.21.4)
     static final double GRAVITY = 0.08, DRAG = 0.9800000190734863;
     // what the first airborne tick starts with. on the ground vy gets zeroed by the floor and then the same formula runs
     static final double WALK_OFF_VY = (0 - GRAVITY) * DRAG;
