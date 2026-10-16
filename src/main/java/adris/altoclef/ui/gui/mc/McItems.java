@@ -134,7 +134,9 @@ public final class McItems implements ItemsAccess {
             return out;
         }
         try {
+            // aliases point at the same entry under another name, one tile per thing is plenty
             List<String> names = new ArrayList<>(TaskCatalogue.resourceNames());
+            names.removeIf(TaskCatalogue::isAlias);
             names.sort(Comparator.naturalOrder());
             out = new ArrayList<>(names.size());
             for (String name : names) {
