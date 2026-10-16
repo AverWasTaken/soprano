@@ -23,6 +23,7 @@ import adris.altoclef.commands.AltoClefCommands;
 import adris.altoclef.eventbus.EventBus;
 import adris.altoclef.eventbus.events.ChunkLoadEvent;
 import adris.altoclef.eventbus.events.ChunkUnloadEvent;
+import adris.altoclef.ui.gui.mc.ghost.SchematicGhostRenderer;
 import adris.altoclef.util.helpers.DeathStash;
 import baritone.Baritone;
 import baritone.api.Settings;
@@ -78,6 +79,8 @@ public final class AltoClefBridge implements AbstractGameEventListener {
             // the commands go in now, long before altoclef itself exists, so #help and tab completion know about them from
             // the title screen on. running one is what creates altoclef, see require
             AltoClefCommands.register(primary);
+            // the ghost of the schematic picked in the gui, it draws whatever McSchematics.ghost() says
+            SchematicGhostRenderer.attach(primary);
         } catch (Throwable t) {
             System.err.println("altoclef could not hook into soprano, it stays off this session");
             t.printStackTrace();

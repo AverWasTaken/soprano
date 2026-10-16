@@ -387,4 +387,20 @@ public final class FakeSchematics implements SchematicsAccess {
     public String folderPath() {
         return ".minecraft/schematics";
     }
+
+    // same lifecycle as McSchematics: kept until changed, gone without a world
+    private String ghost;
+
+    @Override
+    public void setGhost(String relativePath) {
+        ghost = relativePath;
+    }
+
+    @Override
+    public String ghost() {
+        if (!inWorld) {
+            ghost = null;
+        }
+        return ghost;
+    }
 }
