@@ -1,6 +1,7 @@
 package adris.altoclef.util.helpers;
 
-import net.minecraft.data.registries.VanillaRegistries;
+import net.minecraft.core.HolderLookup;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.flag.FeatureFlags;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
@@ -9,6 +10,7 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 
 import java.util.Map;
+import java.util.stream.Stream;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -23,7 +25,9 @@ public class FuelTableTest {
     @BeforeClass
     public static void boot() {
         ItemFixture.boot();
-        fuel = ItemHelper.fuelTimes(FuelValues.vanillaBurnTimes(VanillaRegistries.createLookup(), FeatureFlags.DEFAULT_FLAGS));
+        // the item lookup has to be the live registry, whose tags ItemFixture bound. the datagen lookup only has placeholders
+        HolderLookup.Provider items = HolderLookup.Provider.create(Stream.of(BuiltInRegistries.ITEM));
+        fuel = ItemHelper.fuelTimes(FuelValues.vanillaBurnTimes(items, FeatureFlags.DEFAULT_FLAGS));
     }
 
     @Test
@@ -32,6 +36,7 @@ public class FuelTableTest {
         assertEquals(1600, (int) fuel.get(Items.COAL));
         assertEquals(20000, (int) fuel.get(Items.LAVA_BUCKET));
         assertEquals(100, (int) fuel.get(Items.STICK));
+        assertEquals(300, (int) fuel.get(Items.OAK_PLANKS));
         assertFalse(fuel.containsKey(Items.STONE));
     }
 
