@@ -460,14 +460,19 @@ public class ItemHelper {
         }
         FuelValues values = level.fuelValues();
         if (_fuelTimeMap == null || values != _fuelValues) {
-            Map<Item, Integer> map = new HashMap<>();
-            for (Item item : values.fuelItems()) {
-                map.put(item, values.burnDuration(new ItemStack(item)));
-            }
-            _fuelTimeMap = map;
+            _fuelTimeMap = fuelTimes(values);
             _fuelValues = values;
         }
         return _fuelTimeMap;
+    }
+
+    // split out so FuelTableTest can hand it vanilla's table without a level
+    static Map<Item, Integer> fuelTimes(FuelValues values) {
+        Map<Item, Integer> map = new HashMap<>();
+        for (Item item : values.fuelItems()) {
+            map.put(item, values.burnDuration(new ItemStack(item)));
+        }
+        return map;
     }
 
     /// 1.21.2 turned the tool tiers into plain data components. These stand in for TieredItem / getTier().

@@ -6,7 +6,6 @@ import adris.altoclef.util.helpers.ItemFixture;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import net.minecraft.world.entity.EntityType;
-import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.level.block.Blocks;
 import org.junit.BeforeClass;
@@ -51,9 +50,9 @@ public class VanillaConstantsTest {
         assertEquals(4.5, Attributes.BLOCK_INTERACTION_RANGE.value().getDefaultValue(), 0);
         assertEquals(3.0, Attributes.ENTITY_INTERACTION_RANGE.value().getDefaultValue(), 0);
         assertEquals(GolemRules.INTERACT_RANGE, Attributes.ENTITY_INTERACTION_RANGE.value().getDefaultValue(), 0);
-        assertEquals(1.62, EntityTypes.PLAYER.getDimensions().eyeHeight(), 1e-6);
-        assertEquals(GolemRules.EYE_HEIGHT, EntityTypes.PLAYER.getDimensions().eyeHeight(), 1e-6);
-        assertEquals(GolemRules.GOLEM_HEIGHT, EntityTypes.IRON_GOLEM.getDimensions().height(), 1e-6);
+        assertEquals(1.62, EntityType.PLAYER.getDimensions().eyeHeight(), 1e-6);
+        assertEquals(GolemRules.EYE_HEIGHT, EntityType.PLAYER.getDimensions().eyeHeight(), 1e-6);
+        assertEquals(GolemRules.GOLEM_HEIGHT, EntityType.IRON_GOLEM.getDimensions().height(), 1e-6);
     }
 
     @Test
