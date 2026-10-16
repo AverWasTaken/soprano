@@ -46,6 +46,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
+import static net.minecraft.world.level.chunk.LevelChunkSection.SECTION_SIZE;
+
 /**
  * @author Brady
  */

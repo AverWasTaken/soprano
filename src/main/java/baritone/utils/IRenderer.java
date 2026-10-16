@@ -22,15 +22,14 @@ import baritone.api.Settings;
 import baritone.utils.accessor.IEntityRenderManager;
 import baritone.utils.accessor.IRenderPipelines;
 import baritone.utils.accessor.IRenderType;
-import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.vertex.BufferBuilder;
-import com.mojang.blaze3d.vertex.DefaultVertexFormat;
-import com.mojang.blaze3d.vertex.PoseStack;
-import com.mojang.renderpearl.api.pipeline.*;
+import com.mojang.blaze3d.pipeline.BlendFunction;
+import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.blaze3d.platform.DepthTestFunction;
+import com.mojang.blaze3d.platform.DestFactor;
+import com.mojang.blaze3d.platform.SourceFactor;
+import com.mojang.blaze3d.vertex.*;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.BindGroupLayouts;
 import net.minecraft.client.renderer.RenderPipelines;
-import net.minecraft.client.renderer.StagedVertexBuffer;
 import net.minecraft.client.renderer.blockentity.BeaconRenderer;
 import net.minecraft.client.renderer.rendertype.RenderSetup;
 import net.minecraft.client.renderer.rendertype.RenderType;
@@ -42,13 +41,11 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
 import java.awt.*;
-import java.util.Optional;
-import java.util.OptionalDouble;
 import java.util.function.BiFunction;
 
 public interface IRenderer {
 
-    StagedVertexBuffer stagedVertexBuffer = new StagedVertexBuffer(() -> "Baritone Render", 256);
+    Tesselator tessellator = Tesselator.getInstance();
     IEntityRenderManager renderManager = (IEntityRenderManager) Minecraft.getInstance().getEntityRenderDispatcher();
     Settings settings = BaritoneAPI.getSettings();
     // depth is reversed in 26.x (cleared to 0, nearer is bigger), so "in front of the terrain" is >= and not <=. the other way round is sky only
@@ -78,22 +75,22 @@ public interface IRenderer {
     RenderPipeline.Snippet BARITONE_BEACON_BEAM_SNIPPET = RenderPipeline.builder(((IRenderPipelines) new RenderPipelines()).getMatricesFogSnippet())
             .withVertexShader("core/rendertype_beacon_beam")
             .withFragmentShader("core/rendertype_beacon_beam")
-            .withBindGroupLayout(BindGroupLayouts.SAMPLER0)
-            .withVertexBinding(0, DefaultVertexFormat.BLOCK)
-            .withPrimitiveTopology(PrimitiveTopology.QUADS)
+            .withSampler("Sampler0")
+            .withVertexFormat(DefaultVertexFormat.BLOCK, VertexFormat.Mode.QUADS)
             .buildSnippet();
 
     RenderPipeline BEACON_BEAM_OPAQUE = ((IRenderPipelines) new RenderPipelines()).baritone$registerPipeline(RenderPipeline.builder(BARITONE_BEACON_BEAM_SNIPPET)
             .withLocation("pipeline/baritone_beacon_beam_opaque")
-            .withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
-            .withDepthStencilState(new DepthStencilState(CompareOp.ALWAYS_PASS, false))
+            .withDepthWrite(false)
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
             .withCull(true)
             .build());
 
     RenderPipeline BEACON_BEAM_TRANSLUCENT = ((IRenderPipelines) new RenderPipelines()).baritone$registerPipeline(RenderPipeline.builder(BARITONE_BEACON_BEAM_SNIPPET)
             .withLocation("pipeline/baritone_beacon_beam_translucent")
-            .withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
-            .withDepthStencilState(new DepthStencilState(CompareOp.ALWAYS_PASS, false))
+            .withDepthWrite(false)
+            .withBlend(BlendFunction.TRANSLUCENT)
+            .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
             .withCull(true)
             .build());
 
@@ -103,14 +100,16 @@ public interface IRenderer {
             .withLocation("pipelines/baritone_lines_with_depth")
             .withDepthStencilState(new DepthStencilState(CompareOp.GREATER_THAN_OR_EQUAL, false))
             .build())
+            .bufferSize(256)
             .createRenderSetup()
     );
     RenderType linesNoDepthRenderType = ((IRenderType) RenderTypes.lines()).createRenderType(
         "renderType/baritone_lines_no_depth",
         RenderSetup.builder(RenderPipeline.builder(BARITONE_LINES_SNIPPET)
                 .withLocation("pipelines/baritone_lines_no_depth")
-                .withDepthStencilState(new DepthStencilState(CompareOp.ALWAYS_PASS, false))
+                .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
                 .build())
+            .bufferSize(256)
             .createRenderSetup()
     );
     RenderType quadsWithDepthRenderType = ((IRenderType) RenderTypes.lines()).createRenderType(
@@ -139,7 +138,6 @@ public interface IRenderer {
                     .createRenderSetup())
     );
 
-    StagedVertexBuffer.Draw[] draw = {null};
     float[] color = new float[]{1.0F, 1.0F, 1.0F, 255.0F};
 
     static void glColor(Color color, float alpha) {
@@ -152,8 +150,7 @@ public interface IRenderer {
 
     static BufferBuilder startLines(Color color, float alpha) {
         glColor(color, alpha);
-        draw[0] = stagedVertexBuffer.appendDraw(DefaultVertexFormat.POSITION_COLOR_NORMAL_LINE_WIDTH, PrimitiveTopology.LINES);
-        return (BufferBuilder) stagedVertexBuffer.getVertexBuilder(draw[0]);
+        return tessellator.begin(VertexFormat.Mode.LINES, DefaultVertexFormat.POSITION_COLOR_NORMAL_LINE_WIDTH);
     }
 
     static BufferBuilder startLines(Color color) {
@@ -161,7 +158,14 @@ public interface IRenderer {
     }
 
     static void endLines(BufferBuilder bufferBuilder, boolean ignoredDepth) {
-        endBuffer(bufferBuilder, ignoredDepth ? linesNoDepthRenderType : linesWithDepthRenderType);
+        MeshData meshData = bufferBuilder.build();
+        if (meshData != null) {
+            if (ignoredDepth) {
+                linesNoDepthRenderType.draw(meshData);
+            } else {
+                linesWithDepthRenderType.draw(meshData);
+            }
+        }
     }
 
     // lines and quads take turns, there's one draw open at a time. finish one before you start the other
@@ -175,8 +179,7 @@ public interface IRenderer {
     }
 
     static BufferBuilder startBlockQuads() {
-        draw[0] = stagedVertexBuffer.appendDraw(DefaultVertexFormat.BLOCK, PrimitiveTopology.QUADS);
-        return (BufferBuilder) stagedVertexBuffer.getVertexBuilder(draw[0]);
+        return tessellator.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.BLOCK);
     }
 
     static void endBuffer(BufferBuilder bufferBuilder, RenderType renderType) {

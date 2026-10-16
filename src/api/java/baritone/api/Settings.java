@@ -25,6 +25,7 @@ import baritone.api.utils.OverworldToNetherBehaviour;
 import baritone.api.utils.SettingsUtil;
 import baritone.api.utils.TypeUtils;
 import baritone.api.utils.gui.BaritoneToast;
+import net.minecraft.client.GuiMessageTag;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.chat.GuiMessageTag;
 import net.minecraft.core.BlockPos;
@@ -1678,7 +1679,7 @@ public final class Settings {
     public final Setting<Consumer<Component>> logger = new Setting<>((msg) -> {
         try {
             final GuiMessageTag tag = useMessageTag.value ? Helper.MESSAGE_TAG : null;
-            Minecraft.getInstance().gui.hud.getChat().addPlayerMessage(msg, null, tag);
+            Minecraft.getInstance().gui.getChat().addMessage(msg, null, tag);
         } catch (Throwable t) {
             LOGGER.warn("Failed to log message to chat: " + msg.getString(), t);
         }

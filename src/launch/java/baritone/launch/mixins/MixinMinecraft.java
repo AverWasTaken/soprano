@@ -24,7 +24,6 @@ import baritone.api.event.events.TickEvent;
 import baritone.api.event.events.WorldEvent;
 import baritone.api.event.events.type.EventState;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.Gui;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
@@ -68,7 +67,7 @@ public class MixinMinecraft {
             at = @At(
                     value = "FIELD",
                     opcode = Opcodes.GETFIELD,
-                    target = "net/minecraft/client/Minecraft.gui:Lnet/minecraft/client/gui/Gui;",
+                    target = "net/minecraft/client/Minecraft.screen:Lnet/minecraft/client/gui/screens/Screen;",
                     ordinal = 0,
                     shift = At.Shift.BEFORE
             ),
@@ -114,7 +113,7 @@ public class MixinMinecraft {
             method = "tick",
             at = @At(
                     value = "INVOKE",
-                    target = "Lnet/minecraft/client/player/LocalPlayer;sendChanges()V",
+                    target = "net/minecraft/client/multiplayer/ClientLevel.tickEntities()V",
                     shift = At.Shift.AFTER
             )
     )
@@ -166,14 +165,14 @@ public class MixinMinecraft {
     @Redirect(
             method = "tick",
             at = @At(
-                    value = "INVOKE",
-                    target = "Lnet/minecraft/client/gui/Gui;screen()Lnet/minecraft/client/gui/screens/Screen;"
+                    value = "FIELD",
+                    opcode = Opcodes.GETFIELD,
+                    target = "Lnet/minecraft/client/Minecraft;screen:Lnet/minecraft/client/gui/screens/Screen;"
             ),
             slice = @Slice(
                     from = @At(
-                            value = "FIELD",
-                            opcode = Opcodes.PUTFIELD,
-                            target = "net/minecraft/client/Minecraft.missTime:I"
+                            value = "INVOKE",
+                            target = "Lnet/minecraft/client/gui/components/DebugScreenOverlay;showDebugScreen()Z"
                     ),
                     to = @At(
                             value = "CONSTANT",
@@ -181,11 +180,11 @@ public class MixinMinecraft {
                     )
             )
     )
-    private Screen passEvents(Gui gui) {
+    private Screen passEvents(Minecraft instance) {
         // allow user input is only the primary baritone
         if (BaritoneAPI.getProvider().getPrimaryBaritone().getPathingBehavior().isPathing() && player != null) {
             return null;
         }
-        return gui.screen();
+        return instance.screen;
     }
 }
