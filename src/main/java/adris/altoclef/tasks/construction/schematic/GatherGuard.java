@@ -40,6 +40,12 @@ public final class GatherGuard {
         }
     }
 
+    // walking back to the build got closer (GoBack). buys time on the tick clock like a gather high does, a long
+    // honest walk home isn't the build being stuck
+    public void closer() {
+        idleTicks = 0;
+    }
+
     // a count finished, that's a round. true = stuck. the first one is the baseline and always goes
     public boolean round(long correct) {
         seen(correct);
