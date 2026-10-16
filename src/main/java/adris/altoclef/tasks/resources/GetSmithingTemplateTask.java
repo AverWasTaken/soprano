@@ -166,7 +166,7 @@ public class GetSmithingTemplateTask extends ResourceTask {
         }
     }
 
-    // vanilla 26.3: 7 diamonds + 1 netherrack + 1 template -> 2 templates. only done with everything already in the bag.
+    // vanilla: 7 diamonds + 1 netherrack + 1 template -> 2 templates. only done with everything already in the bag.
     // the upgrade collects its diamond piece before it asks for the template (CataloguedResourceTask puts the craft first),
     // so loose diamonds here are spares. we never go mining for them, a bastion trip is the fallback
     private Task duplicateTask(AltoClef mod) {
