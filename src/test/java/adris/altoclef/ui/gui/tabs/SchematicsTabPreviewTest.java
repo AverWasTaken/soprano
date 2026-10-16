@@ -32,6 +32,7 @@ public class SchematicsTabPreviewTest {
 
     private void clickRow(int i) {
         p.click(tab.list().x() + 60, tab.rowMidY(i));
+        p.tick();
         p.settle();
         p.advance(300);
         p.hover(-100, -100);

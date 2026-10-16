@@ -78,12 +78,19 @@
     const p = placementOf(r.path);
     const here = p.dim === myDim;
     for (const b of ctl.querySelectorAll('button')) b.disabled = noWorld || (!here && b.id !== 'sc-feet');
-    // four fits, like SchematicPane.layoutControls: both words, mirror as a glyph, glyphs only, and glyphs without the
-    // four nudge arrows (the footprint drags for those)
-    const room = ctl.clientWidth - 24;
-    ctl.classList.toggle('mid', room < 455);
-    ctl.classList.toggle('narrow', room < 400);
-    ctl.classList.toggle('tiny', room < 315);
+    // the fits of SchematicPane.controlRows: both words on one row, mirror as a glyph on one row, two rows with the
+    // words back, mirror's word off again, then three rows. the widths are the real buttons', measured with the words on
+    const room = ctl.clientWidth - 16;
+    for (const b of ctl.querySelectorAll('.btn span')) b.style.display = '';
+    ctl.classList.remove('mid', 'two', 'three');
+    const bw = id => $(id).offsetWidth, CH = 30;
+    const one = 4 * CH + 4 + 2 * CH + 4, second = 2 * CH + bw('#sc-mirror') + 4 + bw('#sc-feet');
+    if (one + second > room) {
+      if (one + second - bw('#sc-mirror') + CH <= room) ctl.classList.add('mid');
+      else if (second <= room) ctl.classList.add('two');
+      else if (second - bw('#sc-mirror') + CH <= room) ctl.classList.add('two', 'mid');
+      else ctl.classList.add('three');
+    }
     map.classList.toggle('state', noWorld || !here);
     if (noWorld) { mapState.innerHTML = '<div class="lead">Join a world to place it</div>'; return; }
     if (!here) { mapState.innerHTML = '<div class="lead"></div><div>Move to me puts it where you stand.</div>'; $('.lead', mapState).textContent = 'Placed in ' + dimName(p.dim); return; }

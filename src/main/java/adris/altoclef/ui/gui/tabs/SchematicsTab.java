@@ -58,6 +58,11 @@ public final class SchematicsTab implements Tab, SchematicPane.Listener {
     private int armTicks;
     private int hoverRow = -1;
     private int hoverTicks;
+    // the tooltip of the pane control under the pointer, null off the controls. shares the rest timer with the rows
+    private String hoverTip;
+    // terrain() samples chunks on every call, so only the tick asks for it; a poll from a click reuses the last one
+    private Terrain lastTerrain;
+    private boolean sampleTerrain;
     private Materials lastMaterials;
 
     public SchematicsTab(Theme theme, BotFacade facade, ShellContext ctx) {
@@ -114,6 +119,7 @@ public final class SchematicsTab implements Tab, SchematicPane.Listener {
     public void onShown() {
         disarm();
         hoverRow = -1;
+        hoverTip = null;
         poll();
     }
 
@@ -130,8 +136,14 @@ public final class SchematicsTab implements Tab, SchematicPane.Listener {
         return facade.schematics();
     }
 
-    // reads the listing and the selected file's count. both are snapshots, so this is cheap enough for every tick
+    // reads the listing and the selected file's count. both are snapshots, so this is cheap enough for every tick.
+    // the no-arg one is for clicks: everything but the terrain, which is the tick's alone
     private void poll() {
+        poll(false);
+    }
+
+    private void poll(boolean terrain) {
+        sampleTerrain = terrain;
         Safe.run("schematics poll", () -> {
             readListing();
             updateListText();
@@ -195,26 +207,31 @@ public final class SchematicsTab implements Tab, SchematicPane.Listener {
         refreshSite(sel, world);
     }
 
-    // where the file goes and the map around it. terrain() samples chunks on every call, so this is the one call a
-    // tick and it is centred on the footprint, the part of the world the build cares about
+    // where the file goes and the map around it. terrain() is asked once a tick (never from a click, never per
+    // frame) and is centred on the footprint, the part of the world the build cares about; a click's poll shows the
+    // last snapshot until the next tick recentres it
     private void refreshSite(Row sel, boolean world) {
         Placement pl = null;
         Footprint fp = null;
-        Terrain t = null;
         Position player = null;
         float yaw = 0f;
+        boolean here = false;
         if (sel != null && sel.ok() && world) {
             pl = schematics().placement(sel.relativePath());
             fp = schematics().footprint(sel.relativePath());
-            if (pl != null && pl.inThisDimension()) {
+            here = pl != null && pl.inThisDimension();
+            if (here && sampleTerrain) {
                 int cx = fp != null ? fp.x() + fp.sizeX() / 2 : pl.x();
                 int cz = fp != null ? fp.z() + fp.sizeZ() / 2 : pl.z();
-                t = schematics().terrain(cx, cz, Terrain.RADIUS_CHUNKS);
+                lastTerrain = schematics().terrain(cx, cz, Terrain.RADIUS_CHUNKS);
             }
             player = facade.world().playerPos();
             yaw = facade.world().playerYaw();
         }
-        pane.site(pl, fp, t, player, yaw, schematics().building());
+        if (!here) {
+            lastTerrain = null;
+        }
+        pane.site(pl, fp, lastTerrain, player, yaw, schematics().building());
     }
 
     private Row rowFor(String path) {
@@ -414,17 +431,22 @@ public final class SchematicsTab implements Tab, SchematicPane.Listener {
                 hoverRow = i;
                 hoverTicks = 0;
             }
+            String tip = pane.visible() ? pane.tipAt(mx, my) : null;
+            if (!java.util.Objects.equals(tip, hoverTip)) {
+                hoverTip = tip;
+                hoverTicks = 0;
+            }
             return d;
         }
 
         @Override
         public void tick() {
             super.tick();
-            poll();
+            poll(true);
             if (pane.armed() && ++armTicks >= ARM_TICKS) {
                 disarm();
             }
-            if (hoverRow >= 0 && hoverTicks < TIP_TICKS) {
+            if ((hoverRow >= 0 || hoverTip != null) && hoverTicks < TIP_TICKS) {
                 hoverTicks++;
             }
         }
@@ -522,9 +544,16 @@ public final class SchematicsTab implements Tab, SchematicPane.Listener {
         }
     }
 
-    // what the tooltip says for the row under the pointer, null when there is none or it has not rested long enough
+    // what the tooltip says for the row or the pane control under the pointer, null when there is none or it has
+    // not rested long enough
     String tipText() {
-        if (hoverRow < 0 || hoverTicks < TIP_TICKS || hoverRow >= shownRows.size()) {
+        if (hoverTicks < TIP_TICKS) {
+            return null;
+        }
+        if (hoverTip != null) {
+            return hoverTip;
+        }
+        if (hoverRow < 0 || hoverRow >= shownRows.size()) {
             return null;
         }
         Row r = shownRows.get(hoverRow);

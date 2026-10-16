@@ -13,6 +13,7 @@ import java.util.List;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
@@ -44,8 +45,23 @@ public class SchematicsTabTest {
         return out;
     }
 
+    // a click shows the file, the tick after it draws the map (terrain is the tick's business, not the click's)
     private void clickRow(int i) {
         p.click(tab.list().x() + 60, tab.rowMidY(i));
+        p.tick();
+        p.settle();
+    }
+
+    // a different window: the 540p and 640-wide cases
+    private void reopen(int w, int h) throws Exception {
+        facade = new FakeFacade();
+        SchematicsTab[] holder = new SchematicsTab[1];
+        p = new Preview(w, h, facade, pv -> {
+            holder[0] = new SchematicsTab(pv.theme, pv.facade, pv.ctx);
+            return List.of(holder[0]);
+        });
+        tab = holder[0];
+        tab.onShown();
         p.settle();
     }
 
@@ -653,6 +669,124 @@ public class SchematicsTabTest {
         assertEquals(v + 1, img.version());
         ticks(10);
         assertEquals(v + 1, img.version());
+    }
+
+    @Test
+    public void terrainIsAskedOnceATickAndNeverFromAClick() {
+        clickRow(0);
+        int n = facade.schematics.terrainCalls;
+        ticks(3);
+        assertEquals(n + 3, facade.schematics.terrainCalls);
+        clickControl("north");
+        clickControl("turnRight");
+        PlacementMap m = map();
+        p.press(m.footprintCentreX(), m.footprintCentreY());
+        p.drag(m.footprintCentreX() + 2 * m.pxPerBlock(), m.footprintCentreY());
+        p.release(m.footprintCentreX() + 2 * m.pxPerBlock(), m.footprintCentreY());
+        p.settle();
+        p.settle();
+        assertEquals(n + 3, facade.schematics.terrainCalls);
+        // the last snapshot stays up between ticks, the band is never blank after a click
+        assertNotNull(m.image());
+        ticks(1);
+        assertEquals(n + 4, facade.schematics.terrainCalls);
+    }
+
+    @Test
+    public void everyControlStaysAtTheNarrowestPanel() throws Exception {
+        // 58% of 830 is the 640 design px floor at the 0.75 scale a 540 window picks
+        reopen(830, 540);
+        clickRow(0);
+        var pane = tab.pane();
+        for (var b : pane.controls()) {
+            assertTrue(b.visible());
+            assertTrue(b.x() >= pane.x());
+            assertTrue(b.x() + b.w() <= pane.x() + pane.w());
+        }
+        // three rows here: the turns and mirror under the arrows, move to me on its own with its word
+        assertTrue(pane.control("turnLeft").y() > pane.control("north").y());
+        assertTrue(pane.control("feet").y() > pane.control("turnLeft").y());
+        assertEquals("Move to me", pane.control("feet").text());
+        assertEquals("Mirror", pane.control("mirror").text());
+        assertEquals(pane.control("north").y(), pane.control("down").y());
+        assertEquals(pane.control("turnLeft").y(), pane.control("mirror").y());
+        // and they still work
+        clickControl("west");
+        assertEquals(List.of("schematics move Small Castle.litematic -1 0 0"), facade.actions);
+    }
+
+    @Test
+    public void aShortBandFitsTheFootprintAndDropsTheCoordinatesChip() throws Exception {
+        reopen(960, 540);
+        clickRow(0);
+        PlacementMap m = map();
+        assertTrue(m.visible());
+        // 24 blocks at the default 2 px would spill a 56 design px band, so it starts at 1 px
+        assertEquals(0, m.scaleIndex());
+        assertTrue(24 * m.pxPerBlock() <= m.h());
+        assertFalse(m.showsCoordsChip());
+        // the wheel overrides the fit
+        p.scroll(m.x() + m.w() / 2f, m.y() + m.h() / 2f, 1);
+        assertEquals(1, m.scaleIndex());
+        p.scroll(m.x() + m.w() / 2f, m.y() + m.h() / 2f, -1);
+        assertEquals(0, m.scaleIndex());
+        // a roomy window keeps 2 px a block and the chip
+        reopen(1600, 900);
+        clickRow(0);
+        assertEquals(PlacementMap.DEFAULT_SCALE, map().scaleIndex());
+        assertTrue(map().showsCoordsChip());
+    }
+
+    @Test
+    public void controlsShowTheirNamesInTheTooltip() throws Exception {
+        clickRow(0);
+        var north = tab.pane().control("north");
+        p.hover(north.x() + north.w() / 2f, north.y() + north.h() / 2f);
+        ticks(9);
+        assertNull(tab.tipText());
+        ticks(1);
+        assertEquals("North", tab.tipText());
+        // both words fit at this width, so the worded buttons have nothing to add
+        var mirror = tab.pane().control("mirror");
+        assertEquals("Mirror", mirror.text());
+        p.hover(mirror.x() + 5, mirror.y() + 5);
+        ticks(10);
+        assertNull(tab.tipText());
+        // a pane just too narrow for both words (the panel only shrinks below about 1345 wide): mirror is a glyph
+        // and its word is the tooltip, move to me kept its
+        reopen(1280, 900);
+        clickRow(0);
+        mirror = tab.pane().control("mirror");
+        assertEquals("", mirror.text());
+        p.hover(mirror.x() + 5, mirror.y() + 5);
+        ticks(10);
+        assertEquals("Mirror", tab.tipText());
+        var feet = tab.pane().control("feet");
+        assertEquals("Move to me", feet.text());
+        p.hover(feet.x() + 5, feet.y() + 5);
+        ticks(10);
+        assertNull(tab.tipText());
+        // off the controls the tip goes
+        p.hover(-100, -100);
+        ticks(10);
+        assertNull(tab.tipText());
+    }
+
+    @Test
+    public void aWindowTooShortForTheControlsKeepsTheMapAndTheDrag() throws Exception {
+        reopen(830, 540);
+        clickRow(0);
+        // three rows here leave the band 28 px and the list nothing, but the band and the drag are still there
+        var pane = tab.pane();
+        PlacementMap m = map();
+        assertTrue(m.visible());
+        assertTrue(m.h() > 0);
+        assertTrue(24 * m.pxPerBlock() <= m.h());
+        assertTrue(pane.control("north").visible());
+        assertTrue(pane.list().h() >= 0);
+        p.press(m.footprintCentreX(), m.footprintCentreY());
+        assertTrue(m.dragging());
+        p.release(m.footprintCentreX(), m.footprintCentreY());
     }
 
     @Test
