@@ -1513,9 +1513,10 @@ public final class Settings {
      * placing blocks you don't have, or when a path that needs blocks (or a stone pickaxe) is a lot faster, see
      * {@link #fasterPathMinPercent} and {@link #fasterPathMinSeconds}.
      * <p>
-     * The question has clickable Yes and No buttons in chat ({@code gather yes} and {@code gather no} work too) and is
-     * asked at most once per trip. The answer holds until the trip ends: arriving, {@code stop}, a new trip, dying or
-     * changing dimension. Yes collects about what the path needs (through AltoClef) and carries on to the goal.
+     * The question has clickable Yes and No buttons in chat (typing {@code #gather yes} or {@code #gather no} works
+     * too) and is asked at most once per trip. The answer holds until the trip ends: arriving, {@code stop}, a new
+     * trip, dying or changing dimension. Yes collects about what the path needs (through Soprano) and carries on to the
+     * goal.
      * <p>
      * Off means the old behavior: the path fails and the bot stops, nothing is asked.
      */

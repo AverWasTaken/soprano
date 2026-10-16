@@ -21,6 +21,7 @@ import baritone.Baritone;
 import baritone.api.pathing.calc.IPath;
 import baritone.api.pathing.goals.Goal;
 import baritone.api.pathing.goals.GoalXZ;
+import baritone.api.pathing.goals.GoalYLevel;
 import baritone.api.pathing.movement.IMovement;
 import baritone.api.utils.BetterBlockPos;
 import baritone.api.utils.PathCalculationResult;
@@ -64,12 +65,26 @@ public final class WhatIfSearch {
 
     // the search thread. the context has to be safeForThreadedUse and nobody else's
     public static Result run(CalculationContext context, BetterBlockPos start, Goal goal, long timeoutMs) {
+        // GoalYLevel prices a drop off the context's descent cost, and only inside this window. the search opens its own,
+        // the before and after numbers need it too or estTicks isn't in the same units the search used
+        GoalYLevel.setDescentTicksPerBlock(context.descentTicksPerBlock());
+        try {
+            return search(context, start, goal, timeoutMs);
+        } finally {
+            GoalYLevel.resetDescentTicksPerBlock();
+        }
+    }
+
+    private static Result search(CalculationContext context, BetterBlockPos start, Goal goal, long timeoutMs) {
         Goal searched = searchGoal(goal, context);
         double startH = searched.heuristic(start);
         // no favoring and no mob avoidance: both the real and the what-if search get the same nothing, so the comparison
         // is between bags and not between moods
         AStarPathFinder finder = new AStarPathFinder(start, start.x, start.y, start.z, searched, new Favoring(null, context), context);
+        finder.quiet();
         PathCalculationResult result = finder.calculate(timeoutMs, timeoutMs);
+        // the finder resets the window on its way out, put it back for the end heuristic
+        GoalYLevel.setDescentTicksPerBlock(context.descentTicksPerBlock());
         Optional<IPath> path = result.getPath();
         if (path.isEmpty()) {
             return Result.none(startH);

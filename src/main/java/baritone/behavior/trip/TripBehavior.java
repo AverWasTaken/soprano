@@ -161,7 +161,7 @@ public final class TripBehavior extends Behavior {
             return "That question is from a trip that's over.";
         }
         if (trip.decision != Trip.Decision.PENDING) {
-            return trip.decision == Trip.Decision.UNASKED ? "Nothing to answer right now." : "Already answered for this trip.";
+            return trip.asked == null ? "Nothing to answer right now." : "Already answered for this trip.";
         }
         if (yes && movedOn(trip)) {
             endTrip();
@@ -199,7 +199,9 @@ public final class TripBehavior extends Behavior {
 
     private void tickStuck() {
         Goal goal = stuck;
-        if (goal == null) {
+        // a faster answer still waiting in `found` gets read first, next tick. launching now would let the two questions
+        // cross and the stuck one's message land while the faster one is up
+        if (goal == null || found.get() != null) {
             return;
         }
         Trip trip = book.forGoal(goal);
@@ -259,7 +261,7 @@ public final class TripBehavior extends Behavior {
         }
         try {
             WhatIfContext whatIf = WhatIfContext.create(baritone, true, pretendPickaxe);
-            CalculationContext real = kind == Trip.Ask.FASTER ? new CalculationContext(baritone, true) : null;
+            CalculationContext real = kind == Trip.Ask.FASTER ? WhatIfContext.real(baritone) : null;
             BetterBlockPos start = baritone.getPathingBehavior().pathStart();
             int have = baritone.getInventoryBehavior().spareThrowawayCount();
             long budget = s.failureTimeoutMS.value;
@@ -361,13 +363,17 @@ public final class TripBehavior extends Behavior {
         }
     }
 
-    // a yes that can't be kept turns into a no for the rest of the trip. one message, said here
+    // a yes that can't be kept turns into a no for the rest of the trip. so does a question we never got to ask: the
+    // trip is settled, a faster check or a late #gather yes can't dig it back up. one message, said here
     private void giveUp(Trip trip, boolean yes, String message) {
-        if (yes) {
-            book.refuse(trip.id);
-            book.tellNo(trip.id);
+        if (!yes && trip.decision == Trip.Decision.PENDING) {
+            TripPrompt.say(message);
+            return;
         }
-        TripPrompt.say(message);
+        book.refuse(trip.id);
+        if (book.tellNo(trip.id) != null) {
+            TripPrompt.say(message);
+        }
     }
 
     private void startGather(Trip trip, GatherPlan plan) {
@@ -391,8 +397,10 @@ public final class TripBehavior extends Behavior {
         }
         if (baritone.getCustomGoalProcess().getGoal() == next.goal) {
             // a faster route yes, still walking the slow one. the gather's first child cancels it too, but not before the
-            // trip goal gets a tick or two of walking the wrong way
-            baritone.getPathingBehavior().cancelEverything();
+            // trip goal gets a tick or two of walking the wrong way. just our goal, same as CustomBaritoneGoalTask's unstuck,
+            // cancelEverything would also take out a #mine or #follow that has nothing to do with us
+            baritone.getCustomGoalProcess().onLostControl();
+            baritone.getPathingBehavior().cancelSegmentIfSafe();
         }
         double estimate = TripMath.gatherTicks(plan.blocks(), plan.pickaxe(), s.gatherTicksPerBlock.value, s.gatherPickaxeTicks.value);
         gatherDeadline = ticks + (long) Math.max(MIN_GATHER_TICKS, 3 * estimate);
@@ -413,7 +421,7 @@ public final class TripBehavior extends Behavior {
                     baritone.getCustomGoalProcess().setGoalAndPath(trip.goal);
                 }
             }
-            case FAILED, NONE -> failGather(trip, "Collecting didn't work out.");
+            case FAILED, NONE -> failGather(trip, "Collecting got stopped or didn't work out.");
             case RUNNING -> {
                 if (ticks > gatherDeadline) {
                     gatherer.cancel(trip.id);

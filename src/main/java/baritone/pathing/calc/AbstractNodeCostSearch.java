@@ -71,6 +71,8 @@ public abstract class AbstractNodeCostSearch implements IPathFinder, Helper {
     private volatile boolean isFinished;
 
     protected boolean cancelRequested;
+    // a what-if (trip asks) failing is not news. no "No path found =(" popup for a search nobody is walking
+    protected boolean quiet;
 
     // the search ended because there was nothing left to expand, not because of a timeout or a cancel. only A* sets it
     protected volatile boolean exhausted;
@@ -288,6 +290,10 @@ public abstract class AbstractNodeCostSearch implements IPathFinder, Helper {
 
     // an empty result from a search that ran out of nodes is a real "can't get there", from a timed out one it is only "not
     // yet". NOT exposed on public api
+    public final void quiet() {
+        quiet = true;
+    }
+
     public final boolean exhausted() {
         return exhausted;
     }
