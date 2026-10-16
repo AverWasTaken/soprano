@@ -356,4 +356,23 @@ public class MaterialListTest {
         container.setItem(3, new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.STONE, 10));
         assertEquals(Map.of("minecraft:stone", 74), InventoryCounts.of(container));
     }
+
+    // one state priced alone is the same as a list of one, so the builder's missing map and the tab agree
+    @Test
+    public void itemsForOneStateFollowsTheListRules() {
+        assertEquals(one("stone", 1), MaterialList.itemsFor(Blocks.STONE.defaultBlockState()));
+        assertEquals(one("oak_slab", 2), MaterialList.itemsFor(
+            Blocks.OAK_SLAB.defaultBlockState().setValue(BlockStateProperties.SLAB_TYPE, SlabType.DOUBLE)));
+        assertEquals(one("torch", 1), MaterialList.itemsFor(Blocks.WALL_TORCH.defaultBlockState()));
+        assertEquals(one("kelp", 1), MaterialList.itemsFor(Blocks.KELP_PLANT.defaultBlockState()));
+        assertEquals(Map.of("minecraft:flower_pot", 1, "minecraft:poppy", 1),
+            MaterialList.itemsFor(Blocks.POTTED_POPPY.defaultBlockState()));
+        // second halves, air, fluids and fire have nothing to buy
+        assertTrue(MaterialList.itemsFor(Blocks.OAK_DOOR.defaultBlockState()
+            .setValue(BlockStateProperties.DOUBLE_BLOCK_HALF, DoubleBlockHalf.UPPER)).isEmpty());
+        assertTrue(MaterialList.itemsFor(Blocks.AIR.defaultBlockState()).isEmpty());
+        assertTrue(MaterialList.itemsFor(Blocks.WATER.defaultBlockState()).isEmpty());
+        assertTrue(MaterialList.itemsFor(Blocks.FIRE.defaultBlockState()).isEmpty());
+        assertTrue(MaterialList.itemsFor(null).isEmpty());
+    }
 }

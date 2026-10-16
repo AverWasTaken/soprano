@@ -278,6 +278,18 @@ public class McSchematicsPlacementTest {
     }
 
     @Test
+    public void aRefusedBuildSaysWhy() {
+        McSchematics s = make();
+        game.refuse = "Can't build in adventure mode";
+        s.build("wall.schem");
+        drain();
+        assertEquals(BuildState.ERROR, s.building().state());
+        assertEquals("Can't build in adventure mode", s.building().message());
+        assertEquals(List.of("Can't build in adventure mode"), game.said);
+        assertTrue(game.built.isEmpty());
+    }
+
+    @Test
     public void aFileThatWillNotReadIsAnErrorInChatToo() throws Exception {
         McSchematics s = make();
         s.placement("wall.schem");

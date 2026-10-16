@@ -1,6 +1,8 @@
 package adris.altoclef.ui.gui.mc;
 
+import adris.altoclef.AltoClef;
 import adris.altoclef.TaskCatalogue;
+import adris.altoclef.tasks.construction.SchematicBuildTask;
 import adris.altoclef.ui.gui.facade.ItemsAccess.ItemEntry;
 import adris.altoclef.ui.gui.facade.Result;
 import adris.altoclef.ui.gui.facade.SchematicsAccess;
@@ -12,7 +14,9 @@ import baritone.api.process.IBuilderProcess;
 import baritone.api.schematic.ISchematic;
 import baritone.api.schematic.IStaticSchematic;
 import baritone.api.schematic.SchematicTransforms;
+import baritone.api.command.exception.CommandException;
 import baritone.api.utils.Helper;
+import baritone.altoclef.AltoClefBridge;
 import baritone.cache.WorldData;
 import baritone.utils.schematic.library.InventoryCounts;
 import baritone.utils.schematic.library.MaterialLine;
@@ -31,6 +35,7 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.Mirror;
@@ -93,6 +98,13 @@ public final class McSchematics implements SchematicsAccess {
         FilePicker.Choice pick(List<String> extensions, String title);
     }
 
+    // Game.build saying no on purpose, with the reason the player gets to read
+    static final class Refused extends RuntimeException {
+        Refused(String why) {
+            super(why, null, false, false);
+        }
+    }
+
     // the world side of placing and building, a seam so the tests run without a game. game thread only, all of it
     interface Game {
         // the level id the player is in ("minecraft:overworld"), null when there's no world
@@ -109,10 +121,10 @@ public final class McSchematics implements SchematicsAccess {
 
         TerrainMap.Source terrain();
 
-        // starts it and hands back the builder's serial for it, see runningBuild
+        // starts it and hands back its serial, see runningBuild. in survival that's the gathering task's, not the builder's
         long build(String name, IStaticSchematic schematic, BlockPos origin, Rotation rotation, Mirror mirror);
 
-        // the serial of whatever the builder is building right now, 0 when it's idle
+        // the serial of whatever is building right now (our gathering task while it runs, else the builder), 0 when idle
         long runningBuild();
 
         // a line in chat, for when a build fails after the click (the tab may be closed by then)
@@ -687,6 +699,9 @@ public final class McSchematics implements SchematicsAccess {
         try {
             ourBuild = game.build(info.file().getName(), schematic, p.origin(), p.rotation(), p.mirror());
             building = new Building(BuildState.STARTED, info.relativePath(), "Building " + info.name());
+        } catch (Refused r) {
+            building = new Building(BuildState.ERROR, info.relativePath(), r.getMessage());
+            game.say(r.getMessage());
         } catch (Throwable t) {
             Safe.report("gui schematic build", t);
             building = new Building(BuildState.ERROR, info.relativePath(), "Could not start building");
@@ -917,8 +932,21 @@ public final class McSchematics implements SchematicsAccess {
             return level == null ? null : new LevelSource(level);
         }
 
+        // survival goes through altoclef so the materials get gathered first, creative builds straight away (the
+        // builder places from thin air there). adventure and spectator can't place blocks at all. decided now and not
+        // at the click, the read in between can take a while
         @Override
         public long build(String name, IStaticSchematic schematic, BlockPos origin, Rotation rotation, Mirror mirror) {
+            GameType mode = gameMode();
+            if (mode != GameType.SURVIVAL && mode != GameType.CREATIVE) {
+                throw new Refused("Can't build in " + (mode == null ? "this game mode" : mode.getName() + " mode"));
+            }
+            AltoClef alto = mode == GameType.SURVIVAL ? altoClef() : null;
+            if (alto != null) {
+                SchematicBuildTask task = new SchematicBuildTask(name, schematic, origin, rotation, mirror);
+                alto.runUserTask(task);
+                return task.serial();
+            }
             IBuilderProcess builder = BaritoneAPI.getProvider().getPrimaryBaritone().getBuilderProcess();
             builder.build(name, schematic, origin, rotation, mirror);
             return builder.buildSerial();
@@ -926,7 +954,27 @@ public final class McSchematics implements SchematicsAccess {
 
         @Override
         public long runningBuild() {
+            // the task holds the build the whole way, gathering included, so the tab keeps saying building
+            AltoClef alto = AltoClef.getInstance();
+            if (alto != null && alto.getUserTaskChain().getCurrentTask() instanceof SchematicBuildTask task && task.running()) {
+                return task.serial();
+            }
             return BaritoneAPI.getProvider().getPrimaryBaritone().getBuilderProcess().buildSerial();
+        }
+
+        private static GameType gameMode() {
+            var gameMode = Minecraft.getInstance().gameMode;
+            return gameMode == null ? null : gameMode.getPlayerMode();
+        }
+
+        // null when altoclef is off this session, then it's the plain builder with whatever the player carries
+        private AltoClef altoClef() {
+            try {
+                return AltoClefBridge.require();
+            } catch (CommandException e) {
+                say("Altoclef is off, building without gathering anything");
+                return null;
+            }
         }
 
         @Override

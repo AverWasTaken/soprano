@@ -311,7 +311,8 @@ public final class SchematicsTab implements Tab, SchematicPane.Listener {
         startBuild();
     }
 
-    // the one place a build starts from. the gather step of slice 3 goes in front of the facade call here
+    // the one place a build starts from. gathering lives behind the facade (McSchematics hands survival builds to
+    // SchematicBuildTask), so the tab stays one call and the preview fake doesn't need to know
     private void startBuild() {
         Row sel = rowFor(selectedPath);
         if (sel == null || !sel.ok()) {
