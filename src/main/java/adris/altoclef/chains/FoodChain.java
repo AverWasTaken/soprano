@@ -186,7 +186,7 @@ public class FoodChain extends SingleTaskChain {
         // a committed run or fight, or a stance that is not calm (the quick bite and the gapple live there)
         boolean combat = defense != null && (defense.combatMode() != CombatCommit.Mode.NONE || stance(mod) != CombatRules.Stance.CALM);
         // (an escape in progress rides the same road as a fight's meal until it is done: no pause, no standing)
-        return new BiteRules.Scene(combat || _onTheMove, _biting, Minecraft.getInstance().gui.screen() != null, player.onGround(), player.isInWater(),
+        return new BiteRules.Scene(combat || _onTheMove, _biting, Minecraft.getInstance().screen != null, player.onGround(), player.isInWater(),
                 player.onClimbable(), player.isPassenger(), player.getDeltaMovement().horizontalDistance(), pathLive,
                 hasCurrent && !baritone.getPathingBehavior().isPathing(), baritone.getPathingBehavior().isSafeToCancel(), hitAge(mod));
     }
@@ -227,7 +227,7 @@ public class FoodChain extends SingleTaskChain {
                 // once per stuck bite is plenty
                 if (!_stuckLogged) {
                     _stuckLogged = true;
-                    Screen screen = Minecraft.getInstance().gui.screen();
+                    Screen screen = Minecraft.getInstance().screen;
                     Debug.logInternal(String.format("food: use did not start (held=%s using=false key=%s screen=%s), pressing again",
                             BuiltInRegistries.ITEM.getKey(player.getMainHandItem().getItem()).getPath(),
                             mod.getInputControls().isHeldDown(Input.CLICK_RIGHT) ? "down" : "up",

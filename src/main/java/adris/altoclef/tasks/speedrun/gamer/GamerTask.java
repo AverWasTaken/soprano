@@ -317,7 +317,7 @@ public class GamerTask extends Task {
         }
         // credits can show up between two of our ticks (the dragon dies, the screen opens), record it now so a task that
         // is finished but never stopped (altoRunsWhenIdle) still leaves a saved DONE behind
-        if (begun && !machine.ended() && Minecraft.getInstance().gui.screen() instanceof WinScreen) {
+        if (begun && !machine.ended() && Minecraft.getInstance().screen instanceof WinScreen) {
             machine.finish(true);
         }
         // the win card is handed over here and not only on stop: with altoRunsWhenIdle the runner stays up and a finished task is
@@ -947,7 +947,7 @@ public class GamerTask extends Task {
             lastPlayer = player;
             deadSeen = false;
         }
-        boolean dying = player.isDeadOrDying() || Minecraft.getInstance().gui.screen() instanceof DeathScreen;
+        boolean dying = player.isDeadOrDying() || Minecraft.getInstance().screen instanceof DeathScreen;
         if (!deadSeen && dying) {
             deadSeen = true;
             adopt(DeathStash.snapshot(player));
@@ -1111,7 +1111,7 @@ public class GamerTask extends Task {
     // starts when NightSleep.decide says so. mob defense hears about the stage through the hook, every tick
     private Task nightSleepTick(AltoClef mod) {
         double seconds = facts.gameTime() * 0.05;
-        nightBudget.roll(NightSleep.nightOf(mod.getWorld().getOverworldClockTime()));
+        nightBudget.roll(NightSleep.nightOf(mod.getWorld().getDayTime()));
         if (nightTrip != null) {
             if (nightTrip.isFinished(mod) || facts.dimension() != Dimension.OVERWORLD) {
                 // (the bed a dead or dropped trip left is picked up by a cleanup trip)
@@ -1180,7 +1180,7 @@ public class GamerTask extends Task {
     // one line when the answer to "why is it not in bed" changes, and only through the evening and the night (a screen opening
     // in the middle of the day is nobody's business). the key is what changed, the rest rides along
     private void sayNight(AltoClef mod, NightSleep.Why why, NightSleep.Busy busy, NightSleep.BedSource source) {
-        long timeOfDay = Math.floorMod(mod.getWorld().getOverworldClockTime(), NightSleep.DAY_LENGTH);
+        long timeOfDay = Math.floorMod(mod.getWorld().getDayTime(), NightSleep.DAY_LENGTH);
         long lead = Math.max(cfg.overworld.nightCraftLeadTicks, cfg.overworld.nightWoolLeadTicks);
         boolean evening = timeOfDay >= NightSleep.EARLIEST_WINDOW - lead && timeOfDay < NightSleep.PREP_END;
         if (!evening && mod.getWorld().isBrightOutside()) {
@@ -1232,7 +1232,7 @@ public class GamerTask extends Task {
     // branch runs on, or a screen that closed and opened again during a trip would look like it had been up the whole time
     private void trackNightGates() {
         // (a chat box, the pause menu or the bed screen is not items moving, only a container is)
-        if (Minecraft.getInstance().gui.screen() instanceof AbstractContainerScreen<?>) {
+        if (Minecraft.getInstance().screen instanceof AbstractContainerScreen<?>) {
             if (screenSince < 0) {
                 screenSince = facts.gameTime();
             }

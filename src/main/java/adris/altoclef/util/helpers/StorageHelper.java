@@ -57,7 +57,7 @@ public class StorageHelper {
     public static void closeScreen() {
         if (Minecraft.getInstance().player == null)
             return;
-        Screen screen = Minecraft.getInstance().gui.screen();
+        Screen screen = Minecraft.getInstance().screen;
         if (
                 screen != null &&
                         !(screen instanceof PauseScreen) &&

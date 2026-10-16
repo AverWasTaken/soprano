@@ -119,7 +119,7 @@ public class ExampleBaritoneControl extends Behavior implements Helper {
                 return true;
             }
         } else if (argc.hasExactlyOne()) {
-            Settings.Setting setting = settings.findByLowerName(pair.first().toLowerCase(Locale.US));
+            Settings.Setting setting = settings.findByLowerName(pair.getA().toLowerCase(Locale.US));
             if (setting != null && !setting.isJavaOnly()) {
                 logRanCommand(command, rest);
                 try {

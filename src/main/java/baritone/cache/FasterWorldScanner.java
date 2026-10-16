@@ -190,7 +190,7 @@ public enum FasterWorldScanner implements IWorldScanner {
 
         int playerSectionY = (ctx.playerFeet().y - ctx.world().getMinY()) >> 4;
 
-        LevelChunk chunk = chunkProvider.getChunk(pos.x(), pos.z(), false);
+        LevelChunk chunk = chunkProvider.getChunk(pos.x, pos.z, false);
         if (chunk == null) { // unloaded between hasChunk and here, we're not on the main thread
             return Stream.empty();
         }

@@ -28,7 +28,6 @@ import java.util.function.Predicate;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.InteractionHand;
-import net.minecraft.world.item.component.SwingAnimation;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.item.ItemStack;
@@ -288,7 +287,7 @@ public class PlaceBlockNearbyTask extends Task {
             assert Minecraft.getInstance().gameMode != null;
             if (Minecraft.getInstance().gameMode.useItemOn(mod.getPlayer(), hand, (BlockHitResult) mouseOver) == InteractionResult.SUCCESS &&
                     mod.getPlayer().isShiftKeyDown()) {
-                mod.getPlayer().swing(hand, SwingAnimation.DEFAULT, false);
+                mod.getPlayer().swing(hand);
                 _justPlaced = targetPlace;
                 Debug.logMessage("PRESSED");
                 return true;

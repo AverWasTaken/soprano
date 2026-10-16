@@ -5,6 +5,7 @@ import adris.altoclef.AltoSettings;
 import adris.altoclef.AltoClef;
 import adris.altoclef.util.WoodType;
 import java.util.*;
+import net.minecraft.client.Minecraft;
 import net.minecraft.core.Holder;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -24,10 +25,9 @@ import net.minecraft.tags.ItemTags;
 import net.minecraft.world.entity.ai.attributes.Attribute;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
-import net.minecraft.world.item.component.CookingFuel;
+import net.minecraft.world.level.block.entity.FuelValues;
 import net.minecraft.world.item.component.ItemAttributeModifiers;
 import net.minecraft.world.item.component.Tool;
-import net.minecraft.world.level.storage.loot.providers.number.ints.ResolvableInt;
 import net.minecraft.world.level.material.MapColor;
 
 /**
@@ -290,6 +290,7 @@ public class ItemHelper {
     };
     public static final Item[] RAW_FOODS = _cookableFoodMap.keySet().toArray(Item[]::new);
     private static Map<Item, Integer> _fuelTimeMap = null;
+    private static FuelValues _fuelValues = null;
 
     public static String stripItemName(Item item) {
         String[] possibilities = new String[]{"item.minecraft.", "block.minecraft."};
@@ -451,55 +452,20 @@ public class ItemHelper {
         return to.getItem().equals(from.getItem()) && (from.getCount() + to.getCount() <= to.getMaxStackSize());
     }
 
-    // burn ticks in a plain furnace, by the path of the context_int_provider an item's cooking fuel component points at.
-    // those providers are div(ticks, 1 or 2) behind a "is this a smoker" condition, they need a server level and a
-    // loot context to evaluate, and the client never gets the registry. so this is the left side of the div from the
-    // vanilla data (the plain furnace divides by 1). staying a table for good, FuelTableTest holds it against the jar's data
-    private static final Map<String, Integer> FURNACE_BURN_TICKS = Map.ofEntries(
-            Map.entry("cooking/time_bamboo", 50),
-            Map.entry("cooking/time_blaze_rod", 2400),
-            Map.entry("cooking/time_boats", 1200),
-            Map.entry("cooking/time_coal", 1600),
-            Map.entry("cooking/time_coal_block", 16000),
-            Map.entry("cooking/time_dried_kelp_block", 4001),
-            Map.entry("cooking/time_dry_plants", 100),
-            Map.entry("cooking/time_hanging_signs", 800),
-            Map.entry("cooking/time_lava_bucket", 20000),
-            Map.entry("cooking/time_roots", 300),
-            Map.entry("cooking/time_wood_blocks", 300),
-            Map.entry("cooking/time_wood_items_extra_small", 100),
-            Map.entry("cooking/time_wood_items_large", 200),
-            Map.entry("cooking/time_wood_items_small", 300),
-            Map.entry("cooking/time_wood_slabs", 150),
-            Map.entry("cooking/time_wool", 100),
-            Map.entry("cooking/time_wool_carpets", 67),
-            Map.entry("cooking/time_wool_slabs", 50)
-    );
-
     private static Map<Item, Integer> getFuelTimeMap() {
-        // 1.21.2: fuel is a component on the item now (it is data driven), not a static table on the furnace
-        if (_fuelTimeMap == null) {
-            // item components only exist once registry data has loaded (main menu: nothing yet), same as the old no-world answer
-            if (!Items.COAL.builtInRegistryHolder().areComponentsBound()) {
-                return Map.of();
-            }
+        // 1.21.2: the fuel table lives on the level now (it is data driven), not in a static on the furnace
+        var level = Minecraft.getInstance().level;
+        if (level == null) {
+            return _fuelTimeMap == null ? Map.of() : _fuelTimeMap;
+        }
+        FuelValues values = level.fuelValues();
+        if (_fuelTimeMap == null || values != _fuelValues) {
             Map<Item, Integer> map = new HashMap<>();
-            for (Item item : BuiltInRegistries.ITEM) {
-                CookingFuel fuel = item.components().get(DataComponents.COOKING_FUEL);
-                if (fuel == null) {
-                    continue;
-                }
-                Integer ticks = null;
-                if (fuel.burnTime() instanceof ResolvableInt.Constant constant) {
-                    ticks = constant.value();
-                } else if (fuel.burnTime() instanceof ResolvableInt.Reference reference) {
-                    ticks = FURNACE_BURN_TICKS.get(reference.key().identifier().getPath());
-                }
-                if (ticks != null) {
-                    map.put(item, ticks);
-                }
+            for (Item item : values.fuelItems()) {
+                map.put(item, values.burnDuration(new ItemStack(item)));
             }
             _fuelTimeMap = map;
+            _fuelValues = values;
         }
         return _fuelTimeMap;
     }

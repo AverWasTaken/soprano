@@ -31,7 +31,7 @@ public class SlotScreenMapping {
 
     @SuppressWarnings("unchecked")
     public static boolean isScreenOpen(Class slotType) {
-        Screen screen = Minecraft.getInstance().gui.screen();
+        Screen screen = Minecraft.getInstance().screen;
         if (!_classList.isEmpty()) {
             for (SlotScreenMappingEntry entry : _classList) {
                 if (slotType == entry.type || slotType.isAssignableFrom(entry.type)) {
@@ -43,7 +43,7 @@ public class SlotScreenMapping {
     }
 
     public static Slot getFromScreen(int slot, boolean inventory) {
-        Screen screen = Minecraft.getInstance().gui.screen();
+        Screen screen = Minecraft.getInstance().screen;
         if (!_classList.isEmpty()) {
             for (SlotScreenMappingEntry entry : _classList) {
                 if (entry.inScreen.test(screen)) {

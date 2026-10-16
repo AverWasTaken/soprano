@@ -102,7 +102,7 @@ public class PlayerInteractionFixChain extends TaskChain {
             // were the inventory and the 72 clicks land in the container, and on the ones it does know they reset the slot
             // cooldown under whatever task is working the screen. the timer stays elapsed, it goes the tick the screen shuts
             // the clicks go to containerMenu, so a menu still open behind a closed screen counts too
-            boolean containerOpen = Minecraft.getInstance().gui.screen() instanceof AbstractContainerScreen<?>
+            boolean containerOpen = Minecraft.getInstance().screen instanceof AbstractContainerScreen<?>
                     || mod.getPlayer().containerMenu != mod.getPlayer().inventoryMenu;
             if (!mod.getControllerExtras().isBreakingBlock() && !containerOpen) {
                 // this fires every 30s for as long as altoclef runs, chat is no place for it
@@ -152,7 +152,7 @@ public class PlayerInteractionFixChain extends TaskChain {
             if (_keptStackWatch.tick()) {
                 ItemStack kept = StorageHelper.getItemStackInCursorSlot();
                 Debug.logMessage("Bag is full and nothing to swap, dropping the held " + kept.getCount() + "x " + kept.getItem().getDescriptionId());
-                if (Minecraft.getInstance().gui.screen() != null) {
+                if (Minecraft.getInstance().screen != null) {
                     StorageHelper.closeScreen();
                 } else {
                     mod.getSlotHandler().clickSlot(Slot.UNDEFINED, 0, ClickType.PICKUP);
@@ -194,7 +194,7 @@ public class PlayerInteractionFixChain extends TaskChain {
         if (!Baritone.settings().altoAutoCloseScreenWhenLookingOrMining.value)
             return false;
         // Only check look if we've had the same screen open for a while
-        Screen openScreen = Minecraft.getInstance().gui.screen();
+        Screen openScreen = Minecraft.getInstance().screen;
         if (openScreen != _lastScreen) {
             _mouseMovingButScreenOpenTimeout.reset();
         }

@@ -539,7 +539,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
 
         // altoclef pausing interactions means no breaking, no placing and no hotbar shuffling, we just keep walking
         boolean interactionPaused = AltoClefSettings.getInstance().isInteractionPaused();
-        Optional<Pair<BetterBlockPos, Rotation>> toBreak = toBreakNearPlayer(bcc);
+        Optional<Tuple<BetterBlockPos, Rotation>> toBreak = toBreakNearPlayer(bcc);
         if (!interactionPaused && toBreak.isPresent() && isSafeToCancel && ctx.player().onGround()) {
             // we'd like to pause to break this block
             // only change look direction if it's safe (don't want to fuck up an in progress parkour for example

@@ -42,7 +42,6 @@ import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.vehicle.boat.AbstractBoat;
 import net.minecraft.world.item.BoatItem;
-import net.minecraft.world.item.component.SwingAnimation;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.EntityHitResult;
@@ -739,8 +738,10 @@ public final class BoatTrip implements Helper {
             // no sneaking here or the boat just says no (secondary use), and the packet carries our shift
             // state so the server would refuse the ride too
             EntityHitResult hit = new EntityHitResult(boat, hullHit);
-            // interactAt and interact are one call now, the hit point rides along in the same packet
-            ctx.minecraft().gameMode.interact(ctx.player(), boat, hit, InteractionHand.MAIN_HAND);
+            // same two step vanilla does on a right click: interactAt with the hit point, then plain interact if that passed
+            if (!ctx.minecraft().gameMode.interactAt(ctx.player(), boat, hit, InteractionHand.MAIN_HAND).consumesAction()) {
+                ctx.minecraft().gameMode.interact(ctx.player(), boat, InteractionHand.MAIN_HAND);
+            }
         }
         return Result.CONTINUE;
     }
@@ -1114,7 +1115,7 @@ public final class BoatTrip implements Helper {
         // and breaks it past 40, so five hits. spaced out a bit so it doesn't look like an autoclicker
         if (ticksInPhase % 4 == 1) {
             ctx.minecraft().gameMode.attack(ctx.player(), vehicle);
-            ctx.player().swing(InteractionHand.MAIN_HAND, SwingAnimation.DEFAULT, false);
+            ctx.player().swing(InteractionHand.MAIN_HAND);
         }
         return Result.CONTINUE;
     }

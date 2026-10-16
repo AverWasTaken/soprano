@@ -45,6 +45,7 @@ import baritone.utils.ToolSet;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Vec3i;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.util.Tuple;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
@@ -1026,7 +1027,7 @@ public class PathExecutor implements IPathExecutor, Helper {
                     fakeState.getInputStates().clear();
                     return true;
                 }
-                behavior.baritone.getLookBehavior().updateTarget(RotationUtils.calcRotationFromVec3d(ctx.playerHead(), data.first(), ctx.playerRotations()), false);
+                behavior.baritone.getLookBehavior().updateTarget(RotationUtils.calcRotationFromVec3d(ctx.playerHead(), data.getA(), ctx.playerRotations()), false);
                 behavior.baritone.getInputOverrideHandler().setInputForceState(Input.MOVE_FORWARD, true);
                 return true;
             }
@@ -1417,7 +1418,7 @@ public class PathExecutor implements IPathExecutor, Helper {
         return true;
     }
 
-    private Pair<Vec3, BlockPos> overrideFall(MovementFall movement) {
+    private Tuple<Vec3, BlockPos> overrideFall(MovementFall movement) {
         Vec3i dir = movement.getDirection();
         if (dir.getY() < -3) {
             return null;

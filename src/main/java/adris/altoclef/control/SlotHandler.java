@@ -94,7 +94,7 @@ public class SlotHandler {
     // back to back clicks see each other and the server replays the same thing
     private boolean sendClick(LocalPlayer player, int syncId, int windowSlot, int mouseButton, ClickType type) {
         try {
-            _mod.getController().handleContainerInput(syncId, windowSlot, mouseButton, type, player);
+            _mod.getController().handleInventoryMouseClick(syncId, windowSlot, mouseButton, type, player);
         } catch (Exception e) {
             Debug.logWarning("Slot Click Error (ignored)");
             e.printStackTrace();

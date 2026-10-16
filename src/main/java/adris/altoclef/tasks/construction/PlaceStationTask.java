@@ -22,7 +22,6 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.InteractionHand;
-import net.minecraft.world.item.component.SwingAnimation;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.Pose;
@@ -229,7 +228,7 @@ public class PlaceStationTask extends Task {
         assert Minecraft.getInstance().gameMode != null;
         InteractionResult result = Minecraft.getInstance().gameMode.useItemOn(player, InteractionHand.MAIN_HAND, bhit);
         if (result.consumesAction()) {
-            player.swing(InteractionHand.MAIN_HAND, SwingAnimation.DEFAULT, false);
+            player.swing(InteractionHand.MAIN_HAND);
             _attempt.clicked();
         } else {
             lose(mod, "the click was refused");

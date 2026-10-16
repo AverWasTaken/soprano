@@ -387,7 +387,7 @@ public final class ResourceDetour {
 
     private boolean visible(AltoClef mod, BlockPos pos) {
         // the gui clock and not game time, which stands still under /tick freeze while we keep walking
-        long now = Minecraft.getInstance().gui.hud.getGuiTicks();
+        long now = Minecraft.getInstance().gui.getGuiTicks();
         if (now != sightTick) {
             sight.clear();
             sightTick = now;

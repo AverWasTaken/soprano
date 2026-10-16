@@ -182,10 +182,10 @@ abstract class ChunkSearchTask extends Task {
             _searchedAlready.add(pos);
             if (isChunkPartOfSearchSpace(mod, pos)) {
                 // This chunk may lead to more, so either search or enqueue its neighbors.
-                searchChunkOrQueueSearch(mod, new ChunkPos(pos.x() + 1, pos.z()));
-                searchChunkOrQueueSearch(mod, new ChunkPos(pos.x() - 1, pos.z()));
-                searchChunkOrQueueSearch(mod, new ChunkPos(pos.x(), pos.z() + 1));
-                searchChunkOrQueueSearch(mod, new ChunkPos(pos.x(), pos.z() - 1));
+                searchChunkOrQueueSearch(mod, new ChunkPos(pos.x + 1, pos.z));
+                searchChunkOrQueueSearch(mod, new ChunkPos(pos.x - 1, pos.z));
+                searchChunkOrQueueSearch(mod, new ChunkPos(pos.x, pos.z + 1));
+                searchChunkOrQueueSearch(mod, new ChunkPos(pos.x, pos.z - 1));
             }
             return true;
         }

@@ -74,7 +74,7 @@ public abstract class Slot {
     }
 
     private static ContainerType getCurrentType() {
-        Screen screen = Minecraft.getInstance().gui.screen();
+        Screen screen = Minecraft.getInstance().screen;
         if (screen instanceof FurnaceScreen || screen instanceof SmokerScreen || screen instanceof BlastFurnaceScreen) {
             return ContainerType.FURNACE_OR_SMITH_OR_SMOKER_OR_BLAST;
         }

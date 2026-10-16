@@ -245,7 +245,7 @@ public class PlaceBedAndSetSpawnTask extends Task {
             setDebugState("Going to the overworld first.", "Heading to the Overworld");
             return new DefaultGoToDimensionTask(Dimension.OVERWORLD);
         }
-        Screen screen = Minecraft.getInstance().gui.screen();
+        Screen screen = Minecraft.getInstance().screen;
         if (screen instanceof InBedChatScreen) {
             _progressChecker.reset();
             setDebugState("Sleeping...", "Sleeping");

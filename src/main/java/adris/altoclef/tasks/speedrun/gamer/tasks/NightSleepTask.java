@@ -557,10 +557,10 @@ public class NightSleepTask extends Task {
     private Task sleep(AltoClef mod, long now) {
         LocalPlayer player = mod.getPlayer();
         ClientLevel world = mod.getWorld();
-        boolean asleep = player.isSleeping() || Minecraft.getInstance().gui.screen() instanceof InBedChatScreen;
+        boolean asleep = player.isSleeping() || Minecraft.getInstance().screen instanceof InBedChatScreen;
         if (asleep) {
             if (!wasAsleep) {
-                asleepDayTime = world.getOverworldClockTime();
+                asleepDayTime = world.getDayTime();
             }
             wasAsleep = true;
             asleepTicks++;
@@ -581,7 +581,7 @@ public class NightSleepTask extends Task {
             if (upSince < 0) {
                 upSince = now;
             }
-            NightSleep.Wake wake = NightSleep.wake(asleepTicks, world.isBrightOutside(), asleepDayTime, world.getOverworldClockTime(), now - upSince,
+            NightSleep.Wake wake = NightSleep.wake(asleepTicks, world.isBrightOutside(), asleepDayTime, world.getDayTime(), now - upSince,
                     cfg.get().nightWakeGraceTicks);
             if (wake == NightSleep.Wake.WAIT) {
                 // (still reads night, the time packet may be on its way)
