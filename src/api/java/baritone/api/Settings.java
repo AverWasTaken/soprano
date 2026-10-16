@@ -2290,7 +2290,7 @@ public final class Settings {
     public final Setting<Boolean> altoIronArbiter = new Setting<>(true);
 
     /**
-     * {@code #gamer} only. When night falls and the bot has a bed to use (one in the bag, the wool and planks to craft one, or
+     * {@code #gamer} and survival schematic builds. When night falls and the bot has a bed to use (one in the bag, the wool and planks to craft one, or
      * one standing close by) it sleeps through the night instead of working on and fighting mobs until morning. Minecraft
      * refuses to let anyone sleep with monsters near the bed, so when there are some the bot does not fight them: it
      * pillars up out of their range, puts the bed on top and sleeps there. A bed the bot placed itself is picked up again
@@ -2300,6 +2300,9 @@ public final class Settings {
      * planks it already holds, and in the last four minutes, with sheep close by and no wool, it hunts three wool of one
      * colour first (150 seconds at most, then it leaves it for the evening). With no bed and no wool it works the night as
      * before.
+     * <p>
+     * A schematic build stops the builder for the night (and for the evening's wool or craft), then walks back and counts
+     * again in the morning before building on. The pillar only uses blocks held above what the rest of the build needs.
      */
     public final Setting<Boolean> altoSleepAtNight = new Setting<>(true);
 

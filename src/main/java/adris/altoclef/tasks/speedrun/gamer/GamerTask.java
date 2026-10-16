@@ -24,10 +24,10 @@ import adris.altoclef.tasks.speedrun.gamer.phases.OpenPhase;
 import adris.altoclef.tasks.speedrun.gamer.phases.PortalPhase;
 import adris.altoclef.tasks.speedrun.gamer.phases.ReturnPhase;
 import adris.altoclef.tasks.speedrun.gamer.phases.RoomPhase;
-import adris.altoclef.tasks.resources.CollectBedTask;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NetherRecoverTask;
 import adris.altoclef.tasks.speedrun.gamer.tasks.BedCraft;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NetherTripRules;
+import adris.altoclef.tasks.speedrun.gamer.tasks.NightBeds;
 import adris.altoclef.tasks.speedrun.gamer.tasks.NightSleepTask;
 import adris.altoclef.tasks.speedrun.gamer.tasks.RecoverItemsTask;
 import adris.altoclef.tasks.speedrun.gamer.tasks.RecoverRules;
@@ -40,7 +40,6 @@ import adris.altoclef.util.helpers.CombatCommit;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.NightSleepHook;
 import adris.altoclef.util.helpers.StationHook;
-import adris.altoclef.util.helpers.WorldHelper;
 import baritone.Baritone;
 import baritone.altoclef.SettingsOverrides;
 import baritone.api.Settings;
@@ -55,7 +54,6 @@ import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
-import net.minecraft.world.level.block.BedBlock;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
@@ -1121,7 +1119,7 @@ public class GamerTask extends Task {
                 machine.releaseHold();
                 return null;
             }
-            NightSleepHook.set(nightTrip.stage());
+            NightSleepHook.set(nightTrip.stage(), mod.getWorld().getGameTime());
             return nightTrip;
         }
         NightSleepHook.clear();
@@ -1255,105 +1253,13 @@ public class GamerTask extends Task {
         return mod.getMobDefenseChain().combatMode() != CombatCommit.Mode.NONE;
     }
 
-    // one of our own beds from an earlier trip, still standing close enough to walk back for. one that is gone is forgotten
+    // (NightBeds has the reasoning, the schematic build asks the same two questions)
     private boolean leftoverNightBed(AltoClef mod) {
-        RunState.Pos at = state.nightBed;
-        if (at == null) {
-            return false;
-        }
-        BlockPos pos = new BlockPos(at.x, at.y, at.z);
-        boolean standing = mod.getWorld().hasChunkAt(pos) && mod.getWorld().getBlockState(pos).getBlock() instanceof BedBlock;
-        if (standing && pos.closerToCenterThan(mod.getPlayer().position(), cfg.overworld.nightBedRadius + 8)) {
-            return true;
-        }
-        // taken or broken by somebody, or too far or unloaded to walk back for: not ours to keep a claim on. a claim left standing
-        // here would start a trip that reads an unloaded bed as air and goes looking for its item
-        state.nightBed = null;
-        host.save();
-        return false;
+        return NightBeds.leftover(mod, state, cfg.overworld.nightBedRadius, host::save);
     }
 
-    // a bed that is already standing close by and that we can sleep in right now: not on copper (a trial chamber's), nothing
-    // nasty within the game's box around it. our own night bed never gets here, a trip that left one is a cleanup trip first
     private BlockPos findNightBed(AltoClef mod) {
-        var tracker = mod.getBlockTracker();
-        BlockPos best = null;
-        double bestDist = Double.POSITIVE_INFINITY;
-        for (BlockPos pos : tracker.getKnownLocations(CollectBedTask.BEDS)) {
-            double dist = pos.distToCenterSqr(mod.getPlayer().position());
-            if (dist >= bestDist || dist > (double) cfg.overworld.nightBedRadius * cfg.overworld.nightBedRadius) {
-                continue;
-            }
-            if (!(mod.getWorld().getBlockState(pos).getBlock() instanceof BedBlock) || tracker.unreachable(pos)) {
-                continue;
-            }
-            BlockPos head = WorldHelper.getBedHead(mod, pos);
-            if (head == null || NightSleepTask.monstersBlock(mod, head) || onCopper(mod, head)) {
-                continue;
-            }
-            best = pos;
-            bestDist = dist;
-        }
-        return best;
-    }
-
-    // the prep's "is a bed ready". all three get asked (no short circuit) so the line can say which one moved when the answer
-    // flaps, and the line only comes out when one of them does
-    private boolean nightBedReady(AltoClef mod, boolean leftover) {
-        boolean bag = facts.count(ItemHelper.BED) > 0;
-        boolean found = findNightBed(mod) != null;
-        int key = (leftover ? 4 : 0) | (bag ? 2 : 0) | (found ? 1 : 0);
-        if (key != nightReadyKey) {
-            nightReadyKey = key;
-            Debug.logInternal("night prep: bed ready? leftover " + leftover + ", bag " + facts.count(ItemHelper.BED) + ", standing "
-                    + found + " (" + nearestNightBed(mod) + ")");
-        }
-        return leftover || bag || found;
-    }
-
-    // what findNightBed thinks of the closest bed it knows, closest by plain distance before any of its checks
-    private String nearestNightBed(AltoClef mod) {
-        var tracker = mod.getBlockTracker();
-        BlockPos nearest = null;
-        double best = Double.POSITIVE_INFINITY;
-        for (BlockPos pos : tracker.getKnownLocations(CollectBedTask.BEDS)) {
-            double d = pos.distToCenterSqr(mod.getPlayer().position());
-            if (d < best) {
-                best = d;
-                nearest = pos;
-            }
-        }
-        if (nearest == null) {
-            return "no bed known";
-        }
-        String where = "nearest " + nearest.toShortString() + " at " + Math.round(Math.sqrt(best) * 10) / 10.0;
-        if (best > (double) cfg.overworld.nightBedRadius * cfg.overworld.nightBedRadius) {
-            return where + ", past the " + cfg.overworld.nightBedRadius + " radius";
-        }
-        if (!(mod.getWorld().getBlockState(nearest).getBlock() instanceof BedBlock)) {
-            return where + ", not a bed any more";
-        }
-        if (tracker.unreachable(nearest)) {
-            return where + ", unreachable";
-        }
-        BlockPos head = WorldHelper.getBedHead(mod, nearest);
-        if (head == null) {
-            return where + ", no head";
-        }
-        if (NightSleepTask.monstersBlock(mod, head)) {
-            return where + ", monsters";
-        }
-        return onCopper(mod, head) ? where + ", on copper" : where + ", usable";
-    }
-
-    private static boolean onCopper(AltoClef mod, BlockPos pos) {
-        Block below = mod.getWorld().getBlockState(pos.below()).getBlock();
-        for (Block copper : ItemHelper.itemsToBlocks(ItemHelper.COPPER_BLOCKS)) {
-            if (copper == below) {
-                return true;
-            }
-        }
-        return false;
+        return NightBeds.find(mod, cfg.overworld.nightBedRadius);
     }
 
     // ---- what the command shows
