@@ -75,7 +75,8 @@ public abstract class Movement implements IMovement, MovementHelper {
 
     protected Movement(IBaritone baritone, BetterBlockPos src, BetterBlockPos dest, BetterBlockPos[] toBreak, BetterBlockPos toPlace) {
         this.baritone = baritone;
-        this.ctx = baritone.getPlayerContext();
+        // null in the offline tests that build whole paths (the trip what-if ones), a movement there only gets priced
+        this.ctx = baritone == null ? null : baritone.getPlayerContext();
         this.src = src;
         this.dest = dest;
         this.positionsToBreak = toBreak;
