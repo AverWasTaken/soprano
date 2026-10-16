@@ -5,6 +5,7 @@ import adris.altoclef.ui.gui.facade.ItemsAccess.ItemEntry;
 import adris.altoclef.ui.gui.facade.Result;
 import adris.altoclef.ui.gui.facade.SchematicsAccess;
 import adris.altoclef.ui.gui.kit.Safe;
+import adris.altoclef.ui.gui.mc.move.MoveSession;
 import baritone.Baritone;
 import baritone.api.BaritoneAPI;
 import baritone.api.IBaritone;
@@ -117,6 +118,15 @@ public final class McSchematics implements SchematicsAccess {
 
         // a line in chat, for when a build fails after the click (the tab may be closed by then)
         void say(String message);
+
+        // swaps the gui for the move screen, next tick. a default so the test game doesn't have to care
+        default void openMover(String relativePath) {
+        }
+
+        // how far from the feet a build can be for move mode, the free camera's leash
+        default int moveRange() {
+            return 128;
+        }
     }
 
     private static final class Cached {
@@ -777,6 +787,62 @@ public final class McSchematics implements SchematicsAccess {
         ghost = null;
     }
 
+    // ----- move mode (mc/move/MoveSession runs it, this only remembers which file)
+
+    // game thread only, like the ghost
+    private String moving;
+
+    @Override
+    public Result startMoving(String relativePath) {
+        try {
+            Placement p = placement(relativePath);
+            if (p == null) {
+                return Result.fail("Join a world first");
+            }
+            if (!p.inThisDimension()) {
+                return Result.fail("It's placed in another dimension, move it here first");
+            }
+            // the free camera is leashed to the player (render distance, 8 chunks tops), and past that the chunks
+            // around the build aren't loaded anyway. a camera stuck on its leash staring at nothing is worse than saying so
+            Footprint fp = footprint(relativePath);
+            BlockPos feet = game.feet();
+            int range = game.moveRange();
+            if (fp != null && feet != null && tooFar(fp, feet, range)) {
+                return Result.fail("It's over " + range + " blocks away, walk closer or use Move to me first");
+            }
+            moving = relativePath;
+            // the arrows go on whatever the ghost shows, so it had better be this one
+            ghost = relativePath;
+            game.openMover(relativePath);
+            return Result.ok("Moving " + relativePath);
+        } catch (Throwable t) {
+            Safe.report("gui schematic move mode", t);
+            moving = null;
+            return Result.fail("Could not start moving");
+        }
+    }
+
+    @Override
+    public void stopMoving() {
+        moving = null;
+    }
+
+    private static boolean tooFar(Footprint fp, BlockPos feet, int range) {
+        double dx = fp.x() + fp.sizeX() / 2.0 - feet.getX();
+        double dy = fp.y() + fp.sizeY() / 2.0 - feet.getY();
+        double dz = fp.z() + fp.sizeZ() / 2.0 - feet.getZ();
+        return dx * dx + dy * dy + dz * dz > (double) range * range;
+    }
+
+    // a world that's gone takes move mode with it, same as the ghost
+    @Override
+    public String moving() {
+        if (moving != null && game.dimension() == null) {
+            moving = null;
+        }
+        return moving;
+    }
+
     // ----- the map
 
     @Override
@@ -932,6 +998,17 @@ public final class McSchematics implements SchematicsAccess {
         @Override
         public void say(String message) {
             Helper.HELPER.logDirect(message);
+        }
+
+        // the click that asked is still being handled by the gui, swapping the screen under it is asking for trouble
+        @Override
+        public void openMover(String relativePath) {
+            Minecraft.getInstance().schedule(() -> MoveScreen.open(relativePath));
+        }
+
+        @Override
+        public int moveRange() {
+            return (int) MoveSession.leash(Minecraft.getInstance());
         }
     }
 

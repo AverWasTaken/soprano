@@ -256,6 +256,12 @@
         },
         level_down: function () {
             return line(6, 6, 18, 6) + poly(false, [6, 11, 12, 17, 18, 11]);
+        },
+        // four arrows out of a cross, the move gizmo
+        move: function () {
+            return line(12, 4, 12, 20) + line(4, 12, 20, 12)
+                + poly(false, [9.5, 6.5, 12, 4, 14.5, 6.5]) + poly(false, [9.5, 17.5, 12, 20, 14.5, 17.5])
+                + poly(false, [6.5, 9.5, 4, 12, 6.5, 14.5]) + poly(false, [17.5, 9.5, 20, 12, 17.5, 14.5]);
         }
     };
 
@@ -263,7 +269,7 @@
         'chevron_down', 'chevron_right', 'check', 'copy', 'reset', 'stop', 'key', 'dot', 'ring', 'trash', 'pin',
         'player', 'entity', 'boat', 'parkour', 'bolt', 'run', 'pickaxe', 'block', 'wrench', 'backpack', 'water',
         'ladder', 'eye', 'schematics', 'warning', 'chevron_up', 'chevron_left', 'rotate_left', 'rotate_right', 'flip',
-        'level_up', 'level_down'];
+        'level_up', 'level_down', 'move'];
 
     // css: the ring behind the goto dots only shows when the glyph sits on the accent (TexturedCanvas.pathDots checks
     // the tint is ON_ACCENT). .on-accent on the icon or any ancestor turns it on

@@ -346,6 +346,14 @@ public final class Icons {
                 line(g, 6, 6, 18, 6);
                 poly(g, false, 6, 11, 12, 17, 18, 11);
             }
+            case MOVE -> {
+                line(g, 12, 4, 12, 20);
+                line(g, 4, 12, 20, 12);
+                poly(g, false, 9.5f, 6.5f, 12, 4, 14.5f, 6.5f);
+                poly(g, false, 9.5f, 17.5f, 12, 20, 14.5f, 17.5f);
+                poly(g, false, 6.5f, 9.5f, 4, 12, 6.5f, 14.5f);
+                poly(g, false, 17.5f, 9.5f, 20, 12, 17.5f, 14.5f);
+            }
         }
     }
 
