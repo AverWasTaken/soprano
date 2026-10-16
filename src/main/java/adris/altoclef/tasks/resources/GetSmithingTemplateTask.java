@@ -8,13 +8,13 @@ import adris.altoclef.tasks.container.LootContainerTask;
 import adris.altoclef.tasks.misc.EquipArmorTask;
 import adris.altoclef.tasks.movement.DefaultGoToDimensionTask;
 import adris.altoclef.tasks.movement.SearchChunkForBlockTask;
+import adris.altoclef.tasks.slot.EnsureFreeInventorySlotTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.CraftingRecipe;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.RecipeTarget;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WorldHelper;
-import adris.altoclef.util.time.TimerGame;
 import baritone.api.utils.Dimension;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -22,8 +22,11 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 
@@ -36,17 +39,35 @@ public class GetSmithingTemplateTask extends ResourceTask {
     // one boot is enough to keep piglins calm when we open their chest, and it costs the least armor to swap in
     private static final Item[] GOLD_PIECES = {Items.GOLDEN_BOOTS, Items.GOLDEN_HELMET, Items.GOLDEN_LEGGINGS, Items.GOLDEN_CHESTPLATE};
     private static final Item TEMPLATE = Items.NETHERITE_UPGRADE_SMITHING_TEMPLATE;
+    // a chest we can't reach would hold the loot task hostage, so each one gets two minutes of our own ticks
+    private static final int CHEST_TICKS = 20 * 120;
+    private static final int DUPE_TICKS = 20 * 120;
+    // a bastion fits in about 5x5 chunks, so 4 around each opened chest covers it from any corner
+    private static final int DONE_CHUNK_RADIUS = 4;
 
-    private final Task _searcher = new SearchChunkForBlockTask(BASTION);
+    private final Set<ChunkPos> _doneChunks = new HashSet<>();
+    // SearchChunksExploreTask forgets what it explored every time it restarts, and it restarts on every chest and every
+    // mob fight. so we remember which bastions are picked clean ourselves
+    private final Task _searcher = new SearchChunkForBlockTask(BASTION) {
+        @Override
+        protected boolean isChunkWithinSearchSpace(AltoClef mod, ChunkPos pos) {
+            return !_doneChunks.contains(pos) && super.isChunkWithinSearchSpace(mod, pos);
+        }
+    };
     private final int _count;
     // chests we already opened. hoglin stable bastions often have no template at all, and walking back to an empty
     // chest forever is not a plan
     private final Set<BlockPos> _visited = new HashSet<>();
-    // a chest we can't reach would hold the loot task hostage, so each one gets a couple minutes
-    private final TimerGame _chestTimeout = new TimerGame(120);
+    // chests already known to sit in a bastion. a chest only ever goes from "no bricks seen near it" to "bricks", never back
+    private final Set<BlockPos> _inBastion = new HashSet<>();
     private LootContainerTask _lootTask;
+    // ticks spent on the current chest, counted only while we're the one ticking. a game timer would also count mob
+    // fights and running away, and give up on chests we never even got to
+    private int _lootTicks;
     private Task _dupeTask;
     private int _dupeTarget = -1;
+    private int _dupeTicks;
+    private boolean _dupeGaveUp;
 
     public GetSmithingTemplateTask(int count) {
         super(TEMPLATE, count);
@@ -71,30 +92,66 @@ public class GetSmithingTemplateTask extends ResourceTask {
             return new DefaultGoToDimensionTask(Dimension.NETHER);
         }
         if (_lootTask != null) {
-            if (_lootTask.isFinished(mod) || !mod.getBlockTracker().blockIsValid(_lootTask.chest, Blocks.CHEST) || _chestTimeout.elapsed()) {
-                _visited.add(_lootTask.chest);
-                _lootTask = null;
-            } else {
-                Task gold = goldTask(mod);
-                if (gold != null) {
-                    setDebugState("Putting on gold so the piglins stay chill");
-                    return gold;
-                }
-                setDebugState("Looting a bastion chest");
-                // same instance every tick, LootContainerTask compares its target list by identity and would restart otherwise
-                return _lootTask;
+            Task loot = lootTick(mod);
+            if (loot != null) {
+                return loot;
             }
         }
         Optional<BlockPos> chest = nextBastionChest(mod);
         if (chest.isPresent()) {
             _lootTask = new LootContainerTask(chest.get(), List.of(TEMPLATE));
-            _chestTimeout.reset();
+            _lootTicks = 0;
             return null;
         }
-        // nothing left to open around here. the searcher marks the bastion it already walked as explored and wanders
-        // off until a fresh one loads in
+        // every chest we know around here is opened, so the bastions they're in are done. the searcher skips those
+        // chunks and wanders off until a fresh bastion loads in
+        for (BlockPos pos : _visited) {
+            ChunkPos c = ChunkPos.containing(pos);
+            for (int dx = -DONE_CHUNK_RADIUS; dx <= DONE_CHUNK_RADIUS; dx++) {
+                for (int dz = -DONE_CHUNK_RADIUS; dz <= DONE_CHUNK_RADIUS; dz++) {
+                    _doneChunks.add(new ChunkPos(c.x() + dx, c.z() + dz));
+                }
+            }
+        }
         setDebugState("Searching for a bastion");
         return _searcher;
+    }
+
+    // null once this chest is done with (opened, gone, unreachable or out of time)
+    private Task lootTick(AltoClef mod) {
+        if (_lootTask.isFinished(mod) || !mod.getBlockTracker().blockIsValid(_lootTask.chest, Blocks.CHEST) || ++_lootTicks > CHEST_TICKS) {
+            markVisited(mod, _lootTask.chest);
+            _lootTask = null;
+            return null;
+        }
+        Task gold = goldTask(mod);
+        if (gold != null) {
+            setDebugState("Putting on gold so the piglins stay chill");
+            return gold;
+        }
+        // a full bag makes LootContainerTask see "nothing i can take" and call a template chest empty
+        if (mod.getItemStorage().getSlotThatCanFitInPlayerInventory(new ItemStack(TEMPLATE), false).isEmpty()) {
+            setDebugState("Making room for the template");
+            return new EnsureFreeInventorySlotTask();
+        }
+        setDebugState("Looting a bastion chest");
+        // same instance every tick, LootContainerTask compares its target list by identity and would restart otherwise
+        return _lootTask;
+    }
+
+    // a double chest is two tracked chests and one inventory, opening one half already looked in both
+    private void markVisited(AltoClef mod, BlockPos chest) {
+        _visited.add(chest);
+        BlockPos left = WorldHelper.getChestLeft(mod, chest);
+        if (left == null) {
+            return;
+        }
+        for (Direction dir : Direction.Plane.HORIZONTAL) {
+            BlockPos other = chest.relative(dir);
+            if (left.equals(WorldHelper.getChestLeft(mod, other))) {
+                _visited.add(other);
+            }
+        }
     }
 
     // vanilla 26.3: 7 diamonds + 1 netherrack + 1 template -> 2 templates. only done with everything already in the bag.
@@ -102,7 +159,12 @@ public class GetSmithingTemplateTask extends ResourceTask {
     // so loose diamonds here are spares. we never go mining for them, a bastion trip is the fallback
     private Task duplicateTask(AltoClef mod) {
         int have = mod.getItemStorage().getItemCount(TEMPLATE);
-        if (have < 1 || have >= _count || mod.getItemStorage().getItemCount(Items.DIAMOND) < 7) {
+        if (_dupeGaveUp || have < 1 || have >= _count || mod.getItemStorage().getItemCount(Items.DIAMOND) < 7) {
+            return null;
+        }
+        // no table and no wood in the nether can stall the craft forever while we sit on everything else. bastion it is
+        if (++_dupeTicks > DUPE_TICKS) {
+            _dupeGaveUp = true;
             return null;
         }
         if (mod.getItemStorage().getItemCount(Items.NETHERRACK) < 1) {
@@ -120,7 +182,8 @@ public class GetSmithingTemplateTask extends ResourceTask {
         return _dupeTask;
     }
 
-    private static CraftingRecipe dupeRecipe() {
+    // public so the recipe parity test can hold it against the vanilla json
+    public static CraftingRecipe dupeRecipe() {
         ItemTarget d = new ItemTarget(Items.DIAMOND, 1);
         ItemTarget s = new ItemTarget(TEMPLATE, 1);
         ItemTarget c = new ItemTarget(Items.NETHERRACK, 1);
@@ -142,9 +205,13 @@ public class GetSmithingTemplateTask extends ResourceTask {
 
     private Optional<BlockPos> nextBastionChest(AltoClef mod) {
         BlockPos me = mod.getPlayer().blockPosition();
+        // getNearestWithinRange walks every block in an 81 block cube, per chest, per tick. the tracker already has the
+        // bricks, a distance check against that list is basically free
+        List<BlockPos> bricks = mod.getBlockTracker().getKnownLocations(BASTION);
+        double range = BASTION_CHEST_RANGE * BASTION_CHEST_RANGE;
         return mod.getBlockTracker().getKnownLocations(Blocks.CHEST).stream()
                 .filter(pos -> !_visited.contains(pos) && mod.getBlockTracker().blockIsValid(pos, Blocks.CHEST))
-                .filter(pos -> mod.getBlockTracker().getNearestWithinRange(pos, BASTION_CHEST_RANGE, BASTION).isPresent())
+                .filter(pos -> _inBastion.contains(pos) || (bricks.stream().anyMatch(b -> b.distSqr(pos) <= range) && _inBastion.add(pos)))
                 .min(Comparator.comparingDouble(pos -> pos.distSqr(me)));
     }
 
