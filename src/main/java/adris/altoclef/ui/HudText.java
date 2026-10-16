@@ -149,8 +149,9 @@ public final class HudText {
             s = s.substring("Abstract ".length());
             s = Character.toUpperCase(s.charAt(0)) + s.substring(1);
         }
-        // mojmap spells it EnderMan on 1.21.11 (Enderman on 26.3), and "Ender Men" is a boy band, not a mob
-        if (s.equals("Ender Man")) {
+        // mojmap spells it EnderMan on 1.21.11 (Enderman on 26.3), which humanizes to "Ender man". "Ender men" is a boy band,
+        // not a mob
+        if (s.equalsIgnoreCase("Ender man")) {
             s = "Enderman";
         }
         return s;
