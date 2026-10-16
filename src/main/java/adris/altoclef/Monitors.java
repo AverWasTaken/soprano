@@ -133,7 +133,7 @@ public final class Monitors {
 
     private void watchCursor() {
         ItemStack carried = StorageHelper.getItemStackInCursorSlot();
-        boolean screen = Minecraft.getInstance().gui.screen() instanceof AbstractContainerScreen<?>;
+        boolean screen = Minecraft.getInstance().screen instanceof AbstractContainerScreen<?>;
         long now = System.currentTimeMillis();
         if (cursorWatch.tick(!carried.isEmpty(), screen, now)) {
             Debug.logInternal(Lines.cursorStuck(name(carried.getItem()), carried.getCount(), cursorWatch.stuckMs(now) / 1000));

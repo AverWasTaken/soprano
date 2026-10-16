@@ -80,7 +80,7 @@ public class PlaceSignTask extends Task {
     }
 
     private Task editSign(AltoClef mod) {
-        SignEditScreen screen = (SignEditScreen) Minecraft.getInstance().gui.screen();
+        SignEditScreen screen = (SignEditScreen) Minecraft.getInstance().screen;
         assert screen != null;
 
         StringBuilder currentLine = new StringBuilder();
@@ -104,12 +104,12 @@ public class PlaceSignTask extends Task {
                 }
 
                 // Add newline
-                screen.keyPressed(new KeyEvent(InputConstants.KEY_RETURN, InputConstants.KEYCODE_RETURN, 0));
+                screen.keyPressed(new KeyEvent(InputConstants.KEY_RETURN, 0, 0));
                 //Debug.logMessage("NEW LINE ADDED BEFORE: " + c);
             }
             // keycode don't matter
             //int keyCode = java.awt.event.KeyEvent.getExtendedKeyCodeForChar(c);
-            screen.charTyped(new CharacterEvent(c));
+            screen.charTyped(new CharacterEvent(c, 0));
             //screen.keyPressed(keyCode, -1, )
         }
         screen.onClose();
@@ -172,6 +172,6 @@ public class PlaceSignTask extends Task {
     }
 
     private boolean editingSign() {
-        return Minecraft.getInstance().gui.screen() instanceof SignEditScreen;
+        return Minecraft.getInstance().screen instanceof SignEditScreen;
     }
 }

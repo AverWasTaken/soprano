@@ -19,7 +19,7 @@ package baritone.launch.mixins;
 
 import baritone.altoclef.AltoClefBridge;
 import adris.altoclef.eventbus.events.ScreenOpenEvent;
-import net.minecraft.client.gui.Gui;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
@@ -27,8 +27,8 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-// setScreen moved off Minecraft onto Gui in 26.3
-@Mixin(Gui.class)
+// setScreen is still on Minecraft in 1.21.11, 26.3 moved it onto Gui
+@Mixin(Minecraft.class)
 public class MixinAltoClefScreen {
 
     // setScreen is the middle of everything (death, disconnect, chat), nothing of altoclef's gets to throw out of it

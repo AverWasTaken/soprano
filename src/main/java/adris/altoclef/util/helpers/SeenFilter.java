@@ -56,7 +56,7 @@ public final class SeenFilter {
         if (eye.distanceToSqr(target) > range * range) {
             return false;
         }
-        long now = Minecraft.getInstance().gui.hud.getGuiTicks();
+        long now = Minecraft.getInstance().gui.getGuiTicks();
         // asked and missed a moment ago: do not spend a raycast on it again. without this the same eight blocks that
         // are in range but behind rock eat the whole budget every tick and a visible one further down the list starves
         if (MISSES.recentlyMissed(key, now)) {

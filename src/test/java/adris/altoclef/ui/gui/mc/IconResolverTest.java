@@ -6,7 +6,6 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.Bootstrap;
 import net.minecraft.world.entity.EntityType;
-import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.MobCategory;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.SpawnEggItem;
@@ -75,7 +74,7 @@ public class IconResolverTest {
     public void everyMobHasAnEggOrAnExplicitStandIn() {
         List<String> bad = new ArrayList<>();
         for (EntityType<?> type : BuiltInRegistries.ENTITY_TYPE) {
-            if (type == EntityTypes.PLAYER || type.getCategory() == MobCategory.MISC) {
+            if (type == EntityType.PLAYER || type.getCategory() == MobCategory.MISC) {
                 continue;
             }
             String id = IconResolver.forEntityType(type);
@@ -91,7 +90,7 @@ public class IconResolverTest {
         // a version bump that adds an egg-less mob lands here, so it gets a stand-in on purpose
         List<String> eggless = new ArrayList<>();
         for (EntityType<?> type : BuiltInRegistries.ENTITY_TYPE) {
-            if (type.getCategory() != MobCategory.MISC && SpawnEggItem.byId(type).isEmpty()) {
+            if (type.getCategory() != MobCategory.MISC && SpawnEggItem.byId(type) == null) {
                 eggless.add(BuiltInRegistries.ENTITY_TYPE.getKey(type).getPath());
             }
         }
@@ -101,11 +100,11 @@ public class IconResolverTest {
 
     @Test
     public void knownAnswers() {
-        assertEquals("minecraft:zombie_spawn_egg", IconResolver.forEntityType(EntityTypes.ZOMBIE));
-        assertEquals("minecraft:iron_golem_spawn_egg", IconResolver.forEntityType(EntityTypes.IRON_GOLEM));
-        assertEquals("minecraft:zombie_head", IconResolver.forEntityType(EntityTypes.GIANT));
-        assertEquals("minecraft:totem_of_undying", IconResolver.forEntityType(EntityTypes.ILLUSIONER));
-        assertEquals("minecraft:armor_stand", IconResolver.forEntityType(EntityTypes.ARMOR_STAND));
+        assertEquals("minecraft:zombie_spawn_egg", IconResolver.forEntityType(EntityType.ZOMBIE));
+        assertEquals("minecraft:iron_golem_spawn_egg", IconResolver.forEntityType(EntityType.IRON_GOLEM));
+        assertEquals("minecraft:zombie_head", IconResolver.forEntityType(EntityType.GIANT));
+        assertEquals("minecraft:totem_of_undying", IconResolver.forEntityType(EntityType.ILLUSIONER));
+        assertEquals("minecraft:armor_stand", IconResolver.forEntityType(EntityType.ARMOR_STAND));
         assertEquals("minecraft:water_bucket", IconResolver.forBlock(Blocks.WATER));
         assertEquals("minecraft:lava_bucket", IconResolver.forBlock(Blocks.LAVA));
         assertEquals("minecraft:flint_and_steel", IconResolver.forBlock(Blocks.FIRE));
@@ -117,7 +116,7 @@ public class IconResolverTest {
 
     @Test
     public void playersAndNonsenseGetNothing() {
-        assertNull(IconResolver.forEntityType(EntityTypes.PLAYER));
+        assertNull(IconResolver.forEntityType(EntityType.PLAYER));
         assertNull(IconResolver.forEntityType(null));
         assertNull(IconResolver.forBlock(null));
         assertNull(IconResolver.forItemId("not_a_thing"));
