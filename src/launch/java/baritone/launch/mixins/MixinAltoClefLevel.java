@@ -32,7 +32,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public class MixinAltoClefLevel {
 
     // ClientLevel.setBlock goes through Level.setBlock which calls this, so Level is the right place
-    // (26.3 renamed it to updatePOIOnBlockStateChange, still the empty hook at the very end of setBlock)
+    // (newer versions call it updatePOIOnBlockStateChange, still the empty hook at the very end of setBlock)
     @Inject(
             method = "updatePOIOnBlockStateChange",
             at = @At("HEAD")

@@ -548,7 +548,7 @@ mine("pale_oak_sapling", Blocks.PALE_OAK_LEAVES, Items.PALE_OAK_SAPLING);
                 shapedRecipe3x3("lantern", Items.LANTERN, 1, i, i, i, i, "torch", i, i, i, i);
                 shapedRecipe3x3("soul_lantern", Items.SOUL_LANTERN, 1, i, i, i, i, "soul_torch", i, i, i, i);
                 shapedRecipe3x3("iron_chain", Items.IRON_CHAIN, 1, o, i, o, o, "iron_ingot", o, o, i, o);
-                // vanilla renamed chain to iron_chain on 26.3 (copper has its own now), old name still typed by people
+                // vanilla renamed chain to iron_chain in 1.21.9 (copper has its own now), old name still typed by people
                 alias("chain", "iron_chain");
             }
             {

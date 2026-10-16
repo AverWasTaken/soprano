@@ -9,7 +9,7 @@ import java.util.List;
 public final class NightSleep {
     // when a bed works is the game's own isBrightOutside (isDay back on 1.21.4), which is false from dusk to dawn and all through a thunderstorm: ticks
     // 12542 to 23459 in clear weather, 12010 to 23991 in full rain on 1.21.4 (so the old 23992 end of WorldHelper.canSleep was the rainy
-    // one). 26.3 samples sky light off keyframes instead, which moves the edges a few ticks (worked out as about 12523 to 23477 clear,
+    // one). 1.21.11 and up sample sky light off timeline keyframes instead, which moves the edges a few ticks (worked out as about 12523 to 23477 clear,
     // not checked in game). nothing here keeps a copy of that line, the branch asks the level
     // the clock itself is still the overworld clock with a 24000 period, so DAY_LENGTH holds
     public static final long DAY_LENGTH = 24000;
