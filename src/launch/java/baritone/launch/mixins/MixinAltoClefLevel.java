@@ -19,6 +19,7 @@ package baritone.launch.mixins;
 
 import baritone.altoclef.AltoClefBridge;
 import adris.altoclef.eventbus.events.BlockPlaceEvent;
+import adris.altoclef.ui.gui.mc.ghost.SchematicGhostRenderer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
@@ -38,10 +39,16 @@ public class MixinAltoClefLevel {
     )
     private void altoclef$onBlockStateChange(final BlockPos pos, final BlockState oldState, final BlockState newState, final CallbackInfo ci) {
         Level level = (Level) (Object) this;
+        if (!level.isClientSide() || oldState == newState) {
+            return;
+        }
+        // the schematic ghost wants every change, bot or no bot. BlockChangeEvent only sees the multi block packet,
+        // a single placed block (the one you just put under a ghost) only shows up here
+        SchematicGhostRenderer.blockChanged(pos.getX(), pos.getY(), pos.getZ());
         // integrated server levels land here on the server thread, and the event bus does not like that
         // and nobody is listening unless altoclef has the bot. idle, this fed the block tracker for nothing and the
         // cache grew across worlds
-        if (!level.isClientSide() || oldState == newState || !AltoClefBridge.isRunning()) {
+        if (!AltoClefBridge.isRunning()) {
             return;
         }
         try {

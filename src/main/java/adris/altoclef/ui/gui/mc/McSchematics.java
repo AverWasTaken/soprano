@@ -754,6 +754,29 @@ public final class McSchematics implements SchematicsAccess {
         }
     }
 
+    // ----- the ghost in the world (SchematicGhostRenderer draws it)
+
+    // game thread only. the gui sets it, it stays after the gui closes so you can walk around the thing
+    private String ghost;
+
+    @Override
+    public void setGhost(String relativePath) {
+        ghost = relativePath;
+    }
+
+    // null once the world is gone, a ghost doesn't follow you into the next world you join
+    @Override
+    public String ghost() {
+        if (ghost != null && game.dimension() == null) {
+            ghost = null;
+        }
+        return ghost;
+    }
+
+    public void clearGhost() {
+        ghost = null;
+    }
+
     // ----- the map
 
     @Override
@@ -924,7 +947,8 @@ public final class McSchematics implements SchematicsAccess {
 
         @Override
         public boolean hasChunk(int chunkX, int chunkZ) {
-            return level.hasChunk(chunkX, chunkZ);
+            // not level.hasChunk, ClientLevel's is a flat 'return true'. the chunk source says null for what never arrived
+            return level.getChunkSource().hasChunk(chunkX, chunkZ);
         }
 
         @Override

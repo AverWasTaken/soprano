@@ -282,6 +282,15 @@ public interface SchematicsAccess {
     // snapshot. null when there's no world, and leaving the world forgets the whole map
     Terrain terrain(int centerX, int centerZ, int radiusChunks);
 
+    // the schematic drawn as see-through blocks at its placement, null for none. it outlives the gui (walk around it
+    // with the screen shut) and is dropped on leaving the world. defaults so the fakes and NONE don't care
+    default void setGhost(String relativePath) {
+    }
+
+    default String ghost() {
+        return null;
+    }
+
     // opens the native multi select picker (.litematic / .schem / .schematic) on a helper thread so the game keeps
     // drawing, copies the choice into the library and then calls done on the game thread. the library refreshes itself.
     // a picker that can't open gets an ImportReport with an error saying to use drag and drop or Open folder instead

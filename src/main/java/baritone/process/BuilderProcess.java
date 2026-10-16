@@ -1555,7 +1555,8 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         return false;
     }
 
-    private static boolean valid(BlockState current, BlockState desired, boolean itemVerify) {
+    // public so the schematic ghost asks the exact same question, a ghost over a block #build calls done is a liar
+    public static boolean valid(BlockState current, BlockState desired, boolean itemVerify) {
         if (desired == null) {
             return true;
         }
