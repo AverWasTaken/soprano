@@ -1508,6 +1508,56 @@ public final class Settings {
     public final Setting<Boolean> keepPathOnSameGoal = new Setting<>(true);
 
     /**
+     * On a trip you started yourself ({@code goto}, {@code come}, {@code waypoints goto}, or clicking a block in the
+     * click to go screen), ask before collecting blocks the path needs. It asks when the goal can't be reached without
+     * placing blocks you don't have, or when a path that needs blocks (or a stone pickaxe) is a lot faster, see
+     * {@link #fasterPathMinPercent} and {@link #fasterPathMinSeconds}.
+     * <p>
+     * The question has clickable Yes and No buttons in chat ({@code gather yes} and {@code gather no} work too) and is
+     * asked at most once per trip. The answer holds until the trip ends: arriving, {@code stop}, a new trip, dying or
+     * changing dimension. Yes collects about what the path needs (through AltoClef) and carries on to the goal.
+     * <p>
+     * Off means the old behavior: the path fails and the bot stops, nothing is asked.
+     */
+    public final Setting<Boolean> askToGatherForPath = new Setting<>(true);
+
+    /**
+     * How much faster, in percent of the normal route's time, a route that needs blocks has to be before
+     * {@link #askToGatherForPath} asks about it. The time it takes to collect the blocks counts against it. Both this
+     * and {@link #fasterPathMinSeconds} have to hold.
+     */
+    public final Setting<Integer> fasterPathMinPercent = new Setting<>(30);
+
+    /**
+     * How many seconds a route that needs blocks has to save, after counting the time to collect them, before
+     * {@link #askToGatherForPath} asks about it. Both this and {@link #fasterPathMinPercent} have to hold.
+     */
+    public final Setting<Integer> fasterPathMinSeconds = new Setting<>(30);
+
+    /**
+     * A path that would place more blocks than this is never worth asking about for {@link #askToGatherForPath}.
+     */
+    public final Setting<Integer> gatherMaxBlocks = new Setting<>(128);
+
+    /**
+     * After a yes for {@link #askToGatherForPath}, how many more times the bot may go and collect blocks on the same
+     * trip without asking again (a long trip can run out halfway). Past this it stops with a message.
+     */
+    public final Setting<Integer> gatherMaxRetries = new Setting<>(3);
+
+    /**
+     * How many ticks collecting one block is guessed to take, for the faster route check of
+     * {@link #askToGatherForPath}. On the slow side on purpose.
+     */
+    public final Setting<Double> gatherTicksPerBlock = new Setting<>(40D);
+
+    /**
+     * How many ticks making a stone pickaxe from nothing is guessed to take (a tree, a crafting table, some stone), for
+     * the faster route check of {@link #askToGatherForPath}.
+     */
+    public final Setting<Double> gatherPickaxeTicks = new Setting<>(2400D);
+
+    /**
      * The "axis" command (aka GoalAxis) will go to a axis, or diagonal axis, at this Y level.
      */
     public final Setting<Integer> axisHeight = new Setting<>(120);
