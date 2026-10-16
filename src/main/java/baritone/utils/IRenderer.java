@@ -27,6 +27,7 @@ import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.platform.DepthTestFunction;
 import com.mojang.blaze3d.platform.DestFactor;
 import com.mojang.blaze3d.platform.SourceFactor;
+import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.RenderPipelines;
@@ -46,6 +47,9 @@ import java.util.function.BiFunction;
 public interface IRenderer {
 
     Tesselator tessellator = Tesselator.getInstance();
+    // the tesselator keeps its buffer to itself, so sorted index buffers get their own. each one is freed when the mesh is
+    // drawn, so this stays tiny
+    ByteBufferBuilder sortBuffer = new ByteBufferBuilder(1536);
     IEntityRenderManager renderManager = (IEntityRenderManager) Minecraft.getInstance().getEntityRenderDispatcher();
     Settings settings = BaritoneAPI.getSettings();
     RenderPipeline.Snippet BARITONE_LINES_SNIPPET = RenderPipeline.builder(((IRenderPipelines) new RenderPipelines()).getLinesSnippet())
@@ -186,6 +190,11 @@ public interface IRenderer {
     static void endBuffer(BufferBuilder bufferBuilder, RenderType renderType) {
         MeshData meshData = bufferBuilder.build();
         if (meshData != null) {
+            // vanilla's MultiBufferSource sorts sortOnUpload types back to front before drawing, calling draw directly skips
+            // that, and the translucent beam faces blend in whatever order they were emitted
+            if (renderType.sortOnUpload()) {
+                meshData.sortQuads(sortBuffer, RenderSystem.getProjectionType().vertexSorting());
+            }
             renderType.draw(meshData);
         }
     }
