@@ -4,7 +4,8 @@ import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.ItemFixture;
 import adris.altoclef.util.helpers.ItemHelper;
 import net.minecraft.core.BlockPos;
-import net.minecraft.world.entity.EntityTypes;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.monster.EnderMan;
 import net.minecraft.world.entity.monster.skeleton.AbstractSkeleton;
 import net.minecraft.world.entity.monster.zombie.Zombie;
 import net.minecraft.world.item.Item;
@@ -47,9 +48,12 @@ public class HudTextTest {
         assertEquals("Oak Log", HudText.item(Items.OAK_LOG));
         assertEquals("Crafting Table", HudText.item(Items.CRAFTING_TABLE));
         assertEquals("Oak Log", HudText.block(Blocks.OAK_LOG));
-        assertEquals("Zombie", HudText.entityType(EntityTypes.ZOMBIE));
+        assertEquals("Zombie", HudText.entityType(EntityType.ZOMBIE));
         assertEquals("Zombie", HudText.entityClass(Zombie.class));
         assertEquals("Skeleton", HudText.entityClass(AbstractSkeleton.class));
+        // the class is EnderMan on 1.21.11, the hud still says it the one way
+        assertEquals("Enderman", HudText.entityClass(EnderMan.class));
+        assertEquals("Endermen", HudText.pluralMob(HudText.entityClass(EnderMan.class)));
     }
 
     @Test

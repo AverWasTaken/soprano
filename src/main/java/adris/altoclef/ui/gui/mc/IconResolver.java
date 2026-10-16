@@ -1,18 +1,15 @@
 package adris.altoclef.ui.gui.mc;
 
 import adris.altoclef.TaskCatalogue;
-import net.minecraft.core.Holder;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.EntityType;
-import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.SpawnEggItem;
 import net.minecraft.world.level.block.Block;
 
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 // every "what picture goes with this" question in the gui lands here, so nobody else has to know that planks are a
@@ -68,7 +65,7 @@ public final class IconResolver {
     }
 
     public static String forEntityType(EntityType<?> type) {
-        if (type == null || type == EntityTypes.PLAYER) {
+        if (type == null || type == EntityType.PLAYER) {
             return null;
         }
         String cached = TYPE_CACHE.computeIfAbsent(type, t -> {
@@ -79,9 +76,9 @@ public final class IconResolver {
     }
 
     private static String resolveType(EntityType<?> type) {
-        Optional<Holder<Item>> egg = SpawnEggItem.byId(type);
-        if (egg.isPresent()) {
-            return idOf(egg.get().value());
+        SpawnEggItem egg = SpawnEggItem.byId(type);
+        if (egg != null) {
+            return idOf(egg);
         }
         String path = BuiltInRegistries.ENTITY_TYPE.getKey(type).getPath();
         String standIn = ENTITY_STAND_INS.get(path);

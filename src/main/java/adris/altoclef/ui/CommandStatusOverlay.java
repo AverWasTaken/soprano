@@ -10,7 +10,7 @@ import java.util.ArrayList;
 import java.util.List;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.util.ARGB;
 
 // the task tree in the top left. same staircase altoclef always drew (one line per task, each nested task 8px
@@ -56,10 +56,10 @@ public class CommandStatusOverlay {
     private long _timeRunning;
     private long _lastTime;
 
-    public void render(AltoClef mod, GuiGraphicsExtractor graphics) {
+    public void render(AltoClef mod, GuiGraphics graphics) {
         Minecraft mc = Minecraft.getInstance();
         // f1 hides the hud and f3 lives in the same corner, it was there first
-        if (mc.level == null || mc.gui.hud.isHidden() || mc.getDebugOverlay().showDebugScreen()) {
+        if (mc.level == null || mc.options.hideGui || mc.getDebugOverlay().showDebugScreen()) {
             return;
         }
         if (!Baritone.settings().altoShowTaskChains.value) {
@@ -203,7 +203,7 @@ public class CommandStatusOverlay {
         return new Line(line.depth, line.name, line.nameColor, font.plainSubstrByWidth(line.state, left) + "...", line.stateColor);
     }
 
-    private void draw(Minecraft mc, GuiGraphicsExtractor graphics, float scale, float alpha) {
+    private void draw(Minecraft mc, GuiGraphics graphics, float scale, float alpha) {
         Font font = mc.font;
         int height = _lines.size() * LINE - 1;
         int x0 = MARGIN + PAD;
@@ -215,17 +215,17 @@ public class CommandStatusOverlay {
         int y = y0;
         for (Line line : _lines) {
             int x = x0 + line.depth * INDENT;
-            graphics.text(font, line.name, x, y, fade(line.nameColor, alpha), true);
+            graphics.drawString(font, line.name, x, y, fade(line.nameColor, alpha), true);
             if (!line.state.isEmpty()) {
                 // the state starts where the name ends, minus the shadow pixel the old drawString counted into its return
-                graphics.text(font, line.state, x + font.width(line.name) + GAP, y, fade(line.stateColor, alpha), true);
+                graphics.drawString(font, line.state, x + font.width(line.name) + GAP, y, fade(line.stateColor, alpha), true);
             }
             y += LINE;
         }
         if (_timer != null) {
             // right after the chain name, not flush right: a long task line can make the box 300px wide and
             // a clock floating off on its own over there reads as somebody else's
-            graphics.text(font, _timer, _timerX, y0, fade(DIM, alpha), true);
+            graphics.drawString(font, _timer, _timerX, y0, fade(DIM, alpha), true);
         }
         graphics.pose().popMatrix();
     }

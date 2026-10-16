@@ -2,7 +2,7 @@ package adris.altoclef.ui.gui.mc;
 
 import baritone.api.command.argument.ICommandArgument;
 import baritone.command.manager.CommandManager;
-import baritone.api.utils.Pair;
+import net.minecraft.util.Tuple;
 import net.minecraft.SharedConstants;
 import net.minecraft.server.Bootstrap;
 import org.junit.BeforeClass;
@@ -22,8 +22,8 @@ public class McCommandsTest {
     }
 
     private static String shortcut(String line) {
-        Pair<String, List<ICommandArgument>> pair = CommandManager.expand(line);
-        return McCommands.settingShortcut(pair.first(), pair.second(), line.substring(pair.first().length()));
+        Tuple<String, List<ICommandArgument>> pair = CommandManager.expand(line);
+        return McCommands.settingShortcut(pair.getA(), pair.getB(), line.substring(pair.getA().length()));
     }
 
     @Test

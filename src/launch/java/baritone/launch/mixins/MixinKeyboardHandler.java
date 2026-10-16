@@ -21,8 +21,8 @@ public class MixinKeyboardHandler {
     )
     private void soprano$openGui(final long window, final int action, final KeyEvent event, final CallbackInfo ci) {
         try {
-            // the event is sdl's: event.key() is a scancode and action is PRESS 1 / RELEASE 0 / REPEAT -1. GuiHotkey does
-            // the translation to the glfw numbers the setting holds
+            // the event is glfw's: event.key() is a glfw key code and action is PRESS 1 / RELEASE 0 / REPEAT 2, the same
+            // numbers the setting holds
             if (window == Minecraft.getInstance().getWindow().handle() && GuiHotkey.onKey(event, action)) {
                 ci.cancel();
             }

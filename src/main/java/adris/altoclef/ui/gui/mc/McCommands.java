@@ -13,7 +13,7 @@ import baritone.api.command.exception.CommandException;
 import baritone.api.command.manager.ICommandManager;
 import baritone.command.argument.ArgConsumer;
 import baritone.command.manager.CommandManager;
-import baritone.api.utils.Pair;
+import net.minecraft.util.Tuple;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -60,18 +60,18 @@ final class McCommands implements CommandsAccess {
                 return Result.fail("Type a command. Try help.");
             }
             ICommandManager manager = manager();
-            Pair<String, List<ICommandArgument>> pair = CommandManager.expand(trimmed);
-            String label = pair.first();
+            Tuple<String, List<ICommandArgument>> pair = CommandManager.expand(trimmed);
+            String label = pair.getA();
             ICommand command = manager.getCommand(label);
             if (command == null) {
-                String viaSet = settingShortcut(label, pair.second(), trimmed.substring(label.length()));
+                String viaSet = settingShortcut(label, pair.getB(), trimmed.substring(label.length()));
                 if (viaSet != null) {
                     return run(viaSet);
                 }
                 return Result.fail("No command called " + label + ". Try help.");
             }
             try {
-                command.execute(label, new ArgConsumer(manager, pair.second()));
+                command.execute(label, new ArgConsumer(manager, pair.getB()));
             } catch (CommandException e) {
                 return Result.fail(e.getMessage() == null ? "That did not work." : Wording.soprano(e.getMessage()), trimmed);
             } catch (Throwable t) {
