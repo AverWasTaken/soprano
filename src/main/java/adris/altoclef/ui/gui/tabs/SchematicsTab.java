@@ -167,6 +167,7 @@ public final class SchematicsTab implements Tab, SchematicPane.Listener {
         if (selectedPath != null && rowFor(selectedPath) == null) {
             selectedPath = null;
             disarm();
+            showGhost();
         }
         syncCursor();
     }
@@ -262,8 +263,14 @@ public final class SchematicsTab implements Tab, SchematicPane.Listener {
         }
         selectedPath = next;
         disarm();
+        showGhost();
         syncCursor();
         poll();
+    }
+
+    // the ghost follows the pick and stays up after the gui closes, so you can walk around the thing you're about to build
+    private void showGhost() {
+        Safe.run("schematics ghost", () -> schematics().setGhost(selectedPath));
     }
 
     // ----- actions
