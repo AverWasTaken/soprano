@@ -35,5 +35,6 @@ public enum Icon {
     ROTATE_RIGHT,
     FLIP,           // two wings either side of a dashed axis
     LEVEL_UP,       // a chevron over a bar: one layer up
-    LEVEL_DOWN
+    LEVEL_DOWN,
+    MOVE            // four arrows out of a cross, the move gizmo
 }

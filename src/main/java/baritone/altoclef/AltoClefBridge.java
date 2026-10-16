@@ -24,6 +24,7 @@ import adris.altoclef.eventbus.EventBus;
 import adris.altoclef.eventbus.events.ChunkLoadEvent;
 import adris.altoclef.eventbus.events.ChunkUnloadEvent;
 import adris.altoclef.ui.gui.mc.ghost.SchematicGhostRenderer;
+import adris.altoclef.ui.gui.mc.move.MoveGizmo;
 import adris.altoclef.util.helpers.DeathStash;
 import baritone.Baritone;
 import baritone.api.Settings;
@@ -83,6 +84,8 @@ public final class AltoClefBridge implements AbstractGameEventListener {
             AltoClefCommands.register(primary);
             // the ghost of the schematic picked in the gui, it draws whatever McSchematics.ghost() says
             SchematicGhostRenderer.attach(primary);
+            // the arrows of the schematic move mode, after the ghost so they draw over it
+            MoveGizmo.attach(primary);
         } catch (Throwable t) {
             System.err.println("altoclef could not hook into soprano, it stays off this session");
             t.printStackTrace();

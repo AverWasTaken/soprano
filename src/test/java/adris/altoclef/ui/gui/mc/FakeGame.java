@@ -23,6 +23,9 @@ final class FakeGame implements McSchematics.Game {
     TerrainMap.Source terrain;
     final List<Built> built = new ArrayList<>();
     final List<String> said = new ArrayList<>();
+    // every move screen McSchematics.startMoving asked for
+    final List<String> movers = new ArrayList<>();
+    int moveRange = 128;
     // the builder's serial: running is what it's building now (0 = idle), serial is the last one it handed out
     long running;
     long serial;
@@ -78,5 +81,15 @@ final class FakeGame implements McSchematics.Game {
     @Override
     public void say(String message) {
         said.add(message);
+    }
+
+    @Override
+    public void openMover(String relativePath) {
+        movers.add(relativePath);
+    }
+
+    @Override
+    public int moveRange() {
+        return moveRange;
     }
 }

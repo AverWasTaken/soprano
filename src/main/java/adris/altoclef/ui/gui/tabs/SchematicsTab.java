@@ -205,6 +205,7 @@ public final class SchematicsTab implements Tab, SchematicPane.Listener {
         Materials m = sel != null && sel.ok() ? schematics().materials(sel.relativePath()) : null;
         lastMaterials = m;
         pane.show(sel, m, world);
+        pane.setMoving(movingNow() != null);
         refreshSite(sel, world);
     }
 
@@ -351,6 +352,42 @@ public final class SchematicsTab implements Tab, SchematicPane.Listener {
     @Override
     public void placeAtFeet() {
         edit("schematics feet", path -> schematics().placeAtFeet(path));
+    }
+
+    // move mode lives in the facade: starting it swaps this screen for the free camera one, so the toast is only
+    // seen when it didn't start
+    @Override
+    public void toggleMoving() {
+        disarm();
+        if (movingNow() != null) {
+            Safe.run("schematics stop moving", () -> schematics().stopMoving());
+            poll();
+            return;
+        }
+        Row sel = rowFor(selectedPath);
+        if (sel == null || !sel.ok()) {
+            return;
+        }
+        Result r;
+        try {
+            r = schematics().startMoving(sel.relativePath());
+        } catch (Throwable t) {
+            Safe.report("schematics move mode", t);
+            r = Result.fail("Could not start moving");
+        }
+        if (r == null || !r.ok()) {
+            ctx.toast(r == null ? Result.fail("Could not start moving") : r);
+        }
+        poll();
+    }
+
+    private String movingNow() {
+        try {
+            return schematics().moving();
+        } catch (Throwable t) {
+            Safe.report("schematics moving", t);
+            return null;
+        }
     }
 
     private void edit(String what, java.util.function.Consumer<String> action) {
@@ -592,6 +629,10 @@ public final class SchematicsTab implements Tab, SchematicPane.Listener {
 
     Button buildButton() {
         return pane.buildButton();
+    }
+
+    Button moveButton() {
+        return pane.moveButton();
     }
 
     String selectedPath() {

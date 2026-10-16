@@ -426,4 +426,35 @@ public final class FakeSchematics implements SchematicsAccess {
         }
         return ghost;
     }
+
+    private String moving;
+
+    @Override
+    public Result startMoving(String relativePath) {
+        Placement p = placement(relativePath);
+        if (p == null) {
+            return Result.fail("Join a world first");
+        }
+        if (!p.inThisDimension()) {
+            return Result.fail("It's placed in another dimension, move it here first");
+        }
+        actions.add("schematics startMoving " + relativePath);
+        moving = relativePath;
+        ghost = relativePath;
+        return Result.ok("Moving " + relativePath);
+    }
+
+    @Override
+    public void stopMoving() {
+        actions.add("schematics stopMoving");
+        moving = null;
+    }
+
+    @Override
+    public String moving() {
+        if (!inWorld) {
+            moving = null;
+        }
+        return moving;
+    }
 }
