@@ -125,6 +125,13 @@ public class TaskCatalogueRecipeTest {
         assertTrue("only " + checked + " recipes checked, expected at least " + MIN_CHECKED, checked >= MIN_CHECKED);
     }
 
+    // the template copy recipe lives in GetSmithingTemplateTask, not the catalogue, so the sweep above never sees it
+    @Test
+    public void templateCopyMatchesVanilla() throws Exception {
+        List<Vanilla> vanilla = loadVanilla().getOrDefault("minecraft:netherite_upgrade_smithing_template", List.of());
+        assertNull(check("netherite_upgrade_smithing_template", adris.altoclef.tasks.resources.GetSmithingTemplateTask.dupeRecipe(), vanilla));
+    }
+
     // ---- the catalogue side ----
 
     // building a CraftIn*Task needs a running client (Task wants the player), so the catalogue hands over the recipes directly
