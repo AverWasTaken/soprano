@@ -105,13 +105,28 @@ public class GoBackTest {
         GoBack g = new GoBack();
         g.step(300, 32, true, false);
         assertEquals(Step.TRAVEL, g.step(40, 32, true, false));
-        // respawned at the bed, a long way back. that's not the walk being stuck
+        // respawned at the bed, a long way back. that's not the walk being stuck, but it isn't closer either
         assertEquals(Step.TRAVEL, g.step(1000, 32, true, false));
+        assertFalse(g.gotCloser());
         for (int i = 0; i < GoBack.MAX_STUCK_TICKS; i++) {
             assertEquals(Step.TRAVEL, g.step(1000, 32, true, false));
         }
         // the stuck clock still works from the new start
         assertEquals(Step.BAIL, g.step(1000, 32, true, false));
+    }
+
+    @Test
+    public void swingingBackAndForthStillRunsOut() {
+        GoBack g = new GoBack();
+        g.step(100, 32, true, false);
+        // 40 blocks out and back, forever. only the first few swings count as getting thrown back
+        int ticks = 0;
+        Step last = Step.TRAVEL;
+        while (last == Step.TRAVEL && ticks < 20 * GoBack.MAX_STUCK_TICKS) {
+            last = g.step(ticks % 2 == 0 ? 140 : 100, 32, true, false);
+            ticks++;
+        }
+        assertEquals(Step.BAIL, last);
     }
 
     @Test

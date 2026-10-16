@@ -24,11 +24,15 @@ public final class GoBack {
     public static final int MAX_WAIT_TICKS = 3 * 20;
     // less than a block closer isn't progress, it's swaying on the spot
     private static final double PROGRESS = 1;
+    // deaths or teleports one walk forgives. three deaths on the way home is a different problem
+    private static final int MAX_JUMPS = 3;
 
     private boolean travelling;
     private double best;
     private int stuck;
     private int waited;
+    private int jumps;
+    private boolean closer;
 
     // how far out a count still sees the whole thing loaded. a chunk short of the view distance so the edge chunk
     // isn't half sent, and at least one chunk because a render distance of 2 still has neighbours. never more than
@@ -60,13 +64,17 @@ public final class GoBack {
                 travelling = false;
             } else if (moverDone) {
                 return bail();
-            } else if (distance > best + range) {
-                // a death or a teleport threw us way back. that's a new walk, not a stuck one, the clock starts over
+            } else if (distance > best + range && jumps < MAX_JUMPS) {
+                // a death or a teleport threw us way back. that's a new walk, not a stuck one, the clock starts over.
+                // capped, or a walk swinging 40 blocks back and forth would reset itself forever
+                jumps++;
                 best = distance;
                 stuck = 0;
+                closer = false;
                 return Step.TRAVEL;
             } else {
-                if (distance < best - PROGRESS) {
+                closer = distance < best - PROGRESS;
+                if (closer) {
                     best = distance;
                     stuck = 0;
                 } else if (++stuck > MAX_STUCK_TICKS) {
@@ -79,6 +87,8 @@ public final class GoBack {
             best = distance;
             stuck = 0;
             waited = 0;
+            jumps = 0;
+            closer = true;
             return Step.TRAVEL;
         }
         if (loaded || ++waited > MAX_WAIT_TICKS) {
@@ -88,15 +98,18 @@ public final class GoBack {
         return Step.WAIT;
     }
 
-    // a new best while walking. the task feeds this to GatherGuard so a long honest walk isn't billed as idle
+    // the last step was a new best while walking. the task feeds this to GatherGuard so a long honest walk isn't billed
+    // as idle. getting thrown back isn't closer, or a swing would keep the guard's clock fresh too
     public boolean gotCloser() {
-        return travelling && stuck == 0;
+        return travelling && closer;
     }
 
     public void reset() {
         travelling = false;
+        closer = false;
         stuck = 0;
         waited = 0;
+        jumps = 0;
     }
 
     private Step bail() {
