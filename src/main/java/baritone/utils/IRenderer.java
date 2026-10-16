@@ -26,6 +26,7 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.vertex.VertexSorting;
 import com.mojang.renderpearl.api.pipeline.*;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.BindGroupLayouts;
@@ -174,8 +175,12 @@ public interface IRenderer {
         endBuffer(bufferBuilder, ignoredDepth ? quadsNoDepthRenderType : quadsWithDepthRenderType);
     }
 
-    static BufferBuilder startBlockQuads() {
-        draw[0] = stagedVertexBuffer.appendDraw(DefaultVertexFormat.BLOCK, PrimitiveTopology.QUADS);
+    // the sorting has to be picked when the draw is appended, upload() is where the staged buffer sorts, so the render type
+    // comes in here and not just at endBuffer. vanilla skips this under improved transparency because oit sorts for it, but
+    // endBuffer always takes the plain drawFromBuffer path, so we always sort
+    static BufferBuilder startBlockQuads(RenderType renderType) {
+        VertexSorting quadSorting = renderType.sortOnUpload() ? RenderSystem.getProjectionType().vertexSorting() : null;
+        draw[0] = stagedVertexBuffer.appendDraw(DefaultVertexFormat.BLOCK, PrimitiveTopology.QUADS, quadSorting);
         return (BufferBuilder) stagedVertexBuffer.getVertexBuilder(draw[0]);
     }
 

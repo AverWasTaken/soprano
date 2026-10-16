@@ -34,6 +34,7 @@ import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
 import net.minecraft.client.renderer.blockentity.BeaconRenderer;
+import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
@@ -547,7 +548,8 @@ public final class PathRenderer implements IRenderer {
     }
 
     private static void renderGoalXZBeaconLayer(PoseStack stack, double height, float time, int color, float radius, boolean translucent) {
-        BufferBuilder bufferBuilder = IRenderer.startBlockQuads();
+        RenderType renderType = IRenderer.beaconBeam(BeaconRenderer.BEAM_LOCATION, translucent, settings.renderGoalIgnoreDepth.value);
+        BufferBuilder bufferBuilder = IRenderer.startBlockQuads(renderType);
         float scroll = Mth.frac(-time * 0.2F - Mth.floor(-time * 0.1F));
 
         stack.pushPose();
@@ -571,7 +573,7 @@ public final class PathRenderer implements IRenderer {
         }
         stack.popPose();
 
-        IRenderer.endBuffer(bufferBuilder, IRenderer.beaconBeam(BeaconRenderer.BEAM_LOCATION, translucent, settings.renderGoalIgnoreDepth.value));
+        IRenderer.endBuffer(bufferBuilder, renderType);
     }
 
     private static void emitBeaconShell(BufferBuilder bufferBuilder, PoseStack.Pose pose, int color, float minY, float maxY,
