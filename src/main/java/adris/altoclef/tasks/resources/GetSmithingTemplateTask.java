@@ -17,8 +17,10 @@ import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import baritone.api.utils.Dimension;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import net.minecraft.core.BlockPos;
@@ -29,13 +31,16 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
 
 public class GetSmithingTemplateTask extends ResourceTask {
 
     // plain blackstone is half of basalt deltas, so it says nothing. these two only show up in bastions (same pick as NetherPhase)
     private static final Block[] BASTION = {Blocks.POLISHED_BLACKSTONE_BRICKS, Blocks.GILDED_BLACKSTONE};
-    // a bastion is big but not that big, a chest further than this from any of its bricks is someone's base
-    private static final double BASTION_CHEST_RANGE = 40;
+    // a bastion is big but not that big, a chest more than ~3 chunks (about 40 blocks) from any of its bricks is someone's base
+    private static final int BASTION_CHUNK_RADIUS = 3;
+    // a chest with no bricks around it gets asked again after this, bricks further out may have loaded by then
+    private static final int NOT_BASTION_RECHECK_TICKS = 100;
     // one boot is enough to keep piglins calm when we open their chest, and it costs the least armor to swap in
     private static final Item[] GOLD_PIECES = {Items.GOLDEN_BOOTS, Items.GOLDEN_HELMET, Items.GOLDEN_LEGGINGS, Items.GOLDEN_CHESTPLATE};
     private static final Item TEMPLATE = Items.NETHERITE_UPGRADE_SMITHING_TEMPLATE;
@@ -60,6 +65,10 @@ public class GetSmithingTemplateTask extends ResourceTask {
     private final Set<BlockPos> _visited = new HashSet<>();
     // chests already known to sit in a bastion. a chest only ever goes from "no bricks seen near it" to "bricks", never back
     private final Set<BlockPos> _inBastion = new HashSet<>();
+    private final Map<BlockPos, Integer> _notBastionUntil = new HashMap<>();
+    // chests we actually looked inside. only these finish off a bastion, a chest we gave up on says nothing about its neighbours
+    private final Set<BlockPos> _opened = new HashSet<>();
+    private int _ticks;
     private LootContainerTask _lootTask;
     // ticks spent on the current chest, counted only while we're the one ticking. a game timer would also count mob
     // fights and running away, and give up on chests we never even got to
@@ -77,11 +86,11 @@ public class GetSmithingTemplateTask extends ResourceTask {
     @Override
     protected void onResourceStart(AltoClef mod) {
         mod.getBlockTracker().trackBlock(Blocks.CHEST);
-        mod.getBlockTracker().trackBlock(BASTION);
     }
 
     @Override
     protected Task onResourceTick(AltoClef mod) {
+        _ticks++;
         Task dupe = duplicateTask(mod);
         if (dupe != null) {
             setDebugState("Copying a template with diamonds");
@@ -105,7 +114,7 @@ public class GetSmithingTemplateTask extends ResourceTask {
         }
         // every chest we know around here is opened, so the bastions they're in are done. the searcher skips those
         // chunks and wanders off until a fresh bastion loads in
-        for (BlockPos pos : _visited) {
+        for (BlockPos pos : _opened) {
             ChunkPos c = ChunkPos.containing(pos);
             for (int dx = -DONE_CHUNK_RADIUS; dx <= DONE_CHUNK_RADIUS; dx++) {
                 for (int dz = -DONE_CHUNK_RADIUS; dz <= DONE_CHUNK_RADIUS; dz++) {
@@ -120,6 +129,9 @@ public class GetSmithingTemplateTask extends ResourceTask {
     // null once this chest is done with (opened, gone, unreachable or out of time)
     private Task lootTick(AltoClef mod) {
         if (_lootTask.isFinished(mod) || !mod.getBlockTracker().blockIsValid(_lootTask.chest, Blocks.CHEST) || ++_lootTicks > CHEST_TICKS) {
+            if (_lootTask.isFinished(mod)) {
+                _opened.add(_lootTask.chest);
+            }
             markVisited(mod, _lootTask.chest);
             _lootTask = null;
             return null;
@@ -162,14 +174,15 @@ public class GetSmithingTemplateTask extends ResourceTask {
         if (_dupeGaveUp || have < 1 || have >= _count || mod.getItemStorage().getItemCount(Items.DIAMOND) < 7) {
             return null;
         }
-        // no table and no wood in the nether can stall the craft forever while we sit on everything else. bastion it is
-        if (++_dupeTicks > DUPE_TICKS) {
-            _dupeGaveUp = true;
-            return null;
-        }
         if (mod.getItemStorage().getItemCount(Items.NETHERRACK) < 1) {
             // netherrack is a nether trip for an overworld bot, still way cheaper than a bastion
             return TaskCatalogue.getItemTask("netherrack", 1);
+        }
+        // no table and no wood in the nether can stall the craft forever while we sit on everything else. bastion it is.
+        // counted after the netherrack, a portal trip alone can take longer than this
+        if (++_dupeTicks > DUPE_TICKS) {
+            _dupeGaveUp = true;
+            return null;
         }
         // one copy at a time, each one eats a template and seven diamonds, and we look again once it lands
         if (_dupeTask == null || _dupeTarget != have + 1) {
@@ -205,20 +218,48 @@ public class GetSmithingTemplateTask extends ResourceTask {
 
     private Optional<BlockPos> nextBastionChest(AltoClef mod) {
         BlockPos me = mod.getPlayer().blockPosition();
-        // getNearestWithinRange walks every block in an 81 block cube, per chest, per tick. the tracker already has the
-        // bricks, a distance check against that list is basically free
-        List<BlockPos> bricks = mod.getBlockTracker().getKnownLocations(BASTION);
-        double range = BASTION_CHEST_RANGE * BASTION_CHEST_RANGE;
         return mod.getBlockTracker().getKnownLocations(Blocks.CHEST).stream()
                 .filter(pos -> !_visited.contains(pos) && mod.getBlockTracker().blockIsValid(pos, Blocks.CHEST))
-                .filter(pos -> _inBastion.contains(pos) || (bricks.stream().anyMatch(b -> b.distSqr(pos) <= range) && _inBastion.add(pos)))
+                .filter(pos -> inBastion(mod, pos))
                 .min(Comparator.comparingDouble(pos -> pos.distSqr(me)));
+    }
+
+    // getNearestWithinRange walks every block in an 81 block cube, and the block tracker only keeps the 25 bricks
+    // nearest the player, which makes a chest across the bastion look like it's in the middle of nowhere.
+    // the chunk palettes know about every brick and skip whole sections, same question SearchChunkForBlockTask asks
+    private boolean inBastion(AltoClef mod, BlockPos chest) {
+        if (_inBastion.contains(chest)) {
+            return true;
+        }
+        Integer until = _notBastionUntil.get(chest);
+        if (until != null && _ticks < until) {
+            return false;
+        }
+        ChunkPos c = ChunkPos.containing(chest);
+        for (int dx = -BASTION_CHUNK_RADIUS; dx <= BASTION_CHUNK_RADIUS; dx++) {
+            for (int dz = -BASTION_CHUNK_RADIUS; dz <= BASTION_CHUNK_RADIUS; dz++) {
+                if (mod.getChunkTracker().chunkHas(new ChunkPos(c.x() + dx, c.z() + dz), GetSmithingTemplateTask::isBastionBlock)) {
+                    _inBastion.add(chest);
+                    return true;
+                }
+            }
+        }
+        _notBastionUntil.put(chest, _ticks + NOT_BASTION_RECHECK_TICKS);
+        return false;
+    }
+
+    private static boolean isBastionBlock(BlockState state) {
+        for (Block b : BASTION) {
+            if (state.is(b)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Override
     protected void onResourceStop(AltoClef mod, Task interruptTask) {
         mod.getBlockTracker().stopTracking(Blocks.CHEST);
-        mod.getBlockTracker().stopTracking(BASTION);
     }
 
     @Override
