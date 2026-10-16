@@ -104,10 +104,13 @@ public final class CustomGoalProcess extends BaritoneProcessHelper implements IC
                 return ret;
             case EXECUTING:
                 if (calcFailed) {
+                    // a user trip keeps its own copy of the goal, so dropping it here is fine. see TripBehavior
+                    baritone.getTripBehavior().onCalcFailed(this.goal);
                     onLostControl();
                     return new PathingCommand(this.goal, PathingCommandType.CANCEL_AND_SET_GOAL);
                 }
                 if (this.goal == null || (this.goal.isInGoal(ctx.playerFeet()) && this.goal.isInGoal(baritone.getPathingBehavior().pathStart()))) {
+                    baritone.getTripBehavior().onArrived(this.goal);
                     onLostControl(); // we're there xd
                     if (Baritone.settings().disconnectOnArrival.value) {
                         ctx.world().disconnect();

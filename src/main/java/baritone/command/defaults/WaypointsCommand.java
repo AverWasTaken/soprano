@@ -309,6 +309,7 @@ public class WaypointsCommand extends Command {
                     logDirect(String.format("Goal: %s", goal));
                 } else if (action == Action.GOTO) {
                     Goal goal = new GoalBlock(waypoint.getLocation());
+                    ((Baritone) baritone).getTripBehavior().userTrip(goal);
                     baritone.getCustomGoalProcess().setGoalAndPath(goal);
                     logDirect(String.format("Going to: %s", goal));
                 }
