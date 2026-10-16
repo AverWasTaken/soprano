@@ -210,6 +210,11 @@ public class ToolSet {
         return calculateSpeedVsBlock(stack, state) * avoidanceMultiplier(state.getBlock());
     }
 
+    // what considerPotionEffects multiplies every break speed by, for a subclass that prices a tool we don't hold
+    protected double potionMult() {
+        return potionMult;
+    }
+
     private boolean shouldForceUseTool(BlockState state, ItemStack stack) {
         for (BiPredicate<BlockState, ItemStack> predicate : forceUseTool) {
             try {

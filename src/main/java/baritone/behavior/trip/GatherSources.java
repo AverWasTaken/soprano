@@ -24,6 +24,9 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.LeavesBlock;
+import net.minecraft.world.level.block.TransparentBlock;
+import net.minecraft.world.level.block.state.BlockState;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -42,15 +45,34 @@ public final class GatherSources {
     private GatherSources() {
     }
 
-    // stone only drops itself with silk touch, sand and gravel fall on whoever is bridging with them
+    // sand and gravel fall on whoever is bridging with them, and anything that breaks into something else is no use
     public static List<Item> items(List<Item> throwaway) {
         List<Item> out = new ArrayList<>();
         for (Item item : throwaway) {
-            if (item instanceof BlockItem && item != Items.STONE && item != Items.SAND && item != Items.GRAVEL && !out.contains(item)) {
+            if (item instanceof BlockItem blockItem && item != Items.SAND && item != Items.GRAVEL && dropsItself(blockItem.getBlock()) && !out.contains(item)) {
                 out.add(item);
             }
         }
         return out;
+    }
+
+    // the loot tables live on the server, so this is a list of the usual suspects (stone wants silk touch, nylium turns
+    // into netherrack, snow into snowballs). a throwaway someone added that breaks
+    // into something else (glass, deepslate, grass) would have the gather mine it forever and never hold one
+    static boolean dropsItself(Block block) {
+        if (block == Blocks.STONE || block == Blocks.DEEPSLATE || block == Blocks.GRASS_BLOCK || block == Blocks.MYCELIUM
+                || block == Blocks.PODZOL || block == Blocks.DIRT_PATH || block == Blocks.FARMLAND || block == Blocks.ICE
+                || block == Blocks.PACKED_ICE || block == Blocks.BLUE_ICE || block == Blocks.GLOWSTONE || block == Blocks.SEA_LANTERN
+                || block == Blocks.BOOKSHELF || block == Blocks.CLAY || block == Blocks.MELON || block == Blocks.SNOW_BLOCK
+                || block == Blocks.CRIMSON_NYLIUM || block == Blocks.WARPED_NYLIUM) {
+            return false;
+        }
+        // the classes and the tags both: tags are only bound once a world is loaded
+        if (block instanceof TransparentBlock || block instanceof LeavesBlock) {
+            return false;
+        }
+        BlockState state = block.defaultBlockState();
+        return !state.is(BlockTags.IMPERMEABLE) && !state.is(BlockTags.LEAVES);
     }
 
     // the item's own block, plus the common blocks that break into it. nobody finds cobblestone lying around, they find stone
