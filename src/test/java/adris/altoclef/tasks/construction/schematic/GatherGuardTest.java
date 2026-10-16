@@ -75,6 +75,20 @@ public class GatherGuardTest {
     }
 
     @Test
+    public void walkingBackBuysTimeButIsNoRound() {
+        GatherGuard g = new GatherGuard();
+        assertFalse(g.round(10));
+        for (int i = 0; i < GatherGuard.MAX_IDLE_TICKS; i++) {
+            g.tick();
+        }
+        g.closer();
+        assertFalse(g.tick());
+        assertFalse(g.round(10));
+        assertFalse(g.round(10));
+        assertTrue(g.round(10));
+    }
+
+    @Test
     public void aGatherNeverCountsAsARound() {
         GatherGuard g = new GatherGuard();
         assertFalse(g.round(10));

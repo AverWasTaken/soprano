@@ -7,9 +7,11 @@ import adris.altoclef.TaskCatalogue;
 import adris.altoclef.tasks.construction.schematic.CountStep;
 import adris.altoclef.tasks.construction.schematic.GatherGuard;
 import adris.altoclef.tasks.construction.schematic.GatherPlan;
+import adris.altoclef.tasks.construction.schematic.GoBack;
 import adris.altoclef.tasks.construction.schematic.SchematicDiff;
 import adris.altoclef.tasks.construction.schematic.SkipItems;
 import adris.altoclef.tasks.movement.DefaultGoToDimensionTask;
+import adris.altoclef.tasks.movement.GetToXZTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.ui.HudText;
 import adris.altoclef.util.ItemTarget;
@@ -26,7 +28,9 @@ import baritone.utils.schematic.library.InventoryCounts;
 import baritone.utils.schematic.library.MaterialLine;
 import baritone.utils.schematic.library.MaterialList;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
@@ -62,11 +66,15 @@ public class SchematicBuildTask extends Task {
     // how often the builder's progress gets counted while it works: a watch diff starts this many ticks after the last
     // one finished. GatherGuard only believes the diff, and an hour long build shouldn't look stuck for want of a count
     private static final int WATCH_EVERY = 30 * 20;
+    // a walk back longer than this gets a chat line, a short one only the debug state
+    private static final int SAY_TRIP_OVER = 100;
     private static final BlockState AIR = Blocks.AIR.defaultBlockState();
 
     private enum Phase {
         COUNT,
         GATHER,
+        // walk back to the build, then start the builder
+        RETURN,
         BUILD
     }
 
@@ -78,6 +86,7 @@ public class SchematicBuildTask extends Task {
     private final Mirror mirror;
     private final ISchematic placed;
     private final GatherGuard guard = new GatherGuard();
+    private final GoBack goBack = new GoBack();
     // items nothing in the catalogue makes and the bag has none of. the builder gets the file with them cut out
     // (SkipItems). one we hold some of stays in, the builder places what there is and the pause says what's short
     private final Set<String> skipped = new LinkedHashSet<>();
@@ -92,6 +101,13 @@ public class SchematicBuildTask extends Task {
     // builder only ever run back here
     private Dimension home;
     private Task goHome;
+    // the walk back to the build, null while there isn't one
+    private Task trip;
+    // we're at the build with its chunks in. cleared whenever we might leave (a gather, an interrupt) and when the
+    // builder starts, so every count and builder start asks again. never asked mid build, the builder walks all over
+    private boolean near;
+    // the "heading back" line went out for this trip. survives an interrupt, a fight halfway home is the same trip
+    private boolean toldTrip;
     private SchematicDiff diff;
     private SchematicDiff watch;
     private int watchWait;
@@ -139,13 +155,15 @@ public class SchematicBuildTask extends Task {
             home = WorldHelper.getCurrentDimension();
             warnAboutSettings();
         }
-        // back from an interrupt (a fight, a meal). onStop let go of the builder, so it gets the build again, fresh
+        // a fight or a meal can drag us anywhere, so the next count or builder start checks where we are first. a half
+        // done count goes too, its far cells may have been read from wherever the fight went
+        near = false;
+        trip = null;
+        diff = null;
+        goBack.reset();
+        // back from an interrupt. onStop let go of the builder, so it gets the build again, fresh, once we're back
         if (phase == Phase.BUILD) {
-            if (atHome()) {
-                startBuilder(mod);
-                return;
-            }
-            phase = Phase.COUNT;
+            phase = atHome() ? Phase.RETURN : Phase.COUNT;
         }
         protect(mod);
     }
@@ -255,6 +273,7 @@ public class SchematicBuildTask extends Task {
         return switch (phase) {
             case COUNT -> away ? goHome() : count(mod);
             case GATHER -> gather(mod);
+            case RETURN -> away ? goHome() : returnToBuild(mod);
             case BUILD -> build(mod);
         };
     }
@@ -289,6 +308,10 @@ public class SchematicBuildTask extends Task {
         ClientLevel world = mod.getWorld();
         if (world == null) {
             return null;
+        }
+        // a count from out here sees the build's chunks unloaded, calls them air and bills the whole thing again
+        if (diff == null && !near) {
+            return reach(mod);
         }
         if (diff == null) {
             diff = newDiff(false);
@@ -350,6 +373,8 @@ public class SchematicBuildTask extends Task {
         });
         batchTargets = totals;
         guard.newBatch();
+        near = false;
+        toldTrip = false;
         gather = TaskCatalogue.getSquashedItemTask(targets.toArray(new ItemTarget[0]));
         say("Gathering " + list(plan.batch()) + " for " + name + " (batch " + batches + ")");
         phase = Phase.GATHER;
@@ -365,8 +390,113 @@ public class SchematicBuildTask extends Task {
             return goHome();
         }
         gather = null;
-        startBuilder(mod);
+        // the gather ended wherever the last tree was, and the builder only heads over once it holds what it wants
+        phase = Phase.RETURN;
+        return returnToBuild(mod);
+    }
+
+    private Task returnToBuild(AltoClef mod) {
+        Task go = reach(mod);
+        if (near) {
+            startBuilder(mod);
+        }
+        return go;
+    }
+
+    // walks us back to the build and waits for its chunks. near goes true once we're there, until then this hands back
+    // the walk (or null while the chunks come in)
+    private Task reach(AltoClef mod) {
+        LocalPlayer player = mod.getPlayer();
+        double dist = GoBack.distance(player.getX(), player.getZ(), origin.getX(), origin.getZ(), maxX(), maxZ());
+        int view = viewChunks();
+        int range = GoBack.range(view);
+        // only asked once we're in range, a walk doesn't care about chunks
+        boolean loaded = dist <= range && footprintLoaded(mod, view);
+        switch (goBack.step(dist, range, loaded, trip != null && trip.isFinished(mod))) {
+            case TRAVEL -> {
+                if (goBack.gotCloser()) {
+                    guard.closer();
+                }
+                if (trip == null) {
+                    diff = null;
+                    // the nearest column of the footprint, any height. we call it there at half the range, well before
+                    // the walk would ever stand on that exact column
+                    BlockPos at = nearest(player);
+                    trip = new GetToXZTask(at.getX(), at.getZ());
+                    // a trip that gets interrupted and picked up again is still the same trip, one line is plenty
+                    if (dist > SAY_TRIP_OVER && !toldTrip) {
+                        toldTrip = true;
+                        say("Heading back to " + name + " at " + HudText.pos(origin));
+                    }
+                }
+                setDebugState("Going back to the build", "Going back to " + name);
+                return trip;
+            }
+            case WAIT -> {
+                trip = null;
+                setDebugState("Waiting for the build's chunks", "Waiting for " + name + " to load");
+                return null;
+            }
+            case THERE -> {
+                trip = null;
+                toldTrip = false;
+                near = true;
+                return null;
+            }
+            case BAIL -> {
+                trip = null;
+                toldTrip = false;
+                finish(mod, "Can't get back to " + name + " at " + HudText.pos(origin) + ", stopped");
+                return null;
+            }
+        }
         return null;
+    }
+
+    private int maxX() {
+        return origin.getX() + placed.widthX() - 1;
+    }
+
+    private int maxZ() {
+        return origin.getZ() + placed.lengthZ() - 1;
+    }
+
+    // the footprint column closest to the player, the walk's target. y is the player's, nobody reads it
+    private BlockPos nearest(LocalPlayer player) {
+        BlockPos at = player.blockPosition();
+        return new BlockPos(Math.clamp(at.getX(), origin.getX(), maxX()), at.getY(),
+            Math.clamp(at.getZ(), origin.getZ(), maxZ()));
+    }
+
+    // every chunk of the footprint the server should have sent by now. one short of the view distance, the edge ring
+    // shows up late or not at all. a build wider than the view distance only gets its near part checked, the far
+    // part is the diff's problem (it calls unloaded cells air)
+    private boolean footprintLoaded(AltoClef mod, int view) {
+        ClientLevel world = mod.getWorld();
+        if (world == null) {
+            return false;
+        }
+        int reach = Math.max(0, view - 1);
+        int px = mod.getPlayer().blockPosition().getX() >> 4;
+        int pz = mod.getPlayer().blockPosition().getZ() >> 4;
+        int x0 = Math.max(origin.getX() >> 4, px - reach);
+        int x1 = Math.min(maxX() >> 4, px + reach);
+        int z0 = Math.max(origin.getZ() >> 4, pz - reach);
+        int z1 = Math.min(maxZ() >> 4, pz + reach);
+        for (int cx = x0; cx <= x1; cx++) {
+            for (int cz = z0; cz <= z1; cz++) {
+                // not world.hasChunk, ClientLevel's is a flat 'return true'
+                if (!world.getChunkSource().hasChunk(cx, cz)) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    // same number the move camera's leash reads (MoveSession.leash): the server's view distance can be under the option
+    private static int viewChunks() {
+        return Minecraft.getInstance().options.getEffectiveRenderDistance();
     }
 
     private Task build(AltoClef mod) {
@@ -444,6 +574,8 @@ public class SchematicBuildTask extends Task {
         builder.build(name, SkipItems.of(schematic, skipped), origin, rotation, mirror);
         builderSerial = builder.buildSerial();
         watch = null;
+        near = false;
+        toldTrip = false;
         // whatever the pause or the gather was about, it's in the past now
         missing = null;
         phase = Phase.BUILD;
@@ -494,6 +626,7 @@ public class SchematicBuildTask extends Task {
         return switch (phase) {
             case COUNT -> "Counting what " + name + " needs";
             case GATHER -> "Gathering for " + name;
+            case RETURN -> "Going back to " + name;
             case BUILD -> "Building " + name;
         };
     }
