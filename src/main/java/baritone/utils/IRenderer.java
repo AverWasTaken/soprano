@@ -48,27 +48,26 @@ public interface IRenderer {
     Tesselator tessellator = Tesselator.getInstance();
     IEntityRenderManager renderManager = (IEntityRenderManager) Minecraft.getInstance().getEntityRenderDispatcher();
     Settings settings = BaritoneAPI.getSettings();
-    // depth is reversed in 26.x (cleared to 0, nearer is bigger), so "in front of the terrain" is >= and not <=. the other way round is sky only
     RenderPipeline.Snippet BARITONE_LINES_SNIPPET = RenderPipeline.builder(((IRenderPipelines) new RenderPipelines()).getLinesSnippet())
-        .withColorTargetState(new ColorTargetState(new BlendFunction(
-            BlendFactor.SRC_ALPHA,
-            BlendFactor.ONE_MINUS_SRC_ALPHA,
-            BlendFactor.ONE,
-            BlendFactor.ZERO
-        )))
-        .withDepthStencilState(new DepthStencilState(CompareOp.GREATER_THAN_OR_EQUAL, false))
+        .withBlend(new BlendFunction(
+            SourceFactor.SRC_ALPHA,
+            DestFactor.ONE_MINUS_SRC_ALPHA,
+            SourceFactor.ONE,
+            DestFactor.ZERO
+        ))
+        .withDepthWrite(false)
         .withCull(false)
         .buildSnippet();
 
     // translucent quads for the ribbon and the box fills: the debug filled box pipeline with the same blending as the lines
     RenderPipeline.Snippet BARITONE_QUADS_SNIPPET = RenderPipeline.builder(((IRenderPipelines) new RenderPipelines()).getDebugFilledSnippet())
-        .withColorTargetState(new ColorTargetState(new BlendFunction(
-            BlendFactor.SRC_ALPHA,
-            BlendFactor.ONE_MINUS_SRC_ALPHA,
-            BlendFactor.ONE,
-            BlendFactor.ZERO
-        )))
-        .withDepthStencilState(new DepthStencilState(CompareOp.GREATER_THAN_OR_EQUAL, false))
+        .withBlend(new BlendFunction(
+            SourceFactor.SRC_ALPHA,
+            DestFactor.ONE_MINUS_SRC_ALPHA,
+            SourceFactor.ONE,
+            DestFactor.ZERO
+        ))
+        .withDepthWrite(false)
         .withCull(false)
         .buildSnippet();
 
@@ -82,6 +81,8 @@ public interface IRenderer {
     RenderPipeline BEACON_BEAM_OPAQUE = ((IRenderPipelines) new RenderPipelines()).baritone$registerPipeline(RenderPipeline.builder(BARITONE_BEACON_BEAM_SNIPPET)
             .withLocation("pipeline/baritone_beacon_beam_opaque")
             .withDepthWrite(false)
+            // "opaque" blends anyway, the goal beam has always been see through and it should stay that way
+            .withBlend(BlendFunction.TRANSLUCENT)
             .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
             .withCull(true)
             .build());
@@ -94,11 +95,12 @@ public interface IRenderer {
             .withCull(true)
             .build());
 
+    // 1.21.11 still clears depth to 1 and uses a plain perspective matrix, so nearer is smaller and lequal is the right way round
     RenderType linesWithDepthRenderType = ((IRenderType) RenderTypes.lines()).createRenderType(
         "renderType/baritone_lines_with_depth",
         RenderSetup.builder(RenderPipeline.builder(BARITONE_LINES_SNIPPET)
             .withLocation("pipelines/baritone_lines_with_depth")
-            .withDepthStencilState(new DepthStencilState(CompareOp.GREATER_THAN_OR_EQUAL, false))
+            .withDepthTestFunction(DepthTestFunction.LEQUAL_DEPTH_TEST)
             .build())
             .bufferSize(256)
             .createRenderSetup()
@@ -116,7 +118,7 @@ public interface IRenderer {
         "renderType/baritone_quads_with_depth",
         RenderSetup.builder(RenderPipeline.builder(BARITONE_QUADS_SNIPPET)
             .withLocation("pipelines/baritone_quads_with_depth")
-            .withDepthStencilState(new DepthStencilState(CompareOp.GREATER_THAN_OR_EQUAL, false))
+            .withDepthTestFunction(DepthTestFunction.LEQUAL_DEPTH_TEST)
             .build())
             .createRenderSetup()
     );
@@ -124,7 +126,7 @@ public interface IRenderer {
         "renderType/baritone_quads_no_depth",
         RenderSetup.builder(RenderPipeline.builder(BARITONE_QUADS_SNIPPET)
                 .withLocation("pipelines/baritone_quads_no_depth")
-                .withDepthStencilState(new DepthStencilState(CompareOp.ALWAYS_PASS, false))
+                .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
                 .build())
             .createRenderSetup()
     );
@@ -168,10 +170,9 @@ public interface IRenderer {
         }
     }
 
-    // lines and quads take turns, there's one draw open at a time. finish one before you start the other
+    // same tesselator as the lines, so finish your quads before you start your lines (or the other way around)
     static BufferBuilder startQuads() {
-        draw[0] = stagedVertexBuffer.appendDraw(DefaultVertexFormat.POSITION_COLOR, PrimitiveTopology.QUADS);
-        return (BufferBuilder) stagedVertexBuffer.getVertexBuilder(draw[0]);
+        return tessellator.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
     }
 
     static void endQuads(BufferBuilder bufferBuilder, boolean ignoredDepth) {
@@ -183,26 +184,9 @@ public interface IRenderer {
     }
 
     static void endBuffer(BufferBuilder bufferBuilder, RenderType renderType) {
-        // endFrame has to happen even when the draw blows up, or the next one inherits this one's leftovers
-        try {
-            stagedVertexBuffer.upload();
-            StagedVertexBuffer.ExecuteInfo info = stagedVertexBuffer.getExecuteInfo(draw[0]);
-            if (info != null) {
-                var preparedRenderType = renderType.prepare();
-                var renderTarget = Minecraft.getInstance().gameRenderer.mainRenderTarget();
-                try (var renderPass = RenderSystem.getDevice().createCommandEncoder().createRenderPass(
-                    () -> "Baritone Render Pass",
-                    renderTarget.getColorTextureView(),
-                    Optional.empty(),
-                    renderTarget.getDepthTextureView(),
-                    OptionalDouble.empty())
-                ) {
-                    preparedRenderType.drawFromBuffer(info, renderPass);
-                }
-            }
-        } finally {
-            draw[0] = null;
-            stagedVertexBuffer.endFrame();
+        MeshData meshData = bufferBuilder.build();
+        if (meshData != null) {
+            renderType.draw(meshData);
         }
     }
 
