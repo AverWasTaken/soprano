@@ -81,6 +81,8 @@ public interface IRenderer {
     RenderPipeline BEACON_BEAM_OPAQUE = ((IRenderPipelines) new RenderPipelines()).baritone$registerPipeline(RenderPipeline.builder(BARITONE_BEACON_BEAM_SNIPPET)
             .withLocation("pipeline/baritone_beacon_beam_opaque")
             .withDepthWrite(false)
+            // "opaque" blends anyway, the goal beam has always been see through and it should stay that way
+            .withBlend(BlendFunction.TRANSLUCENT)
             .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
             .withCull(true)
             .build());
