@@ -183,13 +183,15 @@ public final class TripBehavior extends Behavior {
     }
 
     // the user typed something else since we asked. a stuck question leaves nothing in control, so anything in
-    // control now is theirs. a faster question was asked while walking our goal, a different goal means they changed it
+    // control now is theirs. a faster question was asked while walking our goal, a different goal means they changed it.
+    // no goal at all is the faster route's normal route failing while the question was up, that's still our trip
     private boolean movedOn(Trip trip) {
         if (AltoClefBridge.userTaskActive()) {
             return true;
         }
-        if (trip.asked == Trip.Ask.FASTER) {
-            return baritone.getCustomGoalProcess().getGoal() != trip.goal;
+        Goal goal = baritone.getCustomGoalProcess().getGoal();
+        if (goal != null) {
+            return goal != trip.goal;
         }
         Optional<IBaritoneProcess> inControl = baritone.getPathingControlManager().mostRecentInControl();
         return inControl.isPresent() && inControl.get().isActive();
@@ -212,7 +214,10 @@ public final class TripBehavior extends Behavior {
                     TripPrompt.say("I can't get there without blocks, and you said no to collecting them. Stopping here.");
                 }
             }
-            case PENDING -> stuck = null; // the question is already up, the bot just stands there like it always did
+            // the question is already up, the bot just stands there like it always did. stuck stays set: if the faster
+            // question is the one that's up and gets a no, the next tick says so like any other no
+            case PENDING -> {
+            }
             case UNASKED, YES -> {
                 if (launch(trip, Trip.Ask.STUCK)) {
                     stuck = null;
@@ -375,14 +380,19 @@ public final class TripBehavior extends Behavior {
             return;
         }
         if (plan.blocks() > 0 && ctx.player().getInventory().getFreeSlot() < 0) {
-            failGather(next, "My inventory is full, I can't collect blocks. Stopping here.");
+            failGather(next, "My inventory is full, I can't collect blocks.");
             return;
         }
         TripGatherer gatherer = AltoClefBridge.tripGatherer();
         List<Item> items = GatherSources.items(s.acceptableThrowawayItems.value);
         if (gatherer == null || !gatherer.start(next.id, items, plan.blocks(), plan.pickaxe())) {
-            failGather(next, "I can't go collecting right now (altoclef is off or busy). Stopping here.");
+            failGather(next, "I can't go collecting right now (altoclef is off or busy).");
             return;
+        }
+        if (baritone.getCustomGoalProcess().getGoal() == next.goal) {
+            // a faster route yes, still walking the slow one. the gather's first child cancels it too, but not before the
+            // trip goal gets a tick or two of walking the wrong way
+            baritone.getPathingBehavior().cancelEverything();
         }
         double estimate = TripMath.gatherTicks(plan.blocks(), plan.pickaxe(), s.gatherTicksPerBlock.value, s.gatherPickaxeTicks.value);
         gatherDeadline = ticks + (long) Math.max(MIN_GATHER_TICKS, 3 * estimate);
@@ -403,19 +413,22 @@ public final class TripBehavior extends Behavior {
                     baritone.getCustomGoalProcess().setGoalAndPath(trip.goal);
                 }
             }
-            case FAILED, NONE -> failGather(trip, "Collecting didn't work out. Stopping here.");
+            case FAILED, NONE -> failGather(trip, "Collecting didn't work out.");
             case RUNNING -> {
                 if (ticks > gatherDeadline) {
                     gatherer.cancel(trip.id);
-                    failGather(trip, "Collecting is taking too long, giving up on it. Stopping here.");
+                    failGather(trip, "Collecting is taking too long, giving up on it.");
                 }
             }
         }
     }
 
+    // a faster route yes that never got going is still walking the normal route, so don't claim to stop. once the
+    // gather has taken over we don't walk back on our own: a FAILED can just as well be the user's ctrl+k or a new task
     private void failGather(Trip trip, String message) {
         book.refuse(trip.id);
         book.tellNo(trip.id);
-        TripPrompt.say(message);
+        boolean stillWalking = baritone.getCustomGoalProcess().getGoal() == trip.goal;
+        TripPrompt.say(message + (stillWalking ? " Sticking to the normal route." : " Stopping here."));
     }
 }
