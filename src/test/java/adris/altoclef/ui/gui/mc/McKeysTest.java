@@ -5,6 +5,7 @@ import com.mojang.blaze3d.platform.InputConstants;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 // 1.21.11 hands over glfw numbers, which is what the kit and the guiKey setting use, so every mapping in here is the
 // identity. this pins that down, a stray sdl table sneaking back in from 26.3 would move every key
@@ -57,10 +58,14 @@ public class McKeysTest {
     @Test
     public void everyGlfwKeyRoundTripsUnchanged() {
         // a settings file from the 1.21.4 or 26.3 build holds glfw numbers, they have to mean the same key here
+        int seen = 0;
         for (int key = 32; key <= 348; key++) {
             assertEquals("key " + key, key, McKeys.toKit(key));
             assertEquals("key " + key, key, McKeys.toGame(McKeys.toKit(key)));
+            seen++;
         }
+        // so a loop that got its bounds squished can't pass by checking nothing. space through right super is 317 codes
+        assertTrue("only " + seen + " keys round tripped", seen > 300);
     }
 
     @Test
