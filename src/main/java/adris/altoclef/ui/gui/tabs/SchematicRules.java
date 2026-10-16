@@ -1,7 +1,9 @@
 package adris.altoclef.ui.gui.tabs;
 
+import adris.altoclef.ui.gui.facade.SchematicsAccess.Building;
 import adris.altoclef.ui.gui.facade.SchematicsAccess.Line;
 import adris.altoclef.ui.gui.facade.SchematicsAccess.Materials;
+import adris.altoclef.ui.gui.facade.SchematicsAccess.Placement;
 import adris.altoclef.ui.gui.facade.SchematicsAccess.Row;
 
 import java.util.ArrayList;
@@ -84,6 +86,36 @@ final class SchematicRules {
             return "Some blocks can't be placed, those spots stay empty.";
         }
         return "";
+    }
+
+    // the chip on the map: "x 100 y 64 z -40 · 90°", "· mirrored" on the end when it is. dx dz is a drag in progress
+    static String coords(Placement p, int dx, int dz) {
+        String s = "x " + (p.x() + dx) + " y " + p.y() + " z " + (p.z() + dz) + " · " + (p.turns() & 3) * 90 + "°";
+        return p.mirrored() ? s + " · mirrored" : s;
+    }
+
+    // "the Nether" for minecraft:the_nether, the id's path with the underscores gone for anything modded
+    static String dimensionName(String id) {
+        if (id == null) {
+            return "another dimension";
+        }
+        String path = id.substring(id.indexOf(':') + 1);
+        return switch (path) {
+            case "overworld" -> "the Overworld";
+            case "the_nether" -> "the Nether";
+            case "the_end" -> "the End";
+            default -> path.replace('_', ' ');
+        };
+    }
+
+    // what the build bar says about the last build request, "" when it isn't saying anything
+    static String buildingLine(Building b) {
+        return switch (b.state()) {
+            case PARSING -> "Reading the file…";
+            case STARTED -> "Building it. Stop is in the bar below.";
+            case ERROR -> b.message() == null || b.message().isEmpty() ? "The build didn't start" : b.message();
+            default -> "";
+        };
     }
 
     // "40 / 212" for an item, just the count for the folded kinds

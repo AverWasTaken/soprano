@@ -114,8 +114,12 @@ public class SchematicsTabTest {
     public void foldedKindsOpenOnClick() {
         clickRow(0);
         var mats = tab.pane().list();
-        // the section rows sit after the seven items
-        float y = mats.y() + 7 * mats.rowHeight() + mats.rowHeight() / 2f;
+        // the section rows sit after the seven items, past the first page now that the map has the top of the card
+        mats.ensureVisible(9);
+        p.settle();
+        p.advance(600);
+        p.settle();
+        float y = mats.rowMidY(7);
         p.click(mats.x() + 40, y);
         p.settle();
         assertTrue(tab.pane().openSections().contains("Can't place"));
@@ -180,9 +184,9 @@ public class SchematicsTabTest {
         assertTrue(facade.actions.isEmpty());
         clickBuild();
         assertFalse(tab.armed());
-        assertEquals("Build at my feet", tab.buildButton().text());
-        // back to the feet first, so "Build at my feet" stays true after an earlier build pinned the placement
-        assertEquals(List.of("schematics feet Small Castle.litematic", "schematics build Small Castle.litematic"), facade.actions);
+        assertEquals("Build here", tab.buildButton().text());
+        // straight to the build: where it goes is the map's business now, no detour through the feet
+        assertEquals(List.of("schematics build Small Castle.litematic"), facade.actions);
         assertEquals("Building Small Castle.litematic at 100, 64, -40", p.shell.toast().currentLine());
         assertTrue(p.shell.toast().currentOk());
     }
@@ -235,9 +239,14 @@ public class SchematicsTabTest {
     @Test
     public void noWorldMeansNoBuild() {
         facade.world.pos = null;
+        facade.schematics.inWorld = false;
         clickRow(0);
         assertFalse(tab.buildButton().enabled());
         assertEquals("Join a world to build", tab.pane().warning());
+        assertEquals(PlacementMap.Mode.NO_WORLD, map().mode());
+        for (var b : tab.pane().controls()) {
+            assertFalse(b.enabled());
+        }
         clickBuild();
         assertFalse(tab.armed());
         assertTrue(facade.actions.isEmpty());
@@ -248,6 +257,9 @@ public class SchematicsTabTest {
         clickRow(2);
         assertEquals("broken.litematic", tab.selectedPath());
         assertEquals("EOFException: unexpected end of file", tab.pane().errorText());
+        // nowhere to place a file with no size: the map band is left out, not shown empty
+        assertEquals(PlacementMap.Mode.HIDDEN, map().mode());
+        assertFalse(map().visible());
         assertFalse(tab.pane().showsList());
         assertFalse(tab.buildButton().enabled());
         assertEquals("Didn't parse", tab.pane().summary());
@@ -427,5 +439,231 @@ public class SchematicsTabTest {
         assertEquals("Litematica · 120 B", SchematicRules.meta(rows.get(2)));
         assertEquals("Didn't parse", SchematicRules.sub(rows.get(2)));
         assertEquals("MCEdit · 15 x 6 x 12", SchematicRules.sub(rows.get(3)));
+    }
+
+    // ----- where it goes: the map band and its controls
+
+    private PlacementMap map() {
+        return tab.pane().map();
+    }
+
+    private void clickControl(String name) {
+        clickControl(name, 0);
+    }
+
+    private void clickControl(String name, int mods) {
+        var b = tab.pane().control(name);
+        p.click(b.x() + b.w() / 2f, b.y() + b.h() / 2f, mods);
+        p.settle();
+    }
+
+    @Test
+    public void theControlsEditThePlacementThroughTheFacade() {
+        clickRow(0);
+        assertEquals(PlacementMap.Mode.MAP, map().mode());
+        assertTrue(map().visible());
+        assertEquals("x 100 y 64 z -40 · 0°", map().coords());
+        clickControl("west");
+        clickControl("north");
+        clickControl("south");
+        clickControl("east");
+        clickControl("up");
+        clickControl("down");
+        clickControl("turnRight");
+        clickControl("turnLeft");
+        clickControl("mirror");
+        clickControl("feet");
+        assertEquals(List.of(
+            "schematics move Small Castle.litematic -1 0 0",
+            "schematics move Small Castle.litematic 0 0 -1",
+            "schematics move Small Castle.litematic 0 0 1",
+            "schematics move Small Castle.litematic 1 0 0",
+            "schematics move Small Castle.litematic 0 1 0",
+            "schematics move Small Castle.litematic 0 -1 0",
+            "schematics rotate Small Castle.litematic cw",
+            "schematics rotate Small Castle.litematic ccw",
+            "schematics mirror Small Castle.litematic",
+            "schematics feet Small Castle.litematic"), facade.actions);
+        // move to me keeps the flip, and the chip shows the new placement the same tick
+        assertEquals("x 100 y 64 z -40 · 0° · mirrored", map().coords());
+    }
+
+    @Test
+    public void shiftStepsEightBlocks() {
+        clickRow(0);
+        clickControl("east", Keys.MOD_SHIFT);
+        clickControl("up", Keys.MOD_SHIFT);
+        clickControl("north", Keys.MOD_SHIFT);
+        assertEquals(List.of(
+            "schematics move Small Castle.litematic 8 0 0",
+            "schematics move Small Castle.litematic 0 8 0",
+            "schematics move Small Castle.litematic 0 0 -8"), facade.actions);
+        assertEquals("x 108 y 72 z -48 · 0°", map().coords());
+    }
+
+    @Test
+    public void theChipReadsTheTurnAndTheFlip() {
+        clickRow(0);
+        clickControl("turnRight");
+        assertEquals("x 100 y 64 z -40 · 90°", map().coords());
+        // a flip inverts the turn (the fake mirrors the real rule)
+        clickControl("mirror");
+        assertEquals("x 100 y 64 z -40 · 270° · mirrored", map().coords());
+        clickControl("turnLeft");
+        assertEquals("x 100 y 64 z -40 · 180° · mirrored", map().coords());
+    }
+
+    @Test
+    public void draggingTheFootprintMovesItOnceOnRelease() {
+        clickRow(0);
+        PlacementMap m = map();
+        int s = m.pxPerBlock();
+        float cx = m.footprintCentreX();
+        float cy = m.footprintCentreY();
+        p.press(cx, cy);
+        assertTrue(m.dragging());
+        p.drag(cx + 3 * s, cy - 2 * s);
+        // the chip follows the pointer, nothing is saved until the drop
+        assertEquals("x 103 y 64 z -42 · 0°", m.coords());
+        assertTrue(facade.actions.isEmpty());
+        p.release(cx + 3 * s, cy - 2 * s);
+        p.settle();
+        assertFalse(m.dragging());
+        assertEquals(List.of("schematics move Small Castle.litematic 3 0 -2"), facade.actions);
+        assertEquals("x 103 y 64 z -42 · 0°", m.coords());
+        // a press that goes nowhere is not a move
+        p.press(m.footprintCentreX(), m.footprintCentreY());
+        p.release(m.footprintCentreX(), m.footprintCentreY());
+        assertEquals(1, facade.actions.size());
+        // and the terrain around the footprint is not a handle
+        p.press(m.x() + 10, m.y() + m.h() - 10);
+        assertFalse(m.dragging());
+        p.release(m.x() + 10, m.y() + m.h() - 10);
+    }
+
+    @Test
+    public void aDragThatLosesItsFileIsDropped() {
+        clickRow(0);
+        PlacementMap m = map();
+        float cx = m.footprintCentreX();
+        float cy = m.footprintCentreY();
+        p.press(cx, cy);
+        p.drag(cx + 4 * m.pxPerBlock(), cy);
+        facade.schematics.remove("Small Castle.litematic");
+        ticks(1);
+        assertFalse(m.dragging());
+        p.release(cx + 4 * m.pxPerBlock(), cy);
+        assertTrue(facade.actions.isEmpty());
+    }
+
+    @Test
+    public void theWheelZoomsTheMap() {
+        clickRow(0);
+        PlacementMap m = map();
+        float cx = m.x() + m.w() / 2f;
+        float cy = m.y() + m.h() / 2f;
+        assertEquals(PlacementMap.DEFAULT_SCALE, m.scaleIndex());
+        p.scroll(cx, cy, 1);
+        assertEquals(2, m.scaleIndex());
+        p.scroll(cx, cy, 1);
+        assertEquals(2, m.scaleIndex());
+        p.scroll(cx, cy, -1);
+        p.scroll(cx, cy, -1);
+        assertEquals(0, m.scaleIndex());
+        p.scroll(cx, cy, -1);
+        assertEquals(0, m.scaleIndex());
+    }
+
+    @Test
+    public void anEditDisarmsTheBuildButton() {
+        clickRow(0);
+        clickBuild();
+        assertTrue(tab.armed());
+        clickControl("north");
+        assertFalse(tab.armed());
+        assertEquals(List.of("schematics move Small Castle.litematic 0 0 -1"), facade.actions);
+    }
+
+    @Test
+    public void placedInAnotherDimensionOnlyMoveToMeWorks() {
+        clickRow(0);
+        // the placement was made in the overworld, then the player went through a portal
+        facade.schematics.dimension = "minecraft:the_nether";
+        ticks(1);
+        p.settle();
+        assertEquals(PlacementMap.Mode.ELSEWHERE, map().mode());
+        assertEquals("minecraft:overworld", map().elsewhere());
+        assertEquals("Placed in the Overworld. Move it here first.", tab.pane().warning());
+        assertFalse(tab.buildButton().enabled());
+        assertFalse(tab.pane().control("north").enabled());
+        assertFalse(tab.pane().control("turnLeft").enabled());
+        assertTrue(tab.pane().control("feet").enabled());
+        clickBuild();
+        assertFalse(tab.armed());
+        assertTrue(facade.actions.isEmpty());
+        clickControl("feet");
+        assertEquals(List.of("schematics feet Small Castle.litematic"), facade.actions);
+        assertEquals(PlacementMap.Mode.MAP, map().mode());
+        assertTrue(tab.buildButton().enabled());
+        assertTrue(tab.pane().control("north").enabled());
+    }
+
+    @Test
+    public void theBuildBarFollowsTheBuildRequest() {
+        facade.schematics.parsePolls = 2;
+        facade.schematics.runPolls = 2;
+        clickRow(0);
+        clickBuild();
+        clickBuild();
+        assertEquals(List.of("schematics build Small Castle.litematic"), facade.actions);
+        assertEquals("Reading the file…", tab.pane().warning());
+        assertFalse(tab.buildButton().enabled());
+        ticks(3);
+        assertEquals("Building it. Stop is in the bar below.", tab.pane().warning());
+        assertTrue(tab.buildButton().enabled());
+        // the builder finished: back to what you are short of
+        ticks(2);
+        assertEquals("3,490 short. It pauses when it runs out.", tab.pane().warning());
+    }
+
+    @Test
+    public void aBuildThatFailsAfterTheClickSaysWhy() {
+        facade.schematics.buildFailsLater = "The file vanished while reading it";
+        clickRow(0);
+        clickBuild();
+        clickBuild();
+        ticks(2);
+        assertEquals("The file vanished while reading it", tab.pane().warning());
+        assertTrue(tab.buildButton().enabled());
+        // another file's build request is not this file's news
+        clickRow(1);
+        assertFalse(tab.pane().warning().contains("vanished"));
+    }
+
+    @Test
+    public void theMapOnlyReuploadsWhenTheTerrainStampMoves() {
+        clickRow(0);
+        var img = map().image();
+        int v = img.version();
+        ticks(10);
+        assertSame(img, map().image());
+        assertEquals(v, img.version());
+        facade.schematics.terrainStamp++;
+        ticks(1);
+        assertEquals(v + 1, img.version());
+        ticks(10);
+        assertEquals(v + 1, img.version());
+    }
+
+    @Test
+    public void mapRules() {
+        assertEquals("the Nether", SchematicRules.dimensionName("minecraft:the_nether"));
+        assertEquals("the End", SchematicRules.dimensionName("the_end"));
+        assertEquals("another dimension", SchematicRules.dimensionName(null));
+        assertEquals("sky islands", SchematicRules.dimensionName("somemod:sky_islands"));
+        assertEquals(0, PlacementMap.originCorner(0, false));
+        assertEquals(1, PlacementMap.originCorner(0, true));
+        assertEquals(3, PlacementMap.originCorner(3, false));
+        assertEquals(0, PlacementMap.originCorner(3, true));
     }
 }

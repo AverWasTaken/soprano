@@ -320,7 +320,47 @@ public final class Icons {
                 g.draw(eye);
                 g.draw(new Ellipse2D.Float(8.5f, 8.5f, 7, 7));
             }
+            case CHEVRON_UP -> poly(g, false, 6, 15, 12, 9, 18, 15);
+            case CHEVRON_LEFT -> poly(g, false, 15, 6, 9, 12, 15, 18);
+            case ROTATE_LEFT -> turn(g);
+            case ROTATE_RIGHT -> {
+                // the same turn seen in a mirror
+                AffineTransform t = g.getTransform();
+                g.translate(24, 0);
+                g.scale(-1, 1);
+                turn(g);
+                g.setTransform(t);
+            }
+            case FLIP -> {
+                line(g, 12, 4, 12, 7);
+                line(g, 12, 10.5f, 12, 13.5f);
+                line(g, 12, 17, 12, 20);
+                poly(g, true, 9, 6, 9, 18, 3.5f, 12);
+                poly(g, true, 15, 6, 15, 18, 20.5f, 12);
+            }
+            case LEVEL_UP -> {
+                poly(g, false, 6, 13, 12, 7, 18, 13);
+                line(g, 6, 18, 18, 18);
+            }
+            case LEVEL_DOWN -> {
+                line(g, 6, 6, 18, 6);
+                poly(g, false, 6, 11, 12, 17, 18, 11);
+            }
         }
+    }
+
+    // three quarters of a circle open at the top, the arrow on the loose end going counter clockwise, and a dot for
+    // the pivot. same arc trick as RESET, the dot is the difference
+    private static void turn(Graphics2D g) {
+        float cx = 12f;
+        float cy = 12f;
+        float r = 7f;
+        g.draw(new Arc2D.Float(cx - r, cy - r, 2 * r, 2 * r, 135, 270, Arc2D.OPEN));
+        double th = Math.toRadians(45);
+        float px = cx + r * (float) Math.cos(th);
+        float py = cy - r * (float) Math.sin(th);
+        head(g, px, py, (float) -Math.sin(th), (float) -Math.cos(th), 3.5f, 2.75f);
+        g.fill(new Ellipse2D.Float(cx - 1.5f, cy - 1.5f, 3, 3));
     }
 
     // an isometric cube seen from a corner, 18 units tall so it matches the rest of the family

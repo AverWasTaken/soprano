@@ -88,6 +88,11 @@ public class VirtualList<T> extends VirtualView<T> {
         scroller.ensureVisible(index * (float) rowH, (index + 1) * (float) rowH, now);
     }
 
+    // the middle of a row on screen, scroll taken off: where to click a row that isn't on the first page
+    public float rowMidY(int index) {
+        return y + (index + 0.5f) * rowH - scroller.offset(now);
+    }
+
     @Override
     public void draw(Canvas c, Frame f) {
         stamp(f);

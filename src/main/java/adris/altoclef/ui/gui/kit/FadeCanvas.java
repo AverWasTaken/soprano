@@ -79,6 +79,12 @@ public final class FadeCanvas implements Canvas {
         }
     }
 
+    // unlike an item sprite the tint fades a picture properly, so it rides the animation like a fill does
+    @Override
+    public void image(PixelImage image, float x, float y, float w, float h, int tint) {
+        base.image(image, x, y + dy, w, h, f(tint));
+    }
+
     @Override
     public void pushClip(float x, float y, float w, float h) {
         base.pushClip(x, y + dy, w, h);

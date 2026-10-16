@@ -195,6 +195,30 @@
                 <div class="unknown"></div>
               </div>
               <div class="sc-rule"></div>
+              <div class="sc-map" id="sc-map">
+                <canvas id="sc-terrain"></canvas>
+                <div class="fp" id="sc-fp"><i class="front"></i><i class="origin"></i></div>
+                <div class="me" id="sc-me"><i class="halo"></i><i class="tick"></i><i class="dot"></i></div>
+                <div class="chip coords" id="sc-coords"></div>
+                <div class="chip north">N</div>
+                <div class="sc-map-state t-small" id="sc-map-state"></div>
+              </div>
+              <div class="sc-rule"></div>
+              <div class="sc-ctl" id="sc-ctl">
+                <button class="btn ghost icon-only" data-move="-1,0,0" aria-label="West"><i data-icon="chevron_left"></i></button>
+                <button class="btn ghost icon-only" data-move="0,0,-1" aria-label="North"><i data-icon="chevron_up"></i></button>
+                <button class="btn ghost icon-only" data-move="0,0,1" aria-label="South"><i data-icon="chevron_down"></i></button>
+                <button class="btn ghost icon-only" data-move="1,0,0" aria-label="East"><i data-icon="chevron_right"></i></button>
+                <span class="sep"></span>
+                <button class="btn ghost icon-only" data-move="0,1,0" aria-label="Up one"><i data-icon="level_up"></i></button>
+                <button class="btn ghost icon-only" data-move="0,-1,0" aria-label="Down one"><i data-icon="level_down"></i></button>
+                <span class="sep"></span>
+                <button class="btn ghost icon-only" id="sc-rotl" aria-label="Turn left"><i data-icon="rotate_left"></i></button>
+                <button class="btn ghost icon-only" id="sc-rotr" aria-label="Turn right"><i data-icon="rotate_right"></i></button>
+                <button class="btn ghost" id="sc-mirror" aria-label="Mirror"><i data-icon="flip"></i><span>Mirror</span></button>
+                <button class="btn ghost feet" id="sc-feet" aria-label="Move to me"><i data-icon="pin"></i><span>Move to me</span></button>
+              </div>
+              <div class="sc-rule"></div>
               <div class="sc-rows">
                 <div class="scroll" id="sc-mats"></div>
                 <div class="sc-rows-state t-small" id="sc-rows-state"></div>
@@ -202,7 +226,7 @@
               <div class="sc-rule"></div>
               <div class="sc-foot">
                 <div class="warn off" id="sc-warn"><i data-icon="warning"></i><span></span></div>
-                <button class="btn primary" id="sc-build">Build at my feet</button>
+                <button class="btn primary" id="sc-build">Build here</button>
               </div>
             </div>
             <div class="sc-tip floating" id="sc-tip"></div>

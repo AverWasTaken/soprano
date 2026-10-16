@@ -78,6 +78,17 @@ public final class McWorld implements WorldAccess {
     }
 
     @Override
+    public float playerYaw() {
+        try {
+            Player p = mc().player;
+            return p == null ? 0f : p.getYRot();
+        } catch (Throwable t) {
+            Safe.report("gui playerYaw", t);
+            return 0f;
+        }
+    }
+
+    @Override
     public String dimension() {
         try {
             ClientLevel level = mc().level;

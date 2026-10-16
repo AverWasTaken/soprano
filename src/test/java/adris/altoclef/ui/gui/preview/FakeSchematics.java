@@ -38,10 +38,15 @@ public final class FakeSchematics implements SchematicsAccess {
     // how many building() calls stay PARSING after a build, and what it turns into after that (null = STARTED)
     public int parsePolls = 1;
     public String buildFailsLater;
+    // how many building() calls stay STARTED before the builder is done and it's back to IDLE, -1 = forever
+    public int runPolls = -1;
+    // the stamp terrain() hands out, bump it to make a gui test see a changed map
+    public long terrainStamp = 1;
 
     private final Map<String, Placement> placements = new LinkedHashMap<>();
     private Building building = Building.IDLE;
     private int parsing;
+    private int running;
 
     private int pending;
 
@@ -253,13 +258,22 @@ public final class FakeSchematics implements SchematicsAccess {
                 building = buildFailsLater != null
                     ? new Building(BuildState.ERROR, building.relativePath(), buildFailsLater)
                     : new Building(BuildState.STARTED, building.relativePath(), "Building " + building.relativePath());
+                running = runPolls;
+            }
+        }
+        if (building.state() == BuildState.STARTED && running >= 0) {
+            if (running == 0) {
+                building = Building.IDLE;
+            } else {
+                running--;
             }
         }
         return building;
     }
 
-    // a made-up landscape: grass, a river running north to south with sand banks, a stone hill, a few trees. the two
-    // east chunk columns of the three north rows are "not loaded", so a preview shows the edge too
+    // a made-up landscape: grass, a river running north to south with sand banks, a stone hill, a few trees. six chunks
+    // (x 192..223, z -160..-113, the north east corner of the window around the feet) are "not loaded", so a preview
+    // shows the edge, and a footprint moved up there sits half on it
     @Override
     public Terrain terrain(int centerX, int centerZ, int radiusChunks) {
         if (!inWorld) {
@@ -274,7 +288,9 @@ public final class FakeSchematics implements SchematicsAccess {
         int loaded = 0;
         for (int cz = 0; cz < span; cz++) {
             for (int cx = 0; cx < span; cx++) {
-                if (cx >= span - 2 && cz < 3) {
+                int wcx = (minX >> 4) + cx;
+                int wcz = (minZ >> 4) + cz;
+                if (wcx >= 12 && wcx <= 13 && wcz >= -10 && wcz <= -8) {
                     continue;
                 }
                 loaded++;
@@ -285,7 +301,10 @@ public final class FakeSchematics implements SchematicsAccess {
                 }
             }
         }
-        return new Terrain(minX, minZ, size, argb, loaded, span * span, 1);
+        // the real stamp moves whenever the pixels do, and a window that slid is new pixels: fold the corner in so a
+        // moved footprint gets a fresh upload here too
+        long stamp = (terrainStamp << 32) ^ ((minX & 0xFFFFL) << 16) ^ (minZ & 0xFFFFL);
+        return new Terrain(minX, minZ, size, argb, loaded, span * span, stamp);
     }
 
     private static int fakeColumn(int x, int z) {
@@ -298,13 +317,14 @@ public final class FakeSchematics implements SchematicsAccess {
         }
         int hx = x - 150;
         int hz = z + 10;
+        // speckle, not stripes: the map draws unseen chunks as a dot grid and real grass has no pattern at all
         if (hx * hx + hz * hz < 30 * 30) {
-            return Math.floorMod(hx + hz, 7) == 0 ? 0xFF8A8A8A : 0xFF707070;
+            return Math.floorMod(hx * 5 + hz * 3, 9) == 0 ? 0xFF8A8A8A : 0xFF707070;
         }
         if (Math.floorMod(x * 31 + z * 17, 97) == 0) {
             return 0xFF007C00;
         }
-        return ((x ^ z) & 3) == 0 ? 0xFF7FB238 : 0xFF6E9A30;
+        return Math.floorMod(x * 7 + z * 13, 11) == 0 ? 0xFF7FB238 : 0xFF6E9A30;
     }
 
     @Override

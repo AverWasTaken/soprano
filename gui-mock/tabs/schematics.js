@@ -1,10 +1,13 @@
-// schematics tab: the library list on the left, what the selected file costs on the right, build at the bottom
-// (SchematicsTab.java). data is FakeSchematics.java. ?sc=loading (first load, no rows) ?sc=refreshing (rows + the
-// small label) ?sc=empty ?sc=none (nothing selected) ?sc=noworld ?sc=counting (materials still loading)
+// schematics tab: the library list on the left, what the selected file costs on the right, the placement map and its
+// controls under the summary, build at the bottom (SchematicsTab.java, SchematicPane.java, PlacementMap.java). data is
+// FakeSchematics.java. ?sc=loading (first load, no rows) ?sc=refreshing (rows + the small label) ?sc=empty ?sc=none
+// (nothing selected) ?sc=noworld ?sc=counting (materials still loading) ?sc=nether (placed in another dimension)
+// ?sc=parsing ?sc=building ?sc=builderr (the build request states). &rot=1&mir=1 turns and flips, &zoom=1|2|4
 (function () {
   const $ = (s, r) => (r || document).querySelector(s);
   const root = $('#sc'); if (!root) return;
-  const mode = new URLSearchParams(location.search).get('sc') || '';
+  const qs = new URLSearchParams(location.search);
+  const mode = qs.get('sc') || '';
   const fmt = n => n.toLocaleString('en-US');
 
   // FakeSchematics rows: name, path, size, blocks, format, version, bytes, error, unknownSummary
@@ -31,6 +34,135 @@
   let query = '', selected = mode === 'none' || !rows.length ? null : rows[0].path, armed = 0, armTimer = 0;
   const open = { cantPlace: false, notCounted: false };
   const noWorld = mode === 'noworld';
+
+  // ---- placement: where the picked file goes. FakeSchematics puts the default at the feet (100, 64, -40); the player
+  // in FakeFacade stands at 120.5, -30.5 looking a bit west of north. one placement per path, like the real store
+  const myDim = 'minecraft:overworld';
+  const me = { x: 120.5, z: -30.5, yaw: 200 };
+  const placements = {};
+  const placementOf = p => placements[p] || (placements[p] = { x: 100, y: 64, z: -40, turns: parseInt(qs.get('rot') || 0, 10) & 3, mirrored: qs.get('mir') === '1', dim: mode === 'nether' ? 'minecraft:the_nether' : myDim });
+  const footprintOf = r => { const p = placementOf(r.path), swap = p.turns % 2 === 1; return { x: p.x, z: p.z, sx: swap ? r.size[2] : r.size[0], sz: swap ? r.size[0] : r.size[2] }; };
+  const dimName = d => { const s = d.replace(/^minecraft:/, ''); return s === 'the_nether' ? 'the Nether' : s === 'the_end' ? 'the End' : s === 'overworld' ? 'the Overworld' : s.replace(/_/g, ' '); };
+  // the request states of build(): IDLE unless the mode says otherwise
+  let building = mode === 'parsing' ? { state: 'PARSING' } : mode === 'building' ? { state: 'STARTED' } : mode === 'builderr' ? { state: 'ERROR', message: 'Can\'t build in the Nether from the Overworld' } : { state: 'IDLE' };
+
+  // ---- the map band. scales are whole px per block, wheel steps between them
+  const SCALES = [1, 2, 4];
+  let scaleIx = Math.max(0, SCALES.indexOf(parseInt(qs.get('zoom') || 2, 10)));
+  const map = $('#sc-map'), terrain = $('#sc-terrain'), fp = $('#sc-fp'), meEl = $('#sc-me'), coords = $('#sc-coords'), mapState = $('#sc-map-state');
+  // FakeSchematics.fakeColumn: a river with sand banks, a stone hill, trees on grass. 0 = chunk never seen
+  const column = (x, z) => {
+    const river = Math.abs(x - 60 - Math.round(Math.sin(z / 23) * 18));
+    if (river < 5) return ((x + z) & 1) === 0 ? 0xFF3F76E4 : 0xFF3A6CD2;
+    if (river < 7) return 0xFFF7E9A3;
+    const hx = x - 150, hz = z + 10;
+    if (hx * hx + hz * hz < 900) return ((hx * 5 + hz * 3) % 9 + 9) % 9 === 0 ? 0xFF8A8A8A : 0xFF707070;
+    if (((x * 31 + z * 17) % 97 + 97) % 97 === 0) return 0xFF007C00;
+    return ((x * 7 + z * 13) % 11 + 11) % 11 === 0 ? 0xFF7FB238 : 0xFF6E9A30;
+  };
+  // the terrain window is 16 x 16 chunks around the centre, chunk aligned, same as Terrain.RADIUS_CHUNKS = 8
+  const window16 = (cx, cz) => ({ minX: (((cx + 8) >> 4) - 8) << 4, minZ: (((cz + 8) >> 4) - 8) << 4, size: 256 });
+  const known = (win, x, z) => { const cx = (x - win.minX) >> 4, cz = (z - win.minZ) >> 4; return !(cx >= 14 && cz < 3); };
+
+  // the map's height: half of what the header, controls and footer leave, 48..176, the list gets the rest
+  function sizeMap() {
+    const d = $('#sc-detail');
+    const room = d.clientHeight - $('.sc-head', d).offsetHeight - $('.sc-foot', d).offsetHeight - $('#sc-ctl').offsetHeight - 4;
+    map.style.height = Math.max(48, Math.min(176, Math.round(room * 0.5))) + 'px';
+  }
+
+  let drag = null;
+  function renderMap(r) {
+    const d = $('#sc-detail');
+    const ctl = $('#sc-ctl');
+    const p = placementOf(r.path);
+    const here = p.dim === myDim;
+    for (const b of ctl.querySelectorAll('button')) b.disabled = noWorld || (!here && b.id !== 'sc-feet');
+    // four fits, like SchematicPane.layoutControls: both words, mirror as a glyph, glyphs only, and glyphs without the
+    // four nudge arrows (the footprint drags for those)
+    const room = ctl.clientWidth - 24;
+    ctl.classList.toggle('mid', room < 455);
+    ctl.classList.toggle('narrow', room < 400);
+    ctl.classList.toggle('tiny', room < 315);
+    map.classList.toggle('state', noWorld || !here);
+    if (noWorld) { mapState.innerHTML = '<div class="lead">Join a world to place it</div>'; return; }
+    if (!here) { mapState.innerHTML = '<div class="lead"></div><div>Move to me puts it where you stand.</div>'; $('.lead', mapState).textContent = 'Placed in ' + dimName(p.dim); return; }
+    const f = footprintOf(r);
+    const s = SCALES[scaleIx], W = map.clientWidth, H = map.clientHeight;
+    const cx = f.x + f.sx / 2, cz = f.z + f.sz / 2;
+    const win = window16(Math.floor(cx), Math.floor(cz));
+    // world (x, z) -> map px: the footprint's middle sits in the middle of the band
+    const px = x => Math.round(W / 2 + (x - cx) * s), pz = z => Math.round(H / 2 + (z - cz) * s);
+    terrain.width = win.size; terrain.height = win.size;
+    terrain.style.width = win.size * s + 'px'; terrain.style.height = win.size * s + 'px';
+    terrain.style.left = px(win.minX) + 'px'; terrain.style.top = pz(win.minZ) + 'px';
+    const g = terrain.getContext('2d'), img = g.createImageData(win.size, win.size), b = img.data;
+    for (let z = 0; z < win.size; z++) for (let x = 0; x < win.size; x++) {
+      const i = (z * win.size + x) * 4, wx = win.minX + x, wz = win.minZ + z;
+      if (known(win, wx, wz)) { const c = column(wx, wz); b[i] = c >> 16 & 255; b[i + 1] = c >> 8 & 255; b[i + 2] = c & 255; b[i + 3] = 255; }
+      // a chunk nobody has seen: the field with a dot every four blocks, a drafting grid with nothing drawn on it
+      else if ((wx & 3) === 0 && (wz & 3) === 0) { b[i] = b[i + 1] = b[i + 2] = 136; b[i + 3] = 110; }
+    }
+    g.putImageData(img, 0, 0);
+    const dx = drag ? drag.dx : 0, dz = drag ? drag.dz : 0;
+    fp.style.left = px(f.x + dx) + 'px'; fp.style.top = pz(f.z + dz) + 'px';
+    fp.style.width = Math.max(2, f.sx * s) + 'px'; fp.style.height = Math.max(2, f.sz * s) + 'px';
+    // the front is the file's north after the turn: 0 top, 1 right, 2 bottom, 3 left. the origin corner is the file's
+    // 0,0 after the flip and the turn: flipping sends it to the other end of the front edge
+    fp.dataset.front = p.turns;
+    // the flip sends the origin from the top left to the top right, each cw turn walks it one corner round: the corner
+    // is (turns + flip) mod 4 with 0 top left, 1 top right, 2 bottom right, 3 bottom left (PlacementMap.originCorner)
+    const o = $('.origin', fp), c = (p.turns + (p.mirrored ? 1 : 0)) & 3, left = c === 0 || c === 3, top = c === 0 || c === 1;
+    o.style.left = left ? '-1px' : ''; o.style.right = left ? '' : '-1px';
+    o.style.top = top ? '-1px' : ''; o.style.bottom = top ? '' : '-1px';
+    // the player, clamped to the edge of the band when they're off it, so you still know which way you are
+    let mx = px(me.x), mz = pz(me.z);
+    const off = mx < 0 || mz < 0 || mx > W || mz > H;
+    meEl.classList.toggle('edge', off);
+    meEl.style.left = Math.max(6, Math.min(W - 6, mx)) + 'px'; meEl.style.top = Math.max(6, Math.min(H - 6, mz)) + 'px';
+    // minecraft yaw: 0 south, 90 west, 180 north. the arrow art points up (north) so it turns by yaw + 180
+    meEl.style.transform = 'rotate(' + (me.yaw + 180) + 'deg)';
+    coords.textContent = 'x ' + (p.x + dx) + ' y ' + p.y + ' z ' + (p.z + dz) + ' · ' + p.turns * 90 + '°' + (p.mirrored ? ' · mirrored' : '');
+  }
+
+  function move(r, dx, dy, dz) { const p = placementOf(r.path); p.x += dx; p.y += dy; p.z += dz; p.dim = myDim; render(); }
+  fp.addEventListener('pointerdown', e => {
+    const r = rows.find(x => x.path === selected); if (!r || e.button !== 0) return;
+    drag = { x0: e.clientX, y0: e.clientY, dx: 0, dz: 0 };
+    fp.classList.add('drag'); fp.setPointerCapture(e.pointerId); e.preventDefault();
+  });
+  fp.addEventListener('pointermove', e => {
+    if (!drag) return;
+    const s = SCALES[scaleIx], z = parseFloat($('#wrap').style.zoom || 1);
+    drag.dx = Math.round((e.clientX - drag.x0) / z / s); drag.dz = Math.round((e.clientY - drag.y0) / z / s);
+    renderMap(rows.find(x => x.path === selected));
+  });
+  fp.addEventListener('pointerup', e => {
+    if (!drag) return;
+    const d = drag; drag = null; fp.classList.remove('drag');
+    const r = rows.find(x => x.path === selected);
+    // one move at the end of the drag, not one per block, so a long drag is one save
+    if (r && (d.dx || d.dz)) move(r, d.dx, 0, d.dz); else render();
+  });
+  map.addEventListener('wheel', e => {
+    if (map.classList.contains('state')) return;
+    e.preventDefault();
+    scaleIx = Math.max(0, Math.min(SCALES.length - 1, scaleIx + (e.deltaY < 0 ? 1 : -1)));
+    render();
+  }, { passive: false });
+  for (const b of document.querySelectorAll('#sc-ctl [data-move]')) b.onclick = e => {
+    const r = rows.find(x => x.path === selected); if (!r) return;
+    const [dx, dy, dz] = b.dataset.move.split(',').map(Number), n = e.shiftKey ? 8 : 1;
+    move(r, dx * n, dy * n, dz * n);
+  };
+  const turn = cw => { const r = rows.find(x => x.path === selected); if (!r) return; const p = placementOf(r.path), f = footprintOf(r);
+    // a quarter turn swaps the sizes, the corner moves half the difference so the middle stays put
+    p.x += Math.trunc((f.sx - f.sz) / 2); p.z += Math.trunc((f.sz - f.sx) / 2); p.turns = (p.turns + (cw ? 1 : 3)) & 3; render(); };
+  $('#sc-rotl').onclick = () => turn(false);
+  $('#sc-rotr').onclick = () => turn(true);
+  $('#sc-mirror').onclick = () => { const r = rows.find(x => x.path === selected); if (!r) return; const p = placementOf(r.path); p.mirrored = !p.mirrored; p.turns = (4 - p.turns) & 3; render(); };
+  $('#sc-feet').onclick = () => { const r = rows.find(x => x.path === selected); if (!r) return; const p = placementOf(r.path); p.x = 100; p.y = 64; p.z = -40; p.dim = myDim; render(); };
+  window.addEventListener('resize', () => { if (selected) render(); });
 
   const list = $('#sc-rows'), count = $('#sc-count'), detail = $('#sc-detail'), tip = $('#sc-tip');
   const sizeText = r => r.error ? '' : r.size.join(' x ');
@@ -92,10 +224,12 @@
     scroll.textContent = '';
     state.className = 'sc-rows-state';
     const build = $('#sc-build'), warn = $('#sc-warn');
-    build.disabled = !r || noWorld || !!r.error;
-    build.textContent = armed ? 'Click again to build' : 'Build at my feet';
+    build.disabled = !r || noWorld || !!r.error || building.state === 'PARSING';
+    build.textContent = armed ? 'Click again to build' : 'Build here';
     build.classList.toggle('armed', !!armed);
-    warn.classList.add('off');
+    warn.classList.add('off'); warn.classList.remove('state', 'error');
+    // the map and its controls only exist for a file that parsed
+    detail.classList.toggle('nomap', !r || !!r.error);
     if (!r) {
       detail.classList.add('state');
       state.innerHTML = '<div class="lead">Pick a schematic</div><div>Its block list and the build button show here.</div>';
@@ -111,6 +245,8 @@
       $('.lead', state).textContent = r.error;
       return;
     }
+    sizeMap();
+    renderMap(r);
     const m = materials[r.path];
     if (mode === 'counting') {
       $('.sum', head).textContent = 'Counting blocks…';
@@ -142,6 +278,11 @@
     if (missing || m.cantPlace.length) {
       warn.classList.remove('off');
       $('span', warn).textContent = missing ? fmt(missing) + ' short. It pauses when it runs out.' : m.cantPlace.length + ' kind it can\'t place, those spots stay empty.';
+    }
+    // a build request in flight says so in the warning's place: reading, started, or why it didn't start
+    if (building.state !== 'IDLE') {
+      warn.classList.remove('off'); warn.classList.add(building.state === 'ERROR' ? 'error' : 'state');
+      $('span', warn).textContent = building.state === 'PARSING' ? 'Reading the file…' : building.state === 'STARTED' ? 'Building it. Stop is in the bar below.' : building.message;
     }
   }
 

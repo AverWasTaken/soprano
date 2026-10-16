@@ -23,6 +23,9 @@ final class FakeGame implements McSchematics.Game {
     TerrainMap.Source terrain;
     final List<Built> built = new ArrayList<>();
     final List<String> said = new ArrayList<>();
+    // the builder's serial: running is what it's building now (0 = idle), serial is the last one it handed out
+    long running;
+    long serial;
 
     void leaveWorld() {
         dimension = null;
@@ -56,8 +59,15 @@ final class FakeGame implements McSchematics.Game {
     }
 
     @Override
-    public void build(String name, IStaticSchematic schematic, BlockPos origin, Rotation rotation, Mirror mirror) {
+    public long build(String name, IStaticSchematic schematic, BlockPos origin, Rotation rotation, Mirror mirror) {
         built.add(new Built(name, schematic, origin, rotation, mirror));
+        running = ++serial;
+        return running;
+    }
+
+    @Override
+    public long runningBuild() {
+        return running;
     }
 
     @Override

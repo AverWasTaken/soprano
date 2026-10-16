@@ -93,6 +93,8 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     private int numRepeats;
     private List<BlockState> approxPlaceable;
     public int stopAtHeight = 0;
+    // bumped by every start, so whoever kicked off a build can tell later if it's still theirs or a #build took over
+    private long buildSerial;
 
     public BuilderProcess(Baritone baritone) {
         super(baritone);
@@ -119,6 +121,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     // only the global setting path wants: they use the unturned size and would push a placed origin off its corner
     private void start(String name, ISchematic schematic, Vec3i origin, net.minecraft.world.level.block.Rotation rotation,
                        net.minecraft.world.level.block.Mirror mirror, boolean useOrientation) {
+        this.buildSerial++;
         this.name = name;
         this.schematic = schematic;
         this.realSchematic = null;
@@ -270,6 +273,12 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     @Override
     public boolean isActive() {
         return schematic != null;
+    }
+
+    @Override
+    public long buildSerial() {
+        // onLostControl nulls the schematic, so a finished or cancelled build reads as none
+        return schematic != null ? buildSerial : 0;
     }
 
     public BlockState placeAt(int x, int y, int z, BlockState current) {
