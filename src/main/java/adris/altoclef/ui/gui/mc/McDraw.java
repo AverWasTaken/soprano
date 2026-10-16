@@ -2,14 +2,14 @@ package adris.altoclef.ui.gui.mc;
 
 import adris.altoclef.ui.gui.kit.Safe;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.client.gui.components.PlayerFaceExtractor;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.PlayerFaceRenderer;
 import net.minecraft.client.gui.render.TextureSetup;
+import net.minecraft.client.gui.render.state.BlitRenderState;
+import net.minecraft.client.gui.render.state.ColoredRectangleRenderState;
+import net.minecraft.client.gui.render.state.GuiRenderState;
 import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.client.renderer.RenderPipelines;
-import net.minecraft.client.renderer.state.gui.BlitRenderState;
-import net.minecraft.client.renderer.state.gui.ColoredRectangleRenderState;
-import net.minecraft.client.renderer.state.gui.GuiRenderState;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.Item;
@@ -17,6 +17,8 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import org.joml.Matrix3x2f;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
 import java.util.ArrayDeque;
 import java.util.HashMap;
 import java.util.Map;
@@ -24,14 +26,14 @@ import java.util.Map;
 // the few things both canvases need from the game's gui renderer, so McCanvas and FallbackCanvas stay one liners. the pose is
 // scaled by 1/guiScale for the whole screen, so every number in here is a framebuffer pixel.
 //
-// 26.3 draws in two phases: everything submitted here is only a description until the frame is over. the extractor's own
-// fill/blit would work, but it files every element by bounds into layers, and walking that for the thousands of glyph
-// quads a panel is made of is slow, and its bounds round to whole gui units so touching quads can swap order. so fills
-// and blits go straight into the current layer's glyph list instead: that list is never sorted or searched, it draws in
-// exactly the order it was filled, which is the painter's order the kit assumes (end() closes the stratum so nothing
-// the game extracts afterwards gets filed into that same layer). the extractor's own things (items,
-// faces, vanilla text) each get a stratum to themselves on both sides. strata draw in order, so they land over
-// everything submitted before them and under everything after
+// the gui draws in two phases since 1.21.6: everything submitted here is only a description until the frame is over.
+// GuiGraphics' own fill/blit would work, but it files every element by bounds into layers, and walking that for the
+// thousands of glyph quads a panel is made of is slow, and its bounds round to whole gui units so touching quads can swap
+// order (and the element lists get sorted). so fills and blits go straight into the current layer's glyph list instead:
+// that list is never sorted or searched, it draws in exactly the order it was filled, which is the painter's order the
+// kit assumes (end() closes the stratum so nothing the game draws afterwards gets filed into that same layer).
+// GuiGraphics' own things (items, faces, vanilla text) each get a stratum to themselves on both sides. strata draw in
+// order, so they land over everything submitted before them and under everything after
 final class McDraw {
 
     // vanilla's font is 9 tall with the baseline 7 down from the top
@@ -43,22 +45,48 @@ final class McDraw {
     // x0, y0, x1, y1 of each active clip, already intersected with its parent
     private final ArrayDeque<int[]> clips = new ArrayDeque<>();
 
-    GuiGraphicsExtractor g;
+    // the render state is package private on 1.21.11 (GuiGraphics and GameRenderer both hide it). found by type and not by
+    // name, so it holds in a dev run and in the obfuscated game alike
+    private static Field stateField;
+
+    GuiGraphics g;
     private GuiRenderState state;
     // the pose at the start of the frame, shared by every quad. nothing may touch it afterwards
     private Matrix3x2f pose;
 
-    void begin(GuiGraphicsExtractor graphics) {
+    void begin(GuiGraphics graphics) {
         this.g = graphics;
-        this.state = mc.gameRenderer.gameRenderState().guiRenderState;
+        this.state = stateOf(graphics);
         this.pose = new Matrix3x2f(graphics.pose());
         clips.clear();
         // our quads go into the current layer, so make sure that is an empty one of our own
         graphics.nextStratum();
     }
 
+    private static GuiRenderState stateOf(GuiGraphics graphics) {
+        Field f = stateField;
+        if (f == null) {
+            for (Field c : GuiGraphics.class.getDeclaredFields()) {
+                if (c.getType() == GuiRenderState.class && !Modifier.isStatic(c.getModifiers())) {
+                    c.setAccessible(true);
+                    f = c;
+                    break;
+                }
+            }
+            if (f == null) {
+                throw new IllegalStateException("GuiGraphics has no GuiRenderState field");
+            }
+            stateField = f;
+        }
+        try {
+            return (GuiRenderState) f.get(graphics);
+        } catch (IllegalAccessException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
     void end() {
-        // whatever the game extracts after the screen (toasts, the debug overlay) is filed by bounds and never looks at our
+        // whatever the game draws after the screen (toasts, the debug overlay) is filed by bounds and never looks at our
         // glyph list, so it must not land in the layer our last quads are in or it would draw under them
         if (g != null) {
             g.nextStratum();
@@ -94,8 +122,8 @@ final class McDraw {
                 return;
             }
         }
-        // the far corner goes first, same as GuiGraphicsExtractor.fill does before it builds the quad, so the winding matches
-        state.addGlyphToCurrentLayer(new ColoredRectangleRenderState(RenderPipelines.GUI, TextureSetup.noTexture(), pose,
+        // the far corner goes first, same as GuiGraphics.fill does before it builds the quad, so the winding matches
+        state.submitGlyphToCurrentLayer(new ColoredRectangleRenderState(RenderPipelines.GUI, TextureSetup.noTexture(), pose,
                 x1, y1, x0, y0, argb, argb, null));
     }
 
@@ -124,12 +152,12 @@ final class McDraw {
         float u1 = (sx + (cx1 - x0) * (float) sw / w) / pageW;
         float v0 = (sy + (cy0 - y0) * (float) sh / h) / pageH;
         float v1 = (sy + (cy1 - y0) * (float) sh / h) / pageH;
-        state.addGlyphToCurrentLayer(new BlitRenderState(RenderPipelines.GUI_TEXTURED, setup, pose,
+        state.submitGlyphToCurrentLayer(new BlitRenderState(RenderPipelines.GUI_TEXTURED, setup, pose,
                 cx0, cy0, cx1, cy1, u0, u1, v0, v1, argb, null));
     }
 
-    // pixel exact for the fills and blits above. the extractor's scissor is whole gui units through the pose, so a clip
-    // the extractor has to honour (items, faces, vanilla text) can only be approximated, see scissorBegin
+    // pixel exact for the fills and blits above. GuiGraphics' scissor is whole gui units through the pose, so a clip
+    // GuiGraphics has to honour (items, faces, vanilla text) can only be approximated, see scissorBegin
     void pushClip(float x, float y, float w, float h) {
         int x0 = Math.round(x);
         int y0 = Math.round(y);
@@ -185,13 +213,13 @@ final class McDraw {
         if (clip < 0) {
             return true;
         }
-        // an item is a flat blit of a pre rendered model out of the item atlas on 26.3, so there is no depth to wipe after
+        // an item is a flat blit of a pre rendered model out of the item atlas since 1.21.6, so there is no depth to wipe after
         g.nextStratum();
         g.pose().pushMatrix();
         g.pose().translate(px, py);
         g.pose().scale(size / 16f, size / 16f);
         try {
-            g.item(stack, 0, 0);
+            g.renderItem(stack, 0, 0);
         } finally {
             g.pose().popMatrix();
             if (clip > 0) {
@@ -221,7 +249,7 @@ final class McDraw {
             }
             g.nextStratum();
             try {
-                PlayerFaceExtractor.extractRenderState(g, info.getSkin(), px, py, side);
+                PlayerFaceRenderer.draw(g, info.getSkin(), px, py, side);
             } finally {
                 if (clip > 0) {
                     g.disableScissor();
@@ -278,7 +306,7 @@ final class McDraw {
         g.pose().translate(x, top);
         g.pose().scale(scale, scale);
         try {
-            g.text(mc.font, s, 0, 0, argb, false);
+            g.drawString(mc.font, s, 0, 0, argb, false);
         } finally {
             g.pose().popMatrix();
             if (clip > 0) {

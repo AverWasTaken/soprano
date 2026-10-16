@@ -4,7 +4,7 @@ import adris.altoclef.ui.gui.kit.Canvas;
 import adris.altoclef.ui.gui.kit.Icon;
 import adris.altoclef.ui.gui.kit.TextStyle;
 import adris.altoclef.ui.gui.kit.Theme;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 
 // what the gui draws with when the atlases would not come up (no awt, a texture that would not upload): flat fills,
 // vanilla's font scaled to the size asked for, no shadows, no icons. ugly but every button still works
@@ -29,7 +29,7 @@ final class FallbackCanvas implements Canvas {
         this.draw = draw;
     }
 
-    void begin(GuiGraphicsExtractor g, int widthPx, int heightPx) {
+    void begin(GuiGraphics g, int widthPx, int heightPx) {
         draw.begin(g);
         this.width = widthPx;
         this.height = heightPx;

@@ -15,7 +15,7 @@ import baritone.Baritone;
 import baritone.api.Settings;
 import com.mojang.blaze3d.platform.Window;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.CharacterEvent;
 import net.minecraft.client.input.KeyEvent;
@@ -167,9 +167,6 @@ public class GuiScreen extends Screen {
             scrim.snap(0f);
             scrim.set(1f, now, Theme.ANIM_SLOW);
             shell.open(now);
-            // sdl only sends characters while text input is on, and vanilla turns it on per edit box. ours are not edit
-            // boxes it knows about, so it stays on for as long as the screen is up (setScreen turns it off again)
-            mc.textInputManager().startTextInput(this);
         }
     }
 
@@ -182,8 +179,8 @@ public class GuiScreen extends Screen {
             if (shell.closed(System.nanoTime())) {
                 closeNow = true;
             }
-            if (closeNow && mc.gui.screen() == this) {
-                mc.gui.setScreen(null);
+            if (closeNow && mc.screen == this) {
+                mc.setScreen(null);
             }
         } catch (Throwable t) {
             Safe.report("gui tick", t);
@@ -203,12 +200,12 @@ public class GuiScreen extends Screen {
 
     // vanilla's background would blur the world and then paint its dim texture on top. we want the blur and not the
     // texture, so this asks for the blur alone and the scrim is ours. the game calls this from
-    // extractRenderStateWithTooltipAndSubtitles on a fresh stratum right before extractRenderState: the blur covers
-    // everything in the strata before it (the world and the hud) and leaves the ones after it sharp, and it quietly does
-    // nothing when the menu blur option is at 0
+    // renderWithTooltipAndSubtitles on a fresh stratum right before render: the blur covers everything in the strata
+    // before it (the world and the hud) and leaves the ones after it sharp, and it quietly does nothing when the menu
+    // blur option is at 0
     @Override
-    public void extractBackground(GuiGraphicsExtractor g, int mouseX, int mouseY, float partial) {
-        extractBlurredBackground(g);
+    public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float partial) {
+        renderBlurredBackground(g);
     }
 
     @Override
@@ -231,7 +228,7 @@ public class GuiScreen extends Screen {
     // ----- drawing
 
     @Override
-    public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float partial) {
+    public void render(GuiGraphics g, int mouseX, int mouseY, float partial) {
         Window win = mc.getWindow();
         int winW = win.getWidth();
         int winH = win.getHeight();
@@ -290,12 +287,12 @@ public class GuiScreen extends Screen {
             plainOnly = true;
             rebuild = true;
         }
-        if (closeNow && mc.gui.screen() == this) {
-            mc.gui.setScreen(null);
+        if (closeNow && mc.screen == this) {
+            mc.setScreen(null);
         }
     }
 
-    private void begin(GuiGraphicsExtractor g, int w, int h) {
+    private void begin(GuiGraphics g, int w, int h) {
         if (atlasCanvas != null) {
             atlasCanvas.begin(g, w, h);
         } else {
@@ -342,7 +339,7 @@ public class GuiScreen extends Screen {
         return mc.getWindow().getGuiScale();
     }
 
-    // the game counts buttons from 1 (left, middle, right), the kit from 0. McKeys does the remap
+    // the game's buttons are glfw's (left 0, right 1, middle 2) and so are the kit's. McKeys is the one place to change that
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
         guarded("mouse down", () -> shell.mouseDown(pointerX(), pointerY(), McKeys.buttonToKit(event.button()), McKeys.mods(event)));
@@ -376,8 +373,8 @@ public class GuiScreen extends Screen {
     }
 
     // always true: a key the shell did not want still must not reach the game or the default screen handling
-    // event.key() is an sdl scancode (escape is 41), the kit wants glfw's numbers (escape is 256). the modifiers come in
-    // the event, McKeys turns them into the kit's bits
+    // event.key() is already glfw's number (escape is 256), same as the kit. the modifiers come in the event, McKeys turns
+    // them into the kit's bits
     @Override
     public boolean keyPressed(KeyEvent event) {
         guarded("key down", () -> shell.keyDown(McKeys.toKit(event.key()), McKeys.mods(event)));

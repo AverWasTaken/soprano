@@ -6,9 +6,9 @@ import adris.altoclef.ui.gui.kit.TextStyle;
 import adris.altoclef.ui.gui.kit.TexturedCanvas;
 import adris.altoclef.ui.gui.kit.Theme;
 import adris.altoclef.ui.gui.kit.Weight;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 
-// the two primitives TexturedCanvas wants, on top of GuiGraphicsExtractor. no layout and no decisions in here. one of these
+// the two primitives TexturedCanvas wants, on top of GuiGraphics. no layout and no decisions in here. one of these
 // lives as long as its screen (making a TexturedCanvas wipes the atlas caches) and gets the frame's graphics via begin
 final class McCanvas extends TexturedCanvas {
 
@@ -26,7 +26,7 @@ final class McCanvas extends TexturedCanvas {
         this.draw = draw;
     }
 
-    void begin(GuiGraphicsExtractor g, int widthPx, int heightPx) {
+    void begin(GuiGraphics g, int widthPx, int heightPx) {
         draw.begin(g);
         this.width = widthPx;
         this.height = heightPx;

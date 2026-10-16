@@ -27,7 +27,7 @@ import baritone.api.BaritoneAPI;
 import baritone.api.Settings;
 import baritone.api.utils.RayTraceUtils;
 import baritone.altoclef.SettingsOverrides;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.multiplayer.MultiPlayerGameMode;
@@ -240,8 +240,8 @@ public class AltoClef {
 
     /// GETTERS AND SETTERS
 
-    // Called from Soprano's hud extract mixin at the end of every frame
-    public void onClientRenderOverlay(GuiGraphicsExtractor graphics) {
+    // Called from Soprano's hud render mixin at the end of every frame
+    public void onClientRenderOverlay(GuiGraphics graphics) {
         // nothing of ours on screen unless we are the ones driving
         if (_taskRunner.isActive()) {
             _commandStatusOverlay.render(this, graphics);
