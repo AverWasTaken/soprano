@@ -196,11 +196,12 @@ public final class PlayerSim {
         }
 
         // LivingEntity.travelInAir
-        float blockFriction = onGround ? modifiedFriction(0.6F) : 1.0F;
+        float blockFriction = onGround ? 0.6F : 1.0F;
         float accel;
         if (onGround) { // getFrictionInfluencedSpeed. Player.getSpeed() is the attribute, so the sprint flag counts the tick it flips
             float speed = (float) walkSpeedAttribute(sprinting);
-            accel = blockFriction > 0.6 ? speed * (0.21600002F / (blockFriction * blockFriction * blockFriction)) : speed;
+            // no "friction above 0.6" gate on 1.21.11, plain stone gets the 0.21600002 / 0.216 too
+            accel = speed * (0.21600002F / (blockFriction * blockFriction * blockFriction));
         } else { // Player.getFlyingSpeed
             accel = sprinting ? 0.025999999F : 0.02F;
         }
@@ -227,9 +228,9 @@ public final class PlayerSim {
         move(c.viewYaw());
         // what is left of the velocity after move (collisions zero the axis they hit) is what travelInAir reads back
         double movementY = vy - params.gravity();
-        float airDrag = modifiedFriction(0.91F);
-        float friction = blockFriction * airDrag;
-        float verticalFriction = modifiedFriction(0.98F);
+        // 1.21.11 has no friction modifier attribute, it's just f * 0.91 and 0.98 straight
+        float friction = blockFriction * 0.91F;
+        float verticalFriction = 0.98F;
         vx = vx * friction;
         vy = movementY * verticalFriction;
         vz = vz * friction;
@@ -242,11 +243,6 @@ public final class PlayerSim {
             return false;
         }
         return true;
-    }
-
-    // LivingEntity.computeModifiedFriction with the default modifier of 1
-    private static float modifiedFriction(float friction) {
-        return Mth.clamp(1.0F - (1.0F - friction) * 1.0F, 0.0F, 1.0F);
     }
 
     // anything about where we are standing that the maths above does not cover

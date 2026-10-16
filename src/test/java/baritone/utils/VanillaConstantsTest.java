@@ -62,12 +62,14 @@ public class VanillaConstantsTest {
         assertEquals(0.4f, Blocks.SOUL_SAND.getSpeedFactor(), 0);
     }
 
+    // 1.21.11 Player.getDestroySpeed is a switch, not a power: level 3 is 0.0027 and 4+ is 0.00081
     @Test
-    public void miningFatigueIsAPower() {
+    public void miningFatigueIsTheOldSwitch() {
         assertEquals(0.3, ToolSet.fatigueFactor(0), 1e-9);
         assertEquals(0.09, ToolSet.fatigueFactor(1), 1e-9);
-        assertEquals(0.027, ToolSet.fatigueFactor(2), 1e-9);
-        assertEquals(0.0081, ToolSet.fatigueFactor(3), 1e-9);
+        assertEquals(0.0027, ToolSet.fatigueFactor(2), 1e-9);
+        assertEquals(0.00081, ToolSet.fatigueFactor(3), 1e-9);
+        assertEquals(0.00081, ToolSet.fatigueFactor(7), 1e-9);
     }
 
     // NightSleep leans on the overworld clock being the 24000 one, and on nether and end never letting you sleep

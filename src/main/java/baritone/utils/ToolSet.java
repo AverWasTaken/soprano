@@ -281,14 +281,23 @@ public class ToolSet {
             speed *= 1 + (player.getEffect(MobEffects.HASTE).getAmplifier() + 1) * 0.2;
         }
         if (player.hasEffect(MobEffects.MINING_FATIGUE)) {
-            // 1.21.4 had a switch with 0.3, 0.09, 0.0027, 0.00081 (the 0.0027 was a typo-looking truth). 26.3 made it a real power,
-            // so fatigue 3 and 4 are 10x less crippling than that table says
+            // Player.getDestroySpeed on 1.21.11 is still the switch with the 0.0027 in it, that typo-looking number is the
+            // truth here. 26.3 made it a real power, don't copy that back
             speed *= fatigueFactor(player.getEffect(MobEffects.MINING_FATIGUE).getAmplifier());
         }
         return speed;
     }
 
     static double fatigueFactor(int amplifier) {
-        return Math.pow(0.3, amplifier + 1);
+        switch (amplifier) {
+            case 0:
+                return 0.3;
+            case 1:
+                return 0.09;
+            case 2:
+                return 0.0027;
+            default:
+                return 0.00081;
+        }
     }
 }
