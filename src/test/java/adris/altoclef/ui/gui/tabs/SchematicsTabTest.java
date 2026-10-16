@@ -93,6 +93,20 @@ public class SchematicsTabTest {
     }
 
     @Test
+    public void theGhostFollowsThePick() {
+        assertNull(facade.schematics.ghost());
+        clickRow(0);
+        assertEquals("Small Castle.litematic", facade.schematics.ghost());
+        clickRow(1);
+        assertEquals("tower.schem", facade.schematics.ghost());
+        // a file that vanishes takes its ghost with it
+        facade.schematics.remove("tower.schem");
+        ticks(2);
+        p.settle();
+        assertNull(facade.schematics.ghost());
+    }
+
+    @Test
     public void searchFiltersByPath() {
         tab.onSearch("villages");
         assertEquals(List.of("villages/farm.schematic"), paths());

@@ -46,7 +46,7 @@ public class McSchematicsGhostTest {
 
     private McSchematics make() {
         McSchematics s = new McSchematics(new SchematicLibrary(dir.toFile()), queue::add, HashMap::new, id -> false,
-            Runnable::run, (ext, title) -> FilePicker.Choice.cancelled(), game);
+            Runnable::run, (ext, title) -> FilePicker.Choice.cancelled(), game, () -> 0L);
         s.list();
         drain();
         return s;
