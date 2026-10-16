@@ -147,7 +147,7 @@ final class PathRibbon implements IRenderer {
 
         // how many blocks wide a pixel is, one block in front of the camera. m11 is 1 / tan(fov / 2), and it already knows about sprinting and speed potions
         // the frame buffer and not the window, the line shader counts pixels of the former and they're not the same thing on a scaled display
-        float blocksPerPixel = 2 / (Math.abs(PathRenderer.projectionM11()) * Math.max(Minecraft.getInstance().gameRenderer.mainRenderTarget().height, 1));
+        float blocksPerPixel = 2 / (Math.abs(PathRenderer.projectionM11()) * Math.max(Minecraft.getInstance().getMainRenderTarget().height, 1));
         float pixels = Math.max(settings.pathRenderLineWidthPixels.value * width, 1) / 2;
         float height = settings.renderPathAsLine.value ? 0 : THINGY_HEIGHT * width;
         unitSide[0] = 1;
