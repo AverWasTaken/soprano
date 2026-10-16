@@ -4,6 +4,7 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.BotBehaviour;
 import adris.altoclef.Debug;
 import adris.altoclef.TaskCatalogue;
+import adris.altoclef.tasks.construction.schematic.BuildNightSleep;
 import adris.altoclef.tasks.construction.schematic.CountStep;
 import adris.altoclef.tasks.construction.schematic.GatherGuard;
 import adris.altoclef.tasks.construction.schematic.GatherPlan;
@@ -87,6 +88,8 @@ public class SchematicBuildTask extends Task {
     private final ISchematic placed;
     private final GatherGuard guard = new GatherGuard();
     private final GoBack goBack = new GoBack();
+    // altoSleepAtNight, the gamer's night for a build. it cuts in ahead of every phase
+    private final BuildNightSleep night = new BuildNightSleep();
     // items nothing in the catalogue makes and the bag has none of. the builder gets the file with them cut out
     // (SkipItems). one we hold some of stays in, the builder places what there is and the pause says what's short
     private final Set<String> skipped = new LinkedHashSet<>();
@@ -117,6 +120,9 @@ public class SchematicBuildTask extends Task {
     private boolean builderEnded;
     // what the rest of the build takes by item, as of the last count
     private Map<String, Integer> lastLeft = Map.of();
+    // the bag when the builder got it, so a night that cuts the builder can tell what it has placed since. not the
+    // count's bag, a gather sits between the two
+    private Map<String, Integer> haveAtBuild = Map.of();
     private boolean toldUngettable;
     private int batches;
     private Task gather;
@@ -127,6 +133,10 @@ public class SchematicBuildTask extends Task {
     // our level of the behaviour stack, null while we hold none (always while the builder runs)
     private BotBehaviour.State level;
     private boolean done;
+    // the night had the wheel last tick
+    private boolean nightHad;
+    // the next count comes from a night cutting the builder off, not from the build getting nowhere, so it isn't a round
+    private boolean nightRecount;
 
     public SchematicBuildTask(String name, IStaticSchematic schematic, BlockPos origin, Rotation rotation, Mirror mirror) {
         this.name = name;
@@ -255,6 +265,13 @@ public class SchematicBuildTask extends Task {
             return null;
         }
         away = !atHome();
+        // ahead of the guard: a night is no reason to call the build stuck, it ticks the guard not at all
+        Task bed = night.tick(mod, away);
+        BuildNightSleep.Turn turn = BuildNightSleep.turn(bed != null || night.holding(), phase == Phase.BUILD);
+        if (turn != BuildNightSleep.Turn.BUILD) {
+            return nightTurn(mod, turn) ? bed : null;
+        }
+        nightHad = false;
         if (phase == Phase.GATHER) {
             guard.gathering(towardBatch(have(mod)));
         }
@@ -276,6 +293,43 @@ public class SchematicBuildTask extends Task {
             case RETURN -> away ? goHome() : returnToBuild(mod);
             case BUILD -> build(mod);
         };
+    }
+
+    // the night has the wheel. the builder can't keep it (its pathing would fight the trip's), so a build in progress goes back
+    // to counting: the footprint rules come back on for the night and the morning walks back and recounts, same as after
+    // a gather. false when it turns out the build is over (a chat #build took the builder)
+    private boolean nightTurn(AltoClef mod, BuildNightSleep.Turn turn) {
+        if (!nightHad) {
+            nightHad = true;
+            // a sheep, a bed, a pillar: the night can walk us anywhere, so the morning checks where we are first (same as
+            // onStart after an interrupt)
+            near = false;
+            trip = null;
+            diff = null;
+            goBack.reset();
+        }
+        if (turn == BuildNightSleep.Turn.CUT_BUILDER && !cutBuilder(mod)) {
+            return false;
+        }
+        protect(mod);
+        setDebugState("The night has the wheel", "Night, " + name + " waits");
+        return true;
+    }
+
+    // what build() asks the builder, asked once more before the night takes it away: a chat #build that took over is
+    // still theirs to keep, and a builder that just let go still gets the count's "is it done"
+    private boolean cutBuilder(AltoClef mod) {
+        long now = builder(mod).buildSerial();
+        if (now != 0 && now != builderSerial) {
+            builderSerial = 0;
+            finish(mod, "Another build took over, stopped " + name);
+            return false;
+        }
+        builderEnded |= now == 0;
+        stopBuilder(mod);
+        phase = Phase.COUNT;
+        nightRecount = true;
+        return true;
     }
 
     private long towardBatch(Map<String, Integer> have) {
@@ -343,8 +397,16 @@ public class SchematicBuildTask extends Task {
         }
         Map<String, Integer> rest = new LinkedHashMap<>(left);
         rest.keySet().removeAll(skipped);
-        // every count is one round for the guard, whatever sent us here (a pause, the builder letting go, the start)
-        boolean stuck = guard.round(correct);
+        // every count is one round for the guard, whatever sent us here (a pause, the builder letting go, the start). except
+        // the night's: a builder cut off every evening isn't stuck, and the tick clock still catches one that really is
+        boolean stuck;
+        if (nightRecount) {
+            nightRecount = false;
+            guard.seen(correct);
+            stuck = false;
+        } else {
+            stuck = guard.round(correct);
+        }
         switch (CountStep.next(ended, rest.isEmpty(), stuck, plan.bagFull(), plan.nothingToGet(), missing != null)) {
             case DONE -> finish(mod, skippedLine());
             case DONE_BUT_DIFFERS -> finish(mod, "The builder says " + name + " is done; " + wrong
@@ -573,6 +635,7 @@ public class SchematicBuildTask extends Task {
         IBuilderProcess builder = builder(mod);
         builder.build(name, SkipItems.of(schematic, skipped), origin, rotation, mirror);
         builderSerial = builder.buildSerial();
+        haveAtBuild = have(mod);
         watch = null;
         near = false;
         toldTrip = false;
@@ -585,6 +648,12 @@ public class SchematicBuildTask extends Task {
     private void stopBuilder(AltoClef mod) {
         watch = null;
         if (builderSerial != 0) {
+            // the floor is the last count's bill, and the builder has been placing since. left as is it holds back every
+            // block of the bag, and a night (or a fight at dusk, then the night) finds nothing spare for its pillar. what
+            // went on scaffolding comes off too, so it's a low guess: the next count bills whatever is really missing
+            if (mod.getPlayer() != null) {
+                lastLeft = BuildNightSleep.leftAfterUse(lastLeft, haveAtBuild, have(mod));
+            }
             IBuilderProcess builder = builder(mod);
             if (builder.buildSerial() == builderSerial) {
                 builder.onLostControl();
@@ -600,6 +669,7 @@ public class SchematicBuildTask extends Task {
         }
         stopBuilder(mod);
         unprotect(mod);
+        night.drop();
         done = true;
     }
 
@@ -609,6 +679,17 @@ public class SchematicBuildTask extends Task {
         // would fight the fight for the wheel. onStart puts it back after an interrupt
         stopBuilder(mod);
         unprotect(mod);
+        // an interrupt keeps tonight's trip and its stand down, it picks up where it was when we're back (a meal on the
+        // pillar is no reason to fight our way off it). a real stop lets go of both
+        if (!isInterrupting()) {
+            night.drop();
+        }
+    }
+
+    // #stop while a fight or a meal had us paused: onStop already ran as an interrupt and kept the night
+    @Override
+    protected void onStopWhilePaused(AltoClef mod) {
+        night.drop();
     }
 
     @Override
@@ -623,6 +704,9 @@ public class SchematicBuildTask extends Task {
 
     @Override
     protected String toHudString() {
+        if (nightHad) {
+            return "Night, " + name + " waits";
+        }
         return switch (phase) {
             case COUNT -> "Counting what " + name + " needs";
             case GATHER -> "Gathering for " + name;

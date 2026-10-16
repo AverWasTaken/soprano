@@ -297,16 +297,34 @@ public class NightSleepTest {
 
     @Test
     public void theHookCarriesTheStageAndForgetsIt() {
-        assertFalse(NightSleepHook.standsDown(20));
-        NightSleepHook.set(Stage.BUILD);
-        assertTrue(NightSleepHook.standsDown(20));
-        assertFalse(NightSleepHook.standsDown(5));
-        NightSleepHook.set(Stage.DESCEND);
-        assertFalse(NightSleepHook.standsDown(20));
-        NightSleepHook.set(Stage.SLEEP);
+        assertFalse(NightSleepHook.standsDown(20, 100));
+        NightSleepHook.set(Stage.BUILD, 100);
+        assertTrue(NightSleepHook.standsDown(20, 100));
+        assertFalse(NightSleepHook.standsDown(5, 100));
+        NightSleepHook.set(Stage.DESCEND, 100);
+        assertFalse(NightSleepHook.standsDown(20, 100));
+        NightSleepHook.set(Stage.SLEEP, 100);
         NightSleepHook.clear();
-        assertNull(NightSleepHook.stage());
-        assertFalse(NightSleepHook.standsDown(20));
+        assertNull(NightSleepHook.stage(100));
+        assertFalse(NightSleepHook.standsDown(20, 100));
+    }
+
+    @Test
+    public void aStageNobodyRefreshesGoesStale() {
+        NightSleepHook.set(Stage.SLEEP, 1000);
+        // a meal or a fire can hold the wheel for a bit and the stand down holds
+        assertTrue(NightSleepHook.standsDown(20, 1000 + NightSleepHook.STALE_TICKS));
+        // an owner that got dropped without clearing it does not keep mob defense off for good
+        assertFalse(NightSleepHook.standsDown(20, 1001 + NightSleepHook.STALE_TICKS));
+        assertNull(NightSleepHook.stage(1001 + NightSleepHook.STALE_TICKS));
+        // a clock from before the stamp is another world
+        assertNull(NightSleepHook.stage(999));
+        // a refresh brings it back
+        NightSleepHook.set(Stage.SLEEP, 5000);
+        assertEquals(Stage.SLEEP, NightSleepHook.stage(5000));
+        NightSleepHook.set(null, 5000);
+        assertNull(NightSleepHook.stage(5000));
+        NightSleepHook.clear();
     }
 
     // ---- refusals and waking
