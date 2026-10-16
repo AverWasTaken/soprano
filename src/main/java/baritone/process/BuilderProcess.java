@@ -107,28 +107,8 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     private int numRepeats;
     private List<BlockState> approxPlaceable;
     public int stopAtHeight = 0;
-    // stuck in reach bookkeeping, see BuildSkips. builderTicks is its clock, recursions don't count
-    private final BuildSkips skips = new BuildSkips();
-    private long builderTicks;
-    private long lastGateLog = -1000;
-    // "only skipped blocks left, trying again" rounds in a row with nothing fixed in between. a protected cell or
-    // bedrock where the file wants air would go round forever otherwise, quietly, which is worse than the old pause
-    private int skipRetries;
-    private int fixesAtRetry;
-    private static final int MAX_SKIP_RETRIES = 3;
-    // last tick's pick, kept while it still works so the aim doesn't hop to whatever the scan finds first this tick
-    private Placement lastPlacement;
-    // where the last wouldPlaceWrong would have put it
-    private BlockPos gateCell;
-    // the corner of the build we're doing, see BuildArea
-    private final BuildArea area = new BuildArea();
-    private BetterBlockPos loggedAnchor;
-    private long lastAreaLog = -1000;
-    private long lastAnchorLog = -1000;
-    private long lastSwing = -1000;
-    // keepLastPlacement for breaking: last tick's target while it still needs it, so a half broken block gets finished
-    private BetterBlockPos lastBreak;
-    private final HotbarHold hotbarHold = new HotbarHold();
+    // bumped by every start, so whoever kicked off a build can tell later if it's still theirs or a #build took over
+    private long buildSerial;
 
     public BuilderProcess(Baritone baritone) {
         super(baritone);
@@ -155,6 +135,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     // only the global setting path wants: they use the unturned size and would push a placed origin off its corner
     private void start(String name, ISchematic schematic, Vec3i origin, net.minecraft.world.level.block.Rotation rotation,
                        net.minecraft.world.level.block.Mirror mirror, boolean useOrientation) {
+        this.buildSerial++;
         this.name = name;
         this.schematic = schematic;
         this.realSchematic = null;
@@ -309,6 +290,12 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     @Override
     public boolean isActive() {
         return schematic != null;
+    }
+
+    @Override
+    public long buildSerial() {
+        // onLostControl nulls the schematic, so a finished or cancelled build reads as none
+        return schematic != null ? buildSerial : 0;
     }
 
     public BlockState placeAt(int x, int y, int z, BlockState current) {

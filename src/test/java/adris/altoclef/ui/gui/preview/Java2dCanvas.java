@@ -2,6 +2,7 @@ package adris.altoclef.ui.gui.preview;
 
 import adris.altoclef.ui.gui.kit.AtlasPage;
 import adris.altoclef.ui.gui.kit.GlyphAtlas;
+import adris.altoclef.ui.gui.kit.PixelImage;
 import adris.altoclef.ui.gui.kit.ShapeAtlas;
 import adris.altoclef.ui.gui.kit.TextStyle;
 import adris.altoclef.ui.gui.kit.TexturedCanvas;
@@ -168,6 +169,48 @@ public final class Java2dCanvas extends TexturedCanvas {
         float tw = measure(letter, st);
         float base = dy + (px - (ascent(st) + descent(st))) * 0.5f + ascent(st);
         text(letter, dx + (px - tw) * 0.5f, base, st, 0xFFB0B0B7);
+    }
+
+    // the picture keeps its own colours (blitTinted swaps them for the tint, which is what a white atlas wants and
+    // what a map does not), nearest neighbour both ways, the tint only scales the alpha and the channels
+    @Override
+    public void image(PixelImage image, float x, float y, float w, float h, int tint) {
+        int ta = tint >>> 24;
+        int x0 = Math.round(x);
+        int y0 = Math.round(y);
+        int x1 = Math.round(x + w);
+        int y1 = Math.round(y + h);
+        int dw = x1 - x0;
+        int dh = y1 - y0;
+        if (ta == 0 || dw <= 0 || dh <= 0) {
+            return;
+        }
+        int[] src = image.pixels();
+        int sw = image.width();
+        int sh = image.height();
+        boolean white = (tint & 0x00FFFFFF) == 0x00FFFFFF;
+        for (int py = Math.max(y0, cy0); py < Math.min(y1, cy1); py++) {
+            int srow = (int) ((long) (py - y0) * sh / dh) * sw;
+            for (int px = Math.max(x0, cx0); px < Math.min(x1, cx1); px++) {
+                int s = src[srow + (int) ((long) (px - x0) * sw / dw)];
+                int sa = s >>> 24;
+                if (sa == 0) {
+                    continue;
+                }
+                int a = ta == 255 ? sa : (sa * ta + 127) / 255;
+                int rgb = white ? s & 0x00FFFFFF : mul(s, tint);
+                if (a != 0) {
+                    pixels[py * width + px] = over(pixels[py * width + px], (a << 24) | rgb, a);
+                }
+            }
+        }
+    }
+
+    private static int mul(int s, int t) {
+        int r = ((s >> 16) & 255) * ((t >> 16) & 255) / 255;
+        int g = ((s >> 8) & 255) * ((t >> 8) & 255) / 255;
+        int b = (s & 255) * (t & 255) / 255;
+        return (r << 16) | (g << 8) | b;
     }
 
     // nearest neighbour so 16 px pixel art stays pixel art at 32 and 48

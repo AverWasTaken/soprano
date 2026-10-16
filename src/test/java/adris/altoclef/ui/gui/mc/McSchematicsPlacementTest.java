@@ -46,6 +46,7 @@ public class McSchematicsPlacementTest {
     private Path saveFile;
     private final Queue<Runnable> queue = new ArrayDeque<>();
     private final FakeGame game = new FakeGame();
+    private long now = 1_000_000;
 
     @BeforeClass
     public static void boot() {
@@ -64,7 +65,7 @@ public class McSchematicsPlacementTest {
 
     private McSchematics make() {
         McSchematics s = new McSchematics(new SchematicLibrary(dir.toFile()), queue::add, HashMap::new, id -> false,
-            Runnable::run, (ext, title) -> FilePicker.Choice.cancelled(), game);
+            Runnable::run, (ext, title) -> FilePicker.Choice.cancelled(), game, () -> now);
         s.list();
         drain();
         return s;
@@ -210,6 +211,44 @@ public class McSchematicsPlacementTest {
     }
 
     @Test
+    public void startedGoesBackToIdleOnceTheBuilderIsNotOnOurBuild() {
+        McSchematics s = make();
+        s.build("wall.schem");
+        drain();
+        assertEquals(BuildState.STARTED, s.building().state());
+        assertEquals(BuildState.STARTED, s.building().state());
+
+        // the builder finished (or got cancelled)
+        game.running = 0;
+        assertEquals(Building.IDLE, s.building());
+        // and it stays idle even if something else starts later
+        game.running = 5;
+        assertEquals(Building.IDLE, s.building());
+
+        s.build("wall.schem");
+        assertEquals(BuildState.PARSING, s.building().state());
+        drain();
+        assertEquals(BuildState.STARTED, s.building().state());
+        assertEquals(2, game.running);
+        assertEquals(BuildState.STARTED, s.building().state());
+
+        // a chat #build took the builder over
+        game.running = 99;
+        assertEquals(Building.IDLE, s.building());
+    }
+
+    @Test
+    public void anErrorStaysPutWhateverTheBuilderDoes() throws Exception {
+        McSchematics s = make();
+        s.placement("wall.schem");
+        s.build("wall.schem");
+        Files.delete(dir.resolve("wall.schem"));
+        drain();
+        game.running = 0;
+        assertEquals(BuildState.ERROR, s.building().state());
+    }
+
+    @Test
     public void theClickIsTheSnapshot() {
         McSchematics s = make();
         s.build("wall.schem");
@@ -310,6 +349,33 @@ public class McSchematicsPlacementTest {
         assertEquals(new BlockPos(7, 7, 7), saved.get("other.schem").origin());
         // this session's edits win over what was on disk
         assertEquals(12, saved.get("wall.schem").origin().getX());
+    }
+
+    @Test
+    public void readsGiveAnUnreadableFileAnotherGoEveryFiveSeconds() throws Exception {
+        Files.createDirectories(saveFile.resolve("in-the-way"));
+        McSchematics s = make();
+        assertEquals(11, s.move("wall.schem", 1, 0, 0).x());
+
+        Files.delete(saveFile.resolve("in-the-way"));
+        Files.delete(saveFile);
+        SchematicFixtures.writeSponge(dir.resolve("other.schem"), 1, 1, 1, new String[]{"minecraft:stone"}, new int[1]);
+        s.refresh();
+        drain();
+        PlacementStore.save(saveFile, Map.of(
+            "other.schem", SchematicPlacement.at(new BlockPos(7, 7, 7), "minecraft:overworld"),
+            "wall.schem", SchematicPlacement.at(new BlockPos(-99, 0, 0), "minecraft:overworld")));
+
+        // too soon: the on-disk one isn't picked up, other.schem is still the made-up default at the feet
+        now += 4_999;
+        assertEquals(10, s.placement("other.schem").x());
+        assertEquals(11, s.placement("wall.schem").x());
+
+        now += 1;
+        assertEquals(new Placement(7, 7, 7, 0, false, "minecraft:overworld", true), s.placement("other.schem"));
+        // the in-memory edit wins over the file
+        assertEquals(11, s.placement("wall.schem").x());
+        assertEquals(11, s.footprint("wall.schem").x());
     }
 
     private static TerrainMap.Source sand() {

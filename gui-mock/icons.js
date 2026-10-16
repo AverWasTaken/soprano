@@ -228,13 +228,42 @@
         eye: function () {
             var eye = P().moveTo(3, 12).quadTo(12, 1, 21, 12).quadTo(12, 23, 3, 12);
             return path(eye) + ell(8.5, 8.5, 7, 7);
+        },
+        chevron_up: function () {
+            return poly(false, [6, 15, 12, 9, 18, 15]);
+        },
+        chevron_left: function () {
+            return poly(false, [15, 6, 9, 12, 15, 18]);
+        },
+        // a turn about a dot: the dot is what tells it apart from reset, which is the same arc without a pivot
+        rotate_left: function () {
+            var cx = 12, cy = 12, r = 7;
+            var th = 45 * Math.PI / 180;
+            var px = cx + r * Math.cos(th), py = cy - r * Math.sin(th);
+            return path(P().arc(cx - r, cy - r, 2 * r, 2 * r, 135, 270, false))
+                + head(px, py, -Math.sin(th), -Math.cos(th), 3.5, 2.75) + dot(cx, cy, 3);
+        },
+        rotate_right: function () {
+            return '<g transform="translate(24 0) scale(-1 1)">' + ART.rotate_left() + '</g>';
+        },
+        // two wings either side of a dashed axis
+        flip: function () {
+            return line(12, 4, 12, 7) + line(12, 10.5, 12, 13.5) + line(12, 17, 12, 20)
+                + poly(true, [9, 6, 9, 18, 3.5, 12]) + poly(true, [15, 6, 15, 18, 20.5, 12]);
+        },
+        level_up: function () {
+            return poly(false, [6, 13, 12, 7, 18, 13]) + line(6, 18, 18, 18);
+        },
+        level_down: function () {
+            return line(6, 6, 18, 6) + poly(false, [6, 11, 12, 17, 18, 11]);
         }
     };
 
     var NAMES = ['get', 'goto', 'follow', 'waypoints', 'help', 'settings', 'stats', 'search', 'close', 'plus', 'minus',
         'chevron_down', 'chevron_right', 'check', 'copy', 'reset', 'stop', 'key', 'dot', 'ring', 'trash', 'pin',
         'player', 'entity', 'boat', 'parkour', 'bolt', 'run', 'pickaxe', 'block', 'wrench', 'backpack', 'water',
-        'ladder', 'eye', 'schematics', 'warning'];
+        'ladder', 'eye', 'schematics', 'warning', 'chevron_up', 'chevron_left', 'rotate_left', 'rotate_right', 'flip',
+        'level_up', 'level_down'];
 
     // css: the ring behind the goto dots only shows when the glyph sits on the accent (TexturedCanvas.pathDots checks
     // the tint is ON_ACCENT). .on-accent on the icon or any ancestor turns it on

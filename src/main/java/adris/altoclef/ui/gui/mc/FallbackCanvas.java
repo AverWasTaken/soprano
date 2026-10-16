@@ -2,6 +2,7 @@ package adris.altoclef.ui.gui.mc;
 
 import adris.altoclef.ui.gui.kit.Canvas;
 import adris.altoclef.ui.gui.kit.Icon;
+import adris.altoclef.ui.gui.kit.PixelImage;
 import adris.altoclef.ui.gui.kit.TextStyle;
 import adris.altoclef.ui.gui.kit.Theme;
 import net.minecraft.client.gui.GuiGraphics;
@@ -101,6 +102,12 @@ final class FallbackCanvas implements Canvas {
         if (!draw.face(playerName, x, y, size)) {
             draw.fill(x, y, size, size, color(Theme.RAISED));
         }
+    }
+
+    // no textures on this canvas at all (that is why it's in use), so a picture is a plain bump where it would be
+    @Override
+    public void image(PixelImage image, float x, float y, float w, float h, int tint) {
+        draw.fill(x, y, w, h, Theme.fade(color(Theme.RAISED), (tint >>> 24) / 255f));
     }
 
     @Override

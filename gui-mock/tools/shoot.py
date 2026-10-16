@@ -12,6 +12,6 @@ out = os.path.join(MOCK, "assets", "shots", name + ".png")
 os.makedirs(os.path.dirname(out), exist_ok=True)
 if os.path.exists(out): os.remove(out)
 url = "file:///" + MOCK.replace("\\", "/") + "/index.html?" + query + f"&ref=1&bare=1&w={w}&h={h}"
-subprocess.run([EDGE, "--headless=new", f"--screenshot={out}", f"--window-size={w + 96},{h + 96}", "--force-device-scale-factor=1",
+subprocess.run([EDGE, "--headless=new", f"--screenshot={out}", f"--window-size={w + 160},{h + 200}", "--force-device-scale-factor=1",
                 "--virtual-time-budget=3000", url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60)
 print(out)

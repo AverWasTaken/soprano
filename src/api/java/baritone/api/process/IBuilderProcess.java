@@ -77,6 +77,13 @@ public interface IBuilderProcess extends IBaritoneProcess {
         return build(schematicFile, file, origin);
     }
 
+    /**
+     * Every build started on this process gets the next number, starting at 1, whichever way it was started.
+     *
+     * @return The number of the build currently running, or 0 when nothing is being built
+     */
+    long buildSerial();
+
     void buildOpenSchematic();
 
     void buildOpenLitematic(int i);

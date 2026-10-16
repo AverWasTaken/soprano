@@ -3,15 +3,20 @@ package adris.altoclef.ui.gui.tabs;
 import adris.altoclef.ui.gui.facade.BotFacade;
 import adris.altoclef.ui.gui.facade.Result;
 import adris.altoclef.ui.gui.facade.SchematicsAccess;
+import adris.altoclef.ui.gui.facade.SchematicsAccess.Footprint;
 import adris.altoclef.ui.gui.facade.SchematicsAccess.Listing;
 import adris.altoclef.ui.gui.facade.SchematicsAccess.Materials;
+import adris.altoclef.ui.gui.facade.SchematicsAccess.Placement;
 import adris.altoclef.ui.gui.facade.SchematicsAccess.Row;
 import adris.altoclef.ui.gui.facade.SchematicsAccess.State;
+import adris.altoclef.ui.gui.facade.SchematicsAccess.Terrain;
+import adris.altoclef.ui.gui.facade.WorldAccess.Position;
 import adris.altoclef.ui.gui.kit.Button;
 import adris.altoclef.ui.gui.kit.Canvas;
 import adris.altoclef.ui.gui.kit.Frame;
 import adris.altoclef.ui.gui.kit.Icon;
 import adris.altoclef.ui.gui.kit.IconButton;
+import adris.altoclef.ui.gui.kit.Keys;
 import adris.altoclef.ui.gui.kit.Safe;
 import adris.altoclef.ui.gui.kit.ShellContext;
 import adris.altoclef.ui.gui.kit.Tab;
@@ -22,10 +27,10 @@ import adris.altoclef.ui.gui.kit.Widget;
 
 import java.util.List;
 
-// the schematics folder on the left, what the picked file costs on the right, one button to build it where you
-// stand. everything the tab shows is a snapshot from the facade read on tick, so a scan or a count that is still
+// the schematics folder on the left, what the picked file costs and where it goes on the right, one button to build
+// it there. everything the tab shows is a snapshot from the facade read on tick, so a scan or a count that is still
 // running never freezes the panel and never blanks the list: the old rows stay up with a small "Refreshing" label
-public final class SchematicsTab implements Tab {
+public final class SchematicsTab implements Tab, SchematicPane.Listener {
 
     // the second click has to come within this many ticks of the first, or the button goes back to sleep
     private static final int ARM_TICKS = 60;
@@ -64,7 +69,7 @@ public final class SchematicsTab implements Tab {
         refreshBtn = new IconButton(theme, Icon.RESET, "Refresh", this::refresh);
         rows = new SchematicRows(theme, () -> selectedPath, () -> shownRows.size());
         list = new SchematicList();
-        pane = new SchematicPane(theme, this::buildClicked);
+        pane = new SchematicPane(theme, this);
         view = new View();
     }
 
@@ -115,6 +120,8 @@ public final class SchematicsTab implements Tab {
     @Override
     public void onHidden() {
         disarm();
+        // a drag can't outlive the tab: the release would land on whatever tab is up next
+        pane.map().cancelDrag();
     }
 
     // ----- data
@@ -180,10 +187,34 @@ public final class SchematicsTab implements Tab {
         // with nothing in the folder there is nothing to pick, so the pane would be a blank box next to the hint
         pane.setVisible(!allRows.isEmpty());
         Row sel = rowFor(selectedPath);
+        boolean world = hasWorld();
         // have is re-read on every materials() call, so only the selected file is asked each tick
         Materials m = sel != null && sel.ok() ? schematics().materials(sel.relativePath()) : null;
         lastMaterials = m;
-        pane.show(sel, m, hasWorld());
+        pane.show(sel, m, world);
+        refreshSite(sel, world);
+    }
+
+    // where the file goes and the map around it. terrain() samples chunks on every call, so this is the one call a
+    // tick and it is centred on the footprint, the part of the world the build cares about
+    private void refreshSite(Row sel, boolean world) {
+        Placement pl = null;
+        Footprint fp = null;
+        Terrain t = null;
+        Position player = null;
+        float yaw = 0f;
+        if (sel != null && sel.ok() && world) {
+            pl = schematics().placement(sel.relativePath());
+            fp = schematics().footprint(sel.relativePath());
+            if (pl != null && pl.inThisDimension()) {
+                int cx = fp != null ? fp.x() + fp.sizeX() / 2 : pl.x();
+                int cz = fp != null ? fp.z() + fp.sizeZ() / 2 : pl.z();
+                t = schematics().terrain(cx, cz, Terrain.RADIUS_CHUNKS);
+            }
+            player = facade.world().playerPos();
+            yaw = facade.world().playerYaw();
+        }
+        pane.site(pl, fp, t, player, yaw, schematics().building());
     }
 
     private Row rowFor(String path) {
@@ -244,34 +275,67 @@ public final class SchematicsTab implements Tab {
         ctx.toast(r == null ? Result.fail("Could not open the folder") : r);
     }
 
-    // building at your feet is also demolishing whatever is at your feet, so the first click only arms the button
-    private void buildClicked() {
+    // building is also demolishing whatever stands in the footprint, so the first click only arms the button
+    @Override
+    public void build() {
         if (!pane.armed()) {
             pane.setArmed(true);
             armTicks = 0;
             return;
         }
         disarm();
-        build();
+        startBuild();
     }
 
     // the one place a build starts from. the gather step of slice 3 goes in front of the facade call here
-    private void build() {
+    private void startBuild() {
         Row sel = rowFor(selectedPath);
         if (sel == null || !sel.ok()) {
             return;
         }
         Result r;
         try {
-            // the button still says "at my feet" and build() goes wherever the placement is, which sticks after the
-            // first build. so move it here first until the placement widget takes over this button
-            schematics().placeAtFeet(sel.relativePath());
             r = schematics().build(sel.relativePath());
         } catch (Throwable t) {
             Safe.report("schematics build", t);
             r = Result.fail("Could not start the build. Try #build in chat.");
         }
         ctx.toast(r == null ? Result.fail("Could not start the build. Try #build in chat.") : r);
+        poll();
+    }
+
+    // ----- the placement controls. each edit is saved by the facade, the poll after it redraws the map
+
+    @Override
+    public void move(int dx, int dy, int dz, int mods) {
+        // shift is the coarse step: eight blocks, half a chunk, enough to cross a footprint in a few clicks
+        int n = Keys.shift(mods) ? 8 : 1;
+        edit("schematics move", path -> schematics().move(path, dx * n, dy * n, dz * n));
+    }
+
+    @Override
+    public void rotate(boolean clockwise) {
+        edit("schematics rotate", path -> schematics().rotate(path, clockwise));
+    }
+
+    @Override
+    public void mirror() {
+        edit("schematics mirror", path -> schematics().mirror(path));
+    }
+
+    @Override
+    public void placeAtFeet() {
+        edit("schematics feet", path -> schematics().placeAtFeet(path));
+    }
+
+    private void edit(String what, java.util.function.Consumer<String> action) {
+        Row sel = rowFor(selectedPath);
+        if (sel == null || !sel.ok()) {
+            return;
+        }
+        disarm();
+        Safe.run(what, () -> action.accept(sel.relativePath()));
+        poll();
     }
 
     private void disarm() {

@@ -24,6 +24,7 @@ import java.util.List;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
@@ -267,6 +268,34 @@ public class FakeSchematicsTest {
         Building b = fake.building();
         assertEquals(BuildState.ERROR, b.state());
         assertEquals("Couldn't read tower", b.message());
+    }
+
+    @Test
+    public void runPollsSendsAStartedBuildBackToIdle() {
+        fake.parsePolls = 0;
+        fake.runPolls = 2;
+        fake.build("tower.schem");
+        assertEquals(BuildState.STARTED, fake.building().state());
+        assertEquals(BuildState.STARTED, fake.building().state());
+        assertEquals(Building.IDLE, fake.building());
+        assertEquals(Building.IDLE, fake.building());
+        // the default never finishes
+        fake.runPolls = -1;
+        fake.build("tower.schem");
+        for (int i = 0; i < 20; i++) {
+            assertEquals(BuildState.STARTED, fake.building().state());
+        }
+    }
+
+    @Test
+    public void theTerrainStampMovesWithTheKnobAndWithTheWindow() {
+        long same = fake.terrain(100, -40, Terrain.RADIUS_CHUNKS).stamp();
+        // a few blocks over is the same chunk window (it is aligned on centre + 8), so the same pixels
+        assertEquals(same, fake.terrain(103, -37, Terrain.RADIUS_CHUNKS).stamp());
+        // a window that slid a chunk is new pixels, like the real map's stamp
+        assertNotEquals(same, fake.terrain(100 + 16, -40, Terrain.RADIUS_CHUNKS).stamp());
+        fake.terrainStamp = 7;
+        assertNotEquals(same, fake.terrain(100, -40, Terrain.RADIUS_CHUNKS).stamp());
     }
 
     @Test

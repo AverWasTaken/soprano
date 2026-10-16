@@ -1,13 +1,20 @@
 package adris.altoclef.ui.gui.tabs;
 
+import adris.altoclef.ui.gui.facade.SchematicsAccess.BuildState;
+import adris.altoclef.ui.gui.facade.SchematicsAccess.Building;
+import adris.altoclef.ui.gui.facade.SchematicsAccess.Footprint;
 import adris.altoclef.ui.gui.facade.SchematicsAccess.Line;
 import adris.altoclef.ui.gui.facade.SchematicsAccess.Materials;
+import adris.altoclef.ui.gui.facade.SchematicsAccess.Placement;
 import adris.altoclef.ui.gui.facade.SchematicsAccess.Row;
 import adris.altoclef.ui.gui.facade.SchematicsAccess.State;
+import adris.altoclef.ui.gui.facade.SchematicsAccess.Terrain;
+import adris.altoclef.ui.gui.facade.WorldAccess.Position;
 import adris.altoclef.ui.gui.kit.Button;
 import adris.altoclef.ui.gui.kit.Canvas;
 import adris.altoclef.ui.gui.kit.Frame;
 import adris.altoclef.ui.gui.kit.Icon;
+import adris.altoclef.ui.gui.kit.IconButton;
 import adris.altoclef.ui.gui.kit.TextStyle;
 import adris.altoclef.ui.gui.kit.Theme;
 import adris.altoclef.ui.gui.kit.VirtualList;
@@ -18,19 +25,45 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-// the right hand card: the selected file's name and numbers on top, its material list in the middle, the build bar
-// at the bottom. the list takes whatever height is left, which is also where a placement map will go one day: it
-// shares that room, nothing reserves a blank box for it now. the tab owns the data and tells this what to show
+// the right hand card: the selected file's name and numbers on top, the placement map and its controls under that,
+// the material list in whatever is left, the build bar at the bottom. the tab owns the data and tells this what to
+// show; every button and the drag go back to the tab through the listener
 final class SchematicPane extends Widget {
+
+    interface Listener {
+        void build();
+
+        // world blocks, mods of the click (shift moves eight)
+        void move(int dx, int dy, int dz, int mods);
+
+        void rotate(boolean clockwise);
+
+        void mirror();
+
+        void placeAtFeet();
+    }
 
     private static final String CANT_PLACE = "Can't place";
     private static final String NOT_COUNTED = "Not counted";
+    private static final String BUILD = "Build here";
 
     private enum Body { NOTHING, LOADING, ERROR, LIST }
 
     private final VirtualList<MaterialRows.Entry> list;
     private final Button build;
+    private final PlacementMap map;
+    private final IconButton west;
+    private final IconButton north;
+    private final IconButton south;
+    private final IconButton east;
+    private final IconButton up;
+    private final IconButton down;
+    private final IconButton turnLeft;
+    private final IconButton turnRight;
+    private final Button mirror;
+    private final Button feet;
     private final List<Widget> kids;
+    private final List<Button> nudges;
     private final Set<String> open = new HashSet<>();
 
     private Row row;
@@ -38,6 +71,8 @@ final class SchematicPane extends Widget {
     private boolean world = true;
     private boolean armed;
     private Body body = Body.NOTHING;
+    private PlacementMap.Mode mode = PlacementMap.Mode.HIDDEN;
+    private Building building = Building.IDLE;
     private String error = "";
     private String name = "";
     private String meta = "";
@@ -52,7 +87,7 @@ final class SchematicPane extends Widget {
     private int listTop;
     private int listH;
 
-    SchematicPane(Theme theme, Runnable onBuild) {
+    SchematicPane(Theme theme, Listener listener) {
         super(theme);
         list = new VirtualList<>(theme, theme.px(40), new MaterialRows(theme));
         list.setKeyFunction(MaterialRows.Entry::key);
@@ -64,19 +99,91 @@ final class SchematicPane extends Widget {
                 rebuild();
             }
         });
-        build = new Button(theme, "Build at my feet", Button.Kind.PRIMARY, null, onBuild);
+        build = new Button(theme, BUILD, Button.Kind.PRIMARY, null, listener::build);
         build.setEnabled(false);
-        kids = List.of(list, build);
+        map = new PlacementMap(theme, (dx, dz) -> listener.move(dx, 0, dz, 0));
+        west = nudge(Icon.CHEVRON_LEFT, "West", listener, -1, 0, 0);
+        north = nudge(Icon.CHEVRON_UP, "North", listener, 0, 0, -1);
+        south = nudge(Icon.CHEVRON_DOWN, "South", listener, 0, 0, 1);
+        east = nudge(Icon.CHEVRON_RIGHT, "East", listener, 1, 0, 0);
+        up = nudge(Icon.LEVEL_UP, "Up one", listener, 0, 1, 0);
+        down = nudge(Icon.LEVEL_DOWN, "Down one", listener, 0, -1, 0);
+        turnLeft = new IconButton(theme, Icon.ROTATE_LEFT, "Turn left", () -> listener.rotate(false));
+        turnRight = new IconButton(theme, Icon.ROTATE_RIGHT, "Turn right", () -> listener.rotate(true));
+        mirror = new Squarish(theme, "Mirror", Icon.FLIP, listener::mirror);
+        feet = new Squarish(theme, "Move to me", Icon.PIN, listener::placeAtFeet);
+        nudges = List.of(west, north, south, east);
+        kids = List.of(list, build, map, west, north, south, east, up, down, turnLeft, turnRight, mirror, feet);
+        setVisibleControls(false);
+    }
+
+    private IconButton nudge(Icon icon, String tip, Listener l, int dx, int dy, int dz) {
+        IconButton[] self = new IconButton[1];
+        self[0] = new IconButton(theme, icon, tip, () -> l.move(dx, dy, dz, self[0].lastMods()));
+        return self[0];
+    }
+
+    // a ghost button with a glyph and a word that drops the word when the row is tight: then it is a square like the
+    // icon buttons next to it, not a square with a glyph left of nothing
+    private static final class Squarish extends Button {
+        Squarish(Theme theme, String text, Icon icon, Runnable onClick) {
+            super(theme, text, Kind.GHOST, icon, onClick);
+        }
+
+        @Override
+        public int preferredWidth() {
+            return text.isEmpty() ? theme.px(Theme.CONTROL_H) : super.preferredWidth();
+        }
     }
 
     // the tab calls this whenever the selection, the count or the player's inventory moved. a null row is nothing selected
     void show(Row r, Materials m, boolean hasWorld) {
         boolean changed = !sameRow(r) || (m == null ? materials != null : !m.equals(materials)) || hasWorld != world;
+        if (!sameRow(r)) {
+            map.cancelDrag();
+        }
         row = r;
         materials = m;
         world = hasWorld;
         if (changed) {
             rebuild();
+        }
+    }
+
+    // and this every tick with where the file goes: the map band, the controls and the build bar follow it. terrain
+    // and player may be null, the building state is the last request whatever file it was for
+    void site(Placement placement, Footprint footprint, Terrain terrain, Position player, float yaw, Building b) {
+        PlacementMap.Mode next;
+        if (row == null || !row.ok()) {
+            next = PlacementMap.Mode.HIDDEN;
+        } else if (!world || placement == null) {
+            next = PlacementMap.Mode.NO_WORLD;
+        } else if (!placement.inThisDimension()) {
+            next = PlacementMap.Mode.ELSEWHERE;
+        } else {
+            next = PlacementMap.Mode.MAP;
+        }
+        Building mine = b != null && row != null && row.relativePath().equals(b.relativePath()) ? b : Building.IDLE;
+        boolean relayout = (next == PlacementMap.Mode.HIDDEN) != (mode == PlacementMap.Mode.HIDDEN);
+        boolean refresh = next != mode || !mine.equals(building);
+        mode = next;
+        building = mine;
+        map.show(mode, placement, footprint, terrain, player, yaw);
+        if (refresh) {
+            boolean onMap = mode == PlacementMap.Mode.MAP;
+            for (Button n : nudges) {
+                n.setEnabled(onMap);
+            }
+            up.setEnabled(onMap);
+            down.setEnabled(onMap);
+            turnLeft.setEnabled(onMap);
+            turnRight.setEnabled(onMap);
+            mirror.setEnabled(onMap);
+            feet.setEnabled(onMap || mode == PlacementMap.Mode.ELSEWHERE);
+            updateBuildBar();
+        }
+        if (relayout) {
+            layout();
         }
     }
 
@@ -86,7 +193,7 @@ final class SchematicPane extends Widget {
 
     void setArmed(boolean on) {
         armed = on;
-        build.setText(on ? "Click again to build" : "Build at my feet");
+        build.setText(on ? "Click again to build" : BUILD);
         build.setKind(on ? Button.Kind.DANGER : Button.Kind.PRIMARY);
         layout();
     }
@@ -97,7 +204,6 @@ final class SchematicPane extends Widget {
 
     private void rebuild() {
         List<MaterialRows.Entry> entries = new ArrayList<>();
-        warning = "";
         unknown = "";
         summaryTail = "";
         summaryShort = false;
@@ -126,23 +232,36 @@ final class SchematicPane extends Widget {
                 summaryHead = SchematicRules.summaryHead(materials);
                 summaryTail = SchematicRules.summaryTail(materials);
                 summaryShort = materials.totalMissing() > 0;
-                warning = SchematicRules.warning(materials);
                 fill(entries);
             }
         }
         list.setItems(entries);
-        // the button waits for the count: the warning line next to it is what tells you what you are short of
-        build.setEnabled(body == Body.LIST && world);
-        warningIcon = !warning.isEmpty();
+        updateBuildBar();
+        layout();
+    }
+
+    // the button waits for the count and for a placement in this dimension. the line next to it says what is in
+    // the way, or what you are short of, or how the last build request is going
+    private void updateBuildBar() {
+        boolean inFlight = building.state() == BuildState.PARSING;
+        build.setEnabled(body == Body.LIST && world && mode == PlacementMap.Mode.MAP && !inFlight);
+        warningIcon = false;
         if (!world) {
             warning = "Join a world to build";
-            warningIcon = false;
+        } else if (building.state() != BuildState.IDLE) {
+            warning = SchematicRules.buildingLine(building);
+        } else if (mode == PlacementMap.Mode.ELSEWHERE) {
+            warning = "Placed in " + SchematicRules.dimensionName(map.elsewhere()) + ". Move it here first.";
         } else if (body == Body.LOADING) {
             warning = "Counting blocks…";
         } else if (body == Body.ERROR && row != null && row.ok()) {
             warning = "Couldn't count the blocks";
+        } else if (body == Body.LIST) {
+            warning = SchematicRules.warning(materials);
+            warningIcon = !warning.isEmpty();
+        } else {
+            warning = "";
         }
-        layout();
     }
 
     private void fill(List<MaterialRows.Entry> out) {
@@ -173,6 +292,26 @@ final class SchematicPane extends Widget {
         return theme.px(Theme.SPACE_3 * 2 + Theme.CONTROL_H);
     }
 
+    private int controlsH() {
+        return theme.px(Theme.SPACE_1 * 2 + Theme.CONTROL_H);
+    }
+
+    private boolean showsMap() {
+        return body != Body.NOTHING && mode != PlacementMap.Mode.HIDDEN;
+    }
+
+    private void setVisibleControls(boolean on) {
+        map.setVisible(on);
+        for (Widget k : kids) {
+            if (k != list && k != build && k != map) {
+                k.setVisible(on);
+            }
+        }
+    }
+
+    // header, map band, controls, list, build bar, hairlines between. the map takes half of what the fixed parts
+    // leave, 48 to 176, and the list gets the rest: a short window ends up with a small map and a row or two of
+    // materials, which beats either one vanishing
     @Override
     protected void layout() {
         int pad = theme.px(Theme.PAD);
@@ -188,12 +327,76 @@ final class SchematicPane extends Widget {
             }
             headerH = Math.round(hh);
         }
-        listTop = y + headerH + 1;
-        listH = Math.max(0, h - headerH - 1 - footerH() - 1);
         int side = theme.px(1);
+        int top = y + headerH + 1;
+        int footTop = y + h - footerH();
+        boolean showMap = showsMap();
+        setVisibleControls(showMap);
+        int mapH = 0;
+        if (showMap) {
+            int room = footTop - 1 - top - controlsH() - 2;
+            mapH = Math.max(theme.px(48), Math.min(theme.px(176), Math.round(room * 0.5f)));
+            if (mapH > room) {
+                mapH = Math.max(0, room);
+            }
+            map.setBounds(x + side, top, w - 2 * side, mapH);
+            layoutControls(pad, top + mapH + 1 + theme.px(Theme.SPACE_1));
+            listTop = top + mapH + 1 + controlsH() + 1;
+        } else {
+            listTop = top;
+        }
+        listH = Math.max(0, footTop - 1 - listTop);
         list.setBounds(x + side, listTop, w - 2 * side, listH);
         int bw = build.preferredWidth();
         build.setBounds(x + w - pad - bw, y + h - theme.px(Theme.SPACE_3) - bh, bw, bh);
+    }
+
+    // four fits, widest first: words on both mirror and move to me, then mirror as a glyph (the flip glyph reads on
+    // its own, a lone pin does not, and move to me is the way out of the other-dimension state), then glyphs only,
+    // then glyphs without the four nudge arrows (the footprint drags for those). the row never wraps and never
+    // spills past the card
+    private void layoutControls(int pad, int top) {
+        int ch = theme.px(Theme.CONTROL_H);
+        int gap = theme.px(Theme.SPACE_1);
+        int avail = w - 2 * pad;
+        mirror.setText("Mirror");
+        feet.setText("Move to me");
+        boolean arrows = true;
+        if (need(ch, gap, arrows) > avail) {
+            mirror.setText("");
+            if (need(ch, gap, arrows) > avail) {
+                feet.setText("");
+                if (need(ch, gap, arrows) > avail) {
+                    arrows = false;
+                }
+            }
+        }
+        int cx = x + pad;
+        for (Button n : nudges) {
+            n.setVisible(arrows);
+            if (arrows) {
+                n.setBounds(cx, top, ch, ch);
+                cx += ch;
+            }
+        }
+        if (arrows) {
+            cx += gap;
+        }
+        up.setBounds(cx, top, ch, ch);
+        cx += ch;
+        down.setBounds(cx, top, ch, ch);
+        cx += ch + gap;
+        turnLeft.setBounds(cx, top, ch, ch);
+        cx += ch;
+        turnRight.setBounds(cx, top, ch, ch);
+        cx += ch;
+        mirror.setBounds(cx, top, mirror.preferredWidth(), ch);
+        int fw = feet.preferredWidth();
+        feet.setBounds(x + w - pad - fw, top, fw, ch);
+    }
+
+    private int need(int ch, int gap, boolean arrows) {
+        return (arrows ? 4 * ch + gap : 0) + 2 * ch + gap + 2 * ch + mirror.preferredWidth() + gap + feet.preferredWidth();
     }
 
     @Override
@@ -205,9 +408,20 @@ final class SchematicPane extends Widget {
     public void draw(Canvas c, Frame f) {
         theme.card(c, x, y, w, h, theme.pxf(Theme.CARD_RADIUS), false);
         int pad = theme.px(Theme.PAD);
+        int hairline = theme.color(Theme.HAIRLINE);
         if (body != Body.NOTHING) {
             drawHeader(c, pad);
-            c.fillRect(x + 1, y + headerH, w - 2, 1, theme.color(Theme.HAIRLINE));
+            c.fillRect(x + 1, y + headerH, w - 2, 1, hairline);
+        }
+        if (showsMap()) {
+            map.draw(c, f);
+            c.fillRect(x + 1, map.y() + map.h(), w - 2, 1, hairline);
+            for (Widget k : kids) {
+                if (k != list && k != build && k != map && k.visible()) {
+                    k.draw(c, f);
+                }
+            }
+            c.fillRect(x + 1, listTop - 1, w - 2, 1, hairline);
         }
         if (body == Body.LIST) {
             list.draw(c, f);
@@ -215,7 +429,7 @@ final class SchematicPane extends Widget {
             drawState(c);
         }
         int footTop = y + h - footerH();
-        c.fillRect(x + 1, footTop, w - 2, 1, theme.color(Theme.HAIRLINE));
+        c.fillRect(x + 1, footTop, w - 2, 1, hairline);
         drawWarning(c, pad);
         build.draw(c, f);
     }
@@ -244,6 +458,9 @@ final class SchematicPane extends Widget {
 
     // nothing selected, counting, or a file that didn't open: two centred lines in the list's place
     private void drawState(Canvas c) {
+        if (listH <= 0) {
+            return;
+        }
         String lead;
         String rest;
         int leadCol = Theme.TEXT_2;
@@ -288,6 +505,7 @@ final class SchematicPane extends Widget {
             return;
         }
         boolean danger = warningIcon;
+        boolean failed = building.state() == BuildState.ERROR;
         int is = theme.px(Theme.ICON);
         float tx = x + pad;
         float base = build.y() + build.h() / 2f + (c.ascent(theme.small) - c.descent(theme.small)) / 2f;
@@ -297,7 +515,8 @@ final class SchematicPane extends Widget {
         }
         float room = build.x() - theme.px(Theme.GAP) - tx;
         if (room > theme.px(30)) {
-            c.text(c.ellipsize(warning, theme.small, room), tx, base, theme.small, theme.color(danger ? Theme.TEXT_2 : Theme.TEXT_3));
+            int col = failed ? Theme.DANGER : danger ? Theme.TEXT_2 : Theme.TEXT_3;
+            c.text(c.ellipsize(warning, theme.small, room), tx, base, theme.small, theme.color(col));
         }
     }
 
@@ -308,6 +527,29 @@ final class SchematicPane extends Widget {
 
     Button buildButton() {
         return build;
+    }
+
+    PlacementMap map() {
+        return map;
+    }
+
+    List<Button> controls() {
+        return List.of(west, north, south, east, up, down, turnLeft, turnRight, mirror, feet);
+    }
+
+    Button control(String name) {
+        return switch (name) {
+            case "west" -> west;
+            case "north" -> north;
+            case "south" -> south;
+            case "east" -> east;
+            case "up" -> up;
+            case "down" -> down;
+            case "turnLeft" -> turnLeft;
+            case "turnRight" -> turnRight;
+            case "mirror" -> mirror;
+            default -> feet;
+        };
     }
 
     String summary() {

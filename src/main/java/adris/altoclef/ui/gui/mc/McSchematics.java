@@ -8,6 +8,7 @@ import adris.altoclef.ui.gui.kit.Safe;
 import baritone.Baritone;
 import baritone.api.BaritoneAPI;
 import baritone.api.IBaritone;
+import baritone.api.process.IBuilderProcess;
 import baritone.api.schematic.ISchematic;
 import baritone.api.schematic.IStaticSchematic;
 import baritone.api.schematic.SchematicTransforms;
@@ -53,6 +54,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
+import java.util.function.LongSupplier;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
@@ -69,7 +71,7 @@ public final class McSchematics implements SchematicsAccess {
             File gameDir = Minecraft.getInstance().gameDirectory;
             shared = new McSchematics(SchematicLibrary.forGameDir(gameDir), worker(), McSchematics::playerItems,
                 McSchematics::catalogueKnows, runnable -> Minecraft.getInstance().execute(runnable), FilePicker::pick,
-                new LiveGame());
+                new LiveGame(), System::currentTimeMillis);
         }
         return shared;
     }
@@ -83,6 +85,8 @@ public final class McSchematics implements SchematicsAccess {
     }
 
     private static final int MATERIAL_CACHE = 12;
+    // how often a read gives an unreadable placements file another go. it's a disk hit, not something for every frame
+    private static final long RETRY_MS = 5_000;
 
     // what the file picker is: extensions in, a choice out. a seam so the tests don't open dialogs
     interface Picker {
@@ -105,7 +109,11 @@ public final class McSchematics implements SchematicsAccess {
 
         TerrainMap.Source terrain();
 
-        void build(String name, IStaticSchematic schematic, BlockPos origin, Rotation rotation, Mirror mirror);
+        // starts it and hands back the builder's serial for it, see runningBuild
+        long build(String name, IStaticSchematic schematic, BlockPos origin, Rotation rotation, Mirror mirror);
+
+        // the serial of whatever the builder is building right now, 0 when it's idle
+        long runningBuild();
 
         // a line in chat, for when a build fails after the click (the tab may be closed by then)
         void say(String message);
@@ -150,7 +158,8 @@ public final class McSchematics implements SchematicsAccess {
     private final Executor gameThread;
     private final Picker picker;
     private final Game game;
-    private final TerrainMap terrainMap = new TerrainMap(System::currentTimeMillis);
+    private final LongSupplier clock;
+    private final TerrainMap terrainMap;
 
     private final Map<String, Cached> materials = new LinkedHashMap<>(16, 0.75f, true) {
         @Override
@@ -174,8 +183,11 @@ public final class McSchematics implements SchematicsAccess {
     private final Map<String, SchematicPlacement> defaults = new HashMap<>();
     private boolean placementsLoaded;
     private boolean saveBlocked;
+    private long lastRetry;
     private Path placementsFile;
     private int buildTicket;
+    // the builder's serial for the build we started, so building() can tell when it's done or a #build replaced it
+    private long ourBuild;
     private volatile Building building = Building.IDLE;
 
     // guarded by this
@@ -186,7 +198,7 @@ public final class McSchematics implements SchematicsAccess {
     private Map<String, SchematicInfo> infos = Map.of();
 
     McSchematics(SchematicLibrary library, Executor background, Supplier<Map<String, Integer>> inventory,
-                 Predicate<String> gettable, Executor gameThread, Picker picker, Game game) {
+                 Predicate<String> gettable, Executor gameThread, Picker picker, Game game, LongSupplier clock) {
         this.library = library;
         this.background = background;
         this.inventory = inventory;
@@ -194,6 +206,8 @@ public final class McSchematics implements SchematicsAccess {
         this.gameThread = gameThread;
         this.picker = picker;
         this.game = game;
+        this.clock = clock;
+        this.terrainMap = new TerrainMap(clock);
     }
 
     // ----- the list
@@ -543,10 +557,34 @@ public final class McSchematics implements SchematicsAccess {
             placements.clear();
             Map<String, SchematicPlacement> loaded = PlacementStore.load(file, this::exists);
             saveBlocked = loaded == null;
+            lastRetry = clock.getAsLong();
             if (loaded != null) {
                 placements.putAll(loaded);
             }
+        } else if (saveBlocked && clock.getAsLong() - lastRetry >= RETRY_MS) {
+            // the gui reads every frame, so it only knocks on the file now and then. a file that comes back shows its
+            // placements without anyone having to move something first
+            lastRetry = clock.getAsLong();
+            reloadIfBlocked();
         }
+        return true;
+    }
+
+    // the file was there but unreadable when the world loaded. read it again and merge, the edits made since win over
+    // what's on disk. false while it still won't read
+    private boolean reloadIfBlocked() {
+        if (!saveBlocked || placementsFile == null) {
+            return !saveBlocked;
+        }
+        Map<String, SchematicPlacement> loaded = PlacementStore.load(placementsFile, this::exists);
+        if (loaded == null) {
+            return false;
+        }
+        Map<String, SchematicPlacement> merged = new LinkedHashMap<>(loaded);
+        merged.putAll(placements);
+        placements.clear();
+        placements.putAll(merged);
+        saveBlocked = false;
         return true;
     }
 
@@ -561,18 +599,10 @@ public final class McSchematics implements SchematicsAccess {
         if (placementsFile == null) {
             return;
         }
-        if (saveBlocked) {
-            // the file was there but unreadable when the world loaded. saving now would wipe everything else in it,
-            // so read it again first and only save once that works. until then the edits live in memory
-            Map<String, SchematicPlacement> loaded = PlacementStore.load(placementsFile, this::exists);
-            if (loaded == null) {
-                return;
-            }
-            Map<String, SchematicPlacement> merged = new LinkedHashMap<>(loaded);
-            merged.putAll(placements);
-            placements.clear();
-            placements.putAll(merged);
-            saveBlocked = false;
+        // saving over an unreadable file would wipe everything else in it, so read it again first and only save once
+        // that works. until then the edits live in memory. not throttled, a save is rare and it's the one that matters
+        if (!reloadIfBlocked()) {
+            return;
         }
         PlacementStore.save(placementsFile, placements);
     }
@@ -611,9 +641,16 @@ public final class McSchematics implements SchematicsAccess {
         }
     }
 
+    // the gui ticks on the game thread, so asking the builder from here is fine
     @Override
     public Building building() {
-        return building;
+        Building now = building;
+        // done, cancelled, or a chat #build took the builder over. either way it's not our build running anymore
+        if (now.state() == BuildState.STARTED && game.runningBuild() != ourBuild) {
+            now = Building.IDLE;
+            building = now;
+        }
+        return now;
     }
 
     // the background half: the same parse (and the same soft cache) the material count used, then back to the game thread
@@ -648,7 +685,7 @@ public final class McSchematics implements SchematicsAccess {
             return;
         }
         try {
-            game.build(info.file().getName(), schematic, p.origin(), p.rotation(), p.mirror());
+            ourBuild = game.build(info.file().getName(), schematic, p.origin(), p.rotation(), p.mirror());
             building = new Building(BuildState.STARTED, info.relativePath(), "Building " + info.name());
         } catch (Throwable t) {
             Safe.report("gui schematic build", t);
@@ -858,8 +895,15 @@ public final class McSchematics implements SchematicsAccess {
         }
 
         @Override
-        public void build(String name, IStaticSchematic schematic, BlockPos origin, Rotation rotation, Mirror mirror) {
-            BaritoneAPI.getProvider().getPrimaryBaritone().getBuilderProcess().build(name, schematic, origin, rotation, mirror);
+        public long build(String name, IStaticSchematic schematic, BlockPos origin, Rotation rotation, Mirror mirror) {
+            IBuilderProcess builder = BaritoneAPI.getProvider().getPrimaryBaritone().getBuilderProcess();
+            builder.build(name, schematic, origin, rotation, mirror);
+            return builder.buildSerial();
+        }
+
+        @Override
+        public long runningBuild() {
+            return BaritoneAPI.getProvider().getPrimaryBaritone().getBuilderProcess().buildSerial();
         }
 
         @Override

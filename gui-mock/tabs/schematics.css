@@ -40,8 +40,57 @@
 .sc-head .unknown { margin-top: 2px; height: 15px; font-size: 12px; line-height: 15px; color: var(--danger); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sc-rule { flex: none; height: var(--hl); background: var(--hairline); margin: 0 var(--hl); }
 
-/* the material list fills whatever is left. no separators: the bar tracks already rule the rows. a future placement map takes its room from here, nothing reserves it now */
+/* the placement map: a full width band between two hairlines (like the header and the footer), never a boxed card. the
+   terrain is a canvas of vanilla map colours at a whole number of px per block, the footprint and the player sit on it
+   as plain divs. height is set by the script: half of what is left after the header, footer and controls, 48..176 */
+.sc-map { flex: none; height: 140px; position: relative; background: var(--field); overflow: hidden; user-select: none; }
+.sc-map canvas { position: absolute; left: 0; top: 0; image-rendering: pixelated; }
+/* the footprint: a drafting rectangle in the one blue. the thick edge is the front (where the file's north went after the
+   turn), the dot is the file's origin corner (it jumps to the other end of that edge when mirrored) */
+.sc-map .fp { position: absolute; box-sizing: border-box; border: 1px solid var(--accent); background: rgba(10, 115, 232, 0.22); cursor: grab; }
+.sc-map .fp:hover { background: rgba(10, 115, 232, 0.32); }
+.sc-map .fp.drag { cursor: grabbing; background: rgba(10, 115, 232, 0.32); }
+.sc-map .fp .front { position: absolute; background: var(--accent); }
+.sc-map .fp[data-front="0"] .front { left: 0; right: 0; top: 0; height: 3px; }
+.sc-map .fp[data-front="1"] .front { top: 0; bottom: 0; right: 0; width: 3px; }
+.sc-map .fp[data-front="2"] .front { left: 0; right: 0; bottom: 0; height: 3px; }
+.sc-map .fp[data-front="3"] .front { top: 0; bottom: 0; left: 0; width: 3px; }
+.sc-map .fp .origin { position: absolute; width: 5px; height: 5px; background: var(--accent); }
+/* the player: the vanilla map's arrow, a light triangle on a dark one a pixel bigger so it reads on sand and on snow.
+   the whole thing turns with the yaw. off the band it sits clamped to the edge, turned the same */
+.sc-map .me { position: absolute; width: 0; height: 0; pointer-events: none; }
+.sc-map .me .halo, .sc-map .me .dot { position: absolute; width: 0; height: 0; border-style: solid; border-color: transparent; }
+.sc-map .me .halo { left: -6px; top: -7px; border-width: 0 6px 13px 6px; border-bottom-color: rgba(0, 0, 0, 0.55); }
+.sc-map .me .dot { left: -4px; top: -5px; border-width: 0 4px 9px 4px; border-bottom-color: var(--text); }
+.sc-map .me .tick { display: none; }
+/* chips: coordinates top left, north top right. surface at 85% so the terrain shows through a little */
+.sc-map .chip { position: absolute; top: 8px; height: 20px; line-height: 20px; padding: 0 8px; border-radius: 5px; background: color-mix(in srgb, var(--surface) 85%, transparent); color: var(--text-2); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; pointer-events: none; }
+.sc-map .chip.coords { left: 8px; }
+.sc-map .chip.north { right: 8px; padding: 0 6px; font-weight: 500; }
+/* no world and another dimension take the map's place, two centred lines on the field */
+.sc-map-state { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 0 32px; gap: 4px; color: var(--text-3); }
+.sc-map-state .lead { color: var(--text-2); }
+.sc-map.state canvas, .sc-map.state .fp, .sc-map.state .me, .sc-map.state .chip { display: none; }
+.sc-map.state .sc-map-state { display: flex; }
+
+/* the controls: nudge west/north/south/east, a level up or down, a turn each way, mirror, and move to me on the right.
+   38 tall: 4 above and below the 30 buttons. the labels fall away when the row would not fit, mirror's first (the flip
+   glyph reads on its own, a lone pin does not), same buttons, glyph only */
+.sc-ctl { flex: none; height: 38px; display: flex; align-items: center; padding: 0 12px; gap: 0; }
+.sc-ctl .sep { width: 4px; flex: none; }
+.sc-ctl .btn { flex: none; }
+.sc-ctl .btn.feet { margin-left: auto; }
+.sc-ctl.mid #sc-mirror span, .sc-ctl.narrow .btn span { display: none; }
+.sc-ctl.mid #sc-mirror, .sc-ctl.narrow .btn { width: var(--control-h); padding: 0; justify-content: center; }
+.sc-ctl.tiny [data-move$=",0,0"], .sc-ctl.tiny [data-move^="0,0,"], .sc-ctl.tiny [data-move$=",0,0"] + .sep { display: none; }
+.sc-ctl .btn:disabled { opacity: .4; }
+
+/* the material list fills whatever is left. no separators: the bar tracks already rule the rows */
 .sc-rows { flex: 1; min-height: 0; position: relative; }
+.sc-detail.nomap .sc-map, .sc-detail.nomap .sc-ctl, .sc-detail.nomap .sc-map + .sc-rule, .sc-detail.nomap .sc-ctl + .sc-rule { display: none; }
+.sc-foot .warn.state { color: var(--text-3); }
+.sc-foot .warn.state .icon { display: none; }
+.sc-foot .warn.error { color: var(--danger); }
 .sc-rows .scroll { position: absolute; inset: 0; padding: 4px 8px 4px 8px; }
 .mrow { position: relative; display: flex; align-items: center; height: 40px; padding: 0 8px; border-radius: var(--row-radius); }
 .mrow:hover { background: var(--hover); }
