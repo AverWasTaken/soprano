@@ -35,11 +35,17 @@ Soprano keeps everything Baritone does.  <br> The `baritone.api` packages are un
 
 ## Install
 
-1. Go to the [latest release](https://github.com/AverWasTaken/soprano/releases/latest) and download the jar for your Minecraft version and loader (Fabric, Forge or NeoForge).
-2. Drop it in your `mods` folder, replacing Baritone if you had it.
+1. Find your Minecraft version in the table below and open its release.
+2. Download the jar for your loader (Fabric, Forge or NeoForge) and drop it in your `mods` folder, replacing Baritone if you had it.
 3. In game, try `#goto 1000 500`, then `#stop`.
 
-Each branch of this repo is one Minecraft version, named after it (`1.21.4`, `26.3`). The newest Minecraft version lives on `26.3`, which is the default branch. This branch is 26.3.
+| Minecraft | Latest Soprano | Loaders | Download |
+|---|---|---|---|
+| 26.3 | 1.1.4 | Fabric, Forge, NeoForge | [Soprano v1.1.4](https://github.com/AverWasTaken/soprano/releases/tag/soprano-v1.1.4) |
+| 1.21.11 | 1.2.0 | Fabric, Forge, NeoForge | coming soon |
+| 1.21.4 (2b2t) | 1.0.2 | Fabric, Forge, NeoForge | [Soprano v1.0.2](https://github.com/AverWasTaken/soprano/releases/tag/soprano-v1.0.2) |
+
+Each branch of this repo is one Minecraft version, named after it (`1.21.4`, `1.21.11`, `26.3`). The newest Minecraft version lives on `26.3`, which is the default branch. This branch is 26.3.
 
 Releases come in three flavors. Most people want the `api` jar.
 
