@@ -14,17 +14,17 @@ public final class GuiHotkey {
     private GuiHotkey() {
     }
 
-    // true means the press was ours and the game should not see it. the event is the game's (sdl scancode, repeat is -1),
-    // the bind is the setting's (glfw number), McKeys is the bridge
+    // true means the press was ours and the game should not see it. the event and the bind are both glfw numbers on
+    // 1.21.11, McKeys is still the bridge so the 26.3 build only differs in there
     public static boolean onKey(KeyEvent event, int action) {
         try {
             Minecraft mc = Minecraft.getInstance();
             // the game looks at ctrl+b (narrator) before it asks the screen, and a text field of ours is not an edit box
             // it knows about, so typing it in the search field would flip the narrator. hand it to the screen ourselves
-            // same test vanilla runs: the layout's b (shortcutKey is the keycode, not the physical key) and the platform's
-            // shortcut modifier, so it also holds on azerty and with cmd on a mac
-            if (event.shortcutKey() == InputConstants.KEYCODE_B && (action == InputConstants.PRESS || action == InputConstants.REPEAT)
-                    && event.hasControlDownWithQuirk() && mc.gui.screen() instanceof GuiScreen gui) {
+            // same test vanilla's narrator hotkey runs: glfw's b and the platform's shortcut modifier, so it also holds
+            // with cmd on a mac
+            if (event.key() == InputConstants.KEY_B && (action == InputConstants.PRESS || action == InputConstants.REPEAT)
+                    && event.hasControlDownWithQuirk() && mc.screen instanceof GuiScreen gui) {
                 gui.keyPressed(event);
                 return true;
             }
@@ -35,7 +35,7 @@ public final class GuiHotkey {
             Settings s = Baritone.settings();
             KeyBind bind = new KeyBind(s.guiKey.value);
             bind.enabled = s.guiKeyEnabled.value;
-            if (!bind.opens(key, mc.gui.screen() != null) || !canOpen(mc)) {
+            if (!bind.opens(key, mc.screen != null) || !canOpen(mc)) {
                 return false;
             }
             show(mc);
@@ -51,13 +51,13 @@ public final class GuiHotkey {
     // open on the next tick, when chat is gone
     public static String open() {
         Minecraft mc = Minecraft.getInstance();
-        if (mc.gui.screen() instanceof GuiScreen) {
+        if (mc.screen instanceof GuiScreen) {
             return null;
         }
         if (mc.player == null || mc.level == null) {
             return "Join a world first, the gui needs one behind it.";
         }
-        if (mc.gui.overlay() != null) {
+        if (mc.getOverlay() != null) {
             return "The game is still loading. Try again in a second.";
         }
         mc.schedule(() -> {
@@ -73,13 +73,13 @@ public final class GuiHotkey {
     }
 
     private static boolean canOpen(Minecraft mc) {
-        return mc.gui.screen() == null && mc.player != null && mc.level != null && mc.gui.overlay() == null;
+        return mc.screen == null && mc.player != null && mc.level != null && mc.getOverlay() == null;
     }
 
     private static void show(Minecraft mc) {
-        if (mc.gui.screen() instanceof GuiScreen) {
+        if (mc.screen instanceof GuiScreen) {
             return;
         }
-        mc.gui.setScreen(new GuiScreen());
+        mc.setScreen(new GuiScreen());
     }
 }

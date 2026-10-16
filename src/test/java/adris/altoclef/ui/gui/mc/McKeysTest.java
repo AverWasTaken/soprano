@@ -5,9 +5,9 @@ import com.mojang.blaze3d.platform.InputConstants;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
 
-// the sdl scancodes the game sends against the glfw numbers the kit and the guiKey setting use
+// 1.21.11 hands over glfw numbers, which is what the kit and the guiKey setting use, so every mapping in here is the
+// identity. this pins that down, a stray sdl table sneaking back in from 26.3 would move every key
 public class McKeysTest {
 
     @Test
@@ -51,41 +51,32 @@ public class McKeysTest {
     public void theDefaultBindIsRightShiftOnTheGamesSide() {
         // the setting default is 344, that has to land on the game's own right shift key
         assertEquals(InputConstants.KEY_RSHIFT, McKeys.toGame(344));
+        assertEquals(344, InputConstants.KEY_RSHIFT);
     }
 
     @Test
-    public void everyKnownKeyRoundTrips() {
-        int seen = 0;
-        for (int sc = 1; sc < 232; sc++) {
-            int kit = McKeys.toKit(sc);
-            assertEquals("scancode " + sc, sc, McKeys.toGame(kit));
-            seen++;
+    public void everyGlfwKeyRoundTripsUnchanged() {
+        // a settings file from the 1.21.4 or 26.3 build holds glfw numbers, they have to mean the same key here
+        for (int key = 32; key <= 348; key++) {
+            assertEquals("key " + key, key, McKeys.toKit(key));
+            assertEquals("key " + key, key, McKeys.toGame(McKeys.toKit(key)));
         }
-        assertTrue(seen > 200);
     }
 
     @Test
-    public void aKeyGlfwNeverNumberedRidesAboveItsRange() {
-        // media play: sdl has it, glfw does not
-        int kit = McKeys.toKit(262);
-        assertTrue(kit > 1000);
-        assertEquals(262, McKeys.toGame(kit));
-    }
-
-    @Test
-    public void nothingAndGarbageStayNothing() {
+    public void nothingStaysNothing() {
+        assertEquals(Keys.NONE, McKeys.toKit(InputConstants.UNKNOWN.getValue()));
         assertEquals(Keys.NONE, McKeys.toKit(0));
         assertEquals(Keys.NONE, McKeys.toKit(-1));
-        assertEquals(0, McKeys.toGame(-1));
-        assertEquals(0, McKeys.toGame(0));
-        // a glfw code with no key behind it
-        assertEquals(0, McKeys.toGame(314));
+        assertEquals(InputConstants.UNKNOWN.getValue(), McKeys.toGame(Keys.NONE));
+        assertEquals(-1, McKeys.toGame(0));
     }
 
     @Test
-    public void mouseButtonsDropByOne() {
+    public void mouseButtonsAreGlfwsFromZero() {
         assertEquals(0, McKeys.buttonToKit(InputConstants.MOUSE_BUTTON_LEFT));
-        assertEquals(1, McKeys.buttonToKit(InputConstants.MOUSE_BUTTON_MIDDLE));
-        assertEquals(2, McKeys.buttonToKit(InputConstants.MOUSE_BUTTON_RIGHT));
+        assertEquals(0, InputConstants.MOUSE_BUTTON_LEFT);
+        assertEquals(1, McKeys.buttonToKit(InputConstants.MOUSE_BUTTON_RIGHT));
+        assertEquals(2, McKeys.buttonToKit(InputConstants.MOUSE_BUTTON_MIDDLE));
     }
 }

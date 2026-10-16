@@ -1,11 +1,12 @@
 package adris.altoclef.util.helpers;
 
 import com.mojang.blaze3d.platform.InputConstants;
+import net.minecraft.client.Minecraft;
 
 public class InputHelper {
 
-    // codes are InputConstants.KEY_* now (sdl scancodes), not glfw ones, and it reads the keyboard state so no window handle
+    // codes are glfw's (InputConstants.KEY_*), glfw wants to know which window it is asking about
     public static boolean isKeyPressed(int code) {
-        return InputConstants.isKeyDown(code);
+        return InputConstants.isKeyDown(Minecraft.getInstance().getWindow(), code);
     }
 }
