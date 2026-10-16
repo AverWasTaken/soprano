@@ -17,9 +17,13 @@ public final class McKeys {
         return glfwKey <= 0 ? Keys.NONE : glfwKey;
     }
 
-    // and back. -1 is the game's own "unknown key"
+    // glfw stops numbering at the menu key
+    private static final int LAST_KEY = 348;
+
+    // and back. -1 is the game's own "unknown key". the 26.3 build can save keys glfw never numbered (they ride above
+    // 0x10000 there), those are nothing on this side
     public static int toGame(int kitKey) {
-        return kitKey <= 0 ? -1 : kitKey;
+        return kitKey <= 0 || kitKey > LAST_KEY ? -1 : kitKey;
     }
 
     // left 0, right 1, middle 2 in the game and in the kit

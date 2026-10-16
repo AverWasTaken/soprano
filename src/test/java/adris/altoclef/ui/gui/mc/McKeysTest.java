@@ -70,6 +70,8 @@ public class McKeysTest {
         assertEquals(Keys.NONE, McKeys.toKit(-1));
         assertEquals(InputConstants.UNKNOWN.getValue(), McKeys.toGame(Keys.NONE));
         assertEquals(-1, McKeys.toGame(0));
+        // media play as the 26.3 build saves it, glfw has no number for it
+        assertEquals(-1, McKeys.toGame(0x10000 + 262));
     }
 
     @Test
