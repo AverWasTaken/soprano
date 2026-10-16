@@ -17,6 +17,7 @@
 
 package baritone.command.defaults;
 
+import baritone.Baritone;
 import baritone.api.IBaritone;
 import baritone.api.command.Command;
 import baritone.api.command.argument.IArgConsumer;
@@ -36,7 +37,9 @@ public class ComeCommand extends Command {
     @Override
     public void execute(String label, IArgConsumer args) throws CommandException {
         args.requireMax(0);
-        baritone.getCustomGoalProcess().setGoalAndPath(new GoalBlock(ctx.viewerPos()));
+        GoalBlock goal = new GoalBlock(ctx.viewerPos());
+        ((Baritone) baritone).getTripBehavior().userTrip(goal);
+        baritone.getCustomGoalProcess().setGoalAndPath(goal);
         logDirect("Coming");
     }
 

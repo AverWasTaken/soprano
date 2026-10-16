@@ -17,6 +17,7 @@
 
 package baritone.command.defaults;
 
+import baritone.Baritone;
 import baritone.altoclef.AltoClefBridge;
 import baritone.api.IBaritone;
 import baritone.api.command.Command;
@@ -183,6 +184,7 @@ public class ExecutionControlCommands {
                 // altoclef first: its task would just set the next goal on its next tick, and ending the task is what
                 // puts baritone's settings back the way the user had them
                 AltoClefBridge.cancelUserTask();
+                ((Baritone) baritone).getTripBehavior().endTrip();
                 baritone.getPathingBehavior().cancelEverything();
                 logDirect("ok canceled");
             }

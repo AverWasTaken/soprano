@@ -17,6 +17,7 @@
 
 package baritone.command.defaults;
 
+import baritone.Baritone;
 import adris.altoclef.AltoClef;
 import adris.altoclef.commands.CrossDimensionGoto;
 import adris.altoclef.tasksystem.Task;
@@ -74,6 +75,7 @@ public class GotoCommand extends Command {
             BetterBlockPos origin = ctx.playerFeet();
             Goal goal = args.getDatatypePost(RelativeGoal.INSTANCE, origin);
             logDirect(String.format("Going to: %s", goal.toString()));
+            ((Baritone) baritone).getTripBehavior().userTrip(goal);
             baritone.getCustomGoalProcess().setGoalAndPath(goal);
             return;
         }
