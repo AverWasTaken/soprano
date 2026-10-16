@@ -97,6 +97,15 @@ public record MaterialList(List<MaterialLine> items, List<MaterialLine> cantPlac
         return builder.build();
     }
 
+    // one state's share of the bill, by item id. the same rules as the whole list (second halves are free, a double
+    // slab is two, candles and pickles stack), so the builder's missing map gets priced like the tab prices the file.
+    // empty for air, fluids, second halves and the blocks with no item at all
+    public static Map<String, Integer> itemsFor(BlockState state) {
+        Builder one = new Builder();
+        one.add(state);
+        return Map.copyOf(one.items);
+    }
+
     public static String itemId(Item item) {
         return BuiltInRegistries.ITEM.getKey(item).toString();
     }

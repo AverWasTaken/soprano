@@ -95,6 +95,9 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     public int stopAtHeight = 0;
     // bumped by every start, so whoever kicked off a build can tell later if it's still theirs or a #build took over
     private long buildSerial;
+    // what the logMissing pass found with no item for it, kept for whoever wants to go and get it (SchematicBuildTask).
+    // no lock: the builder, the gui and altoclef all run on the game thread
+    private Map<BlockState, Integer> missingAtPause = Map.of();
 
     public BuilderProcess(Baritone baritone) {
         super(baritone);
@@ -112,7 +115,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         // map art reads the raw columns, so it goes under the transform. the selection is in world space, and origin is
         // already the corner of the turned footprint, so it goes over it (the global setting path does it the other way
         // round, which only lines up when nothing is rotated)
-        ISchematic placed = SchematicTransforms.apply(mapArt(schematic), rotation, mirror);
+        ISchematic placed = placed(schematic, rotation, mirror);
         start(name, onlySelection(placed, origin), origin, net.minecraft.world.level.block.Rotation.NONE,
                 net.minecraft.world.level.block.Mirror.NONE, false);
     }
@@ -122,6 +125,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     private void start(String name, ISchematic schematic, Vec3i origin, net.minecraft.world.level.block.Rotation rotation,
                        net.minecraft.world.level.block.Mirror mirror, boolean useOrientation) {
         this.buildSerial++;
+        this.missingAtPause = Map.of();
         this.name = name;
         this.schematic = schematic;
         this.realSchematic = null;
@@ -179,6 +183,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
 
     public void resume() {
         paused = false;
+        missingAtPause = Map.of();
     }
 
     public void pause() {
@@ -188,6 +193,11 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     @Override
     public boolean isPaused() {
         return paused;
+    }
+
+    @Override
+    public Map<BlockState, Integer> missingAtPause() {
+        return missingAtPause;
     }
 
     @Override
@@ -210,6 +220,13 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
 
     private ISchematic applyMapArtAndSelection(Vec3i origin, IStaticSchematic parsed) {
         return onlySelection(mapArt(parsed), origin);
+    }
+
+    // the file laid out the way the build above lays it out, before the selection, substitutes and skip blocks. public so
+    // SchematicBuildTask prices the rest of a build off the same blocks the builder will ask for
+    public static ISchematic placed(IStaticSchematic schematic, net.minecraft.world.level.block.Rotation rotation,
+                                    net.minecraft.world.level.block.Mirror mirror) {
+        return SchematicTransforms.apply(mapArt(schematic), rotation, mirror);
     }
 
     private static ISchematic mapArt(IStaticSchematic parsed) {
@@ -633,6 +650,8 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             if (goal == null) {
                 if (Baritone.settings().skipFailedLayers.value && Baritone.settings().buildInLayers.value && layer * Baritone.settings().layerHeight.value < realSchematic.heightY()) {
                     logDirect("Skipping layer that I cannot construct! Layer #" + layer);
+                    // not a pause, so nothing is missing as far as missingAtPause is concerned
+                    missingAtPause = Map.of();
                     layer++;
                     return onTick(calcFailed, isSafeToCancel, recursions + 1);
                 }
@@ -788,6 +807,10 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             return new JankyGoalComposite(new GoalComposite(toPlace.toArray(new Goal[0])), new GoalComposite(toBreak.toArray(new Goal[0])));
         }
         if (toBreak.isEmpty()) {
+            if (logMissing) {
+                // the same "at least" the chat line below prints, a copy so the next tick's pass can't change it
+                missingAtPause = Map.copyOf(missing);
+            }
             if (logMissing && !missing.isEmpty()) {
                 logDirect("Missing materials for at least:");
                 logDirect(missing.entrySet().stream()
@@ -1024,6 +1047,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         layer = Baritone.settings().startAtLayer.value;
         numRepeats = 0;
         paused = false;
+        missingAtPause = Map.of();
         observedCompleted = null;
     }
 

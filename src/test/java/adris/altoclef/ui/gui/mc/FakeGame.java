@@ -26,6 +26,8 @@ final class FakeGame implements McSchematics.Game {
     // the builder's serial: running is what it's building now (0 = idle), serial is the last one it handed out
     long running;
     long serial;
+    // non null = build says no with this, the way LiveGame does in adventure mode
+    String refuse;
 
     void leaveWorld() {
         dimension = null;
@@ -60,6 +62,9 @@ final class FakeGame implements McSchematics.Game {
 
     @Override
     public long build(String name, IStaticSchematic schematic, BlockPos origin, Rotation rotation, Mirror mirror) {
+        if (refuse != null) {
+            throw new McSchematics.Refused(refuse);
+        }
         built.add(new Built(name, schematic, origin, rotation, mirror));
         running = ++serial;
         return running;

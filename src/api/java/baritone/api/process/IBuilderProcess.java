@@ -27,6 +27,7 @@ import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.block.state.BlockState;
 import java.io.File;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -93,6 +94,18 @@ public interface IBuilderProcess extends IBaritoneProcess {
     boolean isPaused();
 
     void resume();
+
+    /**
+     * What the builder found missing the last time it gave up and paused for lack of materials: every block state it
+     * wanted to place and had no item for, with how many positions want it. It is only what the builder could see at
+     * the time (the positions near the player), so it is a lower bound, not the cost of the rest of the build.
+     * <p>
+     * Empty when the builder is not paused, or paused for some other reason (it can't reach or place what is left).
+     * Cleared by {@link #resume()}, by cancelling and by starting a new build. Written and read on the game thread.
+     *
+     * @return A snapshot of the missing block states and their counts, never null
+     */
+    Map<BlockState, Integer> missingAtPause();
 
     void clearArea(BlockPos corner1, BlockPos corner2);
 
