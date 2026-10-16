@@ -1517,6 +1517,18 @@ public final class Settings {
     public final Setting<Mirror> buildSchematicMirror = new Setting<>(Mirror.NONE);
 
     /**
+     * How see-through the ghost blocks of the schematic picked in the gui's Schematics tab are, from 0 to 1. Below 0.1
+     * nothing is drawn.
+     */
+    public final Setting<Float> schematicGhostAlpha = new Setting<>(0.45f);
+
+    /**
+     * How far from the camera, in blocks, the ghost blocks of the schematic picked in the gui's Schematics tab are
+     * drawn (8 to 128).
+     */
+    public final Setting<Integer> schematicGhostDistance = new Setting<>(64);
+
+    /**
      * The fallback used by the build command when no extension is specified. This may be useful if schematics of a
      * particular format are used often, and the user does not wish to have to specify the extension with every usage.
      */
