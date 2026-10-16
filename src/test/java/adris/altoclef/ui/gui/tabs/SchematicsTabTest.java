@@ -814,4 +814,74 @@ public class SchematicsTabTest {
         assertEquals(3, PlacementMap.originCorner(3, false));
         assertEquals(0, PlacementMap.originCorner(3, true));
     }
+
+    private void clickMove() {
+        var b = tab.moveButton();
+        p.click(b.x() + b.w() / 2f, b.y() + b.h() / 2f);
+        p.settle();
+    }
+
+    @Test
+    public void moveStartsMoveModeAndStopMovingEndsIt() {
+        assertFalse(tab.moveButton().enabled());
+        clickRow(0);
+        assertTrue(tab.moveButton().enabled());
+        assertEquals("Move", tab.moveButton().text());
+        clickMove();
+        assertEquals(List.of("schematics startMoving Small Castle.litematic"), facade.actions);
+        assertEquals("Small Castle.litematic", facade.schematics.moving());
+        // the real one swaps the screen out here. if the gui is back while it's still on, the button turns it off
+        ticks(1);
+        p.settle();
+        assertEquals("Stop moving", tab.moveButton().text());
+        clickMove();
+        assertEquals(List.of("schematics startMoving Small Castle.litematic", "schematics stopMoving"), facade.actions);
+        assertNull(facade.schematics.moving());
+        assertEquals("Move", tab.moveButton().text());
+    }
+
+    @Test
+    public void moveWaitsForAPlacementInThisDimension() {
+        clickRow(0);
+        facade.schematics.dimension = "minecraft:the_nether";
+        ticks(1);
+        p.settle();
+        assertFalse(tab.moveButton().enabled());
+        clickMove();
+        assertTrue(facade.actions.isEmpty());
+        assertNull(facade.schematics.moving());
+    }
+
+    @Test
+    public void moveDisarmsTheBuildButton() {
+        clickRow(0);
+        clickBuild();
+        assertTrue(tab.armed());
+        clickMove();
+        assertFalse(tab.armed());
+        assertEquals("Small Castle.litematic", facade.schematics.moving());
+    }
+
+    @Test
+    public void moveFitsBesideTheArmedBuildButtonAtTheFloor() throws Exception {
+        reopen(830, 540);
+        clickRow(0);
+        clickBuild();
+        var pane = tab.pane();
+        var move = tab.moveButton();
+        var build = tab.buildButton();
+        assertTrue(move.visible());
+        assertTrue(move.x() >= pane.x());
+        assertTrue(move.x() + move.w() <= build.x());
+        // too tight for both words: the glyph stays, the word goes to the tooltip
+        assertEquals("", move.text());
+        p.hover(move.x() + move.w() / 2f, move.y() + move.h() / 2f);
+        ticks(11);
+        assertEquals("Move", tab.tipText());
+        // a roomy window keeps the word
+        reopen(1600, 900);
+        clickRow(0);
+        clickBuild();
+        assertEquals("Move", tab.moveButton().text());
+    }
 }

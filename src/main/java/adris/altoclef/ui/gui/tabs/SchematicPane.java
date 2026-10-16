@@ -41,11 +41,16 @@ final class SchematicPane extends Widget {
         void mirror();
 
         void placeAtFeet();
+
+        // the free camera and the arrows, or out of them again
+        void toggleMoving();
     }
 
     private static final String CANT_PLACE = "Can't place";
     private static final String NOT_COUNTED = "Not counted";
     private static final String BUILD = "Build here";
+    private static final String MOVE = "Move";
+    private static final String STOP_MOVING = "Stop moving";
 
     private enum Body { NOTHING, LOADING, ERROR, LIST }
 
@@ -62,6 +67,7 @@ final class SchematicPane extends Widget {
     private final IconButton turnRight;
     private final Button mirror;
     private final Button feet;
+    private final Squarish move;
     private final List<Widget> kids;
     private final List<Button> nudges;
     private final Set<String> open = new HashSet<>();
@@ -70,6 +76,7 @@ final class SchematicPane extends Widget {
     private Materials materials;
     private boolean world = true;
     private boolean armed;
+    private boolean moving;
     private Body body = Body.NOTHING;
     private PlacementMap.Mode mode = PlacementMap.Mode.HIDDEN;
     private boolean controlsShown;
@@ -113,8 +120,11 @@ final class SchematicPane extends Widget {
         turnRight = new IconButton(theme, Icon.ROTATE_RIGHT, "Turn right", () -> listener.rotate(true));
         mirror = new Squarish(theme, "Mirror", Icon.FLIP, listener::mirror);
         feet = new Squarish(theme, "Move to me", Icon.PIN, listener::placeAtFeet);
+        move = new Squarish(theme, MOVE, Icon.MOVE, listener::toggleMoving);
+        move.setKind(Button.Kind.SECONDARY);
+        move.setEnabled(false);
         nudges = List.of(west, north, south, east);
-        kids = List.of(list, build, map, west, north, south, east, up, down, turnLeft, turnRight, mirror, feet);
+        kids = List.of(list, build, move, map, west, north, south, east, up, down, turnLeft, turnRight, mirror, feet);
         setVisibleControls(false);
     }
 
@@ -127,7 +137,7 @@ final class SchematicPane extends Widget {
     // a ghost button with a glyph and a word that drops the word when the row is tight: then it is a square like the
     // icon buttons next to it, not a square with a glyph left of nothing, and the word moves to the tooltip
     private static final class Squarish extends Button {
-        private final String word;
+        private String word;
 
         Squarish(Theme theme, String text, Icon icon, Runnable onClick) {
             super(theme, text, Kind.GHOST, icon, onClick);
@@ -143,11 +153,20 @@ final class SchematicPane extends Widget {
         String tooltip() {
             return text.isEmpty() ? word : null;
         }
+
+        // the move button changes its word, the tooltip has to follow
+        void setWord(String w) {
+            word = w;
+            setText(w);
+        }
     }
 
     // what the control under the pointer would say in a tooltip, null when there is no control there or it says
     // its own name already. the tab draws it with the same card it uses for the list rows
     String tipAt(float mx, float my) {
+        if (move.visible() && move.contains(mx, my)) {
+            return move.tooltip();
+        }
         for (Button b : controls()) {
             if (!b.visible() || !b.contains(mx, my)) {
                 continue;
@@ -206,6 +225,8 @@ final class SchematicPane extends Widget {
             turnRight.setEnabled(onMap);
             mirror.setEnabled(onMap);
             feet.setEnabled(onMap || mode == PlacementMap.Mode.ELSEWHERE);
+            // stop moving always works, starting needs a placement here to put the camera on
+            move.setEnabled(onMap || moving);
             updateBuildBar();
         }
         if (relayout) {
@@ -226,6 +247,20 @@ final class SchematicPane extends Widget {
 
     boolean armed() {
         return armed;
+    }
+
+    // the tab asks the facade every poll. only a change relays out, the word changes the button's width
+    void setMoving(boolean on) {
+        if (on == moving) {
+            return;
+        }
+        moving = on;
+        move.setEnabled(on || mode == PlacementMap.Mode.MAP);
+        layout();
+    }
+
+    boolean moving() {
+        return moving;
     }
 
     private void rebuild() {
@@ -330,7 +365,7 @@ final class SchematicPane extends Widget {
     private void setVisibleControls(boolean on) {
         controlsShown = on;
         for (Widget k : kids) {
-            if (k != list && k != build && k != map) {
+            if (k != list && k != build && k != move && k != map) {
                 k.setVisible(on);
             }
         }
@@ -388,7 +423,21 @@ final class SchematicPane extends Widget {
         listH = Math.max(0, footTop - 1 - listTop);
         list.setBounds(x + side, listTop, w - 2 * side, listH);
         int bw = build.preferredWidth();
-        build.setBounds(x + w - pad - bw, y + h - theme.px(Theme.SPACE_3) - bh, bw, bh);
+        int by = y + h - theme.px(Theme.SPACE_3) - bh;
+        build.setBounds(x + w - pad - bw, by, bw, bh);
+        layoutMove(pad, by, bh);
+    }
+
+    // move sits left of build. with "Click again to build" at the 640 floor the two words don't fit side by side,
+    // so it drops to its glyph and the word goes to the tooltip, same trick as mirror
+    private void layoutMove(int pad, int by, int bh) {
+        int gap = theme.px(Theme.GAP);
+        move.setWord(moving ? STOP_MOVING : MOVE);
+        if (move.preferredWidth() + gap + build.w() > w - 2 * pad) {
+            move.setText("");
+        }
+        int mw = move.preferredWidth();
+        move.setBounds(build.x() - gap - mw, by, mw, bh);
     }
 
     // how many rows the controls take at this width, and the words that survive. one row with both words, one row
@@ -486,7 +535,7 @@ final class SchematicPane extends Widget {
         }
         if (controlsShown) {
             for (Widget k : kids) {
-                if (k != list && k != build && k != map) {
+                if (k != list && k != build && k != move && k != map) {
                     k.draw(c, f);
                 }
             }
@@ -500,6 +549,7 @@ final class SchematicPane extends Widget {
         int footTop = y + h - footerH();
         c.fillRect(x + 1, footTop, w - 2, 1, hairline);
         drawWarning(c, pad);
+        move.draw(c, f);
         build.draw(c, f);
     }
 
@@ -582,7 +632,7 @@ final class SchematicPane extends Widget {
             c.icon(Icon.WARNING, tx, build.y() + (build.h() - is) / 2f, is, theme.color(Theme.DANGER));
             tx += is + theme.px(6);
         }
-        float room = build.x() - theme.px(Theme.GAP) - tx;
+        float room = move.x() - theme.px(Theme.GAP) - tx;
         if (room > theme.px(30)) {
             int col = failed ? Theme.DANGER : danger ? Theme.TEXT_2 : Theme.TEXT_3;
             c.text(c.ellipsize(warning, theme.small, room), tx, base, theme.small, theme.color(col));
@@ -596,6 +646,10 @@ final class SchematicPane extends Widget {
 
     Button buildButton() {
         return build;
+    }
+
+    Button moveButton() {
+        return move;
     }
 
     PlacementMap map() {

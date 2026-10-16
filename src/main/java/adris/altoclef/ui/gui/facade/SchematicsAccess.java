@@ -291,6 +291,20 @@ public interface SchematicsAccess {
         return null;
     }
 
+    // move mode: the gui steps aside for a free camera and arrows on the build (MoveScreen). the state lives here and
+    // not in a screen, so the tab can see it. fails when there's no placement in this dimension to move
+    default Result startMoving(String relativePath) {
+        return Result.fail("Not wired yet");
+    }
+
+    default void stopMoving() {
+    }
+
+    // the path being moved, null when move mode is off
+    default String moving() {
+        return null;
+    }
+
     // opens the native multi select picker (.litematic / .schem / .schematic) on a helper thread so the game keeps
     // drawing, copies the choice into the library and then calls done on the game thread. the library refreshes itself.
     // a picker that can't open gets an ImportReport with an error saying to use drag and drop or Open folder instead
