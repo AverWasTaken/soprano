@@ -42,6 +42,8 @@ public final class FakeSchematics implements SchematicsAccess {
     public int runPolls = -1;
     // the stamp terrain() hands out, bump it to make a gui test see a changed map
     public long terrainStamp = 1;
+    // how often terrain() was asked: the tab must ask once a tick and never from a click
+    public int terrainCalls;
 
     private final Map<String, Placement> placements = new LinkedHashMap<>();
     private Building building = Building.IDLE;
@@ -276,6 +278,7 @@ public final class FakeSchematics implements SchematicsAccess {
     // shows the edge, and a footprint moved up there sits half on it
     @Override
     public Terrain terrain(int centerX, int centerZ, int radiusChunks) {
+        terrainCalls++;
         if (!inWorld) {
             return null;
         }

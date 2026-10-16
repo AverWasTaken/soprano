@@ -34,9 +34,15 @@ final class PlacementMap extends Widget {
     }
 
     // design px per block at each zoom step, the wheel walks them. the device size is a whole number of pixels so a
-    // block stays a crisp square
+    // block stays a crisp square. until the wheel is touched the step is DEFAULT_SCALE, or the first step below it
+    // that fits the whole footprint on the band (short windows get a short band, and a footprint that spills off it
+    // hides its front bar and origin dot)
     static final int[] SCALES = {1, 2, 4};
     static final int DEFAULT_SCALE = 1;
+    // what the auto fit keeps clear around the footprint, so the front bar and the dot are on the band too
+    private static final int FIT_MARGIN = 10;
+    // a band shorter than this has no room for the coordinates chip without it sitting on the footprint
+    private static final int CHIP_MIN_H = 64;
     // a press this close to the footprint's middle grabs it even when the footprint itself is three pixels wide
     private static final int GRAB = 12;
     // what an unseen chunk looks like: a dot every four blocks on the field, a drafting grid with nothing on it
@@ -57,6 +63,8 @@ final class PlacementMap extends Widget {
     private Mode mode = Mode.HIDDEN;
     private String elsewhere = "";
     private int scaleIx = DEFAULT_SCALE;
+    // the wheel was used: the zoom is theirs now, not the auto fit's
+    private boolean zoomed;
     private boolean fpHover;
     private boolean dragging;
     private float dragX0;
@@ -104,6 +112,8 @@ final class PlacementMap extends Widget {
         }
         int size = terrain.size();
         if (image == null || image.width() != size) {
+            // a new size is a new picture and the old one's gpu texture lives on in McAtlases until the screen
+            // closes. the radius is a constant so this happens once per screen, but mind it if that ever changes
             image = new PixelImage(size, size);
             uploaded = Long.MIN_VALUE;
         }
@@ -131,15 +141,37 @@ final class PlacementMap extends Widget {
     // ----- where things are
 
     int pxPerBlock() {
-        return Math.max(1, Math.round(theme.pxf(SCALES[scaleIx])));
+        return pxAt(scaleIndex());
     }
 
-    // the world point in the middle of the band: the footprint's middle, or the player when there is no footprint.
-    // the drag in progress is left out on purpose: the rectangle follows the pointer over a map that holds still,
-    // and the band recentres on it once the drop lands (with the drag in here the terrain slid instead, backwards)
+    private int pxAt(int ix) {
+        return Math.max(1, Math.round(theme.pxf(SCALES[ix])));
+    }
+
+    // the zoom step in use: the wheel's once it has been used, else the default stepped down until the footprint
+    // fits the band with a margin (never below the first step)
+    int scaleIndex() {
+        if (zoomed || fp == null) {
+            return scaleIx;
+        }
+        int ix = DEFAULT_SCALE;
+        float margin = 2 * theme.px(FIT_MARGIN);
+        while (ix > 0 && (fp.sizeX() * pxAt(ix) > w - margin || fp.sizeZ() * pxAt(ix) > h - margin)) {
+            ix--;
+        }
+        return ix;
+    }
+
+    // the world point in the middle of the band: the footprint's middle, the placement corner when the sizes have
+    // not come through yet, the player when there is no placement at all. the drag in progress is left out on
+    // purpose: the rectangle follows the pointer over a map that holds still, and the band recentres on it once the
+    // drop lands (with the drag in here the terrain slid instead, backwards)
     private double centreX() {
         if (fp != null) {
             return fp.x() + fp.sizeX() / 2.0;
+        }
+        if (pl != null) {
+            return pl.x() + 0.5;
         }
         return hasPlayer ? playerX : 0;
     }
@@ -147,6 +179,9 @@ final class PlacementMap extends Widget {
     private double centreZ() {
         if (fp != null) {
             return fp.z() + fp.sizeZ() / 2.0;
+        }
+        if (pl != null) {
+            return pl.z() + 0.5;
         }
         return hasPlayer ? playerZ : 0;
     }
@@ -229,7 +264,8 @@ final class PlacementMap extends Widget {
         if (!contains(mx, my) || mode != Mode.MAP) {
             return false;
         }
-        scaleIx = Math.max(0, Math.min(SCALES.length - 1, scaleIx + (dy > 0 ? 1 : -1)));
+        scaleIx = Math.max(0, Math.min(SCALES.length - 1, scaleIndex() + (dy > 0 ? 1 : -1)));
+        zoomed = true;
         return true;
     }
 
@@ -353,7 +389,8 @@ final class PlacementMap extends Widget {
         }
     }
 
-    // the coordinates top left, north top right, on surface at 85% so the terrain shows through a little
+    // the coordinates top left, north top right, on surface at 85% so the terrain shows through a little. a short
+    // band (the 540p case) keeps only the N: the coordinates would sit on the footprint there
     private void drawChips(Canvas c) {
         float pad = theme.px(8);
         float ch = theme.px(20);
@@ -362,7 +399,7 @@ final class PlacementMap extends Widget {
         float nw = c.measure("N", label) + 2 * inner;
         chip(c, x + w - pad - nw, y + pad, nw, ch, "N", label, inner);
         String coords = coords();
-        if (coords.isEmpty()) {
+        if (coords.isEmpty() || h < theme.px(CHIP_MIN_H)) {
             return;
         }
         TextStyle small = theme.small.asTabular();
@@ -413,8 +450,9 @@ final class PlacementMap extends Widget {
         return pl == null ? "" : pl.dimension();
     }
 
-    int scaleIndex() {
-        return scaleIx;
+    // whether a coordinates chip is drawn on this band (short bands keep only the N)
+    boolean showsCoordsChip() {
+        return h >= theme.px(CHIP_MIN_H);
     }
 
     boolean dragging() {

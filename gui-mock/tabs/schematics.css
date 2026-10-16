@@ -74,15 +74,19 @@
 .sc-map.state .sc-map-state { display: flex; }
 
 /* the controls: nudge west/north/south/east, a level up or down, a turn each way, mirror, and move to me on the right.
-   38 tall: 4 above and below the 30 buttons. the labels fall away when the row would not fit, mirror's first (the flip
-   glyph reads on its own, a lone pin does not), same buttons, glyph only */
-.sc-ctl { flex: none; height: 38px; display: flex; align-items: center; padding: 0 12px; gap: 0; }
+   4 above and below each 30 px row. the fits, widest first (SchematicPane.controlRows): one row with both words, one
+   row with mirror as a glyph (the flip glyph reads on its own, a lone pin does not), two rows (arrows and layers, then
+   turns, mirror and move to me), three rows at the 640 floor (move to me on its own, word and all). nothing is dropped */
+.sc-ctl { flex: none; display: flex; flex-wrap: nowrap; align-items: center; padding: 4px 8px; row-gap: 4px; }
+.sc-ctl.two, .sc-ctl.three { flex-wrap: wrap; }
 .sc-ctl .sep { width: 4px; flex: none; }
+.sc-ctl .break { display: none; flex-basis: 100%; height: 0; }
 .sc-ctl .btn { flex: none; }
 .sc-ctl .btn.feet { margin-left: auto; }
-.sc-ctl.mid #sc-mirror span, .sc-ctl.narrow .btn span { display: none; }
-.sc-ctl.mid #sc-mirror, .sc-ctl.narrow .btn { width: var(--control-h); padding: 0; justify-content: center; }
-.sc-ctl.tiny [data-move$=",0,0"], .sc-ctl.tiny [data-move^="0,0,"], .sc-ctl.tiny [data-move$=",0,0"] + .sep { display: none; }
+.sc-ctl.mid #sc-mirror span { display: none; }
+.sc-ctl.mid #sc-mirror { width: var(--control-h); padding: 0; justify-content: center; }
+.sc-ctl.two #sc-br1, .sc-ctl.three #sc-br1, .sc-ctl.three #sc-br2 { display: block; }
+.sc-ctl.two #sc-br1 + .btn, .sc-ctl.three #sc-br1 + .btn { margin-left: 0; }
 .sc-ctl .btn:disabled { opacity: .4; }
 
 /* the material list fills whatever is left. no separators: the bar tracks already rule the rows */

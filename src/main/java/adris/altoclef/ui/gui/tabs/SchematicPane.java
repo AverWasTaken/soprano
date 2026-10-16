@@ -72,6 +72,7 @@ final class SchematicPane extends Widget {
     private boolean armed;
     private Body body = Body.NOTHING;
     private PlacementMap.Mode mode = PlacementMap.Mode.HIDDEN;
+    private boolean controlsShown;
     private Building building = Building.IDLE;
     private String error = "";
     private String name = "";
@@ -124,16 +125,41 @@ final class SchematicPane extends Widget {
     }
 
     // a ghost button with a glyph and a word that drops the word when the row is tight: then it is a square like the
-    // icon buttons next to it, not a square with a glyph left of nothing
+    // icon buttons next to it, not a square with a glyph left of nothing, and the word moves to the tooltip
     private static final class Squarish extends Button {
+        private final String word;
+
         Squarish(Theme theme, String text, Icon icon, Runnable onClick) {
             super(theme, text, Kind.GHOST, icon, onClick);
+            this.word = text;
         }
 
         @Override
         public int preferredWidth() {
             return text.isEmpty() ? theme.px(Theme.CONTROL_H) : super.preferredWidth();
         }
+
+        // the word while it is not on the button, null while it is
+        String tooltip() {
+            return text.isEmpty() ? word : null;
+        }
+    }
+
+    // what the control under the pointer would say in a tooltip, null when there is no control there or it says
+    // its own name already. the tab draws it with the same card it uses for the list rows
+    String tipAt(float mx, float my) {
+        for (Button b : controls()) {
+            if (!b.visible() || !b.contains(mx, my)) {
+                continue;
+            }
+            if (b instanceof IconButton ib) {
+                return ib.tooltip();
+            }
+            if (b instanceof Squarish sq) {
+                return sq.tooltip();
+            }
+        }
+        return null;
     }
 
     // the tab calls this whenever the selection, the count or the player's inventory moved. a null row is nothing selected
@@ -292,8 +318,9 @@ final class SchematicPane extends Widget {
         return theme.px(Theme.SPACE_3 * 2 + Theme.CONTROL_H);
     }
 
-    private int controlsH() {
-        return theme.px(Theme.SPACE_1 * 2 + Theme.CONTROL_H);
+    // the controls band: one row of buttons, or two when the card is too narrow for one, 4 px above and below each
+    private int controlsH(int rows) {
+        return theme.px(Theme.SPACE_1 * (rows + 1) + Theme.CONTROL_H * rows);
     }
 
     private boolean showsMap() {
@@ -301,7 +328,7 @@ final class SchematicPane extends Widget {
     }
 
     private void setVisibleControls(boolean on) {
-        map.setVisible(on);
+        controlsShown = on;
         for (Widget k : kids) {
             if (k != list && k != build && k != map) {
                 k.setVisible(on);
@@ -311,7 +338,8 @@ final class SchematicPane extends Widget {
 
     // header, map band, controls, list, build bar, hairlines between. the map takes half of what the fixed parts
     // leave, 48 to 176, and the list gets the rest: a short window ends up with a small map and a row or two of
-    // materials, which beats either one vanishing
+    // materials, which beats either one vanishing. a window too short even for that loses the controls first (the
+    // footprint still drags) and the band after
     @Override
     protected void layout() {
         int pad = theme.px(Theme.PAD);
@@ -331,19 +359,31 @@ final class SchematicPane extends Widget {
         int top = y + headerH + 1;
         int footTop = y + h - footerH();
         boolean showMap = showsMap();
-        setVisibleControls(showMap);
-        int mapH = 0;
+        map.setVisible(showMap);
+        setVisibleControls(false);
+        listTop = top;
         if (showMap) {
-            int room = footTop - 1 - top - controlsH() - 2;
-            mapH = Math.max(theme.px(48), Math.min(theme.px(176), Math.round(room * 0.5f)));
+            // the control rows sit on the list's inset, not the header's: at the 640 floor the pane is about 160
+            // px and those 16 px are what keep "Move to me" on its button
+            int inset = theme.px(Theme.GAP);
+            int rows = controlRows(inset);
+            int room = footTop - 1 - top - controlsH(rows) - 2;
+            boolean controls = room >= 0;
+            if (!controls) {
+                room = footTop - 1 - top - 1;
+            }
+            int mapH = Math.max(theme.px(48), Math.min(theme.px(176), Math.round(room * 0.5f)));
             if (mapH > room) {
                 mapH = Math.max(0, room);
             }
+            map.setVisible(mapH > 0);
             map.setBounds(x + side, top, w - 2 * side, mapH);
-            layoutControls(pad, top + mapH + 1 + theme.px(Theme.SPACE_1));
-            listTop = top + mapH + 1 + controlsH() + 1;
-        } else {
-            listTop = top;
+            listTop = top + mapH + 1;
+            if (controls) {
+                setVisibleControls(true);
+                layoutControls(inset, listTop + theme.px(Theme.SPACE_1), rows);
+                listTop += controlsH(rows) + 1;
+            }
         }
         listH = Math.max(0, footTop - 1 - listTop);
         list.setBounds(x + side, listTop, w - 2 * side, listH);
@@ -351,52 +391,79 @@ final class SchematicPane extends Widget {
         build.setBounds(x + w - pad - bw, y + h - theme.px(Theme.SPACE_3) - bh, bw, bh);
     }
 
-    // four fits, widest first: words on both mirror and move to me, then mirror as a glyph (the flip glyph reads on
-    // its own, a lone pin does not, and move to me is the way out of the other-dimension state), then glyphs only,
-    // then glyphs without the four nudge arrows (the footprint drags for those). the row never wraps and never
-    // spills past the card
-    private void layoutControls(int pad, int top) {
+    // how many rows the controls take at this width, and the words that survive. one row with both words, one row
+    // with mirror as a glyph (the flip glyph reads on its own, a lone pin does not, and move to me is the way out of
+    // the other-dimension state), then two rows: the arrows and the layer buttons on the first, the turns, mirror
+    // and move to me on the second, mirror's word going first. at the 640 floor the pane is about 215 design px
+    // and that second row is still too long, so there it is three: move to me on a row of its own, word and all.
+    // nothing is ever dropped, every button is reachable at the floor; the word on move to me only goes below it
+    private int controlRows(int pad) {
         int ch = theme.px(Theme.CONTROL_H);
         int gap = theme.px(Theme.SPACE_1);
         int avail = w - 2 * pad;
         mirror.setText("Mirror");
         feet.setText("Move to me");
-        boolean arrows = true;
-        if (need(ch, gap, arrows) > avail) {
-            mirror.setText("");
-            if (need(ch, gap, arrows) > avail) {
-                feet.setText("");
-                if (need(ch, gap, arrows) > avail) {
-                    arrows = false;
-                }
-            }
+        if (oneRow(ch, gap) <= avail) {
+            return 1;
         }
+        mirror.setText("");
+        if (oneRow(ch, gap) <= avail) {
+            return 1;
+        }
+        mirror.setText("Mirror");
+        if (secondRow(ch, gap) <= avail) {
+            return 2;
+        }
+        mirror.setText("");
+        if (secondRow(ch, gap) <= avail) {
+            return 2;
+        }
+        mirror.setText("Mirror");
+        if (2 * ch + mirror.preferredWidth() > avail) {
+            mirror.setText("");
+        }
+        if (feet.preferredWidth() > avail) {
+            feet.setText("");
+        }
+        return 3;
+    }
+
+    private int oneRow(int ch, int gap) {
+        return 4 * ch + gap + 2 * ch + gap + secondRow(ch, gap);
+    }
+
+    private int secondRow(int ch, int gap) {
+        return 2 * ch + mirror.preferredWidth() + gap + feet.preferredWidth();
+    }
+
+    private void layoutControls(int pad, int top, int rows) {
+        int ch = theme.px(Theme.CONTROL_H);
+        int gap = theme.px(Theme.SPACE_1);
         int cx = x + pad;
         for (Button n : nudges) {
-            n.setVisible(arrows);
-            if (arrows) {
-                n.setBounds(cx, top, ch, ch);
-                cx += ch;
-            }
+            n.setBounds(cx, top, ch, ch);
+            cx += ch;
         }
-        if (arrows) {
-            cx += gap;
-        }
+        cx += gap;
         up.setBounds(cx, top, ch, ch);
         cx += ch;
         down.setBounds(cx, top, ch, ch);
-        cx += ch + gap;
+        if (rows > 1) {
+            top += ch + gap;
+            cx = x + pad;
+        } else {
+            cx += ch + gap;
+        }
         turnLeft.setBounds(cx, top, ch, ch);
         cx += ch;
         turnRight.setBounds(cx, top, ch, ch);
         cx += ch;
         mirror.setBounds(cx, top, mirror.preferredWidth(), ch);
+        if (rows > 2) {
+            top += ch + gap;
+        }
         int fw = feet.preferredWidth();
         feet.setBounds(x + w - pad - fw, top, fw, ch);
-    }
-
-    private int need(int ch, int gap, boolean arrows) {
-        return (arrows ? 4 * ch + gap : 0) + 2 * ch + gap + 2 * ch + mirror.preferredWidth() + gap + feet.preferredWidth();
     }
 
     @Override
@@ -413,11 +480,13 @@ final class SchematicPane extends Widget {
             drawHeader(c, pad);
             c.fillRect(x + 1, y + headerH, w - 2, 1, hairline);
         }
-        if (showsMap()) {
+        if (map.visible()) {
             map.draw(c, f);
             c.fillRect(x + 1, map.y() + map.h(), w - 2, 1, hairline);
+        }
+        if (controlsShown) {
             for (Widget k : kids) {
-                if (k != list && k != build && k != map && k.visible()) {
+                if (k != list && k != build && k != map) {
                     k.draw(c, f);
                 }
             }
