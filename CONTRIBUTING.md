@@ -4,11 +4,11 @@ Bug reports, ideas and pull requests are all welcome.
 
 ## Branches
 
-Each branch is one Minecraft version, named after it (`1.21.4`, `26.3`). The newest version lives on `26.3`, which is the default branch. Open your pull request against the branch for the version you're targeting. Don't target `26.3` for a fix to an older version.
+Each branch is one Minecraft version, named after it (`1.21.4`, `1.21.11`, `26.3`). The newest version lives on `26.3`, which is the default branch. Open your pull request against the branch for the version you're targeting. Don't target `26.3` for a fix to an older version.
 
 ## Building and testing
 
-You need the JDK in `java_version` in `gradle.properties` (21 on `1.21.4`, 25 on `26.3`), same as [the CI workflow](.github/workflows/gradle_build.yml).
+You need the JDK in `java_version` in `gradle.properties` (21 on `1.21.4` and `1.21.11`, 25 on `26.3`), same as [the CI workflow](.github/workflows/gradle_build.yml).
 
 ```
 ./gradlew build            # everything, jars end up in dist/
@@ -63,7 +63,7 @@ Say what it does, why it's safe, and what you actually ran. Numbers help for per
 For maintainers.
 
 1. Bump `mod_version` in `gradle.properties` and commit it on the version branch.
-2. Tag the commit as `soprano-v<version>`, for example `soprano-v1.1.0`. Like Baritone, every Minecraft version branch gets its own version line (1.0.x is Minecraft 1.21.4, 1.1.x is Minecraft 26.3, the next port gets the next one), so a version number always means one Minecraft version. The `soprano-` prefix is there because the repo still has Baritone's history, and a plain `v1.0.0` would clash with Baritone's own tags for anyone who fetches from upstream.
+2. Tag the commit as `soprano-v<version>`, for example `soprano-v1.1.0`. Like Baritone, every Minecraft version branch gets its own version line (1.0.x is Minecraft 1.21.4, 1.1.x is Minecraft 26.3, 1.2.x is Minecraft 1.21.11, the next port gets the next one), so a version number always means one Minecraft version. The `soprano-` prefix is there because the repo still has Baritone's history, and a plain `v1.0.0` would clash with Baritone's own tags for anyone who fetches from upstream.
 3. Push the tag: `git push origin soprano-v1.1.0`.
 
 The [release workflow](.github/workflows/release.yml) builds with the JDK from `java_version` in `gradle.properties`, passes the version from the tag to Gradle and creates a GitHub Release called "Soprano v1.1.0" laid out like Baritone's: every jar flavor plus `checksums.txt`, and a one line note saying which Minecraft version and loaders it's for. The Minecraft version comes from `minecraft_version` in `gradle.properties`.

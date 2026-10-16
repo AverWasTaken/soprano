@@ -1,6 +1,6 @@
 # builds the jars and makes a github release when a tag like soprano-v1.1.0 is pushed
 # laid out like baritone's releases: every jar flavor plus checksums.txt, and a one line note saying which minecraft
-# version and loaders. each minecraft version branch gets its own version line (1.0.x is 1.21.4, 1.1.x is 26.3), see CONTRIBUTING.md
+# version and loaders. each minecraft version branch gets its own version line (1.0.x is 1.21.4, 1.1.x is 26.3, 1.2.x is 1.21.11), see CONTRIBUTING.md
 
 name: Release
 

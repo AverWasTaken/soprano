@@ -39,7 +39,7 @@ Soprano keeps everything Baritone does.  <br> The `baritone.api` packages are un
 2. Drop it in your `mods` folder, replacing Baritone if you had it.
 3. In game, try `#goto 1000 500`, then `#stop`.
 
-Each branch of this repo is one Minecraft version, named after it (`1.21.4`, `26.3`). The newest Minecraft version lives on `26.3`, which is the default branch. This branch is 26.3.
+Each branch of this repo is one Minecraft version, named after it (`1.21.4`, `1.21.11`, `26.3`). The newest Minecraft version lives on `26.3`, which is the default branch. This branch is 1.21.11.
 
 Releases come in three flavors. Most people want the `api` jar.
 

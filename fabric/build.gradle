@@ -79,7 +79,7 @@ components.java {
 }
 
 task proguard(type: ProguardTask) {
-    proguardVersion "7.9.1"
+    proguardVersion "7.4.2"
     compType "fabric"
 }
 
