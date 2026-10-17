@@ -146,6 +146,8 @@ public class GamerTask extends Task {
     // the evening before it: a bed in the bag by dusk (NightPrep), whether it has the wheel this tick, and the one log line
     private final NightPrep nightPrep = new NightPrep(() -> cfg.overworld);
     private boolean nightPrepHolding;
+    // the last leftover/bag/standing triple nightBedReady printed, -1 before the first
+    private int nightReadyKey = -1;
     private LocalPlayer nightPrepPlayer;
     // the tick a container screen came up, for how long it has held a night back (-1 when none is up)
     private long screenSince = -1;
@@ -1158,7 +1160,7 @@ public class GamerTask extends Task {
         // not time yet, or not allowed to go: the bed gets made ready for when it is
         NightPrep.Gate gate = new NightPrep.Gate(busy != NightSleep.Busy.PHASE, busy != NightSleep.Busy.NONE && busy != NightSleep.Busy.PHASE,
                 fighting, hurt, spent, windowOpen);
-        Task prep = nightPrep.tick(mod, gate, () -> leftover || facts.count(ItemHelper.BED) > 0 || findNightBed(mod) != null);
+        Task prep = nightPrep.tick(mod, gate, () -> nightBedReady(mod, leftover));
         sayNight(mod, why, busy, null);
         if (prep == null) {
             nightPrepDone(mod);
@@ -1258,6 +1260,20 @@ public class GamerTask extends Task {
 
     private BlockPos findNightBed(AltoClef mod) {
         return NightBeds.find(mod, cfg.overworld.nightBedRadius);
+    }
+
+    // the prep's "is a bed ready". all three get asked (no short circuit) so the line can say which one moved when the answer
+    // flaps, and the line only comes out when one of them does
+    private boolean nightBedReady(AltoClef mod, boolean leftover) {
+        boolean bag = facts.count(ItemHelper.BED) > 0;
+        boolean found = findNightBed(mod) != null;
+        int key = (leftover ? 4 : 0) | (bag ? 2 : 0) | (found ? 1 : 0);
+        if (key != nightReadyKey) {
+            nightReadyKey = key;
+            Debug.logInternal("night prep: bed ready? leftover " + leftover + ", bag " + facts.count(ItemHelper.BED) + ", standing "
+                    + found + " (" + NightBeds.nearestWhy(mod, cfg.overworld.nightBedRadius) + ")");
+        }
+        return leftover || bag || found;
     }
 
     // ---- what the command shows
