@@ -52,10 +52,12 @@ final class TripGatherBridge implements TripGatherer {
         if (blocks > 0 && wanted.length == 0) {
             return false;
         }
-        Block[] sources = GatherSources.sources(items).toArray(new Block[0]);
+        List<Block> all = GatherSources.sources(items);
+        Block[] sources = all.toArray(new Block[0]);
+        Block[] hand = GatherSources.byHand(all).toArray(new Block[0]);
         // the deficit is on top of what's held, GetBuildingMaterialsTask style "hold this many" from here on
         int target = blocks > 0 ? mod.getItemStorage().getItemCount(wanted) + blocks : 0;
-        TripGatherTask t = new TripGatherTask(wanted, sources, target, pickaxe);
+        TripGatherTask t = new TripGatherTask(wanted, sources, hand, target, pickaxe);
         this.tripId = tripId;
         this.task = t;
         this.status = Status.RUNNING;

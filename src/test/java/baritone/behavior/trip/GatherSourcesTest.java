@@ -50,4 +50,15 @@ public class GatherSourcesTest {
         assertTrue(GatherSources.needsPickaxe(Blocks.STONE));
         assertFalse(GatherSources.needsPickaxe(Blocks.DIRT));
     }
+
+    @Test
+    public void byHandKeepsTheDirtAndDropsTheStone() {
+        List<Block> hand = GatherSources.byHand(GatherSources.sources(List.of(Items.COBBLESTONE, Items.DIRT, Items.NETHERRACK)));
+        assertTrue(hand.contains(Blocks.DIRT));
+        assertTrue(hand.contains(Blocks.GRASS_BLOCK));
+        assertFalse(hand.contains(Blocks.STONE));
+        assertFalse(hand.contains(Blocks.COBBLESTONE));
+        assertFalse(hand.contains(Blocks.NETHERRACK));
+        assertTrue(GatherSources.byHand(GatherSources.sources(List.of(Items.NETHERRACK))).isEmpty());
+    }
 }
