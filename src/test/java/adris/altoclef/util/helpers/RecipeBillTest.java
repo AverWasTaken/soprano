@@ -187,6 +187,23 @@ public class RecipeBillTest {
     }
 
     @Test
+    public void nothingNetherIsFetchedUpFront() {
+        CatalogueBook book = new CatalogueBook(m -> 0);
+        assertTrue(TaskCatalogue.needsNether(Items.NETHERRACK));
+        assertEquals(-1, book.gatherTier("netherrack"));
+        // today every nether mine() also forces the dimension, so gatherRequirement says no first. this sweep is for the
+        // day somebody adds a mine() that needsNether catches and forcesNether doesn't
+        int checked = 0;
+        for (String name : TaskCatalogue.resourceNames()) {
+            Item[] matches = TaskCatalogue.getItemMatches(name);
+            if (matches.length != 1 || !TaskCatalogue.needsNether(matches[0])) continue;
+            checked++;
+            assertEquals(name, -1, book.gatherTier(name));
+        }
+        assertTrue(checked > 10);
+    }
+
+    @Test
     public void aliasesFindTheRealRecipe() {
         assertEquals("iron_chain", CatalogueBook.canonical(new ItemTarget("chain", 1)));
         assertEquals("wooden_pickaxe", CatalogueBook.canonical(new ItemTarget("wooden_pick", 1)));

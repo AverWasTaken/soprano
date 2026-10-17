@@ -59,6 +59,10 @@ public class GatherBillTask extends Task {
     private final Set<String> _triedTools = new HashSet<>();
     private final Set<String> _made = new HashSet<>();
     private final Map<Item, Integer> _reserved = new HashMap<>();
+    // the leaves we're out fetching right now, so progress() can see the bag fill up before anything is crafted
+    private List<RecipeBill.Fetch> _fetching = List.of();
+    // same for the tool or the level being made right now. 128 stone out of a furnace is a long time with no new stage
+    private List<ItemTarget> _making = List.of();
     private BotBehaviour.State _level;
     private final TimerGame _scanWait = new TimerGame(FIRST_SCAN_SECONDS);
     private boolean _looked;
@@ -159,6 +163,7 @@ public class GatherBillTask extends Task {
         for (String tool : RecipeBill.tools(bill.leaves, toolBag(mod))) {
             if (!_triedTools.add(tool) || !TaskCatalogue.taskExists(tool)) continue;
             reserve(mod, tool, 1);
+            _making = List.of(new ItemTarget(tool, 1));
             setDebugState("Getting a " + tool + " for the job");
             return TaskCatalogue.getItemTask(tool, 1);
         }
@@ -171,6 +176,7 @@ public class GatherBillTask extends Task {
         if (fetch.isEmpty()) {
             return null;
         }
+        _fetching = fetch;
         List<ItemTarget> targets = new ArrayList<>();
         for (RecipeBill.Fetch f : fetch) {
             targets.add(new ItemTarget(f.name(), f.target()));
@@ -192,6 +198,7 @@ public class GatherBillTask extends Task {
             }
             if (todo.isEmpty()) continue;
             for (ItemTarget t : todo) _made.add(t.getCatalogueName());
+            _making = todo;
             setDebugState("Making the in-betweens");
             return TaskCatalogue.getSquashedItemTask(todo.toArray(ItemTarget[]::new));
         }
@@ -267,6 +274,20 @@ public class GatherBillTask extends Task {
             _reserved.merge(item, count, Math::max);
         }
         mod.getBehaviour().reserveProtectedItems(_level, _reserved);
+    }
+
+    // a number that goes up while the bill gets somewhere, for a caller with a "stuck" clock (SchematicBuildTask's
+    // GatherGuard). the targets only show up at the very end now, a whole batch's worth of ore and cobble comes first,
+    // and that trip is not being stuck. stages and the two sets only ever grow, so does this, minus crafting eating leaves
+    public long progress(AltoClef mod) {
+        long held = 0;
+        for (RecipeBill.Fetch f : _fetching) {
+            held += Math.min(mod.getItemStorage().getItemCount(TaskCatalogue.getItemMatches(f.name())), f.target());
+        }
+        for (ItemTarget t : _making) {
+            held += Math.min(mod.getItemStorage().getItemCount(t.getMatches()), t.getTargetCount());
+        }
+        return (_stage.ordinal() + _triedTools.size() + _made.size()) * 1_000_000L + held;
     }
 
     @Override

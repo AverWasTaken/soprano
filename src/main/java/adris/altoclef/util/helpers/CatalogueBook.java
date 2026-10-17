@@ -54,6 +54,12 @@ public final class CatalogueBook implements RecipeBill.Book {
 
     @Override
     public int gatherTier(String name) {
+        // anything needsNether flags stays off the up-front list. the schematic builder already asked about those on
+        // its own, and a leaf fetch that wanders into a portal is not what anybody signed up for
+        Item[] matches = TaskCatalogue.getItemMatches(name);
+        if (matches.length == 1 && TaskCatalogue.needsNether(matches[0])) {
+            return -1;
+        }
         MiningRequirement req = TaskCatalogue.gatherRequirement(name);
         return req == null ? -1 : req.ordinal();
     }
