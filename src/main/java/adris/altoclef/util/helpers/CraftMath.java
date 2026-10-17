@@ -43,7 +43,8 @@ public final class CraftMath {
         List<T> ordered = new ArrayList<>(new LinkedHashSet<>(types));
         Map<T, Integer> expected = new HashMap<>();
         for (T type : ordered) expected.put(type, held.applyAsInt(type) + perRaw * raw.applyAsInt(type));
-        // biggest pile first, same pick the craft itself makes after. List.sort is stable so ties keep the caller's order
+        // biggest pile first, close to the parent's majority pick (that one goes by whole crafts, so two woods a craft
+        // apart can disagree: wrong wood turned into planks, not a freeze). List.sort is stable so ties keep the caller's order
         ordered.sort(Comparator.comparingInt((T type) -> expected.get(type)).reversed());
         for (T type : ordered) {
             if (raw.applyAsInt(type) >= 1) return new TopUp<>(type, Math.min(sameNeeded, expected.get(type)));
