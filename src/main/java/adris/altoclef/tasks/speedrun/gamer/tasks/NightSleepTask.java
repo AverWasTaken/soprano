@@ -62,6 +62,8 @@ public class NightSleepTask extends Task {
     private static final double TICK_SECONDS = 0.05;
     // how long the wool and the planks have to look gone, with nothing lying about to put back, before the craft is given up on
     private static final int SETTLE_TICKS = 10;
+    // under the interact's 5 s click timer and 6 s no-progress check, both of which end in a wander
+    private static final int PLACE_PATIENCE_TICKS = 60;
     static final String BED_WOULD_NOT_GO_DOWN = "the bed would not go down";
 
     private final RunState state;
@@ -96,6 +98,7 @@ public class NightSleepTask extends Task {
     // the bed click for this try, kept so the task system sees the same task every tick (see placeTask)
     private Task placeBed;
     private BlockPos placeFor;
+    private long placeSince;
     // holding back + sneak to get a toe out of the foot cell
     private boolean stepping;
     private long retrievalSince;
@@ -467,6 +470,11 @@ public class NightSleepTask extends Task {
         boolean wasStepping = stepping;
         stepping = false;
         Task next = putBedDown(mod, now);
+        if (next != placeBed) {
+            // anything but the click this tick (a walk, a clear, a step back) and the next click starts from scratch,
+            // or its patience clock would count the walk too
+            placeBed = null;
+        }
         if (wasStepping && !stepping) {
             mod.getInputControls().releaseOwnedBy(this);
         }
@@ -567,7 +575,7 @@ public class NightSleepTask extends Task {
             return null;
         }
         setDebugState("Putting the bed down.", "Putting the bed down");
-        return placeTask(stand, support);
+        return placeTask(stand, support, now);
     }
 
     private void letGoOfStep(AltoClef mod) {
@@ -579,8 +587,14 @@ public class NightSleepTask extends Task {
 
     // one task for the whole try: isEqual compares the goal lambda by identity, so a new lambda every tick is a new task every
     // tick and its onStart cancels the path every time (same reason DoStuffInContainerTask keeps a static)
-    private Task placeTask(BlockPos stand, BlockPos support) {
+    private Task placeTask(BlockPos stand, BlockPos support, long now) {
+        if (placeBed != null && now - placeSince > PLACE_PATIENCE_TICKS) {
+            // clicks that keep not making a bed (a mob over the spot, a refused click): the interact's own patience ends in a
+            // five block wander, off a pillar that is a fall. a fresh one starts its clocks over, the build clock still caps it
+            placeBed = null;
+        }
         if (placeBed == null || !support.equals(placeFor)) {
+            placeSince = now;
             // when the support looks out of reach the walk is back to the stand cell, not the goal next to the support's top
             // that nobody can stand in
             placeBed = new InteractWithBlockTask(new ItemTarget("bed", 1), Direction.UP, support, false).walkTo(p -> new GoalBlock(stand));
@@ -922,8 +936,8 @@ public class NightSleepTask extends Task {
         return canRetry(bed, !mod.getWorld().isDay(), budget.spent(c.nightAttempts, c.nightSeconds));
     }
 
-    public static boolean canRetry(boolean bedInBag, boolean night, boolean spent) {
-        return bedInBag && night && !spent;
+    public static boolean canRetry(boolean haveBed, boolean night, boolean spent) {
+        return haveBed && night && !spent;
     }
 
     // "not sleeping tonight" for a try that gets another go in 20 seconds is a lie the user reads as the bot giving up on sleep
