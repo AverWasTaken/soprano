@@ -16,6 +16,7 @@ import adris.altoclef.trackers.storage.ContainerCache;
 import baritone.api.utils.Dimension;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.MiningRequirement;
+import adris.altoclef.util.helpers.DropPatience;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.StlHelper;
 import adris.altoclef.util.helpers.StorageHelper;
@@ -31,6 +32,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Predicate;
+import java.util.function.UnaryOperator;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.inventory.ContainerInput;
@@ -178,8 +181,15 @@ public abstract class ResourceTask extends Task implements ITaskCanForce {
                 // means the pickup task stops chasing once the near drops are gone
                 Vec3 me = mod.getPlayer().position();
                 boolean craftable = craftableFromHeld(mod);
+                // a miner below us sweeps its own drops (tree first, then the floor). grabbing those from up here stopped it,
+                // and its restart forgot the tree, so every cobble that fell was a new path search. only the items it collects
+                // though: the sticks a dead bush drops are not the bush miner's business, those are still ours. the price:
+                // while it runs, drops of our other targets lying around wait for their own turn
+                Item[] owned = ownedBelow();
+                // one at our feet goes in the bag by itself, a path search for it is a waste (same skip as MineAndCollectTask's nearestDrop)
                 Optional<ItemEntity> closest = mod.getEntityTracker().getClosestItemDrop(me,
-                        drop -> WalkCost.dropWorthWalking(drop.getX() - me.x, drop.getY() - me.y, drop.getZ() - me.z, craftable), _itemTargets);
+                        drop -> !contains(owned, drop.getItem().getItem()) && !landsByItself(mod, me, drop)
+                                && WalkCost.dropWorthWalking(drop.getX() - me.x, drop.getY() - me.y, drop.getZ() - me.z, craftable), _itemTargets);
                 if (closest.isPresent() && (range < 0 || closest.get().closerThan(mod.getPlayer(), range) || (_pickupTask.isActive() && !_pickupTask.isFinished(mod)))) {
                     setDebugState("Picking up");
                     return _pickupTask;
@@ -216,7 +226,9 @@ public abstract class ResourceTask extends Task implements ITaskCanForce {
         }
 
         // We may just mine if a block is found.
-        if (_mineIfPresent != null) {
+        // a miner that already breaks all of these would just hand out a second miner for the same blocks, and the outer
+        // one's tools, requirement and dirt trip never ran
+        if (_mineIfPresent != null && !minesOnItsOwn(_mineIfPresent)) {
             ArrayList<Block> satisfiedReqs = new ArrayList<>(Arrays.asList(_mineIfPresent));
             satisfiedReqs.removeIf(block -> !StorageHelper.miningRequirementMet(mod, MiningRequirement.getMinimumRequirementForBlock(block)));
             if (!satisfiedReqs.isEmpty()) {
@@ -324,6 +336,69 @@ public abstract class ResourceTask extends Task implements ITaskCanForce {
     // (WalkCost.dropWorthWalking). crafting tasks say yes when the materials are held
     protected boolean craftableFromHeld(AltoClef mod) {
         return false;
+    }
+
+    // this task sweeps up its own drops, so the resource tasks above it keep their hands off them while it runs. not the
+    // same thing as shouldAvoidPickingUp: crafts and smelts say yes to that and pick up nothing, their parents still sweep
+    public boolean ownsDrops() {
+        return false;
+    }
+
+    // a miner says yes when these are blocks it breaks anyway (see the mineIfPresent branch in onTick)
+    protected boolean minesOnItsOwn(Block[] blocks) {
+        return false;
+    }
+
+    private static final Item[] NOTHING_OWNED = new Item[0];
+
+    // the items a running miner somewhere below us is sweeping up itself, empty when there is none
+    private Item[] ownedBelow() {
+        Task owner = ownerBelow(subTask(), t -> t instanceof ResourceTask r ? r.subTask() : null,
+                t -> t instanceof ResourceTask && t.isActive(), t -> ((ResourceTask) t).ownsDrops());
+        return owner == null ? NOTHING_OWNED : ItemTarget.getMatches(((ResourceTask) owner).getItemTargets());
+    }
+
+    // walks down from first while the links are running resource tasks, the first one that owns its drops (or null).
+    // anything else in between (a pickup, a goto, a wander) is not ours to see through, whatever is under it was not
+    // asked for by us
+    static <T> T ownerBelow(T first, UnaryOperator<T> next, Predicate<T> walkable, Predicate<T> owns) {
+        // a chain this deep is a bug, not a reason to hang the tick
+        int depth = 0;
+        for (T t = first; t != null && depth < 32; t = next.apply(t), depth++) {
+            if (!walkable.test(t)) {
+                return null;
+            }
+            if (owns.test(t)) {
+                return t;
+            }
+        }
+        return null;
+    }
+
+    static <T> boolean contains(T[] in, T x) {
+        for (T t : in) {
+            if (t == x || (t != null && t.equals(x))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // every one of need is in have. tiny arrays, a set would cost more than it saves
+    protected static <T> boolean coversAll(T[] need, T[] have) {
+        for (T n : need) {
+            if (!contains(have, n)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    // vanilla picks this one up in a few ticks without us moving, as long as there is somewhere to put it (a full bag needs
+    // the pickup task, it frees a slot)
+    private static boolean landsByItself(AltoClef mod, Vec3 me, ItemEntity drop) {
+        return DropPatience.alreadyInReach(drop.getX() - me.x, drop.getY() - me.y, drop.getZ() - me.z)
+                && !mod.getItemStorage().getSlotsThatCanFitInPlayerInventory(drop.getItem(), false).isEmpty();
     }
 
     protected abstract boolean shouldAvoidPickingUp(AltoClef mod);
