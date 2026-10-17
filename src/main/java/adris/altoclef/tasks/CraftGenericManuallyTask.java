@@ -46,6 +46,11 @@ public class CraftGenericManuallyTask extends Task implements ITaskUsesCraftingG
     // because the parent may hand us a fresh task every tick
     private static String _probeTarget;
     private static long _probeAt;
+    // same idea for "nothing owed", its own fields so the two lines don't silence each other
+    private static String _idleTarget;
+    private static long _idleSince;
+    private static long _idleLast;
+    private static long _idleAt;
 
     public CraftGenericManuallyTask(RecipeTarget target) {
         _target = target;
@@ -96,6 +101,24 @@ public class CraftGenericManuallyTask extends Task implements ITaskUsesCraftingG
             }
         }
         Debug.logInternal(line.toString());
+    }
+
+    // nothing owed is done for us, but if the parent keeps handing us the same target it's waiting on a craft that
+    // will never happen. that's how the birch slab freeze hid: a plank step asking for 1 plank with 2 in the bag.
+    // log only, the parent is the one counting wrong
+    private void logNothingOwed(int held) {
+        String key = String.valueOf(_target);
+        long now = System.currentTimeMillis();
+        // every finished craft passes through here for a tick before the parent notices, only a stretch is worth a line
+        if (!key.equals(_idleTarget) || now - _idleLast > 1000) {
+            _idleTarget = key;
+            _idleSince = now;
+            _idleAt = 0;
+        }
+        _idleLast = now;
+        if (now - _idleSince < 2000 || now - _idleAt < 120000) return;
+        _idleAt = now;
+        Debug.logInternal("asked to craft " + _target + " but already have " + held + " of " + _target.getTargetCount() + ", waiting on the parent");
     }
 
     @Override
@@ -154,6 +177,7 @@ public class CraftGenericManuallyTask extends Task implements ITaskUsesCraftingG
             setDebugState("Out of materials.");
             // nothing owed is not stuck, that's done
             if (wantedCrafts > 0) logOutOfMaterials(mod);
+            else if (StorageHelper.getItemStackInCursorSlot().isEmpty()) logNothingOwed(heldOutput);
             return null;
         }
         if (_probeTarget != null && _probeTarget.equals(String.valueOf(_target))) _probeTarget = null;

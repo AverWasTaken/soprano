@@ -10,6 +10,8 @@ import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.CraftingRecipe;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.RecipeTarget;
+import adris.altoclef.util.helpers.CraftMath;
+import adris.altoclef.util.helpers.StorageHelper;
 import net.minecraft.world.item.Item;
 
 public abstract class CraftWithMatchingMaterialsTask extends ResourceTask {
@@ -100,6 +102,7 @@ public abstract class CraftWithMatchingMaterialsTask extends ResourceTask {
         }
 
         // If we already have some of our target, we need less "same" materials.
+        // getItemCount on purpose, the same count ResourceTask.isFinished goes by
         int currentTargetCount = mod.getItemStorage().getItemCount(_target);
         int currentTargetsRequired = _target.getTargetCount() - currentTargetCount;
 
@@ -110,12 +113,16 @@ public abstract class CraftWithMatchingMaterialsTask extends ResourceTask {
             // We may need to convert our raw materials into our "matching" materials.
             int trueCanCraftTotal = 0;
             for (Item sameCheck : _sameResourceTarget.getMatches()) {
-                int trueCount = mod.getItemStorage().getItemCount(sameCheck);
+                // craftUsableCount, same as the expected count: getItemCount also sees furnace slots, and a log sitting
+                // in one would have us ask the plank step for planks it can't see, so off it goes to chop a tree
+                int trueCount = StorageHelper.craftUsableCount(mod, sameCheck);
                 int trueCanCraft = (trueCount / _sameResourcePerRecipe) * _recipe.outputCount();
                 trueCanCraftTotal += trueCanCraft;
             }
             if (trueCanCraftTotal < currentTargetsRequired) {
-                return getSpecificSameResourceTask(mod, _sameResourceTarget.getMatches());
+                // what the owed crafts eat, not "1". targets are totals, see CraftMath.sameResourceTopUp
+                int sameNeeded = CraftMath.craftsFor(currentTargetsRequired, _recipe.outputCount()) * _sameResourcePerRecipe;
+                return getSpecificSameResourceTask(mod, _sameResourceTarget.getMatches(), sameNeeded);
             }
 
             CraftingRecipe samedRecipe = generateSamedRecipe(_recipe, majorityCraftItem, _sameMask);
@@ -142,11 +149,11 @@ public abstract class CraftWithMatchingMaterialsTask extends ResourceTask {
 
     // Virtual
     protected int getExpectedTotalCountOfSameItem(AltoClef mod, Item sameItem) {
-        return mod.getItemStorage().getItemCount(sameItem);
+        return StorageHelper.craftUsableCount(mod, sameItem);
     }
 
-    // Virtual
-    protected Task getSpecificSameResourceTask(AltoClef mod, Item[] toGet) {
+    // Virtual. sameNeeded is a total for ONE type, how many of it the crafts still owed eat
+    protected Task getSpecificSameResourceTask(AltoClef mod, Item[] toGet, int sameNeeded) {
         Debug.logError("Uh oh!!! getSpecificSameResourceTask should be implemented!!!! Now we're stuck.");
         return null;
     }

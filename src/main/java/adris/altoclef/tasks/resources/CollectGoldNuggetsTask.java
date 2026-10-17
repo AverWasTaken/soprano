@@ -44,7 +44,8 @@ public class CollectGoldNuggetsTask extends ResourceTask {
                 }
                 // Get gold ingots
                 int nuggiesStillNeeded = _count - potentialNuggies;
-                return TaskCatalogue.getItemTask(Items.GOLD_INGOT, (int) Math.ceil((double) nuggiesStillNeeded / 9.0));
+                // on top of the ingots we hold, the target is a total. 2 ingots held and "1 ingot" asked is no ingot ever
+                return TaskCatalogue.getItemTask(Items.GOLD_INGOT, mod.getItemStorage().getItemCount(Items.GOLD_INGOT) + (int) Math.ceil((double) nuggiesStillNeeded / 9.0));
             }
             case NETHER -> {
                 setDebugState("Mining nuggies");
