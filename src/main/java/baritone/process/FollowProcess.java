@@ -106,7 +106,7 @@ public final class FollowProcess extends BaritoneProcessHelper implements IFollo
                 .distinct()
                 .collect(Collectors.toList());
         if (ctx.world() != lockWorld) {
-            // new dimension or a respawn: whoever we had is an entity from the old world, its position means nothing here
+            // dimension change or reconnect: whoever we had is an entity from the old world, its position means nothing here
             lock.clear();
             lockWorld = ctx.world();
         }
@@ -154,6 +154,8 @@ public final class FollowProcess extends BaritoneProcessHelper implements IFollo
         filter = null;
         cache = null;
         lock.clear();
+        // or the old ClientLevel sticks around in here long after we left it
+        lockWorld = null;
     }
 
     @Override
