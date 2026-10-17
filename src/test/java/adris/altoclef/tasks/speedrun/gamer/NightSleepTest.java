@@ -566,4 +566,47 @@ public class NightSleepTest {
         b.sleptOk(8);
         assertTrue(b.spent(3, 150));
     }
+
+    @Test
+    public void aBedThatFlickersStaysReady() {
+        NightSleep.ReadyLatch latch = new NightSleep.ReadyLatch();
+        assertFalse(latch.see(false, 0, 3));
+        // in and out of the radius every 14 ticks: never long enough to let go
+        for (long t = 10; t < 1000; t++) {
+            boolean raw = (t / 14) % 2 == 0;
+            assertTrue("tick " + t, latch.see(raw, t, 3));
+        }
+    }
+
+    @Test
+    public void aBedGoneForFiveSecondsIsGone() {
+        NightSleep.ReadyLatch latch = new NightSleep.ReadyLatch();
+        assertTrue(latch.see(true, 500, 3));
+        assertTrue(latch.see(false, 599, 3));
+        assertFalse(latch.see(false, 600, 3));
+        assertTrue(latch.see(true, 601, 3));
+    }
+
+    @Test
+    public void aNewDayForgetsTheBed() {
+        NightSleep.ReadyLatch latch = new NightSleep.ReadyLatch();
+        assertTrue(latch.see(true, 500, 3));
+        assertFalse(latch.see(false, 501, 4));
+        latch.see(true, 502, 4);
+        latch.reset();
+        assertFalse(latch.see(false, 503, 4));
+    }
+
+    @Test
+    public void theLatchedBedKeepsThePrepOffTheCraft() {
+        // wool and wood in hand, so a single honest "no bed" tick is a CRAFT and the next "yes" stops it again
+        NightSleep.ReadyLatch latch = new NightSleep.ReadyLatch();
+        NightSleep.PrepInputs base = prepAt(11000, 3, 6, true);
+        assertEquals(Prep.CRAFT, prep(base));
+        for (long t = 0; t < 400; t++) {
+            boolean raw = (t / 14) % 2 == 0;
+            boolean ready = latch.see(raw, 100_000 + t, 3);
+            assertEquals("tick " + t, Prep.BED_READY, prep(ready ? withBed(base) : base));
+        }
+    }
 }

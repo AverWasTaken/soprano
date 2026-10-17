@@ -280,6 +280,35 @@ public final class NightSleep {
         }
     }
 
+    // "is a bed ready" with a short memory. the check flipped yes and no every few steps (best guess is a standing bed right on
+    // the radius, the bed ready line in the log says which part moves), and every flip handed the wheel between the craft and
+    // the phase. a yes holds for READY_HOLD_TICKS game ticks after the last real one, so a bed has to stay gone for five seconds
+    // before the craft starts. a new day forgets it
+    public static final long READY_HOLD_TICKS = 100;
+
+    public static final class ReadyLatch {
+        private long day = Long.MIN_VALUE;
+        private long lastReady;
+        private boolean seen;
+
+        public boolean see(boolean raw, long tick, long dayId) {
+            if (dayId != day) {
+                day = dayId;
+                seen = false;
+            }
+            if (raw) {
+                seen = true;
+                lastReady = tick;
+                return true;
+            }
+            return seen && tick - lastReady < READY_HOLD_TICKS;
+        }
+
+        public void reset() {
+            seen = false;
+        }
+    }
+
     // ---- when the branch says why it is not running
 
     // a line in the log when the answer changes and not before, and no faster than every `gap` ticks (a gate that flaps would
