@@ -46,7 +46,7 @@ public class ButlerAllowListTest {
         return names;
     }
 
-    private static final List<String> DENIED_OURS = List.of("punk", "gamma", "setgamma", "set_gamma", "whitelist");
+    private static final List<String> DENIED_OURS = List.of("punk", "gamma", "setgamma", "set_gamma", "whitelist", "schem");
 
     @Test
     public void whitelistIsOursAndNoWhisperCanRunIt() {

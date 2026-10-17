@@ -532,6 +532,16 @@ public final class McSchematics implements SchematicsAccess {
                 return null;
             }
             SchematicPlacement next = change.apply(p);
+            if (!next.equals(p)) {
+                // somewhere else (or the other way round) is a new build, and a new build gets asked again
+                BuildChoices chosen = choicesOf(relativePath);
+                if (chosen.nether() != null) {
+                    choices.put(relativePath, chosen.withNether(null));
+                    if (choices.get(relativePath).isEmpty()) {
+                        choices.remove(relativePath);
+                    }
+                }
+            }
             pin(relativePath, next);
             return view(next);
         } catch (Throwable t) {
@@ -691,6 +701,30 @@ public final class McSchematics implements SchematicsAccess {
             @Override
             public Set<String> excluded() {
                 return live() ? choicesOf(relativePath).excluded() : Set.of();
+            }
+
+            @Override
+            public Boolean nether() {
+                return live() ? choicesOf(relativePath).nether() : null;
+            }
+
+            @Override
+            public void netherAnswered(boolean yes, Set<String> leftOut) {
+                if (!live()) {
+                    return;
+                }
+                BuildChoices next = choicesOf(relativePath).withNether(yes);
+                for (String id : leftOut) {
+                    next = next.withIncluded(id, false);
+                }
+                choose(relativePath, next);
+            }
+
+            @Override
+            public void finished() {
+                if (live()) {
+                    choose(relativePath, choicesOf(relativePath).withNether(null));
+                }
             }
 
             private boolean live() {

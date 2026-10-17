@@ -10,6 +10,7 @@ import adris.altoclef.tasks.construction.schematic.CountStep;
 import adris.altoclef.tasks.construction.schematic.GatherGuard;
 import adris.altoclef.tasks.construction.schematic.GatherPlan;
 import adris.altoclef.tasks.construction.schematic.GoBack;
+import adris.altoclef.tasks.construction.schematic.NetherPrompt;
 import adris.altoclef.tasks.construction.schematic.SchematicDiff;
 import adris.altoclef.tasks.construction.schematic.SkipItems;
 import adris.altoclef.tasks.movement.DefaultGoToDimensionTask;
@@ -61,6 +62,7 @@ public class SchematicBuildTask extends Task {
     // negative so they never meet a builder serial (those count up from 1) or the builder's "nothing" (0). the tab
     // tells our build from a chat #build by this number, see McSchematics.building
     private static final AtomicLong SERIALS = new AtomicLong();
+    private static final AtomicLong ASKS = new AtomicLong();
     // cells the diff looks at per tick. a 64^3 build is 8 ticks, nobody waits on that
     private static final int DIFF_BUDGET = 32_768;
     // chat lines list this many items, then "and 4 more"
@@ -86,6 +88,8 @@ public class SchematicBuildTask extends Task {
     private final BlockPos origin;
     private final Rotation rotation;
     private final Mirror mirror;
+    // the tab's memory of this build: the unchecked items and the nether answer, saved per world
+    private final BuildMemory memory;
     // the items the player unchecked in the tab. their cells aren't part of the build at all (SkipItems.leaveOut), so
     // the count never bills them and the builder never walks over to them
     private final Set<String> excluded = new LinkedHashSet<>();
@@ -144,6 +148,14 @@ public class SchematicBuildTask extends Task {
     private boolean nightHad;
     // the next count comes from a night cutting the builder off, not from the build getting nowhere, so it isn't a round
     private boolean nightRecount;
+    // "may I go to the nether for these?", null until somebody answers. one answer covers the whole build, and a stop
+    // and start (or a restart of the game) gets the stored one back from the memory
+    private Boolean nether;
+    // the question waiting for an answer, 0 while there isn't one. counts up over every build this session, so a click
+    // on an old question's button never answers a new one (chat doesn't outlive the game, so no need to go further)
+    private long asking;
+    // the placed items the question was about, what a "no" leaves out
+    private Set<String> askedAbout = Set.of();
 
     public SchematicBuildTask(String name, IStaticSchematic schematic, BlockPos origin, Rotation rotation, Mirror mirror,
                               BuildMemory memory) {
@@ -152,7 +164,9 @@ public class SchematicBuildTask extends Task {
         this.origin = origin.immutable();
         this.rotation = rotation;
         this.mirror = mirror;
+        this.memory = memory;
         excluded.addAll(memory.excluded());
+        nether = memory.nether();
         recut();
     }
 
@@ -290,6 +304,13 @@ public class SchematicBuildTask extends Task {
             return nightTurn(mod, turn) ? bed : null;
         }
         nightHad = false;
+        // the nether question holds everything until it's answered, however long that takes. after the night so a
+        // night still gets slept, before the guard so waiting on a person is never "stuck"
+        if (asking != 0) {
+            protect(mod);
+            setDebugState("Waiting for your answer: nether?", "Waiting for your answer: nether?");
+            return null;
+        }
         if (phase == Phase.GATHER) {
             guard.gathering(towardBatch(have(mod)));
         }
@@ -401,6 +422,11 @@ public class SchematicBuildTask extends Task {
         long wrong = diff.wrong();
         built = diff.built();
         diff = null;
+        // ahead of everything that eats the count's flags (ended, missing, the guard's round): the count after the
+        // answer is the one that gets to use them
+        if (askNether(GatherPlan.need(left, missing), have(mod))) {
+            return null;
+        }
         boolean ended = builderEnded;
         builderEnded = false;
         Map<String, Integer> have = have(mod);
@@ -431,9 +457,14 @@ public class SchematicBuildTask extends Task {
             stuck = guard.round(correct);
         }
         switch (CountStep.next(ended, rest.isEmpty(), stuck, plan.bagFull(), plan.nothingToGet(), missing != null)) {
-            case DONE -> finish(mod, skippedLine());
-            case DONE_BUT_DIFFERS -> finish(mod, "The builder says " + name + " is done; " + wrong
-                + " cells differ (likely builder settings)");
+            case DONE -> {
+                memory.finished();
+                finish(mod, skippedLine());
+            }
+            case DONE_BUT_DIFFERS -> {
+                memory.finished();
+                finish(mod, "The builder says " + name + " is done; " + wrong + " cells differ (likely builder settings)");
+            }
             case STUCK -> finish(mod, "No progress on " + name + " after " + GatherGuard.MAX_IDLE_ROUNDS
                 + " rounds, stopped. Still missing " + list(rest));
             case BAG_FULL -> finish(mod, "Inventory is full, make some room and build " + name + " again");
@@ -445,6 +476,72 @@ public class SchematicBuildTask extends Task {
             }
         }
         return null;
+    }
+
+    // true when this count has to go: the build now waits on the nether question, or a "no" just cut more cells. it's
+    // about the shortfall, everything the rest of the build still has to fetch, not plan.batch(): that one is capped
+    // and in order, and the blaze rods could sit two batches down. an item the bag already has enough of is nobody's
+    // trip, and one we can't get at all is skipped anyway
+    private boolean askNether(Map<String, Integer> left, Map<String, Integer> have) {
+        if (Boolean.TRUE.equals(nether)) {
+            return false;
+        }
+        Set<String> found = NetherPrompt.shortfall(left, have, id -> !skipped.contains(id) && !excluded.contains(id)
+            && gettable(id) && TaskCatalogue.needsNether(item(id)));
+        if (found.isEmpty()) {
+            return false;
+        }
+        if (Boolean.FALSE.equals(nether)) {
+            // already said no for this build. something new turned up short (the bag had it last time), and a no is a
+            // no: it goes out like the rest instead of sneaking off to the nether or asking twice
+            leaveOut(found);
+            return true;
+        }
+        asking = ASKS.incrementAndGet();
+        askedAbout = Set.copyOf(found);
+        NetherPrompt.ask(asking, names(found));
+        return true;
+    }
+
+    // the placed items (the brewing stand, not its blaze rod), so the tab shows the same rows unchecked
+    private void leaveOut(Set<String> items) {
+        excluded.addAll(items);
+        recut();
+        // a pause for the brewing stand would put it right back on the gather's list (GatherPlan.need)
+        if (missing != null) {
+            Map<String, Integer> rest = new LinkedHashMap<>(missing);
+            rest.keySet().removeAll(items);
+            missing = rest.isEmpty() ? null : rest;
+        }
+        memory.netherAnswered(false, items);
+        say("Building " + name + " without " + names(items) + ". Check them again in the schematics tab to build them next time");
+        // the count that found them is gone, the next tick counts again without their cells
+        diff = null;
+    }
+
+    // a question is out and nobody has answered it
+    public boolean askingNether() {
+        return asking != 0;
+    }
+
+    // the chat buttons and #schem nether. id 0 = whatever is being asked now (a typed answer). false when nothing is
+    // being asked or the id is an older question's, that click is stale and does nothing
+    public boolean answerNether(boolean yes, long id) {
+        if (asking == 0 || (id != 0 && id != asking)) {
+            return false;
+        }
+        asking = 0;
+        nether = yes;
+        if (yes) {
+            memory.netherAnswered(true, Set.of());
+            say("Okay, I'll go to the nether for them when it's their turn");
+        } else {
+            leaveOut(askedAbout);
+        }
+        askedAbout = Set.of();
+        // the count that asked is gone, the next tick counts again
+        diff = null;
+        return true;
     }
 
     private Task startGather(GatherPlan.Plan plan, Map<String, Integer> have) {
@@ -729,6 +826,9 @@ public class SchematicBuildTask extends Task {
     protected String toHudString() {
         if (nightHad) {
             return "Night, " + name + " waits";
+        }
+        if (asking != 0) {
+            return "Waiting for your answer: nether?";
         }
         return switch (phase) {
             case COUNT -> "Counting what " + name + " needs";
