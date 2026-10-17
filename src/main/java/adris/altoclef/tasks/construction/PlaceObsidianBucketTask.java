@@ -11,6 +11,7 @@ import adris.altoclef.trackers.BlockTracker;
 import adris.altoclef.ui.HudText;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.BucketPour;
+import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
 import baritone.api.utils.input.Input;
@@ -23,6 +24,7 @@ import net.minecraft.core.Vec3i;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.List;
 
@@ -335,6 +337,15 @@ public class PlaceObsidianBucketTask extends Task {
             Debug.logInternal("cast: holding the lava pour into " + _pos.toShortString() + ", " + why);
         }
         setDebugState("Holding the lava pour: " + why);
+        if (why == BucketPour.Verdict.IN_THE_COLUMN) {
+            // on the ledge cell but hanging off its east edge, so nothing above walks us anywhere and the progress checker
+            // would ban the whole frame for it. face the frame and back off it, crouched so the west edge can't drop us
+            LookHelper.lookAt(mod, Vec3.atCenterOf(_pos.offset(1, 0, 0)));
+            mod.getInputControls().hold(Input.SNEAK);
+            mod.getInputControls().hold(Input.MOVE_BACK);
+            _backingUp = true;
+            _backUpThisTick = true;
+        }
         return null;
     }
 
