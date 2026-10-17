@@ -20,8 +20,11 @@ import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.EntityHelper;
 import adris.altoclef.util.helpers.ItemHelper;
+import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.WorldHelper;
+import baritone.api.pathing.goals.GoalBlock;
+import baritone.api.utils.input.Input;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.InBedChatScreen;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -32,7 +35,9 @@ import net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket;
 import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.entity.monster.ZombifiedPiglin;
 import net.minecraft.world.level.block.BedBlock;
+import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.LiquidBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 
@@ -57,6 +62,7 @@ public class NightSleepTask extends Task {
     private static final double TICK_SECONDS = 0.05;
     // how long the wool and the planks have to look gone, with nothing lying about to put back, before the craft is given up on
     private static final int SETTLE_TICKS = 10;
+    static final String BED_WOULD_NOT_GO_DOWN = "the bed would not go down";
 
     private final RunState state;
     private final Supplier<OverworldConfig> cfg;
@@ -87,6 +93,11 @@ public class NightSleepTask extends Task {
     private BlockPos foot;
     // the cell the bed is built beside, kept from the tick the direction was picked
     private BlockPos standCell;
+    // the bed click for this try, kept so the task system sees the same task every tick (see placeTask)
+    private Task placeBed;
+    private BlockPos placeFor;
+    // holding back + sneak to get a toe out of the foot cell
+    private boolean stepping;
     private long retrievalSince;
     // set while we are getting out of the bed, the try ends when the game says we are up
     private String leaving;
@@ -147,6 +158,8 @@ public class NightSleepTask extends Task {
             EventBus.unsubscribe(overlayWatch);
             overlayWatch = null;
         }
+        // (the keys themselves go with the task's own claims when it stops)
+        stepping = false;
     }
 
     @Override
@@ -200,6 +213,10 @@ public class NightSleepTask extends Task {
         this.mod = mod;
         if (finished) {
             return null;
+        }
+        if (stage != Stage.BUILD) {
+            // BUILD can end mid step back, the next stage should not walk backwards with it
+            letGoOfStep(mod);
         }
         LocalPlayer player = mod.getPlayer();
         long now = mod.getWorld().getGameTime();
@@ -445,14 +462,25 @@ public class NightSleepTask extends Task {
 
     // ---- the bed
 
+    // the step back keys stay down only for as long as each tick says step back, whatever else build hands out next
     private Task build(AltoClef mod, long now) {
+        boolean wasStepping = stepping;
+        stepping = false;
+        Task next = putBedDown(mod, now);
+        if (wasStepping && !stepping) {
+            mod.getInputControls().releaseOwnedBy(this);
+        }
+        return next;
+    }
+
+    private Task putBedDown(AltoClef mod, long now) {
         LocalPlayer player = mod.getPlayer();
         ClientLevel world = mod.getWorld();
         // the cell the bed is built beside stays the one it was chosen from: placing the supports walks us about, and a foot cell
         // that follows us around never gets a bed
         BlockPos stand = facing != null && standCell != null ? standCell : player.blockPosition();
         if (NightSleep.timedOut(Stage.BUILD, 0, secondsIn(now))) {
-            fail("the bed would not go down", now);
+            fail(BED_WOULD_NOT_GO_DOWN, now);
             return null;
         }
         // monsters came while we were building and we have not been up yet: start over from here, higher
@@ -474,6 +502,7 @@ public class NightSleepTask extends Task {
                 return null;
             }
             standCell = stand;
+            placeBed = null;
         }
         BlockPos footCell = stand.relative(facing);
         BlockPos headCell = footCell.relative(facing);
@@ -486,8 +515,16 @@ public class NightSleepTask extends Task {
             return null;
         }
         for (BlockPos cell : new BlockPos[]{footCell, headCell, footCell.above(), headCell.above()}) {
-            if (!world.getBlockState(cell).getCollisionShape(world, cell).isEmpty()) {
+            if (inTheWay(world.getBlockState(cell), world, cell)) {
                 setDebugState("Clearing room for the bed.");
+                return new DestroyBlockTask(cell);
+            }
+        }
+        // the click's ray starts at our eye, so a tuft in the cell we stand in (or tall grass up at eye height) eats it the same
+        // way. only the no-collision kind: a slab or a carpet in there is what we are standing on
+        for (BlockPos cell : new BlockPos[]{stand, stand.above()}) {
+            if (plantInTheWay(world.getBlockState(cell), world, cell)) {
+                setDebugState("Clearing the plants where we stand.");
                 return new DestroyBlockTask(cell);
             }
         }
@@ -504,8 +541,88 @@ public class NightSleepTask extends Task {
             }
         }
         BlockPos support = footCell.below();
+        // the head goes the way we look at the click, so the click is made from the stand cell and nowhere else. from inside it
+        // the support's top is always within 45 degrees of facing (the closest it gets is half a block over, half a block on)
+        Spot spot = spot(player.blockPosition().equals(stand), player.getBoundingBox().intersects(new AABB(footCell).deflate(1.0E-3)),
+                towards(support.getX() + 0.5 - player.getX(), support.getZ() + 0.5 - player.getZ()) == facing);
+        if (spot == Spot.WALK) {
+            setDebugState("Getting back to where the bed is built from.");
+            return new GetToBlockTask(stand);
+        }
+        if (spot == Spot.STEP_BACK) {
+            // a toe in the foot cell and the game says the bed is obstructed (by us). back off a hair, sneaking so a pillar top
+            // does not turn into a fall
+            mod.getInputControls().forceLook(facing.toYRot(), player.getXRot());
+            mod.getInputControls().hold(Input.SNEAK);
+            mod.getInputControls().hold(Input.MOVE_BACK);
+            stepping = true;
+            setDebugState("Stepping off the bed spot.");
+            return null;
+        }
+        if (LookHelper.getReach(support, Direction.UP).isEmpty()) {
+            // in the right cell and still no line to the support's top. the interact would give up after a few seconds and
+            // wander off five blocks, which on a pillar top is a fall, and mark the support unreachable for the next try too.
+            // standing here until the build clock runs out is the lesser evil
+            setDebugState("Can't see the top of the bed spot.");
+            return null;
+        }
         setDebugState("Putting the bed down.", "Putting the bed down");
-        return new InteractWithBlockTask(new ItemTarget("bed", 1), Direction.UP, support, false);
+        return placeTask(stand, support);
+    }
+
+    private void letGoOfStep(AltoClef mod) {
+        if (stepping) {
+            stepping = false;
+            mod.getInputControls().releaseOwnedBy(this);
+        }
+    }
+
+    // one task for the whole try: isEqual compares the goal lambda by identity, so a new lambda every tick is a new task every
+    // tick and its onStart cancels the path every time (same reason DoStuffInContainerTask keeps a static)
+    private Task placeTask(BlockPos stand, BlockPos support) {
+        if (placeBed == null || !support.equals(placeFor)) {
+            // when the support looks out of reach the walk is back to the stand cell, not the goal next to the support's top
+            // that nobody can stand in
+            placeBed = new InteractWithBlockTask(new ItemTarget("bed", 1), Direction.UP, support, false).walkTo(p -> new GoalBlock(stand));
+            placeFor = support;
+        }
+        return placeBed;
+    }
+
+    public enum Spot {
+        WALK, STEP_BACK, CLICK
+    }
+
+    // where we are against the stand cell: somewhere else is a walk, in it but with a bit of us over the foot cell (or looking
+    // off to the side, which from inside the cell does not happen) is a step back, otherwise click
+    public static Spot spot(boolean inStand, boolean overFoot, boolean aimsAlongFacing) {
+        if (!inStand) {
+            return Spot.WALK;
+        }
+        return overFoot || !aimsAlongFacing ? Spot.STEP_BACK : Spot.CLICK;
+    }
+
+    // the horizontal direction a look along (dx, dz) counts as, the same 45 degree buckets the game puts the bed's head in
+    public static Direction towards(double dx, double dz) {
+        if (Math.abs(dx) > Math.abs(dz)) {
+            return dx > 0 ? Direction.EAST : Direction.WEST;
+        }
+        return dz > 0 ? Direction.SOUTH : Direction.NORTH;
+    }
+
+    // the outline, not the collision. grass and flowers have no collision but the click's ray stops on their outline, so a
+    // tuft in the foot cell means the support top is "out of reach" forever. liquid is left alone: the ray goes through it
+    // and a bed takes a water cell just fine (siteCost already says no to a wet site)
+    public static boolean inTheWay(BlockState s, BlockGetter world, BlockPos cell) {
+        if (s.getBlock() instanceof LiquidBlock) {
+            return false;
+        }
+        return !s.getShape(world, cell).isEmpty();
+    }
+
+    // inTheWay, but nothing we could be standing on or in: grass, flowers, cobwebs, one snow layer
+    public static boolean plantInTheWay(BlockState s, BlockGetter world, BlockPos cell) {
+        return inTheWay(s, world, cell) && s.getCollisionShape(world, cell).isEmpty();
     }
 
     // the direction with the least work: cells to clear, a support to place. null when none can be done at all
@@ -533,7 +650,7 @@ public class NightSleepTask extends Task {
             if (!s.getFluidState().isEmpty()) {
                 return INF;
             }
-            if (!s.getCollisionShape(world, cell).isEmpty()) {
+            if (inTheWay(s, world, cell)) {
                 if (!WorldHelper.canBreak(mod, cell) || WorldHelper.tooSlowToBreak(mod, cell)) {
                     return INF;
                 }
@@ -783,9 +900,40 @@ public class NightSleepTask extends Task {
             return;
         }
         finished = true;
+        if (mod != null) {
+            letGoOfStep(mod);
+        }
         if (outcome == Outcome.GAVE_UP && !why.isEmpty() && !cleanup) {
-            say.accept("Not sleeping tonight: " + why);
+            say.accept(failLine(why, retryLikely()));
         }
         Debug.logInternal("night: over, " + outcome + (why.isEmpty() ? "" : " (" + why + ")"));
+    }
+
+    // what whoever started us will want to see before it starts another try: a bed (in the bag, or the found one still
+    // standing), still night, tries and seconds left. the busy and fighting gates are not ours to guess, this is only about
+    // what the chat line says. a craft that failed is left out on purpose, it fails when the wool or the planks are gone
+    private boolean retryLikely() {
+        if (mod == null || mod.getPlayer() == null || mod.getWorld() == null) {
+            return false;
+        }
+        boolean bed = bedsInBag(mod) > 0
+                || (source == BedSource.FOUND && found != null && mod.getWorld().getBlockState(found).getBlock() instanceof BedBlock);
+        OverworldConfig c = cfg.get();
+        return canRetry(bed, !mod.getWorld().isDay(), budget.spent(c.nightAttempts, c.nightSeconds));
+    }
+
+    public static boolean canRetry(boolean bedInBag, boolean night, boolean spent) {
+        return bedInBag && night && !spent;
+    }
+
+    // "not sleeping tonight" for a try that gets another go in 20 seconds is a lie the user reads as the bot giving up on sleep
+    public static String failLine(String why, boolean retry) {
+        if (!retry) {
+            return "Not sleeping tonight: " + why;
+        }
+        if (BED_WOULD_NOT_GO_DOWN.equals(why)) {
+            return "Couldn't get the bed down, trying again in a bit";
+        }
+        return "Couldn't sleep yet (" + why + "), trying again in a bit";
     }
 }
