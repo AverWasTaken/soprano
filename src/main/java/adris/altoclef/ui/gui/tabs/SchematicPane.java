@@ -15,6 +15,7 @@ import adris.altoclef.ui.gui.kit.Canvas;
 import adris.altoclef.ui.gui.kit.Frame;
 import adris.altoclef.ui.gui.kit.Icon;
 import adris.altoclef.ui.gui.kit.IconButton;
+import adris.altoclef.ui.gui.kit.TextMeasurer;
 import adris.altoclef.ui.gui.kit.TextStyle;
 import adris.altoclef.ui.gui.kit.Theme;
 import adris.altoclef.ui.gui.kit.VirtualList;
@@ -44,6 +45,9 @@ final class SchematicPane extends Widget {
 
         // the free camera and the arrows, or out of them again
         void toggleMoving();
+
+        // a box on an ITEM row was ticked or cleared
+        void setIncluded(String itemId, boolean included);
     }
 
     private static final String CANT_PLACE = "Can't place";
@@ -55,6 +59,7 @@ final class SchematicPane extends Widget {
     private enum Body { NOTHING, LOADING, ERROR, LIST }
 
     private final VirtualList<MaterialRows.Entry> list;
+    private final MaterialRows rows;
     private final Button build;
     private final PlacementMap map;
     private final IconButton west;
@@ -74,6 +79,8 @@ final class SchematicPane extends Widget {
 
     private Row row;
     private Materials materials;
+    // the ITEM ids the player struck from the build, from the facade on every poll
+    private Set<String> excluded = Set.of();
     private boolean world = true;
     private boolean armed;
     private boolean moving;
@@ -94,17 +101,26 @@ final class SchematicPane extends Widget {
     private int headerH;
     private int listTop;
     private int listH;
+    // the caption over the list that says what an empty box means, 0 when there is no list or no room for it.
+    // hintLinesAllowed is how many lines the layout gave it: 2 for the whole sentence, 1 for the short one
+    private int hintH;
+    private int hintLinesAllowed;
+    private String hint = "";
 
     SchematicPane(Theme theme, Listener listener) {
         super(theme);
-        list = new VirtualList<>(theme, theme.px(40), new MaterialRows(theme));
+        rows = new MaterialRows(theme);
+        list = new VirtualList<>(theme, theme.px(40), rows);
         list.setKeyFunction(MaterialRows.Entry::key);
+        // the whole item row is the box: the row does nothing else and a 16 px square is a mean target
         list.onClick((e, i) -> {
             if (e.type() == MaterialRows.Type.SECTION) {
                 if (!open.remove(e.label())) {
                     open.add(e.label());
                 }
                 rebuild();
+            } else if (e.type() == MaterialRows.Type.ITEM) {
+                listener.setIncluded(e.line().itemId(), !e.checked());
             }
         });
         build = new Button(theme, BUILD, Button.Kind.PRIMARY, null, listener::build);
@@ -181,14 +197,18 @@ final class SchematicPane extends Widget {
         return null;
     }
 
-    // the tab calls this whenever the selection, the count or the player's inventory moved. a null row is nothing selected
-    void show(Row r, Materials m, boolean hasWorld) {
-        boolean changed = !sameRow(r) || (m == null ? materials != null : !m.equals(materials)) || hasWorld != world;
+    // the tab calls this whenever the selection, the count, the player's inventory or the unchecked set moved. a null
+    // row is nothing selected
+    void show(Row r, Materials m, Set<String> off, boolean hasWorld) {
+        Set<String> ex = off == null ? Set.of() : off;
+        boolean changed = !sameRow(r) || (m == null ? materials != null : !m.equals(materials)) || hasWorld != world
+                || !ex.equals(excluded);
         if (!sameRow(r)) {
             map.cancelDrag();
         }
         row = r;
         materials = m;
+        excluded = ex;
         world = hasWorld;
         if (changed) {
             rebuild();
@@ -216,6 +236,15 @@ final class SchematicPane extends Widget {
         map.show(mode, placement, footprint, terrain, player, yaw);
         if (refresh) {
             boolean onMap = mode == PlacementMap.Mode.MAP;
+            // the boxes go grey while this file is being read or built: they still toggle, the running build just
+            // never hears about it, and the caption says so
+            rows.setDisabled(inFlight());
+            String h = hintText();
+            if (!h.equals(hint)) {
+                hint = h;
+                // the two sentences take a different number of lines, so the list top moves with them
+                relayout = true;
+            }
             for (Button n : nudges) {
                 n.setEnabled(onMap);
             }
@@ -290,15 +319,26 @@ final class SchematicPane extends Widget {
                 summaryHead = "Couldn't count the blocks";
             } else {
                 body = Body.LIST;
-                summaryHead = SchematicRules.summaryHead(materials);
-                summaryTail = SchematicRules.summaryTail(materials);
-                summaryShort = materials.totalMissing() > 0;
+                Materials build = SchematicRules.checkedOnly(materials, excluded);
+                int leftOut = SchematicRules.leftOut(materials, excluded);
+                summaryHead = SchematicRules.summaryHead(materials) + SchematicRules.summaryMid(leftOut);
+                summaryTail = SchematicRules.summaryTail(build, leftOut);
+                summaryShort = build.totalMissing() > 0;
                 fill(entries);
             }
         }
+        hint = hintText();
         list.setItems(entries);
         updateBuildBar();
         layout();
+    }
+
+    private boolean inFlight() {
+        return building.state() == BuildState.PARSING || building.state() == BuildState.STARTED;
+    }
+
+    private String hintText() {
+        return body == Body.LIST ? SchematicRules.checkHint(inFlight()) : "";
     }
 
     // the button waits for the count and for a placement in this dimension. the line next to it says what is in
@@ -318,7 +358,7 @@ final class SchematicPane extends Widget {
         } else if (body == Body.ERROR && row != null && row.ok()) {
             warning = "Couldn't count the blocks";
         } else if (body == Body.LIST) {
-            warning = SchematicRules.warning(materials);
+            warning = SchematicRules.warning(SchematicRules.checkedOnly(materials, excluded));
             warningIcon = !warning.isEmpty();
         } else {
             warning = "";
@@ -327,7 +367,7 @@ final class SchematicPane extends Widget {
 
     private void fill(List<MaterialRows.Entry> out) {
         for (Line l : materials.items()) {
-            out.add(MaterialRows.Entry.item(l));
+            out.add(MaterialRows.Entry.item(l, !excluded.contains(l.itemId())));
         }
         section(out, CANT_PLACE, materials.cantPlace());
         section(out, NOT_COUNTED, materials.notCounted());
@@ -397,12 +437,29 @@ final class SchematicPane extends Widget {
         map.setVisible(showMap);
         setVisibleControls(false);
         listTop = top;
+        // the caption wants the whole sentence, which is two lines of small text at most pane widths, with 4 above
+        // and below. it is the first thing to go when the window is short: first down to the one short line, then
+        // out. the band and the controls are what you build with, the caption only explains the boxes
+        int lh = Math.round(m.lineHeight(theme.small));
+        int capPad = 2 * theme.px(Theme.SPACE_1);
+        hintLinesAllowed = hint.isEmpty() ? 0 : Math.min(2, HelpList.wrap(m, hint, theme.small, hintRoom()).size());
+        hintH = hintLinesAllowed == 0 ? 0 : hintLinesAllowed * lh + capPad;
         if (showMap) {
             // the control rows sit on the list's inset, not the header's: at the 640 floor the pane is about 160
             // px and those 16 px are what keep "Move to me" on its button
             int inset = theme.px(Theme.GAP);
             int rows = controlRows(inset);
-            int room = footTop - 1 - top - controlsH(rows) - 2;
+            int room = footTop - 1 - top - controlsH(rows) - 2 - hintH;
+            if (room < theme.px(48) && hintLinesAllowed == 2) {
+                room += lh;
+                hintLinesAllowed = 1;
+                hintH -= lh;
+            }
+            if (room < theme.px(48)) {
+                room += hintH;
+                hintLinesAllowed = 0;
+                hintH = 0;
+            }
             boolean controls = room >= 0;
             if (!controls) {
                 room = footTop - 1 - top - 1;
@@ -419,7 +476,11 @@ final class SchematicPane extends Widget {
                 layoutControls(inset, listTop + theme.px(Theme.SPACE_1), rows);
                 listTop += controlsH(rows) + 1;
             }
+        } else if (footTop - 1 - top < hintH + theme.px(40)) {
+            hintLinesAllowed = 0;
+            hintH = 0;
         }
+        listTop += hintH;
         listH = Math.max(0, footTop - 1 - listTop);
         list.setBounds(x + side, listTop, w - 2 * side, listH);
         int bw = build.preferredWidth();
@@ -542,6 +603,7 @@ final class SchematicPane extends Widget {
             c.fillRect(x + 1, listTop - 1, w - 2, 1, hairline);
         }
         if (body == Body.LIST) {
+            drawHint(c);
             list.draw(c, f);
         } else {
             drawState(c);
@@ -573,6 +635,38 @@ final class SchematicPane extends Widget {
             yy += c.lineHeight(body) + theme.px(2);
             c.text(c.ellipsize(unknown, theme.small, room), tx, yy + c.ascent(theme.small), theme.small, theme.color(Theme.DANGER));
         }
+    }
+
+    // the caption over the list, on the rows' own inset so it lines up with the boxes under it. the whole sentence
+    // on up to two lines when the layout found room for them, the short one otherwise, cut if even that is too much
+    private void drawHint(Canvas c) {
+        if (hintH <= 0 || hint.isEmpty()) {
+            return;
+        }
+        float tx = x + hintInset();
+        float lh = c.lineHeight(theme.small);
+        float base = listTop - hintH + theme.px(Theme.SPACE_1) + c.ascent(theme.small);
+        List<String> lines = hintLines(c, hintRoom());
+        for (int i = 0; i < lines.size(); i++) {
+            c.text(lines.get(i), tx, base + i * lh, theme.small, theme.color(Theme.TEXT_3));
+        }
+    }
+
+    private int hintInset() {
+        return theme.px(2 * Theme.SPACE_2);
+    }
+
+    private float hintRoom() {
+        return Math.max(0, w - 2 * hintInset());
+    }
+
+    // the lines the caption takes at this width: the whole sentence if it wraps to two or fewer, else the short one
+    private List<String> hintLines(TextMeasurer m, float room) {
+        List<String> full = HelpList.wrap(m, hint, theme.small, room);
+        if (full.size() <= 2 && hintLinesAllowed >= full.size()) {
+            return full;
+        }
+        return List.of(m.ellipsize(SchematicRules.checkHintShort(inFlight()), theme.small, room));
     }
 
     // nothing selected, counting, or a file that didn't open: two centred lines in the list's place
@@ -642,6 +736,29 @@ final class SchematicPane extends Widget {
     // test hooks
     VirtualList<MaterialRows.Entry> list() {
         return list;
+    }
+
+    MaterialRows rows() {
+        return rows;
+    }
+
+    // the caption's text, "" when there is no list. hintShown says whether the layout found room for it
+    String hint() {
+        return hint;
+    }
+
+    boolean hintShown() {
+        return hintH > 0;
+    }
+
+    // what the caption says on screen at this width, line by line, empty when it is not shown
+    List<String> hintDrawn() {
+        return hintH > 0 ? hintLines(theme.measurer, hintRoom()) : List.of();
+    }
+
+    // the middle of the check box on list row i, for tests that click boxes
+    float boxMidX() {
+        return list.x() + theme.px(2 * Theme.SPACE_2) + theme.px(MaterialRows.BOX) / 2f;
     }
 
     Button buildButton() {

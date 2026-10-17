@@ -204,7 +204,9 @@ public final class SchematicsTab implements Tab, SchematicPane.Listener {
         // have is re-read on every materials() call, so only the selected file is asked each tick
         Materials m = sel != null && sel.ok() ? schematics().materials(sel.relativePath()) : null;
         lastMaterials = m;
-        pane.show(sel, m, world);
+        // the unchecked set is read every poll too: a box ticked here shows at once, and one the bot cleared on its
+        // own (saying no to a nether run) shows on the next tick
+        pane.show(sel, m, sel != null && sel.ok() ? schematics().excluded(sel.relativePath()) : null, world);
         pane.setMoving(movingNow() != null);
         refreshSite(sel, world);
     }
@@ -379,6 +381,12 @@ public final class SchematicsTab implements Tab, SchematicPane.Listener {
             ctx.toast(r == null ? Result.fail("Could not start moving") : r);
         }
         poll();
+    }
+
+    // a box on the list. it is an edit like a nudge: saved by the facade, disarms the button, the poll after it redraws
+    @Override
+    public void setIncluded(String itemId, boolean included) {
+        edit("schematics include", path -> schematics().setIncluded(path, itemId, included));
     }
 
     private String movingNow() {

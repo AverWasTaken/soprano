@@ -89,6 +89,12 @@
 .sc-ctl.two #sc-br1 + .btn, .sc-ctl.three #sc-br1 + .btn { margin-left: 0; }
 .sc-ctl .btn:disabled { opacity: .4; }
 
+/* the caption over the list (SchematicPane.drawHint): the whole sentence on up to two lines, on the rows' inset so it
+   lines up with the boxes. .one is the short sentence when the window is tight, .none drops it before the band shrinks */
+.sc-hint { flex: none; padding: 4px 16px; font-size: 12px; line-height: 15px; color: var(--text-3); overflow: hidden; }
+.sc-hint.one { white-space: nowrap; text-overflow: ellipsis; }
+.sc-hint.none, .sc-detail.state .sc-hint, .sc-detail.nomap .sc-hint, .sc-detail.nothing .sc-hint { display: none; }
+
 /* the material list fills whatever is left. no separators: the bar tracks already rule the rows */
 .sc-rows { flex: 1; min-height: 0; position: relative; }
 .sc-detail.nomap .sc-map, .sc-detail.nomap .sc-ctl, .sc-detail.nomap .sc-map + .sc-rule, .sc-detail.nomap .sc-ctl + .sc-rule { display: none; }
@@ -98,6 +104,21 @@
 .sc-rows .scroll { position: absolute; inset: 0; padding: 4px 8px 4px 8px; }
 .mrow { position: relative; display: flex; align-items: center; height: 40px; padding: 0 8px; border-radius: var(--row-radius); }
 .mrow:hover { background: var(--hover); }
+/* the box (MaterialRows.box): icon sized, a touch tighter in the corners than a control. checked is the accent with a
+   white tick, like a switch that is on; empty is a field with the strong hairline round it. the whole row toggles it */
+.mrow .chk { position: relative; flex: none; width: 16px; height: 16px; margin-right: 8px; border-radius: 4px; box-sizing: border-box; background: var(--accent); color: var(--on-accent); }
+.mrow .chk .icon { position: absolute; left: 1px; top: 1px; width: 14px; height: 14px; }
+.mrow.off .chk { background: var(--field); box-shadow: inset 0 0 0 1px var(--hairline-strong); }
+.mrow.off .chk .icon { display: none; }
+/* the folded kinds keep the icon column so every name starts on the same line, with nothing in the box's place */
+.mrow .chk.gap { background: none; box-shadow: none; }
+/* struck from the build: name, counts and the bar's fill go to the caption grey, the sprite goes to 40% (the java
+   lays the row's background over it at 60%, which comes to the same pixels) */
+.mrow.off .m-name, .mrow.off .m-num, .mrow.off.short .m-num { color: var(--text-3); }
+.mrow.off .m-bar i { background: color-mix(in srgb, var(--hairline-strong) 60%, transparent); }
+.mrow.off .m-icon { opacity: .4; }
+/* a build of this file in flight: the boxes fade to 45%, they still toggle, the caption says it feeds the next start */
+.sc-rows.building .mrow .chk { opacity: .45; }
 .mrow .m-icon { width: 16px; height: 16px; image-rendering: pixelated; flex: none; margin-right: 12px; }
 .mrow .m-text { flex: 1; min-width: 0; }
 .mrow .m-name { height: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }

@@ -55,6 +55,24 @@ public class SchematicsTabPreviewTest {
         clickRow(0);
         p.savePanel("schematics_missing");
 
+        // two rows struck from the build, one of them the biggest stack
+        var boxes = tab.pane().list();
+        p.click(tab.pane().boxMidX(), boxes.rowMidY(0));
+        p.settle();
+        p.click(tab.pane().boxMidX(), boxes.rowMidY(5));
+        p.settle();
+        p.advance(300);
+        p.hover(tab.pane().boxMidX() + 80, boxes.rowMidY(5));
+        p.settle();
+        p.advance(200);
+        p.savePanel("schematics_unchecked");
+        p.click(tab.pane().boxMidX(), boxes.rowMidY(0));
+        p.settle();
+        p.click(tab.pane().boxMidX(), boxes.rowMidY(5));
+        p.settle();
+        p.advance(300);
+        p.hover(-100, -100);
+
         // the folded kinds open (they sit past the first page now that the map has the top of the card)
         var mats = tab.pane().list();
         mats.ensureVisible(9);
@@ -159,6 +177,12 @@ public class SchematicsTabPreviewTest {
         p.advance(400);
         clickRow(0);
         p.savePanel("schematics_light");
+        facade.schematics.setIncluded("Small Castle.litematic", "minecraft:glass", false);
+        p.tick();
+        p.settle();
+        p.advance(300);
+        p.savePanel("schematics_light_unchecked");
+        facade.schematics.setIncluded("Small Castle.litematic", "minecraft:glass", true);
 
         p.shell.setDarkMode(true);
         p.settle();
@@ -252,7 +276,9 @@ public class SchematicsTabPreviewTest {
         p.tick();
         p.settle();
 
-        // a build request on its way, started, and one that failed after the click
+        // a build request on its way, started, and one that failed after the click. one row is unchecked so the
+        // greyed boxes show both states
+        facade.schematics.setIncluded("Small Castle.litematic", "minecraft:farmland", false);
         facade.schematics.parsePolls = 1000;
         p.click(tab.buildButton().x() + 10, tab.buildButton().y() + 10);
         p.settle();

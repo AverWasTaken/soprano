@@ -28,6 +28,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
+import java.util.Set;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -208,6 +209,40 @@ public class McSchematicsPlacementTest {
         assertEquals(SchematicPlacement.rotationOf(p.turns()), b.rotation());
         assertEquals(Mirror.FRONT_BACK, b.mirror());
         assertEquals(5, b.schematic().widthX());
+    }
+
+    @Test
+    public void uncheckedRowsAreSavedAndReachTheBuild() {
+        McSchematics s = make();
+        assertTrue(s.excluded("wall.schem").isEmpty());
+        s.setIncluded("wall.schem", "minecraft:stone", false);
+        assertEquals(Set.of("minecraft:stone"), s.excluded("wall.schem"));
+        // saved straight away, without the placement ever being chosen
+        assertTrue(Files.exists(saveFile));
+        assertTrue(PlacementStore.loadAll(saveFile, p -> true).placements().isEmpty());
+        McSchematics again = make();
+        assertEquals(Set.of("minecraft:stone"), again.excluded("wall.schem"));
+        again.build("wall.schem");
+        drain();
+        assertEquals(Set.of("minecraft:stone"), game.built.get(0).memory().excluded());
+        // building pins the placement, and that save keeps the choices
+        assertEquals(Set.of("minecraft:stone"), PlacementStore.loadAll(saveFile, p -> true).choices().get("wall.schem").excluded());
+        again.setIncluded("wall.schem", "minecraft:stone", true);
+        assertTrue(again.excluded("wall.schem").isEmpty());
+        assertTrue(PlacementStore.loadAll(saveFile, p -> true).choices().isEmpty());
+    }
+
+    @Test
+    public void choicesBelongToTheirWorld() {
+        McSchematics s = make();
+        s.setIncluded("wall.schem", "minecraft:stone", false);
+        game.file = folder.getRoot().toPath().resolve("other").resolve("altoclef").resolve(PlacementStore.FILE_NAME);
+        assertTrue(s.excluded("wall.schem").isEmpty());
+        // an unknown file or no world is quietly nothing
+        s.setIncluded("nope.schem", "minecraft:stone", false);
+        assertTrue(s.excluded("nope.schem").isEmpty());
+        game.file = saveFile;
+        assertEquals(Set.of("minecraft:stone"), s.excluded("wall.schem"));
     }
 
     @Test

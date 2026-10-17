@@ -862,6 +862,152 @@ public class SchematicsTabTest {
         assertEquals("Small Castle.litematic", facade.schematics.moving());
     }
 
+    // ----- the boxes: which rows go into the build
+
+    private void clickBox(int i) {
+        var mats = tab.pane().list();
+        p.click(tab.pane().boxMidX(), mats.rowMidY(i));
+        p.settle();
+    }
+
+    private MaterialRows.Entry mat(int i) {
+        return tab.pane().list().items().get(i);
+    }
+
+    @Test
+    public void everyItemStartsChecked() {
+        clickRow(0);
+        for (int i = 0; i < 7; i++) {
+            assertEquals(MaterialRows.Type.ITEM, mat(i).type());
+            assertTrue(mat(i).checked());
+        }
+        assertTrue(facade.schematics.excluded("Small Castle.litematic").isEmpty());
+        assertEquals("Unchecked items are left out of the build. A block others rest on can leave them floating.", tab.pane().hint());
+        assertTrue(tab.pane().hintShown());
+        assertFalse(tab.pane().rows().disabled());
+    }
+
+    @Test
+    public void aClickOnTheBoxClearsItAndTheRowDrawsUnchecked() {
+        clickRow(0);
+        // the farmland row is the sixth, past the first page once the map has the top of the card
+        tab.pane().list().ensureVisible(5);
+        p.settle();
+        p.advance(600);
+        p.settle();
+        clickBox(5);
+        assertEquals(List.of("schematics exclude Small Castle.litematic minecraft:farmland"), facade.actions);
+        assertEquals(java.util.Set.of("minecraft:farmland"), facade.schematics.excluded("Small Castle.litematic"));
+        // the poll after the click already shows it, no tick needed
+        assertFalse(mat(5).checked());
+        assertTrue(mat(4).checked());
+        clickBox(5);
+        assertTrue(mat(5).checked());
+        assertEquals("schematics include Small Castle.litematic minecraft:farmland", facade.actions.get(1));
+    }
+
+    @Test
+    public void anUncheckedRowLeavesTheShortfall() {
+        clickRow(0);
+        assertEquals("3,557 blocks · 7 kinds · 3,490 short", tab.pane().summary());
+        // stone bricks are 3,120 of the 3,490 short
+        clickBox(0);
+        assertEquals("3,557 blocks · 7 kinds · 1 left out · 370 short", tab.pane().summary());
+        assertEquals("370 short. It pauses when it runs out.", tab.pane().warning());
+        // everything still in the build is in hand: the warning drops to the can't place line
+        for (String id : List.of("minecraft:oak_log", "minecraft:glass", "minecraft:oak_stairs", "minecraft:torch", "minecraft:farmland", "minecraft:beacon")) {
+            facade.schematics.have.put(id, 5000);
+        }
+        ticks(1);
+        assertEquals("3,557 blocks · 7 kinds · 1 left out · rest in your inventory", tab.pane().summary());
+        assertEquals("Some blocks can't be placed, those spots stay empty.", tab.pane().warning());
+    }
+
+    @Test
+    public void aChangeMadeElsewhereShowsOnTheNextTick() {
+        clickRow(0);
+        facade.schematics.setIncluded("Small Castle.litematic", "minecraft:beacon", false);
+        assertTrue(mat(6).checked());
+        ticks(1);
+        assertFalse(mat(6).checked());
+        assertEquals("3,557 blocks · 7 kinds · 1 left out · 3,489 short", tab.pane().summary());
+    }
+
+    @Test
+    public void subRowsHaveNoBoxAndStillFold() {
+        clickRow(0);
+        var mats = tab.pane().list();
+        mats.ensureVisible(9);
+        p.settle();
+        p.advance(600);
+        p.settle();
+        p.click(tab.pane().boxMidX(), mats.rowMidY(7));
+        p.settle();
+        assertEquals(MaterialRows.Type.SUB, mat(8).type());
+        assertFalse(mat(8).checked());
+        // a click on a sub row's left edge is not a box
+        p.click(tab.pane().boxMidX(), mats.rowMidY(8));
+        p.settle();
+        assertTrue(facade.actions.isEmpty());
+        assertTrue(facade.schematics.excluded("Small Castle.litematic").isEmpty());
+    }
+
+    @Test
+    public void theBoxesGreyWhileThisFileBuildsAndStillToggle() {
+        facade.schematics.parsePolls = 1;
+        clickRow(0);
+        clickBuild();
+        clickBuild();
+        assertTrue(tab.pane().rows().disabled());
+        assertEquals("Changes apply on the next start, not this build.", tab.pane().hint());
+        ticks(2);
+        assertEquals("Building it. Stop is in the bar below.", tab.pane().warning());
+        assertTrue(tab.pane().rows().disabled());
+        clickBox(1);
+        assertFalse(mat(1).checked());
+        assertEquals("schematics exclude Small Castle.litematic minecraft:oak_log", facade.actions.get(1));
+        // another file's build is not this one's: its boxes are live
+        clickRow(3);
+        assertFalse(tab.pane().rows().disabled());
+        assertEquals("Unchecked items are left out of the build. A block others rest on can leave them floating.", tab.pane().hint());
+    }
+
+    @Test
+    public void anUnticksDisarmsTheBuildButton() {
+        clickRow(0);
+        clickBuild();
+        assertTrue(tab.armed());
+        clickBox(2);
+        assertFalse(tab.armed());
+    }
+
+    @Test
+    public void theCaptionGoesBeforeTheMapAtTheFloor() throws Exception {
+        reopen(830, 540);
+        clickRow(0);
+        assertFalse(tab.pane().hintShown());
+        assertTrue(24 * map().pxPerBlock() <= map().h());
+        reopen(1600, 900);
+        clickRow(0);
+        assertTrue(tab.pane().hintShown());
+        // the whole sentence wraps to two lines at this width, and the list starts under them
+        List<String> lines = tab.pane().hintDrawn();
+        assertEquals(2, lines.size());
+        assertEquals("Unchecked items are left out of the build. A block others rest on can leave them floating.", String.join(" ", lines));
+        assertEquals(tab.pane().list().y(), tab.pane().control("feet").y() + tab.pane().control("feet").h() + p.theme.px(4) + 1 + hintH(2), 0.01f);
+        // a build in flight swaps in the one line sentence and the list moves up with it
+        facade.schematics.parsePolls = 1000;
+        facade.schematics.build("Small Castle.litematic");
+        ticks(1);
+        p.settle();
+        assertEquals(List.of("Changes apply on the next start, not this build."), tab.pane().hintDrawn());
+        assertEquals(tab.pane().list().y(), tab.pane().control("feet").y() + tab.pane().control("feet").h() + p.theme.px(4) + 1 + hintH(1), 0.01f);
+    }
+
+    private int hintH(int lines) {
+        return lines * Math.round(p.theme.measurer.lineHeight(p.theme.small)) + 2 * p.theme.px(4);
+    }
+
     @Test
     public void moveFitsBesideTheArmedBuildButtonAtTheFloor() throws Exception {
         reopen(830, 540);

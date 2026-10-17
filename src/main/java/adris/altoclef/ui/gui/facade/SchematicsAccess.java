@@ -2,6 +2,7 @@ package adris.altoclef.ui.gui.facade;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Set;
 import java.util.function.Consumer;
 
 // the schematics tab's whole world: the <gameDir>/schematics folder, what's in each file, what building it costs and
@@ -276,6 +277,17 @@ public interface SchematicsAccess {
 
     // the last build request and how far it got. never null, cheap, safe per frame
     Building building();
+
+    // the ITEM rows (Line.itemId) the player unchecked for relativePath in this world, empty = all checked. saved with
+    // the placements, so it survives a restart. cheap, safe per frame. a build reads it once when it starts, so a
+    // change while one runs is for the next start
+    default Set<String> excluded(String relativePath) {
+        return Set.of();
+    }
+
+    // checks (included) or unchecks one ITEM row and saves it. quietly nothing without a world or for an unknown path
+    default void setIncluded(String relativePath, String itemId, boolean included) {
+    }
 
     // the colour map around a block position, radiusChunks clamped to 1..Terrain.MAX_RADIUS_CHUNKS. samples a few more
     // chunks on every call, so call it at most once a tick (the tab's poll), never per frame; the frame draws the last

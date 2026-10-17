@@ -4,6 +4,7 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.BotBehaviour;
 import adris.altoclef.Debug;
 import adris.altoclef.TaskCatalogue;
+import adris.altoclef.tasks.construction.schematic.BuildMemory;
 import adris.altoclef.tasks.construction.schematic.BuildNightSleep;
 import adris.altoclef.tasks.construction.schematic.CountStep;
 import adris.altoclef.tasks.construction.schematic.GatherGuard;
@@ -85,7 +86,13 @@ public class SchematicBuildTask extends Task {
     private final BlockPos origin;
     private final Rotation rotation;
     private final Mirror mirror;
-    private final ISchematic placed;
+    // the items the player unchecked in the tab. their cells aren't part of the build at all (SkipItems.leaveOut), so
+    // the count never bills them and the builder never walks over to them
+    private final Set<String> excluded = new LinkedHashSet<>();
+    // the file minus the excluded cells, what the builder gets (with the skipped cut on top)
+    private IStaticSchematic cut;
+    // the same, laid out where it goes. volatile: wantsAir reads it from the path thread
+    private volatile ISchematic placed;
     private final GatherGuard guard = new GatherGuard();
     private final GoBack goBack = new GoBack();
     // altoSleepAtNight, the gamer's night for a build. it cuts in ahead of every phase
@@ -138,13 +145,22 @@ public class SchematicBuildTask extends Task {
     // the next count comes from a night cutting the builder off, not from the build getting nowhere, so it isn't a round
     private boolean nightRecount;
 
-    public SchematicBuildTask(String name, IStaticSchematic schematic, BlockPos origin, Rotation rotation, Mirror mirror) {
+    public SchematicBuildTask(String name, IStaticSchematic schematic, BlockPos origin, Rotation rotation, Mirror mirror,
+                              BuildMemory memory) {
         this.name = name;
         this.schematic = schematic;
         this.origin = origin.immutable();
         this.rotation = rotation;
         this.mirror = mirror;
-        this.placed = BuilderProcess.placed(schematic, rotation, mirror);
+        excluded.addAll(memory.excluded());
+        recut();
+    }
+
+    // cut before the turn, not after: the builder takes the unturned file and turns it itself, and the cut asks the
+    // file's own cells, so both the count and the builder see the same holes
+    private void recut() {
+        cut = SkipItems.leaveOut(schematic, excluded);
+        placed = BuilderProcess.placed(cut, rotation, mirror);
     }
 
     public long serial() {
@@ -251,6 +267,8 @@ public class SchematicBuildTask extends Task {
         int x = pos.getX() - origin.getX();
         int y = pos.getY() - origin.getY();
         int z = pos.getZ() - origin.getZ();
+        // one read, a "no" answer swaps it on the game thread while this runs
+        ISchematic placed = this.placed;
         if (x < 0 || y < 0 || z < 0 || x >= placed.widthX() || y >= placed.heightY() || z >= placed.lengthZ()
             || !placed.inSchematic(x, y, z, AIR)) {
             return false;
@@ -340,7 +358,7 @@ public class SchematicBuildTask extends Task {
         return sum;
     }
 
-    // what the count left that we can't get, priced, for the last line
+    // what the count left that we can't get, priced, and what the player unchecked, for the last line
     private String skippedLine() {
         Map<String, Integer> out = new LinkedHashMap<>();
         lastLeft.forEach((id, n) -> {
@@ -348,7 +366,12 @@ public class SchematicBuildTask extends Task {
                 out.put(id, n);
             }
         });
-        return out.isEmpty() ? null : "Built " + name + " except " + list(out);
+        // no counts for these, their cells were never in the count to begin with
+        String leftOut = excluded.isEmpty() ? null : "left out: " + names(excluded);
+        if (out.isEmpty()) {
+            return leftOut == null ? null : "Built " + name + "; " + leftOut;
+        }
+        return "Built " + name + " except " + list(out) + (leftOut == null ? "" : "; " + leftOut);
     }
 
     private SchematicDiff newDiff(boolean watching) {
@@ -633,7 +656,7 @@ public class SchematicBuildTask extends Task {
         // the builder gets the whole bag, the reserve floor and the footprint rules go first
         unprotect(mod);
         IBuilderProcess builder = builder(mod);
-        builder.build(name, SkipItems.of(schematic, skipped), origin, rotation, mirror);
+        builder.build(name, SkipItems.of(cut, skipped), origin, rotation, mirror);
         builderSerial = builder.buildSerial();
         haveAtBuild = have(mod);
         watch = null;
@@ -789,6 +812,20 @@ public class SchematicBuildTask extends Task {
                 break;
             }
             parts.add(HudText.count(e.getValue(), HudText.item(item(e.getKey()))));
+        }
+        return HudText.list(parts);
+    }
+
+    // list() without the numbers
+    private static String names(Set<String> ids) {
+        List<String> parts = new ArrayList<>();
+        int shown = 0;
+        for (String id : ids) {
+            if (shown++ == SAY_AT_MOST) {
+                parts.add((ids.size() - SAY_AT_MOST) + " more");
+                break;
+            }
+            parts.add(HudText.item(item(id)));
         }
         return HudText.list(parts);
     }
