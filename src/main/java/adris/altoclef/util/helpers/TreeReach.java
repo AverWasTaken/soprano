@@ -17,7 +17,7 @@ public final class TreeReach {
     public static final int SCAN_DOWN = 24;
     // how many blocks of dirt the tower costs when we do not know the column, and the most we ever go and dig for
     private static final int DIRT_MIN = 4;
-    private static final int DIRT_MAX = 10;
+    public static final int DIRT_MAX = 10;
     private static final int DIRT_UNKNOWN = 8;
 
     private TreeReach() {
