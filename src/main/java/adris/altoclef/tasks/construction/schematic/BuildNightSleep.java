@@ -69,11 +69,14 @@ public final class BuildNightSleep {
     private boolean trackingBeds;
     // when GO first had to wait for that first bed scan, -1 while it isn't waiting
     private long scanWaitSince = -1;
+    // this tick's GO is waiting on that scan
+    private boolean scanHolding;
 
-    // the night (a trip, or the evening's wool or craft) has the wheel. the prep can hand back nothing for a tick in the
-    // middle of a craft, and a build that ran for that one tick would start the builder just to cut it again
+    // the night (a trip, the evening's wool or craft, or a GO waiting on the bed scan) has the wheel. the prep can hand
+    // back nothing for a tick in the middle of a craft, and a build that ran for that one tick would start the builder
+    // just to cut it again
     public boolean holding() {
-        return trip != null || prep.running();
+        return trip != null || prep.running() || scanHolding;
     }
 
     // ---- the pure bits (BuildNightSleepTest)
@@ -121,11 +124,7 @@ public final class BuildNightSleep {
     public Task tick(AltoClef mod, boolean away) {
         long now = mod.getWorld().getGameTime();
         trackScreen(now);
-        if (!trackingBeds) {
-            // from the first tick on and for the whole build, so by the evening the scan has long been done
-            mod.getBlockTracker().trackBlock(CollectBedTask.BEDS);
-            trackingBeds = true;
-        }
+        scanHolding = false;
         if (player != mod.getPlayer()) {
             // a new player is a death: the trip and the prep went with the old one
             player = mod.getPlayer();
@@ -143,9 +142,20 @@ public final class BuildNightSleep {
             return trip;
         }
         NightSleepHook.clear();
+        if (!Baritone.settings().altoSleepAtNight.value) {
+            // nobody sleeps, nobody needs the beds scanned
+            untrack(mod);
+        }
         if (!Baritone.settings().altoSleepAtNight.value || !overworld) {
             prep.drop();
             return null;
+        }
+        if (!trackingBeds) {
+            // from the first overworld tick on and for the whole build, so by the evening the scan has long been done
+            trackingBeds = true;
+            mod.getBlockTracker().trackBlock(CollectBedTask.BEDS);
+            // the tracker only scans when somebody asks it something, and nobody else here might for a while
+            mod.getBlockTracker().getKnownLocations(CollectBedTask.BEDS);
         }
         return decide(mod, away);
     }
@@ -166,6 +176,8 @@ public final class BuildNightSleep {
             // a bed standing next to us beats one from the bag or a craft, so the answer waits for the tracker's
             // first look at beds. a few seconds at most, a tracker that never gets round to it doesn't cost the night
             if (waitForBedScan(mod, now)) {
+                // held, not handed back to the build: a builder started now would only be cut again in a moment
+                scanHolding = true;
                 note("GO, waiting for the bed scan");
                 return null;
             }
@@ -233,6 +245,8 @@ public final class BuildNightSleep {
     // wait in the evening doesn't make every later evening skip the check
     private boolean waitForBedScan(AltoClef mod, long now) {
         var tracker = mod.getBlockTracker();
+        // a query is what gets a scan going (hasBeenScanned and scanPending only look), so ask every tick we wait
+        tracker.getKnownLocations(CollectBedTask.BEDS);
         if (tracker.hasBeenScanned(CollectBedTask.BEDS) && !tracker.scanPending(CollectBedTask.BEDS)) {
             scanWaitSince = -1;
             return false;
