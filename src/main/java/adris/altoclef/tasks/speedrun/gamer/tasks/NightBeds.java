@@ -57,6 +57,42 @@ public final class NightBeds {
         return best;
     }
 
+    // what find thinks of the closest bed the tracker knows, closest by plain distance before any of its checks. for the log
+    // line when the prep's "is a bed ready" flaps, so it says which check is the one going back and forth
+    public static String nearestWhy(AltoClef mod, int bedRadius) {
+        var tracker = mod.getBlockTracker();
+        BlockPos nearest = null;
+        double best = Double.POSITIVE_INFINITY;
+        for (BlockPos pos : tracker.getKnownLocations(CollectBedTask.BEDS)) {
+            double d = pos.distToCenterSqr(mod.getPlayer().position());
+            if (d < best) {
+                best = d;
+                nearest = pos;
+            }
+        }
+        if (nearest == null) {
+            return "no bed known";
+        }
+        String where = "nearest " + nearest.toShortString() + " at " + Math.round(Math.sqrt(best) * 10) / 10.0;
+        if (best > (double) bedRadius * bedRadius) {
+            return where + ", past the " + bedRadius + " radius";
+        }
+        if (!(mod.getWorld().getBlockState(nearest).getBlock() instanceof BedBlock)) {
+            return where + ", not a bed any more";
+        }
+        if (tracker.unreachable(nearest)) {
+            return where + ", unreachable";
+        }
+        BlockPos head = WorldHelper.getBedHead(mod, nearest);
+        if (head == null) {
+            return where + ", no head";
+        }
+        if (NightSleepTask.monstersBlock(mod, head)) {
+            return where + ", monsters";
+        }
+        return onCopper(mod, head) ? where + ", on copper" : where + ", usable";
+    }
+
     private static boolean onCopper(AltoClef mod, BlockPos pos) {
         Block below = mod.getWorld().getBlockState(pos.below()).getBlock();
         for (Block copper : ItemHelper.itemsToBlocks(ItemHelper.COPPER_BLOCKS)) {

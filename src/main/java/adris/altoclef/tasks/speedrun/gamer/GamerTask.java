@@ -1262,6 +1262,20 @@ public class GamerTask extends Task {
         return NightBeds.find(mod, cfg.overworld.nightBedRadius);
     }
 
+    // the prep's "is a bed ready". all three get asked (no short circuit) so the line can say which one moved when the answer
+    // flaps, and the line only comes out when one of them does
+    private boolean nightBedReady(AltoClef mod, boolean leftover) {
+        boolean bag = facts.count(ItemHelper.BED) > 0;
+        boolean found = findNightBed(mod) != null;
+        int key = (leftover ? 4 : 0) | (bag ? 2 : 0) | (found ? 1 : 0);
+        if (key != nightReadyKey) {
+            nightReadyKey = key;
+            Debug.logInternal("night prep: bed ready? leftover " + leftover + ", bag " + facts.count(ItemHelper.BED) + ", standing "
+                    + found + " (" + NightBeds.nearestWhy(mod, cfg.overworld.nightBedRadius) + ")");
+        }
+        return leftover || bag || found;
+    }
+
     // ---- what the command shows
 
     public List<String> statusLines() {
