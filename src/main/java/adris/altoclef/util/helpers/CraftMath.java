@@ -1,8 +1,10 @@
 package adris.altoclef.util.helpers;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.function.ToIntFunction;
@@ -32,6 +34,15 @@ public final class CraftMath {
     // put away until the cursor watchdog did, 3 s later, on every plank and stick of the opening crafts
     public static boolean quickMoveCraftsNoExtra(int wanted, int craftCount, int multiples) {
         return wanted >= craftCount || (multiples == 1 && wanted > 0);
+    }
+
+    // bag + grid per item, each item once. "birch log, birch log" in a match list is still one pile of logs
+    public static <T> int usableCount(Collection<T> items, ToIntFunction<T> bag, ToIntFunction<T> grid) {
+        int sum = 0;
+        for (T item : new LinkedHashSet<>(items)) {
+            sum += bag.applyAsInt(item) + grid.applyAsInt(item);
+        }
+        return sum;
     }
 
     // slots: one entry per non-empty recipe slot, holding every item that can go in that slot (planks of any wood,

@@ -135,4 +135,34 @@ public class CraftMathTest {
     public void wantingNothingMoreNeverQuickMoves() {
         assertEquals(false, CraftMath.quickMoveCraftsNoExtra(0, 4, 1));
     }
+
+    private static int usable(List<String> items, Map<String, Integer> bag, Map<String, Integer> grid) {
+        return CraftMath.usableCount(items, item -> bag.getOrDefault(item, 0), item -> grid.getOrDefault(item, 0));
+    }
+
+    @Test
+    public void usableCountIsBagPlusGrid() {
+        assertEquals(5, usable(Arrays.asList("birch_log"), inv("birch_log", 2), inv("birch_log", 3)));
+    }
+
+    @Test
+    public void usableCountSumsEveryItemAsked() {
+        assertEquals(7, usable(Arrays.asList("birch_log", "oak_log"), inv("birch_log", 2, "oak_log", 4), inv("oak_log", 1)));
+    }
+
+    @Test
+    public void usableCountIgnoresItemsNotAskedFor() {
+        // logs sitting somewhere we did not ask about (another menu's slots, say) are not ours to craft with
+        assertEquals(0, usable(Arrays.asList("birch_log"), inv("oak_log", 4), inv("spruce_log", 4)));
+    }
+
+    @Test
+    public void usableCountCountsADuplicateOnce() {
+        assertEquals(3, usable(Arrays.asList("birch_log", "birch_log"), inv("birch_log", 2), inv("birch_log", 1)));
+    }
+
+    @Test
+    public void usableCountOfNothingIsZero() {
+        assertEquals(0, usable(Collections.emptyList(), inv("birch_log", 2), inv()));
+    }
 }

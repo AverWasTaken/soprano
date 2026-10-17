@@ -1,6 +1,8 @@
 package adris.altoclef.tasks;
 
 import adris.altoclef.AltoClef;
+import adris.altoclef.Debug;
+import adris.altoclef.trackers.storage.ItemStorageTracker;
 import adris.altoclef.tasks.slot.DragSplitToSlotsTask;
 import adris.altoclef.tasks.slot.MoveItemToSlotFromInventoryTask;
 import adris.altoclef.tasks.slot.ReceiveCraftingOutputSlotTask;
@@ -18,8 +20,14 @@ import adris.altoclef.ui.HudText;
 import net.minecraft.world.item.Item;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -34,6 +42,10 @@ import net.minecraft.world.item.Items;
 public class CraftGenericManuallyTask extends Task implements ITaskUsesCraftingGrid {
 
     private final RecipeTarget _target;
+    // one probe line per stuck stretch, not one per tick: said once, quiet until that target can craft again. static
+    // because the parent may hand us a fresh task every tick
+    private static String _probeTarget;
+    private static long _probeAt;
 
     public CraftGenericManuallyTask(RecipeTarget target) {
         _target = target;
@@ -42,6 +54,48 @@ public class CraftGenericManuallyTask extends Task implements ITaskUsesCraftingG
     @Override
     protected void onStart(AltoClef mod) {
 
+    }
+
+    // when the parent thinks we have the stuff and craftsPossible says no, somebody is counting wrong. this says who:
+    // which menu is really open, what sits in its input slots, and the tracker's counts next to the live inventory
+    private void logOutOfMaterials(AltoClef mod) {
+        LocalPlayer player = mod.getPlayer();
+        if (player == null) return;
+        String key = String.valueOf(_target);
+        long now = System.currentTimeMillis();
+        // re-armed after two minutes too, so a stop and a fresh run of the same stuck craft still gets a line
+        if (key.equals(_probeTarget) && now - _probeAt < 120000) return;
+        _probeTarget = key;
+        _probeAt = now;
+        Screen screen = Minecraft.getInstance().gui.screen();
+        StringBuilder line = new StringBuilder("out of materials for ").append(_target)
+                .append(": menu ").append(player.containerMenu.getClass().getSimpleName()).append(" id ").append(player.containerMenu.containerId)
+                .append(", screen ").append(screen == null ? "none" : screen.getClass().getSimpleName())
+                .append(", input slots [");
+        for (Slot slot : ItemStorageTracker.getCurrentConversionSlots()) {
+            ItemStack stack = StorageHelper.getItemStackInSlot(slot);
+            if (!stack.isEmpty()) line.append(' ').append(slot).append('=').append(stack);
+        }
+        line.append(" ], cursor ").append(StorageHelper.getItemStackInCursorSlot()).append(", cached (cursor in) / live bag:");
+        Set<Item> items = new LinkedHashSet<>();
+        for (int i = 0; i < _target.getRecipe().getSlotCount(); ++i) {
+            ItemTarget slot = _target.getRecipe().getSlot(i);
+            if (slot != null && !slot.isEmpty()) items.addAll(Arrays.asList(slot.getMatches()));
+        }
+        items.add(_target.getOutputItem());
+        for (Item item : items) {
+            int cached = mod.getItemStorage().getItemCountInventoryOnly(item);
+            int live = 0;
+            for (int i = 0; i < player.getInventory().getContainerSize(); ++i) {
+                ItemStack stack = player.getInventory().getItem(i);
+                if (stack.getItem() == item) live += stack.getCount();
+            }
+            // a recipe that takes any log lists every log in the game, the zeros are noise
+            if (cached != 0 || live != 0 || item == _target.getOutputItem()) {
+                line.append(' ').append(BuiltInRegistries.ITEM.getKey(item).getPath()).append('=').append(cached).append('/').append(live);
+            }
+        }
+        Debug.logInternal(line.toString());
     }
 
     @Override
@@ -98,8 +152,11 @@ public class CraftGenericManuallyTask extends Task implements ITaskUsesCraftingG
                 return new ReceiveCraftingOutputSlotTask(outputSlot, _target.getTargetCount());
             }
             setDebugState("Out of materials.");
+            // nothing owed is not stuck, that's done
+            if (wantedCrafts > 0) logOutOfMaterials(mod);
             return null;
         }
+        if (_probeTarget != null && _probeTarget.equals(String.valueOf(_target))) _probeTarget = null;
 
         // slots that want the same ingredient get filled with one vanilla drag instead of an item at a time
         Task drag = dragFillTask(mod, bigCrafting, requiredPerSlot);

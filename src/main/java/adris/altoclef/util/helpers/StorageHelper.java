@@ -58,14 +58,36 @@ public class StorageHelper {
         if (Minecraft.getInstance().player == null)
             return;
         Screen screen = Minecraft.getInstance().gui.screen();
+        if (screen == null) {
+            closeStaleMenu(Minecraft.getInstance().player);
+            return;
+        }
         if (
-                screen != null &&
-                        !(screen instanceof PauseScreen) &&
+                !(screen instanceof PauseScreen) &&
                         !(screen instanceof OptionsSubScreen) &&
                         !(screen instanceof ChatScreen)) {
             // Close the screen if we're in-game
             Minecraft.getInstance().player.closeContainer();
         }
+    }
+
+    private static long _lastStaleMenuLog;
+
+    // a menu with no screen over it. swapping the screen out (GuiClick, the click gui, MoveScreen, the death menu) never
+    // closes the menu, so it sticks around holding whatever was in its slots, and every "is a table open" check reads
+    // containerMenu, not the screen. closing used to wait for a screen that was never coming back, forever.
+    // closeContainer sends the close packet (the server hands the grid back to the bag) and resets containerMenu to the
+    // inventory, its setScreen(null) with nothing up is harmless. not while dead, setScreen(null) would open the death screen
+    private static void closeStaleMenu(LocalPlayer player) {
+        AbstractContainerMenu menu = player.containerMenu;
+        if (menu == null || menu == player.inventoryMenu || Minecraft.getInstance().level == null || player.isDeadOrDying())
+            return;
+        long now = System.currentTimeMillis();
+        if (now - _lastStaleMenuLog > 5000) {
+            _lastStaleMenuLog = now;
+            Debug.logInternal("closing stale menu " + menu.getClass().getSimpleName() + " id " + menu.containerId);
+        }
+        player.closeContainer();
     }
 
     public static ItemStack getItemStackInSlot(Slot slot) {
@@ -391,7 +413,8 @@ public class StorageHelper {
             int need = 0;
             if (target.getOutputItem() != null) {
                 need = target.getTargetCount();
-                need -= mod.getItemStorage().getItemCount(target.getOutputItem());
+                // craftUsableCount, not getItemCount: what the craft itself sees, see there
+                need -= craftUsableCount(mod, target.getOutputItem());
             }
             // need holds how many items we need to CRAFT
             // However, a crafting recipe can output more than 1 of an item.
@@ -453,7 +476,8 @@ public class StorageHelper {
         return true;
     }
 
-    // the grid we are standing at, as the slots recipe items could be sitting in. nothing when no crafting screen is up
+    // the grid we are standing at, as the slots recipe items could be sitting in. goes by the open menu, not the screen,
+    // and with no other menu open that is the inventory's own 2x2
     public static List<Slot> openCraftGridInputs(boolean bigRecipe) {
         AbstractContainerMenu screen = Minecraft.getInstance().player != null ? Minecraft.getInstance().player.containerMenu : null;
         List<Slot> grid = new ArrayList<>();
@@ -480,12 +504,28 @@ public class StorageHelper {
             if (needs == null || needs.isEmpty()) continue;
             slots.add(Arrays.asList(needs.getMatches()));
         }
+        Map<Item, Integer> inGrid = gridContents(openCraftGridInputs(recipe.isBig()));
+        return CraftMath.maxCrafts(slots, item -> mod.getItemStorage().getItemCountInventoryOnly(item) + inGrid.getOrDefault(item, 0), cap);
+    }
+
+    // the one count for "what can a craft use": the bag (cursor included) plus whatever sits in the open grid, the same rule
+    // craftsPossible goes by. getItemCount also counts a furnace's fuel and input, which no craft can touch, so a planks
+    // task could see logs the craft could not find and both stood still. the whole grid here (9 at a table), so a 3x3
+    // that is half filled doesn't suddenly read as "go collect". a table menu left open with no screen still counts,
+    // closeScreen is what deals with that one (closeStaleMenu hands the grid back to the bag)
+    public static int craftUsableCount(AltoClef mod, Item... items) {
+        Map<Item, Integer> inGrid = gridContents(openCraftGridInputs(true));
+        return CraftMath.usableCount(Arrays.asList(items), item -> mod.getItemStorage().getItemCountInventoryOnly(item),
+                item -> inGrid.getOrDefault(item, 0));
+    }
+
+    private static Map<Item, Integer> gridContents(List<Slot> grid) {
         Map<Item, Integer> inGrid = new HashMap<>();
-        for (Slot gridSlot : openCraftGridInputs(recipe.isBig())) {
+        for (Slot gridSlot : grid) {
             ItemStack stack = getItemStackInSlot(gridSlot);
             if (!stack.isEmpty()) inGrid.merge(stack.getItem(), stack.getCount(), Integer::sum);
         }
-        return CraftMath.maxCrafts(slots, item -> mod.getItemStorage().getItemCountInventoryOnly(item) + inGrid.getOrDefault(item, 0), cap);
+        return inGrid;
     }
 
     // true when the open screen's craft output slot holds something we have not picked up yet. false when there is no
