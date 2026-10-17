@@ -176,6 +176,31 @@ public class PlacementStoreTest {
     }
 
     @Test
+    public void theNetherAnswerRoundTrips() throws Exception {
+        Map<String, BuildChoices> chosen = new LinkedHashMap<>();
+        chosen.put("yes.schem", new BuildChoices(Set.of(), true));
+        chosen.put("no.schem", new BuildChoices(Set.of("minecraft:brewing_stand"), false));
+        PlacementStore.save(file(), Map.of(), chosen);
+        Map<String, BuildChoices> out = PlacementStore.loadAll(file(), path -> true).choices();
+        // a yes with nothing unticked is still a choice worth keeping
+        assertEquals(chosen, out);
+        Files.writeString(file(), "{\"schema\": 1, \"placements\": {}, \"choices\": {\"a.schem\": {\"nether\": \"maybe\"}}}",
+            StandardCharsets.UTF_8);
+        // a hand edit we don't follow reads as never asked, which asks again rather than going anywhere
+        assertTrue(PlacementStore.loadAll(file(), path -> true).choices().isEmpty());
+    }
+
+    @Test
+    public void tickingARowBackOnForgetsANo() {
+        BuildChoices no = new BuildChoices(Set.of("minecraft:brewing_stand"), false);
+        assertEquals(null, no.withIncluded("minecraft:brewing_stand", true).nether());
+        // something else changing keeps it
+        assertEquals(Boolean.FALSE, no.withIncluded("minecraft:glass", false).nether());
+        // and a yes is a yes for anything
+        assertEquals(Boolean.TRUE, new BuildChoices(Set.of("minecraft:glass"), true).withIncluded("minecraft:glass", true).nether());
+    }
+
+    @Test
     public void noChoicesLeavesTheFileAsItWas() {
         String json = PlacementStore.toJson(Map.of("a.schem", SchematicPlacement.at(BlockPos.ZERO, "d")), Map.of());
         assertFalse(json.contains("choices"));

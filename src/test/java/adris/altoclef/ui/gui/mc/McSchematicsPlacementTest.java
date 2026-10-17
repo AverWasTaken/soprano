@@ -233,6 +233,47 @@ public class McSchematicsPlacementTest {
     }
 
     @Test
+    public void theNetherAnswerIsKeptUntilTheBuildMovesOrFinishes() {
+        McSchematics s = make();
+        s.build("wall.schem");
+        drain();
+        var memory = game.built.get(0).memory();
+        assertNull(memory.nether());
+        memory.netherAnswered(false, Set.of("minecraft:brewing_stand"));
+        // the left out ones show unticked in the tab, and both survive a new session
+        assertEquals(Set.of("minecraft:brewing_stand"), s.excluded("wall.schem"));
+        McSchematics again = make();
+        again.build("wall.schem");
+        drain();
+        var resumed = game.built.get(1).memory();
+        assertEquals(Boolean.FALSE, resumed.nether());
+        resumed.netherAnswered(true, Set.of());
+        assertEquals(Boolean.TRUE, resumed.nether());
+        // done: the next build asks again, the unticked rows stay
+        resumed.finished();
+        assertNull(resumed.nether());
+        assertEquals(Set.of("minecraft:brewing_stand"), again.excluded("wall.schem"));
+        // a moved build is a new build too
+        resumed.netherAnswered(true, Set.of());
+        again.move("wall.schem", 1, 0, 0);
+        assertNull(resumed.nether());
+        assertEquals(Set.of("minecraft:brewing_stand"), again.excluded("wall.schem"));
+    }
+
+    @Test
+    public void aStaleBuildDoesNotWriteIntoAnotherWorld() {
+        McSchematics s = make();
+        s.build("wall.schem");
+        drain();
+        var memory = game.built.get(0).memory();
+        game.file = folder.getRoot().toPath().resolve("other").resolve("altoclef").resolve(PlacementStore.FILE_NAME);
+        memory.netherAnswered(false, Set.of("minecraft:brewing_stand"));
+        assertTrue(s.excluded("wall.schem").isEmpty());
+        game.file = saveFile;
+        assertTrue(s.excluded("wall.schem").isEmpty());
+    }
+
+    @Test
     public void choicesBelongToTheirWorld() {
         McSchematics s = make();
         s.setIncluded("wall.schem", "minecraft:stone", false);

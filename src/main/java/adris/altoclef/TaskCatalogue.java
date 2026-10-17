@@ -53,6 +53,15 @@ public class TaskCatalogue {
     private static final HashSet<Item> _resourcesObtainable = new HashSet<>();
     // every recipe the shaped helpers register, by name. building the task needs a running client, so the recipe parity test reads these instead
     private static final TreeMap<String, RecipeTarget> _craftedRecipes = new TreeMap<>();
+    // what the smelts and smiths are made from, by name. they aren't recipes in the graph above, and a smelt of
+    // netherrack is a trip to the nether all the same
+    private static final HashMap<String, List<String>> _madeFrom = new HashMap<>();
+    // the catalogue name of every single item entry, so needsNether can go from an item to its recipe
+    private static final HashMap<Item, String> _itemToName = new HashMap<>();
+    // needsNether's answers. the catalogue never changes after the static block, so neither do these
+    private static final Map<String, Boolean> _needsNether = new java.util.concurrent.ConcurrentHashMap<>();
+    // the ones whose task walks to the nether by itself without the catalogue flag saying so
+    private static final Set<String> NETHER_BY_HAND = Set.of("nether_bricks", "magma_cream");
 
     static {
         /// DEFINE RESOURCE TASKS HERE
@@ -678,6 +687,7 @@ mine("pale_oak_sapling", Blocks.PALE_OAK_LEAVES, Items.PALE_OAK_SAPLING);
                 throw new IllegalStateException("Tried cataloguing " + matches[0].getDescriptionId() + " twice!");
             }
             _itemToResourceTask.put(matches[0], result);
+            _itemToName.put(matches[0], name);
         }
 
         return result;
@@ -752,6 +762,80 @@ mine("pale_oak_sapling", Blocks.PALE_OAK_LEAVES, Items.PALE_OAK_SAPLING);
     // and must not go through the catalogue's tasks, which collect whatever the bag is short of
     public static RecipeTarget recipeOf(String name) {
         return _craftedRecipes.get(name);
+    }
+
+    // whether getting this item sends the bot to the nether: its entry is pinned there (blaze rods, quartz), or something
+    // it's crafted, smelted or smithed from is (a brewing stand is a blaze rod with extra steps). gold isn't, its entry
+    // goes anywhere and mines the overworld ore. false for anything the catalogue doesn't know
+    public static boolean needsNether(Item item) {
+        String name = _itemToName.get(item);
+        return name != null && needsNether(name, new HashSet<>());
+    }
+
+    private static boolean needsNether(String name, Set<String> visiting) {
+        Boolean known = _needsNether.get(name);
+        if (known != null) {
+            return known;
+        }
+        // a loop in the graph is no road to the nether. the answer isn't kept while the loop is open, the outer call
+        // that closes it knows better
+        if (!visiting.add(name)) {
+            return false;
+        }
+        boolean out = netherHere(name, visiting);
+        visiting.remove(name);
+        if (out || visiting.isEmpty()) {
+            _needsNether.put(name, out);
+        }
+        return out;
+    }
+
+    private static boolean netherHere(String name, Set<String> visiting) {
+        CataloguedResource entry = _nameToResourceTask.get(name);
+        if (NETHER_BY_HAND.contains(name) || (entry != null && entry.forcesNether())) {
+            return true;
+        }
+        RecipeTarget recipe = _craftedRecipes.get(name);
+        if (recipe != null) {
+            for (ItemTarget slot : recipe.getRecipe().getSlots()) {
+                if (slot != null && slotNeedsNether(slot, visiting)) {
+                    return true;
+                }
+            }
+        }
+        for (String from : _madeFrom.getOrDefault(name, List.of())) {
+            if (needsNether(from, visiting)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // a slot that takes "planks" is happy with oak, so a group only counts when every item in it is nether only
+    private static boolean slotNeedsNether(ItemTarget slot, Set<String> visiting) {
+        if (slot.isCatalogueItem()) {
+            String name = slot.getCatalogueName();
+            Item[] matches = getItemMatches(name);
+            CataloguedResource entry = _nameToResourceTask.get(name);
+            if (matches.length <= 1 || entry == null || _craftedRecipes.containsKey(name)) {
+                return needsNether(name, visiting);
+            }
+            return entry.forcesNether() || allNeedNether(matches, visiting);
+        }
+        return allNeedNether(slot.getMatches(), visiting);
+    }
+
+    private static boolean allNeedNether(Item[] matches, Set<String> visiting) {
+        if (matches.length == 0) {
+            return false;
+        }
+        for (Item item : matches) {
+            String name = _itemToName.get(item);
+            if (name == null || !needsNether(name, visiting)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     public static Collection<String> resourceNames() {
@@ -838,6 +922,7 @@ mine("pale_oak_sapling", Blocks.PALE_OAK_LEAVES, Items.PALE_OAK_SAPLING);
     }
 
     private static CataloguedResource smelt(String name, Item[] matches, String materials, Item... optionalMaterials) {
+        _madeFrom.put(name, List.of(materials));
         return put(name, matches, count -> new SmeltInFurnaceTask(new SmeltTarget(new ItemTarget(matches, count), new ItemTarget(materials, count), optionalMaterials)));
     }
 
@@ -846,6 +931,7 @@ mine("pale_oak_sapling", Blocks.PALE_OAK_LEAVES, Items.PALE_OAK_SAPLING);
     }
 
     private static CataloguedResource smith(String name, Item[] matches, String materials, String tool) {
+        _madeFrom.put(name, List.of(materials, tool));
         return put(name, matches, count -> new UpgradeInSmithingTableTask(new ItemTarget(tool, count), new ItemTarget(materials, count), new ItemTarget(matches, count)));//new SmeltInFurnaceTask(new SmeltTarget(new ItemTarget(matches, count), new ItemTarget(materials, count))));
     }
 
@@ -898,6 +984,10 @@ mine("pale_oak_sapling", Blocks.PALE_OAK_LEAVES, Items.PALE_OAK_SAPLING);
             CataloguedResource t = put(cataloguedName, new Item[]{match}, count -> getTask.apply(woodItems, count));
             if (requireNetherForNetherStuff && isNether) {
                 t.forceDimension(Dimension.NETHER);
+            } else if (isNether) {
+                // the crimson stairs and doors go through lambdas, not the recipe helpers, so needsNether would never
+                // see them. they're all crimson planks in the end
+                _madeFrom.putIfAbsent(cataloguedName, List.of(woodItems.prefix + "_planks"));
             }
             result.add(t);
         }
@@ -992,6 +1082,11 @@ mine("pale_oak_sapling", Blocks.PALE_OAK_LEAVES, Items.PALE_OAK_SAPLING);
         public CataloguedResource anyDimension() {
             _forceDimension = false;
             return this;
+        }
+
+        // the task goes to the nether before it does anything else (ResourceTask.isInWrongDimension)
+        boolean forcesNether() {
+            return _forceDimension && _targetDimension == Dimension.NETHER;
         }
 
         public ResourceTask getResource(int count) {

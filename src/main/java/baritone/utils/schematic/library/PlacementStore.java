@@ -46,6 +46,8 @@ public final class PlacementStore {
 
     private static final class Choice {
         List<String> excluded;
+        // "yes" / "no", left out while nobody asked
+        String nether;
     }
 
     // both halves of the file, read in one go
@@ -173,6 +175,16 @@ public final class PlacementStore {
         if (!json.isJsonObject()) {
             return null;
         }
+        JsonElement answer = json.getAsJsonObject().get("nether");
+        Boolean nether = null;
+        if (answer != null && answer.isJsonPrimitive() && answer.getAsJsonPrimitive().isString()) {
+            // anything else is a hand edit we don't follow, and "not asked" is the safe reading of it
+            nether = switch (answer.getAsString()) {
+                case "yes" -> Boolean.TRUE;
+                case "no" -> Boolean.FALSE;
+                default -> null;
+            };
+        }
         JsonElement list = json.getAsJsonObject().get("excluded");
         Set<String> excluded = new LinkedHashSet<>();
         if (list != null && list.isJsonArray()) {
@@ -182,7 +194,7 @@ public final class PlacementStore {
                 }
             }
         }
-        return new BuildChoices(excluded);
+        return new BuildChoices(excluded, nether);
     }
 
     // missing = the default, a name we don't know = null (the entry is dropped rather than built the wrong way round)
@@ -212,6 +224,7 @@ public final class PlacementStore {
             }
             Choice e = new Choice();
             e.excluded = new ArrayList<>(c.excluded());
+            e.nether = c.nether() == null ? null : c.nether() ? "yes" : "no";
             data.choices.put(path, e);
         });
         placements.forEach((path, p) -> {
