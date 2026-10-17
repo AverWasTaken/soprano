@@ -274,6 +274,18 @@ public class McSchematicsPlacementTest {
     }
 
     @Test
+    public void aTickWhileTheFileIsReadWaitsForTheNextStart() {
+        McSchematics s = make();
+        s.setIncluded("wall.schem", "minecraft:stone", false);
+        s.build("wall.schem");
+        // the tab greys the boxes from the click on, so this one is for the next build
+        s.setIncluded("wall.schem", "minecraft:stone", true);
+        drain();
+        assertEquals(Set.of("minecraft:stone"), game.built.get(0).memory().excluded());
+        assertTrue(s.excluded("wall.schem").isEmpty());
+    }
+
+    @Test
     public void choicesBelongToTheirWorld() {
         McSchematics s = make();
         s.setIncluded("wall.schem", "minecraft:stone", false);
