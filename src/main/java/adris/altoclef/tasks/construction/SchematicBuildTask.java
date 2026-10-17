@@ -19,6 +19,7 @@ import adris.altoclef.tasks.squashed.GatherBillTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.ui.HudText;
 import adris.altoclef.util.ItemTarget;
+import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.WorldHelper;
 import baritone.Baritone;
 import baritone.api.Settings;
@@ -247,6 +248,8 @@ public class SchematicBuildTask extends Task {
         mod.getBehaviour().avoidBlockBreaking(pos -> phase != Phase.BUILD && !away && built.contains(pos.asLong()));
         mod.getBehaviour().avoidBlockPlacing(pos -> phase != Phase.BUILD && !away && wantsAir(pos));
         mod.getBehaviour().setReserveFloor(level, floor());
+        // a lone bed is first in line for the junk dump, and it is the whole night. nothing in a build ever wants one gone
+        mod.getBehaviour().addProtectedItems(ItemHelper.BED);
     }
 
     // pop only our own level. the child (gather, the trip home) is stopped first so it pops its own, otherwise our pop
