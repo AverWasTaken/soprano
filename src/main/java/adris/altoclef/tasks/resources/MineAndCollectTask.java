@@ -18,6 +18,7 @@ import baritone.api.utils.Dimension;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.ItemPickupRules;
 import adris.altoclef.util.helpers.LookHelper;
+import adris.altoclef.util.helpers.HotbarTools;
 import adris.altoclef.util.helpers.StorageHelper;
 import adris.altoclef.util.helpers.DropPatience;
 import adris.altoclef.util.helpers.DropWatch;
@@ -127,6 +128,8 @@ public class MineAndCollectTask extends ResourceTask {
 
     @Override
     protected Task onResourceTick(AltoClef mod) {
+        // an axe for wood, a shovel for dirt and sand, out of the bag and into the hotbar where ToolSet can see them
+        HotbarTools.forBlocks(mod, _blocksToMine);
         if (!StorageHelper.miningRequirementMet(mod, _requirement)) {
             return new SatisfyMiningRequirementTask(_requirement);
         }
