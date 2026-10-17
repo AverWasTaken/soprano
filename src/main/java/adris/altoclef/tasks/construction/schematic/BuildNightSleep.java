@@ -63,6 +63,8 @@ public final class BuildNightSleep {
     private LocalPlayer player;
     private long screenSince = -1;
     private String said;
+    // the last leftover/bag/standing triple bedReady printed, -1 before the first
+    private int readyKey = -1;
     // we asked the block tracker to look for beds. NightBeds.find only knows what the tracker has, and the tracker only
     // scans what somebody tracks, so a bed the player put down before the build was never in it. the count is per
     // caller (BlockTracker ref counts), so the gamer's own tracking and ours can't switch each other off
@@ -200,8 +202,7 @@ public final class BuildNightSleep {
         // not time yet, or not allowed to go: the bed gets made ready for when it is
         NightPrep.Gate gate = new NightPrep.Gate(busy != NightSleep.Busy.PHASE, busy != NightSleep.Busy.NONE && busy != NightSleep.Busy.PHASE,
             fighting, hurt, spent, windowOpen);
-        Task task = prep.tick(mod, gate, () -> leftover || mod.getItemStorage().getItemCount(ItemHelper.BED) > 0
-            || NightBeds.find(mod, radius) != null);
+        Task task = prep.tick(mod, gate, () -> bedReady(mod, leftover, radius));
         note(why + ", prep " + prep.last());
         return task;
     }
@@ -225,6 +226,20 @@ public final class BuildNightSleep {
         } else {
             screenSince = -1;
         }
+    }
+
+    // the prep's "is a bed ready", same as the gamer's nightBedReady: all three asked, a line only when one of them moves.
+    // its own line and not note(), note only keys on `what` and the prep's line would swallow it
+    private boolean bedReady(AltoClef mod, boolean leftover, int radius) {
+        int bag = mod.getItemStorage().getItemCount(ItemHelper.BED);
+        boolean found = NightBeds.find(mod, radius) != null;
+        int key = (leftover ? 4 : 0) | (bag > 0 ? 2 : 0) | (found ? 1 : 0);
+        if (key != readyKey) {
+            readyKey = key;
+            Debug.logInternal("build night: bed ready? leftover " + leftover + ", bag " + bag + ", standing " + found
+                + " (" + NightBeds.nearestWhy(mod, radius) + ")");
+        }
+        return leftover || bag > 0 || found;
     }
 
     // one debug line when the answer changes, not one a tick
