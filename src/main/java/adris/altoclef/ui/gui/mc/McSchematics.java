@@ -127,7 +127,7 @@ public final class McSchematics implements SchematicsAccess {
         TerrainMap.Source terrain();
 
         // starts it and hands back its serial, see runningBuild. in survival that's the gathering task's, not the builder's.
-        // memory is the file's choices (the unchecked items), only the survival task reads it
+        // memory is the file's choices: the unchecked items (both modes cut them) and the nether answer (survival only)
         long build(String name, IStaticSchematic schematic, BlockPos origin, Rotation rotation, Mirror mirror, BuildMemory memory);
 
         // the serial of whatever is building right now (our gathering task while it runs, else the builder), 0 when idle
@@ -695,12 +695,13 @@ public final class McSchematics implements SchematicsAccess {
     }
 
     // the build's end of the choices. it can outlive the world it started in (a quit with the task still around), and
-    // a stale one must not write into the next world's file
-    private BuildMemory memoryFor(String relativePath, Path world) {
+    // a stale one must not write into the next world's file. the unchecked rows are the ones at the click: the tab
+    // greys the boxes from then on, and a tick during the read would otherwise sneak into the build it says it won't
+    private BuildMemory memoryFor(String relativePath, Path world, Set<String> atClick) {
         return new BuildMemory() {
             @Override
             public Set<String> excluded() {
-                return live() ? choicesOf(relativePath).excluded() : Set.of();
+                return atClick;
             }
 
             @Override
@@ -758,7 +759,8 @@ public final class McSchematics implements SchematicsAccess {
             int ticket = ++buildTicket;
             Path world = placementsFile;
             building = new Building(BuildState.PARSING, relativePath, "Reading " + info.name());
-            background.execute(() -> read(ticket, world, info, p));
+            BuildMemory memory = memoryFor(relativePath, world, choicesOf(relativePath).excluded());
+            background.execute(() -> read(ticket, world, info, p, memory));
             BlockPos o = p.origin();
             return Result.ok("Building " + info.name() + " at " + o.getX() + ", " + o.getY() + ", " + o.getZ());
         } catch (Throwable t) {
@@ -780,7 +782,7 @@ public final class McSchematics implements SchematicsAccess {
     }
 
     // the background half: the same parse (and the same soft cache) the material count used, then back to the game thread
-    private void read(int ticket, Path world, SchematicInfo info, SchematicPlacement p) {
+    private void read(int ticket, Path world, SchematicInfo info, SchematicPlacement p, BuildMemory memory) {
         IStaticSchematic parsedFile = null;
         String error = null;
         try {
@@ -793,10 +795,11 @@ public final class McSchematics implements SchematicsAccess {
         }
         IStaticSchematic schematic = parsedFile;
         String failure = error;
-        gameThread.execute(() -> Safe.run("gui schematic build start", () -> start(ticket, world, info, p, schematic, failure)));
+        gameThread.execute(() -> Safe.run("gui schematic build start", () -> start(ticket, world, info, p, schematic, failure, memory)));
     }
 
-    private void start(int ticket, Path world, SchematicInfo info, SchematicPlacement p, IStaticSchematic schematic, String error) {
+    private void start(int ticket, Path world, SchematicInfo info, SchematicPlacement p, IStaticSchematic schematic, String error,
+                       BuildMemory memory) {
         // a second click while the first was reading wins
         if (ticket != buildTicket) {
             return;
@@ -811,8 +814,7 @@ public final class McSchematics implements SchematicsAccess {
             return;
         }
         try {
-            ourBuild = game.build(info.file().getName(), schematic, p.origin(), p.rotation(), p.mirror(),
-                memoryFor(info.relativePath(), world));
+            ourBuild = game.build(info.file().getName(), schematic, p.origin(), p.rotation(), p.mirror(), memory);
             building = new Building(BuildState.STARTED, info.relativePath(), "Building " + info.name());
         } catch (Refused r) {
             building = new Building(BuildState.ERROR, info.relativePath(), r.getMessage());

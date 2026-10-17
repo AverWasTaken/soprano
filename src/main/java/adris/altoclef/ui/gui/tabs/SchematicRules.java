@@ -72,7 +72,9 @@ final class SchematicRules {
     }
 
     // the same count with the unchecked rows gone: what the build will actually ask for. the shortfall and the
-    // warning read this one, the head keeps the whole file's numbers
+    // warning read this one, the head keeps the whole file's numbers. a row at a time, so it's a touch high when one
+    // cell costs two items (untick the pot and the poppies in it still count here, the build drops them too). the
+    // list only has totals per item, and the tab isn't worth a recount per click
     static Materials checkedOnly(Materials m, Set<String> excluded) {
         if (excluded == null || excluded.isEmpty()) {
             return m;

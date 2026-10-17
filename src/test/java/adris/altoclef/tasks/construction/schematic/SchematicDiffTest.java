@@ -27,14 +27,18 @@ import static org.junit.Assert.assertTrue;
 
 public class SchematicDiffTest {
 
+    // set in boot, same reason as SkipItemsTest: touching Blocks before the bootstrap sinks the whole jvm's registries
+    private static BlockState AIR;
+    private static BlockState STONE;
+    private static BlockState GLASS;
+
     @BeforeClass
     public static void boot() {
         ItemFixture.boot();
+        AIR = Blocks.AIR.defaultBlockState();
+        STONE = Blocks.STONE.defaultBlockState();
+        GLASS = Blocks.GLASS.defaultBlockState();
     }
-
-    private static final BlockState AIR = Blocks.AIR.defaultBlockState();
-    private static final BlockState STONE = Blocks.STONE.defaultBlockState();
-    private static final BlockState GLASS = Blocks.GLASS.defaultBlockState();
 
     // a world that is air unless told otherwise, with the chunks listed as unloaded
     private static final class FakeWorld implements SchematicDiff.World {

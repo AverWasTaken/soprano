@@ -139,4 +139,32 @@ public class SkipItemsTest {
         assertEquals(1, diff.correct());
         assertEquals(0, diff.wrong());
     }
+
+    @Test
+    public void theTasksCountKeepsAStandingUncheckedCellButDoesNotBillAMissingOne() {
+        // the task diffs the whole file with leftOut, not the cut one: an unticked stone wall that's already up stays
+        // "built" (the gather's pickaxe leaves it alone), the unticked cell that isn't up yet costs nothing
+        BlockState stone = Blocks.STONE.defaultBlockState();
+        StaticSchematic file = row(stone, stone);
+        Set<String> off = Set.of("minecraft:stone");
+        SchematicDiff.World world = new SchematicDiff.World() {
+            @Override
+            public boolean loaded(int chunkX, int chunkZ) {
+                return true;
+            }
+
+            @Override
+            public BlockState state(int x, int y, int z) {
+                return x == 0 ? stone : AIR;
+            }
+        };
+        SchematicDiff diff = new SchematicDiff(file, 0, 0, 0, block -> false, state -> SkipItems.leftOut(off, state));
+        assertTrue(diff.step(world, 100));
+        assertTrue(diff.result().items().isEmpty());
+        assertEquals(1, diff.correct());
+        assertEquals(0, diff.wrong());
+        assertTrue(diff.built().contains(net.minecraft.core.BlockPos.asLong(0, 0, 0)));
+        assertFalse(SkipItems.leftOut(Set.of(), stone));
+        assertTrue(SkipItems.leftOut(Set.of("minecraft:poppy"), Blocks.POTTED_POPPY.defaultBlockState()));
+    }
 }

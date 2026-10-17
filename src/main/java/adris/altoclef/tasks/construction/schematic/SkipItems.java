@@ -59,6 +59,15 @@ public final class SkipItems implements IStaticSchematic {
         return any ? cost.keySet().stream().anyMatch(skip::contains) : skip.containsAll(cost.keySet());
     }
 
+    // leaveOut's rule for one state, without a file around it. the count asks this so it can still see the left out
+    // cells that are already standing (and keep the pickaxe off them) while not billing the ones that aren't
+    public static boolean leftOut(Set<String> excluded, BlockState state) {
+        if (excluded.isEmpty() || state == null) {
+            return false;
+        }
+        return MaterialList.itemsFor(paired(state)).keySet().stream().anyMatch(excluded::contains);
+    }
+
     // a second half costs nothing by itself, so it goes by the half that pays for it. a door top whose bottom is cut
     // would otherwise stay in, and the builder would stand there trying to place half a door
     static BlockState paired(BlockState state) {
