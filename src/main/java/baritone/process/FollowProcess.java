@@ -110,14 +110,7 @@ public final class FollowProcess extends BaritoneProcessHelper implements IFollo
             lock.clear();
             lockWorld = ctx.world();
         }
-        Entity before = lock.locked();
-        cache = targets(into, lock, valid, ctx.player().tickCount, isGone(before, all));
-        Entity after = lock.locked();
-        if (after != before && Baritone.settings().logAimSources.value && (after == null || before == null || !after.getUUID().equals(before.getUUID()))) {
-            logDirect(after == null
-                    ? "[logAimSources] follow: lost " + describe(before)
-                    : "[logAimSources] follow: locked onto " + describe(after) + " (" + valid.size() + " candidates)");
-        }
+        cache = targets(into, lock, valid, ctx.player().tickCount, isGone(lock.locked(), all));
     }
 
     static <T> List<T> targets(boolean into, TargetLock<T> lock, List<T> valid, int now, boolean gone) {
@@ -145,10 +138,6 @@ public final class FollowProcess extends BaritoneProcessHelper implements IFollo
             }
         }
         return false;
-    }
-
-    private String describe(Entity entity) {
-        return entity == null ? "nothing" : entity.getName().getString() + " at " + String.format("%.1f", Math.sqrt(entity.distanceToSqr(ctx.player()))) + "m";
     }
 
     @Override

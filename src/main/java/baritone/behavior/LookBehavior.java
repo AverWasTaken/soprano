@@ -23,20 +23,13 @@ import baritone.api.behavior.ILookBehavior;
 import baritone.api.behavior.look.IAimProcessor;
 import baritone.api.behavior.look.ITickableAimProcessor;
 import baritone.api.event.events.*;
-import baritone.api.utils.Helper;
 import baritone.api.utils.IPlayerContext;
 import baritone.api.utils.Rotation;
-import baritone.behavior.look.AimLog;
 import baritone.behavior.look.ForkableRandom;
-import baritone.pathing.movement.Movement;
-import baritone.pathing.path.PathExecutor;
-import net.minecraft.world.entity.Entity;
 import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
 
 import java.util.ArrayDeque;
-import java.util.ArrayList;
 import java.util.Deque;
-import java.util.List;
 import java.util.Optional;
 import baritone.utils.ExperimentalMovement;
 
@@ -67,9 +60,6 @@ public final class LookBehavior extends Behavior implements ILookBehavior {
     private final Deque<Float> smoothYawBuffer;
     private final Deque<Float> smoothPitchBuffer;
 
-    private final AimLog aimLog = new AimLog();
-    private final List<String> aimWriters = new ArrayList<>();
-
     public LookBehavior(Baritone baritone) {
         super(baritone);
         this.processor = new AimProcessor(baritone.getPlayerContext());
@@ -79,78 +69,7 @@ public final class LookBehavior extends Behavior implements ILookBehavior {
 
     @Override
     public void updateTarget(Rotation rotation, boolean blockInteract) {
-        if (Baritone.settings().logAimSources.value) {
-            // the last writer of the tick wins, so just note who it was and judge the winner when it's applied
-            if (aimWriters.size() >= 16) {
-                // nobody consumed the target for a while (paused, menus), don't grow forever
-                aimWriters.remove(0);
-            }
-            aimWriters.add(String.format("%s %.1f", caller(), rotation.getYaw()));
-        }
         this.target = new Target(rotation, Target.Mode.resolve(ctx, blockInteract));
-    }
-
-    // every look target goes through updateTarget, so this is the one place that can tell who whipped the head around
-    private void logAim(Rotation rotation) {
-        if (ctx.player() == null || aimWriters.isEmpty()) {
-            return;
-        }
-        // the server's copy is what an anticheat compares against, the camera can be off doing free look things
-        float prev = serverRotation != null ? serverRotation.getYaw() : ctx.player().getYRot();
-        float delta = AimLog.wrappedDelta(rotation.getYaw(), prev);
-        if (!AimLog.isBig(delta)) {
-            return;
-        }
-        int skipped = aimLog.admit(ctx.player().tickCount);
-        if (skipped < 0) {
-            return;
-        }
-        StringBuilder line = new StringBuilder("[logAimSources] ").append(aimWriters.get(aimWriters.size() - 1))
-                .append(String.format(" | yaw %.1f -> %.1f (%+.1f)", prev, rotation.getYaw(), delta));
-        if (aimWriters.size() > 1) {
-            // the ones that got overwritten, oldest first. a big turn that loses still says something about the movement
-            line.append(" | overwrote ").append(String.join(", ", aimWriters.subList(0, aimWriters.size() - 1)));
-        }
-        PathExecutor current = baritone.getPathingBehavior().getCurrent();
-        if (current != null) {
-            int pos = current.getPosition();
-            List<?> movements = current.getPath().movements();
-            String move = pos >= 0 && pos < movements.size() ? movements.get(pos).getClass().getSimpleName() : "past the end";
-            line.append(String.format(" | pos %d/%d %s steer %d shortcut %.2f", pos, movements.size(), move, current.steerMask(), current.shortcutDist()));
-            String flight = current.flightNote();
-            if (flight != null) {
-                line.append(" | sprint jump ").append(flight);
-            }
-        }
-        List<Entity> following = baritone.getFollowProcess().following();
-        if (following != null && !following.isEmpty()) {
-            Entity first = following.get(0);
-            line.append(String.format(" | following %s at %.1fm", first.getName().getString(), Math.sqrt(first.distanceToSqr(ctx.player()))));
-            if (following.size() > 1) {
-                line.append(" (+").append(following.size() - 1).append(" more)");
-            }
-        }
-        if (skipped > 0) {
-            line.append(" | ").append(skipped).append(" more swallowed");
-        }
-        // chat lands in the game log as [CHAT] too, so a whole run can still be grepped after
-        Helper.HELPER.logDirect(line.toString());
-    }
-
-    // first frame that isn't us, the lambda in Movement.update or altoclef's LookHelper (every task aims through it, so
-    // it'd tag all of them the same). class + method so altoclef / mine / builder aims stand out
-    private static String caller() {
-        return StackWalker.getInstance().walk(frames -> frames
-                .filter(f -> !f.getClassName().equals(LookBehavior.class.getName()))
-                .filter(f -> !(f.getClassName().equals(Movement.class.getName()) && f.getMethodName().startsWith("lambda$")))
-                .filter(f -> !f.getClassName().startsWith("java."))
-                .filter(f -> !f.getClassName().endsWith(".LookHelper"))
-                .findFirst()
-                .map(f -> {
-                    String c = f.getClassName();
-                    return c.substring(c.lastIndexOf('.') + 1) + "." + f.getMethodName() + ":" + f.getLineNumber();
-                })
-                .orElse("?"));
     }
 
     @Override
@@ -177,10 +96,6 @@ public final class LookBehavior extends Behavior implements ILookBehavior {
                 if (this.target.mode == Target.Mode.NONE) {
                     // Just return for PRE, we still want to set target to null on POST
                     return;
-                }
-                if (Baritone.settings().logAimSources.value) {
-                    // after the NONE check, a target that never gets applied didn't turn anyone's head
-                    logAim(this.target.rotation);
                 }
 
                 this.prevRotation = new Rotation(ctx.player().getYRot(), ctx.player().getXRot());
@@ -215,7 +130,6 @@ public final class LookBehavior extends Behavior implements ILookBehavior {
                 }
                 // The target is done being used for this game tick, so it can be invalidated
                 this.target = null;
-                this.aimWriters.clear();
                 break;
             }
             default:
@@ -239,7 +153,6 @@ public final class LookBehavior extends Behavior implements ILookBehavior {
     public void onWorldEvent(WorldEvent event) {
         this.serverRotation = null;
         this.target = null;
-        this.aimWriters.clear();
     }
 
     public void pig() {

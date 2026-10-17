@@ -452,15 +452,10 @@ final class SprintJump {
     }
 
     private final Lean lean = new Lean();
-    // the executor holds W, S or nothing off this, and logAimSources prints it
+    // the executor holds W, S or nothing off this
     private int lastThrottle = PUSH;
 
     int throttle() {
         return lastThrottle;
-    }
-
-    String steerNote() {
-        String keys = lastThrottle == PUSH ? "push W" : lastThrottle == BACK ? "brake S" : "coast";
-        return String.format("%s lean %.2f tick %d", keys, lean.value, ticks);
     }
 }

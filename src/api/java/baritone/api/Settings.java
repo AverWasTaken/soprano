@@ -984,21 +984,6 @@ public final class Settings {
     public final Setting<Boolean> brakeAscends = new Setting<>(true);
 
     /**
-     * Debug logging for sudden turns of the head.
-     * <p>
-     * Whenever the look target a tick ends up with is more than 30 degrees of yaw away from the rotation the server last
-     * got, one line says who set it (class, method and line), the yaw before and after, any other look targets set that
-     * tick and overwritten, the path position, the movement there, which steering helpers had a hand in it, how far a
-     * ground shortcut was from its target, the throttle and sideways tilt of a sprint jump in the air, and who is being
-     * followed and how far away. Following a group of entities (like {@code #follow players}) also gets a line whenever it
-     * locks onto a different one.
-     * <p>
-     * Lines go to chat (which the game log keeps a copy of) with a {@code [logAimSources]} prefix, at most one every 4 ticks (the ones in
-     * between are counted on the next line). Off by default.
-     */
-    public final Setting<Boolean> logAimSources = new Setting<>(false);
-
-    /**
      * Render the path
      */
     public final Setting<Boolean> renderPath = new Setting<>(true);
