@@ -164,11 +164,17 @@ public final class RecipeBill {
     // no pooling with other woods in the bag on purpose: an any-planks target reads as met by D's own planks, so spare logs
     // of another kind never get crafted and the sticks eat D's planks anyway
     public static Bill of(Map<String, Integer> targets, Book book, World world) {
+        return of(targets, book, world, null);
+    }
+
+    // same, but the generic share stays on latched (the wood an earlier bill of this job picked) while the job still wants
+    // any of it. two woods a few planks apart would otherwise swap places as the bag fills and strand the old one's planks
+    public static Bill of(Map<String, Integer> targets, Book book, World world, String latched) {
         Bill raw = ofRaw(targets, book, world);
         if (raw.need(PLANKS) <= 0 && raw.need(LOG) <= 0) {
             return raw;
         }
-        String main = mainWood(raw, book);
+        String main = keepsLatch(raw, book, latched) ? latched : mainWood(raw, book);
         if (main == null) {
             return raw;
         }
@@ -202,6 +208,19 @@ public final class RecipeBill {
             }
         }
         return bestPlanks > 0 || bestLogs > 0 ? best : null;
+    }
+
+    // the latch only holds while the job still names that wood itself. if the last spruce stair got cut from the job, sending
+    // the sticks to spruce would be a whole extra tree for nothing. any spruce_ node counts, not just the planks: crafted
+    // stairs in the bag stop asking for planks, so their gross planks go to 0 while the job very much still wants spruce.
+    // "dark_oak_door" doesn't start with "oak_", so oak doesn't get dark oak's credit
+    private static boolean keepsLatch(Bill raw, Book book, String latched) {
+        if (latched == null || !book.woods().contains(latched) || book.gatherTier(latched + "_log") < 0) return false;
+        String prefix = latched + "_";
+        for (Node n : raw.nodes()) {
+            if (n.gross() > 0 && n.name().startsWith(prefix)) return true;
+        }
+        return false;
     }
 
     // the book with "planks"/"log" inputs pointed at the main wood, writing down who had them. held and tiers are the real book's
