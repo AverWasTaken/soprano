@@ -8,6 +8,7 @@ import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.*;
 import baritone.api.utils.Dimension;
 import adris.altoclef.util.helpers.ItemHelper;
+import adris.altoclef.util.helpers.StorageHelper;
 import java.util.ArrayList;
 import java.util.Arrays;
 import net.minecraft.world.item.Item;
@@ -67,7 +68,7 @@ public class CollectPlanksTask extends ResourceTask {
 
     @Override
     protected boolean craftableFromHeld(AltoClef mod) {
-        return mod.getItemStorage().getItemCount(_logs) > 0;
+        return StorageHelper.craftUsableCount(mod, _logs) > 0;
     }
 
     @Override
@@ -79,18 +80,20 @@ public class CollectPlanksTask extends ResourceTask {
     protected Task onResourceTick(AltoClef mod) {
 
         // Craft when we can
-        int totalInventoryPlankCount = mod.getItemStorage().getItemCount(_planks);
-        int heldLogs = mod.getItemStorage().getItemCount(_logs);
+        // counted the way the craft counts (craftUsableCount). logs in a furnace slot used to count as held, so we never
+        // went chopping and the craft below said out of materials forever
+        int totalInventoryPlankCount = StorageHelper.craftUsableCount(mod, _planks);
+        int heldLogs = StorageHelper.craftUsableCount(mod, _logs);
         int potentialPlanks = totalInventoryPlankCount + heldLogs * 4;
         if (craftHeldLogsNow(heldLogs, potentialPlanks, _targetCount, _chopping)) {
             for (Item logCheck : _logs) {
-                int count = mod.getItemStorage().getItemCount(logCheck);
+                int count = StorageHelper.craftUsableCount(mod, logCheck);
                 if (count > 0) {
                     Item plankCheck = ItemHelper.logToPlanks(logCheck);
                     if (plankCheck == null) {
                         Debug.logError("Invalid/Un-convertable log: " + logCheck + " (failed to find corresponding plank)");
                     }
-                    int plankCount = mod.getItemStorage().getItemCount(plankCheck);
+                    int plankCount = StorageHelper.craftUsableCount(mod, plankCheck);
                     int otherPlankCount = totalInventoryPlankCount - plankCount;
                     int targetTotalPlanks = Math.min(count * 4 + plankCount, _targetCount - otherPlankCount);
                     setDebugState("We have " + logCheck + ", crafting " + targetTotalPlanks + " planks.");
