@@ -47,6 +47,12 @@ public class Debug {
         logMessage(String.format(format, args));
     }
 
+    // chat only with chatDebug on, the trace keeps it either way. for the play by play nobody asked to read
+    public static void logDebug(String message) {
+        Trace.record("debug: " + message);
+        Helper.HELPER.logDebug(message);
+    }
+
     public static void logWarning(String message) {
         logInternal("WARNING: " + message);
         if (jankModInstance != null && !Baritone.settings().altoHideAllWarningLogs.value) {
