@@ -179,4 +179,28 @@ public class GarbageRulesTest {
         ItemStack stock = new ItemStack(Items.COOKED_BEEF, 16);
         assertFalse(GarbageRules.keepsFood(bag(spare, stock), GarbageRules.keepUnits(spare), FLOOR));
     }
+
+    @Test
+    public void aPickaxeNeverLosesToASword() {
+        // both plain Item since 1.21.2, the old getClass() bucket threw the pick here
+        assertEquals(-1, GarbageRules.worseTool(List.of(Items.IRON_PICKAXE, Items.DIAMOND_SWORD)));
+        assertEquals(-1, GarbageRules.worseTool(List.of(Items.DIAMOND_SWORD, Items.IRON_PICKAXE, Items.STONE_AXE, Items.WOODEN_SHOVEL)));
+    }
+
+    @Test
+    public void theWorsePickaxeGoes() {
+        assertEquals(0, GarbageRules.worseTool(List.of(Items.STONE_PICKAXE, Items.IRON_PICKAXE)));
+        assertEquals(1, GarbageRules.worseTool(List.of(Items.IRON_PICKAXE, Items.STONE_PICKAXE)));
+        // a sword in between changes nothing
+        assertEquals(2, GarbageRules.worseTool(List.of(Items.DIAMOND_PICKAXE, Items.WOODEN_SWORD, Items.WOODEN_PICKAXE)));
+    }
+
+    @Test
+    public void slotsWeMayNotThrowAreSkipped() {
+        List<net.minecraft.world.item.Item> items = new ArrayList<>();
+        items.add(null);
+        items.add(Items.IRON_PICKAXE);
+        items.add(Items.DIRT);
+        assertEquals(-1, GarbageRules.worseTool(items));
+    }
 }
