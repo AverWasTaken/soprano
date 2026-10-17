@@ -32,7 +32,10 @@ public class EscapeFromLavaTask extends CustomBaritoneGoalTask {
         mod.getBehaviour().push();
         mod.getClientBaritone().getExploreProcess().onLostControl();
         mod.getClientBaritone().getCustomGoalProcess().onLostControl();
-        mod.getBehaviour().allowSwimThroughLava(true);
+        boolean inLava = mod.getPlayer().isInLava();
+        _outOfLava = inLava ? 0 : LAVA_GRACE_TICKS;
+        _lavaAllowed = lavaPathingAllowed(inLava, _outOfLava);
+        mod.getBehaviour().allowSwimThroughLava(_lavaAllowed);
         // Encourage placing of all blocks!
         mod.getBehaviour().setBlockPlacePenalty(0);
         mod.getBehaviour().setBlockBreakAdditionalPenalty(0); // Normally 2
@@ -40,8 +43,36 @@ public class EscapeFromLavaTask extends CustomBaritoneGoalTask {
         _checker = new MovementProgressChecker((int) Float.POSITIVE_INFINITY);
     }
 
+    // swimming through lava is how you get out of a lake you're in. this task also runs when we're only on fire, and then a
+    // path through the lava is a path back into it: with this on the planner reads lava as water. so it's only on while
+    // we're really in lava, plus a few ticks for the surface flicker at the shore. a flip rebuilds PrecomputedData, which
+    // is fine at a couple of flips per escape
+    private static final int LAVA_GRACE_TICKS = 10;
+    private int _outOfLava;
+    private boolean _lavaAllowed;
+
+    static boolean lavaPathingAllowed(boolean inLava, int ticksOutOfLava) {
+        return inLava || ticksOutOfLava < LAVA_GRACE_TICKS;
+    }
+
+    private void updateLavaRule(AltoClef mod) {
+        boolean inLava = mod.getPlayer().isInLava();
+        _outOfLava = inLava ? 0 : Math.min(_outOfLava + 1, LAVA_GRACE_TICKS);
+        boolean allow = lavaPathingAllowed(inLava, _outOfLava);
+        if (allow == _lavaAllowed) {
+            return;
+        }
+        _lavaAllowed = allow;
+        mod.getBehaviour().allowSwimThroughLava(allow);
+        if (!allow && mod.getClientBaritone().getPathingBehavior().isPathing()) {
+            // the path we're on was planned with lava allowed, the next one won't be
+            mod.getClientBaritone().getPathingBehavior().forceCancel();
+        }
+    }
+
     @Override
     protected Task onTick(AltoClef mod) {
+        updateLavaRule(mod);
         // Sprint through lava + jump, it's faster
         if (mod.getPlayer().isInLava() || mod.getWorld().getBlockState(mod.getPlayer().blockPosition().below()).getBlock() == Blocks.LAVA) {
             mod.getInputControls().hold(Input.JUMP);
