@@ -265,6 +265,11 @@ public abstract class Task {
         }
     }
 
+    // the child we handed out last tick (stopped ones included, ask isActive). read only, swapping it is tick's job
+    protected final Task subTask() {
+        return _sub;
+    }
+
     public void stop(AltoClef mod) {
         stop(mod, null);
     }
