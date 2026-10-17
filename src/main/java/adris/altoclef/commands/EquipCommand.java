@@ -44,7 +44,7 @@ public class EquipCommand extends AltoClefCommand {
         } else {
             items = parseItems(args, AltoItem.ARMOR);
         }
-        startTask(mod, new EquipArmorTask(items));
+        startTask(mod, new EquipArmorTask(items).billed());
     }
 
     @Override
