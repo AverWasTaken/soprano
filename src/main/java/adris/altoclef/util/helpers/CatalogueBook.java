@@ -82,7 +82,7 @@ public final class CatalogueBook implements RecipeBill.Book {
         return out;
     }
 
-    // the name the bill should use for a target: "wooden_pick" and wooden_pickaxe are one entry, and the bill only knows the
+    // the name the bill should use for a target: "chain" and iron_chain are one entry, and the bill only knows the
     // recipe under the real name. null when the catalogue has no single entry for it
     public static String canonical(ItemTarget target) {
         if (target.isCatalogueItem()) {
