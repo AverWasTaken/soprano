@@ -72,4 +72,12 @@ public class BuildNightSleepTest {
         assertEquals(0, BuildNightSleep.spare(held, id -> Integer.MAX_VALUE));
         assertEquals(0, BuildNightSleep.spare(Map.<String, Integer>of(), id -> 0));
     }
+
+    @Test
+    public void noBedSaysHowFarTheNearestOneIs() {
+        assertEquals("no bed known, radius 24", BuildNightSleep.bedLine(Double.POSITIVE_INFINITY, 24));
+        assertEquals("nearest known bed 37 blocks, radius 24", BuildNightSleep.bedLine(36.6, 24));
+        // close enough but turned down (monsters, copper, can't reach it)
+        assertEquals("nearest known bed 5 blocks, radius 24 (within, but no good)", BuildNightSleep.bedLine(5.2, 24));
+    }
 }

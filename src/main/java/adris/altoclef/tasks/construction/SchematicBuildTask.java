@@ -790,6 +790,7 @@ public class SchematicBuildTask extends Task {
         stopBuilder(mod);
         unprotect(mod);
         night.drop();
+        night.untrack(mod);
         done = true;
     }
 
@@ -803,6 +804,7 @@ public class SchematicBuildTask extends Task {
         // pillar is no reason to fight our way off it). a real stop lets go of both
         if (!isInterrupting()) {
             night.drop();
+            night.untrack(mod);
         }
     }
 
@@ -810,6 +812,7 @@ public class SchematicBuildTask extends Task {
     @Override
     protected void onStopWhilePaused(AltoClef mod) {
         night.drop();
+        night.untrack(mod);
     }
 
     @Override

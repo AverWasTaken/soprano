@@ -3,6 +3,7 @@ package adris.altoclef.tasks.construction.schematic;
 import adris.altoclef.AltoClef;
 import adris.altoclef.AltoSettings;
 import adris.altoclef.Debug;
+import adris.altoclef.tasks.resources.CollectBedTask;
 import adris.altoclef.tasks.speedrun.gamer.NightPrep;
 import adris.altoclef.tasks.speedrun.gamer.NightSleep;
 import adris.altoclef.tasks.speedrun.gamer.RunState;
@@ -54,11 +55,20 @@ public final class BuildNightSleep {
     private final RunState beds = new RunState();
     private final NightSleep.Budget budget = new NightSleep.Budget();
     private final NightPrep prep = new NightPrep(() -> cfg);
+    // how long GO waits on the tracker's first bed scan before going with what it has. the first look is right away
+    // (BlockTracker.needsFirstLook), this is only for a tracker that's slow about it
+    private static final long BED_SCAN_WAIT_TICKS = 10 * 20;
 
     private NightSleepTask trip;
     private LocalPlayer player;
     private long screenSince = -1;
     private String said;
+    // we asked the block tracker to look for beds. NightBeds.find only knows what the tracker has, and the tracker only
+    // scans what somebody tracks, so a bed the player put down before the build was never in it. the count is per
+    // caller (BlockTracker ref counts), so the gamer's own tracking and ours can't switch each other off
+    private boolean trackingBeds;
+    // when GO first had to wait for that first bed scan, -1 while it isn't waiting
+    private long scanWaitSince = -1;
 
     // the night (a trip, or the evening's wool or craft) has the wheel. the prep can hand back nothing for a tick in the
     // middle of a craft, and a build that ran for that one tick would start the builder just to cut it again
@@ -111,6 +121,11 @@ public final class BuildNightSleep {
     public Task tick(AltoClef mod, boolean away) {
         long now = mod.getWorld().getGameTime();
         trackScreen(now);
+        if (!trackingBeds) {
+            // from the first tick on and for the whole build, so by the evening the scan has long been done
+            mod.getBlockTracker().trackBlock(CollectBedTask.BEDS);
+            trackingBeds = true;
+        }
         if (player != mod.getPlayer()) {
             // a new player is a death: the trip and the prep went with the old one
             player = mod.getPlayer();
@@ -148,11 +163,17 @@ public final class BuildNightSleep {
             budget.cooling(now * 0.05), NightSleep.BedSource.BAG, leftover);
         NightSleep.Why why = NightSleep.decide(cheap);
         if (why == NightSleep.Why.GO) {
+            // a bed standing next to us beats one from the bag or a craft, so the answer waits for the tracker's
+            // first look at beds. a few seconds at most, a tracker that never gets round to it doesn't cost the night
+            if (waitForBedScan(mod, now)) {
+                note("GO, waiting for the bed scan");
+                return null;
+            }
             BlockPos found = NightBeds.find(mod, radius);
             NightSleep.BedSource source = NightSleep.bedSource(found != null, mod.getItemStorage().getItemCount(ItemHelper.BED),
                 BedCraft.bestWoolStack(mod), BedCraft.usableWood(mod));
             if (source == NightSleep.BedSource.NONE) {
-                note(NightSleep.Why.NO_BED + "");
+                note(NightSleep.Why.NO_BED + "", nearestBed(mod, radius));
                 // (a prep that was still going when the window opened is over, it doesn't get to keep its screens all night)
                 prep.drop();
                 return null;
@@ -196,9 +217,57 @@ public final class BuildNightSleep {
 
     // one debug line when the answer changes, not one a tick
     private void note(String what) {
+        note(what, null);
+    }
+
+    // the detail rides along on the line but isn't part of "changed": a distance that ticks down as we walk would
+    // otherwise be a line a tick
+    private void note(String what, String detail) {
         if (!what.equals(said)) {
             said = what;
-            Debug.logInternal("build night: " + what);
+            Debug.logInternal("build night: " + what + (detail == null ? "" : ", " + detail));
+        }
+    }
+
+    // true while GO should hold off for the first bed scan. the cap is from when the waiting started, so one long
+    // wait in the evening doesn't make every later evening skip the check
+    private boolean waitForBedScan(AltoClef mod, long now) {
+        var tracker = mod.getBlockTracker();
+        if (tracker.hasBeenScanned(CollectBedTask.BEDS) && !tracker.scanPending(CollectBedTask.BEDS)) {
+            scanWaitSince = -1;
+            return false;
+        }
+        if (scanWaitSince < 0) {
+            scanWaitSince = now;
+        }
+        return now - scanWaitSince < BED_SCAN_WAIT_TICKS;
+    }
+
+    // why NO_BED, when it isn't obvious: the nearest bed the tracker knows and how far it is against the radius, so a
+    // bed that's simply too far shows up as one. NightBeds.find also turns down near ones (unreachable, monsters in
+    // the box, trial chamber copper), which is the "within" case
+    private static String nearestBed(AltoClef mod, int radius) {
+        double best = Double.POSITIVE_INFINITY;
+        for (BlockPos pos : mod.getBlockTracker().getKnownLocations(CollectBedTask.BEDS)) {
+            best = Math.min(best, pos.distToCenterSqr(mod.getPlayer().position()));
+        }
+        return bedLine(Math.sqrt(best), radius);
+    }
+
+    // infinity = the tracker knows no bed at all
+    public static String bedLine(double nearest, int radius) {
+        if (Double.isInfinite(nearest)) {
+            return "no bed known, radius " + radius;
+        }
+        int dist = (int) Math.round(nearest);
+        return "nearest known bed " + dist + " blocks, radius " + radius + (nearest <= radius ? " (within, but no good)" : "");
+    }
+
+    // stops our bed tracking. the build calls it once it's over for good, an interrupt keeps it (same as the trip)
+    public void untrack(AltoClef mod) {
+        if (trackingBeds) {
+            trackingBeds = false;
+            mod.getBlockTracker().stopTracking(CollectBedTask.BEDS);
         }
     }
 
