@@ -520,7 +520,7 @@ public class MovementNeo extends Movement implements CurvedMovement {
     private void steer(MovementState state, double hu, double hv) {
         double wx = hu * direction.getStepX() + hv * side.getStepX();
         double wz = hu * direction.getStepZ() + hv * side.getStepZ();
-        // same convention as SprintJump.steer, yaw 0 faces +z
+        // same convention as SprintJump.yaw, yaw 0 faces +z
         float yaw = (float) Math.toDegrees(Math.atan2(wz, wx)) - 90;
         state.setTarget(new MovementTarget(new Rotation(yaw, ctx.playerRotations().getPitch()), false));
     }
