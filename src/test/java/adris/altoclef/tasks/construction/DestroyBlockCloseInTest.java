@@ -140,6 +140,28 @@ public class DestroyBlockCloseInTest {
     }
 
     @Test
+    public void inThePlainGoalWithNoRayIsTheCueToCloseIn() {
+        // iron in a wall: GoalNear(pos, 1) is happy beside it, the ray isn't
+        Goal plain = new GoalNear(SAND, 1);
+        assertTrue(DestroyBlockTask.arrivedBlind(plain, SAND.west(), false));
+        // a ray means we're about to swing, not stuck
+        assertFalse(DestroyBlockTask.arrivedBlind(plain, SAND.west(), true));
+        // not there yet is the pather's job
+        assertFalse(DestroyBlockTask.arrivedBlind(plain, SAND.west(3), false));
+    }
+
+    @Test
+    public void closingInFromThePlainGoalLeavesTheCellWeAreIn() {
+        BlockPos feet = SAND.west();
+        MapGetter w = dune().set(feet, Blocks.AIR.defaultBlockState()).set(feet.above(), Blocks.AIR.defaultBlockState());
+        assertTrue(DestroyBlockTask.arrivedBlind(new GoalNear(SAND, 1), feet, false));
+        // the one open face is the one we're in, so the next goal digs into another side
+        Goal next = closeIn(w, Set.of(feet), false, ANY);
+        assertFalse(next.isInGoal(feet));
+        assertTrue(next.isInGoal(SAND.east()));
+    }
+
+    @Test
     public void anOpenSideStillBeatsDigging() {
         MapGetter w = dune().set(SAND.east(), Blocks.AIR.defaultBlockState());
         Goal goal = closeIn(w, Set.of(DIAGONAL), true, ANY);

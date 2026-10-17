@@ -265,6 +265,12 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
         }
     }
 
+    // standing in the goal with no ray to the block means the goal is done and nothing will move us: baritone cancels an
+    // arrived goal on the spot and we hand it the same one two ticks later, forever. that's the signal to close in
+    static boolean arrivedBlind(Goal goal, BlockPos feet, boolean hasRay) {
+        return !hasRay && goal.isInGoal(feet);
+    }
+
     // a side cell is only worth handing over when both halves of us may be dug out there
     private static Predicate<BlockPos> digRules(AltoClef mod) {
         return spot -> WorldHelper.pathMayDig(mod, spot) && WorldHelper.pathMayDig(mod, spot.above());
@@ -993,8 +999,9 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
                     }
                 } else {
                     goal = pickGoal(mod.getWorld(), _pos, closeIn, closeIn && reach.isEmpty() ? triedFeet(feet) : null, false, digRules(mod));
-                    if (goal instanceof GoalReachBlock && goal.isInGoal(feet) && reach.isEmpty()) {
-                        // already there and it still can't be hit (leaves, other logs, a wall), so touch it like before
+                    if (arrivedBlind(goal, feet, reach.isPresent())) {
+                        // already there and it still can't be hit (leaves, other logs, a wall, a ray that only grazes an
+                        // edge), so touch it like before. the reach hold already let go to get us here, that's the debounce
                         closeIn = true;
                         goal = pickGoal(mod.getWorld(), _pos, true, triedFeet(feet), false, digRules(mod));
                     }
