@@ -862,6 +862,7 @@ mine("pale_oak_sapling", Blocks.PALE_OAK_LEAVES, Items.PALE_OAK_SAPLING);
     }
 
     private static CataloguedResource mine(String name, MiningRequirement requirement, Block[] toMine, Item... targets) {
+        BillBook.GATHER.put(name, requirement);
         return put(name, targets, count -> new MineAndCollectTask(new ItemTarget(targets, count), toMine, requirement)).dontMineIfPresent(); // Mining already taken care of!!
     }
 
@@ -927,6 +928,7 @@ mine("pale_oak_sapling", Blocks.PALE_OAK_LEAVES, Items.PALE_OAK_SAPLING);
     }
 
     private static CataloguedResource smelt(String name, Item match, String materials, Item... optionalMaterials) {
+        BillBook.EDGES.put(name, new BillEdge(materials, 1, 1, BillEdge.Step.SMELT));
         return smelt(name, new Item[]{match}, materials, optionalMaterials);
     }
 
@@ -1012,6 +1014,57 @@ mine("pale_oak_sapling", Blocks.PALE_OAK_LEAVES, Items.PALE_OAK_SAPLING);
             CraftingRecipe recipe = CraftingRecipe.newShapedRecipe(name, new ItemTarget[]{t(woodItems.prefix + "_planks"), null, null, null}, 1);
             _craftedRecipes.put(name, new RecipeTarget(woodItems.button, 1, recipe));
             put(name, new Item[]{woodItems.button}, count -> new CraftInInventoryTask(new RecipeTarget(woodItems.button, count, recipe)));
+        }
+    }
+
+    // one step the gather bill (RecipeBill) can walk that isn't a shaped recipe: a run eats inPerRun of input and makes
+    // outPerRun. smelts are 1:1, a log is 4 planks, 2 planks are 4 sticks, a bucket is a water bucket once you dunk it
+    public record BillEdge(String input, int inPerRun, int outPerRun, Step step) {
+        public enum Step {CRAFT, SMELT, FILL}
+    }
+
+    // the step for name, null when it has none (shaped recipes are recipeOf, everything else is opaque)
+    public static BillEdge billEdge(String name) {
+        return BillBook.EDGES.get(name);
+    }
+
+    // the pickaxe a plain mine of name needs, or null when the bill shouldn't fetch it up front: mob drops, crops, shears,
+    // the custom tasks, and anything whose entry walks to the nether first. those keep doing what they always did
+    public static MiningRequirement gatherRequirement(String name) {
+        CataloguedResource entry = _nameToResourceTask.get(name);
+        if (entry == null || entry.forcesNether()) {
+            return null;
+        }
+        return BillBook.GATHER.get(name);
+    }
+
+    // a holder class so the maps exist while the static block up top is still running. a plain static field down here
+    // is initialized after that block, so smelt() and mine() would be writing into null
+    private static final class BillBook {
+        static final HashMap<String, BillEdge> EDGES = new HashMap<>();
+        // what may be gathered up front and with which pickaxe. mine() adds every plain block it registers
+        static final HashMap<String, MiningRequirement> GATHER = new HashMap<>();
+
+        static {
+            // the ingots are custom tasks, not smelt(), but a smelt is what they are
+            EDGES.put("iron_ingot", new BillEdge("raw_iron", 1, 1, BillEdge.Step.SMELT));
+            EDGES.put("gold_ingot", new BillEdge("raw_gold", 1, 1, BillEdge.Step.SMELT));
+            EDGES.put("planks", new BillEdge("log", 1, 4, BillEdge.Step.CRAFT));
+            EDGES.put("stick", new BillEdge("planks", 2, 4, BillEdge.Step.CRAFT));
+            EDGES.put("water_bucket", new BillEdge("bucket", 1, 1, BillEdge.Step.FILL));
+            EDGES.put("lava_bucket", new BillEdge("bucket", 1, 1, BillEdge.Step.FILL));
+            GATHER.put("log", MiningRequirement.HAND);
+            GATHER.put("cobblestone", MiningRequirement.WOOD);
+            GATHER.put("cobbled_deepslate", MiningRequirement.WOOD);
+            for (WoodType woodType : WoodType.values()) {
+                ItemHelper.WoodItems wood = ItemHelper.getWoodItems(woodType);
+                if (wood.planks == null || wood.log == null) continue;
+                EDGES.put(wood.prefix + "_planks", new BillEdge(wood.prefix + "_log", 1, 4, BillEdge.Step.CRAFT));
+                // crimson and warped stems are a nether trip, gatherRequirement would say no anyway but why ask
+                if (!wood.isNetherWood()) {
+                    GATHER.put(wood.prefix + "_log", MiningRequirement.HAND);
+                }
+            }
         }
     }
 
