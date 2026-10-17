@@ -1,14 +1,16 @@
 package adris.altoclef.tasks.resources;
 
 import adris.altoclef.AltoClef;
-import adris.altoclef.Debug;
 import adris.altoclef.TaskCatalogue;
 import adris.altoclef.tasks.ResourceTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.ui.HudText;
 import adris.altoclef.util.CraftingRecipe;
 import adris.altoclef.util.ItemTarget;
+import adris.altoclef.util.helpers.CraftMath;
 import adris.altoclef.util.helpers.ItemHelper;
+import adris.altoclef.util.helpers.StorageHelper;
+import java.util.Arrays;
 import java.util.function.Function;
 import net.minecraft.world.item.Item;
 
@@ -25,16 +27,18 @@ public class CraftWithMatchingStrippedLogsTask extends CraftWithMatchingMaterial
 
 
     @Override
-    protected Task getSpecificSameResourceTask(AltoClef mod, Item[] toGet) {
-        for (Item strippedLogToGet : toGet) {
-            Item log = ItemHelper.strippedToLogs(strippedLogToGet);
-            // Convert logs to stripped
-            if (mod.getItemStorage().getItemCount(log) >= 1) {
-                return TaskCatalogue.getItemTask(strippedLogToGet, 1);//new CraftInInventoryTask(new ItemTarget(plankToGet, 1), CraftingRecipe.newShapedRecipe("planks", new ItemTarget[]{new ItemTarget(log, 1), empty, empty, empty}, 4), false, true);
-            }
-        }
-        Debug.logError("CraftWithMatchingStrippedLogs: Should never happen!");
-        return null;
+    protected Task getSpecificSameResourceTask(AltoClef mod, Item[] toGet, int sameNeeded) {
+        // Convert logs to stripped, one log each. same top up as the planks one: a literal 1 here is the plank freeze
+        // again. nothing gets here today (no expected count override), so it's only for whoever adds one
+        CraftMath.TopUp<Item> topUp = CraftMath.sameResourceTopUp(Arrays.asList(toGet),
+                stripped -> StorageHelper.craftUsableCount(mod, stripped), stripped -> logCount(mod, stripped), 1, sameNeeded);
+        if (topUp == null) return getAllSameResourcesTask(mod);
+        return TaskCatalogue.getItemTask(topUp.item(), topUp.target());
+    }
+
+    private static int logCount(AltoClef mod, Item stripped) {
+        Item log = ItemHelper.strippedToLogs(stripped);
+        return log == null ? 0 : StorageHelper.craftUsableCount(mod, log);
     }
 
     @Override

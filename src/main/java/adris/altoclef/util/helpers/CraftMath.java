@@ -29,6 +29,28 @@ public final class CraftMath {
         return craftsFor(target - Math.max(0, held), outputCount);
     }
 
+    public record TopUp<T>(T item, int target) {
+    }
+
+    // the "convert some logs first" step of a matching-materials craft. targets are totals, so asking for 1 birch plank
+    // with 2 in the bag is already met: nothing crafts, the slabs still want 3 per craft and we sit there forever.
+    // so ask for what the crafts eat, capped at what this wood can really become so the target never reaches for a tree.
+    // the caller only gets here when no type holds sameNeeded already, so with a raw item in the bag the target is
+    // always above what we hold and the step really crafts. it also doesn't move while logs turn into planks
+    // (held + perRaw * raw stays put), which matters, ItemTarget equality includes the count
+    public static <T> TopUp<T> sameResourceTopUp(List<T> types, ToIntFunction<T> held, ToIntFunction<T> raw, int perRaw, int sameNeeded) {
+        if (sameNeeded <= 0) return null;
+        List<T> ordered = new ArrayList<>(new LinkedHashSet<>(types));
+        Map<T, Integer> expected = new HashMap<>();
+        for (T type : ordered) expected.put(type, held.applyAsInt(type) + perRaw * raw.applyAsInt(type));
+        // biggest pile first, same pick the craft itself makes after. List.sort is stable so ties keep the caller's order
+        ordered.sort(Comparator.comparingInt((T type) -> expected.get(type)).reversed());
+        for (T type : ordered) {
+            if (raw.applyAsInt(type) >= 1) return new TopUp<>(type, Math.min(sameNeeded, expected.get(type)));
+        }
+        return null;
+    }
+
     // can a quick move take the output, or would it craft more than we wanted. one craft in the grid is one craft either way,
     // so wanting 2 planks out of a log's 4 is no reason to go through the cursor: the pickup left 4 planks in hand that nothing
     // put away until the cursor watchdog did, 3 s later, on every plank and stick of the opening crafts

@@ -1,14 +1,16 @@
 package adris.altoclef.tasks.resources;
 
 import adris.altoclef.AltoClef;
-import adris.altoclef.Debug;
 import adris.altoclef.TaskCatalogue;
 import adris.altoclef.tasks.ResourceTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.ui.HudText;
 import adris.altoclef.util.CraftingRecipe;
 import adris.altoclef.util.ItemTarget;
+import adris.altoclef.util.helpers.CraftMath;
 import adris.altoclef.util.helpers.ItemHelper;
+import adris.altoclef.util.helpers.StorageHelper;
+import java.util.Arrays;
 import java.util.function.Function;
 import net.minecraft.world.item.Item;
 
@@ -26,21 +28,24 @@ public class CraftWithMatchingPlanksTask extends CraftWithMatchingMaterialsTask 
 
     @Override
     protected int getExpectedTotalCountOfSameItem(AltoClef mod, Item sameItem) {
-        // Include logs
-        return mod.getItemStorage().getItemCount(sameItem) + mod.getItemStorage().getItemCount(ItemHelper.planksToLog(sameItem)) * 4;
+        // Include logs. craftUsableCount like CollectPlanksTask, or we promise planks from a log it can't see
+        return StorageHelper.craftUsableCount(mod, sameItem) + logCount(mod, sameItem) * 4;
+    }
+
+    // bamboo planks have no log, and craftUsableCount with a null item is asking for trouble
+    private static int logCount(AltoClef mod, Item plank) {
+        Item log = ItemHelper.planksToLog(plank);
+        return log == null ? 0 : StorageHelper.craftUsableCount(mod, log);
     }
 
     @Override
-    protected Task getSpecificSameResourceTask(AltoClef mod, Item[] toGet) {
-        for (Item plankToGet : toGet) {
-            Item log = ItemHelper.planksToLog(plankToGet);
-            // Convert logs to planks
-            if (mod.getItemStorage().getItemCount(log) >= 1) {
-                return TaskCatalogue.getItemTask(plankToGet, 1);//new CraftInInventoryTask(new ItemTarget(plankToGet, 1), CraftingRecipe.newShapedRecipe("planks", new ItemTarget[]{new ItemTarget(log, 1), empty, empty, empty}, 4), false, true);
-            }
-        }
-        Debug.logError("CraftWithMatchingPlanks: Should never happen!");
-        return null;
+    protected Task getSpecificSameResourceTask(AltoClef mod, Item[] toGet, int sameNeeded) {
+        // Convert logs to planks
+        CraftMath.TopUp<Item> topUp = CraftMath.sameResourceTopUp(Arrays.asList(toGet),
+                plank -> StorageHelper.craftUsableCount(mod, plank), plank -> logCount(mod, plank), 4, sameNeeded);
+        // no log anywhere means the counts disagree with the parent. go get wood instead of returning null and freezing
+        if (topUp == null) return getAllSameResourcesTask(mod);
+        return TaskCatalogue.getItemTask(topUp.item(), topUp.target());
     }
 
     @Override

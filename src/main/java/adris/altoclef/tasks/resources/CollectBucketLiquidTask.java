@@ -184,7 +184,8 @@ public class CollectBucketLiquidTask extends ResourceTask {
         int bucketsNeeded = _count - mod.getItemStorage().getItemCount(Items.BUCKET) - mod.getItemStorage().getItemCount(_target);
         if (bucketsNeeded > 0) {
             setDebugState("Getting bucket...");
-            return TaskCatalogue.getItemTask(Items.BUCKET, bucketsNeeded);
+            // targets are totals. "1 bucket" with an empty one already in hand is met, and nothing else ever got us one
+            return TaskCatalogue.getItemTask(Items.BUCKET, mod.getItemStorage().getItemCount(Items.BUCKET) + bucketsNeeded);
         }
 
         // what is a source at all, banned or not. the ranking below decides which of those are worth going to

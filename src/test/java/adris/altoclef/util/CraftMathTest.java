@@ -10,6 +10,8 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 
 // "how many can i craft from this inventory", the number that stops "craft all" from reaching for items we ran out of.
 // strings stand in for items, the math is generic
@@ -164,5 +166,64 @@ public class CraftMathTest {
     @Test
     public void usableCountOfNothingIsZero() {
         assertEquals(0, usable(Collections.emptyList(), inv("birch_log", 2), inv()));
+    }
+
+    // planks and logs per wood, "birch" stands for birch planks, its log count lives in the second map
+    private static CraftMath.TopUp<String> topUp(List<String> woods, Map<String, Integer> planks, Map<String, Integer> logs, int sameNeeded) {
+        return CraftMath.sameResourceTopUp(woods, w -> planks.getOrDefault(w, 0), w -> logs.getOrDefault(w, 0), 4, sameNeeded);
+    }
+
+    @Test
+    public void slabsAskForWhatTheCraftsEatNotOnePlank() {
+        // 16 slabs, 6 per craft, 3 planks each: 9 planks owed
+        int sameNeeded = CraftMath.craftsFor(16, 6) * 3;
+        assertEquals(9, sameNeeded);
+        // 2 planks + 1 log: "1 birch plank" was already met and nothing ever crafted. 6 is all this wood can be
+        CraftMath.TopUp<String> got = topUp(Arrays.asList("birch"), inv("birch", 2), inv("birch", 1), sameNeeded);
+        assertEquals("birch", got.item());
+        assertEquals(6, got.target());
+    }
+
+    @Test
+    public void mixedWoodsPickTheOneWithALog() {
+        // spruce has planks but no log to convert, birch is the only one the step can do anything about
+        CraftMath.TopUp<String> got = topUp(Arrays.asList("spruce", "birch"), inv("birch", 2, "spruce", 3), inv("birch", 1), 9);
+        assertEquals("birch", got.item());
+        assertEquals(6, got.target());
+    }
+
+    @Test
+    public void biggestPileWinsAndIsCappedAtWhatIsOwed() {
+        CraftMath.TopUp<String> got = topUp(Arrays.asList("birch", "oak"), inv("birch", 2), inv("birch", 1, "oak", 3), 9);
+        assertEquals("oak", got.item());
+        assertEquals(9, got.target());
+    }
+
+    @Test
+    public void targetHoldsStillWhileLogsTurnIntoPlanks() {
+        // ItemTarget equality includes the count, a target that moves every craft is a fresh task every craft
+        assertEquals(9, topUp(Arrays.asList("birch"), inv("birch", 1), inv("birch", 2), 9).target());
+        assertEquals(9, topUp(Arrays.asList("birch"), inv("birch", 5), inv("birch", 1), 9).target());
+    }
+
+    @Test
+    public void targetIsAlwaysAboveWhatWeHold() {
+        // the parent only asks when no wood holds sameNeeded yet. with a log in the bag the step must really craft
+        for (int sameNeeded = 1; sameNeeded <= 27; ++sameNeeded) {
+            for (int planks = 0; planks < sameNeeded; ++planks) {
+                for (int logs = 1; logs <= 8; ++logs) {
+                    CraftMath.TopUp<String> got = topUp(Arrays.asList("birch"), inv("birch", planks), inv("birch", logs), sameNeeded);
+                    assertTrue(got.target() > planks);
+                    assertTrue(got.target() <= planks + 4 * logs);
+                }
+            }
+        }
+    }
+
+    @Test
+    public void noLogAnywhereIsNoTopUp() {
+        assertNull(topUp(Arrays.asList("birch", "spruce"), inv("birch", 2, "spruce", 3), inv(), 9));
+        assertNull(topUp(Collections.emptyList(), inv(), inv(), 9));
+        assertNull(topUp(Arrays.asList("birch"), inv(), inv("birch", 1), 0));
     }
 }
