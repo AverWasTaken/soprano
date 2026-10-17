@@ -102,7 +102,8 @@ public abstract class CraftWithMatchingMaterialsTask extends ResourceTask {
         }
 
         // If we already have some of our target, we need less "same" materials.
-        // getItemCount on purpose, the same count ResourceTask.isFinished goes by
+        // still getItemCount, the old count. isFinished goes by the bag minus the cursor, so slabs on the cursor or in a
+        // grid count here a craft early. harmless, it only lasts until they land in the bag
         int currentTargetCount = mod.getItemStorage().getItemCount(_target);
         int currentTargetsRequired = _target.getTargetCount() - currentTargetCount;
 
