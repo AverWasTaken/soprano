@@ -1,0 +1,117 @@
+package adris.altoclef.tasks.speedrun.gamer.tasks;
+
+import adris.altoclef.util.helpers.ItemFixture;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.world.level.EmptyBlockGetter;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
+import org.junit.BeforeClass;
+import org.junit.Test;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
+
+// the bits of the bed placement that do not need a world: what has to be cleared, where we have to stand, what chat says
+public class NightSleepTaskTest {
+
+    @BeforeClass
+    public static void boot() {
+        ItemFixture.boot();
+    }
+
+    private static boolean inTheWay(BlockState s) {
+        return NightSleepTask.inTheWay(s, EmptyBlockGetter.INSTANCE, BlockPos.ZERO);
+    }
+
+    // anything the click's ray can stop on comes out, collision or not
+    @Test
+    public void plantsAndThinStuffGetCleared() {
+        assertTrue(inTheWay(Blocks.SHORT_GRASS.defaultBlockState()));
+        assertTrue(inTheWay(Blocks.TALL_GRASS.defaultBlockState()));
+        assertTrue(inTheWay(Blocks.POPPY.defaultBlockState()));
+        assertTrue(inTheWay(Blocks.MOSS_CARPET.defaultBlockState()));
+        // one snow layer has no collision at all, it still has an outline
+        assertTrue(Blocks.SNOW.defaultBlockState().getCollisionShape(EmptyBlockGetter.INSTANCE, BlockPos.ZERO).isEmpty());
+        assertTrue(inTheWay(Blocks.SNOW.defaultBlockState()));
+        assertTrue(inTheWay(Blocks.STONE.defaultBlockState()));
+    }
+
+    @Test
+    public void airAndWaterAreLeftAlone() {
+        assertFalse(inTheWay(Blocks.AIR.defaultBlockState()));
+        assertFalse(inTheWay(Blocks.WATER.defaultBlockState()));
+        assertFalse(inTheWay(Blocks.LAVA.defaultBlockState()));
+    }
+
+    // the stand cell only loses what we cannot be standing on
+    @Test
+    public void onlyPlantsComeOutOfTheStandCell() {
+        BlockPos at = BlockPos.ZERO;
+        assertTrue(NightSleepTask.plantInTheWay(Blocks.SHORT_GRASS.defaultBlockState(), EmptyBlockGetter.INSTANCE, at));
+        assertTrue(NightSleepTask.plantInTheWay(Blocks.TALL_GRASS.defaultBlockState(), EmptyBlockGetter.INSTANCE, at));
+        assertTrue(NightSleepTask.plantInTheWay(Blocks.COBWEB.defaultBlockState(), EmptyBlockGetter.INSTANCE, at));
+        assertTrue(NightSleepTask.plantInTheWay(Blocks.SNOW.defaultBlockState(), EmptyBlockGetter.INSTANCE, at));
+        assertFalse(NightSleepTask.plantInTheWay(Blocks.MOSS_CARPET.defaultBlockState(), EmptyBlockGetter.INSTANCE, at));
+        assertFalse(NightSleepTask.plantInTheWay(Blocks.STONE_SLAB.defaultBlockState(), EmptyBlockGetter.INSTANCE, at));
+        assertFalse(NightSleepTask.plantInTheWay(Blocks.STONE.defaultBlockState(), EmptyBlockGetter.INSTANCE, at));
+        assertFalse(NightSleepTask.plantInTheWay(Blocks.WATER.defaultBlockState(), EmptyBlockGetter.INSTANCE, at));
+        assertFalse(NightSleepTask.plantInTheWay(Blocks.AIR.defaultBlockState(), EmptyBlockGetter.INSTANCE, at));
+    }
+
+    @Test
+    public void theClickOnlyHappensFromTheStandCell() {
+        assertEquals(NightSleepTask.Spot.WALK, NightSleepTask.spot(false, false, true));
+        assertEquals(NightSleepTask.Spot.WALK, NightSleepTask.spot(false, true, false));
+        assertEquals(NightSleepTask.Spot.STEP_BACK, NightSleepTask.spot(true, true, true));
+        assertEquals(NightSleepTask.Spot.STEP_BACK, NightSleepTask.spot(true, false, false));
+        assertEquals(NightSleepTask.Spot.CLICK, NightSleepTask.spot(true, false, true));
+    }
+
+    // anywhere in the stand cell without a toe over the foot cell (0.3 is half a player), aim at the middle of the support top
+    // one block over: the bucket is always facing. with the toe over, it can tie, which is why that is a step back
+    @Test
+    public void fromTheStandCellTheHeadPointsTheRightWay() {
+        for (Direction facing : Direction.Plane.HORIZONTAL) {
+            for (int i = 0; i < 100; i++) {
+                for (int j = 0; j < 100; j++) {
+                    double x = i / 100.0;
+                    double z = j / 100.0;
+                    // how far the middle of us is from the face the foot cell is on
+                    double along = facing.getStepX() != 0 ? (facing.getStepX() > 0 ? 1 - x : x) : (facing.getStepZ() > 0 ? 1 - z : z);
+                    if (along < 0.3) {
+                        continue;
+                    }
+                    double aimX = facing.getStepX() + 0.5;
+                    double aimZ = facing.getStepZ() + 0.5;
+                    assertEquals(facing, NightSleepTask.towards(aimX - x, aimZ - z));
+                }
+            }
+        }
+    }
+
+    @Test
+    public void towardsUsesTheGamesCompass() {
+        assertEquals(Direction.EAST, NightSleepTask.towards(1, 0.2));
+        assertEquals(Direction.WEST, NightSleepTask.towards(-1, -0.2));
+        assertEquals(Direction.SOUTH, NightSleepTask.towards(0.2, 1));
+        assertEquals(Direction.NORTH, NightSleepTask.towards(-0.2, -1));
+    }
+
+    @Test
+    public void aRetryNeedsABedTheNightAndBudget() {
+        assertTrue(NightSleepTask.canRetry(true, true, false));
+        assertFalse(NightSleepTask.canRetry(false, true, false));
+        assertFalse(NightSleepTask.canRetry(true, false, false));
+        assertFalse(NightSleepTask.canRetry(true, true, true));
+    }
+
+    @Test
+    public void chatOnlySaysNotTonightWhenItMeansIt() {
+        assertEquals("Couldn't get the bed down, trying again in a bit", NightSleepTask.failLine(NightSleepTask.BED_WOULD_NOT_GO_DOWN, true));
+        assertEquals("Not sleeping tonight: " + NightSleepTask.BED_WOULD_NOT_GO_DOWN, NightSleepTask.failLine(NightSleepTask.BED_WOULD_NOT_GO_DOWN, false));
+        assertEquals("Couldn't sleep yet (monsters by the bed), trying again in a bit", NightSleepTask.failLine("monsters by the bed", true));
+        assertEquals("Not sleeping tonight: out of time for tonight", NightSleepTask.failLine("out of time for tonight", false));
+    }
+}

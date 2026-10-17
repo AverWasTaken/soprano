@@ -3,6 +3,7 @@ package adris.altoclef.control;
 import baritone.Baritone;
 import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
+import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.StorageHelper;
@@ -25,6 +26,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.PotionItem;
 import net.minecraft.world.item.SpawnEggItem;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -93,6 +95,7 @@ public class SlotHandler {
     // handleContainerInput runs the click on our own menu first (the client predicts it) and then sends it, so
     // back to back clicks see each other and the server replays the same thing
     private boolean sendClick(LocalPlayer player, int syncId, int windowSlot, int mouseButton, ClickType type) {
+        noteBedDrop(player, windowSlot, type);
         try {
             _mod.getController().handleInventoryMouseClick(syncId, windowSlot, mouseButton, type, player);
         } catch (Exception e) {
@@ -101,6 +104,24 @@ public class SlotHandler {
             return false;
         }
         return true;
+    }
+
+    // a bed is a whole night, and most of the garbage paths drop things without a word. every drop click comes through
+    // here, so one line here says who threw it
+    private void noteBedDrop(LocalPlayer player, int windowSlot, ClickType type) {
+        ItemStack gone = ItemStack.EMPTY;
+        if (windowSlot == AbstractContainerMenu.SLOT_CLICKED_OUTSIDE && type == ClickType.PICKUP) {
+            gone = player.containerMenu.getCarried();
+        } else if (type == ClickType.THROW && windowSlot >= 0 && windowSlot < player.containerMenu.slots.size()) {
+            gone = player.containerMenu.getSlot(windowSlot).getItem();
+        }
+        if (gone.isEmpty() || !Arrays.asList(ItemHelper.BED).contains(gone.getItem())) {
+            return;
+        }
+        // (a null owner is a chain, the fix chains and the garbage sweeps click from outside any task)
+        Task owner = Task.currentOwner();
+        Debug.logInternal("dropping a bed (" + gone.getCount() + "x " + ItemHelper.stripItemName(gone.getItem()) + ") from window slot "
+                + windowSlot + ", clicked by " + (owner == null ? "a chain" : owner.toString()));
     }
 
     // the same click a few times in one slot action (one cooldown). right clicking a held stack into a slot puts one
