@@ -163,4 +163,33 @@ public class TripBookTest {
         long b = book.start(new GoalBlock(1, 2, 3), OVERWORLD).id;
         assertTrue(b != a);
     }
+
+    @Test
+    public void aGiveUpBeforeAskingIsQuietFromThenOn() {
+        TripBook book = new TripBook();
+        Trip trip = book.start(new GoalBlock(1, 2, 3), OVERWORLD);
+        // the what-if found nothing worth asking about. that's the trip's answer, said once, never asked after
+        assertEquals(Trip.Decision.NO, book.refuse(trip.id).decision);
+        assertNotNull(book.tellNo(trip.id));
+        assertNull(book.tellNo(trip.id));
+        assertNull(book.ask(trip.id, Trip.Ask.STUCK, STUCK_PLAN));
+        assertNull(book.ask(trip.id, Trip.Ask.FASTER, FASTER_PLAN));
+        assertNull(book.refuse(trip.id));
+    }
+
+    @Test
+    public void aStaleGatherCantFinishTheNextTrip() {
+        TripBook book = new TripBook();
+        Trip old = book.start(new GoalBlock(1, 2, 3), OVERWORLD);
+        book.ask(old.id, Trip.Ask.STUCK, STUCK_PLAN);
+        book.answer(old.id, true);
+        assertNotNull(book.startGather(old.id, STUCK_PLAN, 4));
+        Trip next = book.start(new GoalBlock(4, 5, 6), OVERWORLD);
+        assertNull(book.gatherDone(old.id));
+        assertNull(book.refuse(old.id));
+        assertNull(book.tellNo(old.id));
+        assertSame(next, book.current());
+        // and the new trip isn't gathering, so a done for it is nothing too
+        assertNull(book.gatherDone(next.id));
+    }
 }

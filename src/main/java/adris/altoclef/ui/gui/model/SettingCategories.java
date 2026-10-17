@@ -35,7 +35,7 @@ public final class SettingCategories {
         RULES.put(ELYTRA, new String[] {"elytra"});
         RULES.put(CHAT, new String[] {"chat", "prefix", "echo", "notification", "=log", "=logs", "toast"});
         RULES.put(CACHE, new String[] {"cache", "cached", "caching", "chunk", "repack", "prune"});
-        RULES.put(PATHING, new String[] {"explore", "follow", "farm", "goal", "path", "plan", "timeout", "cost"});
+        RULES.put(PATHING, new String[] {"explore", "follow", "farm", "goal", "path", "plan", "timeout", "cost", "gather"});
         RULES.put(INTERFACE, new String[] {"=gui", "=key", "=keys"});
     }
 
@@ -67,7 +67,7 @@ public final class SettingCategories {
             "censorCoordinates", "censorRanCommands", "echoCommands", "desktopNotifications", "notificationOnPathComplete",
             "guiKey", "guiKeyEnabled", "guiDarkMode", "guiAnimations", "keepFpsWhileBotting", "doBedWaypoints", "doDeathWaypoints", "backfill",
             "followRadius", "followOffsetDistance", "followOffsetDirection", "disconnectOnArrival", "enterPortal",
-            "rightClickContainerOnArrival", "splicePath",
+            "rightClickContainerOnArrival", "splicePath", "askToGatherForPath",
             "elytraAutoJump", "elytraAutoSwap", "elytraConserveFireworks", "elytraPitchRange", "elytraFireworkSpeed",
             "elytraTermsAccepted", "elytraAllowAboveRoof", "elytraAllowAboveBuildLimit", "elytraUseCache",
             "elytraAllowLandOnNetherFortress"

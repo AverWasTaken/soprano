@@ -30,9 +30,11 @@ import baritone.api.utils.BetterBlockPos;
 import baritone.utils.BaritoneProcessHelper;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.ItemStack;
 
+import java.util.Comparator;
 import java.util.List;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
@@ -47,9 +49,12 @@ public final class FollowProcess extends BaritoneProcessHelper implements IFollo
     private Predicate<Entity> filter;
     private List<Entity> cache;
     private boolean into; // walk straight into the target, regardless of settings
+    private final TargetLock<Entity> lock;
+    private Object lockWorld;
 
     public FollowProcess(Baritone baritone) {
         super(baritone);
+        this.lock = new TargetLock<>(Entity::getUUID, e -> e.distanceToSqr(ctx.player()), Comparator.comparingInt(Entity::getId));
     }
 
     @Override
@@ -94,11 +99,45 @@ public final class FollowProcess extends BaritoneProcessHelper implements IFollo
     }
 
     private void scanWorld() {
-        cache = ctx.entitiesStream()
+        List<Entity> all = ctx.entitiesStream().collect(Collectors.toList());
+        List<Entity> valid = all.stream()
                 .filter(this::followable)
                 .filter(this.filter)
                 .distinct()
                 .collect(Collectors.toList());
+        if (ctx.world() != lockWorld) {
+            // dimension change or reconnect: whoever we had is an entity from the old world, its position means nothing here
+            lock.clear();
+            lockWorld = ctx.world();
+        }
+        cache = targets(into, lock, valid, ctx.player().tickCount, isGone(lock.locked(), all));
+    }
+
+    static <T> List<T> targets(boolean into, TargetLock<T> lock, List<T> valid, int now, boolean gone) {
+        if (into) {
+            // pickup wants whichever item is nearest right now, out of all of them. no lock
+            return valid;
+        }
+        T target = lock.update(valid, now, gone);
+        return target == null ? List.of() : List.of(target);
+    }
+
+    private static boolean isGone(Entity entity, List<Entity> all) {
+        if (entity == null) {
+            return false;
+        }
+        // removed alone isn't enough, the client removes entities that just walked out of a loaded chunk too
+        if (entity instanceof LivingEntity && ((LivingEntity) entity).isDeadOrDying()) {
+            return true;
+        }
+        // still in the world but filtered out (too far, filter said no): that's a real answer, not a chunk edge blip.
+        // the grace is only for the ones that vanished
+        for (Entity e : all) {
+            if (e.getUUID().equals(entity.getUUID())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Override
@@ -114,6 +153,9 @@ public final class FollowProcess extends BaritoneProcessHelper implements IFollo
     public void onLostControl() {
         filter = null;
         cache = null;
+        lock.clear();
+        // or the old ClientLevel sticks around in here long after we left it
+        lockWorld = null;
     }
 
     @Override
@@ -125,12 +167,14 @@ public final class FollowProcess extends BaritoneProcessHelper implements IFollo
     public void follow(Predicate<Entity> filter) {
         this.filter = filter;
         this.into = false;
+        lock.clear();
     }
 
     @Override
     public void pickup(Predicate<ItemStack> filter) {
         this.filter = e -> e instanceof ItemEntity && filter.test(((ItemEntity) e).getItem());
         this.into = true;
+        lock.clear();
     }
 
     @Override

@@ -41,6 +41,7 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.OptionalInt;
 import java.util.Random;
@@ -244,6 +245,17 @@ public final class InventoryBehavior extends Behavior implements Helper {
             }
         }
         return false;
+    }
+
+    // how many blocks a path could actually burn right now, the same spare-above-the-reserve count the movements use.
+    // the trip ask takes this off what a what-if path needs before it goes collecting
+    public int spareThrowawayCount() {
+        AltoClefSettings alto = AltoClefSettings.getInstance();
+        int total = 0;
+        for (Item item : new LinkedHashSet<>(movementThrowaways(true))) {
+            total += ThrowawayPicks.spare(heldCount(item), alto.reservedCount(item));
+        }
+        return total;
     }
 
     private List<Item> movementThrowaways(boolean allowProtected) {

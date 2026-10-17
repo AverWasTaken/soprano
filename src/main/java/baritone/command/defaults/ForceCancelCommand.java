@@ -17,6 +17,7 @@
 
 package baritone.command.defaults;
 
+import baritone.Baritone;
 import baritone.altoclef.AltoClefBridge;
 import baritone.api.IBaritone;
 import baritone.api.behavior.IPathingBehavior;
@@ -39,6 +40,7 @@ public class ForceCancelCommand extends Command {
         args.requireMax(0);
         IPathingBehavior pathingBehavior = baritone.getPathingBehavior();
         AltoClefBridge.cancelUserTask();
+        ((Baritone) baritone).getTripBehavior().endTrip();
         pathingBehavior.cancelEverything();
         pathingBehavior.forceCancel();
         logDirect("ok force canceled");

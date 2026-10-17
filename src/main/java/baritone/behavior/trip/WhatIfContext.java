@@ -31,6 +31,8 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 
+import java.util.function.Supplier;
+
 // "what if we had blocks (and a stone pickaxe)". the real player, the real settings, a pretend bag. placing still costs
 // what placing costs, it's just never COST_INF for want of a block
 public final class WhatIfContext extends CalculationContext {
@@ -52,11 +54,21 @@ public final class WhatIfContext extends CalculationContext {
         LocalPlayer player = baritone.getPlayerContext().player();
         ToolSet tools = pretendPickaxe ? new PretendPickaxe(player) : new ToolSet(player);
         boolean throwaway = Baritone.settings().allowPlace.value && (pretendBlocks || baritone.getInventoryBehavior().hasGenericThrowaway());
+        return unpaused(() -> new WhatIfContext(baritone, tools, throwaway));
+    }
+
+    // the real bag to hold the what-if up against. built the same unpaused way or a meal would make the real route look
+    // blockless and every what-if look faster than it is
+    public static CalculationContext real(Baritone baritone) {
+        return unpaused(() -> new CalculationContext(baritone, true));
+    }
+
+    private static <T> T unpaused(Supplier<T> build) {
         AltoClefSettings alto = AltoClefSettings.getInstance();
         boolean paused = alto.isInteractionPaused();
         alto.setInteractionPaused(false);
         try {
-            return new WhatIfContext(baritone, tools, throwaway);
+            return build.get();
         } finally {
             alto.setInteractionPaused(paused);
         }
@@ -91,7 +103,8 @@ public final class WhatIfContext extends CalculationContext {
             if (Baritone.settings().blocksToAvoidBreaking.value.contains(state.getBlock())) {
                 return real; // the user said slow, the pretend pickaxe doesn't get to undo that
             }
-            return Math.max(real, ToolSet.calculateSpeedVsBlock(STONE_PICKAXE, state));
+            // the real side has mining fatigue and haste in it, the pretend pickaxe gets the same
+            return Math.max(real, potionMult() * ToolSet.calculateSpeedVsBlock(STONE_PICKAXE, state));
         }
     }
 }
