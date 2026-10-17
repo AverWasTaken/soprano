@@ -53,8 +53,11 @@ public final class HotbarTools {
         if (best < 0) return;
         int to = slotFor(inv);
         if (to < 0) return;
-        // SWAP with the hotbar index as the button, the selected slot stays where it is
-        mod.getSlotHandler().clickSlot(new PlayerSlot(best), to, ClickType.SWAP);
+        // SWAP with the hotbar index as the button, the selected slot stays where it is. through baritone's gate so
+        // allowInventory, the move delay and standing still hold here too (2b2t does not love a swap mid sprint)
+        int from = best;
+        mod.getClientBaritone().getInventoryBehavior().inventoryMoveIfAllowed(
+                () -> mod.getSlotHandler().clickSlot(new PlayerSlot(from), to, ClickType.SWAP));
     }
 
     // an empty one of 2-6 that isn't in our hand, else one of those that isn't holding a tool (so the axe and the shovel

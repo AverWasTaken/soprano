@@ -45,6 +45,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.OptionalInt;
 import java.util.Random;
+import java.util.function.BooleanSupplier;
 import java.util.function.Predicate;
 
 public final class InventoryBehavior extends Behavior implements Helper {
@@ -185,6 +186,17 @@ public final class InventoryBehavior extends Behavior implements Helper {
             return false; // and don't remember it either, it'd go off the second the pause ended
         }
         lastTickRequestedMove = new int[]{inInventory, inHotbar};
+        if (!moveReady()) {
+            return false;
+        }
+        ctx.playerController().windowClick(ctx.player().inventoryMenu.containerId, inInventory < 9 ? inInventory + 36 : inInventory, inHotbar, ClickType.SWAP, ctx.player());
+        ticksSinceLastInventoryMove = 0;
+        lastTickRequestedMove = null;
+        return true;
+    }
+
+    // the move delay first, so a throttled move doesn't also stop us to wait for it (stationaryForInventoryMove asks for a pause)
+    private boolean moveReady() {
         if (ticksSinceLastInventoryMove < Baritone.settings().ticksBetweenInventoryMoves.value) {
             logDebug("Inventory move requested but delaying " + ticksSinceLastInventoryMove + " " + Baritone.settings().ticksBetweenInventoryMoves.value);
             return false;
@@ -193,9 +205,21 @@ public final class InventoryBehavior extends Behavior implements Helper {
             logDebug("Inventory move requested but delaying until stationary");
             return false;
         }
-        ctx.playerController().windowClick(ctx.player().inventoryMenu.containerId, inInventory < 9 ? inInventory + 36 : inInventory, inHotbar, ClickType.SWAP, ctx.player());
+        return true;
+    }
+
+    // someone else's inventory click, held to the same rules as ours: allowInventory, the move delay, standing still. the click
+    // itself stays theirs (altoclef's SlotHandler has its own cooldown) and only counts as a move if it went out. no
+    // remembering a throttled one like requestSwapWithHotBar does, callers ask again next tick and their slots may have moved
+    public boolean inventoryMoveIfAllowed(BooleanSupplier click) {
+        if (!Baritone.settings().allowInventory.value || AltoClefSettings.getInstance().isInteractionPaused()
+                || ctx.player().containerMenu != ctx.player().inventoryMenu || !moveReady()) {
+            return false;
+        }
+        if (!click.getAsBoolean()) {
+            return false;
+        }
         ticksSinceLastInventoryMove = 0;
-        lastTickRequestedMove = null;
         return true;
     }
 
