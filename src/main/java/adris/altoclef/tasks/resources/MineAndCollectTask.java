@@ -126,6 +126,19 @@ public class MineAndCollectTask extends ResourceTask {
         return true;
     }
 
+    // MineOrCollectTask does the drops (the whole tree, then the sweep), a parent grabbing them restarts us and we forget the tree
+    @Override
+    public boolean ownsDrops() {
+        return true;
+    }
+
+    // the catalogue puts mineIfPresent on logs and flowers with the very blocks we break. saplings come out of leaves, a
+    // placed sapling is not in our list, so that one still gets the extra miner
+    @Override
+    protected boolean minesOnItsOwn(Block[] blocks) {
+        return coversAll(blocks, _blocksToMine);
+    }
+
     @Override
     protected Task onResourceTick(AltoClef mod) {
         // an axe for wood, a shovel for dirt and sand, out of the bag and into the hotbar where ToolSet can see them
