@@ -53,7 +53,8 @@ public class GoalMineFromSide implements Goal, IGoalRenderPos {
             // as far as the column is open (feet and head both in air, nothing between us and the block)
             return allowBelow && dy <= -2 && dy >= -openBelow;
         }
-        // up to one sideways step plus a diagonal, one up or down. this is GoalNear range sqrt(2)
+        // up to one sideways step plus a diagonal, one up or down. wider than GoalNear(pos, 1), which is faces only: a
+        // diagonal can have no ray to the block, DestroyBlockTask's close in is the way out of that
         return dy >= -1 && dy <= 1 && dx * dx + dz * dz <= 2;
     }
 
