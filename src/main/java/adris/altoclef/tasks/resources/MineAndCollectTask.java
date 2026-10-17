@@ -533,13 +533,13 @@ public class MineAndCollectTask extends ResourceTask {
                     if (!_anchorAnnounced) {
                         _anchorAnnounced = true;
                         BlockPos at = around.get();
-                        Debug.logMessage("sticking with the " + (_logsOnly ? "tree" : "vein") + " at " + at.getX() + " " + at.getY() + " " + at.getZ());
+                        Debug.logDebug("sticking with the " + (_logsOnly ? "tree" : "vein") + " at " + at.getX() + " " + at.getY() + " " + at.getZ());
                     }
                     return around;
                 }
                 // nothing left around it, that one is done. back to the nearest
                 if (_anchorAnnounced) {
-                    Debug.logMessage("done with that " + (_logsOnly ? "tree" : "vein"));
+                    Debug.logDebug("done with that " + (_logsOnly ? "tree" : "vein"));
                 }
                 _anchor = null;
                 _anchorAnnounced = false;
