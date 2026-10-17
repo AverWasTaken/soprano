@@ -86,6 +86,12 @@ public final class TreeChop {
         return allowPlace && !hasThrowaway && !lockedOut && tripsDone < tripsAllowed;
     }
 
+    // only a log past a swing from where we'd stand is worth digging a tower for. one at our feet with no path is behind
+    // water or a wall, and dirt won't fix that, it just wastes a trip before the ban. no floor known counts as high
+    public static boolean highUp(int gap) {
+        return gap > TreeReach.MAX_UNDER;
+    }
+
     // one trip of TreeReach's cap gets us up most trees. one taller than that gets a second when the first ran out
     public static int tripsFor(int gap) {
         return gap != Integer.MAX_VALUE && gap > TreeReach.DIRT_MAX ? 2 : 1;
