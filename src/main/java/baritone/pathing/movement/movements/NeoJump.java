@@ -902,7 +902,7 @@ final class NeoJump {
 
     /**
      * Sideways part of the heading that steers v toward target. asks for a sideways speed that shrinks with the offset
-     * instead of aiming at the spot, same reason as SprintJump.steer: aiming ignores the drift we already have
+     * instead of aiming at the spot, same reason as SprintJump.Lean.next: aiming ignores the drift we already have
      */
     static double side(double v, double vv, double target, double gain, double accel) {
         double want = Math.max(-0.15, Math.min(0.15, gain * (target - v)));

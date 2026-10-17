@@ -1313,7 +1313,9 @@ public class PathExecutor implements IPathExecutor, Helper {
         if (!ctx.player().onGround() && !ctx.player().isInWater() && !ctx.player().isInLava() && !ctx.player().onClimbable()
                 && flight.ticks < SprintJump.MAX_TICKS && ExperimentalMovement.sprintJumping()) {
             steer(false);
-            sprintNextTick = true;
+            // vanilla drops sprint on its own the tick W goes up, but sprint held with S down is exactly what a sprint check
+            // looks for, so let go of it too. the next push presses it again before aiStep and sprint comes straight back
+            sprintNextTick = flight.throttle() == SprintJump.PUSH;
             return true;
         }
         // we probably flew over a few movements, pick up at whichever one we came down in (diagonal side cells count).
@@ -1333,9 +1335,12 @@ public class PathExecutor implements IPathExecutor, Helper {
         // the movements steer at their own dest and drop W the moment our feet are a block up ("Wrong Y coordinate"),
         // which was the mid air stall, so while we're up here nobody else gets a say. space only on takeoff: letting go
         // in the air resets the vanilla 10 tick jump delay, holding it made a jump up a step (~9 ticks) wait on landing
+        // a brake is S or letting go, never a head turn. every flight tick clears and re-presses, and landing clears
+        // again (onChangeInPathPosition), so S never outlives its brake tick
         clearKeys();
         behavior.baritone.getLookBehavior().updateTarget(flight.steer(ctx), false);
-        behavior.baritone.getInputOverrideHandler().setInputForceState(Input.MOVE_FORWARD, true);
+        behavior.baritone.getInputOverrideHandler().setInputForceState(Input.MOVE_FORWARD, flight.throttle() == SprintJump.PUSH);
+        behavior.baritone.getInputOverrideHandler().setInputForceState(Input.MOVE_BACK, flight.throttle() == SprintJump.BACK);
         behavior.baritone.getInputOverrideHandler().setInputForceState(Input.JUMP, takeoff);
     }
 
