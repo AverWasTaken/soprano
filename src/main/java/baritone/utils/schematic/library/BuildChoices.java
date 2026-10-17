@@ -26,7 +26,7 @@ public record BuildChoices(Set<String> excluded, Boolean nether) {
     }
 
     // ticking a row back on after a "no" is the player changing their mind, so the next start asks again. otherwise the
-    // stored no would wave that item straight through to the nether without a word, which is the whole thing we ask for
+    // stored no would quietly untick it again the moment the build saw it was short
     public BuildChoices withIncluded(String itemId, boolean included) {
         Set<String> next = new LinkedHashSet<>(excluded);
         if (included) {

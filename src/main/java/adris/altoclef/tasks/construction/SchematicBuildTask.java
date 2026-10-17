@@ -306,6 +306,10 @@ public class SchematicBuildTask extends Task {
         // night still gets slept, before the guard so waiting on a person is never "stuck"
         if (asking != 0) {
             protect(mod);
+            if (away) {
+                // a respawn or a fight's portal took us off while asking: wait at home, not wherever that was
+                return goHome();
+            }
             setDebugState("Waiting for your answer: nether?", "Waiting for your answer: nether?");
             return null;
         }
