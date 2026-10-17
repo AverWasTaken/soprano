@@ -14,6 +14,7 @@ import adris.altoclef.trackers.EntityTracker;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.MiningRequirement;
 import baritone.Baritone;
+import baritone.api.utils.Dimension;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.ItemPickupRules;
 import adris.altoclef.util.helpers.LookHelper;
@@ -25,6 +26,7 @@ import adris.altoclef.util.helpers.MineStick;
 import adris.altoclef.util.helpers.NoPathScope;
 import adris.altoclef.util.helpers.PlacedByUs;
 import adris.altoclef.util.helpers.StoneDigRank;
+import adris.altoclef.util.helpers.TreeChop;
 import adris.altoclef.util.helpers.TreeReach;
 import adris.altoclef.util.helpers.TreeReachScan;
 import adris.altoclef.util.helpers.TreeStrikes;
@@ -39,6 +41,7 @@ import net.minecraft.client.Minecraft;
 import java.util.function.Predicate;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.tags.BlockTags;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -158,6 +161,8 @@ public class MineAndCollectTask extends ResourceTask {
                 return _dirtTask;
             }
             _dirtTask = null;
+            // the stall clock still has its baseline from before the walk, it would call the first tick back a stall
+            _subtask.backFromDirt();
             if (done) {
                 // one trip per tree: the tower eats the blocks as it goes up, and a trip for "the shortfall" every time they
                 // dip would drag us off a half built tower
@@ -175,7 +180,7 @@ public class MineAndCollectTask extends ResourceTask {
         }
         Debug.logMessage("that log is too high to reach from the ground, digging " + want + " more dirt to tower up");
         _dirtSince = now;
-        _dirtLog = _subtask.miningPos();
+        _dirtLog = _subtask.takeDirtLog();
         _dirtTask = TaskCatalogue.getItemTask(Items.DIRT, mod.getItemStorage().getItemCount(Items.DIRT) + want);
         return _dirtTask;
     }
@@ -266,6 +271,13 @@ public class MineAndCollectTask extends ResourceTask {
         // the last tree we dug dirt for, and when
         private static BlockPos dirtTreeAt;
         private static int dirtTreeTick = Integer.MIN_VALUE;
+        // how many trips that tree got (see TreeChop.tripsFor)
+        private static int dirtTreeTrips;
+        // a log baritone found no way to, waiting on the dirt trip it asked for (see askForDirt), and the tower it needs
+        private BlockPos _dirtAsk;
+        private int _dirtAskGap;
+        // the tree whose drops we pick up once it is down, see treeSweep
+        private BlockPos _sweepTree;
 
         public MineOrCollectTask(Block[] blocks, ItemTarget[] targets) {
             _blocks = blocks;
@@ -363,6 +375,17 @@ public class MineAndCollectTask extends ResourceTask {
             }
 
             Optional<BlockPos> closestBlock = pickBlock(mod, pos);
+            // pickBlock lets go of the anchor when its tree is out of logs, so a block with the anchor still set is from the tree
+            boolean onTree = _logsOnly && _anchor != null && closestBlock.isPresent();
+            if (onTree) {
+                _sweepTree = _anchor;
+            }
+            if (_sweepTree != null) {
+                Optional<ItemEntity> sweep = treeSweep(mod, pos, onTree);
+                if (sweep.isPresent()) {
+                    return sweep.map(Object.class::cast);
+                }
+            }
             Optional<ItemEntity> closestDrop = nearestDrop(mod, pos, true);
             if (closestDrop.isEmpty() && closestBlock.isEmpty()) {
                 // nothing else to do with our hands: a drop in reach is still better than wandering off from it
@@ -371,15 +394,70 @@ public class MineAndCollectTask extends ResourceTask {
 
             double blockSq = closestBlock.isEmpty() ? Double.POSITIVE_INFINITY : closestBlock.get().distToCenterSqr(pos);
             double rawDropSq = closestDrop.isEmpty() ? Double.POSITIVE_INFINITY : closestDrop.get().distanceToSqr(pos);
-            // the + 10 is on a SQUARED distance, so any block within ~3 blocks beat a drop sitting on our feet, and
-            // in a tunnel there is always a block that close. so close drops just win, no maths
-            double dropSq = rawDropSq + 10;
+            boolean despawning = closestDrop.isPresent() && MineStick.aboutToDespawn(closestDrop.get().getAge());
+            boolean bagFull = closestDrop.isPresent() && mod.getItemStorage().getSlotsThatCanFitInPlayerInventory(closestDrop.get().getItem(), false).isEmpty();
 
-            if (rawDropSq <= DROP_FIRST_RANGE_SQ || dropSq <= blockSq) {
+            if (TreeChop.dropWins(onTree, despawning, bagFull, rawDropSq, blockSq)) {
                 return closestDrop.map(Object.class::cast);
             } else {
                 return closestBlock.map(Object.class::cast);
             }
+        }
+
+        // the drops of the tree we are on (or just finished). mid tree only once they cover what we came for, the logs still
+        // standing would be overchop. once the tree is down, all of them, nearest first from wherever we are standing
+        private Optional<ItemEntity> treeSweep(AltoClef mod, Vec3 pos, boolean onTree) {
+            if (!mod.getEntityTracker().itemDropped(_targets)) {
+                if (!onTree) {
+                    _sweepTree = null;
+                }
+                return Optional.empty();
+            }
+            List<ItemEntity> lying = countableDrops(mod, _sweepTree);
+            if (onTree) {
+                if (!enoughWith(mod, lying)) {
+                    return Optional.empty();
+                }
+            } else if (lying.isEmpty()) {
+                _sweepTree = null;
+                return Optional.empty();
+            }
+            // nearest of the counted ones, not nearestDrop: that one doesn't ask isValid, and a drop in the pond next door
+            // would win every tick and get dropped by lockedDrop every tick
+            ItemEntity best = null;
+            for (ItemEntity drop : lying) {
+                if (best == null || drop.distanceToSqr(pos) < best.distanceToSqr(pos)) {
+                    best = drop;
+                }
+            }
+            return Optional.ofNullable(best);
+        }
+
+        // our drops lying around the tree that we can still count on, see TreeChop.countable
+        private List<ItemEntity> countableDrops(AltoClef mod, BlockPos tree) {
+            List<ItemEntity> out = new ArrayList<>();
+            for (ItemEntity drop : mod.getEntityTracker().getDroppedItems()) {
+                if (!TreeChop.countable(!mod.getEntityTracker().isEntityReachable(drop), drop.getAge())) continue;
+                if (!TreeStrikes.sameTree(tree, drop.blockPosition()) || !isValid(mod, drop)) continue;
+                out.add(drop);
+            }
+            return out;
+        }
+
+        // every target covered by what we hold plus what is on the floor
+        private boolean enoughWith(AltoClef mod, List<ItemEntity> lying) {
+            for (ItemTarget target : _targets) {
+                int onFloor = 0;
+                for (ItemEntity drop : lying) {
+                    if (target.matches(drop.getItem().getItem())) {
+                        onFloor += drop.getItem().getCount();
+                    }
+                }
+                if (!TreeChop.enough(mod.getItemStorage().getItemCount(target), onFloor, target.getTargetCount())) {
+                    return false;
+                }
+            }
+            return true;
         }
 
         // the block we were handed counts as started once we can reach it, not only once the controller reports the crack: a
@@ -429,8 +507,11 @@ public class MineAndCollectTask extends ResourceTask {
             Predicate<BlockPos> notOurs = check -> usable.test(check) && !PlacedByUs.GLOBAL.recent(check.getX(), check.getY(), check.getZ(), gameTime);
 
             if (_anchor != null) {
-                Optional<BlockPos> around = MineAnchor.nearest(_anchor, mod.getBlockTracker().getKnownLocations(_blocks), _logsOnly,
-                        pos.x, pos.y, pos.z, check -> mod.getBlockTracker().blockIsValid(check, _blocks) && notOurs.test(check));
+                Predicate<BlockPos> inTree = check -> mod.getBlockTracker().blockIsValid(check, _blocks) && notOurs.test(check);
+                Optional<BlockPos> around = topDown(mod, inTree);
+                if (around.isEmpty()) {
+                    around = MineAnchor.nearest(_anchor, mod.getBlockTracker().getKnownLocations(_blocks), _logsOnly, pos.x, pos.y, pos.z, inTree);
+                }
                 if (around.isPresent()) {
                     if (!_anchorAnnounced) {
                         _anchorAnnounced = true;
@@ -458,6 +539,24 @@ public class MineAndCollectTask extends ResourceTask {
                 closestBlock = Optional.of(reachableStone(mod, pos, closestBlock.get(), check -> mod.getBlockTracker().blockIsValid(check, _blocks) && notOurs.test(check)));
             }
             return closestBlock;
+        }
+
+        // up on a tower next to the trunk, the highest log in reach first (TreeChop.topDown)
+        private Optional<BlockPos> topDown(AltoClef mod, Predicate<BlockPos> inTree) {
+            if (!_logsOnly) {
+                return Optional.empty();
+            }
+            int feetY = mod.getPlayer().blockPosition().getY();
+            // the whole trunk, not the anchor box: that one only goes LOG_DOWN under the last break, so its "base" was always
+            // right under our hands and the tower never counted as a tower
+            List<BlockPos> tree = new ArrayList<>();
+            for (BlockPos at : mod.getBlockTracker().getKnownLocations(_blocks)) {
+                if (TreeChop.inTrunk(_anchor, at) && inTree.test(at)) {
+                    tree.add(at);
+                }
+            }
+            Vec3 eye = mod.getPlayer().getEyePosition();
+            return Optional.ofNullable(TreeChop.topDown(tree, feetY, check -> eye.distanceToSqr(Vec3.atCenterOf(check)) <= HOLD_REACH_SQ));
         }
 
         // the last reach decision. the pick runs every tick and raycasts aren't free, so standing in the same block with the
@@ -595,7 +694,7 @@ public class MineAndCollectTask extends ResourceTask {
         }
 
         // 6 blocks, squared. anything this close gets picked up before we mine another block
-        private static final double DROP_FIRST_RANGE_SQ = 36;
+        private static final double DROP_FIRST_RANGE_SQ = TreeChop.DROP_FIRST_RANGE_SQ;
 
         // 16 blocks, squared. past this a block we placed ourselves is a fair meal
         private static final double OWN_BLOCK_RANGE_SQ = 256;
@@ -620,9 +719,53 @@ public class MineAndCollectTask extends ResourceTask {
 
         // with placing off nothing we dig could be used, so there is no point in the trip
         private boolean dirtPossible(AltoClef mod, int now) {
-            // a lockout further off than any we set is from a world whose clock was not ours
-            boolean locked = now < dirtOffUntil && dirtOffUntil - now <= DIRT_OFF_TICKS;
-            return !locked && mod.getClientBaritoneSettings().allowPlace.value && _scan.dirtAround(mod, now);
+            return !dirtLockedOut(now) && mod.getClientBaritoneSettings().allowPlace.value && _scan.dirtAround(mod, now);
+        }
+
+        // a lockout further off than any we set is from a world whose clock was not ours
+        private static boolean dirtLockedOut(int now) {
+            return now < dirtOffUntil && dirtOffUntil - now <= DIRT_OFF_TICKS;
+        }
+
+        // baritone has no way to the log and we have nothing to tower with: that's what dirt is for, the log isn't banned yet.
+        // no dirtAround here, the getItemTask finds dirt on its own and a log we can't otherwise get is worth the walk
+        private boolean askForDirt(AltoClef mod, BlockPos stuck) {
+            // nether stems: no dirt down there, the trip would wander a minute and lock every high log out for five
+            if (WorldHelper.getCurrentDimension() != Dimension.OVERWORLD) {
+                return false;
+            }
+            int now = WorldHelper.getTicks();
+            int gap = askGap(mod, stuck, now);
+            boolean placing = mod.getClientBaritoneSettings().allowPlace.value;
+            boolean holding = mod.getClientBaritone().getInventoryBehavior().hasGenericThrowaway();
+            if (!TreeChop.noPathDirt(placing, holding, dirtLockedOut(now), tripsOn(stuck, now), TreeChop.tripsFor(gap))) {
+                return false;
+            }
+            _dirtAsk = stuck.immutable();
+            _dirtAskGap = gap;
+            return true;
+        }
+
+        // how high the tower goes. a flagged log knows its floor, an unflagged one is measured from our feet (it has a trunk
+        // under it, so the no path is about getting near it, not up to it)
+        private int askGap(AltoClef mod, BlockPos log, int now) {
+            TreeReachScan.Look look = _scan.look(mod, log, now);
+            if (look.flagged()) {
+                return look.gap();
+            }
+            return Math.max(0, log.getY() - mod.getPlayer().blockPosition().getY());
+        }
+
+        // the log the next dirt trip is for, and the ask is used up
+        BlockPos takeDirtLog() {
+            BlockPos at = _dirtAsk != null ? _dirtAsk : _miningPos;
+            _dirtAsk = null;
+            return at;
+        }
+
+        void backFromDirt() {
+            _progressChecker.newTarget();
+            _noPath.disarm();
         }
 
         // false for a log high over the ground (canopy, or a trunk with its bottom cut away) when we have nothing to tower
@@ -640,6 +783,10 @@ public class MineAndCollectTask extends ResourceTask {
         // how much more dirt to dig before the log we are on. 0 when that one needs no tower, or we hold enough blocks for the
         // climb, or we are mid swing at it, or there is no dirt about
         private int dirtWanted(AltoClef mod) {
+            if (_dirtAsk != null) {
+                // askForDirt only asks with nothing to place in the bag, so the whole tower
+                return TreeReach.dirtWanted(_dirtAskGap);
+            }
             BlockPos at = _miningPos;
             if (!_logsOnly || at == null || mod.getControllerExtras().isBreakingBlock()) {
                 return 0;
@@ -649,11 +796,14 @@ public class MineAndCollectTask extends ResourceTask {
             if (!look.flagged() || look.fromGround() || !dirtPossible(mod, now)) {
                 return 0;
             }
-            if (dirtTreeAt != null && now >= dirtTreeTick && now - dirtTreeTick < DIRT_TREE_TICKS && TreeStrikes.sameTree(dirtTreeAt, at)) {
+            // one trip per tree on this road. a second one for a giant only comes from askForDirt, once the tower ran dry
+            if (tripsOn(at, now) > 0) {
                 return 0;
             }
-            // what the planner places from by default, the same four blocks
-            int held = mod.getItemStorage().getItemCount(Items.DIRT, Items.COBBLESTONE, Items.NETHERRACK, Items.STONE);
+            // what the planner places from, the same list hasGenericThrowaway goes by. the old hardcoded four missed the rest
+            // of the list, so a bag full of andesite still sent us off digging dirt
+            List<Item> throwaways = mod.getClientBaritoneSettings().acceptableThrowawayItems.value;
+            int held = mod.getItemStorage().getItemCount(throwaways.toArray(Item[]::new));
             return TreeReach.dirtShortfall(look.gap(), held);
         }
 
@@ -662,8 +812,16 @@ public class MineAndCollectTask extends ResourceTask {
         }
 
         private static void dirtTrip(BlockPos log, int now) {
+            dirtTreeTrips = tripsOn(log, now) + 1;
             dirtTreeAt = log;
             dirtTreeTick = now;
+        }
+
+        // trips already made for this log's tree, while they still count
+        private static int tripsOn(BlockPos log, int now) {
+            boolean recent = dirtTreeAt != null && log != null && now >= dirtTreeTick && now - dirtTreeTick < DIRT_TREE_TICKS
+                    && TreeStrikes.sameTree(dirtTreeAt, log);
+            return recent ? dirtTreeTrips : 0;
         }
 
         // one of the blocks we are after, still standing, not given up on, and close enough to keep swinging at
@@ -701,6 +859,8 @@ public class MineAndCollectTask extends ResourceTask {
             _anchorAnnounced = false;
             _lockedDrop = null;
             _patience.clear();
+            _dirtAsk = null;
+            _sweepTree = null;
         }
 
         @Override
@@ -725,6 +885,13 @@ public class MineAndCollectTask extends ResourceTask {
             }
             if (_miningPos != null && !_progressChecker.check(mod, _miningPos)) {
                 mod.getClientBaritone().getPathingBehavior().forceCancel();
+                if (_logsOnly && askForDirt(mod, _miningPos)) {
+                    // same deal as giveUpNoPath: a path that goes nowhere with an empty bag gets a tower before a ban
+                    Debug.logMessage("Got nowhere on the log at " + _miningPos.toShortString() + ", getting dirt to tower up to it.");
+                    _miningPos = null;
+                    _progressChecker.newTarget();
+                    return super.onTick(mod);
+                }
                 Debug.logMessage("Failed to mine block. Suggesting it may be unreachable.");
                 // a short ban right away (the tracker honours it, so the next pick is somewhere else) and a strike, three of which
                 // is the long one. the short one used to be a set of this task's own that no other task could see
@@ -771,6 +938,15 @@ public class MineAndCollectTask extends ResourceTask {
             BlockPos stuck = _miningPos;
             var dim = WorldHelper.getCurrentDimension();
             mod.getClientBaritone().getPathingBehavior().forceCancel();
+            if (_logsOnly && askForDirt(mod, stuck)) {
+                // no ban, no strike: with dirt in the bag baritone towers up beside the trunk. a second no path after the trip
+                // (tripsOn) is the real one and lands below
+                Debug.logMessage("No way to the log at " + stuck.getX() + " " + stuck.getY() + " " + stuck.getZ() + " yet, getting dirt to tower up to it.");
+                _miningPos = null;
+                _progressChecker.newTarget();
+                _noPath.disarm();
+                return;
+            }
             // stone and logs have no veins to speak of (a hillside, a tree with its own rules)
             boolean veins = verdict == NoPathScope.Verdict.EXHAUSTED && !_stoneOnly && !_logsOnly;
             List<BlockPos> cells = NoPathScope.cells(stuck, veins ? mod.getBlockTracker().getKnownLocations(_blocks) : List.of(), verdict, veins);
@@ -835,11 +1011,24 @@ public class MineAndCollectTask extends ResourceTask {
                 _miningPos = newPos;
                 return new DestroyBlockTask(_miningPos);
             }
-            if (obj instanceof ItemEntity) {
+            if (obj instanceof ItemEntity drop) {
                 _miningPos = null;
-                return _pickupTask;
+                BlockPos leaf = leafUnder(drop);
+                return leaf != null ? new DestroyBlockTask(leaf) : _pickupTask;
             }
             throw new UnsupportedOperationException("Shouldn't try to get the goal from object " + obj + " of type " + (obj != null ? obj.getClass().toString() : "(null object)"));
+        }
+
+        // a log drop that landed on the canopy. pathing up there is a climb through leaves that DropPatience gives up on,
+        // the leaf under it is one swing and the drop comes down to us
+        private BlockPos leafUnder(ItemEntity drop) {
+            AltoClef mod = AltoClef.getInstance();
+            if (!_logsOnly || mod == null || mod.getPlayer() == null) {
+                return null;
+            }
+            BlockPos under = drop.blockPosition().below();
+            boolean leaf = mod.getWorld().getBlockState(under).is(BlockTags.LEAVES);
+            return TreeChop.cutLeafUnder(drop.getY() - mod.getPlayer().getY(), leaf) ? under : null;
         }
 
         @Override
