@@ -28,6 +28,7 @@ public final class NightPrep {
     private final NightSleep.DayClock woolClock = new NightSleep.DayClock();
     private final NightSleep.DayClock craftClock = new NightSleep.DayClock();
     private final BedCraft bedCraft = new BedCraft();
+    private final NightSleep.ReadyLatch readyLatch = new NightSleep.ReadyLatch();
 
     private Prep running;
     private Prep last = Prep.TOO_EARLY;
@@ -53,6 +54,7 @@ public final class NightPrep {
         running = null;
         woolTask = null;
         colour = -1;
+        readyLatch.reset();
     }
 
     // the task to run instead of the phase this tick, or null
@@ -63,6 +65,7 @@ public final class NightPrep {
         long dayId = NightSleep.nightOf(dayTime);
         woolClock.roll(dayId);
         craftClock.roll(dayId);
+        long gameTime = mod.getWorld().getGameTime();
         long craftLead = c.nightCraftLeadTicks;
         long woolLead = c.nightWoolLeadTicks;
         boolean early = timeOfDay < NightSleep.EARLIEST_WINDOW - Math.max(craftLead, woolLead);
@@ -74,7 +77,8 @@ public final class NightPrep {
         }
         int wool = BedCraft.bestWoolStack(mod);
         // (the expensive questions wait for the evening: sheep, a bed standing close, the table)
-        boolean ready = bedReady.getAsBoolean();
+        // (latched: this check flipped yes and no every few steps, and every flip swapped the craft and the phase)
+        boolean ready = readyLatch.see(bedReady.getAsBoolean(), gameTime, dayId);
         boolean sheep = false;
         if (!ready && wool < 3 && timeOfDay >= NightSleep.EARLIEST_WINDOW - woolLead) {
             sheep = pickColour(mod, c) >= 0;
