@@ -124,6 +124,19 @@ public class TaskCatalogueRecipeTest {
         assertTrue("only " + checked + " recipes checked, expected at least " + MIN_CHECKED, checked >= MIN_CHECKED);
     }
 
+    // the wood blocks keep their own tasks, but the gather bill needs their recipes. the sweep above checks the shapes,
+    // this one checks they're there at all (and that bamboo, which has no planks field, stays out)
+    @Test
+    public void woodBlocksHaveRecipes() {
+        for (String part : List.of("stairs", "slab", "fence", "fence_gate", "door", "trapdoor", "sign", "pressure_plate")) {
+            assertNotNull(part, TaskCatalogue.recipeOf("spruce_" + part));
+            assertNotNull(part, TaskCatalogue.recipeOf("birch_" + part));
+        }
+        assertEquals(4, TaskCatalogue.recipeOf("spruce_stairs").getRecipe().outputCount());
+        assertEquals(2, TaskCatalogue.recipeOf("oak_trapdoor").getRecipe().outputCount());
+        assertNull(TaskCatalogue.recipeOf("bamboo_stairs"));
+    }
+
     // ---- the catalogue side ----
 
     // building a CraftIn*Task needs a running client (Task wants the player), so the catalogue hands over the recipes directly

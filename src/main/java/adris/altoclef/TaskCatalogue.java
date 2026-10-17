@@ -582,6 +582,7 @@ mine("pale_oak_sapling", Blocks.PALE_OAK_LEAVES, Items.PALE_OAK_SAPLING);
             woodTasks("fence", woodItems -> woodItems.fence, (woodItems, count) -> new CollectFenceTask(woodItems.fence, woodItems.prefix + "_planks", count));
             simple("wooden_fence_gate", ItemHelper.WOOD_FENCE_GATE, CollectFenceGateTask::new);
             woodTasks("fence_gate", woodItems -> woodItems.fenceGate, (woodItems, count) -> new CollectFenceGateTask(woodItems.fenceGate, woodItems.prefix + "_planks", count));
+            woodRecipes();
             {
                 String r = "wooden_slab";
                 shapedRecipe3x3("chiseled_bookshelf", Items.CHISELED_BOOKSHELF, 1, p, p, p, r, r, r, p, p, p).dontMineIfPresent();
@@ -1015,6 +1016,33 @@ mine("pale_oak_sapling", Blocks.PALE_OAK_LEAVES, Items.PALE_OAK_SAPLING);
             _craftedRecipes.put(name, new RecipeTarget(woodItems.button, 1, recipe));
             put(name, new Item[]{woodItems.button}, count -> new CraftInInventoryTask(new RecipeTarget(woodItems.button, count, recipe)));
         }
+    }
+
+    // the wood blocks keep their Collect*Task (woodTasks above), this only writes down the recipe so the gather bill can see
+    // them. without it stairs and doors were leaves nobody planned for, so the planks they eat never made it onto the log trip.
+    // same shapes as the Collect*Task classes. bamboo has no planks field, so it stays out (its stuff is bamboo_planks)
+    private static void woodRecipes() {
+        ItemTarget s = t("stick");
+        ItemTarget o = null;
+        for (WoodType woodType : WoodType.values()) {
+            ItemHelper.WoodItems w = ItemHelper.getWoodItems(woodType);
+            if (w.planks == null) continue;
+            ItemTarget p = t(w.prefix + "_planks");
+            woodRecipe(w.prefix + "_stairs", w.stairs, 4, p, o, o, p, p, o, p, p, p);
+            woodRecipe(w.prefix + "_slab", w.slab, 6, p, p, p, o, o, o, o, o, o);
+            woodRecipe(w.prefix + "_fence", w.fence, 3, p, s, p, p, s, p, o, o, o);
+            woodRecipe(w.prefix + "_fence_gate", w.fenceGate, 1, s, p, s, s, p, s, o, o, o);
+            woodRecipe(w.prefix + "_door", w.door, 3, p, p, o, p, p, o, p, p, o);
+            woodRecipe(w.prefix + "_trapdoor", w.trapdoor, 2, p, p, p, p, p, p, o, o, o);
+            woodRecipe(w.prefix + "_sign", w.sign, 3, p, p, p, p, p, p, o, s, o);
+            woodRecipe(w.prefix + "_pressure_plate", w.pressurePlate, 1, p, p, o, o);
+        }
+    }
+
+    // recipe only, the task routing stays whatever woodTasks registered
+    private static void woodRecipe(String name, Item match, int out, ItemTarget... slots) {
+        if (match == null) return;
+        _craftedRecipes.put(name, new RecipeTarget(match, 1, CraftingRecipe.newShapedRecipe(name, slots, out)));
     }
 
     // one step the gather bill (RecipeBill) can walk that isn't a shaped recipe: a run eats inPerRun of input and makes
