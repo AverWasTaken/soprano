@@ -91,6 +91,22 @@ public class PlaceSpotRankTest {
     }
 
     @Test
+    public void floatingRulesOutOurOwnColumnBelowUs() {
+        // feet at 6 50 -200, bobbing in water
+        assertTrue(PlaceSpotRank.underFloatingFeet(6, 49, -200, 6, 50, -200, false));
+        assertTrue(PlaceSpotRank.underFloatingFeet(6, 47, -200, 6, 50, -200, false));
+        // the cell next to the column is fair game, so is anything at or above our feet (wouldPillar handles those)
+        assertFalse(PlaceSpotRank.underFloatingFeet(7, 49, -200, 6, 50, -200, false));
+        assertFalse(PlaceSpotRank.underFloatingFeet(6, 50, -200, 6, 50, -200, false));
+        assertFalse(PlaceSpotRank.underFloatingFeet(6, 51, -200, 6, 50, -200, false));
+    }
+
+    @Test
+    public void standingOnSomethingTheColumnBelowIsNotOurBusiness() {
+        assertFalse(PlaceSpotRank.underFloatingFeet(6, 49, -200, 6, 50, -200, true));
+    }
+
+    @Test
     public void rejectionIsOnlyInTheNewRankSoTheFallbackStillHasAnAnswer() {
         assertTrue(PlaceSpotRank.oldScore(1, false, false, false) < Double.POSITIVE_INFINITY);
     }
