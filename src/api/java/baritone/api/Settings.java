@@ -937,6 +937,23 @@ public final class Settings {
     public final Setting<Boolean> recordMovementTimings = new Setting<>(false);
 
     /**
+     * Debug logging for sprint that drops when it should not have, and for how well the movement sim predicts the player.
+     * <p>
+     * Every tick the player was sprinting at the start of the last tick and is not now, while a path is being walked, one
+     * line says which movement it was, where the feet were, the collision flags the drop was decided from, the forward
+     * input, the food, what the executor wanted and why it said no, and whether a pause let go of the keys. About every
+     * 1000 path ticks one more line gives the number of drops in that stretch, so two runs can be compared.
+     * <p>
+     * Every tick the sim of the player's own movement is run from the state the tick started in with the inputs that were
+     * really sent, the result is held against what really happened next, and a line is logged when the position is off by more
+     * than 0.01 or the sprint, ground or collision flags differ.
+     * <p>
+     * Lines go to the debug log (chat, if {@link #chatDebug} is on) and to the game log with a {@code [sprintTelemetry]}
+     * prefix. It is a lot of text, so it is off by default, and {@link #fastMode} does not turn it on.
+     */
+    public final Setting<Boolean> sprintTelemetry = new Setting<>(false);
+
+    /**
      * Render the path
      */
     public final Setting<Boolean> renderPath = new Setting<>(true);
