@@ -74,14 +74,17 @@ public class MovementPillar extends Movement {
             return COST_INF;
         }
         BlockState srcUp = null;
-        if (MovementHelper.isWater(toBreak) && MovementHelper.isWater(fromState)) { // TODO should this also be allowed if toBreakBlock is air?
+        if (MovementHelper.isWater(fromState)) {
             srcUp = context.get(x, y + 1, z);
-            if (MovementHelper.isWater(srcUp)) {
+            if (swimsUp(context, x, y, z, srcUp, toBreak)) {
                 return LADDER_UP_ONE_COST; // allow ascending pillars of water, but only if we're already in one
             }
         }
         double placeCost = 0;
         if (!ladder) {
+            if (cantPlaceInto(context, x, y, z, fromState)) {
+                return COST_INF;
+            }
             // we need to place a block where we started to jump on it
             placeCost = context.costOfPlacingAt(x, y, z, fromState);
             if (placeCost >= COST_INF) {
@@ -137,6 +140,34 @@ public class MovementPillar extends Movement {
         } else {
             return JUMP_ONE_BLOCK_COST + placeCost + context.jumpPenalty + hardness - waitCredit;
         }
+    }
+
+    // the old rule wanted water at y+2 too, so the bottom of a 2 deep pool planned a block pillar instead. that pillar
+    // never fires: dest is still water, so isInWater never goes false, we never crouch and never click. floating up is
+    // what actually happens, same as the 3 deep case, and we end up at the waterline with our feet in dest. y+1 has to be
+    // still water we can float in (canWalkThrough says no to a current or a waterlogged slab), y+2 plain air, nothing to break
+    private static boolean swimsUp(CalculationContext context, int x, int y, int z, BlockState srcUp, BlockState toBreak) {
+        if (!MovementHelper.isWater(srcUp)) {
+            return false;
+        }
+        if (MovementHelper.isWater(toBreak)) {
+            return true;
+        }
+        return toBreak.getBlock() instanceof AirBlock && MovementHelper.canWalkThrough(context, x, y + 1, z, srcUp);
+    }
+
+    // a block pillar out of water that can't work. a current shoves us off center every tick, and the jump only goes once
+    // we're centered and still, so we drift until the movement times out and the planner picks the same pillar again.
+    // and a waterlogged stair or slab at our feet isn't something we place into, the runtime just punches it forever.
+    // kelp and friends break in one hit (destroy time 0) so the punch clears them and that one still works
+    private static boolean cantPlaceInto(CalculationContext context, int x, int y, int z, BlockState fromState) {
+        if (fromState.getFluidState().isEmpty()) {
+            return false;
+        }
+        if (MovementHelper.isFlowing(x, y, z, fromState, context.bsi)) {
+            return true;
+        }
+        return !(fromState.getBlock() instanceof AirBlock) && !fromState.canBeReplaced() && fromState.getBlock().defaultDestroyTime() != 0;
     }
 
     // set on the ticks we're crouching to place a block, see swimAllowed
