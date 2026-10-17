@@ -23,6 +23,13 @@ final class PlaceSpotRank {
         return y > feetY && !hasBelow;
     }
 
+    // floating in water the cell under our feet looks great (close, and canPlace counts water as placeable), but the
+    // builder only clicks while onGround, and that never happens up here. so it stares at the water until the spot fails.
+    // not a water thing really: no ground under us means nothing in our own column below us
+    static boolean underFloatingFeet(int x, int y, int z, int feetX, int feetY, int feetZ, boolean onGround) {
+        return !onGround && x == feetX && z == feetZ && y < feetY;
+    }
+
     // what the scan used to charge, kept as the fallback when nothing supported is in range
     static double oldScore(double distSq, boolean solid, boolean hasBelow, boolean inside) {
         return distSq + (solid ? 4 : 0) + (hasBelow ? 0 : UNSUPPORTED) + (inside ? 3 : 0);
