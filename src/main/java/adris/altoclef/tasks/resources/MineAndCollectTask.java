@@ -739,6 +739,10 @@ public class MineAndCollectTask extends ResourceTask {
             }
             int now = WorldHelper.getTicks();
             int gap = askGap(mod, stuck, now);
+            // a log in swinging range isn't missing a tower, the trip would come back with dirt and still no path
+            if (!TreeChop.highUp(gap)) {
+                return false;
+            }
             boolean placing = mod.getClientBaritoneSettings().allowPlace.value;
             boolean holding = mod.getClientBaritone().getInventoryBehavior().hasGenericThrowaway();
             if (!TreeChop.noPathDirt(placing, holding, dirtLockedOut(now), tripsOn(stuck, now), TreeChop.tripsFor(gap))) {
