@@ -5,7 +5,7 @@ import adris.altoclef.Debug;
 import adris.altoclef.TaskCatalogue;
 import adris.altoclef.tasks.movement.FollowPlayerTask;
 import adris.altoclef.tasks.movement.RunAwayFromPositionTask;
-import adris.altoclef.tasks.squashed.CataloguedResourceTask;
+import adris.altoclef.tasks.squashed.GatherBillTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.ui.HudText;
 import adris.altoclef.util.ItemTarget;
@@ -26,7 +26,7 @@ public class GiveItemToPlayerTask extends Task {
     private final String _playerName;
     private final ItemTarget[] _targets;
 
-    private final CataloguedResourceTask _resourceTask;
+    private final GatherBillTask _resourceTask;
     private final List<ItemTarget> _throwTarget = new ArrayList<>();
     private boolean _droppingItems;
 
@@ -35,7 +35,8 @@ public class GiveItemToPlayerTask extends Task {
     public GiveItemToPlayerTask(String player, ItemTarget... targets) {
         _playerName = player;
         _targets = targets;
-        _resourceTask = TaskCatalogue.getSquashedItemTask(targets);
+        // the whole shopping list up front, same as #get
+        _resourceTask = new GatherBillTask(targets);
     }
 
     @Override

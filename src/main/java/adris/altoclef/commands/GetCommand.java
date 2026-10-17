@@ -2,6 +2,7 @@ package adris.altoclef.commands;
 
 import adris.altoclef.AltoClef;
 import adris.altoclef.TaskCatalogue;
+import adris.altoclef.tasks.squashed.GatherBillTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.ItemTarget;
 import baritone.api.IBaritone;
@@ -22,13 +23,13 @@ public class GetCommand extends AltoClefCommand {
     protected void run(AltoClef mod, String label, IArgConsumer args) throws CommandException {
         args.requireMin(1);
         ItemTarget[] items = parseItems(args, AltoItem.CATALOGUE);
-        // one item gets its own task, a few get squashed into one so shared steps (a pickaxe and a sword both want sticks)
-        // only happen once
-        Task task = items.length == 1 ? TaskCatalogue.getItemTask(items[0]) : TaskCatalogue.getSquashedItemTask(items);
-        if (task == null) {
+        // the plain catalogue task is still what GatherBillTask ends on, and the cheapest way to ask "do we know this at all"
+        Task plain = items.length == 1 ? TaskCatalogue.getItemTask(items[0]) : TaskCatalogue.getSquashedItemTask(items);
+        if (plain == null) {
             throw new CommandInvalidStateException("no task for that, " + AltoClefCommands.prefix() + "list shows what altoclef can get");
         }
-        startTask(mod, task);
+        // the whole shopping list first, tools, fetch it all, then craft
+        startTask(mod, new GatherBillTask(items));
     }
 
     @Override
