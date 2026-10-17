@@ -11,6 +11,8 @@ import adris.altoclef.util.helpers.StorageHelper;
 import org.apache.commons.lang3.ArrayUtils;
 
 import java.util.*;
+import java.util.function.Function;
+import java.util.function.ToIntFunction;
 
 public class CataloguedResourceTask extends ResourceTask {
 
@@ -47,10 +49,18 @@ public class CataloguedResourceTask extends ResourceTask {
 
     @Override
     protected Task onResourceTick(AltoClef mod) {
-        for (ResourceTask task : _tasksToComplete) {
-            for (ItemTarget target : task.getItemTargets()) {
-                // If we failed to meet this task's targets, do the task.
-                if (!StorageHelper.itemTargetsMetInventory(mod, target)) return task;
+        // the pick counts what sits in an open crafting grid too. a sibling's craft borrowing four of our planks for its table
+        // made those planks the first unmet target, which pulled them back out, which made the sibling unmet again. forever.
+        // isFinished stays inventory only, the grid gets emptied before anybody calls this done
+        return firstUnmet(_tasksToComplete, ResourceTask::getItemTargets, target -> mod.getItemStorage().getItemCount(target.getMatches()));
+    }
+
+    // the first task with a target short of `held`, or null when they are all met. generic so the test does not have to build a
+    // ResourceTask, which wants a game
+    static <T> T firstUnmet(List<T> tasks, Function<T, ItemTarget[]> targetsOf, ToIntFunction<ItemTarget> held) {
+        for (T task : tasks) {
+            for (ItemTarget target : targetsOf.apply(task)) {
+                if (held.applyAsInt(target) < target.getTargetCount()) return task;
             }
         }
         return null;
