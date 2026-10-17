@@ -9,9 +9,11 @@ import org.junit.Test;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -246,24 +248,179 @@ public class RecipeBillTest {
         };
     }
 
+    private static RecipeBill.Node deferredLeaf(String name, int gross) {
+        return new RecipeBill.Node(name, null, gross, 0, 0, 0, -1);
+    }
+
     @Test
     public void toolsTheJobCallsFor() {
         RecipeBill.ToolBag none = tools(-1, -1, -1);
-        assertEquals(List.of("wooden_axe"), RecipeBill.tools(List.of(leaf("log", 20, 0, 0)), none));
-        assertEquals(List.of("stone_axe"), RecipeBill.tools(List.of(leaf("log", 40, 0, 0)), none));
+        List<RecipeBill.Node> nothing = List.of();
+        assertEquals(List.of("wooden_axe"), RecipeBill.tools(List.of(leaf("log", 20, 0, 0)), nothing, none));
+        // wood first even for a big pile, the stone one waits for a stone pick
+        assertEquals(List.of("wooden_axe"), RecipeBill.tools(List.of(leaf("log", 40, 0, 0)), nothing, none));
         // 20 in the bill but 15 already held is 5 to chop, a fist does that
-        assertEquals(List.of(), RecipeBill.tools(List.of(leaf("log", 20, 15, 0)), none));
-        assertEquals(List.of(), RecipeBill.tools(List.of(leaf("sand", 10, 0, 0)), none));
-        assertEquals(List.of("stone_shovel"), RecipeBill.tools(List.of(leaf("dirt", 40, 0, 0)), none));
-        // iron ore wants a stone pick, and with that coming the axe is stone too
-        assertEquals(List.of("stone_pickaxe", "stone_axe"),
-                RecipeBill.tools(List.of(leaf("log", 20, 0, 0), leaf("raw_iron", 6, 0, 2)), none));
-        // a stone pick in the bag already
-        assertEquals(List.of("stone_axe"), RecipeBill.tools(List.of(leaf("log", 10, 0, 0)), tools(2, -1, -1)));
+        assertEquals(List.of(), RecipeBill.tools(List.of(leaf("log", 20, 15, 0)), nothing, none));
+        assertEquals(List.of(), RecipeBill.tools(List.of(leaf("sand", 10, 0, 0)), nothing, none));
+        assertEquals(List.of("wooden_shovel"), RecipeBill.tools(List.of(leaf("dirt", 40, 0, 0)), nothing, none));
+        // iron ore wants a stone pick, but the wooden one and the wooden axe come first, then all the logs
+        assertEquals(List.of("wooden_pickaxe", "wooden_axe"),
+                RecipeBill.tools(List.of(leaf("log", 20, 0, 0), leaf("raw_iron", 6, 0, 2)), nothing, none));
+        // with those made (and the logs still out there) the stone pick is next, the wooden axe does
+        assertEquals(List.of("stone_pickaxe"),
+                RecipeBill.tools(List.of(leaf("log", 20, 0, 0), leaf("raw_iron", 6, 0, 2)), nothing, tools(1, 1, -1)));
+        // a stone pick in the bag and logs left to chop: stone axe, even over a wooden one
+        assertEquals(List.of("stone_axe"), RecipeBill.tools(List.of(leaf("log", 10, 0, 0)), nothing, tools(2, -1, -1)));
+        assertEquals(List.of("stone_axe"), RecipeBill.tools(List.of(leaf("log", 10, 0, 0)), nothing, tools(2, 1, -1)));
         // and one that's good enough is left alone
-        assertEquals(List.of(), RecipeBill.tools(List.of(leaf("log", 10, 0, 0), leaf("raw_iron", 6, 0, 2)), tools(3, 2, -1)));
+        assertEquals(List.of(), RecipeBill.tools(List.of(leaf("log", 10, 0, 0), leaf("raw_iron", 6, 0, 2)), nothing, tools(3, 2, -1)));
         // cobble is a wooden pick and nothing else
-        assertEquals(List.of("wooden_pickaxe"), RecipeBill.tools(List.of(leaf("cobblestone", 8, 0, 1)), none));
+        assertEquals(List.of("wooden_pickaxe"), RecipeBill.tools(List.of(leaf("cobblestone", 8, 0, 1)), nothing, none));
+        // stripped logs are a tree job too, even though they aren't fetched up front
+        assertEquals(List.of("wooden_axe"), RecipeBill.tools(nothing, List.of(deferredLeaf("spruce_stripped_logs", 57)), none));
+        // the axe broke: the bag says none again and the same job asks for a new one
+        assertEquals(List.of(), RecipeBill.tools(List.of(leaf("log", 40, 0, 0)), nothing, tools(0, 1, -1)));
+        assertEquals(List.of("wooden_axe"), RecipeBill.tools(List.of(leaf("log", 40, 0, 0)), nothing, tools(0, -1, -1)));
+    }
+
+    @Test
+    public void picksGoOneTierAtATime() {
+        List<RecipeBill.Node> iron = List.of(leaf("log", 20, 0, 0), leaf("raw_iron", 6, 0, 2));
+        assertEquals("wooden_pickaxe", RecipeBill.nextPick(iron, tools(-1, -1, -1)));
+        assertEquals("stone_pickaxe", RecipeBill.nextPick(iron, tools(1, -1, -1)));
+        assertNull(RecipeBill.nextPick(iron, tools(2, -1, -1)));
+        // the ones after the wooden pick are made out of the fetched stuff, so they go on the bill
+        assertEquals(List.of("stone_pickaxe"), RecipeBill.laterTools(iron, tools(-1, -1, -1)));
+        assertEquals(List.of("stone_pickaxe"), RecipeBill.laterTools(iron, tools(1, -1, -1)));
+        assertEquals(List.of(), RecipeBill.laterTools(iron, tools(2, -1, -1)));
+        assertEquals(List.of("stone_pickaxe", "iron_pickaxe"), RecipeBill.laterTools(List.of(leaf("diamond", 3, 0, 3)), tools(-1, -1, -1)));
+    }
+
+    @Test
+    public void aWornToolCountsAsGone() {
+        // a wooden axe has 59 uses, ToolWear calls it gone at 85%
+        assertEquals(-1, RecipeBill.usableTier(1, 55, 59));
+        assertEquals(1, RecipeBill.usableTier(1, 10, 59));
+        // something that doesn't wear never wears out
+        assertEquals(2, RecipeBill.usableTier(2, 0, 0));
+    }
+
+    // a two-wood build with a bit of everything. ALL_NEAR so the counts are just the blocks
+    private static Map<String, Integer> cabin() {
+        return want("spruce_planks", 165, "birch_planks", 112, "spruce_stairs", 57, "spruce_stripped_logs", 57,
+                "birch_stairs", 43, "birch_slab", 16, "glass_pane", 16, "grass", 12, "spruce_fence", 11, "spruce_trapdoor", 10,
+                "spruce_slab", 6, "ladder", 4, "lantern", 4, "blast_furnace", 1, "crafting_table", 1, "furnace", 1,
+                "smoker", 1, "spruce_door", 1);
+    }
+
+    @Test
+    public void theCabinGetsAllItsLogsInOneGo() {
+        RecipeBill.Bill bill = RecipeBill.of(cabin(), bag(), ALL_NEAR);
+        // spruce planks: 165 + stairs 15 runs * 6 = 90 + slab 3 + fence 4 runs * 4 = 16 + trapdoor 5 runs * 6 = 30 + door 6 = 310.
+        // the generic share lands on spruce: sticks 8 (fence) + 14 (2 ladder runs) + 1 (torch) = 23, 6 runs = 12 planks, and the
+        // table is 4. 326 planks is 82 logs, plus the smoker's 4
+        assertEquals(326, bill.need("spruce_planks"));
+        assertEquals(86, bill.need("spruce_log"));
+        // birch: 112 + stairs 11 runs * 6 = 66 + slab 3 runs * 3 = 9 = 187, 47 logs
+        assertEquals(187, bill.need("birch_planks"));
+        assertEquals(47, bill.need("birch_log"));
+        // and nothing is left on the any-wood nodes for a craft to grab birch with
+        assertEquals(0, bill.need("planks"));
+        assertEquals(0, bill.need("log"));
+        assertTrue(names(bill.leaves).contains("spruce_log"));
+        assertTrue(names(bill.deferred).contains("spruce_stripped_logs"));
+        // shears stuff stays the plain task's, it doesn't stop the rest from being billed
+        assertTrue(names(bill.deferred).contains("grass"));
+        // the schematic hands these over as items
+        assertEquals("grass", CatalogueBook.canonical(new ItemTarget(Items.SHORT_GRASS, 12)));
+        assertEquals("spruce_stripped_logs", CatalogueBook.canonical(new ItemTarget(Items.STRIPPED_SPRUCE_LOG, 57)));
+        assertEquals("spruce", bill.mainWood());
+        // the wood blocks have a way now, they used to be leaves nobody fetched for
+        assertNotNull(bill.way("spruce_stairs"));
+        assertNotNull(bill.way("spruce_trapdoor"));
+    }
+
+    @Test
+    public void heldStairsComeOffThePlanksAndLogs() {
+        RecipeBill.Bill bill = RecipeBill.of(cabin(), bag(Items.SPRUCE_STAIRS, 20), ALL_NEAR);
+        // 37 stairs still to make is 10 runs, 60 planks instead of 90
+        assertEquals(296, bill.need("spruce_planks"));
+        assertEquals(78, bill.need("spruce_log"));
+    }
+
+    @Test
+    public void theGenericShareGoesToTheMainWood() {
+        // 8 oak stairs (12 planks) and 4 sticks (2 any planks): all oak, 14 planks is 4 logs
+        RecipeBill.Bill bill = RecipeBill.of(want("oak_stairs", 8, "stick", 4), bag(), ALL_NEAR);
+        assertEquals(14, bill.need("oak_planks"));
+        assertEquals(4, bill.need("oak_log"));
+        assertEquals(0, bill.need("planks"));
+        // held oak planks net off the generic share too, there's just one node now
+        assertEquals(1, RecipeBill.of(want("oak_stairs", 8, "stick", 4), bag(Items.OAK_PLANKS, 10), ALL_NEAR).need("oak_log"));
+        // the most planks wins: 8 birch stairs beat 4 oak stairs
+        RecipeBill.Bill two = RecipeBill.of(want("oak_stairs", 4, "birch_stairs", 8, "stick", 4), bag(), ALL_NEAR);
+        assertEquals(14, two.need("birch_planks"));
+        assertEquals(6, two.need("oak_planks"));
+        // nether stems are a nether trip, the generic share doesn't go there
+        RecipeBill.Bill nether = RecipeBill.of(want("crimson_stairs", 8, "stick", 4), bag(), ALL_NEAR);
+        assertEquals(2, nether.need("planks"));
+        // no wood named at all: generic like before
+        assertEquals(2, RecipeBill.of(want("stick", 4), bag(), ALL_NEAR).need("planks"));
+    }
+
+    @Test
+    public void consumersGoFirst() {
+        RecipeBill.Bill bill = RecipeBill.of(cabin(), bag(), ALL_NEAR);
+        List<String> order = RecipeBill.consumersFirst(bill, List.of("spruce_planks", "spruce_stairs", "spruce_fence", "crafting_table"));
+        assertTrue(order.indexOf("spruce_stairs") < order.indexOf("spruce_planks"));
+        // the fence eats sticks, which eat planks, so it's the furthest up
+        assertEquals("spruce_fence", order.get(0));
+        assertEquals("spruce_planks", order.get(order.size() - 1));
+    }
+
+    @Test
+    public void theOtherWoodsPlanksWaitForTheAnyPlanksCrafts() {
+        RecipeBill.Bill bill = RecipeBill.of(cabin(), bag(), ALL_NEAR);
+        Set<String> made = new HashSet<>();
+        // first the main wood's planks, birch waits: the sticks and the table would grab a full birch stack otherwise
+        List<String> first = RecipeBill.nextBatch(bill, made);
+        assertTrue(first.contains("spruce_planks"));
+        assertFalse(first.contains("birch_planks"));
+        made.addAll(first);
+        List<String> second = RecipeBill.nextBatch(bill, made);
+        assertTrue(second.contains("stick"));
+        assertTrue(second.contains("crafting_table"));
+        assertTrue(second.contains("birch_stairs"));
+        made.addAll(second);
+        // the sticks are made, now the birch planks go, and the smoker's any-log waits for them
+        List<String> third = RecipeBill.nextBatch(bill, made);
+        assertEquals(List.of("birch_planks"), third);
+        made.addAll(third);
+        boolean smoker = false;
+        for (List<String> next = RecipeBill.nextBatch(bill, made); !next.isEmpty(); next = RecipeBill.nextBatch(bill, made)) {
+            smoker |= next.contains("smoker");
+            made.addAll(next);
+        }
+        assertTrue(smoker);
+        // nothing redirected, nothing waits
+        RecipeBill.Bill plain = RecipeBill.of(want("stick", 4, "crafting_table", 1), bag(), ALL_NEAR);
+        assertTrue(RecipeBill.nextBatch(plain, Set.of()).contains("planks"));
+    }
+
+    @Test
+    public void theBagKeepsRoomForTheFinalsAndThePlanks() {
+        // 64 planks: 16 logs are a stack and so are the planks they turn into, nothing extra
+        RecipeBill.Bill small = RecipeBill.of(want("spruce_planks", 64), bag(), ALL_NEAR);
+        assertEquals(0, RecipeBill.reservedSlots(small, want("spruce_planks", 64), n -> 64));
+        // 256: a stack of logs becomes four stacks of planks, 3 more slots
+        RecipeBill.Bill big = RecipeBill.of(want("spruce_planks", 256), bag(), ALL_NEAR);
+        assertEquals(3, RecipeBill.reservedSlots(big, want("spruce_planks", 256), n -> 64));
+        // the cabin: 19 stacks of finals out of 7 of leaves is 12, more than the 6 the planks grow by
+        RecipeBill.Bill cabin = RecipeBill.of(cabin(), bag(), ALL_NEAR);
+        int reserved = RecipeBill.reservedSlots(cabin, cabin(), n -> 64);
+        assertEquals(12, reserved);
+        // and a full bag of leaves still fits next to that in 36 slots
+        assertTrue(RecipeBill.fitBag(cabin.leaves, 34 - reserved, n -> 64).size() == cabin.leaves.size());
     }
 
     @Test
