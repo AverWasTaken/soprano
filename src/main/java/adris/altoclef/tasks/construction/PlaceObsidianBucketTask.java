@@ -10,9 +10,13 @@ import adris.altoclef.tasksystem.Task;
 import adris.altoclef.trackers.BlockTracker;
 import adris.altoclef.ui.HudText;
 import adris.altoclef.util.ItemTarget;
+import adris.altoclef.util.helpers.BucketPour;
 import adris.altoclef.util.helpers.WorldHelper;
 import adris.altoclef.util.progresscheck.MovementProgressChecker;
 import baritone.api.utils.input.Input;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientPacketListener;
+import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Vec3i;
@@ -48,6 +52,12 @@ public class PlaceObsidianBucketTask extends Task {
     private BlockPos _currentDestroyTarget;
     // said once, and the ban handed out once
     private boolean _ruinSaid;
+    // the lava click child is out there, so a pour we call off has a right click to let go of
+    private boolean _pouring;
+    // why the pour is on hold, so the log gets one line per reason and not one per tick
+    private BucketPour.Verdict _heldFor;
+    // the tick the lava cell started looking clear, MIN_VALUE while it doesn't
+    private int _clearSince = Integer.MIN_VALUE;
 
     public PlaceObsidianBucketTask(BlockPos pos) {
         this(pos, List.of());
@@ -89,6 +99,7 @@ public class PlaceObsidianBucketTask extends Task {
      */
     @Override
     protected Task onTick(AltoClef mod) {
+        watchLavaCell(mod);
         // Reset progress if pathing
         if (mod.getClientBaritone().getPathingBehavior().isPathing()) {
             _progressChecker.reset();
@@ -149,7 +160,7 @@ public class PlaceObsidianBucketTask extends Task {
 
         // Destroy block if needed
         if (_currentDestroyTarget != null) {
-            if (!WorldHelper.isSolid(mod, _currentDestroyTarget)) {
+            if (!needsClearing(mod, _currentDestroyTarget)) {
                 _currentDestroyTarget = null;
             } else {
                 return new DestroyBlockTask(_currentDestroyTarget);
@@ -186,12 +197,12 @@ public class PlaceObsidianBucketTask extends Task {
                 }
                 return new GetToBlockTask(targetPos, false);
             }
-            if (WorldHelper.isSolid(mod, _pos)) {
+            if (needsClearing(mod, _pos)) {
                 _currentDestroyTarget = _pos;
                 return null;
             }
             // Clear the upper two as well, to make placing more reliable.
-            if (WorldHelper.isSolid(mod, _pos.above())) {
+            if (needsClearing(mod, _pos.above())) {
                 _currentDestroyTarget = _pos.above();
                 return null;
             }
@@ -199,8 +210,16 @@ public class PlaceObsidianBucketTask extends Task {
                 _currentDestroyTarget = _pos.above(2);
                 return null;
             }
+            // asked every tick the click child runs too, this onTick comes first. returning null is what calls it off
+            BucketPour.Verdict pour = pourVerdict(mod);
+            if (pour != BucketPour.Verdict.POUR) {
+                return holdThePour(mod, pour);
+            }
+            _heldFor = null;
+            _pouring = true;
             return new InteractWithBlockTask(new ItemTarget(Items.LAVA_BUCKET, 1), Direction.WEST, _pos.offset(1, 0, 0), false);
         }
+        _pouring = false;
         // Lava placed, Now, place water.
         BlockPos waterCheck = _pos.above();
         if (mod.getWorld().getBlockState(waterCheck).getBlock() != Blocks.WATER) {
@@ -209,7 +228,7 @@ public class PlaceObsidianBucketTask extends Task {
             if (!mod.getPlayer().blockPosition().equals(targetPos) && mod.getItemStorage().hasItem(Items.WATER_BUCKET)) {
                 return new GetToBlockTask(targetPos, false);
             }
-            if (WorldHelper.isSolid(mod, waterCheck)) {
+            if (needsClearing(mod, waterCheck)) {
                 _currentDestroyTarget = waterCheck;
                 return null;
             }
@@ -248,6 +267,59 @@ public class PlaceObsidianBucketTask extends Task {
         return false;
     }
 
+    // the lava cell and the one over it are on the pour's ray from the ledge, so "not a full block" isn't clear enough for
+    // those two: grass, a slab or a snow layer in the lava cell stops the ray on its top, and the lava goes on top of it,
+    // which is the cell beside our feet. the rest only have to be out of the way
+    private boolean needsClearing(AltoClef mod, BlockPos cell) {
+        if (cell.equals(_pos) || cell.equals(_pos.above())) {
+            return !BucketPour.clearForPour(mod.getWorld(), cell);
+        }
+        return WorldHelper.isSolid(mod, cell);
+    }
+
+    // every tick, not just at pour time: a break the server turned down and we broke again while walking back would
+    // otherwise still count from the first time
+    private void watchLavaCell(AltoClef mod) {
+        if (!BucketPour.clearForPour(mod.getWorld(), _pos)) {
+            _clearSince = Integer.MIN_VALUE;
+        } else if (_clearSince == Integer.MIN_VALUE) {
+            _clearSince = WorldHelper.getTicks();
+        }
+    }
+
+    private BucketPour.Verdict pourVerdict(AltoClef mod) {
+        boolean clear = BucketPour.clearForPour(mod.getWorld(), _pos);
+        int clearTicks = clear && _clearSince != Integer.MIN_VALUE ? WorldHelper.getTicks() - _clearSince : 0;
+        boolean fallingIn = WorldHelper.fallingInFlightOver(mod.getWorld(), _pos) || WorldHelper.fallingAboutToDrop(mod.getWorld(), _pos);
+        return BucketPour.check(clear, clearTicks, BucketPour.settleTicks(pingMs(mod)), fallingIn, mod.getPlayer().onGround(),
+                mod.getPlayer().getBoundingBox(), _pos);
+    }
+
+    // our round trip from the tab list, 0 when there's nobody to ask (singleplayer has no lag to wait out anyway)
+    private static int pingMs(AltoClef mod) {
+        ClientPacketListener connection = Minecraft.getInstance().getConnection();
+        if (connection == null) {
+            return 0;
+        }
+        PlayerInfo info = connection.getPlayerInfo(mod.getPlayer().getUUID());
+        return info == null ? 0 : info.getLatency();
+    }
+
+    // not now. the click child goes (we return null), and so does a right click it may have had down. standing here doing
+    // nothing for long enough is the progress checker's to end, like any other stall
+    private Task holdThePour(AltoClef mod, BucketPour.Verdict why) {
+        if (_pouring) {
+            _pouring = false;
+            mod.getInputControls().release(Input.CLICK_RIGHT);
+        }
+        if (why != _heldFor) {
+            _heldFor = why;
+            Debug.logInternal("cast: holding the lava pour into " + _pos.toShortString() + ", " + why);
+        }
+        setDebugState("Holding the lava pour: " + why);
+        return null;
+    }
+
     private static boolean isWater(AltoClef mod, BlockPos pos) {
         return mod.getWorld().getBlockState(pos).getBlock() == Blocks.WATER;
     }
@@ -276,6 +348,10 @@ public class PlaceObsidianBucketTask extends Task {
      */
     @Override
     protected void onStop(AltoClef mod, Task interruptTask) {
+        if (_pouring) {
+            _pouring = false;
+            mod.getInputControls().release(Input.CLICK_RIGHT);
+        }
         // Check if the mod's behaviour is not null
         if (mod.getBehaviour() != null) {
             // Pop the behaviour from the stack
