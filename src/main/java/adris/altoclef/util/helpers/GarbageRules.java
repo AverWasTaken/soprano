@@ -17,6 +17,31 @@ public final class GarbageRules {
     private GarbageRules() {
     }
 
+    // the worse of two tools of the same family, as an index into items (null = a slot we may not throw). first pair found
+    // wins, same order the old slot loop went in. families are ItemHelper.toolKind, a pickaxe never loses to a sword
+    public static int worseTool(List<Item> items) {
+        java.util.Map<String, Integer> bestLevel = new java.util.HashMap<>();
+        java.util.Map<String, Integer> bestAt = new java.util.HashMap<>();
+        for (int i = 0; i < items.size(); i++) {
+            Item item = items.get(i);
+            String kind = item == null ? null : ItemHelper.toolKind(item);
+            if (kind == null) continue;
+            int level = ItemHelper.getToolDurability(item);
+            int prevBest = bestLevel.getOrDefault(kind, 0);
+            if (level > prevBest) {
+                // the one we saw before is worse
+                if (bestAt.containsKey(kind)) {
+                    return bestAt.get(kind);
+                }
+                bestLevel.put(kind, level);
+                bestAt.put(kind, i);
+            } else if (level < prevBest) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
     public static Cand cand(ItemStack stack) {
         Item item = stack.getItem();
         boolean tool = ItemHelper.isTool(item);

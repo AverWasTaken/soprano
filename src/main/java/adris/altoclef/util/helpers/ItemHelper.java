@@ -25,7 +25,11 @@ import net.minecraft.world.level.block.entity.FuelValues;
 import net.minecraft.world.entity.ai.attributes.Attribute;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.item.AxeItem;
 import net.minecraft.world.item.DiggerItem;
+import net.minecraft.world.item.HoeItem;
+import net.minecraft.world.item.PickaxeItem;
+import net.minecraft.world.item.ShovelItem;
 import net.minecraft.world.item.SwordItem;
 import net.minecraft.world.item.component.ItemAttributeModifiers;
 import net.minecraft.world.item.component.Tool;
@@ -476,6 +480,17 @@ public class ItemHelper {
      */
     public static boolean isTool(Item item) {
         return item instanceof DiggerItem || item instanceof SwordItem;
+    }
+
+    // which tool family this is, null for anything that isn't one. the full-bag sweep groups by this so a pickaxe
+    // never loses to a sword. the classes still tell them apart on this line, same checks isTool uses
+    public static String toolKind(Item item) {
+        if (item instanceof PickaxeItem) return "pickaxe";
+        if (item instanceof AxeItem) return "axe";
+        if (item instanceof ShovelItem) return "shovel";
+        if (item instanceof HoeItem) return "hoe";
+        if (item instanceof SwordItem) return "sword";
+        return null;
     }
 
     /**
