@@ -39,9 +39,20 @@ import java.util.Arrays;
  */
 final class SprintJump {
 
-    // straight out of LivingEntity.travelInAir / jumpFromGround / Player.getFlyingSpeed (same on 1.21.4 and 26.3), aiStep
-    // scales move input by 0.98 (applyInput on 26.3)
+    // straight out of LivingEntity.travelInAir / jumpFromGround / Player.getFlyingSpeed (same on every version we
+    // ship), and aiStep scales move input by 0.98 once before travel
     static final double GROUND_FRICTION = 0.6 * 0.91, AIR_FRICTION = 0.91, AIR_ACCEL = 0.026 * 0.98, JUMP_BOOST = 0.2;
+    // S with W up is no forward impulse, so aiStep drops sprint before travel and the brake only gets the walking 0.02.
+    // the next W with the sprint key down starts it again mid air (canStartSprinting doesn't care about onGround, see
+    // sprintsOnJumpTick), and before travel, so a push after a brake is back to AIR_ACCEL
+    static final double BACK_ACCEL = 0.02 * 0.98;
+    static final int PUSH = 1, COAST = 0, BACK = -1;
+    // how far the lean can move in a tick. ~9 degrees near the middle, nobody's neck snaps from that
+    private static final double MAX_LEAN_STEP = 0.15;
+    // drift this small isn't worth a head turn, and it's exactly where the sign flips every tick
+    private static final double POS_DEADBAND = 0.02, VEL_DEADBAND = 0.003;
+    // ~3 degrees, a lean the server would notice swapping sides
+    static final double VISIBLE_LEAN = 0.05;
     private static final double JUMP = 0.42, GRAVITY = 0.08, SAFE_FALL = 3, EPS = 1e-6;
     // a braked hop that lands short is a slow way to walk. ground sprint is ~0.28 a tick, going down steps or bonking one is way worse
     private static final double FLAT_PACE = 0.28, SLOW_PACE = 0.15;
@@ -53,11 +64,14 @@ final class SprintJump {
     // the floor of a cell a parkour hop flies over. far enough down that nothing lands on it inside MAX_TICKS
     static final double NO_FLOOR = -1000;
 
-    record Landing(double s, double y, double apex, double v, int ticks) {}
+    // pushed: W was down on the touchdown tick, so sprint is back up for the next takeoff
+    record Landing(double s, double y, double apex, double v, int ticks, boolean pushed) {}
 
     final double[] floors; // relative to the takeoff floor, cell 0 is the one we take off from
     private final double spacing, halfWidth, groundAccel;
     private double originX, originZ, takeoffY, ux, uz, target, apex;
+    // how the plan slows down before it pushes for good: COAST (let go of W) or BACK (hold S). picked along with target
+    int brake = COAST;
     private boolean pushing;
     // a parkour hop has to cross its gap, so a hop that lands short of "walk pace" is still the whole point
     boolean hop;
@@ -143,7 +157,7 @@ final class SprintJump {
         return jump;
     }
 
-    // asking "is the player sprinting" was the wrong question. 26.3 starts a sprint inside aiStep whenever the key is down and forward
+    // asking "is the player sprinting" was the wrong question. vanilla starts a sprint inside aiStep whenever the key is down and forward
     // is held, on the ground or off it, and all a sprint jump wants is the flag up on the tick jumpFromGround runs. so a plan
     // that said no one tick ago (and made the executor let go of the key) could never say yes again until some other movement
     // re-armed the flag. this asks what aiStep will make of it this tick instead (LocalPlayer.canStartSprinting and
@@ -206,10 +220,11 @@ final class SprintJump {
         return vec.z * ux - vec.x * uz;
     }
 
-    /**
-     * Full send (NaN), brake to land around a distance along the line, or don't jump (null)
-     */
+    // full send (NaN), brake to land around a distance along the line (and which brake, in the brake field), or don't jump (null)
     Double plan(double s, double v) {
+        if (hop && nothingPastTheGap()) {
+            return null; // MovementParkour.hopPrice never prices a hop with no floor past the landing, so it gets walked
+        }
         // a hop that lands right in front of a step leaves the next one nothing to do but bonk the face, lose sprint,
         // and hand it to MovementAscend. so with a step ahead, pick a hop the next one can pop it from, or sprint
         // a tick or two more if that sets one up
@@ -226,21 +241,45 @@ final class SprintJump {
         // ever shortens a hop, so nothing past where full send lands
         Landing full = jump(s, v, Double.NaN);
         for (int k = floors.length - 1; k >= 1; k--) {
-            if ((full == null || k * spacing <= full.s() + spacing / 2) && works(s, v, margins, k * spacing, chain)) {
-                return k * spacing;
+            if (full != null && k * spacing > full.s() + spacing / 2) {
+                continue;
+            }
+            // letting go is the quiet one, S only when coasting can't shed enough
+            for (int kind : BRAKES) {
+                if (works(s, v, margins, k * spacing, kind, chain)) {
+                    brake = kind;
+                    return k * spacing;
+                }
             }
         }
         return null;
     }
 
+    private static final int[] BRAKES = {COAST, BACK};
+
     private boolean works(double s, double v, double[] margins, double target, boolean chain) {
+        return works(s, v, margins, target, PUSH, chain);
+    }
+
+    private boolean works(double s, double v, double[] margins, double target, int kind, boolean chain) {
         for (double margin : margins) {
-            Landing l = jump(s, v * margin, target);
+            Landing l = jump(s, v * margin, target, kind);
             if (!safe(l) || !hop && !Double.isNaN(target) && l.s() - s < (l.y() < -EPS || chain ? SLOW_PACE : FLAT_PACE) * l.ticks()) {
                 return false;
             }
+            if (!Double.isNaN(target) && l.v() < 0) {
+                return false; // braked so hard it comes down sliding back toward where it came from
+            }
         }
-        return !chain || chains(jump(s, v, target));
+        return !chain || chains(jump(s, v, target, kind));
+    }
+
+    private boolean nothingPastTheGap() {
+        int landing = 1;
+        while (landing < floors.length && floors[landing] <= NO_FLOOR / 2) {
+            landing++;
+        }
+        return landing >= floors.length - 1;
     }
 
     private boolean chains(Landing l) {
@@ -273,21 +312,28 @@ final class SprintJump {
         return false;
     }
 
-    /**
-     * @return null if we hit a wall, leave the runway, or never come down
-     */
+    // null if we hit a wall, leave the runway, or never come down
     Landing jump(double s, double v, double target) {
-        return fly(s, v + JUMP_BOOST, 0, JUMP, 0, true, target);
+        return jump(s, v, target, brake);
     }
 
-    private Landing fly(double s, double v, double y, double vy, double apex, boolean jumping, double target) {
+    Landing jump(double s, double v, double target, int kind) {
+        return fly(s, v + JUMP_BOOST, 0, JUMP, 0, true, target, kind);
+    }
+
+    static double airAccel(int throttle) {
+        return throttle == PUSH ? AIR_ACCEL : throttle == BACK ? -BACK_ACCEL : 0;
+    }
+
+    private Landing fly(double s, double v, double y, double vy, double apex, boolean jumping, double target, int kind) {
         boolean committed = false;
         for (int tick = 0; tick < MAX_TICKS; tick++) {
             // onGround is still true on the jump tick, so it gets ground acceleration and ground friction
             boolean jumpTick = jumping && tick == 0;
-            int throttle = jumpTick ? 0 : target == BRAKE_THEN_PUSH ? (tick == 0 ? -1 : 1) : throttle(s, v, y, vy, apex, target, committed);
-            committed = throttle > 0;
-            double disp = v + (jumpTick ? groundAccel : AIR_ACCEL * throttle);
+            int throttle = jumpTick || touchdown(s, y, vy) ? PUSH
+                    : target == BRAKE_THEN_PUSH ? (tick == 0 ? kind : PUSH) : throttle(s, v, y, vy, apex, target, kind, committed);
+            committed = !jumpTick && throttle == PUSH; // W on takeoff is for the jump boost, it doesn't commit to anything
+            double disp = v + (jumpTick ? groundAccel : airAccel(throttle));
             // vanilla collides y before x/z, so we're already as high as we're going to get this tick when we move forward
             y += vy;
             apex = Math.max(apex, y);
@@ -298,7 +344,7 @@ final class SprintJump {
                 return null; // face first into a step, sprint gets cancelled and we just fall back down
             }
             if (landed) {
-                return new Landing(s, y, apex, disp * AIR_FRICTION, tick + 1);
+                return new Landing(s, y, apex, disp * AIR_FRICTION, tick + 1, throttle == PUSH);
             }
             v = disp * (jumpTick ? GROUND_FRICTION : AIR_FRICTION);
             vy = (vy - GRAVITY) * 0.98;
@@ -306,17 +352,22 @@ final class SprintJump {
         return null;
     }
 
-    /**
-     * Hold W facing forward (1) or backward (-1, brakes without losing sprint)
-     */
-    private int throttle(double s, double v, double y, double vy, double apex, double target, boolean committed) {
+    // does this tick's move put us on the floor. same test fly() lands with
+    private boolean touchdown(double s, double y, double vy) {
+        return vy < 0 && y + vy <= highest(s) + EPS;
+    }
+
+    // PUSH (W) or the plan's brake (COAST lets go, BACK holds S). turning the head around to brake with W held kept
+    // sprint, but the server watched the yaw spin 180 to do it. the touchdown tick always pushes (fly() sees to that) so
+    // we land sprinting and the next hop's getSpeed() is the sprinting one it plans with
+    private int throttle(double s, double v, double y, double vy, double apex, double target, int kind, boolean committed) {
         if (Double.isNaN(target) || committed) {
-            return 1;
+            return PUSH;
         }
         // brake first, push last. same landing spot, but we come down moving, which is what the next hop needs to pop a
-        // step. brake while braking now and pushing after still gets there, then push for good: one flip, no chatter
-        Landing late = fly(s, v, y, vy, apex, false, BRAKE_THEN_PUSH);
-        return late == null || late.s() >= target ? -1 : 1;
+        // step. brake while braking now and pushing after still gets there, then push for good: one switch, no chatter
+        Landing late = fly(s, v, y, vy, apex, false, BRAKE_THEN_PUSH, kind);
+        return late == null || late.s() >= target ? kind : PUSH;
     }
 
     boolean safe(Landing l) {
@@ -345,26 +396,66 @@ final class SprintJump {
         return top;
     }
 
-    /**
-     * Which way to face this tick: forward on takeoff so the jump boost goes down the line, then push or brake,
-     * tilted to kill sideways drift
-     */
+    // which way to face this tick and which key to hold (throttle()). always down the line, leaned to kill sideways drift
     Rotation steer(IPlayerContext ctx) {
         Vec3 pos = ctx.player().position().subtract(originX, 0, originZ);
         Vec3 vel = ctx.player().getDeltaMovement();
-        int throttle = 1;
+        boolean takeoff = ticks++ == 0;
+        int throttle = PUSH;
         double accel = JUMP_BOOST + groundAccel;
-        if (ticks++ > 0) {
+        if (!takeoff) {
             apex = Math.max(apex, pos.y - takeoffY);
-            throttle = throttle(along(pos), along(vel), pos.y - takeoffY, vel.y, apex, target, pushing);
-            pushing = throttle > 0;
+            throttle = touchdown(along(pos), pos.y - takeoffY, vel.y) ? PUSH
+                    : throttle(along(pos), along(vel), pos.y - takeoffY, vel.y, apex, target, brake, pushing);
+            pushing = throttle == PUSH;
             accel = AIR_ACCEL;
         }
-        // aiming at a point on the line ignores how fast we're already drifting toward it, so we'd sail past and swing
-        // back forever (the diagonal wiggle). ask for a sideways speed that shrinks with the offset instead
-        double side = Math.max(-0.5, Math.min(0.5, (-across(pos) * 0.3 - across(vel)) / accel));
-        double forward = throttle * Math.sqrt(1 - side * side);
-        float yaw = (float) Math.toDegrees(Math.atan2(uz * forward + ux * side, ux * forward - uz * side)) - 90;
-        return new Rotation(yaw, ctx.playerRotations().getPitch());
+        lastThrottle = throttle;
+        return new Rotation(yaw(ux, uz, lean.next(across(pos), across(vel), accel, throttle)), ctx.playerRotations().getPitch());
+    }
+
+    // one flight's worth of lean, sideways from the line (positive is the way across() measures)
+    static final class Lean {
+        double value = Double.NaN; // NaN until takeoff, nothing to ease from
+        private int side, swaps;
+
+        // ask for a sideways speed that shrinks with the offset, or we sail past the line and swing back forever (the
+        // diagonal wiggle). deadbanded and eased, since a one tick deadbeat slams side to side around zero
+        double next(double offset, double drift, double accel, int throttle) {
+            if (throttle != PUSH && !Double.isNaN(value)) {
+                return value; // the head holds still through a brake, it only steers while W is down
+            }
+            double want = Math.max(-0.5, Math.min(0.5, (-deadband(offset, POS_DEADBAND) * 0.3 - deadband(drift, VEL_DEADBAND)) / accel));
+            double lean = Double.isNaN(value) ? want : Math.max(value - MAX_LEAN_STEP, Math.min(value + MAX_LEAN_STEP, want));
+            // easing lags, so the lean overshoots and has to come back. one swap of sides is steering, the second one is
+            // chasing our own overshoot and is the left right wobble, so that one stops at straight ahead instead
+            int sign = Math.abs(lean) > VISIBLE_LEAN ? (int) Math.signum(lean) : 0;
+            if (sign != 0 && sign != side) {
+                if (side != 0 && swaps++ > 0) {
+                    lean = 0;
+                } else {
+                    side = sign;
+                }
+            }
+            return value = lean;
+        }
+    }
+
+    private static double deadband(double x, double band) {
+        return Math.signum(x) * Math.max(0, Math.abs(x) - band);
+    }
+
+    // facing down the line (ux, uz), leaned sideways by lean (positive is the way across() measures)
+    static float yaw(double ux, double uz, double lean) {
+        double forward = Math.sqrt(1 - lean * lean);
+        return (float) Math.toDegrees(Math.atan2(uz * forward + ux * lean, ux * forward - uz * lean)) - 90;
+    }
+
+    private final Lean lean = new Lean();
+    // the executor holds W, S or nothing off this
+    private int lastThrottle = PUSH;
+
+    int throttle() {
+        return lastThrottle;
     }
 }
