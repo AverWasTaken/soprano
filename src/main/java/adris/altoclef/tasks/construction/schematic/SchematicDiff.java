@@ -33,6 +33,9 @@ public final class SchematicDiff {
     private final int oy;
     private final int oz;
     private final Predicate<Block> skip;
+    // cells the build leaves out (the unchecked items, SkipItems.leftOut): a standing one still counts as right, a
+    // missing one costs nothing and isn't wrong either
+    private final Predicate<BlockState> leftOut;
     private final MaterialList.Builder left = new MaterialList.Builder();
     // the cells that are already right, for keeping the gather's pickaxe off them. null for a watch (see watching)
     private final LongOpenHashSet built;
@@ -44,22 +47,33 @@ public final class SchematicDiff {
 
     // schematic is the laid out file (BuilderProcess.placed), its local 0,0,0 at ox, oy, oz. skip = buildSkipBlocks
     public SchematicDiff(ISchematic schematic, int ox, int oy, int oz, Predicate<Block> skip) {
-        this(schematic, ox, oy, oz, skip, true);
+        this(schematic, ox, oy, oz, skip, state -> false, true);
+    }
+
+    public SchematicDiff(ISchematic schematic, int ox, int oy, int oz, Predicate<Block> skip, Predicate<BlockState> leftOut) {
+        this(schematic, ox, oy, oz, skip, leftOut, true);
     }
 
     // the same walk that only counts, for keeping an eye on the builder. no position set and no bill (result() is
     // empty), a big build re-counted every half a minute shouldn't leave a few megabytes behind each time
     public static SchematicDiff watching(ISchematic schematic, int ox, int oy, int oz, Predicate<Block> skip) {
-        return new SchematicDiff(schematic, ox, oy, oz, skip, false);
+        return watching(schematic, ox, oy, oz, skip, state -> false);
     }
 
-    private SchematicDiff(ISchematic schematic, int ox, int oy, int oz, Predicate<Block> skip, boolean keepBuilt) {
+    public static SchematicDiff watching(ISchematic schematic, int ox, int oy, int oz, Predicate<Block> skip,
+                                         Predicate<BlockState> leftOut) {
+        return new SchematicDiff(schematic, ox, oy, oz, skip, leftOut, false);
+    }
+
+    private SchematicDiff(ISchematic schematic, int ox, int oy, int oz, Predicate<Block> skip,
+                          Predicate<BlockState> leftOut, boolean keepBuilt) {
         this.built = keepBuilt ? new LongOpenHashSet() : null;
         this.schematic = schematic;
         this.ox = ox;
         this.oy = oy;
         this.oz = oz;
         this.skip = skip;
+        this.leftOut = leftOut;
         this.cells = (long) schematic.widthX() * schematic.heightY() * schematic.lengthZ();
     }
 
@@ -135,6 +149,9 @@ public final class SchematicDiff {
             if (built != null) {
                 built.add(BlockPos.asLong(wx, wy, wz));
             }
+            return;
+        }
+        if (leftOut.test(want)) {
             return;
         }
         wrong++;

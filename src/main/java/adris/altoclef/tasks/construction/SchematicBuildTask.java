@@ -90,13 +90,14 @@ public class SchematicBuildTask extends Task {
     private final Mirror mirror;
     // the tab's memory of this build: the unchecked items and the nether answer, saved per world
     private final BuildMemory memory;
-    // the items the player unchecked in the tab. their cells aren't part of the build at all (SkipItems.leaveOut), so
-    // the count never bills them and the builder never walks over to them
+    // the items the player unchecked in the tab. the builder gets the file without their cells (SkipItems.leaveOut),
+    // so it never walks over to them, and the count doesn't bill them (SkipItems.leftOut)
     private final Set<String> excluded = new LinkedHashSet<>();
     // the file minus the excluded cells, what the builder gets (with the skipped cut on top)
     private IStaticSchematic cut;
-    // the same, laid out where it goes. volatile: wantsAir reads it from the path thread
-    private volatile ISchematic placed;
+    // the whole file laid out where it goes, unchecked cells and all: the count still sees the ones already standing,
+    // so the gather's pickaxe stays off half a wall of planks somebody unticked after building it
+    private final ISchematic placed;
     private final GatherGuard guard = new GatherGuard();
     private final GoBack goBack = new GoBack();
     // altoSleepAtNight, the gamer's night for a build. it cuts in ahead of every phase
@@ -167,14 +168,13 @@ public class SchematicBuildTask extends Task {
         this.memory = memory;
         excluded.addAll(memory.excluded());
         nether = memory.nether();
+        placed = BuilderProcess.placed(schematic, rotation, mirror);
         recut();
     }
 
-    // cut before the turn, not after: the builder takes the unturned file and turns it itself, and the cut asks the
-    // file's own cells, so both the count and the builder see the same holes
+    // on the unturned file: the builder takes that one and turns it itself
     private void recut() {
         cut = SkipItems.leaveOut(schematic, excluded);
-        placed = BuilderProcess.placed(cut, rotation, mirror);
     }
 
     public long serial() {
@@ -281,8 +281,6 @@ public class SchematicBuildTask extends Task {
         int x = pos.getX() - origin.getX();
         int y = pos.getY() - origin.getY();
         int z = pos.getZ() - origin.getZ();
-        // one read, a "no" answer swaps it on the game thread while this runs
-        ISchematic placed = this.placed;
         if (x < 0 || y < 0 || z < 0 || x >= placed.widthX() || y >= placed.heightY() || z >= placed.lengthZ()
             || !placed.inSchematic(x, y, z, AIR)) {
             return false;
@@ -397,8 +395,11 @@ public class SchematicBuildTask extends Task {
 
     private SchematicDiff newDiff(boolean watching) {
         Predicate<Block> skip = block -> Baritone.settings().buildSkipBlocks.value.contains(block);
-        return watching ? SchematicDiff.watching(placed, origin.getX(), origin.getY(), origin.getZ(), skip)
-            : new SchematicDiff(placed, origin.getX(), origin.getY(), origin.getZ(), skip);
+        // a copy: a "no" grows the set between two counts, never during one
+        Set<String> out = Set.copyOf(excluded);
+        Predicate<BlockState> leftOut = state -> SkipItems.leftOut(out, state);
+        return watching ? SchematicDiff.watching(placed, origin.getX(), origin.getY(), origin.getZ(), skip, leftOut)
+            : new SchematicDiff(placed, origin.getX(), origin.getY(), origin.getZ(), skip, leftOut);
     }
 
     private Task count(AltoClef mod) {

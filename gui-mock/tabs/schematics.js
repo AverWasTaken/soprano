@@ -277,8 +277,10 @@
       $('.lead', state).textContent = r.error;
       return;
     }
-    // the boxes grey while this file's build is in flight (they still toggle), and the caption says it feeds the next start
-    const inFlight = building.state === 'PARSING' || building.state === 'STARTED';
+    // the boxes grey while this file's build is in flight (they still toggle), and the caption says it feeds the next start.
+    // the ?sc= build states belong to the first file shown, like the java pane only greys the path that's building
+    if (building.state !== 'IDLE' && !building.path) building.path = r.path;
+    const inFlight = (building.state === 'PARSING' || building.state === 'STARTED') && building.path === r.path;
     $('.sc-rows', detail).classList.toggle('building', inFlight);
     sizeMap(inFlight ? HINT_BUILDING : HINT);
     renderMap(r);
