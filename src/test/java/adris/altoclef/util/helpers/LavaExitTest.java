@@ -72,6 +72,22 @@ public class LavaExitTest {
     }
 
     @Test
+    public void aFilledPitWithWallsOnEveryFaceClimbsToTheLedgeAtTheCorner() {
+        // a one cell pit full of lava in the floor, walls two high on all four faces, so the only step out is the floor
+        // top at a corner, one up and diagonal. the lava cell itself has a floor under it and is never the answer
+        LavaWorld w = LavaWorld.flat(63).set(5, 63, 5, LAVA);
+        int[][] faces = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+        for (int[] f : faces) {
+            w.set(5 + f[0], 64, 5 + f[1], STONE).set(5 + f[0], 65, 5 + f[1], STONE);
+        }
+        LavaExit.Cell exit = nearest(5, 63, 5, w);
+        assertNotNull(exit);
+        assertEquals(64, exit.y());
+        assertEquals(1, Math.abs(exit.x() - 5));
+        assertEquals(1, Math.abs(exit.z() - 5));
+    }
+
+    @Test
     public void aCellNeedsHeadroomAndAFloor() {
         // a stone block with a ceiling right over it is not a place to stand, and there is nothing else dry in range
         LavaWorld w = new LavaWorld().fill(-5, 63, -5, 5, 63, 5, LAVA)
