@@ -4,6 +4,7 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.tasks.ResourceTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.ItemTarget;
+import adris.altoclef.util.helpers.HotbarTools;
 import adris.altoclef.util.helpers.ItemHelper;
 import baritone.api.process.IMineProcess;
 import net.minecraft.world.level.block.Block;
@@ -33,6 +34,8 @@ public class MineLogsTask extends ResourceTask {
 
     @Override
     protected Task onResourceTick(AltoClef mod) {
+        // the axe, if the bag has one. ToolSet never looks past the hotbar
+        HotbarTools.bringDown(mod, "axe");
         IMineProcess mine = mod.getClientBaritone().getMineProcess();
         // started once, and again when something else (a fight, eating) took the pather and it let go
         if (!mine.isActive()) {
