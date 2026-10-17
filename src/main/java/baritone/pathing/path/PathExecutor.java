@@ -1605,6 +1605,20 @@ public class PathExecutor implements IPathExecutor, Helper {
         return pathPosition;
     }
 
+    // logAimSources wants these mid tick, so they're whatever has been or-ed in so far, not the final word
+    public int steerMask() {
+        return steerMask;
+    }
+
+    public double shortcutDist() {
+        return shortcutDist;
+    }
+
+    // null when no sprint jump is in the air. numbers are from the last flight.steer, the tick count in it says which one
+    public String flightNote() {
+        return flight == null ? null : flight.steerNote();
+    }
+
     public PathExecutor trySplice(PathExecutor next) {
         if (groundShortcut != null) {
             return this; // finish the short ground segment before replacing its executor and indices

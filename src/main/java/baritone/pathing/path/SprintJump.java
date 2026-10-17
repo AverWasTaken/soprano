@@ -365,6 +365,16 @@ final class SprintJump {
         double side = Math.max(-0.5, Math.min(0.5, (-across(pos) * 0.3 - across(vel)) / accel));
         double forward = throttle * Math.sqrt(1 - side * side);
         float yaw = (float) Math.toDegrees(Math.atan2(uz * forward + ux * side, ux * forward - uz * side)) - 90;
+        lastThrottle = throttle;
+        lastSide = side;
         return new Rotation(yaw, ctx.playerRotations().getPitch());
+    }
+
+    // only logAimSources reads these. a -1 throttle faces the yaw backwards, which is exactly the kind of turn it hunts for
+    private int lastThrottle;
+    private double lastSide;
+
+    String steerNote() {
+        return String.format("throttle %d side %.2f tick %d", lastThrottle, lastSide, ticks);
     }
 }
