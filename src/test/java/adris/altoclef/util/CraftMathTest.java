@@ -38,6 +38,18 @@ public class CraftMathTest {
     }
 
     @Test
+    public void heldOutputComesOffTheTarget() {
+        // 20 planks wanted, 10 in the bag: 3 logs, not 5
+        assertEquals(3, CraftMath.craftsStillOwed(20, 10, 4));
+        assertEquals(5, CraftMath.craftsStillOwed(20, 0, 4));
+        // already there, or past it, is nothing to craft
+        assertEquals(0, CraftMath.craftsStillOwed(20, 20, 4));
+        assertEquals(0, CraftMath.craftsStillOwed(20, 33, 4));
+        // "craft all" stays huge
+        assertEquals(11111111, CraftMath.craftsStillOwed(ALL, 0, 9));
+    }
+
+    @Test
     public void hayToWheatIsOneSlot() {
         List<List<String>> hayToWheat = Collections.singletonList(Collections.singletonList("hay"));
         assertEquals(0, crafts(hayToWheat, inv(), ALL));

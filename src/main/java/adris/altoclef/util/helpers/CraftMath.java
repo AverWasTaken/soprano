@@ -21,6 +21,12 @@ public final class CraftMath {
         return (int) Math.ceil((double) wanted / Math.max(1, outputCount));
     }
 
+    // targets are totals (CollectPlanksTask hands down "20 planks" with 10 already in the bag), so the grid only owes the
+    // difference. crafting for the whole 20 burned 5 logs for 10 planks and the extra 20 planks sat there looking smug
+    public static int craftsStillOwed(int target, int held, int outputCount) {
+        return craftsFor(target - Math.max(0, held), outputCount);
+    }
+
     // can a quick move take the output, or would it craft more than we wanted. one craft in the grid is one craft either way,
     // so wanting 2 planks out of a log's 4 is no reason to go through the cursor: the pickup left 4 planks in hand that nothing
     // put away until the cursor watchdog did, 3 s later, on every plank and stick of the opening crafts
