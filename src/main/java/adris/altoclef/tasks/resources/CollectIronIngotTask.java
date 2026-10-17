@@ -62,12 +62,10 @@ public class CollectIronIngotTask extends ResourceTask {
             return nearby;
         }
         if (Baritone.settings().altoUseBlastFurnace.value) {
-            if (mod.getItemStorage().hasItem(Items.BLAST_FURNACE) ||
-                    mod.getBlockTracker().anyFound(Blocks.BLAST_FURNACE) ||
-                    mod.getEntityTracker().itemDropped(Items.BLAST_FURNACE)) {
+            if (blastAround(mod)) {
                 return new SmeltInBlastFurnaceTask(all);
             }
-            if (_count < 5) {
+            if (!wouldBuildBlast(_count, mod)) {
                 return _router.furnace(all);
             }
             Optional<BlockPos> furnacePos = mod.getBlockTracker().getNearestTracking(Blocks.FURNACE);
@@ -78,6 +76,18 @@ public class CollectIronIngotTask extends ResourceTask {
             return _router.furnace(new SmeltTarget(new ItemTarget(Items.IRON_INGOT, 5), new ItemTarget(Items.RAW_IRON, 5)));
         }
         return furnace(mod, all);
+    }
+
+    // whether a run for count ingots makes its own blast furnace on the way (5 ingots the slow way, 3 smooth stone, a furnace).
+    // GatherBillTask asks the same question up front so the parts get fetched with everything else
+    public static boolean wouldBuildBlast(int count, AltoClef mod) {
+        return Baritone.settings().altoUseBlastFurnace.value && !blastAround(mod) && count >= 5;
+    }
+
+    private static boolean blastAround(AltoClef mod) {
+        return mod.getItemStorage().hasItem(Items.BLAST_FURNACE) ||
+                mod.getBlockTracker().anyFound(Blocks.BLAST_FURNACE) ||
+                mod.getEntityTracker().itemDropped(Items.BLAST_FURNACE);
     }
 
     // the plain furnace, or a big batch split over a few of them (SmeltSplit). only the gamer splits: it is the one that walks away
