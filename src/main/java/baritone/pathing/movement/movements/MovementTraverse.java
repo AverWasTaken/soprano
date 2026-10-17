@@ -139,7 +139,7 @@ public class MovementTraverse extends Movement {
                     // Don't check for soul sand, since we can sprint on that too
                     WC *= SPRINT_MULTIPLIER;
                 }
-                return WC;
+                return WC + context.boatHandoff(x, y, z, destX, y, destZ);
             }
             if (MovementHelper.isClimbable(srcDownBlock)) {
                 hardness1 *= 5;
@@ -147,7 +147,7 @@ public class MovementTraverse extends Movement {
             }
             // two blocks of stone with an iron pick: 2 * (8 swings + the click + 5 idle) = 28 before the penalty, and the real
             // thing is 27.6 because the walk fits inside the last idle. a tunnel pays the same since the idle carries over
-            return WC + hardness1 + hardness2 - (walkCoversTheWait ? Math.min(WC, context.breakIdleTicks) : 0);
+            return WC + context.boatHandoff(x, y, z, destX, y, destZ) + hardness1 + hardness2 - (walkCoversTheWait ? Math.min(WC, context.breakIdleTicks) : 0);
         } else {//this is a bridge, so we need to place a block
             if (MovementHelper.isClimbable(srcDownBlock)) {
                 return COST_INF;

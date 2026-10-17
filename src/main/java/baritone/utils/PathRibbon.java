@@ -135,7 +135,9 @@ final class PathRibbon implements IRenderer {
         float tailStart = points[ARC];
 
         // how many blocks wide a pixel is, one block in front of the camera. m11 is 1 / tan(fov / 2), and it already knows about sprinting and speed potions
-        float blocksPerPixel = 2 / (Math.abs(RenderSystem.getProjectionMatrix().m11()) * Math.max(Minecraft.getInstance().getWindow().getHeight(), 1));
+        // the render target the quads land in and not the window, the pixels that count are the former's. same number most
+        // of the time here, but not while something renders the frame at another size
+        float blocksPerPixel = 2 / (Math.abs(RenderSystem.getProjectionMatrix().m11()) * Math.max(Minecraft.getInstance().getMainRenderTarget().height, 1));
         float pixels = Math.max(settings.pathRenderLineWidthPixels.value * width, 1) / 2;
         float height = settings.renderPathAsLine.value ? 0 : THINGY_HEIGHT * width;
         unitSide[0] = 1;

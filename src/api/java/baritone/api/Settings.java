@@ -1174,6 +1174,23 @@ public final class Settings {
     public final Setting<Boolean> boatPickup = new Setting<>(true);
 
     /**
+     * What the planner charges, in ticks, for stepping from land (or from water that isn't worth a boat) onto a stretch
+     * it would row: getting the boat out, aiming it at the water and climbing in. Without it the shore end of a
+     * crossing is free, so the planner would hop out of the boat for a short walk over an island and put it back in.
+     * Higher means it goes around islands and spits of land more willingly, lower means it cuts across them. Only
+     * applies while {@link #allowBoats} is on and there is a boat to row.
+     */
+    public final Setting<Double> boatBoardCost = new Setting<>(20D);
+
+    /**
+     * Same idea as {@link #boatBoardCost} for the other end of a row: breaking the boat and waiting for the item to
+     * come back to us, in ticks. Slower than boarding because the boat takes five hits to break and the dropped item
+     * can't be picked up right away. Charged with {@link #boatPickup} off too: leaving the boat behind for good is no
+     * cheaper a thing to plan on.
+     */
+    public final Setting<Double> boatExitCost = new Setting<>(30D);
+
+    /**
      * When GetToBlockProcess or MineProcess fails to calculate a path, instead of just giving up, mark the closest instance
      * of that block as "unreachable" and go towards the next closest. GetToBlock expands this search to the whole "vein"; MineProcess does not.
      * This is because MineProcess finds individual impossible blocks (like one block in a vein that has gravel on top then lava, so it can't break)
