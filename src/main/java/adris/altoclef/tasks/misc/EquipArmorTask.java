@@ -4,6 +4,7 @@ import adris.altoclef.AltoClef;
 import adris.altoclef.Debug;
 import adris.altoclef.tasks.slot.MoveItemToSlotFromInventoryTask;
 import adris.altoclef.tasks.squashed.CataloguedResourceTask;
+import adris.altoclef.tasks.squashed.GatherBillTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.ui.HudText;
 import adris.altoclef.util.ItemTarget;
@@ -28,9 +29,16 @@ import java.util.function.Predicate;
 public class EquipArmorTask extends Task {
 
     private final ItemTarget[] _toEquip;
+    private boolean _billed;
 
     public EquipArmorTask(ItemTarget... toEquip) {
         _toEquip = toEquip;
+    }
+
+    // fetch the missing pieces through GatherBillTask (the whole list up front) instead of the plain catalogue task
+    public EquipArmorTask billed() {
+        _billed = true;
+        return this;
     }
 
     public EquipArmorTask(Item... toEquip) {
@@ -52,7 +60,9 @@ public class EquipArmorTask extends Task {
         boolean armorMet = armorsNotEquipped.length == 0;
         if (!armorMet) {
             setDebugState("Obtaining armor");
-            return new CataloguedResourceTask(armorsNotEquipped);
+            // a full diamond set is 24 diamonds, fetched in one go and not one piece's worth at a time. only for #equip,
+            // the gamer's kit planner has its own wood and cobble budgets and a play-tested way of spending them
+            return _billed ? new GatherBillTask(armorsNotEquipped) : new CataloguedResourceTask(armorsNotEquipped);
         }
 
         setDebugState("Equipping armor");
