@@ -102,6 +102,17 @@ public final class GatherSources {
         return block.defaultBlockState().requiresCorrectToolForDrops();
     }
 
+    // the ones that come out by hand. ten dirt is a lot quicker than a tree, a crafting table, a pickaxe and then the stone
+    public static List<Block> byHand(List<Block> sources) {
+        List<Block> out = new ArrayList<>();
+        for (Block b : sources) {
+            if (!needsPickaxe(b)) {
+                out.add(b);
+            }
+        }
+        return out;
+    }
+
     // logs and stems, for a wooden pickaxe and a crafting table on the way to a stone one
     public static synchronized List<Block> logs() {
         if (logs == null) {

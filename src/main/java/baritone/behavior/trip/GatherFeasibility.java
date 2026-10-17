@@ -50,11 +50,10 @@ public final class GatherFeasibility {
         if (plan.blocks() <= 0) {
             return true;
         }
-        List<Block> hand = new ArrayList<>();
-        List<Block> tool = new ArrayList<>();
-        for (Block b : GatherSources.sources(items)) {
-            (GatherSources.needsPickaxe(b) ? tool : hand).add(b);
-        }
+        List<Block> all = GatherSources.sources(items);
+        List<Block> hand = GatherSources.byHand(all);
+        List<Block> tool = new ArrayList<>(all);
+        tool.removeAll(hand);
         if (!hand.isEmpty() && found(ctx, hand)) {
             return true;
         }
