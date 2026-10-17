@@ -19,7 +19,7 @@ public interface BuildMemory {
     // the build is done. the answer was for this build, the next one asks again
     void finished();
 
-    // a chat build or a test: remembers for as long as the task lives and no longer
+    // for tests and anything else without a tab behind it: remembers for as long as the object lives and no longer
     static BuildMemory inMemory(Set<String> excluded) {
         return new BuildMemory() {
             private final Set<String> out = new LinkedHashSet<>(excluded);
