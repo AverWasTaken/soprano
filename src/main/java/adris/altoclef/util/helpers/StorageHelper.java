@@ -223,31 +223,20 @@ public class StorageHelper {
     }
 
     private static Optional<Slot> getGarbageSlotPastJunk(AltoClef mod) {
-        // Try throwing away lower tier tools
-        final HashMap<Class, Integer> bestMaterials = new HashMap<>();
-        final HashMap<Class, Slot> bestTool = new HashMap<>();
+        // Try throwing away lower tier tools. which one is worse is GarbageRules.worseTool, per tool family
         if (PlayerSlot.getCurrentScreenSlots() != null) {
+            final List<Slot> toolSlots = new ArrayList<>();
+            final List<Item> toolItems = new ArrayList<>();
             for (Slot slot : PlayerSlot.getCurrentScreenSlots()) {
                 ItemStack stack = StorageHelper.getItemStackInSlot(slot);
-                if (!ItemHelper.canDropStack(mod, stack))
+                if (!ItemHelper.canDropStack(mod, stack) || !ItemHelper.isTool(stack.getItem()))
                     continue;
-                Item item = stack.getItem();
-                if (ItemHelper.isTool(item)) {
-                    Class c = item.getClass();
-                    int level = ItemHelper.getToolDurability(item);
-                    int prevBest = bestMaterials.getOrDefault(c, 0);
-                    if (level > prevBest) {
-                        // We had a WORSE tool before.
-                        if (bestTool.containsKey(c)) {
-                            return Optional.of(bestTool.get(c));
-                        }
-                        bestMaterials.put(c, level);
-                        bestTool.put(c, slot);
-                    } else if (level < prevBest) {
-                        // We found something WORSE!
-                        return Optional.of(slot);
-                    }
-                }
+                toolSlots.add(slot);
+                toolItems.add(stack.getItem());
+            }
+            int worse = GarbageRules.worseTool(toolItems);
+            if (worse >= 0) {
+                return Optional.of(toolSlots.get(worse));
             }
         }
 
