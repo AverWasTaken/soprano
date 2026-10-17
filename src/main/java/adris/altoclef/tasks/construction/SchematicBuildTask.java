@@ -15,6 +15,7 @@ import adris.altoclef.tasks.construction.schematic.SchematicDiff;
 import adris.altoclef.tasks.construction.schematic.SkipItems;
 import adris.altoclef.tasks.movement.DefaultGoToDimensionTask;
 import adris.altoclef.tasks.movement.GetToXZTask;
+import adris.altoclef.tasks.squashed.GatherBillTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.ui.HudText;
 import adris.altoclef.util.ItemTarget;
@@ -137,7 +138,7 @@ public class SchematicBuildTask extends Task {
     private Map<String, Integer> haveAtBuild = Map.of();
     private boolean toldUngettable;
     private int batches;
-    private Task gather;
+    private GatherBillTask gather;
     // item -> how many the bag should hold once the batch is in
     private Map<String, Integer> batchTargets = Map.of();
     // the serial the builder gave our build, 0 while it has none of ours
@@ -314,7 +315,8 @@ public class SchematicBuildTask extends Task {
             return null;
         }
         if (phase == Phase.GATHER) {
-            guard.gathering(towardBatch(have(mod)));
+            // the bill fetches every raw material before it crafts any of the batch, so its own progress counts too
+            guard.gathering(towardBatch(have(mod)) + (gather == null ? 0 : gather.progress(mod)));
         }
         if (guard.tick()) {
             finish(mod, "No progress on " + name + " for " + GatherGuard.MAX_IDLE_TICKS / 1200 + " minutes, stopped");
@@ -562,7 +564,9 @@ public class SchematicBuildTask extends Task {
         guard.newBatch();
         near = false;
         toldTrip = false;
-        gather = TaskCatalogue.getSquashedItemTask(targets.toArray(new ItemTarget[0]));
+        // the batch is what GatherPlan says, the bill only decides how to fetch it: all the raw stuff in one trip, then
+        // the crafting, instead of every recipe level wandering off for its own iron
+        gather = new GatherBillTask(targets.toArray(new ItemTarget[0]));
         say("Gathering " + list(plan.batch()) + " for " + name + " (batch " + batches + ")");
         phase = Phase.GATHER;
         return gather;

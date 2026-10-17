@@ -67,16 +67,10 @@ public class GatherBillTask extends Task {
     private final Map<String, Integer> _toolTries = new HashMap<>();
     private final Set<String> _made = new HashSet<>();
     private final Map<Item, Integer> _reserved = new HashMap<>();
-    private int _leafPasses;
-    private int _loops;
-    // the running fetch and what it was chopping/digging with a tool in the bag. the tool snapping halfway is a cheap bag
-    // check, not a whole bill every tick
-    private Task _leafTask;
-    private final Map<String, Integer> _axeLeaves = new HashMap<>();
-    private final Map<String, Integer> _shovelLeaves = new HashMap<>();
-    // the tool being made right now and how many the bag had before, so one that worked gives its try back
-    private String _makingTool;
-    private int _toolsBefore;
+    // the leaves we're out fetching right now, so progress() can see the bag fill up before anything is crafted
+    private List<RecipeBill.Fetch> _fetching = List.of();
+    // same for the tool or the level being made right now. 128 stone out of a furnace is a long time with no new stage
+    private List<ItemTarget> _making = List.of();
     private BotBehaviour.State _level;
     // the wood the first bill gave the sticks and the table, kept for every bill after (RecipeBill.of's latched says why)
     private String _mainWood;
@@ -198,18 +192,15 @@ public class GatherBillTask extends Task {
         return latch(RecipeBill.of(withTools, book, world, _mainWood));
     }
 
-    // a bill with no generic planks left says null, that's not a reason to forget the wood. a broken axe brings it back
-    private RecipeBill.Bill latch(RecipeBill.Bill bill) {
-        if (bill.mainWood() != null) _mainWood = bill.mainWood();
-        return bill;
-    }
-
-    // the wooden pick, the axe and the shovel. a stone pick and up waits in the LEAVES stage until this tier's leaves are
-    // home, it's made out of them
-    private Task nextTool(AltoClef mod, RecipeBill.Bill bill, RecipeBill.ToolBag bag) {
-        for (String tool : RecipeBill.tools(bill.leaves, bill.deferred, bag)) {
-            if (Arrays.asList(RecipeBill.PICKAXES).indexOf(tool) >= 2 || !canTry(tool)) continue;
-            return makeTool(mod, tool);
+    // tools first, so a pickaxe craft halfway through the gathering doesn't eat the cobble and sticks we just fetched
+    private Task nextTool(AltoClef mod) {
+        RecipeBill.Bill bill = bill(mod);
+        for (String tool : RecipeBill.tools(bill.leaves, toolBag(mod))) {
+            if (!_triedTools.add(tool) || !TaskCatalogue.taskExists(tool)) continue;
+            reserve(mod, tool, 1);
+            _making = List.of(new ItemTarget(tool, 1));
+            setDebugState("Getting a " + tool + " for the job");
+            return TaskCatalogue.getItemTask(tool, 1);
         }
         return null;
     }
@@ -258,8 +249,7 @@ public class GatherBillTask extends Task {
         if (fetch.isEmpty()) {
             return null;
         }
-        _axeLeaves.clear();
-        _shovelLeaves.clear();
+        _fetching = fetch;
         List<ItemTarget> targets = new ArrayList<>();
         for (RecipeBill.Fetch f : fetch) {
             targets.add(new ItemTarget(f.name(), f.target()));
@@ -273,10 +263,20 @@ public class GatherBillTask extends Task {
         return _leafTask;
     }
 
-    // the fetch started with an axe (or shovel) in the bag, that one is gone or worn now, and there's still chopping to do
-    private boolean toolBroke(AltoClef mod) {
-        if (_axeLeaves.isEmpty() && _shovelLeaves.isEmpty()) {
-            return false;
+    // the lowest level with something still to make. a target nobody else wants waits for the final stage
+    private Task nextLevel(AltoClef mod) {
+        RecipeBill.Bill bill = bill(mod);
+        for (List<RecipeBill.Node> level : bill.levels) {
+            List<ItemTarget> todo = new ArrayList<>();
+            for (RecipeBill.Node node : level) {
+                if (_made.contains(node.name()) || node.gross() <= _wanted.getOrDefault(node.name(), 0)) continue;
+                todo.add(new ItemTarget(node.name(), node.gross()));
+            }
+            if (todo.isEmpty()) continue;
+            for (ItemTarget t : todo) _made.add(t.getCatalogueName());
+            _making = todo;
+            setDebugState("Making the in-betweens");
+            return TaskCatalogue.getSquashedItemTask(todo.toArray(ItemTarget[]::new));
         }
         RecipeBill.ToolBag bag = toolBag(mod);
         String material = bag.pickTier() >= 2 ? "stone_" : "wooden_";
@@ -432,6 +432,20 @@ public class GatherBillTask extends Task {
             _reserved.merge(item, count, Math::max);
         }
         mod.getBehaviour().reserveProtectedItems(_level, _reserved);
+    }
+
+    // a number that goes up while the bill gets somewhere, for a caller with a "stuck" clock (SchematicBuildTask's
+    // GatherGuard). the targets only show up at the very end now, a whole batch's worth of ore and cobble comes first,
+    // and that trip is not being stuck. stages and the two sets only ever grow, so does this, minus crafting eating leaves
+    public long progress(AltoClef mod) {
+        long held = 0;
+        for (RecipeBill.Fetch f : _fetching) {
+            held += Math.min(mod.getItemStorage().getItemCount(TaskCatalogue.getItemMatches(f.name())), f.target());
+        }
+        for (ItemTarget t : _making) {
+            held += Math.min(mod.getItemStorage().getItemCount(t.getMatches()), t.getTargetCount());
+        }
+        return (_stage.ordinal() + _triedTools.size() + _made.size()) * 1_000_000L + held;
     }
 
     @Override
