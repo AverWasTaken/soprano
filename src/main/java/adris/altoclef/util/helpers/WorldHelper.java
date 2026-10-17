@@ -279,6 +279,23 @@ public interface WorldHelper {
         return MineProcess.plausibleToBreak(BreakContextCache.get(mod), pos) && canReach(mod, pos);
     }
 
+    // would the pather be let to dig this cell out to stand in it. only the rules (allowBreak and allowBreakAnyway, the
+    // protected cells altoclef and the cast tasks hand it, unbreakables), not reach or speed: the pather prices those itself.
+    // nothing to dig counts as yes, a liquid as no, standing in a dug out cell full of lava is not the plan
+    static boolean pathMayDig(AltoClef mod, BlockPos pos) {
+        net.minecraft.world.level.block.state.BlockState state = mod.getWorld().getBlockState(pos);
+        if (!state.getFluidState().isEmpty()) {
+            return false;
+        }
+        if (state.getCollisionShape(mod.getWorld(), pos).isEmpty()) {
+            return true;
+        }
+        if (state.getDestroySpeed(mod.getWorld(), pos) < 0 || mod.getExtraBaritoneSettings().shouldAvoidBreaking(pos)) {
+            return false;
+        }
+        return BreakContextCache.get(mod).breakCostMultiplierAt(pos.getX(), pos.getY(), pos.getZ(), state) < baritone.api.pathing.movement.ActionCosts.COST_INF;
+    }
+
     static boolean isInNetherPortal(AltoClef mod) {
         if (mod.getPlayer() == null)
             return false;
