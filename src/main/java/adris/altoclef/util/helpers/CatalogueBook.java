@@ -4,10 +4,13 @@ import adris.altoclef.TaskCatalogue;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.MiningRequirement;
 import adris.altoclef.util.RecipeTarget;
+import adris.altoclef.util.WoodType;
 import net.minecraft.world.item.Item;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.function.ToIntFunction;
 
@@ -67,6 +70,16 @@ public final class CatalogueBook implements RecipeBill.Book {
     @Override
     public int held(String name) {
         return _count.applyAsInt(TaskCatalogue.getItemMatches(name));
+    }
+
+    @Override
+    public List<String> woods() {
+        List<String> out = new ArrayList<>();
+        for (WoodType type : WoodType.values()) {
+            ItemHelper.WoodItems wood = ItemHelper.getWoodItems(type);
+            if (wood.planks != null && wood.log != null) out.add(wood.prefix);
+        }
+        return out;
     }
 
     // the name the bill should use for a target: "chain" and iron_chain are one entry, and the bill only knows the
