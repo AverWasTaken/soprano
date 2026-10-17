@@ -127,6 +127,15 @@ public class TreeChopTest {
     }
 
     @Test
+    public void onlyAHighLogIsWorthADirtTrip() {
+        assertFalse(TreeChop.highUp(0));
+        assertFalse(TreeChop.highUp(TreeReach.MAX_UNDER));
+        assertTrue(TreeChop.highUp(TreeReach.MAX_UNDER + 1));
+        // no floor under it at all, nothing to swing from either
+        assertTrue(TreeChop.highUp(Integer.MAX_VALUE));
+    }
+
+    @Test
     public void strippedLogGetsBroken() {
         assertEquals(StripStep.BREAK, TreeChop.stripStep(true, true, false));
     }
