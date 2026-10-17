@@ -10,6 +10,8 @@ import net.minecraft.world.level.block.Blocks;
 
 public class CollectCobblestoneTask extends ResourceTask {
 
+    private static final Block[] STONES = {Blocks.STONE, Blocks.COBBLESTONE};
+
     private final int _count;
 
     public CollectCobblestoneTask(int targetCount) {
@@ -29,7 +31,14 @@ public class CollectCobblestoneTask extends ResourceTask {
 
     @Override
     protected Task onResourceTick(AltoClef mod) {
-        return new MineAndCollectTask(Items.COBBLESTONE, 1, new Block[]{Blocks.STONE, Blocks.COBBLESTONE}, MiningRequirement.WOOD);
+        return new MineAndCollectTask(Items.COBBLESTONE, 1, STONES, MiningRequirement.WOOD);
+    }
+
+    // the catalogue's mineIfPresent is placed cobble, and our miner breaks that too. without this every cobble we
+    // pillared with flipped the child between two miners, and each flip was a fresh search
+    @Override
+    protected boolean minesOnItsOwn(Block[] blocks) {
+        return coversAll(blocks, STONES);
     }
 
     @Override
