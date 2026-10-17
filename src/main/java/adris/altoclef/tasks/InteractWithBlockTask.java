@@ -10,6 +10,7 @@ import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.baritone.GoalAnd;
 import adris.altoclef.util.baritone.GoalBlockSide;
+import adris.altoclef.util.helpers.BucketPour;
 import adris.altoclef.util.helpers.ItemHelper;
 import adris.altoclef.util.helpers.LookHelper;
 import adris.altoclef.util.helpers.StorageHelper;
@@ -24,14 +25,22 @@ import baritone.api.pathing.goals.Goal;
 import baritone.api.pathing.goals.GoalNear;
 import baritone.api.pathing.goals.GoalTwoBlocks;
 import baritone.api.process.ICustomGoalProcess;
+import baritone.api.utils.IPlayerContext;
 import baritone.api.utils.Rotation;
+import baritone.api.utils.RotationUtils;
 import baritone.api.utils.input.Input;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Vec3i;
 import net.minecraft.world.inventory.ClickType;
+import net.minecraft.world.item.BucketItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
+import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.DoorBlock;
@@ -456,7 +465,8 @@ public class InteractWithBlockTask extends Task {
 
         Optional<Rotation> reachable = getCurrentReach();
         if (reachable.isPresent() && mod.getClientBaritone().getPathingBehavior().isSafeToCancel()) {
-            if (LookHelper.isLookingAt(mod, _target)) {
+            // a bucket that isn't aimed at the face we asked for gets aimed again instead of clicked, see pourAimOff
+            if (LookHelper.isLookingAt(mod, _target) && !pourAimOff(mod)) {
                 if (_toUse != null) {
                     boolean equipped = mod.getSlotHandler().forceEquipItem(_toUse, false);
                     if (ItemTarget.nullOrEmpty(_toUse) || equipped) {
@@ -487,6 +497,46 @@ public class InteractWithBlockTask extends Task {
             mod.getInputControls().release(Input.SNEAK);
         }
         return ClickResponse.CANT_REACH;
+    }
+
+    // a full bucket empties onto the cell on whatever face the ray is on, not the one we asked for. the crosshair being on
+    // the right block isn't enough: on the wrong face the lava goes somewhere nobody picked, beside us included. so the
+    // ray vanilla's bucket throws (outlines, liquids don't count) has to be on our block AND our face. the reach we aim
+    // with comes in through that face, so a pour that was fine before still is
+    private boolean pourAimOff(AltoClef mod) {
+        if (_scoop || !pours(_toUse)) {
+            return false;
+        }
+        BlockHitResult hit = bucketRay(mod);
+        if (hit.getType() != HitResult.Type.BLOCK) {
+            return true;
+        }
+        // the aim goes for the face of a full cube. on a slab or a path block that point can be on another face, aiming
+        // again lands on the same one forever, so for those the block has to do
+        boolean fullCube = Block.isShapeFullBlock(mod.getWorld().getBlockState(_target).getShape(mod.getWorld(), _target));
+        return !BucketPour.aimedRight(hit.getBlockPos(), hit.getDirection(), _target, fullCube ? _direction : null);
+    }
+
+    // a bucket with something in it. the empty one scoops, that's a different click
+    static boolean pours(ItemTarget toUse) {
+        if (ItemTarget.nullOrEmpty(toUse)) {
+            return false;
+        }
+        for (Item item : toUse.getMatches()) {
+            if (item instanceof BucketItem && item != Items.BUCKET) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // same start and direction as baritone's objectMouseOver, but with the fluid mode the bucket uses. ours can be
+    // SOURCE_ONLY while something collects liquid, and a full bucket looks straight through water
+    private static BlockHitResult bucketRay(AltoClef mod) {
+        IPlayerContext ctx = mod.getClientBaritone().getPlayerContext();
+        Vec3 start = mod.getPlayer().getEyePosition(1.0F);
+        Vec3 end = start.add(RotationUtils.calcLookDirectionFromRotation(ctx.playerRotations()).scale(ctx.playerController().getBlockReachDistance()));
+        return mod.getWorld().clip(new ClipContext(start, end, ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, mod.getPlayer()));
     }
 
     public Optional<Rotation> getCurrentReach() {
