@@ -129,6 +129,9 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
     // ticks the back-up keys were held since the last real crack, in all and not per cell: a shuttle between two cells
     // would re-arm a per cell count forever
     private int _backedUp;
+    // we have SNEAK and MOVE_BACK (or the portal exit's MOVE_FORWARD) down right now. the back-up only ever let go inside
+    // its own two block circle, so backing out past it (or stopping just outside it) left the bot crouched there for good
+    private boolean _keysDown;
     // searches that came back empty, as of the last look. stays set until a path really starts, a window of ticks would
     // lapse between two failed searches and let the keys back down for a few ticks
     private int _calcFailuresSeen = -1;
@@ -167,9 +170,22 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
     }
 
     // the back-up-sneaking below holds keys across ticks, so a tick that returns early has to let go of them itself
-    private static void stopBackingUp(AltoClef mod) {
+    private void stopBackingUp(AltoClef mod) {
         mod.getInputControls().release(Input.MOVE_BACK);
         mod.getInputControls().release(Input.SNEAK);
+        if (_keysDown) {
+            // the portal exit's, nobody else lifts it
+            mod.getInputControls().release(Input.MOVE_FORWARD);
+            _keysDown = false;
+        }
+    }
+
+    // the plain "not backing up this tick" case. only lets go of what we pressed: SNEAK down because baritone is
+    // edge-sneaking is none of our business
+    private void letGoOfOurKeys(AltoClef mod) {
+        if (_keysDown) {
+            stopBackingUp(mod);
+        }
     }
 
     // decides (once, and only when the chunks around it are really loaded) if this block has to be
@@ -669,16 +685,19 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
                 // Hold the sneak and move forward inputs to exit the Nether portal
                 mod.getInputControls().hold(Input.SNEAK);
                 mod.getInputControls().hold(Input.MOVE_FORWARD);
+                _keysDown = true;
                 return null;
             } else {
                 mod.getInputControls().release(Input.SNEAK);
                 mod.getInputControls().release(Input.MOVE_BACK);
                 mod.getInputControls().release(Input.MOVE_FORWARD);
+                _keysDown = false;
             }
         } else if (mod.getClientBaritone().getPathingBehavior().isPathing()) {
             mod.getInputControls().release(Input.SNEAK);
             mod.getInputControls().release(Input.MOVE_BACK);
             mod.getInputControls().release(Input.MOVE_FORWARD);
+            _keysDown = false;
         }
 
         // Check if there is an active unstuck task and the player is stuck in a block
@@ -846,6 +865,7 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
             mod.getInputControls().release(Input.SNEAK);
             mod.getInputControls().release(Input.MOVE_BACK);
             mod.getInputControls().release(Input.MOVE_FORWARD);
+            _keysDown = false;
             mod.getClientBaritone().getCustomGoalProcess().onLostControl();
             mod.getClientBaritone().getBuilderProcess().onLostControl();
             Rotation look = reach.orElse(_lastReach);
@@ -961,20 +981,16 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
                 return giveUpOnSide(mod);
             }
             boolean isCloseToMoveBack = _pos.closerToCenterThan(mod.getPlayer().position(), 2);
-            if (side == FromSideRules.Verdict.RELEASE_KEYS) {
-                // the hold can start while the first search is still running and carry us out past two blocks, so letting go
-                // can't wait for the distance check below
-                stopBackingUp(mod);
-            } else if (isCloseToMoveBack) {
-                if (side == FromSideRules.Verdict.KEEP_TRYING && !mod.getClientBaritone().getPathingBehavior().isPathing() && !mod.getPlayer().isInWater() &&
-                        !mod.getFoodChain().needsToEat()) {
-                    mod.getInputControls().hold(Input.MOVE_BACK);
-                    mod.getInputControls().hold(Input.SNEAK);
-                    _backedUp++;
-                } else {
-                    mod.getInputControls().release(Input.MOVE_BACK);
-                    mod.getInputControls().release(Input.SNEAK);
-                }
+            // the hold can start while the first search is still running and carry us out past two blocks, so letting go
+            // can't live inside the distance check. every tick that isn't backing up lets go of what we pressed
+            if (side == FromSideRules.Verdict.KEEP_TRYING && isCloseToMoveBack && !mod.getClientBaritone().getPathingBehavior().isPathing()
+                    && !mod.getPlayer().isInWater() && !mod.getFoodChain().needsToEat()) {
+                mod.getInputControls().hold(Input.MOVE_BACK);
+                mod.getInputControls().hold(Input.SNEAK);
+                _keysDown = true;
+                _backedUp++;
+            } else {
+                letGoOfOurKeys(mod);
             }
             if (!mod.getClientBaritone().getCustomGoalProcess().isActive()) {
                 mod.getClientBaritone().getBuilderProcess().onLostControl();
@@ -1041,6 +1057,7 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
         mod.getInputControls().release(Input.SNEAK);
         mod.getInputControls().release(Input.MOVE_BACK);
         mod.getInputControls().release(Input.MOVE_FORWARD);
+        _keysDown = false;
     }
 
     /**
