@@ -62,6 +62,7 @@ import java.util.Objects;
 import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Predicate;
 
 /**
  * Destroy a block at a position.
@@ -221,18 +222,23 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
 
     // sidesOnly is a block we won't break from on top of (or under, with a column hanging on it)
     static Goal pickGoal(BlockGetter world, BlockPos pos, boolean closeIn, Set<BlockPos> standingIn, boolean sidesOnly) {
+        return pickGoal(world, pos, closeIn, standingIn, sidesOnly, null);
+    }
+
+    // mayDig says which side cells the pather may dig out to stand in, for when no open one is left. null = never dig
+    static Goal pickGoal(BlockGetter world, BlockPos pos, boolean closeIn, Set<BlockPos> standingIn, boolean sidesOnly, Predicate<BlockPos> mayDig) {
         if (world.getBlockState(pos.above()).getBlock() == Blocks.SNOW) {
             return new GoalBlock(pos);
         }
         if (!closeIn && vineNextTo(world, pos)) {
             return new GoalReachBlock(pos);
         }
-        return closeIn && standingIn != null && !standingIn.isEmpty() ? touchingElsewhere(world, pos, standingIn, sidesOnly) : new GoalNear(pos, 1);
+        return closeIn && standingIn != null && !standingIn.isEmpty() ? touchingElsewhere(world, pos, standingIn, sidesOnly, mayDig) : new GoalNear(pos, 1);
     }
 
     // the cells touching the block that we could stand in, minus the ones we've been in. nothing under it, that's our head
     // in the block. once none are left it's the plain goal again and the progress checker takes it from there
-    private static Goal touchingElsewhere(BlockGetter world, BlockPos pos, Set<BlockPos> standingIn, boolean sidesOnly) {
+    private static Goal touchingElsewhere(BlockGetter world, BlockPos pos, Set<BlockPos> standingIn, boolean sidesOnly, Predicate<BlockPos> mayDig) {
         List<Goal> spots = new ArrayList<>();
         for (Direction side : Direction.values()) {
             BlockPos spot = pos.relative(side);
@@ -240,7 +246,28 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
                 spots.add(new GoalBlock(spot));
             }
         }
+        if (spots.isEmpty() && mayDig != null) {
+            digInBeside(pos, standingIn, mayDig, spots);
+        }
         return spots.isEmpty() ? new GoalNear(pos, 1) : new GoalComposite(spots.toArray(new Goal[0]));
+    }
+
+    // every open face tried (or there never was one, sand in a dune is sand on all sides): stand IN a side cell and let the
+    // pather dig it out. the four sides only. never the top, and never the target's own cell, that is the "stand where the
+    // column lands" spot _sidesOnly and looseColumn are there to keep us out of. a side cell isn't under the column, so this
+    // is fine for a loose stack too
+    private static void digInBeside(BlockPos pos, Set<BlockPos> standingIn, Predicate<BlockPos> mayDig, List<Goal> spots) {
+        for (Direction side : Direction.Plane.HORIZONTAL) {
+            BlockPos spot = pos.relative(side);
+            if (!standingIn.contains(spot) && mayDig.test(spot)) {
+                spots.add(new GoalBlock(spot));
+            }
+        }
+    }
+
+    // a side cell is only worth handing over when both halves of us may be dug out there
+    private static Predicate<BlockPos> digRules(AltoClef mod) {
+        return spot -> WorldHelper.pathMayDig(mod, spot) && WorldHelper.pathMayDig(mod, spot.above());
     }
 
     private static boolean vineNextTo(BlockGetter world, BlockPos pos) {
@@ -957,18 +984,19 @@ public class DestroyBlockTask extends Task implements ITaskRequiresGrounded {
                         // across a wall's corner) counts as arrived and the goal finishes instantly, every tick. same way out
                         // as the branch below: walk up and touch it
                         closeIn = true;
-                        // never the top or the shaft here, and when every side has been tried the side goal stays
-                        Goal touching = pickGoal(mod.getWorld(), _pos, true, triedFeet(feet), true);
+                        // never the top or the shaft here. every open side tried means digging into a solid one, and
+                        // when the rules say no digging either (GoalNear back) the side goal stays and the clocks end it
+                        Goal touching = pickGoal(mod.getWorld(), _pos, true, triedFeet(feet), true, digRules(mod));
                         if (!(touching instanceof GoalNear)) {
                             goal = touching;
                         }
                     }
                 } else {
-                    goal = pickGoal(mod.getWorld(), _pos, closeIn, closeIn && reach.isEmpty() ? triedFeet(feet) : null);
+                    goal = pickGoal(mod.getWorld(), _pos, closeIn, closeIn && reach.isEmpty() ? triedFeet(feet) : null, false, digRules(mod));
                     if (goal instanceof GoalReachBlock && goal.isInGoal(feet) && reach.isEmpty()) {
                         // already there and it still can't be hit (leaves, other logs, a wall), so touch it like before
                         closeIn = true;
-                        goal = pickGoal(mod.getWorld(), _pos, true, triedFeet(feet));
+                        goal = pickGoal(mod.getWorld(), _pos, true, triedFeet(feet), false, digRules(mod));
                     }
                 }
                 mod.getClientBaritone().getCustomGoalProcess().setGoalAndPath(goal);
