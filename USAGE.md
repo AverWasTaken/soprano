@@ -29,7 +29,7 @@ There's also a [tutorial playlist](https://www.youtube.com/playlist?list=PLnwnJ1
 - `goal` to set the goal to your player's feet, `goal clear` to clear it
 - `thisway 1000` then `path` to go in the direction you're facing for a thousand blocks
 - `click` to click your destination on the screen. Right click to path on top of the block, left click to path into it (either at foot level or eye level), and left click and drag to select an area (`#help sel` to see what you can do with that selection)
-- `follow player playerName` to follow a player. `follow players` to follow any players in range (combine with Kill Aura for a fun time). `follow entities` to follow any entities. `follow entity pig` to follow entities of a specific type
+- `follow player playerName` to follow a player. `follow players` to follow any players in range: it picks the nearest one and sticks with it until that one is gone, then picks again (combine with Kill Aura for a fun time). `follow entities` to follow any entities. `follow entity pig` to follow entities of a specific type
 - `come` to head towards your camera, useful when freecam doesn't move your player position
 - `axis` to go to an axis or diagonal axis at y=120 (`axisHeight` is a configurable setting, defaults to 120)
 - `surface` or `top` to head towards the closest surface-like area, this can be the surface or highest available air space
