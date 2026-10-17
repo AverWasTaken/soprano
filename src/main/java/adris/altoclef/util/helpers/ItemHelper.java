@@ -500,6 +500,18 @@ public class ItemHelper {
         return holder.is(ItemTags.PICKAXES) || holder.is(ItemTags.AXES) || holder.is(ItemTags.SHOVELS) || holder.is(ItemTags.HOES);
     }
 
+    // which tool family this is, null for anything that isn't one. tools are plain Item since 1.21.2, so getClass() puts a
+    // pickaxe and a sword in the same family and the full-bag sweep threw the iron pick because a diamond sword was around
+    public static String toolKind(Item item) {
+        Holder<Item> holder = item.builtInRegistryHolder();
+        if (holder.is(ItemTags.PICKAXES)) return "pickaxe";
+        if (holder.is(ItemTags.AXES)) return "axe";
+        if (holder.is(ItemTags.SHOVELS)) return "shovel";
+        if (holder.is(ItemTags.HOES)) return "hoe";
+        if (holder.is(ItemTags.SWORDS)) return "sword";
+        return null;
+    }
+
     // helmet/chestplate/leggings/boots. the armor tags leave out elytra, carved pumpkins and skulls, which is what ArmorItem did too
     public static boolean isArmor(Item item) {
         Holder<Item> holder = item.builtInRegistryHolder();
