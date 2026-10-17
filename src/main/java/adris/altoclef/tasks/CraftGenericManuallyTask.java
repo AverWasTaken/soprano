@@ -82,7 +82,9 @@ public class CraftGenericManuallyTask extends Task implements ITaskUsesCraftingG
         // We need 9 sticks
         // plank recipe results in 4 sticks
         // this means 3 planks per slot
-        int wantedCrafts = CraftMath.craftsFor(_target.getTargetCount(), _target.getRecipe().outputCount());
+        // minus what we already hold, the same count ReceiveCraftingOutputSlotTask goes by when it takes the output
+        int heldOutput = mod.getItemStorage().getItemCountInventoryOnly(_target.getOutputItem());
+        int wantedCrafts = CraftMath.craftsStillOwed(_target.getTargetCount(), heldOutput, _target.getRecipe().outputCount());
         // "craft as many as possible" is a target of 99999999, so the per slot number has to be clamped to what we
         // really own or the slot is never satisfied and we keep reaching for items that are gone (that was a
         // MoveItemToSlotTask error in chat every single tick). grid contents count so this doesn't shrink as we fill it
