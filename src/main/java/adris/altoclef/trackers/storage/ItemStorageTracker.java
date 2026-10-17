@@ -34,7 +34,8 @@ public class ItemStorageTracker extends Tracker {
         containerTrackerConsumer.accept(_containers);
     }
 
-    private static Slot[] getCurrentConversionSlots() {
+    // public for CraftGenericManuallyTask's out of materials probe
+    public static Slot[] getCurrentConversionSlots() {
         // TODO: Anvil input, anything else...
         if (StorageHelper.isPlayerInventoryOpen()) {
             return PlayerSlot.CRAFT_INPUT_SLOTS;
