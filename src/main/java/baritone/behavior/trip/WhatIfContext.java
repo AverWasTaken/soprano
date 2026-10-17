@@ -66,7 +66,7 @@ public final class WhatIfContext extends CalculationContext {
     // the moment it's needed, so it isn't something to go and make. iron ore wants stone tier, that's the whole trick
     public static boolean hasStonePickaxe(LocalPlayer player) {
         BlockState ironOre = Blocks.IRON_ORE.defaultBlockState();
-        for (ItemStack stack : player.getInventory().getNonEquipmentItems()) {
+        for (ItemStack stack : player.getInventory().items) {
             if (stack.is(ItemTags.PICKAXES) && stack.isCorrectToolForDrops(ironOre)) {
                 return true;
             }

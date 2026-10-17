@@ -33,8 +33,7 @@ public final class LiveSim {
     public static PlayerSim of(LocalPlayer player, CollisionProvider world) {
         if (player.isPassenger() || player.isInWater() || player.isInLava() || player.onClimbable() || player.isFallFlying()
                 || player.isSwimming() || player.getAbilities().flying || player.isCrouching() || player.isUsingItem() || player.noPhysics
-                || player.hasEffect(MobEffects.JUMP_BOOST) || player.hasEffect(MobEffects.SLOW_FALLING) || player.hasEffect(MobEffects.LEVITATION)
-                || player.getAttributeValue(Attributes.FRICTION_MODIFIER) != 1.0 || player.getAttributeValue(Attributes.AIR_DRAG_MODIFIER) != 1.0
+                || player.hasEffect(MobEffects.JUMP) || player.hasEffect(MobEffects.SLOW_FALLING) || player.hasEffect(MobEffects.LEVITATION)
                 || player.getAttributeValue(Attributes.MOVEMENT_EFFICIENCY) != 0.0) {
             return null;
         }
