@@ -138,6 +138,50 @@ public class PlacementStoreTest {
     }
 
     @Test
+    public void choicesRoundTripNextToThePlacements() throws Exception {
+        Map<String, SchematicPlacement> placed = Map.of("a.schem", SchematicPlacement.at(BlockPos.ZERO, "d"));
+        Map<String, BuildChoices> chosen = new LinkedHashMap<>();
+        chosen.put("a.schem", new BuildChoices(Set.of("minecraft:glass")));
+        // a file with no placement yet can still have its rows unchecked
+        chosen.put("b.schem", new BuildChoices(Set.of("minecraft:brewing_stand", "minecraft:torch")));
+        // and an empty one isn't written at all
+        chosen.put("c.schem", BuildChoices.NONE);
+        assertTrue(PlacementStore.save(file(), placed, chosen));
+        PlacementStore.Saved out = PlacementStore.loadAll(file(), path -> true);
+        assertEquals(placed, out.placements());
+        assertEquals(Set.of("a.schem", "b.schem"), out.choices().keySet());
+        assertEquals(Set.of("minecraft:brewing_stand", "minecraft:torch"), out.choices().get("b.schem").excluded());
+        // the old reader still gets its placements out of the same file
+        assertEquals(placed, PlacementStore.load(file(), path -> true));
+        // and a gone file loses its choices like it loses its placement
+        assertEquals(Set.of("a.schem"), PlacementStore.loadAll(file(), "a.schem"::equals).choices().keySet());
+    }
+
+    @Test
+    public void aBrokenChoicesBlockOnlyCostsTheChoices() throws Exception {
+        Path file = file();
+        Files.createDirectories(file.getParent());
+        Files.writeString(file, """
+            {"schema": 1, "placements": {"good.schem": {"x": 1, "y": 2, "z": 3, "dimension": "d"}},
+             "choices": {"good.schem": {"excluded": ["minecraft:glass", 3, null, ""]}, "bad.schem": "nope"}}
+            """, StandardCharsets.UTF_8);
+        PlacementStore.Saved out = PlacementStore.loadAll(file, path -> true);
+        assertEquals(Set.of("good.schem"), out.placements().keySet());
+        assertEquals(Set.of("minecraft:glass"), out.choices().get("good.schem").excluded());
+        assertFalse(out.choices().containsKey("bad.schem"));
+        // and a choices block that isn't an object at all is just ignored
+        Files.writeString(file, "{\"schema\": 1, \"placements\": {}, \"choices\": []}", StandardCharsets.UTF_8);
+        assertTrue(PlacementStore.loadAll(file, path -> true).choices().isEmpty());
+        assertTrue(Files.exists(file));
+    }
+
+    @Test
+    public void noChoicesLeavesTheFileAsItWas() {
+        String json = PlacementStore.toJson(Map.of("a.schem", SchematicPlacement.at(BlockPos.ZERO, "d")), Map.of());
+        assertFalse(json.contains("choices"));
+    }
+
+    @Test
     public void theJsonIsReadableByAHuman() {
         String json = PlacementStore.toJson(Map.of("a.schem",
             new SchematicPlacement(new BlockPos(1, 2, 3), Rotation.COUNTERCLOCKWISE_90, Mirror.FRONT_BACK, "minecraft:overworld")));

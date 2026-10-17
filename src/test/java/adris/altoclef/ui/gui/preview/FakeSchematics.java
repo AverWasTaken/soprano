@@ -7,8 +7,10 @@ import baritone.utils.schematic.library.SchematicImporter;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Consumer;
 
 // a schematics folder with a few builds in it, enough variety for a preview to show every state of the tab: a clean
@@ -387,6 +389,7 @@ public final class FakeSchematics implements SchematicsAccess {
         rows.removeIf(r -> r.relativePath().equals(relativePath));
         materials.remove(relativePath);
         placements.remove(relativePath);
+        excluded.remove(relativePath);
     }
 
     // the row stays, the count goes: materials() then answers with the unreadable file error
@@ -398,6 +401,7 @@ public final class FakeSchematics implements SchematicsAccess {
         rows.clear();
         materials.clear();
         placements.clear();
+        excluded.clear();
     }
 
     @Override
@@ -425,6 +429,36 @@ public final class FakeSchematics implements SchematicsAccess {
             ghost = null;
         }
         return ghost;
+    }
+
+    // the unchecked ITEM ids per path, kept in memory the way McSchematics keeps them per world. an empty set is
+    // dropped so a path that was unticked and ticked again looks like it was never touched
+    private final Map<String, Set<String>> excluded = new LinkedHashMap<>();
+
+    @Override
+    public Set<String> excluded(String relativePath) {
+        if (!inWorld) {
+            return Set.of();
+        }
+        Set<String> off = excluded.get(relativePath);
+        return off == null ? Set.of() : Set.copyOf(off);
+    }
+
+    @Override
+    public void setIncluded(String relativePath, String itemId, boolean included) {
+        if (!inWorld || okRow(relativePath) == null || itemId == null) {
+            return;
+        }
+        actions.add("schematics " + (included ? "include " : "exclude ") + relativePath + " " + itemId);
+        Set<String> off = excluded.computeIfAbsent(relativePath, k -> new LinkedHashSet<>());
+        if (included) {
+            off.remove(itemId);
+        } else {
+            off.add(itemId);
+        }
+        if (off.isEmpty()) {
+            excluded.remove(relativePath);
+        }
     }
 
     private String moving;

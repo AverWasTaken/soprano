@@ -1,5 +1,6 @@
 package adris.altoclef.ui.gui.mc;
 
+import adris.altoclef.tasks.construction.schematic.BuildMemory;
 import baritone.api.schematic.IStaticSchematic;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.Mirror;
@@ -13,7 +14,8 @@ import java.util.List;
 // and chat line instead of a builder and a chat
 final class FakeGame implements McSchematics.Game {
 
-    record Built(String name, IStaticSchematic schematic, BlockPos origin, Rotation rotation, Mirror mirror) {
+    record Built(String name, IStaticSchematic schematic, BlockPos origin, Rotation rotation, Mirror mirror,
+                 BuildMemory memory) {
     }
 
     String dimension = "minecraft:overworld";
@@ -64,11 +66,12 @@ final class FakeGame implements McSchematics.Game {
     }
 
     @Override
-    public long build(String name, IStaticSchematic schematic, BlockPos origin, Rotation rotation, Mirror mirror) {
+    public long build(String name, IStaticSchematic schematic, BlockPos origin, Rotation rotation, Mirror mirror,
+                      BuildMemory memory) {
         if (refuse != null) {
             throw new McSchematics.Refused(refuse);
         }
-        built.add(new Built(name, schematic, origin, rotation, mirror));
+        built.add(new Built(name, schematic, origin, rotation, mirror, memory));
         running = ++serial;
         return running;
     }

@@ -3,6 +3,8 @@ package adris.altoclef.ui.gui.mc;
 import adris.altoclef.AltoClef;
 import adris.altoclef.TaskCatalogue;
 import adris.altoclef.tasks.construction.SchematicBuildTask;
+import adris.altoclef.tasks.construction.schematic.BuildMemory;
+import adris.altoclef.tasks.construction.schematic.SkipItems;
 import adris.altoclef.ui.gui.facade.ItemsAccess.ItemEntry;
 import adris.altoclef.ui.gui.facade.Result;
 import adris.altoclef.ui.gui.facade.SchematicsAccess;
@@ -19,6 +21,7 @@ import baritone.api.command.exception.CommandException;
 import baritone.api.utils.Helper;
 import baritone.altoclef.AltoClefBridge;
 import baritone.cache.WorldData;
+import baritone.utils.schematic.library.BuildChoices;
 import baritone.utils.schematic.library.InventoryCounts;
 import baritone.utils.schematic.library.MaterialLine;
 import baritone.utils.schematic.library.MaterialList;
@@ -55,6 +58,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -122,8 +126,9 @@ public final class McSchematics implements SchematicsAccess {
 
         TerrainMap.Source terrain();
 
-        // starts it and hands back its serial, see runningBuild. in survival that's the gathering task's, not the builder's
-        long build(String name, IStaticSchematic schematic, BlockPos origin, Rotation rotation, Mirror mirror);
+        // starts it and hands back its serial, see runningBuild. in survival that's the gathering task's, not the builder's.
+        // memory is the file's choices (the unchecked items), only the survival task reads it
+        long build(String name, IStaticSchematic schematic, BlockPos origin, Rotation rotation, Mirror mirror, BuildMemory memory);
 
         // the serial of whatever is building right now (our gathering task while it runs, else the builder), 0 when idle
         long runningBuild();
@@ -203,6 +208,8 @@ public final class McSchematics implements SchematicsAccess {
     // feet and not saved
     private final Map<String, SchematicPlacement> placements = new LinkedHashMap<>();
     private final Map<String, SchematicPlacement> defaults = new HashMap<>();
+    // game thread only: this world's build choices, saved in the same file as the placements
+    private final Map<String, BuildChoices> choices = new LinkedHashMap<>();
     private boolean placementsLoaded;
     private boolean saveBlocked;
     private long lastRetry;
@@ -577,11 +584,13 @@ public final class McSchematics implements SchematicsAccess {
             placementsFile = file;
             defaults.clear();
             placements.clear();
-            Map<String, SchematicPlacement> loaded = PlacementStore.load(file, this::exists);
+            choices.clear();
+            PlacementStore.Saved loaded = PlacementStore.loadAll(file, this::exists);
             saveBlocked = loaded == null;
             lastRetry = clock.getAsLong();
             if (loaded != null) {
-                placements.putAll(loaded);
+                placements.putAll(loaded.placements());
+                choices.putAll(loaded.choices());
             }
         } else if (saveBlocked && clock.getAsLong() - lastRetry >= RETRY_MS) {
             // the gui reads every frame, so it only knocks on the file now and then. a file that comes back shows its
@@ -598,14 +607,18 @@ public final class McSchematics implements SchematicsAccess {
         if (!saveBlocked || placementsFile == null) {
             return !saveBlocked;
         }
-        Map<String, SchematicPlacement> loaded = PlacementStore.load(placementsFile, this::exists);
+        PlacementStore.Saved loaded = PlacementStore.loadAll(placementsFile, this::exists);
         if (loaded == null) {
             return false;
         }
-        Map<String, SchematicPlacement> merged = new LinkedHashMap<>(loaded);
+        Map<String, SchematicPlacement> merged = new LinkedHashMap<>(loaded.placements());
         merged.putAll(placements);
         placements.clear();
         placements.putAll(merged);
+        Map<String, BuildChoices> mergedChoices = new LinkedHashMap<>(loaded.choices());
+        mergedChoices.putAll(choices);
+        choices.clear();
+        choices.putAll(mergedChoices);
         saveBlocked = false;
         return true;
     }
@@ -618,6 +631,10 @@ public final class McSchematics implements SchematicsAccess {
     private void pin(String relativePath, SchematicPlacement p) {
         defaults.remove(relativePath);
         placements.put(relativePath, p);
+        save();
+    }
+
+    private void save() {
         if (placementsFile == null) {
             return;
         }
@@ -626,7 +643,60 @@ public final class McSchematics implements SchematicsAccess {
         if (!reloadIfBlocked()) {
             return;
         }
-        PlacementStore.save(placementsFile, placements);
+        PlacementStore.save(placementsFile, placements, choices);
+    }
+
+    // ----- build choices. game thread only, like the placements
+
+    @Override
+    public Set<String> excluded(String relativePath) {
+        if (relativePath == null || !syncWorld()) {
+            return Set.of();
+        }
+        return choicesOf(relativePath).excluded();
+    }
+
+    @Override
+    public void setIncluded(String relativePath, String itemId, boolean included) {
+        try {
+            if (relativePath == null || itemId == null || !syncWorld() || fileFor(relativePath) == null) {
+                return;
+            }
+            choose(relativePath, choicesOf(relativePath).withIncluded(itemId, included));
+        } catch (Throwable t) {
+            Safe.report("gui schematic choices", t);
+        }
+    }
+
+    private BuildChoices choicesOf(String relativePath) {
+        return choices.getOrDefault(relativePath, BuildChoices.NONE);
+    }
+
+    private void choose(String relativePath, BuildChoices next) {
+        if (next.equals(choicesOf(relativePath))) {
+            return;
+        }
+        if (next.isEmpty()) {
+            choices.remove(relativePath);
+        } else {
+            choices.put(relativePath, next);
+        }
+        save();
+    }
+
+    // the build's end of the choices. it can outlive the world it started in (a quit with the task still around), and
+    // a stale one must not write into the next world's file
+    private BuildMemory memoryFor(String relativePath, Path world) {
+        return new BuildMemory() {
+            @Override
+            public Set<String> excluded() {
+                return live() ? choicesOf(relativePath).excluded() : Set.of();
+            }
+
+            private boolean live() {
+                return syncWorld() && Objects.equals(world, placementsFile);
+            }
+        };
     }
 
     // ----- building
@@ -707,7 +777,8 @@ public final class McSchematics implements SchematicsAccess {
             return;
         }
         try {
-            ourBuild = game.build(info.file().getName(), schematic, p.origin(), p.rotation(), p.mirror());
+            ourBuild = game.build(info.file().getName(), schematic, p.origin(), p.rotation(), p.mirror(),
+                memoryFor(info.relativePath(), world));
             building = new Building(BuildState.STARTED, info.relativePath(), "Building " + info.name());
         } catch (Refused r) {
             building = new Building(BuildState.ERROR, info.relativePath(), r.getMessage());
@@ -1002,19 +1073,21 @@ public final class McSchematics implements SchematicsAccess {
         // builder places from thin air there). adventure and spectator can't place blocks at all. decided now and not
         // at the click, the read in between can take a while
         @Override
-        public long build(String name, IStaticSchematic schematic, BlockPos origin, Rotation rotation, Mirror mirror) {
+        public long build(String name, IStaticSchematic schematic, BlockPos origin, Rotation rotation, Mirror mirror,
+                          BuildMemory memory) {
             GameType mode = gameMode();
             if (mode != GameType.SURVIVAL && mode != GameType.CREATIVE) {
                 throw new Refused("Can't build in " + (mode == null ? "this game mode" : mode.getName() + " mode"));
             }
             AltoClef alto = mode == GameType.SURVIVAL ? altoClef() : null;
             if (alto != null) {
-                SchematicBuildTask task = new SchematicBuildTask(name, schematic, origin, rotation, mirror);
+                SchematicBuildTask task = new SchematicBuildTask(name, schematic, origin, rotation, mirror, memory);
                 alto.runUserTask(task);
                 return task.serial();
             }
+            // creative places from thin air, but an unchecked row is still a row the player doesn't want built
             IBuilderProcess builder = BaritoneAPI.getProvider().getPrimaryBaritone().getBuilderProcess();
-            builder.build(name, schematic, origin, rotation, mirror);
+            builder.build(name, SkipItems.leaveOut(schematic, memory.excluded()), origin, rotation, mirror);
             return builder.buildSerial();
         }
 

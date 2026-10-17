@@ -2,7 +2,8 @@
 // controls under the summary, build at the bottom (SchematicsTab.java, SchematicPane.java, PlacementMap.java). data is
 // FakeSchematics.java. ?sc=loading (first load, no rows) ?sc=refreshing (rows + the small label) ?sc=empty ?sc=none
 // (nothing selected) ?sc=noworld ?sc=counting (materials still loading) ?sc=nether (placed in another dimension)
-// ?sc=parsing ?sc=building ?sc=builderr (the build request states). &rot=1&mir=1 turns and flips, &zoom=1|2|4
+// ?sc=parsing ?sc=building ?sc=builderr (the build request states). &rot=1&mir=1 turns and flips, &zoom=1|2|4.
+// &off=minecraft:torch,minecraft:beacon is which item rows start unchecked (glass when not given, &off= for none)
 (function () {
   const $ = (s, r) => (r || document).querySelector(s);
   const root = $('#sc'); if (!root) return;
@@ -34,6 +35,12 @@
   let query = '', selected = mode === 'none' || !rows.length ? null : rows[0].path, armed = 0, armTimer = 0;
   const open = { cantPlace: false, notCounted: false };
   const noWorld = mode === 'noworld';
+  // the item rows struck from the build, per path like BuildChoices. one starts off so the look is on screen
+  const off = { 'Small Castle.litematic': new Set(qs.has('off') ? qs.get('off').split(',').filter(Boolean) : ['minecraft:glass']) };
+  const offOf = p => off[p] || (off[p] = new Set());
+  // SchematicRules.checkHint / checkHintShort
+  const HINT = ['Unchecked items are left out of the build. A block others rest on can leave them floating.', 'Unchecked items are left out.'];
+  const HINT_BUILDING = ['Changes apply on the next start, not this build.', 'Applies on the next start.'];
 
   // ---- placement: where the picked file goes. FakeSchematics puts the default at the feet (100, 64, -40); the player
   // in FakeFacade stands at 120.5, -30.5 looking a bit west of north. one placement per path, like the real store
@@ -65,9 +72,17 @@
   const known = (win, x, z) => { const cx = (x - win.minX) >> 4, cz = (z - win.minZ) >> 4; return !(cx >= 14 && cz < 3); };
 
   // the map's height: half of what the header, controls and footer leave, 48..176, the list gets the rest
-  function sizeMap() {
+  // the caption comes off the room first (SchematicPane.layout): the whole sentence on up to two lines, the short one
+  // when the whole would take three or the window is tight, none before the band loses a pixel
+  function sizeMap(words) {
     const d = $('#sc-detail');
-    const room = d.clientHeight - $('.sc-head', d).offsetHeight - $('.sc-foot', d).offsetHeight - $('#sc-ctl').offsetHeight - 4;
+    const hint = $('#sc-hint');
+    hint.classList.remove('one', 'none');
+    hint.textContent = words[0];
+    const fixed = $('.sc-head', d).offsetHeight + $('.sc-foot', d).offsetHeight + $('#sc-ctl').offsetHeight + 4;
+    let room = d.clientHeight - fixed - hint.offsetHeight;
+    if (hint.offsetHeight > 2 * 15 + 8 || room < 48) { hint.classList.add('one'); hint.textContent = words[1]; room = d.clientHeight - fixed - hint.offsetHeight; }
+    if (room < 48) { hint.classList.add('none'); room = d.clientHeight - fixed; }
     map.style.height = Math.max(48, Math.min(176, Math.round(room * 0.5))) + 'px';
   }
 
@@ -206,11 +221,21 @@
     count.classList.toggle('loading', mode === 'refreshing' || first);
   }
 
-  function mrow(l, kind) {
+  function mrow(l, kind, path) {
     const el = document.createElement('div');
     const h = kind === 'item' ? (have[l.id] || 0) : 0;
     const short = kind === 'item' && h < l.needed;
-    el.className = 'mrow' + (short ? ' short' : '') + (kind === 'item' ? '' : ' plain');
+    const isOff = kind === 'item' && offOf(path).has(l.id);
+    el.className = 'mrow' + (short ? ' short' : '') + (kind === 'item' ? '' : ' plain') + (isOff ? ' off' : '');
+    // the box: accent with a tick, or a field with the strong hairline round it. only item rows get one, the folded
+    // kinds were never going in. the whole row is the target, same as MaterialRows
+    if (kind === 'item') {
+      const b = document.createElement('i'); b.className = 'chk'; b.innerHTML = '<i data-icon="check"></i>';
+      el.appendChild(b);
+      el.onclick = () => { const s = offOf(path); if (s.has(l.id)) s.delete(l.id); else s.add(l.id); disarm(); render(); };
+    } else {
+      const sp = document.createElement('i'); sp.className = 'chk gap'; el.appendChild(sp);
+    }
     el.appendChild(l.icon ? Mock.itemImg(l.icon.replace('minecraft:', ''), 'm-icon', 16) : (() => { const i = document.createElement('i'); i.dataset.icon = 'block'; i.className = 'm-icon c-3'; return i; })());
     const t = document.createElement('div'); t.className = 'm-text';
     t.innerHTML = '<div class="m-name"></div>' + (kind === 'item' ? '<div class="m-bar"><i></i></div>' : '');
@@ -252,7 +277,10 @@
       $('.lead', state).textContent = r.error;
       return;
     }
-    sizeMap();
+    // the boxes grey while this file's build is in flight (they still toggle), and the caption says it feeds the next start
+    const inFlight = building.state === 'PARSING' || building.state === 'STARTED';
+    $('.sc-rows', detail).classList.toggle('building', inFlight);
+    sizeMap(inFlight ? HINT_BUILDING : HINT);
     renderMap(r);
     const m = materials[r.path];
     if (mode === 'counting') {
@@ -262,14 +290,18 @@
       return;
     }
     detail.classList.remove('state');
+    // the shortfall and the warning count the checked rows only (SchematicRules.checkedOnly), the head keeps the file's numbers
+    const struck = offOf(r.path);
+    const checked = m.items.filter(l => !struck.has(l.id));
+    const leftOut = m.items.length - checked.length;
     const needed = m.items.reduce((a, l) => a + l.needed, 0);
-    const missing = m.items.reduce((a, l) => a + Math.max(0, l.needed - (have[l.id] || 0)), 0);
+    const missing = checked.reduce((a, l) => a + Math.max(0, l.needed - (have[l.id] || 0)), 0);
     const sum = $('.sum', head);
     sum.innerHTML = '';
-    sum.append(fmt(needed) + ' blocks · ' + m.items.length + (m.items.length === 1 ? ' kind' : ' kinds'));
+    sum.append(fmt(needed) + ' blocks · ' + m.items.length + (m.items.length === 1 ? ' kind' : ' kinds') + (leftOut ? ' · ' + leftOut + ' left out' : ''));
     if (missing) { const s = document.createElement('span'); s.className = 'short'; s.textContent = ' · ' + fmt(missing) + ' short'; sum.appendChild(s); }
-    else sum.append(' · all in your inventory');
-    for (const l of m.items) scroll.appendChild(mrow(l, 'item'));
+    else sum.append(leftOut ? ' · rest in your inventory' : ' · all in your inventory');
+    for (const l of m.items) scroll.appendChild(mrow(l, 'item', r.path));
     for (const [key, label, lines] of [['cantPlace', 'Can\'t place', m.cantPlace], ['notCounted', 'Not counted', m.notCounted]]) {
       if (!lines.length) continue;
       const sec = document.createElement('div');
@@ -278,7 +310,7 @@
       $('span', sec).textContent = label; $('.cnt', sec).textContent = lines.length;
       sec.onclick = () => { open[key] = !open[key]; render(); };
       scroll.appendChild(sec);
-      if (open[key]) for (const l of lines) scroll.appendChild(mrow(l, key));
+      if (open[key]) for (const l of lines) scroll.appendChild(mrow(l, key, r.path));
     }
     for (const n of m.notes) { const d = document.createElement('div'); d.className = 'mnote'; d.textContent = n; scroll.appendChild(d); }
     Mock.hydrate(scroll);
