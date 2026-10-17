@@ -58,6 +58,9 @@ public class PlaceObsidianBucketTask extends Task {
     private BucketPour.Verdict _heldFor;
     // the tick the lava cell started looking clear, MIN_VALUE while it doesn't
     private int _clearSince = Integer.MIN_VALUE;
+    // we have SNEAK and MOVE_BACK down for the back-up next to the ledge, and whether this tick asked for them
+    private boolean _backingUp;
+    private boolean _backUpThisTick;
 
     public PlaceObsidianBucketTask(BlockPos pos) {
         this(pos, List.of());
@@ -99,6 +102,23 @@ public class PlaceObsidianBucketTask extends Task {
      */
     @Override
     protected Task onTick(AltoClef mod) {
+        _backUpThisTick = false;
+        Task next = castTick(mod);
+        // the back-up below only let go in its own else, so standing right on the ledge (or any earlier return) kept the
+        // keys down. any tick that didn't back up lets go of what we pressed
+        if (_backingUp && !_backUpThisTick) {
+            stopBackingUp(mod);
+        }
+        return next;
+    }
+
+    private void stopBackingUp(AltoClef mod) {
+        _backingUp = false;
+        mod.getInputControls().release(Input.SNEAK);
+        mod.getInputControls().release(Input.MOVE_BACK);
+    }
+
+    private Task castTick(AltoClef mod) {
         watchLavaCell(mod);
         // Reset progress if pathing
         if (mod.getClientBaritone().getPathingBehavior().isPathing()) {
@@ -190,10 +210,8 @@ public class PlaceObsidianBucketTask extends Task {
                         && targetPos.closerThan(mod.getPlayer().blockPosition(), 2)) {
                     mod.getInputControls().hold(Input.SNEAK);
                     mod.getInputControls().hold(Input.MOVE_BACK);
-                } else {
-                    mod.getInputControls().release(Input.SNEAK);
-                    mod.getInputControls().release(Input.MOVE_BACK);
-                    mod.getInputControls().release(Input.MOVE_FORWARD);
+                    _backingUp = true;
+                    _backUpThisTick = true;
                 }
                 return new GetToBlockTask(targetPos, false);
             }
@@ -351,6 +369,9 @@ public class PlaceObsidianBucketTask extends Task {
         if (_pouring) {
             _pouring = false;
             mod.getInputControls().release(Input.CLICK_RIGHT);
+        }
+        if (_backingUp) {
+            stopBackingUp(mod);
         }
         // Check if the mod's behaviour is not null
         if (mod.getBehaviour() != null) {
