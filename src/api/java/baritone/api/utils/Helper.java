@@ -53,19 +53,20 @@ public interface Helper {
     /**
      * The tag to assign to chat messages when {@link Settings#useMessageTag} is {@code true}.
      */
-    GuiMessageTag MESSAGE_TAG = new GuiMessageTag(0xFFAA00, null, Component.literal("Soprano message."), "Soprano");
+    GuiMessageTag MESSAGE_TAG = new GuiMessageTag(0xAAAAAA, null, Component.literal("Soprano message."), "Soprano");
 
     static Component getPrefix() {
         // Inner text component
         final Calendar now = Calendar.getInstance();
         final boolean xd = now.get(Calendar.MONTH) == Calendar.APRIL && now.get(Calendar.DAY_OF_MONTH) <= 3;
         MutableComponent baritone = Component.literal(xd ? "Sopranoe" : BaritoneAPI.getSettings().shortBaritonePrefix.value ? "S" : "Soprano");
-        // gold name, darker gold brackets. vanilla has no darker gold, so the brackets go by hex and the name matches them
-        baritone.setStyle(baritone.getStyle().withColor(0xFFAA00));
+        // black and white now. a black name would be the obvious pick and it vanishes on the dark chat box, so the name
+        // is white and the brackets are vanilla gray, both bold
+        baritone.setStyle(baritone.getStyle().withColor(0xFFFFFF).withBold(true));
 
         // Outer brackets
         MutableComponent prefix = Component.literal("");
-        prefix.setStyle(baritone.getStyle().withColor(0xB07400));
+        prefix.setStyle(baritone.getStyle().withColor(0xAAAAAA));
         prefix.append("[");
         prefix.append(baritone);
         prefix.append("]");
