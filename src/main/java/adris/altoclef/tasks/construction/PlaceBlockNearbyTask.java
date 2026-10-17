@@ -345,6 +345,7 @@ public class PlaceBlockNearbyTask extends Task {
         BlockState placing = placingState();
         BlockPos feet = mod.getPlayer().blockPosition();
         int feetY = feet.getY();
+        boolean onGround = mod.getPlayer().onGround();
         BlockPos start = mod.getPlayer().blockPosition().offset(-range, -range, -range);
         BlockPos end = mod.getPlayer().blockPosition().offset(range, range, range);
         for (BlockPos blockPos : WorldHelper.scanRegion(mod, start, end)) {
@@ -377,6 +378,9 @@ public class PlaceBlockNearbyTask extends Task {
             boolean hasBelow = WorldHelper.isSolid(mod, blockPos.below());
             // never our own cells, never a cell that has to be built up to. the builder pillars us up the shaft for those
             if (PlaceSpotRank.wouldPillar(blockPos.getX(), blockPos.getY(), blockPos.getZ(), feet.getX(), feetY, feet.getZ(), hasBelow)) {
+                continue;
+            }
+            if (PlaceSpotRank.underFloatingFeet(blockPos.getX(), blockPos.getY(), blockPos.getZ(), feet.getX(), feetY, feet.getZ(), onGround)) {
                 continue;
             }
             // somebody standing in the cell. last, it is the one check here that asks the world about entities
