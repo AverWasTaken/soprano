@@ -38,7 +38,7 @@ import java.util.List;
 // all the speed with it
 //
 // standing inside the near edge of that window (flush against the face is the extreme) no wait fixes it, the hop can't back
-// up. the brake does: W held with the yaw turned round, which 26.3 does not count as letting go of forward (only the input
+// up. the brake does: W held with the yaw turned round, which vanilla does not count as letting go of forward (only the input
 // is looked at, not where it points), so the sprint survives and the player accelerates backwards. a few ticks of that, then
 // forward again and the usual jump. see Brakes for the plan that keeps it from being a search every tick
 public final class AscendHop {
@@ -229,7 +229,7 @@ public final class AscendHop {
         return 0;
     }
 
-    // a horizontal collision that vanilla does not wave through as a graze (LocalPlayer.shouldStopRunSprinting)
+    // a horizontal collision that vanilla does not wave through as a graze (LocalPlayer.aiStep's stop sprint check)
     private static boolean wall(PlayerSim sim) {
         return sim.horizontalCollision && !sim.minorHorizontalCollision;
     }

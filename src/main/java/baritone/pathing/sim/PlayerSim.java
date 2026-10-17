@@ -21,7 +21,7 @@ import net.minecraft.util.Mth;
 
 import java.util.Arrays;
 
-// one player on foot, one game tick at a time, the way 26.3 does it. the method names in the comments are the vanilla ones this
+// one player on foot, one game tick at a time, the way 1.21.4 does it. the method names in the comments are the vanilla ones this
 // was ported from (LocalPlayer.aiStep, LivingEntity.aiStep / travelInAir / jumpFromGround, Entity.move / collide), floats where
 // vanilla has floats since the last digit of a sprint jump decides whether a step is cleared.
 // not modelled and bailed on: fluids, climbables, ice / slime / honey / soul sand / webs / powder snow, potions that touch
@@ -32,7 +32,7 @@ public final class PlayerSim {
     // LivingEntity.SPEED_MODIFIER_SPRINTING, 0.3F as an ADD_MULTIPLIED_TOTAL. the amount is a double so the float widens
     public static final double SPRINT_MODIFIER = 0.3F;
     private static final float DEG_TO_RAD = (float) (Math.PI / 180.0);
-    // Direction.axisStepOrder, as indexes into x y z
+    // Entity.collideWithShapes' axis order (y, then the bigger of x and z), as indexes into x y z
     private static final int[] Y_X_Z = {1, 0, 2}, Y_Z_X = {1, 2, 0};
 
     // what the player is made of: attribute values, minus the sprint modifier, which the sim applies itself the way setSprinting does
@@ -126,55 +126,31 @@ public final class PlayerSim {
         }
         failure = null;
 
-        // KeyboardInput / PlayerMovementInput: moveVector = new Vec2(left, forward).normalized()
-        float lx = c.left(), lz = c.forward();
-        float len = Mth.sqrt(lx * lx + lz * lz);
-        float mvx = 0.0F, mvz = 0.0F;
-        if (!(len < 1.0E-4F)) {
-            mvx = lx / len;
-            mvz = lz / len;
-        }
-        boolean hasForwardImpulse = mvz > 1.0E-5F;
+        // KeyboardInput / PlayerMovementInput on 1.21.4: plain floats, +-1 or 0, no Vec2 and no normalizing (that's 26.3)
+        float leftImpulse = c.left(), forwardImpulse = c.forward();
+        boolean hasForwardImpulse = forwardImpulse > 1.0E-5F;
 
-        // LocalPlayer.aiStep. canStartSprinting, then shouldStopRunSprinting off last tick's collision flags
-        if (!sprinting && hasForwardImpulse && params.sprintAllowed() && c.sprint()) {
+        // LocalPlayer.aiStep. canStartSprinting (hasEnoughImpulseToStartSprinting is >= 0.8 here, W is 1 so it's the same
+        // answer until somebody sims sneaking), then the stop check off last tick's collision flags
+        if (!sprinting && forwardImpulse >= 0.8F && params.sprintAllowed() && c.sprint()) {
             sprinting = true;
         }
         if (sprinting && (!params.sprintAllowed() || !hasForwardImpulse || horizontalCollision && !minorHorizontalCollision)) {
             sprinting = false;
         }
 
-        // LivingEntity.aiStep
+        // LivingEntity.aiStep. 1.21.4 zeroes each axis on its own under 0.003, 26.3 does x and z together off the length
         if (noJumpDelay > 0) {
             noJumpDelay--;
         }
-        double dx = vx, dy = vy, dz = vz;
-        if (vx * vx + vz * vz < 9.0E-6) {
-            dx = 0.0;
-            dz = 0.0;
-        }
-        if (Math.abs(vy) < 0.003) {
-            dy = 0.0;
-        }
+        double dx = Math.abs(vx) < 0.003 ? 0.0 : vx;
+        double dy = Math.abs(vy) < 0.003 ? 0.0 : vy;
+        double dz = Math.abs(vz) < 0.003 ? 0.0 : vz;
 
-        // LocalPlayer.applyInput / modifyInput: 0.98 and then squared off so a diagonal is not slower than it should be
-        xxa = mvx;
-        zza = mvz;
-        if (mvx * mvx + mvz * mvz != 0.0F) {
-            float nx = mvx * 0.98F, nz = mvz * 0.98F;
-            float length = Mth.sqrt(nx * nx + nz * nz);
-            if (length > 0.0F) {
-                float inv = 1.0F / length;
-                float ux = nx * inv, uz = nz * inv;
-                float tan = Math.abs(uz) > Math.abs(ux) ? Math.abs(ux) / Math.abs(uz) : Math.abs(uz) / Math.abs(ux);
-                float modified = Math.min(length * Mth.sqrt(1.0F + tan * tan), 1.0F);
-                xxa = ux * modified;
-                zza = uz * modified;
-            } else {
-                xxa = nx;
-                zza = nz;
-            }
-        }
+        // serverAiStep copies the impulses, LivingEntity.aiStep scales by 0.98. no squaring off the diagonal on 1.21.4,
+        // getInputVector's normalize is all a diagonal gets
+        xxa = leftImpulse * 0.98F;
+        zza = forwardImpulse * 0.98F;
 
         // the jump block: onGround and no delay, or the delay resets the moment the key is up
         if (c.jump()) {
@@ -196,11 +172,12 @@ public final class PlayerSim {
         }
 
         // LivingEntity.travelInAir
-        float blockFriction = onGround ? modifiedFriction(0.6F) : 1.0F;
+        float blockFriction = onGround ? 0.6F : 1.0F;
         float accel;
         if (onGround) { // getFrictionInfluencedSpeed. Player.getSpeed() is the attribute, so the sprint flag counts the tick it flips
             float speed = (float) walkSpeedAttribute(sprinting);
-            accel = blockFriction > 0.6 ? speed * (0.21600002F / (blockFriction * blockFriction * blockFriction)) : speed;
+            // no friction gate on 1.21.4, the 0.216 always goes through. it's 0.6 cubed, so a plain block nets out at the speed
+            accel = speed * (0.21600002F / (blockFriction * blockFriction * blockFriction));
         } else { // Player.getFlyingSpeed
             accel = sprinting ? 0.025999999F : 0.02F;
         }
@@ -227,9 +204,8 @@ public final class PlayerSim {
         move(c.viewYaw());
         // what is left of the velocity after move (collisions zero the axis they hit) is what travelInAir reads back
         double movementY = vy - params.gravity();
-        float airDrag = modifiedFriction(0.91F);
-        float friction = blockFriction * airDrag;
-        float verticalFriction = modifiedFriction(0.98F);
+        float friction = blockFriction * 0.91F;
+        float verticalFriction = 0.98F;
         vx = vx * friction;
         vy = movementY * verticalFriction;
         vz = vz * friction;
@@ -242,11 +218,6 @@ public final class PlayerSim {
             return false;
         }
         return true;
-    }
-
-    // LivingEntity.computeModifiedFriction with the default modifier of 1
-    private static float modifiedFriction(float friction) {
-        return Mth.clamp(1.0F - (1.0F - friction) * 1.0F, 0.0F, 1.0F);
     }
 
     // anything about where we are standing that the maths above does not cover

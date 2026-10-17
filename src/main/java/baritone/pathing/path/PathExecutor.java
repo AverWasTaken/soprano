@@ -1078,7 +1078,7 @@ public class PathExecutor implements IPathExecutor, Helper {
     }
 
     // sprintableAscend knows traverse -> ascend -> straight on and nothing else, so an ascend into another ascend, a parkour or
-    // a bend let go of the sprint in mid air and landed at walk speed. not vanilla's doing, 26.3 re-arms sprint on any tick
+    // a bend let go of the sprint in mid air and landed at walk speed. not vanilla's doing, it re-arms sprint on any tick
     // forward is held, it was our own "no" keeping the key off. this is the same question asked from the ascend itself: does
     // whatever comes next sprint, and is it roughly the way we are going. the jump is the movement's, sprint doesn't replace it
     private boolean sprintsThroughAscend(MovementAscend ascend) {

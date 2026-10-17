@@ -156,11 +156,11 @@ final class SprintJump {
         return jump;
     }
 
-    // asking "is the player sprinting" was the wrong question. 26.3 starts a sprint inside aiStep whenever the key is down and forward
+    // asking "is the player sprinting" was the wrong question. vanilla starts a sprint inside aiStep whenever the key is down and forward
     // is held, on the ground or off it, and all a sprint jump wants is the flag up on the tick jumpFromGround runs. so a plan
     // that said no one tick ago (and made the executor let go of the key) could never say yes again until some other movement
     // re-armed the flag. this asks what aiStep will make of it this tick instead (LocalPlayer.canStartSprinting and
-    // shouldStopRunSprinting), and not at all with the food or the setting off
+    // the stop sprint check), and not at all with the food or the setting off
     static boolean sprintsOnJumpTick(Player player) {
         return Baritone.settings().allowSprint.value && player.getFoodData().getFoodLevel() > 6
                 && !(player.horizontalCollision && !player.minorHorizontalCollision)
