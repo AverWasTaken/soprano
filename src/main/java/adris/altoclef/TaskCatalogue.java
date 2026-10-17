@@ -56,6 +56,9 @@ public class TaskCatalogue {
     private static final HashMap<String, String> _aliases = new HashMap<>();
     // every recipe the shaped helpers register, by name. building the task needs a running client, so the recipe parity test reads these instead
     private static final TreeMap<String, RecipeTarget> _craftedRecipes = new TreeMap<>();
+    // what the smelts and smiths are made from, by name. they aren't recipes in the graph above, and a smelt of
+    // netherrack is a trip to the nether all the same
+    private static final HashMap<String, List<String>> _madeFrom = new HashMap<>();
 
     static {
         /// DEFINE RESOURCE TASKS HERE
@@ -788,6 +791,7 @@ mine("pale_oak_sapling", Blocks.PALE_OAK_LEAVES, Items.PALE_OAK_SAPLING);
     }
 
     private static CataloguedResource mine(String name, MiningRequirement requirement, Block[] toMine, Item... targets) {
+        BillBook.GATHER.put(name, requirement);
         return put(name, targets, count -> new MineAndCollectTask(new ItemTarget(targets, count), toMine, requirement)).dontMineIfPresent(); // Mining already taken care of!!
     }
 
@@ -848,14 +852,17 @@ mine("pale_oak_sapling", Blocks.PALE_OAK_LEAVES, Items.PALE_OAK_SAPLING);
     }
 
     private static CataloguedResource smelt(String name, Item[] matches, String materials, Item... optionalMaterials) {
+        _madeFrom.put(name, List.of(materials));
         return put(name, matches, count -> new SmeltInFurnaceTask(new SmeltTarget(new ItemTarget(matches, count), new ItemTarget(materials, count), optionalMaterials)));
     }
 
     private static CataloguedResource smelt(String name, Item match, String materials, Item... optionalMaterials) {
+        BillBook.EDGES.put(name, new BillEdge(materials, 1, 1, BillEdge.Step.SMELT));
         return smelt(name, new Item[]{match}, materials, optionalMaterials);
     }
 
     private static CataloguedResource smith(String name, Item[] matches, String materials, String tool) {
+        _madeFrom.put(name, List.of(materials, tool));
         return put(name, matches, count -> new UpgradeInSmithingTableTask(new ItemTarget(tool, count), new ItemTarget(materials, count), new ItemTarget(matches, count)));//new SmeltInFurnaceTask(new SmeltTarget(new ItemTarget(matches, count), new ItemTarget(materials, count))));
     }
 
@@ -935,6 +942,57 @@ mine("pale_oak_sapling", Blocks.PALE_OAK_LEAVES, Items.PALE_OAK_SAPLING);
         }
     }
 
+    // one step the gather bill (RecipeBill) can walk that isn't a shaped recipe: a run eats inPerRun of input and makes
+    // outPerRun. smelts are 1:1, a log is 4 planks, 2 planks are 4 sticks, a bucket is a water bucket once you dunk it
+    public record BillEdge(String input, int inPerRun, int outPerRun, Step step) {
+        public enum Step {CRAFT, SMELT, FILL}
+    }
+
+    // the step for name, null when it has none (shaped recipes are recipeOf, everything else is opaque)
+    public static BillEdge billEdge(String name) {
+        return BillBook.EDGES.get(name);
+    }
+
+    // the pickaxe a plain mine of name needs, or null when the bill shouldn't fetch it up front: mob drops, crops, shears,
+    // the custom tasks, and anything whose entry walks to the nether first. those keep doing what they always did
+    public static MiningRequirement gatherRequirement(String name) {
+        CataloguedResource entry = _nameToResourceTask.get(name);
+        if (entry == null || entry.forcesNether()) {
+            return null;
+        }
+        return BillBook.GATHER.get(name);
+    }
+
+    // a holder class so the maps exist while the static block up top is still running. a plain static field down here
+    // is initialized after that block, so smelt() and mine() would be writing into null
+    private static final class BillBook {
+        static final HashMap<String, BillEdge> EDGES = new HashMap<>();
+        // what may be gathered up front and with which pickaxe. mine() adds every plain block it registers
+        static final HashMap<String, MiningRequirement> GATHER = new HashMap<>();
+
+        static {
+            // the ingots are custom tasks, not smelt(), but a smelt is what they are
+            EDGES.put("iron_ingot", new BillEdge("raw_iron", 1, 1, BillEdge.Step.SMELT));
+            EDGES.put("gold_ingot", new BillEdge("raw_gold", 1, 1, BillEdge.Step.SMELT));
+            EDGES.put("planks", new BillEdge("log", 1, 4, BillEdge.Step.CRAFT));
+            EDGES.put("stick", new BillEdge("planks", 2, 4, BillEdge.Step.CRAFT));
+            EDGES.put("water_bucket", new BillEdge("bucket", 1, 1, BillEdge.Step.FILL));
+            EDGES.put("lava_bucket", new BillEdge("bucket", 1, 1, BillEdge.Step.FILL));
+            GATHER.put("log", MiningRequirement.HAND);
+            GATHER.put("cobblestone", MiningRequirement.WOOD);
+            GATHER.put("cobbled_deepslate", MiningRequirement.WOOD);
+            for (WoodType woodType : WoodType.values()) {
+                ItemHelper.WoodItems wood = ItemHelper.getWoodItems(woodType);
+                if (wood.planks == null || wood.log == null) continue;
+                EDGES.put(wood.prefix + "_planks", new BillEdge(wood.prefix + "_log", 1, 4, BillEdge.Step.CRAFT));
+                // crimson and warped stems are a nether trip, gatherRequirement would say no anyway but why ask
+                if (!wood.isNetherWood()) {
+                    GATHER.put(wood.prefix + "_log", MiningRequirement.HAND);
+                }
+            }
+        }
+    }
+
     private static void tools(String toolMaterialName, String material, Item pickaxeItem, Item shovelItem, Item swordItem, Item axeItem, Item hoeItem) {
         String s = "stick";
         String o = null;
@@ -1003,6 +1061,11 @@ mine("pale_oak_sapling", Blocks.PALE_OAK_LEAVES, Items.PALE_OAK_SAPLING);
         public CataloguedResource anyDimension() {
             _forceDimension = false;
             return this;
+        }
+
+        // the task goes to the nether before it does anything else (ResourceTask.isInWrongDimension)
+        boolean forcesNether() {
+            return _forceDimension && _targetDimension == Dimension.NETHER;
         }
 
         public ResourceTask getResource(int count) {
