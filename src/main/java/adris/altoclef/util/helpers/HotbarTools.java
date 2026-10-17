@@ -40,18 +40,29 @@ public final class HotbarTools {
         Inventory inv = player.getInventory();
         int best = -1;
         int bestUses = -1;
+        boolean bestWorn = false;
+        boolean hotbarWorn = false;
         for (int i = 0; i < 36; i++) {
             ItemStack stack = inv.getItem(i);
             if (stack.isEmpty() || !kind.equals(ItemHelper.toolKind(stack.getItem()))) continue;
-            if (i < 9) return;
-            int uses = ItemHelper.getToolDurability(stack.getItem());
+            // one in the hotbar already is fine, unless it's worn out. then the fresh one GatherBillTask made comes down too
+            boolean worn = ToolWear.wornOut(stack.getDamageValue(), stack.getMaxDamage());
+            if (i < 9) {
+                if (!worn) return;
+                hotbarWorn = true;
+                continue;
+            }
+            // what's left on it, not what it had new. a stone axe on its last legs isn't better than a fresh wooden one
+            int uses = stack.getMaxDamage() - stack.getDamageValue();
             if (uses > bestUses) {
                 best = i;
                 bestUses = uses;
+                bestWorn = worn;
             }
         }
-        if (best < 0) return;
-        int to = slotFor(inv);
+        // worn for worn is a swap every tick for nothing
+        if (best < 0 || (hotbarWorn && bestWorn)) return;
+        int to = slotFor(inv, kind);
         if (to < 0) return;
         // SWAP with the hotbar index as the button, the selected slot stays where it is. through baritone's gate so
         // allowInventory, the move delay and standing still hold here too (2b2t does not love a swap mid sprint)
@@ -61,14 +72,20 @@ public final class HotbarTools {
     }
 
     // an empty one of 2-6 that isn't in our hand, else one of those that isn't holding a tool (so the axe and the shovel
-    // don't take turns kicking each other out). -1 when 2-6 are all tools
-    private static int slotFor(Inventory inv) {
+    // don't take turns kicking each other out), else a worn one of the same kind, the swap sends it up to the bag.
+    // -1 when 2-6 are all good tools
+    private static int slotFor(Inventory inv, String kind) {
         int selected = inv.selected;
         for (int h = 2; h <= 6; h++) {
             if (h != selected && inv.getItem(h).isEmpty()) return h;
         }
         for (int h = 6; h >= 2; h--) {
             if (h != selected && !ItemHelper.isTool(inv.getItem(h).getItem())) return h;
+        }
+        for (int h = 6; h >= 2; h--) {
+            ItemStack stack = inv.getItem(h);
+            if (h != selected && kind.equals(ItemHelper.toolKind(stack.getItem()))
+                    && ToolWear.wornOut(stack.getDamageValue(), stack.getMaxDamage())) return h;
         }
         return -1;
     }
