@@ -17,6 +17,7 @@
 
 package baritone.behavior;
 
+import adris.altoclef.trace.Trace;
 import baritone.Baritone;
 import baritone.altoclef.AltoClefSettings;
 import baritone.api.event.events.TickEvent;
@@ -45,6 +46,7 @@ import java.util.List;
 import java.util.OptionalInt;
 import java.util.Random;
 import java.util.function.BooleanSupplier;
+import java.util.function.IntPredicate;
 import java.util.function.Predicate;
 
 public final class InventoryBehavior extends Behavior implements Helper {
@@ -53,11 +55,15 @@ public final class InventoryBehavior extends Behavior implements Helper {
 
     int ticksSinceLastInventoryMove;
     int[] lastTickRequestedMove; // not everything asks every tick, so remember the request while coming to a halt
+    private String lastTickRequestedWho; // who asked for it, so the replay in the trace says whose it was
     // the item throwaway() selected slot 7 for while its swap was throttled, and when. lastTickRequestedMove can't answer
     // this: the pick and the throwaway refill overwrite it every tick before the click is looked at
     private Item awaitedItem;
     private long awaitedAt;
     private long tickCount;
+    // what was in hand last tick, for the trace. a flickering hotbar is invisible in a log otherwise
+    private int lastSelected = -1;
+    private Item lastHeld;
 
     public InventoryBehavior(Baritone baritone) {
         super(baritone);
@@ -67,6 +73,7 @@ public final class InventoryBehavior extends Behavior implements Helper {
     public void onTick(TickEvent event) {
         if (event.getType() != TickEvent.Type.OUT) {
             tickCount++;
+            traceHand();
         }
         boolean shuffle = Baritone.settings().allowInventory.value;
         // the clutch item only works from the hotbar (nobody shuffles the inventory mid fall), so that one move is allowed
@@ -88,17 +95,31 @@ public final class InventoryBehavior extends Behavior implements Helper {
         }
         if (shuffle && baritone.getPathingBehavior().isPathing()) {
             if (firstValidThrowaway() >= 9) { // aka there are none on the hotbar, but there are some in main inventory
-                requestSwapWithHotBar(firstValidThrowaway(), 8);
+                requestSwapWithHotBar(firstValidThrowaway(), 8, "tool");
             }
             int pick = bestToolAgainst(Blocks.STONE);
             if (pick >= 9) {
-                requestSwapWithHotBar(pick, 0);
+                requestSwapWithHotBar(pick, 0, "tool");
             }
         }
         if (lastTickRequestedMove != null) {
             logDebug("Remembering to move " + lastTickRequestedMove[0] + " " + lastTickRequestedMove[1] + " from a previous tick");
-            requestSwapWithHotBar(lastTickRequestedMove[0], lastTickRequestedMove[1]);
+            requestSwapWithHotBar(lastTickRequestedMove[0], lastTickRequestedMove[1], lastTickRequestedWho, true);
         }
+    }
+
+    private void traceHand() {
+        LocalPlayer p = ctx.player();
+        if (p == null) {
+            return;
+        }
+        int slot = p.getInventory().getSelectedSlot();
+        Item held = p.getInventory().getNonEquipmentItems().get(slot).getItem();
+        if (lastSelected >= 0 && (slot != lastSelected || held != lastHeld)) {
+            Trace.record("held " + lastHeld + "->" + held + " slot " + lastSelected + "->" + slot);
+        }
+        lastSelected = slot;
+        lastHeld = held;
     }
 
     // ladders crafted or picked up land wherever there was room, and the clutch only looks at the hotbar
@@ -109,7 +130,7 @@ public final class InventoryBehavior extends Behavior implements Helper {
         NonNullList<ItemStack> inv = ctx.player().getInventory().getNonEquipmentItems();
         for (int i = 9; i < 36; i++) {
             if (inv.get(i).is(Items.VINE) || inv.get(i).is(Items.LADDER)) {
-                attemptToPutOnHotbar(i, slot -> false);
+                attemptToPutOnHotbar(i, slot -> false, "clutch");
                 return;
             }
         }
@@ -133,6 +154,7 @@ public final class InventoryBehavior extends Behavior implements Helper {
                 }
                 ctx.playerController().windowClick(ctx.player().inventoryMenu.containerId, i, slot.getAsInt(), ContainerInput.SWAP, ctx.player());
                 ticksSinceLastInventoryMove = 0;
+                Trace.record("swap inv" + i + "<->hot" + slot.getAsInt() + " by clutch");
                 return true;
             }
         }
@@ -140,16 +162,40 @@ public final class InventoryBehavior extends Behavior implements Helper {
     }
 
     public boolean attemptToPutOnHotbar(int inMainInvy, Predicate<Integer> disallowedHotbar) {
+        return attemptToPutOnHotbar(inMainInvy, disallowedHotbar, "other");
+    }
+
+    public boolean attemptToPutOnHotbar(int inMainInvy, Predicate<Integer> disallowedHotbar, String who) {
         if (AltoClefSettings.getInstance().isInteractionPaused()) {
             return false;
         }
         OptionalInt destination = getTempHotbarSlot(disallowedHotbar);
         if (destination.isPresent()) {
-            if (!requestSwapWithHotBar(inMainInvy, destination.getAsInt())) {
+            if (!requestSwapWithHotBar(inMainInvy, destination.getAsInt(), who)) {
                 return false;
             }
         }
         return true;
+    }
+
+    // attemptToPutOnHotbar for someone who wants to know where it went (or is going, a throttled one lands later).
+    // tiers are disallowed sets tried in order until one leaves a slot. a move from inMainInvy that's already pending
+    // keeps its slot, picking a fresh random one every tick it waits was a swap fight all by itself
+    public OptionalInt fetchToHotbar(int inMainInvy, List<IntPredicate> tiers, String who) {
+        if (AltoClefSettings.getInstance().isInteractionPaused()) {
+            return OptionalInt.empty();
+        }
+        OptionalInt destination = OptionalInt.empty();
+        if (lastTickRequestedMove != null && lastTickRequestedMove[0] == inMainInvy) {
+            destination = OptionalInt.of(lastTickRequestedMove[1]);
+        }
+        for (int i = 0; i < tiers.size() && destination.isEmpty(); i++) {
+            destination = getTempHotbarSlot(tiers.get(i)::test);
+        }
+        if (destination.isPresent()) {
+            requestSwapWithHotBar(inMainInvy, destination.getAsInt(), who);
+        }
+        return destination;
     }
 
     // the one place a placement click is vetted (see InputOverrideHandler): throwaway() selects slot 7 even when the swap into
@@ -180,17 +226,24 @@ public final class InventoryBehavior extends Behavior implements Helper {
         return ThrowawayPicks.tempHotbarSlot(empty, disallowedHotbar::test, ctx.player().getInventory().getSelectedSlot(), throwawaySlot, pending, rng::nextInt);
     }
 
-    private boolean requestSwapWithHotBar(int inInventory, int inHotbar) {
+    private boolean requestSwapWithHotBar(int inInventory, int inHotbar, String who) {
+        return requestSwapWithHotBar(inInventory, inHotbar, who, false);
+    }
+
+    private boolean requestSwapWithHotBar(int inInventory, int inHotbar, String who, boolean replay) {
         if (AltoClefSettings.getInstance().isInteractionPaused()) {
             return false; // and don't remember it either, it'd go off the second the pause ended
         }
         lastTickRequestedMove = new int[]{inInventory, inHotbar};
+        lastTickRequestedWho = who;
         if (!moveReady()) {
             return false;
         }
         ctx.playerController().windowClick(ctx.player().inventoryMenu.containerId, inInventory < 9 ? inInventory + 36 : inInventory, inHotbar, ContainerInput.SWAP, ctx.player());
         ticksSinceLastInventoryMove = 0;
         lastTickRequestedMove = null;
+        lastTickRequestedWho = null;
+        Trace.record("swap inv" + inInventory + "<->hot" + inHotbar + " by " + who + (replay ? "/replay" : ""));
         return true;
     }
 
@@ -219,6 +272,7 @@ public final class InventoryBehavior extends Behavior implements Helper {
             return false;
         }
         ticksSinceLastInventoryMove = 0;
+        Trace.record("inventory click by hotbartools");
         return true;
     }
 
@@ -402,7 +456,7 @@ public final class InventoryBehavior extends Behavior implements Helper {
                     if (select) {
                         // a throttled swap stays pending and lands on a later tick, slot 7 is selected so it lands in hand.
                         // until then nothing may click, see handWaitingOnSwap
-                        boolean landed = requestSwapWithHotBar(i, THROWAWAY_SLOT);
+                        boolean landed = requestSwapWithHotBar(i, THROWAWAY_SLOT, "throwaway");
                         p.getInventory().setSelectedSlot(THROWAWAY_SLOT);
                         awaitedItem = landed ? null : inv.get(i).getItem();
                         awaitedAt = tickCount;
