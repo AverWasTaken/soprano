@@ -6,6 +6,7 @@ import adris.altoclef.Debug;
 import adris.altoclef.TaskCatalogue;
 import adris.altoclef.tasks.construction.schematic.BuildMemory;
 import adris.altoclef.tasks.construction.schematic.BuildNightSleep;
+import adris.altoclef.tasks.construction.schematic.BuildScaffold;
 import adris.altoclef.tasks.construction.schematic.CountStep;
 import adris.altoclef.tasks.construction.schematic.GatherGuard;
 import adris.altoclef.tasks.construction.schematic.GatherPlan;
@@ -29,6 +30,7 @@ import baritone.api.schematic.IStaticSchematic;
 import baritone.api.utils.Dimension;
 import baritone.api.utils.Helper;
 import baritone.process.BuilderProcess;
+import baritone.utils.BlockPlaceHelper;
 import baritone.utils.schematic.library.InventoryCounts;
 import baritone.utils.schematic.library.MaterialLine;
 import baritone.utils.schematic.library.MaterialList;
@@ -48,7 +50,9 @@ import net.minecraft.world.level.block.Mirror;
 import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.block.state.BlockState;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -75,13 +79,29 @@ public class SchematicBuildTask extends Task {
     // a walk back longer than this gets a chat line, a short one only the debug state
     private static final int SAY_TRIP_OVER = 100;
     private static final BlockState AIR = Blocks.AIR.defaultBlockState();
+    // break the strays, let the builder redo the cells under the rest, look again. three goes is plenty, whatever a
+    // third rebuild still pillars is left for the count (which hands it back to the builder like any wrong cell)
+    private static final int CLEAN_ROUNDS = 3;
+    // one stray gets this long. a block we can't get at isn't worth the rest of the build sitting there
+    private static final int CLEAN_TICKS = 30 * 20;
 
     private enum Phase {
         COUNT,
         GATHER,
         // walk back to the build, then start the builder
         RETURN,
-        BUILD
+        BUILD,
+        // the builder is done, take our scaffolding down (and let the builder fill the cells it was standing in)
+        CLEANUP
+    }
+
+    private enum Clean {
+        // breaking the strays ourselves, with protect() on
+        BREAK,
+        // about to hand the builder the cells under the rest
+        REBUILD,
+        // the builder has them
+        REBUILDING
     }
 
     private final long serial = -SERIALS.incrementAndGet();
@@ -159,6 +179,30 @@ public class SchematicBuildTask extends Task {
     private long asking;
     // the placed items the question was about, what a "no" leaves out
     private Set<String> askedAbout = Set.of();
+    // the file the builder gets, laid out where it goes, without the cut or skipped cells. what the scaffold calls
+    // "wanted here". swapped whole at every builder start, read by the path thread through the keep
+    private volatile ISchematic view;
+    private final BuildScaffold scaffold;
+    // only placements while the builder (or the cleanup) has the wheel are scaffolding. a gather's pillar out in the
+    // woods, a fight's tower, the night's: not ours to tear down
+    private boolean recording;
+    // one object for the whole task, dropPlaceListener checks the helper still holds this one before clearing it
+    private final BlockPlaceHelper.PlaceListener onPlace = this::placedBlock;
+    private Clean clean;
+    private int cleanRound;
+    // blocks this round took care of, broken or handed back to the builder, for the round's line
+    private int cleanCount;
+    // the strays left to break this round, nearest first. null until the round makes it
+    private ArrayDeque<BlockPos> cleanQueue;
+    private BlockPos cleanTarget;
+    private Task cleanBreak;
+    private int cleanTicks;
+    // strays this round gave up on, so the last sweep's second look doesn't give each another 30 s
+    private final Set<BlockPos> cleanSkipped = new HashSet<>();
+    // the rounds are used up, one more break pass for whatever the last rebuild pillared, no rebuild
+    private boolean lastSweep;
+    // the last sweep looked once more for what its own breaking pillared
+    private boolean sweptAgain;
 
     public SchematicBuildTask(String name, IStaticSchematic schematic, BlockPos origin, Rotation rotation, Mirror mirror,
                               BuildMemory memory) {
@@ -172,6 +216,34 @@ public class SchematicBuildTask extends Task {
         nether = memory.nether();
         placed = BuilderProcess.placed(schematic, rotation, mirror);
         recut();
+        view = builderView();
+        scaffold = new BuildScaffold(this.origin, new BlockPos(maxX(), this.origin.getY() + placed.heightY() - 1, maxZ()),
+            this::builderWants, (current, desired) -> BuilderProcess.valid(current, desired, false));
+    }
+
+    private void placedBlock(BlockPos pos, BlockState state) {
+        if (recording) {
+            scaffold.offer(pos, state);
+        }
+    }
+
+    // what builder.build gets, put where the builder puts it
+    private ISchematic builderView() {
+        return BuilderProcess.placed(SkipItems.of(cut, skipped), rotation, mirror);
+    }
+
+    // the builder's idea of a cell: null for outside the file, its cut cells and the skip blocks (it never touches
+    // those), else what it wants. pure schematic lookups, the path thread asks it too
+    private BlockState builderWants(int wx, int wy, int wz) {
+        ISchematic v = view;
+        int x = wx - origin.getX();
+        int y = wy - origin.getY();
+        int z = wz - origin.getZ();
+        if (x < 0 || y < 0 || z < 0 || x >= v.widthX() || y >= v.heightY() || z >= v.lengthZ() || !v.inSchematic(x, y, z, AIR)) {
+            return null;
+        }
+        BlockState want = v.desiredState(x, y, z, AIR, List.of());
+        return want == null || Baritone.settings().buildSkipBlocks.value.contains(want.getBlock()) ? null : want;
     }
 
     // on the unturned file: the builder takes that one and turns it itself
@@ -207,7 +279,36 @@ public class SchematicBuildTask extends Task {
         if (phase == Phase.BUILD) {
             phase = atHome() ? Phase.RETURN : Phase.COUNT;
         }
+        // a cleanup picks up where it was, the builder half starts over once we're back
+        resumeCleanup();
+        placeHelper(mod).setPlaceListener(onPlace);
         protect(mod);
+    }
+
+    // whatever had the cleanup's wheel is gone (onStop let go of the builder, the night walked off with the break)
+    private void resumeCleanup() {
+        cleanBreak = null;
+        cleanTicks = 0;
+        if (phase == Phase.CLEANUP && clean == Clean.REBUILDING) {
+            clean = Clean.REBUILD;
+        }
+    }
+
+    private static BlockPlaceHelper placeHelper(AltoClef mod) {
+        return mod.getClientBaritone().getInputOverrideHandler().getBlockPlaceHelper();
+    }
+
+    private void dropPlaceListener(AltoClef mod) {
+        recording = false;
+        BlockPlaceHelper helper = placeHelper(mod);
+        if (helper.placeListener() == onPlace) {
+            helper.setPlaceListener(null);
+        }
+    }
+
+    // the builder has the wheel, so our behaviour level is off
+    private boolean builderOn() {
+        return phase == Phase.BUILD || (phase == Phase.CLEANUP && clean == Clean.REBUILDING);
     }
 
     // these make the builder call cells done (or build them from something else) that the count still prices, so the
@@ -245,7 +346,8 @@ public class SchematicBuildTask extends Task {
         }
         level = mod.getBehaviour().push();
         // only at home: in the nether the same coordinates are somebody else's blocks
-        mod.getBehaviour().avoidBlockBreaking(pos -> phase != Phase.BUILD && !away && built.contains(pos.asLong()));
+        mod.getBehaviour().avoidBlockBreaking(pos -> !away && (phase == Phase.CLEANUP ? wantsBlock(pos)
+            : phase != Phase.BUILD && built.contains(pos.asLong())));
         mod.getBehaviour().avoidBlockPlacing(pos -> phase != Phase.BUILD && !away && wantsAir(pos));
         mod.getBehaviour().setReserveFloor(level, floor());
         // a lone bed is first in line for the junk dump, and it is the whole night. nothing in a build ever wants one gone
@@ -280,17 +382,31 @@ public class SchematicBuildTask extends Task {
         return out;
     }
 
+    // the cleanup's walk keeps its pickaxe off every cell the file wants a block in, right or not: built is the count
+    // from before the builder ran and has none of its work in it. the strays are in other cells, or outside
+    // our own blocks are never in it, a cut cell's stray flagged as precious makes DestroyBlockTask mine it from the
+    // side and give up on the step offs
+    private boolean wantsBlock(BlockPos pos) {
+        BlockState want = desired(pos);
+        return want != null && !want.isAir() && !scaffold.contains(pos);
+    }
+
     // a cell of the file that is meant to stay empty. pure schematic lookups, safe from the path thread
     private boolean wantsAir(BlockPos pos) {
+        BlockState want = desired(pos);
+        return want != null && want.isAir();
+    }
+
+    // the whole file's cell, null outside it
+    private BlockState desired(BlockPos pos) {
         int x = pos.getX() - origin.getX();
         int y = pos.getY() - origin.getY();
         int z = pos.getZ() - origin.getZ();
         if (x < 0 || y < 0 || z < 0 || x >= placed.widthX() || y >= placed.heightY() || z >= placed.lengthZ()
             || !placed.inSchematic(x, y, z, AIR)) {
-            return false;
+            return null;
         }
-        BlockState want = placed.desiredState(x, y, z, AIR, List.of());
-        return want != null && want.isAir();
+        return placed.desiredState(x, y, z, AIR, List.of());
     }
 
     @Override
@@ -299,9 +415,11 @@ public class SchematicBuildTask extends Task {
             return null;
         }
         away = !atHome();
+        // switched back on below once we know it's the builder or the cleanup ticking, not the night or a question
+        recording = false;
         // ahead of the guard: a night is no reason to call the build stuck, it ticks the guard not at all
         Task bed = night.tick(mod, away);
-        BuildNightSleep.Turn turn = BuildNightSleep.turn(bed != null || night.holding(), phase == Phase.BUILD);
+        BuildNightSleep.Turn turn = BuildNightSleep.turn(bed != null || night.holding(), builderOn());
         if (turn != BuildNightSleep.Turn.BUILD) {
             return nightTurn(mod, turn) ? bed : null;
         }
@@ -325,19 +443,25 @@ public class SchematicBuildTask extends Task {
             finish(mod, "No progress on " + name + " for " + GatherGuard.MAX_IDLE_TICKS / 1200 + " minutes, stopped");
             return null;
         }
-        if (phase == Phase.BUILD && away) {
+        if (builderOn() && away) {
             // a respawn somewhere else. the builder would build the same coordinates in the wrong world
             stopBuilder(mod);
-            phase = Phase.COUNT;
+            if (phase == Phase.BUILD) {
+                phase = Phase.COUNT;
+            } else {
+                clean = Clean.REBUILD;
+            }
         }
-        if (phase != Phase.BUILD) {
+        if (!builderOn()) {
             protect(mod);
         }
+        recording = !away && (phase == Phase.BUILD || phase == Phase.CLEANUP);
         return switch (phase) {
             case COUNT -> away ? goHome() : count(mod);
             case GATHER -> gather(mod);
             case RETURN -> away ? goHome() : returnToBuild(mod);
             case BUILD -> build(mod);
+            case CLEANUP -> away ? goHome() : cleanup(mod);
         };
     }
 
@@ -353,6 +477,7 @@ public class SchematicBuildTask extends Task {
             trip = null;
             diff = null;
             goBack.reset();
+            resumeCleanup();
         }
         if (turn == BuildNightSleep.Turn.CUT_BUILDER && !cutBuilder(mod)) {
             return false;
@@ -371,8 +496,19 @@ public class SchematicBuildTask extends Task {
             finish(mod, "Another build took over, stopped " + name);
             return false;
         }
-        builderEnded |= now == 0;
         stopBuilder(mod);
+        if (phase == Phase.CLEANUP) {
+            // the cleanup's builder half starts over in the morning. one that already let go just says done again
+            clean = Clean.REBUILD;
+            return true;
+        }
+        if (now == 0) {
+            // it finished the same tick the night came in. the scaffold still comes down, in the morning
+            startCleanup();
+            if (phase == Phase.CLEANUP) {
+                return true;
+            }
+        }
         phase = Phase.COUNT;
         nightRecount = true;
         return true;
@@ -698,12 +834,15 @@ public class SchematicBuildTask extends Task {
         long now = builder.buildSerial();
         if (now == 0) {
             // the builder let go without pausing. usually it's done ("Done building"), but it can also have been
-            // knocked off, so a fresh count says which
+            // knocked off, so a fresh count says which. our scaffolding comes down first, the count would bill its cells
             builderSerial = 0;
             watch = null;
-            builderEnded = true;
             missing = null;
-            phase = Phase.COUNT;
+            if (phase == Phase.CLEANUP) {
+                endCleanRound(mod);
+            } else {
+                startCleanup();
+            }
             return null;
         }
         if (now != builderSerial) {
@@ -716,9 +855,167 @@ public class SchematicBuildTask extends Task {
             onPause(mod, builder);
             return null;
         }
-        setDebugState("Building", "Building " + name);
+        if (phase == Phase.CLEANUP) {
+            setDebugState("Cleanup round " + cleanRound + ", builder fixing cells", "Cleaning up " + name);
+        } else {
+            setDebugState("Building", "Building " + name);
+        }
         watch(mod);
         return null;
+    }
+
+    private void startCleanup() {
+        if (scaffold.isEmpty()) {
+            doneCleaning();
+            return;
+        }
+        phase = Phase.CLEANUP;
+        cleanRound = 1;
+        lastSweep = false;
+        sweptAgain = false;
+        newCleanRound();
+    }
+
+    private void newCleanRound() {
+        clean = Clean.BREAK;
+        cleanCount = 0;
+        cleanQueue = null;
+        cleanTarget = null;
+        cleanBreak = null;
+        cleanTicks = 0;
+        cleanSkipped.clear();
+    }
+
+    private void doneCleaning() {
+        doneCleaning(null);
+    }
+
+    // with mod, the ones still standing get a line. out of reach or out of time, they stay: the count after this one
+    // calls the build done (or done but differing for one left inside the file), it doesn't send the builder back
+    private void doneCleaning(AltoClef mod) {
+        if (mod != null) {
+            long left = scaffold.positions().stream().filter(pos -> stillOurs(mod, pos)).count();
+            if (left > 0) {
+                say(left + " scaffold blocks left around " + name);
+            }
+        }
+        clean = null;
+        cleanQueue = null;
+        cleanTarget = null;
+        cleanBreak = null;
+        builderEnded = true;
+        phase = Phase.COUNT;
+    }
+
+    private void endCleanRound(AltoClef mod) {
+        say("Scaffold cleanup round " + cleanRound + ": " + cleanCount + " blocks");
+        // a round that found nothing to do won't find more next time
+        if (scaffold.isEmpty() || cleanCount == 0) {
+            doneCleaning(mod);
+            return;
+        }
+        if (cleanRound >= CLEAN_ROUNDS) {
+            lastSweep = true;
+        } else {
+            cleanRound++;
+        }
+        newCleanRound();
+    }
+
+    private Task cleanup(AltoClef mod) {
+        if (clean == Clean.REBUILDING) {
+            return build(mod);
+        }
+        // the night or a fight can leave us anywhere, the strays and the builder both want us back with chunks in
+        if (!near) {
+            return reach(mod);
+        }
+        if (clean == Clean.REBUILD) {
+            cleanCount += scaffold.release();
+            // the last round's builder keeps nothing, so whatever it pillars it swaps out like the stock builder does
+            launchBuilder(mod, cleanRound < CLEAN_ROUNDS);
+            clean = Clean.REBUILDING;
+            return null;
+        }
+        return breakStrays(mod);
+    }
+
+    private Task breakStrays(AltoClef mod) {
+        if (cleanQueue == null) {
+            cleanQueue = new ArrayDeque<>(scaffold.toBreak(mod.getPlayer().blockPosition()));
+            cleanQueue.removeAll(cleanSkipped);
+        }
+        if (cleanTarget != null) {
+            Task going = breaking(mod);
+            if (going != null) {
+                return going;
+            }
+        }
+        while (!cleanQueue.isEmpty()) {
+            BlockPos next = cleanQueue.poll();
+            if (!stillOurs(mod, next)) {
+                // fell or got broken on the way, still one less
+                cleanCount++;
+                continue;
+            }
+            cleanTarget = next;
+            cleanTicks = 0;
+            cleanBreak = new DestroyBlockTask(next);
+            setDebugState("Cleanup round " + cleanRound + ", breaking scaffold at " + next.toShortString(), "Cleaning up " + name);
+            return cleanBreak;
+        }
+        if (lastSweep) {
+            if (!sweptAgain) {
+                // getting up to a stray can take a fresh pillar, and that one went in after the queue was made
+                sweptAgain = true;
+                cleanQueue = null;
+                return null;
+            }
+            say("Scaffold cleanup last sweep: " + cleanCount + " blocks");
+            doneCleaning(mod);
+            return null;
+        }
+        // nothing left we can get at, the rest of the scaffold sits where the file wants a block
+        clean = Clean.REBUILD;
+        return null;
+    }
+
+    // the one being broken right now. null once it's gone (or we gave up on it) and the next can go
+    private Task breaking(AltoClef mod) {
+        if (!stillOurs(mod, cleanTarget)) {
+            // broken, or it fell, or somebody put something else there. either way not ours any more
+            cleanCount++;
+            // a block down is the build getting somewhere as far as the guard cares
+            guard.closer();
+            cleanTarget = null;
+            cleanBreak = null;
+            return null;
+        }
+        if (++cleanTicks > CLEAN_TICKS || (cleanBreak != null && cleanBreak.isFinished(mod))) {
+            // out of time, or the break gave up on it. stays in the scaffold, the next round has another go
+            cleanSkipped.add(cleanTarget);
+            cleanTarget = null;
+            cleanBreak = null;
+            return null;
+        }
+        if (cleanBreak == null) {
+            cleanBreak = new DestroyBlockTask(cleanTarget);
+        }
+        return cleanBreak;
+    }
+
+    // still the block we put there, and forgotten when it isn't. a chunk that isn't in yet reads as air, that's not
+    // the block being gone
+    private boolean stillOurs(AltoClef mod, BlockPos pos) {
+        ClientLevel world = mod.getWorld();
+        if (world == null || !world.getChunkSource().hasChunk(pos.getX() >> 4, pos.getZ() >> 4)) {
+            return true;
+        }
+        if (scaffold.holds(pos, world.getBlockState(pos))) {
+            return true;
+        }
+        scaffold.forget(pos);
+        return false;
     }
 
     // a quiet count while the builder works, only so the guard sees the build getting further
@@ -744,6 +1041,13 @@ public class SchematicBuildTask extends Task {
 
     private void onPause(AltoClef mod, IBuilderProcess builder) {
         Map<String, Integer> lacking = SchematicDiff.priced(builder.missingAtPause());
+        if (phase == Phase.CLEANUP && (lacking.isEmpty() || lacking.keySet().stream().noneMatch(SchematicBuildTask::gettable))) {
+            // stuck on the cells under the scaffold: finishing here would leave every stray up. on to the next round,
+            // the count after the cleanup still gets to call it
+            stopBuilder(mod);
+            endCleanRound(mod);
+            return;
+        }
         if (lacking.isEmpty()) {
             finish(mod, "The builder stopped on " + name + " and it isn't for materials, it can't reach or place what's left");
             return;
@@ -762,10 +1066,20 @@ public class SchematicBuildTask extends Task {
     }
 
     private void startBuilder(AltoClef mod) {
+        launchBuilder(mod, true);
+        phase = Phase.BUILD;
+    }
+
+    // keep = the builder leaves our scaffolding standing
+    private void launchBuilder(AltoClef mod, boolean keep) {
         // the builder gets the whole bag, the reserve floor and the footprint rules go first
         unprotect(mod);
         IBuilderProcess builder = builder(mod);
+        // before the build, the first placement can come the same tick
+        view = builderView();
         builder.build(name, SkipItems.of(cut, skipped), origin, rotation, mirror);
+        // after it: every build() wipes the keep
+        builder.setKeep(keep ? scaffold::holds : null);
         builderSerial = builder.buildSerial();
         haveAtBuild = have(mod);
         watch = null;
@@ -773,7 +1087,6 @@ public class SchematicBuildTask extends Task {
         toldTrip = false;
         // whatever the pause or the gather was about, it's in the past now
         missing = null;
-        phase = Phase.BUILD;
     }
 
     // only ever our own build, a chat #build that took over is left alone
@@ -801,6 +1114,7 @@ public class SchematicBuildTask extends Task {
         }
         stopBuilder(mod);
         unprotect(mod);
+        dropPlaceListener(mod);
         night.drop();
         night.untrack(mod);
         done = true;
@@ -812,6 +1126,8 @@ public class SchematicBuildTask extends Task {
         // would fight the fight for the wheel. onStart puts it back after an interrupt
         stopBuilder(mod);
         unprotect(mod);
+        // a fight's tower isn't scaffolding. onStart listens again
+        dropPlaceListener(mod);
         // an interrupt keeps tonight's trip and its stand down, it picks up where it was when we're back (a meal on the
         // pillar is no reason to fight our way off it). a real stop lets go of both
         if (!isInterrupting()) {
@@ -850,6 +1166,7 @@ public class SchematicBuildTask extends Task {
             case GATHER -> "Gathering for " + name;
             case RETURN -> "Going back to " + name;
             case BUILD -> "Building " + name;
+            case CLEANUP -> "Cleaning up " + name;
         };
     }
 
