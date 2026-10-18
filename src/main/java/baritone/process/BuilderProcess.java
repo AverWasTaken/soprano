@@ -94,7 +94,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     private List<BlockState> approxPlaceable;
     public int stopAtHeight = 0;
     // stuck in reach bookkeeping, see BuildSkips. builderTicks is its clock, recursions don't count
-    private final BuildSkips skips = new BuildSkips();
+    private BuildSkips skips = new BuildSkips();
     private long builderTicks;
     private long lastGateLog = -1000;
     // last tick's pick, kept while it still works so the aim doesn't hop to whatever the scan finds first this tick
@@ -192,7 +192,9 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         this.numRepeats = 0;
         this.observedCompleted = new LongOpenHashSet();
         this.incorrectPositions = null;
-        forgetSkips();
+        // a fresh one instead of clear(), BuilderPlacedBuildTest makes the builder with Unsafe and skips the initializers
+        this.skips = new BuildSkips();
+        this.lastPlacement = null;
     }
 
     public void resume() {
