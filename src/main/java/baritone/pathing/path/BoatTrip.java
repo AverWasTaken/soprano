@@ -673,7 +673,7 @@ public final class BoatTrip implements Helper {
             return Result.CONTINUE; // that was our last one and it's on its way into the world, hopefully
         }
         if (!Inventory.isHotbarSlot(slot)) {
-            baritone.getInventoryBehavior().attemptToPutOnHotbar(slot, i -> false);
+            baritone.getInventoryBehavior().attemptToPutOnHotbar(slot, i -> false, "boat");
             return Result.CONTINUE;
         }
         if (AltoClefSettings.getInstance().isInteractionPaused()) {
