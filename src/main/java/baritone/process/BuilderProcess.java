@@ -108,6 +108,11 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     private final BuildSkips skips = new BuildSkips();
     private long builderTicks;
     private long lastGateLog = -1000;
+    // "only skipped blocks left, trying again" rounds in a row with nothing fixed in between. a protected cell or
+    // bedrock where the file wants air would go round forever otherwise, quietly, which is worse than the old pause
+    private int skipRetries;
+    private int fixesAtRetry;
+    private static final int MAX_SKIP_RETRIES = 3;
     // last tick's pick, kept while it still works so the aim doesn't hop to whatever the scan finds first this tick
     private Placement lastPlacement;
     // where the last wouldPlaceWrong would have put it
@@ -178,6 +183,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         this.observedCompleted = new LongOpenHashSet();
         this.incorrectPositions = null;
         forgetSkips();
+        skipRetries = 0;
     }
 
     public void resume() {
@@ -669,11 +675,20 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             goal = assemble(bcc, approxPlaceable, true); // we're far away, so assume that we have our whole inventory to recalculate placeable properly
             if (goal == null) {
                 if (skips.anySkipped(builderTicks)) {
-                    // all that's left is stuff we gave up on for a bit. that's not "unable to do it" and not a reason to
-                    // skip a layer, so give it all another go
-                    logDebug("only skipped blocks left, trying them again");
-                    forgetSkips();
-                    return onTick(calcFailed, isSafeToCancel, recursions + 1);
+                    if (skips.fixes() != fixesAtRetry) {
+                        skipRetries = 0;
+                        fixesAtRetry = skips.fixes();
+                    }
+                    if (skipRetries++ < MAX_SKIP_RETRIES) {
+                        // all that's left is stuff we gave up on for a bit. that's not "unable to do it" and not a reason to
+                        // skip a layer, so give it all another go
+                        logDebug("only skipped blocks left, trying them again");
+                        forgetSkips();
+                        return onTick(calcFailed, isSafeToCancel, recursions + 1);
+                    }
+                    // same blocks given up on round after round with nothing fixed in between, they aren't happening.
+                    // the old rules from here on
+                    skipRetries = 0;
                 }
                 if (Baritone.settings().skipFailedLayers.value && Baritone.settings().buildInLayers.value && layer * Baritone.settings().layerHeight.value < realSchematic.heightY()) {
                     logDirect("Skipping layer that I cannot construct! Layer #" + layer);
@@ -682,6 +697,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                     return onTick(calcFailed, isSafeToCancel, recursions + 1);
                 }
                 logDirect("Unable to do it. Pausing. resume to resume, cancel to cancel");
+                forgetSkips(); // a resume gets a clean slate, not straight back here
                 paused = true;
                 return new PathingCommand(null, PathingCommandType.REQUEST_PAUSE);
             }
