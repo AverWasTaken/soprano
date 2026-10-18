@@ -30,6 +30,8 @@ import it.unimi.dsi.fastutil.objects.ObjectIterator;
 // while once that gets silly. positions are BetterBlockPos.serializeToLong, time is the builder's own tick count,
 // no minecraft in here so the tests don't need a world
 final class BuildSkips {
+    // see fixes()
+    private int fixes;
 
     // placing something that works takes a handful of ticks: turn, sneak, click
     static final int STUCK_TICKS = 40;
@@ -91,6 +93,7 @@ final class BuildSkips {
 
     // pos is correct now, whatever we were doing works
     void fixed(long pos) {
+        fixes++;
         forget(pos);
         skipUntil.remove(pos);
         resetWindow();
@@ -136,6 +139,11 @@ final class BuildSkips {
         }
         skipUntil.remove(pos);
         return false;
+    }
+
+    // cells fixed so far, never cleared. the builder compares it across its retries to see if they get anywhere
+    int fixes() {
+        return fixes;
     }
 
     boolean anySkipped(long now) {
