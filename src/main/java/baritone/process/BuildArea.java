@@ -39,8 +39,8 @@ final class BuildArea {
     private BetterBlockPos anchor;
     private int staleTicks;
     private int lastFixes = Integer.MIN_VALUE;
-    // wrong cells left around the anchor last time choose looked. a fix only counts after standing next to it for
-    // CONFIRM_TICKS, place one and walk on and it never does, so a shrinking area counts as getting somewhere too
+    // wrong cells left around the anchor last tick. a fix only counts after standing next to it for CONFIRM_TICKS,
+    // place one and walk on and it never does, so a shrinking area counts as getting somewhere too
     private int lastLeft = Integer.MAX_VALUE;
     private final List<long[]> bans = new ArrayList<>(); // {x, y, z, until}
     // the anchor a timeout or a failed path just let go of, until the next pick decides whether it was the last place left
@@ -58,6 +58,28 @@ final class BuildArea {
     // no anchor yet, or the anchor still has some of open around it. a no means let the caller look harder first
     boolean hasWork(List<BetterBlockPos> open) {
         return anchor == null || anyWithin(open, anchor);
+    }
+
+    // the next choose may skip a whole area, so it had better be looking at everything we could build
+    boolean pendingGiveUp() {
+        return gaveUp != null;
+    }
+
+    // how many wrong cells (skipped or not) are around the anchor this tick. only going down counts, a skip isn't
+    // progress and neither is a hotbar change, which is why this isn't counted off what choose gets
+    void left(int n) {
+        if (anchor == null) {
+            return;
+        }
+        if (n < lastLeft) {
+            staleTicks = 0;
+        }
+        lastLeft = n;
+    }
+
+    // left() wants the count, this is the test for it
+    boolean inArea(int x, int y, int z) {
+        return anchor != null && distSq(anchor, x, y, z) <= RADIUS * RADIUS;
     }
 
     boolean clock(BetterBlockPos player, long now, int fixes) {
@@ -119,11 +141,6 @@ final class BuildArea {
         }
         List<BetterBlockPos> giveUp = new ArrayList<>();
         if (anchor != null) {
-            int left = countWithin(open, anchor) + countWithin(skipped, anchor);
-            if (left < lastLeft) {
-                staleTicks = 0;
-            }
-            lastLeft = left;
             return giveUp;
         }
         List<BetterBlockPos> pool = open;
@@ -144,7 +161,7 @@ final class BuildArea {
         }
         anchor = next;
         staleTicks = 0;
-        lastLeft = next == null ? Integer.MAX_VALUE : countWithin(pool, next) + countWithin(skipped, next);
+        lastLeft = Integer.MAX_VALUE;
         return giveUp;
     }
 
@@ -176,16 +193,6 @@ final class BuildArea {
             }
         }
         return false;
-    }
-
-    private static int countWithin(List<BetterBlockPos> cells, BetterBlockPos center) {
-        int n = 0;
-        for (BetterBlockPos p : cells) {
-            if (distSq(center, p.x, p.y, p.z) <= RADIUS * RADIUS) {
-                n++;
-            }
-        }
-        return n;
     }
 
     private static boolean anyWithin(List<BetterBlockPos> cells, BetterBlockPos center) {
