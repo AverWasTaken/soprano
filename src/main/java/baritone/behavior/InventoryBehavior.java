@@ -187,7 +187,9 @@ public final class InventoryBehavior extends Behavior implements Helper {
             return OptionalInt.empty();
         }
         OptionalInt destination = OptionalInt.empty();
-        if (lastTickRequestedMove != null && lastTickRequestedMove[0] == inMainInvy) {
+        // the loosest tier, a pending slot that turned useful meanwhile is still off limits
+        if (lastTickRequestedMove != null && lastTickRequestedMove[0] == inMainInvy && !tiers.isEmpty()
+                && !tiers.get(tiers.size() - 1).test(lastTickRequestedMove[1])) {
             destination = OptionalInt.of(lastTickRequestedMove[1]);
         }
         for (int i = 0; i < tiers.size() && destination.isEmpty(); i++) {

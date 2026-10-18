@@ -193,6 +193,55 @@ public class BuildAreaTest {
         assertEquals(A, area.anchor());
     }
 
+    @Test
+    public void hasWorkOnlyAroundTheAnchor() {
+        BuildArea area = new BuildArea();
+        assertTrue(area.hasWork(NONE)); // no anchor, nothing to protect
+        area.choose(cells(A), NONE, A, 0);
+        assertTrue(area.hasWork(cells(new BetterBlockPos(1, 64, 0))));
+        assertFalse(area.hasWork(cells(FAR)));
+    }
+
+    @Test
+    public void aSlowBreakGetsALongerClock() {
+        BuildArea area = new BuildArea();
+        area.choose(cells(A), NONE, A, 0);
+        int limit = BuildArea.STALE_TICKS + 100;
+        long t = 1;
+        for (int i = 0; i < limit - 1; i++) {
+            assertFalse(area.clock(A, t++, 0, limit));
+        }
+        assertTrue(area.clock(A, t, 0, limit));
+    }
+
+    @Test
+    public void aShrinkingAreaResetsTheClock() {
+        BuildArea area = new BuildArea();
+        BetterBlockPos b = new BetterBlockPos(1, 64, 0);
+        area.choose(cells(A, b), NONE, A, 0);
+        long t = 1;
+        for (int i = 0; i < BuildArea.STALE_TICKS - 10; i++) {
+            assertFalse(area.clock(A, t++, 0));
+        }
+        area.choose(cells(A), NONE, A, t); // b got placed, no confirmed fix needed for that
+        for (int i = 0; i < BuildArea.STALE_TICKS - 1; i++) {
+            assertFalse(area.clock(A, t++, 0));
+        }
+        area.choose(cells(A), cells(b), A, t); // b getting skipped instead isn't progress
+        assertTrue(area.clock(A, t, 0));
+    }
+
+    @Test
+    public void aFailedPathToTheLastAreaGetsItSkipped() {
+        BuildArea area = new BuildArea();
+        area.choose(cells(A), NONE, A, 0);
+        area.giveUp(1);
+        BetterBlockPos inside = new BetterBlockPos(1, 64, 1);
+        BetterBlockPos rim = new BetterBlockPos(BuildArea.RADIUS, 64, 1);
+        assertEquals(cells(A, inside), area.choose(cells(A, inside, rim), NONE, A, 2));
+        assertEquals(rim, area.anchor());
+    }
+
     private static long timeOut(BuildArea area, long t) {
         while (!area.clock(A, t, 0)) {
             t++;

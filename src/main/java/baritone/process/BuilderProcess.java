@@ -110,6 +110,8 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     private final BuildArea area = new BuildArea();
     private BetterBlockPos loggedAnchor;
     private long lastAreaLog = -1000;
+    private long lastAnchorLog = -1000;
+    private long lastSwing = -1000;
     // keepLastPlacement for breaking: last tick's target while it still needs it, so a half broken block gets finished
     private BetterBlockPos lastBreak;
     private final HotbarHold hotbarHold = new HotbarHold();
@@ -646,6 +648,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             Rotation rot = toBreak.get().getB();
             BetterBlockPos pos = toBreak.get().getA();
             lastBreak = pos;
+            lastSwing = builderTicks;
             baritone.getLookBehavior().updateTarget(rot, true);
             if (ctx.player().isCrouching()) {
                 // really horrible bug where a block is visible for breaking while sneaking but not otherwise
@@ -918,6 +921,11 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         List<BetterBlockPos> open = new ArrayList<>(placeCells);
         open.addAll(liquidCells);
         open.addAll(breakCells);
+        if (!logMissing && !area.hasWork(open)) {
+            // the hotbar pass can't see what's left around the anchor, it may just need a block from the inventory.
+            // the whole inventory pass decides if the area is done, or this walked off the same tick the fetch went out
+            return null;
+        }
         List<BetterBlockPos> giveUp = area.choose(open, skippedCells, ctx.playerFeet(), builderTicks);
         if (!giveUp.isEmpty()) {
             giveUpOn(bcc, giveUp);
@@ -979,9 +987,14 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         BetterBlockPos anchor = area.anchor();
         if (calcFailed && anchor != null) {
             areaLog("can't get to the area around " + anchor.x + " " + anchor.y + " " + anchor.z + ", trying somewhere else");
-            area.release(builderTicks, true);
+            area.giveUp(builderTicks);
         }
-        if (area.clock(ctx.playerFeet(), builderTicks, skips.fixes())) {
+        if (AltoClefSettings.getInstance().isInteractionPaused()) {
+            return; // no clicking allowed, so no fixes either. not the area's fault
+        }
+        // mid dig the block gets its honest break time plus the confirm on top, same numbers BuildSkips uses
+        int limit = lastBreak != null && builderTicks - lastSwing <= 1 ? breakLimit(lastBreak) + BuildSkips.CONFIRM_TICKS : 0;
+        if (area.clock(ctx.playerFeet(), builderTicks, skips.fixes(), limit)) {
             areaLog("nothing got done around " + anchor.x + " " + anchor.y + " " + anchor.z + " in " + BuildArea.STALE_TICKS / 20 + "s, trying somewhere else");
         }
     }
@@ -992,7 +1005,13 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             return;
         }
         loggedAnchor = anchor;
-        areaLog("working around " + anchor.x + " " + anchor.y + " " + anchor.z);
+        String line = "working around " + anchor.x + " " + anchor.y + " " + anchor.z;
+        Trace.record("builder: " + line);
+        // its own limit, a release and the new anchor land on the same tick and the new anchor is the useful half
+        if (builderTicks - lastAnchorLog >= 20) {
+            lastAnchorLog = builderTicks;
+            logDebug(line);
+        }
     }
 
     // into the trace every time, into chat (chatDebug) at most once a second
