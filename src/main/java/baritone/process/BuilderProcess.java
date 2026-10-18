@@ -104,6 +104,14 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     private int numRepeats;
     private List<BlockState> approxPlaceable;
     public int stopAtHeight = 0;
+    // stuck in reach bookkeeping, see BuildSkips. builderTicks is its clock, recursions don't count
+    private final BuildSkips skips = new BuildSkips();
+    private long builderTicks;
+    private long lastGateLog = -1000;
+    // last tick's pick, kept while it still works so the aim doesn't hop to whatever the scan finds first this tick
+    private Placement lastPlacement;
+    // where the last wouldPlaceWrong would have put it
+    private BlockPos gateCell;
 
     public BuilderProcess(Baritone baritone) {
         super(baritone);
@@ -169,6 +177,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         this.numRepeats = 0;
         this.observedCompleted = new LongOpenHashSet();
         this.incorrectPositions = null;
+        forgetSkips();
     }
 
     public void resume() {
@@ -295,6 +304,9 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                     if (desired == null) {
                         continue; // irrelevant
                     }
+                    if (skipped(x, y, z)) {
+                        continue;
+                    }
                     BlockState curr = bcc.bsi.get0(x, y, z);
                     if (!(curr.getBlock() instanceof AirBlock) && !(curr.getBlock() == Blocks.WATER || curr.getBlock() == Blocks.LAVA) && !valid(curr, desired, false)) {
                         BetterBlockPos pos = new BetterBlockPos(x, y, z);
@@ -322,6 +334,11 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             this.side = side;
             this.rot = rot;
         }
+
+        // side is the face of placeAgainst we click, so the block lands one step out of it
+        BlockPos target() {
+            return placeAgainst.relative(side);
+        }
     }
 
     private Optional<Placement> searchForPlacables(BuilderCalculationContext bcc, List<BlockState> desirableOnHotbar) {
@@ -335,6 +352,9 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                     BlockState desired = bcc.getSchematic(x, y, z, bcc.bsi.get0(x, y, z));
                     if (desired == null) {
                         continue; // irrelevant
+                    }
+                    if (skipped(x, y, z)) {
+                        continue;
                     }
                     BlockState curr = bcc.bsi.get0(x, y, z);
                     if (MovementHelper.isReplaceable(x, y, z, curr, bcc.bsi) && !valid(curr, desired, false)) {
@@ -359,11 +379,16 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     }
 
     private Optional<Placement> possibleToPlace(BlockState toPlace, int x, int y, int z, BlockStateInterface bsi) {
+        return possibleToPlace(toPlace, x, y, z, bsi, null);
+    }
+
+    // preferAgainst goes first, so a cell that could be placed from two faces doesn't flip between them every tick
+    private Optional<Placement> possibleToPlace(BlockState toPlace, int x, int y, int z, BlockStateInterface bsi, Direction preferAgainst) {
         // these two don't care which face we're placing against, but they were asked for every face
         // placementPlausible is an entity collision query, so that's up to six of those per position per tick
         // still only asked once we've found something solid to place against, like before
         boolean checkedPlaceable = false;
-        for (Direction against : Direction.values()) {
+        for (Direction against : facesFirst(preferAgainst)) {
             BetterBlockPos placeAgainstPos = new BetterBlockPos(x, y, z).relative(against);
             BlockState placeAgainstState = bsi.get0(placeAgainstPos);
             if (MovementHelper.isReplaceable(placeAgainstPos.x, placeAgainstPos.y, placeAgainstPos.z, placeAgainstState, bsi)) {
@@ -433,6 +458,22 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         return OptionalInt.empty();
     }
 
+    private static Direction[] facesFirst(Direction first) {
+        Direction[] all = Direction.values();
+        if (first == null) {
+            return all;
+        }
+        Direction[] ordered = new Direction[all.length];
+        ordered[0] = first;
+        int i = 1;
+        for (Direction d : all) {
+            if (d != first) {
+                ordered[i++] = d;
+            }
+        }
+        return ordered;
+    }
+
     private static Vec3[] aabbSideMultipliers(Direction side) {
         switch (side) {
             case UP:
@@ -453,6 +494,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
 
     @Override
     public PathingCommand onTick(boolean calcFailed, boolean isSafeToCancel) {
+        builderTicks++;
         return onTick(calcFailed, isSafeToCancel, 0);
     }
 
@@ -522,6 +564,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         if (!recalc(bcc)) {
             if (Baritone.settings().buildInLayers.value && layer * Baritone.settings().layerHeight.value < stopAtHeight) {
                 logDirect("Starting layer " + layer);
+                forgetSkips();
                 layer++;
                 return onTick(calcFailed, isSafeToCancel, recursions + 1);
             }
@@ -538,6 +581,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             }
             // build repeat time
             layer = 0;
+            forgetSkips(); // keyed by world position, and the origin is about to move
             origin = new BlockPos(origin).offset(repeat);
             if (!Baritone.settings().buildRepeatSneaky.value) {
                 schematic.reset();
@@ -568,18 +612,27 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             if (ctx.isLookingAt(pos) || ctx.playerRotations().isReallyCloseTo(rot)) {
                 baritone.getInputOverrideHandler().setInputForceState(Input.CLICK_LEFT, true);
             }
+            // cancelling the path for a block that never breaks (protected, bedrock, can't aim at it) used to be forever
+            stuckOn(bcc, pos, breakLimit(pos), true);
             return new PathingCommand(null, PathingCommandType.CANCEL_AND_SET_GOAL);
         }
         List<BlockState> desirableOnHotbar = new ArrayList<>();
         Optional<Placement> toPlace = searchForPlacables(bcc, desirableOnHotbar);
         if (!interactionPaused && toPlace.isPresent() && isSafeToCancel && ctx.player().onGround() && ticks <= 0) {
-            Rotation rot = toPlace.get().rot;
-            baritone.getLookBehavior().updateTarget(rot, true);
-            ctx.player().getInventory().selected = toPlace.get().hotbarSelection;
+            Placement plan = keepLastPlacement(bcc).orElse(toPlace.get());
+            lastPlacement = plan;
+            baritone.getLookBehavior().updateTarget(plan.rot, true);
+            ctx.player().getInventory().selected = plan.hotbarSelection;
             baritone.getInputOverrideHandler().setInputForceState(Input.SNEAK, true);
-            if ((ctx.isLookingAt(toPlace.get().placeAgainst) && ((BlockHitResult) ctx.objectMouseOver()).getDirection().equals(toPlace.get().side)) || ctx.playerRotations().isReallyCloseTo(rot)) {
+            // the old gate compared the crosshair (aimed at last tick's pick, plus aim noise) to this tick's pick and
+            // basically never clicked. the plan is a guess from a sneaking eye, the click is a raytrace from the real one,
+            // so ask the real one: would a click right now put the right state into a cell that wants it
+            OptionalInt slot = crosshairPlaceSlot(bcc, plan);
+            if (slot.isPresent()) {
+                ctx.player().getInventory().selected = slot.getAsInt();
                 baritone.getInputOverrideHandler().setInputForceState(Input.CLICK_RIGHT, true);
             }
+            stuckOn(bcc, plan.target(), BuildSkips.STUCK_TICKS, false);
             return new PathingCommand(null, PathingCommandType.CANCEL_AND_SET_GOAL);
         }
 
@@ -615,8 +668,16 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         if (goal == null) {
             goal = assemble(bcc, approxPlaceable, true); // we're far away, so assume that we have our whole inventory to recalculate placeable properly
             if (goal == null) {
+                if (skips.anySkipped(builderTicks)) {
+                    // all that's left is stuff we gave up on for a bit. that's not "unable to do it" and not a reason to
+                    // skip a layer, so give it all another go
+                    logDebug("only skipped blocks left, trying them again");
+                    forgetSkips();
+                    return onTick(calcFailed, isSafeToCancel, recursions + 1);
+                }
                 if (Baritone.settings().skipFailedLayers.value && Baritone.settings().buildInLayers.value && layer * Baritone.settings().layerHeight.value < realSchematic.heightY()) {
                     logDirect("Skipping layer that I cannot construct! Layer #" + layer);
+                    forgetSkips();
                     layer++;
                     return onTick(calcFailed, isSafeToCancel, recursions + 1);
                 }
@@ -755,16 +816,25 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         });
         incorrectPositions.removeAll(outOfBounds);
         List<Goal> toBreak = new ArrayList<>();
-        breakable.forEach(pos -> toBreak.add(breakGoal(pos, bcc)));
+        breakable.forEach(pos -> {
+            if (!skipped(pos.x, pos.y, pos.z)) {
+                toBreak.add(breakGoal(pos, bcc));
+            }
+        });
         List<Goal> toPlace = new ArrayList<>();
         // List.contains for every position was quadratic, and placeable is in the thousands on a big build
         Set<BetterBlockPos> placeableSet = new HashSet<>(placeable);
         placeable.forEach(pos -> {
-            if (!placeableSet.contains(pos.below()) && !placeableSet.contains(pos.below(2))) {
+            // skipped ones stay in placeableSet, or the block above a skipped hole would become a goal over thin air
+            if (!skipped(pos.x, pos.y, pos.z) && !placeableSet.contains(pos.below()) && !placeableSet.contains(pos.below(2))) {
                 toPlace.add(placementGoal(pos, bcc));
             }
         });
-        sourceLiquids.forEach(pos -> toPlace.add(new GoalBlock(pos.above())));
+        sourceLiquids.forEach(pos -> {
+            if (!skipped(pos.x, pos.y, pos.z)) {
+                toPlace.add(new GoalBlock(pos.above()));
+            }
+        });
 
         if (!toPlace.isEmpty()) {
             return new JankyGoalComposite(new GoalComposite(toPlace.toArray(new Goal[0])), new GoalComposite(toBreak.toArray(new Goal[0])));
@@ -991,6 +1061,173 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         }
     }
 
+    private void forgetSkips() {
+        skips.clear();
+        lastPlacement = null;
+    }
+
+    private boolean skipped(int x, int y, int z) {
+        return skips.isSkipped(BetterBlockPos.serializeToLong(x, y, z), builderTicks);
+    }
+
+    // last tick's placement again, if its cell still wants a block and the same face still works from here
+    private Optional<Placement> keepLastPlacement(BuilderCalculationContext bcc) {
+        Placement last = lastPlacement;
+        if (last == null) {
+            return Optional.empty();
+        }
+        BlockPos cell = last.target();
+        int x = cell.getX();
+        int y = cell.getY();
+        int z = cell.getZ();
+        if (skipped(x, y, z)) {
+            return Optional.empty();
+        }
+        BlockState curr = bcc.bsi.get0(x, y, z);
+        BlockState desired = bcc.getSchematic(x, y, z, curr);
+        if (desired == null || !MovementHelper.isReplaceable(x, y, z, curr, bcc.bsi) || valid(curr, desired, false)) {
+            return Optional.empty();
+        }
+        // same box and rules searchForPlacables has, the two shouldn't disagree
+        BetterBlockPos feet = ctx.playerFeet();
+        int dy = y - feet.y;
+        if (Math.abs(x - feet.x) > 5 || Math.abs(z - feet.z) > 5 || dy < -5 || dy > 1) {
+            return Optional.empty();
+        }
+        if (dy == 1 && bcc.bsi.get0(x, y + 1, z).getBlock() instanceof AirBlock) {
+            return Optional.empty();
+        }
+        return possibleToPlace(desired, x, y, z, bcc.bsi, last.side.getOpposite());
+    }
+
+    // which hotbar slot, if any, makes a right click on the current crosshair do the right thing. the plan's slot first
+    private OptionalInt crosshairPlaceSlot(BuilderCalculationContext bcc, Placement plan) {
+        // objectMouseOver is the exact raytrace BlockPlaceHelper clicks with later this tick, server rotation and all
+        HitResult mouseOver = ctx.objectMouseOver();
+        if (!(mouseOver instanceof BlockHitResult hit) || mouseOver.getType() != HitResult.Type.BLOCK) {
+            gateLog("crosshair isn't on a block");
+            return OptionalInt.empty();
+        }
+        if (!ctx.player().isShiftKeyDown()) {
+            // the sneak we just asked for lands on the player tick. until then the eye is standing height (aim is off
+            // by a third of a block, wrong slab half) and the click would open a chest instead of placing on it
+            gateLog("not sneaking yet");
+            return OptionalInt.empty();
+        }
+        String why = null;
+        for (int i = -1; i < 9; i++) {
+            int slot = i < 0 ? plan.hotbarSelection : i;
+            if (i == plan.hotbarSelection) {
+                continue;
+            }
+            String reason = wouldPlaceWrong(bcc, hit, slot);
+            if (reason == null) {
+                // it can land somewhere other than the plan's cell, watch that one too or a good click looks like no progress
+                skips.watch(serialize(gateCell), builderTicks);
+                return OptionalInt.of(slot);
+            }
+            if (why == null) {
+                why = reason; // the plan's slot is the one worth hearing about
+            }
+        }
+        gateLog(why);
+        return OptionalInt.empty();
+    }
+
+    // null if right clicking hit with this slot puts what the schematic wants into a cell that wants it, else why not
+    private String wouldPlaceWrong(BuilderCalculationContext bcc, BlockHitResult hit, int slot) {
+        ItemStack stack = ctx.player().getInventory().items.get(slot);
+        if (stack.isEmpty() || !(stack.getItem() instanceof BlockItem item)) {
+            return "slot " + slot + " has no block in it";
+        }
+        // stairs and logs read the rotation off the player, and the server only knows the one we last sent it
+        Rotation look = ctx.playerRotations();
+        float yaw = ctx.player().getYRot();
+        float pitch = ctx.player().getXRot();
+        ctx.player().setYRot(look.getYaw());
+        ctx.player().setXRot(look.getPitch());
+        BlockPlaceContext place;
+        BlockState wouldBe;
+        try {
+            place = new BlockPlaceContext(new UseOnContext(ctx.world(), ctx.player(), InteractionHand.MAIN_HAND, stack, hit) {});
+            wouldBe = place.canPlace() ? item.getBlock().getStateForPlacement(place) : null;
+        } finally {
+            ctx.player().setYRot(yaw);
+            ctx.player().setXRot(pitch);
+        }
+        // vanilla's own answer for where it lands, snow and half slabs get replaced in place instead of next to
+        BlockPos cell = place.getClickedPos();
+        gateCell = cell;
+        BlockState curr = bcc.bsi.get0(cell);
+        BlockState desired = bcc.getSchematic(cell.getX(), cell.getY(), cell.getZ(), curr);
+        if (desired == null) {
+            return "it would land at " + cell.toShortString() + ", outside the schematic";
+        }
+        if (valid(curr, desired, false)) {
+            return "it would land at " + cell.toShortString() + ", which is already right";
+        }
+        if (wouldBe == null) {
+            return "can't place into " + cell.toShortString();
+        }
+        if (!valid(wouldBe, desired, true)) {
+            return "it would place " + wouldBe + " at " + cell.toShortString() + ", the schematic wants " + desired;
+        }
+        if (!wouldBe.canSurvive(ctx.world(), cell) || !placementPlausible(cell, wouldBe)) {
+            return "something's in the way at " + cell.toShortString();
+        }
+        return null;
+    }
+
+    private void gateLog(String why) {
+        // once a second is plenty, it gets asked every tick
+        if (builderTicks - lastGateLog < 20) {
+            return;
+        }
+        lastGateLog = builderTicks;
+        logDebug("not clicking yet: " + why);
+    }
+
+    // twice the honest break time on top of the usual, a stone pick on obsidian isn't stuck, it's just sad
+    private int breakLimit(BlockPos pos) {
+        BlockState state = ctx.world().getBlockState(pos);
+        float perTick = state.getDestroyProgress(ctx.player(), ctx.world(), pos);
+        if (perTick <= 0) {
+            return BuildSkips.STUCK_TICKS; // bedrock and friends, clicking harder won't help
+        }
+        return (int) Math.min(BuildSkips.STUCK_TICKS + 2 * Math.ceil(1 / perTick), 20 * 120);
+    }
+
+    // one more tick stood still in reach of pos. first see if anything we were stuck on got done meanwhile
+    private void stuckOn(BuilderCalculationContext bcc, BlockPos pos, int limit, boolean breaking) {
+        for (long p : skips.watched()) {
+            BetterBlockPos w = BetterBlockPos.deserializeFromLong(p);
+            BlockState curr = bcc.bsi.get0(w.x, w.y, w.z);
+            BlockState desired = bcc.getSchematic(w.x, w.y, w.z, curr);
+            if (desired == null || valid(curr, desired, false)) {
+                skips.looksFixed(p, builderTicks);
+            } else {
+                skips.looksWrong(p);
+            }
+        }
+        long lastTarget = lastPlacement == null ? Long.MIN_VALUE : serialize(lastPlacement.target());
+        for (long p : skips.work(serialize(pos), builderTicks, limit, breaking)) {
+            BetterBlockPos s = BetterBlockPos.deserializeFromLong(p);
+            BlockState curr = bcc.bsi.get0(s.x, s.y, s.z);
+            // the window can skip a few at once, so ask each one what it was instead of trusting this tick
+            String what = MovementHelper.isReplaceable(s.x, s.y, s.z, curr, bcc.bsi)
+                    ? "place " + bcc.getSchematic(s.x, s.y, s.z, curr)
+                    : "break " + curr.getBlock();
+            logDebug(String.format("couldn't %s at %s %s %s, skipping it for %ss", what, s.x, s.y, s.z, BuildSkips.SKIP_TICKS / 20));
+            if (p == lastTarget) {
+                lastPlacement = null;
+            }
+        }
+    }
+
+    private static long serialize(BlockPos pos) {
+        return BetterBlockPos.serializeToLong(pos.getX(), pos.getY(), pos.getZ());
+    }
+
     @Override
     public void onLostControl() {
         incorrectPositions = null;
@@ -1001,6 +1238,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         numRepeats = 0;
         paused = false;
         observedCompleted = null;
+        forgetSkips();
     }
 
     @Override
