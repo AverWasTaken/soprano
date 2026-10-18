@@ -112,6 +112,9 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     // what the logMissing pass found with no item for it, kept for whoever wants to go and get it (SchematicBuildTask).
     // no lock: the builder, the gui and altoclef all run on the game thread
     private Map<BlockState, Integer> missingAtPause = Map.of();
+    // whoever started the build gets to say which wrong blocks are fine anyway (SchematicBuildTask's scaffolding, so the
+    // builder stops mining the pillar it is standing on). volatile because the path thread reads it through the bcc
+    private volatile Keep keep;
 
     public BuilderProcess(Baritone baritone) {
         super(baritone);
@@ -140,6 +143,8 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                        net.minecraft.world.level.block.Mirror mirror, boolean useOrientation) {
         this.buildSerial++;
         this.missingAtPause = Map.of();
+        // a #build from chat doesn't get to inherit somebody else's pillar
+        this.keep = null;
         this.name = name;
         this.schematic = schematic;
         this.realSchematic = null;
@@ -300,6 +305,11 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     }
 
     @Override
+    public void setKeep(Keep keep) {
+        this.keep = keep;
+    }
+
+    @Override
     public List<BlockState> getApproxPlaceable() {
         return new ArrayList<>(approxPlaceable);
     }
@@ -355,11 +365,12 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                     if (!inArea && outside != null) {
                         continue; // a raytrace that can't win
                     }
-                    BetterBlockPos pos = new BetterBlockPos(x, y, z);
-                    Optional<Rotation> rot = RotationUtils.reachable(ctx, pos, reach);
-                    if (rot.isPresent()) {
-                        if (inArea) {
-                            return Optional.of(new Tuple<>(pos, rot.get()));
+                    BlockState curr = bcc.bsi.get0(x, y, z);
+                    if (!(curr.getBlock() instanceof AirBlock) && !(curr.getBlock() == Blocks.WATER || curr.getBlock() == Blocks.LAVA) && !bcc.fine(x, y, z, curr, desired)) {
+                        BetterBlockPos pos = new BetterBlockPos(x, y, z);
+                        Optional<Rotation> rot = RotationUtils.reachable(ctx, pos, ctx.playerController().getBlockReachDistance());
+                        if (rot.isPresent()) {
+                            return Optional.of(new Pair<>(pos, rot.get()));
                         }
                         outside = new Tuple<>(pos, rot.get());
                     }
@@ -829,7 +840,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                     if (desired != null) {
                         // we care about this position
                         BetterBlockPos pos = new BetterBlockPos(x, y, z);
-                        if (valid(bcc.bsi.get0(x, y, z), desired, false)) {
+                        if (bcc.fine(x, y, z, bcc.bsi.get0(x, y, z), desired)) {
                             incorrectPositions.remove(pos);
                             observedCompleted.add(BetterBlockPos.longHash(pos));
                         } else {
@@ -856,7 +867,8 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                     }
                     if (bcc.bsi.worldContainsLoadedChunk(blockX, blockZ)) { // check if its in render distance, not if its in cache
                         // we can directly observe this block, it is in render distance
-                        if (valid(bcc.bsi.get0(blockX, blockY, blockZ), schematic.desiredState(x, y, z, current, this.approxPlaceable), false)) {
+                        // kept counts before the incorrectSize bail, a site full of pillars would hit the cap otherwise
+                        if (bcc.fine(blockX, blockY, blockZ, current, schematic.desiredState(x, y, z, current, this.approxPlaceable))) {
                             observedCompleted.add(BetterBlockPos.longHash(blockX, blockY, blockZ));
                         } else {
                             incorrectPositions.add(new BetterBlockPos(blockX, blockY, blockZ));
@@ -1474,8 +1486,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         paused = false;
         missingAtPause = Map.of();
         observedCompleted = null;
-        forgetSkips();
-        hotbarHold.clear();
+        keep = null;
     }
 
     @Override
@@ -1616,6 +1627,8 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         private final int originX;
         private final int originY;
         private final int originZ;
+        // one read per context, so a keep swapped mid search can't give half a path each answer
+        private final Keep keep;
 
         public BuilderCalculationContext() {
             super(BuilderProcess.this.baritone, true); // wew lad
@@ -1624,6 +1637,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             this.originX = origin.getX();
             this.originY = origin.getY();
             this.originZ = origin.getZ();
+            this.keep = BuilderProcess.this.keep;
 
             this.jumpPenalty += 10;
             this.backtrackCostFavoringCoefficient = 1;
@@ -1635,6 +1649,15 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             } else {
                 return null;
             }
+        }
+
+        // valid() plus whatever the starter said to keep. every per cell "is this done" asks this one
+        private boolean fine(int x, int y, int z, BlockState current, BlockState desired) {
+            return valid(current, desired, false) || kept(x, y, z, current);
+        }
+
+        private boolean kept(int x, int y, int z, BlockState current) {
+            return keep != null && !(current.getBlock() instanceof AirBlock) && keep.keep(x, y, z, current);
         }
 
         @Override
@@ -1675,6 +1698,10 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         public double breakCostMultiplierAt(int x, int y, int z, BlockState current) {
             if ((!allowBreak && !allowBreakAnyway.contains(current.getBlock())) || isBreakProtected(x, y, z)) {
                 return COST_INF;
+            }
+            if (kept(x, y, z, current)) {
+                // our own pillar, inside the box or out. mining through it is the swap the keep is there to stop
+                return Baritone.settings().breakCorrectBlockPenaltyMultiplier.value;
             }
             BlockState sch = getSchematic(x, y, z, current);
             if (sch != null) {

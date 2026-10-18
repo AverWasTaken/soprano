@@ -110,6 +110,36 @@ public interface IBuilderProcess extends IBaritoneProcess {
     void clearArea(BlockPos corner1, BlockPos corner2);
 
     /**
+     * A rule for blocks the builder should leave standing even though the schematic wants something else there, for
+     * example scaffolding the caller placed and wants to clean up itself once the build is done.
+     */
+    @FunctionalInterface
+    interface Keep {
+
+        /**
+         * Asked from the game thread and from the path thread, so it must not touch the world itself.
+         *
+         * @param x       The x coordinate of the block
+         * @param y       The y coordinate of the block
+         * @param z       The z coordinate of the block
+         * @param current The block state currently at that position
+         * @return Whether the block counts as fine where it is, so it is neither broken nor replaced
+         */
+        boolean keep(int x, int y, int z, BlockState current);
+    }
+
+    /**
+     * Sets the blocks the current build should leave alone. Kept blocks never count as incorrect, are never broken
+     * by the builder, and breaking them while pathing costs as much as breaking an already correct block.
+     * <p>
+     * Every new build and the builder stopping clear it, so it only ever applies to the build that was running when it
+     * was set. Set it right after starting the build. Null means nothing is kept, which is the default.
+     *
+     * @param keep The rule, or null for none
+     */
+    void setKeep(Keep keep);
+
+    /**
      * @return A list of block states that are estimated to be placeable by this builder process. You can use this in
      * schematics, for example, to pick a state that the builder process will be happy with, because any variation will
      * cause it to give up. This is updated every tick, but only while the builder process is active.
