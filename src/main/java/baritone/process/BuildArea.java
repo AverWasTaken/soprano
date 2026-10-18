@@ -31,17 +31,20 @@ final class BuildArea {
     static final int RADIUS = 4;
     // "inside" is anywhere we could be working on it from, a cell on the edge is still in reach from 4.5 further out
     static final double REACH = 4.5;
-    // no confirmed fix for this long while standing in it means it isn't working. a fix shows up CONFIRM_TICKS after
-    // the click, so a normal build gets one every couple of seconds
+    // no confirmed fix and no cell crossed off for this long while standing in it means it isn't working. a fix shows
+    // up CONFIRM_TICKS after the click, so a normal build gets one every couple of seconds
     static final int STALE_TICKS = 200;
     static final int BAN_TICKS = 600;
 
     private BetterBlockPos anchor;
     private int staleTicks;
     private int lastFixes = Integer.MIN_VALUE;
+    // wrong cells left around the anchor last time choose looked. a fix only counts after standing next to it for
+    // CONFIRM_TICKS, place one and walk on and it never does, so a shrinking area counts as getting somewhere too
+    private int lastLeft = Integer.MAX_VALUE;
     private final List<long[]> bans = new ArrayList<>(); // {x, y, z, until}
-    // the anchor a timeout just let go of, until the next pick decides whether it was the last place left
-    private BetterBlockPos timedOut;
+    // the anchor a timeout or a failed path just let go of, until the next pick decides whether it was the last place left
+    private BetterBlockPos gaveUp;
 
     BetterBlockPos anchor() {
         return anchor;
@@ -52,8 +55,18 @@ final class BuildArea {
         return anchor == null || distSq(anchor, x, y, z) <= RADIUS * RADIUS;
     }
 
-    // once per builder tick. true if it just gave up on the area for taking too long
+    // no anchor yet, or the anchor still has some of open around it. a no means let the caller look harder first
+    boolean hasWork(List<BetterBlockPos> open) {
+        return anchor == null || anyWithin(open, anchor);
+    }
+
     boolean clock(BetterBlockPos player, long now, int fixes) {
+        return clock(player, now, fixes, STALE_TICKS);
+    }
+
+    // once per builder tick. true if it just gave up on the area for taking too long. limit can only make it longer,
+    // an obsidian break with a bad pick takes more than 200 ticks all by itself
+    boolean clock(BetterBlockPos player, long now, int fixes, int limit) {
         if (fixes != lastFixes) {
             lastFixes = fixes;
             staleTicks = 0;
@@ -65,15 +78,20 @@ final class BuildArea {
         if (distSq(anchor, player.x, player.y, player.z) > inside * inside) {
             return false; // still walking there, that's not the area's fault
         }
-        if (++staleTicks < STALE_TICKS) {
+        if (++staleTicks < Math.max(STALE_TICKS, limit)) {
             return false;
         }
-        timedOut = anchor;
-        release(now, true);
+        giveUp(now);
         return true;
     }
 
-    // the path there failed or it ran out of time, either way go somewhere else for a while
+    // the path there failed or it ran out of time, either way go somewhere else for a while. if there is nowhere else
+    // the next choose skips it, see there
+    void giveUp(long now) {
+        gaveUp = anchor;
+        release(now, true);
+    }
+
     void release(long now, boolean ban) {
         if (anchor != null && ban) {
             bans.add(new long[]{anchor.x, anchor.y, anchor.z, now + BAN_TICKS});
@@ -86,8 +104,9 @@ final class BuildArea {
         anchor = null;
         staleTicks = 0;
         lastFixes = Integer.MIN_VALUE;
+        lastLeft = Integer.MAX_VALUE;
         bans.clear();
-        timedOut = null;
+        gaveUp = null;
     }
 
     // open: wrong cells that would get a goal. skipped: the ones that would, if they weren't skipped.
@@ -100,25 +119,32 @@ final class BuildArea {
         }
         List<BetterBlockPos> giveUp = new ArrayList<>();
         if (anchor != null) {
+            int left = countWithin(open, anchor) + countWithin(skipped, anchor);
+            if (left < lastLeft) {
+                staleTicks = 0;
+            }
+            lastLeft = left;
             return giveUp;
         }
         List<BetterBlockPos> pool = open;
-        if (timedOut != null && pick(open, player, true) == null) {
-            // it timed out and there's nowhere else to go, so the next pick is straight back into it. cells that get a
-            // goal but never get offered for a click would go round like that forever, so they get skipped the normal
-            // way and the anySkipped retries and the pause deal with them like any other stuck block
+        if (gaveUp != null && pick(open, player, true) == null) {
+            // we just gave up on it and there's nowhere else to go, so the next pick is straight back into it. cells
+            // that get a goal but never get offered for a click (or never get a path) would go round like that forever,
+            // so they get skipped the normal way and the anySkipped retries and the pause deal with them like any
+            // other stuck block
             pool = new ArrayList<>();
             for (BetterBlockPos p : open) {
-                (distSq(timedOut, p.x, p.y, p.z) <= RADIUS * RADIUS ? giveUp : pool).add(p);
+                (distSq(gaveUp, p.x, p.y, p.z) <= RADIUS * RADIUS ? giveUp : pool).add(p);
             }
         }
-        timedOut = null;
+        gaveUp = null;
         BetterBlockPos next = pick(pool, player, true);
         if (next == null) {
             next = pick(pool, player, false); // everything left is near a ban, a banned area beats no area
         }
         anchor = next;
         staleTicks = 0;
+        lastLeft = next == null ? Integer.MAX_VALUE : countWithin(pool, next) + countWithin(skipped, next);
         return giveUp;
     }
 
@@ -150,6 +176,16 @@ final class BuildArea {
             }
         }
         return false;
+    }
+
+    private static int countWithin(List<BetterBlockPos> cells, BetterBlockPos center) {
+        int n = 0;
+        for (BetterBlockPos p : cells) {
+            if (distSq(center, p.x, p.y, p.z) <= RADIUS * RADIUS) {
+                n++;
+            }
+        }
+        return n;
     }
 
     private static boolean anyWithin(List<BetterBlockPos> cells, BetterBlockPos center) {
