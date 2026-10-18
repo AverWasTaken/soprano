@@ -140,7 +140,7 @@ public class BuildAreaTest {
     public void banIsIgnoredWhenNothingElseQualifies() {
         BuildArea area = new BuildArea();
         area.choose(cells(A), NONE, A, 0);
-        area.release(1, true); // a failed path, not a timeout, so nothing gets skipped
+        area.release(1, true); // a plain release, giveUp is the one that skips (aFailedPathToTheLastAreaGetsItSkipped)
         BetterBlockPos alsoBanned = new BetterBlockPos(2, 64, 0);
         assertTrue(area.choose(cells(alsoBanned, A), NONE, A, 2).isEmpty());
         assertEquals(A, area.anchor());
@@ -219,15 +219,16 @@ public class BuildAreaTest {
         BuildArea area = new BuildArea();
         BetterBlockPos b = new BetterBlockPos(1, 64, 0);
         area.choose(cells(A, b), NONE, A, 0);
+        area.left(2);
         long t = 1;
         for (int i = 0; i < BuildArea.STALE_TICKS - 10; i++) {
             assertFalse(area.clock(A, t++, 0));
         }
-        area.choose(cells(A), NONE, A, t); // b got placed, no confirmed fix needed for that
+        area.left(1); // b got placed, no confirmed fix needed for that
         for (int i = 0; i < BuildArea.STALE_TICKS - 1; i++) {
             assertFalse(area.clock(A, t++, 0));
         }
-        area.choose(cells(A), cells(b), A, t); // b getting skipped instead isn't progress
+        area.left(2); // a cell turning up wrong again isn't progress
         assertTrue(area.clock(A, t, 0));
     }
 
@@ -235,11 +236,14 @@ public class BuildAreaTest {
     public void aFailedPathToTheLastAreaGetsItSkipped() {
         BuildArea area = new BuildArea();
         area.choose(cells(A), NONE, A, 0);
+        assertFalse(area.pendingGiveUp());
         area.giveUp(1);
+        assertTrue(area.pendingGiveUp()); // the builder holds the hotbar pass back for this
         BetterBlockPos inside = new BetterBlockPos(1, 64, 1);
         BetterBlockPos rim = new BetterBlockPos(BuildArea.RADIUS, 64, 1);
         assertEquals(cells(A, inside), area.choose(cells(A, inside, rim), NONE, A, 2));
         assertEquals(rim, area.anchor());
+        assertFalse(area.pendingGiveUp());
     }
 
     private static long timeOut(BuildArea area, long t) {
