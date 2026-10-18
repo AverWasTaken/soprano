@@ -921,9 +921,10 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         List<BetterBlockPos> open = new ArrayList<>(placeCells);
         open.addAll(liquidCells);
         open.addAll(breakCells);
-        if (!logMissing && !area.hasWork(open)) {
+        if (!logMissing && (!area.hasWork(open) || area.pendingGiveUp())) {
             // the hotbar pass can't see what's left around the anchor, it may just need a block from the inventory.
-            // the whole inventory pass decides if the area is done, or this walked off the same tick the fetch went out
+            // the whole inventory pass decides if the area is done (or this walked off the same tick the fetch went out)
+            // and if a given up area really is the last one left
             return null;
         }
         List<BetterBlockPos> giveUp = area.choose(open, skippedCells, ctx.playerFeet(), builderTicks);
@@ -994,9 +995,24 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         }
         // mid dig the block gets its honest break time plus the confirm on top, same numbers BuildSkips uses
         int limit = lastBreak != null && builderTicks - lastSwing <= 1 ? breakLimit(lastBreak) + BuildSkips.CONFIRM_TICKS : 0;
+        area.left(wrongInArea());
         if (area.clock(ctx.playerFeet(), builderTicks, skips.fixes(), limit)) {
-            areaLog("nothing got done around " + anchor.x + " " + anchor.y + " " + anchor.z + " in " + BuildArea.STALE_TICKS / 20 + "s, trying somewhere else");
+            areaLog("nothing got done around " + anchor.x + " " + anchor.y + " " + anchor.z + " in " + Math.max(BuildArea.STALE_TICKS, limit) / 20 + "s, trying somewhere else");
         }
+    }
+
+    // off incorrectPositions, both assemble passes see different slices of it and a hotbar swap would look like progress
+    private int wrongInArea() {
+        if (incorrectPositions == null || area.anchor() == null) {
+            return 0;
+        }
+        int n = 0;
+        for (BetterBlockPos p : incorrectPositions) {
+            if (area.inArea(p.x, p.y, p.z)) {
+                n++;
+            }
+        }
+        return n;
     }
 
     private void noteAnchor() {
