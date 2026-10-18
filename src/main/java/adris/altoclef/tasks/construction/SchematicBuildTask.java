@@ -908,7 +908,8 @@ public class SchematicBuildTask extends Task {
     }
 
     private void endCleanRound(AltoClef mod) {
-        say("Scaffold cleanup round " + cleanRound + ": " + cleanCount + " blocks");
+        // one per round is a lot of chat for a cleanup, the leftovers line is the one worth seeing
+        Helper.HELPER.logDebug("Scaffold cleanup round " + cleanRound + ": " + cleanCount + " blocks");
         // a round that found nothing to do won't find more next time
         if (scaffold.isEmpty() || cleanCount == 0) {
             doneCleaning(mod);
