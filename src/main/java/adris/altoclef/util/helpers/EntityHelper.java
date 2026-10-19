@@ -63,9 +63,14 @@ public class EntityHelper {
         LocalPlayer player = mod.getPlayer();
         boolean neutral = isNeutralNow(mod, mob);
         // the grudge book is only worth opening for the ones that need a reason
-        boolean provoked = neutral && mod.getEntityTracker().getProvocations().recent(mob.getId(), mod.getWorld().getGameTime());
+        long now = mod.getWorld().getGameTime();
+        Provocations book = mod.getEntityTracker().getProvocations();
+        boolean provoked = neutral && book.recent(mob.getId(), now);
+        // the flag is down on the very tick a zombie hits us, so "it just bit us" has to count too. same clock noteHitUs stamps with
+        boolean hitRecently = !neutral && NeutralMobs.hitRecently(book.sinceHit(mob.getId(), now));
         // Mob.target is server side, so this is usually null for a remote mob. free to ask though
-        return NeutralMobs.hostile(neutral, mob.isAggressive(), provoked, mob.getTarget() == player, mob.distanceTo(player));
+        return NeutralMobs.hostile(neutral, mob.isAggressive(), provoked, mob.getTarget() == player, mob.distanceTo(player),
+                hitRecently);
     }
 
     // a neutral kind that has not been given a reason to come for us. what the force field and the kill aura check
