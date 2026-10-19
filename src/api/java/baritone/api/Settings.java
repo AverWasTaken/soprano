@@ -896,6 +896,27 @@ public final class Settings {
     public final Setting<Boolean> backfill = new Setting<>(false);
 
     /**
+     * Place torches in dark spots near you while Baritone is busy mining or walking
+     * <p>
+     * Needs torches in the hotbar (or the inventory with {@link #allowInventory}). It only places while another process
+     * (mine, goto, explore, a task like #get...) is running, never while building, in the Nether or the End, or near water and lava.
+     * Spots with sky light above {@link #autoTorchLightLevel} are left alone, so the surface does not get covered in torches.
+     */
+    public final Setting<Boolean> autoTorch = new Setting<>(false);
+
+    /**
+     * {@link #autoTorch} places a torch where both the block light and the sky light are at or below this (0 to 15)
+     * <p>
+     * Spacing between torches falls out of this: higher means more torches closer together.
+     */
+    public final Setting<Integer> autoTorchLightLevel = new Setting<>(7);
+
+    /**
+     * How far around you {@link #autoTorch} looks for dark spots, in blocks. Never further than {@link #blockReachDistance}
+     */
+    public final Setting<Integer> autoTorchRadius = new Setting<>(4);
+
+    /**
      * Shows popup message in the upper right corner, similarly to when you make an advancement
      */
     public final Setting<Boolean> logAsToast = new Setting<>(false);

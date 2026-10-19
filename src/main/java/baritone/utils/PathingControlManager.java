@@ -93,6 +93,16 @@ public class PathingControlManager implements IPathingControlManager {
         return false;
     }
 
+    // same question minus the asker, for a temporary process that only wants to help someone else's job along
+    public boolean otherNonTemporaryActive(IBaritoneProcess self) {
+        for (IBaritoneProcess proc : activeSnapshot) {
+            if (proc != self && !proc.isTemporary()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     @Override
     public Optional<PathingCommand> mostRecentCommand() {
         return Optional.ofNullable(command);

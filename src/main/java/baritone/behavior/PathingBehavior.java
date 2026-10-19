@@ -439,6 +439,13 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
         return safeToCancel;
     }
 
+    // asked from inside preTick (a process's onTick) this is still last tick's answer, tickPath resets it after. so it says
+    // whether the pause really landed last tick, which a process that wants to click needs: the tick the pause lands is
+    // the tick clearAllKeys eats every key we just pressed
+    public boolean pausedLastTick() {
+        return pausedThisTick;
+    }
+
     public void requestPause() {
         pauseRequestedLastTick = true;
     }
