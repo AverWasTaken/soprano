@@ -37,7 +37,6 @@ import baritone.pathing.movement.CalculationContext;
 import baritone.pathing.movement.Movement;
 import baritone.pathing.movement.MovementHelper;
 import baritone.utils.BaritoneProcessHelper;
-import baritone.utils.BlockStateInterface;
 import baritone.utils.PathingCommandContext;
 import baritone.utils.schematic.MapArtSchematic;
 import baritone.utils.schematic.SchematicSystem;
@@ -45,6 +44,7 @@ import baritone.utils.schematic.SelectionSchematic;
 import baritone.utils.schematic.litematica.LitematicaHelper;
 import baritone.utils.schematic.schematica.SchematicaHelper;
 import com.google.common.collect.ImmutableSet;
+import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import net.minecraft.core.BlockPos;
@@ -53,13 +53,14 @@ import net.minecraft.core.Vec3i;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.block.*;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.Property;
-import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
@@ -68,6 +69,7 @@ import net.minecraft.world.phys.shapes.VoxelShape;
 import java.io.File;
 import java.io.FileInputStream;
 import java.util.*;
+import java.util.function.UnaryOperator;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -115,6 +117,15 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     private BetterBlockPos lastBreak;
     private boolean digging;
     private GivenUp givenUp;
+    // where to stand for the cells a movement can't place right (stairs, logs, anything aimed), see PlacementPlanner
+    private PlacementPlanner planner;
+    private Long2ObjectOpenHashMap<CellPlan> plans;
+    // cells planned per tick, nearest first. the rest use upstream's goal till their turn
+    private static final int PLANS_PER_TICK = 8;
+    private int planBudget;
+    // cells left out of the goal because the block can't stay there yet (a wall torch with no wall), logged once each
+    private LongOpenHashSet droppedLogged;
+    private List<BetterBlockPos> dropped = List.of();
     // which cell asked for which part of the last goal, so the stall check knows who parked us
     private List<Pair<BetterBlockPos, Goal>> goalOwners = List.of();
     // what recalcNearby saw last time per cell, so it can tell a change from a cell that just came into range
@@ -234,6 +245,10 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         lastBreak = null;
         goalOwners = List.of();
         seen = null;
+        // and the plans with them, they're cheap to make again and a stale one costs a walk
+        plans = null;
+        droppedLogged = null;
+        dropped = List.of();
     }
 
     public void resume() {
@@ -430,33 +445,77 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
 
     private Optional<Placement> searchForPlacables(BuilderCalculationContext bcc, List<BlockState> desirableOnHotbar) {
         BetterBlockPos center = ctx.playerFeet();
+        // standing where the planner said to stand for some cell: that one first, off the face it planned
+        Optional<Placement> planned = plannedFromHere(bcc, center, desirableOnHotbar);
+        if (planned.isPresent()) {
+            return planned;
+        }
         for (int dx = -5; dx <= 5; dx++) {
             for (int dy = -5; dy <= 1; dy++) {
                 for (int dz = -5; dz <= 5; dz++) {
                     int x = center.x + dx;
                     int y = center.y + dy;
                     int z = center.z + dz;
-                    BlockState desired = bcc.getSchematic(x, y, z, bcc.bsi.get0(x, y, z));
-                    if (desired == null || givenUp(x, y, z)) {
-                        continue; // irrelevant
+                    BlockState desired = wantsPlace(bcc, center, x, y, z);
+                    if (desired == null) {
+                        continue;
                     }
-                    BlockState curr = bcc.bsi.get0(x, y, z);
-                    if (MovementHelper.isReplaceable(x, y, z, curr, bcc.bsi) && !bcc.fine(x, y, z, curr, desired)) {
-                        if (dy == 1 && bcc.bsi.get0(x, y + 1, z).getBlock() instanceof AirBlock) {
-                            continue;
-                        }
-                        if (desired.getBlock() instanceof AirBlock) {
-                            // grass where the file wants air. no item places air, and an empty slot "supplies" it, so
-                            // this kept every empty slot off limits for the hotbar swap below
-                            continue;
-                        }
-                        desirableOnHotbar.add(desired);
-                        Optional<Placement> opt = possibleToPlace(desired, x, y, z, bcc.bsi);
-                        if (opt.isPresent()) {
-                            return opt;
-                        }
+                    desirableOnHotbar.add(desired);
+                    Optional<Placement> opt = possibleToPlace(bcc, desired, x, y, z, null);
+                    if (opt.isPresent()) {
+                        return opt;
                     }
                 }
+            }
+        }
+        return Optional.empty();
+    }
+
+    // what the scan would want placed at this cell from center, null if it wouldn't place anything there
+    private BlockState wantsPlace(BuilderCalculationContext bcc, BetterBlockPos center, int x, int y, int z) {
+        int dy = y - center.y;
+        if (Math.abs(x - center.x) > 5 || Math.abs(z - center.z) > 5 || dy < -5 || dy > 1) {
+            return null;
+        }
+        BlockState curr = bcc.bsi.get0(x, y, z);
+        BlockState desired = bcc.getSchematic(x, y, z, curr);
+        if (desired == null || givenUp(x, y, z)) {
+            return null; // irrelevant
+        }
+        if (!MovementHelper.isReplaceable(x, y, z, curr, bcc.bsi) || bcc.fine(x, y, z, curr, desired)) {
+            return null;
+        }
+        if (dy == 1 && bcc.bsi.get0(x, y + 1, z).getBlock() instanceof AirBlock) {
+            return null;
+        }
+        if (desired.getBlock() instanceof AirBlock) {
+            // grass where the file wants air. no item places air, and an empty slot "supplies" it, so this kept every
+            // empty slot off limits for the hotbar swap below
+            return null;
+        }
+        return desired;
+    }
+
+    private Optional<Placement> plannedFromHere(BuilderCalculationContext bcc, BetterBlockPos feet, List<BlockState> desirableOnHotbar) {
+        if (plans == null || plans.isEmpty()) {
+            return Optional.empty();
+        }
+        for (Long2ObjectMap.Entry<CellPlan> e : plans.long2ObjectEntrySet()) {
+            for (PlacementPlanner.Feet f : e.getValue().feet) {
+                if (!f.feet().equals(feet)) {
+                    continue;
+                }
+                BetterBlockPos cell = BetterBlockPos.deserializeFromLong(e.getLongKey());
+                BlockState desired = wantsPlace(bcc, feet, cell.x, cell.y, cell.z);
+                if (desired == null) {
+                    break;
+                }
+                desirableOnHotbar.add(desired);
+                Optional<Placement> opt = possibleToPlace(bcc, desired, cell.x, cell.y, cell.z, f.recipe().side().getOpposite());
+                if (opt.isPresent()) {
+                    return opt;
+                }
+                break;
             }
         }
         return Optional.empty();
@@ -467,97 +526,63 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         return voxelshape.isEmpty() || ctx.world().isUnobstructed(null, voxelshape.move(pos.getX(), pos.getY(), pos.getZ()));
     }
 
-    private Optional<Placement> possibleToPlace(BlockState toPlace, int x, int y, int z, BlockStateInterface bsi) {
-        for (Direction against : Direction.values()) {
-            BetterBlockPos placeAgainstPos = new BetterBlockPos(x, y, z).relative(against);
-            BlockState placeAgainstState = bsi.get0(placeAgainstPos);
-            if (MovementHelper.isReplaceable(placeAgainstPos.x, placeAgainstPos.y, placeAgainstPos.z, placeAgainstState, bsi)) {
-                continue;
-            }
-            if (!toPlace.canSurvive(ctx.world(), new BetterBlockPos(x, y, z))) {
-                continue;
-            }
-            if (!placementPlausible(new BetterBlockPos(x, y, z), toPlace)) {
-                continue;
-            }
-            VoxelShape shape = placeAgainstState.getShape(ctx.world(), placeAgainstPos);
-            if (shape.isEmpty()) {
-                continue;
-            }
-            AABB aabb = shape.bounds();
-            for (Vec3 placementMultiplier : aabbSideMultipliers(against)) {
-                double placeX = placeAgainstPos.x + aabb.minX * placementMultiplier.x + aabb.maxX * (1 - placementMultiplier.x);
-                double placeY = placeAgainstPos.y + aabb.minY * placementMultiplier.y + aabb.maxY * (1 - placementMultiplier.y);
-                double placeZ = placeAgainstPos.z + aabb.minZ * placementMultiplier.z + aabb.maxZ * (1 - placementMultiplier.z);
-                Rotation rot = RotationUtils.calcRotationFromVec3d(RayTraceUtils.inferSneakingEyePosition(ctx.player()), new Vec3(placeX, placeY, placeZ), ctx.playerRotations());
-                Rotation actualRot = baritone.getLookBehavior().getAimProcessor().peekRotation(rot);
-                HitResult result = RayTraceUtils.rayTraceTowards(ctx.player(), actualRot, ctx.playerController().getBlockReachDistance(), true);
-                if (result != null && result.getType() == HitResult.Type.BLOCK && ((BlockHitResult) result).getBlockPos().equals(placeAgainstPos) && ((BlockHitResult) result).getDirection() == against.getOpposite()) {
-                    OptionalInt hotbar = hasAnyItemThatWouldPlace(toPlace, result, actualRot);
-                    if (hotbar.isPresent()) {
-                        return Optional.of(new Placement(hotbar.getAsInt(), placeAgainstPos, against.getOpposite(), rot));
-                    }
-                }
-            }
+    // upstream's possibleToPlace, with the per face work moved into PlacementPlanner.plan so the planner's guesses and
+    // this real click ask the exact same question. the real sneaking eye and the aim processor's noise, like upstream
+    private Optional<Placement> possibleToPlace(BuilderCalculationContext bcc, BlockState toPlace, int x, int y, int z, Direction preferAgainst) {
+        BetterBlockPos pos = new BetterBlockPos(x, y, z);
+        if (!placementPlausible(pos, toPlace)) {
+            return Optional.empty();
         }
-        return Optional.empty();
+        List<ItemStack> hotbar = ctx.player().getInventory().getNonEquipmentItems().subList(0, 9);
+        Vec3 eye = RayTraceUtils.inferSneakingEyePosition(ctx.player());
+        double reach = ctx.playerController().getBlockReachDistance();
+        PlacementPlanner planner = planner();
+        UnaryOperator<Rotation> noise = PlacementPlanner.noise(baritone.getLookBehavior().getAimProcessor());
+        // room to the next quadrant if there's a way to get it, a stair aimed right at the boundary only works on the
+        // ticks the noise feels like it. the click gate catches the rest either way
+        Optional<PlacementPlanner.Recipe> recipe = PlaceRules.aimProof(toPlace)
+                ? Optional.empty()
+                : planner.plan(bcc.bsi, eye, pos, toPlace, hotbar, noise, true, reach, preferAgainst);
+        if (recipe.isEmpty()) {
+            recipe = planner.plan(bcc.bsi, eye, pos, toPlace, hotbar, noise, false, reach, preferAgainst);
+        }
+        return recipe.map(r -> new Placement(r.slot(), r.placeAgainst(), r.side(), r.rot()));
     }
 
-    private OptionalInt hasAnyItemThatWouldPlace(BlockState desired, HitResult result, Rotation rot) {
-        for (int i = 0; i < 9; i++) {
-            ItemStack stack = ctx.player().getInventory().getNonEquipmentItems().get(i);
-            if (stack.isEmpty() || !(stack.getItem() instanceof BlockItem)) {
-                continue;
-            }
-            float originalYaw = ctx.player().getYRot();
-            float originalPitch = ctx.player().getXRot();
-            // the state depends on the facing of the player sometimes
-            ctx.player().setYRot(rot.getYaw());
-            ctx.player().setXRot(rot.getPitch());
-            BlockPlaceContext meme = new BlockPlaceContext(new UseOnContext(
-                    ctx.world(),
-                    ctx.player(),
-                    InteractionHand.MAIN_HAND,
-                    stack,
-                    (BlockHitResult) result
-            ) {}); // that {} gives us access to a protected constructor lmfao
-            BlockState wouldBePlaced = ((BlockItem) stack.getItem()).getBlock().getStateForPlacement(meme);
-            ctx.player().setYRot(originalYaw);
-            ctx.player().setXRot(originalPitch);
-            if (wouldBePlaced == null) {
-                continue;
-            }
-            if (!meme.canPlace()) {
-                continue;
-            }
-            if (valid(wouldBePlaced, desired, true)) {
-                return OptionalInt.of(i);
-            }
+    private PlacementPlanner planner() {
+        if (planner == null) {
+            planner = new PlacementPlanner(ctx);
         }
-        return OptionalInt.empty();
+        return planner;
     }
 
-    private static Vec3[] aabbSideMultipliers(Direction side) {
-        switch (side) {
-            case UP:
-                return new Vec3[]{new Vec3(0.5, 1, 0.5), new Vec3(0.1, 1, 0.5), new Vec3(0.9, 1, 0.5), new Vec3(0.5, 1, 0.1), new Vec3(0.5, 1, 0.9)};
-            case DOWN:
-                return new Vec3[]{new Vec3(0.5, 0, 0.5), new Vec3(0.1, 0, 0.5), new Vec3(0.9, 0, 0.5), new Vec3(0.5, 0, 0.1), new Vec3(0.5, 0, 0.9)};
-            case NORTH:
-            case SOUTH:
-            case EAST:
-            case WEST:
-                double x = side.getStepX() == 0 ? 0.5 : (1 + side.getStepX()) / 2D;
-                double z = side.getStepZ() == 0 ? 0.5 : (1 + side.getStepZ()) / 2D;
-                return new Vec3[]{new Vec3(x, 0.25, z), new Vec3(x, 0.75, z)};
-            default: // null
-                throw new IllegalStateException("Unexpected side " + side);
+    // the click goes out later this same tick (InputOverrideHandler ticks after the processes) off the rotation the
+    // server already has, which is what ctx.playerRotations and objectMouseOver are with freeLook. so run the placement
+    // again on exactly that ray and rotation and only click if the right state comes out. upstream also clicked when
+    // the rotation was merely close, which is how stairs went in backwards
+    private boolean placeGateOpen(BuilderCalculationContext bcc, Placement p) {
+        if (!ctx.player().isCrouching()) {
+            // the plan used the sneaking eye, and a standing click on a chest opens it
+            return false;
         }
+        HitResult over = ctx.objectMouseOver();
+        if (!(over instanceof BlockHitResult hit) || over.getType() != HitResult.Type.BLOCK
+                || !hit.getBlockPos().equals(p.placeAgainst) || hit.getDirection() != p.side) {
+            return false;
+        }
+        BlockPos cell = p.target();
+        BlockState desired = bcc.getSchematic(cell.getX(), cell.getY(), cell.getZ(), bcc.bsi.get0(cell));
+        if (desired == null) {
+            return false;
+        }
+        ItemStack stack = ctx.player().getInventory().getNonEquipmentItems().get(p.hotbarSelection);
+        return planner().placesRight(desired, hit, ctx.playerRotations(), stack);
     }
 
     @Override
     public PathingCommand onTick(boolean calcFailed, boolean isSafeToCancel) {
         builderTicks++;
+        planBudget = PLANS_PER_TICK;
         // a dig the break branch started last tick and the block is still there: obsidian by hand is ~250 ticks of
         // this and none of them are a stare
         digging = baritone.getInputOverrideHandler().isInputForcedDown(Input.CLICK_LEFT) && lastBreak != null
@@ -697,7 +722,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             baritone.getLookBehavior().updateTarget(rot, true);
             ctx.player().getInventory().setSelectedSlot(toPlace.get().hotbarSelection);
             baritone.getInputOverrideHandler().setInputForceState(Input.SNEAK, true);
-            if ((ctx.isLookingAt(toPlace.get().placeAgainst) && ((BlockHitResult) ctx.objectMouseOver()).getDirection().equals(toPlace.get().side)) || ctx.playerRotations().isReallyCloseTo(rot)) {
+            if (placeGateOpen(bcc, toPlace.get())) {
                 baritone.getInputOverrideHandler().setInputForceState(Input.CLICK_RIGHT, true);
                 forcedClicks = true;
                 stallTicks = 0;
@@ -713,7 +738,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             outer:
             for (BlockState desired : desirableOnHotbar) {
                 for (int i = 0; i < 9; i++) {
-                    if (valid(approxPlaceable.get(i), desired, true)) {
+                    if (canSupply(approxPlaceable.get(i), desired)) {
                         usefulSlots.add(i);
                         continue outer;
                     }
@@ -724,7 +749,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             outer:
             for (int i = 9; i < 36; i++) {
                 for (BlockState desired : noValidHotbarOption) {
-                    if (valid(approxPlaceable.get(i), desired, true)) {
+                    if (canSupply(approxPlaceable.get(i), desired)) {
                         if (!baritone.getInventoryBehavior().attemptToPutOnHotbar(i, usefulSlots::contains)) {
                             // awaiting inventory move, so pause
                             return new PathingCommand(null, PathingCommandType.REQUEST_PAUSE);
@@ -881,6 +906,10 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             logDirect(String.format("Can't break %s blocks, they don't break:", unbreakableCells.size()));
             logDirect(unbreakableCells.stream().limit(10).map(p -> describe(bcc, p)).collect(Collectors.joining("\n")) + (unbreakableCells.size() > 10 ? "\n..." : ""));
         }
+        if (!dropped.isEmpty()) {
+            logDirect(String.format("Can't place %s blocks there yet, nothing to hold them up:", dropped.size()));
+            logDirect(dropped.stream().limit(10).map(p -> describe(bcc, p)).collect(Collectors.joining("\n")) + (dropped.size() > 10 ? "\n..." : ""));
+        }
         if (givenUp == null || incorrectPositions == null) {
             return;
         }
@@ -901,6 +930,93 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     private void blockChanged(int x, int y, int z) {
         if (givenUp != null) {
             givenUp.nearbyChanged(x, y, z);
+        }
+        if (plans != null && !plans.isEmpty()) {
+            // stale, not gone: the old feet stay the goal till the new plan is in, or the goal would flip to upstream's
+            // and back and drag the path with it
+            for (Long2ObjectMap.Entry<CellPlan> e : plans.long2ObjectEntrySet()) {
+                BetterBlockPos cell = BetterBlockPos.deserializeFromLong(e.getLongKey());
+                if (Math.abs(cell.x - x) <= GivenUp.NEARBY && Math.abs(cell.y - y) <= GivenUp.NEARBY && Math.abs(cell.z - z) <= GivenUp.NEARBY) {
+                    e.getValue().stale = true;
+                }
+            }
+        }
+        if (droppedLogged != null && !droppedLogged.isEmpty()) {
+            // a neighbour going in is usually exactly what a dropped one was waiting for, it can say so again next time
+            droppedLogged.removeIf((long p) -> {
+                BetterBlockPos cell = BetterBlockPos.deserializeFromLong(p);
+                return Math.abs(cell.x - x) <= 1 && Math.abs(cell.y - y) <= 1 && Math.abs(cell.z - z) <= 1;
+            });
+        }
+    }
+
+    // one line for the cells that just got left out of the goal, not one per cell per tick
+    private void logDropped(BuilderCalculationContext bcc, List<BetterBlockPos> cells) {
+        if (cells.isEmpty()) {
+            return;
+        }
+        if (droppedLogged == null) {
+            droppedLogged = new LongOpenHashSet();
+        }
+        List<String> fresh = new ArrayList<>();
+        for (BetterBlockPos pos : cells) {
+            if (droppedLogged.add(BetterBlockPos.serializeToLong(pos.x, pos.y, pos.z))) {
+                fresh.add(describe(bcc, pos));
+            }
+        }
+        if (!fresh.isEmpty()) {
+            logDirect("Can't place these yet, nothing to hold them up, leaving them out till they would stay: "
+                    + String.join(", ", fresh.subList(0, Math.min(fresh.size(), 5))) + (fresh.size() > 5 ? " and " + (fresh.size() - 5) + " more" : ""));
+        }
+    }
+
+    // what the planner said about a cell. stale = something near it changed and it's due a new look
+    private static final class CellPlan {
+        final BlockState desired;
+        final List<PlacementPlanner.Feet> feet;
+        boolean stale;
+
+        CellPlan(BlockState desired, List<PlacementPlanner.Feet> feet) {
+            this.desired = desired;
+            this.feet = feet;
+        }
+    }
+
+    // plans the nearest cells that don't have one (or have a stale one) yet, up to this tick's budget
+    private void planCells(BuilderCalculationContext bcc, List<BetterBlockPos> cells) {
+        if (planBudget <= 0 || cells.isEmpty()) {
+            return;
+        }
+        if (plans == null) {
+            plans = new Long2ObjectOpenHashMap<>();
+        }
+        List<BetterBlockPos> todo = new ArrayList<>();
+        for (BetterBlockPos pos : cells) {
+            BlockState desired = bcc.getSchematic(pos.x, pos.y, pos.z, bcc.bsi.get0(pos.x, pos.y, pos.z));
+            CellPlan plan = plans.get(BetterBlockPos.serializeToLong(pos.x, pos.y, pos.z));
+            if (plan == null || plan.stale || plan.desired != desired) {
+                todo.add(pos);
+            }
+        }
+        if (todo.isEmpty()) {
+            return;
+        }
+        BetterBlockPos feet = ctx.playerFeet();
+        todo.sort(Comparator.comparingDouble(p -> p.distSqr(feet)));
+        for (BetterBlockPos pos : todo) {
+            if (planBudget-- <= 0) {
+                return;
+            }
+            BlockState desired = bcc.getSchematic(pos.x, pos.y, pos.z, bcc.bsi.get0(pos.x, pos.y, pos.z));
+            List<PlacementPlanner.Feet> found = planner().planFeet(pos, desired, bcc.bsi, bcc::getSchematic);
+            plans.put(BetterBlockPos.serializeToLong(pos.x, pos.y, pos.z), new CellPlan(desired, found));
+        }
+    }
+
+    // the old plans of cells that got placed (or stopped being wanted) only cost memory, so clean up now and then
+    private void prunePlans() {
+        if (plans != null && plans.size() > 2048 && incorrectPositions != null) {
+            plans.long2ObjectEntrySet().removeIf(e -> !incorrectPositions.contains(BetterBlockPos.deserializeFromLong(e.getLongKey())));
         }
     }
 
@@ -1035,7 +1151,10 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
                 BlockState desired = bcc.getSchematic(pos.x, pos.y, pos.z, state);
                 if (desired == null) {
                     outOfBounds.add(pos);
-                } else if (containsBlockState(approxPlaceable, desired)) {
+                } else if (containsBlockState(approxPlaceable, desired) || (!PlaceRules.aimProof(desired) && containsItem(approxPlaceable, desired))) {
+                    // the states in approxPlaceable are what each stack places with us facing wherever we face right
+                    // now, so a stack of stairs only counted for the one facing. an aimed block gets planned (see
+                    // planCells) and the click gate checks the real state, so for those owning the item is enough
                     placeable.add(pos);
                 } else {
                     missing.put(desired, 1 + missing.getOrDefault(desired, 0));
@@ -1072,14 +1191,38 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         List<Goal> toPlace = new ArrayList<>();
         // a set, List.contains for every position was quadratic and placeable is in the thousands on a big build
         Set<BetterBlockPos> placeableSet = new HashSet<>(placeable);
+        List<BetterBlockPos> placeCells = new ArrayList<>();
+        List<BetterBlockPos> droppedNow = new ArrayList<>();
         placeable.forEach(pos -> {
             // given up ones stay in placeableSet, or the block above a hole we gave up on becomes a goal over thin air
             if (!placeableSet.contains(pos.below()) && !placeableSet.contains(pos.below(2)) && !givenUp(pos.x, pos.y, pos.z)) {
-                Goal goal = placementGoal(pos, bcc);
-                toPlace.add(goal);
-                owners.add(new Pair<>(pos, goal));
+                BlockState desired = bcc.getSchematic(pos.x, pos.y, pos.z, bcc.bsi.get0(pos.x, pos.y, pos.z));
+                // loaded only, an unloaded chunk reads as air and nothing survives on air
+                if (bcc.bsi.worldContainsLoadedChunk(pos.x, pos.z) && !desired.canSurvive(ctx.world(), pos)) {
+                    // nothing could go in there right now from any face (a wall torch whose wall isn't up yet), so a
+                    // goal for it is just somewhere to stand and stare
+                    droppedNow.add(pos);
+                } else {
+                    placeCells.add(pos);
+                }
             }
         });
+        dropped = droppedNow;
+        logDropped(bcc, droppedNow);
+        List<BetterBlockPos> aimed = new ArrayList<>();
+        for (BetterBlockPos pos : placeCells) {
+            BlockState desired = bcc.getSchematic(pos.x, pos.y, pos.z, bcc.bsi.get0(pos.x, pos.y, pos.z));
+            if (!PlaceRules.aimProof(desired)) {
+                aimed.add(pos);
+            }
+        }
+        planCells(bcc, aimed);
+        prunePlans();
+        for (BetterBlockPos pos : placeCells) {
+            Goal goal = placementGoal(pos, bcc);
+            toPlace.add(goal);
+            owners.add(new Pair<>(pos, goal));
+        }
         sourceLiquids.forEach(pos -> {
             if (!givenUp(pos.x, pos.y, pos.z)) {
                 Goal goal = new GoalBlock(pos.above());
@@ -1196,6 +1339,18 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     }
 
     private Goal placementGoal(BlockPos pos, BuilderCalculationContext bcc) {
+        CellPlan plan = plans == null ? null : plans.get(BetterBlockPos.serializeToLong(pos.getX(), pos.getY(), pos.getZ()));
+        if (plan != null && !plan.feet.isEmpty() && plan.desired == bcc.getSchematic(pos.getX(), pos.getY(), pos.getZ(), bcc.bsi.get0(pos))) {
+            // somewhere a click comes out right from, not just anywhere next to it. GoalAdjacent was happy one block
+            // over with the stair facing the wrong way and we stood there till the stall check let it go
+            Goal[] feet = new Goal[plan.feet.size()];
+            for (int i = 0; i < feet.length; i++) {
+                feet[i] = new GoalPlanned(plan.feet.get(i).feet(), pos.getY());
+            }
+            return feet.length == 1 ? feet[0] : new GoalComposite(feet);
+        }
+        // not planned yet, not an aimed block, or the planner found nowhere: upstream's, and the stall check covers a bad
+        // arrival
         if (!(ctx.world().getBlockState(pos).getBlock() instanceof AirBlock)) {  // TODO can this even happen?
             return new GoalPlace(pos);
         }
@@ -1283,6 +1438,43 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         public String toString() {
             return String.format(
                     "GoalAdjacent{x=%s,y=%s,z=%s}",
+                    SettingsUtil.maybeCensor(x),
+                    SettingsUtil.maybeCensor(y),
+                    SettingsUtil.maybeCensor(z)
+            );
+        }
+    }
+
+    // a feet cell the planner picked. lower cells first, same as GoalAdjacent and GoalPlace, or a composite of these
+    // next to theirs would always look closer and the build would go up in whatever order the stairs are
+    public static class GoalPlanned extends GoalBlock {
+
+        private final int cellY;
+
+        public GoalPlanned(BlockPos feet, int cellY) {
+            super(feet);
+            this.cellY = cellY;
+        }
+
+        @Override
+        public double heuristic(int x, int y, int z) {
+            return this.cellY * 100 + super.heuristic(x, y, z);
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            return super.equals(o) && ((GoalPlanned) o).cellY == cellY;
+        }
+
+        @Override
+        public int hashCode() {
+            return super.hashCode() * 31 + cellY;
+        }
+
+        @Override
+        public String toString() {
+            return String.format(
+                    "GoalPlanned{x=%s,y=%s,z=%s}",
                     SettingsUtil.maybeCensor(x),
                     SettingsUtil.maybeCensor(y),
                     SettingsUtil.maybeCensor(z)
@@ -1417,6 +1609,28 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             }
         }
         return true;
+    }
+
+    // same item, any state. for "do i own this" on aimed blocks, whose approxPlaceable state is just whichever way we
+    // happened to face. AIR on both sides is no item, not a match. same block too: a torch item shares its item with
+    // the wall torch, but the place branch simulates the item's own block and only ever gets a standing one out of it
+    static boolean sameItem(BlockState have, BlockState desired) {
+        Item item = have.getBlock().asItem();
+        return item != Items.AIR && have.getBlock() == desired.getBlock();
+    }
+
+    static boolean containsItem(Collection<BlockState> states, BlockState state) {
+        for (BlockState testee : states) {
+            if (sameItem(testee, state)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // the hotbar swap's question. a stair stack facing the wrong way is still the stack the stair comes out of
+    static boolean canSupply(BlockState have, BlockState desired) {
+        return valid(have, desired, true) || (!PlaceRules.aimProof(desired) && sameItem(have, desired));
     }
 
     static boolean containsBlockState(Collection<BlockState> states, BlockState state) {
