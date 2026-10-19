@@ -17,6 +17,7 @@
 
 package baritone.utils;
 
+import adris.altoclef.Debug;
 import adris.altoclef.trace.Trace;
 import baritone.Baritone;
 import baritone.api.utils.IPlayerContext;
@@ -181,7 +182,9 @@ public class BlockPlaceHelper {
         }
         BlockPos at = new BlockPlaceContext(new UseOnContext(ctx.world(), ctx.player(), hand, held, hit) {}).getClickedPos().immutable();
         BlockState before = ctx.world().getBlockState(at);
-        Trace.record("place at " + at.toShortString() + " by " + who + " want " + want.apply(at) + " held " + held.getItem() + " (was " + before + ")");
+        // the log file too, not just the trace ring, so a play test log shows place/break pairs without a dump. only
+        // while building (who is null otherwise), the same rule that keeps these out of everything else
+        Debug.logInternal("place at " + at.toShortString() + " by " + who + " want " + want.apply(at) + " held " + held.getItem() + " (was " + before + ")");
         return new Traced(at, before, who);
     }
 
@@ -203,7 +206,7 @@ public class BlockPlaceHelper {
                 Trace.record("placed " + now + " at " + t.pos.toShortString() + " by " + t.who);
             } else if (++t.age > CONFIRM_TICKS) {
                 it.remove();
-                Trace.record("place at " + t.pos.toShortString() + " by " + t.who + " never showed up");
+                Debug.logInternal("place at " + t.pos.toShortString() + " by " + t.who + " never showed up");
             }
         }
     }
