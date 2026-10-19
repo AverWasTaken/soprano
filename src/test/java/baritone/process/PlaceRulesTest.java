@@ -1,0 +1,155 @@
+/*
+ * This file is part of Baritone.
+ *
+ * Baritone is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * Baritone is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with Baritone.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+package baritone.process;
+
+import adris.altoclef.util.helpers.ItemFixture;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.CrossCollisionBlock;
+import net.minecraft.world.level.block.FenceGateBlock;
+import net.minecraft.world.level.block.StairBlock;
+import net.minecraft.world.level.block.VineBlock;
+import net.minecraft.world.level.block.WallBlock;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+import net.minecraft.world.level.block.state.properties.Half;
+import net.minecraft.world.level.block.state.properties.SlabType;
+import net.minecraft.world.level.block.state.properties.StairsShape;
+import net.minecraft.world.level.block.state.properties.WallSide;
+import org.junit.BeforeClass;
+import org.junit.Test;
+
+import java.util.List;
+
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
+
+public class PlaceRulesTest {
+
+    @BeforeClass
+    public static void boot() {
+        ItemFixture.boot();
+    }
+
+    private static boolean same(BlockState a, BlockState b) {
+        return BuilderProcess.sameBlockstate(a, b, false, List.of());
+    }
+
+    @Test
+    public void stairShapeIsTheNeighboursCall() {
+        BlockState straight = Blocks.OAK_STAIRS.defaultBlockState().setValue(StairBlock.FACING, Direction.NORTH);
+        BlockState corner = straight.setValue(StairBlock.SHAPE, StairsShape.OUTER_LEFT);
+        assertTrue(same(corner, straight));
+        // which way it faces and which half it's on are still ours to get right
+        assertFalse(same(straight.setValue(StairBlock.FACING, Direction.EAST), straight));
+        assertFalse(same(straight.setValue(StairBlock.HALF, Half.TOP), straight));
+    }
+
+    @Test
+    public void fenceAndWallConnectionsDontCount() {
+        BlockState fence = Blocks.OAK_FENCE.defaultBlockState();
+        assertTrue(same(fence, fence.setValue(CrossCollisionBlock.SOUTH, true).setValue(CrossCollisionBlock.EAST, true)));
+        BlockState pane = Blocks.GLASS_PANE.defaultBlockState();
+        assertTrue(same(pane, pane.setValue(CrossCollisionBlock.NORTH, true)));
+        BlockState wall = Blocks.COBBLESTONE_WALL.defaultBlockState();
+        assertTrue(same(wall, wall.setValue(WallBlock.NORTH, WallSide.TALL).setValue(WallBlock.UP, false)));
+        BlockState gate = Blocks.OAK_FENCE_GATE.defaultBlockState();
+        assertTrue(same(gate, gate.setValue(FenceGateBlock.IN_WALL, true)));
+        assertFalse(same(gate, gate.setValue(FenceGateBlock.FACING, Direction.WEST)));
+        // waterlogged isn't one of them
+        assertFalse(same(fence, fence.setValue(BlockStateProperties.WATERLOGGED, true)));
+        assertTrue(same(Blocks.GRASS_BLOCK.defaultBlockState(), Blocks.GRASS_BLOCK.defaultBlockState().setValue(BlockStateProperties.SNOWY, true)));
+    }
+
+    @Test
+    public void vineFacesStayStrict() {
+        // same property objects as the fence's, but somebody picked these
+        assertTrue(VineBlock.NORTH == CrossCollisionBlock.NORTH);
+        BlockState vine = Blocks.VINE.defaultBlockState().setValue(VineBlock.NORTH, true);
+        assertFalse(same(vine, vine.setValue(VineBlock.NORTH, false).setValue(VineBlock.SOUTH, true)));
+        assertFalse(PlaceRules.derived(Blocks.VINE, VineBlock.NORTH));
+        assertTrue(PlaceRules.derived(Blocks.OAK_FENCE, CrossCollisionBlock.NORTH));
+    }
+
+    @Test
+    public void aimProofIsAFullCubeWithNothingToAim() {
+        assertTrue(PlaceRules.aimProof(Blocks.OAK_PLANKS.defaultBlockState()));
+        assertTrue(PlaceRules.aimProof(Blocks.COBBLESTONE.defaultBlockState()));
+        // vertical is the default and a side click still lays it down
+        assertFalse(PlaceRules.aimProof(Blocks.OAK_LOG.defaultBlockState()));
+        assertFalse(PlaceRules.aimProof(Blocks.OAK_STAIRS.defaultBlockState()));
+        assertFalse(PlaceRules.aimProof(Blocks.OAK_FENCE.defaultBlockState()));
+        assertFalse(PlaceRules.aimProof(Blocks.FURNACE.defaultBlockState()));
+        assertFalse(PlaceRules.aimProof(Blocks.OAK_SLAB.defaultBlockState().setValue(BlockStateProperties.SLAB_TYPE, SlabType.DOUBLE)));
+    }
+
+    @Test
+    public void onlyLowBlocksGoUnderOurFeet() {
+        assertTrue(PlaceRules.fitsUnderFeet(Blocks.OAK_SLAB.defaultBlockState()));
+        assertTrue(PlaceRules.fitsUnderFeet(Blocks.OAK_PLANKS.defaultBlockState()));
+        assertTrue(PlaceRules.fitsUnderFeet(Blocks.OAK_STAIRS.defaultBlockState()));
+        assertTrue(PlaceRules.fitsUnderFeet(Blocks.MOSS_CARPET.defaultBlockState()));
+        assertFalse(PlaceRules.fitsUnderFeet(Blocks.OAK_FENCE.defaultBlockState()));
+        assertFalse(PlaceRules.fitsUnderFeet(Blocks.COBBLESTONE_WALL.defaultBlockState()));
+        assertFalse(PlaceRules.fitsUnderFeet(Blocks.OAK_FENCE_GATE.defaultBlockState()));
+    }
+
+    @Test
+    public void adjacentGoalCanRuleOutOnTop() {
+        BlockPos target = new BlockPos(0, 64, 0);
+        BlockPos floor = target.below();
+        BuilderProcess.GoalAdjacent slab = new BuilderProcess.GoalAdjacent(target, floor, true, true);
+        BuilderProcess.GoalAdjacent fence = new BuilderProcess.GoalAdjacent(target, floor, true, false);
+        assertTrue(slab.isInGoal(0, 65, 0));
+        assertFalse(fence.isInGoal(0, 65, 0));
+        // the sides are still fine
+        assertTrue(fence.isInGoal(1, 64, 0));
+        assertFalse(slab.equals(fence));
+    }
+
+    @Test
+    public void clutchStaysOutOfTheBuildersSlots() {
+        HotbarHold hold = new HotbarHold();
+        hold.fetched(4, 100);
+        int useful = 1 << 2;
+        assertTrue(HotbarHold.busy(2, useful, hold, 110));
+        assertTrue(HotbarHold.busy(4, useful, hold, 110));
+        assertFalse(HotbarHold.busy(3, useful, hold, 110));
+        // the hold runs out, useful doesn't
+        assertFalse(HotbarHold.busy(4, useful, hold, 100 + HotbarHold.HOLD_TICKS));
+        assertTrue(HotbarHold.busy(2, useful, hold, 100 + HotbarHold.HOLD_TICKS));
+    }
+
+    @Test
+    public void builderFetchesStayOutOfTheLadderSlot() {
+        List<java.util.function.IntPredicate> tiers = new HotbarHold().tiers(i -> false, i -> i == 3, 0);
+        assertTrue(tiers.get(0).test(3));
+        assertTrue(tiers.get(1).test(3));
+        // a block the build needs still beats the ladder when nothing else is left
+        assertFalse(tiers.get(2).test(3));
+    }
+
+    @Test
+    public void adjacentGoalWithoutOnTopKeepsOurHeadOutOfTheCell() {
+        BlockPos target = new BlockPos(0, 64, 0);
+        BuilderProcess.GoalAdjacent fence = new BuilderProcess.GoalAdjacent(target, target.east(), true, false);
+        assertFalse(fence.isInGoal(0, 63, 0));
+        assertTrue(fence.isInGoal(-1, 63, 0));
+    }
+}

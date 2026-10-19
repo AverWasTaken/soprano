@@ -47,6 +47,12 @@ final class HotbarHold {
         return slot >= 0 && slot < 9 && fetchedAt[slot] != Long.MIN_VALUE && now - fetchedAt[slot] < HOLD_TICKS;
     }
 
+    // useful (a bit per slot) or held. what the clutch's ladder has to stay out of: it used to pick from everything but
+    // the hand and the throwaway, landed in the slot we just fetched into, and the two took turns all build long
+    static boolean busy(int slot, int usefulMask, HotbarHold hold, long now) {
+        return slot >= 0 && slot < 9 && ((usefulMask & (1 << slot)) != 0 || hold.held(slot, now));
+    }
+
     void clear() {
         Arrays.fill(fetchedAt, Long.MIN_VALUE);
     }
@@ -54,9 +60,15 @@ final class HotbarHold {
     // the disallowed sets to try in order: everything, then let go of the hold, then let it have slot 7 too.
     // useful slots are never up for grabs, that's the whole point of them
     List<IntPredicate> tiers(IntPredicate useful, long now) {
+        return tiers(useful, i -> false, now);
+    }
+
+    // clutch is the ladder's slot. kicking it out has keepClutchItemOnHotbar put it straight back somewhere else, so it
+    // goes with slot 7, only the last tier may take it
+    List<IntPredicate> tiers(IntPredicate useful, IntPredicate clutch, long now) {
         List<IntPredicate> tiers = new ArrayList<>();
-        tiers.add(i -> useful.test(i) || held(i, now) || i == THROWAWAY_SLOT);
-        tiers.add(i -> useful.test(i) || i == THROWAWAY_SLOT);
+        tiers.add(i -> useful.test(i) || held(i, now) || i == THROWAWAY_SLOT || clutch.test(i));
+        tiers.add(i -> useful.test(i) || i == THROWAWAY_SLOT || clutch.test(i));
         tiers.add(useful);
         return tiers;
     }

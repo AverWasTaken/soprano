@@ -17,6 +17,7 @@
 
 package baritone.utils;
 
+import adris.altoclef.trace.Trace;
 import baritone.Baritone;
 import baritone.api.utils.IPlayerContext;
 import net.minecraft.core.BlockPos;
@@ -36,6 +37,7 @@ import net.minecraft.world.phys.HitResult;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.function.Function;
 
 public class BlockPlaceHelper {
     // base ticks between places caused by tick logic
@@ -49,6 +51,10 @@ public class BlockPlaceHelper {
     // who hears about throwaway blocks we put down, null while nobody cares (then nothing gets tracked at all)
     private PlaceListener listener;
     private final List<Pending> pending = new ArrayList<>(2);
+    // every click while building, for the trace: what landed once the world shows it
+    private final List<Traced> traced = new ArrayList<>(2);
+    // what the build wants at a cell, for the same trace. null answers are air or outside the file
+    private Function<BlockPos, BlockState> want = pos -> null;
 
     BlockPlaceHelper(IPlayerContext playerContext) {
         this.ctx = playerContext;
@@ -68,6 +74,23 @@ public class BlockPlaceHelper {
             this.pos = pos;
             this.block = block;
         }
+    }
+
+    private static final class Traced {
+        final BlockPos pos;
+        final BlockState before;
+        final String who;
+        int age;
+
+        Traced(BlockPos pos, BlockState before, String who) {
+            this.pos = pos;
+            this.before = before;
+            this.who = who;
+        }
+    }
+
+    void setWant(Function<BlockPos, BlockState> want) {
+        this.want = want;
     }
 
     public void setPlaceListener(PlaceListener listener) {
@@ -91,7 +114,13 @@ public class BlockPlaceHelper {
     }
 
     public void tick(boolean rightClickRequested) {
+        tick(rightClickRequested, null);
+    }
+
+    // who is the trace's name for the click, null for no trace
+    public void tick(boolean rightClickRequested, String who) {
         confirm();
+        confirmTraced();
         if (rightClickTimer > 0) {
             rightClickTimer--;
             return;
@@ -104,10 +133,14 @@ public class BlockPlaceHelper {
         for (InteractionHand hand : InteractionHand.values()) {
             // asked before the click: the last block of a stack leaves the hand empty, and empty stacks say air
             Pending scaffold = scaffoldClick(hand, (BlockHitResult) mouseOver);
+            Traced trace = traceClick(who, hand, (BlockHitResult) mouseOver);
             if (ctx.playerController().processRightClickBlock(ctx.player(), ctx.world(), hand, (BlockHitResult) mouseOver) == InteractionResult.SUCCESS) {
                 ctx.player().swing(hand, SwingAnimation.DEFAULT, false);
                 if (scaffold != null) {
                     pending.add(scaffold);
+                }
+                if (trace != null) {
+                    traced.add(trace);
                 }
                 return;
             }
@@ -133,6 +166,44 @@ public class BlockPlaceHelper {
             return null; // already there, whatever happens next isn't ours
         }
         return new Pending(at, block);
+    }
+
+    // asked before the click like scaffoldClick, the stack can be gone after it
+    private Traced traceClick(String who, InteractionHand hand, BlockHitResult hit) {
+        if (who == null) {
+            return null;
+        }
+        ItemStack held = ctx.player().getItemInHand(hand);
+        if (held.isEmpty() || !(held.getItem() instanceof BlockItem)) {
+            return null; // a door or a chest getting opened isn't a placement
+        }
+        BlockPos at = new BlockPlaceContext(new UseOnContext(ctx.world(), ctx.player(), hand, held, hit) {}).getClickedPos().immutable();
+        BlockState before = ctx.world().getBlockState(at);
+        Trace.record("place at " + at.toShortString() + " by " + who + " want " + want.apply(at) + " held " + held.getItem() + " (was " + before + ")");
+        return new Traced(at, before, who);
+    }
+
+    // same patience as confirm, a click that never shows is worth a line too
+    private void confirmTraced() {
+        if (traced.isEmpty()) {
+            return;
+        }
+        if (ctx.world() == null) {
+            traced.clear();
+            return;
+        }
+        Iterator<Traced> it = traced.iterator();
+        while (it.hasNext()) {
+            Traced t = it.next();
+            BlockState now = ctx.world().getBlockState(t.pos);
+            if (!now.equals(t.before)) {
+                it.remove();
+                Trace.record("placed " + now + " at " + t.pos.toShortString() + " by " + t.who);
+            } else if (++t.age > CONFIRM_TICKS) {
+                it.remove();
+                Trace.record("place at " + t.pos.toShortString() + " by " + t.who + " never showed up");
+            }
+        }
     }
 
     // the click going out isn't the block being there, a full cell or an entity in the way eats it
