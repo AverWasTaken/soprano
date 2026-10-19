@@ -36,6 +36,7 @@ import adris.altoclef.tasks.resources.CollectBucketLiquidTask;
 import adris.altoclef.tasks.speedrun.KillEnderDragonTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.tasksystem.TaskChain;
+import adris.altoclef.tasksystem.TaskRunner;
 import adris.altoclef.util.helpers.CombatCommit;
 import adris.altoclef.util.helpers.CombatRules;
 import baritone.api.utils.input.Input;
@@ -67,10 +68,13 @@ final class TorchGate {
     }
 
     // the winning chain has to be the user's, every survival chain (mob defense, mlg, world survival, food) winning means
-    // the bot has something better to do. nothing winning at all is the idle gate with nothing to do, that's fine
+    // the bot has something better to do. except mob defense at 0 or below: that's its idle offer, and with the runner
+    // going and no user task it wins the wheel at 0 since nobody bids higher. it isn't fighting anything, survivalQuiet
+    // already checked that. null is the runner not having picked anything yet
     private static boolean chainQuiet(AltoClef ac) {
-        TaskChain chain = ac.getTaskRunner().getCurrentTaskChain();
-        if (chain == null) {
+        TaskRunner runner = ac.getTaskRunner();
+        TaskChain chain = runner.getCurrentTaskChain();
+        if (chain == null || (chain == ac.getMobDefenseChain() && runner.winnerPriority() <= 0)) {
             return true;
         }
         if (chain != ac.getUserTaskChain()) {
