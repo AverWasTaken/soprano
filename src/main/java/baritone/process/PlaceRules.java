@@ -62,7 +62,21 @@ public final class PlaceRules {
         }
         if (block instanceof RedstoneWireBlock) {
             return prop == RedstoneWireBlock.NORTH || prop == RedstoneWireBlock.EAST
-                    || prop == RedstoneWireBlock.SOUTH || prop == RedstoneWireBlock.WEST;
+                    || prop == RedstoneWireBlock.SOUTH || prop == RedstoneWireBlock.WEST
+                    || prop == RedstoneWireBlock.POWER;
+        }
+        if (block instanceof LeavesBlock) {
+            // distance is the log count, persistent is "a player put this here", which we are
+            return prop == LeavesBlock.DISTANCE || prop == LeavesBlock.PERSISTENT;
+        }
+        if (block instanceof NoteBlock) {
+            return prop == NoteBlock.INSTRUMENT; // whatever's under it
+        }
+        if (block instanceof DoorBlock) {
+            return prop == DoorBlock.POWERED;
+        }
+        if (block instanceof TrapDoorBlock) {
+            return prop == TrapDoorBlock.POWERED;
         }
         if (block instanceof SnowyBlock) {
             return prop == SnowyBlock.SNOWY;

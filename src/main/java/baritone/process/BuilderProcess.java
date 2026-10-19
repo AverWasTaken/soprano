@@ -1868,8 +1868,9 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             }
             if (kept(x, y, z, current)) {
                 // our own pillar, inside the box or out. x10 was still cheaper than a detour now and then, and a path
-                // that mines the scaffold it just put up is a loop that places it again
-                return COST_INF;
+                // that mines the scaffold it just put up is a loop that places it again. not INF though, standing on
+                // top of a tall pillar with no bucket the only way down is through it
+                return 1000;
             }
             BlockState sch = getSchematic(x, y, z, current);
             if (sch != null) {
