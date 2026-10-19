@@ -1007,7 +1007,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         if (cells.size() > 5) {
             line.append(" and ").append(cells.size() - 5).append(" more");
         }
-        logDirect(String.format("%s for %ss, leaving it alone for %ss: %s", why, STALL_TICKS / 20, GivenUp.EXPIRY_TICKS / 20, line));
+        logDebug(String.format("%s for %ss, leaving it alone for %ss: %s", why, STALL_TICKS / 20, GivenUp.EXPIRY_TICKS / 20, line));
     }
 
     // "stone" for a place, "dirt -> air" for a break, "dirt -> stone" for a swap
@@ -1118,7 +1118,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             }
         }
         if (!fresh.isEmpty()) {
-            logDirect("Can't place these yet, nothing to hold them up, leaving them out till they would stay: "
+            logDebug("Can't place these yet, nothing to hold them up, leaving them out till they would stay: "
                     + String.join(", ", fresh.subList(0, Math.min(fresh.size(), 5))) + (fresh.size() > 5 ? " and " + (fresh.size() - 5) + " more" : ""));
         }
     }
