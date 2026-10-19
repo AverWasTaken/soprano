@@ -608,9 +608,7 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
             // the top of a jump is a bit off it and still right next to the block it left, which isn't a start. and not going
             // up: the third tick of a jump is +1.0013, right on the next line, the famous number that gets you onto a block.
             // and not falling fast either, a fall past a ledge crosses block lines too. a perch has one tick of gravity, -0.08
-            double vy = ctx.player().getDeltaMovement().y;
-            BetterBlockPos support = ctx.player().onGround()
-                    || (Math.abs(ctx.player().position().y - feet.y) < 0.01 && vy <= 0 && vy > -0.1) ? lipSupport(feet) : null;
+            BetterBlockPos support = ctx.player().onGround() || perched(feet) ? lipSupport(feet) : null;
             if (support != null) {
                 return support;
             }
@@ -621,6 +619,17 @@ public final class PathingBehavior extends Behavior implements IPathingBehavior,
             }
         }
         return feet;
+    }
+
+    // off the ground but sitting still on a block line, which is what hanging off a lip looks like. so does hanging on a
+    // ladder or a vine with air under it, hovering in creative flight and bobbing in water, and for those the lip search
+    // finds some open cell next to us and the start flips between it and our feet every tick
+    private boolean perched(BetterBlockPos feet) {
+        double vy = ctx.player().getDeltaMovement().y;
+        if (Math.abs(ctx.player().position().y - feet.y) >= 0.01 || vy > 0 || vy <= -0.1) {
+            return false;
+        }
+        return !ctx.player().onClimbable() && !ctx.player().getAbilities().flying && !ctx.player().isInWater();
     }
 
     // the block we're sneaking (or just standing) off the edge of, if there's a plausible one
