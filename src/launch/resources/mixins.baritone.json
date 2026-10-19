@@ -21,6 +21,7 @@
     "MixinAltoClefOptions",
     "MixinAltoClefPlayerTouch",
     "MixinAltoClefScreen",
+    "MixinBlockItem",
     "MixinBlockStateBase",
     "MixinChunkArray",
     "MixinClientChunkProvider",

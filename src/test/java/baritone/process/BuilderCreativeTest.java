@@ -40,15 +40,17 @@ public class BuilderCreativeTest {
         assertEquals(Items.STONE, BuilderProcess.creativeItem(Blocks.STONE.defaultBlockState()));
         assertEquals(Items.OAK_STAIRS, BuilderProcess.creativeItem(Blocks.OAK_STAIRS.defaultBlockState().setValue(StairBlock.FACING, Direction.WEST)));
         assertEquals(Items.BEDROCK, BuilderProcess.creativeItem(Blocks.BEDROCK.defaultBlockState()));
+        // the torch item, the planner gets the wall one out of it
+        assertEquals(Items.TORCH, BuilderProcess.creativeItem(Blocks.WALL_TORCH.defaultBlockState()));
+        assertEquals(Items.OAK_SIGN, BuilderProcess.creativeItem(Blocks.OAK_WALL_SIGN.defaultBlockState()));
     }
 
     @Test
     public void nothingTheBuilderCantClickInGetsHandedOut() {
-        // the place branch only does block items, and a torch item places a standing torch
+        // the place branch only does block items
         assertNull(BuilderProcess.creativeItem(Blocks.WATER.defaultBlockState()));
         assertNull(BuilderProcess.creativeItem(Blocks.LAVA.defaultBlockState()));
         assertNull(BuilderProcess.creativeItem(Blocks.FIRE.defaultBlockState()));
-        assertNull(BuilderProcess.creativeItem(Blocks.WALL_TORCH.defaultBlockState()));
         assertNull(BuilderProcess.creativeItem(Blocks.AIR.defaultBlockState()));
     }
 }

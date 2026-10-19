@@ -77,8 +77,12 @@ public class PlacementPlannerTest {
         // air is no item, two of them aren't a match
         assertFalse(BuilderProcess.sameItem(Blocks.AIR.defaultBlockState(), Blocks.AIR.defaultBlockState()));
         assertTrue(BuilderProcess.canSupply(Blocks.STONE.defaultBlockState(), Blocks.STONE.defaultBlockState()));
-        // same item, but clicking it in only ever gives the standing torch
-        assertFalse(BuilderProcess.canSupply(Blocks.TORCH.defaultBlockState(), Blocks.WALL_TORCH.defaultBlockState()));
+        // a torch stack is the wall torch's stack too, the planner gets the wall one out of the item
+        assertTrue(BuilderProcess.canSupply(Blocks.TORCH.defaultBlockState(), Blocks.WALL_TORCH.defaultBlockState()));
+        assertTrue(BuilderProcess.canSupply(Blocks.OAK_SIGN.defaultBlockState(), Blocks.OAK_WALL_SIGN.defaultBlockState()));
+        assertFalse(BuilderProcess.canSupply(Blocks.TORCH.defaultBlockState(), Blocks.SOUL_WALL_TORCH.defaultBlockState()));
+        // kelp plant has no item, so kelp doesn't count for it
+        assertFalse(BuilderProcess.sameItem(Blocks.KELP.defaultBlockState(), Blocks.KELP_PLANT.defaultBlockState()));
     }
 
     @Test

@@ -57,6 +57,7 @@ import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.item.StandingAndWallBlockItem;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.block.*;
@@ -123,9 +124,12 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     private Long2ObjectOpenHashMap<CellPlan> plans;
     // cells planned per tick, nearest first. the rest use upstream's goal till their turn
     private static final int PLANS_PER_TICK = 8;
+    // a block this close changing can move the raytrace or the feet of a plan, chebyshev, same box the scans use
+    private static final int PLAN_STALE_RADIUS = 5;
     private int planBudget;
     // cells left out of the goal because the block can't stay there yet (a wall torch with no wall), logged once each
     private LongOpenHashSet droppedLogged;
+    private LongOpenHashSet torchNoPlanLogged;
     private List<BetterBlockPos> dropped = List.of();
     // the cells behind desirableOnHotbar, same order, so creative can hand out the nearest one's block first
     private List<BetterBlockPos> desirableCells = List.of();
@@ -270,6 +274,7 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         // and the plans with them, they're cheap to make again and a stale one costs a walk
         plans = null;
         droppedLogged = null;
+        torchNoPlanLogged = null;
         dropped = List.of();
     }
 
@@ -962,14 +967,14 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     // the nearby scan in recalcNearby land here, the event alone misses single block updates
     private void blockChanged(int x, int y, int z) {
         if (givenUp != null) {
-            givenUp.nearbyChanged(x, y, z);
+            givenUp.nearbyChanged(x, y, z, builderTicks);
         }
         if (plans != null && !plans.isEmpty()) {
             // stale, not gone: the old feet stay the goal till the new plan is in, or the goal would flip to upstream's
             // and back and drag the path with it
             for (Long2ObjectMap.Entry<CellPlan> e : plans.long2ObjectEntrySet()) {
                 BetterBlockPos cell = BetterBlockPos.deserializeFromLong(e.getLongKey());
-                if (Math.abs(cell.x - x) <= GivenUp.NEARBY && Math.abs(cell.y - y) <= GivenUp.NEARBY && Math.abs(cell.z - z) <= GivenUp.NEARBY) {
+                if (Math.abs(cell.x - x) <= PLAN_STALE_RADIUS && Math.abs(cell.y - y) <= PLAN_STALE_RADIUS && Math.abs(cell.z - z) <= PLAN_STALE_RADIUS) {
                     e.getValue().stale = true;
                 }
             }
@@ -1005,13 +1010,14 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
 
     // the block item creative would hand itself for this state, null if there's nothing that places it. only block
     // items: the place branch can't pour a bucket, and an item that comes out as a different block (kelp for a kelp
-    // plant) would just be a goal the stall check has to burn down. those stay missing and the pause names them
+    // plant) would just be a goal the stall check has to burn down. those stay missing and the pause names them.
+    // the torch item for a wall torch is fine though, the planner asks the item and gets the wall one out of it
     static Item creativeItem(BlockState desired) {
         if (desired.getBlock() instanceof LiquidBlock) {
             return null;
         }
         Item item = desired.getBlock().asItem();
-        return item instanceof BlockItem block && block.getBlock() == desired.getBlock() ? item : null;
+        return item instanceof BlockItem block && (block.getBlock() == desired.getBlock() || item instanceof StandingAndWallBlockItem) ? item : null;
     }
 
     private long[] slotUsed() {
@@ -1157,6 +1163,17 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         }
     }
 
+    // wall vs standing comes off the pitch, not the face we click, so a standing torch right next to a wall wants us
+    // looking down steep. if those never get a plan this is where it shows. once per cell, replans would spam it
+    private void logNoTorchPlan(BetterBlockPos pos, BlockState desired) {
+        if (torchNoPlanLogged == null) {
+            torchNoPlanLogged = new LongOpenHashSet();
+        }
+        if (torchNoPlanLogged.add(BetterBlockPos.serializeToLong(pos.x, pos.y, pos.z))) {
+            logDebug(String.format("No spot in reach to place %s at %s", desired, pos));
+        }
+    }
+
     // plans the nearest cells that don't have one (or have a stale one) yet, up to this tick's budget
     private void planCells(BuilderCalculationContext bcc, List<BetterBlockPos> cells) {
         if (planBudget <= 0 || cells.isEmpty()) {
@@ -1184,6 +1201,9 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
             }
             BlockState desired = bcc.getSchematic(pos.x, pos.y, pos.z, bcc.bsi.get0(pos.x, pos.y, pos.z));
             List<PlacementPlanner.Feet> found = planner().planFeet(pos, desired, bcc.bsi, bcc::getSchematic);
+            if (found.isEmpty() && desired.getBlock().asItem() instanceof StandingAndWallBlockItem) {
+                logNoTorchPlan(pos, desired);
+            }
             plans.put(BetterBlockPos.serializeToLong(pos.x, pos.y, pos.z), new CellPlan(desired, found));
         }
     }
@@ -1791,11 +1811,12 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     }
 
     // same item, any state. for "do i own this" on aimed blocks, whose approxPlaceable state is just whichever way we
-    // happened to face. AIR on both sides is no item, not a match. same block too: a torch item shares its item with
-    // the wall torch, but the place branch simulates the item's own block and only ever gets a standing one out of it
+    // happened to face. AIR on both sides is no item, not a match (kelp plant has no item either, so it can't pass as
+    // kelp). by item, not block: approxPlaceable says standing torch for a torch stack, and that's still the stack the
+    // wall torch comes out of, the planner asks the item which one it places
     static boolean sameItem(BlockState have, BlockState desired) {
         Item item = have.getBlock().asItem();
-        return item != Items.AIR && have.getBlock() == desired.getBlock();
+        return item != Items.AIR && item == desired.getBlock().asItem();
     }
 
     static boolean containsItem(Collection<BlockState> states, BlockState state) {
