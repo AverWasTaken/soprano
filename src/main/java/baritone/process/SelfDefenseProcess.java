@@ -54,8 +54,9 @@ import net.minecraft.world.phys.Vec3;
 // gets onLostControl, the job and even its path segment come back untouched. the decisions live in SelfDefenseRules
 public final class SelfDefenseProcess extends BaritoneProcessHelper {
 
-    // above every -1 job, under #pause and elytra (0), backfill (5) and the inventory pauser (5.1)
-    private static final double PRIORITY = -0.5;
+    // above every -1 job and the torch placer (-0.5, a zombie beats a dark corner), under #pause and elytra (0), backfill
+    // (5) and the inventory pauser (5.1)
+    private static final double PRIORITY = -0.4;
     // a bare player hits for 1, see ItemHelper
     private static final float FIST = 1;
 
