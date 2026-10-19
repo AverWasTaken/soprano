@@ -10,6 +10,7 @@ import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.tags.EnchantmentTags;
+import net.minecraft.tags.ItemTags;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.DyeColor;
@@ -491,6 +492,16 @@ public class ItemHelper {
         if (item instanceof HoeItem) return "hoe";
         if (item instanceof SwordItem) return "sword";
         return null;
+    }
+
+    // same tag check as the newer lines, where the sword and axe classes are gone. the classes still exist here and
+    // toolKind uses them, they pick the same vanilla items. the tags only exist once a world's data is loaded
+    public static boolean isSword(Item item) {
+        return item.builtInRegistryHolder().is(ItemTags.SWORDS);
+    }
+
+    public static boolean isAxe(Item item) {
+        return item.builtInRegistryHolder().is(ItemTags.AXES);
     }
 
     /**
