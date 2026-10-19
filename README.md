@@ -30,6 +30,14 @@
 | 1.21.11 | 1.2.0 | Fabric, Forge, NeoForge | Coming soon |
 | 1.21.4 (2b2t) | 1.0.2 | Fabric, Forge, NeoForge | [Soprano v1.0.2](https://github.com/AverWasTaken/soprano/releases/tag/soprano-v1.0.2) |
 
+<details>
+<summary><b>The version I want isn't here</b></summary>
+<br>
+
+Join our [Discord](https://discord.gg/ccjQaGSSkT) and put a request in the `version-request` channel!
+
+</details>
+
 1. Open the release for your Minecraft version.
 2. Download the jar for your loader and drop it in your `mods` folder, replacing Baritone if you had it.
 3. In game, try `#goto 1000 500`, then `#stop`.
