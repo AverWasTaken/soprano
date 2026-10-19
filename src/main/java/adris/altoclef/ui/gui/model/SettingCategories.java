@@ -44,7 +44,7 @@ public final class SettingCategories {
     private static final Set<String> EVERYDAY = Set.of(
             "allowBreak", "allowSprint", "allowPlace", "allowPlaceInFluidsSource", "allowPlaceInFluidsFlow",
             "allowInventory", "ticksBetweenInventoryMoves", "inventoryMoveOnlyIfStationary", "autoTool",
-            "assumeExternalAutoTool", "allowWaterBucketFall", "allowLadderClutch", "pickupLadders", "assumeWalkOnWater",
+            "assumeExternalAutoTool", "allowWaterBucketFall", "allowLadderClutch", "pickupLadders", "selfDefense", "assumeWalkOnWater",
             "assumeStep", "assumeSafeWalk", "allowParkour", "allowParkourPlace", "allowParkourAscend", "allowNeos",
             "allowClimbJumps", "allowVines", "allowWalkOnBottomSlab", "allowWalkOnMagmaBlocks", "allowDiagonalAscend",
             "allowDiagonalDescend", "allowDownward", "allowSwimming", "allowBoats", "boatPickup", "sprintAscends",
