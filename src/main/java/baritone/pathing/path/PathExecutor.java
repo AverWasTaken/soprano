@@ -29,6 +29,7 @@ import baritone.api.utils.input.Input;
 import baritone.behavior.PathingBehavior;
 import baritone.pathing.calc.AbstractNodeCostSearch;
 import baritone.pathing.movement.Movement;
+import baritone.pathing.movement.FailedMoves;
 import baritone.pathing.movement.MovementHelper;
 import baritone.pathing.movement.MovementState;
 import baritone.pathing.movement.StairSteps;
@@ -1593,7 +1594,27 @@ public class PathExecutor implements IPathExecutor, Helper {
     // before the cancel, so the replan it triggers already sees it and a fast fail loop climbs the ladder. only the movement
     // itself failing counts, a process pulling the path out from under us says nothing about the edge
     private void rememberFailure(Movement movement) {
+        if (climbEdge(movement)) {
+            return;
+        }
         behavior.failedMoves().record(movement.getSrc(), movement.getDest(), ctx.world(), System.currentTimeMillis());
+    }
+
+    // a climb that runs out of time is the bot swaying on the rungs, not a bad edge. remembering those made A* walk the
+    // long way round every ladder it had ever wobbled on. only edges that change height (plus the climb jumps, a leap
+    // can land level): a flat walk under hanging cave vines that really is blocked still has to count. the cell over src
+    // is the one a climb up goes into, the one under dest is the top rung it comes off
+    private boolean climbEdge(Movement movement) {
+        BetterBlockPos src = movement.getSrc();
+        BetterBlockPos dest = movement.getDest();
+        if (src.y == dest.y && !(movement instanceof MovementClimb)) {
+            return false;
+        }
+        return climbable(src) || climbable(src.above()) || climbable(dest) || climbable(dest.below());
+    }
+
+    private boolean climbable(BetterBlockPos pos) {
+        return FailedMoves.climbable(ctx.world().getBlockState(pos).getBlock());
     }
 
     private void cancel() {

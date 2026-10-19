@@ -17,11 +17,16 @@
 
 package baritone.pathing.movement;
 
+import adris.altoclef.util.helpers.ItemFixture;
 import baritone.api.utils.BetterBlockPos;
+import net.minecraft.world.level.block.Blocks;
+import org.junit.BeforeClass;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertTrue;
 
 public class FailedMovesTest {
 
@@ -30,6 +35,11 @@ public class FailedMovesTest {
     private static final BetterBlockPos OTHER = new BetterBlockPos(-2, 74, -5);
     private static final Object OVERWORLD = new Object();
     private static final Object NETHER = new Object();
+
+    @BeforeClass
+    public static void boot() {
+        ItemFixture.boot(); // climbable asks real blocks
+    }
 
     private static double penalty(FailedMoves.Snapshot s, BetterBlockPos from, BetterBlockPos to) {
         return s.penalty(from.x, from.y, from.z, to.x, to.y, to.z);
@@ -114,5 +124,18 @@ public class FailedMovesTest {
         FailedMoves.Snapshot before = fails.snapshot(OVERWORLD, 0);
         fails.record(SRC, DEST, OVERWORLD, 0);
         assertEquals(FailedMoves.FIRST, penalty(before, SRC, DEST), 0);
+    }
+
+    // a timed out climb is sway on the rungs, PathExecutor doesn't hold it against the edge
+    @Test
+    public void everythingYouClimbCounts() {
+        assertTrue(FailedMoves.climbable(Blocks.LADDER));
+        assertTrue(FailedMoves.climbable(Blocks.VINE));
+        assertTrue(FailedMoves.climbable(Blocks.SCAFFOLDING));
+        assertTrue(FailedMoves.climbable(Blocks.TWISTING_VINES_PLANT));
+        assertTrue(FailedMoves.climbable(Blocks.CAVE_VINES));
+        assertFalse(FailedMoves.climbable(Blocks.AIR));
+        assertFalse(FailedMoves.climbable(Blocks.STONE));
+        assertFalse(FailedMoves.climbable(Blocks.OAK_STAIRS));
     }
 }
