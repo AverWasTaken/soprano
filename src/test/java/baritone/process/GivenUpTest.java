@@ -81,19 +81,24 @@ public class GivenUpTest {
         for (int i = 0; i < GivenUp.MAX_ATTEMPTS; i++) {
             g.giveUp(A, 0);
         }
-        g.nearbyChanged(A.x + GivenUp.NEARBY + 1, A.y, A.z);
+        g.nearbyChanged(A.x + GivenUp.NEARBY + 1, A.y, A.z, 10);
         assertTrue(g.isGivenUp(A.x, A.y, A.z, 10));
-        g.nearbyChanged(A.x + GivenUp.NEARBY, A.y - 2, A.z + 1);
+        g.nearbyChanged(A.x + GivenUp.NEARBY, A.y - 1, A.z + 1, 10);
         assertFalse(g.isGivenUp(A.x, A.y, A.z, 10));
-        // and it starts counting from scratch
-        assertEquals(1, g.giveUp(A, 10));
+        // one more go, not a fresh count: the next stall puts it straight back for good
+        assertEquals(GivenUp.MAX_ATTEMPTS, g.giveUp(A, 10));
+        assertTrue(g.isGivenUp(A.x, A.y, A.z, Long.MAX_VALUE - 1));
+        // and the next change buys exactly one more again
+        g.nearbyChanged(A.x, A.y + 1, A.z, 20);
+        assertFalse(g.isGivenUp(A.x, A.y, A.z, 20));
+        assertEquals(GivenUp.MAX_ATTEMPTS, g.giveUp(A, 20));
     }
 
     @Test
     public void aChangeDoesntCutATimedOneShort() {
         GivenUp g = new GivenUp();
         g.giveUp(A, 0);
-        g.nearbyChanged(A.x, A.y + 1, A.z);
+        g.nearbyChanged(A.x, A.y + 1, A.z, 1);
         assertTrue(g.isGivenUp(A.x, A.y, A.z, 1));
     }
 }

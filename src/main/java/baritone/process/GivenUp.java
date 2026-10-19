@@ -26,8 +26,9 @@ final class GivenUp {
 
     static final int EXPIRY_TICKS = 200;
     static final int MAX_ATTEMPTS = 3;
-    // a block this close changing is a reason to look at a for good one again (chebyshev, same box the scans use)
-    static final int NEARBY = 5;
+    // a block this close changing is a reason to look at a for good one again. just the cell and its neighbours,
+    // with the old 5 box every block the builder put down anywhere near kept waking up the whole stuck pile
+    static final int NEARBY = 1;
 
     private final Long2ObjectOpenHashMap<Entry> cells = new Long2ObjectOpenHashMap<>();
 
@@ -74,13 +75,18 @@ final class GivenUp {
         return any;
     }
 
-    // a neighbour going in or coming out can be exactly what a for good one was waiting on, so it starts over
-    void nearbyChanged(int x, int y, int z) {
+    // a neighbour going in or coming out can be exactly what a for good one was waiting on, so it gets one more go.
+    // one, not a fresh MAX_ATTEMPTS: if the change didn't help it's back to for good after a single stall
+    void nearbyChanged(int x, int y, int z, long now) {
         if (cells.isEmpty()) {
             return;
         }
-        cells.values().removeIf(e -> e.until == Long.MAX_VALUE
-                && Math.abs(e.x - x) <= NEARBY && Math.abs(e.y - y) <= NEARBY && Math.abs(e.z - z) <= NEARBY);
+        for (Entry e : cells.values()) {
+            if (e.until == Long.MAX_VALUE && Math.abs(e.x - x) <= NEARBY && Math.abs(e.y - y) <= NEARBY && Math.abs(e.z - z) <= NEARBY) {
+                e.attempts = MAX_ATTEMPTS - 1;
+                e.until = now;
+            }
+        }
     }
 
     boolean isEmpty() {

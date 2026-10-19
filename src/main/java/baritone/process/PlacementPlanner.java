@@ -25,12 +25,14 @@ import baritone.api.utils.Rotation;
 import baritone.api.utils.RotationUtils;
 import baritone.pathing.movement.MovementHelper;
 import baritone.utils.BlockStateInterface;
+import baritone.utils.accessor.IBlockItem;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.Pose;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.StandingAndWallBlockItem;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.ClipContext;
@@ -297,7 +299,17 @@ final class PlacementPlanner {
             if (!place.canPlace()) {
                 return null;
             }
-            return ((BlockItem) stack.getItem()).getBlock().getStateForPlacement(place);
+            BlockItem item = (BlockItem) stack.getItem();
+            place = item.updatePlacementContext(place);
+            if (place == null) {
+                return null;
+            }
+            // the block's own getStateForPlacement only ever gives a torch item the standing torch. the wall one is
+            // the item's call, off which way we look. only these go through the item though: plain BlockItem's
+            // version also checks entities, us included, and we're not even standing where the plan imagines us
+            return item instanceof StandingAndWallBlockItem
+                    ? ((IBlockItem) item).baritone$placementState(place)
+                    : item.getBlock().getStateForPlacement(place);
         } finally {
             ctx.player().setYRot(yaw);
             ctx.player().setXRot(pitch);
