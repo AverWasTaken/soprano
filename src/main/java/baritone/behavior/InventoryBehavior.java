@@ -370,6 +370,14 @@ public final class InventoryBehavior extends Behavior implements Helper {
         return ThrowawayPicks.classify(alto.isInteractionPaused(), alto.shouldAvoidPlacingAt(x, y, z), haveAny, haveUsable, usableOnHotbar).why;
     }
 
+    // a clutch is a parachute for fall damage. creative and friends take none, and the builder's ladders are schematic
+    // blocks, a clutch would hang one where the file wants air and the builder would break it again right under us
+    public boolean clutchAllowed() {
+        LocalPlayer player = ctx.player();
+        return ExperimentalMovement.allowLadderClutch() && player != null && !player.getAbilities().invulnerable
+                && baritone.getPathingControlManager().mostRecentInControl().orElse(null) != baritone.getBuilderProcess();
+    }
+
     // vine first, it has no collision box so we can't land on top of it or get the placement refused for standing in it
     // hotbar only, same as the water bucket: there's no time to shuffle the inventory in the middle of a fall
     public Item pickClutchItem(boolean select) {

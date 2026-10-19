@@ -227,7 +227,7 @@ public class CalculationContext {
         this.hasWaterBucket = hasWaterBucket;
         // same idea as the bucket, except it isn't banned in the nether. the setting goes first so nobody scans the hotbar for nothing
         // (no baritone means a test building one by hand, with fastMode on it would otherwise go looking for a hotbar)
-        Item clutchItem = baritone != null && ExperimentalMovement.allowLadderClutch() ? ((Baritone) baritone).getInventoryBehavior().pickClutchItem(false) : null;
+        Item clutchItem = baritone != null && ((Baritone) baritone).getInventoryBehavior().clutchAllowed() ? ((Baritone) baritone).getInventoryBehavior().pickClutchItem(false) : null;
         this.hasClutchItem = clutchItem != null;
         this.clutchPicksUp = clutchItem == Items.LADDER && Baritone.settings().pickupLadders.value;
         this.health = health;
