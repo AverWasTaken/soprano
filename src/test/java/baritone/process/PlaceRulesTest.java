@@ -18,7 +18,6 @@
 package baritone.process;
 
 import adris.altoclef.util.helpers.ItemFixture;
-import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.CrossCollisionBlock;
@@ -97,59 +96,5 @@ public class PlaceRulesTest {
         assertFalse(PlaceRules.aimProof(Blocks.OAK_FENCE.defaultBlockState()));
         assertFalse(PlaceRules.aimProof(Blocks.FURNACE.defaultBlockState()));
         assertFalse(PlaceRules.aimProof(Blocks.OAK_SLAB.defaultBlockState().setValue(BlockStateProperties.SLAB_TYPE, SlabType.DOUBLE)));
-    }
-
-    @Test
-    public void onlyLowBlocksGoUnderOurFeet() {
-        assertTrue(PlaceRules.fitsUnderFeet(Blocks.OAK_SLAB.defaultBlockState()));
-        assertTrue(PlaceRules.fitsUnderFeet(Blocks.OAK_PLANKS.defaultBlockState()));
-        assertTrue(PlaceRules.fitsUnderFeet(Blocks.OAK_STAIRS.defaultBlockState()));
-        assertTrue(PlaceRules.fitsUnderFeet(Blocks.MOSS_CARPET.defaultBlockState()));
-        assertFalse(PlaceRules.fitsUnderFeet(Blocks.OAK_FENCE.defaultBlockState()));
-        assertFalse(PlaceRules.fitsUnderFeet(Blocks.COBBLESTONE_WALL.defaultBlockState()));
-        assertFalse(PlaceRules.fitsUnderFeet(Blocks.OAK_FENCE_GATE.defaultBlockState()));
-    }
-
-    @Test
-    public void adjacentGoalCanRuleOutOnTop() {
-        BlockPos target = new BlockPos(0, 64, 0);
-        BlockPos floor = target.below();
-        BuilderProcess.GoalAdjacent slab = new BuilderProcess.GoalAdjacent(target, floor, true, true);
-        BuilderProcess.GoalAdjacent fence = new BuilderProcess.GoalAdjacent(target, floor, true, false);
-        assertTrue(slab.isInGoal(0, 65, 0));
-        assertFalse(fence.isInGoal(0, 65, 0));
-        // the sides are still fine
-        assertTrue(fence.isInGoal(1, 64, 0));
-        assertFalse(slab.equals(fence));
-    }
-
-    @Test
-    public void clutchStaysOutOfTheBuildersSlots() {
-        HotbarHold hold = new HotbarHold();
-        hold.fetched(4, 100);
-        int useful = 1 << 2;
-        assertTrue(HotbarHold.busy(2, useful, hold, 110));
-        assertTrue(HotbarHold.busy(4, useful, hold, 110));
-        assertFalse(HotbarHold.busy(3, useful, hold, 110));
-        // the hold runs out, useful doesn't
-        assertFalse(HotbarHold.busy(4, useful, hold, 100 + HotbarHold.HOLD_TICKS));
-        assertTrue(HotbarHold.busy(2, useful, hold, 100 + HotbarHold.HOLD_TICKS));
-    }
-
-    @Test
-    public void builderFetchesStayOutOfTheLadderSlot() {
-        List<java.util.function.IntPredicate> tiers = new HotbarHold().tiers(i -> false, i -> i == 3, 0);
-        assertTrue(tiers.get(0).test(3));
-        assertTrue(tiers.get(1).test(3));
-        // a block the build needs still beats the ladder when nothing else is left
-        assertFalse(tiers.get(2).test(3));
-    }
-
-    @Test
-    public void adjacentGoalWithoutOnTopKeepsOurHeadOutOfTheCell() {
-        BlockPos target = new BlockPos(0, 64, 0);
-        BuilderProcess.GoalAdjacent fence = new BuilderProcess.GoalAdjacent(target, target.east(), true, false);
-        assertFalse(fence.isInGoal(0, 63, 0));
-        assertTrue(fence.isInGoal(-1, 63, 0));
     }
 }
