@@ -144,7 +144,9 @@ public class BlockPlaceHelper {
                 }
                 return;
             }
-            if (!ctx.player().getItemInHand(hand).isEmpty() && ctx.playerController().processRightClick(ctx.player(), ctx.world(), hand) == InteractionResult.SUCCESS) {
+            // a bucket says success with the emptied bucket attached, which isn't == SUCCESS, so the off hand used to
+            // fire right after every pour
+            if (!ctx.player().getItemInHand(hand).isEmpty() && ctx.playerController().processRightClick(ctx.player(), ctx.world(), hand) instanceof InteractionResult.Success) {
                 return;
             }
         }
