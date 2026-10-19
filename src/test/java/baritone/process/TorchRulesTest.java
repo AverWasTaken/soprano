@@ -46,6 +46,25 @@ public class TorchRulesTest {
     }
 
     @Test
+    public void boxOverlapIsStrict() {
+        // a player box (0.6 wide, 1.8 tall) standing in the middle of 10,64,10
+        double minX = 10.2, minY = 64, minZ = 10.2, maxX = 10.8, maxY = 65.8, maxZ = 10.8;
+        assertTrue(TorchRules.overlaps(minX, minY, minZ, maxX, maxY, maxZ, 10, 64, 10));
+        assertTrue(TorchRules.overlaps(minX, minY, minZ, maxX, maxY, maxZ, 10, 65, 10));
+        assertFalse(TorchRules.overlaps(minX, minY, minZ, maxX, maxY, maxZ, 11, 64, 10));
+        assertFalse(TorchRules.overlaps(minX, minY, minZ, maxX, maxY, maxZ, 10, 63, 10));
+        assertFalse(TorchRules.overlaps(minX, minY, minZ, maxX, maxY, maxZ, 10, 66, 10));
+        // straddling the line between two columns: both are ours
+        assertTrue(TorchRules.overlaps(10.7, 64, 10.2, 11.3, 65.8, 10.8, 10, 64, 10));
+        assertTrue(TorchRules.overlaps(10.7, 64, 10.2, 11.3, 65.8, 10.8, 11, 64, 10));
+        // just touching the face isn't in it
+        assertFalse(TorchRules.overlaps(10.4, 64, 10.2, 11.0, 65.8, 10.8, 11, 64, 10));
+        // negative coords, the int is the block's low corner
+        assertTrue(TorchRules.overlaps(-0.8, 64, -0.8, -0.2, 65.8, -0.2, -1, 64, -1));
+        assertFalse(TorchRules.overlaps(-0.8, 64, -0.8, -0.2, 65.8, -0.2, 0, 64, 0));
+    }
+
+    @Test
     public void radiusStopsAtReach() {
         assertEquals(4, TorchRules.radius(4, 4.5));
         assertEquals(5, TorchRules.radius(10, 4.5));

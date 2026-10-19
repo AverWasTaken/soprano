@@ -166,16 +166,89 @@ public class TorchMemoryTest {
     }
 
     @Test
+    public void settleWaitsForTheSlideToStop() {
+        TorchMemory memory = new TorchMemory();
+        // pause asked but not landed yet
+        assertFalse(memory.settled(100, false, 0));
+        // landed, still sliding
+        assertFalse(memory.settled(101, true, 0.2));
+        assertFalse(memory.settled(102, true, 0.05));
+        // stopped
+        assertTrue(memory.settled(103, true, 0.005));
+        // and it sticks, a little push from a mob doesn't restart the aim
+        assertTrue(memory.settled(104, true, 0.05));
+    }
+
+    @Test
+    public void settleGivesUpWaitingAfterAFewTicks() {
+        TorchMemory memory = new TorchMemory();
+        // something keeps nudging us, never under the line
+        for (int t = 0; t < TorchMemory.SETTLE_TICKS; t++) {
+            assertFalse(memory.settled(200 + t, true, 0.1));
+        }
+        assertTrue(memory.settled(200 + TorchMemory.SETTLE_TICKS, true, 0.1));
+    }
+
+    @Test
+    public void aBrokenPauseStartsTheWaitOver() {
+        TorchMemory memory = new TorchMemory();
+        assertTrue(memory.settled(10, true, 0));
+        // the pause broke for a tick
+        assertFalse(memory.settled(11, false, 0));
+        assertFalse(memory.settled(12, true, 0.3));
+        // a gap of ticks where we weren't asked at all is the same thing
+        assertTrue(memory.settled(13, true, 0));
+        assertFalse(memory.settled(20, true, 0.3));
+    }
+
+    @Test
+    public void aimClockOnlyStartsOnceSettled() {
+        TorchMemory memory = new TorchMemory();
+        long t = 300;
+        // the tick flow TorchProcess runs: ask, land, slide, then aim
+        assertFalse(memory.settled(t, false, 0.3));
+        t++;
+        while (!memory.settled(t, true, 0.3)) {
+            t++;
+        }
+        long aimStart = t;
+        // a whole slide's worth of ticks went by before this, none of it on the aim clock
+        assertEquals(300 + 1 + TorchMemory.SETTLE_TICKS, aimStart);
+        for (; t < aimStart + TorchMemory.AIM_TIMEOUT; t++) {
+            assertTrue(memory.settled(t, true, 0));
+            assertFalse(memory.aimTimedOut(CELL, t));
+        }
+        assertTrue(memory.aimTimedOut(CELL, t));
+        // timed out means blacklisted for a while
+        assertTrue(memory.skip(CELL, t + 1));
+        assertFalse(memory.skip(CELL, t + TorchMemory.AIM_BLACKLIST_TICKS));
+    }
+
+    @Test
+    public void stickyTargetKeepsItsClock() {
+        TorchMemory memory = new TorchMemory();
+        // same cell every tick: one clock. a re-pick to another cell is a fresh clock
+        for (int t = 0; t < TorchMemory.AIM_TIMEOUT - 1; t++) {
+            assertFalse(memory.aimTimedOut(CELL, t));
+        }
+        assertFalse(memory.aimTimedOut(OTHER, TorchMemory.AIM_TIMEOUT - 1));
+        assertFalse(memory.aimTimedOut(OTHER, TorchMemory.AIM_TIMEOUT));
+        assertFalse(memory.skip(CELL, TorchMemory.AIM_TIMEOUT));
+    }
+
+    @Test
     public void resetForgetsEverything() {
         TorchMemory memory = new TorchMemory();
         memory.clicked(CELL, 1000);
         memory.aimTimedOut(OTHER, 1000);
         memory.foundNothing(1000);
+        memory.settled(1000, true, 0);
         memory.reset();
         // a new player counts from 0, nothing from the old clock may linger
         assertFalse(memory.coolingDown(0));
         assertFalse(memory.skip(CELL, 0));
         assertFalse(memory.due(5000).isPresent());
         assertTrue(memory.scanDue(0));
+        assertFalse(memory.settled(1, true, 0.3));
     }
 }

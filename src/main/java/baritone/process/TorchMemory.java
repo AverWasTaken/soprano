@@ -41,6 +41,11 @@ final class TorchMemory {
     static final int AIM_BLACKLIST_TICKS = 100;
     // nothing dark around, the next few scans would say the same thing
     static final int EMPTY_SCAN_BACKOFF = 5;
+    // the pause stops the keys, not the bot. it slides on for a few ticks, and aiming from a moving eye puts the crosshair
+    // a hair off the face by the time the look lands. friction about halves the speed every tick, so a sprint is under
+    // the line in about 6
+    static final int SETTLE_TICKS = 6;
+    static final double SETTLE_SPEED = 0.01;
 
     private final Map<Long, Long> tried = new HashMap<>();
     private final Map<Long, Integer> misses = new HashMap<>();
@@ -55,6 +60,10 @@ final class TorchMemory {
     private long aimSince;
     private long aimLast;
     private long nextScan;
+    private boolean landed;
+    private boolean settled;
+    private long landedAt;
+    private long landedLast;
 
     TorchMemory() {
         reset();
@@ -68,6 +77,7 @@ final class TorchMemory {
         clicked = false;
         pending = false;
         aiming = false;
+        landed = false;
         nextScan = Long.MIN_VALUE;
     }
 
@@ -137,6 +147,26 @@ final class TorchMemory {
 
     void stopAiming() {
         aiming = false;
+    }
+
+    // called every tick we hold the pause. true once it has landed and we stopped sliding, or SETTLE_TICKS after it landed
+    // in case something keeps nudging us. sticks until the pause breaks, a tick without it starts the wait over. the aim
+    // clock only starts after this, so the slide doesn't eat the aim time
+    boolean settled(long now, boolean pauseLanded, double speed) {
+        if (!pauseLanded) {
+            landed = false;
+            return false;
+        }
+        if (!landed || now - landedLast > 1) {
+            landed = true;
+            settled = false;
+            landedAt = now;
+        }
+        landedLast = now;
+        if (!settled && (speed < SETTLE_SPEED || now - landedAt >= SETTLE_TICKS)) {
+            settled = true;
+        }
+        return settled;
     }
 
     boolean scanDue(long now) {
