@@ -14,6 +14,9 @@ public final class NeutralMobs {
     public static final long MEMORY_TICKS = 600;
     // an aggressive neutral this close is hitting us whatever the history says
     public static final double CLOSE = 3.5;
+    // a zombie only has its aggressive flag up for 9 ticks out of every 20 while it chews on us, and it is down on the
+    // hit tick itself. two attack intervals of "it just bit us" papers over the off ticks without turning into a grudge
+    public static final long ANGRY_AFTER_HIT = 40;
 
     // mind their own business until poked
     private static final Set<String> NEUTRAL = Set.of("zombified_piglin", "wolf", "bee", "iron_golem", "polar_bear",
@@ -40,5 +43,19 @@ public final class NeutralMobs {
     public static boolean hostile(boolean neutral, boolean aggressive, boolean provoked, boolean targetsUs, double distance) {
         if (!neutral) return aggressive;
         return afterUs(provoked, targetsUs, aggressive, distance);
+    }
+
+    // same call, plus "it hit us a moment ago". the aggressive flag blinks off for half of every zombie swing, so a mob
+    // that is busy biting us dropped off the hostile list on the off ticks. neutral ones already count a hit as a reason
+    // through provoked, so they don't need it
+    public static boolean hostile(boolean neutral, boolean aggressive, boolean provoked, boolean targetsUs, double distance,
+                                  boolean hitRecently) {
+        if (!neutral) return aggressive || hitRecently;
+        return hostile(true, aggressive, provoked, targetsUs, distance);
+    }
+
+    // sinceHit straight from Provocations, NEVER included
+    public static boolean hitRecently(long sinceHit) {
+        return sinceHit >= 0 && sinceHit <= ANGRY_AFTER_HIT;
     }
 }
