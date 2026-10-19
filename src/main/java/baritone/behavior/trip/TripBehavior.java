@@ -23,7 +23,6 @@ import baritone.api.Settings;
 import baritone.api.event.events.PathEvent;
 import baritone.api.event.events.TickEvent;
 import baritone.api.pathing.goals.Goal;
-import baritone.api.process.IBaritoneProcess;
 import baritone.api.utils.BetterBlockPos;
 import baritone.behavior.Behavior;
 import baritone.pathing.movement.CalculationContext;
@@ -31,7 +30,6 @@ import net.minecraft.world.item.Item;
 
 import java.util.List;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -182,9 +180,11 @@ public final class TripBehavior extends Behavior {
         return "Ok, sticking to the normal route.";
     }
 
-    // the user typed something else since we asked. a stuck question leaves nothing in control, so anything in
-    // control now is theirs. a faster question was asked while walking our goal, a different goal means they changed it.
-    // no goal at all is the faster route's normal route failing while the question was up, that's still our trip
+    // the user typed something else since we asked. a stuck question leaves nothing running, so any real process running
+    // now is theirs. a faster question was asked while walking our goal, a different goal means they changed it.
+    // no goal at all is the faster route's normal route failing while the question was up, that's still our trip.
+    // "in control" used to be the test, but backfill or the inventory pauser holding the wheel for a tick is not the
+    // user moving on, and they hold it a lot
     private boolean movedOn(Trip trip) {
         if (AltoClefBridge.userTaskActive()) {
             return true;
@@ -193,8 +193,7 @@ public final class TripBehavior extends Behavior {
         if (goal != null) {
             return goal != trip.goal;
         }
-        Optional<IBaritoneProcess> inControl = baritone.getPathingControlManager().mostRecentInControl();
-        return inControl.isPresent() && inControl.get().isActive();
+        return baritone.getPathingControlManager().nonTemporaryActive();
     }
 
     private void tickStuck() {
