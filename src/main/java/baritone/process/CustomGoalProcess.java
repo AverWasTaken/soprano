@@ -92,6 +92,11 @@ public final class CustomGoalProcess extends BaritoneProcessHelper implements IC
         return this.state != State.NONE;
     }
 
+    // actually going somewhere. a bare #goal stays GOAL_SET forever while the player walks around by hand
+    public boolean isPathingToGoal() {
+        return this.state == State.PATH_REQUESTED || this.state == State.EXECUTING;
+    }
+
     @Override
     public PathingCommand onTick(boolean calcFailed, boolean isSafeToCancel) {
         switch (this.state) {

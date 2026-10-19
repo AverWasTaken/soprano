@@ -67,6 +67,12 @@ public class SelfDefenseRulesTest {
     }
 
     @Test
+    public void oneThatWontGetHurtIsGivenUpOn() {
+        assertFalse(SelfDefenseRules.noProgress(SelfDefenseRules.NO_PROGRESS_TICKS - 1));
+        assertTrue(SelfDefenseRules.noProgress(SelfDefenseRules.NO_PROGRESS_TICKS));
+    }
+
+    @Test
     public void deadIsDone() {
         assertTrue(SelfDefenseRules.release(true, 1, 0, 0));
         assertFalse(SelfDefenseRules.release(false, 1, 0, 0));
@@ -74,7 +80,8 @@ public class SelfDefenseRulesTest {
 
     @Test
     public void excludedKindsNeverGoInTheBook() {
-        for (String type : new String[]{"creeper", "warden", "wither", "ender_dragon", "phantom", "vex", "ghast", "blaze"}) {
+        for (String type : new String[]{"creeper", "warden", "wither", "ender_dragon", "creaking", "phantom", "vex", "ghast",
+                "blaze"}) {
             assertFalse(type, SelfDefenseRules.noteable(true, true, type));
         }
         assertTrue(SelfDefenseRules.noteable(true, true, "zombie"));
