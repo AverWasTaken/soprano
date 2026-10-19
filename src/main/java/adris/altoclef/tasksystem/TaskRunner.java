@@ -152,6 +152,11 @@ public class TaskRunner {
         return _cachedCurrentTaskChain;
     }
 
+    // what the winner asked for on the last tick we ran. the pick isn't reset while we're off, so off reads as nobody
+    public float winnerPriority() {
+        return _active ? _pick.winnerPriority() : Float.NEGATIVE_INFINITY;
+    }
+
     // Kinda jank ngl
     public AltoClef getMod() {
         return _mod;

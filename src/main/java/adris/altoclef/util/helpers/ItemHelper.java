@@ -1,6 +1,7 @@
 package adris.altoclef.util.helpers;
 
 import baritone.Baritone;
+import baritone.process.TorchProcess;
 import adris.altoclef.AltoSettings;
 import adris.altoclef.AltoClef;
 import adris.altoclef.util.WoodType;
@@ -420,6 +421,9 @@ public class ItemHelper {
         if (stack.isEnchanted() && Baritone.settings().altoDontThrowAwayEnchantedItems.value)
             return true;
         if (stack.getItem().components().has(DataComponents.CUSTOM_NAME) && Baritone.settings().altoDontThrowAwayCustomNameItems.value)
+            return true;
+        // autoTorch on and altoclef tossing the torches as junk would be a short lived feature
+        if (Baritone.settings().autoTorch.value && TorchProcess.isTorch(stack))
             return true;
         return mod.getBehaviour().isProtected(stack.getItem()) || AltoSettings.isImportant(stack.getItem());
     }
