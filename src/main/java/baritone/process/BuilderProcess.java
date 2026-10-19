@@ -2527,6 +2527,9 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
 
             this.jumpPenalty += 10;
             this.backtrackCostFavoringCoefficient = 1;
+            // the first context gets built before we're the one in control, so clutchAllowed can't see us yet
+            this.hasClutchItem = false;
+            this.clutchPicksUp = false;
         }
 
         private BlockState getSchematic(int x, int y, int z, BlockState current) {
