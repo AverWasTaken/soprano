@@ -144,6 +144,12 @@ public final class AltoClefBridge implements AbstractGameEventListener {
         return ac != null && ac.getUserTaskChain().isActive() && !ac.getUserTaskChain().isRunningIdleTask();
     }
 
+    // autoTorch asks before every placement. altoclef off is a yes, see TorchGate for what it waits out while it runs
+    public static boolean torchingAllowed() {
+        AltoClef ac = isRunning() ? instanceOrNull() : null;
+        return ac == null || TorchGate.allows(ac);
+    }
+
     // who collects blocks for a trip (TripBehavior). null while altoclef is off, the trip just says it can't
     public static TripGatherer tripGatherer() {
         if (instance == null || gaveUp) {
