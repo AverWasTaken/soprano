@@ -37,6 +37,12 @@ final class TorchRules {
         return Math.max(0, Math.min(MAX_LIGHT, level));
     }
 
+    // does the player's box poke into this block. strict, so a box just touching the face (pressed against it, or standing
+    // exactly on the line) doesn't count. playerFeet is one column, the box is two of them half the time
+    static boolean overlaps(double minX, double minY, double minZ, double maxX, double maxY, double maxZ, int x, int y, int z) {
+        return minX < x + 1 && maxX > x && minY < y + 1 && maxY > y && minZ < z + 1 && maxZ > z;
+    }
+
     // past reach every spot would aim, fail the raytrace and get skipped anyway, so don't scan it
     static int radius(int setting, double reach) {
         return Math.max(0, Math.min(setting, (int) Math.ceil(reach)));

@@ -47,6 +47,7 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.FallingBlock;
 import net.minecraft.world.level.block.WallTorchBlock;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
@@ -111,14 +112,12 @@ public final class TorchProcess extends BaritoneProcessHelper {
         // we only help someone else's job along. and while something holds left click it's digging, aiming at our support
         // now would have BlockBreakHelper mine it out from under the torch. torches go in the gaps between digs
         if (!baritone.getPathingControlManager().otherNonTemporaryActive(this) || handsTaken()) {
-            memory.stopAiming();
-            return defer();
+            return drop();
         }
         long now = now();
         Spot target = spot(now);
         if (target == null) {
-            memory.stopAiming();
-            return defer();
+            return drop();
         }
         if (!isSafeToCancel) {
             // the pause only lands once the movement says it's safe. grabbing the camera mid jump would be rude
@@ -127,14 +126,16 @@ public final class TorchProcess extends BaritoneProcessHelper {
         if (pauseStuck(now)) {
             // let the real process tick and get a new path going, we come back for a look in a few ticks
             memory.foundNothing(now);
-            memory.stopAiming();
-            spot = null;
-            return defer();
+            return drop();
+        }
+        boolean landed = pauseAskedAt == now - 1 && baritone.getPathingBehavior().pausedLastTick();
+        if (!memory.settled(now, landed, horizontalSpeed())) {
+            // keep holding the pause or the path walks off again. no aiming yet, the eye is still moving
+            return pause(now, true);
         }
         baritone.getLookBehavior().updateTarget(target.rotation(), true);
         if (memory.aimTimedOut(target.cell().asLong(), now)) {
-            spot = null;
-            return defer();
+            return drop();
         }
         // picked on the aim ticks, so a torch coming up from the inventory has landed by the time we click
         selectTorch(true);
@@ -197,6 +198,19 @@ public final class TorchProcess extends BaritoneProcessHelper {
 
     private static PathingCommand defer() {
         return new PathingCommand(null, PathingCommandType.DEFER);
+    }
+
+    // the target only sticks while we're the ones working on it. after someone else had the wheel we're somewhere else,
+    // pick fresh
+    private PathingCommand drop() {
+        memory.stopAiming();
+        spot = null;
+        return defer();
+    }
+
+    private double horizontalSpeed() {
+        Vec3 motion = ctx.player().getDeltaMovement();
+        return Math.sqrt(motion.x * motion.x + motion.z * motion.z);
     }
 
     private void releaseClick() {
@@ -264,14 +278,20 @@ public final class TorchProcess extends BaritoneProcessHelper {
                 && block.getBlockPos().equals(support) && block.getDirection() == face;
     }
 
-    // onTick can come round more than once a tick, one scan is enough
+    // onTick can come round more than once a tick, one scan is enough. the target we're on sticks while it still works,
+    // a fresh scan every tick can flip to another cell as we slide and the aim never gets to finish on either
     private Spot spot(long now) {
         if (scannedAt == now) {
             return spot;
         }
         scannedAt = now;
+        if (spot != null) {
+            spot = recheck(spot, now);
+            if (spot != null) {
+                return spot;
+            }
+        }
         if (!memory.scanDue(now)) {
-            spot = null;
             return null;
         }
         spot = findSpot(now);
@@ -279,6 +299,23 @@ public final class TorchProcess extends BaritoneProcessHelper {
             memory.foundNothing(now);
         }
         return spot;
+    }
+
+    // everything the scan asked, for just this cell, support and face, raytrace included from where the eye is now. comes
+    // back with the rotation redone, null once it doesn't hold any more
+    private Spot recheck(Spot old, long now) {
+        double reach = ctx.playerController().getBlockReachDistance();
+        BlockPos cell = old.cell();
+        if (ctx.playerHead().distanceToSqr(Vec3.atCenterOf(cell)) > reach * reach) {
+            return null;
+        }
+        int radius = TorchRules.radius(Baritone.settings().autoTorchRadius.value, reach);
+        PathCells path = pathCells(ctx.playerFeet(), radius);
+        int level = TorchRules.clampLevel(Baritone.settings().autoTorchLightLevel.value);
+        if (!wantsTorch(cell, level, now, path) || !survives(cell, old.face())) {
+            return null;
+        }
+        return aimAt(cell, old.support(), old.face(), path, reach);
     }
 
     private Spot findSpot(long now) {
@@ -319,7 +356,14 @@ public final class TorchProcess extends BaritoneProcessHelper {
         // cells the path digs through are fine, a torch is walk through and the path won't break it
         return !memory.skip(key, now) && !path.places().contains(key)
                 && world.getWorldBorder().isWithinBounds(cell) && !AltoClefSettings.getInstance().shouldAvoidPlacingAt(cell)
-                && !nearFluid(cell);
+                && !nearFluid(cell) && !occupied(cell);
+    }
+
+    // not where we're standing. straight down into our own cell is the worst aim there is, the yaw means nothing and every
+    // bit of slide swings it round. in a 1x2 tunnel that leaves the cells behind us, same as a player would do it
+    private boolean occupied(BlockPos cell) {
+        AABB box = ctx.player().getBoundingBox();
+        return TorchRules.overlaps(box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ, cell.getX(), cell.getY(), cell.getZ());
     }
 
     // water washes a torch off, lava burns it, and the raytrace looks straight through both
@@ -337,14 +381,14 @@ public final class TorchProcess extends BaritoneProcessHelper {
 
     // floor first, then the walls. canSurvive is the game's own answer per face, so no guessing what a torch sticks to
     private Spot aim(BlockPos cell, PathCells path, double reach) {
-        if (Blocks.TORCH.defaultBlockState().canSurvive(ctx.world(), cell)) {
+        if (survives(cell, Direction.UP)) {
             Spot floor = aimAt(cell, cell.below(), Direction.UP, path, reach);
             if (floor != null) {
                 return floor;
             }
         }
         for (Direction facing : Direction.Plane.HORIZONTAL) {
-            if (WallTorchBlock.canSurvive(ctx.world(), cell, facing)) {
+            if (survives(cell, facing)) {
                 Spot wall = aimAt(cell, cell.relative(facing.getOpposite()), facing, path, reach);
                 if (wall != null) {
                     return wall;
@@ -352,6 +396,11 @@ public final class TorchProcess extends BaritoneProcessHelper {
             }
         }
         return null;
+    }
+
+    // up is a floor torch, a side is a wall torch on the block behind that face
+    private boolean survives(BlockPos cell, Direction face) {
+        return face == Direction.UP ? Blocks.TORCH.defaultBlockState().canSurvive(ctx.world(), cell) : WallTorchBlock.canSurvive(ctx.world(), cell, face);
     }
 
     // same raytrace precheck as findPlace, but it has to be this exact block and this exact face. findPlace takes any
