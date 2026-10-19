@@ -340,6 +340,14 @@ public class BlockTracker extends Tracker {
         }
     }
 
+    // what the last scan saw at pos, null when nothing tracked was there. no updateState: this gets asked from inside
+    // getNearestTracking's own filter, a rescan halfway through that walk is not what anybody wants
+    public Block knownBlockAt(BlockPos pos) {
+        synchronized (_scanMutex) {
+            return currentCache().knownBlockAt(pos);
+        }
+    }
+
     public Optional<BlockPos> getNearestWithinRange(BlockPos pos, double range, Block... blocks) {
         return getNearestWithinRange(new Vec3(pos.getX(), pos.getY(), pos.getZ()), range, blocks);
     }
@@ -686,6 +694,10 @@ public class BlockTracker extends Tracker {
                 }
             }
             return result;
+        }
+
+        public Block knownBlockAt(BlockPos pos) {
+            return _cachedByPosition.get(pos);
         }
 
         public void removeBlock(BlockPos pos, Block... blocks) {

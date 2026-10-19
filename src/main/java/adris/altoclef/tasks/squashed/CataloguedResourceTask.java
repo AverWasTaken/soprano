@@ -5,6 +5,7 @@ import adris.altoclef.TaskCatalogue;
 import adris.altoclef.tasks.ResourceTask;
 import adris.altoclef.tasks.container.CraftInTableTask;
 import adris.altoclef.tasks.container.UpgradeInSmithingTableTask;
+import adris.altoclef.tasks.resources.MineAndCollectTask;
 import adris.altoclef.tasksystem.Task;
 import adris.altoclef.util.ItemTarget;
 import adris.altoclef.util.helpers.StorageHelper;
@@ -12,6 +13,7 @@ import org.apache.commons.lang3.ArrayUtils;
 
 import java.util.*;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.function.ToIntFunction;
 
 public class CataloguedResourceTask extends ResourceTask {
@@ -32,6 +34,11 @@ public class CataloguedResourceTask extends ResourceTask {
                 _tasksToComplete.add(TaskCatalogue.getItemTask(target));
             }
         }
+
+        // two ores mined in list order walk past one to get the other, then walk back. as one task the nearest short one wins
+        oresTogether(_tasksToComplete,
+                task -> task instanceof MineAndCollectTask mine && mine.isOre(),
+                ores -> MineAndCollectTask.together(ores.stream().map(MineAndCollectTask.class::cast).toList()));
 
         if (squash) {
             squashTasks(_tasksToComplete);
@@ -64,6 +71,26 @@ public class CataloguedResourceTask extends ResourceTask {
             }
         }
         return null;
+    }
+
+    // the ores, two or more of them, as one task in the first one's slot. everything else keeps its place, one ore stays
+    // as it is. in place, so the constructor can't end up clearing the list it is copying from. generic for the same
+    // reason as firstUnmet
+    static <T> void oresTogether(List<T> tasks, Predicate<T> isOre, Function<List<T>, T> together) {
+        List<T> ores = new ArrayList<>();
+        int first = -1;
+        for (int i = 0; i < tasks.size(); i++) {
+            if (isOre.test(tasks.get(i))) {
+                if (first < 0) first = i;
+                ores.add(tasks.get(i));
+            }
+        }
+        if (ores.size() < 2) {
+            return;
+        }
+        T merged = together.apply(ores);
+        tasks.removeIf(isOre);
+        tasks.add(first, merged);
     }
 
     @Override
