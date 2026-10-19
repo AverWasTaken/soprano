@@ -162,6 +162,11 @@ public final class LookBehavior extends Behavior implements ILookBehavior {
         }
     }
 
+    // what the server last heard from us, freeLook or not. null until the first look packet after joining a world
+    public Optional<Rotation> serverRotation() {
+        return Optional.ofNullable(this.serverRotation);
+    }
+
     public Optional<Rotation> getEffectiveRotation() {
         if (Baritone.settings().freeLook.value) {
             return Optional.ofNullable(this.serverRotation);

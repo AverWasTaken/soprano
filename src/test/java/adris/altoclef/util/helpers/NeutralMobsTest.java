@@ -87,4 +87,35 @@ public class NeutralMobsTest {
         assertFalse(NeutralMobs.neutralNow("zoglin", true, true));
         assertTrue(NeutralMobs.hostile(false, true, false, false, 20));
     }
+
+    // a zombie chewing on us has its flag down on the hit tick and for half a second after, it should not blink off the list
+    @Test
+    public void aZombieThatJustBitUsStaysHostileWithItsFlagDown() {
+        assertTrue(NeutralMobs.hostile(false, false, false, false, 1, NeutralMobs.hitRecently(10)));
+    }
+
+    @Test
+    public void noFlagAndNoHitIsStillNotHostile() {
+        assertFalse(NeutralMobs.hostile(false, false, false, false, 1, NeutralMobs.hitRecently(Provocations.NEVER)));
+        assertFalse(NeutralMobs.hitRecently(Provocations.NEVER));
+    }
+
+    @Test
+    public void theBiteWearsOffAfterTwoSwings() {
+        assertTrue(NeutralMobs.hitRecently(NeutralMobs.ANGRY_AFTER_HIT));
+        assertFalse(NeutralMobs.hostile(false, false, false, false, 1, NeutralMobs.hitRecently(41)));
+        // flag up is hostile whatever the book says, same as before
+        assertTrue(NeutralMobs.hostile(false, true, false, false, 1, NeutralMobs.hitRecently(41)));
+    }
+
+    // a neutral that hit us is already provoked, the new input changes nothing for it either way
+    @Test
+    public void neutralsIgnoreTheRecentHitInput() {
+        for (String type : ALWAYS_NEUTRAL) {
+            boolean neutral = NeutralMobs.neutralNow(type, false, false);
+            assertFalse(type, NeutralMobs.hostile(neutral, false, false, false, 10, true));
+            assertTrue(type, NeutralMobs.hostile(neutral, false, true, false, 10, false));
+            assertFalse(type, NeutralMobs.hostile(neutral, true, false, false, 10, true));
+        }
+    }
 }
