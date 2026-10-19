@@ -248,4 +248,133 @@ public class BuildSkipsTest {
         }
         assertTrue(got);
     }
+
+    @Test
+    public void softSkipLeavesFixesAndWindowAlone() {
+        BuildSkips skips = new BuildSkips();
+        long t = 0;
+        for (int i = 0; i < BuildSkips.WINDOW_TICKS - 2; i++) {
+            skips.work(i % 2 == 0 ? A : B, t++, 100, false);
+        }
+        assertFalse(skips.softSkip(C, t));
+        assertEquals(0, skips.fixes());
+        assertTrue(skips.isSkipped(C, t + 1));
+        // the window didn't get reset: one more tick of A and the window ends where it would have
+        assertTrue(skips.work(A, t++, 100, false).isEmpty());
+        LongList got = skips.work(B, t, 100, false);
+        assertTrue(got.contains(A) && got.contains(B));
+        assertFalse(got.contains(C));
+    }
+
+    @Test
+    public void softSkipKeepsTheCount() {
+        // a soft skip is about where we stand, the ticks already spent on the cell still count
+        BuildSkips skips = new BuildSkips();
+        long t = 0;
+        for (; t < BuildSkips.STUCK_TICKS - 1; t++) {
+            skips.work(A, t, BuildSkips.STUCK_TICKS, false);
+        }
+        skips.softSkip(A, t);
+        long after = t + BuildSkips.SOFT_SKIP_TICKS;
+        assertFalse(skips.isSkipped(A, after));
+        assertTrue(skips.work(A, after, BuildSkips.STUCK_TICKS, false).contains(A));
+    }
+
+    @Test
+    public void softSkipExpires() {
+        BuildSkips skips = new BuildSkips();
+        skips.softSkip(A, 10);
+        assertTrue(skips.isSkipped(A, 10 + BuildSkips.SOFT_SKIP_TICKS - 1));
+        assertFalse(skips.isSkipped(A, 10 + BuildSkips.SOFT_SKIP_TICKS));
+    }
+
+    @Test
+    public void secondSoftSkipIsAHardOne() {
+        BuildSkips skips = new BuildSkips();
+        assertFalse(skips.softSkip(A, 0));
+        assertFalse(skips.anySkipped(1));
+        assertTrue(skips.anySoftSkipped(1));
+        long again = BuildSkips.SOFT_SKIP_TICKS + 10; // the first one ran out, still well inside FORGET_TICKS
+        assertTrue(skips.softSkip(A, again));
+        assertTrue(skips.anySkipped(again + 1));
+        assertFalse(skips.anySoftSkipped(again + 1));
+        assertTrue(skips.isSkipped(A, again + BuildSkips.SKIP_TICKS - 1));
+        assertEquals(0, skips.fixes());
+    }
+
+    @Test
+    public void softSkipHistoryForgetsAfterAWhile() {
+        BuildSkips skips = new BuildSkips();
+        skips.softSkip(A, 0);
+        assertFalse(skips.softSkip(A, BuildSkips.FORGET_TICKS + 1));
+        assertFalse(skips.anySkipped(BuildSkips.FORGET_TICKS + 2));
+    }
+
+    @Test
+    public void clearingSoftSkipsKeepsTheHistory() {
+        BuildSkips skips = new BuildSkips();
+        skips.softSkip(A, 0);
+        skips.clearSoftSkips();
+        assertFalse(skips.isSkipped(A, 1));
+        assertFalse(skips.anySoftSkipped(1));
+        // let go of it, ended up stuck on it again: that's the real skip
+        assertTrue(skips.softSkip(A, 2));
+        assertTrue(skips.isSkipped(A, 3));
+    }
+
+    @Test
+    public void clearWipesSoftSkipsAndHistory() {
+        BuildSkips skips = new BuildSkips();
+        skips.softSkip(A, 0);
+        skips.clear();
+        assertFalse(skips.isSkipped(A, 1));
+        assertFalse(skips.softSkip(A, 2));
+    }
+
+    @Test
+    public void rightCellsStayOutOfTheWindowSkip() {
+        BuildSkips skips = new BuildSkips();
+        long t = 0;
+        for (int i = 0; i < BuildSkips.WINDOW_TICKS - 1; i++) {
+            skips.work(i % 2 == 0 ? A : B, t++, 100, false);
+        }
+        LongList got = skips.work(B, t, 100, false, p -> p == A);
+        assertTrue(got.contains(B));
+        assertFalse(got.contains(A));
+        assertFalse(skips.isSkipped(A, t + 1));
+        assertEquals(0, skips.fixes());
+    }
+
+    @Test
+    public void lookingRightKeepsTheCount() {
+        // a protected cell looks right for a round trip when the window fills, that mustn't hand it a fresh count
+        BuildSkips skips = new BuildSkips();
+        long t = 0;
+        for (int i = 0; i < BuildSkips.WINDOW_TICKS - 1; i++) {
+            skips.work(i % 3 == 0 ? A : B, t++, 100, false);
+        }
+        // A has 40 ticks on it, the window fills on this one while A looks right
+        assertFalse(skips.work(B, t++, 100, false, p -> p == A).contains(A));
+        // then the server puts it back: 60 more get it to 100, not another 100 from zero
+        int more = 0;
+        LongList got;
+        do {
+            got = skips.work(A, t++, 100, false);
+            more++;
+        } while (got.isEmpty() && more < 200);
+        assertTrue(got.contains(A));
+        assertEquals(60, more);
+    }
+
+    @Test
+    public void rightTargetAtTheLimitIsNotSkipped() {
+        BuildSkips skips = new BuildSkips();
+        for (int t = 0; t < BuildSkips.STUCK_TICKS - 1; t++) {
+            skips.work(A, t, BuildSkips.STUCK_TICKS, false);
+        }
+        assertTrue(skips.work(A, BuildSkips.STUCK_TICKS, BuildSkips.STUCK_TICKS, false, p -> true).isEmpty());
+        assertFalse(skips.isSkipped(A, BuildSkips.STUCK_TICKS + 1));
+        // still wrong next tick, still over the limit
+        assertTrue(skips.work(A, BuildSkips.STUCK_TICKS + 1, BuildSkips.STUCK_TICKS, false).contains(A));
+    }
 }
