@@ -26,8 +26,13 @@ import net.minecraft.world.level.block.StairBlock;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
+import java.util.Random;
+
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 
 public class BuilderCreativeTest {
 
@@ -58,5 +63,110 @@ public class BuilderCreativeTest {
     public void nothingTheBuilderCantClickInGetsHandedOut() {
         assertNull(BuilderProcess.creativeItem(Blocks.FIRE.defaultBlockState()));
         assertNull(BuilderProcess.creativeItem(Blocks.AIR.defaultBlockState()));
+    }
+
+    // the slot tests model a hotbar as ints: 0 empty, -1 a tool (not a block), anything else a kind of block
+    private static final int EMPTY = 0;
+    private static final int TOOL = -1;
+    private static final int THROWAWAY = 100;
+
+    private static int pick(int[] hot, long[] used, int selected, int throwaway) {
+        boolean[] empty = new boolean[hot.length];
+        boolean[] block = new boolean[hot.length];
+        for (int i = 0; i < hot.length; i++) {
+            empty[i] = hot[i] == EMPTY;
+            block[i] = hot[i] > 0;
+        }
+        return BuilderProcess.creativeSlot(empty, block, used, selected, throwaway);
+    }
+
+    @Test
+    public void anEmptySlotGoesFirst() {
+        int[] hot = {TOOL, 3, 4, EMPTY, 5, EMPTY, 6, 7, THROWAWAY};
+        assertEquals(3, pick(hot, new long[9], 1, 8));
+    }
+
+    @Test
+    public void theBlockUnusedLongestGoes() {
+        int[] hot = {TOOL, 1, 2, 3, 4, 5, 6, 7, THROWAWAY};
+        long[] used = {0, 50, 40, 10, 60, 70, 80, 90, 0};
+        assertEquals(3, pick(hot, used, 1, 8));
+        // and asking twice without anything changing says the same thing
+        assertEquals(3, pick(hot, used, 1, 8));
+    }
+
+    @Test
+    public void neverTheHandTheThrowawayOrATool() {
+        int[] hot = {TOOL, 1, TOOL, TOOL, TOOL, TOOL, TOOL, TOOL, THROWAWAY};
+        long[] used = new long[9];
+        // slot 1 is the only block that isn't the throwaway, and it's in hand
+        assertEquals(-1, pick(hot, used, 1, 8));
+        assertEquals(1, pick(hot, used, 2, 8));
+    }
+
+    // gives only happen for a click going out, and the clicked slot counts as used. so a handful of blocks that fits in
+    // the hotbar gets handed over once each and then never again, however many other kinds the scan saw nearby
+    @Test
+    public void aWorkingSetThatFitsIsGivenOnce() {
+        int[] hot = {TOOL, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, EMPTY, THROWAWAY};
+        long[] used = new long[9];
+        int selected = 0;
+        int gives = 0;
+        for (int tick = 1; tick <= 500; tick++) {
+            int want = 1 + tick % 7;
+            int slot = indexOf(hot, want);
+            if (slot < 0) {
+                slot = pick(hot, used, selected, 8);
+                hot[slot] = want;
+                gives++;
+            }
+            selected = slot;
+            used[slot] = tick;
+        }
+        assertEquals(7, gives);
+    }
+
+    // more kinds than slots: each click may cost a give, but the throwaway, the tools and the block in hand never go
+    @Test
+    public void tooManyKindsNeverTouchesTheProtectedSlots() {
+        int[] hot = {TOOL, 1, 2, 3, 4, 5, TOOL, 6, THROWAWAY};
+        long[] used = new long[9];
+        Random rng = new Random(2173);
+        int selected = 1;
+        for (int tick = 1; tick <= 2000; tick++) {
+            int want = 1 + rng.nextInt(20);
+            int slot = indexOf(hot, want);
+            if (slot < 0) {
+                slot = pick(hot, used, selected, 8);
+                assertNotEquals(selected, slot);
+                assertTrue(slot >= 0);
+                hot[slot] = want;
+            }
+            selected = slot;
+            used[slot] = tick;
+            assertEquals(TOOL, hot[0]);
+            assertEquals(TOOL, hot[6]);
+            assertEquals(THROWAWAY, hot[8]);
+        }
+    }
+
+    private static int indexOf(int[] hot, int item) {
+        for (int i = 0; i < hot.length; i++) {
+            if (hot[i] == item) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    // what a movement can be handed: a block item that comes out as the very same block
+    @Test
+    public void movementsOnlyGetBlocksThatComeOutAsThemselves() {
+        assertTrue(BuilderProcess.movementPlaceable(Blocks.STONE.defaultBlockState()));
+        assertTrue(BuilderProcess.movementPlaceable(Blocks.OAK_STAIRS.defaultBlockState()));
+        // the torch item makes a wall torch only sometimes, a movement checking for the wall torch would never see it
+        assertFalse(BuilderProcess.movementPlaceable(Blocks.WALL_TORCH.defaultBlockState()));
+        assertFalse(BuilderProcess.movementPlaceable(Blocks.WATER.defaultBlockState()));
+        assertFalse(BuilderProcess.movementPlaceable(Blocks.FIRE.defaultBlockState()));
     }
 }

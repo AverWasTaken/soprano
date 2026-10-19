@@ -90,10 +90,11 @@ public final class InventoryBehavior extends Behavior implements Helper {
             return;
         }
         ticksSinceLastInventoryMove++;
-        if (clutch && baritone.getPathingBehavior().isPathing()) {
+        boolean creativeBuild = creativeBuild();
+        if (clutch && !creativeBuild && baritone.getPathingBehavior().isPathing()) {
             keepClutchItemOnHotbar();
         }
-        if (shuffle && baritone.getPathingBehavior().isPathing()) {
+        if (shuffle && !creativeBuild && baritone.getPathingBehavior().isPathing()) {
             if (firstValidThrowaway() >= 9) { // aka there are none on the hotbar, but there are some in main inventory
                 requestSwapWithHotBar(firstValidThrowaway(), 8, "tool");
             }
@@ -122,6 +123,13 @@ public final class InventoryBehavior extends Behavior implements Helper {
         lastHeld = held;
     }
 
+    // a creative build hands itself every block it places into the hotbar (BuilderProcess.creativeSlot), breaks anything in
+    // one hit and can't take fall damage. a pickaxe, a clutch ladder or a bag swap into slot 7 would just land on one of
+    // its blocks and it'd hand it back next click, so while it runs the hotbar is the builder's
+    private boolean creativeBuild() {
+        return ctx.player() != null && ctx.player().hasInfiniteMaterials() && baritone.getBuilderProcess().isActive();
+    }
+
     // ladders crafted or picked up land wherever there was room, and the clutch only looks at the hotbar
     private void keepClutchItemOnHotbar() {
         if (pickClutchItem(false) != null) {
@@ -145,6 +153,9 @@ public final class InventoryBehavior extends Behavior implements Helper {
         }
         if (pickClutchItem(false) != null) {
             return true; // already there
+        }
+        if (creativeBuild()) {
+            return false; // no fall damage to clutch against, and the slot it'd take is one of the builder's
         }
         NonNullList<ItemStack> inv = ctx.player().getInventory().getNonEquipmentItems();
         for (int i = 9; i < 36; i++) {
@@ -392,6 +403,11 @@ public final class InventoryBehavior extends Behavior implements Helper {
         if (maybe != null && throwaway(select, stack -> stack.getItem() instanceof BlockItem && mayBurn(stack.getItem(), allowProtected) && ((BlockItem) stack.getItem()).getBlock().equals(maybe.getBlock()))) {
             return true;
         }
+        // creative and not on the hotbar yet: the builder hands it over like one of its own clicks. its costOfPlacingAt
+        // already priced this cell as placeable, so saying no here would be the recalc forever from above
+        if (builderPath && baritone.getBuilderProcess().creativeHand(maybe, select)) {
+            return true;
+        }
         if (builderPath) {
             // no cobble in a cell the build wants filled: it got kept as scaffolding and broken back out at cleanup
             return false;
@@ -405,7 +421,8 @@ public final class InventoryBehavior extends Behavior implements Helper {
     }
 
     public boolean throwaway(boolean select, Predicate<? super ItemStack> desired) {
-        return throwaway(select, desired, Baritone.settings().allowInventory.value);
+        // no bag swaps into slot 7 during a creative build, see creativeBuild
+        return throwaway(select, desired, Baritone.settings().allowInventory.value && !creativeBuild());
     }
 
     public boolean throwaway(boolean select, Predicate<? super ItemStack> desired, boolean allowInventory) {
