@@ -56,6 +56,10 @@ public final class BedCraft {
             return true;
         }
         var tracker = mod.getBlockTracker();
+        if (!tracker.isTracking(Blocks.CRAFTING_TABLE)) {
+            // the night check asks every tick of a build, nobody tracks tables there, and the warning flooded the trace
+            return false;
+        }
         return tracker.getNearestTracking(p -> !tracker.unreachable(p), Blocks.CRAFTING_TABLE)
                 .map(p -> p.closerToCenterThan(mod.getPlayer().position(), WalkCost.STATION_NEAR)).orElse(false);
     }
