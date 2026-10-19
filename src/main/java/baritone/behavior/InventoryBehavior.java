@@ -22,7 +22,6 @@ import baritone.Baritone;
 import baritone.altoclef.AltoClefSettings;
 import baritone.api.event.events.TickEvent;
 import baritone.api.utils.Helper;
-import baritone.process.BuilderProcess;
 import baritone.process.PlaceRules;
 import baritone.utils.ExperimentalMovement;
 import baritone.utils.ToolSet;
@@ -49,7 +48,6 @@ import java.util.List;
 import java.util.OptionalInt;
 import java.util.Random;
 import java.util.function.BooleanSupplier;
-import java.util.function.IntPredicate;
 import java.util.function.Predicate;
 
 public final class InventoryBehavior extends Behavior implements Helper {
@@ -133,10 +131,8 @@ public final class InventoryBehavior extends Behavior implements Helper {
         NonNullList<ItemStack> inv = ctx.player().getInventory().items;
         for (int i = 9; i < 36; i++) {
             if (inv.get(i).is(Items.VINE) || inv.get(i).is(Items.LADDER)) {
-                // mid build the builder's blocks win, the ladder takes whatever slot they aren't in. with every slot
-                // spoken for it waits, fetchClutchItemNow is the one for an actual fall
-                BuilderProcess builder = baritone.getBuilderProcess();
-                attemptToPutOnHotbar(i, builder.isActive() ? builder::hotbarSlotBusy : slot -> false, "clutch");
+                // fetchClutchItemNow is the one for an actual fall, this is the calm version
+                attemptToPutOnHotbar(i, slot -> false, "clutch");
                 return;
             }
         }
@@ -182,28 +178,6 @@ public final class InventoryBehavior extends Behavior implements Helper {
             }
         }
         return true;
-    }
-
-    // attemptToPutOnHotbar for someone who wants to know where it went (or is going, a throttled one lands later).
-    // tiers are disallowed sets tried in order until one leaves a slot. a move from inMainInvy that's already pending
-    // keeps its slot, picking a fresh random one every tick it waits was a swap fight all by itself
-    public OptionalInt fetchToHotbar(int inMainInvy, List<IntPredicate> tiers, String who) {
-        if (AltoClefSettings.getInstance().isInteractionPaused()) {
-            return OptionalInt.empty();
-        }
-        OptionalInt destination = OptionalInt.empty();
-        // the loosest tier, a pending slot that turned useful meanwhile is still off limits
-        if (lastTickRequestedMove != null && lastTickRequestedMove[0] == inMainInvy && !tiers.isEmpty()
-                && !tiers.get(tiers.size() - 1).test(lastTickRequestedMove[1])) {
-            destination = OptionalInt.of(lastTickRequestedMove[1]);
-        }
-        for (int i = 0; i < tiers.size() && destination.isEmpty(); i++) {
-            destination = getTempHotbarSlot(tiers.get(i)::test);
-        }
-        if (destination.isPresent()) {
-            requestSwapWithHotBar(inMainInvy, destination.getAsInt(), who);
-        }
-        return destination;
     }
 
     // the one place a placement click is vetted (see InputOverrideHandler): throwaway() selects slot 7 even when the swap into
