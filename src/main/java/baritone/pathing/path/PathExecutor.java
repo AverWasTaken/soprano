@@ -416,6 +416,7 @@ public class PathExecutor implements IPathExecutor, Helper {
         MovementStatus movementStatus = movement.update();
         if (movementStatus == UNREACHABLE || movementStatus == FAILED) {
             logDebug("Movement returns status " + movementStatus);
+            rememberFailure(movement);
             cancel();
             return true;
         }
@@ -453,6 +454,7 @@ public class PathExecutor implements IPathExecutor, Helper {
                 // ticksOnCurrent is greater than recalculateCost + 100
                 // this is why we cache cost at the beginning, and don't recalculate for this comparison every tick
                 logDebug("This movement has taken too long (" + ticksOnCurrent + " ticks, expected " + currentMovementOriginalCostEstimate + "). Cancelling.");
+                rememberFailure(movement);
                 cancel();
                 return true;
             }
@@ -1592,6 +1594,12 @@ public class PathExecutor implements IPathExecutor, Helper {
     private void clearKeys() {
         // i'm just sick and tired of this snippet being everywhere lol
         behavior.baritone.getInputOverrideHandler().clearAllKeys();
+    }
+
+    // before the cancel, so the replan it triggers already sees it and a fast fail loop climbs the ladder. only the movement
+    // itself failing counts, a process pulling the path out from under us says nothing about the edge
+    private void rememberFailure(Movement movement) {
+        behavior.failedMoves().record(movement.getSrc(), movement.getDest(), ctx.world(), System.currentTimeMillis());
     }
 
     private void cancel() {
