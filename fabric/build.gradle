@@ -16,6 +16,7 @@
  */
 
 import baritone.gradle.task.CreateDistTask
+import baritone.gradle.task.NestJarsTask
 import baritone.gradle.task.ProguardTask
 
 plugins {
@@ -37,6 +38,8 @@ configurations {
     shadowCommon // Don't use shadow from the shadow plugin because we don't want IDEA to index this.
     compileClasspath.extendsFrom common
     runtimeClasspath.extendsFrom common
+    // extended by nothing on purpose, this never touches compile, runtime or shadow. NestJarsTask is its only reader
+    jarInJar { canBeConsumed = false }
 }
 
 dependencies {
@@ -47,9 +50,10 @@ dependencies {
         common sourceSet.output
         shadowCommon sourceSet.output
     }
-    // dev runtime only so runClient has the version slider to play with. not shadowed, not shipped (it's gpl).
+    // runClient gets it from here. release jars get it nested by nestJars below, never shadowed into our classes.
     // transitive off because the jar already nests everything it needs, the pom deps would just be duplicate mod ids
-    runtimeOnly('com.viaversion:viafabricplus:5.1.1') { transitive = false }
+    runtimeOnly("com.viaversion:viafabricplus:${viafabricplus_version}") { transitive = false }
+    jarInJar("com.viaversion:viafabricplus:${viafabricplus_version}") { transitive = false }
 }
 
 processResources {
@@ -86,7 +90,13 @@ task proguard(type: ProguardTask) {
     compType "fabric"
 }
 
-task createDist(type: CreateDistTask, dependsOn: proguard) {
+// not unimined's include: that nests at remap, and the remapped jar is what proguard chews on. so nest after proguard
+task nestJars(type: NestJarsTask, dependsOn: proguard) {
+    compType "fabric"
+    nested.from configurations.jarInJar
+}
+
+task createDist(type: CreateDistTask, dependsOn: [proguard, nestJars]) {
     compType "fabric"
 }
 
