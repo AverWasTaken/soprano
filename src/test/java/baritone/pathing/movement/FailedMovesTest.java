@@ -138,4 +138,13 @@ public class FailedMovesTest {
         assertFalse(FailedMoves.climbable(Blocks.STONE));
         assertFalse(FailedMoves.climbable(Blocks.OAK_STAIRS));
     }
+
+    // the timeout is the only failure a climb gets let off for
+    @Test
+    public void onlyATimedOutClimbIsForgiven() {
+        assertTrue(FailedMoves.forgives(true, true));
+        assertFalse(FailedMoves.forgives(false, true));
+        assertFalse(FailedMoves.forgives(true, false));
+        assertFalse(FailedMoves.forgives(false, false));
+    }
 }

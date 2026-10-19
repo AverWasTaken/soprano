@@ -73,9 +73,15 @@ public final class FailedMoves {
     }
 
     // ladders and vines (MovementHelper.isClimbable), plus scaffolding and cave vines, which you climb the same way.
-    // PathExecutor skips recording an edge that touches one of these
+    // PathExecutor skips recording a timed out edge that touches one of these
     public static boolean climbable(Block block) {
         return MovementHelper.isClimbable(block) || block == Blocks.SCAFFOLDING || block == Blocks.CAVE_VINES || block == Blocks.CAVE_VINES_PLANT;
+    }
+
+    // only the timeout gets let off. swaying on the rungs runs the clock out, but a climb that says UNREACHABLE or FAILED
+    // means it really can't, and forgetting those let A* send us up the same broken ladder forever
+    public static boolean forgives(boolean timedOut, boolean climbEdge) {
+        return timedOut && climbEdge;
     }
 
     static double penaltyFor(long count) {
