@@ -117,4 +117,14 @@ public class GivenUpTest {
         g.nearbyChanged(A.x, A.y + 1, A.z, 1);
         assertTrue(g.isGivenUp(A.x, A.y, A.z, 1));
     }
+
+    @Test
+    public void theSecondBreakIsLonger() {
+        GivenUp g = new GivenUp();
+        g.giveUp(A, 0);
+        assertFalse(g.isGivenUp(A.x, A.y, A.z, GivenUp.EXPIRY_TICKS));
+        assertEquals(2, g.giveUp(A, 1000));
+        assertTrue(g.isGivenUp(A.x, A.y, A.z, 1000 + GivenUp.SECOND_EXPIRY_TICKS - 1));
+        assertFalse(g.isGivenUp(A.x, A.y, A.z, 1000 + GivenUp.SECOND_EXPIRY_TICKS));
+    }
 }

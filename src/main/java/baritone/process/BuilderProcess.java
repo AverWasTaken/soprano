@@ -137,6 +137,12 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
     private BetterBlockPos lastBreak;
     private boolean digging;
     private GivenUp givenUp;
+    // the give ups of a build that lost control, for when the same build at the same spot starts again (altoclef
+    // restarts its build after every meal and every night). otherwise each restart was three fresh goes at the same
+    // stuck cells
+    private GivenUp keptGivenUp;
+    private String keptName;
+    private Vec3i keptOrigin;
     // air cells somebody else (a path, a movement) put a throwaway in this build. only these count when we mine one, or a
     // clear job would remember every stone it ever dug and copy the lot into every bcc
     private LongOpenHashSet scaffoldPlaced;
@@ -349,6 +355,11 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         this.incorrectPositions = null;
         forgetStalls();
         forgetCreative();
+        if (keptGivenUp != null && Objects.equals(name, keptName) && this.origin.equals(keptOrigin)) {
+            // a world change in between still wipes it, recalcNearby's seenWorld check sees to that
+            givenUp = keptGivenUp;
+        }
+        keptGivenUp = null;
     }
 
     // a fresh build, a resume or a repeat: whatever we gave up on before was about a different situation
@@ -2258,6 +2269,9 @@ public final class BuilderProcess extends BaritoneProcessHelper implements IBuil
         }
         missingAtPause = Map.of();
         keep = null;
+        keptGivenUp = givenUp;
+        keptName = name;
+        keptOrigin = origin;
         forgetStalls();
         forgetCreative();
         incorrectPositions = null;
