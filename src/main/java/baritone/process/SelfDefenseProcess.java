@@ -202,8 +202,8 @@ public final class SelfDefenseProcess extends BaritoneProcessHelper {
             }
             engage(mob);
         }
-        // mine's shaft, the builder and the farm hold left click and pause, and pause to pause clears nothing. without this
-        // we dig whatever the crosshair sweeps over on the way to the zombie
+        // mine's shaft, the builder and the farm leave left click held, and taking over from them clears nothing. without
+        // this we dig whatever the crosshair sweeps over on the way to the zombie
         baritone.getInputOverrideHandler().clearAllKeys();
         baritone.getInputOverrideHandler().getBlockBreakHelper().stopBreakingBlock();
 
